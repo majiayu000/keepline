@@ -8,7 +8,7 @@ import { runMigrations } from '../storage/migrations.js';
 import { syncSessions } from '../session/service.js';
 import { getAggregatedSessions, filterSessions, sortSessions, getSessionStats } from '../session/aggregator.js';
 import { App } from '../ui/App.js';
-import { MinimalView, DashboardView, NeonView, MacOSView } from '../ui/views/index.js';
+import { MinimalView, DashboardView, NeonView, MacOSView, CyberpunkView } from '../ui/views/index.js';
 import type { SessionStatus } from '../core/types.js';
 import type { ViewStyle } from '../ui/views/index.js';
 
@@ -54,8 +54,8 @@ export async function listCommand(options: ListOptions): Promise<void> {
   // Clear the "Scanning" message
   process.stdout.write('\x1b[A\x1b[K');
 
-  // Select view based on style option
-  const style = options.style || 'default';
+  // Select view based on style option (cyber is default)
+  const style = options.style || 'cyber';
 
   let ViewComponent: React.FC<{ sessions: typeof sessions; stats: typeof stats }>;
 
@@ -72,8 +72,14 @@ export async function listCommand(options: ListOptions): Promise<void> {
     case 'macos':
       ViewComponent = MacOSView;
       break;
-    default:
+    case 'cyber':
+      ViewComponent = CyberpunkView;
+      break;
+    case 'default':
       ViewComponent = ({ sessions, stats }) => <App sessions={sessions} stats={stats} />;
+      break;
+    default:
+      ViewComponent = CyberpunkView;
   }
 
   // Render with Ink

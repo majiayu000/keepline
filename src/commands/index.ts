@@ -8,6 +8,7 @@ import { watchCommand } from './watch.js';
 import { recoverCommand, recoverListCommand } from './recover.js';
 import { daemonCommand } from './daemon.js';
 import { statusCommand } from './status.js';
+import { webCommand } from './web.js';
 
 export function registerCommands(program: Command): void {
   // List sessions
@@ -19,7 +20,7 @@ export function registerCommands(program: Command): void {
     .option('-d, --directory <dir>', 'Filter by directory')
     .option('-l, --limit <n>', 'Limit results')
     .option('-a, --all', 'Include completed sessions')
-    .option('--style <style>', 'UI style: default, minimal, dashboard, neon, macos')
+    .option('--style <style>', 'UI style: cyber (default), minimal, dashboard, neon, macos')
     .action(listCommand);
 
   // Watch sessions (live)
@@ -103,4 +104,11 @@ export function registerCommands(program: Command): void {
       const result = await syncSessions();
       console.log(chalk.green(`Done: ${result.discovered} new, ${result.updated} updated, ${result.lost} lost`));
     });
+
+  // Web UI
+  program
+    .command('web')
+    .description('Start the web UI server')
+    .option('-p, --port <port>', 'Port to listen on (default: 3377)')
+    .action(webCommand);
 }

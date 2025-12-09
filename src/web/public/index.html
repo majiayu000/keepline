@@ -1,0 +1,963 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>TASKER // Claude Code Monitor</title>
+  <style>
+    /* CSS Reset & Base */
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    :root {
+      /* Cyberpunk Color Palette */
+      --cyan: #00fff9;
+      --magenta: #ff00ff;
+      --yellow: #fcee0a;
+      --red: #ff003c;
+      --green: #00ff9f;
+      --blue: #00b3ff;
+      --purple: #bd00ff;
+      --orange: #ff6b00;
+
+      /* UI Colors */
+      --bg-dark: #0a0a0f;
+      --bg-panel: #12121a;
+      --bg-card: #1a1a25;
+      --bg-hover: #252535;
+      --border: #2a2a3a;
+      --border-bright: #3a3a5a;
+      --text: #a0a0c0;
+      --text-dim: #5a5a7a;
+      --text-bright: #e0e0ff;
+
+      /* Shadows & Effects */
+      --glow-cyan: 0 0 20px rgba(0, 255, 249, 0.3);
+      --glow-magenta: 0 0 20px rgba(255, 0, 255, 0.3);
+      --glow-green: 0 0 15px rgba(0, 255, 159, 0.4);
+      --glow-red: 0 0 15px rgba(255, 0, 60, 0.4);
+    }
+
+    body {
+      font-family: 'JetBrains Mono', 'Fira Code', 'SF Mono', monospace;
+      background: var(--bg-dark);
+      color: var(--text);
+      min-height: 100vh;
+      line-height: 1.5;
+    }
+
+    /* Scanline Effect */
+    body::before {
+      content: '';
+      position: fixed;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      background: repeating-linear-gradient(
+        0deg,
+        transparent,
+        transparent 2px,
+        rgba(0, 0, 0, 0.1) 2px,
+        rgba(0, 0, 0, 0.1) 4px
+      );
+      pointer-events: none;
+      z-index: 1000;
+    }
+
+    /* Header */
+    .header {
+      background: linear-gradient(180deg, var(--bg-panel) 0%, transparent 100%);
+      border-bottom: 1px solid var(--border);
+      padding: 1rem 2rem;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+
+    .logo {
+      display: flex;
+      align-items: center;
+      gap: 1rem;
+    }
+
+    .logo-text {
+      font-size: 1.5rem;
+      font-weight: bold;
+      background: linear-gradient(90deg, var(--cyan), var(--magenta));
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+      background-clip: text;
+      letter-spacing: 0.1em;
+    }
+
+    .logo-sub {
+      color: var(--text-dim);
+      font-size: 0.75rem;
+      text-transform: uppercase;
+      letter-spacing: 0.2em;
+    }
+
+    .header-actions {
+      display: flex;
+      gap: 0.5rem;
+    }
+
+    /* Buttons */
+    .btn {
+      font-family: inherit;
+      font-size: 0.8rem;
+      padding: 0.5rem 1rem;
+      border: 1px solid var(--border-bright);
+      background: var(--bg-card);
+      color: var(--text);
+      cursor: pointer;
+      transition: all 0.2s ease;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+    }
+
+    .btn:hover {
+      background: var(--bg-hover);
+      border-color: var(--cyan);
+      color: var(--cyan);
+    }
+
+    .btn-primary {
+      background: linear-gradient(135deg, var(--cyan), var(--blue));
+      border: none;
+      color: var(--bg-dark);
+      font-weight: bold;
+    }
+
+    .btn-primary:hover {
+      box-shadow: var(--glow-cyan);
+    }
+
+    .btn-danger {
+      border-color: var(--red);
+      color: var(--red);
+    }
+
+    .btn-danger:hover {
+      background: rgba(255, 0, 60, 0.2);
+      box-shadow: var(--glow-red);
+    }
+
+    .btn-success {
+      border-color: var(--green);
+      color: var(--green);
+    }
+
+    .btn-success:hover {
+      background: rgba(0, 255, 159, 0.2);
+      box-shadow: var(--glow-green);
+    }
+
+    /* Stats Bar */
+    .stats-bar {
+      display: flex;
+      gap: 2rem;
+      padding: 1rem 2rem;
+      background: var(--bg-panel);
+      border-bottom: 1px solid var(--border);
+    }
+
+    .stat {
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+    }
+
+    .stat-dot {
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+      animation: pulse 2s ease-in-out infinite;
+    }
+
+    .stat-dot.green { background: var(--green); box-shadow: var(--glow-green); }
+    .stat-dot.yellow { background: var(--yellow); }
+    .stat-dot.cyan { background: var(--cyan); }
+    .stat-dot.red { background: var(--red); box-shadow: var(--glow-red); }
+
+    @keyframes pulse {
+      0%, 100% { opacity: 1; }
+      50% { opacity: 0.5; }
+    }
+
+    .stat-label {
+      color: var(--text-dim);
+      font-size: 0.75rem;
+      text-transform: uppercase;
+    }
+
+    .stat-value {
+      color: var(--text-bright);
+      font-weight: bold;
+    }
+
+    /* Main Content */
+    .main {
+      padding: 2rem;
+      max-width: 1400px;
+      margin: 0 auto;
+    }
+
+    /* Section */
+    .section {
+      margin-bottom: 2rem;
+    }
+
+    .section-header {
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+      margin-bottom: 1rem;
+      padding-bottom: 0.5rem;
+      border-bottom: 1px solid var(--border);
+    }
+
+    .section-title {
+      font-size: 0.9rem;
+      font-weight: bold;
+      text-transform: uppercase;
+      letter-spacing: 0.1em;
+    }
+
+    .section-title.green { color: var(--green); }
+    .section-title.cyan { color: var(--cyan); }
+    .section-title.red { color: var(--red); }
+
+    .section-count {
+      color: var(--text-dim);
+      font-size: 0.8rem;
+    }
+
+    /* Session Cards */
+    .sessions-grid {
+      display: grid;
+      gap: 1rem;
+    }
+
+    .session-card {
+      background: var(--bg-card);
+      border: 1px solid var(--border);
+      padding: 1rem 1.25rem;
+      transition: all 0.2s ease;
+      cursor: pointer;
+      position: relative;
+      overflow: hidden;
+    }
+
+    .session-card::before {
+      content: '';
+      position: absolute;
+      left: 0;
+      top: 0;
+      bottom: 0;
+      width: 3px;
+      background: var(--border);
+      transition: background 0.2s ease;
+    }
+
+    .session-card:hover {
+      background: var(--bg-hover);
+      border-color: var(--border-bright);
+    }
+
+    .session-card.running::before { background: var(--green); }
+    .session-card.waiting::before { background: var(--yellow); }
+    .session-card.idle::before { background: var(--cyan); }
+    .session-card.lost::before { background: var(--red); }
+
+    .session-card:hover.running { box-shadow: inset 0 0 30px rgba(0, 255, 159, 0.05); }
+    .session-card:hover.lost { box-shadow: inset 0 0 30px rgba(255, 0, 60, 0.05); }
+
+    .session-row {
+      display: flex;
+      align-items: center;
+      gap: 1rem;
+    }
+
+    .session-index {
+      color: var(--cyan);
+      font-size: 0.8rem;
+      min-width: 2rem;
+    }
+
+    .session-status {
+      display: flex;
+      align-items: center;
+      gap: 0.25rem;
+      font-size: 0.7rem;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+      min-width: 60px;
+    }
+
+    .session-status.running { color: var(--green); }
+    .session-status.waiting { color: var(--yellow); }
+    .session-status.idle { color: var(--cyan); }
+    .session-status.lost { color: var(--red); }
+
+    .session-icon {
+      font-size: 0.9rem;
+    }
+
+    .session-info {
+      flex: 1;
+      min-width: 0;
+    }
+
+    .session-path {
+      color: var(--text);
+      font-size: 0.85rem;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+
+    .session-task {
+      color: var(--text-dim);
+      font-size: 0.75rem;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      margin-top: 0.25rem;
+    }
+
+    .session-time {
+      color: var(--text-dim);
+      font-size: 0.75rem;
+      min-width: 50px;
+      text-align: right;
+    }
+
+    .session-actions {
+      display: flex;
+      gap: 0.5rem;
+      opacity: 0;
+      transition: opacity 0.2s ease;
+    }
+
+    .session-card:hover .session-actions {
+      opacity: 1;
+    }
+
+    .action-btn {
+      font-family: inherit;
+      font-size: 0.7rem;
+      padding: 0.25rem 0.5rem;
+      border: 1px solid var(--border);
+      background: transparent;
+      cursor: pointer;
+      transition: all 0.2s ease;
+      text-transform: uppercase;
+    }
+
+    .action-btn.recover {
+      color: var(--green);
+      border-color: var(--green);
+    }
+
+    .action-btn.recover:hover {
+      background: rgba(0, 255, 159, 0.2);
+    }
+
+    .action-btn.close {
+      color: var(--red);
+      border-color: var(--red);
+    }
+
+    .action-btn.close:hover {
+      background: rgba(255, 0, 60, 0.2);
+    }
+
+    /* Loading */
+    .loading {
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      padding: 4rem;
+      color: var(--cyan);
+    }
+
+    .spinner {
+      width: 40px;
+      height: 40px;
+      border: 3px solid var(--border);
+      border-top-color: var(--cyan);
+      border-radius: 50%;
+      animation: spin 1s linear infinite;
+    }
+
+    @keyframes spin {
+      to { transform: rotate(360deg); }
+    }
+
+    /* Empty State */
+    .empty-state {
+      text-align: center;
+      padding: 3rem;
+      color: var(--text-dim);
+    }
+
+    .empty-icon {
+      font-size: 3rem;
+      margin-bottom: 1rem;
+      opacity: 0.5;
+    }
+
+    /* Modal */
+    .modal-overlay {
+      position: fixed;
+      inset: 0;
+      background: rgba(0, 0, 0, 0.8);
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      z-index: 100;
+      opacity: 0;
+      visibility: hidden;
+      transition: all 0.2s ease;
+    }
+
+    .modal-overlay.active {
+      opacity: 1;
+      visibility: visible;
+    }
+
+    .modal {
+      background: var(--bg-panel);
+      border: 1px solid var(--border-bright);
+      padding: 1.5rem;
+      min-width: 400px;
+      max-width: 600px;
+      transform: scale(0.95);
+      transition: transform 0.2s ease;
+    }
+
+    .modal-overlay.active .modal {
+      transform: scale(1);
+    }
+
+    .modal-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 1rem;
+      padding-bottom: 1rem;
+      border-bottom: 1px solid var(--border);
+    }
+
+    .modal-title {
+      color: var(--cyan);
+      font-size: 1rem;
+      font-weight: bold;
+      text-transform: uppercase;
+      letter-spacing: 0.1em;
+    }
+
+    .modal-close {
+      background: none;
+      border: none;
+      color: var(--text-dim);
+      cursor: pointer;
+      font-size: 1.5rem;
+      line-height: 1;
+    }
+
+    .modal-close:hover {
+      color: var(--red);
+    }
+
+    .modal-body {
+      margin-bottom: 1.5rem;
+    }
+
+    .detail-row {
+      display: flex;
+      margin-bottom: 0.75rem;
+    }
+
+    .detail-label {
+      color: var(--text-dim);
+      min-width: 100px;
+      font-size: 0.8rem;
+      text-transform: uppercase;
+    }
+
+    .detail-value {
+      color: var(--text-bright);
+      font-size: 0.85rem;
+      word-break: break-all;
+    }
+
+    .modal-footer {
+      display: flex;
+      justify-content: flex-end;
+      gap: 0.5rem;
+      padding-top: 1rem;
+      border-top: 1px solid var(--border);
+    }
+
+    /* Toast Notifications */
+    .toast-container {
+      position: fixed;
+      top: 1rem;
+      right: 1rem;
+      z-index: 200;
+      display: flex;
+      flex-direction: column;
+      gap: 0.5rem;
+    }
+
+    .toast {
+      background: var(--bg-panel);
+      border: 1px solid var(--border);
+      padding: 0.75rem 1rem;
+      font-size: 0.85rem;
+      animation: slideIn 0.3s ease;
+    }
+
+    .toast.success {
+      border-color: var(--green);
+      color: var(--green);
+    }
+
+    .toast.error {
+      border-color: var(--red);
+      color: var(--red);
+    }
+
+    @keyframes slideIn {
+      from {
+        transform: translateX(100%);
+        opacity: 0;
+      }
+      to {
+        transform: translateX(0);
+        opacity: 1;
+      }
+    }
+
+    /* Responsive */
+    @media (max-width: 768px) {
+      .header {
+        flex-direction: column;
+        gap: 1rem;
+      }
+
+      .stats-bar {
+        flex-wrap: wrap;
+        gap: 1rem;
+      }
+
+      .session-row {
+        flex-wrap: wrap;
+      }
+
+      .session-actions {
+        opacity: 1;
+        width: 100%;
+        margin-top: 0.5rem;
+      }
+    }
+  </style>
+</head>
+<body>
+  <header class="header">
+    <div class="logo">
+      <div>
+        <div class="logo-text">▀█▀ ▄▀█ █▀ █▄▀ █▀▀ █▀█</div>
+        <div class="logo-sub">Claude Code Monitor v1.0</div>
+      </div>
+    </div>
+    <div class="header-actions">
+      <button class="btn" onclick="refreshSessions()">⟳ Refresh</button>
+      <button class="btn btn-primary" onclick="syncSessions()">⚡ Sync</button>
+    </div>
+  </header>
+
+  <div class="stats-bar">
+    <div class="stat">
+      <span class="stat-dot green"></span>
+      <span class="stat-label">Live</span>
+      <span class="stat-value" id="stat-running">0</span>
+    </div>
+    <div class="stat">
+      <span class="stat-dot yellow"></span>
+      <span class="stat-label">Wait</span>
+      <span class="stat-value" id="stat-waiting">0</span>
+    </div>
+    <div class="stat">
+      <span class="stat-dot cyan"></span>
+      <span class="stat-label">Idle</span>
+      <span class="stat-value" id="stat-idle">0</span>
+    </div>
+    <div class="stat">
+      <span class="stat-dot red"></span>
+      <span class="stat-label">Lost</span>
+      <span class="stat-value" id="stat-lost">0</span>
+    </div>
+    <div class="stat">
+      <span class="stat-label">Total</span>
+      <span class="stat-value" id="stat-total">0</span>
+    </div>
+  </div>
+
+  <main class="main" id="main">
+    <div class="loading">
+      <div class="spinner"></div>
+    </div>
+  </main>
+
+  <!-- Detail Modal -->
+  <div class="modal-overlay" id="modal-overlay" onclick="closeModal(event)">
+    <div class="modal" onclick="event.stopPropagation()">
+      <div class="modal-header">
+        <div class="modal-title">Session Details</div>
+        <button class="modal-close" onclick="closeModal()">&times;</button>
+      </div>
+      <div class="modal-body" id="modal-body">
+        <!-- Content injected by JS -->
+      </div>
+      <div class="modal-footer" id="modal-footer">
+        <!-- Actions injected by JS -->
+      </div>
+    </div>
+  </div>
+
+  <!-- Toast Container -->
+  <div class="toast-container" id="toast-container"></div>
+
+  <script>
+    // State
+    let sessions = [];
+    let stats = { total: 0, running: 0, waiting: 0, idle: 0, lost: 0 };
+    let selectedSession = null;
+
+    // API
+    const API_BASE = '';
+
+    async function fetchSessions() {
+      try {
+        const res = await fetch(`${API_BASE}/api/sessions`);
+        const data = await res.json();
+        if (data.success) {
+          sessions = data.data.sessions;
+          stats = data.data.stats;
+          renderAll();
+        }
+      } catch (err) {
+        showToast('Failed to fetch sessions', 'error');
+      }
+    }
+
+    async function syncSessions() {
+      try {
+        showToast('Syncing sessions...', 'info');
+        const res = await fetch(`${API_BASE}/api/sync`, { method: 'POST' });
+        const data = await res.json();
+        if (data.success) {
+          showToast(`Synced: ${data.data.discovered} new, ${data.data.updated} updated`, 'success');
+          await fetchSessions();
+        }
+      } catch (err) {
+        showToast('Sync failed', 'error');
+      }
+    }
+
+    async function recoverSession(sessionId, method = 'resume') {
+      try {
+        const res = await fetch(`${API_BASE}/api/sessions/${sessionId}/recover`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ method, openTerminal: true }),
+        });
+        const data = await res.json();
+        if (data.success) {
+          showToast('Recovery initiated!', 'success');
+          closeModal();
+          setTimeout(fetchSessions, 1000);
+        } else {
+          showToast(data.error || 'Recovery failed', 'error');
+        }
+      } catch (err) {
+        showToast('Recovery failed', 'error');
+      }
+    }
+
+    async function completeSession(sessionId) {
+      try {
+        const res = await fetch(`${API_BASE}/api/sessions/${sessionId}/complete`, {
+          method: 'POST',
+        });
+        const data = await res.json();
+        if (data.success) {
+          showToast('Session marked as completed', 'success');
+          closeModal();
+          await fetchSessions();
+        }
+      } catch (err) {
+        showToast('Failed to complete session', 'error');
+      }
+    }
+
+    function refreshSessions() {
+      fetchSessions();
+    }
+
+    // Render
+    function renderAll() {
+      renderStats();
+      renderSessions();
+    }
+
+    function renderStats() {
+      document.getElementById('stat-running').textContent = stats.running;
+      document.getElementById('stat-waiting').textContent = stats.waiting;
+      document.getElementById('stat-idle').textContent = stats.idle;
+      document.getElementById('stat-lost').textContent = stats.lost;
+      document.getElementById('stat-total').textContent = stats.total;
+    }
+
+    function renderSessions() {
+      const main = document.getElementById('main');
+
+      const running = sessions.filter(s => s.status === 'running');
+      const waiting = sessions.filter(s => s.status === 'waiting');
+      const idle = sessions.filter(s => s.status === 'idle');
+      const lost = sessions.filter(s => s.status === 'lost');
+
+      const active = [...running, ...waiting];
+
+      let html = '';
+      let idx = 0;
+
+      if (active.length > 0) {
+        html += renderSection('ACTIVE', active.length, 'green', active.map(s => renderSessionCard(s, ++idx)));
+      }
+
+      if (idle.length > 0) {
+        html += renderSection('STANDBY', idle.length, 'cyan', idle.slice(0, 10).map(s => renderSessionCard(s, ++idx)));
+        if (idle.length > 10) {
+          html += `<div class="empty-state">+${idle.length - 10} more in standby</div>`;
+        }
+      }
+
+      if (lost.length > 0) {
+        html += renderSection('DISCONNECTED', lost.length, 'red', lost.slice(0, 10).map(s => renderSessionCard(s, ++idx)));
+        if (lost.length > 10) {
+          html += `<div class="empty-state">+${lost.length - 10} more recoverable</div>`;
+        }
+      }
+
+      if (sessions.length === 0) {
+        html = `
+          <div class="empty-state">
+            <div class="empty-icon">◇</div>
+            <div>No active sessions found</div>
+            <div style="margin-top: 1rem;">
+              <button class="btn btn-primary" onclick="syncSessions()">⚡ Sync Now</button>
+            </div>
+          </div>
+        `;
+      }
+
+      main.innerHTML = html;
+    }
+
+    function renderSection(title, count, color, cards) {
+      return `
+        <div class="section">
+          <div class="section-header">
+            <span class="section-title ${color}">▌${title}</span>
+            <span class="section-count">[${count}]</span>
+          </div>
+          <div class="sessions-grid">
+            ${cards.join('')}
+          </div>
+        </div>
+      `;
+    }
+
+    function renderSessionCard(session, idx) {
+      const statusIcons = {
+        running: '▶',
+        waiting: '⏸',
+        idle: '◇',
+        lost: '✕',
+        completed: '✓'
+      };
+
+      const statusLabels = {
+        running: 'EXEC',
+        waiting: 'WAIT',
+        idle: 'IDLE',
+        lost: 'LOST',
+        completed: 'DONE'
+      };
+
+      const path = formatPath(session.directory);
+      const task = session.title || session.initialPrompt || '(no task)';
+      const time = timeAgo(new Date(session.lastActiveAt));
+
+      let actions = '';
+      if (session.status === 'lost') {
+        actions = `<button class="action-btn recover" onclick="event.stopPropagation(); recoverSession('${session.sessionId}')">Recover</button>`;
+      }
+      if (session.status !== 'completed') {
+        actions += `<button class="action-btn close" onclick="event.stopPropagation(); completeSession('${session.sessionId}')">Close</button>`;
+      }
+
+      return `
+        <div class="session-card ${session.status}" onclick="showSessionDetail('${session.sessionId}')">
+          <div class="session-row">
+            <span class="session-index">[${String(idx).padStart(2, '0')}]</span>
+            <span class="session-status ${session.status}">
+              <span class="session-icon">${statusIcons[session.status]}</span>
+              ${statusLabels[session.status]}
+            </span>
+            <div class="session-info">
+              <div class="session-path">${escapeHtml(path)}</div>
+              <div class="session-task">${escapeHtml(truncate(task, 60))}</div>
+            </div>
+            <span class="session-time">${time}</span>
+            <div class="session-actions">${actions}</div>
+          </div>
+        </div>
+      `;
+    }
+
+    function showSessionDetail(sessionId) {
+      selectedSession = sessions.find(s => s.sessionId === sessionId);
+      if (!selectedSession) return;
+
+      const s = selectedSession;
+      const body = document.getElementById('modal-body');
+      const footer = document.getElementById('modal-footer');
+
+      body.innerHTML = `
+        <div class="detail-row">
+          <span class="detail-label">Status</span>
+          <span class="detail-value" style="color: var(--${getStatusColor(s.status)})">${s.status.toUpperCase()}</span>
+        </div>
+        <div class="detail-row">
+          <span class="detail-label">Directory</span>
+          <span class="detail-value">${escapeHtml(s.directory)}</span>
+        </div>
+        <div class="detail-row">
+          <span class="detail-label">Task</span>
+          <span class="detail-value">${escapeHtml(s.title || s.initialPrompt || '(no task)')}</span>
+        </div>
+        <div class="detail-row">
+          <span class="detail-label">Last Active</span>
+          <span class="detail-value">${new Date(s.lastActiveAt).toLocaleString()}</span>
+        </div>
+        <div class="detail-row">
+          <span class="detail-label">Messages</span>
+          <span class="detail-value">${s.messageCount || 0}</span>
+        </div>
+        <div class="detail-row">
+          <span class="detail-label">Tool Calls</span>
+          <span class="detail-value">${s.toolCount || 0}</span>
+        </div>
+        ${s.lastTool ? `
+        <div class="detail-row">
+          <span class="detail-label">Last Tool</span>
+          <span class="detail-value">${escapeHtml(s.lastTool)}</span>
+        </div>
+        ` : ''}
+        ${s.pid ? `
+        <div class="detail-row">
+          <span class="detail-label">PID</span>
+          <span class="detail-value">${s.pid}</span>
+        </div>
+        ` : ''}
+      `;
+
+      let footerHtml = '';
+      if (s.status === 'lost') {
+        footerHtml += `<button class="btn btn-success" onclick="recoverSession('${s.sessionId}', 'resume')">Resume Session</button>`;
+        footerHtml += `<button class="btn" onclick="recoverSession('${s.sessionId}', 'continue')">Continue</button>`;
+      }
+      if (s.status !== 'completed') {
+        footerHtml += `<button class="btn btn-danger" onclick="completeSession('${s.sessionId}')">Mark Complete</button>`;
+      }
+      footerHtml += `<button class="btn" onclick="closeModal()">Close</button>`;
+
+      footer.innerHTML = footerHtml;
+
+      document.getElementById('modal-overlay').classList.add('active');
+    }
+
+    function closeModal(event) {
+      if (event && event.target !== event.currentTarget) return;
+      document.getElementById('modal-overlay').classList.remove('active');
+      selectedSession = null;
+    }
+
+    function showToast(message, type = 'info') {
+      const container = document.getElementById('toast-container');
+      const toast = document.createElement('div');
+      toast.className = `toast ${type}`;
+      toast.textContent = message;
+      container.appendChild(toast);
+
+      setTimeout(() => {
+        toast.remove();
+      }, 3000);
+    }
+
+    // Helpers
+    function formatPath(path) {
+      const parts = path.split('/').filter(Boolean);
+      if (parts.length <= 3) return parts.join('/');
+      return '…/' + parts.slice(-2).join('/');
+    }
+
+    function timeAgo(date) {
+      const s = Math.floor((Date.now() - date.getTime()) / 1000);
+      if (s < 60) return 'now';
+      if (s < 3600) return `${Math.floor(s / 60)}m`;
+      if (s < 86400) return `${Math.floor(s / 3600)}h`;
+      return `${Math.floor(s / 86400)}d`;
+    }
+
+    function truncate(text, len) {
+      if (text.length <= len) return text;
+      return text.slice(0, len - 1) + '…';
+    }
+
+    function escapeHtml(text) {
+      const div = document.createElement('div');
+      div.textContent = text;
+      return div.innerHTML;
+    }
+
+    function getStatusColor(status) {
+      const colors = {
+        running: 'green',
+        waiting: 'yellow',
+        idle: 'cyan',
+        lost: 'red',
+        completed: 'text-dim'
+      };
+      return colors[status] || 'text';
+    }
+
+    // Keyboard shortcuts
+    document.addEventListener('keydown', (e) => {
+      if (e.key === 'Escape') closeModal();
+      if (e.key === 'r' && !e.metaKey && !e.ctrlKey) refreshSessions();
+    });
+
+    // Auto-refresh every 30 seconds
+    setInterval(fetchSessions, 30000);
+
+    // Initial load
+    fetchSessions();
+  </script>
+</body>
+</html>

@@ -6,5 +6,6 @@ export { MinimalView } from './MinimalView.js';
 export { DashboardView } from './DashboardView.js';
 export { NeonView } from './NeonView.js';
 export { MacOSView } from './MacOSView.js';
+export { CyberpunkView } from './CyberpunkView.js';
 
-export type ViewStyle = 'minimal' | 'dashboard' | 'neon' | 'macos' | 'default';
+export type ViewStyle = 'minimal' | 'dashboard' | 'neon' | 'macos' | 'cyber' | 'default';
