@@ -75,6 +75,14 @@ export function runMigrations(): void {
     )
   `);
 
+  // Migration: Add last_message column if not exists
+  try {
+    db.exec(`ALTER TABLE sessions ADD COLUMN last_message TEXT`);
+    logger.debug('Added last_message column');
+  } catch {
+    // Column already exists, ignore
+  }
+
   logger.info('Database migrations completed');
 }
 

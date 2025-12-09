@@ -1,0 +1,100 @@
+.card {
+  background: var(--bg-elevated);
+  border: 1px solid var(--border);
+  border-left-width: 3px;
+  transition: all 0.2s ease;
+}
+
+.card:hover {
+  border-color: var(--border-bright);
+}
+
+.header {
+  padding: 1rem;
+  cursor: pointer;
+  position: relative;
+}
+
+.statusRow {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 0.5rem;
+}
+
+.status {
+  font-size: 0.7rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+}
+
+.meta {
+  font-size: 0.7rem;
+  color: var(--text-dim);
+}
+
+.title {
+  color: var(--text-bright);
+  font-weight: 500;
+  margin-bottom: 0.25rem;
+}
+
+.path {
+  color: var(--text-dim);
+  font-size: 0.8rem;
+  margin-bottom: 0.5rem;
+}
+
+.stats {
+  display: flex;
+  gap: 1rem;
+  font-size: 0.75rem;
+  color: var(--text-dim);
+}
+
+.expandIcon {
+  position: absolute;
+  right: 1rem;
+  top: 50%;
+  transform: translateY(-50%);
+  color: var(--text-dim);
+  font-size: 0.75rem;
+}
+
+.details {
+  padding: 0 1rem 1rem;
+  border-top: 1px solid var(--border);
+}
+
+.section {
+  margin-top: 1rem;
+}
+
+.sectionTitle {
+  margin: 0 0 0.5rem;
+  font-size: 0.75rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+  color: var(--primary);
+}
+
+.promptBox {
+  padding: 0.75rem;
+  background: var(--bg-surface);
+  border: 1px solid var(--border);
+  font-size: 0.85rem;
+  color: var(--text);
+  white-space: pre-wrap;
+  max-height: 150px;
+  overflow-y: auto;
+}
+
+.actions {
+  display: flex;
+  gap: 0.5rem;
+  margin-top: 1rem;
+  padding-top: 1rem;
+  border-top: 1px solid var(--border);
+}

@@ -152,3 +152,41 @@ export function getProcessInfo(pid: number): ClaudeProcessInfo | null {
     return null;
   }
 }
+
+/** Stop a process gracefully (SIGTERM) or forcefully (SIGKILL) */
+export function stopProcess(pid: number, force: boolean = false): { success: boolean; error?: string } {
+  if (!isProcessRunning(pid)) {
+    return { success: false, error: 'Process not running' };
+  }
+
+  try {
+    const signal = force ? 'SIGKILL' : 'SIGTERM';
+    process.kill(pid, signal);
+    logger.info(`Sent ${signal} to process ${pid}`);
+
+    // If graceful stop, set up a timeout to force kill if still running
+    if (!force) {
+      setTimeout(() => {
+        if (isProcessRunning(pid)) {
+          logger.warn(`Process ${pid} still running after SIGTERM, sending SIGKILL`);
+          try {
+            process.kill(pid, 'SIGKILL');
+          } catch {
+            // Process may have died in the meantime
+          }
+        }
+      }, 5000);
+    }
+
+    return { success: true };
+  } catch (error) {
+    const err = error as NodeJS.ErrnoException;
+    if (err.code === 'ESRCH') {
+      return { success: false, error: 'Process not found' };
+    }
+    if (err.code === 'EPERM') {
+      return { success: false, error: 'Permission denied' };
+    }
+    return { success: false, error: err.message };
+  }
+}

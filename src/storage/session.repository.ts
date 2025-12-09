@@ -18,6 +18,7 @@ interface SessionRow {
   last_tool: string | null;
   last_tool_input: string | null;
   current_file: string | null;
+  last_message: string | null;
   started_at: string | null;
   last_active_at: string;
   completed_at: string | null;
@@ -41,6 +42,7 @@ function rowToSession(row: SessionRow): Session {
     lastTool: row.last_tool || undefined,
     lastToolInput: row.last_tool_input || undefined,
     currentFile: row.current_file || undefined,
+    lastMessage: row.last_message || undefined,
     startedAt: row.started_at ? new Date(row.started_at) : undefined,
     lastActiveAt: new Date(row.last_active_at),
     completedAt: row.completed_at ? new Date(row.completed_at) : undefined,
@@ -124,6 +126,7 @@ export function upsert(session: Partial<Session> & { sessionId: string }): Sessi
           last_tool = COALESCE(?, last_tool),
           last_tool_input = COALESCE(?, last_tool_input),
           current_file = COALESCE(?, current_file),
+          last_message = COALESCE(?, last_message),
           last_active_at = COALESCE(?, last_active_at),
           completed_at = COALESCE(?, completed_at),
           pid = ?,
@@ -138,6 +141,7 @@ export function upsert(session: Partial<Session> & { sessionId: string }): Sessi
         session.lastTool ?? null,
         session.lastToolInput ?? null,
         session.currentFile ?? null,
+        session.lastMessage ?? null,
         session.lastActiveAt?.toISOString() ?? null,
         session.completedAt?.toISOString() ?? null,
         session.pid ?? null,
@@ -155,10 +159,10 @@ export function upsert(session: Partial<Session> & { sessionId: string }): Sessi
       db.prepare(`
         INSERT INTO sessions (
           id, session_id, directory, status, title, initial_prompt,
-          last_tool, last_tool_input, current_file,
+          last_tool, last_tool_input, current_file, last_message,
           started_at, last_active_at, pid, tty,
           tool_count, message_count, created_at, updated_at
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
       `).run(
         id,
         session.sessionId,
@@ -169,6 +173,7 @@ export function upsert(session: Partial<Session> & { sessionId: string }): Sessi
         session.lastTool ?? null,
         session.lastToolInput ?? null,
         session.currentFile ?? null,
+        session.lastMessage ?? null,
         session.startedAt?.toISOString() ?? null,
         session.lastActiveAt?.toISOString() || now,
         session.pid ?? null,

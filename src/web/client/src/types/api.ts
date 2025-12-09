@@ -1,0 +1,64 @@
+/**
+ * API response types
+ */
+
+import type { Session, SessionStats, ToolCallInfo } from './session'
+
+// Base API response
+export interface ApiResponse<T = unknown> {
+  success: boolean
+  data?: T
+  error?: string
+  message?: string
+}
+
+// GET /api/sessions
+export interface SessionsData {
+  sessions: Session[]
+  stats: SessionStats
+}
+
+// POST /api/sync
+export interface SyncResult {
+  discovered: number
+  updated: number
+  lost: number
+}
+
+// GET /api/sessions/:id
+export interface SessionDetailData {
+  session: Session
+  recovery: RecoveryInfo
+}
+
+// Recovery info
+export interface RecoveryInfo {
+  canRecover: boolean
+  reason?: string
+  sessionFile?: string
+}
+
+// POST /api/sessions/:id/recover body
+export interface RecoverBody {
+  method: 'resume' | 'continue' | 'new'
+  openTerminal?: boolean
+  skipPermissions?: boolean
+}
+
+// POST /api/sessions/:id/stop body
+export interface StopBody {
+  force?: boolean
+}
+
+// GET /api/sessions/:id/process
+export interface ProcessStatusData {
+  pid?: number
+  running: boolean
+  status: string
+}
+
+// GET /api/sessions/:id/tools
+export interface ToolCallsData {
+  toolCalls: ToolCallInfo[]
+  toolCount: number
+}

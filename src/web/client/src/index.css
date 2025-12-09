@@ -1,0 +1,189 @@
+/* ═══════════════════════════════════════════════════════════════
+   DESIGN SYSTEM - Multi-Theme Architecture
+   Themes: Cyberpunk, Matrix, Synthwave, Minimal, Tokyo Night
+═══════════════════════════════════════════════════════════════ */
+
+/* CSS Reset */
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+/* ─────────────────────────────────────────────────────────────────
+   THEME: CYBERPUNK (Default)
+───────────────────────────────────────────────────────────────── */
+[data-theme="cyberpunk"] {
+  --primary: #00fff9;
+  --secondary: #ff00ff;
+  --accent: #fcee0a;
+  --success: #00ff9f;
+  --warning: #fcee0a;
+  --danger: #ff003c;
+  --info: #00b3ff;
+
+  --bg-base: #0a0a0f;
+  --bg-surface: #12121a;
+  --bg-elevated: #1a1a25;
+  --bg-hover: #252535;
+
+  --border: #2a2a3a;
+  --border-bright: #3a3a5a;
+
+  --text: #a0a0c0;
+  --text-dim: #5a5a7a;
+  --text-bright: #e0e0ff;
+
+  --glow-primary: 0 0 20px rgba(0, 255, 249, 0.3);
+  --glow-secondary: 0 0 20px rgba(255, 0, 255, 0.3);
+  --glow-success: 0 0 15px rgba(0, 255, 159, 0.4);
+  --glow-danger: 0 0 15px rgba(255, 0, 60, 0.4);
+
+  --header-gradient: linear-gradient(90deg, var(--primary), var(--secondary));
+  --font-mono: 'JetBrains Mono', 'Fira Code', 'SF Mono', monospace;
+}
+
+/* ─────────────────────────────────────────────────────────────────
+   THEME: MATRIX
+───────────────────────────────────────────────────────────────── */
+[data-theme="matrix"] {
+  --primary: #00ff41;
+  --secondary: #008f11;
+  --accent: #00ff41;
+  --success: #00ff41;
+  --warning: #ffff00;
+  --danger: #ff0000;
+  --info: #00ffff;
+
+  --bg-base: #0d0208;
+  --bg-surface: #0f0f0f;
+  --bg-elevated: #1a1a1a;
+  --bg-hover: #252525;
+
+  --border: #003b00;
+  --border-bright: #00ff41;
+
+  --text: #00ff41;
+  --text-dim: #008f11;
+  --text-bright: #00ff41;
+
+  --glow-primary: 0 0 10px rgba(0, 255, 65, 0.5), 0 0 20px rgba(0, 255, 65, 0.3);
+  --glow-secondary: 0 0 10px rgba(0, 143, 17, 0.5);
+  --glow-success: 0 0 10px rgba(0, 255, 65, 0.5);
+  --glow-danger: 0 0 10px rgba(255, 0, 0, 0.5);
+
+  --header-gradient: linear-gradient(90deg, #00ff41, #008f11);
+  --font-mono: 'Courier New', 'Lucida Console', monospace;
+}
+
+/* ─────────────────────────────────────────────────────────────────
+   THEME: SYNTHWAVE
+───────────────────────────────────────────────────────────────── */
+[data-theme="synthwave"] {
+  --primary: #ff6ad5;
+  --secondary: #c774e8;
+  --accent: #ffd319;
+  --success: #05ffa1;
+  --warning: #ffd319;
+  --danger: #ff3864;
+  --info: #00d9ff;
+
+  --bg-base: #1a1025;
+  --bg-surface: #241734;
+  --bg-elevated: #2d1f42;
+  --bg-hover: #3a2850;
+
+  --border: #4a3060;
+  --border-bright: #ff6ad5;
+
+  --text: #e0d0f0;
+  --text-dim: #8a70a0;
+  --text-bright: #ffffff;
+
+  --glow-primary: 0 0 20px rgba(255, 106, 213, 0.4), 0 0 40px rgba(255, 106, 213, 0.2);
+  --glow-secondary: 0 0 20px rgba(199, 116, 232, 0.4);
+  --glow-success: 0 0 15px rgba(5, 255, 161, 0.4);
+  --glow-danger: 0 0 15px rgba(255, 56, 100, 0.4);
+
+  --header-gradient: linear-gradient(90deg, #ff6ad5, #c774e8, #ffd319);
+  --font-mono: 'Orbitron', 'Audiowide', 'JetBrains Mono', monospace;
+}
+
+/* ─────────────────────────────────────────────────────────────────
+   THEME: MINIMAL
+───────────────────────────────────────────────────────────────── */
+[data-theme="minimal"] {
+  --primary: #2563eb;
+  --secondary: #7c3aed;
+  --accent: #f59e0b;
+  --success: #10b981;
+  --warning: #f59e0b;
+  --danger: #ef4444;
+  --info: #3b82f6;
+
+  --bg-base: #ffffff;
+  --bg-surface: #f8fafc;
+  --bg-elevated: #f1f5f9;
+  --bg-hover: #e2e8f0;
+
+  --border: #e2e8f0;
+  --border-bright: #cbd5e1;
+
+  --text: #475569;
+  --text-dim: #94a3b8;
+  --text-bright: #1e293b;
+
+  --glow-primary: 0 4px 6px rgba(37, 99, 235, 0.1);
+  --glow-secondary: 0 4px 6px rgba(124, 58, 237, 0.1);
+  --glow-success: 0 4px 6px rgba(16, 185, 129, 0.1);
+  --glow-danger: 0 4px 6px rgba(239, 68, 68, 0.1);
+
+  --header-gradient: linear-gradient(90deg, #2563eb, #7c3aed);
+  --font-mono: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+}
+
+/* ─────────────────────────────────────────────────────────────────
+   THEME: TOKYO NIGHT
+───────────────────────────────────────────────────────────────── */
+[data-theme="tokyo"] {
+  --primary: #7aa2f7;
+  --secondary: #bb9af7;
+  --accent: #e0af68;
+  --success: #9ece6a;
+  --warning: #e0af68;
+  --danger: #f7768e;
+  --info: #7dcfff;
+
+  --bg-base: #1a1b26;
+  --bg-surface: #1f2335;
+  --bg-elevated: #24283b;
+  --bg-hover: #292e42;
+
+  --border: #3b4261;
+  --border-bright: #565f89;
+
+  --text: #a9b1d6;
+  --text-dim: #565f89;
+  --text-bright: #c0caf5;
+
+  --glow-primary: 0 0 15px rgba(122, 162, 247, 0.2);
+  --glow-secondary: 0 0 15px rgba(187, 154, 247, 0.2);
+  --glow-success: 0 0 15px rgba(158, 206, 106, 0.2);
+  --glow-danger: 0 0 15px rgba(247, 118, 142, 0.2);
+
+  --header-gradient: linear-gradient(90deg, #7aa2f7, #bb9af7);
+  --font-mono: 'JetBrains Mono', 'Cascadia Code', monospace;
+}
+
+/* ═══════════════════════════════════════════════════════════════
+   BASE STYLES
+═══════════════════════════════════════════════════════════════ */
+
+body {
+  font-family: var(--font-mono);
+  background: var(--bg-base);
+  color: var(--text);
+  min-height: 100vh;
+  line-height: 1.6;
+  transition: background 0.3s ease, color 0.3s ease;
+}
+
+#root {
+  min-height: 100vh;
+}

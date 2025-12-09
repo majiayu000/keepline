@@ -1,0 +1,105 @@
+.list {
+  border: 1px solid var(--border);
+  background: var(--bg-surface);
+  max-height: 400px;
+  overflow-y: auto;
+}
+
+.header {
+  padding: 0.5rem 0.75rem;
+  border-bottom: 1px solid var(--border);
+  background: var(--bg-elevated);
+}
+
+.count {
+  font-size: 0.75rem;
+  color: var(--text-dim);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.loading {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 1rem;
+  color: var(--text-dim);
+  font-size: 0.85rem;
+}
+
+.error {
+  padding: 1rem;
+  color: var(--danger);
+  font-size: 0.85rem;
+}
+
+.empty {
+  padding: 1rem;
+  color: var(--text-dim);
+  font-size: 0.85rem;
+  font-style: italic;
+}
+
+.item {
+  border-bottom: 1px solid var(--border);
+}
+
+.item:last-child {
+  border-bottom: none;
+}
+
+.itemHeader {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  padding: 0.5rem 0.75rem;
+  cursor: pointer;
+  transition: background 0.15s ease;
+}
+
+.itemHeader:hover {
+  background: var(--bg-elevated);
+}
+
+.index {
+  font-size: 0.7rem;
+  color: var(--text-dim);
+  min-width: 2rem;
+  font-family: monospace;
+}
+
+.toolName {
+  font-weight: 600;
+  font-size: 0.85rem;
+  flex: 1;
+}
+
+.time {
+  font-size: 0.7rem;
+  color: var(--text-dim);
+  font-family: monospace;
+}
+
+.expandIcon {
+  font-size: 0.85rem;
+  color: var(--text-dim);
+  width: 1rem;
+  text-align: center;
+}
+
+.input {
+  padding: 0.75rem;
+  background: var(--bg-deep);
+  border-top: 1px solid var(--border);
+}
+
+.input pre {
+  margin: 0;
+  font-size: 0.75rem;
+  color: var(--text);
+  white-space: pre-wrap;
+  word-break: break-all;
+  max-height: 200px;
+  overflow-y: auto;
+  font-family: 'SF Mono', 'Fira Code', monospace;
+}

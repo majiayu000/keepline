@@ -1,0 +1,13 @@
+.layout {
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+  background: var(--bg-base);
+  color: var(--text);
+}
+
+.main {
+  flex: 1;
+  padding: 1.5rem 2rem;
+  overflow-y: auto;
+}

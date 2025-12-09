@@ -11,6 +11,7 @@ import type {
   ClaudeAssistantEntry,
   ClaudeToolUseBlock,
   ParsedSessionData,
+  ToolCallInfo,
 } from '../types.js';
 
 /** Parse a single JSONL line */
@@ -27,6 +28,17 @@ function parseLine(line: string, lineNumber: number, filePath: string): ClaudeEn
 /** Check if entry is a user entry */
 function isUserEntry(entry: ClaudeEntry): entry is ClaudeUserEntry {
   return entry.type === 'user';
+}
+
+/** Check if entry is a system entry (slash commands like /resume, /usage) */
+function isSystemEntry(entry: ClaudeEntry): boolean {
+  return entry.type === 'system';
+}
+
+/** Extract command name from system entry content */
+function extractSystemCommand(content: string): string | undefined {
+  const match = content.match(/<command-name>\/(\w+)<\/command-name>/);
+  return match ? `/${match[1]}` : undefined;
 }
 
 /** Check if entry is an assistant entry */
@@ -48,6 +60,22 @@ function extractToolUses(entry: ClaudeAssistantEntry): ClaudeToolUseBlock[] {
   return entry.message.content.filter(
     (block): block is ClaudeToolUseBlock => block.type === 'tool_use'
   );
+}
+
+/** Extract text content from assistant entry */
+function extractAssistantText(entry: ClaudeAssistantEntry): string | undefined {
+  const textBlocks = entry.message.content.filter(
+    (block): block is ClaudeTextBlock => block.type === 'text'
+  );
+  if (textBlocks.length === 0) return undefined;
+  // Combine all text blocks
+  return textBlocks.map(b => b.text).join('\n').trim();
+}
+
+/** Text block type guard */
+interface ClaudeTextBlock {
+  type: 'text';
+  text: string;
 }
 
 /** Extract current file from tool input */
@@ -92,8 +120,10 @@ export async function parseSessionFile(filePath: string): Promise<ParsedSessionD
   // Skip if no valid session ID
   if (!sessionId || !directory) return null;
 
-  // Find first user message
+  // Find first user message and last assistant message
   let firstMessage: string | undefined;
+  let lastMessage: string | undefined;
+  let firstSystemCommand: string | undefined;
   let messageCount = 0;
   let toolCount = 0;
   let lastTool: string | undefined;
@@ -101,6 +131,7 @@ export async function parseSessionFile(filePath: string): Promise<ParsedSessionD
   let currentFile: string | undefined;
   let startedAt: Date | undefined;
   let lastActiveAt: Date = new Date(firstEntry.timestamp);
+  const toolCalls: ToolCallInfo[] = [];
 
   for (const entry of entries) {
     const entryTime = new Date(entry.timestamp);
@@ -118,9 +149,26 @@ export async function parseSessionFile(filePath: string): Promise<ParsedSessionD
       }
     }
 
+    // Track system commands (like /resume, /usage) as fallback
+    if (isSystemEntry(entry) && !firstSystemCommand) {
+      const content = (entry as { content?: string }).content;
+      if (content) {
+        firstSystemCommand = extractSystemCommand(content);
+      }
+    }
+
     if (isAssistantEntry(entry)) {
       const toolUses = extractToolUses(entry);
       toolCount += toolUses.length;
+
+      // Collect all tool calls
+      for (const tool of toolUses) {
+        toolCalls.push({
+          name: tool.name,
+          input: tool.input,
+          timestamp: entry.timestamp,
+        });
+      }
 
       if (toolUses.length > 0) {
         const lastToolUse = toolUses[toolUses.length - 1];
@@ -132,13 +180,25 @@ export async function parseSessionFile(filePath: string): Promise<ParsedSessionD
           currentFile = file;
         }
       }
+
+      // Extract assistant text content (always update to get the latest)
+      const text = extractAssistantText(entry);
+      if (text) {
+        lastMessage = text;
+      }
     }
+  }
+
+  // Use system command as fallback if no user message found
+  if (!firstMessage && firstSystemCommand) {
+    firstMessage = `System: ${firstSystemCommand}`;
   }
 
   return {
     sessionId,
     directory,
     firstMessage,
+    lastMessage,
     messageCount,
     toolCount,
     lastTool,
@@ -146,5 +206,6 @@ export async function parseSessionFile(filePath: string): Promise<ParsedSessionD
     currentFile,
     startedAt,
     lastActiveAt,
+    toolCalls: toolCalls.length > 0 ? toolCalls : undefined,
   };
 }

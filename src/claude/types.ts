@@ -97,6 +97,13 @@ export type ClaudeEntry =
   | ClaudeAssistantEntry
   | ClaudeFileHistoryEntry;
 
+/** Tool call info */
+export interface ToolCallInfo {
+  name: string;
+  input: Record<string, unknown>;
+  timestamp: string;
+}
+
 /** Parsed session data */
 export interface ParsedSessionData {
   sessionId: string;
@@ -110,4 +117,5 @@ export interface ParsedSessionData {
   currentFile?: string;
   startedAt?: Date;
   lastActiveAt: Date;
+  toolCalls?: ToolCallInfo[];
 }

@@ -1,0 +1,33 @@
+.container {
+  display: flex;
+  flex-direction: column;
+  gap: 2rem;
+}
+
+.empty {
+  text-align: center;
+  padding: 3rem;
+  color: var(--text-dim);
+  font-size: 0.9rem;
+}
+
+.group {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+.groupTitle {
+  margin: 0;
+  font-size: 0.85rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+  color: var(--primary);
+}
+
+.list {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}

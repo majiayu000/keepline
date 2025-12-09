@@ -4,6 +4,8 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>TASKER // Claude Code Monitor</title>
+  <!-- Marked.js for Markdown rendering -->
+  <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
   <style>
     /* ═══════════════════════════════════════════════════════════════
        DESIGN SYSTEM - Multi-Theme Architecture
@@ -416,6 +418,15 @@
       box-shadow: var(--glow-success);
     }
 
+    .btn-warning {
+      border-color: var(--warning);
+      color: var(--warning);
+    }
+
+    .btn-warning:hover {
+      background: rgba(252, 238, 10, 0.15);
+    }
+
     /* ═══════════════════════════════════════════════════════════════
        STATS BAR
     ═══════════════════════════════════════════════════════════════ */
@@ -545,6 +556,21 @@
     .session-card:hover.running { box-shadow: inset 0 0 30px rgba(16, 185, 129, 0.05); }
     .session-card:hover.lost { box-shadow: inset 0 0 30px rgba(239, 68, 68, 0.05); }
 
+    .session-card.expanded {
+      border-color: var(--primary);
+      background: var(--bg-hover);
+    }
+
+    .session-card.expanded::after {
+      content: '';
+      position: absolute;
+      bottom: -1px;
+      left: 1rem;
+      right: 1rem;
+      height: 1px;
+      background: var(--border);
+    }
+
     .session-row {
       display: flex;
       align-items: center;
@@ -641,6 +667,273 @@
 
     .action-btn.close:hover {
       background: rgba(239, 68, 68, 0.2);
+    }
+
+    .expand-icon {
+      color: var(--text-dim);
+      font-size: 0.8rem;
+      transition: transform 0.2s ease;
+      margin-left: 0.5rem;
+    }
+
+    .session-card.expanded .expand-icon {
+      transform: rotate(180deg);
+    }
+
+    /* ═══════════════════════════════════════════════════════════════
+       EXPANDABLE DETAIL PANEL
+    ═══════════════════════════════════════════════════════════════ */
+
+    .session-detail-panel {
+      max-height: 0;
+      overflow: hidden;
+      transition: max-height 0.3s ease, opacity 0.2s ease;
+      opacity: 0;
+      background: var(--bg-surface);
+      border: 1px solid var(--border);
+      border-top: none;
+      margin-top: -1px;
+    }
+
+    .session-detail-panel.expanded {
+      max-height: 500px;
+      opacity: 1;
+    }
+
+    .detail-content {
+      padding: 1.25rem;
+    }
+
+    .detail-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+      gap: 1rem;
+      margin-bottom: 1rem;
+    }
+
+    .detail-item {
+      display: flex;
+      flex-direction: column;
+      gap: 0.25rem;
+    }
+
+    .detail-item-label {
+      color: var(--text-dim);
+      font-size: 0.7rem;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+    }
+
+    .detail-item-value {
+      color: var(--text-bright);
+      font-size: 0.85rem;
+      word-break: break-all;
+    }
+
+    .detail-item-value.status-running { color: var(--success); }
+    .detail-item-value.status-waiting { color: var(--warning); }
+    .detail-item-value.status-idle { color: var(--info); }
+    .detail-item-value.status-lost { color: var(--danger); }
+
+    .detail-full-width {
+      grid-column: 1 / -1;
+    }
+
+    .detail-task-text {
+      background: var(--bg-elevated);
+      border: 1px solid var(--border);
+      padding: 0.75rem;
+      font-size: 0.8rem;
+      color: var(--text);
+      line-height: 1.5;
+      max-height: 80px;
+      overflow-y: auto;
+    }
+
+    /* ─────────────────────────────────────────────────────────────────
+       RESIZABLE RESPONSE PANEL
+       可拖拽调整大小的回复内容面板
+    ───────────────────────────────────────────────────────────────── */
+    .response-panel {
+      position: relative;
+      background: var(--bg-base);
+      border: 1px solid var(--border-bright);
+      border-radius: 4px;
+      margin-top: 0.5rem;
+      min-height: 100px;
+      max-height: 400px;
+      height: 150px;
+      display: flex;
+      flex-direction: column;
+      box-shadow: inset 0 2px 8px rgba(0, 0, 0, 0.15);
+    }
+
+    .response-panel-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 0.5rem 0.75rem;
+      background: var(--bg-elevated);
+      border-bottom: 1px solid var(--border);
+      cursor: default;
+      flex-shrink: 0;
+    }
+
+    .response-panel-title {
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+      color: var(--primary);
+      font-size: 0.7rem;
+      font-weight: bold;
+      text-transform: uppercase;
+      letter-spacing: 0.1em;
+    }
+
+    .response-panel-title::before {
+      content: '◈';
+      opacity: 0.7;
+    }
+
+    .response-panel-meta {
+      display: flex;
+      align-items: center;
+      gap: 0.75rem;
+      font-size: 0.65rem;
+      color: var(--text-dim);
+    }
+
+    .response-panel-content {
+      flex: 1;
+      overflow-y: auto;
+      padding: 0.75rem;
+      font-size: 0.8rem;
+      line-height: 1.6;
+      color: var(--text);
+      white-space: pre-wrap;
+      word-break: break-word;
+    }
+
+    /* 代码块样式 */
+    .response-panel-content code {
+      background: var(--bg-elevated);
+      padding: 0.15rem 0.35rem;
+      border-radius: 3px;
+      font-size: 0.75rem;
+      color: var(--accent);
+    }
+
+    /* 拖拽调整大小的手柄 */
+    .response-panel-resize {
+      position: absolute;
+      bottom: 0;
+      left: 0;
+      right: 0;
+      height: 8px;
+      cursor: ns-resize;
+      background: linear-gradient(to bottom, transparent 0%, var(--border) 100%);
+      opacity: 0;
+      transition: opacity 0.2s ease;
+    }
+
+    .response-panel:hover .response-panel-resize {
+      opacity: 1;
+    }
+
+    .response-panel-resize::after {
+      content: '';
+      position: absolute;
+      bottom: 2px;
+      left: 50%;
+      transform: translateX(-50%);
+      width: 40px;
+      height: 3px;
+      background: var(--text-dim);
+      border-radius: 2px;
+      opacity: 0.5;
+    }
+
+    .response-panel-resize:hover::after {
+      background: var(--primary);
+      opacity: 1;
+    }
+
+    /* 拖拽时的状态 */
+    .response-panel.resizing {
+      user-select: none;
+    }
+
+    .response-panel.resizing .response-panel-resize {
+      opacity: 1;
+      background: var(--primary);
+    }
+
+    /* 滚动条样式 */
+    .response-panel-content::-webkit-scrollbar {
+      width: 6px;
+    }
+
+    .response-panel-content::-webkit-scrollbar-track {
+      background: var(--bg-base);
+    }
+
+    .response-panel-content::-webkit-scrollbar-thumb {
+      background: var(--border-bright);
+      border-radius: 3px;
+    }
+
+    .response-panel-content::-webkit-scrollbar-thumb:hover {
+      background: var(--primary);
+    }
+
+    /* 空状态 */
+    .response-panel-empty {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      height: 100%;
+      color: var(--text-dim);
+      font-size: 0.75rem;
+      font-style: italic;
+    }
+
+    /* 主题特定样式 */
+    [data-theme="cyberpunk"] .response-panel {
+      box-shadow: inset 0 0 20px rgba(0, 255, 249, 0.05), 0 0 10px rgba(0, 0, 0, 0.3);
+    }
+
+    [data-theme="matrix"] .response-panel {
+      box-shadow: inset 0 0 20px rgba(0, 255, 65, 0.05);
+    }
+
+    [data-theme="matrix"] .response-panel-content {
+      text-shadow: 0 0 1px rgba(0, 255, 65, 0.3);
+    }
+
+    [data-theme="synthwave"] .response-panel {
+      box-shadow: inset 0 0 30px rgba(255, 106, 213, 0.05);
+    }
+
+    [data-theme="minimal"] .response-panel {
+      border-radius: 8px;
+      box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
+    }
+
+    [data-theme="tokyo"] .response-panel {
+      box-shadow: inset 0 0 20px rgba(122, 162, 247, 0.05);
+    }
+
+    .detail-actions {
+      display: flex;
+      gap: 0.5rem;
+      padding-top: 1rem;
+      border-top: 1px solid var(--border);
+      flex-wrap: wrap;
+    }
+
+    .detail-actions .btn {
+      font-size: 0.75rem;
+      padding: 0.4rem 0.8rem;
     }
 
     /* ═══════════════════════════════════════════════════════════════
@@ -968,6 +1261,21 @@
     </div>
   </div>
 
+  <!-- Confirmation Modal -->
+  <div class="modal-overlay" id="confirm-overlay" onclick="closeConfirmModal()">
+    <div class="modal" onclick="event.stopPropagation()" style="min-width: 350px; max-width: 450px;">
+      <div class="modal-header">
+        <div class="modal-title" id="confirm-title">Confirm Action</div>
+        <button class="modal-close" onclick="closeConfirmModal()" aria-label="Close">&times;</button>
+      </div>
+      <div class="modal-body" id="confirm-message"></div>
+      <div class="modal-footer">
+        <button class="btn" onclick="closeConfirmModal()">Cancel</button>
+        <button class="btn btn-danger" id="confirm-btn" onclick="executeConfirm()">Confirm</button>
+      </div>
+    </div>
+  </div>
+
   <!-- Toast Container -->
   <div class="toast-container" id="toast-container"></div>
 
@@ -978,6 +1286,7 @@
     let sessions = [];
     let stats = { total: 0, running: 0, waiting: 0, idle: 0, lost: 0 };
     let selectedSession = null;
+    let expandedSessionId = null;
 
     const THEMES = {
       cyberpunk: 'Cyberpunk',
@@ -1088,6 +1397,7 @@
         if (data.success) {
           showToast('Session marked as completed', 'success');
           closeModal();
+          closeConfirmModal();
           await fetchSessions();
         }
       } catch (err) {
@@ -1095,8 +1405,75 @@
       }
     }
 
+    async function stopSession(sessionId, force = false) {
+      try {
+        const res = await fetch(`${API_BASE}/api/sessions/${sessionId}/stop`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ force }),
+        });
+        const data = await res.json();
+        if (data.success) {
+          showToast(data.message || (force ? 'Force kill sent' : 'Stop signal sent'), 'success');
+          closeModal();
+          closeConfirmModal();
+          setTimeout(fetchSessions, 1500);
+        } else {
+          showToast(data.error || 'Stop failed', 'error');
+        }
+      } catch (err) {
+        showToast('Failed to stop session', 'error');
+      }
+    }
+
     function refreshSessions() {
       fetchSessions();
+    }
+
+    // ═══════════════════════════════════════════════════════════════
+    // CONFIRMATION MODAL
+    // ═══════════════════════════════════════════════════════════════
+    let pendingAction = null;
+
+    function showConfirmModal(title, message, onConfirm, isDanger = false) {
+      pendingAction = onConfirm;
+      document.getElementById('confirm-title').textContent = title;
+      document.getElementById('confirm-message').innerHTML = message;
+      const confirmBtn = document.getElementById('confirm-btn');
+      confirmBtn.className = isDanger ? 'btn btn-danger' : 'btn btn-primary';
+      confirmBtn.textContent = isDanger ? 'Yes, Stop' : 'Confirm';
+      document.getElementById('confirm-overlay').classList.add('active');
+    }
+
+    function closeConfirmModal() {
+      document.getElementById('confirm-overlay').classList.remove('active');
+      pendingAction = null;
+    }
+
+    function executeConfirm() {
+      if (pendingAction) {
+        pendingAction();
+      }
+      closeConfirmModal();
+    }
+
+    function confirmStop(sessionId, force = false) {
+      const session = sessions.find(s => s.sessionId === sessionId);
+      const action = force ? 'Force Kill' : 'Stop';
+      const signal = force ? 'SIGKILL (immediate termination)' : 'SIGTERM (graceful shutdown)';
+
+      showConfirmModal(
+        `${action} Session?`,
+        `<p>This will send <strong>${signal}</strong> to the process.</p>
+         <p style="margin-top: 0.5rem; color: var(--text-dim);">
+           ${force
+             ? '⚠️ Force kill may cause data loss if Claude is writing files.'
+             : 'The process will have 5 seconds to cleanup before force kill.'}
+         </p>
+         ${session?.pid ? `<p style="margin-top: 0.5rem;">PID: ${session.pid}</p>` : ''}`,
+        () => stopSession(sessionId, force),
+        true
+      );
     }
 
     // ═══════════════════════════════════════════════════════════════
@@ -1180,17 +1557,32 @@
       const path = formatPath(session.directory);
       const task = session.title || session.initialPrompt || '(no task)';
       const time = timeAgo(new Date(session.lastActiveAt));
+      const isExpanded = expandedSessionId === session.sessionId;
 
-      let actions = '';
+      let quickActions = '';
+
+      // Quick action buttons (shown on hover)
       if (session.status === 'lost') {
-        actions = `<button class="action-btn recover" onclick="event.stopPropagation(); recoverSession('${session.sessionId}')">Recover</button>`;
+        quickActions += `<button class="action-btn recover" onclick="event.stopPropagation(); recoverSession('${session.sessionId}')">Recover</button>`;
+      } else if (session.pid && ['running', 'waiting', 'idle'].includes(session.status)) {
+        quickActions += `<button class="action-btn close" onclick="event.stopPropagation(); confirmStop('${session.sessionId}', false)">Stop</button>`;
       }
-      if (session.status !== 'completed') {
-        actions += `<button class="action-btn close" onclick="event.stopPropagation(); completeSession('${session.sessionId}')">Close</button>`;
+
+      // Build detail panel actions
+      let detailActions = '';
+      if (session.status === 'lost') {
+        detailActions += `<button class="btn btn-success" onclick="event.stopPropagation(); recoverSession('${session.sessionId}', 'resume')">Resume</button>`;
+        detailActions += `<button class="btn" onclick="event.stopPropagation(); recoverSession('${session.sessionId}', 'continue')">Continue</button>`;
+        detailActions += `<button class="btn btn-danger" onclick="event.stopPropagation(); completeSession('${session.sessionId}')">Clear</button>`;
+      } else if (session.pid && ['running', 'waiting', 'idle'].includes(session.status)) {
+        detailActions += `<button class="btn btn-warning" onclick="event.stopPropagation(); confirmStop('${session.sessionId}', false)">Stop</button>`;
+        detailActions += `<button class="btn btn-danger" onclick="event.stopPropagation(); confirmStop('${session.sessionId}', true)">Force Kill</button>`;
+      } else if (session.status !== 'completed') {
+        detailActions += `<button class="btn btn-danger" onclick="event.stopPropagation(); completeSession('${session.sessionId}')">Clear</button>`;
       }
 
       return `
-        <div class="session-card ${session.status}" onclick="showSessionDetail('${session.sessionId}')">
+        <div class="session-card ${session.status} ${isExpanded ? 'expanded' : ''}" onclick="toggleSessionDetail('${session.sessionId}')">
           <div class="session-row">
             <span class="session-index">[${String(idx).padStart(2, '0')}]</span>
             <span class="session-status ${session.status}">
@@ -1202,14 +1594,88 @@
               <div class="session-task">${escapeHtml(truncate(task, 60))}</div>
             </div>
             <span class="session-time">${time}</span>
-            <div class="session-actions">${actions}</div>
+            <div class="session-actions">${quickActions}</div>
+            <span class="expand-icon">▼</span>
+          </div>
+        </div>
+        <div class="session-detail-panel ${isExpanded ? 'expanded' : ''}" id="detail-${session.sessionId}">
+          <div class="detail-content">
+            <div class="detail-grid">
+              <div class="detail-item">
+                <span class="detail-item-label">Status</span>
+                <span class="detail-item-value status-${session.status}">${session.status.toUpperCase()}</span>
+              </div>
+              <div class="detail-item">
+                <span class="detail-item-label">Messages</span>
+                <span class="detail-item-value">${session.messageCount || 0}</span>
+              </div>
+              <div class="detail-item">
+                <span class="detail-item-label">Tool Calls</span>
+                <span class="detail-item-value">${session.toolCount || 0}</span>
+              </div>
+              <div class="detail-item">
+                <span class="detail-item-label">Last Active</span>
+                <span class="detail-item-value">${new Date(session.lastActiveAt).toLocaleString()}</span>
+              </div>
+              ${session.lastTool ? `
+              <div class="detail-item">
+                <span class="detail-item-label">Last Tool</span>
+                <span class="detail-item-value">${escapeHtml(session.lastTool)}</span>
+              </div>` : ''}
+              ${session.pid ? `
+              <div class="detail-item">
+                <span class="detail-item-label">PID</span>
+                <span class="detail-item-value">${session.pid}</span>
+              </div>` : ''}
+              <div class="detail-item detail-full-width">
+                <span class="detail-item-label">Directory</span>
+                <span class="detail-item-value">${escapeHtml(session.directory)}</span>
+              </div>
+              <div class="detail-item detail-full-width">
+                <span class="detail-item-label">Task</span>
+                <div class="detail-task-text">${escapeHtml(session.title || session.initialPrompt || '(no task)')}</div>
+              </div>
+            </div>
+
+            <!-- Resizable Response Panel -->
+            <div class="response-panel" id="response-panel-${session.sessionId}" onclick="event.stopPropagation()">
+              <div class="response-panel-header">
+                <span class="response-panel-title">Last Response</span>
+                <div class="response-panel-meta">
+                  ${session.lastMessage ? `<span>${countWords(session.lastMessage)} words</span>` : ''}
+                  <span>Drag bottom to resize</span>
+                </div>
+              </div>
+              <div class="response-panel-content">
+                ${session.lastMessage
+                  ? formatResponseContent(session.lastMessage)
+                  : '<div class="response-panel-empty">No response content available</div>'}
+              </div>
+              <div class="response-panel-resize" onmousedown="startResize(event, '${session.sessionId}')"></div>
+            </div>
+
+            ${detailActions ? `<div class="detail-actions">${detailActions}</div>` : ''}
           </div>
         </div>
       `;
     }
 
     // ═══════════════════════════════════════════════════════════════
-    // MODAL
+    // EXPANDABLE DETAIL
+    // ═══════════════════════════════════════════════════════════════
+    function toggleSessionDetail(sessionId) {
+      if (expandedSessionId === sessionId) {
+        // Collapse current
+        expandedSessionId = null;
+      } else {
+        // Expand new (will collapse previous via re-render)
+        expandedSessionId = sessionId;
+      }
+      renderSessions();
+    }
+
+    // ═══════════════════════════════════════════════════════════════
+    // MODAL (kept for backward compatibility)
     // ═══════════════════════════════════════════════════════════════
     function showSessionDetail(sessionId) {
       selectedSession = sessions.find(s => s.sessionId === sessionId);
@@ -1251,13 +1717,23 @@
       `;
 
       let footerHtml = '';
+
+      // Lost sessions: Recover options + Clear
       if (s.status === 'lost') {
         footerHtml += `<button class="btn btn-success" onclick="recoverSession('${s.sessionId}', 'resume')">Resume</button>`;
         footerHtml += `<button class="btn" onclick="recoverSession('${s.sessionId}', 'continue')">Continue</button>`;
+        footerHtml += `<button class="btn btn-danger" onclick="completeSession('${s.sessionId}')">Clear</button>`;
       }
-      if (s.status !== 'completed') {
-        footerHtml += `<button class="btn btn-danger" onclick="completeSession('${s.sessionId}')">Mark Complete</button>`;
+      // Running/Waiting/Idle with PID: Stop + Force Kill
+      else if (s.pid && ['running', 'waiting', 'idle'].includes(s.status)) {
+        footerHtml += `<button class="btn btn-warning" onclick="confirmStop('${s.sessionId}', false)">Stop</button>`;
+        footerHtml += `<button class="btn btn-danger" onclick="confirmStop('${s.sessionId}', true)">Force Kill</button>`;
       }
+      // Other active sessions: just Clear
+      else if (s.status !== 'completed') {
+        footerHtml += `<button class="btn btn-danger" onclick="completeSession('${s.sessionId}')">Clear</button>`;
+      }
+
       footerHtml += `<button class="btn" onclick="closeModal()">Close</button>`;
 
       footer.innerHTML = footerHtml;
@@ -1286,9 +1762,35 @@
     // HELPERS
     // ═══════════════════════════════════════════════════════════════
     function formatPath(path) {
+      if (!path) return '';
+      // 尝试从路径中提取用户目录并移除常见前缀
+      // 匹配 /Users/xxx/ 或 /home/xxx/ 模式
+      const homeMatch = path.match(/^(\/Users\/[^/]+|\/home\/[^/]+)\//);
+      if (homeMatch) {
+        const homePath = homeMatch[1];
+        let displayPath = path.slice(homePath.length + 1); // +1 移除尾部斜杠
+
+        // 进一步移除 Desktop/code/ 前缀
+        if (displayPath.startsWith('Desktop/code/')) {
+          displayPath = displayPath.slice('Desktop/code/'.length);
+        } else if (displayPath.startsWith('Desktop/')) {
+          displayPath = displayPath.slice('Desktop/'.length);
+        }
+
+        // 如果路径仍然很长，截取最后3个部分
+        const parts = displayPath.split('/').filter(Boolean);
+        if (parts.length > 4) {
+          return '…/' + parts.slice(-3).join('/');
+        }
+        return displayPath || path;
+      }
+
+      // 如果不匹配用户目录模式，直接截取最后3个部分
       const parts = path.split('/').filter(Boolean);
-      if (parts.length <= 3) return parts.join('/');
-      return '…/' + parts.slice(-2).join('/');
+      if (parts.length > 4) {
+        return '…/' + parts.slice(-3).join('/');
+      }
+      return path;
     }
 
     function timeAgo(date) {
@@ -1310,11 +1812,105 @@
       return div.innerHTML;
     }
 
+    // Count words in text
+    function countWords(text) {
+      if (!text) return 0;
+      return text.trim().split(/\s+/).filter(w => w.length > 0).length;
+    }
+
+    // Format response content with basic markdown-like styling
+    function formatResponseContent(text) {
+      if (!text) return '';
+
+      // Escape HTML first
+      let formatted = escapeHtml(text);
+
+      // Convert code blocks (```...```)
+      formatted = formatted.replace(/```(\w*)\n([\s\S]*?)```/g, (match, lang, code) => {
+        return `<pre style="background: var(--bg-elevated); border: 1px solid var(--border); padding: 0.5rem; border-radius: 4px; overflow-x: auto; margin: 0.5rem 0;"><code>${code.trim()}</code></pre>`;
+      });
+
+      // Convert inline code (`...`)
+      formatted = formatted.replace(/`([^`]+)`/g, '<code>$1</code>');
+
+      // Convert bold (**...** or __...__)
+      formatted = formatted.replace(/\*\*([^*]+)\*\*/g, '<strong style="color: var(--text-bright)">$1</strong>');
+      formatted = formatted.replace(/__([^_]+)__/g, '<strong style="color: var(--text-bright)">$1</strong>');
+
+      // Convert headers (## ...)
+      formatted = formatted.replace(/^### (.+)$/gm, '<div style="color: var(--primary); font-weight: bold; margin-top: 0.75rem;">$1</div>');
+      formatted = formatted.replace(/^## (.+)$/gm, '<div style="color: var(--primary); font-weight: bold; font-size: 1.1em; margin-top: 0.75rem;">$1</div>');
+      formatted = formatted.replace(/^# (.+)$/gm, '<div style="color: var(--primary); font-weight: bold; font-size: 1.2em; margin-top: 0.75rem;">$1</div>');
+
+      // Convert bullet lists
+      formatted = formatted.replace(/^- (.+)$/gm, '<div style="padding-left: 1rem;">• $1</div>');
+      formatted = formatted.replace(/^\* (.+)$/gm, '<div style="padding-left: 1rem;">• $1</div>');
+
+      // Convert numbered lists
+      formatted = formatted.replace(/^(\d+)\. (.+)$/gm, '<div style="padding-left: 1rem;">$1. $2</div>');
+
+      return formatted;
+    }
+
+    // ═══════════════════════════════════════════════════════════════
+    // RESIZABLE PANEL
+    // ═══════════════════════════════════════════════════════════════
+    let resizingPanel = null;
+    let resizeStartY = 0;
+    let resizeStartHeight = 0;
+
+    function startResize(e, sessionId) {
+      e.preventDefault();
+      e.stopPropagation();
+
+      const panel = document.getElementById(`response-panel-${sessionId}`);
+      if (!panel) return;
+
+      resizingPanel = panel;
+      resizeStartY = e.clientY;
+      resizeStartHeight = panel.offsetHeight;
+
+      panel.classList.add('resizing');
+      document.body.style.cursor = 'ns-resize';
+      document.body.style.userSelect = 'none';
+
+      document.addEventListener('mousemove', doResize);
+      document.addEventListener('mouseup', stopResize);
+    }
+
+    function doResize(e) {
+      if (!resizingPanel) return;
+
+      const delta = e.clientY - resizeStartY;
+      const newHeight = Math.min(Math.max(resizeStartHeight + delta, 100), 500);
+      resizingPanel.style.height = `${newHeight}px`;
+    }
+
+    function stopResize() {
+      if (resizingPanel) {
+        resizingPanel.classList.remove('resizing');
+        resizingPanel = null;
+      }
+
+      document.body.style.cursor = '';
+      document.body.style.userSelect = '';
+
+      document.removeEventListener('mousemove', doResize);
+      document.removeEventListener('mouseup', stopResize);
+    }
+
     // ═══════════════════════════════════════════════════════════════
     // KEYBOARD SHORTCUTS
     // ═══════════════════════════════════════════════════════════════
     document.addEventListener('keydown', (e) => {
-      if (e.key === 'Escape') closeModal();
+      if (e.key === 'Escape') {
+        closeConfirmModal();
+        closeModal();
+        if (expandedSessionId) {
+          expandedSessionId = null;
+          renderSessions();
+        }
+      }
       if (e.key === 'r' && !e.metaKey && !e.ctrlKey && document.activeElement.tagName !== 'INPUT') {
         refreshSessions();
       }

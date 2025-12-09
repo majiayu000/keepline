@@ -1,4 +1,70 @@
+# Dependencies
 node_modules/
+
+# Build outputs
 dist/
+*.tsbuildinfo
+
+# Frontend build
+src/web/public/dist/
+src/web/client/node_modules/
+
+# Logs
 *.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# Runtime data
+pids
+*.pid
+*.seed
+*.pid.lock
+
+# Database
+*.db
+*.sqlite
+*.sqlite3
+data/
+
+# Environment variables
+.env
+.env.local
+.env.*.local
+.env.development
+.env.production
+
+# Secrets and credentials
+*.pem
+*.key
+*.crt
+*.p12
+credentials.json
+secrets.json
+config.local.json
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+
+# OS files
 .DS_Store
+Thumbs.db
+
+# Test coverage
+coverage/
+.nyc_output/
+
+# Temporary files
+tmp/
+temp/
+*.tmp
+
+# Debug
+.debug/
+
+# Local config
+*.local

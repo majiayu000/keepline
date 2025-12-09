@@ -117,14 +117,25 @@ export async function syncSessions(): Promise<{
       // Update existing session
       const wasLost = existing.status !== 'lost' && status === 'lost';
 
+      // Update title if current one is Unknown and we have new info
+      const shouldUpdateTitle =
+        existing.title === 'Unknown task' &&
+        claudeSession.firstMessage &&
+        claudeSession.firstMessage !== 'Unknown task';
+
       sessionRepo.upsert({
         sessionId: claudeSession.sessionId,
         status,
+        ...(shouldUpdateTitle && {
+          title: generateTitle(claudeSession.firstMessage!),
+          initialPrompt: claudeSession.firstMessage,
+        }),
         lastTool: claudeSession.lastTool,
         lastToolInput: claudeSession.lastToolInput
           ? JSON.stringify(claudeSession.lastToolInput)
           : undefined,
         currentFile: claudeSession.currentFile,
+        lastMessage: claudeSession.lastMessage,
         lastActiveAt: claudeSession.lastActiveAt,
         pid: process?.pid,
         tty: process?.tty,
@@ -157,6 +168,7 @@ export async function syncSessions(): Promise<{
           ? JSON.stringify(claudeSession.lastToolInput)
           : undefined,
         currentFile: claudeSession.currentFile,
+        lastMessage: claudeSession.lastMessage,
         startedAt: claudeSession.startedAt,
         lastActiveAt: claudeSession.lastActiveAt,
         toolCount: claudeSession.toolCount,

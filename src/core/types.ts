@@ -17,6 +17,13 @@ export interface Entity {
   updatedAt: Date;
 }
 
+/** Tool call info */
+export interface ToolCallInfo {
+  name: string;
+  input: Record<string, unknown>;
+  timestamp: string;
+}
+
 /** Session entity */
 export interface Session extends Entity {
   sessionId: string;        // Claude session ID
@@ -31,6 +38,8 @@ export interface Session extends Entity {
   lastTool?: string;        // Last used tool
   lastToolInput?: string;   // Tool input (JSON string)
   currentFile?: string;     // Currently editing file
+  lastMessage?: string;     // Last assistant message
+  toolCalls?: ToolCallInfo[]; // All tool calls
 
   // Timeline
   startedAt?: Date;
@@ -105,4 +114,5 @@ export interface ParsedSessionData {
   currentFile?: string;
   startedAt?: Date;
   lastActiveAt: Date;
+  toolCalls?: ToolCallInfo[];
 }

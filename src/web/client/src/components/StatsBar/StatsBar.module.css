@@ -1,0 +1,65 @@
+.container {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 2rem;
+  padding: 1rem 2rem;
+  background: var(--bg-elevated);
+  border-bottom: 1px solid var(--border);
+}
+
+.placeholder {
+  color: var(--text-dim);
+  font-size: 0.85rem;
+}
+
+.stat {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.25rem;
+}
+
+.value {
+  font-size: 1.5rem;
+  font-weight: 700;
+  font-family: var(--font-mono);
+}
+
+.label {
+  font-size: 0.7rem;
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+  color: var(--text-dim);
+}
+
+.divider {
+  width: 1px;
+  height: 2rem;
+  background: var(--border);
+}
+
+/* Variants */
+.success {
+  color: var(--success);
+  text-shadow: 0 0 10px var(--success);
+}
+
+.warning {
+  color: var(--warning);
+  text-shadow: 0 0 10px var(--warning);
+}
+
+.info {
+  color: var(--info);
+  text-shadow: 0 0 10px var(--info);
+}
+
+.danger {
+  color: var(--danger);
+  text-shadow: 0 0 10px var(--danger);
+}
+
+.default {
+  color: var(--text-bright);
+}
