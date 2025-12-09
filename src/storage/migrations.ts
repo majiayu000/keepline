@@ -79,8 +79,14 @@ export function runMigrations(): void {
   try {
     db.exec(`ALTER TABLE sessions ADD COLUMN last_message TEXT`);
     logger.debug('Added last_message column');
-  } catch {
-    // Column already exists, ignore
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    // Only ignore "duplicate column" errors, log others
+    if (message.includes('duplicate column') || message.includes('already exists')) {
+      logger.debug('last_message column already exists');
+    } else {
+      logger.error('Failed to add last_message column', { error: message });
+    }
   }
 
   logger.info('Database migrations completed');

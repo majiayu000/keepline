@@ -11,13 +11,17 @@ import type { ClaudeSettings, ClaudeHookConfig } from './types.js';
 /** Get current Claude settings */
 function getClaudeSettings(): ClaudeSettings {
   if (!existsSync(CLAUDE_SETTINGS)) {
+    logger.debug('Claude settings file not found, using defaults');
     return {};
   }
 
   try {
     const content = readFileSync(CLAUDE_SETTINGS, 'utf-8');
     return JSON.parse(content) as ClaudeSettings;
-  } catch {
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    logger.warn(`Failed to parse Claude settings: ${message}`, { path: CLAUDE_SETTINGS });
+    // Return empty settings to allow operation to continue
     return {};
   }
 }

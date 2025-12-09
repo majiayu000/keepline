@@ -25,6 +25,18 @@ export interface TaskerConfig {
 
   /** Session retention days (0 = forever) */
   retentionDays: number;
+
+  /** CPU threshold for considering a process as active (percentage) */
+  activeCpuThreshold: number;
+
+  /** Time threshold for considering a session as idle (seconds) */
+  idleThresholdSeconds: number;
+
+  /** Time threshold for considering activity as "running" vs "waiting" (seconds) */
+  runningThresholdSeconds: number;
+
+  /** Process cache TTL in milliseconds */
+  processCacheTtl: number;
 }
 
 const defaultConfig: TaskerConfig = {
@@ -34,6 +46,10 @@ const defaultConfig: TaskerConfig = {
   fileLogging: true,
   autoDaemon: false,
   retentionDays: 30,
+  activeCpuThreshold: 1.0,
+  idleThresholdSeconds: 30,
+  runningThresholdSeconds: 5,
+  processCacheTtl: 3000,
 };
 
 const CONFIG_FILE = join(TASKER_HOME, 'config.json');

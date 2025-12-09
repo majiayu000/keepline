@@ -1,6 +1,8 @@
 /**
  * Web API Server for Tasker
  * Provides REST endpoints for session management
+ *
+ * All endpoints include input validation
  */
 
 import { Hono } from 'hono';
@@ -13,6 +15,79 @@ import { recoverSession, getRecoveryInfo } from '../../recovery/service.js';
 import { stopProcess, isProcessRunning } from '../../process/scanner.js';
 import { getSessionById } from '../../claude/scanner.js';
 import { logger } from '../../utils/logger.js';
+
+// ============ Input Validation ============
+
+/** Valid recovery methods */
+const VALID_RECOVERY_METHODS = ['resume', 'continue', 'new'] as const;
+type RecoveryMethod = (typeof VALID_RECOVERY_METHODS)[number];
+
+/** Validate session ID format (UUID-like) */
+function isValidSessionId(id: string): boolean {
+  // Session IDs are UUIDs or similar alphanumeric strings
+  return typeof id === 'string' && /^[a-zA-Z0-9-_]{8,64}$/.test(id);
+}
+
+/** Validate recovery request body */
+interface RecoverRequestBody {
+  method?: RecoveryMethod;
+  openTerminal?: boolean;
+  skipPermissions?: boolean;
+}
+
+function validateRecoverRequest(body: unknown): { valid: true; data: RecoverRequestBody } | { valid: false; error: string } {
+  if (body === null || typeof body !== 'object') {
+    return { valid: true, data: {} }; // Empty body is OK, use defaults
+  }
+
+  const obj = body as Record<string, unknown>;
+
+  // Validate method if provided
+  if (obj.method !== undefined) {
+    if (typeof obj.method !== 'string' || !VALID_RECOVERY_METHODS.includes(obj.method as RecoveryMethod)) {
+      return { valid: false, error: `Invalid method. Must be one of: ${VALID_RECOVERY_METHODS.join(', ')}` };
+    }
+  }
+
+  // Validate booleans if provided
+  if (obj.openTerminal !== undefined && typeof obj.openTerminal !== 'boolean') {
+    return { valid: false, error: 'openTerminal must be a boolean' };
+  }
+
+  if (obj.skipPermissions !== undefined && typeof obj.skipPermissions !== 'boolean') {
+    return { valid: false, error: 'skipPermissions must be a boolean' };
+  }
+
+  return {
+    valid: true,
+    data: {
+      method: obj.method as RecoveryMethod | undefined,
+      openTerminal: obj.openTerminal as boolean | undefined,
+      skipPermissions: obj.skipPermissions as boolean | undefined,
+    },
+  };
+}
+
+/** Validate stop request body */
+interface StopRequestBody {
+  force?: boolean;
+}
+
+function validateStopRequest(body: unknown): { valid: true; data: StopRequestBody } | { valid: false; error: string } {
+  if (body === null || typeof body !== 'object') {
+    return { valid: true, data: {} };
+  }
+
+  const obj = body as Record<string, unknown>;
+
+  if (obj.force !== undefined && typeof obj.force !== 'boolean') {
+    return { valid: false, error: 'force must be a boolean' };
+  }
+
+  return { valid: true, data: { force: obj.force as boolean | undefined } };
+}
+
+// ============ Application ============
 
 const app = new Hono();
 
@@ -93,8 +168,26 @@ app.get('/api/sessions/:id', async (c) => {
 
 app.post('/api/sessions/:id/recover', async (c) => {
   const sessionId = c.req.param('id');
-  const body = await c.req.json();
-  const { method = 'resume', openTerminal = true, skipPermissions = false } = body;
+
+  // Validate session ID format
+  if (!isValidSessionId(sessionId)) {
+    return c.json({ success: false, error: 'Invalid session ID format' }, 400);
+  }
+
+  // Parse and validate request body
+  let body: unknown;
+  try {
+    body = await c.req.json();
+  } catch {
+    body = {};
+  }
+
+  const validation = validateRecoverRequest(body);
+  if (!validation.valid) {
+    return c.json({ success: false, error: validation.error }, 400);
+  }
+
+  const { method = 'resume', openTerminal = true, skipPermissions = false } = validation.data;
 
   const sessions = getAllSessions();
   const session = sessions.find(s => s.sessionId === sessionId);
@@ -111,11 +204,11 @@ app.post('/api/sessions/:id/recover', async (c) => {
 
   try {
     const result = await recoverSession({
-      method: method as 'resume' | 'continue' | 'new',
+      method: method || 'resume',
       sessionId,
       directory: session.directory,
-      openTerminal,
-      skipPermissions,
+      openTerminal: openTerminal ?? true,
+      skipPermissions: skipPermissions ?? false,
     });
 
     return c.json({ success: result.success, error: result.error });
@@ -140,8 +233,26 @@ app.post('/api/sessions/:id/complete', async (c) => {
 // Stop a session process (SIGTERM or SIGKILL)
 app.post('/api/sessions/:id/stop', async (c) => {
   const sessionId = c.req.param('id');
-  const body = await c.req.json().catch(() => ({}));
-  const { force = false } = body as { force?: boolean };
+
+  // Validate session ID format
+  if (!isValidSessionId(sessionId)) {
+    return c.json({ success: false, error: 'Invalid session ID format' }, 400);
+  }
+
+  // Parse and validate request body
+  let body: unknown;
+  try {
+    body = await c.req.json();
+  } catch {
+    body = {};
+  }
+
+  const validation = validateStopRequest(body);
+  if (!validation.valid) {
+    return c.json({ success: false, error: validation.error }, 400);
+  }
+
+  const { force = false } = validation.data;
 
   const sessions = getAllSessions();
   const session = sessions.find(s => s.sessionId === sessionId);

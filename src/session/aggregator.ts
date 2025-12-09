@@ -1,17 +1,19 @@
 /**
  * Session aggregator - combines data from multiple sources
+ *
+ * Uses cached process data for efficiency
  */
 
 import type { SessionStatus } from '../core/types.js';
 import { sessionRepo } from '../storage/index.js';
-import { scanClaudeProcesses } from '../process/scanner.js';
+import { getCachedProcesses } from '../process/scanner.js';
 import { detectSessionStatus } from '../process/detector.js';
 import type { AggregatedSession, SessionFilter, SessionSort } from './types.js';
 
-/** Get all sessions with aggregated process info */
+/** Get all sessions with aggregated process info (uses cached processes) */
 export function getAggregatedSessions(): AggregatedSession[] {
   const sessions = sessionRepo.findAll();
-  const processes = scanClaudeProcesses();
+  const processes = getCachedProcesses();
   const processByCwd = new Map(processes.map((p) => [p.cwd, p]));
 
   return sessions.map((session) => {

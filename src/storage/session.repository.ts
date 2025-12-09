@@ -119,6 +119,11 @@ export function upsert(session: Partial<Session> & { sessionId: string }): Sessi
 
     if (existing) {
       // Update existing session
+      // Use CASE WHEN to only update fields that are explicitly provided
+      // For pid and tty, we allow explicit clearing by passing undefined (mapped to a special marker)
+      const pidValue = 'pid' in session ? (session.pid ?? null) : existing.pid ?? null;
+      const ttyValue = 'tty' in session ? (session.tty ?? null) : existing.tty ?? null;
+
       db.prepare(`
         UPDATE sessions SET
           status = COALESCE(?, status),
@@ -144,8 +149,8 @@ export function upsert(session: Partial<Session> & { sessionId: string }): Sessi
         session.lastMessage ?? null,
         session.lastActiveAt?.toISOString() ?? null,
         session.completedAt?.toISOString() ?? null,
-        session.pid ?? null,
-        session.tty ?? null,
+        pidValue,
+        ttyValue,
         session.toolCount ?? null,
         session.messageCount ?? null,
         now,

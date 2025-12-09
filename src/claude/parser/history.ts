@@ -5,6 +5,7 @@
 import { createReadStream, existsSync } from 'fs';
 import { createInterface } from 'readline';
 import { CLAUDE_HISTORY } from '../../utils/paths.js';
+import { logger } from '../../utils/logger.js';
 import type { ClaudeHistoryEntry } from '../types.js';
 
 /** Parse history.jsonl file */
@@ -14,6 +15,8 @@ export async function parseHistoryFile(): Promise<ClaudeHistoryEntry[]> {
   }
 
   const entries: ClaudeHistoryEntry[] = [];
+  let invalidLines = 0;
+  let lineNumber = 0;
 
   const fileStream = createReadStream(CLAUDE_HISTORY);
   const rl = createInterface({
@@ -22,15 +25,25 @@ export async function parseHistoryFile(): Promise<ClaudeHistoryEntry[]> {
   });
 
   for await (const line of rl) {
+    lineNumber++;
     if (!line.trim()) continue;
 
     try {
       const entry = JSON.parse(line) as ClaudeHistoryEntry;
       entries.push(entry);
-    } catch {
-      // Skip invalid lines
+    } catch (error) {
+      invalidLines++;
+      // Log first few invalid lines at debug level
+      if (invalidLines <= 3) {
+        const preview = line.length > 50 ? line.slice(0, 50) + '...' : line;
+        logger.debug(`Invalid JSON at line ${lineNumber}: ${preview}`);
+      }
       continue;
     }
+  }
+
+  if (invalidLines > 0) {
+    logger.debug(`Skipped ${invalidLines} invalid lines in history file`);
   }
 
   return entries;
