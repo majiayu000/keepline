@@ -1,77 +1,229 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="en" data-theme="cyberpunk">
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>TASKER // Claude Code Monitor</title>
   <style>
-    /* CSS Reset & Base */
+    /* ═══════════════════════════════════════════════════════════════
+       DESIGN SYSTEM - Multi-Theme Architecture
+       Themes: Cyberpunk, Matrix, Synthwave, Minimal, Tokyo Night
+    ═══════════════════════════════════════════════════════════════ */
+
+    /* CSS Reset */
     *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 
-    :root {
-      /* Cyberpunk Color Palette */
-      --cyan: #00fff9;
-      --magenta: #ff00ff;
-      --yellow: #fcee0a;
-      --red: #ff003c;
-      --green: #00ff9f;
-      --blue: #00b3ff;
-      --purple: #bd00ff;
-      --orange: #ff6b00;
+    /* ─────────────────────────────────────────────────────────────────
+       THEME: CYBERPUNK (Default)
+       Neon cyan/magenta on dark, futuristic tech aesthetic
+    ───────────────────────────────────────────────────────────────── */
+    [data-theme="cyberpunk"] {
+      --primary: #00fff9;
+      --secondary: #ff00ff;
+      --accent: #fcee0a;
+      --success: #00ff9f;
+      --warning: #fcee0a;
+      --danger: #ff003c;
+      --info: #00b3ff;
 
-      /* UI Colors */
-      --bg-dark: #0a0a0f;
-      --bg-panel: #12121a;
-      --bg-card: #1a1a25;
+      --bg-base: #0a0a0f;
+      --bg-surface: #12121a;
+      --bg-elevated: #1a1a25;
       --bg-hover: #252535;
+
       --border: #2a2a3a;
       --border-bright: #3a3a5a;
+
       --text: #a0a0c0;
       --text-dim: #5a5a7a;
       --text-bright: #e0e0ff;
 
-      /* Shadows & Effects */
-      --glow-cyan: 0 0 20px rgba(0, 255, 249, 0.3);
-      --glow-magenta: 0 0 20px rgba(255, 0, 255, 0.3);
-      --glow-green: 0 0 15px rgba(0, 255, 159, 0.4);
-      --glow-red: 0 0 15px rgba(255, 0, 60, 0.4);
+      --glow-primary: 0 0 20px rgba(0, 255, 249, 0.3);
+      --glow-secondary: 0 0 20px rgba(255, 0, 255, 0.3);
+      --glow-success: 0 0 15px rgba(0, 255, 159, 0.4);
+      --glow-danger: 0 0 15px rgba(255, 0, 60, 0.4);
+
+      --scanline: repeating-linear-gradient(0deg, transparent, transparent 2px, rgba(0,0,0,0.1) 2px, rgba(0,0,0,0.1) 4px);
+      --header-gradient: linear-gradient(90deg, var(--primary), var(--secondary));
+      --font-mono: 'JetBrains Mono', 'Fira Code', 'SF Mono', monospace;
     }
+
+    /* ─────────────────────────────────────────────────────────────────
+       THEME: MATRIX
+       Classic green-on-black hacker terminal aesthetic
+    ───────────────────────────────────────────────────────────────── */
+    [data-theme="matrix"] {
+      --primary: #00ff41;
+      --secondary: #008f11;
+      --accent: #00ff41;
+      --success: #00ff41;
+      --warning: #ffff00;
+      --danger: #ff0000;
+      --info: #00ffff;
+
+      --bg-base: #0d0208;
+      --bg-surface: #0f0f0f;
+      --bg-elevated: #1a1a1a;
+      --bg-hover: #252525;
+
+      --border: #003b00;
+      --border-bright: #00ff41;
+
+      --text: #00ff41;
+      --text-dim: #008f11;
+      --text-bright: #00ff41;
+
+      --glow-primary: 0 0 10px rgba(0, 255, 65, 0.5), 0 0 20px rgba(0, 255, 65, 0.3);
+      --glow-secondary: 0 0 10px rgba(0, 143, 17, 0.5);
+      --glow-success: 0 0 10px rgba(0, 255, 65, 0.5);
+      --glow-danger: 0 0 10px rgba(255, 0, 0, 0.5);
+
+      --scanline: repeating-linear-gradient(0deg, transparent, transparent 1px, rgba(0,255,65,0.03) 1px, rgba(0,255,65,0.03) 2px);
+      --header-gradient: linear-gradient(90deg, #00ff41, #008f11);
+      --font-mono: 'Courier New', 'Lucida Console', monospace;
+    }
+
+    /* ─────────────────────────────────────────────────────────────────
+       THEME: SYNTHWAVE
+       80s retro neon, pink/purple/orange sunset vibes
+    ───────────────────────────────────────────────────────────────── */
+    [data-theme="synthwave"] {
+      --primary: #ff6ad5;
+      --secondary: #c774e8;
+      --accent: #ffd319;
+      --success: #05ffa1;
+      --warning: #ffd319;
+      --danger: #ff3864;
+      --info: #00d9ff;
+
+      --bg-base: #1a1025;
+      --bg-surface: #241734;
+      --bg-elevated: #2d1f42;
+      --bg-hover: #3a2850;
+
+      --border: #4a3060;
+      --border-bright: #ff6ad5;
+
+      --text: #e0d0f0;
+      --text-dim: #8a70a0;
+      --text-bright: #ffffff;
+
+      --glow-primary: 0 0 20px rgba(255, 106, 213, 0.4), 0 0 40px rgba(255, 106, 213, 0.2);
+      --glow-secondary: 0 0 20px rgba(199, 116, 232, 0.4);
+      --glow-success: 0 0 15px rgba(5, 255, 161, 0.4);
+      --glow-danger: 0 0 15px rgba(255, 56, 100, 0.4);
+
+      --scanline: none;
+      --header-gradient: linear-gradient(90deg, #ff6ad5, #c774e8, #ffd319);
+      --font-mono: 'Orbitron', 'Audiowide', 'JetBrains Mono', monospace;
+    }
+
+    /* ─────────────────────────────────────────────────────────────────
+       THEME: MINIMAL
+       Clean, light, modern professional aesthetic
+    ───────────────────────────────────────────────────────────────── */
+    [data-theme="minimal"] {
+      --primary: #2563eb;
+      --secondary: #7c3aed;
+      --accent: #f59e0b;
+      --success: #10b981;
+      --warning: #f59e0b;
+      --danger: #ef4444;
+      --info: #3b82f6;
+
+      --bg-base: #ffffff;
+      --bg-surface: #f8fafc;
+      --bg-elevated: #f1f5f9;
+      --bg-hover: #e2e8f0;
+
+      --border: #e2e8f0;
+      --border-bright: #cbd5e1;
+
+      --text: #475569;
+      --text-dim: #94a3b8;
+      --text-bright: #1e293b;
+
+      --glow-primary: 0 4px 6px rgba(37, 99, 235, 0.1);
+      --glow-secondary: 0 4px 6px rgba(124, 58, 237, 0.1);
+      --glow-success: 0 4px 6px rgba(16, 185, 129, 0.1);
+      --glow-danger: 0 4px 6px rgba(239, 68, 68, 0.1);
+
+      --scanline: none;
+      --header-gradient: linear-gradient(90deg, #2563eb, #7c3aed);
+      --font-mono: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+    }
+
+    /* ─────────────────────────────────────────────────────────────────
+       THEME: TOKYO NIGHT
+       Popular VSCode theme - deep blue/purple with soft accents
+    ───────────────────────────────────────────────────────────────── */
+    [data-theme="tokyo"] {
+      --primary: #7aa2f7;
+      --secondary: #bb9af7;
+      --accent: #e0af68;
+      --success: #9ece6a;
+      --warning: #e0af68;
+      --danger: #f7768e;
+      --info: #7dcfff;
+
+      --bg-base: #1a1b26;
+      --bg-surface: #1f2335;
+      --bg-elevated: #24283b;
+      --bg-hover: #292e42;
+
+      --border: #3b4261;
+      --border-bright: #565f89;
+
+      --text: #a9b1d6;
+      --text-dim: #565f89;
+      --text-bright: #c0caf5;
+
+      --glow-primary: 0 0 15px rgba(122, 162, 247, 0.2);
+      --glow-secondary: 0 0 15px rgba(187, 154, 247, 0.2);
+      --glow-success: 0 0 15px rgba(158, 206, 106, 0.2);
+      --glow-danger: 0 0 15px rgba(247, 118, 142, 0.2);
+
+      --scanline: none;
+      --header-gradient: linear-gradient(90deg, #7aa2f7, #bb9af7);
+      --font-mono: 'JetBrains Mono', 'Cascadia Code', monospace;
+    }
+
+    /* ═══════════════════════════════════════════════════════════════
+       BASE STYLES
+    ═══════════════════════════════════════════════════════════════ */
 
     body {
-      font-family: 'JetBrains Mono', 'Fira Code', 'SF Mono', monospace;
-      background: var(--bg-dark);
+      font-family: var(--font-mono);
+      background: var(--bg-base);
       color: var(--text);
       min-height: 100vh;
-      line-height: 1.5;
+      line-height: 1.6;
+      transition: background 0.3s ease, color 0.3s ease;
     }
 
-    /* Scanline Effect */
+    /* Scanline overlay for retro themes */
     body::before {
       content: '';
       position: fixed;
-      top: 0;
-      left: 0;
-      width: 100%;
-      height: 100%;
-      background: repeating-linear-gradient(
-        0deg,
-        transparent,
-        transparent 2px,
-        rgba(0, 0, 0, 0.1) 2px,
-        rgba(0, 0, 0, 0.1) 4px
-      );
+      inset: 0;
+      background: var(--scanline);
       pointer-events: none;
       z-index: 1000;
     }
 
-    /* Header */
+    /* ═══════════════════════════════════════════════════════════════
+       HEADER
+    ═══════════════════════════════════════════════════════════════ */
+
     .header {
-      background: linear-gradient(180deg, var(--bg-panel) 0%, transparent 100%);
+      background: linear-gradient(180deg, var(--bg-surface) 0%, transparent 100%);
       border-bottom: 1px solid var(--border);
       padding: 1rem 2rem;
       display: flex;
       justify-content: space-between;
       align-items: center;
+      flex-wrap: wrap;
+      gap: 1rem;
     }
 
     .logo {
@@ -83,7 +235,7 @@
     .logo-text {
       font-size: 1.5rem;
       font-weight: bold;
-      background: linear-gradient(90deg, var(--cyan), var(--magenta));
+      background: var(--header-gradient);
       -webkit-background-clip: text;
       -webkit-text-fill-color: transparent;
       background-clip: text;
@@ -100,15 +252,125 @@
     .header-actions {
       display: flex;
       gap: 0.5rem;
+      align-items: center;
     }
 
-    /* Buttons */
+    /* ═══════════════════════════════════════════════════════════════
+       THEME SWITCHER
+    ═══════════════════════════════════════════════════════════════ */
+
+    .theme-switcher {
+      position: relative;
+    }
+
+    .theme-btn {
+      font-family: inherit;
+      font-size: 0.8rem;
+      padding: 0.5rem 1rem;
+      border: 1px solid var(--border-bright);
+      background: var(--bg-elevated);
+      color: var(--text);
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+      transition: all 0.2s ease;
+    }
+
+    .theme-btn:hover {
+      background: var(--bg-hover);
+      border-color: var(--primary);
+      color: var(--primary);
+    }
+
+    .theme-dropdown {
+      position: absolute;
+      top: 100%;
+      right: 0;
+      margin-top: 0.5rem;
+      background: var(--bg-surface);
+      border: 1px solid var(--border-bright);
+      min-width: 180px;
+      z-index: 100;
+      opacity: 0;
+      visibility: hidden;
+      transform: translateY(-10px);
+      transition: all 0.2s ease;
+    }
+
+    .theme-dropdown.active {
+      opacity: 1;
+      visibility: visible;
+      transform: translateY(0);
+    }
+
+    .theme-option {
+      display: flex;
+      align-items: center;
+      gap: 0.75rem;
+      padding: 0.75rem 1rem;
+      cursor: pointer;
+      transition: background 0.2s ease;
+      border: none;
+      background: none;
+      width: 100%;
+      text-align: left;
+      font-family: inherit;
+      font-size: 0.85rem;
+      color: var(--text);
+    }
+
+    .theme-option:hover {
+      background: var(--bg-hover);
+    }
+
+    .theme-option.active {
+      background: var(--bg-elevated);
+      color: var(--primary);
+    }
+
+    .theme-preview {
+      display: flex;
+      gap: 2px;
+    }
+
+    .theme-preview span {
+      width: 12px;
+      height: 12px;
+      border-radius: 2px;
+    }
+
+    /* Theme color previews */
+    .preview-cyberpunk span:nth-child(1) { background: #00fff9; }
+    .preview-cyberpunk span:nth-child(2) { background: #ff00ff; }
+    .preview-cyberpunk span:nth-child(3) { background: #0a0a0f; }
+
+    .preview-matrix span:nth-child(1) { background: #00ff41; }
+    .preview-matrix span:nth-child(2) { background: #008f11; }
+    .preview-matrix span:nth-child(3) { background: #0d0208; }
+
+    .preview-synthwave span:nth-child(1) { background: #ff6ad5; }
+    .preview-synthwave span:nth-child(2) { background: #ffd319; }
+    .preview-synthwave span:nth-child(3) { background: #1a1025; }
+
+    .preview-minimal span:nth-child(1) { background: #2563eb; }
+    .preview-minimal span:nth-child(2) { background: #10b981; }
+    .preview-minimal span:nth-child(3) { background: #ffffff; border: 1px solid #e2e8f0; }
+
+    .preview-tokyo span:nth-child(1) { background: #7aa2f7; }
+    .preview-tokyo span:nth-child(2) { background: #bb9af7; }
+    .preview-tokyo span:nth-child(3) { background: #1a1b26; }
+
+    /* ═══════════════════════════════════════════════════════════════
+       BUTTONS
+    ═══════════════════════════════════════════════════════════════ */
+
     .btn {
       font-family: inherit;
       font-size: 0.8rem;
       padding: 0.5rem 1rem;
       border: 1px solid var(--border-bright);
-      background: var(--bg-card);
+      background: var(--bg-elevated);
       color: var(--text);
       cursor: pointer;
       transition: all 0.2s ease;
@@ -118,48 +380,53 @@
 
     .btn:hover {
       background: var(--bg-hover);
-      border-color: var(--cyan);
-      color: var(--cyan);
+      border-color: var(--primary);
+      color: var(--primary);
     }
 
     .btn-primary {
-      background: linear-gradient(135deg, var(--cyan), var(--blue));
-      border: none;
-      color: var(--bg-dark);
+      background: var(--primary);
+      border-color: var(--primary);
+      color: var(--bg-base);
       font-weight: bold;
     }
 
     .btn-primary:hover {
-      box-shadow: var(--glow-cyan);
+      box-shadow: var(--glow-primary);
+      filter: brightness(1.1);
     }
 
     .btn-danger {
-      border-color: var(--red);
-      color: var(--red);
+      border-color: var(--danger);
+      color: var(--danger);
     }
 
     .btn-danger:hover {
-      background: rgba(255, 0, 60, 0.2);
-      box-shadow: var(--glow-red);
+      background: rgba(239, 68, 68, 0.15);
+      box-shadow: var(--glow-danger);
     }
 
     .btn-success {
-      border-color: var(--green);
-      color: var(--green);
+      border-color: var(--success);
+      color: var(--success);
     }
 
     .btn-success:hover {
-      background: rgba(0, 255, 159, 0.2);
-      box-shadow: var(--glow-green);
+      background: rgba(16, 185, 129, 0.15);
+      box-shadow: var(--glow-success);
     }
 
-    /* Stats Bar */
+    /* ═══════════════════════════════════════════════════════════════
+       STATS BAR
+    ═══════════════════════════════════════════════════════════════ */
+
     .stats-bar {
       display: flex;
       gap: 2rem;
       padding: 1rem 2rem;
-      background: var(--bg-panel);
+      background: var(--bg-surface);
       border-bottom: 1px solid var(--border);
+      flex-wrap: wrap;
     }
 
     .stat {
@@ -175,10 +442,10 @@
       animation: pulse 2s ease-in-out infinite;
     }
 
-    .stat-dot.green { background: var(--green); box-shadow: var(--glow-green); }
-    .stat-dot.yellow { background: var(--yellow); }
-    .stat-dot.cyan { background: var(--cyan); }
-    .stat-dot.red { background: var(--red); box-shadow: var(--glow-red); }
+    .stat-dot.green { background: var(--success); box-shadow: var(--glow-success); }
+    .stat-dot.yellow { background: var(--warning); }
+    .stat-dot.cyan { background: var(--info); }
+    .stat-dot.red { background: var(--danger); box-shadow: var(--glow-danger); }
 
     @keyframes pulse {
       0%, 100% { opacity: 1; }
@@ -196,14 +463,16 @@
       font-weight: bold;
     }
 
-    /* Main Content */
+    /* ═══════════════════════════════════════════════════════════════
+       MAIN CONTENT
+    ═══════════════════════════════════════════════════════════════ */
+
     .main {
       padding: 2rem;
       max-width: 1400px;
       margin: 0 auto;
     }
 
-    /* Section */
     .section {
       margin-bottom: 2rem;
     }
@@ -224,23 +493,26 @@
       letter-spacing: 0.1em;
     }
 
-    .section-title.green { color: var(--green); }
-    .section-title.cyan { color: var(--cyan); }
-    .section-title.red { color: var(--red); }
+    .section-title.green { color: var(--success); }
+    .section-title.cyan { color: var(--info); }
+    .section-title.red { color: var(--danger); }
 
     .section-count {
       color: var(--text-dim);
       font-size: 0.8rem;
     }
 
-    /* Session Cards */
+    /* ═══════════════════════════════════════════════════════════════
+       SESSION CARDS
+    ═══════════════════════════════════════════════════════════════ */
+
     .sessions-grid {
       display: grid;
-      gap: 1rem;
+      gap: 0.75rem;
     }
 
     .session-card {
-      background: var(--bg-card);
+      background: var(--bg-elevated);
       border: 1px solid var(--border);
       padding: 1rem 1.25rem;
       transition: all 0.2s ease;
@@ -265,13 +537,13 @@
       border-color: var(--border-bright);
     }
 
-    .session-card.running::before { background: var(--green); }
-    .session-card.waiting::before { background: var(--yellow); }
-    .session-card.idle::before { background: var(--cyan); }
-    .session-card.lost::before { background: var(--red); }
+    .session-card.running::before { background: var(--success); }
+    .session-card.waiting::before { background: var(--warning); }
+    .session-card.idle::before { background: var(--info); }
+    .session-card.lost::before { background: var(--danger); }
 
-    .session-card:hover.running { box-shadow: inset 0 0 30px rgba(0, 255, 159, 0.05); }
-    .session-card:hover.lost { box-shadow: inset 0 0 30px rgba(255, 0, 60, 0.05); }
+    .session-card:hover.running { box-shadow: inset 0 0 30px rgba(16, 185, 129, 0.05); }
+    .session-card:hover.lost { box-shadow: inset 0 0 30px rgba(239, 68, 68, 0.05); }
 
     .session-row {
       display: flex;
@@ -280,7 +552,7 @@
     }
 
     .session-index {
-      color: var(--cyan);
+      color: var(--primary);
       font-size: 0.8rem;
       min-width: 2rem;
     }
@@ -295,14 +567,12 @@
       min-width: 60px;
     }
 
-    .session-status.running { color: var(--green); }
-    .session-status.waiting { color: var(--yellow); }
-    .session-status.idle { color: var(--cyan); }
-    .session-status.lost { color: var(--red); }
+    .session-status.running { color: var(--success); }
+    .session-status.waiting { color: var(--warning); }
+    .session-status.idle { color: var(--info); }
+    .session-status.lost { color: var(--danger); }
 
-    .session-icon {
-      font-size: 0.9rem;
-    }
+    .session-icon { font-size: 0.9rem; }
 
     .session-info {
       flex: 1;
@@ -356,37 +626,40 @@
     }
 
     .action-btn.recover {
-      color: var(--green);
-      border-color: var(--green);
+      color: var(--success);
+      border-color: var(--success);
     }
 
     .action-btn.recover:hover {
-      background: rgba(0, 255, 159, 0.2);
+      background: rgba(16, 185, 129, 0.2);
     }
 
     .action-btn.close {
-      color: var(--red);
-      border-color: var(--red);
+      color: var(--danger);
+      border-color: var(--danger);
     }
 
     .action-btn.close:hover {
-      background: rgba(255, 0, 60, 0.2);
+      background: rgba(239, 68, 68, 0.2);
     }
 
-    /* Loading */
+    /* ═══════════════════════════════════════════════════════════════
+       LOADING & EMPTY STATES
+    ═══════════════════════════════════════════════════════════════ */
+
     .loading {
       display: flex;
       justify-content: center;
       align-items: center;
       padding: 4rem;
-      color: var(--cyan);
+      color: var(--primary);
     }
 
     .spinner {
       width: 40px;
       height: 40px;
       border: 3px solid var(--border);
-      border-top-color: var(--cyan);
+      border-top-color: var(--primary);
       border-radius: 50%;
       animation: spin 1s linear infinite;
     }
@@ -395,7 +668,6 @@
       to { transform: rotate(360deg); }
     }
 
-    /* Empty State */
     .empty-state {
       text-align: center;
       padding: 3rem;
@@ -408,7 +680,10 @@
       opacity: 0.5;
     }
 
-    /* Modal */
+    /* ═══════════════════════════════════════════════════════════════
+       MODAL
+    ═══════════════════════════════════════════════════════════════ */
+
     .modal-overlay {
       position: fixed;
       inset: 0;
@@ -428,11 +703,13 @@
     }
 
     .modal {
-      background: var(--bg-panel);
+      background: var(--bg-surface);
       border: 1px solid var(--border-bright);
       padding: 1.5rem;
       min-width: 400px;
       max-width: 600px;
+      max-height: 80vh;
+      overflow-y: auto;
       transform: scale(0.95);
       transition: transform 0.2s ease;
     }
@@ -451,7 +728,7 @@
     }
 
     .modal-title {
-      color: var(--cyan);
+      color: var(--primary);
       font-size: 1rem;
       font-weight: bold;
       text-transform: uppercase;
@@ -465,10 +742,11 @@
       cursor: pointer;
       font-size: 1.5rem;
       line-height: 1;
+      transition: color 0.2s ease;
     }
 
     .modal-close:hover {
-      color: var(--red);
+      color: var(--danger);
     }
 
     .modal-body {
@@ -499,9 +777,13 @@
       gap: 0.5rem;
       padding-top: 1rem;
       border-top: 1px solid var(--border);
+      flex-wrap: wrap;
     }
 
-    /* Toast Notifications */
+    /* ═══════════════════════════════════════════════════════════════
+       TOAST NOTIFICATIONS
+    ═══════════════════════════════════════════════════════════════ */
+
     .toast-container {
       position: fixed;
       top: 1rem;
@@ -513,55 +795,86 @@
     }
 
     .toast {
-      background: var(--bg-panel);
+      background: var(--bg-surface);
       border: 1px solid var(--border);
       padding: 0.75rem 1rem;
       font-size: 0.85rem;
       animation: slideIn 0.3s ease;
+      max-width: 300px;
     }
 
-    .toast.success {
-      border-color: var(--green);
-      color: var(--green);
-    }
-
-    .toast.error {
-      border-color: var(--red);
-      color: var(--red);
-    }
+    .toast.success { border-color: var(--success); color: var(--success); }
+    .toast.error { border-color: var(--danger); color: var(--danger); }
+    .toast.info { border-color: var(--info); color: var(--info); }
 
     @keyframes slideIn {
-      from {
-        transform: translateX(100%);
-        opacity: 0;
-      }
-      to {
-        transform: translateX(0);
-        opacity: 1;
-      }
+      from { transform: translateX(100%); opacity: 0; }
+      to { transform: translateX(0); opacity: 1; }
     }
 
-    /* Responsive */
+    /* ═══════════════════════════════════════════════════════════════
+       RESPONSIVE
+    ═══════════════════════════════════════════════════════════════ */
+
     @media (max-width: 768px) {
-      .header {
-        flex-direction: column;
-        gap: 1rem;
-      }
+      .header { flex-direction: column; gap: 1rem; }
+      .stats-bar { gap: 1rem; }
+      .session-row { flex-wrap: wrap; }
+      .session-actions { opacity: 1; width: 100%; margin-top: 0.5rem; }
+      .modal { min-width: auto; width: 90%; margin: 1rem; }
+    }
 
-      .stats-bar {
-        flex-wrap: wrap;
-        gap: 1rem;
-      }
+    /* ═══════════════════════════════════════════════════════════════
+       THEME-SPECIFIC ANIMATIONS
+    ═══════════════════════════════════════════════════════════════ */
 
-      .session-row {
-        flex-wrap: wrap;
-      }
+    /* Matrix rain effect for Matrix theme */
+    [data-theme="matrix"] .logo-text {
+      text-shadow: 0 0 10px rgba(0, 255, 65, 0.8);
+      animation: matrixGlow 2s ease-in-out infinite;
+    }
 
-      .session-actions {
-        opacity: 1;
-        width: 100%;
-        margin-top: 0.5rem;
-      }
+    @keyframes matrixGlow {
+      0%, 100% { text-shadow: 0 0 10px rgba(0, 255, 65, 0.8); }
+      50% { text-shadow: 0 0 20px rgba(0, 255, 65, 1), 0 0 30px rgba(0, 255, 65, 0.5); }
+    }
+
+    /* Synthwave sun animation */
+    [data-theme="synthwave"] .logo-text {
+      animation: synthwaveGlow 3s ease-in-out infinite;
+    }
+
+    @keyframes synthwaveGlow {
+      0%, 100% { filter: brightness(1); }
+      50% { filter: brightness(1.2) saturate(1.2); }
+    }
+
+    /* Minimal subtle shadow */
+    [data-theme="minimal"] .session-card {
+      box-shadow: 0 1px 3px rgba(0,0,0,0.08);
+      border-radius: 8px;
+    }
+
+    [data-theme="minimal"] .session-card:hover {
+      box-shadow: 0 4px 12px rgba(0,0,0,0.1);
+    }
+
+    [data-theme="minimal"] .btn {
+      border-radius: 6px;
+    }
+
+    [data-theme="minimal"] .modal {
+      border-radius: 12px;
+      box-shadow: 0 25px 50px rgba(0,0,0,0.15);
+    }
+
+    /* Tokyo Night subtle glow */
+    [data-theme="tokyo"] .session-card.running::before {
+      box-shadow: 0 0 10px rgba(158, 206, 106, 0.5);
+    }
+
+    [data-theme="tokyo"] .session-card.lost::before {
+      box-shadow: 0 0 10px rgba(247, 118, 142, 0.5);
     }
   </style>
 </head>
@@ -574,6 +887,37 @@
       </div>
     </div>
     <div class="header-actions">
+      <!-- Theme Switcher -->
+      <div class="theme-switcher">
+        <button class="theme-btn" onclick="toggleThemeDropdown()" aria-label="Change theme">
+          <span>🎨</span>
+          <span id="current-theme-name">Cyberpunk</span>
+          <span>▾</span>
+        </button>
+        <div class="theme-dropdown" id="theme-dropdown">
+          <button class="theme-option active" data-theme="cyberpunk" onclick="setTheme('cyberpunk')">
+            <div class="theme-preview preview-cyberpunk"><span></span><span></span><span></span></div>
+            <span>Cyberpunk</span>
+          </button>
+          <button class="theme-option" data-theme="matrix" onclick="setTheme('matrix')">
+            <div class="theme-preview preview-matrix"><span></span><span></span><span></span></div>
+            <span>Matrix</span>
+          </button>
+          <button class="theme-option" data-theme="synthwave" onclick="setTheme('synthwave')">
+            <div class="theme-preview preview-synthwave"><span></span><span></span><span></span></div>
+            <span>Synthwave</span>
+          </button>
+          <button class="theme-option" data-theme="minimal" onclick="setTheme('minimal')">
+            <div class="theme-preview preview-minimal"><span></span><span></span><span></span></div>
+            <span>Minimal</span>
+          </button>
+          <button class="theme-option" data-theme="tokyo" onclick="setTheme('tokyo')">
+            <div class="theme-preview preview-tokyo"><span></span><span></span><span></span></div>
+            <span>Tokyo Night</span>
+          </button>
+        </div>
+      </div>
+
       <button class="btn" onclick="refreshSessions()">⟳ Refresh</button>
       <button class="btn btn-primary" onclick="syncSessions()">⚡ Sync</button>
     </div>
@@ -617,14 +961,10 @@
     <div class="modal" onclick="event.stopPropagation()">
       <div class="modal-header">
         <div class="modal-title">Session Details</div>
-        <button class="modal-close" onclick="closeModal()">&times;</button>
+        <button class="modal-close" onclick="closeModal()" aria-label="Close">&times;</button>
       </div>
-      <div class="modal-body" id="modal-body">
-        <!-- Content injected by JS -->
-      </div>
-      <div class="modal-footer" id="modal-footer">
-        <!-- Actions injected by JS -->
-      </div>
+      <div class="modal-body" id="modal-body"></div>
+      <div class="modal-footer" id="modal-footer"></div>
     </div>
   </div>
 
@@ -632,12 +972,63 @@
   <div class="toast-container" id="toast-container"></div>
 
   <script>
-    // State
+    // ═══════════════════════════════════════════════════════════════
+    // STATE
+    // ═══════════════════════════════════════════════════════════════
     let sessions = [];
     let stats = { total: 0, running: 0, waiting: 0, idle: 0, lost: 0 };
     let selectedSession = null;
 
-    // API
+    const THEMES = {
+      cyberpunk: 'Cyberpunk',
+      matrix: 'Matrix',
+      synthwave: 'Synthwave',
+      minimal: 'Minimal',
+      tokyo: 'Tokyo Night'
+    };
+
+    // ═══════════════════════════════════════════════════════════════
+    // THEME MANAGEMENT
+    // ═══════════════════════════════════════════════════════════════
+    function initTheme() {
+      const saved = localStorage.getItem('tasker-theme') || 'cyberpunk';
+      setTheme(saved, false);
+    }
+
+    function setTheme(theme, save = true) {
+      document.documentElement.setAttribute('data-theme', theme);
+      document.getElementById('current-theme-name').textContent = THEMES[theme];
+
+      // Update active state in dropdown
+      document.querySelectorAll('.theme-option').forEach(opt => {
+        opt.classList.toggle('active', opt.dataset.theme === theme);
+      });
+
+      // Close dropdown
+      document.getElementById('theme-dropdown').classList.remove('active');
+
+      // Save preference
+      if (save) {
+        localStorage.setItem('tasker-theme', theme);
+        showToast(`Theme: ${THEMES[theme]}`, 'info');
+      }
+    }
+
+    function toggleThemeDropdown() {
+      const dropdown = document.getElementById('theme-dropdown');
+      dropdown.classList.toggle('active');
+    }
+
+    // Close dropdown when clicking outside
+    document.addEventListener('click', (e) => {
+      if (!e.target.closest('.theme-switcher')) {
+        document.getElementById('theme-dropdown').classList.remove('active');
+      }
+    });
+
+    // ═══════════════════════════════════════════════════════════════
+    // API FUNCTIONS
+    // ═══════════════════════════════════════════════════════════════
     const API_BASE = '';
 
     async function fetchSessions() {
@@ -708,7 +1099,9 @@
       fetchSessions();
     }
 
-    // Render
+    // ═══════════════════════════════════════════════════════════════
+    // RENDER FUNCTIONS
+    // ═══════════════════════════════════════════════════════════════
     function renderAll() {
       renderStats();
       renderSessions();
@@ -775,29 +1168,14 @@
             <span class="section-title ${color}">▌${title}</span>
             <span class="section-count">[${count}]</span>
           </div>
-          <div class="sessions-grid">
-            ${cards.join('')}
-          </div>
+          <div class="sessions-grid">${cards.join('')}</div>
         </div>
       `;
     }
 
     function renderSessionCard(session, idx) {
-      const statusIcons = {
-        running: '▶',
-        waiting: '⏸',
-        idle: '◇',
-        lost: '✕',
-        completed: '✓'
-      };
-
-      const statusLabels = {
-        running: 'EXEC',
-        waiting: 'WAIT',
-        idle: 'IDLE',
-        lost: 'LOST',
-        completed: 'DONE'
-      };
+      const statusIcons = { running: '▶', waiting: '⏸', idle: '◇', lost: '✕', completed: '✓' };
+      const statusLabels = { running: 'EXEC', waiting: 'WAIT', idle: 'IDLE', lost: 'LOST', completed: 'DONE' };
 
       const path = formatPath(session.directory);
       const task = session.title || session.initialPrompt || '(no task)';
@@ -830,6 +1208,9 @@
       `;
     }
 
+    // ═══════════════════════════════════════════════════════════════
+    // MODAL
+    // ═══════════════════════════════════════════════════════════════
     function showSessionDetail(sessionId) {
       selectedSession = sessions.find(s => s.sessionId === sessionId);
       if (!selectedSession) return;
@@ -838,10 +1219,12 @@
       const body = document.getElementById('modal-body');
       const footer = document.getElementById('modal-footer');
 
+      const statusColors = { running: 'success', waiting: 'warning', idle: 'info', lost: 'danger', completed: 'text-dim' };
+
       body.innerHTML = `
         <div class="detail-row">
           <span class="detail-label">Status</span>
-          <span class="detail-value" style="color: var(--${getStatusColor(s.status)})">${s.status.toUpperCase()}</span>
+          <span class="detail-value" style="color: var(--${statusColors[s.status] || 'text'})">${s.status.toUpperCase()}</span>
         </div>
         <div class="detail-row">
           <span class="detail-label">Directory</span>
@@ -863,23 +1246,13 @@
           <span class="detail-label">Tool Calls</span>
           <span class="detail-value">${s.toolCount || 0}</span>
         </div>
-        ${s.lastTool ? `
-        <div class="detail-row">
-          <span class="detail-label">Last Tool</span>
-          <span class="detail-value">${escapeHtml(s.lastTool)}</span>
-        </div>
-        ` : ''}
-        ${s.pid ? `
-        <div class="detail-row">
-          <span class="detail-label">PID</span>
-          <span class="detail-value">${s.pid}</span>
-        </div>
-        ` : ''}
+        ${s.lastTool ? `<div class="detail-row"><span class="detail-label">Last Tool</span><span class="detail-value">${escapeHtml(s.lastTool)}</span></div>` : ''}
+        ${s.pid ? `<div class="detail-row"><span class="detail-label">PID</span><span class="detail-value">${s.pid}</span></div>` : ''}
       `;
 
       let footerHtml = '';
       if (s.status === 'lost') {
-        footerHtml += `<button class="btn btn-success" onclick="recoverSession('${s.sessionId}', 'resume')">Resume Session</button>`;
+        footerHtml += `<button class="btn btn-success" onclick="recoverSession('${s.sessionId}', 'resume')">Resume</button>`;
         footerHtml += `<button class="btn" onclick="recoverSession('${s.sessionId}', 'continue')">Continue</button>`;
       }
       if (s.status !== 'completed') {
@@ -888,7 +1261,6 @@
       footerHtml += `<button class="btn" onclick="closeModal()">Close</button>`;
 
       footer.innerHTML = footerHtml;
-
       document.getElementById('modal-overlay').classList.add('active');
     }
 
@@ -898,19 +1270,21 @@
       selectedSession = null;
     }
 
+    // ═══════════════════════════════════════════════════════════════
+    // TOAST
+    // ═══════════════════════════════════════════════════════════════
     function showToast(message, type = 'info') {
       const container = document.getElementById('toast-container');
       const toast = document.createElement('div');
       toast.className = `toast ${type}`;
       toast.textContent = message;
       container.appendChild(toast);
-
-      setTimeout(() => {
-        toast.remove();
-      }, 3000);
+      setTimeout(() => toast.remove(), 3000);
     }
 
-    // Helpers
+    // ═══════════════════════════════════════════════════════════════
+    // HELPERS
+    // ═══════════════════════════════════════════════════════════════
     function formatPath(path) {
       const parts = path.split('/').filter(Boolean);
       if (parts.length <= 3) return parts.join('/');
@@ -936,28 +1310,27 @@
       return div.innerHTML;
     }
 
-    function getStatusColor(status) {
-      const colors = {
-        running: 'green',
-        waiting: 'yellow',
-        idle: 'cyan',
-        lost: 'red',
-        completed: 'text-dim'
-      };
-      return colors[status] || 'text';
-    }
-
-    // Keyboard shortcuts
+    // ═══════════════════════════════════════════════════════════════
+    // KEYBOARD SHORTCUTS
+    // ═══════════════════════════════════════════════════════════════
     document.addEventListener('keydown', (e) => {
       if (e.key === 'Escape') closeModal();
-      if (e.key === 'r' && !e.metaKey && !e.ctrlKey) refreshSessions();
+      if (e.key === 'r' && !e.metaKey && !e.ctrlKey && document.activeElement.tagName !== 'INPUT') {
+        refreshSessions();
+      }
+      // Theme shortcuts: 1-5
+      if (e.key >= '1' && e.key <= '5' && !e.metaKey && !e.ctrlKey && document.activeElement.tagName !== 'INPUT') {
+        const themes = ['cyberpunk', 'matrix', 'synthwave', 'minimal', 'tokyo'];
+        setTheme(themes[parseInt(e.key) - 1]);
+      }
     });
 
-    // Auto-refresh every 30 seconds
-    setInterval(fetchSessions, 30000);
-
-    // Initial load
+    // ═══════════════════════════════════════════════════════════════
+    // INITIALIZATION
+    // ═══════════════════════════════════════════════════════════════
+    initTheme();
     fetchSessions();
+    setInterval(fetchSessions, 30000);
   </script>
 </body>
 </html>
