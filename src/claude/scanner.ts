@@ -1,5 +1,10 @@
 /**
  * Claude projects directory scanner
+ *
+ * Optimized with file modification time caching:
+ * - Tracks file modification times
+ * - Only re-parses files that have changed
+ * - Returns cached data for unchanged files
  */
 
 import { existsSync, readdirSync, statSync } from 'fs';
@@ -9,6 +14,27 @@ import { parseSessionFile } from './parser/jsonl.js';
 import type { ClaudeSessionFile } from '../core/types.js';
 import type { ParsedSessionData } from './types.js';
 import { logger } from '../utils/logger.js';
+
+// Cache for parsed session data with modification times
+interface SessionCache {
+  data: ParsedSessionData;
+  modifiedAt: number; // File modification time in ms
+}
+const sessionCache = new Map<string, SessionCache>();
+
+/** Clear the session cache */
+export function clearSessionCache(): void {
+  sessionCache.clear();
+  logger.debug('Session cache cleared');
+}
+
+/** Get cache stats for debugging */
+export function getSessionCacheStats(): { size: number; keys: string[] } {
+  return {
+    size: sessionCache.size,
+    keys: Array.from(sessionCache.keys()),
+  };
+}
 
 /** Scan projects directory for session files */
 export function scanProjectsDirectory(): ClaudeSessionFile[] {
@@ -47,26 +73,77 @@ export function scanProjectsDirectory(): ClaudeSessionFile[] {
   return sessions;
 }
 
-/** Get all sessions with parsed data */
+/** Get all sessions with parsed data (optimized with caching) */
 export async function getAllSessions(): Promise<ParsedSessionData[]> {
   const sessionFiles = scanProjectsDirectory();
   const sessions: ParsedSessionData[] = [];
+  let cacheHits = 0;
+  let cacheMisses = 0;
+
+  // Track which files we've seen to clean up stale cache entries
+  const seenFilePaths = new Set<string>();
 
   for (const file of sessionFiles) {
+    seenFilePaths.add(file.filePath);
+
     try {
+      const cached = sessionCache.get(file.filePath);
+      const fileModTime = file.modifiedAt.getTime();
+
+      // Use cache if file hasn't been modified
+      if (cached && cached.modifiedAt === fileModTime) {
+        sessions.push(cached.data);
+        cacheHits++;
+        continue;
+      }
+
+      // Parse file and update cache
       const parsed = await parseSessionFile(file.filePath);
       if (parsed) {
+        sessionCache.set(file.filePath, {
+          data: parsed,
+          modifiedAt: fileModTime,
+        });
         sessions.push(parsed);
+        cacheMisses++;
       }
     } catch (error) {
       logger.error(`Failed to parse session file: ${file.filePath}`, error);
     }
   }
 
+  // Clean up cache entries for files that no longer exist
+  for (const cachedPath of sessionCache.keys()) {
+    if (!seenFilePaths.has(cachedPath)) {
+      sessionCache.delete(cachedPath);
+      logger.debug(`Removed stale cache entry: ${cachedPath}`);
+    }
+  }
+
+  logger.debug(`Session scan: ${cacheHits} cache hits, ${cacheMisses} misses`);
   return sessions;
 }
 
-/** Get session by ID */
+/** Helper to get or parse session with caching */
+async function getOrParseSession(file: ClaudeSessionFile): Promise<ParsedSessionData | null> {
+  const cached = sessionCache.get(file.filePath);
+  const fileModTime = file.modifiedAt.getTime();
+
+  if (cached && cached.modifiedAt === fileModTime) {
+    return cached.data;
+  }
+
+  const parsed = await parseSessionFile(file.filePath);
+  if (parsed) {
+    sessionCache.set(file.filePath, {
+      data: parsed,
+      modifiedAt: fileModTime,
+    });
+  }
+  return parsed;
+}
+
+/** Get session by ID (uses cache) */
 export async function getSessionById(
   sessionId: string
 ): Promise<ParsedSessionData | null> {
@@ -75,10 +152,10 @@ export async function getSessionById(
 
   if (!file) return null;
 
-  return parseSessionFile(file.filePath);
+  return getOrParseSession(file);
 }
 
-/** Get sessions for a specific directory */
+/** Get sessions for a specific directory (uses cache) */
 export async function getSessionsByDirectory(
   directory: string
 ): Promise<ParsedSessionData[]> {
@@ -88,7 +165,7 @@ export async function getSessionsByDirectory(
 
   for (const file of filtered) {
     try {
-      const parsed = await parseSessionFile(file.filePath);
+      const parsed = await getOrParseSession(file);
       if (parsed) {
         sessions.push(parsed);
       }

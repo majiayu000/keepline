@@ -1,6 +1,8 @@
 /**
  * Web API Server for Tasker
  * Provides REST endpoints for session management
+ *
+ * All endpoints include input validation
  */
 
 import { Hono } from 'hono';
@@ -15,6 +17,11 @@ import { stopProcess, isProcessRunning } from '../../process/scanner.js';
 import { getSessionById, getAllSessions as getAllParsedSessions } from '../../claude/scanner.js';
 import { initPricing } from '../../usage/pricing.js';
 import { logger } from '../../utils/logger.js';
+import {
+  isValidSessionId,
+  validateRecoverRequest,
+  validateStopRequest,
+} from './validation.js';
 
 const app = new Hono();
 
@@ -196,8 +203,26 @@ app.get('/api/sessions/:id', async (c) => {
 
 app.post('/api/sessions/:id/recover', async (c) => {
   const sessionId = c.req.param('id');
-  const body = await c.req.json();
-  const { method = 'resume', openTerminal = true, skipPermissions = false } = body;
+
+  // Validate session ID format
+  if (!isValidSessionId(sessionId)) {
+    return c.json({ success: false, error: 'Invalid session ID format' }, 400);
+  }
+
+  // Parse and validate request body
+  let body: unknown;
+  try {
+    body = await c.req.json();
+  } catch {
+    body = {};
+  }
+
+  const validation = validateRecoverRequest(body);
+  if (!validation.valid) {
+    return c.json({ success: false, error: validation.error }, 400);
+  }
+
+  const { method = 'resume', openTerminal = true, skipPermissions = false } = validation.data;
 
   const sessions = getAllSessions();
   const session = sessions.find(s => s.sessionId === sessionId);
@@ -214,11 +239,11 @@ app.post('/api/sessions/:id/recover', async (c) => {
 
   try {
     const result = await recoverSession({
-      method: method as 'resume' | 'continue' | 'new',
+      method: method || 'resume',
       sessionId,
       directory: session.directory,
-      openTerminal,
-      skipPermissions,
+      openTerminal: openTerminal ?? true,
+      skipPermissions: skipPermissions ?? false,
     });
 
     return c.json({ success: result.success, error: result.error });
@@ -243,8 +268,26 @@ app.post('/api/sessions/:id/complete', async (c) => {
 // Stop a session process (SIGTERM or SIGKILL)
 app.post('/api/sessions/:id/stop', async (c) => {
   const sessionId = c.req.param('id');
-  const body = await c.req.json().catch(() => ({}));
-  const { force = false } = body as { force?: boolean };
+
+  // Validate session ID format
+  if (!isValidSessionId(sessionId)) {
+    return c.json({ success: false, error: 'Invalid session ID format' }, 400);
+  }
+
+  // Parse and validate request body
+  let body: unknown;
+  try {
+    body = await c.req.json();
+  } catch {
+    body = {};
+  }
+
+  const validation = validateStopRequest(body);
+  if (!validation.valid) {
+    return c.json({ success: false, error: validation.error }, 400);
+  }
+
+  const { force = false } = validation.data;
 
   const sessions = getAllSessions();
   const session = sessions.find(s => s.sessionId === sessionId);

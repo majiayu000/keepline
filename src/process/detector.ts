@@ -1,28 +1,27 @@
 /**
  * Session state detector based on process activity
+ *
+ * Thresholds are configurable via config file
  */
 
 import type { SessionStatus } from '../core/types.js';
 import type { ClaudeProcessInfo } from './types.js';
-
-/** Threshold for considering a process as active (CPU %) */
-const ACTIVE_CPU_THRESHOLD = 1.0;
-
-/** Threshold for considering a process as idle (seconds since last activity) */
-const IDLE_THRESHOLD_SECONDS = 30;
+import { config } from '../utils/config.js';
 
 /** Detect session status based on process info */
 export function detectSessionStatus(
   process: ClaudeProcessInfo | null,
   lastActivityAt?: Date
 ): SessionStatus {
+  const cfg = config.get();
+
   // No process = session is lost
   if (!process) {
     return 'lost';
   }
 
   // High CPU = actively running
-  if (process.cpu > ACTIVE_CPU_THRESHOLD) {
+  if (process.cpu > cfg.activeCpuThreshold) {
     return 'running';
   }
 
@@ -31,12 +30,12 @@ export function detectSessionStatus(
     const secondsSinceActivity = (Date.now() - lastActivityAt.getTime()) / 1000;
 
     // Very recent activity = running
-    if (secondsSinceActivity < 5) {
+    if (secondsSinceActivity < cfg.runningThresholdSeconds) {
       return 'running';
     }
 
     // Some activity = waiting for input
-    if (secondsSinceActivity < IDLE_THRESHOLD_SECONDS) {
+    if (secondsSinceActivity < cfg.idleThresholdSeconds) {
       return 'waiting';
     }
   }

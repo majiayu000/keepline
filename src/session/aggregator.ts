@@ -1,40 +1,18 @@
 /**
  * Session aggregator - combines data from multiple sources
+ *
+ * Uses cached process data for efficiency
  */
 
 import type { SessionStatus } from '../core/types.js';
 import { sessionRepo } from '../storage/index.js';
-import { scanClaudeProcesses } from '../process/scanner.js';
+import { getCachedProcesses } from '../process/scanner.js';
 import { detectSessionStatus } from '../process/detector.js';
 import type { AggregatedSession, SessionFilter, SessionSort } from './types.js';
 import type { ClaudeProcessInfo } from '../process/types.js';
 import { logger } from '../utils/logger.js';
 
-// Process cache with TTL
-const CACHE_TTL_MS = 30000; // 30 seconds
-let processCache: ClaudeProcessInfo[] | null = null;
-let processCacheTimestamp = 0;
-
-/** Get cached Claude processes */
-function getCachedProcesses(): ClaudeProcessInfo[] {
-  const now = Date.now();
-  if (processCache && now - processCacheTimestamp < CACHE_TTL_MS) {
-    return processCache;
-  }
-
-  logger.debug('Process cache miss, rescanning...');
-  processCache = scanClaudeProcesses();
-  processCacheTimestamp = now;
-  return processCache;
-}
-
-/** Invalidate process cache (call when process state changes) */
-export function invalidateProcessCache(): void {
-  processCache = null;
-  processCacheTimestamp = 0;
-}
-
-/** Get all sessions with aggregated process info */
+/** Get all sessions with aggregated process info (uses cached processes) */
 export function getAggregatedSessions(): AggregatedSession[] {
   const sessions = sessionRepo.findAll();
   const processes = getCachedProcesses();
@@ -144,7 +122,7 @@ export function groupByDirectory(
   return grouped;
 }
 
-/** Get session statistics - single pass for efficiency */
+/** Get session statistics - single pass O(n) for efficiency */
 export function getSessionStats(sessions: AggregatedSession[]): {
   total: number;
   running: number;
@@ -166,6 +144,7 @@ export function getSessionStats(sessions: AggregatedSession[]): {
 
   // Single pass through sessions
   for (const session of sessions) {
+    // Count by status
     switch (session.status) {
       case 'running':
         stats.running++;
@@ -183,6 +162,8 @@ export function getSessionStats(sessions: AggregatedSession[]): {
         stats.completed++;
         break;
     }
+
+    // Count processes
     if (session.processRunning) {
       stats.withProcess++;
     }
