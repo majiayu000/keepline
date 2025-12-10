@@ -62,3 +62,19 @@ export interface ToolCallsData {
   toolCalls: ToolCallInfo[]
   toolCount: number
 }
+
+// GET /api/sessions/:id/details (lazy loaded fields)
+export interface SessionDetailsData {
+  initialPrompt: string
+  lastMessage: string
+  lastTool: string
+  lastToolInput: string
+  currentFile: string
+  usageStats: {
+    totalInputTokens: number
+    totalOutputTokens: number
+    totalTokens: number
+    totalCost: number
+    apiCalls: number
+  }
+}

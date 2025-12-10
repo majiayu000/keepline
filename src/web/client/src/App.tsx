@@ -22,6 +22,10 @@ function AppContent() {
     recoverSession,
     stopSession,
     completeSession,
+    // Lazy loading
+    getSessionDetails,
+    loadSessionDetails,
+    isLoadingDetails,
   } = useSessions()
 
   const handleSync = useCallback(async () => {
@@ -76,6 +80,9 @@ function AppContent() {
             onRecover={handleRecover}
             onStop={handleStop}
             onComplete={handleComplete}
+            getSessionDetails={getSessionDetails}
+            loadSessionDetails={loadSessionDetails}
+            isLoadingDetails={isLoadingDetails}
           />
         </Suspense>
       )}

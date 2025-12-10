@@ -1,5 +1,5 @@
 import { useState, useMemo, memo, useCallback } from 'react'
-import type { Session } from '@/types'
+import type { Session, SessionDetailsData } from '@/types'
 import { SessionCard } from '@/components/SessionCard'
 import styles from './SessionList.module.css'
 
@@ -8,6 +8,10 @@ interface SessionListProps {
   onRecover?: (sessionId: string) => void
   onStop?: (sessionId: string) => void
   onComplete?: (sessionId: string) => void
+  // Lazy loading
+  getSessionDetails?: (sessionId: string) => SessionDetailsData | undefined
+  loadSessionDetails?: (sessionId: string) => Promise<SessionDetailsData | null>
+  isLoadingDetails?: (sessionId: string) => boolean
 }
 
 type SessionStatus = 'running' | 'waiting' | 'idle' | 'lost' | 'completed'
@@ -24,7 +28,10 @@ export const SessionList = memo(function SessionList({
   sessions,
   onRecover,
   onStop,
-  onComplete
+  onComplete,
+  getSessionDetails,
+  loadSessionDetails,
+  isLoadingDetails,
 }: SessionListProps) {
   // Memoize grouped and sorted sessions
   const groupedSessions = useMemo(() => {
@@ -76,6 +83,9 @@ export const SessionList = memo(function SessionList({
           onRecover={onRecover}
           onStop={onStop}
           onComplete={onComplete}
+          getSessionDetails={getSessionDetails}
+          loadSessionDetails={loadSessionDetails}
+          isLoadingDetails={isLoadingDetails}
         />
       )}
       {groupedSessions.waiting.length > 0 && (
@@ -85,6 +95,9 @@ export const SessionList = memo(function SessionList({
           onRecover={onRecover}
           onStop={onStop}
           onComplete={onComplete}
+          getSessionDetails={getSessionDetails}
+          loadSessionDetails={loadSessionDetails}
+          isLoadingDetails={isLoadingDetails}
         />
       )}
       {groupedSessions.idle.length > 0 && (
@@ -94,6 +107,9 @@ export const SessionList = memo(function SessionList({
           onRecover={onRecover}
           onStop={onStop}
           onComplete={onComplete}
+          getSessionDetails={getSessionDetails}
+          loadSessionDetails={loadSessionDetails}
+          isLoadingDetails={isLoadingDetails}
         />
       )}
       {/* Secondary: Lost, Completed */}
@@ -104,6 +120,9 @@ export const SessionList = memo(function SessionList({
           onRecover={onRecover}
           onStop={onStop}
           onComplete={onComplete}
+          getSessionDetails={getSessionDetails}
+          loadSessionDetails={loadSessionDetails}
+          isLoadingDetails={isLoadingDetails}
         />
       )}
       {groupedSessions.completed.length > 0 && (
@@ -113,6 +132,9 @@ export const SessionList = memo(function SessionList({
           onRecover={onRecover}
           onStop={onStop}
           onComplete={onComplete}
+          getSessionDetails={getSessionDetails}
+          loadSessionDetails={loadSessionDetails}
+          isLoadingDetails={isLoadingDetails}
           defaultCollapsed
         />
       )}
@@ -126,6 +148,9 @@ interface SessionGroupProps {
   onRecover?: (sessionId: string) => void
   onStop?: (sessionId: string) => void
   onComplete?: (sessionId: string) => void
+  getSessionDetails?: (sessionId: string) => SessionDetailsData | undefined
+  loadSessionDetails?: (sessionId: string) => Promise<SessionDetailsData | null>
+  isLoadingDetails?: (sessionId: string) => boolean
   defaultCollapsed?: boolean
 }
 
@@ -135,6 +160,9 @@ const SessionGroup = memo(function SessionGroup({
   onRecover,
   onStop,
   onComplete,
+  getSessionDetails,
+  loadSessionDetails,
+  isLoadingDetails,
   defaultCollapsed = false
 }: SessionGroupProps) {
   const [collapsed, setCollapsed] = useState(defaultCollapsed)
@@ -158,6 +186,9 @@ const SessionGroup = memo(function SessionGroup({
               onRecover={onRecover}
               onStop={onStop}
               onComplete={onComplete}
+              getSessionDetails={getSessionDetails}
+              loadSessionDetails={loadSessionDetails}
+              isLoadingDetails={isLoadingDetails}
             />
           ))}
         </div>

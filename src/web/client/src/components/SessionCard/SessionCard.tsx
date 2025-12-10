@@ -1,5 +1,5 @@
-import { useCallback, memo } from 'react'
-import type { Session } from '@/types'
+import { useCallback, useEffect, memo } from 'react'
+import type { Session, SessionDetailsData } from '@/types'
 import { Button } from '@/components/Button'
 import { ResponsePanel } from '@/components/ResponsePanel'
 import { ToolCallList } from '@/components/ToolCallList'
@@ -14,19 +14,43 @@ interface SessionCardProps {
   onRecover?: (sessionId: string) => void
   onStop?: (sessionId: string) => void
   onComplete?: (sessionId: string) => void
+  // Lazy loading
+  getSessionDetails?: (sessionId: string) => SessionDetailsData | undefined
+  loadSessionDetails?: (sessionId: string) => Promise<SessionDetailsData | null>
+  isLoadingDetails?: (sessionId: string) => boolean
 }
 
 export const SessionCard = memo(function SessionCard({
   session,
   onRecover,
   onStop,
-  onComplete
+  onComplete,
+  getSessionDetails,
+  loadSessionDetails,
+  isLoadingDetails,
 }: SessionCardProps) {
   const [expanded, toggle] = useToggle(false)
 
   const statusColor = getStatusColor(session.status)
   const cardId = `session-${session.sessionId}`
   const detailsId = `${cardId}-details`
+
+  // Get cached details or loading state
+  const details = getSessionDetails?.(session.sessionId)
+  const loadingDetails = isLoadingDetails?.(session.sessionId) ?? false
+
+  // Load details when expanded
+  useEffect(() => {
+    if (expanded && !details && !loadingDetails && loadSessionDetails) {
+      loadSessionDetails(session.sessionId)
+    }
+  }, [expanded, details, loadingDetails, loadSessionDetails, session.sessionId])
+
+  // Merge session data with lazy-loaded details
+  const initialPrompt = details?.initialPrompt ?? session.initialPrompt
+  const lastMessage = details?.lastMessage ?? session.lastMessage
+  const lastTool = details?.lastTool ?? session.lastTool
+  const usageStats = details?.usageStats ?? session.usageStats
 
   const handleKeyDown = useCallback((e: React.KeyboardEvent) => {
     if (e.key === 'Enter' || e.key === ' ') {
@@ -65,14 +89,14 @@ export const SessionCard = memo(function SessionCard({
         <div className={styles.stats}>
           <span>Tools: {session.toolCount}</span>
           <span>Messages: {session.messageCount}</span>
-          {session.lastTool && <span>Last: {session.lastTool}</span>}
+          {lastTool && <span>Last: {lastTool}</span>}
         </div>
         <div className={styles.statsRow}>
           <div className={styles.lastActive}>
             {formatRelativeTime(session.lastActiveAt)}
           </div>
-          {session.usageStats && session.usageStats.totalTokens > 0 && (
-            <UsageStats stats={session.usageStats} compact />
+          {usageStats && usageStats.totalTokens > 0 && (
+            <UsageStats stats={usageStats} compact />
           )}
         </div>
         <span className={styles.expandIcon} aria-hidden="true">

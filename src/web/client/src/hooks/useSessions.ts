@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback, useRef } from 'react'
 import { api } from '@/services/api'
 import { REFRESH_INTERVAL_MS } from '@/constants'
-import type { Session, SessionStats } from '@/types'
+import type { Session, SessionStats, SessionDetailsData } from '@/types'
 
 interface UseSessionsReturn {
   sessions: Session[]
@@ -14,6 +14,10 @@ interface UseSessionsReturn {
   recoverSession: (sessionId: string) => Promise<boolean>
   stopSession: (sessionId: string) => Promise<boolean>
   completeSession: (sessionId: string) => Promise<boolean>
+  // Lazy loading
+  getSessionDetails: (sessionId: string) => SessionDetailsData | undefined
+  loadSessionDetails: (sessionId: string) => Promise<SessionDetailsData | null>
+  isLoadingDetails: (sessionId: string) => boolean
 }
 
 export function useSessions(): UseSessionsReturn {
@@ -25,9 +29,14 @@ export function useSessions(): UseSessionsReturn {
   const intervalRef = useRef<number | null>(null)
   const mountedRef = useRef(true)
 
+  // Details cache for lazy loading
+  const [detailsCache, setDetailsCache] = useState<Map<string, SessionDetailsData>>(new Map())
+  const [loadingDetails, setLoadingDetails] = useState<Set<string>>(new Set())
+
   // Use ref to avoid stale closures in interval
   const loadSessions = useCallback(async () => {
-    const response = await api.fetchSessions()
+    // Use 'basic' mode for faster loading
+    const response = await api.fetchSessions('basic')
 
     // Only update state if component is still mounted
     if (!mountedRef.current) return
@@ -86,6 +95,48 @@ export function useSessions(): UseSessionsReturn {
     return response.success
   }, [loadSessions])
 
+  // Lazy load session details
+  const loadSessionDetails = useCallback(async (sessionId: string): Promise<SessionDetailsData | null> => {
+    // Return cached if available
+    const cached = detailsCache.get(sessionId)
+    if (cached) return cached
+
+    // Skip if already loading
+    if (loadingDetails.has(sessionId)) return null
+
+    // Mark as loading
+    setLoadingDetails(prev => new Set(prev).add(sessionId))
+
+    const response = await api.fetchSessionDetails(sessionId)
+
+    if (!mountedRef.current) return null
+
+    // Remove from loading set
+    setLoadingDetails(prev => {
+      const next = new Set(prev)
+      next.delete(sessionId)
+      return next
+    })
+
+    if (response.success && response.data) {
+      // Cache the result
+      setDetailsCache(prev => new Map(prev).set(sessionId, response.data!))
+      return response.data
+    }
+
+    return null
+  }, [detailsCache, loadingDetails])
+
+  // Get cached details (synchronous)
+  const getSessionDetails = useCallback((sessionId: string): SessionDetailsData | undefined => {
+    return detailsCache.get(sessionId)
+  }, [detailsCache])
+
+  // Check if details are loading
+  const isLoadingDetails = useCallback((sessionId: string): boolean => {
+    return loadingDetails.has(sessionId)
+  }, [loadingDetails])
+
   // Initial load - run once on mount
   useEffect(() => {
     mountedRef.current = true
@@ -120,5 +171,9 @@ export function useSessions(): UseSessionsReturn {
     recoverSession,
     stopSession,
     completeSession,
+    // Lazy loading
+    getSessionDetails,
+    loadSessionDetails,
+    isLoadingDetails,
   }
 }

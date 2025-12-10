@@ -112,6 +112,7 @@ app.get('/api/sessions', async (c) => {
     const status = c.req.query('status'); // Optional filter by status
     const sort = c.req.query('sort') || 'lastActiveAt';
     const order = c.req.query('order') === 'asc' ? 'asc' : 'desc';
+    const fields = c.req.query('fields') || 'full'; // 'basic' or 'full'
 
     await syncSessions();
     let sessions = getAggregatedSessions();
@@ -141,7 +142,43 @@ app.get('/api/sessions', async (c) => {
     // Apply pagination
     const paginatedSessions = sessions.slice(offset, offset + limit);
 
-    // Get parsed sessions with usage stats
+    // For 'basic' mode, skip expensive usageStats calculation
+    if (fields === 'basic') {
+      return c.json({
+        success: true,
+        data: {
+          sessions: paginatedSessions.map(s => ({
+            id: s.id,
+            sessionId: s.sessionId,
+            directory: s.directory,
+            status: s.status,
+            title: s.title,
+            lastActiveAt: s.lastActiveAt.toISOString(),
+            startedAt: s.startedAt?.toISOString(),
+            completedAt: s.completedAt?.toISOString(),
+            createdAt: s.createdAt.toISOString(),
+            updatedAt: s.updatedAt.toISOString(),
+            pid: s.pid,
+            tty: s.tty,
+            toolCount: s.toolCount,
+            messageCount: s.messageCount,
+            processRunning: s.processRunning,
+            cpuUsage: s.cpuUsage,
+            memoryUsage: s.memoryUsage,
+            // Omit heavy fields: initialPrompt, lastMessage, lastTool, lastToolInput, usageStats
+          })),
+          stats,
+          pagination: {
+            total,
+            limit,
+            offset,
+            hasMore: offset + limit < total,
+          },
+        },
+      });
+    }
+
+    // Full mode: include all fields with usage stats
     const parsedSessions = await getAllParsedSessions();
     const usageMap = new Map(
       parsedSessions.map(p => [p.sessionId, p.usageStats])
@@ -408,6 +445,50 @@ app.get('/api/sessions/:id/usage', async (c) => {
   } catch (error) {
     logger.error('Failed to get usage stats', error);
     return c.json({ success: false, error: 'Failed to get usage stats' }, 500);
+  }
+});
+
+// Get session details (lazy loaded fields)
+app.get('/api/sessions/:id/details', async (c) => {
+  const sessionId = c.req.param('id');
+
+  // Validate session ID format
+  if (!isValidSessionId(sessionId)) {
+    return c.json({ success: false, error: 'Invalid session ID format' }, 400);
+  }
+
+  try {
+    // Get database session for basic fields
+    const sessions = getAllSessions();
+    const dbSession = sessions.find(s => s.sessionId === sessionId);
+
+    if (!dbSession) {
+      return c.json({ success: false, error: 'Session not found' }, 404);
+    }
+
+    // Get parsed session for detailed fields
+    const parsedSession = await getSessionById(sessionId);
+
+    return c.json({
+      success: true,
+      data: {
+        initialPrompt: dbSession.initialPrompt || '',
+        lastMessage: dbSession.lastMessage || '',
+        lastTool: dbSession.lastTool || '',
+        lastToolInput: dbSession.lastToolInput || '',
+        currentFile: dbSession.currentFile || '',
+        usageStats: parsedSession?.usageStats || {
+          totalInputTokens: 0,
+          totalOutputTokens: 0,
+          totalTokens: 0,
+          totalCost: 0,
+          apiCalls: 0,
+        },
+      },
+    });
+  } catch (error) {
+    logger.error('Failed to get session details', error);
+    return c.json({ success: false, error: 'Failed to get session details' }, 500);
   }
 });
 

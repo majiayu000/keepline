@@ -7,6 +7,7 @@ import type {
   SessionsData,
   SyncResult,
   SessionDetailData,
+  SessionDetailsData,
   RecoverBody,
   StopBody,
   ProcessStatusData,
@@ -76,9 +77,13 @@ function combineAbortSignals(...signals: AbortSignal[]): AbortSignal {
 
 /**
  * GET /api/sessions - Fetch all sessions with stats
+ * @param fields - 'basic' for list view (faster), 'full' for all fields
  */
-export async function fetchSessions(signal?: AbortSignal): Promise<ApiResponse<SessionsData>> {
-  return request<SessionsData>('/sessions', undefined, signal)
+export async function fetchSessions(
+  fields: 'basic' | 'full' = 'basic',
+  signal?: AbortSignal
+): Promise<ApiResponse<SessionsData>> {
+  return request<SessionsData>(`/sessions?fields=${fields}`, undefined, signal)
 }
 
 /**
@@ -156,6 +161,16 @@ export async function fetchToolCalls(
   return request<ToolCallsData>(`/sessions/${sessionId}/tools`, undefined, signal)
 }
 
+/**
+ * GET /api/sessions/:id/details - Get lazy loaded session details
+ */
+export async function fetchSessionDetails(
+  sessionId: string,
+  signal?: AbortSignal
+): Promise<ApiResponse<SessionDetailsData>> {
+  return request<SessionDetailsData>(`/sessions/${sessionId}/details`, undefined, signal)
+}
+
 // Export all API functions
 export const api = {
   fetchSessions,
@@ -166,4 +181,5 @@ export const api = {
   stopSession,
   fetchProcessStatus,
   fetchToolCalls,
+  fetchSessionDetails,
 }
