@@ -1,3 +1,4 @@
+import { memo } from 'react'
 import { ThemeSwitcher } from '@/components/ThemeSwitcher'
 import { Button } from '@/components/Button'
 import styles from './Header.module.css'
@@ -7,9 +8,9 @@ interface HeaderProps {
   syncing?: boolean
 }
 
-export function Header({ onSync, syncing = false }: HeaderProps) {
+export const Header = memo(function Header({ onSync, syncing = false }: HeaderProps) {
   return (
-    <header className={styles.header}>
+    <header className={styles.header} role="banner">
       <div className={styles.brand}>
         <h1 className={styles.title}>TASKER</h1>
         <span className={styles.subtitle}>Claude Code Monitor</span>
@@ -27,4 +28,4 @@ export function Header({ onSync, syncing = false }: HeaderProps) {
       </div>
     </header>
   )
-}
+})

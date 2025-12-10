@@ -1,4 +1,4 @@
-import { useState, memo } from 'react'
+import { useCallback, memo } from 'react'
 import type { Session } from '@/types'
 import { Button } from '@/components/Button'
 import { ResponsePanel } from '@/components/ResponsePanel'
@@ -6,6 +6,7 @@ import { ToolCallList } from '@/components/ToolCallList'
 import { UsageStats } from '@/components/UsageStats'
 import { formatRelativeTime, formatPath } from '@/utils/format'
 import { getStatusColor } from '@/constants'
+import { useToggle } from '@/hooks'
 import styles from './SessionCard.module.css'
 
 interface SessionCardProps {
@@ -21,13 +22,34 @@ export const SessionCard = memo(function SessionCard({
   onStop,
   onComplete
 }: SessionCardProps) {
-  const [expanded, setExpanded] = useState(false)
+  const [expanded, toggle] = useToggle(false)
 
   const statusColor = getStatusColor(session.status)
+  const cardId = `session-${session.sessionId}`
+  const detailsId = `${cardId}-details`
+
+  const handleKeyDown = useCallback((e: React.KeyboardEvent) => {
+    if (e.key === 'Enter' || e.key === ' ') {
+      e.preventDefault()
+      toggle()
+    }
+  }, [toggle])
 
   return (
-    <div className={styles.card} style={{ borderLeftColor: statusColor }}>
-      <div className={styles.header} onClick={() => setExpanded(!expanded)}>
+    <article
+      className={styles.card}
+      style={{ borderLeftColor: statusColor }}
+      aria-labelledby={`${cardId}-title`}
+    >
+      <div
+        className={styles.header}
+        onClick={toggle}
+        onKeyDown={handleKeyDown}
+        role="button"
+        tabIndex={0}
+        aria-expanded={expanded}
+        aria-controls={detailsId}
+      >
         <div className={styles.statusRow}>
           <span className={styles.status} style={{ color: statusColor }}>
             {session.status}
@@ -36,7 +58,7 @@ export const SessionCard = memo(function SessionCard({
             {session.pid ? `PID: ${session.pid}` : 'No process'}
           </span>
         </div>
-        <div className={styles.title}>
+        <div className={styles.title} id={`${cardId}-title`}>
           {session.title || '(no title)'}
         </div>
         <div className={styles.path}>{formatPath(session.directory)}</div>
@@ -53,40 +75,42 @@ export const SessionCard = memo(function SessionCard({
             <UsageStats stats={session.usageStats} compact />
           )}
         </div>
-        <span className={styles.expandIcon}>{expanded ? '▼' : '▶'}</span>
+        <span className={styles.expandIcon} aria-hidden="true">
+          {expanded ? '▼' : '▶'}
+        </span>
       </div>
 
       {expanded && (
-        <div className={styles.details}>
+        <div className={styles.details} id={detailsId}>
           {session.initialPrompt && (
-            <div className={styles.section}>
+            <section className={styles.section}>
               <h4 className={styles.sectionTitle}>Initial Prompt</h4>
               <div className={styles.promptBox}>{session.initialPrompt}</div>
-            </div>
+            </section>
           )}
 
           {session.toolCount > 0 && (
-            <div className={styles.section}>
+            <section className={styles.section}>
               <h4 className={styles.sectionTitle}>Tool Calls</h4>
               <ToolCallList sessionId={session.sessionId} toolCount={session.toolCount} />
-            </div>
+            </section>
           )}
 
           {session.lastMessage && (
-            <div className={styles.section}>
+            <section className={styles.section}>
               <h4 className={styles.sectionTitle}>Last Response</h4>
               <ResponsePanel content={session.lastMessage} />
-            </div>
+            </section>
           )}
 
           {session.usageStats && session.usageStats.totalTokens > 0 && (
-            <div className={styles.section}>
+            <section className={styles.section}>
               <h4 className={styles.sectionTitle}>Usage Statistics</h4>
               <UsageStats stats={session.usageStats} />
-            </div>
+            </section>
           )}
 
-          <div className={styles.actions}>
+          <div className={styles.actions} role="group" aria-label="Session actions">
             {session.status === 'lost' && onRecover && (
               <Button variant="success" size="sm" onClick={() => onRecover(session.sessionId)}>
                 Recover
@@ -105,6 +129,6 @@ export const SessionCard = memo(function SessionCard({
           </div>
         </div>
       )}
-    </div>
+    </article>
   )
 })

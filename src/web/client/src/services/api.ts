@@ -12,11 +12,7 @@ import type {
   ProcessStatusData,
   ToolCallsData,
 } from '@/types'
-
-const API_BASE = '/api'
-
-/** Default request timeout in ms */
-const DEFAULT_TIMEOUT = 30000
+import { API_BASE, API_TIMEOUT_MS } from '@/constants'
 
 interface RequestOptions extends RequestInit {
   timeout?: number
@@ -27,7 +23,7 @@ async function request<T>(
   options?: RequestOptions,
   signal?: AbortSignal
 ): Promise<ApiResponse<T>> {
-  const { timeout = DEFAULT_TIMEOUT, ...fetchOptions } = options || {}
+  const { timeout = API_TIMEOUT_MS, ...fetchOptions } = options || {}
 
   // Create timeout controller if no external signal provided
   const timeoutController = new AbortController()

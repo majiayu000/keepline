@@ -57,18 +57,4 @@ export interface SessionStats {
   completed: number
 }
 
-export const STATUS_ICONS: Record<SessionStatus, string> = {
-  running: '▶',
-  waiting: '⏸',
-  idle: '◇',
-  lost: '✕',
-  completed: '✓',
-}
-
-export const STATUS_LABELS: Record<SessionStatus, string> = {
-  running: 'EXEC',
-  waiting: 'WAIT',
-  idle: 'IDLE',
-  lost: 'LOST',
-  completed: 'DONE',
-}
+// Note: STATUS_ICONS and STATUS_LABELS are now in @/constants

@@ -1,3 +1,4 @@
+import { memo } from 'react'
 import styles from './Spinner.module.css'
 
 interface SpinnerProps {
@@ -5,10 +6,14 @@ interface SpinnerProps {
   className?: string
 }
 
-export function Spinner({ size = 'md', className = '' }: SpinnerProps) {
+export const Spinner = memo(function Spinner({ size = 'md', className = '' }: SpinnerProps) {
   return (
-    <div className={`${styles.spinner} ${styles[size]} ${className}`}>
+    <div
+      className={`${styles.spinner} ${styles[size]} ${className}`}
+      role="status"
+      aria-label="Loading"
+    >
       <div className={styles.inner} />
     </div>
   )
-}
+})

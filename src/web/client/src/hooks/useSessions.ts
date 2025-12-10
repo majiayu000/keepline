@@ -1,8 +1,7 @@
 import { useState, useEffect, useCallback, useRef } from 'react'
 import { api } from '@/services/api'
+import { REFRESH_INTERVAL_MS } from '@/constants'
 import type { Session, SessionStats } from '@/types'
-
-const REFRESH_INTERVAL = 30000 // 30 seconds
 
 interface UseSessionsReturn {
   sessions: Session[]
@@ -24,9 +23,14 @@ export function useSessions(): UseSessionsReturn {
   const [syncing, setSyncing] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const intervalRef = useRef<number | null>(null)
+  const mountedRef = useRef(true)
 
+  // Use ref to avoid stale closures in interval
   const loadSessions = useCallback(async () => {
     const response = await api.fetchSessions()
+
+    // Only update state if component is still mounted
+    if (!mountedRef.current) return
 
     if (response.success && response.data) {
       setSessions(response.data.sessions)
@@ -40,7 +44,9 @@ export function useSessions(): UseSessionsReturn {
   const refresh = useCallback(async () => {
     setLoading(true)
     await loadSessions()
-    setLoading(false)
+    if (mountedRef.current) {
+      setLoading(false)
+    }
   }, [loadSessions])
 
   const sync = useCallback(async () => {
@@ -50,7 +56,9 @@ export function useSessions(): UseSessionsReturn {
     if (success) {
       await loadSessions()
     }
-    setSyncing(false)
+    if (mountedRef.current) {
+      setSyncing(false)
+    }
     return success
   }, [loadSessions])
 
@@ -78,16 +86,21 @@ export function useSessions(): UseSessionsReturn {
     return response.success
   }, [loadSessions])
 
-  // Initial load
+  // Initial load - run once on mount
   useEffect(() => {
+    mountedRef.current = true
     refresh()
-  }, [refresh])
 
-  // Auto-refresh
+    return () => {
+      mountedRef.current = false
+    }
+  }, []) // Empty deps - only run on mount
+
+  // Auto-refresh interval
   useEffect(() => {
     intervalRef.current = window.setInterval(() => {
       loadSessions()
-    }, REFRESH_INTERVAL)
+    }, REFRESH_INTERVAL_MS)
 
     return () => {
       if (intervalRef.current) {

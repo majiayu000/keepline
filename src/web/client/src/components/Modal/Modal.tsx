@@ -1,4 +1,4 @@
-import { ReactNode, useEffect, useCallback } from 'react'
+import { ReactNode, useEffect, useCallback, memo } from 'react'
 import { Button } from '@/components/Button'
 import styles from './Modal.module.css'
 
@@ -10,7 +10,7 @@ interface ModalProps {
   actions?: ReactNode
 }
 
-export function Modal({ isOpen, onClose, title, children, actions }: ModalProps) {
+export const Modal = memo(function Modal({ isOpen, onClose, title, children, actions }: ModalProps) {
   const handleEscape = useCallback((e: KeyboardEvent) => {
     if (e.key === 'Escape') {
       onClose()
@@ -31,11 +31,17 @@ export function Modal({ isOpen, onClose, title, children, actions }: ModalProps)
   if (!isOpen) return null
 
   return (
-    <div className={styles.overlay} onClick={onClose}>
+    <div
+      className={styles.overlay}
+      onClick={onClose}
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="modal-title"
+    >
       <div className={styles.modal} onClick={(e) => e.stopPropagation()}>
         <div className={styles.header}>
-          <h2 className={styles.title}>{title}</h2>
-          <Button variant="ghost" size="sm" onClick={onClose} aria-label="Close">
+          <h2 id="modal-title" className={styles.title}>{title}</h2>
+          <Button variant="ghost" size="sm" onClick={onClose} aria-label="Close modal">
             ×
           </Button>
         </div>
@@ -44,4 +50,4 @@ export function Modal({ isOpen, onClose, title, children, actions }: ModalProps)
       </div>
     </div>
   )
-}
+})

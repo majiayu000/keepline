@@ -1,10 +1,14 @@
-import { useState, useEffect, memo } from 'react'
+import { useState, useEffect, useCallback, memo, useMemo } from 'react'
 import type { ToolCallInfo } from '@/types'
 import { fetchToolCalls } from '@/services/api'
 import { Spinner } from '@/components/Spinner'
+import { Button } from '@/components/Button'
 import { formatTime, formatInput } from '@/utils/format'
 import { getToolColor } from '@/constants'
 import styles from './ToolCallList.module.css'
+
+/** Number of items to show per page */
+const PAGE_SIZE = 20
 
 interface ToolCallListProps {
   sessionId: string
@@ -17,6 +21,7 @@ export const ToolCallList = memo(function ToolCallList({ sessionId }: ToolCallLi
   const [error, setError] = useState<string | null>(null)
   const [loaded, setLoaded] = useState(false)
   const [expandedIndex, setExpandedIndex] = useState<number | null>(null)
+  const [visibleCount, setVisibleCount] = useState(PAGE_SIZE)
 
   useEffect(() => {
     async function loadToolCalls() {
@@ -40,6 +45,22 @@ export const ToolCallList = memo(function ToolCallList({ sessionId }: ToolCallLi
     loadToolCalls()
   }, [sessionId, loaded])
 
+  const handleToggle = useCallback((index: number) => {
+    setExpandedIndex(prev => prev === index ? null : index)
+  }, [])
+
+  const loadMore = useCallback(() => {
+    setVisibleCount(prev => Math.min(prev + PAGE_SIZE, toolCalls.length))
+  }, [toolCalls.length])
+
+  // Memoize visible items
+  const visibleCalls = useMemo(
+    () => toolCalls.slice(0, visibleCount),
+    [toolCalls, visibleCount]
+  )
+
+  const hasMore = visibleCount < toolCalls.length
+
   if (loading) {
     return (
       <div className={styles.loading}>
@@ -60,17 +81,27 @@ export const ToolCallList = memo(function ToolCallList({ sessionId }: ToolCallLi
   return (
     <div className={styles.list}>
       <div className={styles.header}>
-        <span className={styles.count}>{toolCalls.length} tool calls</span>
+        <span className={styles.count}>
+          {toolCalls.length} tool calls
+          {hasMore && ` (showing ${visibleCount})`}
+        </span>
       </div>
-      {toolCalls.map((call, index) => (
+      {visibleCalls.map((call, index) => (
         <ToolCallItem
           key={`${call.timestamp}-${index}`}
           call={call}
           index={index}
           expanded={expandedIndex === index}
-          onToggle={() => setExpandedIndex(expandedIndex === index ? null : index)}
+          onToggle={handleToggle}
         />
       ))}
+      {hasMore && (
+        <div className={styles.loadMore}>
+          <Button variant="ghost" size="sm" onClick={loadMore}>
+            Load more ({toolCalls.length - visibleCount} remaining)
+          </Button>
+        </div>
+      )}
     </div>
   )
 })
@@ -79,22 +110,40 @@ interface ToolCallItemProps {
   call: ToolCallInfo
   index: number
   expanded: boolean
-  onToggle: () => void
+  onToggle: (index: number) => void
 }
 
 const ToolCallItem = memo(function ToolCallItem({ call, index, expanded, onToggle }: ToolCallItemProps) {
   const time = formatTime(call.timestamp)
   const toolColor = getToolColor(call.name)
 
+  const handleClick = useCallback(() => {
+    onToggle(index)
+  }, [onToggle, index])
+
+  const handleKeyDown = useCallback((e: React.KeyboardEvent) => {
+    if (e.key === 'Enter' || e.key === ' ') {
+      e.preventDefault()
+      onToggle(index)
+    }
+  }, [onToggle, index])
+
   return (
     <div className={styles.item}>
-      <div className={styles.itemHeader} onClick={onToggle}>
+      <div
+        className={styles.itemHeader}
+        onClick={handleClick}
+        onKeyDown={handleKeyDown}
+        role="button"
+        tabIndex={0}
+        aria-expanded={expanded}
+      >
         <span className={styles.index}>#{index + 1}</span>
         <span className={styles.toolName} style={{ color: toolColor }}>
           {call.name}
         </span>
         <span className={styles.time}>{time}</span>
-        <span className={styles.expandIcon}>{expanded ? '−' : '+'}</span>
+        <span className={styles.expandIcon} aria-hidden="true">{expanded ? '−' : '+'}</span>
       </div>
       {expanded && (
         <div className={styles.input}>

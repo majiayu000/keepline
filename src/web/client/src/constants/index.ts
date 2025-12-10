@@ -3,9 +3,16 @@
  */
 
 import type { ToastType } from '@/components/Toast'
+import type { SessionStatus } from '@/types'
+
+/** Auto-refresh interval in milliseconds */
+export const REFRESH_INTERVAL_MS = 30000 // 30 seconds
+
+/** API request timeout in milliseconds */
+export const API_TIMEOUT_MS = 30000
 
 /** Session status colors */
-export const STATUS_COLORS: Record<string, string> = {
+export const STATUS_COLORS: Record<SessionStatus, string> = {
   running: 'var(--success)',
   waiting: 'var(--warning)',
   idle: 'var(--info)',
@@ -15,7 +22,25 @@ export const STATUS_COLORS: Record<string, string> = {
 
 /** Get status color with fallback */
 export function getStatusColor(status: string): string {
-  return STATUS_COLORS[status] || 'var(--text-dim)'
+  return STATUS_COLORS[status as SessionStatus] || 'var(--text-dim)'
+}
+
+/** Session status icons */
+export const STATUS_ICONS: Record<SessionStatus, string> = {
+  running: '▶',
+  waiting: '⏸',
+  idle: '◇',
+  lost: '✕',
+  completed: '✓',
+}
+
+/** Session status labels */
+export const STATUS_LABELS: Record<SessionStatus, string> = {
+  running: 'EXEC',
+  waiting: 'WAIT',
+  idle: 'IDLE',
+  lost: 'LOST',
+  completed: 'DONE',
 }
 
 /** Tool name colors */
@@ -49,9 +74,6 @@ export const TOAST_ICONS: Record<ToastType, string> = {
 export function getToastIcon(type: ToastType): string {
   return TOAST_ICONS[type]
 }
-
-/** Refresh intervals */
-export const REFRESH_INTERVAL_MS = 30000
 
 /** API endpoints */
 export const API_BASE = '/api'

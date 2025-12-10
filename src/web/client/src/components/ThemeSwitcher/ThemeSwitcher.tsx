@@ -1,7 +1,9 @@
-import { useState } from 'react'
+import { useRef, useCallback, memo } from 'react'
 import { useTheme, Theme, THEMES } from '@/contexts/ThemeContext'
+import { useClickOutside, useToggle } from '@/hooks'
 import styles from './ThemeSwitcher.module.css'
 
+// Theme preview colors - matches CSS variables in index.css
 const THEME_COLORS: Record<Theme, [string, string, string]> = {
   cyberpunk: ['#00fff9', '#ff00ff', '#0a0a0f'],
   matrix: ['#00ff41', '#008f11', '#0d0208'],
@@ -10,34 +12,47 @@ const THEME_COLORS: Record<Theme, [string, string, string]> = {
   tokyo: ['#7aa2f7', '#bb9af7', '#1a1b26'],
 }
 
-export function ThemeSwitcher() {
+export const ThemeSwitcher = memo(function ThemeSwitcher() {
   const { theme, setTheme } = useTheme()
-  const [isOpen, setIsOpen] = useState(false)
+  const [isOpen, toggle, , close] = useToggle(false)
+  const containerRef = useRef<HTMLDivElement>(null)
+
+  useClickOutside(containerRef, close, isOpen)
+
+  const handleSelect = useCallback((t: Theme) => {
+    setTheme(t)
+    close()
+  }, [setTheme, close])
 
   return (
-    <div className={styles.container}>
+    <div className={styles.container} ref={containerRef}>
       <button
         className={styles.button}
-        onClick={() => setIsOpen(!isOpen)}
+        onClick={toggle}
         aria-label="Change theme"
+        aria-expanded={isOpen}
+        aria-haspopup="listbox"
       >
         <span>🎨</span>
         <span>{THEMES[theme]}</span>
-        <span>▾</span>
+        <span aria-hidden="true">▾</span>
       </button>
 
       {isOpen && (
-        <div className={styles.dropdown}>
+        <div
+          className={styles.dropdown}
+          role="listbox"
+          aria-label="Theme options"
+        >
           {(Object.keys(THEMES) as Theme[]).map((t) => (
             <button
               key={t}
               className={`${styles.option} ${t === theme ? styles.active : ''}`}
-              onClick={() => {
-                setTheme(t)
-                setIsOpen(false)
-              }}
+              onClick={() => handleSelect(t)}
+              role="option"
+              aria-selected={t === theme}
             >
-              <div className={styles.preview}>
+              <div className={styles.preview} aria-hidden="true">
                 {THEME_COLORS[t].map((color, i) => (
                   <span
                     key={i}
@@ -56,4 +71,4 @@ export function ThemeSwitcher() {
       )}
     </div>
   )
-}
+})

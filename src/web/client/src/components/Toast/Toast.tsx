@@ -1,4 +1,4 @@
-import { createContext, useContext, useState, useCallback, ReactNode } from 'react'
+import { createContext, useContext, useState, useCallback, useRef, ReactNode } from 'react'
 import { getToastIcon } from '@/constants'
 import styles from './Toast.module.css'
 
@@ -16,13 +16,12 @@ interface ToastContextType {
 
 const ToastContext = createContext<ToastContextType | null>(null)
 
-let toastId = 0
-
 export function ToastProvider({ children }: { children: ReactNode }) {
   const [toasts, setToasts] = useState<Toast[]>([])
+  const toastIdRef = useRef(0)
 
   const showToast = useCallback((message: string, type: ToastType = 'info') => {
-    const id = ++toastId
+    const id = ++toastIdRef.current
     setToasts((prev) => [...prev, { id, message, type }])
     setTimeout(() => {
       setToasts((prev) => prev.filter((t) => t.id !== id))
@@ -36,14 +35,15 @@ export function ToastProvider({ children }: { children: ReactNode }) {
   return (
     <ToastContext.Provider value={{ showToast }}>
       {children}
-      <div className={styles.container}>
+      <div className={styles.container} aria-live="polite" aria-atomic="true">
         {toasts.map((toast) => (
           <div
             key={toast.id}
             className={`${styles.toast} ${styles[toast.type]}`}
             onClick={() => removeToast(toast.id)}
+            role="alert"
           >
-            <span className={styles.icon}>{getToastIcon(toast.type)}</span>
+            <span className={styles.icon} aria-hidden="true">{getToastIcon(toast.type)}</span>
             <span className={styles.message}>{toast.message}</span>
           </div>
         ))}

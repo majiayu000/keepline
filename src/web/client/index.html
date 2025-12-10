@@ -3,10 +3,65 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="description" content="Monitor and recover Claude Code sessions" />
+    <meta name="theme-color" content="#0a0a0f" />
     <title>TASKER // Claude Code Monitor</title>
+    <!-- Preconnect to API -->
+    <link rel="preconnect" href="/api" />
+    <!-- Preload critical fonts -->
+    <link rel="preload" href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600&display=swap" as="style" onload="this.onload=null;this.rel='stylesheet'" />
+    <noscript><link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600&display=swap" /></noscript>
+    <!-- Inline critical CSS for initial render -->
+    <style>
+      *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+      :root {
+        --bg-base: #0a0a0f;
+        --primary: #00fff9;
+        --text: #a0a0c0;
+      }
+      body {
+        font-family: 'JetBrains Mono', monospace;
+        background: var(--bg-base);
+        color: var(--text);
+        min-height: 100vh;
+      }
+      #root {
+        min-height: 100vh;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+      }
+      .initial-loader {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        gap: 1rem;
+      }
+      .initial-loader-spinner {
+        width: 32px;
+        height: 32px;
+        border: 2px solid var(--bg-base);
+        border-top-color: var(--primary);
+        border-radius: 50%;
+        animation: spin 1s linear infinite;
+      }
+      .initial-loader-text {
+        color: var(--primary);
+        font-size: 0.875rem;
+      }
+      @keyframes spin {
+        to { transform: rotate(360deg); }
+      }
+    </style>
   </head>
   <body>
-    <div id="root"></div>
+    <div id="root">
+      <!-- Initial loading state before React hydrates -->
+      <div class="initial-loader">
+        <div class="initial-loader-spinner"></div>
+        <span class="initial-loader-text">Loading TASKER...</span>
+      </div>
+    </div>
     <script type="module" src="/src/main.tsx"></script>
   </body>
 </html>

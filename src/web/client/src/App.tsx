@@ -1,10 +1,13 @@
-import { useCallback } from 'react'
+import { useCallback, lazy, Suspense } from 'react'
 import { ThemeProvider } from '@/contexts/ThemeContext'
 import { ToastProvider, useToast } from '@/components/Toast'
+import { ErrorBoundary } from '@/components/ErrorBoundary'
 import { Layout, layoutStyles } from '@/components/Layout'
-import { SessionList } from '@/components/SessionList'
-import { Spinner } from '@/components/Spinner'
+import { SessionCardSkeleton } from '@/components/Skeleton'
 import { useSessions, useKeyboardShortcuts } from '@/hooks'
+
+// Lazy load heavy components
+const SessionList = lazy(() => import('@/components/SessionList').then(m => ({ default: m.SessionList })))
 
 function AppContent() {
   const { showToast } = useToast()
@@ -58,26 +61,23 @@ function AppContent() {
 
   return (
     <Layout stats={stats} loading={loading} onSync={handleSync} syncing={syncing}>
-      {loading && (
-        <div className={layoutStyles.loadingContainer}>
-          <Spinner size="md" />
-          <span className={layoutStyles.loadingText}>Loading sessions...</span>
-        </div>
-      )}
+      {loading && <SessionCardSkeleton count={4} />}
 
       {error && !loading && (
-        <div className={layoutStyles.errorBox}>
+        <div className={layoutStyles.errorBox} role="alert">
           Error: {error}
         </div>
       )}
 
       {!loading && (
-        <SessionList
-          sessions={sessions}
-          onRecover={handleRecover}
-          onStop={handleStop}
-          onComplete={handleComplete}
-        />
+        <Suspense fallback={<SessionCardSkeleton count={4} />}>
+          <SessionList
+            sessions={sessions}
+            onRecover={handleRecover}
+            onStop={handleStop}
+            onComplete={handleComplete}
+          />
+        </Suspense>
       )}
     </Layout>
   )
@@ -85,11 +85,13 @@ function AppContent() {
 
 function App() {
   return (
-    <ThemeProvider>
-      <ToastProvider>
-        <AppContent />
-      </ToastProvider>
-    </ThemeProvider>
+    <ErrorBoundary>
+      <ThemeProvider>
+        <ToastProvider>
+          <AppContent />
+        </ToastProvider>
+      </ThemeProvider>
+    </ErrorBoundary>
   )
 }
 

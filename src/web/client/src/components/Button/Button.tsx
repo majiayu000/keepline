@@ -1,4 +1,4 @@
-import { ButtonHTMLAttributes, ReactNode } from 'react'
+import { ButtonHTMLAttributes, ReactNode, memo } from 'react'
 import styles from './Button.module.css'
 
 export type ButtonVariant = 'primary' | 'secondary' | 'danger' | 'success' | 'ghost'
@@ -11,7 +11,7 @@ interface ButtonProps extends ButtonHTMLAttributes<HTMLButtonElement> {
   children: ReactNode
 }
 
-export function Button({
+export const Button = memo(function Button({
   variant = 'primary',
   size = 'md',
   loading = false,
@@ -24,10 +24,11 @@ export function Button({
     <button
       className={`${styles.button} ${styles[variant]} ${styles[size]} ${className || ''}`}
       disabled={disabled || loading}
+      aria-busy={loading}
       {...props}
     >
-      {loading && <span className={styles.spinner} />}
+      {loading && <span className={styles.spinner} aria-hidden="true" />}
       {children}
     </button>
   )
-}
+})
