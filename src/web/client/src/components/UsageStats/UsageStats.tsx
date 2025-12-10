@@ -1,4 +1,6 @@
+import { memo } from 'react'
 import type { UsageStats as UsageStatsType } from '@/types'
+import { formatTokens, formatCost } from '@/utils/format'
 import styles from './UsageStats.module.css'
 
 interface UsageStatsProps {
@@ -6,19 +8,7 @@ interface UsageStatsProps {
   compact?: boolean
 }
 
-export function UsageStats({ stats, compact = false }: UsageStatsProps) {
-  const formatTokens = (n: number): string => {
-    if (n >= 1_000_000) return `${(n / 1_000_000).toFixed(1)}M`
-    if (n >= 1_000) return `${(n / 1_000).toFixed(1)}K`
-    return n.toString()
-  }
-
-  const formatCost = (cost: number): string => {
-    if (cost < 0.01) return `$${cost.toFixed(4)}`
-    if (cost < 1) return `$${cost.toFixed(3)}`
-    return `$${cost.toFixed(2)}`
-  }
-
+export const UsageStats = memo(function UsageStats({ stats, compact = false }: UsageStatsProps) {
   if (compact) {
     return (
       <div className={styles.compact}>
@@ -56,4 +46,4 @@ export function UsageStats({ stats, compact = false }: UsageStatsProps) {
       </div>
     </div>
   )
-}
+})

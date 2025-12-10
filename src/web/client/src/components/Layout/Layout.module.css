@@ -8,6 +8,28 @@
 
 .main {
   flex: 1;
-  padding: 1.5rem 2rem;
+  padding: var(--space-xl) var(--space-2xl);
   overflow-y: auto;
+}
+
+/* App state styles */
+.loadingContainer {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-sm);
+  padding: var(--space-2xl);
+}
+
+.loadingText {
+  color: var(--primary);
+}
+
+.errorBox {
+  padding: var(--space-lg);
+  background: var(--bg-surface);
+  border: 1px solid var(--danger);
+  border-radius: var(--radius-md);
+  color: var(--danger);
+  margin-bottom: var(--space-lg);
 }

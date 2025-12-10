@@ -1,3 +1,4 @@
+import { memo } from 'react'
 import type { SessionStats } from '@/types'
 import styles from './StatsBar.module.css'
 
@@ -6,7 +7,7 @@ interface StatsBarProps {
   loading?: boolean
 }
 
-export function StatsBar({ stats, loading }: StatsBarProps) {
+export const StatsBar = memo(function StatsBar({ stats, loading }: StatsBarProps) {
   if (loading || !stats) {
     return (
       <div className={styles.container}>
@@ -25,7 +26,7 @@ export function StatsBar({ stats, loading }: StatsBarProps) {
       <StatItem label="Total" value={stats.total} variant="default" />
     </div>
   )
-}
+})
 
 type StatVariant = 'success' | 'warning' | 'info' | 'danger' | 'default'
 
@@ -35,11 +36,11 @@ interface StatItemProps {
   variant: StatVariant
 }
 
-function StatItem({ label, value, variant }: StatItemProps) {
+const StatItem = memo(function StatItem({ label, value, variant }: StatItemProps) {
   return (
     <div className={styles.stat}>
       <span className={`${styles.value} ${styles[variant]}`}>{value}</span>
       <span className={styles.label}>{label}</span>
     </div>
   )
-}
+})

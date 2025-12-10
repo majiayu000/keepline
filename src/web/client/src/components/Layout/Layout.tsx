@@ -1,4 +1,4 @@
-import { ReactNode } from 'react'
+import { ReactNode, memo } from 'react'
 import { Header } from '@/components/Header'
 import { StatsBar } from '@/components/StatsBar'
 import type { SessionStats } from '@/types'
@@ -12,7 +12,7 @@ interface LayoutProps {
   syncing?: boolean
 }
 
-export function Layout({ children, stats, loading, onSync, syncing }: LayoutProps) {
+export const Layout = memo(function Layout({ children, stats, loading, onSync, syncing }: LayoutProps) {
   return (
     <div className={styles.layout}>
       <Header onSync={onSync} syncing={syncing} />
@@ -20,4 +20,7 @@ export function Layout({ children, stats, loading, onSync, syncing }: LayoutProp
       <main className={styles.main}>{children}</main>
     </div>
   )
-}
+})
+
+// Export styles for use in App.tsx
+export { styles as layoutStyles }

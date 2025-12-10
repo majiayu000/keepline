@@ -7,6 +7,38 @@
 *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 
 /* ─────────────────────────────────────────────────────────────────
+   DESIGN TOKENS - Spacing & Sizing
+───────────────────────────────────────────────────────────────── */
+:root {
+  /* Spacing scale */
+  --space-xs: 0.25rem;   /* 4px */
+  --space-sm: 0.5rem;    /* 8px */
+  --space-md: 0.75rem;   /* 12px */
+  --space-lg: 1rem;      /* 16px */
+  --space-xl: 1.5rem;    /* 24px */
+  --space-2xl: 2rem;     /* 32px */
+
+  /* Font sizes */
+  --text-xs: 0.7rem;     /* 11.2px */
+  --text-sm: 0.8rem;     /* 12.8px */
+  --text-base: 0.875rem; /* 14px */
+  --text-md: 0.9rem;     /* 14.4px */
+  --text-lg: 1rem;       /* 16px */
+  --text-xl: 1.25rem;    /* 20px */
+
+  /* Border radius */
+  --radius-sm: 4px;
+  --radius-md: 6px;
+  --radius-lg: 8px;
+  --radius-xl: 12px;
+
+  /* Transitions */
+  --transition-fast: 0.15s ease;
+  --transition-normal: 0.2s ease;
+  --transition-slow: 0.3s ease;
+}
+
+/* ─────────────────────────────────────────────────────────────────
    THEME: CYBERPUNK (Default)
 ───────────────────────────────────────────────────────────────── */
 [data-theme="cyberpunk"] {

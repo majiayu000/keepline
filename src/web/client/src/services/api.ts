@@ -15,48 +15,91 @@ import type {
 
 const API_BASE = '/api'
 
+/** Default request timeout in ms */
+const DEFAULT_TIMEOUT = 30000
+
+interface RequestOptions extends RequestInit {
+  timeout?: number
+}
+
 async function request<T>(
   endpoint: string,
-  options?: RequestInit
+  options?: RequestOptions,
+  signal?: AbortSignal
 ): Promise<ApiResponse<T>> {
+  const { timeout = DEFAULT_TIMEOUT, ...fetchOptions } = options || {}
+
+  // Create timeout controller if no external signal provided
+  const timeoutController = new AbortController()
+  const timeoutId = setTimeout(() => timeoutController.abort(), timeout)
+
+  // Combine external signal with timeout
+  const combinedSignal = signal
+    ? combineAbortSignals(signal, timeoutController.signal)
+    : timeoutController.signal
+
   try {
     const response = await fetch(`${API_BASE}${endpoint}`, {
-      ...options,
+      ...fetchOptions,
+      signal: combinedSignal,
       headers: {
         'Content-Type': 'application/json',
-        ...options?.headers,
+        ...fetchOptions?.headers,
       },
     })
+    clearTimeout(timeoutId)
     return await response.json()
   } catch (error) {
-    return {
-      success: false,
-      error: error instanceof Error ? error.message : 'Unknown error',
+    clearTimeout(timeoutId)
+
+    if (error instanceof Error) {
+      if (error.name === 'AbortError') {
+        return {
+          success: false,
+          error: signal?.aborted ? 'Request cancelled' : 'Request timeout',
+        }
+      }
+      return { success: false, error: error.message }
     }
+    return { success: false, error: 'Unknown error' }
   }
+}
+
+/** Combine multiple abort signals into one */
+function combineAbortSignals(...signals: AbortSignal[]): AbortSignal {
+  const controller = new AbortController()
+  for (const signal of signals) {
+    if (signal.aborted) {
+      controller.abort()
+      break
+    }
+    signal.addEventListener('abort', () => controller.abort(), { once: true })
+  }
+  return controller.signal
 }
 
 /**
  * GET /api/sessions - Fetch all sessions with stats
  */
-export async function fetchSessions(): Promise<ApiResponse<SessionsData>> {
-  return request<SessionsData>('/sessions')
+export async function fetchSessions(signal?: AbortSignal): Promise<ApiResponse<SessionsData>> {
+  return request<SessionsData>('/sessions', undefined, signal)
 }
 
 /**
  * POST /api/sync - Sync sessions with filesystem
  */
-export async function syncSessions(): Promise<ApiResponse<SyncResult>> {
-  return request<SyncResult>('/sync', { method: 'POST' })
+export async function syncSessions(signal?: AbortSignal): Promise<ApiResponse<SyncResult>> {
+  return request<SyncResult>('/sync', { method: 'POST' }, signal)
 }
 
 /**
  * GET /api/sessions/:id - Get single session details
  */
 export async function fetchSession(
-  sessionId: string
+  sessionId: string,
+  signal?: AbortSignal
 ): Promise<ApiResponse<SessionDetailData>> {
-  return request<SessionDetailData>(`/sessions/${sessionId}`)
+  return request<SessionDetailData>(`/sessions/${sessionId}`, undefined, signal)
 }
 
 /**
@@ -64,21 +107,23 @@ export async function fetchSession(
  */
 export async function recoverSession(
   sessionId: string,
-  body: RecoverBody
+  body: RecoverBody,
+  signal?: AbortSignal
 ): Promise<ApiResponse> {
   return request(`/sessions/${sessionId}/recover`, {
     method: 'POST',
     body: JSON.stringify(body),
-  })
+  }, signal)
 }
 
 /**
  * POST /api/sessions/:id/complete - Mark session as completed
  */
 export async function completeSession(
-  sessionId: string
+  sessionId: string,
+  signal?: AbortSignal
 ): Promise<ApiResponse> {
-  return request(`/sessions/${sessionId}/complete`, { method: 'POST' })
+  return request(`/sessions/${sessionId}/complete`, { method: 'POST' }, signal)
 }
 
 /**
@@ -86,30 +131,33 @@ export async function completeSession(
  */
 export async function stopSession(
   sessionId: string,
-  body: StopBody = {}
+  body: StopBody = {},
+  signal?: AbortSignal
 ): Promise<ApiResponse> {
   return request(`/sessions/${sessionId}/stop`, {
     method: 'POST',
     body: JSON.stringify(body),
-  })
+  }, signal)
 }
 
 /**
  * GET /api/sessions/:id/process - Get process status
  */
 export async function fetchProcessStatus(
-  sessionId: string
+  sessionId: string,
+  signal?: AbortSignal
 ): Promise<ApiResponse<ProcessStatusData>> {
-  return request<ProcessStatusData>(`/sessions/${sessionId}/process`)
+  return request<ProcessStatusData>(`/sessions/${sessionId}/process`, undefined, signal)
 }
 
 /**
  * GET /api/sessions/:id/tools - Get tool calls for a session
  */
 export async function fetchToolCalls(
-  sessionId: string
+  sessionId: string,
+  signal?: AbortSignal
 ): Promise<ApiResponse<ToolCallsData>> {
-  return request<ToolCallsData>(`/sessions/${sessionId}/tools`)
+  return request<ToolCallsData>(`/sessions/${sessionId}/tools`, undefined, signal)
 }
 
 // Export all API functions

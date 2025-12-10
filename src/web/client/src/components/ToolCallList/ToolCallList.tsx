@@ -1,7 +1,9 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, memo } from 'react'
 import type { ToolCallInfo } from '@/types'
 import { fetchToolCalls } from '@/services/api'
 import { Spinner } from '@/components/Spinner'
+import { formatTime, formatInput } from '@/utils/format'
+import { getToolColor } from '@/constants'
 import styles from './ToolCallList.module.css'
 
 interface ToolCallListProps {
@@ -9,35 +11,34 @@ interface ToolCallListProps {
   toolCount?: number
 }
 
-export function ToolCallList({ sessionId }: ToolCallListProps) {
+export const ToolCallList = memo(function ToolCallList({ sessionId }: ToolCallListProps) {
   const [toolCalls, setToolCalls] = useState<ToolCallInfo[]>([])
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [loaded, setLoaded] = useState(false)
   const [expandedIndex, setExpandedIndex] = useState<number | null>(null)
 
-  async function loadToolCalls() {
-    if (loaded) return
-    setLoading(true)
-    setError(null)
-    try {
-      const response = await fetchToolCalls(sessionId)
-      if (response.success && response.data) {
-        setToolCalls(response.data.toolCalls)
-        setLoaded(true)
-      } else {
-        setError(response.error || 'Failed to load tool calls')
-      }
-    } catch {
-      setError('Failed to load tool calls')
-    } finally {
-      setLoading(false)
-    }
-  }
-
   useEffect(() => {
+    async function loadToolCalls() {
+      if (loaded) return
+      setLoading(true)
+      setError(null)
+      try {
+        const response = await fetchToolCalls(sessionId)
+        if (response.success && response.data) {
+          setToolCalls(response.data.toolCalls)
+          setLoaded(true)
+        } else {
+          setError(response.error || 'Failed to load tool calls')
+        }
+      } catch {
+        setError('Failed to load tool calls')
+      } finally {
+        setLoading(false)
+      }
+    }
     loadToolCalls()
-  }, [sessionId])
+  }, [sessionId, loaded])
 
   if (loading) {
     return (
@@ -72,7 +73,7 @@ export function ToolCallList({ sessionId }: ToolCallListProps) {
       ))}
     </div>
   )
-}
+})
 
 interface ToolCallItemProps {
   call: ToolCallInfo
@@ -81,7 +82,7 @@ interface ToolCallItemProps {
   onToggle: () => void
 }
 
-function ToolCallItem({ call, index, expanded, onToggle }: ToolCallItemProps) {
+const ToolCallItem = memo(function ToolCallItem({ call, index, expanded, onToggle }: ToolCallItemProps) {
   const time = formatTime(call.timestamp)
   const toolColor = getToolColor(call.name)
 
@@ -102,38 +103,4 @@ function ToolCallItem({ call, index, expanded, onToggle }: ToolCallItemProps) {
       )}
     </div>
   )
-}
-
-function formatTime(timestamp: string): string {
-  const date = new Date(timestamp)
-  return date.toLocaleTimeString('en-US', {
-    hour: '2-digit',
-    minute: '2-digit',
-    second: '2-digit',
-    hour12: false,
-  })
-}
-
-function formatInput(input: Record<string, unknown>): string {
-  try {
-    return JSON.stringify(input, null, 2)
-  } catch {
-    return String(input)
-  }
-}
-
-function getToolColor(toolName: string): string {
-  const colors: Record<string, string> = {
-    Read: 'var(--info)',
-    Write: 'var(--success)',
-    Edit: 'var(--warning)',
-    Bash: 'var(--danger)',
-    Grep: 'var(--primary)',
-    Glob: 'var(--primary)',
-    WebFetch: 'var(--info)',
-    WebSearch: 'var(--info)',
-    Task: 'var(--warning)',
-    TodoWrite: 'var(--success)',
-  }
-  return colors[toolName] || 'var(--text)'
-}
+})

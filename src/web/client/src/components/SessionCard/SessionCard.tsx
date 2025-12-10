@@ -1,9 +1,11 @@
-import { useState } from 'react'
+import { useState, memo } from 'react'
 import type { Session } from '@/types'
 import { Button } from '@/components/Button'
 import { ResponsePanel } from '@/components/ResponsePanel'
 import { ToolCallList } from '@/components/ToolCallList'
 import { UsageStats } from '@/components/UsageStats'
+import { formatRelativeTime, formatPath } from '@/utils/format'
+import { getStatusColor } from '@/constants'
 import styles from './SessionCard.module.css'
 
 interface SessionCardProps {
@@ -13,7 +15,12 @@ interface SessionCardProps {
   onComplete?: (sessionId: string) => void
 }
 
-export function SessionCard({ session, onRecover, onStop, onComplete }: SessionCardProps) {
+export const SessionCard = memo(function SessionCard({
+  session,
+  onRecover,
+  onStop,
+  onComplete
+}: SessionCardProps) {
   const [expanded, setExpanded] = useState(false)
 
   const statusColor = getStatusColor(session.status)
@@ -100,50 +107,4 @@ export function SessionCard({ session, onRecover, onStop, onComplete }: SessionC
       )}
     </div>
   )
-}
-
-function getStatusColor(status: string): string {
-  switch (status) {
-    case 'running': return 'var(--success)'
-    case 'waiting': return 'var(--warning)'
-    case 'idle': return 'var(--info)'
-    case 'lost': return 'var(--danger)'
-    case 'completed': return 'var(--text-dim)'
-    default: return 'var(--text-dim)'
-  }
-}
-
-function formatPath(path: string): string {
-  if (!path) return ''
-  const homeMatch = path.match(/^(\/Users\/[^/]+|\/home\/[^/]+)\//)
-  if (homeMatch) {
-    let displayPath = path.slice(homeMatch[1].length + 1)
-    if (displayPath.startsWith('Desktop/code/')) {
-      displayPath = displayPath.slice('Desktop/code/'.length)
-    }
-    const parts = displayPath.split('/').filter(Boolean)
-    if (parts.length > 3) {
-      return '…/' + parts.slice(-3).join('/')
-    }
-    return displayPath || path
-  }
-  return path
-}
-
-function formatRelativeTime(dateStr: string): string {
-  if (!dateStr) return ''
-  const date = new Date(dateStr)
-  const now = new Date()
-  const diffMs = now.getTime() - date.getTime()
-  const diffSec = Math.floor(diffMs / 1000)
-  const diffMin = Math.floor(diffSec / 60)
-  const diffHour = Math.floor(diffMin / 60)
-  const diffDay = Math.floor(diffHour / 24)
-
-  if (diffSec < 60) return 'just now'
-  if (diffMin < 60) return `${diffMin}m ago`
-  if (diffHour < 24) return `${diffHour}h ago`
-  if (diffDay < 7) return `${diffDay}d ago`
-
-  return date.toLocaleDateString()
-}
+})

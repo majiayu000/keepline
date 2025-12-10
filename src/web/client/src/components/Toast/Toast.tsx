@@ -1,4 +1,5 @@
 import { createContext, useContext, useState, useCallback, ReactNode } from 'react'
+import { getToastIcon } from '@/constants'
 import styles from './Toast.module.css'
 
 export type ToastType = 'success' | 'error' | 'warning' | 'info'
@@ -42,7 +43,7 @@ export function ToastProvider({ children }: { children: ReactNode }) {
             className={`${styles.toast} ${styles[toast.type]}`}
             onClick={() => removeToast(toast.id)}
           >
-            <span className={styles.icon}>{getIcon(toast.type)}</span>
+            <span className={styles.icon}>{getToastIcon(toast.type)}</span>
             <span className={styles.message}>{toast.message}</span>
           </div>
         ))}
@@ -57,17 +58,4 @@ export function useToast() {
     throw new Error('useToast must be used within a ToastProvider')
   }
   return context
-}
-
-function getIcon(type: ToastType): string {
-  switch (type) {
-    case 'success':
-      return '✓'
-    case 'error':
-      return '✗'
-    case 'warning':
-      return '⚠'
-    case 'info':
-      return 'ℹ'
-  }
 }

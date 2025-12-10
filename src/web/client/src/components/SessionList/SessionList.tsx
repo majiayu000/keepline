@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useState, useMemo, memo, useCallback } from 'react'
 import type { Session } from '@/types'
 import { SessionCard } from '@/components/SessionCard'
 import styles from './SessionList.module.css'
@@ -10,7 +10,54 @@ interface SessionListProps {
   onComplete?: (sessionId: string) => void
 }
 
-export function SessionList({ sessions, onRecover, onStop, onComplete }: SessionListProps) {
+type SessionStatus = 'running' | 'waiting' | 'idle' | 'lost' | 'completed'
+
+interface GroupedSessions {
+  running: Session[]
+  waiting: Session[]
+  idle: Session[]
+  lost: Session[]
+  completed: Session[]
+}
+
+export const SessionList = memo(function SessionList({
+  sessions,
+  onRecover,
+  onStop,
+  onComplete
+}: SessionListProps) {
+  // Memoize grouped and sorted sessions
+  const groupedSessions = useMemo(() => {
+    const groups: GroupedSessions = {
+      running: [],
+      waiting: [],
+      idle: [],
+      lost: [],
+      completed: [],
+    }
+
+    // Single pass grouping
+    for (const session of sessions) {
+      const status = session.status as SessionStatus
+      if (groups[status]) {
+        groups[status].push(session)
+      }
+    }
+
+    // Sort each group by lastActiveAt (most recent first)
+    const sortByTime = (a: Session, b: Session) => {
+      const timeA = new Date(a.lastActiveAt).getTime()
+      const timeB = new Date(b.lastActiveAt).getTime()
+      return timeB - timeA
+    }
+
+    for (const key of Object.keys(groups) as SessionStatus[]) {
+      groups[key].sort(sortByTime)
+    }
+
+    return groups
+  }, [sessions])
+
   if (sessions.length === 0) {
     return (
       <div className={styles.empty}>
@@ -19,64 +66,50 @@ export function SessionList({ sessions, onRecover, onStop, onComplete }: Session
     )
   }
 
-  // Sort by lastActiveAt (most recent first)
-  const sortByTime = (a: Session, b: Session) => {
-    const timeA = new Date(a.lastActiveAt).getTime()
-    const timeB = new Date(b.lastActiveAt).getTime()
-    return timeB - timeA
-  }
-
-  // Group sessions by status and sort each group by time
-  const running = sessions.filter(s => s.status === 'running').sort(sortByTime)
-  const waiting = sessions.filter(s => s.status === 'waiting').sort(sortByTime)
-  const idle = sessions.filter(s => s.status === 'idle').sort(sortByTime)
-  const lost = sessions.filter(s => s.status === 'lost').sort(sortByTime)
-  const completed = sessions.filter(s => s.status === 'completed').sort(sortByTime)
-
   return (
     <div className={styles.container}>
       {/* Priority: Running, Waiting, Idle */}
-      {running.length > 0 && (
+      {groupedSessions.running.length > 0 && (
         <SessionGroup
           title="Running"
-          sessions={running}
+          sessions={groupedSessions.running}
           onRecover={onRecover}
           onStop={onStop}
           onComplete={onComplete}
         />
       )}
-      {waiting.length > 0 && (
+      {groupedSessions.waiting.length > 0 && (
         <SessionGroup
           title="Waiting for Input"
-          sessions={waiting}
+          sessions={groupedSessions.waiting}
           onRecover={onRecover}
           onStop={onStop}
           onComplete={onComplete}
         />
       )}
-      {idle.length > 0 && (
+      {groupedSessions.idle.length > 0 && (
         <SessionGroup
           title="Idle"
-          sessions={idle}
+          sessions={groupedSessions.idle}
           onRecover={onRecover}
           onStop={onStop}
           onComplete={onComplete}
         />
       )}
       {/* Secondary: Lost, Completed */}
-      {lost.length > 0 && (
+      {groupedSessions.lost.length > 0 && (
         <SessionGroup
           title="Lost"
-          sessions={lost}
+          sessions={groupedSessions.lost}
           onRecover={onRecover}
           onStop={onStop}
           onComplete={onComplete}
         />
       )}
-      {completed.length > 0 && (
+      {groupedSessions.completed.length > 0 && (
         <SessionGroup
           title="Completed"
-          sessions={completed}
+          sessions={groupedSessions.completed}
           onRecover={onRecover}
           onStop={onStop}
           onComplete={onComplete}
@@ -85,7 +118,7 @@ export function SessionList({ sessions, onRecover, onStop, onComplete }: Session
       )}
     </div>
   )
-}
+})
 
 interface SessionGroupProps {
   title: string
@@ -96,15 +129,23 @@ interface SessionGroupProps {
   defaultCollapsed?: boolean
 }
 
-function SessionGroup({ title, sessions, onRecover, onStop, onComplete, defaultCollapsed = false }: SessionGroupProps) {
+const SessionGroup = memo(function SessionGroup({
+  title,
+  sessions,
+  onRecover,
+  onStop,
+  onComplete,
+  defaultCollapsed = false
+}: SessionGroupProps) {
   const [collapsed, setCollapsed] = useState(defaultCollapsed)
+
+  const toggleCollapsed = useCallback(() => {
+    setCollapsed(prev => !prev)
+  }, [])
 
   return (
     <div className={styles.group}>
-      <h3
-        className={styles.groupTitle}
-        onClick={() => setCollapsed(!collapsed)}
-      >
+      <h3 className={styles.groupTitle} onClick={toggleCollapsed}>
         <span className={styles.collapseIcon}>{collapsed ? '▶' : '▼'}</span>
         {title} ({sessions.length})
       </h3>
@@ -123,4 +164,4 @@ function SessionGroup({ title, sessions, onRecover, onStop, onComplete, defaultC
       )}
     </div>
   )
-}
+})

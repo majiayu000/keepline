@@ -1,6 +1,7 @@
+import { useCallback } from 'react'
 import { ThemeProvider } from '@/contexts/ThemeContext'
 import { ToastProvider, useToast } from '@/components/Toast'
-import { Layout } from '@/components/Layout'
+import { Layout, layoutStyles } from '@/components/Layout'
 import { SessionList } from '@/components/SessionList'
 import { Spinner } from '@/components/Spinner'
 import { useSessions, useKeyboardShortcuts } from '@/hooks'
@@ -20,65 +21,52 @@ function AppContent() {
     completeSession,
   } = useSessions()
 
+  const handleSync = useCallback(async () => {
+    const success = await sync()
+    showToast(success ? 'Sync completed' : 'Sync failed', success ? 'success' : 'error')
+  }, [sync, showToast])
+
+  const handleRecover = useCallback(async (sessionId: string) => {
+    const success = await recoverSession(sessionId)
+    showToast(
+      success ? 'Session recovered' : 'Failed to recover session',
+      success ? 'success' : 'error'
+    )
+  }, [recoverSession, showToast])
+
+  const handleStop = useCallback(async (sessionId: string) => {
+    const success = await stopSession(sessionId)
+    showToast(
+      success ? 'Session stopped' : 'Failed to stop session',
+      success ? 'success' : 'error'
+    )
+  }, [stopSession, showToast])
+
+  const handleComplete = useCallback(async (sessionId: string) => {
+    const success = await completeSession(sessionId)
+    showToast(
+      success ? 'Session marked as completed' : 'Failed to complete session',
+      success ? 'success' : 'error'
+    )
+  }, [completeSession, showToast])
+
   // Keyboard shortcuts
   useKeyboardShortcuts({
     onRefresh: refresh,
     onSync: handleSync,
   })
 
-  async function handleSync() {
-    const success = await sync()
-    if (success) {
-      showToast('Sync completed', 'success')
-    } else {
-      showToast('Sync failed', 'error')
-    }
-  }
-
-  async function handleRecover(sessionId: string) {
-    const success = await recoverSession(sessionId)
-    if (success) {
-      showToast('Session recovered', 'success')
-    } else {
-      showToast('Failed to recover session', 'error')
-    }
-  }
-
-  async function handleStop(sessionId: string) {
-    const success = await stopSession(sessionId)
-    if (success) {
-      showToast('Session stopped', 'success')
-    } else {
-      showToast('Failed to stop session', 'error')
-    }
-  }
-
-  async function handleComplete(sessionId: string) {
-    const success = await completeSession(sessionId)
-    if (success) {
-      showToast('Session marked as completed', 'success')
-    } else {
-      showToast('Failed to complete session', 'error')
-    }
-  }
-
   return (
     <Layout stats={stats} loading={loading} onSync={handleSync} syncing={syncing}>
       {loading && (
-        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.5rem', padding: '2rem' }}>
+        <div className={layoutStyles.loadingContainer}>
           <Spinner size="md" />
-          <span style={{ color: 'var(--primary)' }}>Loading sessions...</span>
+          <span className={layoutStyles.loadingText}>Loading sessions...</span>
         </div>
       )}
 
       {error && !loading && (
-        <div style={{
-          padding: '1rem',
-          background: 'var(--bg-surface)',
-          border: '1px solid var(--danger)',
-          color: 'var(--danger)',
-          marginBottom: '1rem',
-        }}>
+        <div className={layoutStyles.errorBox}>
           Error: {error}
         </div>
       )}
