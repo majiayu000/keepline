@@ -12,7 +12,9 @@ import type {
   ClaudeToolUseBlock,
   ParsedSessionData,
   ToolCallInfo,
+  SessionUsageStats,
 } from '../types.js';
+import { aggregateUsageStats } from '../../usage/extractor.js';
 
 /** Parse a single JSONL line */
 function parseLine(line: string, lineNumber: number, filePath: string): ClaudeEntry | null {
@@ -32,7 +34,7 @@ function isUserEntry(entry: ClaudeEntry): entry is ClaudeUserEntry {
 
 /** Check if entry is a system entry (slash commands like /resume, /usage) */
 function isSystemEntry(entry: ClaudeEntry): boolean {
-  return entry.type === 'system';
+  return (entry as { type: string }).type === 'system';
 }
 
 /** Extract command name from system entry content */
@@ -194,6 +196,18 @@ export async function parseSessionFile(filePath: string): Promise<ParsedSessionD
     firstMessage = `System: ${firstSystemCommand}`;
   }
 
+  // Extract usage stats
+  const rawUsageStats = aggregateUsageStats(entries);
+  const usageStats: SessionUsageStats | undefined = rawUsageStats.apiCalls > 0
+    ? {
+        totalInputTokens: rawUsageStats.totalInputTokens,
+        totalOutputTokens: rawUsageStats.totalOutputTokens,
+        totalTokens: rawUsageStats.totalTokens,
+        totalCost: rawUsageStats.totalCost,
+        apiCalls: rawUsageStats.apiCalls,
+      }
+    : undefined;
+
   return {
     sessionId,
     directory,
@@ -207,5 +221,6 @@ export async function parseSessionFile(filePath: string): Promise<ParsedSessionD
     startedAt,
     lastActiveAt,
     toolCalls: toolCalls.length > 0 ? toolCalls : undefined,
+    usageStats,
   };
 }

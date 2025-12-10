@@ -1,3 +1,4 @@
+import { useState } from 'react'
 import type { Session } from '@/types'
 import { SessionCard } from '@/components/SessionCard'
 import styles from './SessionList.module.css'
@@ -18,15 +19,23 @@ export function SessionList({ sessions, onRecover, onStop, onComplete }: Session
     )
   }
 
-  // Group sessions by status
-  const running = sessions.filter(s => s.status === 'running')
-  const waiting = sessions.filter(s => s.status === 'waiting')
-  const idle = sessions.filter(s => s.status === 'idle')
-  const lost = sessions.filter(s => s.status === 'lost')
-  const completed = sessions.filter(s => s.status === 'completed')
+  // Sort by lastActiveAt (most recent first)
+  const sortByTime = (a: Session, b: Session) => {
+    const timeA = new Date(a.lastActiveAt).getTime()
+    const timeB = new Date(b.lastActiveAt).getTime()
+    return timeB - timeA
+  }
+
+  // Group sessions by status and sort each group by time
+  const running = sessions.filter(s => s.status === 'running').sort(sortByTime)
+  const waiting = sessions.filter(s => s.status === 'waiting').sort(sortByTime)
+  const idle = sessions.filter(s => s.status === 'idle').sort(sortByTime)
+  const lost = sessions.filter(s => s.status === 'lost').sort(sortByTime)
+  const completed = sessions.filter(s => s.status === 'completed').sort(sortByTime)
 
   return (
     <div className={styles.container}>
+      {/* Priority: Running, Waiting, Idle */}
       {running.length > 0 && (
         <SessionGroup
           title="Running"
@@ -45,19 +54,20 @@ export function SessionList({ sessions, onRecover, onStop, onComplete }: Session
           onComplete={onComplete}
         />
       )}
-      {lost.length > 0 && (
+      {idle.length > 0 && (
         <SessionGroup
-          title="Lost"
-          sessions={lost}
+          title="Idle"
+          sessions={idle}
           onRecover={onRecover}
           onStop={onStop}
           onComplete={onComplete}
         />
       )}
-      {idle.length > 0 && (
+      {/* Secondary: Lost, Completed */}
+      {lost.length > 0 && (
         <SessionGroup
-          title="Idle"
-          sessions={idle}
+          title="Lost"
+          sessions={lost}
           onRecover={onRecover}
           onStop={onStop}
           onComplete={onComplete}
@@ -70,7 +80,7 @@ export function SessionList({ sessions, onRecover, onStop, onComplete }: Session
           onRecover={onRecover}
           onStop={onStop}
           onComplete={onComplete}
-          collapsed
+          defaultCollapsed
         />
       )}
     </div>
@@ -83,26 +93,34 @@ interface SessionGroupProps {
   onRecover?: (sessionId: string) => void
   onStop?: (sessionId: string) => void
   onComplete?: (sessionId: string) => void
-  collapsed?: boolean
+  defaultCollapsed?: boolean
 }
 
-function SessionGroup({ title, sessions, onRecover, onStop, onComplete }: SessionGroupProps) {
+function SessionGroup({ title, sessions, onRecover, onStop, onComplete, defaultCollapsed = false }: SessionGroupProps) {
+  const [collapsed, setCollapsed] = useState(defaultCollapsed)
+
   return (
     <div className={styles.group}>
-      <h3 className={styles.groupTitle}>
+      <h3
+        className={styles.groupTitle}
+        onClick={() => setCollapsed(!collapsed)}
+      >
+        <span className={styles.collapseIcon}>{collapsed ? '▶' : '▼'}</span>
         {title} ({sessions.length})
       </h3>
-      <div className={styles.list}>
-        {sessions.map(session => (
-          <SessionCard
-            key={session.sessionId}
-            session={session}
-            onRecover={onRecover}
-            onStop={onStop}
-            onComplete={onComplete}
-          />
-        ))}
-      </div>
+      {!collapsed && (
+        <div className={styles.list}>
+          {sessions.map(session => (
+            <SessionCard
+              key={session.sessionId}
+              session={session}
+              onRecover={onRecover}
+              onStop={onStop}
+              onComplete={onComplete}
+            />
+          ))}
+        </div>
+      )}
     </div>
   )
 }

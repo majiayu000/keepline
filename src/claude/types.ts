@@ -104,6 +104,15 @@ export interface ToolCallInfo {
   timestamp: string;
 }
 
+/** Usage statistics */
+export interface SessionUsageStats {
+  totalInputTokens: number;
+  totalOutputTokens: number;
+  totalTokens: number;
+  totalCost: number;
+  apiCalls: number;
+}
+
 /** Parsed session data */
 export interface ParsedSessionData {
   sessionId: string;
@@ -118,4 +127,5 @@ export interface ParsedSessionData {
   startedAt?: Date;
   lastActiveAt: Date;
   toolCalls?: ToolCallInfo[];
+  usageStats?: SessionUsageStats;
 }

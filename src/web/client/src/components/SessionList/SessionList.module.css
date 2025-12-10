@@ -24,6 +24,20 @@
   text-transform: uppercase;
   letter-spacing: 0.1em;
   color: var(--primary);
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  user-select: none;
+}
+
+.groupTitle:hover {
+  color: var(--primary-bright);
+}
+
+.collapseIcon {
+  font-size: 0.7rem;
+  color: var(--text-dim);
 }
 
 .list {

@@ -3,6 +3,7 @@ import type { Session } from '@/types'
 import { Button } from '@/components/Button'
 import { ResponsePanel } from '@/components/ResponsePanel'
 import { ToolCallList } from '@/components/ToolCallList'
+import { UsageStats } from '@/components/UsageStats'
 import styles from './SessionCard.module.css'
 
 interface SessionCardProps {
@@ -37,6 +38,14 @@ export function SessionCard({ session, onRecover, onStop, onComplete }: SessionC
           <span>Messages: {session.messageCount}</span>
           {session.lastTool && <span>Last: {session.lastTool}</span>}
         </div>
+        <div className={styles.statsRow}>
+          <div className={styles.lastActive}>
+            {formatRelativeTime(session.lastActiveAt)}
+          </div>
+          {session.usageStats && session.usageStats.totalTokens > 0 && (
+            <UsageStats stats={session.usageStats} compact />
+          )}
+        </div>
         <span className={styles.expandIcon}>{expanded ? '▼' : '▶'}</span>
       </div>
 
@@ -60,6 +69,13 @@ export function SessionCard({ session, onRecover, onStop, onComplete }: SessionC
             <div className={styles.section}>
               <h4 className={styles.sectionTitle}>Last Response</h4>
               <ResponsePanel content={session.lastMessage} />
+            </div>
+          )}
+
+          {session.usageStats && session.usageStats.totalTokens > 0 && (
+            <div className={styles.section}>
+              <h4 className={styles.sectionTitle}>Usage Statistics</h4>
+              <UsageStats stats={session.usageStats} />
             </div>
           )}
 
@@ -112,4 +128,22 @@ function formatPath(path: string): string {
     return displayPath || path
   }
   return path
+}
+
+function formatRelativeTime(dateStr: string): string {
+  if (!dateStr) return ''
+  const date = new Date(dateStr)
+  const now = new Date()
+  const diffMs = now.getTime() - date.getTime()
+  const diffSec = Math.floor(diffMs / 1000)
+  const diffMin = Math.floor(diffSec / 60)
+  const diffHour = Math.floor(diffMin / 60)
+  const diffDay = Math.floor(diffHour / 24)
+
+  if (diffSec < 60) return 'just now'
+  if (diffMin < 60) return `${diffMin}m ago`
+  if (diffHour < 24) return `${diffHour}h ago`
+  if (diffDay < 7) return `${diffDay}d ago`
+
+  return date.toLocaleDateString()
 }

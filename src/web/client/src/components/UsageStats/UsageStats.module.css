@@ -1,0 +1,59 @@
+.container {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  padding: 0.75rem;
+  background: var(--bg-surface);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+}
+
+.row {
+  display: flex;
+  gap: 1rem;
+}
+
+.stat {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+  flex: 1;
+}
+
+.label {
+  font-size: 0.65rem;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--text-dim);
+}
+
+.value {
+  font-size: 0.9rem;
+  font-weight: 600;
+  color: var(--text);
+  font-family: monospace;
+}
+
+.costValue {
+  font-size: 0.9rem;
+  font-weight: 600;
+  color: var(--success);
+  font-family: monospace;
+}
+
+/* Compact mode */
+.compact {
+  display: flex;
+  gap: 0.75rem;
+  font-size: 0.7rem;
+  color: var(--text-dim);
+}
+
+.compact .tokens {
+  font-family: monospace;
+}
+
+.compact .cost {
+  color: var(--success);
+  font-weight: 500;
+}

@@ -53,6 +53,19 @@
   color: var(--text-dim);
 }
 
+.statsRow {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-top: 0.5rem;
+}
+
+.lastActive {
+  font-size: 0.7rem;
+  color: var(--text-dim);
+  font-style: italic;
+}
+
 .expandIcon {
   position: absolute;
   right: 1rem;

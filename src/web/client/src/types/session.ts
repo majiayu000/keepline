@@ -11,6 +11,15 @@ export interface ToolCallInfo {
   timestamp: string
 }
 
+/** Usage statistics */
+export interface UsageStats {
+  totalInputTokens: number
+  totalOutputTokens: number
+  totalTokens: number
+  totalCost: number
+  apiCalls: number
+}
+
 export interface Session {
   id: string
   sessionId: string
@@ -35,6 +44,8 @@ export interface Session {
   processRunning?: boolean
   cpuUsage?: number
   memoryUsage?: number
+  // Usage stats
+  usageStats?: UsageStats
 }
 
 export interface SessionStats {

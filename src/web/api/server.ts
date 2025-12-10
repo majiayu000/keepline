@@ -11,7 +11,8 @@ import { syncSessions, getAllSessions, completeSession } from '../../session/ser
 import { getAggregatedSessions, getSessionStats } from '../../session/aggregator.js';
 import { recoverSession, getRecoveryInfo } from '../../recovery/service.js';
 import { stopProcess, isProcessRunning } from '../../process/scanner.js';
-import { getSessionById } from '../../claude/scanner.js';
+import { getSessionById, getAllSessions as getAllParsedSessions } from '../../claude/scanner.js';
+import { initPricing } from '../../usage/pricing.js';
 import { logger } from '../../utils/logger.js';
 
 const app = new Hono();
@@ -44,6 +45,12 @@ app.get('/api/sessions', async (c) => {
     const sessions = getAggregatedSessions();
     const stats = getSessionStats(sessions);
 
+    // Get parsed sessions with usage stats
+    const parsedSessions = await getAllParsedSessions();
+    const usageMap = new Map(
+      parsedSessions.map(p => [p.sessionId, p.usageStats])
+    );
+
     return c.json({
       success: true,
       data: {
@@ -54,6 +61,7 @@ app.get('/api/sessions', async (c) => {
           completedAt: s.completedAt?.toISOString(),
           createdAt: s.createdAt.toISOString(),
           updatedAt: s.updatedAt.toISOString(),
+          usageStats: usageMap.get(s.sessionId),
         })),
         stats,
       },
@@ -236,6 +244,35 @@ app.get('/api/sessions/:id/tools', async (c) => {
   }
 });
 
+// Get usage stats for a session
+app.get('/api/sessions/:id/usage', async (c) => {
+  const sessionId = c.req.param('id');
+
+  try {
+    const parsedSession = await getSessionById(sessionId);
+
+    if (!parsedSession) {
+      return c.json({ success: false, error: 'Session not found' }, 404);
+    }
+
+    return c.json({
+      success: true,
+      data: {
+        usageStats: parsedSession.usageStats || {
+          totalInputTokens: 0,
+          totalOutputTokens: 0,
+          totalTokens: 0,
+          totalCost: 0,
+          apiCalls: 0,
+        },
+      },
+    });
+  } catch (error) {
+    logger.error('Failed to get usage stats', error);
+    return c.json({ success: false, error: 'Failed to get usage stats' }, 500);
+  }
+});
+
 app.post('/api/sync', async (c) => {
   try {
     const result = await syncSessions();
@@ -267,8 +304,12 @@ app.get('/*', async (c) => {
   });
 });
 
-export function startWebServer(port: number = 3377) {
+export async function startWebServer(port: number = 3377) {
   runMigrations();
+
+  // Initialize pricing from LiteLLM
+  logger.info('Fetching model pricing from LiteLLM...');
+  await initPricing();
 
   logger.info(`Starting web server on port ${port}`);
 
