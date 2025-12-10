@@ -1,10 +1,14 @@
 /**
- * Tests for API input validation
+ * Integration tests for API input validation
  *
- * Tests the actual exported validation functions from validation.ts
+ * These tests verify validation behavior using real data.
+ * Following best practices:
+ * - Test features, not implementation details
+ * - Use real objects, no mocks
+ * - Test observable behavior
  */
 
-import { describe, test, expect, beforeEach } from 'bun:test';
+import { describe, test, expect } from 'bun:test';
 import {
   isValidSessionId,
   validateRecoverRequest,

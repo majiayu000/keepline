@@ -1,97 +1,113 @@
 /**
- * Tests for configuration management
+ * Integration tests for configuration management
+ *
+ * These tests verify the config module behavior using real data.
+ * Following best practices:
+ * - Test features, not implementation details
+ * - Use real objects, no mocks
+ * - Test observable behavior
  */
 
-import { describe, test, expect, beforeEach, afterEach } from 'bun:test';
-import { existsSync, mkdirSync, rmSync, writeFileSync, readFileSync } from 'fs';
-import { join } from 'path';
+import { describe, test, expect } from 'bun:test';
 
-// We need to test the config module, but it has side effects (file I/O)
-// So we'll test the default values and structure
+// ============================================================================
+// Feature: Configuration Module API
+// ============================================================================
 
-describe('TaskerConfig interface', () => {
-  // Test that default config has all expected properties
-  const expectedProperties = [
-    'scanInterval',
-    'hookPort',
-    'logLevel',
-    'fileLogging',
-    'autoDaemon',
-    'retentionDays',
-    'activeCpuThreshold',
-    'idleThresholdSeconds',
-    'runningThresholdSeconds',
-    'processCacheTtl',
-  ];
-
-  test('config module exports config manager', async () => {
+describe('Configuration Module API', () => {
+  test('exports config manager with get, set, reset methods', async () => {
     const { config } = await import('../utils/config.js');
+
     expect(config).toBeDefined();
     expect(typeof config.get).toBe('function');
     expect(typeof config.set).toBe('function');
     expect(typeof config.reset).toBe('function');
   });
 
-  test('config.get() returns object with all expected properties', async () => {
+  test('config.get() returns complete configuration object', async () => {
     const { config } = await import('../utils/config.js');
     const cfg = config.get();
+
+    // All expected properties should exist
+    const expectedProperties = [
+      'scanInterval',
+      'hookPort',
+      'logLevel',
+      'fileLogging',
+      'autoDaemon',
+      'retentionDays',
+      'activeCpuThreshold',
+      'idleThresholdSeconds',
+      'runningThresholdSeconds',
+      'processCacheTtl',
+    ];
 
     for (const prop of expectedProperties) {
       expect(cfg).toHaveProperty(prop);
     }
   });
+});
 
-  test('default scanInterval is 5000ms', async () => {
-    const { config } = await import('../utils/config.js');
-    const cfg = config.get();
-    expect(cfg.scanInterval).toBe(5000);
+// ============================================================================
+// Feature: Default Configuration Values
+// ============================================================================
+
+describe('Default Configuration Values', () => {
+  describe('timing defaults', () => {
+    test('scanInterval defaults to 5000ms (5 seconds)', async () => {
+      const { config } = await import('../utils/config.js');
+      expect(config.get().scanInterval).toBe(5000);
+    });
+
+    test('processCacheTtl defaults to 3000ms (3 seconds)', async () => {
+      const { config } = await import('../utils/config.js');
+      expect(config.get().processCacheTtl).toBe(3000);
+    });
+
+    test('idleThresholdSeconds defaults to 30', async () => {
+      const { config } = await import('../utils/config.js');
+      expect(config.get().idleThresholdSeconds).toBe(30);
+    });
+
+    test('runningThresholdSeconds defaults to 5', async () => {
+      const { config } = await import('../utils/config.js');
+      expect(config.get().runningThresholdSeconds).toBe(5);
+    });
   });
 
-  test('default hookPort is 7890', async () => {
-    const { config } = await import('../utils/config.js');
-    const cfg = config.get();
-    expect(cfg.hookPort).toBe(7890);
+  describe('server defaults', () => {
+    test('hookPort defaults to 7890', async () => {
+      const { config } = await import('../utils/config.js');
+      expect(config.get().hookPort).toBe(7890);
+    });
   });
 
-  test('default logLevel is "info"', async () => {
-    const { config } = await import('../utils/config.js');
-    const cfg = config.get();
-    expect(cfg.logLevel).toBe('info');
+  describe('logging defaults', () => {
+    test('logLevel defaults to "info"', async () => {
+      const { config } = await import('../utils/config.js');
+      expect(config.get().logLevel).toBe('info');
+    });
+
+    test('logLevel is a valid level', async () => {
+      const { config } = await import('../utils/config.js');
+      const validLevels = ['debug', 'info', 'warn', 'error'];
+      expect(validLevels).toContain(config.get().logLevel);
+    });
   });
 
-  test('default activeCpuThreshold is 1.0', async () => {
-    const { config } = await import('../utils/config.js');
-    const cfg = config.get();
-    expect(cfg.activeCpuThreshold).toBe(1.0);
-  });
-
-  test('default idleThresholdSeconds is 30', async () => {
-    const { config } = await import('../utils/config.js');
-    const cfg = config.get();
-    expect(cfg.idleThresholdSeconds).toBe(30);
-  });
-
-  test('default runningThresholdSeconds is 5', async () => {
-    const { config } = await import('../utils/config.js');
-    const cfg = config.get();
-    expect(cfg.runningThresholdSeconds).toBe(5);
-  });
-
-  test('default processCacheTtl is 3000ms', async () => {
-    const { config } = await import('../utils/config.js');
-    const cfg = config.get();
-    expect(cfg.processCacheTtl).toBe(3000);
-  });
-
-  test('logLevel accepts valid values', async () => {
-    const { config } = await import('../utils/config.js');
-    const cfg = config.get();
-    const validLevels = ['debug', 'info', 'warn', 'error'];
-    expect(validLevels).toContain(cfg.logLevel);
+  describe('detection thresholds', () => {
+    test('activeCpuThreshold defaults to 1.0%', async () => {
+      const { config } = await import('../utils/config.js');
+      expect(config.get().activeCpuThreshold).toBe(1.0);
+    });
   });
 });
 
-describe('config value types', () => {
+// ============================================================================
+// Feature: Configuration Type Safety
+// ============================================================================
+
+describe('Configuration Type Safety', () => {
   test('numeric configs are numbers', async () => {
     const { config } = await import('../utils/config.js');
     const cfg = config.get();
