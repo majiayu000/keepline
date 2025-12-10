@@ -6,6 +6,7 @@
 import { Hono } from 'hono';
 import { cors } from 'hono/cors';
 import { serveStatic } from 'hono/bun';
+import path from 'path';
 import { runMigrations } from '../../storage/migrations.js';
 import { syncSessions, getAllSessions, completeSession } from '../../session/service.js';
 import { getAggregatedSessions, getSessionStats } from '../../session/aggregator.js';
@@ -17,19 +18,76 @@ import { logger } from '../../utils/logger.js';
 
 const app = new Hono();
 
+// Simple in-memory rate limiter
+const rateLimitStore = new Map<string, { count: number; resetTime: number }>();
+
+function rateLimit(maxRequests: number, windowMs: number) {
+  return async (c: any, next: () => Promise<void>) => {
+    const ip = c.req.header('x-forwarded-for') || c.req.header('x-real-ip') || 'unknown';
+    const now = Date.now();
+
+    let record = rateLimitStore.get(ip);
+    if (!record || now > record.resetTime) {
+      record = { count: 0, resetTime: now + windowMs };
+      rateLimitStore.set(ip, record);
+    }
+
+    record.count++;
+
+    if (record.count > maxRequests) {
+      logger.warn('Rate limit exceeded', { ip, count: record.count });
+      return c.json({ success: false, error: 'Too many requests' }, 429);
+    }
+
+    await next();
+  };
+}
+
+// Clean up rate limit store periodically (every 5 minutes)
+setInterval(() => {
+  const now = Date.now();
+  for (const [key, value] of rateLimitStore.entries()) {
+    if (now > value.resetTime) {
+      rateLimitStore.delete(key);
+    }
+  }
+}, 5 * 60 * 1000);
+
 // Enable CORS
 app.use('/*', cors());
+
+// Rate limiting: 100 requests per minute for API routes
+app.use('/api/*', rateLimit(100, 60 * 1000));
+
+// Stricter rate limiting for write operations: 20 per minute
+app.post('/api/sessions/*/recover', rateLimit(20, 60 * 1000));
+app.post('/api/sessions/*/stop', rateLimit(20, 60 * 1000));
+app.post('/api/sync', rateLimit(10, 60 * 1000));
 
 // Serve static files (legacy)
 app.use('/static/*', serveStatic({ root: './src/web/public' }));
 
-// Serve React app assets - need to rewrite path since root already includes /dist
+// Serve React app assets - with path traversal protection
 app.get('/assets/*', async (c) => {
-  const path = c.req.path;
-  const file = Bun.file(`./src/web/public/dist${path}`);
+  const requestPath = c.req.path;
+
+  // Base directory for assets (absolute path)
+  const basePath = path.resolve('./src/web/public/dist');
+
+  // Normalize and resolve the requested path
+  const normalizedPath = path.normalize(requestPath);
+  const fullPath = path.resolve(basePath, '.' + normalizedPath);
+
+  // Security: Ensure the resolved path is within the base directory
+  if (!fullPath.startsWith(basePath + path.sep) && fullPath !== basePath) {
+    logger.warn('Path traversal attempt blocked', { requestPath, fullPath });
+    return c.notFound();
+  }
+
+  const file = Bun.file(fullPath);
   if (await file.exists()) {
-    const contentType = path.endsWith('.js') ? 'application/javascript' :
-                        path.endsWith('.css') ? 'text/css' :
+    const contentType = requestPath.endsWith('.js') ? 'application/javascript' :
+                        requestPath.endsWith('.css') ? 'text/css' :
                         'application/octet-stream';
     return new Response(file, {
       headers: { 'Content-Type': contentType },
@@ -41,9 +99,40 @@ app.get('/assets/*', async (c) => {
 // API Routes
 app.get('/api/sessions', async (c) => {
   try {
+    // Parse pagination parameters
+    const limit = Math.min(parseInt(c.req.query('limit') || '50'), 100);
+    const offset = parseInt(c.req.query('offset') || '0');
+    const status = c.req.query('status'); // Optional filter by status
+    const sort = c.req.query('sort') || 'lastActiveAt';
+    const order = c.req.query('order') === 'asc' ? 'asc' : 'desc';
+
     await syncSessions();
-    const sessions = getAggregatedSessions();
+    let sessions = getAggregatedSessions();
     const stats = getSessionStats(sessions);
+
+    // Filter by status if provided
+    if (status) {
+      sessions = sessions.filter(s => s.status === status);
+    }
+
+    // Sort sessions
+    sessions.sort((a, b) => {
+      let comparison = 0;
+      if (sort === 'lastActiveAt') {
+        comparison = a.lastActiveAt.getTime() - b.lastActiveAt.getTime();
+      } else if (sort === 'directory') {
+        comparison = a.directory.localeCompare(b.directory);
+      } else if (sort === 'status') {
+        comparison = a.status.localeCompare(b.status);
+      }
+      return order === 'desc' ? -comparison : comparison;
+    });
+
+    // Get total count before pagination
+    const total = sessions.length;
+
+    // Apply pagination
+    const paginatedSessions = sessions.slice(offset, offset + limit);
 
     // Get parsed sessions with usage stats
     const parsedSessions = await getAllParsedSessions();
@@ -54,7 +143,7 @@ app.get('/api/sessions', async (c) => {
     return c.json({
       success: true,
       data: {
-        sessions: sessions.map(s => ({
+        sessions: paginatedSessions.map(s => ({
           ...s,
           lastActiveAt: s.lastActiveAt.toISOString(),
           startedAt: s.startedAt?.toISOString(),
@@ -64,6 +153,12 @@ app.get('/api/sessions', async (c) => {
           usageStats: usageMap.get(s.sessionId),
         })),
         stats,
+        pagination: {
+          total,
+          limit,
+          offset,
+          hasMore: offset + limit < total,
+        },
       },
     });
   } catch (error) {

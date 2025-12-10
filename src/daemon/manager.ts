@@ -2,11 +2,35 @@
  * Daemon process manager
  */
 
-import { spawn, execSync } from 'child_process';
+import { spawn } from 'child_process';
 import { existsSync, readFileSync, writeFileSync, unlinkSync } from 'fs';
 import { TASKER_PID } from '../utils/paths.js';
 import { logger } from '../utils/logger.js';
 import { emit } from '../core/events.js';
+
+// Maximum valid PID
+const MAX_PID = 4194304;
+
+/** Validate PID is a safe positive integer */
+function validatePid(pid: number): boolean {
+  return Number.isInteger(pid) && pid > 0 && pid <= MAX_PID;
+}
+
+/** Check if process is running using process.kill(pid, 0) */
+function isProcessAlive(pid: number): boolean {
+  if (!validatePid(pid)) return false;
+  try {
+    process.kill(pid, 0);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+/** Sleep for ms milliseconds */
+function sleep(ms: number): Promise<void> {
+  return new Promise(resolve => setTimeout(resolve, ms));
+}
 
 /** Check if daemon is running */
 export function isDaemonRunning(): boolean {
@@ -16,9 +40,16 @@ export function isDaemonRunning(): boolean {
 
   try {
     const pid = parseInt(readFileSync(TASKER_PID, 'utf-8').trim(), 10);
-    // Check if process exists
-    execSync(`ps -p ${pid} -o pid=`, { encoding: 'utf-8' });
-    return true;
+    if (!validatePid(pid)) {
+      cleanupPidFile();
+      return false;
+    }
+    // Check if process exists using process.kill(pid, 0)
+    if (isProcessAlive(pid)) {
+      return true;
+    }
+    cleanupPidFile();
+    return false;
   } catch {
     // Process not running, clean up stale PID file
     cleanupPidFile();
@@ -34,9 +65,16 @@ export function getDaemonPid(): number | null {
 
   try {
     const pid = parseInt(readFileSync(TASKER_PID, 'utf-8').trim(), 10);
-    // Verify process is running
-    execSync(`ps -p ${pid} -o pid=`, { encoding: 'utf-8' });
-    return pid;
+    if (!validatePid(pid)) {
+      cleanupPidFile();
+      return null;
+    }
+    // Verify process is running using process.kill(pid, 0)
+    if (isProcessAlive(pid)) {
+      return pid;
+    }
+    cleanupPidFile();
+    return null;
   } catch {
     cleanupPidFile();
     return null;
@@ -88,7 +126,7 @@ export function startDaemon(): { success: boolean; pid?: number; error?: string 
 }
 
 /** Stop daemon process */
-export function stopDaemon(): { success: boolean; error?: string } {
+export async function stopDaemon(): Promise<{ success: boolean; error?: string }> {
   const pid = getDaemonPid();
 
   if (!pid) {
@@ -100,14 +138,12 @@ export function stopDaemon(): { success: boolean; error?: string } {
 
     // Wait for process to exit (max 5 seconds)
     for (let i = 0; i < 50; i++) {
-      try {
-        execSync(`ps -p ${pid} -o pid=`, { encoding: 'utf-8' });
-        // Still running, wait
-        execSync('sleep 0.1');
-      } catch {
+      if (!isProcessAlive(pid)) {
         // Process exited
         break;
       }
+      // Still running, wait
+      await sleep(100);
     }
 
     cleanupPidFile();
@@ -122,14 +158,14 @@ export function stopDaemon(): { success: boolean; error?: string } {
 }
 
 /** Restart daemon */
-export function restartDaemon(): { success: boolean; pid?: number; error?: string } {
-  const stopResult = stopDaemon();
+export async function restartDaemon(): Promise<{ success: boolean; pid?: number; error?: string }> {
+  const stopResult = await stopDaemon();
   if (!stopResult.success) {
     return stopResult;
   }
 
   // Wait a bit before starting
-  execSync('sleep 0.5');
+  await sleep(500);
 
   return startDaemon();
 }
@@ -146,20 +182,7 @@ export function getDaemonStatus(): {
     return { running: false };
   }
 
-  try {
-    // Get process start time
-    const output = execSync(`ps -p ${pid} -o etime=`, { encoding: 'utf-8' }).trim();
-
-    // Parse etime format: [[DD-]hh:]mm:ss
-    let uptime = 0;
-    const parts = output.split(/[-:]/).reverse();
-    uptime += parseInt(parts[0] || '0', 10);            // seconds
-    uptime += parseInt(parts[1] || '0', 10) * 60;       // minutes
-    uptime += parseInt(parts[2] || '0', 10) * 3600;     // hours
-    uptime += parseInt(parts[3] || '0', 10) * 86400;    // days
-
-    return { running: true, pid, uptime };
-  } catch {
-    return { running: true, pid };
-  }
+  // PID is already validated by getDaemonPid
+  // Just return running status - uptime calculation removed to avoid execSync
+  return { running: true, pid };
 }

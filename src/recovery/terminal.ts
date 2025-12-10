@@ -3,8 +3,37 @@
  */
 
 import { execSync, spawn } from 'child_process';
+import path from 'path';
+import { existsSync } from 'fs';
 import { logger } from '../utils/logger.js';
 import type { TerminalApp } from './types.js';
+
+// Allowed commands whitelist for recovery
+const ALLOWED_COMMANDS = ['claude', 'claude-code', 'npx'];
+
+/** Validate directory path */
+function validateDirectory(directory: string): boolean {
+  // Must be absolute path
+  if (!path.isAbsolute(directory)) {
+    return false;
+  }
+  // Must exist
+  if (!existsSync(directory)) {
+    return false;
+  }
+  // No path traversal sequences
+  if (directory.includes('..')) {
+    return false;
+  }
+  return true;
+}
+
+/** Validate command is in whitelist */
+function validateCommand(command: string): boolean {
+  const cmdParts = command.trim().split(/\s+/);
+  const baseCmd = cmdParts[0];
+  return ALLOWED_COMMANDS.some(allowed => baseCmd === allowed || baseCmd.endsWith('/' + allowed));
+}
 
 /** Detect available terminal app */
 export function detectTerminalApp(): TerminalApp {
@@ -31,6 +60,17 @@ export function openTerminalWithCommand(
   directory: string,
   terminalApp: TerminalApp = 'auto'
 ): void {
+  // Security: Validate inputs
+  if (!validateDirectory(directory)) {
+    logger.error('Invalid directory for terminal command', { directory });
+    throw new Error('Invalid directory path');
+  }
+
+  if (!validateCommand(command)) {
+    logger.error('Command not in whitelist', { command });
+    throw new Error('Command not allowed');
+  }
+
   const app = terminalApp === 'auto' ? detectTerminalApp() : terminalApp;
 
   if (app === 'iTerm') {
@@ -89,9 +129,25 @@ function escapeForAppleScript(str: string): string {
 
 /** Execute command in current terminal */
 export function executeCommand(command: string, cwd: string): number | null {
+  // Security: Validate inputs
+  if (!validateDirectory(cwd)) {
+    logger.error('Invalid cwd for command execution', { cwd });
+    return null;
+  }
+
+  if (!validateCommand(command)) {
+    logger.error('Command not in whitelist', { command });
+    return null;
+  }
+
   try {
-    const child = spawn(command, [], {
-      shell: true,
+    // Parse command into executable and args (safer than shell: true)
+    const cmdParts = command.trim().split(/\s+/);
+    const executable = cmdParts[0];
+    const args = cmdParts.slice(1);
+
+    const child = spawn(executable, args, {
+      shell: false, // Security: Disable shell interpretation
       cwd,
       stdio: 'inherit',
       detached: true,

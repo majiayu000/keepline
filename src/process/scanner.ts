@@ -7,8 +7,21 @@ import { logger } from '../utils/logger.js';
 import { ProcessScanError } from '../core/errors.js';
 import type { ClaudeProcessInfo } from './types.js';
 
+// Maximum valid PID (varies by OS, but 2^22 is common max)
+const MAX_PID = 4194304;
+
+/** Validate PID is a safe positive integer */
+function validatePid(pid: number): boolean {
+  return Number.isInteger(pid) && pid > 0 && pid <= MAX_PID;
+}
+
 /** Get working directory for a process using lsof */
 function getProcessCwd(pid: number): string | undefined {
+  if (!validatePid(pid)) {
+    logger.warn('Invalid PID for getProcessCwd', { pid });
+    return undefined;
+  }
+
   try {
     const output = execSync(`lsof -p ${pid} 2>/dev/null | grep cwd`, {
       encoding: 'utf-8',
@@ -27,6 +40,10 @@ function getProcessCwd(pid: number): string | undefined {
 
 /** Get command line args for a process */
 function getProcessArgs(pid: number): string[] {
+  if (!validatePid(pid)) {
+    return [];
+  }
+
   try {
     const output = execSync(`ps -p ${pid} -o args=`, {
       encoding: 'utf-8',
@@ -40,6 +57,10 @@ function getProcessArgs(pid: number): string[] {
 
 /** Get process start time */
 function getProcessStartTime(pid: number): Date | undefined {
+  if (!validatePid(pid)) {
+    return undefined;
+  }
+
   try {
     const output = execSync(`ps -p ${pid} -o lstart=`, {
       encoding: 'utf-8',
@@ -117,8 +138,13 @@ export function scanClaudeProcesses(): ClaudeProcessInfo[] {
 
 /** Check if a specific process is still running */
 export function isProcessRunning(pid: number): boolean {
+  if (!validatePid(pid)) {
+    return false;
+  }
+
   try {
-    execSync(`ps -p ${pid} -o pid=`, { encoding: 'utf-8', timeout: 5000 });
+    // Use process.kill with signal 0 to check if process exists (safer than execSync)
+    process.kill(pid, 0);
     return true;
   } catch {
     return false;
@@ -127,6 +153,10 @@ export function isProcessRunning(pid: number): boolean {
 
 /** Get process info by PID */
 export function getProcessInfo(pid: number): ClaudeProcessInfo | null {
+  if (!validatePid(pid)) {
+    return null;
+  }
+
   if (!isProcessRunning(pid)) return null;
 
   const cwd = getProcessCwd(pid);
@@ -155,6 +185,10 @@ export function getProcessInfo(pid: number): ClaudeProcessInfo | null {
 
 /** Stop a process gracefully (SIGTERM) or forcefully (SIGKILL) */
 export function stopProcess(pid: number, force: boolean = false): { success: boolean; error?: string } {
+  if (!validatePid(pid)) {
+    return { success: false, error: 'Invalid PID' };
+  }
+
   if (!isProcessRunning(pid)) {
     return { success: false, error: 'Process not running' };
   }
