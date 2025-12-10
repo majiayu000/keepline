@@ -207,16 +207,21 @@
    BASE STYLES
 ═══════════════════════════════════════════════════════════════ */
 
+html, body {
+  width: 100%;
+  min-height: 100vh;
+}
+
 body {
   font-family: var(--font-mono);
   background: var(--bg-base);
   color: var(--text);
-  min-height: 100vh;
   line-height: 1.6;
   transition: background 0.3s ease, color 0.3s ease;
 }
 
 #root {
+  width: 100%;
   min-height: 100vh;
 }
 
