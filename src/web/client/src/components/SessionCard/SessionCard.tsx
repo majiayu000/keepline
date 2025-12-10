@@ -106,10 +106,14 @@ export const SessionCard = memo(function SessionCard({
 
       {expanded && (
         <div className={styles.details} id={detailsId}>
-          {session.initialPrompt && (
+          {loadingDetails && (
+            <div className={styles.loading}>Loading details...</div>
+          )}
+
+          {initialPrompt && (
             <section className={styles.section}>
               <h4 className={styles.sectionTitle}>Initial Prompt</h4>
-              <div className={styles.promptBox}>{session.initialPrompt}</div>
+              <div className={styles.promptBox}>{initialPrompt}</div>
             </section>
           )}
 
@@ -120,17 +124,17 @@ export const SessionCard = memo(function SessionCard({
             </section>
           )}
 
-          {session.lastMessage && (
+          {lastMessage && (
             <section className={styles.section}>
               <h4 className={styles.sectionTitle}>Last Response</h4>
-              <ResponsePanel content={session.lastMessage} />
+              <ResponsePanel content={lastMessage} />
             </section>
           )}
 
-          {session.usageStats && session.usageStats.totalTokens > 0 && (
+          {usageStats && usageStats.totalTokens > 0 && (
             <section className={styles.section}>
               <h4 className={styles.sectionTitle}>Usage Statistics</h4>
-              <UsageStats stats={session.usageStats} />
+              <UsageStats stats={usageStats} />
             </section>
           )}
 

@@ -104,6 +104,14 @@
   overflow-y: auto;
 }
 
+.loading {
+  padding: 1rem;
+  text-align: center;
+  color: var(--text-dim);
+  font-size: 0.85rem;
+  font-style: italic;
+}
+
 .actions {
   display: flex;
   gap: 0.5rem;
