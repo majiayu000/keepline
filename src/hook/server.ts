@@ -7,9 +7,52 @@ import { logger } from '../utils/logger.js';
 import { config } from '../utils/config.js';
 import { emit } from '../core/events.js';
 import { updateSession } from '../session/service.js';
-import type { HookEvent, ToolUseHookEvent } from './types.js';
+import type { HookEvent, ToolUseHookEvent, HookEventType } from './types.js';
 
 let server: FastifyInstance | null = null;
+
+/** Valid hook event types */
+const VALID_EVENT_TYPES: Set<HookEventType> = new Set([
+  'PreToolUse',
+  'PostToolUse',
+  'Notification',
+  'Stop',
+]);
+
+/** Validate hook event payload */
+function isValidHookEvent(event: unknown): event is HookEvent {
+  if (!event || typeof event !== 'object') {
+    return false;
+  }
+
+  const e = event as Record<string, unknown>;
+
+  // Required fields
+  if (typeof e.session_id !== 'string' || e.session_id.length === 0) {
+    return false;
+  }
+  if (typeof e.cwd !== 'string') {
+    return false;
+  }
+  if (typeof e.timestamp !== 'string') {
+    return false;
+  }
+  if (typeof e.event_type !== 'string' || !VALID_EVENT_TYPES.has(e.event_type as HookEventType)) {
+    return false;
+  }
+
+  // Tool events require additional fields
+  if (e.event_type === 'PreToolUse' || e.event_type === 'PostToolUse') {
+    if (typeof e.tool_name !== 'string' || e.tool_name.length === 0) {
+      return false;
+    }
+    if (!e.tool_input || typeof e.tool_input !== 'object') {
+      return false;
+    }
+  }
+
+  return true;
+}
 
 /** Handle incoming hook event */
 async function handleHookEvent(event: HookEvent): Promise<void> {
@@ -78,8 +121,15 @@ export async function startHookServer(): Promise<void> {
   server.get('/health', async () => ({ status: 'ok' }));
 
   // Hook event endpoint
-  server.post<{ Body: HookEvent }>('/hook', async (request, reply) => {
+  server.post<{ Body: unknown }>('/hook', async (request, reply) => {
     try {
+      // Validate input before processing
+      if (!isValidHookEvent(request.body)) {
+        logger.warn('Invalid hook event received', { body: request.body });
+        reply.status(400);
+        return { success: false, error: 'Invalid hook event payload' };
+      }
+
       await handleHookEvent(request.body);
       return { success: true };
     } catch (error) {
@@ -102,12 +152,16 @@ export async function startHookServer(): Promise<void> {
 export async function stopHookServer(): Promise<void> {
   if (!server) return;
 
+  const currentServer = server;
   try {
-    await server.close();
+    await currentServer.close();
     server = null;
     logger.info('Hook server stopped');
   } catch (error) {
     logger.error('Failed to stop hook server', error);
+    // Only clear server reference if close actually succeeded
+    // If it failed, server might still be running
+    throw error;
   }
 }
 

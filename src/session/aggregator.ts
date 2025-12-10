@@ -120,7 +120,7 @@ export function groupByDirectory(
   return grouped;
 }
 
-/** Get session statistics */
+/** Get session statistics - single pass O(n) instead of O(n*6) */
 export function getSessionStats(sessions: AggregatedSession[]): {
   total: number;
   running: number;
@@ -130,13 +130,41 @@ export function getSessionStats(sessions: AggregatedSession[]): {
   completed: number;
   withProcess: number;
 } {
-  return {
+  const stats = {
     total: sessions.length,
-    running: sessions.filter((s) => s.status === 'running').length,
-    waiting: sessions.filter((s) => s.status === 'waiting').length,
-    idle: sessions.filter((s) => s.status === 'idle').length,
-    lost: sessions.filter((s) => s.status === 'lost').length,
-    completed: sessions.filter((s) => s.status === 'completed').length,
-    withProcess: sessions.filter((s) => s.processRunning).length,
+    running: 0,
+    waiting: 0,
+    idle: 0,
+    lost: 0,
+    completed: 0,
+    withProcess: 0,
   };
+
+  for (const session of sessions) {
+    // Count by status
+    switch (session.status) {
+      case 'running':
+        stats.running++;
+        break;
+      case 'waiting':
+        stats.waiting++;
+        break;
+      case 'idle':
+        stats.idle++;
+        break;
+      case 'lost':
+        stats.lost++;
+        break;
+      case 'completed':
+        stats.completed++;
+        break;
+    }
+
+    // Count processes
+    if (session.processRunning) {
+      stats.withProcess++;
+    }
+  }
+
+  return stats;
 }

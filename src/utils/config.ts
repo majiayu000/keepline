@@ -54,6 +54,40 @@ const defaultConfig: TaskerConfig = {
 
 const CONFIG_FILE = join(TASKER_HOME, 'config.json');
 
+/** Validate config values are within acceptable ranges */
+function validateConfig(cfg: TaskerConfig): void {
+  const errors: string[] = [];
+
+  if (cfg.scanInterval < 100) {
+    errors.push('scanInterval must be at least 100ms');
+  }
+  if (cfg.hookPort < 1 || cfg.hookPort > 65535) {
+    errors.push('hookPort must be between 1 and 65535');
+  }
+  if (!['debug', 'info', 'warn', 'error'].includes(cfg.logLevel)) {
+    errors.push('logLevel must be one of: debug, info, warn, error');
+  }
+  if (cfg.retentionDays < 0) {
+    errors.push('retentionDays must be non-negative');
+  }
+  if (cfg.activeCpuThreshold < 0 || cfg.activeCpuThreshold > 100) {
+    errors.push('activeCpuThreshold must be between 0 and 100');
+  }
+  if (cfg.idleThresholdSeconds < 1) {
+    errors.push('idleThresholdSeconds must be at least 1');
+  }
+  if (cfg.runningThresholdSeconds < 1) {
+    errors.push('runningThresholdSeconds must be at least 1');
+  }
+  if (cfg.processCacheTtl < 100) {
+    errors.push('processCacheTtl must be at least 100ms');
+  }
+
+  if (errors.length > 0) {
+    throw new ConfigError(`Invalid config: ${errors.join('; ')}`);
+  }
+}
+
 class ConfigManager {
   private config: TaskerConfig = defaultConfig;
   private loaded = false;
@@ -70,7 +104,13 @@ class ConfigManager {
         const content = readFileSync(CONFIG_FILE, 'utf-8');
         const parsed = JSON.parse(content) as Partial<TaskerConfig>;
         this.config = { ...defaultConfig, ...parsed };
+
+        // Validate loaded config
+        validateConfig(this.config);
       } catch (e) {
+        if (e instanceof ConfigError) {
+          throw e;
+        }
         throw new ConfigError(`Failed to parse config: ${(e as Error).message}`);
       }
     } else {

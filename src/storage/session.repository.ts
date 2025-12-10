@@ -199,13 +199,12 @@ export function updateStatus(sessionId: string, status: SessionStatus): void {
   const db = getDatabase();
   const now = new Date().toISOString();
 
-  db.prepare(`
+  const result = db.prepare(`
     UPDATE sessions SET status = ?, updated_at = ? WHERE session_id = ?
   `).run(status, now, sessionId);
 
-  // Check if update affected any rows
-  const exists = findBySessionId(sessionId);
-  if (!exists) {
+  // Check if update affected any rows using SQLite changes count
+  if (result.changes === 0) {
     throw new SessionNotFoundError(sessionId);
   }
 }

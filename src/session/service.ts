@@ -163,8 +163,10 @@ export async function syncSessions(): Promise<{
         updated++;
         if (wasLost) {
           lost++;
-          const session = sessionRepo.findBySessionId(claudeSession.sessionId)!;
-          emit('session:lost', { session, previousStatus: existing.status });
+          const updatedSession = sessionRepo.findBySessionId(claudeSession.sessionId);
+          if (updatedSession) {
+            emit('session:lost', { session: updatedSession, previousStatus: existing.status });
+          }
         }
       } else {
         // Create new session with all data in single upsert (no redundant calls)
@@ -192,10 +194,11 @@ export async function syncSessions(): Promise<{
           messageCount: claudeSession.messageCount,
         });
 
-        emit('session:discovered', {
-          session: sessionRepo.findBySessionId(claudeSession.sessionId)!,
-        });
-        logger.info(`Session discovered: ${claudeSession.sessionId}`);
+        const newSession = sessionRepo.findBySessionId(claudeSession.sessionId);
+        if (newSession) {
+          emit('session:discovered', { session: newSession });
+          logger.info(`Session discovered: ${claudeSession.sessionId}`);
+        }
         discovered++;
       }
     }
@@ -212,10 +215,13 @@ export async function syncSessions(): Promise<{
             pid: undefined,
           });
           lost++;
-          emit('session:lost', {
-            session: sessionRepo.findBySessionId(session.sessionId)!,
-            previousStatus: session.status,
-          });
+          const lostSession = sessionRepo.findBySessionId(session.sessionId);
+          if (lostSession) {
+            emit('session:lost', {
+              session: lostSession,
+              previousStatus: session.status,
+            });
+          }
         }
       }
     }
@@ -258,5 +264,8 @@ export function completeSession(sessionId: string): void {
     pid: undefined,
   });
 
-  emit('session:completed', { session: sessionRepo.findBySessionId(sessionId)! });
+  const completedSession = sessionRepo.findBySessionId(sessionId);
+  if (completedSession) {
+    emit('session:completed', { session: completedSession });
+  }
 }
