@@ -29,9 +29,11 @@ export function useSessions(): UseSessionsReturn {
   const intervalRef = useRef<number | null>(null)
   const mountedRef = useRef(true)
 
-  // Details cache for lazy loading
-  const [detailsCache, setDetailsCache] = useState<Map<string, SessionDetailsData>>(new Map())
-  const [loadingDetails, setLoadingDetails] = useState<Set<string>>(new Set())
+  // Details cache for lazy loading - use refs to avoid re-render loops
+  const detailsCacheRef = useRef<Map<string, SessionDetailsData>>(new Map())
+  const loadingDetailsRef = useRef<Set<string>>(new Set())
+  // Trigger re-render when cache updates
+  const [, forceUpdate] = useState(0)
 
   // Use ref to avoid stale closures in interval
   const loadSessions = useCallback(async () => {
@@ -95,47 +97,46 @@ export function useSessions(): UseSessionsReturn {
     return response.success
   }, [loadSessions])
 
-  // Lazy load session details
+  // Lazy load session details - stable reference using refs
   const loadSessionDetails = useCallback(async (sessionId: string): Promise<SessionDetailsData | null> => {
     // Return cached if available
-    const cached = detailsCache.get(sessionId)
+    const cached = detailsCacheRef.current.get(sessionId)
     if (cached) return cached
 
     // Skip if already loading
-    if (loadingDetails.has(sessionId)) return null
+    if (loadingDetailsRef.current.has(sessionId)) return null
 
     // Mark as loading
-    setLoadingDetails(prev => new Set(prev).add(sessionId))
+    loadingDetailsRef.current.add(sessionId)
+    forceUpdate(n => n + 1)
 
     const response = await api.fetchSessionDetails(sessionId)
 
     if (!mountedRef.current) return null
 
     // Remove from loading set
-    setLoadingDetails(prev => {
-      const next = new Set(prev)
-      next.delete(sessionId)
-      return next
-    })
+    loadingDetailsRef.current.delete(sessionId)
 
     if (response.success && response.data) {
       // Cache the result
-      setDetailsCache(prev => new Map(prev).set(sessionId, response.data!))
+      detailsCacheRef.current.set(sessionId, response.data)
+      forceUpdate(n => n + 1)
       return response.data
     }
 
+    forceUpdate(n => n + 1)
     return null
-  }, [detailsCache, loadingDetails])
+  }, []) // No dependencies - uses refs
 
   // Get cached details (synchronous)
   const getSessionDetails = useCallback((sessionId: string): SessionDetailsData | undefined => {
-    return detailsCache.get(sessionId)
-  }, [detailsCache])
+    return detailsCacheRef.current.get(sessionId)
+  }, []) // No dependencies - uses ref
 
   // Check if details are loading
   const isLoadingDetails = useCallback((sessionId: string): boolean => {
-    return loadingDetails.has(sessionId)
-  }, [loadingDetails])
+    return loadingDetailsRef.current.has(sessionId)
+  }, []) // No dependencies - uses ref
 
   // Initial load - run once on mount
   useEffect(() => {

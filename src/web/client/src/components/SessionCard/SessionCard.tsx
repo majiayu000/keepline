@@ -39,12 +39,13 @@ export const SessionCard = memo(function SessionCard({
   const details = getSessionDetails?.(session.sessionId)
   const loadingDetails = isLoadingDetails?.(session.sessionId) ?? false
 
-  // Load details when expanded
+  // Load details when expanded - only trigger on expand change
   useEffect(() => {
-    if (expanded && !details && !loadingDetails && loadSessionDetails) {
+    if (expanded && loadSessionDetails) {
+      // loadSessionDetails handles caching internally
       loadSessionDetails(session.sessionId)
     }
-  }, [expanded, details, loadingDetails, loadSessionDetails, session.sessionId])
+  }, [expanded, session.sessionId, loadSessionDetails])
 
   // Merge session data with lazy-loaded details
   const initialPrompt = details?.initialPrompt ?? session.initialPrompt
