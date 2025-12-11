@@ -701,16 +701,34 @@ app.post('/api/sync', async (c) => {
 // Get Claude Code quota/rate limits from OAuth API
 app.get('/api/quota', async (c) => {
   try {
-    // Try to get OAuth token from macOS Keychain
-    const proc = Bun.spawn(['security', 'find-generic-password', '-s', 'Claude Code-credentials', '-w'], {
-      stdout: 'pipe',
-      stderr: 'pipe',
-    });
+    // Try multiple possible credential names in macOS Keychain
+    const credentialNames = [
+      'Claude Code-credentials',
+      'claude-credentials',
+      'Claude-credentials',
+      'claudecode-credentials'
+    ];
 
-    const output = await new Response(proc.stdout).text();
-    const exitCode = await proc.exited;
+    let output = '';
+    let found = false;
 
-    if (exitCode !== 0 || !output.trim()) {
+    for (const credName of credentialNames) {
+      const proc = Bun.spawn(['security', 'find-generic-password', '-s', credName, '-w'], {
+        stdout: 'pipe',
+        stderr: 'pipe',
+      });
+
+      output = await new Response(proc.stdout).text();
+      const exitCode = await proc.exited;
+
+      if (exitCode === 0 && output.trim()) {
+        found = true;
+        logger.info(`Found credentials with name: ${credName}`);
+        break;
+      }
+    }
+
+    if (!found || !output.trim()) {
       return c.json({
         success: false,
         error: 'OAuth token not found. Please ensure you are logged into Claude Code.'
