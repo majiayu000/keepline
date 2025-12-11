@@ -15,6 +15,7 @@ import type {
   ToolCallsData,
   SubAgentsData,
   UsageData,
+  QuotaData,
 } from '@/types'
 import { API_BASE, API_TIMEOUT_MS } from '@/constants'
 
@@ -225,6 +226,15 @@ export async function fetchUsage(
   return request<UsageData>(`/usage?${params}`, undefined, signal)
 }
 
+/**
+ * GET /api/quota - Get Claude Code rate limit quota
+ */
+export async function fetchQuota(
+  signal?: AbortSignal
+): Promise<ApiResponse<QuotaData>> {
+  return request<QuotaData>('/quota', undefined, signal)
+}
+
 // Export all API functions
 export const api = {
   fetchSessions,
@@ -239,4 +249,5 @@ export const api = {
   fetchSubAgents,
   fetchSessionFull,
   fetchUsage,
+  fetchQuota,
 }

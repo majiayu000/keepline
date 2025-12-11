@@ -141,3 +141,26 @@ export interface UsageData {
   monthly?: MonthlyUsage[]
   weekly?: DailyUsage[] // Same structure as daily
 }
+
+// GET /api/quota - Claude Code rate limit quota
+export interface QuotaWindow {
+  utilization: number // Percentage used (0-100)
+  resets_at: string | null // ISO timestamp when window resets
+}
+
+export interface ExtraUsage {
+  is_enabled: boolean
+  monthly_limit: number | null
+  used_credits: number | null
+  utilization: number | null
+}
+
+export interface QuotaData {
+  five_hour: QuotaWindow // 5-hour rolling window
+  seven_day: QuotaWindow // 7-day weekly limit
+  seven_day_oauth_apps?: QuotaWindow | null
+  seven_day_opus?: QuotaWindow | null // Opus-specific limits
+  seven_day_sonnet?: QuotaWindow | null // Sonnet-specific limits
+  iguana_necktie?: unknown | null // Internal field
+  extra_usage?: ExtraUsage | null // Extra usage credits
+}

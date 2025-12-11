@@ -1,11 +1,62 @@
-import { useState, useEffect, memo } from 'react'
-import type { DailyUsage, MonthlyUsage } from '@/types'
+import { useState, useEffect, useCallback, memo } from 'react'
+import type { DailyUsage, MonthlyUsage, QuotaData, QuotaWindow } from '@/types'
 import { api } from '@/services/api'
 import { Spinner } from '@/components/Spinner'
 import { formatCost, formatTokens } from '@/utils/format'
 import styles from './UsagePanel.module.css'
 
 type ViewType = 'daily' | 'monthly'
+
+/** Get color class based on utilization percentage */
+function getUtilizationLevel(utilization: number): 'low' | 'medium' | 'high' {
+  if (utilization >= 80) return 'high'
+  if (utilization >= 50) return 'medium'
+  return 'low'
+}
+
+/** Format reset time as relative string */
+function formatResetTime(resetsAt: string | null): string {
+  if (!resetsAt) return 'N/A'
+
+  const resetDate = new Date(resetsAt)
+  const now = new Date()
+  const diffMs = resetDate.getTime() - now.getTime()
+
+  if (diffMs <= 0) return 'Resetting...'
+
+  const hours = Math.floor(diffMs / (1000 * 60 * 60))
+  const minutes = Math.floor((diffMs % (1000 * 60 * 60)) / (1000 * 60))
+
+  if (hours > 0) {
+    return `Resets in ${hours}h ${minutes}m`
+  }
+  return `Resets in ${minutes}m`
+}
+
+/** Quota bar component */
+function QuotaBar({ window, label }: { window: QuotaWindow; label: string }) {
+  const level = getUtilizationLevel(window.utilization)
+
+  return (
+    <div className={styles.quotaCard}>
+      <div className={styles.quotaLabel}>{label}</div>
+      <div className={styles.quotaBarContainer}>
+        <div
+          className={`${styles.quotaBar} ${styles[level]}`}
+          style={{ width: `${Math.min(window.utilization, 100)}%` }}
+        />
+      </div>
+      <div className={styles.quotaInfo}>
+        <span className={`${styles.quotaPercent} ${styles[level]}`}>
+          {window.utilization.toFixed(1)}%
+        </span>
+        <span className={styles.quotaReset}>
+          {formatResetTime(window.resets_at)}
+        </span>
+      </div>
+    </div>
+  )
+}
 
 export const UsagePanel = memo(function UsagePanel() {
   const [viewType, setViewType] = useState<ViewType>('daily')
@@ -14,6 +65,12 @@ export const UsagePanel = memo(function UsagePanel() {
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
 
+  // Quota state
+  const [quota, setQuota] = useState<QuotaData | null>(null)
+  const [quotaLoading, setQuotaLoading] = useState(true)
+  const [quotaError, setQuotaError] = useState<string | null>(null)
+
+  // Load usage data
   useEffect(() => {
     async function loadData() {
       setLoading(true)
@@ -26,11 +83,9 @@ export const UsagePanel = memo(function UsagePanel() {
         ])
 
         if (dailyRes.success && dailyRes.data?.daily) {
-          // Sort by date descending (newest first)
           setDailyData(dailyRes.data.daily.sort((a, b) => b.date.localeCompare(a.date)))
         }
         if (monthlyRes.success && monthlyRes.data?.monthly) {
-          // Sort by month descending
           setMonthlyData(monthlyRes.data.monthly.sort((a, b) => b.month.localeCompare(a.month)))
         }
       } catch (err) {
@@ -42,6 +97,32 @@ export const UsagePanel = memo(function UsagePanel() {
 
     loadData()
   }, [])
+
+  // Load quota data
+  const loadQuota = useCallback(async () => {
+    setQuotaLoading(true)
+    setQuotaError(null)
+
+    try {
+      const res = await api.fetchQuota()
+      if (res.success && res.data) {
+        setQuota(res.data)
+      } else {
+        setQuotaError(res.error || 'Failed to load quota')
+      }
+    } catch {
+      setQuotaError('Failed to load quota')
+    } finally {
+      setQuotaLoading(false)
+    }
+  }, [])
+
+  useEffect(() => {
+    loadQuota()
+    // Refresh quota every 60 seconds
+    const interval = setInterval(loadQuota, 60000)
+    return () => clearInterval(interval)
+  }, [loadQuota])
 
   // Calculate totals
   const dailyTotals = dailyData.reduce(
@@ -75,6 +156,41 @@ export const UsagePanel = memo(function UsagePanel() {
 
   return (
     <div className={styles.container}>
+      {/* Quota Section */}
+      <div className={styles.quotaSection}>
+        <div className={styles.quotaHeader}>
+          <h3 className={styles.quotaTitle}>Rate Limit Quota</h3>
+          <button className={styles.quotaRefresh} onClick={loadQuota} disabled={quotaLoading}>
+            {quotaLoading ? 'Loading...' : 'Refresh'}
+          </button>
+        </div>
+
+        {quotaLoading && !quota && (
+          <div className={styles.quotaLoading}>
+            <Spinner size="sm" />
+            <span>Loading quota...</span>
+          </div>
+        )}
+
+        {quotaError && !quota && (
+          <div className={styles.quotaError}>{quotaError}</div>
+        )}
+
+        {quota && (
+          <div className={styles.quotaGrid}>
+            <QuotaBar window={quota.five_hour} label="5-Hour Window" />
+            <QuotaBar window={quota.seven_day} label="7-Day Window" />
+            {quota.seven_day_sonnet && quota.seven_day_sonnet.utilization > 0 && (
+              <QuotaBar window={quota.seven_day_sonnet} label="Sonnet (7-Day)" />
+            )}
+            {quota.seven_day_opus && quota.seven_day_opus.utilization > 0 && (
+              <QuotaBar window={quota.seven_day_opus} label="Opus (7-Day)" />
+            )}
+          </div>
+        )}
+      </div>
+
+      {/* Usage Analytics Header */}
       <div className={styles.header}>
         <h3 className={styles.title}>Usage Analytics (via ccusage)</h3>
         <div className={styles.viewToggle}>
