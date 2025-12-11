@@ -2,6 +2,7 @@ import { ReactNode, memo } from 'react'
 import { Header } from '@/components/Header'
 import { StatsBar } from '@/components/StatsBar'
 import { Toolbar } from '@/components/Toolbar'
+import { TabNav, type TabId } from '@/components/TabNav'
 import type { Session, SessionStats, SessionStatus } from '@/types'
 import type { NotificationSettings, ConnectionStatus } from '@/hooks'
 import styles from './Layout.module.css'
@@ -28,6 +29,9 @@ interface LayoutProps {
   onRequestNotificationPermission?: () => Promise<boolean>
   // Connection status
   connectionStatus?: ConnectionStatus
+  // Tab navigation
+  activeTab?: TabId
+  onTabChange?: (tab: TabId) => void
 }
 
 export const Layout = memo(function Layout({
@@ -48,6 +52,8 @@ export const Layout = memo(function Layout({
   notificationPermission,
   onRequestNotificationPermission,
   connectionStatus,
+  activeTab = 'sessions',
+  onTabChange,
 }: LayoutProps) {
   const showToolbar = onSearchChange && onFilterChange
 
@@ -63,6 +69,9 @@ export const Layout = memo(function Layout({
         onRequestNotificationPermission={onRequestNotificationPermission}
         connectionStatus={connectionStatus}
       />
+      {onTabChange && (
+        <TabNav activeTab={activeTab} onTabChange={onTabChange} />
+      )}
       <StatsBar stats={stats} loading={loading} />
       {showToolbar && (
         <Toolbar

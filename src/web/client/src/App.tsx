@@ -7,7 +7,7 @@ import { SessionCardSkeleton } from '@/components/Skeleton'
 import { HelpModal } from '@/components/HelpModal'
 import { CostPanel } from '@/components/CostPanel'
 import { AnalyticsPanel } from '@/components/AnalyticsPanel'
-import { TabNav, type TabId } from '@/components/TabNav'
+import type { TabId } from '@/components/TabNav'
 import { useSessions, useKeyboardShortcuts, useSessionFilter, useNotifications } from '@/hooks'
 
 // Lazy load heavy components
@@ -136,9 +136,9 @@ function AppContent() {
       notificationPermission={notificationPermission}
       onRequestNotificationPermission={requestNotificationPermission}
       connectionStatus={connectionStatus}
+      activeTab={activeTab}
+      onTabChange={setActiveTab}
     >
-      <TabNav activeTab={activeTab} onTabChange={setActiveTab} />
-
       {loading && <SessionCardSkeleton count={4} />}
 
       {error && !loading && (
