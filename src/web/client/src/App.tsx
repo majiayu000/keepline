@@ -7,8 +7,10 @@ import { SessionCardSkeleton } from '@/components/Skeleton'
 import { HelpModal } from '@/components/HelpModal'
 import { CostPanel } from '@/components/CostPanel'
 import { AnalyticsPanel } from '@/components/AnalyticsPanel'
+import { ProjectStatsBar } from '@/components/ProjectStatsBar'
+import { ProjectsGrid } from '@/components/ProjectsGrid'
 import type { TabId } from '@/components/TabNav'
-import { useSessions, useKeyboardShortcuts, useSessionFilter, useNotifications } from '@/hooks'
+import { useSessions, useKeyboardShortcuts, useSessionFilter, useNotifications, useProjects } from '@/hooks'
 
 // Lazy load heavy components
 const SessionList = lazy(() => import('@/components/SessionList').then(m => ({ default: m.SessionList })))
@@ -48,6 +50,9 @@ function AppContent() {
     setStatusFilters,
     filteredSessions,
   } = useSessionFilter(sessions)
+
+  // Projects aggregation
+  const { projects, stats: projectStats } = useProjects(filteredSessions)
 
   // Notifications
   const {
@@ -108,6 +113,13 @@ function AppContent() {
     setTheme(nextTheme)
     showToast(`Theme: ${nextTheme}`, 'info')
   }, [theme, setTheme, showToast])
+
+  const handleProjectClick = useCallback((projectPath: string) => {
+    // Switch to sessions tab and filter by project directory
+    setActiveTab('sessions')
+    setSearchQuery(projectPath)
+    showToast(`Filtered to: ${projectPath.split('/').pop()}`, 'info')
+  }, [setSearchQuery, showToast])
 
   // Keyboard shortcuts
   useKeyboardShortcuts({
@@ -174,6 +186,17 @@ function AppContent() {
         <div className={layoutStyles.errorBox}>
           No sessions to analyze
         </div>
+      )}
+
+      {/* Projects Tab */}
+      {activeTab === 'projects' && !loading && (
+        <>
+          <ProjectStatsBar stats={projectStats} />
+          <ProjectsGrid
+            projects={projects}
+            onProjectClick={handleProjectClick}
+          />
+        </>
       )}
 
       <HelpModal isOpen={showHelp} onClose={() => setShowHelp(false)} />
