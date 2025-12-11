@@ -149,7 +149,7 @@ async function backgroundSync() {
     await syncSessions();
     lastSyncTime = Date.now();
     // Broadcast update to WebSocket clients after sync
-    broadcastToClients({ type: 'sync:complete' });
+    broadcast('sync:complete', { timestamp: new Date().toISOString() });
   } catch (error) {
     // Better error logging
     const errorMessage = error instanceof Error ? error.message : String(error);
