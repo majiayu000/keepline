@@ -72,17 +72,21 @@ export const Layout = memo(function Layout({
       {onTabChange && (
         <TabNav activeTab={activeTab} onTabChange={onTabChange} />
       )}
-      <StatsBar stats={stats} loading={loading} />
-      {showToolbar && (
-        <Toolbar
-          searchQuery={searchQuery}
-          onSearchChange={onSearchChange}
-          statusFilters={statusFilters}
-          onFilterChange={onFilterChange}
-          stats={stats}
-          totalCount={totalCount}
-          filteredCount={filteredCount}
-        />
+      {activeTab === 'sessions' && (
+        <>
+          <StatsBar stats={stats} loading={loading} />
+          {showToolbar && (
+            <Toolbar
+              searchQuery={searchQuery}
+              onSearchChange={onSearchChange}
+              statusFilters={statusFilters}
+              onFilterChange={onFilterChange}
+              stats={stats}
+              totalCount={totalCount}
+              filteredCount={filteredCount}
+            />
+          )}
+        </>
       )}
       <main className={styles.main}>{children}</main>
     </div>
