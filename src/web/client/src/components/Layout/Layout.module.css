@@ -11,6 +11,9 @@
   flex: 1;
   padding: var(--space-xl) var(--space-2xl);
   overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 1.5rem;
 }
 
 /* App state styles */

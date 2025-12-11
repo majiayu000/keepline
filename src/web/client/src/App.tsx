@@ -1,16 +1,23 @@
-import { useCallback, lazy, Suspense } from 'react'
-import { ThemeProvider } from '@/contexts/ThemeContext'
+import { useCallback, useState, lazy, Suspense } from 'react'
+import { ThemeProvider, useTheme, type Theme } from '@/contexts/ThemeContext'
 import { ToastProvider, useToast } from '@/components/Toast'
 import { ErrorBoundary } from '@/components/ErrorBoundary'
 import { Layout, layoutStyles } from '@/components/Layout'
 import { SessionCardSkeleton } from '@/components/Skeleton'
-import { useSessions, useKeyboardShortcuts } from '@/hooks'
+import { HelpModal } from '@/components/HelpModal'
+import { CostPanel } from '@/components/CostPanel'
+import { useSessions, useKeyboardShortcuts, useSessionFilter } from '@/hooks'
 
 // Lazy load heavy components
 const SessionList = lazy(() => import('@/components/SessionList').then(m => ({ default: m.SessionList })))
 
+const THEME_ORDER: Theme[] = ['cyberpunk', 'matrix', 'synthwave', 'minimal', 'tokyo']
+
 function AppContent() {
   const { showToast } = useToast()
+  const { theme, setTheme } = useTheme()
+  const [showHelp, setShowHelp] = useState(false)
+
   const {
     sessions,
     stats,
@@ -27,6 +34,15 @@ function AppContent() {
     loadSessionDetails,
     isLoadingDetails,
   } = useSessions()
+
+  // Search & Filter
+  const {
+    searchQuery,
+    setSearchQuery,
+    statusFilters,
+    setStatusFilters,
+    filteredSessions,
+  } = useSessionFilter(sessions)
 
   const handleSync = useCallback(async () => {
     const success = await sync()
@@ -57,14 +73,42 @@ function AppContent() {
     )
   }, [completeSession, showToast])
 
+  const handleSetTheme = useCallback((newTheme: Theme) => {
+    setTheme(newTheme)
+    showToast(`Theme: ${newTheme}`, 'info')
+  }, [setTheme, showToast])
+
+  const handleCycleTheme = useCallback(() => {
+    const currentIndex = THEME_ORDER.indexOf(theme)
+    const nextIndex = (currentIndex + 1) % THEME_ORDER.length
+    const nextTheme = THEME_ORDER[nextIndex]
+    setTheme(nextTheme)
+    showToast(`Theme: ${nextTheme}`, 'info')
+  }, [theme, setTheme, showToast])
+
   // Keyboard shortcuts
   useKeyboardShortcuts({
     onRefresh: refresh,
     onSync: handleSync,
+    onShowHelp: () => setShowHelp(true),
+    onSetTheme: handleSetTheme,
+    onCycleTheme: handleCycleTheme,
   })
 
   return (
-    <Layout stats={stats} loading={loading} onSync={handleSync} syncing={syncing}>
+    <Layout
+      stats={stats}
+      loading={loading}
+      onSync={handleSync}
+      syncing={syncing}
+      searchQuery={searchQuery}
+      onSearchChange={setSearchQuery}
+      statusFilters={statusFilters}
+      onFilterChange={setStatusFilters}
+      totalCount={sessions.length}
+      filteredCount={filteredSessions.length}
+      sessions={filteredSessions}
+    >
       {loading && <SessionCardSkeleton count={4} />}
 
       {error && !loading && (
@@ -73,10 +117,14 @@ function AppContent() {
         </div>
       )}
 
+      {!loading && filteredSessions.length > 0 && (
+        <CostPanel sessions={filteredSessions} />
+      )}
+
       {!loading && (
         <Suspense fallback={<SessionCardSkeleton count={4} />}>
           <SessionList
-            sessions={sessions}
+            sessions={filteredSessions}
             onRecover={handleRecover}
             onStop={handleStop}
             onComplete={handleComplete}
@@ -86,6 +134,8 @@ function AppContent() {
           />
         </Suspense>
       )}
+
+      <HelpModal isOpen={showHelp} onClose={() => setShowHelp(false)} />
     </Layout>
   )
 }
