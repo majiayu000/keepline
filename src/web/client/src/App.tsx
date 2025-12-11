@@ -51,8 +51,9 @@ function AppContent() {
     filteredSessions,
   } = useSessionFilter(sessions)
 
-  // Projects aggregation
-  const { projects, stats: projectStats } = useProjects(filteredSessions)
+  // Projects aggregation - use ALL sessions, not filtered
+  // This ensures Projects view always shows all projects regardless of search filter
+  const { projects, stats: projectStats } = useProjects(sessions)
 
   // Notifications
   const {
@@ -174,15 +175,15 @@ function AppContent() {
         </Suspense>
       )}
 
-      {/* Analytics Tab */}
-      {activeTab === 'analytics' && !loading && filteredSessions.length > 0 && (
+      {/* Analytics Tab - use ALL sessions, not filtered */}
+      {activeTab === 'analytics' && !loading && sessions.length > 0 && (
         <>
-          <CostPanel sessions={filteredSessions} />
-          <AnalyticsPanel sessions={filteredSessions} />
+          <CostPanel sessions={sessions} />
+          <AnalyticsPanel sessions={sessions} />
         </>
       )}
 
-      {activeTab === 'analytics' && !loading && filteredSessions.length === 0 && (
+      {activeTab === 'analytics' && !loading && sessions.length === 0 && (
         <div className={layoutStyles.errorBox}>
           No sessions to analyze
         </div>
