@@ -151,7 +151,10 @@ async function backgroundSync() {
     // Broadcast update to WebSocket clients after sync
     broadcastToClients({ type: 'sync:complete' });
   } catch (error) {
-    logger.error('Background sync failed', error);
+    // Better error logging
+    const errorMessage = error instanceof Error ? error.message : String(error);
+    const errorStack = error instanceof Error ? error.stack : undefined;
+    logger.error('Background sync failed', { message: errorMessage, stack: errorStack });
   } finally {
     isSyncingInBackground = false;
   }
@@ -692,6 +695,41 @@ app.post('/api/sync', async (c) => {
   } catch (error) {
     logger.error('Failed to sync sessions', error);
     return c.json({ success: false, error: 'Sync failed' }, 500);
+  }
+});
+
+// Get usage analytics from ccusage CLI tool
+app.get('/api/usage', async (c) => {
+  try {
+    const type = c.req.query('type') || 'daily'; // daily, monthly, weekly, session
+    const since = c.req.query('since'); // YYYYMMDD format
+    const until = c.req.query('until'); // YYYYMMDD format
+
+    // Build ccusage command
+    const args = [type, '--json'];
+    if (since) args.push('--since', since);
+    if (until) args.push('--until', until);
+
+    // Execute ccusage
+    const proc = Bun.spawn(['npx', 'ccusage', ...args], {
+      stdout: 'pipe',
+      stderr: 'pipe',
+    });
+
+    const output = await new Response(proc.stdout).text();
+    const exitCode = await proc.exited;
+
+    if (exitCode !== 0) {
+      const stderr = await new Response(proc.stderr).text();
+      logger.error('ccusage failed', { exitCode, stderr });
+      return c.json({ success: false, error: 'Failed to get usage data' }, 500);
+    }
+
+    const data = JSON.parse(output);
+    return c.json({ success: true, data });
+  } catch (error) {
+    logger.error('Failed to get usage data', error);
+    return c.json({ success: false, error: 'Failed to get usage data' }, 500);
   }
 });
 

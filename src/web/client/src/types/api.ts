@@ -101,3 +101,43 @@ export interface SessionFullData {
   tools: ToolCallsData
   subAgents: SubAgentsData
 }
+
+// GET /api/usage - ccusage data types
+export interface ModelBreakdown {
+  modelName: string
+  inputTokens: number
+  outputTokens: number
+  cacheCreationTokens: number
+  cacheReadTokens: number
+  cost: number
+}
+
+export interface DailyUsage {
+  date: string
+  inputTokens: number
+  outputTokens: number
+  cacheCreationTokens: number
+  cacheReadTokens: number
+  totalTokens: number
+  totalCost: number
+  modelsUsed: string[]
+  modelBreakdowns: ModelBreakdown[]
+}
+
+export interface MonthlyUsage {
+  month: string
+  inputTokens: number
+  outputTokens: number
+  cacheCreationTokens: number
+  cacheReadTokens: number
+  totalTokens: number
+  totalCost: number
+  modelsUsed: string[]
+  modelBreakdowns: ModelBreakdown[]
+}
+
+export interface UsageData {
+  daily?: DailyUsage[]
+  monthly?: MonthlyUsage[]
+  weekly?: DailyUsage[] // Same structure as daily
+}

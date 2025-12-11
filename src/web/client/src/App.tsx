@@ -5,8 +5,7 @@ import { ErrorBoundary } from '@/components/ErrorBoundary'
 import { Layout, layoutStyles } from '@/components/Layout'
 import { SessionCardSkeleton } from '@/components/Skeleton'
 import { HelpModal } from '@/components/HelpModal'
-import { CostPanel } from '@/components/CostPanel'
-import { AnalyticsPanel } from '@/components/AnalyticsPanel'
+import { UsagePanel } from '@/components/UsagePanel'
 import { ProjectStatsBar } from '@/components/ProjectStatsBar'
 import { ProjectsGrid } from '@/components/ProjectsGrid'
 import type { TabId } from '@/components/TabNav'
@@ -182,18 +181,9 @@ function AppContent() {
         </Suspense>
       )}
 
-      {/* Analytics Tab - use ALL sessions, not filtered */}
-      {activeTab === 'analytics' && !loading && sessions.length > 0 && (
-        <>
-          <CostPanel sessions={sessions} />
-          <AnalyticsPanel sessions={sessions} />
-        </>
-      )}
-
-      {activeTab === 'analytics' && !loading && sessions.length === 0 && (
-        <div className={layoutStyles.errorBox}>
-          No sessions to analyze
-        </div>
+      {/* Analytics Tab - use ccusage for accurate data */}
+      {activeTab === 'analytics' && !loading && (
+        <UsagePanel />
       )}
 
       {/* Projects Tab */}

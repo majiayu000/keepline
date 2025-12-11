@@ -1,0 +1,156 @@
+.container {
+  background: var(--bg-secondary);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 1.5rem;
+}
+
+.header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 1.5rem;
+}
+
+.title {
+  margin: 0;
+  font-size: 1rem;
+  font-weight: 600;
+  color: var(--text);
+}
+
+.viewToggle {
+  display: flex;
+  gap: 0.25rem;
+  background: var(--bg-tertiary);
+  padding: 0.25rem;
+  border-radius: 6px;
+}
+
+.toggleBtn {
+  padding: 0.375rem 0.75rem;
+  font-size: 0.8rem;
+  font-weight: 500;
+  border: none;
+  border-radius: 4px;
+  background: transparent;
+  color: var(--text-dim);
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.toggleBtn:hover {
+  color: var(--text);
+}
+
+.toggleBtn.active {
+  background: var(--primary);
+  color: var(--bg);
+}
+
+.summary {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 1rem;
+  margin-bottom: 1.5rem;
+}
+
+.summaryCard {
+  background: var(--bg-tertiary);
+  padding: 1rem;
+  border-radius: 6px;
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+}
+
+.summaryLabel {
+  font-size: 0.75rem;
+  color: var(--text-dim);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.summaryValue {
+  font-size: 1.25rem;
+  font-weight: 600;
+  color: var(--primary);
+}
+
+.tableWrapper {
+  overflow-x: auto;
+}
+
+.table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.85rem;
+}
+
+.table th,
+.table td {
+  padding: 0.625rem 0.75rem;
+  text-align: left;
+  border-bottom: 1px solid var(--border);
+}
+
+.table th {
+  font-weight: 600;
+  color: var(--text-dim);
+  font-size: 0.75rem;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  background: var(--bg-tertiary);
+}
+
+.table tbody tr:hover {
+  background: var(--bg-tertiary);
+}
+
+.dateCell {
+  font-weight: 500;
+  color: var(--text);
+}
+
+.totalCell {
+  font-weight: 600;
+  color: var(--text);
+}
+
+.costCell {
+  font-weight: 600;
+  color: var(--accent-green);
+}
+
+.modelsCell {
+  font-size: 0.75rem;
+  color: var(--text-dim);
+  max-width: 150px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.loading {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.75rem;
+  padding: 3rem;
+  color: var(--text-dim);
+}
+
+.error {
+  padding: 2rem;
+  text-align: center;
+  color: var(--accent-red);
+  background: var(--bg-secondary);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+}
+
+.empty {
+  padding: 2rem;
+  text-align: center;
+  color: var(--text-dim);
+}

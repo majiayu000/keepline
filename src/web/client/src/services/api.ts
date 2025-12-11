@@ -14,6 +14,7 @@ import type {
   ProcessStatusData,
   ToolCallsData,
   SubAgentsData,
+  UsageData,
 } from '@/types'
 import { API_BASE, API_TIMEOUT_MS } from '@/constants'
 
@@ -204,6 +205,26 @@ export async function fetchSessionFull(
   return request<SessionFullData>(`/sessions/${sessionId}/full`, undefined, signal)
 }
 
+/**
+ * GET /api/usage - Get usage analytics from ccusage
+ * @param type - daily, monthly, weekly, session
+ * @param since - YYYYMMDD format
+ * @param until - YYYYMMDD format
+ */
+export async function fetchUsage(
+  type: 'daily' | 'monthly' | 'weekly' | 'session' = 'daily',
+  options?: {
+    since?: string
+    until?: string
+  },
+  signal?: AbortSignal
+): Promise<ApiResponse<UsageData>> {
+  const params = new URLSearchParams({ type })
+  if (options?.since) params.set('since', options.since)
+  if (options?.until) params.set('until', options.until)
+  return request<UsageData>(`/usage?${params}`, undefined, signal)
+}
+
 // Export all API functions
 export const api = {
   fetchSessions,
@@ -217,4 +238,5 @@ export const api = {
   fetchSessionDetails,
   fetchSubAgents,
   fetchSessionFull,
+  fetchUsage,
 }
