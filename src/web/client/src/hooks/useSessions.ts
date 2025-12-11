@@ -1,7 +1,10 @@
 import { useState, useEffect, useCallback, useRef } from 'react'
 import { api } from '@/services/api'
 import { REFRESH_INTERVAL_MS } from '@/constants'
+import { useWebSocket, type WebSocketMessage } from './useWebSocket'
 import type { Session, SessionStats, SessionDetailsData } from '@/types'
+
+export type ConnectionStatus = 'polling' | 'realtime' | 'disconnected'
 
 interface UseSessionsReturn {
   sessions: Session[]
@@ -18,6 +21,8 @@ interface UseSessionsReturn {
   getSessionDetails: (sessionId: string) => SessionDetailsData | undefined
   loadSessionDetails: (sessionId: string) => Promise<SessionDetailsData | null>
   isLoadingDetails: (sessionId: string) => boolean
+  // WebSocket status
+  connectionStatus: ConnectionStatus
 }
 
 export function useSessions(): UseSessionsReturn {
@@ -26,14 +31,55 @@ export function useSessions(): UseSessionsReturn {
   const [loading, setLoading] = useState(true)
   const [syncing, setSyncing] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const [connectionStatus, setConnectionStatus] = useState<ConnectionStatus>('polling')
   const intervalRef = useRef<number | null>(null)
   const mountedRef = useRef(true)
+  const wsConnectedRef = useRef(false)
 
   // Details cache for lazy loading - use refs to avoid re-render loops
   const detailsCacheRef = useRef<Map<string, SessionDetailsData>>(new Map())
   const loadingDetailsRef = useRef<Set<string>>(new Set())
   // Trigger re-render when cache updates
   const [, forceUpdate] = useState(0)
+
+  // Handle WebSocket messages
+  const handleWebSocketMessage = useCallback((message: WebSocketMessage) => {
+    if (!mountedRef.current) return
+
+    if (message.type === 'sessions:update' && message.data) {
+      const data = message.data as { sessions: Session[]; stats: SessionStats }
+      setSessions(data.sessions)
+      setStats(data.stats)
+      setError(null)
+    }
+  }, [])
+
+  // WebSocket connection
+  useWebSocket({
+    onMessage: handleWebSocketMessage,
+    onConnect: () => {
+      wsConnectedRef.current = true
+      setConnectionStatus('realtime')
+      // Clear polling interval when WebSocket is connected
+      if (intervalRef.current) {
+        clearInterval(intervalRef.current)
+        intervalRef.current = null
+      }
+    },
+    onDisconnect: () => {
+      wsConnectedRef.current = false
+      setConnectionStatus('polling')
+      // Restart polling when WebSocket disconnects
+      if (!intervalRef.current) {
+        intervalRef.current = window.setInterval(() => {
+          loadSessionsRef.current()
+        }, REFRESH_INTERVAL_MS)
+      }
+    },
+  })
+
+  // Use ref for loadSessions to avoid stale closures
+  const loadSessionsRef = useRef<() => Promise<void>>(() => Promise.resolve())
 
   // Use ref to avoid stale closures in interval
   const loadSessions = useCallback(async () => {
@@ -51,6 +97,11 @@ export function useSessions(): UseSessionsReturn {
       setError(response.error || 'Failed to load sessions')
     }
   }, [])
+
+  // Keep loadSessionsRef updated
+  useEffect(() => {
+    loadSessionsRef.current = loadSessions
+  }, [loadSessions])
 
   const refresh = useCallback(async () => {
     setLoading(true)
@@ -148,18 +199,22 @@ export function useSessions(): UseSessionsReturn {
     }
   }, []) // Empty deps - only run on mount
 
-  // Auto-refresh interval
+  // Auto-refresh interval (only when WebSocket is not connected)
   useEffect(() => {
-    intervalRef.current = window.setInterval(() => {
-      loadSessions()
-    }, REFRESH_INTERVAL_MS)
+    // Only start polling if WebSocket is not connected
+    if (!wsConnectedRef.current) {
+      intervalRef.current = window.setInterval(() => {
+        loadSessionsRef.current()
+      }, REFRESH_INTERVAL_MS)
+    }
 
     return () => {
       if (intervalRef.current) {
         clearInterval(intervalRef.current)
+        intervalRef.current = null
       }
     }
-  }, [loadSessions])
+  }, []) // Remove loadSessions dependency - use ref instead
 
   return {
     sessions,
@@ -176,5 +231,7 @@ export function useSessions(): UseSessionsReturn {
     getSessionDetails,
     loadSessionDetails,
     isLoadingDetails,
+    // WebSocket status
+    connectionStatus,
   }
 }

@@ -3,7 +3,7 @@ import { Header } from '@/components/Header'
 import { StatsBar } from '@/components/StatsBar'
 import { Toolbar } from '@/components/Toolbar'
 import type { Session, SessionStats, SessionStatus } from '@/types'
-import type { NotificationSettings } from '@/hooks'
+import type { NotificationSettings, ConnectionStatus } from '@/hooks'
 import styles from './Layout.module.css'
 
 interface LayoutProps {
@@ -26,6 +26,8 @@ interface LayoutProps {
   onUpdateNotificationSettings?: (updates: Partial<NotificationSettings>) => void
   notificationPermission?: NotificationPermission
   onRequestNotificationPermission?: () => Promise<boolean>
+  // Connection status
+  connectionStatus?: ConnectionStatus
 }
 
 export const Layout = memo(function Layout({
@@ -45,6 +47,7 @@ export const Layout = memo(function Layout({
   onUpdateNotificationSettings,
   notificationPermission,
   onRequestNotificationPermission,
+  connectionStatus,
 }: LayoutProps) {
   const showToolbar = onSearchChange && onFilterChange
 
@@ -58,6 +61,7 @@ export const Layout = memo(function Layout({
         onUpdateNotificationSettings={onUpdateNotificationSettings}
         notificationPermission={notificationPermission}
         onRequestNotificationPermission={onRequestNotificationPermission}
+        connectionStatus={connectionStatus}
       />
       <StatsBar stats={stats} loading={loading} />
       {showToolbar && (

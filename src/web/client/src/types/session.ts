@@ -46,6 +46,23 @@ export interface Session {
   memoryUsage?: number
   // Usage stats
   usageStats?: UsageStats
+  // Multi-session tracking
+  subAgentCount?: number  // Number of sub-agents spawned by this session
+}
+
+/** Sub-agent session info */
+export interface SubAgent {
+  sessionId: string
+  agentId?: string
+  directory: string
+  firstMessage?: string
+  lastMessage?: string
+  messageCount: number
+  toolCount: number
+  lastTool?: string
+  startedAt?: string
+  lastActiveAt: string
+  usageStats?: UsageStats
 }
 
 export interface SessionStats {

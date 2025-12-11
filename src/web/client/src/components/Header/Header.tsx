@@ -2,9 +2,10 @@ import { memo } from 'react'
 import { ThemeSwitcher } from '@/components/ThemeSwitcher'
 import { ExportMenu } from '@/components/ExportMenu'
 import { NotificationSettings } from '@/components/NotificationSettings'
+import { ConnectionStatus } from '@/components/ConnectionStatus'
 import { Button } from '@/components/Button'
 import type { Session } from '@/types'
-import type { NotificationSettings as NotificationSettingsType } from '@/hooks'
+import type { NotificationSettings as NotificationSettingsType, ConnectionStatus as ConnectionStatusType } from '@/hooks'
 import styles from './Header.module.css'
 
 interface HeaderProps {
@@ -16,6 +17,8 @@ interface HeaderProps {
   onUpdateNotificationSettings?: (updates: Partial<NotificationSettingsType>) => void
   notificationPermission?: NotificationPermission
   onRequestNotificationPermission?: () => Promise<boolean>
+  // Connection status
+  connectionStatus?: ConnectionStatusType
 }
 
 export const Header = memo(function Header({
@@ -26,6 +29,7 @@ export const Header = memo(function Header({
   onUpdateNotificationSettings,
   notificationPermission,
   onRequestNotificationPermission,
+  connectionStatus = 'polling',
 }: HeaderProps) {
   return (
     <header className={styles.header} role="banner">
@@ -34,6 +38,7 @@ export const Header = memo(function Header({
         <span className={styles.subtitle}>Claude Code Monitor</span>
       </div>
       <div className={styles.actions}>
+        <ConnectionStatus status={connectionStatus} />
         <ExportMenu sessions={sessions} />
         {notificationSettings && onUpdateNotificationSettings && onRequestNotificationPermission && (
           <NotificationSettings

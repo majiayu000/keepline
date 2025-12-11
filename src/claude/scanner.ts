@@ -36,8 +36,15 @@ export function getSessionCacheStats(): { size: number; keys: string[] } {
   };
 }
 
+/** Options for scanning session files */
+export interface ScanOptions {
+  includeSubAgents?: boolean; // Include agent- prefixed files (default: false for backward compatibility)
+}
+
 /** Scan projects directory for session files */
-export function scanProjectsDirectory(): ClaudeSessionFile[] {
+export function scanProjectsDirectory(options: ScanOptions = {}): ClaudeSessionFile[] {
+  const { includeSubAgents = false } = options;
+
   if (!existsSync(CLAUDE_PROJECTS)) {
     logger.warn('Claude projects directory not found');
     return [];
@@ -52,17 +59,26 @@ export function scanProjectsDirectory(): ClaudeSessionFile[] {
 
     if (!stat.isDirectory()) continue;
 
-    // Skip agent- prefixed directories (subagent data)
-    const files = readdirSync(projectPath).filter(
-      (f) => f.endsWith('.jsonl') && !f.startsWith('agent-')
-    );
+    // Filter files based on options
+    const files = readdirSync(projectPath).filter((f) => {
+      if (!f.endsWith('.jsonl')) return false;
+      const isAgentFile = f.startsWith('agent-');
+      // Include agent files only if explicitly requested
+      return includeSubAgents ? true : !isAgentFile;
+    });
 
     for (const file of files) {
       const filePath = join(projectPath, file);
       const fileStat = statSync(filePath);
 
+      // For agent files, use the agent ID as sessionId
+      const isAgentFile = file.startsWith('agent-');
+      const sessionId = isAgentFile
+        ? file.replace('.jsonl', '') // Keep as "agent-xxxx"
+        : extractSessionId(file);
+
       sessions.push({
-        sessionId: extractSessionId(file),
+        sessionId,
         directory: projectNameToDir(projectName),
         filePath,
         modifiedAt: fileStat.mtime,
@@ -74,8 +90,8 @@ export function scanProjectsDirectory(): ClaudeSessionFile[] {
 }
 
 /** Get all sessions with parsed data (optimized with caching) */
-export async function getAllSessions(): Promise<ParsedSessionData[]> {
-  const sessionFiles = scanProjectsDirectory();
+export async function getAllSessions(options: ScanOptions = {}): Promise<ParsedSessionData[]> {
+  const sessionFiles = scanProjectsDirectory(options);
   const sessions: ParsedSessionData[] = [];
   let cacheHits = 0;
   let cacheMisses = 0;

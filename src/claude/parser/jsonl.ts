@@ -16,12 +16,18 @@ import type {
 } from '../types.js';
 import { aggregateUsageStats } from '../../usage/extractor.js';
 
+/** Extended entry type with agent info */
+interface ClaudeEntryWithAgent extends ClaudeEntry {
+  agentId?: string;
+  isSidechain?: boolean;
+}
+
 /** Parse a single JSONL line */
-function parseLine(line: string, lineNumber: number, filePath: string): ClaudeEntry | null {
+function parseLine(line: string, lineNumber: number, filePath: string): ClaudeEntryWithAgent | null {
   if (!line.trim()) return null;
 
   try {
-    return JSON.parse(line) as ClaudeEntry;
+    return JSON.parse(line) as ClaudeEntryWithAgent;
   } catch {
     throw new ParseError(filePath, lineNumber);
   }
@@ -95,7 +101,7 @@ function extractCurrentFile(toolInput: Record<string, unknown>): string | undefi
 
 /** Parse a session JSONL file */
 export async function parseSessionFile(filePath: string): Promise<ParsedSessionData | null> {
-  const entries: ClaudeEntry[] = [];
+  const entries: ClaudeEntryWithAgent[] = [];
   let lineNumber = 0;
 
   const fileStream = createReadStream(filePath);
@@ -121,6 +127,12 @@ export async function parseSessionFile(filePath: string): Promise<ParsedSessionD
 
   // Skip if no valid session ID
   if (!sessionId || !directory) return null;
+
+  // Check for agent info (sub-agent sessions)
+  const agentId = firstEntry.agentId;
+  const isSubAgent = !!agentId || firstEntry.isSidechain === true;
+  // For sub-agents, the sessionId in the file is actually the parent's sessionId
+  const parentSessionId = isSubAgent ? sessionId : undefined;
 
   // Find first user message and last assistant message
   let firstMessage: string | undefined;
@@ -209,7 +221,8 @@ export async function parseSessionFile(filePath: string): Promise<ParsedSessionD
     : undefined;
 
   return {
-    sessionId,
+    // For sub-agents, use agentId as sessionId to make them unique
+    sessionId: isSubAgent && agentId ? `agent-${agentId}` : sessionId,
     directory,
     firstMessage,
     lastMessage,
@@ -222,5 +235,9 @@ export async function parseSessionFile(filePath: string): Promise<ParsedSessionD
     lastActiveAt,
     toolCalls: toolCalls.length > 0 ? toolCalls : undefined,
     usageStats,
+    // Multi-session tracking fields
+    agentId,
+    parentSessionId,
+    isSubAgent,
   };
 }

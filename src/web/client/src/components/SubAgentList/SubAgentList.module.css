@@ -1,0 +1,127 @@
+.container {
+  margin-top: 0.75rem;
+  border: 1px solid var(--color-border);
+  border-radius: 6px;
+  background: var(--color-surface);
+}
+
+.header {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.5rem 0.75rem;
+  border-bottom: 1px solid var(--color-border);
+  font-size: 0.85rem;
+  color: var(--color-text-secondary);
+}
+
+.icon {
+  font-size: 1rem;
+}
+
+.count {
+  font-weight: 500;
+  color: var(--color-accent);
+}
+
+.list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.item {
+  border-bottom: 1px solid var(--color-border);
+}
+
+.item:last-child {
+  border-bottom: none;
+}
+
+.agentHeader {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.5rem 0.75rem;
+  cursor: pointer;
+  transition: background 0.15s ease;
+  font-size: 0.85rem;
+}
+
+.agentHeader:hover {
+  background: var(--color-surface-hover);
+}
+
+.expandIcon {
+  color: var(--color-text-secondary);
+  font-size: 0.7rem;
+  width: 1rem;
+  text-align: center;
+}
+
+.agentId {
+  font-family: var(--font-mono);
+  color: var(--color-accent);
+  font-weight: 500;
+}
+
+.agentStats {
+  color: var(--color-text-secondary);
+  font-size: 0.8rem;
+}
+
+.agentTime {
+  margin-left: auto;
+  color: var(--color-text-secondary);
+  font-size: 0.75rem;
+}
+
+.agentDetails {
+  padding: 0.5rem 0.75rem 0.75rem 2rem;
+  background: var(--color-bg);
+  border-top: 1px solid var(--color-border);
+}
+
+.field {
+  margin-bottom: 0.5rem;
+  font-size: 0.8rem;
+}
+
+.field:last-child {
+  margin-bottom: 0;
+}
+
+.fieldLabel {
+  color: var(--color-text-secondary);
+  margin-right: 0.5rem;
+}
+
+.fieldValue {
+  color: var(--color-text);
+}
+
+.lastMessage {
+  margin-top: 0.25rem;
+  padding: 0.5rem;
+  background: var(--color-surface);
+  border-radius: 4px;
+  font-family: var(--font-mono);
+  font-size: 0.75rem;
+  color: var(--color-text-secondary);
+  white-space: pre-wrap;
+  max-height: 150px;
+  overflow-y: auto;
+}
+
+.loading,
+.error,
+.empty {
+  padding: 0.75rem;
+  text-align: center;
+  font-size: 0.85rem;
+  color: var(--color-text-secondary);
+}
+
+.error {
+  color: var(--color-danger);
+}

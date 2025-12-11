@@ -115,4 +115,8 @@ export interface ParsedSessionData {
   startedAt?: Date;
   lastActiveAt: Date;
   toolCalls?: ToolCallInfo[];
+  // Multi-session tracking
+  agentId?: string;         // For sub-agents: their unique agent ID
+  parentSessionId?: string; // For sub-agents: the parent session's ID
+  isSubAgent?: boolean;     // True if this is a sub-agent session
 }

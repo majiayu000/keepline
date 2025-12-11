@@ -34,6 +34,8 @@ function AppContent() {
     getSessionDetails,
     loadSessionDetails,
     isLoadingDetails,
+    // WebSocket
+    connectionStatus,
   } = useSessions()
 
   // Search & Filter
@@ -131,6 +133,7 @@ function AppContent() {
       onUpdateNotificationSettings={updateNotificationSettings}
       notificationPermission={notificationPermission}
       onRequestNotificationPermission={requestNotificationPermission}
+      connectionStatus={connectionStatus}
     >
       {loading && <SessionCardSkeleton count={4} />}
 

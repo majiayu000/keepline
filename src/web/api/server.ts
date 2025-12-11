@@ -9,6 +9,7 @@ import { Hono } from 'hono';
 import { cors } from 'hono/cors';
 import { serveStatic } from 'hono/bun';
 import path from 'path';
+import type { ServerWebSocket } from 'bun';
 import { runMigrations } from '../../storage/migrations.js';
 import { syncSessions, getAllSessions, completeSession } from '../../session/service.js';
 import { getAggregatedSessions, getSessionStats } from '../../session/aggregator.js';
@@ -24,6 +25,43 @@ import {
 } from './validation.js';
 
 const app = new Hono();
+
+// WebSocket client management
+interface WebSocketClient {
+  ws: ServerWebSocket<unknown>;
+  subscribedTo: Set<string>; // session IDs or 'all'
+}
+
+const wsClients = new Set<WebSocketClient>();
+
+// Broadcast message to all connected clients
+function broadcast(type: string, data: unknown) {
+  const message = JSON.stringify({ type, data, timestamp: new Date().toISOString() });
+  for (const client of wsClients) {
+    try {
+      client.ws.send(message);
+    } catch (error) {
+      logger.error('Failed to send WebSocket message', error);
+    }
+  }
+}
+
+// Broadcast to clients subscribed to a specific session
+function broadcastToSession(sessionId: string, type: string, data: unknown) {
+  const message = JSON.stringify({ type, data, sessionId, timestamp: new Date().toISOString() });
+  for (const client of wsClients) {
+    if (client.subscribedTo.has('all') || client.subscribedTo.has(sessionId)) {
+      try {
+        client.ws.send(message);
+      } catch (error) {
+        logger.error('Failed to send WebSocket message', error);
+      }
+    }
+  }
+}
+
+// Export for use by other modules (e.g., hooks)
+export { broadcast, broadcastToSession };
 
 // Simple in-memory rate limiter
 const rateLimitStore = new Map<string, { count: number; resetTime: number }>();
@@ -236,6 +274,50 @@ app.get('/api/sessions/:id', async (c) => {
       recovery: recoveryInfo,
     },
   });
+});
+
+// Get sub-agents for a session
+app.get('/api/sessions/:id/subagents', async (c) => {
+  const sessionId = c.req.param('id');
+
+  // Validate session ID format
+  if (!isValidSessionId(sessionId)) {
+    return c.json({ success: false, error: 'Invalid session ID format' }, 400);
+  }
+
+  try {
+    // Get all sessions including sub-agents
+    const allSessions = await getAllParsedSessions({ includeSubAgents: true });
+
+    // Find sub-agents that belong to this parent session
+    const subAgents = allSessions
+      .filter(s => s.parentSessionId === sessionId)
+      .map(s => ({
+        sessionId: s.sessionId,
+        agentId: s.agentId,
+        directory: s.directory,
+        firstMessage: s.firstMessage,
+        lastMessage: s.lastMessage,
+        messageCount: s.messageCount,
+        toolCount: s.toolCount,
+        lastTool: s.lastTool,
+        startedAt: s.startedAt?.toISOString(),
+        lastActiveAt: s.lastActiveAt.toISOString(),
+        usageStats: s.usageStats,
+      }));
+
+    return c.json({
+      success: true,
+      data: {
+        parentSessionId: sessionId,
+        subAgents,
+        count: subAgents.length,
+      },
+    });
+  } catch (error) {
+    logger.error('Failed to get sub-agents', error);
+    return c.json({ success: false, error: 'Failed to get sub-agents' }, 500);
+  }
 });
 
 app.post('/api/sessions/:id/recover', async (c) => {
@@ -523,6 +605,51 @@ app.get('/*', async (c) => {
   });
 });
 
+// Session state tracking for real-time updates
+let previousSessionsState: string = '';
+
+async function checkAndBroadcastUpdates() {
+  try {
+    if (wsClients.size === 0) return; // No clients, skip
+
+    await syncSessions();
+    const sessions = getAggregatedSessions();
+    const stats = getSessionStats(sessions);
+
+    // Create a simple hash of current state
+    const currentState = JSON.stringify({
+      stats,
+      sessionIds: sessions.map(s => `${s.sessionId}:${s.status}`).sort(),
+    });
+
+    // Only broadcast if state changed
+    if (currentState !== previousSessionsState) {
+      previousSessionsState = currentState;
+
+      // Get usage stats for full data
+      const parsedSessions = await getAllParsedSessions();
+      const usageMap = new Map(
+        parsedSessions.map(p => [p.sessionId, p.usageStats])
+      );
+
+      broadcast('sessions:update', {
+        sessions: sessions.map(s => ({
+          ...s,
+          lastActiveAt: s.lastActiveAt.toISOString(),
+          startedAt: s.startedAt?.toISOString(),
+          completedAt: s.completedAt?.toISOString(),
+          createdAt: s.createdAt.toISOString(),
+          updatedAt: s.updatedAt.toISOString(),
+          usageStats: usageMap.get(s.sessionId),
+        })),
+        stats,
+      });
+    }
+  } catch (error) {
+    logger.error('Failed to check for updates', error);
+  }
+}
+
 export async function startWebServer(port: number = 3377) {
   runMigrations();
 
@@ -532,12 +659,76 @@ export async function startWebServer(port: number = 3377) {
 
   logger.info(`Starting web server on port ${port}`);
 
-  Bun.serve({
+  const server = Bun.serve({
     port,
-    fetch: app.fetch,
+    fetch(req, server) {
+      const url = new URL(req.url);
+
+      // Handle WebSocket upgrade
+      if (url.pathname === '/ws') {
+        const upgraded = server.upgrade(req);
+        if (upgraded) return undefined;
+        return new Response('WebSocket upgrade failed', { status: 400 });
+      }
+
+      // Handle regular HTTP requests via Hono
+      return app.fetch(req, server);
+    },
+    websocket: {
+      open(ws) {
+        const client: WebSocketClient = {
+          ws,
+          subscribedTo: new Set(['all']),
+        };
+        wsClients.add(client);
+        (ws as any).__client = client;
+        logger.info(`WebSocket client connected (${wsClients.size} total)`);
+
+        // Send initial data
+        ws.send(JSON.stringify({
+          type: 'connected',
+          data: { clientCount: wsClients.size },
+          timestamp: new Date().toISOString(),
+        }));
+      },
+      message(ws, message) {
+        try {
+          const data = JSON.parse(message.toString());
+          const client = (ws as any).__client as WebSocketClient;
+
+          // Handle subscription messages
+          if (data.type === 'subscribe') {
+            if (data.sessionId) {
+              client.subscribedTo.add(data.sessionId);
+            }
+          } else if (data.type === 'unsubscribe') {
+            if (data.sessionId) {
+              client.subscribedTo.delete(data.sessionId);
+            }
+          } else if (data.type === 'ping') {
+            ws.send(JSON.stringify({ type: 'pong', timestamp: new Date().toISOString() }));
+          }
+        } catch (error) {
+          logger.error('Failed to parse WebSocket message', error);
+        }
+      },
+      close(ws) {
+        const client = (ws as any).__client as WebSocketClient;
+        if (client) {
+          wsClients.delete(client);
+        }
+        logger.info(`WebSocket client disconnected (${wsClients.size} remaining)`);
+      },
+    },
   });
 
-  console.log(`\n🌐 Tasker Web UI: http://localhost:${port}\n`);
+  // Start periodic update checker (every 5 seconds)
+  setInterval(checkAndBroadcastUpdates, 5000);
+
+  console.log(`\n🌐 Tasker Web UI: http://localhost:${port}`);
+  console.log(`📡 WebSocket: ws://localhost:${port}/ws\n`);
+
+  return server;
 }
 
 export { app };

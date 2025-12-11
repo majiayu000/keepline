@@ -2,7 +2,7 @@
  * API response types
  */
 
-import type { Session, SessionStats, ToolCallInfo } from './session'
+import type { Session, SessionStats, ToolCallInfo, SubAgent } from './session'
 
 // Base API response
 export interface ApiResponse<T = unknown> {
@@ -77,4 +77,11 @@ export interface SessionDetailsData {
     totalCost: number
     apiCalls: number
   }
+}
+
+// GET /api/sessions/:id/subagents
+export interface SubAgentsData {
+  parentSessionId: string
+  subAgents: SubAgent[]
+  count: number
 }

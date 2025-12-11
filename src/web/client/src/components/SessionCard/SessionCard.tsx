@@ -4,6 +4,7 @@ import { Button } from '@/components/Button'
 import { ResponsePanel } from '@/components/ResponsePanel'
 import { ToolCallList } from '@/components/ToolCallList'
 import { UsageStats } from '@/components/UsageStats'
+import { SubAgentList } from '@/components/SubAgentList'
 import { formatRelativeTime, formatPath } from '@/utils/format'
 import { getStatusColor } from '@/constants'
 import { useToggle } from '@/hooks'
@@ -138,6 +139,11 @@ export const SessionCard = memo(function SessionCard({
               <UsageStats stats={usageStats} />
             </section>
           )}
+
+          <section className={styles.section}>
+            <h4 className={styles.sectionTitle}>Sub-Agents</h4>
+            <SubAgentList sessionId={session.sessionId} />
+          </section>
 
           <div className={styles.actions} role="group" aria-label="Session actions">
             {session.status === 'lost' && onRecover && (

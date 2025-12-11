@@ -12,6 +12,7 @@ import type {
   StopBody,
   ProcessStatusData,
   ToolCallsData,
+  SubAgentsData,
 } from '@/types'
 import { API_BASE, API_TIMEOUT_MS } from '@/constants'
 
@@ -171,6 +172,16 @@ export async function fetchSessionDetails(
   return request<SessionDetailsData>(`/sessions/${sessionId}/details`, undefined, signal)
 }
 
+/**
+ * GET /api/sessions/:id/subagents - Get sub-agents for a session
+ */
+export async function fetchSubAgents(
+  sessionId: string,
+  signal?: AbortSignal
+): Promise<ApiResponse<SubAgentsData>> {
+  return request<SubAgentsData>(`/sessions/${sessionId}/subagents`, undefined, signal)
+}
+
 // Export all API functions
 export const api = {
   fetchSessions,
@@ -182,4 +193,5 @@ export const api = {
   fetchProcessStatus,
   fetchToolCalls,
   fetchSessionDetails,
+  fetchSubAgents,
 }
