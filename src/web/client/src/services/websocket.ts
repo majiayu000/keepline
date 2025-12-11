@@ -16,11 +16,6 @@ declare global {
   }
 }
 
-// Debug: Track module loads
-if (typeof window !== 'undefined') {
-  window.__wsModuleLoadCount = (window.__wsModuleLoadCount || 0) + 1
-  console.log(`[WS DEBUG] Module loaded (count: ${window.__wsModuleLoadCount})`)
-}
 
 export type WebSocketStatus = 'connecting' | 'connected' | 'disconnected' | 'error'
 
@@ -34,9 +29,6 @@ export interface WebSocketMessage {
 type MessageHandler = (message: WebSocketMessage) => void
 type StatusHandler = (status: WebSocketStatus) => void
 
-// Generate unique instance ID
-let instanceCounter = 0
-
 class WebSocketManager {
   private ws: WebSocket | null = null
   private status: WebSocketStatus = 'disconnected'
@@ -46,16 +38,12 @@ class WebSocketManager {
   private messageHandlers = new Set<MessageHandler>()
   private statusHandlers = new Set<StatusHandler>()
   private isDestroyed = false
-  private instanceId: number
-  private connectCallCount = 0
 
   private readonly maxReconnectAttempts = 10
   private readonly reconnectInterval = 3000
   private readonly pingIntervalMs = 30000
 
   constructor() {
-    this.instanceId = ++instanceCounter
-    console.log(`[WS DEBUG] WebSocketManager constructor called (instance #${this.instanceId})`)
     // Bind methods
     this.connect = this.connect.bind(this)
     this.disconnect = this.disconnect.bind(this)
@@ -76,31 +64,13 @@ class WebSocketManager {
   }
 
   connect(): void {
-    this.connectCallCount++
-    const callId = this.connectCallCount
-    console.log(`[WS DEBUG] connect() called (instance #${this.instanceId}, call #${callId})`, {
-      isDestroyed: this.isDestroyed,
-      wsState: this.ws?.readyState,
-      currentStatus: this.status,
-    })
-
     // Prevent multiple connections
-    if (this.isDestroyed) {
-      console.log(`[WS DEBUG] connect() aborted: isDestroyed (call #${callId})`)
-      return
-    }
-    if (this.ws?.readyState === WebSocket.OPEN) {
-      console.log(`[WS DEBUG] connect() aborted: already OPEN (call #${callId})`)
-      return
-    }
-    if (this.ws?.readyState === WebSocket.CONNECTING) {
-      console.log(`[WS DEBUG] connect() aborted: already CONNECTING (call #${callId})`)
-      return
-    }
+    if (this.isDestroyed) return
+    if (this.ws?.readyState === WebSocket.OPEN) return
+    if (this.ws?.readyState === WebSocket.CONNECTING) return
 
     // Close any existing connection first
     if (this.ws) {
-      console.log(`[WS DEBUG] Closing existing connection (call #${callId})`)
       this.ws.onclose = null // Prevent reconnect loop
       this.ws.close()
       this.ws = null
@@ -109,7 +79,6 @@ class WebSocketManager {
     this.setStatus('connecting')
 
     try {
-      console.log(`[WS DEBUG] Creating new WebSocket (call #${callId})`)
       const ws = new WebSocket(this.getWebSocketUrl())
 
       ws.onopen = () => {
@@ -154,17 +123,11 @@ class WebSocketManager {
   }
 
   private scheduleReconnect(): void {
-    console.log(`[WS DEBUG] scheduleReconnect() called (instance #${this.instanceId})`, {
-      isDestroyed: this.isDestroyed,
-      hasTimeout: !!this.reconnectTimeout,
-      attempts: this.reconnectAttempts,
-    })
     if (this.isDestroyed) return
     if (this.reconnectTimeout) return // Already scheduled
     if (this.reconnectAttempts >= this.maxReconnectAttempts) return
 
     this.reconnectAttempts++
-    console.log(`[WS DEBUG] Scheduling reconnect in ${this.reconnectInterval}ms (attempt ${this.reconnectAttempts})`)
     this.reconnectTimeout = setTimeout(() => {
       this.reconnectTimeout = null
       if (!this.isDestroyed) {
@@ -257,9 +220,7 @@ export function getWebSocketManager(): WebSocketManager {
     return new WebSocketManager()
   }
 
-  console.log(`[WS DEBUG] getWebSocketManager() called, existing: ${!!window.__wsManager}`)
   if (!window.__wsManager) {
-    console.log('[WS DEBUG] Creating new WebSocketManager singleton on window')
     window.__wsManager = new WebSocketManager()
   }
   return window.__wsManager
@@ -273,7 +234,6 @@ if (typeof window !== 'undefined') {
 
     // Delay initial connection to ensure page is ready
     setTimeout(() => {
-      console.log('[WS] Auto-connect triggered')
       getWebSocketManager().connect()
     }, 100)
 
@@ -292,14 +252,10 @@ if (typeof window !== 'undefined') {
     window.addEventListener('beforeunload', () => {
       window.__wsManager?.disconnect()
     })
-  } else {
-    console.log('[WS] Skipping auto-connect (HMR reload detected)')
   }
 }
 
 // Vite HMR: Preserve WebSocket connection during hot module replacement
 if (import.meta.hot) {
-  import.meta.hot.accept(() => {
-    console.log('[WS] HMR update accepted, connection preserved')
-  })
+  import.meta.hot.accept()
 }
