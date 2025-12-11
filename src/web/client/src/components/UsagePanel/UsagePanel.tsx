@@ -36,23 +36,24 @@ function formatResetTime(resetsAt: string | null): string {
 /** Quota bar component */
 function QuotaBar({ window, label }: { window: QuotaWindow; label: string }) {
   const level = getUtilizationLevel(window.utilization)
+  const percentage = Math.min(window.utilization, 100)
 
   return (
     <div className={styles.quotaCard}>
-      <div className={styles.quotaLabel}>{label}</div>
+      <div className={styles.quotaCardHeader}>
+        <span className={styles.quotaLabel}>{label}</span>
+        <span className={`${styles.quotaPercent} ${styles[level]}`}>
+          {window.utilization.toFixed(0)}%
+        </span>
+      </div>
       <div className={styles.quotaBarContainer}>
         <div
           className={`${styles.quotaBar} ${styles[level]}`}
-          style={{ width: `${Math.min(window.utilization, 100)}%` }}
+          style={{ width: `${percentage}%` }}
         />
       </div>
-      <div className={styles.quotaInfo}>
-        <span className={`${styles.quotaPercent} ${styles[level]}`}>
-          {window.utilization.toFixed(1)}%
-        </span>
-        <span className={styles.quotaReset}>
-          {formatResetTime(window.resets_at)}
-        </span>
+      <div className={styles.quotaReset}>
+        {formatResetTime(window.resets_at)}
       </div>
     </div>
   )
