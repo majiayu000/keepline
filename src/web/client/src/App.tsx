@@ -1,4 +1,4 @@
-import { useCallback, useState, lazy, Suspense } from 'react'
+import { useCallback, useState, useRef, useEffect, lazy, Suspense } from 'react'
 import { ThemeProvider, useTheme, type Theme } from '@/contexts/ThemeContext'
 import { ToastProvider, useToast } from '@/components/Toast'
 import { ErrorBoundary } from '@/components/ErrorBoundary'
@@ -6,7 +6,8 @@ import { Layout, layoutStyles } from '@/components/Layout'
 import { SessionCardSkeleton } from '@/components/Skeleton'
 import { HelpModal } from '@/components/HelpModal'
 import { CostPanel } from '@/components/CostPanel'
-import { useSessions, useKeyboardShortcuts, useSessionFilter } from '@/hooks'
+import { AnalyticsPanel } from '@/components/AnalyticsPanel'
+import { useSessions, useKeyboardShortcuts, useSessionFilter, useNotifications } from '@/hooks'
 
 // Lazy load heavy components
 const SessionList = lazy(() => import('@/components/SessionList').then(m => ({ default: m.SessionList })))
@@ -43,6 +44,24 @@ function AppContent() {
     setStatusFilters,
     filteredSessions,
   } = useSessionFilter(sessions)
+
+  // Notifications
+  const {
+    settings: notificationSettings,
+    updateSettings: updateNotificationSettings,
+    permission: notificationPermission,
+    requestPermission: requestNotificationPermission,
+    checkSessionChanges,
+  } = useNotifications()
+
+  // Track previous sessions for notification comparison
+  const prevSessionsRef = useRef<typeof sessions>([])
+  useEffect(() => {
+    if (sessions.length > 0 && prevSessionsRef.current.length > 0) {
+      checkSessionChanges(prevSessionsRef.current, sessions)
+    }
+    prevSessionsRef.current = sessions
+  }, [sessions, checkSessionChanges])
 
   const handleSync = useCallback(async () => {
     const success = await sync()
@@ -108,6 +127,10 @@ function AppContent() {
       totalCount={sessions.length}
       filteredCount={filteredSessions.length}
       sessions={filteredSessions}
+      notificationSettings={notificationSettings}
+      onUpdateNotificationSettings={updateNotificationSettings}
+      notificationPermission={notificationPermission}
+      onRequestNotificationPermission={requestNotificationPermission}
     >
       {loading && <SessionCardSkeleton count={4} />}
 
@@ -118,7 +141,10 @@ function AppContent() {
       )}
 
       {!loading && filteredSessions.length > 0 && (
-        <CostPanel sessions={filteredSessions} />
+        <>
+          <CostPanel sessions={filteredSessions} />
+          <AnalyticsPanel sessions={filteredSessions} />
+        </>
       )}
 
       {!loading && (

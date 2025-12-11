@@ -3,6 +3,7 @@ import { Header } from '@/components/Header'
 import { StatsBar } from '@/components/StatsBar'
 import { Toolbar } from '@/components/Toolbar'
 import type { Session, SessionStats, SessionStatus } from '@/types'
+import type { NotificationSettings } from '@/hooks'
 import styles from './Layout.module.css'
 
 interface LayoutProps {
@@ -20,6 +21,11 @@ interface LayoutProps {
   filteredCount?: number
   // Export props
   sessions?: Session[]
+  // Notification props
+  notificationSettings?: NotificationSettings
+  onUpdateNotificationSettings?: (updates: Partial<NotificationSettings>) => void
+  notificationPermission?: NotificationPermission
+  onRequestNotificationPermission?: () => Promise<boolean>
 }
 
 export const Layout = memo(function Layout({
@@ -35,12 +41,24 @@ export const Layout = memo(function Layout({
   totalCount = 0,
   filteredCount = 0,
   sessions = [],
+  notificationSettings,
+  onUpdateNotificationSettings,
+  notificationPermission,
+  onRequestNotificationPermission,
 }: LayoutProps) {
   const showToolbar = onSearchChange && onFilterChange
 
   return (
     <div className={styles.layout}>
-      <Header onSync={onSync} syncing={syncing} sessions={sessions} />
+      <Header
+        onSync={onSync}
+        syncing={syncing}
+        sessions={sessions}
+        notificationSettings={notificationSettings}
+        onUpdateNotificationSettings={onUpdateNotificationSettings}
+        notificationPermission={notificationPermission}
+        onRequestNotificationPermission={onRequestNotificationPermission}
+      />
       <StatsBar stats={stats} loading={loading} />
       {showToolbar && (
         <Toolbar
