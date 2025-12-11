@@ -41,30 +41,40 @@ export function useProjects(sessions: Session[]): UseProjectsReturn {
 }
 
 /**
- * Aggregate sessions by directory into ProjectInfo objects.
+ * Aggregate sessions by project name (not full path).
+ * This merges sessions from different directories with the same project name.
  * Exported for testing.
  */
 export function aggregateProjects(sessions: Session[]): ProjectInfo[] {
-  // Group sessions by directory
+  // Group sessions by project name (last segment of path)
   const projectMap = new Map<string, Session[]>()
 
   for (const session of sessions) {
     const directory = session.directory || 'Unknown'
-    const existing = projectMap.get(directory) || []
-    projectMap.set(directory, [...existing, session])
+    const projectName = extractProjectName(directory)
+    const existing = projectMap.get(projectName) || []
+    projectMap.set(projectName, [...existing, session])
   }
 
   // Transform to ProjectInfo array
   const projects: ProjectInfo[] = Array.from(projectMap.entries()).map(
-    ([path, projectSessions]) => ({
-      path,
-      name: extractProjectName(path),
-      sessions: projectSessions,
-      stats: calculateProjectStats(projectSessions),
-      currentTask: findCurrentTask(projectSessions),
-      lastActiveAt: findLastActive(projectSessions),
-      totalUsage: aggregateUsageStats(projectSessions),
-    })
+    ([name, projectSessions]) => {
+      // Use the most recent session's directory as the primary path
+      const sortedByTime = [...projectSessions].sort(
+        (a, b) => new Date(b.lastActiveAt).getTime() - new Date(a.lastActiveAt).getTime()
+      )
+      const primaryPath = sortedByTime[0]?.directory || 'Unknown'
+
+      return {
+        path: primaryPath,
+        name,
+        sessions: projectSessions,
+        stats: calculateProjectStats(projectSessions),
+        currentTask: findCurrentTask(projectSessions),
+        lastActiveAt: findLastActive(projectSessions),
+        totalUsage: aggregateUsageStats(projectSessions),
+      }
+    }
   )
 
   // Sort by last activity (most recent first)
