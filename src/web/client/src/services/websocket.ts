@@ -3,7 +3,17 @@
  *
  * This module manages a single WebSocket connection at the module level,
  * avoiding React lifecycle issues that can cause connection leaks.
+ *
+ * IMPORTANT: The singleton is stored on `window` to survive Vite HMR reloads.
  */
+
+// Extend Window interface for TypeScript
+declare global {
+  interface Window {
+    __wsManager?: WebSocketManager
+    __wsAutoConnectCalled?: boolean
+  }
+}
 
 export type WebSocketStatus = 'connecting' | 'connected' | 'disconnected' | 'error'
 
@@ -198,36 +208,58 @@ class WebSocketManager {
   }
 }
 
-// Create singleton instance
-let instance: WebSocketManager | null = null
-
+/**
+ * Get or create the singleton WebSocket manager.
+ * Uses window storage to survive Vite HMR reloads.
+ */
 export function getWebSocketManager(): WebSocketManager {
-  if (!instance) {
-    instance = new WebSocketManager()
+  if (typeof window === 'undefined') {
+    // SSR fallback - create a new instance (won't be used)
+    return new WebSocketManager()
   }
-  return instance
+
+  if (!window.__wsManager) {
+    console.log('[WS] Creating new WebSocketManager singleton')
+    window.__wsManager = new WebSocketManager()
+  }
+  return window.__wsManager
 }
 
-// Auto-connect when module loads (only in browser)
+// Auto-connect when module loads (only in browser, only once)
 if (typeof window !== 'undefined') {
-  // Delay initial connection to ensure page is ready
-  setTimeout(() => {
-    getWebSocketManager().connect()
-  }, 100)
+  // Check if auto-connect was already called (survives HMR)
+  if (!window.__wsAutoConnectCalled) {
+    window.__wsAutoConnectCalled = true
 
-  // Handle page visibility changes
-  document.addEventListener('visibilitychange', () => {
-    const manager = getWebSocketManager()
-    if (document.visibilityState === 'visible') {
-      // Reconnect if disconnected when page becomes visible
-      if (manager.getStatus() === 'disconnected') {
-        manager.reconnect()
+    // Delay initial connection to ensure page is ready
+    setTimeout(() => {
+      console.log('[WS] Auto-connect triggered')
+      getWebSocketManager().connect()
+    }, 100)
+
+    // Handle page visibility changes (only add listener once)
+    document.addEventListener('visibilitychange', () => {
+      const manager = getWebSocketManager()
+      if (document.visibilityState === 'visible') {
+        // Reconnect if disconnected when page becomes visible
+        if (manager.getStatus() === 'disconnected') {
+          manager.reconnect()
+        }
       }
-    }
-  })
+    })
 
-  // Clean up on page unload
-  window.addEventListener('beforeunload', () => {
-    instance?.disconnect()
+    // Clean up on page unload (only add listener once)
+    window.addEventListener('beforeunload', () => {
+      window.__wsManager?.disconnect()
+    })
+  } else {
+    console.log('[WS] Skipping auto-connect (HMR reload detected)')
+  }
+}
+
+// Vite HMR: Preserve WebSocket connection during hot module replacement
+if (import.meta.hot) {
+  import.meta.hot.accept(() => {
+    console.log('[WS] HMR update accepted, connection preserved')
   })
 }
