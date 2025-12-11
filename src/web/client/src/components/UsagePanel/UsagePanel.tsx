@@ -174,7 +174,11 @@ export const UsagePanel = memo(function UsagePanel() {
         )}
 
         {quotaError && !quota && (
-          <div className={styles.quotaError}>{quotaError}</div>
+          <div className={styles.quotaError}>
+            {quotaError}
+            <br />
+            <small>Try: claude /logout then claude /login</small>
+          </div>
         )}
 
         {quota && (

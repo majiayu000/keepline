@@ -763,9 +763,13 @@ app.get('/api/quota', async (c) => {
     // Check for error in response
     if (data.error) {
       logger.error('Quota API error', { error: data.error });
+      // Return more detailed error info
+      const errorType = data.error.type || 'unknown';
+      const errorMsg = data.error.message || 'Quota API error';
       return c.json({
         success: false,
-        error: data.error.message || 'Quota API error'
+        error: `${errorMsg} (${errorType})`,
+        details: 'Token may be expired. Try logging out and back into Claude Code.'
       }, 403);
     }
 
