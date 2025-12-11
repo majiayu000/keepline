@@ -101,13 +101,8 @@ setInterval(() => {
 // Enable CORS
 app.use('/*', cors());
 
-// Rate limiting: 100 requests per minute for API routes
-app.use('/api/*', rateLimit(100, 60 * 1000));
-
-// Stricter rate limiting for write operations: 20 per minute
-app.post('/api/sessions/*/recover', rateLimit(20, 60 * 1000));
-app.post('/api/sessions/*/stop', rateLimit(20, 60 * 1000));
-app.post('/api/sync', rateLimit(10, 60 * 1000));
+// Rate limiting: 500 requests per minute for API routes (local tool, be generous)
+app.use('/api/*', rateLimit(500, 60 * 1000));
 
 // Serve static files (legacy)
 app.use('/static/*', serveStatic({ root: './src/web/public' }));
