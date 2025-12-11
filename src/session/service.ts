@@ -91,8 +91,14 @@ export function getAttentionSessions(): Session[] {
   return [...lost, ...waiting];
 }
 
+/** Options for sync operation */
+export interface SyncOptions {
+  maxAgeDays?: number; // Only sync files modified within this many days (default: 7 for fast sync)
+  fullSync?: boolean; // Force full sync of all files
+}
+
 /** Sync sessions with Claude data and running processes */
-export async function syncSessions(): Promise<{
+export async function syncSessions(options: SyncOptions = {}): Promise<{
   discovered: number;
   updated: number;
   lost: number;
@@ -109,6 +115,9 @@ export async function syncSessions(): Promise<{
   let updated = 0;
   let lost = 0;
 
+  // Default to 7 days for fast sync, unless fullSync is requested
+  const maxAgeDays = options.fullSync ? undefined : (options.maxAgeDays ?? 7);
+
   try {
     // Clear process cache at start of sync cycle to ensure fresh data
     clearProcessCache();
@@ -117,8 +126,8 @@ export async function syncSessions(): Promise<{
     const processes = getCachedProcesses();
     const processByCwd = new Map(processes.map((p) => [p.cwd, p]));
 
-    // Get all Claude sessions from file system
-    const claudeSessions = await getClaudeSessions();
+    // Get Claude sessions from file system (with optional age filter for performance)
+    const claudeSessions = await getClaudeSessions({ maxAgeDays });
 
     // Process each Claude session
     for (const claudeSession of claudeSessions) {

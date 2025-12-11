@@ -1,20 +1,31 @@
 import { useState, useEffect, memo } from 'react'
-import type { SubAgent } from '@/types'
+import type { SubAgent, SubAgentsData } from '@/types'
 import { api } from '@/services/api'
 import { formatRelativeTime, formatTokens } from '@/utils/format'
 import styles from './SubAgentList.module.css'
 
 interface SubAgentListProps {
   sessionId: string
+  // Cached data from parent (from /full endpoint) - avoids separate API call
+  cachedData?: SubAgentsData
 }
 
-export const SubAgentList = memo(function SubAgentList({ sessionId }: SubAgentListProps) {
+export const SubAgentList = memo(function SubAgentList({ sessionId, cachedData }: SubAgentListProps) {
   const [subAgents, setSubAgents] = useState<SubAgent[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [expanded, setExpanded] = useState<Record<string, boolean>>({})
 
+  // Use cached data if available, otherwise fetch
   useEffect(() => {
+    // If we have cached data from parent, use it directly (no API call needed)
+    if (cachedData) {
+      setSubAgents(cachedData.subAgents)
+      setLoading(false)
+      return
+    }
+
+    // Fallback: fetch if no cached data (backwards compatibility)
     let mounted = true
 
     async function loadSubAgents() {
@@ -38,7 +49,7 @@ export const SubAgentList = memo(function SubAgentList({ sessionId }: SubAgentLi
     return () => {
       mounted = false
     }
-  }, [sessionId])
+  }, [sessionId, cachedData])
 
   const toggleExpand = (agentId: string) => {
     setExpanded(prev => ({

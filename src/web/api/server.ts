@@ -136,6 +136,27 @@ app.get('/assets/*', async (c) => {
   return c.notFound();
 });
 
+// Track last sync time for smart sync
+let lastSyncTime = 0;
+const SYNC_INTERVAL_MS = 30000; // Only auto-sync every 30 seconds
+let isSyncingInBackground = false;
+
+// Background sync function (non-blocking)
+async function backgroundSync() {
+  if (isSyncingInBackground) return;
+  isSyncingInBackground = true;
+  try {
+    await syncSessions();
+    lastSyncTime = Date.now();
+    // Broadcast update to WebSocket clients after sync
+    broadcastToClients({ type: 'sync:complete' });
+  } catch (error) {
+    logger.error('Background sync failed', error);
+  } finally {
+    isSyncingInBackground = false;
+  }
+}
+
 // API Routes
 app.get('/api/sessions', async (c) => {
   try {
@@ -146,8 +167,16 @@ app.get('/api/sessions', async (c) => {
     const sort = c.req.query('sort') || 'lastActiveAt';
     const order = c.req.query('order') === 'asc' ? 'asc' : 'desc';
     const fields = c.req.query('fields') || 'full'; // 'basic' or 'full'
+    const skipSync = c.req.query('skipSync') === 'true'; // Skip sync for pagination requests
 
-    await syncSessions();
+    // Smart sync: trigger background sync if needed (non-blocking)
+    const now = Date.now();
+    if (!skipSync && (now - lastSyncTime > SYNC_INTERVAL_MS)) {
+      // Don't await - let it run in background
+      backgroundSync();
+    }
+
+    // Return data immediately from database (fast)
     let sessions = getAggregatedSessions();
     const stats = getSessionStats(sessions);
 
@@ -569,9 +598,96 @@ app.get('/api/sessions/:id/details', async (c) => {
   }
 });
 
+// Get full session data (combines details, tools, subagents in one request)
+// This reduces 3 API calls to 1 when expanding a session card
+app.get('/api/sessions/:id/full', async (c) => {
+  const sessionId = c.req.param('id');
+
+  // Validate session ID format
+  if (!isValidSessionId(sessionId)) {
+    return c.json({ success: false, error: 'Invalid session ID format' }, 400);
+  }
+
+  try {
+    // Get database session for basic fields
+    const sessions = getAllSessions();
+    const dbSession = sessions.find(s => s.sessionId === sessionId);
+
+    if (!dbSession) {
+      return c.json({ success: false, error: 'Session not found' }, 404);
+    }
+
+    // Get parsed session for detailed fields and tool calls
+    const parsedSession = await getSessionById(sessionId);
+
+    // Get sub-agents
+    const allSessions = await getAllParsedSessions({ includeSubAgents: true });
+    const subAgents = allSessions
+      .filter(s => s.parentSessionId === sessionId)
+      .map(s => ({
+        sessionId: s.sessionId,
+        agentId: s.agentId,
+        directory: s.directory,
+        firstMessage: s.firstMessage,
+        lastMessage: s.lastMessage,
+        messageCount: s.messageCount,
+        toolCount: s.toolCount,
+        lastTool: s.lastTool,
+        startedAt: s.startedAt?.toISOString(),
+        lastActiveAt: s.lastActiveAt.toISOString(),
+        usageStats: s.usageStats,
+      }));
+
+    return c.json({
+      success: true,
+      data: {
+        // Details
+        details: {
+          initialPrompt: dbSession.initialPrompt || '',
+          lastMessage: dbSession.lastMessage || '',
+          lastTool: dbSession.lastTool || '',
+          lastToolInput: dbSession.lastToolInput || '',
+          currentFile: dbSession.currentFile || '',
+          usageStats: parsedSession?.usageStats || {
+            totalInputTokens: 0,
+            totalOutputTokens: 0,
+            totalTokens: 0,
+            totalCost: 0,
+            apiCalls: 0,
+          },
+        },
+        // Tool calls
+        tools: {
+          toolCalls: parsedSession?.toolCalls || [],
+          toolCount: parsedSession?.toolCount || 0,
+        },
+        // Sub-agents
+        subAgents: {
+          subAgents,
+          count: subAgents.length,
+        },
+      },
+    });
+  } catch (error) {
+    logger.error('Failed to get full session data', error);
+    return c.json({ success: false, error: 'Failed to get full session data' }, 500);
+  }
+});
+
 app.post('/api/sync', async (c) => {
   try {
-    const result = await syncSessions();
+    // Parse request body for sync options
+    let body: { fullSync?: boolean } = {};
+    try {
+      body = await c.req.json();
+    } catch {
+      // Empty body is fine
+    }
+
+    // Full sync scans all files, regular sync only scans last 7 days
+    const result = await syncSessions({ fullSync: body.fullSync });
+    lastSyncTime = Date.now(); // Reset sync timer after manual sync
+
     return c.json({ success: true, data: result });
   } catch (error) {
     logger.error('Failed to sync sessions', error);
@@ -651,6 +767,11 @@ export async function startWebServer(port: number = 3377) {
   // Initialize pricing from LiteLLM
   logger.info('Fetching model pricing from LiteLLM...');
   await initPricing();
+
+  // Initial sync on startup (so database has data for first request)
+  logger.info('Running initial session sync...');
+  await syncSessions();
+  lastSyncTime = Date.now();
 
   logger.info(`Starting web server on port ${port}`);
 

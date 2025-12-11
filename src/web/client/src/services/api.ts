@@ -8,6 +8,7 @@ import type {
   SyncResult,
   SessionDetailData,
   SessionDetailsData,
+  SessionFullData,
   RecoverBody,
   StopBody,
   ProcessStatusData,
@@ -77,14 +78,24 @@ function combineAbortSignals(...signals: AbortSignal[]): AbortSignal {
 }
 
 /**
- * GET /api/sessions - Fetch all sessions with stats
+ * GET /api/sessions - Fetch sessions with stats
  * @param fields - 'basic' for list view (faster), 'full' for all fields
+ * @param options - Pagination and filtering options
  */
 export async function fetchSessions(
   fields: 'basic' | 'full' = 'basic',
+  options?: {
+    limit?: number
+    offset?: number
+    skipSync?: boolean
+  },
   signal?: AbortSignal
 ): Promise<ApiResponse<SessionsData>> {
-  return request<SessionsData>(`/sessions?fields=${fields}`, undefined, signal)
+  const params = new URLSearchParams({ fields })
+  if (options?.limit) params.set('limit', String(options.limit))
+  if (options?.offset) params.set('offset', String(options.offset))
+  if (options?.skipSync) params.set('skipSync', 'true')
+  return request<SessionsData>(`/sessions?${params}`, undefined, signal)
 }
 
 /**
@@ -182,6 +193,17 @@ export async function fetchSubAgents(
   return request<SubAgentsData>(`/sessions/${sessionId}/subagents`, undefined, signal)
 }
 
+/**
+ * GET /api/sessions/:id/full - Get full session data (details + tools + subagents)
+ * This combines 3 requests into 1 for better performance
+ */
+export async function fetchSessionFull(
+  sessionId: string,
+  signal?: AbortSignal
+): Promise<ApiResponse<SessionFullData>> {
+  return request<SessionFullData>(`/sessions/${sessionId}/full`, undefined, signal)
+}
+
 // Export all API functions
 export const api = {
   fetchSessions,
@@ -194,4 +216,5 @@ export const api = {
   fetchToolCalls,
   fetchSessionDetails,
   fetchSubAgents,
+  fetchSessionFull,
 }

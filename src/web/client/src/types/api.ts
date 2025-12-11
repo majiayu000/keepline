@@ -12,10 +12,19 @@ export interface ApiResponse<T = unknown> {
   message?: string
 }
 
+// Pagination info
+export interface PaginationInfo {
+  total: number
+  limit: number
+  offset: number
+  hasMore: boolean
+}
+
 // GET /api/sessions
 export interface SessionsData {
   sessions: Session[]
   stats: SessionStats
+  pagination?: PaginationInfo
 }
 
 // POST /api/sync
@@ -81,7 +90,14 @@ export interface SessionDetailsData {
 
 // GET /api/sessions/:id/subagents
 export interface SubAgentsData {
-  parentSessionId: string
+  parentSessionId?: string
   subAgents: SubAgent[]
   count: number
+}
+
+// GET /api/sessions/:id/full (combined endpoint - reduces 3 requests to 1)
+export interface SessionFullData {
+  details: SessionDetailsData
+  tools: ToolCallsData
+  subAgents: SubAgentsData
 }

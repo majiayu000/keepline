@@ -34,10 +34,14 @@ function AppContent() {
     recoverSession,
     stopSession,
     completeSession,
-    // Lazy loading
-    getSessionDetails,
-    loadSessionDetails,
-    isLoadingDetails,
+    // Lazy loading - now uses combined /full endpoint (1 request instead of 3)
+    getSessionFull,
+    loadSessionFull,
+    isLoadingFull,
+    // Pagination
+    pagination,
+    loadMore,
+    loadingMore,
     // WebSocket
     connectionStatus,
   } = useSessions()
@@ -168,9 +172,12 @@ function AppContent() {
             onRecover={handleRecover}
             onStop={handleStop}
             onComplete={handleComplete}
-            getSessionDetails={getSessionDetails}
-            loadSessionDetails={loadSessionDetails}
-            isLoadingDetails={isLoadingDetails}
+            getSessionFull={getSessionFull}
+            loadSessionFull={loadSessionFull}
+            isLoadingFull={isLoadingFull}
+            pagination={pagination}
+            onLoadMore={loadMore}
+            loadingMore={loadingMore}
           />
         </Suspense>
       )}

@@ -2,9 +2,12 @@ import { useState, useEffect, useCallback, useRef } from 'react'
 import { api } from '@/services/api'
 import { REFRESH_INTERVAL_MS } from '@/constants'
 import { useWebSocket, type WebSocketMessage } from './useWebSocket'
-import type { Session, SessionStats, SessionDetailsData } from '@/types'
+import type { Session, SessionStats, SessionFullData, PaginationInfo } from '@/types'
 
 export type ConnectionStatus = 'polling' | 'realtime' | 'disconnected'
+
+// Number of sessions to load per page
+const PAGE_SIZE = 50
 
 interface UseSessionsReturn {
   sessions: Session[]
@@ -17,10 +20,14 @@ interface UseSessionsReturn {
   recoverSession: (sessionId: string) => Promise<boolean>
   stopSession: (sessionId: string) => Promise<boolean>
   completeSession: (sessionId: string) => Promise<boolean>
-  // Lazy loading
-  getSessionDetails: (sessionId: string) => SessionDetailsData | undefined
-  loadSessionDetails: (sessionId: string) => Promise<SessionDetailsData | null>
-  isLoadingDetails: (sessionId: string) => boolean
+  // Lazy loading - now uses combined /full endpoint (1 request instead of 3)
+  getSessionFull: (sessionId: string) => SessionFullData | undefined
+  loadSessionFull: (sessionId: string) => Promise<SessionFullData | null>
+  isLoadingFull: (sessionId: string) => boolean
+  // Pagination
+  pagination: PaginationInfo | null
+  loadMore: () => Promise<void>
+  loadingMore: boolean
   // WebSocket status
   connectionStatus: ConnectionStatus
 }
@@ -32,13 +39,16 @@ export function useSessions(): UseSessionsReturn {
   const [syncing, setSyncing] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [connectionStatus, setConnectionStatus] = useState<ConnectionStatus>('polling')
+  const [pagination, setPagination] = useState<PaginationInfo | null>(null)
+  const [loadingMore, setLoadingMore] = useState(false)
   const intervalRef = useRef<number | null>(null)
   const mountedRef = useRef(true)
   const wsConnectedRef = useRef(false)
 
-  // Details cache for lazy loading - use refs to avoid re-render loops
-  const detailsCacheRef = useRef<Map<string, SessionDetailsData>>(new Map())
-  const loadingDetailsRef = useRef<Set<string>>(new Set())
+  // Full data cache for lazy loading - use refs to avoid re-render loops
+  // Now caches combined data from /full endpoint (details + tools + subagents)
+  const fullDataCacheRef = useRef<Map<string, SessionFullData>>(new Map())
+  const loadingFullRef = useRef<Set<string>>(new Set())
   // Trigger re-render when cache updates
   const [, forceUpdate] = useState(0)
 
@@ -83,8 +93,8 @@ export function useSessions(): UseSessionsReturn {
 
   // Use ref to avoid stale closures in interval
   const loadSessions = useCallback(async () => {
-    // Use 'basic' mode for faster loading
-    const response = await api.fetchSessions('basic')
+    // Use 'basic' mode for faster loading, with pagination
+    const response = await api.fetchSessions('basic', { limit: PAGE_SIZE })
 
     // Only update state if component is still mounted
     if (!mountedRef.current) return
@@ -92,11 +102,33 @@ export function useSessions(): UseSessionsReturn {
     if (response.success && response.data) {
       setSessions(response.data.sessions)
       setStats(response.data.stats)
+      setPagination(response.data.pagination || null)
       setError(null)
     } else {
       setError(response.error || 'Failed to load sessions')
     }
   }, [])
+
+  // Load more sessions (pagination)
+  const loadMore = useCallback(async () => {
+    if (!pagination?.hasMore || loadingMore) return
+
+    setLoadingMore(true)
+    const response = await api.fetchSessions('basic', {
+      limit: PAGE_SIZE,
+      offset: sessions.length,
+      skipSync: true, // Don't trigger sync for pagination requests
+    })
+
+    if (!mountedRef.current) return
+
+    if (response.success && response.data) {
+      // Append new sessions to existing list
+      setSessions(prev => [...prev, ...response.data!.sessions])
+      setPagination(response.data.pagination || null)
+    }
+    setLoadingMore(false)
+  }, [pagination, loadingMore, sessions.length])
 
   // Keep loadSessionsRef updated
   useEffect(() => {
@@ -148,29 +180,29 @@ export function useSessions(): UseSessionsReturn {
     return response.success
   }, [loadSessions])
 
-  // Lazy load session details - stable reference using refs
-  const loadSessionDetails = useCallback(async (sessionId: string): Promise<SessionDetailsData | null> => {
+  // Lazy load full session data (details + tools + subagents) - 1 request instead of 3
+  const loadSessionFull = useCallback(async (sessionId: string): Promise<SessionFullData | null> => {
     // Return cached if available
-    const cached = detailsCacheRef.current.get(sessionId)
+    const cached = fullDataCacheRef.current.get(sessionId)
     if (cached) return cached
 
     // Skip if already loading
-    if (loadingDetailsRef.current.has(sessionId)) return null
+    if (loadingFullRef.current.has(sessionId)) return null
 
     // Mark as loading
-    loadingDetailsRef.current.add(sessionId)
+    loadingFullRef.current.add(sessionId)
     forceUpdate(n => n + 1)
 
-    const response = await api.fetchSessionDetails(sessionId)
+    const response = await api.fetchSessionFull(sessionId)
 
     if (!mountedRef.current) return null
 
     // Remove from loading set
-    loadingDetailsRef.current.delete(sessionId)
+    loadingFullRef.current.delete(sessionId)
 
     if (response.success && response.data) {
       // Cache the result
-      detailsCacheRef.current.set(sessionId, response.data)
+      fullDataCacheRef.current.set(sessionId, response.data)
       forceUpdate(n => n + 1)
       return response.data
     }
@@ -179,14 +211,14 @@ export function useSessions(): UseSessionsReturn {
     return null
   }, []) // No dependencies - uses refs
 
-  // Get cached details (synchronous)
-  const getSessionDetails = useCallback((sessionId: string): SessionDetailsData | undefined => {
-    return detailsCacheRef.current.get(sessionId)
+  // Get cached full data (synchronous)
+  const getSessionFull = useCallback((sessionId: string): SessionFullData | undefined => {
+    return fullDataCacheRef.current.get(sessionId)
   }, []) // No dependencies - uses ref
 
-  // Check if details are loading
-  const isLoadingDetails = useCallback((sessionId: string): boolean => {
-    return loadingDetailsRef.current.has(sessionId)
+  // Check if full data is loading
+  const isLoadingFull = useCallback((sessionId: string): boolean => {
+    return loadingFullRef.current.has(sessionId)
   }, []) // No dependencies - uses ref
 
   // Initial load - run once on mount
@@ -227,10 +259,14 @@ export function useSessions(): UseSessionsReturn {
     recoverSession,
     stopSession,
     completeSession,
-    // Lazy loading
-    getSessionDetails,
-    loadSessionDetails,
-    isLoadingDetails,
+    // Lazy loading - combined endpoint (1 request instead of 3)
+    getSessionFull,
+    loadSessionFull,
+    isLoadingFull,
+    // Pagination
+    pagination,
+    loadMore,
+    loadingMore,
     // WebSocket status
     connectionStatus,
   }

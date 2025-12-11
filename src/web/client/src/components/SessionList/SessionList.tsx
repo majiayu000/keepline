@@ -1,6 +1,7 @@
 import { useState, useMemo, memo, useCallback } from 'react'
-import type { Session, SessionDetailsData } from '@/types'
+import type { Session, SessionFullData, PaginationInfo } from '@/types'
 import { SessionCard } from '@/components/SessionCard'
+import { Button } from '@/components/Button'
 import styles from './SessionList.module.css'
 
 interface SessionListProps {
@@ -8,10 +9,14 @@ interface SessionListProps {
   onRecover?: (sessionId: string) => void
   onStop?: (sessionId: string) => void
   onComplete?: (sessionId: string) => void
-  // Lazy loading
-  getSessionDetails?: (sessionId: string) => SessionDetailsData | undefined
-  loadSessionDetails?: (sessionId: string) => Promise<SessionDetailsData | null>
-  isLoadingDetails?: (sessionId: string) => boolean
+  // Lazy loading - now uses combined /full endpoint (1 request instead of 3)
+  getSessionFull?: (sessionId: string) => SessionFullData | undefined
+  loadSessionFull?: (sessionId: string) => Promise<SessionFullData | null>
+  isLoadingFull?: (sessionId: string) => boolean
+  // Pagination
+  pagination?: PaginationInfo | null
+  onLoadMore?: () => Promise<void>
+  loadingMore?: boolean
 }
 
 type SessionStatus = 'running' | 'waiting' | 'idle' | 'lost' | 'completed'
@@ -29,9 +34,12 @@ export const SessionList = memo(function SessionList({
   onRecover,
   onStop,
   onComplete,
-  getSessionDetails,
-  loadSessionDetails,
-  isLoadingDetails,
+  getSessionFull,
+  loadSessionFull,
+  isLoadingFull,
+  pagination,
+  onLoadMore,
+  loadingMore,
 }: SessionListProps) {
   // Memoize grouped and sorted sessions
   const groupedSessions = useMemo(() => {
@@ -83,9 +91,9 @@ export const SessionList = memo(function SessionList({
           onRecover={onRecover}
           onStop={onStop}
           onComplete={onComplete}
-          getSessionDetails={getSessionDetails}
-          loadSessionDetails={loadSessionDetails}
-          isLoadingDetails={isLoadingDetails}
+          getSessionFull={getSessionFull}
+          loadSessionFull={loadSessionFull}
+          isLoadingFull={isLoadingFull}
         />
       )}
       {groupedSessions.waiting.length > 0 && (
@@ -95,9 +103,9 @@ export const SessionList = memo(function SessionList({
           onRecover={onRecover}
           onStop={onStop}
           onComplete={onComplete}
-          getSessionDetails={getSessionDetails}
-          loadSessionDetails={loadSessionDetails}
-          isLoadingDetails={isLoadingDetails}
+          getSessionFull={getSessionFull}
+          loadSessionFull={loadSessionFull}
+          isLoadingFull={isLoadingFull}
         />
       )}
       {groupedSessions.idle.length > 0 && (
@@ -107,9 +115,9 @@ export const SessionList = memo(function SessionList({
           onRecover={onRecover}
           onStop={onStop}
           onComplete={onComplete}
-          getSessionDetails={getSessionDetails}
-          loadSessionDetails={loadSessionDetails}
-          isLoadingDetails={isLoadingDetails}
+          getSessionFull={getSessionFull}
+          loadSessionFull={loadSessionFull}
+          isLoadingFull={isLoadingFull}
         />
       )}
       {/* Secondary: Lost, Completed */}
@@ -120,9 +128,9 @@ export const SessionList = memo(function SessionList({
           onRecover={onRecover}
           onStop={onStop}
           onComplete={onComplete}
-          getSessionDetails={getSessionDetails}
-          loadSessionDetails={loadSessionDetails}
-          isLoadingDetails={isLoadingDetails}
+          getSessionFull={getSessionFull}
+          loadSessionFull={loadSessionFull}
+          isLoadingFull={isLoadingFull}
         />
       )}
       {groupedSessions.completed.length > 0 && (
@@ -132,11 +140,24 @@ export const SessionList = memo(function SessionList({
           onRecover={onRecover}
           onStop={onStop}
           onComplete={onComplete}
-          getSessionDetails={getSessionDetails}
-          loadSessionDetails={loadSessionDetails}
-          isLoadingDetails={isLoadingDetails}
+          getSessionFull={getSessionFull}
+          loadSessionFull={loadSessionFull}
+          isLoadingFull={isLoadingFull}
           defaultCollapsed
         />
+      )}
+
+      {/* Load More button */}
+      {pagination?.hasMore && onLoadMore && (
+        <div className={styles.loadMore}>
+          <Button
+            variant="secondary"
+            onClick={onLoadMore}
+            disabled={loadingMore}
+          >
+            {loadingMore ? 'Loading...' : `Load More (${pagination.total - sessions.length} remaining)`}
+          </Button>
+        </div>
       )}
     </div>
   )
@@ -148,9 +169,9 @@ interface SessionGroupProps {
   onRecover?: (sessionId: string) => void
   onStop?: (sessionId: string) => void
   onComplete?: (sessionId: string) => void
-  getSessionDetails?: (sessionId: string) => SessionDetailsData | undefined
-  loadSessionDetails?: (sessionId: string) => Promise<SessionDetailsData | null>
-  isLoadingDetails?: (sessionId: string) => boolean
+  getSessionFull?: (sessionId: string) => SessionFullData | undefined
+  loadSessionFull?: (sessionId: string) => Promise<SessionFullData | null>
+  isLoadingFull?: (sessionId: string) => boolean
   defaultCollapsed?: boolean
 }
 
@@ -160,9 +181,9 @@ const SessionGroup = memo(function SessionGroup({
   onRecover,
   onStop,
   onComplete,
-  getSessionDetails,
-  loadSessionDetails,
-  isLoadingDetails,
+  getSessionFull,
+  loadSessionFull,
+  isLoadingFull,
   defaultCollapsed = false
 }: SessionGroupProps) {
   const [collapsed, setCollapsed] = useState(defaultCollapsed)
@@ -186,9 +207,9 @@ const SessionGroup = memo(function SessionGroup({
               onRecover={onRecover}
               onStop={onStop}
               onComplete={onComplete}
-              getSessionDetails={getSessionDetails}
-              loadSessionDetails={loadSessionDetails}
-              isLoadingDetails={isLoadingDetails}
+              getSessionFull={getSessionFull}
+              loadSessionFull={loadSessionFull}
+              isLoadingFull={isLoadingFull}
             />
           ))}
         </div>

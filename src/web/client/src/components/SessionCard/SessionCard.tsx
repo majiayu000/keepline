@@ -1,5 +1,5 @@
 import { useCallback, useEffect, memo } from 'react'
-import type { Session, SessionDetailsData } from '@/types'
+import type { Session, SessionFullData } from '@/types'
 import { Button } from '@/components/Button'
 import { ResponsePanel } from '@/components/ResponsePanel'
 import { ToolCallList } from '@/components/ToolCallList'
@@ -15,10 +15,10 @@ interface SessionCardProps {
   onRecover?: (sessionId: string) => void
   onStop?: (sessionId: string) => void
   onComplete?: (sessionId: string) => void
-  // Lazy loading
-  getSessionDetails?: (sessionId: string) => SessionDetailsData | undefined
-  loadSessionDetails?: (sessionId: string) => Promise<SessionDetailsData | null>
-  isLoadingDetails?: (sessionId: string) => boolean
+  // Lazy loading - now uses combined /full endpoint (1 request instead of 3)
+  getSessionFull?: (sessionId: string) => SessionFullData | undefined
+  loadSessionFull?: (sessionId: string) => Promise<SessionFullData | null>
+  isLoadingFull?: (sessionId: string) => boolean
 }
 
 export const SessionCard = memo(function SessionCard({
@@ -26,9 +26,9 @@ export const SessionCard = memo(function SessionCard({
   onRecover,
   onStop,
   onComplete,
-  getSessionDetails,
-  loadSessionDetails,
-  isLoadingDetails,
+  getSessionFull,
+  loadSessionFull,
+  isLoadingFull,
 }: SessionCardProps) {
   const [expanded, toggle] = useToggle(false)
 
@@ -36,23 +36,28 @@ export const SessionCard = memo(function SessionCard({
   const cardId = `session-${session.sessionId}`
   const detailsId = `${cardId}-details`
 
-  // Get cached details or loading state
-  const details = getSessionDetails?.(session.sessionId)
-  const loadingDetails = isLoadingDetails?.(session.sessionId) ?? false
+  // Get cached full data or loading state (1 request instead of 3)
+  const fullData = getSessionFull?.(session.sessionId)
+  const loadingFull = isLoadingFull?.(session.sessionId) ?? false
 
-  // Load details when expanded - only trigger on expand change
+  // Load full data when expanded - only trigger on expand change
   useEffect(() => {
-    if (expanded && loadSessionDetails) {
-      // loadSessionDetails handles caching internally
-      loadSessionDetails(session.sessionId)
+    if (expanded && loadSessionFull) {
+      // loadSessionFull handles caching internally
+      loadSessionFull(session.sessionId)
     }
-  }, [expanded, session.sessionId, loadSessionDetails])
+  }, [expanded, session.sessionId, loadSessionFull])
 
   // Merge session data with lazy-loaded details
+  const details = fullData?.details
   const initialPrompt = details?.initialPrompt ?? session.initialPrompt
   const lastMessage = details?.lastMessage ?? session.lastMessage
   const lastTool = details?.lastTool ?? session.lastTool
   const usageStats = details?.usageStats ?? session.usageStats
+
+  // Get tools and subagents from cached full data
+  const toolsData = fullData?.tools
+  const subAgentsData = fullData?.subAgents
 
   const handleKeyDown = useCallback((e: React.KeyboardEvent) => {
     if (e.key === 'Enter' || e.key === ' ') {
@@ -108,7 +113,7 @@ export const SessionCard = memo(function SessionCard({
 
       {expanded && (
         <div className={styles.details} id={detailsId}>
-          {loadingDetails && (
+          {loadingFull && (
             <div className={styles.loading}>Loading details...</div>
           )}
 
@@ -122,7 +127,11 @@ export const SessionCard = memo(function SessionCard({
           {session.toolCount > 0 && (
             <section className={styles.section}>
               <h4 className={styles.sectionTitle}>Tool Calls</h4>
-              <ToolCallList sessionId={session.sessionId} toolCount={session.toolCount} />
+              <ToolCallList
+                sessionId={session.sessionId}
+                toolCount={session.toolCount}
+                cachedData={toolsData}
+              />
             </section>
           )}
 
@@ -142,7 +151,10 @@ export const SessionCard = memo(function SessionCard({
 
           <section className={styles.section}>
             <h4 className={styles.sectionTitle}>Sub-Agents</h4>
-            <SubAgentList sessionId={session.sessionId} />
+            <SubAgentList
+              sessionId={session.sessionId}
+              cachedData={subAgentsData}
+            />
           </section>
 
           <div className={styles.actions} role="group" aria-label="Session actions">

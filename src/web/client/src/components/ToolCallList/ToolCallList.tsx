@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback, memo, useMemo } from 'react'
-import type { ToolCallInfo } from '@/types'
+import type { ToolCallInfo, ToolCallsData } from '@/types'
 import { fetchToolCalls } from '@/services/api'
 import { Spinner } from '@/components/Spinner'
 import { Button } from '@/components/Button'
@@ -13,9 +13,11 @@ const PAGE_SIZE = 20
 interface ToolCallListProps {
   sessionId: string
   toolCount?: number
+  // Cached data from parent (from /full endpoint) - avoids separate API call
+  cachedData?: ToolCallsData
 }
 
-export const ToolCallList = memo(function ToolCallList({ sessionId }: ToolCallListProps) {
+export const ToolCallList = memo(function ToolCallList({ sessionId, cachedData }: ToolCallListProps) {
   const [toolCalls, setToolCalls] = useState<ToolCallInfo[]>([])
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -23,7 +25,16 @@ export const ToolCallList = memo(function ToolCallList({ sessionId }: ToolCallLi
   const [expandedIndex, setExpandedIndex] = useState<number | null>(null)
   const [visibleCount, setVisibleCount] = useState(PAGE_SIZE)
 
+  // Use cached data if available, otherwise fetch
   useEffect(() => {
+    // If we have cached data from parent, use it directly (no API call needed)
+    if (cachedData) {
+      setToolCalls(cachedData.toolCalls)
+      setLoaded(true)
+      return
+    }
+
+    // Fallback: fetch if no cached data (backwards compatibility)
     async function loadToolCalls() {
       if (loaded) return
       setLoading(true)
@@ -43,7 +54,7 @@ export const ToolCallList = memo(function ToolCallList({ sessionId }: ToolCallLi
       }
     }
     loadToolCalls()
-  }, [sessionId, loaded])
+  }, [sessionId, loaded, cachedData])
 
   const handleToggle = useCallback((index: number) => {
     setExpandedIndex(prev => prev === index ? null : index)

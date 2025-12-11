@@ -39,11 +39,12 @@ export function getSessionCacheStats(): { size: number; keys: string[] } {
 /** Options for scanning session files */
 export interface ScanOptions {
   includeSubAgents?: boolean; // Include agent- prefixed files (default: false for backward compatibility)
+  maxAgeDays?: number; // Only include files modified within this many days (default: all)
 }
 
 /** Scan projects directory for session files */
 export function scanProjectsDirectory(options: ScanOptions = {}): ClaudeSessionFile[] {
-  const { includeSubAgents = false } = options;
+  const { includeSubAgents = false, maxAgeDays } = options;
 
   if (!existsSync(CLAUDE_PROJECTS)) {
     logger.warn('Claude projects directory not found');
@@ -53,11 +54,21 @@ export function scanProjectsDirectory(options: ScanOptions = {}): ClaudeSessionF
   const sessions: ClaudeSessionFile[] = [];
   const projectDirs = readdirSync(CLAUDE_PROJECTS);
 
+  // Calculate cutoff date if maxAgeDays is specified
+  const cutoffTime = maxAgeDays
+    ? Date.now() - (maxAgeDays * 24 * 60 * 60 * 1000)
+    : 0;
+
   for (const projectName of projectDirs) {
     const projectPath = join(CLAUDE_PROJECTS, projectName);
     const stat = statSync(projectPath);
 
     if (!stat.isDirectory()) continue;
+
+    // Skip directories that haven't been modified recently (optimization)
+    if (maxAgeDays && stat.mtime.getTime() < cutoffTime) {
+      continue;
+    }
 
     // Filter files based on options
     const files = readdirSync(projectPath).filter((f) => {
@@ -70,6 +81,11 @@ export function scanProjectsDirectory(options: ScanOptions = {}): ClaudeSessionF
     for (const file of files) {
       const filePath = join(projectPath, file);
       const fileStat = statSync(filePath);
+
+      // Skip files older than cutoff
+      if (maxAgeDays && fileStat.mtime.getTime() < cutoffTime) {
+        continue;
+      }
 
       // For agent files, use the agent ID as sessionId
       const isAgentFile = file.startsWith('agent-');
