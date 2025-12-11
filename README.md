@@ -243,6 +243,6 @@ bun run build        # Production build
 
 ## License
 
-MIT © 2024
+MIT © 2025
 
 </div>
