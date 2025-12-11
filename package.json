@@ -8,10 +8,14 @@
     "tasker": "./dist/index.js"
   },
   "scripts": {
-    "build": "bun build src/index.ts --outdir dist --target bun",
+    "build": "bun run build:client && bun run build:server",
+    "build:client": "cd src/web/client && bun run build",
+    "build:server": "bun build src/index.ts --outdir dist --target bun",
     "dev": "bun run src/index.ts",
+    "dev:client": "cd src/web/client && bun run dev",
     "start": "bun dist/index.js",
-    "typecheck": "tsc --noEmit",
+    "web": "bun dist/index.js web",
+    "typecheck": "tsc --noEmit && cd src/web/client && bun run typecheck",
     "test": "bun test",
     "test:watch": "bun test --watch"
   },
