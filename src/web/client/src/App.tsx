@@ -7,6 +7,7 @@ import { SessionCardSkeleton } from '@/components/Skeleton'
 import { HelpModal } from '@/components/HelpModal'
 import { CostPanel } from '@/components/CostPanel'
 import { AnalyticsPanel } from '@/components/AnalyticsPanel'
+import { TabNav, type TabId } from '@/components/TabNav'
 import { useSessions, useKeyboardShortcuts, useSessionFilter, useNotifications } from '@/hooks'
 
 // Lazy load heavy components
@@ -18,6 +19,7 @@ function AppContent() {
   const { showToast } = useToast()
   const { theme, setTheme } = useTheme()
   const [showHelp, setShowHelp] = useState(false)
+  const [activeTab, setActiveTab] = useState<TabId>('sessions')
 
   const {
     sessions,
@@ -135,6 +137,8 @@ function AppContent() {
       onRequestNotificationPermission={requestNotificationPermission}
       connectionStatus={connectionStatus}
     >
+      <TabNav activeTab={activeTab} onTabChange={setActiveTab} />
+
       {loading && <SessionCardSkeleton count={4} />}
 
       {error && !loading && (
@@ -143,14 +147,8 @@ function AppContent() {
         </div>
       )}
 
-      {!loading && filteredSessions.length > 0 && (
-        <>
-          <CostPanel sessions={filteredSessions} />
-          <AnalyticsPanel sessions={filteredSessions} />
-        </>
-      )}
-
-      {!loading && (
+      {/* Sessions Tab */}
+      {activeTab === 'sessions' && !loading && (
         <Suspense fallback={<SessionCardSkeleton count={4} />}>
           <SessionList
             sessions={filteredSessions}
@@ -162,6 +160,20 @@ function AppContent() {
             isLoadingDetails={isLoadingDetails}
           />
         </Suspense>
+      )}
+
+      {/* Analytics Tab */}
+      {activeTab === 'analytics' && !loading && filteredSessions.length > 0 && (
+        <>
+          <CostPanel sessions={filteredSessions} />
+          <AnalyticsPanel sessions={filteredSessions} />
+        </>
+      )}
+
+      {activeTab === 'analytics' && !loading && filteredSessions.length === 0 && (
+        <div className={layoutStyles.errorBox}>
+          No sessions to analyze
+        </div>
       )}
 
       <HelpModal isOpen={showHelp} onClose={() => setShowHelp(false)} />
