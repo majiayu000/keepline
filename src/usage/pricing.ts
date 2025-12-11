@@ -139,7 +139,7 @@ export function getModelPricing(model: string): ModelPricing {
   return FALLBACK_PRICING
 }
 
-/** Calculate cost for token usage */
+/** Calculate cost for token usage (without cache) */
 export function calculateCost(
   inputTokens: number,
   outputTokens: number,
@@ -148,6 +148,30 @@ export function calculateCost(
   const inputCost = (inputTokens / 1_000_000) * pricing.inputPerMillion
   const outputCost = (outputTokens / 1_000_000) * pricing.outputPerMillion
   return inputCost + outputCost
+}
+
+/**
+ * Calculate cost with cache token pricing
+ *
+ * Anthropic cache pricing:
+ * - Base input tokens: normal price
+ * - Cache creation tokens: 1.25x base price
+ * - Cache read tokens: 0.1x base price (90% discount)
+ * - Output tokens: normal price
+ */
+export function calculateCostWithCache(
+  baseInputTokens: number,
+  outputTokens: number,
+  cacheCreationTokens: number,
+  cacheReadTokens: number,
+  pricing: ModelPricing
+): number {
+  const baseInputCost = (baseInputTokens / 1_000_000) * pricing.inputPerMillion
+  const cacheWriteCost = (cacheCreationTokens / 1_000_000) * pricing.inputPerMillion * 1.25
+  const cacheReadCost = (cacheReadTokens / 1_000_000) * pricing.inputPerMillion * 0.1
+  const outputCost = (outputTokens / 1_000_000) * pricing.outputPerMillion
+
+  return baseInputCost + cacheWriteCost + cacheReadCost + outputCost
 }
 
 /** Initialize pricing (call at startup) */
