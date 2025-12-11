@@ -40,6 +40,18 @@ export function useWebSocket(options: UseWebSocketOptions = {}): UseWebSocketRet
   const reconnectTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const mountedRef = useRef(true)
 
+  // Store callbacks in refs to avoid re-triggering connect on callback changes
+  const onMessageRef = useRef(onMessage)
+  const onConnectRef = useRef(onConnect)
+  const onDisconnectRef = useRef(onDisconnect)
+
+  // Keep refs updated
+  useEffect(() => {
+    onMessageRef.current = onMessage
+    onConnectRef.current = onConnect
+    onDisconnectRef.current = onDisconnect
+  })
+
   const getWebSocketUrl = useCallback(() => {
     const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:'
     const host = window.location.host
@@ -47,7 +59,9 @@ export function useWebSocket(options: UseWebSocketOptions = {}): UseWebSocketRet
   }, [])
 
   const connect = useCallback(() => {
-    if (wsRef.current?.readyState === WebSocket.OPEN) {
+    // Prevent multiple connections
+    if (wsRef.current?.readyState === WebSocket.OPEN ||
+        wsRef.current?.readyState === WebSocket.CONNECTING) {
       return
     }
 
@@ -57,17 +71,20 @@ export function useWebSocket(options: UseWebSocketOptions = {}): UseWebSocketRet
       const ws = new WebSocket(getWebSocketUrl())
 
       ws.onopen = () => {
-        if (!mountedRef.current) return
+        if (!mountedRef.current) {
+          ws.close()
+          return
+        }
         setStatus('connected')
         reconnectAttemptsRef.current = 0
-        onConnect?.()
+        onConnectRef.current?.()
       }
 
       ws.onmessage = (event) => {
         if (!mountedRef.current) return
         try {
           const message = JSON.parse(event.data) as WebSocketMessage
-          onMessage?.(message)
+          onMessageRef.current?.(message)
         } catch (error) {
           console.error('Failed to parse WebSocket message:', error)
         }
@@ -77,7 +94,7 @@ export function useWebSocket(options: UseWebSocketOptions = {}): UseWebSocketRet
         if (!mountedRef.current) return
         setStatus('disconnected')
         wsRef.current = null
-        onDisconnect?.()
+        onDisconnectRef.current?.()
 
         // Attempt to reconnect
         if (reconnectAttemptsRef.current < maxReconnectAttempts) {
@@ -100,7 +117,7 @@ export function useWebSocket(options: UseWebSocketOptions = {}): UseWebSocketRet
       console.error('Failed to create WebSocket:', error)
       setStatus('error')
     }
-  }, [getWebSocketUrl, onConnect, onDisconnect, onMessage, reconnectInterval, maxReconnectAttempts])
+  }, [getWebSocketUrl, reconnectInterval, maxReconnectAttempts]) // Removed callback deps
 
   const send = useCallback((data: unknown) => {
     if (wsRef.current?.readyState === WebSocket.OPEN) {
@@ -124,14 +141,22 @@ export function useWebSocket(options: UseWebSocketOptions = {}): UseWebSocketRet
     connect()
   }, [connect])
 
-  // Connect on mount
+  // Store connect in ref for cleanup
+  const connectRef = useRef(connect)
+  useEffect(() => {
+    connectRef.current = connect
+  }, [connect])
+
+  // Connect on mount - run only once
   useEffect(() => {
     mountedRef.current = true
-    connect()
+    connectRef.current()
 
     // Ping to keep connection alive
     const pingInterval = setInterval(() => {
-      send({ type: 'ping' })
+      if (wsRef.current?.readyState === WebSocket.OPEN) {
+        wsRef.current.send(JSON.stringify({ type: 'ping' }))
+      }
     }, 30000)
 
     return () => {
@@ -142,9 +167,10 @@ export function useWebSocket(options: UseWebSocketOptions = {}): UseWebSocketRet
       }
       if (wsRef.current) {
         wsRef.current.close()
+        wsRef.current = null
       }
     }
-  }, [connect, send])
+  }, []) // Empty deps - only run on mount
 
   return {
     status,
