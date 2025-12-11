@@ -2,36 +2,38 @@
   display: flex;
   align-items: center;
   justify-content: center;
-  gap: 2rem;
-  padding: 1rem 2rem;
+  gap: 1.5rem;
+  padding: 0.75rem 2rem;
   background: var(--bg-elevated);
   border-bottom: 1px solid var(--border);
 }
 
 .stat {
   display: flex;
-  flex-direction: column;
+  flex-direction: row;
   align-items: center;
-  gap: 0.25rem;
+  gap: 0.5rem;
+}
+
+.emoji {
+  font-size: 1rem;
 }
 
 .value {
-  font-size: 1.5rem;
+  font-size: 1.25rem;
   font-weight: 700;
   font-family: var(--font-mono);
 }
 
 .label {
-  font-size: 0.7rem;
-  text-transform: uppercase;
-  letter-spacing: 0.1em;
+  font-size: 0.8rem;
   color: var(--text-dim);
 }
 
 .divider {
-  width: 1px;
-  height: 2rem;
-  background: var(--border);
+  color: var(--border);
+  font-size: 1rem;
+  opacity: 0.5;
 }
 
 /* Variants */

@@ -76,20 +76,9 @@
   font-family: var(--font-mono);
 }
 
-.statusDot {
-  width: 8px;
-  height: 8px;
-  border-radius: 50%;
-  animation: pulse 2s ease-in-out infinite;
-}
-
-@keyframes pulse {
-  0%, 100% {
-    opacity: 1;
-  }
-  50% {
-    opacity: 0.5;
-  }
+.statusEmoji {
+  font-size: 0.75rem;
+  line-height: 1;
 }
 
 .currentTask {

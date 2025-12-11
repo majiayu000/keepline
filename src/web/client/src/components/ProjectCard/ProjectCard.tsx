@@ -9,13 +9,13 @@ export interface ProjectCardProps {
   onClick?: (projectPath: string) => void
 }
 
-/** Status indicator colors */
-const STATUS_COLORS = {
-  running: 'var(--success)',
-  waiting: 'var(--warning)',
-  idle: 'var(--info)',
-  lost: 'var(--danger)',
-  completed: 'var(--text-dim)',
+/** Status indicator emojis and colors */
+const STATUS_CONFIG = {
+  running: { emoji: '🟢', color: 'var(--success)' },
+  waiting: { emoji: '🟡', color: 'var(--warning)' },
+  idle: { emoji: '🔵', color: 'var(--info)' },
+  lost: { emoji: '🔴', color: 'var(--danger)' },
+  completed: { emoji: '⚫', color: 'var(--text-dim)' },
 }
 
 export const ProjectCard = memo(function ProjectCard({
@@ -65,32 +65,32 @@ export const ProjectCard = memo(function ProjectCard({
 
       <div className={styles.statusRow}>
         {stats.running > 0 && (
-          <span className={styles.statusBadge} style={{ color: STATUS_COLORS.running }}>
-            <span className={styles.statusDot} style={{ backgroundColor: STATUS_COLORS.running }} />
+          <span className={styles.statusBadge} style={{ color: STATUS_CONFIG.running.color }}>
+            <span className={styles.statusEmoji}>{STATUS_CONFIG.running.emoji}</span>
             {stats.running}
           </span>
         )}
         {stats.waiting > 0 && (
-          <span className={styles.statusBadge} style={{ color: STATUS_COLORS.waiting }}>
-            <span className={styles.statusDot} style={{ backgroundColor: STATUS_COLORS.waiting }} />
+          <span className={styles.statusBadge} style={{ color: STATUS_CONFIG.waiting.color }}>
+            <span className={styles.statusEmoji}>{STATUS_CONFIG.waiting.emoji}</span>
             {stats.waiting}
           </span>
         )}
         {stats.idle > 0 && (
-          <span className={styles.statusBadge} style={{ color: STATUS_COLORS.idle }}>
-            <span className={styles.statusDot} style={{ backgroundColor: STATUS_COLORS.idle }} />
+          <span className={styles.statusBadge} style={{ color: STATUS_CONFIG.idle.color }}>
+            <span className={styles.statusEmoji}>{STATUS_CONFIG.idle.emoji}</span>
             {stats.idle}
           </span>
         )}
         {stats.lost > 0 && (
-          <span className={styles.statusBadge} style={{ color: STATUS_COLORS.lost }}>
-            <span className={styles.statusDot} style={{ backgroundColor: STATUS_COLORS.lost }} />
+          <span className={styles.statusBadge} style={{ color: STATUS_CONFIG.lost.color }}>
+            <span className={styles.statusEmoji}>{STATUS_CONFIG.lost.emoji}</span>
             {stats.lost}
           </span>
         )}
         {stats.completed > 0 && (
-          <span className={styles.statusBadge} style={{ color: STATUS_COLORS.completed }}>
-            <span className={styles.statusDot} style={{ backgroundColor: STATUS_COLORS.completed }} />
+          <span className={styles.statusBadge} style={{ color: STATUS_CONFIG.completed.color }}>
+            <span className={styles.statusEmoji}>{STATUS_CONFIG.completed.emoji}</span>
             {stats.completed}
           </span>
         )}
