@@ -38,6 +38,7 @@ export function registerCommands(program: Command): void {
     .description('Recover a lost session')
     .option('-m, --method <method>', 'Recovery method (resume, continue, new)')
     .option('-t, --terminal', 'Open in new terminal window')
+    .option('-a, --terminal-app <app>', 'Terminal app to use (Terminal, iTerm, Warp, auto)')
     .option('--skip-permissions', 'Use --dangerously-skip-permissions')
     .action(async (session, options) => {
       if (!session) {

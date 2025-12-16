@@ -8,10 +8,12 @@ import { syncSessions } from '../session/service.js';
 import { getAggregatedSessions } from '../session/aggregator.js';
 import { recoverSession, getRecoveryInfo } from '../recovery/service.js';
 import { formatSessionDetail } from '../utils/format.js';
+import type { TerminalApp } from '../recovery/types.js';
 
 interface RecoverOptions {
   method?: string;
   terminal?: boolean;
+  terminalApp?: string;
   skipPermissions?: boolean;
 }
 
@@ -68,7 +70,19 @@ export async function recoverCommand(
     process.exit(1);
   }
 
+  // Validate terminal app
+  const validTerminalApps = ['Terminal', 'iTerm', 'Warp', 'auto'];
+  const terminalApp = (options.terminalApp || 'auto') as TerminalApp;
+
+  if (!validTerminalApps.includes(terminalApp)) {
+    console.log(chalk.red(`Invalid terminal app '${options.terminalApp}'. Valid options: ${validTerminalApps.join(', ')}`));
+    process.exit(1);
+  }
+
   console.log(chalk.cyan(`Recovering with method: ${method}`));
+  if (options.terminal) {
+    console.log(chalk.gray(`Opening in: ${terminalApp === 'auto' ? 'auto-detected terminal' : terminalApp}`));
+  }
 
   // Perform recovery
   const result = await recoverSession({
@@ -77,6 +91,7 @@ export async function recoverCommand(
     directory: session.directory,
     openTerminal: options.terminal ?? false,
     skipPermissions: options.skipPermissions ?? false,
+    terminalApp,
   });
 
   if (result.success) {
