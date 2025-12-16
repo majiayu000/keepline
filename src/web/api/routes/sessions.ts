@@ -5,12 +5,12 @@
  */
 
 import { Hono } from 'hono';
-import { syncSessions, getAllSessions } from '../../../session/service.js';
-import { getAggregatedSessions, getSessionStats } from '../../../session/aggregator.js';
-import { isProcessRunning } from '../../../process/scanner.js';
-import { getSessionById, getAllSessions as getAllParsedSessions } from '../../../claude/scanner.js';
-import { getRecoveryInfo } from '../../../recovery/service.js';
-import { logger } from '../../../utils/logger.js';
+import { syncSessions, getAllSessions } from '../../../services/session.service.js';
+import { getAggregatedSessions, getSessionStats } from '../../../services/session.aggregator.js';
+import { isProcessRunning } from '../../../adapters/process/scanner.js';
+import { getSessionById, getAllSessions as getAllParsedSessions } from '../../../adapters/claude/scanner.js';
+import { getRecoveryInfo } from '../../../services/recovery.service.js';
+import { logger } from '../../../lib/logger.js';
 import { isValidSessionId } from '../middleware/validation.js';
 import { broadcast } from '../websocket.js';
 

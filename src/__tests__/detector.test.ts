@@ -14,9 +14,9 @@ import {
   isSessionCompleted,
   needsAttention,
   getStatusDescription,
-} from '../process/detector.js';
-import type { ClaudeProcessInfo } from '../process/types.js';
-import type { SessionStatus } from '../core/types.js';
+} from '../adapters/process/detector.js';
+import type { ClaudeProcessInfo } from '../adapters/process/types.js';
+import type { SessionStatus } from '../lib/types.js';
 
 // ============================================================================
 // Test Data: Real process info structures (not mocks)

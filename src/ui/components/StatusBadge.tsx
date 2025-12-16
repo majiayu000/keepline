@@ -4,7 +4,7 @@
 
 import React from 'react';
 import { Text, Box } from 'ink';
-import type { SessionStatus } from '../../core/types.js';
+import type { SessionStatus } from '../../lib/types.js';
 
 interface StatusBadgeProps {
   status: SessionStatus;

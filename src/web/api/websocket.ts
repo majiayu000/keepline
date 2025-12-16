@@ -5,7 +5,7 @@
  */
 
 import type { ServerWebSocket } from 'bun';
-import { logger } from '../../utils/logger.js';
+import { logger } from '../../lib/logger.js';
 
 // WebSocket client management
 export interface WebSocketClient {

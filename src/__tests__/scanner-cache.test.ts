@@ -13,7 +13,7 @@ import {
   clearProcessCache,
   getCachedProcesses,
   isProcessRunning,
-} from '../process/scanner.js';
+} from '../adapters/process/scanner.js';
 
 // ============================================================================
 // Feature: Process Cache Management

@@ -4,7 +4,7 @@
  * Simple in-memory rate limiter for API endpoints
  */
 
-import { logger } from '../../../utils/logger.js';
+import { logger } from '../../../lib/logger.js';
 
 // Simple in-memory rate limiter
 const rateLimitStore = new Map<string, { count: number; resetTime: number }>();

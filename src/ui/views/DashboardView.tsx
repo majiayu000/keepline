@@ -7,7 +7,7 @@
 
 import React from 'react';
 import { Box, Text } from 'ink';
-import type { Session, SessionStatus } from '../../core/types.js';
+import type { Session, SessionStatus } from '../../lib/types.js';
 
 interface Props {
   sessions: Session[];

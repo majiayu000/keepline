@@ -7,9 +7,9 @@
  */
 
 import { Command } from 'commander';
-import { registerCommands } from './commands/index.js';
-import { logger } from './utils/logger.js';
-import { config } from './utils/config.js';
+import { registerCommands } from './cli/index.js';
+import { logger } from './lib/logger.js';
+import { config } from './lib/config.js';
 
 // Configure logger based on config
 const cfg = config.get();
@@ -32,7 +32,7 @@ registerCommands(program);
 
 // Default action: show list
 program.action(async () => {
-  const { listCommand } = await import('./commands/list.js');
+  const { listCommand } = await import('./cli/list.js');
   await listCommand({});
 });
 

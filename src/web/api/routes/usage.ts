@@ -5,7 +5,7 @@
  */
 
 import { Hono } from 'hono';
-import { logger } from '../../../utils/logger.js';
+import { logger } from '../../../lib/logger.js';
 
 const app = new Hono();
 

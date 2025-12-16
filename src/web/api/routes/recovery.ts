@@ -5,10 +5,10 @@
  */
 
 import { Hono } from 'hono';
-import { getAllSessions, completeSession } from '../../../session/service.js';
-import { recoverSession, getRecoveryInfo } from '../../../recovery/service.js';
-import { stopProcess, isProcessRunning } from '../../../process/scanner.js';
-import { logger } from '../../../utils/logger.js';
+import { getAllSessions, completeSession } from '../../../services/session.service.js';
+import { recoverSession, getRecoveryInfo } from '../../../services/recovery.service.js';
+import { stopProcess, isProcessRunning } from '../../../adapters/process/scanner.js';
+import { logger } from '../../../lib/logger.js';
 import {
   isValidSessionId,
   validateRecoverRequest,

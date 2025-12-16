@@ -5,7 +5,7 @@
 import React from 'react';
 import { Box, Text } from 'ink';
 import Gradient from 'ink-gradient';
-import type { Session } from '../core/types.js';
+import type { Session } from '../lib/types.js';
 import { SessionList } from './components/index.js';
 
 interface SessionStats {
