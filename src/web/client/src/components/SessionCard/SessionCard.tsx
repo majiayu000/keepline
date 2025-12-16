@@ -1,10 +1,11 @@
 import { useCallback, useEffect, memo } from 'react'
-import type { Session, SessionFullData } from '@/types'
+import type { Session, SessionFullData, TerminalApp } from '@/types'
 import { Button } from '@/components/Button'
 import { ResponsePanel } from '@/components/ResponsePanel'
 import { ToolCallList } from '@/components/ToolCallList'
 import { UsageStats } from '@/components/UsageStats'
 import { SubAgentList } from '@/components/SubAgentList'
+import { TerminalSelector } from '@/components/TerminalSelector'
 import { formatRelativeTime, formatPath } from '@/utils/format'
 import { getStatusColor } from '@/constants'
 import { useToggle } from '@/hooks'
@@ -12,7 +13,7 @@ import styles from './SessionCard.module.css'
 
 interface SessionCardProps {
   session: Session
-  onRecover?: (sessionId: string) => void
+  onRecover?: (sessionId: string, terminalApp?: TerminalApp) => void
   onStop?: (sessionId: string) => void
   onComplete?: (sessionId: string) => void
   // Lazy loading - now uses combined /full endpoint (1 request instead of 3)
@@ -159,9 +160,9 @@ export const SessionCard = memo(function SessionCard({
 
           <div className={styles.actions} role="group" aria-label="Session actions">
             {session.status === 'lost' && onRecover && (
-              <Button variant="success" size="sm" onClick={() => onRecover(session.sessionId)}>
-                Recover
-              </Button>
+              <TerminalSelector
+                onSelect={(terminal) => onRecover(session.sessionId, terminal)}
+              />
             )}
             {(session.status === 'running' || session.status === 'waiting') && onStop && (
               <Button variant="danger" size="sm" onClick={() => onStop(session.sessionId)}>

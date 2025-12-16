@@ -1,12 +1,12 @@
 import { useState, useMemo, memo, useCallback } from 'react'
-import type { Session, SessionFullData, PaginationInfo } from '@/types'
+import type { Session, SessionFullData, PaginationInfo, TerminalApp } from '@/types'
 import { SessionCard } from '@/components/SessionCard'
 import { Button } from '@/components/Button'
 import styles from './SessionList.module.css'
 
 interface SessionListProps {
   sessions: Session[]
-  onRecover?: (sessionId: string) => void
+  onRecover?: (sessionId: string, terminalApp?: TerminalApp) => void
   onStop?: (sessionId: string) => void
   onComplete?: (sessionId: string) => void
   // Lazy loading - now uses combined /full endpoint (1 request instead of 3)
@@ -166,7 +166,7 @@ export const SessionList = memo(function SessionList({
 interface SessionGroupProps {
   title: string
   sessions: Session[]
-  onRecover?: (sessionId: string) => void
+  onRecover?: (sessionId: string, terminalApp?: TerminalApp) => void
   onStop?: (sessionId: string) => void
   onComplete?: (sessionId: string) => void
   getSessionFull?: (sessionId: string) => SessionFullData | undefined

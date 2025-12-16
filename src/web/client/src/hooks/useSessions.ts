@@ -2,7 +2,7 @@ import { useState, useEffect, useCallback, useRef } from 'react'
 import { api } from '@/services/api'
 import { REFRESH_INTERVAL_MS } from '@/constants'
 import { useWebSocket, type WebSocketMessage } from './useWebSocket'
-import type { Session, SessionStats, SessionFullData, PaginationInfo } from '@/types'
+import type { Session, SessionStats, SessionFullData, PaginationInfo, TerminalApp } from '@/types'
 
 export type ConnectionStatus = 'polling' | 'realtime' | 'disconnected'
 
@@ -17,7 +17,7 @@ interface UseSessionsReturn {
   error: string | null
   refresh: () => Promise<void>
   sync: () => Promise<boolean>
-  recoverSession: (sessionId: string) => Promise<boolean>
+  recoverSession: (sessionId: string, terminalApp?: TerminalApp) => Promise<boolean>
   stopSession: (sessionId: string) => Promise<boolean>
   completeSession: (sessionId: string) => Promise<boolean>
   // Lazy loading - now uses combined /full endpoint (1 request instead of 3)
@@ -156,8 +156,11 @@ export function useSessions(): UseSessionsReturn {
     return success
   }, [loadSessions])
 
-  const recoverSession = useCallback(async (sessionId: string) => {
-    const response = await api.recoverSession(sessionId, { method: 'resume' })
+  const recoverSession = useCallback(async (sessionId: string, terminalApp?: TerminalApp) => {
+    const response = await api.recoverSession(sessionId, {
+      method: 'resume',
+      terminalApp: terminalApp ?? 'auto',
+    })
     if (response.success) {
       await loadSessions()
     }

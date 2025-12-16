@@ -15,6 +15,7 @@ export interface RecoveryOptions {
   directory: string;
   openTerminal?: boolean;
   skipPermissions?: boolean;
+  terminalApp?: TerminalApp;
 }
 
 /** Recovery result */
@@ -27,4 +28,7 @@ export interface RecoveryResult {
 }
 
 /** Terminal app options */
-export type TerminalApp = 'Terminal' | 'iTerm' | 'auto';
+export type TerminalApp = 'Terminal' | 'iTerm' | 'Warp' | 'auto';
+
+/** Available terminal apps list */
+export const TERMINAL_APPS = ['Terminal', 'iTerm', 'Warp'] as const;

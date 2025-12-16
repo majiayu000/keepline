@@ -368,7 +368,7 @@ app.post('/api/sessions/:id/recover', async (c) => {
     return c.json({ success: false, error: validation.error }, 400);
   }
 
-  const { method = 'resume', openTerminal = true, skipPermissions = false } = validation.data;
+  const { method = 'resume', openTerminal = true, skipPermissions = false, terminalApp = 'auto' } = validation.data;
 
   const sessions = getAllSessions();
   const session = sessions.find(s => s.sessionId === sessionId);
@@ -390,6 +390,7 @@ app.post('/api/sessions/:id/recover', async (c) => {
       directory: session.directory,
       openTerminal: openTerminal ?? true,
       skipPermissions: skipPermissions ?? false,
+      terminalApp: terminalApp ?? 'auto',
     });
 
     return c.json({ success: result.success, error: result.error });

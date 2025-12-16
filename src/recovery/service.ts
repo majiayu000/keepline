@@ -123,7 +123,7 @@ export async function recoverSession(options: RecoveryOptions): Promise<Recovery
   try {
     if (options.openTerminal) {
       // Open new terminal window
-      openTerminalWithCommand(command, options.directory);
+      openTerminalWithCommand(command, options.directory, options.terminalApp ?? 'auto');
 
       // Update session status
       sessionRepo.upsert({

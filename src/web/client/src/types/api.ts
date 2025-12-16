@@ -47,11 +47,15 @@ export interface RecoveryInfo {
   sessionFile?: string
 }
 
+// Terminal app options
+export type TerminalApp = 'Terminal' | 'iTerm' | 'Warp' | 'auto'
+
 // POST /api/sessions/:id/recover body
 export interface RecoverBody {
   method: 'resume' | 'continue' | 'new'
   openTerminal?: boolean
   skipPermissions?: boolean
+  terminalApp?: TerminalApp
 }
 
 // POST /api/sessions/:id/stop body

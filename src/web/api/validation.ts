@@ -9,6 +9,10 @@
 export const VALID_RECOVERY_METHODS = ['resume', 'continue', 'new'] as const;
 export type RecoveryMethod = (typeof VALID_RECOVERY_METHODS)[number];
 
+/** Valid terminal apps */
+export const VALID_TERMINAL_APPS = ['Terminal', 'iTerm', 'Warp', 'auto'] as const;
+export type TerminalAppOption = (typeof VALID_TERMINAL_APPS)[number];
+
 /** Validate session ID format (UUID-like) */
 export function isValidSessionId(id: string): boolean {
   // Session IDs are UUIDs or similar alphanumeric strings
@@ -20,6 +24,7 @@ export interface RecoverRequestBody {
   method?: RecoveryMethod;
   openTerminal?: boolean;
   skipPermissions?: boolean;
+  terminalApp?: TerminalAppOption;
 }
 
 /** Validation result type */
@@ -59,12 +64,26 @@ export function validateRecoverRequest(
     return { valid: false, error: 'skipPermissions must be a boolean' };
   }
 
+  // Validate terminalApp if provided
+  if (obj.terminalApp !== undefined) {
+    if (
+      typeof obj.terminalApp !== 'string' ||
+      !VALID_TERMINAL_APPS.includes(obj.terminalApp as TerminalAppOption)
+    ) {
+      return {
+        valid: false,
+        error: `Invalid terminalApp. Must be one of: ${VALID_TERMINAL_APPS.join(', ')}`,
+      };
+    }
+  }
+
   return {
     valid: true,
     data: {
       method: obj.method as RecoveryMethod | undefined,
       openTerminal: obj.openTerminal as boolean | undefined,
       skipPermissions: obj.skipPermissions as boolean | undefined,
+      terminalApp: obj.terminalApp as TerminalAppOption | undefined,
     },
   };
 }

@@ -38,13 +38,23 @@ function validateCommand(command: string): boolean {
 /** Detect available terminal app */
 export function detectTerminalApp(): TerminalApp {
   try {
+    // Check if Warp is running
+    const warpResult = execSync(
+      `osascript -e 'tell application "System Events" to (name of processes) contains "Warp"'`,
+      { encoding: 'utf-8' }
+    ).trim();
+
+    if (warpResult === 'true') {
+      return 'Warp';
+    }
+
     // Check if iTerm is running
-    const result = execSync(
+    const iTermResult = execSync(
       `osascript -e 'tell application "System Events" to (name of processes) contains "iTerm2"'`,
       { encoding: 'utf-8' }
     ).trim();
 
-    if (result === 'true') {
+    if (iTermResult === 'true') {
       return 'iTerm';
     }
   } catch {
@@ -73,7 +83,9 @@ export function openTerminalWithCommand(
 
   const app = terminalApp === 'auto' ? detectTerminalApp() : terminalApp;
 
-  if (app === 'iTerm') {
+  if (app === 'Warp') {
+    openWarp(command, directory);
+  } else if (app === 'iTerm') {
     openITerm(command, directory);
   } else {
     openTerminalApp(command, directory);
@@ -115,6 +127,32 @@ function openITerm(command: string, directory: string): void {
     logger.debug('Opened iTerm with command');
   } catch (error) {
     logger.error('Failed to open iTerm', error);
+    throw error;
+  }
+}
+
+/** Open Warp with command */
+function openWarp(command: string, directory: string): void {
+  const script = `
+    tell application "Warp"
+      activate
+      delay 0.5
+      tell application "System Events"
+        tell process "Warp"
+          keystroke "t" using command down
+          delay 0.3
+          keystroke "cd ${escapeForAppleScript(directory)} && ${escapeForAppleScript(command)}"
+          key code 36
+        end tell
+      end tell
+    end tell
+  `;
+
+  try {
+    execSync(`osascript -e '${script}'`, { encoding: 'utf-8' });
+    logger.debug('Opened Warp with command');
+  } catch (error) {
+    logger.error('Failed to open Warp', error);
     throw error;
   }
 }

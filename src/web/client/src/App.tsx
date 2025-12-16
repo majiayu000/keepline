@@ -81,10 +81,10 @@ function AppContent() {
     showToast(success ? 'Sync completed' : 'Sync failed', success ? 'success' : 'error')
   }, [sync, showToast])
 
-  const handleRecover = useCallback(async (sessionId: string) => {
-    const success = await recoverSession(sessionId)
+  const handleRecover = useCallback(async (sessionId: string, terminalApp?: import('@/types').TerminalApp) => {
+    const success = await recoverSession(sessionId, terminalApp)
     showToast(
-      success ? 'Session recovered' : 'Failed to recover session',
+      success ? `Session opened in ${terminalApp || 'terminal'}` : 'Failed to recover session',
       success ? 'success' : 'error'
     )
   }, [recoverSession, showToast])
