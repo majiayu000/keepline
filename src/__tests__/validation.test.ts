@@ -14,9 +14,7 @@ import {
   validateRecoverRequest,
   validateStopRequest,
   VALID_RECOVERY_METHODS,
-  type RecoverRequestBody,
-  type StopRequestBody,
-} from '../web/api/validation.js';
+} from '../web/api/middleware/validation.js';
 
 describe('isValidSessionId', () => {
   describe('valid session IDs', () => {
@@ -96,7 +94,11 @@ describe('validateRecoverRequest', () => {
       expect(result.valid).toBe(true);
     });
 
-    test.each(VALID_RECOVERY_METHODS)('accepts method "%s"', (method) => {
+    test.each([
+      ['resume' as const],
+      ['continue' as const],
+      ['new' as const],
+    ])('accepts method "%s"', (method) => {
       const result = validateRecoverRequest({ method });
       expect(result.valid).toBe(true);
       if (result.valid) {

@@ -17,7 +17,7 @@ import type {
 import { aggregateUsageStats } from '../../usage/extractor.js';
 
 /** Extended entry type with agent info */
-interface ClaudeEntryWithAgent extends ClaudeEntry {
+type ClaudeEntryWithAgent = ClaudeEntry & {
   agentId?: string;
   isSidechain?: boolean;
 }

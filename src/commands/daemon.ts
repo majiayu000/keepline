@@ -69,7 +69,7 @@ async function stopDaemonAction(options: DaemonOptions): Promise<void> {
     uninstallHooks();
   }
 
-  const result = stopDaemon();
+  const result = await stopDaemon();
 
   if (result.success) {
     console.log(chalk.green('Daemon stopped'));
@@ -82,7 +82,7 @@ async function stopDaemonAction(options: DaemonOptions): Promise<void> {
 async function restartDaemonAction(_options: DaemonOptions): Promise<void> {
   console.log(chalk.cyan('Restarting daemon...'));
 
-  const result = restartDaemon();
+  const result = await restartDaemon();
 
   if (result.success) {
     console.log(chalk.green(`Daemon restarted (PID: ${result.pid})`));

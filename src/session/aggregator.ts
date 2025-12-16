@@ -9,8 +9,6 @@ import { sessionRepo } from '../storage/index.js';
 import { getCachedProcesses } from '../process/scanner.js';
 import { detectSessionStatus } from '../process/detector.js';
 import type { AggregatedSession, SessionFilter, SessionSort } from './types.js';
-import type { ClaudeProcessInfo } from '../process/types.js';
-import { logger } from '../utils/logger.js';
 
 /** Get all sessions with aggregated process info (uses cached processes) */
 export function getAggregatedSessions(): AggregatedSession[] {

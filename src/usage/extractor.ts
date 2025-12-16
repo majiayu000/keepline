@@ -10,7 +10,7 @@
 
 import type { ClaudeEntry, ClaudeAssistantEntry } from '../claude/types.js'
 import type { UsageStats, ModelUsage } from './types.js'
-import { getModelPricing, calculateCost, calculateCostWithCache } from './pricing.js'
+import { getModelPricing, calculateCostWithCache } from './pricing.js'
 
 /** Claude's extended usage structure with cache tokens */
 interface ClaudeUsage {

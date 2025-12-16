@@ -3,7 +3,7 @@
  */
 
 import { describe, test, expect, beforeAll } from 'bun:test'
-import { getModelPricing, calculateCost, DEFAULT_PRICING, FALLBACK_PRICING, initPricing } from './pricing.js'
+import { getModelPricing, calculateCost, FALLBACK_PRICING, initPricing } from './pricing.js'
 
 // Initialize pricing before tests (uses defaults if fetch fails)
 beforeAll(async () => {

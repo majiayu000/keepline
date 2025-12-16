@@ -4,6 +4,7 @@
  */
 
 import type { PricingConfig, ModelPricing } from './types.js'
+import { logger } from '../utils/logger.js'
 
 const LITELLM_PRICING_URL =
   'https://raw.githubusercontent.com/BerriAI/litellm/main/model_prices_and_context_window.json'
@@ -79,7 +80,7 @@ async function fetchLiteLLMPricing(): Promise<PricingConfig> {
 
     return pricing
   } catch (error) {
-    console.warn('Failed to fetch LiteLLM pricing, using defaults:', error)
+    logger.warn('Failed to fetch LiteLLM pricing, using defaults', error)
     return DEFAULT_PRICING
   }
 }
