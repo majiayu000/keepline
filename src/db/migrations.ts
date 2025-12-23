@@ -1,8 +1,11 @@
 /**
  * Database migrations
+ *
+ * Legacy migration runner for backward compatibility.
+ * New migrations should use the versioned system in infrastructure/database/migrations/
  */
 
-import { getDatabase } from './database.js';
+import { getDatabase } from '../infrastructure/database/sqlite.js';
 import { logger } from '../lib/logger.js';
 
 /** Run all migrations */

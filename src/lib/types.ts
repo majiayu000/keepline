@@ -1,78 +1,32 @@
 /**
  * Core type definitions for Tasker
+ *
+ * Re-exports from domain layer for backward compatibility.
+ * New code should import directly from '../domain/index.js'
  */
 
-/** Session status enumeration */
-export type SessionStatus =
-  | 'running'    // Process exists and actively processing
-  | 'waiting'    // Process exists but waiting for input
-  | 'idle'       // Process exists but inactive
-  | 'lost'       // No process but session data exists
-  | 'completed'; // Session finished
+// Re-export from domain layer
+export type {
+  SessionStatus,
+  ToolCallInfo,
+  ProcessInfo,
+  ClaudeSessionFile,
+} from '../domain/session/value-objects.js';
 
-/** Base entity interface */
-export interface Entity {
-  id: string;
-  createdAt: Date;
-  updatedAt: Date;
-}
+export type {
+  Session,
+  ParsedSessionData,
+  AggregatedSession,
+  CreateSessionInput,
+  UpdateSessionInput,
+  SessionStats,
+} from '../domain/session/entity.js';
 
-/** Tool call info */
-export interface ToolCallInfo {
-  name: string;
-  input: Record<string, unknown>;
-  timestamp: string;
-}
-
-/** Session entity */
-export interface Session extends Entity {
-  sessionId: string;        // Claude session ID
-  directory: string;        // Working directory
-  status: SessionStatus;
-
-  // Task information
-  title: string;            // Extracted/generated title
-  initialPrompt: string;    // Original user prompt
-
-  // Activity tracking
-  lastTool?: string;        // Last used tool
-  lastToolInput?: string;   // Tool input (JSON string)
-  currentFile?: string;     // Currently editing file
-  lastMessage?: string;     // Last assistant message
-  toolCalls?: ToolCallInfo[]; // All tool calls
-
-  // Timeline
-  startedAt?: Date;
-  lastActiveAt: Date;
-  completedAt?: Date;
-
-  // Process info
-  pid?: number;
-  tty?: string;
-
-  // Metrics
-  toolCount: number;        // Total tools used
-  messageCount: number;     // Total messages
-}
-
-/** Process info from system */
-export interface ProcessInfo {
-  pid: number;
-  command: string;
-  cwd?: string;
-  tty?: string;
-  cpu?: number;
-  memory?: number;
-  startTime?: Date;
-}
-
-/** Claude session file info */
-export interface ClaudeSessionFile {
-  sessionId: string;
-  directory: string;        // Original directory path
-  filePath: string;         // Path to JSONL file
-  modifiedAt: Date;
-}
+export type {
+  Entity,
+  Result,
+  DomainEvent,
+} from '../domain/shared/types.js';
 
 /** Tool usage record */
 export interface ToolUsage {
@@ -83,10 +37,10 @@ export interface ToolUsage {
   duration?: number;
 }
 
-/** Event payload types */
+/** Event payload types (for backward compatibility with old event system) */
 export interface SessionEventPayload {
-  session: Session;
-  previousStatus?: SessionStatus;
+  session: import('../domain/session/entity.js').Session;
+  previousStatus?: import('../domain/session/value-objects.js').SessionStatus;
 }
 
 export interface ToolEventPayload {
@@ -94,29 +48,4 @@ export interface ToolEventPayload {
   tool: string;
   input: Record<string, unknown>;
   timestamp: Date;
-}
-
-/** Result type for operations */
-export type Result<T, E = Error> =
-  | { success: true; data: T }
-  | { success: false; error: E };
-
-/** Parsed session data from JSONL */
-export interface ParsedSessionData {
-  sessionId: string;
-  directory: string;
-  firstMessage?: string;
-  lastMessage?: string;
-  messageCount: number;
-  toolCount: number;
-  lastTool?: string;
-  lastToolInput?: Record<string, unknown>;
-  currentFile?: string;
-  startedAt?: Date;
-  lastActiveAt: Date;
-  toolCalls?: ToolCallInfo[];
-  // Multi-session tracking
-  agentId?: string;         // For sub-agents: their unique agent ID
-  parentSessionId?: string; // For sub-agents: the parent session's ID
-  isSubAgent?: boolean;     // True if this is a sub-agent session
 }
