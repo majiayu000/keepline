@@ -6,6 +6,7 @@
  */
 
 import { getDatabase } from '../infrastructure/database/sqlite.js';
+import { runAllMigrations, allMigrations } from '../infrastructure/database/index.js';
 import { logger } from '../lib/logger.js';
 
 /** Run all migrations */
@@ -91,6 +92,9 @@ export function runMigrations(): void {
       logger.error('Failed to add last_message column', { error: message });
     }
   }
+
+  // Run versioned migrations (for new tables like session_memories)
+  runAllMigrations(allMigrations);
 
   logger.info('Database migrations completed');
 }

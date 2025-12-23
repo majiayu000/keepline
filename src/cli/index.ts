@@ -9,6 +9,13 @@ import { recoverCommand, recoverListCommand } from './recover.js';
 import { daemonCommand } from './daemon.js';
 import { statusCommand } from './status.js';
 import { webCommand } from './web.js';
+import {
+  memoryListCommand,
+  memoryShowCommand,
+  memoryEditCommand,
+  memoryDeleteCommand,
+  memoryExportCommand,
+} from './memory.js';
 
 export function registerCommands(program: Command): void {
   // List sessions
@@ -112,4 +119,52 @@ export function registerCommands(program: Command): void {
     .description('Start the web UI server')
     .option('-p, --port <port>', 'Port to listen on (default: 3377)')
     .action(webCommand);
+
+  // Memory management (relay race pattern)
+  const memoryCmd = program
+    .command('memory')
+    .alias('m')
+    .description('Manage session memory (relay race pattern)');
+
+  memoryCmd
+    .command('list')
+    .alias('ls')
+    .description('List all session memories')
+    .option('-d, --directory <dir>', 'Filter by directory')
+    .option('-l, --limit <n>', 'Limit results (default: 10)')
+    .action(memoryListCommand);
+
+  memoryCmd
+    .command('show <session>')
+    .description('Show memory details for a session')
+    .option('-v, --verbose', 'Show all details')
+    .option('-c, --context', 'Show recovery context')
+    .action(memoryShowCommand);
+
+  memoryCmd
+    .command('edit <session>')
+    .description('Edit session memory')
+    .option('-p, --progress <text>', 'Set last progress')
+    .option('-t, --add-task <task>', 'Add a pending task')
+    .option('-T, --complete-task <index|text>', 'Complete a task (by index or text match)')
+    .option('-i, --add-issue <issue>', 'Add a known issue')
+    .option('-I, --resolve-issue <index|text>', 'Resolve an issue')
+    .option('-d, --decision <text>', 'Add a decision')
+    .option('-H, --handoff <notes>', 'Set handoff notes')
+    .option('-P, --priority <item>', 'Add a priority item for handoff')
+    .option('-n, --notes <text>', 'Set general notes')
+    .option('--clear', 'Clear all memory fields')
+    .action(memoryEditCommand);
+
+  memoryCmd
+    .command('delete <session>')
+    .description('Delete session memory')
+    .option('-f, --force', 'Confirm deletion')
+    .action(memoryDeleteCommand);
+
+  memoryCmd
+    .command('export <session>')
+    .description('Export memory as recovery context')
+    .option('-o, --output <file>', 'Output file (default: stdout)')
+    .action(memoryExportCommand);
 }

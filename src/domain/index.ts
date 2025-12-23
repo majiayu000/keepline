@@ -13,3 +13,6 @@ export * from './session/index.js';
 
 // Recovery domain
 export * from './recovery/index.js';
+
+// Memory domain
+export * from './memory/index.js';
