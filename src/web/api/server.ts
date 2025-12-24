@@ -16,7 +16,7 @@ import { getAllSessions as getAllParsedSessions } from '../../adapters/claude/sc
 import { initPricing } from '../../services/usage.pricing.js';
 import { logger } from '../../lib/logger.js';
 import { rateLimit } from './middleware/rateLimit.js';
-import { sessions, recovery, usage, memory } from './routes/index.js';
+import { sessions, recovery, usage, memory, plans } from './routes/index.js';
 import { broadcast, wsClients, websocketHandler } from './websocket.js';
 
 const app = new Hono();
@@ -64,6 +64,7 @@ app.route('/api/sessions', sessions);
 app.route('/api/sessions', recovery);
 app.route('/api', usage);
 app.route('/api/memory', memory);
+app.route('/api/plans', plans);
 
 // Serve React app index.html for root
 app.get('/', async () => {

@@ -8,5 +8,6 @@ import sessions from './sessions.js';
 import recovery from './recovery.js';
 import usage from './usage.js';
 import memory from './memory.js';
+import plans from './plans.js';
 
-export { sessions, recovery, usage, memory };
+export { sessions, recovery, usage, memory, plans };

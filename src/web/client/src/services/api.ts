@@ -16,6 +16,12 @@ import type {
   SubAgentsData,
   UsageData,
   QuotaData,
+  SessionMemory,
+  MemorySummary,
+  MemoryContext,
+  Plan,
+  PlanSummary,
+  PlanAggregateStats,
 } from '@/types'
 import { API_BASE, API_TIMEOUT_MS } from '@/constants'
 
@@ -235,6 +241,109 @@ export async function fetchQuota(
   return request<QuotaData>('/quota', undefined, signal)
 }
 
+// ═══════════════════════════════════════════════════════════════
+// MEMORY API - Session context persistence
+// ═══════════════════════════════════════════════════════════════
+
+/**
+ * GET /api/memory - List all session memories
+ */
+export async function fetchMemories(
+  options?: {
+    limit?: number
+    directory?: string
+  },
+  signal?: AbortSignal
+): Promise<ApiResponse<SessionMemory[]>> {
+  const params = new URLSearchParams()
+  if (options?.limit) params.set('limit', String(options.limit))
+  if (options?.directory) params.set('directory', options.directory)
+  const queryString = params.toString()
+  return request<SessionMemory[]>(`/memory${queryString ? `?${queryString}` : ''}`, undefined, signal)
+}
+
+/**
+ * GET /api/memory/summaries - Get memory summaries
+ */
+export async function fetchMemorySummaries(
+  signal?: AbortSignal
+): Promise<ApiResponse<MemorySummary[]>> {
+  return request<MemorySummary[]>('/memory/summaries', undefined, signal)
+}
+
+/**
+ * GET /api/memory/:sessionId - Get memory for a specific session
+ */
+export async function fetchMemory(
+  sessionId: string,
+  signal?: AbortSignal
+): Promise<ApiResponse<SessionMemory>> {
+  return request<SessionMemory>(`/memory/${sessionId}`, undefined, signal)
+}
+
+/**
+ * GET /api/memory/:sessionId/context - Get recovery context for a session
+ */
+export async function fetchMemoryContext(
+  sessionId: string,
+  minimal?: boolean,
+  signal?: AbortSignal
+): Promise<ApiResponse<MemoryContext>> {
+  const params = minimal ? '?minimal=true' : ''
+  return request<MemoryContext>(`/memory/${sessionId}/context${params}`, undefined, signal)
+}
+
+/**
+ * DELETE /api/memory/:sessionId - Delete memory
+ */
+export async function deleteMemory(
+  sessionId: string,
+  signal?: AbortSignal
+): Promise<ApiResponse> {
+  return request(`/memory/${sessionId}`, { method: 'DELETE' }, signal)
+}
+
+// ═══════════════════════════════════════════════════════════════
+// PLANS API - Claude Code plan files
+// ═══════════════════════════════════════════════════════════════
+
+/**
+ * GET /api/plans - List all plans
+ */
+export async function fetchPlans(
+  signal?: AbortSignal
+): Promise<ApiResponse<Plan[]>> {
+  return request<Plan[]>('/plans', undefined, signal)
+}
+
+/**
+ * GET /api/plans/summaries - Get plan summaries
+ */
+export async function fetchPlanSummaries(
+  signal?: AbortSignal
+): Promise<ApiResponse<PlanSummary[]>> {
+  return request<PlanSummary[]>('/plans/summaries', undefined, signal)
+}
+
+/**
+ * GET /api/plans/stats - Get aggregate stats
+ */
+export async function fetchPlanStats(
+  signal?: AbortSignal
+): Promise<ApiResponse<PlanAggregateStats>> {
+  return request<PlanAggregateStats>('/plans/stats', undefined, signal)
+}
+
+/**
+ * GET /api/plans/:id - Get a specific plan with full content
+ */
+export async function fetchPlan(
+  id: string,
+  signal?: AbortSignal
+): Promise<ApiResponse<Plan>> {
+  return request<Plan>(`/plans/${id}`, undefined, signal)
+}
+
 // Export all API functions
 export const api = {
   fetchSessions,
@@ -250,4 +359,15 @@ export const api = {
   fetchSessionFull,
   fetchUsage,
   fetchQuota,
+  // Memory API
+  fetchMemories,
+  fetchMemorySummaries,
+  fetchMemory,
+  fetchMemoryContext,
+  deleteMemory,
+  // Plans API
+  fetchPlans,
+  fetchPlanSummaries,
+  fetchPlanStats,
+  fetchPlan,
 }

@@ -8,6 +8,8 @@ import { HelpModal } from '@/components/HelpModal'
 import { UsagePanel } from '@/components/UsagePanel'
 import { ProjectStatsBar } from '@/components/ProjectStatsBar'
 import { ProjectsGrid } from '@/components/ProjectsGrid'
+import { MemoryPanel } from '@/components/MemoryPanel'
+import { PlansPanel } from '@/components/PlansPanel'
 import type { TabId } from '@/components/TabNav'
 import { useSessions, useKeyboardShortcuts, useSessionFilter, useNotifications, useProjects } from '@/hooks'
 
@@ -195,6 +197,16 @@ function AppContent() {
             onProjectClick={handleProjectClick}
           />
         </>
+      )}
+
+      {/* Memory Tab */}
+      {activeTab === 'memory' && !loading && (
+        <MemoryPanel />
+      )}
+
+      {/* Plans Tab */}
+      {activeTab === 'plans' && !loading && (
+        <PlansPanel />
       )}
 
       <HelpModal isOpen={showHelp} onClose={() => setShowHelp(false)} />

@@ -1,0 +1,208 @@
+/* ═══════════════════════════════════════════════════════════════
+   PLANS PANEL - Cyberpunk Plans Dashboard
+═══════════════════════════════════════════════════════════════ */
+
+.panel {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-lg);
+}
+
+/* Stats Bar */
+.statsBar {
+  display: flex;
+  gap: var(--space-md);
+  padding: var(--space-md) var(--space-lg);
+  background: var(--bg-surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  overflow-x: auto;
+}
+
+.statCard {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--space-xs);
+  padding: var(--space-sm) var(--space-lg);
+  min-width: 100px;
+  background: var(--bg-elevated);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  transition: all var(--transition-fast);
+}
+
+.statCard:hover {
+  border-color: var(--secondary);
+  box-shadow: var(--glow-secondary);
+}
+
+.statValue {
+  font-size: var(--text-xl);
+  font-weight: 700;
+  color: var(--secondary);
+  text-shadow: var(--glow-secondary);
+}
+
+.statLabel {
+  font-size: var(--text-xs);
+  color: var(--text-dim);
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+}
+
+/* Different stat colors */
+.statCard.plans .statValue {
+  color: var(--primary);
+  text-shadow: var(--glow-primary);
+}
+
+.statCard.completed .statValue {
+  color: var(--success);
+  text-shadow: var(--glow-success);
+}
+
+.statCard.pending .statValue {
+  color: var(--warning);
+}
+
+.statCard.progress .statValue {
+  color: var(--secondary);
+  text-shadow: var(--glow-secondary);
+}
+
+/* Toolbar */
+.toolbar {
+  display: flex;
+  gap: var(--space-md);
+  align-items: center;
+}
+
+.searchBox {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  gap: var(--space-sm);
+  padding: var(--space-sm) var(--space-md);
+  background: var(--bg-surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  transition: border-color var(--transition-fast);
+}
+
+.searchBox:focus-within {
+  border-color: var(--secondary);
+  box-shadow: var(--glow-secondary);
+}
+
+.searchIcon {
+  color: var(--text-dim);
+  font-size: var(--text-sm);
+}
+
+.searchInput {
+  flex: 1;
+  background: transparent;
+  border: none;
+  outline: none;
+  color: var(--text);
+  font-family: var(--font-mono);
+  font-size: var(--text-sm);
+}
+
+.searchInput::placeholder {
+  color: var(--text-dim);
+}
+
+.refreshButton {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 36px;
+  height: 36px;
+  background: var(--bg-surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  color: var(--text-dim);
+  cursor: pointer;
+  transition: all var(--transition-fast);
+}
+
+.refreshButton:hover {
+  border-color: var(--secondary);
+  color: var(--secondary);
+}
+
+.refreshButton.loading {
+  animation: spin 1s linear infinite;
+}
+
+/* Plan List */
+.planList {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-md);
+}
+
+/* Empty State */
+.emptyState {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: var(--space-2xl);
+  text-align: center;
+  background: var(--bg-surface);
+  border: 1px dashed var(--border);
+  border-radius: var(--radius-md);
+}
+
+.emptyIcon {
+  font-size: 3rem;
+  color: var(--text-dim);
+  margin-bottom: var(--space-md);
+  opacity: 0.5;
+}
+
+.emptyTitle {
+  font-size: var(--text-lg);
+  color: var(--text-bright);
+  margin-bottom: var(--space-sm);
+}
+
+.emptyText {
+  font-size: var(--text-sm);
+  color: var(--text-dim);
+  max-width: 400px;
+  line-height: 1.5;
+}
+
+/* Loading State */
+.loading {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: var(--space-2xl);
+  color: var(--text-dim);
+  font-size: var(--text-sm);
+}
+
+.loadingSpinner {
+  margin-right: var(--space-sm);
+  animation: spin 1s linear infinite;
+}
+
+/* Error State */
+.error {
+  padding: var(--space-lg);
+  background: rgba(255, 0, 60, 0.1);
+  border: 1px solid var(--danger);
+  border-radius: var(--radius-md);
+  color: var(--danger);
+  font-size: var(--text-sm);
+}
+
+@keyframes spin {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
+}
