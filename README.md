@@ -1,56 +1,82 @@
 <div align="center">
 
-# Tasker
+<img src="docs/assets/logo.svg" alt="Claude Hub Logo" width="120" />
 
-**Claude Code Session Monitor & Recovery Tool**
+# Claude Hub
 
-[![License](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
-[![Bun](https://img.shields.io/badge/runtime-Bun-f9f1e1.svg)](https://bun.sh)
-[![TypeScript](https://img.shields.io/badge/TypeScript-5.0-blue.svg)](https://www.typescriptlang.org/)
+### Never lose your Claude Code work again.
+
+**The command center for Claude Code power users**
+
+[![npm version](https://img.shields.io/npm/v/claude-hub.svg?style=flat-square&color=00d4ff)](https://www.npmjs.com/package/claude-hub)
+[![npm downloads](https://img.shields.io/npm/dm/claude-hub.svg?style=flat-square&color=ff00ff)](https://www.npmjs.com/package/claude-hub)
+[![GitHub stars](https://img.shields.io/github/stars/anthropics/claude-hub?style=flat-square&color=ffcc00)](https://github.com/anthropics/claude-hub)
+[![License](https://img.shields.io/badge/license-MIT-blue.svg?style=flat-square)](LICENSE)
+
+[Quick Start](#-quick-start) | [Features](#-features) | [Screenshots](#-screenshots) | [Documentation](#-documentation)
+
+<br />
+
+<img src="docs/assets/hero-demo.gif" alt="Claude Hub Demo" width="800" />
 
 </div>
 
 ---
 
-## What is Tasker?
+## The Problem
 
-Tasker monitors all your Claude Code sessions across your system. It tracks session status in real-time, calculates token usage and costs, and can recover lost sessions when terminals crash.
+You're deep in a coding session with Claude Code. Everything is going great. Then...
 
-**Key capabilities:**
-- Real-time monitoring of all Claude Code sessions
-- Token counting and cost calculation (supports cache tokens)
-- One-command session recovery
-- Web dashboard with multiple themes
-- Background daemon for continuous monitoring
+- **Terminal crashes** — hours of context, gone
+- **Multiple sessions** — which one was working on the auth bug?
+- **Cost anxiety** — "How much have I spent today?"
+- **Lost progress** — "What was I doing before lunch?"
+
+## The Solution
+
+**Claude Hub** monitors all your Claude Code sessions in real-time, automatically recovers crashed sessions, tracks costs, and preserves context across iterations.
+
+```bash
+npx claude-hub
+```
+
+That's it. Open `http://localhost:3377` and take control.
 
 ---
 
-## Screenshots
+## Why Claude Hub?
 
-### Terminal UI
-
-![Terminal UI](docs/assets/Terminal.png)
-
-### Web Dashboard
-
-| Sessions | Projects | Analytics |
-|:--------:|:--------:|:---------:|
-| ![Sessions](docs/assets/Sessions.png) | ![Projects](docs/assets/Projects.png) | ![Analytics](docs/assets/Analysis.png) |
+|  | Without Claude Hub | With Claude Hub |
+|--|-------------------|-----------------|
+| **Terminal crash** | Lose all context, start over | One-click recovery with full context |
+| **Multiple sessions** | Switch terminals, lose track | See all sessions in one dashboard |
+| **Cost tracking** | Check Anthropic console manually | Real-time costs with predictions |
+| **Session context** | Gone when terminal closes | Persisted and searchable |
+| **Project overview** | Scattered across directories | Aggregated by project |
 
 ---
 
 ## Quick Start
 
+### Option 1: npx (Recommended)
+
 ```bash
-# Clone and install
-git clone https://github.com/majiayu000/Claude-Code-Monitor.git
-cd Claude-Code-Monitor
-bun install
+npx claude-hub
+```
 
-# Build
-bun run build
+### Option 2: Install globally
 
-# Start web UI
+```bash
+npm install -g claude-hub
+claude-hub web
+```
+
+### Option 3: From source
+
+```bash
+git clone https://github.com/anthropics/claude-hub.git
+cd claude-hub
+bun install && bun run build
 bun run start web
 ```
 
@@ -58,191 +84,272 @@ Open **http://localhost:3377**
 
 ---
 
-## CLI Commands
-
-```bash
-tasker                        # List all sessions (default)
-tasker list                   # List with filters
-tasker watch                  # Live monitor mode
-tasker recover <session-id>   # Recover a lost session
-tasker web                    # Start web UI (port 3377)
-tasker daemon start           # Run as background service
-tasker hooks install          # Install Claude hooks for real-time updates
-tasker sync                   # Manual session sync
-```
-
-### List Options
-
-```bash
-tasker list -s running        # Filter by status (running/waiting/idle/lost/completed)
-tasker list -d /path/to/dir   # Filter by directory
-tasker list --style cyber     # UI style (cyber/minimal/dashboard/neon/macos)
-```
-
-### Recovery Options
-
-```bash
-tasker recover <id>           # Recover with auto-detected method
-tasker recover <id> -m resume # Resume from saved session
-tasker recover <id> -t        # Open in new terminal window
-```
-
----
-
-## Session States
-
-| Status | Description |
-|--------|-------------|
-| `running` | Active process with recent activity |
-| `waiting` | Process waiting for user input |
-| `idle` | Process alive but inactive |
-| `lost` | Process terminated (recoverable) |
-| `completed` | Session finished normally |
-
----
-
 ## Features
 
-### Token & Cost Tracking
+### Real-time Session Monitoring
 
-- Real-time token counting from Claude JSONL files
-- Cache token support (creation at 1.25x, read at 0.1x cost)
-- Multi-model pricing (Claude 3.x, 4.x, Opus, Sonnet, Haiku)
-- Per-session and aggregate statistics
+Monitor all Claude Code instances across your system. See status, current file, last tool, and activity at a glance.
 
-### Tool Visibility
-
-- Track which tools Claude is using
-- View tool call history with timestamps
-- See current file being edited
-- Input/output inspection
-
-### Session Recovery
-
-Recovers sessions when terminals crash:
-- **resume**: Restore from saved session ID (preserves full context)
-- **continue**: Continue in same directory (new session)
-- **new**: Create new session with original prompt
-
-### Real-time Hooks
-
-Install hooks for instant updates:
-
-```bash
-tasker hooks install
+```
+┌─────────────────────────────────────────────────────────────────┐
+│ SESSIONS                                            3 active    │
+├─────────────────────────────────────────────────────────────────┤
+│ ● RUNNING   my-app          Edit: src/auth.ts      2s ago      │
+│ ● WAITING   api-service     Read: README.md        5m ago      │
+│ ○ IDLE      docs            Write: guide.md       15m ago      │
+│ ✗ LOST      old-project     —                      2h ago      │
+└─────────────────────────────────────────────────────────────────┘
 ```
 
-This integrates with Claude Code to send events on every tool use.
+### One-Click Session Recovery
 
-### Background Daemon
+Terminal crashed? Session lost? Recover in seconds with full context preserved.
 
 ```bash
-tasker daemon start --hooks   # Start daemon with hooks
-tasker daemon status          # Check daemon status
-tasker daemon stop            # Stop daemon
+claude-hub recover <session-id>
 ```
 
-The daemon continuously scans for Claude processes and syncs session data.
+Three recovery methods:
+- **Resume** — Restore exact session state (recommended)
+- **Continue** — New session in same directory
+- **New** — Fresh start with original prompt
 
----
+### Cost Analytics & Predictions
 
-## Web API
+Track spending in real-time. Know exactly where your tokens go.
 
-| Endpoint | Method | Description |
-|----------|--------|-------------|
-| `/api/sessions` | GET | List sessions with pagination |
-| `/api/sessions/:id` | GET | Get session details |
-| `/api/sessions/:id/tools` | GET | Tool call history |
-| `/api/sessions/:id/subagents` | GET | Sub-agent sessions |
-| `/api/sessions/:id/recover` | POST | Recover session |
-| `/api/sessions/:id/stop` | POST | Stop session |
-| `/api/sync` | POST | Trigger sync |
-| `/api/quota` | GET | Anthropic quota usage |
-| `/api/usage` | GET | Token usage stats |
+```
+┌─────────────────────────────────────────────────────────────────┐
+│ COST ANALYTICS                                                  │
+├─────────────────────────────────────────────────────────────────┤
+│ Today          $12.34  ▲ 23%                                    │
+│ This Week      $67.89                                           │
+│ This Month    $198.50  (Projected: $320)                        │
+│                                                                 │
+│ Cache Savings  $45.20  (38% of total)                           │
+│ Your hit rate: 72%                                              │
+└─────────────────────────────────────────────────────────────────┘
+```
 
-WebSocket endpoint at `/api/ws` for real-time updates.
+Features:
+- Per-session cost breakdown
+- Cache token tracking (creation 1.25x, read 0.1x)
+- Multi-model support (Opus, Sonnet, Haiku)
+- Daily/weekly/monthly trends
 
----
+### Cross-Session Memory
 
-## Keyboard Shortcuts (Web UI)
+Claude Hub implements the "relay race" pattern — your progress persists across sessions.
 
-| Key | Action |
-|-----|--------|
-| `r` | Refresh sessions |
-| `s` | Sync from Claude |
-| `/` | Focus search |
-| `t` | Cycle theme |
-| `1-5` | Switch theme directly |
-| `?` | Show help |
+```
+┌─────────────────────────────────────────────────────────────────┐
+│ SESSION MEMORY                               my-app             │
+├─────────────────────────────────────────────────────────────────┤
+│ Last Progress: Implemented OAuth2 login flow                    │
+│                                                                 │
+│ Completed:                                                      │
+│   ✓ Database schema design                                      │
+│   ✓ User model with bcrypt                                      │
+│   ✓ JWT token generation                                        │
+│                                                                 │
+│ Pending:                                                        │
+│   ○ Refresh token rotation                                      │
+│   ○ Password reset flow                                         │
+│                                                                 │
+│ Known Issues:                                                   │
+│   ! Token expiry not handled in middleware                      │
+└─────────────────────────────────────────────────────────────────┘
+```
+
+When you recover a session, this context is automatically injected.
+
+### Plans Tracking
+
+Track progress on Claude's implementation plans. See phases, tasks, and completion rates.
+
+```
+┌─────────────────────────────────────────────────────────────────┐
+│ PLANS                                                           │
+├─────────────────────────────────────────────────────────────────┤
+│ Auth System Refactor                              ████████░░ 80% │
+│   Phase 1: Database Schema                        ✓ Complete     │
+│   Phase 2: API Endpoints                          ✓ Complete     │
+│   Phase 3: Frontend Integration                   ● In Progress  │
+│   Phase 4: Testing                                ○ Pending      │
+└─────────────────────────────────────────────────────────────────┘
+```
+
+### Web Dashboard
+
+Beautiful, cyberpunk-themed dashboard with 5 color themes.
+
+| Sessions | Analytics | Memory |
+|:--------:|:---------:|:------:|
+| ![Sessions](docs/assets/Sessions.png) | ![Analytics](docs/assets/Analysis.png) | ![Memory](docs/assets/Memory.png) |
+
+**Keyboard shortcuts:**
+- `r` — Refresh sessions
+- `s` — Sync from Claude
+- `/` — Focus search
+- `t` — Cycle themes
+- `?` — Show help
 
 **Themes:** Cyberpunk, Matrix, Synthwave, Minimal, Tokyo
 
 ---
 
+## CLI Reference
+
+```bash
+# Core commands
+claude-hub                      # Start web dashboard (default)
+claude-hub list                 # List all sessions
+claude-hub watch                # Live terminal monitor
+claude-hub recover <id>         # Recover a lost session
+
+# Session management
+claude-hub list -s running      # Filter by status
+claude-hub list -d ./my-app     # Filter by directory
+
+# Memory management
+claude-hub memory list          # List session memories
+claude-hub memory show <id>     # Show memory details
+claude-hub memory export <id>   # Export as recovery context
+
+# Background service
+claude-hub daemon start         # Start background monitor
+claude-hub daemon stop          # Stop daemon
+claude-hub hooks install        # Install Claude hooks
+```
+
+---
+
+## How It Works
+
+```
+┌─────────────────────────────────────────────────────────────────┐
+│                        Claude Hub                                │
+├─────────────┬─────────────┬─────────────┬─────────────┬─────────┤
+│   Web UI    │  Terminal   │   Daemon    │   Hooks     │   API   │
+│   (React)   │   (Ink)     │ (Background)│  (HTTP)     │  (REST) │
+├─────────────┴─────────────┴──────┬──────┴─────────────┴─────────┤
+│                                  │                               │
+│  ┌───────────────────────────────▼────────────────────────────┐ │
+│  │                    Session Service                          │ │
+│  │  • Aggregates process state + file state                   │ │
+│  │  • Detects running/waiting/idle/lost sessions              │ │
+│  │  • Calculates costs with cache token support               │ │
+│  └────────────────────────────────────────────────────────────┘ │
+│                                  │                               │
+├──────────────────────────────────┼───────────────────────────────┤
+│  Process Scanner    │  Claude Parser    │  Memory System         │
+│  (ps + /proc)       │  (~/.claude/)     │  (SQLite)              │
+└─────────────────────┴───────────────────┴────────────────────────┘
+```
+
+**Data flow:**
+1. **Process Scanner** — Finds all running `claude` processes
+2. **Claude Parser** — Reads JSONL session files from `~/.claude/`
+3. **Aggregator** — Merges process state with file state
+4. **Memory System** — Persists progress for recovery
+5. **Web/CLI** — Presents unified view
+
+---
+
+## Comparison
+
+| Feature | Manual | claude-mem | **Claude Hub** |
+|---------|:------:|:----------:|:--------------:|
+| Multi-session monitoring | - | - | **Yes** |
+| Session recovery | - | - | **3 methods** |
+| Cost tracking | - | - | **Yes + predictions** |
+| Cache token analysis | - | - | **Yes** |
+| Cross-session memory | - | Yes | **Yes** |
+| Web dashboard | - | Basic | **5 themes** |
+| Plans tracking | - | - | **Yes** |
+| Real-time hooks | - | Yes | **Yes** |
+| Background daemon | - | - | **Yes** |
+| Sub-agent tracking | - | - | **Yes** |
+
+---
+
 ## Configuration
 
-Data stored in `~/.tasker/`:
+Data stored in `~/.claude-hub/`:
 
 ```
-~/.tasker/
-├── tasker.db       # SQLite database
-├── config.json     # Configuration
-├── tasker.pid      # Daemon PID
-└── logs/           # Log files
+~/.claude-hub/
+├── claude-hub.db    # SQLite database
+├── config.json      # Configuration
+└── logs/            # Log files
 ```
 
-### Config Options
+### Options
 
 ```json
 {
   "scanInterval": 5000,
   "hookPort": 7890,
-  "logLevel": "info",
-  "retentionDays": 30,
-  "activeCpuThreshold": 1.0,
-  "idleThresholdSeconds": 30
+  "webPort": 3377,
+  "logLevel": "info"
 }
 ```
 
 ---
 
-## Architecture
+## API
 
-```
-┌─────────────────────────────────────────────────────────────────┐
-│                         TASKER                                  │
-├─────────────┬─────────────┬─────────────┬─────────────┬────────┤
-│   CLI UI    │   Web UI    │   Daemon    │   Hooks     │  API   │
-│   (Ink)     │  (React)    │ (Background)│  (HTTP)     │ (Hono) │
-├─────────────┴─────────────┴─────────────┴─────────────┴────────┤
-│                      Session Service                            │
-├─────────────┬─────────────┬─────────────┬──────────────────────┤
-│  Process    │   Claude    │   Storage   │   Recovery           │
-│  Scanner    │   Parser    │  (SQLite)   │   Engine             │
-└─────────────┴─────────────┴─────────────┴──────────────────────┘
-```
+REST API available at `http://localhost:3377/api`
 
-**Tech Stack:**
-- Runtime: [Bun](https://bun.sh)
-- CLI: [Commander.js](https://github.com/tj/commander.js) + [Ink](https://github.com/vadimdemedes/ink)
-- Web: [Hono](https://hono.dev) + [React](https://react.dev) + [Vite](https://vitejs.dev)
-- Database: SQLite (Bun native)
+| Endpoint | Description |
+|----------|-------------|
+| `GET /sessions` | List all sessions |
+| `GET /sessions/:id` | Session details |
+| `POST /sessions/:id/recover` | Recover session |
+| `GET /memory` | List memories |
+| `GET /memory/:id/context` | Get recovery context |
+| `GET /plans` | List plans |
+| `GET /usage` | Cost analytics |
+| `WS /ws` | Real-time updates |
 
 ---
 
-## Development
+## Contributing
+
+Contributions welcome! See [CONTRIBUTING.md](CONTRIBUTING.md).
 
 ```bash
-bun run dev          # Development mode
-bun run typecheck    # Type checking
+# Development
+bun run dev          # Watch mode
+bun run typecheck    # Type check
 bun test             # Run tests
-bun run build        # Production build
 ```
 
 ---
 
-## License
+## Roadmap
 
-MIT © 2025
+- [ ] Cost alerts & budgets
+- [ ] Team dashboard
+- [ ] Cursor/Copilot support
+- [ ] Session replay/timeline
+- [ ] Plugin system
+
+---
+
+## Support
+
+- [GitHub Issues](https://github.com/anthropics/claude-hub/issues)
+- [Discussions](https://github.com/anthropics/claude-hub/discussions)
+
+---
+
+<div align="center">
+
+**Built for Claude Code power users**
+
+[GitHub](https://github.com/anthropics/claude-hub) | [npm](https://www.npmjs.com/package/claude-hub) | [Documentation](https://claude-hub.dev)
+
+MIT License
 
 </div>

@@ -1,12 +1,43 @@
 {
-  "name": "tasker",
+  "name": "claude-hub",
   "version": "1.0.0",
-  "description": "Claude Code session monitor and recovery tool",
+  "description": "The command center for Claude Code - Never lose your work again",
+  "author": "Claude Hub Contributors",
+  "license": "MIT",
   "type": "module",
   "main": "dist/index.js",
   "bin": {
-    "tasker": "./dist/index.js"
+    "claude-hub": "./dist/index.js"
   },
+  "keywords": [
+    "claude",
+    "claude-code",
+    "ai",
+    "coding-assistant",
+    "session-manager",
+    "developer-tools",
+    "terminal",
+    "cli",
+    "monitoring",
+    "recovery"
+  ],
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/anthropics/claude-hub.git"
+  },
+  "bugs": {
+    "url": "https://github.com/anthropics/claude-hub/issues"
+  },
+  "homepage": "https://github.com/anthropics/claude-hub#readme",
+  "engines": {
+    "node": ">=18.0.0"
+  },
+  "files": [
+    "dist",
+    "public",
+    "README.md",
+    "LICENSE"
+  ],
   "scripts": {
     "build": "bun run build:client && bun run build:server",
     "build:client": "cd src/web/client && bun run build",
@@ -17,7 +48,8 @@
     "web": "bun dist/index.js web",
     "typecheck": "tsc --noEmit && cd src/web/client && bun run typecheck",
     "test": "bun test",
-    "test:watch": "bun test --watch"
+    "test:watch": "bun test --watch",
+    "prepublishOnly": "bun run build"
   },
   "dependencies": {
     "@types/react": "^19.2.7",

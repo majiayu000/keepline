@@ -1,9 +1,10 @@
 #!/usr/bin/env node
 /**
- * Tasker - Claude Code Session Monitor and Recovery Tool
+ * Claude Hub - The Command Center for Claude Code
  *
- * Monitor multiple Claude Code instances, track their status,
- * and recover lost sessions when terminals crash.
+ * Never lose your Claude Code work again.
+ * Real-time monitoring, automatic recovery, cost tracking,
+ * and cross-session memory for Claude Code power users.
  */
 
 import { Command } from 'commander';
@@ -16,16 +17,16 @@ const cfg = config.get();
 logger.configure({
   level: cfg.logLevel,
   file: cfg.fileLogging,
-  console: !process.env.TASKER_DAEMON, // Disable console in daemon mode
+  console: !process.env.CLAUDE_HUB_DAEMON, // Disable console in daemon mode
 });
 
 // Create CLI program
 const program = new Command();
 
 program
-  .name('tasker')
+  .name('claude-hub')
   .version('1.0.0')
-  .description('Claude Code session monitor and recovery tool');
+  .description('The command center for Claude Code - Never lose your work again');
 
 // Register all commands
 registerCommands(program);
