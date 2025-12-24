@@ -10,7 +10,7 @@
 
 [![npm version](https://img.shields.io/npm/v/claude-hub.svg?style=flat-square&color=00d4ff)](https://www.npmjs.com/package/claude-hub)
 [![npm downloads](https://img.shields.io/npm/dm/claude-hub.svg?style=flat-square&color=ff00ff)](https://www.npmjs.com/package/claude-hub)
-[![GitHub stars](https://img.shields.io/github/stars/anthropics/claude-hub?style=flat-square&color=ffcc00)](https://github.com/anthropics/claude-hub)
+[![GitHub stars](https://img.shields.io/github/stars/majiayu000/claude-hub?style=flat-square&color=ffcc00)](https://github.com/majiayu000/claude-hub)
 [![License](https://img.shields.io/badge/license-MIT-blue.svg?style=flat-square)](LICENSE)
 
 [English](README.md) | 中文
@@ -76,7 +76,7 @@ claude-hub web
 ### 方式三：从源码
 
 ```bash
-git clone https://github.com/anthropics/claude-hub.git
+git clone https://github.com/majiayu000/claude-hub.git
 cd claude-hub
 bun install && bun run build
 bun run start web

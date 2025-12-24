@@ -237,8 +237,8 @@ Update relevant documentation when:
 
 ## Need Help?
 
-- Open an [issue](https://github.com/anthropics/claude-hub/issues) for bugs
-- Start a [discussion](https://github.com/anthropics/claude-hub/discussions) for questions
+- Open an [issue](https://github.com/majiayu000/claude-hub/issues) for bugs
+- Start a [discussion](https://github.com/majiayu000/claude-hub/discussions) for questions
 - Check existing issues before creating new ones
 
 ---

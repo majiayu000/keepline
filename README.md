@@ -10,7 +10,7 @@
 
 [![npm version](https://img.shields.io/npm/v/claude-hub.svg?style=flat-square&color=00d4ff)](https://www.npmjs.com/package/claude-hub)
 [![npm downloads](https://img.shields.io/npm/dm/claude-hub.svg?style=flat-square&color=ff00ff)](https://www.npmjs.com/package/claude-hub)
-[![GitHub stars](https://img.shields.io/github/stars/anthropics/claude-hub?style=flat-square&color=ffcc00)](https://github.com/anthropics/claude-hub)
+[![GitHub stars](https://img.shields.io/github/stars/majiayu000/claude-hub?style=flat-square&color=ffcc00)](https://github.com/majiayu000/claude-hub)
 [![License](https://img.shields.io/badge/license-MIT-blue.svg?style=flat-square)](LICENSE)
 
 [Quick Start](#-quick-start) | [Features](#-features) | [Screenshots](#-screenshots) | [Documentation](#-documentation)
@@ -74,7 +74,7 @@ claude-hub web
 ### Option 3: From source
 
 ```bash
-git clone https://github.com/anthropics/claude-hub.git
+git clone https://github.com/majiayu000/claude-hub.git
 cd claude-hub
 bun install && bun run build
 bun run start web
@@ -339,8 +339,8 @@ bun test             # Run tests
 
 ## Support
 
-- [GitHub Issues](https://github.com/anthropics/claude-hub/issues)
-- [Discussions](https://github.com/anthropics/claude-hub/discussions)
+- [GitHub Issues](https://github.com/majiayu000/claude-hub/issues)
+- [Discussions](https://github.com/majiayu000/claude-hub/discussions)
 
 ---
 
@@ -348,7 +348,7 @@ bun test             # Run tests
 
 **Built for Claude Code power users**
 
-[GitHub](https://github.com/anthropics/claude-hub) | [npm](https://www.npmjs.com/package/claude-hub) | [Documentation](https://claude-hub.dev)
+[GitHub](https://github.com/majiayu000/claude-hub) | [npm](https://www.npmjs.com/package/claude-hub) | [Documentation](https://claude-hub.dev)
 
 MIT License
 
