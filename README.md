@@ -183,9 +183,9 @@ Track progress on Claude's implementation plans. See phases, tasks, and completi
 
 Beautiful, cyberpunk-themed dashboard with 5 color themes.
 
-| Sessions | Analytics | Memory |
-|:--------:|:---------:|:------:|
-| ![Sessions](docs/assets/Sessions.png) | ![Analytics](docs/assets/Analysis.png) | ![Memory](docs/assets/Memory.png) |
+| Sessions | Analytics | Projects |
+|:--------:|:---------:|:--------:|
+| ![Sessions](docs/assets/Sessions.png) | ![Analytics](docs/assets/Analysis.png) | ![Projects](docs/assets/Projects.png) |
 
 **Keyboard shortcuts:**
 - `r` — Refresh sessions
