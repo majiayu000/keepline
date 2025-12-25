@@ -14,6 +14,7 @@ import { syncSessions } from '../../services/session.service.js';
 import { getAggregatedSessions, getSessionStats } from '../../services/session.aggregator.js';
 import { getAllSessions as getAllParsedSessions } from '../../adapters/claude/scanner.js';
 import { initPricing } from '../../services/usage.pricing.js';
+import { initializeMemoryService } from '../../services/memory.service.js';
 import { logger } from '../../lib/logger.js';
 import { rateLimit } from './middleware/rateLimit.js';
 import { sessions, recovery, usage, memory, plans } from './routes/index.js';
@@ -134,6 +135,9 @@ async function checkAndBroadcastUpdates() {
 
 export async function startWebServer(port: number = 3377) {
   runMigrations();
+
+  // Initialize memory service for auto-tracking
+  initializeMemoryService();
 
   // Initialize pricing from LiteLLM
   logger.info('Fetching model pricing from LiteLLM...');

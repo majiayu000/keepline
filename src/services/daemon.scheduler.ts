@@ -9,6 +9,7 @@ import { startHookServer, stopHookServer } from '../adapters/hook/server.js';
 import { runMigrations } from '../db/migrations.js';
 import { closeDatabase } from '../db/database.js';
 import { emit } from '../lib/events.js';
+import { initializeMemoryService } from './memory.service.js';
 
 let scanInterval: NodeJS.Timeout | null = null;
 let isRunning = false;
@@ -38,6 +39,9 @@ export async function startScheduler(): Promise<void> {
 
   // Initialize database
   runMigrations();
+
+  // Initialize memory service (must be before hook server)
+  initializeMemoryService();
 
   // Start hook server
   await startHookServer();

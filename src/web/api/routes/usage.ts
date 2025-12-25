@@ -6,6 +6,7 @@
 
 import { Hono } from 'hono';
 import { logger } from '../../../lib/logger.js';
+import { getCostPrediction, getCostForDateRange } from '../../../services/cost.predictor.js';
 
 const app = new Hono();
 
@@ -142,6 +143,99 @@ app.get('/usage', async (c) => {
   } catch (error) {
     logger.error('Failed to get usage data', error);
     return c.json({ success: false, error: 'Failed to get usage data' }, 500);
+  }
+});
+
+// GET /api/usage/prediction - Get cost prediction and analytics
+app.get('/usage/prediction', async (c) => {
+  try {
+    const prediction = await getCostPrediction();
+    return c.json({ success: true, data: prediction });
+  } catch (error) {
+    logger.error('Failed to get cost prediction', error);
+    return c.json({ success: false, error: 'Failed to get cost prediction' }, 500);
+  }
+});
+
+// GET /api/usage/today - Get today's usage
+app.get('/usage/today', async (c) => {
+  try {
+    const now = new Date();
+    const startOfDay = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+    const endOfDay = new Date(startOfDay.getTime() + 24 * 60 * 60 * 1000 - 1);
+
+    const data = await getCostForDateRange(startOfDay, endOfDay);
+    return c.json({ success: true, data });
+  } catch (error) {
+    logger.error('Failed to get today usage', error);
+    return c.json({ success: false, error: 'Failed to get today usage' }, 500);
+  }
+});
+
+// GET /api/usage/week - Get this week's usage
+app.get('/usage/week', async (c) => {
+  try {
+    const now = new Date();
+    const day = now.getDay();
+    const diff = now.getDate() - day + (day === 0 ? -6 : 1); // Monday start
+    const startOfWeek = new Date(now.getFullYear(), now.getMonth(), diff);
+    const endOfWeek = new Date(startOfWeek.getTime() + 7 * 24 * 60 * 60 * 1000 - 1);
+
+    const data = await getCostForDateRange(startOfWeek, endOfWeek);
+    return c.json({ success: true, data });
+  } catch (error) {
+    logger.error('Failed to get week usage', error);
+    return c.json({ success: false, error: 'Failed to get week usage' }, 500);
+  }
+});
+
+// GET /api/usage/month - Get this month's usage
+app.get('/usage/month', async (c) => {
+  try {
+    const now = new Date();
+    const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1);
+    const endOfMonth = new Date(now.getFullYear(), now.getMonth() + 1, 0, 23, 59, 59);
+
+    const data = await getCostForDateRange(startOfMonth, endOfMonth);
+    return c.json({ success: true, data });
+  } catch (error) {
+    logger.error('Failed to get month usage', error);
+    return c.json({ success: false, error: 'Failed to get month usage' }, 500);
+  }
+});
+
+// GET /api/usage/range - Get usage for custom date range
+app.get('/usage/range', async (c) => {
+  try {
+    const startParam = c.req.query('start');
+    const endParam = c.req.query('end');
+
+    if (!startParam || !endParam) {
+      return c.json({ success: false, error: 'start and end parameters required (YYYY-MM-DD)' }, 400);
+    }
+
+    // Validate date format
+    const dateRegex = /^\d{4}-\d{2}-\d{2}$/;
+    if (!dateRegex.test(startParam) || !dateRegex.test(endParam)) {
+      return c.json({ success: false, error: 'Invalid date format. Use YYYY-MM-DD' }, 400);
+    }
+
+    const startDate = new Date(startParam);
+    const endDate = new Date(endParam + 'T23:59:59');
+
+    if (isNaN(startDate.getTime()) || isNaN(endDate.getTime())) {
+      return c.json({ success: false, error: 'Invalid date values' }, 400);
+    }
+
+    if (startDate > endDate) {
+      return c.json({ success: false, error: 'start date must be before end date' }, 400);
+    }
+
+    const data = await getCostForDateRange(startDate, endDate);
+    return c.json({ success: true, data });
+  } catch (error) {
+    logger.error('Failed to get range usage', error);
+    return c.json({ success: false, error: 'Failed to get range usage' }, 500);
   }
 });
 

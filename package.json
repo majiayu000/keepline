@@ -7,7 +7,7 @@
   "type": "module",
   "main": "dist/index.js",
   "bin": {
-    "claude-hub": "./dist/index.js"
+    "claude-hub": "dist/index.js"
   },
   "keywords": [
     "claude",

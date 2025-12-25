@@ -16,3 +16,6 @@ export * from './daemon.scheduler.js';
 export * from './usage.types.js';
 export * from './usage.pricing.js';
 export * from './usage.extractor.js';
+
+// Memory
+export * from './memory.service.js';
