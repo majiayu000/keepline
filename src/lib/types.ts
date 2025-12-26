@@ -47,5 +47,12 @@ export interface ToolEventPayload {
   sessionId: string;
   tool: string;
   input: Record<string, unknown>;
+  output?: string;
   timestamp: Date;
+}
+
+export interface SessionEndEventPayload {
+  sessionId: string;
+  timestamp: Date;
+  reason?: string;
 }

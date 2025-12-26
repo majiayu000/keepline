@@ -7,7 +7,8 @@ export type HookEventType =
   | 'PreToolUse'
   | 'PostToolUse'
   | 'Notification'
-  | 'Stop';
+  | 'Stop'
+  | 'UserPromptSubmit'; // User submitted a prompt
 
 /** Base hook event payload */
 export interface HookEventPayload {
@@ -21,6 +22,7 @@ export interface ToolUseHookEvent extends HookEventPayload {
   event_type: 'PreToolUse' | 'PostToolUse';
   tool_name: string;
   tool_input: Record<string, unknown>;
+  tool_output?: string; // Only present in PostToolUse
 }
 
 /** Notification hook event */
@@ -35,11 +37,19 @@ export interface StopHookEvent extends HookEventPayload {
   reason?: string;
 }
 
+/** User prompt submit event */
+export interface UserPromptSubmitHookEvent extends HookEventPayload {
+  event_type: 'UserPromptSubmit';
+  prompt: string;
+  is_first_prompt?: boolean;
+}
+
 /** Union type for all hook events */
 export type HookEvent =
   | ToolUseHookEvent
   | NotificationHookEvent
-  | StopHookEvent;
+  | StopHookEvent
+  | UserPromptSubmitHookEvent;
 
 /** Claude settings hook configuration */
 export interface ClaudeHookConfig {
@@ -54,6 +64,7 @@ export interface ClaudeSettings {
     PostToolUse?: ClaudeHookConfig[];
     Notification?: ClaudeHookConfig[];
     Stop?: ClaudeHookConfig[];
+    UserPromptSubmit?: ClaudeHookConfig[];
   };
   [key: string]: unknown;
 }

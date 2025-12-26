@@ -19,3 +19,13 @@ export * from './usage.extractor.js';
 
 // Memory
 export * from './memory.service.js';
+
+// Compression
+export * from './transcript.compressor.js';
+export * from './compression.queue.js';
+
+// Context Injection
+export * from './context.injection.js';
+
+// Endless Mode
+export * from './endless.mode.js';

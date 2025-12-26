@@ -2,6 +2,7 @@
  * Memory Routes
  *
  * Handles session memory operations for the "relay race" pattern
+ * and semantic search with vector embeddings.
  */
 
 import { Hono } from 'hono';
@@ -10,6 +11,15 @@ import { buildContext, buildMinimalContext } from '../../../domain/memory/index.
 import type { MemoryUpsertData } from '../../../domain/memory/index.js';
 import { logger } from '../../../lib/logger.js';
 import { isValidSessionId } from '../middleware/validation.js';
+import {
+  getVectorStore,
+  getEmbeddingService,
+  type ObservationCategory,
+} from '../../../infrastructure/vector/index.js';
+import {
+  getEndlessModeService,
+  getCompressionQueue,
+} from '../../../services/index.js';
 
 const app = new Hono();
 
@@ -316,6 +326,413 @@ app.post('/:sessionId/clear-handoff', (c) => {
   } catch (error) {
     logger.error('Failed to clear handoff', error);
     return c.json({ success: false, error: 'Failed to clear handoff' }, 500);
+  }
+});
+
+// ============================================
+// Semantic Search API (Vector Store)
+// ============================================
+
+// GET /api/memory/search - Semantic search for observations
+app.get('/search', async (c) => {
+  const query = c.req.query('query');
+  const limit = c.req.query('limit');
+  const sessionId = c.req.query('sessionId');
+  const category = c.req.query('category') as ObservationCategory | undefined;
+  const minScore = c.req.query('minScore');
+
+  if (!query || query.trim().length === 0) {
+    return c.json({ success: false, error: 'Query parameter is required' }, 400);
+  }
+
+  try {
+    const vectorStore = getVectorStore();
+    const embeddingService = getEmbeddingService();
+
+    // Initialize stores if needed
+    await vectorStore.initialize();
+
+    // Generate embedding for query
+    const queryVector = await embeddingService.embed(query);
+
+    // Search for similar observations
+    const results = await vectorStore.search(queryVector, {
+      limit: limit ? parseInt(limit, 10) : 10,
+      sessionId: sessionId && isValidSessionId(sessionId) ? sessionId : undefined,
+      category,
+      minScore: minScore ? parseFloat(minScore) : undefined,
+    });
+
+    return c.json({
+      success: true,
+      data: {
+        query,
+        results: results.map((r) => ({
+          ...r.observation,
+          timestamp: r.observation.timestamp.toISOString(),
+          score: r.score,
+          distance: r.distance,
+        })),
+        count: results.length,
+        provider: embeddingService.getProvider(),
+      },
+    });
+  } catch (error) {
+    logger.error('Semantic search failed', error);
+    return c.json({ success: false, error: 'Search failed' }, 500);
+  }
+});
+
+// GET /api/memory/observations - List all observations
+app.get('/observations', async (c) => {
+  const sessionId = c.req.query('sessionId');
+
+  try {
+    const vectorStore = getVectorStore();
+    await vectorStore.initialize();
+
+    if (sessionId && isValidSessionId(sessionId)) {
+      const observations = await vectorStore.getBySessionId(sessionId);
+      return c.json({
+        success: true,
+        data: observations.map((o) => ({
+          ...o,
+          timestamp: o.timestamp.toISOString(),
+        })),
+        count: observations.length,
+      });
+    }
+
+    // Return total count if no sessionId
+    const count = await vectorStore.count();
+    return c.json({
+      success: true,
+      data: { totalObservations: count },
+    });
+  } catch (error) {
+    logger.error('Failed to list observations', error);
+    return c.json({ success: false, error: 'Failed to list observations' }, 500);
+  }
+});
+
+// GET /api/memory/observations/:id - Get observation by ID
+app.get('/observations/:id', async (c) => {
+  const id = c.req.param('id');
+
+  try {
+    const vectorStore = getVectorStore();
+    await vectorStore.initialize();
+
+    const observation = await vectorStore.getById(id);
+
+    if (!observation) {
+      return c.json({ success: false, error: 'Observation not found' }, 404);
+    }
+
+    return c.json({
+      success: true,
+      data: {
+        ...observation,
+        timestamp: observation.timestamp.toISOString(),
+      },
+    });
+  } catch (error) {
+    logger.error('Failed to get observation', error);
+    return c.json({ success: false, error: 'Failed to get observation' }, 500);
+  }
+});
+
+// POST /api/memory/observations - Add a new observation
+app.post('/observations', async (c) => {
+  let body: unknown;
+  try {
+    body = await c.req.json();
+  } catch {
+    return c.json({ success: false, error: 'Invalid JSON body' }, 400);
+  }
+
+  if (!body || typeof body !== 'object') {
+    return c.json({ success: false, error: 'Request body must be an object' }, 400);
+  }
+
+  const data = body as Record<string, unknown>;
+
+  // Validate required fields
+  if (!data.sessionId || typeof data.sessionId !== 'string') {
+    return c.json({ success: false, error: 'sessionId is required' }, 400);
+  }
+  if (!data.content || typeof data.content !== 'string') {
+    return c.json({ success: false, error: 'content is required' }, 400);
+  }
+  if (!data.category || typeof data.category !== 'string') {
+    return c.json({ success: false, error: 'category is required' }, 400);
+  }
+
+  const validCategories: ObservationCategory[] = [
+    'decision',
+    'bugfix',
+    'feature',
+    'refactor',
+    'discovery',
+    'change',
+  ];
+  if (!validCategories.includes(data.category as ObservationCategory)) {
+    return c.json({
+      success: false,
+      error: `Invalid category. Must be one of: ${validCategories.join(', ')}`,
+    }, 400);
+  }
+
+  try {
+    const vectorStore = getVectorStore();
+    const embeddingService = getEmbeddingService();
+
+    await vectorStore.initialize();
+
+    // Generate embedding for content
+    const vector = await embeddingService.embed(data.content);
+
+    // Create observation
+    const observation = {
+      id: crypto.randomUUID(),
+      sessionId: data.sessionId,
+      content: data.content,
+      category: data.category as ObservationCategory,
+      files: Array.isArray(data.files) ? data.files : [],
+      concepts: Array.isArray(data.concepts) ? data.concepts : [],
+      timestamp: new Date(),
+      tokenCount: typeof data.tokenCount === 'number' ? data.tokenCount : Math.ceil(data.content.length / 4),
+      compressed: typeof data.compressed === 'boolean' ? data.compressed : false,
+    };
+
+    await vectorStore.insert(observation, vector);
+
+    return c.json({
+      success: true,
+      data: {
+        ...observation,
+        timestamp: observation.timestamp.toISOString(),
+      },
+    });
+  } catch (error) {
+    logger.error('Failed to create observation', error);
+    return c.json({ success: false, error: 'Failed to create observation' }, 500);
+  }
+});
+
+// DELETE /api/memory/observations/:id - Delete observation by ID
+app.delete('/observations/:id', async (c) => {
+  const id = c.req.param('id');
+
+  try {
+    const vectorStore = getVectorStore();
+    await vectorStore.initialize();
+
+    const deleted = await vectorStore.delete(id);
+
+    if (!deleted) {
+      return c.json({ success: false, error: 'Observation not found' }, 404);
+    }
+
+    return c.json({ success: true });
+  } catch (error) {
+    logger.error('Failed to delete observation', error);
+    return c.json({ success: false, error: 'Failed to delete observation' }, 500);
+  }
+});
+
+// DELETE /api/memory/observations/session/:sessionId - Delete all observations for a session
+app.delete('/observations/session/:sessionId', async (c) => {
+  const sessionId = c.req.param('sessionId');
+
+  if (!isValidSessionId(sessionId)) {
+    return c.json({ success: false, error: 'Invalid session ID format' }, 400);
+  }
+
+  try {
+    const vectorStore = getVectorStore();
+    await vectorStore.initialize();
+
+    const count = await vectorStore.deleteBySessionId(sessionId);
+
+    return c.json({
+      success: true,
+      data: { deletedCount: count },
+    });
+  } catch (error) {
+    logger.error('Failed to delete observations', error);
+    return c.json({ success: false, error: 'Failed to delete observations' }, 500);
+  }
+});
+
+// GET /api/memory/embedding/stats - Get embedding service stats
+app.get('/embedding/stats', (c) => {
+  try {
+    const embeddingService = getEmbeddingService();
+    const stats = embeddingService.getCacheStats();
+
+    return c.json({
+      success: true,
+      data: stats,
+    });
+  } catch (error) {
+    logger.error('Failed to get embedding stats', error);
+    return c.json({ success: false, error: 'Failed to get stats' }, 500);
+  }
+});
+
+// ============================================
+// Endless Mode API
+// ============================================
+
+// GET /api/memory/endless/stats - Get endless mode statistics
+app.get('/endless/stats', (c) => {
+  try {
+    const endlessMode = getEndlessModeService();
+    const stats = endlessMode.getStats();
+
+    return c.json({
+      success: true,
+      data: {
+        ...stats,
+        lastCompressionAt: stats.lastCompressionAt?.toISOString() ?? null,
+      },
+    });
+  } catch (error) {
+    logger.error('Failed to get endless mode stats', error);
+    return c.json({ success: false, error: 'Failed to get stats' }, 500);
+  }
+});
+
+// GET /api/memory/endless/working/:sessionId - Get working memory for a session
+app.get('/endless/working/:sessionId', (c) => {
+  const sessionId = c.req.param('sessionId');
+
+  if (!isValidSessionId(sessionId)) {
+    return c.json({ success: false, error: 'Invalid session ID format' }, 400);
+  }
+
+  try {
+    const endlessMode = getEndlessModeService();
+    const items = endlessMode.getWorkingMemory(sessionId);
+    const tokenCount = endlessMode.getSessionTokenCount(sessionId);
+
+    return c.json({
+      success: true,
+      data: {
+        sessionId,
+        items: items.map((item) => ({
+          ...item,
+          timestamp: item.timestamp.toISOString(),
+        })),
+        itemCount: items.length,
+        tokenCount,
+      },
+    });
+  } catch (error) {
+    logger.error('Failed to get working memory', error);
+    return c.json({ success: false, error: 'Failed to get working memory' }, 500);
+  }
+});
+
+// GET /api/memory/endless/context/:sessionId - Get working memory as formatted context
+app.get('/endless/context/:sessionId', (c) => {
+  const sessionId = c.req.param('sessionId');
+
+  if (!isValidSessionId(sessionId)) {
+    return c.json({ success: false, error: 'Invalid session ID format' }, 400);
+  }
+
+  try {
+    const endlessMode = getEndlessModeService();
+    const context = endlessMode.getWorkingMemoryContext(sessionId);
+    const tokenCount = endlessMode.getSessionTokenCount(sessionId);
+
+    return c.json({
+      success: true,
+      data: {
+        sessionId,
+        context,
+        tokenCount,
+      },
+    });
+  } catch (error) {
+    logger.error('Failed to get working memory context', error);
+    return c.json({ success: false, error: 'Failed to get context' }, 500);
+  }
+});
+
+// POST /api/memory/endless/compress/:sessionId - Trigger compression for a session
+app.post('/endless/compress/:sessionId', async (c) => {
+  const sessionId = c.req.param('sessionId');
+
+  if (!isValidSessionId(sessionId)) {
+    return c.json({ success: false, error: 'Invalid session ID format' }, 400);
+  }
+
+  try {
+    const endlessMode = getEndlessModeService();
+    const statsBefore = endlessMode.getStats();
+
+    await endlessMode.compressWorkingMemory(sessionId);
+
+    const statsAfter = endlessMode.getStats();
+
+    return c.json({
+      success: true,
+      data: {
+        sessionId,
+        itemsCompressed: statsAfter.archivedItems - statsBefore.archivedItems,
+        remainingItems: endlessMode.getWorkingMemory(sessionId).length,
+        remainingTokens: endlessMode.getSessionTokenCount(sessionId),
+      },
+    });
+  } catch (error) {
+    logger.error('Failed to compress working memory', error);
+    return c.json({ success: false, error: 'Compression failed' }, 500);
+  }
+});
+
+// POST /api/memory/endless/archive/:sessionId - Archive all session memory
+app.post('/endless/archive/:sessionId', async (c) => {
+  const sessionId = c.req.param('sessionId');
+
+  if (!isValidSessionId(sessionId)) {
+    return c.json({ success: false, error: 'Invalid session ID format' }, 400);
+  }
+
+  try {
+    const endlessMode = getEndlessModeService();
+    const itemCount = endlessMode.getWorkingMemory(sessionId).length;
+
+    await endlessMode.archiveSession(sessionId);
+
+    return c.json({
+      success: true,
+      data: {
+        sessionId,
+        itemsArchived: itemCount,
+      },
+    });
+  } catch (error) {
+    logger.error('Failed to archive session', error);
+    return c.json({ success: false, error: 'Archive failed' }, 500);
+  }
+});
+
+// GET /api/memory/compression/stats - Get compression queue statistics
+app.get('/compression/stats', (c) => {
+  try {
+    const queue = getCompressionQueue();
+    const stats = queue.getStats();
+
+    return c.json({
+      success: true,
+      data: stats,
+    });
+  } catch (error) {
+    logger.error('Failed to get compression stats', error);
+    return c.json({ success: false, error: 'Failed to get stats' }, 500);
   }
 });
 

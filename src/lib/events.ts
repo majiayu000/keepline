@@ -3,7 +3,7 @@
  */
 
 import EventEmitter from 'eventemitter3';
-import type { SessionEventPayload, ToolEventPayload } from './types.js';
+import type { SessionEventPayload, ToolEventPayload, SessionEndEventPayload } from './types.js';
 
 /** Event types */
 export type TaskerEvents = {
@@ -13,6 +13,7 @@ export type TaskerEvents = {
   'session:lost': SessionEventPayload;
   'session:recovered': SessionEventPayload;
   'session:completed': SessionEventPayload;
+  'session:end': SessionEndEventPayload;
 
   // Tool events (from hooks)
   'tool:pre': ToolEventPayload;
