@@ -1,11 +1,14 @@
 /**
  * Transcript Compressor Service
  *
- * Uses Claude Haiku to compress tool outputs into concise observations.
- * Achieves 10:1 to 100:1 compression ratio while preserving semantic meaning.
+ * Uses Claude Agent SDK (preferred) or Anthropic API to compress tool outputs
+ * into concise observations. Achieves 10:1 to 100:1 compression ratio while
+ * preserving semantic meaning.
+ *
+ * Agent SDK mode: No API key required (uses Claude Code's authentication)
+ * API mode: Requires ANTHROPIC_API_KEY environment variable
  */
 
-import Anthropic from '@anthropic-ai/sdk';
 import { logger } from '../lib/logger.js';
 import type { ObservationCategory, Observation } from '../infrastructure/vector/types.js';
 
@@ -28,8 +31,12 @@ export interface ToolOutput {
   sessionId: string;
 }
 
+/** Compression mode */
+export type CompressionMode = 'agent-sdk' | 'api' | 'fallback';
+
 /** Compression configuration */
 export interface CompressionConfig {
+  mode?: CompressionMode;
   model?: string;
   maxTokens?: number;
   targetTokens?: number;
@@ -38,50 +45,39 @@ export interface CompressionConfig {
 
 /** Default configuration */
 const DEFAULT_CONFIG: Required<CompressionConfig> = {
-  model: 'claude-3-5-haiku-latest',
+  mode: 'agent-sdk', // Prefer Agent SDK (no API key needed)
+  model: 'haiku',
   maxTokens: 1024,
   targetTokens: 500,
   apiKey: '',
 };
 
 /** Compression prompt template */
-const COMPRESSION_PROMPT = `You are a memory compression agent. Your task is to compress tool outputs into concise observations that capture the essential information.
+const COMPRESSION_PROMPT = `You are a memory compression agent. Compress this tool output into a concise observation.
 
 Rules:
 1. Extract the key insight or action taken
 2. Keep file paths and important identifiers
-3. Target approximately {targetTokens} tokens output (achieving 10:1 compression)
-4. Categorize appropriately based on what was done
-5. Identify relevant file paths
-6. Extract key concepts/keywords
+3. Target approximately {targetTokens} tokens (10:1 compression)
+4. Output valid JSON only
 
-Categories:
-- decision: Architecture/tech decisions, design choices
-- bugfix: Bug fixes, error corrections
-- feature: New feature implementation
-- refactor: Code refactoring, restructuring
-- discovery: Code understanding, exploration, search results
-- change: File modifications, edits
+Categories: decision|bugfix|feature|refactor|discovery|change
 
 Tool: {toolName}
 Input: {toolInput}
 Output:
 {toolOutput}
 
-Respond in valid JSON format only:
-{
-  "content": "compressed observation in 1-3 sentences",
-  "category": "one of: decision|bugfix|feature|refactor|discovery|change",
-  "files": ["relevant/file/paths"],
-  "concepts": ["key", "concepts", "keywords"]
-}`;
+Respond with ONLY valid JSON:
+{"content":"1-3 sentence summary","category":"category","files":["paths"],"concepts":["keywords"]}`;
 
 /**
  * Transcript Compressor Service
  */
 export class TranscriptCompressor {
   private config: Required<CompressionConfig>;
-  private client: Anthropic | null = null;
+  private sdkAvailable: boolean | null = null;
+  private anthropicClient: any = null;
 
   constructor(config: CompressionConfig = {}) {
     this.config = {
@@ -92,77 +88,180 @@ export class TranscriptCompressor {
   }
 
   /**
-   * Get or create Anthropic client
+   * Check if Agent SDK is available
    */
-  private getClient(): Anthropic {
-    if (!this.client) {
-      if (!this.config.apiKey) {
-        throw new Error('Anthropic API key is required. Set ANTHROPIC_API_KEY environment variable.');
-      }
-      this.client = new Anthropic({ apiKey: this.config.apiKey });
+  private async checkSdkAvailable(): Promise<boolean> {
+    if (this.sdkAvailable !== null) return this.sdkAvailable;
+
+    try {
+      // Try to import the SDK
+      const sdk = await import('@anthropic-ai/claude-agent-sdk');
+      this.sdkAvailable = typeof sdk.query === 'function';
+      logger.info('Claude Agent SDK available for compression');
+    } catch {
+      this.sdkAvailable = false;
+      logger.info('Claude Agent SDK not available, will use API or fallback');
     }
-    return this.client;
+
+    return this.sdkAvailable;
+  }
+
+  /**
+   * Get Anthropic client for API mode
+   */
+  private async getAnthropicClient(): Promise<any> {
+    if (this.anthropicClient) return this.anthropicClient;
+
+    if (!this.config.apiKey) {
+      throw new Error('Anthropic API key required for API mode');
+    }
+
+    const Anthropic = (await import('@anthropic-ai/sdk')).default;
+    this.anthropicClient = new Anthropic({ apiKey: this.config.apiKey });
+    return this.anthropicClient;
   }
 
   /**
    * Estimate token count (rough approximation)
    */
   private estimateTokens(text: string): number {
-    // Rough estimate: 1 token ≈ 4 characters
     return Math.ceil(text.length / 4);
+  }
+
+  /**
+   * Compress using Claude Agent SDK (no API key needed)
+   */
+  private async compressWithAgentSdk(toolOutput: ToolOutput): Promise<CompressionResult | null> {
+    try {
+      const { query } = await import('@anthropic-ai/claude-agent-sdk');
+
+      const prompt = this.buildPrompt(toolOutput);
+      const originalTokens = this.estimateTokens(
+        toolOutput.toolName + JSON.stringify(toolOutput.toolInput) + toolOutput.toolOutput
+      );
+
+      let resultText = '';
+
+      // Use Agent SDK query
+      for await (const message of query({
+        prompt,
+        options: {
+          model: this.config.model === 'haiku' ? 'claude-3-5-haiku-latest' : this.config.model,
+          maxTurns: 1,
+          permissionMode: 'bypassPermissions',
+          allowDangerouslySkipPermissions: true,
+          tools: [], // No tools needed for compression
+        },
+      })) {
+        if (message.type === 'result' && 'result' in message) {
+          resultText = message.result;
+        }
+      }
+
+      if (!resultText) {
+        return null;
+      }
+
+      const parsed = this.parseResponse(resultText);
+      const compressedTokens = this.estimateTokens(parsed.content);
+
+      return {
+        ...parsed,
+        originalTokens,
+        compressedTokens,
+        compressionRatio: originalTokens / compressedTokens,
+      };
+    } catch (error) {
+      logger.debug('Agent SDK compression failed', error);
+      return null;
+    }
+  }
+
+  /**
+   * Compress using Anthropic API (requires API key)
+   */
+  private async compressWithApi(toolOutput: ToolOutput): Promise<CompressionResult | null> {
+    if (!this.config.apiKey) {
+      return null;
+    }
+
+    try {
+      const client = await this.getAnthropicClient();
+      const prompt = this.buildPrompt(toolOutput);
+      const originalTokens = this.estimateTokens(
+        toolOutput.toolName + JSON.stringify(toolOutput.toolInput) + toolOutput.toolOutput
+      );
+
+      const response = await client.messages.create({
+        model: this.config.model === 'haiku' ? 'claude-3-5-haiku-latest' : this.config.model,
+        max_tokens: this.config.maxTokens,
+        messages: [{ role: 'user', content: prompt }],
+      });
+
+      const textContent = response.content.find((c: any) => c.type === 'text');
+      if (!textContent || textContent.type !== 'text') {
+        return null;
+      }
+
+      const parsed = this.parseResponse(textContent.text);
+      const compressedTokens = this.estimateTokens(parsed.content);
+
+      return {
+        ...parsed,
+        originalTokens,
+        compressedTokens,
+        compressionRatio: originalTokens / compressedTokens,
+      };
+    } catch (error) {
+      logger.debug('API compression failed', error);
+      return null;
+    }
   }
 
   /**
    * Compress a tool output into a concise observation
    */
   async compress(toolOutput: ToolOutput): Promise<CompressionResult> {
-    const client = this.getClient();
-
-    // Prepare the prompt
-    const prompt = COMPRESSION_PROMPT
-      .replace('{targetTokens}', this.config.targetTokens.toString())
-      .replace('{toolName}', toolOutput.toolName)
-      .replace('{toolInput}', JSON.stringify(toolOutput.toolInput, null, 2))
-      .replace('{toolOutput}', this.truncateOutput(toolOutput.toolOutput));
-
     const originalTokens = this.estimateTokens(
       toolOutput.toolName + JSON.stringify(toolOutput.toolInput) + toolOutput.toolOutput
     );
 
-    try {
-      const response = await client.messages.create({
-        model: this.config.model,
-        max_tokens: this.config.maxTokens,
-        messages: [
-          {
-            role: 'user',
-            content: prompt,
-          },
-        ],
-      });
+    // Try Agent SDK first (preferred, no API key needed)
+    if (this.config.mode === 'agent-sdk' || this.config.mode === 'api') {
+      const sdkAvailable = await this.checkSdkAvailable();
 
-      // Extract text content
-      const textContent = response.content.find((c) => c.type === 'text');
-      if (!textContent || textContent.type !== 'text') {
-        throw new Error('No text content in response');
+      if (sdkAvailable) {
+        const result = await this.compressWithAgentSdk(toolOutput);
+        if (result) {
+          logger.debug('Compressed with Agent SDK');
+          return result;
+        }
       }
 
-      // Parse JSON response
-      const result = this.parseResponse(textContent.text);
-      const compressedTokens = this.estimateTokens(result.content);
-
-      return {
-        ...result,
-        originalTokens,
-        compressedTokens,
-        compressionRatio: originalTokens / compressedTokens,
-      };
-    } catch (error) {
-      logger.error('Compression failed', error);
-
-      // Return a fallback compression
-      return this.fallbackCompression(toolOutput, originalTokens);
+      // Fall back to API if SDK fails
+      if (this.config.apiKey) {
+        const result = await this.compressWithApi(toolOutput);
+        if (result) {
+          logger.debug('Compressed with Anthropic API');
+          return result;
+        }
+      }
     }
+
+    // Use fallback compression
+    logger.debug('Using fallback compression');
+    return this.fallbackCompression(toolOutput, originalTokens);
+  }
+
+  /**
+   * Build the compression prompt
+   */
+  private buildPrompt(toolOutput: ToolOutput): string {
+    return COMPRESSION_PROMPT
+      .replace('{targetTokens}', this.config.targetTokens.toString())
+      .replace('{toolName}', toolOutput.toolName)
+      .replace('{toolInput}', JSON.stringify(toolOutput.toolInput, null, 2))
+      .replace('{toolOutput}', this.truncateOutput(toolOutput.toolOutput));
   }
 
   /**
@@ -172,17 +271,8 @@ export class TranscriptCompressor {
     const results: CompressionResult[] = [];
 
     for (const output of outputs) {
-      try {
-        const result = await this.compress(output);
-        results.push(result);
-      } catch (error) {
-        logger.error(`Failed to compress output for tool ${output.toolName}`, error);
-        // Use fallback for failed compressions
-        const originalTokens = this.estimateTokens(
-          output.toolName + JSON.stringify(output.toolInput) + output.toolOutput
-        );
-        results.push(this.fallbackCompression(output, originalTokens));
-      }
+      const result = await this.compress(output);
+      results.push(result);
     }
 
     return results;
@@ -215,7 +305,6 @@ export class TranscriptCompressor {
   private truncateOutput(output: string, maxChars: number = 10000): string {
     if (output.length <= maxChars) return output;
 
-    // Keep beginning and end
     const halfMax = Math.floor(maxChars / 2);
     return (
       output.slice(0, halfMax) +
@@ -228,7 +317,6 @@ export class TranscriptCompressor {
    * Parse the JSON response from Claude
    */
   private parseResponse(text: string): Omit<CompressionResult, 'originalTokens' | 'compressedTokens' | 'compressionRatio'> {
-    // Try to extract JSON from response
     const jsonMatch = text.match(/\{[\s\S]*\}/);
     if (!jsonMatch) {
       throw new Error('No JSON found in response');
@@ -236,7 +324,6 @@ export class TranscriptCompressor {
 
     const parsed = JSON.parse(jsonMatch[0]);
 
-    // Validate and sanitize
     const validCategories: ObservationCategory[] = [
       'decision', 'bugfix', 'feature', 'refactor', 'discovery', 'change'
     ];
@@ -257,11 +344,9 @@ export class TranscriptCompressor {
    * Fallback compression when AI compression fails
    */
   private fallbackCompression(output: ToolOutput, originalTokens: number): CompressionResult {
-    // Simple rule-based compression
     const content = this.createFallbackContent(output);
     const files = this.extractFiles(output);
     const category = this.inferCategory(output.toolName);
-
     const compressedTokens = this.estimateTokens(content);
 
     return {
@@ -314,7 +399,6 @@ export class TranscriptCompressor {
       files.push(input.path);
     }
 
-    // Extract file paths from output (basic pattern matching)
     const filePattern = /(?:^|[\s'"(])([\/\w.-]+\.[a-zA-Z]{1,5})(?:[\s'"):]|$)/gm;
     const matches = output.toolOutput.matchAll(filePattern);
     for (const match of matches) {
@@ -323,7 +407,7 @@ export class TranscriptCompressor {
       }
     }
 
-    return files.slice(0, 10); // Limit to 10 files
+    return files.slice(0, 10);
   }
 
   /**
@@ -347,19 +431,32 @@ export class TranscriptCompressor {
   }
 
   /**
-   * Check if compression is available (API key configured)
+   * Check if AI compression is available
    */
-  isAvailable(): boolean {
-    return !!this.config.apiKey;
+  async isAvailable(): Promise<boolean> {
+    const sdkAvailable = await this.checkSdkAvailable();
+    return sdkAvailable || !!this.config.apiKey;
+  }
+
+  /**
+   * Get current compression mode
+   */
+  async getCurrentMode(): Promise<CompressionMode> {
+    const sdkAvailable = await this.checkSdkAvailable();
+    if (sdkAvailable) return 'agent-sdk';
+    if (this.config.apiKey) return 'api';
+    return 'fallback';
   }
 
   /**
    * Get compression statistics
    */
-  getStats(): { model: string; available: boolean } {
+  async getStats(): Promise<{ mode: CompressionMode; model: string; available: boolean }> {
+    const mode = await this.getCurrentMode();
     return {
+      mode,
       model: this.config.model,
-      available: this.isAvailable(),
+      available: mode !== 'fallback',
     };
   }
 }
