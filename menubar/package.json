@@ -41,11 +41,20 @@
     "mac": {
       "category": "public.app-category.developer-tools",
       "icon": "assets/icon.icns",
-      "target": ["dmg", "zip"]
+      "target": ["dmg"]
     },
     "files": [
       "dist/**/*",
-      "assets/**/*"
-    ]
+      "assets/iconTemplate.png",
+      "assets/iconTemplate@2x.png",
+      "!**/*.ts",
+      "!**/*.map",
+      "!**/node_modules/*/{CHANGELOG.md,README.md,readme.md,README,readme}",
+      "!**/node_modules/*/{test,__tests__,tests,powered-test,example,examples}",
+      "!**/node_modules/.bin",
+      "!**/*.d.ts"
+    ],
+    "asar": true,
+    "compression": "maximum"
   }
 }

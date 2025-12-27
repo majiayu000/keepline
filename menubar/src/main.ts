@@ -1,73 +1,63 @@
 /**
  * Claude Quota Menubar - Electron Main Process
- *
- * Creates a menubar application that monitors Claude usage quota
- * Features:
- * - Smart refresh: only refreshes when window is visible
- * - Dynamic frequency: adjusts based on usage level
+ * Using menubar library for reliable macOS tray support
  */
 
 import { menubar } from 'menubar';
-import { app, ipcMain, nativeTheme, Menu, shell, nativeImage } from 'electron';
+import { app, ipcMain, nativeTheme, Menu, shell } from 'electron';
 import * as path from 'path';
 import * as fs from 'fs';
 import { getQuotaData, QuotaData } from './quota';
 
+// Simple console logging
+function log(message: string) {
+  console.log(`[Claude Quota] ${message}`);
+}
+
 // Determine if we're in development
 const isDev = process.env.NODE_ENV === 'development';
+log(`Development mode: ${isDev}`);
 
 // Dynamic refresh intervals based on usage level
 const REFRESH_INTERVALS = {
-  CRITICAL: 30 * 1000,    // 30 seconds when usage > 80%
-  WARNING: 60 * 1000,     // 60 seconds when usage 50-80%
-  GOOD: 5 * 60 * 1000,    // 5 minutes when usage < 50%
-  DEFAULT: 60 * 1000,     // 60 seconds default
+  CRITICAL: 30 * 1000,   // 30s when >80%
+  WARNING: 60 * 1000,    // 60s when 50-80%
+  GOOD: 5 * 60 * 1000,   // 5min when <50%
+  DEFAULT: 60 * 1000,
 };
 
 // Current state
 let refreshInterval: NodeJS.Timeout | null = null;
 let currentMaxUsage = 0;
-let isWindowVisible = false;
+let currentSessionUsage = 0;
 
-// Get icon path, fallback to creating a simple icon if not found
-function getIcon() {
+// Get icon path - menubar library expects a PATH, not nativeImage
+function getIconPath(): string {
   const iconPath = path.join(__dirname, '../assets/iconTemplate.png');
-  if (fs.existsSync(iconPath)) {
-    return iconPath;
-  }
-
-  // Create a simple 16x16 icon programmatically
-  const icon = nativeImage.createEmpty();
-  // Return empty icon - Electron will use default
-  return icon;
+  log(`Icon path: ${iconPath}`);
+  log(`Icon exists: ${fs.existsSync(iconPath)}`);
+  return iconPath;
 }
 
 // Calculate refresh interval based on usage
 function getRefreshInterval(maxUsage: number): number {
-  if (maxUsage >= 80) {
-    return REFRESH_INTERVALS.CRITICAL;
-  } else if (maxUsage >= 50) {
-    return REFRESH_INTERVALS.WARNING;
-  } else if (maxUsage > 0) {
-    return REFRESH_INTERVALS.GOOD;
-  }
+  if (maxUsage >= 80) return REFRESH_INTERVALS.CRITICAL;
+  if (maxUsage >= 50) return REFRESH_INTERVALS.WARNING;
+  if (maxUsage > 0) return REFRESH_INTERVALS.GOOD;
   return REFRESH_INTERVALS.DEFAULT;
 }
 
 // Format interval for logging
 function formatInterval(ms: number): string {
-  if (ms >= 60000) {
-    return `${ms / 60000} min`;
-  }
-  return `${ms / 1000} sec`;
+  return ms >= 60000 ? `${ms / 60000} min` : `${ms / 1000} sec`;
 }
 
-// Create menubar instance
+// Create menubar instance - this is the WORKING approach
 const mb = menubar({
   index: isDev
     ? 'http://localhost:5173'
     : `file://${path.join(__dirname, '../dist/renderer/index.html')}`,
-  icon: getIcon(),
+  icon: getIconPath(),
   browserWindow: {
     width: 320,
     height: 420,
@@ -88,82 +78,23 @@ const mb = menubar({
   tooltip: 'Claude Quota Monitor',
 });
 
-mb.on('ready', () => {
-  console.log('Claude Quota Menubar is ready');
-  console.log('Smart refresh enabled: only refreshes when window is visible');
-  console.log('Dynamic frequency: 30s (>80%), 60s (50-80%), 5min (<50%)');
-
-  // Set up context menu for tray
-  const contextMenu = Menu.buildFromTemplate([
-    {
-      label: 'Refresh Now',
-      click: () => {
-        triggerRefresh();
-      },
-    },
-    { type: 'separator' },
-    {
-      label: 'Open Claude',
-      click: () => {
-        shell.openExternal('https://claude.ai');
-      },
-    },
-    {
-      label: 'Open Dashboard',
-      click: () => {
-        shell.openExternal('http://localhost:3377');
-      },
-    },
-    { type: 'separator' },
-    {
-      label: 'Quit',
-      click: () => {
-        app.quit();
-      },
-    },
-  ]);
-
-  mb.tray.on('right-click', () => {
-    mb.tray.popUpContextMenu(contextMenu);
-  });
-});
-
-// Smart refresh: start when window shows
-mb.on('show', () => {
-  isWindowVisible = true;
-  console.log('Window shown - starting refresh');
-
-  // Immediately refresh when shown
-  triggerRefresh();
-
-  // Start auto-refresh timer
-  startAutoRefresh();
-});
-
-// Smart refresh: stop when window hides
-mb.on('hide', () => {
-  isWindowVisible = false;
-  console.log('Window hidden - stopping refresh');
-
-  // Stop auto-refresh to save resources
-  stopAutoRefresh();
-});
-
-// Trigger a refresh
-function triggerRefresh() {
-  mb.window?.webContents.send('refresh-quota');
+// Update tray title (percentage display next to icon)
+function updateTrayTitle(sessionUsage: number) {
+  if (mb.tray) {
+    const title = `${Math.round(sessionUsage)}%`;
+    mb.tray.setTitle(title, { fontType: 'monospacedDigit' });
+  }
 }
 
 // Start auto-refresh with dynamic interval
 function startAutoRefresh() {
-  stopAutoRefresh(); // Clear any existing interval
-
+  stopAutoRefresh();
   const interval = getRefreshInterval(currentMaxUsage);
-  console.log(`Auto-refresh started: every ${formatInterval(interval)} (usage: ${currentMaxUsage}%)`);
+  log(`Auto-refresh started: every ${formatInterval(interval)} (usage: ${currentMaxUsage}%)`);
 
   refreshInterval = setInterval(() => {
-    if (isWindowVisible) {
-      triggerRefresh();
+    if (mb.window?.isVisible()) {
+      mb.window.webContents.send('refresh-quota');
     }
   }, interval);
 }
@@ -176,27 +107,88 @@ function stopAutoRefresh() {
   }
 }
 
-// Update refresh interval based on new usage data
+// Update refresh interval based on usage
 function updateRefreshInterval(maxUsage: number) {
   const oldInterval = getRefreshInterval(currentMaxUsage);
   const newInterval = getRefreshInterval(maxUsage);
-
   currentMaxUsage = maxUsage;
 
-  // Only restart if interval changed and window is visible
-  if (oldInterval !== newInterval && isWindowVisible) {
-    console.log(`Usage changed to ${maxUsage}% - adjusting refresh to ${formatInterval(newInterval)}`);
+  if (oldInterval !== newInterval && mb.window?.isVisible()) {
+    log(`Usage changed to ${maxUsage}% - adjusting refresh`);
     startAutoRefresh();
   }
 }
+
+// Menubar ready event
+mb.on('ready', async () => {
+  log('Menubar is ready');
+
+  // Fetch initial quota to set tray title
+  try {
+    const data = await getQuotaData();
+    if ('connected' in data && data.connected && data.session) {
+      currentSessionUsage = data.session.percentage;
+      updateTrayTitle(currentSessionUsage);
+      log(`Initial usage: ${currentSessionUsage}%`);
+    }
+  } catch (error) {
+    log(`Failed to fetch initial quota: ${error}`);
+  }
+
+  // Set up context menu
+  const contextMenu = Menu.buildFromTemplate([
+    {
+      label: 'Refresh Now',
+      click: () => {
+        mb.window?.webContents.send('refresh-quota');
+      },
+    },
+    { type: 'separator' },
+    {
+      label: 'Open Claude',
+      click: () => shell.openExternal('https://claude.ai'),
+    },
+    {
+      label: 'Open Dashboard',
+      click: () => shell.openExternal('http://localhost:3377'),
+    },
+    { type: 'separator' },
+    {
+      label: 'Quit',
+      click: () => app.quit(),
+    },
+  ]);
+
+  mb.tray.on('right-click', () => {
+    mb.tray.popUpContextMenu(contextMenu);
+  });
+
+  // Start auto-refresh
+  startAutoRefresh();
+
+  log('Claude Quota Menubar is ready');
+  log('Smart refresh enabled: only refreshes when window is visible');
+  log(`Dynamic frequency: 30s (>80%), 60s (50-80%), 5min (<50%)`);
+});
+
+mb.on('show', () => {
+  log('Window shown');
+  mb.window?.webContents.send('refresh-quota');
+  startAutoRefresh();
+});
+
+mb.on('hide', () => {
+  log('Window hidden');
+  // Keep refreshing in background to update tray title
+});
 
 // IPC handlers
 ipcMain.handle('get-quota', async (): Promise<QuotaData | { error: string }> => {
   try {
     const data = await getQuotaData();
 
-    // Update dynamic refresh interval based on usage
     if ('connected' in data && data.connected) {
+      // Calculate max usage for dynamic refresh
       const usages = [
         data.session?.percentage ?? 0,
         data.weeklyTotal?.percentage ?? 0,
@@ -205,6 +197,13 @@ ipcMain.handle('get-quota', async (): Promise<QuotaData | { error: string }> => 
       ];
       const maxUsage = Math.max(...usages);
       updateRefreshInterval(maxUsage);
+
+      // Update tray title with session usage
+      const sessionUsage = data.session?.percentage ?? 0;
+      if (sessionUsage !== currentSessionUsage) {
+        currentSessionUsage = sessionUsage;
+        updateTrayTitle(sessionUsage);
+      }
     }
 
     return data;
