@@ -19,35 +19,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - OAuth token credential handling (support multiple credential names)
 - Project merging when same name exists in different directories
 
-## [1.1.0] - 2025-12-27
+## [1.0.1] - 2025-12-27
 
-### Added - Menubar App (Tauri)
-- **System Tray Monitor**: Native menubar app for real-time quota monitoring
-- **Dynamic Tray Icon**: Circular progress ring with percentage, color changes based on usage level
-  - Green (0-50%): Safe
-  - Yellow (50-80%): Warning
-  - Red (80-100%): Critical
-- **Multiple Themes**: Light, Dark, Claude, Claude Dark, Minimal, Minimal Dark, Ocean
-- **Hide Dock Icon**: Option to hide app from macOS dock (menubar-only mode)
-- **Auto-resize Window**: Panel height automatically adjusts based on content
-- **macOS Vibrancy**: Native blur effect for modern appearance
-- **Multi-platform Releases**: GitHub Actions workflow for Windows, macOS Intel, macOS ARM
-
-### Changed
-- **Replaced Electron with Tauri**: Reduced app size from ~700MB to ~1.9MB
-- Dashboard button shows "Under Development" toast message
+### Added
+- Hide Dock Icon option for menubar-only mode
+- Auto-resize window based on content
+- Toast notification component
 
 ### Fixed
 - Rust compiler warnings (removed unused icon generator functions)
-- Deprecated Tauri API calls (menu_on_left_click → show_menu_on_left_click)
+- Deprecated Tauri API (menu_on_left_click → show_menu_on_left_click)
 - Dock visibility using Tauri's native activation policy API
 - Settings row layout to prevent text truncation
-
-### Technical Details
-- **Framework**: Tauri 2.x
-- **Frontend**: React 19 + Vite 7 + TypeScript
-- **Backend**: Rust with async/await
-- **Icon Generation**: Pure Rust with image crate (no external dependencies)
+- Dashboard button shows "Under Development" toast
 
 ## [1.0.0] - 2025-12-16
 
