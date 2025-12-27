@@ -1,9 +1,19 @@
+mod tray_icon;
+
 use serde::{Deserialize, Serialize};
 use std::process::Command;
+use std::sync::Mutex;
 use tauri::{
-    tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent},
-    Manager,
+    image::Image,
+    tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent, TrayIconId},
+    AppHandle, Manager, State,
 };
+use window_vibrancy::{apply_vibrancy, NSVisualEffectMaterial};
+
+// Global state to store tray icon ID
+struct TrayState {
+    tray_id: Mutex<Option<TrayIconId>>,
+}
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct UsageInfo {
@@ -163,6 +173,35 @@ async fn get_quota() -> Result<QuotaData, String> {
     }
 }
 
+// Update tray icon with percentage
+#[tauri::command]
+async fn update_tray_icon(
+    app: AppHandle,
+    tray_state: State<'_, TrayState>,
+    percentage: u8,
+) -> Result<(), String> {
+    let tray_id = {
+        let guard = tray_state.tray_id.lock().map_err(|e| e.to_string())?;
+        guard.clone()
+    };
+
+    if let Some(id) = tray_id {
+        if let Some(tray) = app.tray_by_id(&id) {
+            // Generate icon with percentage (32x32 for Retina, will be scaled down)
+            let icon_bytes = tray_icon::generate_tray_icon_with_bar(percentage, 32);
+
+            // Create Tauri image from PNG bytes
+            let icon = Image::from_bytes(&icon_bytes).map_err(|e| e.to_string())?;
+
+            // Update tray icon
+            tray.set_icon(Some(icon)).map_err(|e| e.to_string())?;
+            tray.set_icon_as_template(true).map_err(|e| e.to_string())?;
+        }
+    }
+
+    Ok(())
+}
+
 // Parse a QuotaWindow from Anthropic API (has utilization and resets_at)
 fn parse_quota_window(value: &serde_json::Value) -> Option<UsageInfo> {
     if value.is_null() || !value.is_object() {
@@ -185,11 +224,19 @@ pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_process::init())
-        .invoke_handler(tauri::generate_handler![get_quota])
+        .manage(TrayState {
+            tray_id: Mutex::new(None),
+        })
+        .invoke_handler(tauri::generate_handler![get_quota, update_tray_icon])
         .setup(|app| {
+            // Generate initial icon with "?" or 0%
+            let initial_icon_bytes = tray_icon::generate_tray_icon(0, 32);
+            let initial_icon = Image::from_bytes(&initial_icon_bytes)
+                .expect("Failed to create initial icon");
+
             // Setup system tray
-            let _tray = TrayIconBuilder::new()
-                .icon(app.default_window_icon().unwrap().clone())
+            let tray = TrayIconBuilder::new()
+                .icon(initial_icon)
                 .icon_as_template(true)
                 .tooltip("Claude Quota Monitor")
                 .on_tray_icon_event(|tray, event| {
@@ -230,8 +277,22 @@ pub fn run() {
                 })
                 .build(app)?;
 
-            // Hide window when it loses focus
+            // Store tray ID for later updates
+            if let Some(state) = app.try_state::<TrayState>() {
+                if let Ok(mut guard) = state.tray_id.lock() {
+                    *guard = Some(tray.id().clone());
+                }
+            }
+
+            // Apply vibrancy and rounded corners on macOS
             if let Some(window) = app.get_webview_window("main") {
+                #[cfg(target_os = "macos")]
+                {
+                    apply_vibrancy(&window, NSVisualEffectMaterial::Popover, None, Some(12.0))
+                        .expect("Failed to apply vibrancy");
+                }
+
+                // Hide window when it loses focus
                 let window_clone = window.clone();
                 window.on_window_event(move |event| {
                     if let tauri::WindowEvent::Focused(false) = event {

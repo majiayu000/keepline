@@ -76,6 +76,14 @@ export default function App() {
       } else {
         setQuota(data);
         setLastUpdated(new Date());
+
+        // Update tray icon with session percentage
+        const percentage = data.session?.percentage ?? 0;
+        try {
+          await invoke('update_tray_icon', { percentage: Math.round(percentage) });
+        } catch (iconErr) {
+          console.error('Failed to update tray icon:', iconErr);
+        }
       }
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Unknown error');
