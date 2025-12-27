@@ -1,143 +1,50 @@
 use image::{ImageBuffer, ImageEncoder, Rgba, RgbaImage};
 
-// Simple 5x7 bitmap font for digits 0-9 and % symbol
-// Each digit is represented as a 5-wide, 7-tall bitmap (35 bits)
-const DIGIT_WIDTH: u32 = 5;
-const DIGIT_HEIGHT: u32 = 7;
+// Compact 3x5 bitmap font optimized for small sizes (macOS menubar)
+// Each digit is 3 pixels wide, 5 pixels tall - perfect for 22x22 icons
+const DIGIT_WIDTH: u32 = 3;
+const DIGIT_HEIGHT: u32 = 5;
 
-// Bitmap patterns for digits 0-9 (5x7 each, row by row)
-const DIGITS: [[u8; 7]; 10] = [
+// Clean, readable digit patterns (3x5 each) - SF Mono inspired
+const DIGITS: [[u8; 5]; 10] = [
     // 0
-    [
-        0b01110,
-        0b10001,
-        0b10011,
-        0b10101,
-        0b11001,
-        0b10001,
-        0b01110,
-    ],
+    [0b111, 0b101, 0b101, 0b101, 0b111],
     // 1
-    [
-        0b00100,
-        0b01100,
-        0b00100,
-        0b00100,
-        0b00100,
-        0b00100,
-        0b01110,
-    ],
+    [0b010, 0b110, 0b010, 0b010, 0b111],
     // 2
-    [
-        0b01110,
-        0b10001,
-        0b00001,
-        0b00110,
-        0b01000,
-        0b10000,
-        0b11111,
-    ],
+    [0b111, 0b001, 0b111, 0b100, 0b111],
     // 3
-    [
-        0b01110,
-        0b10001,
-        0b00001,
-        0b00110,
-        0b00001,
-        0b10001,
-        0b01110,
-    ],
+    [0b111, 0b001, 0b111, 0b001, 0b111],
     // 4
-    [
-        0b00010,
-        0b00110,
-        0b01010,
-        0b10010,
-        0b11111,
-        0b00010,
-        0b00010,
-    ],
+    [0b101, 0b101, 0b111, 0b001, 0b001],
     // 5
-    [
-        0b11111,
-        0b10000,
-        0b11110,
-        0b00001,
-        0b00001,
-        0b10001,
-        0b01110,
-    ],
+    [0b111, 0b100, 0b111, 0b001, 0b111],
     // 6
-    [
-        0b00110,
-        0b01000,
-        0b10000,
-        0b11110,
-        0b10001,
-        0b10001,
-        0b01110,
-    ],
+    [0b111, 0b100, 0b111, 0b101, 0b111],
     // 7
-    [
-        0b11111,
-        0b00001,
-        0b00010,
-        0b00100,
-        0b01000,
-        0b01000,
-        0b01000,
-    ],
+    [0b111, 0b001, 0b001, 0b001, 0b001],
     // 8
-    [
-        0b01110,
-        0b10001,
-        0b10001,
-        0b01110,
-        0b10001,
-        0b10001,
-        0b01110,
-    ],
+    [0b111, 0b101, 0b111, 0b101, 0b111],
     // 9
-    [
-        0b01110,
-        0b10001,
-        0b10001,
-        0b01111,
-        0b00001,
-        0b00010,
-        0b01100,
-    ],
-];
-
-// Percent symbol (5x7)
-const PERCENT: [u8; 7] = [
-    0b11001,
-    0b11010,
-    0b00100,
-    0b00100,
-    0b00100,
-    0b01011,
-    0b10011,
+    [0b111, 0b101, 0b111, 0b001, 0b111],
 ];
 
 /// Draw a single digit at position (x, y) with given scale
-fn draw_digit(img: &mut RgbaImage, digit: u8, x: u32, y: u32, scale: u32, color: Rgba<u8>) {
-    let pattern = if digit <= 9 {
-        &DIGITS[digit as usize]
-    } else {
-        &PERCENT
-    };
+fn draw_digit(img: &mut RgbaImage, digit: u8, x: i32, y: i32, scale: u32, color: Rgba<u8>) {
+    if digit > 9 {
+        return;
+    }
+    let pattern = &DIGITS[digit as usize];
 
     for (row, &bits) in pattern.iter().enumerate() {
         for col in 0..DIGIT_WIDTH {
             if (bits >> (DIGIT_WIDTH - 1 - col)) & 1 == 1 {
-                // Draw scaled pixel
                 for sy in 0..scale {
                     for sx in 0..scale {
-                        let px = x + col * scale + sx;
-                        let py = y + (row as u32) * scale + sy;
-                        if px < img.width() && py < img.height() {
-                            img.put_pixel(px, py, color);
+                        let px = x + (col * scale) as i32 + sx as i32;
+                        let py = y + (row as u32 * scale) as i32 + sy as i32;
+                        if px >= 0 && py >= 0 && (px as u32) < img.width() && (py as u32) < img.height() {
+                            img.put_pixel(px as u32, py as u32, color);
                         }
                     }
                 }
@@ -146,125 +53,112 @@ fn draw_digit(img: &mut RgbaImage, digit: u8, x: u32, y: u32, scale: u32, color:
     }
 }
 
-/// Generate a tray icon with the percentage displayed
-/// Returns PNG bytes
-pub fn generate_tray_icon(percentage: u8, size: u32) -> Vec<u8> {
-    // Create transparent image
+/// Professional macOS-style circular progress ring with centered number
+/// Follows Apple Human Interface Guidelines for menubar icons
+pub fn generate_tray_icon_with_ring(percentage: u8, size: u32) -> Vec<u8> {
     let mut img: RgbaImage = ImageBuffer::new(size, size);
 
-    // For macOS template icons, use black color (system will handle dark mode)
-    let text_color = Rgba([0, 0, 0, 255]);
+    let center = size as f32 / 2.0;
+    let pct = percentage.min(99);
 
-    // Determine scale based on icon size
-    let scale = if size >= 32 { 2 } else { 1 };
-
-    // Calculate digit dimensions
-    let digit_w = DIGIT_WIDTH * scale;
-    let digit_h = DIGIT_HEIGHT * scale;
-    let spacing = scale; // 1px or 2px spacing between digits
-
-    // Determine what to render
-    let percentage = percentage.min(100);
-    let digits: Vec<u8> = if percentage == 100 {
-        vec![1, 0, 0]
-    } else if percentage >= 10 {
-        vec![percentage / 10, percentage % 10]
+    // Dynamic color based on usage percentage
+    // Low (0-50%): Green, Medium (50-80%): Yellow/Orange, High (80-100%): Red
+    let (progress_r, progress_g, progress_b) = if pct <= 50 {
+        (76u8, 175u8, 80u8)    // Green - safe
+    } else if pct <= 80 {
+        (255u8, 193u8, 7u8)    // Yellow/Amber - warning
     } else {
-        vec![percentage]
+        (244u8, 67u8, 54u8)    // Red - critical
     };
 
-    // Calculate total width
-    let total_width = digits.len() as u32 * digit_w + (digits.len() as u32 - 1) * spacing;
+    // Gray for background ring
+    let gray = 128u8;
 
-    // Center the text
-    let start_x = (size - total_width) / 2;
-    let start_y = (size - digit_h) / 2;
+    // Ring dimensions - BOLD ring for maximum visibility
+    // 44x44 (@2x): ring_width = 7.0, 22x22 (@1x): ring_width = 3.5
+    let ring_width = if size >= 44 { 7.0 } else { 3.5 };
+    let outer_radius = center;  // Full edge-to-edge
+    let inner_radius = outer_radius - ring_width;
 
-    // Draw each digit
-    let mut x = start_x;
-    for digit in digits {
-        draw_digit(&mut img, digit, x, start_y, scale, text_color);
-        x += digit_w + spacing;
+    // Progress starts from top (12 o'clock), goes clockwise
+    let start_angle = -std::f32::consts::FRAC_PI_2;
+    let progress_ratio = pct as f32 / 100.0;
+    let progress_angle = start_angle + 2.0 * std::f32::consts::PI * progress_ratio;
+
+    // Draw ring with smooth anti-aliasing
+    for y in 0..size {
+        for x in 0..size {
+            let dx = x as f32 - center + 0.5;
+            let dy = y as f32 - center + 0.5;
+            let dist = (dx * dx + dy * dy).sqrt();
+
+            // Calculate ring mask with anti-aliased edges
+            let inner_edge = smooth_step(inner_radius - 0.5, inner_radius + 0.5, dist);
+            let outer_edge = smooth_step(outer_radius + 0.5, outer_radius - 0.5, dist);
+            let ring_mask = inner_edge * outer_edge;
+
+            if ring_mask > 0.01 {
+                let angle = dy.atan2(dx);
+
+                // Normalize angle to [start_angle, start_angle + 2π)
+                let normalized = if angle < start_angle {
+                    angle + 2.0 * std::f32::consts::PI
+                } else {
+                    angle
+                };
+
+                // Determine if this point is in the progress portion
+                let in_progress = normalized <= progress_angle;
+
+                let final_alpha = (255.0 * ring_mask) as u8;
+
+                if final_alpha > 0 {
+                    if in_progress {
+                        // Dynamic color based on percentage
+                        img.put_pixel(x, y, Rgba([progress_r, progress_g, progress_b, final_alpha]));
+                    } else {
+                        // Gray for background
+                        img.put_pixel(x, y, Rgba([gray, gray, gray, (100.0 * ring_mask) as u8]));
+                    }
+                }
+            }
+        }
     }
 
-    // Encode as PNG
-    let mut png_bytes: Vec<u8> = Vec::new();
-    let encoder = image::codecs::png::PngEncoder::new(&mut png_bytes);
-    encoder
-        .write_image(
-            img.as_raw(),
-            size,
-            size,
-            image::ExtendedColorType::Rgba8,
-        )
-        .expect("Failed to encode PNG");
+    // Draw centered number with LARGER scaling
+    // 44x44 (@2x): scale = 3, 22x22 (@1x): scale = 1
+    let scale = if size >= 44 { 3 } else { 1 };
+    let digit_w = DIGIT_WIDTH * scale;
+    let digit_h = DIGIT_HEIGHT * scale;
+    let spacing = if size >= 44 { 2 } else { 1 };  // 2px gap at @2x
 
-    png_bytes
+    let d1 = pct / 10;
+    let d2 = pct % 10;
+
+    let total_width = 2 * digit_w + spacing;
+    let start_x = ((size as i32 - total_width as i32) / 2).max(0);
+    let start_y = ((size as i32 - digit_h as i32) / 2).max(0);
+
+    // White text for visibility on both light and dark menubar
+    let text_color = Rgba([255, 255, 255, 255]);
+    draw_digit(&mut img, d1, start_x, start_y, scale, text_color);
+    draw_digit(&mut img, d2, start_x + (digit_w + spacing) as i32, start_y, scale, text_color);
+
+    encode_png(&img, size)
 }
 
-/// Generate a tray icon with percentage and optional visual indicator
-pub fn generate_tray_icon_with_bar(percentage: u8, size: u32) -> Vec<u8> {
-    let mut img: RgbaImage = ImageBuffer::new(size, size);
+/// Smooth step function for anti-aliasing (like GLSL smoothstep)
+fn smooth_step(edge0: f32, edge1: f32, x: f32) -> f32 {
+    let t = ((x - edge0) / (edge1 - edge0)).clamp(0.0, 1.0);
+    t * t * (3.0 - 2.0 * t)
+}
 
-    let text_color = Rgba([0, 0, 0, 255]);
-    let bar_color = Rgba([0, 0, 0, 180]);
-    let bar_bg = Rgba([0, 0, 0, 60]);
-
-    let scale = if size >= 32 { 2 } else { 1 };
-    let digit_w = DIGIT_WIDTH * scale;
-    let digit_h = DIGIT_HEIGHT * scale;
-    let spacing = scale;
-
-    let percentage = percentage.min(100);
-    let digits: Vec<u8> = if percentage == 100 {
-        vec![1, 0, 0]
-    } else if percentage >= 10 {
-        vec![percentage / 10, percentage % 10]
-    } else {
-        vec![percentage]
-    };
-
-    let total_width = digits.len() as u32 * digit_w + (digits.len() as u32 - 1) * spacing;
-
-    // Position text a bit higher to make room for bar
-    let start_x = (size - total_width) / 2;
-    let text_y = (size - digit_h - 3 * scale) / 2;
-
-    // Draw digits
-    let mut x = start_x;
-    for digit in digits {
-        draw_digit(&mut img, digit, x, text_y, scale, text_color);
-        x += digit_w + spacing;
-    }
-
-    // Draw progress bar at bottom
-    let bar_height = scale;
-    let bar_y = size - bar_height - scale;
-    let bar_margin = 2 * scale;
-    let bar_width = size - 2 * bar_margin;
-    let filled_width = (bar_width as f32 * percentage as f32 / 100.0) as u32;
-
-    // Draw bar background
-    for bx in bar_margin..(bar_margin + bar_width) {
-        for by in bar_y..(bar_y + bar_height) {
-            img.put_pixel(bx, by, bar_bg);
-        }
-    }
-
-    // Draw filled portion
-    for bx in bar_margin..(bar_margin + filled_width) {
-        for by in bar_y..(bar_y + bar_height) {
-            img.put_pixel(bx, by, bar_color);
-        }
-    }
-
-    // Encode as PNG
+fn encode_png(img: &RgbaImage, size: u32) -> Vec<u8> {
     let mut png_bytes: Vec<u8> = Vec::new();
     let encoder = image::codecs::png::PngEncoder::new(&mut png_bytes);
     encoder
         .write_image(img.as_raw(), size, size, image::ExtendedColorType::Rgba8)
         .expect("Failed to encode PNG");
-
     png_bytes
 }
 
@@ -273,20 +167,14 @@ mod tests {
     use super::*;
 
     #[test]
-    fn test_generate_icon_16() {
-        let bytes = generate_tray_icon(50, 16);
+    fn test_generate_ring_44() {
+        let bytes = generate_tray_icon_with_ring(75, 44);
         assert!(!bytes.is_empty());
     }
 
     #[test]
-    fn test_generate_icon_32() {
-        let bytes = generate_tray_icon(100, 32);
-        assert!(!bytes.is_empty());
-    }
-
-    #[test]
-    fn test_generate_icon_with_bar() {
-        let bytes = generate_tray_icon_with_bar(75, 32);
+    fn test_generate_ring_22() {
+        let bytes = generate_tray_icon_with_ring(50, 22);
         assert!(!bytes.is_empty());
     }
 }

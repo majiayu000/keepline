@@ -1,4 +1,4 @@
-import { useEffect, useState, useCallback } from 'react';
+import { useEffect, useState, useCallback, useRef } from 'react';
 import { invoke } from '@tauri-apps/api/core';
 import { openUrl } from '@tauri-apps/plugin-opener';
 import { exit } from '@tauri-apps/plugin-process';
@@ -25,6 +25,7 @@ interface QuotaData {
 }
 
 const THEME_STORAGE_KEY = 'claude-quota-theme';
+const DOCK_HIDDEN_KEY = 'claude-quota-dock-hidden';
 
 function getSavedTheme(): ThemeName {
   try {
@@ -34,6 +35,13 @@ function getSavedTheme(): ThemeName {
     }
   } catch {}
   return 'light';
+}
+
+function getSavedDockHidden(): boolean {
+  try {
+    return localStorage.getItem(DOCK_HIDDEN_KEY) === 'true';
+  } catch {}
+  return true; // Default: hide dock icon
 }
 
 function formatResetTime(resetTime?: string): string {
@@ -63,6 +71,31 @@ export default function App() {
   const [error, setError] = useState<string | null>(null);
   const [theme, setTheme] = useState<ThemeName>(getSavedTheme);
   const [lastUpdated, setLastUpdated] = useState<Date | null>(null);
+  const [dockHidden, setDockHidden] = useState<boolean>(getSavedDockHidden);
+  const containerRef = useRef<HTMLDivElement>(null);
+
+  // Auto-resize window based on content
+  useEffect(() => {
+    const updateHeight = async () => {
+      if (containerRef.current) {
+        const height = containerRef.current.scrollHeight + 24; // Add padding
+        try {
+          await invoke('resize_window', { height: Math.min(height, 600) });
+        } catch (err) {
+          console.error('Failed to resize window:', err);
+        }
+      }
+    };
+
+    // Small delay to ensure content is rendered
+    const timer = setTimeout(updateHeight, 100);
+    return () => clearTimeout(timer);
+  }, [quota, error, loading]);
+
+  // Apply dock visibility on mount and change
+  useEffect(() => {
+    invoke('set_dock_visibility', { visible: !dockHidden }).catch(console.error);
+  }, [dockHidden]);
 
   const fetchQuota = useCallback(async () => {
     try {
@@ -107,6 +140,16 @@ export default function App() {
     } catch {}
   }, []);
 
+  const handleDockToggle = useCallback(() => {
+    setDockHidden((prev) => {
+      const newValue = !prev;
+      try {
+        localStorage.setItem(DOCK_HIDDEN_KEY, String(newValue));
+      } catch {}
+      return newValue;
+    });
+  }, []);
+
   const handleRefresh = () => {
     fetchQuota();
   };
@@ -129,14 +172,24 @@ export default function App() {
 
   return (
     <div className={`app theme-${theme}`}>
-      <div className="container">
+      <div className="container" ref={containerRef}>
         <StatusHeader
           connected={quota?.connected ?? false}
           loading={loading}
           lastUpdated={lastUpdated ?? undefined}
         />
 
-        <ThemeSelector currentTheme={theme} onThemeChange={handleThemeChange} />
+        <div className="settings-row">
+          <ThemeSelector currentTheme={theme} onThemeChange={handleThemeChange} />
+          <label className="dock-toggle">
+            <input
+              type="checkbox"
+              checked={dockHidden}
+              onChange={handleDockToggle}
+            />
+            <span className="toggle-label">Hide Dock Icon</span>
+          </label>
+        </div>
 
         {error && (
           <div className="error-banner">

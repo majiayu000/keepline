@@ -14,7 +14,9 @@
       {
         "title": "Claude Quota Monitor",
         "width": 320,
-        "height": 480,
+        "minWidth": 280,
+        "height": 200,
+        "minHeight": 100,
         "resizable": false,
         "decorations": false,
         "transparent": true,
@@ -23,10 +25,6 @@
         "skipTaskbar": true
       }
     ],
-    "trayIcon": {
-      "iconPath": "icons/trayTemplate.png",
-      "iconAsTemplate": true
-    },
     "security": {
       "csp": null
     },

@@ -182,11 +182,11 @@
   padding: 0;
 }
 
-body {
+html, body {
+  background: transparent;
   font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
   font-size: 13px;
   line-height: 1.4;
-  background: var(--bg-primary);
   color: var(--text-primary);
   overflow: hidden;
 }
@@ -194,6 +194,9 @@ body {
 .app {
   min-height: 100vh;
   background: var(--bg-primary);
+  border-radius: 12px;
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.15), 0 2px 8px rgba(0, 0, 0, 0.1);
+  overflow: hidden;
   transition: background-color 0.2s ease, color 0.2s ease;
 }
 
@@ -250,14 +253,45 @@ body {
   margin-top: 4px;
 }
 
+/* Settings Row */
+.settings-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 8px 0;
+  border-bottom: 1px solid var(--border-color);
+  margin-bottom: 4px;
+}
+
 /* Theme Selector */
 .theme-selector {
   display: flex;
   gap: 6px;
-  padding: 8px 0;
-  border-bottom: 1px solid var(--border-color);
-  margin-bottom: 4px;
   overflow-x: auto;
+  flex-shrink: 0;
+}
+
+/* Dock Toggle */
+.dock-toggle {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  cursor: pointer;
+  font-size: 11px;
+  color: var(--text-secondary);
+  white-space: nowrap;
+}
+
+.dock-toggle input[type="checkbox"] {
+  width: 14px;
+  height: 14px;
+  accent-color: var(--accent-color);
+  cursor: pointer;
+}
+
+.toggle-label {
+  user-select: none;
 }
 
 .theme-btn {

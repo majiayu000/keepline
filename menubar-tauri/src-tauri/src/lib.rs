@@ -5,8 +5,9 @@ use std::process::Command;
 use std::sync::Mutex;
 use tauri::{
     image::Image,
+    menu::{MenuBuilder, MenuItemBuilder},
     tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent, TrayIconId},
-    AppHandle, Manager, State,
+    AppHandle, LogicalSize, Manager, State,
 };
 use window_vibrancy::{apply_vibrancy, NSVisualEffectMaterial};
 
@@ -173,6 +174,36 @@ async fn get_quota() -> Result<QuotaData, String> {
     }
 }
 
+// Resize window to fit content
+#[tauri::command]
+async fn resize_window(app: AppHandle, height: f64) -> Result<(), String> {
+    if let Some(window) = app.get_webview_window("main") {
+        let size = LogicalSize::new(320.0, height);
+        window.set_size(size).map_err(|e| e.to_string())?;
+    }
+    Ok(())
+}
+
+// Hide or show dock icon (macOS only)
+#[tauri::command]
+async fn set_dock_visibility(visible: bool) -> Result<(), String> {
+    #[cfg(target_os = "macos")]
+    {
+        use cocoa::appkit::{NSApplication, NSApplicationActivationPolicy};
+        use cocoa::base::nil;
+
+        unsafe {
+            let app = NSApplication::sharedApplication(nil);
+            if visible {
+                app.setActivationPolicy_(NSApplicationActivationPolicy::NSApplicationActivationPolicyRegular);
+            } else {
+                app.setActivationPolicy_(NSApplicationActivationPolicy::NSApplicationActivationPolicyAccessory);
+            }
+        }
+    }
+    Ok(())
+}
+
 // Update tray icon with percentage
 #[tauri::command]
 async fn update_tray_icon(
@@ -180,6 +211,8 @@ async fn update_tray_icon(
     tray_state: State<'_, TrayState>,
     percentage: u8,
 ) -> Result<(), String> {
+    println!("[Tray] Updating icon with percentage: {}", percentage);
+
     let tray_id = {
         let guard = tray_state.tray_id.lock().map_err(|e| e.to_string())?;
         guard.clone()
@@ -187,16 +220,31 @@ async fn update_tray_icon(
 
     if let Some(id) = tray_id {
         if let Some(tray) = app.tray_by_id(&id) {
-            // Generate icon with percentage (32x32 for Retina, will be scaled down)
-            let icon_bytes = tray_icon::generate_tray_icon_with_bar(percentage, 32);
+            // Generate ring icon with number (44x44 for Retina displays)
+            let icon_bytes = tray_icon::generate_tray_icon_with_ring(percentage, 44);
+            println!("[Tray] Generated ring icon: {} bytes", icon_bytes.len());
 
             // Create Tauri image from PNG bytes
-            let icon = Image::from_bytes(&icon_bytes).map_err(|e| e.to_string())?;
+            let icon = Image::from_bytes(&icon_bytes).map_err(|e| {
+                println!("[Tray] Error creating image: {}", e);
+                e.to_string()
+            })?;
 
             // Update tray icon
-            tray.set_icon(Some(icon)).map_err(|e| e.to_string())?;
-            tray.set_icon_as_template(true).map_err(|e| e.to_string())?;
+            tray.set_icon(Some(icon)).map_err(|e| {
+                println!("[Tray] Error setting icon: {}", e);
+                e.to_string()
+            })?;
+
+            // Disable template mode to show colored icon
+            tray.set_icon_as_template(false).map_err(|e| e.to_string())?;
+
+            println!("[Tray] Icon updated successfully");
+        } else {
+            println!("[Tray] Tray not found by ID");
         }
+    } else {
+        println!("[Tray] No tray ID stored");
     }
 
     Ok(())
@@ -227,18 +275,30 @@ pub fn run() {
         .manage(TrayState {
             tray_id: Mutex::new(None),
         })
-        .invoke_handler(tauri::generate_handler![get_quota, update_tray_icon])
+        .invoke_handler(tauri::generate_handler![get_quota, update_tray_icon, resize_window, set_dock_visibility])
         .setup(|app| {
-            // Generate initial icon with "?" or 0%
-            let initial_icon_bytes = tray_icon::generate_tray_icon(0, 32);
+            // Generate initial ring icon showing 0%
+            let initial_icon_bytes = tray_icon::generate_tray_icon_with_ring(0, 44);
             let initial_icon = Image::from_bytes(&initial_icon_bytes)
                 .expect("Failed to create initial icon");
+            println!("[Tray] Created initial ring icon: {} bytes", initial_icon_bytes.len());
+
+            // Create right-click menu
+            let quit_item = MenuItemBuilder::with_id("quit", "Quit").build(app)?;
+            let menu = MenuBuilder::new(app).items(&[&quit_item]).build()?;
 
             // Setup system tray
             let tray = TrayIconBuilder::new()
                 .icon(initial_icon)
-                .icon_as_template(true)
+                .icon_as_template(false)
                 .tooltip("Claude Quota Monitor")
+                .menu(&menu)
+                .show_menu_on_left_click(false)
+                .on_menu_event(|app, event| {
+                    if event.id().as_ref() == "quit" {
+                        app.exit(0);
+                    }
+                })
                 .on_tray_icon_event(|tray, event| {
                     if let TrayIconEvent::Click {
                         button: MouseButton::Left,
@@ -288,7 +348,7 @@ pub fn run() {
             if let Some(window) = app.get_webview_window("main") {
                 #[cfg(target_os = "macos")]
                 {
-                    apply_vibrancy(&window, NSVisualEffectMaterial::Popover, None, Some(12.0))
+                    apply_vibrancy(&window, NSVisualEffectMaterial::Popover, None, Some(8.0))
                         .expect("Failed to apply vibrancy");
                 }
 
