@@ -256,9 +256,8 @@ html, body {
 /* Settings Row */
 .settings-row {
   display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 12px;
+  flex-direction: column;
+  gap: 8px;
   padding: 8px 0;
   border-bottom: 1px solid var(--border-color);
   margin-bottom: 4px;
@@ -280,7 +279,6 @@ html, body {
   cursor: pointer;
   font-size: 11px;
   color: var(--text-secondary);
-  white-space: nowrap;
 }
 
 .dock-toggle input[type="checkbox"] {

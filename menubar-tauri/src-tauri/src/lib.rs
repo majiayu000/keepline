@@ -186,19 +186,15 @@ async fn resize_window(app: AppHandle, height: f64) -> Result<(), String> {
 
 // Hide or show dock icon (macOS only)
 #[tauri::command]
-async fn set_dock_visibility(visible: bool) -> Result<(), String> {
+async fn set_dock_visibility(app: AppHandle, visible: bool) -> Result<(), String> {
     #[cfg(target_os = "macos")]
     {
-        use cocoa::appkit::{NSApplication, NSApplicationActivationPolicy};
-        use cocoa::base::nil;
-
-        unsafe {
-            let app = NSApplication::sharedApplication(nil);
-            if visible {
-                app.setActivationPolicy_(NSApplicationActivationPolicy::NSApplicationActivationPolicyRegular);
-            } else {
-                app.setActivationPolicy_(NSApplicationActivationPolicy::NSApplicationActivationPolicyAccessory);
-            }
+        // Use Tauri's activation policy API
+        use tauri::ActivationPolicy;
+        if visible {
+            let _ = app.set_activation_policy(ActivationPolicy::Regular);
+        } else {
+            let _ = app.set_activation_policy(ActivationPolicy::Accessory);
         }
     }
     Ok(())
