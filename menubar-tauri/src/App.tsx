@@ -71,6 +71,7 @@ export default function App() {
   const [theme, setTheme] = useState<ThemeName>(getSavedTheme);
   const [lastUpdated, setLastUpdated] = useState<Date | null>(null);
   const [dockHidden, setDockHidden] = useState<boolean>(getSavedDockHidden);
+  const [toast, setToast] = useState<string | null>(null);
   const containerRef = useRef<HTMLDivElement>(null);
 
   // Auto-resize window based on content
@@ -154,7 +155,8 @@ export default function App() {
   };
 
   const handleOpenDashboard = () => {
-    alert('Under Development');
+    setToast('Under Development');
+    setTimeout(() => setToast(null), 2000);
   };
 
   const handleQuit = async () => {
@@ -167,6 +169,7 @@ export default function App() {
 
   return (
     <div className={`app theme-${theme}`}>
+      {toast && <div className="toast">{toast}</div>}
       <div className="container" ref={containerRef}>
         <StatusHeader
           connected={quota?.connected ?? false}
