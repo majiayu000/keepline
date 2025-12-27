@@ -1,6 +1,5 @@
 import { useEffect, useState, useCallback, useRef } from 'react';
 import { invoke } from '@tauri-apps/api/core';
-import { openUrl } from '@tauri-apps/plugin-opener';
 import { exit } from '@tauri-apps/plugin-process';
 import QuotaCard from './components/QuotaCard';
 import StatusHeader from './components/StatusHeader';
@@ -154,12 +153,8 @@ export default function App() {
     fetchQuota();
   };
 
-  const handleOpenDashboard = async () => {
-    try {
-      await openUrl('http://localhost:3377');
-    } catch (err) {
-      console.error('Failed to open dashboard:', err);
-    }
+  const handleOpenDashboard = () => {
+    alert('Under Development');
   };
 
   const handleQuit = async () => {
