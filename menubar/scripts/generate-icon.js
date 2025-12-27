@@ -1,24 +1,12 @@
 /**
- * Simple Icon Generator for Claude Quota Menubar
+ * Cross-platform Icon Generator for Claude Quota Menubar
  *
- * Creates a basic menubar icon using Node.js canvas
+ * Creates icons for macOS, Windows, and Linux
  * Run: node scripts/generate-icon.js
- *
- * For production, replace with a properly designed icon.
  */
 
 const fs = require('fs');
 const path = require('path');
-
-// Simple 16x16 PNG icon data (a gray circle - Claude-like)
-// This is a minimal valid PNG file
-const createSimpleIcon = () => {
-  // 16x16 gray circle icon encoded as base64 PNG
-  // This is a pre-generated minimal icon
-  const iconBase64 = 'iVBORw0KGgoAAAANSUhEUgAAABAAAAAQCAYAAAAf8/9hAAAABHNCSVQICAgIfAhkiAAAAAlwSFlzAAAAdgAAAHYBTnsmCAAAABl0RVh0U29mdHdhcmUAd3d3Lmlua3NjYXBlLm9yZ5vuPBoAAADVSURBVDiNpZMxDoMwDEWfO3ABJDqyZGNkZOQQnKUrJ+AEnIATsHIFRkZGJE5QJHfAwlBRqkrtL0V2/vyTZ8cGRIRVkXEFALj7AgC4ewQAiAgA4O4LAODuEQAgIgCAuy8AgLtHAICIAADuvgAA7h4BACICALj7AgC4ewQAiAgA4O4LAODuEQAgIgCAuy8AgLtHAICIAADuvgAA7h4BACICALj7AgC4ewQAiAgA4O4LAODuEQAgIgCAuy8AgLtHAICIAGA/wl/8A34RAMDdlxXyAweCSMwC4TQ8AAAAAElFTkSuQmCC';
-
-  return Buffer.from(iconBase64, 'base64');
-};
 
 // Create assets directory if it doesn't exist
 const assetsDir = path.join(__dirname, '../assets');
@@ -26,9 +14,80 @@ if (!fs.existsSync(assetsDir)) {
   fs.mkdirSync(assetsDir, { recursive: true });
 }
 
-// Write the icon
-const iconPath = path.join(assetsDir, 'iconTemplate.png');
-fs.writeFileSync(iconPath, createSimpleIcon());
+// 16x16 macOS template icon (monochrome for dark/light mode support)
+const iconTemplate16 = Buffer.from(
+  'iVBORw0KGgoAAAANSUhEUgAAABAAAAAQCAYAAAAf8/9hAAAABHNCSVQICAgIfAhkiAAAAAlwSFlzAAAAdgAAAHYBTnsmCAAAABl0RVh0U29mdHdhcmUAd3d3Lmlua3NjYXBlLm9yZ5vuPBoAAADVSURBVDiNpZMxDoMwDEWfO3ABJDqyZGNkZOQQnKUrJ+AEnIATsHIFRkZGJE5QJHfAwlBRqkrtL0V2/vyTZ8cGRIRVkXEFALj7AgC4ewQAiAgA4O4LAODuEQAgIgCAuy8AgLtHAICIAADuvgAA7h4BACICALj7AgC4ewQAiAgA4O4LAODuEQAgIgCAuy8AgLtHAICIAADuvgAA7h4BACICALj7AgC4ewQAiAgA4O4LAODuEQAgIgCAuy8AgLtHAICIAGA/wl/8A34RAMDdlxXyAweCSMwC4TQ8AAAAAElFTkSuQmCC',
+  'base64'
+);
 
-console.log(`Icon created at: ${iconPath}`);
-console.log('Note: Replace this with a properly designed icon for production.');
+// 32x32 macOS template icon for Retina (@2x)
+const iconTemplate32 = Buffer.from(
+  'iVBORw0KGgoAAAANSUhEUgAAACAAAAAgCAYAAABzenr0AAAABHNCSVQICAgIfAhkiAAAAAlwSFlzAAAA7AAAAOwBeShxvQAAABl0RVh0U29mdHdhcmUAd3d3Lmlua3NjYXBlLm9yZ5vuPBoAAAGCSURBVFiF7ZYxTsNAEEXfOAcgRUJKR0NDQUNDQ09NTU9DQ0NDTU1NTU2BhJT4AIgi8TYEseyuZ9dr4wbxpJHWmv/n786OHZEkKomKVgEA7r4EgLvPAQARIQDcfQkAd58DACJC' +
+  'ALj7EgDuPgcARIQAcPclANx9DgCICAHg7ksAuPscABARAsDdlwBw9zkAICIEgLsvAeDucwBARAiA/QhfyR/wMwGAuy8BsI/wWwT4LQB+i4A/A0BECIDdCP/yB3ybAPclAN4bYO8FxN4L+AsAPgrAZwLsbYB9FoA/A8CeBtn7APsI+CwAuyzwFQH2VgD2UQB2DwC7B2DvBdjLAPYywF4G2MsA+ywAuxhg7wXYxQD7LMC+CrCXAfZZgL0MsJcB9lmAvQyw' +
+  'zwLsqwB7GWCfBdjLAPsswN4KsI8CsMsC9lWAvRVgHwVglwXsqwB7K8A+CsAuC9hXAfZWgH0UgF0WsK8C7K0A+ygAuyxgXwXYWwH2UQB2WeC/AvBRAHZZ4CsC7K0A+ygAAPZZIJnUgCsqBADcfQ6Aewd/hPT1QwVexgAAAABJRU5ErkJggg==',
+  'base64'
+);
+
+// 256x256 icon for Windows/Linux (Claude-inspired design - orange/coral gradient circle)
+// This is a simple solid color icon - for production, use a properly designed icon
+const icon256 = Buffer.from(
+  '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',
+  'base64'
+);
+
+// Write macOS template icons
+const iconTemplatePath = path.join(assetsDir, 'iconTemplate.png');
+const iconTemplate2xPath = path.join(assetsDir, 'iconTemplate@2x.png');
+
+fs.writeFileSync(iconTemplatePath, iconTemplate16);
+console.log(`macOS icon created: ${iconTemplatePath}`);
+
+fs.writeFileSync(iconTemplate2xPath, iconTemplate32);
+console.log(`macOS Retina icon created: ${iconTemplate2xPath}`);
+
+// Write Linux/Windows PNG icon (256x256)
+const iconPngPath = path.join(assetsDir, 'icon.png');
+fs.writeFileSync(iconPngPath, icon256);
+console.log(`Linux icon created: ${iconPngPath}`);
+
+// For Windows .ico, we need to convert PNG to ICO
+// This requires additional tooling. For now, copy the PNG as a placeholder
+// In production, use: npx png-to-ico assets/icon.png > assets/icon.ico
+const iconIcoPath = path.join(assetsDir, 'icon.ico');
+if (!fs.existsSync(iconIcoPath)) {
+  // Create a simple .ico file structure (single 256x256 PNG)
+  // ICO format: header (6 bytes) + entry (16 bytes) + PNG data
+  const pngData = icon256;
+  const header = Buffer.alloc(6);
+  header.writeUInt16LE(0, 0);      // Reserved
+  header.writeUInt16LE(1, 2);      // Type: 1 = ICO
+  header.writeUInt16LE(1, 4);      // Number of images
+
+  const entry = Buffer.alloc(16);
+  entry.writeUInt8(0, 0);          // Width (0 = 256)
+  entry.writeUInt8(0, 1);          // Height (0 = 256)
+  entry.writeUInt8(0, 2);          // Color palette
+  entry.writeUInt8(0, 3);          // Reserved
+  entry.writeUInt16LE(1, 4);       // Color planes
+  entry.writeUInt16LE(32, 6);      // Bits per pixel
+  entry.writeUInt32LE(pngData.length, 8);  // Size of image data
+  entry.writeUInt32LE(22, 12);     // Offset to image data (6 + 16)
+
+  const icoBuffer = Buffer.concat([header, entry, pngData]);
+  fs.writeFileSync(iconIcoPath, icoBuffer);
+  console.log(`Windows icon created: ${iconIcoPath}`);
+}
+
+console.log('\nAll icons generated successfully!');
+console.log('Note: For production, replace these with properly designed icons.');
