@@ -60,7 +60,7 @@ const mb = menubar({
   icon: getIconPath(),
   browserWindow: {
     width: 320,
-    height: 420,
+    height: 480,
     resizable: false,
     movable: false,
     minimizable: false,

@@ -2,6 +2,7 @@ import React, { useEffect, useState, useCallback } from 'react';
 import QuotaCard from './components/QuotaCard';
 import StatusHeader from './components/StatusHeader';
 import ActionButtons from './components/ActionButtons';
+import ThemeSelector, { ThemeName } from './components/ThemeSelector';
 
 interface QuotaLimit {
   used: number;
@@ -22,11 +23,25 @@ interface QuotaData {
   error?: string;
 }
 
+// Storage key for theme preference
+const THEME_STORAGE_KEY = 'claude-quota-theme';
+
+// Get saved theme or default based on system preference
+function getSavedTheme(): ThemeName {
+  try {
+    const saved = localStorage.getItem(THEME_STORAGE_KEY);
+    if (saved && ['light', 'dark', 'claude', 'claude-dark', 'minimal', 'minimal-dark', 'ocean'].includes(saved)) {
+      return saved as ThemeName;
+    }
+  } catch {}
+  return 'light';
+}
+
 export default function App() {
   const [quota, setQuota] = useState<QuotaData | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [theme, setTheme] = useState<'dark' | 'light'>('light');
+  const [theme, setTheme] = useState<ThemeName>(getSavedTheme);
 
   const fetchQuota = useCallback(async () => {
     try {
@@ -51,9 +66,6 @@ export default function App() {
     // Initial fetch
     fetchQuota();
 
-    // Get theme
-    window.electronAPI.getTheme().then(setTheme);
-
     // Listen for refresh events
     const unsubscribe = window.electronAPI.onRefreshQuota(fetchQuota);
 
@@ -61,6 +73,14 @@ export default function App() {
       unsubscribe();
     };
   }, [fetchQuota]);
+
+  // Handle theme change
+  const handleThemeChange = useCallback((newTheme: ThemeName) => {
+    setTheme(newTheme);
+    try {
+      localStorage.setItem(THEME_STORAGE_KEY, newTheme);
+    } catch {}
+  }, []);
 
   const handleRefresh = () => {
     fetchQuota();
@@ -75,13 +95,15 @@ export default function App() {
   };
 
   return (
-    <div className={`app ${theme}`}>
+    <div className={`app theme-${theme}`}>
       <div className="container">
         <StatusHeader
           connected={quota?.connected ?? false}
           loading={loading}
           lastUpdated={quota?.lastUpdated ? new Date(quota.lastUpdated) : undefined}
         />
+
+        <ThemeSelector currentTheme={theme} onThemeChange={handleThemeChange} />
 
         {error && (
           <div className="error-banner">
