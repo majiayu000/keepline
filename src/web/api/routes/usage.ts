@@ -5,10 +5,222 @@
  */
 
 import { Hono } from 'hono';
+import path from 'path';
 import { logger } from '../../../lib/logger.js';
 import { getCostPrediction, getCostForDateRange } from '../../../services/cost.predictor.js';
 
 const app = new Hono();
+
+const CODEX_CLIENT_ID = 'app_EMoamEEZ73f0CkXaXp7hrann';
+const CODEX_USAGE_URL = 'https://chatgpt.com/backend-api/wham/usage';
+const CODEX_REFRESH_URL = 'https://auth.openai.com/oauth/token';
+
+const DEFAULT_CLIENTS_FILE = (() => {
+  const homeDir = process.env.HOME;
+  if (!homeDir) return null;
+  return path.join(homeDir, '.claude-hub', 'clients.json');
+})();
+
+const DEFAULT_CODEX_AUTH_FILE = (() => {
+  const homeDir = process.env.HOME;
+  if (!homeDir) return null;
+  return path.join(homeDir, '.codex', 'auth.json');
+})();
+
+type CodexAuthFile = {
+  OPENAI_API_KEY?: string;
+  tokens?: {
+    id_token?: string;
+    access_token?: string;
+    refresh_token?: string;
+    account_id?: string;
+  };
+  last_refresh?: string;
+};
+
+function decodeJwtPayload(token: string): Record<string, unknown> | null {
+  const segments = token.split('.');
+  if (segments.length < 2) return null;
+  let base64 = segments[1].replace(/-/g, '+').replace(/_/g, '/');
+  const padLength = (4 - (base64.length % 4)) % 4;
+  base64 += '='.repeat(padLength);
+  try {
+    const payload = Buffer.from(base64, 'base64').toString('utf8');
+    return JSON.parse(payload) as Record<string, unknown>;
+  } catch {
+    return null;
+  }
+}
+
+function isTokenExpired(token: string): boolean {
+  const payload = decodeJwtPayload(token);
+  const exp = typeof payload?.exp === 'number' ? payload.exp : null;
+  if (!exp) return true;
+  const expiryMs = exp * 1000;
+  return expiryMs < Date.now() + 60_000;
+}
+
+async function refreshCodexAccessToken(refreshToken: string): Promise<string | null> {
+  const response = await fetch(CODEX_REFRESH_URL, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      Accept: 'application/json',
+    },
+    body: JSON.stringify({
+      grant_type: 'refresh_token',
+      refresh_token: refreshToken,
+      client_id: CODEX_CLIENT_ID,
+    }),
+  });
+
+  if (!response.ok) {
+    return null;
+  }
+
+  const data = await response.json() as { access_token?: string };
+  return data.access_token ?? null;
+}
+
+function parseCodexUsageResponse(json: Record<string, unknown>) {
+  const rateLimit = typeof json.rate_limit === 'object' && json.rate_limit ? json.rate_limit as Record<string, unknown> : {};
+  const primaryWindow = typeof rateLimit.primary_window === 'object' && rateLimit.primary_window ? rateLimit.primary_window as Record<string, unknown> : {};
+  const secondaryWindow = typeof rateLimit.secondary_window === 'object' && rateLimit.secondary_window ? rateLimit.secondary_window as Record<string, unknown> : {};
+
+  const sessionUsed = typeof primaryWindow.used_percent === 'number' ? primaryWindow.used_percent : 0;
+  const weeklyUsed = typeof secondaryWindow.used_percent === 'number' ? secondaryWindow.used_percent : 0;
+  const sessionResetAt = typeof primaryWindow.reset_at === 'number'
+    ? new Date(primaryWindow.reset_at * 1000).toISOString()
+    : null;
+  const weeklyResetAt = typeof secondaryWindow.reset_at === 'number'
+    ? new Date(secondaryWindow.reset_at * 1000).toISOString()
+    : null;
+
+  return {
+    session: {
+      utilization: sessionUsed,
+      resets_at: sessionResetAt,
+    },
+    weekly: {
+      utilization: weeklyUsed,
+      resets_at: weeklyResetAt,
+    },
+    limit_reached: typeof rateLimit.limit_reached === 'boolean' ? rateLimit.limit_reached : undefined,
+    plan_type: typeof json.plan_type === 'string' ? json.plan_type : undefined,
+  };
+}
+
+function normalizeClients(raw: unknown) {
+  const payload = Array.isArray(raw) ? raw : (raw && typeof raw === 'object' && 'clients' in raw ? (raw as { clients?: unknown }).clients : []);
+  if (!Array.isArray(payload)) return [];
+
+  return payload
+    .filter((client): client is Record<string, unknown> => !!client && typeof client === 'object')
+    .map((client) => ({
+      id: typeof client.id === 'string' ? client.id : '',
+      name: typeof client.name === 'string' ? client.name : '',
+      kind: typeof client.kind === 'string' ? client.kind : undefined,
+      status: typeof client.status === 'string' ? client.status : undefined,
+      note: typeof client.note === 'string' ? client.note : undefined,
+      quota_windows: Array.isArray(client.quota_windows)
+        ? client.quota_windows
+            .filter((window): window is Record<string, unknown> => !!window && typeof window === 'object')
+            .map((window) => ({
+              id: typeof window.id === 'string' ? window.id : undefined,
+              label: typeof window.label === 'string' ? window.label : '',
+              utilization: typeof window.utilization === 'number' ? window.utilization : 0,
+              resets_at: typeof window.resets_at === 'string' || window.resets_at === null ? window.resets_at : null,
+            }))
+        : undefined,
+    }))
+    .filter((client) => client.id && client.name);
+}
+
+// GET /api/clients - Load optional client definitions for multi-client quota display
+app.get('/clients', async (c) => {
+  try {
+    const clientsFile = process.env.CLAUDE_HUB_CLIENTS_FILE || DEFAULT_CLIENTS_FILE;
+    if (!clientsFile) {
+      return c.json({ success: true, data: { clients: [], source_path: null } });
+    }
+
+    const file = Bun.file(clientsFile);
+    if (!await file.exists()) {
+      return c.json({ success: true, data: { clients: [], source_path: clientsFile } });
+    }
+
+    const contents = await file.text();
+    const parsed = JSON.parse(contents);
+    const clients = normalizeClients(parsed);
+
+    return c.json({ success: true, data: { clients, source_path: clientsFile } });
+  } catch (error) {
+    const errorMessage = error instanceof Error ? error.message : String(error);
+    logger.error('Failed to load clients', { message: errorMessage });
+    return c.json({ success: false, error: 'Failed to load clients' }, 500);
+  }
+});
+
+// GET /api/codex/quota - Get Codex CLI quota from ~/.codex/auth.json
+app.get('/codex/quota', async (c) => {
+  try {
+    const authPath = process.env.CODEX_AUTH_PATH || DEFAULT_CODEX_AUTH_FILE;
+    if (!authPath) {
+      return c.json({ success: false, error: 'Codex auth path not available' }, 500);
+    }
+
+    const authFile = Bun.file(authPath);
+    if (!await authFile.exists()) {
+      return c.json({ success: false, error: 'Codex auth file not found' }, 404);
+    }
+
+    const raw = await authFile.text();
+    const authData = JSON.parse(raw) as CodexAuthFile;
+    const tokens = authData.tokens;
+    if (!tokens?.access_token) {
+      return c.json({ success: false, error: 'Codex access token not found' }, 401);
+    }
+
+    let accessToken = tokens.access_token;
+    if (isTokenExpired(accessToken) && tokens.refresh_token) {
+      const refreshed = await refreshCodexAccessToken(tokens.refresh_token);
+      if (refreshed) {
+        accessToken = refreshed;
+      }
+    }
+
+    const response = await fetch(CODEX_USAGE_URL, {
+      headers: {
+        Authorization: `Bearer ${accessToken}`,
+        Accept: 'application/json',
+      },
+    });
+
+    if (!response.ok) {
+      const text = await response.text();
+      logger.error('Codex usage API failed', { status: response.status, body: text });
+      return c.json({ success: false, error: 'Failed to fetch Codex quota' }, 502);
+    }
+
+    const json = await response.json() as Record<string, unknown>;
+    const payload = parseCodexUsageResponse(json);
+    const idToken = tokens.id_token;
+    const claims = idToken ? decodeJwtPayload(idToken) : null;
+    const email = typeof claims?.email === 'string' ? claims.email : undefined;
+
+    return c.json({
+      success: true,
+      data: {
+        ...payload,
+        email,
+      },
+    });
+  } catch (error) {
+    const errorMessage = error instanceof Error ? error.message : String(error);
+    logger.error('Failed to get Codex quota', { message: errorMessage });
+    return c.json({ success: false, error: 'Failed to get Codex quota' }, 500);
+  }
+});
 
 // GET /api/quota - Get Claude Code quota/rate limits from OAuth API
 app.get('/quota', async (c) => {

@@ -16,6 +16,8 @@ import type {
   SubAgentsData,
   UsageData,
   QuotaData,
+  ClientsData,
+  CodexQuotaData,
   SessionMemory,
   MemorySummary,
   MemoryContext,
@@ -241,6 +243,24 @@ export async function fetchQuota(
   return request<QuotaData>('/quota', undefined, signal)
 }
 
+/**
+ * GET /api/codex/quota - Codex CLI rate limit quota
+ */
+export async function fetchCodexQuota(
+  signal?: AbortSignal
+): Promise<ApiResponse<CodexQuotaData>> {
+  return request<CodexQuotaData>('/codex/quota', undefined, signal)
+}
+
+/**
+ * GET /api/clients - Load optional client definitions for multi-client quota display
+ */
+export async function fetchClients(
+  signal?: AbortSignal
+): Promise<ApiResponse<ClientsData>> {
+  return request<ClientsData>('/clients', undefined, signal)
+}
+
 // ═══════════════════════════════════════════════════════════════
 // MEMORY API - Session context persistence
 // ═══════════════════════════════════════════════════════════════
@@ -359,6 +379,8 @@ export const api = {
   fetchSessionFull,
   fetchUsage,
   fetchQuota,
+  fetchClients,
+  fetchCodexQuota,
   // Memory API
   fetchMemories,
   fetchMemorySummaries,

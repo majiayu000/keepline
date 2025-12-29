@@ -146,6 +146,36 @@ export interface UsageData {
   weekly?: DailyUsage[] // Same structure as daily
 }
 
+export interface ClientQuotaWindow {
+  id?: string
+  label: string
+  utilization: number
+  resets_at: string | null
+}
+
+export interface ClientDefinition {
+  id: string
+  name: string
+  kind?: string
+  status?: string
+  note?: string
+  quota_windows?: ClientQuotaWindow[]
+}
+
+export interface ClientsData {
+  clients: ClientDefinition[]
+  source_path: string | null
+}
+
+// GET /api/codex/quota - Codex CLI rate limit quota
+export interface CodexQuotaData {
+  session: QuotaWindow
+  weekly: QuotaWindow
+  email?: string
+  plan_type?: string
+  limit_reached?: boolean
+}
+
 // GET /api/quota - Claude Code rate limit quota
 export interface QuotaWindow {
   utilization: number // Percentage used (0-100)
