@@ -11,6 +11,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Terminal app selection for session recovery workflow
 - CLI `--terminal-app` option to specify terminal for recover command
 - Enhanced terminal compatibility for session restoration
+- macOS Gatekeeper troubleshooting guide in README
 
 ### Changed
 - Improved session recovery terminal selection UI

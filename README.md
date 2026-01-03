@@ -82,6 +82,24 @@ bun run start web
 
 Open **http://localhost:3377**
 
+### macOS Security Note
+
+If you see an error like **"Claude Hub is damaged and can't be opened"** when running the desktop app, this is macOS Gatekeeper blocking unsigned apps — the app is not actually damaged.
+
+**Fix it with:**
+
+```bash
+xattr -cr /Applications/Claude\ Hub.app
+```
+
+Or if downloaded elsewhere:
+
+```bash
+xattr -cr ~/Downloads/Claude\ Hub.app
+```
+
+This removes the quarantine attribute that macOS adds to downloaded files.
+
 ---
 
 ## Features
