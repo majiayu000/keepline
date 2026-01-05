@@ -2,9 +2,10 @@ import { useEffect, useState, useCallback, useRef } from 'react';
 import { invoke } from '@tauri-apps/api/core';
 import { exit } from '@tauri-apps/plugin-process';
 import QuotaCard from './components/QuotaCard';
-import StatusHeader from './components/StatusHeader';
 import ActionButtons from './components/ActionButtons';
 import ThemeSelector, { ThemeName } from './components/ThemeSelector';
+import TabSwitcher, { TabName } from './components/TabSwitcher';
+import CodexPanel from './components/CodexPanel';
 import './styles.css';
 
 interface UsageInfo {
@@ -25,6 +26,17 @@ interface QuotaData {
 
 const THEME_STORAGE_KEY = 'claude-quota-theme';
 const DOCK_HIDDEN_KEY = 'claude-quota-dock-hidden';
+const TAB_STORAGE_KEY = 'claude-quota-tab';
+
+function getSavedTab(): TabName {
+  try {
+    const saved = localStorage.getItem(TAB_STORAGE_KEY);
+    if (saved === 'claude' || saved === 'codex') {
+      return saved;
+    }
+  } catch {}
+  return 'claude';
+}
 
 function getSavedTheme(): ThemeName {
   try {
@@ -40,7 +52,7 @@ function getSavedDockHidden(): boolean {
   try {
     return localStorage.getItem(DOCK_HIDDEN_KEY) === 'true';
   } catch {}
-  return true; // Default: hide dock icon
+  return true;
 }
 
 function formatResetTime(resetTime?: string): string {
@@ -65,73 +77,117 @@ function formatResetTime(resetTime?: string): string {
 }
 
 export default function App() {
+  // Claude state
   const [quota, setQuota] = useState<QuotaData | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
+  const [claudeLoading, setClaudeLoading] = useState(false);
+  const [claudeError, setClaudeError] = useState<string | null>(null);
+  const [claudeLoaded, setClaudeLoaded] = useState(false);
+
+  // Codex state
+  const [codexConnected, setCodexConnected] = useState(false);
+  const [codexUsagePercent, setCodexUsagePercent] = useState<number | null>(null);
+
+  // UI state
   const [theme, setTheme] = useState<ThemeName>(getSavedTheme);
-  const [lastUpdated, setLastUpdated] = useState<Date | null>(null);
   const [dockHidden, setDockHidden] = useState<boolean>(getSavedDockHidden);
   const [toast, setToast] = useState<string | null>(null);
+  const [activeTab, setActiveTab] = useState<TabName>(getSavedTab);
   const containerRef = useRef<HTMLDivElement>(null);
 
-  // Auto-resize window based on content
+  // Auto-resize window
   useEffect(() => {
     const updateHeight = async () => {
       if (containerRef.current) {
-        const height = containerRef.current.scrollHeight + 24; // Add padding
+        const height = containerRef.current.scrollHeight + 24;
         try {
-          await invoke('resize_window', { height: Math.min(height, 600) });
+          await invoke('resize_window', { height: Math.min(Math.max(height, 300), 600) });
         } catch (err) {
           console.error('Failed to resize window:', err);
         }
       }
     };
 
-    // Small delay to ensure content is rendered
-    const timer = setTimeout(updateHeight, 100);
-    return () => clearTimeout(timer);
-  }, [quota, error, loading]);
+    const timer1 = setTimeout(updateHeight, 50);
+    const timer2 = setTimeout(updateHeight, 300);
 
-  // Apply dock visibility on mount and change
+    const observer = new ResizeObserver(() => {
+      updateHeight();
+    });
+
+    if (containerRef.current) {
+      observer.observe(containerRef.current);
+    }
+
+    return () => {
+      clearTimeout(timer1);
+      clearTimeout(timer2);
+      observer.disconnect();
+    };
+  }, [activeTab, quota, codexConnected]);
+
+  // Apply dock visibility
   useEffect(() => {
     invoke('set_dock_visibility', { visible: !dockHidden }).catch(console.error);
   }, [dockHidden]);
 
-  const fetchQuota = useCallback(async () => {
+  // Update tray icon based on active tab
+  const updateTrayIcon = useCallback(async (percentage: number) => {
     try {
-      setLoading(true);
-      setError(null);
-      const data = await invoke<QuotaData>('get_quota');
-
-      if (data.error) {
-        setError(data.error);
-        setQuota(null);
-      } else {
-        setQuota(data);
-        setLastUpdated(new Date());
-
-        // Update tray icon with session percentage
-        const percentage = data.session?.percentage ?? 0;
-        try {
-          await invoke('update_tray_icon', { percentage: Math.round(percentage) });
-        } catch (iconErr) {
-          console.error('Failed to update tray icon:', iconErr);
-        }
-      }
+      await invoke('update_tray_icon', { percentage: Math.round(percentage) });
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Unknown error');
-    } finally {
-      setLoading(false);
+      console.error('Failed to update tray icon:', err);
     }
   }, []);
 
-  useEffect(() => {
-    fetchQuota();
+  // Fetch Claude quota (only when Claude tab is active)
+  const fetchClaudeQuota = useCallback(async () => {
+    try {
+      setClaudeLoading(true);
+      setClaudeError(null);
+      const data = await invoke<QuotaData>('get_quota');
 
-    // Auto-refresh every 60 seconds
-    const interval = setInterval(fetchQuota, 60000);
-    return () => clearInterval(interval);
-  }, [fetchQuota]);
+      if (data.error) {
+        setClaudeError(data.error);
+        setQuota(null);
+      } else {
+        setQuota(data);
+      }
+      setClaudeLoaded(true);
+    } catch (err) {
+      setClaudeError(err instanceof Error ? err.message : 'Unknown error');
+    } finally {
+      setClaudeLoading(false);
+    }
+  }, []);
+
+  // Load Claude data when switching to Claude tab (lazy load)
+  useEffect(() => {
+    if (activeTab === 'claude' && !claudeLoaded) {
+      fetchClaudeQuota();
+    }
+  }, [activeTab, claudeLoaded, fetchClaudeQuota]);
+
+  // Auto-refresh for active tab
+  useEffect(() => {
+    if (activeTab === 'claude') {
+      const interval = setInterval(fetchClaudeQuota, 60000);
+      return () => clearInterval(interval);
+    }
+    // Codex panel handles its own refresh
+  }, [activeTab, fetchClaudeQuota]);
+
+  // Update tray icon when active tab or data changes
+  // Tray icon shows REMAINING percentage (higher = better, like a battery)
+  useEffect(() => {
+    if (activeTab === 'claude' && quota?.session) {
+      // Claude's percentage is utilization (used), so remaining = 100 - used
+      const remaining = 100 - quota.session.percentage;
+      updateTrayIcon(remaining);
+    } else if (activeTab === 'codex' && codexUsagePercent !== null) {
+      // Codex already passes remaining percentage
+      updateTrayIcon(codexUsagePercent);
+    }
+  }, [activeTab, quota, codexUsagePercent, updateTrayIcon]);
 
   const handleThemeChange = useCallback((newTheme: ThemeName) => {
     setTheme(newTheme);
@@ -150,9 +206,19 @@ export default function App() {
     });
   }, []);
 
-  const handleRefresh = () => {
-    fetchQuota();
-  };
+  const handleTabChange = useCallback((tab: TabName) => {
+    setActiveTab(tab);
+    try {
+      localStorage.setItem(TAB_STORAGE_KEY, tab);
+    } catch {}
+  }, []);
+
+  const handleRefresh = useCallback(() => {
+    if (activeTab === 'claude') {
+      fetchClaudeQuota();
+    }
+    // Codex panel handles its own refresh via internal state
+  }, [activeTab, fetchClaudeQuota]);
 
   const handleOpenDashboard = () => {
     setToast('Under Development');
@@ -167,14 +233,20 @@ export default function App() {
     }
   };
 
+  // Callback from CodexPanel to update usage percentage for tray icon
+  const handleCodexUsageChange = useCallback((usedPercent: number | null) => {
+    setCodexUsagePercent(usedPercent);
+  }, []);
+
   return (
     <div className={`app theme-${theme}`}>
       {toast && <div className="toast">{toast}</div>}
       <div className="container" ref={containerRef}>
-        <StatusHeader
-          connected={quota?.connected ?? false}
-          loading={loading}
-          lastUpdated={lastUpdated ?? undefined}
+        <TabSwitcher
+          activeTab={activeTab}
+          onTabChange={handleTabChange}
+          claudeConnected={quota?.connected ?? false}
+          codexConnected={codexConnected}
         />
 
         <div className="settings-row">
@@ -185,80 +257,95 @@ export default function App() {
               checked={dockHidden}
               onChange={handleDockToggle}
             />
-            <span className="toggle-label">Hide Dock Icon</span>
+            <span className="toggle-label">Hide Dock</span>
           </label>
         </div>
 
-        {error && (
-          <div className="error-banner">
-            <span className="error-icon">!</span>
-            <span className="error-text">{error}</span>
-          </div>
+        {activeTab === 'claude' && (
+          <>
+            {claudeLoading && !quota && (
+              <div className="loading-state">Loading Claude quota...</div>
+            )}
+
+            {claudeError && (
+              <div className="error-banner">
+                <span className="error-icon">!</span>
+                <span className="error-text">{claudeError}</span>
+              </div>
+            )}
+
+            {!claudeError && quota && (
+              <div className="quota-list">
+                <div className="section">
+                  <div className="section-title">CURRENT SESSION</div>
+                  {quota.session ? (
+                    <QuotaCard
+                      label="5-Hour Usage"
+                      percentage={Math.round(quota.session.percentage)}
+                      resetsIn={formatResetTime(quota.session.resetTime)}
+                    />
+                  ) : (
+                    <div className="no-data">No session data</div>
+                  )}
+                </div>
+
+                <div className="section">
+                  <div className="section-title">WEEKLY LIMITS</div>
+
+                  {quota.weeklyTotal && (
+                    <QuotaCard
+                      label="7-Day Usage"
+                      percentage={Math.round(quota.weeklyTotal.percentage)}
+                      resetsIn={formatResetTime(quota.weeklyTotal.resetTime)}
+                    />
+                  )}
+
+                  {quota.weeklyOpus && (
+                    <QuotaCard
+                      label="Opus (7-Day)"
+                      percentage={Math.round(quota.weeklyOpus.percentage)}
+                      resetsIn={formatResetTime(quota.weeklyOpus.resetTime)}
+                    />
+                  )}
+
+                  {quota.weeklySonnet && (
+                    <QuotaCard
+                      label="Sonnet (7-Day)"
+                      percentage={Math.round(quota.weeklySonnet.percentage)}
+                      resetsIn={formatResetTime(quota.weeklySonnet.resetTime)}
+                    />
+                  )}
+
+                  {!quota.weeklyTotal && !quota.weeklyOpus && !quota.weeklySonnet && (
+                    <div className="no-data">No weekly data</div>
+                  )}
+                </div>
+              </div>
+            )}
+
+            {!claudeError && !quota && !claudeLoading && (
+              <div className="empty-state">
+                <p>Unable to load quota data</p>
+                <button onClick={handleRefresh} className="retry-btn">
+                  Try Again
+                </button>
+              </div>
+            )}
+          </>
         )}
 
-        {!error && quota && (
-          <div className="quota-list">
-            <div className="section">
-              <div className="section-title">CURRENT SESSION</div>
-              {quota.session ? (
-                <QuotaCard
-                  label="5-Hour Usage"
-                  percentage={Math.round(quota.session.percentage)}
-                  resetsIn={formatResetTime(quota.session.resetTime)}
-                />
-              ) : (
-                <div className="no-data">No session data</div>
-              )}
-            </div>
-
-            <div className="section">
-              <div className="section-title">WEEKLY LIMITS</div>
-
-              {quota.weeklyTotal && (
-                <QuotaCard
-                  label="7-Day Usage"
-                  percentage={Math.round(quota.weeklyTotal.percentage)}
-                  resetsIn={formatResetTime(quota.weeklyTotal.resetTime)}
-                />
-              )}
-
-              {quota.weeklyOpus && (
-                <QuotaCard
-                  label="Opus (7-Day)"
-                  percentage={Math.round(quota.weeklyOpus.percentage)}
-                  resetsIn={formatResetTime(quota.weeklyOpus.resetTime)}
-                />
-              )}
-
-              {quota.weeklySonnet && (
-                <QuotaCard
-                  label="Sonnet (7-Day)"
-                  percentage={Math.round(quota.weeklySonnet.percentage)}
-                  resetsIn={formatResetTime(quota.weeklySonnet.resetTime)}
-                />
-              )}
-
-              {!quota.weeklyTotal && !quota.weeklyOpus && !quota.weeklySonnet && (
-                <div className="no-data">No weekly data</div>
-              )}
-            </div>
-          </div>
-        )}
-
-        {!error && !quota && !loading && (
-          <div className="empty-state">
-            <p>Unable to load quota data</p>
-            <button onClick={handleRefresh} className="retry-btn">
-              Try Again
-            </button>
-          </div>
+        {activeTab === 'codex' && (
+          <CodexPanel
+            onConnectionChange={setCodexConnected}
+            onUsageChange={handleCodexUsageChange}
+          />
         )}
 
         <ActionButtons
           onRefresh={handleRefresh}
           onDashboard={handleOpenDashboard}
           onQuit={handleQuit}
-          loading={loading}
+          loading={claudeLoading}
         />
       </div>
     </div>
