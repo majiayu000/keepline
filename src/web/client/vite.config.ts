@@ -21,6 +21,10 @@ export default defineConfig({
         target: 'http://localhost:3377',
         changeOrigin: true,
       },
+      '/ws/terminal': {
+        target: 'ws://localhost:3377',
+        ws: true,
+      },
       '/ws': {
         target: 'ws://localhost:3377',
         ws: true,

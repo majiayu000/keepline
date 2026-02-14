@@ -17,8 +17,10 @@ import { initPricing } from '../../services/usage.pricing.js';
 import { initializeMemoryService } from '../../services/memory.service.js';
 import { logger } from '../../lib/logger.js';
 import { rateLimit } from './middleware/rateLimit.js';
-import { sessions, recovery, usage, memory, plans } from './routes/index.js';
+import { sessions, recovery, usage, memory, plans, auth } from './routes/index.js';
 import { broadcast, wsClients, websocketHandler } from './websocket.js';
+import { terminalWebsocketHandler } from './terminal-websocket.js';
+import { config } from '../../lib/config.js';
 
 const app = new Hono();
 
@@ -66,6 +68,7 @@ app.route('/api/sessions', recovery);
 app.route('/api', usage);
 app.route('/api/memory', memory);
 app.route('/api/plans', plans);
+app.route('/api/auth', auth);
 
 // Serve React app index.html for root
 app.get('/', async () => {
@@ -149,14 +152,24 @@ export async function startWebServer(port: number = 3377) {
 
   logger.info(`Starting web server on port ${port}`);
 
+  const terminalConfig = config.get().webTerminal;
+
   const server = Bun.serve({
     port,
+    idleTimeout: 255, // max value, prevents cloudflared/proxy timeout
     fetch(req, server) {
       const url = new URL(req.url);
 
-      // Handle WebSocket upgrade
+      // Handle WebSocket upgrade - dashboard
       if (url.pathname === '/ws') {
-        const upgraded = server.upgrade(req, { data: undefined });
+        const upgraded = server.upgrade(req, { data: { type: 'dashboard' } });
+        if (upgraded) return undefined;
+        return new Response('WebSocket upgrade failed', { status: 400 });
+      }
+
+      // Handle WebSocket upgrade - terminal
+      if (url.pathname === '/ws/terminal') {
+        const upgraded = server.upgrade(req, { data: { type: 'terminal' } });
         if (upgraded) return undefined;
         return new Response('WebSocket upgrade failed', { status: 400 });
       }
@@ -164,7 +177,40 @@ export async function startWebServer(port: number = 3377) {
       // Handle regular HTTP requests via Hono
       return app.fetch(req);
     },
-    websocket: websocketHandler,
+    websocket: {
+      idleTimeout: 0, // disable WS idle timeout for long-lived terminal sessions
+      perMessageDeflate: false, // required for cloudflared compatibility
+      open(ws) {
+        const data = (ws as any).data as { type: string } | undefined;
+        if (data?.type === 'terminal') {
+          terminalWebsocketHandler.open(ws);
+        } else {
+          websocketHandler.open(ws);
+        }
+      },
+      message(ws, message) {
+        const data = (ws as any).data as { type: string } | undefined;
+        if (data?.type === 'terminal') {
+          terminalWebsocketHandler.message(ws, message);
+        } else {
+          websocketHandler.message(ws, message);
+        }
+      },
+      close(ws) {
+        const data = (ws as any).data as { type: string } | undefined;
+        if (data?.type === 'terminal') {
+          terminalWebsocketHandler.close(ws);
+        } else {
+          websocketHandler.close(ws);
+        }
+      },
+    },
+    ...(terminalConfig.tlsCert && terminalConfig.tlsKey ? {
+      tls: {
+        cert: Bun.file(terminalConfig.tlsCert),
+        key: Bun.file(terminalConfig.tlsKey),
+      },
+    } : {}),
   });
 
   // Start periodic update checker (every 5 seconds)

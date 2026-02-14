@@ -9,5 +9,6 @@ import recovery from './recovery.js';
 import usage from './usage.js';
 import memory from './memory.js';
 import plans from './plans.js';
+import auth from './auth.js';
 
-export { sessions, recovery, usage, memory, plans };
+export { sessions, recovery, usage, memory, plans, auth };

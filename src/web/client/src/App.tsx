@@ -10,6 +10,7 @@ import { ProjectStatsBar } from '@/components/ProjectStatsBar'
 import { ProjectsGrid } from '@/components/ProjectsGrid'
 import { MemoryPanel } from '@/components/MemoryPanel'
 import { PlansPanel } from '@/components/PlansPanel'
+import { TerminalPanel } from '@/components/TerminalPanel'
 import type { TabId } from '@/components/TabNav'
 import { useSessions, useKeyboardShortcuts, useSessionFilter, useNotifications, useProjects } from '@/hooks'
 
@@ -207,6 +208,11 @@ function AppContent() {
       {/* Plans Tab */}
       {activeTab === 'plans' && !loading && (
         <PlansPanel />
+      )}
+
+      {/* Terminal Tab */}
+      {activeTab === 'terminal' && (
+        <TerminalPanel />
       )}
 
       <HelpModal isOpen={showHelp} onClose={() => setShowHelp(false)} />

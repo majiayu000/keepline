@@ -1,7 +1,7 @@
 import { memo } from 'react'
 import styles from './TabNav.module.css'
 
-export type TabId = 'sessions' | 'analytics' | 'projects' | 'memory' | 'plans'
+export type TabId = 'sessions' | 'analytics' | 'projects' | 'memory' | 'plans' | 'terminal'
 
 interface Tab {
   id: TabId
@@ -15,6 +15,7 @@ const TABS: Tab[] = [
   { id: 'projects', label: 'Projects', icon: '#' },
   { id: 'memory', label: 'Memory', icon: '@' },
   { id: 'plans', label: 'Plans', icon: '%' },
+  { id: 'terminal', label: 'Terminal', icon: '~' },
 ]
 
 interface TabNavProps {

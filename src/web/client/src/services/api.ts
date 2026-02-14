@@ -24,6 +24,11 @@ import type {
   Plan,
   PlanSummary,
   PlanAggregateStats,
+  AuthStatus,
+  LoginRequest,
+  LoginResponse,
+  SetupRequest,
+  SetupResponse,
 } from '@/types'
 import { API_BASE, API_TIMEOUT_MS } from '@/constants'
 
@@ -364,6 +369,61 @@ export async function fetchPlan(
   return request<Plan>(`/plans/${id}`, undefined, signal)
 }
 
+// ═══════════════════════════════════════════════════════════════
+// AUTH API - Terminal authentication
+// ═══════════════════════════════════════════════════════════════
+
+/**
+ * GET /api/auth/status - Check auth status
+ */
+export async function fetchAuthStatus(
+  signal?: AbortSignal
+): Promise<ApiResponse<AuthStatus>> {
+  const token = localStorage.getItem('terminal_token')
+  const headers: Record<string, string> = {}
+  if (token) headers['Authorization'] = `Bearer ${token}`
+  return request<AuthStatus>('/auth/status', { headers }, signal)
+}
+
+/**
+ * POST /api/auth/setup - First-run setup
+ */
+export async function setupAuth(
+  data: SetupRequest,
+  signal?: AbortSignal
+): Promise<ApiResponse<SetupResponse>> {
+  return request<SetupResponse>('/auth/setup', {
+    method: 'POST',
+    body: JSON.stringify(data),
+  }, signal)
+}
+
+/**
+ * POST /api/auth/login - Login
+ */
+export async function loginAuth(
+  data: LoginRequest,
+  signal?: AbortSignal
+): Promise<ApiResponse<LoginResponse>> {
+  return request<LoginResponse>('/auth/login', {
+    method: 'POST',
+    body: JSON.stringify(data),
+  }, signal)
+}
+
+/**
+ * POST /api/auth/logout - Logout
+ */
+export async function logoutAuth(
+  signal?: AbortSignal
+): Promise<ApiResponse> {
+  const token = localStorage.getItem('terminal_token')
+  return request('/auth/logout', {
+    method: 'POST',
+    headers: token ? { 'Authorization': `Bearer ${token}` } : {},
+  }, signal)
+}
+
 // Export all API functions
 export const api = {
   fetchSessions,
@@ -392,4 +452,9 @@ export const api = {
   fetchPlanSummaries,
   fetchPlanStats,
   fetchPlan,
+  // Auth API
+  fetchAuthStatus,
+  setupAuth,
+  loginAuth,
+  logoutAuth,
 }
