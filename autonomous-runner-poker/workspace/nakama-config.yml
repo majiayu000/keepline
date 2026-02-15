@@ -1,0 +1,27 @@
+name: poker-server
+data_dir: ./data/
+
+logger:
+  stdout: true
+  level: INFO
+  format: json
+
+session:
+  token_expiry_sec: 86400  # 24 hours
+
+socket:
+  max_message_size_bytes: 16384
+  read_timeout_ms: 15000
+  write_timeout_ms: 15000
+  ping_period_ms: 8000
+  pong_wait_ms: 25000
+
+runtime:
+  js_entrypoint: "index.js"
+  http_key: "poker_server_http_key"
+
+console:
+  port: 7351
+  username: admin
+  password: password
+  signing_key: "poker_console_signing_key"

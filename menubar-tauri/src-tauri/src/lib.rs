@@ -275,26 +275,11 @@ async fn update_tray_icon(
 
     if let Some(id) = tray_id {
         if let Some(tray) = app.tray_by_id(&id) {
-            // Generate ring icon with number (44x44 for Retina displays)
-            let icon_bytes = tray_icon::generate_tray_icon_with_ring(percentage, 44);
-            println!("[Tray] Generated ring icon: {} bytes", icon_bytes.len());
-
-            // Create Tauri image from PNG bytes
-            let icon = Image::from_bytes(&icon_bytes).map_err(|e| {
-                println!("[Tray] Error creating image: {}", e);
-                e.to_string()
-            })?;
-
-            // Update tray icon
-            tray.set_icon(Some(icon)).map_err(|e| {
-                println!("[Tray] Error setting icon: {}", e);
-                e.to_string()
-            })?;
-
-            // Disable template mode to show colored icon
-            tray.set_icon_as_template(false).map_err(|e| e.to_string())?;
-
-            println!("[Tray] Icon updated successfully");
+            // Keep a static template icon for maximum cross-machine visibility.
+            let tooltip = format!("Claude Quota Monitor ({percentage}%)");
+            tray.set_tooltip(Some(tooltip)).map_err(|e| e.to_string())?;
+            tray.set_visible(true).map_err(|e| e.to_string())?;
+            println!("[Tray] Tooltip updated successfully");
         } else {
             println!("[Tray] Tray not found by ID");
         }
@@ -754,18 +739,32 @@ pub fn run() {
         })
         .invoke_handler(tauri::generate_handler![get_quota, update_tray_icon, resize_window, set_dock_visibility, get_codex_info, get_codex_stats, open_chatgpt_quota, get_codex_rate_limits])
         .setup(|app| {
-            // Generate initial ring icon showing 0%
-            let initial_icon_bytes = tray_icon::generate_tray_icon_with_ring(0, 44);
-            let initial_icon = Image::from_bytes(&initial_icon_bytes)
-                .expect("Failed to create initial icon");
-            println!("[Tray] Created initial ring icon: {} bytes", initial_icon_bytes.len());
+            // Start in accessory mode for menubar behavior consistency on macOS.
+            #[cfg(target_os = "macos")]
+            {
+                use tauri::ActivationPolicy;
+                let _ = app.set_activation_policy(ActivationPolicy::Accessory);
+            }
+
+            // Use a bundled PNG icon for maximum visibility in macOS menu bar.
+            let initial_icon = match Image::from_bytes(include_bytes!("../icons/32x32.png")) {
+                Ok(icon) => {
+                    println!("[Tray] Created initial bundled icon");
+                    icon
+                }
+                Err(err) => {
+                    eprintln!("[Tray] Failed to decode bundled icon, using generated fallback: {}", err);
+                    let icon_bytes = tray_icon::generate_tray_icon_with_ring(99, 44);
+                    Image::from_bytes(&icon_bytes)?
+                }
+            };
 
             // Create right-click menu
             let quit_item = MenuItemBuilder::with_id("quit", "Quit").build(app)?;
             let menu = MenuBuilder::new(app).items(&[&quit_item]).build()?;
 
             // Setup system tray
-            let tray = TrayIconBuilder::new()
+            let tray = match TrayIconBuilder::with_id("quota-tray")
                 .icon(initial_icon)
                 .icon_as_template(false)
                 .tooltip("Claude Quota Monitor")
@@ -812,10 +811,29 @@ pub fn run() {
                         }
                     }
                 })
-                .build(app)?;
+                .build(app)
+            {
+                Ok(tray) => Some(tray),
+                Err(err) => {
+                    eprintln!("[Tray] Failed to create tray icon, falling back to window mode: {}", err);
+                    #[cfg(target_os = "macos")]
+                    {
+                        use tauri::ActivationPolicy;
+                        let _ = app.set_activation_policy(ActivationPolicy::Regular);
+                    }
+                    if let Some(window) = app.get_webview_window("main") {
+                        let _ = window.show();
+                        let _ = window.set_focus();
+                    }
+                    None
+                }
+            };
+
+            let tray_available = tray.is_some();
 
             // Store tray ID for later updates
-            if let Some(state) = app.try_state::<TrayState>() {
+            if let (Some(tray), Some(state)) = (tray.as_ref(), app.try_state::<TrayState>()) {
+                let _ = tray.set_visible(true);
                 if let Ok(mut guard) = state.tray_id.lock() {
                     *guard = Some(tray.id().clone());
                 }
@@ -825,17 +843,20 @@ pub fn run() {
             if let Some(window) = app.get_webview_window("main") {
                 #[cfg(target_os = "macos")]
                 {
-                    apply_vibrancy(&window, NSVisualEffectMaterial::Popover, None, Some(8.0))
-                        .expect("Failed to apply vibrancy");
+                    if let Err(err) = apply_vibrancy(&window, NSVisualEffectMaterial::Popover, None, Some(8.0)) {
+                        eprintln!("[Window] Failed to apply vibrancy: {}", err);
+                    }
                 }
 
-                // Hide window when it loses focus
-                let window_clone = window.clone();
-                window.on_window_event(move |event| {
-                    if let tauri::WindowEvent::Focused(false) = event {
-                        let _ = window_clone.hide();
-                    }
-                });
+                if tray_available {
+                    // Hide window when it loses focus only in tray mode.
+                    let window_clone = window.clone();
+                    window.on_window_event(move |event| {
+                        if let tauri::WindowEvent::Focused(false) = event {
+                            let _ = window_clone.hide();
+                        }
+                    });
+                }
             }
 
             Ok(())

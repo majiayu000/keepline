@@ -26,6 +26,7 @@ interface QuotaData {
 
 const THEME_STORAGE_KEY = 'claude-quota-theme';
 const DOCK_HIDDEN_KEY = 'claude-quota-dock-hidden';
+const DOCK_PREF_MIGRATION_KEY = 'claude-quota-dock-pref-migrated-v2';
 const TAB_STORAGE_KEY = 'claude-quota-tab';
 
 function getSavedTab(): TabName {
@@ -50,9 +51,19 @@ function getSavedTheme(): ThemeName {
 
 function getSavedDockHidden(): boolean {
   try {
+    // One-time migration: force dock visible for existing users
+    // to avoid "app running but no visible entry point" on tray issues.
+    const migrated = localStorage.getItem(DOCK_PREF_MIGRATION_KEY) === 'true';
+    if (!migrated) {
+      localStorage.setItem(DOCK_PREF_MIGRATION_KEY, 'true');
+      localStorage.setItem(DOCK_HIDDEN_KEY, 'false');
+      return false;
+    }
     return localStorage.getItem(DOCK_HIDDEN_KEY) === 'true';
   } catch {}
-  return true;
+  // Keep Dock visible by default so users still have an entry point
+  // if tray rendering is unavailable on their machine.
+  return false;
 }
 
 function formatResetTime(resetTime?: string): string {
@@ -125,11 +136,6 @@ export default function App() {
     };
   }, [activeTab, quota, codexConnected]);
 
-  // Apply dock visibility
-  useEffect(() => {
-    invoke('set_dock_visibility', { visible: !dockHidden }).catch(console.error);
-  }, [dockHidden]);
-
   // Update tray icon based on active tab
   const updateTrayIcon = useCallback(async (percentage: number) => {
     try {
@@ -177,14 +183,11 @@ export default function App() {
   }, [activeTab, fetchClaudeQuota]);
 
   // Update tray icon when active tab or data changes
-  // Tray icon shows REMAINING percentage (higher = better, like a battery)
+  // Tray icon always shows USED percentage (matches panel display).
   useEffect(() => {
     if (activeTab === 'claude' && quota?.session) {
-      // Claude's percentage is utilization (used), so remaining = 100 - used
-      const remaining = 100 - quota.session.percentage;
-      updateTrayIcon(remaining);
+      updateTrayIcon(Math.round(quota.session.percentage));
     } else if (activeTab === 'codex' && codexUsagePercent !== null) {
-      // Codex already passes remaining percentage
       updateTrayIcon(codexUsagePercent);
     }
   }, [activeTab, quota, codexUsagePercent, updateTrayIcon]);
@@ -199,6 +202,7 @@ export default function App() {
   const handleDockToggle = useCallback(() => {
     setDockHidden((prev) => {
       const newValue = !prev;
+      invoke('set_dock_visibility', { visible: !newValue }).catch(console.error);
       try {
         localStorage.setItem(DOCK_HIDDEN_KEY, String(newValue));
       } catch {}

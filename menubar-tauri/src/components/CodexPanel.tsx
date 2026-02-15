@@ -93,9 +93,8 @@ function formatResetTime(resetAt?: number): string {
 }
 
 function getProgressColor(usedPercent: number): string {
-  const remaining = 100 - usedPercent;
-  if (remaining <= 10) return '#ef4444';
-  if (remaining <= 25) return '#f59e0b';
+  if (usedPercent >= 80) return '#ef4444';
+  if (usedPercent >= 50) return '#f59e0b';
   return '#22c55e';
 }
 
@@ -131,11 +130,11 @@ export default function CodexPanel({ onConnectionChange, onUsageChange }: CodexP
       const isConnected = limits.connected || info.connected;
       onConnectionChange?.(isConnected);
 
-      // Notify parent about remaining percentage for tray icon (100 - used = remaining)
-      const remainingPercent = limits.primary?.usedPercent != null
-        ? 100 - limits.primary.usedPercent
+      // Notify parent about used percentage for tray icon.
+      const usedPercent = limits.primary?.usedPercent != null
+        ? Math.round(Math.max(0, Math.min(100, limits.primary.usedPercent)))
         : null;
-      onUsageChange?.(remainingPercent);
+      onUsageChange?.(usedPercent);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to fetch Codex data');
       onConnectionChange?.(false);
@@ -198,14 +197,21 @@ export default function CodexPanel({ onConnectionChange, onUsageChange }: CodexP
                       {formatWindowLabel(rateLimits.primary.windowMinutes)} limit
                     </span>
                     <span className="quota-value">
-                      {Math.round(100 - rateLimits.primary.usedPercent)}% left
+                      {Math.round(rateLimits.primary.usedPercent)}% used
                     </span>
                   </div>
-                  <div className="progress-bar">
+                  <div
+                    className="progress-bar"
+                    role="progressbar"
+                    aria-label={`${formatWindowLabel(rateLimits.primary.windowMinutes)} usage`}
+                    aria-valuenow={Math.round(Math.max(0, Math.min(100, rateLimits.primary.usedPercent)))}
+                    aria-valuemin={0}
+                    aria-valuemax={100}
+                  >
                     <div
                       className="progress-fill"
                       style={{
-                        width: `${100 - rateLimits.primary.usedPercent}%`,
+                        width: `${Math.max(0, Math.min(100, rateLimits.primary.usedPercent))}%`,
                         backgroundColor: getProgressColor(rateLimits.primary.usedPercent),
                       }}
                     />
@@ -225,14 +231,21 @@ export default function CodexPanel({ onConnectionChange, onUsageChange }: CodexP
                       {formatWindowLabel(rateLimits.secondary.windowMinutes)} limit
                     </span>
                     <span className="quota-value">
-                      {Math.round(100 - rateLimits.secondary.usedPercent)}% left
+                      {Math.round(rateLimits.secondary.usedPercent)}% used
                     </span>
                   </div>
-                  <div className="progress-bar">
+                  <div
+                    className="progress-bar"
+                    role="progressbar"
+                    aria-label={`${formatWindowLabel(rateLimits.secondary.windowMinutes)} usage`}
+                    aria-valuenow={Math.round(Math.max(0, Math.min(100, rateLimits.secondary.usedPercent)))}
+                    aria-valuemin={0}
+                    aria-valuemax={100}
+                  >
                     <div
                       className="progress-fill"
                       style={{
-                        width: `${100 - rateLimits.secondary.usedPercent}%`,
+                        width: `${Math.max(0, Math.min(100, rateLimits.secondary.usedPercent))}%`,
                         backgroundColor: getProgressColor(rateLimits.secondary.usedPercent),
                       }}
                     />

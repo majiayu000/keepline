@@ -1,0 +1,27 @@
+{
+  "name": "poker-nakama-server",
+  "version": "1.0.0",
+  "description": "Texas Hold'em Poker game server for Nakama",
+  "main": "build/index.js",
+  "scripts": {
+    "build": "npx tsc && npx esbuild --bundle src/main.ts --outfile=build/index.js --format=esm --target=es2020 --external:nakama-runtime",
+    "watch": "npx tsc --watch",
+    "typecheck": "npx tsc --noEmit",
+    "test": "vitest run",
+    "test:watch": "vitest"
+  },
+  "keywords": [
+    "nakama",
+    "poker",
+    "texas-holdem",
+    "multiplayer"
+  ],
+  "author": "",
+  "license": "MIT",
+  "devDependencies": {
+    "nakama-runtime": "github:heroiclabs/nakama-common",
+    "typescript": "^5.3.3",
+    "esbuild": "^0.19.11",
+    "vitest": "^2.1.8"
+  }
+}

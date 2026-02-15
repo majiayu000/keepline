@@ -1,0 +1,16 @@
+# Logs
+logs/
+
+# Workspace (user's code)
+workspace/
+
+# Python
+__pycache__/
+*.pyc
+.venv/
+
+# Environment
+.env
+
+# macOS
+.DS_Store

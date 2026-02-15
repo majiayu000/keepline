@@ -19,6 +19,7 @@ function getStatusLabel(percentage: number): string {
 export default function QuotaCard({ label, percentage, resetsIn }: QuotaCardProps) {
   const status = getStatusColor(percentage);
   const statusLabel = getStatusLabel(percentage);
+  const clampedPercent = Math.max(0, Math.min(100, percentage));
 
   return (
     <div className="quota-card">
@@ -30,15 +31,34 @@ export default function QuotaCard({ label, percentage, resetsIn }: QuotaCardProp
         </div>
       </div>
 
-      <div className="progress-bar">
+      <div
+        className="progress-bar"
+        role="progressbar"
+        aria-label={`${label} usage`}
+        aria-valuenow={Math.round(clampedPercent)}
+        aria-valuemin={0}
+        aria-valuemax={100}
+      >
         <div
           className={`progress-fill ${status}`}
-          style={{ width: `${Math.min(percentage, 100)}%` }}
+          style={{ width: `${clampedPercent}%` }}
         />
       </div>
 
       <div className="quota-footer">
-        <span className="reset-icon">↻</span>
+        <span className="reset-icon" aria-hidden="true">
+          <svg
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="2"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+          >
+            <path d="M21 12a9 9 0 1 1-2.64-6.36" />
+            <path d="M21 3v6h-6" />
+          </svg>
+        </span>
         <span className="reset-text">Resets in {resetsIn}</span>
       </div>
     </div>
