@@ -14,7 +14,7 @@ interface HeaderProps {
 }
 
 export function Header({
-  title = 'Tasker',
+  title = 'Claude Hub',
   subtitle,
   compact = false
 }: HeaderProps): React.ReactElement {

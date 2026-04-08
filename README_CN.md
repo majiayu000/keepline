@@ -39,10 +39,10 @@
 **Claude Hub** 实时监控所有 Claude Code 会话，自动恢复崩溃的会话，追踪费用，并在会话间保持上下文。
 
 ```bash
-npx claude-hub
+bunx claude-hub
 ```
 
-就这么简单。打开 `http://localhost:3377` 开始掌控。
+就这么简单。打开 `http://127.0.0.1:3377` 开始掌控。
 
 ---
 
@@ -56,20 +56,28 @@ npx claude-hub
 | **会话上下文** | 关掉终端就没了 | 持久化，可搜索 |
 | **项目概览** | 散落在各个目录 | 按项目聚合 |
 
+## 仓库范围
+
+当前这个仓库只保留 Claude Hub 主应用，以及仓库内的 `menubar-tauri` 配套目录。
+
+之前混在这里的实验 runner 工作区已经迁移到同级目录 `../Claude-Code-Monitor-extracted/`，不再属于这个仓库的构建和测试范围。
+
 ---
 
 ## 快速开始
 
-### 方式一：npx（推荐）
+### 方式一：bunx（推荐）
 
 ```bash
-npx claude-hub
+bunx claude-hub
 ```
+
+需要先安装 Bun 1.1+。
 
 ### 方式二：全局安装
 
 ```bash
-npm install -g claude-hub
+bun install -g claude-hub
 claude-hub web
 ```
 
@@ -82,7 +90,9 @@ bun install && bun run build
 bun run start web
 ```
 
-打开 **http://localhost:3377**
+打开 **http://127.0.0.1:3377**
+
+默认只绑定本机回环地址；如果你确实要对外暴露，再设置 `CLAUDE_HUB_HOST`。
 
 ---
 
@@ -251,7 +261,7 @@ claude-hub hooks install        # 安装 Claude hooks
 ~/.claude-hub/
 ├── claude-hub.db    # SQLite 数据库
 ├── config.json      # 配置文件
-└── logs/            # 日志文件
+└── claude-hub.log   # 日志文件
 ```
 
 ---

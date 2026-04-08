@@ -10,18 +10,44 @@ import { memoryRepository } from '../../../infrastructure/database/index.js';
 import { buildContext, buildMinimalContext } from '../../../domain/memory/index.js';
 import type { MemoryUpsertData } from '../../../domain/memory/index.js';
 import { logger } from '../../../lib/logger.js';
+import { authMiddleware } from '../middleware/auth.js';
 import { isValidSessionId } from '../middleware/validation.js';
-import {
-  getVectorStore,
-  getEmbeddingService,
-  type ObservationCategory,
-} from '../../../infrastructure/vector/index.js';
-import {
-  getEndlessModeService,
-  getCompressionQueue,
-} from '../../../services/index.js';
+import type { ObservationCategory } from '../../../infrastructure/vector/types.js';
 
 const app = new Hono();
+app.use('*', authMiddleware);
+
+async function getVectorServices() {
+  const [{ getVectorStore }, { getEmbeddingService }] = await Promise.all([
+    import('../../../infrastructure/vector/lancedb.adapter.js'),
+    import('../../../infrastructure/vector/embedding.service.js'),
+  ]);
+
+  return {
+    vectorStore: getVectorStore(),
+    embeddingService: getEmbeddingService(),
+  };
+}
+
+async function getVectorStoreService() {
+  const { getVectorStore } = await import('../../../infrastructure/vector/lancedb.adapter.js');
+  return getVectorStore();
+}
+
+async function getEmbeddingServiceInstance() {
+  const { getEmbeddingService } = await import('../../../infrastructure/vector/embedding.service.js');
+  return getEmbeddingService();
+}
+
+async function getEndlessModeServiceInstance() {
+  const { getEndlessModeService } = await import('../../../services/endless.mode.js');
+  return getEndlessModeService();
+}
+
+async function getCompressionQueueInstance() {
+  const { getCompressionQueue } = await import('../../../services/compression.queue.js');
+  return getCompressionQueue();
+}
 
 // GET /api/memory - List all session memories
 app.get('/', (c) => {
@@ -346,8 +372,7 @@ app.get('/search', async (c) => {
   }
 
   try {
-    const vectorStore = getVectorStore();
-    const embeddingService = getEmbeddingService();
+    const { vectorStore, embeddingService } = await getVectorServices();
 
     // Initialize stores if needed
     await vectorStore.initialize();
@@ -388,7 +413,7 @@ app.get('/observations', async (c) => {
   const sessionId = c.req.query('sessionId');
 
   try {
-    const vectorStore = getVectorStore();
+    const vectorStore = await getVectorStoreService();
     await vectorStore.initialize();
 
     if (sessionId && isValidSessionId(sessionId)) {
@@ -420,7 +445,7 @@ app.get('/observations/:id', async (c) => {
   const id = c.req.param('id');
 
   try {
-    const vectorStore = getVectorStore();
+    const vectorStore = await getVectorStoreService();
     await vectorStore.initialize();
 
     const observation = await vectorStore.getById(id);
@@ -484,8 +509,7 @@ app.post('/observations', async (c) => {
   }
 
   try {
-    const vectorStore = getVectorStore();
-    const embeddingService = getEmbeddingService();
+    const { vectorStore, embeddingService } = await getVectorServices();
 
     await vectorStore.initialize();
 
@@ -525,7 +549,7 @@ app.delete('/observations/:id', async (c) => {
   const id = c.req.param('id');
 
   try {
-    const vectorStore = getVectorStore();
+    const vectorStore = await getVectorStoreService();
     await vectorStore.initialize();
 
     const deleted = await vectorStore.delete(id);
@@ -550,7 +574,7 @@ app.delete('/observations/session/:sessionId', async (c) => {
   }
 
   try {
-    const vectorStore = getVectorStore();
+    const vectorStore = await getVectorStoreService();
     await vectorStore.initialize();
 
     const count = await vectorStore.deleteBySessionId(sessionId);
@@ -566,9 +590,9 @@ app.delete('/observations/session/:sessionId', async (c) => {
 });
 
 // GET /api/memory/embedding/stats - Get embedding service stats
-app.get('/embedding/stats', (c) => {
+app.get('/embedding/stats', async (c) => {
   try {
-    const embeddingService = getEmbeddingService();
+    const embeddingService = await getEmbeddingServiceInstance();
     const stats = embeddingService.getCacheStats();
 
     return c.json({
@@ -586,9 +610,9 @@ app.get('/embedding/stats', (c) => {
 // ============================================
 
 // GET /api/memory/endless/stats - Get endless mode statistics
-app.get('/endless/stats', (c) => {
+app.get('/endless/stats', async (c) => {
   try {
-    const endlessMode = getEndlessModeService();
+    const endlessMode = await getEndlessModeServiceInstance();
     const stats = endlessMode.getStats();
 
     return c.json({
@@ -605,7 +629,7 @@ app.get('/endless/stats', (c) => {
 });
 
 // GET /api/memory/endless/working/:sessionId - Get working memory for a session
-app.get('/endless/working/:sessionId', (c) => {
+app.get('/endless/working/:sessionId', async (c) => {
   const sessionId = c.req.param('sessionId');
 
   if (!isValidSessionId(sessionId)) {
@@ -613,7 +637,7 @@ app.get('/endless/working/:sessionId', (c) => {
   }
 
   try {
-    const endlessMode = getEndlessModeService();
+    const endlessMode = await getEndlessModeServiceInstance();
     const items = endlessMode.getWorkingMemory(sessionId);
     const tokenCount = endlessMode.getSessionTokenCount(sessionId);
 
@@ -636,7 +660,7 @@ app.get('/endless/working/:sessionId', (c) => {
 });
 
 // GET /api/memory/endless/context/:sessionId - Get working memory as formatted context
-app.get('/endless/context/:sessionId', (c) => {
+app.get('/endless/context/:sessionId', async (c) => {
   const sessionId = c.req.param('sessionId');
 
   if (!isValidSessionId(sessionId)) {
@@ -644,7 +668,7 @@ app.get('/endless/context/:sessionId', (c) => {
   }
 
   try {
-    const endlessMode = getEndlessModeService();
+    const endlessMode = await getEndlessModeServiceInstance();
     const context = endlessMode.getWorkingMemoryContext(sessionId);
     const tokenCount = endlessMode.getSessionTokenCount(sessionId);
 
@@ -671,7 +695,7 @@ app.post('/endless/compress/:sessionId', async (c) => {
   }
 
   try {
-    const endlessMode = getEndlessModeService();
+    const endlessMode = await getEndlessModeServiceInstance();
     const statsBefore = endlessMode.getStats();
 
     await endlessMode.compressWorkingMemory(sessionId);
@@ -702,7 +726,7 @@ app.post('/endless/archive/:sessionId', async (c) => {
   }
 
   try {
-    const endlessMode = getEndlessModeService();
+    const endlessMode = await getEndlessModeServiceInstance();
     const itemCount = endlessMode.getWorkingMemory(sessionId).length;
 
     await endlessMode.archiveSession(sessionId);
@@ -721,9 +745,9 @@ app.post('/endless/archive/:sessionId', async (c) => {
 });
 
 // GET /api/memory/compression/stats - Get compression queue statistics
-app.get('/compression/stats', (c) => {
+app.get('/compression/stats', async (c) => {
   try {
-    const queue = getCompressionQueue();
+    const queue = await getCompressionQueueInstance();
     const stats = queue.getStats();
 
     return c.json({

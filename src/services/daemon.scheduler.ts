@@ -7,7 +7,7 @@ import { logger } from '../lib/logger.js';
 import { syncSessions } from './session.service.js';
 import { startHookServer, stopHookServer } from '../adapters/hook/server.js';
 import { runMigrations } from '../db/migrations.js';
-import { closeDatabase } from '../db/database.js';
+import { closeDatabase } from '../infrastructure/database/sqlite.js';
 import { emit } from '../lib/events.js';
 import { initializeMemoryService } from './memory.service.js';
 

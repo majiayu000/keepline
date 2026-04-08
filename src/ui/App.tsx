@@ -39,9 +39,9 @@ export function App({ sessions, stats }: AppProps): React.ReactElement {
       {/* Header */}
       <Box marginBottom={1}>
         <Gradient name="pastel">
-          <Text bold>◆ TASKER</Text>
+          <Text bold>◆ CLAUDE HUB</Text>
         </Gradient>
-        <Text color="gray"> — Claude Code Session Monitor</Text>
+        <Text color="gray"> — Claude Code session control center</Text>
       </Box>
 
       {/* Stats bar */}
@@ -66,7 +66,7 @@ export function App({ sessions, stats }: AppProps): React.ReactElement {
         <Box marginTop={1} paddingX={1}>
           <Text color="yellow">💡 </Text>
           <Text color="gray">{stats.lost} lost sessions can be recovered: </Text>
-          <Text color="cyan" bold>tasker recover {'<n>'}</Text>
+          <Text color="cyan" bold>claude-hub recover {'<n>'}</Text>
         </Box>
       )}
     </Box>

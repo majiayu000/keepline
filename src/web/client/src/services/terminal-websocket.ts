@@ -43,7 +43,7 @@ class TerminalWebSocketManager {
   }
 
   connect(token: string): void {
-    if (this.isDestroyed) return
+    this.isDestroyed = false
     if (this.ws?.readyState === WebSocket.OPEN || this.ws?.readyState === WebSocket.CONNECTING) return
 
     this.token = token

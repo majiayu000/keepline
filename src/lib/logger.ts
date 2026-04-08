@@ -1,11 +1,11 @@
 /**
- * Logger utility for Tasker
+ * Logger utility for Claude Hub.
  */
 
 import chalk from 'chalk';
 import { appendFileSync, existsSync, mkdirSync } from 'fs';
 import { dirname } from 'path';
-import { TASKER_LOG } from './paths.js';
+import { CLAUDE_HUB_LOG, ensureClaudeHubDataHome } from './paths.js';
 
 export type LogLevel = 'debug' | 'info' | 'warn' | 'error';
 
@@ -54,11 +54,12 @@ class Logger {
   private writeToFile(message: string): void {
     if (!this.options.file) return;
 
-    const dir = dirname(TASKER_LOG);
+    ensureClaudeHubDataHome();
+    const dir = dirname(CLAUDE_HUB_LOG);
     if (!existsSync(dir)) {
       mkdirSync(dir, { recursive: true });
     }
-    appendFileSync(TASKER_LOG, message + '\n');
+    appendFileSync(CLAUDE_HUB_LOG, message + '\n');
   }
 
   private log(level: LogLevel, message: string, data?: unknown): void {

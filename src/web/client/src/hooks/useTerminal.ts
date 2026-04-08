@@ -14,9 +14,12 @@ export function useTerminal(token: string | null) {
 
   // Connect when token is available
   useEffect(() => {
-    if (!token) return
-
     const manager = getTerminalWsManager()
+    if (!token) {
+      manager.disconnect()
+      return
+    }
+
     manager.connect(token)
 
     const unsubStatus = manager.onStatusChange(setWsStatus)
@@ -68,6 +71,7 @@ export function useTerminal(token: string | null) {
     return () => {
       unsubStatus()
       unsubMsg()
+      manager.disconnect()
     }
   }, [token])
 

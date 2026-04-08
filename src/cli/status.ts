@@ -4,7 +4,13 @@
 
 import chalk from 'chalk';
 import { existsSync } from 'fs';
-import { CLAUDE_HOME, CLAUDE_PROJECTS, TASKER_HOME, TASKER_DB } from '../lib/paths.js';
+import {
+  CLAUDE_HOME,
+  CLAUDE_PROJECTS,
+  CLAUDE_HUB_HOME,
+  CLAUDE_HUB_DB,
+  LEGACY_TASKER_HOME,
+} from '../lib/paths.js';
 import { getDaemonStatus } from '../services/daemon.manager.js';
 import { getHookStatus } from '../adapters/hook/installer.js';
 import { config } from '../lib/config.js';
@@ -14,15 +20,18 @@ import { scanClaudeProcesses } from '../adapters/process/scanner.js';
 
 export async function statusCommand(): Promise<void> {
   console.log('');
-  console.log(chalk.bold('Tasker System Status'));
+  console.log(chalk.bold('Claude Hub System Status'));
   console.log('');
 
   // Paths
   console.log(chalk.cyan('Paths:'));
   console.log(`  Claude home:    ${CLAUDE_HOME} ${existsSync(CLAUDE_HOME) ? chalk.green('OK') : chalk.red('Not found')}`);
   console.log(`  Claude projects: ${CLAUDE_PROJECTS} ${existsSync(CLAUDE_PROJECTS) ? chalk.green('OK') : chalk.red('Not found')}`);
-  console.log(`  Tasker home:    ${TASKER_HOME} ${existsSync(TASKER_HOME) ? chalk.green('OK') : chalk.gray('Will create')}`);
-  console.log(`  Tasker DB:      ${TASKER_DB} ${existsSync(TASKER_DB) ? chalk.green('OK') : chalk.gray('Will create')}`);
+  console.log(`  Claude Hub home: ${CLAUDE_HUB_HOME} ${existsSync(CLAUDE_HUB_HOME) ? chalk.green('OK') : chalk.gray('Will create')}`);
+  console.log(`  Claude Hub DB:   ${CLAUDE_HUB_DB} ${existsSync(CLAUDE_HUB_DB) ? chalk.green('OK') : chalk.gray('Will create')}`);
+  if (LEGACY_TASKER_HOME !== CLAUDE_HUB_HOME && existsSync(LEGACY_TASKER_HOME)) {
+    console.log(`  Legacy Tasker home: ${LEGACY_TASKER_HOME} ${chalk.yellow('Pending migration')}`);
+  }
   console.log('');
 
   // Daemon

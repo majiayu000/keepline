@@ -30,7 +30,7 @@
   },
   "homepage": "https://github.com/majiayu000/claude-hub#readme",
   "engines": {
-    "node": ">=18.0.0"
+    "bun": ">=1.1.0"
   },
   "files": [
     "dist",
@@ -46,7 +46,7 @@
     "dev:client": "cd src/web/client && bun run dev",
     "start": "bun dist/index.js",
     "web": "bun dist/index.js web",
-    "typecheck": "tsc --noEmit && cd src/web/client && bun run typecheck",
+    "typecheck": "bun x tsc --noEmit && cd src/web/client && bun run typecheck",
     "test": "bun test",
     "test:watch": "bun test --watch",
     "prepublishOnly": "bun run build"

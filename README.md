@@ -37,10 +37,10 @@ You're deep in a coding session with Claude Code. Everything is going great. The
 **Claude Hub** monitors all your Claude Code sessions in real-time, automatically recovers crashed sessions, tracks costs, and preserves context across iterations.
 
 ```bash
-npx claude-hub
+bunx claude-hub
 ```
 
-That's it. Open `http://localhost:3377` and take control.
+That is it. Open `http://127.0.0.1:3377` and take control.
 
 ---
 
@@ -54,20 +54,28 @@ That's it. Open `http://localhost:3377` and take control.
 | **Session context** | Gone when terminal closes | Persisted and searchable |
 | **Project overview** | Scattered across directories | Aggregated by project |
 
+## Repository Scope
+
+This repository now contains the Claude Hub core application and the in-repo `menubar-tauri` companion only.
+
+Experimental runner workspaces that used to live here have been moved out to the sibling directory `../Claude-Code-Monitor-extracted/` and are no longer part of this repository's build or test surface.
+
 ---
 
 ## Quick Start
 
-### Option 1: npx (Recommended)
+### Option 1: bunx (Recommended)
 
 ```bash
-npx claude-hub
+bunx claude-hub
 ```
+
+Requires Bun 1.1+ on your machine.
 
 ### Option 2: Install globally
 
 ```bash
-npm install -g claude-hub
+bun install -g claude-hub
 claude-hub web
 ```
 
@@ -80,7 +88,9 @@ bun install && bun run build
 bun run start web
 ```
 
-Open **http://localhost:3377**
+Open **http://127.0.0.1:3377**
+
+By default the web server binds to loopback only. To expose it intentionally, set `CLAUDE_HUB_HOST`.
 
 ### macOS Security Note
 

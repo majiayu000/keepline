@@ -1,13 +1,13 @@
 {
-  "name": "tasker-client",
+  "name": "claude-hub-client",
   "private": true,
   "version": "1.0.0",
   "type": "module",
   "scripts": {
     "dev": "vite",
-    "build": "tsc && vite build",
+    "build": "bun x tsc && vite build",
     "preview": "vite preview",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "bun x tsc --noEmit"
   },
   "dependencies": {
     "@xterm/addon-fit": "^0.11.0",

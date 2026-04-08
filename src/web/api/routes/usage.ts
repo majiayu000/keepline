@@ -5,26 +5,25 @@
  */
 
 import { Hono } from 'hono';
-import path from 'path';
+import { join } from 'path';
 import { logger } from '../../../lib/logger.js';
+import { CLAUDE_HUB_HOME } from '../../../lib/paths.js';
 import { getCostPrediction, getCostForDateRange } from '../../../services/cost.predictor.js';
+import { authMiddleware } from '../middleware/auth.js';
 
 const app = new Hono();
+app.use('*', authMiddleware);
 
 const CODEX_CLIENT_ID = 'app_EMoamEEZ73f0CkXaXp7hrann';
 const CODEX_USAGE_URL = 'https://chatgpt.com/backend-api/wham/usage';
 const CODEX_REFRESH_URL = 'https://auth.openai.com/oauth/token';
 
-const DEFAULT_CLIENTS_FILE = (() => {
-  const homeDir = process.env.HOME;
-  if (!homeDir) return null;
-  return path.join(homeDir, '.claude-hub', 'clients.json');
-})();
+const DEFAULT_CLIENTS_FILE = join(CLAUDE_HUB_HOME, 'clients.json');
 
 const DEFAULT_CODEX_AUTH_FILE = (() => {
   const homeDir = process.env.HOME;
   if (!homeDir) return null;
-  return path.join(homeDir, '.codex', 'auth.json');
+  return join(homeDir, '.codex', 'auth.json');
 })();
 
 type CodexAuthFile = {

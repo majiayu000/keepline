@@ -154,9 +154,15 @@ class PtyManager {
     return session;
   }
 
-  attach(sessionId: string, ws: ServerWebSocket): PtySession {
+  private getOwnedSession(sessionId: string, userId: string): PtySession {
     const session = this.sessions.get(sessionId);
     if (!session) throw new Error('Session not found');
+    if (session.userId !== userId) throw new Error('Forbidden');
+    return session;
+  }
+
+  attach(sessionId: string, userId: string, ws: ServerWebSocket): PtySession {
+    const session = this.getOwnedSession(sessionId, userId);
 
     // Replay scrollback
     if (session.scrollback.length > 0) {
@@ -169,30 +175,33 @@ class PtyManager {
     return session;
   }
 
-  detach(sessionId: string, ws: ServerWebSocket): void {
+  detach(sessionId: string, userId: string, ws: ServerWebSocket): void {
     const session = this.sessions.get(sessionId);
     if (session) {
+      if (session.userId !== userId) {
+        throw new Error('Forbidden');
+      }
       session.attachedClients.delete(ws);
       logger.info(`Client detached from session ${sessionId} (${session.attachedClients.size} clients)`);
     }
   }
 
-  write(sessionId: string, data: string): void {
-    const session = this.sessions.get(sessionId);
-    if (!session || session.status !== 'running') return;
+  write(sessionId: string, userId: string, data: string): void {
+    const session = this.getOwnedSession(sessionId, userId);
+    if (session.status !== 'running') return;
     session.pty.write(data);
     session.lastActivity = new Date();
   }
 
-  resize(sessionId: string, cols: number, rows: number): void {
-    const session = this.sessions.get(sessionId);
-    if (!session || session.status !== 'running') return;
+  resize(sessionId: string, userId: string, cols: number, rows: number): void {
+    const session = this.getOwnedSession(sessionId, userId);
+    if (session.status !== 'running') return;
     session.pty.resize(cols, rows);
   }
 
-  kill(sessionId: string): void {
-    const session = this.sessions.get(sessionId);
-    if (!session || session.status !== 'running') return;
+  kill(sessionId: string, userId: string): void {
+    const session = this.getOwnedSession(sessionId, userId);
+    if (session.status !== 'running') return;
     session.pty.kill();
     logger.info(`PTY session ${sessionId} killed`);
   }

@@ -7,25 +7,24 @@
  */
 
 import { useCallback, useMemo, useState, useEffect } from 'react'
-import { useAuth } from '@/hooks/useAuth'
 import { useTerminal } from '@/hooks/useTerminal'
-import { AuthSetup } from '@/components/AuthSetup'
-import { AuthLogin } from '@/components/AuthLogin'
 import { XTermView } from '@/components/XTermView'
 import { fetchSessions } from '@/services/api'
 import type { Session } from '@/types'
 import styles from './TerminalPanel.module.css'
 
-export function TerminalPanel() {
-  const auth = useAuth()
-  const token = auth.getToken()
-  const terminal = useTerminal(auth.status?.authenticated ? token : null)
+interface TerminalPanelProps {
+  token: string
+  onLogout: () => Promise<void>
+}
+
+export function TerminalPanel({ token, onLogout }: TerminalPanelProps) {
+  const terminal = useTerminal(token)
   const [claudeSessions, setClaudeSessions] = useState<Session[]>([])
   const [loadingSessions, setLoadingSessions] = useState(false)
 
   // Fetch existing Claude Code sessions
   useEffect(() => {
-    if (!auth.status?.authenticated) return
     setLoadingSessions(true)
     fetchSessions('basic', { limit: 50 }).then(res => {
       if (res.success && res.data) {
@@ -33,7 +32,7 @@ export function TerminalPanel() {
       }
       setLoadingSessions(false)
     })
-  }, [auth.status?.authenticated])
+  }, [token])
 
   // Handlers
   const handleCreate = useCallback(() => {
@@ -64,11 +63,6 @@ export function TerminalPanel() {
     () => terminal.wsStatus !== 'authenticated',
     [terminal.wsStatus]
   )
-
-  // Auth gates
-  if (!auth.status) return <div className={styles.center}>Loading...</div>
-  if (!auth.status.setupComplete) return <AuthSetup onSetup={auth.setup} error={auth.error} />
-  if (!auth.status.authenticated) return <AuthLogin onLogin={auth.login} error={auth.error} />
 
   return (
     <div className={styles.container}>
@@ -132,7 +126,7 @@ export function TerminalPanel() {
           <span className={styles.wsStatus} data-status={terminal.wsStatus}>
             {terminal.wsStatus}
           </span>
-          <button className={styles.logoutBtn} onClick={() => auth.logout()}>Logout</button>
+          <button className={styles.logoutBtn} onClick={() => onLogout()}>Logout</button>
         </div>
       </div>
 

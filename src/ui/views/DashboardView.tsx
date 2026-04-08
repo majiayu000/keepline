@@ -74,9 +74,9 @@ export function DashboardView({ sessions, stats }: Props): React.ReactElement {
       {/* Header */}
       <Box marginBottom={1}>
         <Text color="#bb9af7" bold>╭─ </Text>
-        <Text color="#7dcfff" bold>TASKER</Text>
+        <Text color="#7dcfff" bold>CLAUDE HUB</Text>
         <Text color="#bb9af7" bold> ─╮</Text>
-        <Text color="#565f89"> Claude Code Monitor</Text>
+        <Text color="#565f89"> Claude Code session control center</Text>
       </Box>
 
       {/* Stats Row */}

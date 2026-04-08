@@ -1,13 +1,13 @@
 /**
- * Configuration management for Tasker
+ * Configuration management for Claude Hub.
  */
 
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'fs';
 import { join } from 'path';
-import { TASKER_HOME } from './paths.js';
+import { CLAUDE_HUB_HOME, ensureClaudeHubDataHome } from './paths.js';
 import { ConfigError } from './errors.js';
 
-export interface TaskerConfig {
+export interface ClaudeHubConfig {
   /** Scan interval in milliseconds */
   scanInterval: number;
 
@@ -57,7 +57,7 @@ export interface TaskerConfig {
   };
 }
 
-const defaultConfig: TaskerConfig = {
+const defaultConfig: ClaudeHubConfig = {
   scanInterval: 5000,
   hookPort: 7890,
   logLevel: 'info',
@@ -79,10 +79,10 @@ const defaultConfig: TaskerConfig = {
   },
 };
 
-const CONFIG_FILE = join(TASKER_HOME, 'config.json');
+const CONFIG_FILE = join(CLAUDE_HUB_HOME, 'config.json');
 
 /** Validate config values are within acceptable ranges */
-function validateConfig(cfg: TaskerConfig): void {
+function validateConfig(cfg: ClaudeHubConfig): void {
   const errors: string[] = [];
 
   if (cfg.scanInterval < 100) {
@@ -116,20 +116,18 @@ function validateConfig(cfg: TaskerConfig): void {
 }
 
 class ConfigManager {
-  private config: TaskerConfig = defaultConfig;
+  private config: ClaudeHubConfig = defaultConfig;
   private loaded = false;
 
-  load(): TaskerConfig {
+  load(): ClaudeHubConfig {
     if (this.loaded) return this.config;
 
-    if (!existsSync(TASKER_HOME)) {
-      mkdirSync(TASKER_HOME, { recursive: true });
-    }
+    ensureClaudeHubDataHome();
 
     if (existsSync(CONFIG_FILE)) {
       try {
         const content = readFileSync(CONFIG_FILE, 'utf-8');
-        const parsed = JSON.parse(content) as Partial<TaskerConfig>;
+        const parsed = JSON.parse(content) as Partial<ClaudeHubConfig>;
         this.config = { ...defaultConfig, ...parsed };
 
         // Validate loaded config
@@ -149,17 +147,17 @@ class ConfigManager {
   }
 
   save(): void {
-    if (!existsSync(TASKER_HOME)) {
-      mkdirSync(TASKER_HOME, { recursive: true });
+    if (!existsSync(CLAUDE_HUB_HOME)) {
+      mkdirSync(CLAUDE_HUB_HOME, { recursive: true });
     }
     writeFileSync(CONFIG_FILE, JSON.stringify(this.config, null, 2));
   }
 
-  get(): TaskerConfig {
+  get(): ClaudeHubConfig {
     return this.load();
   }
 
-  set<K extends keyof TaskerConfig>(key: K, value: TaskerConfig[K]): void {
+  set<K extends keyof ClaudeHubConfig>(key: K, value: ClaudeHubConfig[K]): void {
     this.load();
     this.config[key] = value;
     this.save();
@@ -172,3 +170,4 @@ class ConfigManager {
 }
 
 export const config = new ConfigManager();
+export type TaskerConfig = ClaudeHubConfig;

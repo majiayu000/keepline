@@ -9,15 +9,16 @@ import { sessionRepo } from '../db/index.js';
 import { getCachedProcesses } from '../adapters/process/scanner.js';
 import { detectSessionStatus } from '../adapters/process/detector.js';
 import type { AggregatedSession, SessionFilter, SessionSort } from './session.types.js';
+import { matchProcessesToSessions } from './session.process-matcher.js';
 
 /** Get all sessions with aggregated process info (uses cached processes) */
 export function getAggregatedSessions(): AggregatedSession[] {
   const sessions = sessionRepo.findAll();
   const processes = getCachedProcesses();
-  const processByCwd = new Map(processes.map((p) => [p.cwd, p]));
+  const processMatches = matchProcessesToSessions(sessions, processes);
 
   return sessions.map((session) => {
-    const process = processByCwd.get(session.directory);
+    const process = processMatches.get(session.sessionId);
     const liveStatus = detectSessionStatus(process || null, session.lastActiveAt);
 
     return {

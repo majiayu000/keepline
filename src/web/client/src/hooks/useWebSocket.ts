@@ -9,6 +9,7 @@ import {
 export type { WebSocketStatus, WebSocketMessage }
 
 interface UseWebSocketOptions {
+  token?: string | null
   onMessage?: (message: WebSocketMessage) => void
   onConnect?: () => void
   onDisconnect?: () => void
@@ -31,8 +32,22 @@ interface UseWebSocketReturn {
  * connection leaks from React lifecycle issues.
  */
 export function useWebSocket(options: UseWebSocketOptions = {}): UseWebSocketReturn {
-  const { onMessage, onConnect, onDisconnect } = options
+  const { token, onMessage, onConnect, onDisconnect } = options
   const [status, setStatus] = useState<WebSocketStatus>('disconnected')
+
+  useEffect(() => {
+    const manager = getWebSocketManager()
+
+    if (token) {
+      manager.connect(token)
+    } else {
+      manager.disconnect()
+    }
+
+    return () => {
+      manager.disconnect()
+    }
+  }, [token])
 
   // Subscribe to WebSocket events
   useEffect(() => {

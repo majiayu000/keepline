@@ -61,16 +61,16 @@ export const terminalWebsocketHandler = {
         handleAttach(ws, state, msg.data);
         break;
       case 'term:input':
-        handleInput(msg.data);
+        handleInput(ws, state, msg.data);
         break;
       case 'term:resize':
-        handleResize(msg.data);
+        handleResize(ws, state, msg.data);
         break;
       case 'term:detach':
-        handleDetach(ws, msg.data);
+        handleDetach(ws, state, msg.data);
         break;
       case 'term:kill':
-        handleKill(msg.data);
+        handleKill(ws, state, msg.data);
         break;
       case 'term:list':
         handleList(ws, state);
@@ -119,7 +119,7 @@ async function handleCreate(ws: ServerWebSocket<any>, state: TerminalWsState, da
       data?.resumeSessionId
     );
     // Auto-attach creator
-    ptyManager.attach(session.id, ws as any);
+    ptyManager.attach(session.id, state.userId!, ws as any);
     send(ws, { type: 'term:created', data: { sessionId: session.id, pid: session.pty.pid } });
   } catch (e) {
     send(ws, { type: 'error', data: { message: (e as Error).message } });
@@ -128,34 +128,50 @@ async function handleCreate(ws: ServerWebSocket<any>, state: TerminalWsState, da
 
 function handleAttach(ws: ServerWebSocket<any>, state: TerminalWsState, data: any) {
   try {
-    const session = ptyManager.attach(data.sessionId, ws as any);
+    const session = ptyManager.attach(data.sessionId, state.userId!, ws as any);
     send(ws, { type: 'term:attached', data: { sessionId: session.id, status: session.status } });
   } catch (e) {
     send(ws, { type: 'error', data: { message: (e as Error).message } });
   }
 }
 
-function handleInput(data: any) {
+function handleInput(ws: ServerWebSocket<any>, state: TerminalWsState, data: any) {
   if (data?.sessionId && data?.data) {
-    ptyManager.write(data.sessionId, data.data);
+    try {
+      ptyManager.write(data.sessionId, state.userId!, data.data);
+    } catch (e) {
+      send(ws, { type: 'error', data: { message: (e as Error).message } });
+    }
   }
 }
 
-function handleResize(data: any) {
+function handleResize(ws: ServerWebSocket<any>, state: TerminalWsState, data: any) {
   if (data?.sessionId && data?.cols && data?.rows) {
-    ptyManager.resize(data.sessionId, data.cols, data.rows);
+    try {
+      ptyManager.resize(data.sessionId, state.userId!, data.cols, data.rows);
+    } catch (e) {
+      send(ws, { type: 'error', data: { message: (e as Error).message } });
+    }
   }
 }
 
-function handleDetach(ws: ServerWebSocket<any>, data: any) {
+function handleDetach(ws: ServerWebSocket<any>, state: TerminalWsState, data: any) {
   if (data?.sessionId) {
-    ptyManager.detach(data.sessionId, ws as any);
+    try {
+      ptyManager.detach(data.sessionId, state.userId!, ws as any);
+    } catch (e) {
+      send(ws, { type: 'error', data: { message: (e as Error).message } });
+    }
   }
 }
 
-function handleKill(data: any) {
+function handleKill(ws: ServerWebSocket<any>, state: TerminalWsState, data: any) {
   if (data?.sessionId) {
-    ptyManager.kill(data.sessionId);
+    try {
+      ptyManager.kill(data.sessionId, state.userId!);
+    } catch (e) {
+      send(ws, { type: 'error', data: { message: (e as Error).message } });
+    }
   }
 }
 

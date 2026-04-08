@@ -76,9 +76,9 @@ export function installHooks(): void {
   if (!existing) {
     settings.hooks.PostToolUse.push(taskerHook);
     saveClaudeSettings(settings);
-    logger.info('Tasker hooks installed');
+    logger.info('Claude Hub hooks installed');
   } else {
-    logger.debug('Tasker hooks already installed');
+    logger.debug('Claude Hub hooks already installed');
   }
 }
 
@@ -101,7 +101,7 @@ export function uninstallHooks(): void {
   }
 
   saveClaudeSettings(settings);
-  logger.info('Tasker hooks uninstalled');
+  logger.info('Claude Hub hooks uninstalled');
 }
 
 /** Get hook status info */

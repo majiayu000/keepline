@@ -38,6 +38,7 @@ class WebSocketManager {
   private messageHandlers = new Set<MessageHandler>()
   private statusHandlers = new Set<StatusHandler>()
   private isDestroyed = false
+  private token: string | null = null
 
   private readonly maxReconnectAttempts = 10
   private readonly reconnectInterval = 3000
@@ -50,10 +51,10 @@ class WebSocketManager {
     this.send = this.send.bind(this)
   }
 
-  private getWebSocketUrl(): string {
+  private getWebSocketUrl(token: string): string {
     const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:'
     const host = window.location.host
-    return `${protocol}//${host}/ws`
+    return `${protocol}//${host}/ws?token=${encodeURIComponent(token)}`
   }
 
   private setStatus(newStatus: WebSocketStatus) {
@@ -63,9 +64,10 @@ class WebSocketManager {
     }
   }
 
-  connect(): void {
+  connect(token: string): void {
     // Prevent multiple connections
-    if (this.isDestroyed) return
+    this.isDestroyed = false
+    this.token = token
     if (this.ws?.readyState === WebSocket.OPEN) return
     if (this.ws?.readyState === WebSocket.CONNECTING) return
 
@@ -79,7 +81,7 @@ class WebSocketManager {
     this.setStatus('connecting')
 
     try {
-      const ws = new WebSocket(this.getWebSocketUrl())
+      const ws = new WebSocket(this.getWebSocketUrl(token))
 
       ws.onopen = () => {
         if (this.isDestroyed) {
@@ -125,13 +127,13 @@ class WebSocketManager {
   private scheduleReconnect(): void {
     if (this.isDestroyed) return
     if (this.reconnectTimeout) return // Already scheduled
-    if (this.reconnectAttempts >= this.maxReconnectAttempts) return
+    if (this.reconnectAttempts >= this.maxReconnectAttempts || !this.token) return
 
     this.reconnectAttempts++
     this.reconnectTimeout = setTimeout(() => {
       this.reconnectTimeout = null
-      if (!this.isDestroyed) {
-        this.connect()
+      if (!this.isDestroyed && this.token) {
+        this.connect(this.token)
       }
     }, this.reconnectInterval)
   }
@@ -206,7 +208,9 @@ class WebSocketManager {
       this.ws.close()
       this.ws = null
     }
-    this.connect()
+    if (this.token) {
+      this.connect(this.token)
+    }
   }
 }
 
@@ -226,33 +230,19 @@ export function getWebSocketManager(): WebSocketManager {
   return window.__wsManager
 }
 
-// Auto-connect when module loads (only in browser, only once)
-if (typeof window !== 'undefined') {
-  // Check if auto-connect was already called (survives HMR)
-  if (!window.__wsAutoConnectCalled) {
-    window.__wsAutoConnectCalled = true
+if (typeof window !== 'undefined' && !window.__wsAutoConnectCalled) {
+  window.__wsAutoConnectCalled = true
 
-    // Delay initial connection to ensure page is ready
-    setTimeout(() => {
-      getWebSocketManager().connect()
-    }, 100)
+  document.addEventListener('visibilitychange', () => {
+    const manager = getWebSocketManager()
+    if (document.visibilityState === 'visible' && manager.getStatus() === 'disconnected') {
+      manager.reconnect()
+    }
+  })
 
-    // Handle page visibility changes (only add listener once)
-    document.addEventListener('visibilitychange', () => {
-      const manager = getWebSocketManager()
-      if (document.visibilityState === 'visible') {
-        // Reconnect if disconnected when page becomes visible
-        if (manager.getStatus() === 'disconnected') {
-          manager.reconnect()
-        }
-      }
-    })
-
-    // Clean up on page unload (only add listener once)
-    window.addEventListener('beforeunload', () => {
-      window.__wsManager?.disconnect()
-    })
-  }
+  window.addEventListener('beforeunload', () => {
+    window.__wsManager?.disconnect()
+  })
 }
 
 // Vite HMR: Preserve WebSocket connection during hot module replacement

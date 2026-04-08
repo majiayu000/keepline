@@ -32,7 +32,7 @@ interface UseSessionsReturn {
   connectionStatus: ConnectionStatus
 }
 
-export function useSessions(): UseSessionsReturn {
+export function useSessions(token: string): UseSessionsReturn {
   const [sessions, setSessions] = useState<Session[]>([])
   const [stats, setStats] = useState<SessionStats | null>(null)
   const [loading, setLoading] = useState(true)
@@ -66,6 +66,7 @@ export function useSessions(): UseSessionsReturn {
 
   // WebSocket connection
   useWebSocket({
+    token,
     onMessage: handleWebSocketMessage,
     onConnect: () => {
       wsConnectedRef.current = true

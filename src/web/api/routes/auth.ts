@@ -90,7 +90,7 @@ auth.post('/login', rateLimit(10, 60 * 1000), async (c) => {
 
 // POST /api/auth/logout - Revoke current token
 auth.post('/logout', authMiddleware, async (c) => {
-  const user = c.get('user') as JwtPayload;
+  const user = (c as any).get('user') as JwtPayload;
   revokeToken(user.jti);
   logAudit(user.sub, 'logout');
   return c.json({ success: true });

@@ -11,10 +11,12 @@ import { isProcessRunning } from '../../../adapters/process/scanner.js';
 import { getSessionById, getAllSessions as getAllParsedSessions } from '../../../adapters/claude/scanner.js';
 import { getRecoveryInfo } from '../../../services/recovery.service.js';
 import { logger } from '../../../lib/logger.js';
+import { authMiddleware } from '../middleware/auth.js';
 import { isValidSessionId } from '../middleware/validation.js';
 import { broadcast } from '../websocket.js';
 
 const app = new Hono();
+app.use('*', authMiddleware);
 
 // Track last sync time for smart sync
 let lastSyncTime = 0;

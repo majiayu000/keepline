@@ -5,7 +5,7 @@
  */
 
 import { randomUUID } from 'crypto';
-import { queryOne, queryAll, runSql } from '../infrastructure/database/sqlite.js';
+import { queryOne, runSql } from '../infrastructure/database/sqlite.js';
 import { logger } from '../lib/logger.js';
 
 // JWT secret - auto-generated on first use, cached in memory

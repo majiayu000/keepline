@@ -12,8 +12,10 @@ import {
   getPlanStats,
 } from '../../../adapters/claude/plans/index.js';
 import { logger } from '../../../lib/logger.js';
+import { authMiddleware } from '../middleware/auth.js';
 
 const app = new Hono();
+app.use('*', authMiddleware);
 
 // GET /api/plans - List all plans
 app.get('/', (c) => {

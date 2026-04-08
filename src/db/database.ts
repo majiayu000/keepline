@@ -1,65 +1,17 @@
 /**
- * SQLite database management (using Bun's built-in SQLite)
+ * Legacy database re-exports.
+ *
+ * Keep this file as a compatibility shim so old imports reuse the
+ * infrastructure-layer singleton rather than opening a second DB handle.
  */
 
-import { Database } from 'bun:sqlite';
-import { existsSync, mkdirSync } from 'fs';
-import { dirname } from 'path';
-import { TASKER_DB } from '../lib/paths.js';
-import { DatabaseError } from '../lib/errors.js';
-import { logger } from '../lib/logger.js';
-
-let db: Database | null = null;
-
-/** Get database instance (singleton) */
-export function getDatabase(): Database {
-  if (db) return db;
-
-  try {
-    // Ensure directory exists
-    const dbDir = dirname(TASKER_DB);
-    if (!existsSync(dbDir)) {
-      mkdirSync(dbDir, { recursive: true });
-    }
-
-    db = new Database(TASKER_DB);
-    db.exec('PRAGMA journal_mode = WAL');
-    db.exec('PRAGMA foreign_keys = ON');
-
-    logger.debug('Database connection established');
-    return db;
-  } catch (error) {
-    throw new DatabaseError('Failed to connect to database', {
-      path: TASKER_DB,
-      error: (error as Error).message,
-    });
-  }
-}
-
-/** Close database connection */
-export function closeDatabase(): void {
-  if (db) {
-    db.close();
-    db = null;
-    logger.debug('Database connection closed');
-  }
-}
-
-/** Execute a transaction */
-export function transaction<T>(fn: () => T): T {
-  const database = getDatabase();
-  return database.transaction(fn)();
-}
-
-/** Check if database is initialized */
-export function isDatabaseInitialized(): boolean {
-  try {
-    const database = getDatabase();
-    const result = database
-      .prepare("SELECT name FROM sqlite_master WHERE type='table' AND name='sessions'")
-      .get();
-    return !!result;
-  } catch {
-    return false;
-  }
-}
+export {
+  getDatabase,
+  closeDatabase,
+  transaction,
+  isDatabaseInitialized,
+  runSql,
+  execSql,
+  queryAll,
+  queryOne,
+} from '../infrastructure/database/sqlite.js';

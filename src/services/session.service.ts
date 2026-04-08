@@ -13,6 +13,7 @@ import { detectSessionStatus } from '../adapters/process/detector.js';
 import { getAllSessions as getClaudeSessions } from '../adapters/claude/scanner.js';
 import { logger } from '../lib/logger.js';
 import type { CreateSessionInput, UpdateSessionInput, AggregatedSession } from './session.types.js';
+import { matchProcessesToSessions } from './session.process-matcher.js';
 
 // Sync lock to prevent concurrent sync operations
 let isSyncing = false;
@@ -124,15 +125,15 @@ export async function syncSessions(options: SyncOptions = {}): Promise<{
 
     // Get current process info (will be cached for duration of sync)
     const processes = getCachedProcesses();
-    const processByCwd = new Map(processes.map((p) => [p.cwd, p]));
 
     // Get Claude sessions from file system (with optional age filter for performance)
     const claudeSessions = await getClaudeSessions({ maxAgeDays });
+    const processMatches = matchProcessesToSessions(claudeSessions, processes);
 
     // Process each Claude session
     for (const claudeSession of claudeSessions) {
       const existing = sessionRepo.findBySessionId(claudeSession.sessionId);
-      const process = processByCwd.get(claudeSession.directory);
+      const process = processMatches.get(claudeSession.sessionId);
 
       const status = detectSessionStatus(
         process || null,
@@ -250,8 +251,10 @@ export function getAggregatedSession(sessionId: string): AggregatedSession | nul
   const session = sessionRepo.findBySessionId(sessionId);
   if (!session) return null;
 
+  const sessions = sessionRepo.findAll();
   const processes = getCachedProcesses();
-  const process = processes.find((p) => p.cwd === session.directory);
+  const processMatches = matchProcessesToSessions(sessions, processes);
+  const process = processMatches.get(session.sessionId);
 
   return {
     ...session,

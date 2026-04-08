@@ -1,12 +1,11 @@
 /**
- * Web API Server for Tasker
+ * Web API Server for Claude Hub
  * Provides REST endpoints for session management
  *
  * All endpoints include input validation
  */
 
 import { Hono } from 'hono';
-import { cors } from 'hono/cors';
 import { serveStatic } from 'hono/bun';
 import path from 'path';
 import { runMigrations } from '../../db/migrations.js';
@@ -20,12 +19,10 @@ import { rateLimit } from './middleware/rateLimit.js';
 import { sessions, recovery, usage, memory, plans, auth } from './routes/index.js';
 import { broadcast, wsClients, websocketHandler } from './websocket.js';
 import { terminalWebsocketHandler } from './terminal-websocket.js';
+import { verifyToken } from '../../services/auth.service.js';
 import { config } from '../../lib/config.js';
 
 const app = new Hono();
-
-// Enable CORS
-app.use('/*', cors());
 
 // Rate limiting: 500 requests per minute for API routes (local tool, be generous)
 app.use('/api/*', rateLimit(500, 60 * 1000));
@@ -153,8 +150,10 @@ export async function startWebServer(port: number = 3377) {
   logger.info(`Starting web server on port ${port}`);
 
   const terminalConfig = config.get().webTerminal;
+  const hostname = process.env.CLAUDE_HUB_HOST || '127.0.0.1';
 
-  const server = Bun.serve({
+  const server = Bun.serve<{ type: 'dashboard' | 'terminal' }>({
+    hostname,
     port,
     idleTimeout: 255, // max value, prevents cloudflared/proxy timeout
     fetch(req, server) {
@@ -162,6 +161,10 @@ export async function startWebServer(port: number = 3377) {
 
       // Handle WebSocket upgrade - dashboard
       if (url.pathname === '/ws') {
+        const token = url.searchParams.get('token');
+        if (!token || !verifyToken(token)) {
+          return new Response('Unauthorized', { status: 401 });
+        }
         const upgraded = server.upgrade(req, { data: { type: 'dashboard' } });
         if (upgraded) return undefined;
         return new Response('WebSocket upgrade failed', { status: 400 });
@@ -216,8 +219,8 @@ export async function startWebServer(port: number = 3377) {
   // Start periodic update checker (every 5 seconds)
   setInterval(checkAndBroadcastUpdates, 5000);
 
-  logger.info(`Web UI available at http://localhost:${port}`);
-  logger.info(`WebSocket available at ws://localhost:${port}/ws`);
+  logger.info(`Web UI available at http://${hostname}:${port}`);
+  logger.info(`WebSocket available at ws://${hostname}:${port}/ws`);
 
   return server;
 }

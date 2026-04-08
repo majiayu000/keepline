@@ -4,7 +4,7 @@
 
 import { spawn } from 'child_process';
 import { existsSync, readFileSync, writeFileSync, unlinkSync } from 'fs';
-import { TASKER_PID } from '../lib/paths.js';
+import { CLAUDE_HUB_PID } from '../lib/paths.js';
 import { logger } from '../lib/logger.js';
 import { emit } from '../lib/events.js';
 
@@ -34,12 +34,12 @@ function sleep(ms: number): Promise<void> {
 
 /** Check if daemon is running */
 export function isDaemonRunning(): boolean {
-  if (!existsSync(TASKER_PID)) {
+  if (!existsSync(CLAUDE_HUB_PID)) {
     return false;
   }
 
   try {
-    const pid = parseInt(readFileSync(TASKER_PID, 'utf-8').trim(), 10);
+    const pid = parseInt(readFileSync(CLAUDE_HUB_PID, 'utf-8').trim(), 10);
     if (!validatePid(pid)) {
       cleanupPidFile();
       return false;
@@ -59,12 +59,12 @@ export function isDaemonRunning(): boolean {
 
 /** Get daemon PID if running */
 export function getDaemonPid(): number | null {
-  if (!existsSync(TASKER_PID)) {
+  if (!existsSync(CLAUDE_HUB_PID)) {
     return null;
   }
 
   try {
-    const pid = parseInt(readFileSync(TASKER_PID, 'utf-8').trim(), 10);
+    const pid = parseInt(readFileSync(CLAUDE_HUB_PID, 'utf-8').trim(), 10);
     if (!validatePid(pid)) {
       cleanupPidFile();
       return null;
@@ -83,13 +83,13 @@ export function getDaemonPid(): number | null {
 
 /** Write PID file */
 function writePidFile(pid: number): void {
-  writeFileSync(TASKER_PID, String(pid));
+  writeFileSync(CLAUDE_HUB_PID, String(pid));
 }
 
 /** Clean up PID file */
 function cleanupPidFile(): void {
-  if (existsSync(TASKER_PID)) {
-    unlinkSync(TASKER_PID);
+  if (existsSync(CLAUDE_HUB_PID)) {
+    unlinkSync(CLAUDE_HUB_PID);
   }
 }
 
@@ -105,7 +105,7 @@ export function startDaemon(): { success: boolean; pid?: number; error?: string 
     const child = spawn(process.execPath, [process.argv[1], 'daemon', 'run'], {
       detached: true,
       stdio: 'ignore',
-      env: { ...process.env, TASKER_DAEMON: '1' },
+      env: { ...process.env, CLAUDE_HUB_DAEMON: '1' },
     });
 
     child.unref();

@@ -9,6 +9,7 @@ import { getAllSessions, completeSession } from '../../../services/session.servi
 import { recoverSession, getRecoveryInfo } from '../../../services/recovery.service.js';
 import { stopProcess, isProcessRunning } from '../../../adapters/process/scanner.js';
 import { logger } from '../../../lib/logger.js';
+import { authMiddleware } from '../middleware/auth.js';
 import {
   isValidSessionId,
   validateRecoverRequest,
@@ -16,6 +17,7 @@ import {
 } from '../middleware/validation.js';
 
 const app = new Hono();
+app.use('*', authMiddleware);
 
 // POST /api/sessions/:id/recover - Recover a lost session
 app.post('/:id/recover', async (c) => {

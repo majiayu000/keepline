@@ -53,13 +53,23 @@ async function request<T>(
     : timeoutController.signal
 
   try {
+    const headers = new Headers(fetchOptions.headers)
+    const token = typeof window !== 'undefined'
+      ? localStorage.getItem('terminal_token')
+      : null
+
+    if (!(fetchOptions.body instanceof FormData) && !headers.has('Content-Type')) {
+      headers.set('Content-Type', 'application/json')
+    }
+
+    if (token && !headers.has('Authorization')) {
+      headers.set('Authorization', `Bearer ${token}`)
+    }
+
     const response = await fetch(`${API_BASE}${endpoint}`, {
       ...fetchOptions,
       signal: combinedSignal,
-      headers: {
-        'Content-Type': 'application/json',
-        ...fetchOptions?.headers,
-      },
+      headers,
     })
     clearTimeout(timeoutId)
     return await response.json()

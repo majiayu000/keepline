@@ -11,15 +11,22 @@ import { ProjectsGrid } from '@/components/ProjectsGrid'
 import { MemoryPanel } from '@/components/MemoryPanel'
 import { PlansPanel } from '@/components/PlansPanel'
 import { TerminalPanel } from '@/components/TerminalPanel'
+import { AuthSetup } from '@/components/AuthSetup'
+import { AuthLogin } from '@/components/AuthLogin'
 import type { TabId } from '@/components/TabNav'
-import { useSessions, useKeyboardShortcuts, useSessionFilter, useNotifications, useProjects } from '@/hooks'
+import { useAuth, useSessions, useKeyboardShortcuts, useSessionFilter, useNotifications, useProjects } from '@/hooks'
 
 // Lazy load heavy components
 const SessionList = lazy(() => import('@/components/SessionList').then(m => ({ default: m.SessionList })))
 
 const THEME_ORDER: Theme[] = ['cyberpunk', 'matrix', 'synthwave', 'minimal', 'tokyo']
 
-function AppContent() {
+interface DashboardAppProps {
+  token: string
+  onLogout: () => Promise<void>
+}
+
+function DashboardApp({ token, onLogout }: DashboardAppProps) {
   const { showToast } = useToast()
   const { theme, setTheme } = useTheme()
   const [showHelp, setShowHelp] = useState(false)
@@ -46,7 +53,7 @@ function AppContent() {
     loadingMore,
     // WebSocket
     connectionStatus,
-  } = useSessions()
+  } = useSessions(token)
 
   // Search & Filter
   const {
@@ -212,12 +219,31 @@ function AppContent() {
 
       {/* Terminal Tab */}
       {activeTab === 'terminal' && (
-        <TerminalPanel />
+        <TerminalPanel token={token} onLogout={onLogout} />
       )}
 
       <HelpModal isOpen={showHelp} onClose={() => setShowHelp(false)} />
     </Layout>
   )
+}
+
+function AppContent() {
+  const auth = useAuth()
+  const token = auth.getToken()
+
+  if (auth.loading || !auth.status) {
+    return <SessionCardSkeleton count={4} />
+  }
+
+  if (!auth.status.setupComplete) {
+    return <AuthSetup onSetup={auth.setup} error={auth.error} />
+  }
+
+  if (!auth.status.authenticated || !token) {
+    return <AuthLogin onLogin={auth.login} error={auth.error} />
+  }
+
+  return <DashboardApp token={token} onLogout={auth.logout} />
 }
 
 function App() {
