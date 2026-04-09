@@ -107,18 +107,21 @@ export function summarizeSessionEntries(entries: ClaudeEntryWithAgent[]): Parsed
   let lastTool: string | undefined;
   let lastToolInput: Record<string, unknown> | undefined;
   let currentFile: string | undefined;
-  let startedAt: Date | undefined;
-  let lastActiveAt: Date = new Date(firstEntry.timestamp);
+  let startedAtMs: number | undefined;
+  let lastActiveAtMs = Date.parse(firstEntry.timestamp);
+  if (Number.isNaN(lastActiveAtMs)) {
+    lastActiveAtMs = Date.now();
+  }
   const toolCalls: ToolCallInfo[] = [];
   const usageAccumulator = createUsageAccumulator();
 
   for (const entry of entries) {
-    const entryTime = new Date(entry.timestamp);
-    if (entryTime > lastActiveAt) {
-      lastActiveAt = entryTime;
+    const entryTimeMs = Date.parse(entry.timestamp);
+    if (!Number.isNaN(entryTimeMs) && entryTimeMs > lastActiveAtMs) {
+      lastActiveAtMs = entryTimeMs;
     }
-    if (!startedAt || entryTime < startedAt) {
-      startedAt = entryTime;
+    if (!Number.isNaN(entryTimeMs) && (startedAtMs === undefined || entryTimeMs < startedAtMs)) {
+      startedAtMs = entryTimeMs;
     }
 
     if (isUserEntry(entry) && entry.userType === 'external') {
@@ -139,7 +142,8 @@ export function summarizeSessionEntries(entries: ClaudeEntryWithAgent[]): Parsed
     if (isAssistantEntry(entry)) {
       let entryToolCount = 0;
       let entryLastToolUse: ClaudeToolUseBlock | undefined;
-      let textParts: string[] | undefined;
+      let entryText = '';
+      let hasText = false;
 
       for (const block of entry.message.content) {
         if (block.type === 'tool_use') {
@@ -154,8 +158,12 @@ export function summarizeSessionEntries(entries: ClaudeEntryWithAgent[]): Parsed
         }
 
         if (block.type === 'text') {
-          if (!textParts) textParts = [];
-          textParts.push(block.text);
+          if (hasText) {
+            entryText += `\n${block.text}`;
+          } else {
+            entryText = block.text;
+            hasText = true;
+          }
         }
       }
 
@@ -171,8 +179,8 @@ export function summarizeSessionEntries(entries: ClaudeEntryWithAgent[]): Parsed
         }
       }
 
-      if (textParts && textParts.length > 0) {
-        const text = textParts.join('\n').trim();
+      if (hasText) {
+        const text = entryText.trim();
         if (text) {
           lastMessage = text;
         }
@@ -229,8 +237,8 @@ export function summarizeSessionEntries(entries: ClaudeEntryWithAgent[]): Parsed
     lastTool,
     lastToolInput,
     currentFile,
-    startedAt,
-    lastActiveAt,
+    startedAt: startedAtMs === undefined ? undefined : new Date(startedAtMs),
+    lastActiveAt: new Date(lastActiveAtMs),
     toolCalls: toolCalls.length > 0 ? toolCalls : undefined,
     usageStats,
     // Multi-session tracking fields
