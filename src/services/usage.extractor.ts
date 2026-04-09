@@ -9,8 +9,8 @@
  */
 
 import type { ClaudeEntry, ClaudeAssistantEntry } from '../adapters/claude/types.js'
-import type { UsageStats, ModelUsage } from './usage.types.js'
-import { getModelPricing, calculateCostWithCache } from './usage.pricing.js'
+import type { UsageStats, ModelUsage, ModelPricing } from './usage.types.js'
+import { getModelPricing } from './usage.pricing.js'
 
 /** Claude's extended usage structure with cache tokens */
 interface ClaudeUsage {
@@ -66,9 +66,72 @@ export function extractUsageFromEntries(entries: ClaudeEntry[]): EntryUsage[] {
 
 /** Aggregate usage stats from JSONL entries */
 export function aggregateUsageStats(entries: ClaudeEntry[]): UsageStats {
-  const usageList = extractUsageFromEntries(entries)
+  const costPerTokenByModel = new Map<string, {
+    pricing: ModelPricing
+    inputPerToken: number
+    outputPerToken: number
+  }>()
+  const modelMap = new Map<string, ModelUsage>()
 
-  if (usageList.length === 0) {
+  let totalInputTokens = 0
+  let totalOutputTokens = 0
+  let totalCost = 0
+  let apiCalls = 0
+
+  for (const entry of entries) {
+    if (!isAssistantEntryWithUsage(entry)) {
+      continue
+    }
+
+    apiCalls++
+    const usage = entry.message.usage
+    const model = entry.message.model
+    const cacheCreationTokens = usage.cache_creation_input_tokens || 0
+    const cacheReadTokens = usage.cache_read_input_tokens || 0
+    // Total input includes base + cache creation + cache read tokens
+    const effectiveInputTokens = usage.input_tokens + cacheCreationTokens + cacheReadTokens
+    totalInputTokens += effectiveInputTokens
+    totalOutputTokens += usage.output_tokens
+
+    let costModel = costPerTokenByModel.get(model)
+    if (!costModel) {
+      const pricing = getModelPricing(model)
+      costModel = {
+        pricing,
+        inputPerToken: pricing.inputPerMillion / 1_000_000,
+        outputPerToken: pricing.outputPerMillion / 1_000_000,
+      }
+      costPerTokenByModel.set(model, costModel)
+    }
+
+    // Cache pricing: cache write 1.25x, cache read 0.1x input token price.
+    const cost =
+      usage.input_tokens * costModel.inputPerToken +
+      cacheCreationTokens * costModel.inputPerToken * 1.25 +
+      cacheReadTokens * costModel.inputPerToken * 0.1 +
+      usage.output_tokens * costModel.outputPerToken
+
+    totalCost += cost
+
+    // Update model breakdown
+    const existing = modelMap.get(model)
+    if (existing) {
+      existing.inputTokens += effectiveInputTokens
+      existing.outputTokens += usage.output_tokens
+      existing.cost += cost
+      existing.calls += 1
+    } else {
+      modelMap.set(model, {
+        model,
+        inputTokens: effectiveInputTokens,
+        outputTokens: usage.output_tokens,
+        cost,
+        calls: 1,
+      })
+    }
+  }
+
+  if (apiCalls === 0) {
     return {
       totalInputTokens: 0,
       totalOutputTokens: 0,
@@ -79,54 +142,12 @@ export function aggregateUsageStats(entries: ClaudeEntry[]): UsageStats {
     }
   }
 
-  // Aggregate by model
-  const modelMap = new Map<string, ModelUsage>()
-
-  let totalInputTokens = 0
-  let totalOutputTokens = 0
-  let totalCost = 0
-
-  for (const usage of usageList) {
-    // Total input includes base + cache creation + cache read tokens
-    const effectiveInputTokens = usage.inputTokens + usage.cacheCreationTokens + usage.cacheReadTokens
-    totalInputTokens += effectiveInputTokens
-    totalOutputTokens += usage.outputTokens
-
-    // Calculate cost with cache pricing
-    const pricing = getModelPricing(usage.model)
-    const cost = calculateCostWithCache(
-      usage.inputTokens,
-      usage.outputTokens,
-      usage.cacheCreationTokens,
-      usage.cacheReadTokens,
-      pricing
-    )
-    totalCost += cost
-
-    // Update model breakdown
-    const existing = modelMap.get(usage.model)
-    if (existing) {
-      existing.inputTokens += effectiveInputTokens
-      existing.outputTokens += usage.outputTokens
-      existing.cost += cost
-      existing.calls += 1
-    } else {
-      modelMap.set(usage.model, {
-        model: usage.model,
-        inputTokens: effectiveInputTokens,
-        outputTokens: usage.outputTokens,
-        cost,
-        calls: 1,
-      })
-    }
-  }
-
   return {
     totalInputTokens,
     totalOutputTokens,
     totalTokens: totalInputTokens + totalOutputTokens,
     totalCost,
-    apiCalls: usageList.length,
+    apiCalls,
     modelBreakdown: Array.from(modelMap.values()),
   }
 }

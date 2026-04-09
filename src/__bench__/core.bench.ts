@@ -1,6 +1,8 @@
 import { matchProcessesToSessions } from '../services/session.process-matcher.js';
 import type { ClaudeProcessInfo } from '../adapters/process/types.js';
 import type { SessionProcessCandidate } from '../services/session.process-matcher.js';
+import { aggregateUsageStats } from '../services/usage.extractor.js';
+import type { ClaudeEntry } from '../adapters/claude/types.js';
 
 type BenchmarkResult = {
   name: string;
@@ -137,13 +139,101 @@ function runScenario(
   };
 }
 
+function buildUsageAggregationScenario(): {
+  entries: ClaudeEntry[];
+  innerLoops: number;
+} {
+  const entries: ClaudeEntry[] = [];
+  const models = [
+    'claude-3-5-sonnet-20241022',
+    'claude-3-5-haiku-20241022',
+    'claude-3-opus-20240229',
+  ];
+
+  for (let i = 0; i < 4_800; i++) {
+    const model = models[i % models.length];
+    entries.push({
+      type: 'assistant',
+      uuid: `usage-entry-${i}`,
+      sessionId: `usage-session-${Math.floor(i / 30)}`,
+      cwd: '/tmp/benchmark/usage',
+      timestamp: new Date(BASE_TIME + i * 1000).toISOString(),
+      message: {
+        role: 'assistant',
+        model,
+        content: [{ type: 'text', text: 'benchmark output' }],
+        usage: {
+          input_tokens: 1_000 + (i % 40),
+          output_tokens: 600 + (i % 25),
+          cache_creation_input_tokens: i % 9,
+          cache_read_input_tokens: i % 13,
+        } as unknown as { input_tokens: number; output_tokens: number },
+      },
+    } as ClaudeEntry);
+  }
+
+  // Add user entries that should be ignored by aggregation path.
+  for (let i = 0; i < 1_200; i++) {
+    entries.push({
+      type: 'user',
+      uuid: `usage-user-${i}`,
+      sessionId: `usage-session-${Math.floor(i / 30)}`,
+      cwd: '/tmp/benchmark/usage',
+      timestamp: new Date(BASE_TIME + i * 1000).toISOString(),
+      userType: 'external',
+      message: {
+        role: 'user',
+        content: 'hi',
+      },
+    });
+  }
+
+  return { entries, innerLoops: 30 };
+}
+
+function runUsageAggregationScenario(
+  name: string,
+  entries: ClaudeEntry[],
+  innerLoops: number
+): BenchmarkResult {
+  for (let i = 0; i < WARMUP_ROUNDS; i++) {
+    aggregateUsageStats(entries);
+  }
+
+  const samplesMs: number[] = [];
+  for (let round = 0; round < BENCH_ROUNDS; round++) {
+    const start = process.hrtime.bigint();
+    for (let i = 0; i < innerLoops; i++) {
+      aggregateUsageStats(entries);
+    }
+    const durationNs = Number(process.hrtime.bigint() - start);
+    samplesMs.push((durationNs / innerLoops) / 1_000_000);
+  }
+
+  const sorted = [...samplesMs].sort((a, b) => a - b);
+  const total = samplesMs.reduce((sum, value) => sum + value, 0);
+
+  return {
+    name,
+    rounds: BENCH_ROUNDS,
+    innerLoops,
+    meanMs: total / samplesMs.length,
+    medianMs: percentile(sorted, 0.5),
+    p95Ms: percentile(sorted, 0.95),
+    minMs: sorted[0],
+    maxMs: sorted[sorted.length - 1],
+  };
+}
+
 function main(): void {
   const dense = buildDenseSameDirectoryScenario();
   const mixed = buildMultiDirectoryScenario();
+  const usage = buildUsageAggregationScenario();
 
   const results = [
     runScenario('dense_same_directory', dense.sessions, dense.processes, dense.innerLoops),
     runScenario('multi_directory', mixed.sessions, mixed.processes, mixed.innerLoops),
+    runUsageAggregationScenario('usage_aggregation', usage.entries, usage.innerLoops),
   ];
 
   const compositeMeanMs = results.reduce((sum, item) => sum + item.meanMs, 0) / results.length;
