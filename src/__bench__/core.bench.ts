@@ -5,6 +5,7 @@ import { aggregateUsageStats } from '../services/usage.extractor.js';
 import type { ClaudeEntry } from '../adapters/claude/types.js';
 import { summarizeSessionEntries } from '../adapters/claude/parser/jsonl.js';
 import type { ClaudeEntryWithAgent } from '../adapters/claude/parser/jsonl.js';
+import { parseClaudePsOutput } from '../adapters/process/scanner.js';
 
 type BenchmarkResult = {
   name: string;
@@ -321,17 +322,79 @@ function runJsonlSummaryScenario(
   };
 }
 
+function buildProcessParserScenario(): {
+  output: string;
+  innerLoops: number;
+} {
+  const lines: string[] = [];
+
+  for (let i = 0; i < 2_400; i++) {
+    const pid = 10_000 + i;
+    const cpu = (i % 10).toFixed(1);
+    const mem = (0.2 + (i % 6) * 0.1).toFixed(1);
+    const day = ((i % 28) + 1).toString().padStart(2, ' ');
+    const seconds = (i % 60).toString().padStart(2, '0');
+    const lstart = `Mon Jan ${day} 10:30:${seconds} 2026`;
+    const command =
+      i % 3 === 0
+        ? '/usr/local/bin/claude --model sonnet'
+        : '/usr/bin/python worker.py';
+    lines.push(`${pid} ${cpu} ${mem} ttys001 ${lstart} ${command}`);
+  }
+
+  return {
+    output: lines.join('\n'),
+    innerLoops: 40,
+  };
+}
+
+function runProcessParserScenario(
+  name: string,
+  output: string,
+  innerLoops: number
+): BenchmarkResult {
+  for (let i = 0; i < WARMUP_ROUNDS; i++) {
+    parseClaudePsOutput(output);
+  }
+
+  const samplesMs: number[] = [];
+  for (let round = 0; round < BENCH_ROUNDS; round++) {
+    const start = process.hrtime.bigint();
+    for (let i = 0; i < innerLoops; i++) {
+      parseClaudePsOutput(output);
+    }
+    const durationNs = Number(process.hrtime.bigint() - start);
+    samplesMs.push((durationNs / innerLoops) / 1_000_000);
+  }
+
+  const sorted = [...samplesMs].sort((a, b) => a - b);
+  const total = samplesMs.reduce((sum, value) => sum + value, 0);
+
+  return {
+    name,
+    rounds: BENCH_ROUNDS,
+    innerLoops,
+    meanMs: total / samplesMs.length,
+    medianMs: percentile(sorted, 0.5),
+    p95Ms: percentile(sorted, 0.95),
+    minMs: sorted[0],
+    maxMs: sorted[sorted.length - 1],
+  };
+}
+
 function main(): void {
   const dense = buildDenseSameDirectoryScenario();
   const mixed = buildMultiDirectoryScenario();
   const usage = buildUsageAggregationScenario();
   const jsonl = buildJsonlSummaryScenario();
+  const processParser = buildProcessParserScenario();
 
   const results = [
     runScenario('dense_same_directory', dense.sessions, dense.processes, dense.innerLoops),
     runScenario('multi_directory', mixed.sessions, mixed.processes, mixed.innerLoops),
     runUsageAggregationScenario('usage_aggregation', usage.entries, usage.innerLoops),
     runJsonlSummaryScenario('jsonl_summary', jsonl.entries, jsonl.innerLoops),
+    runProcessParserScenario('process_ps_parser', processParser.output, processParser.innerLoops),
   ];
 
   const compositeMeanMs = results.reduce((sum, item) => sum + item.meanMs, 0) / results.length;
