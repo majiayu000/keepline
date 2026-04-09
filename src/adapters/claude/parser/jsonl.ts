@@ -14,10 +14,14 @@ import type {
   ToolCallInfo,
   SessionUsageStats,
 } from '../types.js';
-import { aggregateUsageStats } from '../../../services/usage.extractor.js';
+import {
+  addUsageToAccumulator,
+  createUsageAccumulator,
+  usageStatsFromAccumulator,
+} from '../../../services/usage.extractor.js';
 
 /** Extended entry type with agent info */
-type ClaudeEntryWithAgent = ClaudeEntry & {
+export type ClaudeEntryWithAgent = ClaudeEntry & {
   agentId?: string;
   isSidechain?: boolean;
 }
@@ -63,29 +67,6 @@ function extractUserPrompt(entry: ClaudeUserEntry): string | undefined {
   return undefined;
 }
 
-/** Extract tool uses from assistant entry */
-function extractToolUses(entry: ClaudeAssistantEntry): ClaudeToolUseBlock[] {
-  return entry.message.content.filter(
-    (block): block is ClaudeToolUseBlock => block.type === 'tool_use'
-  );
-}
-
-/** Extract text content from assistant entry */
-function extractAssistantText(entry: ClaudeAssistantEntry): string | undefined {
-  const textBlocks = entry.message.content.filter(
-    (block): block is ClaudeTextBlock => block.type === 'text'
-  );
-  if (textBlocks.length === 0) return undefined;
-  // Combine all text blocks
-  return textBlocks.map(b => b.text).join('\n').trim();
-}
-
-/** Text block type guard */
-interface ClaudeTextBlock {
-  type: 'text';
-  text: string;
-}
-
 /** Extract current file from tool input */
 function extractCurrentFile(toolInput: Record<string, unknown>): string | undefined {
   // Common file path keys in Claude tools
@@ -100,24 +81,7 @@ function extractCurrentFile(toolInput: Record<string, unknown>): string | undefi
 }
 
 /** Parse a session JSONL file */
-export async function parseSessionFile(filePath: string): Promise<ParsedSessionData | null> {
-  const entries: ClaudeEntryWithAgent[] = [];
-  let lineNumber = 0;
-
-  const fileStream = createReadStream(filePath);
-  const rl = createInterface({
-    input: fileStream,
-    crlfDelay: Infinity,
-  });
-
-  for await (const line of rl) {
-    lineNumber++;
-    const entry = parseLine(line, lineNumber, filePath);
-    if (entry && entry.type !== 'file-history-snapshot') {
-      entries.push(entry);
-    }
-  }
-
+export function summarizeSessionEntries(entries: ClaudeEntryWithAgent[]): ParsedSessionData | null {
   if (entries.length === 0) return null;
 
   // Extract session info from first entry
@@ -146,6 +110,7 @@ export async function parseSessionFile(filePath: string): Promise<ParsedSessionD
   let startedAt: Date | undefined;
   let lastActiveAt: Date = new Date(firstEntry.timestamp);
   const toolCalls: ToolCallInfo[] = [];
+  const usageAccumulator = createUsageAccumulator();
 
   for (const entry of entries) {
     const entryTime = new Date(entry.timestamp);
@@ -172,33 +137,66 @@ export async function parseSessionFile(filePath: string): Promise<ParsedSessionD
     }
 
     if (isAssistantEntry(entry)) {
-      const toolUses = extractToolUses(entry);
-      toolCount += toolUses.length;
+      let entryToolCount = 0;
+      let entryLastToolUse: ClaudeToolUseBlock | undefined;
+      let textParts: string[] | undefined;
 
-      // Collect all tool calls
-      for (const tool of toolUses) {
-        toolCalls.push({
-          name: tool.name,
-          input: tool.input,
-          timestamp: entry.timestamp,
-        });
+      for (const block of entry.message.content) {
+        if (block.type === 'tool_use') {
+          entryToolCount++;
+          entryLastToolUse = block;
+          toolCalls.push({
+            name: block.name,
+            input: block.input,
+            timestamp: entry.timestamp,
+          });
+          continue;
+        }
+
+        if (block.type === 'text') {
+          if (!textParts) textParts = [];
+          textParts.push(block.text);
+        }
       }
 
-      if (toolUses.length > 0) {
-        const lastToolUse = toolUses[toolUses.length - 1];
-        lastTool = lastToolUse.name;
-        lastToolInput = lastToolUse.input;
+      toolCount += entryToolCount;
 
-        const file = extractCurrentFile(lastToolUse.input);
+      if (entryLastToolUse) {
+        lastTool = entryLastToolUse.name;
+        lastToolInput = entryLastToolUse.input;
+
+        const file = extractCurrentFile(entryLastToolUse.input);
         if (file) {
           currentFile = file;
         }
       }
 
-      // Extract assistant text content (always update to get the latest)
-      const text = extractAssistantText(entry);
-      if (text) {
-        lastMessage = text;
+      if (textParts && textParts.length > 0) {
+        const text = textParts.join('\n').trim();
+        if (text) {
+          lastMessage = text;
+        }
+      }
+
+      const usage = entry.message.usage as
+        | {
+            input_tokens?: number;
+            output_tokens?: number;
+            cache_creation_input_tokens?: number;
+            cache_read_input_tokens?: number;
+          }
+        | undefined;
+      if (
+        usage &&
+        typeof usage.input_tokens === 'number' &&
+        typeof usage.output_tokens === 'number'
+      ) {
+        addUsageToAccumulator(usageAccumulator, entry.message.model, {
+          input_tokens: usage.input_tokens,
+          output_tokens: usage.output_tokens,
+          cache_creation_input_tokens: usage.cache_creation_input_tokens,
+          cache_read_input_tokens: usage.cache_read_input_tokens,
+        });
       }
     }
   }
@@ -209,7 +207,7 @@ export async function parseSessionFile(filePath: string): Promise<ParsedSessionD
   }
 
   // Extract usage stats
-  const rawUsageStats = aggregateUsageStats(entries);
+  const rawUsageStats = usageStatsFromAccumulator(usageAccumulator);
   const usageStats: SessionUsageStats | undefined = rawUsageStats.apiCalls > 0
     ? {
         totalInputTokens: rawUsageStats.totalInputTokens,
@@ -240,4 +238,26 @@ export async function parseSessionFile(filePath: string): Promise<ParsedSessionD
     parentSessionId,
     isSubAgent,
   };
+}
+
+/** Parse a session JSONL file */
+export async function parseSessionFile(filePath: string): Promise<ParsedSessionData | null> {
+  const entries: ClaudeEntryWithAgent[] = [];
+  let lineNumber = 0;
+
+  const fileStream = createReadStream(filePath);
+  const rl = createInterface({
+    input: fileStream,
+    crlfDelay: Infinity,
+  });
+
+  for await (const line of rl) {
+    lineNumber++;
+    const entry = parseLine(line, lineNumber, filePath);
+    if (entry && entry.type !== 'file-history-snapshot') {
+      entries.push(entry);
+    }
+  }
+
+  return summarizeSessionEntries(entries);
 }

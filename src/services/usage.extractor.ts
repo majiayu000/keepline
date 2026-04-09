@@ -9,7 +9,7 @@
  */
 
 import type { ClaudeEntry, ClaudeAssistantEntry } from '../adapters/claude/types.js'
-import type { UsageStats, ModelUsage, ModelPricing } from './usage.types.js'
+import type { UsageStats, ModelUsage } from './usage.types.js'
 import { getModelPricing } from './usage.pricing.js'
 
 /** Claude's extended usage structure with cache tokens */
@@ -20,6 +20,20 @@ interface ClaudeUsage {
   cache_read_input_tokens?: number
 }
 
+type UsageCostModel = {
+  inputPerToken: number
+  outputPerToken: number
+}
+
+type UsageAccumulator = {
+  totalInputTokens: number
+  totalOutputTokens: number
+  totalCost: number
+  apiCalls: number
+  modelMap: Map<string, ModelUsage>
+  costPerTokenByModel: Map<string, UsageCostModel>
+}
+
 /** Extracted usage info from a single entry */
 export interface EntryUsage {
   model: string
@@ -28,6 +42,88 @@ export interface EntryUsage {
   cacheCreationTokens: number
   cacheReadTokens: number
   timestamp: string
+}
+
+export function createUsageAccumulator(): UsageAccumulator {
+  return {
+    totalInputTokens: 0,
+    totalOutputTokens: 0,
+    totalCost: 0,
+    apiCalls: 0,
+    modelMap: new Map<string, ModelUsage>(),
+    costPerTokenByModel: new Map<string, UsageCostModel>(),
+  }
+}
+
+export function addUsageToAccumulator(
+  accumulator: UsageAccumulator,
+  model: string,
+  usage: ClaudeUsage
+): void {
+  const cacheCreationTokens = usage.cache_creation_input_tokens || 0
+  const cacheReadTokens = usage.cache_read_input_tokens || 0
+  const effectiveInputTokens = usage.input_tokens + cacheCreationTokens + cacheReadTokens
+
+  accumulator.apiCalls += 1
+  accumulator.totalInputTokens += effectiveInputTokens
+  accumulator.totalOutputTokens += usage.output_tokens
+
+  let costModel = accumulator.costPerTokenByModel.get(model)
+  if (!costModel) {
+    const pricing = getModelPricing(model)
+    costModel = {
+      inputPerToken: pricing.inputPerMillion / 1_000_000,
+      outputPerToken: pricing.outputPerMillion / 1_000_000,
+    }
+    accumulator.costPerTokenByModel.set(model, costModel)
+  }
+
+  // Cache pricing: cache write 1.25x, cache read 0.1x input token price.
+  const cost =
+    usage.input_tokens * costModel.inputPerToken +
+    cacheCreationTokens * costModel.inputPerToken * 1.25 +
+    cacheReadTokens * costModel.inputPerToken * 0.1 +
+    usage.output_tokens * costModel.outputPerToken
+
+  accumulator.totalCost += cost
+
+  const existing = accumulator.modelMap.get(model)
+  if (existing) {
+    existing.inputTokens += effectiveInputTokens
+    existing.outputTokens += usage.output_tokens
+    existing.cost += cost
+    existing.calls += 1
+  } else {
+    accumulator.modelMap.set(model, {
+      model,
+      inputTokens: effectiveInputTokens,
+      outputTokens: usage.output_tokens,
+      cost,
+      calls: 1,
+    })
+  }
+}
+
+export function usageStatsFromAccumulator(accumulator: UsageAccumulator): UsageStats {
+  if (accumulator.apiCalls === 0) {
+    return {
+      totalInputTokens: 0,
+      totalOutputTokens: 0,
+      totalTokens: 0,
+      totalCost: 0,
+      apiCalls: 0,
+      modelBreakdown: [],
+    }
+  }
+
+  return {
+    totalInputTokens: accumulator.totalInputTokens,
+    totalOutputTokens: accumulator.totalOutputTokens,
+    totalTokens: accumulator.totalInputTokens + accumulator.totalOutputTokens,
+    totalCost: accumulator.totalCost,
+    apiCalls: accumulator.apiCalls,
+    modelBreakdown: Array.from(accumulator.modelMap.values()),
+  }
 }
 
 /** Check if entry is an assistant entry with usage data */
@@ -66,13 +162,8 @@ export function extractUsageFromEntries(entries: ClaudeEntry[]): EntryUsage[] {
 
 /** Aggregate usage stats from JSONL entries */
 export function aggregateUsageStats(entries: ClaudeEntry[]): UsageStats {
-  const costPerTokenByModel = new Map<string, {
-    pricing: ModelPricing
-    inputPerToken: number
-    outputPerToken: number
-  }>()
+  const costPerTokenByModel = new Map<string, UsageCostModel>()
   const modelMap = new Map<string, ModelUsage>()
-
   let totalInputTokens = 0
   let totalOutputTokens = 0
   let totalCost = 0
@@ -83,12 +174,11 @@ export function aggregateUsageStats(entries: ClaudeEntry[]): UsageStats {
       continue
     }
 
-    apiCalls++
+    apiCalls += 1
     const usage = entry.message.usage
     const model = entry.message.model
     const cacheCreationTokens = usage.cache_creation_input_tokens || 0
     const cacheReadTokens = usage.cache_read_input_tokens || 0
-    // Total input includes base + cache creation + cache read tokens
     const effectiveInputTokens = usage.input_tokens + cacheCreationTokens + cacheReadTokens
     totalInputTokens += effectiveInputTokens
     totalOutputTokens += usage.output_tokens
@@ -97,23 +187,19 @@ export function aggregateUsageStats(entries: ClaudeEntry[]): UsageStats {
     if (!costModel) {
       const pricing = getModelPricing(model)
       costModel = {
-        pricing,
         inputPerToken: pricing.inputPerMillion / 1_000_000,
         outputPerToken: pricing.outputPerMillion / 1_000_000,
       }
       costPerTokenByModel.set(model, costModel)
     }
 
-    // Cache pricing: cache write 1.25x, cache read 0.1x input token price.
     const cost =
       usage.input_tokens * costModel.inputPerToken +
       cacheCreationTokens * costModel.inputPerToken * 1.25 +
       cacheReadTokens * costModel.inputPerToken * 0.1 +
       usage.output_tokens * costModel.outputPerToken
-
     totalCost += cost
 
-    // Update model breakdown
     const existing = modelMap.get(model)
     if (existing) {
       existing.inputTokens += effectiveInputTokens

@@ -3,6 +3,8 @@ import type { ClaudeProcessInfo } from '../adapters/process/types.js';
 import type { SessionProcessCandidate } from '../services/session.process-matcher.js';
 import { aggregateUsageStats } from '../services/usage.extractor.js';
 import type { ClaudeEntry } from '../adapters/claude/types.js';
+import { summarizeSessionEntries } from '../adapters/claude/parser/jsonl.js';
+import type { ClaudeEntryWithAgent } from '../adapters/claude/parser/jsonl.js';
 
 type BenchmarkResult = {
   name: string;
@@ -225,15 +227,111 @@ function runUsageAggregationScenario(
   };
 }
 
+function buildJsonlSummaryScenario(): {
+  entries: ClaudeEntryWithAgent[];
+  innerLoops: number;
+} {
+  const entries: ClaudeEntryWithAgent[] = [];
+  const models = [
+    'claude-3-5-sonnet-20241022',
+    'claude-3-5-haiku-20241022',
+  ];
+
+  for (let i = 0; i < 2_400; i++) {
+    entries.push({
+      type: 'user',
+      uuid: `jsonl-user-${i}`,
+      sessionId: 'jsonl-session-main',
+      cwd: '/tmp/benchmark/jsonl',
+      timestamp: new Date(BASE_TIME + i * 1_000).toISOString(),
+      userType: 'external',
+      message: {
+        role: 'user',
+        content: `Implement benchmark case ${i}`,
+      },
+    });
+
+    entries.push({
+      type: 'assistant',
+      uuid: `jsonl-assistant-${i}`,
+      sessionId: 'jsonl-session-main',
+      cwd: '/tmp/benchmark/jsonl',
+      timestamp: new Date(BASE_TIME + i * 1_000 + 500).toISOString(),
+      agentId: i % 17 === 0 ? `agent-${i}` : undefined,
+      isSidechain: i % 19 === 0 ? true : undefined,
+      message: {
+        role: 'assistant',
+        model: models[i % models.length],
+        content: [
+          { type: 'text', text: `analysis ${i}` },
+          {
+            type: 'tool_use',
+            id: `tool-${i}`,
+            name: i % 2 === 0 ? 'Read' : 'Write',
+            input: {
+              path: `/tmp/benchmark/jsonl/file-${i % 200}.ts`,
+            },
+          },
+          { type: 'text', text: `result ${i}` },
+        ],
+        usage: {
+          input_tokens: 400 + (i % 20),
+          output_tokens: 220 + (i % 10),
+          cache_creation_input_tokens: i % 5,
+          cache_read_input_tokens: i % 11,
+        } as unknown as { input_tokens: number; output_tokens: number },
+      },
+    });
+  }
+
+  return { entries, innerLoops: 12 };
+}
+
+function runJsonlSummaryScenario(
+  name: string,
+  entries: ClaudeEntryWithAgent[],
+  innerLoops: number
+): BenchmarkResult {
+  for (let i = 0; i < WARMUP_ROUNDS; i++) {
+    summarizeSessionEntries(entries);
+  }
+
+  const samplesMs: number[] = [];
+  for (let round = 0; round < BENCH_ROUNDS; round++) {
+    const start = process.hrtime.bigint();
+    for (let i = 0; i < innerLoops; i++) {
+      summarizeSessionEntries(entries);
+    }
+    const durationNs = Number(process.hrtime.bigint() - start);
+    samplesMs.push((durationNs / innerLoops) / 1_000_000);
+  }
+
+  const sorted = [...samplesMs].sort((a, b) => a - b);
+  const total = samplesMs.reduce((sum, value) => sum + value, 0);
+
+  return {
+    name,
+    rounds: BENCH_ROUNDS,
+    innerLoops,
+    meanMs: total / samplesMs.length,
+    medianMs: percentile(sorted, 0.5),
+    p95Ms: percentile(sorted, 0.95),
+    minMs: sorted[0],
+    maxMs: sorted[sorted.length - 1],
+  };
+}
+
 function main(): void {
   const dense = buildDenseSameDirectoryScenario();
   const mixed = buildMultiDirectoryScenario();
   const usage = buildUsageAggregationScenario();
+  const jsonl = buildJsonlSummaryScenario();
 
   const results = [
     runScenario('dense_same_directory', dense.sessions, dense.processes, dense.innerLoops),
     runScenario('multi_directory', mixed.sessions, mixed.processes, mixed.innerLoops),
     runUsageAggregationScenario('usage_aggregation', usage.entries, usage.innerLoops),
+    runJsonlSummaryScenario('jsonl_summary', jsonl.entries, jsonl.innerLoops),
   ];
 
   const compositeMeanMs = results.reduce((sum, item) => sum + item.meanMs, 0) / results.length;
