@@ -78,11 +78,53 @@ function batchGetProcessCwd(pids: number[]): Map<number, string> {
 /** Parse lstart date string from ps output */
 function parseLstartDate(lstartStr: string): Date | undefined {
   if (!lstartStr || lstartStr.trim() === '') return undefined;
-  try {
-    return new Date(lstartStr.trim());
-  } catch {
-    return undefined;
+  const parsed = new Date(lstartStr.trim());
+  return Number.isNaN(parsed.getTime()) ? undefined : parsed;
+}
+
+interface ParsedPsProcessData {
+  pid: number;
+  cpu: number;
+  mem: number;
+  tty: string;
+  startTime: Date | undefined;
+  args: string[];
+}
+
+/** Parse ps output and keep only main Claude processes */
+export function parseClaudePsOutput(output: string): ParsedPsProcessData[] {
+  const lines = output.split('\n');
+  const parsedProcesses: ParsedPsProcessData[] = [];
+
+  for (const rawLine of lines) {
+    const line = rawLine.trim();
+    if (!line) continue;
+    if (!line.includes('claude')) continue;
+    if (line.includes('/bin/zsh') || line.includes('/bin/bash')) continue;
+
+    // Parse: PID %CPU %MEM TTY LSTART(5 fields) ARGS
+    // Example: 12345  0.0  0.5 ttys001 Mon Dec  9 10:30:00 2024 /usr/bin/claude --flag
+    const parts = line.split(/\s+/);
+    if (parts.length < 10) continue;
+
+    const pid = parseInt(parts[0], 10);
+    if (isNaN(pid) || !validatePid(pid)) continue;
+
+    const cpu = parseFloat(parts[1]) || 0;
+    const mem = parseFloat(parts[2]) || 0;
+    const tty = parts[3];
+
+    // lstart is 5 fields: "Mon Dec  9 10:30:00 2024"
+    const lstartStr = parts.slice(4, 9).join(' ');
+    const startTime = parseLstartDate(lstartStr);
+
+    // args is everything after lstart, skipping the command itself
+    const args = parts.slice(10);
+
+    parsedProcesses.push({ pid, cpu, mem, tty, startTime, args });
   }
+
+  return parsedProcesses;
 }
 
 /** Scan for all Claude Code processes (optimized: 2 system calls instead of N+3) */
@@ -96,65 +138,26 @@ export function scanClaudeProcesses(): ClaudeProcessInfo[] {
       { encoding: 'utf-8', timeout: 10000 }
     );
 
-    const lines = output.trim().split('\n').filter(Boolean);
-    const candidatePids: number[] = [];
-    const processDataMap = new Map<number, {
-      cpu: number;
-      mem: number;
-      tty: string;
-      startTime: Date | undefined;
-      args: string[];
-      command: string;
-    }>();
-
-    for (const line of lines) {
-      // Parse: PID %CPU %MEM TTY LSTART(5 fields) ARGS
-      // Example: 12345  0.0  0.5 ttys001 Mon Dec  9 10:30:00 2024 /usr/bin/claude --flag
-      const parts = line.trim().split(/\s+/);
-      if (parts.length < 10) continue;
-
-      const pid = parseInt(parts[0], 10);
-      if (isNaN(pid) || !validatePid(pid)) continue;
-
-      const cpu = parseFloat(parts[1]) || 0;
-      const mem = parseFloat(parts[2]) || 0;
-      const tty = parts[3];
-
-      // lstart is 5 fields: "Mon Dec  9 10:30:00 2024"
-      const lstartStr = parts.slice(4, 9).join(' ');
-      const startTime = parseLstartDate(lstartStr);
-
-      // args is everything after lstart
-      const argsStart = 9;
-      const command = parts.slice(argsStart).join(' ');
-      const args = parts.slice(argsStart + 1); // Skip the command itself
-
-      // Skip non-main claude processes
-      if (!command.includes('claude')) continue;
-      if (command.includes('/bin/zsh') || command.includes('/bin/bash')) continue;
-
-      candidatePids.push(pid);
-      processDataMap.set(pid, { cpu, mem, tty, startTime, args, command });
-    }
+    const parsedProcesses = parseClaudePsOutput(output);
+    const candidatePids = parsedProcesses.map((process) => process.pid);
 
     // Batch get working directories (single lsof call)
     const cwdMap = batchGetProcessCwd(candidatePids);
 
     // Build final process list
     const processes: ClaudeProcessInfo[] = [];
-    for (const pid of candidatePids) {
-      const cwd = cwdMap.get(pid);
+    for (const parsedProcess of parsedProcesses) {
+      const cwd = cwdMap.get(parsedProcess.pid);
       if (!cwd) continue; // Skip if we can't get working directory
 
-      const data = processDataMap.get(pid)!;
       processes.push({
-        pid,
+        pid: parsedProcess.pid,
         cwd,
-        tty: data.tty !== '??' ? data.tty : undefined,
-        cpu: data.cpu,
-        memory: data.mem,
-        startTime: data.startTime || new Date(),
-        args: data.args,
+        tty: parsedProcess.tty !== '??' ? parsedProcess.tty : undefined,
+        cpu: parsedProcess.cpu,
+        memory: parsedProcess.mem,
+        startTime: parsedProcess.startTime || new Date(),
+        args: parsedProcess.args,
       });
     }
 
