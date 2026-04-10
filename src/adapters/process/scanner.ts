@@ -82,13 +82,55 @@ function parseLstartDate(lstartStr: string): Date | undefined {
   return Number.isNaN(parsed.getTime()) ? undefined : parsed;
 }
 
+function parseLstartTimestamp(lstartStr: string): number | undefined {
+  if (!lstartStr || lstartStr.trim() === '') return undefined;
+  const timestamp = Date.parse(lstartStr.trim());
+  return Number.isNaN(timestamp) ? undefined : timestamp;
+}
+
 interface ParsedPsProcessData {
   pid: number;
   cpu: number;
   mem: number;
   tty: string;
-  startTime: Date | undefined;
-  args: string[];
+  startTimeMs: number | undefined;
+  argsRaw: string;
+}
+
+function isAsciiWhitespace(code: number): boolean {
+  return code === 32 || code === 9 || code === 10 || code === 13;
+}
+
+/**
+ * Split by ASCII whitespace with a hard part limit.
+ * The last part contains the unsplit remainder.
+ */
+function splitWhitespaceWithLimit(line: string, limit: number): string[] {
+  const parts: string[] = [];
+  const length = line.length;
+  let index = 0;
+
+  while (index < length && parts.length < limit - 1) {
+    while (index < length && isAsciiWhitespace(line.charCodeAt(index))) {
+      index++;
+    }
+    if (index >= length) break;
+
+    const start = index;
+    while (index < length && !isAsciiWhitespace(line.charCodeAt(index))) {
+      index++;
+    }
+    parts.push(line.slice(start, index));
+  }
+
+  while (index < length && isAsciiWhitespace(line.charCodeAt(index))) {
+    index++;
+  }
+  if (index < length) {
+    parts.push(line.slice(index));
+  }
+
+  return parts;
 }
 
 /** Parse ps output and keep only main Claude processes */
@@ -104,7 +146,7 @@ export function parseClaudePsOutput(output: string): ParsedPsProcessData[] {
 
     // Parse: PID %CPU %MEM TTY LSTART(5 fields) ARGS
     // Example: 12345  0.0  0.5 ttys001 Mon Dec  9 10:30:00 2024 /usr/bin/claude --flag
-    const parts = line.split(/\s+/);
+    const parts = splitWhitespaceWithLimit(line, 10);
     if (parts.length < 10) continue;
 
     const pid = parseInt(parts[0], 10);
@@ -115,13 +157,15 @@ export function parseClaudePsOutput(output: string): ParsedPsProcessData[] {
     const tty = parts[3];
 
     // lstart is 5 fields: "Mon Dec  9 10:30:00 2024"
-    const lstartStr = parts.slice(4, 9).join(' ');
-    const startTime = parseLstartDate(lstartStr);
+    const lstartStr = `${parts[4]} ${parts[5]} ${parts[6]} ${parts[7]} ${parts[8]}`;
+    const startTimeMs = parseLstartTimestamp(lstartStr);
 
-    // args is everything after lstart, skipping the command itself
-    const args = parts.slice(10);
+    // args is command tail after first token (the binary path)
+    const command = parts[9];
+    const firstSpace = command.indexOf(' ');
+    const argsRaw = firstSpace >= 0 ? command.slice(firstSpace + 1).trim() : '';
 
-    parsedProcesses.push({ pid, cpu, mem, tty, startTime, args });
+    parsedProcesses.push({ pid, cpu, mem, tty, startTimeMs, argsRaw });
   }
 
   return parsedProcesses;
@@ -156,8 +200,8 @@ export function scanClaudeProcesses(): ClaudeProcessInfo[] {
         tty: parsedProcess.tty !== '??' ? parsedProcess.tty : undefined,
         cpu: parsedProcess.cpu,
         memory: parsedProcess.mem,
-        startTime: parsedProcess.startTime || new Date(),
-        args: parsedProcess.args,
+        startTime: parsedProcess.startTimeMs === undefined ? new Date() : new Date(parsedProcess.startTimeMs),
+        args: parsedProcess.argsRaw ? parsedProcess.argsRaw.split(/\s+/) : [],
       });
     }
 
