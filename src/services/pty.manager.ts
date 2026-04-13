@@ -148,6 +148,7 @@ class PtyManager {
         ['exited', exitCode, sessionId]
       );
       logger.info(`PTY session ${sessionId} exited with code ${exitCode}`);
+      this.cleanupExitedSession(session);
     });
 
     this.sessions.set(sessionId, session);
@@ -191,6 +192,7 @@ class PtyManager {
       }
       session.attachedClients.delete(ws);
       logger.info(`Client detached from session ${sessionId} (${session.attachedClients.size} clients)`);
+      this.cleanupExitedSession(session);
     }
   }
 
@@ -234,7 +236,19 @@ class PtyManager {
   detachAll(ws: ServerWebSocket): void {
     for (const session of this.sessions.values()) {
       session.attachedClients.delete(ws);
+      this.cleanupExitedSession(session);
     }
+  }
+
+  private cleanupExitedSession(session: PtySession): void {
+    if (session.status !== 'exited' || session.attachedClients.size > 0) {
+      return;
+    }
+
+    session.scrollback = [];
+    session.scrollbackBytes = 0;
+    this.sessions.delete(session.id);
+    logger.info(`Cleaned up exited PTY session ${session.id}`);
   }
 
   private appendScrollback(session: PtySession, data: string): void {
@@ -251,10 +265,17 @@ class PtyManager {
 
   private cleanupIdle(): void {
     const timeoutMin = config.get().webTerminal.idleTimeoutMinutes;
-    if (timeoutMin <= 0) return;
-
     const cutoff = Date.now() - timeoutMin * 60_000;
-    for (const session of this.sessions.values()) {
+    for (const session of [...this.sessions.values()]) {
+      if (session.status === 'exited') {
+        this.cleanupExitedSession(session);
+        continue;
+      }
+
+      if (timeoutMin <= 0) {
+        continue;
+      }
+
       if (session.status === 'running' && session.lastActivity.getTime() < cutoff && session.attachedClients.size === 0) {
         logger.info(`Killing idle session ${session.id}`);
         session.pty.kill();
@@ -264,7 +285,7 @@ class PtyManager {
 
   cleanup(): void {
     if (this.idleTimer) clearInterval(this.idleTimer);
-    for (const session of this.sessions.values()) {
+    for (const session of [...this.sessions.values()]) {
       if (session.status === 'running') {
         session.pty.kill();
       }
