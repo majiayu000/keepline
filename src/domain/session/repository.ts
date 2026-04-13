@@ -36,6 +36,9 @@ export interface ISessionRepository {
   /** Find session by Claude session ID */
   findBySessionId(sessionId: string): Session | null;
 
+  /** Find multiple sessions by Claude session ID */
+  findBySessionIds(sessionIds: string[]): Session[];
+
   /** Find all sessions */
   findAll(): Session[];
 
