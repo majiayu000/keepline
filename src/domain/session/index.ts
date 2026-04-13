@@ -5,8 +5,10 @@
 // Entity and types
 export type {
   Session,
+  SessionListItem,
   ParsedSessionData,
   AggregatedSession,
+  AggregatedSessionListItem,
   CreateSessionInput,
   UpdateSessionInput,
   SessionStats,

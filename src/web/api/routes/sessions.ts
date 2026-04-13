@@ -6,7 +6,11 @@
 
 import { Hono } from 'hono';
 import { syncSessions, getAllSessions } from '../../../services/session.service.js';
-import { getAggregatedSessions, getSessionStats } from '../../../services/session.aggregator.js';
+import {
+  getAggregatedSessions,
+  getAggregatedSessionsBasic,
+  getSessionStats,
+} from '../../../services/session.aggregator.js';
 import { isProcessRunning } from '../../../adapters/process/scanner.js';
 import { getSessionById, getAllSessions as getAllParsedSessions } from '../../../adapters/claude/scanner.js';
 import { getRecoveryInfo } from '../../../services/recovery.service.js';
@@ -63,7 +67,9 @@ app.get('/', async (c) => {
     }
 
     // Return data immediately from database (fast)
-    let sessions = getAggregatedSessions();
+    let sessions = fields === 'basic'
+      ? getAggregatedSessionsBasic()
+      : getAggregatedSessions();
     const stats = getSessionStats(sessions);
 
     // Filter by status if provided

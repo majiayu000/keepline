@@ -15,8 +15,10 @@ export type {
 
 export type {
   Session,
+  SessionListItem,
   ParsedSessionData,
   AggregatedSession,
+  AggregatedSessionListItem,
   CreateSessionInput,
   UpdateSessionInput,
   SessionStats,

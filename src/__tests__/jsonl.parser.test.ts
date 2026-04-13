@@ -189,6 +189,42 @@ describe('JSONL Session Parser', () => {
     expect(parsed!.messageCount).toBe(0);
   });
 
+  test('falls back to parsed timestamp ordering for non-canonical timestamp strings', async () => {
+    const filePath = createJsonlFile([
+      {
+        type: 'user',
+        uuid: 'user-1',
+        sessionId: 'session-non-iso',
+        cwd: '/tmp/project',
+        timestamp: 'Mon, 13 Apr 2026 10:00:05 GMT',
+        userType: 'external',
+        message: {
+          role: 'user',
+          content: 'Handle non-ISO timestamps',
+        },
+      },
+      {
+        type: 'assistant',
+        uuid: 'assistant-1',
+        parentUuid: 'user-1',
+        sessionId: 'session-non-iso',
+        cwd: '/tmp/project',
+        timestamp: 'Mon, 13 Apr 2026 10:00:00 GMT',
+        message: {
+          role: 'assistant',
+          model: 'claude-3-5-sonnet-20241022',
+          content: [{ type: 'text', text: 'Older assistant event' }],
+        },
+      },
+    ]);
+
+    const parsed = await parseSessionFile(filePath);
+
+    expect(parsed).not.toBeNull();
+    expect(parsed!.startedAt?.toISOString()).toBe('2026-04-13T10:00:00.000Z');
+    expect(parsed!.lastActiveAt.toISOString()).toBe('2026-04-13T10:00:05.000Z');
+  });
+
   test('throws ParseError with file path and line number for invalid JSONL', async () => {
     const filePath = createJsonlFile([
       {

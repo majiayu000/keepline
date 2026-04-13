@@ -4,7 +4,11 @@
 
 import { randomUUID } from 'crypto';
 import { getDatabase, transaction } from '../sqlite.js';
-import type { Session, SessionStatus } from '../../../domain/session/index.js';
+import type {
+  Session,
+  SessionListItem,
+  SessionStatus,
+} from '../../../domain/session/index.js';
 import type { ISessionRepository, SessionUpsertData } from '../../../domain/session/repository.js';
 
 /** Database row type */
@@ -30,6 +34,23 @@ interface SessionRow {
   updated_at: string;
 }
 
+interface SessionListRow {
+  id: string;
+  session_id: string;
+  directory: string;
+  status: string;
+  title: string | null;
+  started_at: string | null;
+  last_active_at: string;
+  completed_at: string | null;
+  pid: number | null;
+  tty: string | null;
+  tool_count: number;
+  message_count: number;
+  created_at: string;
+  updated_at: string;
+}
+
 /** Convert database row to Session entity */
 function rowToSession(row: SessionRow): Session {
   return {
@@ -43,6 +64,25 @@ function rowToSession(row: SessionRow): Session {
     lastToolInput: row.last_tool_input || undefined,
     currentFile: row.current_file || undefined,
     lastMessage: row.last_message || undefined,
+    startedAt: row.started_at ? new Date(row.started_at) : undefined,
+    lastActiveAt: new Date(row.last_active_at),
+    completedAt: row.completed_at ? new Date(row.completed_at) : undefined,
+    pid: row.pid || undefined,
+    tty: row.tty || undefined,
+    toolCount: row.tool_count,
+    messageCount: row.message_count,
+    createdAt: new Date(row.created_at),
+    updatedAt: new Date(row.updated_at),
+  };
+}
+
+function rowToSessionListItem(row: SessionListRow): SessionListItem {
+  return {
+    id: row.id,
+    sessionId: row.session_id,
+    directory: row.directory,
+    status: row.status as SessionStatus,
+    title: row.title || '',
     startedAt: row.started_at ? new Date(row.started_at) : undefined,
     lastActiveAt: new Date(row.last_active_at),
     completedAt: row.completed_at ? new Date(row.completed_at) : undefined,
@@ -82,6 +122,33 @@ class SessionRepository implements ISessionRepository {
       .all() as SessionRow[];
 
     return rows.map(rowToSession);
+  }
+
+  findAllLightweight(): SessionListItem[] {
+    const db = getDatabase();
+    const rows = db
+      .prepare(`
+        SELECT
+          id,
+          session_id,
+          directory,
+          status,
+          title,
+          started_at,
+          last_active_at,
+          completed_at,
+          pid,
+          tty,
+          tool_count,
+          message_count,
+          created_at,
+          updated_at
+        FROM sessions
+        ORDER BY last_active_at DESC
+      `)
+      .all() as SessionListRow[];
+
+    return rows.map(rowToSessionListItem);
   }
 
   findActive(): Session[] {

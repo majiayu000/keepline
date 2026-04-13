@@ -44,6 +44,9 @@ interface SessionSummaryAccumulator {
   lastTool?: string;
   lastToolInput?: Record<string, unknown>;
   currentFile?: string;
+  useCanonicalTimestamps: boolean;
+  startedAtIso?: string;
+  lastActiveAtIso?: string;
   startedAtMs?: number;
   lastActiveAtMs: number;
   toolCalls: ToolCallInfo[];
@@ -105,6 +108,40 @@ function extractCurrentFile(toolInput: Record<string, unknown>): string | undefi
   return undefined;
 }
 
+function parseTimestampMs(timestamp: string): number | undefined {
+  const timestampMs = Date.parse(timestamp);
+  return Number.isNaN(timestampMs) ? undefined : timestampMs;
+}
+
+function isCanonicalIsoUtcTimestamp(timestamp: string): boolean {
+  return (
+    timestamp.length === 24 &&
+    timestamp[4] === '-' &&
+    timestamp[7] === '-' &&
+    timestamp[10] === 'T' &&
+    timestamp[13] === ':' &&
+    timestamp[16] === ':' &&
+    timestamp[19] === '.' &&
+    timestamp[23] === 'Z'
+  );
+}
+
+function downgradeTimestampTracking(accumulator: SessionSummaryAccumulator): void {
+  if (!accumulator.useCanonicalTimestamps) {
+    return;
+  }
+
+  accumulator.useCanonicalTimestamps = false;
+  accumulator.startedAtMs = accumulator.startedAtIso
+    ? parseTimestampMs(accumulator.startedAtIso)
+    : accumulator.startedAtMs;
+  accumulator.lastActiveAtMs = accumulator.lastActiveAtIso
+    ? (parseTimestampMs(accumulator.lastActiveAtIso) ?? accumulator.lastActiveAtMs)
+    : accumulator.lastActiveAtMs;
+  accumulator.startedAtIso = undefined;
+  accumulator.lastActiveAtIso = undefined;
+}
+
 function isFileHistorySnapshot(entry: ClaudeEntryWithAgent): boolean {
   return (entry as { type?: string }).type === 'file-history-snapshot';
 }
@@ -122,9 +159,19 @@ function createSessionAccumulator(
 
   const agentId = entry.agentId;
   const isSubAgent = !!agentId || entry.isSidechain === true;
-  let lastActiveAtMs = Date.parse(entry.timestamp);
-  if (Number.isNaN(lastActiveAtMs)) {
-    lastActiveAtMs = Date.now();
+  const useCanonicalTimestamps = isCanonicalIsoUtcTimestamp(entry.timestamp);
+  let startedAtMs: number | undefined;
+  let lastActiveAtMs = Date.now();
+  let startedAtIso: string | undefined;
+  let lastActiveAtIso: string | undefined;
+
+  if (useCanonicalTimestamps) {
+    startedAtIso = entry.timestamp;
+    lastActiveAtIso = entry.timestamp;
+  } else {
+    const parsedTimestamp = parseTimestampMs(entry.timestamp);
+    startedAtMs = parsedTimestamp;
+    lastActiveAtMs = parsedTimestamp ?? Date.now();
   }
 
   return {
@@ -135,6 +182,10 @@ function createSessionAccumulator(
     parentSessionId: isSubAgent ? sessionId : undefined,
     messageCount: 0,
     toolCount: 0,
+    useCanonicalTimestamps,
+    startedAtIso,
+    lastActiveAtIso,
+    startedAtMs,
     lastActiveAtMs,
     toolCalls: [],
     usageAccumulator: createUsageAccumulator(),
@@ -146,14 +197,24 @@ function accumulateSessionEntry(
   accumulator: SessionSummaryAccumulator,
   entry: ClaudeEntryWithAgent
 ): void {
-  const entryTimeMs = Date.parse(entry.timestamp);
-  if (!Number.isNaN(entryTimeMs) && entryTimeMs > accumulator.lastActiveAtMs) {
-    accumulator.lastActiveAtMs = entryTimeMs;
-  }
-  if (!Number.isNaN(entryTimeMs) && (
-    accumulator.startedAtMs === undefined || entryTimeMs < accumulator.startedAtMs
-  )) {
-    accumulator.startedAtMs = entryTimeMs;
+  if (accumulator.useCanonicalTimestamps && isCanonicalIsoUtcTimestamp(entry.timestamp)) {
+    if (!accumulator.lastActiveAtIso || entry.timestamp > accumulator.lastActiveAtIso) {
+      accumulator.lastActiveAtIso = entry.timestamp;
+    }
+    if (!accumulator.startedAtIso || entry.timestamp < accumulator.startedAtIso) {
+      accumulator.startedAtIso = entry.timestamp;
+    }
+  } else {
+    downgradeTimestampTracking(accumulator);
+    const entryTimeMs = parseTimestampMs(entry.timestamp);
+    if (entryTimeMs !== undefined && entryTimeMs > accumulator.lastActiveAtMs) {
+      accumulator.lastActiveAtMs = entryTimeMs;
+    }
+    if (entryTimeMs !== undefined && (
+      accumulator.startedAtMs === undefined || entryTimeMs < accumulator.startedAtMs
+    )) {
+      accumulator.startedAtMs = entryTimeMs;
+    }
   }
 
   if (isUserEntry(entry) && entry.userType === 'external') {
@@ -274,10 +335,12 @@ function finalizeSessionAccumulator(
     lastTool: accumulator.lastTool,
     lastToolInput: accumulator.lastToolInput,
     currentFile: accumulator.currentFile,
-    startedAt: accumulator.startedAtMs === undefined
-      ? undefined
-      : new Date(accumulator.startedAtMs),
-    lastActiveAt: new Date(accumulator.lastActiveAtMs),
+    startedAt: accumulator.useCanonicalTimestamps
+      ? (accumulator.startedAtIso ? new Date(accumulator.startedAtIso) : undefined)
+      : (accumulator.startedAtMs === undefined ? undefined : new Date(accumulator.startedAtMs)),
+    lastActiveAt: accumulator.useCanonicalTimestamps
+      ? new Date(accumulator.lastActiveAtIso!)
+      : new Date(accumulator.lastActiveAtMs),
     toolCalls: accumulator.toolCalls.length > 0 ? accumulator.toolCalls : undefined,
     usageStats,
     agentId: accumulator.agentId,
