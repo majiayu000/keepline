@@ -53,4 +53,8 @@ export {
 } from './events.js';
 
 // Repository interface
-export type { ISessionRepository, SessionUpsertData } from './repository.js';
+export type {
+  ActiveSessionRecord,
+  ISessionRepository,
+  SessionUpsertData,
+} from './repository.js';

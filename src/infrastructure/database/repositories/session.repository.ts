@@ -5,6 +5,7 @@
 import { randomUUID } from 'crypto';
 import { getDatabase, transaction } from '../sqlite.js';
 import type {
+  ActiveSessionRecord,
   Session,
   SessionListItem,
   SessionStatus,
@@ -51,6 +52,12 @@ interface SessionListRow {
   updated_at: string;
 }
 
+interface ActiveSessionRow {
+  session_id: string;
+  status: string;
+  pid: number | null;
+}
+
 /** Convert database row to Session entity */
 function rowToSession(row: SessionRow): Session {
   return {
@@ -92,6 +99,14 @@ function rowToSessionListItem(row: SessionListRow): SessionListItem {
     messageCount: row.message_count,
     createdAt: new Date(row.created_at),
     updatedAt: new Date(row.updated_at),
+  };
+}
+
+function rowToActiveSessionRecord(row: ActiveSessionRow): ActiveSessionRecord {
+  return {
+    sessionId: row.session_id,
+    status: row.status as SessionStatus,
+    pid: row.pid || undefined,
   };
 }
 
@@ -176,6 +191,18 @@ class SessionRepository implements ISessionRepository {
       .all() as SessionRow[];
 
     return rows.map(rowToSession);
+  }
+
+  findActiveLightweight(): ActiveSessionRecord[] {
+    const db = getDatabase();
+    const rows = db
+      .prepare(`
+        SELECT session_id, status, pid FROM sessions
+        WHERE status NOT IN ('completed', 'lost')
+      `)
+      .all() as ActiveSessionRow[];
+
+    return rows.map(rowToActiveSessionRecord);
   }
 
   findByStatus(status: SessionStatus): Session[] {
