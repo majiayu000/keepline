@@ -69,6 +69,32 @@ export interface AggregatedSession extends Session {
   memoryUsage?: number;
 }
 
+/** Lightweight session row for list/realtime payloads */
+export type SessionListItem = Pick<
+  Session,
+  | 'id'
+  | 'sessionId'
+  | 'directory'
+  | 'status'
+  | 'title'
+  | 'startedAt'
+  | 'lastActiveAt'
+  | 'completedAt'
+  | 'pid'
+  | 'tty'
+  | 'toolCount'
+  | 'messageCount'
+  | 'createdAt'
+  | 'updatedAt'
+>;
+
+/** Lightweight session with live process data */
+export interface AggregatedSessionListItem extends SessionListItem {
+  processRunning: boolean;
+  cpuUsage?: number;
+  memoryUsage?: number;
+}
+
 /** Input for creating a new session */
 export interface CreateSessionInput {
   sessionId: string;

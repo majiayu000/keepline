@@ -2,7 +2,11 @@
  * Session module types
  */
 
-import type { Session, SessionStatus } from '../lib/types.js';
+import type {
+  Session,
+  SessionListItem,
+  SessionStatus,
+} from '../lib/types.js';
 
 /** Session creation input */
 export interface CreateSessionInput {
@@ -31,6 +35,12 @@ export interface UpdateSessionInput {
 
 /** Aggregated session with process info */
 export interface AggregatedSession extends Session {
+  processRunning: boolean;
+  cpuUsage?: number;
+  memoryUsage?: number;
+}
+
+export interface BasicAggregatedSession extends SessionListItem {
   processRunning: boolean;
   cpuUsage?: number;
   memoryUsage?: number;

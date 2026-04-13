@@ -8,7 +8,12 @@ import type { SessionStatus } from '../lib/types.js';
 import { sessionRepo } from '../db/index.js';
 import { getCachedProcesses } from '../adapters/process/scanner.js';
 import { detectSessionStatus } from '../adapters/process/detector.js';
-import type { AggregatedSession, SessionFilter, SessionSort } from './session.types.js';
+import type {
+  AggregatedSession,
+  BasicAggregatedSession,
+  SessionFilter,
+  SessionSort,
+} from './session.types.js';
 import { matchProcessesToSessions } from './session.process-matcher.js';
 
 /** Get all sessions with aggregated process info (uses cached processes) */
@@ -24,6 +29,26 @@ export function getAggregatedSessions(): AggregatedSession[] {
     return {
       ...session,
       // Update status based on live process info
+      status: session.status === 'completed' ? 'completed' : liveStatus,
+      processRunning: !!process,
+      cpuUsage: process?.cpu,
+      memoryUsage: process?.memory,
+    };
+  });
+}
+
+/** Get lightweight sessions with aggregated process info for dashboard list/realtime updates */
+export function getAggregatedSessionsBasic(): BasicAggregatedSession[] {
+  const sessions = sessionRepo.findAllLightweight();
+  const processes = getCachedProcesses();
+  const processMatches = matchProcessesToSessions(sessions, processes);
+
+  return sessions.map((session) => {
+    const process = processMatches.get(session.sessionId);
+    const liveStatus = detectSessionStatus(process || null, session.lastActiveAt);
+
+    return {
+      ...session,
       status: session.status === 'completed' ? 'completed' : liveStatus,
       processRunning: !!process,
       cpuUsage: process?.cpu,
@@ -122,7 +147,9 @@ export function groupByDirectory(
 }
 
 /** Get session statistics - single pass O(n) for efficiency */
-export function getSessionStats(sessions: AggregatedSession[]): {
+export function getSessionStats(
+  sessions: Array<Pick<AggregatedSession, 'status' | 'processRunning'>>
+): {
   total: number;
   running: number;
   waiting: number;
