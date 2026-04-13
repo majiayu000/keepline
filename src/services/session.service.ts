@@ -129,10 +129,16 @@ export async function syncSessions(options: SyncOptions = {}): Promise<{
     // Get Claude sessions from file system (with optional age filter for performance)
     const claudeSessions = await getClaudeSessions({ maxAgeDays });
     const processMatches = matchProcessesToSessions(claudeSessions, processes);
+    const existingSessions = sessionRepo.findBySessionIds(
+      claudeSessions.map((session) => session.sessionId)
+    );
+    const existingSessionMap = new Map(
+      existingSessions.map((session) => [session.sessionId, session])
+    );
 
     // Process each Claude session
     for (const claudeSession of claudeSessions) {
-      const existing = sessionRepo.findBySessionId(claudeSession.sessionId);
+      const existing = existingSessionMap.get(claudeSession.sessionId);
       const process = processMatches.get(claudeSession.sessionId);
 
       const status = detectSessionStatus(
@@ -150,7 +156,7 @@ export async function syncSessions(options: SyncOptions = {}): Promise<{
           claudeSession.firstMessage &&
           claudeSession.firstMessage !== 'Unknown task';
 
-        sessionRepo.upsert({
+        const updatedSession = sessionRepo.upsert({
           sessionId: claudeSession.sessionId,
           status,
           ...(shouldUpdateTitle && {
@@ -169,14 +175,12 @@ export async function syncSessions(options: SyncOptions = {}): Promise<{
           toolCount: claudeSession.toolCount,
           messageCount: claudeSession.messageCount,
         });
+        existingSessionMap.set(claudeSession.sessionId, updatedSession);
 
         updated++;
         if (wasLost) {
           lost++;
-          const updatedSession = sessionRepo.findBySessionId(claudeSession.sessionId);
-          if (updatedSession) {
-            emit('session:lost', { session: updatedSession, previousStatus: existing.status });
-          }
+          emit('session:lost', { session: updatedSession, previousStatus: existing.status });
         }
       } else {
         // Create new session with all data in single upsert (no redundant calls)
@@ -184,7 +188,7 @@ export async function syncSessions(options: SyncOptions = {}): Promise<{
           ? generateTitle(claudeSession.firstMessage)
           : 'Unknown task';
 
-        sessionRepo.upsert({
+        const newSession = sessionRepo.upsert({
           sessionId: claudeSession.sessionId,
           directory: claudeSession.directory,
           initialPrompt: claudeSession.firstMessage || 'Unknown task',
@@ -203,12 +207,9 @@ export async function syncSessions(options: SyncOptions = {}): Promise<{
           toolCount: claudeSession.toolCount,
           messageCount: claudeSession.messageCount,
         });
-
-        const newSession = sessionRepo.findBySessionId(claudeSession.sessionId);
-        if (newSession) {
-          emit('session:discovered', { session: newSession });
-          logger.info(`Session discovered: ${claudeSession.sessionId}`);
-        }
+        existingSessionMap.set(claudeSession.sessionId, newSession);
+        emit('session:discovered', { session: newSession });
+        logger.info(`Session discovered: ${claudeSession.sessionId}`);
         discovered++;
       }
     }
@@ -219,19 +220,16 @@ export async function syncSessions(options: SyncOptions = {}): Promise<{
       if (session.pid && !isProcessRunning(session.pid)) {
         // Process died, mark as lost unless it was completed
         if (session.status !== 'completed') {
-          sessionRepo.upsert({
+          const lostSession = sessionRepo.upsert({
             sessionId: session.sessionId,
             status: 'lost',
             pid: undefined,
           });
           lost++;
-          const lostSession = sessionRepo.findBySessionId(session.sessionId);
-          if (lostSession) {
-            emit('session:lost', {
-              session: lostSession,
-              previousStatus: session.status,
-            });
-          }
+          emit('session:lost', {
+            session: lostSession,
+            previousStatus: session.status,
+          });
         }
       }
     }

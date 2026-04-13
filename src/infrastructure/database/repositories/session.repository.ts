@@ -115,6 +115,20 @@ class SessionRepository implements ISessionRepository {
     return row ? rowToSession(row) : null;
   }
 
+  findBySessionIds(sessionIds: string[]): Session[] {
+    if (sessionIds.length === 0) {
+      return [];
+    }
+
+    const db = getDatabase();
+    const placeholders = sessionIds.map(() => '?').join(', ');
+    const rows = db
+      .prepare(`SELECT * FROM sessions WHERE session_id IN (${placeholders})`)
+      .all(...sessionIds) as SessionRow[];
+
+    return rows.map(rowToSession);
+  }
+
   findAll(): Session[] {
     const db = getDatabase();
     const rows = db
@@ -187,52 +201,52 @@ class SessionRepository implements ISessionRepository {
     const now = new Date().toISOString();
 
     return transaction(() => {
-      const existing = this.findBySessionId(data.sessionId);
+      const hasPid = 'pid' in data;
+      const hasTty = 'tty' in data;
+      const updateResult = db.prepare(`
+        UPDATE sessions SET
+          status = COALESCE(?, status),
+          title = COALESCE(?, title),
+          initial_prompt = COALESCE(?, initial_prompt),
+          last_tool = COALESCE(?, last_tool),
+          last_tool_input = COALESCE(?, last_tool_input),
+          current_file = COALESCE(?, current_file),
+          last_message = COALESCE(?, last_message),
+          started_at = COALESCE(?, started_at),
+          last_active_at = COALESCE(?, last_active_at),
+          completed_at = COALESCE(?, completed_at),
+          pid = CASE WHEN ? THEN ? ELSE pid END,
+          tty = CASE WHEN ? THEN ? ELSE tty END,
+          tool_count = COALESCE(?, tool_count),
+          message_count = COALESCE(?, message_count),
+          updated_at = ?
+        WHERE session_id = ?
+      `).run(
+        data.status ?? null,
+        data.title ?? null,
+        data.initialPrompt ?? null,
+        data.lastTool ?? null,
+        data.lastToolInput ?? null,
+        data.currentFile ?? null,
+        data.lastMessage ?? null,
+        data.startedAt?.toISOString() ?? null,
+        data.lastActiveAt?.toISOString() ?? null,
+        data.completedAt?.toISOString() ?? null,
+        hasPid ? 1 : 0,
+        data.pid ?? null,
+        hasTty ? 1 : 0,
+        data.tty ?? null,
+        data.toolCount ?? null,
+        data.messageCount ?? null,
+        now,
+        data.sessionId
+      );
 
-      if (existing) {
-        // Update existing session
-        const pidValue = 'pid' in data ? (data.pid ?? null) : existing.pid ?? null;
-        const ttyValue = 'tty' in data ? (data.tty ?? null) : existing.tty ?? null;
-
-        db.prepare(`
-          UPDATE sessions SET
-            status = COALESCE(?, status),
-            title = COALESCE(?, title),
-            initial_prompt = COALESCE(?, initial_prompt),
-            last_tool = COALESCE(?, last_tool),
-            last_tool_input = COALESCE(?, last_tool_input),
-            current_file = COALESCE(?, current_file),
-            last_message = COALESCE(?, last_message),
-            started_at = COALESCE(?, started_at),
-            last_active_at = COALESCE(?, last_active_at),
-            completed_at = COALESCE(?, completed_at),
-            pid = ?,
-            tty = ?,
-            tool_count = COALESCE(?, tool_count),
-            message_count = COALESCE(?, message_count),
-            updated_at = ?
-          WHERE session_id = ?
-        `).run(
-          data.status ?? null,
-          data.title ?? null,
-          data.initialPrompt ?? null,
-          data.lastTool ?? null,
-          data.lastToolInput ?? null,
-          data.currentFile ?? null,
-          data.lastMessage ?? null,
-          data.startedAt?.toISOString() ?? null,
-          data.lastActiveAt?.toISOString() ?? null,
-          data.completedAt?.toISOString() ?? null,
-          pidValue,
-          ttyValue,
-          data.toolCount ?? null,
-          data.messageCount ?? null,
-          now,
-          data.sessionId
-        );
-
+      if (updateResult.changes > 0) {
         return this.findBySessionId(data.sessionId)!;
-      } else {
+      }
+
+      {
         // Insert new session
         const id = randomUUID();
         db.prepare(`

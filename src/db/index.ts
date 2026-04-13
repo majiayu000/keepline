@@ -21,6 +21,7 @@ import { sessionRepository } from '../infrastructure/database/repositories/sessi
 
 export const sessionRepo = {
   findBySessionId: sessionRepository.findBySessionId.bind(sessionRepository),
+  findBySessionIds: sessionRepository.findBySessionIds.bind(sessionRepository),
   findAll: sessionRepository.findAll.bind(sessionRepository),
   findAllLightweight: sessionRepository.findAllLightweight.bind(sessionRepository),
   findByStatus: sessionRepository.findByStatus.bind(sessionRepository),
