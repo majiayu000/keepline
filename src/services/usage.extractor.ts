@@ -8,7 +8,7 @@
  * - output_tokens: output tokens
  */
 
-import type { ClaudeEntry, ClaudeAssistantEntry } from '../adapters/claude/types.js'
+import type { ClaudeEntry } from '../adapters/claude/types.js'
 import type { UsageStats, ModelUsage } from './usage.types.js'
 import { getModelPricing } from './usage.pricing.js'
 
@@ -140,35 +140,33 @@ export function usageStatsFromAccumulator(accumulator: UsageAccumulator): UsageS
   }
 }
 
-/** Check if entry is an assistant entry with usage data */
-function isAssistantEntryWithUsage(
-  entry: ClaudeEntry
-): entry is ClaudeAssistantEntry & { message: { usage: ClaudeUsage } } {
-  return (
-    entry.type === 'assistant' &&
-    'message' in entry &&
-    entry.message.usage !== undefined &&
-    typeof entry.message.usage.input_tokens === 'number' &&
-    typeof entry.message.usage.output_tokens === 'number'
-  )
-}
-
 /** Extract usage data from JSONL entries */
 export function extractUsageFromEntries(entries: ClaudeEntry[]): EntryUsage[] {
   const usage: EntryUsage[] = []
 
   for (const entry of entries) {
-    if (isAssistantEntryWithUsage(entry)) {
-      const u = entry.message.usage
-      usage.push({
-        model: entry.message.model,
-        inputTokens: u.input_tokens,
-        outputTokens: u.output_tokens,
-        cacheCreationTokens: u.cache_creation_input_tokens || 0,
-        cacheReadTokens: u.cache_read_input_tokens || 0,
-        timestamp: entry.timestamp,
-      })
+    if (entry.type !== 'assistant') {
+      continue
     }
+
+    const message = entry.message
+    const u = message.usage as ClaudeUsage | undefined
+    if (
+      !u ||
+      typeof u.input_tokens !== 'number' ||
+      typeof u.output_tokens !== 'number'
+    ) {
+      continue
+    }
+
+    usage.push({
+      model: message.model,
+      inputTokens: u.input_tokens,
+      outputTokens: u.output_tokens,
+      cacheCreationTokens: u.cache_creation_input_tokens || 0,
+      cacheReadTokens: u.cache_read_input_tokens || 0,
+      timestamp: entry.timestamp,
+    })
   }
 
   return usage
@@ -183,13 +181,22 @@ export function aggregateUsageStats(entries: ClaudeEntry[]): UsageStats {
   let apiCalls = 0
 
   for (const entry of entries) {
-    if (!isAssistantEntryWithUsage(entry)) {
+    if (entry.type !== 'assistant') {
+      continue
+    }
+
+    const message = entry.message
+    const usage = message.usage as ClaudeUsage | undefined
+    if (
+      !usage ||
+      typeof usage.input_tokens !== 'number' ||
+      typeof usage.output_tokens !== 'number'
+    ) {
       continue
     }
 
     apiCalls += 1
-    const usage = entry.message.usage
-    const model = entry.message.model
+    const model = message.model
     const cacheCreationTokens = usage.cache_creation_input_tokens || 0
     const cacheReadTokens = usage.cache_read_input_tokens || 0
     const effectiveInputTokens = usage.input_tokens + cacheCreationTokens + cacheReadTokens

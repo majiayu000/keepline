@@ -31,6 +31,11 @@ interface SessionPairingMeta<T extends SessionProcessCandidate> {
   lastActiveAtMs: number;
 }
 
+interface CandidateSession<T extends SessionProcessCandidate> {
+  meta: SessionPairingMeta<T>;
+  bestCost: number;
+}
+
 function buildSessionPairingMeta<T extends SessionProcessCandidate>(
   session: T,
   nowMs: number
@@ -51,6 +56,55 @@ function pairingCost(
 ): number {
   const startDelta = Math.abs(sessionMeta.referenceTimeMs - processStartTimeMs);
   return startDelta * START_TIME_WEIGHT + sessionMeta.activityAgePenaltyMs;
+}
+
+function compareCandidates<T extends SessionProcessCandidate>(
+  left: CandidateSession<T>,
+  right: CandidateSession<T>
+): number {
+  if (left.bestCost !== right.bestCost) return left.bestCost - right.bestCost;
+  if (left.meta.lastActiveAtMs !== right.meta.lastActiveAtMs) {
+    return right.meta.lastActiveAtMs - left.meta.lastActiveAtMs;
+  }
+  return left.meta.session.sessionId.localeCompare(right.meta.session.sessionId);
+}
+
+function selectCandidateSessions<T extends SessionProcessCandidate>(
+  sessions: T[],
+  processStartTimesMs: number[],
+  nowMs: number,
+  candidateLimit: number
+): Array<SessionPairingMeta<T>> {
+  const selected: CandidateSession<T>[] = [];
+
+  for (const session of sessions) {
+    const meta = buildSessionPairingMeta(session, nowMs);
+    let bestCost = Number.POSITIVE_INFINITY;
+    for (const processStartTimeMs of processStartTimesMs) {
+      const cost = pairingCost(meta, processStartTimeMs);
+      if (cost < bestCost) bestCost = cost;
+    }
+
+    const candidate = { meta, bestCost };
+    let insertAt = selected.length;
+    for (let i = 0; i < selected.length; i++) {
+      if (compareCandidates(candidate, selected[i]) < 0) {
+        insertAt = i;
+        break;
+      }
+    }
+
+    if (insertAt >= candidateLimit) {
+      continue;
+    }
+
+    selected.splice(insertAt, 0, candidate);
+    if (selected.length > candidateLimit) {
+      selected.pop();
+    }
+  }
+
+  return selected.map((candidate) => candidate.meta);
 }
 
 function getBestAssignment(
@@ -188,26 +242,12 @@ export function matchProcessesToSessions<T extends SessionProcessCandidate>(
     );
     const processStartTimesMs = orderedProcesses.map((process) => process.startTime.getTime());
 
-    const candidateSessions = unmatchedSessions
-      .map((session) => {
-        const meta = buildSessionPairingMeta(session, nowMs);
-        let bestCost = Number.POSITIVE_INFINITY;
-        for (const processStartTimeMs of processStartTimesMs) {
-          const cost = pairingCost(meta, processStartTimeMs);
-          if (cost < bestCost) bestCost = cost;
-        }
-        return { meta, bestCost };
-      })
-      .sort((left, right) => {
-        if (left.bestCost !== right.bestCost) return left.bestCost - right.bestCost;
-        if (left.meta.lastActiveAtMs !== right.meta.lastActiveAtMs) {
-          return right.meta.lastActiveAtMs - left.meta.lastActiveAtMs;
-        }
-        return left.meta.session.sessionId.localeCompare(right.meta.session.sessionId);
-      })
-      .slice(0, candidateLimit);
-
-    const candidateMetas = candidateSessions.map((candidate) => candidate.meta);
+    const candidateMetas = selectCandidateSessions(
+      unmatchedSessions,
+      processStartTimesMs,
+      nowMs,
+      candidateLimit
+    );
     const costMatrix = candidateMetas.map((meta) =>
       processStartTimesMs.map((processStartTimeMs) => pairingCost(meta, processStartTimeMs))
     );
