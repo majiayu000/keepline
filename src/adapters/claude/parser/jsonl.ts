@@ -109,6 +109,10 @@ function parseTimestampMs(timestamp: string): number | undefined {
   return Number.isNaN(timestampMs) ? undefined : timestampMs;
 }
 
+function isAsciiWhitespace(code: number): boolean {
+  return code === 32 || code === 9 || code === 10 || code === 13;
+}
+
 function isCanonicalIsoUtcTimestamp(timestamp: string): boolean {
   return (
     timestamp.length === 24 &&
@@ -120,6 +124,20 @@ function isCanonicalIsoUtcTimestamp(timestamp: string): boolean {
     timestamp[19] === '.' &&
     timestamp[23] === 'Z'
   );
+}
+
+function trimTextIfNeeded(text: string): string {
+  if (text.length === 0) {
+    return text;
+  }
+
+  const first = text.charCodeAt(0);
+  const last = text.charCodeAt(text.length - 1);
+  if (!isAsciiWhitespace(first) && !isAsciiWhitespace(last)) {
+    return text;
+  }
+
+  return text.trim();
 }
 
 function downgradeTimestampTracking(accumulator: SessionSummaryAccumulator): void {
@@ -337,7 +355,7 @@ function accumulateSessionEntry(
   }
 
   if (entryText !== undefined) {
-    const text = entryText.trim();
+    const text = trimTextIfNeeded(entryText);
     if (text) {
       accumulator.lastMessage = text;
     }

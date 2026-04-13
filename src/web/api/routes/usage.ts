@@ -22,10 +22,12 @@ const CODEX_REFRESH_URL = 'https://auth.openai.com/oauth/token';
 const DEFAULT_CLIENTS_FILE = join(CLAUDE_HUB_HOME, 'clients.json');
 const QUOTA_CACHE_TTL_MS = 30_000;
 const USAGE_CACHE_TTL_MS = 60_000;
+const COST_PREDICTION_CACHE_TTL_MS = 60_000;
 
 const quotaCache = new ExpiringCache<Record<string, unknown>>();
 const codexQuotaCache = new ExpiringCache<Record<string, unknown>>();
 const usageCache = new ExpiringCache<unknown>();
+const costPredictionCache = new ExpiringCache<unknown>();
 
 const DEFAULT_CODEX_AUTH_FILE = (() => {
   const homeDir = process.env.HOME;
@@ -385,7 +387,14 @@ app.get('/usage', async (c) => {
 // GET /api/usage/prediction - Get cost prediction and analytics
 app.get('/usage/prediction', async (c) => {
   try {
+    const cacheKey = 'prediction';
+    const cached = costPredictionCache.get(cacheKey);
+    if (cached) {
+      return c.json({ success: true, data: cached });
+    }
+
     const prediction = await getCostPrediction();
+    costPredictionCache.set(cacheKey, prediction, COST_PREDICTION_CACHE_TTL_MS);
     return c.json({ success: true, data: prediction });
   } catch (error) {
     logger.error('Failed to get cost prediction', error);
@@ -396,11 +405,18 @@ app.get('/usage/prediction', async (c) => {
 // GET /api/usage/today - Get today's usage
 app.get('/usage/today', async (c) => {
   try {
+    const cacheKey = 'today';
+    const cached = costPredictionCache.get(cacheKey);
+    if (cached) {
+      return c.json({ success: true, data: cached });
+    }
+
     const now = new Date();
     const startOfDay = new Date(now.getFullYear(), now.getMonth(), now.getDate());
     const endOfDay = new Date(startOfDay.getTime() + 24 * 60 * 60 * 1000 - 1);
 
     const data = await getCostForDateRange(startOfDay, endOfDay);
+    costPredictionCache.set(cacheKey, data, COST_PREDICTION_CACHE_TTL_MS);
     return c.json({ success: true, data });
   } catch (error) {
     logger.error('Failed to get today usage', error);
@@ -411,6 +427,12 @@ app.get('/usage/today', async (c) => {
 // GET /api/usage/week - Get this week's usage
 app.get('/usage/week', async (c) => {
   try {
+    const cacheKey = 'week';
+    const cached = costPredictionCache.get(cacheKey);
+    if (cached) {
+      return c.json({ success: true, data: cached });
+    }
+
     const now = new Date();
     const day = now.getDay();
     const diff = now.getDate() - day + (day === 0 ? -6 : 1); // Monday start
@@ -418,6 +440,7 @@ app.get('/usage/week', async (c) => {
     const endOfWeek = new Date(startOfWeek.getTime() + 7 * 24 * 60 * 60 * 1000 - 1);
 
     const data = await getCostForDateRange(startOfWeek, endOfWeek);
+    costPredictionCache.set(cacheKey, data, COST_PREDICTION_CACHE_TTL_MS);
     return c.json({ success: true, data });
   } catch (error) {
     logger.error('Failed to get week usage', error);
@@ -428,11 +451,18 @@ app.get('/usage/week', async (c) => {
 // GET /api/usage/month - Get this month's usage
 app.get('/usage/month', async (c) => {
   try {
+    const cacheKey = 'month';
+    const cached = costPredictionCache.get(cacheKey);
+    if (cached) {
+      return c.json({ success: true, data: cached });
+    }
+
     const now = new Date();
     const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1);
     const endOfMonth = new Date(now.getFullYear(), now.getMonth() + 1, 0, 23, 59, 59);
 
     const data = await getCostForDateRange(startOfMonth, endOfMonth);
+    costPredictionCache.set(cacheKey, data, COST_PREDICTION_CACHE_TTL_MS);
     return c.json({ success: true, data });
   } catch (error) {
     logger.error('Failed to get month usage', error);
@@ -467,7 +497,14 @@ app.get('/usage/range', async (c) => {
       return c.json({ success: false, error: 'start date must be before end date' }, 400);
     }
 
+    const cacheKey = `range:${startParam}:${endParam}`;
+    const cached = costPredictionCache.get(cacheKey);
+    if (cached) {
+      return c.json({ success: true, data: cached });
+    }
+
     const data = await getCostForDateRange(startDate, endDate);
+    costPredictionCache.set(cacheKey, data, COST_PREDICTION_CACHE_TTL_MS);
     return c.json({ success: true, data });
   } catch (error) {
     logger.error('Failed to get range usage', error);
