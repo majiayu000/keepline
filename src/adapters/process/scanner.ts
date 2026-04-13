@@ -106,11 +106,12 @@ function isAsciiWhitespace(code: number): boolean {
  * The last part contains the unsplit remainder.
  */
 function splitWhitespaceWithLimit(line: string, limit: number): string[] {
-  const parts: string[] = [];
+  const parts = new Array<string>(limit);
+  let partCount = 0;
   const length = line.length;
   let index = 0;
 
-  while (index < length && parts.length < limit - 1) {
+  while (index < length && partCount < limit - 1) {
     while (index < length && isAsciiWhitespace(line.charCodeAt(index))) {
       index++;
     }
@@ -120,16 +121,17 @@ function splitWhitespaceWithLimit(line: string, limit: number): string[] {
     while (index < length && !isAsciiWhitespace(line.charCodeAt(index))) {
       index++;
     }
-    parts.push(line.slice(start, index));
+    parts[partCount++] = line.slice(start, index);
   }
 
   while (index < length && isAsciiWhitespace(line.charCodeAt(index))) {
     index++;
   }
   if (index < length) {
-    parts.push(line.slice(index));
+    parts[partCount++] = line.slice(index);
   }
 
+  parts.length = partCount;
   return parts;
 }
 
