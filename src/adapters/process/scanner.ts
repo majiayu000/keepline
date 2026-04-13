@@ -135,18 +135,17 @@ function splitWhitespaceWithLimit(line: string, limit: number): string[] {
 
 /** Parse ps output and keep only main Claude processes */
 export function parseClaudePsOutput(output: string): ParsedPsProcessData[] {
-  const lines = output.split('\n');
   const parsedProcesses: ParsedPsProcessData[] = [];
 
+  const lines = output.split('\n');
   for (const rawLine of lines) {
-    const line = rawLine.trim();
-    if (!line) continue;
-    if (!line.includes('claude')) continue;
-    if (line.includes('/bin/zsh') || line.includes('/bin/bash')) continue;
+    if (!rawLine) continue;
+    if (!rawLine.includes('claude')) continue;
+    if (rawLine.includes('/bin/zsh') || rawLine.includes('/bin/bash')) continue;
 
     // Parse: PID %CPU %MEM TTY LSTART(5 fields) ARGS
     // Example: 12345  0.0  0.5 ttys001 Mon Dec  9 10:30:00 2024 /usr/bin/claude --flag
-    const parts = splitWhitespaceWithLimit(line, 10);
+    const parts = splitWhitespaceWithLimit(rawLine, 10);
     if (parts.length < 10) continue;
 
     const pid = parseInt(parts[0], 10);

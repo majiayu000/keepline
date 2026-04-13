@@ -141,24 +141,30 @@ export function matchProcessesToSessions<T extends SessionProcessCandidate>(
     if (directoryProcesses.length === 0) continue;
 
     const unmatchedSessions: T[] = [];
-    const processByPid = new Map(directoryProcesses.map((process) => [process.pid, process]));
     const usedProcessPids = new Set<number>();
+    const hasKnownPid = directorySessions.some((session) => session.pid !== undefined);
 
-    // Prefer stable PID continuity when the previous sync already knew the process.
-    for (const session of directorySessions) {
-      if (!session.pid) {
-        unmatchedSessions.push(session);
-        continue;
+    if (hasKnownPid) {
+      const processByPid = new Map(directoryProcesses.map((process) => [process.pid, process]));
+
+      // Prefer stable PID continuity when the previous sync already knew the process.
+      for (const session of directorySessions) {
+        if (!session.pid) {
+          unmatchedSessions.push(session);
+          continue;
+        }
+
+        const process = processByPid.get(session.pid);
+        if (!process || usedProcessPids.has(process.pid)) {
+          unmatchedSessions.push(session);
+          continue;
+        }
+
+        matches.set(session.sessionId, process);
+        usedProcessPids.add(process.pid);
       }
-
-      const process = processByPid.get(session.pid);
-      if (!process || usedProcessPids.has(process.pid)) {
-        unmatchedSessions.push(session);
-        continue;
-      }
-
-      matches.set(session.sessionId, process);
-      usedProcessPids.add(process.pid);
+    } else {
+      unmatchedSessions.push(...directorySessions);
     }
 
     const unmatchedProcesses = directoryProcesses.filter(
