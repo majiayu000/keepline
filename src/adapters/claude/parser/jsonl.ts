@@ -9,6 +9,7 @@ import type {
   ClaudeEntry,
   ClaudeUserEntry,
   ClaudeAssistantEntry,
+  ClaudeContentBlock,
   ClaudeToolUseBlock,
   ParsedSessionData,
   ToolCallInfo,
@@ -52,6 +53,12 @@ interface SessionSummaryAccumulator {
   toolCalls: ToolCallInfo[];
   usageAccumulator: ReturnType<typeof createUsageAccumulator>;
   includeToolCalls: boolean;
+}
+
+interface AssistantBlockSummary {
+  entryToolCount: number;
+  entryLastToolUse?: ClaudeToolUseBlock;
+  entryText?: string;
 }
 
 /** Parse a single JSONL line */
@@ -133,6 +140,86 @@ function downgradeTimestampTracking(accumulator: SessionSummaryAccumulator): voi
 
 function isFileHistorySnapshot(entry: ClaudeEntryWithAgent): boolean {
   return (entry as { type?: string }).type === 'file-history-snapshot';
+}
+
+function summarizeAssistantBlocks(
+  blocks: ClaudeContentBlock[],
+  timestamp: string,
+  includeToolCalls: boolean,
+  toolCalls: ToolCallInfo[]
+): AssistantBlockSummary {
+  if (blocks.length === 1) {
+    const first = blocks[0];
+    if (first.type === 'text') {
+      return { entryToolCount: 0, entryText: first.text };
+    }
+    if (first.type === 'tool_use') {
+      if (includeToolCalls) {
+        toolCalls.push({
+          name: first.name,
+          input: first.input,
+          timestamp,
+        });
+      }
+      return { entryToolCount: 1, entryLastToolUse: first };
+    }
+  }
+
+  if (
+    blocks.length === 3 &&
+    blocks[0].type === 'text' &&
+    blocks[1].type === 'tool_use' &&
+    blocks[2].type === 'text'
+  ) {
+    const toolUse = blocks[1];
+    if (includeToolCalls) {
+      toolCalls.push({
+        name: toolUse.name,
+        input: toolUse.input,
+        timestamp,
+      });
+    }
+    return {
+      entryToolCount: 1,
+      entryLastToolUse: toolUse,
+      entryText: `${blocks[0].text}\n${blocks[2].text}`,
+    };
+  }
+
+  let entryToolCount = 0;
+  let entryLastToolUse: ClaudeToolUseBlock | undefined;
+  let entryText = '';
+  let hasText = false;
+
+  for (const block of blocks) {
+    if (block.type === 'tool_use') {
+      entryToolCount++;
+      entryLastToolUse = block;
+      if (includeToolCalls) {
+        toolCalls.push({
+          name: block.name,
+          input: block.input,
+          timestamp,
+        });
+      }
+      continue;
+    }
+
+    if (block.type === 'text') {
+      if (hasText) {
+        entryText += `\n${block.text}`;
+      } else {
+        entryText = block.text;
+        hasText = true;
+      }
+    }
+  }
+
+  return {
+    entryToolCount,
+    entryLastToolUse,
+    entryText: hasText ? entryText : undefined,
+  };
 }
 
 function createSessionAccumulator(
@@ -226,34 +313,16 @@ function accumulateSessionEntry(
 
   const assistantEntry = entry as ClaudeAssistantEntry;
 
-  let entryToolCount = 0;
-  let entryLastToolUse: ClaudeToolUseBlock | undefined;
-  let entryText = '';
-  let hasText = false;
-
-  for (const block of assistantEntry.message.content) {
-    if (block.type === 'tool_use') {
-      entryToolCount++;
-      entryLastToolUse = block;
-      if (accumulator.includeToolCalls) {
-        accumulator.toolCalls.push({
-          name: block.name,
-          input: block.input,
-          timestamp: entry.timestamp,
-        });
-      }
-      continue;
-    }
-
-    if (block.type === 'text') {
-      if (hasText) {
-        entryText += `\n${block.text}`;
-      } else {
-        entryText = block.text;
-        hasText = true;
-      }
-    }
-  }
+  const {
+    entryToolCount,
+    entryLastToolUse,
+    entryText,
+  } = summarizeAssistantBlocks(
+    assistantEntry.message.content,
+    entry.timestamp,
+    accumulator.includeToolCalls,
+    accumulator.toolCalls
+  );
 
   accumulator.toolCount += entryToolCount;
 
@@ -267,7 +336,7 @@ function accumulateSessionEntry(
     }
   }
 
-  if (hasText) {
+  if (entryText !== undefined) {
     const text = entryText.trim();
     if (text) {
       accumulator.lastMessage = text;
