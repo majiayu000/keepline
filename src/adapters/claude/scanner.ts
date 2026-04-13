@@ -20,19 +20,24 @@ interface SessionCache {
   data: ParsedSessionData | null;
   modifiedAt: number; // File modification time in ms
 }
-const sessionCache = new Map<string, SessionCache>();
+const sessionSummaryCache = new Map<string, SessionCache>();
+const sessionDetailCache = new Map<string, SessionCache>();
 
 /** Clear the session cache */
 export function clearSessionCache(): void {
-  sessionCache.clear();
+  sessionSummaryCache.clear();
+  sessionDetailCache.clear();
   logger.debug('Session cache cleared');
 }
 
 /** Get cache stats for debugging */
 export function getSessionCacheStats(): { size: number; keys: string[] } {
   return {
-    size: sessionCache.size,
-    keys: Array.from(sessionCache.keys()),
+    size: sessionSummaryCache.size + sessionDetailCache.size,
+    keys: [
+      ...Array.from(sessionSummaryCache.keys()).map((key) => `summary:${key}`),
+      ...Array.from(sessionDetailCache.keys()).map((key) => `detail:${key}`),
+    ],
   };
 }
 
@@ -119,7 +124,7 @@ export async function getAllSessions(options: ScanOptions = {}): Promise<ParsedS
     seenFilePaths.add(file.filePath);
 
     try {
-      const cached = sessionCache.get(file.filePath);
+      const cached = sessionSummaryCache.get(file.filePath);
       const fileModTime = file.modifiedAt.getTime();
 
       // Use cache if file hasn't been modified
@@ -132,8 +137,8 @@ export async function getAllSessions(options: ScanOptions = {}): Promise<ParsedS
       }
 
       // Parse file and update cache
-      const parsed = await parseSessionFile(file.filePath);
-      sessionCache.set(file.filePath, {
+      const parsed = await parseSessionFile(file.filePath, { includeToolCalls: false });
+      sessionSummaryCache.set(file.filePath, {
         data: parsed,
         modifiedAt: fileModTime,
       });
@@ -142,7 +147,7 @@ export async function getAllSessions(options: ScanOptions = {}): Promise<ParsedS
       }
       cacheMisses++;
     } catch (error) {
-      sessionCache.set(file.filePath, {
+      sessionSummaryCache.set(file.filePath, {
         data: null,
         modifiedAt: file.modifiedAt.getTime(),
       });
@@ -151,10 +156,12 @@ export async function getAllSessions(options: ScanOptions = {}): Promise<ParsedS
   }
 
   // Clean up cache entries for files that no longer exist
-  for (const cachedPath of sessionCache.keys()) {
-    if (!seenFilePaths.has(cachedPath)) {
-      sessionCache.delete(cachedPath);
-      logger.debug(`Removed stale cache entry: ${cachedPath}`);
+  for (const [cacheName, cache] of [['summary', sessionSummaryCache], ['detail', sessionDetailCache]] as const) {
+    for (const cachedPath of cache.keys()) {
+      if (!seenFilePaths.has(cachedPath)) {
+        cache.delete(cachedPath);
+        logger.debug(`Removed stale ${cacheName} cache entry: ${cachedPath}`);
+      }
     }
   }
 
@@ -164,7 +171,7 @@ export async function getAllSessions(options: ScanOptions = {}): Promise<ParsedS
 
 /** Helper to get or parse session with caching */
 async function getOrParseSession(file: ClaudeSessionFile): Promise<ParsedSessionData | null> {
-  const cached = sessionCache.get(file.filePath);
+  const cached = sessionDetailCache.get(file.filePath);
   const fileModTime = file.modifiedAt.getTime();
 
   if (cached && cached.modifiedAt === fileModTime) {
@@ -172,14 +179,38 @@ async function getOrParseSession(file: ClaudeSessionFile): Promise<ParsedSession
   }
 
   try {
-    const parsed = await parseSessionFile(file.filePath);
-    sessionCache.set(file.filePath, {
+    const parsed = await parseSessionFile(file.filePath, { includeToolCalls: true });
+    sessionDetailCache.set(file.filePath, {
       data: parsed,
       modifiedAt: fileModTime,
     });
     return parsed;
   } catch (error) {
-    sessionCache.set(file.filePath, {
+    sessionDetailCache.set(file.filePath, {
+      data: null,
+      modifiedAt: fileModTime,
+    });
+    throw error;
+  }
+}
+
+async function getOrParseSessionSummary(file: ClaudeSessionFile): Promise<ParsedSessionData | null> {
+  const cached = sessionSummaryCache.get(file.filePath);
+  const fileModTime = file.modifiedAt.getTime();
+
+  if (cached && cached.modifiedAt === fileModTime) {
+    return cached.data;
+  }
+
+  try {
+    const parsed = await parseSessionFile(file.filePath, { includeToolCalls: false });
+    sessionSummaryCache.set(file.filePath, {
+      data: parsed,
+      modifiedAt: fileModTime,
+    });
+    return parsed;
+  } catch (error) {
+    sessionSummaryCache.set(file.filePath, {
       data: null,
       modifiedAt: fileModTime,
     });
@@ -209,7 +240,7 @@ export async function getSessionsByDirectory(
 
   for (const file of filtered) {
     try {
-      const parsed = await getOrParseSession(file);
+      const parsed = await getOrParseSessionSummary(file);
       if (parsed) {
         sessions.push(parsed);
       }

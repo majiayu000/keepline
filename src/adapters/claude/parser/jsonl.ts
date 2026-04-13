@@ -26,6 +26,10 @@ export type ClaudeEntryWithAgent = ClaudeEntry & {
   isSidechain?: boolean;
 }
 
+export interface ParseSessionOptions {
+  includeToolCalls?: boolean;
+}
+
 interface SessionSummaryAccumulator {
   sessionId: string;
   directory: string;
@@ -44,6 +48,7 @@ interface SessionSummaryAccumulator {
   lastActiveAtMs: number;
   toolCalls: ToolCallInfo[];
   usageAccumulator: ReturnType<typeof createUsageAccumulator>;
+  includeToolCalls: boolean;
 }
 
 /** Parse a single JSONL line */
@@ -104,7 +109,10 @@ function isFileHistorySnapshot(entry: ClaudeEntryWithAgent): boolean {
   return (entry as { type?: string }).type === 'file-history-snapshot';
 }
 
-function createSessionAccumulator(entry: ClaudeEntryWithAgent): SessionSummaryAccumulator | null {
+function createSessionAccumulator(
+  entry: ClaudeEntryWithAgent,
+  options: ParseSessionOptions = {}
+): SessionSummaryAccumulator | null {
   const sessionId = entry.sessionId;
   const directory = entry.cwd;
 
@@ -130,6 +138,7 @@ function createSessionAccumulator(entry: ClaudeEntryWithAgent): SessionSummaryAc
     lastActiveAtMs,
     toolCalls: [],
     usageAccumulator: createUsageAccumulator(),
+    includeToolCalls: options.includeToolCalls ?? true,
   };
 }
 
@@ -174,11 +183,13 @@ function accumulateSessionEntry(
     if (block.type === 'tool_use') {
       entryToolCount++;
       entryLastToolUse = block;
-      accumulator.toolCalls.push({
-        name: block.name,
-        input: block.input,
-        timestamp: entry.timestamp,
-      });
+      if (accumulator.includeToolCalls) {
+        accumulator.toolCalls.push({
+          name: block.name,
+          input: block.input,
+          timestamp: entry.timestamp,
+        });
+      }
       continue;
     }
 
@@ -296,7 +307,10 @@ export function summarizeSessionEntries(entries: ClaudeEntryWithAgent[]): Parsed
 }
 
 /** Parse a session JSONL file */
-export async function parseSessionFile(filePath: string): Promise<ParsedSessionData | null> {
+export async function parseSessionFile(
+  filePath: string,
+  options: ParseSessionOptions = {}
+): Promise<ParsedSessionData | null> {
   let lineNumber = 0;
   let accumulator: SessionSummaryAccumulator | null = null;
 
@@ -314,7 +328,7 @@ export async function parseSessionFile(filePath: string): Promise<ParsedSessionD
     }
 
     if (!accumulator) {
-      accumulator = createSessionAccumulator(entry);
+      accumulator = createSessionAccumulator(entry, options);
       if (!accumulator) {
         return null;
       }

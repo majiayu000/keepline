@@ -152,4 +152,75 @@ describe('Claude Scanner', () => {
       },
     ]);
   });
+
+  test('keeps bulk scans lightweight while detailed reads still include tool calls', () => {
+    const homeDir = createTempHome();
+
+    writeSessionFile(homeDir, '-tmp-toolcalls-project', 'toolcalls-session.jsonl', [
+      {
+        type: 'user',
+        uuid: 'user-1',
+        sessionId: 'toolcalls-session',
+        cwd: '/tmp/toolcalls-project',
+        timestamp: '2026-04-13T11:20:00.000Z',
+        userType: 'external',
+        message: { role: 'user', content: 'Inspect tool calls on demand' },
+      },
+      {
+        type: 'assistant',
+        uuid: 'assistant-1',
+        parentUuid: 'user-1',
+        sessionId: 'toolcalls-session',
+        cwd: '/tmp/toolcalls-project',
+        timestamp: '2026-04-13T11:20:05.000Z',
+        message: {
+          role: 'assistant',
+          model: 'claude-3-5-sonnet-20241022',
+          content: [
+            {
+              type: 'tool_use',
+              id: 'tool-1',
+              name: 'Read',
+              input: { file_path: '/tmp/toolcalls-project/src/index.ts' },
+            },
+            { type: 'text', text: 'Read file' },
+          ],
+        },
+      },
+    ]);
+
+    const result = runScannerScript(homeDir, `
+      const { clearSessionCache, getAllSessions, getSessionById } = await import('./src/adapters/claude/scanner.ts');
+      clearSessionCache();
+      const sessions = await getAllSessions();
+      const detail = await getSessionById('toolcalls-session');
+      console.log(JSON.stringify({
+        bulk: sessions.map((session) => ({
+          sessionId: session.sessionId,
+          hasToolCalls: Array.isArray(session.toolCalls),
+          toolCount: session.toolCount,
+        })),
+        detail: detail ? {
+          sessionId: detail.sessionId,
+          hasToolCalls: Array.isArray(detail.toolCalls),
+          toolCalls: detail.toolCalls?.map((tool) => tool.name) || [],
+          toolCount: detail.toolCount,
+        } : null,
+      }));
+    `);
+
+    expect(result.bulk).toEqual([
+      {
+        sessionId: 'toolcalls-session',
+        hasToolCalls: false,
+        toolCount: 1,
+      },
+    ]);
+    expect(result.detail).toEqual({
+      sessionId: 'toolcalls-session',
+      hasToolCalls: true,
+      toolCalls: ['Read'],
+      toolCount: 1,
+    });
+  });
 });
