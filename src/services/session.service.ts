@@ -130,7 +130,7 @@ export async function syncSessions(options: SyncOptions = {}): Promise<{
     // Get Claude sessions from file system (with optional age filter for performance)
     const claudeSessions = await getClaudeSessions({ maxAgeDays });
     const processMatches = matchProcessesToSessions(claudeSessions, processes);
-    const existingSessions = sessionRepo.findBySessionIds(
+    const existingSessions = sessionRepo.findBySessionIdsSummary(
       claudeSessions.map((session) => session.sessionId)
     );
     const existingSessionMap = new Map(

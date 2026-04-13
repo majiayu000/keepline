@@ -14,6 +14,12 @@ export interface ActiveSessionRecord {
   pid?: number;
 }
 
+export interface ExistingSessionSummary {
+  sessionId: string;
+  status: SessionStatus;
+  title: string;
+}
+
 /** Session upsert data (for create or update) */
 export interface SessionUpsertData {
   sessionId: string;
@@ -44,6 +50,9 @@ export interface ISessionRepository {
 
   /** Find multiple sessions by Claude session ID */
   findBySessionIds(sessionIds: string[]): Session[];
+
+  /** Find multiple sessions by Claude session ID with only sync-needed fields */
+  findBySessionIdsSummary(sessionIds: string[]): ExistingSessionSummary[];
 
   /** Find all sessions */
   findAll(): Session[];

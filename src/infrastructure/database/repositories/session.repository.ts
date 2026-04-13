@@ -6,6 +6,7 @@ import { randomUUID } from 'crypto';
 import { getDatabase, transaction } from '../sqlite.js';
 import type {
   ActiveSessionRecord,
+  ExistingSessionSummary,
   Session,
   SessionListItem,
   SessionStatus,
@@ -56,6 +57,12 @@ interface ActiveSessionRow {
   session_id: string;
   status: string;
   pid: number | null;
+}
+
+interface ExistingSessionSummaryRow {
+  session_id: string;
+  status: string;
+  title: string | null;
 }
 
 /** Convert database row to Session entity */
@@ -110,6 +117,14 @@ function rowToActiveSessionRecord(row: ActiveSessionRow): ActiveSessionRecord {
   };
 }
 
+function rowToExistingSessionSummary(row: ExistingSessionSummaryRow): ExistingSessionSummary {
+  return {
+    sessionId: row.session_id,
+    status: row.status as SessionStatus,
+    title: row.title || '',
+  };
+}
+
 /** Session repository implementation */
 class SessionRepository implements ISessionRepository {
   findById(id: string): Session | null {
@@ -142,6 +157,20 @@ class SessionRepository implements ISessionRepository {
       .all(...sessionIds) as SessionRow[];
 
     return rows.map(rowToSession);
+  }
+
+  findBySessionIdsSummary(sessionIds: string[]): ExistingSessionSummary[] {
+    if (sessionIds.length === 0) {
+      return [];
+    }
+
+    const db = getDatabase();
+    const placeholders = sessionIds.map(() => '?').join(', ');
+    const rows = db
+      .prepare(`SELECT session_id, status, title FROM sessions WHERE session_id IN (${placeholders})`)
+      .all(...sessionIds) as ExistingSessionSummaryRow[];
+
+    return rows.map(rowToExistingSessionSummary);
   }
 
   findAll(): Session[] {

@@ -55,6 +55,7 @@ export {
 // Repository interface
 export type {
   ActiveSessionRecord,
+  ExistingSessionSummary,
   ISessionRepository,
   SessionUpsertData,
 } from './repository.js';
