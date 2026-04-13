@@ -77,14 +77,14 @@ function batchGetProcessCwd(pids: number[]): Map<number, string> {
 
 /** Parse lstart date string from ps output */
 function parseLstartDate(lstartStr: string): Date | undefined {
-  if (!lstartStr || lstartStr.trim() === '') return undefined;
-  const parsed = new Date(lstartStr.trim());
+  if (!lstartStr) return undefined;
+  const parsed = new Date(lstartStr);
   return Number.isNaN(parsed.getTime()) ? undefined : parsed;
 }
 
 function parseLstartTimestamp(lstartStr: string): number | undefined {
-  if (!lstartStr || lstartStr.trim() === '') return undefined;
-  const timestamp = Date.parse(lstartStr.trim());
+  if (!lstartStr) return undefined;
+  const timestamp = Date.parse(lstartStr);
   return Number.isNaN(timestamp) ? undefined : timestamp;
 }
 
@@ -162,7 +162,7 @@ export function parseClaudePsOutput(output: string): ParsedPsProcessData[] {
     // args is command tail after first token (the binary path)
     const command = parts[9];
     const firstSpace = command.indexOf(' ');
-    const argsRaw = firstSpace >= 0 ? command.slice(firstSpace + 1).trim() : '';
+    const argsRaw = firstSpace >= 0 ? command.slice(firstSpace + 1) : '';
 
     parsedProcesses.push({ pid, cpu, mem, tty, startTimeMs, argsRaw });
   }
