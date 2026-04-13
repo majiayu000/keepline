@@ -17,7 +17,7 @@ import { logger } from '../../lib/logger.js';
 
 // Cache for parsed session data with modification times
 interface SessionCache {
-  data: ParsedSessionData;
+  data: ParsedSessionData | null;
   modifiedAt: number; // File modification time in ms
 }
 const sessionCache = new Map<string, SessionCache>();
@@ -124,22 +124,28 @@ export async function getAllSessions(options: ScanOptions = {}): Promise<ParsedS
 
       // Use cache if file hasn't been modified
       if (cached && cached.modifiedAt === fileModTime) {
-        sessions.push(cached.data);
+        if (cached.data) {
+          sessions.push(cached.data);
+        }
         cacheHits++;
         continue;
       }
 
       // Parse file and update cache
       const parsed = await parseSessionFile(file.filePath);
+      sessionCache.set(file.filePath, {
+        data: parsed,
+        modifiedAt: fileModTime,
+      });
       if (parsed) {
-        sessionCache.set(file.filePath, {
-          data: parsed,
-          modifiedAt: fileModTime,
-        });
         sessions.push(parsed);
-        cacheMisses++;
       }
+      cacheMisses++;
     } catch (error) {
+      sessionCache.set(file.filePath, {
+        data: null,
+        modifiedAt: file.modifiedAt.getTime(),
+      });
       logger.error(`Failed to parse session file: ${file.filePath}`, error);
     }
   }
@@ -165,14 +171,20 @@ async function getOrParseSession(file: ClaudeSessionFile): Promise<ParsedSession
     return cached.data;
   }
 
-  const parsed = await parseSessionFile(file.filePath);
-  if (parsed) {
+  try {
+    const parsed = await parseSessionFile(file.filePath);
     sessionCache.set(file.filePath, {
       data: parsed,
       modifiedAt: fileModTime,
     });
+    return parsed;
+  } catch (error) {
+    sessionCache.set(file.filePath, {
+      data: null,
+      modifiedAt: fileModTime,
+    });
+    throw error;
   }
-  return parsed;
 }
 
 /** Get session by ID (uses cache) */

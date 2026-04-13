@@ -14,6 +14,7 @@ import { logger } from '../../../lib/logger.js';
 import { authMiddleware } from '../middleware/auth.js';
 import { isValidSessionId } from '../middleware/validation.js';
 import { broadcast } from '../websocket.js';
+import { serializeBasicSessions } from '../session-response.js';
 
 const app = new Hono();
 app.use('*', authMiddleware);
@@ -94,26 +95,7 @@ app.get('/', async (c) => {
       return c.json({
         success: true,
         data: {
-          sessions: paginatedSessions.map(s => ({
-            id: s.id,
-            sessionId: s.sessionId,
-            directory: s.directory,
-            status: s.status,
-            title: s.title,
-            lastActiveAt: s.lastActiveAt.toISOString(),
-            startedAt: s.startedAt?.toISOString(),
-            completedAt: s.completedAt?.toISOString(),
-            createdAt: s.createdAt.toISOString(),
-            updatedAt: s.updatedAt.toISOString(),
-            pid: s.pid,
-            tty: s.tty,
-            toolCount: s.toolCount,
-            messageCount: s.messageCount,
-            processRunning: s.processRunning,
-            cpuUsage: s.cpuUsage,
-            memoryUsage: s.memoryUsage,
-            // Omit heavy fields: initialPrompt, lastMessage, lastTool, lastToolInput, usageStats
-          })),
+          sessions: serializeBasicSessions(paginatedSessions),
           stats,
           pagination: {
             total,
