@@ -130,13 +130,19 @@ export function usageStatsFromAccumulator(accumulator: UsageAccumulator): UsageS
     }
   }
 
+  const modelBreakdown = new Array<ModelUsage>(accumulator.buckets.size)
+  let bucketIndex = 0
+  for (const bucket of accumulator.buckets.values()) {
+    modelBreakdown[bucketIndex++] = bucket.usage
+  }
+
   return {
     totalInputTokens: accumulator.totalInputTokens,
     totalOutputTokens: accumulator.totalOutputTokens,
     totalTokens: accumulator.totalInputTokens + accumulator.totalOutputTokens,
     totalCost: accumulator.totalCost,
     apiCalls: accumulator.apiCalls,
-    modelBreakdown: Array.from(accumulator.buckets.values(), (bucket) => bucket.usage),
+    modelBreakdown,
   }
 }
 
@@ -242,12 +248,18 @@ export function aggregateUsageStats(entries: ClaudeEntry[]): UsageStats {
     }
   }
 
+  const modelBreakdown = new Array<ModelUsage>(buckets.size)
+  let bucketIndex = 0
+  for (const bucket of buckets.values()) {
+    modelBreakdown[bucketIndex++] = bucket.usage
+  }
+
   return {
     totalInputTokens,
     totalOutputTokens,
     totalTokens: totalInputTokens + totalOutputTokens,
     totalCost,
     apiCalls,
-    modelBreakdown: Array.from(buckets.values(), (bucket) => bucket.usage),
+    modelBreakdown,
   }
 }
