@@ -210,7 +210,6 @@ export async function syncSessions(options: SyncOptions = {}): Promise<{
         });
         existingSessionMap.set(claudeSession.sessionId, newSession);
         emit('session:discovered', { session: newSession });
-        logger.info(`Session discovered: ${claudeSession.sessionId}`);
         discovered++;
       }
     }
@@ -236,6 +235,9 @@ export async function syncSessions(options: SyncOptions = {}): Promise<{
     }
 
     const duration = Date.now() - startTime;
+    if (discovered > 0 || lost > 0) {
+      logger.info(`Session sync: ${discovered} new, ${lost} lost`);
+    }
     emit('scan:complete', { sessionCount: claudeSessions.length, duration });
     logger.debug(`Sync complete: ${discovered} new, ${updated} updated, ${lost} lost (${duration}ms)`);
 
