@@ -11,7 +11,6 @@ import path from 'path';
 import { runMigrations } from '../../db/migrations.js';
 import { syncSessions } from '../../services/session.service.js';
 import { getAggregatedSessions, getSessionStats } from '../../services/session.aggregator.js';
-import { getAllSessions as getAllParsedSessions } from '../../adapters/claude/scanner.js';
 import { initPricing } from '../../services/usage.pricing.js';
 import { initializeMemoryService } from '../../services/memory.service.js';
 import { logger } from '../../lib/logger.js';
@@ -21,6 +20,7 @@ import { broadcast, wsClients, websocketHandler } from './websocket.js';
 import { terminalWebsocketHandler } from './terminal-websocket.js';
 import { verifyToken } from '../../services/auth.service.js';
 import { config } from '../../lib/config.js';
+import { serializeBasicSessions } from './session-response.js';
 
 const app = new Hono();
 
@@ -60,12 +60,14 @@ app.get('/assets/*', async (c) => {
 });
 
 // Mount route modules
+// Auth routes MUST be before usage (/api) — usage has use('*', authMiddleware)
+// which would intercept /api/auth/* if mounted first
+app.route('/api/auth', auth);
 app.route('/api/sessions', sessions);
 app.route('/api/sessions', recovery);
 app.route('/api', usage);
 app.route('/api/memory', memory);
 app.route('/api/plans', plans);
-app.route('/api/auth', auth);
 
 // Serve React app index.html for root
 app.get('/', async () => {
@@ -109,22 +111,8 @@ async function checkAndBroadcastUpdates() {
     if (currentState !== previousSessionsState) {
       previousSessionsState = currentState;
 
-      // Get usage stats for full data
-      const parsedSessions = await getAllParsedSessions();
-      const usageMap = new Map(
-        parsedSessions.map(p => [p.sessionId, p.usageStats])
-      );
-
       broadcast('sessions:update', {
-        sessions: sessions.map(s => ({
-          ...s,
-          lastActiveAt: s.lastActiveAt.toISOString(),
-          startedAt: s.startedAt?.toISOString(),
-          completedAt: s.completedAt?.toISOString(),
-          createdAt: s.createdAt.toISOString(),
-          updatedAt: s.updatedAt.toISOString(),
-          usageStats: usageMap.get(s.sessionId),
-        })),
+        sessions: serializeBasicSessions(sessions),
         stats,
       });
     }

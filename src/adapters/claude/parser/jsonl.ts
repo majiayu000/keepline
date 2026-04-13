@@ -26,6 +26,26 @@ export type ClaudeEntryWithAgent = ClaudeEntry & {
   isSidechain?: boolean;
 }
 
+interface SessionSummaryAccumulator {
+  sessionId: string;
+  directory: string;
+  agentId?: string;
+  isSubAgent: boolean;
+  parentSessionId?: string;
+  firstMessage?: string;
+  lastMessage?: string;
+  firstSystemCommand?: string;
+  messageCount: number;
+  toolCount: number;
+  lastTool?: string;
+  lastToolInput?: Record<string, unknown>;
+  currentFile?: string;
+  startedAtMs?: number;
+  lastActiveAtMs: number;
+  toolCalls: ToolCallInfo[];
+  usageAccumulator: ReturnType<typeof createUsageAccumulator>;
+}
+
 /** Parse a single JSONL line */
 function parseLine(line: string, lineNumber: number, filePath: string): ClaudeEntryWithAgent | null {
   if (!line.trim()) return null;
@@ -80,142 +100,147 @@ function extractCurrentFile(toolInput: Record<string, unknown>): string | undefi
   return undefined;
 }
 
-/** Parse a session JSONL file */
-export function summarizeSessionEntries(entries: ClaudeEntryWithAgent[]): ParsedSessionData | null {
-  if (entries.length === 0) return null;
+function isFileHistorySnapshot(entry: ClaudeEntryWithAgent): boolean {
+  return (entry as { type?: string }).type === 'file-history-snapshot';
+}
 
-  // Extract session info from first entry
-  const firstEntry = entries[0];
-  const sessionId = firstEntry.sessionId;
-  const directory = firstEntry.cwd;
+function createSessionAccumulator(entry: ClaudeEntryWithAgent): SessionSummaryAccumulator | null {
+  const sessionId = entry.sessionId;
+  const directory = entry.cwd;
 
-  // Skip if no valid session ID
-  if (!sessionId || !directory) return null;
+  if (!sessionId || !directory) {
+    return null;
+  }
 
-  // Check for agent info (sub-agent sessions)
-  const agentId = firstEntry.agentId;
-  const isSubAgent = !!agentId || firstEntry.isSidechain === true;
-  // For sub-agents, the sessionId in the file is actually the parent's sessionId
-  const parentSessionId = isSubAgent ? sessionId : undefined;
-
-  // Find first user message and last assistant message
-  let firstMessage: string | undefined;
-  let lastMessage: string | undefined;
-  let firstSystemCommand: string | undefined;
-  let messageCount = 0;
-  let toolCount = 0;
-  let lastTool: string | undefined;
-  let lastToolInput: Record<string, unknown> | undefined;
-  let currentFile: string | undefined;
-  let startedAtMs: number | undefined;
-  let lastActiveAtMs = Date.parse(firstEntry.timestamp);
+  const agentId = entry.agentId;
+  const isSubAgent = !!agentId || entry.isSidechain === true;
+  let lastActiveAtMs = Date.parse(entry.timestamp);
   if (Number.isNaN(lastActiveAtMs)) {
     lastActiveAtMs = Date.now();
   }
-  const toolCalls: ToolCallInfo[] = [];
-  const usageAccumulator = createUsageAccumulator();
 
-  for (const entry of entries) {
-    const entryTimeMs = Date.parse(entry.timestamp);
-    if (!Number.isNaN(entryTimeMs) && entryTimeMs > lastActiveAtMs) {
-      lastActiveAtMs = entryTimeMs;
+  return {
+    sessionId,
+    directory,
+    agentId,
+    isSubAgent,
+    parentSessionId: isSubAgent ? sessionId : undefined,
+    messageCount: 0,
+    toolCount: 0,
+    lastActiveAtMs,
+    toolCalls: [],
+    usageAccumulator: createUsageAccumulator(),
+  };
+}
+
+function accumulateSessionEntry(
+  accumulator: SessionSummaryAccumulator,
+  entry: ClaudeEntryWithAgent
+): void {
+  const entryTimeMs = Date.parse(entry.timestamp);
+  if (!Number.isNaN(entryTimeMs) && entryTimeMs > accumulator.lastActiveAtMs) {
+    accumulator.lastActiveAtMs = entryTimeMs;
+  }
+  if (!Number.isNaN(entryTimeMs) && (
+    accumulator.startedAtMs === undefined || entryTimeMs < accumulator.startedAtMs
+  )) {
+    accumulator.startedAtMs = entryTimeMs;
+  }
+
+  if (isUserEntry(entry) && entry.userType === 'external') {
+    accumulator.messageCount++;
+    if (!accumulator.firstMessage) {
+      accumulator.firstMessage = extractUserPrompt(entry);
     }
-    if (!Number.isNaN(entryTimeMs) && (startedAtMs === undefined || entryTimeMs < startedAtMs)) {
-      startedAtMs = entryTimeMs;
+  }
+
+  if (isSystemEntry(entry as ClaudeEntry) && !accumulator.firstSystemCommand) {
+    const content = (entry as { content?: string }).content;
+    if (content) {
+      accumulator.firstSystemCommand = extractSystemCommand(content);
+    }
+  }
+
+  if (!isAssistantEntry(entry)) {
+    return;
+  }
+
+  let entryToolCount = 0;
+  let entryLastToolUse: ClaudeToolUseBlock | undefined;
+  let entryText = '';
+  let hasText = false;
+
+  for (const block of entry.message.content) {
+    if (block.type === 'tool_use') {
+      entryToolCount++;
+      entryLastToolUse = block;
+      accumulator.toolCalls.push({
+        name: block.name,
+        input: block.input,
+        timestamp: entry.timestamp,
+      });
+      continue;
     }
 
-    if (isUserEntry(entry) && entry.userType === 'external') {
-      messageCount++;
-      if (!firstMessage) {
-        firstMessage = extractUserPrompt(entry);
-      }
-    }
-
-    // Track system commands (like /resume, /usage) as fallback
-    if (isSystemEntry(entry) && !firstSystemCommand) {
-      const content = (entry as { content?: string }).content;
-      if (content) {
-        firstSystemCommand = extractSystemCommand(content);
-      }
-    }
-
-    if (isAssistantEntry(entry)) {
-      let entryToolCount = 0;
-      let entryLastToolUse: ClaudeToolUseBlock | undefined;
-      let entryText = '';
-      let hasText = false;
-
-      for (const block of entry.message.content) {
-        if (block.type === 'tool_use') {
-          entryToolCount++;
-          entryLastToolUse = block;
-          toolCalls.push({
-            name: block.name,
-            input: block.input,
-            timestamp: entry.timestamp,
-          });
-          continue;
-        }
-
-        if (block.type === 'text') {
-          if (hasText) {
-            entryText += `\n${block.text}`;
-          } else {
-            entryText = block.text;
-            hasText = true;
-          }
-        }
-      }
-
-      toolCount += entryToolCount;
-
-      if (entryLastToolUse) {
-        lastTool = entryLastToolUse.name;
-        lastToolInput = entryLastToolUse.input;
-
-        const file = extractCurrentFile(entryLastToolUse.input);
-        if (file) {
-          currentFile = file;
-        }
-      }
-
+    if (block.type === 'text') {
       if (hasText) {
-        const text = entryText.trim();
-        if (text) {
-          lastMessage = text;
-        }
-      }
-
-      const usage = entry.message.usage as
-        | {
-            input_tokens?: number;
-            output_tokens?: number;
-            cache_creation_input_tokens?: number;
-            cache_read_input_tokens?: number;
-          }
-        | undefined;
-      if (
-        usage &&
-        typeof usage.input_tokens === 'number' &&
-        typeof usage.output_tokens === 'number'
-      ) {
-        addUsageToAccumulator(usageAccumulator, entry.message.model, {
-          input_tokens: usage.input_tokens,
-          output_tokens: usage.output_tokens,
-          cache_creation_input_tokens: usage.cache_creation_input_tokens,
-          cache_read_input_tokens: usage.cache_read_input_tokens,
-        });
+        entryText += `\n${block.text}`;
+      } else {
+        entryText = block.text;
+        hasText = true;
       }
     }
   }
 
-  // Use system command as fallback if no user message found
-  if (!firstMessage && firstSystemCommand) {
-    firstMessage = `System: ${firstSystemCommand}`;
+  accumulator.toolCount += entryToolCount;
+
+  if (entryLastToolUse) {
+    accumulator.lastTool = entryLastToolUse.name;
+    accumulator.lastToolInput = entryLastToolUse.input;
+
+    const file = extractCurrentFile(entryLastToolUse.input);
+    if (file) {
+      accumulator.currentFile = file;
+    }
   }
 
-  // Extract usage stats
-  const rawUsageStats = usageStatsFromAccumulator(usageAccumulator);
+  if (hasText) {
+    const text = entryText.trim();
+    if (text) {
+      accumulator.lastMessage = text;
+    }
+  }
+
+  const usage = entry.message.usage as
+    | {
+        input_tokens?: number;
+        output_tokens?: number;
+        cache_creation_input_tokens?: number;
+        cache_read_input_tokens?: number;
+      }
+    | undefined;
+  if (
+    usage &&
+    typeof usage.input_tokens === 'number' &&
+    typeof usage.output_tokens === 'number'
+  ) {
+    addUsageToAccumulator(accumulator.usageAccumulator, entry.message.model, {
+      input_tokens: usage.input_tokens,
+      output_tokens: usage.output_tokens,
+      cache_creation_input_tokens: usage.cache_creation_input_tokens,
+      cache_read_input_tokens: usage.cache_read_input_tokens,
+    });
+  }
+}
+
+function finalizeSessionAccumulator(
+  accumulator: SessionSummaryAccumulator
+): ParsedSessionData {
+  if (!accumulator.firstMessage && accumulator.firstSystemCommand) {
+    accumulator.firstMessage = `System: ${accumulator.firstSystemCommand}`;
+  }
+
+  const rawUsageStats = usageStatsFromAccumulator(accumulator.usageAccumulator);
   const usageStats: SessionUsageStats | undefined = rawUsageStats.apiCalls > 0
     ? {
         totalInputTokens: rawUsageStats.totalInputTokens,
@@ -227,31 +252,53 @@ export function summarizeSessionEntries(entries: ClaudeEntryWithAgent[]): Parsed
     : undefined;
 
   return {
-    // For sub-agents, use agentId as sessionId to make them unique
-    sessionId: isSubAgent && agentId ? `agent-${agentId}` : sessionId,
-    directory,
-    firstMessage,
-    lastMessage,
-    messageCount,
-    toolCount,
-    lastTool,
-    lastToolInput,
-    currentFile,
-    startedAt: startedAtMs === undefined ? undefined : new Date(startedAtMs),
-    lastActiveAt: new Date(lastActiveAtMs),
-    toolCalls: toolCalls.length > 0 ? toolCalls : undefined,
+    sessionId: accumulator.isSubAgent && accumulator.agentId
+      ? `agent-${accumulator.agentId}`
+      : accumulator.sessionId,
+    directory: accumulator.directory,
+    firstMessage: accumulator.firstMessage,
+    lastMessage: accumulator.lastMessage,
+    messageCount: accumulator.messageCount,
+    toolCount: accumulator.toolCount,
+    lastTool: accumulator.lastTool,
+    lastToolInput: accumulator.lastToolInput,
+    currentFile: accumulator.currentFile,
+    startedAt: accumulator.startedAtMs === undefined
+      ? undefined
+      : new Date(accumulator.startedAtMs),
+    lastActiveAt: new Date(accumulator.lastActiveAtMs),
+    toolCalls: accumulator.toolCalls.length > 0 ? accumulator.toolCalls : undefined,
     usageStats,
-    // Multi-session tracking fields
-    agentId,
-    parentSessionId,
-    isSubAgent,
+    agentId: accumulator.agentId,
+    parentSessionId: accumulator.parentSessionId,
+    isSubAgent: accumulator.isSubAgent,
   };
 }
 
 /** Parse a session JSONL file */
+export function summarizeSessionEntries(entries: ClaudeEntryWithAgent[]): ParsedSessionData | null {
+  let accumulator: SessionSummaryAccumulator | null = null;
+
+  for (const entry of entries) {
+    if (isFileHistorySnapshot(entry)) {
+      continue;
+    }
+    if (!accumulator) {
+      accumulator = createSessionAccumulator(entry);
+      if (!accumulator) {
+        return null;
+      }
+    }
+    accumulateSessionEntry(accumulator, entry);
+  }
+
+  return accumulator ? finalizeSessionAccumulator(accumulator) : null;
+}
+
+/** Parse a session JSONL file */
 export async function parseSessionFile(filePath: string): Promise<ParsedSessionData | null> {
-  const entries: ClaudeEntryWithAgent[] = [];
   let lineNumber = 0;
+  let accumulator: SessionSummaryAccumulator | null = null;
 
   const fileStream = createReadStream(filePath);
   const rl = createInterface({
@@ -262,10 +309,19 @@ export async function parseSessionFile(filePath: string): Promise<ParsedSessionD
   for await (const line of rl) {
     lineNumber++;
     const entry = parseLine(line, lineNumber, filePath);
-    if (entry && entry.type !== 'file-history-snapshot') {
-      entries.push(entry);
+    if (!entry || isFileHistorySnapshot(entry)) {
+      continue;
     }
+
+    if (!accumulator) {
+      accumulator = createSessionAccumulator(entry);
+      if (!accumulator) {
+        return null;
+      }
+    }
+
+    accumulateSessionEntry(accumulator, entry);
   }
 
-  return summarizeSessionEntries(entries);
+  return accumulator ? finalizeSessionAccumulator(accumulator) : null;
 }
