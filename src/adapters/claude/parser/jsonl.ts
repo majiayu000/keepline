@@ -65,25 +65,10 @@ function parseLine(line: string, lineNumber: number, filePath: string): ClaudeEn
   }
 }
 
-/** Check if entry is a user entry */
-function isUserEntry(entry: ClaudeEntry): entry is ClaudeUserEntry {
-  return entry.type === 'user';
-}
-
-/** Check if entry is a system entry (slash commands like /resume, /usage) */
-function isSystemEntry(entry: ClaudeEntry): boolean {
-  return (entry as { type: string }).type === 'system';
-}
-
 /** Extract command name from system entry content */
 function extractSystemCommand(content: string): string | undefined {
   const match = content.match(/<command-name>\/(\w+)<\/command-name>/);
   return match ? `/${match[1]}` : undefined;
-}
-
-/** Check if entry is an assistant entry */
-function isAssistantEntry(entry: ClaudeEntry): entry is ClaudeAssistantEntry {
-  return entry.type === 'assistant';
 }
 
 /** Extract first user prompt from entry */
@@ -97,14 +82,18 @@ function extractUserPrompt(entry: ClaudeUserEntry): string | undefined {
 
 /** Extract current file from tool input */
 function extractCurrentFile(toolInput: Record<string, unknown>): string | undefined {
-  // Common file path keys in Claude tools
-  const fileKeys = ['file_path', 'path', 'filePath', 'notebook_path'];
-  for (const key of fileKeys) {
-    const value = toolInput[key];
-    if (typeof value === 'string') {
-      return value;
-    }
-  }
+  const filePath = toolInput.file_path;
+  if (typeof filePath === 'string') return filePath;
+
+  const path = toolInput.path;
+  if (typeof path === 'string') return path;
+
+  const filePathCamel = toolInput.filePath;
+  if (typeof filePathCamel === 'string') return filePathCamel;
+
+  const notebookPath = toolInput.notebook_path;
+  if (typeof notebookPath === 'string') return notebookPath;
+
   return undefined;
 }
 
@@ -217,30 +206,32 @@ function accumulateSessionEntry(
     }
   }
 
-  if (isUserEntry(entry) && entry.userType === 'external') {
+  if (entry.type === 'user' && entry.userType === 'external') {
     accumulator.messageCount++;
     if (!accumulator.firstMessage) {
-      accumulator.firstMessage = extractUserPrompt(entry);
+      accumulator.firstMessage = extractUserPrompt(entry as ClaudeUserEntry);
     }
   }
 
-  if (isSystemEntry(entry as ClaudeEntry) && !accumulator.firstSystemCommand) {
+  if ((entry as { type?: string }).type === 'system' && !accumulator.firstSystemCommand) {
     const content = (entry as { content?: string }).content;
     if (content) {
       accumulator.firstSystemCommand = extractSystemCommand(content);
     }
   }
 
-  if (!isAssistantEntry(entry)) {
+  if (entry.type !== 'assistant') {
     return;
   }
+
+  const assistantEntry = entry as ClaudeAssistantEntry;
 
   let entryToolCount = 0;
   let entryLastToolUse: ClaudeToolUseBlock | undefined;
   let entryText = '';
   let hasText = false;
 
-  for (const block of entry.message.content) {
+  for (const block of assistantEntry.message.content) {
     if (block.type === 'tool_use') {
       entryToolCount++;
       entryLastToolUse = block;
@@ -283,7 +274,7 @@ function accumulateSessionEntry(
     }
   }
 
-  const usage = entry.message.usage as
+  const usage = assistantEntry.message.usage as
     | {
         input_tokens?: number;
         output_tokens?: number;
@@ -296,7 +287,7 @@ function accumulateSessionEntry(
     typeof usage.input_tokens === 'number' &&
     typeof usage.output_tokens === 'number'
   ) {
-    addUsageToAccumulator(accumulator.usageAccumulator, entry.message.model, {
+    addUsageToAccumulator(accumulator.usageAccumulator, assistantEntry.message.model, {
       input_tokens: usage.input_tokens,
       output_tokens: usage.output_tokens,
       cache_creation_input_tokens: usage.cache_creation_input_tokens,

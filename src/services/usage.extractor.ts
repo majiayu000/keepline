@@ -25,13 +25,17 @@ type UsageCostModel = {
   outputPerToken: number
 }
 
+type UsageBucket = {
+  usage: ModelUsage
+  costModel: UsageCostModel
+}
+
 type UsageAccumulator = {
   totalInputTokens: number
   totalOutputTokens: number
   totalCost: number
   apiCalls: number
-  modelMap: Map<string, ModelUsage>
-  costPerTokenByModel: Map<string, UsageCostModel>
+  buckets: Map<string, UsageBucket>
 }
 
 /** Extracted usage info from a single entry */
@@ -50,9 +54,25 @@ export function createUsageAccumulator(): UsageAccumulator {
     totalOutputTokens: 0,
     totalCost: 0,
     apiCalls: 0,
-    modelMap: new Map<string, ModelUsage>(),
-    costPerTokenByModel: new Map<string, UsageCostModel>(),
+    buckets: new Map<string, UsageBucket>(),
   }
+}
+
+const resolvedUsageCostModels = new Map<string, UsageCostModel>()
+
+function getUsageCostModel(model: string): UsageCostModel {
+  const cached = resolvedUsageCostModels.get(model)
+  if (cached) {
+    return cached
+  }
+
+  const pricing = getModelPricing(model)
+  const costModel = {
+    inputPerToken: pricing.inputPerMillion / 1_000_000,
+    outputPerToken: pricing.outputPerMillion / 1_000_000,
+  }
+  resolvedUsageCostModels.set(model, costModel)
+  return costModel
 }
 
 export function addUsageToAccumulator(
@@ -68,40 +88,34 @@ export function addUsageToAccumulator(
   accumulator.totalInputTokens += effectiveInputTokens
   accumulator.totalOutputTokens += usage.output_tokens
 
-  let costModel = accumulator.costPerTokenByModel.get(model)
-  if (!costModel) {
-    const pricing = getModelPricing(model)
-    costModel = {
-      inputPerToken: pricing.inputPerMillion / 1_000_000,
-      outputPerToken: pricing.outputPerMillion / 1_000_000,
+  let bucket = accumulator.buckets.get(model)
+  if (!bucket) {
+    bucket = {
+      usage: {
+        model,
+        inputTokens: 0,
+        outputTokens: 0,
+        cost: 0,
+        calls: 0,
+      },
+      costModel: getUsageCostModel(model),
     }
-    accumulator.costPerTokenByModel.set(model, costModel)
+    accumulator.buckets.set(model, bucket)
   }
 
   // Cache pricing: cache write 1.25x, cache read 0.1x input token price.
   const cost =
-    usage.input_tokens * costModel.inputPerToken +
-    cacheCreationTokens * costModel.inputPerToken * 1.25 +
-    cacheReadTokens * costModel.inputPerToken * 0.1 +
-    usage.output_tokens * costModel.outputPerToken
+    usage.input_tokens * bucket.costModel.inputPerToken +
+    cacheCreationTokens * bucket.costModel.inputPerToken * 1.25 +
+    cacheReadTokens * bucket.costModel.inputPerToken * 0.1 +
+    usage.output_tokens * bucket.costModel.outputPerToken
 
   accumulator.totalCost += cost
 
-  const existing = accumulator.modelMap.get(model)
-  if (existing) {
-    existing.inputTokens += effectiveInputTokens
-    existing.outputTokens += usage.output_tokens
-    existing.cost += cost
-    existing.calls += 1
-  } else {
-    accumulator.modelMap.set(model, {
-      model,
-      inputTokens: effectiveInputTokens,
-      outputTokens: usage.output_tokens,
-      cost,
-      calls: 1,
-    })
-  }
+  bucket.usage.inputTokens += effectiveInputTokens
+  bucket.usage.outputTokens += usage.output_tokens
+  bucket.usage.cost += cost
+  bucket.usage.calls += 1
 }
 
 export function usageStatsFromAccumulator(accumulator: UsageAccumulator): UsageStats {
@@ -122,7 +136,7 @@ export function usageStatsFromAccumulator(accumulator: UsageAccumulator): UsageS
     totalTokens: accumulator.totalInputTokens + accumulator.totalOutputTokens,
     totalCost: accumulator.totalCost,
     apiCalls: accumulator.apiCalls,
-    modelBreakdown: Array.from(accumulator.modelMap.values()),
+    modelBreakdown: Array.from(accumulator.buckets.values(), (bucket) => bucket.usage),
   }
 }
 
@@ -162,8 +176,7 @@ export function extractUsageFromEntries(entries: ClaudeEntry[]): EntryUsage[] {
 
 /** Aggregate usage stats from JSONL entries */
 export function aggregateUsageStats(entries: ClaudeEntry[]): UsageStats {
-  const costPerTokenByModel = new Map<string, UsageCostModel>()
-  const modelMap = new Map<string, ModelUsage>()
+  const buckets = new Map<string, UsageBucket>()
   let totalInputTokens = 0
   let totalOutputTokens = 0
   let totalCost = 0
@@ -183,38 +196,32 @@ export function aggregateUsageStats(entries: ClaudeEntry[]): UsageStats {
     totalInputTokens += effectiveInputTokens
     totalOutputTokens += usage.output_tokens
 
-    let costModel = costPerTokenByModel.get(model)
-    if (!costModel) {
-      const pricing = getModelPricing(model)
-      costModel = {
-        inputPerToken: pricing.inputPerMillion / 1_000_000,
-        outputPerToken: pricing.outputPerMillion / 1_000_000,
+    let bucket = buckets.get(model)
+    if (!bucket) {
+      bucket = {
+        usage: {
+          model,
+          inputTokens: 0,
+          outputTokens: 0,
+          cost: 0,
+          calls: 0,
+        },
+        costModel: getUsageCostModel(model),
       }
-      costPerTokenByModel.set(model, costModel)
+      buckets.set(model, bucket)
     }
 
     const cost =
-      usage.input_tokens * costModel.inputPerToken +
-      cacheCreationTokens * costModel.inputPerToken * 1.25 +
-      cacheReadTokens * costModel.inputPerToken * 0.1 +
-      usage.output_tokens * costModel.outputPerToken
+      usage.input_tokens * bucket.costModel.inputPerToken +
+      cacheCreationTokens * bucket.costModel.inputPerToken * 1.25 +
+      cacheReadTokens * bucket.costModel.inputPerToken * 0.1 +
+      usage.output_tokens * bucket.costModel.outputPerToken
     totalCost += cost
 
-    const existing = modelMap.get(model)
-    if (existing) {
-      existing.inputTokens += effectiveInputTokens
-      existing.outputTokens += usage.output_tokens
-      existing.cost += cost
-      existing.calls += 1
-    } else {
-      modelMap.set(model, {
-        model,
-        inputTokens: effectiveInputTokens,
-        outputTokens: usage.output_tokens,
-        cost,
-        calls: 1,
-      })
-    }
+    bucket.usage.inputTokens += effectiveInputTokens
+    bucket.usage.outputTokens += usage.output_tokens
+    bucket.usage.cost += cost
+    bucket.usage.calls += 1
   }
 
   if (apiCalls === 0) {
@@ -234,6 +241,6 @@ export function aggregateUsageStats(entries: ClaudeEntry[]): UsageStats {
     totalTokens: totalInputTokens + totalOutputTokens,
     totalCost,
     apiCalls,
-    modelBreakdown: Array.from(modelMap.values()),
+    modelBreakdown: Array.from(buckets.values(), (bucket) => bucket.usage),
   }
 }

@@ -8,6 +8,12 @@
 import type { Session } from './entity.js';
 import type { SessionStatus } from './value-objects.js';
 
+export interface ActiveSessionRecord {
+  sessionId: string;
+  status: SessionStatus;
+  pid?: number;
+}
+
 /** Session upsert data (for create or update) */
 export interface SessionUpsertData {
   sessionId: string;
@@ -44,6 +50,9 @@ export interface ISessionRepository {
 
   /** Find active sessions (not completed or lost) */
   findActive(): Session[];
+
+  /** Find active sessions with only the fields needed for process reconciliation */
+  findActiveLightweight(): ActiveSessionRecord[];
 
   /** Find sessions by status */
   findByStatus(status: SessionStatus): Session[];

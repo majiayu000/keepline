@@ -27,6 +27,7 @@ export const sessionRepo = {
   findByStatus: sessionRepository.findByStatus.bind(sessionRepository),
   findByDirectory: sessionRepository.findByDirectory.bind(sessionRepository),
   findActive: sessionRepository.findActive.bind(sessionRepository),
+  findActiveLightweight: sessionRepository.findActiveLightweight.bind(sessionRepository),
   upsert: sessionRepository.upsert.bind(sessionRepository),
   deleteOldSessions: sessionRepository.deleteOldSessions.bind(sessionRepository),
 };

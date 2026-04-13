@@ -8,7 +8,7 @@
 import type { Session } from '../lib/types.js';
 import { emit } from '../lib/events.js';
 import { sessionRepo } from '../db/index.js';
-import { getCachedProcesses, clearProcessCache, isProcessRunning } from '../adapters/process/scanner.js';
+import { getCachedProcesses, clearProcessCache } from '../adapters/process/scanner.js';
 import { detectSessionStatus } from '../adapters/process/detector.js';
 import { getAllSessions as getClaudeSessions } from '../adapters/claude/scanner.js';
 import { logger } from '../lib/logger.js';
@@ -125,6 +125,7 @@ export async function syncSessions(options: SyncOptions = {}): Promise<{
 
     // Get current process info (will be cached for duration of sync)
     const processes = getCachedProcesses();
+    const runningClaudePids = new Set(processes.map((process) => process.pid));
 
     // Get Claude sessions from file system (with optional age filter for performance)
     const claudeSessions = await getClaudeSessions({ maxAgeDays });
@@ -215,9 +216,9 @@ export async function syncSessions(options: SyncOptions = {}): Promise<{
     }
 
     // Check for sessions whose processes have died
-    const activeSessions = sessionRepo.findActive();
+    const activeSessions = sessionRepo.findActiveLightweight();
     for (const session of activeSessions) {
-      if (session.pid && !isProcessRunning(session.pid)) {
+      if (session.pid && !runningClaudePids.has(session.pid)) {
         // Process died, mark as lost unless it was completed
         if (session.status !== 'completed') {
           const lostSession = sessionRepo.upsert({
