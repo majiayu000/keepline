@@ -57,33 +57,39 @@ export function scanProjectsDirectory(options: ScanOptions = {}): ClaudeSessionF
   }
 
   const sessions: ClaudeSessionFile[] = [];
-  const projectDirs = readdirSync(CLAUDE_PROJECTS);
+  const projectDirs = readdirSync(CLAUDE_PROJECTS, { withFileTypes: true });
 
   // Calculate cutoff date if maxAgeDays is specified
   const cutoffTime = maxAgeDays
     ? Date.now() - (maxAgeDays * 24 * 60 * 60 * 1000)
     : 0;
 
-  for (const projectName of projectDirs) {
-    const projectPath = join(CLAUDE_PROJECTS, projectName);
-    const stat = statSync(projectPath);
+  for (const projectEntry of projectDirs) {
+    if (!projectEntry.isDirectory()) continue;
 
-    if (!stat.isDirectory()) continue;
+    const projectName = projectEntry.name;
+    const projectPath = join(CLAUDE_PROJECTS, projectName);
 
     // Skip directories that haven't been modified recently (optimization)
-    if (maxAgeDays && stat.mtime.getTime() < cutoffTime) {
-      continue;
+    if (maxAgeDays) {
+      const stat = statSync(projectPath);
+      if (stat.mtime.getTime() < cutoffTime) {
+        continue;
+      }
     }
 
     // Filter files based on options
-    const files = readdirSync(projectPath).filter((f) => {
-      if (!f.endsWith('.jsonl')) return false;
-      const isAgentFile = f.startsWith('agent-');
-      // Include agent files only if explicitly requested
-      return includeSubAgents ? true : !isAgentFile;
-    });
+    const files = readdirSync(projectPath, { withFileTypes: true });
 
-    for (const file of files) {
+    for (const fileEntry of files) {
+      if (!fileEntry.isFile()) continue;
+
+      const file = fileEntry.name;
+      if (!file.endsWith('.jsonl')) continue;
+
+      const isAgentFile = file.startsWith('agent-');
+      if (!includeSubAgents && isAgentFile) continue;
+
       const filePath = join(projectPath, file);
       const fileStat = statSync(filePath);
 
@@ -93,7 +99,6 @@ export function scanProjectsDirectory(options: ScanOptions = {}): ClaudeSessionF
       }
 
       // For agent files, use the agent ID as sessionId
-      const isAgentFile = file.startsWith('agent-');
       const sessionId = isAgentFile
         ? file.replace('.jsonl', '') // Keep as "agent-xxxx"
         : extractSessionId(file);
