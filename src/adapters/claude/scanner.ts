@@ -7,9 +7,15 @@
  * - Returns cached data for unchanged files
  */
 
-import { existsSync, readdirSync, statSync } from 'fs';
+import { existsSync, readFileSync, readdirSync, statSync, writeFileSync } from 'fs';
 import { join } from 'path';
-import { CLAUDE_PROJECTS, projectNameToDir, extractSessionId } from '../../lib/paths.js';
+import {
+  CLAUDE_HUB_PARSE_FAILURE_CACHE,
+  CLAUDE_PROJECTS,
+  ensureClaudeHubParent,
+  extractSessionId,
+  projectNameToDir,
+} from '../../lib/paths.js';
 import { parseSessionFile } from './parser/jsonl.js';
 import type { ClaudeSessionFile } from '../../lib/types.js';
 import type { ParsedSessionData } from './types.js';
@@ -22,6 +28,68 @@ interface SessionCache {
 }
 const sessionSummaryCache = new Map<string, SessionCache>();
 const sessionDetailCache = new Map<string, SessionCache>();
+const persistedParseFailures = new Map<string, number>();
+let persistedParseFailuresLoaded = false;
+let persistedParseFailuresDirty = false;
+
+function loadPersistedParseFailures(): void {
+  if (persistedParseFailuresLoaded) {
+    return;
+  }
+
+  persistedParseFailuresLoaded = true;
+  if (!existsSync(CLAUDE_HUB_PARSE_FAILURE_CACHE)) {
+    return;
+  }
+
+  try {
+    const raw = readFileSync(CLAUDE_HUB_PARSE_FAILURE_CACHE, 'utf-8');
+    const parsed = JSON.parse(raw) as Record<string, unknown>;
+    for (const [filePath, modifiedAt] of Object.entries(parsed)) {
+      if (typeof modifiedAt === 'number') {
+        persistedParseFailures.set(filePath, modifiedAt);
+      }
+    }
+  } catch (error) {
+    logger.warn('Failed to load persisted parse failure cache', {
+      error: (error as Error).message,
+    });
+  }
+}
+
+function flushPersistedParseFailures(): void {
+  if (!persistedParseFailuresDirty) {
+    return;
+  }
+
+  ensureClaudeHubParent(CLAUDE_HUB_PARSE_FAILURE_CACHE);
+  writeFileSync(
+    CLAUDE_HUB_PARSE_FAILURE_CACHE,
+    JSON.stringify(Object.fromEntries(persistedParseFailures), null, 2)
+  );
+  persistedParseFailuresDirty = false;
+}
+
+function isPersistedParseFailure(filePath: string, modifiedAt: number): boolean {
+  loadPersistedParseFailures();
+  return persistedParseFailures.get(filePath) === modifiedAt;
+}
+
+function recordPersistedParseFailure(filePath: string, modifiedAt: number): void {
+  loadPersistedParseFailures();
+  if (persistedParseFailures.get(filePath) === modifiedAt) {
+    return;
+  }
+  persistedParseFailures.set(filePath, modifiedAt);
+  persistedParseFailuresDirty = true;
+}
+
+function clearPersistedParseFailure(filePath: string): void {
+  loadPersistedParseFailures();
+  if (persistedParseFailures.delete(filePath)) {
+    persistedParseFailuresDirty = true;
+  }
+}
 
 /** Clear the session cache */
 export function clearSessionCache(): void {
@@ -141,12 +209,22 @@ export async function getAllSessions(options: ScanOptions = {}): Promise<ParsedS
         continue;
       }
 
+      if (isPersistedParseFailure(file.filePath, fileModTime)) {
+        sessionSummaryCache.set(file.filePath, {
+          data: null,
+          modifiedAt: fileModTime,
+        });
+        cacheHits++;
+        continue;
+      }
+
       // Parse file and update cache
       const parsed = await parseSessionFile(file.filePath, { includeToolCalls: false });
       sessionSummaryCache.set(file.filePath, {
         data: parsed,
         modifiedAt: fileModTime,
       });
+      clearPersistedParseFailure(file.filePath);
       if (parsed) {
         sessions.push(parsed);
       }
@@ -156,6 +234,7 @@ export async function getAllSessions(options: ScanOptions = {}): Promise<ParsedS
         data: null,
         modifiedAt: file.modifiedAt.getTime(),
       });
+      recordPersistedParseFailure(file.filePath, file.modifiedAt.getTime());
       logger.error(`Failed to parse session file: ${file.filePath}`, error);
     }
   }
@@ -170,6 +249,15 @@ export async function getAllSessions(options: ScanOptions = {}): Promise<ParsedS
     }
   }
 
+  loadPersistedParseFailures();
+  for (const cachedPath of [...persistedParseFailures.keys()]) {
+    if (!seenFilePaths.has(cachedPath)) {
+      persistedParseFailures.delete(cachedPath);
+      persistedParseFailuresDirty = true;
+    }
+  }
+  flushPersistedParseFailures();
+
   logger.debug(`Session scan: ${cacheHits} cache hits, ${cacheMisses} misses`);
   return sessions;
 }
@@ -183,18 +271,30 @@ async function getOrParseSession(file: ClaudeSessionFile): Promise<ParsedSession
     return cached.data;
   }
 
+  if (isPersistedParseFailure(file.filePath, fileModTime)) {
+    sessionDetailCache.set(file.filePath, {
+      data: null,
+      modifiedAt: fileModTime,
+    });
+    return null;
+  }
+
   try {
     const parsed = await parseSessionFile(file.filePath, { includeToolCalls: true });
     sessionDetailCache.set(file.filePath, {
       data: parsed,
       modifiedAt: fileModTime,
     });
+    clearPersistedParseFailure(file.filePath);
+    flushPersistedParseFailures();
     return parsed;
   } catch (error) {
     sessionDetailCache.set(file.filePath, {
       data: null,
       modifiedAt: fileModTime,
     });
+    recordPersistedParseFailure(file.filePath, fileModTime);
+    flushPersistedParseFailures();
     throw error;
   }
 }
@@ -207,18 +307,30 @@ async function getOrParseSessionSummary(file: ClaudeSessionFile): Promise<Parsed
     return cached.data;
   }
 
+  if (isPersistedParseFailure(file.filePath, fileModTime)) {
+    sessionSummaryCache.set(file.filePath, {
+      data: null,
+      modifiedAt: fileModTime,
+    });
+    return null;
+  }
+
   try {
     const parsed = await parseSessionFile(file.filePath, { includeToolCalls: false });
     sessionSummaryCache.set(file.filePath, {
       data: parsed,
       modifiedAt: fileModTime,
     });
+    clearPersistedParseFailure(file.filePath);
+    flushPersistedParseFailures();
     return parsed;
   } catch (error) {
     sessionSummaryCache.set(file.filePath, {
       data: null,
       modifiedAt: fileModTime,
     });
+    recordPersistedParseFailure(file.filePath, fileModTime);
+    flushPersistedParseFailures();
     throw error;
   }
 }

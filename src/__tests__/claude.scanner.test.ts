@@ -27,7 +27,7 @@ function writeSessionFile(
   return filePath;
 }
 
-function runScannerScript(homeDir: string, script: string) {
+function runScannerScriptDetailed(homeDir: string, script: string) {
   const proc = Bun.spawnSync({
     cmd: [process.execPath, '--eval', script],
     cwd: process.cwd(),
@@ -44,13 +44,21 @@ function runScannerScript(homeDir: string, script: string) {
     throw new Error(proc.stderr.toString() || `scanner subprocess failed with code ${proc.exitCode}`);
   }
 
-  const output = proc.stdout.toString().trim();
+  const stdout = proc.stdout.toString();
+  const output = stdout.trim();
   const jsonLine = output.split('\n').filter(Boolean).pop();
   if (!jsonLine) {
     throw new Error('scanner subprocess produced no JSON output');
   }
 
-  return JSON.parse(jsonLine) as Record<string, unknown>;
+  return {
+    stdout,
+    data: JSON.parse(jsonLine) as Record<string, unknown>,
+  };
+}
+
+function runScannerScript(homeDir: string, script: string) {
+  return runScannerScriptDetailed(homeDir, script).data;
 }
 
 afterEach(() => {
@@ -222,5 +230,39 @@ describe('Claude Scanner', () => {
       toolCalls: ['Read'],
       toolCount: 1,
     });
+  });
+
+  test('persists broken-file skips across subprocess restarts when mtime is unchanged', () => {
+    const homeDir = createTempHome();
+    const brokenPath = writeSessionFile(homeDir, '-tmp-persist-broken', 'persist-broken.jsonl', [
+      {
+        type: 'user',
+        uuid: 'user-1',
+        sessionId: 'persist-broken',
+        cwd: '/tmp/persist-broken',
+        timestamp: '2026-04-13T12:00:00.000Z',
+        userType: 'external',
+        message: { role: 'user', content: 'broken file should be persisted' },
+      },
+      '{"type":"assistant", invalid json',
+    ]);
+
+    const firstRun = runScannerScriptDetailed(homeDir, `
+      const { clearSessionCache, getAllSessions } = await import('./src/adapters/claude/scanner.ts');
+      clearSessionCache();
+      const sessions = await getAllSessions();
+      console.log(JSON.stringify({ count: sessions.length }));
+    `);
+    const secondRun = runScannerScriptDetailed(homeDir, `
+      const { clearSessionCache, getAllSessions } = await import('./src/adapters/claude/scanner.ts');
+      clearSessionCache();
+      const sessions = await getAllSessions();
+      console.log(JSON.stringify({ count: sessions.length }));
+    `);
+
+    expect(firstRun.data.count).toBe(0);
+    expect(secondRun.data.count).toBe(0);
+    expect(firstRun.stdout.includes(brokenPath)).toBe(true);
+    expect(secondRun.stdout.includes(brokenPath)).toBe(false);
   });
 });
