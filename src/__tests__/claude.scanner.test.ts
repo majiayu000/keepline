@@ -265,4 +265,34 @@ describe('Claude Scanner', () => {
     expect(firstRun.stdout.includes(brokenPath)).toBe(true);
     expect(secondRun.stdout.includes(brokenPath)).toBe(false);
   });
+
+  test('summarizes bulk parse failures instead of logging each file individually', () => {
+    const homeDir = createTempHome();
+
+    for (let i = 0; i < 4; i++) {
+      writeSessionFile(homeDir, '-tmp-many-broken', `broken-${i}.jsonl`, [
+        {
+          type: 'user',
+          uuid: `user-${i}`,
+          sessionId: `broken-${i}`,
+          cwd: '/tmp/many-broken',
+          timestamp: '2026-04-13T12:10:00.000Z',
+          userType: 'external',
+          message: { role: 'user', content: 'broken file' },
+        },
+        '{"type":"assistant", invalid json',
+      ]);
+    }
+
+    const result = runScannerScriptDetailed(homeDir, `
+      const { clearSessionCache, getAllSessions } = await import('./src/adapters/claude/scanner.ts');
+      clearSessionCache();
+      const sessions = await getAllSessions();
+      console.log(JSON.stringify({ count: sessions.length }));
+    `);
+
+    expect(result.data.count).toBe(0);
+    expect(result.stdout.includes('Skipped invalid session files during scan')).toBe(true);
+    expect(result.stdout.includes('Failed to parse session file:')).toBe(false);
+  });
 });

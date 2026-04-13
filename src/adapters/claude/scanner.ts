@@ -189,6 +189,7 @@ export async function getAllSessions(options: ScanOptions = {}): Promise<ParsedS
   const sessions: ParsedSessionData[] = [];
   let cacheHits = 0;
   let cacheMisses = 0;
+  const parseFailures: string[] = [];
 
   // Track which files we've seen to clean up stale cache entries
   const seenFilePaths = new Set<string>();
@@ -235,7 +236,7 @@ export async function getAllSessions(options: ScanOptions = {}): Promise<ParsedS
         modifiedAt: file.modifiedAt.getTime(),
       });
       recordPersistedParseFailure(file.filePath, file.modifiedAt.getTime());
-      logger.error(`Failed to parse session file: ${file.filePath}`, error);
+      parseFailures.push(file.filePath);
     }
   }
 
@@ -257,6 +258,13 @@ export async function getAllSessions(options: ScanOptions = {}): Promise<ParsedS
     }
   }
   flushPersistedParseFailures();
+
+  if (parseFailures.length > 0) {
+    logger.warn('Skipped invalid session files during scan', {
+      count: parseFailures.length,
+      sample: parseFailures.slice(0, 5),
+    });
+  }
 
   logger.debug(`Session scan: ${cacheHits} cache hits, ${cacheMisses} misses`);
   return sessions;
