@@ -46,9 +46,6 @@ export function getClaudeHubPid(): string {
   return join(getClaudeHubHome(), 'claude-hub.pid');
 }
 
-/** Claude Hub persisted parse-failure cache */
-export const CLAUDE_HUB_PARSE_FAILURE_CACHE = join(CLAUDE_HUB_HOME, 'invalid-session-files.json');
-
 /**
  * Module-load-time snapshot of the data directory.
  *
@@ -56,6 +53,9 @@ export const CLAUDE_HUB_PARSE_FAILURE_CACHE = join(CLAUDE_HUB_HOME, 'invalid-ses
  * should prefer `getClaudeHubHome()` so a runtime env override is honored.
  */
 export const CLAUDE_HUB_HOME = getClaudeHubHome();
+
+/** Claude Hub persisted parse-failure cache */
+export const CLAUDE_HUB_PARSE_FAILURE_CACHE = join(CLAUDE_HUB_HOME, 'invalid-session-files.json');
 
 /** Claude Hub database file (load-time snapshot). */
 export const CLAUDE_HUB_DB = getClaudeHubDb();

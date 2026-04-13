@@ -89,11 +89,11 @@ function extractUserPrompt(entry: ClaudeUserEntry): string | undefined {
 
 /** Extract current file from tool input */
 function extractCurrentFile(toolInput: Record<string, unknown>): string | undefined {
-  const filePath = toolInput.file_path;
-  if (typeof filePath === 'string') return filePath;
-
   const path = toolInput.path;
   if (typeof path === 'string') return path;
+
+  const filePath = toolInput.file_path;
+  if (typeof filePath === 'string') return filePath;
 
   const filePathCamel = toolInput.filePath;
   if (typeof filePathCamel === 'string') return filePathCamel;
