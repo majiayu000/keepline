@@ -275,11 +275,15 @@ async fn update_tray_icon(
 
     if let Some(id) = tray_id {
         if let Some(tray) = app.tray_by_id(&id) {
-            // Keep a static template icon for maximum cross-machine visibility.
+            let icon_bytes = tray_icon::generate_tray_icon_with_ring(percentage, 44);
+            let icon = Image::from_bytes(&icon_bytes).map_err(|e| e.to_string())?;
+            tray.set_icon(Some(icon)).map_err(|e| e.to_string())?;
+            tray.set_icon_as_template(false).map_err(|e| e.to_string())?;
+
             let tooltip = format!("Claude Quota Monitor ({percentage}%)");
             tray.set_tooltip(Some(tooltip)).map_err(|e| e.to_string())?;
             tray.set_visible(true).map_err(|e| e.to_string())?;
-            println!("[Tray] Tooltip updated successfully");
+            println!("[Tray] Icon + tooltip updated: {}%", percentage);
         } else {
             println!("[Tray] Tray not found by ID");
         }
@@ -746,18 +750,9 @@ pub fn run() {
                 let _ = app.set_activation_policy(ActivationPolicy::Accessory);
             }
 
-            // Use a bundled PNG icon for maximum visibility in macOS menu bar.
-            let initial_icon = match Image::from_bytes(include_bytes!("../icons/32x32.png")) {
-                Ok(icon) => {
-                    println!("[Tray] Created initial bundled icon");
-                    icon
-                }
-                Err(err) => {
-                    eprintln!("[Tray] Failed to decode bundled icon, using generated fallback: {}", err);
-                    let icon_bytes = tray_icon::generate_tray_icon_with_ring(99, 44);
-                    Image::from_bytes(&icon_bytes)?
-                }
-            };
+            // Use dynamic ring icon showing 0% at startup
+            let icon_bytes = tray_icon::generate_tray_icon_with_ring(0, 44);
+            let initial_icon = Image::from_bytes(&icon_bytes)?;
 
             // Create right-click menu
             let quit_item = MenuItemBuilder::with_id("quit", "Quit").build(app)?;
