@@ -49,28 +49,15 @@ fn detect_edge(i: &LayoutInput) -> Edge {
 }
 
 pub fn compute_panel_position(i: LayoutInput) -> (i32, i32) {
+    // Place the panel adjacent to the tray on the side opposite the screen
+    // edge, then align it on the tray's center along the perpendicular axis.
+    let center_x = i.tray_x + i.tray_w as i32 / 2 - i.panel_w as i32 / 2;
+    let center_y = i.tray_y + i.tray_h as i32 / 2 - i.panel_h as i32 / 2;
     let (x, y) = match detect_edge(&i) {
-        // macOS menubar — panel drops below tray icon. Preserves the legacy
-        // formula `tray_x - panel_w/2` so existing Mac placement is unchanged.
-        Edge::Top => (
-            i.tray_x - i.panel_w as i32 / 2,
-            i.tray_y + i.tray_h as i32 + GAP,
-        ),
-        // Windows default — taskbar at bottom, panel rises above tray icon.
-        Edge::Bottom => (
-            i.tray_x - i.panel_w as i32 / 2,
-            i.tray_y - i.panel_h as i32 - GAP,
-        ),
-        // Vertical taskbar pinned to the left edge.
-        Edge::Left => (
-            i.tray_x + i.tray_w as i32 + GAP,
-            i.tray_y - i.panel_h as i32 / 2,
-        ),
-        // Vertical taskbar pinned to the right edge.
-        Edge::Right => (
-            i.tray_x - i.panel_w as i32 - GAP,
-            i.tray_y - i.panel_h as i32 / 2,
-        ),
+        Edge::Top => (center_x, i.tray_y + i.tray_h as i32 + GAP),
+        Edge::Bottom => (center_x, i.tray_y - i.panel_h as i32 - GAP),
+        Edge::Left => (i.tray_x + i.tray_w as i32 + GAP, center_y),
+        Edge::Right => (i.tray_x - i.panel_w as i32 - GAP, center_y),
     };
 
     let max_x = (i.work_x + i.work_w as i32 - i.panel_w as i32).max(i.work_x);
@@ -103,10 +90,10 @@ mod tests {
         );
     }
 
-    /// Regression: macOS top menubar must keep the legacy formula
-    /// `x = tray_x - panel_w/2`, `y = tray_y + tray_h + 4`.
+    /// macOS top menubar — panel drops below the tray icon, centered on the
+    /// tray's horizontal midpoint.
     #[test]
-    fn macos_top_menubar_matches_legacy_formula() {
+    fn macos_top_menubar_centers_panel_below_tray() {
         let case = LayoutInput {
             tray_x: 1200,
             tray_y: 0,
@@ -120,8 +107,9 @@ mod tests {
             work_h: 1055,
         };
         let (x, y) = run(case);
-        // legacy: x = 1200 - 180 = 1020; y = 0 + 22 + 4 = 26 -> clamped up to 25
-        assert_eq!(x, 1020);
+        // tray center x = 1200 + 11 = 1211; panel x = 1211 - 180 = 1031
+        // panel y = tray_y + tray_h + GAP = 0 + 22 + 4 = 26
+        assert_eq!(x, 1031);
         assert_eq!(y, 26);
         assert_inside_work_area(&case, x, y);
     }
