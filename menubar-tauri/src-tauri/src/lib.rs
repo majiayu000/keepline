@@ -1,4 +1,5 @@
 mod codex;
+mod panel_position;
 mod quota;
 mod tray_commands;
 mod tray_icon;
@@ -72,17 +73,62 @@ pub fn run() {
                                 let _ = window.hide();
                             } else {
                                 if let Ok(Some(rect)) = tray.rect() {
-                                    let window_size = window.outer_size().unwrap_or_default();
-                                    let pos = match rect.position {
+                                    let panel = window.outer_size().unwrap_or_default();
+                                    let (tray_x, tray_y) = match rect.position {
                                         tauri::Position::Physical(p) => (p.x, p.y),
                                         tauri::Position::Logical(l) => (l.x as i32, l.y as i32),
                                     };
-                                    let tray_size = match rect.size {
-                                        tauri::Size::Physical(s) => s.height,
-                                        tauri::Size::Logical(l) => l.height as u32,
+                                    let (tray_w, tray_h) = match rect.size {
+                                        tauri::Size::Physical(s) => (s.width, s.height),
+                                        tauri::Size::Logical(l) => {
+                                            (l.width as u32, l.height as u32)
+                                        }
                                     };
-                                    let x = pos.0 - (window_size.width as i32 / 2);
-                                    let y = pos.1 + tray_size as i32 + 4;
+
+                                    // Pick the monitor whose area contains the tray center;
+                                    // fall back to the first monitor if none matches.
+                                    let tray_cx = tray_x + tray_w as i32 / 2;
+                                    let tray_cy = tray_y + tray_h as i32 / 2;
+                                    let monitors =
+                                        app.available_monitors().unwrap_or_default();
+                                    let monitor = monitors
+                                        .iter()
+                                        .find(|m| {
+                                            let p = m.position();
+                                            let s = m.size();
+                                            tray_cx >= p.x
+                                                && tray_cx < p.x + s.width as i32
+                                                && tray_cy >= p.y
+                                                && tray_cy < p.y + s.height as i32
+                                        })
+                                        .or_else(|| monitors.first());
+
+                                    let (work_x, work_y, work_w, work_h) = monitor
+                                        .map(|m| {
+                                            let wa = m.work_area();
+                                            (
+                                                wa.position.x,
+                                                wa.position.y,
+                                                wa.size.width,
+                                                wa.size.height,
+                                            )
+                                        })
+                                        .unwrap_or((0, 0, u32::MAX / 2, u32::MAX / 2));
+
+                                    let (x, y) = panel_position::compute_panel_position(
+                                        panel_position::LayoutInput {
+                                            tray_x,
+                                            tray_y,
+                                            tray_w,
+                                            tray_h,
+                                            panel_w: panel.width,
+                                            panel_h: panel.height,
+                                            work_x,
+                                            work_y,
+                                            work_w,
+                                            work_h,
+                                        },
+                                    );
                                     let _ = window.set_position(tauri::Position::Physical(
                                         tauri::PhysicalPosition { x, y },
                                     ));
