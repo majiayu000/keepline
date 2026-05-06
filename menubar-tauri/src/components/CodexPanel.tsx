@@ -131,8 +131,10 @@ export default function CodexPanel({ onConnectionChange, onUsageChange }: CodexP
       onConnectionChange?.(isConnected);
 
       // Notify parent about used percentage for tray icon.
-      const usedPercent = limits.primary?.usedPercent != null
-        ? Math.round(Math.max(0, Math.min(100, limits.primary.usedPercent)))
+      // Prefer weekly (secondary) since it's the binding constraint; fall back to 5h (primary).
+      const trayPercent = limits.secondary?.usedPercent ?? limits.primary?.usedPercent;
+      const usedPercent = trayPercent != null
+        ? Math.round(Math.max(0, Math.min(100, trayPercent)))
         : null;
       onUsageChange?.(usedPercent);
     } catch (err) {
