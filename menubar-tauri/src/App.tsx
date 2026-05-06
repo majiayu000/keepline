@@ -185,8 +185,13 @@ export default function App() {
   // Update tray icon when active tab or data changes
   // Tray icon always shows USED percentage (matches panel display).
   useEffect(() => {
-    if (activeTab === 'claude' && quota?.session) {
-      updateTrayIcon(Math.round(quota.session.percentage));
+    if (activeTab === 'claude') {
+      // Prefer weekly (binding constraint); fall back to session so the tray
+      // still updates when the account has no weekly window.
+      const pct = quota?.weeklyTotal?.percentage ?? quota?.session?.percentage;
+      if (pct != null) {
+        updateTrayIcon(Math.round(pct));
+      }
     } else if (activeTab === 'codex' && codexUsagePercent !== null) {
       updateTrayIcon(codexUsagePercent);
     }
