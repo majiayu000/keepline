@@ -74,14 +74,19 @@ pub fn run() {
                             } else {
                                 if let Ok(Some(rect)) = tray.rect() {
                                     let panel = window.outer_size().unwrap_or_default();
+                                    // Tauri may return Logical coords on HiDPI / Wayland; scale
+                                    // to physical so they match monitor positions and panel size.
+                                    let scale = window.scale_factor().unwrap_or(1.0);
                                     let (tray_x, tray_y) = match rect.position {
                                         tauri::Position::Physical(p) => (p.x, p.y),
-                                        tauri::Position::Logical(l) => (l.x as i32, l.y as i32),
+                                        tauri::Position::Logical(l) => {
+                                            ((l.x * scale) as i32, (l.y * scale) as i32)
+                                        }
                                     };
                                     let (tray_w, tray_h) = match rect.size {
                                         tauri::Size::Physical(s) => (s.width, s.height),
                                         tauri::Size::Logical(l) => {
-                                            (l.width as u32, l.height as u32)
+                                            ((l.width * scale) as u32, (l.height * scale) as u32)
                                         }
                                     };
 
@@ -129,12 +134,23 @@ pub fn run() {
                                             work_h,
                                         },
                                     );
-                                    let _ = window.set_position(tauri::Position::Physical(
-                                        tauri::PhysicalPosition { x, y },
-                                    ));
+                                    if let Err(e) = window.set_position(
+                                        tauri::Position::Physical(
+                                            tauri::PhysicalPosition { x, y },
+                                        ),
+                                    ) {
+                                        eprintln!(
+                                            "[Tray] Failed to set panel position: {}",
+                                            e
+                                        );
+                                    }
                                 }
-                                let _ = window.show();
-                                let _ = window.set_focus();
+                                if let Err(e) = window.show() {
+                                    eprintln!("[Tray] Failed to show panel: {}", e);
+                                }
+                                if let Err(e) = window.set_focus() {
+                                    eprintln!("[Tray] Failed to focus panel: {}", e);
+                                }
                             }
                         }
                     }

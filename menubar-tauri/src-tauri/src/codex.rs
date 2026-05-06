@@ -60,6 +60,9 @@ pub struct CodexRateLimits {
     pub error: Option<String>,
 }
 
+const CODEX_CLIENT_ID: &str = "app_EMoamEEZ73f0CkXaXp7hrann";
+const CODEX_REFRESH_URL: &str = "https://auth.openai.com/oauth/token";
+
 fn get_codex_home() -> Option<PathBuf> {
     dirs::home_dir().map(|h| h.join(".codex"))
 }
@@ -87,6 +90,43 @@ fn decode_jwt_payload(token: &str) -> Option<serde_json::Value> {
         .or_else(|| base64::engine::general_purpose::STANDARD.decode(&standard).ok())
         .and_then(|bytes| String::from_utf8(bytes).ok())
         .and_then(|json| serde_json::from_str(&json).ok())
+}
+
+// Treat tokens as expired if they will expire within the next 60 seconds, so
+// the request after this check is unlikely to race the boundary.
+fn is_token_expired(token: &str) -> bool {
+    let payload = match decode_jwt_payload(token) {
+        Some(p) => p,
+        None => return true,
+    };
+    let exp = match payload["exp"].as_i64() {
+        Some(e) => e,
+        None => return true,
+    };
+    let now_ms = chrono::Utc::now().timestamp_millis();
+    exp * 1000 < now_ms + 60_000
+}
+
+async fn refresh_codex_access_token(refresh_token: &str) -> Option<String> {
+    let body = serde_json::json!({
+        "grant_type": "refresh_token",
+        "refresh_token": refresh_token,
+        "client_id": CODEX_CLIENT_ID,
+    });
+    let response = reqwest::Client::new()
+        .post(CODEX_REFRESH_URL)
+        .header("Content-Type", "application/json")
+        .header("Accept", "application/json")
+        .json(&body)
+        .timeout(std::time::Duration::from_secs(10))
+        .send()
+        .await
+        .ok()?;
+    if !response.status().is_success() {
+        return None;
+    }
+    let json: serde_json::Value = response.json().await.ok()?;
+    json["access_token"].as_str().map(|s| s.to_string())
 }
 
 #[tauri::command]
@@ -327,8 +367,8 @@ pub async fn get_codex_rate_limits() -> Result<CodexRateLimits, String> {
         }
     };
 
-    let access_token = match auth_json["tokens"]["access_token"].as_str() {
-        Some(token) => token,
+    let mut access_token = match auth_json["tokens"]["access_token"].as_str() {
+        Some(token) => token.to_string(),
         None => {
             return Ok(CodexRateLimits {
                 connected: false,
@@ -340,6 +380,16 @@ pub async fn get_codex_rate_limits() -> Result<CodexRateLimits, String> {
             });
         }
     };
+
+    // Mirror src/web/api/routes/usage.ts: refresh expired access tokens before
+    // calling WHAM so users don't get a spurious "disconnected" between logins.
+    if is_token_expired(&access_token) {
+        if let Some(refresh_token) = auth_json["tokens"]["refresh_token"].as_str() {
+            if let Some(new_token) = refresh_codex_access_token(refresh_token).await {
+                access_token = new_token;
+            }
+        }
+    }
 
     let account_id = auth_json["tokens"]["id_token"]
         .as_str()
@@ -375,7 +425,7 @@ pub async fn get_codex_rate_limits() -> Result<CodexRateLimits, String> {
                                     None
                                 } else {
                                     Some(CodexRateLimitWindow {
-                                        used_percent: w["used_percent"].as_i64().unwrap_or(0) as f64,
+                                        used_percent: w["used_percent"].as_f64().unwrap_or(0.0),
                                         window_minutes: w["limit_window_seconds"]
                                             .as_i64()
                                             .map(|s| (s + 59) / 60),
@@ -391,7 +441,7 @@ pub async fn get_codex_rate_limits() -> Result<CodexRateLimits, String> {
                                     None
                                 } else {
                                     Some(CodexRateLimitWindow {
-                                        used_percent: w["used_percent"].as_i64().unwrap_or(0) as f64,
+                                        used_percent: w["used_percent"].as_f64().unwrap_or(0.0),
                                         window_minutes: w["limit_window_seconds"]
                                             .as_i64()
                                             .map(|s| (s + 59) / 60),
