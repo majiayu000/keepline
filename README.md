@@ -92,6 +92,8 @@ Open **http://127.0.0.1:3377**
 
 By default the web server binds to loopback only. To expose it intentionally, set `CLAUDE_HUB_HOST`.
 
+If you put Claude Hub behind a reverse proxy (Caddy, nginx, cloudflared) and want the in-process rate limiter to identify real clients, also set `CLAUDE_HUB_TRUST_PROXY=true`. Without that flag, `X-Forwarded-For` is treated as untrusted input and the limiter keys on the actual TCP peer instead — this is intentional, so a malicious caller cannot bypass throttling by spoofing forwarded headers.
+
 ### macOS Security Note
 
 If you see an error like **"Claude Hub is damaged and can't be opened"** when running the desktop app, this is macOS Gatekeeper blocking unsigned apps — the app is not actually damaged.
