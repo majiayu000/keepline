@@ -4,7 +4,7 @@
  * Handles user management, JWT tokens, and TOTP 2FA.
  */
 
-import { randomUUID } from 'crypto';
+import { randomUUID, timingSafeEqual } from 'crypto';
 import { queryOne, runSql } from '../infrastructure/database/sqlite.js';
 import { logger } from '../lib/logger.js';
 
@@ -41,6 +41,27 @@ function hmacSign(payload: string): string {
   const hmac = new Bun.CryptoHasher('sha256', getJwtSecret());
   hmac.update(payload);
   return hmac.digest('base64url') as unknown as string;
+}
+
+/**
+ * Constant-time string comparison.
+ *
+ * `!==` short-circuits at the first mismatched byte and leaks the position of
+ * the first differing character through wall-clock time. For HMAC signatures
+ * this lets an attacker recover bytes one at a time. `timingSafeEqual` always
+ * compares both buffers in full and only fails fast on a length mismatch
+ * (which is fine because length is not secret here — both sides are
+ * deterministic SHA-256/base64url encodings of fixed length).
+ */
+function safeEqual(a: string, b: string): boolean {
+  // Length-mismatch shortcut is intentional: HMAC outputs are fixed-length,
+  // so a length difference is guaranteed to be a forgery.
+  if (a.length !== b.length) return false;
+  const bufA = Buffer.from(a, 'utf8');
+  const bufB = Buffer.from(b, 'utf8');
+  // Defensive guard: timingSafeEqual throws on differing lengths.
+  if (bufA.length !== bufB.length) return false;
+  return timingSafeEqual(bufA, bufB);
 }
 
 // ── JWT ──
@@ -87,7 +108,7 @@ export function verifyToken(token: string): JwtPayload | null {
 
     const [header, body, signature] = parts;
     const expectedSig = hmacSign(`${header}.${body}`);
-    if (signature !== expectedSig) return null;
+    if (!safeEqual(signature, expectedSig)) return null;
 
     const payload = JSON.parse(Buffer.from(body, 'base64url').toString()) as JwtPayload;
     if (payload.exp < Math.floor(Date.now() / 1000)) return null;
