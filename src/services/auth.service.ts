@@ -4,7 +4,7 @@
  * Handles user management, JWT tokens, and TOTP 2FA.
  */
 
-import { randomUUID } from 'crypto';
+import { randomUUID, timingSafeEqual } from 'crypto';
 import { queryOne, runSql } from '../infrastructure/database/sqlite.js';
 import { logger } from '../lib/logger.js';
 
@@ -87,7 +87,10 @@ export function verifyToken(token: string): JwtPayload | null {
 
     const [header, body, signature] = parts;
     const expectedSig = hmacSign(`${header}.${body}`);
-    if (signature !== expectedSig) return null;
+    const sigBuf = Buffer.from(signature, 'utf8');
+    const expBuf = Buffer.from(expectedSig, 'utf8');
+    if (sigBuf.length !== expBuf.length) return null;
+    if (!timingSafeEqual(sigBuf, expBuf)) return null;
 
     const payload = JSON.parse(Buffer.from(body, 'base64url').toString()) as JwtPayload;
     if (payload.exp < Math.floor(Date.now() / 1000)) return null;
