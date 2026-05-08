@@ -5,7 +5,7 @@
  */
 
 import { Hono } from 'hono';
-import { rateLimit } from '../middleware/rateLimit.js';
+import { rateLimit, getClientIp } from '../middleware/rateLimit.js';
 import { authMiddleware } from '../middleware/auth.js';
 import {
   isSetupComplete,
@@ -17,6 +17,20 @@ import {
 import type { JwtPayload } from '../../../services/auth.service.js';
 
 const auth = new Hono();
+
+// Per-username login attempt counter, in addition to the per-IP rateLimit
+// middleware. Bounds brute-force against a single account even when an
+// attacker rotates IPs.
+const usernameLoginAttempts = new Map<string, { count: number; resetTime: number }>();
+const LOGIN_ATTEMPTS_PER_USERNAME = 5;
+const LOGIN_USERNAME_WINDOW_MS = 15 * 60 * 1000;
+
+setInterval(() => {
+  const now = Date.now();
+  for (const [k, v] of usernameLoginAttempts.entries()) {
+    if (now > v.resetTime) usernameLoginAttempts.delete(k);
+  }
+}, LOGIN_USERNAME_WINDOW_MS);
 
 // GET /api/auth/status - Check if setup is complete and if user is authenticated
 auth.get('/status', async (c) => {
@@ -55,7 +69,7 @@ auth.post('/setup', rateLimit(5, 60 * 1000), async (c) => {
     }
 
     const result = await setupUser(username, password, enableTotp);
-    const ip = c.req.header('x-forwarded-for') || c.req.header('x-real-ip') || 'unknown';
+    const ip = getClientIp(c);
     logAudit(null, 'setup_complete', ip);
 
     return c.json({ success: true, data: result });
@@ -67,6 +81,7 @@ auth.post('/setup', rateLimit(5, 60 * 1000), async (c) => {
 
 // POST /api/auth/login - Authenticate
 auth.post('/login', rateLimit(10, 60 * 1000), async (c) => {
+  const ip = getClientIp(c);
   try {
     const body = await c.req.json();
     const { username, password, totpCode } = body;
@@ -75,13 +90,26 @@ auth.post('/login', rateLimit(10, 60 * 1000), async (c) => {
       return c.json({ success: false, error: 'Username and password required' }, 400);
     }
 
+    // Per-username attempt cap (in addition to per-IP middleware above).
+    const now = Date.now();
+    let record = usernameLoginAttempts.get(username);
+    if (!record || now > record.resetTime) {
+      record = { count: 0, resetTime: now + LOGIN_USERNAME_WINDOW_MS };
+      usernameLoginAttempts.set(username, record);
+    }
+    if (record.count >= LOGIN_ATTEMPTS_PER_USERNAME) {
+      logAudit(null, 'login_locked', ip, `User: ${username}`);
+      return c.json({ success: false, error: 'Too many attempts for this account' }, 429);
+    }
+    record.count++;
+
     const result = await login(username, password, totpCode);
-    const ip = c.req.header('x-forwarded-for') || c.req.header('x-real-ip') || 'unknown';
+    // Reset on success so legitimate users are not locked out by retries.
+    usernameLoginAttempts.delete(username);
     logAudit(null, 'login_success', ip, `User: ${username}`);
 
     return c.json({ success: true, data: result });
   } catch (e) {
-    const ip = c.req.header('x-forwarded-for') || c.req.header('x-real-ip') || 'unknown';
     logAudit(null, 'login_failed', ip);
     const message = e instanceof Error ? e.message : 'Login failed';
     return c.json({ success: false, error: message }, 401);
