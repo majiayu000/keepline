@@ -21,7 +21,9 @@ const clientState = new WeakMap<ServerWebSocket<any>, TerminalWsState>();
 function send(ws: ServerWebSocket<any>, msg: object) {
   try {
     ws.send(JSON.stringify(msg));
-  } catch { /* client gone */ }
+  } catch (e) {
+    logger.debug('Terminal WS send failed (client likely disconnected)', e);
+  }
 }
 
 export const terminalWebsocketHandler = {

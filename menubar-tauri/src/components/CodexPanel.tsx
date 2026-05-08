@@ -14,6 +14,7 @@ interface CodexStats {
   totalSessions: number;
   todaySessions: number;
   lastActivity?: string;
+  error?: string;
 }
 
 interface CodexRateLimitWindow {
@@ -124,6 +125,8 @@ export default function CodexPanel({ onConnectionChange, onUsageChange }: CodexP
         setError(limits.error);
       } else if (info.error) {
         setError(info.error);
+      } else if (stats.error) {
+        setError(stats.error);
       }
 
       // Notify parent about connection status change
