@@ -6,6 +6,7 @@ import ActionButtons from './components/ActionButtons';
 import ThemeSelector, { ThemeName } from './components/ThemeSelector';
 import TabSwitcher, { TabName } from './components/TabSwitcher';
 import CodexPanel from './components/CodexPanel';
+import CostSummarySection from './components/CostSummarySection';
 import './styles.css';
 
 interface UsageInfo {
@@ -97,6 +98,8 @@ export default function App() {
   // Codex state
   const [codexConnected, setCodexConnected] = useState(false);
   const [codexUsagePercent, setCodexUsagePercent] = useState<number | null>(null);
+  const [codexRefreshKey, setCodexRefreshKey] = useState(0);
+  const [claudeCostRefreshKey, setClaudeCostRefreshKey] = useState(0);
 
   // UI state
   const [theme, setTheme] = useState<ThemeName>(getSavedTheme);
@@ -225,8 +228,10 @@ export default function App() {
   const handleRefresh = useCallback(() => {
     if (activeTab === 'claude') {
       fetchClaudeQuota();
+      setClaudeCostRefreshKey((key) => key + 1);
+    } else if (activeTab === 'codex') {
+      setCodexRefreshKey((key) => key + 1);
     }
-    // Codex panel handles its own refresh via internal state
   }, [activeTab, fetchClaudeQuota]);
 
   const handleOpenDashboard = () => {
@@ -332,6 +337,8 @@ export default function App() {
               </div>
             )}
 
+            <CostSummarySection source="claude" refreshKey={claudeCostRefreshKey} />
+
             {!claudeError && !quota && !claudeLoading && (
               <div className="empty-state">
                 <p>Unable to load quota data</p>
@@ -347,6 +354,7 @@ export default function App() {
           <CodexPanel
             onConnectionChange={setCodexConnected}
             onUsageChange={handleCodexUsageChange}
+            refreshKey={codexRefreshKey}
           />
         )}
 

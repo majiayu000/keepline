@@ -1,5 +1,6 @@
 import { useEffect, useState, useCallback } from 'react';
 import { invoke } from '@tauri-apps/api/core';
+import CostSummarySection from './CostSummarySection';
 
 interface CodexData {
   connected: boolean;
@@ -41,6 +42,7 @@ interface CodexRateLimits {
 interface CodexPanelProps {
   onConnectionChange?: (connected: boolean) => void;
   onUsageChange?: (usedPercent: number | null) => void;
+  refreshKey?: number;
 }
 
 function formatPlanType(planType?: string): string {
@@ -99,7 +101,11 @@ function getProgressColor(usedPercent: number): string {
   return '#22c55e';
 }
 
-export default function CodexPanel({ onConnectionChange, onUsageChange }: CodexPanelProps) {
+export default function CodexPanel({
+  onConnectionChange,
+  onUsageChange,
+  refreshKey = 0,
+}: CodexPanelProps) {
   const [codexData, setCodexData] = useState<CodexData | null>(null);
   const [codexStats, setCodexStats] = useState<CodexStats | null>(null);
   const [rateLimits, setRateLimits] = useState<CodexRateLimits | null>(null);
@@ -154,7 +160,7 @@ export default function CodexPanel({ onConnectionChange, onUsageChange }: CodexP
     // Refresh every 30 seconds
     const interval = setInterval(fetchData, 30000);
     return () => clearInterval(interval);
-  }, [fetchData]);
+  }, [fetchData, refreshKey]);
 
   const handleOpenChatGPT = async () => {
     try {
@@ -321,6 +327,8 @@ export default function CodexPanel({ onConnectionChange, onUsageChange }: CodexP
               </div>
             </div>
           )}
+
+          <CostSummarySection source="codex" refreshKey={refreshKey} />
 
           {/* ChatGPT Link */}
           <button className="open-chatgpt-btn" onClick={handleOpenChatGPT}>
