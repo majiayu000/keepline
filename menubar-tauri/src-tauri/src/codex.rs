@@ -29,6 +29,9 @@ pub struct CodexStats {
     pub today_sessions: u32,
     #[serde(rename = "lastActivity")]
     pub last_activity: Option<String>,
+    /// Set when the stats could not be computed (e.g. file unreadable).
+    /// `None` and zero counts means "no history yet" — not an error.
+    pub error: Option<String>,
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
@@ -244,26 +247,30 @@ pub async fn get_codex_stats() -> Result<CodexStats, String> {
                 total_sessions: 0,
                 today_sessions: 0,
                 last_activity: None,
+                error: Some("Could not find home directory".to_string()),
             });
         }
     };
 
     let history_file = codex_home.join("history.jsonl");
     if !history_file.exists() {
+        // Genuinely no history yet, not an error.
         return Ok(CodexStats {
             total_sessions: 0,
             today_sessions: 0,
             last_activity: None,
+            error: None,
         });
     }
 
     let file = match fs::File::open(&history_file) {
         Ok(f) => f,
-        Err(_) => {
+        Err(e) => {
             return Ok(CodexStats {
                 total_sessions: 0,
                 today_sessions: 0,
                 last_activity: None,
+                error: Some(format!("Failed to read history.jsonl: {}", e)),
             });
         }
     };
@@ -302,6 +309,7 @@ pub async fn get_codex_stats() -> Result<CodexStats, String> {
         total_sessions,
         today_sessions,
         last_activity,
+        error: None,
     })
 }
 

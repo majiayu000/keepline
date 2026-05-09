@@ -122,7 +122,11 @@ class PtyManager {
       this.appendScrollback(session, data);
       const msg = JSON.stringify({ type: 'term:output', data: { sessionId, data } });
       for (const client of session.attachedClients) {
-        try { client.send(msg); } catch { /* client gone */ }
+        try {
+          client.send(msg);
+        } catch (e) {
+          logger.debug(`PTY ${sessionId}: client send failed (likely disconnected)`, e);
+        }
       }
     });
 
@@ -132,7 +136,11 @@ class PtyManager {
       session.exitCode = exitCode;
       const msg = JSON.stringify({ type: 'term:exited', data: { sessionId, exitCode } });
       for (const client of session.attachedClients) {
-        try { client.send(msg); } catch { /* client gone */ }
+        try {
+          client.send(msg);
+        } catch (e) {
+          logger.debug(`PTY ${sessionId}: client send (exit) failed`, e);
+        }
       }
       // Update DB
       runSql(
