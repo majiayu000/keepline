@@ -1,4 +1,5 @@
 mod codex;
+mod cost;
 mod panel_position;
 mod quota;
 mod tray_commands;
@@ -14,6 +15,7 @@ use tauri::{
 use window_vibrancy::{apply_vibrancy, NSVisualEffectMaterial};
 
 use codex::{get_codex_info, get_codex_rate_limits, get_codex_stats, open_chatgpt_quota};
+use cost::get_cost_overview;
 use quota::get_quota;
 use tray_commands::{resize_window, set_dock_visibility, update_tray_icon, TrayState};
 
@@ -34,6 +36,7 @@ pub fn run() {
             get_codex_stats,
             open_chatgpt_quota,
             get_codex_rate_limits,
+            get_cost_overview,
         ])
         .setup(|app| {
             // Start in accessory mode for menubar behavior consistency on macOS.
