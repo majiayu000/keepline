@@ -54,6 +54,7 @@ interface RateLimitRecord {
 
 /** Map insertion order is preserved; we exploit that for FIFO eviction. */
 const rateLimitStore = new Map<string, RateLimitRecord>();
+let nextScopeId = 0;
 
 export interface RateLimitOptions {
   /**
@@ -63,6 +64,11 @@ export interface RateLimitOptions {
    * downstream handlers can still read the original body.
    */
   keyExtractor?: (c: Context) => string | Promise<string>;
+  /**
+   * Namespace this limiter instance. Defaults to a unique per-middleware
+   * scope so global and route-local limiters do not double-count each other.
+   */
+  scope?: string;
   /** Hard cap for the in-memory store. Defaults to 10k keys. */
   maxKeys?: number;
 }
@@ -80,7 +86,7 @@ function firstForwardedAddress(headerValue: string | undefined): string | undefi
 }
 
 /** Resolve the authoritative remote address for a request. */
-function resolveAddress(c: Context): string {
+export function getClientIp(c: Context): string {
   if (trustProxy()) {
     const fwd =
       firstForwardedAddress(c.req.header('x-forwarded-for')) ||
@@ -118,11 +124,13 @@ export function rateLimit(
   options: RateLimitOptions = {}
 ) {
   const { keyExtractor, maxKeys = DEFAULT_MAX_KEYS } = options;
+  const scope = options.scope ?? `limit:${++nextScopeId}`;
 
   return async (c: Context, next: Next) => {
-    const key = keyExtractor
+    const rawKey = keyExtractor
       ? await keyExtractor(c)
-      : `ip:${resolveAddress(c)}`;
+      : `ip:${getClientIp(c)}`;
+    const key = `${scope}:${rawKey}`;
     const now = Date.now();
 
     let record = rateLimitStore.get(key);
@@ -149,7 +157,8 @@ export function rateLimit(
       c.header('Retry-After', String(retryAfter));
       // Don't log the raw key (may be PII); log scope only.
       logger.warn('Rate limit exceeded', {
-        scope: keyExtractor ? 'custom' : 'address',
+        scope,
+        keyType: keyExtractor ? 'custom' : 'address',
         count: record.count,
         limit: maxRequests,
       });
@@ -161,6 +170,11 @@ export function rateLimit(
 
     await next();
   };
+}
+
+/** Clear one bucket, used after successful auth to count failures only. */
+export function resetRateLimitKey(scope: string, key: string): void {
+  rateLimitStore.delete(`${scope}:${key}`);
 }
 
 /** Reset the in-memory store. Test-only helper. */
