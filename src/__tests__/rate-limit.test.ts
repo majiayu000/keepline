@@ -16,6 +16,7 @@ import { afterEach, beforeEach, describe, expect, test } from 'bun:test';
 import { Hono } from 'hono';
 import {
   rateLimit,
+  resetRateLimitKey,
   __resetRateLimitStoreForTests,
   __getRateLimitStoreSizeForTests,
 } from '../web/api/middleware/rateLimit.js';
@@ -166,6 +167,20 @@ describe('rateLimit middleware', () => {
     expect(a2.status).toBe(429);
   });
 
+  test('separate middleware instances do not double-count the same address', async () => {
+    const app = new Hono();
+    app.use('*', rateLimit(100, 60_000));
+    app.get('/login', rateLimit(2, 60_000), (c) => c.json({ ok: true }));
+
+    const first = await app.fetch(new Request('http://localhost/login'));
+    const second = await app.fetch(new Request('http://localhost/login'));
+    const third = await app.fetch(new Request('http://localhost/login'));
+
+    expect(first.status).toBe(200);
+    expect(second.status).toBe(200);
+    expect(third.status).toBe(429);
+  });
+
   test('async keyExtractor (e.g. body-derived) is awaited', async () => {
     const app = new Hono();
     app.use(
@@ -219,5 +234,33 @@ describe('rateLimit middleware', () => {
     }
 
     expect(__getRateLimitStoreSizeForTests()).toBeLessThanOrEqual(5);
+  });
+
+  test('resetRateLimitKey clears one scoped bucket', async () => {
+    const scope = 'test-login';
+    const app = new Hono();
+    app.use(
+      '*',
+      rateLimit(1, 60_000, {
+        scope,
+        keyExtractor: (c) => `u:${c.req.header('x-user')}`,
+      })
+    );
+    app.get('/login', (c) => c.json({ ok: true }));
+
+    const a = await app.fetch(
+      new Request('http://localhost/login', { headers: { 'x-user': 'alice' } })
+    );
+    const b = await app.fetch(
+      new Request('http://localhost/login', { headers: { 'x-user': 'alice' } })
+    );
+    resetRateLimitKey(scope, 'u:alice');
+    const c = await app.fetch(
+      new Request('http://localhost/login', { headers: { 'x-user': 'alice' } })
+    );
+
+    expect(a.status).toBe(200);
+    expect(b.status).toBe(429);
+    expect(c.status).toBe(200);
   });
 });
