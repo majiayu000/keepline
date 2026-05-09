@@ -2,7 +2,7 @@
  * Path utilities for Claude Hub.
  */
 
-import { cpSync, existsSync, mkdirSync, renameSync, rmSync } from 'fs';
+import { cpSync, existsSync, mkdirSync, readdirSync, renameSync, rmSync, statSync } from 'fs';
 import { homedir } from 'os';
 import { dirname, join } from 'path';
 
@@ -41,6 +41,28 @@ export const TASKER_DB = CLAUDE_HUB_DB;
 export const TASKER_LOG = CLAUDE_HUB_LOG;
 export const TASKER_PID = CLAUDE_HUB_PID;
 
+/**
+ * Recursively walk a directory and return [fileCount, totalBytes].
+ * Used to verify a copy succeeded before deleting the source.
+ */
+function summarizeTree(root: string): { files: number; bytes: number } {
+  let files = 0;
+  let bytes = 0;
+  const walk = (dir: string): void => {
+    for (const entry of readdirSync(dir, { withFileTypes: true })) {
+      const path = join(dir, entry.name);
+      if (entry.isDirectory()) {
+        walk(path);
+      } else if (entry.isFile()) {
+        files += 1;
+        bytes += statSync(path).size;
+      }
+    }
+  };
+  walk(root);
+  return { files, bytes };
+}
+
 export function migrateClaudeHubDataHome(
   legacyHome: string = LEGACY_TASKER_HOME,
   nextHome: string = CLAUDE_HUB_HOME
@@ -50,11 +72,30 @@ export function migrateClaudeHubDataHome(
 
   try {
     renameSync(legacyHome, nextHome);
+    return;
   } catch {
-    mkdirSync(nextHome, { recursive: true });
-    cpSync(legacyHome, nextHome, { recursive: true });
-    rmSync(legacyHome, { recursive: true, force: true });
+    // Cross-device or permission failure; fall back to copy + verify + delete.
   }
+
+  mkdirSync(nextHome, { recursive: true });
+  cpSync(legacyHome, nextHome, { recursive: true });
+
+  // Verify the copy is complete before deleting the legacy directory.
+  // A partial copy (disk full, permission error mid-tree) can succeed enough
+  // to not throw but still drop files; deleting the legacy tree at that point
+  // would lose the only complete copy of user data.
+  const before = summarizeTree(legacyHome);
+  const after = summarizeTree(nextHome);
+  if (after.files !== before.files || after.bytes !== before.bytes) {
+    throw new Error(
+      `Aborting migration: copy verification failed. ` +
+        `Source ${legacyHome} has ${before.files} files / ${before.bytes} bytes; ` +
+        `destination ${nextHome} has ${after.files} files / ${after.bytes} bytes. ` +
+        `Legacy directory left in place.`
+    );
+  }
+
+  rmSync(legacyHome, { recursive: true, force: true });
 }
 
 /** Ensure the Claude Hub data directory exists, migrating legacy Tasker data if needed. */
