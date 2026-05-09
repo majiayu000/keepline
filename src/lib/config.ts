@@ -4,7 +4,7 @@
 
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'fs';
 import { join } from 'path';
-import { CLAUDE_HUB_HOME, ensureClaudeHubDataHome } from './paths.js';
+import { ensureClaudeHubDataHome, getClaudeHubHome } from './paths.js';
 import { ConfigError } from './errors.js';
 
 export interface ClaudeHubConfig {
@@ -79,7 +79,13 @@ const defaultConfig: ClaudeHubConfig = {
   },
 };
 
-const CONFIG_FILE = join(CLAUDE_HUB_HOME, 'config.json');
+/**
+ * Resolve the config file path lazily so a runtime CLAUDE_HUB_HOME override
+ * (set after this module imports) still routes reads/writes correctly.
+ */
+function getConfigFile(): string {
+  return join(getClaudeHubHome(), 'config.json');
+}
 
 /** Validate config values are within acceptable ranges */
 function validateConfig(cfg: ClaudeHubConfig): void {
@@ -123,10 +129,11 @@ class ConfigManager {
     if (this.loaded) return this.config;
 
     ensureClaudeHubDataHome();
+    const configFile = getConfigFile();
 
-    if (existsSync(CONFIG_FILE)) {
+    if (existsSync(configFile)) {
       try {
-        const content = readFileSync(CONFIG_FILE, 'utf-8');
+        const content = readFileSync(configFile, 'utf-8');
         const parsed = JSON.parse(content) as Partial<ClaudeHubConfig>;
         this.config = { ...defaultConfig, ...parsed };
 
@@ -147,10 +154,11 @@ class ConfigManager {
   }
 
   save(): void {
-    if (!existsSync(CLAUDE_HUB_HOME)) {
-      mkdirSync(CLAUDE_HUB_HOME, { recursive: true });
+    const home = getClaudeHubHome();
+    if (!existsSync(home)) {
+      mkdirSync(home, { recursive: true });
     }
-    writeFileSync(CONFIG_FILE, JSON.stringify(this.config, null, 2));
+    writeFileSync(getConfigFile(), JSON.stringify(this.config, null, 2));
   }
 
   get(): ClaudeHubConfig {
