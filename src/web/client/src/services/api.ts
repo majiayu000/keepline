@@ -124,10 +124,10 @@ export async function fetchSessions(
 }
 
 /**
- * POST /api/sync - Sync sessions with filesystem
+ * POST /api/sessions/sync - Sync sessions with filesystem
  */
 export async function syncSessions(signal?: AbortSignal): Promise<ApiResponse<SyncResult>> {
-  return request<SyncResult>('/sync', { method: 'POST' }, signal)
+  return request<SyncResult>('/sessions/sync', { method: 'POST' }, signal)
 }
 
 /**
