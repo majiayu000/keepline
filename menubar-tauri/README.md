@@ -1,11 +1,12 @@
 # Claude Quota Monitor
 
-A macOS menubar app to monitor your Claude Code and Codex (ChatGPT) usage quotas.
+A macOS menubar app to monitor Claude Code and Codex (ChatGPT) usage quotas and local cost estimates.
 
 ## Features
 
 - **Claude Code Quota**: View your 5-hour and 7-day usage limits
 - **Codex Quota**: View your ChatGPT Plus/Pro/Team usage limits
+- **Local Cost Tracking**: View estimated today, week, and month costs from local Claude/Codex logs
 - **Tab Switching**: Easily switch between Claude and Codex views
 - **Tray Icon**: Shows remaining quota percentage for the active tab
 - **Multiple Themes**: 7 beautiful themes including light, dark, and Claude brand
@@ -46,9 +47,10 @@ Then try opening the app again.
 
 1. Click the menubar icon to open the quota panel
 2. Use the tabs to switch between Claude and Codex
-3. The tray icon shows the remaining quota % for the active tab
-4. Click outside the panel to close it
-5. Right-click the tray icon to quit
+3. Review live quota windows and local cost estimates in the active tab
+4. The tray icon shows the remaining quota % for the active tab
+5. Click outside the panel to close it
+6. Right-click the tray icon to quit
 
 ## Building from Source
 
@@ -65,11 +67,12 @@ npm run tauri build
 
 ## Tech Stack
 
-- **Frontend**: React 18 + TypeScript + Vite
+- **Frontend**: React 19 + TypeScript + Vite
 - **Backend**: Rust + Tauri 2
 - **APIs**:
   - Claude: `api.anthropic.com/api/oauth/usage`
   - Codex: `chatgpt.com/backend-api/wham/usage`
+- **Local Cost SDK**: `ccstats` reads Claude and Codex local logs for token and cost summaries
 
 ## License
 
