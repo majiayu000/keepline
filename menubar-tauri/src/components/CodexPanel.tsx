@@ -328,12 +328,12 @@ export default function CodexPanel({
             </div>
           )}
 
-          <CostSummarySection source="codex" refreshKey={refreshKey} />
-
           {/* ChatGPT Link */}
           <button className="open-chatgpt-btn" onClick={handleOpenChatGPT}>
             Open ChatGPT
           </button>
+
+          <CostSummarySection source="codex" refreshKey={refreshKey} />
         </div>
       )}
 
