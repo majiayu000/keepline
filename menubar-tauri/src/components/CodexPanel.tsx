@@ -311,6 +311,13 @@ export default function CodexPanel({
             </div>
           )}
 
+          <CostSummarySection source="codex" refreshKey={refreshKey} />
+
+          {/* ChatGPT Link */}
+          <button className="open-chatgpt-btn" onClick={handleOpenChatGPT}>
+            Open ChatGPT
+          </button>
+
           {/* Local Stats Section */}
           {codexStats && (codexStats.totalSessions > 0 || codexStats.todaySessions > 0) && (
             <div className="section">
@@ -327,13 +334,6 @@ export default function CodexPanel({
               </div>
             </div>
           )}
-
-          {/* ChatGPT Link */}
-          <button className="open-chatgpt-btn" onClick={handleOpenChatGPT}>
-            Open ChatGPT
-          </button>
-
-          <CostSummarySection source="codex" refreshKey={refreshKey} />
         </div>
       )}
 
