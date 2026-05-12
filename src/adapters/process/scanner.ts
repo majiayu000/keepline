@@ -138,6 +138,7 @@ function splitWhitespaceWithLimit(line: string, limit: number): string[] {
 /** Parse ps output and keep only main Claude processes */
 export function parseClaudePsOutput(output: string): ParsedPsProcessData[] {
   const parsedProcesses: ParsedPsProcessData[] = [];
+  const lstartCache = new Map<string, number | undefined>();
 
   const lines = output.split('\n');
   for (const rawLine of lines) {
@@ -159,7 +160,11 @@ export function parseClaudePsOutput(output: string): ParsedPsProcessData[] {
 
     // lstart is 5 fields: "Mon Dec  9 10:30:00 2024"
     const lstartStr = `${parts[4]} ${parts[5]} ${parts[6]} ${parts[7]} ${parts[8]}`;
-    const startTimeMs = parseLstartTimestamp(lstartStr);
+    let startTimeMs = lstartCache.get(lstartStr);
+    if (startTimeMs === undefined && !lstartCache.has(lstartStr)) {
+      startTimeMs = parseLstartTimestamp(lstartStr);
+      lstartCache.set(lstartStr, startTimeMs);
+    }
 
     // args is command tail after first token (the binary path)
     const command = parts[9];
