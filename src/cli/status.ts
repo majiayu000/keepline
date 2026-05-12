@@ -6,7 +6,7 @@ import chalk from 'chalk';
 import { existsSync } from 'fs';
 import {
   CLAUDE_HOME,
-  CLAUDE_PROJECTS,
+  CLAUDE_PROJECT_ROOTS,
   CLAUDE_HUB_HOME,
   CLAUDE_HUB_DB,
   LEGACY_TASKER_HOME,
@@ -26,7 +26,9 @@ export async function statusCommand(): Promise<void> {
   // Paths
   console.log(chalk.cyan('Paths:'));
   console.log(`  Claude home:    ${CLAUDE_HOME} ${existsSync(CLAUDE_HOME) ? chalk.green('OK') : chalk.red('Not found')}`);
-  console.log(`  Claude projects: ${CLAUDE_PROJECTS} ${existsSync(CLAUDE_PROJECTS) ? chalk.green('OK') : chalk.red('Not found')}`);
+  for (const root of CLAUDE_PROJECT_ROOTS) {
+    console.log(`  Claude projects: ${root} ${existsSync(root) ? chalk.green('OK') : chalk.gray('Not found')}`);
+  }
   console.log(`  Claude Hub home: ${CLAUDE_HUB_HOME} ${existsSync(CLAUDE_HUB_HOME) ? chalk.green('OK') : chalk.gray('Will create')}`);
   console.log(`  Claude Hub DB:   ${CLAUDE_HUB_DB} ${existsSync(CLAUDE_HUB_DB) ? chalk.green('OK') : chalk.gray('Will create')}`);
   if (LEGACY_TASKER_HOME !== CLAUDE_HUB_HOME && existsSync(LEGACY_TASKER_HOME)) {
