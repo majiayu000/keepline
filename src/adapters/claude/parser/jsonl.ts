@@ -160,6 +160,16 @@ function isFileHistorySnapshot(entry: ClaudeEntryWithAgent): boolean {
   return (entry as { type?: string }).type === 'file-history-snapshot';
 }
 
+/**
+ * Bootstrap entries written by Claude Code that may appear before the first
+ * conversation entry. They carry a sessionId but no cwd, so they cannot seed
+ * the session accumulator on their own.
+ */
+function isBootstrapOnlyEntry(entry: ClaudeEntryWithAgent): boolean {
+  const type = (entry as { type?: string }).type;
+  return type === 'queue-operation' || type === 'last-prompt';
+}
+
 function summarizeAssistantBlocks(
   blocks: ClaudeContentBlock[],
   timestamp: string,
@@ -432,10 +442,13 @@ export function summarizeSessionEntries(entries: ClaudeEntryWithAgent[]): Parsed
   let accumulator: SessionSummaryAccumulator | null = null;
 
   for (const entry of entries) {
-    if (isFileHistorySnapshot(entry)) {
+    if (isFileHistorySnapshot(entry) || isBootstrapOnlyEntry(entry) || !entry.timestamp) {
       continue;
     }
     if (!accumulator) {
+      if (!entry.cwd) {
+        continue;
+      }
       accumulator = createSessionAccumulator(entry);
       if (!accumulator) {
         return null;
@@ -464,11 +477,19 @@ export async function parseSessionFile(
   for await (const line of rl) {
     lineNumber++;
     const entry = parseLine(line, lineNumber, filePath);
-    if (!entry || isFileHistorySnapshot(entry)) {
+    if (
+      !entry ||
+      isFileHistorySnapshot(entry) ||
+      isBootstrapOnlyEntry(entry) ||
+      !entry.timestamp
+    ) {
       continue;
     }
 
     if (!accumulator) {
+      if (!entry.cwd) {
+        continue;
+      }
       accumulator = createSessionAccumulator(entry, options);
       if (!accumulator) {
         return null;
