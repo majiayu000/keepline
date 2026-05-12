@@ -11,7 +11,7 @@ import { existsSync, readFileSync, readdirSync, statSync, writeFileSync } from '
 import { join } from 'path';
 import {
   CLAUDE_HUB_PARSE_FAILURE_CACHE,
-  CLAUDE_PROJECTS,
+  CLAUDE_PROJECT_ROOTS,
   ensureClaudeHubParent,
   extractSessionId,
   projectNameToDir,
@@ -119,68 +119,78 @@ export interface ScanOptions {
 export function scanProjectsDirectory(options: ScanOptions = {}): ClaudeSessionFile[] {
   const { includeSubAgents = false, maxAgeDays } = options;
 
-  if (!existsSync(CLAUDE_PROJECTS)) {
-    logger.warn('Claude projects directory not found');
-    return [];
-  }
+  // Map keyed by `${projectName}:${sessionId}` for O(1) cross-root dedup
+  const byKey = new Map<string, ClaudeSessionFile>();
+  const cutoffTime = maxAgeDays ? Date.now() - maxAgeDays * 24 * 60 * 60 * 1000 : 0;
+  let scannedRoots = 0;
 
-  const sessions: ClaudeSessionFile[] = [];
-  const projectDirs = readdirSync(CLAUDE_PROJECTS, { withFileTypes: true });
+  for (const root of CLAUDE_PROJECT_ROOTS) {
+    if (!existsSync(root)) continue;
+    scannedRoots++;
 
-  // Calculate cutoff date if maxAgeDays is specified
-  const cutoffTime = maxAgeDays
-    ? Date.now() - (maxAgeDays * 24 * 60 * 60 * 1000)
-    : 0;
+    const projectDirs = readdirSync(root, { withFileTypes: true });
 
-  for (const projectEntry of projectDirs) {
-    if (!projectEntry.isDirectory()) continue;
+    for (const projectEntry of projectDirs) {
+      if (!projectEntry.isDirectory()) continue;
 
-    const projectName = projectEntry.name;
-    const projectPath = join(CLAUDE_PROJECTS, projectName);
+      const projectName = projectEntry.name;
+      const projectPath = join(root, projectName);
 
-    // Skip directories that haven't been modified recently (optimization)
-    if (maxAgeDays) {
-      const stat = statSync(projectPath);
-      if (stat.mtime.getTime() < cutoffTime) {
-        continue;
-      }
-    }
-
-    // Filter files based on options
-    const files = readdirSync(projectPath, { withFileTypes: true });
-
-    for (const fileEntry of files) {
-      if (!fileEntry.isFile()) continue;
-
-      const file = fileEntry.name;
-      if (!file.endsWith('.jsonl')) continue;
-
-      const isAgentFile = file.startsWith('agent-');
-      if (!includeSubAgents && isAgentFile) continue;
-
-      const filePath = join(projectPath, file);
-      const fileStat = statSync(filePath);
-
-      // Skip files older than cutoff
-      if (maxAgeDays && fileStat.mtime.getTime() < cutoffTime) {
-        continue;
+      // Skip directories that haven't been modified recently (optimization)
+      if (maxAgeDays) {
+        const stat = statSync(projectPath);
+        if (stat.mtime.getTime() < cutoffTime) {
+          continue;
+        }
       }
 
-      // For agent files, use the agent ID as sessionId
-      const sessionId = isAgentFile
-        ? file.replace('.jsonl', '') // Keep as "agent-xxxx"
-        : extractSessionId(file);
+      const files = readdirSync(projectPath, { withFileTypes: true });
 
-      sessions.push({
-        sessionId,
-        directory: projectNameToDir(projectName),
-        filePath,
-        modifiedAt: fileStat.mtime,
-      });
+      for (const fileEntry of files) {
+        if (!fileEntry.isFile()) continue;
+
+        const file = fileEntry.name;
+        if (!file.endsWith('.jsonl')) continue;
+
+        const isAgentFile = file.startsWith('agent-');
+        if (!includeSubAgents && isAgentFile) continue;
+
+        const filePath = join(projectPath, file);
+        const fileStat = statSync(filePath);
+
+        if (maxAgeDays && fileStat.mtime.getTime() < cutoffTime) {
+          continue;
+        }
+
+        const sessionId = isAgentFile
+          ? file.replace('.jsonl', '')
+          : extractSessionId(file);
+
+        // De-duplicate when the same sessionId exists in multiple roots
+        // (e.g. .claude and .claude-work); prefer the newer file.
+        const dedupeKey = `${projectName}:${sessionId}`;
+        const existing = byKey.get(dedupeKey);
+        if (existing && existing.modifiedAt.getTime() >= fileStat.mtime.getTime()) {
+          continue;
+        }
+
+        byKey.set(dedupeKey, {
+          sessionId,
+          directory: projectNameToDir(projectName),
+          filePath,
+          modifiedAt: fileStat.mtime,
+        });
+      }
     }
   }
 
-  return sessions;
+  if (scannedRoots === 0) {
+    logger.warn('No Claude projects directories found', {
+      roots: CLAUDE_PROJECT_ROOTS,
+    });
+  }
+
+  return Array.from(byKey.values());
 }
 
 /** Get all sessions with parsed data (optimized with caching) */

@@ -9,8 +9,26 @@ import { dirname, join } from 'path';
 /** Claude base directory */
 export const CLAUDE_HOME = join(homedir(), '.claude');
 
-/** Claude projects directory */
+/** Claude projects directory (primary) */
 export const CLAUDE_PROJECTS = join(CLAUDE_HOME, 'projects');
+
+/** Additional Claude data home (claude-work fork / secondary install) */
+export const CLAUDE_WORK_HOME = join(homedir(), '.claude-work');
+
+/** Additional Claude projects directory under claude-work */
+export const CLAUDE_WORK_PROJECTS = join(CLAUDE_WORK_HOME, 'projects');
+
+/**
+ * All Claude project roots to scan.
+ * Override via CLAUDE_HUB_PROJECT_ROOTS (colon-separated absolute paths).
+ */
+export const CLAUDE_PROJECT_ROOTS: string[] = (() => {
+  const override = process.env.CLAUDE_HUB_PROJECT_ROOTS;
+  if (override) {
+    return override.split(':').map((p) => p.trim()).filter(Boolean);
+  }
+  return [CLAUDE_PROJECTS, CLAUDE_WORK_PROJECTS];
+})();
 
 /** Claude history file */
 export const CLAUDE_HISTORY = join(CLAUDE_HOME, 'history.jsonl');
@@ -159,10 +177,19 @@ export function projectNameToDir(name: string): string {
 }
 
 /**
- * Get project folder path for a directory
+ * Get project folder path for a directory.
+ * Searches every configured Claude project root; returns the first existing
+ * match, falling back to the primary root if none exist yet.
  */
 export function getProjectFolder(dir: string): string {
-  return join(CLAUDE_PROJECTS, dirToProjectName(dir));
+  const folderName = dirToProjectName(dir);
+  for (const root of CLAUDE_PROJECT_ROOTS) {
+    const candidate = join(root, folderName);
+    if (existsSync(candidate)) {
+      return candidate;
+    }
+  }
+  return join(CLAUDE_PROJECT_ROOTS[0] ?? CLAUDE_PROJECTS, folderName);
 }
 
 /**
