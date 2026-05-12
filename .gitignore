@@ -68,3 +68,4 @@ temp/
 
 # Local config
 *.local
+.omx/

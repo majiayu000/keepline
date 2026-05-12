@@ -1,0 +1,104 @@
+# AGENTS.md
+
+This file provides guidance to Codex (Codex.ai/code) when working with code in this repository.
+
+## Project Overview
+
+**Codex Hub** is the command center for Codex power users. It monitors all Codex sessions across your system, tracks token usage and costs, recovers lost sessions when terminals crash, and preserves context across iterations.
+
+**Tagline:** "Never lose your Codex work again."
+
+## Build & Development Commands
+
+```bash
+# Build the CLI (Bun)
+bun run build
+
+# Development - run CLI directly
+bun run dev
+
+# Type check
+bun run typecheck
+
+# Run the built CLI
+bun run start
+
+# Web client (React + Vite)
+cd src/web/client
+bun run dev          # Dev server with HMR
+bun run build        # Production build (outputs to dist/)
+bun run typecheck    # Type check client code
+```
+
+## CLI Commands
+
+```bash
+Codex-hub                        # Start web dashboard (default)
+Codex-hub list                   # List sessions with options
+Codex-hub watch                  # Live terminal monitor
+Codex-hub recover [session-id]   # Recover a lost session
+Codex-hub daemon start|stop      # Background daemon
+Codex-hub hooks install|status   # Manage Codex hooks
+Codex-hub sync                   # Manual session sync
+Codex-hub web                    # Start web UI (port 3377)
+Codex-hub memory list|show|edit  # Session memory management
+```
+
+## Architecture
+
+Uses a **layered DDD architecture**:
+
+```
+src/
+├── index.ts              # CLI entry point (Commander.js)
+├── adapters/             # External integrations
+│   ├── Codex/           # Codex data parsing (JSONL, plans)
+│   ├── process/          # System process scanning
+│   └── hook/             # HTTP server for Codex hooks
+├── application/          # Application services
+├── cli/                  # CLI commands
+├── domain/               # Domain entities (DDD)
+│   ├── session/          # Session management
+│   ├── recovery/         # Recovery system
+│   └── memory/           # Cross-session memory ("relay race")
+├── infrastructure/       # Database, events, repositories
+├── lib/                  # Utilities (logger, config, paths)
+├── services/             # Business services
+├── ui/                   # Terminal UI (Ink/React)
+└── web/
+    ├── api/              # Hono HTTP API
+    └── client/           # React + Vite frontend
+```
+
+**Key data flow:**
+1. `adapters/process/scanner.ts` scans system for Codex processes
+2. `adapters/Codex/parser/jsonl.ts` parses Codex's JSONL files
+3. `services/session.aggregator.ts` merges process + file state
+4. `infrastructure/database/repositories/` persists to SQLite
+5. `adapters/hook/server.ts` receives real-time events
+
+## Tech Stack
+
+- **Runtime**: Bun
+- **CLI Framework**: Commander.js
+- **Terminal UI**: Ink (React for CLI)
+- **Web Backend**: Hono
+- **Web Frontend**: React 18 + Vite + TypeScript
+- **Database**: SQLite (via Bun's built-in SQLite)
+
+## Key Features
+
+1. **Multi-session Monitoring** - Track all Codex instances
+2. **Session Recovery** - Three methods: resume, continue, new
+3. **Cost Analytics** - Cache token support, multi-model pricing
+4. **Cross-session Memory** - "Relay race" pattern for context persistence
+5. **Plans Tracking** - Parse and display Codex implementation plans
+6. **Web Dashboard** - 5 cyberpunk themes, real-time WebSocket updates
+
+## Session States
+
+- **running** - Active process with recent activity
+- **waiting** - Process waiting for user input
+- **idle** - Process idle but still alive
+- **lost** - Process terminated unexpectedly (recoverable)
+- **completed** - Session finished normally

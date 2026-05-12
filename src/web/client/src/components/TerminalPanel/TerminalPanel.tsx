@@ -69,7 +69,7 @@ export function TerminalPanel({ token, onLogout }: TerminalPanelProps) {
       <div className={styles.sidebar}>
         {/* Claude Code sessions from API */}
         <div className={styles.sidebarHeader}>
-          <span className={styles.sidebarTitle}>Claude Sessions</span>
+          <span className={styles.sidebarTitle}>History Sessions</span>
           <button className={styles.newBtn} onClick={handleCreate} title="New terminal">+</button>
         </div>
         <div className={styles.sessionList}>
@@ -99,7 +99,7 @@ export function TerminalPanel({ token, onLogout }: TerminalPanelProps) {
         {terminal.sessions.length > 0 && (
           <>
             <div className={styles.sidebarHeader}>
-              <span className={styles.sidebarTitle}>Active Terminals</span>
+              <span className={styles.sidebarTitle}>Live Terminals</span>
             </div>
             <div className={styles.sessionList}>
               {terminal.sessions.map(s => (
