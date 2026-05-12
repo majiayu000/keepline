@@ -3,10 +3,16 @@
  */
 
 import { useState, useCallback, useEffect } from 'react'
-import { fetchAuthStatus, setupAuth, loginAuth, logoutAuth } from '@/services/api'
+import { fetchAuthStatus, setupAuth, loginAuth, localLoginAuth, logoutAuth } from '@/services/api'
 import type { AuthStatus } from '@/types'
 
 const TOKEN_KEY = 'terminal_token'
+
+function isLocalhost(): boolean {
+  if (typeof window === 'undefined') return false
+  const host = window.location.hostname
+  return host === 'localhost' || host === '127.0.0.1' || host === '[::1]' || host === '::1'
+}
 
 export function useAuth() {
   const [status, setStatus] = useState<AuthStatus | null>(null)
@@ -26,7 +32,30 @@ export function useAuth() {
   }, [])
 
   useEffect(() => {
-    checkStatus()
+    let cancelled = false
+    const bootstrap = async () => {
+      await checkStatus()
+      if (cancelled) return
+      // Auto local-login on localhost when no valid token is present.
+      // localLoginAuth auto-creates the "local" user if setup is incomplete,
+      // so a fresh install on the same machine does not need a manual setup.
+      if (!isLocalhost()) return
+      if (localStorage.getItem(TOKEN_KEY)) return
+      try {
+        const res = await localLoginAuth()
+        if (cancelled) return
+        if (res.success && res.data) {
+          localStorage.setItem(TOKEN_KEY, res.data.token)
+          await checkStatus()
+        }
+      } catch {
+        // fall through to manual login UI
+      }
+    }
+    void bootstrap()
+    return () => {
+      cancelled = true
+    }
   }, [checkStatus])
 
   const setup = useCallback(async (username: string, password: string, enableTotp?: boolean) => {
@@ -55,6 +84,19 @@ export function useAuth() {
     throw new Error(msg)
   }, [checkStatus])
 
+  const localLogin = useCallback(async () => {
+    setError(null)
+    const res = await localLoginAuth()
+    if (res.success && res.data) {
+      localStorage.setItem(TOKEN_KEY, res.data.token)
+      await checkStatus()
+      return
+    }
+    const msg = res.error || 'Local login failed'
+    setError(msg)
+    throw new Error(msg)
+  }, [checkStatus])
+
   const logout = useCallback(async () => {
     await logoutAuth()
     localStorage.removeItem(TOKEN_KEY)
@@ -69,6 +111,7 @@ export function useAuth() {
     error,
     setup,
     login,
+    localLogin,
     logout,
     getToken,
     checkStatus,

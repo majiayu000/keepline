@@ -240,7 +240,7 @@ function AppContent() {
   }
 
   if (!auth.status.authenticated || !token) {
-    return <AuthLogin onLogin={auth.login} error={auth.error} />
+    return <AuthLogin onLogin={auth.login} onLocalLogin={auth.localLogin} error={auth.error} />
   }
 
   return <DashboardApp token={token} onLogout={auth.logout} />

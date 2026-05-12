@@ -7,10 +7,11 @@ import styles from './AuthLogin.module.css'
 
 interface AuthLoginProps {
   onLogin: (username: string, password: string, totpCode?: string) => Promise<void>
+  onLocalLogin: () => Promise<void>
   error?: string | null
 }
 
-export function AuthLogin({ onLogin, error }: AuthLoginProps) {
+export function AuthLogin({ onLogin, onLocalLogin, error }: AuthLoginProps) {
   const [username, setUsername] = useState('')
   const [password, setPassword] = useState('')
   const [totpCode, setTotpCode] = useState('')
@@ -30,6 +31,18 @@ export function AuthLogin({ onLogin, error }: AuthLoginProps) {
         setShowTotp(true)
       }
       setLocalError(msg)
+    } finally {
+      setSubmitting(false)
+    }
+  }
+
+  const handleLocalLogin = async () => {
+    setLocalError(null)
+    setSubmitting(true)
+    try {
+      await onLocalLogin()
+    } catch (e) {
+      setLocalError((e as Error).message)
     } finally {
       setSubmitting(false)
     }
@@ -82,6 +95,10 @@ export function AuthLogin({ onLogin, error }: AuthLoginProps) {
           )}
           <button type="submit" className={styles.submit} disabled={submitting}>
             {submitting ? 'Logging in...' : 'Login'}
+          </button>
+          <div className={styles.divider}>or</div>
+          <button type="button" className={styles.localBtn} disabled={submitting} onClick={handleLocalLogin}>
+            Local Login (no password)
           </button>
         </form>
       </div>

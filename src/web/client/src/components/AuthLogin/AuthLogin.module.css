@@ -83,3 +83,40 @@
   opacity: 0.5;
   cursor: not-allowed;
 }
+
+.divider {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  color: var(--text-dim);
+  font-size: 0.75rem;
+}
+
+.divider::before,
+.divider::after {
+  content: '';
+  flex: 1;
+  height: 1px;
+  background: var(--border);
+}
+
+.localBtn {
+  background: transparent;
+  color: var(--text-dim);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  padding: 0.625rem;
+  font-family: inherit;
+  font-size: 0.875rem;
+  cursor: pointer;
+}
+
+.localBtn:hover:not(:disabled) {
+  color: var(--text);
+  border-color: var(--primary);
+}
+
+.localBtn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}

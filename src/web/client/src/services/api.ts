@@ -422,6 +422,17 @@ export async function loginAuth(
 }
 
 /**
+ * POST /api/auth/local - Localhost passwordless login
+ */
+export async function localLoginAuth(
+  signal?: AbortSignal
+): Promise<ApiResponse<LoginResponse>> {
+  return request<LoginResponse>('/auth/local', {
+    method: 'POST',
+  }, signal)
+}
+
+/**
  * POST /api/auth/logout - Logout
  */
 export async function logoutAuth(

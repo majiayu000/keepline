@@ -205,6 +205,29 @@ export async function login(
   return { token };
 }
 
+export async function localLogin(): Promise<{ token: string }> {
+  // Get or create a local user
+  let user = queryOne<{ id: string; username: string }>(
+    'SELECT id, username FROM terminal_users LIMIT 1'
+  );
+
+  if (!user) {
+    // Auto-create a local user
+    const userId = randomUUID();
+    const passwordHash = await Bun.password.hash(randomUUID(), { algorithm: 'argon2id' });
+    runSql(
+      'INSERT INTO terminal_users (id, username, password_hash, totp_enabled) VALUES (?, ?, ?, 0)',
+      [userId, 'local', passwordHash]
+    );
+    user = { id: userId, username: 'local' };
+  }
+
+  const { token } = createToken(user.id, user.username);
+  logAudit(user.id, 'local_login', undefined);
+
+  return { token };
+}
+
 export function revokeToken(jti: string): void {
   runSql('UPDATE terminal_auth_sessions SET revoked = 1 WHERE id = ?', [jti]);
 }

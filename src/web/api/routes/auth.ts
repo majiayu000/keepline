@@ -12,6 +12,7 @@ import {
   isSetupComplete,
   setupUser,
   login,
+  localLogin,
   revokeToken,
   logAudit,
 } from '../../../services/auth.service.js';
@@ -125,6 +126,26 @@ auth.post(
     logAudit(null, 'login_failed', ip);
     const message = e instanceof Error ? e.message : 'Login failed';
     return c.json({ success: false, error: message }, 401);
+  }
+});
+
+// POST /api/auth/logout - Revoke current token
+// POST /api/auth/local - Localhost passwordless login
+auth.post('/local', rateLimit(10, 60 * 1000), async (c) => {
+  const host = c.req.header('host') || '';
+  const isLocal = host.startsWith('localhost') || host.startsWith('127.0.0.1') || host.startsWith('[::1]');
+  if (!isLocal) {
+    return c.json({ success: false, error: 'Local login only available from localhost' }, 403);
+  }
+
+  try {
+    const result = await localLogin();
+    const ip = c.req.header('x-forwarded-for') || c.req.header('x-real-ip') || 'local';
+    logAudit(null, 'local_login', ip);
+    return c.json({ success: true, data: result });
+  } catch (e) {
+    const message = e instanceof Error ? e.message : 'Local login failed';
+    return c.json({ success: false, error: message }, 500);
   }
 });
 
