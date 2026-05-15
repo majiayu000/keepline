@@ -29,6 +29,7 @@ import {
   REALTIME_POLL_INTERVAL_MS,
   shouldRunRealtimeFullSync,
 } from './realtime-updates.js';
+import { isAllowedTerminalOrigin } from './terminal-security.js';
 
 const app = new Hono();
 
@@ -173,6 +174,15 @@ export async function startWebServer(port: number = 3377) {
 
       // Handle WebSocket upgrade - terminal
       if (url.pathname === '/ws/terminal') {
+        const tlsEnabled = Boolean(terminalConfig.tlsCert && terminalConfig.tlsKey);
+        if (!isAllowedTerminalOrigin(req, hostname, port, tlsEnabled)) {
+          logger.warn('Rejected terminal WebSocket with invalid Origin', {
+            origin: req.headers.get('origin') ?? '<missing>',
+            host: url.host,
+          });
+          return new Response('Forbidden', { status: 403 });
+        }
+
         const upgraded = server.upgrade(req, { data: { type: 'terminal' } });
         if (upgraded) return undefined;
         return new Response('WebSocket upgrade failed', { status: 400 });
