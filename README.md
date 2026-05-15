@@ -92,7 +92,9 @@ Open **http://127.0.0.1:3377**
 
 By default the web server binds to loopback only. To expose it intentionally, set `CLAUDE_HUB_HOST`.
 
-If you put Claude Hub behind a reverse proxy (Caddy, nginx, cloudflared) and want the in-process rate limiter to identify real clients, also set `CLAUDE_HUB_TRUST_PROXY=true`. Without that flag, `X-Forwarded-For` is treated as untrusted input and the limiter keys on the actual TCP peer instead — this is intentional, so a malicious caller cannot bypass throttling by spoofing forwarded headers.
+If you put Claude Hub behind a reverse proxy (Caddy, nginx, cloudflared), set `CLAUDE_HUB_PUBLIC_ORIGIN=https://your-public-host.example` so the terminal WebSocket accepts the browser's public `Origin`. For multiple public origins, use comma-separated `CLAUDE_HUB_ALLOWED_ORIGINS`.
+
+If you also want the in-process rate limiter to identify real clients behind that proxy, set `CLAUDE_HUB_TRUST_PROXY=true`. Without that flag, `X-Forwarded-For` is treated as untrusted input and the limiter keys on the actual TCP peer instead — this is intentional, so a malicious caller cannot bypass throttling by spoofing forwarded headers.
 
 ### macOS Security Note
 

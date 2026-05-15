@@ -7,6 +7,9 @@
  */
 
 import { randomUUID } from 'crypto';
+import { existsSync, realpathSync, statSync } from 'fs';
+import { homedir } from 'os';
+import path from 'path';
 import { spawn as spawnPty } from 'bun-pty';
 import { runSql } from '../infrastructure/database/sqlite.js';
 import { config } from '../lib/config.js';
@@ -25,6 +28,33 @@ interface IPty {
 
 interface ServerWebSocket {
   send: (data: string | Buffer) => void;
+}
+
+export function resolveAllowedTerminalCwd(
+  requestedCwd: unknown,
+  allowedRoots: string[] = getAllowedTerminalCwdRoots(),
+): string {
+  if (requestedCwd !== undefined && typeof requestedCwd !== 'string') {
+    throw new Error('Terminal cwd must be a string');
+  }
+
+  const fallbackCwd = process.env.HOME || homedir();
+  const candidate = requestedCwd && requestedCwd.trim().length > 0 ? requestedCwd : fallbackCwd;
+  const realCandidate = realDirectory(candidate, 'Terminal cwd');
+  const realAllowedRoots = allowedRoots
+    .map((root) => root.trim())
+    .filter(Boolean)
+    .map((root) => realDirectory(root, 'Terminal cwd allowlist root'));
+
+  if (realAllowedRoots.length === 0) {
+    throw new Error('Terminal cwd allowlist is empty');
+  }
+
+  if (!realAllowedRoots.some((root) => isPathWithin(realCandidate, root))) {
+    throw new Error('Terminal cwd is outside allowed roots');
+  }
+
+  return realCandidate;
 }
 
 export interface PtySession {
@@ -72,7 +102,7 @@ class PtyManager {
     }
 
     const sessionId = randomUUID();
-    const spawnCwd = cwd || process.env.HOME || '/';
+    const spawnCwd = resolveAllowedTerminalCwd(cwd);
 
     // Build command: if resumeSessionId provided, use `claude --resume <id>`
     let file: string;
@@ -295,3 +325,30 @@ class PtyManager {
 }
 
 export const ptyManager = new PtyManager();
+
+function getAllowedTerminalCwdRoots(): string[] {
+  const configuredRoots = process.env.CLAUDE_HUB_TERMINAL_CWD_ROOTS;
+  if (configuredRoots) {
+    return configuredRoots.split(path.delimiter);
+  }
+  return [process.env.HOME || homedir()];
+}
+
+function realDirectory(directory: string, label: string): string {
+  const resolved = path.resolve(directory);
+  if (!existsSync(resolved)) {
+    throw new Error(`${label} does not exist`);
+  }
+
+  const realPath = realpathSync(resolved);
+  if (!statSync(realPath).isDirectory()) {
+    throw new Error(`${label} is not a directory`);
+  }
+
+  return realPath;
+}
+
+function isPathWithin(candidate: string, root: string): boolean {
+  const relative = path.relative(root, candidate);
+  return relative === '' || (!!relative && !relative.startsWith('..') && !path.isAbsolute(relative));
+}
