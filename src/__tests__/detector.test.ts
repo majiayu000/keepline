@@ -16,7 +16,7 @@ import {
   getStatusDescription,
 } from '../adapters/process/detector.js';
 import type { ClaudeProcessInfo } from '../adapters/process/types.js';
-import type { SessionStatus } from '../lib/types.js';
+import type { SessionStatus } from '../domain/session/index.js';
 
 // ============================================================================
 // Test Data: Real process info structures (not mocks)

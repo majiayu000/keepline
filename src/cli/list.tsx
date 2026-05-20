@@ -9,7 +9,7 @@ import { syncSessions } from '../services/session.service.js';
 import { getAggregatedSessions, filterSessions, sortSessions, getSessionStats } from '../services/session.aggregator.js';
 import { App } from '../ui/App.js';
 import { MinimalView, DashboardView, NeonView, MacOSView, CyberpunkView } from '../ui/views/index.js';
-import type { SessionStatus } from '../lib/types.js';
+import type { SessionStatus } from '../domain/session/index.js';
 import type { ViewStyle } from '../ui/views/index.js';
 
 interface ListOptions {

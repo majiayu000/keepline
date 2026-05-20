@@ -3,7 +3,7 @@ import sessions from '../web/api/routes/sessions.js';
 import { setupUser } from '../services/auth.service.js';
 import { resetDatabase } from '../db/migrations.js';
 import { closeDatabase } from '../infrastructure/database/sqlite.js';
-import { sessionRepo } from '../db/index.js';
+import { sessionRepository } from '../infrastructure/database/repositories/session.repository.js';
 
 describe('Basic Sessions Route Contract', () => {
   beforeEach(() => {
@@ -15,7 +15,7 @@ describe('Basic Sessions Route Contract', () => {
   });
 
   test('fields=basic returns lightweight session payloads without usageStats', async () => {
-    sessionRepo.upsert({
+    sessionRepository.upsert({
       sessionId: 'session-basic-1',
       directory: '/tmp/claude-hub-basic-contract',
       status: 'running',

@@ -15,7 +15,7 @@ import { getDaemonStatus } from '../services/daemon.manager.js';
 import { getHookStatus } from '../adapters/hook/installer.js';
 import { config } from '../lib/config.js';
 import { runMigrations } from '../db/migrations.js';
-import { sessionRepo } from '../db/index.js';
+import { sessionRepository } from '../infrastructure/database/repositories/session.repository.js';
 import { scanClaudeProcesses } from '../adapters/process/scanner.js';
 
 export async function statusCommand(): Promise<void> {
@@ -69,8 +69,8 @@ export async function statusCommand(): Promise<void> {
   // Database stats
   try {
     runMigrations();
-    const allSessions = sessionRepo.findAll();
-    const activeSessions = sessionRepo.findActive();
+    const allSessions = sessionRepository.findAll();
+    const activeSessions = sessionRepository.findActive();
 
     console.log(chalk.cyan('Database:'));
     console.log(`  Total sessions:  ${allSessions.length}`);

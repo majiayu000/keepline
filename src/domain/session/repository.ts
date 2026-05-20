@@ -5,7 +5,7 @@
  * Implementation is in infrastructure layer.
  */
 
-import type { Session } from './entity.js';
+import type { Session, SessionListItem } from './entity.js';
 import type { SessionStatus } from './value-objects.js';
 
 export interface ActiveSessionRecord {
@@ -56,6 +56,9 @@ export interface ISessionRepository {
 
   /** Find all sessions */
   findAll(): Session[];
+
+  /** Find all sessions with only fields needed for list/realtime payloads */
+  findAllLightweight(): SessionListItem[];
 
   /** Find active sessions (not completed or lost) */
   findActive(): Session[];

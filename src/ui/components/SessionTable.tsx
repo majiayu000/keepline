@@ -4,7 +4,7 @@
 
 import React from 'react';
 import { Box, Text } from 'ink';
-import type { Session, SessionStatus } from '../../lib/types.js';
+import type { Session, SessionStatus } from '../../domain/session/index.js';
 
 interface SessionTableProps {
   sessions: Session[];

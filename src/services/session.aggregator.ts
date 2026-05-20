@@ -4,8 +4,9 @@
  * Uses cached process data for efficiency
  */
 
-import type { SessionStatus } from '../lib/types.js';
-import { sessionRepo } from '../db/index.js';
+import type { SessionStatus } from '../domain/session/index.js';
+import type { ISessionRepository } from '../domain/session/repository.js';
+import { sessionRepository } from '../infrastructure/database/repositories/session.repository.js';
 import { getCachedProcesses } from '../adapters/process/scanner.js';
 import { detectSessionStatus } from '../adapters/process/detector.js';
 import type {
@@ -16,46 +17,57 @@ import type {
 } from './session.types.js';
 import { matchProcessesToSessions } from './session.process-matcher.js';
 
-/** Get all sessions with aggregated process info (uses cached processes) */
-export function getAggregatedSessions(): AggregatedSession[] {
-  const sessions = sessionRepo.findAll();
-  const processes = getCachedProcesses();
-  const processMatches = matchProcessesToSessions(sessions, processes);
+export class SessionAggregator {
+  constructor(private readonly repository: ISessionRepository) {}
 
-  return sessions.map((session) => {
-    const process = processMatches.get(session.sessionId);
-    const liveStatus = detectSessionStatus(process || null, session.lastActiveAt);
+  /** Get all sessions with aggregated process info (uses cached processes) */
+  getAggregatedSessions(): AggregatedSession[] {
+    const sessions = this.repository.findAll();
+    const processes = getCachedProcesses();
+    const processMatches = matchProcessesToSessions(sessions, processes);
 
-    return {
-      ...session,
-      // Update status based on live process info
-      status: session.status === 'completed' ? 'completed' : liveStatus,
-      processRunning: !!process,
-      cpuUsage: process?.cpu,
-      memoryUsage: process?.memory,
-    };
-  });
+    return sessions.map((session) => {
+      const process = processMatches.get(session.sessionId);
+      const liveStatus = detectSessionStatus(process || null, session.lastActiveAt);
+
+      return {
+        ...session,
+        // Update status based on live process info
+        status: session.status === 'completed' ? 'completed' : liveStatus,
+        processRunning: !!process,
+        cpuUsage: process?.cpu,
+        memoryUsage: process?.memory,
+      };
+    });
+  }
+
+  /** Get lightweight sessions with aggregated process info for dashboard list/realtime updates */
+  getAggregatedSessionsBasic(): BasicAggregatedSession[] {
+    const sessions = this.repository.findAllLightweight();
+    const processes = getCachedProcesses();
+    const processMatches = matchProcessesToSessions(sessions, processes);
+
+    return sessions.map((session) => {
+      const process = processMatches.get(session.sessionId);
+      const liveStatus = detectSessionStatus(process || null, session.lastActiveAt);
+
+      return {
+        ...session,
+        status: session.status === 'completed' ? 'completed' : liveStatus,
+        processRunning: !!process,
+        cpuUsage: process?.cpu,
+        memoryUsage: process?.memory,
+      };
+    });
+  }
 }
 
-/** Get lightweight sessions with aggregated process info for dashboard list/realtime updates */
-export function getAggregatedSessionsBasic(): BasicAggregatedSession[] {
-  const sessions = sessionRepo.findAllLightweight();
-  const processes = getCachedProcesses();
-  const processMatches = matchProcessesToSessions(sessions, processes);
+export const sessionAggregator = new SessionAggregator(sessionRepository);
 
-  return sessions.map((session) => {
-    const process = processMatches.get(session.sessionId);
-    const liveStatus = detectSessionStatus(process || null, session.lastActiveAt);
-
-    return {
-      ...session,
-      status: session.status === 'completed' ? 'completed' : liveStatus,
-      processRunning: !!process,
-      cpuUsage: process?.cpu,
-      memoryUsage: process?.memory,
-    };
-  });
-}
+export const getAggregatedSessions =
+  sessionAggregator.getAggregatedSessions.bind(sessionAggregator);
+export const getAggregatedSessionsBasic =
+  sessionAggregator.getAggregatedSessionsBasic.bind(sessionAggregator);
 
 /** Filter sessions */
 export function filterSessions(

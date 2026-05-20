@@ -3,7 +3,29 @@
  */
 
 import EventEmitter from 'eventemitter3';
-import type { SessionEventPayload, ToolEventPayload, SessionEndEventPayload } from './types.js';
+import type { Session, SessionStatus } from '../domain/session/index.js';
+
+/** Event payload for session lifecycle events. */
+export interface SessionEventPayload {
+  session: Session;
+  previousStatus?: SessionStatus;
+}
+
+/** Event payload for tool hook events. */
+export interface ToolEventPayload {
+  sessionId: string;
+  tool: string;
+  input: Record<string, unknown>;
+  output?: string;
+  timestamp: Date;
+}
+
+/** Event payload for session end events. */
+export interface SessionEndEventPayload {
+  sessionId: string;
+  timestamp: Date;
+  reason?: string;
+}
 
 /** Event types */
 export type TaskerEvents = {
