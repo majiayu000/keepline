@@ -4,7 +4,7 @@
 
 import chalk from 'chalk';
 import Table from 'cli-table3';
-import type { Session, SessionStatus } from '../lib/types.js';
+import type { Session, SessionStatus } from '../domain/session/index.js';
 
 /** Status display configuration */
 const statusConfig: Record<SessionStatus, { label: string; color: (s: string) => string }> = {

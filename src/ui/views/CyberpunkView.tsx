@@ -8,7 +8,7 @@
 import React from 'react';
 import { Box, Text } from 'ink';
 import Gradient from 'ink-gradient';
-import type { Session, SessionStatus } from '../../lib/types.js';
+import type { Session, SessionStatus } from '../../domain/session/index.js';
 
 interface Props {
   sessions: Session[];

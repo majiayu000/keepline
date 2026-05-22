@@ -6,7 +6,7 @@ import type {
   Session,
   SessionListItem,
   SessionStatus,
-} from '../lib/types.js';
+} from '../domain/session/index.js';
 
 /** Session creation input */
 export interface CreateSessionInput {
