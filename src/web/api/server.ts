@@ -189,7 +189,7 @@ export async function startWebServer(port: number = 3377) {
       }
 
       // Handle regular HTTP requests via Hono
-      return app.fetch(req);
+      return app.fetch(req, { server });
     },
     websocket: {
       idleTimeout: 0, // disable WS idle timeout for long-lived terminal sessions
