@@ -6,6 +6,7 @@
 
 import type { Context } from 'hono';
 import { Hono } from 'hono';
+import { getConnInfo } from 'hono/bun';
 import { getClientIp, rateLimit, resetRateLimitKey } from '../middleware/rateLimit.js';
 import { authMiddleware } from '../middleware/auth.js';
 import {
@@ -17,12 +18,48 @@ import {
   logAudit,
 } from '../../../services/auth.service.js';
 import type { JwtPayload } from '../../../services/auth.service.js';
+import { logger } from '../../../lib/logger.js';
 
 const auth = new Hono();
 const LOGIN_USERNAME_RATE_LIMIT_SCOPE = 'auth-login-username';
 
 function loginUsernameRateLimitKey(username: string): string {
   return `login:${username.slice(0, 64).toLowerCase()}`;
+}
+
+function getTcpPeerAddress(c: Context): string | undefined {
+  try {
+    return getConnInfo(c).remote?.address;
+  } catch (error) {
+    logger.warn('Unable to resolve TCP peer for local login', {
+      error: error instanceof Error ? error.message : String(error),
+    });
+    return undefined;
+  }
+}
+
+function isLoopbackPeer(address: string | undefined): boolean {
+  return address === '127.0.0.1' || address === '::1' || address === '::ffff:127.0.0.1';
+}
+
+function isLoopbackServerHost(hostname: string): boolean {
+  const host = hostname.trim().toLowerCase();
+  return host === '127.0.0.1' || host === 'localhost' || host === '::1' || host === '[::1]';
+}
+
+function hasConfiguredPublicOrigin(): boolean {
+  const configuredOrigins = [
+    process.env.CLAUDE_HUB_PUBLIC_ORIGIN,
+    process.env.CLAUDE_HUB_ALLOWED_ORIGINS,
+  ];
+  return configuredOrigins
+    .flatMap((value) => (value ?? '').split(','))
+    .some((value) => value.trim().length > 0);
+}
+
+function isLoopbackOnlyServerMode(): boolean {
+  const hostname = process.env.CLAUDE_HUB_HOST || '127.0.0.1';
+  return isLoopbackServerHost(hostname) && !hasConfiguredPublicOrigin();
 }
 
 /**
@@ -132,16 +169,14 @@ auth.post(
 // POST /api/auth/logout - Revoke current token
 // POST /api/auth/local - Localhost passwordless login
 auth.post('/local', rateLimit(10, 60 * 1000), async (c) => {
-  const host = c.req.header('host') || '';
-  const isLocal = host.startsWith('localhost') || host.startsWith('127.0.0.1') || host.startsWith('[::1]');
-  if (!isLocal) {
+  const peerAddress = getTcpPeerAddress(c);
+  if (!isLoopbackOnlyServerMode() || !isLoopbackPeer(peerAddress)) {
     return c.json({ success: false, error: 'Local login only available from localhost' }, 403);
   }
 
   try {
     const result = await localLogin();
-    const ip = c.req.header('x-forwarded-for') || c.req.header('x-real-ip') || 'local';
-    logAudit(null, 'local_login', ip);
+    logAudit(null, 'local_login', peerAddress);
     return c.json({ success: true, data: result });
   } catch (e) {
     const message = e instanceof Error ? e.message : 'Local login failed';
