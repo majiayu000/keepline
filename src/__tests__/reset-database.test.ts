@@ -3,7 +3,7 @@ import { queryOne, runSql, closeDatabase } from '../infrastructure/database/sqli
 import { resetDatabase, runMigrations } from '../db/migrations.js';
 import { memoryRepository } from '../infrastructure/database/index.js';
 import { setupUser } from '../services/auth.service.js';
-import { sessionRepo } from '../db/index.js';
+import { sessionRepository } from '../infrastructure/database/repositories/session.repository.js';
 
 describe('resetDatabase', () => {
   beforeEach(() => {
@@ -17,7 +17,7 @@ describe('resetDatabase', () => {
   test('clears newer tables and reapplies migrations', async () => {
     runMigrations();
     await setupUser('reset-user', 'password123');
-    sessionRepo.upsert({
+    sessionRepository.upsert({
       sessionId: 'session-reset-test',
       directory: '/tmp/reset-test',
       status: 'running',

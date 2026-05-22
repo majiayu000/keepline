@@ -17,7 +17,7 @@ import {
   projectNameToDir,
 } from '../../lib/paths.js';
 import { parseSessionFile } from './parser/jsonl.js';
-import type { ClaudeSessionFile } from '../../lib/types.js';
+import type { ClaudeSessionFile } from '../../domain/session/index.js';
 import type { ParsedSessionData } from './types.js';
 import { logger } from '../../lib/logger.js';
 

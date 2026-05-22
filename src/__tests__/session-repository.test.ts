@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, describe, expect, test } from 'bun:test';
 import { resetDatabase } from '../db/migrations.js';
 import { closeDatabase } from '../infrastructure/database/sqlite.js';
-import { sessionRepo } from '../db/index.js';
+import { sessionRepository } from '../infrastructure/database/repositories/session.repository.js';
 
 describe('Session Repository Upsert', () => {
   beforeEach(() => {
@@ -13,7 +13,7 @@ describe('Session Repository Upsert', () => {
   });
 
   test('preserves pid and tty when omitted from an update', () => {
-    sessionRepo.upsert({
+    sessionRepository.upsert({
       sessionId: 'session-preserve',
       directory: '/tmp/repo',
       status: 'running',
@@ -26,7 +26,7 @@ describe('Session Repository Upsert', () => {
       messageCount: 1,
     });
 
-    const updated = sessionRepo.upsert({
+    const updated = sessionRepository.upsert({
       sessionId: 'session-preserve',
       title: 'Updated',
       toolCount: 2,
@@ -39,7 +39,7 @@ describe('Session Repository Upsert', () => {
   });
 
   test('clears pid and tty when explicitly updated to undefined', () => {
-    sessionRepo.upsert({
+    sessionRepository.upsert({
       sessionId: 'session-clear',
       directory: '/tmp/repo',
       status: 'running',
@@ -52,7 +52,7 @@ describe('Session Repository Upsert', () => {
       messageCount: 1,
     });
 
-    const updated = sessionRepo.upsert({
+    const updated = sessionRepository.upsert({
       sessionId: 'session-clear',
       pid: undefined,
       tty: undefined,

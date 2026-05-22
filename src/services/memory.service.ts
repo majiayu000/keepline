@@ -14,7 +14,7 @@ import {
   mergeExtracted,
   type HookEventData,
 } from '../domain/memory/extractor.js';
-import type { ToolEventPayload } from '../lib/types.js';
+import type { ToolEventPayload } from '../lib/events.js';
 import type { MemoryUpsertData } from '../domain/memory/entity.js';
 
 /** Track active session directories */

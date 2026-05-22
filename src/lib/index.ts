@@ -4,7 +4,6 @@ export * from './logger.js';
 export * from './config.js';
 export * from './format.js';
 
-// Core types and errors
-export * from './types.js';
+// Core errors and events
 export * from './errors.js';
 export * from './events.js';

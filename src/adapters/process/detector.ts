@@ -4,7 +4,7 @@
  * Thresholds are configurable via config file
  */
 
-import type { SessionStatus } from '../../lib/types.js';
+import type { SessionStatus } from '../../domain/session/index.js';
 import type { ClaudeProcessInfo } from './types.js';
 import { config } from '../../lib/config.js';
 
