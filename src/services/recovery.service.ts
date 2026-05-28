@@ -10,31 +10,46 @@ import { RecoveryError } from '../lib/errors.js';
 import { emit } from '../lib/events.js';
 import { getProjectFolder } from '../lib/paths.js';
 import { logger } from '../lib/logger.js';
+import { isValidSessionId, assertValidSessionId } from '../lib/session-id.js';
+import { renderShellCommand } from '../lib/shell-quote.js';
 import { openTerminalWithCommand, printRecoveryCommand } from './terminal.js';
 import type { RecoveryMethod, RecoveryOptions, RecoveryResult } from './recovery.types.js';
 
-/** Build claude command for recovery */
-function buildClaudeCommand(
+/** Build claude argv for recovery. */
+export function buildClaudeCommandArgs(
+  method: RecoveryMethod,
+  sessionId: string,
+  initialPrompt?: string,
+  skipPermissions = false
+): string[] {
+  assertValidSessionId(sessionId);
+
+  const args = ['claude'];
+  if (skipPermissions) {
+    args.push('--dangerously-skip-permissions');
+  }
+
+  switch (method) {
+    case 'resume':
+      return [...args, '--resume', sessionId];
+    case 'continue':
+      return [...args, '--continue'];
+    case 'new':
+      if (initialPrompt) {
+        return [...args, initialPrompt];
+      }
+      return args;
+  }
+}
+
+/** Build shell-safe claude command for recovery terminal apps. */
+export function buildClaudeCommand(
   method: RecoveryMethod,
   sessionId: string,
   initialPrompt?: string,
   skipPermissions = false
 ): string {
-  const baseCmd = skipPermissions ? 'claude --dangerously-skip-permissions' : 'claude';
-
-  switch (method) {
-    case 'resume':
-      return `${baseCmd} --resume ${sessionId}`;
-    case 'continue':
-      return `${baseCmd} --continue`;
-    case 'new':
-      if (initialPrompt) {
-        // Escape the prompt for shell
-        const escapedPrompt = initialPrompt.replace(/'/g, "'\\''");
-        return `${baseCmd} '${escapedPrompt}'`;
-      }
-      return baseCmd;
-  }
+  return renderShellCommand(buildClaudeCommandArgs(method, sessionId, initialPrompt, skipPermissions));
 }
 
 export class RecoveryService {
@@ -47,6 +62,14 @@ export class RecoveryService {
     availableMethods: RecoveryMethod[];
   } {
     const availableMethods: RecoveryMethod[] = [];
+
+    if (!isValidSessionId(session.sessionId)) {
+      return {
+        canRecover: false,
+        reason: 'Invalid session ID format',
+        availableMethods: [],
+      };
+    }
 
     // Check if session file exists
     const projectFolder = getProjectFolder(session.directory);
@@ -78,7 +101,11 @@ export class RecoveryService {
 
   /** Get recommended recovery method */
   getRecommendedMethod(session: Session): RecoveryMethod {
-    const { availableMethods } = this.canRecover(session);
+    const { canRecover: canRecoverSession, reason, availableMethods } = this.canRecover(session);
+
+    if (!canRecoverSession) {
+      throw new RecoveryError(session.sessionId, reason || 'Cannot recover session');
+    }
 
     // Prefer resume if available
     if (availableMethods.includes('resume')) {
@@ -96,6 +123,10 @@ export class RecoveryService {
 
   /** Recover a lost session */
   async recoverSession(options: RecoveryOptions): Promise<RecoveryResult> {
+    if (!isValidSessionId(options.sessionId)) {
+      throw new RecoveryError(options.sessionId, 'Invalid session ID format');
+    }
+
     const session = this.repository.findBySessionId(options.sessionId);
 
     if (!session) {
@@ -174,6 +205,15 @@ export class RecoveryService {
     recommendedMethod?: RecoveryMethod;
     command?: string;
   } {
+    if (!isValidSessionId(sessionId)) {
+      return {
+        session: null,
+        canRecover: false,
+        reason: 'Invalid session ID format',
+        availableMethods: [],
+      };
+    }
+
     const session = this.repository.findBySessionId(sessionId);
 
     if (!session) {

@@ -295,4 +295,63 @@ describe('Claude Scanner', () => {
     expect(result.stdout.includes('Skipped invalid session files during scan')).toBe(true);
     expect(result.stdout.includes('Failed to parse session file:')).toBe(false);
   });
+
+  test('skips session files whose filename does not contain a safe session ID', () => {
+    const homeDir = createTempHome();
+
+    writeSessionFile(homeDir, '-tmp-unsafe-filename', 'safe1234;touch-owned.jsonl', [
+      {
+        type: 'user',
+        uuid: 'user-1',
+        sessionId: 'safe1234;touch-owned',
+        cwd: '/tmp/unsafe-filename',
+        timestamp: '2026-04-13T12:20:00.000Z',
+        userType: 'external',
+        message: { role: 'user', content: 'malicious filename' },
+      },
+    ]);
+
+    const result = runScannerScriptDetailed(homeDir, `
+      const { clearSessionCache, getAllSessions, scanProjectsDirectory } = await import('./src/adapters/claude/scanner.ts');
+      clearSessionCache();
+      const files = scanProjectsDirectory();
+      const sessions = await getAllSessions();
+      console.log(JSON.stringify({
+        files: files.map((file) => file.sessionId),
+        sessions: sessions.map((session) => session.sessionId),
+      }));
+    `);
+
+    expect(result.data.files).toEqual([]);
+    expect(result.data.sessions).toEqual([]);
+    expect(result.stdout.includes('Skipped session files with invalid session IDs')).toBe(true);
+  });
+
+  test('skips parsed sessions whose JSONL payload contains an unsafe session ID', () => {
+    const homeDir = createTempHome();
+
+    writeSessionFile(homeDir, '-tmp-unsafe-payload', 'safe-session-123.jsonl', [
+      {
+        type: 'user',
+        uuid: 'user-1',
+        sessionId: 'safe1234;touch-owned',
+        cwd: '/tmp/unsafe-payload',
+        timestamp: '2026-04-13T12:30:00.000Z',
+        userType: 'external',
+        message: { role: 'user', content: 'malicious payload session id' },
+      },
+    ]);
+
+    const result = runScannerScriptDetailed(homeDir, `
+      const { clearSessionCache, getAllSessions } = await import('./src/adapters/claude/scanner.ts');
+      clearSessionCache();
+      const sessions = await getAllSessions();
+      console.log(JSON.stringify({
+        sessions: sessions.map((session) => session.sessionId),
+      }));
+    `);
+
+    expect(result.data.sessions).toEqual([]);
+    expect(result.stdout.includes('Skipped invalid session files during scan')).toBe(true);
+  });
 });

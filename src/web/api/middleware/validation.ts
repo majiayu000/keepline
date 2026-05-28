@@ -13,11 +13,7 @@ export type RecoveryMethod = (typeof VALID_RECOVERY_METHODS)[number];
 export const VALID_TERMINAL_APPS = ['Terminal', 'iTerm', 'Warp', 'auto'] as const;
 export type TerminalAppOption = (typeof VALID_TERMINAL_APPS)[number];
 
-/** Validate session ID format (UUID-like) */
-export function isValidSessionId(id: string): boolean {
-  // Session IDs are UUIDs or similar alphanumeric strings
-  return typeof id === 'string' && /^[a-zA-Z0-9-_]{8,64}$/.test(id);
-}
+export { isValidSessionId } from '../../../lib/session-id.js';
 
 /** Recovery request body */
 export interface RecoverRequestBody {
