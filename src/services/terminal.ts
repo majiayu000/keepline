@@ -6,6 +6,7 @@ import { execSync, spawn } from 'child_process';
 import path from 'path';
 import { existsSync } from 'fs';
 import { logger } from '../lib/logger.js';
+import { shellQuote } from '../lib/shell-quote.js';
 import type { TerminalApp } from './recovery.types.js';
 
 // Allowed commands whitelist for recovery
@@ -94,10 +95,11 @@ export function openTerminalWithCommand(
 
 /** Open Terminal.app with command */
 function openTerminalApp(command: string, directory: string): void {
+  const terminalCommand = `cd ${shellQuote(directory)} && ${command}`;
   const script = `
     tell application "Terminal"
       activate
-      do script "cd ${escapeForAppleScript(directory)} && ${escapeForAppleScript(command)}"
+      do script "${escapeForAppleScript(terminalCommand)}"
     end tell
   `;
 
@@ -112,12 +114,13 @@ function openTerminalApp(command: string, directory: string): void {
 
 /** Open iTerm with command */
 function openITerm(command: string, directory: string): void {
+  const terminalCommand = `cd ${shellQuote(directory)} && ${command}`;
   const script = `
     tell application "iTerm"
       activate
       create window with default profile
       tell current session of current window
-        write text "cd ${escapeForAppleScript(directory)} && ${escapeForAppleScript(command)}"
+        write text "${escapeForAppleScript(terminalCommand)}"
       end tell
     end tell
   `;
@@ -133,6 +136,7 @@ function openITerm(command: string, directory: string): void {
 
 /** Open Warp with command */
 function openWarp(command: string, directory: string): void {
+  const terminalCommand = `cd ${shellQuote(directory)} && ${command}`;
   const script = `
     tell application "Warp"
       activate
@@ -141,7 +145,7 @@ function openWarp(command: string, directory: string): void {
         tell process "Warp"
           keystroke "t" using command down
           delay 0.3
-          keystroke "cd ${escapeForAppleScript(directory)} && ${escapeForAppleScript(command)}"
+          keystroke "${escapeForAppleScript(terminalCommand)}"
           key code 36
         end tell
       end tell
@@ -202,7 +206,7 @@ export function executeCommand(command: string, cwd: string): number | null {
 /** Print command for user to copy */
 export function printRecoveryCommand(command: string, directory: string): void {
   console.log('\nTo recover this session, run:\n');
-  console.log(`  cd ${directory}`);
+  console.log(`  cd ${shellQuote(directory)}`);
   console.log(`  ${command}`);
   console.log('');
 }

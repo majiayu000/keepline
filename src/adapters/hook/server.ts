@@ -8,6 +8,7 @@ import Fastify, { FastifyInstance } from 'fastify';
 import { logger } from '../../lib/logger.js';
 import { config } from '../../lib/config.js';
 import { emit } from '../../lib/events.js';
+import { isValidSessionId } from '../../lib/session-id.js';
 import { updateSession } from '../../services/session.service.js';
 import {
   getCompressionQueue,
@@ -45,7 +46,7 @@ function isValidHookEvent(event: unknown): event is HookEvent {
   const e = event as Record<string, unknown>;
 
   // Required fields
-  if (typeof e.session_id !== 'string' || e.session_id.length === 0) {
+  if (!isValidSessionId(e.session_id)) {
     return false;
   }
   if (typeof e.cwd !== 'string') {

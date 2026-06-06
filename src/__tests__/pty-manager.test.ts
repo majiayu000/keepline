@@ -68,6 +68,14 @@ describe('PTY session ownership', () => {
     expect(() => ptyManager.kill(session.id, 'owner-b')).toThrow('Forbidden');
   });
 
+  test('rejects unsafe resume session IDs before spawning a PTY', async () => {
+    await expect(
+      ptyManager.create(ownerId, 80, 24, process.cwd(), 'safe1234;touch-owned')
+    ).rejects.toThrow('Invalid session ID format');
+
+    expect(ptyManager.listSessions(ownerId)).toHaveLength(0);
+  });
+
   test('removes exited sessions that have no attached clients', async () => {
     const exitScript = createExitScript('exit-no-clients.sh', 'printf "done\\n"\nsleep 0.05');
     config.set('webTerminal', {

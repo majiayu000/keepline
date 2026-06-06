@@ -14,6 +14,7 @@ import { getCachedProcesses, clearProcessCache } from '../adapters/process/scann
 import { detectSessionStatus } from '../adapters/process/detector.js';
 import { getAllSessions as getClaudeSessions } from '../adapters/claude/scanner.js';
 import { logger } from '../lib/logger.js';
+import { isValidSessionId } from '../lib/session-id.js';
 import type { CreateSessionInput, UpdateSessionInput, AggregatedSession } from './session.types.js';
 import { matchProcessesToSessions } from './session.process-matcher.js';
 
@@ -119,7 +120,22 @@ export class SessionService {
       const runningClaudePids = new Set(processes.map((process) => process.pid));
 
       // Get Claude sessions from file system (with optional age filter for performance)
-      const claudeSessions = await getClaudeSessions({ maxAgeDays });
+      const scannedClaudeSessions = await getClaudeSessions({ maxAgeDays });
+      const invalidClaudeSessions = scannedClaudeSessions.filter(
+        (session) => !isValidSessionId(session.sessionId)
+      );
+      if (invalidClaudeSessions.length > 0) {
+        logger.warn('Skipped scanned sessions with invalid session IDs before persistence', {
+          count: invalidClaudeSessions.length,
+          sample: invalidClaudeSessions.slice(0, 5).map((session) => ({
+            sessionId: session.sessionId,
+            directory: session.directory,
+          })),
+        });
+      }
+      const claudeSessions = scannedClaudeSessions.filter((session) =>
+        isValidSessionId(session.sessionId)
+      );
       const processMatches = matchProcessesToSessions(claudeSessions, processes);
       const existingSessions = this.repository.findBySessionIdsSummary(
         claudeSessions.map((session) => session.sessionId)

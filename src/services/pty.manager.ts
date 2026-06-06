@@ -14,6 +14,7 @@ import { spawn as spawnPty } from 'bun-pty';
 import { runSql } from '../infrastructure/database/sqlite.js';
 import { config } from '../lib/config.js';
 import { logger } from '../lib/logger.js';
+import { assertValidSessionId } from '../lib/session-id.js';
 
 interface IPty {
   pid: number;
@@ -108,6 +109,7 @@ class PtyManager {
     let file: string;
     let args: string[];
     if (resumeSessionId) {
+      assertValidSessionId(resumeSessionId);
       file = 'claude';
       args = ['--resume', resumeSessionId];
     } else {
