@@ -20,6 +20,7 @@ import { parseSessionFile } from './parser/jsonl.js';
 import type { ClaudeSessionFile } from '../../domain/session/index.js';
 import type { ParsedSessionData } from './types.js';
 import { logger } from '../../lib/logger.js';
+import { isValidSessionId } from '../../lib/session-id.js';
 
 // Cache for parsed session data with modification times
 interface SessionCache {
@@ -121,6 +122,7 @@ export function scanProjectsDirectory(options: ScanOptions = {}): ClaudeSessionF
 
   // Map keyed by `${projectName}:${sessionId}` for O(1) cross-root dedup
   const byKey = new Map<string, ClaudeSessionFile>();
+  const invalidSessionFiles: string[] = [];
   const cutoffTime = maxAgeDays ? Date.now() - maxAgeDays * 24 * 60 * 60 * 1000 : 0;
   let scannedRoots = 0;
 
@@ -166,6 +168,11 @@ export function scanProjectsDirectory(options: ScanOptions = {}): ClaudeSessionF
           ? file.replace('.jsonl', '')
           : extractSessionId(file);
 
+        if (!isValidSessionId(sessionId)) {
+          invalidSessionFiles.push(filePath);
+          continue;
+        }
+
         // De-duplicate when the same sessionId exists in multiple roots
         // (e.g. .claude and .claude-work); prefer the newer file.
         const dedupeKey = `${projectName}:${sessionId}`;
@@ -190,7 +197,25 @@ export function scanProjectsDirectory(options: ScanOptions = {}): ClaudeSessionF
     });
   }
 
+  if (invalidSessionFiles.length > 0) {
+    logger.warn('Skipped session files with invalid session IDs', {
+      count: invalidSessionFiles.length,
+      sample: invalidSessionFiles.slice(0, 5),
+    });
+  }
+
   return Array.from(byKey.values());
+}
+
+function requireValidParsedSession(
+  parsed: ParsedSessionData | null,
+  filePath: string
+): ParsedSessionData | null {
+  if (parsed && !isValidSessionId(parsed.sessionId)) {
+    throw new Error(`Invalid session ID in session file: ${filePath}`);
+  }
+
+  return parsed;
 }
 
 /** Get all sessions with parsed data (optimized with caching) */
@@ -230,7 +255,10 @@ export async function getAllSessions(options: ScanOptions = {}): Promise<ParsedS
       }
 
       // Parse file and update cache
-      const parsed = await parseSessionFile(file.filePath, { includeToolCalls: false });
+      const parsed = requireValidParsedSession(
+        await parseSessionFile(file.filePath, { includeToolCalls: false }),
+        file.filePath
+      );
       sessionSummaryCache.set(file.filePath, {
         data: parsed,
         modifiedAt: fileModTime,
@@ -298,7 +326,10 @@ async function getOrParseSession(file: ClaudeSessionFile): Promise<ParsedSession
   }
 
   try {
-    const parsed = await parseSessionFile(file.filePath, { includeToolCalls: true });
+    const parsed = requireValidParsedSession(
+      await parseSessionFile(file.filePath, { includeToolCalls: true }),
+      file.filePath
+    );
     sessionDetailCache.set(file.filePath, {
       data: parsed,
       modifiedAt: fileModTime,
@@ -334,7 +365,10 @@ async function getOrParseSessionSummary(file: ClaudeSessionFile): Promise<Parsed
   }
 
   try {
-    const parsed = await parseSessionFile(file.filePath, { includeToolCalls: false });
+    const parsed = requireValidParsedSession(
+      await parseSessionFile(file.filePath, { includeToolCalls: false }),
+      file.filePath
+    );
     sessionSummaryCache.set(file.filePath, {
       data: parsed,
       modifiedAt: fileModTime,
