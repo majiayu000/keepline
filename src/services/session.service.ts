@@ -182,6 +182,11 @@ export class SessionService {
             tty: process?.tty,
             toolCount: claudeSession.toolCount,
             messageCount: claudeSession.messageCount,
+            agentId: claudeSession.agentId,
+            parentSessionId: claudeSession.parentSessionId,
+            isSubAgent: claudeSession.isSubAgent,
+            usageStats: claudeSession.usageStats,
+            toolCalls: claudeSession.toolCalls,
           });
           existingSessionMap.set(claudeSession.sessionId, updatedSession);
 
@@ -214,6 +219,11 @@ export class SessionService {
             tty: process?.tty,
             toolCount: claudeSession.toolCount,
             messageCount: claudeSession.messageCount,
+            agentId: claudeSession.agentId,
+            parentSessionId: claudeSession.parentSessionId,
+            isSubAgent: claudeSession.isSubAgent,
+            usageStats: claudeSession.usageStats,
+            toolCalls: claudeSession.toolCalls,
           });
           existingSessionMap.set(claudeSession.sessionId, newSession);
           emit('session:discovered', { session: newSession });
