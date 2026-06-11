@@ -2,7 +2,7 @@
 //! account info, session stats, and rate limits.
 
 use base64::{engine::general_purpose::STANDARD_NO_PAD, Engine as _};
-use chrono::{DateTime, Utc};
+use chrono::{DateTime, NaiveDate, Utc};
 use serde::{Deserialize, Serialize};
 use std::fs;
 use std::io::{BufRead, BufReader};
@@ -19,6 +19,59 @@ pub struct CodexData {
     pub subscription_until: Option<String>,
     pub email: Option<String>,
     pub error: Option<String>,
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::io::Cursor;
+
+    fn ts(value: &str) -> i64 {
+        match DateTime::parse_from_rfc3339(value) {
+            Ok(parsed) => parsed.timestamp(),
+            Err(error) => panic!("invalid fixed test timestamp: {}", error),
+        }
+    }
+
+    fn test_date() -> NaiveDate {
+        match NaiveDate::from_ymd_opt(2026, 4, 13) {
+            Some(date) => date,
+            None => panic!("invalid fixed test date"),
+        }
+    }
+
+    #[test]
+    fn collect_codex_stats_counts_valid_history() {
+        let today = test_date();
+        let history = format!(
+            "{{\"ts\":{}}}\n{{\"ts\":{}}}\n",
+            ts("2026-04-13T10:00:00Z"),
+            ts("2026-04-12T10:00:00Z")
+        );
+
+        let stats = collect_codex_stats(Cursor::new(history), today);
+
+        assert_eq!(stats.total_sessions, 2);
+        assert_eq!(stats.today_sessions, 1);
+        assert!(stats.last_activity.is_some());
+        assert_eq!(stats.error, None);
+    }
+
+    #[test]
+    fn collect_codex_stats_surfaces_malformed_history_line() {
+        let today = test_date();
+        let history = format!("{{\"ts\":{}}}\nnot-json\n", ts("2026-04-13T10:00:00Z"));
+
+        let stats = collect_codex_stats(Cursor::new(history), today);
+
+        assert_eq!(stats.total_sessions, 0);
+        assert_eq!(stats.today_sessions, 0);
+        assert!(stats.last_activity.is_none());
+        assert!(stats
+            .error
+            .as_deref()
+            .is_some_and(|message| message.contains("Failed to parse history.jsonl line 2")));
+    }
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
@@ -70,6 +123,73 @@ fn get_codex_home() -> Option<PathBuf> {
     dirs::home_dir().map(|h| h.join(".codex"))
 }
 
+fn codex_stats_error(message: String) -> CodexStats {
+    CodexStats {
+        total_sessions: 0,
+        today_sessions: 0,
+        last_activity: None,
+        error: Some(message),
+    }
+}
+
+fn collect_codex_stats<R: BufRead>(reader: R, today: NaiveDate) -> CodexStats {
+    let mut total_sessions = 0u32;
+    let mut today_sessions = 0u32;
+    let mut last_ts: Option<i64> = None;
+
+    for (index, line) in reader.lines().enumerate() {
+        let line_number = index + 1;
+        let line_content = match line {
+            Ok(content) => content,
+            Err(e) => {
+                return codex_stats_error(format!(
+                    "Failed to read history.jsonl line {}: {}",
+                    line_number, e
+                ));
+            }
+        };
+
+        if line_content.trim().is_empty() {
+            continue;
+        }
+
+        let entry = match serde_json::from_str::<serde_json::Value>(&line_content) {
+            Ok(entry) => entry,
+            Err(e) => {
+                return codex_stats_error(format!(
+                    "Failed to parse history.jsonl line {}: {}",
+                    line_number, e
+                ));
+            }
+        };
+
+        total_sessions += 1;
+
+        if let Some(ts) = entry["ts"].as_i64() {
+            if let Some(dt) = DateTime::from_timestamp(ts, 0) {
+                if dt.date_naive() == today {
+                    today_sessions += 1;
+                }
+            }
+
+            if last_ts.map_or(true, |old| ts > old) {
+                last_ts = Some(ts);
+            }
+        }
+    }
+
+    let last_activity = last_ts
+        .and_then(|ts| DateTime::from_timestamp(ts, 0))
+        .map(|dt| dt.format("%Y-%m-%d %H:%M").to_string());
+
+    CodexStats {
+        total_sessions,
+        today_sessions,
+        last_activity,
+        error: None,
+    }
+}
+
 // Decode a JWT payload without verification (used to read ChatGPT account
 // metadata from a locally stored token).
 fn decode_jwt_payload(token: &str) -> Option<serde_json::Value> {
@@ -90,7 +210,11 @@ fn decode_jwt_payload(token: &str) -> Option<serde_json::Value> {
     STANDARD_NO_PAD
         .decode(&standard)
         .ok()
-        .or_else(|| base64::engine::general_purpose::STANDARD.decode(&standard).ok())
+        .or_else(|| {
+            base64::engine::general_purpose::STANDARD
+                .decode(&standard)
+                .ok()
+        })
         .and_then(|bytes| String::from_utf8(bytes).ok())
         .and_then(|json| serde_json::from_str(&json).ok())
 }
@@ -275,48 +399,15 @@ pub async fn get_codex_stats() -> Result<CodexStats, String> {
         }
     };
 
-    let reader = BufReader::new(file);
-    let today = Utc::now().date_naive();
-    let mut total_sessions = 0u32;
-    let mut today_sessions = 0u32;
-    let mut last_ts: Option<i64> = None;
-
-    for line in reader.lines() {
-        if let Ok(line_content) = line {
-            if let Ok(entry) = serde_json::from_str::<serde_json::Value>(&line_content) {
-                total_sessions += 1;
-
-                if let Some(ts) = entry["ts"].as_i64() {
-                    if let Some(dt) = DateTime::from_timestamp(ts, 0) {
-                        if dt.date_naive() == today {
-                            today_sessions += 1;
-                        }
-                    }
-
-                    if last_ts.map_or(true, |old| ts > old) {
-                        last_ts = Some(ts);
-                    }
-                }
-            }
-        }
-    }
-
-    let last_activity = last_ts
-        .and_then(|ts| DateTime::from_timestamp(ts, 0))
-        .map(|dt| dt.format("%Y-%m-%d %H:%M").to_string());
-
-    Ok(CodexStats {
-        total_sessions,
-        today_sessions,
-        last_activity,
-        error: None,
-    })
+    Ok(collect_codex_stats(
+        BufReader::new(file),
+        Utc::now().date_naive(),
+    ))
 }
 
 #[tauri::command]
 pub async fn open_chatgpt_quota() -> Result<(), String> {
-    tauri_plugin_opener::open_url("https://chatgpt.com", None::<&str>)
-        .map_err(|e| e.to_string())
+    tauri_plugin_opener::open_url("https://chatgpt.com", None::<&str>).map_err(|e| e.to_string())
 }
 
 #[tauri::command]
@@ -426,46 +517,45 @@ pub async fn get_codex_rate_limits() -> Result<CodexRateLimits, String> {
                     Ok(data) => {
                         let plan_type = data["plan_type"].as_str().map(|s| s.to_string());
 
-                        let primary = data["rate_limit"]
-                            .get("primary_window")
-                            .and_then(|w| {
-                                if w.is_null() {
-                                    None
-                                } else {
-                                    Some(CodexRateLimitWindow {
-                                        used_percent: w["used_percent"].as_f64().unwrap_or(0.0),
-                                        window_minutes: w["limit_window_seconds"]
-                                            .as_i64()
-                                            .map(|s| (s + 59) / 60),
-                                        resets_at: w["reset_at"].as_i64(),
-                                    })
-                                }
-                            });
+                        let primary = data["rate_limit"].get("primary_window").and_then(|w| {
+                            if w.is_null() {
+                                None
+                            } else {
+                                Some(CodexRateLimitWindow {
+                                    used_percent: w["used_percent"].as_f64().unwrap_or(0.0),
+                                    window_minutes: w["limit_window_seconds"]
+                                        .as_i64()
+                                        .map(|s| (s + 59) / 60),
+                                    resets_at: w["reset_at"].as_i64(),
+                                })
+                            }
+                        });
 
-                        let secondary = data["rate_limit"]
-                            .get("secondary_window")
-                            .and_then(|w| {
-                                if w.is_null() {
-                                    None
-                                } else {
-                                    Some(CodexRateLimitWindow {
-                                        used_percent: w["used_percent"].as_f64().unwrap_or(0.0),
-                                        window_minutes: w["limit_window_seconds"]
-                                            .as_i64()
-                                            .map(|s| (s + 59) / 60),
-                                        resets_at: w["reset_at"].as_i64(),
-                                    })
-                                }
-                            });
+                        let secondary = data["rate_limit"].get("secondary_window").and_then(|w| {
+                            if w.is_null() {
+                                None
+                            } else {
+                                Some(CodexRateLimitWindow {
+                                    used_percent: w["used_percent"].as_f64().unwrap_or(0.0),
+                                    window_minutes: w["limit_window_seconds"]
+                                        .as_i64()
+                                        .map(|s| (s + 59) / 60),
+                                    resets_at: w["reset_at"].as_i64(),
+                                })
+                            }
+                        });
 
                         let credits = data["credits"].as_object().map(|c| CodexCredits {
-                            has_credits: c.get("has_credits")
+                            has_credits: c
+                                .get("has_credits")
                                 .and_then(|v| v.as_bool())
                                 .unwrap_or(false),
-                            unlimited: c.get("unlimited")
+                            unlimited: c
+                                .get("unlimited")
                                 .and_then(|v| v.as_bool())
                                 .unwrap_or(false),
-                            balance: c.get("balance")
+                            balance: c
+                                .get("balance")
                                 .and_then(|v| v.as_str())
                                 .map(|s| s.to_string()),
                         });

@@ -157,7 +157,8 @@ class PtyManager {
         try {
           client.send(msg);
         } catch (e) {
-          logger.debug(`PTY ${sessionId}: client send failed (likely disconnected)`, e);
+          session.attachedClients.delete(client);
+          logger.warn(`PTY ${sessionId}: client send failed; detached disconnected client`, e);
         }
       }
     });
@@ -171,7 +172,8 @@ class PtyManager {
         try {
           client.send(msg);
         } catch (e) {
-          logger.debug(`PTY ${sessionId}: client send (exit) failed`, e);
+          session.attachedClients.delete(client);
+          logger.warn(`PTY ${sessionId}: client send (exit) failed; detached disconnected client`, e);
         }
       }
       // Update DB
