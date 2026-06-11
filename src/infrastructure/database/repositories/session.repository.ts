@@ -10,6 +10,7 @@ import type {
   Session,
   SessionListItem,
   SessionStatus,
+  ToolCallInfo,
 } from '../../../domain/session/index.js';
 import type { ISessionRepository, SessionUpsertData } from '../../../domain/session/repository.js';
 
@@ -32,6 +33,15 @@ interface SessionRow {
   tty: string | null;
   tool_count: number;
   message_count: number;
+  agent_id: string | null;
+  parent_session_id: string | null;
+  is_sub_agent: number;
+  total_input_tokens: number | null;
+  total_output_tokens: number | null;
+  total_tokens: number | null;
+  total_cost: number | null;
+  api_calls: number | null;
+  tool_calls: string | null;
   created_at: string;
   updated_at: string;
 }
@@ -65,6 +75,17 @@ interface ExistingSessionSummaryRow {
   title: string | null;
 }
 
+/** Safely parse the tool_calls JSON column (returns undefined on missing/corrupt data). */
+function parseToolCalls(raw: string | null): ToolCallInfo[] | undefined {
+  if (!raw) return undefined;
+  try {
+    const parsed = JSON.parse(raw);
+    return Array.isArray(parsed) ? (parsed as ToolCallInfo[]) : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
 /** Convert database row to Session entity */
 function rowToSession(row: SessionRow): Session {
   return {
@@ -85,6 +106,19 @@ function rowToSession(row: SessionRow): Session {
     tty: row.tty || undefined,
     toolCount: row.tool_count,
     messageCount: row.message_count,
+    agentId: row.agent_id || undefined,
+    parentSessionId: row.parent_session_id || undefined,
+    isSubAgent: row.is_sub_agent === 1,
+    usageStats: row.total_tokens != null
+      ? {
+          totalInputTokens: row.total_input_tokens ?? 0,
+          totalOutputTokens: row.total_output_tokens ?? 0,
+          totalTokens: row.total_tokens ?? 0,
+          totalCost: row.total_cost ?? 0,
+          apiCalls: row.api_calls ?? 0,
+        }
+      : undefined,
+    toolCalls: parseToolCalls(row.tool_calls),
     createdAt: new Date(row.created_at),
     updatedAt: new Date(row.updated_at),
   };
@@ -275,6 +309,15 @@ class SessionRepository implements ISessionRepository {
           tty = CASE WHEN ? THEN ? ELSE tty END,
           tool_count = COALESCE(?, tool_count),
           message_count = COALESCE(?, message_count),
+          agent_id = COALESCE(?, agent_id),
+          parent_session_id = COALESCE(?, parent_session_id),
+          is_sub_agent = COALESCE(?, is_sub_agent),
+          total_input_tokens = COALESCE(?, total_input_tokens),
+          total_output_tokens = COALESCE(?, total_output_tokens),
+          total_tokens = COALESCE(?, total_tokens),
+          total_cost = COALESCE(?, total_cost),
+          api_calls = COALESCE(?, api_calls),
+          tool_calls = COALESCE(?, tool_calls),
           updated_at = ?
         WHERE session_id = ?
       `).run(
@@ -294,6 +337,15 @@ class SessionRepository implements ISessionRepository {
         data.tty ?? null,
         data.toolCount ?? null,
         data.messageCount ?? null,
+        data.agentId ?? null,
+        data.parentSessionId ?? null,
+        data.isSubAgent != null ? (data.isSubAgent ? 1 : 0) : null,
+        data.usageStats?.totalInputTokens ?? null,
+        data.usageStats?.totalOutputTokens ?? null,
+        data.usageStats?.totalTokens ?? null,
+        data.usageStats?.totalCost ?? null,
+        data.usageStats?.apiCalls ?? null,
+        data.toolCalls ? JSON.stringify(data.toolCalls) : null,
         now,
         data.sessionId
       );
@@ -309,9 +361,13 @@ class SessionRepository implements ISessionRepository {
           INSERT INTO sessions (
             id, session_id, directory, status, title, initial_prompt,
             last_tool, last_tool_input, current_file, last_message,
-            started_at, last_active_at, pid, tty,
-            tool_count, message_count, created_at, updated_at
-          ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            started_at, last_active_at, completed_at, pid, tty,
+            tool_count, message_count,
+            agent_id, parent_session_id, is_sub_agent,
+            total_input_tokens, total_output_tokens, total_tokens, total_cost, api_calls,
+            tool_calls,
+            created_at, updated_at
+          ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         `).run(
           id,
           data.sessionId,
@@ -325,10 +381,20 @@ class SessionRepository implements ISessionRepository {
           data.lastMessage ?? null,
           data.startedAt?.toISOString() ?? null,
           data.lastActiveAt?.toISOString() || now,
+          data.completedAt?.toISOString() ?? null,
           data.pid ?? null,
           data.tty ?? null,
           data.toolCount || 0,
           data.messageCount || 0,
+          data.agentId ?? null,
+          data.parentSessionId ?? null,
+          data.isSubAgent ? 1 : 0,
+          data.usageStats?.totalInputTokens ?? null,
+          data.usageStats?.totalOutputTokens ?? null,
+          data.usageStats?.totalTokens ?? null,
+          data.usageStats?.totalCost ?? null,
+          data.usageStats?.apiCalls ?? null,
+          data.toolCalls ? JSON.stringify(data.toolCalls) : null,
           now,
           now
         );
