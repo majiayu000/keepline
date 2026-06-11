@@ -22,7 +22,7 @@ function send(ws: ServerWebSocket<any>, msg: object) {
   try {
     ws.send(JSON.stringify(msg));
   } catch (e) {
-    logger.debug('Terminal WS send failed (client likely disconnected)', e);
+    logger.warn('Terminal WS send failed (client likely disconnected)', e);
   }
 }
 

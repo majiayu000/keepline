@@ -323,13 +323,7 @@ app.get('/:id/details', async (c) => {
         lastTool: dbSession.lastTool || '',
         lastToolInput: dbSession.lastToolInput || '',
         currentFile: dbSession.currentFile || '',
-        usageStats: parsedSession?.usageStats || {
-          totalInputTokens: 0,
-          totalOutputTokens: 0,
-          totalTokens: 0,
-          totalCost: 0,
-          apiCalls: 0,
-        },
+        usageStats: parsedSession?.usageStats ?? null,
       },
     });
   } catch (error) {
@@ -387,13 +381,7 @@ app.get('/:id/full', async (c) => {
           lastTool: dbSession.lastTool || '',
           lastToolInput: dbSession.lastToolInput || '',
           currentFile: dbSession.currentFile || '',
-          usageStats: parsedSession?.usageStats || {
-            totalInputTokens: 0,
-            totalOutputTokens: 0,
-            totalTokens: 0,
-            totalCost: 0,
-            apiCalls: 0,
-          },
+          usageStats: parsedSession?.usageStats ?? null,
         },
         // Tool calls
         tools: {

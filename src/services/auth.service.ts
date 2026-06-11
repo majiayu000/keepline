@@ -246,6 +246,7 @@ export function logAudit(userId: string | null, action: string, ip?: string, det
     );
   } catch (e) {
     logger.error('Failed to write audit log', e);
+    throw new Error('Failed to write audit log');
   }
 }
 
