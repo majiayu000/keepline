@@ -232,6 +232,115 @@ describe('Claude Scanner', () => {
     });
   });
 
+  test('rich bulk scans include sub-agent files and tool calls for persistence sync', () => {
+    const homeDir = createTempHome();
+
+    writeSessionFile(homeDir, '-tmp-agent-project', 'parent-session.jsonl', [
+      {
+        type: 'user',
+        uuid: 'user-parent',
+        sessionId: 'parent-session',
+        cwd: '/tmp/agent-project',
+        timestamp: '2026-04-13T11:25:00.000Z',
+        userType: 'external',
+        message: { role: 'user', content: 'Launch a sub-agent' },
+      },
+      {
+        type: 'assistant',
+        uuid: 'assistant-parent',
+        parentUuid: 'user-parent',
+        sessionId: 'parent-session',
+        cwd: '/tmp/agent-project',
+        timestamp: '2026-04-13T11:25:05.000Z',
+        message: {
+          role: 'assistant',
+          model: 'claude-3-5-sonnet-20241022',
+          content: [
+            {
+              type: 'tool_use',
+              id: 'tool-parent',
+              name: 'Bash',
+              input: { command: 'pwd' },
+            },
+          ],
+        },
+      },
+    ]);
+
+    writeSessionFile(homeDir, '-tmp-agent-project', 'agent-agent-123.jsonl', [
+      {
+        type: 'user',
+        uuid: 'user-agent',
+        sessionId: 'parent-session',
+        cwd: '/tmp/agent-project',
+        timestamp: '2026-04-13T11:26:00.000Z',
+        userType: 'external',
+        agentId: 'agent-123',
+        isSidechain: true,
+        message: { role: 'user', content: 'Inspect from a sub-agent' },
+      },
+      {
+        type: 'assistant',
+        uuid: 'assistant-agent',
+        parentUuid: 'user-agent',
+        sessionId: 'parent-session',
+        cwd: '/tmp/agent-project',
+        timestamp: '2026-04-13T11:26:05.000Z',
+        agentId: 'agent-123',
+        isSidechain: true,
+        message: {
+          role: 'assistant',
+          model: 'claude-3-5-sonnet-20241022',
+          content: [
+            {
+              type: 'tool_use',
+              id: 'tool-agent',
+              name: 'Read',
+              input: { file_path: '/tmp/agent-project/src/index.ts' },
+            },
+          ],
+          usage: {
+            input_tokens: 10,
+            output_tokens: 5,
+          },
+        },
+      },
+    ]);
+
+    const result = runScannerScript(homeDir, `
+      const { clearSessionCache, getAllSessions } = await import('./src/adapters/claude/scanner.ts');
+      clearSessionCache();
+      await getAllSessions();
+      const sessions = await getAllSessions({ includeSubAgents: true, includeToolCalls: true });
+      console.log(JSON.stringify({
+        sessions: sessions.map((session) => ({
+          sessionId: session.sessionId,
+          parentSessionId: session.parentSessionId ?? null,
+          isSubAgent: session.isSubAgent,
+          toolCalls: session.toolCalls?.map((tool) => tool.name) || [],
+          totalTokens: session.usageStats?.totalTokens || 0,
+        })).sort((a, b) => a.sessionId.localeCompare(b.sessionId)),
+      }));
+    `);
+
+    expect(result.sessions).toEqual([
+      {
+        sessionId: 'agent-agent-123',
+        parentSessionId: 'parent-session',
+        isSubAgent: true,
+        toolCalls: ['Read'],
+        totalTokens: 15,
+      },
+      {
+        sessionId: 'parent-session',
+        parentSessionId: null,
+        isSubAgent: false,
+        toolCalls: ['Bash'],
+        totalTokens: 0,
+      },
+    ]);
+  });
+
   test('persists broken-file skips across subprocess restarts when mtime is unchanged', () => {
     const homeDir = createTempHome();
     const brokenPath = writeSessionFile(homeDir, '-tmp-persist-broken', 'persist-broken.jsonl', [

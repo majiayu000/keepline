@@ -361,13 +361,13 @@ class SessionRepository implements ISessionRepository {
           INSERT INTO sessions (
             id, session_id, directory, status, title, initial_prompt,
             last_tool, last_tool_input, current_file, last_message,
-            started_at, last_active_at, pid, tty,
+            started_at, last_active_at, completed_at, pid, tty,
             tool_count, message_count,
             agent_id, parent_session_id, is_sub_agent,
             total_input_tokens, total_output_tokens, total_tokens, total_cost, api_calls,
             tool_calls,
             created_at, updated_at
-          ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+          ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         `).run(
           id,
           data.sessionId,
@@ -381,6 +381,7 @@ class SessionRepository implements ISessionRepository {
           data.lastMessage ?? null,
           data.startedAt?.toISOString() ?? null,
           data.lastActiveAt?.toISOString() || now,
+          data.completedAt?.toISOString() ?? null,
           data.pid ?? null,
           data.tty ?? null,
           data.toolCount || 0,

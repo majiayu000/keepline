@@ -120,7 +120,11 @@ export class SessionService {
       const runningClaudePids = new Set(processes.map((process) => process.pid));
 
       // Get Claude sessions from file system (with optional age filter for performance)
-      const scannedClaudeSessions = await getClaudeSessions({ maxAgeDays });
+      const scannedClaudeSessions = await getClaudeSessions({
+        maxAgeDays,
+        includeSubAgents: true,
+        includeToolCalls: true,
+      });
       const invalidClaudeSessions = scannedClaudeSessions.filter(
         (session) => !isValidSessionId(session.sessionId)
       );

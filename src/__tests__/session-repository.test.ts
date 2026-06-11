@@ -104,4 +104,24 @@ describe('Session Repository Upsert', () => {
     expect(fetched?.usageStats?.totalTokens).toBe(300);
     expect(fetched?.toolCalls?.[1].name).toBe('Bash');
   });
+
+  test('persists completedAt when inserting completed sessions', () => {
+    const completedAt = new Date('2026-04-13T16:00:00.000Z');
+
+    sessionRepository.upsert({
+      sessionId: 'session-completed-insert',
+      directory: '/tmp/repo',
+      status: 'completed',
+      title: 'Completed',
+      initialPrompt: 'Prompt',
+      startedAt: new Date('2026-04-13T15:00:00.000Z'),
+      lastActiveAt: completedAt,
+      completedAt,
+      toolCount: 0,
+      messageCount: 1,
+    });
+
+    const fetched = sessionRepository.findBySessionId('session-completed-insert');
+    expect(fetched?.completedAt?.toISOString()).toBe('2026-04-13T16:00:00.000Z');
+  });
 });
