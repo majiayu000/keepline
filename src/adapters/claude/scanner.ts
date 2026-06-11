@@ -26,6 +26,7 @@ import { isValidSessionId } from '../../lib/session-id.js';
 interface SessionCache {
   data: ParsedSessionData | null;
   modifiedAt: number; // File modification time in ms
+  includeToolCalls: boolean;
 }
 const sessionSummaryCache = new Map<string, SessionCache>();
 const sessionDetailCache = new Map<string, SessionCache>();
@@ -113,6 +114,7 @@ export function getSessionCacheStats(): { size: number; keys: string[] } {
 /** Options for scanning session files */
 export interface ScanOptions {
   includeSubAgents?: boolean; // Include agent- prefixed files (default: false for backward compatibility)
+  includeToolCalls?: boolean; // Include full tool call details in bulk parsed results (default: false)
   maxAgeDays?: number; // Only include files modified within this many days (default: all)
 }
 
@@ -221,6 +223,7 @@ function requireValidParsedSession(
 /** Get all sessions with parsed data (optimized with caching) */
 export async function getAllSessions(options: ScanOptions = {}): Promise<ParsedSessionData[]> {
   const sessionFiles = scanProjectsDirectory(options);
+  const includeToolCalls = options.includeToolCalls ?? false;
   const sessions: ParsedSessionData[] = [];
   let cacheHits = 0;
   let cacheMisses = 0;
@@ -238,17 +241,20 @@ export async function getAllSessions(options: ScanOptions = {}): Promise<ParsedS
 
       // Use cache if file hasn't been modified
       if (cached && cached.modifiedAt === fileModTime) {
-        if (cached.data) {
-          sessions.push(cached.data);
+        if (!includeToolCalls || cached.includeToolCalls) {
+          if (cached.data) {
+            sessions.push(cached.data);
+          }
+          cacheHits++;
+          continue;
         }
-        cacheHits++;
-        continue;
       }
 
       if (isPersistedParseFailure(file.filePath, fileModTime)) {
         sessionSummaryCache.set(file.filePath, {
           data: null,
           modifiedAt: fileModTime,
+          includeToolCalls,
         });
         cacheHits++;
         continue;
@@ -256,12 +262,13 @@ export async function getAllSessions(options: ScanOptions = {}): Promise<ParsedS
 
       // Parse file and update cache
       const parsed = requireValidParsedSession(
-        await parseSessionFile(file.filePath, { includeToolCalls: false }),
+        await parseSessionFile(file.filePath, { includeToolCalls }),
         file.filePath
       );
       sessionSummaryCache.set(file.filePath, {
         data: parsed,
         modifiedAt: fileModTime,
+        includeToolCalls,
       });
       clearPersistedParseFailure(file.filePath);
       if (parsed) {
@@ -272,6 +279,7 @@ export async function getAllSessions(options: ScanOptions = {}): Promise<ParsedS
       sessionSummaryCache.set(file.filePath, {
         data: null,
         modifiedAt: file.modifiedAt.getTime(),
+        includeToolCalls,
       });
       recordPersistedParseFailure(file.filePath, file.modifiedAt.getTime());
       parseFailures.push(file.filePath);
@@ -321,6 +329,7 @@ async function getOrParseSession(file: ClaudeSessionFile): Promise<ParsedSession
     sessionDetailCache.set(file.filePath, {
       data: null,
       modifiedAt: fileModTime,
+      includeToolCalls: true,
     });
     return null;
   }
@@ -333,6 +342,7 @@ async function getOrParseSession(file: ClaudeSessionFile): Promise<ParsedSession
     sessionDetailCache.set(file.filePath, {
       data: parsed,
       modifiedAt: fileModTime,
+      includeToolCalls: true,
     });
     clearPersistedParseFailure(file.filePath);
     flushPersistedParseFailures();
@@ -341,6 +351,7 @@ async function getOrParseSession(file: ClaudeSessionFile): Promise<ParsedSession
     sessionDetailCache.set(file.filePath, {
       data: null,
       modifiedAt: fileModTime,
+      includeToolCalls: true,
     });
     recordPersistedParseFailure(file.filePath, fileModTime);
     flushPersistedParseFailures();
@@ -360,6 +371,7 @@ async function getOrParseSessionSummary(file: ClaudeSessionFile): Promise<Parsed
     sessionSummaryCache.set(file.filePath, {
       data: null,
       modifiedAt: fileModTime,
+      includeToolCalls: false,
     });
     return null;
   }
@@ -372,6 +384,7 @@ async function getOrParseSessionSummary(file: ClaudeSessionFile): Promise<Parsed
     sessionSummaryCache.set(file.filePath, {
       data: parsed,
       modifiedAt: fileModTime,
+      includeToolCalls: false,
     });
     clearPersistedParseFailure(file.filePath);
     flushPersistedParseFailures();
@@ -380,6 +393,7 @@ async function getOrParseSessionSummary(file: ClaudeSessionFile): Promise<Parsed
     sessionSummaryCache.set(file.filePath, {
       data: null,
       modifiedAt: fileModTime,
+      includeToolCalls: false,
     });
     recordPersistedParseFailure(file.filePath, fileModTime);
     flushPersistedParseFailures();

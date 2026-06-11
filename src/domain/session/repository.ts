@@ -6,7 +6,7 @@
  */
 
 import type { Session, SessionListItem } from './entity.js';
-import type { SessionStatus } from './value-objects.js';
+import type { SessionStatus, ToolCallInfo, SessionUsageStats } from './value-objects.js';
 
 export interface ActiveSessionRecord {
   sessionId: string;
@@ -38,6 +38,11 @@ export interface SessionUpsertData {
   tty?: string;
   toolCount?: number;
   messageCount?: number;
+  agentId?: string;
+  parentSessionId?: string;
+  isSubAgent?: boolean;
+  usageStats?: SessionUsageStats;
+  toolCalls?: ToolCallInfo[];
 }
 
 /** Session repository interface */

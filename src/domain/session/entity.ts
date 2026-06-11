@@ -3,7 +3,7 @@
  */
 
 import type { Entity } from '../shared/types.js';
-import type { SessionStatus, ToolCallInfo } from './value-objects.js';
+import type { SessionStatus, ToolCallInfo, SessionUsageStats } from './value-objects.js';
 
 /** Session entity - represents a Claude Code session */
 export interface Session extends Entity {
@@ -26,6 +26,14 @@ export interface Session extends Entity {
   currentFile?: string;
   lastMessage?: string;
   toolCalls?: ToolCallInfo[];
+
+  /** Multi-session tracking */
+  agentId?: string;
+  parentSessionId?: string;
+  isSubAgent?: boolean;
+
+  /** Usage statistics */
+  usageStats?: SessionUsageStats;
 
   /** Timeline */
   startedAt?: Date;

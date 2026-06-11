@@ -36,6 +36,15 @@ export interface ToolCallInfo {
   timestamp: string;
 }
 
+/** Session usage statistics (tokens / cost / API calls) */
+export interface SessionUsageStats {
+  totalInputTokens: number;
+  totalOutputTokens: number;
+  totalTokens: number;
+  totalCost: number;
+  apiCalls: number;
+}
+
 /** Process information from system */
 export interface ProcessInfo {
   pid: number;
