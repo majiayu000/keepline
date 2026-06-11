@@ -70,4 +70,35 @@ describe('Basic Sessions Route Contract', () => {
     expect('lastTool' in session).toBe(false);
     expect('lastToolInput' in session).toBe(false);
   });
+
+  test('details returns null usageStats when parsed source data is unavailable', async () => {
+    sessionRepository.upsert({
+      sessionId: 'session-no-source',
+      directory: '/tmp/claude-hub-no-source',
+      status: 'completed',
+      title: 'No parsed source',
+      initialPrompt: 'No source',
+      lastActiveAt: new Date('2026-04-13T10:00:05.000Z'),
+      toolCount: 0,
+      messageCount: 1,
+    });
+
+    const { token } = await setupUser('details-route-user', 'password123');
+    const response = await sessions.fetch(new Request(
+      'http://localhost/session-no-source/details',
+      { headers: { Authorization: `Bearer ${token}` } }
+    ));
+
+    expect(response.status).toBe(200);
+
+    const body = await response.json() as {
+      success: boolean;
+      data: {
+        usageStats: unknown;
+      };
+    };
+
+    expect(body.success).toBe(true);
+    expect(body.data.usageStats).toBeNull();
+  });
 });

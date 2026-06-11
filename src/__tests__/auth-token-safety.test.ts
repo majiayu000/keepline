@@ -14,9 +14,9 @@
  */
 
 import { afterEach, beforeEach, describe, expect, test } from 'bun:test';
-import { setupUser, verifyToken } from '../services/auth.service.js';
+import { login, setupUser, verifyToken } from '../services/auth.service.js';
 import { resetDatabase } from '../db/migrations.js';
-import { closeDatabase } from '../infrastructure/database/sqlite.js';
+import { closeDatabase, execSql } from '../infrastructure/database/sqlite.js';
 
 describe('verifyToken hardening', () => {
   beforeEach(() => {
@@ -91,5 +91,12 @@ describe('verifyToken hardening', () => {
     expect(verifyToken('not-a-token')).toBeNull();
     expect(verifyToken('a.b')).toBeNull();
     expect(verifyToken('a.b.c.d')).toBeNull();
+  });
+
+  test('login fails closed when audit logging is unavailable', async () => {
+    await setupUser('alice', 'password123');
+    execSql('DROP TABLE terminal_audit_log');
+
+    await expect(login('alice', 'password123')).rejects.toThrow('Failed to write audit log');
   });
 });
