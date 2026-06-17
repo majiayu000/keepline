@@ -72,7 +72,7 @@ export function MacOSView({ sessions, stats }: Props): React.ReactElement {
       {/* Header - macOS window style */}
       <Box marginBottom={1}>
         <Text>🔴 🟡 🟢  </Text>
-        <Text color="#1d1d1f" backgroundColor="#f5f5f7" bold> Claude Hub </Text>
+        <Text color="#1d1d1f" backgroundColor="#f5f5f7" bold> Codex Hub </Text>
         <Text color="#8e8e93"> — Session Monitor</Text>
       </Box>
 

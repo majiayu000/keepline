@@ -34,6 +34,7 @@ function createSession(overrides: Partial<Session> = {}): Session {
   return {
     id: 'test-id-' + Math.random().toString(36).slice(2),
     sessionId: 'session-' + Math.random().toString(36).slice(2),
+    client: 'claude',
     directory: process.cwd(),
     status: 'running' as SessionStatus,
     title: 'Test Session',

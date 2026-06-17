@@ -2,6 +2,8 @@
  * Process module types
  */
 
+import type { AgentClient } from '../../domain/session/index.js';
+
 /** Raw process info from system */
 export interface RawProcessInfo {
   pid: number;
@@ -14,8 +16,9 @@ export interface RawProcessInfo {
   state: string;
 }
 
-/** Claude process info */
+/** Agent process info */
 export interface ClaudeProcessInfo {
+  client: AgentClient;
   pid: number;
   cwd: string;
   tty?: string;

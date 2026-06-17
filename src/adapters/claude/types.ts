@@ -2,6 +2,8 @@
  * Claude Code data types (from JSONL files)
  */
 
+import type { AgentClient } from '../../domain/session/index.js';
+
 /** Base JSONL entry */
 export interface ClaudeJsonlEntry {
   type: 'user' | 'assistant' | 'file-history-snapshot';
@@ -116,6 +118,7 @@ export interface SessionUsageStats {
 /** Parsed session data */
 export interface ParsedSessionData {
   sessionId: string;
+  client?: AgentClient;
   directory: string;
   firstMessage?: string;
   lastMessage?: string;

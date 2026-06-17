@@ -37,6 +37,15 @@ function getHookCommand(): string {
   return `curl -s -X POST http://127.0.0.1:${port}/hook -H "Content-Type: application/json" -d '{"event_type":"$CLAUDE_EVENT_TYPE","session_id":"$CLAUDE_SESSION_ID","cwd":"$PWD","timestamp":"'$(date -u +%Y-%m-%dT%H:%M:%SZ)'","tool_name":"$CLAUDE_TOOL_NAME","tool_input":'"\${CLAUDE_TOOL_INPUT:-{}}"'}' > /dev/null 2>&1 || true`;
 }
 
+function isCodexHubHook(hook: unknown): hook is ClaudeHookConfig {
+  return Boolean(
+    hook &&
+    typeof hook === 'object' &&
+    typeof (hook as Partial<ClaudeHookConfig>).command === 'string' &&
+    (hook as ClaudeHookConfig).command.includes('127.0.0.1')
+  );
+}
+
 /** Check if tasker hooks are installed */
 export function areHooksInstalled(): boolean {
   const settings = getClaudeSettings();
@@ -46,7 +55,7 @@ export function areHooksInstalled(): boolean {
 
   // Check if our hook is in PostToolUse
   const postToolUse = hooks.PostToolUse || [];
-  return postToolUse.some((hook) => hook.command.includes('127.0.0.1'));
+  return postToolUse.some(isCodexHubHook);
 }
 
 /** Install tasker hooks into Claude settings */
@@ -69,16 +78,14 @@ export function installHooks(): void {
   }
 
   // Check if already installed
-  const existing = settings.hooks.PostToolUse.find((h) =>
-    h.command.includes('127.0.0.1')
-  );
+  const existing = settings.hooks.PostToolUse.find(isCodexHubHook);
 
   if (!existing) {
     settings.hooks.PostToolUse.push(taskerHook);
     saveClaudeSettings(settings);
-    logger.info('Claude Hub hooks installed');
+    logger.info('Codex Hub hooks installed');
   } else {
-    logger.debug('Claude Hub hooks already installed');
+    logger.debug('Codex Hub hooks already installed');
   }
 }
 
@@ -95,13 +102,13 @@ export function uninstallHooks(): void {
     const hooks = settings.hooks[hookType];
     if (hooks) {
       settings.hooks[hookType] = hooks.filter(
-        (h) => !h.command.includes('127.0.0.1')
+        (h) => !isCodexHubHook(h)
       );
     }
   }
 
   saveClaudeSettings(settings);
-  logger.info('Claude Hub hooks uninstalled');
+  logger.info('Codex Hub hooks uninstalled');
 }
 
 /** Get hook status info */

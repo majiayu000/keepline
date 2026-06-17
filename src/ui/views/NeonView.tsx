@@ -59,9 +59,9 @@ export function NeonView({ sessions, stats }: Props): React.ReactElement {
         <Box>
           <Text color="#333366">║ </Text>
           <Gradient name="rainbow">
-            <Text bold>◢◤ CLAUDE HUB v1.0 ◢◤</Text>
+            <Text bold>◢◤ CODEX HUB v1.0 ◢◤</Text>
           </Gradient>
-          <Text color="#666699">  // CLAUDE CODE NEURAL MONITOR //</Text>
+          <Text color="#666699">  // AGENT SESSION MONITOR //</Text>
           <Text color="#333366">{' '.repeat(20)}║</Text>
         </Box>
         <Text color="#333366">╠{'═'.repeat(76)}╣</Text>

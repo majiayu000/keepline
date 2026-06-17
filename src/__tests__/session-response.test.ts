@@ -11,6 +11,7 @@ describe('Session Response Serialization', () => {
     const fullLikeSession = {
       id: 'session-row-1',
       sessionId: 'session-1',
+      client: 'claude',
       directory: '/tmp/project',
       status: 'running',
       title: 'Profile dashboard list path',
@@ -38,6 +39,7 @@ describe('Session Response Serialization', () => {
     expect(serialized).toEqual({
       id: 'session-row-1',
       sessionId: 'session-1',
+      client: 'claude',
       directory: '/tmp/project',
       status: 'running',
       title: 'Profile dashboard list path',

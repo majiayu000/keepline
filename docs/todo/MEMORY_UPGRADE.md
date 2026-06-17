@@ -1,6 +1,6 @@
 # Memory System 2.0 升级计划
 
-> 将 Claude Hub 的 Memory 系统升级到行业领先水平，对标 claude-mem 和 Mem0
+> 将 Codex Hub 的 Memory 系统升级到行业领先水平，对标 claude-mem 和 Mem0
 
 ## 实施状态
 
@@ -37,7 +37,7 @@
 
 - [x] 安装 `@lancedb/lancedb` 包
 - [x] 安装 `apache-arrow` 用于数据序列化
-- [x] 配置 LanceDB 数据目录 (`~/.claude-hub/lancedb/`)
+- [x] 配置 LanceDB 数据目录 (`~/.codex-hub/lancedb/`)
 
 ```bash
 bun add @lancedb/lancedb apache-arrow

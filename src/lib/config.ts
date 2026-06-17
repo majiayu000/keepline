@@ -1,5 +1,5 @@
 /**
- * Configuration management for Claude Hub.
+ * Configuration management for Codex Hub.
  */
 
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'fs';
@@ -80,7 +80,7 @@ const defaultConfig: ClaudeHubConfig = {
 };
 
 /**
- * Resolve the config file path lazily so a runtime CLAUDE_HUB_HOME override
+ * Resolve the config file path lazily so a runtime CODEX_HUB_HOME or CLAUDE_HUB_HOME override
  * (set after this module imports) still routes reads/writes correctly.
  */
 function getConfigFile(): string {

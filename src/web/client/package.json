@@ -1,5 +1,5 @@
 {
-  "name": "claude-hub-client",
+  "name": "codex-hub-client",
   "private": true,
   "version": "1.0.0",
   "type": "module",

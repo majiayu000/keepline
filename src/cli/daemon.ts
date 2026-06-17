@@ -97,7 +97,7 @@ function showStatus(): void {
   const hookStatus = getHookStatus();
 
   console.log('');
-  console.log(chalk.bold('Claude Hub Status'));
+  console.log(chalk.bold('Codex Hub Status'));
   console.log('');
 
   // Daemon status

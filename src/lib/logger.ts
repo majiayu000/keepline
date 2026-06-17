@@ -1,5 +1,5 @@
 /**
- * Logger utility for Claude Hub.
+ * Logger utility for Codex Hub.
  */
 
 import chalk from 'chalk';

@@ -160,8 +160,8 @@ class TerminalWebSocketManager {
   }
 
   // Typed convenience methods
-  createSession(cols: number, rows: number, cwd?: string, resumeSessionId?: string): void {
-    this.send({ type: 'term:create', data: { cols, rows, cwd, resumeSessionId } })
+  createSession(cols: number, rows: number, cwd?: string, resumeSessionId?: string, resumeSessionClient?: 'claude' | 'codex'): void {
+    this.send({ type: 'term:create', data: { cols, rows, cwd, resumeSessionId, resumeSessionClient } })
   }
 
   attachSession(sessionId: string): void {

@@ -43,6 +43,7 @@ function createProcess(
   index: number
 ): ClaudeProcessInfo {
   return {
+    client: 'claude',
     pid: 10_000 + index,
     cwd: directory,
     cpu: (index % 11) * 0.1,

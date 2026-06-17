@@ -65,6 +65,7 @@ export interface StopBody {
 
 // GET /api/sessions/:id/process
 export interface ProcessStatusData {
+  client: 'claude' | 'codex'
   pid?: number
   running: boolean
   status: string

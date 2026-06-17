@@ -12,7 +12,11 @@ import {
   getSessionStats,
 } from '../../../services/session.aggregator.js';
 import { isProcessRunning } from '../../../adapters/process/scanner.js';
-import { getSessionById, getAllSessions as getAllParsedSessions } from '../../../adapters/claude/scanner.js';
+import {
+  getSessionById as getClaudeSessionById,
+  getAllSessions as getAllClaudeParsedSessions,
+} from '../../../adapters/claude/scanner.js';
+import { getCodexSessionById } from '../../../adapters/codex/scanner.js';
 import { getRecoveryInfo } from '../../../services/recovery.service.js';
 import { logger } from '../../../lib/logger.js';
 import { authMiddleware } from '../middleware/auth.js';
@@ -27,6 +31,14 @@ app.use('*', authMiddleware);
 let lastSyncTime = 0;
 const SYNC_INTERVAL_MS = 30000; // Only auto-sync every 30 seconds
 let isSyncingInBackground = false;
+
+async function getParsedSessionById(sessionId: string) {
+  if (sessionId.startsWith('codex_')) {
+    return getCodexSessionById(sessionId);
+  }
+
+  return getClaudeSessionById(sessionId);
+}
 
 // Background sync function (non-blocking)
 async function backgroundSync() {
@@ -58,6 +70,7 @@ app.get('/', async (c) => {
     const order = c.req.query('order') === 'asc' ? 'asc' : 'desc';
     const fields = c.req.query('fields') || 'full'; // 'basic' or 'full'
     const skipSync = c.req.query('skipSync') === 'true'; // Skip sync for pagination requests
+    const client = c.req.query('client');
 
     // Smart sync: trigger background sync if needed (non-blocking)
     const now = Date.now();
@@ -77,6 +90,10 @@ app.get('/', async (c) => {
       sessions = sessions.filter(s => s.status === status);
     }
 
+    if (client === 'claude' || client === 'codex') {
+      sessions = sessions.filter(s => s.client === client);
+    }
+
     // Sort sessions
     sessions.sort((a, b) => {
       let comparison = 0;
@@ -86,6 +103,8 @@ app.get('/', async (c) => {
         comparison = a.directory.localeCompare(b.directory);
       } else if (sort === 'status') {
         comparison = a.status.localeCompare(b.status);
+      } else if (sort === 'client') {
+        comparison = a.client.localeCompare(b.client);
       }
       return order === 'desc' ? -comparison : comparison;
     });
@@ -113,12 +132,7 @@ app.get('/', async (c) => {
       });
     }
 
-    // Full mode: include all fields with usage stats
-    const parsedSessions = await getAllParsedSessions();
-    const usageMap = new Map(
-      parsedSessions.map(p => [p.sessionId, p.usageStats])
-    );
-
+    // Full mode: include all fields already persisted during sync.
     return c.json({
       success: true,
       data: {
@@ -129,7 +143,7 @@ app.get('/', async (c) => {
           completedAt: s.completedAt?.toISOString(),
           createdAt: s.createdAt.toISOString(),
           updatedAt: s.updatedAt.toISOString(),
-          usageStats: usageMap.get(s.sessionId),
+          usageStats: 'usageStats' in s ? s.usageStats : undefined,
         })),
         stats,
         pagination: {
@@ -185,7 +199,7 @@ app.get('/:id/subagents', async (c) => {
 
   try {
     // Get all sessions including sub-agents
-    const allSessions = await getAllParsedSessions({ includeSubAgents: true });
+    const allSessions = await getAllClaudeParsedSessions({ includeSubAgents: true });
 
     // Find sub-agents that belong to this parent session
     const subAgents = allSessions
@@ -233,10 +247,11 @@ app.get('/:id/process', async (c) => {
 
   return c.json({
     success: true,
-    data: {
-      pid: session.pid,
-      running: processRunning,
-      status: session.status,
+      data: {
+        client: session.client,
+        pid: session.pid,
+        running: processRunning,
+        status: session.status,
     }
   });
 });
@@ -246,7 +261,7 @@ app.get('/:id/tools', async (c) => {
   const sessionId = c.req.param('id');
 
   try {
-    const parsedSession = await getSessionById(sessionId);
+    const parsedSession = await getParsedSessionById(sessionId);
 
     if (!parsedSession) {
       return c.json({ success: false, error: 'Session not found' }, 404);
@@ -270,7 +285,7 @@ app.get('/:id/usage', async (c) => {
   const sessionId = c.req.param('id');
 
   try {
-    const parsedSession = await getSessionById(sessionId);
+    const parsedSession = await getParsedSessionById(sessionId);
 
     if (!parsedSession) {
       return c.json({ success: false, error: 'Session not found' }, 404);
@@ -313,7 +328,7 @@ app.get('/:id/details', async (c) => {
     }
 
     // Get parsed session for detailed fields
-    const parsedSession = await getSessionById(sessionId);
+    const parsedSession = await getParsedSessionById(sessionId);
 
     return c.json({
       success: true,
@@ -351,25 +366,26 @@ app.get('/:id/full', async (c) => {
     }
 
     // Get parsed session for detailed fields and tool calls
-    const parsedSession = await getSessionById(sessionId);
+    const parsedSession = await getParsedSessionById(sessionId);
 
     // Get sub-agents
-    const allSessions = await getAllParsedSessions({ includeSubAgents: true });
-    const subAgents = allSessions
-      .filter(s => s.parentSessionId === sessionId)
-      .map(s => ({
-        sessionId: s.sessionId,
-        agentId: s.agentId,
-        directory: s.directory,
-        firstMessage: s.firstMessage,
-        lastMessage: s.lastMessage,
-        messageCount: s.messageCount,
-        toolCount: s.toolCount,
-        lastTool: s.lastTool,
-        startedAt: s.startedAt?.toISOString(),
-        lastActiveAt: s.lastActiveAt.toISOString(),
-        usageStats: s.usageStats,
-      }));
+    const subAgents = dbSession.client === 'claude'
+      ? (await getAllClaudeParsedSessions({ includeSubAgents: true }))
+          .filter(s => s.parentSessionId === sessionId)
+          .map(s => ({
+            sessionId: s.sessionId,
+            agentId: s.agentId,
+            directory: s.directory,
+            firstMessage: s.firstMessage,
+            lastMessage: s.lastMessage,
+            messageCount: s.messageCount,
+            toolCount: s.toolCount,
+            lastTool: s.lastTool,
+            startedAt: s.startedAt?.toISOString(),
+            lastActiveAt: s.lastActiveAt.toISOString(),
+            usageStats: s.usageStats,
+          }))
+      : [];
 
     return c.json({
       success: true,

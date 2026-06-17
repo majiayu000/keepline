@@ -1,5 +1,5 @@
 /**
- * Web API Server for Claude Hub
+ * Web API Server for Codex Hub
  * Provides REST endpoints for session management
  *
  * All endpoints include input validation

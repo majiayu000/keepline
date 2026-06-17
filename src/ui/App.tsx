@@ -39,9 +39,9 @@ export function App({ sessions, stats }: AppProps): React.ReactElement {
       {/* Header */}
       <Box marginBottom={1}>
         <Gradient name="pastel">
-          <Text bold>◆ CLAUDE HUB</Text>
+          <Text bold>◆ CODEX HUB</Text>
         </Gradient>
-        <Text color="gray"> — Claude Code session control center</Text>
+        <Text color="gray"> — Codex and Claude session control center</Text>
       </Box>
 
       {/* Stats bar */}
@@ -66,7 +66,7 @@ export function App({ sessions, stats }: AppProps): React.ReactElement {
         <Box marginTop={1} paddingX={1}>
           <Text color="yellow">💡 </Text>
           <Text color="gray">{stats.lost} lost sessions can be recovered: </Text>
-          <Text color="cyan" bold>claude-hub recover {'<n>'}</Text>
+          <Text color="cyan" bold>codex-hub recover {'<n>'}</Text>
         </Box>
       )}
     </Box>

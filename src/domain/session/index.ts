@@ -18,6 +18,7 @@ export { generateTitle } from './entity.js';
 
 // Value objects
 export type {
+  AgentClient,
   SessionStatus,
   ToolCallInfo,
   ProcessInfo,
@@ -25,6 +26,7 @@ export type {
 } from './value-objects.js';
 
 export {
+  AGENT_CLIENTS,
   SESSION_STATUSES,
   isActiveStatus,
   needsAttention,

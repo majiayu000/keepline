@@ -35,7 +35,7 @@ import { logger } from '../../../lib/logger.js';
  * across processes). The check is a single env-var read; the cost is
  * negligible relative to the rest of the request path.
  *
- * Off by default — Claude Hub binds to loopback only by default.
+ * Off by default — Codex Hub binds to loopback only by default.
  */
 function trustProxy(): boolean {
   return process.env.CLAUDE_HUB_TRUST_PROXY === 'true';

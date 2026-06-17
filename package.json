@@ -1,15 +1,18 @@
 {
-  "name": "claude-hub",
+  "name": "codex-hub",
   "version": "1.0.0",
-  "description": "The command center for Claude Code - Never lose your work again",
-  "author": "Claude Hub Contributors",
+  "description": "The command center for Codex and Claude Code sessions - Never lose your work again",
+  "author": "Codex Hub Contributors",
   "license": "MIT",
   "type": "module",
   "main": "dist/index.js",
   "bin": {
+    "codex-hub": "dist/index.js",
     "claude-hub": "dist/index.js"
   },
   "keywords": [
+    "codex",
+    "codex-cli",
     "claude",
     "claude-code",
     "ai",
@@ -23,12 +26,12 @@
   ],
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/majiayu000/claude-hub.git"
+    "url": "git+https://github.com/majiayu000/codex-hub.git"
   },
   "bugs": {
-    "url": "https://github.com/majiayu000/claude-hub/issues"
+    "url": "https://github.com/majiayu000/codex-hub/issues"
   },
-  "homepage": "https://github.com/majiayu000/claude-hub#readme",
+  "homepage": "https://github.com/majiayu000/codex-hub#readme",
   "engines": {
     "bun": ">=1.1.0"
   },

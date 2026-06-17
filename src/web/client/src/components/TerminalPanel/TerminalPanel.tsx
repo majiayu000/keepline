@@ -1,8 +1,8 @@
 /**
  * TerminalPanel - Main terminal tab content
  *
- * Shows existing Claude Code sessions in sidebar.
- * Click to resume via `claude --resume <session-id>`.
+ * Shows existing agent sessions in sidebar.
+ * Click to resume through the owning agent CLI.
  * Also supports creating new sessions.
  */
 
@@ -20,15 +20,15 @@ interface TerminalPanelProps {
 
 export function TerminalPanel({ token, onLogout }: TerminalPanelProps) {
   const terminal = useTerminal(token)
-  const [claudeSessions, setClaudeSessions] = useState<Session[]>([])
+  const [agentSessions, setAgentSessions] = useState<Session[]>([])
   const [loadingSessions, setLoadingSessions] = useState(false)
 
-  // Fetch existing Claude Code sessions
+  // Fetch existing agent sessions
   useEffect(() => {
     setLoadingSessions(true)
     fetchSessions('basic', { limit: 50 }).then(res => {
       if (res.success && res.data) {
-        setClaudeSessions(res.data.sessions)
+        setAgentSessions(res.data.sessions)
       }
       setLoadingSessions(false)
     })
@@ -39,8 +39,8 @@ export function TerminalPanel({ token, onLogout }: TerminalPanelProps) {
     terminal.createSession(80, 24)
   }, [terminal])
 
-  const handleResume = useCallback((claudeSessionId: string, cwd?: string) => {
-    terminal.createSession(80, 24, cwd, claudeSessionId)
+  const handleResume = useCallback((session: Session) => {
+    terminal.createSession(80, 24, session.directory, session.sessionId, session.client)
   }, [terminal])
 
   const handleKill = useCallback((sessionId: string) => {
@@ -67,21 +67,21 @@ export function TerminalPanel({ token, onLogout }: TerminalPanelProps) {
   return (
     <div className={styles.container}>
       <div className={styles.sidebar}>
-        {/* Claude Code sessions from API */}
+        {/* Agent sessions from API */}
         <div className={styles.sidebarHeader}>
           <span className={styles.sidebarTitle}>History Sessions</span>
           <button className={styles.newBtn} onClick={handleCreate} title="New terminal">+</button>
         </div>
         <div className={styles.sessionList}>
           {loadingSessions && <div className={styles.empty}>Loading...</div>}
-          {!loadingSessions && claudeSessions.length === 0 && (
+          {!loadingSessions && agentSessions.length === 0 && (
             <div className={styles.empty}>No sessions found</div>
           )}
-          {claudeSessions.map(s => (
+          {agentSessions.map(s => (
             <div
               key={s.sessionId}
               className={styles.sessionItem}
-              onClick={() => handleResume(s.sessionId, s.directory)}
+              onClick={() => handleResume(s)}
               title={`Resume: ${s.sessionId}\n${s.directory}`}
             >
               <span
@@ -91,6 +91,7 @@ export function TerminalPanel({ token, onLogout }: TerminalPanelProps) {
               <span className={styles.sessionId}>
                 {s.title || s.sessionId.slice(0, 8)}
               </span>
+              <span className={styles.clientTag}>{s.client}</span>
             </div>
           ))}
         </div>
@@ -141,7 +142,7 @@ export function TerminalPanel({ token, onLogout }: TerminalPanelProps) {
           />
         ) : (
           <div className={styles.emptyState}>
-            <p>Select a Claude session to resume, or create a new terminal.</p>
+            <p>Select an agent session to resume, or create a new terminal.</p>
             <button className={styles.createBtn} onClick={handleCreate}>
               New Terminal
             </button>

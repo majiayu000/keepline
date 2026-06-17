@@ -3,6 +3,7 @@
  */
 
 export type SessionStatus = 'running' | 'waiting' | 'idle' | 'lost' | 'completed'
+export type AgentClient = 'claude' | 'codex'
 
 /** Tool call info */
 export interface ToolCallInfo {
@@ -23,6 +24,7 @@ export interface UsageStats {
 export interface Session {
   id: string
   sessionId: string
+  client: AgentClient
   directory: string
   status: SessionStatus
   title: string

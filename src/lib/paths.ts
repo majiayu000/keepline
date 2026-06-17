@@ -1,5 +1,5 @@
 /**
- * Path utilities for Claude Hub.
+ * Path utilities for Codex Hub.
  */
 
 import { cpSync, existsSync, mkdirSync, readdirSync, renameSync, rmSync, statSync } from 'fs';
@@ -36,32 +36,64 @@ export const CLAUDE_HISTORY = join(CLAUDE_HOME, 'history.jsonl');
 /** Claude settings file */
 export const CLAUDE_SETTINGS = join(CLAUDE_HOME, 'settings.json');
 
+/** Codex base directory */
+export const CODEX_HOME = join(homedir(), '.codex');
+
+/** Codex saved sessions directory */
+export const CODEX_SESSIONS = join(CODEX_HOME, 'sessions');
+
 /** Legacy Tasker data directory */
 export const LEGACY_TASKER_HOME = join(homedir(), '.tasker');
 
+/** Legacy Claude Hub data directory */
+export const LEGACY_CLAUDE_HUB_HOME = join(homedir(), '.claude-hub');
+
 /**
- * Resolve the Claude Hub data directory from the current environment.
+ * Resolve the Codex Hub data directory from the current environment.
  *
- * Re-reads `process.env.CLAUDE_HUB_HOME` every call so a CLI flag that
+ * Re-reads `process.env.CODEX_HUB_HOME` / `process.env.CLAUDE_HUB_HOME` every call so a CLI flag that
  * sets the env var after this module is imported still takes effect.
  */
 export function getClaudeHubHome(): string {
-  return process.env.CLAUDE_HUB_HOME || join(homedir(), '.claude-hub');
+  if (process.env.CODEX_HUB_HOME) return process.env.CODEX_HUB_HOME;
+  if (process.env.CLAUDE_HUB_HOME) return process.env.CLAUDE_HUB_HOME;
+
+  const codexHubHome = join(homedir(), '.codex-hub');
+  if (!existsSync(codexHubHome) && existsSync(LEGACY_CLAUDE_HUB_HOME)) {
+    return LEGACY_CLAUDE_HUB_HOME;
+  }
+
+  return codexHubHome;
 }
 
-/** Claude Hub database file (re-resolved each call). */
+/** Codex Hub database file (re-resolved each call). */
 export function getClaudeHubDb(): string {
-  return join(getClaudeHubHome(), 'claude-hub.db');
+  const home = getClaudeHubHome();
+  const legacyDb = join(home, 'claude-hub.db');
+  if (!process.env.CODEX_HUB_HOME && existsSync(legacyDb)) {
+    return legacyDb;
+  }
+  return join(home, 'codex-hub.db');
 }
 
-/** Claude Hub log file (re-resolved each call). */
+/** Codex Hub log file (re-resolved each call). */
 export function getClaudeHubLog(): string {
-  return join(getClaudeHubHome(), 'claude-hub.log');
+  const home = getClaudeHubHome();
+  const legacyLog = join(home, 'claude-hub.log');
+  if (!process.env.CODEX_HUB_HOME && existsSync(legacyLog)) {
+    return legacyLog;
+  }
+  return join(home, 'codex-hub.log');
 }
 
-/** Claude Hub PID file for daemon (re-resolved each call). */
+/** Codex Hub PID file for daemon (re-resolved each call). */
 export function getClaudeHubPid(): string {
-  return join(getClaudeHubHome(), 'claude-hub.pid');
+  const home = getClaudeHubHome();
+  const legacyPid = join(home, 'claude-hub.pid');
+  if (!process.env.CODEX_HUB_HOME && existsSync(legacyPid)) {
+    return legacyPid;
+  }
+  return join(home, 'codex-hub.pid');
 }
 
 /**
@@ -71,18 +103,28 @@ export function getClaudeHubPid(): string {
  * should prefer `getClaudeHubHome()` so a runtime env override is honored.
  */
 export const CLAUDE_HUB_HOME = getClaudeHubHome();
+export const CODEX_HUB_HOME = CLAUDE_HUB_HOME;
 
-/** Claude Hub persisted parse-failure cache */
+/** Codex Hub persisted parse-failure cache */
 export const CLAUDE_HUB_PARSE_FAILURE_CACHE = join(CLAUDE_HUB_HOME, 'invalid-session-files.json');
+export const CODEX_HUB_PARSE_FAILURE_CACHE = CLAUDE_HUB_PARSE_FAILURE_CACHE;
 
-/** Claude Hub database file (load-time snapshot). */
+/** Codex Hub database file (load-time snapshot). */
 export const CLAUDE_HUB_DB = getClaudeHubDb();
+export const CODEX_HUB_DB = CLAUDE_HUB_DB;
 
-/** Claude Hub log file (load-time snapshot). */
+/** Codex Hub log file (load-time snapshot). */
 export const CLAUDE_HUB_LOG = getClaudeHubLog();
+export const CODEX_HUB_LOG = CLAUDE_HUB_LOG;
 
-/** Claude Hub PID file (load-time snapshot). */
+/** Codex Hub PID file (load-time snapshot). */
 export const CLAUDE_HUB_PID = getClaudeHubPid();
+export const CODEX_HUB_PID = CLAUDE_HUB_PID;
+
+/** Return the new Codex Hub data directory while preserving CLAUDE_HUB_HOME compatibility. */
+export function getCodexHubHome(): string {
+  return getClaudeHubHome();
+}
 
 /**
  * Recursively walk a directory and return [fileCount, totalBytes].
@@ -141,17 +183,31 @@ export function migrateClaudeHubDataHome(
   rmSync(legacyHome, { recursive: true, force: true });
 }
 
-/** Ensure the Claude Hub data directory exists, migrating legacy Tasker data if needed. */
+function migrateLegacyCodexHubFileNames(home: string): void {
+  for (const [legacyName, nextName] of [
+    ['claude-hub.db', 'codex-hub.db'],
+    ['claude-hub.log', 'codex-hub.log'],
+    ['claude-hub.pid', 'codex-hub.pid'],
+  ] as const) {
+    const legacyPath = join(home, legacyName);
+    const nextPath = join(home, nextName);
+    if (existsSync(nextPath) || !existsSync(legacyPath)) continue;
+    renameSync(legacyPath, nextPath);
+  }
+}
+
+/** Ensure the Codex Hub data directory exists, migrating legacy Tasker data if needed. */
 export function ensureClaudeHubDataHome(): string {
   const home = getClaudeHubHome();
   migrateClaudeHubDataHome(LEGACY_TASKER_HOME, home);
   if (!existsSync(home)) {
     mkdirSync(home, { recursive: true });
   }
+  migrateLegacyCodexHubFileNames(home);
   return home;
 }
 
-/** Ensure the parent directory for a Claude Hub file path exists. */
+/** Ensure the parent directory for a Codex Hub file path exists. */
 export function ensureClaudeHubParent(path: string): void {
   ensureClaudeHubDataHome();
   const parent = dirname(path);

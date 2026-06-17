@@ -1,5 +1,5 @@
 /**
- * Process scanner for detecting Claude Code instances
+ * Process scanner for detecting supported agent CLI instances
  *
  * Optimized to minimize system calls:
  * - Single ps command with all needed fields
@@ -12,6 +12,7 @@ import { logger } from '../../lib/logger.js';
 import { config } from '../../lib/config.js';
 import { ProcessScanError } from '../../lib/errors.js';
 import type { ClaudeProcessInfo } from './types.js';
+import type { AgentClient } from '../../domain/session/index.js';
 
 // Maximum valid PID (varies by OS, but 2^22 is common max)
 const MAX_PID = 4194304;
@@ -89,6 +90,7 @@ function parseLstartTimestamp(lstartStr: string): number | undefined {
 }
 
 interface ParsedPsProcessData {
+  client: AgentClient;
   pid: number;
   cpu: number;
   mem: number;
@@ -135,16 +137,45 @@ function splitWhitespaceWithLimit(line: string, limit: number): string[] {
   return parts;
 }
 
-/** Parse ps output and keep only main Claude processes */
-export function parseClaudePsOutput(output: string): ParsedPsProcessData[] {
+function isShellWrapper(rawLine: string): boolean {
+  return rawLine.includes('/bin/zsh') || rawLine.includes('/bin/bash');
+}
+
+function getProcessClient(command: string, rawLine: string): AgentClient | null {
+  const executable = command.split(/\s+/, 1)[0] || '';
+  const executableName = executable.split('/').pop()?.toLowerCase() ?? '';
+  const lowerLine = rawLine.toLowerCase();
+
+  if (executableName === 'claude' || executableName === 'claude-code') {
+    return 'claude';
+  }
+
+  if (executableName === 'codex') {
+    if (
+      lowerLine.includes('/applications/codex.app/') ||
+      lowerLine.includes(' app-server') ||
+      lowerLine.includes('codex_chronicle') ||
+      lowerLine.includes('node_repl') ||
+      lowerLine.includes('chrome-native-host')
+    ) {
+      return null;
+    }
+    return 'codex';
+  }
+
+  return null;
+}
+
+/** Parse ps output and keep only main supported agent CLI processes */
+export function parseAgentPsOutput(output: string): ParsedPsProcessData[] {
   const parsedProcesses: ParsedPsProcessData[] = [];
   const lstartCache = new Map<string, number | undefined>();
 
   const lines = output.split('\n');
   for (const rawLine of lines) {
     if (!rawLine) continue;
-    if (!rawLine.includes('claude')) continue;
-    if (rawLine.includes('/bin/zsh') || rawLine.includes('/bin/bash')) continue;
+    if (!rawLine.includes('claude') && !rawLine.toLowerCase().includes('codex')) continue;
+    if (isShellWrapper(rawLine)) continue;
 
     // Parse: PID %CPU %MEM TTY LSTART(5 fields) ARGS
     // Example: 12345  0.0  0.5 ttys001 Mon Dec  9 10:30:00 2024 /usr/bin/claude --flag
@@ -168,27 +199,34 @@ export function parseClaudePsOutput(output: string): ParsedPsProcessData[] {
 
     // args is command tail after first token (the binary path)
     const command = parts[9];
+    const client = getProcessClient(command, rawLine);
+    if (!client) continue;
     const firstSpace = command.indexOf(' ');
     const argsRaw = firstSpace >= 0 ? command.slice(firstSpace + 1) : '';
 
-    parsedProcesses.push({ pid, cpu, mem, tty, startTimeMs, argsRaw });
+    parsedProcesses.push({ client, pid, cpu, mem, tty, startTimeMs, argsRaw });
   }
 
   return parsedProcesses;
 }
 
-/** Scan for all Claude Code processes (optimized: 2 system calls instead of N+3) */
-export function scanClaudeProcesses(): ClaudeProcessInfo[] {
+/** Parse ps output and keep only main Claude processes. */
+export function parseClaudePsOutput(output: string): ParsedPsProcessData[] {
+  return parseAgentPsOutput(output).filter((process) => process.client === 'claude');
+}
+
+/** Scan for all supported agent CLI processes (optimized: 2 system calls instead of N+3) */
+export function scanAgentProcesses(): ClaudeProcessInfo[] {
   try {
     // Single ps command with all needed fields
     // Format: PID %CPU %MEM TTY LSTART ARGS
     // Using custom format to get lstart (which spans multiple columns)
     const output = execSync(
-      `ps -eo pid,pcpu,pmem,tty,lstart,args | grep -E '[c]laude'`,
+      `ps -eo pid,pcpu,pmem,tty,lstart,args | grep -Ei '[c]laude|[c]odex'`,
       { encoding: 'utf-8', timeout: 10000 }
     );
 
-    const parsedProcesses = parseClaudePsOutput(output);
+    const parsedProcesses = parseAgentPsOutput(output);
     const candidatePids = parsedProcesses.map((process) => process.pid);
 
     // Batch get working directories (single lsof call)
@@ -201,6 +239,7 @@ export function scanClaudeProcesses(): ClaudeProcessInfo[] {
       if (!cwd) continue; // Skip if we can't get working directory
 
       processes.push({
+        client: parsedProcess.client,
         pid: parsedProcess.pid,
         cwd,
         tty: parsedProcess.tty !== '??' ? parsedProcess.tty : undefined,
@@ -214,10 +253,10 @@ export function scanClaudeProcesses(): ClaudeProcessInfo[] {
     // Update cache
     processCache = { processes, timestamp: Date.now() };
 
-    logger.debug(`Found ${processes.length} Claude processes (2 syscalls)`);
+    logger.debug(`Found ${processes.length} agent processes (2 syscalls)`);
     return processes;
   } catch (error) {
-    // No claude processes found (grep returns exit code 1)
+    // No matching processes found (grep returns exit code 1)
     if ((error as { status?: number }).status === 1) {
       processCache = { processes: [], timestamp: Date.now() };
       return [];
@@ -226,6 +265,11 @@ export function scanClaudeProcesses(): ClaudeProcessInfo[] {
       error: (error as Error).message,
     });
   }
+}
+
+/** Backward-compatible alias for callers that still use the Claude-specific name. */
+export function scanClaudeProcesses(): ClaudeProcessInfo[] {
+  return scanAgentProcesses();
 }
 
 /** Check if a specific process is still running */
@@ -276,7 +320,8 @@ export function getProcessInfo(pid: number): ClaudeProcessInfo | null {
     const lines = output.trim().split('\n');
     if (lines.length === 0) return null;
 
-    const parts = lines[0].trim().split(/\s+/);
+    const rawLine = lines[0].trim();
+    const parts = rawLine.split(/\s+/);
     if (parts.length < 9) return null;
 
     const cpu = parseFloat(parts[0]) || 0;
@@ -284,9 +329,14 @@ export function getProcessInfo(pid: number): ClaudeProcessInfo | null {
     const tty = parts[2];
     const lstartStr = parts.slice(3, 8).join(' ');
     const startTime = parseLstartDate(lstartStr);
-    const args = parts.slice(9);
+    const argsLine = parts.slice(8).join(' ');
+    const client = getProcessClient(argsLine, rawLine);
+    if (!client) return null;
+    const firstSpace = argsLine.indexOf(' ');
+    const args = firstSpace >= 0 ? argsLine.slice(firstSpace + 1).split(/\s+/) : [];
 
     return {
+      client,
       pid,
       cwd,
       cpu,
