@@ -31,10 +31,10 @@ program
 // Register all commands
 registerCommands(program);
 
-// Default action: show list
+// Default action: start the web dashboard.
 program.action(async () => {
-  const { listCommand } = await import('./cli/list.js');
-  await listCommand({});
+  const { webCommand } = await import('./cli/web.js');
+  await webCommand({});
 });
 
 // Parse arguments, preserving async command lifetimes such as the web server.

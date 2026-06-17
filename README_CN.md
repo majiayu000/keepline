@@ -10,7 +10,7 @@
 
 [![npm version](https://img.shields.io/npm/v/keepline.svg?style=flat-square&color=00d4ff)](https://www.npmjs.com/package/keepline)
 [![npm downloads](https://img.shields.io/npm/dm/keepline.svg?style=flat-square&color=ff00ff)](https://www.npmjs.com/package/keepline)
-[![GitHub stars](https://img.shields.io/github/stars/majiayu000/keepline?style=flat-square&color=ffcc00)](https://github.com/majiayu000/keepline)
+[![GitHub stars](https://img.shields.io/github/stars/majiayu000/claude-hub?style=flat-square&color=ffcc00)](https://github.com/majiayu000/claude-hub)
 [![License](https://img.shields.io/badge/license-MIT-blue.svg?style=flat-square)](LICENSE)
 
 [English](README.md) | 中文
@@ -86,7 +86,7 @@ keepline web
 ### 方式三：从源码
 
 ```bash
-git clone https://github.com/majiayu000/keepline.git
+git clone https://github.com/majiayu000/claude-hub.git keepline
 cd keepline
 bun install && bun run build
 bun run start web
@@ -102,7 +102,7 @@ bun run start web
 
 ### 实时会话监控
 
-监控系统上所有 Claude Code 实例。状态、当前文件、最后工具、活跃度一目了然。
+监控系统上所有 Codex 和 Claude Code 会话。状态、当前文件、最后工具、活跃度一目了然。
 
 ```
 ┌─────────────────────────────────────────────────────────────────┐

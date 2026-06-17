@@ -52,7 +52,7 @@ export type TerminalApp = 'Terminal' | 'iTerm' | 'Warp' | 'auto'
 
 // POST /api/sessions/:id/recover body
 export interface RecoverBody {
-  method: 'resume' | 'continue' | 'new'
+  method?: 'resume' | 'continue' | 'new'
   openTerminal?: boolean
   skipPermissions?: boolean
   terminalApp?: TerminalApp

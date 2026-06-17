@@ -10,7 +10,7 @@
 
 [![npm version](https://img.shields.io/npm/v/keepline.svg?style=flat-square&color=00d4ff)](https://www.npmjs.com/package/keepline)
 [![npm downloads](https://img.shields.io/npm/dm/keepline.svg?style=flat-square&color=ff00ff)](https://www.npmjs.com/package/keepline)
-[![GitHub stars](https://img.shields.io/github/stars/majiayu000/keepline?style=flat-square&color=ffcc00)](https://github.com/majiayu000/keepline)
+[![GitHub stars](https://img.shields.io/github/stars/majiayu000/claude-hub?style=flat-square&color=ffcc00)](https://github.com/majiayu000/claude-hub)
 [![License](https://img.shields.io/badge/license-MIT-blue.svg?style=flat-square)](LICENSE)
 
 [Quick Start](#-quick-start) | [Features](#-features) | [Screenshots](#-screenshots) | [Documentation](#-documentation)
@@ -84,7 +84,7 @@ keepline web
 ### Option 3: From source
 
 ```bash
-git clone https://github.com/majiayu000/keepline.git
+git clone https://github.com/majiayu000/claude-hub.git keepline
 cd keepline
 bun install && bun run build
 bun run start web
@@ -105,13 +105,13 @@ If you see an error like **"Keepline is damaged and can't be opened"** when runn
 **Fix it with:**
 
 ```bash
-xattr -cr /Applications/Codex\ Hub.app
+xattr -cr /Applications/Keepline.app
 ```
 
 Or if downloaded elsewhere:
 
 ```bash
-xattr -cr ~/Downloads/Codex\ Hub.app
+xattr -cr ~/Downloads/Keepline.app
 ```
 
 This removes the quarantine attribute that macOS adds to downloaded files.
@@ -122,7 +122,7 @@ This removes the quarantine attribute that macOS adds to downloaded files.
 
 ### Real-time Session Monitoring
 
-Monitor all Claude Code instances across your system. See status, current file, last tool, and activity at a glance.
+Monitor Codex and Claude Code sessions across your system. See status, current file, last tool, and activity at a glance.
 
 ```
 ┌─────────────────────────────────────────────────────────────────┐
@@ -373,8 +373,8 @@ bun test             # Run tests
 
 ## Support
 
-- [GitHub Issues](https://github.com/majiayu000/keepline/issues)
-- [Discussions](https://github.com/majiayu000/keepline/discussions)
+- [GitHub Issues](https://github.com/majiayu000/claude-hub/issues)
+- [Discussions](https://github.com/majiayu000/claude-hub/discussions)
 
 ---
 
@@ -382,7 +382,7 @@ bun test             # Run tests
 
 **Built for Codex and Claude Code power users**
 
-[GitHub](https://github.com/majiayu000/keepline) | [npm](https://www.npmjs.com/package/keepline) | [Documentation](https://keepline.dev)
+[GitHub](https://github.com/majiayu000/claude-hub) | [npm](https://www.npmjs.com/package/keepline) | [Documentation](https://keepline.dev)
 
 MIT License
 
