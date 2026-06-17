@@ -31,12 +31,12 @@ function buildApp(maxRequests: number, windowMs: number) {
 describe('rateLimit middleware', () => {
   beforeEach(() => {
     __resetRateLimitStoreForTests();
-    delete process.env.CLAUDE_HUB_TRUST_PROXY;
+    delete process.env.KEEPLINE_TRUST_PROXY;
   });
 
   afterEach(() => {
     __resetRateLimitStoreForTests();
-    delete process.env.CLAUDE_HUB_TRUST_PROXY;
+    delete process.env.KEEPLINE_TRUST_PROXY;
   });
 
   test('emits IETF rate-limit headers on a normal response', async () => {
@@ -93,8 +93,8 @@ describe('rateLimit middleware', () => {
     expect(r3.status).toBe(429);
   });
 
-  test('honours x-forwarded-for ONLY when CLAUDE_HUB_TRUST_PROXY=true', async () => {
-    process.env.CLAUDE_HUB_TRUST_PROXY = 'true';
+  test('honours x-forwarded-for ONLY when KEEPLINE_TRUST_PROXY=true', async () => {
+    process.env.KEEPLINE_TRUST_PROXY = 'true';
     const app = buildApp(1, 60_000);
 
     const a = await app.fetch(
@@ -122,7 +122,7 @@ describe('rateLimit middleware', () => {
   });
 
   test('uses left-most address from a comma-separated x-forwarded-for', async () => {
-    process.env.CLAUDE_HUB_TRUST_PROXY = 'true';
+    process.env.KEEPLINE_TRUST_PROXY = 'true';
     const app = buildApp(1, 60_000);
 
     // Both requests claim originating client 9.9.9.9, with different proxy

@@ -34,7 +34,7 @@ export const Header = memo(function Header({
   return (
     <header className={styles.header} role="banner">
       <div className={styles.brand}>
-        <h1 className={styles.title}>CODEX HUB</h1>
+        <h1 className={styles.title}>KEEPLINE</h1>
         <span className={styles.subtitle}>Codex and Claude session control center</span>
       </div>
       <div className={styles.actions}>

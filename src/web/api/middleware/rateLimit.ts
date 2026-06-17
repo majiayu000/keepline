@@ -7,7 +7,7 @@
  * - Default key is the authoritative connection address from Hono's
  *   `getConnInfo` (Bun adapter), so callers cannot bypass the limiter by
  *   spoofing `x-forwarded-for`. Forwarded headers are only honored when
- *   `CLAUDE_HUB_TRUST_PROXY=true`, in which case the *left-most* address of
+ *   `KEEPLINE_TRUST_PROXY=true`, in which case the *left-most* address of
  *   `x-forwarded-for` is used (RFC 7239 / Express convention).
  * - When neither a connection address nor a trusted forwarded header is
  *   available, the request is bucketed under a stable per-process anonymous
@@ -35,10 +35,10 @@ import { logger } from '../../../lib/logger.js';
  * across processes). The check is a single env-var read; the cost is
  * negligible relative to the rest of the request path.
  *
- * Off by default — Codex Hub binds to loopback only by default.
+ * Off by default — Keepline binds to loopback only by default.
  */
 function trustProxy(): boolean {
-  return process.env.CLAUDE_HUB_TRUST_PROXY === 'true';
+  return process.env.KEEPLINE_TRUST_PROXY === 'true';
 }
 
 /** Hard cap on distinct keys before recency eviction kicks in. */

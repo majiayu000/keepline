@@ -22,13 +22,13 @@ export async function watchCommand(options: WatchOptions): Promise<void> {
     ? parseInt(options.interval, 10) * 1000
     : config.get().scanInterval;
 
-  console.log(chalk.bold('Codex Hub - Live Session Monitor'));
+  console.log(chalk.bold('Keepline - Live Session Monitor'));
   console.log(chalk.gray(`Refreshing every ${interval / 1000} seconds. Press Ctrl+C to stop.\n`));
 
   const refresh = async (): Promise<void> => {
     // Clear screen
     console.clear();
-    console.log(chalk.bold('Codex Hub - Live Session Monitor'));
+    console.log(chalk.bold('Keepline - Live Session Monitor'));
     console.log(chalk.gray(`Last update: ${new Date().toLocaleTimeString()}\n`));
 
     const spinner = ora('Scanning...').start();

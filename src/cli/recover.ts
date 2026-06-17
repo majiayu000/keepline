@@ -127,5 +127,5 @@ export async function recoverListCommand(): Promise<void> {
     console.log('');
   });
 
-  console.log(chalk.gray('Use: tasker recover <number> to recover a session'));
+  console.log(chalk.gray('Use: keepline recover <number> to recover a session'));
 }

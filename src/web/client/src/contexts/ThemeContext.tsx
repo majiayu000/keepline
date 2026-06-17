@@ -18,7 +18,7 @@ interface ThemeContextType {
 
 const ThemeContext = createContext<ThemeContextType | null>(null)
 
-const STORAGE_KEY = 'tasker-theme'
+const STORAGE_KEY = 'keepline-theme'
 
 export function ThemeProvider({ children }: { children: ReactNode }) {
   const [theme, setThemeState] = useState<Theme>(() => {

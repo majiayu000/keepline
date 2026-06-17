@@ -99,6 +99,11 @@ interface ParsedPsProcessData {
   argsRaw: string;
 }
 
+interface ProcessCommandMatch {
+  client: AgentClient;
+  argStartTokenIndex: number;
+}
+
 function isAsciiWhitespace(code: number): boolean {
   return code === 32 || code === 9 || code === 10 || code === 13;
 }
@@ -141,26 +146,48 @@ function isShellWrapper(rawLine: string): boolean {
   return rawLine.includes('/bin/zsh') || rawLine.includes('/bin/bash');
 }
 
-function getProcessClient(command: string, rawLine: string): AgentClient | null {
-  const executable = command.split(/\s+/, 1)[0] || '';
-  const executableName = executable.split('/').pop()?.toLowerCase() ?? '';
-  const lowerLine = rawLine.toLowerCase();
+function getAgentClientFromExecutableName(executableName: string): AgentClient | null {
+  if (executableName === 'claude' || executableName === 'claude-code') return 'claude';
+  if (executableName === 'codex') return 'codex';
+  return null;
+}
 
-  if (executableName === 'claude' || executableName === 'claude-code') {
-    return 'claude';
+function isIgnoredCodexProcess(rawLine: string): boolean {
+  const lowerLine = rawLine.toLowerCase();
+  return (
+    lowerLine.includes('/applications/codex.app/') ||
+    lowerLine.includes(' app-server') ||
+    lowerLine.includes('codex_chronicle') ||
+    lowerLine.includes('node_repl') ||
+    lowerLine.includes('chrome-native-host')
+  );
+}
+
+function getProcessCommandMatch(command: string, rawLine: string): ProcessCommandMatch | null {
+  const commandTokens = command.trim().split(/\s+/).filter(Boolean);
+  if (commandTokens.length === 0) return null;
+
+  const executableName = commandTokens[0].split('/').pop()?.toLowerCase() ?? '';
+  const directClient = getAgentClientFromExecutableName(executableName);
+  if (directClient) {
+    if (directClient === 'codex' && isIgnoredCodexProcess(rawLine)) return null;
+    return { client: directClient, argStartTokenIndex: 1 };
   }
 
-  if (executableName === 'codex') {
-    if (
-      lowerLine.includes('/applications/codex.app/') ||
-      lowerLine.includes(' app-server') ||
-      lowerLine.includes('codex_chronicle') ||
-      lowerLine.includes('node_repl') ||
-      lowerLine.includes('chrome-native-host')
-    ) {
-      return null;
-    }
-    return 'codex';
+  if (executableName !== 'node' && executableName !== 'nodejs') {
+    return null;
+  }
+
+  for (let index = 1; index < commandTokens.length; index++) {
+    const token = commandTokens[index];
+    if (token.startsWith('-')) continue;
+
+    const shimName = token.split('/').pop()?.toLowerCase() ?? '';
+    const shimClient = getAgentClientFromExecutableName(shimName);
+    if (!shimClient) continue;
+
+    if (shimClient === 'codex' && isIgnoredCodexProcess(rawLine)) return null;
+    return { client: shimClient, argStartTokenIndex: index + 1 };
   }
 
   return null;
@@ -199,12 +226,12 @@ export function parseAgentPsOutput(output: string): ParsedPsProcessData[] {
 
     // args is command tail after first token (the binary path)
     const command = parts[9];
-    const client = getProcessClient(command, rawLine);
-    if (!client) continue;
-    const firstSpace = command.indexOf(' ');
-    const argsRaw = firstSpace >= 0 ? command.slice(firstSpace + 1) : '';
+    const commandMatch = getProcessCommandMatch(command, rawLine);
+    if (!commandMatch) continue;
+    const commandTokens = command.trim().split(/\s+/).filter(Boolean);
+    const argsRaw = commandTokens.slice(commandMatch.argStartTokenIndex).join(' ');
 
-    parsedProcesses.push({ client, pid, cpu, mem, tty, startTimeMs, argsRaw });
+    parsedProcesses.push({ client: commandMatch.client, pid, cpu, mem, tty, startTimeMs, argsRaw });
   }
 
   return parsedProcesses;
@@ -330,13 +357,16 @@ export function getProcessInfo(pid: number): ClaudeProcessInfo | null {
     const lstartStr = parts.slice(3, 8).join(' ');
     const startTime = parseLstartDate(lstartStr);
     const argsLine = parts.slice(8).join(' ');
-    const client = getProcessClient(argsLine, rawLine);
-    if (!client) return null;
-    const firstSpace = argsLine.indexOf(' ');
-    const args = firstSpace >= 0 ? argsLine.slice(firstSpace + 1).split(/\s+/) : [];
+    const commandMatch = getProcessCommandMatch(argsLine, rawLine);
+    if (!commandMatch) return null;
+    const args = argsLine
+      .trim()
+      .split(/\s+/)
+      .filter(Boolean)
+      .slice(commandMatch.argStartTokenIndex);
 
     return {
-      client,
+      client: commandMatch.client,
       pid,
       cwd,
       cpu,

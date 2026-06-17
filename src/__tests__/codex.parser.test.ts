@@ -11,7 +11,7 @@ import {
 const tempDirs: string[] = [];
 
 function createCodexJsonlFile(lines: Array<Record<string, unknown> | string>): string {
-  const dir = mkdtempSync(join(tmpdir(), 'codex-hub-jsonl-'));
+  const dir = mkdtempSync(join(tmpdir(), 'keepline-jsonl-'));
   tempDirs.push(dir);
   const filePath = join(dir, 'rollout-019ed4a3-2186-7e51-9aa1-ca1e376549b8.jsonl');
   const contents = lines

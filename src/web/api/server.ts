@@ -1,5 +1,5 @@
 /**
- * Web API Server for Codex Hub
+ * Web API Server for Keepline
  * Provides REST endpoints for session management
  *
  * All endpoints include input validation
@@ -152,7 +152,7 @@ export async function startWebServer(port: number = 3377) {
   logger.info(`Starting web server on port ${port}`);
 
   const terminalConfig = config.get().webTerminal;
-  const hostname = process.env.CLAUDE_HUB_HOST || '127.0.0.1';
+  const hostname = process.env.KEEPLINE_HOST || '127.0.0.1';
 
   const server = Bun.serve<{ type: 'dashboard' | 'terminal' }>({
     hostname,

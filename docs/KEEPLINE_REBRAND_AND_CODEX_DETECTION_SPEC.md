@@ -1,28 +1,27 @@
-# Codex Hub Rebrand and Codex Detection Spec
+# Keepline Rebrand and Codex Detection Spec
 
 ## 背景
 
-项目原名为 Claude Hub，核心能力是扫描 Claude Code 会话、进程、成本和恢复状态。当前目标是把产品主品牌升级为 Codex Hub，并在不破坏 Claude Code 兼容能力的前提下，新增 Codex CLI 会话检测与恢复。
+项目原名为 Claude Hub，核心能力是扫描 Claude Code 会话、进程、成本和恢复状态。当前目标是把产品主品牌升级为 Keepline，并新增 Codex CLI 会话检测与恢复。此版本不保留旧品牌兼容入口、旧品牌环境变量或旧品牌数据目录 fallback。
 
 GitHub 跟踪 issue: https://github.com/majiayu000/claude-hub/issues/34
 
 ## 目标
 
-1. 产品主品牌、CLI 主命令、Web 标题、README 和主要用户可见文案改为 Codex Hub。
-2. 保留 `claude-hub` 作为兼容 bin，避免已有用户脚本立刻失效。
+1. 产品主品牌、CLI 主命令、Web 标题、README 和主要用户可见文案改为 Keepline。
+2. CLI 只暴露 `keepline` 主命令，不保留 `claude-hub` 或 `codex-hub` alias。
 3. 会话模型增加 `client` 字段，用于区分 `claude` 与 `codex`。
 4. 扫描 `~/.codex/sessions/**/rollout-*.jsonl`，解析 Codex 会话元数据、消息、工具调用和当前文件。
 5. 进程扫描同时检测 Claude Code 和 Codex CLI 主进程，并过滤 Codex.app、app-server、chronicle、node_repl 等非交互会话 helper。
 6. 同目录多客户端会话不能互相匹配错误进程。
 7. API、Web UI、内嵌终端和 recovery flow 都能处理 Codex session。
-8. 数据目录默认迁移到 `~/.codex-hub`，同时保留 `CLAUDE_HUB_HOME` 兼容。
+8. 数据目录固定为 `~/.keepline`，仅支持 `KEEPLINE_HOME` 显式覆盖。
 
 ## 非目标
 
 1. 不移除 Claude Code 支持。
 2. 不把 Claude hooks、Claude plans、Claude usage 的内部实现一次性重写为通用 provider 架构。
-3. 不重命名所有历史测试临时目录或旧兼容符号。
-4. 不在本 PR 内完成 GitHub 仓库真实 rename、npm package 发布、旧 npm 包 deprecation。
+3. 不在本 PR 内完成 GitHub 仓库真实 rename 或 npm package 发布。
 
 ## 用户体验
 
@@ -31,23 +30,19 @@ GitHub 跟踪 issue: https://github.com/majiayu000/claude-hub/issues/34
 主命令改为：
 
 ```bash
-codex-hub
-codex-hub list
-codex-hub watch
-codex-hub recover <session-id>
-codex-hub web
+keepline
+keepline list
+keepline watch
+keepline recover <session-id>
+keepline web
 ```
 
-兼容命令继续可用：
-
-```bash
-claude-hub
-```
+旧命令 `claude-hub` / `codex-hub` 不再作为 bin 暴露。
 
 ### Web
 
-1. 页面标题为 Codex Hub。
-2. Header 显示 Codex Hub。
+1. 页面标题为 Keepline。
+2. Header 显示 Keepline。
 3. Session card 展示 client badge: `Claude` 或 `Codex`。
 4. 搜索框支持搜索 `claude` / `codex`。
 5. Terminal tab 的历史会话列表展示 client tag，并按 client 选择 resume 命令。
@@ -215,36 +210,21 @@ Codex sessions 返回 tools/details；sub-agents 为空。Claude sessions 保留
 新安装默认数据目录：
 
 ```text
-~/.codex-hub
+~/.keepline
 ```
 
-兼容环境变量：
+环境变量：
 
 ```text
-CODEX_HUB_HOME
-CLAUDE_HUB_HOME
+KEEPLINE_HOME
 ```
 
 解析优先级：
 
-1. `CODEX_HUB_HOME`
-2. `CLAUDE_HUB_HOME`
-3. 如果 `~/.codex-hub` 不存在但 `~/.claude-hub` 存在，继续读取 `~/.claude-hub`
-4. `~/.codex-hub`
+1. `KEEPLINE_HOME`
+2. `~/.keepline`
 
-自动迁移来源：
-
-1. `~/.tasker`
-
-`~/.claude-hub` 不会在普通启动或测试中被自动移动，避免无提示搬迁真实用户数据。仓库 rename/npm rename 后，可以通过显式迁移命令或发布说明引导用户迁移到 `~/.codex-hub`。
-
-在新 home 下检测到旧文件名时，会迁移为新文件名：
-
-```text
-claude-hub.db  -> codex-hub.db
-claude-hub.log -> codex-hub.log
-claude-hub.pid -> codex-hub.pid
-```
+不读取 `CLAUDE_HUB_HOME`、`CODEX_HUB_HOME`、`~/.claude-hub`、`~/.codex-hub` 或 `~/.tasker`。不自动移动旧目录或改写旧文件名。
 
 ## 测试要求
 
@@ -286,8 +266,8 @@ bun test
 
 ## 验收标准
 
-1. `codex-hub --help` 显示 Codex Hub 说明。
-2. `claude-hub --help` 仍能工作。
+1. `keepline --help` 显示 Keepline 说明。
+2. `claude-hub --help` 和 `codex-hub --help` 不作为本包 bin 提供。
 3. `bun run typecheck` 通过。
 4. `bun test` 通过，或明确记录非本 PR 引入的失败。
 5. 数据库 migration 后旧 sessions 的 `client` 为 `claude`。
@@ -295,12 +275,11 @@ bun test
 7. Codex session card 可以展开查看 first message、last response、tool calls。
 8. Codex lost session recovery command 使用 `codex resume <raw uuid>`。
 9. 同一个 cwd 下的 Claude 和 Codex 进程不会互相抢占 session match。
-10. README 和 Web 首屏不再把产品主名显示为 Claude Hub。
+10. README 和 Web 首屏只显示 Keepline 作为产品主名。
 
 ## 后续事项
 
-1. GitHub repository 从 `claude-hub` rename 到 `codex-hub`。
-2. npm 发布 `codex-hub`。
-3. 对旧 npm 包 `claude-hub` 增加 deprecation 或兼容 wrapper 策略。
-4. 把 Claude-specific plans/hooks/usage 模块逐步抽象为 multi-client provider。
-5. 增加 Codex usage/cost 解析能力，如果 Codex CLI 后续公开稳定 token schema。
+1. GitHub repository 从 `claude-hub` rename 到 `keepline`。
+2. npm 发布 `keepline`。
+3. 把 Claude-specific plans/hooks/usage 模块逐步抽象为 multi-client provider。
+4. 增加 Codex usage/cost 解析能力，如果 Codex CLI 后续公开稳定 token schema。

@@ -1,11 +1,11 @@
 /**
- * Logger utility for Codex Hub.
+ * Logger utility for Keepline.
  */
 
 import chalk from 'chalk';
 import { appendFileSync, existsSync, mkdirSync } from 'fs';
 import { dirname } from 'path';
-import { CLAUDE_HUB_LOG, ensureClaudeHubDataHome } from './paths.js';
+import { KEEPLINE_LOG, ensureKeeplineDataHome } from './paths.js';
 
 export type LogLevel = 'debug' | 'info' | 'warn' | 'error';
 
@@ -54,12 +54,12 @@ class Logger {
   private writeToFile(message: string): void {
     if (!this.options.file) return;
 
-    ensureClaudeHubDataHome();
-    const dir = dirname(CLAUDE_HUB_LOG);
+    ensureKeeplineDataHome();
+    const dir = dirname(KEEPLINE_LOG);
     if (!existsSync(dir)) {
       mkdirSync(dir, { recursive: true });
     }
-    appendFileSync(CLAUDE_HUB_LOG, message + '\n');
+    appendFileSync(KEEPLINE_LOG, message + '\n');
   }
 
   private log(level: LogLevel, message: string, data?: unknown): void {

@@ -1,6 +1,6 @@
 #!/usr/bin/env bun
 /**
- * Codex Hub - The command center for agent coding sessions
+ * Keepline - The command center for agent coding sessions
  *
  * Never lose your Codex or Claude Code work again.
  * Real-time monitoring, automatic recovery, cost tracking,
@@ -17,14 +17,14 @@ const cfg = config.get();
 logger.configure({
   level: cfg.logLevel,
   file: cfg.fileLogging,
-  console: !process.env.CODEX_HUB_DAEMON && !process.env.CLAUDE_HUB_DAEMON, // Disable console in daemon mode
+  console: !process.env.KEEPLINE_DAEMON, // Disable console in daemon mode
 });
 
 // Create CLI program
 const program = new Command();
 
 program
-  .name('codex-hub')
+  .name('keepline')
   .version('1.0.0')
   .description('The command center for Codex and Claude Code sessions - Never lose your work again');
 

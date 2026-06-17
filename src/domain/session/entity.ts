@@ -12,7 +12,7 @@ import type {
 
 /** Session entity - represents a monitored agent session */
 export interface Session extends Entity {
-  /** Client-scoped session ID used by Codex Hub. */
+  /** Client-scoped session ID used by Keepline. */
   sessionId: string;
 
   /** Agent client that owns this session. */

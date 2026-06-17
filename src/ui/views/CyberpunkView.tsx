@@ -74,10 +74,10 @@ function Header(): React.ReactElement {
     <Box flexDirection="column" marginBottom={1}>
       <Box>
         <Gradient name="atlas">
-          <Text bold>▀█▀ ▄▀█ █▀ █▄▀ █▀▀ █▀█</Text>
+          <Text bold>█▄▀ █▀▀ █▀▀ █▀█ █░░ █ █▄░█ █▀▀</Text>
         </Gradient>
         <Text color={C.dim}>  ║  </Text>
-        <Text color={C.cyan} bold>CLAUDE CODE MONITOR</Text>
+        <Text color={C.cyan} bold>KEEPLINE</Text>
         <Text color={C.dim}> v1.0</Text>
       </Box>
       <Text color={C.border}>{'─'.repeat(70)}</Text>
@@ -159,13 +159,13 @@ function Footer({ hasLost }: { hasLost: boolean }): React.ReactElement {
       <Box>
         <Text color={C.magenta} bold>CMD</Text>
         <Text color={C.dim}>::</Text>
-        <Text color={C.text}> list=</Text><Text color={C.yellow}>tasker ls</Text>
+        <Text color={C.text}> list=</Text><Text color={C.yellow}>keepline ls</Text>
         <Text color={C.dim}>  │  </Text>
-        <Text color={C.text}>watch=</Text><Text color={C.yellow}>tasker w</Text>
+        <Text color={C.text}>watch=</Text><Text color={C.yellow}>keepline w</Text>
         {hasLost && (
           <>
             <Text color={C.dim}>  │  </Text>
-            <Text color={C.text}>recover=</Text><Text color={C.yellow}>tasker r {'<n>'}</Text>
+            <Text color={C.text}>recover=</Text><Text color={C.yellow}>keepline r {'<n>'}</Text>
           </>
         )}
       </Box>

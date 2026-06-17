@@ -60,8 +60,8 @@ function addConfiguredOrigin(allowed: Set<string>, origin: string) {
 
 function getConfiguredAllowedOrigins(): string[] {
   const values = [
-    process.env.CLAUDE_HUB_PUBLIC_ORIGIN,
-    process.env.CLAUDE_HUB_ALLOWED_ORIGINS,
+    process.env.KEEPLINE_PUBLIC_ORIGIN,
+    process.env.KEEPLINE_ALLOWED_ORIGINS,
   ];
   return values
     .flatMap((value) => (value ?? '').split(','))

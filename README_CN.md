@@ -1,16 +1,16 @@
 <div align="center">
 
-<img src="docs/assets/logo.svg" alt="Codex Hub Logo" width="120" />
+<img src="docs/assets/logo.svg" alt="Keepline Logo" width="120" />
 
-# Codex Hub
+# Keepline
 
 ### 再也不会丢失你的 Codex 或 Claude Code 工作了
 
 **Agent CLI 重度用户的控制中心**
 
-[![npm version](https://img.shields.io/npm/v/codex-hub.svg?style=flat-square&color=00d4ff)](https://www.npmjs.com/package/codex-hub)
-[![npm downloads](https://img.shields.io/npm/dm/codex-hub.svg?style=flat-square&color=ff00ff)](https://www.npmjs.com/package/codex-hub)
-[![GitHub stars](https://img.shields.io/github/stars/majiayu000/codex-hub?style=flat-square&color=ffcc00)](https://github.com/majiayu000/codex-hub)
+[![npm version](https://img.shields.io/npm/v/keepline.svg?style=flat-square&color=00d4ff)](https://www.npmjs.com/package/keepline)
+[![npm downloads](https://img.shields.io/npm/dm/keepline.svg?style=flat-square&color=ff00ff)](https://www.npmjs.com/package/keepline)
+[![GitHub stars](https://img.shields.io/github/stars/majiayu000/keepline?style=flat-square&color=ffcc00)](https://github.com/majiayu000/keepline)
 [![License](https://img.shields.io/badge/license-MIT-blue.svg?style=flat-square)](LICENSE)
 
 [English](README.md) | 中文
@@ -19,7 +19,7 @@
 
 <br />
 
-<img src="docs/assets/hero-demo.gif" alt="Codex Hub Demo" width="800" />
+<img src="docs/assets/hero-demo.gif" alt="Keepline Demo" width="800" />
 
 </div>
 
@@ -36,21 +36,21 @@
 
 ## 解决方案
 
-**Codex Hub** 实时监控 Codex 和 Claude Code 会话，自动恢复崩溃的会话，追踪可用的费用数据，并在会话间保持上下文。
+**Keepline** 实时监控 Codex 和 Claude Code 会话，自动恢复崩溃的会话，追踪可用的费用数据，并在会话间保持上下文。
 
-改名和 Codex 检测的完整实现说明见 [Codex Hub Rebrand and Codex Detection Spec](docs/CODEX_HUB_REBRAND_AND_CODEX_DETECTION_SPEC.md)。
+改名和 Codex 检测的完整实现说明见 [Keepline Rebrand and Codex Detection Spec](docs/KEEPLINE_REBRAND_AND_CODEX_DETECTION_SPEC.md)。
 
 ```bash
-bunx codex-hub
+bunx keepline
 ```
 
 就这么简单。打开 `http://127.0.0.1:3377` 开始掌控。
 
 ---
 
-## 为什么选择 Codex Hub？
+## 为什么选择 Keepline？
 
-|  | 没有 Codex Hub | 有 Codex Hub |
+|  | 没有 Keepline | 有 Keepline |
 |--|-----------------|---------------|
 | **终端崩溃** | 丢失所有上下文，从头开始 | 一键恢复，完整上下文 |
 | **多个会话** | 切换终端，容易搞混 | 所有会话一个仪表板 |
@@ -60,7 +60,7 @@ bunx codex-hub
 
 ## 仓库范围
 
-当前这个仓库只保留 Codex Hub 主应用，以及仓库内的 `menubar-tauri` 配套目录。
+当前这个仓库只保留 Keepline 主应用，以及仓库内的 `menubar-tauri` 配套目录。
 
 之前混在这里的实验 runner 工作区已经迁移到同级目录 `../Claude-Code-Monitor-extracted/`，不再属于这个仓库的构建和测试范围。
 
@@ -71,7 +71,7 @@ bunx codex-hub
 ### 方式一：bunx（推荐）
 
 ```bash
-bunx codex-hub
+bunx keepline
 ```
 
 需要先安装 Bun 1.1+。
@@ -79,22 +79,22 @@ bunx codex-hub
 ### 方式二：全局安装
 
 ```bash
-bun install -g codex-hub
-codex-hub web
+bun install -g keepline
+keepline web
 ```
 
 ### 方式三：从源码
 
 ```bash
-git clone https://github.com/majiayu000/codex-hub.git
-cd codex-hub
+git clone https://github.com/majiayu000/keepline.git
+cd keepline
 bun install && bun run build
 bun run start web
 ```
 
 打开 **http://127.0.0.1:3377**
 
-默认只绑定本机回环地址；如果你确实要对外暴露，再设置 `CLAUDE_HUB_HOST`。
+默认只绑定本机回环地址；如果你确实要对外暴露，再设置 `KEEPLINE_HOST`。
 
 ---
 
@@ -120,7 +120,7 @@ bun run start web
 终端崩溃？会话丢失？几秒钟恢复，完整上下文。
 
 ```bash
-codex-hub recover <session-id>
+keepline recover <session-id>
 ```
 
 三种恢复方式：
@@ -153,7 +153,7 @@ codex-hub recover <session-id>
 
 ### 跨会话记忆
 
-Codex Hub 实现了"接力赛"模式 — 你的进度在会话间持久保存。
+Keepline 实现了"接力赛"模式 — 你的进度在会话间持久保存。
 
 ```
 ┌─────────────────────────────────────────────────────────────────┐
@@ -216,31 +216,31 @@ Codex Hub 实现了"接力赛"模式 — 你的进度在会话间持久保存。
 
 ```bash
 # 核心命令
-codex-hub                      # 启动 Web 仪表板（默认）
-codex-hub list                 # 列出所有会话
-codex-hub watch                # 终端实时监控
-codex-hub recover <id>         # 恢复丢失的会话
+keepline                      # 启动 Web 仪表板（默认）
+keepline list                 # 列出所有会话
+keepline watch                # 终端实时监控
+keepline recover <id>         # 恢复丢失的会话
 
 # 会话管理
-codex-hub list -s running      # 按状态过滤
-codex-hub list -d ./my-app     # 按目录过滤
+keepline list -s running      # 按状态过滤
+keepline list -d ./my-app     # 按目录过滤
 
 # 记忆管理
-codex-hub memory list          # 列出会话记忆
-codex-hub memory show <id>     # 显示记忆详情
-codex-hub memory export <id>   # 导出恢复上下文
+keepline memory list          # 列出会话记忆
+keepline memory show <id>     # 显示记忆详情
+keepline memory export <id>   # 导出恢复上下文
 
 # 后台服务
-codex-hub daemon start         # 启动后台监控
-codex-hub daemon stop          # 停止守护进程
-codex-hub hooks install        # 安装 Claude 兼容 hooks
+keepline daemon start         # 启动后台监控
+keepline daemon stop          # 停止守护进程
+keepline hooks install        # 安装 Claude 兼容 hooks
 ```
 
 ---
 
 ## 对比
 
-| 功能 | 手动 | claude-mem | **Codex Hub** |
+| 功能 | 手动 | claude-mem | **Keepline** |
 |------|:----:|:----------:|:--------------:|
 | 多会话监控 | - | - | **支持** |
 | 会话恢复 | - | - | **3 种方式** |
@@ -257,13 +257,13 @@ codex-hub hooks install        # 安装 Claude 兼容 hooks
 
 ## 配置
 
-新安装的数据存储在 `~/.codex-hub/`。已有 `~/.claude-hub/` 安装会继续兼容读取：
+Keepline 默认把数据存储在 `~/.keepline/`：
 
 ```
-~/.codex-hub/
-├── codex-hub.db    # SQLite 数据库
+~/.keepline/
+├── keepline.db    # SQLite 数据库
 ├── config.json      # 配置文件
-└── codex-hub.log   # 日志文件
+└── keepline.log   # 日志文件
 ```
 
 ---

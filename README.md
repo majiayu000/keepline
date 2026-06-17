@@ -1,23 +1,23 @@
 <div align="center">
 
-<img src="docs/assets/logo.svg" alt="Codex Hub Logo" width="120" />
+<img src="docs/assets/logo.svg" alt="Keepline Logo" width="120" />
 
-# Codex Hub
+# Keepline
 
 ### Never lose your Codex or Claude Code work again.
 
 **The command center for agent CLI power users**
 
-[![npm version](https://img.shields.io/npm/v/codex-hub.svg?style=flat-square&color=00d4ff)](https://www.npmjs.com/package/codex-hub)
-[![npm downloads](https://img.shields.io/npm/dm/codex-hub.svg?style=flat-square&color=ff00ff)](https://www.npmjs.com/package/codex-hub)
-[![GitHub stars](https://img.shields.io/github/stars/majiayu000/codex-hub?style=flat-square&color=ffcc00)](https://github.com/majiayu000/codex-hub)
+[![npm version](https://img.shields.io/npm/v/keepline.svg?style=flat-square&color=00d4ff)](https://www.npmjs.com/package/keepline)
+[![npm downloads](https://img.shields.io/npm/dm/keepline.svg?style=flat-square&color=ff00ff)](https://www.npmjs.com/package/keepline)
+[![GitHub stars](https://img.shields.io/github/stars/majiayu000/keepline?style=flat-square&color=ffcc00)](https://github.com/majiayu000/keepline)
 [![License](https://img.shields.io/badge/license-MIT-blue.svg?style=flat-square)](LICENSE)
 
 [Quick Start](#-quick-start) | [Features](#-features) | [Screenshots](#-screenshots) | [Documentation](#-documentation)
 
 <br />
 
-<img src="docs/assets/hero-demo.gif" alt="Codex Hub Demo" width="800" />
+<img src="docs/assets/hero-demo.gif" alt="Keepline Demo" width="800" />
 
 </div>
 
@@ -34,21 +34,21 @@ You're deep in a coding session with Codex or Claude Code. Everything is going g
 
 ## The Solution
 
-**Codex Hub** monitors your Codex and Claude Code sessions in real-time, automatically recovers crashed sessions, tracks costs where supported, and preserves context across iterations.
+**Keepline** monitors your Codex and Claude Code sessions in real-time, automatically recovers crashed sessions, tracks costs where supported, and preserves context across iterations.
 
-For the implementation details behind the rename and Codex detection, see [Codex Hub Rebrand and Codex Detection Spec](docs/CODEX_HUB_REBRAND_AND_CODEX_DETECTION_SPEC.md).
+For the implementation details behind the rename and Codex detection, see [Keepline Rebrand and Codex Detection Spec](docs/KEEPLINE_REBRAND_AND_CODEX_DETECTION_SPEC.md).
 
 ```bash
-bunx codex-hub
+bunx keepline
 ```
 
 That is it. Open `http://127.0.0.1:3377` and take control.
 
 ---
 
-## Why Codex Hub?
+## Why Keepline?
 
-|  | Without Codex Hub | With Codex Hub |
+|  | Without Keepline | With Keepline |
 |--|-------------------|-----------------|
 | **Terminal crash** | Lose all context, start over | One-click recovery with full context |
 | **Multiple sessions** | Switch terminals, lose track | See all sessions in one dashboard |
@@ -58,7 +58,7 @@ That is it. Open `http://127.0.0.1:3377` and take control.
 
 ## Repository Scope
 
-This repository now contains the Codex Hub core application and the in-repo `menubar-tauri` companion only.
+This repository now contains the Keepline core application and the in-repo `menubar-tauri` companion only.
 
 Experimental runner workspaces that used to live here have been moved out to the sibling directory `../Claude-Code-Monitor-extracted/` and are no longer part of this repository's build or test surface.
 
@@ -69,7 +69,7 @@ Experimental runner workspaces that used to live here have been moved out to the
 ### Option 1: bunx (Recommended)
 
 ```bash
-bunx codex-hub
+bunx keepline
 ```
 
 Requires Bun 1.1+ on your machine.
@@ -77,30 +77,30 @@ Requires Bun 1.1+ on your machine.
 ### Option 2: Install globally
 
 ```bash
-bun install -g codex-hub
-codex-hub web
+bun install -g keepline
+keepline web
 ```
 
 ### Option 3: From source
 
 ```bash
-git clone https://github.com/majiayu000/codex-hub.git
-cd codex-hub
+git clone https://github.com/majiayu000/keepline.git
+cd keepline
 bun install && bun run build
 bun run start web
 ```
 
 Open **http://127.0.0.1:3377**
 
-By default the web server binds to loopback only. To expose it intentionally, set `CLAUDE_HUB_HOST`.
+By default the web server binds to loopback only. To expose it intentionally, set `KEEPLINE_HOST`.
 
-If you put Codex Hub behind a reverse proxy (Caddy, nginx, cloudflared), set `CLAUDE_HUB_PUBLIC_ORIGIN=https://your-public-host.example` so the terminal WebSocket accepts the browser's public `Origin`. For multiple public origins, use comma-separated `CLAUDE_HUB_ALLOWED_ORIGINS`.
+If you put Keepline behind a reverse proxy (Caddy, nginx, cloudflared), set `KEEPLINE_PUBLIC_ORIGIN=https://your-public-host.example` so the terminal WebSocket accepts the browser's public `Origin`. For multiple public origins, use comma-separated `KEEPLINE_ALLOWED_ORIGINS`.
 
-If you also want the in-process rate limiter to identify real clients behind that proxy, set `CLAUDE_HUB_TRUST_PROXY=true`. Without that flag, `X-Forwarded-For` is treated as untrusted input and the limiter keys on the actual TCP peer instead — this is intentional, so a malicious caller cannot bypass throttling by spoofing forwarded headers.
+If you also want the in-process rate limiter to identify real clients behind that proxy, set `KEEPLINE_TRUST_PROXY=true`. Without that flag, `X-Forwarded-For` is treated as untrusted input and the limiter keys on the actual TCP peer instead — this is intentional, so a malicious caller cannot bypass throttling by spoofing forwarded headers.
 
 ### macOS Security Note
 
-If you see an error like **"Codex Hub is damaged and can't be opened"** when running the desktop app, this is macOS Gatekeeper blocking unsigned apps — the app is not actually damaged.
+If you see an error like **"Keepline is damaged and can't be opened"** when running the desktop app, this is macOS Gatekeeper blocking unsigned apps — the app is not actually damaged.
 
 **Fix it with:**
 
@@ -140,7 +140,7 @@ Monitor all Claude Code instances across your system. See status, current file, 
 Terminal crashed? Session lost? Recover in seconds with full context preserved.
 
 ```bash
-codex-hub recover <session-id>
+keepline recover <session-id>
 ```
 
 Three recovery methods:
@@ -173,7 +173,7 @@ Features:
 
 ### Cross-Session Memory
 
-Codex Hub implements the "relay race" pattern — your progress persists across sessions.
+Keepline implements the "relay race" pattern — your progress persists across sessions.
 
 ```
 ┌─────────────────────────────────────────────────────────────────┐
@@ -236,24 +236,24 @@ Beautiful, cyberpunk-themed dashboard with 5 color themes.
 
 ```bash
 # Core commands
-codex-hub                      # Start web dashboard (default)
-codex-hub list                 # List all sessions
-codex-hub watch                # Live terminal monitor
-codex-hub recover <id>         # Recover a lost session
+keepline                      # Start web dashboard (default)
+keepline list                 # List all sessions
+keepline watch                # Live terminal monitor
+keepline recover <id>         # Recover a lost session
 
 # Session management
-codex-hub list -s running      # Filter by status
-codex-hub list -d ./my-app     # Filter by directory
+keepline list -s running      # Filter by status
+keepline list -d ./my-app     # Filter by directory
 
 # Memory management
-codex-hub memory list          # List session memories
-codex-hub memory show <id>     # Show memory details
-codex-hub memory export <id>   # Export as recovery context
+keepline memory list          # List session memories
+keepline memory show <id>     # Show memory details
+keepline memory export <id>   # Export as recovery context
 
 # Background service
-codex-hub daemon start         # Start background monitor
-codex-hub daemon stop          # Stop daemon
-codex-hub hooks install        # Install Claude-compatible hooks
+keepline daemon start         # Start background monitor
+keepline daemon stop          # Stop daemon
+keepline hooks install        # Install Claude-compatible hooks
 ```
 
 ---
@@ -262,7 +262,7 @@ codex-hub hooks install        # Install Claude-compatible hooks
 
 ```
 ┌─────────────────────────────────────────────────────────────────┐
-│                        Codex Hub                                │
+│                        Keepline                                │
 ├─────────────┬─────────────┬─────────────┬─────────────┬─────────┤
 │   Web UI    │  Terminal   │   Daemon    │   Hooks     │   API   │
 │   (React)   │   (Ink)     │ (Background)│  (HTTP)     │  (REST) │
@@ -292,7 +292,7 @@ codex-hub hooks install        # Install Claude-compatible hooks
 
 ## Comparison
 
-| Feature | Manual | claude-mem | **Codex Hub** |
+| Feature | Manual | claude-mem | **Keepline** |
 |---------|:------:|:----------:|:--------------:|
 | Multi-session monitoring | - | - | **Yes** |
 | Session recovery | - | - | **3 methods** |
@@ -309,11 +309,11 @@ codex-hub hooks install        # Install Claude-compatible hooks
 
 ## Configuration
 
-New installs store data in `~/.codex-hub/`. Existing `~/.claude-hub/` installs remain readable for compatibility:
+Keepline stores data in `~/.keepline/` by default:
 
 ```
-~/.codex-hub/
-├── codex-hub.db    # SQLite database
+~/.keepline/
+├── keepline.db    # SQLite database
 ├── config.json      # Configuration
 └── logs/            # Log files
 ```
@@ -373,8 +373,8 @@ bun test             # Run tests
 
 ## Support
 
-- [GitHub Issues](https://github.com/majiayu000/codex-hub/issues)
-- [Discussions](https://github.com/majiayu000/codex-hub/discussions)
+- [GitHub Issues](https://github.com/majiayu000/keepline/issues)
+- [Discussions](https://github.com/majiayu000/keepline/discussions)
 
 ---
 
@@ -382,7 +382,7 @@ bun test             # Run tests
 
 **Built for Codex and Claude Code power users**
 
-[GitHub](https://github.com/majiayu000/codex-hub) | [npm](https://www.npmjs.com/package/codex-hub) | [Documentation](https://codex-hub.dev)
+[GitHub](https://github.com/majiayu000/keepline) | [npm](https://www.npmjs.com/package/keepline) | [Documentation](https://keepline.dev)
 
 MIT License
 

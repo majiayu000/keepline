@@ -17,7 +17,7 @@ const DEFAULT_SETTINGS: NotificationSettings = {
   costThreshold: 1.0, // $1.00
 }
 
-const STORAGE_KEY = 'tasker-notification-settings'
+const STORAGE_KEY = 'keepline-notification-settings'
 
 interface UseNotificationsReturn {
   settings: NotificationSettings
@@ -84,7 +84,7 @@ export function useNotifications(): UseNotificationsReturn {
       const notification = new Notification(title, {
         icon: '/favicon.ico',
         badge: '/favicon.ico',
-        tag: 'tasker-notification',
+        tag: 'keepline-notification',
         ...options,
       })
 

@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Codex Hub</title>
+  <title>Keepline</title>
   <!-- Marked.js for Markdown rendering -->
   <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
   <style>
@@ -1176,7 +1176,7 @@
     <div class="logo">
       <div>
         <div class="logo-text">▀█▀ ▄▀█ █▀ █▄▀ █▀▀ █▀█</div>
-        <div class="logo-sub">Claude Code Monitor v1.0</div>
+        <div class="logo-sub">Keepline v1.0</div>
       </div>
     </div>
     <div class="header-actions">
@@ -1300,7 +1300,7 @@
     // THEME MANAGEMENT
     // ═══════════════════════════════════════════════════════════════
     function initTheme() {
-      const saved = localStorage.getItem('tasker-theme') || 'cyberpunk';
+      const saved = localStorage.getItem('keepline-theme') || 'cyberpunk';
       setTheme(saved, false);
     }
 
@@ -1318,7 +1318,7 @@
 
       // Save preference
       if (save) {
-        localStorage.setItem('tasker-theme', theme);
+        localStorage.setItem('keepline-theme', theme);
         showToast(`Theme: ${THEMES[theme]}`, 'info');
       }
     }

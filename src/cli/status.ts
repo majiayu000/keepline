@@ -7,10 +7,8 @@ import { existsSync } from 'fs';
 import {
   CLAUDE_HOME,
   CLAUDE_PROJECT_ROOTS,
-  CODEX_HUB_HOME,
-  CODEX_HUB_DB,
-  LEGACY_CLAUDE_HUB_HOME,
-  LEGACY_TASKER_HOME,
+  KEEPLINE_HOME,
+  KEEPLINE_DB,
 } from '../lib/paths.js';
 import { getDaemonStatus } from '../services/daemon.manager.js';
 import { getHookStatus } from '../adapters/hook/installer.js';
@@ -22,7 +20,7 @@ import { scanAgentProcesses } from '../adapters/process/scanner.js';
 
 export async function statusCommand(): Promise<void> {
   console.log('');
-  console.log(chalk.bold('Codex Hub System Status'));
+  console.log(chalk.bold('Keepline System Status'));
   console.log('');
 
   // Paths
@@ -31,14 +29,8 @@ export async function statusCommand(): Promise<void> {
   for (const root of CLAUDE_PROJECT_ROOTS) {
     console.log(`  Claude projects: ${root} ${existsSync(root) ? chalk.green('OK') : chalk.gray('Not found')}`);
   }
-  console.log(`  Codex Hub home:  ${CODEX_HUB_HOME} ${existsSync(CODEX_HUB_HOME) ? chalk.green('OK') : chalk.gray('Will create')}`);
-  console.log(`  Codex Hub DB:    ${CODEX_HUB_DB} ${existsSync(CODEX_HUB_DB) ? chalk.green('OK') : chalk.gray('Will create')}`);
-  if (LEGACY_CLAUDE_HUB_HOME !== CODEX_HUB_HOME && existsSync(LEGACY_CLAUDE_HUB_HOME)) {
-    console.log(`  Legacy Claude Hub home: ${LEGACY_CLAUDE_HUB_HOME} ${chalk.yellow('Pending migration')}`);
-  }
-  if (LEGACY_TASKER_HOME !== CODEX_HUB_HOME && existsSync(LEGACY_TASKER_HOME)) {
-    console.log(`  Legacy Tasker home: ${LEGACY_TASKER_HOME} ${chalk.yellow('Pending migration')}`);
-  }
+  console.log(`  Keepline home:  ${KEEPLINE_HOME} ${existsSync(KEEPLINE_HOME) ? chalk.green('OK') : chalk.gray('Will create')}`);
+  console.log(`  Keepline DB:    ${KEEPLINE_DB} ${existsSync(KEEPLINE_DB) ? chalk.green('OK') : chalk.gray('Will create')}`);
   console.log('');
 
   // Daemon

@@ -79,7 +79,7 @@ describe('Extract Project Name', () => {
   describe('when path is a standard directory', () => {
     test('extracts last segment from absolute path', () => {
       expect(extractProjectName('/Users/dev/projects/my-app')).toBe('my-app')
-      expect(extractProjectName('/home/user/code/tasker')).toBe('tasker')
+      expect(extractProjectName('/home/user/code/keepline')).toBe('keepline')
     })
 
     test('extracts name from deeply nested path', () => {

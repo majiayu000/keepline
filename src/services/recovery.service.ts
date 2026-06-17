@@ -13,6 +13,7 @@ import { logger } from '../lib/logger.js';
 import { isValidSessionId, assertValidSessionId } from '../lib/session-id.js';
 import { renderShellCommand } from '../lib/shell-quote.js';
 import { unscopeCodexSessionId } from '../adapters/codex/parser.js';
+import { scanCodexSessionsDirectory } from '../adapters/codex/scanner.js';
 import { openTerminalWithCommand, printRecoveryCommand } from './terminal.js';
 import type { RecoveryMethod, RecoveryOptions, RecoveryResult } from './recovery.types.js';
 
@@ -101,7 +102,10 @@ export function buildRecoveryCommand(
 }
 
 export class RecoveryService {
-  constructor(private readonly repository: ISessionRepository) {}
+  constructor(
+    private readonly repository: ISessionRepository,
+    private readonly getCodexSessionFiles = scanCodexSessionsDirectory
+  ) {}
 
   /** Check if session can be recovered */
   canRecover(session: Session): {
@@ -120,8 +124,10 @@ export class RecoveryService {
     }
 
     if (session.client === 'codex') {
-      // Persisted Codex sessions already came from ~/.codex/sessions/<date>/rollout-*.jsonl.
-      if (existsSync(session.directory)) {
+      const sessionFileExists = this.getCodexSessionFiles().some(
+        (file) => file.sessionId === session.sessionId
+      );
+      if (sessionFileExists && existsSync(session.directory)) {
         availableMethods.push('resume');
       }
     } else {

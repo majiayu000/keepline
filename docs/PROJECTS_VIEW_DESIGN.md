@@ -19,7 +19,7 @@ As a developer using multiple Claude Code sessions across different projects, I 
 │  📊 12 Projects │ 🟢 5 Active │ 💤 7 Idle              │ ← Project Stats Bar
 ├─────────────────────────────────────────────────────────┤
 │ ┌───────────┐ ┌───────────┐ ┌───────────┐ ┌───────────┐│
-│ │ tasker    │ │ agent-kb  │ │ jsonrepair│ │ cupcake   ││
+│ │ keepline    │ │ agent-kb  │ │ jsonrepair│ │ cupcake   ││
 │ │ 🟢2 🟡1 🔴1│ │ 🟢1 🟡2   │ │ 🟢1    🔴3│ │    🔴2    ││
 │ │           │ │           │ │           │ │           ││
 │ │ 看下最新  │ │ 自动化飞轮│ │contributor│ │ (no task) ││
@@ -155,7 +155,7 @@ function aggregateProjects(sessions: Session[]): ProjectInfo[] {
 }
 
 function extractProjectName(path: string): string {
-  // "/Users/xxx/code/tasker" → "tasker"
+  // "/Users/xxx/code/keepline" → "keepline"
   return path.split('/').filter(Boolean).pop() || path
 }
 ```

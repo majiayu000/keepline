@@ -1,7 +1,7 @@
 /**
  * Migration 006: Session client discriminator.
  *
- * Codex Hub monitors multiple agent clients. Existing rows are Claude rows.
+ * Keepline monitors multiple agent clients. Existing rows are Claude rows.
  * Codex sessions are persisted with a scoped session_id such as
  * `codex_<uuid>` to preserve the existing session_id UNIQUE constraint.
  */

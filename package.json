@@ -1,14 +1,13 @@
 {
-  "name": "codex-hub",
+  "name": "keepline",
   "version": "1.0.0",
   "description": "The command center for Codex and Claude Code sessions - Never lose your work again",
-  "author": "Codex Hub Contributors",
+  "author": "Keepline Contributors",
   "license": "MIT",
   "type": "module",
   "main": "dist/index.js",
   "bin": {
-    "codex-hub": "dist/index.js",
-    "claude-hub": "dist/index.js"
+    "keepline": "dist/index.js"
   },
   "keywords": [
     "codex",
@@ -26,12 +25,12 @@
   ],
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/majiayu000/codex-hub.git"
+    "url": "git+https://github.com/majiayu000/keepline.git"
   },
   "bugs": {
-    "url": "https://github.com/majiayu000/codex-hub/issues"
+    "url": "https://github.com/majiayu000/keepline/issues"
   },
-  "homepage": "https://github.com/majiayu000/codex-hub#readme",
+  "homepage": "https://github.com/majiayu000/keepline#readme",
   "engines": {
     "bun": ">=1.1.0"
   },

@@ -37,7 +37,7 @@ function getHookCommand(): string {
   return `curl -s -X POST http://127.0.0.1:${port}/hook -H "Content-Type: application/json" -d '{"event_type":"$CLAUDE_EVENT_TYPE","session_id":"$CLAUDE_SESSION_ID","cwd":"$PWD","timestamp":"'$(date -u +%Y-%m-%dT%H:%M:%SZ)'","tool_name":"$CLAUDE_TOOL_NAME","tool_input":'"\${CLAUDE_TOOL_INPUT:-{}}"'}' > /dev/null 2>&1 || true`;
 }
 
-function isCodexHubHook(hook: unknown): hook is ClaudeHookConfig {
+function isKeeplineHook(hook: unknown): hook is ClaudeHookConfig {
   return Boolean(
     hook &&
     typeof hook === 'object' &&
@@ -46,7 +46,7 @@ function isCodexHubHook(hook: unknown): hook is ClaudeHookConfig {
   );
 }
 
-/** Check if tasker hooks are installed */
+/** Check if keepline hooks are installed */
 export function areHooksInstalled(): boolean {
   const settings = getClaudeSettings();
   const hooks = settings.hooks;
@@ -55,15 +55,15 @@ export function areHooksInstalled(): boolean {
 
   // Check if our hook is in PostToolUse
   const postToolUse = hooks.PostToolUse || [];
-  return postToolUse.some(isCodexHubHook);
+  return postToolUse.some(isKeeplineHook);
 }
 
-/** Install tasker hooks into Claude settings */
+/** Install keepline hooks into Claude settings */
 export function installHooks(): void {
   const settings = getClaudeSettings();
   const hookCommand = getHookCommand();
 
-  const taskerHook: ClaudeHookConfig = {
+  const keeplineHook: ClaudeHookConfig = {
     command: hookCommand,
   };
 
@@ -78,18 +78,18 @@ export function installHooks(): void {
   }
 
   // Check if already installed
-  const existing = settings.hooks.PostToolUse.find(isCodexHubHook);
+  const existing = settings.hooks.PostToolUse.find(isKeeplineHook);
 
   if (!existing) {
-    settings.hooks.PostToolUse.push(taskerHook);
+    settings.hooks.PostToolUse.push(keeplineHook);
     saveClaudeSettings(settings);
-    logger.info('Codex Hub hooks installed');
+    logger.info('Keepline hooks installed');
   } else {
-    logger.debug('Codex Hub hooks already installed');
+    logger.debug('Keepline hooks already installed');
   }
 }
 
-/** Uninstall tasker hooks from Claude settings */
+/** Uninstall keepline hooks from Claude settings */
 export function uninstallHooks(): void {
   const settings = getClaudeSettings();
 
@@ -102,13 +102,13 @@ export function uninstallHooks(): void {
     const hooks = settings.hooks[hookType];
     if (hooks) {
       settings.hooks[hookType] = hooks.filter(
-        (h) => !isCodexHubHook(h)
+        (h) => !isKeeplineHook(h)
       );
     }
   }
 
   saveClaudeSettings(settings);
-  logger.info('Codex Hub hooks uninstalled');
+  logger.info('Keepline hooks uninstalled');
 }
 
 /** Get hook status info */

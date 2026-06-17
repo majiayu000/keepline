@@ -4,7 +4,7 @@
 
 const SESSION_ID_PATTERN = /^[a-zA-Z0-9-_]{8,64}$/;
 
-/** Validate session ID format used by Codex Hub recovery APIs. */
+/** Validate session ID format used by Keepline recovery APIs. */
 export function isValidSessionId(id: unknown): id is string {
   return typeof id === 'string' && SESSION_ID_PATTERN.test(id);
 }

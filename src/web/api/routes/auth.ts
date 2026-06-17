@@ -49,8 +49,8 @@ function isLoopbackServerHost(hostname: string): boolean {
 
 function hasConfiguredPublicOrigin(): boolean {
   const configuredOrigins = [
-    process.env.CLAUDE_HUB_PUBLIC_ORIGIN,
-    process.env.CLAUDE_HUB_ALLOWED_ORIGINS,
+    process.env.KEEPLINE_PUBLIC_ORIGIN,
+    process.env.KEEPLINE_ALLOWED_ORIGINS,
   ];
   return configuredOrigins
     .flatMap((value) => (value ?? '').split(','))
@@ -58,7 +58,7 @@ function hasConfiguredPublicOrigin(): boolean {
 }
 
 function isLoopbackOnlyServerMode(): boolean {
-  const hostname = process.env.CLAUDE_HUB_HOST || '127.0.0.1';
+  const hostname = process.env.KEEPLINE_HOST || '127.0.0.1';
   return isLoopbackServerHost(hostname) && !hasConfiguredPublicOrigin();
 }
 

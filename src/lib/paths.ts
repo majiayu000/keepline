@@ -1,8 +1,8 @@
 /**
- * Path utilities for Codex Hub.
+ * Path utilities for Keepline.
  */
 
-import { cpSync, existsSync, mkdirSync, readdirSync, renameSync, rmSync, statSync } from 'fs';
+import { existsSync, mkdirSync } from 'fs';
 import { homedir } from 'os';
 import { dirname, join } from 'path';
 
@@ -20,10 +20,10 @@ export const CLAUDE_WORK_PROJECTS = join(CLAUDE_WORK_HOME, 'projects');
 
 /**
  * All Claude project roots to scan.
- * Override via CLAUDE_HUB_PROJECT_ROOTS (colon-separated absolute paths).
+ * Override via KEEPLINE_PROJECT_ROOTS (colon-separated absolute paths).
  */
 export const CLAUDE_PROJECT_ROOTS: string[] = (() => {
-  const override = process.env.CLAUDE_HUB_PROJECT_ROOTS;
+  const override = process.env.KEEPLINE_PROJECT_ROOTS;
   if (override) {
     return override.split(':').map((p) => p.trim()).filter(Boolean);
   }
@@ -42,174 +42,62 @@ export const CODEX_HOME = join(homedir(), '.codex');
 /** Codex saved sessions directory */
 export const CODEX_SESSIONS = join(CODEX_HOME, 'sessions');
 
-/** Legacy Tasker data directory */
-export const LEGACY_TASKER_HOME = join(homedir(), '.tasker');
-
-/** Legacy Claude Hub data directory */
-export const LEGACY_CLAUDE_HUB_HOME = join(homedir(), '.claude-hub');
-
 /**
- * Resolve the Codex Hub data directory from the current environment.
+ * Resolve the Keepline data directory from the current environment.
  *
- * Re-reads `process.env.CODEX_HUB_HOME` / `process.env.CLAUDE_HUB_HOME` every call so a CLI flag that
- * sets the env var after this module is imported still takes effect.
+ * Re-reads `process.env.KEEPLINE_HOME` every call so a CLI flag that sets the
+ * env var after this module is imported still takes effect.
  */
-export function getClaudeHubHome(): string {
-  if (process.env.CODEX_HUB_HOME) return process.env.CODEX_HUB_HOME;
-  if (process.env.CLAUDE_HUB_HOME) return process.env.CLAUDE_HUB_HOME;
-
-  const codexHubHome = join(homedir(), '.codex-hub');
-  if (!existsSync(codexHubHome) && existsSync(LEGACY_CLAUDE_HUB_HOME)) {
-    return LEGACY_CLAUDE_HUB_HOME;
-  }
-
-  return codexHubHome;
+export function getKeeplineHome(): string {
+  if (process.env.KEEPLINE_HOME) return process.env.KEEPLINE_HOME;
+  return join(homedir(), '.keepline');
 }
 
-/** Codex Hub database file (re-resolved each call). */
-export function getClaudeHubDb(): string {
-  const home = getClaudeHubHome();
-  const legacyDb = join(home, 'claude-hub.db');
-  if (!process.env.CODEX_HUB_HOME && existsSync(legacyDb)) {
-    return legacyDb;
-  }
-  return join(home, 'codex-hub.db');
+/** Keepline database file (re-resolved each call). */
+export function getKeeplineDb(): string {
+  return join(getKeeplineHome(), 'keepline.db');
 }
 
-/** Codex Hub log file (re-resolved each call). */
-export function getClaudeHubLog(): string {
-  const home = getClaudeHubHome();
-  const legacyLog = join(home, 'claude-hub.log');
-  if (!process.env.CODEX_HUB_HOME && existsSync(legacyLog)) {
-    return legacyLog;
-  }
-  return join(home, 'codex-hub.log');
+/** Keepline log file (re-resolved each call). */
+export function getKeeplineLog(): string {
+  return join(getKeeplineHome(), 'keepline.log');
 }
 
-/** Codex Hub PID file for daemon (re-resolved each call). */
-export function getClaudeHubPid(): string {
-  const home = getClaudeHubHome();
-  const legacyPid = join(home, 'claude-hub.pid');
-  if (!process.env.CODEX_HUB_HOME && existsSync(legacyPid)) {
-    return legacyPid;
-  }
-  return join(home, 'codex-hub.pid');
+/** Keepline PID file for daemon (re-resolved each call). */
+export function getKeeplinePid(): string {
+  return join(getKeeplineHome(), 'keepline.pid');
 }
 
 /**
- * Module-load-time snapshot of the data directory.
- *
- * Kept for back-compat with consumers that read it as a constant. New code
- * should prefer `getClaudeHubHome()` so a runtime env override is honored.
+ * Module-load-time snapshots. New code should prefer the getter functions when
+ * it needs to honor runtime env overrides set after import.
  */
-export const CLAUDE_HUB_HOME = getClaudeHubHome();
-export const CODEX_HUB_HOME = CLAUDE_HUB_HOME;
+export const KEEPLINE_HOME = getKeeplineHome();
 
-/** Codex Hub persisted parse-failure cache */
-export const CLAUDE_HUB_PARSE_FAILURE_CACHE = join(CLAUDE_HUB_HOME, 'invalid-session-files.json');
-export const CODEX_HUB_PARSE_FAILURE_CACHE = CLAUDE_HUB_PARSE_FAILURE_CACHE;
+/** Keepline persisted parse-failure cache */
+export const KEEPLINE_PARSE_FAILURE_CACHE = join(KEEPLINE_HOME, 'invalid-session-files.json');
 
-/** Codex Hub database file (load-time snapshot). */
-export const CLAUDE_HUB_DB = getClaudeHubDb();
-export const CODEX_HUB_DB = CLAUDE_HUB_DB;
+/** Keepline database file (load-time snapshot). */
+export const KEEPLINE_DB = getKeeplineDb();
 
-/** Codex Hub log file (load-time snapshot). */
-export const CLAUDE_HUB_LOG = getClaudeHubLog();
-export const CODEX_HUB_LOG = CLAUDE_HUB_LOG;
+/** Keepline log file (load-time snapshot). */
+export const KEEPLINE_LOG = getKeeplineLog();
 
-/** Codex Hub PID file (load-time snapshot). */
-export const CLAUDE_HUB_PID = getClaudeHubPid();
-export const CODEX_HUB_PID = CLAUDE_HUB_PID;
+/** Keepline PID file (load-time snapshot). */
+export const KEEPLINE_PID = getKeeplinePid();
 
-/** Return the new Codex Hub data directory while preserving CLAUDE_HUB_HOME compatibility. */
-export function getCodexHubHome(): string {
-  return getClaudeHubHome();
-}
-
-/**
- * Recursively walk a directory and return [fileCount, totalBytes].
- * Used to verify a copy succeeded before deleting the source.
- */
-function summarizeTree(root: string): { files: number; bytes: number } {
-  let files = 0;
-  let bytes = 0;
-  const walk = (dir: string): void => {
-    for (const entry of readdirSync(dir, { withFileTypes: true })) {
-      const path = join(dir, entry.name);
-      if (entry.isDirectory()) {
-        walk(path);
-      } else if (entry.isFile()) {
-        files += 1;
-        bytes += statSync(path).size;
-      }
-    }
-  };
-  walk(root);
-  return { files, bytes };
-}
-
-export function migrateClaudeHubDataHome(
-  legacyHome: string = LEGACY_TASKER_HOME,
-  nextHome: string = getClaudeHubHome()
-): void {
-  if (nextHome === legacyHome) return;
-  if (existsSync(nextHome) || !existsSync(legacyHome)) return;
-
-  try {
-    renameSync(legacyHome, nextHome);
-    return;
-  } catch {
-    // Cross-device or permission failure; fall back to copy + verify + delete.
-  }
-
-  mkdirSync(nextHome, { recursive: true });
-  cpSync(legacyHome, nextHome, { recursive: true });
-
-  // Verify the copy is complete before deleting the legacy directory.
-  // A partial copy (disk full, permission error mid-tree) can succeed enough
-  // to not throw but still drop files; deleting the legacy tree at that point
-  // would lose the only complete copy of user data.
-  const before = summarizeTree(legacyHome);
-  const after = summarizeTree(nextHome);
-  if (after.files !== before.files || after.bytes !== before.bytes) {
-    throw new Error(
-      `Aborting migration: copy verification failed. ` +
-        `Source ${legacyHome} has ${before.files} files / ${before.bytes} bytes; ` +
-        `destination ${nextHome} has ${after.files} files / ${after.bytes} bytes. ` +
-        `Legacy directory left in place.`
-    );
-  }
-
-  rmSync(legacyHome, { recursive: true, force: true });
-}
-
-function migrateLegacyCodexHubFileNames(home: string): void {
-  for (const [legacyName, nextName] of [
-    ['claude-hub.db', 'codex-hub.db'],
-    ['claude-hub.log', 'codex-hub.log'],
-    ['claude-hub.pid', 'codex-hub.pid'],
-  ] as const) {
-    const legacyPath = join(home, legacyName);
-    const nextPath = join(home, nextName);
-    if (existsSync(nextPath) || !existsSync(legacyPath)) continue;
-    renameSync(legacyPath, nextPath);
-  }
-}
-
-/** Ensure the Codex Hub data directory exists, migrating legacy Tasker data if needed. */
-export function ensureClaudeHubDataHome(): string {
-  const home = getClaudeHubHome();
-  migrateClaudeHubDataHome(LEGACY_TASKER_HOME, home);
+/** Ensure the Keepline data directory exists. */
+export function ensureKeeplineDataHome(): string {
+  const home = getKeeplineHome();
   if (!existsSync(home)) {
     mkdirSync(home, { recursive: true });
   }
-  migrateLegacyCodexHubFileNames(home);
   return home;
 }
 
-/** Ensure the parent directory for a Codex Hub file path exists. */
-export function ensureClaudeHubParent(path: string): void {
-  ensureClaudeHubDataHome();
+/** Ensure the parent directory for a Keepline file path exists. */
+export function ensureKeeplineParent(path: string): void {
+  ensureKeeplineDataHome();
   const parent = dirname(path);
   if (!existsSync(parent)) {
     mkdirSync(parent, { recursive: true });

@@ -346,7 +346,7 @@ class PtyManager {
 export const ptyManager = new PtyManager();
 
 function getAllowedTerminalCwdRoots(): string[] {
-  const configuredRoots = process.env.CLAUDE_HUB_TERMINAL_CWD_ROOTS;
+  const configuredRoots = process.env.KEEPLINE_TERMINAL_CWD_ROOTS;
   if (configuredRoots) {
     return configuredRoots.split(path.delimiter);
   }

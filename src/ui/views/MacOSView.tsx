@@ -72,7 +72,7 @@ export function MacOSView({ sessions, stats }: Props): React.ReactElement {
       {/* Header - macOS window style */}
       <Box marginBottom={1}>
         <Text>🔴 🟡 🟢  </Text>
-        <Text color="#1d1d1f" backgroundColor="#f5f5f7" bold> Codex Hub </Text>
+        <Text color="#1d1d1f" backgroundColor="#f5f5f7" bold> Keepline </Text>
         <Text color="#8e8e93"> — Session Monitor</Text>
       </Box>
 
@@ -170,10 +170,10 @@ export function MacOSView({ sessions, stats }: Props): React.ReactElement {
       {/* Footer */}
       <Box borderStyle="round" borderColor="#e5e5ea" paddingX={2} paddingY={0}>
         <Text color="#8e8e93">💡 Recover: </Text>
-        <Text color="#007aff" bold>tasker recover {'<n>'}</Text>
+        <Text color="#007aff" bold>keepline recover {'<n>'}</Text>
         <Text color="#c7c7cc"> │ </Text>
         <Text color="#8e8e93">Watch: </Text>
-        <Text color="#007aff" bold>tasker watch</Text>
+        <Text color="#007aff" bold>keepline watch</Text>
       </Box>
     </Box>
   );

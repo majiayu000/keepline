@@ -746,7 +746,7 @@ claude-flow dashboard
 ```
 
 **配合监控：**
-- 使用 Codex Hub（本项目）监控所有会话
+- 使用 Keepline（本项目）监控所有会话
 - 设置成本告警
 - 日志收集和分析
 

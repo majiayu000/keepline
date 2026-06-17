@@ -14,6 +14,8 @@ import {
   buildRecoveryCommand,
   RecoveryService,
 } from '../services/recovery.service.js';
+import { scopeCodexSessionId } from '../adapters/codex/parser.js';
+import type { CodexSessionFile } from '../adapters/codex/types.js';
 
 function recoverySession(overrides: Partial<Session> = {}): Session {
   return {
@@ -123,7 +125,31 @@ describe('recovery command security', () => {
   });
 
   test('marks Codex sessions recoverable when their working directory exists', () => {
-    const service = new RecoveryService(createRepository(null));
+    const rawSessionId = '019ed4a3-2186-7e51-9aa1-ca1e376549b8';
+    const sessionId = scopeCodexSessionId(rawSessionId);
+    const codexFiles: CodexSessionFile[] = [{
+      sessionId,
+      rawSessionId,
+      directory: process.cwd(),
+      filePath: `/tmp/rollout-${rawSessionId}.jsonl`,
+      modifiedAt: new Date(),
+    }];
+
+    const service = new RecoveryService(createRepository(null), () => codexFiles);
+    const result = service.canRecover(recoverySession({
+      client: 'codex',
+      sessionId,
+      directory: process.cwd(),
+    }));
+
+    expect(result).toEqual({
+      canRecover: true,
+      availableMethods: ['resume', 'continue', 'new'],
+    });
+  });
+
+  test('does not offer Codex resume when the rollout file is missing', () => {
+    const service = new RecoveryService(createRepository(null), () => []);
     const result = service.canRecover(recoverySession({
       client: 'codex',
       sessionId: 'codex_019ed4a3-2186-7e51-9aa1-ca1e376549b8',
@@ -132,7 +158,7 @@ describe('recovery command security', () => {
 
     expect(result).toEqual({
       canRecover: true,
-      availableMethods: ['resume', 'continue', 'new'],
+      availableMethods: ['continue', 'new'],
     });
   });
 
