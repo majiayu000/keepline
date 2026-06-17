@@ -1,7 +1,7 @@
 /**
  * Migration 001: Initial schema
  *
- * Creates the base tables for Tasker.
+ * Creates the base tables for Keepline.
  */
 
 import type { Migration } from './index.js';

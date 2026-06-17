@@ -6,7 +6,7 @@ import { tmpdir } from 'os';
 const tempDirs: string[] = [];
 
 function createTempHome(): string {
-  const homeDir = mkdtempSync(join(tmpdir(), 'claude-hub-home-'));
+  const homeDir = mkdtempSync(join(tmpdir(), 'keepline-home-'));
   tempDirs.push(homeDir);
   return homeDir;
 }
@@ -34,7 +34,7 @@ function runScannerScriptDetailed(homeDir: string, script: string) {
     env: {
       ...process.env,
       HOME: homeDir,
-      CLAUDE_HUB_HOME: join(homeDir, '.claude-hub'),
+      KEEPLINE_HOME: join(homeDir, '.keepline'),
     },
     stdout: 'pipe',
     stderr: 'pipe',

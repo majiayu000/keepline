@@ -60,7 +60,7 @@ export function getProjectActivityStatus(stats: ProjectStats): ProjectActivitySt
 
 /**
  * Extract project name from a full path
- * @example "/Users/xxx/code/tasker" → "tasker"
+ * @example "/Users/xxx/code/keepline" → "keepline"
  */
 export function extractProjectName(path: string): string {
   const segments = path.split('/').filter(Boolean)

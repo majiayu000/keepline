@@ -148,7 +148,7 @@ export function MemoryPanel() {
           <div className={styles.emptyText}>
             {searchQuery
               ? 'No memories match your search. Try a different query.'
-              : 'Session memories will appear here once Claude Code sessions store their context for recovery.'}
+              : 'Session memories will appear here once agent sessions store their context for recovery.'}
           </div>
         </div>
       ) : (

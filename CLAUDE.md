@@ -4,9 +4,9 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-**Claude Hub** is the command center for Claude Code power users. It monitors all Claude Code sessions across your system, tracks token usage and costs, recovers lost sessions when terminals crash, and preserves context across iterations.
+**Keepline** is the command center for agent CLI power users. It monitors Codex and Claude Code sessions across your system, tracks token usage and costs where supported, recovers lost sessions when terminals crash, and preserves context across iterations.
 
-**Tagline:** "Never lose your Claude Code work again."
+**Tagline:** "Never lose your Codex or Claude Code work again."
 
 ## Build & Development Commands
 
@@ -33,15 +33,15 @@ bun run typecheck    # Type check client code
 ## CLI Commands
 
 ```bash
-claude-hub                        # Start web dashboard (default)
-claude-hub list                   # List sessions with options
-claude-hub watch                  # Live terminal monitor
-claude-hub recover [session-id]   # Recover a lost session
-claude-hub daemon start|stop      # Background daemon
-claude-hub hooks install|status   # Manage Claude hooks
-claude-hub sync                   # Manual session sync
-claude-hub web                    # Start web UI (port 3377)
-claude-hub memory list|show|edit  # Session memory management
+keepline                        # Start web dashboard (default)
+keepline list                   # List sessions with options
+keepline watch                  # Live terminal monitor
+keepline recover [session-id]   # Recover a lost session
+keepline daemon start|stop      # Background daemon
+keepline hooks install|status   # Manage Claude hooks
+keepline sync                   # Manual session sync
+keepline web                    # Start web UI (port 3377)
+keepline memory list|show|edit  # Session memory management
 ```
 
 ## Architecture

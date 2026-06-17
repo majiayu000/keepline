@@ -4,6 +4,7 @@ export function serializeBasicSession(session: BasicAggregatedSession) {
   return {
     id: session.id,
     sessionId: session.sessionId,
+    client: session.client,
     directory: session.directory,
     status: session.status,
     title: session.title,

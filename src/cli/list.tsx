@@ -24,7 +24,7 @@ export async function listCommand(options: ListOptions): Promise<void> {
   // Initialize database
   runMigrations();
 
-  // Sync with Claude data
+  // Sync sessions before rendering the list.
   process.stdout.write('\x1b[90mScanning sessions...\x1b[0m\n');
   await syncSessions();
 

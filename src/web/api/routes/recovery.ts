@@ -41,7 +41,7 @@ app.post('/:id/recover', async (c) => {
     return c.json({ success: false, error: validation.error }, 400);
   }
 
-  const { method = 'resume', openTerminal = true, skipPermissions = false, terminalApp = 'auto' } = validation.data;
+  const { method, openTerminal = true, skipPermissions = false, terminalApp = 'auto' } = validation.data;
 
   const sessions = getAllSessions();
   const session = sessions.find(s => s.sessionId === sessionId);
@@ -56,9 +56,14 @@ app.post('/:id/recover', async (c) => {
     return c.json({ success: false, error: recoveryInfo.reason }, 400);
   }
 
+  const recoveryMethod = method ?? recoveryInfo.recommendedMethod;
+  if (!recoveryMethod) {
+    return c.json({ success: false, error: 'No recovery method available' }, 400);
+  }
+
   try {
     const result = await recoverSession({
-      method: method || 'resume',
+      method: recoveryMethod,
       sessionId,
       directory: session.directory,
       openTerminal: openTerminal ?? true,

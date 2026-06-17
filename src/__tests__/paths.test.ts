@@ -1,25 +1,42 @@
 import { describe, expect, test } from 'bun:test';
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'fs';
+import { mkdtempSync, rmSync } from 'fs';
 import { join } from 'path';
 import { tmpdir } from 'os';
-import { migrateClaudeHubDataHome } from '../lib/paths.js';
+import { getKeeplineDb, getKeeplineHome } from '../lib/paths.js';
 
-describe('Claude Hub path migration', () => {
-  test('migrates legacy Tasker data into the Claude Hub home', () => {
-    const root = mkdtempSync(join(tmpdir(), 'claude-hub-paths-'));
-    const legacyHome = join(root, '.tasker');
-    const nextHome = join(root, '.claude-hub');
-    const legacyFile = join(legacyHome, 'config.json');
+describe('Keepline paths', () => {
+  test('prefers KEEPLINE_HOME for storage paths', () => {
+    const root = mkdtempSync(join(tmpdir(), 'keepline-paths-'));
+    const previousHome = process.env.KEEPLINE_HOME;
 
-    mkdirSync(legacyHome, { recursive: true });
-    writeFileSync(legacyFile, '{"ok":true}', { flag: 'w' });
+    try {
+      process.env.KEEPLINE_HOME = root;
 
-    migrateClaudeHubDataHome(legacyHome, nextHome);
+      expect(getKeeplineHome()).toBe(root);
+      expect(getKeeplineDb()).toBe(join(root, 'keepline.db'));
+    } finally {
+      if (previousHome === undefined) {
+        delete process.env.KEEPLINE_HOME;
+      } else {
+        process.env.KEEPLINE_HOME = previousHome;
+      }
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
 
-    expect(existsSync(nextHome)).toBe(true);
-    expect(existsSync(legacyHome)).toBe(false);
-    expect(readFileSync(join(nextHome, 'config.json'), 'utf-8')).toContain('"ok":true');
+  test('uses ~/.keepline by default', () => {
+    const previousHome = process.env.KEEPLINE_HOME;
+    try {
+      delete process.env.KEEPLINE_HOME;
 
-    rmSync(root, { recursive: true, force: true });
+      expect(getKeeplineHome()).toEndWith('/.keepline');
+      expect(getKeeplineDb()).toEndWith('/.keepline/keepline.db');
+    } finally {
+      if (previousHome === undefined) {
+        delete process.env.KEEPLINE_HOME;
+      } else {
+        process.env.KEEPLINE_HOME = previousHome;
+      }
+    }
   });
 });

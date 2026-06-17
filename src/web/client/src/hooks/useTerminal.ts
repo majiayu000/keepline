@@ -75,8 +75,8 @@ export function useTerminal(token: string | null) {
     }
   }, [token])
 
-  const createSession = useCallback((cols: number, rows: number, cwd?: string, resumeSessionId?: string) => {
-    getTerminalWsManager().createSession(cols, rows, cwd, resumeSessionId)
+  const createSession = useCallback((cols: number, rows: number, cwd?: string, resumeSessionId?: string, resumeSessionClient?: 'claude' | 'codex') => {
+    getTerminalWsManager().createSession(cols, rows, cwd, resumeSessionId, resumeSessionClient)
   }, [])
 
   const attachSession = useCallback((sessionId: string) => {

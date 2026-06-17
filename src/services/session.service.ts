@@ -13,6 +13,7 @@ import { emit } from '../lib/events.js';
 import { getCachedProcesses, clearProcessCache } from '../adapters/process/scanner.js';
 import { detectSessionStatus } from '../adapters/process/detector.js';
 import { getAllSessions as getClaudeSessions } from '../adapters/claude/scanner.js';
+import { getAllCodexSessions } from '../adapters/codex/scanner.js';
 import { logger } from '../lib/logger.js';
 import { isValidSessionId } from '../lib/session-id.js';
 import type { CreateSessionInput, UpdateSessionInput, AggregatedSession } from './session.types.js';
@@ -33,6 +34,7 @@ export class SessionService {
   createSession(input: CreateSessionInput): Session {
     const session = this.repository.upsert({
       sessionId: input.sessionId,
+      client: input.client,
       directory: input.directory,
       initialPrompt: input.initialPrompt,
       title: input.title || generateTitle(input.initialPrompt),
@@ -90,7 +92,7 @@ export class SessionService {
     return [...lost, ...waiting];
   }
 
-  /** Sync sessions with Claude data and running processes */
+  /** Sync Codex and Claude Code sessions with running processes */
   async syncSessions(options: SyncOptions = {}): Promise<{
     discovered: number;
     updated: number;
@@ -117,45 +119,52 @@ export class SessionService {
 
       // Get current process info (will be cached for duration of sync)
       const processes = getCachedProcesses();
-      const runningClaudePids = new Set(processes.map((process) => process.pid));
+      const runningAgentPids = new Set(processes.map((process) => process.pid));
 
-      // Get Claude sessions from file system (with optional age filter for performance)
+      // Get sessions from file system (with optional age filter for performance)
       const scannedClaudeSessions = await getClaudeSessions({
         maxAgeDays,
         includeSubAgents: true,
         includeToolCalls: true,
       });
-      const invalidClaudeSessions = scannedClaudeSessions.filter(
+      const scannedCodexSessions = await getAllCodexSessions({
+        maxAgeDays,
+        includeToolCalls: true,
+      });
+      const scannedSessions = [...scannedClaudeSessions, ...scannedCodexSessions];
+      const invalidScannedSessions = scannedSessions.filter(
         (session) => !isValidSessionId(session.sessionId)
       );
-      if (invalidClaudeSessions.length > 0) {
+      if (invalidScannedSessions.length > 0) {
         logger.warn('Skipped scanned sessions with invalid session IDs before persistence', {
-          count: invalidClaudeSessions.length,
-          sample: invalidClaudeSessions.slice(0, 5).map((session) => ({
+          count: invalidScannedSessions.length,
+          sample: invalidScannedSessions.slice(0, 5).map((session) => ({
             sessionId: session.sessionId,
+            client: session.client ?? 'claude',
             directory: session.directory,
           })),
         });
       }
-      const claudeSessions = scannedClaudeSessions.filter((session) =>
+      const agentSessions = scannedSessions.filter((session) =>
         isValidSessionId(session.sessionId)
       );
-      const processMatches = matchProcessesToSessions(claudeSessions, processes);
+      const processMatches = matchProcessesToSessions(agentSessions, processes);
       const existingSessions = this.repository.findBySessionIdsSummary(
-        claudeSessions.map((session) => session.sessionId)
+        agentSessions.map((session) => session.sessionId)
       );
       const existingSessionMap = new Map(
         existingSessions.map((session) => [session.sessionId, session])
       );
 
-      // Process each Claude session
-      for (const claudeSession of claudeSessions) {
-        const existing = existingSessionMap.get(claudeSession.sessionId);
-        const process = processMatches.get(claudeSession.sessionId);
+      // Process each scanned session
+      for (const agentSession of agentSessions) {
+        const client = agentSession.client ?? 'claude';
+        const existing = existingSessionMap.get(agentSession.sessionId);
+        const process = processMatches.get(agentSession.sessionId);
 
         const status = detectSessionStatus(
           process || null,
-          claudeSession.lastActiveAt
+          agentSession.lastActiveAt
         );
 
         if (existing) {
@@ -165,34 +174,35 @@ export class SessionService {
           // Update title if current one is Unknown and we have new info
           const shouldUpdateTitle =
             existing.title === 'Unknown task' &&
-            claudeSession.firstMessage &&
-            claudeSession.firstMessage !== 'Unknown task';
+            agentSession.firstMessage &&
+            agentSession.firstMessage !== 'Unknown task';
 
           const updatedSession = this.repository.upsert({
-            sessionId: claudeSession.sessionId,
+            sessionId: agentSession.sessionId,
+            client,
             status,
             ...(shouldUpdateTitle && {
-              title: generateTitle(claudeSession.firstMessage!),
-              initialPrompt: claudeSession.firstMessage,
+              title: generateTitle(agentSession.firstMessage!),
+              initialPrompt: agentSession.firstMessage,
             }),
-            lastTool: claudeSession.lastTool,
-            lastToolInput: claudeSession.lastToolInput
-              ? JSON.stringify(claudeSession.lastToolInput)
+            lastTool: agentSession.lastTool,
+            lastToolInput: agentSession.lastToolInput
+              ? JSON.stringify(agentSession.lastToolInput)
               : undefined,
-            currentFile: claudeSession.currentFile,
-            lastMessage: claudeSession.lastMessage,
-            lastActiveAt: claudeSession.lastActiveAt,
+            currentFile: agentSession.currentFile,
+            lastMessage: agentSession.lastMessage,
+            lastActiveAt: agentSession.lastActiveAt,
             pid: process?.pid,
             tty: process?.tty,
-            toolCount: claudeSession.toolCount,
-            messageCount: claudeSession.messageCount,
-            agentId: claudeSession.agentId,
-            parentSessionId: claudeSession.parentSessionId,
-            isSubAgent: claudeSession.isSubAgent,
-            usageStats: claudeSession.usageStats,
-            toolCalls: claudeSession.toolCalls,
+            toolCount: agentSession.toolCount,
+            messageCount: agentSession.messageCount,
+            agentId: agentSession.agentId,
+            parentSessionId: agentSession.parentSessionId,
+            isSubAgent: agentSession.isSubAgent,
+            usageStats: agentSession.usageStats,
+            toolCalls: agentSession.toolCalls,
           });
-          existingSessionMap.set(claudeSession.sessionId, updatedSession);
+          existingSessionMap.set(agentSession.sessionId, updatedSession);
 
           updated++;
           if (wasLost) {
@@ -201,35 +211,36 @@ export class SessionService {
           }
         } else {
           // Create new session with all data in single upsert (no redundant calls)
-          const title = claudeSession.firstMessage
-            ? generateTitle(claudeSession.firstMessage)
+          const title = agentSession.firstMessage
+            ? generateTitle(agentSession.firstMessage)
             : 'Unknown task';
 
           const newSession = this.repository.upsert({
-            sessionId: claudeSession.sessionId,
-            directory: claudeSession.directory,
-            initialPrompt: claudeSession.firstMessage || 'Unknown task',
+            sessionId: agentSession.sessionId,
+            client,
+            directory: agentSession.directory,
+            initialPrompt: agentSession.firstMessage || 'Unknown task',
             title,
             status,
-            lastTool: claudeSession.lastTool,
-            lastToolInput: claudeSession.lastToolInput
-              ? JSON.stringify(claudeSession.lastToolInput)
+            lastTool: agentSession.lastTool,
+            lastToolInput: agentSession.lastToolInput
+              ? JSON.stringify(agentSession.lastToolInput)
               : undefined,
-            currentFile: claudeSession.currentFile,
-            lastMessage: claudeSession.lastMessage,
-            startedAt: claudeSession.startedAt,
-            lastActiveAt: claudeSession.lastActiveAt,
+            currentFile: agentSession.currentFile,
+            lastMessage: agentSession.lastMessage,
+            startedAt: agentSession.startedAt,
+            lastActiveAt: agentSession.lastActiveAt,
             pid: process?.pid,
             tty: process?.tty,
-            toolCount: claudeSession.toolCount,
-            messageCount: claudeSession.messageCount,
-            agentId: claudeSession.agentId,
-            parentSessionId: claudeSession.parentSessionId,
-            isSubAgent: claudeSession.isSubAgent,
-            usageStats: claudeSession.usageStats,
-            toolCalls: claudeSession.toolCalls,
+            toolCount: agentSession.toolCount,
+            messageCount: agentSession.messageCount,
+            agentId: agentSession.agentId,
+            parentSessionId: agentSession.parentSessionId,
+            isSubAgent: agentSession.isSubAgent,
+            usageStats: agentSession.usageStats,
+            toolCalls: agentSession.toolCalls,
           });
-          existingSessionMap.set(claudeSession.sessionId, newSession);
+          existingSessionMap.set(agentSession.sessionId, newSession);
           emit('session:discovered', { session: newSession });
           discovered++;
         }
@@ -238,7 +249,7 @@ export class SessionService {
       // Check for sessions whose processes have died
       const activeSessions = this.repository.findActiveLightweight();
       for (const session of activeSessions) {
-        if (session.pid && !runningClaudePids.has(session.pid)) {
+        if (session.pid && !runningAgentPids.has(session.pid)) {
           // Process died, mark as lost unless it was completed
           if (session.status !== 'completed') {
             const lostSession = this.repository.upsert({
@@ -259,7 +270,7 @@ export class SessionService {
       if (discovered > 0 || lost > 0) {
         logger.info(`Session sync: ${discovered} new, ${lost} lost`);
       }
-      emit('scan:complete', { sessionCount: claudeSessions.length, duration });
+      emit('scan:complete', { sessionCount: agentSessions.length, duration });
       logger.debug(`Sync complete: ${discovered} new, ${updated} updated, ${lost} lost (${duration}ms)`);
 
       return { discovered, updated, lost };

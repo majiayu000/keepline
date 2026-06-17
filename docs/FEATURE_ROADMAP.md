@@ -1,6 +1,6 @@
-# TASKER 功能路线图
+# KEEPLINE 功能路线图
 
-> Claude Code Monitor 功能扩展建议 - 基于市场调研和竞品分析
+> Keepline 功能扩展建议 - 基于市场调研和竞品分析
 
 ## 目录
 
@@ -445,7 +445,7 @@ import { metrics, trace } from '@opentelemetry/api'
 import { OTLPMetricExporter } from '@opentelemetry/exporter-metrics-otlp-grpc'
 
 // 创建指标
-const meter = metrics.getMeter('tasker')
+const meter = metrics.getMeter('keepline')
 const sessionCounter = meter.createCounter('sessions_total')
 const tokenUsage = meter.createHistogram('token_usage')
 

@@ -1,4 +1,4 @@
-# Tasker v2 Implementation Plan
+# Keepline Implementation Plan
 
 > **策略**: 渐进式重构，保持向后兼容，每个 Phase 独立可测试可提交
 
@@ -116,8 +116,8 @@ mkdir -p src/application/use-cases
 ### 3.4 添加 CLI 命令
 
 - [ ] 创建 `src/cli/commands/memory.ts`
-- [ ] 实现 `tasker memory show <session-id>`
-- [ ] 实现 `tasker memory edit <session-id>`
+- [ ] 实现 `keepline memory show <session-id>`
+- [ ] 实现 `keepline memory edit <session-id>`
 
 ### 3.5 添加 API 端点
 
@@ -158,8 +158,8 @@ mkdir -p src/application/use-cases
 ### 4.4 添加 CLI 命令
 
 - [ ] 创建 `src/cli/commands/policy.ts`
-- [ ] 实现 `tasker policy add/list/enable/disable`
-- [ ] 增强 `tasker recover --with-context`
+- [ ] 实现 `keepline policy add/list/enable/disable`
+- [ ] 增强 `keepline recover --with-context`
 
 ### 4.5 添加 API 端点
 
@@ -201,8 +201,8 @@ mkdir -p src/application/use-cases
 
 - [ ] 创建 `src/cli/commands/queue.ts`
 - [ ] 创建 `src/cli/commands/schedule.ts`
-- [ ] 实现 `tasker queue add/list/cancel`
-- [ ] 实现 `tasker schedule add/list/enable`
+- [ ] 实现 `keepline queue add/list/cancel`
+- [ ] 实现 `keepline schedule add/list/enable`
 
 ### 5.5 添加 API 端点
 
@@ -242,7 +242,7 @@ mkdir -p src/application/use-cases
 ### 6.4 添加 CLI 命令
 
 - [ ] 创建 `src/cli/commands/budget.ts`
-- [ ] 实现 `tasker budget status/set/history`
+- [ ] 实现 `keepline budget status/set/history`
 
 ### 6.5 添加 API 端点
 
@@ -283,7 +283,7 @@ mkdir -p src/application/use-cases
 ### 7.4 添加 CLI 命令
 
 - [ ] 创建 `src/cli/commands/alert.ts`
-- [ ] 实现 `tasker alert add-channel/add-rule/test`
+- [ ] 实现 `keepline alert add-channel/add-rule/test`
 
 ### 7.5 添加 API 端点
 
@@ -325,8 +325,8 @@ mkdir -p src/application/use-cases
 
 ### 8.5 添加 CLI 命令
 
-- [ ] 实现 `tasker metrics`
-- [ ] 实现 `tasker audit`
+- [ ] 实现 `keepline metrics`
+- [ ] 实现 `keepline audit`
 
 ### 8.6 测试 & 提交
 

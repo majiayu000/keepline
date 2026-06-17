@@ -4,6 +4,7 @@ import type { ClaudeProcessInfo } from '../adapters/process/types.js';
 
 function sessionCandidate(overrides: Partial<{
   sessionId: string;
+  client: 'claude' | 'codex';
   directory: string;
   startedAt: Date;
   lastActiveAt: Date;
@@ -11,6 +12,7 @@ function sessionCandidate(overrides: Partial<{
 }> = {}) {
   return {
     sessionId: overrides.sessionId || crypto.randomUUID(),
+    client: overrides.client || 'claude',
     directory: overrides.directory || '/tmp/project',
     startedAt: overrides.startedAt,
     lastActiveAt: overrides.lastActiveAt || new Date(),
@@ -20,6 +22,7 @@ function sessionCandidate(overrides: Partial<{
 
 function processCandidate(overrides: Partial<ClaudeProcessInfo> = {}): ClaudeProcessInfo {
   return {
+    client: overrides.client || 'claude',
     pid: overrides.pid || 1000,
     cwd: overrides.cwd || '/tmp/project',
     tty: overrides.tty,
@@ -91,5 +94,19 @@ describe('matchProcessesToSessions', () => {
     const matches = matchProcessesToSessions(sessions, processes);
     expect(matches.get('recent-session')?.pid).toBe(3001);
     expect(matches.has('stale-session')).toBe(false);
+  });
+
+  test('does not match sessions to processes from a different agent client', () => {
+    const sessions = [
+      sessionCandidate({ sessionId: 'claude-session', client: 'claude' }),
+      sessionCandidate({ sessionId: 'codex-session', client: 'codex' }),
+    ];
+    const processes = [
+      processCandidate({ pid: 4001, client: 'codex' }),
+    ];
+
+    const matches = matchProcessesToSessions(sessions, processes);
+    expect(matches.has('claude-session')).toBe(false);
+    expect(matches.get('codex-session')?.pid).toBe(4001);
   });
 });

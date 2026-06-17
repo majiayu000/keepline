@@ -37,7 +37,16 @@ function getHookCommand(): string {
   return `curl -s -X POST http://127.0.0.1:${port}/hook -H "Content-Type: application/json" -d '{"event_type":"$CLAUDE_EVENT_TYPE","session_id":"$CLAUDE_SESSION_ID","cwd":"$PWD","timestamp":"'$(date -u +%Y-%m-%dT%H:%M:%SZ)'","tool_name":"$CLAUDE_TOOL_NAME","tool_input":'"\${CLAUDE_TOOL_INPUT:-{}}"'}' > /dev/null 2>&1 || true`;
 }
 
-/** Check if tasker hooks are installed */
+function isKeeplineHook(hook: unknown): hook is ClaudeHookConfig {
+  return Boolean(
+    hook &&
+    typeof hook === 'object' &&
+    typeof (hook as Partial<ClaudeHookConfig>).command === 'string' &&
+    (hook as ClaudeHookConfig).command.includes('127.0.0.1')
+  );
+}
+
+/** Check if keepline hooks are installed */
 export function areHooksInstalled(): boolean {
   const settings = getClaudeSettings();
   const hooks = settings.hooks;
@@ -46,15 +55,15 @@ export function areHooksInstalled(): boolean {
 
   // Check if our hook is in PostToolUse
   const postToolUse = hooks.PostToolUse || [];
-  return postToolUse.some((hook) => hook.command.includes('127.0.0.1'));
+  return postToolUse.some(isKeeplineHook);
 }
 
-/** Install tasker hooks into Claude settings */
+/** Install keepline hooks into Claude settings */
 export function installHooks(): void {
   const settings = getClaudeSettings();
   const hookCommand = getHookCommand();
 
-  const taskerHook: ClaudeHookConfig = {
+  const keeplineHook: ClaudeHookConfig = {
     command: hookCommand,
   };
 
@@ -69,20 +78,18 @@ export function installHooks(): void {
   }
 
   // Check if already installed
-  const existing = settings.hooks.PostToolUse.find((h) =>
-    h.command.includes('127.0.0.1')
-  );
+  const existing = settings.hooks.PostToolUse.find(isKeeplineHook);
 
   if (!existing) {
-    settings.hooks.PostToolUse.push(taskerHook);
+    settings.hooks.PostToolUse.push(keeplineHook);
     saveClaudeSettings(settings);
-    logger.info('Claude Hub hooks installed');
+    logger.info('Keepline hooks installed');
   } else {
-    logger.debug('Claude Hub hooks already installed');
+    logger.debug('Keepline hooks already installed');
   }
 }
 
-/** Uninstall tasker hooks from Claude settings */
+/** Uninstall keepline hooks from Claude settings */
 export function uninstallHooks(): void {
   const settings = getClaudeSettings();
 
@@ -95,13 +102,13 @@ export function uninstallHooks(): void {
     const hooks = settings.hooks[hookType];
     if (hooks) {
       settings.hooks[hookType] = hooks.filter(
-        (h) => !h.command.includes('127.0.0.1')
+        (h) => !isKeeplineHook(h)
       );
     }
   }
 
   saveClaudeSettings(settings);
-  logger.info('Claude Hub hooks uninstalled');
+  logger.info('Keepline hooks uninstalled');
 }
 
 /** Get hook status info */

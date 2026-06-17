@@ -34,6 +34,7 @@ function createSession(overrides: Partial<Session> = {}): Session {
   return {
     id: 'test-id-' + Math.random().toString(36).slice(2),
     sessionId: 'session-' + Math.random().toString(36).slice(2),
+    client: 'claude',
     directory: process.cwd(),
     status: 'running' as SessionStatus,
     title: 'Test Session',
@@ -78,7 +79,7 @@ describe('Extract Project Name', () => {
   describe('when path is a standard directory', () => {
     test('extracts last segment from absolute path', () => {
       expect(extractProjectName('/Users/dev/projects/my-app')).toBe('my-app')
-      expect(extractProjectName('/home/user/code/tasker')).toBe('tasker')
+      expect(extractProjectName('/home/user/code/keepline')).toBe('keepline')
     })
 
     test('extracts name from deeply nested path', () => {

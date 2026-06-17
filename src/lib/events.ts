@@ -1,5 +1,5 @@
 /**
- * Event system for Tasker
+ * Event system for Keepline
  */
 
 import EventEmitter from 'eventemitter3';
@@ -28,7 +28,7 @@ export interface SessionEndEventPayload {
 }
 
 /** Event types */
-export type TaskerEvents = {
+export type KeeplineEvents = {
   // Session events
   'session:discovered': SessionEventPayload;
   'session:updated': SessionEventPayload;
@@ -49,36 +49,36 @@ export type TaskerEvents = {
 };
 
 /** Global event emitter instance */
-class TaskerEventEmitter extends EventEmitter<TaskerEvents> {
-  private static instance: TaskerEventEmitter;
+class KeeplineEventEmitter extends EventEmitter<KeeplineEvents> {
+  private static instance: KeeplineEventEmitter;
 
   private constructor() {
     super();
   }
 
-  static getInstance(): TaskerEventEmitter {
-    if (!TaskerEventEmitter.instance) {
-      TaskerEventEmitter.instance = new TaskerEventEmitter();
+  static getInstance(): KeeplineEventEmitter {
+    if (!KeeplineEventEmitter.instance) {
+      KeeplineEventEmitter.instance = new KeeplineEventEmitter();
     }
-    return TaskerEventEmitter.instance;
+    return KeeplineEventEmitter.instance;
   }
 }
 
 /** Export singleton instance */
-export const events = TaskerEventEmitter.getInstance();
+export const events = KeeplineEventEmitter.getInstance();
 
 /** Helper to emit typed events */
-export function emit<K extends keyof TaskerEvents>(
+export function emit<K extends keyof KeeplineEvents>(
   event: K,
-  payload: TaskerEvents[K]
+  payload: KeeplineEvents[K]
 ): void {
   events.emit(event, payload);
 }
 
 /** Helper to listen to typed events */
-export function on<K extends keyof TaskerEvents>(
+export function on<K extends keyof KeeplineEvents>(
   event: K,
-  handler: (payload: TaskerEvents[K]) => void
+  handler: (payload: KeeplineEvents[K]) => void
 ): void {
   events.on(event, handler as (...args: unknown[]) => void);
 }

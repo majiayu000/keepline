@@ -4,9 +4,9 @@ This file provides guidance to Codex (Codex.ai/code) when working with code in t
 
 ## Project Overview
 
-**Codex Hub** is the command center for Codex power users. It monitors all Codex sessions across your system, tracks token usage and costs, recovers lost sessions when terminals crash, and preserves context across iterations.
+**Keepline** is the command center for agent CLI power users. It monitors Codex and Claude Code sessions across your system, tracks token usage and costs where supported, recovers lost sessions when terminals crash, and preserves context across iterations.
 
-**Tagline:** "Never lose your Codex work again."
+**Tagline:** "Never lose your Codex or Claude Code work again."
 
 ## Build & Development Commands
 
@@ -33,15 +33,15 @@ bun run typecheck    # Type check client code
 ## CLI Commands
 
 ```bash
-Codex-hub                        # Start web dashboard (default)
-Codex-hub list                   # List sessions with options
-Codex-hub watch                  # Live terminal monitor
-Codex-hub recover [session-id]   # Recover a lost session
-Codex-hub daemon start|stop      # Background daemon
-Codex-hub hooks install|status   # Manage Codex hooks
-Codex-hub sync                   # Manual session sync
-Codex-hub web                    # Start web UI (port 3377)
-Codex-hub memory list|show|edit  # Session memory management
+keepline                        # Start web dashboard (default)
+keepline list                   # List sessions with options
+keepline watch                  # Live terminal monitor
+keepline recover [session-id]   # Recover a lost session
+keepline daemon start|stop      # Background daemon
+keepline hooks install|status   # Manage Codex hooks
+keepline sync                   # Manual session sync
+keepline web                    # Start web UI (port 3377)
+keepline memory list|show|edit  # Session memory management
 ```
 
 ## Architecture

@@ -1,15 +1,15 @@
 <div align="center">
 
-<img src="docs/assets/logo.svg" alt="Claude Hub Logo" width="120" />
+<img src="docs/assets/logo.svg" alt="Keepline Logo" width="120" />
 
-# Claude Hub
+# Keepline
 
-### Never lose your Claude Code work again.
+### Never lose your Codex or Claude Code work again.
 
-**The command center for Claude Code power users**
+**The command center for agent CLI power users**
 
-[![npm version](https://img.shields.io/npm/v/claude-hub.svg?style=flat-square&color=00d4ff)](https://www.npmjs.com/package/claude-hub)
-[![npm downloads](https://img.shields.io/npm/dm/claude-hub.svg?style=flat-square&color=ff00ff)](https://www.npmjs.com/package/claude-hub)
+[![npm version](https://img.shields.io/npm/v/keepline.svg?style=flat-square&color=00d4ff)](https://www.npmjs.com/package/keepline)
+[![npm downloads](https://img.shields.io/npm/dm/keepline.svg?style=flat-square&color=ff00ff)](https://www.npmjs.com/package/keepline)
 [![GitHub stars](https://img.shields.io/github/stars/majiayu000/claude-hub?style=flat-square&color=ffcc00)](https://github.com/majiayu000/claude-hub)
 [![License](https://img.shields.io/badge/license-MIT-blue.svg?style=flat-square)](LICENSE)
 
@@ -17,7 +17,7 @@
 
 <br />
 
-<img src="docs/assets/hero-demo.gif" alt="Claude Hub Demo" width="800" />
+<img src="docs/assets/hero-demo.gif" alt="Keepline Demo" width="800" />
 
 </div>
 
@@ -25,7 +25,7 @@
 
 ## The Problem
 
-You're deep in a coding session with Claude Code. Everything is going great. Then...
+You're deep in a coding session with Codex or Claude Code. Everything is going great. Then...
 
 - **Terminal crashes** — hours of context, gone
 - **Multiple sessions** — which one was working on the auth bug?
@@ -34,19 +34,21 @@ You're deep in a coding session with Claude Code. Everything is going great. The
 
 ## The Solution
 
-**Claude Hub** monitors all your Claude Code sessions in real-time, automatically recovers crashed sessions, tracks costs, and preserves context across iterations.
+**Keepline** monitors your Codex and Claude Code sessions in real-time, automatically recovers crashed sessions, tracks costs where supported, and preserves context across iterations.
+
+For the implementation details behind the rename and Codex detection, see [Keepline Rebrand and Codex Detection Spec](docs/KEEPLINE_REBRAND_AND_CODEX_DETECTION_SPEC.md).
 
 ```bash
-bunx claude-hub
+bunx keepline
 ```
 
 That is it. Open `http://127.0.0.1:3377` and take control.
 
 ---
 
-## Why Claude Hub?
+## Why Keepline?
 
-|  | Without Claude Hub | With Claude Hub |
+|  | Without Keepline | With Keepline |
 |--|-------------------|-----------------|
 | **Terminal crash** | Lose all context, start over | One-click recovery with full context |
 | **Multiple sessions** | Switch terminals, lose track | See all sessions in one dashboard |
@@ -56,7 +58,7 @@ That is it. Open `http://127.0.0.1:3377` and take control.
 
 ## Repository Scope
 
-This repository now contains the Claude Hub core application and the in-repo `menubar-tauri` companion only.
+This repository now contains the Keepline core application and the in-repo `menubar-tauri` companion only.
 
 Experimental runner workspaces that used to live here have been moved out to the sibling directory `../Claude-Code-Monitor-extracted/` and are no longer part of this repository's build or test surface.
 
@@ -67,7 +69,7 @@ Experimental runner workspaces that used to live here have been moved out to the
 ### Option 1: bunx (Recommended)
 
 ```bash
-bunx claude-hub
+bunx keepline
 ```
 
 Requires Bun 1.1+ on your machine.
@@ -75,41 +77,41 @@ Requires Bun 1.1+ on your machine.
 ### Option 2: Install globally
 
 ```bash
-bun install -g claude-hub
-claude-hub web
+bun install -g keepline
+keepline web
 ```
 
 ### Option 3: From source
 
 ```bash
-git clone https://github.com/majiayu000/claude-hub.git
-cd claude-hub
+git clone https://github.com/majiayu000/claude-hub.git keepline
+cd keepline
 bun install && bun run build
 bun run start web
 ```
 
 Open **http://127.0.0.1:3377**
 
-By default the web server binds to loopback only. To expose it intentionally, set `CLAUDE_HUB_HOST`.
+By default the web server binds to loopback only. To expose it intentionally, set `KEEPLINE_HOST`.
 
-If you put Claude Hub behind a reverse proxy (Caddy, nginx, cloudflared), set `CLAUDE_HUB_PUBLIC_ORIGIN=https://your-public-host.example` so the terminal WebSocket accepts the browser's public `Origin`. For multiple public origins, use comma-separated `CLAUDE_HUB_ALLOWED_ORIGINS`.
+If you put Keepline behind a reverse proxy (Caddy, nginx, cloudflared), set `KEEPLINE_PUBLIC_ORIGIN=https://your-public-host.example` so the terminal WebSocket accepts the browser's public `Origin`. For multiple public origins, use comma-separated `KEEPLINE_ALLOWED_ORIGINS`.
 
-If you also want the in-process rate limiter to identify real clients behind that proxy, set `CLAUDE_HUB_TRUST_PROXY=true`. Without that flag, `X-Forwarded-For` is treated as untrusted input and the limiter keys on the actual TCP peer instead — this is intentional, so a malicious caller cannot bypass throttling by spoofing forwarded headers.
+If you also want the in-process rate limiter to identify real clients behind that proxy, set `KEEPLINE_TRUST_PROXY=true`. Without that flag, `X-Forwarded-For` is treated as untrusted input and the limiter keys on the actual TCP peer instead — this is intentional, so a malicious caller cannot bypass throttling by spoofing forwarded headers.
 
 ### macOS Security Note
 
-If you see an error like **"Claude Hub is damaged and can't be opened"** when running the desktop app, this is macOS Gatekeeper blocking unsigned apps — the app is not actually damaged.
+If you see an error like **"Keepline is damaged and can't be opened"** when running the desktop app, this is macOS Gatekeeper blocking unsigned apps — the app is not actually damaged.
 
 **Fix it with:**
 
 ```bash
-xattr -cr /Applications/Claude\ Hub.app
+xattr -cr /Applications/Keepline.app
 ```
 
 Or if downloaded elsewhere:
 
 ```bash
-xattr -cr ~/Downloads/Claude\ Hub.app
+xattr -cr ~/Downloads/Keepline.app
 ```
 
 This removes the quarantine attribute that macOS adds to downloaded files.
@@ -120,7 +122,7 @@ This removes the quarantine attribute that macOS adds to downloaded files.
 
 ### Real-time Session Monitoring
 
-Monitor all Claude Code instances across your system. See status, current file, last tool, and activity at a glance.
+Monitor Codex and Claude Code sessions across your system. See status, current file, last tool, and activity at a glance.
 
 ```
 ┌─────────────────────────────────────────────────────────────────┐
@@ -138,7 +140,7 @@ Monitor all Claude Code instances across your system. See status, current file, 
 Terminal crashed? Session lost? Recover in seconds with full context preserved.
 
 ```bash
-claude-hub recover <session-id>
+keepline recover <session-id>
 ```
 
 Three recovery methods:
@@ -171,7 +173,7 @@ Features:
 
 ### Cross-Session Memory
 
-Claude Hub implements the "relay race" pattern — your progress persists across sessions.
+Keepline implements the "relay race" pattern — your progress persists across sessions.
 
 ```
 ┌─────────────────────────────────────────────────────────────────┐
@@ -234,24 +236,24 @@ Beautiful, cyberpunk-themed dashboard with 5 color themes.
 
 ```bash
 # Core commands
-claude-hub                      # Start web dashboard (default)
-claude-hub list                 # List all sessions
-claude-hub watch                # Live terminal monitor
-claude-hub recover <id>         # Recover a lost session
+keepline                      # Start web dashboard (default)
+keepline list                 # List all sessions
+keepline watch                # Live terminal monitor
+keepline recover <id>         # Recover a lost session
 
 # Session management
-claude-hub list -s running      # Filter by status
-claude-hub list -d ./my-app     # Filter by directory
+keepline list -s running      # Filter by status
+keepline list -d ./my-app     # Filter by directory
 
 # Memory management
-claude-hub memory list          # List session memories
-claude-hub memory show <id>     # Show memory details
-claude-hub memory export <id>   # Export as recovery context
+keepline memory list          # List session memories
+keepline memory show <id>     # Show memory details
+keepline memory export <id>   # Export as recovery context
 
 # Background service
-claude-hub daemon start         # Start background monitor
-claude-hub daemon stop          # Stop daemon
-claude-hub hooks install        # Install Claude hooks
+keepline daemon start         # Start background monitor
+keepline daemon stop          # Stop daemon
+keepline hooks install        # Install Claude-compatible hooks
 ```
 
 ---
@@ -260,7 +262,7 @@ claude-hub hooks install        # Install Claude hooks
 
 ```
 ┌─────────────────────────────────────────────────────────────────┐
-│                        Claude Hub                                │
+│                        Keepline                                │
 ├─────────────┬─────────────┬─────────────┬─────────────┬─────────┤
 │   Web UI    │  Terminal   │   Daemon    │   Hooks     │   API   │
 │   (React)   │   (Ink)     │ (Background)│  (HTTP)     │  (REST) │
@@ -290,7 +292,7 @@ claude-hub hooks install        # Install Claude hooks
 
 ## Comparison
 
-| Feature | Manual | claude-mem | **Claude Hub** |
+| Feature | Manual | claude-mem | **Keepline** |
 |---------|:------:|:----------:|:--------------:|
 | Multi-session monitoring | - | - | **Yes** |
 | Session recovery | - | - | **3 methods** |
@@ -307,11 +309,11 @@ claude-hub hooks install        # Install Claude hooks
 
 ## Configuration
 
-Data stored in `~/.claude-hub/`:
+Keepline stores data in `~/.keepline/` by default:
 
 ```
-~/.claude-hub/
-├── claude-hub.db    # SQLite database
+~/.keepline/
+├── keepline.db    # SQLite database
 ├── config.json      # Configuration
 └── logs/            # Log files
 ```
@@ -378,9 +380,9 @@ bun test             # Run tests
 
 <div align="center">
 
-**Built for Claude Code power users**
+**Built for Codex and Claude Code power users**
 
-[GitHub](https://github.com/majiayu000/claude-hub) | [npm](https://www.npmjs.com/package/claude-hub) | [Documentation](https://claude-hub.dev)
+[GitHub](https://github.com/majiayu000/claude-hub) | [npm](https://www.npmjs.com/package/keepline) | [Documentation](https://keepline.dev)
 
 MIT License
 

@@ -9,7 +9,7 @@ import * as lancedb from '@lancedb/lancedb';
 import { join } from 'path';
 import { mkdirSync, existsSync } from 'fs';
 import { logger } from '../../lib/logger.js';
-import { CLAUDE_HUB_HOME } from '../../lib/paths.js';
+import { KEEPLINE_HOME } from '../../lib/paths.js';
 import type {
   IVectorStore,
   Observation,
@@ -21,7 +21,7 @@ import type {
 
 /** Default configuration */
 const DEFAULT_CONFIG: VectorStoreConfig = {
-  path: join(CLAUDE_HUB_HOME, 'lancedb'),
+  path: join(KEEPLINE_HOME, 'lancedb'),
   tableName: 'observations',
   embeddingDimension: 1536, // OpenAI ada-002 / Voyage default
 };

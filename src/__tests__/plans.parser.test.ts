@@ -286,7 +286,7 @@ describe('Plans Parser', () => {
   });
 
   describe('Full plan parsing', () => {
-    const testDir = join(tmpdir(), 'claude-hub-test-plans');
+    const testDir = join(tmpdir(), 'keepline-test-plans');
 
     beforeAll(() => {
       mkdirSync(testDir, { recursive: true });

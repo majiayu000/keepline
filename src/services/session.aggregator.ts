@@ -80,6 +80,10 @@ export function filterSessions(
     result = result.filter((s) => filter.status!.includes(s.status));
   }
 
+  if (filter.client) {
+    result = result.filter((s) => s.client === filter.client);
+  }
+
   if (filter.directory) {
     result = result.filter((s) => s.directory.includes(filter.directory!));
   }
@@ -119,6 +123,9 @@ export function sortSessions(
         break;
       case 'status':
         comparison = a.status.localeCompare(b.status);
+        break;
+      case 'client':
+        comparison = a.client.localeCompare(b.client);
         break;
     }
 

@@ -99,6 +99,19 @@
 .sessionId {
   font-family: monospace;
   flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.clientTag {
+  border: 1px solid var(--border);
+  border-radius: 3px;
+  color: var(--text-dim);
+  flex-shrink: 0;
+  font-size: 0.6rem;
+  padding: 0.1rem 0.25rem;
+  text-transform: uppercase;
 }
 
 .sessionPid {

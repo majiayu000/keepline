@@ -19,6 +19,12 @@ export const SESSION_STATUSES: readonly SessionStatus[] = [
   'completed',
 ] as const;
 
+/** Supported agent clients whose sessions can be monitored. */
+export type AgentClient = 'claude' | 'codex';
+
+/** All supported agent clients. */
+export const AGENT_CLIENTS: readonly AgentClient[] = ['claude', 'codex'] as const;
+
 /** Check if a status is active (has or should have a running process) */
 export function isActiveStatus(status: SessionStatus): boolean {
   return status === 'running' || status === 'waiting' || status === 'idle';
@@ -47,6 +53,7 @@ export interface SessionUsageStats {
 
 /** Process information from system */
 export interface ProcessInfo {
+  client?: AgentClient;
   pid: number;
   command: string;
   cwd?: string;

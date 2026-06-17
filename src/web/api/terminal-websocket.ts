@@ -118,7 +118,8 @@ async function handleCreate(ws: ServerWebSocket<any>, state: TerminalWsState, da
       data?.cols || 80,
       data?.rows || 24,
       data?.cwd,
-      data?.resumeSessionId
+      data?.resumeSessionId,
+      data?.resumeSessionClient === 'codex' ? 'codex' : 'claude'
     );
     // Auto-attach creator
     ptyManager.attach(session.id, state.userId!, ws as any);

@@ -159,7 +159,6 @@ export function useSessions(token: string): UseSessionsReturn {
 
   const recoverSession = useCallback(async (sessionId: string, terminalApp?: TerminalApp) => {
     const response = await api.recoverSession(sessionId, {
-      method: 'resume',
       terminalApp: terminalApp ?? 'auto',
     })
     if (response.success) {

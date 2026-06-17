@@ -10,7 +10,7 @@ import { shellQuote } from '../lib/shell-quote.js';
 import type { TerminalApp } from './recovery.types.js';
 
 // Allowed commands whitelist for recovery
-const ALLOWED_COMMANDS = ['claude', 'claude-code', 'npx'];
+const ALLOWED_COMMANDS = ['claude', 'claude-code', 'codex', 'npx'];
 
 /** Validate directory path */
 function validateDirectory(directory: string): boolean {

@@ -15,7 +15,7 @@ import { parseSessionFile } from '../adapters/claude/parser/jsonl.js';
 const tempDirs: string[] = [];
 
 function createJsonlFile(lines: Array<Record<string, unknown> | string>): string {
-  const dir = mkdtempSync(join(tmpdir(), 'claude-hub-jsonl-'));
+  const dir = mkdtempSync(join(tmpdir(), 'keepline-jsonl-'));
   tempDirs.push(dir);
   const filePath = join(dir, 'session.jsonl');
   const contents = lines

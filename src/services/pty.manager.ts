@@ -15,6 +15,8 @@ import { runSql } from '../infrastructure/database/sqlite.js';
 import { config } from '../lib/config.js';
 import { logger } from '../lib/logger.js';
 import { assertValidSessionId } from '../lib/session-id.js';
+import type { AgentClient } from '../domain/session/index.js';
+import { unscopeCodexSessionId } from '../adapters/codex/parser.js';
 
 interface IPty {
   pid: number;
@@ -89,9 +91,17 @@ class PtyManager {
   constructor() {
     // Start idle cleanup timer
     this.idleTimer = setInterval(() => this.cleanupIdle(), 60_000);
+    (this.idleTimer as unknown as { unref?: () => void }).unref?.();
   }
 
-  async create(userId: string, cols: number = 80, rows: number = 24, cwd?: string, resumeSessionId?: string): Promise<PtySession> {
+  async create(
+    userId: string,
+    cols: number = 80,
+    rows: number = 24,
+    cwd?: string,
+    resumeSessionId?: string,
+    resumeSessionClient: AgentClient = 'claude'
+  ): Promise<PtySession> {
     const cfg = config.get().webTerminal;
 
     // Check max sessions
@@ -105,13 +115,18 @@ class PtyManager {
     const sessionId = randomUUID();
     const spawnCwd = resolveAllowedTerminalCwd(cwd);
 
-    // Build command: if resumeSessionId provided, use `claude --resume <id>`
+    // Build command: if resumeSessionId provided, resume through the owning client.
     let file: string;
     let args: string[];
     if (resumeSessionId) {
       assertValidSessionId(resumeSessionId);
-      file = 'claude';
-      args = ['--resume', resumeSessionId];
+      if (resumeSessionClient === 'codex') {
+        file = 'codex';
+        args = ['resume', unscopeCodexSessionId(resumeSessionId)];
+      } else {
+        file = 'claude';
+        args = ['--resume', resumeSessionId];
+      }
     } else {
       const shellCmd = cfg.shellCommand || 'claude';
       const shellParts = shellCmd.split(' ');
@@ -331,7 +346,7 @@ class PtyManager {
 export const ptyManager = new PtyManager();
 
 function getAllowedTerminalCwdRoots(): string[] {
-  const configuredRoots = process.env.CLAUDE_HUB_TERMINAL_CWD_ROOTS;
+  const configuredRoots = process.env.KEEPLINE_TERMINAL_CWD_ROOTS;
   if (configuredRoots) {
     return configuredRoots.split(path.delimiter);
   }

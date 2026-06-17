@@ -6,16 +6,23 @@
  */
 
 import type { Session, SessionListItem } from './entity.js';
-import type { SessionStatus, ToolCallInfo, SessionUsageStats } from './value-objects.js';
+import type {
+  AgentClient,
+  SessionStatus,
+  ToolCallInfo,
+  SessionUsageStats,
+} from './value-objects.js';
 
 export interface ActiveSessionRecord {
   sessionId: string;
+  client: AgentClient;
   status: SessionStatus;
   pid?: number;
 }
 
 export interface ExistingSessionSummary {
   sessionId: string;
+  client: AgentClient;
   status: SessionStatus;
   title: string;
 }
@@ -23,6 +30,7 @@ export interface ExistingSessionSummary {
 /** Session upsert data (for create or update) */
 export interface SessionUpsertData {
   sessionId: string;
+  client?: AgentClient;
   directory?: string;
   status?: SessionStatus;
   title?: string;
@@ -50,13 +58,13 @@ export interface ISessionRepository {
   /** Find session by internal ID */
   findById(id: string): Session | null;
 
-  /** Find session by Claude session ID */
+  /** Find session by client-scoped session ID */
   findBySessionId(sessionId: string): Session | null;
 
-  /** Find multiple sessions by Claude session ID */
+  /** Find multiple sessions by client-scoped session ID */
   findBySessionIds(sessionIds: string[]): Session[];
 
-  /** Find multiple sessions by Claude session ID with only sync-needed fields */
+  /** Find multiple sessions by client-scoped session ID with only sync-needed fields */
   findBySessionIdsSummary(sessionIds: string[]): ExistingSessionSummary[];
 
   /** Find all sessions */

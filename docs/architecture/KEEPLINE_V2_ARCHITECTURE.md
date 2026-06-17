@@ -1,4 +1,4 @@
-# Tasker v2 Architecture Design
+# Keepline Architecture Design
 
 > **目标**: 从「会话监控工具」升级为「Claude Code 自动化平台」
 > **设计原则**: 接力赛模式 | 容错优先 | 人类在循环中 | 渐进增强
@@ -9,7 +9,7 @@
 
 ```
 ┌─────────────────────────────────────────────────────────────────────────────┐
-│                           TASKER V2 ARCHITECTURE                            │
+│                           KEEPLINE V2 ARCHITECTURE                            │
 ├─────────────────────────────────────────────────────────────────────────────┤
 │                                                                             │
 │  ┌─────────────────────────────────────────────────────────────────────┐   │
@@ -81,7 +81,7 @@
 ## 2. 文件结构设计
 
 ```
-tasker/
+keepline/
 ├── src/
 │   │
 │   ├── index.ts                      # CLI 入口 (Commander.js)
@@ -361,7 +361,7 @@ tasker/
 │
 ├── docs/
 │   ├── architecture/
-│   │   └── TASKER_V2_ARCHITECTURE.md  # 本文件
+│   │   └── KEEPLINE_V2_ARCHITECTURE.md  # 本文件
 │   ├── api/
 │   └── plugins/
 │
@@ -1697,17 +1697,17 @@ type ServerEventType =
 # 会话管理 (已有)
 # ============================================================
 
-tasker                              # 默认: 列出会话
-tasker list [options]               # 列出会话
+keepline                              # 默认: 列出会话
+keepline list [options]               # 列出会话
   -s, --status <status>             # 按状态过滤
   -d, --directory <dir>             # 按目录过滤
   -l, --limit <n>                   # 限制数量
   --style <style>                   # UI 样式
 
-tasker watch [options]              # 实时监控
+keepline watch [options]              # 实时监控
   -i, --interval <seconds>          # 刷新间隔
 
-tasker recover [session-id]         # 恢复会话
+keepline recover [session-id]         # 恢复会话
   -m, --method <method>             # resume/continue/new
   -t, --terminal                    # 在新终端打开
   --with-context                    # [NEW] 注入上下文
@@ -1716,46 +1716,46 @@ tasker recover [session-id]         # 恢复会话
 # 任务管理 [NEW]
 # ============================================================
 
-tasker queue                        # 查看任务队列
-tasker queue add [options]          # 添加任务
+keepline queue                        # 查看任务队列
+keepline queue add [options]          # 添加任务
   --prompt <prompt>                 # 任务提示
   --directory <dir>                 # 工作目录
   --priority <n>                    # 优先级 (0-10)
   --depends-on <task-id>            # 依赖任务
 
-tasker queue status                 # 队列状态
-tasker queue pause                  # 暂停队列
-tasker queue resume                 # 恢复队列
-tasker queue cancel <task-id>       # 取消任务
-tasker queue retry <task-id>        # 重试任务
+keepline queue status                 # 队列状态
+keepline queue pause                  # 暂停队列
+keepline queue resume                 # 恢复队列
+keepline queue cancel <task-id>       # 取消任务
+keepline queue retry <task-id>        # 重试任务
 
 # ============================================================
 # 调度管理 [NEW]
 # ============================================================
 
-tasker schedule                     # 查看调度任务
-tasker schedule add [options]       # 添加调度
+keepline schedule                     # 查看调度任务
+keepline schedule add [options]       # 添加调度
   --name <name>                     # 任务名称
   --cron <cron>                     # Cron 表达式
   --prompt <prompt>                 # 任务提示
   --directory <dir>                 # 工作目录
   --timezone <tz>                   # 时区
 
-tasker schedule list                # 列出调度
-tasker schedule enable <id>         # 启用调度
-tasker schedule disable <id>        # 禁用调度
-tasker schedule delete <id>         # 删除调度
-tasker schedule run <id>            # 立即运行
+keepline schedule list                # 列出调度
+keepline schedule enable <id>         # 启用调度
+keepline schedule disable <id>        # 禁用调度
+keepline schedule delete <id>         # 删除调度
+keepline schedule run <id>            # 立即运行
 
 # ============================================================
 # 记忆管理 [NEW]
 # ============================================================
 
-tasker memory                       # 查看所有记忆
-tasker memory show <session-id>     # 查看会话记忆
-tasker memory edit <session-id>     # 编辑记忆 (打开编辑器)
-tasker memory clear <session-id>    # 清除记忆
-tasker memory export [options]      # 导出记忆
+keepline memory                       # 查看所有记忆
+keepline memory show <session-id>     # 查看会话记忆
+keepline memory edit <session-id>     # 编辑记忆 (打开编辑器)
+keepline memory clear <session-id>    # 清除记忆
+keepline memory export [options]      # 导出记忆
   --format <format>                 # json/markdown
   --output <file>                   # 输出文件
 
@@ -1763,14 +1763,14 @@ tasker memory export [options]      # 导出记忆
 # 预算管理 [NEW]
 # ============================================================
 
-tasker budget                       # 查看预算状态
-tasker budget status                # 详细状态
-tasker budget set [options]         # 设置预算
+keepline budget                       # 查看预算状态
+keepline budget status                # 详细状态
+keepline budget set [options]         # 设置预算
   --daily <amount>                  # 每日限额
   --monthly <amount>                # 每月限额
   --warning <percent>               # 警告阈值
 
-tasker budget history [options]     # 使用历史
+keepline budget history [options]     # 使用历史
   --from <date>                     # 开始日期
   --to <date>                       # 结束日期
   --format <format>                 # table/json/csv
@@ -1779,8 +1779,8 @@ tasker budget history [options]     # 使用历史
 # 恢复策略 [NEW]
 # ============================================================
 
-tasker policy                       # 查看恢复策略
-tasker policy add [options]         # 添加策略
+keepline policy                       # 查看恢复策略
+keepline policy add [options]         # 添加策略
   --name <name>
   --min-age <seconds>
   --max-age <seconds>
@@ -1788,68 +1788,68 @@ tasker policy add [options]         # 添加策略
   --auto-context                    # 自动注入上下文
   --notify <channels>               # 通知渠道
 
-tasker policy enable <id>
-tasker policy disable <id>
-tasker policy delete <id>
+keepline policy enable <id>
+keepline policy disable <id>
+keepline policy delete <id>
 
 # ============================================================
 # 工作流 [NEW]
 # ============================================================
 
-tasker workflow                     # 查看工作流
-tasker workflow list                # 列出工作流
-tasker workflow create <name>       # 创建工作流 (交互式)
-tasker workflow run <name> [dir]    # 运行工作流
-tasker workflow status <run-id>     # 查看运行状态
+keepline workflow                     # 查看工作流
+keepline workflow list                # 列出工作流
+keepline workflow create <name>       # 创建工作流 (交互式)
+keepline workflow run <name> [dir]    # 运行工作流
+keepline workflow status <run-id>     # 查看运行状态
 
 # ============================================================
 # 告警 [NEW]
 # ============================================================
 
-tasker alert                        # 查看告警配置
-tasker alert add-channel [options]  # 添加告警渠道
+keepline alert                        # 查看告警配置
+keepline alert add-channel [options]  # 添加告警渠道
   --type <type>                     # slack/discord/webhook
   --name <name>
   --webhook <url>
 
-tasker alert add-rule [options]     # 添加告警规则
+keepline alert add-rule [options]     # 添加告警规则
   --event <event>                   # 事件类型
   --severity <level>
   --channels <ids>
 
-tasker alert test <channel-id>      # 测试告警
-tasker alert history                # 告警历史
+keepline alert test <channel-id>      # 测试告警
+keepline alert history                # 告警历史
 
 # ============================================================
 # 守护进程 (已有，扩展)
 # ============================================================
 
-tasker daemon start [options]
+keepline daemon start [options]
   --hooks                           # 同时安装 hooks
   --scheduler                       # [NEW] 启用调度器
   --workers <n>                     # [NEW] 工作进程数
 
-tasker daemon stop
-tasker daemon restart
-tasker daemon status
-tasker daemon logs                  # [NEW] 查看日志
+keepline daemon stop
+keepline daemon restart
+keepline daemon status
+keepline daemon logs                  # [NEW] 查看日志
 
 # ============================================================
 # 系统 (已有，扩展)
 # ============================================================
 
-tasker status                       # 系统状态
-tasker sync                         # 手动同步
-tasker web                          # 启动 Web UI
+keepline status                       # 系统状态
+keepline sync                         # 手动同步
+keepline web                          # 启动 Web UI
 
-tasker metrics                      # [NEW] 查看指标
-tasker audit [options]              # [NEW] 查看审计日志
+keepline metrics                      # [NEW] 查看指标
+keepline audit [options]              # [NEW] 查看审计日志
   --from <date>
   --action <action>
 
-tasker config                       # 查看配置
-tasker config set <key> <value>     # 设置配置
-tasker config reset                 # 重置配置
+keepline config                       # 查看配置
+keepline config set <key> <value>     # 设置配置
+keepline config reset                 # 重置配置
 ```
 
 ---
@@ -1874,7 +1874,7 @@ tasker config reset                 # 重置配置
 - [ ] 实现 `MemoryExtractor` 从 Hook 事件提取信息
 - [ ] 实现 `ContextBuilder` 构建恢复上下文
 - [ ] 添加 `--with-context` 恢复选项
-- [ ] 添加 `tasker memory` 命令
+- [ ] 添加 `keepline memory` 命令
 
 ### Phase 3: 自动恢复 (1-2 周)
 
@@ -1884,7 +1884,7 @@ tasker config reset                 # 重置配置
 - [ ] 实现 `RecoveryEvaluator` 评估
 - [ ] 实现三阶段恢复: 评估 → 执行 → 验证
 - [ ] 实现重试逻辑
-- [ ] 添加 `tasker policy` 命令
+- [ ] 添加 `keepline policy` 命令
 - [ ] 集成事件系统
 
 ### Phase 4: 任务队列 (1-2 周)
@@ -1894,8 +1894,8 @@ tasker config reset                 # 重置配置
 - [ ] 实现 `TaskQueue` 持久化队列
 - [ ] 实现 `TaskScheduler` Cron 调度
 - [ ] 实现 `TaskWorker` 执行器
-- [ ] 添加 `tasker queue` 命令
-- [ ] 添加 `tasker schedule` 命令
+- [ ] 添加 `keepline queue` 命令
+- [ ] 添加 `keepline schedule` 命令
 
 ### Phase 5: 预算管理 (1 周)
 
@@ -1904,7 +1904,7 @@ tasker config reset                 # 重置配置
 - [ ] 实现 `BudgetTracker`
 - [ ] 实现预算感知调度
 - [ ] 添加使用量记录
-- [ ] 添加 `tasker budget` 命令
+- [ ] 添加 `keepline budget` 命令
 - [ ] 集成告警系统
 
 ### Phase 6: 告警系统 (1 周)
@@ -1915,7 +1915,7 @@ tasker config reset                 # 重置配置
 - [ ] 实现 Slack 集成
 - [ ] 实现 Discord 集成
 - [ ] 实现 Webhook 集成
-- [ ] 添加 `tasker alert` 命令
+- [ ] 添加 `keepline alert` 命令
 - [ ] 实现节流/防刷屏
 
 ### Phase 7: 可观测性 (1 周)
@@ -1941,8 +1941,8 @@ tasker config reset                 # 重置配置
 ## 9. 配置文件设计
 
 ```typescript
-// ~/.tasker/config.json
-interface TaskerConfig {
+// ~/.keepline/config.json
+interface KeeplineConfig {
   // 基础配置 (已有)
   scanInterval: number;
   hookPort: number;

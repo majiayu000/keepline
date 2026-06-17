@@ -7,7 +7,7 @@
 import { Hono } from 'hono';
 import { join } from 'path';
 import { logger } from '../../../lib/logger.js';
-import { CLAUDE_HUB_HOME } from '../../../lib/paths.js';
+import { KEEPLINE_HOME } from '../../../lib/paths.js';
 import { getCostPrediction, getCostForDateRange } from '../../../services/cost.predictor.js';
 import { authMiddleware } from '../middleware/auth.js';
 import { ExpiringCache } from '../expiring-cache.js';
@@ -19,7 +19,7 @@ const CODEX_CLIENT_ID = 'app_EMoamEEZ73f0CkXaXp7hrann';
 const CODEX_USAGE_URL = 'https://chatgpt.com/backend-api/wham/usage';
 const CODEX_REFRESH_URL = 'https://auth.openai.com/oauth/token';
 
-const DEFAULT_CLIENTS_FILE = join(CLAUDE_HUB_HOME, 'clients.json');
+const DEFAULT_CLIENTS_FILE = join(KEEPLINE_HOME, 'clients.json');
 const QUOTA_CACHE_TTL_MS = 30_000;
 const USAGE_CACHE_TTL_MS = 60_000;
 const COST_PREDICTION_CACHE_TTL_MS = 60_000;
@@ -147,7 +147,7 @@ function normalizeClients(raw: unknown) {
 // GET /api/clients - Load optional client definitions for multi-client quota display
 app.get('/clients', async (c) => {
   try {
-    const clientsFile = process.env.CLAUDE_HUB_CLIENTS_FILE || DEFAULT_CLIENTS_FILE;
+    const clientsFile = process.env.KEEPLINE_CLIENTS_FILE || DEFAULT_CLIENTS_FILE;
     if (!clientsFile) {
       return c.json({ success: true, data: { clients: [], source_path: null } });
     }

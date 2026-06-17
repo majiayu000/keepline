@@ -1,5 +1,5 @@
 /**
- * Web API Server for Claude Hub
+ * Web API Server for Keepline
  * Provides REST endpoints for session management
  *
  * All endpoints include input validation
@@ -7,6 +7,7 @@
 
 import { Hono } from 'hono';
 import { serveStatic } from 'hono/bun';
+import { existsSync } from 'fs';
 import path from 'path';
 import { runMigrations } from '../../db/migrations.js';
 import { syncSessions } from '../../services/session.service.js';
@@ -33,6 +34,17 @@ import { isAllowedTerminalOrigin } from './terminal-security.js';
 
 const app = new Hono();
 
+const webDistCandidates = [
+  path.resolve(import.meta.dir, '../../../public/dist'),
+  path.resolve(import.meta.dir, '../public/dist'),
+  path.resolve(process.cwd(), 'public/dist'),
+  path.resolve(process.cwd(), 'src/web/public/dist'),
+];
+
+function getWebDistDir(): string {
+  return webDistCandidates.find((dir) => existsSync(path.join(dir, 'index.html'))) ?? webDistCandidates[0];
+}
+
 // Rate limiting: 500 requests per minute for API routes (local tool, be generous)
 app.use('/api/*', rateLimit(500, 60 * 1000));
 
@@ -42,9 +54,7 @@ app.use('/static/*', serveStatic({ root: './src/web/public' }));
 // Serve React app assets - with path traversal protection
 app.get('/assets/*', async (c) => {
   const requestPath = c.req.path;
-
-  // Base directory for assets (absolute path)
-  const basePath = path.resolve('./src/web/public/dist');
+  const basePath = getWebDistDir();
 
   // Normalize and resolve the requested path
   const normalizedPath = path.normalize(requestPath);
@@ -80,7 +90,7 @@ app.route('/api/plans', plans);
 
 // Serve React app index.html for root
 app.get('/', async () => {
-  const file = Bun.file('./src/web/public/dist/index.html');
+  const file = Bun.file(path.join(getWebDistDir(), 'index.html'));
   return new Response(file, {
     headers: { 'Content-Type': 'text/html' },
   });
@@ -88,12 +98,12 @@ app.get('/', async () => {
 
 // Fallback to index.html for SPA routing
 app.get('/*', async (c) => {
-  const path = c.req.path;
+  const requestPath = c.req.path;
   // Don't catch API or static asset routes
-  if (path.startsWith('/api/') || path.startsWith('/assets/') || path.startsWith('/static/')) {
+  if (requestPath.startsWith('/api/') || requestPath.startsWith('/assets/') || requestPath.startsWith('/static/')) {
     return c.notFound();
   }
-  const file = Bun.file('./src/web/public/dist/index.html');
+  const file = Bun.file(path.join(getWebDistDir(), 'index.html'));
   return new Response(file, {
     headers: { 'Content-Type': 'text/html' },
   });
@@ -152,7 +162,7 @@ export async function startWebServer(port: number = 3377) {
   logger.info(`Starting web server on port ${port}`);
 
   const terminalConfig = config.get().webTerminal;
-  const hostname = process.env.CLAUDE_HUB_HOST || '127.0.0.1';
+  const hostname = process.env.KEEPLINE_HOST || '127.0.0.1';
 
   const server = Bun.serve<{ type: 'dashboard' | 'terminal' }>({
     hostname,

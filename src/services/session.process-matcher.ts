@@ -11,6 +11,7 @@
  */
 
 import type { ClaudeProcessInfo } from '../adapters/process/types.js';
+import type { AgentClient } from '../domain/session/index.js';
 
 const UNMATCHED_PROCESS_PENALTY = 30 * 24 * 60 * 60 * 1000;
 const MAX_ACTIVITY_AGE_PENALTY = 24 * 60 * 60 * 1000;
@@ -18,6 +19,7 @@ const START_TIME_WEIGHT = 10;
 
 export interface SessionProcessCandidate {
   sessionId: string;
+  client?: AgentClient;
   directory: string;
   startedAt?: Date;
   lastActiveAt: Date;
@@ -175,23 +177,27 @@ export function matchProcessesToSessions<T extends SessionProcessCandidate>(
   const matches = new Map<string, ClaudeProcessInfo>();
   const sessionsByDirectory = new Map<string, T[]>();
   const processesByDirectory = new Map<string, ClaudeProcessInfo[]>();
+  const groupKey = (client: AgentClient | undefined, directory: string) =>
+    `${client ?? 'claude'}\u0000${directory}`;
 
   for (const session of sessions) {
-    const existing = sessionsByDirectory.get(session.directory) || [];
+    const key = groupKey(session.client, session.directory);
+    const existing = sessionsByDirectory.get(key) || [];
     existing.push(session);
-    sessionsByDirectory.set(session.directory, existing);
+    sessionsByDirectory.set(key, existing);
   }
 
   for (const process of processes) {
-    const existing = processesByDirectory.get(process.cwd) || [];
+    const key = groupKey(process.client, process.cwd);
+    const existing = processesByDirectory.get(key) || [];
     existing.push(process);
-    processesByDirectory.set(process.cwd, existing);
+    processesByDirectory.set(key, existing);
   }
 
   const nowMs = Date.now();
 
-  for (const [directory, directorySessions] of sessionsByDirectory.entries()) {
-    const directoryProcesses = processesByDirectory.get(directory) || [];
+  for (const [directoryKey, directorySessions] of sessionsByDirectory.entries()) {
+    const directoryProcesses = processesByDirectory.get(directoryKey) || [];
     if (directoryProcesses.length === 0) continue;
 
     const unmatchedSessions: T[] = [];

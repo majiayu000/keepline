@@ -1,22 +1,22 @@
 /**
- * Custom error classes for Tasker
+ * Custom error classes for Keepline
  */
 
 /** Base error class */
-export class TaskerError extends Error {
+export class KeeplineError extends Error {
   constructor(
     message: string,
     public readonly code: string,
     public readonly details?: Record<string, unknown>
   ) {
     super(message);
-    this.name = 'TaskerError';
+    this.name = 'KeeplineError';
     Error.captureStackTrace(this, this.constructor);
   }
 }
 
 /** Database related errors */
-export class DatabaseError extends TaskerError {
+export class DatabaseError extends KeeplineError {
   constructor(message: string, details?: Record<string, unknown>) {
     super(message, 'DB_ERROR', details);
     this.name = 'DatabaseError';
@@ -24,7 +24,7 @@ export class DatabaseError extends TaskerError {
 }
 
 /** Session not found error */
-export class SessionNotFoundError extends TaskerError {
+export class SessionNotFoundError extends KeeplineError {
   constructor(sessionId: string) {
     super(`Session not found: ${sessionId}`, 'SESSION_NOT_FOUND', { sessionId });
     this.name = 'SessionNotFoundError';
@@ -32,7 +32,7 @@ export class SessionNotFoundError extends TaskerError {
 }
 
 /** Parse error for JSONL files */
-export class ParseError extends TaskerError {
+export class ParseError extends KeeplineError {
   constructor(filePath: string, line: number, originalError?: Error) {
     super(
       `Failed to parse ${filePath} at line ${line}`,
@@ -44,7 +44,7 @@ export class ParseError extends TaskerError {
 }
 
 /** Process scan error */
-export class ProcessScanError extends TaskerError {
+export class ProcessScanError extends KeeplineError {
   constructor(message: string, details?: Record<string, unknown>) {
     super(message, 'PROCESS_SCAN_ERROR', details);
     this.name = 'ProcessScanError';
@@ -52,7 +52,7 @@ export class ProcessScanError extends TaskerError {
 }
 
 /** Recovery error */
-export class RecoveryError extends TaskerError {
+export class RecoveryError extends KeeplineError {
   constructor(sessionId: string, reason: string) {
     super(`Failed to recover session ${sessionId}: ${reason}`, 'RECOVERY_ERROR', { sessionId, reason });
     this.name = 'RecoveryError';
@@ -60,7 +60,7 @@ export class RecoveryError extends TaskerError {
 }
 
 /** Configuration error */
-export class ConfigError extends TaskerError {
+export class ConfigError extends KeeplineError {
   constructor(message: string) {
     super(message, 'CONFIG_ERROR');
     this.name = 'ConfigError';

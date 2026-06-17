@@ -59,9 +59,9 @@ export function NeonView({ sessions, stats }: Props): React.ReactElement {
         <Box>
           <Text color="#333366">║ </Text>
           <Gradient name="rainbow">
-            <Text bold>◢◤ CLAUDE HUB v1.0 ◢◤</Text>
+            <Text bold>◢◤ KEEPLINE v1.0 ◢◤</Text>
           </Gradient>
-          <Text color="#666699">  // CLAUDE CODE NEURAL MONITOR //</Text>
+          <Text color="#666699">  // AGENT SESSION MONITOR //</Text>
           <Text color="#333366">{' '.repeat(20)}║</Text>
         </Box>
         <Text color="#333366">╠{'═'.repeat(76)}╣</Text>
@@ -128,11 +128,11 @@ export function NeonView({ sessions, stats }: Props): React.ReactElement {
           <Text color="#333366">║ </Text>
           <Text color="#ff00ff">[CMD]</Text>
           <Text color="#666699"> RECOVER: </Text>
-          <Text color="#00ffff" bold>tasker r {'<ID>'}</Text>
+          <Text color="#00ffff" bold>keepline r {'<ID>'}</Text>
           <Text color="#666699"> │ LIST: </Text>
-          <Text color="#00ffff" bold>tasker ls</Text>
+          <Text color="#00ffff" bold>keepline ls</Text>
           <Text color="#666699"> │ WATCH: </Text>
-          <Text color="#00ffff" bold>tasker w</Text>
+          <Text color="#00ffff" bold>keepline w</Text>
           <Text color="#333366">{' '.repeat(5)}║</Text>
         </Box>
         <Text color="#333366">╚{'═'.repeat(76)}╝</Text>

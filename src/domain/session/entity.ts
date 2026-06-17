@@ -3,12 +3,20 @@
  */
 
 import type { Entity } from '../shared/types.js';
-import type { SessionStatus, ToolCallInfo, SessionUsageStats } from './value-objects.js';
+import type {
+  AgentClient,
+  SessionStatus,
+  ToolCallInfo,
+  SessionUsageStats,
+} from './value-objects.js';
 
-/** Session entity - represents a Claude Code session */
+/** Session entity - represents a monitored agent session */
 export interface Session extends Entity {
-  /** Claude's internal session ID */
+  /** Client-scoped session ID used by Keepline. */
   sessionId: string;
+
+  /** Agent client that owns this session. */
+  client: AgentClient;
 
   /** Working directory path */
   directory: string;
@@ -52,6 +60,7 @@ export interface Session extends Entity {
 /** Parsed session data from JSONL files */
 export interface ParsedSessionData {
   sessionId: string;
+  client?: AgentClient;
   directory: string;
   firstMessage?: string;
   lastMessage?: string;
@@ -63,6 +72,7 @@ export interface ParsedSessionData {
   startedAt?: Date;
   lastActiveAt: Date;
   toolCalls?: ToolCallInfo[];
+  usageStats?: SessionUsageStats;
 
   /** Multi-session tracking */
   agentId?: string;
@@ -82,6 +92,7 @@ export type SessionListItem = Pick<
   Session,
   | 'id'
   | 'sessionId'
+  | 'client'
   | 'directory'
   | 'status'
   | 'title'
@@ -106,6 +117,7 @@ export interface AggregatedSessionListItem extends SessionListItem {
 /** Input for creating a new session */
 export interface CreateSessionInput {
   sessionId: string;
+  client?: AgentClient;
   directory: string;
   initialPrompt: string;
   title?: string;

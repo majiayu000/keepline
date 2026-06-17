@@ -7,20 +7,20 @@ import { existsSync } from 'fs';
 import {
   CLAUDE_HOME,
   CLAUDE_PROJECT_ROOTS,
-  CLAUDE_HUB_HOME,
-  CLAUDE_HUB_DB,
-  LEGACY_TASKER_HOME,
+  KEEPLINE_HOME,
+  KEEPLINE_DB,
 } from '../lib/paths.js';
 import { getDaemonStatus } from '../services/daemon.manager.js';
 import { getHookStatus } from '../adapters/hook/installer.js';
 import { config } from '../lib/config.js';
 import { runMigrations } from '../db/migrations.js';
 import { sessionRepository } from '../infrastructure/database/repositories/session.repository.js';
-import { scanClaudeProcesses } from '../adapters/process/scanner.js';
+import { closeDatabase } from '../infrastructure/database/sqlite.js';
+import { scanAgentProcesses } from '../adapters/process/scanner.js';
 
 export async function statusCommand(): Promise<void> {
   console.log('');
-  console.log(chalk.bold('Claude Hub System Status'));
+  console.log(chalk.bold('Keepline System Status'));
   console.log('');
 
   // Paths
@@ -29,11 +29,8 @@ export async function statusCommand(): Promise<void> {
   for (const root of CLAUDE_PROJECT_ROOTS) {
     console.log(`  Claude projects: ${root} ${existsSync(root) ? chalk.green('OK') : chalk.gray('Not found')}`);
   }
-  console.log(`  Claude Hub home: ${CLAUDE_HUB_HOME} ${existsSync(CLAUDE_HUB_HOME) ? chalk.green('OK') : chalk.gray('Will create')}`);
-  console.log(`  Claude Hub DB:   ${CLAUDE_HUB_DB} ${existsSync(CLAUDE_HUB_DB) ? chalk.green('OK') : chalk.gray('Will create')}`);
-  if (LEGACY_TASKER_HOME !== CLAUDE_HUB_HOME && existsSync(LEGACY_TASKER_HOME)) {
-    console.log(`  Legacy Tasker home: ${LEGACY_TASKER_HOME} ${chalk.yellow('Pending migration')}`);
-  }
+  console.log(`  Keepline home:  ${KEEPLINE_HOME} ${existsSync(KEEPLINE_HOME) ? chalk.green('OK') : chalk.gray('Will create')}`);
+  console.log(`  Keepline DB:    ${KEEPLINE_DB} ${existsSync(KEEPLINE_DB) ? chalk.green('OK') : chalk.gray('Will create')}`);
   console.log('');
 
   // Daemon
@@ -82,10 +79,10 @@ export async function statusCommand(): Promise<void> {
   console.log('');
 
   // Running processes
-  const processes = scanClaudeProcesses();
-  console.log(chalk.cyan('Claude Processes:'));
+  const processes = scanAgentProcesses();
+  console.log(chalk.cyan('Agent Processes:'));
   if (processes.length === 0) {
-    console.log(`  ${chalk.gray('No Claude processes running')}`);
+    console.log(`  ${chalk.gray('No supported agent processes running')}`);
   } else {
     console.log(`  Found: ${chalk.green(processes.length)} running`);
     processes.slice(0, 5).forEach((p) => {
@@ -96,4 +93,5 @@ export async function statusCommand(): Promise<void> {
     }
   }
   console.log('');
+  closeDatabase();
 }

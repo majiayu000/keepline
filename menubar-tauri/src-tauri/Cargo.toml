@@ -2,7 +2,7 @@
 name = "claude-quota-monitor"
 version = "1.1.0"
 description = "Claude usage quota monitor for system tray"
-authors = ["Claude Hub"]
+authors = ["Keepline"]
 edition = "2021"
 
 [lib]

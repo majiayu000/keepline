@@ -1,10 +1,10 @@
-# Tasker v2 Quick Reference
+# Keepline Quick Reference
 
 ## Architecture Overview
 
 ```
 ┌──────────────────────────────────────────────────────────────────┐
-│                      TASKER V2                                   │
+│                      KEEPLINE V2                                   │
 │              Claude Code 自动化平台                               │
 ├──────────────────────────────────────────────────────────────────┤
 │                                                                  │
@@ -134,38 +134,38 @@ workflow_runs         -- 工作流运行 [NEW]
 
 ```bash
 # 会话
-tasker list                    # 列出会话
-tasker watch                   # 实时监控
-tasker recover <id>            # 恢复会话 (--with-context)
+keepline list                    # 列出会话
+keepline watch                   # 实时监控
+keepline recover <id>            # 恢复会话 (--with-context)
 
 # 任务 [NEW]
-tasker queue add --prompt "..." --directory "..."
-tasker queue status
-tasker schedule add --cron "0 8 * * *" --prompt "..."
+keepline queue add --prompt "..." --directory "..."
+keepline queue status
+keepline schedule add --cron "0 8 * * *" --prompt "..."
 
 # 记忆 [NEW]
-tasker memory show <session-id>
-tasker memory edit <session-id>
+keepline memory show <session-id>
+keepline memory edit <session-id>
 
 # 预算 [NEW]
-tasker budget status
-tasker budget set --daily 10
+keepline budget status
+keepline budget set --daily 10
 
 # 恢复策略 [NEW]
-tasker policy add --name "快速恢复" --method resume
-tasker policy enable <id>
+keepline policy add --name "快速恢复" --method resume
+keepline policy enable <id>
 
 # 告警 [NEW]
-tasker alert add-channel --type slack --webhook "..."
-tasker alert add-rule --event session_lost --severity critical
+keepline alert add-channel --type slack --webhook "..."
+keepline alert add-rule --event session_lost --severity critical
 
 # 工作流 [NEW]
-tasker workflow run daily-review ./my-project
+keepline workflow run daily-review ./my-project
 
 # 系统
-tasker daemon start --scheduler
-tasker status
-tasker metrics
+keepline daemon start --scheduler
+keepline status
+keepline metrics
 ```
 
 ---
