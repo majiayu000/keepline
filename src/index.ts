@@ -37,5 +37,5 @@ program.action(async () => {
   await listCommand({});
 });
 
-// Parse arguments
-program.parse();
+// Parse arguments, preserving async command lifetimes such as the web server.
+await program.parseAsync();

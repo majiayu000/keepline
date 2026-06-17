@@ -16,5 +16,15 @@ export async function webCommand(options: WebOptions): Promise<void> {
     process.exit(1);
   }
 
-  startWebServer(port);
+  const server = await startWebServer(port);
+
+  const shutdown = () => {
+    server.stop();
+    process.exit(0);
+  };
+
+  process.once('SIGINT', shutdown);
+  process.once('SIGTERM', shutdown);
+
+  await new Promise<void>(() => {});
 }
