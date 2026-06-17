@@ -69,7 +69,7 @@ describe('terminal cwd allowlist', () => {
   });
 
   test('allows directories under an allowed root', () => {
-    const root = tempDir('claude-hub-root-');
+    const root = tempDir('keepline-root-');
     const project = join(root, 'project');
     mkdirSync(project);
 
@@ -77,15 +77,15 @@ describe('terminal cwd allowlist', () => {
   });
 
   test('rejects directories outside allowed roots', () => {
-    const root = tempDir('claude-hub-root-');
-    const outside = tempDir('claude-hub-outside-');
+    const root = tempDir('keepline-root-');
+    const outside = tempDir('keepline-outside-');
 
     expect(() => resolveAllowedTerminalCwd(outside, [root])).toThrow('outside allowed roots');
   });
 
   test('rejects symlinks that resolve outside allowed roots', () => {
-    const root = tempDir('claude-hub-root-');
-    const outside = tempDir('claude-hub-outside-');
+    const root = tempDir('keepline-root-');
+    const outside = tempDir('keepline-outside-');
     const link = join(root, 'outside-link');
     symlinkSync(outside, link, 'dir');
 

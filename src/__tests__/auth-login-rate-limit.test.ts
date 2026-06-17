@@ -23,13 +23,13 @@ describe('auth login rate limiting', () => {
   beforeEach(async () => {
     resetDatabase();
     __resetRateLimitStoreForTests();
-    process.env.CLAUDE_HUB_TRUST_PROXY = 'true';
+    process.env.KEEPLINE_TRUST_PROXY = 'true';
     await setupUser('alice', 'password123');
   });
 
   afterEach(() => {
     __resetRateLimitStoreForTests();
-    delete process.env.CLAUDE_HUB_TRUST_PROXY;
+    delete process.env.KEEPLINE_TRUST_PROXY;
     closeDatabase();
   });
 

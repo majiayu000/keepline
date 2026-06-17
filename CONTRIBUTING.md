@@ -1,6 +1,6 @@
-# Contributing to Claude Hub
+# Contributing to Keepline
 
-Thank you for your interest in contributing to Claude Hub! This document provides guidelines and information for contributors.
+Thank you for your interest in contributing to Keepline! This document provides guidelines and information for contributors.
 
 ## Table of Contents
 
@@ -29,8 +29,8 @@ Be respectful and inclusive. We welcome contributors of all backgrounds and expe
 
 ```bash
 # Fork the repository on GitHub, then:
-git clone https://github.com/YOUR_USERNAME/claude-hub.git
-cd claude-hub
+git clone https://github.com/YOUR_USERNAME/keepline.git
+cd keepline
 ```
 
 ## Development Setup
@@ -237,8 +237,8 @@ Update relevant documentation when:
 
 ## Need Help?
 
-- Open an [issue](https://github.com/majiayu000/claude-hub/issues) for bugs
-- Start a [discussion](https://github.com/majiayu000/claude-hub/discussions) for questions
+- Open an [issue](https://github.com/majiayu000/keepline/issues) for bugs
+- Start a [discussion](https://github.com/majiayu000/keepline/discussions) for questions
 - Check existing issues before creating new ones
 
 ---

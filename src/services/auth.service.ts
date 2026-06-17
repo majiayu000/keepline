@@ -151,7 +151,7 @@ export async function setupUser(
 
   if (enableTotp) {
     const { TOTP } = await import('otpauth');
-    const totp = new TOTP({ issuer: 'ClaudeHub', label: username, digits: 6, period: 30 });
+    const totp = new TOTP({ issuer: 'Keepline', label: username, digits: 6, period: 30 });
     totpSecret = totp.secret.base32;
     totpUri = totp.toString();
   }
@@ -189,7 +189,7 @@ export async function login(
     if (!totpCode) throw new Error('TOTP code required');
     const { TOTP } = await import('otpauth');
     const totp = new TOTP({
-      issuer: 'ClaudeHub',
+      issuer: 'Keepline',
       label: user.username,
       digits: 6,
       period: 30,

@@ -13,7 +13,7 @@ const mockClient = { send() {} };
 const tempDirs: string[] = [];
 
 function createExitScript(name: string, body: string): string {
-  const dir = mkdtempSync(join(tmpdir(), 'claude-hub-pty-'));
+  const dir = mkdtempSync(join(tmpdir(), 'keepline-pty-'));
   tempDirs.push(dir);
   const filePath = join(dir, name);
   writeFileSync(filePath, `#!/bin/sh\n${body}\n`);

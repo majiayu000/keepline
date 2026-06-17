@@ -16,7 +16,7 @@ A macOS menubar app to monitor Claude Code and Codex (ChatGPT) usage quotas and 
 
 ### Download
 
-Download the latest `.dmg` file from the [Releases](https://github.com/anthropics/claude-hub/releases) page.
+Download the latest `.dmg` file from the [Releases](https://github.com/majiayu000/keepline/releases) page.
 
 ### macOS Gatekeeper Warning
 

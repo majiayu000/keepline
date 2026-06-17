@@ -38,18 +38,18 @@ describe('local auth route', () => {
   beforeEach(() => {
     resetDatabase();
     __resetRateLimitStoreForTests();
-    delete process.env.CLAUDE_HUB_HOST;
-    delete process.env.CLAUDE_HUB_PUBLIC_ORIGIN;
-    delete process.env.CLAUDE_HUB_ALLOWED_ORIGINS;
-    delete process.env.CLAUDE_HUB_TRUST_PROXY;
+    delete process.env.KEEPLINE_HOST;
+    delete process.env.KEEPLINE_PUBLIC_ORIGIN;
+    delete process.env.KEEPLINE_ALLOWED_ORIGINS;
+    delete process.env.KEEPLINE_TRUST_PROXY;
   });
 
   afterEach(() => {
     __resetRateLimitStoreForTests();
-    delete process.env.CLAUDE_HUB_HOST;
-    delete process.env.CLAUDE_HUB_PUBLIC_ORIGIN;
-    delete process.env.CLAUDE_HUB_ALLOWED_ORIGINS;
-    delete process.env.CLAUDE_HUB_TRUST_PROXY;
+    delete process.env.KEEPLINE_HOST;
+    delete process.env.KEEPLINE_PUBLIC_ORIGIN;
+    delete process.env.KEEPLINE_ALLOWED_ORIGINS;
+    delete process.env.KEEPLINE_TRUST_PROXY;
     closeDatabase();
   });
 
@@ -68,7 +68,7 @@ describe('local auth route', () => {
   });
 
   test('does not treat trusted proxy forwarded headers as local login proof', async () => {
-    process.env.CLAUDE_HUB_TRUST_PROXY = 'true';
+    process.env.KEEPLINE_TRUST_PROXY = 'true';
 
     const response = await auth.fetch(
       new Request('http://public.example/local', {
@@ -88,7 +88,7 @@ describe('local auth route', () => {
   });
 
   test('rejects local login when the server is configured for public binding', async () => {
-    process.env.CLAUDE_HUB_HOST = '0.0.0.0';
+    process.env.KEEPLINE_HOST = '0.0.0.0';
 
     const response = await postFromLoopback();
 
@@ -98,7 +98,7 @@ describe('local auth route', () => {
   });
 
   test('rejects local login when public proxy origins are configured', async () => {
-    process.env.CLAUDE_HUB_PUBLIC_ORIGIN = 'https://hub.example.com';
+    process.env.KEEPLINE_PUBLIC_ORIGIN = 'https://hub.example.com';
 
     const response = await postFromLoopback();
 

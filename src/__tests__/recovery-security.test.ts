@@ -8,15 +8,20 @@ import type {
 } from '../domain/session/repository.js';
 import type { SessionStatus } from '../domain/session/value-objects.js';
 import {
+  buildCodexCommandArgs,
   buildClaudeCommand,
   buildClaudeCommandArgs,
+  buildRecoveryCommand,
   RecoveryService,
 } from '../services/recovery.service.js';
+import { scopeCodexSessionId } from '../adapters/codex/parser.js';
+import type { CodexSessionFile } from '../adapters/codex/types.js';
 
 function recoverySession(overrides: Partial<Session> = {}): Session {
   return {
     id: '1',
     sessionId: 'safe-session-123',
+    client: 'claude',
     directory: process.cwd(),
     status: 'lost',
     title: 'Recover me',
@@ -39,6 +44,7 @@ function createRepository(session: Session | null): ISessionRepository {
     findBySessionIdsSummary: (): ExistingSessionSummary[] =>
       session ? [{
         sessionId: session.sessionId,
+        client: session.client,
         status: session.status,
         title: session.title,
       }] : [],
@@ -91,6 +97,69 @@ describe('recovery command security', () => {
     expect(buildClaudeCommand('new', 'safe-session-123', "don't run; rm -rf /")).toBe(
       "claude 'don'\\''t run; rm -rf /'"
     );
+  });
+
+  test('builds Codex resume commands with unscoped session IDs', () => {
+    expect(buildCodexCommandArgs('resume', 'codex_019ed4a3-2186-7e51-9aa1-ca1e376549b8')).toEqual([
+      'codex',
+      'resume',
+      '019ed4a3-2186-7e51-9aa1-ca1e376549b8',
+    ]);
+    expect(buildCodexCommandArgs('continue', 'codex_019ed4a3-2186-7e51-9aa1-ca1e376549b8', undefined, true)).toEqual([
+      'codex',
+      'resume',
+      '--dangerously-bypass-approvals-and-sandbox',
+      '--last',
+    ]);
+  });
+
+  test('builds recovery commands for the owning agent client', () => {
+    const codexSession = recoverySession({
+      client: 'codex',
+      sessionId: 'codex_019ed4a3-2186-7e51-9aa1-ca1e376549b8',
+    });
+
+    expect(buildRecoveryCommand(codexSession, 'resume')).toBe(
+      'codex resume 019ed4a3-2186-7e51-9aa1-ca1e376549b8'
+    );
+  });
+
+  test('marks Codex sessions recoverable when their working directory exists', () => {
+    const rawSessionId = '019ed4a3-2186-7e51-9aa1-ca1e376549b8';
+    const sessionId = scopeCodexSessionId(rawSessionId);
+    const codexFiles: CodexSessionFile[] = [{
+      sessionId,
+      rawSessionId,
+      directory: process.cwd(),
+      filePath: `/tmp/rollout-${rawSessionId}.jsonl`,
+      modifiedAt: new Date(),
+    }];
+
+    const service = new RecoveryService(createRepository(null), () => codexFiles);
+    const result = service.canRecover(recoverySession({
+      client: 'codex',
+      sessionId,
+      directory: process.cwd(),
+    }));
+
+    expect(result).toEqual({
+      canRecover: true,
+      availableMethods: ['resume', 'continue', 'new'],
+    });
+  });
+
+  test('does not offer Codex resume when the rollout file is missing', () => {
+    const service = new RecoveryService(createRepository(null), () => []);
+    const result = service.canRecover(recoverySession({
+      client: 'codex',
+      sessionId: 'codex_019ed4a3-2186-7e51-9aa1-ca1e376549b8',
+      directory: process.cwd(),
+    }));
+
+    expect(result).toEqual({
+      canRecover: true,
+      availableMethods: ['continue', 'new'],
+    });
   });
 
   test('marks persisted sessions with unsafe IDs as unrecoverable', () => {

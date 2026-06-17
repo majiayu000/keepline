@@ -12,6 +12,8 @@ import { getProjectFolder } from '../lib/paths.js';
 import { logger } from '../lib/logger.js';
 import { isValidSessionId, assertValidSessionId } from '../lib/session-id.js';
 import { renderShellCommand } from '../lib/shell-quote.js';
+import { unscopeCodexSessionId } from '../adapters/codex/parser.js';
+import { scanCodexSessionsDirectory } from '../adapters/codex/scanner.js';
 import { openTerminalWithCommand, printRecoveryCommand } from './terminal.js';
 import type { RecoveryMethod, RecoveryOptions, RecoveryResult } from './recovery.types.js';
 
@@ -52,8 +54,58 @@ export function buildClaudeCommand(
   return renderShellCommand(buildClaudeCommandArgs(method, sessionId, initialPrompt, skipPermissions));
 }
 
+/** Build codex argv for recovery. */
+export function buildCodexCommandArgs(
+  method: RecoveryMethod,
+  sessionId: string,
+  initialPrompt?: string,
+  skipPermissions = false
+): string[] {
+  assertValidSessionId(sessionId);
+
+  const rawSessionId = unscopeCodexSessionId(sessionId);
+  const bypassFlag = '--dangerously-bypass-approvals-and-sandbox';
+
+  switch (method) {
+    case 'resume': {
+      const args = ['codex', 'resume'];
+      if (skipPermissions) args.push(bypassFlag);
+      args.push(rawSessionId);
+      return args;
+    }
+    case 'continue': {
+      const args = ['codex', 'resume'];
+      if (skipPermissions) args.push(bypassFlag);
+      args.push('--last');
+      return args;
+    }
+    case 'new': {
+      const args = ['codex'];
+      if (skipPermissions) args.push(bypassFlag);
+      if (initialPrompt) args.push(initialPrompt);
+      return args;
+    }
+  }
+}
+
+/** Build shell-safe recovery command for the owning agent client. */
+export function buildRecoveryCommand(
+  session: Session,
+  method: RecoveryMethod,
+  skipPermissions = false
+): string {
+  const args = session.client === 'codex'
+    ? buildCodexCommandArgs(method, session.sessionId, session.initialPrompt, skipPermissions)
+    : buildClaudeCommandArgs(method, session.sessionId, session.initialPrompt, skipPermissions);
+
+  return renderShellCommand(args);
+}
+
 export class RecoveryService {
-  constructor(private readonly repository: ISessionRepository) {}
+  constructor(
+    private readonly repository: ISessionRepository,
+    private readonly getCodexSessionFiles = scanCodexSessionsDirectory
+  ) {}
 
   /** Check if session can be recovered */
   canRecover(session: Session): {
@@ -71,12 +123,21 @@ export class RecoveryService {
       };
     }
 
-    // Check if session file exists
-    const projectFolder = getProjectFolder(session.directory);
-    const sessionFile = `${projectFolder}/${session.sessionId}.jsonl`;
+    if (session.client === 'codex') {
+      const sessionFileExists = this.getCodexSessionFiles().some(
+        (file) => file.sessionId === session.sessionId
+      );
+      if (sessionFileExists && existsSync(session.directory)) {
+        availableMethods.push('resume');
+      }
+    } else {
+      // Check if Claude session file exists
+      const projectFolder = getProjectFolder(session.directory);
+      const sessionFile = `${projectFolder}/${session.sessionId}.jsonl`;
 
-    if (existsSync(sessionFile)) {
-      availableMethods.push('resume');
+      if (existsSync(sessionFile)) {
+        availableMethods.push('resume');
+      }
     }
 
     // Continue is always available if directory exists
@@ -146,12 +207,7 @@ export class RecoveryService {
       );
     }
 
-    const command = buildClaudeCommand(
-      options.method,
-      options.sessionId,
-      session.initialPrompt,
-      options.skipPermissions
-    );
+    const command = buildRecoveryCommand(session, options.method, options.skipPermissions);
 
     logger.info(`Recovering session ${options.sessionId} using ${options.method}`);
 
@@ -235,7 +291,7 @@ export class RecoveryService {
     }
 
     const recommendedMethod = this.getRecommendedMethod(session);
-    const command = buildClaudeCommand(recommendedMethod, session.sessionId, session.initialPrompt);
+    const command = buildRecoveryCommand(session, recommendedMethod);
 
     return {
       session,

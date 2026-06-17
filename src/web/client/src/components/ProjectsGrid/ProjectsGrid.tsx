@@ -18,7 +18,7 @@ export const ProjectsGrid = memo(function ProjectsGrid({
         <span className={styles.emptyIcon}>#</span>
         <span className={styles.emptyText}>No projects found</span>
         <span className={styles.emptyHint}>
-          Start a Claude Code session to see projects here
+          Start a Codex or Claude Code session to see projects here
         </span>
       </div>
     )

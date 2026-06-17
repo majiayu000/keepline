@@ -1,13 +1,13 @@
 /**
- * Configuration management for Claude Hub.
+ * Configuration management for Keepline.
  */
 
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'fs';
 import { join } from 'path';
-import { ensureClaudeHubDataHome, getClaudeHubHome } from './paths.js';
+import { ensureKeeplineDataHome, getKeeplineHome } from './paths.js';
 import { ConfigError } from './errors.js';
 
-export interface ClaudeHubConfig {
+export interface KeeplineConfig {
   /** Scan interval in milliseconds */
   scanInterval: number;
 
@@ -57,7 +57,7 @@ export interface ClaudeHubConfig {
   };
 }
 
-const defaultConfig: ClaudeHubConfig = {
+const defaultConfig: KeeplineConfig = {
   scanInterval: 5000,
   hookPort: 7890,
   logLevel: 'info',
@@ -80,15 +80,15 @@ const defaultConfig: ClaudeHubConfig = {
 };
 
 /**
- * Resolve the config file path lazily so a runtime CLAUDE_HUB_HOME override
- * (set after this module imports) still routes reads/writes correctly.
+ * Resolve the config file path lazily so a runtime KEEPLINE_HOME override
+ * set after this module imports still routes reads/writes correctly.
  */
 function getConfigFile(): string {
-  return join(getClaudeHubHome(), 'config.json');
+  return join(getKeeplineHome(), 'config.json');
 }
 
 /** Validate config values are within acceptable ranges */
-function validateConfig(cfg: ClaudeHubConfig): void {
+function validateConfig(cfg: KeeplineConfig): void {
   const errors: string[] = [];
 
   if (cfg.scanInterval < 100) {
@@ -122,19 +122,19 @@ function validateConfig(cfg: ClaudeHubConfig): void {
 }
 
 class ConfigManager {
-  private config: ClaudeHubConfig = defaultConfig;
+  private config: KeeplineConfig = defaultConfig;
   private loaded = false;
 
-  load(): ClaudeHubConfig {
+  load(): KeeplineConfig {
     if (this.loaded) return this.config;
 
-    ensureClaudeHubDataHome();
+    ensureKeeplineDataHome();
     const configFile = getConfigFile();
 
     if (existsSync(configFile)) {
       try {
         const content = readFileSync(configFile, 'utf-8');
-        const parsed = JSON.parse(content) as Partial<ClaudeHubConfig>;
+        const parsed = JSON.parse(content) as Partial<KeeplineConfig>;
         this.config = { ...defaultConfig, ...parsed };
 
         // Validate loaded config
@@ -154,18 +154,18 @@ class ConfigManager {
   }
 
   save(): void {
-    const home = getClaudeHubHome();
+    const home = getKeeplineHome();
     if (!existsSync(home)) {
       mkdirSync(home, { recursive: true });
     }
     writeFileSync(getConfigFile(), JSON.stringify(this.config, null, 2));
   }
 
-  get(): ClaudeHubConfig {
+  get(): KeeplineConfig {
     return this.load();
   }
 
-  set<K extends keyof ClaudeHubConfig>(key: K, value: ClaudeHubConfig[K]): void {
+  set<K extends keyof KeeplineConfig>(key: K, value: KeeplineConfig[K]): void {
     this.load();
     this.config[key] = value;
     this.save();
@@ -178,4 +178,3 @@ class ConfigManager {
 }
 
 export const config = new ConfigManager();
-export type TaskerConfig = ClaudeHubConfig;

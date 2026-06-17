@@ -54,7 +54,7 @@ export function MinimalView({ sessions, stats }: Props): React.ReactElement {
     <Box flexDirection="column" paddingX={1}>
       {/* Header - super minimal */}
       <Box marginBottom={1}>
-        <Text color="#61afef" bold>tasker</Text>
+        <Text color="#61afef" bold>keepline</Text>
         <Text color="#5c6370"> │ </Text>
         <Text color="#5c6370">{stats.total} sessions</Text>
         <Text color="#3e4451"> │ </Text>
@@ -102,7 +102,7 @@ export function MinimalView({ sessions, stats }: Props): React.ReactElement {
       {stats.lost > 0 && (
         <Box>
           <Text color="#5c6370">recover: </Text>
-          <Text color="#61afef">tasker r {'<n>'}</Text>
+          <Text color="#61afef">keepline r {'<n>'}</Text>
         </Box>
       )}
     </Box>

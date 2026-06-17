@@ -3,6 +3,7 @@
  */
 
 import type {
+  AgentClient,
   Session,
   SessionListItem,
   SessionStatus,
@@ -11,6 +12,7 @@ import type {
 /** Session creation input */
 export interface CreateSessionInput {
   sessionId: string;
+  client?: AgentClient;
   directory: string;
   initialPrompt: string;
   title?: string;
@@ -48,6 +50,7 @@ export interface BasicAggregatedSession extends SessionListItem {
 
 /** Session filter options */
 export interface SessionFilter {
+  client?: AgentClient;
   status?: SessionStatus[];
   directory?: string;
   hasProcess?: boolean;
@@ -55,7 +58,7 @@ export interface SessionFilter {
 }
 
 /** Session sort options */
-export type SessionSortField = 'lastActiveAt' | 'startedAt' | 'directory' | 'status';
+export type SessionSortField = 'lastActiveAt' | 'startedAt' | 'directory' | 'status' | 'client';
 export type SessionSortOrder = 'asc' | 'desc';
 
 export interface SessionSort {

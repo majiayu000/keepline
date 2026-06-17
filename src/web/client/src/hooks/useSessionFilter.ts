@@ -42,6 +42,8 @@ export function useSessionFilter(sessions: Session[]): UseSessionFilterReturn {
         if (session.initialPrompt?.toLowerCase().includes(query)) return true
         // Search in session ID
         if (session.sessionId?.toLowerCase().includes(query)) return true
+        // Search in agent client
+        if (session.client?.toLowerCase().includes(query)) return true
         // Search in last tool
         if (session.lastTool?.toLowerCase().includes(query)) return true
         // Search in current file

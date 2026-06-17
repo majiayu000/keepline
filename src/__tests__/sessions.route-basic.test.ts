@@ -17,13 +17,13 @@ describe('Basic Sessions Route Contract', () => {
   test('fields=basic returns lightweight session payloads without usageStats', async () => {
     sessionRepository.upsert({
       sessionId: 'session-basic-1',
-      directory: '/tmp/claude-hub-basic-contract',
+      directory: '/tmp/keepline-basic-contract',
       status: 'running',
       title: 'Investigate hot loop',
       initialPrompt: 'Profile the parser',
       lastTool: 'Edit',
-      lastToolInput: JSON.stringify({ path: '/tmp/claude-hub-basic-contract/src/parser.ts' }),
-      currentFile: '/tmp/claude-hub-basic-contract/src/parser.ts',
+      lastToolInput: JSON.stringify({ path: '/tmp/keepline-basic-contract/src/parser.ts' }),
+      currentFile: '/tmp/keepline-basic-contract/src/parser.ts',
       lastMessage: 'Working on it',
       startedAt: new Date('2026-04-13T10:00:00.000Z'),
       lastActiveAt: new Date('2026-04-13T10:00:05.000Z'),
@@ -55,7 +55,7 @@ describe('Basic Sessions Route Contract', () => {
     const session = body.data.sessions[0];
     expect(session).toMatchObject({
       sessionId: 'session-basic-1',
-      directory: '/tmp/claude-hub-basic-contract',
+      directory: '/tmp/keepline-basic-contract',
       title: 'Investigate hot loop',
       status: 'lost',
       toolCount: 4,
@@ -74,7 +74,7 @@ describe('Basic Sessions Route Contract', () => {
   test('details returns null usageStats when parsed source data is unavailable', async () => {
     sessionRepository.upsert({
       sessionId: 'session-no-source',
-      directory: '/tmp/claude-hub-no-source',
+      directory: '/tmp/keepline-no-source',
       status: 'completed',
       title: 'No parsed source',
       initialPrompt: 'No source',

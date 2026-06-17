@@ -18,7 +18,7 @@ interface RecoverOptions {
 }
 
 export async function recoverCommand(
-  sessionIndex: string,
+  sessionRef: string,
   options: RecoverOptions
 ): Promise<void> {
   // Initialize database
@@ -33,15 +33,12 @@ export async function recoverCommand(
     .filter((s) => s.status !== 'completed')
     .sort((a, b) => b.lastActiveAt.getTime() - a.lastActiveAt.getTime());
 
-  // Parse session index
-  const index = parseInt(sessionIndex, 10) - 1;
+  const session = resolveSessionRef(sessions, sessionRef);
 
-  if (isNaN(index) || index < 0 || index >= sessions.length) {
-    console.log(chalk.red(`Invalid session number. Use 1-${sessions.length}`));
+  if (!session) {
+    console.log(chalk.red(`Invalid session reference. Use a session ID or number 1-${sessions.length}`));
     process.exit(1);
   }
-
-  const session = sessions[index];
 
   // Get recovery info
   const info = getRecoveryInfo(session.sessionId);
@@ -127,5 +124,24 @@ export async function recoverListCommand(): Promise<void> {
     console.log('');
   });
 
-  console.log(chalk.gray('Use: tasker recover <number> to recover a session'));
+  console.log(chalk.gray('Use: keepline recover <session-id> or keepline recover <number> to recover a session'));
+}
+
+function resolveSessionRef(
+  sessions: ReturnType<typeof getAggregatedSessions>,
+  sessionRef: string
+) {
+  const exact = sessions.find((session) => session.sessionId === sessionRef);
+  if (exact) return exact;
+
+  const codexScoped = sessions.find((session) =>
+    session.client === 'codex' && session.sessionId === `codex_${sessionRef}`
+  );
+  if (codexScoped) return codexScoped;
+
+  if (/^[1-9]\d*$/.test(sessionRef)) {
+    return sessions[Number(sessionRef) - 1];
+  }
+
+  return undefined;
 }

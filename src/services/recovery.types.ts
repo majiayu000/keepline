@@ -4,8 +4,8 @@
 
 /** Recovery method options */
 export type RecoveryMethod =
-  | 'resume'    // Use claude --resume <sessionId>
-  | 'continue'  // Use claude --continue
+  | 'resume'    // Resume the exact agent session when supported
+  | 'continue'  // Continue the latest session for that agent
   | 'new';      // Start new session with same prompt
 
 /** Recovery options */

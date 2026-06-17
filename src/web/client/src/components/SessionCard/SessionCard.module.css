@@ -17,8 +17,8 @@
 
 .statusRow {
   display: flex;
-  justify-content: space-between;
   align-items: center;
+  gap: 0.5rem;
   margin-bottom: 0.5rem;
 }
 
@@ -32,6 +32,22 @@
 .meta {
   font-size: 0.7rem;
   color: var(--text-dim);
+  margin-left: auto;
+}
+
+.clientBadge {
+  border: 1px solid var(--border);
+  border-radius: 3px;
+  color: var(--text-dim);
+  font-size: 0.65rem;
+  line-height: 1;
+  padding: 0.2rem 0.35rem;
+  text-transform: uppercase;
+}
+
+.clientBadge[data-client="codex"] {
+  border-color: var(--primary);
+  color: var(--primary);
 }
 
 .title {

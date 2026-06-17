@@ -1,15 +1,17 @@
 {
-  "name": "claude-hub",
+  "name": "keepline",
   "version": "1.0.0",
-  "description": "The command center for Claude Code - Never lose your work again",
-  "author": "Claude Hub Contributors",
+  "description": "The command center for Codex and Claude Code sessions - Never lose your work again",
+  "author": "Keepline Contributors",
   "license": "MIT",
   "type": "module",
   "main": "dist/index.js",
   "bin": {
-    "claude-hub": "dist/index.js"
+    "keepline": "dist/index.js"
   },
   "keywords": [
+    "codex",
+    "codex-cli",
     "claude",
     "claude-code",
     "ai",

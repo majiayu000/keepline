@@ -10,9 +10,9 @@
 import { existsSync, readFileSync, readdirSync, statSync, writeFileSync } from 'fs';
 import { join } from 'path';
 import {
-  CLAUDE_HUB_PARSE_FAILURE_CACHE,
+  KEEPLINE_PARSE_FAILURE_CACHE,
   CLAUDE_PROJECT_ROOTS,
-  ensureClaudeHubParent,
+  ensureKeeplineParent,
   extractSessionId,
   projectNameToDir,
 } from '../../lib/paths.js';
@@ -40,12 +40,12 @@ function loadPersistedParseFailures(): void {
   }
 
   persistedParseFailuresLoaded = true;
-  if (!existsSync(CLAUDE_HUB_PARSE_FAILURE_CACHE)) {
+  if (!existsSync(KEEPLINE_PARSE_FAILURE_CACHE)) {
     return;
   }
 
   try {
-    const raw = readFileSync(CLAUDE_HUB_PARSE_FAILURE_CACHE, 'utf-8');
+    const raw = readFileSync(KEEPLINE_PARSE_FAILURE_CACHE, 'utf-8');
     const parsed = JSON.parse(raw) as Record<string, unknown>;
     for (const [filePath, modifiedAt] of Object.entries(parsed)) {
       if (typeof modifiedAt === 'number') {
@@ -64,9 +64,9 @@ function flushPersistedParseFailures(): void {
     return;
   }
 
-  ensureClaudeHubParent(CLAUDE_HUB_PARSE_FAILURE_CACHE);
+  ensureKeeplineParent(KEEPLINE_PARSE_FAILURE_CACHE);
   writeFileSync(
-    CLAUDE_HUB_PARSE_FAILURE_CACHE,
+    KEEPLINE_PARSE_FAILURE_CACHE,
     JSON.stringify(Object.fromEntries(persistedParseFailures), null, 2)
   );
   persistedParseFailuresDirty = false;

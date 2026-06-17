@@ -25,6 +25,7 @@ import type { SessionStatus } from '../domain/session/index.js';
 /** Creates a valid ClaudeProcessInfo with realistic values */
 function processInfo(overrides: Partial<ClaudeProcessInfo> = {}): ClaudeProcessInfo {
   return {
+    client: 'claude',
     pid: process.pid, // Use current process PID for realism
     cwd: process.cwd(),
     cpu: 0.5,

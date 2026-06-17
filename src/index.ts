@@ -1,10 +1,10 @@
 #!/usr/bin/env bun
 /**
- * Claude Hub - The Command Center for Claude Code
+ * Keepline - The command center for agent coding sessions
  *
- * Never lose your Claude Code work again.
+ * Never lose your Codex or Claude Code work again.
  * Real-time monitoring, automatic recovery, cost tracking,
- * and cross-session memory for Claude Code power users.
+ * and cross-session memory for agent CLI power users.
  */
 
 import { Command } from 'commander';
@@ -17,25 +17,25 @@ const cfg = config.get();
 logger.configure({
   level: cfg.logLevel,
   file: cfg.fileLogging,
-  console: !process.env.CLAUDE_HUB_DAEMON, // Disable console in daemon mode
+  console: !process.env.KEEPLINE_DAEMON, // Disable console in daemon mode
 });
 
 // Create CLI program
 const program = new Command();
 
 program
-  .name('claude-hub')
+  .name('keepline')
   .version('1.0.0')
-  .description('The command center for Claude Code - Never lose your work again');
+  .description('The command center for Codex and Claude Code sessions - Never lose your work again');
 
 // Register all commands
 registerCommands(program);
 
-// Default action: show list
+// Default action: start the web dashboard.
 program.action(async () => {
-  const { listCommand } = await import('./cli/list.js');
-  await listCommand({});
+  const { webCommand } = await import('./cli/web.js');
+  await webCommand({});
 });
 
-// Parse arguments
-program.parse();
+// Parse arguments, preserving async command lifetimes such as the web server.
+await program.parseAsync();

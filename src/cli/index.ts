@@ -22,7 +22,7 @@ export function registerCommands(program: Command): void {
   program
     .command('list')
     .alias('ls')
-    .description('List all Claude Code sessions')
+    .description('List all Codex and Claude Code sessions')
     .option('-s, --status <status>', 'Filter by status (running,waiting,idle,lost,completed)')
     .option('-d, --directory <dir>', 'Filter by directory')
     .option('-l, --limit <n>', 'Limit results')
@@ -34,7 +34,7 @@ export function registerCommands(program: Command): void {
   program
     .command('watch')
     .alias('w')
-    .description('Live monitor Claude Code sessions')
+    .description('Live monitor Codex and Claude Code sessions')
     .option('-i, --interval <seconds>', 'Refresh interval in seconds')
     .action(watchCommand);
 
@@ -46,7 +46,7 @@ export function registerCommands(program: Command): void {
     .option('-m, --method <method>', 'Recovery method (resume, continue, new)')
     .option('-t, --terminal', 'Open in new terminal window')
     .option('-a, --terminal-app <app>', 'Terminal app to use (Terminal, iTerm, Warp, auto)')
-    .option('--skip-permissions', 'Use --dangerously-skip-permissions')
+    .option('--skip-permissions', 'Use the owning CLI unsafe permission bypass flag')
     .action(async (session, options) => {
       if (!session) {
         await recoverListCommand();
@@ -60,7 +60,7 @@ export function registerCommands(program: Command): void {
     .command('daemon <action>')
     .alias('d')
     .description('Manage background daemon (start, stop, restart, status)')
-    .option('--hooks', 'Install/uninstall Claude hooks with daemon')
+    .option('--hooks', 'Install/uninstall Claude-compatible hooks with daemon')
     .action(daemonCommand);
 
   // Status
@@ -72,7 +72,7 @@ export function registerCommands(program: Command): void {
   // Hooks management
   program
     .command('hooks <action>')
-    .description('Manage Claude hooks (install, uninstall, status)')
+    .description('Manage Claude-compatible hooks (install, uninstall, status)')
     .action(async (action: string) => {
       const { installHooks, uninstallHooks, getHookStatus } = await import('../adapters/hook/installer.js');
       const chalk = (await import('chalk')).default;
@@ -101,7 +101,7 @@ export function registerCommands(program: Command): void {
   // Sync (manual trigger)
   program
     .command('sync')
-    .description('Manually sync sessions with Claude data')
+    .description('Manually sync Codex and Claude Code sessions')
     .action(async () => {
       const { runMigrations } = await import('../db/migrations.js');
       const { syncSessions } = await import('../services/session.service.js');
