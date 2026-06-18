@@ -5,6 +5,7 @@
 import type {
   ApiResponse,
   SessionsData,
+  ProjectsData,
   SyncResult,
   SessionDetailData,
   SessionDetailsData,
@@ -113,6 +114,10 @@ export async function fetchSessions(
     limit?: number
     offset?: number
     skipSync?: boolean
+    client?: 'claude' | 'codex'
+    status?: string
+    projectRoot?: string
+    projectId?: string
   },
   signal?: AbortSignal
 ): Promise<ApiResponse<SessionsData>> {
@@ -120,7 +125,22 @@ export async function fetchSessions(
   if (options?.limit) params.set('limit', String(options.limit))
   if (options?.offset) params.set('offset', String(options.offset))
   if (options?.skipSync) params.set('skipSync', 'true')
+  if (options?.client) params.set('client', options.client)
+  if (options?.status) params.set('status', options.status)
+  if (options?.projectRoot) params.set('projectRoot', options.projectRoot)
+  if (options?.projectId) params.set('projectId', options.projectId)
   return request<SessionsData>(`/sessions?${params}`, undefined, signal)
+}
+
+/**
+ * GET /api/projects - Fetch project summaries with stats
+ */
+export async function fetchProjects(
+  fields: 'basic' | 'full' = 'basic',
+  signal?: AbortSignal
+): Promise<ApiResponse<ProjectsData>> {
+  const params = new URLSearchParams({ fields })
+  return request<ProjectsData>(`/projects?${params}`, undefined, signal)
 }
 
 /**
@@ -448,6 +468,7 @@ export async function logoutAuth(
 // Export all API functions
 export const api = {
   fetchSessions,
+  fetchProjects,
   syncSessions,
   fetchSession,
   recoverSession,

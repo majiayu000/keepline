@@ -30,9 +30,15 @@ interface UseSessionsReturn {
   loadingMore: boolean
   // WebSocket status
   connectionStatus: ConnectionStatus
+  // Incremented when session data changes
+  version: number
 }
 
-export function useSessions(token: string): UseSessionsReturn {
+interface UseSessionsOptions {
+  projectRoot?: string
+}
+
+export function useSessions(token: string, options: UseSessionsOptions = {}): UseSessionsReturn {
   const [sessions, setSessions] = useState<Session[]>([])
   const [stats, setStats] = useState<SessionStats | null>(null)
   const [loading, setLoading] = useState(true)
@@ -41,9 +47,11 @@ export function useSessions(token: string): UseSessionsReturn {
   const [connectionStatus, setConnectionStatus] = useState<ConnectionStatus>('polling')
   const [pagination, setPagination] = useState<PaginationInfo | null>(null)
   const [loadingMore, setLoadingMore] = useState(false)
+  const [version, setVersion] = useState(0)
   const intervalRef = useRef<number | null>(null)
   const mountedRef = useRef(true)
   const wsConnectedRef = useRef(false)
+  const projectRootRef = useRef<string | undefined>(options.projectRoot)
 
   // Full data cache for lazy loading - use refs to avoid re-render loops
   // Now caches combined data from /full endpoint (details + tools + subagents)
@@ -52,15 +60,25 @@ export function useSessions(token: string): UseSessionsReturn {
   // Trigger re-render when cache updates
   const [, forceUpdate] = useState(0)
 
+  useEffect(() => {
+    projectRootRef.current = options.projectRoot
+  }, [options.projectRoot])
+
   // Handle WebSocket messages
   const handleWebSocketMessage = useCallback((message: WebSocketMessage) => {
     if (!mountedRef.current) return
 
     if (message.type === 'sessions:update' && message.data) {
+      if (projectRootRef.current) {
+        loadSessionsRef.current()
+        return
+      }
       const data = message.data as { sessions: Session[]; stats: SessionStats }
       setSessions(data.sessions)
       setStats(data.stats)
+      setPagination(null)
       setError(null)
+      setVersion(v => v + 1)
     }
   }, [])
 
@@ -95,7 +113,10 @@ export function useSessions(token: string): UseSessionsReturn {
   // Use ref to avoid stale closures in interval
   const loadSessions = useCallback(async () => {
     // Use 'basic' mode for faster loading, with pagination
-    const response = await api.fetchSessions('basic', { limit: PAGE_SIZE })
+    const response = await api.fetchSessions('basic', {
+      limit: PAGE_SIZE,
+      projectRoot: options.projectRoot,
+    })
 
     // Only update state if component is still mounted
     if (!mountedRef.current) return
@@ -105,10 +126,11 @@ export function useSessions(token: string): UseSessionsReturn {
       setStats(response.data.stats)
       setPagination(response.data.pagination || null)
       setError(null)
+      setVersion(v => v + 1)
     } else {
       setError(response.error || 'Failed to load sessions')
     }
-  }, [])
+  }, [options.projectRoot])
 
   // Load more sessions (pagination)
   const loadMore = useCallback(async () => {
@@ -119,6 +141,7 @@ export function useSessions(token: string): UseSessionsReturn {
       limit: PAGE_SIZE,
       offset: sessions.length,
       skipSync: true, // Don't trigger sync for pagination requests
+      projectRoot: options.projectRoot,
     })
 
     if (!mountedRef.current) return
@@ -127,9 +150,10 @@ export function useSessions(token: string): UseSessionsReturn {
       // Append new sessions to existing list
       setSessions(prev => [...prev, ...response.data!.sessions])
       setPagination(response.data.pagination || null)
+      setVersion(v => v + 1)
     }
     setLoadingMore(false)
-  }, [pagination, loadingMore, sessions.length])
+  }, [pagination, loadingMore, sessions.length, options.projectRoot])
 
   // Keep loadSessionsRef updated
   useEffect(() => {
@@ -224,15 +248,17 @@ export function useSessions(token: string): UseSessionsReturn {
     return loadingFullRef.current.has(sessionId)
   }, []) // No dependencies - uses ref
 
-  // Initial load - run once on mount
   useEffect(() => {
     mountedRef.current = true
-    refresh()
 
     return () => {
       mountedRef.current = false
     }
   }, []) // Empty deps - only run on mount
+
+  useEffect(() => {
+    refresh()
+  }, [refresh])
 
   // Auto-refresh interval (only when WebSocket is not connected)
   useEffect(() => {
@@ -272,5 +298,6 @@ export function useSessions(token: string): UseSessionsReturn {
     loadingMore,
     // WebSocket status
     connectionStatus,
+    version,
   }
 }

@@ -15,6 +15,7 @@ import { AuthSetup } from '@/components/AuthSetup'
 import { AuthLogin } from '@/components/AuthLogin'
 import type { TabId } from '@/components/TabNav'
 import { useAuth, useSessions, useKeyboardShortcuts, useSessionFilter, useNotifications, useProjects } from '@/hooks'
+import type { ProjectInfo } from '@/types'
 
 // Lazy load heavy components
 const SessionList = lazy(() => import('@/components/SessionList').then(m => ({ default: m.SessionList })))
@@ -31,6 +32,7 @@ function DashboardApp({ token, onLogout }: DashboardAppProps) {
   const { theme, setTheme } = useTheme()
   const [showHelp, setShowHelp] = useState(false)
   const [activeTab, setActiveTab] = useState<TabId>('sessions')
+  const [selectedProjectRoot, setSelectedProjectRoot] = useState<string | null>(null)
 
   const {
     sessions,
@@ -53,7 +55,8 @@ function DashboardApp({ token, onLogout }: DashboardAppProps) {
     loadingMore,
     // WebSocket
     connectionStatus,
-  } = useSessions(token)
+    version: sessionsVersion,
+  } = useSessions(token, { projectRoot: selectedProjectRoot ?? undefined })
 
   // Search & Filter
   const {
@@ -64,9 +67,17 @@ function DashboardApp({ token, onLogout }: DashboardAppProps) {
     filteredSessions,
   } = useSessionFilter(sessions)
 
-  // Projects aggregation - use ALL sessions, not filtered
-  // This ensures Projects view always shows all projects regardless of search filter
-  const { projects, stats: projectStats } = useProjects(sessions)
+  // Projects come from the backend project API, not the paginated sessions list.
+  const {
+    projects,
+    stats: projectStats,
+    loading: projectsLoading,
+    error: projectsError,
+  } = useProjects(token, sessionsVersion)
+
+  const selectedProject = selectedProjectRoot
+    ? projects.find(project => project.rootPath === selectedProjectRoot)
+    : undefined
 
   // Notifications
   const {
@@ -128,12 +139,16 @@ function DashboardApp({ token, onLogout }: DashboardAppProps) {
     showToast(`Theme: ${nextTheme}`, 'info')
   }, [theme, setTheme, showToast])
 
-  const handleProjectClick = useCallback((projectPath: string) => {
-    // Switch to sessions tab and filter by project directory
+  const handleProjectClick = useCallback((project: ProjectInfo) => {
+    setSelectedProjectRoot(project.rootPath)
     setActiveTab('sessions')
-    setSearchQuery(projectPath)
-    showToast(`Filtered to: ${projectPath.split('/').pop()}`, 'info')
-  }, [setSearchQuery, showToast])
+    showToast(`Filtered to: ${project.name}`, 'info')
+  }, [showToast])
+
+  const handleClearProjectFilter = useCallback(() => {
+    setSelectedProjectRoot(null)
+    showToast('Project filter cleared', 'info')
+  }, [showToast])
 
   // Keyboard shortcuts
   useKeyboardShortcuts({
@@ -176,6 +191,24 @@ function DashboardApp({ token, onLogout }: DashboardAppProps) {
       {/* Sessions Tab */}
       {activeTab === 'sessions' && !loading && (
         <Suspense fallback={<SessionCardSkeleton count={4} />}>
+          {selectedProjectRoot && (
+            <div className={layoutStyles.projectFilterBar}>
+              <span className={layoutStyles.projectFilterText}>
+                Project:
+                <strong>{selectedProject?.name || selectedProjectRoot.split('/').pop() || selectedProjectRoot}</strong>
+                <span className={layoutStyles.projectFilterPath}>
+                  {selectedProject?.displayPath || selectedProjectRoot}
+                </span>
+              </span>
+              <button
+                type="button"
+                className={layoutStyles.projectFilterClear}
+                onClick={handleClearProjectFilter}
+              >
+                Clear
+              </button>
+            </div>
+          )}
           <SessionList
             sessions={filteredSessions}
             onRecover={handleRecover}
@@ -199,11 +232,20 @@ function DashboardApp({ token, onLogout }: DashboardAppProps) {
       {/* Projects Tab */}
       {activeTab === 'projects' && !loading && (
         <>
+          {projectsError && (
+            <div className={layoutStyles.errorBox} role="alert">
+              Error: {projectsError}
+            </div>
+          )}
           <ProjectStatsBar stats={projectStats} />
-          <ProjectsGrid
-            projects={projects}
-            onProjectClick={handleProjectClick}
-          />
+          {projectsLoading ? (
+            <SessionCardSkeleton count={4} />
+          ) : (
+            <ProjectsGrid
+              projects={projects}
+              onProjectClick={handleProjectClick}
+            />
+          )}
         </>
       )}
 

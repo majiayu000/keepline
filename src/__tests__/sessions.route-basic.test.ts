@@ -1,4 +1,7 @@
 import { afterEach, beforeEach, describe, expect, test } from 'bun:test';
+import { mkdtempSync, mkdirSync, rmSync } from 'fs';
+import { tmpdir } from 'os';
+import { join } from 'path';
 import sessions from '../web/api/routes/sessions.js';
 import { setupUser } from '../services/auth.service.js';
 import { resetDatabase } from '../db/migrations.js';
@@ -6,13 +9,27 @@ import { closeDatabase } from '../infrastructure/database/sqlite.js';
 import { sessionRepository } from '../infrastructure/database/repositories/session.repository.js';
 
 describe('Basic Sessions Route Contract', () => {
+  const tmpRoots: string[] = [];
+
   beforeEach(() => {
     resetDatabase();
   });
 
   afterEach(() => {
+    for (const root of tmpRoots.splice(0)) {
+      rmSync(root, { recursive: true, force: true });
+    }
     closeDatabase();
   });
+
+  function makeGitProject(prefix: string): { root: string; nested: string } {
+    const root = mkdtempSync(join(tmpdir(), prefix));
+    tmpRoots.push(root);
+    mkdirSync(join(root, '.git'));
+    const nested = join(root, 'packages', 'app');
+    mkdirSync(nested, { recursive: true });
+    return { root, nested };
+  }
 
   test('fields=basic returns lightweight session payloads without usageStats', async () => {
     sessionRepository.upsert({
@@ -100,5 +117,62 @@ describe('Basic Sessions Route Contract', () => {
 
     expect(body.success).toBe(true);
     expect(body.data.usageStats).toBeNull();
+  });
+
+  test('projectRoot filters sessions by resolved git root exactly', async () => {
+    const target = makeGitProject('keepline-target-project-');
+    const other = makeGitProject('keepline-other-project-');
+
+    sessionRepository.upsert({
+      sessionId: 'target-project-session',
+      client: 'claude',
+      directory: target.nested,
+      status: 'running',
+      title: 'Target project',
+      initialPrompt: 'Target',
+      lastActiveAt: new Date('2026-04-13T10:00:05.000Z'),
+      toolCount: 4,
+      messageCount: 2,
+    });
+    sessionRepository.upsert({
+      sessionId: 'other-project-session',
+      client: 'codex',
+      directory: other.nested,
+      status: 'running',
+      title: 'Other project',
+      initialPrompt: 'Other',
+      lastActiveAt: new Date('2026-04-13T10:00:06.000Z'),
+      toolCount: 4,
+      messageCount: 2,
+    });
+
+    const { token } = await setupUser('project-filter-route-user', 'password123');
+    const params = new URLSearchParams({
+      skipSync: 'true',
+      fields: 'basic',
+      projectRoot: target.root,
+    });
+    const response = await sessions.fetch(new Request(
+      `http://localhost/?${params.toString()}`,
+      { headers: { Authorization: `Bearer ${token}` } }
+    ));
+
+    expect(response.status).toBe(200);
+
+    const body = await response.json() as {
+      success: boolean;
+      data: {
+        sessions: Array<{ sessionId: string; directory: string }>;
+        stats: { total: number };
+      };
+    };
+
+    expect(body.success).toBe(true);
+    expect(body.data.stats.total).toBe(1);
+    expect(body.data.sessions).toHaveLength(1);
+    expect(body.data.sessions[0]).toMatchObject({
+      sessionId: 'target-project-session',
+      directory: target.nested,
+    });
   });
 });
