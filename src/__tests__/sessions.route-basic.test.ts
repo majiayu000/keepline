@@ -145,4 +145,35 @@ describe('Basic Sessions Route Contract', () => {
     expect(body.data.pagination.hasMore).toBe(false);
     expect(body.data.sessions.map((session) => session.sessionId)).toEqual(['session-search-match']);
   });
+
+  test('rejects invalid status filters instead of returning unfiltered sessions', async () => {
+    sessionRepository.upsert({
+      sessionId: 'session-invalid-status-filter',
+      directory: '/tmp/keepline-invalid-status-filter',
+      status: 'completed',
+      title: 'Should not leak through invalid filter',
+      initialPrompt: 'No source',
+      lastActiveAt: new Date('2026-04-13T10:00:05.000Z'),
+      toolCount: 0,
+      messageCount: 1,
+    });
+
+    const { token } = await setupUser('invalid-status-route-user', 'password123');
+    const response = await sessions.fetch(new Request(
+      'http://localhost/?skipSync=true&fields=basic&status=runing',
+      { headers: { Authorization: `Bearer ${token}` } }
+    ));
+
+    expect(response.status).toBe(400);
+
+    const body = await response.json() as {
+      success: boolean;
+      error: string;
+      data?: { sessions: Array<{ sessionId: string }> };
+    };
+
+    expect(body.success).toBe(false);
+    expect(body.error).toContain('Invalid status filter: runing');
+    expect(body.data).toBeUndefined();
+  });
 });

@@ -21,6 +21,7 @@ const PAGE_SIZE = 50
 
 interface UseSessionsReturn {
   sessions: Session[]
+  allSessions: Session[]
   stats: SessionStats | null
   loading: boolean
   syncing: boolean
@@ -49,6 +50,7 @@ export function useSessions(token: string, options: SessionQueryOptions = {}): U
   const listQueryKey = `${searchQuery}\u0000${statusFilterKey}`
   const hasServerFilters = searchQuery.length > 0 || statusFilterValues.length > 0
   const [sessions, setSessions] = useState<Session[]>([])
+  const [allSessions, setAllSessions] = useState<Session[]>([])
   const [stats, setStats] = useState<SessionStats | null>(null)
   const [loading, setLoading] = useState(true)
   const [syncing, setSyncing] = useState(false)
@@ -79,11 +81,12 @@ export function useSessions(token: string, options: SessionQueryOptions = {}): U
     if (!mountedRef.current) return
 
     if (message.type === 'sessions:update' && message.data) {
+      const data = message.data as { sessions: Session[]; stats: SessionStats }
+      setAllSessions(data.sessions)
       if (hasServerFilters) {
         loadSessionsRef.current()
         return
       }
-      const data = message.data as { sessions: Session[]; stats: SessionStats }
       setSessions(data.sessions)
       setStats(data.stats)
       setError(null)
@@ -130,6 +133,9 @@ export function useSessions(token: string, options: SessionQueryOptions = {}): U
 
     if (response.success && response.data) {
       setSessions(response.data.sessions)
+      if (!hasServerFilters) {
+        setAllSessions(response.data.sessions)
+      }
       setStats(response.data.stats)
       setPagination(response.data.pagination || null)
       setError(null)
@@ -318,6 +324,7 @@ export function useSessions(token: string, options: SessionQueryOptions = {}): U
 
   return {
     sessions,
+    allSessions,
     stats,
     loading,
     syncing,

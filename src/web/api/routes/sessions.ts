@@ -53,15 +53,22 @@ type SearchableSession = {
 
 const VALID_STATUSES = new Set(['running', 'waiting', 'idle', 'lost', 'completed']);
 
-function parseStatusFilters(url: string): Set<string> {
+function parseStatusFilters(url: string): { filters: Set<string>; invalid: string[] } {
   const params = new URL(url).searchParams;
-  return new Set(
-    params
-      .getAll('status')
-      .flatMap((value) => value.split(','))
-      .map((value) => value.trim())
-      .filter((value) => VALID_STATUSES.has(value))
-  );
+  const filters = new Set<string>();
+  const invalid = new Set<string>();
+
+  for (const value of params.getAll('status').flatMap((entry) => entry.split(','))) {
+    const status = value.trim();
+    if (!status) continue;
+    if (VALID_STATUSES.has(status)) {
+      filters.add(status);
+    } else {
+      invalid.add(status);
+    }
+  }
+
+  return { filters, invalid: [...invalid] };
 }
 
 function matchesSessionQuery(session: SearchableSession, query: string): boolean {
@@ -107,7 +114,14 @@ app.get('/', async (c) => {
     // Parse pagination parameters
     const limit = Math.min(parseInt(c.req.query('limit') || '50'), 100);
     const offset = parseInt(c.req.query('offset') || '0');
-    const statusFilters = parseStatusFilters(c.req.url);
+    const statusParseResult = parseStatusFilters(c.req.url);
+    if (statusParseResult.invalid.length > 0) {
+      return c.json({
+        success: false,
+        error: `Invalid status filter: ${statusParseResult.invalid.join(', ')}`,
+      }, 400);
+    }
+    const statusFilters = statusParseResult.filters;
     const sort = c.req.query('sort') || 'lastActiveAt';
     const order = c.req.query('order') === 'asc' ? 'asc' : 'desc';
     const fields = c.req.query('fields') || 'full'; // 'basic' or 'full'

@@ -37,6 +37,7 @@ function DashboardApp({ token, onLogout }: DashboardAppProps) {
 
   const {
     sessions,
+    allSessions,
     stats,
     loading,
     syncing,
@@ -62,13 +63,14 @@ function DashboardApp({ token, onLogout }: DashboardAppProps) {
   )
 
   const filteredSessions = sessions
+  const unfilteredSessions = allSessions.length > 0 ? allSessions : sessions
   const totalSessionCount = stats?.total ?? sessions.length
   const matchedSessionCount = pagination?.total ?? sessions.length
   const hasActiveFilters = searchQuery.trim().length > 0 || statusFilters.size > 0
 
   // Projects aggregation - use ALL sessions, not filtered
   // This ensures Projects view always shows all projects regardless of search filter
-  const { projects, stats: projectStats } = useProjects(sessions)
+  const { projects, stats: projectStats } = useProjects(unfilteredSessions)
 
   // Notifications
   const {
@@ -82,11 +84,11 @@ function DashboardApp({ token, onLogout }: DashboardAppProps) {
   // Track previous sessions for notification comparison
   const prevSessionsRef = useRef<typeof sessions>([])
   useEffect(() => {
-    if (sessions.length > 0 && prevSessionsRef.current.length > 0) {
-      checkSessionChanges(prevSessionsRef.current, sessions)
+    if (unfilteredSessions.length > 0 && prevSessionsRef.current.length > 0) {
+      checkSessionChanges(prevSessionsRef.current, unfilteredSessions)
     }
-    prevSessionsRef.current = sessions
-  }, [sessions, checkSessionChanges])
+    prevSessionsRef.current = unfilteredSessions
+  }, [unfilteredSessions, checkSessionChanges])
 
   const handleSync = useCallback(async () => {
     const success = await sync()
