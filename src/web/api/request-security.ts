@@ -2,20 +2,32 @@
  * Request host/origin allowlist helpers for browser-facing local services.
  */
 
-import { getConfiguredAllowedOrigins, isLoopbackHost } from './terminal-security.js';
+import {
+  getConfiguredAllowedOrigins,
+  getLocalInterfaceHosts,
+  isLoopbackHost,
+  isWildcardBindHost,
+} from './terminal-security.js';
 
 export function getAllowedRequestHosts(
   hostname: string,
   port: number,
   configuredOrigins: string[] = getConfiguredAllowedOrigins(),
+  localHosts: string[] = getLocalInterfaceHosts(),
 ): Set<string> {
   const allowed = new Set<string>();
   addHost(allowed, hostname, port);
 
-  if (isLoopbackHost(hostname) || hostname === '0.0.0.0' || hostname === '::') {
+  if (isLoopbackHost(hostname) || isWildcardBindHost(hostname)) {
     addHost(allowed, '127.0.0.1', port);
     addHost(allowed, 'localhost', port);
     addHost(allowed, '[::1]', port);
+  }
+
+  if (isWildcardBindHost(hostname)) {
+    for (const localHost of localHosts) {
+      addHost(allowed, localHost, port);
+    }
   }
 
   for (const origin of configuredOrigins) {
@@ -30,10 +42,11 @@ export function isAllowedRequestHost(
   hostname: string,
   port: number,
   configuredOrigins?: string[],
+  localHosts?: string[],
 ): boolean {
   const normalizedHost = normalizeHostHeader(req.headers.get('host'));
   if (!normalizedHost) return false;
-  return getAllowedRequestHosts(hostname, port, configuredOrigins).has(normalizedHost);
+  return getAllowedRequestHosts(hostname, port, configuredOrigins, localHosts).has(normalizedHost);
 }
 
 export function isLoopbackHostHeader(hostHeader: string | null | undefined): boolean {

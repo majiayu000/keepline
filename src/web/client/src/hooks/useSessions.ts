@@ -46,6 +46,7 @@ export function useSessions(token: string, options: SessionQueryOptions = {}): U
   const searchQuery = options.searchQuery?.trim() ?? ''
   const statusFilterValues = Array.from(options.statusFilters ?? []).sort()
   const statusFilterKey = statusFilterValues.join(',')
+  const listQueryKey = `${searchQuery}\u0000${statusFilterKey}`
   const hasServerFilters = searchQuery.length > 0 || statusFilterValues.length > 0
   const [sessions, setSessions] = useState<Session[]>([])
   const [stats, setStats] = useState<SessionStats | null>(null)
@@ -60,6 +61,11 @@ export function useSessions(token: string, options: SessionQueryOptions = {}): U
   const wsConnectedRef = useRef(false)
   const loadSessionsRef = useRef<() => Promise<void>>(() => Promise.resolve())
   const listRequestSeqRef = useRef(0)
+  const loadMoreRequestSeqRef = useRef(0)
+  const listQueryKeyRef = useRef(listQueryKey)
+  const sessionsLengthRef = useRef(0)
+  listQueryKeyRef.current = listQueryKey
+  sessionsLengthRef.current = sessions.length
 
   // Full data cache for lazy loading - use refs to avoid re-render loops
   // Now caches combined data from /full endpoint (details + tools + subagents)
@@ -137,15 +143,30 @@ export function useSessions(token: string, options: SessionQueryOptions = {}): U
     if (!pagination?.hasMore || loadingMore) return
 
     setLoadingMore(true)
+    const requestSeq = listRequestSeqRef.current
+    const loadMoreSeq = ++loadMoreRequestSeqRef.current
+    const requestQueryKey = listQueryKey
+    const requestOffset = sessions.length
     const response = await api.fetchSessions('basic', {
       limit: PAGE_SIZE,
-      offset: sessions.length,
+      offset: requestOffset,
       skipSync: true, // Don't trigger sync for pagination requests
       query: searchQuery,
       status: statusFilterValues,
     })
 
-    if (!mountedRef.current) return
+    if (
+      !mountedRef.current ||
+      loadMoreSeq !== loadMoreRequestSeqRef.current ||
+      requestSeq !== listRequestSeqRef.current ||
+      requestQueryKey !== listQueryKeyRef.current ||
+      requestOffset !== sessionsLengthRef.current
+    ) {
+      if (mountedRef.current && loadMoreSeq === loadMoreRequestSeqRef.current) {
+        setLoadingMore(false)
+      }
+      return
+    }
 
     if (response.success && response.data) {
       // Append new sessions to existing list
@@ -153,7 +174,7 @@ export function useSessions(token: string, options: SessionQueryOptions = {}): U
       setPagination(response.data.pagination || null)
     }
     setLoadingMore(false)
-  }, [pagination, loadingMore, sessions.length, searchQuery, statusFilterKey])
+  }, [pagination, loadingMore, sessions.length, searchQuery, statusFilterKey, listQueryKey])
 
   // Keep loadSessionsRef updated
   useEffect(() => {

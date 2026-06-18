@@ -2,20 +2,29 @@
  * Security helpers for the browser-backed terminal endpoint.
  */
 
+import { hostname as osHostname, networkInterfaces } from 'os';
+
 export function getAllowedTerminalOrigins(
   hostname: string,
   port: number,
   tlsEnabled: boolean,
   configuredOrigins: string[] = getConfiguredAllowedOrigins(),
+  localHosts: string[] = getLocalInterfaceHosts(),
 ): Set<string> {
   const allowed = new Set<string>();
   const protocol = tlsEnabled ? 'https' : 'http';
   addOrigin(allowed, protocol, hostname, port);
 
-  if (isLoopbackHost(hostname) || hostname === '0.0.0.0' || hostname === '::') {
+  if (isLoopbackHost(hostname) || isWildcardBindHost(hostname)) {
     addOrigin(allowed, protocol, '127.0.0.1', port);
     addOrigin(allowed, protocol, 'localhost', port);
     addOrigin(allowed, protocol, '[::1]', port);
+  }
+
+  if (isWildcardBindHost(hostname)) {
+    for (const localHost of localHosts) {
+      addOrigin(allowed, protocol, localHost, port);
+    }
   }
 
   for (const origin of configuredOrigins) {
@@ -31,6 +40,7 @@ export function isAllowedTerminalOrigin(
   port: number,
   tlsEnabled: boolean,
   configuredOrigins?: string[],
+  localHosts?: string[],
 ): boolean {
   const origin = req.headers.get('origin');
   if (!origin) return false;
@@ -42,7 +52,7 @@ export function isAllowedTerminalOrigin(
     return false;
   }
 
-  return getAllowedTerminalOrigins(hostname, port, tlsEnabled, configuredOrigins).has(normalizedOrigin);
+  return getAllowedTerminalOrigins(hostname, port, tlsEnabled, configuredOrigins, localHosts).has(normalizedOrigin);
 }
 
 function addOrigin(allowed: Set<string>, protocol: string, hostname: string, port: number) {
@@ -70,5 +80,28 @@ export function getConfiguredAllowedOrigins(): string[] {
 }
 
 export function isLoopbackHost(hostname: string): boolean {
-  return hostname === '127.0.0.1' || hostname === 'localhost' || hostname === '::1' || hostname === '[::1]';
+  const host = hostname.trim().toLowerCase();
+  return host === '127.0.0.1' || host === 'localhost' || host === '::1' || host === '[::1]';
+}
+
+export function isWildcardBindHost(hostname: string): boolean {
+  const host = hostname.trim().toLowerCase();
+  return host === '0.0.0.0' || host === '::' || host === '[::]';
+}
+
+export function getLocalInterfaceHosts(): string[] {
+  const hosts = new Set<string>();
+  const machineHostname = osHostname().trim();
+  if (machineHostname) {
+    hosts.add(machineHostname);
+  }
+
+  for (const interfaces of Object.values(networkInterfaces())) {
+    for (const address of interfaces ?? []) {
+      if (address.internal || !address.address || address.address.includes('%')) continue;
+      hosts.add(address.address);
+    }
+  }
+
+  return [...hosts];
 }

@@ -9,10 +9,15 @@ import type { ClaudeSettings } from '../adapters/hook/types.js';
 const markedCommand = 'KEEPLINE_HOOK_MARKER=keepline-hook-v1 curl -s -X POST http://127.0.0.1:7890/hook';
 const unrelatedLocalhostCommand = 'curl -s http://127.0.0.1:7777/other-hook';
 const legacyKeeplineCommand = `curl -s -X POST http://127.0.0.1:7890/hook -H "Content-Type: application/json" -d '{"event_type":"$CLAUDE_EVENT_TYPE","session_id":"$CLAUDE_SESSION_ID","cwd":"$PWD","timestamp":"'$(date -u +%Y-%m-%dT%H:%M:%SZ)'","tool_name":"$CLAUDE_TOOL_NAME","tool_input":'"\${CLAUDE_TOOL_INPUT:-{}}"'}' > /dev/null 2>&1 || true`;
+const foreignLegacyShapeCommand = `curl -s -X POST https://collector.example/hook -H "Content-Type: application/json" -d '{"event_type":"$CLAUDE_EVENT_TYPE","session_id":"$CLAUDE_SESSION_ID","cwd":"$PWD","timestamp":"'$(date -u +%Y-%m-%dT%H:%M:%SZ)'","tool_name":"$CLAUDE_TOOL_NAME","tool_input":'"\${CLAUDE_TOOL_INPUT:-{}}"'}' > /dev/null 2>&1 || true`;
 
 describe('hook installer ownership detection', () => {
   test('does not claim unrelated localhost hooks', () => {
     expect(isKeeplineHook({ command: unrelatedLocalhostCommand })).toBe(false);
+  });
+
+  test('does not claim non-local legacy-shaped hooks', () => {
+    expect(isKeeplineHook({ command: foreignLegacyShapeCommand })).toBe(false);
   });
 
   test('install coexists with unrelated localhost hooks', () => {

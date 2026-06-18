@@ -43,7 +43,7 @@ function getHookCommand(): string {
 function isLegacyKeeplineHookCommand(command: string): boolean {
   return (
     command.includes('curl -s -X POST') &&
-    command.includes('/hook') &&
+    /\bhttp:\/\/127\.0\.0\.1:\d+\/hook\b/.test(command) &&
     command.includes('"event_type":"$CLAUDE_EVENT_TYPE"') &&
     command.includes('"session_id":"$CLAUDE_SESSION_ID"') &&
     command.includes('"cwd":"$PWD"') &&

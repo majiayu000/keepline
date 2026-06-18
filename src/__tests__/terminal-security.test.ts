@@ -52,6 +52,20 @@ describe('terminal WebSocket Origin guard', () => {
       ['https://hub.example.com'],
     )).toBe(true);
   });
+
+  test('accepts local interface origins for wildcard-bound servers', () => {
+    const req = new Request('http://192.168.1.10:3377/ws/terminal', {
+      headers: { Origin: 'http://192.168.1.10:3377' },
+    });
+    expect(isAllowedTerminalOrigin(
+      req,
+      '0.0.0.0',
+      3377,
+      false,
+      [],
+      ['192.168.1.10'],
+    )).toBe(true);
+  });
 });
 
 describe('request Host allowlist', () => {
@@ -85,6 +99,20 @@ describe('request Host allowlist', () => {
       3377,
       ['https://hub.example.com'],
     )).toBe(true);
+  });
+
+  test('accepts local interface hosts for wildcard-bound servers', () => {
+    const req = new Request('http://192.168.1.10:3377/ws', {
+      headers: { host: '192.168.1.10:3377' },
+    });
+    expect(isAllowedRequestHost(req, '0.0.0.0', 3377, [], ['192.168.1.10'])).toBe(true);
+  });
+
+  test('rejects arbitrary hosts for wildcard-bound servers', () => {
+    const req = new Request('http://attacker.example:3377/ws', {
+      headers: { host: 'attacker.example:3377' },
+    });
+    expect(isAllowedRequestHost(req, '0.0.0.0', 3377, [], ['192.168.1.10'])).toBe(false);
   });
 });
 
