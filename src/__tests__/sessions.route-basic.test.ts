@@ -101,4 +101,48 @@ describe('Basic Sessions Route Contract', () => {
     expect(body.success).toBe(true);
     expect(body.data.usageStats).toBeNull();
   });
+
+  test('fields=basic search filters globally before pagination', async () => {
+    sessionRepository.upsert({
+      sessionId: 'session-search-match',
+      directory: '/tmp/keepline-search',
+      status: 'completed',
+      title: 'Unrelated title',
+      initialPrompt: 'Find the hidden global needle',
+      lastActiveAt: new Date('2026-04-13T10:00:05.000Z'),
+      toolCount: 0,
+      messageCount: 1,
+    });
+    sessionRepository.upsert({
+      sessionId: 'session-search-miss',
+      directory: '/tmp/keepline-other',
+      status: 'completed',
+      title: 'Other work',
+      initialPrompt: 'No matching text here',
+      lastActiveAt: new Date('2026-04-13T10:00:06.000Z'),
+      toolCount: 0,
+      messageCount: 1,
+    });
+
+    const { token } = await setupUser('search-route-user', 'password123');
+    const response = await sessions.fetch(new Request(
+      'http://localhost/?skipSync=true&fields=basic&q=needle&limit=1',
+      { headers: { Authorization: `Bearer ${token}` } }
+    ));
+
+    expect(response.status).toBe(200);
+
+    const body = await response.json() as {
+      success: boolean;
+      data: {
+        sessions: Array<{ sessionId: string }>;
+        pagination: { total: number; hasMore: boolean };
+      };
+    };
+
+    expect(body.success).toBe(true);
+    expect(body.data.pagination.total).toBe(1);
+    expect(body.data.pagination.hasMore).toBe(false);
+    expect(body.data.sessions.map((session) => session.sessionId)).toEqual(['session-search-match']);
+  });
 });

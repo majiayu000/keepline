@@ -58,7 +58,7 @@ function addConfiguredOrigin(allowed: Set<string>, origin: string) {
   }
 }
 
-function getConfiguredAllowedOrigins(): string[] {
+export function getConfiguredAllowedOrigins(): string[] {
   const values = [
     process.env.KEEPLINE_PUBLIC_ORIGIN,
     process.env.KEEPLINE_ALLOWED_ORIGINS,
@@ -69,6 +69,6 @@ function getConfiguredAllowedOrigins(): string[] {
     .filter(Boolean);
 }
 
-function isLoopbackHost(hostname: string): boolean {
+export function isLoopbackHost(hostname: string): boolean {
   return hostname === '127.0.0.1' || hostname === 'localhost' || hostname === '::1' || hostname === '[::1]';
 }

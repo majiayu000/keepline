@@ -155,6 +155,16 @@ export interface SessionStats {
 
 /** Generate title from prompt */
 export function generateTitle(prompt: string): string {
+  const instructionMatch = prompt.match(/^#\s*AGENTS\.md instructions for ([^\n<]+)/i);
+  if (instructionMatch) {
+    const targetPath = instructionMatch[1]?.trim();
+    if (targetPath) {
+      const projectName = targetPath.split('/').filter(Boolean).pop();
+      return projectName ? `AGENTS.md: ${projectName}` : 'AGENTS.md instructions';
+    }
+    return 'AGENTS.md instructions';
+  }
+
   if (prompt.length <= 80) return prompt;
 
   const truncated = prompt.slice(0, 80);

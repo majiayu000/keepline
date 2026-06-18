@@ -1,4 +1,5 @@
 import { describe, expect, test } from 'bun:test';
+import { generateTitle } from '../domain/session/entity.js';
 import { serializeBasicSession } from '../web/api/session-response.js';
 
 describe('Session Response Serialization', () => {
@@ -61,5 +62,11 @@ describe('Session Response Serialization', () => {
     expect('lastToolInput' in serialized).toBe(false);
     expect('currentFile' in serialized).toBe(false);
     expect('lastMessage' in serialized).toBe(false);
+  });
+
+  test('generateTitle summarizes AGENTS instruction payloads by project', () => {
+    const title = generateTitle(`# AGENTS.md instructions for /Users/me/project\n\n<INSTRUCTIONS>\nvery long payload`);
+
+    expect(title).toBe('AGENTS.md: project');
   });
 });
