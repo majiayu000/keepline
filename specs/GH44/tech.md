@@ -238,6 +238,7 @@ Use the existing Claude Code scanner/parser as a wrapped source:
 - Source hints: ~/.claude/projects/<project>/<session>.jsonl and ~/.claude-work/projects/<project>/<session>.jsonl by default. Preserve KEEPLINE_PROJECT_ROOTS as the colon-separated absolute-path override for Claude project roots.
 - Capabilities: session-history, process-scan, resume, quota, plans, hooks
 - Runtime ID: claude-code
+- Feature providers or compatibility routes: quota maps to the existing Claude quota route (`GET /api/quota`) until RuntimeQuotaProvider is wired directly; plans maps to the existing plans parser/routes; hooks maps to the existing hooks install/status commands or routes. The descriptor must declare these provider/route mappings next to the adapter registration.
 - Recovery commands: buildRecoveryCommand(session, { method: 'resume' }) returns `{ executable: 'claude', args: ['--resume', session.sessionId], cwd: session.cwd }`; `{ method: 'continue' }` returns args `['--continue']` with cwd: session.cwd; `{ method: 'new', initialPrompt }` starts a new Claude command with the prompt and cwd: session.cwd. skipPermissions appends `--dangerously-skip-permissions` before the method-specific args.
 
 The adapter maps existing parsed sessions to RuntimeSession. The old parser does not need to be rewritten in the first slice, but the wrapper must preserve agentId, parentSessionId, isSubAgent, and usageStats. Per-file read/parse failures from Claude JSONL must be surfaced as RuntimeScanResult.errors instead of only being logged.
@@ -249,6 +250,7 @@ Use rollout JSONL files:
 - Source hints: ~/.codex/sessions/YYYY/MM/DD/rollout-*.jsonl
 - Runtime ID: codex
 - Capabilities: session-history, process-scan, resume, quota
+- Feature providers or compatibility routes: quota maps to the existing Codex quota route (`GET /api/codex/quota`) until RuntimeQuotaProvider is wired directly. Codex must not advertise plans or hooks until matching providers or routes exist.
 - Expected records: session_meta, turn_context, event_msg, response_item
 - Required fields: session_meta.payload.id, session_meta.payload.cwd
 - Recovery commands: buildRecoveryCommand(session, { method: 'resume' }) returns `{ executable: 'codex', args: ['resume', session.sessionId], cwd: session.cwd }`; `{ method: 'continue' }` returns args `['resume', '--last']` with cwd: session.cwd; `{ method: 'new', initialPrompt }` starts a new Codex command with the prompt and cwd: session.cwd. skipPermissions appends `--dangerously-bypass-approvals-and-sandbox` before the session id, `--last`, or prompt. Resume must use the raw RuntimeSession.sessionId, not the encoded AgentSession.id.
@@ -356,8 +358,8 @@ If local guardrails block adding multiple adapter files during a first pass, kee
   - Evaluate each work item into at most one bucket using first-match precedence: archived work items are hidden from active buckets by default; then Done; then Waiting; then Stale; then Now; remaining inbox/planned items stay unbucketed until they have status or evidence.
   - Done: WorkItem.status is done. A completed AgentSession can provide evidence but cannot move a work item into Done without user or accepted_agent_suggestion statusSource.
   - Waiting: WorkItem.status is blocked, or the most recent accepted linked AgentSession.status is waiting and there is no newer ProgressEvidence.outcome === "completed" with confidence === "explicit" for the same work item/session.
-  - Stale: WorkItem.status is planned or active and neither accepted linked AgentSession.lastActiveAt nor ProgressEvidence.occurredAt is within the configured stale window. Done, blocked, and archived work items are never stale.
-  - Now: WorkItem.status is active, or planned with an accepted WorkItemSessionLink to a running/waiting AgentSession.
+  - Stale: WorkItem.status is planned or active, at least one accepted linked AgentSession.lastActiveAt or ProgressEvidence.occurredAt exists, and none of those timestamps is within the configured stale window. Do not use WorkItem.updatedAt as a fallback activity clock. Done, blocked, and archived work items are never stale.
+  - Now: WorkItem.status is active, or planned with an accepted WorkItemSessionLink to a running AgentSession. Waiting sessions are handled only by the Waiting bucket because Waiting has higher precedence.
 - No data should render blank progress, not guessed completion.
 - Suggestions must be visibly marked as suggestions until accepted.
 
@@ -399,6 +401,7 @@ Expected targeted tests:
 - Default registry contains claude-code and codex.
 - Registry rejects duplicate runtime adapter IDs.
 - Registry rejects feature capabilities without matching providers or explicit compatibility routes.
+- Default Claude Code quota/plans/hooks and Codex quota capabilities are backed by declared providers or named compatibility routes.
 - Structured RuntimeCommand is returned for Claude Code resume, continue, and new recovery modes.
 - Structured RuntimeCommand is returned for Codex resume, continue, and new recovery modes and resume uses the raw runtime session ID.
 - Registry rejects or test-fails an adapter that declares resume capability without buildRecoveryCommand.
