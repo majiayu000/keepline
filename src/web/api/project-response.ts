@@ -1,8 +1,10 @@
-import type { ProjectSummary } from '../../services/project.aggregator.js';
-import { serializeBasicSessions } from './session-response.js';
+import type { ProjectSession, ProjectSummary } from '../../services/project.aggregator.js';
+import type { AggregatedSession } from '../../services/session.types.js';
+import { serializeBasicSessions, serializeFullSessions } from './session-response.js';
 
 interface SerializeProjectSummaryOptions {
   includeSessions?: boolean;
+  sessionFields?: 'basic' | 'full';
 }
 
 export function serializeProjectSummary(
@@ -16,13 +18,23 @@ export function serializeProjectSummary(
     name: project.name,
     displayPath: project.displayPath,
     source: project.source,
-    ...(options.includeSessions ? { sessions: serializeBasicSessions(project.sessions) } : {}),
+    ...(options.includeSessions ? { sessions: serializeProjectSessions(project.sessions, options) } : {}),
     stats: project.stats,
     clientCounts: project.clientCounts,
     currentTask: project.currentTask,
     lastActiveAt: project.lastActiveAt.toISOString(),
     totalUsage: project.totalUsage,
   };
+}
+
+function serializeProjectSessions(
+  sessions: ProjectSession[],
+  options: SerializeProjectSummaryOptions
+) {
+  if (options.sessionFields === 'full') {
+    return serializeFullSessions(sessions as AggregatedSession[]);
+  }
+  return serializeBasicSessions(sessions);
 }
 
 export function serializeProjectSummaries(

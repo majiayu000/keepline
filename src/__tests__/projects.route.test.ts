@@ -25,6 +25,13 @@ describe('Projects Route Contract', () => {
       lastActiveAt: new Date('2026-04-13T10:00:05.000Z'),
       toolCount: 2,
       messageCount: 3,
+      usageStats: {
+        totalInputTokens: 100,
+        totalOutputTokens: 50,
+        totalTokens: 150,
+        totalCost: 0.02,
+        apiCalls: 2,
+      },
     });
     sessionRepository.upsert({
       sessionId: 'project-route-2',
@@ -53,6 +60,7 @@ describe('Projects Route Contract', () => {
           id: string;
           rootPath: string;
           clientCounts: { claude: number; codex: number; unknown: number };
+          totalUsage?: { totalCost: number; totalTokens: number; apiCalls: number };
           sessions?: Array<{ sessionId: string; client: string }>;
         }>;
         stats: { total: number; active: number };
@@ -68,5 +76,83 @@ describe('Projects Route Contract', () => {
     expect(codexProject).toBeDefined();
     expect(codexProject!.clientCounts.codex).toBe(1);
     expect(codexProject).not.toHaveProperty('sessions');
+
+    const claudeProject = body.data.projects.find(project => project.rootPath === '/tmp/keepline-project-route-a');
+    expect(claudeProject).toBeDefined();
+    expect(claudeProject).not.toHaveProperty('sessions');
+    expect(claudeProject!.totalUsage).toMatchObject({
+      totalCost: 0.02,
+      totalTokens: 150,
+      apiCalls: 2,
+    });
+  });
+
+  test('fields=full returns full nested sessions', async () => {
+    sessionRepository.upsert({
+      sessionId: 'project-route-full-1',
+      client: 'claude',
+      directory: '/tmp/keepline-project-route-full',
+      status: 'running',
+      title: 'Full route project',
+      initialPrompt: 'Full prompt',
+      lastMessage: 'Detailed latest response',
+      lastActiveAt: new Date('2026-04-13T10:00:05.000Z'),
+      toolCount: 2,
+      messageCount: 3,
+      usageStats: {
+        totalInputTokens: 100,
+        totalOutputTokens: 50,
+        totalTokens: 150,
+        totalCost: 0.02,
+        apiCalls: 2,
+      },
+      toolCalls: [{
+        name: 'Read',
+        input: { file_path: 'src/index.ts' },
+        timestamp: '2026-04-13T10:00:00.000Z',
+      }],
+    });
+
+    const { token } = await setupUser('projects-route-full-user', 'password123');
+    const response = await projects.fetch(new Request(
+      'http://localhost/?fields=full',
+      { headers: { Authorization: `Bearer ${token}` } }
+    ));
+
+    expect(response.status).toBe(200);
+
+    const body = await response.json() as {
+      success: boolean;
+      data: {
+        projects: Array<{
+          rootPath: string;
+          sessions?: Array<{
+            sessionId: string;
+            initialPrompt?: string;
+            lastMessage?: string;
+            usageStats?: { totalCost: number; totalTokens: number; apiCalls: number };
+            toolCalls?: Array<{ name: string }>;
+          }>;
+        }>;
+      };
+    };
+
+    expect(body.success).toBe(true);
+    const project = body.data.projects.find(item => item.rootPath === '/tmp/keepline-project-route-full');
+    expect(project).toBeDefined();
+    expect(project!.sessions).toHaveLength(1);
+    expect(project!.sessions![0]).toMatchObject({
+      sessionId: 'project-route-full-1',
+      initialPrompt: 'Full prompt',
+      lastMessage: 'Detailed latest response',
+      usageStats: {
+        totalCost: 0.02,
+        totalTokens: 150,
+        apiCalls: 2,
+      },
+    });
+    expect(project!.sessions![0].toolCalls).toEqual([
+      expect.objectContaining({ name: 'Read' }),
+    ]);
   });
 });

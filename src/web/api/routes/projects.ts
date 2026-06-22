@@ -1,8 +1,5 @@
 import { Hono } from 'hono';
-import {
-  getAggregatedSessions,
-  getAggregatedSessionsBasic,
-} from '../../../services/session.aggregator.js';
+import { getAggregatedSessions } from '../../../services/session.aggregator.js';
 import {
   aggregateProjectSummaries,
   getProjectOverviewStats,
@@ -17,15 +14,16 @@ app.use('*', authMiddleware);
 app.get('/', async (c) => {
   try {
     const fields = c.req.query('fields') || 'basic';
-    const sessions = fields === 'full'
-      ? getAggregatedSessions()
-      : getAggregatedSessionsBasic();
+    const sessions = getAggregatedSessions();
     const projects = aggregateProjectSummaries(sessions);
 
     return c.json({
       success: true,
       data: {
-        projects: serializeProjectSummaries(projects, { includeSessions: fields === 'full' }),
+        projects: serializeProjectSummaries(projects, {
+          includeSessions: fields === 'full',
+          sessionFields: fields === 'full' ? 'full' : 'basic',
+        }),
         stats: getProjectOverviewStats(projects),
       },
     });
