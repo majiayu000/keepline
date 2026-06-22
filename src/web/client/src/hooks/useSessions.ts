@@ -46,6 +46,23 @@ async function fetchAllBasicSessionsSnapshot(): Promise<{ sessions: Session[]; e
   }
 }
 
+function getSessionVersionSignature(sessions: Session[]): string {
+  return sessions
+    .map(session => [
+      session.sessionId,
+      session.client,
+      session.directory,
+      session.status,
+      session.title,
+      session.lastActiveAt,
+      session.completedAt || '',
+      session.toolCount,
+      session.messageCount,
+      session.updatedAt,
+    ].join(':'))
+    .join('|')
+}
+
 interface UseSessionsReturn {
   sessions: Session[]
   allSessions: Session[]
@@ -92,6 +109,7 @@ export function useSessions(token: string, options: UseSessionsOptions = {}): Us
   const wsConnectedRef = useRef(false)
   const projectRootRef = useRef<string | undefined>(options.projectRoot)
   const loadRequestIdRef = useRef(0)
+  const versionSignatureRef = useRef('')
 
   // Full data cache for lazy loading - use refs to avoid re-render loops
   // Now caches combined data from /full endpoint (details + tools + subagents)
@@ -99,6 +117,13 @@ export function useSessions(token: string, options: UseSessionsOptions = {}): Us
   const loadingFullRef = useRef<Set<string>>(new Set())
   // Trigger re-render when cache updates
   const [, forceUpdate] = useState(0)
+
+  const bumpVersionIfChanged = useCallback((snapshot: Session[]) => {
+    const nextSignature = getSessionVersionSignature(snapshot)
+    if (nextSignature === versionSignatureRef.current) return
+    versionSignatureRef.current = nextSignature
+    setVersion(v => v + 1)
+  }, [])
 
   useEffect(() => {
     projectRootRef.current = options.projectRoot
@@ -111,6 +136,7 @@ export function useSessions(token: string, options: UseSessionsOptions = {}): Us
     if (message.type === 'sessions:update' && message.data) {
       const data = message.data as { sessions: Session[]; stats: SessionStats }
       setAllSessions(data.sessions)
+      bumpVersionIfChanged(data.sessions)
       if (projectRootRef.current) {
         loadSessionsRef.current()
         return
@@ -119,9 +145,8 @@ export function useSessions(token: string, options: UseSessionsOptions = {}): Us
       setStats(data.stats)
       setPagination(null)
       setError(null)
-      setVersion(v => v + 1)
     }
-  }, [])
+  }, [bumpVersionIfChanged])
 
   // WebSocket connection
   useWebSocket({
@@ -157,15 +182,10 @@ export function useSessions(token: string, options: UseSessionsOptions = {}): Us
     const requestedProjectRoot = options.projectRoot
 
     // Use 'basic' mode for faster loading, with pagination
-    const [response, unfilteredResponse] = await Promise.all([
-      api.fetchSessions('basic', {
-        limit: PAGE_SIZE,
-        projectRoot: requestedProjectRoot,
-      }),
-      requestedProjectRoot
-        ? fetchAllBasicSessionsSnapshot()
-        : Promise.resolve(null),
-    ])
+    const response = await api.fetchSessions('basic', {
+      limit: PAGE_SIZE,
+      projectRoot: requestedProjectRoot,
+    })
 
     // Only update state if component is still mounted
     if (!mountedRef.current) return
@@ -174,24 +194,30 @@ export function useSessions(token: string, options: UseSessionsOptions = {}): Us
 
     if (response.success && response.data) {
       setSessions(response.data.sessions)
-      let unfilteredError: string | null = null
       if (requestedProjectRoot) {
-        if (unfilteredResponse && !unfilteredResponse.error) {
-          setAllSessions(unfilteredResponse.sessions)
-        } else {
-          unfilteredError = unfilteredResponse?.error || 'Failed to load unfiltered sessions'
-        }
+        fetchAllBasicSessionsSnapshot().then(unfilteredResponse => {
+          if (!mountedRef.current) return
+          if (requestId !== loadRequestIdRef.current) return
+          if (requestedProjectRoot !== projectRootRef.current) return
+
+          if (!unfilteredResponse.error) {
+            setAllSessions(unfilteredResponse.sessions)
+            bumpVersionIfChanged(unfilteredResponse.sessions)
+          } else {
+            setError(unfilteredResponse.error)
+          }
+        })
       } else {
         setAllSessions(response.data.sessions)
+        bumpVersionIfChanged(response.data.sessions)
       }
       setStats(response.data.stats)
       setPagination(response.data.pagination || null)
-      setError(unfilteredError)
-      setVersion(v => v + 1)
+      setError(null)
     } else {
       setError(response.error || 'Failed to load sessions')
     }
-  }, [options.projectRoot])
+  }, [bumpVersionIfChanged, options.projectRoot])
 
   // Load more sessions (pagination)
   const loadMore = useCallback(async () => {
@@ -218,12 +244,12 @@ export function useSessions(token: string, options: UseSessionsOptions = {}): Us
       setSessions(prev => [...prev, ...nextSessions])
       if (!requestedProjectRoot) {
         setAllSessions(prev => [...prev, ...nextSessions])
+        bumpVersionIfChanged([...sessions, ...nextSessions])
       }
       setPagination(response.data.pagination || null)
-      setVersion(v => v + 1)
     }
     setLoadingMore(false)
-  }, [pagination, loadingMore, sessions.length, options.projectRoot])
+  }, [bumpVersionIfChanged, pagination, loadingMore, sessions, options.projectRoot])
 
   // Keep loadSessionsRef updated
   useEffect(() => {

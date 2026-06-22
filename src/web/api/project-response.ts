@@ -1,7 +1,14 @@
 import type { ProjectSummary } from '../../services/project.aggregator.js';
 import { serializeBasicSessions } from './session-response.js';
 
-export function serializeProjectSummary(project: ProjectSummary) {
+interface SerializeProjectSummaryOptions {
+  includeSessions?: boolean;
+}
+
+export function serializeProjectSummary(
+  project: ProjectSummary,
+  options: SerializeProjectSummaryOptions = {}
+) {
   return {
     id: project.id,
     rootPath: project.rootPath,
@@ -9,7 +16,7 @@ export function serializeProjectSummary(project: ProjectSummary) {
     name: project.name,
     displayPath: project.displayPath,
     source: project.source,
-    sessions: serializeBasicSessions(project.sessions),
+    ...(options.includeSessions ? { sessions: serializeBasicSessions(project.sessions) } : {}),
     stats: project.stats,
     clientCounts: project.clientCounts,
     currentTask: project.currentTask,
@@ -18,6 +25,9 @@ export function serializeProjectSummary(project: ProjectSummary) {
   };
 }
 
-export function serializeProjectSummaries(projects: ProjectSummary[]) {
-  return projects.map(serializeProjectSummary);
+export function serializeProjectSummaries(
+  projects: ProjectSummary[],
+  options: SerializeProjectSummaryOptions = {}
+) {
+  return projects.map(project => serializeProjectSummary(project, options));
 }

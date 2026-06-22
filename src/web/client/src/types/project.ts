@@ -30,8 +30,8 @@ export interface ProjectInfo {
   name: string
   /** Project identity source */
   source?: 'git-root' | 'cwd' | 'unknown'
-  /** All sessions in this directory */
-  sessions: Session[]
+  /** Sessions are only present in full project responses */
+  sessions?: Session[]
   /** Session status counts */
   stats: ProjectStats
   /** Session counts by agent client */

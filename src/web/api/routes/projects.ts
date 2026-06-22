@@ -25,7 +25,7 @@ app.get('/', async (c) => {
     return c.json({
       success: true,
       data: {
-        projects: serializeProjectSummaries(projects),
+        projects: serializeProjectSummaries(projects, { includeSessions: fields === 'full' }),
         stats: getProjectOverviewStats(projects),
       },
     });

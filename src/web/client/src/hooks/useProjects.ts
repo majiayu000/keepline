@@ -29,10 +29,13 @@ export function useProjects(_token: string, refreshKey = 0): UseProjectsReturn {
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const mountedRef = useRef(true)
+  const refreshRequestIdRef = useRef(0)
 
   const refresh = useCallback(async () => {
+    const requestId = ++refreshRequestIdRef.current
     const response = await api.fetchProjects('basic')
     if (!mountedRef.current) return
+    if (requestId !== refreshRequestIdRef.current) return
 
     if (response.success && response.data) {
       setProjects(response.data.projects)

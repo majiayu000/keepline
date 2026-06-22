@@ -53,7 +53,7 @@ describe('Projects Route Contract', () => {
           id: string;
           rootPath: string;
           clientCounts: { claude: number; codex: number; unknown: number };
-          sessions: Array<{ sessionId: string; client: string }>;
+          sessions?: Array<{ sessionId: string; client: string }>;
         }>;
         stats: { total: number; active: number };
       };
@@ -67,6 +67,6 @@ describe('Projects Route Contract', () => {
     const codexProject = body.data.projects.find(project => project.rootPath === '/tmp/keepline-project-route-b');
     expect(codexProject).toBeDefined();
     expect(codexProject!.clientCounts.codex).toBe(1);
-    expect(codexProject!.sessions[0].sessionId).toBe('project-route-2');
+    expect(codexProject).not.toHaveProperty('sessions');
   });
 });
