@@ -197,21 +197,26 @@ export function useSessions(token: string, options: UseSessionsOptions = {}): Us
   const loadMore = useCallback(async () => {
     if (!pagination?.hasMore || loadingMore) return
 
+    const requestedProjectRoot = options.projectRoot
     setLoadingMore(true)
     const response = await api.fetchSessions('basic', {
       limit: PAGE_SIZE,
       offset: sessions.length,
       skipSync: true, // Don't trigger sync for pagination requests
-      projectRoot: options.projectRoot,
+      projectRoot: requestedProjectRoot,
     })
 
     if (!mountedRef.current) return
+    if (requestedProjectRoot !== projectRootRef.current) {
+      setLoadingMore(false)
+      return
+    }
 
     if (response.success && response.data) {
       // Append new sessions to existing list
       const nextSessions = response.data.sessions
       setSessions(prev => [...prev, ...nextSessions])
-      if (!options.projectRoot) {
+      if (!requestedProjectRoot) {
         setAllSessions(prev => [...prev, ...nextSessions])
       }
       setPagination(response.data.pagination || null)
