@@ -175,12 +175,15 @@ export function useSessions(token: string, options: SessionQueryOptions = {}): U
     }
 
     if (response.success && response.data) {
-      // Append new sessions to existing list
-      setSessions(prev => [...prev, ...response.data!.sessions])
+      const nextSessions = response.data.sessions
+      setSessions(prev => [...prev, ...nextSessions])
+      if (!hasServerFilters) {
+        setAllSessions(prev => [...prev, ...nextSessions])
+      }
       setPagination(response.data.pagination || null)
     }
     setLoadingMore(false)
-  }, [pagination, loadingMore, sessions.length, searchQuery, statusFilterKey, listQueryKey])
+  }, [pagination, loadingMore, sessions.length, searchQuery, statusFilterKey, listQueryKey, hasServerFilters])
 
   // Keep loadSessionsRef updated
   useEffect(() => {
