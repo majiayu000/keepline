@@ -110,6 +110,24 @@ interface RuntimeDescriptor {
   executableNames: string[]
   sessionPathHints: string[]
   capabilities: RuntimeCapability[]
+  featureProviders?: Partial<{
+    quota: RuntimeQuotaProvider
+    plans: RuntimePlansProvider
+    hooks: RuntimeHooksProvider
+  }>
+}
+
+interface RuntimeQuotaProvider {
+  getQuota(): Promise<JsonValue>
+}
+
+interface RuntimePlansProvider {
+  scanPlans(options?: Record<string, JsonValue>): Promise<JsonValue[]>
+}
+
+interface RuntimeHooksProvider {
+  installHooks?(): Promise<JsonValue>
+  getHookStatus?(): Promise<JsonValue>
 }
 
 interface RuntimeSession {
@@ -120,7 +138,13 @@ interface RuntimeSession {
   projectRoot?: string
   agentId?: string
   parentSessionId?: string
+  parentRuntimeSessionId?: string
   isSubAgent?: boolean
+  pid?: number
+  tty?: string
+  processRunning?: boolean
+  cpuUsage?: number
+  memoryUsage?: number
   status: SessionStatus | 'unknown'
   title: string
   initialPrompt?: string
@@ -198,8 +222,12 @@ Runtime rules:
 
 - RuntimeScanOptions.projectRoot is applied after resolving RuntimeSession.cwd to ProjectIdentity.rootPath, not by comparing raw cwd. It is an exact filter over the normalized RuntimeSession.projectRoot, not a display path, basename, or text search. Adapters must resolve projectRoot with the shared Project Workspaces identity rules: git root first; normalized cwd fallback even when the historical directory no longer exists; Unknown only for empty or unnormalizable cwd strings. If an adapter cannot resolve project roots itself, the registry or API layer must apply this filter after normalization rather than dropping nested cwd sessions.
 - RuntimeSession.projectRoot is the resolved project root used by project filters and project counts. It may differ from cwd when a session runs inside a nested directory.
+- Existing persistence/API rows that use client: "claude" map to runtimeId "claude-code". Until storage is migrated, runtime filters must translate "claude-code" to legacy client "claude" and normalize legacy rows back to runtimeId "claude-code" so Claude Code sessions are not dropped.
+- RuntimeSession.parentSessionId is the global parent AgentSession.id when the parent has been resolved. parentRuntimeSessionId preserves a raw runtime-local parent ID when the adapter can read one before global ID mapping.
+- RuntimeSession process attribution fields are optional but must be populated by adapters or process matchers when live process data is available. API consumers must distinguish processRunning === false from an unknown processRunning value.
 - Archived runtime sessions are out of scope for the first runtime-neutral contract because no supported adapter has a documented archived session source root. Do not expose includeArchived or an archived RuntimeSession flag until each participating adapter declares its archived source hints and normalized recovery behavior.
 - Any adapter whose descriptor.capabilities includes resume must implement buildRecoveryCommand() and return a RuntimeCommand for RuntimeRecoveryOptions.method === "resume" when a session is resumable. The same builder must preserve existing continue/new recovery modes and skipPermissions flags when that runtime supports them. Adapters without resume capability must not expose a resume action. Registry registration or tests should fail on a resume capability without a command builder.
+- Declaring quota, plans, or hooks in RuntimeDescriptor.capabilities requires the matching featureProviders entry or an explicit compatibility route that is wired to the adapter. Registration or tests should fail when a runtime advertises these feature capabilities without a provider contract.
 
 ## Runtime Adapters
 
@@ -207,10 +235,10 @@ Runtime rules:
 
 Use the existing Claude Code scanner/parser as a wrapped source:
 
-- Source hints: ~/.claude/projects/<project>/<session>.jsonl
+- Source hints: ~/.claude/projects/<project>/<session>.jsonl and ~/.claude-work/projects/<project>/<session>.jsonl by default. Preserve KEEPLINE_PROJECT_ROOTS as the colon-separated absolute-path override for Claude project roots.
 - Capabilities: session-history, process-scan, resume, quota, plans, hooks
 - Runtime ID: claude-code
-- Recovery commands: buildRecoveryCommand(session, { method: 'resume' }) returns `{ executable: 'claude', args: ['--resume', session.sessionId], cwd: session.cwd }`; `{ method: 'continue' }` returns args `['--continue']`; `{ method: 'new', initialPrompt }` starts a new Claude command with the prompt. skipPermissions appends `--dangerously-skip-permissions` before the method-specific args.
+- Recovery commands: buildRecoveryCommand(session, { method: 'resume' }) returns `{ executable: 'claude', args: ['--resume', session.sessionId], cwd: session.cwd }`; `{ method: 'continue' }` returns args `['--continue']` with cwd: session.cwd; `{ method: 'new', initialPrompt }` starts a new Claude command with the prompt and cwd: session.cwd. skipPermissions appends `--dangerously-skip-permissions` before the method-specific args.
 
 The adapter maps existing parsed sessions to RuntimeSession. The old parser does not need to be rewritten in the first slice, but the wrapper must preserve agentId, parentSessionId, isSubAgent, and usageStats. Per-file read/parse failures from Claude JSONL must be surfaced as RuntimeScanResult.errors instead of only being logged.
 
@@ -220,10 +248,10 @@ Use rollout JSONL files:
 
 - Source hints: ~/.codex/sessions/YYYY/MM/DD/rollout-*.jsonl
 - Runtime ID: codex
-- Capabilities: session-history, process-scan, resume
+- Capabilities: session-history, process-scan, resume, quota
 - Expected records: session_meta, turn_context, event_msg, response_item
 - Required fields: session_meta.payload.id, session_meta.payload.cwd
-- Recovery commands: buildRecoveryCommand(session, { method: 'resume' }) returns `{ executable: 'codex', args: ['resume', session.sessionId], cwd: session.cwd }`; `{ method: 'continue' }` returns args `['resume', '--last']`; `{ method: 'new', initialPrompt }` starts a new Codex command with the prompt. skipPermissions appends `--dangerously-bypass-approvals-and-sandbox` before the session id, `--last`, or prompt. Resume must use the raw RuntimeSession.sessionId, not the encoded AgentSession.id.
+- Recovery commands: buildRecoveryCommand(session, { method: 'resume' }) returns `{ executable: 'codex', args: ['resume', session.sessionId], cwd: session.cwd }`; `{ method: 'continue' }` returns args `['resume', '--last']` with cwd: session.cwd; `{ method: 'new', initialPrompt }` starts a new Codex command with the prompt and cwd: session.cwd. skipPermissions appends `--dangerously-bypass-approvals-and-sandbox` before the session id, `--last`, or prompt. Resume must use the raw RuntimeSession.sessionId, not the encoded AgentSession.id.
 
 Parser behavior:
 
@@ -327,8 +355,8 @@ If local guardrails block adding multiple adapter files during a first pass, kee
 - Bucket predicates are projections, not status mutations:
   - Evaluate each work item into at most one bucket using first-match precedence: archived work items are hidden from active buckets by default; then Done; then Waiting; then Stale; then Now; remaining inbox/planned items stay unbucketed until they have status or evidence.
   - Done: WorkItem.status is done. A completed AgentSession can provide evidence but cannot move a work item into Done without user or accepted_agent_suggestion statusSource.
-  - Waiting: WorkItem.status is blocked, or the most recent accepted linked AgentSession.status is waiting and there is no newer ProgressEvidence.outcome === "completed" for the same work item/session.
-  - Stale: WorkItem.status is planned, active, or blocked and neither accepted linked AgentSession.lastActiveAt nor ProgressEvidence.occurredAt is within the configured stale window. Done and archived work items are never stale.
+  - Waiting: WorkItem.status is blocked, or the most recent accepted linked AgentSession.status is waiting and there is no newer ProgressEvidence.outcome === "completed" with confidence === "explicit" for the same work item/session.
+  - Stale: WorkItem.status is planned or active and neither accepted linked AgentSession.lastActiveAt nor ProgressEvidence.occurredAt is within the configured stale window. Done, blocked, and archived work items are never stale.
   - Now: WorkItem.status is active, or planned with an accepted WorkItemSessionLink to a running/waiting AgentSession.
 - No data should render blank progress, not guessed completion.
 - Suggestions must be visibly marked as suggestions until accepted.
@@ -370,9 +398,14 @@ Expected targeted tests:
 - Codex adapter reports broken rollout files without hiding good sessions.
 - Default registry contains claude-code and codex.
 - Registry rejects duplicate runtime adapter IDs.
+- Registry rejects feature capabilities without matching providers or explicit compatibility routes.
 - Structured RuntimeCommand is returned for Claude Code resume, continue, and new recovery modes.
 - Structured RuntimeCommand is returned for Codex resume, continue, and new recovery modes and resume uses the raw runtime session ID.
 - Registry rejects or test-fails an adapter that declares resume capability without buildRecoveryCommand.
+- Claude Code adapter scans both default Claude project roots and preserves the KEEPLINE_PROJECT_ROOTS override.
+- Legacy client "claude" rows normalize to runtimeId "claude-code" and runtimeId "claude-code" filters include legacy client rows.
+- Live process fields are preserved when process-scan data is available.
+- RuntimeSession preserves both global parentSessionId and raw parentRuntimeSessionId when sub-agent metadata includes a runtime-local parent.
 - RuntimeScanOptions.projectRoot filters by exact resolved projectRoot, including nested cwd sessions.
 - Missing historical cwd strings remain normalized cwd project roots; only empty or unnormalizable cwd maps to Unknown.
 - Archived runtime session scanning is not exposed until adapter-specific archived source roots and recovery behavior are specified.
