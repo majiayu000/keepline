@@ -126,7 +126,6 @@ interface RuntimeSession {
   startedAt?: Date
   lastActiveAt: Date
   completedAt?: Date
-  archived?: boolean
   usageStats?: RuntimeUsageStats
   runtimeMetadata?: Record<string, string | number | boolean | null>
 }
@@ -150,8 +149,8 @@ interface RuntimeCommand {
 interface RuntimeScanOptions {
   maxAgeDays?: number
   mode?: 'basic' | 'full'
+  /** Exact ProjectIdentity.rootPath filter, applied after cwd is resolved to a project root. */
   projectRoot?: string
-  includeArchived?: boolean
 }
 
 interface RuntimeScanError {
@@ -171,6 +170,7 @@ interface RuntimeScanResult {
 interface AgentRuntimeAdapter {
   descriptor: RuntimeDescriptor
   scanSessions(options?: RuntimeScanOptions): Promise<RuntimeScanResult>
+  /** Required when descriptor.capabilities includes resume; absent or undefined otherwise. */
   buildResumeCommand?: (session: RuntimeSession) => RuntimeCommand | undefined
 }
 ~~~
@@ -179,9 +179,9 @@ Do not return shell command strings from buildResumeCommand().
 
 Runtime rules:
 
-- RuntimeScanOptions.projectRoot is an exact filter over the normalized RuntimeSession.projectRoot, not a display path, basename, or text search. Adapters must resolve projectRoot with the shared Project Workspaces identity rules: git root first, cwd fallback, and the Unknown sentinel for missing historical directories.
+- RuntimeScanOptions.projectRoot is applied after resolving RuntimeSession.cwd to ProjectIdentity.rootPath, not by comparing raw cwd. It is an exact filter over the normalized RuntimeSession.projectRoot, not a display path, basename, or text search. Adapters must resolve projectRoot with the shared Project Workspaces identity rules: git root first, cwd fallback, and the Unknown sentinel for missing historical directories. If an adapter cannot resolve project roots itself, the registry or API layer must apply this filter after normalization rather than dropping nested cwd sessions.
 - RuntimeSession.projectRoot is the resolved project root used by project filters and project counts. It may differ from cwd when a session runs inside a nested directory.
-- RuntimeSession.archived defaults to false. scanSessions() excludes archived sessions unless includeArchived is true; when includeArchived is true, archived records must keep archived: true so projections can hide or label them deliberately.
+- Archived runtime sessions are out of scope for the first runtime-neutral contract because no supported adapter has a documented archived session source root. Do not expose includeArchived or an archived RuntimeSession flag until each participating adapter declares its archived source hints and normalized recovery behavior.
 - Any adapter whose descriptor.capabilities includes resume must implement buildResumeCommand() and return a RuntimeCommand for resumable sessions. Adapters without resume capability must not expose a resume action. Registry registration or tests should fail on a resume capability without a command builder.
 
 ## Runtime Adapters
@@ -193,6 +193,7 @@ Use the existing Claude Code scanner/parser as a wrapped source:
 - Source hints: ~/.claude/projects/<project>/<session>.jsonl
 - Capabilities: session-history, process-scan, resume, quota, plans, hooks
 - Runtime ID: claude-code
+- Resume command: buildResumeCommand(session) returns `{ executable: 'claude', args: ['--resume', session.sessionId], cwd: session.cwd }`.
 
 The adapter maps existing parsed sessions to RuntimeSession. The old parser does not need to be rewritten in the first slice.
 
@@ -305,6 +306,7 @@ If local guardrails block adding multiple adapter files during a first pass, kee
 
 - Build Now, Waiting, Stale, Done projections from WorkItem + AgentSession + ProgressEvidence.
 - Bucket predicates are projections, not status mutations:
+  - Precedence: archived work items are hidden from active buckets by default; then Done; then Waiting; then Stale; then Now; remaining inbox/planned items stay unbucketed until they have status or evidence.
   - Now: WorkItem.status is active, or planned with an accepted WorkItemSessionLink to a running/waiting AgentSession.
   - Waiting: WorkItem.status is blocked, or the most recent linked AgentSession.status is waiting and no newer explicit done evidence exists.
   - Stale: WorkItem.status is planned, active, or blocked and neither linked AgentSession.lastActiveAt nor ProgressEvidence.occurredAt is within the configured stale window. Done and archived work items are never stale.
@@ -352,7 +354,7 @@ Expected targeted tests:
 - Structured RuntimeCommand is returned for Codex resume and uses the raw runtime session ID.
 - Registry rejects or test-fails an adapter that declares resume capability without buildResumeCommand.
 - RuntimeScanOptions.projectRoot filters by exact resolved projectRoot, including nested cwd sessions.
-- RuntimeScanOptions.includeArchived excludes archived sessions by default and includes marked archived sessions when true.
+- Archived runtime session scanning is not exposed until adapter-specific archived source roots and recovery behavior are specified.
 - Workboard buckets follow the Now, Waiting, Stale, Done predicates without mutating WorkItem.status.
 - Project filter composes with search, status, runtime, and pagination.
 - Same-basename projects do not merge.
