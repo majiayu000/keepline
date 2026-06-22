@@ -122,27 +122,42 @@ export function useSessions(token: string, options: SessionQueryOptions = {}): U
   const loadSessions = useCallback(async () => {
     const requestSeq = ++listRequestSeqRef.current
     // Use 'basic' mode for faster loading, with pagination
-    const response = await api.fetchSessions('basic', {
-      limit: PAGE_SIZE,
-      query: searchQuery,
-      status: statusFilterValues,
-    })
+    const [response, unfilteredResponse] = await Promise.all([
+      api.fetchSessions('basic', {
+        limit: PAGE_SIZE,
+        query: searchQuery,
+        status: statusFilterValues,
+      }),
+      hasServerFilters
+        ? api.fetchSessions('basic', {
+          limit: PAGE_SIZE,
+          skipSync: true,
+        })
+        : Promise.resolve(null),
+    ])
 
     // Only update state if component is still mounted
     if (!mountedRef.current || requestSeq !== listRequestSeqRef.current) return
 
     if (response.success && response.data) {
       setSessions(response.data.sessions)
-      if (!hasServerFilters) {
+      let unfilteredError: string | null = null
+      if (hasServerFilters) {
+        if (unfilteredResponse?.success && unfilteredResponse.data) {
+          setAllSessions(unfilteredResponse.data.sessions)
+        } else {
+          unfilteredError = unfilteredResponse?.error || 'Failed to load unfiltered sessions'
+        }
+      } else {
         setAllSessions(response.data.sessions)
       }
       setStats(response.data.stats)
       setPagination(response.data.pagination || null)
-      setError(null)
+      setError(unfilteredError)
     } else {
       setError(response.error || 'Failed to load sessions')
     }
-  }, [searchQuery, statusFilterKey])
+  }, [searchQuery, statusFilterKey, hasServerFilters])
 
   // Load more sessions (pagination)
   const loadMore = useCallback(async () => {
