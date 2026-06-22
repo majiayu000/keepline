@@ -209,7 +209,22 @@ export function useSessions(token: string, options: UseSessionsOptions = {}): Us
         })
       } else {
         setAllSessions(response.data.sessions)
-        bumpVersionIfChanged(response.data.sessions)
+        if (!response.data.pagination?.hasMore) {
+          bumpVersionIfChanged(response.data.sessions)
+        } else {
+          fetchAllBasicSessionsSnapshot().then(unfilteredResponse => {
+            if (!mountedRef.current) return
+            if (requestId !== loadRequestIdRef.current) return
+            if (requestedProjectRoot !== projectRootRef.current) return
+
+            if (!unfilteredResponse.error) {
+              setAllSessions(unfilteredResponse.sessions)
+              bumpVersionIfChanged(unfilteredResponse.sessions)
+            } else {
+              setError(unfilteredResponse.error)
+            }
+          })
+        }
       }
       setStats(response.data.stats)
       setPagination(response.data.pagination || null)

@@ -59,6 +59,17 @@ describe('Project identity', () => {
     expect(identity.id).not.toBe('unknown');
   });
 
+  test('walks from deleted session directories to an existing parent git root', () => {
+    const root = makeTempRoot('keepline-deleted-leaf-root-');
+    mkdirSync(join(root, '.git'));
+    const deletedLeaf = join(root, 'packages', 'removed-app');
+
+    const identity = resolveProjectIdentity(deletedLeaf);
+
+    expect(identity.rootPath).toBe(root);
+    expect(identity.source).toBe('git-root');
+  });
+
   test('uses collision-resistant IDs rather than lossy slugs', () => {
     expect(projectIdFromPath('/tmp/a-b')).not.toBe(projectIdFromPath('/tmp/a/b'));
     expect(projectIdFromPath('/tmp/Foo')).not.toBe(projectIdFromPath('/tmp/foo'));

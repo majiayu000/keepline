@@ -92,9 +92,9 @@ export function resolveProjectIdentity(cwd: string | undefined | null): ProjectI
 }
 
 function findGitRoot(projectPath: string): string | null {
-  if (!existsSync(projectPath)) return null;
+  let current = nearestExistingPath(projectPath);
+  if (!current) return null;
 
-  let current = projectPath;
   try {
     if (!statSync(current).isDirectory()) {
       current = path.dirname(current);
@@ -111,6 +111,16 @@ function findGitRoot(projectPath: string): string | null {
     if (parent === current) return null;
     current = parent;
   }
+}
+
+function nearestExistingPath(projectPath: string): string | null {
+  let current = projectPath;
+  while (!existsSync(current)) {
+    const parent = path.dirname(current);
+    if (parent === current) return null;
+    current = parent;
+  }
+  return current;
 }
 
 function escapeRegExp(value: string): string {
