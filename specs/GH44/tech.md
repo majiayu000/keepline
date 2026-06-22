@@ -71,6 +71,7 @@ interface ProgressEvidence {
 
 Rules:
 
+- AgentSession.id is the global stable session ID used by persistence, links, and APIs. It must be derived from runtimeId plus runtimeSessionId, for example `${runtimeId}:${runtimeSessionId}`. runtimeSessionId remains the raw runtime-local identifier.
 - User-visible task status changes require statusSource user or accepted_agent_suggestion.
 - Inferred evidence can suggest progress but cannot mark planned/done by itself.
 - No evidence means blank progress, not fake completion.
@@ -127,6 +128,21 @@ interface RuntimeCommand {
   cwd?: string
 }
 
+interface RuntimeScanOptions {
+  maxAgeDays?: number
+  mode?: 'basic' | 'full'
+  projectRoot?: string
+  includeArchived?: boolean
+}
+
+interface RuntimeScanError {
+  runtimeId: RuntimeId
+  code: 'missing-root' | 'read-failed' | 'parse-failed' | 'unsupported-schema' | 'unknown'
+  message: string
+  sourcePath?: string
+  recoverable: boolean
+}
+
 interface RuntimeScanResult {
   runtime: RuntimeDescriptor
   sessions: RuntimeSession[]
@@ -168,7 +184,7 @@ Parser behavior:
 1. Parse JSONL line by line.
 2. Use session_meta.payload.id as sessionId.
 3. Use session_meta.payload.cwd as cwd.
-4. Use first user message as initialPrompt and derived title.
+4. Treat both response_item.payload.type === "message" with role === "user" and event_msg.payload.type === "user_message" as user message sources. Use the first user message from either source as initialPrompt and derived title.
 5. Track assistant/user message counts and function call counts.
 6. Track file hints from known tool input keys such as path, file_path, filePath, notebook_path.
 7. Store runtime-specific metadata such as originator, cli_version, source, thread_source, model_provider.
@@ -186,6 +202,8 @@ class RuntimeRegistry {
   scanAll(options?: RuntimeScanOptions): Promise<RuntimeScanResult[]>
 }
 ~~~
+
+scanAll() must isolate adapter failures. A failed adapter must return a RuntimeScanResult for that runtime with an empty sessions array and structured RuntimeScanError entries; it must not reject the whole scan or hide healthy sessions from other runtimes. Implementations should use Promise.allSettled or equivalent per-adapter error boundaries.
 
 Default registry:
 
