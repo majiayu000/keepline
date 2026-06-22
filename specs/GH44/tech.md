@@ -7,7 +7,7 @@ Issue: https://github.com/majiayu000/claude-hub/issues/44
 ## Context
 
 - AGENTS.md and README.md have historically described the product through one runtime name at a time.
-- docs/PRD_TODO_AGENT_WORKBOARD.md describes a broader todo/workboard/evidence system that needs runtime-neutral sessions.
+- specs/GH44/product.md defines the Todo + runtime session + evidence Workboard behavior that needs runtime-neutral sessions.
 - Project Workspaces already needs runtime/client counts, so runtime identity must become explicit before more UI surfaces depend on it.
 - #34 covered a broader rename plus Codex detection direction, but is closed and does not match the current compatibility-preserving runtime adapter approach.
 - #38 only covers missing Codex sessions directory no-op and is too narrow for the shared architecture.
@@ -112,6 +112,7 @@ interface RuntimeSession {
   sessionId: string
   sourcePath?: string
   cwd: string
+  projectRoot?: string
   status: SessionStatus | 'unknown'
   title: string
   initialPrompt?: string
@@ -125,6 +126,7 @@ interface RuntimeSession {
   startedAt?: Date
   lastActiveAt: Date
   completedAt?: Date
+  archived?: boolean
   usageStats?: RuntimeUsageStats
   runtimeMetadata?: Record<string, string | number | boolean | null>
 }
@@ -175,6 +177,13 @@ interface AgentRuntimeAdapter {
 
 Do not return shell command strings from buildResumeCommand().
 
+Runtime rules:
+
+- RuntimeScanOptions.projectRoot is an exact filter over the normalized RuntimeSession.projectRoot, not a display path, basename, or text search. Adapters must resolve projectRoot with the shared Project Workspaces identity rules: git root first, cwd fallback, and the Unknown sentinel for missing historical directories.
+- RuntimeSession.projectRoot is the resolved project root used by project filters and project counts. It may differ from cwd when a session runs inside a nested directory.
+- RuntimeSession.archived defaults to false. scanSessions() excludes archived sessions unless includeArchived is true; when includeArchived is true, archived records must keep archived: true so projections can hide or label them deliberately.
+- Any adapter whose descriptor.capabilities includes resume must implement buildResumeCommand() and return a RuntimeCommand for resumable sessions. Adapters without resume capability must not expose a resume action. Registry registration or tests should fail on a resume capability without a command builder.
+
 ## Runtime Adapters
 
 ### Claude Code
@@ -194,7 +203,7 @@ Use rollout JSONL files:
 - Source hints: ~/.codex/sessions/YYYY/MM/DD/rollout-*.jsonl
 - Runtime ID: codex
 - Capabilities: session-history, process-scan, resume
-- Expected records: session_meta, event_msg, response_item
+- Expected records: session_meta, turn_context, event_msg, response_item
 - Required fields: session_meta.payload.id, session_meta.payload.cwd
 - Resume command: buildResumeCommand(session) returns `{ executable: 'codex', args: ['resume', session.sessionId], cwd: session.cwd }`. It must use the raw RuntimeSession.sessionId, not the encoded AgentSession.id.
 
@@ -203,11 +212,12 @@ Parser behavior:
 1. Parse JSONL line by line.
 2. Use session_meta.payload.id as sessionId.
 3. Use session_meta.payload.cwd as cwd.
-4. Treat both response_item.payload.type === "message" with role === "user" and event_msg.payload.type === "user_message" as user message sources. Use the first user message from either source as initialPrompt and derived title.
-5. Track assistant/user message counts and function call counts.
-6. Track file hints from known tool input keys such as path, file_path, filePath, notebook_path.
-7. Store runtime-specific metadata such as originator, cli_version, source, thread_source, model_provider.
-8. Throw structured parse errors for bad files; adapter catches them into RuntimeScanResult.errors.
+4. Accept turn_context records as contextual metadata. Do not treat them as unsupported schema; store relevant stable fields such as cwd, approval_policy, sandbox_policy, model, and effort in runtimeMetadata. session_meta.payload.cwd remains the authoritative cwd.
+5. Treat both response_item.payload.type === "message" with role === "user" and event_msg.payload.type === "user_message" as user message sources. Use the first user message from either source as initialPrompt and derived title.
+6. Track assistant/user message counts and function call counts.
+7. Track file hints from known tool input keys such as path, file_path, filePath, notebook_path.
+8. Store runtime-specific metadata such as originator, cli_version, source, thread_source, model_provider.
+9. Throw structured parse errors for bad files; adapter catches them into RuntimeScanResult.errors.
 
 Missing ~/.codex/sessions should be no-op. Bad files inside an existing root should not hide good sessions.
 
@@ -294,6 +304,11 @@ If local guardrails block adding multiple adapter files during a first pass, kee
 ### Slice 6: Workboard Projection
 
 - Build Now, Waiting, Stale, Done projections from WorkItem + AgentSession + ProgressEvidence.
+- Bucket predicates are projections, not status mutations:
+  - Now: WorkItem.status is active, or planned with an accepted WorkItemSessionLink to a running/waiting AgentSession.
+  - Waiting: WorkItem.status is blocked, or the most recent linked AgentSession.status is waiting and no newer explicit done evidence exists.
+  - Stale: WorkItem.status is planned, active, or blocked and neither linked AgentSession.lastActiveAt nor ProgressEvidence.occurredAt is within the configured stale window. Done and archived work items are never stale.
+  - Done: WorkItem.status is done. A completed AgentSession can provide evidence but cannot move a work item into Done without user or accepted_agent_suggestion statusSource.
 - No data should render blank progress, not guessed completion.
 - Suggestions must be visibly marked as suggestions until accepted.
 
@@ -330,10 +345,15 @@ Expected targeted tests:
 - Claude Code adapter preserves current scanner behavior.
 - Codex missing sessions root returns empty sessions and no warning-level user-facing failure.
 - Codex rollout JSONL parses into RuntimeSession.
+- Codex turn_context records are accepted and preserved as metadata without replacing session_meta identity.
 - Codex adapter reports broken rollout files without hiding good sessions.
 - Default registry contains claude-code and codex.
 - Structured RuntimeCommand is returned for Claude Code resume.
 - Structured RuntimeCommand is returned for Codex resume and uses the raw runtime session ID.
+- Registry rejects or test-fails an adapter that declares resume capability without buildResumeCommand.
+- RuntimeScanOptions.projectRoot filters by exact resolved projectRoot, including nested cwd sessions.
+- RuntimeScanOptions.includeArchived excludes archived sessions by default and includes marked archived sessions when true.
+- Workboard buckets follow the Now, Waiting, Stale, Done predicates without mutating WorkItem.status.
 - Project filter composes with search, status, runtime, and pagination.
 - Same-basename projects do not merge.
 
