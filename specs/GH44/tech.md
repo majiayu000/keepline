@@ -53,6 +53,7 @@ interface WorkItemSessionLink {
   workItemId: string
   agentSessionId: string
   linkSource: 'user' | 'accepted_agent_suggestion' | 'heuristic_suggestion'
+  acceptanceStatus: 'accepted' | 'pending' | 'rejected'
   acceptedAt?: Date
 }
 
@@ -60,6 +61,7 @@ interface ProgressEvidenceBase {
   id: string
   runtimeId?: RuntimeId
   kind: 'message' | 'tool_call' | 'file_change' | 'plan_event' | 'test_result'
+  outcome?: 'progress' | 'blocked' | 'completed' | 'failed'
   summary: string
   sourcePath?: string
   occurredAt: Date
@@ -76,8 +78,10 @@ type ProgressEvidence =
 
 Rules:
 
-- AgentSession.id is the global stable session ID used by persistence, links, and APIs. It must be derived from runtimeId plus runtimeSessionId and must satisfy the shared session ID validator/storage constraints. Use a validator-compatible encoded form such as `${runtimeId}_${runtimeSessionId}` after normalizing both parts to the allowed `[A-Za-z0-9_-]` alphabet; do not introduce an unaccepted delimiter such as `:` without updating the validator and all storage/API call sites together. runtimeSessionId remains the raw runtime-local identifier.
+- AgentSession.id is the global stable session ID used by persistence, links, and APIs. It must be derived from raw runtimeId plus raw runtimeSessionId, must satisfy the shared session ID validator/storage constraints, and must be collision-resistant within the current 64-character validator limit. Use a validator-compatible fixed form such as `${safeRuntimeId.slice(0, 24)}_${sha256(runtimeId + "\0" + runtimeSessionId).slice(0, 32)}` where safeRuntimeId contains only `[A-Za-z0-9_-]`. Do not rely on lossy normalization alone. runtimeSessionId remains the raw runtime-local identifier.
+- WorkItemSessionLink acceptanceStatus is authoritative. User-created and accepted_agent_suggestion links are accepted and should set acceptedAt; heuristic_suggestion links start pending and cannot affect Workboard buckets until accepted.
 - ProgressEvidence must be attachable. Each record requires at least one stable attachment anchor: workItemId or agentSessionId.
+- ProgressEvidence.outcome is the typed signal for completion/blocking/failure. Bucket logic must not parse free-text summary to infer done state.
 - User-visible task status changes require statusSource user or accepted_agent_suggestion.
 - Inferred evidence can suggest progress but cannot mark planned/done by itself.
 - No evidence means blank progress, not fake completion.
@@ -89,6 +93,7 @@ Add a runtime domain module, for example src/domain/runtime/.
 ~~~ts
 type RuntimeId = 'claude-code' | 'codex' | 'cursor' | (string & {})
 type RuntimeKind = 'cli' | 'ide' | 'cloud' | 'unknown'
+type JsonValue = string | number | boolean | null | JsonValue[] | { [key: string]: JsonValue }
 
 type RuntimeCapability =
   | 'session-history'
@@ -113,6 +118,9 @@ interface RuntimeSession {
   sourcePath?: string
   cwd: string
   projectRoot?: string
+  agentId?: string
+  parentSessionId?: string
+  isSubAgent?: boolean
   status: SessionStatus | 'unknown'
   title: string
   initialPrompt?: string
@@ -127,16 +135,17 @@ interface RuntimeSession {
   lastActiveAt: Date
   completedAt?: Date
   usageStats?: RuntimeUsageStats
-  runtimeMetadata?: Record<string, string | number | boolean | null>
+  runtimeMetadata?: Record<string, JsonValue>
 }
 
 interface RuntimeUsageStats {
-  inputTokens?: number
-  outputTokens?: number
+  totalInputTokens: number
+  totalOutputTokens: number
+  totalTokens: number
+  totalCost: number
+  apiCalls: number
   cacheReadTokens?: number
   cacheWriteTokens?: number
-  totalTokens?: number
-  totalCostUsd?: number
   model?: string
 }
 
@@ -144,6 +153,14 @@ interface RuntimeCommand {
   executable: string
   args: string[]
   cwd?: string
+}
+
+type RuntimeRecoveryMethod = 'resume' | 'continue' | 'new'
+
+interface RuntimeRecoveryOptions {
+  method: RuntimeRecoveryMethod
+  initialPrompt?: string
+  skipPermissions?: boolean
 }
 
 interface RuntimeScanOptions {
@@ -171,18 +188,18 @@ interface AgentRuntimeAdapter {
   descriptor: RuntimeDescriptor
   scanSessions(options?: RuntimeScanOptions): Promise<RuntimeScanResult>
   /** Required when descriptor.capabilities includes resume; absent or undefined otherwise. */
-  buildResumeCommand?: (session: RuntimeSession) => RuntimeCommand | undefined
+  buildRecoveryCommand?: (session: RuntimeSession, options: RuntimeRecoveryOptions) => RuntimeCommand | undefined
 }
 ~~~
 
-Do not return shell command strings from buildResumeCommand().
+Do not return shell command strings from buildRecoveryCommand().
 
 Runtime rules:
 
-- RuntimeScanOptions.projectRoot is applied after resolving RuntimeSession.cwd to ProjectIdentity.rootPath, not by comparing raw cwd. It is an exact filter over the normalized RuntimeSession.projectRoot, not a display path, basename, or text search. Adapters must resolve projectRoot with the shared Project Workspaces identity rules: git root first, cwd fallback, and the Unknown sentinel for missing historical directories. If an adapter cannot resolve project roots itself, the registry or API layer must apply this filter after normalization rather than dropping nested cwd sessions.
+- RuntimeScanOptions.projectRoot is applied after resolving RuntimeSession.cwd to ProjectIdentity.rootPath, not by comparing raw cwd. It is an exact filter over the normalized RuntimeSession.projectRoot, not a display path, basename, or text search. Adapters must resolve projectRoot with the shared Project Workspaces identity rules: git root first; normalized cwd fallback even when the historical directory no longer exists; Unknown only for empty or unnormalizable cwd strings. If an adapter cannot resolve project roots itself, the registry or API layer must apply this filter after normalization rather than dropping nested cwd sessions.
 - RuntimeSession.projectRoot is the resolved project root used by project filters and project counts. It may differ from cwd when a session runs inside a nested directory.
 - Archived runtime sessions are out of scope for the first runtime-neutral contract because no supported adapter has a documented archived session source root. Do not expose includeArchived or an archived RuntimeSession flag until each participating adapter declares its archived source hints and normalized recovery behavior.
-- Any adapter whose descriptor.capabilities includes resume must implement buildResumeCommand() and return a RuntimeCommand for resumable sessions. Adapters without resume capability must not expose a resume action. Registry registration or tests should fail on a resume capability without a command builder.
+- Any adapter whose descriptor.capabilities includes resume must implement buildRecoveryCommand() and return a RuntimeCommand for RuntimeRecoveryOptions.method === "resume" when a session is resumable. The same builder must preserve existing continue/new recovery modes and skipPermissions flags when that runtime supports them. Adapters without resume capability must not expose a resume action. Registry registration or tests should fail on a resume capability without a command builder.
 
 ## Runtime Adapters
 
@@ -193,9 +210,9 @@ Use the existing Claude Code scanner/parser as a wrapped source:
 - Source hints: ~/.claude/projects/<project>/<session>.jsonl
 - Capabilities: session-history, process-scan, resume, quota, plans, hooks
 - Runtime ID: claude-code
-- Resume command: buildResumeCommand(session) returns `{ executable: 'claude', args: ['--resume', session.sessionId], cwd: session.cwd }`.
+- Recovery commands: buildRecoveryCommand(session, { method: 'resume' }) returns `{ executable: 'claude', args: ['--resume', session.sessionId], cwd: session.cwd }`; `{ method: 'continue' }` returns args `['--continue']`; `{ method: 'new', initialPrompt }` starts a new Claude command with the prompt. skipPermissions appends `--dangerously-skip-permissions` before the method-specific args.
 
-The adapter maps existing parsed sessions to RuntimeSession. The old parser does not need to be rewritten in the first slice.
+The adapter maps existing parsed sessions to RuntimeSession. The old parser does not need to be rewritten in the first slice, but the wrapper must preserve agentId, parentSessionId, isSubAgent, and usageStats. Per-file read/parse failures from Claude JSONL must be surfaced as RuntimeScanResult.errors instead of only being logged.
 
 ### Codex
 
@@ -206,7 +223,7 @@ Use rollout JSONL files:
 - Capabilities: session-history, process-scan, resume
 - Expected records: session_meta, turn_context, event_msg, response_item
 - Required fields: session_meta.payload.id, session_meta.payload.cwd
-- Resume command: buildResumeCommand(session) returns `{ executable: 'codex', args: ['resume', session.sessionId], cwd: session.cwd }`. It must use the raw RuntimeSession.sessionId, not the encoded AgentSession.id.
+- Recovery commands: buildRecoveryCommand(session, { method: 'resume' }) returns `{ executable: 'codex', args: ['resume', session.sessionId], cwd: session.cwd }`; `{ method: 'continue' }` returns args `['resume', '--last']`; `{ method: 'new', initialPrompt }` starts a new Codex command with the prompt. skipPermissions appends `--dangerously-bypass-approvals-and-sandbox` before the session id, `--last`, or prompt. Resume must use the raw RuntimeSession.sessionId, not the encoded AgentSession.id.
 
 Parser behavior:
 
@@ -232,6 +249,8 @@ class RuntimeRegistry {
   scanAll(options?: RuntimeScanOptions): Promise<RuntimeScanResult[]>
 }
 ~~~
+
+register() must reject duplicate adapter descriptor.id values. RuntimeId is the key for links, filters, errors, and get(runtimeId); replacing or shadowing an existing adapter is a configuration error.
 
 scanAll() must isolate adapter failures. A failed adapter must return a RuntimeScanResult for that runtime with an empty sessions array and structured RuntimeScanError entries; it must not reject the whole scan or hide healthy sessions from other runtimes. Implementations should use Promise.allSettled or equivalent per-adapter error boundaries.
 
@@ -306,11 +325,11 @@ If local guardrails block adding multiple adapter files during a first pass, kee
 
 - Build Now, Waiting, Stale, Done projections from WorkItem + AgentSession + ProgressEvidence.
 - Bucket predicates are projections, not status mutations:
-  - Precedence: archived work items are hidden from active buckets by default; then Done; then Waiting; then Stale; then Now; remaining inbox/planned items stay unbucketed until they have status or evidence.
-  - Now: WorkItem.status is active, or planned with an accepted WorkItemSessionLink to a running/waiting AgentSession.
-  - Waiting: WorkItem.status is blocked, or the most recent linked AgentSession.status is waiting and no newer explicit done evidence exists.
-  - Stale: WorkItem.status is planned, active, or blocked and neither linked AgentSession.lastActiveAt nor ProgressEvidence.occurredAt is within the configured stale window. Done and archived work items are never stale.
+  - Evaluate each work item into at most one bucket using first-match precedence: archived work items are hidden from active buckets by default; then Done; then Waiting; then Stale; then Now; remaining inbox/planned items stay unbucketed until they have status or evidence.
   - Done: WorkItem.status is done. A completed AgentSession can provide evidence but cannot move a work item into Done without user or accepted_agent_suggestion statusSource.
+  - Waiting: WorkItem.status is blocked, or the most recent accepted linked AgentSession.status is waiting and there is no newer ProgressEvidence.outcome === "completed" for the same work item/session.
+  - Stale: WorkItem.status is planned, active, or blocked and neither accepted linked AgentSession.lastActiveAt nor ProgressEvidence.occurredAt is within the configured stale window. Done and archived work items are never stale.
+  - Now: WorkItem.status is active, or planned with an accepted WorkItemSessionLink to a running/waiting AgentSession.
 - No data should render blank progress, not guessed completion.
 - Suggestions must be visibly marked as suggestions until accepted.
 
@@ -350,12 +369,20 @@ Expected targeted tests:
 - Codex turn_context records are accepted and preserved as metadata without replacing session_meta identity.
 - Codex adapter reports broken rollout files without hiding good sessions.
 - Default registry contains claude-code and codex.
-- Structured RuntimeCommand is returned for Claude Code resume.
-- Structured RuntimeCommand is returned for Codex resume and uses the raw runtime session ID.
-- Registry rejects or test-fails an adapter that declares resume capability without buildResumeCommand.
+- Registry rejects duplicate runtime adapter IDs.
+- Structured RuntimeCommand is returned for Claude Code resume, continue, and new recovery modes.
+- Structured RuntimeCommand is returned for Codex resume, continue, and new recovery modes and resume uses the raw runtime session ID.
+- Registry rejects or test-fails an adapter that declares resume capability without buildRecoveryCommand.
 - RuntimeScanOptions.projectRoot filters by exact resolved projectRoot, including nested cwd sessions.
+- Missing historical cwd strings remain normalized cwd project roots; only empty or unnormalizable cwd maps to Unknown.
 - Archived runtime session scanning is not exposed until adapter-specific archived source roots and recovery behavior are specified.
 - Workboard buckets follow the Now, Waiting, Stale, Done predicates without mutating WorkItem.status.
+- WorkItemSessionLink acceptanceStatus gates Workboard bucket membership.
+- ProgressEvidence.outcome drives completed/blocking/failure evidence without parsing summary text.
+- RuntimeSession preserves Claude sub-agent fields agentId, parentSessionId, and isSubAgent.
+- RuntimeSession.usageStats maps losslessly to existing SessionUsageStats, including apiCalls.
+- RuntimeSession.runtimeMetadata accepts structured JSON values.
+- Claude adapter wrapper reports per-file read/parse failures in RuntimeScanResult.errors.
 - Project filter composes with search, status, runtime, and pagination.
 - Same-basename projects do not merge.
 
