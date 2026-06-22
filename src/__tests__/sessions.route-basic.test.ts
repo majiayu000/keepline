@@ -175,4 +175,54 @@ describe('Basic Sessions Route Contract', () => {
       directory: target.nested,
     });
   });
+
+  test('projectRoot=Unknown filters sessions with missing project identity', async () => {
+    sessionRepository.upsert({
+      sessionId: 'unknown-project-session',
+      client: 'claude',
+      directory: '',
+      status: 'running',
+      title: 'Unknown project session',
+      initialPrompt: 'Unknown',
+      lastActiveAt: new Date('2026-04-13T10:00:05.000Z'),
+      toolCount: 1,
+      messageCount: 1,
+    });
+    sessionRepository.upsert({
+      sessionId: 'known-project-session',
+      client: 'codex',
+      directory: '/tmp/keepline-known-project',
+      status: 'running',
+      title: 'Known project session',
+      initialPrompt: 'Known',
+      lastActiveAt: new Date('2026-04-13T10:00:06.000Z'),
+      toolCount: 1,
+      messageCount: 1,
+    });
+
+    const { token } = await setupUser('unknown-project-filter-route-user', 'password123');
+    const params = new URLSearchParams({
+      skipSync: 'true',
+      fields: 'basic',
+      projectRoot: 'Unknown',
+    });
+    const response = await sessions.fetch(new Request(
+      `http://localhost/?${params.toString()}`,
+      { headers: { Authorization: `Bearer ${token}` } }
+    ));
+
+    expect(response.status).toBe(200);
+
+    const body = await response.json() as {
+      success: boolean;
+      data: {
+        sessions: Array<{ sessionId: string; directory: string }>;
+        stats: { total: number };
+      };
+    };
+
+    expect(body.success).toBe(true);
+    expect(body.data.stats.total).toBe(1);
+    expect(body.data.sessions.map(session => session.sessionId)).toEqual(['unknown-project-session']);
+  });
 });

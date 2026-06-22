@@ -2,7 +2,12 @@ import type { AgentClient, SessionStatus } from '../domain/session/index.js';
 import type { SessionUsageStats } from '../domain/session/value-objects.js';
 import { getSessionStats } from './session.aggregator.js';
 import type { AggregatedSession, BasicAggregatedSession } from './session.types.js';
-import { resolveProjectIdentity, type ProjectIdentity } from './project.identity.js';
+import {
+  resolveProjectIdentity,
+  UNKNOWN_PROJECT_ID,
+  UNKNOWN_PROJECT_ROOT,
+  type ProjectIdentity,
+} from './project.identity.js';
 
 export type ProjectClient = AgentClient | 'unknown';
 export type ProjectSession = AggregatedSession | BasicAggregatedSession;
@@ -86,6 +91,9 @@ export function matchesProjectFilter(
     return false;
   }
   if (filter.projectRoot) {
+    if (filter.projectRoot === UNKNOWN_PROJECT_ROOT) {
+      return identity.id === UNKNOWN_PROJECT_ID;
+    }
     const target = resolveProjectIdentity(filter.projectRoot);
     return identity.id === target.id;
   }

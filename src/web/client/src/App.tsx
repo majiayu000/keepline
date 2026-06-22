@@ -36,6 +36,7 @@ function DashboardApp({ token, onLogout }: DashboardAppProps) {
 
   const {
     sessions,
+    allSessions,
     stats,
     loading,
     syncing,
@@ -91,11 +92,12 @@ function DashboardApp({ token, onLogout }: DashboardAppProps) {
   // Track previous sessions for notification comparison
   const prevSessionsRef = useRef<typeof sessions>([])
   useEffect(() => {
-    if (sessions.length > 0 && prevSessionsRef.current.length > 0) {
-      checkSessionChanges(prevSessionsRef.current, sessions)
+    const notificationSessions = allSessions.length > 0 ? allSessions : sessions
+    if (notificationSessions.length > 0 && prevSessionsRef.current.length > 0) {
+      checkSessionChanges(prevSessionsRef.current, notificationSessions)
     }
-    prevSessionsRef.current = sessions
-  }, [sessions, checkSessionChanges])
+    prevSessionsRef.current = notificationSessions
+  }, [allSessions, sessions, checkSessionChanges])
 
   const handleSync = useCallback(async () => {
     const success = await sync()

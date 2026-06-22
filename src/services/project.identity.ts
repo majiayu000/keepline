@@ -13,9 +13,12 @@ export interface ProjectIdentity {
   source: ProjectIdentitySource;
 }
 
+export const UNKNOWN_PROJECT_ID = 'unknown';
+export const UNKNOWN_PROJECT_ROOT = 'Unknown';
+
 const UNKNOWN_PROJECT: ProjectIdentity = {
-  id: 'unknown',
-  rootPath: 'Unknown',
+  id: UNKNOWN_PROJECT_ID,
+  rootPath: UNKNOWN_PROJECT_ROOT,
   name: 'Unknown project',
   displayPath: 'Unknown',
   source: 'unknown',

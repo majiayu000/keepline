@@ -11,6 +11,7 @@ const PAGE_SIZE = 50
 
 interface UseSessionsReturn {
   sessions: Session[]
+  allSessions: Session[]
   stats: SessionStats | null
   loading: boolean
   syncing: boolean
@@ -40,6 +41,7 @@ interface UseSessionsOptions {
 
 export function useSessions(token: string, options: UseSessionsOptions = {}): UseSessionsReturn {
   const [sessions, setSessions] = useState<Session[]>([])
+  const [allSessions, setAllSessions] = useState<Session[]>([])
   const [stats, setStats] = useState<SessionStats | null>(null)
   const [loading, setLoading] = useState(true)
   const [syncing, setSyncing] = useState(false)
@@ -69,11 +71,12 @@ export function useSessions(token: string, options: UseSessionsOptions = {}): Us
     if (!mountedRef.current) return
 
     if (message.type === 'sessions:update' && message.data) {
+      const data = message.data as { sessions: Session[]; stats: SessionStats }
+      setAllSessions(data.sessions)
       if (projectRootRef.current) {
         loadSessionsRef.current()
         return
       }
-      const data = message.data as { sessions: Session[]; stats: SessionStats }
       setSessions(data.sessions)
       setStats(data.stats)
       setPagination(null)
@@ -113,19 +116,37 @@ export function useSessions(token: string, options: UseSessionsOptions = {}): Us
   // Use ref to avoid stale closures in interval
   const loadSessions = useCallback(async () => {
     // Use 'basic' mode for faster loading, with pagination
-    const response = await api.fetchSessions('basic', {
-      limit: PAGE_SIZE,
-      projectRoot: options.projectRoot,
-    })
+    const [response, unfilteredResponse] = await Promise.all([
+      api.fetchSessions('basic', {
+        limit: PAGE_SIZE,
+        projectRoot: options.projectRoot,
+      }),
+      options.projectRoot
+        ? api.fetchSessions('basic', {
+          limit: PAGE_SIZE,
+          skipSync: true,
+        })
+        : Promise.resolve(null),
+    ])
 
     // Only update state if component is still mounted
     if (!mountedRef.current) return
 
     if (response.success && response.data) {
       setSessions(response.data.sessions)
+      let unfilteredError: string | null = null
+      if (options.projectRoot) {
+        if (unfilteredResponse?.success && unfilteredResponse.data) {
+          setAllSessions(unfilteredResponse.data.sessions)
+        } else {
+          unfilteredError = unfilteredResponse?.error || 'Failed to load unfiltered sessions'
+        }
+      } else {
+        setAllSessions(response.data.sessions)
+      }
       setStats(response.data.stats)
       setPagination(response.data.pagination || null)
-      setError(null)
+      setError(unfilteredError)
       setVersion(v => v + 1)
     } else {
       setError(response.error || 'Failed to load sessions')
@@ -148,7 +169,11 @@ export function useSessions(token: string, options: UseSessionsOptions = {}): Us
 
     if (response.success && response.data) {
       // Append new sessions to existing list
-      setSessions(prev => [...prev, ...response.data!.sessions])
+      const nextSessions = response.data.sessions
+      setSessions(prev => [...prev, ...nextSessions])
+      if (!options.projectRoot) {
+        setAllSessions(prev => [...prev, ...nextSessions])
+      }
       setPagination(response.data.pagination || null)
       setVersion(v => v + 1)
     }
@@ -279,6 +304,7 @@ export function useSessions(token: string, options: UseSessionsOptions = {}): Us
 
   return {
     sessions,
+    allSessions,
     stats,
     loading,
     syncing,
