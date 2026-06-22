@@ -143,9 +143,10 @@ function DashboardApp({ token, onLogout }: DashboardAppProps) {
 
   const handleProjectClick = useCallback((project: ProjectInfo) => {
     setSelectedProjectRoot(project.rootPath)
+    setSearchQuery('')
     setActiveTab('sessions')
     showToast(`Filtered to: ${project.name}`, 'info')
-  }, [showToast])
+  }, [setSearchQuery, showToast])
 
   const handleClearProjectFilter = useCallback(() => {
     setSelectedProjectRoot(null)

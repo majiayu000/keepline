@@ -8,6 +8,43 @@ export type ConnectionStatus = 'polling' | 'realtime' | 'disconnected'
 
 // Number of sessions to load per page
 const PAGE_SIZE = 50
+const SNAPSHOT_PAGE_SIZE = 100
+
+async function fetchAllBasicSessionsSnapshot(): Promise<{ sessions: Session[]; error: string | null }> {
+  const sessions: Session[] = []
+  let offset = 0
+
+  while (true) {
+    const response = await api.fetchSessions('basic', {
+      limit: SNAPSHOT_PAGE_SIZE,
+      offset,
+      skipSync: true,
+    })
+
+    if (!response.success || !response.data) {
+      return {
+        sessions: [],
+        error: response.error || 'Failed to load unfiltered sessions',
+      }
+    }
+
+    const page = response.data.sessions
+    sessions.push(...page)
+
+    if (!response.data.pagination?.hasMore) {
+      return { sessions, error: null }
+    }
+
+    if (page.length === 0) {
+      return {
+        sessions: [],
+        error: 'Failed to load complete unfiltered sessions',
+      }
+    }
+
+    offset += page.length
+  }
+}
 
 interface UseSessionsReturn {
   sessions: Session[]
@@ -54,6 +91,7 @@ export function useSessions(token: string, options: UseSessionsOptions = {}): Us
   const mountedRef = useRef(true)
   const wsConnectedRef = useRef(false)
   const projectRootRef = useRef<string | undefined>(options.projectRoot)
+  const loadRequestIdRef = useRef(0)
 
   // Full data cache for lazy loading - use refs to avoid re-render loops
   // Now caches combined data from /full endpoint (details + tools + subagents)
@@ -115,29 +153,31 @@ export function useSessions(token: string, options: UseSessionsOptions = {}): Us
 
   // Use ref to avoid stale closures in interval
   const loadSessions = useCallback(async () => {
+    const requestId = ++loadRequestIdRef.current
+    const requestedProjectRoot = options.projectRoot
+
     // Use 'basic' mode for faster loading, with pagination
     const [response, unfilteredResponse] = await Promise.all([
       api.fetchSessions('basic', {
         limit: PAGE_SIZE,
-        projectRoot: options.projectRoot,
+        projectRoot: requestedProjectRoot,
       }),
-      options.projectRoot
-        ? api.fetchSessions('basic', {
-          limit: PAGE_SIZE,
-          skipSync: true,
-        })
+      requestedProjectRoot
+        ? fetchAllBasicSessionsSnapshot()
         : Promise.resolve(null),
     ])
 
     // Only update state if component is still mounted
     if (!mountedRef.current) return
+    if (requestId !== loadRequestIdRef.current) return
+    if (requestedProjectRoot !== projectRootRef.current) return
 
     if (response.success && response.data) {
       setSessions(response.data.sessions)
       let unfilteredError: string | null = null
-      if (options.projectRoot) {
-        if (unfilteredResponse?.success && unfilteredResponse.data) {
-          setAllSessions(unfilteredResponse.data.sessions)
+      if (requestedProjectRoot) {
+        if (unfilteredResponse && !unfilteredResponse.error) {
+          setAllSessions(unfilteredResponse.sessions)
         } else {
           unfilteredError = unfilteredResponse?.error || 'Failed to load unfiltered sessions'
         }
