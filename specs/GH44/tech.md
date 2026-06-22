@@ -56,10 +56,8 @@ interface WorkItemSessionLink {
   acceptedAt?: Date
 }
 
-interface ProgressEvidence {
+interface ProgressEvidenceBase {
   id: string
-  workItemId?: string
-  agentSessionId?: string
   runtimeId?: RuntimeId
   kind: 'message' | 'tool_call' | 'file_change' | 'plan_event' | 'test_result'
   summary: string
@@ -67,11 +65,19 @@ interface ProgressEvidence {
   occurredAt: Date
   confidence: 'explicit' | 'inferred'
 }
+
+type ProgressEvidence =
+  ProgressEvidenceBase &
+    (
+      | { workItemId: string; agentSessionId?: string }
+      | { workItemId?: string; agentSessionId: string }
+    )
 ~~~
 
 Rules:
 
-- AgentSession.id is the global stable session ID used by persistence, links, and APIs. It must be derived from runtimeId plus runtimeSessionId, for example `${runtimeId}:${runtimeSessionId}`. runtimeSessionId remains the raw runtime-local identifier.
+- AgentSession.id is the global stable session ID used by persistence, links, and APIs. It must be derived from runtimeId plus runtimeSessionId and must satisfy the shared session ID validator/storage constraints. Use a validator-compatible encoded form such as `${runtimeId}_${runtimeSessionId}` after normalizing both parts to the allowed `[A-Za-z0-9_-]` alphabet; do not introduce an unaccepted delimiter such as `:` without updating the validator and all storage/API call sites together. runtimeSessionId remains the raw runtime-local identifier.
+- ProgressEvidence must be attachable. Each record requires at least one stable attachment anchor: workItemId or agentSessionId.
 - User-visible task status changes require statusSource user or accepted_agent_suggestion.
 - Inferred evidence can suggest progress but cannot mark planned/done by itself.
 - No evidence means blank progress, not fake completion.
@@ -119,7 +125,18 @@ interface RuntimeSession {
   startedAt?: Date
   lastActiveAt: Date
   completedAt?: Date
+  usageStats?: RuntimeUsageStats
   runtimeMetadata?: Record<string, string | number | boolean | null>
+}
+
+interface RuntimeUsageStats {
+  inputTokens?: number
+  outputTokens?: number
+  cacheReadTokens?: number
+  cacheWriteTokens?: number
+  totalTokens?: number
+  totalCostUsd?: number
+  model?: string
 }
 
 interface RuntimeCommand {
@@ -176,8 +193,10 @@ Use rollout JSONL files:
 
 - Source hints: ~/.codex/sessions/YYYY/MM/DD/rollout-*.jsonl
 - Runtime ID: codex
+- Capabilities: session-history, process-scan, resume
 - Expected records: session_meta, event_msg, response_item
 - Required fields: session_meta.payload.id, session_meta.payload.cwd
+- Resume command: buildResumeCommand(session) returns `{ executable: 'codex', args: ['resume', session.sessionId], cwd: session.cwd }`. It must use the raw RuntimeSession.sessionId, not the encoded AgentSession.id.
 
 Parser behavior:
 
@@ -314,6 +333,7 @@ Expected targeted tests:
 - Codex adapter reports broken rollout files without hiding good sessions.
 - Default registry contains claude-code and codex.
 - Structured RuntimeCommand is returned for Claude Code resume.
+- Structured RuntimeCommand is returned for Codex resume and uses the raw runtime session ID.
 - Project filter composes with search, status, runtime, and pagination.
 - Same-basename projects do not merge.
 
