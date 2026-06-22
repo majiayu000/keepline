@@ -157,6 +157,11 @@ export interface SessionStats {
 export function generateTitle(prompt: string): string {
   const instructionMatch = prompt.match(/^#\s*AGENTS\.md instructions for ([^\n<]+)/i);
   if (instructionMatch) {
+    const taskPrompt = extractPromptAfterAgentInstructions(prompt);
+    if (taskPrompt) {
+      return summarizePrompt(taskPrompt);
+    }
+
     const targetPath = instructionMatch[1]?.trim();
     if (targetPath) {
       const projectName = targetPath.split('/').filter(Boolean).pop();
@@ -165,6 +170,10 @@ export function generateTitle(prompt: string): string {
     return 'AGENTS.md instructions';
   }
 
+  return summarizePrompt(prompt);
+}
+
+function summarizePrompt(prompt: string): string {
   if (prompt.length <= 80) return prompt;
 
   const truncated = prompt.slice(0, 80);
@@ -173,4 +182,20 @@ export function generateTitle(prompt: string): string {
     return truncated.slice(0, lastSpace) + '...';
   }
   return truncated + '...';
+}
+
+function extractPromptAfterAgentInstructions(prompt: string): string | null {
+  const environmentClose = prompt.lastIndexOf('</environment_context>');
+  if (environmentClose !== -1) {
+    const rest = prompt.slice(environmentClose + '</environment_context>'.length).trim();
+    return rest || null;
+  }
+
+  const instructionsClose = prompt.lastIndexOf('</INSTRUCTIONS>');
+  if (instructionsClose !== -1) {
+    const rest = prompt.slice(instructionsClose + '</INSTRUCTIONS>'.length).trim();
+    return rest || null;
+  }
+
+  return null;
 }

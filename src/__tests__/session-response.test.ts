@@ -69,4 +69,18 @@ describe('Session Response Serialization', () => {
 
     expect(title).toBe('AGENTS.md: project');
   });
+
+  test('generateTitle skips AGENTS preamble when task text follows', () => {
+    const title = generateTitle(`# AGENTS.md instructions for /Users/me/project
+
+<INSTRUCTIONS>
+repo rules
+</INSTRUCTIONS><environment_context>
+cwd metadata
+</environment_context>
+
+Fix active issue queue`);
+
+    expect(title).toBe('Fix active issue queue');
+  });
 });

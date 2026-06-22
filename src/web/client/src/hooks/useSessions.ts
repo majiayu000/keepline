@@ -18,6 +18,43 @@ export interface SessionActionResult {
 
 // Number of sessions to load per page
 const PAGE_SIZE = 50
+const SNAPSHOT_PAGE_SIZE = 100
+
+async function fetchAllBasicSessionsSnapshot(): Promise<{ sessions: Session[]; error: string | null }> {
+  const sessions: Session[] = []
+  let offset = 0
+
+  while (true) {
+    const response = await api.fetchSessions('basic', {
+      limit: SNAPSHOT_PAGE_SIZE,
+      offset,
+      skipSync: true,
+    })
+
+    if (!response.success || !response.data) {
+      return {
+        sessions: [],
+        error: response.error || 'Failed to load unfiltered sessions',
+      }
+    }
+
+    const page = response.data.sessions
+    sessions.push(...page)
+
+    if (!response.data.pagination?.hasMore) {
+      return { sessions, error: null }
+    }
+
+    if (page.length === 0) {
+      return {
+        sessions: [],
+        error: 'Failed to load complete unfiltered sessions',
+      }
+    }
+
+    offset += page.length
+  }
+}
 
 interface UseSessionsReturn {
   sessions: Session[]
@@ -129,10 +166,7 @@ export function useSessions(token: string, options: SessionQueryOptions = {}): U
         status: statusFilterValues,
       }),
       hasServerFilters
-        ? api.fetchSessions('basic', {
-          limit: PAGE_SIZE,
-          skipSync: true,
-        })
+        ? fetchAllBasicSessionsSnapshot()
         : Promise.resolve(null),
     ])
 
@@ -143,8 +177,8 @@ export function useSessions(token: string, options: SessionQueryOptions = {}): U
       setSessions(response.data.sessions)
       let unfilteredError: string | null = null
       if (hasServerFilters) {
-        if (unfilteredResponse?.success && unfilteredResponse.data) {
-          setAllSessions(unfilteredResponse.data.sessions)
+        if (unfilteredResponse && !unfilteredResponse.error) {
+          setAllSessions(unfilteredResponse.sessions)
         } else {
           unfilteredError = unfilteredResponse?.error || 'Failed to load unfiltered sessions'
         }
