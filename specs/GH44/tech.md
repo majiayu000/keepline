@@ -372,8 +372,8 @@ If local guardrails block adding multiple adapter files during a first pass, kee
 
 ### Slice 8: Cursor Follow-Up
 
-- Write a separate Cursor discovery spec before implementation.
-- Do not guess Cursor storage/API fields in this spec.
+- Write a separate Cursor discovery spec before implementation: `specs/GH44/cursor-runtime-discovery.md`.
+- Do not guess Cursor storage/API fields in this spec or in implementation. Cursor private `workspaceStorage` and SQLite state are research evidence only, not adapter source truth.
 - Reuse AgentRuntimeAdapter once source truth is known.
 
 ## Testing and Validation
