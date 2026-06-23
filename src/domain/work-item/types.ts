@@ -55,6 +55,13 @@ export const PROGRESS_EVIDENCE_CONFIDENCE = [
   'inferred',
 ] as const;
 
+export const WORKBOARD_BUCKETS = [
+  'now',
+  'waiting',
+  'stale',
+  'done',
+] as const;
+
 export type WorkItemStatus = typeof WORK_ITEM_STATUSES[number];
 export type WorkItemKind = typeof WORK_ITEM_KINDS[number];
 export type WorkItemStatusSource = typeof WORK_ITEM_STATUS_SOURCES[number];
@@ -64,6 +71,7 @@ export type WorkItemSessionLinkAcceptanceStatus =
 export type ProgressEvidenceKind = typeof PROGRESS_EVIDENCE_KINDS[number];
 export type ProgressEvidenceOutcome = typeof PROGRESS_EVIDENCE_OUTCOMES[number];
 export type ProgressEvidenceConfidence = typeof PROGRESS_EVIDENCE_CONFIDENCE[number];
+export type WorkboardBucketId = typeof WORKBOARD_BUCKETS[number];
 
 export interface Area {
   id: string;
@@ -197,6 +205,40 @@ export interface ProgressEvidenceCreateInput {
   occurredAt?: Date;
   confidence?: ProgressEvidenceConfidence;
   metadata?: Record<string, unknown>;
+}
+
+export interface WorkboardAgentSessionSummary {
+  id: string;
+  runtimeId: RuntimeId;
+  title: string;
+  status: AgentSession['status'];
+  lastActiveAt: Date;
+}
+
+export interface WorkboardSuggestion {
+  linkId: string;
+  agentSession: WorkboardAgentSessionSummary;
+  suggestedAt: Date;
+}
+
+export interface WorkboardItemProjection {
+  item: WorkItem;
+  bucket?: WorkboardBucketId;
+  progressSummary?: string;
+  lastActivityAt?: Date;
+  waitingOnSession?: WorkboardAgentSessionSummary;
+  acceptedSessions: WorkboardAgentSessionSummary[];
+  suggestions: WorkboardSuggestion[];
+}
+
+export interface WorkboardProjection {
+  now: WorkboardItemProjection[];
+  waiting: WorkboardItemProjection[];
+  stale: WorkboardItemProjection[];
+  done: WorkboardItemProjection[];
+  suggestions: WorkboardItemProjection[];
+  staleWindowHours: number;
+  generatedAt: Date;
 }
 
 export function isWorkItemStatus(value: unknown): value is WorkItemStatus {
