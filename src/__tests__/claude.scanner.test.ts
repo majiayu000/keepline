@@ -375,6 +375,44 @@ describe('Claude Scanner', () => {
     expect(secondRun.stdout.includes(brokenPath)).toBe(false);
   });
 
+  test('reports persisted broken-file failures through detailed scan results', () => {
+    const homeDir = createTempHome();
+    const brokenPath = writeSessionFile(homeDir, '-tmp-persist-runtime-error', 'persist-error.jsonl', [
+      {
+        type: 'user',
+        uuid: 'user-1',
+        sessionId: 'persist-error',
+        cwd: '/tmp/persist-runtime-error',
+        timestamp: '2026-04-13T12:05:00.000Z',
+        userType: 'external',
+        message: { role: 'user', content: 'broken file should still report errors' },
+      },
+      '{"type":"assistant", invalid json',
+    ]);
+
+    const firstRun = runScannerScript(homeDir, `
+      const { clearSessionCache, getAllSessionsWithFailures } = await import('./src/adapters/claude/scanner.ts');
+      clearSessionCache();
+      const result = await getAllSessionsWithFailures();
+      console.log(JSON.stringify({
+        count: result.sessions.length,
+        failures: result.failures.map((failure) => failure.filePath),
+      }));
+    `);
+    const secondRun = runScannerScript(homeDir, `
+      const { clearSessionCache, getAllSessionsWithFailures } = await import('./src/adapters/claude/scanner.ts');
+      clearSessionCache();
+      const result = await getAllSessionsWithFailures();
+      console.log(JSON.stringify({
+        count: result.sessions.length,
+        failures: result.failures.map((failure) => failure.filePath),
+      }));
+    `);
+
+    expect(firstRun).toEqual({ count: 0, failures: [brokenPath] });
+    expect(secondRun).toEqual({ count: 0, failures: [brokenPath] });
+  });
+
   test('summarizes bulk parse failures instead of logging each file individually', () => {
     const homeDir = createTempHome();
 

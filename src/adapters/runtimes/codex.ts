@@ -1,0 +1,104 @@
+/**
+ * Codex runtime adapter.
+ */
+
+import type {
+  AgentRuntimeAdapter,
+  RuntimeDescriptor,
+  RuntimeRecoveryOptions,
+  RuntimeScanError,
+  RuntimeScanOptions,
+  RuntimeScanResult,
+  RuntimeSession,
+} from '../../domain/runtime/index.js';
+import { buildCodexCommandArgs } from '../../services/recovery.service.js';
+import { scopeCodexSessionId } from '../codex/parser.js';
+import {
+  getAllCodexSessionsWithFailures,
+  type CodexScanOptions,
+  type CodexSessionScanFailure,
+} from '../codex/scanner.js';
+import type { CodexParsedSessionData } from '../codex/types.js';
+import { parsedSessionToRuntimeSession, structuredCommand } from './session-mapper.js';
+
+interface CodexRuntimeScanSourceResult {
+  sessions: CodexParsedSessionData[];
+  failures?: CodexSessionScanFailure[];
+}
+
+export type CodexSessionScanner = (
+  options?: CodexScanOptions
+) => Promise<CodexParsedSessionData[] | CodexRuntimeScanSourceResult>;
+
+export const CODEX_DESCRIPTOR: RuntimeDescriptor = {
+  id: 'codex',
+  displayName: 'Codex',
+  kind: 'cli',
+  executableNames: ['codex'],
+  sessionPathHints: ['~/.codex/sessions/YYYY/MM/DD/rollout-*.jsonl'],
+  capabilities: ['session-history', 'process-scan', 'resume', 'quota'],
+  compatibilityRoutes: {
+    quota: ['/api/codex/quota'],
+  },
+};
+
+export class CodexRuntimeAdapter implements AgentRuntimeAdapter {
+  readonly descriptor = CODEX_DESCRIPTOR;
+
+  constructor(private readonly scanCodexSessions: CodexSessionScanner = getAllCodexSessionsWithFailures) {}
+
+  async scanSessions(options: RuntimeScanOptions = {}): Promise<RuntimeScanResult> {
+    try {
+      const scanResult = await this.scanCodexSessions({
+        includeToolCalls: options.mode === 'full',
+        maxAgeDays: options.maxAgeDays,
+      });
+      const sessions = Array.isArray(scanResult) ? scanResult : scanResult.sessions;
+      const failures = Array.isArray(scanResult) ? [] : scanResult.failures ?? [];
+
+      return {
+        runtime: this.descriptor,
+        sessions: sessions.map((session) =>
+          parsedSessionToRuntimeSession(this.descriptor.id, session, {
+            legacyClient: 'codex',
+            scopedSessionId: session.sessionId,
+          })
+        ),
+        errors: failures.map((failure) => ({
+          runtimeId: this.descriptor.id,
+          code: 'parse-failed',
+          message: failure.message,
+          sourcePath: failure.filePath,
+          recoverable: true,
+        })),
+      };
+    } catch (error) {
+      const scanError: RuntimeScanError = {
+        runtimeId: this.descriptor.id,
+        code: 'unknown',
+        message: error instanceof Error ? error.message : String(error),
+        recoverable: true,
+      };
+      return {
+        runtime: this.descriptor,
+        sessions: [],
+        errors: [scanError],
+      };
+    }
+  }
+
+  buildRecoveryCommand(
+    session: RuntimeSession,
+    options: RuntimeRecoveryOptions
+  ) {
+    return structuredCommand(
+      buildCodexCommandArgs(
+        options.method,
+        scopeCodexSessionId(session.sessionId),
+        options.initialPrompt ?? session.initialPrompt,
+        options.skipPermissions ?? false
+      ),
+      session.cwd
+    );
+  }
+}
