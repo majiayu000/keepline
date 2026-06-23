@@ -12,5 +12,16 @@ import plans from './plans.js';
 import auth from './auth.js';
 import projects from './projects.js';
 import workItems from './work-items.js';
+import workItemEvidence from './work-item-evidence.js';
 
-export { sessions, recovery, usage, memory, plans, auth, projects, workItems };
+export {
+  sessions,
+  recovery,
+  usage,
+  memory,
+  plans,
+  auth,
+  projects,
+  workItems,
+  workItemEvidence,
+};

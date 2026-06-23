@@ -34,3 +34,7 @@ export { memoryRepository } from './repositories/memory.repository.js';
 export type { IMemoryRepository } from './repositories/memory.repository.js';
 export { workItemRepository } from './repositories/work-item.repository.js';
 export type { IWorkItemRepository } from './repositories/work-item.repository.js';
+export { workItemEvidenceRepository } from './repositories/work-item-evidence.repository.js';
+export type {
+  IWorkItemEvidenceRepository,
+} from './repositories/work-item-evidence.repository.js';

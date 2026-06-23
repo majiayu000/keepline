@@ -12,6 +12,9 @@ export function runMigrations(): void {
 export function resetDatabase(): void {
   const db = getDatabase();
   db.exec(`
+    DROP TABLE IF EXISTS progress_evidence;
+    DROP TABLE IF EXISTS work_item_session_links;
+    DROP TABLE IF EXISTS agent_sessions;
     DROP TABLE IF EXISTS work_items;
     DROP TABLE IF EXISTS areas;
     DROP TABLE IF EXISTS terminal_sessions;
