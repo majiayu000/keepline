@@ -10,6 +10,7 @@ import type {
   SessionDetailsData,
   SessionFullData,
   RecoverBody,
+  RecoverResponseData,
   StopBody,
   ProcessStatusData,
   ToolCallsData,
@@ -29,6 +30,8 @@ import type {
   LoginResponse,
   SetupRequest,
   SetupResponse,
+  AgentClient,
+  SessionStatus,
 } from '@/types'
 import { API_BASE, API_TIMEOUT_MS } from '@/constants'
 
@@ -113,6 +116,9 @@ export async function fetchSessions(
     limit?: number
     offset?: number
     skipSync?: boolean
+    query?: string
+    status?: SessionStatus[]
+    client?: AgentClient
   },
   signal?: AbortSignal
 ): Promise<ApiResponse<SessionsData>> {
@@ -120,6 +126,11 @@ export async function fetchSessions(
   if (options?.limit) params.set('limit', String(options.limit))
   if (options?.offset) params.set('offset', String(options.offset))
   if (options?.skipSync) params.set('skipSync', 'true')
+  if (options?.query?.trim()) params.set('q', options.query.trim())
+  if (options?.client) params.set('client', options.client)
+  for (const status of options?.status ?? []) {
+    params.append('status', status)
+  }
   return request<SessionsData>(`/sessions?${params}`, undefined, signal)
 }
 
@@ -147,8 +158,8 @@ export async function recoverSession(
   sessionId: string,
   body: RecoverBody,
   signal?: AbortSignal
-): Promise<ApiResponse> {
-  return request(`/sessions/${sessionId}/recover`, {
+): Promise<ApiResponse<RecoverResponseData>> {
+  return request<RecoverResponseData>(`/sessions/${sessionId}/recover`, {
     method: 'POST',
     body: JSON.stringify(body),
   }, signal)

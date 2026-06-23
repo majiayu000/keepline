@@ -6,7 +6,7 @@
 
 import { Hono } from 'hono';
 import { getAllSessions, completeSession } from '../../../services/session.service.js';
-import { recoverSession, getRecoveryInfo } from '../../../services/recovery.service.js';
+import { buildRecoveryCommand, recoverSession, getRecoveryInfo } from '../../../services/recovery.service.js';
 import { stopProcess, isProcessRunning } from '../../../adapters/process/scanner.js';
 import { logger } from '../../../lib/logger.js';
 import { authMiddleware } from '../middleware/auth.js';
@@ -71,7 +71,16 @@ app.post('/:id/recover', async (c) => {
       terminalApp: terminalApp ?? 'auto',
     });
 
-    return c.json({ success: result.success, error: result.error });
+    return c.json({
+      success: result.success,
+      error: result.error,
+      data: {
+        method: result.method,
+        command: result.success
+          ? undefined
+          : buildRecoveryCommand(session, recoveryMethod, skipPermissions),
+      },
+    });
   } catch (error) {
     logger.error('Failed to recover session', error);
     return c.json({ success: false, error: 'Recovery failed' }, 500);
