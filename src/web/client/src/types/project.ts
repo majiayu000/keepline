@@ -2,7 +2,9 @@
  * Project types - for grouping sessions by directory
  */
 
-import type { Session, SessionStatus, UsageStats } from './session'
+import type { AgentClient, Session, SessionStatus, UsageStats } from './session'
+
+export type ProjectClient = AgentClient | 'unknown'
 
 /** Statistics for a single project */
 export interface ProjectStats {
@@ -16,14 +18,24 @@ export interface ProjectStats {
 
 /** Aggregated project information */
 export interface ProjectInfo {
+  /** Stable project identity */
+  id: string
+  /** Canonical project root path */
+  rootPath: string
   /** Full directory path */
   path: string
+  /** Compact display path */
+  displayPath: string
   /** Extracted project name (last segment of path) */
   name: string
-  /** All sessions in this directory */
-  sessions: Session[]
+  /** Project identity source */
+  source?: 'git-root' | 'cwd' | 'unknown'
+  /** Sessions are only present in full project responses */
+  sessions?: Session[]
   /** Session status counts */
   stats: ProjectStats
+  /** Session counts by agent client */
+  clientCounts: Record<ProjectClient, number>
   /** Title/prompt of the most recently active session */
   currentTask?: string
   /** Most recent activity timestamp */
@@ -65,6 +77,95 @@ export function getProjectActivityStatus(stats: ProjectStats): ProjectActivitySt
 export function extractProjectName(path: string): string {
   const segments = path.split('/').filter(Boolean)
   return segments[segments.length - 1] || path
+}
+
+export function normalizeProjectPath(path: string): string {
+  const trimmed = path.trim()
+  if (!trimmed) return 'Unknown'
+  const withoutTrailing = trimmed.replace(/\/+$/, '')
+  return withoutTrailing || trimmed
+}
+
+export function projectIdFromPath(path: string): string {
+  return `path:${encodeURIComponent(normalizeProjectPath(path))}`
+}
+
+export function createClientCounts(sessions: Session[]): Record<ProjectClient, number> {
+  const counts: Record<ProjectClient, number> = {
+    claude: 0,
+    codex: 0,
+    unknown: 0,
+  }
+
+  for (const session of sessions) {
+    if (session.client === 'claude' || session.client === 'codex') {
+      counts[session.client]++
+    } else {
+      counts.unknown++
+    }
+  }
+
+  return counts
+}
+
+/**
+ * Aggregate sessions by exact directory path for tests and full-list fallbacks.
+ */
+export function aggregateProjects(sessions: Session[]): ProjectInfo[] {
+  const projectMap = new Map<string, Session[]>()
+
+  for (const session of sessions) {
+    const directory = normalizeProjectPath(session.directory || 'Unknown')
+    const existing = projectMap.get(directory) || []
+    projectMap.set(directory, [...existing, session])
+  }
+
+  const projects: ProjectInfo[] = Array.from(projectMap.entries()).map(
+    ([path, projectSessions]) => {
+      const sortedByTime = [...projectSessions].sort(
+        (a, b) => new Date(b.lastActiveAt).getTime() - new Date(a.lastActiveAt).getTime()
+      )
+      const primaryPath = normalizeProjectPath(sortedByTime[0]?.directory || path)
+
+      return {
+        id: projectIdFromPath(path),
+        rootPath: path,
+        path: primaryPath,
+        displayPath: path,
+        name: extractProjectName(path),
+        source: path === 'Unknown' ? 'unknown' : 'cwd',
+        sessions: projectSessions,
+        stats: calculateProjectStats(projectSessions),
+        clientCounts: createClientCounts(projectSessions),
+        currentTask: findCurrentTask(projectSessions),
+        lastActiveAt: findLastActive(projectSessions),
+        totalUsage: aggregateUsageStats(projectSessions),
+      }
+    }
+  )
+
+  return projects.sort(
+    (a, b) => new Date(b.lastActiveAt).getTime() - new Date(a.lastActiveAt).getTime()
+  )
+}
+
+export function calculateOverviewStats(projects: ProjectInfo[]): ProjectOverviewStats {
+  let active = 0
+  let idle = 0
+
+  for (const project of projects) {
+    if (project.stats.running > 0 || project.stats.waiting > 0) {
+      active++
+    } else {
+      idle++
+    }
+  }
+
+  return {
+    total: projects.length,
+    active,
+    idle,
+  }
 }
 
 /**

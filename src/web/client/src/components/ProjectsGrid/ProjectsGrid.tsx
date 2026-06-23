@@ -5,7 +5,7 @@ import styles from './ProjectsGrid.module.css'
 
 export interface ProjectsGridProps {
   projects: ProjectInfo[]
-  onProjectClick?: (projectPath: string) => void
+  onProjectClick?: (project: ProjectInfo) => void
 }
 
 export const ProjectsGrid = memo(function ProjectsGrid({
@@ -28,7 +28,7 @@ export const ProjectsGrid = memo(function ProjectsGrid({
     <div className={styles.grid}>
       {projects.map((project) => (
         <ProjectCard
-          key={project.path}
+          key={project.id}
           project={project}
           onClick={onProjectClick}
         />

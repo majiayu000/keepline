@@ -23,6 +23,7 @@ import { authMiddleware } from '../middleware/auth.js';
 import { isValidSessionId } from '../middleware/validation.js';
 import { broadcast } from '../websocket.js';
 import { serializeBasicSessions } from '../session-response.js';
+import { matchesProjectFilter } from '../../../services/project.aggregator.js';
 
 const app = new Hono();
 app.use('*', authMiddleware);
@@ -127,6 +128,8 @@ app.get('/', async (c) => {
     const fields = c.req.query('fields') || 'full'; // 'basic' or 'full'
     const skipSync = c.req.query('skipSync') === 'true'; // Skip sync for pagination requests
     const client = c.req.query('client');
+    const projectRoot = c.req.query('projectRoot');
+    const projectId = c.req.query('projectId');
     const query = c.req.query('q') || c.req.query('query') || '';
 
     // Smart sync: trigger background sync if needed (non-blocking)
@@ -142,7 +145,9 @@ app.get('/', async (c) => {
       : fields === 'basic'
       ? getAggregatedSessionsBasic()
       : getAggregatedSessions();
-    const stats = getSessionStats(sessions);
+    if (projectRoot || projectId) {
+      sessions = sessions.filter(s => matchesProjectFilter(s, { projectRoot, projectId }));
+    }
 
     // Filter by status if provided
     if (statusFilters.size > 0) {
@@ -156,6 +161,8 @@ app.get('/', async (c) => {
     if (query.trim()) {
       sessions = sessions.filter(s => matchesSessionQuery(s, query));
     }
+
+    const stats = getSessionStats(sessions);
 
     // Sort sessions
     sessions.sort((a, b) => {

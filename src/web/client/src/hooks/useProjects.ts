@@ -1,13 +1,6 @@
-import { useMemo } from 'react'
-import type { Session } from '@/types'
+import { useCallback, useEffect, useRef, useState } from 'react'
+import { api } from '@/services/api'
 import type { ProjectInfo, ProjectOverviewStats } from '@/types/project'
-import {
-  extractProjectName,
-  calculateProjectStats,
-  findCurrentTask,
-  findLastActive,
-  aggregateUsageStats,
-} from '@/types/project'
 
 export interface UseProjectsReturn {
   /** List of projects, sorted by last activity */
@@ -16,92 +9,62 @@ export interface UseProjectsReturn {
   stats: ProjectOverviewStats
   /** Whether any projects exist */
   hasProjects: boolean
+  /** Whether projects are loading */
+  loading: boolean
+  /** Last project API error */
+  error: string | null
+  /** Refresh project summaries */
+  refresh: () => Promise<void>
 }
 
 /**
- * Aggregates sessions by directory into project groups.
+ * Loads project summaries from the backend project API.
  *
- * @param sessions - Array of sessions to aggregate
- * @returns Aggregated project data with statistics
+ * The optional refreshKey lets the sessions websocket drive a project refresh
+ * without deriving projects from a paginated sessions list.
  */
-export function useProjects(sessions: Session[]): UseProjectsReturn {
-  const projects = useMemo(() => {
-    return aggregateProjects(sessions)
-  }, [sessions])
+export function useProjects(_token: string, refreshKey = 0): UseProjectsReturn {
+  const [projects, setProjects] = useState<ProjectInfo[]>([])
+  const [stats, setStats] = useState<ProjectOverviewStats>({ total: 0, active: 0, idle: 0 })
+  const [loading, setLoading] = useState(true)
+  const [error, setError] = useState<string | null>(null)
+  const mountedRef = useRef(true)
+  const refreshRequestIdRef = useRef(0)
 
-  const stats = useMemo(() => {
-    return calculateOverviewStats(projects)
-  }, [projects])
+  const refresh = useCallback(async () => {
+    const requestId = ++refreshRequestIdRef.current
+    const response = await api.fetchProjects('basic')
+    if (!mountedRef.current) return
+    if (requestId !== refreshRequestIdRef.current) return
+
+    if (response.success && response.data) {
+      setProjects(response.data.projects)
+      setStats(response.data.stats)
+      setError(null)
+    } else {
+      setError(response.error || 'Failed to load projects')
+    }
+    setLoading(false)
+  }, [])
+
+  useEffect(() => {
+    mountedRef.current = true
+    return () => {
+      mountedRef.current = false
+    }
+  }, [])
+
+  useEffect(() => {
+    setLoading(true)
+    refresh()
+  }, [refresh, refreshKey])
 
   return {
     projects,
     stats,
     hasProjects: projects.length > 0,
-  }
-}
-
-/**
- * Aggregate sessions by project name (not full path).
- * This merges sessions from different directories with the same project name.
- * Exported for testing.
- */
-export function aggregateProjects(sessions: Session[]): ProjectInfo[] {
-  // Group sessions by project name (last segment of path)
-  const projectMap = new Map<string, Session[]>()
-
-  for (const session of sessions) {
-    const directory = session.directory || 'Unknown'
-    const projectName = extractProjectName(directory)
-    const existing = projectMap.get(projectName) || []
-    projectMap.set(projectName, [...existing, session])
-  }
-
-  // Transform to ProjectInfo array
-  const projects: ProjectInfo[] = Array.from(projectMap.entries()).map(
-    ([name, projectSessions]) => {
-      // Use the most recent session's directory as the primary path
-      const sortedByTime = [...projectSessions].sort(
-        (a, b) => new Date(b.lastActiveAt).getTime() - new Date(a.lastActiveAt).getTime()
-      )
-      const primaryPath = sortedByTime[0]?.directory || 'Unknown'
-
-      return {
-        path: primaryPath,
-        name,
-        sessions: projectSessions,
-        stats: calculateProjectStats(projectSessions),
-        currentTask: findCurrentTask(projectSessions),
-        lastActiveAt: findLastActive(projectSessions),
-        totalUsage: aggregateUsageStats(projectSessions),
-      }
-    }
-  )
-
-  // Sort by last activity (most recent first)
-  return projects.sort(
-    (a, b) => new Date(b.lastActiveAt).getTime() - new Date(a.lastActiveAt).getTime()
-  )
-}
-
-/**
- * Calculate overview statistics from projects.
- * Exported for testing.
- */
-export function calculateOverviewStats(projects: ProjectInfo[]): ProjectOverviewStats {
-  let active = 0
-  let idle = 0
-
-  for (const project of projects) {
-    if (project.stats.running > 0 || project.stats.waiting > 0) {
-      active++
-    } else {
-      idle++
-    }
-  }
-
-  return {
-    total: projects.length,
-    active,
-    idle,
+    loading,
+    error,
+    refresh,
   }
 }

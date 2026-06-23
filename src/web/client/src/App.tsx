@@ -14,10 +14,9 @@ import { TerminalPanel } from '@/components/TerminalPanel'
 import { AuthSetup } from '@/components/AuthSetup'
 import { AuthLogin } from '@/components/AuthLogin'
 import type { TabId } from '@/components/TabNav'
-import type { SessionStatus } from '@/types'
+import type { ProjectInfo, SessionStatus } from '@/types'
 import { useAuth, useSessions, useKeyboardShortcuts, useNotifications, useProjects } from '@/hooks'
 
-// Lazy load heavy components
 const SessionList = lazy(() => import('@/components/SessionList').then(m => ({ default: m.SessionList })))
 
 const THEME_ORDER: Theme[] = ['cyberpunk', 'matrix', 'synthwave', 'minimal', 'tokyo']
@@ -32,6 +31,7 @@ function DashboardApp({ token, onLogout }: DashboardAppProps) {
   const { theme, setTheme } = useTheme()
   const [showHelp, setShowHelp] = useState(false)
   const [activeTab, setActiveTab] = useState<TabId>('sessions')
+  const [selectedProjectRoot, setSelectedProjectRoot] = useState<string | null>(null)
   const [searchQuery, setSearchQuery] = useState('')
   const [statusFilters, setStatusFilters] = useState<Set<SessionStatus>>(new Set())
 
@@ -47,32 +47,37 @@ function DashboardApp({ token, onLogout }: DashboardAppProps) {
     recoverSession,
     stopSession,
     completeSession,
-    // Lazy loading - now uses combined /full endpoint (1 request instead of 3)
     getSessionFull,
     loadSessionFull,
     isLoadingFull,
-    // Pagination
     pagination,
     loadMore,
     loadingMore,
-    // WebSocket
     connectionStatus,
+    version: sessionsVersion,
   } = useSessions(
     token,
-    activeTab === 'sessions' ? { searchQuery, statusFilters } : {}
+    activeTab === 'sessions'
+      ? { searchQuery, statusFilters, projectRoot: selectedProjectRoot ?? undefined }
+      : {}
   )
 
   const filteredSessions = sessions
-  const unfilteredSessions = allSessions.length > 0 ? allSessions : sessions
-  const totalSessionCount = stats?.total ?? sessions.length
+  const totalSessionCount = allSessions.length > 0 ? allSessions.length : (stats?.total ?? sessions.length)
   const matchedSessionCount = pagination?.total ?? sessions.length
-  const hasActiveFilters = searchQuery.trim().length > 0 || statusFilters.size > 0
+  const hasActiveFilters = searchQuery.trim().length > 0 || statusFilters.size > 0 || Boolean(selectedProjectRoot)
 
-  // Projects aggregation - use ALL sessions, not filtered
-  // This ensures Projects view always shows all projects regardless of search filter
-  const { projects, stats: projectStats } = useProjects(unfilteredSessions)
+  const {
+    projects,
+    stats: projectStats,
+    loading: projectsLoading,
+    error: projectsError,
+  } = useProjects(token, sessionsVersion)
 
-  // Notifications
+  const selectedProject = selectedProjectRoot
+    ? projects.find(project => project.rootPath === selectedProjectRoot)
+    : undefined
+
   const {
     settings: notificationSettings,
     updateSettings: updateNotificationSettings,
@@ -81,14 +86,14 @@ function DashboardApp({ token, onLogout }: DashboardAppProps) {
     checkSessionChanges,
   } = useNotifications()
 
-  // Track previous sessions for notification comparison
   const prevSessionsRef = useRef<typeof sessions>([])
   useEffect(() => {
-    if (unfilteredSessions.length > 0 && prevSessionsRef.current.length > 0) {
-      checkSessionChanges(prevSessionsRef.current, unfilteredSessions)
+    const notificationSessions = allSessions.length > 0 ? allSessions : sessions
+    if (notificationSessions.length > 0 && prevSessionsRef.current.length > 0) {
+      checkSessionChanges(prevSessionsRef.current, notificationSessions)
     }
-    prevSessionsRef.current = unfilteredSessions
-  }, [unfilteredSessions, checkSessionChanges])
+    prevSessionsRef.current = notificationSessions
+  }, [allSessions, sessions, checkSessionChanges])
 
   const handleSync = useCallback(async () => {
     const success = await sync()
@@ -134,14 +139,18 @@ function DashboardApp({ token, onLogout }: DashboardAppProps) {
     showToast(`Theme: ${nextTheme}`, 'info')
   }, [theme, setTheme, showToast])
 
-  const handleProjectClick = useCallback((projectPath: string) => {
-    // Switch to sessions tab and filter by project directory
+  const handleProjectClick = useCallback((project: ProjectInfo) => {
+    setSelectedProjectRoot(project.rootPath)
+    setSearchQuery('')
     setActiveTab('sessions')
-    setSearchQuery(projectPath)
-    showToast(`Filtered to: ${projectPath.split('/').pop()}`, 'info')
-  }, [setSearchQuery, showToast])
+    showToast(`Filtered to: ${project.name}`, 'info')
+  }, [showToast])
 
-  // Keyboard shortcuts
+  const handleClearProjectFilter = useCallback(() => {
+    setSelectedProjectRoot(null)
+    showToast('Project filter cleared', 'info')
+  }, [showToast])
+
   useKeyboardShortcuts({
     onRefresh: refresh,
     onSync: handleSync,
@@ -179,9 +188,26 @@ function DashboardApp({ token, onLogout }: DashboardAppProps) {
         </div>
       )}
 
-      {/* Sessions Tab */}
       {activeTab === 'sessions' && !loading && (
         <Suspense fallback={<SessionCardSkeleton count={4} />}>
+          {selectedProjectRoot && (
+            <div className={layoutStyles.projectFilterBar}>
+              <span className={layoutStyles.projectFilterText}>
+                Project:
+                <strong>{selectedProject?.name || selectedProjectRoot.split('/').pop() || selectedProjectRoot}</strong>
+                <span className={layoutStyles.projectFilterPath}>
+                  {selectedProject?.displayPath || selectedProjectRoot}
+                </span>
+              </span>
+              <button
+                type="button"
+                className={layoutStyles.projectFilterClear}
+                onClick={handleClearProjectFilter}
+              >
+                Clear
+              </button>
+            </div>
+          )}
           <SessionList
             sessions={filteredSessions}
             onRecover={handleRecover}
@@ -200,33 +226,37 @@ function DashboardApp({ token, onLogout }: DashboardAppProps) {
         </Suspense>
       )}
 
-      {/* Analytics Tab - use ccusage for accurate data */}
       {activeTab === 'analytics' && !loading && (
         <UsagePanel />
       )}
 
-      {/* Projects Tab */}
       {activeTab === 'projects' && !loading && (
         <>
+          {projectsError && (
+            <div className={layoutStyles.errorBox} role="alert">
+              Error: {projectsError}
+            </div>
+          )}
           <ProjectStatsBar stats={projectStats} />
-          <ProjectsGrid
-            projects={projects}
-            onProjectClick={handleProjectClick}
-          />
+          {projectsLoading ? (
+            <SessionCardSkeleton count={4} />
+          ) : (
+            <ProjectsGrid
+              projects={projects}
+              onProjectClick={handleProjectClick}
+            />
+          )}
         </>
       )}
 
-      {/* Memory Tab */}
       {activeTab === 'memory' && !loading && (
         <MemoryPanel />
       )}
 
-      {/* Plans Tab */}
       {activeTab === 'plans' && !loading && (
         <PlansPanel />
       )}
 
-      {/* Terminal Tab */}
       {activeTab === 'terminal' && (
         <TerminalPanel token={token} onLogout={onLogout} />
       )}

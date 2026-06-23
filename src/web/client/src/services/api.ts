@@ -5,6 +5,7 @@
 import type {
   ApiResponse,
   SessionsData,
+  ProjectsData,
   SyncResult,
   SessionDetailData,
   SessionDetailsData,
@@ -119,6 +120,8 @@ export async function fetchSessions(
     query?: string
     status?: SessionStatus[]
     client?: AgentClient
+    projectRoot?: string
+    projectId?: string
   },
   signal?: AbortSignal
 ): Promise<ApiResponse<SessionsData>> {
@@ -131,7 +134,20 @@ export async function fetchSessions(
   for (const status of options?.status ?? []) {
     params.append('status', status)
   }
+  if (options?.projectRoot) params.set('projectRoot', options.projectRoot)
+  if (options?.projectId) params.set('projectId', options.projectId)
   return request<SessionsData>(`/sessions?${params}`, undefined, signal)
+}
+
+/**
+ * GET /api/projects - Fetch project summaries with stats
+ */
+export async function fetchProjects(
+  fields: 'basic' | 'full' = 'basic',
+  signal?: AbortSignal
+): Promise<ApiResponse<ProjectsData>> {
+  const params = new URLSearchParams({ fields })
+  return request<ProjectsData>(`/projects?${params}`, undefined, signal)
 }
 
 /**
@@ -459,6 +475,7 @@ export async function logoutAuth(
 // Export all API functions
 export const api = {
   fetchSessions,
+  fetchProjects,
   syncSessions,
   fetchSession,
   recoverSession,

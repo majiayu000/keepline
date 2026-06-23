@@ -6,7 +6,7 @@ import styles from './ProjectCard.module.css'
 
 export interface ProjectCardProps {
   project: ProjectInfo
-  onClick?: (projectPath: string) => void
+  onClick?: (project: ProjectInfo) => void
 }
 
 /** Status indicator emojis and colors */
@@ -22,20 +22,28 @@ export const ProjectCard = memo(function ProjectCard({
   project,
   onClick,
 }: ProjectCardProps) {
-  const { name, path, stats, currentTask, lastActiveAt, totalUsage } = project
+  const {
+    name,
+    displayPath,
+    stats,
+    clientCounts,
+    currentTask,
+    lastActiveAt,
+    totalUsage,
+  } = project
 
   const handleClick = useCallback(() => {
-    onClick?.(path)
-  }, [onClick, path])
+    onClick?.(project)
+  }, [onClick, project])
 
   const handleKeyDown = useCallback(
     (e: React.KeyboardEvent) => {
       if (e.key === 'Enter' || e.key === ' ') {
         e.preventDefault()
-        onClick?.(path)
+        onClick?.(project)
       }
     },
-    [onClick, path]
+    [onClick, project]
   )
 
   const activityStatus = getProjectActivityStatus(stats)
@@ -57,9 +65,26 @@ export const ProjectCard = memo(function ProjectCard({
       aria-label={`Project ${name}, ${stats.total} sessions`}
     >
       <div className={styles.header}>
-        <h3 className={styles.projectName}>{name}</h3>
+        <div className={styles.identity}>
+          <h3 className={styles.projectName}>{name}</h3>
+          <span className={styles.projectPath} title={displayPath}>
+            {displayPath}
+          </span>
+        </div>
         {totalUsage && totalUsage.totalCost > 0 && (
           <span className={styles.cost}>{formatCost(totalUsage.totalCost)}</span>
+        )}
+      </div>
+
+      <div className={styles.clientRow}>
+        {clientCounts.claude > 0 && (
+          <span className={styles.clientBadge}>Claude {clientCounts.claude}</span>
+        )}
+        {clientCounts.codex > 0 && (
+          <span className={styles.clientBadge}>Codex {clientCounts.codex}</span>
+        )}
+        {clientCounts.unknown > 0 && (
+          <span className={styles.clientBadge}>Unknown {clientCounts.unknown}</span>
         )}
       </div>
 

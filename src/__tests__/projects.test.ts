@@ -16,11 +16,9 @@ import {
   findLastActive,
   aggregateUsageStats,
   getProjectActivityStatus,
-} from '../web/client/src/types/project.js'
-import {
   aggregateProjects,
   calculateOverviewStats,
-} from '../web/client/src/hooks/useProjects.js'
+} from '../web/client/src/types/project.js'
 import type { Session, SessionStatus, UsageStats } from '../web/client/src/types/session.js'
 import type { ProjectInfo, ProjectStats } from '../web/client/src/types/project.js'
 
@@ -407,6 +405,22 @@ describe('Aggregate Projects', () => {
       expect(projects[0].path).toBe('/recent-project')
       expect(projects[1].path).toBe('/old-project')
     })
+
+    test('does not merge different roots that share the same basename', () => {
+      const sessions = [
+        createSession({ directory: '/worktrees/a/keepline', title: 'A' }),
+        createSession({ directory: '/worktrees/b/keepline', title: 'B' }),
+      ]
+
+      const projects = aggregateProjects(sessions)
+
+      expect(projects).toHaveLength(2)
+      expect(projects.map(project => project.rootPath).sort()).toEqual([
+        '/worktrees/a/keepline',
+        '/worktrees/b/keepline',
+      ])
+      expect(projects.every(project => project.name === 'keepline')).toBe(true)
+    })
   })
 
   describe('when sessions have no directory', () => {
@@ -438,22 +452,34 @@ describe('Calculate Overview Stats', () => {
   test('counts active and idle projects correctly', () => {
     const projects: ProjectInfo[] = [
       {
+        id: 'active-1',
+        rootPath: '/active-1',
         path: '/active-1',
+        displayPath: '/active-1',
         name: 'active-1',
+        clientCounts: { claude: 1, codex: 0, unknown: 0 },
         sessions: [],
         stats: { running: 1, waiting: 0, idle: 0, lost: 0, completed: 0, total: 1 },
         lastActiveAt: new Date().toISOString(),
       },
       {
+        id: 'active-2',
+        rootPath: '/active-2',
         path: '/active-2',
+        displayPath: '/active-2',
         name: 'active-2',
+        clientCounts: { claude: 1, codex: 0, unknown: 0 },
         sessions: [],
         stats: { running: 0, waiting: 1, idle: 0, lost: 0, completed: 0, total: 1 },
         lastActiveAt: new Date().toISOString(),
       },
       {
+        id: 'idle-1',
+        rootPath: '/idle-1',
         path: '/idle-1',
+        displayPath: '/idle-1',
         name: 'idle-1',
+        clientCounts: { claude: 1, codex: 0, unknown: 0 },
         sessions: [],
         stats: { running: 0, waiting: 0, idle: 2, lost: 0, completed: 0, total: 2 },
         lastActiveAt: new Date().toISOString(),

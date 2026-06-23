@@ -1,6 +1,8 @@
-import type { BasicAggregatedSession } from '../../services/session.types.js';
+import type { AggregatedSession, BasicAggregatedSession } from '../../services/session.types.js';
 
-export function serializeBasicSession(session: BasicAggregatedSession) {
+type SerializableBasicSession = AggregatedSession | BasicAggregatedSession;
+
+export function serializeBasicSession(session: SerializableBasicSession) {
   return {
     id: session.id,
     sessionId: session.sessionId,
@@ -23,6 +25,22 @@ export function serializeBasicSession(session: BasicAggregatedSession) {
   };
 }
 
-export function serializeBasicSessions(sessions: BasicAggregatedSession[]) {
+export function serializeBasicSessions(sessions: SerializableBasicSession[]) {
   return sessions.map(serializeBasicSession);
+}
+
+export function serializeFullSession(session: AggregatedSession) {
+  return {
+    ...session,
+    lastActiveAt: session.lastActiveAt.toISOString(),
+    startedAt: session.startedAt?.toISOString(),
+    completedAt: session.completedAt?.toISOString(),
+    createdAt: session.createdAt.toISOString(),
+    updatedAt: session.updatedAt.toISOString(),
+    usageStats: session.usageStats,
+  };
+}
+
+export function serializeFullSessions(sessions: AggregatedSession[]) {
+  return sessions.map(serializeFullSession);
 }

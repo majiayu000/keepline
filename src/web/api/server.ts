@@ -19,7 +19,7 @@ import { initPricing } from '../../services/usage.pricing.js';
 import { initializeMemoryService } from '../../services/memory.service.js';
 import { logger } from '../../lib/logger.js';
 import { rateLimit } from './middleware/rateLimit.js';
-import { sessions, recovery, usage, memory, plans, auth } from './routes/index.js';
+import { sessions, recovery, usage, memory, plans, auth, projects } from './routes/index.js';
 import { broadcast, wsClients, websocketHandler } from './websocket.js';
 import { terminalWebsocketHandler } from './terminal-websocket.js';
 import { verifyToken } from '../../services/auth.service.js';
@@ -85,6 +85,7 @@ app.get('/assets/*', async (c) => {
 app.route('/api/auth', auth);
 app.route('/api/sessions', sessions);
 app.route('/api/sessions', recovery);
+app.route('/api/projects', projects);
 app.route('/api', usage);
 app.route('/api/memory', memory);
 app.route('/api/plans', plans);
@@ -125,10 +126,18 @@ async function checkAndBroadcastUpdates() {
     const sessions = getAggregatedSessionsBasic();
     const stats = getSessionStats(sessions);
 
-    // Create a simple hash of current state
     const currentState = JSON.stringify({
       stats,
-      sessionIds: sessions.map(s => `${s.sessionId}:${s.status}`).sort(),
+      sessions: sessions
+        .map(s => ({
+          sessionId: s.sessionId,
+          client: s.client,
+          status: s.status,
+          directory: s.directory,
+          lastActiveAt: s.lastActiveAt.toISOString(),
+          title: s.title,
+        }))
+        .sort((a, b) => a.sessionId.localeCompare(b.sessionId)),
     });
 
     // Only broadcast if state changed

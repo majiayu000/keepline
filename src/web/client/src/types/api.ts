@@ -2,6 +2,7 @@
  * API response types
  */
 
+import type { ProjectInfo, ProjectOverviewStats } from './project'
 import type { Session, SessionStats, ToolCallInfo, SubAgent } from './session'
 
 // Base API response
@@ -25,6 +26,12 @@ export interface SessionsData {
   sessions: Session[]
   stats: SessionStats
   pagination?: PaginationInfo
+}
+
+// GET /api/projects
+export interface ProjectsData {
+  projects: ProjectInfo[]
+  stats: ProjectOverviewStats
 }
 
 // POST /api/sync
