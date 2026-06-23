@@ -2,7 +2,7 @@
 /**
  * Keepline - The command center for agent coding sessions
  *
- * Never lose your Codex or Claude Code work again.
+ * Never lose your local agent runtime work again.
  * Real-time monitoring, automatic recovery, cost tracking,
  * and cross-session memory for agent CLI power users.
  */
@@ -26,7 +26,7 @@ const program = new Command();
 program
   .name('keepline')
   .version('1.0.0')
-  .description('The command center for Codex and Claude Code sessions - Never lose your work again');
+  .description('The command center for local agent runtime sessions - Never lose your work again');
 
 // Register all commands
 registerCommands(program);
