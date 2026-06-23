@@ -1,3 +1,7 @@
+import { createHash } from 'crypto';
+import type { RuntimeId } from '../runtime/index.js';
+import type { SessionStatus } from '../session/index.js';
+
 export const WORK_ITEM_STATUSES = [
   'inbox',
   'planned',
@@ -19,9 +23,47 @@ export const WORK_ITEM_STATUS_SOURCES = [
   'accepted_agent_suggestion',
 ] as const;
 
+export const WORK_ITEM_LINK_SOURCES = [
+  'user',
+  'accepted_agent_suggestion',
+  'heuristic_suggestion',
+] as const;
+
+export const WORK_ITEM_LINK_ACCEPTANCE_STATUSES = [
+  'accepted',
+  'pending',
+  'rejected',
+] as const;
+
+export const PROGRESS_EVIDENCE_KINDS = [
+  'message',
+  'tool_call',
+  'file_change',
+  'plan_event',
+  'test_result',
+] as const;
+
+export const PROGRESS_EVIDENCE_OUTCOMES = [
+  'progress',
+  'blocked',
+  'completed',
+  'failed',
+] as const;
+
+export const PROGRESS_EVIDENCE_CONFIDENCE = [
+  'explicit',
+  'inferred',
+] as const;
+
 export type WorkItemStatus = typeof WORK_ITEM_STATUSES[number];
 export type WorkItemKind = typeof WORK_ITEM_KINDS[number];
 export type WorkItemStatusSource = typeof WORK_ITEM_STATUS_SOURCES[number];
+export type WorkItemSessionLinkSource = typeof WORK_ITEM_LINK_SOURCES[number];
+export type WorkItemSessionLinkAcceptanceStatus =
+  typeof WORK_ITEM_LINK_ACCEPTANCE_STATUSES[number];
+export type ProgressEvidenceKind = typeof PROGRESS_EVIDENCE_KINDS[number];
+export type ProgressEvidenceOutcome = typeof PROGRESS_EVIDENCE_OUTCOMES[number];
+export type ProgressEvidenceConfidence = typeof PROGRESS_EVIDENCE_CONFIDENCE[number];
 
 export interface Area {
   id: string;
@@ -87,6 +129,76 @@ export interface WorkItemOverviewStats {
   projectTask: number;
 }
 
+export interface AgentSession {
+  id: string;
+  runtimeId: RuntimeId;
+  runtimeSessionId: string;
+  projectRoot?: string;
+  cwd: string;
+  status: SessionStatus | 'unknown';
+  title: string;
+  lastActiveAt: Date;
+  evidenceSummary?: string;
+  createdAt: Date;
+  updatedAt: Date;
+}
+
+export interface AgentSessionUpsertInput {
+  runtimeId: RuntimeId;
+  runtimeSessionId: string;
+  projectRoot?: string;
+  cwd: string;
+  status: SessionStatus | 'unknown';
+  title: string;
+  lastActiveAt?: Date;
+  evidenceSummary?: string;
+}
+
+export interface WorkItemSessionLink {
+  id: string;
+  workItemId: string;
+  agentSessionId: string;
+  linkSource: WorkItemSessionLinkSource;
+  acceptanceStatus: WorkItemSessionLinkAcceptanceStatus;
+  acceptedAt?: Date;
+  createdAt: Date;
+  updatedAt: Date;
+}
+
+export interface WorkItemSessionLinkCreateInput {
+  workItemId: string;
+  agentSessionId: string;
+  linkSource?: WorkItemSessionLinkSource;
+}
+
+export interface ProgressEvidence {
+  id: string;
+  workItemId?: string;
+  agentSessionId?: string;
+  runtimeId?: RuntimeId;
+  kind: ProgressEvidenceKind;
+  outcome?: ProgressEvidenceOutcome;
+  summary: string;
+  sourcePath?: string;
+  occurredAt: Date;
+  confidence: ProgressEvidenceConfidence;
+  metadata?: Record<string, unknown>;
+  createdAt: Date;
+}
+
+export interface ProgressEvidenceCreateInput {
+  workItemId?: string;
+  agentSessionId?: string;
+  runtimeId?: RuntimeId;
+  kind: ProgressEvidenceKind;
+  outcome?: ProgressEvidenceOutcome;
+  summary: string;
+  sourcePath?: string;
+  occurredAt?: Date;
+  confidence?: ProgressEvidenceConfidence;
+  metadata?: Record<string, unknown>;
+}
+
 export function isWorkItemStatus(value: unknown): value is WorkItemStatus {
   return typeof value === 'string' && WORK_ITEM_STATUSES.includes(value as WorkItemStatus);
 }
@@ -98,4 +210,38 @@ export function isWorkItemKind(value: unknown): value is WorkItemKind {
 export function isWorkItemStatusSource(value: unknown): value is WorkItemStatusSource {
   return typeof value === 'string' &&
     WORK_ITEM_STATUS_SOURCES.includes(value as WorkItemStatusSource);
+}
+
+export function isWorkItemSessionLinkSource(
+  value: unknown
+): value is WorkItemSessionLinkSource {
+  return typeof value === 'string' &&
+    WORK_ITEM_LINK_SOURCES.includes(value as WorkItemSessionLinkSource);
+}
+
+export function isProgressEvidenceKind(value: unknown): value is ProgressEvidenceKind {
+  return typeof value === 'string' &&
+    PROGRESS_EVIDENCE_KINDS.includes(value as ProgressEvidenceKind);
+}
+
+export function isProgressEvidenceOutcome(value: unknown): value is ProgressEvidenceOutcome {
+  return typeof value === 'string' &&
+    PROGRESS_EVIDENCE_OUTCOMES.includes(value as ProgressEvidenceOutcome);
+}
+
+export function isProgressEvidenceConfidence(
+  value: unknown
+): value is ProgressEvidenceConfidence {
+  return typeof value === 'string' &&
+    PROGRESS_EVIDENCE_CONFIDENCE.includes(value as ProgressEvidenceConfidence);
+}
+
+export function encodeAgentSessionId(runtimeId: RuntimeId, runtimeSessionId: string): string {
+  const safeRuntimeId = String(runtimeId).replace(/[^A-Za-z0-9_-]/g, '_').slice(0, 24) ||
+    'runtime';
+  const hash = createHash('sha256')
+    .update(`${runtimeId}\0${runtimeSessionId}`)
+    .digest('hex')
+    .slice(0, 32);
+  return `${safeRuntimeId}_${hash}`;
 }

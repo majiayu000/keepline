@@ -12,6 +12,7 @@ import { migration004 } from './004_sessions_last_message.js';
 import { migration005 } from './005_session_metadata.js';
 import { migration006 } from './006_session_client.js';
 import { migration007 } from './007_work_items.js';
+import { migration008 } from './008_work_item_evidence.js';
 
 /** All available migrations */
 export const allMigrations: Migration[] = [
@@ -22,4 +23,5 @@ export const allMigrations: Migration[] = [
   migration005,
   migration006,
   migration007,
+  migration008,
 ];
