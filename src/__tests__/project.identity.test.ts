@@ -70,6 +70,23 @@ describe('Project identity', () => {
     expect(identity.source).toBe('git-root');
   });
 
+  test('revalidates cached cwd identities when a git root appears', () => {
+    const root = makeTempRoot('keepline-changing-root-');
+    const repo = join(root, 'repo');
+    mkdirSync(repo);
+    const deletedLeaf = join(repo, 'packages', 'removed-app');
+
+    const beforeGit = resolveProjectIdentity(deletedLeaf);
+    expect(beforeGit.rootPath).toBe(deletedLeaf);
+    expect(beforeGit.source).toBe('cwd');
+
+    mkdirSync(join(repo, '.git'));
+
+    const afterGit = resolveProjectIdentity(deletedLeaf);
+    expect(afterGit.rootPath).toBe(repo);
+    expect(afterGit.source).toBe('git-root');
+  });
+
   test('uses collision-resistant IDs rather than lossy slugs', () => {
     expect(projectIdFromPath('/tmp/a-b')).not.toBe(projectIdFromPath('/tmp/a/b'));
     expect(projectIdFromPath('/tmp/Foo')).not.toBe(projectIdFromPath('/tmp/foo'));

@@ -208,8 +208,8 @@ export function useSessions(token: string, options: UseSessionsOptions = {}): Us
           }
         })
       } else {
-        setAllSessions(response.data.sessions)
         if (!response.data.pagination?.hasMore) {
+          setAllSessions(response.data.sessions)
           bumpVersionIfChanged(response.data.sessions)
         } else {
           fetchAllBasicSessionsSnapshot().then(unfilteredResponse => {
@@ -257,14 +257,10 @@ export function useSessions(token: string, options: UseSessionsOptions = {}): Us
       // Append new sessions to existing list
       const nextSessions = response.data.sessions
       setSessions(prev => [...prev, ...nextSessions])
-      if (!requestedProjectRoot) {
-        setAllSessions(prev => [...prev, ...nextSessions])
-        bumpVersionIfChanged([...sessions, ...nextSessions])
-      }
       setPagination(response.data.pagination || null)
     }
     setLoadingMore(false)
-  }, [bumpVersionIfChanged, pagination, loadingMore, sessions, options.projectRoot])
+  }, [pagination, loadingMore, sessions.length, options.projectRoot])
 
   // Keep loadSessionsRef updated
   useEffect(() => {

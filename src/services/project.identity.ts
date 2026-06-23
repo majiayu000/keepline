@@ -75,7 +75,7 @@ export function resolveProjectIdentity(cwd: string | undefined | null): ProjectI
   if (!normalized) return UNKNOWN_PROJECT;
 
   const cached = identityCache.get(normalized);
-  if (cached) return cached;
+  if (cached && isCachedIdentityCurrent(normalized, cached)) return cached;
 
   const gitRoot = findGitRoot(normalized);
   const rootPath = gitRoot ?? normalized;
@@ -89,6 +89,13 @@ export function resolveProjectIdentity(cwd: string | undefined | null): ProjectI
 
   identityCache.set(normalized, identity);
   return identity;
+}
+
+function isCachedIdentityCurrent(normalized: string, cached: ProjectIdentity): boolean {
+  const gitRoot = findGitRoot(normalized);
+  const rootPath = gitRoot ?? normalized;
+  const source: ProjectIdentitySource = gitRoot ? 'git-root' : 'cwd';
+  return cached.rootPath === rootPath && cached.source === source;
 }
 
 function findGitRoot(projectPath: string): string | null {
