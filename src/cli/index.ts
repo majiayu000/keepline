@@ -22,7 +22,7 @@ export function registerCommands(program: Command): void {
   program
     .command('list')
     .alias('ls')
-    .description('List all Codex and Claude Code sessions')
+    .description('List all agent runtime sessions')
     .option('-s, --status <status>', 'Filter by status (running,waiting,idle,lost,completed)')
     .option('-d, --directory <dir>', 'Filter by directory')
     .option('-l, --limit <n>', 'Limit results')
@@ -34,7 +34,7 @@ export function registerCommands(program: Command): void {
   program
     .command('watch')
     .alias('w')
-    .description('Live monitor Codex and Claude Code sessions')
+    .description('Live monitor agent runtime sessions')
     .option('-i, --interval <seconds>', 'Refresh interval in seconds')
     .action(watchCommand);
 
@@ -101,7 +101,7 @@ export function registerCommands(program: Command): void {
   // Sync (manual trigger)
   program
     .command('sync')
-    .description('Manually sync Codex and Claude Code sessions')
+    .description('Manually sync agent runtime sessions')
     .action(async () => {
       const { runMigrations } = await import('../db/migrations.js');
       const { syncSessions } = await import('../services/session.service.js');

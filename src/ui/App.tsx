@@ -41,7 +41,7 @@ export function App({ sessions, stats }: AppProps): React.ReactElement {
         <Gradient name="pastel">
           <Text bold>◆ KEEPLINE</Text>
         </Gradient>
-        <Text color="gray"> — Codex and Claude session control center</Text>
+        <Text color="gray"> — agent runtime session control center</Text>
       </Box>
 
       {/* Stats bar */}

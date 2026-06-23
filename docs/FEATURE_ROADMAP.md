@@ -18,7 +18,7 @@
 
 | 功能 | 描述 | 状态 |
 |------|------|------|
-| 会话监控 | 扫描并追踪 Claude Code 进程状态 | ✅ |
+| 会话监控 | 扫描并追踪本地 agent runtime 进程和会话状态 | ✅ |
 | 状态分类 | running/waiting/idle/lost/completed | ✅ |
 | Web UI | React 前端实时监控界面 | ✅ |
 | 会话恢复 | 恢复丢失的会话 | ✅ |

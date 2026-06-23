@@ -4,7 +4,7 @@
 
 # Keepline
 
-### Never lose your Codex or Claude Code work again.
+### Never lose your local agent runtime work again.
 
 **The command center for agent CLI power users**
 
@@ -25,7 +25,7 @@
 
 ## The Problem
 
-You're deep in a coding session with Codex or Claude Code. Everything is going great. Then...
+You're deep in a coding session with one or more local agent runtimes. Everything is going great. Then...
 
 - **Terminal crashes** — hours of context, gone
 - **Multiple sessions** — which one was working on the auth bug?
@@ -34,7 +34,7 @@ You're deep in a coding session with Codex or Claude Code. Everything is going g
 
 ## The Solution
 
-**Keepline** monitors your Codex and Claude Code sessions in real-time, automatically recovers crashed sessions, tracks costs where supported, and preserves context across iterations.
+**Keepline** monitors local agent runtime sessions in real time, automatically recovers crashed work where supported, tracks costs where supported, and preserves context across iterations. Codex and Claude Code are the first supported runtime adapters.
 
 For the implementation details behind the rename and Codex detection, see [Keepline Rebrand and Codex Detection Spec](docs/KEEPLINE_REBRAND_AND_CODEX_DETECTION_SPEC.md).
 
@@ -122,7 +122,7 @@ This removes the quarantine attribute that macOS adds to downloaded files.
 
 ### Real-time Session Monitoring
 
-Monitor Codex and Claude Code sessions across your system. See status, current file, last tool, and activity at a glance.
+Monitor local agent runtime sessions across your system. See runtime, status, current file, last tool, and activity at a glance.
 
 ```
 ┌─────────────────────────────────────────────────────────────────┐
@@ -380,7 +380,7 @@ bun test             # Run tests
 
 <div align="center">
 
-**Built for Codex and Claude Code power users**
+**Built for local agent runtime power users**
 
 [GitHub](https://github.com/majiayu000/claude-hub) | [npm](https://www.npmjs.com/package/keepline) | [Documentation](https://keepline.dev)
 

@@ -76,7 +76,7 @@ export function DashboardView({ sessions, stats }: Props): React.ReactElement {
         <Text color="#bb9af7" bold>╭─ </Text>
         <Text color="#7dcfff" bold>KEEPLINE</Text>
         <Text color="#bb9af7" bold> ─╮</Text>
-        <Text color="#565f89"> Codex and Claude session control center</Text>
+        <Text color="#565f89"> agent runtime session control center</Text>
       </Box>
 
       {/* Stats Row */}

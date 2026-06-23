@@ -68,7 +68,7 @@ export function exportToCSV(sessions: Session[], filename = 'sessions'): void {
  */
 export function exportToMarkdown(sessions: Session[], filename = 'sessions'): void {
   const lines: string[] = [
-    '# Claude Code Sessions Report',
+    '# Agent Runtime Sessions Report',
     '',
     `> Exported at: ${new Date().toLocaleString()}`,
     `> Total sessions: ${sessions.length}`,

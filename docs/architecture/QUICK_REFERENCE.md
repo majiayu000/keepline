@@ -5,7 +5,7 @@
 ```
 ┌──────────────────────────────────────────────────────────────────┐
 │                      KEEPLINE V2                                   │
-│              Claude Code 自动化平台                               │
+│              本地 Agent Runtime 总控层                            │
 ├──────────────────────────────────────────────────────────────────┤
 │                                                                  │
 │    ┌──────┐  ┌──────┐  ┌──────┐  ┌──────┐  ┌──────┐            │
@@ -36,7 +36,7 @@
 │    ┌─────────────────────────────────────────────────────┐      │
 │    │            INFRASTRUCTURE LAYER                      │      │
 │    │                                                      │      │
-│    │  SQLite | EventBus | ProcessScanner | ClaudeParser  │      │
+│    │  SQLite | EventBus | ProcessScanner | RuntimeAdapter │      │
 │    │  HookServer | Terminal | Daemon | HTTP/WebSocket    │      │
 │    └─────────────────────────────────────────────────────┘      │
 │                                                                  │
@@ -66,7 +66,7 @@
 ```
 ps + lsof → ProcessScanner → SessionService → SQLite
      ↓
-Claude JSONL → ClaudeParser → SessionService → Events
+Runtime logs → RuntimeAdapter → SessionService → Events
 ```
 
 ### 2. Auto Recovery Flow

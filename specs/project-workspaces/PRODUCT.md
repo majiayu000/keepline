@@ -2,7 +2,7 @@
 
 ## Summary
 
-Project Workspaces makes project identity a first-class way to monitor agent work. A user with many Warp panes, Claude Code sessions, and Codex sessions should be able to open Keepline and immediately see which projects are active, which agent client is running in each project, and what needs attention.
+Project Workspaces makes project identity a first-class way to monitor agent work. A user with many Warp panes and local agent runtime sessions should be able to open Keepline and immediately see which projects are active, which runtime adapter is represented in each project, and what needs attention.
 
 This extends the existing Projects tab from a directory card view into a reliable project workspace surface. It is inspired by stash's project-first workboard, but Keepline remains a session monitor and recovery dashboard, not a todo system.
 

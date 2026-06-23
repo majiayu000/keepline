@@ -2,7 +2,7 @@
 
 ## 背景
 
-项目原名为 Claude Hub，核心能力是扫描 Claude Code 会话、进程、成本和恢复状态。当前目标是把产品主品牌升级为 Keepline，并新增 Codex CLI 会话检测与恢复。此版本不保留旧品牌兼容入口、旧品牌环境变量或旧品牌数据目录 fallback。
+项目原名为 Claude Hub，历史能力从 Claude Code 会话、进程、成本和恢复状态扫描起步。当前目标是把产品主品牌升级为 Keepline，并新增 Codex CLI 会话检测与恢复。此版本不保留旧品牌兼容入口、旧品牌环境变量或旧品牌数据目录 fallback。
 
 GitHub 跟踪 issue: https://github.com/majiayu000/claude-hub/issues/34
 

@@ -2,11 +2,11 @@
 
 ## Overview
 
-Add a new "Projects" tab to display Claude Code sessions grouped by project/directory, providing a bird's-eye view of all active projects and their status.
+Add a new "Projects" tab to display local agent runtime sessions grouped by project/directory, providing a bird's-eye view of all active projects and their status.
 
 ## User Story
 
-As a developer using multiple Claude Code sessions across different projects, I want to see all my projects at a glance, understand which ones are active, and quickly identify what each project is currently working on.
+As a developer using multiple local agent runtime sessions across different projects, I want to see all my projects at a glance, understand which ones are active, and quickly identify what each project is currently working on.
 
 ## Design: Project Cards Grid + Stats Overview
 
