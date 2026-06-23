@@ -36,7 +36,8 @@ export const SessionCard = memo(function SessionCard({
   const statusColor = getStatusColor(session.status)
   const cardId = `session-${session.sessionId}`
   const detailsId = `${cardId}-details`
-  const clientLabel = session.client === 'codex' ? 'Codex' : 'Claude'
+  const runtimeId = session.runtimeId ?? (session.client === 'codex' ? 'codex' : 'claude-code')
+  const runtimeLabel = runtimeId === 'codex' ? 'Codex' : 'Claude Code'
 
   // Get cached full data or loading state (1 request instead of 3)
   const fullData = getSessionFull?.(session.sessionId)
@@ -87,8 +88,8 @@ export const SessionCard = memo(function SessionCard({
           <span className={styles.status} style={{ color: statusColor }}>
             {session.status}
           </span>
-          <span className={styles.clientBadge} data-client={session.client}>
-            {clientLabel}
+          <span className={styles.clientBadge} data-runtime={runtimeId}>
+            {runtimeLabel}
           </span>
           <span className={styles.meta}>
             {session.pid ? `PID: ${session.pid}` : 'No process'}

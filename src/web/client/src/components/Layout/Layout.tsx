@@ -3,7 +3,7 @@ import { Header } from '@/components/Header'
 import { StatsBar } from '@/components/StatsBar'
 import { Toolbar } from '@/components/Toolbar'
 import { TabNav, type TabId } from '@/components/TabNav'
-import type { Session, SessionStats, SessionStatus } from '@/types'
+import type { RuntimeFilter, Session, SessionStats, SessionStatus } from '@/types'
 import type { NotificationSettings, ConnectionStatus } from '@/hooks'
 import styles from './Layout.module.css'
 
@@ -18,6 +18,8 @@ interface LayoutProps {
   onSearchChange?: (query: string) => void
   statusFilters?: Set<SessionStatus>
   onFilterChange?: (filters: Set<SessionStatus>) => void
+  runtimeFilter?: RuntimeFilter
+  onRuntimeFilterChange?: (filter: RuntimeFilter) => void
   totalCount?: number
   filteredCount?: number
   // Export props
@@ -44,6 +46,8 @@ export const Layout = memo(function Layout({
   onSearchChange,
   statusFilters = new Set(),
   onFilterChange,
+  runtimeFilter = 'all',
+  onRuntimeFilterChange,
   totalCount = 0,
   filteredCount = 0,
   sessions = [],
@@ -55,7 +59,7 @@ export const Layout = memo(function Layout({
   activeTab = 'sessions',
   onTabChange,
 }: LayoutProps) {
-  const showToolbar = onSearchChange && onFilterChange
+  const showToolbar = onSearchChange && onFilterChange && onRuntimeFilterChange
 
   return (
     <div className={styles.layout}>
@@ -81,6 +85,8 @@ export const Layout = memo(function Layout({
               onSearchChange={onSearchChange}
               statusFilters={statusFilters}
               onFilterChange={onFilterChange}
+              runtimeFilter={runtimeFilter}
+              onRuntimeFilterChange={onRuntimeFilterChange}
               stats={stats}
               totalCount={totalCount}
               filteredCount={filteredCount}

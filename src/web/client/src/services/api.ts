@@ -32,6 +32,7 @@ import type {
   SetupRequest,
   SetupResponse,
   AgentClient,
+  RuntimeFilter,
   SessionStatus,
 } from '@/types'
 import { API_BASE, API_TIMEOUT_MS } from '@/constants'
@@ -120,6 +121,7 @@ export async function fetchSessions(
     query?: string
     status?: SessionStatus[]
     client?: AgentClient
+    runtime?: RuntimeFilter
     projectRoot?: string
     projectId?: string
   },
@@ -131,6 +133,7 @@ export async function fetchSessions(
   if (options?.skipSync) params.set('skipSync', 'true')
   if (options?.query?.trim()) params.set('q', options.query.trim())
   if (options?.client) params.set('client', options.client)
+  if (options?.runtime && options.runtime !== 'all') params.set('runtime', options.runtime)
   for (const status of options?.status ?? []) {
     params.append('status', status)
   }

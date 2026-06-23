@@ -27,6 +27,7 @@ export const ProjectCard = memo(function ProjectCard({
     displayPath,
     stats,
     clientCounts,
+    runtimeCounts,
     currentTask,
     lastActiveAt,
     totalUsage,
@@ -77,14 +78,14 @@ export const ProjectCard = memo(function ProjectCard({
       </div>
 
       <div className={styles.clientRow}>
-        {clientCounts.claude > 0 && (
-          <span className={styles.clientBadge}>Claude {clientCounts.claude}</span>
+        {runtimeCounts['claude-code'] > 0 && (
+          <span className={styles.clientBadge}>Claude Code {runtimeCounts['claude-code']}</span>
         )}
-        {clientCounts.codex > 0 && (
-          <span className={styles.clientBadge}>Codex {clientCounts.codex}</span>
+        {runtimeCounts.codex > 0 && (
+          <span className={styles.clientBadge}>Codex {runtimeCounts.codex}</span>
         )}
-        {clientCounts.unknown > 0 && (
-          <span className={styles.clientBadge}>Unknown {clientCounts.unknown}</span>
+        {(runtimeCounts.unknown || clientCounts.unknown) > 0 && (
+          <span className={styles.clientBadge}>Unknown {runtimeCounts.unknown || clientCounts.unknown}</span>
         )}
       </div>
 

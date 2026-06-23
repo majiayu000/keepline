@@ -1,7 +1,7 @@
 import { memo } from 'react'
 import { SearchBar } from '@/components/SearchBar'
 import { FilterBar } from '@/components/FilterBar'
-import type { SessionStatus, SessionStats } from '@/types'
+import type { RuntimeFilter, SessionStatus, SessionStats } from '@/types'
 import styles from './Toolbar.module.css'
 
 interface ToolbarProps {
@@ -9,6 +9,8 @@ interface ToolbarProps {
   onSearchChange: (query: string) => void
   statusFilters: Set<SessionStatus>
   onFilterChange: (filters: Set<SessionStatus>) => void
+  runtimeFilter: RuntimeFilter
+  onRuntimeFilterChange: (filter: RuntimeFilter) => void
   stats?: SessionStats | null
   totalCount: number
   filteredCount: number
@@ -19,11 +21,13 @@ export const Toolbar = memo(function Toolbar({
   onSearchChange,
   statusFilters,
   onFilterChange,
+  runtimeFilter,
+  onRuntimeFilterChange,
   stats,
   totalCount,
   filteredCount,
 }: ToolbarProps) {
-  const hasFilters = searchQuery.length > 0 || statusFilters.size > 0
+  const hasFilters = searchQuery.length > 0 || statusFilters.size > 0 || runtimeFilter !== 'all'
   const showResultsInfo = hasFilters && totalCount !== filteredCount
 
   return (
@@ -52,6 +56,8 @@ export const Toolbar = memo(function Toolbar({
         <FilterBar
           activeFilters={statusFilters}
           onFilterChange={onFilterChange}
+          runtimeFilter={runtimeFilter}
+          onRuntimeFilterChange={onRuntimeFilterChange}
           stats={stats}
         />
       </div>

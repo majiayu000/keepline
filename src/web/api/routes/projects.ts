@@ -7,6 +7,7 @@ import {
 import { logger } from '../../../lib/logger.js';
 import { authMiddleware } from '../middleware/auth.js';
 import { serializeProjectSummaries } from '../project-response.js';
+import { getRuntimeScanStatus } from '../../../services/runtime-status.js';
 
 const app = new Hono();
 app.use('*', authMiddleware);
@@ -25,6 +26,7 @@ app.get('/', async (c) => {
           sessionFields: fields === 'full' ? 'full' : 'basic',
         }),
         stats: getProjectOverviewStats(projects),
+        runtimeScan: getRuntimeScanStatus(),
       },
     });
   } catch (error) {
