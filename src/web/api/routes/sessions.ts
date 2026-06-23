@@ -273,6 +273,7 @@ app.get('/:id', async (c) => {
     data: {
       session: {
         ...session,
+        runtimeId: runtimeIdForClient(session.client),
         lastActiveAt: session.lastActiveAt.toISOString(),
         startedAt: session.startedAt?.toISOString(),
         completedAt: session.completedAt?.toISOString(),

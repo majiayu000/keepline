@@ -125,6 +125,46 @@ describe('Basic Sessions Route Contract', () => {
     expect(body.data.usageStats).toBeNull();
   });
 
+  test('single session route includes runtimeId payload field', async () => {
+    sessionRepository.upsert({
+      sessionId: 'single-codex-runtime-session',
+      client: 'codex',
+      directory: '/tmp/keepline-single-runtime',
+      status: 'completed',
+      title: 'Single runtime payload',
+      initialPrompt: 'Return runtimeId',
+      lastActiveAt: new Date('2026-04-13T10:00:05.000Z'),
+      toolCount: 0,
+      messageCount: 1,
+    });
+
+    const { token } = await setupUser('single-runtime-route-user', 'password123');
+    const response = await sessions.fetch(new Request(
+      'http://localhost/single-codex-runtime-session',
+      { headers: { Authorization: `Bearer ${token}` } }
+    ));
+
+    expect(response.status).toBe(200);
+
+    const body = await response.json() as {
+      success: boolean;
+      data: {
+        session: {
+          sessionId: string;
+          client: string;
+          runtimeId?: string;
+        };
+      };
+    };
+
+    expect(body.success).toBe(true);
+    expect(body.data.session).toMatchObject({
+      sessionId: 'single-codex-runtime-session',
+      client: 'codex',
+      runtimeId: 'codex',
+    });
+  });
+
   test('projectRoot filters sessions by resolved git root exactly', async () => {
     const target = makeGitProject('keepline-target-project-');
     const other = makeGitProject('keepline-other-project-');
