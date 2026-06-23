@@ -64,7 +64,7 @@ describe('Work item routes', () => {
     expect(body.data.item.projectRoot).toBeUndefined();
   });
 
-  test('rejects unaccepted agent status changes', async () => {
+  test('rejects suggestion-sourced formal status changes through generic CRUD', async () => {
     const { token } = await setupUser('work-item-agent-user', 'password123');
     const createResponse = await authedRequest(token, '/', {
       method: 'POST',
@@ -85,7 +85,23 @@ describe('Work item routes', () => {
     expect(rejected.status).toBe(400);
     const rejectedBody = await rejected.json() as { success: boolean; error: string };
     expect(rejectedBody.success).toBe(false);
-    expect(rejectedBody.error).toContain('accepted_agent_suggestion');
+    expect(rejectedBody.error).toContain('statusSource');
+
+    const acceptedWithoutArtifact = await authedRequest(token, `/${createBody.data.item.id}`, {
+      method: 'PATCH',
+      body: JSON.stringify({
+        status: 'planned',
+        statusSource: 'accepted_agent_suggestion',
+      }),
+    });
+
+    expect(acceptedWithoutArtifact.status).toBe(400);
+    const acceptedBody = await acceptedWithoutArtifact.json() as {
+      success: boolean;
+      error: string;
+    };
+    expect(acceptedBody.success).toBe(false);
+    expect(acceptedBody.error).toContain('explicit suggestion acceptance endpoint');
 
     const getResponse = await authedRequest(token, `/${createBody.data.item.id}`);
     const getBody = await getResponse.json() as {
@@ -98,11 +114,11 @@ describe('Work item routes', () => {
     expect(getBody.data.item.completedAt).toBeUndefined();
   });
 
-  test('allows accepted agent suggestions to change formal status explicitly', async () => {
+  test('allows user actions to change formal status explicitly', async () => {
     const { token } = await setupUser('work-item-accepted-user', 'password123');
     const createResponse = await authedRequest(token, '/', {
       method: 'POST',
-      body: JSON.stringify({ title: 'Accept suggested plan', kind: 'todo' }),
+      body: JSON.stringify({ title: 'Plan manually', kind: 'todo' }),
     });
     const createBody = await createResponse.json() as {
       data: { item: { id: string } };
@@ -112,7 +128,7 @@ describe('Work item routes', () => {
       method: 'PATCH',
       body: JSON.stringify({
         status: 'planned',
-        statusSource: 'accepted_agent_suggestion',
+        statusSource: 'user',
       }),
     });
 
@@ -124,7 +140,7 @@ describe('Work item routes', () => {
     expect(updateBody.success).toBe(true);
     expect(updateBody.data.item).toMatchObject({
       status: 'planned',
-      statusSource: 'accepted_agent_suggestion',
+      statusSource: 'user',
     });
   });
 

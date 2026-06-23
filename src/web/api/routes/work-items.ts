@@ -90,9 +90,15 @@ function parseStatusSource(value: unknown, fallback?: WorkItemStatusSource): {
   error?: string;
 } {
   if (value == null) return { value: fallback };
-  return isWorkItemStatusSource(value)
-    ? { value }
-    : { error: 'statusSource must be user or accepted_agent_suggestion' };
+  if (!isWorkItemStatusSource(value)) {
+    return { error: 'statusSource must be user' };
+  }
+  if (value !== 'user') {
+    return {
+      error: 'accepted_agent_suggestion requires an explicit suggestion acceptance endpoint',
+    };
+  }
+  return { value };
 }
 
 app.get('/', (c) => {
