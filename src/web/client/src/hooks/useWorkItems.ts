@@ -5,6 +5,7 @@ import type {
   WorkItemCreateInput,
   WorkItemOverviewStats,
   WorkItemUpdateInput,
+  WorkboardData,
 } from '@/types'
 
 const EMPTY_STATS: WorkItemOverviewStats = {
@@ -21,9 +22,20 @@ const EMPTY_STATS: WorkItemOverviewStats = {
   projectTask: 0,
 }
 
+const EMPTY_WORKBOARD: WorkboardData = {
+  now: [],
+  waiting: [],
+  stale: [],
+  done: [],
+  suggestions: [],
+  staleWindowHours: 72,
+  generatedAt: new Date(0).toISOString(),
+}
+
 export interface UseWorkItemsReturn {
   items: WorkItem[]
   stats: WorkItemOverviewStats
+  workboard: WorkboardData
   loading: boolean
   saving: boolean
   error: string | null
@@ -36,6 +48,7 @@ export interface UseWorkItemsReturn {
 export function useWorkItems(_token: string): UseWorkItemsReturn {
   const [items, setItems] = useState<WorkItem[]>([])
   const [stats, setStats] = useState<WorkItemOverviewStats>(EMPTY_STATS)
+  const [workboard, setWorkboard] = useState<WorkboardData>(EMPTY_WORKBOARD)
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -47,6 +60,7 @@ export function useWorkItems(_token: string): UseWorkItemsReturn {
     if (response.success && response.data) {
       setItems(response.data.items)
       setStats(response.data.stats)
+      setWorkboard(response.data.workboard ?? EMPTY_WORKBOARD)
       setError(null)
     } else {
       setError(response.error || 'Failed to load work items')
@@ -104,6 +118,7 @@ export function useWorkItems(_token: string): UseWorkItemsReturn {
   return {
     items,
     stats,
+    workboard,
     loading,
     saving,
     error,

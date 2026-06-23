@@ -1,5 +1,6 @@
 import { afterEach, beforeEach, describe, expect, test } from 'bun:test';
 import workItems from '../web/api/routes/work-items.js';
+import workItemEvidence from '../web/api/routes/work-item-evidence.js';
 import { setupUser } from '../services/auth.service.js';
 import { resetDatabase } from '../db/migrations.js';
 import { closeDatabase } from '../infrastructure/database/sqlite.js';
@@ -15,6 +16,22 @@ async function authedRequest(
     headers.set('Content-Type', 'application/json');
   }
   return workItems.fetch(new Request(`http://localhost${path}`, {
+    ...options,
+    headers,
+  }));
+}
+
+async function workboardEvidenceRequest(
+  token: string,
+  path: string,
+  options: RequestInit = {}
+): Promise<Response> {
+  const headers = new Headers(options.headers);
+  headers.set('Authorization', `Bearer ${token}`);
+  if (options.body && !headers.has('Content-Type')) {
+    headers.set('Content-Type', 'application/json');
+  }
+  return workItemEvidence.fetch(new Request(`http://localhost${path}`, {
     ...options,
     headers,
   }));
@@ -186,5 +203,118 @@ describe('Work item routes', () => {
       data: { items: Array<{ title: string }> };
     };
     expect(afterDeleteBody.data.items.map((item) => item.title)).not.toContain('Todo item');
+  });
+
+  test('returns deterministic Workboard buckets and marks pending suggestions', async () => {
+    const { token } = await setupUser('workboard-user', 'password123');
+    const oldDate = '2026-06-20T12:00:00.000Z';
+    const recentDate = '2026-06-23T11:00:00.000Z';
+
+    const staleResponse = await authedRequest(token, '/', {
+      method: 'POST',
+      body: JSON.stringify({ title: 'Stale planned', kind: 'todo', status: 'planned' }),
+    });
+    const runningResponse = await authedRequest(token, '/', {
+      method: 'POST',
+      body: JSON.stringify({ title: 'Suggested running', kind: 'todo', status: 'planned' }),
+    });
+    const doneResponse = await authedRequest(token, '/', {
+      method: 'POST',
+      body: JSON.stringify({ title: 'Completed by user', kind: 'todo', status: 'done' }),
+    });
+    const staleBody = await staleResponse.json() as { data: { item: { id: string } } };
+    const runningBody = await runningResponse.json() as { data: { item: { id: string } } };
+    const doneBody = await doneResponse.json() as { data: { item: { id: string } } };
+
+    const staleSessionResponse = await workboardEvidenceRequest(token, '/agent-sessions', {
+      method: 'POST',
+      body: JSON.stringify({
+        runtimeId: 'codex',
+        runtimeSessionId: 'stale-session',
+        cwd: '/tmp/project',
+        status: 'completed',
+        title: 'Old session',
+        lastActiveAt: oldDate,
+      }),
+    });
+    const runningSessionResponse = await workboardEvidenceRequest(token, '/agent-sessions', {
+      method: 'POST',
+      body: JSON.stringify({
+        runtimeId: 'codex',
+        runtimeSessionId: 'running-session',
+        cwd: '/tmp/project',
+        status: 'running',
+        title: 'Running session',
+        lastActiveAt: recentDate,
+      }),
+    });
+    const staleSessionBody = await staleSessionResponse.json() as {
+      data: { agentSession: { id: string } };
+    };
+    const runningSessionBody = await runningSessionResponse.json() as {
+      data: { agentSession: { id: string } };
+    };
+
+    await workboardEvidenceRequest(token, `/${staleBody.data.item.id}/session-links`, {
+      method: 'POST',
+      body: JSON.stringify({
+        agentSessionId: staleSessionBody.data.agentSession.id,
+        linkSource: 'user',
+      }),
+    });
+    await workboardEvidenceRequest(token, `/${runningBody.data.item.id}/session-links`, {
+      method: 'POST',
+      body: JSON.stringify({
+        agentSessionId: runningSessionBody.data.agentSession.id,
+        linkSource: 'heuristic_suggestion',
+      }),
+    });
+
+    const listWithPending = await authedRequest(token, '/?staleWindowHours=24');
+    expect(listWithPending.status).toBe(200);
+    const pendingBody = await listWithPending.json() as {
+      data: {
+        workboard: {
+          now: Array<{ item: { id: string } }>;
+          stale: Array<{ item: { id: string } }>;
+          done: Array<{ item: { id: string } }>;
+          suggestions: Array<{
+            item: { id: string };
+            suggestions: Array<{ agentSession: { status: string } }>;
+          }>;
+        };
+      };
+    };
+
+    expect(pendingBody.data.workboard.stale.map((entry) => entry.item.id))
+      .toEqual([staleBody.data.item.id]);
+    expect(pendingBody.data.workboard.done.map((entry) => entry.item.id))
+      .toEqual([doneBody.data.item.id]);
+    expect(pendingBody.data.workboard.now).toHaveLength(0);
+    expect(pendingBody.data.workboard.suggestions.map((entry) => entry.item.id))
+      .toEqual([runningBody.data.item.id]);
+    expect(pendingBody.data.workboard.suggestions[0].suggestions[0].agentSession.status)
+      .toBe('running');
+
+    await workboardEvidenceRequest(token, `/${runningBody.data.item.id}/session-links`, {
+      method: 'POST',
+      body: JSON.stringify({
+        agentSessionId: runningSessionBody.data.agentSession.id,
+        linkSource: 'user',
+      }),
+    });
+
+    const listAfterAccept = await authedRequest(token, '/?staleWindowHours=24');
+    const acceptedBody = await listAfterAccept.json() as {
+      data: {
+        workboard: {
+          now: Array<{ item: { id: string } }>;
+          suggestions: Array<{ item: { id: string } }>;
+        };
+      };
+    };
+    expect(acceptedBody.data.workboard.now.map((entry) => entry.item.id))
+      .toEqual([runningBody.data.item.id]);
+    expect(acceptedBody.data.workboard.suggestions).toHaveLength(0);
   });
 });

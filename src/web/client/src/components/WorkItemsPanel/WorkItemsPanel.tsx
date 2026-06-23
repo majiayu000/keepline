@@ -1,12 +1,19 @@
 import { FormEvent, useMemo, useState } from 'react'
 import { Button } from '@/components/Button'
 import { useWorkItems } from '@/hooks'
-import type { WorkItem, WorkItemKind, WorkItemStatus } from '@/types'
+import type {
+  WorkItem,
+  WorkItemKind,
+  WorkItemStatus,
+  WorkboardData,
+  WorkboardItemProjection,
+} from '@/types'
 import styles from './WorkItemsPanel.module.css'
 
-type WorkItemsView = 'overview' | 'todo' | 'inbox'
+type WorkItemsView = 'workboard' | 'overview' | 'todo' | 'inbox'
 
 const VIEW_LABELS: Array<{ id: WorkItemsView; label: string }> = [
+  { id: 'workboard', label: 'Workboard' },
   { id: 'overview', label: 'Overview' },
   { id: 'todo', label: 'Todo' },
   { id: 'inbox', label: 'Inbox' },
@@ -36,6 +43,7 @@ export function WorkItemsPanel({ token }: WorkItemsPanelProps) {
   const {
     items,
     stats,
+    workboard,
     loading,
     saving,
     error,
@@ -44,7 +52,7 @@ export function WorkItemsPanel({ token }: WorkItemsPanelProps) {
     updateItem,
     deleteItem,
   } = useWorkItems(token)
-  const [view, setView] = useState<WorkItemsView>('overview')
+  const [view, setView] = useState<WorkItemsView>('workboard')
   const [title, setTitle] = useState('')
   const [kind, setKind] = useState<WorkItemKind>('todo')
   const [status, setStatus] = useState<WorkItemStatus>('inbox')
@@ -187,64 +195,210 @@ export function WorkItemsPanel({ token }: WorkItemsPanelProps) {
         </Button>
       </form>
 
-      {visibleItems.length === 0 ? (
+      {view === 'workboard' ? (
+        <WorkboardView
+          workboard={workboard}
+          setItemStatus={setItemStatus}
+          deleteItem={deleteItem}
+        />
+      ) : visibleItems.length === 0 ? (
         <div className={styles.emptyState}>No work items</div>
       ) : (
         <div className={styles.itemList}>
           {visibleItems.map((item) => (
-            <article key={item.id} className={styles.itemCard}>
-              <div className={styles.itemMain}>
-                <div className={styles.itemHeader}>
-                  <h3 className={styles.itemTitle}>{item.title}</h3>
-                  <div className={styles.badges}>
-                    <span className={`${styles.badge} ${styles[item.status]}`}>
-                      {STATUS_LABELS[item.status]}
-                    </span>
-                    <span className={styles.badge}>{KIND_LABELS[item.kind]}</span>
-                  </div>
-                </div>
-                {item.body && <p className={styles.itemBody}>{item.body}</p>}
-                <div className={styles.metaRow}>
-                  {item.area && <span>{item.area}</span>}
-                  {item.projectRoot && <span className={styles.path}>{item.projectRoot}</span>}
-                  {item.statusSource === 'accepted_agent_suggestion' && <span>Accepted suggestion</span>}
-                </div>
-              </div>
-              <div className={styles.actions}>
-                {item.status !== 'planned' && item.status !== 'done' && item.status !== 'archived' && (
-                  <button type="button" onClick={() => setItemStatus(item, 'planned')} title="Plan">
-                    P
-                  </button>
-                )}
-                {item.status !== 'active' && item.status !== 'done' && item.status !== 'archived' && (
-                  <button type="button" onClick={() => setItemStatus(item, 'active')} title="Start">
-                    S
-                  </button>
-                )}
-                {item.status !== 'blocked' && item.status !== 'done' && item.status !== 'archived' && (
-                  <button type="button" onClick={() => setItemStatus(item, 'blocked')} title="Block">
-                    B
-                  </button>
-                )}
-                {item.status !== 'done' && item.status !== 'archived' && (
-                  <button type="button" onClick={() => setItemStatus(item, 'done')} title="Done">
-                    D
-                  </button>
-                )}
-                {item.status !== 'archived' && (
-                  <button type="button" onClick={() => setItemStatus(item, 'archived')} title="Archive">
-                    A
-                  </button>
-                )}
-                <button type="button" onClick={() => deleteItem(item.id)} title="Delete">
-                  X
-                </button>
-              </div>
-            </article>
+            <WorkItemCard
+              key={item.id}
+              item={item}
+              setItemStatus={setItemStatus}
+              deleteItem={deleteItem}
+            />
           ))}
         </div>
       )}
     </div>
+  )
+}
+
+function WorkboardView({
+  workboard,
+  setItemStatus,
+  deleteItem,
+}: {
+  workboard: WorkboardData;
+  setItemStatus: (item: WorkItem, nextStatus: WorkItemStatus) => void;
+  deleteItem: (id: string) => void;
+}) {
+  return (
+    <div className={styles.workboard}>
+      <WorkboardSection
+        title="Now"
+        items={workboard.now}
+        setItemStatus={setItemStatus}
+        deleteItem={deleteItem}
+      />
+      <WorkboardSection
+        title="Waiting"
+        items={workboard.waiting}
+        setItemStatus={setItemStatus}
+        deleteItem={deleteItem}
+      />
+      <WorkboardSection
+        title="Stale"
+        items={workboard.stale}
+        setItemStatus={setItemStatus}
+        deleteItem={deleteItem}
+      />
+      <WorkboardSection
+        title="Done"
+        items={workboard.done}
+        setItemStatus={setItemStatus}
+        deleteItem={deleteItem}
+      />
+      {workboard.suggestions.length > 0 && (
+        <section className={styles.suggestionSection}>
+          <div className={styles.sectionHeader}>
+            <h3>Suggestions</h3>
+            <span>{workboard.suggestions.length}</span>
+          </div>
+          <div className={styles.itemList}>
+            {workboard.suggestions.map((projection) => (
+              <WorkItemCard
+                key={projection.item.id}
+                item={projection.item}
+                projection={projection}
+                setItemStatus={setItemStatus}
+                deleteItem={deleteItem}
+              />
+            ))}
+          </div>
+        </section>
+      )}
+    </div>
+  )
+}
+
+function WorkboardSection({
+  title,
+  items,
+  setItemStatus,
+  deleteItem,
+}: {
+  title: string;
+  items: WorkboardItemProjection[];
+  setItemStatus: (item: WorkItem, nextStatus: WorkItemStatus) => void;
+  deleteItem: (id: string) => void;
+}) {
+  return (
+    <section className={styles.boardSection}>
+      <div className={styles.sectionHeader}>
+        <h3>{title}</h3>
+        <span>{items.length}</span>
+      </div>
+      {items.length === 0 ? (
+        <div className={styles.boardEmpty}>No items</div>
+      ) : (
+        <div className={styles.boardItems}>
+          {items.map((projection) => (
+            <WorkItemCard
+              key={projection.item.id}
+              item={projection.item}
+              projection={projection}
+              setItemStatus={setItemStatus}
+              deleteItem={deleteItem}
+            />
+          ))}
+        </div>
+      )}
+    </section>
+  )
+}
+
+function WorkItemCard({
+  item,
+  projection,
+  setItemStatus,
+  deleteItem,
+}: {
+  item: WorkItem;
+  projection?: WorkboardItemProjection;
+  setItemStatus: (item: WorkItem, nextStatus: WorkItemStatus) => void;
+  deleteItem: (id: string) => void;
+}) {
+  return (
+    <article className={styles.itemCard}>
+      <div className={styles.itemMain}>
+        <div className={styles.itemHeader}>
+          <h3 className={styles.itemTitle}>{item.title}</h3>
+          <div className={styles.badges}>
+            <span className={`${styles.badge} ${styles[item.status]}`}>
+              {STATUS_LABELS[item.status]}
+            </span>
+            <span className={styles.badge}>{KIND_LABELS[item.kind]}</span>
+            {projection?.bucket && (
+              <span className={`${styles.badge} ${styles.bucketBadge}`}>
+                {projection.bucket}
+              </span>
+            )}
+          </div>
+        </div>
+        {item.body && <p className={styles.itemBody}>{item.body}</p>}
+        {projection?.progressSummary && (
+          <p className={styles.progressLine}>{projection.progressSummary}</p>
+        )}
+        <div className={styles.metaRow}>
+          {item.area && <span>{item.area}</span>}
+          {item.projectRoot && <span className={styles.path}>{item.projectRoot}</span>}
+          {projection?.lastActivityAt && (
+            <span>{new Date(projection.lastActivityAt).toLocaleString()}</span>
+          )}
+          {item.statusSource === 'accepted_agent_suggestion' && <span>Accepted suggestion</span>}
+        </div>
+        {projection && (projection.acceptedSessions.length > 0 || projection.suggestions.length > 0) && (
+          <div className={styles.sessionRow}>
+            {projection.acceptedSessions.map((session) => (
+              <span key={session.id} className={styles.sessionPill}>
+                {session.runtimeId} / {session.status}
+              </span>
+            ))}
+            {projection.suggestions.map((suggestion) => (
+              <span key={suggestion.linkId} className={styles.suggestionPill}>
+                Suggestion / {suggestion.agentSession.runtimeId} / {suggestion.agentSession.status}
+              </span>
+            ))}
+          </div>
+        )}
+      </div>
+      <div className={styles.actions}>
+        {item.status !== 'planned' && item.status !== 'done' && item.status !== 'archived' && (
+          <button type="button" onClick={() => setItemStatus(item, 'planned')} title="Plan">
+            P
+          </button>
+        )}
+        {item.status !== 'active' && item.status !== 'done' && item.status !== 'archived' && (
+          <button type="button" onClick={() => setItemStatus(item, 'active')} title="Start">
+            S
+          </button>
+        )}
+        {item.status !== 'blocked' && item.status !== 'done' && item.status !== 'archived' && (
+          <button type="button" onClick={() => setItemStatus(item, 'blocked')} title="Block">
+            B
+          </button>
+        )}
+        {item.status !== 'done' && item.status !== 'archived' && (
+          <button type="button" onClick={() => setItemStatus(item, 'done')} title="Done">
+            D
+          </button>
+        )}
+        {item.status !== 'archived' && (
+          <button type="button" onClick={() => setItemStatus(item, 'archived')} title="Archive">
+            A
+          </button>
+        )}
+        <button type="button" onClick={() => deleteItem(item.id)} title="Delete">
+          X
+        </button>
+      </div>
+    </article>
   )
 }
 

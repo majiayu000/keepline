@@ -20,6 +20,12 @@ import type {
 import { encodeAgentSessionId } from '../../../domain/work-item/index.js';
 import type { RuntimeId } from '../../../domain/runtime/index.js';
 
+export interface WorkItemEvidenceProjectionData {
+  links: WorkItemSessionLink[];
+  agentSessions: AgentSession[];
+  evidence: ProgressEvidence[];
+}
+
 interface AgentSessionRow {
   id: string;
   runtime_id: string;
@@ -123,6 +129,7 @@ export interface IWorkItemEvidenceRepository {
   findSessionLinkById(id: string): WorkItemSessionLink | null;
   createProgressEvidence(input: ProgressEvidenceCreateInput): ProgressEvidence;
   findEvidenceById(id: string): ProgressEvidence | null;
+  findProjectionDataForWorkItems(workItemIds: string[]): WorkItemEvidenceProjectionData;
 }
 
 class WorkItemEvidenceRepository implements IWorkItemEvidenceRepository {
@@ -291,6 +298,54 @@ class WorkItemEvidenceRepository implements IWorkItemEvidenceRepository {
     const row = db.prepare('SELECT * FROM progress_evidence WHERE id = ?')
       .get(id) as ProgressEvidenceRow | undefined;
     return row ? rowToProgressEvidence(row) : null;
+  }
+
+  findProjectionDataForWorkItems(workItemIds: string[]): WorkItemEvidenceProjectionData {
+    const db = getDatabase();
+    const uniqueWorkItemIds = [...new Set(workItemIds)].filter(Boolean);
+    if (uniqueWorkItemIds.length === 0) {
+      return { links: [], agentSessions: [], evidence: [] };
+    }
+
+    const workItemPlaceholders = uniqueWorkItemIds.map(() => '?').join(', ');
+    const links = db.prepare(`
+      SELECT * FROM work_item_session_links
+      WHERE work_item_id IN (${workItemPlaceholders})
+    `).all(...uniqueWorkItemIds) as WorkItemSessionLinkRow[];
+    const mappedLinks = links.map(rowToWorkItemSessionLink);
+    const agentSessionIds = [
+      ...new Set(mappedLinks.map((link) => link.agentSessionId)),
+    ];
+    const agentSessions = this.findAgentSessionsByIds(agentSessionIds);
+
+    const evidenceClauses = [`work_item_id IN (${workItemPlaceholders})`];
+    const evidenceParams: string[] = [...uniqueWorkItemIds];
+    if (agentSessionIds.length > 0) {
+      evidenceClauses.push(`agent_session_id IN (${agentSessionIds.map(() => '?').join(', ')})`);
+      evidenceParams.push(...agentSessionIds);
+    }
+    const evidence = db.prepare(`
+      SELECT * FROM progress_evidence
+      WHERE ${evidenceClauses.join(' OR ')}
+    `).all(...evidenceParams) as ProgressEvidenceRow[];
+
+    return {
+      links: mappedLinks,
+      agentSessions,
+      evidence: evidence.map(rowToProgressEvidence),
+    };
+  }
+
+  private findAgentSessionsByIds(ids: string[]): AgentSession[] {
+    const uniqueIds = [...new Set(ids)].filter(Boolean);
+    if (uniqueIds.length === 0) return [];
+
+    const db = getDatabase();
+    const rows = db.prepare(`
+      SELECT * FROM agent_sessions
+      WHERE id IN (${uniqueIds.map(() => '?').join(', ')})
+    `).all(...uniqueIds) as AgentSessionRow[];
+    return rows.map(rowToAgentSession);
   }
 }
 
