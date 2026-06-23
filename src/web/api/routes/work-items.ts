@@ -1,10 +1,17 @@
 import { Hono } from 'hono';
 import type { Context } from 'hono';
-import { workItemRepository } from '../../../infrastructure/database/index.js';
 import {
+  workItemEvidenceRepository,
+  workItemRepository,
+} from '../../../infrastructure/database/index.js';
+import {
+  DEFAULT_WORKBOARD_STALE_WINDOW_HOURS,
+  buildWorkboardProjection,
   isWorkItemKind,
   isWorkItemStatus,
   isWorkItemStatusSource,
+  type WorkboardItemProjection,
+  type WorkboardProjection,
   type WorkItem,
   type WorkItemCreateInput,
   type WorkItemFilters,
@@ -25,6 +32,42 @@ function serializeWorkItem(item: WorkItem) {
     createdAt: item.createdAt.toISOString(),
     updatedAt: item.updatedAt.toISOString(),
     completedAt: item.completedAt?.toISOString(),
+  };
+}
+
+function serializeWorkboardProjection(projection: WorkboardProjection) {
+  return {
+    now: projection.now.map(serializeWorkboardItem),
+    waiting: projection.waiting.map(serializeWorkboardItem),
+    stale: projection.stale.map(serializeWorkboardItem),
+    done: projection.done.map(serializeWorkboardItem),
+    suggestions: projection.suggestions.map(serializeWorkboardItem),
+    staleWindowHours: projection.staleWindowHours,
+    generatedAt: projection.generatedAt.toISOString(),
+  };
+}
+
+function serializeWorkboardItem(projection: WorkboardItemProjection) {
+  return {
+    ...projection,
+    item: serializeWorkItem(projection.item),
+    lastActivityAt: projection.lastActivityAt?.toISOString(),
+    waitingOnSession: projection.waitingOnSession
+      ? serializeWorkboardSession(projection.waitingOnSession)
+      : undefined,
+    acceptedSessions: projection.acceptedSessions.map(serializeWorkboardSession),
+    suggestions: projection.suggestions.map((suggestion) => ({
+      ...suggestion,
+      agentSession: serializeWorkboardSession(suggestion.agentSession),
+      suggestedAt: suggestion.suggestedAt.toISOString(),
+    })),
+  };
+}
+
+function serializeWorkboardSession(session: WorkboardItemProjection['acceptedSessions'][number]) {
+  return {
+    ...session,
+    lastActiveAt: session.lastActiveAt.toISOString(),
   };
 }
 
@@ -101,6 +144,19 @@ function parseStatusSource(value: unknown, fallback?: WorkItemStatusSource): {
   return { value };
 }
 
+function parseStaleWindowHours(raw: string | undefined): { value?: number; error?: string } {
+  if (raw == null || raw.trim() === '') {
+    return { value: DEFAULT_WORKBOARD_STALE_WINDOW_HOURS };
+  }
+
+  const parsed = Number(raw);
+  if (!Number.isFinite(parsed) || parsed <= 0 || parsed > 24 * 365) {
+    return { error: 'staleWindowHours must be between 0 and 8760' };
+  }
+
+  return { value: parsed };
+}
+
 app.get('/', (c) => {
   try {
     const filters: WorkItemFilters = {};
@@ -129,13 +185,26 @@ app.get('/', (c) => {
       filters.projectRoot = projectRoot;
     }
     filters.includeArchived = c.req.query('includeArchived') === 'true';
+    const staleWindowHours = parseStaleWindowHours(c.req.query('staleWindowHours'));
+    if (staleWindowHours.error) {
+      return c.json({ success: false, error: staleWindowHours.error }, 400);
+    }
 
     const items = workItemRepository.findAll(filters);
+    const evidence = workItemEvidenceRepository.findProjectionDataForWorkItems(
+      items.map((item) => item.id)
+    );
+    const workboard = buildWorkboardProjection({
+      items,
+      ...evidence,
+      staleWindowHours: staleWindowHours.value,
+    });
     return c.json({
       success: true,
       data: {
         items: items.map(serializeWorkItem),
         stats: workItemRepository.getOverviewStats(),
+        workboard: serializeWorkboardProjection(workboard),
       },
     });
   } catch (error) {
