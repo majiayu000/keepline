@@ -32,3 +32,5 @@ export { allMigrations } from './migrations/all.js';
 export { sessionRepository } from './repositories/session.repository.js';
 export { memoryRepository } from './repositories/memory.repository.js';
 export type { IMemoryRepository } from './repositories/memory.repository.js';
+export { workItemRepository } from './repositories/work-item.repository.js';
+export type { IWorkItemRepository } from './repositories/work-item.repository.js';
