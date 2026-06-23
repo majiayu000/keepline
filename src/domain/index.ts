@@ -16,3 +16,6 @@ export * from './recovery/index.js';
 
 // Memory domain
 export * from './memory/index.js';
+
+// Runtime domain
+export * from './runtime/index.js';
