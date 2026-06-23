@@ -1,6 +1,6 @@
 # Keepline Architecture Design
 
-> **目标**: 从「会话监控工具」升级为「Claude Code 自动化平台」
+> **目标**: 从「会话监控工具」升级为「本地 Agent Runtime 总控层」
 > **设计原则**: 接力赛模式 | 容错优先 | 人类在循环中 | 渐进增强
 
 ---

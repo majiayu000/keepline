@@ -125,7 +125,7 @@ export class SessionService {
     return [...lost, ...waiting];
   }
 
-  /** Sync Codex and Claude Code sessions with running processes */
+  /** Sync runtime adapter sessions with running processes */
   async syncSessions(options: SyncOptions = {}): Promise<{
     discovered: number;
     updated: number;

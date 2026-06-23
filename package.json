@@ -1,7 +1,7 @@
 {
   "name": "keepline",
   "version": "1.0.0",
-  "description": "The command center for Codex and Claude Code sessions - Never lose your work again",
+  "description": "The command center for local agent runtime sessions - Never lose your work again",
   "author": "Keepline Contributors",
   "license": "MIT",
   "type": "module",

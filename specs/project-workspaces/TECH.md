@@ -4,7 +4,7 @@ Product spec: `specs/project-workspaces/PRODUCT.md`
 
 ## Context
 
-- `README.md:37` - Keepline monitors Codex and Claude Code sessions in real time.
+- `README.md:37` - Keepline monitors local agent runtime sessions in real time, with Codex and Claude Code as supported runtime adapters.
 - `README.md:57` - The README already promises project overview as "Aggregated by project."
 - `docs/PROJECTS_VIEW_DESIGN.md:5` - The existing design introduces a Projects tab grouped by project/directory.
 - `docs/PROJECTS_VIEW_DESIGN.md:69` - The current project model is path, name, sessions, stats, currentTask, and lastActiveAt.
