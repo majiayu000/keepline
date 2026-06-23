@@ -11,6 +11,7 @@ import { ProjectsGrid } from '@/components/ProjectsGrid'
 import { MemoryPanel } from '@/components/MemoryPanel'
 import { PlansPanel } from '@/components/PlansPanel'
 import { TerminalPanel } from '@/components/TerminalPanel'
+import { WorkItemsPanel } from '@/components/WorkItemsPanel'
 import { AuthSetup } from '@/components/AuthSetup'
 import { AuthLogin } from '@/components/AuthLogin'
 import type { TabId } from '@/components/TabNav'
@@ -234,6 +235,10 @@ function DashboardApp({ token, onLogout }: DashboardAppProps) {
 
       {activeTab === 'analytics' && !loading && (
         <UsagePanel />
+      )}
+
+      {activeTab === 'work' && !loading && (
+        <WorkItemsPanel token={token} />
       )}
 
       {activeTab === 'projects' && !loading && (

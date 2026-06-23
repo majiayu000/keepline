@@ -34,6 +34,10 @@ import type {
   AgentClient,
   RuntimeFilter,
   SessionStatus,
+  WorkItem,
+  WorkItemCreateInput,
+  WorkItemsData,
+  WorkItemUpdateInput,
 } from '@/types'
 import { API_BASE, API_TIMEOUT_MS } from '@/constants'
 
@@ -307,6 +311,44 @@ export async function fetchClients(
 }
 
 // ═══════════════════════════════════════════════════════════════
+// WORK ITEMS API - Inbox/Todo/Idea capture
+// ═══════════════════════════════════════════════════════════════
+
+export async function fetchWorkItems(
+  signal?: AbortSignal
+): Promise<ApiResponse<WorkItemsData>> {
+  return request<WorkItemsData>('/work-items', undefined, signal)
+}
+
+export async function createWorkItem(
+  data: WorkItemCreateInput,
+  signal?: AbortSignal
+): Promise<ApiResponse<{ item: WorkItem }>> {
+  return request<{ item: WorkItem }>('/work-items', {
+    method: 'POST',
+    body: JSON.stringify(data),
+  }, signal)
+}
+
+export async function updateWorkItem(
+  id: string,
+  data: WorkItemUpdateInput,
+  signal?: AbortSignal
+): Promise<ApiResponse<{ item: WorkItem }>> {
+  return request<{ item: WorkItem }>(`/work-items/${id}`, {
+    method: 'PATCH',
+    body: JSON.stringify(data),
+  }, signal)
+}
+
+export async function deleteWorkItem(
+  id: string,
+  signal?: AbortSignal
+): Promise<ApiResponse> {
+  return request(`/work-items/${id}`, { method: 'DELETE' }, signal)
+}
+
+// ═══════════════════════════════════════════════════════════════
 // MEMORY API - Session context persistence
 // ═══════════════════════════════════════════════════════════════
 
@@ -493,6 +535,10 @@ export const api = {
   fetchQuota,
   fetchClients,
   fetchCodexQuota,
+  fetchWorkItems,
+  createWorkItem,
+  updateWorkItem,
+  deleteWorkItem,
   // Memory API
   fetchMemories,
   fetchMemorySummaries,

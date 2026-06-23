@@ -12,6 +12,8 @@ export function runMigrations(): void {
 export function resetDatabase(): void {
   const db = getDatabase();
   db.exec(`
+    DROP TABLE IF EXISTS work_items;
+    DROP TABLE IF EXISTS areas;
     DROP TABLE IF EXISTS terminal_sessions;
     DROP TABLE IF EXISTS terminal_audit_log;
     DROP TABLE IF EXISTS terminal_auth_sessions;
