@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, test } from 'bun:test';
-import { mkdtempSync, rmSync, writeFileSync } from 'fs';
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'fs';
 import { join } from 'path';
 import { tmpdir } from 'os';
 import {
@@ -19,6 +19,51 @@ function createCodexJsonlFile(lines: Array<Record<string, unknown> | string>): s
     .join('\n');
   writeFileSync(filePath, `${contents}\n`);
   return filePath;
+}
+
+function createTempHome(): string {
+  const homeDir = mkdtempSync(join(tmpdir(), 'keepline-codex-home-'));
+  tempDirs.push(homeDir);
+  return homeDir;
+}
+
+function writeCodexSessionFile(
+  homeDir: string,
+  rawSessionId: string,
+  lines: Array<Record<string, unknown> | string>
+): string {
+  const sessionDir = join(homeDir, '.codex', 'sessions', '2026', '06', '23');
+  mkdirSync(sessionDir, { recursive: true });
+  const filePath = join(sessionDir, `rollout-${rawSessionId}.jsonl`);
+  const contents = lines
+    .map((line) => (typeof line === 'string' ? line : JSON.stringify(line)))
+    .join('\n');
+  writeFileSync(filePath, `${contents}\n`);
+  return filePath;
+}
+
+function runCodexScannerScript(homeDir: string, script: string) {
+  const proc = Bun.spawnSync({
+    cmd: [process.execPath, '--eval', script],
+    cwd: process.cwd(),
+    env: {
+      ...process.env,
+      HOME: homeDir,
+      KEEPLINE_HOME: join(homeDir, '.keepline'),
+    },
+    stdout: 'pipe',
+    stderr: 'pipe',
+  });
+
+  if (proc.exitCode !== 0) {
+    throw new Error(proc.stderr.toString() || `codex scanner subprocess failed with code ${proc.exitCode}`);
+  }
+
+  const jsonLine = proc.stdout.toString().trim().split('\n').filter(Boolean).pop();
+  if (!jsonLine) {
+    throw new Error('codex scanner subprocess produced no JSON output');
+  }
+  return JSON.parse(jsonLine) as Record<string, unknown>;
 }
 
 afterEach(() => {
@@ -97,5 +142,63 @@ describe('Codex JSONL parser', () => {
         timestamp: '2026-06-17T01:00:05.000Z',
       },
     ]);
+  });
+});
+
+describe('Codex scanner', () => {
+  test('reports cached per-file parse failures while preserving healthy sessions', () => {
+    const homeDir = createTempHome();
+    const healthyId = '019ed4a3-2186-7e51-9aa1-ca1e376549b8';
+    const brokenId = '019ed4a3-2186-7e51-9aa1-ca1e376549b9';
+    const brokenPath = writeCodexSessionFile(homeDir, brokenId, [
+      {
+        type: 'session_meta',
+        timestamp: '2026-06-23T01:00:00.000Z',
+        payload: {
+          id: brokenId,
+          cwd: '/tmp/broken-codex',
+        },
+      },
+      '{"type":"response_item", invalid json',
+    ]);
+    writeCodexSessionFile(homeDir, healthyId, [
+      {
+        type: 'session_meta',
+        timestamp: '2026-06-23T01:00:00.000Z',
+        payload: {
+          id: healthyId,
+          cwd: '/tmp/healthy-codex',
+        },
+      },
+      {
+        type: 'response_item',
+        timestamp: '2026-06-23T01:00:01.000Z',
+        payload: {
+          type: 'message',
+          role: 'user',
+          content: [{ type: 'input_text', text: 'Healthy Codex session' }],
+        },
+      },
+    ]);
+
+    const result = runCodexScannerScript(homeDir, `
+      const { clearCodexSessionCache, getAllCodexSessionsWithFailures } = await import('./src/adapters/codex/scanner.ts');
+      clearCodexSessionCache();
+      const first = await getAllCodexSessionsWithFailures();
+      const second = await getAllCodexSessionsWithFailures();
+      console.log(JSON.stringify({
+        firstSessions: first.sessions.map((session) => session.rawSessionId),
+        firstFailures: first.failures.map((failure) => failure.filePath),
+        secondSessions: second.sessions.map((session) => session.rawSessionId),
+        secondFailures: second.failures.map((failure) => failure.filePath),
+      }));
+    `);
+
+    expect(result).toEqual({
+      firstSessions: [healthyId],
+      firstFailures: [brokenPath],
+      secondSessions: [healthyId],
+      secondFailures: [brokenPath],
+    });
   });
 });
