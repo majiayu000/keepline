@@ -18,6 +18,10 @@ import {
   type ClaudeSessionScanFailure,
   type ScanOptions,
 } from '../claude/scanner.js';
+import {
+  attributeRuntimeProcesses,
+  type RuntimeProcessAttributor,
+} from './process-attribution.js';
 import { parsedSessionToRuntimeSession, structuredCommand } from './session-mapper.js';
 
 interface ClaudeRuntimeScanSourceResult {
@@ -42,7 +46,7 @@ export const CLAUDE_CODE_DESCRIPTOR: RuntimeDescriptor = {
   compatibilityRoutes: {
     quota: ['/api/quota'],
     plans: ['/api/plans'],
-    hooks: ['/api/hooks', 'keepline hooks install', 'keepline hooks status'],
+    hooks: ['keepline hooks install', 'keepline hooks status'],
   },
 };
 
@@ -50,7 +54,9 @@ export class ClaudeCodeRuntimeAdapter implements AgentRuntimeAdapter {
   readonly descriptor = CLAUDE_CODE_DESCRIPTOR;
 
   constructor(
-    private readonly scanClaudeSessions: ClaudeCodeSessionScanner = getAllClaudeSessionsWithFailures
+    private readonly scanClaudeSessions: ClaudeCodeSessionScanner = getAllClaudeSessionsWithFailures,
+    private readonly attributeProcesses: RuntimeProcessAttributor = (sessions) =>
+      attributeRuntimeProcesses('claude-code', sessions)
   ) {}
 
   async scanSessions(options: RuntimeScanOptions = {}): Promise<RuntimeScanResult> {
@@ -62,21 +68,26 @@ export class ClaudeCodeRuntimeAdapter implements AgentRuntimeAdapter {
       });
       const sessions = Array.isArray(scanResult) ? scanResult : scanResult.sessions;
       const failures = Array.isArray(scanResult) ? [] : scanResult.failures ?? [];
+      const mappedSessions = sessions.map((session) =>
+        parsedSessionToRuntimeSession(this.descriptor.id, session, {
+          legacyClient: 'claude',
+        })
+      );
+      const processAttribution = this.attributeProcesses(mappedSessions);
 
       return {
         runtime: this.descriptor,
-        sessions: sessions.map((session) =>
-          parsedSessionToRuntimeSession(this.descriptor.id, session, {
-            legacyClient: 'claude',
-          })
-        ),
-        errors: failures.map((failure) => ({
-          runtimeId: this.descriptor.id,
-          code: 'parse-failed',
-          message: failure.message,
-          sourcePath: failure.filePath,
-          recoverable: true,
-        })),
+        sessions: processAttribution.sessions,
+        errors: [
+          ...failures.map((failure) => ({
+            runtimeId: this.descriptor.id,
+            code: 'parse-failed' as const,
+            message: failure.message,
+            sourcePath: failure.filePath,
+            recoverable: true,
+          })),
+          ...processAttribution.errors,
+        ],
       };
     } catch (error) {
       const scanError: RuntimeScanError = {

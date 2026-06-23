@@ -1,4 +1,7 @@
 import { describe, expect, test } from 'bun:test';
+import { mkdirSync, mkdtempSync, realpathSync, rmSync } from 'fs';
+import { tmpdir } from 'os';
+import { join } from 'path';
 import type {
   AgentRuntimeAdapter,
   RuntimeDescriptor,
@@ -12,8 +15,13 @@ import {
   ClaudeCodeRuntimeAdapter,
   CodexRuntimeAdapter,
   RuntimeRegistry,
+  attributeRuntimeProcesses,
   createDefaultRuntimeRegistry,
 } from '../adapters/runtimes/index.js';
+
+function skipProcessAttribution(sessions: RuntimeSession[]) {
+  return { sessions, errors: [] };
+}
 
 function runtimeSession(overrides: Partial<RuntimeSession> = {}): RuntimeSession {
   return {
@@ -125,6 +133,102 @@ describe('RuntimeRegistry', () => {
       },
     ]);
   });
+
+  test('normalizes cwd roots and filters scans by projectRoot', async () => {
+    const tmpRoot = mkdtempSync(join(tmpdir(), 'runtime-registry-'));
+    try {
+      const repoRoot = join(tmpRoot, 'repo');
+      const repoChild = join(repoRoot, 'packages', 'app');
+      const otherRoot = join(tmpRoot, 'other');
+      mkdirSync(join(repoRoot, '.git'), { recursive: true });
+      mkdirSync(repoChild, { recursive: true });
+      mkdirSync(otherRoot, { recursive: true });
+
+      const descriptor = stubDescriptor({ id: 'root-filter-runtime' });
+      const adapter = stubAdapter({
+        descriptor,
+        scanSessions: async () => ({
+          runtime: descriptor,
+          sessions: [
+            runtimeSession({
+              runtimeId: descriptor.id,
+              sessionId: 'repo-session',
+              cwd: repoChild,
+            }),
+            runtimeSession({
+              runtimeId: descriptor.id,
+              sessionId: 'other-session',
+              cwd: otherRoot,
+            }),
+          ],
+          errors: [],
+        }),
+      });
+
+      const result = await new RuntimeRegistry([adapter]).scanAll({ projectRoot: repoRoot });
+
+      expect(result[0].sessions.map((session) => session.sessionId)).toEqual(['repo-session']);
+      expect(result[0].sessions[0].projectRoot).toBe(realpathSync(repoRoot));
+    } finally {
+      rmSync(tmpRoot, { recursive: true, force: true });
+    }
+  });
+});
+
+describe('runtime process attribution', () => {
+  test('decorates matched runtime sessions with live process state', () => {
+    const now = new Date();
+    const result = attributeRuntimeProcesses(
+      'codex',
+      [runtimeSession({
+        runtimeId: 'codex',
+        sessionId: 'codex-session',
+        cwd: '/tmp/project',
+        startedAt: now,
+        lastActiveAt: now,
+      })],
+      () => [{
+        client: 'codex',
+        pid: 4242,
+        cwd: '/tmp/project',
+        tty: 'ttys001',
+        cpu: 0.1,
+        memory: 1.2,
+        startTime: now,
+        args: ['resume'],
+      }]
+    );
+
+    expect(result.errors).toEqual([]);
+    expect(result.sessions[0]).toMatchObject({
+      pid: 4242,
+      tty: 'ttys001',
+      processRunning: true,
+      cpuUsage: 0.1,
+      memoryUsage: 1.2,
+    });
+    expect(result.sessions[0].status).not.toBe('unknown');
+  });
+
+  test('surfaces process scanner failures without dropping history sessions', () => {
+    const result = attributeRuntimeProcesses(
+      'claude-code',
+      [runtimeSession({ runtimeId: 'claude-code' })],
+      () => {
+        throw new Error('ps failed');
+      }
+    );
+
+    expect(result.sessions).toHaveLength(1);
+    expect(result.errors).toEqual([
+      {
+        runtimeId: 'claude-code',
+        code: 'unknown',
+        message: 'ps failed',
+        recoverable: true,
+      },
+    ]);
+  });
 });
 
 describe('ClaudeCodeRuntimeAdapter', () => {
@@ -161,7 +265,7 @@ describe('ClaudeCodeRuntimeAdapter', () => {
       isSubAgent: true,
     };
 
-    const adapter = new ClaudeCodeRuntimeAdapter(async () => [parsed]);
+    const adapter = new ClaudeCodeRuntimeAdapter(async () => [parsed], skipProcessAttribution);
     const result = await adapter.scanSessions({ mode: 'full', includeSubAgents: true });
     const session = result.sessions[0];
 
@@ -171,7 +275,6 @@ describe('ClaudeCodeRuntimeAdapter', () => {
       sessionId: 'claude-session-123',
       cwd: '/tmp/project',
       agentId: 'agent-123',
-      parentSessionId: 'parent-session-123',
       parentRuntimeSessionId: 'parent-session-123',
       isSubAgent: true,
       usageStats: {
@@ -182,6 +285,7 @@ describe('ClaudeCodeRuntimeAdapter', () => {
         apiCalls: 1,
       },
     });
+    expect(session.parentSessionId).toBeUndefined();
     expect(session.filesTouched).toEqual(['/tmp/project/src/index.ts']);
     expect(session.toolCalls).toHaveLength(1);
   });
@@ -248,7 +352,7 @@ describe('ClaudeCodeRuntimeAdapter', () => {
         filePath: '/tmp/project/bad-session.jsonl',
         message: 'Invalid JSONL at line 3',
       }],
-    }));
+    }), skipProcessAttribution);
 
     const result = await adapter.scanSessions();
 
@@ -281,7 +385,7 @@ describe('CodexRuntimeAdapter', () => {
       lastActiveAt: new Date('2026-01-01T00:05:00.000Z'),
     };
 
-    const adapter = new CodexRuntimeAdapter(async () => [parsed]);
+    const adapter = new CodexRuntimeAdapter(async () => [parsed], skipProcessAttribution);
     const result = await adapter.scanSessions();
 
     expect(result.sessions[0]).toMatchObject({
@@ -343,7 +447,7 @@ describe('CodexRuntimeAdapter', () => {
         filePath: '/tmp/codex/bad-rollout.jsonl',
         message: 'Invalid JSONL at line 7',
       }],
-    }));
+    }), skipProcessAttribution);
 
     const result = await adapter.scanSessions();
 

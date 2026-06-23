@@ -87,7 +87,6 @@ export function parsedSessionToRuntimeSession(
     sessionId: 'rawSessionId' in session ? session.rawSessionId : session.sessionId,
     cwd: session.directory,
     agentId: session.agentId,
-    parentSessionId: session.parentSessionId,
     parentRuntimeSessionId: session.parentSessionId,
     isSubAgent: session.isSubAgent,
     status: 'unknown',

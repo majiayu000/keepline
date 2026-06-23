@@ -12,6 +12,7 @@ import type {
 } from '../../domain/runtime/index.js';
 import { ClaudeCodeRuntimeAdapter } from './claude-code.js';
 import { CodexRuntimeAdapter } from './codex.js';
+import { filterSessionsByProjectRoot, withResolvedProjectRoots } from './project-root.js';
 
 const FEATURE_CAPABILITIES: readonly RuntimeFeatureCapability[] = ['quota', 'plans', 'hooks'];
 
@@ -76,7 +77,14 @@ export class RuntimeRegistry {
     return Promise.all(
       this.list().map(async (adapter) => {
         try {
-          return await adapter.scanSessions(options);
+          const result = await adapter.scanSessions(options);
+          const sessions = withResolvedProjectRoots(result.sessions);
+          return {
+            ...result,
+            sessions: options.projectRoot
+              ? filterSessionsByProjectRoot(sessions, options.projectRoot)
+              : sessions,
+          };
         } catch (error) {
           const scanError: RuntimeScanError = {
             runtimeId: adapter.descriptor.id,
