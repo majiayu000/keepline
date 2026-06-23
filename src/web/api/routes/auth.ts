@@ -19,6 +19,12 @@ import {
 } from '../../../services/auth.service.js';
 import type { JwtPayload } from '../../../services/auth.service.js';
 import { logger } from '../../../lib/logger.js';
+import {
+  isAllowedFetchMetadata,
+  isLoopbackHostHeader,
+  isLoopbackOrigin,
+} from '../request-security.js';
+import { isLoopbackHost } from '../terminal-security.js';
 
 const auth = new Hono();
 const LOGIN_USERNAME_RATE_LIMIT_SCOPE = 'auth-login-username';
@@ -42,11 +48,6 @@ function isLoopbackPeer(address: string | undefined): boolean {
   return address === '127.0.0.1' || address === '::1' || address === '::ffff:127.0.0.1';
 }
 
-function isLoopbackServerHost(hostname: string): boolean {
-  const host = hostname.trim().toLowerCase();
-  return host === '127.0.0.1' || host === 'localhost' || host === '::1' || host === '[::1]';
-}
-
 function hasConfiguredPublicOrigin(): boolean {
   const configuredOrigins = [
     process.env.KEEPLINE_PUBLIC_ORIGIN,
@@ -59,7 +60,17 @@ function hasConfiguredPublicOrigin(): boolean {
 
 function isLoopbackOnlyServerMode(): boolean {
   const hostname = process.env.KEEPLINE_HOST || '127.0.0.1';
-  return isLoopbackServerHost(hostname) && !hasConfiguredPublicOrigin();
+  return isLoopbackHost(hostname) && !hasConfiguredPublicOrigin();
+}
+
+function isAllowedLocalLoginBrowserContext(c: Context): boolean {
+  const host = c.req.header('host');
+  if (!isLoopbackHostHeader(host)) return false;
+
+  const origin = c.req.header('origin');
+  if (origin && !isLoopbackOrigin(origin)) return false;
+
+  return isAllowedFetchMetadata(c.req.raw);
 }
 
 /**
@@ -170,7 +181,11 @@ auth.post(
 // POST /api/auth/local - Localhost passwordless login
 auth.post('/local', rateLimit(10, 60 * 1000), async (c) => {
   const peerAddress = getTcpPeerAddress(c);
-  if (!isLoopbackOnlyServerMode() || !isLoopbackPeer(peerAddress)) {
+  if (
+    !isLoopbackOnlyServerMode() ||
+    !isLoopbackPeer(peerAddress) ||
+    !isAllowedLocalLoginBrowserContext(c)
+  ) {
     return c.json({ success: false, error: 'Local login only available from localhost' }, 403);
   }
 

@@ -13,12 +13,24 @@ import type { CodexParsedSessionData, CodexSessionFile } from './types.js';
 export interface CodexScanOptions {
   includeToolCalls?: boolean;
   maxAgeDays?: number;
+  sessionsDir?: string;
+}
+
+export interface CodexSessionScanFailure {
+  filePath: string;
+  message: string;
+}
+
+export interface CodexSessionScanResult {
+  sessions: CodexParsedSessionData[];
+  failures: CodexSessionScanFailure[];
 }
 
 interface CodexSessionCache {
   data: CodexParsedSessionData | null;
   modifiedAt: number;
   includeToolCalls: boolean;
+  failureMessage?: string;
 }
 
 const sessionSummaryCache = new Map<string, CodexSessionCache>();
@@ -32,12 +44,21 @@ export function clearCodexSessionCache(): void {
 function scanDirectoryRecursive(
   dir: string,
   cutoffTime: number,
-  sessions: CodexSessionFile[]
+  sessions: CodexSessionFile[],
+  readFailures: string[]
 ): void {
-  for (const entry of readdirSync(dir, { withFileTypes: true })) {
+  let entries;
+  try {
+    entries = readdirSync(dir, { withFileTypes: true });
+  } catch {
+    readFailures.push(dir);
+    return;
+  }
+
+  for (const entry of entries) {
     const path = join(dir, entry.name);
     if (entry.isDirectory()) {
-      scanDirectoryRecursive(path, cutoffTime, sessions);
+      scanDirectoryRecursive(path, cutoffTime, sessions, readFailures);
       continue;
     }
 
@@ -45,7 +66,13 @@ function scanDirectoryRecursive(
       continue;
     }
 
-    const fileStat = statSync(path);
+    let fileStat;
+    try {
+      fileStat = statSync(path);
+    } catch {
+      readFailures.push(path);
+      continue;
+    }
     if (cutoffTime > 0 && fileStat.mtime.getTime() < cutoffTime) {
       continue;
     }
@@ -72,8 +99,9 @@ function scanDirectoryRecursive(
 }
 
 export function scanCodexSessionsDirectory(options: CodexScanOptions = {}): CodexSessionFile[] {
-  if (!existsSync(CODEX_SESSIONS)) {
-    logger.warn('Codex sessions directory not found');
+  const sessionsDir = options.sessionsDir ?? CODEX_SESSIONS;
+  if (!existsSync(sessionsDir)) {
+    logger.debug('Codex sessions directory not found, skipping scan', { path: sessionsDir });
     return [];
   }
 
@@ -81,7 +109,14 @@ export function scanCodexSessionsDirectory(options: CodexScanOptions = {}): Code
     ? Date.now() - options.maxAgeDays * 24 * 60 * 60 * 1000
     : 0;
   const sessions: CodexSessionFile[] = [];
-  scanDirectoryRecursive(CODEX_SESSIONS, cutoffTime, sessions);
+  const readFailures: string[] = [];
+  scanDirectoryRecursive(sessionsDir, cutoffTime, sessions, readFailures);
+  if (readFailures.length > 0) {
+    logger.warn('Skipped unreadable Codex session paths during scan', {
+      count: readFailures.length,
+      sample: readFailures.slice(0, 5),
+    });
+  }
   return sessions;
 }
 
@@ -107,28 +142,50 @@ async function getOrParseCodexSession(
   return parsed;
 }
 
-export async function getAllCodexSessions(
+async function scanAllCodexSessionsWithFailures(
   options: CodexScanOptions = {}
-): Promise<CodexParsedSessionData[]> {
+): Promise<CodexSessionScanResult> {
   const sessionFiles = scanCodexSessionsDirectory(options);
   const includeToolCalls = options.includeToolCalls ?? false;
   const sessions: CodexParsedSessionData[] = [];
-  const parseFailures: string[] = [];
+  const failures: CodexSessionScanFailure[] = [];
+  const freshFailures: CodexSessionScanFailure[] = [];
   const seenFilePaths = new Set<string>();
 
   for (const file of sessionFiles) {
     seenFilePaths.add(file.filePath);
     try {
+      const cached = sessionSummaryCache.get(file.filePath);
+      const fileModTime = file.modifiedAt.getTime();
+      if (cached && cached.modifiedAt === fileModTime) {
+        if (!includeToolCalls || cached.includeToolCalls) {
+          if (cached.failureMessage) {
+            failures.push({
+              filePath: file.filePath,
+              message: cached.failureMessage,
+            });
+            continue;
+          }
+        }
+      }
+
       const parsed = await getOrParseCodexSession(file, sessionSummaryCache, includeToolCalls);
       if (parsed) {
         sessions.push(parsed);
       }
-    } catch {
-      parseFailures.push(file.filePath);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      const failure = {
+        filePath: file.filePath,
+        message,
+      };
+      failures.push(failure);
+      freshFailures.push(failure);
       sessionSummaryCache.set(file.filePath, {
         data: null,
         modifiedAt: file.modifiedAt.getTime(),
         includeToolCalls,
+        failureMessage: message,
       });
     }
   }
@@ -141,14 +198,28 @@ export async function getAllCodexSessions(
     }
   }
 
-  if (parseFailures.length > 0) {
+  if (freshFailures.length > 0) {
     logger.warn('Skipped invalid Codex session files during scan', {
-      count: parseFailures.length,
-      sample: parseFailures.slice(0, 5),
+      count: freshFailures.length,
+      sample: freshFailures.slice(0, 5).map((failure) => failure.filePath),
     });
   }
 
-  return sessions;
+  return { sessions, failures };
+}
+
+export async function getAllCodexSessions(
+  options: CodexScanOptions = {}
+): Promise<CodexParsedSessionData[]> {
+  const result = await scanAllCodexSessionsWithFailures(options);
+  return result.sessions;
+}
+
+export async function getAllCodexSessionsWithFailures(
+  options: CodexScanOptions = {}
+): Promise<CodexSessionScanResult> {
+  const result = await scanAllCodexSessionsWithFailures(options);
+  return result;
 }
 
 export async function getCodexSessionById(

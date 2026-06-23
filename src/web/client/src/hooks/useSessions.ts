@@ -2,11 +2,23 @@ import { useState, useEffect, useCallback, useRef } from 'react'
 import { api } from '@/services/api'
 import { REFRESH_INTERVAL_MS } from '@/constants'
 import { useWebSocket, type WebSocketMessage } from './useWebSocket'
-import type { Session, SessionStats, SessionFullData, PaginationInfo, TerminalApp } from '@/types'
+import type { Session, SessionStats, SessionFullData, PaginationInfo, TerminalApp, SessionStatus } from '@/types'
 
 export type ConnectionStatus = 'polling' | 'realtime' | 'disconnected'
 
-// Number of sessions to load per page
+export interface SessionQueryOptions {
+  searchQuery?: string
+  statusFilters?: Set<SessionStatus>
+  projectRoot?: string
+  projectId?: string
+}
+
+export interface SessionActionResult {
+  success: boolean
+  error?: string
+  command?: string
+}
+
 const PAGE_SIZE = 50
 const SNAPSHOT_PAGE_SIZE = 100
 
@@ -72,28 +84,28 @@ interface UseSessionsReturn {
   error: string | null
   refresh: () => Promise<void>
   sync: () => Promise<boolean>
-  recoverSession: (sessionId: string, terminalApp?: TerminalApp) => Promise<boolean>
+  recoverSession: (sessionId: string, terminalApp?: TerminalApp) => Promise<SessionActionResult>
   stopSession: (sessionId: string) => Promise<boolean>
   completeSession: (sessionId: string) => Promise<boolean>
-  // Lazy loading - now uses combined /full endpoint (1 request instead of 3)
   getSessionFull: (sessionId: string) => SessionFullData | undefined
   loadSessionFull: (sessionId: string) => Promise<SessionFullData | null>
   isLoadingFull: (sessionId: string) => boolean
-  // Pagination
   pagination: PaginationInfo | null
   loadMore: () => Promise<void>
   loadingMore: boolean
-  // WebSocket status
   connectionStatus: ConnectionStatus
-  // Incremented when session data changes
   version: number
 }
 
-interface UseSessionsOptions {
-  projectRoot?: string
-}
+export function useSessions(token: string, options: SessionQueryOptions = {}): UseSessionsReturn {
+  const searchQuery = options.searchQuery?.trim() ?? ''
+  const statusFilterValues = Array.from(options.statusFilters ?? []).sort()
+  const statusFilterKey = statusFilterValues.join(',')
+  const projectRoot = options.projectRoot
+  const projectId = options.projectId
+  const listQueryKey = `${searchQuery}\u0000${statusFilterKey}\u0000${projectRoot ?? ''}\u0000${projectId ?? ''}`
+  const hasServerFilters = searchQuery.length > 0 || statusFilterValues.length > 0 || Boolean(projectRoot || projectId)
 
-export function useSessions(token: string, options: UseSessionsOptions = {}): UseSessionsReturn {
   const [sessions, setSessions] = useState<Session[]>([])
   const [allSessions, setAllSessions] = useState<Session[]>([])
   const [stats, setStats] = useState<SessionStats | null>(null)
@@ -107,15 +119,18 @@ export function useSessions(token: string, options: UseSessionsOptions = {}): Us
   const intervalRef = useRef<number | null>(null)
   const mountedRef = useRef(true)
   const wsConnectedRef = useRef(false)
-  const projectRootRef = useRef<string | undefined>(options.projectRoot)
-  const loadRequestIdRef = useRef(0)
+  const loadSessionsRef = useRef<() => Promise<void>>(() => Promise.resolve())
+  const listRequestSeqRef = useRef(0)
+  const loadMoreRequestSeqRef = useRef(0)
+  const listQueryKeyRef = useRef(listQueryKey)
+  const sessionsLengthRef = useRef(0)
   const versionSignatureRef = useRef('')
 
-  // Full data cache for lazy loading - use refs to avoid re-render loops
-  // Now caches combined data from /full endpoint (details + tools + subagents)
+  listQueryKeyRef.current = listQueryKey
+  sessionsLengthRef.current = sessions.length
+
   const fullDataCacheRef = useRef<Map<string, SessionFullData>>(new Map())
   const loadingFullRef = useRef<Set<string>>(new Set())
-  // Trigger re-render when cache updates
   const [, forceUpdate] = useState(0)
 
   const bumpVersionIfChanged = useCallback((snapshot: Session[]) => {
@@ -125,11 +140,6 @@ export function useSessions(token: string, options: UseSessionsOptions = {}): Us
     setVersion(v => v + 1)
   }, [])
 
-  useEffect(() => {
-    projectRootRef.current = options.projectRoot
-  }, [options.projectRoot])
-
-  // Handle WebSocket messages
   const handleWebSocketMessage = useCallback((message: WebSocketMessage) => {
     if (!mountedRef.current) return
 
@@ -137,7 +147,7 @@ export function useSessions(token: string, options: UseSessionsOptions = {}): Us
       const data = message.data as { sessions: Session[]; stats: SessionStats }
       setAllSessions(data.sessions)
       bumpVersionIfChanged(data.sessions)
-      if (projectRootRef.current) {
+      if (hasServerFilters) {
         loadSessionsRef.current()
         return
       }
@@ -146,16 +156,14 @@ export function useSessions(token: string, options: UseSessionsOptions = {}): Us
       setPagination(null)
       setError(null)
     }
-  }, [bumpVersionIfChanged])
+  }, [bumpVersionIfChanged, hasServerFilters])
 
-  // WebSocket connection
   useWebSocket({
     token,
     onMessage: handleWebSocketMessage,
     onConnect: () => {
       wsConnectedRef.current = true
       setConnectionStatus('realtime')
-      // Clear polling interval when WebSocket is connected
       if (intervalRef.current) {
         clearInterval(intervalRef.current)
         intervalRef.current = null
@@ -164,7 +172,6 @@ export function useSessions(token: string, options: UseSessionsOptions = {}): Us
     onDisconnect: () => {
       wsConnectedRef.current = false
       setConnectionStatus('polling')
-      // Restart polling when WebSocket disconnects
       if (!intervalRef.current) {
         intervalRef.current = window.setInterval(() => {
           loadSessionsRef.current()
@@ -173,96 +180,110 @@ export function useSessions(token: string, options: UseSessionsOptions = {}): Us
     },
   })
 
-  // Use ref for loadSessions to avoid stale closures
-  const loadSessionsRef = useRef<() => Promise<void>>(() => Promise.resolve())
-
-  // Use ref to avoid stale closures in interval
   const loadSessions = useCallback(async () => {
-    const requestId = ++loadRequestIdRef.current
-    const requestedProjectRoot = options.projectRoot
-
-    // Use 'basic' mode for faster loading, with pagination
+    const requestSeq = ++listRequestSeqRef.current
+    const requestQueryKey = listQueryKey
     const response = await api.fetchSessions('basic', {
       limit: PAGE_SIZE,
-      projectRoot: requestedProjectRoot,
+      query: searchQuery,
+      status: statusFilterValues,
+      projectRoot,
+      projectId,
     })
 
-    // Only update state if component is still mounted
-    if (!mountedRef.current) return
-    if (requestId !== loadRequestIdRef.current) return
-    if (requestedProjectRoot !== projectRootRef.current) return
+    if (
+      !mountedRef.current ||
+      requestSeq !== listRequestSeqRef.current ||
+      requestQueryKey !== listQueryKeyRef.current
+    ) return
 
     if (response.success && response.data) {
       setSessions(response.data.sessions)
-      if (requestedProjectRoot) {
-        fetchAllBasicSessionsSnapshot().then(unfilteredResponse => {
-          if (!mountedRef.current) return
-          if (requestId !== loadRequestIdRef.current) return
-          if (requestedProjectRoot !== projectRootRef.current) return
-
-          if (!unfilteredResponse.error) {
-            setAllSessions(unfilteredResponse.sessions)
-            bumpVersionIfChanged(unfilteredResponse.sessions)
-          } else {
-            setError(unfilteredResponse.error)
-          }
-        })
-      } else {
-        if (!response.data.pagination?.hasMore) {
-          setAllSessions(response.data.sessions)
-          bumpVersionIfChanged(response.data.sessions)
-        } else {
-          fetchAllBasicSessionsSnapshot().then(unfilteredResponse => {
-            if (!mountedRef.current) return
-            if (requestId !== loadRequestIdRef.current) return
-            if (requestedProjectRoot !== projectRootRef.current) return
-
-            if (!unfilteredResponse.error) {
-              setAllSessions(unfilteredResponse.sessions)
-              bumpVersionIfChanged(unfilteredResponse.sessions)
-            } else {
-              setError(unfilteredResponse.error)
-            }
-          })
-        }
-      }
       setStats(response.data.stats)
       setPagination(response.data.pagination || null)
       setError(null)
+
+      if (!hasServerFilters && !response.data.pagination?.hasMore) {
+        setAllSessions(response.data.sessions)
+        bumpVersionIfChanged(response.data.sessions)
+        return
+      }
+
+      fetchAllBasicSessionsSnapshot().then(unfilteredResponse => {
+        if (
+          !mountedRef.current ||
+          requestSeq !== listRequestSeqRef.current ||
+          requestQueryKey !== listQueryKeyRef.current
+        ) return
+
+        if (!unfilteredResponse.error) {
+          setAllSessions(unfilteredResponse.sessions)
+          bumpVersionIfChanged(unfilteredResponse.sessions)
+        } else {
+          setError(unfilteredResponse.error)
+        }
+      })
     } else {
       setError(response.error || 'Failed to load sessions')
     }
-  }, [bumpVersionIfChanged, options.projectRoot])
+  }, [
+    searchQuery,
+    statusFilterKey,
+    projectRoot,
+    projectId,
+    hasServerFilters,
+    listQueryKey,
+    bumpVersionIfChanged,
+  ])
 
-  // Load more sessions (pagination)
   const loadMore = useCallback(async () => {
     if (!pagination?.hasMore || loadingMore) return
 
-    const requestedProjectRoot = options.projectRoot
     setLoadingMore(true)
+    const requestSeq = listRequestSeqRef.current
+    const loadMoreSeq = ++loadMoreRequestSeqRef.current
+    const requestQueryKey = listQueryKey
+    const requestOffset = sessions.length
     const response = await api.fetchSessions('basic', {
       limit: PAGE_SIZE,
-      offset: sessions.length,
-      skipSync: true, // Don't trigger sync for pagination requests
-      projectRoot: requestedProjectRoot,
+      offset: requestOffset,
+      skipSync: true,
+      query: searchQuery,
+      status: statusFilterValues,
+      projectRoot,
+      projectId,
     })
 
-    if (!mountedRef.current) return
-    if (requestedProjectRoot !== projectRootRef.current) {
-      setLoadingMore(false)
+    if (
+      !mountedRef.current ||
+      loadMoreSeq !== loadMoreRequestSeqRef.current ||
+      requestSeq !== listRequestSeqRef.current ||
+      requestQueryKey !== listQueryKeyRef.current ||
+      requestOffset !== sessionsLengthRef.current
+    ) {
+      if (mountedRef.current && loadMoreSeq === loadMoreRequestSeqRef.current) {
+        setLoadingMore(false)
+      }
       return
     }
 
     if (response.success && response.data) {
-      // Append new sessions to existing list
       const nextSessions = response.data.sessions
       setSessions(prev => [...prev, ...nextSessions])
       setPagination(response.data.pagination || null)
     }
     setLoadingMore(false)
-  }, [pagination, loadingMore, sessions.length, options.projectRoot])
+  }, [
+    pagination,
+    loadingMore,
+    sessions.length,
+    searchQuery,
+    statusFilterKey,
+    projectRoot,
+    projectId,
+    listQueryKey,
+  ])
 
-  // Keep loadSessionsRef updated
   useEffect(() => {
     loadSessionsRef.current = loadSessions
   }, [loadSessions])
@@ -295,7 +316,14 @@ export function useSessions(token: string, options: UseSessionsOptions = {}): Us
     if (response.success) {
       await loadSessions()
     }
-    return response.success
+    const command = response.data?.command
+    return {
+      success: response.success,
+      error: command && response.error
+        ? `${response.error}. Run manually: ${command}`
+        : response.error,
+      command,
+    }
   }, [loadSessions])
 
   const stopSession = useCallback(async (sessionId: string) => {
@@ -314,28 +342,20 @@ export function useSessions(token: string, options: UseSessionsOptions = {}): Us
     return response.success
   }, [loadSessions])
 
-  // Lazy load full session data (details + tools + subagents) - 1 request instead of 3
   const loadSessionFull = useCallback(async (sessionId: string): Promise<SessionFullData | null> => {
-    // Return cached if available
     const cached = fullDataCacheRef.current.get(sessionId)
     if (cached) return cached
-
-    // Skip if already loading
     if (loadingFullRef.current.has(sessionId)) return null
 
-    // Mark as loading
     loadingFullRef.current.add(sessionId)
     forceUpdate(n => n + 1)
 
     const response = await api.fetchSessionFull(sessionId)
 
     if (!mountedRef.current) return null
-
-    // Remove from loading set
     loadingFullRef.current.delete(sessionId)
 
     if (response.success && response.data) {
-      // Cache the result
       fullDataCacheRef.current.set(sessionId, response.data)
       forceUpdate(n => n + 1)
       return response.data
@@ -343,33 +363,40 @@ export function useSessions(token: string, options: UseSessionsOptions = {}): Us
 
     forceUpdate(n => n + 1)
     return null
-  }, []) // No dependencies - uses refs
+  }, [])
 
-  // Get cached full data (synchronous)
   const getSessionFull = useCallback((sessionId: string): SessionFullData | undefined => {
     return fullDataCacheRef.current.get(sessionId)
-  }, []) // No dependencies - uses ref
+  }, [])
 
-  // Check if full data is loading
   const isLoadingFull = useCallback((sessionId: string): boolean => {
     return loadingFullRef.current.has(sessionId)
-  }, []) // No dependencies - uses ref
+  }, [])
 
   useEffect(() => {
     mountedRef.current = true
-
     return () => {
       mountedRef.current = false
     }
-  }, []) // Empty deps - only run on mount
+  }, [])
 
   useEffect(() => {
-    refresh()
-  }, [refresh])
+    let cancelled = false
+    const timeoutId = window.setTimeout(async () => {
+      setLoading(true)
+      await loadSessions()
+      if (!cancelled && mountedRef.current) {
+        setLoading(false)
+      }
+    }, searchQuery ? 250 : 0)
 
-  // Auto-refresh interval (only when WebSocket is not connected)
+    return () => {
+      cancelled = true
+      clearTimeout(timeoutId)
+    }
+  }, [loadSessions, searchQuery])
+
   useEffect(() => {
-    // Only start polling if WebSocket is not connected
     if (!wsConnectedRef.current) {
       intervalRef.current = window.setInterval(() => {
         loadSessionsRef.current()
@@ -382,7 +409,7 @@ export function useSessions(token: string, options: UseSessionsOptions = {}): Us
         intervalRef.current = null
       }
     }
-  }, []) // Remove loadSessions dependency - use ref instead
+  }, [])
 
   return {
     sessions,
@@ -396,15 +423,12 @@ export function useSessions(token: string, options: UseSessionsOptions = {}): Us
     recoverSession,
     stopSession,
     completeSession,
-    // Lazy loading - combined endpoint (1 request instead of 3)
     getSessionFull,
     loadSessionFull,
     isLoadingFull,
-    // Pagination
     pagination,
     loadMore,
     loadingMore,
-    // WebSocket status
     connectionStatus,
     version,
   }

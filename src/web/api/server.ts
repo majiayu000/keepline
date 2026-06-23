@@ -31,6 +31,7 @@ import {
   shouldRunRealtimeFullSync,
 } from './realtime-updates.js';
 import { isAllowedTerminalOrigin } from './terminal-security.js';
+import { isAllowedRequestHost } from './request-security.js';
 
 const app = new Hono();
 
@@ -179,6 +180,13 @@ export async function startWebServer(port: number = 3377) {
     idleTimeout: 255, // max value, prevents cloudflared/proxy timeout
     fetch(req, server) {
       const url = new URL(req.url);
+      if (!isAllowedRequestHost(req, hostname, port)) {
+        logger.warn('Rejected request with invalid Host', {
+          host: req.headers.get('host') ?? '<missing>',
+          path: url.pathname,
+        });
+        return new Response('Forbidden', { status: 403 });
+      }
 
       // Handle WebSocket upgrade - dashboard
       if (url.pathname === '/ws') {
