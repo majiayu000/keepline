@@ -24,6 +24,12 @@ import { isValidSessionId } from '../middleware/validation.js';
 import { broadcast } from '../websocket.js';
 import { serializeBasicSessions } from '../session-response.js';
 import { matchesProjectFilter } from '../../../services/project.aggregator.js';
+import {
+  clientForRuntimeId,
+  getRuntimeScanStatus,
+  parseRuntimeFilter,
+  runtimeIdForClient,
+} from '../../../services/runtime-status.js';
 
 const app = new Hono();
 app.use('*', authMiddleware);
@@ -44,6 +50,7 @@ async function getParsedSessionById(sessionId: string) {
 type SearchableSession = {
   sessionId?: string;
   client?: string;
+  runtimeId?: string;
   directory?: string;
   status?: string;
   title?: string;
@@ -82,6 +89,7 @@ function matchesSessionQuery(session: SearchableSession, query: string): boolean
     session.initialPrompt,
     session.sessionId,
     session.client,
+    session.runtimeId,
     session.status,
     session.lastTool,
     session.currentFile,
@@ -128,6 +136,13 @@ app.get('/', async (c) => {
     const fields = c.req.query('fields') || 'full'; // 'basic' or 'full'
     const skipSync = c.req.query('skipSync') === 'true'; // Skip sync for pagination requests
     const client = c.req.query('client');
+    const runtimeParseResult = parseRuntimeFilter(c.req.query('runtime'));
+    if (runtimeParseResult.invalid) {
+      return c.json({
+        success: false,
+        error: `Invalid runtime filter: ${runtimeParseResult.invalid}`,
+      }, 400);
+    }
     const projectRoot = c.req.query('projectRoot');
     const projectId = c.req.query('projectId');
     const query = c.req.query('q') || c.req.query('query') || '';
@@ -158,8 +173,16 @@ app.get('/', async (c) => {
       sessions = sessions.filter(s => s.client === client);
     }
 
+    if (runtimeParseResult.runtimeId) {
+      const runtimeClient = clientForRuntimeId(runtimeParseResult.runtimeId);
+      sessions = sessions.filter(s => s.client === runtimeClient);
+    }
+
     if (query.trim()) {
-      sessions = sessions.filter(s => matchesSessionQuery(s, query));
+      sessions = sessions.filter(s => matchesSessionQuery({
+        ...s,
+        runtimeId: runtimeIdForClient(s.client),
+      }, query));
     }
 
     const stats = getSessionStats(sessions);
@@ -192,6 +215,7 @@ app.get('/', async (c) => {
         data: {
           sessions: serializeBasicSessions(paginatedSessions),
           stats,
+          runtimeScan: getRuntimeScanStatus(),
           pagination: {
             total,
             limit,
@@ -208,6 +232,7 @@ app.get('/', async (c) => {
       data: {
         sessions: paginatedSessions.map(s => ({
           ...s,
+          runtimeId: runtimeIdForClient(s.client),
           lastActiveAt: s.lastActiveAt.toISOString(),
           startedAt: s.startedAt?.toISOString(),
           completedAt: s.completedAt?.toISOString(),
@@ -216,6 +241,7 @@ app.get('/', async (c) => {
           usageStats: 'usageStats' in s ? s.usageStats : undefined,
         })),
         stats,
+        runtimeScan: getRuntimeScanStatus(),
         pagination: {
           total,
           limit,

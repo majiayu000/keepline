@@ -3,7 +3,7 @@
  */
 
 import type { ProjectInfo, ProjectOverviewStats } from './project'
-import type { Session, SessionStats, ToolCallInfo, SubAgent } from './session'
+import type { Session, SessionRuntimeId, SessionStats, ToolCallInfo, SubAgent } from './session'
 
 // Base API response
 export interface ApiResponse<T = unknown> {
@@ -21,10 +21,27 @@ export interface PaginationInfo {
   hasMore: boolean
 }
 
+export interface RuntimeScanError {
+  runtimeId: SessionRuntimeId
+  code: string
+  message: string
+  sourcePath?: string
+  recoverable: boolean
+}
+
+export interface RuntimeScanSummary {
+  runtimeId: SessionRuntimeId
+  degraded: boolean
+  errorCount: number
+  errors: RuntimeScanError[]
+  lastScanAt?: string
+}
+
 // GET /api/sessions
 export interface SessionsData {
   sessions: Session[]
   stats: SessionStats
+  runtimeScan?: RuntimeScanSummary[]
   pagination?: PaginationInfo
 }
 
@@ -32,6 +49,7 @@ export interface SessionsData {
 export interface ProjectsData {
   projects: ProjectInfo[]
   stats: ProjectOverviewStats
+  runtimeScan?: RuntimeScanSummary[]
 }
 
 // POST /api/sync

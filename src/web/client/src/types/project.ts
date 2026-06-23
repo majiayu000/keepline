@@ -2,9 +2,10 @@
  * Project types - for grouping sessions by directory
  */
 
-import type { AgentClient, Session, SessionStatus, UsageStats } from './session'
+import type { AgentClient, Session, SessionRuntimeId, SessionStatus, UsageStats } from './session'
 
 export type ProjectClient = AgentClient | 'unknown'
+export type ProjectRuntime = SessionRuntimeId | 'unknown'
 
 /** Statistics for a single project */
 export interface ProjectStats {
@@ -36,6 +37,8 @@ export interface ProjectInfo {
   stats: ProjectStats
   /** Session counts by agent client */
   clientCounts: Record<ProjectClient, number>
+  /** Session counts by runtime adapter */
+  runtimeCounts: Record<ProjectRuntime, number>
   /** Title/prompt of the most recently active session */
   currentTask?: string
   /** Most recent activity timestamp */
@@ -108,6 +111,24 @@ export function createClientCounts(sessions: Session[]): Record<ProjectClient, n
   return counts
 }
 
+export function createRuntimeCounts(sessions: Session[]): Record<ProjectRuntime, number> {
+  const counts: Record<ProjectRuntime, number> = {
+    'claude-code': 0,
+    codex: 0,
+    unknown: 0,
+  }
+
+  for (const session of sessions) {
+    if (session.runtimeId === 'claude-code' || session.runtimeId === 'codex') {
+      counts[session.runtimeId]++
+    } else {
+      counts.unknown++
+    }
+  }
+
+  return counts
+}
+
 /**
  * Aggregate sessions by exact directory path for tests and full-list fallbacks.
  */
@@ -137,6 +158,7 @@ export function aggregateProjects(sessions: Session[]): ProjectInfo[] {
         sessions: projectSessions,
         stats: calculateProjectStats(projectSessions),
         clientCounts: createClientCounts(projectSessions),
+        runtimeCounts: createRuntimeCounts(projectSessions),
         currentTask: findCurrentTask(projectSessions),
         lastActiveAt: findLastActive(projectSessions),
         totalUsage: aggregateUsageStats(projectSessions),

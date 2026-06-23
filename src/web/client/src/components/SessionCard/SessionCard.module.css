@@ -45,9 +45,14 @@
   text-transform: uppercase;
 }
 
-.clientBadge[data-client="codex"] {
+.clientBadge[data-runtime="codex"] {
   border-color: var(--primary);
   color: var(--primary);
+}
+
+.clientBadge[data-runtime="claude-code"] {
+  border-color: var(--info);
+  color: var(--info);
 }
 
 .title {

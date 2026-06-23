@@ -12,12 +12,13 @@ import { sessionRepository } from '../infrastructure/database/repositories/sessi
 import { emit } from '../lib/events.js';
 import { getCachedProcesses, clearProcessCache } from '../adapters/process/scanner.js';
 import { detectSessionStatus } from '../adapters/process/detector.js';
-import { getAllSessions as getClaudeSessions } from '../adapters/claude/scanner.js';
-import { getAllCodexSessions } from '../adapters/codex/scanner.js';
+import { getAllSessionsWithFailures as getClaudeSessionsWithFailures } from '../adapters/claude/scanner.js';
+import { getAllCodexSessionsWithFailures } from '../adapters/codex/scanner.js';
 import { logger } from '../lib/logger.js';
 import { isValidSessionId } from '../lib/session-id.js';
 import type { CreateSessionInput, UpdateSessionInput, AggregatedSession } from './session.types.js';
 import { matchProcessesToSessions } from './session.process-matcher.js';
+import { recordRuntimeScanFailures } from './runtime-status.js';
 
 /** Options for sync operation */
 export interface SyncOptions {
@@ -122,16 +123,20 @@ export class SessionService {
       const runningAgentPids = new Set(processes.map((process) => process.pid));
 
       // Get sessions from file system (with optional age filter for performance)
-      const scannedClaudeSessions = await getClaudeSessions({
-        maxAgeDays,
-        includeSubAgents: true,
-        includeToolCalls: true,
-      });
-      const scannedCodexSessions = await getAllCodexSessions({
-        maxAgeDays,
-        includeToolCalls: true,
-      });
-      const scannedSessions = [...scannedClaudeSessions, ...scannedCodexSessions];
+      const [claudeScan, codexScan] = await Promise.all([
+        getClaudeSessionsWithFailures({
+          maxAgeDays,
+          includeSubAgents: true,
+          includeToolCalls: true,
+        }),
+        getAllCodexSessionsWithFailures({
+          maxAgeDays,
+          includeToolCalls: true,
+        }),
+      ]);
+      recordRuntimeScanFailures('claude-code', claudeScan.failures);
+      recordRuntimeScanFailures('codex', codexScan.failures);
+      const scannedSessions = [...claudeScan.sessions, ...codexScan.sessions];
       const invalidScannedSessions = scannedSessions.filter(
         (session) => !isValidSessionId(session.sessionId)
       );
