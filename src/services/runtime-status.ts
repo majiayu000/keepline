@@ -14,9 +14,11 @@ export interface RuntimeScanSummary {
   lastScanAt?: string;
 }
 
-type ScanFailure = {
-  filePath: string;
+export type RuntimeScanFailure = {
+  filePath?: string;
   message: string;
+  code?: RuntimeScanError['code'];
+  recoverable?: boolean;
 };
 
 const latestRuntimeScan = new Map<SessionRuntimeId, RuntimeScanSummary>();
@@ -43,7 +45,7 @@ export function parseRuntimeFilter(raw: string | undefined): {
 
 export function recordRuntimeScanFailures(
   runtimeId: SessionRuntimeId,
-  failures: ScanFailure[]
+  failures: RuntimeScanFailure[]
 ): void {
   latestRuntimeScan.set(runtimeId, {
     runtimeId,
@@ -51,10 +53,10 @@ export function recordRuntimeScanFailures(
     errorCount: failures.length,
     errors: failures.slice(0, 10).map((failure) => ({
       runtimeId: runtimeId as RuntimeId,
-      code: 'parse-failed',
+      code: failure.code ?? 'parse-failed',
       message: failure.message,
       sourcePath: failure.filePath,
-      recoverable: true,
+      recoverable: failure.recoverable ?? true,
     })),
     lastScanAt: new Date().toISOString(),
   });

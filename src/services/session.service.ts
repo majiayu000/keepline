@@ -18,12 +18,44 @@ import { logger } from '../lib/logger.js';
 import { isValidSessionId } from '../lib/session-id.js';
 import type { CreateSessionInput, UpdateSessionInput, AggregatedSession } from './session.types.js';
 import { matchProcessesToSessions } from './session.process-matcher.js';
-import { recordRuntimeScanFailures } from './runtime-status.js';
+import {
+  recordRuntimeScanFailures,
+  type RuntimeScanFailure,
+  type SessionRuntimeId,
+} from './runtime-status.js';
 
 /** Options for sync operation */
 export interface SyncOptions {
   maxAgeDays?: number; // Only sync files modified within this many days (default: 7 for fast sync)
   fullSync?: boolean; // Force full sync of all files
+}
+
+export interface RuntimeSessionScan<T> {
+  sessions: T[];
+  failures: RuntimeScanFailure[];
+}
+
+export async function scanRuntimeSessions<T>(
+  runtimeId: SessionRuntimeId,
+  scan: () => Promise<RuntimeSessionScan<T>>
+): Promise<RuntimeSessionScan<T>> {
+  try {
+    const result = await scan();
+    recordRuntimeScanFailures(runtimeId, result.failures);
+    return result;
+  } catch (error) {
+    const failure: RuntimeScanFailure = {
+      code: 'unknown',
+      message: error instanceof Error ? error.message : String(error),
+      recoverable: true,
+    };
+    recordRuntimeScanFailures(runtimeId, [failure]);
+    logger.error('Runtime session scan failed', {
+      runtimeId,
+      message: failure.message,
+    });
+    return { sessions: [], failures: [failure] };
+  }
 }
 
 export class SessionService {
@@ -124,18 +156,16 @@ export class SessionService {
 
       // Get sessions from file system (with optional age filter for performance)
       const [claudeScan, codexScan] = await Promise.all([
-        getClaudeSessionsWithFailures({
+        scanRuntimeSessions('claude-code', () => getClaudeSessionsWithFailures({
           maxAgeDays,
           includeSubAgents: true,
           includeToolCalls: true,
-        }),
-        getAllCodexSessionsWithFailures({
+        })),
+        scanRuntimeSessions('codex', () => getAllCodexSessionsWithFailures({
           maxAgeDays,
           includeToolCalls: true,
-        }),
+        })),
       ]);
-      recordRuntimeScanFailures('claude-code', claudeScan.failures);
-      recordRuntimeScanFailures('codex', codexScan.failures);
       const scannedSessions = [...claudeScan.sessions, ...codexScan.sessions];
       const invalidScannedSessions = scannedSessions.filter(
         (session) => !isValidSessionId(session.sessionId)
