@@ -1,4 +1,5 @@
 import type { AggregatedSession, BasicAggregatedSession } from '../../services/session.types.js';
+import { runtimeIdForClient } from '../../services/runtime-status.js';
 
 type SerializableBasicSession = AggregatedSession | BasicAggregatedSession;
 
@@ -7,6 +8,7 @@ export function serializeBasicSession(session: SerializableBasicSession) {
     id: session.id,
     sessionId: session.sessionId,
     client: session.client,
+    runtimeId: runtimeIdForClient(session.client),
     directory: session.directory,
     status: session.status,
     title: session.title,
@@ -32,6 +34,7 @@ export function serializeBasicSessions(sessions: SerializableBasicSession[]) {
 export function serializeFullSession(session: AggregatedSession) {
   return {
     ...session,
+    runtimeId: runtimeIdForClient(session.client),
     lastActiveAt: session.lastActiveAt.toISOString(),
     startedAt: session.startedAt?.toISOString(),
     completedAt: session.completedAt?.toISOString(),

@@ -14,7 +14,7 @@ import { TerminalPanel } from '@/components/TerminalPanel'
 import { AuthSetup } from '@/components/AuthSetup'
 import { AuthLogin } from '@/components/AuthLogin'
 import type { TabId } from '@/components/TabNav'
-import type { ProjectInfo, SessionStatus } from '@/types'
+import type { ProjectInfo, RuntimeFilter, SessionStatus } from '@/types'
 import { useAuth, useSessions, useKeyboardShortcuts, useNotifications, useProjects } from '@/hooks'
 
 const SessionList = lazy(() => import('@/components/SessionList').then(m => ({ default: m.SessionList })))
@@ -34,6 +34,7 @@ function DashboardApp({ token, onLogout }: DashboardAppProps) {
   const [selectedProjectRoot, setSelectedProjectRoot] = useState<string | null>(null)
   const [searchQuery, setSearchQuery] = useState('')
   const [statusFilters, setStatusFilters] = useState<Set<SessionStatus>>(new Set())
+  const [runtimeFilter, setRuntimeFilter] = useState<RuntimeFilter>('all')
 
   const {
     sessions,
@@ -58,14 +59,17 @@ function DashboardApp({ token, onLogout }: DashboardAppProps) {
   } = useSessions(
     token,
     activeTab === 'sessions'
-      ? { searchQuery, statusFilters, projectRoot: selectedProjectRoot ?? undefined }
+      ? { searchQuery, statusFilters, runtimeFilter, projectRoot: selectedProjectRoot ?? undefined }
       : {}
   )
 
   const filteredSessions = sessions
   const totalSessionCount = allSessions.length > 0 ? allSessions.length : (stats?.total ?? sessions.length)
   const matchedSessionCount = pagination?.total ?? sessions.length
-  const hasActiveFilters = searchQuery.trim().length > 0 || statusFilters.size > 0 || Boolean(selectedProjectRoot)
+  const hasActiveFilters = searchQuery.trim().length > 0 ||
+    statusFilters.size > 0 ||
+    runtimeFilter !== 'all' ||
+    Boolean(selectedProjectRoot)
 
   const {
     projects,
@@ -169,6 +173,8 @@ function DashboardApp({ token, onLogout }: DashboardAppProps) {
       onSearchChange={setSearchQuery}
       statusFilters={statusFilters}
       onFilterChange={setStatusFilters}
+      runtimeFilter={runtimeFilter}
+      onRuntimeFilterChange={setRuntimeFilter}
       totalCount={totalSessionCount}
       filteredCount={matchedSessionCount}
       sessions={filteredSessions}

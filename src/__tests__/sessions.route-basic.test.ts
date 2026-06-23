@@ -7,12 +7,17 @@ import { setupUser } from '../services/auth.service.js';
 import { resetDatabase } from '../db/migrations.js';
 import { closeDatabase } from '../infrastructure/database/sqlite.js';
 import { sessionRepository } from '../infrastructure/database/repositories/session.repository.js';
+import {
+  clearRuntimeScanStatus,
+  recordRuntimeScanFailures,
+} from '../services/runtime-status.js';
 
 describe('Basic Sessions Route Contract', () => {
   const tmpRoots: string[] = [];
 
   beforeEach(() => {
     resetDatabase();
+    clearRuntimeScanStatus();
   });
 
   afterEach(() => {
@@ -20,6 +25,7 @@ describe('Basic Sessions Route Contract', () => {
       rmSync(root, { recursive: true, force: true });
     }
     closeDatabase();
+    clearRuntimeScanStatus();
   });
 
   function makeGitProject(prefix: string): { root: string; nested: string } {
@@ -117,6 +123,46 @@ describe('Basic Sessions Route Contract', () => {
 
     expect(body.success).toBe(true);
     expect(body.data.usageStats).toBeNull();
+  });
+
+  test('single session route includes runtimeId payload field', async () => {
+    sessionRepository.upsert({
+      sessionId: 'single-codex-runtime-session',
+      client: 'codex',
+      directory: '/tmp/keepline-single-runtime',
+      status: 'completed',
+      title: 'Single runtime payload',
+      initialPrompt: 'Return runtimeId',
+      lastActiveAt: new Date('2026-04-13T10:00:05.000Z'),
+      toolCount: 0,
+      messageCount: 1,
+    });
+
+    const { token } = await setupUser('single-runtime-route-user', 'password123');
+    const response = await sessions.fetch(new Request(
+      'http://localhost/single-codex-runtime-session',
+      { headers: { Authorization: `Bearer ${token}` } }
+    ));
+
+    expect(response.status).toBe(200);
+
+    const body = await response.json() as {
+      success: boolean;
+      data: {
+        session: {
+          sessionId: string;
+          client: string;
+          runtimeId?: string;
+        };
+      };
+    };
+
+    expect(body.success).toBe(true);
+    expect(body.data.session).toMatchObject({
+      sessionId: 'single-codex-runtime-session',
+      client: 'codex',
+      runtimeId: 'codex',
+    });
   });
 
   test('projectRoot filters sessions by resolved git root exactly', async () => {
@@ -299,5 +345,149 @@ describe('Basic Sessions Route Contract', () => {
     expect(body.success).toBe(false);
     expect(body.error).toContain('Invalid status filter: runing');
     expect(body.data).toBeUndefined();
+  });
+
+  test('runtime filter composes with project, status, search, and pagination', async () => {
+    const target = makeGitProject('keepline-runtime-target-');
+    const other = makeGitProject('keepline-runtime-other-');
+
+    sessionRepository.upsert({
+      sessionId: 'runtime-target-codex-match',
+      client: 'codex',
+      directory: target.nested,
+      status: 'completed',
+      title: 'Runtime needle match',
+      initialPrompt: 'Target Codex',
+      lastActiveAt: new Date('2026-04-13T10:00:05.000Z'),
+      toolCount: 1,
+      messageCount: 1,
+    });
+    sessionRepository.upsert({
+      sessionId: 'runtime-target-claude-miss',
+      client: 'claude',
+      directory: target.nested,
+      status: 'completed',
+      title: 'Runtime needle match',
+      initialPrompt: 'Target Claude',
+      lastActiveAt: new Date('2026-04-13T10:00:06.000Z'),
+      toolCount: 1,
+      messageCount: 1,
+    });
+    sessionRepository.upsert({
+      sessionId: 'runtime-other-codex-miss',
+      client: 'codex',
+      directory: other.nested,
+      status: 'completed',
+      title: 'Runtime needle match',
+      initialPrompt: 'Other Codex',
+      lastActiveAt: new Date('2026-04-13T10:00:07.000Z'),
+      toolCount: 1,
+      messageCount: 1,
+    });
+
+    const { token } = await setupUser('runtime-filter-route-user', 'password123');
+    const params = new URLSearchParams({
+      skipSync: 'true',
+      fields: 'basic',
+      projectRoot: target.root,
+      runtime: 'codex',
+      status: 'completed',
+      q: 'needle',
+      limit: '1',
+    });
+    const response = await sessions.fetch(new Request(
+      `http://localhost/?${params.toString()}`,
+      { headers: { Authorization: `Bearer ${token}` } }
+    ));
+
+    expect(response.status).toBe(200);
+
+    const body = await response.json() as {
+      success: boolean;
+      data: {
+        sessions: Array<{ sessionId: string; client: string; runtimeId: string }>;
+        pagination: { total: number; hasMore: boolean };
+      };
+    };
+
+    expect(body.success).toBe(true);
+    expect(body.data.pagination).toMatchObject({ total: 1, hasMore: false });
+    expect(body.data.sessions).toEqual([
+      expect.objectContaining({
+        sessionId: 'runtime-target-codex-match',
+        client: 'codex',
+        runtimeId: 'codex',
+      }),
+    ]);
+  });
+
+  test('rejects invalid runtime filters instead of returning unfiltered sessions', async () => {
+    const { token } = await setupUser('invalid-runtime-route-user', 'password123');
+    const response = await sessions.fetch(new Request(
+      'http://localhost/?skipSync=true&fields=basic&runtime=cursor',
+      { headers: { Authorization: `Bearer ${token}` } }
+    ));
+
+    expect(response.status).toBe(400);
+
+    const body = await response.json() as {
+      success: boolean;
+      error: string;
+      data?: { sessions: Array<{ sessionId: string }> };
+    };
+
+    expect(body.success).toBe(false);
+    expect(body.error).toContain('Invalid runtime filter: cursor');
+    expect(body.data).toBeUndefined();
+  });
+
+  test('runtime scan degradation is surfaced without hiding sessions', async () => {
+    sessionRepository.upsert({
+      sessionId: 'runtime-scan-visible-session',
+      client: 'claude',
+      directory: '/tmp/keepline-runtime-scan-visible',
+      status: 'completed',
+      title: 'Visible despite runtime scan degradation',
+      initialPrompt: 'Visible',
+      lastActiveAt: new Date('2026-04-13T10:00:05.000Z'),
+      toolCount: 1,
+      messageCount: 1,
+    });
+    recordRuntimeScanFailures('codex', [{
+      filePath: '/tmp/codex/bad-rollout.jsonl',
+      message: 'Invalid JSONL',
+    }]);
+
+    const { token } = await setupUser('runtime-scan-route-user', 'password123');
+    const response = await sessions.fetch(new Request(
+      'http://localhost/?skipSync=true&fields=basic',
+      { headers: { Authorization: `Bearer ${token}` } }
+    ));
+
+    expect(response.status).toBe(200);
+
+    const body = await response.json() as {
+      success: boolean;
+      data: {
+        sessions: Array<{ sessionId: string }>;
+        runtimeScan: Array<{
+          runtimeId: string;
+          degraded: boolean;
+          errorCount: number;
+          errors: Array<{ sourcePath?: string; message: string }>;
+        }>;
+      };
+    };
+
+    expect(body.success).toBe(true);
+    expect(body.data.sessions.map(session => session.sessionId)).toContain('runtime-scan-visible-session');
+    expect(body.data.runtimeScan.find(scan => scan.runtimeId === 'codex')).toMatchObject({
+      degraded: true,
+      errorCount: 1,
+      errors: [expect.objectContaining({
+        sourcePath: '/tmp/codex/bad-rollout.jsonl',
+        message: 'Invalid JSONL',
+      })],
+    });
   });
 });

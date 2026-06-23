@@ -3,6 +3,10 @@ import type { SessionUsageStats } from '../domain/session/value-objects.js';
 import { getSessionStats } from './session.aggregator.js';
 import type { AggregatedSession, BasicAggregatedSession } from './session.types.js';
 import {
+  runtimeIdForClient,
+  type SessionRuntimeId,
+} from './runtime-status.js';
+import {
   resolveProjectIdentity,
   UNKNOWN_PROJECT_ID,
   UNKNOWN_PROJECT_ROOT,
@@ -10,6 +14,7 @@ import {
 } from './project.identity.js';
 
 export type ProjectClient = AgentClient | 'unknown';
+export type ProjectRuntime = SessionRuntimeId | 'unknown';
 export type ProjectSession = AggregatedSession | BasicAggregatedSession;
 
 export interface ProjectStatusStats {
@@ -38,6 +43,7 @@ export interface ProjectSummary {
   sessions: ProjectSession[];
   stats: ProjectStatusStats;
   clientCounts: Record<ProjectClient, number>;
+  runtimeCounts: Record<ProjectRuntime, number>;
   currentTask?: string;
   lastActiveAt: Date;
   totalUsage?: SessionUsageStats;
@@ -114,6 +120,7 @@ function buildProjectSummary<T extends ProjectSession>(
     sessions,
     stats: getSessionStats(sessions) as ProjectStatusStats,
     clientCounts: countClients(sessions),
+    runtimeCounts: countRuntimes(sessions),
     currentTask: findCurrentTask(sessions),
     lastActiveAt: findLastActive(sessions),
     totalUsage: aggregateUsageStats(sessions),
@@ -130,6 +137,24 @@ function countClients(sessions: ProjectSession[]): Record<ProjectClient, number>
   for (const session of sessions) {
     if (session.client === 'claude' || session.client === 'codex') {
       counts[session.client]++;
+    } else {
+      counts.unknown++;
+    }
+  }
+
+  return counts;
+}
+
+function countRuntimes(sessions: ProjectSession[]): Record<ProjectRuntime, number> {
+  const counts: Record<ProjectRuntime, number> = {
+    'claude-code': 0,
+    codex: 0,
+    unknown: 0,
+  };
+
+  for (const session of sessions) {
+    if (session.client === 'claude' || session.client === 'codex') {
+      counts[runtimeIdForClient(session.client)]++;
     } else {
       counts.unknown++;
     }

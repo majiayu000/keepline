@@ -2,13 +2,14 @@ import { useState, useEffect, useCallback, useRef } from 'react'
 import { api } from '@/services/api'
 import { REFRESH_INTERVAL_MS } from '@/constants'
 import { useWebSocket, type WebSocketMessage } from './useWebSocket'
-import type { Session, SessionStats, SessionFullData, PaginationInfo, TerminalApp, SessionStatus } from '@/types'
+import type { Session, SessionStats, SessionFullData, PaginationInfo, TerminalApp, SessionStatus, RuntimeFilter } from '@/types'
 
 export type ConnectionStatus = 'polling' | 'realtime' | 'disconnected'
 
 export interface SessionQueryOptions {
   searchQuery?: string
   statusFilters?: Set<SessionStatus>
+  runtimeFilter?: RuntimeFilter
   projectRoot?: string
   projectId?: string
 }
@@ -101,10 +102,14 @@ export function useSessions(token: string, options: SessionQueryOptions = {}): U
   const searchQuery = options.searchQuery?.trim() ?? ''
   const statusFilterValues = Array.from(options.statusFilters ?? []).sort()
   const statusFilterKey = statusFilterValues.join(',')
+  const runtimeFilter = options.runtimeFilter ?? 'all'
   const projectRoot = options.projectRoot
   const projectId = options.projectId
-  const listQueryKey = `${searchQuery}\u0000${statusFilterKey}\u0000${projectRoot ?? ''}\u0000${projectId ?? ''}`
-  const hasServerFilters = searchQuery.length > 0 || statusFilterValues.length > 0 || Boolean(projectRoot || projectId)
+  const listQueryKey = `${searchQuery}\u0000${statusFilterKey}\u0000${runtimeFilter}\u0000${projectRoot ?? ''}\u0000${projectId ?? ''}`
+  const hasServerFilters = searchQuery.length > 0 ||
+    statusFilterValues.length > 0 ||
+    runtimeFilter !== 'all' ||
+    Boolean(projectRoot || projectId)
 
   const [sessions, setSessions] = useState<Session[]>([])
   const [allSessions, setAllSessions] = useState<Session[]>([])
@@ -187,6 +192,7 @@ export function useSessions(token: string, options: SessionQueryOptions = {}): U
       limit: PAGE_SIZE,
       query: searchQuery,
       status: statusFilterValues,
+      runtime: runtimeFilter,
       projectRoot,
       projectId,
     })
@@ -229,6 +235,7 @@ export function useSessions(token: string, options: SessionQueryOptions = {}): U
   }, [
     searchQuery,
     statusFilterKey,
+    runtimeFilter,
     projectRoot,
     projectId,
     hasServerFilters,
@@ -250,6 +257,7 @@ export function useSessions(token: string, options: SessionQueryOptions = {}): U
       skipSync: true,
       query: searchQuery,
       status: statusFilterValues,
+      runtime: runtimeFilter,
       projectRoot,
       projectId,
     })
@@ -279,6 +287,7 @@ export function useSessions(token: string, options: SessionQueryOptions = {}): U
     sessions.length,
     searchQuery,
     statusFilterKey,
+    runtimeFilter,
     projectRoot,
     projectId,
     listQueryKey,

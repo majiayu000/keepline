@@ -21,6 +21,7 @@ export function serializeProjectSummary(
     ...(options.includeSessions ? { sessions: serializeProjectSessions(project.sessions, options) } : {}),
     stats: project.stats,
     clientCounts: project.clientCounts,
+    runtimeCounts: project.runtimeCounts,
     currentTask: project.currentTask,
     lastActiveAt: project.lastActiveAt.toISOString(),
     totalUsage: project.totalUsage,

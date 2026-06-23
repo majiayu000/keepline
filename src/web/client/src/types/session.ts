@@ -4,6 +4,8 @@
 
 export type SessionStatus = 'running' | 'waiting' | 'idle' | 'lost' | 'completed'
 export type AgentClient = 'claude' | 'codex'
+export type SessionRuntimeId = 'claude-code' | 'codex'
+export type RuntimeFilter = SessionRuntimeId | 'all'
 
 /** Tool call info */
 export interface ToolCallInfo {
@@ -25,6 +27,7 @@ export interface Session {
   id: string
   sessionId: string
   client: AgentClient
+  runtimeId: SessionRuntimeId
   directory: string
   status: SessionStatus
   title: string

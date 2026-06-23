@@ -60,8 +60,9 @@ describe('Projects Route Contract', () => {
           id: string;
           rootPath: string;
           clientCounts: { claude: number; codex: number; unknown: number };
+          runtimeCounts: { 'claude-code': number; codex: number; unknown: number };
           totalUsage?: { totalCost: number; totalTokens: number; apiCalls: number };
-          sessions?: Array<{ sessionId: string; client: string }>;
+          sessions?: Array<{ sessionId: string; client: string; runtimeId: string }>;
         }>;
         stats: { total: number; active: number };
       };
@@ -75,6 +76,7 @@ describe('Projects Route Contract', () => {
     const codexProject = body.data.projects.find(project => project.rootPath === '/tmp/keepline-project-route-b');
     expect(codexProject).toBeDefined();
     expect(codexProject!.clientCounts.codex).toBe(1);
+    expect(codexProject!.runtimeCounts.codex).toBe(1);
     expect(codexProject).not.toHaveProperty('sessions');
 
     const claudeProject = body.data.projects.find(project => project.rootPath === '/tmp/keepline-project-route-a');
@@ -128,6 +130,7 @@ describe('Projects Route Contract', () => {
           rootPath: string;
           sessions?: Array<{
             sessionId: string;
+            runtimeId?: string;
             initialPrompt?: string;
             lastMessage?: string;
             usageStats?: { totalCost: number; totalTokens: number; apiCalls: number };
@@ -143,6 +146,7 @@ describe('Projects Route Contract', () => {
     expect(project!.sessions).toHaveLength(1);
     expect(project!.sessions![0]).toMatchObject({
       sessionId: 'project-route-full-1',
+      runtimeId: 'claude-code',
       initialPrompt: 'Full prompt',
       lastMessage: 'Detailed latest response',
       usageStats: {
