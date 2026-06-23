@@ -19,7 +19,17 @@ import { initPricing } from '../../services/usage.pricing.js';
 import { initializeMemoryService } from '../../services/memory.service.js';
 import { logger } from '../../lib/logger.js';
 import { rateLimit } from './middleware/rateLimit.js';
-import { sessions, recovery, usage, memory, plans, auth, projects, workItems } from './routes/index.js';
+import {
+  sessions,
+  recovery,
+  usage,
+  memory,
+  plans,
+  auth,
+  projects,
+  workItems,
+  workItemEvidence,
+} from './routes/index.js';
 import { broadcast, wsClients, websocketHandler } from './websocket.js';
 import { terminalWebsocketHandler } from './terminal-websocket.js';
 import { verifyToken } from '../../services/auth.service.js';
@@ -86,6 +96,7 @@ app.route('/api/auth', auth);
 app.route('/api/sessions', sessions);
 app.route('/api/sessions', recovery);
 app.route('/api/projects', projects);
+app.route('/api/work-items', workItemEvidence);
 app.route('/api/work-items', workItems);
 app.route('/api', usage);
 app.route('/api/memory', memory);

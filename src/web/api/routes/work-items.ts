@@ -50,7 +50,7 @@ function readString(
   return { value: value || undefined };
 }
 
-async function readJsonObject(c: Context): Promise<{
+export async function readJsonObject(c: Context): Promise<{
   data?: Record<string, unknown>;
   response?: Response;
 }> {
