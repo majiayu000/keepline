@@ -17,6 +17,9 @@ interface SessionListProps {
   pagination?: PaginationInfo | null
   onLoadMore?: () => Promise<void>
   loadingMore?: boolean
+  hasActiveFilters?: boolean
+  totalCount?: number
+  globalMatchCount?: number
 }
 
 type SessionStatus = 'running' | 'waiting' | 'idle' | 'lost' | 'completed'
@@ -40,6 +43,9 @@ export const SessionList = memo(function SessionList({
   pagination,
   onLoadMore,
   loadingMore,
+  hasActiveFilters = false,
+  totalCount = sessions.length,
+  globalMatchCount = pagination?.total ?? sessions.length,
 }: SessionListProps) {
   // Memoize grouped and sorted sessions
   const groupedSessions = useMemo(() => {
@@ -74,9 +80,15 @@ export const SessionList = memo(function SessionList({
   }, [sessions])
 
   if (sessions.length === 0) {
+    const message = totalCount === 0
+      ? 'No sessions found. Click Sync to scan for sessions.'
+      : hasActiveFilters && globalMatchCount === 0
+        ? 'No sessions match the current search or filters.'
+        : 'No sessions are loaded for this page.'
+
     return (
       <div className={styles.empty}>
-        No sessions found. Click Sync to scan for sessions.
+        {message}
       </div>
     )
   }

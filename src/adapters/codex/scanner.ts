@@ -13,6 +13,7 @@ import type { CodexParsedSessionData, CodexSessionFile } from './types.js';
 export interface CodexScanOptions {
   includeToolCalls?: boolean;
   maxAgeDays?: number;
+  sessionsDir?: string;
 }
 
 export interface CodexSessionScanFailure {
@@ -43,12 +44,21 @@ export function clearCodexSessionCache(): void {
 function scanDirectoryRecursive(
   dir: string,
   cutoffTime: number,
-  sessions: CodexSessionFile[]
+  sessions: CodexSessionFile[],
+  readFailures: string[]
 ): void {
-  for (const entry of readdirSync(dir, { withFileTypes: true })) {
+  let entries;
+  try {
+    entries = readdirSync(dir, { withFileTypes: true });
+  } catch {
+    readFailures.push(dir);
+    return;
+  }
+
+  for (const entry of entries) {
     const path = join(dir, entry.name);
     if (entry.isDirectory()) {
-      scanDirectoryRecursive(path, cutoffTime, sessions);
+      scanDirectoryRecursive(path, cutoffTime, sessions, readFailures);
       continue;
     }
 
@@ -56,7 +66,13 @@ function scanDirectoryRecursive(
       continue;
     }
 
-    const fileStat = statSync(path);
+    let fileStat;
+    try {
+      fileStat = statSync(path);
+    } catch {
+      readFailures.push(path);
+      continue;
+    }
     if (cutoffTime > 0 && fileStat.mtime.getTime() < cutoffTime) {
       continue;
     }
@@ -83,8 +99,9 @@ function scanDirectoryRecursive(
 }
 
 export function scanCodexSessionsDirectory(options: CodexScanOptions = {}): CodexSessionFile[] {
-  if (!existsSync(CODEX_SESSIONS)) {
-    logger.warn('Codex sessions directory not found');
+  const sessionsDir = options.sessionsDir ?? CODEX_SESSIONS;
+  if (!existsSync(sessionsDir)) {
+    logger.debug('Codex sessions directory not found, skipping scan', { path: sessionsDir });
     return [];
   }
 
@@ -92,7 +109,14 @@ export function scanCodexSessionsDirectory(options: CodexScanOptions = {}): Code
     ? Date.now() - options.maxAgeDays * 24 * 60 * 60 * 1000
     : 0;
   const sessions: CodexSessionFile[] = [];
-  scanDirectoryRecursive(CODEX_SESSIONS, cutoffTime, sessions);
+  const readFailures: string[] = [];
+  scanDirectoryRecursive(sessionsDir, cutoffTime, sessions, readFailures);
+  if (readFailures.length > 0) {
+    logger.warn('Skipped unreadable Codex session paths during scan', {
+      count: readFailures.length,
+      sample: readFailures.slice(0, 5),
+    });
+  }
   return sessions;
 }
 

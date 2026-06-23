@@ -40,6 +40,55 @@ async function getParsedSessionById(sessionId: string) {
   return getClaudeSessionById(sessionId);
 }
 
+type SearchableSession = {
+  sessionId?: string;
+  client?: string;
+  directory?: string;
+  status?: string;
+  title?: string;
+  initialPrompt?: string;
+  lastTool?: string;
+  currentFile?: string;
+};
+
+const VALID_STATUSES = new Set(['running', 'waiting', 'idle', 'lost', 'completed']);
+
+function parseStatusFilters(url: string): { filters: Set<string>; invalid: string[] } {
+  const params = new URL(url).searchParams;
+  const filters = new Set<string>();
+  const invalid = new Set<string>();
+
+  for (const value of params.getAll('status').flatMap((entry) => entry.split(','))) {
+    const status = value.trim();
+    if (!status) continue;
+    if (VALID_STATUSES.has(status)) {
+      filters.add(status);
+    } else {
+      invalid.add(status);
+    }
+  }
+
+  return { filters, invalid: [...invalid] };
+}
+
+function matchesSessionQuery(session: SearchableSession, query: string): boolean {
+  const normalizedQuery = query.trim().toLowerCase();
+  if (!normalizedQuery) return true;
+
+  const searchableValues = [
+    session.title,
+    session.directory,
+    session.initialPrompt,
+    session.sessionId,
+    session.client,
+    session.status,
+    session.lastTool,
+    session.currentFile,
+  ];
+
+  return searchableValues.some((value) => value?.toLowerCase().includes(normalizedQuery));
+}
+
 // Background sync function (non-blocking)
 async function backgroundSync() {
   if (isSyncingInBackground) return;
@@ -65,12 +114,20 @@ app.get('/', async (c) => {
     // Parse pagination parameters
     const limit = Math.min(parseInt(c.req.query('limit') || '50'), 100);
     const offset = parseInt(c.req.query('offset') || '0');
-    const status = c.req.query('status'); // Optional filter by status
+    const statusParseResult = parseStatusFilters(c.req.url);
+    if (statusParseResult.invalid.length > 0) {
+      return c.json({
+        success: false,
+        error: `Invalid status filter: ${statusParseResult.invalid.join(', ')}`,
+      }, 400);
+    }
+    const statusFilters = statusParseResult.filters;
     const sort = c.req.query('sort') || 'lastActiveAt';
     const order = c.req.query('order') === 'asc' ? 'asc' : 'desc';
     const fields = c.req.query('fields') || 'full'; // 'basic' or 'full'
     const skipSync = c.req.query('skipSync') === 'true'; // Skip sync for pagination requests
     const client = c.req.query('client');
+    const query = c.req.query('q') || c.req.query('query') || '';
 
     // Smart sync: trigger background sync if needed (non-blocking)
     const now = Date.now();
@@ -80,18 +137,24 @@ app.get('/', async (c) => {
     }
 
     // Return data immediately from database (fast)
-    let sessions = fields === 'basic'
+    let sessions = query.trim()
+      ? getAggregatedSessions()
+      : fields === 'basic'
       ? getAggregatedSessionsBasic()
       : getAggregatedSessions();
     const stats = getSessionStats(sessions);
 
     // Filter by status if provided
-    if (status) {
-      sessions = sessions.filter(s => s.status === status);
+    if (statusFilters.size > 0) {
+      sessions = sessions.filter(s => statusFilters.has(s.status));
     }
 
     if (client === 'claude' || client === 'codex') {
       sessions = sessions.filter(s => s.client === client);
+    }
+
+    if (query.trim()) {
+      sessions = sessions.filter(s => matchesSessionQuery(s, query));
     }
 
     // Sort sessions

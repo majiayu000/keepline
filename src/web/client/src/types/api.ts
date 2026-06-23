@@ -45,17 +45,26 @@ export interface RecoveryInfo {
   canRecover: boolean
   reason?: string
   sessionFile?: string
+  availableMethods?: RecoveryMethod[]
+  recommendedMethod?: RecoveryMethod
+  command?: string
 }
 
 // Terminal app options
 export type TerminalApp = 'Terminal' | 'iTerm' | 'Warp' | 'auto'
+export type RecoveryMethod = 'resume' | 'continue' | 'new'
 
 // POST /api/sessions/:id/recover body
 export interface RecoverBody {
-  method?: 'resume' | 'continue' | 'new'
+  method?: RecoveryMethod
   openTerminal?: boolean
   skipPermissions?: boolean
   terminalApp?: TerminalApp
+}
+
+export interface RecoverResponseData {
+  method?: RecoveryMethod
+  command?: string
 }
 
 // POST /api/sessions/:id/stop body

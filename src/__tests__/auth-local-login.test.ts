@@ -15,7 +15,7 @@ async function parseJson(response: Response): Promise<LocalLoginResponse> {
   return (await response.json()) as LocalLoginResponse;
 }
 
-async function postFromLoopback(): Promise<{ status: number; body: LocalLoginResponse }> {
+async function postFromLoopback(headers?: Record<string, string>): Promise<{ status: number; body: LocalLoginResponse }> {
   const server = Bun.serve({
     hostname: '127.0.0.1',
     port: 0,
@@ -27,6 +27,7 @@ async function postFromLoopback(): Promise<{ status: number; body: LocalLoginRes
   try {
     const response = await fetch(`http://127.0.0.1:${server.port}/local`, {
       method: 'POST',
+      headers,
     });
     return { status: response.status, body: await parseJson(response) };
   } finally {
@@ -107,11 +108,57 @@ describe('local auth route', () => {
     expect(response.body.data?.token).toBeUndefined();
   });
 
+  test('rejects a spoofed Host header over an actual loopback socket', async () => {
+    const response = await postFromLoopback({ host: 'evil.test' });
+
+    expect(response.status).toBe(403);
+    expect(response.body.success).toBe(false);
+    expect(response.body.data?.token).toBeUndefined();
+  });
+
+  test('rejects cross-site browser metadata for local login', async () => {
+    const response = await postFromLoopback({
+      origin: 'https://evil.test',
+      'sec-fetch-site': 'cross-site',
+    });
+
+    expect(response.status).toBe(403);
+    expect(response.body.success).toBe(false);
+    expect(response.body.data?.token).toBeUndefined();
+  });
+
   test('allows local login from an actual loopback socket', async () => {
     const response = await postFromLoopback();
 
     expect(response.status).toBe(200);
     expect(response.body.success).toBe(true);
     expect(typeof response.body.data?.token).toBe('string');
+  });
+
+  test('allows same-origin browser metadata from loopback', async () => {
+    const server = Bun.serve({
+      hostname: '127.0.0.1',
+      port: 0,
+      fetch(req, server) {
+        return auth.fetch(req, { server });
+      },
+    });
+
+    try {
+      const response = await fetch(`http://127.0.0.1:${server.port}/local`, {
+        method: 'POST',
+        headers: {
+          origin: `http://127.0.0.1:${server.port}`,
+          'sec-fetch-site': 'same-origin',
+        },
+      });
+      const body = await parseJson(response);
+
+      expect(response.status).toBe(200);
+      expect(body.success).toBe(true);
+      expect(typeof body.data?.token).toBe('string');
+    } finally {
+      server.stop(true);
+    }
   });
 });

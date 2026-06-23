@@ -14,7 +14,8 @@ import { TerminalPanel } from '@/components/TerminalPanel'
 import { AuthSetup } from '@/components/AuthSetup'
 import { AuthLogin } from '@/components/AuthLogin'
 import type { TabId } from '@/components/TabNav'
-import { useAuth, useSessions, useKeyboardShortcuts, useSessionFilter, useNotifications, useProjects } from '@/hooks'
+import type { SessionStatus } from '@/types'
+import { useAuth, useSessions, useKeyboardShortcuts, useNotifications, useProjects } from '@/hooks'
 
 // Lazy load heavy components
 const SessionList = lazy(() => import('@/components/SessionList').then(m => ({ default: m.SessionList })))
@@ -31,9 +32,12 @@ function DashboardApp({ token, onLogout }: DashboardAppProps) {
   const { theme, setTheme } = useTheme()
   const [showHelp, setShowHelp] = useState(false)
   const [activeTab, setActiveTab] = useState<TabId>('sessions')
+  const [searchQuery, setSearchQuery] = useState('')
+  const [statusFilters, setStatusFilters] = useState<Set<SessionStatus>>(new Set())
 
   const {
     sessions,
+    allSessions,
     stats,
     loading,
     syncing,
@@ -53,20 +57,20 @@ function DashboardApp({ token, onLogout }: DashboardAppProps) {
     loadingMore,
     // WebSocket
     connectionStatus,
-  } = useSessions(token)
+  } = useSessions(
+    token,
+    activeTab === 'sessions' ? { searchQuery, statusFilters } : {}
+  )
 
-  // Search & Filter
-  const {
-    searchQuery,
-    setSearchQuery,
-    statusFilters,
-    setStatusFilters,
-    filteredSessions,
-  } = useSessionFilter(sessions)
+  const filteredSessions = sessions
+  const unfilteredSessions = allSessions.length > 0 ? allSessions : sessions
+  const totalSessionCount = stats?.total ?? sessions.length
+  const matchedSessionCount = pagination?.total ?? sessions.length
+  const hasActiveFilters = searchQuery.trim().length > 0 || statusFilters.size > 0
 
   // Projects aggregation - use ALL sessions, not filtered
   // This ensures Projects view always shows all projects regardless of search filter
-  const { projects, stats: projectStats } = useProjects(sessions)
+  const { projects, stats: projectStats } = useProjects(unfilteredSessions)
 
   // Notifications
   const {
@@ -80,11 +84,11 @@ function DashboardApp({ token, onLogout }: DashboardAppProps) {
   // Track previous sessions for notification comparison
   const prevSessionsRef = useRef<typeof sessions>([])
   useEffect(() => {
-    if (sessions.length > 0 && prevSessionsRef.current.length > 0) {
-      checkSessionChanges(prevSessionsRef.current, sessions)
+    if (unfilteredSessions.length > 0 && prevSessionsRef.current.length > 0) {
+      checkSessionChanges(prevSessionsRef.current, unfilteredSessions)
     }
-    prevSessionsRef.current = sessions
-  }, [sessions, checkSessionChanges])
+    prevSessionsRef.current = unfilteredSessions
+  }, [unfilteredSessions, checkSessionChanges])
 
   const handleSync = useCallback(async () => {
     const success = await sync()
@@ -92,10 +96,12 @@ function DashboardApp({ token, onLogout }: DashboardAppProps) {
   }, [sync, showToast])
 
   const handleRecover = useCallback(async (sessionId: string, terminalApp?: import('@/types').TerminalApp) => {
-    const success = await recoverSession(sessionId, terminalApp)
+    const result = await recoverSession(sessionId, terminalApp)
     showToast(
-      success ? `Session opened in ${terminalApp || 'terminal'}` : 'Failed to recover session',
-      success ? 'success' : 'error'
+      result.success
+        ? `Session opened in ${terminalApp || 'terminal'}`
+        : result.error || 'Failed to recover session',
+      result.success ? 'success' : 'error'
     )
   }, [recoverSession, showToast])
 
@@ -154,8 +160,8 @@ function DashboardApp({ token, onLogout }: DashboardAppProps) {
       onSearchChange={setSearchQuery}
       statusFilters={statusFilters}
       onFilterChange={setStatusFilters}
-      totalCount={sessions.length}
-      filteredCount={filteredSessions.length}
+      totalCount={totalSessionCount}
+      filteredCount={matchedSessionCount}
       sessions={filteredSessions}
       notificationSettings={notificationSettings}
       onUpdateNotificationSettings={updateNotificationSettings}
@@ -187,6 +193,9 @@ function DashboardApp({ token, onLogout }: DashboardAppProps) {
             pagination={pagination}
             onLoadMore={loadMore}
             loadingMore={loadingMore}
+            hasActiveFilters={hasActiveFilters}
+            totalCount={totalSessionCount}
+            globalMatchCount={matchedSessionCount}
           />
         </Suspense>
       )}
