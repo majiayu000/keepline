@@ -27,12 +27,14 @@ interface SessionCache {
   data: ParsedSessionData | null;
   modifiedAt: number; // File modification time in ms
   includeToolCalls: boolean;
+  failureMessage?: string;
 }
 const sessionSummaryCache = new Map<string, SessionCache>();
 const sessionDetailCache = new Map<string, SessionCache>();
 const persistedParseFailures = new Map<string, number>();
 let persistedParseFailuresLoaded = false;
 let persistedParseFailuresDirty = false;
+const PERSISTED_PARSE_FAILURE_MESSAGE = 'Previously failed to parse session file';
 
 function loadPersistedParseFailures(): void {
   if (persistedParseFailuresLoaded) {
@@ -116,6 +118,16 @@ export interface ScanOptions {
   includeSubAgents?: boolean; // Include agent- prefixed files (default: false for backward compatibility)
   includeToolCalls?: boolean; // Include full tool call details in bulk parsed results (default: false)
   maxAgeDays?: number; // Only include files modified within this many days (default: all)
+}
+
+export interface ClaudeSessionScanFailure {
+  filePath: string;
+  message: string;
+}
+
+export interface ClaudeSessionScanResult {
+  sessions: ParsedSessionData[];
+  failures: ClaudeSessionScanFailure[];
 }
 
 /** Scan projects directory for session files */
@@ -220,14 +232,16 @@ function requireValidParsedSession(
   return parsed;
 }
 
-/** Get all sessions with parsed data (optimized with caching) */
-export async function getAllSessions(options: ScanOptions = {}): Promise<ParsedSessionData[]> {
+async function scanAllSessionsWithFailures(
+  options: ScanOptions = {}
+): Promise<ClaudeSessionScanResult> {
   const sessionFiles = scanProjectsDirectory(options);
   const includeToolCalls = options.includeToolCalls ?? false;
   const sessions: ParsedSessionData[] = [];
   let cacheHits = 0;
   let cacheMisses = 0;
-  const parseFailures: string[] = [];
+  const failures: ClaudeSessionScanFailure[] = [];
+  const freshFailures: ClaudeSessionScanFailure[] = [];
 
   // Track which files we've seen to clean up stale cache entries
   const seenFilePaths = new Set<string>();
@@ -244,6 +258,11 @@ export async function getAllSessions(options: ScanOptions = {}): Promise<ParsedS
         if (!includeToolCalls || cached.includeToolCalls) {
           if (cached.data) {
             sessions.push(cached.data);
+          } else if (cached.failureMessage) {
+            failures.push({
+              filePath: file.filePath,
+              message: cached.failureMessage,
+            });
           }
           cacheHits++;
           continue;
@@ -255,6 +274,11 @@ export async function getAllSessions(options: ScanOptions = {}): Promise<ParsedS
           data: null,
           modifiedAt: fileModTime,
           includeToolCalls,
+          failureMessage: PERSISTED_PARSE_FAILURE_MESSAGE,
+        });
+        failures.push({
+          filePath: file.filePath,
+          message: PERSISTED_PARSE_FAILURE_MESSAGE,
         });
         cacheHits++;
         continue;
@@ -280,9 +304,15 @@ export async function getAllSessions(options: ScanOptions = {}): Promise<ParsedS
         data: null,
         modifiedAt: file.modifiedAt.getTime(),
         includeToolCalls,
+        failureMessage: error instanceof Error ? error.message : String(error),
       });
       recordPersistedParseFailure(file.filePath, file.modifiedAt.getTime());
-      parseFailures.push(file.filePath);
+      const failure = {
+        filePath: file.filePath,
+        message: error instanceof Error ? error.message : String(error),
+      };
+      failures.push(failure);
+      freshFailures.push(failure);
     }
   }
 
@@ -305,15 +335,29 @@ export async function getAllSessions(options: ScanOptions = {}): Promise<ParsedS
   }
   flushPersistedParseFailures();
 
-  if (parseFailures.length > 0) {
+  if (freshFailures.length > 0) {
     logger.warn('Skipped invalid session files during scan', {
-      count: parseFailures.length,
-      sample: parseFailures.slice(0, 5),
+      count: freshFailures.length,
+      sample: freshFailures.slice(0, 5).map((failure) => failure.filePath),
     });
   }
 
   logger.debug(`Session scan: ${cacheHits} cache hits, ${cacheMisses} misses`);
-  return sessions;
+  return { sessions, failures };
+}
+
+/** Get all sessions with parsed data (optimized with caching) */
+export async function getAllSessions(options: ScanOptions = {}): Promise<ParsedSessionData[]> {
+  const result = await scanAllSessionsWithFailures(options);
+  return result.sessions;
+}
+
+/** Get all sessions and per-file failures for runtime adapters. */
+export async function getAllSessionsWithFailures(
+  options: ScanOptions = {}
+): Promise<ClaudeSessionScanResult> {
+  const result = await scanAllSessionsWithFailures(options);
+  return result;
 }
 
 /** Helper to get or parse session with caching */
@@ -330,6 +374,7 @@ async function getOrParseSession(file: ClaudeSessionFile): Promise<ParsedSession
       data: null,
       modifiedAt: fileModTime,
       includeToolCalls: true,
+      failureMessage: PERSISTED_PARSE_FAILURE_MESSAGE,
     });
     return null;
   }
@@ -352,6 +397,7 @@ async function getOrParseSession(file: ClaudeSessionFile): Promise<ParsedSession
       data: null,
       modifiedAt: fileModTime,
       includeToolCalls: true,
+      failureMessage: error instanceof Error ? error.message : String(error),
     });
     recordPersistedParseFailure(file.filePath, fileModTime);
     flushPersistedParseFailures();
@@ -372,6 +418,7 @@ async function getOrParseSessionSummary(file: ClaudeSessionFile): Promise<Parsed
       data: null,
       modifiedAt: fileModTime,
       includeToolCalls: false,
+      failureMessage: PERSISTED_PARSE_FAILURE_MESSAGE,
     });
     return null;
   }
@@ -394,6 +441,7 @@ async function getOrParseSessionSummary(file: ClaudeSessionFile): Promise<Parsed
       data: null,
       modifiedAt: fileModTime,
       includeToolCalls: false,
+      failureMessage: error instanceof Error ? error.message : String(error),
     });
     recordPersistedParseFailure(file.filePath, fileModTime);
     flushPersistedParseFailures();
