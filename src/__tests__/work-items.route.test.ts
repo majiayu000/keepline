@@ -207,8 +207,9 @@ describe('Work item routes', () => {
 
   test('returns deterministic Workboard buckets and marks pending suggestions', async () => {
     const { token } = await setupUser('workboard-user', 'password123');
-    const oldDate = '2026-06-20T12:00:00.000Z';
-    const recentDate = '2026-06-23T11:00:00.000Z';
+    const now = Date.now();
+    const oldDate = new Date(now - 72 * 60 * 60 * 1000).toISOString();
+    const recentDate = new Date(now - 60 * 1000).toISOString();
 
     const staleResponse = await authedRequest(token, '/', {
       method: 'POST',
