@@ -48,4 +48,21 @@ describe('web static directory selection', () => {
 
     expect(selectWebStaticDir([currentDist, sourceFallback, legacyDist])).toBe(sourceFallback);
   });
+
+  test('keeps the built package public dist fallback', () => {
+    const root = tempDir();
+    const sourceBuildDist = join(root, 'repo', 'public', 'dist');
+    const launchedFromCwdDist = join(root, 'launch-cwd', 'public', 'dist');
+    const packageSourceFallback = join(root, 'package', 'public');
+    const packageBuildDist = join(root, 'package', 'public', 'dist');
+
+    writeIndex(packageBuildDist, 'Keepline');
+
+    expect(selectWebStaticDir([
+      sourceBuildDist,
+      launchedFromCwdDist,
+      packageSourceFallback,
+      packageBuildDist,
+    ])).toBe(packageBuildDist);
+  });
 });

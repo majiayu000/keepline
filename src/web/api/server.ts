@@ -50,6 +50,8 @@ const webStaticCandidates = [
   path.resolve(process.cwd(), 'public/dist'),
   // Source fallback. Do not use legacy src/web/public/dist: it is ignored and can be stale.
   path.resolve(import.meta.dir, '../public'),
+  // Built package fallback. Source checkouts prefer ../public above, avoiding stale legacy dist.
+  path.resolve(import.meta.dir, '../public/dist'),
   path.resolve(process.cwd(), 'src/web/public'),
 ];
 
