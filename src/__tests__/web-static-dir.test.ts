@@ -2,10 +2,11 @@ import { afterEach, describe, expect, test } from 'bun:test';
 import { mkdtempSync, mkdirSync, rmSync, writeFileSync } from 'fs';
 import { tmpdir } from 'os';
 import { join } from 'path';
-import { selectWebStaticDir } from '../web/api/server.js';
+import { getWebStaticCandidates, selectWebStaticDir } from '../web/api/server.js';
 
 describe('web static directory selection', () => {
   const tempDirs: string[] = [];
+  const originalCwd = process.cwd();
 
   function tempDir(): string {
     const dir = mkdtempSync(join(tmpdir(), 'keepline-web-static-'));
@@ -19,50 +20,60 @@ describe('web static directory selection', () => {
   }
 
   afterEach(() => {
+    process.chdir(originalCwd);
     while (tempDirs.length > 0) {
       rmSync(tempDirs.pop()!, { recursive: true, force: true });
     }
   });
 
-  test('prefers the current built client over source fallback', () => {
+  test('uses source checkout build output and ignores legacy source fallbacks', () => {
     const root = tempDir();
-    const currentDist = join(root, 'public', 'dist');
-    const sourceFallback = join(root, 'src', 'web', 'public');
-    const legacyDist = join(root, 'src', 'web', 'public', 'dist');
+    const moduleDir = join(root, 'repo', 'src', 'web', 'api');
+    const currentDist = join(root, 'repo', 'public', 'dist');
+    const legacySourceFallback = join(root, 'repo', 'src', 'web', 'public');
+    const legacyDist = join(root, 'repo', 'src', 'web', 'public', 'dist');
 
     writeIndex(currentDist, 'Keepline');
-    writeIndex(sourceFallback, 'Keepline');
+    writeIndex(legacySourceFallback, 'Keepline');
     writeIndex(legacyDist, 'Claude Hub');
 
-    expect(selectWebStaticDir([currentDist, sourceFallback, legacyDist])).toBe(currentDist);
+    const candidates = getWebStaticCandidates(moduleDir);
+
+    expect(candidates).toEqual([currentDist]);
+    expect(selectWebStaticDir(candidates)).toBe(currentDist);
   });
 
-  test('uses source fallback instead of stale legacy dist output', () => {
+  test('does not use legacy source html when build output is missing', () => {
     const root = tempDir();
-    const currentDist = join(root, 'public', 'dist');
-    const sourceFallback = join(root, 'src', 'web', 'public');
-    const legacyDist = join(root, 'src', 'web', 'public', 'dist');
+    const moduleDir = join(root, 'repo', 'src', 'web', 'api');
+    const currentDist = join(root, 'repo', 'public', 'dist');
+    const legacySourceFallback = join(root, 'repo', 'src', 'web', 'public');
+    const legacyDist = join(root, 'repo', 'src', 'web', 'public', 'dist');
 
-    writeIndex(sourceFallback, 'Keepline');
+    writeIndex(legacySourceFallback, 'Keepline');
     writeIndex(legacyDist, 'Claude Hub');
 
-    expect(selectWebStaticDir([currentDist, sourceFallback, legacyDist])).toBe(sourceFallback);
+    const candidates = getWebStaticCandidates(moduleDir);
+
+    expect(candidates).toEqual([currentDist]);
+    expect(selectWebStaticDir(candidates)).toBe(currentDist);
   });
 
-  test('keeps the built package public dist fallback', () => {
+  test('uses packaged public dist instead of launch cwd public dist', () => {
     const root = tempDir();
-    const sourceBuildDist = join(root, 'repo', 'public', 'dist');
-    const launchedFromCwdDist = join(root, 'launch-cwd', 'public', 'dist');
-    const packageSourceFallback = join(root, 'package', 'public');
+    const launchCwd = join(root, 'launch-cwd');
+    const moduleDir = join(root, 'package', 'dist');
+    const launchedFromCwdDist = join(launchCwd, 'public', 'dist');
     const packageBuildDist = join(root, 'package', 'public', 'dist');
 
+    mkdirSync(launchCwd, { recursive: true });
+    writeIndex(launchedFromCwdDist, 'Other App');
     writeIndex(packageBuildDist, 'Keepline');
+    process.chdir(launchCwd);
 
-    expect(selectWebStaticDir([
-      sourceBuildDist,
-      launchedFromCwdDist,
-      packageSourceFallback,
-      packageBuildDist,
-    ])).toBe(packageBuildDist);
+    const candidates = getWebStaticCandidates(moduleDir);
+
+    expect(candidates).toEqual([packageBuildDist]);
+    expect(selectWebStaticDir(candidates)).toBe(packageBuildDist);
   });
 });
