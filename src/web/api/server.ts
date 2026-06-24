@@ -45,15 +45,20 @@ import { isAllowedRequestHost } from './request-security.js';
 
 const app = new Hono();
 
-const webDistCandidates = [
+const webStaticCandidates = [
   path.resolve(import.meta.dir, '../../../public/dist'),
-  path.resolve(import.meta.dir, '../public/dist'),
   path.resolve(process.cwd(), 'public/dist'),
-  path.resolve(process.cwd(), 'src/web/public/dist'),
+  // Source fallback. Do not use legacy src/web/public/dist: it is ignored and can be stale.
+  path.resolve(import.meta.dir, '../public'),
+  path.resolve(process.cwd(), 'src/web/public'),
 ];
 
+export function selectWebStaticDir(candidates: readonly string[]): string {
+  return candidates.find((dir) => existsSync(path.join(dir, 'index.html'))) ?? candidates[0];
+}
+
 function getWebDistDir(): string {
-  return webDistCandidates.find((dir) => existsSync(path.join(dir, 'index.html'))) ?? webDistCandidates[0];
+  return selectWebStaticDir(webStaticCandidates);
 }
 
 // Rate limiting: 500 requests per minute for API routes (local tool, be generous)
