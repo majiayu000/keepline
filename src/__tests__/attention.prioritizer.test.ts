@@ -18,7 +18,10 @@ function session(input: Partial<AggregatedSession> & {
     directory: input.directory ?? '/tmp/keepline',
     status: input.status,
     title: input.title ?? input.sessionId,
-    initialPrompt: '',
+    initialPrompt: input.initialPrompt ?? '',
+    lastTool: input.lastTool,
+    currentFile: input.currentFile,
+    lastMessage: input.lastMessage,
     startedAt: RECENT,
     lastActiveAt: input.lastActiveAt ?? RECENT,
     completedAt: input.completedAt,
@@ -202,6 +205,43 @@ describe('buildAttentionOverview', () => {
     expect(overview.items[0].sessionId).toBe('old-lost');
     expect(overview.stats.hiddenOldLost).toBe(0);
     expect(overview.stats.lostWindowHours).toBeUndefined();
+  });
+
+  test('includes compact session context for actionable review cards', () => {
+    const overview = buildAttentionOverview([
+      session({
+        sessionId: 'context-session',
+        status: 'waiting',
+        initialPrompt: '  Investigate issue 62\n\nand explain next step.  ',
+        lastMessage: 'I need human approval before merging the PR.',
+        lastTool: 'apply_patch',
+        currentFile: '/tmp/keepline/src/services/attention.prioritizer.ts',
+        messageCount: 12,
+        toolCount: 4,
+      }),
+    ], { now: NOW });
+
+    expect(overview.items[0].context).toEqual({
+      initialPrompt: 'Investigate issue 62 and explain next step.',
+      lastMessage: 'I need human approval before merging the PR.',
+      lastTool: 'apply_patch',
+      currentFile: '/tmp/keepline/src/services/attention.prioritizer.ts',
+      messageCount: 12,
+      toolCount: 4,
+    });
+  });
+
+  test('truncates long context previews in the overview payload', () => {
+    const overview = buildAttentionOverview([
+      session({
+        sessionId: 'long-context-session',
+        status: 'waiting',
+        lastMessage: 'x'.repeat(900),
+      }),
+    ], { now: NOW });
+
+    expect(overview.items[0].context.lastMessage).toHaveLength(700);
+    expect(overview.items[0].context.lastMessage?.endsWith('...')).toBe(true);
   });
 
   test('attaches serialized digest without changing queue order', () => {

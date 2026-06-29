@@ -23,6 +23,9 @@ describe('Orchestrator Route Contract', () => {
       status: 'running',
       title: 'Expensive local run',
       initialPrompt: 'Track cost',
+      lastMessage: 'Cost is high, review before continuing',
+      lastTool: 'Read',
+      currentFile: '/tmp/keepline-orchestrator/report.md',
       lastActiveAt: new Date('2026-06-29T10:00:00.000Z'),
       toolCount: 2,
       messageCount: 4,
@@ -50,6 +53,14 @@ describe('Orchestrator Route Contract', () => {
         items: Array<{
           sessionId: string;
           lastActiveAt: string;
+          context: {
+            initialPrompt?: string;
+            lastMessage?: string;
+            lastTool?: string;
+            currentFile?: string;
+            messageCount: number;
+            toolCount: number;
+          };
           reasons: Array<{ code: string }>;
         }>;
         stats: { totalCandidates: number };
@@ -63,6 +74,14 @@ describe('Orchestrator Route Contract', () => {
     expect(body.data.items[0]).toMatchObject({
       sessionId: 'orchestrator-route-cost',
       lastActiveAt: '2026-06-29T10:00:00.000Z',
+      context: {
+        initialPrompt: 'Track cost',
+        lastMessage: 'Cost is high, review before continuing',
+        lastTool: 'Read',
+        currentFile: '/tmp/keepline-orchestrator/report.md',
+        messageCount: 4,
+        toolCount: 2,
+      },
     });
     expect(body.data.items[0].reasons.map((reason) => reason.code)).toContain('high_cost');
   });
