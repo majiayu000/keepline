@@ -43,6 +43,8 @@ export interface AttentionOverviewStats {
   needingAttention: number;
   critical: number;
   warning: number;
+  hiddenOldLost: number;
+  lostWindowHours?: number;
 }
 
 export interface AttentionOverview {
@@ -57,6 +59,8 @@ export interface AttentionOverviewOptions {
   now?: Date;
   highCostThreshold?: number;
   staleHours?: number;
+  includeOldLost?: boolean;
+  lostHours?: number;
   digests?: Map<string, SessionDigest>;
 }
 
@@ -64,6 +68,7 @@ export const DEFAULT_ATTENTION_LIMIT = 20;
 export const MAX_ATTENTION_LIMIT = 100;
 export const DEFAULT_HIGH_COST_THRESHOLD = 1;
 export const DEFAULT_STALE_HOURS = 24;
+export const DEFAULT_LOST_HOURS = 1;
 
 const WAITING_SCORE = 1000;
 const LOST_SCORE = 850;
@@ -80,10 +85,20 @@ export function buildAttentionOverview(
   const limit = clampLimit(options.limit);
   const highCostThreshold = options.highCostThreshold ?? DEFAULT_HIGH_COST_THRESHOLD;
   const staleHours = options.staleHours ?? DEFAULT_STALE_HOURS;
+  const lostHours = options.includeOldLost ? undefined : options.lostHours ?? DEFAULT_LOST_HOURS;
   const staleCutoffMs = now.getTime() - staleHours * 60 * 60 * 1000;
-  const candidates = sessions.filter(
-    (session) => options.includeCompleted || session.status !== 'completed'
-  );
+  const lostCutoffMs = lostHours == null
+    ? Number.NEGATIVE_INFINITY
+    : now.getTime() - lostHours * 60 * 60 * 1000;
+  let hiddenOldLost = 0;
+  const candidates = sessions.filter((session) => {
+    if (!options.includeCompleted && session.status === 'completed') return false;
+    if (session.status === 'lost' && session.lastActiveAt.getTime() < lostCutoffMs) {
+      hiddenOldLost += 1;
+      return false;
+    }
+    return true;
+  });
   const rankedItems = candidates
     .map((session) => buildAttentionItem(session, {
       highCostThreshold,
@@ -102,6 +117,8 @@ export function buildAttentionOverview(
       needingAttention: rankedItems.filter(hasCriticalOrWarningReason).length,
       critical: rankedItems.filter(hasCriticalReason).length,
       warning: rankedItems.filter(hasWarningReason).length,
+      hiddenOldLost,
+      lostWindowHours: lostHours,
     },
   };
 }

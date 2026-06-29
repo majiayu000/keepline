@@ -33,7 +33,9 @@ export const OrchestratorPanel = memo(function OrchestratorPanel({
     needingAttention: 0,
     critical: 0,
     warning: 0,
+    hiddenOldLost: 0,
   }
+  const scopeText = formatScopeText(stats.hiddenOldLost, stats.lostWindowHours)
 
   return (
     <section
@@ -46,7 +48,9 @@ export const OrchestratorPanel = memo(function OrchestratorPanel({
         <div className={styles.headerText}>
           <h2 className={styles.title}>Orchestrator</h2>
           <div className={styles.meta}>
-            {overview ? `Generated ${formatRelativeTime(overview.generatedAt)}` : 'Waiting for overview'}
+            {overview
+              ? `Generated ${formatRelativeTime(overview.generatedAt)}${scopeText}`
+              : 'Waiting for overview'}
           </div>
         </div>
         <button
@@ -214,4 +218,9 @@ function DigestList({ title, items }: { title: string; items: string[] }) {
       </ul>
     </div>
   )
+}
+
+function formatScopeText(hiddenOldLost: number, lostWindowHours?: number): string {
+  if (hiddenOldLost === 0 || lostWindowHours == null) return ''
+  return ` | ${hiddenOldLost} old lost hidden (>${lostWindowHours}h)`
 }

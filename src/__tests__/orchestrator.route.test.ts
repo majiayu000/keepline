@@ -223,6 +223,52 @@ describe('Orchestrator Route Contract', () => {
     expect(body.error).toBe('limit must be a positive number');
   });
 
+  test('hides old lost sessions by default and can include them explicitly', async () => {
+    sessionRepository.upsert({
+      sessionId: 'old-lost-route-session',
+      client: 'codex',
+      directory: '/tmp/keepline-old-lost',
+      status: 'lost',
+      title: 'Old lost',
+      lastActiveAt: new Date('2026-06-27T10:00:00.000Z'),
+    });
+
+    const { token } = await setupUser('orchestrator-old-lost-user', 'password123');
+    const defaultResponse = await orchestrator.fetch(new Request(
+      'http://localhost/overview?limit=10',
+      { headers: { Authorization: `Bearer ${token}` } }
+    ));
+    const defaultBody = await defaultResponse.json() as {
+      data: {
+        items: Array<{ sessionId: string }>;
+        stats: { hiddenOldLost: number; lostWindowHours?: number };
+      };
+    };
+
+    expect(defaultResponse.status).toBe(200);
+    expect(defaultBody.data.items).toHaveLength(0);
+    expect(defaultBody.data.stats).toMatchObject({
+      hiddenOldLost: 1,
+      lostWindowHours: 1,
+    });
+
+    const explicitResponse = await orchestrator.fetch(new Request(
+      'http://localhost/overview?limit=10&includeOldLost=true',
+      { headers: { Authorization: `Bearer ${token}` } }
+    ));
+    const explicitBody = await explicitResponse.json() as {
+      data: {
+        items: Array<{ sessionId: string }>;
+        stats: { hiddenOldLost: number; lostWindowHours?: number };
+      };
+    };
+
+    expect(explicitResponse.status).toBe(200);
+    expect(explicitBody.data.items[0].sessionId).toBe('old-lost-route-session');
+    expect(explicitBody.data.stats.hiddenOldLost).toBe(0);
+    expect(explicitBody.data.stats.lostWindowHours).toBeUndefined();
+  });
+
   test('requires authentication', async () => {
     const response = await orchestrator.fetch(new Request('http://localhost/overview'));
 

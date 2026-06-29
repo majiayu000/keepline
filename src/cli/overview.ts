@@ -16,6 +16,8 @@ export interface OverviewOptions {
   json?: boolean;
   highCostThreshold?: string;
   staleHours?: string;
+  includeOldLost?: boolean;
+  lostHours?: string;
 }
 
 export async function overviewCommand(options: OverviewOptions): Promise<void> {
@@ -44,6 +46,8 @@ export async function overviewCommand(options: OverviewOptions): Promise<void> {
     limit: parsedOptions.limit,
     highCostThreshold: parsedOptions.highCostThreshold,
     staleHours: parsedOptions.staleHours,
+    includeOldLost: parsedOptions.includeOldLost,
+    lostHours: parsedOptions.lostHours,
   });
 
   if (options.json) {
@@ -60,6 +64,8 @@ export interface ParsedOverviewOptions {
   limit?: number;
   highCostThreshold?: number;
   staleHours?: number;
+  includeOldLost?: boolean;
+  lostHours?: number;
 }
 
 export function parseOverviewOptions(options: OverviewOptions): ParsedOverviewOptions {
@@ -71,6 +77,8 @@ export function parseOverviewOptions(options: OverviewOptions): ParsedOverviewOp
       'high-cost-threshold'
     ),
     staleHours: parseOptionalPositiveNumber(options.staleHours, 'stale-hours'),
+    includeOldLost: options.includeOldLost,
+    lostHours: parseOptionalPositiveNumber(options.lostHours, 'lost-hours'),
   };
 }
 
@@ -120,10 +128,19 @@ function printOverview(overview: AttentionOverview): void {
     chalk.gray(
       `Candidates: ${overview.stats.totalCandidates} | ` +
       `Needs attention: ${overview.stats.needingAttention} | ` +
-      `Critical: ${overview.stats.critical} | Warning: ${overview.stats.warning}`
+      `Critical: ${overview.stats.critical} | Warning: ${overview.stats.warning}` +
+      formatHiddenOldLost(overview)
     )
   );
   console.log('');
+}
+
+function formatHiddenOldLost(overview: AttentionOverview): string {
+  if (overview.stats.hiddenOldLost === 0 || overview.stats.lostWindowHours == null) {
+    return '';
+  }
+  return ` | Hidden old lost: ${overview.stats.hiddenOldLost} ` +
+    `(>${overview.stats.lostWindowHours}h)`;
 }
 
 function formatSessionLabel(item: AttentionQueueItem): string {
