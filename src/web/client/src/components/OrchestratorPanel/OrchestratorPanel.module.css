@@ -203,6 +203,7 @@
 .actionBadge,
 .reasonPill,
 .openButton,
+.commandButton,
 .digestHeader span {
   min-height: 24px;
   display: inline-flex;
@@ -281,6 +282,93 @@
 
 .reasonCode {
   color: var(--text-bright);
+}
+
+.contextBlock {
+  display: grid;
+  gap: var(--space-sm);
+  padding: var(--space-md);
+  background: var(--bg-elevated);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+}
+
+.contextSection {
+  min-width: 0;
+  display: grid;
+  gap: var(--space-xs);
+}
+
+.contextLabel {
+  color: var(--primary);
+  font-size: var(--text-xs);
+  font-weight: 700;
+  text-transform: uppercase;
+}
+
+.contextText {
+  max-height: 5.7rem;
+  overflow: hidden;
+  color: var(--text);
+  font-size: var(--text-sm);
+  line-height: 1.45;
+  overflow-wrap: anywhere;
+  white-space: pre-wrap;
+}
+
+.contextMeta,
+.actionRow {
+  display: flex;
+  align-items: center;
+  gap: var(--space-xs);
+  flex-wrap: wrap;
+}
+
+.contextMeta {
+  padding-top: var(--space-xs);
+  color: var(--text-dim);
+  font-size: var(--text-xs);
+  border-top: 1px solid var(--border);
+}
+
+.contextMeta span {
+  overflow-wrap: anywhere;
+}
+
+.contextEmpty {
+  color: var(--text-dim);
+  font-size: var(--text-xs);
+}
+
+.actionRow {
+  padding-top: var(--space-xs);
+}
+
+.commandButton {
+  cursor: pointer;
+  font-family: var(--font-mono);
+}
+
+.commandButton:hover,
+.commandButton:focus-visible {
+  color: var(--primary);
+  border-color: var(--primary);
+  outline: none;
+}
+
+.primaryCommand {
+  color: var(--primary);
+  border-color: var(--primary);
+}
+
+.recoverCommand {
+  color: var(--warning);
+  border-color: var(--warning);
+}
+
+.stopCommand {
+  color: var(--danger);
+  border-color: var(--danger);
 }
 
 .digestBlock {

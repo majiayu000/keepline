@@ -165,6 +165,15 @@ function DashboardApp({ token, onLogout }: DashboardAppProps) {
     setActiveTab('sessions')
   }, [])
 
+  const handleCopySessionId = useCallback(async (sessionId: string) => {
+    try {
+      await navigator.clipboard.writeText(sessionId)
+      showToast('Session ID copied', 'success')
+    } catch {
+      showToast('Failed to copy session ID', 'error')
+    }
+  }, [showToast])
+
   useKeyboardShortcuts({
     onRefresh: refresh,
     onSync: handleSync,
@@ -250,6 +259,10 @@ function DashboardApp({ token, onLogout }: DashboardAppProps) {
         <OrchestratorPanel
           token={token}
           onOpenSession={handleOpenOrchestratorSession}
+          onRecover={handleRecover}
+          onStop={handleStop}
+          onComplete={handleComplete}
+          onCopySessionId={handleCopySessionId}
         />
       )}
 
