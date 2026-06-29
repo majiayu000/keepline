@@ -3,6 +3,7 @@ import { Spinner } from '@/components/Spinner'
 import { useOrchestratorOverview } from '@/hooks'
 import type {
   OrchestratorDigest,
+  OrchestratorIntent,
   OrchestratorQueueItem,
   OrchestratorReason,
   OrchestratorRecommendedAction,
@@ -154,8 +155,8 @@ function QueueCard({
       <div className={styles.cardBody}>
         <div className={styles.cardHeader}>
           <div className={styles.identity}>
-            <h3 className={styles.itemTitle}>{item.title || item.sessionId}</h3>
-            <div className={styles.pathLine}>{formatPath(item.directory)}</div>
+            <h3 className={styles.itemTitle}>{item.intent.task || 'No clear task captured'}</h3>
+            <div className={styles.pathLine}>{formatIdentitySubtitle(item)}</div>
           </div>
           <div className={styles.badges}>
             <span className={`${styles.badge} ${styles[item.status]}`}>{item.status}</span>
@@ -176,8 +177,9 @@ function QueueCard({
         </div>
 
         <ReasonList reasons={item.reasons} />
-        <ContextBlock item={item} />
+        <IntentBlock intent={item.intent} />
         {item.digest && <DigestBlock digest={item.digest} />}
+        <RawEvidenceBlock item={item} />
         <ActionRow
           item={item}
           onOpenSession={onOpenSession}
@@ -192,33 +194,66 @@ function QueueCard({
   )
 }
 
-function ContextBlock({ item }: { item: OrchestratorQueueItem }) {
+function IntentBlock({ intent }: { intent: OrchestratorIntent }) {
+  const rows = [
+    { label: 'Task', text: intent.task },
+    { label: 'Current state', text: intent.currentState },
+    { label: 'Next action', text: intent.nextAction },
+    { label: 'Why attention', text: intent.whyAttention },
+  ].filter((row): row is { label: string; text: string } => Boolean(row.text))
+
+  return (
+    <div className={styles.intentBlock}>
+      <div className={styles.intentHeader}>
+        <span className={`${styles.confidenceBadge} ${styles[`confidence_${intent.confidence}`]}`}>
+          {intent.confidence} confidence
+        </span>
+        {intent.noiseFlags.map((flag) => (
+          <span className={styles.noiseBadge} key={flag}>{formatNoiseFlag(flag)}</span>
+        ))}
+      </div>
+      <div className={styles.intentGrid}>
+        {rows.map((row) => (
+          <section className={styles.intentSection} key={row.label}>
+            <div className={styles.intentLabel}>{row.label}</div>
+            <div className={styles.intentText}>{row.text}</div>
+          </section>
+        ))}
+      </div>
+    </div>
+  )
+}
+
+function RawEvidenceBlock({ item }: { item: OrchestratorQueueItem }) {
   const rows = getContextRows(item)
   const details = [
-    item.context.currentFile ? `File: ${item.context.currentFile}` : undefined,
-    item.context.lastTool ? `Last tool: ${item.context.lastTool}` : undefined,
+    item.intent.evidence.currentFile ? `File: ${item.intent.evidence.currentFile}` : undefined,
+    item.intent.evidence.lastTool ? `Last tool: ${item.intent.evidence.lastTool}` : undefined,
   ].filter((value): value is string => Boolean(value))
 
   if (rows.length === 0 && details.length === 0) {
-    return <div className={styles.contextEmpty}>No prompt or response preview captured yet</div>
+    return null
   }
 
   return (
-    <div className={styles.contextBlock}>
-      {rows.map((row) => (
-        <section className={styles.contextSection} key={row.label}>
-          <div className={styles.contextLabel}>{row.label}</div>
-          <div className={styles.contextText}>{row.text}</div>
-        </section>
-      ))}
-      {details.length > 0 && (
-        <div className={styles.contextMeta}>
-          {details.map((detail) => (
-            <span key={detail}>{detail}</span>
-          ))}
-        </div>
-      )}
-    </div>
+    <details className={styles.rawEvidence}>
+      <summary className={styles.rawSummary}>Raw evidence</summary>
+      <div className={styles.contextBlock}>
+        {rows.map((row) => (
+          <section className={styles.contextSection} key={row.label}>
+            <div className={styles.contextLabel}>{row.label}</div>
+            <div className={styles.contextText}>{row.text}</div>
+          </section>
+        ))}
+        {details.length > 0 && (
+          <div className={styles.contextMeta}>
+            {details.map((detail) => (
+              <span key={detail}>{detail}</span>
+            ))}
+          </div>
+        )}
+      </div>
+    </details>
   )
 }
 
@@ -371,9 +406,8 @@ function getContextRows(item: OrchestratorQueueItem): Array<{ label: string; tex
   const seen = new Set<string>()
   const rows: Array<{ label: string; text: string }> = []
 
-  pushContextRow(rows, seen, 'Summary', item.digest?.summary)
-  pushContextRow(rows, seen, 'Last response', item.context.lastMessage)
-  pushContextRow(rows, seen, 'Prompt', item.context.initialPrompt)
+  pushContextRow(rows, seen, 'Last response', item.intent.evidence.lastMessage)
+  pushContextRow(rows, seen, 'Prompt excerpt', item.intent.evidence.promptExcerpt)
 
   return rows.slice(0, 3)
 }
@@ -393,4 +427,17 @@ function pushContextRow(
 function formatScopeText(hiddenOldLost: number, lostWindowHours?: number): string {
   if (hiddenOldLost === 0 || lostWindowHours == null) return ''
   return ` | ${hiddenOldLost} old lost hidden (>${lostWindowHours}h)`
+}
+
+function formatNoiseFlag(flag: string): string {
+  return flag.replace(/_/g, ' ')
+}
+
+function formatIdentitySubtitle(item: OrchestratorQueueItem): string {
+  const directory = formatPath(item.directory)
+  const titleIsNoise = item.intent.noiseFlags.includes('instructions_heavy')
+  if (!item.intent.task || !item.title || titleIsNoise || item.title === item.intent.task) {
+    return directory
+  }
+  return `${directory} | ${item.title}`
 }

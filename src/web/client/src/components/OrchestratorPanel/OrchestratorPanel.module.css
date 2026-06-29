@@ -284,13 +284,104 @@
   color: var(--text-bright);
 }
 
-.contextBlock {
+.intentBlock {
   display: grid;
   gap: var(--space-sm);
   padding: var(--space-md);
   background: var(--bg-elevated);
   border: 1px solid var(--border);
+  border-left: 3px solid var(--primary);
   border-radius: var(--radius-sm);
+}
+
+.intentHeader,
+.intentGrid {
+  display: grid;
+  gap: var(--space-sm);
+}
+
+.intentHeader {
+  grid-template-columns: repeat(auto-fit, minmax(120px, max-content));
+}
+
+.intentGrid {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.intentSection {
+  min-width: 0;
+  display: grid;
+  gap: var(--space-xs);
+}
+
+.intentLabel {
+  color: var(--primary);
+  font-size: var(--text-xs);
+  font-weight: 700;
+  text-transform: uppercase;
+}
+
+.intentText {
+  color: var(--text);
+  font-size: var(--text-sm);
+  line-height: 1.45;
+  overflow-wrap: anywhere;
+}
+
+.confidenceBadge,
+.noiseBadge {
+  min-height: 22px;
+  display: inline-flex;
+  align-items: center;
+  width: max-content;
+  padding: 2px var(--space-sm);
+  background: var(--bg-surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  color: var(--text-dim);
+  font-size: var(--text-xs);
+  line-height: 1.2;
+}
+
+.confidence_high {
+  color: var(--success);
+  border-color: var(--success);
+}
+
+.confidence_medium {
+  color: var(--warning);
+  border-color: var(--warning);
+}
+
+.confidence_low,
+.noiseBadge {
+  color: var(--text-dim);
+  border-color: var(--border);
+}
+
+.rawEvidence {
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--bg-elevated);
+}
+
+.rawSummary {
+  cursor: pointer;
+  padding: var(--space-sm) var(--space-md);
+  color: var(--text-dim);
+  font-size: var(--text-xs);
+  text-transform: uppercase;
+}
+
+.rawEvidence[open] .rawSummary {
+  border-bottom: 1px solid var(--border);
+}
+
+.contextBlock {
+  display: grid;
+  gap: var(--space-sm);
+  padding: var(--space-md);
+  background: transparent;
 }
 
 .contextSection {
@@ -471,7 +562,8 @@
   }
 
   .statsGrid,
-  .digestLists {
+  .digestLists,
+  .intentGrid {
     grid-template-columns: 1fr;
   }
 }

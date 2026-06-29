@@ -29,6 +29,28 @@ export interface OrchestratorSessionContext {
   toolCount: number
 }
 
+export type OrchestratorIntentConfidence = 'high' | 'medium' | 'low'
+export type OrchestratorIntentNoiseFlag =
+  | 'instructions_heavy'
+  | 'missing_user_goal'
+  | 'derived_from_last_message'
+  | 'derived_from_file'
+
+export interface OrchestratorIntent {
+  task?: string
+  currentState?: string
+  nextAction: string
+  whyAttention: string
+  confidence: OrchestratorIntentConfidence
+  noiseFlags: OrchestratorIntentNoiseFlag[]
+  evidence: {
+    promptExcerpt?: string
+    lastMessage?: string
+    lastTool?: string
+    currentFile?: string
+  }
+}
+
 export interface OrchestratorDigest {
   sessionId: string
   summary: string
@@ -56,6 +78,7 @@ export interface OrchestratorQueueItem {
   recommendedAction: OrchestratorRecommendedAction
   processRunning: boolean
   context: OrchestratorSessionContext
+  intent: OrchestratorIntent
   usageCost?: number
   digest?: OrchestratorDigest
 }

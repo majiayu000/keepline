@@ -31,6 +31,28 @@ export interface AttentionSessionContext {
   toolCount: number;
 }
 
+export type AttentionIntentConfidence = 'high' | 'medium' | 'low';
+export type AttentionIntentNoiseFlag =
+  | 'instructions_heavy'
+  | 'missing_user_goal'
+  | 'derived_from_last_message'
+  | 'derived_from_file';
+
+export interface AttentionIntent {
+  task?: string;
+  currentState?: string;
+  nextAction: string;
+  whyAttention: string;
+  confidence: AttentionIntentConfidence;
+  noiseFlags: AttentionIntentNoiseFlag[];
+  evidence: {
+    promptExcerpt?: string;
+    lastMessage?: string;
+    lastTool?: string;
+    currentFile?: string;
+  };
+}
+
 export interface AttentionQueueItem {
   rank: number;
   sessionId: string;
@@ -44,6 +66,7 @@ export interface AttentionQueueItem {
   recommendedAction: RecommendedAction;
   processRunning: boolean;
   context: AttentionSessionContext;
+  intent: AttentionIntent;
   usageCost?: number;
   digest?: SerializableSessionDigest;
 }
@@ -81,6 +104,7 @@ export const DEFAULT_STALE_HOURS = 24;
 export const DEFAULT_LOST_HOURS = 1;
 export const MAX_ATTENTION_CONTEXT_LENGTH = 700;
 export const MAX_ATTENTION_PATH_LENGTH = 260;
+export const MAX_ATTENTION_INTENT_LENGTH = 260;
 
 const WAITING_SCORE = 1000;
 const LOST_SCORE = 850;
@@ -218,6 +242,7 @@ function buildAttentionItem(
     recommendedAction: getRecommendedAction(reasons),
     processRunning: session.processRunning,
     context: buildSessionContext(session),
+    intent: buildSessionIntent(session, reasons, options.digest),
     usageCost,
     digest: options.digest ? serializeSessionDigest(options.digest) : undefined,
   };
@@ -260,6 +285,149 @@ function compactText(value: string | undefined, maxLength: number): string | und
   if (!compacted) return undefined;
   if (compacted.length <= maxLength) return compacted;
   return compacted.slice(0, maxLength - 3) + '...';
+}
+
+function buildSessionIntent(
+  session: AggregatedSession,
+  reasons: AttentionReason[],
+  digest?: SessionDigest
+): AttentionIntent {
+  const noiseFlags: AttentionIntentNoiseFlag[] = [];
+  const prompt = compactText(session.initialPrompt, MAX_ATTENTION_CONTEXT_LENGTH);
+  const promptIsNoise = isInstructionNoise(session.initialPrompt);
+  const titleIsNoise = isInstructionNoise(session.title);
+  if (promptIsNoise || titleIsNoise) noiseFlags.push('instructions_heavy');
+
+  const promptTask = promptIsNoise ? undefined : intentText(session.initialPrompt);
+  const digestTask = intentText(digest?.summary);
+  const titleTask = titleIsNoise ? undefined : intentText(session.title);
+  const lastMessage = intentText(session.lastMessage);
+  const taskMessage = meaningfulTaskMessage(session.lastMessage);
+  const fileTask = session.currentFile
+    ? `Working around ${formatPathTail(session.currentFile)}`
+    : undefined;
+
+  let task = firstNonEmpty([promptTask, digestTask, titleTask]);
+  let confidence: AttentionIntentConfidence = task ? 'high' : 'low';
+
+  if (!task && taskMessage) {
+    task = deriveTaskFromLastMessage(taskMessage);
+    confidence = 'medium';
+    noiseFlags.push('derived_from_last_message');
+  }
+
+  if (!task && fileTask) {
+    task = fileTask;
+    confidence = 'low';
+    noiseFlags.push('derived_from_file');
+  }
+
+  if (!promptTask && !titleTask) {
+    noiseFlags.push('missing_user_goal');
+  }
+
+  return {
+    task,
+    currentState: firstNonEmpty([lastMessage, digestTask, titleTask]),
+    nextAction: buildNextAction(session, reasons),
+    whyAttention: buildWhyAttention(reasons),
+    confidence,
+    noiseFlags: dedupeNoiseFlags(noiseFlags),
+    evidence: {
+      promptExcerpt: prompt,
+      lastMessage,
+      lastTool: compactText(session.lastTool, MAX_ATTENTION_PATH_LENGTH),
+      currentFile: compactText(session.currentFile, MAX_ATTENTION_PATH_LENGTH),
+    },
+  };
+}
+
+function intentText(value: string | undefined): string | undefined {
+  return compactText(value, MAX_ATTENTION_INTENT_LENGTH);
+}
+
+function isInstructionNoise(value: string | undefined): boolean {
+  if (!value) return false;
+  const lower = value.toLowerCase();
+  return lower.includes('agents.md instructions') ||
+    lower.startsWith('agents.md') ||
+    lower.startsWith('# agents.md') ||
+    lower.includes('<instructions>') ||
+    lower.includes('vibeguard-start') ||
+    lower.includes('vibeguard') ||
+    lower.includes('files called agents.md');
+}
+
+function meaningfulTaskMessage(value: string | undefined): string | undefined {
+  const text = intentText(value);
+  if (!text) return undefined;
+  if (text.length < 12 && /^(ok|okay|done|继续正常|好的|收到|完成)$/i.test(text)) {
+    return undefined;
+  }
+  return text;
+}
+
+function deriveTaskFromLastMessage(lastMessage: string): string {
+  const phrase = extractTaskPhrase(lastMessage);
+  const failureLike = /failed|failure|error|stderr|失败|报错|异常|启动失败/i.test(phrase);
+  const prefix = failureLike ? 'Investigate' : 'Continue';
+  return compactText(`${prefix}: ${phrase}`, MAX_ATTENTION_INTENT_LENGTH) ?? phrase;
+}
+
+function extractTaskPhrase(lastMessage: string): string {
+  const sentences = lastMessage
+    .split(/[.!?。！？]/u)
+    .map((sentence) => sentence.trim())
+    .filter(Boolean);
+
+  return sentences.find((sentence) => !isLowInformationSentence(sentence)) ??
+    sentences[0] ??
+    lastMessage;
+}
+
+function isLowInformationSentence(sentence: string): boolean {
+  return sentence.length < 8 && /^(ok|okay|done|看了|好的|收到|完成|继续)$/i.test(sentence);
+}
+
+function buildNextAction(session: AggregatedSession, reasons: AttentionReason[]): string {
+  if (reasons.some((reason) => reason.code === 'recoverable_lost')) {
+    return session.currentFile
+      ? `Recover this session and continue around ${formatPathTail(session.currentFile)}.`
+      : 'Recover this session and continue from the current state.';
+  }
+  if (reasons.some((reason) => reason.code === 'waiting_for_human')) {
+    return 'Open details and provide the requested human input.';
+  }
+  if (reasons.some((reason) => reason.code === 'high_cost')) {
+    return 'Review recent activity and decide whether to stop, continue, or complete it.';
+  }
+  if (reasons.some((reason) => reason.code === 'stale_activity')) {
+    return 'Open details and decide whether to continue or mark it complete.';
+  }
+  if (session.status === 'idle' || session.status === 'running') {
+    return 'Monitor the session unless it needs manual follow-up.';
+  }
+  return 'No action needed.';
+}
+
+function buildWhyAttention(reasons: AttentionReason[]): string {
+  const attentionReasons = reasons.filter((reason) => reason.severity !== 'info');
+  if (attentionReasons.length === 0) return 'No critical or warning reason.';
+  return attentionReasons.map((reason) => reason.message).join('; ');
+}
+
+function firstNonEmpty(values: Array<string | undefined>): string | undefined {
+  return values.find((value) => value?.trim());
+}
+
+function formatPathTail(path: string): string {
+  const parts = path.split('/').filter(Boolean);
+  if (parts.length <= 2) return path;
+  return parts.slice(-2).join('/');
+}
+
+function dedupeNoiseFlags(flags: AttentionIntentNoiseFlag[]): AttentionIntentNoiseFlag[] {
+  return [...new Set(flags)];
 }
 
 function compareAttentionItems(a: AttentionQueueItem, b: AttentionQueueItem): number {

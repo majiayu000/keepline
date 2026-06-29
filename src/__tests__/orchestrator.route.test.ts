@@ -61,6 +61,13 @@ describe('Orchestrator Route Contract', () => {
             messageCount: number;
             toolCount: number;
           };
+          intent: {
+            task?: string;
+            currentState?: string;
+            nextAction: string;
+            whyAttention: string;
+            confidence: string;
+          };
           reasons: Array<{ code: string }>;
         }>;
         stats: { totalCandidates: number };
@@ -81,6 +88,13 @@ describe('Orchestrator Route Contract', () => {
         currentFile: '/tmp/keepline-orchestrator/report.md',
         messageCount: 4,
         toolCount: 2,
+      },
+      intent: {
+        task: 'Track cost',
+        currentState: 'Cost is high, review before continuing',
+        nextAction: 'Recover this session and continue around keepline-orchestrator/report.md.',
+        whyAttention: 'Session is lost and may be recoverable; Session cost is $5.00',
+        confidence: 'high',
       },
     });
     expect(body.data.items[0].reasons.map((reason) => reason.code)).toContain('high_cost');
