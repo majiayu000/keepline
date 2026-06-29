@@ -6,6 +6,22 @@ import {
   type AttentionOverview,
   type AttentionQueueItem,
 } from '../../../services/attention.prioritizer.js';
+import {
+  generateDeterministicSessionDigest,
+  generateDeterministicSessionDigests,
+  getSessionDigest,
+  getSessionDigestMap,
+} from '../../../services/session-digest.service.js';
+import {
+  generateLocalModelSessionDigest,
+  getLocalSummarizerConfig,
+  LOCAL_SUMMARIZER_DISABLED_ERROR,
+  type LocalSummarizerConfig,
+} from '../../../services/orchestrator.summarizer.js';
+import {
+  isSessionDigestSource,
+  serializeSessionDigest,
+} from '../../../domain/orchestrator/index.js';
 import { logger } from '../../../lib/logger.js';
 import { authMiddleware } from '../middleware/auth.js';
 
@@ -30,11 +46,13 @@ app.get('/overview', (c) => {
   }
 
   try {
-    const overview = buildAttentionOverview(getAggregatedSessions(), {
+    const sessions = getAggregatedSessions();
+    const overview = buildAttentionOverview(sessions, {
       includeCompleted: c.req.query('includeCompleted') === 'true',
       limit: limitResult.value,
       highCostThreshold: highCostResult.value,
       staleHours: staleHoursResult.value,
+      digests: getSessionDigestMap(sessions.map((session) => session.sessionId)),
     });
 
     return c.json({
@@ -44,6 +62,82 @@ app.get('/overview', (c) => {
   } catch (error) {
     logger.error('Failed to build orchestrator overview', error);
     return c.json({ success: false, error: 'Failed to build orchestrator overview' }, 500);
+  }
+});
+
+app.get('/digests/:sessionId', (c) => {
+  const digest = getSessionDigest(c.req.param('sessionId'));
+  if (!digest) {
+    return c.json({ success: false, error: 'Session digest not found' }, 404);
+  }
+
+  return c.json({
+    success: true,
+    data: { digest: serializeSessionDigest(digest) },
+  });
+});
+
+app.post('/digests/generate', async (c) => {
+  let body: Record<string, unknown>;
+  try {
+    const parsed = await c.req.json();
+    body = parsed && typeof parsed === 'object' && !Array.isArray(parsed)
+      ? parsed as Record<string, unknown>
+      : {};
+  } catch {
+    body = {};
+  }
+
+  const source = body.source ?? 'deterministic';
+  if (!isSessionDigestSource(source)) {
+    return c.json({ success: false, error: 'Invalid digest source' }, 400);
+  }
+
+  const sessionId = typeof body.sessionId === 'string' && body.sessionId.trim()
+    ? body.sessionId.trim()
+    : undefined;
+  const sessions = getAggregatedSessions();
+  const matchingSessions = sessionId
+    ? sessions.filter((session) => session.sessionId === sessionId)
+    : sessions;
+
+  if (sessionId && matchingSessions.length === 0) {
+    return c.json({ success: false, error: 'Session not found' }, 404);
+  }
+
+  let localSummarizerConfig: LocalSummarizerConfig | null = null;
+  if (source === 'local_model') {
+    try {
+      localSummarizerConfig = getLocalSummarizerConfig();
+    } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : String(error);
+      return c.json({ success: false, error: errorMessage }, 400);
+    }
+
+    if (!localSummarizerConfig) {
+      return c.json({ success: false, error: LOCAL_SUMMARIZER_DISABLED_ERROR }, 400);
+    }
+  }
+
+  try {
+    const digests = source === 'deterministic'
+      ? sessionId
+        ? [generateDeterministicSessionDigest(matchingSessions[0])]
+        : generateDeterministicSessionDigests(matchingSessions)
+      : await Promise.all(
+          matchingSessions.map((session) =>
+            generateLocalModelSessionDigest(session, { config: localSummarizerConfig })
+          )
+        );
+
+    return c.json({
+      success: true,
+      data: { digests: digests.map(serializeSessionDigest) },
+    });
+  } catch (error) {
+    const errorMessage = error instanceof Error ? error.message : String(error);
+    logger.error('Failed to generate session digest', { message: errorMessage, source });
+    return c.json({ success: false, error: 'Failed to generate session digest' }, 500);
   }
 });
 

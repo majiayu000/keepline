@@ -1,4 +1,6 @@
 import type { AgentClient, SessionStatus } from '../domain/session/index.js';
+import type { SerializableSessionDigest, SessionDigest } from '../domain/orchestrator/index.js';
+import { serializeSessionDigest } from '../domain/orchestrator/index.js';
 import type { AggregatedSession } from './session.types.js';
 
 export type AttentionReasonCode =
@@ -33,6 +35,7 @@ export interface AttentionQueueItem {
   recommendedAction: RecommendedAction;
   processRunning: boolean;
   usageCost?: number;
+  digest?: SerializableSessionDigest;
 }
 
 export interface AttentionOverviewStats {
@@ -54,6 +57,7 @@ export interface AttentionOverviewOptions {
   now?: Date;
   highCostThreshold?: number;
   staleHours?: number;
+  digests?: Map<string, SessionDigest>;
 }
 
 export const DEFAULT_ATTENTION_LIMIT = 20;
@@ -84,6 +88,7 @@ export function buildAttentionOverview(
     .map((session) => buildAttentionItem(session, {
       highCostThreshold,
       staleCutoffMs,
+      digest: options.digests?.get(session.sessionId),
     }))
     .sort(compareAttentionItems)
     .map((item, index) => ({ ...item, rank: index + 1 }));
@@ -106,6 +111,7 @@ function buildAttentionItem(
   options: {
     highCostThreshold: number;
     staleCutoffMs: number;
+    digest?: SessionDigest;
   }
 ): AttentionQueueItem {
   const reasons: AttentionReason[] = [];
@@ -183,6 +189,7 @@ function buildAttentionItem(
     recommendedAction: getRecommendedAction(reasons),
     processRunning: session.processRunning,
     usageCost,
+    digest: options.digest ? serializeSessionDigest(options.digest) : undefined,
   };
 }
 
