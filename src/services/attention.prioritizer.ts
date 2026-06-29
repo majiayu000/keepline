@@ -361,32 +361,41 @@ function isInstructionNoise(value: string | undefined): boolean {
 function meaningfulTaskMessage(value: string | undefined): string | undefined {
   const text = intentText(value);
   if (!text) return undefined;
-  if (text.length < 12 && /^(ok|okay|done|继续正常|好的|收到|完成)$/i.test(text)) {
+  if (!extractTaskPhrase(text)) {
     return undefined;
   }
   return text;
 }
 
-function deriveTaskFromLastMessage(lastMessage: string): string {
+function deriveTaskFromLastMessage(lastMessage: string): string | undefined {
   const phrase = extractTaskPhrase(lastMessage);
+  if (!phrase) return undefined;
   const failureLike = /failed|failure|error|stderr|失败|报错|异常|启动失败/i.test(phrase);
   const prefix = failureLike ? 'Investigate' : 'Continue';
   return compactText(`${prefix}: ${phrase}`, MAX_ATTENTION_INTENT_LENGTH) ?? phrase;
 }
 
-function extractTaskPhrase(lastMessage: string): string {
+function extractTaskPhrase(lastMessage: string): string | undefined {
   const sentences = lastMessage
     .split(/[.!?。！？]/u)
     .map((sentence) => sentence.trim())
     .filter(Boolean);
 
-  return sentences.find((sentence) => !isLowInformationSentence(sentence)) ??
-    sentences[0] ??
-    lastMessage;
+  const meaningfulSentence = sentences.find((sentence) => !isLowInformationSentence(sentence));
+  if (meaningfulSentence) return meaningfulSentence;
+  if (sentences.length > 0) return undefined;
+  return isLowInformationSentence(lastMessage) ? undefined : lastMessage;
 }
 
 function isLowInformationSentence(sentence: string): boolean {
-  return sentence.length < 8 && /^(ok|okay|done|看了|好的|收到|完成|继续)$/i.test(sentence);
+  const normalized = sentence
+    .replace(/[.!?。！？]+$/u, '')
+    .trim();
+  const terseFiller =
+    normalized.length < 12 &&
+    /^(ok|okay|done|hi|hello|hey|看了|好的|收到|完成|继续|继续正常|你好|我在|你好，我在)$/i.test(normalized);
+  const memoryFooter = /^memory citations:\s*none$/i.test(normalized);
+  return terseFiller || memoryFooter;
 }
 
 function buildNextAction(session: AggregatedSession, reasons: AttentionReason[]): string {
