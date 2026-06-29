@@ -291,6 +291,40 @@ describe('buildAttentionOverview', () => {
     );
   });
 
+  test('does not use low-information responses as derived tasks', () => {
+    const overview = buildAttentionOverview([
+      session({
+        sessionId: 'low-info-session',
+        status: 'waiting',
+        title: '# AGENTS.md instructions <INSTRUCTIONS> vibeguard-start',
+        initialPrompt: '# AGENTS.md instructions <INSTRUCTIONS> Files called AGENTS.md commonly appear in many places.',
+        lastMessage: '继续正常。',
+      }),
+    ], { now: NOW });
+
+    expect(overview.items[0].intent.task).toBeUndefined();
+    expect(overview.items[0].intent.currentState).toBe('继续正常。');
+    expect(overview.items[0].intent.noiseFlags).toEqual([
+      'instructions_heavy',
+      'missing_user_goal',
+    ]);
+  });
+
+  test('ignores greeting and citation footer responses when deriving intent', () => {
+    const overview = buildAttentionOverview([
+      session({
+        sessionId: 'greeting-session',
+        status: 'waiting',
+        title: '# AGENTS.md instructions <INSTRUCTIONS> vibeguard-start',
+        initialPrompt: '# AGENTS.md instructions <INSTRUCTIONS> Files called AGENTS.md commonly appear in many places.',
+        lastMessage: '你好，我在。 Memory citations: none',
+      }),
+    ], { now: NOW });
+
+    expect(overview.items[0].intent.task).toBeUndefined();
+    expect(overview.items[0].intent.currentState).toBe('你好，我在。 Memory citations: none');
+  });
+
   test('attaches serialized digest without changing queue order', () => {
     const digest: SessionDigest = {
       id: 'digest-id',
