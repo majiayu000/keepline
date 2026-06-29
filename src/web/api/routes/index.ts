@@ -13,6 +13,7 @@ import auth from './auth.js';
 import projects from './projects.js';
 import workItems from './work-items.js';
 import workItemEvidence from './work-item-evidence.js';
+import orchestrator from './orchestrator.js';
 
 export {
   sessions,
@@ -24,4 +25,5 @@ export {
   projects,
   workItems,
   workItemEvidence,
+  orchestrator,
 };

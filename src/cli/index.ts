@@ -9,6 +9,7 @@ import { recoverCommand, recoverListCommand } from './recover.js';
 import { daemonCommand } from './daemon.js';
 import { statusCommand } from './status.js';
 import { webCommand } from './web.js';
+import { overviewCommand } from './overview.js';
 import {
   memoryListCommand,
   memoryShowCommand,
@@ -68,6 +69,17 @@ export function registerCommands(program: Command): void {
     .command('status')
     .description('Show system status')
     .action(statusCommand);
+
+  // Orchestrator overview
+  program
+    .command('overview')
+    .description('Show the global agent attention queue')
+    .option('-a, --all', 'Include completed sessions')
+    .option('-l, --limit <n>', 'Limit results (default: 20)')
+    .option('--json', 'Output JSON')
+    .option('--high-cost-threshold <amount>', 'Cost threshold for high-cost reason')
+    .option('--stale-hours <hours>', 'Hours without activity before stale reason')
+    .action(overviewCommand);
 
   // Hooks management
   program
