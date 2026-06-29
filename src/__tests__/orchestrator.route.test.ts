@@ -96,6 +96,120 @@ describe('Orchestrator Route Contract', () => {
     expect(body.data.items[0].sessionId).toBe('mounted-orchestrator-route');
   });
 
+  test('generates deterministic digest for a requested session', async () => {
+    sessionRepository.upsert({
+      sessionId: 'orchestrator-digest-generate',
+      client: 'codex',
+      directory: '/tmp/keepline-digest-generate',
+      status: 'waiting',
+      title: 'Digest generate',
+      lastMessage: 'Needs human review',
+      lastActiveAt: new Date('2026-06-29T10:00:00.000Z'),
+    });
+
+    const { token } = await setupUser('orchestrator-digest-user', 'password123');
+    const response = await orchestrator.fetch(new Request(
+      'http://localhost/digests/generate',
+      {
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${token}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          source: 'deterministic',
+          sessionId: 'orchestrator-digest-generate',
+        }),
+      }
+    ));
+
+    expect(response.status).toBe(200);
+    const body = await response.json() as {
+      success: boolean;
+      data: {
+        digests: Array<{
+          sessionId: string;
+          summary: string;
+          blockers: string[];
+          source: string;
+          status: string;
+          waitingForHuman: boolean;
+        }>;
+      };
+    };
+
+    expect(body.success).toBe(true);
+    expect(body.data.digests).toHaveLength(1);
+    expect(body.data.digests[0]).toMatchObject({
+      sessionId: 'orchestrator-digest-generate',
+      summary: 'Needs human review',
+      blockers: ['Session is lost and may need recovery'],
+      source: 'deterministic',
+      status: 'fresh',
+      waitingForHuman: false,
+    });
+  });
+
+  test('overview includes persisted digest payloads', async () => {
+    sessionRepository.upsert({
+      sessionId: 'orchestrator-overview-digest',
+      client: 'claude',
+      directory: '/tmp/keepline-overview-digest',
+      status: 'waiting',
+      title: 'Overview digest',
+      lastMessage: 'Digest visible in overview',
+      lastActiveAt: new Date('2026-06-29T10:00:00.000Z'),
+    });
+
+    const { token } = await setupUser('orchestrator-overview-digest-user', 'password123');
+    await orchestrator.fetch(new Request(
+      'http://localhost/digests/generate',
+      {
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${token}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          source: 'deterministic',
+          sessionId: 'orchestrator-overview-digest',
+        }),
+      }
+    ));
+
+    const response = await orchestrator.fetch(new Request(
+      'http://localhost/overview?limit=1',
+      { headers: { Authorization: `Bearer ${token}` } }
+    ));
+
+    expect(response.status).toBe(200);
+    const body = await response.json() as {
+      success: boolean;
+      data: {
+        items: Array<{
+          sessionId: string;
+          digest?: {
+            sessionId: string;
+            summary: string;
+            source: string;
+            status: string;
+          };
+        }>;
+      };
+    };
+
+    expect(body.success).toBe(true);
+    expect(body.data.items[0]).toMatchObject({
+      sessionId: 'orchestrator-overview-digest',
+      digest: {
+        sessionId: 'orchestrator-overview-digest',
+        summary: 'Digest visible in overview',
+        source: 'deterministic',
+        status: 'fresh',
+      },
+    });
+  });
+
   test('rejects invalid numeric query values', async () => {
     const { token } = await setupUser('orchestrator-invalid-user', 'password123');
     const response = await orchestrator.fetch(new Request(

@@ -7,6 +7,27 @@ import { join } from 'path';
 import { ensureKeeplineDataHome, getKeeplineHome } from './paths.js';
 import { ConfigError } from './errors.js';
 
+export type SessionDigestSummarizerProvider =
+  | 'disabled'
+  | 'ollama'
+  | 'lm_studio'
+  | 'openai_compatible_local';
+
+export interface SessionDigestSummarizerConfig {
+  /** Provider used for optional local model session digests */
+  provider: SessionDigestSummarizerProvider;
+  /** Loopback OpenAI-compatible base URL, for example http://127.0.0.1:11434/v1 */
+  baseUrl: string;
+  /** Local model name */
+  model: string;
+  /** Request timeout in milliseconds */
+  timeoutMs: number;
+  /** Max serialized session input sent to the local provider */
+  maxInputChars: number;
+  /** Max output tokens requested from the provider */
+  maxOutputTokens: number;
+}
+
 export interface KeeplineConfig {
   /** Scan interval in milliseconds */
   scanInterval: number;
@@ -55,6 +76,11 @@ export interface KeeplineConfig {
     /** TLS key path */
     tlsKey: string;
   };
+
+  /** Session digest configuration */
+  sessionDigest: {
+    summarizer: SessionDigestSummarizerConfig;
+  };
 }
 
 const defaultConfig: KeeplineConfig = {
@@ -76,6 +102,16 @@ const defaultConfig: KeeplineConfig = {
     shellCommand: 'claude',
     tlsCert: '',
     tlsKey: '',
+  },
+  sessionDigest: {
+    summarizer: {
+      provider: 'disabled',
+      baseUrl: 'http://127.0.0.1:11434/v1',
+      model: '',
+      timeoutMs: 30000,
+      maxInputChars: 12000,
+      maxOutputTokens: 800,
+    },
   },
 };
 
@@ -115,14 +151,97 @@ function validateConfig(cfg: KeeplineConfig): void {
   if (cfg.processCacheTtl < 100) {
     errors.push('processCacheTtl must be at least 100ms');
   }
+  const summarizer = cfg.sessionDigest.summarizer;
+  if (!['disabled', 'ollama', 'lm_studio', 'openai_compatible_local'].includes(
+    summarizer.provider
+  )) {
+    errors.push(
+      'sessionDigest.summarizer.provider must be one of: disabled, ollama, lm_studio, openai_compatible_local'
+    );
+  }
+  if (!Number.isFinite(summarizer.timeoutMs) ||
+    summarizer.timeoutMs < 1000 ||
+    summarizer.timeoutMs > 120000) {
+    errors.push('sessionDigest.summarizer.timeoutMs must be between 1000 and 120000');
+  }
+  if (!Number.isFinite(summarizer.maxInputChars) || summarizer.maxInputChars < 1000) {
+    errors.push('sessionDigest.summarizer.maxInputChars must be at least 1000');
+  }
+  if (!Number.isFinite(summarizer.maxOutputTokens) || summarizer.maxOutputTokens < 1) {
+    errors.push('sessionDigest.summarizer.maxOutputTokens must be positive');
+  }
+  if (summarizer.provider !== 'disabled') {
+    if (!summarizer.model.trim()) {
+      errors.push('sessionDigest.summarizer.model is required when provider is enabled');
+    }
+    const baseUrlError = validateLoopbackUrl(summarizer.baseUrl);
+    if (baseUrlError) {
+      errors.push(`sessionDigest.summarizer.baseUrl ${baseUrlError}`);
+    }
+  }
 
   if (errors.length > 0) {
     throw new ConfigError(`Invalid config: ${errors.join('; ')}`);
   }
 }
 
+type PartialKeeplineConfig = Partial<Omit<KeeplineConfig, 'webTerminal' | 'sessionDigest'>> & {
+  webTerminal?: Partial<KeeplineConfig['webTerminal']>;
+  sessionDigest?: {
+    summarizer?: Partial<SessionDigestSummarizerConfig>;
+  };
+};
+
+function cloneDefaultConfig(): KeeplineConfig {
+  return {
+    ...defaultConfig,
+    webTerminal: { ...defaultConfig.webTerminal },
+    sessionDigest: {
+      summarizer: { ...defaultConfig.sessionDigest.summarizer },
+    },
+  };
+}
+
+function mergeConfig(parsed: PartialKeeplineConfig): KeeplineConfig {
+  return {
+    ...defaultConfig,
+    ...parsed,
+    webTerminal: {
+      ...defaultConfig.webTerminal,
+      ...(parsed.webTerminal ?? {}),
+    },
+    sessionDigest: {
+      summarizer: {
+        ...defaultConfig.sessionDigest.summarizer,
+        ...(parsed.sessionDigest?.summarizer ?? {}),
+      },
+    },
+  };
+}
+
+function validateLoopbackUrl(rawUrl: string): string | null {
+  let url: URL;
+  try {
+    url = new URL(rawUrl);
+  } catch {
+    return 'must be a valid URL';
+  }
+
+  if (url.protocol !== 'http:' && url.protocol !== 'https:') {
+    return 'must use http or https';
+  }
+
+  const host = url.hostname.toLowerCase();
+  const loopbackHosts = new Set(['localhost', '127.0.0.1', '::1']);
+  if (!loopbackHosts.has(host)) {
+    return 'must be loopback';
+  }
+
+  return null;
+}
+
 class ConfigManager {
-  private config: KeeplineConfig = defaultConfig;
+  private config: KeeplineConfig = cloneDefaultConfig();
   private loaded = false;
 
   load(): KeeplineConfig {
@@ -134,8 +253,8 @@ class ConfigManager {
     if (existsSync(configFile)) {
       try {
         const content = readFileSync(configFile, 'utf-8');
-        const parsed = JSON.parse(content) as Partial<KeeplineConfig>;
-        this.config = { ...defaultConfig, ...parsed };
+        const parsed = JSON.parse(content) as PartialKeeplineConfig;
+        this.config = mergeConfig(parsed);
 
         // Validate loaded config
         validateConfig(this.config);
@@ -172,7 +291,7 @@ class ConfigManager {
   }
 
   reset(): void {
-    this.config = { ...defaultConfig };
+    this.config = cloneDefaultConfig();
     this.save();
   }
 }

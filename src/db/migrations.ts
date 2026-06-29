@@ -13,6 +13,7 @@ export function resetDatabase(): void {
   const db = getDatabase();
   db.exec(`
     DROP TABLE IF EXISTS progress_evidence;
+    DROP TABLE IF EXISTS session_digests;
     DROP TABLE IF EXISTS work_item_session_links;
     DROP TABLE IF EXISTS agent_sessions;
     DROP TABLE IF EXISTS work_items;
