@@ -8,11 +8,15 @@ describe('overview CLI options', () => {
       limit: '5',
       highCostThreshold: '2.5',
       staleHours: '12',
+      lostHours: '6',
+      includeOldLost: true,
     })).toEqual({
       includeCompleted: true,
       limit: 5,
       highCostThreshold: 2.5,
       staleHours: 12,
+      includeOldLost: true,
+      lostHours: 6,
     });
   });
 
@@ -25,6 +29,9 @@ describe('overview CLI options', () => {
     );
     expect(() => parseOverviewOptions({ staleHours: '0' })).toThrow(
       'stale-hours must be a positive number'
+    );
+    expect(() => parseOverviewOptions({ lostHours: '0' })).toThrow(
+      'lost-hours must be a positive number'
     );
   });
 });

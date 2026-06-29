@@ -79,6 +79,8 @@ export function registerCommands(program: Command): void {
     .option('--json', 'Output JSON')
     .option('--high-cost-threshold <amount>', 'Cost threshold for high-cost reason')
     .option('--stale-hours <hours>', 'Hours without activity before stale reason')
+    .option('--lost-hours <hours>', 'Hours a lost session remains in the default recovery queue')
+    .option('--include-old-lost', 'Include lost sessions outside the recovery window')
     .action(overviewCommand);
 
   // Hooks management

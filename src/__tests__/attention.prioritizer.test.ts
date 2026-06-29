@@ -171,6 +171,39 @@ describe('buildAttentionOverview', () => {
     });
   });
 
+  test('hides old lost sessions from the default recovery queue', () => {
+    const overview = buildAttentionOverview([
+      session({ sessionId: 'recent-lost', status: 'lost', lastActiveAt: RECENT }),
+      session({ sessionId: 'old-lost', status: 'lost', lastActiveAt: OLD }),
+      session({ sessionId: 'waiting', status: 'waiting', lastActiveAt: OLD }),
+    ], { now: NOW });
+
+    expect(overview.items.map((item) => item.sessionId)).toEqual([
+      'waiting',
+      'recent-lost',
+    ]);
+    expect(overview.stats).toMatchObject({
+      totalCandidates: 2,
+      hiddenOldLost: 1,
+      lostWindowHours: 1,
+      critical: 2,
+    });
+  });
+
+  test('can include old lost sessions explicitly', () => {
+    const overview = buildAttentionOverview([
+      session({ sessionId: 'old-lost', status: 'lost', lastActiveAt: OLD }),
+    ], {
+      now: NOW,
+      includeOldLost: true,
+    });
+
+    expect(overview.items).toHaveLength(1);
+    expect(overview.items[0].sessionId).toBe('old-lost');
+    expect(overview.stats.hiddenOldLost).toBe(0);
+    expect(overview.stats.lostWindowHours).toBeUndefined();
+  });
+
   test('attaches serialized digest without changing queue order', () => {
     const digest: SessionDigest = {
       id: 'digest-id',
