@@ -244,6 +244,53 @@ describe('buildAttentionOverview', () => {
     expect(overview.items[0].context.lastMessage?.endsWith('...')).toBe(true);
   });
 
+  test('extracts actionable intent when prompt and title are instruction noise', () => {
+    const overview = buildAttentionOverview([
+      session({
+        sessionId: 'intent-session',
+        status: 'lost',
+        title: '# AGENTS.md instructions <INSTRUCTIONS> vibeguard-start',
+        initialPrompt: '# AGENTS.md instructions <INSTRUCTIONS> Files called AGENTS.md commonly appear in many places.',
+        lastMessage: 'Denoise probe 第一次启动失败了，我先看 stderr。通常这种是脚本路径或 OpenVINO Async API 细节。',
+        currentFile: '/Users/lifcc/Desktop/code/work/infra/vsr/runs/topaz_dragon_cleanup_20260629T035947Z/cleanup_standard.png',
+        lastTool: 'exec_command',
+      }),
+    ], { now: NOW });
+
+    expect(overview.items[0].intent).toMatchObject({
+      task: 'Investigate: Denoise probe 第一次启动失败了，我先看 stderr',
+      currentState: 'Denoise probe 第一次启动失败了，我先看 stderr。通常这种是脚本路径或 OpenVINO Async API 细节。',
+      nextAction: 'Recover this session and continue around topaz_dragon_cleanup_20260629T035947Z/cleanup_standard.png.',
+      whyAttention: 'Session is lost and may be recoverable',
+      confidence: 'medium',
+      noiseFlags: [
+        'instructions_heavy',
+        'derived_from_last_message',
+        'missing_user_goal',
+      ],
+      evidence: {
+        lastTool: 'exec_command',
+        currentFile: '/Users/lifcc/Desktop/code/work/infra/vsr/runs/topaz_dragon_cleanup_20260629T035947Z/cleanup_standard.png',
+      },
+    });
+  });
+
+  test('skips low-information response openers when deriving intent', () => {
+    const overview = buildAttentionOverview([
+      session({
+        sessionId: 'filler-session',
+        status: 'lost',
+        title: '# AGENTS.md instructions <INSTRUCTIONS> vibeguard-start',
+        initialPrompt: '# AGENTS.md instructions <INSTRUCTIONS> Files called AGENTS.md commonly appear in many places.',
+        lastMessage: '看了。结论是：gh21 应该学习产品行为和交互契约，不是照搬原型 UI。',
+      }),
+    ], { now: NOW });
+
+    expect(overview.items[0].intent.task).toBe(
+      'Continue: 结论是：gh21 应该学习产品行为和交互契约，不是照搬原型 UI'
+    );
+  });
+
   test('attaches serialized digest without changing queue order', () => {
     const digest: SessionDigest = {
       id: 'digest-id',
