@@ -22,6 +22,15 @@ export interface AttentionReason {
   score: number;
 }
 
+export interface AttentionSessionContext {
+  initialPrompt?: string;
+  lastMessage?: string;
+  lastTool?: string;
+  currentFile?: string;
+  messageCount: number;
+  toolCount: number;
+}
+
 export interface AttentionQueueItem {
   rank: number;
   sessionId: string;
@@ -34,6 +43,7 @@ export interface AttentionQueueItem {
   reasons: AttentionReason[];
   recommendedAction: RecommendedAction;
   processRunning: boolean;
+  context: AttentionSessionContext;
   usageCost?: number;
   digest?: SerializableSessionDigest;
 }
@@ -69,6 +79,8 @@ export const MAX_ATTENTION_LIMIT = 100;
 export const DEFAULT_HIGH_COST_THRESHOLD = 1;
 export const DEFAULT_STALE_HOURS = 24;
 export const DEFAULT_LOST_HOURS = 1;
+export const MAX_ATTENTION_CONTEXT_LENGTH = 700;
+export const MAX_ATTENTION_PATH_LENGTH = 260;
 
 const WAITING_SCORE = 1000;
 const LOST_SCORE = 850;
@@ -205,6 +217,7 @@ function buildAttentionItem(
     reasons,
     recommendedAction: getRecommendedAction(reasons),
     processRunning: session.processRunning,
+    context: buildSessionContext(session),
     usageCost,
     digest: options.digest ? serializeSessionDigest(options.digest) : undefined,
   };
@@ -229,6 +242,24 @@ function getRecommendedAction(reasons: AttentionReason[]): RecommendedAction {
   if (reasons.some((reason) => reason.code === 'idle_activity')) return 'monitor';
   if (reasons.some((reason) => reason.code === 'active_session')) return 'monitor';
   return 'none';
+}
+
+function buildSessionContext(session: AggregatedSession): AttentionSessionContext {
+  return {
+    initialPrompt: compactText(session.initialPrompt, MAX_ATTENTION_CONTEXT_LENGTH),
+    lastMessage: compactText(session.lastMessage, MAX_ATTENTION_CONTEXT_LENGTH),
+    lastTool: compactText(session.lastTool, MAX_ATTENTION_PATH_LENGTH),
+    currentFile: compactText(session.currentFile, MAX_ATTENTION_PATH_LENGTH),
+    messageCount: session.messageCount,
+    toolCount: session.toolCount,
+  };
+}
+
+function compactText(value: string | undefined, maxLength: number): string | undefined {
+  const compacted = value?.trim().replace(/\s+/g, ' ');
+  if (!compacted) return undefined;
+  if (compacted.length <= maxLength) return compacted;
+  return compacted.slice(0, maxLength - 3) + '...';
 }
 
 function compareAttentionItems(a: AttentionQueueItem, b: AttentionQueueItem): number {

@@ -20,6 +20,15 @@ export interface OrchestratorReason {
   score: number
 }
 
+export interface OrchestratorSessionContext {
+  initialPrompt?: string
+  lastMessage?: string
+  lastTool?: string
+  currentFile?: string
+  messageCount: number
+  toolCount: number
+}
+
 export interface OrchestratorDigest {
   sessionId: string
   summary: string
@@ -46,6 +55,7 @@ export interface OrchestratorQueueItem {
   reasons: OrchestratorReason[]
   recommendedAction: OrchestratorRecommendedAction
   processRunning: boolean
+  context: OrchestratorSessionContext
   usageCost?: number
   digest?: OrchestratorDigest
 }

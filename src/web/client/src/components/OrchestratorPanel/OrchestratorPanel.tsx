@@ -13,6 +13,10 @@ import styles from './OrchestratorPanel.module.css'
 interface OrchestratorPanelProps {
   token: string
   onOpenSession?: (sessionId: string) => void
+  onRecover?: (sessionId: string) => void | Promise<void>
+  onStop?: (sessionId: string) => void | Promise<void>
+  onComplete?: (sessionId: string) => void | Promise<void>
+  onCopySessionId?: (sessionId: string) => void | Promise<void>
 }
 
 const ACTION_LABELS: Record<OrchestratorRecommendedAction, string> = {
@@ -26,6 +30,10 @@ const ACTION_LABELS: Record<OrchestratorRecommendedAction, string> = {
 export const OrchestratorPanel = memo(function OrchestratorPanel({
   token,
   onOpenSession,
+  onRecover,
+  onStop,
+  onComplete,
+  onCopySessionId,
 }: OrchestratorPanelProps) {
   const { overview, loading, error, refresh } = useOrchestratorOverview(token)
   const stats = overview?.stats ?? {
@@ -85,7 +93,16 @@ export const OrchestratorPanel = memo(function OrchestratorPanel({
       ) : overview ? (
         <div className={styles.queueList}>
           {overview.items.map((item) => (
-            <QueueCard key={item.sessionId} item={item} onOpenSession={onOpenSession} />
+            <QueueCard
+              key={item.sessionId}
+              item={item}
+              onOpenSession={onOpenSession}
+              onRecover={onRecover}
+              onStop={onStop}
+              onComplete={onComplete}
+              onCopySessionId={onCopySessionId}
+              onActionComplete={refresh}
+            />
           ))}
         </div>
       ) : null}
@@ -113,9 +130,19 @@ function OrchestratorStat({
 function QueueCard({
   item,
   onOpenSession,
+  onRecover,
+  onStop,
+  onComplete,
+  onCopySessionId,
+  onActionComplete,
 }: {
   item: OrchestratorQueueItem
   onOpenSession?: (sessionId: string) => void
+  onRecover?: (sessionId: string) => void | Promise<void>
+  onStop?: (sessionId: string) => void | Promise<void>
+  onComplete?: (sessionId: string) => void | Promise<void>
+  onCopySessionId?: (sessionId: string) => void | Promise<void>
+  onActionComplete?: () => void | Promise<void>
 }) {
   return (
     <article className={styles.queueCard}>
@@ -136,30 +163,150 @@ function QueueCard({
             <span className={`${styles.actionBadge} ${styles[item.recommendedAction]}`}>
               {ACTION_LABELS[item.recommendedAction]}
             </span>
-            {onOpenSession && (
-              <button
-                type="button"
-                className={styles.openButton}
-                onClick={() => onOpenSession(item.sessionId)}
-              >
-                Open
-              </button>
-            )}
           </div>
         </div>
 
         <div className={styles.metaRow}>
           <span>{formatRelativeTime(item.lastActiveAt)}</span>
           <span>{item.processRunning ? 'process running' : 'no process'}</span>
+          <span>{item.context.messageCount} messages</span>
+          <span>{item.context.toolCount} tools</span>
           {item.usageCost != null && <span>{formatCost(item.usageCost)}</span>}
           <span>{item.sessionId}</span>
         </div>
 
         <ReasonList reasons={item.reasons} />
+        <ContextBlock item={item} />
         {item.digest && <DigestBlock digest={item.digest} />}
+        <ActionRow
+          item={item}
+          onOpenSession={onOpenSession}
+          onRecover={onRecover}
+          onStop={onStop}
+          onComplete={onComplete}
+          onCopySessionId={onCopySessionId}
+          onActionComplete={onActionComplete}
+        />
       </div>
     </article>
   )
+}
+
+function ContextBlock({ item }: { item: OrchestratorQueueItem }) {
+  const rows = getContextRows(item)
+  const details = [
+    item.context.currentFile ? `File: ${item.context.currentFile}` : undefined,
+    item.context.lastTool ? `Last tool: ${item.context.lastTool}` : undefined,
+  ].filter((value): value is string => Boolean(value))
+
+  if (rows.length === 0 && details.length === 0) {
+    return <div className={styles.contextEmpty}>No prompt or response preview captured yet</div>
+  }
+
+  return (
+    <div className={styles.contextBlock}>
+      {rows.map((row) => (
+        <section className={styles.contextSection} key={row.label}>
+          <div className={styles.contextLabel}>{row.label}</div>
+          <div className={styles.contextText}>{row.text}</div>
+        </section>
+      ))}
+      {details.length > 0 && (
+        <div className={styles.contextMeta}>
+          {details.map((detail) => (
+            <span key={detail}>{detail}</span>
+          ))}
+        </div>
+      )}
+    </div>
+  )
+}
+
+function ActionRow({
+  item,
+  onOpenSession,
+  onRecover,
+  onStop,
+  onComplete,
+  onCopySessionId,
+  onActionComplete,
+}: {
+  item: OrchestratorQueueItem
+  onOpenSession?: (sessionId: string) => void
+  onRecover?: (sessionId: string) => void | Promise<void>
+  onStop?: (sessionId: string) => void | Promise<void>
+  onComplete?: (sessionId: string) => void | Promise<void>
+  onCopySessionId?: (sessionId: string) => void | Promise<void>
+  onActionComplete?: () => void | Promise<void>
+}) {
+  if (!onOpenSession && !onRecover && !onStop && !onComplete && !onCopySessionId) return null
+
+  const canRecover = item.recommendedAction === 'recover' && onRecover
+  const canStop = (item.status === 'running' || item.status === 'waiting') && onStop
+  const canComplete = item.status !== 'completed' && onComplete
+  const openLabel = item.recommendedAction === 'review' ? 'Review Details' : 'Open Details'
+
+  return (
+    <div className={styles.actionRow} role="group" aria-label={`Actions for ${item.sessionId}`}>
+      {onOpenSession && (
+        <button
+          type="button"
+          className={`${styles.commandButton} ${styles.primaryCommand}`}
+          onClick={() => onOpenSession(item.sessionId)}
+        >
+          {openLabel}
+        </button>
+      )}
+      {canRecover && (
+        <button
+          type="button"
+          className={`${styles.commandButton} ${styles.recoverCommand}`}
+          onClick={() => void runAction(() => onRecover(item.sessionId), onActionComplete)}
+        >
+          Recover
+        </button>
+      )}
+      {canStop && (
+        <button
+          type="button"
+          className={`${styles.commandButton} ${styles.stopCommand}`}
+          onClick={() => void runAction(() => onStop(item.sessionId), onActionComplete)}
+        >
+          Stop
+        </button>
+      )}
+      {canComplete && (
+        <button
+          type="button"
+          className={styles.commandButton}
+          onClick={() => void runAction(() => onComplete(item.sessionId), onActionComplete)}
+        >
+          Complete
+        </button>
+      )}
+      {onCopySessionId && (
+        <button
+          type="button"
+          className={styles.commandButton}
+          onClick={() => void runAction(() => onCopySessionId(item.sessionId))}
+        >
+          Copy ID
+        </button>
+      )}
+    </div>
+  )
+}
+
+async function runAction(
+  action: () => void | Promise<void>,
+  onActionComplete?: () => void | Promise<void>
+) {
+  try {
+    await action()
+    await onActionComplete?.()
+  } catch (error) {
+    console.error('Orchestrator action failed:', error)
+  }
 }
 
 function ReasonList({ reasons }: { reasons: OrchestratorReason[] }) {
@@ -218,6 +365,29 @@ function DigestList({ title, items }: { title: string; items: string[] }) {
       </ul>
     </div>
   )
+}
+
+function getContextRows(item: OrchestratorQueueItem): Array<{ label: string; text: string }> {
+  const seen = new Set<string>()
+  const rows: Array<{ label: string; text: string }> = []
+
+  pushContextRow(rows, seen, 'Summary', item.digest?.summary)
+  pushContextRow(rows, seen, 'Last response', item.context.lastMessage)
+  pushContextRow(rows, seen, 'Prompt', item.context.initialPrompt)
+
+  return rows.slice(0, 3)
+}
+
+function pushContextRow(
+  rows: Array<{ label: string; text: string }>,
+  seen: Set<string>,
+  label: string,
+  value: string | undefined
+) {
+  const text = value?.trim()
+  if (!text || seen.has(text)) return
+  seen.add(text)
+  rows.push({ label, text })
 }
 
 function formatScopeText(hiddenOldLost: number, lostWindowHours?: number): string {
