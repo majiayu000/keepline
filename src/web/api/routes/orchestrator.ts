@@ -44,14 +44,20 @@ app.get('/overview', (c) => {
   if (staleHoursResult.error) {
     return c.json({ success: false, error: staleHoursResult.error }, 400);
   }
+  const lostHoursResult = parsePositiveNumber(c.req.query('lostHours'), 'lostHours');
+  if (lostHoursResult.error) {
+    return c.json({ success: false, error: lostHoursResult.error }, 400);
+  }
 
   try {
     const sessions = getAggregatedSessions();
     const overview = buildAttentionOverview(sessions, {
       includeCompleted: c.req.query('includeCompleted') === 'true',
+      includeOldLost: c.req.query('includeOldLost') === 'true',
       limit: limitResult.value,
       highCostThreshold: highCostResult.value,
       staleHours: staleHoursResult.value,
+      lostHours: lostHoursResult.value,
       digests: getSessionDigestMap(sessions.map((session) => session.sessionId)),
     });
 

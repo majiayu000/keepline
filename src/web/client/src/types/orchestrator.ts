@@ -55,6 +55,8 @@ export interface OrchestratorOverviewStats {
   needingAttention: number
   critical: number
   warning: number
+  hiddenOldLost: number
+  lostWindowHours?: number
 }
 
 export interface OrchestratorOverviewData {
