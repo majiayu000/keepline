@@ -2,6 +2,7 @@
 export * from './session.types.js';
 export * from './session.service.js';
 export * from './session.aggregator.js';
+export * from './attention.prioritizer.js';
 
 // Recovery
 export * from './recovery.types.js';

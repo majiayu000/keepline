@@ -29,6 +29,7 @@ import {
   projects,
   workItems,
   workItemEvidence,
+  orchestrator,
 } from './routes/index.js';
 import { broadcast, wsClients, websocketHandler } from './websocket.js';
 import { terminalWebsocketHandler } from './terminal-websocket.js';
@@ -103,6 +104,7 @@ app.route('/api/auth', auth);
 app.route('/api/sessions', sessions);
 app.route('/api/sessions', recovery);
 app.route('/api/projects', projects);
+app.route('/api/orchestrator', orchestrator);
 app.route('/api/work-items', workItemEvidence);
 app.route('/api/work-items', workItems);
 app.route('/api', usage);
