@@ -38,6 +38,7 @@ import type {
   WorkItemCreateInput,
   WorkItemsData,
   WorkItemUpdateInput,
+  OrchestratorOverviewData,
 } from '@/types'
 import { API_BASE, API_TIMEOUT_MS } from '@/constants'
 
@@ -320,6 +321,12 @@ export async function fetchWorkItems(
   return request<WorkItemsData>('/work-items', undefined, signal)
 }
 
+export async function fetchOrchestratorOverview(
+  signal?: AbortSignal
+): Promise<ApiResponse<OrchestratorOverviewData>> {
+  return request<OrchestratorOverviewData>('/orchestrator/overview', undefined, signal)
+}
+
 export async function createWorkItem(
   data: WorkItemCreateInput,
   signal?: AbortSignal
@@ -535,6 +542,7 @@ export const api = {
   fetchQuota,
   fetchClients,
   fetchCodexQuota,
+  fetchOrchestratorOverview,
   fetchWorkItems,
   createWorkItem,
   updateWorkItem,

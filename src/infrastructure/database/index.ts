@@ -38,3 +38,7 @@ export { workItemEvidenceRepository } from './repositories/work-item-evidence.re
 export type {
   IWorkItemEvidenceRepository,
 } from './repositories/work-item-evidence.repository.js';
+export { sessionDigestRepository } from './repositories/session-digest.repository.js';
+export type {
+  ISessionDigestRepository,
+} from './repositories/session-digest.repository.js';

@@ -1,6 +1,7 @@
 import { describe, expect, test } from 'bun:test';
 import type { AggregatedSession } from '../services/session.types.js';
 import { buildAttentionOverview } from '../services/attention.prioritizer.js';
+import type { SessionDigest } from '../domain/orchestrator/index.js';
 
 const NOW = new Date('2026-06-29T12:00:00.000Z');
 const RECENT = new Date('2026-06-29T11:55:00.000Z');
@@ -167,6 +168,44 @@ describe('buildAttentionOverview', () => {
       sessionId: 'completed',
       recommendedAction: 'none',
       score: 0,
+    });
+  });
+
+  test('attaches serialized digest without changing queue order', () => {
+    const digest: SessionDigest = {
+      id: 'digest-id',
+      sessionId: 'digest-session',
+      summary: 'Digest summary',
+      nextActions: ['Next action'],
+      blockers: [],
+      waitingForHuman: false,
+      source: 'deterministic',
+      status: 'fresh',
+      sourceUpdatedAt: RECENT,
+      generatedAt: NOW,
+      createdAt: NOW,
+      updatedAt: NOW,
+    };
+
+    const overview = buildAttentionOverview([
+      session({ sessionId: 'waiting-session', status: 'waiting' }),
+      session({ sessionId: 'digest-session', status: 'running' }),
+    ], {
+      now: NOW,
+      digests: new Map([['digest-session', digest]]),
+    });
+
+    expect(overview.items.map((item) => item.sessionId)).toEqual([
+      'waiting-session',
+      'digest-session',
+    ]);
+    expect(overview.items[1].digest).toMatchObject({
+      sessionId: 'digest-session',
+      summary: 'Digest summary',
+      nextActions: ['Next action'],
+      source: 'deterministic',
+      status: 'fresh',
+      generatedAt: '2026-06-29T12:00:00.000Z',
     });
   });
 });

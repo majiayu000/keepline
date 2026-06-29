@@ -1,7 +1,15 @@
 import { memo } from 'react'
 import styles from './TabNav.module.css'
 
-export type TabId = 'sessions' | 'work' | 'analytics' | 'projects' | 'memory' | 'plans' | 'terminal'
+export type TabId =
+  | 'sessions'
+  | 'orchestrator'
+  | 'work'
+  | 'analytics'
+  | 'projects'
+  | 'memory'
+  | 'plans'
+  | 'terminal'
 
 interface Tab {
   id: TabId
@@ -11,6 +19,7 @@ interface Tab {
 
 const TABS: Tab[] = [
   { id: 'sessions', label: 'Sessions', icon: '>' },
+  { id: 'orchestrator', label: 'Orchestrator', icon: '!' },
   { id: 'work', label: 'Work', icon: '+' },
   { id: 'analytics', label: 'Analytics', icon: '$' },
   { id: 'projects', label: 'Projects', icon: '#' },
@@ -32,6 +41,7 @@ export const TabNav = memo(function TabNav({ activeTab, onTabChange }: TabNavPro
           key={tab.id}
           className={`${styles.tab} ${activeTab === tab.id ? styles.active : ''}`}
           onClick={() => onTabChange(tab.id)}
+          id={`tab-${tab.id}`}
           role="tab"
           aria-selected={activeTab === tab.id}
           aria-controls={`panel-${tab.id}`}

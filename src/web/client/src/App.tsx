@@ -12,6 +12,7 @@ import { MemoryPanel } from '@/components/MemoryPanel'
 import { PlansPanel } from '@/components/PlansPanel'
 import { TerminalPanel } from '@/components/TerminalPanel'
 import { WorkItemsPanel } from '@/components/WorkItemsPanel'
+import { OrchestratorPanel } from '@/components/OrchestratorPanel'
 import { AuthSetup } from '@/components/AuthSetup'
 import { AuthLogin } from '@/components/AuthLogin'
 import type { TabId } from '@/components/TabNav'
@@ -156,6 +157,14 @@ function DashboardApp({ token, onLogout }: DashboardAppProps) {
     showToast('Project filter cleared', 'info')
   }, [showToast])
 
+  const handleOpenOrchestratorSession = useCallback((sessionId: string) => {
+    setSelectedProjectRoot(null)
+    setStatusFilters(new Set())
+    setRuntimeFilter('all')
+    setSearchQuery(sessionId)
+    setActiveTab('sessions')
+  }, [])
+
   useKeyboardShortcuts({
     onRefresh: refresh,
     onSync: handleSync,
@@ -235,6 +244,13 @@ function DashboardApp({ token, onLogout }: DashboardAppProps) {
 
       {activeTab === 'analytics' && !loading && (
         <UsagePanel />
+      )}
+
+      {activeTab === 'orchestrator' && !loading && (
+        <OrchestratorPanel
+          token={token}
+          onOpenSession={handleOpenOrchestratorSession}
+        />
       )}
 
       {activeTab === 'work' && !loading && (

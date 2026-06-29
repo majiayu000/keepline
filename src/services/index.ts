@@ -3,6 +3,8 @@ export * from './session.types.js';
 export * from './session.service.js';
 export * from './session.aggregator.js';
 export * from './attention.prioritizer.js';
+export * from './session-digest.service.js';
+export * from './orchestrator.summarizer.js';
 
 // Recovery
 export * from './recovery.types.js';

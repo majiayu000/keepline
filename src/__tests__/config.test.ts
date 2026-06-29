@@ -40,6 +40,7 @@ describe('Configuration Module API', () => {
       'idleThresholdSeconds',
       'runningThresholdSeconds',
       'processCacheTtl',
+      'sessionDigest',
     ];
 
     for (const prop of expectedProperties) {
@@ -99,6 +100,22 @@ describe('Default Configuration Values', () => {
     test('activeCpuThreshold defaults to 1.0%', async () => {
       const { config } = await import('../lib/config.js');
       expect(config.get().activeCpuThreshold).toBe(1.0);
+    });
+  });
+
+  describe('session digest defaults', () => {
+    test('local summarizer is disabled by default', async () => {
+      const { config } = await import('../lib/config.js');
+      const summarizer = config.get().sessionDigest.summarizer;
+
+      expect(summarizer).toMatchObject({
+        provider: 'disabled',
+        baseUrl: 'http://127.0.0.1:11434/v1',
+        model: '',
+        timeoutMs: 30000,
+        maxInputChars: 12000,
+        maxOutputTokens: 800,
+      });
     });
   });
 });
