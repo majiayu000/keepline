@@ -86,13 +86,21 @@ Add route module `src/web/api/routes/orchestrator.ts`:
 - `GET /api/orchestrator/overview`
 - query params:
   - `includeCompleted=true|false`
+  - `includeOldLost=true|false`
   - `limit=<number>` default 20, max 100
   - `highCostThreshold=<number>` optional, default from service
   - `staleHours=<number>` optional, default from service
+  - `lostHours=<number>` optional, default from service; ignored when `includeOldLost=true`
 
 Mount it in `src/web/api/routes/index.ts` and `src/web/api/server.ts`.
 
 Serialize dates to ISO strings. Do not expose raw internal class instances.
+
+By default, the API should hide lost sessions whose `lastActiveAt` is older than
+the configured lost freshness window, currently one hour. This keeps stale
+recovery candidates from dominating the queue. The response stats must include
+`hiddenOldLost` and `lostWindowHours` so the UI can explain the hidden scope.
+`includeOldLost=true` disables this filter and omits `lostWindowHours`.
 
 ## CLI
 
@@ -130,6 +138,7 @@ Future PR for Session Digest may add a dedicated `session_digests` table rather 
 
 - Unit test `buildAttentionOverview()` ordering and reason generation.
 - Route test `/api/orchestrator/overview` auth + serialization + limit.
+- Route test old-lost filtering with relative timestamps so the fixture does not drift with wall-clock time.
 - CLI smoke test can be covered by typecheck/build in PR1; a later CLI test harness can add subprocess coverage.
 - Run:
   - `bun test src/__tests__/attention.prioritizer.test.ts src/__tests__/orchestrator.route.test.ts`
