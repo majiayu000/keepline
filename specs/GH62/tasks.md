@@ -115,6 +115,8 @@ Done when:
 - `GET /api/orchestrator/overview` returns serialized overview payload.
 - Route uses existing auth middleware.
 - Invalid numeric query values return 400.
+- Old lost sessions are hidden by default with `hiddenOldLost` stats and can be included with `includeOldLost=true`.
+- Route tests use relative timestamps for recent and old lost sessions so they remain deterministic over time.
 
 Verify:
 

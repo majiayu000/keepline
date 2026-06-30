@@ -23,12 +23,13 @@ Agent Orchestrator 让 Keepline 从“会话列表”升级为本地 agent runti
 4. 没有数据就显示空白或低置信度，不得编造进度、阻塞点或完成状态。
 5. waiting session 优先级高于 lost/recoverable session；lost/recoverable 高于高成本 session；高成本高于 stale/idle session。
 6. 高成本信号只来自 persisted usage data。没有 usage data 时不能猜测成本。
-7. Memory 增强字段可以提供 `summary`、`nextActions`、`blockers`，但这些字段缺失时 Overview 仍可工作。
-8. Session Digest 的第一版必须可区分 deterministic digest 和 model-generated digest。模型摘要不可覆盖用户手动 memory 数据。
-9. 本地模型摘要默认本地优先；云模型必须显式配置，且 transcript 内容默认不离开本机。
-10. 摘要生成失败必须显示 stale/error 状态或保留旧摘要，不得 warning 后静默显示假新摘要。
-11. Web Orchestrator 视图应复用同一 Attention Queue API，不在前端重新实现排序规则。
-12. 所有新 API 和 CLI 行为必须保持 runtime-neutral：Codex、Claude Code、未来 Cursor 都是 runtime/client 数据源，不是产品边界。
+7. lost/recoverable session 默认只显示最近恢复窗口内的候选项，避免陈旧丢失会话淹没 Queue；被隐藏的旧 lost sessions 必须在 stats 中计数，并可通过显式参数重新包含。
+8. Memory 增强字段可以提供 `summary`、`nextActions`、`blockers`，但这些字段缺失时 Overview 仍可工作。
+9. Session Digest 的第一版必须可区分 deterministic digest 和 model-generated digest。模型摘要不可覆盖用户手动 memory 数据。
+10. 本地模型摘要默认本地优先；云模型必须显式配置，且 transcript 内容默认不离开本机。
+11. 摘要生成失败必须显示 stale/error 状态或保留旧摘要，不得 warning 后静默显示假新摘要。
+12. Web Orchestrator 视图应复用同一 Attention Queue API，不在前端重新实现排序规则。
+13. 所有新 API 和 CLI 行为必须保持 runtime-neutral：Codex、Claude Code、未来 Cursor 都是 runtime/client 数据源，不是产品边界。
 
 ## MVP Scope
 
@@ -68,7 +69,8 @@ Agent Orchestrator 让 Keepline 从“会话列表”升级为本地 agent runti
 8. 输出 reason 不解析 free-text 来推断 done 或 blocked。
 9. API route 需要沿用现有 auth middleware。
 10. 新增代码不破坏 `list`、`watch`、`recover`、`memory`、`work-items`、`projects` 流程。
-11. 验证命令通过：`bun run typecheck`、targeted tests、`bun test`、`bun run build`。
+11. 默认 Overview 隐藏超过 lost freshness window 的 lost sessions，`stats.hiddenOldLost` 计数，显式 `includeOldLost=true` 可以包含它们。
+12. 验证命令通过：`bun run typecheck`、targeted tests、`bun test`、`bun run build`。
 
 ## Open Questions
 
