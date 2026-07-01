@@ -6,6 +6,17 @@ import { resetDatabase } from '../db/migrations.js';
 import { closeDatabase } from '../infrastructure/database/sqlite.js';
 import { sessionRepository } from '../infrastructure/database/repositories/session.repository.js';
 
+const RECENT_SESSION_OFFSET_MS = 5 * 60 * 1000;
+const OLD_LOST_SESSION_OFFSET_MS = 2 * 60 * 60 * 1000;
+
+function recentSessionDate(): Date {
+  return new Date(Date.now() - RECENT_SESSION_OFFSET_MS);
+}
+
+function oldLostSessionDate(): Date {
+  return new Date(Date.now() - OLD_LOST_SESSION_OFFSET_MS);
+}
+
 describe('Orchestrator Route Contract', () => {
   beforeEach(() => {
     resetDatabase();
@@ -16,6 +27,8 @@ describe('Orchestrator Route Contract', () => {
   });
 
   test('overview returns serialized attention queue with auth', async () => {
+    const lastActiveAt = recentSessionDate();
+
     sessionRepository.upsert({
       sessionId: 'orchestrator-route-cost',
       client: 'codex',
@@ -26,7 +39,7 @@ describe('Orchestrator Route Contract', () => {
       lastMessage: 'Cost is high, review before continuing',
       lastTool: 'Read',
       currentFile: '/tmp/keepline-orchestrator/report.md',
-      lastActiveAt: new Date('2026-06-29T10:00:00.000Z'),
+      lastActiveAt,
       toolCount: 2,
       messageCount: 4,
       usageStats: {
@@ -80,7 +93,7 @@ describe('Orchestrator Route Contract', () => {
     expect(body.data.items).toHaveLength(1);
     expect(body.data.items[0]).toMatchObject({
       sessionId: 'orchestrator-route-cost',
-      lastActiveAt: '2026-06-29T10:00:00.000Z',
+      lastActiveAt: lastActiveAt.toISOString(),
       context: {
         initialPrompt: 'Track cost',
         lastMessage: 'Cost is high, review before continuing',
@@ -108,7 +121,7 @@ describe('Orchestrator Route Contract', () => {
       status: 'running',
       title: 'Mounted route',
       initialPrompt: 'Mounted',
-      lastActiveAt: new Date('2026-06-29T10:00:00.000Z'),
+      lastActiveAt: recentSessionDate(),
       toolCount: 1,
       messageCount: 1,
     });
@@ -137,7 +150,7 @@ describe('Orchestrator Route Contract', () => {
       status: 'waiting',
       title: 'Digest generate',
       lastMessage: 'Needs human review',
-      lastActiveAt: new Date('2026-06-29T10:00:00.000Z'),
+      lastActiveAt: recentSessionDate(),
     });
 
     const { token } = await setupUser('orchestrator-digest-user', 'password123');
@@ -191,7 +204,7 @@ describe('Orchestrator Route Contract', () => {
       status: 'waiting',
       title: 'Overview digest',
       lastMessage: 'Digest visible in overview',
-      lastActiveAt: new Date('2026-06-29T10:00:00.000Z'),
+      lastActiveAt: recentSessionDate(),
     });
 
     const { token } = await setupUser('orchestrator-overview-digest-user', 'password123');
@@ -263,7 +276,7 @@ describe('Orchestrator Route Contract', () => {
       directory: '/tmp/keepline-old-lost',
       status: 'lost',
       title: 'Old lost',
-      lastActiveAt: new Date('2026-06-27T10:00:00.000Z'),
+      lastActiveAt: oldLostSessionDate(),
     });
 
     const { token } = await setupUser('orchestrator-old-lost-user', 'password123');
