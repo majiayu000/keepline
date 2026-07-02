@@ -15,7 +15,8 @@ function writeSessionFile(
   homeDir: string,
   projectDirName: string,
   filename: string,
-  lines: Array<Record<string, unknown> | string>
+  lines: Array<Record<string, unknown> | string>,
+  options: { trailingNewline?: boolean } = {}
 ): string {
   const projectDir = join(homeDir, '.claude', 'projects', projectDirName);
   mkdirSync(projectDir, { recursive: true });
@@ -23,7 +24,7 @@ function writeSessionFile(
   const contents = lines
     .map((line) => (typeof line === 'string' ? line : JSON.stringify(line)))
     .join('\n');
-  writeFileSync(filePath, `${contents}\n`);
+  writeFileSync(filePath, options.trailingNewline === false ? contents : `${contents}\n`);
   return filePath;
 }
 
@@ -94,6 +95,18 @@ describe('Claude Scanner', () => {
         message: { role: 'user', content: 'This file is broken' },
       },
       '{"type":"assistant", invalid json',
+      {
+        type: 'assistant',
+        uuid: 'assistant-after-bad-line',
+        sessionId: 'broken-session',
+        cwd: '/tmp/broken-project',
+        timestamp: '2026-04-13T11:00:01.000Z',
+        message: {
+          role: 'assistant',
+          model: 'claude-3-5-sonnet-20241022',
+          content: [{ type: 'text', text: 'Line after corruption' }],
+        },
+      },
     ]);
 
     const result = runScannerScript(homeDir, `
@@ -124,6 +137,18 @@ describe('Claude Scanner', () => {
         message: { role: 'user', content: 'Broken on first scan' },
       },
       '{"type":"assistant", invalid json',
+      {
+        type: 'assistant',
+        uuid: 'assistant-after-bad-line',
+        sessionId: 'repair-session',
+        cwd: '/tmp/repair-project',
+        timestamp: '2026-04-13T11:10:01.000Z',
+        message: {
+          role: 'assistant',
+          model: 'claude-3-5-sonnet-20241022',
+          content: [{ type: 'text', text: 'Line after corruption' }],
+        },
+      },
     ]);
 
     const result = runScannerScript(homeDir, `
@@ -229,6 +254,43 @@ describe('Claude Scanner', () => {
       hasToolCalls: true,
       toolCalls: ['Read'],
       toolCount: 1,
+    });
+  });
+
+  test('does not cache a final-line truncation as a Claude parse failure', () => {
+    const homeDir = createTempHome();
+
+    writeSessionFile(homeDir, '-tmp-truncated-project', 'truncated-session.jsonl', [
+      {
+        type: 'user',
+        uuid: 'user-1',
+        sessionId: 'truncated-session',
+        cwd: '/tmp/truncated-project',
+        timestamp: '2026-04-13T11:30:00.000Z',
+        userType: 'external',
+        message: { role: 'user', content: 'Visible despite truncated tail' },
+      },
+      '{"type":"assistant","message":{"content":',
+    ], { trailingNewline: false });
+
+    const result = runScannerScriptDetailed(homeDir, `
+      const { clearSessionCache, getAllSessionsWithFailures } = await import('./src/adapters/claude/scanner.ts');
+      clearSessionCache();
+      const first = await getAllSessionsWithFailures();
+      const second = await getAllSessionsWithFailures();
+      console.log(JSON.stringify({
+        firstSessions: first.sessions.map((session) => session.sessionId),
+        firstFailures: first.failures.map((failure) => failure.filePath),
+        secondSessions: second.sessions.map((session) => session.sessionId),
+        secondFailures: second.failures.map((failure) => failure.filePath),
+      }));
+    `).data;
+
+    expect(result).toEqual({
+      firstSessions: ['truncated-session'],
+      firstFailures: [],
+      secondSessions: ['truncated-session'],
+      secondFailures: [],
     });
   });
 
@@ -354,6 +416,18 @@ describe('Claude Scanner', () => {
         message: { role: 'user', content: 'broken file should be persisted' },
       },
       '{"type":"assistant", invalid json',
+      {
+        type: 'assistant',
+        uuid: 'assistant-after-bad-line',
+        sessionId: 'persist-broken',
+        cwd: '/tmp/persist-broken',
+        timestamp: '2026-04-13T12:00:01.000Z',
+        message: {
+          role: 'assistant',
+          model: 'claude-3-5-sonnet-20241022',
+          content: [{ type: 'text', text: 'Line after corruption' }],
+        },
+      },
     ]);
 
     const firstRun = runScannerScriptDetailed(homeDir, `
@@ -388,6 +462,18 @@ describe('Claude Scanner', () => {
         message: { role: 'user', content: 'broken file should still report errors' },
       },
       '{"type":"assistant", invalid json',
+      {
+        type: 'assistant',
+        uuid: 'assistant-after-bad-line',
+        sessionId: 'persist-error',
+        cwd: '/tmp/persist-runtime-error',
+        timestamp: '2026-04-13T12:05:01.000Z',
+        message: {
+          role: 'assistant',
+          model: 'claude-3-5-sonnet-20241022',
+          content: [{ type: 'text', text: 'Line after corruption' }],
+        },
+      },
     ]);
 
     const firstRun = runScannerScript(homeDir, `
@@ -428,6 +514,18 @@ describe('Claude Scanner', () => {
           message: { role: 'user', content: 'broken file' },
         },
         '{"type":"assistant", invalid json',
+        {
+          type: 'assistant',
+          uuid: `assistant-after-bad-line-${i}`,
+          sessionId: `broken-${i}`,
+          cwd: '/tmp/many-broken',
+          timestamp: '2026-04-13T12:10:01.000Z',
+          message: {
+            role: 'assistant',
+            model: 'claude-3-5-sonnet-20241022',
+            content: [{ type: 'text', text: 'Line after corruption' }],
+          },
+        },
       ]);
     }
 
