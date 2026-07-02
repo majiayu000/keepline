@@ -10,9 +10,13 @@ import { runMigrations } from '../db/migrations.js';
 import { closeDatabase } from '../infrastructure/database/sqlite.js';
 import { emit } from '../lib/events.js';
 import { initializeMemoryService } from './memory.service.js';
+import { runRetentionCleanup } from './retention.service.js';
 
 let scanInterval: NodeJS.Timeout | null = null;
+let retentionInterval: NodeJS.Timeout | null = null;
 let isRunning = false;
+
+const RETENTION_CLEANUP_INTERVAL_MS = 24 * 60 * 60 * 1000;
 
 /** Run a single scan cycle */
 async function runScanCycle(): Promise<void> {
@@ -22,6 +26,16 @@ async function runScanCycle(): Promise<void> {
   } catch (error) {
     logger.error('Scan cycle failed', error);
     emit('error', { error: error as Error, context: 'scan_cycle' });
+  }
+}
+
+/** Run one retention cleanup cycle */
+async function runRetentionCleanupCycle(): Promise<void> {
+  try {
+    await runRetentionCleanup();
+  } catch (error) {
+    logger.error('Retention cleanup failed', error);
+    emit('error', { error: error as Error, context: 'retention_cleanup' });
   }
 }
 
@@ -49,8 +63,17 @@ export async function startScheduler(): Promise<void> {
   // Run initial scan
   await runScanCycle();
 
+  // Run initial retention cleanup after sessions are synced.
+  await runRetentionCleanupCycle();
+
   // Start periodic scanning
   scanInterval = setInterval(runScanCycle, cfg.scanInterval);
+
+  if (cfg.retentionDays > 0) {
+    retentionInterval = setInterval(runRetentionCleanupCycle, RETENTION_CLEANUP_INTERVAL_MS);
+  } else {
+    logger.info('Retention cleanup disabled');
+  }
 
   logger.info(`Scheduler started (scan interval: ${cfg.scanInterval}ms)`);
 }
@@ -65,6 +88,11 @@ export async function stopScheduler(): Promise<void> {
   if (scanInterval) {
     clearInterval(scanInterval);
     scanInterval = null;
+  }
+
+  if (retentionInterval) {
+    clearInterval(retentionInterval);
+    retentionInterval = null;
   }
 
   // Stop hook server
