@@ -4,11 +4,16 @@
  * Integrates with the compression queue for async memory processing.
  */
 
-import Fastify, { FastifyInstance } from 'fastify';
+import Fastify, { FastifyInstance, FastifyRequest } from 'fastify';
 import { logger } from '../../lib/logger.js';
 import { config } from '../../lib/config.js';
 import { emit } from '../../lib/events.js';
 import { isValidSessionId } from '../../lib/session-id.js';
+import {
+  isAllowedFetchMetadata,
+  isLoopbackHostHeader,
+  isLoopbackOrigin,
+} from '../../web/api/request-security.js';
 import { updateSession } from '../../services/session.service.js';
 import {
   getCompressionQueue,
@@ -126,6 +131,30 @@ export function normalizeHookEvent(event: unknown, now: Date = new Date()): Hook
     event_type: 'UserPromptSubmit',
     prompt: event.prompt,
   };
+}
+
+function getHeader(request: FastifyRequest, name: string): string | undefined {
+  const value = request.headers[name.toLowerCase()];
+  if (Array.isArray(value)) return value[0];
+  return value;
+}
+
+function isAllowedHookServerRequest(request: FastifyRequest): boolean {
+  if (!isLoopbackHostHeader(getHeader(request, 'host'))) {
+    return false;
+  }
+
+  const origin = getHeader(request, 'origin');
+  if (origin && !isLoopbackOrigin(origin)) {
+    return false;
+  }
+
+  const syntheticRequest = new Request('http://127.0.0.1/', {
+    headers: {
+      'sec-fetch-site': getHeader(request, 'sec-fetch-site') ?? '',
+    },
+  });
+  return isAllowedFetchMetadata(syntheticRequest);
 }
 
 /** Validate hook event payload */
@@ -255,19 +284,26 @@ async function handleHookEvent(event: HookEvent): Promise<void> {
   }
 }
 
-/** Start hook server */
-export async function startHookServer(): Promise<void> {
-  if (server) {
-    logger.warn('Hook server already running');
-    return;
-  }
+export function createHookServer(): FastifyInstance {
+  const app = Fastify({ logger: false });
 
-  const port = config.get().hookPort;
+  app.addHook('onRequest', (request, reply, done) => {
+    if (isAllowedHookServerRequest(request)) {
+      done();
+      return;
+    }
 
-  server = Fastify({ logger: false });
+    logger.warn('Rejected hook server request', {
+      host: getHeader(request, 'host') ?? '<missing>',
+      origin: getHeader(request, 'origin') ?? '<missing>',
+      secFetchSite: getHeader(request, 'sec-fetch-site') ?? '<missing>',
+      path: request.url,
+    });
+    reply.status(403).send({ success: false, error: 'Forbidden' });
+  });
 
   // Health check endpoint
-  server.get('/health', async () => {
+  app.get('/health', async () => {
     const queue = getCompressionQueue();
     return {
       status: 'ok',
@@ -279,7 +315,7 @@ export async function startHookServer(): Promise<void> {
   });
 
   // Hook event endpoint
-  server.post<{ Body: unknown }>('/hook', async (request, reply) => {
+  app.post<{ Body: unknown }>('/hook', async (request, reply) => {
     try {
       const event = normalizeHookEvent(request.body);
 
@@ -300,13 +336,13 @@ export async function startHookServer(): Promise<void> {
   });
 
   // Compression queue stats endpoint
-  server.get('/compression/stats', async () => {
+  app.get('/compression/stats', async () => {
     const queue = getCompressionQueue();
     return queue.getStats();
   });
 
   // Context injection endpoint - retrieve relevant memories for a project
-  server.get<{
+  app.get<{
     Querystring: { path?: string; prompt?: string };
   }>('/context', async (request, reply) => {
     const { path, prompt } = request.query;
@@ -340,6 +376,20 @@ export async function startHookServer(): Promise<void> {
       return { success: false, error: (error as Error).message };
     }
   });
+
+  return app;
+}
+
+/** Start hook server */
+export async function startHookServer(): Promise<void> {
+  if (server) {
+    logger.warn('Hook server already running');
+    return;
+  }
+
+  const port = config.get().hookPort;
+
+  server = createHookServer();
 
   try {
     await server.listen({ port, host: '127.0.0.1' });
