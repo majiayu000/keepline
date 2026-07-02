@@ -9,6 +9,7 @@ import * as lancedb from '@lancedb/lancedb';
 import { join } from 'path';
 import { mkdirSync, existsSync } from 'fs';
 import { logger } from '../../lib/logger.js';
+import { assertValidObservationId } from '../../lib/observation-id.js';
 import { KEEPLINE_HOME } from '../../lib/paths.js';
 import type {
   IVectorStore,
@@ -70,6 +71,17 @@ function fromRow(row: LanceDBRow): Observation {
     tokenCount: row.tokenCount,
     compressed: row.compressed,
   };
+}
+
+/** Build a LanceDB string literal only after the observation id has passed the safe allowlist. */
+function safeObservationIdLiteral(id: string): string {
+  assertValidObservationId(id);
+  return `'${id}'`;
+}
+
+/** Build a LanceDB predicate only from a safe observation id literal. */
+function observationIdPredicate(id: string): string {
+  return `id = ${safeObservationIdLiteral(id)}`;
 }
 
 /**
@@ -237,12 +249,13 @@ export class LanceDBVectorStore implements IVectorStore {
    * Get observation by ID
    */
   async getById(id: string): Promise<Observation | null> {
+    const predicate = observationIdPredicate(id);
     if (!this.initialized) await this.initialize();
     if (!this.table) return null;
 
     const results = await this.table
       .query()
-      .where(`id = '${id}'`)
+      .where(predicate)
       .limit(1)
       .toArray();
 
@@ -270,11 +283,12 @@ export class LanceDBVectorStore implements IVectorStore {
    * Delete observation by ID
    */
   async delete(id: string): Promise<boolean> {
+    const predicate = observationIdPredicate(id);
     if (!this.initialized) await this.initialize();
     if (!this.table) return false;
 
     try {
-      await this.table.delete(`id = '${id}'`);
+      await this.table.delete(predicate);
       logger.debug(`Deleted observation ${id}`);
       return true;
     } catch (error) {
