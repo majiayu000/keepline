@@ -15,7 +15,7 @@ let cacheTime: number = 0
 const CACHE_TTL = 24 * 60 * 60 * 1000 // 24 hours
 
 /** LiteLLM model entry structure */
-interface LiteLLMModelEntry {
+export interface LiteLLMModelEntry {
   input_cost_per_token?: number
   output_cost_per_token?: number
   litellm_provider?: string
@@ -51,6 +51,29 @@ export const DEFAULT_PRICING: PricingConfig = {
   'claude-sonnet-4-5-20250929': { inputPerMillion: 3.0, outputPerMillion: 15.0 },
 }
 
+const fallbackWarningModels = new Set<string>()
+
+/** Convert LiteLLM model price data to Keepline pricing config. */
+export function pricingConfigFromLiteLLMData(
+  data: Record<string, LiteLLMModelEntry>
+): PricingConfig {
+  const pricing: PricingConfig = {}
+
+  for (const [modelId, entry] of Object.entries(data)) {
+    if (
+      entry.input_cost_per_token !== undefined &&
+      entry.output_cost_per_token !== undefined
+    ) {
+      pricing[modelId] = {
+        inputPerMillion: entry.input_cost_per_token * 1_000_000,
+        outputPerMillion: entry.output_cost_per_token * 1_000_000,
+      }
+    }
+  }
+
+  return pricing
+}
+
 /** Fetch pricing from LiteLLM */
 async function fetchLiteLLMPricing(): Promise<PricingConfig> {
   try {
@@ -60,25 +83,7 @@ async function fetchLiteLLMPricing(): Promise<PricingConfig> {
     }
 
     const data = (await response.json()) as Record<string, LiteLLMModelEntry>
-    const pricing: PricingConfig = {}
-
-    // Extract Claude models from Anthropic provider
-    for (const [modelId, entry] of Object.entries(data)) {
-      // Only process Anthropic models
-      if (
-        entry.litellm_provider === 'anthropic' &&
-        entry.input_cost_per_token !== undefined &&
-        entry.output_cost_per_token !== undefined
-      ) {
-        // Convert per-token cost to per-million cost
-        pricing[modelId] = {
-          inputPerMillion: entry.input_cost_per_token * 1_000_000,
-          outputPerMillion: entry.output_cost_per_token * 1_000_000,
-        }
-      }
-    }
-
-    return pricing
+    return pricingConfigFromLiteLLMData(data)
   } catch (error) {
     logger.warn('Failed to fetch LiteLLM pricing, using defaults', error)
     return DEFAULT_PRICING
@@ -137,6 +142,11 @@ export function getModelPricing(model: string): ModelPricing {
     return pricing['claude/claude-3-5-sonnet-20241022'] || pricing['claude-3-5-sonnet-20241022'] || { inputPerMillion: 3.0, outputPerMillion: 15.0 }
   }
 
+  if (!fallbackWarningModels.has(model)) {
+    fallbackWarningModels.add(model)
+    logger.warn('Using fallback pricing for unknown model', { model })
+  }
+
   return FALLBACK_PRICING
 }
 
@@ -178,4 +188,11 @@ export function calculateCostWithCache(
 /** Initialize pricing (call at startup) */
 export async function initPricing(): Promise<void> {
   await getPricingConfig()
+}
+
+/** Reset pricing internals for focused tests. */
+export function resetPricingForTests(pricing?: PricingConfig): void {
+  cachedPricing = pricing ?? null
+  cacheTime = pricing ? Date.now() : 0
+  fallbackWarningModels.clear()
 }

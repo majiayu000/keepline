@@ -49,6 +49,27 @@ describe('matchProcessesToSessions', () => {
     expect(matches.get('session-b')?.pid).toBe(1002);
   });
 
+  test('does not preserve a reused PID when process start time is incompatible', () => {
+    const base = Date.now();
+    const sessions = [
+      sessionCandidate({
+        sessionId: 'stale-known-pid',
+        pid: 1001,
+        startedAt: new Date(base - 4 * 60 * 60 * 1000),
+        lastActiveAt: new Date(base - 3 * 60 * 60 * 1000),
+      }),
+    ];
+    const processes = [
+      processCandidate({
+        pid: 1001,
+        startTime: new Date(base),
+      }),
+    ];
+
+    const matches = matchProcessesToSessions(sessions, processes);
+    expect(matches.has('stale-known-pid')).toBe(false);
+  });
+
   test('matches same-directory sessions by closest start time', () => {
     const base = Date.now();
     const sessions = [

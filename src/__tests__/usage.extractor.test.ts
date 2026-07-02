@@ -2,9 +2,14 @@
  * Tests for token usage extraction from JSONL data
  */
 
-import { describe, test, expect } from 'bun:test'
+import { afterEach, describe, test, expect } from 'bun:test'
 import { extractUsageFromEntries, aggregateUsageStats } from '../services/usage.extractor.js'
+import { resetPricingForTests } from '../services/usage.pricing.js'
 import type { ClaudeAssistantEntry } from '../adapters/claude/types.js'
+
+afterEach(() => {
+  resetPricingForTests()
+})
 
 // Helper to create a mock assistant entry with usage
 function createAssistantEntry(
@@ -137,5 +142,19 @@ describe('aggregateUsageStats', () => {
     expect(stats.totalCost).toBe(0)
     expect(stats.apiCalls).toBe(0)
     expect(stats.modelBreakdown).toEqual([])
+  })
+
+  test('uses refreshed pricing for repeated model aggregation', () => {
+    const entries = [createAssistantEntry('priced-model', 1_000_000, 1_000_000)]
+
+    resetPricingForTests({
+      'priced-model': { inputPerMillion: 1, outputPerMillion: 2 },
+    })
+    expect(aggregateUsageStats(entries).totalCost).toBe(3)
+
+    resetPricingForTests({
+      'priced-model': { inputPerMillion: 10, outputPerMillion: 20 },
+    })
+    expect(aggregateUsageStats(entries).totalCost).toBe(30)
   })
 })

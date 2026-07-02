@@ -60,6 +60,8 @@ type SearchableSession = {
 };
 
 const VALID_STATUSES = new Set(['running', 'waiting', 'idle', 'lost', 'completed']);
+const DEFAULT_SESSION_LIMIT = 50;
+const MAX_SESSION_LIMIT = 100;
 
 function parseStatusFilters(url: string): { filters: Set<string>; invalid: string[] } {
   const params = new URL(url).searchParams;
@@ -77,6 +79,36 @@ function parseStatusFilters(url: string): { filters: Set<string>; invalid: strin
   }
 
   return { filters, invalid: [...invalid] };
+}
+
+function parseIntegerQueryParam(
+  value: string | undefined,
+  defaultValue: number
+): number | null {
+  if (value === undefined) return defaultValue;
+  if (!/^\d+$/.test(value)) return null;
+  const parsed = Number(value);
+  return Number.isSafeInteger(parsed) ? parsed : null;
+}
+
+function parsePaginationParams(limitParam: string | undefined, offsetParam: string | undefined):
+  | { valid: true; limit: number; offset: number }
+  | { valid: false; error: string } {
+  const rawLimit = parseIntegerQueryParam(limitParam, DEFAULT_SESSION_LIMIT);
+  if (rawLimit === null || rawLimit < 1) {
+    return { valid: false, error: 'Invalid limit. Must be an integer between 1 and 100.' };
+  }
+
+  const offset = parseIntegerQueryParam(offsetParam, 0);
+  if (offset === null) {
+    return { valid: false, error: 'Invalid offset. Must be a non-negative integer.' };
+  }
+
+  return {
+    valid: true,
+    limit: Math.min(rawLimit, MAX_SESSION_LIMIT),
+    offset,
+  };
 }
 
 function matchesSessionQuery(session: SearchableSession, query: string): boolean {
@@ -121,8 +153,14 @@ async function backgroundSync() {
 app.get('/', async (c) => {
   try {
     // Parse pagination parameters
-    const limit = Math.min(parseInt(c.req.query('limit') || '50'), 100);
-    const offset = parseInt(c.req.query('offset') || '0');
+    const pagination = parsePaginationParams(c.req.query('limit'), c.req.query('offset'));
+    if (!pagination.valid) {
+      return c.json({
+        success: false,
+        error: pagination.error,
+      }, 400);
+    }
+    const { limit, offset } = pagination;
     const statusParseResult = parseStatusFilters(c.req.url);
     if (statusParseResult.invalid.length > 0) {
       return c.json({

@@ -16,6 +16,7 @@ import type { AgentClient } from '../domain/session/index.js';
 const UNMATCHED_PROCESS_PENALTY = 30 * 24 * 60 * 60 * 1000;
 const MAX_ACTIVITY_AGE_PENALTY = 24 * 60 * 60 * 1000;
 const START_TIME_WEIGHT = 10;
+const PID_REUSE_START_TOLERANCE_MS = 60 * 1000;
 
 export interface SessionProcessCandidate {
   sessionId: string;
@@ -69,6 +70,14 @@ function compareCandidates<T extends SessionProcessCandidate>(
     return right.meta.lastActiveAtMs - left.meta.lastActiveAtMs;
   }
   return left.meta.session.sessionId.localeCompare(right.meta.session.sessionId);
+}
+
+function isPidContinuityCompatible(
+  session: SessionProcessCandidate,
+  process: ClaudeProcessInfo
+): boolean {
+  return process.startTime.getTime() <=
+    session.lastActiveAt.getTime() + PID_REUSE_START_TOLERANCE_MS;
 }
 
 function selectCandidateSessions<T extends SessionProcessCandidate>(
@@ -217,6 +226,10 @@ export function matchProcessesToSessions<T extends SessionProcessCandidate>(
         const process = processByPid.get(session.pid);
         if (!process || usedProcessPids.has(process.pid)) {
           unmatchedSessions.push(session);
+          continue;
+        }
+
+        if (!isPidContinuityCompatible(session, process)) {
           continue;
         }
 
