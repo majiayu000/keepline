@@ -203,8 +203,13 @@ export class SessionService {
         );
 
         if (existing) {
-          // Update existing session
-          const wasLost = existing.status !== 'lost' && status === 'lost';
+          // Update existing session. A session that was explicitly completed
+          // (by the user in the dashboard or via a Stop hook) must not be
+          // resurrected to lost/idle by a later scan — detectSessionStatus
+          // never returns 'completed', so preserve it here.
+          const effectiveStatus =
+            existing.status === 'completed' ? 'completed' : status;
+          const wasLost = existing.status !== 'lost' && effectiveStatus === 'lost';
 
           // Update title if current one is Unknown and we have new info
           const shouldUpdateTitle =
@@ -215,7 +220,7 @@ export class SessionService {
           const updatedSession = this.repository.upsert({
             sessionId: agentSession.sessionId,
             client,
-            status,
+            status: effectiveStatus,
             ...(shouldUpdateTitle && {
               title: generateTitle(agentSession.firstMessage!),
               initialPrompt: agentSession.firstMessage,
