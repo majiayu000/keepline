@@ -25,6 +25,7 @@ export function getDatabase(): Database {
 
     db = new Database(KEEPLINE_DB);
     db.exec('PRAGMA journal_mode = WAL');
+    db.exec('PRAGMA busy_timeout = 5000');
     db.exec('PRAGMA foreign_keys = ON');
 
     logger.debug('Database connection established');

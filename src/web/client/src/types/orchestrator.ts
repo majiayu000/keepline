@@ -30,6 +30,13 @@ export interface OrchestratorSessionContext {
 }
 
 export type OrchestratorIntentConfidence = 'high' | 'medium' | 'low'
+export type OrchestratorIntentTaskSource =
+  | 'initial_prompt'
+  | 'digest'
+  | 'title'
+  | 'last_message'
+  | 'current_file'
+  | 'none'
 export type OrchestratorIntentNoiseFlag =
   | 'instructions_heavy'
   | 'missing_user_goal'
@@ -38,6 +45,7 @@ export type OrchestratorIntentNoiseFlag =
 
 export interface OrchestratorIntent {
   task?: string
+  taskSource: OrchestratorIntentTaskSource
   currentState?: string
   nextAction: string
   whyAttention: string

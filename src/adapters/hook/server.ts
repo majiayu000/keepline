@@ -4,11 +4,16 @@
  * Integrates with the compression queue for async memory processing.
  */
 
-import Fastify, { FastifyInstance } from 'fastify';
+import Fastify, { FastifyInstance, FastifyRequest } from 'fastify';
 import { logger } from '../../lib/logger.js';
 import { config } from '../../lib/config.js';
 import { emit } from '../../lib/events.js';
 import { isValidSessionId } from '../../lib/session-id.js';
+import {
+  isAllowedFetchMetadata,
+  isLoopbackHostHeader,
+  isLoopbackOrigin,
+} from '../../web/api/request-security.js';
 import { updateSession } from '../../services/session.service.js';
 import {
   getCompressionQueue,
@@ -37,46 +42,164 @@ const VALID_EVENT_TYPES: Set<HookEventType> = new Set([
 /** Track first prompts per session for context injection */
 const sessionFirstPrompts: Map<string, boolean> = new Map();
 
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return Boolean(value && typeof value === 'object' && !Array.isArray(value));
+}
+
+function getHookEventType(event: Record<string, unknown>): HookEventType | null {
+  const eventType = event.event_type ?? event.hook_event_name;
+  if (typeof eventType !== 'string' || !VALID_EVENT_TYPES.has(eventType as HookEventType)) {
+    return null;
+  }
+  return eventType as HookEventType;
+}
+
+function stringifyToolOutput(output: unknown): string | undefined {
+  if (output === undefined || output === null) {
+    return undefined;
+  }
+  if (typeof output === 'string') {
+    return output;
+  }
+  return JSON.stringify(output);
+}
+
+function normalizeKnownHookEvent(
+  event: Record<string, unknown>,
+  eventType: HookEventType,
+  now: Date
+): HookEvent | null {
+  if (!isValidSessionId(event.session_id)) {
+    return null;
+  }
+
+  const base = {
+    event_type: eventType,
+    session_id: event.session_id,
+    cwd: typeof event.cwd === 'string' ? event.cwd : '',
+    timestamp: typeof event.timestamp === 'string' ? event.timestamp : now.toISOString(),
+    transcript_path: typeof event.transcript_path === 'string' ? event.transcript_path : undefined,
+  };
+
+  if (eventType === 'PreToolUse' || eventType === 'PostToolUse') {
+    if (typeof event.tool_name !== 'string' || event.tool_name.length === 0) {
+      return null;
+    }
+    if (!isRecord(event.tool_input)) {
+      return null;
+    }
+
+    return {
+      ...base,
+      event_type: eventType,
+      tool_name: event.tool_name,
+      tool_input: event.tool_input,
+      tool_output: stringifyToolOutput(
+        event.tool_output ?? event.tool_response ?? event.tool_result
+      ),
+    };
+  }
+
+  if (eventType === 'Notification') {
+    if (typeof event.message !== 'string') {
+      return null;
+    }
+    return {
+      ...base,
+      event_type: 'Notification',
+      message: event.message,
+    };
+  }
+
+  if (eventType === 'Stop') {
+    return {
+      ...base,
+      event_type: 'Stop',
+      reason:
+        typeof event.stop_reason === 'string'
+          ? event.stop_reason
+          : typeof event.reason === 'string'
+            ? event.reason
+            : undefined,
+    };
+  }
+
+  if (typeof event.prompt !== 'string') {
+    return null;
+  }
+  return {
+    ...base,
+    event_type: 'UserPromptSubmit',
+    prompt: event.prompt,
+  };
+}
+
+/**
+ * Parse Claude Code's native hook payload only. This intentionally requires
+ * `hook_event_name`; use `normalizeHookEvent()` for the compatibility parser.
+ */
+export function parseHookEvent(raw: unknown, now: Date = new Date()): HookEvent | null {
+  if (!isRecord(raw)) {
+    return null;
+  }
+
+  const eventType = raw.hook_event_name;
+  if (typeof eventType !== 'string' || !VALID_EVENT_TYPES.has(eventType as HookEventType)) {
+    return null;
+  }
+
+  return normalizeKnownHookEvent(raw, eventType as HookEventType, now);
+}
+
+/** Normalize Claude Code stdin payloads and legacy Keepline payloads. */
+export function normalizeHookEvent(event: unknown, now: Date = new Date()): HookEvent | null {
+  if (!isRecord(event)) {
+    return null;
+  }
+
+  const eventType = getHookEventType(event);
+  if (!eventType) {
+    return null;
+  }
+
+  return normalizeKnownHookEvent(event, eventType, now);
+}
+
+function getHeader(request: FastifyRequest, name: string): string | undefined {
+  const value = request.headers[name.toLowerCase()];
+  if (Array.isArray(value)) return value[0];
+  return value;
+}
+
+function isAllowedHookServerRequest(request: FastifyRequest): boolean {
+  if (!isLoopbackHostHeader(getHeader(request, 'host'))) {
+    return false;
+  }
+
+  const origin = getHeader(request, 'origin');
+  if (origin && !isLoopbackOrigin(origin)) {
+    return false;
+  }
+
+  const syntheticRequest = new Request('http://127.0.0.1/', {
+    headers: {
+      'sec-fetch-site': getHeader(request, 'sec-fetch-site') ?? '',
+    },
+  });
+  return isAllowedFetchMetadata(syntheticRequest);
+}
+
 /** Validate hook event payload */
-function isValidHookEvent(event: unknown): event is HookEvent {
-  if (!event || typeof event !== 'object') {
+export function isValidHookEvent(event: unknown): event is HookEvent {
+  if (!isRecord(event)) {
     return false;
   }
 
-  const e = event as Record<string, unknown>;
-
-  // Required fields
-  if (!isValidSessionId(e.session_id)) {
-    return false;
-  }
-  if (typeof e.cwd !== 'string') {
-    return false;
-  }
-  if (typeof e.timestamp !== 'string') {
-    return false;
-  }
-  if (typeof e.event_type !== 'string' || !VALID_EVENT_TYPES.has(e.event_type as HookEventType)) {
+  if (!isValidSessionId(event.session_id)) {
     return false;
   }
 
-  // Tool events require additional fields
-  if (e.event_type === 'PreToolUse' || e.event_type === 'PostToolUse') {
-    if (typeof e.tool_name !== 'string' || e.tool_name.length === 0) {
-      return false;
-    }
-    if (!e.tool_input || typeof e.tool_input !== 'object') {
-      return false;
-    }
-  }
-
-  // UserPromptSubmit requires prompt field
-  if (e.event_type === 'UserPromptSubmit') {
-    if (typeof e.prompt !== 'string') {
-      return false;
-    }
-  }
-
-  return true;
+  return normalizeHookEvent(event) !== null;
 }
 
 /** Handle incoming hook event */
@@ -193,19 +316,26 @@ async function handleHookEvent(event: HookEvent): Promise<void> {
   }
 }
 
-/** Start hook server */
-export async function startHookServer(): Promise<void> {
-  if (server) {
-    logger.warn('Hook server already running');
-    return;
-  }
+export function createHookServer(): FastifyInstance {
+  const app = Fastify({ logger: false });
 
-  const port = config.get().hookPort;
+  app.addHook('onRequest', (request, reply, done) => {
+    if (isAllowedHookServerRequest(request)) {
+      done();
+      return;
+    }
 
-  server = Fastify({ logger: false });
+    logger.warn('Rejected hook server request', {
+      host: getHeader(request, 'host') ?? '<missing>',
+      origin: getHeader(request, 'origin') ?? '<missing>',
+      secFetchSite: getHeader(request, 'sec-fetch-site') ?? '<missing>',
+      path: request.url,
+    });
+    reply.status(403).send({ success: false, error: 'Forbidden' });
+  });
 
   // Health check endpoint
-  server.get('/health', async () => {
+  app.get('/health', async () => {
     const queue = getCompressionQueue();
     return {
       status: 'ok',
@@ -217,16 +347,23 @@ export async function startHookServer(): Promise<void> {
   });
 
   // Hook event endpoint
-  server.post<{ Body: unknown }>('/hook', async (request, reply) => {
+  app.post<{ Body: unknown }>('/hook', async (request, reply) => {
     try {
+      const event = normalizeHookEvent(request.body);
+
       // Validate input before processing
-      if (!isValidHookEvent(request.body)) {
-        logger.warn('Invalid hook event received', { body: request.body });
+      if (!event) {
+        const body = isRecord(request.body) ? request.body : null;
+        logger.warn('Invalid hook event received', {
+          hook_event_name: body?.hook_event_name,
+          event_type: body?.event_type,
+          session_id: body?.session_id,
+        });
         reply.status(400);
         return { success: false, error: 'Invalid hook event payload' };
       }
 
-      await handleHookEvent(request.body);
+      await handleHookEvent(event);
       return { success: true };
     } catch (error) {
       logger.error('Failed to handle hook event', error);
@@ -236,13 +373,13 @@ export async function startHookServer(): Promise<void> {
   });
 
   // Compression queue stats endpoint
-  server.get('/compression/stats', async () => {
+  app.get('/compression/stats', async () => {
     const queue = getCompressionQueue();
     return queue.getStats();
   });
 
   // Context injection endpoint - retrieve relevant memories for a project
-  server.get<{
+  app.get<{
     Querystring: { path?: string; prompt?: string };
   }>('/context', async (request, reply) => {
     const { path, prompt } = request.query;
@@ -276,6 +413,20 @@ export async function startHookServer(): Promise<void> {
       return { success: false, error: (error as Error).message };
     }
   });
+
+  return app;
+}
+
+/** Start hook server */
+export async function startHookServer(): Promise<void> {
+  if (server) {
+    logger.warn('Hook server already running');
+    return;
+  }
+
+  const port = config.get().hookPort;
+
+  server = createHookServer();
 
   try {
     await server.listen({ port, host: '127.0.0.1' });

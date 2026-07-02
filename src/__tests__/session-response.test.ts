@@ -3,7 +3,7 @@ import { generateTitle } from '../domain/session/entity.js';
 import { serializeBasicSession } from '../web/api/session-response.js';
 
 describe('Session Response Serialization', () => {
-  test('serializeBasicSession emits only lightweight list fields', () => {
+  test('serializeBasicSession emits lightweight list fields with usage stats', () => {
     const createdAt = new Date('2026-04-13T14:00:00.000Z');
     const updatedAt = new Date('2026-04-13T14:05:00.000Z');
     const startedAt = new Date('2026-04-13T13:55:00.000Z');
@@ -29,6 +29,13 @@ describe('Session Response Serialization', () => {
       tty: 'ttys001',
       toolCount: 7,
       messageCount: 3,
+      usageStats: {
+        totalInputTokens: 1200,
+        totalOutputTokens: 300,
+        totalTokens: 1500,
+        totalCost: 1.25,
+        apiCalls: 4,
+      },
       createdAt,
       updatedAt,
       processRunning: true,
@@ -55,6 +62,13 @@ describe('Session Response Serialization', () => {
       tty: 'ttys001',
       toolCount: 7,
       messageCount: 3,
+      usageStats: {
+        totalInputTokens: 1200,
+        totalOutputTokens: 300,
+        totalTokens: 1500,
+        totalCost: 1.25,
+        apiCalls: 4,
+      },
       processRunning: true,
       cpuUsage: 1.5,
       memoryUsage: 2.5,

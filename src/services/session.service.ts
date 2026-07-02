@@ -203,8 +203,9 @@ export class SessionService {
         );
 
         if (existing) {
+          const nextStatus = existing.status === 'completed' ? 'completed' : status;
           // Update existing session
-          const wasLost = existing.status !== 'lost' && status === 'lost';
+          const wasLost = existing.status !== 'lost' && nextStatus === 'lost';
 
           // Update title if current one is Unknown and we have new info
           const shouldUpdateTitle =
@@ -215,7 +216,7 @@ export class SessionService {
           const updatedSession = this.repository.upsert({
             sessionId: agentSession.sessionId,
             client,
-            status,
+            status: nextStatus,
             ...(shouldUpdateTitle && {
               title: generateTitle(agentSession.firstMessage!),
               initialPrompt: agentSession.firstMessage,

@@ -124,4 +124,58 @@ describe('Session Repository Upsert', () => {
     const fetched = sessionRepository.findBySessionId('session-completed-insert');
     expect(fetched?.completedAt?.toISOString()).toBe('2026-04-13T16:00:00.000Z');
   });
+
+  test('clears nullable activity fields when explicitly provided as undefined', () => {
+    sessionRepository.upsert({
+      sessionId: 'session-clear-nullable-fields',
+      directory: '/tmp/repo',
+      status: 'completed',
+      title: 'Clear fields',
+      initialPrompt: 'Prompt',
+      lastTool: 'Read',
+      lastToolInput: JSON.stringify({ path: '/tmp/repo/file.ts' }),
+      currentFile: '/tmp/repo/file.ts',
+      lastMessage: 'Done',
+      completedAt: new Date('2026-04-13T16:00:00.000Z'),
+      lastActiveAt: new Date('2026-04-13T16:00:00.000Z'),
+      agentId: 'agent-1',
+      parentSessionId: 'parent-1',
+      usageStats: {
+        totalInputTokens: 10,
+        totalOutputTokens: 20,
+        totalTokens: 30,
+        totalCost: 0.12,
+        apiCalls: 1,
+      },
+      toolCalls: [
+        { name: 'Read', input: { path: '/tmp/repo/file.ts' }, timestamp: '2026-04-13T15:59:00.000Z' },
+      ],
+    });
+
+    sessionRepository.upsert({
+      sessionId: 'session-clear-nullable-fields',
+      title: 'Still preserves omitted title updates',
+      lastTool: undefined,
+      lastToolInput: undefined,
+      currentFile: undefined,
+      lastMessage: undefined,
+      completedAt: undefined,
+      agentId: undefined,
+      parentSessionId: undefined,
+      usageStats: undefined,
+      toolCalls: undefined,
+    });
+
+    const fetched = sessionRepository.findBySessionId('session-clear-nullable-fields');
+    expect(fetched?.title).toBe('Still preserves omitted title updates');
+    expect(fetched?.lastTool).toBeUndefined();
+    expect(fetched?.lastToolInput).toBeUndefined();
+    expect(fetched?.currentFile).toBeUndefined();
+    expect(fetched?.lastMessage).toBeUndefined();
+    expect(fetched?.completedAt).toBeUndefined();
+    expect(fetched?.agentId).toBeUndefined();
+    expect(fetched?.parentSessionId).toBeUndefined();
+    expect(fetched?.usageStats).toBeUndefined();
+    expect(fetched?.toolCalls).toBeUndefined();
+  });
 });

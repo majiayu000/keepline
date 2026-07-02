@@ -7,6 +7,11 @@ import { createInterface } from 'readline';
 import { ParseError } from '../../lib/errors.js';
 import type { ToolCallInfo } from '../../domain/session/index.js';
 import type { CodexJsonlEntry, CodexParsedSessionData } from './types.js';
+import {
+  addUsageToAccumulator,
+  createUsageAccumulator,
+  usageStatsFromAccumulator,
+} from '../../services/usage.extractor.js';
 
 export interface ParseCodexSessionOptions {
   includeToolCalls?: boolean;
@@ -27,6 +32,7 @@ interface CodexAccumulator {
   lastActiveAtMs: number;
   toolCalls: ToolCallInfo[];
   includeToolCalls: boolean;
+  usageAccumulator: ReturnType<typeof createUsageAccumulator>;
 }
 
 export function scopeCodexSessionId(rawSessionId: string): string {
@@ -79,6 +85,24 @@ function parseFunctionArguments(argumentsValue: unknown): Record<string, unknown
   return undefined;
 }
 
+function parseCodexLine(
+  line: string,
+  lineNumber: number,
+  filePath: string,
+  allowTruncatedTail = false
+): CodexJsonlEntry | null {
+  if (!line.trim()) return null;
+
+  try {
+    return JSON.parse(line) as CodexJsonlEntry;
+  } catch {
+    if (allowTruncatedTail) {
+      return null;
+    }
+    throw new ParseError(filePath, lineNumber);
+  }
+}
+
 function extractCodexCurrentFile(toolInput: Record<string, unknown> | undefined): string | undefined {
   if (!toolInput) return undefined;
 
@@ -110,6 +134,7 @@ function createAccumulator(entry: CodexJsonlEntry, includeToolCalls: boolean): C
     lastActiveAtMs: startedAtMs ?? Date.now(),
     toolCalls: [],
     includeToolCalls,
+    usageAccumulator: createUsageAccumulator(),
   };
 }
 
@@ -163,6 +188,92 @@ function accumulateResponseItem(accumulator: CodexAccumulator, entry: CodexJsonl
   }
 }
 
+function asRecord(value: unknown): Record<string, unknown> | undefined {
+  return value && typeof value === 'object' && !Array.isArray(value)
+    ? value as Record<string, unknown>
+    : undefined;
+}
+
+function numberField(record: Record<string, unknown>, keys: string[]): number | undefined {
+  for (const key of keys) {
+    const value = record[key];
+    if (typeof value === 'number' && Number.isFinite(value)) return value;
+  }
+  return undefined;
+}
+
+function stringField(record: Record<string, unknown>, keys: string[]): string | undefined {
+  for (const key of keys) {
+    const value = record[key];
+    if (typeof value === 'string' && value.trim()) return value;
+  }
+  return undefined;
+}
+
+function findUsageRecord(payload: Record<string, unknown>): {
+  source: Record<string, unknown>;
+  usage: Record<string, unknown>;
+} | undefined {
+  const directUsage = asRecord(payload.usage);
+  if (directUsage) return { source: payload, usage: directUsage };
+
+  for (const key of ['msg', 'message', 'event', 'data']) {
+    const nested = asRecord(payload[key]);
+    const nestedUsage = nested ? asRecord(nested.usage) : undefined;
+    if (nested && nestedUsage) return { source: nested, usage: nestedUsage };
+  }
+
+  return undefined;
+}
+
+function accumulateCodexUsageEvent(accumulator: CodexAccumulator, entry: CodexJsonlEntry): void {
+  const payload = entry.payload;
+  if (!payload) return;
+
+  const usageRecord = findUsageRecord(payload);
+  if (!usageRecord) return;
+
+  const inputTokens = numberField(usageRecord.usage, [
+    'input_tokens',
+    'inputTokens',
+    'prompt_tokens',
+    'promptTokens',
+  ]);
+  const outputTokens = numberField(usageRecord.usage, [
+    'output_tokens',
+    'outputTokens',
+    'completion_tokens',
+    'completionTokens',
+  ]);
+
+  if (inputTokens === undefined || outputTokens === undefined) {
+    return;
+  }
+
+  const cacheCreationTokens = numberField(usageRecord.usage, [
+    'cache_creation_input_tokens',
+    'cacheCreationInputTokens',
+    'cache_write_input_tokens',
+    'cacheWriteInputTokens',
+    'cacheWriteTokens',
+  ]) ?? 0;
+  const cacheReadTokens = numberField(usageRecord.usage, [
+    'cache_read_input_tokens',
+    'cacheReadInputTokens',
+    'cacheReadTokens',
+  ]) ?? 0;
+  const model = stringField(usageRecord.source, ['model', 'modelName', 'model_name']) ??
+    stringField(usageRecord.usage, ['model', 'modelName', 'model_name']) ??
+    'codex-unknown';
+
+  addUsageToAccumulator(accumulator.usageAccumulator, model, {
+    input_tokens: inputTokens,
+    output_tokens: outputTokens,
+    cache_creation_input_tokens: cacheCreationTokens,
+    cache_read_input_tokens: cacheReadTokens,
+  });
+}
+
 function finalizeAccumulator(accumulator: CodexAccumulator): CodexParsedSessionData {
   return {
     client: 'codex',
@@ -179,6 +290,9 @@ function finalizeAccumulator(accumulator: CodexAccumulator): CodexParsedSessionD
     startedAt: accumulator.startedAtMs === undefined ? undefined : new Date(accumulator.startedAtMs),
     lastActiveAt: new Date(accumulator.lastActiveAtMs),
     toolCalls: accumulator.includeToolCalls ? accumulator.toolCalls : undefined,
+    usageStats: accumulator.usageAccumulator.apiCalls === 0
+      ? undefined
+      : usageStatsFromAccumulator(accumulator.usageAccumulator),
   };
 }
 
@@ -195,31 +309,41 @@ export async function parseCodexSessionFile(
   let lineNumber = 0;
   let accumulator: CodexAccumulator | null = null;
   const includeToolCalls = options.includeToolCalls ?? true;
+  let pendingLine: { line: string; lineNumber: number } | null = null;
 
-  for await (const line of rl) {
-    lineNumber++;
-    if (!line.trim()) continue;
-
-    let entry: CodexJsonlEntry;
-    try {
-      entry = JSON.parse(line) as CodexJsonlEntry;
-    } catch {
-      throw new ParseError(filePath, lineNumber);
-    }
+  const processLine = (line: string, currentLineNumber: number, isLastLine: boolean): void => {
+    const entry = parseCodexLine(line, currentLineNumber, filePath, isLastLine);
+    if (!entry) return;
 
     if (!accumulator) {
       accumulator = createAccumulator(entry, includeToolCalls);
       if (accumulator) {
-        continue;
+        return;
       }
     }
 
-    if (!accumulator) continue;
+    if (!accumulator) return;
     if (entry.type === 'response_item') {
       accumulateResponseItem(accumulator, entry);
+    } else if (entry.type === 'event_msg') {
+      accumulateCodexUsageEvent(accumulator, entry);
+      updateTimestamp(accumulator, entry.timestamp);
     } else {
       updateTimestamp(accumulator, entry.timestamp);
     }
+  };
+
+  for await (const line of rl) {
+    if (pendingLine) {
+      processLine(pendingLine.line, pendingLine.lineNumber, false);
+    }
+
+    lineNumber++;
+    pendingLine = { line, lineNumber };
+  }
+
+  if (pendingLine) {
+    processLine(pendingLine.line, pendingLine.lineNumber, true);
   }
 
   return accumulator ? finalizeAccumulator(accumulator) : null;

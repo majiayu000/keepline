@@ -14,6 +14,7 @@ export const VALID_TERMINAL_APPS = ['Terminal', 'iTerm', 'Warp', 'auto'] as cons
 export type TerminalAppOption = (typeof VALID_TERMINAL_APPS)[number];
 
 export { isValidSessionId } from '../../../lib/session-id.js';
+export { isValidObservationId } from '../../../lib/observation-id.js';
 
 /** Recovery request body */
 export interface RecoverRequestBody {

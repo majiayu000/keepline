@@ -4,7 +4,11 @@
 
 import type { SessionStatus, ToolCallInfo } from '../session/index.js';
 
-export type RuntimeId = 'claude-code' | 'codex' | 'cursor' | (string & {});
+export const REGISTERED_RUNTIME_IDS = ['claude-code', 'codex'] as const;
+
+export type RegisteredRuntimeId = typeof REGISTERED_RUNTIME_IDS[number];
+
+export type RuntimeId = RegisteredRuntimeId | (string & {});
 
 export type RuntimeKind = 'cli' | 'ide' | 'cloud' | 'unknown';
 

@@ -4,6 +4,7 @@ import { useOrchestratorOverview } from '@/hooks'
 import type {
   OrchestratorDigest,
   OrchestratorIntent,
+  OrchestratorIntentTaskSource,
   OrchestratorQueueItem,
   OrchestratorReason,
   OrchestratorRecommendedAction,
@@ -155,7 +156,7 @@ function QueueCard({
       <div className={styles.cardBody}>
         <div className={styles.cardHeader}>
           <div className={styles.identity}>
-            <h3 className={styles.itemTitle}>{item.intent.task || 'No clear task captured'}</h3>
+            <h3 className={styles.itemTitle}>{formatIntentTitle(item.intent)}</h3>
             <div className={styles.pathLine}>{formatIdentitySubtitle(item)}</div>
           </div>
           <div className={styles.badges}>
@@ -195,8 +196,9 @@ function QueueCard({
 }
 
 function IntentBlock({ intent }: { intent: OrchestratorIntent }) {
+  const taskSource = intent.taskSource ?? 'none'
   const rows = [
-    { label: 'Task', text: intent.task },
+    { label: formatTaskLabel(taskSource), text: intent.task },
     { label: 'Current state', text: intent.currentState },
     { label: 'Next action', text: intent.nextAction },
     { label: 'Why attention', text: intent.whyAttention },
@@ -431,6 +433,43 @@ function formatScopeText(hiddenOldLost: number, lostWindowHours?: number): strin
 
 function formatNoiseFlag(flag: string): string {
   return flag.replace(/_/g, ' ')
+}
+
+function formatIntentTitle(intent: OrchestratorIntent): string {
+  const taskSource = intent.taskSource ?? 'none'
+  if (!intent.task) return 'No original task captured'
+  switch (taskSource) {
+    case 'initial_prompt':
+      return intent.task
+    case 'digest':
+      return `Digest: ${intent.task}`
+    case 'title':
+      return `Session title: ${intent.task}`
+    case 'last_message':
+      return `Latest message: ${intent.task}`
+    case 'current_file':
+      return `Current file: ${intent.task}`
+    case 'none':
+      return `Unverified task: ${intent.task}`
+  }
+}
+
+function formatTaskLabel(source: OrchestratorIntentTaskSource | undefined): string {
+  switch (source) {
+    case 'initial_prompt':
+      return 'Original task'
+    case 'digest':
+      return 'Digest summary'
+    case 'title':
+      return 'Session title'
+    case 'last_message':
+      return 'Latest message'
+    case 'current_file':
+      return 'Current file'
+    case 'none':
+      return 'Task'
+  }
+  return 'Task'
 }
 
 function formatIdentitySubtitle(item: OrchestratorQueueItem): string {

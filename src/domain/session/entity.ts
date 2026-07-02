@@ -103,6 +103,7 @@ export type SessionListItem = Pick<
   | 'tty'
   | 'toolCount'
   | 'messageCount'
+  | 'usageStats'
   | 'createdAt'
   | 'updatedAt'
 >;
