@@ -61,6 +61,11 @@ interface SessionListRow {
   tty: string | null;
   tool_count: number;
   message_count: number;
+  total_input_tokens: number | null;
+  total_output_tokens: number | null;
+  total_tokens: number | null;
+  total_cost: number | null;
+  api_calls: number | null;
   created_at: string;
   updated_at: string;
 }
@@ -90,6 +95,23 @@ function parseToolCalls(raw: string | null): ToolCallInfo[] | undefined {
   }
 }
 
+type UsageStatsRow = Pick<
+  SessionRow,
+  'total_input_tokens' | 'total_output_tokens' | 'total_tokens' | 'total_cost' | 'api_calls'
+>;
+
+function rowToUsageStats(row: UsageStatsRow): Session['usageStats'] {
+  return row.total_tokens != null
+    ? {
+        totalInputTokens: row.total_input_tokens ?? 0,
+        totalOutputTokens: row.total_output_tokens ?? 0,
+        totalTokens: row.total_tokens ?? 0,
+        totalCost: row.total_cost ?? 0,
+        apiCalls: row.api_calls ?? 0,
+      }
+    : undefined;
+}
+
 /** Convert database row to Session entity */
 function rowToSession(row: SessionRow): Session {
   return {
@@ -114,15 +136,7 @@ function rowToSession(row: SessionRow): Session {
     agentId: row.agent_id || undefined,
     parentSessionId: row.parent_session_id || undefined,
     isSubAgent: row.is_sub_agent === 1,
-    usageStats: row.total_tokens != null
-      ? {
-          totalInputTokens: row.total_input_tokens ?? 0,
-          totalOutputTokens: row.total_output_tokens ?? 0,
-          totalTokens: row.total_tokens ?? 0,
-          totalCost: row.total_cost ?? 0,
-          apiCalls: row.api_calls ?? 0,
-        }
-      : undefined,
+    usageStats: rowToUsageStats(row),
     toolCalls: parseToolCalls(row.tool_calls),
     createdAt: new Date(row.created_at),
     updatedAt: new Date(row.updated_at),
@@ -144,6 +158,7 @@ function rowToSessionListItem(row: SessionListRow): SessionListItem {
     tty: row.tty || undefined,
     toolCount: row.tool_count,
     messageCount: row.message_count,
+    usageStats: rowToUsageStats(row),
     createdAt: new Date(row.created_at),
     updatedAt: new Date(row.updated_at),
   };
@@ -242,6 +257,11 @@ class SessionRepository implements ISessionRepository {
           tty,
           tool_count,
           message_count,
+          total_input_tokens,
+          total_output_tokens,
+          total_tokens,
+          total_cost,
+          api_calls,
           created_at,
           updated_at
         FROM sessions

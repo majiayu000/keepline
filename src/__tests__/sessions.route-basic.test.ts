@@ -37,7 +37,7 @@ describe('Basic Sessions Route Contract', () => {
     return { root, nested };
   }
 
-  test('fields=basic returns lightweight session payloads without usageStats', async () => {
+  test('fields=basic returns lightweight session payloads with persisted usageStats', async () => {
     sessionRepository.upsert({
       sessionId: 'session-basic-1',
       directory: '/tmp/keepline-basic-contract',
@@ -52,6 +52,13 @@ describe('Basic Sessions Route Contract', () => {
       lastActiveAt: new Date('2026-04-13T10:00:05.000Z'),
       toolCount: 4,
       messageCount: 2,
+      usageStats: {
+        totalInputTokens: 1200,
+        totalOutputTokens: 300,
+        totalTokens: 1500,
+        totalCost: 1.25,
+        apiCalls: 4,
+      },
     });
 
     const { token } = await setupUser('basic-route-user', 'password123');
@@ -84,10 +91,16 @@ describe('Basic Sessions Route Contract', () => {
       toolCount: 4,
       messageCount: 2,
       processRunning: false,
+      usageStats: {
+        totalInputTokens: 1200,
+        totalOutputTokens: 300,
+        totalTokens: 1500,
+        totalCost: 1.25,
+        apiCalls: 4,
+      },
     });
     expect(session.startedAt).toBe('2026-04-13T10:00:00.000Z');
     expect(session.lastActiveAt).toBe('2026-04-13T10:00:05.000Z');
-    expect('usageStats' in session).toBe(false);
     expect('initialPrompt' in session).toBe(false);
     expect('lastMessage' in session).toBe(false);
     expect('lastTool' in session).toBe(false);
