@@ -79,6 +79,24 @@ function parseFunctionArguments(argumentsValue: unknown): Record<string, unknown
   return undefined;
 }
 
+function parseCodexLine(
+  line: string,
+  lineNumber: number,
+  filePath: string,
+  allowTruncatedTail = false
+): CodexJsonlEntry | null {
+  if (!line.trim()) return null;
+
+  try {
+    return JSON.parse(line) as CodexJsonlEntry;
+  } catch {
+    if (allowTruncatedTail) {
+      return null;
+    }
+    throw new ParseError(filePath, lineNumber);
+  }
+}
+
 function extractCodexCurrentFile(toolInput: Record<string, unknown> | undefined): string | undefined {
   if (!toolInput) return undefined;
 
@@ -195,31 +213,38 @@ export async function parseCodexSessionFile(
   let lineNumber = 0;
   let accumulator: CodexAccumulator | null = null;
   const includeToolCalls = options.includeToolCalls ?? true;
+  let pendingLine: { line: string; lineNumber: number } | null = null;
 
-  for await (const line of rl) {
-    lineNumber++;
-    if (!line.trim()) continue;
-
-    let entry: CodexJsonlEntry;
-    try {
-      entry = JSON.parse(line) as CodexJsonlEntry;
-    } catch {
-      throw new ParseError(filePath, lineNumber);
-    }
+  const processLine = (line: string, currentLineNumber: number, isLastLine: boolean): void => {
+    const entry = parseCodexLine(line, currentLineNumber, filePath, isLastLine);
+    if (!entry) return;
 
     if (!accumulator) {
       accumulator = createAccumulator(entry, includeToolCalls);
       if (accumulator) {
-        continue;
+        return;
       }
     }
 
-    if (!accumulator) continue;
+    if (!accumulator) return;
     if (entry.type === 'response_item') {
       accumulateResponseItem(accumulator, entry);
     } else {
       updateTimestamp(accumulator, entry.timestamp);
     }
+  };
+
+  for await (const line of rl) {
+    if (pendingLine) {
+      processLine(pendingLine.line, pendingLine.lineNumber, false);
+    }
+
+    lineNumber++;
+    pendingLine = { line, lineNumber };
+  }
+
+  if (pendingLine) {
+    processLine(pendingLine.line, pendingLine.lineNumber, true);
   }
 
   return accumulator ? finalizeAccumulator(accumulator) : null;

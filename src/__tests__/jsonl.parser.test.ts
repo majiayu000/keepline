@@ -14,14 +14,17 @@ import { parseSessionFile } from '../adapters/claude/parser/jsonl.js';
 
 const tempDirs: string[] = [];
 
-function createJsonlFile(lines: Array<Record<string, unknown> | string>): string {
+function createJsonlFile(
+  lines: Array<Record<string, unknown> | string>,
+  options: { trailingNewline?: boolean } = {}
+): string {
   const dir = mkdtempSync(join(tmpdir(), 'keepline-jsonl-'));
   tempDirs.push(dir);
   const filePath = join(dir, 'session.jsonl');
   const contents = lines
     .map((line) => (typeof line === 'string' ? line : JSON.stringify(line)))
     .join('\n');
-  writeFileSync(filePath, `${contents}\n`);
+  writeFileSync(filePath, options.trailingNewline === false ? contents : `${contents}\n`);
   return filePath;
 }
 
@@ -225,7 +228,31 @@ describe('JSONL Session Parser', () => {
     expect(parsed!.lastActiveAt.toISOString()).toBe('2026-04-13T10:00:05.000Z');
   });
 
-  test('throws ParseError with file path and line number for invalid JSONL', async () => {
+  test('skips a truncated final JSONL line while preserving parsed session data', async () => {
+    const filePath = createJsonlFile([
+      {
+        type: 'user',
+        uuid: 'user-1',
+        sessionId: 'session-truncated-tail',
+        cwd: '/tmp/project',
+        timestamp: '2026-04-13T12:00:00.000Z',
+        userType: 'external',
+        message: {
+          role: 'user',
+          content: 'Recover me despite a truncated tail',
+        },
+      },
+      '{"type":"assistant","message":{"content":',
+    ], { trailingNewline: false });
+
+    const parsed = await parseSessionFile(filePath);
+
+    expect(parsed).not.toBeNull();
+    expect(parsed!.sessionId).toBe('session-truncated-tail');
+    expect(parsed!.firstMessage).toBe('Recover me despite a truncated tail');
+  });
+
+  test('throws ParseError with file path and line number for non-final invalid JSONL', async () => {
     const filePath = createJsonlFile([
       {
         type: 'user',
@@ -240,6 +267,18 @@ describe('JSONL Session Parser', () => {
         },
       },
       '{"type":"assistant", bad json',
+      {
+        type: 'assistant',
+        uuid: 'assistant-after-bad-line',
+        sessionId: 'session-1',
+        cwd: '/tmp/project',
+        timestamp: '2026-04-13T12:00:01.000Z',
+        message: {
+          role: 'assistant',
+          model: 'claude-3-5-sonnet-20241022',
+          content: [{ type: 'text', text: 'This line must not hide the prior corruption' }],
+        },
+      },
     ]);
 
     try {
