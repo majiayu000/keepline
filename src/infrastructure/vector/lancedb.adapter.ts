@@ -19,6 +19,16 @@ import type {
   ObservationCategory,
 } from './types.js';
 
+/**
+ * Escape a value for safe interpolation into a LanceDB (Datafusion) SQL filter
+ * literal. Datafusion follows SQL-standard string literals where a single quote
+ * is escaped by doubling it and backslash is not an escape character, so
+ * doubling quotes neutralizes filter-DSL injection (e.g. `x' OR '1'='1`).
+ */
+export function escapeFilterLiteral(value: string): string {
+  return value.replace(/'/g, "''");
+}
+
 /** Default configuration */
 const DEFAULT_CONFIG: VectorStoreConfig = {
   path: join(KEEPLINE_HOME, 'lancedb'),
@@ -242,7 +252,7 @@ export class LanceDBVectorStore implements IVectorStore {
 
     const results = await this.table
       .query()
-      .where(`id = '${id}'`)
+      .where(`id = '${escapeFilterLiteral(id)}'`)
       .limit(1)
       .toArray();
 
@@ -260,7 +270,7 @@ export class LanceDBVectorStore implements IVectorStore {
 
     const results = await this.table
       .query()
-      .where(`sessionId = '${sessionId}'`)
+      .where(`sessionId = '${escapeFilterLiteral(sessionId)}'`)
       .toArray();
 
     return results.map((row) => fromRow(row as unknown as LanceDBRow));
@@ -274,7 +284,7 @@ export class LanceDBVectorStore implements IVectorStore {
     if (!this.table) return false;
 
     try {
-      await this.table.delete(`id = '${id}'`);
+      await this.table.delete(`id = '${escapeFilterLiteral(id)}'`);
       logger.debug(`Deleted observation ${id}`);
       return true;
     } catch (error) {
@@ -292,12 +302,13 @@ export class LanceDBVectorStore implements IVectorStore {
 
     try {
       // Get count before delete
+      const escaped = escapeFilterLiteral(sessionId);
       const before = await this.table
         .query()
-        .where(`sessionId = '${sessionId}'`)
+        .where(`sessionId = '${escaped}'`)
         .toArray();
 
-      await this.table.delete(`sessionId = '${sessionId}'`);
+      await this.table.delete(`sessionId = '${escaped}'`);
       logger.debug(`Deleted ${before.length} observations for session ${sessionId}`);
 
       return before.length;
