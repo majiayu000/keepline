@@ -347,6 +347,42 @@ describe('Basic Sessions Route Contract', () => {
     expect(body.data).toBeUndefined();
   });
 
+  test('rejects invalid limit instead of returning a misleading empty page', async () => {
+    const { token } = await setupUser('invalid-limit-route-user', 'password123');
+    const response = await sessions.fetch(new Request(
+      'http://localhost/?skipSync=true&fields=basic&limit=abc',
+      { headers: { Authorization: `Bearer ${token}` } }
+    ));
+
+    expect(response.status).toBe(400);
+
+    const body = await response.json() as {
+      success: boolean;
+      error: string;
+    };
+
+    expect(body.success).toBe(false);
+    expect(body.error).toContain('Invalid limit');
+  });
+
+  test('rejects invalid offset instead of returning a misleading page', async () => {
+    const { token } = await setupUser('invalid-offset-route-user', 'password123');
+    const response = await sessions.fetch(new Request(
+      'http://localhost/?skipSync=true&fields=basic&offset=-1',
+      { headers: { Authorization: `Bearer ${token}` } }
+    ));
+
+    expect(response.status).toBe(400);
+
+    const body = await response.json() as {
+      success: boolean;
+      error: string;
+    };
+
+    expect(body.success).toBe(false);
+    expect(body.error).toContain('Invalid offset');
+  });
+
   test('runtime filter composes with project, status, search, and pagination', async () => {
     const target = makeGitProject('keepline-runtime-target-');
     const other = makeGitProject('keepline-runtime-other-');

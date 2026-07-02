@@ -25,6 +25,7 @@ export function resetDatabase(): void {
     DROP TABLE IF EXISTS session_memories;
     DROP TABLE IF EXISTS tool_usage;
     DROP TABLE IF EXISTS hook_events;
+    DROP TABLE IF EXISTS events;
     DROP TABLE IF EXISTS sessions;
     DROP TABLE IF EXISTS metadata;
     DROP TABLE IF EXISTS schema_migrations;

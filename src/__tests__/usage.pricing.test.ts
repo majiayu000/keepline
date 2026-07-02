@@ -2,12 +2,19 @@
  * Tests for pricing module
  */
 
-import { describe, test, expect, beforeAll } from 'bun:test'
-import { getModelPricing, calculateCost, FALLBACK_PRICING, initPricing } from '../services/usage.pricing.js'
+import { beforeEach, describe, test, expect } from 'bun:test'
+import {
+  DEFAULT_PRICING,
+  FALLBACK_PRICING,
+  calculateCost,
+  getModelPricing,
+  pricingConfigFromLiteLLMData,
+  resetPricingForTests,
+} from '../services/usage.pricing.js'
+import { logger } from '../lib/logger.js'
 
-// Initialize pricing before tests (uses defaults if fetch fails)
-beforeAll(async () => {
-  await initPricing()
+beforeEach(() => {
+  resetPricingForTests(DEFAULT_PRICING)
 })
 
 describe('getModelPricing', () => {
@@ -39,6 +46,61 @@ describe('getModelPricing', () => {
   test('returns fallback pricing for completely unknown model', () => {
     const pricing = getModelPricing('unknown-model-xyz')
     expect(pricing).toEqual(FALLBACK_PRICING)
+  })
+
+  test('keeps non-Anthropic LiteLLM pricing entries', () => {
+    const pricing = pricingConfigFromLiteLLMData({
+      'openai/gpt-4o-mini': {
+        litellm_provider: 'openai',
+        input_cost_per_token: 0.00000015,
+        output_cost_per_token: 0.0000006,
+      },
+      'claude/claude-3-5-sonnet-20241022': {
+        litellm_provider: 'anthropic',
+        input_cost_per_token: 0.000003,
+        output_cost_per_token: 0.000015,
+      },
+      'openai/free-embedding': {
+        litellm_provider: 'openai',
+        input_cost_per_token: 0,
+      },
+    })
+
+    expect(pricing['openai/gpt-4o-mini']).toEqual({
+      inputPerMillion: 0.15,
+      outputPerMillion: 0.6,
+    })
+    expect(pricing['claude/claude-3-5-sonnet-20241022']).toEqual({
+      inputPerMillion: 3,
+      outputPerMillion: 15,
+    })
+    expect(pricing['openai/free-embedding']).toBeUndefined()
+  })
+
+  test('logs fallback pricing for unknown models once per model', () => {
+    const warnings: Array<{ message: string; data: unknown }> = []
+    const originalWarn = logger.warn.bind(logger)
+    logger.warn = ((message: string, data?: unknown) => {
+      warnings.push({ message, data })
+    }) as typeof logger.warn
+
+    try {
+      getModelPricing('unknown-model-abc')
+      getModelPricing('unknown-model-abc')
+      getModelPricing('unknown-model-def')
+    } finally {
+      logger.warn = originalWarn
+    }
+
+    expect(warnings).toHaveLength(2)
+    expect(warnings[0]).toEqual({
+      message: 'Using fallback pricing for unknown model',
+      data: { model: 'unknown-model-abc' },
+    })
+    expect(warnings[1]).toEqual({
+      message: 'Using fallback pricing for unknown model',
+      data: { model: 'unknown-model-def' },
+    })
   })
 })
 
