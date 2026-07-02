@@ -143,6 +143,43 @@ describe('Codex JSONL parser', () => {
       },
     ]);
   });
+
+  test('accumulates token usage from Codex event messages', async () => {
+    const filePath = createCodexJsonlFile([
+      {
+        type: 'session_meta',
+        timestamp: '2026-06-17T01:00:00.000Z',
+        payload: {
+          id: '019ed4a3-2186-7e51-9aa1-ca1e376549b8',
+          cwd: '/tmp/codex-project',
+        },
+      },
+      {
+        type: 'event_msg',
+        timestamp: '2026-06-17T01:00:05.000Z',
+        payload: {
+          msg: {
+            model: 'gpt-4o-mini',
+            usage: {
+              input_tokens: 1000,
+              output_tokens: 250,
+              cache_read_input_tokens: 100,
+            },
+          },
+        },
+      },
+    ]);
+
+    const parsed = await parseCodexSessionFile(filePath);
+
+    expect(parsed?.usageStats).toMatchObject({
+      totalInputTokens: 1100,
+      totalOutputTokens: 250,
+      totalTokens: 1350,
+      apiCalls: 1,
+    });
+    expect(parsed?.usageStats?.totalCost).toBeGreaterThan(0);
+  });
 });
 
 describe('Codex scanner', () => {
