@@ -437,22 +437,41 @@ class SessionRepository implements ISessionRepository {
     });
   }
 
-  deleteOldSessions(retentionDays: number): number {
+  deleteOldSessions(retentionDays: number, now: Date = new Date()): number {
     const db = getDatabase();
-    const cutoff = new Date();
+    const cutoff = new Date(now);
     cutoff.setDate(cutoff.getDate() - retentionDays);
+    const cutoffIso = cutoff.toISOString();
 
-    const beforeCount = (db.prepare(`
-      SELECT COUNT(*) as count FROM sessions
-      WHERE status = 'completed' AND last_active_at < ?
-    `).get(cutoff.toISOString()) as { count: number }).count;
+    return transaction(() => {
+      const beforeCount = (db.prepare(`
+        SELECT COUNT(*) as count FROM sessions
+        WHERE status = 'completed' AND last_active_at < ?
+      `).get(cutoffIso) as { count: number }).count;
 
-    db.prepare(`
-      DELETE FROM sessions
-      WHERE status = 'completed' AND last_active_at < ?
-    `).run(cutoff.toISOString());
+      db.prepare(`
+        DELETE FROM tool_usage
+        WHERE session_id IN (
+          SELECT session_id FROM sessions
+          WHERE status = 'completed' AND last_active_at < ?
+        )
+      `).run(cutoffIso);
 
-    return beforeCount;
+      db.prepare(`
+        DELETE FROM hook_events
+        WHERE session_id IN (
+          SELECT session_id FROM sessions
+          WHERE status = 'completed' AND last_active_at < ?
+        )
+      `).run(cutoffIso);
+
+      db.prepare(`
+        DELETE FROM sessions
+        WHERE status = 'completed' AND last_active_at < ?
+      `).run(cutoffIso);
+
+      return beforeCount;
+    });
   }
 
   countByStatus(): Record<SessionStatus, number> {
