@@ -157,6 +157,9 @@ async function checkAndBroadcastUpdates() {
           directory: s.directory,
           lastActiveAt: s.lastActiveAt.toISOString(),
           title: s.title,
+          usageCost: s.usageStats?.totalCost ?? null,
+          usageTokens: s.usageStats?.totalTokens ?? null,
+          usageApiCalls: s.usageStats?.apiCalls ?? null,
         }))
         .sort((a, b) => a.sessionId.localeCompare(b.sessionId)),
     });

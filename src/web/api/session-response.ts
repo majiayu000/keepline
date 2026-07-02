@@ -21,6 +21,7 @@ export function serializeBasicSession(session: SerializableBasicSession) {
     tty: session.tty,
     toolCount: session.toolCount,
     messageCount: session.messageCount,
+    usageStats: session.usageStats,
     processRunning: session.processRunning,
     cpuUsage: session.cpuUsage,
     memoryUsage: session.memoryUsage,
