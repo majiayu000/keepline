@@ -76,10 +76,12 @@ describe('Orchestrator Route Contract', () => {
           };
           intent: {
             task?: string;
+            taskSource: string;
             currentState?: string;
             nextAction: string;
             whyAttention: string;
             confidence: string;
+            noiseFlags: string[];
           };
           reasons: Array<{ code: string }>;
         }>;
@@ -104,6 +106,7 @@ describe('Orchestrator Route Contract', () => {
       },
       intent: {
         task: 'Track cost',
+        taskSource: 'initial_prompt',
         currentState: 'Cost is high, review before continuing',
         nextAction: 'Recover this session and continue around keepline-orchestrator/report.md.',
         whyAttention: 'Session is lost and may be recoverable; Session cost is $5.00',
@@ -111,6 +114,56 @@ describe('Orchestrator Route Contract', () => {
       },
     });
     expect(body.data.items[0].reasons.map((reason) => reason.code)).toContain('high_cost');
+  });
+
+  test('overview marks tasks derived from noisy prompt fallbacks as last-message sourced', async () => {
+    sessionRepository.upsert({
+      sessionId: 'orchestrator-last-message-derived',
+      client: 'codex',
+      directory: '/tmp/keepline-derived-intent',
+      status: 'waiting',
+      title: '# AGENTS.md instructions <INSTRUCTIONS> vibeguard-start',
+      initialPrompt: '# AGENTS.md instructions <INSTRUCTIONS> Files called AGENTS.md commonly appear in many places.',
+      lastMessage: 'Continue: 首页已经看到新定位，项目页这次正则没有命中，我会查一下 dev server 输出。',
+      lastActiveAt: recentSessionDate(),
+      toolCount: 3,
+      messageCount: 8,
+    });
+
+    const { token } = await setupUser('orchestrator-derived-intent-user', 'password123');
+    const response = await orchestrator.fetch(new Request(
+      'http://localhost/overview?limit=1',
+      { headers: { Authorization: `Bearer ${token}` } }
+    ));
+
+    expect(response.status).toBe(200);
+    const body = await response.json() as {
+      success: boolean;
+      data: {
+        items: Array<{
+          sessionId: string;
+          intent: {
+            task?: string;
+            taskSource: string;
+            noiseFlags: string[];
+          };
+        }>;
+      };
+    };
+
+    expect(body.success).toBe(true);
+    expect(body.data.items[0]).toMatchObject({
+      sessionId: 'orchestrator-last-message-derived',
+      intent: {
+        taskSource: 'last_message',
+        noiseFlags: expect.arrayContaining([
+          'instructions_heavy',
+          'derived_from_last_message',
+          'missing_user_goal',
+        ]),
+      },
+    });
+    expect(body.data.items[0].intent.task).toStartWith('Continue:');
   });
 
   test('server mounts the orchestrator overview route', async () => {
