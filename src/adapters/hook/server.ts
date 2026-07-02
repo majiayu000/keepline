@@ -55,7 +55,7 @@ function getHookEventType(event: Record<string, unknown>): HookEventType | null 
 }
 
 function stringifyToolOutput(output: unknown): string | undefined {
-  if (output === undefined) {
+  if (output === undefined || output === null) {
     return undefined;
   }
   if (typeof output === 'string') {
@@ -64,25 +64,19 @@ function stringifyToolOutput(output: unknown): string | undefined {
   return JSON.stringify(output);
 }
 
-/** Normalize Claude Code stdin payloads and legacy Keepline payloads. */
-export function normalizeHookEvent(event: unknown, now: Date = new Date()): HookEvent | null {
-  if (!isRecord(event)) {
-    return null;
-  }
-
-  const eventType = getHookEventType(event);
-  if (!eventType) {
-    return null;
-  }
-
-  if (!isValidSessionId(event.session_id) || typeof event.cwd !== 'string') {
+function normalizeKnownHookEvent(
+  event: Record<string, unknown>,
+  eventType: HookEventType,
+  now: Date
+): HookEvent | null {
+  if (!isValidSessionId(event.session_id)) {
     return null;
   }
 
   const base = {
     event_type: eventType,
     session_id: event.session_id,
-    cwd: event.cwd,
+    cwd: typeof event.cwd === 'string' ? event.cwd : '',
     timestamp: typeof event.timestamp === 'string' ? event.timestamp : now.toISOString(),
     transcript_path: typeof event.transcript_path === 'string' ? event.transcript_path : undefined,
   };
@@ -100,7 +94,9 @@ export function normalizeHookEvent(event: unknown, now: Date = new Date()): Hook
       event_type: eventType,
       tool_name: event.tool_name,
       tool_input: event.tool_input,
-      tool_output: stringifyToolOutput(event.tool_output ?? event.tool_response),
+      tool_output: stringifyToolOutput(
+        event.tool_output ?? event.tool_response ?? event.tool_result
+      ),
     };
   }
 
@@ -119,7 +115,12 @@ export function normalizeHookEvent(event: unknown, now: Date = new Date()): Hook
     return {
       ...base,
       event_type: 'Stop',
-      reason: typeof event.reason === 'string' ? event.reason : undefined,
+      reason:
+        typeof event.stop_reason === 'string'
+          ? event.stop_reason
+          : typeof event.reason === 'string'
+            ? event.reason
+            : undefined,
     };
   }
 
@@ -131,6 +132,37 @@ export function normalizeHookEvent(event: unknown, now: Date = new Date()): Hook
     event_type: 'UserPromptSubmit',
     prompt: event.prompt,
   };
+}
+
+/**
+ * Parse Claude Code's native hook payload only. This intentionally requires
+ * `hook_event_name`; use `normalizeHookEvent()` for the compatibility parser.
+ */
+export function parseHookEvent(raw: unknown, now: Date = new Date()): HookEvent | null {
+  if (!isRecord(raw)) {
+    return null;
+  }
+
+  const eventType = raw.hook_event_name;
+  if (typeof eventType !== 'string' || !VALID_EVENT_TYPES.has(eventType as HookEventType)) {
+    return null;
+  }
+
+  return normalizeKnownHookEvent(raw, eventType as HookEventType, now);
+}
+
+/** Normalize Claude Code stdin payloads and legacy Keepline payloads. */
+export function normalizeHookEvent(event: unknown, now: Date = new Date()): HookEvent | null {
+  if (!isRecord(event)) {
+    return null;
+  }
+
+  const eventType = getHookEventType(event);
+  if (!eventType) {
+    return null;
+  }
+
+  return normalizeKnownHookEvent(event, eventType, now);
 }
 
 function getHeader(request: FastifyRequest, name: string): string | undefined {
@@ -321,7 +353,12 @@ export function createHookServer(): FastifyInstance {
 
       // Validate input before processing
       if (!event) {
-        logger.warn('Invalid hook event received', { body: request.body });
+        const body = isRecord(request.body) ? request.body : null;
+        logger.warn('Invalid hook event received', {
+          hook_event_name: body?.hook_event_name,
+          event_type: body?.event_type,
+          session_id: body?.session_id,
+        });
         reply.status(400);
         return { success: false, error: 'Invalid hook event payload' };
       }

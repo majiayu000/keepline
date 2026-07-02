@@ -1,5 +1,11 @@
 /**
  * Claude hooks installer
+ *
+ * Registers a Keepline hook under Claude Code's matcher-block settings shape:
+ *   hooks.<Event>[] = [{ matcher?, hooks: [{ type: "command", command }] }]
+ *
+ * The command forwards Claude's stdin hook JSON verbatim to the hook server;
+ * it does not rely on `$CLAUDE_*` environment variables.
  */
 
 import { existsSync, readFileSync, writeFileSync } from 'fs';
@@ -14,8 +20,14 @@ import type {
   HookEventType,
 } from './types.js';
 
-const KEEPLINE_HOOK_MARKER = 'KEEPLINE_HOOK_MARKER=keepline-hook-v1';
-const HOOK_TYPES = ['PreToolUse', 'PostToolUse', 'Notification', 'Stop', 'UserPromptSubmit'] as const;
+const KEEPLINE_HOOK_MARKER = 'KEEPLINE_HOOK_MARKER=keepline-hook-v2';
+const HOOK_TYPES: HookEventType[] = [
+  'PreToolUse',
+  'PostToolUse',
+  'Notification',
+  'Stop',
+  'UserPromptSubmit',
+];
 
 /** Get current Claude settings */
 function getClaudeSettings(): ClaudeSettings {
@@ -30,7 +42,6 @@ function getClaudeSettings(): ClaudeSettings {
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
     logger.warn(`Failed to parse Claude settings: ${message}`, { path: CLAUDE_SETTINGS });
-    // Return empty settings to allow operation to continue
     return {};
   }
 }
@@ -40,12 +51,19 @@ function saveClaudeSettings(settings: ClaudeSettings): void {
   writeFileSync(CLAUDE_SETTINGS, JSON.stringify(settings, null, 2));
 }
 
-/** Generate hook command */
+/**
+ * Generate the hook command.
+ *
+ * `--data-binary @-` forwards Claude's stdin JSON verbatim. The marker prefix
+ * is a harmless env assignment used only to identify Keepline-owned hooks in
+ * the settings file.
+ */
 function getHookCommand(): string {
   const port = config.get().hookPort;
   return `${KEEPLINE_HOOK_MARKER} curl -fsS -X POST http://127.0.0.1:${port}/hook -H "Content-Type: application/json" --data-binary @- > /dev/null 2>&1 || true`;
 }
 
+/** Detect the pre-v2 command that incorrectly relied on `$CLAUDE_*` env vars */
 function isLegacyKeeplineHookCommand(command: string): boolean {
   return (
     command.includes('curl -s -X POST') &&
@@ -56,6 +74,11 @@ function isLegacyKeeplineHookCommand(command: string): boolean {
     command.includes('"tool_name":"$CLAUDE_TOOL_NAME"') &&
     command.includes('CLAUDE_TOOL_INPUT')
   );
+}
+
+/** Is this command string a Keepline-owned hook from any supported version? */
+export function isKeeplineHookCommand(command: string): boolean {
+  return command.includes(KEEPLINE_HOOK_MARKER) || isLegacyKeeplineHookCommand(command);
 }
 
 function isHookCommandHandler(hook: unknown): hook is ClaudeHookCommandHandler {
@@ -76,7 +99,7 @@ function isHookMatcherGroup(hook: unknown): hook is ClaudeHookMatcherGroup {
 
 export function isKeeplineHook(hook: unknown): hook is ClaudeHookConfig {
   if (isHookCommandHandler(hook)) {
-    return hook.command.includes(KEEPLINE_HOOK_MARKER) || isLegacyKeeplineHookCommand(hook.command);
+    return isKeeplineHookCommand(hook.command);
   }
 
   if (isHookMatcherGroup(hook)) {
@@ -137,7 +160,7 @@ function createKeeplineHookConfig(
   hookType: HookEventType,
   hookCommand: string
 ): ClaudeHookMatcherGroup {
-  const config: ClaudeHookMatcherGroup = {
+  const hookConfig: ClaudeHookMatcherGroup = {
     hooks: [
       {
         type: 'command',
@@ -147,10 +170,10 @@ function createKeeplineHookConfig(
   };
 
   if (hookType === 'PreToolUse' || hookType === 'PostToolUse') {
-    config.matcher = '*';
+    hookConfig.matcher = '*';
   }
 
-  return config;
+  return hookConfig;
 }
 
 export function installKeeplineHookConfig(
@@ -182,8 +205,7 @@ export function uninstallKeeplineHookConfig(settings: ClaudeSettings): number {
     const hooks = settings.hooks[hookType];
     if (!hooks) continue;
     removed += countKeeplineHooks(hooks);
-    const nextHooks = removeKeeplineHooks(hooks);
-    settings.hooks[hookType] = nextHooks;
+    settings.hooks[hookType] = removeKeeplineHooks(hooks);
   }
 
   return removed;
