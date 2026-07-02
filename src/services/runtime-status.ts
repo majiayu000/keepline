@@ -1,10 +1,25 @@
-import type { RuntimeId, RuntimeScanError } from '../domain/runtime/index.js';
+import {
+  REGISTERED_RUNTIME_IDS,
+  type RegisteredRuntimeId,
+  type RuntimeId,
+  type RuntimeScanError,
+} from '../domain/runtime/index.js';
 import type { AgentClient } from '../domain/session/index.js';
 
-export type SessionRuntimeId = 'claude-code' | 'codex';
+export type SessionRuntimeId = RegisteredRuntimeId;
 export type RuntimeFilter = SessionRuntimeId | 'all';
 
-export const SESSION_RUNTIME_IDS: readonly SessionRuntimeId[] = ['claude-code', 'codex'] as const;
+export const SESSION_RUNTIME_IDS: readonly SessionRuntimeId[] = REGISTERED_RUNTIME_IDS;
+
+const CLIENT_RUNTIME_IDS = {
+  claude: 'claude-code',
+  codex: 'codex',
+} satisfies Record<AgentClient, SessionRuntimeId>;
+
+const RUNTIME_CLIENTS = {
+  'claude-code': 'claude',
+  codex: 'codex',
+} satisfies Record<SessionRuntimeId, AgentClient>;
 
 export interface RuntimeScanSummary {
   runtimeId: SessionRuntimeId;
@@ -23,12 +38,23 @@ export type RuntimeScanFailure = {
 
 const latestRuntimeScan = new Map<SessionRuntimeId, RuntimeScanSummary>();
 
-export function runtimeIdForClient(client: AgentClient | undefined): SessionRuntimeId {
-  return client === 'codex' ? 'codex' : 'claude-code';
+export function isSessionRuntimeId(runtimeId: string): runtimeId is SessionRuntimeId {
+  return (SESSION_RUNTIME_IDS as readonly string[]).includes(runtimeId);
 }
 
-export function clientForRuntimeId(runtimeId: SessionRuntimeId): AgentClient {
-  return runtimeId === 'codex' ? 'codex' : 'claude';
+export function runtimeIdForClient(client: AgentClient): SessionRuntimeId {
+  const runtimeId = CLIENT_RUNTIME_IDS[client];
+  if (!runtimeId) {
+    throw new Error(`Unsupported agent client: ${String(client)}`);
+  }
+  return runtimeId;
+}
+
+export function clientForRuntimeId(runtimeId: RuntimeId): AgentClient {
+  if (!isSessionRuntimeId(runtimeId)) {
+    throw new Error(`Unsupported runtime id: ${String(runtimeId)}`);
+  }
+  return RUNTIME_CLIENTS[runtimeId];
 }
 
 export function parseRuntimeFilter(raw: string | undefined): {
@@ -37,7 +63,7 @@ export function parseRuntimeFilter(raw: string | undefined): {
 } {
   const value = raw?.trim();
   if (!value || value === 'all') return {};
-  if (value === 'claude-code' || value === 'codex') {
+  if (isSessionRuntimeId(value)) {
     return { runtimeId: value };
   }
   return { invalid: value };
