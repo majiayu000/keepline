@@ -58,21 +58,12 @@ export function createUsageAccumulator(): UsageAccumulator {
   }
 }
 
-const resolvedUsageCostModels = new Map<string, UsageCostModel>()
-
 function getUsageCostModel(model: string): UsageCostModel {
-  const cached = resolvedUsageCostModels.get(model)
-  if (cached) {
-    return cached
-  }
-
   const pricing = getModelPricing(model)
-  const costModel = {
+  return {
     inputPerToken: pricing.inputPerMillion / 1_000_000,
     outputPerToken: pricing.outputPerMillion / 1_000_000,
   }
-  resolvedUsageCostModels.set(model, costModel)
-  return costModel
 }
 
 export function addUsageToAccumulator(

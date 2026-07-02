@@ -11,6 +11,7 @@ import { closeDatabase } from '../infrastructure/database/sqlite.js';
 import { emit } from '../lib/events.js';
 import { initializeMemoryService } from './memory.service.js';
 import { runRetentionCleanup } from './retention.service.js';
+import { initPricing } from './usage.pricing.js';
 
 let scanInterval: NodeJS.Timeout | null = null;
 let retentionInterval: NodeJS.Timeout | null = null;
@@ -53,6 +54,10 @@ export async function startScheduler(): Promise<void> {
 
   // Initialize database
   runMigrations();
+
+  // Initialize pricing before scan cycles. The pricing module falls back to
+  // defaults if remote LiteLLM pricing cannot be fetched.
+  await initPricing();
 
   // Initialize memory service (must be before hook server)
   initializeMemoryService();
@@ -125,15 +130,23 @@ export async function runDaemon(): Promise<void> {
   process.on('SIGINT', () => shutdown('SIGINT'));
 
   // Handle uncaught errors
+  const exitOnFatalError = async (error: Error, context: string): Promise<void> => {
+    try {
+      logger.error(`Fatal daemon error: ${context}`, error);
+      emit('error', { error, context });
+      await stopScheduler();
+    } finally {
+      process.exit(1);
+    }
+  };
+
   process.on('uncaughtException', (error) => {
-    logger.error('Uncaught exception', error);
-    emit('error', { error, context: 'uncaught_exception' });
+    void exitOnFatalError(error, 'uncaught_exception');
   });
 
   process.on('unhandledRejection', (reason) => {
     const error = reason instanceof Error ? reason : new Error(String(reason));
-    logger.error('Unhandled rejection', error);
-    emit('error', { error, context: 'unhandled_rejection' });
+    void exitOnFatalError(error, 'unhandled_rejection');
   });
 
   // Start scheduler

@@ -322,32 +322,41 @@ class SessionRepository implements ISessionRepository {
     return transaction(() => {
       const hasPid = 'pid' in data;
       const hasTty = 'tty' in data;
+      const hasLastTool = 'lastTool' in data;
+      const hasLastToolInput = 'lastToolInput' in data;
+      const hasCurrentFile = 'currentFile' in data;
+      const hasLastMessage = 'lastMessage' in data;
+      const hasCompletedAt = 'completedAt' in data;
+      const hasAgentId = 'agentId' in data;
+      const hasParentSessionId = 'parentSessionId' in data;
+      const hasUsageStats = 'usageStats' in data;
+      const hasToolCalls = 'toolCalls' in data;
       const updateResult = db.prepare(`
         UPDATE sessions SET
           status = COALESCE(?, status),
           client = COALESCE(?, client),
           title = COALESCE(?, title),
           initial_prompt = COALESCE(?, initial_prompt),
-          last_tool = COALESCE(?, last_tool),
-          last_tool_input = COALESCE(?, last_tool_input),
-          current_file = COALESCE(?, current_file),
-          last_message = COALESCE(?, last_message),
+          last_tool = CASE WHEN ? THEN ? ELSE last_tool END,
+          last_tool_input = CASE WHEN ? THEN ? ELSE last_tool_input END,
+          current_file = CASE WHEN ? THEN ? ELSE current_file END,
+          last_message = CASE WHEN ? THEN ? ELSE last_message END,
           started_at = COALESCE(?, started_at),
           last_active_at = COALESCE(?, last_active_at),
-          completed_at = COALESCE(?, completed_at),
+          completed_at = CASE WHEN ? THEN ? ELSE completed_at END,
           pid = CASE WHEN ? THEN ? ELSE pid END,
           tty = CASE WHEN ? THEN ? ELSE tty END,
           tool_count = COALESCE(?, tool_count),
           message_count = COALESCE(?, message_count),
-          agent_id = COALESCE(?, agent_id),
-          parent_session_id = COALESCE(?, parent_session_id),
+          agent_id = CASE WHEN ? THEN ? ELSE agent_id END,
+          parent_session_id = CASE WHEN ? THEN ? ELSE parent_session_id END,
           is_sub_agent = COALESCE(?, is_sub_agent),
-          total_input_tokens = COALESCE(?, total_input_tokens),
-          total_output_tokens = COALESCE(?, total_output_tokens),
-          total_tokens = COALESCE(?, total_tokens),
-          total_cost = COALESCE(?, total_cost),
-          api_calls = COALESCE(?, api_calls),
-          tool_calls = COALESCE(?, tool_calls),
+          total_input_tokens = CASE WHEN ? THEN ? ELSE total_input_tokens END,
+          total_output_tokens = CASE WHEN ? THEN ? ELSE total_output_tokens END,
+          total_tokens = CASE WHEN ? THEN ? ELSE total_tokens END,
+          total_cost = CASE WHEN ? THEN ? ELSE total_cost END,
+          api_calls = CASE WHEN ? THEN ? ELSE api_calls END,
+          tool_calls = CASE WHEN ? THEN ? ELSE tool_calls END,
           updated_at = ?
         WHERE session_id = ?
       `).run(
@@ -355,12 +364,17 @@ class SessionRepository implements ISessionRepository {
         data.client ?? null,
         data.title ?? null,
         data.initialPrompt ?? null,
+        hasLastTool ? 1 : 0,
         data.lastTool ?? null,
+        hasLastToolInput ? 1 : 0,
         data.lastToolInput ?? null,
+        hasCurrentFile ? 1 : 0,
         data.currentFile ?? null,
+        hasLastMessage ? 1 : 0,
         data.lastMessage ?? null,
         data.startedAt?.toISOString() ?? null,
         data.lastActiveAt?.toISOString() ?? null,
+        hasCompletedAt ? 1 : 0,
         data.completedAt?.toISOString() ?? null,
         hasPid ? 1 : 0,
         data.pid ?? null,
@@ -368,14 +382,22 @@ class SessionRepository implements ISessionRepository {
         data.tty ?? null,
         data.toolCount ?? null,
         data.messageCount ?? null,
+        hasAgentId ? 1 : 0,
         data.agentId ?? null,
+        hasParentSessionId ? 1 : 0,
         data.parentSessionId ?? null,
         data.isSubAgent != null ? (data.isSubAgent ? 1 : 0) : null,
+        hasUsageStats ? 1 : 0,
         data.usageStats?.totalInputTokens ?? null,
+        hasUsageStats ? 1 : 0,
         data.usageStats?.totalOutputTokens ?? null,
+        hasUsageStats ? 1 : 0,
         data.usageStats?.totalTokens ?? null,
+        hasUsageStats ? 1 : 0,
         data.usageStats?.totalCost ?? null,
+        hasUsageStats ? 1 : 0,
         data.usageStats?.apiCalls ?? null,
+        hasToolCalls ? 1 : 0,
         data.toolCalls ? JSON.stringify(data.toolCalls) : null,
         now,
         data.sessionId
