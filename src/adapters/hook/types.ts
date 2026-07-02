@@ -2,19 +2,27 @@
  * Hook module types
  */
 
-/** Hook event types from Claude Code */
+/** Hook event types from Claude Code that Keepline consumes */
 export type HookEventType =
   | 'PreToolUse'
   | 'PostToolUse'
   | 'Notification'
   | 'Stop'
-  | 'UserPromptSubmit'; // User submitted a prompt
+  | 'UserPromptSubmit';
 
-/** Base hook event payload */
+/**
+ * Internal, normalized hook event payload.
+ *
+ * Claude Code delivers hook data as JSON on stdin (fields such as
+ * `hook_event_name`, `tool_response`) and does not set `$CLAUDE_*` env vars.
+ * The server parses that native payload into these normalized shapes.
+ */
 export interface HookEventPayload {
+  event_type: HookEventType;
   session_id: string;
   cwd: string;
   timestamp: string;
+  transcript_path?: string;
 }
 
 /** Tool use hook event */
@@ -22,7 +30,7 @@ export interface ToolUseHookEvent extends HookEventPayload {
   event_type: 'PreToolUse' | 'PostToolUse';
   tool_name: string;
   tool_input: Record<string, unknown>;
-  tool_output?: string; // Only present in PostToolUse
+  tool_output?: string;
 }
 
 /** Notification hook event */
@@ -41,7 +49,6 @@ export interface StopHookEvent extends HookEventPayload {
 export interface UserPromptSubmitHookEvent extends HookEventPayload {
   event_type: 'UserPromptSubmit';
   prompt: string;
-  is_first_prompt?: boolean;
 }
 
 /** Union type for all hook events */
@@ -51,20 +58,29 @@ export type HookEvent =
   | StopHookEvent
   | UserPromptSubmitHookEvent;
 
-/** Claude settings hook configuration */
-export interface ClaudeHookConfig {
-  matcher?: string;
+/** A single command entry inside a Claude settings hook matcher block. */
+export interface ClaudeHookCommandHandler {
+  type?: 'command' | string;
   command: string;
+  args?: string[];
+  timeout?: number;
+  [key: string]: unknown;
 }
+
+export type HookCommandEntry = ClaudeHookCommandHandler;
+
+/** Claude Code matcher block shape: hooks.<Event>[{ matcher?, hooks: [...] }] */
+export interface ClaudeHookMatcherGroup {
+  matcher?: string;
+  hooks: ClaudeHookCommandHandler[];
+  [key: string]: unknown;
+}
+
+export type ClaudeHookMatcher = ClaudeHookMatcherGroup;
+export type ClaudeHookConfig = ClaudeHookCommandHandler | ClaudeHookMatcherGroup;
 
 /** Claude settings structure */
 export interface ClaudeSettings {
-  hooks?: {
-    PreToolUse?: ClaudeHookConfig[];
-    PostToolUse?: ClaudeHookConfig[];
-    Notification?: ClaudeHookConfig[];
-    Stop?: ClaudeHookConfig[];
-    UserPromptSubmit?: ClaudeHookConfig[];
-  };
+  hooks?: Partial<Record<HookEventType, ClaudeHookConfig[]>>;
   [key: string]: unknown;
 }

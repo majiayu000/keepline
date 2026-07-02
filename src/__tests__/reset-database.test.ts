@@ -39,4 +39,30 @@ describe('resetDatabase', () => {
     expect(queryOne<{ count: number }>('SELECT COUNT(*) as count FROM terminal_sessions')?.count).toBe(0);
     expect((queryOne<{ count: number }>('SELECT COUNT(*) as count FROM schema_migrations')?.count ?? 0)).toBeGreaterThan(0);
   });
+
+  test('sets a non-zero SQLite busy timeout', () => {
+    expect(queryOne<{ timeout: number }>('PRAGMA busy_timeout')?.timeout).toBe(5000);
+  });
+
+  test('drops optional events table during reset', () => {
+    runSql(`
+      CREATE TABLE IF NOT EXISTS events (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        type TEXT NOT NULL,
+        aggregate_id TEXT,
+        payload TEXT,
+        timestamp TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+      )
+    `);
+    runSql(
+      'INSERT INTO events (type, aggregate_id, payload, timestamp) VALUES (?, ?, ?, ?)',
+      ['test.event', 'aggregate-1', '{}', '2026-04-13T10:00:00.000Z']
+    );
+
+    resetDatabase();
+
+    expect(queryOne<{ name: string }>(
+      "SELECT name FROM sqlite_master WHERE type = 'table' AND name = 'events'"
+    ) ?? undefined).toBeUndefined();
+  });
 });

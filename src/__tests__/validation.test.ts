@@ -10,6 +10,7 @@
 
 import { describe, test, expect } from 'bun:test';
 import {
+  isValidObservationId,
   isValidSessionId,
   validateRecoverRequest,
   validateStopRequest,
@@ -70,6 +71,42 @@ describe('isValidSessionId', () => {
       expect(isValidSessionId(null as unknown as string)).toBe(false);
       expect(isValidSessionId(undefined as unknown as string)).toBe(false);
       expect(isValidSessionId({} as unknown as string)).toBe(false);
+    });
+  });
+});
+
+describe('isValidObservationId', () => {
+  describe('valid observation IDs', () => {
+    test('accepts UUIDs generated for observations', () => {
+      expect(isValidObservationId('550e8400-e29b-41d4-a716-446655440000')).toBe(true);
+    });
+
+    test('accepts safe alphanumeric IDs with hyphens and underscores', () => {
+      expect(isValidObservationId('obs_12345')).toBe(true);
+      expect(isValidObservationId('obs-12345_ABC')).toBe(true);
+      expect(isValidObservationId('a'.repeat(64))).toBe(true);
+    });
+  });
+
+  describe('invalid observation IDs', () => {
+    test('rejects injection-shaped filter predicates', () => {
+      expect(isValidObservationId("x' OR '1'='1")).toBe(false);
+      expect(isValidObservationId("obs12345'; DELETE FROM observations; --")).toBe(false);
+    });
+
+    test('rejects unsafe characters and invalid lengths', () => {
+      expect(isValidObservationId('abc1234')).toBe(false);
+      expect(isValidObservationId('')).toBe(false);
+      expect(isValidObservationId('a'.repeat(65))).toBe(false);
+      expect(isValidObservationId('abc.12345')).toBe(false);
+      expect(isValidObservationId('abc 12345')).toBe(false);
+    });
+
+    test('rejects non-string types', () => {
+      expect(isValidObservationId(123 as unknown as string)).toBe(false);
+      expect(isValidObservationId(null as unknown as string)).toBe(false);
+      expect(isValidObservationId(undefined as unknown as string)).toBe(false);
+      expect(isValidObservationId({} as unknown as string)).toBe(false);
     });
   });
 });
