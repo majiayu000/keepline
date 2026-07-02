@@ -71,6 +71,9 @@ function getSessionVersionSignature(sessions: Session[]): string {
       session.completedAt || '',
       session.toolCount,
       session.messageCount,
+      session.usageStats?.totalCost ?? '',
+      session.usageStats?.totalTokens ?? '',
+      session.usageStats?.apiCalls ?? '',
       session.updatedAt,
     ].join(':'))
     .join('|')
