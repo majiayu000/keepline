@@ -6,7 +6,13 @@ import { existsSync, readFileSync, writeFileSync } from 'fs';
 import { CLAUDE_SETTINGS } from '../../lib/paths.js';
 import { config } from '../../lib/config.js';
 import { logger } from '../../lib/logger.js';
-import type { ClaudeSettings, ClaudeHookConfig } from './types.js';
+import type {
+  ClaudeHookCommandHandler,
+  ClaudeHookConfig,
+  ClaudeHookMatcherGroup,
+  ClaudeSettings,
+  HookEventType,
+} from './types.js';
 
 const KEEPLINE_HOOK_MARKER = 'KEEPLINE_HOOK_MARKER=keepline-hook-v1';
 const HOOK_TYPES = ['PreToolUse', 'PostToolUse', 'Notification', 'Stop', 'UserPromptSubmit'] as const;
@@ -37,7 +43,7 @@ function saveClaudeSettings(settings: ClaudeSettings): void {
 /** Generate hook command */
 function getHookCommand(): string {
   const port = config.get().hookPort;
-  return `${KEEPLINE_HOOK_MARKER} curl -s -X POST http://127.0.0.1:${port}/hook -H "Content-Type: application/json" -d '{"event_type":"$CLAUDE_EVENT_TYPE","session_id":"$CLAUDE_SESSION_ID","cwd":"$PWD","timestamp":"'$(date -u +%Y-%m-%dT%H:%M:%SZ)'","tool_name":"$CLAUDE_TOOL_NAME","tool_input":'"\${CLAUDE_TOOL_INPUT:-{}}"'}' > /dev/null 2>&1 || true`;
+  return `${KEEPLINE_HOOK_MARKER} curl -fsS -X POST http://127.0.0.1:${port}/hook -H "Content-Type: application/json" --data-binary @- > /dev/null 2>&1 || true`;
 }
 
 function isLegacyKeeplineHookCommand(command: string): boolean {
@@ -52,49 +58,120 @@ function isLegacyKeeplineHookCommand(command: string): boolean {
   );
 }
 
+function isHookCommandHandler(hook: unknown): hook is ClaudeHookCommandHandler {
+  return Boolean(
+    hook &&
+    typeof hook === 'object' &&
+    typeof (hook as Partial<ClaudeHookCommandHandler>).command === 'string'
+  );
+}
+
+function isHookMatcherGroup(hook: unknown): hook is ClaudeHookMatcherGroup {
+  return Boolean(
+    hook &&
+    typeof hook === 'object' &&
+    Array.isArray((hook as Partial<ClaudeHookMatcherGroup>).hooks)
+  );
+}
+
 export function isKeeplineHook(hook: unknown): hook is ClaudeHookConfig {
-  if (
-    !hook ||
-    typeof hook !== 'object' ||
-    typeof (hook as Partial<ClaudeHookConfig>).command !== 'string'
-  ) {
-    return false;
+  if (isHookCommandHandler(hook)) {
+    return hook.command.includes(KEEPLINE_HOOK_MARKER) || isLegacyKeeplineHookCommand(hook.command);
   }
-  const command = (hook as ClaudeHookConfig).command;
-  return command.includes(KEEPLINE_HOOK_MARKER) || isLegacyKeeplineHookCommand(command);
+
+  if (isHookMatcherGroup(hook)) {
+    return hook.hooks.some(isKeeplineHook);
+  }
+
+  return false;
+}
+
+function removeKeeplineHooks(hooks: ClaudeHookConfig[]): ClaudeHookConfig[] {
+  const nextHooks: ClaudeHookConfig[] = [];
+
+  for (const hook of hooks) {
+    if (isHookCommandHandler(hook)) {
+      if (!isKeeplineHook(hook)) {
+        nextHooks.push(hook);
+      }
+      continue;
+    }
+
+    if (isHookMatcherGroup(hook)) {
+      const remainingHandlers = hook.hooks.filter((handler) => !isKeeplineHook(handler));
+      if (remainingHandlers.length > 0) {
+        nextHooks.push({
+          ...hook,
+          hooks: remainingHandlers,
+        });
+      }
+      continue;
+    }
+
+    nextHooks.push(hook);
+  }
+
+  return nextHooks;
+}
+
+function countKeeplineHooks(hooks: ClaudeHookConfig[]): number {
+  let count = 0;
+
+  for (const hook of hooks) {
+    if (isHookCommandHandler(hook)) {
+      if (isKeeplineHook(hook)) {
+        count++;
+      }
+      continue;
+    }
+
+    if (isHookMatcherGroup(hook)) {
+      count += hook.hooks.filter(isKeeplineHook).length;
+    }
+  }
+
+  return count;
+}
+
+function createKeeplineHookConfig(
+  hookType: HookEventType,
+  hookCommand: string
+): ClaudeHookMatcherGroup {
+  const config: ClaudeHookMatcherGroup = {
+    hooks: [
+      {
+        type: 'command',
+        command: hookCommand,
+      },
+    ],
+  };
+
+  if (hookType === 'PreToolUse' || hookType === 'PostToolUse') {
+    config.matcher = '*';
+  }
+
+  return config;
 }
 
 export function installKeeplineHookConfig(
   settings: ClaudeSettings,
   hookCommand: string = getHookCommand()
 ): boolean {
+  const before = JSON.stringify(settings.hooks ?? {});
+
   if (!settings.hooks) {
     settings.hooks = {};
   }
 
-  if (!settings.hooks.PostToolUse) {
-    settings.hooks.PostToolUse = [];
+  for (const hookType of HOOK_TYPES) {
+    const existingHooks = settings.hooks[hookType] ?? [];
+    settings.hooks[hookType] = [
+      ...removeKeeplineHooks(existingHooks),
+      createKeeplineHookConfig(hookType, hookCommand),
+    ];
   }
 
-  const existingIndex = settings.hooks.PostToolUse.findIndex(isKeeplineHook);
-  const keeplineHook: ClaudeHookConfig = {
-    command: hookCommand,
-  };
-
-  if (existingIndex >= 0) {
-    const existing = settings.hooks.PostToolUse[existingIndex];
-    if (existing.command !== hookCommand) {
-      settings.hooks.PostToolUse[existingIndex] = {
-        ...existing,
-        command: hookCommand,
-      };
-      return true;
-    }
-    return false;
-  }
-
-  settings.hooks.PostToolUse.push(keeplineHook);
-  return true;
+  return JSON.stringify(settings.hooks) !== before;
 }
 
 export function uninstallKeeplineHookConfig(settings: ClaudeSettings): number {
@@ -104,8 +181,8 @@ export function uninstallKeeplineHookConfig(settings: ClaudeSettings): number {
   for (const hookType of HOOK_TYPES) {
     const hooks = settings.hooks[hookType];
     if (!hooks) continue;
-    const nextHooks = hooks.filter((hook) => !isKeeplineHook(hook));
-    removed += hooks.length - nextHooks.length;
+    removed += countKeeplineHooks(hooks);
+    const nextHooks = removeKeeplineHooks(hooks);
     settings.hooks[hookType] = nextHooks;
   }
 
@@ -113,9 +190,7 @@ export function uninstallKeeplineHookConfig(settings: ClaudeSettings): number {
 }
 
 function hasKeeplineHook(settings: ClaudeSettings): boolean {
-  return Boolean(
-    settings.hooks?.PostToolUse?.some(isKeeplineHook)
-  );
+  return HOOK_TYPES.every((hookType) => settings.hooks?.[hookType]?.some(isKeeplineHook));
 }
 
 /** Check if keepline hooks are installed */

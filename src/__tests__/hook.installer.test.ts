@@ -10,6 +10,7 @@ const markedCommand = 'KEEPLINE_HOOK_MARKER=keepline-hook-v1 curl -s -X POST htt
 const unrelatedLocalhostCommand = 'curl -s http://127.0.0.1:7777/other-hook';
 const legacyKeeplineCommand = `curl -s -X POST http://127.0.0.1:7890/hook -H "Content-Type: application/json" -d '{"event_type":"$CLAUDE_EVENT_TYPE","session_id":"$CLAUDE_SESSION_ID","cwd":"$PWD","timestamp":"'$(date -u +%Y-%m-%dT%H:%M:%SZ)'","tool_name":"$CLAUDE_TOOL_NAME","tool_input":'"\${CLAUDE_TOOL_INPUT:-{}}"'}' > /dev/null 2>&1 || true`;
 const foreignLegacyShapeCommand = `curl -s -X POST https://collector.example/hook -H "Content-Type: application/json" -d '{"event_type":"$CLAUDE_EVENT_TYPE","session_id":"$CLAUDE_SESSION_ID","cwd":"$PWD","timestamp":"'$(date -u +%Y-%m-%dT%H:%M:%SZ)'","tool_name":"$CLAUDE_TOOL_NAME","tool_input":'"\${CLAUDE_TOOL_INPUT:-{}}"'}' > /dev/null 2>&1 || true`;
+const expectedHandler = { type: 'command', command: markedCommand };
 
 describe('hook installer ownership detection', () => {
   test('does not claim unrelated localhost hooks', () => {
@@ -31,8 +32,20 @@ describe('hook installer ownership detection', () => {
 
     expect(changed).toBe(true);
     expect(settings.hooks?.PostToolUse).toHaveLength(2);
-    expect(settings.hooks?.PostToolUse?.[0].command).toBe(unrelatedLocalhostCommand);
-    expect(settings.hooks?.PostToolUse?.[1].command).toBe(markedCommand);
+    expect(settings.hooks?.PostToolUse?.[0]).toEqual({ command: unrelatedLocalhostCommand });
+    expect(settings.hooks?.PostToolUse?.[1]).toEqual({
+      matcher: '*',
+      hooks: [expectedHandler],
+    });
+    expect(settings.hooks?.PreToolUse).toEqual([
+      {
+        matcher: '*',
+        hooks: [expectedHandler],
+      },
+    ]);
+    expect(settings.hooks?.Notification).toEqual([{ hooks: [expectedHandler] }]);
+    expect(settings.hooks?.Stop).toEqual([{ hooks: [expectedHandler] }]);
+    expect(settings.hooks?.UserPromptSubmit).toEqual([{ hooks: [expectedHandler] }]);
   });
 
   test('uninstall removes only Keepline-owned hooks', () => {
@@ -56,6 +69,32 @@ describe('hook installer ownership detection', () => {
     expect(settings.hooks?.Stop).toEqual([{ command: 'echo keep-me' }]);
   });
 
+  test('uninstall removes Keepline handlers from mixed matcher groups', () => {
+    const settings: ClaudeSettings = {
+      hooks: {
+        PostToolUse: [
+          {
+            matcher: '*',
+            hooks: [
+              { type: 'command', command: markedCommand },
+              { type: 'command', command: 'echo keep-me' },
+            ],
+          },
+        ],
+      },
+    };
+
+    const removed = uninstallKeeplineHookConfig(settings);
+
+    expect(removed).toBe(1);
+    expect(settings.hooks?.PostToolUse).toEqual([
+      {
+        matcher: '*',
+        hooks: [{ type: 'command', command: 'echo keep-me' }],
+      },
+    ]);
+  });
+
   test('install upgrades a legacy Keepline hook without duplicating', () => {
     const settings: ClaudeSettings = {
       hooks: {
@@ -66,6 +105,27 @@ describe('hook installer ownership detection', () => {
     const changed = installKeeplineHookConfig(settings, markedCommand);
 
     expect(changed).toBe(true);
-    expect(settings.hooks?.PostToolUse).toEqual([{ command: markedCommand }]);
+    expect(settings.hooks?.PostToolUse).toEqual([
+      {
+        matcher: '*',
+        hooks: [expectedHandler],
+      },
+    ]);
+    expect(settings.hooks?.PreToolUse).toEqual([
+      {
+        matcher: '*',
+        hooks: [expectedHandler],
+      },
+    ]);
+    expect(settings.hooks?.Notification).toEqual([{ hooks: [expectedHandler] }]);
+    expect(settings.hooks?.Stop).toEqual([{ hooks: [expectedHandler] }]);
+    expect(settings.hooks?.UserPromptSubmit).toEqual([{ hooks: [expectedHandler] }]);
+  });
+
+  test('reinstalling an existing full Keepline config is a no-op', () => {
+    const settings: ClaudeSettings = {};
+
+    expect(installKeeplineHookConfig(settings, markedCommand)).toBe(true);
+    expect(installKeeplineHookConfig(settings, markedCommand)).toBe(false);
   });
 });

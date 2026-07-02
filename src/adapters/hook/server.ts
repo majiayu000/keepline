@@ -37,46 +37,108 @@ const VALID_EVENT_TYPES: Set<HookEventType> = new Set([
 /** Track first prompts per session for context injection */
 const sessionFirstPrompts: Map<string, boolean> = new Map();
 
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return Boolean(value && typeof value === 'object' && !Array.isArray(value));
+}
+
+function getHookEventType(event: Record<string, unknown>): HookEventType | null {
+  const eventType = event.event_type ?? event.hook_event_name;
+  if (typeof eventType !== 'string' || !VALID_EVENT_TYPES.has(eventType as HookEventType)) {
+    return null;
+  }
+  return eventType as HookEventType;
+}
+
+function stringifyToolOutput(output: unknown): string | undefined {
+  if (output === undefined) {
+    return undefined;
+  }
+  if (typeof output === 'string') {
+    return output;
+  }
+  return JSON.stringify(output);
+}
+
+/** Normalize Claude Code stdin payloads and legacy Keepline payloads. */
+export function normalizeHookEvent(event: unknown, now: Date = new Date()): HookEvent | null {
+  if (!isRecord(event)) {
+    return null;
+  }
+
+  const eventType = getHookEventType(event);
+  if (!eventType) {
+    return null;
+  }
+
+  if (!isValidSessionId(event.session_id) || typeof event.cwd !== 'string') {
+    return null;
+  }
+
+  const base = {
+    event_type: eventType,
+    session_id: event.session_id,
+    cwd: event.cwd,
+    timestamp: typeof event.timestamp === 'string' ? event.timestamp : now.toISOString(),
+    transcript_path: typeof event.transcript_path === 'string' ? event.transcript_path : undefined,
+  };
+
+  if (eventType === 'PreToolUse' || eventType === 'PostToolUse') {
+    if (typeof event.tool_name !== 'string' || event.tool_name.length === 0) {
+      return null;
+    }
+    if (!isRecord(event.tool_input)) {
+      return null;
+    }
+
+    return {
+      ...base,
+      event_type: eventType,
+      tool_name: event.tool_name,
+      tool_input: event.tool_input,
+      tool_output: stringifyToolOutput(event.tool_output ?? event.tool_response),
+    };
+  }
+
+  if (eventType === 'Notification') {
+    if (typeof event.message !== 'string') {
+      return null;
+    }
+    return {
+      ...base,
+      event_type: 'Notification',
+      message: event.message,
+    };
+  }
+
+  if (eventType === 'Stop') {
+    return {
+      ...base,
+      event_type: 'Stop',
+      reason: typeof event.reason === 'string' ? event.reason : undefined,
+    };
+  }
+
+  if (typeof event.prompt !== 'string') {
+    return null;
+  }
+  return {
+    ...base,
+    event_type: 'UserPromptSubmit',
+    prompt: event.prompt,
+  };
+}
+
 /** Validate hook event payload */
-function isValidHookEvent(event: unknown): event is HookEvent {
-  if (!event || typeof event !== 'object') {
+export function isValidHookEvent(event: unknown): event is HookEvent {
+  if (!isRecord(event)) {
     return false;
   }
 
-  const e = event as Record<string, unknown>;
-
-  // Required fields
-  if (!isValidSessionId(e.session_id)) {
-    return false;
-  }
-  if (typeof e.cwd !== 'string') {
-    return false;
-  }
-  if (typeof e.timestamp !== 'string') {
-    return false;
-  }
-  if (typeof e.event_type !== 'string' || !VALID_EVENT_TYPES.has(e.event_type as HookEventType)) {
+  if (!isValidSessionId(event.session_id)) {
     return false;
   }
 
-  // Tool events require additional fields
-  if (e.event_type === 'PreToolUse' || e.event_type === 'PostToolUse') {
-    if (typeof e.tool_name !== 'string' || e.tool_name.length === 0) {
-      return false;
-    }
-    if (!e.tool_input || typeof e.tool_input !== 'object') {
-      return false;
-    }
-  }
-
-  // UserPromptSubmit requires prompt field
-  if (e.event_type === 'UserPromptSubmit') {
-    if (typeof e.prompt !== 'string') {
-      return false;
-    }
-  }
-
-  return true;
+  return normalizeHookEvent(event) !== null;
 }
 
 /** Handle incoming hook event */
@@ -219,14 +281,16 @@ export async function startHookServer(): Promise<void> {
   // Hook event endpoint
   server.post<{ Body: unknown }>('/hook', async (request, reply) => {
     try {
+      const event = normalizeHookEvent(request.body);
+
       // Validate input before processing
-      if (!isValidHookEvent(request.body)) {
+      if (!event) {
         logger.warn('Invalid hook event received', { body: request.body });
         reply.status(400);
         return { success: false, error: 'Invalid hook event payload' };
       }
 
-      await handleHookEvent(request.body);
+      await handleHookEvent(event);
       return { success: true };
     } catch (error) {
       logger.error('Failed to handle hook event', error);
