@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback } from 'react'
 import type { Session } from '@/types'
+import { getSessionNotificationEvents } from './notification-events'
 
 export interface NotificationSettings {
   enabled: boolean
@@ -106,47 +107,8 @@ export function useNotifications(): UseNotificationsReturn {
       return
     }
 
-    const prevMap = new Map(prevSessions.map((s) => [s.sessionId, s]))
-
-    for (const session of newSessions) {
-      const prev = prevMap.get(session.sessionId)
-
-      // New session
-      if (!prev) {
-        continue // Don't notify for new sessions
-      }
-
-      // Status changed
-      if (settings.onStatusChange && prev.status !== session.status) {
-        // Session became lost
-        if (settings.onSessionLost && session.status === 'lost') {
-          notify('Session Lost', {
-            body: `Session "${session.title || session.sessionId}" has been lost`,
-            tag: `session-lost-${session.sessionId}`,
-          })
-        }
-        // Session completed
-        else if (session.status === 'completed' && prev.status !== 'completed') {
-          notify('Session Completed', {
-            body: `Session "${session.title || session.sessionId}" has completed`,
-            tag: `session-completed-${session.sessionId}`,
-          })
-        }
-      }
-
-      // High cost warning
-      if (settings.onHighCost && session.usageStats) {
-        const prevCost = prev.usageStats?.totalCost || 0
-        const newCost = session.usageStats.totalCost || 0
-
-        // Check if cost crossed the threshold
-        if (prevCost < settings.costThreshold && newCost >= settings.costThreshold) {
-          notify('High Cost Warning', {
-            body: `Session "${session.title || session.sessionId}" has exceeded $${settings.costThreshold.toFixed(2)} (current: $${newCost.toFixed(2)})`,
-            tag: `high-cost-${session.sessionId}`,
-          })
-        }
-      }
+    for (const event of getSessionNotificationEvents(prevSessions, newSessions, settings)) {
+      notify(event.title, event.options)
     }
   }, [settings, permission, notify])
 
