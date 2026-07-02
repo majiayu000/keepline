@@ -39,10 +39,18 @@ export class EventStore {
   private initialized = false;
 
   private ensureInitialized(): void {
-    if (!this.initialized) {
+    if (!this.initialized || !this.eventsTableExists()) {
       ensureEventsTable();
       this.initialized = true;
     }
+  }
+
+  private eventsTableExists(): boolean {
+    const db = getDatabase();
+    const row = db
+      .prepare("SELECT 1 as exists_flag FROM sqlite_master WHERE type = 'table' AND name = 'events'")
+      .get() as { exists_flag: number } | undefined;
+    return Boolean(row);
   }
 
   /**
