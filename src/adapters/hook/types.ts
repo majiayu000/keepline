@@ -2,15 +2,21 @@
  * Hook module types
  */
 
-/** Hook event types from Claude Code */
+/** Hook event types from Claude Code that Keepline consumes */
 export type HookEventType =
   | 'PreToolUse'
   | 'PostToolUse'
   | 'Notification'
   | 'Stop'
-  | 'UserPromptSubmit'; // User submitted a prompt
+  | 'UserPromptSubmit';
 
-/** Base hook event payload */
+/**
+ * Internal, normalized hook event payload.
+ *
+ * Claude Code delivers hook data as JSON on stdin (fields such as
+ * `hook_event_name`, `tool_response`) and does not set `$CLAUDE_*` env vars.
+ * The server parses that native payload into these normalized shapes.
+ */
 export interface HookEventPayload {
   event_type: HookEventType;
   session_id: string;
@@ -43,7 +49,6 @@ export interface StopHookEvent extends HookEventPayload {
 export interface UserPromptSubmitHookEvent extends HookEventPayload {
   event_type: 'UserPromptSubmit';
   prompt: string;
-  is_first_prompt?: boolean;
 }
 
 /** Union type for all hook events */
@@ -53,7 +58,7 @@ export type HookEvent =
   | StopHookEvent
   | UserPromptSubmitHookEvent;
 
-/** Claude settings hook configuration */
+/** A single command entry inside a Claude settings hook matcher block. */
 export interface ClaudeHookCommandHandler {
   type?: 'command' | string;
   command: string;
@@ -62,22 +67,20 @@ export interface ClaudeHookCommandHandler {
   [key: string]: unknown;
 }
 
+export type HookCommandEntry = ClaudeHookCommandHandler;
+
+/** Claude Code matcher block shape: hooks.<Event>[{ matcher?, hooks: [...] }] */
 export interface ClaudeHookMatcherGroup {
   matcher?: string;
   hooks: ClaudeHookCommandHandler[];
   [key: string]: unknown;
 }
 
+export type ClaudeHookMatcher = ClaudeHookMatcherGroup;
 export type ClaudeHookConfig = ClaudeHookCommandHandler | ClaudeHookMatcherGroup;
 
 /** Claude settings structure */
 export interface ClaudeSettings {
-  hooks?: {
-    PreToolUse?: ClaudeHookConfig[];
-    PostToolUse?: ClaudeHookConfig[];
-    Notification?: ClaudeHookConfig[];
-    Stop?: ClaudeHookConfig[];
-    UserPromptSubmit?: ClaudeHookConfig[];
-  };
+  hooks?: Partial<Record<HookEventType, ClaudeHookConfig[]>>;
   [key: string]: unknown;
 }
