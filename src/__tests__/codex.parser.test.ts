@@ -2,6 +2,7 @@ import { afterEach, describe, expect, test } from 'bun:test';
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'fs';
 import { join } from 'path';
 import { tmpdir } from 'os';
+import { ParseError } from '../lib/errors.js';
 import {
   parseCodexSessionFile,
   scopeCodexSessionId,
@@ -10,14 +11,17 @@ import {
 
 const tempDirs: string[] = [];
 
-function createCodexJsonlFile(lines: Array<Record<string, unknown> | string>): string {
+function createCodexJsonlFile(
+  lines: Array<Record<string, unknown> | string>,
+  options: { trailingNewline?: boolean } = {}
+): string {
   const dir = mkdtempSync(join(tmpdir(), 'keepline-jsonl-'));
   tempDirs.push(dir);
   const filePath = join(dir, 'rollout-019ed4a3-2186-7e51-9aa1-ca1e376549b8.jsonl');
   const contents = lines
     .map((line) => (typeof line === 'string' ? line : JSON.stringify(line)))
     .join('\n');
-  writeFileSync(filePath, `${contents}\n`);
+  writeFileSync(filePath, options.trailingNewline === false ? contents : `${contents}\n`);
   return filePath;
 }
 
@@ -30,7 +34,8 @@ function createTempHome(): string {
 function writeCodexSessionFile(
   homeDir: string,
   rawSessionId: string,
-  lines: Array<Record<string, unknown> | string>
+  lines: Array<Record<string, unknown> | string>,
+  options: { trailingNewline?: boolean } = {}
 ): string {
   const sessionDir = join(homeDir, '.codex', 'sessions', '2026', '06', '23');
   mkdirSync(sessionDir, { recursive: true });
@@ -38,7 +43,7 @@ function writeCodexSessionFile(
   const contents = lines
     .map((line) => (typeof line === 'string' ? line : JSON.stringify(line)))
     .join('\n');
-  writeFileSync(filePath, `${contents}\n`);
+  writeFileSync(filePath, options.trailingNewline === false ? contents : `${contents}\n`);
   return filePath;
 }
 
@@ -143,6 +148,60 @@ describe('Codex JSONL parser', () => {
       },
     ]);
   });
+
+  test('skips a truncated final JSONL line while preserving parsed session data', async () => {
+    const filePath = createCodexJsonlFile([
+      {
+        type: 'session_meta',
+        timestamp: '2026-06-17T01:00:00.000Z',
+        payload: {
+          id: '019ed4a3-2186-7e51-9aa1-ca1e376549b8',
+          cwd: '/tmp/codex-project',
+        },
+      },
+      {
+        type: 'response_item',
+        timestamp: '2026-06-17T01:00:03.000Z',
+        payload: {
+          type: 'message',
+          role: 'user',
+          content: [{ type: 'input_text', text: 'Recover Codex tail' }],
+        },
+      },
+      '{"type":"response_item","payload":{"type":"message"',
+    ], { trailingNewline: false });
+
+    const parsed = await parseCodexSessionFile(filePath);
+
+    expect(parsed).not.toBeNull();
+    expect(parsed!.rawSessionId).toBe('019ed4a3-2186-7e51-9aa1-ca1e376549b8');
+    expect(parsed!.firstMessage).toBe('Recover Codex tail');
+  });
+
+  test('throws ParseError for non-final invalid JSONL', async () => {
+    const filePath = createCodexJsonlFile([
+      {
+        type: 'session_meta',
+        timestamp: '2026-06-17T01:00:00.000Z',
+        payload: {
+          id: '019ed4a3-2186-7e51-9aa1-ca1e376549b8',
+          cwd: '/tmp/codex-project',
+        },
+      },
+      '{"type":"response_item", invalid json',
+      {
+        type: 'response_item',
+        timestamp: '2026-06-17T01:00:03.000Z',
+        payload: {
+          type: 'message',
+          role: 'user',
+          content: [{ type: 'input_text', text: 'This should not mask corruption' }],
+        },
+      },
+    ]);
+
+    await expect(parseCodexSessionFile(filePath)).rejects.toBeInstanceOf(ParseError);
+  });
 });
 
 describe('Codex scanner', () => {
@@ -160,6 +219,15 @@ describe('Codex scanner', () => {
         },
       },
       '{"type":"response_item", invalid json',
+      {
+        type: 'response_item',
+        timestamp: '2026-06-23T01:00:02.000Z',
+        payload: {
+          type: 'message',
+          role: 'user',
+          content: [{ type: 'input_text', text: 'Line after corruption' }],
+        },
+      },
     ]);
     writeCodexSessionFile(homeDir, healthyId, [
       {
@@ -199,6 +267,51 @@ describe('Codex scanner', () => {
       firstFailures: [brokenPath],
       secondSessions: [healthyId],
       secondFailures: [brokenPath],
+    });
+  });
+
+  test('does not cache a final-line truncation as a Codex parse failure', () => {
+    const homeDir = createTempHome();
+    const truncatedId = '019ed4a3-2186-7e51-9aa1-ca1e376549b8';
+    writeCodexSessionFile(homeDir, truncatedId, [
+      {
+        type: 'session_meta',
+        timestamp: '2026-06-23T01:00:00.000Z',
+        payload: {
+          id: truncatedId,
+          cwd: '/tmp/truncated-codex',
+        },
+      },
+      {
+        type: 'response_item',
+        timestamp: '2026-06-23T01:00:01.000Z',
+        payload: {
+          type: 'message',
+          role: 'user',
+          content: [{ type: 'input_text', text: 'Visible despite truncation' }],
+        },
+      },
+      '{"type":"response_item","payload":{"type":"message"',
+    ], { trailingNewline: false });
+
+    const result = runCodexScannerScript(homeDir, `
+      const { clearCodexSessionCache, getAllCodexSessionsWithFailures } = await import('./src/adapters/codex/scanner.ts');
+      clearCodexSessionCache();
+      const first = await getAllCodexSessionsWithFailures();
+      const second = await getAllCodexSessionsWithFailures();
+      console.log(JSON.stringify({
+        firstSessions: first.sessions.map((session) => session.rawSessionId),
+        firstFailures: first.failures.map((failure) => failure.filePath),
+        secondSessions: second.sessions.map((session) => session.rawSessionId),
+        secondFailures: second.failures.map((failure) => failure.filePath),
+      }));
+    `);
+
+    expect(result).toEqual({
+      firstSessions: [truncatedId],
+      firstFailures: [],
+      secondSessions: [truncatedId],
+      secondFailures: [],
     });
   });
 });

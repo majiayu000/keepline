@@ -62,12 +62,20 @@ interface AssistantBlockSummary {
 }
 
 /** Parse a single JSONL line */
-function parseLine(line: string, lineNumber: number, filePath: string): ClaudeEntryWithAgent | null {
+function parseLine(
+  line: string,
+  lineNumber: number,
+  filePath: string,
+  allowTruncatedTail = false
+): ClaudeEntryWithAgent | null {
   if (!line.trim()) return null;
 
   try {
     return JSON.parse(line) as ClaudeEntryWithAgent;
   } catch {
+    if (allowTruncatedTail) {
+      return null;
+    }
     throw new ParseError(filePath, lineNumber);
   }
 }
@@ -467,6 +475,7 @@ export async function parseSessionFile(
 ): Promise<ParsedSessionData | null> {
   let lineNumber = 0;
   let accumulator: SessionSummaryAccumulator | null = null;
+  let pendingLine: { line: string; lineNumber: number } | null = null;
 
   const fileStream = createReadStream(filePath);
   const rl = createInterface({
@@ -474,29 +483,41 @@ export async function parseSessionFile(
     crlfDelay: Infinity,
   });
 
-  for await (const line of rl) {
-    lineNumber++;
-    const entry = parseLine(line, lineNumber, filePath);
+  const processLine = (line: string, currentLineNumber: number, isLastLine: boolean): void => {
+    const entry = parseLine(line, currentLineNumber, filePath, isLastLine);
     if (
       !entry ||
       isFileHistorySnapshot(entry) ||
       isBootstrapOnlyEntry(entry) ||
       !entry.timestamp
     ) {
-      continue;
+      return;
     }
 
     if (!accumulator) {
       if (!entry.cwd) {
-        continue;
+        return;
       }
       accumulator = createSessionAccumulator(entry, options);
       if (!accumulator) {
-        return null;
+        return;
       }
     }
 
     accumulateSessionEntry(accumulator, entry);
+  };
+
+  for await (const line of rl) {
+    if (pendingLine) {
+      processLine(pendingLine.line, pendingLine.lineNumber, false);
+    }
+
+    lineNumber++;
+    pendingLine = { line, lineNumber };
+  }
+
+  if (pendingLine) {
+    processLine(pendingLine.line, pendingLine.lineNumber, true);
   }
 
   return accumulator ? finalizeSessionAccumulator(accumulator) : null;
