@@ -12,9 +12,11 @@ export type HookEventType =
 
 /** Base hook event payload */
 export interface HookEventPayload {
+  event_type: HookEventType;
   session_id: string;
   cwd: string;
   timestamp: string;
+  transcript_path?: string;
 }
 
 /** Tool use hook event */
@@ -22,7 +24,7 @@ export interface ToolUseHookEvent extends HookEventPayload {
   event_type: 'PreToolUse' | 'PostToolUse';
   tool_name: string;
   tool_input: Record<string, unknown>;
-  tool_output?: string; // Only present in PostToolUse
+  tool_output?: string;
 }
 
 /** Notification hook event */
@@ -52,10 +54,21 @@ export type HookEvent =
   | UserPromptSubmitHookEvent;
 
 /** Claude settings hook configuration */
-export interface ClaudeHookConfig {
-  matcher?: string;
+export interface ClaudeHookCommandHandler {
+  type?: 'command' | string;
   command: string;
+  args?: string[];
+  timeout?: number;
+  [key: string]: unknown;
 }
+
+export interface ClaudeHookMatcherGroup {
+  matcher?: string;
+  hooks: ClaudeHookCommandHandler[];
+  [key: string]: unknown;
+}
+
+export type ClaudeHookConfig = ClaudeHookCommandHandler | ClaudeHookMatcherGroup;
 
 /** Claude settings structure */
 export interface ClaudeSettings {
