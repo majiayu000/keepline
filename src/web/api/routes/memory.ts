@@ -11,7 +11,7 @@ import { buildContext, buildMinimalContext } from '../../../domain/memory/index.
 import type { MemoryUpsertData } from '../../../domain/memory/index.js';
 import { logger } from '../../../lib/logger.js';
 import { authMiddleware } from '../middleware/auth.js';
-import { isValidSessionId } from '../middleware/validation.js';
+import { isValidObservationId, isValidSessionId } from '../middleware/validation.js';
 import type { ObservationCategory } from '../../../infrastructure/vector/types.js';
 
 const app = new Hono();
@@ -444,6 +444,10 @@ app.get('/observations', async (c) => {
 app.get('/observations/:id', async (c) => {
   const id = c.req.param('id');
 
+  if (!isValidObservationId(id)) {
+    return c.json({ success: false, error: 'Invalid observation ID format' }, 400);
+  }
+
   try {
     const vectorStore = await getVectorStoreService();
     await vectorStore.initialize();
@@ -547,6 +551,10 @@ app.post('/observations', async (c) => {
 // DELETE /api/memory/observations/:id - Delete observation by ID
 app.delete('/observations/:id', async (c) => {
   const id = c.req.param('id');
+
+  if (!isValidObservationId(id)) {
+    return c.json({ success: false, error: 'Invalid observation ID format' }, 400);
+  }
 
   try {
     const vectorStore = await getVectorStoreService();
