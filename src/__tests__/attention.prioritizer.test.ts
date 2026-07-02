@@ -259,6 +259,7 @@ describe('buildAttentionOverview', () => {
 
     expect(overview.items[0].intent).toMatchObject({
       task: 'Investigate: Denoise probe 第一次启动失败了，我先看 stderr',
+      taskSource: 'last_message',
       currentState: 'Denoise probe 第一次启动失败了，我先看 stderr。通常这种是脚本路径或 OpenVINO Async API 细节。',
       nextAction: 'Recover this session and continue around topaz_dragon_cleanup_20260629T035947Z/cleanup_standard.png.',
       whyAttention: 'Session is lost and may be recoverable',
@@ -289,6 +290,7 @@ describe('buildAttentionOverview', () => {
     expect(overview.items[0].intent.task).toBe(
       'Continue: 结论是：gh21 应该学习产品行为和交互契约，不是照搬原型 UI'
     );
+    expect(overview.items[0].intent.taskSource).toBe('last_message');
   });
 
   test('does not use low-information responses as derived tasks', () => {
@@ -303,6 +305,7 @@ describe('buildAttentionOverview', () => {
     ], { now: NOW });
 
     expect(overview.items[0].intent.task).toBeUndefined();
+    expect(overview.items[0].intent.taskSource).toBe('none');
     expect(overview.items[0].intent.currentState).toBe('继续正常。');
     expect(overview.items[0].intent.noiseFlags).toEqual([
       'instructions_heavy',
@@ -322,6 +325,7 @@ describe('buildAttentionOverview', () => {
     ], { now: NOW });
 
     expect(overview.items[0].intent.task).toBeUndefined();
+    expect(overview.items[0].intent.taskSource).toBe('none');
     expect(overview.items[0].intent.currentState).toBe('你好，我在。 Memory citations: none');
   });
 
@@ -361,5 +365,6 @@ describe('buildAttentionOverview', () => {
       status: 'fresh',
       generatedAt: '2026-06-29T12:00:00.000Z',
     });
+    expect(overview.items[1].intent.taskSource).toBe('digest');
   });
 });

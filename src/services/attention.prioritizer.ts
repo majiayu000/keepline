@@ -32,6 +32,13 @@ export interface AttentionSessionContext {
 }
 
 export type AttentionIntentConfidence = 'high' | 'medium' | 'low';
+export type AttentionIntentTaskSource =
+  | 'initial_prompt'
+  | 'digest'
+  | 'title'
+  | 'last_message'
+  | 'current_file'
+  | 'none';
 export type AttentionIntentNoiseFlag =
   | 'instructions_heavy'
   | 'missing_user_goal'
@@ -40,6 +47,7 @@ export type AttentionIntentNoiseFlag =
 
 export interface AttentionIntent {
   task?: string;
+  taskSource: AttentionIntentTaskSource;
   currentState?: string;
   nextAction: string;
   whyAttention: string;
@@ -307,17 +315,26 @@ function buildSessionIntent(
     ? `Working around ${formatPathTail(session.currentFile)}`
     : undefined;
 
-  let task = firstNonEmpty([promptTask, digestTask, titleTask]);
+  const taskCandidate = firstNonEmptyTask([
+    { task: promptTask, source: 'initial_prompt' },
+    { task: digestTask, source: 'digest' },
+    { task: titleTask, source: 'title' },
+  ]);
+
+  let task = taskCandidate?.task;
+  let taskSource: AttentionIntentTaskSource = taskCandidate?.source ?? 'none';
   let confidence: AttentionIntentConfidence = task ? 'high' : 'low';
 
   if (!task && taskMessage) {
     task = deriveTaskFromLastMessage(taskMessage);
+    taskSource = task ? 'last_message' : 'none';
     confidence = 'medium';
     noiseFlags.push('derived_from_last_message');
   }
 
   if (!task && fileTask) {
     task = fileTask;
+    taskSource = 'current_file';
     confidence = 'low';
     noiseFlags.push('derived_from_file');
   }
@@ -328,6 +345,7 @@ function buildSessionIntent(
 
   return {
     task,
+    taskSource,
     currentState: firstNonEmpty([lastMessage, digestTask, titleTask]),
     nextAction: buildNextAction(session, reasons),
     whyAttention: buildWhyAttention(reasons),
@@ -427,6 +445,14 @@ function buildWhyAttention(reasons: AttentionReason[]): string {
 
 function firstNonEmpty(values: Array<string | undefined>): string | undefined {
   return values.find((value) => value?.trim());
+}
+
+function firstNonEmptyTask(
+  values: Array<{ task: string | undefined; source: AttentionIntentTaskSource }>
+): { task: string; source: AttentionIntentTaskSource } | undefined {
+  return values.find((value): value is { task: string; source: AttentionIntentTaskSource } =>
+    Boolean(value.task?.trim())
+  );
 }
 
 function formatPathTail(path: string): string {
