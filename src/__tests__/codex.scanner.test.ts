@@ -65,7 +65,20 @@ describe('Codex session scanner', () => {
     const sessionsDir = join(tempDir, 'sessions');
     mkdirSync(sessionsDir);
     const invalidFile = join(sessionsDir, 'rollout-12345678-1234-1234-1234-123456789abc.jsonl');
-    writeFileSync(invalidFile, '{not-json}\n');
+    writeFileSync(
+      invalidFile,
+      [
+        '{not-json}',
+        JSON.stringify({
+          type: 'session_meta',
+          timestamp: '2026-06-23T01:00:00.000Z',
+          payload: {
+            id: '12345678-1234-1234-1234-123456789abc',
+            cwd: '/tmp/broken-codex',
+          },
+        }),
+      ].join('\n') + '\n'
+    );
 
     const sessions = await getAllCodexSessions({ sessionsDir });
 
