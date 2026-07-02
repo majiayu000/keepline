@@ -2,7 +2,7 @@
  * Hook module types
  */
 
-/** Hook event types from Claude Code */
+/** Hook event types from Claude Code that Keepline consumes */
 export type HookEventType =
   | 'PreToolUse'
   | 'PostToolUse'
@@ -10,7 +10,14 @@ export type HookEventType =
   | 'Stop'
   | 'UserPromptSubmit'; // User submitted a prompt
 
-/** Base hook event payload */
+/**
+ * Internal, normalized hook event payload.
+ *
+ * Claude Code delivers hook data as JSON on stdin (fields such as
+ * `hook_event_name`, `tool_response`) and does NOT set `$CLAUDE_*` env vars.
+ * The server parses that native payload into these normalized shapes; the
+ * `timestamp` is stamped on receipt because Claude does not send one.
+ */
 export interface HookEventPayload {
   session_id: string;
   cwd: string;
@@ -41,7 +48,6 @@ export interface StopHookEvent extends HookEventPayload {
 export interface UserPromptSubmitHookEvent extends HookEventPayload {
   event_type: 'UserPromptSubmit';
   prompt: string;
-  is_first_prompt?: boolean;
 }
 
 /** Union type for all hook events */
@@ -51,20 +57,24 @@ export type HookEvent =
   | StopHookEvent
   | UserPromptSubmitHookEvent;
 
-/** Claude settings hook configuration */
-export interface ClaudeHookConfig {
-  matcher?: string;
+/**
+ * A single command entry inside a Claude settings hook matcher block.
+ * This is Claude Code's real nested shape: `hooks[].hooks[]`.
+ */
+export interface HookCommandEntry {
+  type: 'command';
   command: string;
+  timeout?: number;
 }
 
-/** Claude settings structure */
+/** A matcher block: optionally filters events, and runs one or more commands */
+export interface ClaudeHookMatcher {
+  matcher?: string;
+  hooks: HookCommandEntry[];
+}
+
+/** Claude settings structure (hooks use the nested matcher-block shape) */
 export interface ClaudeSettings {
-  hooks?: {
-    PreToolUse?: ClaudeHookConfig[];
-    PostToolUse?: ClaudeHookConfig[];
-    Notification?: ClaudeHookConfig[];
-    Stop?: ClaudeHookConfig[];
-    UserPromptSubmit?: ClaudeHookConfig[];
-  };
+  hooks?: Partial<Record<HookEventType, ClaudeHookMatcher[]>>;
   [key: string]: unknown;
 }

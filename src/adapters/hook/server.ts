@@ -37,46 +37,95 @@ const VALID_EVENT_TYPES: Set<HookEventType> = new Set([
 /** Track first prompts per session for context injection */
 const sessionFirstPrompts: Map<string, boolean> = new Map();
 
-/** Validate hook event payload */
-function isValidHookEvent(event: unknown): event is HookEvent {
-  if (!event || typeof event !== 'object') {
-    return false;
+/** Extract a tool's output from Claude's native payload (field name varies) */
+function extractToolOutput(e: Record<string, unknown>): string | undefined {
+  const raw = e.tool_response ?? e.tool_result ?? e.tool_output;
+  if (raw === undefined || raw === null) return undefined;
+  return typeof raw === 'string' ? raw : JSON.stringify(raw);
+}
+
+/**
+ * Parse Claude Code's native hook payload (delivered as stdin JSON) into a
+ * normalized internal event, or return null if it is not a valid/known event.
+ *
+ * Claude uses `hook_event_name` (not `event_type`) and does not send a
+ * timestamp, so one is stamped on receipt.
+ */
+export function parseHookEvent(raw: unknown): HookEvent | null {
+  if (!raw || typeof raw !== 'object') {
+    return null;
   }
 
-  const e = event as Record<string, unknown>;
+  const e = raw as Record<string, unknown>;
 
-  // Required fields
+  const eventType = e.hook_event_name;
+  if (typeof eventType !== 'string' || !VALID_EVENT_TYPES.has(eventType as HookEventType)) {
+    return null;
+  }
   if (!isValidSessionId(e.session_id)) {
-    return false;
-  }
-  if (typeof e.cwd !== 'string') {
-    return false;
-  }
-  if (typeof e.timestamp !== 'string') {
-    return false;
-  }
-  if (typeof e.event_type !== 'string' || !VALID_EVENT_TYPES.has(e.event_type as HookEventType)) {
-    return false;
+    return null;
   }
 
-  // Tool events require additional fields
-  if (e.event_type === 'PreToolUse' || e.event_type === 'PostToolUse') {
-    if (typeof e.tool_name !== 'string' || e.tool_name.length === 0) {
-      return false;
-    }
-    if (!e.tool_input || typeof e.tool_input !== 'object') {
-      return false;
-    }
-  }
+  const session_id = e.session_id;
+  const cwd = typeof e.cwd === 'string' ? e.cwd : '';
+  const timestamp = new Date().toISOString();
 
-  // UserPromptSubmit requires prompt field
-  if (e.event_type === 'UserPromptSubmit') {
-    if (typeof e.prompt !== 'string') {
-      return false;
+  switch (eventType as HookEventType) {
+    case 'PreToolUse':
+    case 'PostToolUse': {
+      if (typeof e.tool_name !== 'string' || e.tool_name.length === 0) {
+        return null;
+      }
+      const tool_input =
+        e.tool_input && typeof e.tool_input === 'object'
+          ? (e.tool_input as Record<string, unknown>)
+          : {};
+      return {
+        event_type: eventType as 'PreToolUse' | 'PostToolUse',
+        session_id,
+        cwd,
+        timestamp,
+        tool_name: e.tool_name,
+        tool_input,
+        tool_output: extractToolOutput(e),
+      };
     }
-  }
 
-  return true;
+    case 'UserPromptSubmit':
+      return {
+        event_type: 'UserPromptSubmit',
+        session_id,
+        cwd,
+        timestamp,
+        prompt: typeof e.prompt === 'string' ? e.prompt : '',
+      };
+
+    case 'Stop':
+      return {
+        event_type: 'Stop',
+        session_id,
+        cwd,
+        timestamp,
+        reason:
+          typeof e.stop_reason === 'string'
+            ? e.stop_reason
+            : typeof e.reason === 'string'
+              ? e.reason
+              : undefined,
+      };
+
+    case 'Notification':
+      return {
+        event_type: 'Notification',
+        session_id,
+        cwd,
+        timestamp,
+        message: typeof e.message === 'string' ? e.message : '',
+      };
+
+    default:
+      return null;
+  }
 }
 
 /** Handle incoming hook event */
@@ -219,14 +268,21 @@ export async function startHookServer(): Promise<void> {
   // Hook event endpoint
   server.post<{ Body: unknown }>('/hook', async (request, reply) => {
     try {
-      // Validate input before processing
-      if (!isValidHookEvent(request.body)) {
-        logger.warn('Invalid hook event received', { body: request.body });
+      // Parse Claude's native stdin payload into a normalized event.
+      const event = parseHookEvent(request.body);
+      if (!event) {
+        // Log only non-sensitive identifiers, never the raw body (which may
+        // carry prompts, tool inputs, or secrets).
+        const body = request.body as Record<string, unknown> | null;
+        logger.warn('Invalid hook event received', {
+          hook_event_name: body?.hook_event_name,
+          session_id: body?.session_id,
+        });
         reply.status(400);
         return { success: false, error: 'Invalid hook event payload' };
       }
 
-      await handleHookEvent(request.body);
+      await handleHookEvent(event);
       return { success: true };
     } catch (error) {
       logger.error('Failed to handle hook event', error);
