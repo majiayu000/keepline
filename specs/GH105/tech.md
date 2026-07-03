@@ -24,8 +24,9 @@ Keep direct env reads only at process boundary modules where they describe OS,
 auth, or proxy state. Document these as boundary exceptions instead of pretending
 all env access can be removed in one tranche.
 
-Treat `embeddingDimension` in vector config as the store-side required dimension
-and align GH99 validation with that meaning.
+Treat `embeddingDimension` in vector config as the store-side required dimension.
+The runtime vector-store singleton must derive that value from the active
+embedding provider instead of relying on the constructor's OpenAI-sized default.
 
 ## Verification
 
@@ -38,4 +39,3 @@ bun run typecheck
 
 Changing config defaults can affect startup. Preserve current default values and
 only centralize their source.
-

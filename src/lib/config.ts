@@ -148,16 +148,21 @@ function getConfigFile(): string {
 }
 
 /** Validate config values are within acceptable ranges */
-function validateConfig(cfg: KeeplineConfig): void {
+export function isValidPortNumber(value: unknown): value is number {
+  return typeof value === 'number' && Number.isInteger(value) && value >= 1 && value <= 65535;
+}
+
+/** Validate config values are within acceptable ranges */
+export function validateConfig(cfg: KeeplineConfig): void {
   const errors: string[] = [];
 
   if (cfg.scanInterval < 100) {
     errors.push('scanInterval must be at least 100ms');
   }
-  if (cfg.hookPort < 1 || cfg.hookPort > 65535) {
+  if (!isValidPortNumber(cfg.hookPort)) {
     errors.push('hookPort must be between 1 and 65535');
   }
-  if (cfg.webPort < 1 || cfg.webPort > 65535) {
+  if (!isValidPortNumber(cfg.webPort)) {
     errors.push('webPort must be between 1 and 65535');
   }
   if (!['debug', 'info', 'warn', 'error'].includes(cfg.logLevel)) {

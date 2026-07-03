@@ -1,5 +1,10 @@
 import { describe, expect, test } from 'bun:test';
-import { LanceDBVectorStore } from '../infrastructure/vector/lancedb.adapter.js';
+import {
+  closeVectorStore,
+  getVectorStore,
+  LanceDBVectorStore,
+} from '../infrastructure/vector/lancedb.adapter.js';
+import { resetEmbeddingService } from '../infrastructure/vector/embedding.service.js';
 import type { Observation } from '../infrastructure/vector/types.js';
 
 type MockQuery = {
@@ -19,6 +24,7 @@ type MockTable = {
 };
 
 type StoreInternals = {
+  config: { embeddingDimension: number };
   initialized: boolean;
   table: MockTable;
   tableVectorDimension: number | null;
@@ -88,6 +94,35 @@ function vector(dimension: number): number[] {
 }
 
 describe('LanceDBVectorStore vector dimensions', () => {
+  test('singleton uses the active embedding provider dimension', async () => {
+    const previousOpenAiKey = process.env.OPENAI_API_KEY;
+    const previousVoyageKey = process.env.VOYAGE_API_KEY;
+
+    try {
+      delete process.env.OPENAI_API_KEY;
+      delete process.env.VOYAGE_API_KEY;
+      resetEmbeddingService();
+      await closeVectorStore();
+
+      const store = getVectorStore();
+
+      expect((store as unknown as StoreInternals).config.embeddingDimension).toBe(384);
+    } finally {
+      if (previousOpenAiKey === undefined) {
+        delete process.env.OPENAI_API_KEY;
+      } else {
+        process.env.OPENAI_API_KEY = previousOpenAiKey;
+      }
+      if (previousVoyageKey === undefined) {
+        delete process.env.VOYAGE_API_KEY;
+      } else {
+        process.env.VOYAGE_API_KEY = previousVoyageKey;
+      }
+      resetEmbeddingService();
+      await closeVectorStore();
+    }
+  });
+
   test('rejects a single vector with the wrong dimension before writing', async () => {
     const table = mockTable();
     const store = initializedStore(table, 1536);

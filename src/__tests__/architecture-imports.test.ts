@@ -25,6 +25,7 @@ const forbiddenImportPatterns = [
 const allowedAdapterServiceImports = new Set([
   'src/adapters/claude/parser/jsonl.ts -> ../../../services/usage.extractor.js',
   'src/adapters/codex/parser.ts -> ../../services/usage.extractor.js',
+  'src/adapters/hook/availability.ts -> ../../services/daemon.manager.js',
   'src/adapters/hook/server.ts -> ../../services/compression.queue.js',
   'src/adapters/hook/server.ts -> ../../services/context.injection.js',
   'src/adapters/hook/server.ts -> ../../services/session.service.js',

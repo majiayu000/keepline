@@ -1,6 +1,7 @@
 import { afterEach, beforeEach, describe, expect, test } from 'bun:test';
 import sessions from '../web/api/routes/sessions.js';
 import memory from '../web/api/routes/memory.js';
+import status from '../web/api/routes/status.js';
 import { setupUser } from '../services/auth.service.js';
 import { resetDatabase } from '../db/migrations.js';
 import { closeDatabase } from '../infrastructure/database/sqlite.js';
@@ -32,6 +33,11 @@ describe('Protected API routes', () => {
 
   test('memory route rejects unauthenticated requests', async () => {
     const response = await memory.fetch(new Request('http://localhost/'));
+    expect(response.status).toBe(401);
+  });
+
+  test('status route rejects unauthenticated hook availability requests', async () => {
+    const response = await status.fetch(new Request('http://localhost/hooks'));
     expect(response.status).toBe(401);
   });
 

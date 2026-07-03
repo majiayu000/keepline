@@ -103,7 +103,7 @@ export function registerCommands(program: Command): void {
           break;
         case 'status': {
           const { getHookAvailability } = await import('../adapters/hook/availability.js');
-          const status = getHookAvailability();
+          const status = await getHookAvailability();
           console.log(`Hooks installed: ${status.installed ? chalk.green('Yes') : chalk.red('No')}`);
           console.log(`Hook receiver: ${status.receiverRunning ? chalk.green('Running') : chalk.yellow('Not running')}`);
           if (status.degraded) {

@@ -13,10 +13,12 @@ Issue: https://github.com/majiayu000/keepline/issues/99
 ## Design
 
 The vector adapter owns the final persistence boundary, so it must validate
-vector dimensions even when callers bypass the embedding service. The adapter
-should:
+vector dimensions even when callers bypass the embedding service. Runtime
+singleton construction must pass the active embedding provider dimension into
+the store config so local fallback, Voyage, and OpenAI embeddings are all valid
+when selected. The adapter should:
 
-1. validate each vector against `VectorStoreConfig.embeddingDimension`;
+1. validate each vector against the active `VectorStoreConfig.embeddingDimension`;
 2. detect the opened table's stored vector length using a cheap sampled row when
    possible;
 3. cache the detected table dimension after initialization;
@@ -39,4 +41,3 @@ bun run typecheck
 The main compatibility risk is SDK method shape drift. Keep method access
 localized in the adapter and covered by tests with mocked table objects. Rollback
 is limited to reverting the adapter change and tests.
-
