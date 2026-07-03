@@ -17,6 +17,9 @@ This tranche changes only files needed for non-overlapping hardening:
 - `src/db/migrations.ts`
 - `src/web/api/routes/sessions.ts`
 - `src/services/session.process-matcher.ts`
+- `src/adapters/process/scanner.ts`
+- `tsconfig.json`
+- `src/web/client/tsconfig.json`
 - focused tests for those modules
 
 LanceDB predicate handling, hook server installation semantics, retention
@@ -105,6 +108,11 @@ PRAGMA busy_timeout = 5000
 
 Keep WAL and foreign keys enabled.
 
+Database connection setup must call `getKeeplineDb()` when opening the SQLite
+connection. Do not use the import-time `KEEPLINE_DB` snapshot in this layer,
+because CLI startup and subprocess tests can set `KEEPLINE_HOME` after modules
+have already been imported.
+
 ## Sessions API Pagination
 
 Parse `limit` and `offset` through a small validator:
@@ -146,3 +154,16 @@ with `undefined` or `null`, write NULL.
 
 `resetDatabase()` must drop `events` before re-running migrations so tests and
 local resets do not retain optional EventStore rows.
+
+## Empty Process Scan
+
+`scanAgentProcesses()` should not depend on a `grep` pipeline that exits with
+status 1 when no rows match. Run `ps` once and let `parseAgentPsOutput()` filter
+supported agent rows. An empty supported-agent set is valid data and should
+return `[]`.
+
+## Typecheck Compatibility
+
+Keep `baseUrl` path mapping, but configure TypeScript's supported
+`ignoreDeprecations` value so the documented `bun run typecheck` command works
+with the TypeScript version range installed by Bun.
