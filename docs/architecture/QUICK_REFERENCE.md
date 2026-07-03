@@ -120,7 +120,6 @@ alert_channels        -- 告警渠道 [NEW]
 alert_history         -- 告警历史 [NEW]
 
 -- Infrastructure
-events                -- 事件存储 [NEW]
 hook_events           -- Hook 事件
 audit_logs            -- 审计日志 [NEW]
 metadata              -- 元数据

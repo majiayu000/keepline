@@ -10,6 +10,7 @@ import { daemonCommand } from './daemon.js';
 import { statusCommand } from './status.js';
 import { webCommand } from './web.js';
 import { overviewCommand } from './overview.js';
+import { DEFAULT_WEB_PORT } from '../lib/config.js';
 import {
   memoryListCommand,
   memoryShowCommand,
@@ -88,7 +89,7 @@ export function registerCommands(program: Command): void {
     .command('hooks <action>')
     .description('Manage Claude-compatible hooks (install, uninstall, status)')
     .action(async (action: string) => {
-      const { installHooks, uninstallHooks, getHookStatus } = await import('../adapters/hook/installer.js');
+      const { installHooks, uninstallHooks } = await import('../adapters/hook/installer.js');
       const chalk = (await import('chalk')).default;
 
       switch (action) {
@@ -101,8 +102,13 @@ export function registerCommands(program: Command): void {
           console.log(chalk.green('Hooks uninstalled successfully'));
           break;
         case 'status': {
-          const status = getHookStatus();
+          const { getHookAvailability } = await import('../adapters/hook/availability.js');
+          const status = getHookAvailability();
           console.log(`Hooks installed: ${status.installed ? chalk.green('Yes') : chalk.red('No')}`);
+          console.log(`Hook receiver: ${status.receiverRunning ? chalk.green('Running') : chalk.yellow('Not running')}`);
+          if (status.degraded) {
+            console.log(chalk.yellow('Hooks are installed but no hook receiver is running. Start keepline daemon to receive hook events.'));
+          }
           console.log(`Settings path: ${status.settingsPath}`);
           break;
         }
@@ -131,7 +137,7 @@ export function registerCommands(program: Command): void {
   program
     .command('web')
     .description('Start the web UI server')
-    .option('-p, --port <port>', 'Port to listen on (default: 3377)')
+    .option('-p, --port <port>', `Port to listen on (default: ${DEFAULT_WEB_PORT})`)
     .action(webCommand);
 
   // Memory management (relay race pattern)

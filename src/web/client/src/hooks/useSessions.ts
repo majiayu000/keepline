@@ -2,6 +2,10 @@ import { useState, useEffect, useCallback, useRef } from 'react'
 import { api } from '@/services/api'
 import { REFRESH_INTERVAL_MS } from '@/constants'
 import { useWebSocket, type WebSocketMessage } from './useWebSocket'
+import {
+  isSessionsUpdateData,
+  isSyncCompleteData,
+} from '@/services/session-ws-contract'
 import type { Session, SessionStats, SessionFullData, PaginationInfo, TerminalApp, SessionStatus, RuntimeFilter } from '@/types'
 
 export type ConnectionStatus = 'polling' | 'realtime' | 'disconnected'
@@ -152,7 +156,8 @@ export function useSessions(token: string, options: SessionQueryOptions = {}): U
     if (!mountedRef.current) return
 
     if (message.type === 'sessions:update' && message.data) {
-      const data = message.data as { sessions: Session[]; stats: SessionStats }
+      if (!isSessionsUpdateData(message.data)) return
+      const data = message.data
       setAllSessions(data.sessions)
       bumpVersionIfChanged(data.sessions)
       if (hasServerFilters) {
@@ -163,6 +168,12 @@ export function useSessions(token: string, options: SessionQueryOptions = {}): U
       setStats(data.stats)
       setPagination(null)
       setError(null)
+      return
+    }
+
+    if (message.type === 'sync:complete') {
+      if (!isSyncCompleteData(message.data)) return
+      loadSessionsRef.current()
     }
   }, [bumpVersionIfChanged, hasServerFilters])
 

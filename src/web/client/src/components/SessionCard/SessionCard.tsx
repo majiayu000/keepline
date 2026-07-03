@@ -7,7 +7,7 @@ import { UsageStats } from '@/components/UsageStats'
 import { SubAgentList } from '@/components/SubAgentList'
 import { TerminalSelector } from '@/components/TerminalSelector'
 import { formatRelativeTime, formatPath } from '@/utils/format'
-import { getStatusColor } from '@/constants'
+import { getStatusColor, STATUS_LABELS } from '@/constants'
 import { useToggle } from '@/hooks'
 import styles from './SessionCard.module.css'
 
@@ -86,7 +86,7 @@ export const SessionCard = memo(function SessionCard({
       >
         <div className={styles.statusRow}>
           <span className={styles.status} style={{ color: statusColor }}>
-            {session.status}
+            {STATUS_LABELS[session.status]}
           </span>
           <span className={styles.clientBadge} data-runtime={runtimeId}>
             {runtimeLabel}

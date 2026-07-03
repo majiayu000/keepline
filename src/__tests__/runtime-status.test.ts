@@ -3,7 +3,12 @@ import {
   REGISTERED_RUNTIME_IDS,
   type RuntimeId,
 } from '../domain/runtime/index.js';
-import type { AgentClient } from '../domain/session/index.js';
+import {
+  SESSION_STATUS_ORDER,
+  SESSION_STATUS_PRESENTATION,
+  SESSION_STATUSES,
+  type AgentClient,
+} from '../domain/session/index.js';
 import {
   clientForRuntimeId,
   isSessionRuntimeId,
@@ -41,5 +46,20 @@ describe('runtime identity status helpers', () => {
     expect(parseRuntimeFilter('claude-code')).toEqual({ runtimeId: 'claude-code' });
     expect(parseRuntimeFilter('codex')).toEqual({ runtimeId: 'codex' });
     expect(parseRuntimeFilter('cursor')).toEqual({ invalid: 'cursor' });
+  });
+});
+
+describe('session status presentation contract', () => {
+  test('presentation metadata covers every session status in order', () => {
+    expect(SESSION_STATUS_ORDER).toEqual(SESSION_STATUSES);
+
+    for (const [index, status] of SESSION_STATUSES.entries()) {
+      const presentation = SESSION_STATUS_PRESENTATION[status];
+      expect(presentation.status).toBe(status);
+      expect(presentation.order).toBe(index);
+      expect(presentation.label.length).toBeGreaterThan(0);
+      expect(presentation.shortLabel.length).toBeGreaterThan(0);
+      expect(presentation.icon.length).toBeGreaterThan(0);
+    }
   });
 });
