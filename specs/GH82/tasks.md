@@ -130,3 +130,19 @@ Done when:
 - `bun test` passes.
 - `bun run build` passes.
 - PR uses `Refs #82`, not `Closes #82`.
+
+### SP82-T10: Close remaining deterministic hardening gaps
+
+Done when:
+
+- SQLite opens the database through the runtime `getKeeplineDb()` getter.
+- Process scanning treats no supported Claude/Codex process as an empty result.
+- TypeScript deprecation handling keeps `bun run typecheck` working under the
+  installed TypeScript range.
+
+Verify:
+
+```sh
+bun test src/__tests__/reset-database.test.ts src/__tests__/process-parser.test.ts src/__tests__/sessions.route-basic.test.ts
+bun run typecheck
+```

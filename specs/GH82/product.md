@@ -27,6 +27,12 @@ few silent or stale behaviors erode that trust:
 5. API pagination with invalid numbers can return misleading empty results.
 6. PID reuse can make an old session look attached to a new process.
 7. Session fields that should clear can remain stale forever.
+8. Runtime `KEEPLINE_HOME` overrides can route config and database files to
+   different homes when modules captured paths before the override.
+9. A host with no active Claude or Codex CLI process can make session list
+   routes fail while scanning processes.
+10. Newer TypeScript versions can make the documented typecheck command fail
+   before application code is checked.
 
 ## Product Behavior
 
@@ -48,6 +54,12 @@ few silent or stale behaviors erode that trust:
    the field with `undefined` or `null`.
 9. Test database reset should remove the optional `events` table as well as the
    core migrated tables.
+10. Database connections should resolve the current `KEEPLINE_HOME` when the
+    connection is opened, not from an import-time snapshot.
+11. Process scanning should return an empty process list when no supported
+    agent process exists.
+12. The documented typecheck command should remain deterministic under the
+    TypeScript version range installed by Bun.
 
 ## Non-Goals
 
@@ -74,7 +86,11 @@ few silent or stale behaviors erode that trust:
    treated as continuity.
 8. Repository tests prove nullable activity fields can be explicitly cleared.
 9. Reset database tests prove the optional `events` table is dropped.
-10. Verification passes: focused tests, `bun run typecheck`, `bun test`, and
+10. Reset database tests prove runtime `KEEPLINE_HOME` changes are honored when
+    opening a database connection.
+11. Process parser tests prove ps output without supported agent rows produces
+    an empty process list.
+12. Verification passes: focused tests, `bun run typecheck`, `bun test`, and
     `bun run build`.
 
 ## Related Work

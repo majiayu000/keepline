@@ -1,4 +1,7 @@
 import { afterEach, beforeEach, describe, expect, test } from 'bun:test';
+import { existsSync, mkdtempSync, rmSync } from 'fs';
+import { tmpdir } from 'os';
+import { join } from 'path';
 import { queryOne, runSql, closeDatabase } from '../infrastructure/database/sqlite.js';
 import { resetDatabase, runMigrations } from '../db/migrations.js';
 import { memoryRepository } from '../infrastructure/database/index.js';
@@ -42,6 +45,31 @@ describe('resetDatabase', () => {
 
   test('sets a non-zero SQLite busy timeout', () => {
     expect(queryOne<{ timeout: number }>('PRAGMA busy_timeout')?.timeout).toBe(5000);
+  });
+
+  test('honors KEEPLINE_HOME changes made after module import', () => {
+    const previousHome = process.env.KEEPLINE_HOME;
+    const home = mkdtempSync(join(tmpdir(), 'keepline-runtime-db-home-'));
+
+    try {
+      closeDatabase();
+      process.env.KEEPLINE_HOME = home;
+
+      resetDatabase();
+
+      expect(existsSync(join(home, 'keepline.db'))).toBe(true);
+      expect((queryOne<{ count: number }>(
+        'SELECT COUNT(*) as count FROM schema_migrations'
+      )?.count ?? 0)).toBeGreaterThan(0);
+    } finally {
+      closeDatabase();
+      if (previousHome === undefined) {
+        delete process.env.KEEPLINE_HOME;
+      } else {
+        process.env.KEEPLINE_HOME = previousHome;
+      }
+      rmSync(home, { recursive: true, force: true });
+    }
   });
 
   test('drops optional events table during reset', () => {

@@ -249,7 +249,7 @@ export function scanAgentProcesses(): ClaudeProcessInfo[] {
     // Format: PID %CPU %MEM TTY LSTART ARGS
     // Using custom format to get lstart (which spans multiple columns)
     const output = execSync(
-      `ps -eo pid,pcpu,pmem,tty,lstart,args | grep -Ei '[c]laude|[c]odex'`,
+      'ps -eo pid,pcpu,pmem,tty,lstart,args',
       { encoding: 'utf-8', timeout: 10000 }
     );
 
@@ -283,11 +283,6 @@ export function scanAgentProcesses(): ClaudeProcessInfo[] {
     logger.debug(`Found ${processes.length} agent processes (2 syscalls)`);
     return processes;
   } catch (error) {
-    // No matching processes found (grep returns exit code 1)
-    if ((error as { status?: number }).status === 1) {
-      processCache = { processes: [], timestamp: Date.now() };
-      return [];
-    }
     throw new ProcessScanError('Failed to scan processes', {
       error: (error as Error).message,
     });
