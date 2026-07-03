@@ -12,6 +12,7 @@ import { logger } from '../../lib/logger.js';
 import { assertValidObservationId } from '../../lib/observation-id.js';
 import { assertValidSessionId } from '../../lib/session-id.js';
 import { KEEPLINE_HOME } from '../../lib/paths.js';
+import { getEmbeddingService } from './embedding.service.js';
 import type {
   IVectorStore,
   Observation,
@@ -25,7 +26,7 @@ import type {
 const DEFAULT_CONFIG: VectorStoreConfig = {
   path: join(KEEPLINE_HOME, 'lancedb'),
   tableName: 'observations',
-  embeddingDimension: 1536, // OpenAI ada-002 / Voyage default
+  embeddingDimension: 1536,
 };
 
 /** LanceDB row schema - using index signature for compatibility */
@@ -410,7 +411,9 @@ let vectorStoreInstance: LanceDBVectorStore | null = null;
  */
 export function getVectorStore(): LanceDBVectorStore {
   if (!vectorStoreInstance) {
-    vectorStoreInstance = new LanceDBVectorStore();
+    vectorStoreInstance = new LanceDBVectorStore({
+      embeddingDimension: getEmbeddingService().getDimension(),
+    });
   }
   return vectorStoreInstance;
 }

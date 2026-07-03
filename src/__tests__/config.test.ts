@@ -99,6 +99,23 @@ describe('Default Configuration Values', () => {
       expect(() => resolveWebPort('70000')).toThrow('Invalid port number');
       expect(() => resolveWebPort('123abc')).toThrow('Invalid port number');
     });
+
+    test('config port validation rejects coerced or fractional values', async () => {
+      const { config, isValidPortNumber, validateConfig } = await import('../lib/config.js');
+      const cfg = config.get();
+
+      expect(isValidPortNumber(3377)).toBe(true);
+      expect(isValidPortNumber('3377')).toBe(false);
+      expect(isValidPortNumber(3377.5)).toBe(false);
+      expect(isValidPortNumber(0)).toBe(false);
+
+      expect(() =>
+        validateConfig({ ...cfg, webPort: '3377' as unknown as number })
+      ).toThrow('webPort must be between 1 and 65535');
+      expect(() =>
+        validateConfig({ ...cfg, hookPort: 7890.5 })
+      ).toThrow('hookPort must be between 1 and 65535');
+    });
   });
 
   describe('logging defaults', () => {

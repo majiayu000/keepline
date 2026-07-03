@@ -3,7 +3,7 @@
  */
 
 import { startWebServer } from '../web/api/server.js';
-import { config } from '../lib/config.js';
+import { config, isValidPortNumber } from '../lib/config.js';
 
 interface WebOptions {
   port?: string;
@@ -36,7 +36,7 @@ export function resolveWebPort(portOption?: string): number {
   if (!trimmed) return config.get().webPort;
 
   const port = Number(trimmed);
-  if (!Number.isInteger(port) || port < 1 || port > 65535) {
+  if (!isValidPortNumber(port)) {
     throw new Error('Invalid port number');
   }
 

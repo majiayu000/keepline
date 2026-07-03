@@ -5,7 +5,10 @@ import {
   isValidHookEvent,
   normalizeHookEvent,
 } from '../adapters/hook/server.js';
-import { buildHookAvailability } from '../adapters/hook/availability.js';
+import {
+  buildHookAvailability,
+  isHookReceiverRunning,
+} from '../adapters/hook/availability.js';
 
 const fixedNow = new Date('2026-07-02T15:30:00.000Z');
 
@@ -187,6 +190,43 @@ describe('hook server request security', () => {
 });
 
 describe('hook availability status', () => {
+  test('treats a daemon-owned healthy receiver as running outside the daemon process', async () => {
+    const calls: Array<{ url: string; timeoutMs: number }> = [];
+
+    await expect(
+      isHookReceiverRunning({
+        localServerRunning: false,
+        daemonRunning: true,
+        hookServerUrl: 'http://127.0.0.1:7890',
+        timeoutMs: 50,
+        probe: async (url, timeoutMs) => {
+          calls.push({ url, timeoutMs });
+          return true;
+        },
+      })
+    ).resolves.toBe(true);
+
+    expect(calls).toEqual([{ url: 'http://127.0.0.1:7890', timeoutMs: 50 }]);
+  });
+
+  test('does not probe a receiver when neither local server nor daemon is running', async () => {
+    let probed = false;
+
+    await expect(
+      isHookReceiverRunning({
+        localServerRunning: false,
+        daemonRunning: false,
+        hookServerUrl: 'http://127.0.0.1:7890',
+        probe: async () => {
+          probed = true;
+          return true;
+        },
+      })
+    ).resolves.toBe(false);
+
+    expect(probed).toBe(false);
+  });
+
   test('marks installed hooks without a receiver as degraded', () => {
     expect(
       buildHookAvailability({

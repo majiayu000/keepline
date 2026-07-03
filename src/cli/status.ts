@@ -50,7 +50,7 @@ export async function statusCommand(): Promise<void> {
   console.log('');
 
   // Hooks
-  const hooks = getHookAvailability();
+  const hooks = await getHookAvailability();
   console.log(chalk.cyan('Hooks:'));
   console.log(`  Installed: ${hooks.installed ? chalk.green('Yes') : chalk.yellow('No')}`);
   console.log(`  Receiver:  ${hooks.receiverRunning ? chalk.green('Running') : chalk.yellow('Not running')}`);
