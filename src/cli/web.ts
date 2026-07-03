@@ -3,15 +3,17 @@
  */
 
 import { startWebServer } from '../web/api/server.js';
+import { config, isValidPortNumber } from '../lib/config.js';
 
 interface WebOptions {
   port?: string;
 }
 
 export async function webCommand(options: WebOptions): Promise<void> {
-  const port = options.port ? parseInt(options.port, 10) : 3377;
-
-  if (isNaN(port) || port < 1 || port > 65535) {
+  let port: number;
+  try {
+    port = resolveWebPort(options.port);
+  } catch {
     console.error('Invalid port number');
     process.exit(1);
   }
@@ -27,4 +29,16 @@ export async function webCommand(options: WebOptions): Promise<void> {
   process.once('SIGTERM', shutdown);
 
   await new Promise<void>(() => {});
+}
+
+export function resolveWebPort(portOption?: string): number {
+  const trimmed = portOption?.trim();
+  if (!trimmed) return config.get().webPort;
+
+  const port = Number(trimmed);
+  if (!isValidPortNumber(port)) {
+    throw new Error('Invalid port number');
+  }
+
+  return port;
 }

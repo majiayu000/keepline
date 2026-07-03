@@ -8,7 +8,11 @@
 import React from 'react';
 import { Box, Text } from 'ink';
 import Gradient from 'ink-gradient';
-import type { Session, SessionStatus } from '../../domain/session/index.js';
+import {
+  SESSION_STATUS_PRESENTATION,
+  type Session,
+  type SessionStatus,
+} from '../../domain/session/index.js';
 
 interface Props {
   sessions: Session[];
@@ -32,11 +36,31 @@ const C = {
 };
 
 const statusConfig: Record<SessionStatus, { icon: string; color: string; label: string }> = {
-  running: { icon: '▶', color: C.green, label: 'EXEC' },
-  waiting: { icon: '⏸', color: C.yellow, label: 'WAIT' },
-  idle: { icon: '◇', color: C.cyan, label: 'IDLE' },
-  lost: { icon: '✕', color: C.red, label: 'LOST' },
-  completed: { icon: '✓', color: C.dim, label: 'DONE' },
+  running: {
+    icon: SESSION_STATUS_PRESENTATION.running.icon,
+    color: C.green,
+    label: SESSION_STATUS_PRESENTATION.running.shortLabel,
+  },
+  waiting: {
+    icon: SESSION_STATUS_PRESENTATION.waiting.icon,
+    color: C.yellow,
+    label: SESSION_STATUS_PRESENTATION.waiting.shortLabel,
+  },
+  idle: {
+    icon: SESSION_STATUS_PRESENTATION.idle.icon,
+    color: C.cyan,
+    label: SESSION_STATUS_PRESENTATION.idle.shortLabel,
+  },
+  lost: {
+    icon: SESSION_STATUS_PRESENTATION.lost.icon,
+    color: C.red,
+    label: SESSION_STATUS_PRESENTATION.lost.shortLabel,
+  },
+  completed: {
+    icon: SESSION_STATUS_PRESENTATION.completed.icon,
+    color: C.dim,
+    label: SESSION_STATUS_PRESENTATION.completed.shortLabel,
+  },
 };
 
 function formatPath(path: string): string {

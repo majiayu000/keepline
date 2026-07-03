@@ -14,6 +14,7 @@ import projects from './projects.js';
 import workItems from './work-items.js';
 import workItemEvidence from './work-item-evidence.js';
 import orchestrator from './orchestrator.js';
+import status from './status.js';
 
 export {
   sessions,
@@ -26,4 +27,5 @@ export {
   workItems,
   workItemEvidence,
   orchestrator,
+  status,
 };

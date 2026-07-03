@@ -4,18 +4,23 @@
 
 import React from 'react';
 import { Box, Text } from 'ink';
-import type { Session, SessionStatus } from '../../domain/session/index.js';
+import {
+  SESSION_STATUS_ORDER,
+  SESSION_STATUS_PRESENTATION,
+  type Session,
+  type SessionStatus,
+} from '../../domain/session/index.js';
 
 interface SessionListProps {
   sessions: Session[];
 }
 
 const statusStyles: Record<SessionStatus, { icon: string; color: string; bg?: string }> = {
-  running: { icon: '▶', color: 'green' },
-  waiting: { icon: '◉', color: 'yellow' },
-  idle: { icon: '○', color: 'blue' },
-  lost: { icon: '✕', color: 'red' },
-  completed: { icon: '✓', color: 'gray' },
+  running: { icon: SESSION_STATUS_PRESENTATION.running.icon, color: 'green' },
+  waiting: { icon: SESSION_STATUS_PRESENTATION.waiting.icon, color: 'yellow' },
+  idle: { icon: SESSION_STATUS_PRESENTATION.idle.icon, color: 'blue' },
+  lost: { icon: SESSION_STATUS_PRESENTATION.lost.icon, color: 'red' },
+  completed: { icon: SESSION_STATUS_PRESENTATION.completed.icon, color: 'gray' },
 };
 
 function formatDir(dir: string): string {
@@ -64,18 +69,14 @@ function SessionRow({ session, index }: SessionRowProps): React.ReactElement {
 }
 
 export function SessionList({ sessions }: SessionListProps): React.ReactElement {
-  // Group sessions by status
-  const running = sessions.filter(s => s.status === 'running');
-  const waiting = sessions.filter(s => s.status === 'waiting');
-  const idle = sessions.filter(s => s.status === 'idle');
-  const lost = sessions.filter(s => s.status === 'lost');
-
-  const groups = [
-    { title: 'Running', sessions: running, color: 'green' },
-    { title: 'Waiting', sessions: waiting, color: 'yellow' },
-    { title: 'Idle', sessions: idle, color: 'blue' },
-    { title: 'Lost', sessions: lost, color: 'red' },
-  ].filter(g => g.sessions.length > 0);
+  const groups = SESSION_STATUS_ORDER
+    .filter((status) => status !== 'completed')
+    .map((status) => ({
+      title: SESSION_STATUS_PRESENTATION[status].label,
+      sessions: sessions.filter((session) => session.status === status),
+      color: statusStyles[status].color,
+    }))
+    .filter((group) => group.sessions.length > 0);
 
   let globalIndex = 0;
 

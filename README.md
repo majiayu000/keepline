@@ -256,6 +256,11 @@ keepline daemon stop          # Stop daemon
 keepline hooks install        # Install Claude-compatible hooks
 ```
 
+`keepline web` starts the dashboard only. `keepline daemon start` runs the
+background scanner and hook receiver. `keepline hooks install` only installs
+the forwarding commands; run `keepline status` or `keepline hooks status` to
+check whether a receiver is running.
+
 ---
 
 ## How It Works
@@ -328,6 +333,11 @@ Keepline stores data in `~/.keepline/` by default:
   "logLevel": "info"
 }
 ```
+
+Environment variables that describe process or security boundaries, such as
+`KEEPLINE_HOME`, `KEEPLINE_HOST`, `KEEPLINE_PUBLIC_ORIGIN`,
+`KEEPLINE_ALLOWED_ORIGINS`, and `KEEPLINE_TRUST_PROXY`, remain read at their
+runtime boundary instead of being persisted into `config.json`.
 
 ---
 

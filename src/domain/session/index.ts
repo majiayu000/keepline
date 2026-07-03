@@ -32,6 +32,14 @@ export {
   needsAttention,
 } from './value-objects.js';
 
+export type { SessionStatusPresentation } from './status-presentation.js';
+
+export {
+  SESSION_STATUS_ORDER,
+  SESSION_STATUS_PRESENTATION,
+  getSessionStatusPresentation,
+} from './status-presentation.js';
+
 // Events
 export type {
   SessionEvent,

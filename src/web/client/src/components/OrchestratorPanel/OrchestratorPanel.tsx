@@ -25,7 +25,6 @@ const ACTION_LABELS: Record<OrchestratorRecommendedAction, string> = {
   review: 'Review',
   recover: 'Recover',
   monitor: 'Monitor',
-  resume: 'Resume',
   none: 'None',
 }
 

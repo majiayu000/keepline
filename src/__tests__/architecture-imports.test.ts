@@ -22,6 +22,18 @@ const forbiddenImportPatterns = [
   },
 ];
 
+const allowedAdapterServiceImports = new Set([
+  'src/adapters/claude/parser/jsonl.ts -> ../../../services/usage.extractor.js',
+  'src/adapters/codex/parser.ts -> ../../services/usage.extractor.js',
+  'src/adapters/hook/availability.ts -> ../../services/daemon.manager.js',
+  'src/adapters/hook/server.ts -> ../../services/compression.queue.js',
+  'src/adapters/hook/server.ts -> ../../services/context.injection.js',
+  'src/adapters/hook/server.ts -> ../../services/session.service.js',
+  'src/adapters/runtimes/claude-code.ts -> ../../services/recovery.service.js',
+  'src/adapters/runtimes/codex.ts -> ../../services/recovery.service.js',
+  'src/adapters/runtimes/process-attribution.ts -> ../../services/session.process-matcher.js',
+]);
+
 function sourceFiles(dir: string): string[] {
   const entries = readdirSync(dir);
   const files: string[] = [];
@@ -64,6 +76,28 @@ describe('architecture import boundaries', () => {
       for (const { pattern, reason } of forbiddenImportPatterns) {
         if (pattern.test(contents)) {
           violations.push(`${relativePath}: ${reason}`);
+        }
+      }
+    }
+
+    expect(violations).toEqual([]);
+  });
+
+  test('adapter to service imports stay explicit and reviewed', () => {
+    const violations: string[] = [];
+    const importPattern = /from\s+['"]([^'"]+)['"]/g;
+
+    for (const file of sourceFiles(join(srcRoot, 'adapters'))) {
+      const relativePath = relative(repoRoot, file);
+      const contents = readFileSync(file, 'utf8');
+
+      for (const match of contents.matchAll(importPattern)) {
+        const importPath = match[1];
+        if (!importPath.includes('/services/')) continue;
+
+        const edge = `${relativePath} -> ${importPath}`;
+        if (!allowedAdapterServiceImports.has(edge)) {
+          violations.push(`${edge}: adapter -> service import must be moved lower or added to the reviewed allowlist`);
         }
       }
     }

@@ -5,6 +5,10 @@ import {
   isValidHookEvent,
   normalizeHookEvent,
 } from '../adapters/hook/server.js';
+import {
+  buildHookAvailability,
+  isHookReceiverRunning,
+} from '../adapters/hook/availability.js';
 
 const fixedNow = new Date('2026-07-02T15:30:00.000Z');
 
@@ -182,5 +186,72 @@ describe('hook server request security', () => {
     });
 
     expect(response.statusCode).toBe(403);
+  });
+});
+
+describe('hook availability status', () => {
+  test('treats a daemon-owned healthy receiver as running outside the daemon process', async () => {
+    const calls: Array<{ url: string; timeoutMs: number }> = [];
+
+    await expect(
+      isHookReceiverRunning({
+        localServerRunning: false,
+        daemonRunning: true,
+        hookServerUrl: 'http://127.0.0.1:7890',
+        timeoutMs: 50,
+        probe: async (url, timeoutMs) => {
+          calls.push({ url, timeoutMs });
+          return true;
+        },
+      })
+    ).resolves.toBe(true);
+
+    expect(calls).toEqual([{ url: 'http://127.0.0.1:7890', timeoutMs: 50 }]);
+  });
+
+  test('does not probe a receiver when neither local server nor daemon is running', async () => {
+    let probed = false;
+
+    await expect(
+      isHookReceiverRunning({
+        localServerRunning: false,
+        daemonRunning: false,
+        hookServerUrl: 'http://127.0.0.1:7890',
+        probe: async () => {
+          probed = true;
+          return true;
+        },
+      })
+    ).resolves.toBe(false);
+
+    expect(probed).toBe(false);
+  });
+
+  test('marks installed hooks without a receiver as degraded', () => {
+    expect(
+      buildHookAvailability({
+        installed: true,
+        receiverRunning: false,
+        settingsPath: '/tmp/settings.json',
+        hookCommand: 'curl http://127.0.0.1:7890/hook',
+        hookServerUrl: 'http://127.0.0.1:7890',
+      })
+    ).toMatchObject({
+      installed: true,
+      receiverRunning: false,
+      degraded: true,
+    });
+  });
+
+  test('does not mark uninstalled hooks as degraded', () => {
+    expect(
+      buildHookAvailability({
+        installed: false,
+        receiverRunning: false,
+        settingsPath: '/tmp/settings.json',
+        hookCommand: 'curl http://127.0.0.1:7890/hook',
+        hookServerUrl: 'http://127.0.0.1:7890',
+      }).degraded
+    ).toBe(false);
   });
 });
