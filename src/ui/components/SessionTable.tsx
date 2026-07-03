@@ -4,7 +4,11 @@
 
 import React from 'react';
 import { Box, Text } from 'ink';
-import type { Session, SessionStatus } from '../../domain/session/index.js';
+import {
+  SESSION_STATUS_PRESENTATION,
+  type Session,
+  type SessionStatus,
+} from '../../domain/session/index.js';
 
 interface SessionTableProps {
   sessions: Session[];
@@ -72,7 +76,7 @@ function TableRow({ session, index }: { session: Session; index: number }): Reac
         <Text color="gray">│</Text>
       </Box>
       <Box width={10}>
-        <Text color={statusColor}>{statusIcon} {session.status.slice(0, 4).toUpperCase()}</Text>
+        <Text color={statusColor}>{statusIcon} {SESSION_STATUS_PRESENTATION[session.status].shortLabel}</Text>
       </Box>
       <Box width={1}>
         <Text color="gray">│</Text>

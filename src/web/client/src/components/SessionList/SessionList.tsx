@@ -2,6 +2,7 @@ import { useState, useMemo, memo, useCallback } from 'react'
 import type { Session, SessionFullData, PaginationInfo, TerminalApp } from '@/types'
 import { SessionCard } from '@/components/SessionCard'
 import { Button } from '@/components/Button'
+import { STATUS_ORDER } from '@/constants'
 import styles from './SessionList.module.css'
 
 interface SessionListProps {
@@ -72,8 +73,8 @@ export const SessionList = memo(function SessionList({
       return timeB - timeA
     }
 
-    for (const key of Object.keys(groups) as SessionStatus[]) {
-      groups[key].sort(sortByTime)
+    for (const status of STATUS_ORDER) {
+      groups[status].sort(sortByTime)
     }
 
     return groups

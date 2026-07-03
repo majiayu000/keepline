@@ -1,6 +1,10 @@
 import { defineConfig } from 'vite'
 import react from '@vitejs/plugin-react'
 import { resolve } from 'path'
+import { DEFAULT_WEB_PORT } from '../../lib/config'
+
+const backendTarget = `http://localhost:${DEFAULT_WEB_PORT}`
+const backendWsTarget = `ws://localhost:${DEFAULT_WEB_PORT}`
 
 export default defineConfig({
   plugins: [react()],
@@ -18,15 +22,15 @@ export default defineConfig({
     port: 5173,
     proxy: {
       '/api': {
-        target: 'http://localhost:3377',
+        target: backendTarget,
         changeOrigin: true,
       },
       '/ws/terminal': {
-        target: 'ws://localhost:3377',
+        target: backendWsTarget,
         ws: true,
       },
       '/ws': {
-        target: 'ws://localhost:3377',
+        target: backendWsTarget,
         ws: true,
       },
     },

@@ -1,6 +1,6 @@
 import { memo, useCallback } from 'react'
 import type { RuntimeFilter, SessionStatus, SessionStats } from '@/types'
-import { STATUS_LABELS, STATUS_COLORS } from '@/constants'
+import { STATUS_LABELS, STATUS_COLORS, STATUS_ORDER } from '@/constants'
 import styles from './FilterBar.module.css'
 
 export type StatusFilter = SessionStatus | 'all'
@@ -13,7 +13,6 @@ interface FilterBarProps {
   stats?: SessionStats | null
 }
 
-const ALL_STATUSES: SessionStatus[] = ['running', 'waiting', 'idle', 'lost', 'completed']
 const RUNTIME_OPTIONS: Array<{ value: RuntimeFilter; label: string }> = [
   { value: 'all', label: 'All' },
   { value: 'claude-code', label: 'Claude Code' },
@@ -66,7 +65,7 @@ export const FilterBar = memo(function FilterBar({
       </div>
       <span className={styles.label}>Status:</span>
       <div className={styles.filters}>
-        {ALL_STATUSES.map((status) => (
+        {STATUS_ORDER.map((status) => (
           <button
             key={status}
             className={`${styles.filterChip} ${activeFilters.has(status) ? styles.active : ''}`}

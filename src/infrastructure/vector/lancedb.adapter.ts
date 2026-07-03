@@ -10,6 +10,7 @@ import { join } from 'path';
 import { mkdirSync, existsSync } from 'fs';
 import { logger } from '../../lib/logger.js';
 import { assertValidObservationId } from '../../lib/observation-id.js';
+import { assertValidSessionId } from '../../lib/session-id.js';
 import { KEEPLINE_HOME } from '../../lib/paths.js';
 import type {
   IVectorStore,
@@ -41,6 +42,10 @@ interface LanceDBRow {
   vector: number[];
   [key: string]: string | number | boolean | number[];
 }
+
+type LanceDBTableWithCountRows = lancedb.Table & {
+  countRows?: (predicate?: string) => Promise<number>;
+};
 
 /** Convert Observation to LanceDB row */
 function toRow(observation: Observation, vector: number[]): LanceDBRow {
@@ -84,6 +89,15 @@ function observationIdPredicate(id: string): string {
   return `id = ${safeObservationIdLiteral(id)}`;
 }
 
+function safeSessionIdLiteral(id: string): string {
+  assertValidSessionId(id);
+  return `'${id}'`;
+}
+
+function sessionIdPredicate(id: string): string {
+  return `sessionId = ${safeSessionIdLiteral(id)}`;
+}
+
 /**
  * LanceDB Vector Store implementation
  */
@@ -92,6 +106,7 @@ export class LanceDBVectorStore implements IVectorStore {
   private db: lancedb.Connection | null = null;
   private table: lancedb.Table | null = null;
   private initialized = false;
+  private tableVectorDimension: number | null = null;
 
   constructor(config: Partial<VectorStoreConfig> = {}) {
     this.config = { ...DEFAULT_CONFIG, ...config };
@@ -118,6 +133,7 @@ export class LanceDBVectorStore implements IVectorStore {
       if (tables.includes(this.config.tableName)) {
         // Open existing table
         this.table = await this.db.openTable(this.config.tableName);
+        this.tableVectorDimension = await this.detectTableVectorDimension();
         logger.info(`Opened existing LanceDB table: ${this.config.tableName}`);
       } else {
         // Create new table with initial empty data
@@ -145,9 +161,62 @@ export class LanceDBVectorStore implements IVectorStore {
 
     // Create table with sample data
     this.table = await this.db.createTable(this.config.tableName, [sampleRow]);
+    this.tableVectorDimension = sampleRow.vector.length;
     logger.info(`Created LanceDB table: ${this.config.tableName}`);
 
     return this.table;
+  }
+
+  private validateVectorDimension(vector: number[]): void {
+    if (vector.length !== this.config.embeddingDimension) {
+      throw new Error(
+        `Vector dimension mismatch: expected ${this.config.embeddingDimension}, got ${vector.length}`
+      );
+    }
+  }
+
+  private validateBatchVectorDimensions(items: Array<{ vector: number[] }>): void {
+    for (const item of items) {
+      this.validateVectorDimension(item.vector);
+    }
+  }
+
+  private async detectTableVectorDimension(): Promise<number | null> {
+    if (!this.table) return null;
+
+    const rows = await this.table.query().limit(1).toArray();
+    if (rows.length === 0) return null;
+
+    const vector = (rows[0] as Partial<LanceDBRow>).vector;
+    return Array.isArray(vector) ? vector.length : null;
+  }
+
+  private async assertTableDimensionCompatible(): Promise<void> {
+    if (!this.table) return;
+
+    if (this.tableVectorDimension == null) {
+      this.tableVectorDimension = await this.detectTableVectorDimension();
+    }
+
+    if (
+      this.tableVectorDimension != null &&
+      this.tableVectorDimension !== this.config.embeddingDimension
+    ) {
+      throw new Error(
+        `LanceDB table vector dimension mismatch: expected ${this.config.embeddingDimension}, got ${this.tableVectorDimension}. Rebuild or migrate the observations table before writing new embeddings.`
+      );
+    }
+  }
+
+  private async countRows(predicate?: string): Promise<number> {
+    if (!this.table) return 0;
+
+    const table = this.table as LanceDBTableWithCountRows;
+    if (typeof table.countRows !== 'function') {
+      throw new Error('LanceDB table countRows() is required for bulk maintenance');
+    }
+
+    return table.countRows(predicate);
   }
 
   /**
@@ -158,6 +227,7 @@ export class LanceDBVectorStore implements IVectorStore {
     this.db = null;
     this.table = null;
     this.initialized = false;
+    this.tableVectorDimension = null;
     logger.info('LanceDB connection closed');
   }
 
@@ -165,7 +235,9 @@ export class LanceDBVectorStore implements IVectorStore {
    * Insert an observation with its embedding
    */
   async insert(observation: Observation, vector: number[]): Promise<void> {
+    this.validateVectorDimension(vector);
     if (!this.initialized) await this.initialize();
+    await this.assertTableDimensionCompatible();
 
     const row = toRow(observation, vector);
 
@@ -185,7 +257,9 @@ export class LanceDBVectorStore implements IVectorStore {
     items: Array<{ observation: Observation; vector: number[] }>
   ): Promise<void> {
     if (items.length === 0) return;
+    this.validateBatchVectorDimensions(items);
     if (!this.initialized) await this.initialize();
+    await this.assertTableDimensionCompatible();
 
     const rows = items.map(({ observation, vector }) => toRow(observation, vector));
 
@@ -301,23 +375,19 @@ export class LanceDBVectorStore implements IVectorStore {
    * Delete all observations for a session
    */
   async deleteBySessionId(sessionId: string): Promise<number> {
+    const predicate = sessionIdPredicate(sessionId);
     if (!this.initialized) await this.initialize();
     if (!this.table) return 0;
 
     try {
-      // Get count before delete
-      const before = await this.table
-        .query()
-        .where(`sessionId = '${sessionId}'`)
-        .toArray();
+      const before = await this.countRows(predicate);
+      await this.table.delete(predicate);
+      logger.debug(`Deleted ${before} observations for session ${sessionId}`);
 
-      await this.table.delete(`sessionId = '${sessionId}'`);
-      logger.debug(`Deleted ${before.length} observations for session ${sessionId}`);
-
-      return before.length;
+      return before;
     } catch (error) {
       logger.error(`Failed to delete observations for session ${sessionId}`, error);
-      return 0;
+      throw error;
     }
   }
 
@@ -328,8 +398,7 @@ export class LanceDBVectorStore implements IVectorStore {
     if (!this.initialized) await this.initialize();
     if (!this.table) return 0;
 
-    const results = await this.table.query().toArray();
-    return results.length;
+    return this.countRows();
   }
 }
 

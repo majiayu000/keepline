@@ -11,7 +11,7 @@ import {
   KEEPLINE_DB,
 } from '../lib/paths.js';
 import { getDaemonStatus } from '../services/daemon.manager.js';
-import { getHookStatus } from '../adapters/hook/installer.js';
+import { getHookAvailability } from '../adapters/hook/availability.js';
 import { config } from '../lib/config.js';
 import { runMigrations } from '../db/migrations.js';
 import { sessionRepository } from '../infrastructure/database/repositories/session.repository.js';
@@ -50,9 +50,13 @@ export async function statusCommand(): Promise<void> {
   console.log('');
 
   // Hooks
-  const hooks = getHookStatus();
+  const hooks = getHookAvailability();
   console.log(chalk.cyan('Hooks:'));
   console.log(`  Installed: ${hooks.installed ? chalk.green('Yes') : chalk.yellow('No')}`);
+  console.log(`  Receiver:  ${hooks.receiverRunning ? chalk.green('Running') : chalk.yellow('Not running')}`);
+  if (hooks.degraded) {
+    console.log(`  Status:    ${chalk.yellow('Degraded - run keepline daemon start to receive hook events')}`);
+  }
   console.log('');
 
   // Configuration

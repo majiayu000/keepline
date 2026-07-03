@@ -7,6 +7,8 @@ import { join } from 'path';
 import { ensureKeeplineDataHome, getKeeplineHome } from './paths.js';
 import { ConfigError } from './errors.js';
 
+export const DEFAULT_WEB_PORT = 3377;
+
 export type SessionDigestSummarizerProvider =
   | 'disabled'
   | 'ollama'
@@ -35,13 +37,16 @@ export interface KeeplineConfig {
   /** Hook server port */
   hookPort: number;
 
+  /** Web dashboard port */
+  webPort: number;
+
   /** Log level */
   logLevel: 'debug' | 'info' | 'warn' | 'error';
 
   /** Enable file logging */
   fileLogging: boolean;
 
-  /** Auto-start daemon on CLI usage */
+  /** Deprecated compatibility field; no production auto-start reader. */
   autoDaemon: boolean;
 
   /** Session retention days (0 = forever) */
@@ -86,6 +91,7 @@ export interface KeeplineConfig {
 const defaultConfig: KeeplineConfig = {
   scanInterval: 5000,
   hookPort: 7890,
+  webPort: DEFAULT_WEB_PORT,
   logLevel: 'info',
   fileLogging: true,
   autoDaemon: false,
@@ -116,6 +122,24 @@ const defaultConfig: KeeplineConfig = {
 };
 
 /**
+ * Environment reads are intentionally kept at process and security boundaries
+ * instead of being blindly moved into persisted config. Examples include
+ * storage path overrides, bind/proxy trust inputs, local auth origins, terminal
+ * shell environment, and external provider credentials.
+ */
+export const CONFIG_ENV_BOUNDARY_EXCEPTIONS = [
+  'KEEPLINE_HOME',
+  'KEEPLINE_HOST',
+  'KEEPLINE_PUBLIC_ORIGIN',
+  'KEEPLINE_ALLOWED_ORIGINS',
+  'KEEPLINE_TRUST_PROXY',
+  'KEEPLINE_PROJECT_ROOTS',
+  'KEEPLINE_TERMINAL_CWD_ROOTS',
+  'ANTHROPIC_API_KEY',
+  'CODEX_AUTH_PATH',
+] as const;
+
+/**
  * Resolve the config file path lazily so a runtime KEEPLINE_HOME override
  * set after this module imports still routes reads/writes correctly.
  */
@@ -132,6 +156,9 @@ function validateConfig(cfg: KeeplineConfig): void {
   }
   if (cfg.hookPort < 1 || cfg.hookPort > 65535) {
     errors.push('hookPort must be between 1 and 65535');
+  }
+  if (cfg.webPort < 1 || cfg.webPort > 65535) {
+    errors.push('webPort must be between 1 and 65535');
   }
   if (!['debug', 'info', 'warn', 'error'].includes(cfg.logLevel)) {
     errors.push('logLevel must be one of: debug, info, warn, error');

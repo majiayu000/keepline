@@ -9,7 +9,7 @@ export type OrchestratorReasonCode =
   | 'active_session'
 
 export type OrchestratorSeverity = 'critical' | 'warning' | 'info'
-export type OrchestratorRecommendedAction = 'review' | 'recover' | 'monitor' | 'resume' | 'none'
+export type OrchestratorRecommendedAction = 'review' | 'recover' | 'monitor' | 'none'
 export type OrchestratorDigestSource = 'deterministic' | 'local_model'
 export type OrchestratorDigestStatus = 'fresh' | 'stale' | 'error'
 

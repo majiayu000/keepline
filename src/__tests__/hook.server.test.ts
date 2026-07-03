@@ -5,6 +5,7 @@ import {
   isValidHookEvent,
   normalizeHookEvent,
 } from '../adapters/hook/server.js';
+import { buildHookAvailability } from '../adapters/hook/availability.js';
 
 const fixedNow = new Date('2026-07-02T15:30:00.000Z');
 
@@ -182,5 +183,35 @@ describe('hook server request security', () => {
     });
 
     expect(response.statusCode).toBe(403);
+  });
+});
+
+describe('hook availability status', () => {
+  test('marks installed hooks without a receiver as degraded', () => {
+    expect(
+      buildHookAvailability({
+        installed: true,
+        receiverRunning: false,
+        settingsPath: '/tmp/settings.json',
+        hookCommand: 'curl http://127.0.0.1:7890/hook',
+        hookServerUrl: 'http://127.0.0.1:7890',
+      })
+    ).toMatchObject({
+      installed: true,
+      receiverRunning: false,
+      degraded: true,
+    });
+  });
+
+  test('does not mark uninstalled hooks as degraded', () => {
+    expect(
+      buildHookAvailability({
+        installed: false,
+        receiverRunning: false,
+        settingsPath: '/tmp/settings.json',
+        hookCommand: 'curl http://127.0.0.1:7890/hook',
+        hookServerUrl: 'http://127.0.0.1:7890',
+      }).degraded
+    ).toBe(false);
   });
 });

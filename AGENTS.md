@@ -52,14 +52,18 @@ Uses a **layered DDD architecture**:
 src/
 ├── index.ts              # CLI entry point (Commander.js)
 ├── adapters/             # External integrations
-│   ├── Codex/           # Codex data parsing (JSONL, plans)
+│   ├── codex/            # Codex data parsing (JSONL, plans)
+│   ├── claude/           # Claude data parsing (JSONL, plans)
 │   ├── process/          # System process scanning
-│   └── hook/             # HTTP server for Codex hooks
-├── application/          # Application services
+│   ├── runtimes/         # Runtime registry and adapter metadata
+│   └── hook/             # Local hook HTTP server
 ├── cli/                  # CLI commands
+├── db/                   # Database compatibility and reset helpers
 ├── domain/               # Domain entities (DDD)
 │   ├── session/          # Session management
 │   ├── recovery/         # Recovery system
+│   ├── runtime/          # Runtime identity contracts
+│   ├── work-item/        # Work item entities
 │   └── memory/           # Cross-session memory ("relay race")
 ├── infrastructure/       # Database, events, repositories
 ├── lib/                  # Utilities (logger, config, paths)
@@ -71,11 +75,16 @@ src/
 ```
 
 **Key data flow:**
-1. `adapters/process/scanner.ts` scans system for Codex processes
-2. `adapters/Codex/parser/jsonl.ts` parses Codex's JSONL files
+1. `adapters/process/scanner.ts` scans system for agent processes
+2. `adapters/codex/parser.ts` and `adapters/claude/parser/jsonl.ts` parse session files
 3. `services/session.aggregator.ts` merges process + file state
 4. `infrastructure/database/repositories/` persists to SQLite
 5. `adapters/hook/server.ts` receives real-time events
+
+Adapter-to-service imports are intentionally narrow and enforced by
+`src/__tests__/architecture-imports.test.ts`. New adapter dependencies on
+`src/services/` must either move the shared logic to a lower layer or be added
+to that reviewed allowlist with a clear composition reason.
 
 ## Tech Stack
 
