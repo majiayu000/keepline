@@ -168,10 +168,15 @@ export class LanceDBVectorStore implements IVectorStore {
     return this.table;
   }
 
+  private getExpectedVectorDimension(): number {
+    return this.config.embeddingDimension;
+  }
+
   private validateVectorDimension(vector: number[]): void {
-    if (vector.length !== this.config.embeddingDimension) {
+    const expectedDimension = this.getExpectedVectorDimension();
+    if (vector.length !== expectedDimension) {
       throw new Error(
-        `Vector dimension mismatch: expected ${this.config.embeddingDimension}, got ${vector.length}`
+        `Vector dimension mismatch: expected ${expectedDimension}, got ${vector.length}`
       );
     }
   }
