@@ -2,6 +2,16 @@ import { describe, expect, test } from 'bun:test';
 import { parseAgentPsOutput, parseClaudePsOutput } from '../adapters/process/scanner.js';
 
 describe('Process Parser', () => {
+  test('returns an empty list when ps output has no supported agent rows', () => {
+    const output = [
+      '12340 0.0 0.1 ?? Mon Jan  6 10:30:40 2026 /usr/sbin/distnoted',
+      '12341 0.1 0.2 ?? Mon Jan  6 10:30:41 2026 /usr/bin/python worker.py',
+    ].join('\n');
+
+    expect(parseAgentPsOutput(output)).toEqual([]);
+    expect(parseClaudePsOutput(output)).toEqual([]);
+  });
+
   test('parses Claude ps rows and skips shell wrappers or unrelated commands', () => {
     const output = [
       '12345 1.2 0.5 ttys001 Mon Jan  6 10:30:45 2026 /usr/local/bin/claude --model sonnet --cwd /tmp/app',
