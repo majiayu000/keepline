@@ -13,7 +13,7 @@ export type AttentionReasonCode =
 
 export type AttentionSeverity = 'critical' | 'warning' | 'info';
 
-export type RecommendedAction = 'review' | 'recover' | 'monitor' | 'resume' | 'none';
+export type RecommendedAction = 'review' | 'recover' | 'monitor' | 'none';
 
 export interface AttentionReason {
   code: AttentionReasonCode;

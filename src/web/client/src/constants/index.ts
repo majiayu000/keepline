@@ -4,6 +4,10 @@
 
 import type { ToastType } from '@/components/Toast'
 import type { SessionStatus } from '@/types'
+import {
+  SESSION_STATUS_ORDER,
+  SESSION_STATUS_PRESENTATION,
+} from '../../../../domain/session/status-presentation'
 
 /** Auto-refresh interval in milliseconds */
 export const REFRESH_INTERVAL_MS = 30000 // 30 seconds
@@ -27,21 +31,24 @@ export function getStatusColor(status: string): string {
 
 /** Session status icons */
 export const STATUS_ICONS: Record<SessionStatus, string> = {
-  running: '▶',
-  waiting: '⏸',
-  idle: '◇',
-  lost: '✕',
-  completed: '✓',
+  running: SESSION_STATUS_PRESENTATION.running.icon,
+  waiting: SESSION_STATUS_PRESENTATION.waiting.icon,
+  idle: SESSION_STATUS_PRESENTATION.idle.icon,
+  lost: SESSION_STATUS_PRESENTATION.lost.icon,
+  completed: SESSION_STATUS_PRESENTATION.completed.icon,
 }
 
 /** Session status labels */
 export const STATUS_LABELS: Record<SessionStatus, string> = {
-  running: 'EXEC',
-  waiting: 'WAIT',
-  idle: 'IDLE',
-  lost: 'LOST',
-  completed: 'DONE',
+  running: SESSION_STATUS_PRESENTATION.running.shortLabel,
+  waiting: SESSION_STATUS_PRESENTATION.waiting.shortLabel,
+  idle: SESSION_STATUS_PRESENTATION.idle.shortLabel,
+  lost: SESSION_STATUS_PRESENTATION.lost.shortLabel,
+  completed: SESSION_STATUS_PRESENTATION.completed.shortLabel,
 }
+
+/** Session status order */
+export const STATUS_ORDER: readonly SessionStatus[] = SESSION_STATUS_ORDER
 
 /** Tool name colors */
 export const TOOL_COLORS: Record<string, string> = {

@@ -4,7 +4,10 @@
 
 import React from 'react';
 import { Text, Box } from 'ink';
-import type { SessionStatus } from '../../domain/session/index.js';
+import {
+  SESSION_STATUS_PRESENTATION,
+  type SessionStatus,
+} from '../../domain/session/index.js';
 
 interface StatusBadgeProps {
   status: SessionStatus;
@@ -18,17 +21,9 @@ const statusConfig: Record<SessionStatus, { icon: string; color: string; bgColor
   completed: { icon: '✓', color: 'gray' },
 };
 
-const statusLabels: Record<SessionStatus, string> = {
-  running: 'RUNNING',
-  waiting: 'WAITING',
-  idle: 'IDLE',
-  lost: 'LOST',
-  completed: 'DONE',
-};
-
 export function StatusBadge({ status }: StatusBadgeProps): React.ReactElement {
   const config = statusConfig[status];
-  const label = statusLabels[status];
+  const label = SESSION_STATUS_PRESENTATION[status].shortLabel;
 
   return (
     <Box>

@@ -32,6 +32,7 @@ describe('Configuration Module API', () => {
     const expectedProperties = [
       'scanInterval',
       'hookPort',
+      'webPort',
       'logLevel',
       'fileLogging',
       'autoDaemon',
@@ -80,6 +81,40 @@ describe('Default Configuration Values', () => {
     test('hookPort defaults to 7890', async () => {
       const { config } = await import('../lib/config.js');
       expect(config.get().hookPort).toBe(7890);
+    });
+
+    test('webPort defaults to 3377', async () => {
+      const { config } = await import('../lib/config.js');
+      expect(config.get().webPort).toBe(3377);
+    });
+
+    test('web CLI port override takes precedence over config default', async () => {
+      const { resolveWebPort } = await import('../cli/web.js');
+      expect(resolveWebPort('4455')).toBe(4455);
+    });
+
+    test('web CLI port rejects invalid values', async () => {
+      const { resolveWebPort } = await import('../cli/web.js');
+      expect(() => resolveWebPort('abc')).toThrow('Invalid port number');
+      expect(() => resolveWebPort('70000')).toThrow('Invalid port number');
+      expect(() => resolveWebPort('123abc')).toThrow('Invalid port number');
+    });
+
+    test('config port validation rejects coerced or fractional values', async () => {
+      const { config, isValidPortNumber, validateConfig } = await import('../lib/config.js');
+      const cfg = config.get();
+
+      expect(isValidPortNumber(3377)).toBe(true);
+      expect(isValidPortNumber('3377')).toBe(false);
+      expect(isValidPortNumber(3377.5)).toBe(false);
+      expect(isValidPortNumber(0)).toBe(false);
+
+      expect(() =>
+        validateConfig({ ...cfg, webPort: '3377' as unknown as number })
+      ).toThrow('webPort must be between 1 and 65535');
+      expect(() =>
+        validateConfig({ ...cfg, hookPort: 7890.5 })
+      ).toThrow('hookPort must be between 1 and 65535');
     });
   });
 
@@ -131,6 +166,7 @@ describe('Configuration Type Safety', () => {
 
     expect(typeof cfg.scanInterval).toBe('number');
     expect(typeof cfg.hookPort).toBe('number');
+    expect(typeof cfg.webPort).toBe('number');
     expect(typeof cfg.retentionDays).toBe('number');
     expect(typeof cfg.activeCpuThreshold).toBe('number');
     expect(typeof cfg.idleThresholdSeconds).toBe('number');

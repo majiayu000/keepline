@@ -236,6 +236,10 @@ keepline daemon stop          # 停止守护进程
 keepline hooks install        # 安装 Claude 兼容 hooks
 ```
 
+`keepline web` 只启动 dashboard。`keepline daemon start` 才会运行后台扫描器和
+hook receiver。`keepline hooks install` 只安装转发命令；用 `keepline status`
+或 `keepline hooks status` 检查 receiver 是否在运行。
+
 ---
 
 ## 对比
@@ -265,6 +269,21 @@ Keepline 默认把数据存储在 `~/.keepline/`：
 ├── config.json      # 配置文件
 └── keepline.log   # 日志文件
 ```
+
+### 选项
+
+```json
+{
+  "scanInterval": 5000,
+  "hookPort": 7890,
+  "webPort": 3377,
+  "logLevel": "info"
+}
+```
+
+描述进程或安全边界的环境变量，例如 `KEEPLINE_HOME`、`KEEPLINE_HOST`、
+`KEEPLINE_PUBLIC_ORIGIN`、`KEEPLINE_ALLOWED_ORIGINS` 和
+`KEEPLINE_TRUST_PROXY`，仍由对应运行时边界读取，不写入 `config.json`。
 
 ---
 

@@ -3,7 +3,7 @@
  */
 
 import type { ProjectInfo, ProjectOverviewStats } from './project'
-import type { Session, SessionRuntimeId, SessionStats, ToolCallInfo, SubAgent } from './session'
+import type { Session, SessionStats, ToolCallInfo, SubAgent } from './session'
 
 // Base API response
 export interface ApiResponse<T = unknown> {
@@ -22,7 +22,7 @@ export interface PaginationInfo {
 }
 
 export interface RuntimeScanError {
-  runtimeId: SessionRuntimeId
+  runtimeId: string
   code: string
   message: string
   sourcePath?: string
@@ -30,7 +30,7 @@ export interface RuntimeScanError {
 }
 
 export interface RuntimeScanSummary {
-  runtimeId: SessionRuntimeId
+  runtimeId: string
   degraded: boolean
   errorCount: number
   errors: RuntimeScanError[]
