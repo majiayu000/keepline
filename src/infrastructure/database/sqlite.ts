@@ -5,7 +5,7 @@
 import { Database } from 'bun:sqlite';
 import { existsSync, mkdirSync } from 'fs';
 import { dirname } from 'path';
-import { KEEPLINE_DB, ensureKeeplineDataHome } from '../../lib/paths.js';
+import { ensureKeeplineDataHome, getKeeplineDb } from '../../lib/paths.js';
 import { DatabaseError } from '../../lib/errors.js';
 import { logger } from '../../lib/logger.js';
 
@@ -18,12 +18,13 @@ export function getDatabase(): Database {
   try {
     ensureKeeplineDataHome();
     // Ensure directory exists
-    const dbDir = dirname(KEEPLINE_DB);
+    const dbPath = getKeeplineDb();
+    const dbDir = dirname(dbPath);
     if (!existsSync(dbDir)) {
       mkdirSync(dbDir, { recursive: true });
     }
 
-    db = new Database(KEEPLINE_DB);
+    db = new Database(dbPath);
     db.exec('PRAGMA journal_mode = WAL');
     db.exec('PRAGMA busy_timeout = 5000');
     db.exec('PRAGMA foreign_keys = ON');
@@ -32,7 +33,7 @@ export function getDatabase(): Database {
     return db;
   } catch (error) {
     throw new DatabaseError('Failed to connect to database', {
-      path: KEEPLINE_DB,
+      path: getKeeplineDb(),
       error: (error as Error).message,
     });
   }
