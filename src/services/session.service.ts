@@ -42,10 +42,22 @@ export interface RuntimeSessionScan<T> {
   failures: RuntimeScanFailure[];
 }
 
+export interface ScanRuntimeSessionsOptions {
+  /**
+   * When true (default), convert a whole-runtime rejection into an empty
+   * degraded result so periodic sync can continue. Startup reconciliation
+   * must set this to false so a failed runtime cannot leave invalidated
+   * live rows stuck as Interrupted after a "successful" sync.
+   */
+  softFail?: boolean;
+}
+
 export async function scanRuntimeSessions<T>(
   runtimeId: SessionRuntimeId,
-  scan: () => Promise<RuntimeSessionScan<T>>
+  scan: () => Promise<RuntimeSessionScan<T>>,
+  options: ScanRuntimeSessionsOptions = {}
 ): Promise<RuntimeSessionScan<T>> {
+  const softFail = options.softFail ?? true;
   try {
     const result = await scan();
     recordRuntimeScanFailures(runtimeId, result.failures);
@@ -60,7 +72,11 @@ export async function scanRuntimeSessions<T>(
     logger.error('Runtime session scan failed', {
       runtimeId,
       message: failure.message,
+      softFail,
     });
+    if (!softFail) {
+      throw error instanceof Error ? error : new Error(failure.message);
+    }
     return { sessions: [], failures: [failure] };
   }
 }
@@ -159,6 +175,9 @@ export class SessionService {
 
     // Default to 7 days for fast sync, unless fullSync is requested
     const maxAgeDays = options.fullSync ? undefined : (options.maxAgeDays ?? 7);
+    // Startup/full reconciliation must not soft-fail a whole-runtime adapter
+    // rejection; that would leave just-invalidated live rows as Interrupted.
+    const softFailRuntimeScans = !options.fullSync;
 
     try {
       // Clear process cache at start of sync cycle to ensure fresh data
@@ -174,11 +193,11 @@ export class SessionService {
           maxAgeDays,
           includeSubAgents: options.includeSubAgents ?? true,
           includeToolCalls: false,
-        })),
+        }), { softFail: softFailRuntimeScans }),
         scanRuntimeSessions('codex', () => getAllCodexSessionsWithFailures({
           maxAgeDays,
           includeToolCalls: false,
-        })),
+        }), { softFail: softFailRuntimeScans }),
       ]);
       const scannedSessions = [...claudeScan.sessions, ...codexScan.sessions];
       const invalidScannedSessions = scannedSessions.filter(

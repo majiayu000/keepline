@@ -553,6 +553,40 @@ describe('service runtime isolation', () => {
     await waitUntil(() => readFileSync(callsPath, 'utf8') === 'IR');
   });
 
+  test('allows the startup scan more time than the periodic scan timeout', async () => {
+    const directory = mkdtempSync(join(tmpdir(), 'keepline-initial-timeout-'));
+    const callsPath = join(directory, 'calls');
+    const payload = JSON.stringify({ runtimeScan: [], pendingDispatches: 0 });
+    const script = `
+      const fs = await import('fs');
+      fs.writeFileSync(${JSON.stringify(callsPath)}, 'started');
+      await Bun.sleep(250);
+      fs.writeFileSync(${JSON.stringify(callsPath)}, 'done');
+      console.log(${JSON.stringify(SCAN_RESULT_PREFIX)} + ${JSON.stringify(payload)});
+    `;
+    liveService = await startKeeplineService({
+      port: 0,
+      hookPort: 0,
+      scanIntervalMs: 0,
+      scanTimeoutMs: 50,
+      initialScanTimeoutMs: 2_000,
+      scanCommand: [process.execPath, '-e', script],
+    });
+    const baseURL = `http://127.0.0.1:${liveService.server.port}`;
+
+    await waitUntil(async () => {
+      const response = await fetch(`${baseURL}/api/v1/health`);
+      const body = await response.json() as { data: { scan: { completed: boolean } } };
+      return body.data.scan.completed;
+    }, 4_000);
+
+    expect(readFileSync(callsPath, 'utf8')).toBe('done');
+    const authResponse = await fetch(`${baseURL}/api/v1/auth/local`, { method: 'POST' });
+    const authBody = await authResponse.json() as { data: { token: string } };
+    const headers = { Authorization: `Bearer ${authBody.data.token}` };
+    expect((await fetch(`${baseURL}/api/v1/sessions?fields=basic`, { headers })).status).toBe(200);
+  });
+
   test('retries an incomplete startup scan when periodic scanning is disabled', async () => {
     const directory = mkdtempSync(join(tmpdir(), 'keepline-startup-retry-'));
     const callsPath = join(directory, 'calls');
@@ -640,6 +674,7 @@ describe('service runtime isolation', () => {
       hookPort: 0,
       scanIntervalMs: 0,
       scanTimeoutMs: 60,
+      initialScanTimeoutMs: 60,
       scanKillGraceMs: 30,
       scanOutputLimitBytes: 1_024,
       scanCommand: [process.execPath, '-e', script],
@@ -670,6 +705,7 @@ describe('service runtime isolation', () => {
       hookPort: 0,
       scanIntervalMs: 0,
       scanTimeoutMs: 10_000,
+      initialScanTimeoutMs: 10_000,
       scanKillGraceMs: 30,
       scanCommand: [process.execPath, '-e', script],
     });

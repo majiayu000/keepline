@@ -5,7 +5,7 @@
 import React from 'react';
 import { Box, Text } from 'ink';
 import Gradient from 'ink-gradient';
-import type { Session } from '../domain/session/index.js';
+import { SESSION_STATUS_PRESENTATION, type Session } from '../domain/session/index.js';
 import { SessionList } from './components/index.js';
 
 interface SessionStats {
@@ -51,7 +51,7 @@ export function App({ sessions, stats }: AppProps): React.ReactElement {
         <StatBadge label="running" value={stats.running} color="green" />
         <StatBadge label="waiting" value={stats.waiting} color="yellow" />
         <StatBadge label="idle" value={stats.idle} color="blue" />
-        <StatBadge label="lost" value={stats.lost} color="red" />
+        <StatBadge label={SESSION_STATUS_PRESENTATION.lost.label.toLowerCase()} value={stats.lost} color="red" />
       </Box>
 
       {sessions.length === 0 ? (
@@ -65,7 +65,7 @@ export function App({ sessions, stats }: AppProps): React.ReactElement {
       {hasLostSessions && (
         <Box marginTop={1} paddingX={1}>
           <Text color="yellow">💡 </Text>
-          <Text color="gray">{stats.lost} lost sessions can be recovered: </Text>
+          <Text color="gray">{stats.lost} {SESSION_STATUS_PRESENTATION.lost.label.toLowerCase()} sessions can be recovered: </Text>
           <Text color="cyan" bold>keepline recover {'<n>'}</Text>
         </Box>
       )}

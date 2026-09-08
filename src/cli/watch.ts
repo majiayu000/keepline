@@ -5,6 +5,7 @@
 import chalk from 'chalk';
 import ora from 'ora';
 import { runMigrations } from '../db/migrations.js';
+import { SESSION_STATUS_PRESENTATION } from '../domain/session/index.js';
 import { syncSessions } from '../services/session.service.js';
 import { getAggregatedSessions, getSessionStats } from '../services/session.aggregator.js';
 import { createSessionTable } from '../lib/format.js';
@@ -48,7 +49,7 @@ export async function watchCommand(options: WatchOptions): Promise<void> {
         chalk.green(`${stats.running} running`),
         chalk.yellow(`${stats.waiting} waiting`),
         chalk.blue(`${stats.idle} idle`),
-        chalk.red(`${stats.lost} lost`)
+        chalk.red(`${stats.lost} ${SESSION_STATUS_PRESENTATION.lost.label.toLowerCase()}`)
       );
       console.log('');
 

@@ -27,6 +27,9 @@ state as current.
    its PID and TTY.
 3. Run one complete isolated startup scan, including old transcripts and
    subagents, then promote every live process match back to a live state.
+   Whole-runtime adapter failures fail that reconciliation instead of soft
+   succeeding with empty results. Service Mode uses a longer timeout for the
+   unbounded `--full` startup scan than for bounded periodic scans.
 4. Keep later periodic scans bounded for normal steady-state operation.
 5. Preserve explicit `completed` rows.
 6. Keep the stored domain value `lost` for API compatibility, but present it as

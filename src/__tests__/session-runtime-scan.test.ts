@@ -59,4 +59,22 @@ describe('runtime session scan wrapper', () => {
       })],
     });
   });
+
+  test('rethrows whole-runtime rejection when softFail is disabled', async () => {
+    await expect(scanRuntimeSessions('claude-code', async () => {
+      throw new Error('Cannot read Claude sessions directory');
+    }, { softFail: false })).rejects.toThrow('Cannot read Claude sessions directory');
+
+    const claudeStatus = getRuntimeScanStatus().find(
+      (scan) => scan.runtimeId === 'claude-code'
+    );
+    expect(claudeStatus).toMatchObject({
+      degraded: true,
+      errorCount: 1,
+      errors: [expect.objectContaining({
+        code: 'unknown',
+        message: 'Cannot read Claude sessions directory',
+      })],
+    });
+  });
 });

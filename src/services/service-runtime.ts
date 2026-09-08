@@ -28,6 +28,11 @@ export interface KeeplineServiceOptions {
   /** Periodic transcript scan interval. Zero disables the periodic timer. */
   scanIntervalMs?: number;
   scanTimeoutMs?: number;
+  /**
+   * Timeout for the unbounded startup `--full` reconciliation scan.
+   * Defaults higher than the periodic scan timeout so large histories can finish.
+   */
+  initialScanTimeoutMs?: number;
   scanKillGraceMs?: number;
   scanOutputLimitBytes?: number;
   /** Test/support override. Production resolves the isolated scan from the current entrypoint. */
@@ -39,6 +44,8 @@ export interface KeeplineServiceOptions {
 }
 
 const DEFAULT_SCAN_TIMEOUT_MS = 30_000;
+/** Allow complete startup reconciliation to exceed the bounded periodic timeout. */
+const DEFAULT_INITIAL_SCAN_TIMEOUT_MS = 5 * 60_000;
 const DEFAULT_SCAN_KILL_GRACE_MS = 1_000;
 const DEFAULT_SCAN_OUTPUT_LIMIT_BYTES = 512 * 1024;
 /** Retry delay when the first reconciliation fails and periodic scanning is disabled. */
@@ -125,6 +132,9 @@ export async function startKeeplineService(
   const scanTimeoutMs = typeof options === 'number'
     ? DEFAULT_SCAN_TIMEOUT_MS
     : (options.scanTimeoutMs ?? DEFAULT_SCAN_TIMEOUT_MS);
+  const initialScanTimeoutMs = typeof options === 'number'
+    ? DEFAULT_INITIAL_SCAN_TIMEOUT_MS
+    : (options.initialScanTimeoutMs ?? DEFAULT_INITIAL_SCAN_TIMEOUT_MS);
   const scanKillGraceMs = typeof options === 'number'
     ? DEFAULT_SCAN_KILL_GRACE_MS
     : (options.scanKillGraceMs ?? DEFAULT_SCAN_KILL_GRACE_MS);
@@ -138,6 +148,7 @@ export async function startKeeplineService(
     throw new Error('Invalid completion hook port');
   }
   if (!Number.isFinite(scanTimeoutMs) || scanTimeoutMs <= 0 ||
+      !Number.isFinite(initialScanTimeoutMs) || initialScanTimeoutMs <= 0 ||
       !Number.isFinite(scanKillGraceMs) || scanKillGraceMs < 0 ||
       !Number.isInteger(scanOutputLimitBytes) || scanOutputLimitBytes < 1_024) {
     throw new Error('Invalid service scan process limits');
@@ -248,12 +259,15 @@ export async function startKeeplineService(
       }
       const stdoutPromise = readBoundedText(child.stdout, scanOutputLimitBytes);
       const stderrPromise = readBoundedText(child.stderr, scanOutputLimitBytes);
-      if (!await waitForExit(child, scanTimeoutMs)) {
+      const activeScanTimeoutMs = localServiceState.scan.completed
+        ? scanTimeoutMs
+        : initialScanTimeoutMs;
+      if (!await waitForExit(child, activeScanTimeoutMs)) {
         await terminateProcess(child, scanKillGraceMs);
         const stderr = await stderrPromise;
         await stdoutPromise;
         throw new Error(
-          `Session scan timed out after ${scanTimeoutMs} ms${stderr.trim() ? `: ${stderr.trim()}` : ''}`
+          `Session scan timed out after ${activeScanTimeoutMs} ms${stderr.trim() ? `: ${stderr.trim()}` : ''}`
         );
       }
       const exitCode = await child.exited;
