@@ -41,6 +41,8 @@ export interface KeeplineServiceOptions {
 const DEFAULT_SCAN_TIMEOUT_MS = 30_000;
 const DEFAULT_SCAN_KILL_GRACE_MS = 1_000;
 const DEFAULT_SCAN_OUTPUT_LIMIT_BYTES = 512 * 1024;
+/** Retry delay when the first reconciliation fails and periodic scanning is disabled. */
+const STARTUP_SCAN_RETRY_MS = 3_000;
 
 function isAllowedLoopbackRequestHost(req: Request, port: number): boolean {
   const hostHeader = req.headers.get('host');
@@ -296,6 +298,9 @@ export async function startKeeplineService(
         if (rescanRequested) {
           rescanRequested = false;
           scheduleScan(0);
+        } else if (!localServiceState.scan.completed) {
+          // Keep retrying startup reconciliation even when --scan-interval 0.
+          scheduleScan(STARTUP_SCAN_RETRY_MS);
         } else if (continueCorrelation || configuredScanInterval > 0) {
           scheduleScan(nextScanDelayMs);
         }

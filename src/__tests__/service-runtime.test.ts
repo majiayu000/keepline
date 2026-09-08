@@ -12,6 +12,7 @@ import { workItemRepository } from '../infrastructure/database/repositories/work
 import { getDatabase } from '../infrastructure/database/sqlite.js';
 import { taskDispatchRepository } from '../infrastructure/database/repositories/task-dispatch.repository.js';
 import { reconcileLinkedAgentSessions } from '../services/work-item-session-reconciler.js';
+import { scopeCodexSessionId } from '../adapters/codex/parser.js';
 
 const SCAN_RESULT_PREFIX = '__KEEPLINE_SERVICE_SCAN__';
 let liveService: KeeplineService | undefined;
@@ -169,6 +170,13 @@ describe('service runtime isolation', () => {
     expect(claudeCapabilities).toContain('agent-completion-claim-hook-unconfigured');
     expect(claudeCapabilities).not.toContain('explicit-completion-hook');
     expect(claudeCapabilities).toContain('explicit-completion-manual-only');
+    const codexCapabilities = metadata.data.runtimes.find(
+      (runtime) => runtime.id === 'codex'
+    )?.capabilities;
+    expect(codexCapabilities).toContain('hooks');
+    expect(codexCapabilities).toContain('session-lifecycle-hook-unconfigured');
+    expect(codexCapabilities).toContain('agent-completion-claim-manual-only');
+    expect(codexCapabilities).not.toContain('agent-completion-claim-hook-unconfigured');
 
     const sessionId = 'service-stop-session';
     sessionRepository.upsert({
@@ -201,24 +209,98 @@ describe('service runtime isolation', () => {
 
     expect((await postStop({ session_id: 'unknown-stop-session' })).status).toBe(404);
     expect((await postStop({ cwd: '/tmp/wrong-project' })).status).toBe(409);
+    const codexStopRawId = '019d0b7e-6a75-7cb0-b4fa-41f927bf13c1';
+    const codexStopSessionId = scopeCodexSessionId(codexStopRawId);
     sessionRepository.upsert({
-      sessionId: 'codex-stop-session',
+      sessionId: codexStopSessionId,
       client: 'codex',
       directory: '/tmp/codex-stop',
       status: 'running',
     });
-    expect((await postStop({
-      session_id: 'codex-stop-session',
-      cwd: '/tmp/codex-stop',
-    })).status).toBe(409);
+    const codexStopResponse = await fetch(
+      `http://127.0.0.1:${liveService.hookPort}/hook?runtime=codex`,
+      {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({
+          hook_event_name: 'Stop',
+          session_id: codexStopRawId,
+          cwd: '/tmp/codex-stop',
+        }),
+      }
+    );
+    expect(codexStopResponse.status).toBe(200);
+    expect(sessionRepository.findBySessionId(codexStopSessionId)).toMatchObject({
+      client: 'codex',
+      status: 'waiting',
+    });
+    expect(sessionRepository.findBySessionId(codexStopRawId)).toBeNull();
 
     const response = await postStop({ stop_reason: 'completed' });
 
     expect(response.status).toBe(200);
     expect(sessionRepository.findBySessionId(sessionId)).toMatchObject({
-      status: 'running',
+      status: 'waiting',
     });
     expect(sessionRepository.findBySessionId(sessionId)?.completedAt).toBeUndefined();
+
+    const promptResponse = await fetch(
+      `http://127.0.0.1:${liveService.hookPort}/hook?runtime=claude-code`,
+      {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({
+          hook_event_name: 'UserPromptSubmit',
+          session_id: sessionId,
+          cwd: '/tmp/service-stop',
+          prompt: 'Continue the task',
+        }),
+      }
+    );
+    expect(promptResponse.status).toBe(200);
+    expect(sessionRepository.findBySessionId(sessionId)?.status).toBe('running');
+
+    const codexStartRawId = '019d0b7e-6a75-7cb0-b4fa-41f927bf13c2';
+    const codexStartSessionId = scopeCodexSessionId(codexStartRawId);
+    const codexStartResponse = await fetch(
+      `http://127.0.0.1:${liveService.hookPort}/hook?runtime=codex`,
+      {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({
+          hook_event_name: 'SessionStart',
+          session_id: codexStartRawId,
+          cwd: '/tmp/codex-hook-start',
+        }),
+      }
+    );
+    expect(codexStartResponse.status).toBe(200);
+    expect(sessionRepository.findBySessionId(codexStartSessionId)).toMatchObject({
+      client: 'codex',
+      status: 'running',
+      directory: '/tmp/codex-hook-start',
+      title: 'Unknown task',
+    });
+    expect(sessionRepository.findBySessionId(codexStartRawId)).toBeNull();
+
+    const codexPromptResponse = await fetch(
+      `http://127.0.0.1:${liveService.hookPort}/hook?runtime=codex`,
+      {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({
+          hook_event_name: 'UserPromptSubmit',
+          session_id: codexStartRawId,
+          cwd: '/tmp/codex-hook-start',
+          prompt: 'Fix the login button',
+        }),
+      }
+    );
+    expect(codexPromptResponse.status).toBe(200);
+    expect(sessionRepository.findBySessionId(codexStartSessionId)).toMatchObject({
+      initialPrompt: 'Fix the login button',
+      title: 'Fix the login button',
+    });
     expect((await postStop({ timestamp: '2026-08-30T10:06:00.000Z' })).status).toBe(200);
     expect(sessionRepository.findBySessionId(sessionId)?.completedAt).toBeUndefined();
 
@@ -471,6 +553,43 @@ describe('service runtime isolation', () => {
     await waitUntil(() => readFileSync(callsPath, 'utf8') === 'IR');
   });
 
+  test('retries an incomplete startup scan when periodic scanning is disabled', async () => {
+    const directory = mkdtempSync(join(tmpdir(), 'keepline-startup-retry-'));
+    const callsPath = join(directory, 'calls');
+    const payload = JSON.stringify({ runtimeScan: [], pendingDispatches: 0 });
+    const script = `
+      const fs = await import('fs');
+      const next = fs.existsSync(${JSON.stringify(callsPath)})
+        ? fs.readFileSync(${JSON.stringify(callsPath)}, 'utf8').length + 1
+        : 1;
+      fs.writeFileSync(${JSON.stringify(callsPath)}, 'x'.repeat(next));
+      if (next === 1) {
+        console.error('transient startup scan failure');
+        process.exit(1);
+      }
+      console.log(${JSON.stringify(SCAN_RESULT_PREFIX)} + ${JSON.stringify(payload)});
+    `;
+    liveService = await startKeeplineService({
+      port: 0,
+      hookPort: 0,
+      scanIntervalMs: 0,
+      scanCommand: [process.execPath, '-e', script],
+    });
+    const baseURL = `http://127.0.0.1:${liveService.server.port}`;
+
+    await waitUntil(async () => {
+      const response = await fetch(`${baseURL}/api/v1/health`);
+      const body = await response.json() as { data: { scan: { completed: boolean } } };
+      return body.data.scan.completed;
+    }, 8_000);
+
+    const authResponse = await fetch(`${baseURL}/api/v1/auth/local`, { method: 'POST' });
+    const authBody = await authResponse.json() as { data: { token: string } };
+    const headers = { Authorization: `Bearer ${authBody.data.token}` };
+    expect((await fetch(`${baseURL}/api/v1/sessions?fields=basic`, { headers })).status).toBe(200);
+    expect(readFileSync(callsPath, 'utf8').length).toBeGreaterThanOrEqual(2);
+  });
+
   test('keeps the static service graph free of heavy app-only modules', async () => {
     const outputDirectory = mkdtempSync(join(tmpdir(), 'keepline-service-graph-'));
     const buildWithMetafile = Bun.build as unknown as (
@@ -507,7 +626,7 @@ describe('service runtime isolation', () => {
       /(?:memory|pricing|recovery\.service|services\/terminal\.ts|pty\.manager|web\/api\/routes\/(?:sessions|recovery|auth|work-items))/.test(path)
     );
     expect(forbidden).toEqual([]);
-    expect(serviceMigrationVersions).toEqual([1, 4, 5, 6, 7, 8, 10, 11, 12, 13]);
+    expect(serviceMigrationVersions).toEqual([1, 4, 5, 6, 7, 8, 10, 11, 12, 13, 14]);
   });
 
   test('uses watchdog TERM then KILL and bounds captured child output', async () => {

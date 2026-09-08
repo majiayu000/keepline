@@ -20,6 +20,16 @@ describe('session status presentation coverage', () => {
     expect(formatStatus('lost')).toContain(SESSION_STATUS_PRESENTATION.lost.label);
   });
 
+  test('watch session table status column fits the Interrupted label', () => {
+    const formatSource = readFileSync(join(process.cwd(), 'src/lib/format.ts'), 'utf8');
+    const widths = formatSource.match(/colWidths:\s*\[([^\]]+)\]/);
+    expect(widths).not.toBeNull();
+    const statusWidth = Number(widths![1].split(',')[2]);
+    expect(statusWidth).toBeGreaterThanOrEqual(
+      SESSION_STATUS_PRESENTATION.lost.label.length + 2
+    );
+  });
+
   test('web status constants use the shared contract', () => {
     const constantsSource = readFileSync(
       join(process.cwd(), 'src/web/client/src/constants/index.ts'),

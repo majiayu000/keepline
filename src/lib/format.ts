@@ -57,7 +57,8 @@ export function createSessionTable(sessions: Session[]): string {
       chalk.bold('Task'),
       chalk.bold('Last Active'),
     ],
-    colWidths: [5, 42, 10, 52, 12],
+    // Status width fits the shared "Interrupted" label without wrapping.
+    colWidths: [5, 42, 14, 52, 12],
     wordWrap: true,
   });
 
