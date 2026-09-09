@@ -41,11 +41,15 @@ state as current.
    live claims, runs the same invalidate-plus-full reconciliation before serving
    recovery, and only treats a peer Service Mode instance as compatible after
    `scan.completed` is true.
-8. Daemon and Service Mode publish a shared SQLite reconciliation gate while
-   invalidating and rescanning so an already-open dashboard rejects recovery
-   until live claims are restored.
-9. Codex session directory scans fail reconciliation when any path under the
-   sessions root (including nested date subtrees) cannot be read.
+8. Daemon, Service Mode, and the standalone dashboard publish a shared SQLite
+   reconciliation gate while invalidating and rescanning so peer recovery rejects
+   until live claims are restored. Completion is owner-token aware, and a failed
+   full scan leaves a durable failed gate instead of advertising ready.
+9. Full reconciliation rejects when scanners return per-file failures that omit
+   active transcripts, and when Codex session paths (including nested date
+   subtrees) cannot be read. Best-effort Codex lookups used by recovery keep
+   non-strict directory scanning so unrelated unreadable paths do not block
+   `canRecover()` or session detail.
 
 ## Verification
 

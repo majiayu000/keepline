@@ -77,4 +77,29 @@ describe('runtime session scan wrapper', () => {
       })],
     });
   });
+
+  test('rejects resolved per-file failures when softFail is disabled', async () => {
+    await expect(scanRuntimeSessions('codex', async () => ({
+      sessions: [{ sessionId: 'codex-visible-session' }],
+      failures: [{
+        filePath: '/tmp/codex/bad-session.jsonl',
+        message: 'Invalid JSONL',
+      }],
+    }), { softFail: false })).rejects.toThrow(
+      'Runtime codex scan returned 1 failure(s): /tmp/codex/bad-session.jsonl'
+    );
+
+    const codexStatus = getRuntimeScanStatus().find(
+      (scan) => scan.runtimeId === 'codex'
+    );
+    expect(codexStatus).toMatchObject({
+      degraded: true,
+      errorCount: 1,
+      errors: [expect.objectContaining({
+        code: 'parse-failed',
+        message: 'Invalid JSONL',
+        sourcePath: '/tmp/codex/bad-session.jsonl',
+      })],
+    });
+  });
 });

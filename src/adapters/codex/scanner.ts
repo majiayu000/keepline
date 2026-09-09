@@ -14,6 +14,12 @@ export interface CodexScanOptions {
   includeToolCalls?: boolean;
   maxAgeDays?: number;
   sessionsDir?: string;
+  /**
+   * When true, directory/file read failures throw so full reconciliation can
+   * reject incomplete scans. Best-effort callers (recovery preview, session
+   * detail) leave this unset and continue with whatever paths are readable.
+   */
+  strictReadFailures?: boolean;
 }
 
 export interface CodexSessionScanFailure {
@@ -111,13 +117,19 @@ export function scanCodexSessionsDirectory(options: CodexScanOptions = {}): Code
   const sessions: CodexSessionFile[] = [];
   const readFailures: string[] = [];
   scanDirectoryRecursive(sessionsDir, cutoffTime, sessions, readFailures);
-  // Any directory/file read failure must surface to full reconciliation
-  // (softFail: false). Nested date-subtree failures otherwise omit live
-  // Codex transcripts while startup still declares scan.completed.
   if (readFailures.length > 0) {
     const sample = readFailures.slice(0, 5).join(', ');
     const more = readFailures.length > 5 ? ` (+${readFailures.length - 5} more)` : '';
-    throw new Error(`Cannot read Codex session paths: ${sample}${more}`);
+    // Full reconciliation must reject incomplete Codex trees; recovery and
+    // session-detail lookups stay best-effort so an unrelated unreadable path
+    // cannot fail every Codex canRecover()/getCodexSessionById call.
+    if (options.strictReadFailures) {
+      throw new Error(`Cannot read Codex session paths: ${sample}${more}`);
+    }
+    logger.warn('Skipped unreadable Codex session paths during best-effort scan', {
+      count: readFailures.length,
+      sample: readFailures.slice(0, 5),
+    });
   }
   return sessions;
 }

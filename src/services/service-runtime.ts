@@ -16,6 +16,7 @@ import { replaceRuntimeScanStatus, type RuntimeScanSummary } from './runtime-sta
 import {
   beginSessionReconciliation,
   completeSessionReconciliation,
+  failSessionReconciliation,
 } from './session-reconciliation-gate.js';
 
 const SCAN_RESULT_PREFIX = '__KEEPLINE_SERVICE_SCAN__';
@@ -203,7 +204,7 @@ export async function startKeeplineService(
   }
   localServiceState.lifecycleHook.receiverRunning = true;
   localServiceState.lifecycleHook.port = lifecycleReceiver.port;
-  beginSessionReconciliation('service');
+  const reconciliationToken = beginSessionReconciliation('service');
   try {
     const interruptedSessions = sessionRepository.markActiveSessionsInterrupted();
     if (interruptedSessions > 0) {
@@ -212,7 +213,10 @@ export async function startKeeplineService(
       );
     }
   } catch (error) {
-    completeSessionReconciliation();
+    failSessionReconciliation(
+      reconciliationToken,
+      error instanceof Error ? error.message : String(error)
+    );
     lifecycleReceiver.stop();
     localServiceState.lifecycleHook.receiverRunning = false;
     localServiceState.lifecycleHook.port = undefined;
@@ -298,7 +302,7 @@ export async function startKeeplineService(
         : configuredScanInterval;
       localServiceState.scan.completed = true;
       localServiceState.scan.lastCompletedAt = new Date();
-      completeSessionReconciliation();
+      completeSessionReconciliation(reconciliationToken);
     } catch (error) {
       localServiceState.scan.lastError = error instanceof Error ? error.message : String(error);
       if (!stopped) logger.error('Service scan failed', error);
@@ -365,7 +369,7 @@ export async function startKeeplineService(
         ]);
       }
       if (!localServiceState.scan.completed) {
-        completeSessionReconciliation();
+        failSessionReconciliation(reconciliationToken, 'Service stopped before reconciliation completed');
       }
       try {
         lifecycleReceiver.stop();

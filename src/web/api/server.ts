@@ -15,6 +15,7 @@ import { syncSessions } from '../../services/session.service.js';
 import {
   beginSessionReconciliation,
   completeSessionReconciliation,
+  failSessionReconciliation,
   isSessionReconciliationRunning,
 } from '../../services/session-reconciliation-gate.js';
 import { getSessionStats } from '../../services/session.aggregator.js';
@@ -322,7 +323,7 @@ export async function startWebServer(
   if (getWebSessionSource() === 'standalone') {
     // Match daemon/Service Mode: invalidate live claims, then fully reconcile
     // only after this process owns the HTTP listener.
-    beginSessionReconciliation('web');
+    const reconciliationToken = beginSessionReconciliation('web');
     try {
       logger.info('Running initial session reconciliation...');
       const interruptedSessions = sessionRepository.markActiveSessionsInterrupted();
@@ -334,9 +335,12 @@ export async function startWebServer(
       await syncSessions({ fullSync: true, includeSubAgents: true });
       lastRealtimeFullSyncAt = Date.now();
       standaloneReconciliationComplete = true;
-      completeSessionReconciliation();
+      completeSessionReconciliation(reconciliationToken);
     } catch (error) {
-      completeSessionReconciliation();
+      failSessionReconciliation(
+        reconciliationToken,
+        error instanceof Error ? error.message : String(error)
+      );
       server.stop(true);
       throw error;
     }

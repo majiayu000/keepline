@@ -206,7 +206,7 @@ function buildAttentionItem(
     reasons.push({
       code: 'recoverable_lost',
       severity: 'critical',
-      message: 'Session is lost and may be recoverable',
+      message: 'Session is interrupted and may be recoverable',
       score: LOST_SCORE,
     });
   }

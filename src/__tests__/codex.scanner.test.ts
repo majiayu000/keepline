@@ -48,24 +48,50 @@ describe('Codex session scanner', () => {
     });
   });
 
-  test('throws when the sessions root exists but cannot be read', () => {
+  test('throws when the sessions root exists but cannot be read in strict mode', () => {
     const filePath = join(tempDir, 'sessions');
     writeFileSync(filePath, 'not a directory');
 
-    expect(() => scanCodexSessionsDirectory({ sessionsDir: filePath })).toThrow(
+    expect(() => scanCodexSessionsDirectory({
+      sessionsDir: filePath,
+      strictReadFailures: true,
+    })).toThrow(
       `Cannot read Codex session paths: ${filePath}`
     );
     expect(warnings).toHaveLength(0);
   });
 
-  test('throws when a nested Codex sessions subtree cannot be read', () => {
+  test('best-effort scan warns instead of throwing on unreadable nested paths', () => {
     const sessionsDir = join(tempDir, 'sessions');
     const nestedDir = join(sessionsDir, '2026');
     mkdirSync(nestedDir, { recursive: true });
     chmodSync(nestedDir, 0o000);
 
     try {
-      expect(() => scanCodexSessionsDirectory({ sessionsDir })).toThrow(
+      expect(scanCodexSessionsDirectory({ sessionsDir })).toEqual([]);
+      expect(warnings).toEqual([expect.objectContaining({
+        message: 'Skipped unreadable Codex session paths during best-effort scan',
+        data: expect.objectContaining({
+          count: 1,
+          sample: [nestedDir],
+        }),
+      })]);
+    } finally {
+      chmodSync(nestedDir, 0o755);
+    }
+  });
+
+  test('throws when a nested Codex sessions subtree cannot be read in strict mode', () => {
+    const sessionsDir = join(tempDir, 'sessions');
+    const nestedDir = join(sessionsDir, '2026');
+    mkdirSync(nestedDir, { recursive: true });
+    chmodSync(nestedDir, 0o000);
+
+    try {
+      expect(() => scanCodexSessionsDirectory({
+        sessionsDir,
+        strictReadFailures: true,
+      })).toThrow(
         `Cannot read Codex session paths: ${nestedDir}`
       );
     } finally {

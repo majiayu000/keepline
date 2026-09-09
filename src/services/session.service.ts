@@ -58,10 +58,9 @@ export async function scanRuntimeSessions<T>(
   options: ScanRuntimeSessionsOptions = {}
 ): Promise<RuntimeSessionScan<T>> {
   const softFail = options.softFail ?? true;
+  let result: RuntimeSessionScan<T>;
   try {
-    const result = await scan();
-    recordRuntimeScanFailures(runtimeId, result.failures);
-    return result;
+    result = await scan();
   } catch (error) {
     const failure: RuntimeScanFailure = {
       code: 'unknown',
@@ -79,6 +78,23 @@ export async function scanRuntimeSessions<T>(
     }
     return { sessions: [], failures: [failure] };
   }
+
+  recordRuntimeScanFailures(runtimeId, result.failures);
+  // Full reconciliation must not declare success when scanners omit active
+  // transcripts via resolved per-file failures (softFail only covers throws).
+  if (!softFail && result.failures.length > 0) {
+    const sample = result.failures
+      .slice(0, 3)
+      .map((failure) => failure.filePath ?? failure.message)
+      .join(', ');
+    const more = result.failures.length > 3
+      ? ` (+${result.failures.length - 3} more)`
+      : '';
+    throw new Error(
+      `Runtime ${runtimeId} scan returned ${result.failures.length} failure(s): ${sample}${more}`
+    );
+  }
+  return result;
 }
 
 export class SessionService {
@@ -197,6 +213,10 @@ export class SessionService {
         scanRuntimeSessions('codex', () => getAllCodexSessionsWithFailures({
           maxAgeDays,
           includeToolCalls: false,
+          // Strict directory reads only for full reconciliation; recovery
+          // lookups keep best-effort scanning so one bad subtree cannot block
+          // canRecover()/session detail for every Codex session.
+          strictReadFailures: options.fullSync === true,
         }), { softFail: softFailRuntimeScans }),
       ]);
       const scannedSessions = [...claudeScan.sessions, ...codexScan.sessions];

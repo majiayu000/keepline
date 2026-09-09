@@ -16,6 +16,7 @@ import { sessionRepository } from '../infrastructure/database/repositories/sessi
 import {
   beginSessionReconciliation,
   completeSessionReconciliation,
+  failSessionReconciliation,
 } from './session-reconciliation-gate.js';
 
 let scanInterval: NodeJS.Timeout | null = null;
@@ -70,7 +71,7 @@ export async function startScheduler(): Promise<void> {
   // Start hook server
   await startHookServer();
 
-  beginSessionReconciliation('daemon');
+  const reconciliationToken = beginSessionReconciliation('daemon');
   try {
     const interruptedSessions = sessionRepository.markActiveSessionsInterrupted();
     if (interruptedSessions > 0) {
@@ -84,9 +85,13 @@ export async function startScheduler(): Promise<void> {
     logger.debug(
       `Initial scan: ${result.discovered} new, ${result.updated} updated, ${result.lost} lost`
     );
-    completeSessionReconciliation();
+    completeSessionReconciliation(reconciliationToken);
   } catch (error) {
-    completeSessionReconciliation();
+    // Keep peer recovery blocked after a failed full scan; do not advertise ready.
+    failSessionReconciliation(
+      reconciliationToken,
+      error instanceof Error ? error.message : String(error)
+    );
     logger.error('Initial scan failed', error);
     emit('error', { error: error as Error, context: 'initial_scan' });
     await stopHookServer();
