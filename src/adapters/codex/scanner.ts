@@ -111,16 +111,13 @@ export function scanCodexSessionsDirectory(options: CodexScanOptions = {}): Code
   const sessions: CodexSessionFile[] = [];
   const readFailures: string[] = [];
   scanDirectoryRecursive(sessionsDir, cutoffTime, sessions, readFailures);
-  // Root-directory read failure must surface to full reconciliation (softFail: false),
-  // otherwise invalidated live Codex rows stay Interrupted while startup "succeeds".
-  if (readFailures.includes(sessionsDir)) {
-    throw new Error(`Cannot read Codex sessions directory: ${sessionsDir}`);
-  }
+  // Any directory/file read failure must surface to full reconciliation
+  // (softFail: false). Nested date-subtree failures otherwise omit live
+  // Codex transcripts while startup still declares scan.completed.
   if (readFailures.length > 0) {
-    logger.warn('Skipped unreadable Codex session paths during scan', {
-      count: readFailures.length,
-      sample: readFailures.slice(0, 5),
-    });
+    const sample = readFailures.slice(0, 5).join(', ');
+    const more = readFailures.length > 5 ? ` (+${readFailures.length - 5} more)` : '';
+    throw new Error(`Cannot read Codex session paths: ${sample}${more}`);
   }
   return sessions;
 }

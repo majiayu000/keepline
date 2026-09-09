@@ -37,9 +37,15 @@ state as current.
 6. Keep the stored domain value `lost` for API compatibility, but present it as
    **Interrupted**: the live process is gone while the durable session record
    remains available for recovery checks.
-7. The standalone web dashboard runs the same invalidate-plus-full reconciliation
-   before serving, and only treats a peer Service Mode instance as compatible
-   after `scan.completed` is true.
+7. The standalone web dashboard acquires its HTTP listener before invalidating
+   live claims, runs the same invalidate-plus-full reconciliation before serving
+   recovery, and only treats a peer Service Mode instance as compatible after
+   `scan.completed` is true.
+8. Daemon and Service Mode publish a shared SQLite reconciliation gate while
+   invalidating and rescanning so an already-open dashboard rejects recovery
+   until live claims are restored.
+9. Codex session directory scans fail reconciliation when any path under the
+   sessions root (including nested date subtrees) cannot be read.
 
 ## Verification
 

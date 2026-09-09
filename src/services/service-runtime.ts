@@ -13,6 +13,10 @@ import { createLocalApiApp } from '../local-api/app.js';
 import { createRecoveryProcessRunner } from '../local-api/routes/recovery.js';
 import { localServiceState } from '../local-api/service-state.js';
 import { replaceRuntimeScanStatus, type RuntimeScanSummary } from './runtime-status.js';
+import {
+  beginSessionReconciliation,
+  completeSessionReconciliation,
+} from './session-reconciliation-gate.js';
 
 const SCAN_RESULT_PREFIX = '__KEEPLINE_SERVICE_SCAN__';
 
@@ -199,6 +203,7 @@ export async function startKeeplineService(
   }
   localServiceState.lifecycleHook.receiverRunning = true;
   localServiceState.lifecycleHook.port = lifecycleReceiver.port;
+  beginSessionReconciliation('service');
   try {
     const interruptedSessions = sessionRepository.markActiveSessionsInterrupted();
     if (interruptedSessions > 0) {
@@ -207,6 +212,7 @@ export async function startKeeplineService(
       );
     }
   } catch (error) {
+    completeSessionReconciliation();
     lifecycleReceiver.stop();
     localServiceState.lifecycleHook.receiverRunning = false;
     localServiceState.lifecycleHook.port = undefined;
@@ -292,6 +298,7 @@ export async function startKeeplineService(
         : configuredScanInterval;
       localServiceState.scan.completed = true;
       localServiceState.scan.lastCompletedAt = new Date();
+      completeSessionReconciliation();
     } catch (error) {
       localServiceState.scan.lastError = error instanceof Error ? error.message : String(error);
       if (!stopped) logger.error('Service scan failed', error);
@@ -356,6 +363,9 @@ export async function startKeeplineService(
           scanPromise,
           new Promise<void>((resolve) => setTimeout(resolve, scanKillGraceMs * 2 + 100)),
         ]);
+      }
+      if (!localServiceState.scan.completed) {
+        completeSessionReconciliation();
       }
       try {
         lifecycleReceiver.stop();

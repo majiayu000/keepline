@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, test } from 'bun:test';
-import { mkdtempSync, mkdirSync, rmSync, writeFileSync } from 'fs';
+import { chmodSync, mkdtempSync, mkdirSync, rmSync, writeFileSync } from 'fs';
 import { tmpdir } from 'os';
 import { join } from 'path';
 import {
@@ -53,9 +53,24 @@ describe('Codex session scanner', () => {
     writeFileSync(filePath, 'not a directory');
 
     expect(() => scanCodexSessionsDirectory({ sessionsDir: filePath })).toThrow(
-      `Cannot read Codex sessions directory: ${filePath}`
+      `Cannot read Codex session paths: ${filePath}`
     );
     expect(warnings).toHaveLength(0);
+  });
+
+  test('throws when a nested Codex sessions subtree cannot be read', () => {
+    const sessionsDir = join(tempDir, 'sessions');
+    const nestedDir = join(sessionsDir, '2026');
+    mkdirSync(nestedDir, { recursive: true });
+    chmodSync(nestedDir, 0o000);
+
+    try {
+      expect(() => scanCodexSessionsDirectory({ sessionsDir })).toThrow(
+        `Cannot read Codex session paths: ${nestedDir}`
+      );
+    } finally {
+      chmodSync(nestedDir, 0o755);
+    }
   });
 
   test('warns with count and sample for invalid Codex session files', async () => {

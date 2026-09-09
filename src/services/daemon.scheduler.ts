@@ -13,6 +13,10 @@ import { initializeMemoryService } from './memory.service.js';
 import { runRetentionCleanup } from './retention.service.js';
 import { initPricing } from './usage.pricing.js';
 import { sessionRepository } from '../infrastructure/database/repositories/session.repository.js';
+import {
+  beginSessionReconciliation,
+  completeSessionReconciliation,
+} from './session-reconciliation-gate.js';
 
 let scanInterval: NodeJS.Timeout | null = null;
 let retentionInterval: NodeJS.Timeout | null = null;
@@ -66,6 +70,7 @@ export async function startScheduler(): Promise<void> {
   // Start hook server
   await startHookServer();
 
+  beginSessionReconciliation('daemon');
   try {
     const interruptedSessions = sessionRepository.markActiveSessionsInterrupted();
     if (interruptedSessions > 0) {
@@ -79,7 +84,9 @@ export async function startScheduler(): Promise<void> {
     logger.debug(
       `Initial scan: ${result.discovered} new, ${result.updated} updated, ${result.lost} lost`
     );
+    completeSessionReconciliation();
   } catch (error) {
+    completeSessionReconciliation();
     logger.error('Initial scan failed', error);
     emit('error', { error: error as Error, context: 'initial_scan' });
     await stopHookServer();
