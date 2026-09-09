@@ -253,6 +253,45 @@ describe('Basic Sessions Route Contract', () => {
       .toBe('running');
   });
 
+  test('recover rejects running, waiting, idle, and completed sessions', async () => {
+    const directory = mkdtempSync(join(tmpdir(), 'keepline-recover-gate-'));
+    tmpRoots.push(directory);
+    const { token } = await setupUser('recover-gate-user', 'password123');
+
+    for (const status of ['running', 'waiting', 'idle', 'completed'] as const) {
+      const sessionId = `recover-gate-${status}`;
+      sessionRepository.upsert({
+        sessionId,
+        client: 'claude',
+        directory,
+        status,
+        title: `Recover gate ${status}`,
+        initialPrompt: 'Should not recover',
+        lastActiveAt: new Date(),
+        toolCount: 0,
+        messageCount: 1,
+      });
+
+      const response = await recovery.fetch(new Request(
+        `http://localhost/${sessionId}/recover`,
+        {
+          method: 'POST',
+          headers: {
+            Authorization: `Bearer ${token}`,
+            'content-type': 'application/json',
+          },
+          body: JSON.stringify({ method: 'continue', openTerminal: false }),
+        }
+      ));
+
+      expect(response.status).toBe(400);
+      const body = await response.json() as { success: boolean; error?: string };
+      expect(body.success).toBe(false);
+      expect(body.error).toBe('Only lost sessions can be recovered');
+      expect(sessionRepository.findBySessionId(sessionId)?.status).toBe(status);
+    }
+  });
+
   test('projectRoot filters sessions by resolved git root exactly', async () => {
     const target = makeGitProject('keepline-target-project-');
     const other = makeGitProject('keepline-other-project-');
