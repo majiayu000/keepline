@@ -28,13 +28,18 @@ state as current.
 3. Run one complete isolated startup scan, including old transcripts and
    subagents, then promote every live process match back to a live state.
    Whole-runtime adapter failures fail that reconciliation instead of soft
-   succeeding with empty results. Service Mode uses a longer timeout for the
-   unbounded `--full` startup scan than for bounded periodic scans.
+   succeeding with empty results. Codex sessions-root read failures must reject
+   rather than soft-succeed with an empty scan. Service Mode uses a longer
+   timeout for the unbounded `--full` startup scan than for bounded periodic
+   scans.
 4. Keep later periodic scans bounded for normal steady-state operation.
 5. Preserve explicit `completed` rows.
 6. Keep the stored domain value `lost` for API compatibility, but present it as
    **Interrupted**: the live process is gone while the durable session record
    remains available for recovery checks.
+7. The standalone web dashboard runs the same invalidate-plus-full reconciliation
+   before serving, and only treats a peer Service Mode instance as compatible
+   after `scan.completed` is true.
 
 ## Verification
 

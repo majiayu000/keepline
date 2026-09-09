@@ -48,17 +48,14 @@ describe('Codex session scanner', () => {
     });
   });
 
-  test('warns when the sessions path cannot be read', () => {
+  test('throws when the sessions root exists but cannot be read', () => {
     const filePath = join(tempDir, 'sessions');
     writeFileSync(filePath, 'not a directory');
 
-    const sessions = scanCodexSessionsDirectory({ sessionsDir: filePath });
-
-    expect(sessions).toEqual([]);
-    expect(warnings[0]).toMatchObject({
-      message: 'Skipped unreadable Codex session paths during scan',
-      data: { count: 1, sample: [filePath] },
-    });
+    expect(() => scanCodexSessionsDirectory({ sessionsDir: filePath })).toThrow(
+      `Cannot read Codex sessions directory: ${filePath}`
+    );
+    expect(warnings).toHaveLength(0);
   });
 
   test('warns with count and sample for invalid Codex session files', async () => {

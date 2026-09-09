@@ -10,6 +10,7 @@ import { serveStatic } from 'hono/bun';
 import { existsSync } from 'fs';
 import path from 'path';
 import { runMigrations } from '../../db/migrations.js';
+import { sessionRepository } from '../../infrastructure/database/repositories/session.repository.js';
 import { syncSessions } from '../../services/session.service.js';
 import { getSessionStats } from '../../services/session.aggregator.js';
 import { initPricing } from '../../services/usage.pricing.js';
@@ -164,10 +165,17 @@ export async function hasCompatibleService(
     if (!response.ok) return false;
     const payload = await response.json() as {
       success?: boolean;
-      data?: { status?: string; mode?: string };
+      data?: {
+        status?: string;
+        mode?: string;
+        scan?: { completed?: boolean };
+      };
     };
+    // Require finished startup reconciliation so the dashboard does not attach
+    // while Service Mode still exposes interrupted rows under its 503 guard.
     return payload.success === true && payload.data?.status === 'ok' &&
-      payload.data.mode === 'service';
+      payload.data.mode === 'service' &&
+      payload.data.scan?.completed === true;
   } catch {
     return false;
   }
@@ -239,9 +247,16 @@ export async function startWebServer(
   if (getWebSessionSource() === 'service') {
     logger.info(`Using Service Mode session snapshot from ${serviceURL}`);
   } else {
-    // Initial sync on startup (so database has data for first request)
-    logger.info('Running initial session sync...');
-    await syncSessions();
+    // Match daemon/Service Mode: invalidate live claims, then fully reconcile
+    // before the standalone dashboard exposes recovery against shared state.
+    logger.info('Running initial session reconciliation...');
+    const interruptedSessions = sessionRepository.markActiveSessionsInterrupted();
+    if (interruptedSessions > 0) {
+      logger.info(
+        `Marked ${interruptedSessions} persisted live session(s) interrupted before reconciliation`
+      );
+    }
+    await syncSessions({ fullSync: true, includeSubAgents: true });
     lastRealtimeFullSyncAt = Date.now();
   }
 
