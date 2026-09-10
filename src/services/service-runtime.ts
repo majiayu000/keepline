@@ -1,6 +1,11 @@
 import type { Server } from 'bun';
+import {
+  startLifecycleReceiver,
+  type LifecycleReceiver,
+} from '../adapters/hook/completion-receiver.js';
 import { runServiceMigrations } from '../local-api/migrations.js';
 import { closeDatabase } from '../infrastructure/database/sqlite.js';
+import { sessionRepository } from '../infrastructure/database/repositories/session.repository.js';
 import { logger } from '../lib/logger.js';
 import { config } from '../lib/config.js';
 import { events } from '../lib/events.js';
@@ -9,9 +14,10 @@ import { createRecoveryProcessRunner } from '../local-api/routes/recovery.js';
 import { localServiceState } from '../local-api/service-state.js';
 import { replaceRuntimeScanStatus, type RuntimeScanSummary } from './runtime-status.js';
 import {
-  startLifecycleReceiver,
-  type LifecycleReceiver,
-} from '../adapters/hook/completion-receiver.js';
+  beginSessionReconciliation,
+  completeSessionReconciliation,
+  failSessionReconciliation,
+} from './session-reconciliation-gate.js';
 
 const SCAN_RESULT_PREFIX = '__KEEPLINE_SERVICE_SCAN__';
 
@@ -27,17 +33,28 @@ export interface KeeplineServiceOptions {
   /** Periodic transcript scan interval. Zero disables the periodic timer. */
   scanIntervalMs?: number;
   scanTimeoutMs?: number;
+  /**
+   * Timeout for the unbounded startup `--full` reconciliation scan.
+   * Defaults higher than the periodic scan timeout so large histories can finish.
+   */
+  initialScanTimeoutMs?: number;
   scanKillGraceMs?: number;
   scanOutputLimitBytes?: number;
   /** Test/support override. Production resolves the isolated scan from the current entrypoint. */
   scanCommand?: string[];
+  /** Test/support override for the first complete reconciliation scan. */
+  initialScanCommand?: string[];
   /** Test/support override. Production resolves recovery through an isolated child process. */
   recoveryCommand?: string[];
 }
 
 const DEFAULT_SCAN_TIMEOUT_MS = 30_000;
+/** Allow complete startup reconciliation to exceed the bounded periodic timeout. */
+const DEFAULT_INITIAL_SCAN_TIMEOUT_MS = 5 * 60_000;
 const DEFAULT_SCAN_KILL_GRACE_MS = 1_000;
 const DEFAULT_SCAN_OUTPUT_LIMIT_BYTES = 512 * 1024;
+/** Retry delay when the first reconciliation fails and periodic scanning is disabled. */
+const STARTUP_SCAN_RETRY_MS = 3_000;
 
 function isAllowedLoopbackRequestHost(req: Request, port: number): boolean {
   const hostHeader = req.headers.get('host');
@@ -120,6 +137,9 @@ export async function startKeeplineService(
   const scanTimeoutMs = typeof options === 'number'
     ? DEFAULT_SCAN_TIMEOUT_MS
     : (options.scanTimeoutMs ?? DEFAULT_SCAN_TIMEOUT_MS);
+  const initialScanTimeoutMs = typeof options === 'number'
+    ? DEFAULT_INITIAL_SCAN_TIMEOUT_MS
+    : (options.initialScanTimeoutMs ?? DEFAULT_INITIAL_SCAN_TIMEOUT_MS);
   const scanKillGraceMs = typeof options === 'number'
     ? DEFAULT_SCAN_KILL_GRACE_MS
     : (options.scanKillGraceMs ?? DEFAULT_SCAN_KILL_GRACE_MS);
@@ -133,6 +153,7 @@ export async function startKeeplineService(
     throw new Error('Invalid completion hook port');
   }
   if (!Number.isFinite(scanTimeoutMs) || scanTimeoutMs <= 0 ||
+      !Number.isFinite(initialScanTimeoutMs) || initialScanTimeoutMs <= 0 ||
       !Number.isFinite(scanKillGraceMs) || scanKillGraceMs < 0 ||
       !Number.isInteger(scanOutputLimitBytes) || scanOutputLimitBytes < 1_024) {
     throw new Error('Invalid service scan process limits');
@@ -144,6 +165,11 @@ export async function startKeeplineService(
   const recoveryCommand = configuredRecoveryCommand ??
     (entrypoint ? [process.execPath, entrypoint, '_service-recovery'] : []);
   runServiceMigrations();
+  localServiceState.scan.running = false;
+  localServiceState.scan.completed = false;
+  localServiceState.scan.lastStartedAt = undefined;
+  localServiceState.scan.lastCompletedAt = undefined;
+  localServiceState.scan.lastError = undefined;
   const app = createLocalApiApp({
     recoveryRunner: createRecoveryProcessRunner(recoveryCommand),
   });
@@ -154,6 +180,16 @@ export async function startKeeplineService(
     fetch(req, bunServer) {
       if (!isAllowedLoopbackRequestHost(req, bunServer.port ?? port)) {
         return new Response('Forbidden', { status: 403 });
+      }
+      const pathname = new URL(req.url).pathname;
+      if (!localServiceState.scan.completed &&
+          pathname !== '/api/v1/health' &&
+          pathname !== '/api/v1/meta' &&
+          pathname !== '/api/v1/auth/local') {
+        return Response.json(
+          { success: false, error: 'Startup reconciliation is still running' },
+          { status: 503 }
+        );
       }
       return app.fetch(req, { server: bunServer });
     },
@@ -168,6 +204,26 @@ export async function startKeeplineService(
   }
   localServiceState.lifecycleHook.receiverRunning = true;
   localServiceState.lifecycleHook.port = lifecycleReceiver.port;
+  const reconciliationToken = beginSessionReconciliation('service');
+  try {
+    const interruptedSessions = sessionRepository.markActiveSessionsInterrupted();
+    if (interruptedSessions > 0) {
+      logger.info(
+        `Marked ${interruptedSessions} persisted live session(s) interrupted before reconciliation`
+      );
+    }
+  } catch (error) {
+    failSessionReconciliation(
+      reconciliationToken,
+      error instanceof Error ? error.message : String(error)
+    );
+    lifecycleReceiver.stop();
+    localServiceState.lifecycleHook.receiverRunning = false;
+    localServiceState.lifecycleHook.port = undefined;
+    server.stop(true);
+    closeDatabase();
+    throw error;
+  }
 
   let stopped = false;
   let scanTimer: ReturnType<typeof setTimeout> | undefined;
@@ -176,11 +232,6 @@ export async function startKeeplineService(
   let nextScanDelayMs = configuredScanInterval;
   let continueCorrelation = false;
   let rescanRequested = false;
-  localServiceState.scan.running = false;
-  localServiceState.scan.completed = false;
-  localServiceState.scan.lastStartedAt = undefined;
-  localServiceState.scan.lastCompletedAt = undefined;
-  localServiceState.scan.lastError = undefined;
   const scan = async () => {
     if (stopped) return;
     if (localServiceState.scan.running) {
@@ -191,10 +242,19 @@ export async function startKeeplineService(
     localServiceState.scan.lastStartedAt = new Date();
     localServiceState.scan.lastError = undefined;
     try {
-      const command = typeof options === 'number' ? undefined : options.scanCommand;
+      const command = typeof options === 'number'
+        ? undefined
+        : localServiceState.scan.completed
+          ? options.scanCommand
+          : (options.initialScanCommand ?? options.scanCommand);
       if (!command && !entrypoint) throw new Error('Unable to resolve Keepline service entrypoint');
       const child = Bun.spawn(
-        command ?? [process.execPath, entrypoint!, '_service-scan'],
+        command ?? [
+          process.execPath,
+          entrypoint!,
+          '_service-scan',
+          ...(localServiceState.scan.completed ? [] : ['--full']),
+        ],
         {
           env: process.env,
           stdout: 'pipe',
@@ -209,12 +269,15 @@ export async function startKeeplineService(
       }
       const stdoutPromise = readBoundedText(child.stdout, scanOutputLimitBytes);
       const stderrPromise = readBoundedText(child.stderr, scanOutputLimitBytes);
-      if (!await waitForExit(child, scanTimeoutMs)) {
+      const activeScanTimeoutMs = localServiceState.scan.completed
+        ? scanTimeoutMs
+        : initialScanTimeoutMs;
+      if (!await waitForExit(child, activeScanTimeoutMs)) {
         await terminateProcess(child, scanKillGraceMs);
         const stderr = await stderrPromise;
         await stdoutPromise;
         throw new Error(
-          `Session scan timed out after ${scanTimeoutMs} ms${stderr.trim() ? `: ${stderr.trim()}` : ''}`
+          `Session scan timed out after ${activeScanTimeoutMs} ms${stderr.trim() ? `: ${stderr.trim()}` : ''}`
         );
       }
       const exitCode = await child.exited;
@@ -239,6 +302,7 @@ export async function startKeeplineService(
         : configuredScanInterval;
       localServiceState.scan.completed = true;
       localServiceState.scan.lastCompletedAt = new Date();
+      completeSessionReconciliation(reconciliationToken);
     } catch (error) {
       localServiceState.scan.lastError = error instanceof Error ? error.message : String(error);
       if (!stopped) logger.error('Service scan failed', error);
@@ -259,6 +323,9 @@ export async function startKeeplineService(
         if (rescanRequested) {
           rescanRequested = false;
           scheduleScan(0);
+        } else if (!localServiceState.scan.completed) {
+          // Keep retrying startup reconciliation even when --scan-interval 0.
+          scheduleScan(STARTUP_SCAN_RETRY_MS);
         } else if (continueCorrelation || configuredScanInterval > 0) {
           scheduleScan(nextScanDelayMs);
         }
@@ -300,6 +367,9 @@ export async function startKeeplineService(
           scanPromise,
           new Promise<void>((resolve) => setTimeout(resolve, scanKillGraceMs * 2 + 100)),
         ]);
+      }
+      if (!localServiceState.scan.completed) {
+        failSessionReconciliation(reconciliationToken, 'Service stopped before reconciliation completed');
       }
       try {
         lifecycleReceiver.stop();

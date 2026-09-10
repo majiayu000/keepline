@@ -10,7 +10,14 @@ import { serveStatic } from 'hono/bun';
 import { existsSync } from 'fs';
 import path from 'path';
 import { runMigrations } from '../../db/migrations.js';
+import { sessionRepository } from '../../infrastructure/database/repositories/session.repository.js';
 import { syncSessions } from '../../services/session.service.js';
+import {
+  beginSessionReconciliation,
+  completeSessionReconciliation,
+  failSessionReconciliation,
+  isSessionReconciliationRunning,
+} from '../../services/session-reconciliation-gate.js';
 import { getSessionStats } from '../../services/session.aggregator.js';
 import { initPricing } from '../../services/usage.pricing.js';
 import { initializeMemoryService } from '../../services/memory.service.js';
@@ -164,10 +171,17 @@ export async function hasCompatibleService(
     if (!response.ok) return false;
     const payload = await response.json() as {
       success?: boolean;
-      data?: { status?: string; mode?: string };
+      data?: {
+        status?: string;
+        mode?: string;
+        scan?: { completed?: boolean };
+      };
     };
+    // Require finished startup reconciliation so the dashboard does not attach
+    // while Service Mode still exposes interrupted rows under its 503 guard.
     return payload.success === true && payload.data?.status === 'ok' &&
-      payload.data.mode === 'service';
+      payload.data.mode === 'service' &&
+      payload.data.scan?.completed === true;
   } catch {
     return false;
   }
@@ -238,13 +252,11 @@ export async function startWebServer(
   );
   if (getWebSessionSource() === 'service') {
     logger.info(`Using Service Mode session snapshot from ${serviceURL}`);
-  } else {
-    // Initial sync on startup (so database has data for first request)
-    logger.info('Running initial session sync...');
-    await syncSessions();
-    lastRealtimeFullSyncAt = Date.now();
   }
 
+  // Bind the listener before mutating shared session state so a same-port
+  // Service Mode (or any occupied listener) fails before invalidation.
+  let standaloneReconciliationComplete = getWebSessionSource() === 'service';
   logger.info(`Starting web server on port ${port}`);
 
   const tlsConfig = config.get().webTerminal;
@@ -275,6 +287,15 @@ export async function startWebServer(
         return new Response('WebSocket upgrade failed', { status: 400 });
       }
 
+      const blocksRecovery =
+        !standaloneReconciliationComplete || isSessionReconciliationRunning();
+      if (blocksRecovery && isRecoveryMutatingPath(url.pathname)) {
+        return Response.json(
+          { success: false, error: 'Startup reconciliation is still running' },
+          { status: 503 }
+        );
+      }
+
       // Handle regular HTTP requests via Hono
       return app.fetch(req, { server });
     },
@@ -299,6 +320,32 @@ export async function startWebServer(
     } : {}),
   });
 
+  if (getWebSessionSource() === 'standalone') {
+    // Match daemon/Service Mode: invalidate live claims, then fully reconcile
+    // only after this process owns the HTTP listener.
+    const reconciliationToken = beginSessionReconciliation('web');
+    try {
+      logger.info('Running initial session reconciliation...');
+      const interruptedSessions = sessionRepository.markActiveSessionsInterrupted();
+      if (interruptedSessions > 0) {
+        logger.info(
+          `Marked ${interruptedSessions} persisted live session(s) interrupted before reconciliation`
+        );
+      }
+      await syncSessions({ fullSync: true, includeSubAgents: true });
+      lastRealtimeFullSyncAt = Date.now();
+      standaloneReconciliationComplete = true;
+      completeSessionReconciliation(reconciliationToken);
+    } catch (error) {
+      failSessionReconciliation(
+        reconciliationToken,
+        error instanceof Error ? error.message : String(error)
+      );
+      server.stop(true);
+      throw error;
+    }
+  }
+
   // Start periodic update checker (every 5 seconds)
   setInterval(checkAndBroadcastUpdates, REALTIME_POLL_INTERVAL_MS);
 
@@ -306,6 +353,10 @@ export async function startWebServer(
   logger.info(`WebSocket available at ws://${hostname}:${port}/ws`);
 
   return server;
+}
+
+function isRecoveryMutatingPath(pathname: string): boolean {
+  return /\/api\/sessions\/[^/]+\/(recover|complete|stop)(?:\/|$)/.test(pathname);
 }
 
 export { app };

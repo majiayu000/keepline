@@ -4,14 +4,18 @@
 
 import chalk from 'chalk';
 import Table from 'cli-table3';
-import type { Session, SessionStatus } from '../domain/session/index.js';
+import {
+  SESSION_STATUS_PRESENTATION,
+  type Session,
+  type SessionStatus,
+} from '../domain/session/index.js';
 
 /** Status display configuration */
 const statusConfig: Record<SessionStatus, { label: string; color: (s: string) => string }> = {
   running: { label: 'Running', color: chalk.green },
   waiting: { label: 'Waiting', color: chalk.yellow },
   idle: { label: 'Idle', color: chalk.blue },
-  lost: { label: 'Lost', color: chalk.red },
+  lost: { label: SESSION_STATUS_PRESENTATION.lost.label, color: chalk.red },
   completed: { label: 'Done', color: chalk.gray },
 };
 
@@ -53,7 +57,8 @@ export function createSessionTable(sessions: Session[]): string {
       chalk.bold('Task'),
       chalk.bold('Last Active'),
     ],
-    colWidths: [5, 42, 10, 52, 12],
+    // Status width fits the shared "Interrupted" label without wrapping.
+    colWidths: [5, 42, 14, 52, 12],
     wordWrap: true,
   });
 

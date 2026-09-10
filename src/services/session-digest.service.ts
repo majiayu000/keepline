@@ -90,7 +90,7 @@ export function buildDeterministicDigestUpsert(
   ]).slice(0, MAX_ACTIONS);
   const blockers = dedupeStrings([
     ...(memory?.knownIssues ?? []),
-    ...(input.status === 'lost' ? ['Session is lost and may need recovery'] : []),
+    ...(input.status === 'lost' ? ['Session is interrupted and may need recovery'] : []),
   ]).slice(0, MAX_BLOCKERS);
 
   return {
