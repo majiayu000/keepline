@@ -144,7 +144,7 @@ function groupItemsByLane(items: OrchestratorQueueItem[]): Map<AgentBoardLane, O
 
 function formatScopeText(hiddenOldLost: number, lostWindowHours?: number): string {
   if (hiddenOldLost === 0 || lostWindowHours == null) return ''
-  return ` · ${hiddenOldLost} older lost in Sessions`
+  return ` · ${hiddenOldLost} older interrupted in Sessions`
 }
 
 function formatAgentCount(visible: number, total: number): string {

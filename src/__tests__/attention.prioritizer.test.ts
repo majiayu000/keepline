@@ -308,7 +308,7 @@ describe('buildAttentionOverview', () => {
       taskSource: 'last_message',
       currentState: 'Denoise probe 第一次启动失败了，我先看 stderr。通常这种是脚本路径或 OpenVINO Async API 细节。',
       nextAction: 'Recover this session and continue around topaz_dragon_cleanup_20260629T035947Z/cleanup_standard.png.',
-      whyAttention: 'Session is lost and may be recoverable',
+      whyAttention: 'Session is interrupted and may be recoverable',
       confidence: 'medium',
       noiseFlags: [
         'instructions_heavy',

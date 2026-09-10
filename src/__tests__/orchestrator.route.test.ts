@@ -109,7 +109,7 @@ describe('Orchestrator Route Contract', () => {
         taskSource: 'initial_prompt',
         currentState: 'Cost is high, review before continuing',
         nextAction: 'Recover this session and continue around keepline-orchestrator/report.md.',
-        whyAttention: 'Session is lost and may be recoverable; Session cost is $5.00',
+        whyAttention: 'Session is interrupted and may be recoverable; Session cost is $5.00',
         confidence: 'high',
       },
     });
@@ -242,7 +242,7 @@ describe('Orchestrator Route Contract', () => {
     expect(body.data.digests[0]).toMatchObject({
       sessionId: 'orchestrator-digest-generate',
       summary: 'Needs human review',
-      blockers: ['Session is lost and may need recovery'],
+      blockers: ['Session is interrupted and may need recovery'],
       source: 'deterministic',
       status: 'fresh',
       waitingForHuman: false,

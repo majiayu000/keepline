@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, test } from 'bun:test';
-import { mkdtempSync, mkdirSync, rmSync, writeFileSync } from 'fs';
+import { chmodSync, mkdtempSync, mkdirSync, rmSync, writeFileSync } from 'fs';
 import { tmpdir } from 'os';
 import { join } from 'path';
 import {
@@ -48,17 +48,55 @@ describe('Codex session scanner', () => {
     });
   });
 
-  test('warns when the sessions path cannot be read', () => {
+  test('throws when the sessions root exists but cannot be read in strict mode', () => {
     const filePath = join(tempDir, 'sessions');
     writeFileSync(filePath, 'not a directory');
 
-    const sessions = scanCodexSessionsDirectory({ sessionsDir: filePath });
+    expect(() => scanCodexSessionsDirectory({
+      sessionsDir: filePath,
+      strictReadFailures: true,
+    })).toThrow(
+      `Cannot read Codex session paths: ${filePath}`
+    );
+    expect(warnings).toHaveLength(0);
+  });
 
-    expect(sessions).toEqual([]);
-    expect(warnings[0]).toMatchObject({
-      message: 'Skipped unreadable Codex session paths during scan',
-      data: { count: 1, sample: [filePath] },
-    });
+  test('best-effort scan warns instead of throwing on unreadable nested paths', () => {
+    const sessionsDir = join(tempDir, 'sessions');
+    const nestedDir = join(sessionsDir, '2026');
+    mkdirSync(nestedDir, { recursive: true });
+    chmodSync(nestedDir, 0o000);
+
+    try {
+      expect(scanCodexSessionsDirectory({ sessionsDir })).toEqual([]);
+      expect(warnings).toEqual([expect.objectContaining({
+        message: 'Skipped unreadable Codex session paths during best-effort scan',
+        data: expect.objectContaining({
+          count: 1,
+          sample: [nestedDir],
+        }),
+      })]);
+    } finally {
+      chmodSync(nestedDir, 0o755);
+    }
+  });
+
+  test('throws when a nested Codex sessions subtree cannot be read in strict mode', () => {
+    const sessionsDir = join(tempDir, 'sessions');
+    const nestedDir = join(sessionsDir, '2026');
+    mkdirSync(nestedDir, { recursive: true });
+    chmodSync(nestedDir, 0o000);
+
+    try {
+      expect(() => scanCodexSessionsDirectory({
+        sessionsDir,
+        strictReadFailures: true,
+      })).toThrow(
+        `Cannot read Codex session paths: ${nestedDir}`
+      );
+    } finally {
+      chmodSync(nestedDir, 0o755);
+    }
   });
 
   test('warns with count and sample for invalid Codex session files', async () => {

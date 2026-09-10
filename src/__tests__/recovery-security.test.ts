@@ -58,6 +58,7 @@ function createRepository(session: Session | null): ISessionRepository {
     findOperationalLightweight: () => [],
     findActive: () => session ? [session] : [],
     findActiveLightweight: (): ActiveSessionRecord[] => [],
+    markActiveSessionsInterrupted: () => 0,
     findByStatus: (status: SessionStatus) =>
       session?.status === status ? [session] : [],
     findByDirectory: (directory: string) =>

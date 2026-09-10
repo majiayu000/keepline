@@ -78,7 +78,7 @@ describe('Session digest service', () => {
     );
 
     expect(digest.summary).toBe('Last visible message');
-    expect(digest.blockers).toEqual(['Session is lost and may need recovery']);
+    expect(digest.blockers).toEqual(['Session is interrupted and may need recovery']);
     expect(digest.waitingForHuman).toBe(false);
   });
 

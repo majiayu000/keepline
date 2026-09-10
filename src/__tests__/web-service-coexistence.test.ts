@@ -4,7 +4,7 @@ import { selectWebSessionSnapshot } from '../web/api/session-source.js';
 
 const healthyService = () => Promise.resolve(new Response(JSON.stringify({
   success: true,
-  data: { status: 'ok', mode: 'service' },
+  data: { status: 'ok', mode: 'service', scan: { completed: true } },
 }), {
   status: 200,
   headers: { 'content-type': 'application/json' },
@@ -69,6 +69,19 @@ describe('Keepline Web and Service Mode coexistence', () => {
       3378,
       'http://127.0.0.1:3377',
       dashboard
+    )).toBe(false);
+  });
+
+  test('falls back while Service Mode startup reconciliation is incomplete', async () => {
+    const reconciling = () => Promise.resolve(new Response(JSON.stringify({
+      success: true,
+      data: { status: 'ok', mode: 'service', scan: { completed: false } },
+    }), { status: 200 }));
+
+    expect(await hasCompatibleService(
+      3378,
+      'http://127.0.0.1:3377',
+      reconciling
     )).toBe(false);
   });
 });

@@ -7,6 +7,7 @@
 import { Hono } from 'hono';
 import { getAllSessions, completeSession } from '../../../services/session.service.js';
 import { buildRecoveryShellCommand, recoverSession, getRecoveryInfo } from '../../../services/recovery.service.js';
+import { isSessionReconciliationRunning } from '../../../services/session-reconciliation-gate.js';
 import { stopProcess, isProcessRunning } from '../../../adapters/process/scanner.js';
 import { logger } from '../../../lib/logger.js';
 import { authMiddleware } from '../middleware/auth.js';
@@ -18,6 +19,16 @@ import {
 
 const app = new Hono();
 app.use('*', authMiddleware);
+
+app.use('*', async (c, next) => {
+  if (isSessionReconciliationRunning()) {
+    return c.json(
+      { success: false, error: 'Startup reconciliation is still running' },
+      503
+    );
+  }
+  return next();
+});
 
 // POST /api/sessions/:id/recover - Recover a lost session
 app.post('/:id/recover', async (c) => {

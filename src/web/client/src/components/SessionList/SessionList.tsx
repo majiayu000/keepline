@@ -143,10 +143,10 @@ export const SessionList = memo(function SessionList({
           onInitialExpansionConsumed={onInitialExpansionConsumed}
         />
       )}
-      {/* Secondary: Lost, Completed */}
+      {/* Secondary: Interrupted, Completed */}
       {groupedSessions.lost.length > 0 && (
         <SessionGroup
-          title="Lost"
+          title="Interrupted"
           sessions={groupedSessions.lost}
           onRecover={onRecover}
           onStop={onStop}
