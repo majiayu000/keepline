@@ -15,7 +15,10 @@ import { renderShellCommand, shellQuote } from '../lib/shell-quote.js';
 import { unscopeCodexSessionId } from '../adapters/codex/parser.js';
 import { scanCodexSessionsDirectory } from '../adapters/codex/scanner.js';
 import { openTerminalWithCommand, printRecoveryCommand } from './terminal.js';
+import { updateSession } from './session.service.js';
 import type { RecoveryMethod, RecoveryOptions, RecoveryResult } from './recovery.types.js';
+
+const LOST_ONLY_RECOVERY_REASON = 'Only lost sessions can be recovered';
 
 /** Build claude argv for recovery. */
 export function buildClaudeCommandArgs(
@@ -113,7 +116,11 @@ export function buildRecoveryShellCommand(
 export class RecoveryService {
   constructor(
     private readonly repository: ISessionRepository,
-    private readonly getCodexSessionFiles = scanCodexSessionsDirectory
+    private readonly getCodexSessionFiles = scanCodexSessionsDirectory,
+    private readonly markSessionRunning: (sessionId: string) => void = (sessionId) => {
+      updateSession(sessionId, { status: 'running', statusSource: 'user' });
+    },
+    private readonly openRecoveryTerminal: typeof openTerminalWithCommand = openTerminalWithCommand
   ) {}
 
   /** Check if session can be recovered */
@@ -128,6 +135,15 @@ export class RecoveryService {
       return {
         canRecover: false,
         reason: 'Invalid session ID format',
+        availableMethods: [],
+      };
+    }
+
+    // Match agent-board + local-api recovery: only lost sessions are recoverable.
+    if (session.status !== 'lost') {
+      return {
+        canRecover: false,
+        reason: LOST_ONLY_RECOVERY_REASON,
         availableMethods: [],
       };
     }
@@ -209,6 +225,11 @@ export class RecoveryService {
       throw new RecoveryError(options.sessionId, 'Session not found');
     }
 
+    // Belt-and-suspenders: refuse non-lost sessions even if callers skip canRecover.
+    if (session.status !== 'lost') {
+      throw new RecoveryError(options.sessionId, LOST_ONLY_RECOVERY_REASON);
+    }
+
     const { canRecover: canRecoverSession, reason, availableMethods } = this.canRecover(session);
 
     if (!canRecoverSession) {
@@ -229,14 +250,10 @@ export class RecoveryService {
     try {
       if (options.openTerminal) {
         // Open new terminal window
-        openTerminalWithCommand(command, options.directory, options.terminalApp ?? 'auto');
+        this.openRecoveryTerminal(command, options.directory, options.terminalApp ?? 'auto');
 
-        // Update session status
-        this.repository.upsert({
-          sessionId: options.sessionId,
-          status: 'running',
-          statusSource: 'user',
-        });
+        // Route through SessionService so completed sessions cannot be revived.
+        this.markSessionRunning(options.sessionId);
 
         emit('session:recovered', { session: this.repository.findBySessionId(options.sessionId)! });
 

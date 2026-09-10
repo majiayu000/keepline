@@ -50,6 +50,11 @@ app.post('/:id/recover', async (c) => {
     return c.json({ success: false, error: 'Session not found' }, 404);
   }
 
+  // Belt-and-suspenders: only lost sessions may be recovered (matches board + local-api).
+  if (session.status !== 'lost') {
+    return c.json({ success: false, error: 'Only lost sessions can be recovered' }, 400);
+  }
+
   const recoveryInfo = getRecoveryInfo(sessionId);
 
   if (!recoveryInfo.canRecover) {

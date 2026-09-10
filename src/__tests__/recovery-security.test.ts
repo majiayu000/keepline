@@ -217,4 +217,62 @@ describe('recovery command security', () => {
       openTerminal: false,
     })).rejects.toThrow('Invalid session ID format');
   });
+
+  test('rejects running, waiting, idle, and completed sessions as unrecoverable', async () => {
+    for (const status of ['running', 'waiting', 'idle', 'completed'] as const) {
+      const session = recoverySession({ status });
+      const service = new RecoveryService(createRepository(session));
+
+      expect(service.canRecover(session)).toEqual({
+        canRecover: false,
+        reason: 'Only lost sessions can be recovered',
+        availableMethods: [],
+      });
+
+      await expect(service.recoverSession({
+        method: 'continue',
+        sessionId: session.sessionId,
+        directory: session.directory,
+        openTerminal: false,
+      })).rejects.toThrow('Only lost sessions can be recovered');
+    }
+  });
+
+  test('marks recovered sessions running through SessionService updater, not raw upsert', async () => {
+    const session = recoverySession({ status: 'lost' });
+    let upsertStatusUpdates = 0;
+    const repository = createRepository(session);
+    const originalUpsert = repository.upsert.bind(repository);
+    repository.upsert = (data) => {
+      if (data.status === 'running') {
+        upsertStatusUpdates += 1;
+      }
+      return originalUpsert(data);
+    };
+
+    const marked: string[] = [];
+    let opened = false;
+    const service = new RecoveryService(
+      repository,
+      () => [],
+      (sessionId) => {
+        marked.push(sessionId);
+      },
+      () => {
+        opened = true;
+      }
+    );
+
+    const result = await service.recoverSession({
+      method: 'continue',
+      sessionId: session.sessionId,
+      directory: session.directory,
+      openTerminal: true,
+    });
+
+    expect(result.success).toBe(true);
+    expect(opened).toBe(true);
+    expect(marked).toEqual([session.sessionId]);
+    expect(upsertStatusUpdates).toBe(0);
+  });
 });
