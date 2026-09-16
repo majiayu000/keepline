@@ -268,6 +268,14 @@ during reconciliation. If startup fails, operational routes return the scan erro
 with HTTP 503; the service logs each scan's elapsed time and retries on its scan
 interval.
 
+Transcript summaries persist in `KEEPLINE_HOME/session-summaries-v1.sqlite` so
+fresh scan processes can reuse unchanged files. The first scan still reads the
+full archive. File identity, size, modification time and change time invalidate
+cached summaries; files changing during parsing are not cached. Process matching
+and session status reconciliation always run again, and full tool-call details
+are parsed on demand. Scan completion logs include cache hits and misses.
+This database is derived data; parser semantic changes must bump the cache
+version in `src/infrastructure/session-summary-cache.ts`.
 
 
 ---

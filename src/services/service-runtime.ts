@@ -297,6 +297,7 @@ export async function startKeeplineService(
       const payload = JSON.parse(resultLine.slice(SCAN_RESULT_PREFIX.length)) as {
         runtimeScan?: RuntimeScanSummary[];
         pendingDispatches?: number;
+        summaryCache?: { hits: number; misses: number; writes: number };
       };
       if (Array.isArray(payload.runtimeScan)) {
         replaceRuntimeScanStatus(payload.runtimeScan);
@@ -310,7 +311,7 @@ export async function startKeeplineService(
       localServiceState.scan.lastCompletedAt = new Date();
       completeSessionReconciliation(reconciliationToken);
       logger.info('Service scan completed', {
-        full: isInitialScan, elapsedMs: Date.now() - startedAt,
+        full: isInitialScan, elapsedMs: Date.now() - startedAt, summaryCache: payload.summaryCache,
       });
     } catch (error) {
       localServiceState.scan.lastError = error instanceof Error ? error.message : String(error);

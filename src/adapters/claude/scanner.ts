@@ -20,6 +20,7 @@ import { parseSessionFile } from './parser/jsonl.js';
 import type { ClaudeSessionFile } from '../../domain/session/index.js';
 import type { ParsedSessionData } from './types.js';
 import { logger } from '../../lib/logger.js';
+import { cachedSessionSummary, SessionSummaryCacheError } from '../../infrastructure/session-summary-cache.js';
 import { isValidSessionId } from '../../lib/session-id.js';
 
 // Cache for parsed session data with modification times
@@ -285,10 +286,11 @@ async function scanAllSessionsWithFailures(
       }
 
       // Parse file and update cache
-      const parsed = requireValidParsedSession(
-        await parseSessionFile(file.filePath, { includeToolCalls }),
-        file.filePath
+      const parse = async () => requireValidParsedSession(
+        await parseSessionFile(file.filePath, { includeToolCalls }), file.filePath
       );
+      const parsed = includeToolCalls ? await parse()
+        : await cachedSessionSummary('claude', file.filePath, parse);
       sessionSummaryCache.set(file.filePath, {
         data: parsed,
         modifiedAt: fileModTime,
@@ -300,6 +302,7 @@ async function scanAllSessionsWithFailures(
       }
       cacheMisses++;
     } catch (error) {
+      if (error instanceof SessionSummaryCacheError) throw error;
       sessionSummaryCache.set(file.filePath, {
         data: null,
         modifiedAt: file.modifiedAt.getTime(),
