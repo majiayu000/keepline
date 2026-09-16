@@ -261,6 +261,15 @@ background scanner and hook receiver. `keepline hooks install` only installs
 the forwarding commands; run `keepline status` or `keepline hooks status` to
 check whether a receiver is running.
 
+The embedded service performs a full history reconciliation before serving session
+and task routes. Startup scans have a five-minute watchdog; subsequent incremental
+scans retain a 30-second watchdog. Health remains available at `/api/v1/health`
+during reconciliation. If startup fails, operational routes return the scan error
+with HTTP 503; the service logs each scan's elapsed time and retries on its scan
+interval.
+
+
+
 ---
 
 ## How It Works
