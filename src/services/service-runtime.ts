@@ -187,7 +187,12 @@ export async function startKeeplineService(
           pathname !== '/api/v1/meta' &&
           pathname !== '/api/v1/auth/local') {
         return Response.json(
-          { success: false, error: 'Startup reconciliation is still running' },
+          {
+            success: false,
+            error: localServiceState.scan.lastError
+              ? `Startup reconciliation failed: ${localServiceState.scan.lastError}`
+              : 'Startup reconciliation is still running',
+          },
           { status: 503 }
         );
       }
@@ -238,9 +243,13 @@ export async function startKeeplineService(
       rescanRequested = true;
       return;
     }
+    const isInitialScan = !localServiceState.scan.completed;
+    const activeScanTimeoutMs = isInitialScan ? initialScanTimeoutMs : scanTimeoutMs;
+    const startedAt = Date.now();
     localServiceState.scan.running = true;
     localServiceState.scan.lastStartedAt = new Date();
     localServiceState.scan.lastError = undefined;
+    logger.info('Service scan started', { full: isInitialScan, timeoutMs: activeScanTimeoutMs });
     try {
       const command = typeof options === 'number'
         ? undefined
@@ -269,9 +278,6 @@ export async function startKeeplineService(
       }
       const stdoutPromise = readBoundedText(child.stdout, scanOutputLimitBytes);
       const stderrPromise = readBoundedText(child.stderr, scanOutputLimitBytes);
-      const activeScanTimeoutMs = localServiceState.scan.completed
-        ? scanTimeoutMs
-        : initialScanTimeoutMs;
       if (!await waitForExit(child, activeScanTimeoutMs)) {
         await terminateProcess(child, scanKillGraceMs);
         const stderr = await stderrPromise;
@@ -303,9 +309,14 @@ export async function startKeeplineService(
       localServiceState.scan.completed = true;
       localServiceState.scan.lastCompletedAt = new Date();
       completeSessionReconciliation(reconciliationToken);
+      logger.info('Service scan completed', {
+        full: isInitialScan, elapsedMs: Date.now() - startedAt,
+      });
     } catch (error) {
       localServiceState.scan.lastError = error instanceof Error ? error.message : String(error);
-      if (!stopped) logger.error('Service scan failed', error);
+      if (!stopped) logger.error('Service scan failed', {
+        full: isInitialScan, elapsedMs: Date.now() - startedAt, message: localServiceState.scan.lastError,
+      });
     } finally {
       scanProcess = undefined;
       localServiceState.scan.running = false;

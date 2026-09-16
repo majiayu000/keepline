@@ -624,6 +624,35 @@ describe('service runtime isolation', () => {
     expect(readFileSync(callsPath, 'utf8').length).toBeGreaterThanOrEqual(2);
   });
 
+  test('allows a longer initial scan while retaining the incremental watchdog', async () => {
+    liveService = await startKeeplineService({
+      port: 0,
+      hookPort: 0,
+      scanIntervalMs: 0,
+      scanTimeoutMs: 50,
+      initialScanTimeoutMs: 1_000,
+      initialScanCommand: [process.execPath, '-e', `
+        await Bun.sleep(200);
+        console.log(${JSON.stringify(SCAN_RESULT_PREFIX)} + JSON.stringify({runtimeScan: [], pendingDispatches: 0}));
+      `],
+      scanCommand: [process.execPath, '-e', 'setInterval(() => {}, 1000)'],
+    });
+    const baseURL = `http://127.0.0.1:${liveService.server.port}`;
+    const scanState = async () => {
+      const response = await fetch(`${baseURL}/api/v1/health`);
+      const body = await response.json() as {
+        data: { scan: { completed: boolean; lastError?: string } };
+      };
+      return body.data.scan;
+    };
+    await waitUntil(async () => (await scanState()).completed);
+    expect((await scanState()).lastError).toBeUndefined();
+
+    emit('session:turn-ended', { sessionId: 'scan-budget-test', timestamp: new Date() });
+    await waitUntil(async () => Boolean((await scanState()).lastError));
+    expect((await scanState()).lastError).toContain('timed out after 50 ms');
+  });
+
   test('keeps the static service graph free of heavy app-only modules', async () => {
     const outputDirectory = mkdtempSync(join(tmpdir(), 'keepline-service-graph-'));
     const buildWithMetafile = Bun.build as unknown as (
@@ -688,6 +717,12 @@ describe('service runtime isolation', () => {
       return error.includes('timed out');
     });
     expect(error.length).toBeLessThan(1_200);
+    const blocked = await fetch(`${baseURL}/api/v1/sessions?fields=basic`);
+    expect(blocked.status).toBe(503);
+    expect(await blocked.json()).toEqual({
+      success: false,
+      error: `Startup reconciliation failed: ${error}`,
+    });
 
     const started = performance.now();
     await liveService.stop();
