@@ -7,6 +7,7 @@ import { join } from 'path';
 import { CODEX_SESSIONS } from '../../lib/paths.js';
 import { isValidSessionId } from '../../lib/session-id.js';
 import { logger } from '../../lib/logger.js';
+import { cachedSessionSummary, SessionSummaryCacheError } from '../../infrastructure/session-summary-cache.js';
 import { parseCodexSessionFile, scopeCodexSessionId } from './parser.js';
 import type { CodexParsedSessionData, CodexSessionFile } from './types.js';
 
@@ -147,7 +148,10 @@ async function getOrParseCodexSession(
     }
   }
 
-  const parsed = await parseCodexSessionFile(file.filePath, { includeToolCalls });
+  const parsed = includeToolCalls
+    ? await parseCodexSessionFile(file.filePath, { includeToolCalls: true })
+    : await cachedSessionSummary('codex', file.filePath,
+      () => parseCodexSessionFile(file.filePath, { includeToolCalls: false }));
   cache.set(file.filePath, {
     data: parsed,
     modifiedAt: fileModTime,
@@ -188,6 +192,7 @@ async function scanAllCodexSessionsWithFailures(
         sessions.push(parsed);
       }
     } catch (error) {
+      if (error instanceof SessionSummaryCacheError) throw error;
       const message = error instanceof Error ? error.message : String(error);
       const failure = {
         filePath: file.filePath,
