@@ -18,24 +18,15 @@ A macOS menubar app to monitor Claude Code and Codex (ChatGPT) usage quotas and 
 
 Download the latest `.dmg` file from the [Releases](https://github.com/majiayu000/keepline/releases) page.
 
-### macOS Gatekeeper Warning
+### macOS Gatekeeper
 
-Since this app is not notarized by Apple, you may see a warning saying the app is "damaged" or can't be opened. This is normal for unsigned apps.
+Public GitHub Release DMGs are Developer ID signed and notarized. After
+installing from Releases, macOS should open the app without removing quarantine
+attributes.
 
-**To fix this, run one of these commands in Terminal:**
-
-```bash
-# Option 1: Remove quarantine from DMG before installing
-xattr -cr ~/Downloads/Claude\ Quota_*.dmg
-
-# Option 2: Remove quarantine from installed app
-xattr -cr /Applications/Claude\ Quota.app
-
-# Option 3: Allow the specific app (after first launch attempt)
-sudo xattr -rd com.apple.quarantine /Applications/Claude\ Quota.app
-```
-
-Then try opening the app again.
+Local `npm run tauri build` output is unsigned unless you set the Apple signing
+environment variables. Those local builds may show a Gatekeeper warning; that
+does not apply to the notarized Release artifacts.
 
 ## Requirements
 
