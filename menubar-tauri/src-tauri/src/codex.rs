@@ -1,6 +1,9 @@
 //! Codex / ChatGPT integration: types, JWT decoding, and Tauri commands for
 //! account info, session stats, and rate limits.
 
+use agent_sessions::{
+    read_history_from, Agent, HistoryOptions, LineErrorKind, RawReadOptions, Roots, StreamError,
+};
 use base64::{engine::general_purpose::STANDARD_NO_PAD, Engine as _};
 use chrono::{DateTime, NaiveDate, Utc};
 use serde::{Deserialize, Serialize};
@@ -72,6 +75,164 @@ mod tests {
             .as_deref()
             .is_some_and(|message| message.contains("Failed to parse history.jsonl line 2")));
     }
+
+    #[test]
+    fn collect_codex_stats_keeps_lenient_record_count_and_utc_dates() {
+        let history = concat!(
+            "\n\u{2003}\r\n",
+            "{\"session_id\":\"same\",\"ts\":1776038400}\r\n",
+            "{\"session_id\":\"same\",\"ts\":1776038460}\n",
+            "{\"ts\":1776124800}\n",
+            "{\"ts\":\"1776038400\"}\n",
+            "{\"ts\":null}\n",
+            "{\"ts\":1.5}\n",
+            "{\"ts\":-1,\"text\":42}\n",
+            "{}\nnull\n[]\ntrue\n17\n\"text\""
+        );
+        let stats = collect_codex_stats(Cursor::new(history), test_date());
+        assert_eq!(stats.total_sessions, 13);
+        assert_eq!(stats.today_sessions, 2);
+        assert_eq!(stats.last_activity.as_deref(), Some("2026-04-14 00:00"));
+        assert_eq!(stats.error, None);
+    }
+
+    #[test]
+    fn collect_codex_stats_preserves_out_of_range_latest_timestamp() {
+        let history = "{\"ts\":1776038400}\n{\"ts\":9223372036854775807}\n";
+        let stats = collect_codex_stats(Cursor::new(history), test_date());
+        assert_eq!(stats.total_sessions, 2);
+        assert_eq!(stats.today_sessions, 1);
+        assert_eq!(stats.last_activity, None);
+        assert_eq!(stats.error, None);
+    }
+
+    #[test]
+    fn collect_codex_stats_rejects_incomplete_tail() {
+        let stats = collect_codex_stats(Cursor::new("{}\n\n{\"ts\":"), test_date());
+        assert_eq!(stats.total_sessions, 0);
+        assert_eq!(stats.today_sessions, 0);
+        assert_eq!(stats.last_activity, None);
+        assert!(stats
+            .error
+            .as_deref()
+            .is_some_and(|error| error.starts_with("Failed to parse history.jsonl line 3:")));
+    }
+
+    #[test]
+    fn collect_codex_stats_reports_invalid_utf8_as_read_failure() {
+        let stats = collect_codex_stats(Cursor::new(b"{}\n\xff\n"), test_date());
+        assert_eq!(stats.total_sessions, 0);
+        assert_eq!(stats.today_sessions, 0);
+        assert_eq!(stats.last_activity, None);
+        assert!(stats
+            .error
+            .as_deref()
+            .is_some_and(|error| error.starts_with("Failed to read history.jsonl line 2:")));
+    }
+
+    #[test]
+    fn collect_codex_stats_reports_io_failure_after_blank_lines() {
+        struct FailingReader;
+        impl std::io::Read for FailingReader {
+            fn read(&mut self, _: &mut [u8]) -> std::io::Result<usize> {
+                Err(std::io::Error::other("synthetic read failure"))
+            }
+        }
+        impl BufRead for FailingReader {
+            fn fill_buf(&mut self) -> std::io::Result<&[u8]> {
+                Err(std::io::Error::other("synthetic read failure"))
+            }
+            fn consume(&mut self, _: usize) {}
+        }
+        let reader = std::io::Read::chain(Cursor::new("{}\n\n"), FailingReader);
+        let stats = collect_codex_stats(reader, test_date());
+        assert_eq!(stats.total_sessions, 0);
+        assert_eq!(stats.today_sessions, 0);
+        assert_eq!(stats.last_activity, None);
+        assert_eq!(
+            stats.error.as_deref(),
+            Some("Failed to read history.jsonl line 3: synthetic read failure")
+        );
+    }
+
+    #[test]
+    fn codex_stats_environment_child() {
+        let Ok(scenario) = std::env::var("KEEPLINE_HISTORY_TEST_SCENARIO") else {
+            return;
+        };
+        let runtime = tokio::runtime::Runtime::new().expect("test runtime");
+        let stats = runtime
+            .block_on(get_codex_stats())
+            .expect("stats command result");
+        match scenario.as_str() {
+            "override" => {
+                assert_eq!(stats.total_sessions, 2);
+                assert_eq!(stats.error, None);
+            }
+            "fallback" => {
+                assert_eq!(stats.total_sessions, 1);
+                assert_eq!(stats.error, None);
+            }
+            "missing" => {
+                assert_eq!(stats.total_sessions, 0);
+                assert_eq!(stats.error, None);
+            }
+            "empty" => {
+                assert_eq!(stats.total_sessions, 0);
+                assert!(stats
+                    .error
+                    .as_deref()
+                    .is_some_and(|error| error.contains("CODEX_HOME is empty")));
+            }
+            _ => panic!("unknown test scenario"),
+        }
+    }
+
+    #[test]
+    fn codex_stats_respects_codex_home_in_isolated_processes() {
+        let home = tempfile::tempdir().expect("isolated home");
+        let default_root = home.path().join(".codex");
+        let custom_root = home.path().join("custom-codex");
+        fs::create_dir_all(&default_root).expect("default root");
+        fs::create_dir_all(&custom_root).expect("custom root");
+        fs::write(default_root.join("history.jsonl"), "{}\n").expect("default history");
+        fs::write(custom_root.join("history.jsonl"), "{}\n{}\n").expect("custom history");
+        for scenario in ["override", "fallback", "missing", "empty"] {
+            let mut child =
+                std::process::Command::new(std::env::current_exe().expect("test binary"));
+            child
+                .args([
+                    "--exact",
+                    "codex::tests::codex_stats_environment_child",
+                    "--nocapture",
+                ])
+                .env("HOME", home.path())
+                .env("CLAUDE_CONFIG_DIR", "")
+                .env("KEEPLINE_HISTORY_TEST_SCENARIO", scenario);
+            match scenario {
+                "override" => {
+                    child.env("CODEX_HOME", &custom_root);
+                }
+                "fallback" => {
+                    child.env_remove("CODEX_HOME");
+                }
+                "missing" => {
+                    child.env("CODEX_HOME", home.path().join("absent"));
+                }
+                "empty" => {
+                    child.env("CODEX_HOME", "");
+                }
+                _ => unreachable!(),
+            }
+            let output = child.output().expect("isolated test process");
+            assert!(
+                output.status.success(),
+                "{scenario}: {} {}",
+                String::from_utf8_lossy(&output.stdout),
+                String::from_utf8_lossy(&output.stderr)
+            );
+        }
+    }
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
@@ -137,41 +298,54 @@ fn collect_codex_stats<R: BufRead>(reader: R, today: NaiveDate) -> CodexStats {
     let mut today_sessions = 0u32;
     let mut last_ts: Option<i64> = None;
 
-    for (index, line) in reader.lines().enumerate() {
-        let line_number = index + 1;
-        let line_content = match line {
-            Ok(content) => content,
-            Err(e) => {
-                return codex_stats_error(format!(
-                    "Failed to read history.jsonl line {}: {}",
-                    line_number, e
-                ));
-            }
-        };
-
-        if line_content.trim().is_empty() {
-            continue;
+    let options = HistoryOptions {
+        strict_fields: false,
+        read: RawReadOptions {
+            max_read_bytes: None,
+            max_line_bytes: None,
+            ..Default::default()
+        },
+        ..Default::default()
+    };
+    let mut history = match read_history_from(Agent::Codex, reader, &options) {
+        Ok(history) => history,
+        Err(error) => {
+            return codex_stats_error(format!("Failed to read history.jsonl: {error}"));
         }
-
-        let entry = match serde_json::from_str::<serde_json::Value>(&line_content) {
-            Ok(entry) => entry,
-            Err(e) => {
+    };
+    while let Some(entry) = history.next() {
+        let entry = match entry {
+            Ok(entry) => entry.value,
+            Err(StreamError::Line { line_no, kind, .. }) => {
+                let operation = if matches!(kind, LineErrorKind::InvalidUtf8) {
+                    "read"
+                } else {
+                    "parse"
+                };
                 return codex_stats_error(format!(
-                    "Failed to parse history.jsonl line {}: {}",
-                    line_number, e
+                    "Failed to {operation} history.jsonl line {line_no}: {kind:?}"
                 ));
+            }
+            Err(StreamError::Io(error)) => {
+                return codex_stats_error(format!(
+                    "Failed to read history.jsonl line {}: {error}",
+                    history.next_line_no()
+                ));
+            }
+            Err(error) => {
+                return codex_stats_error(format!("Failed to read history.jsonl: {error}"));
             }
         };
 
+        // Preserve the public field's historic meaning: history entries, not
+        // distinct session IDs. Missing or invalid optional fields still count.
         total_sessions += 1;
-
-        if let Some(ts) = entry["ts"].as_i64() {
-            if let Some(dt) = DateTime::from_timestamp(ts, 0) {
-                if dt.date_naive() == today {
-                    today_sessions += 1;
-                }
+        if let Some(at) = entry.at {
+            if at.date_naive() == today {
+                today_sessions += 1;
             }
-
+        }
+        if let Some(ts) = entry.timestamp {
             if last_ts.map_or(true, |old| ts > old) {
                 last_ts = Some(ts);
             }
@@ -364,15 +538,19 @@ pub async fn get_codex_info() -> Result<CodexData, String> {
 
 #[tauri::command]
 pub async fn get_codex_stats() -> Result<CodexStats, String> {
-    let codex_home = match get_codex_home() {
-        Some(path) => path,
-        None => {
-            return Ok(CodexStats {
-                total_sessions: 0,
-                today_sessions: 0,
-                last_activity: None,
-                error: Some("Could not find home directory".to_string()),
-            });
+    let codex_home = match Roots::from_env_for(Agent::Codex) {
+        Ok(roots) => match roots.codex {
+            Some(path) => path,
+            None => {
+                return Ok(codex_stats_error(
+                    "Could not find home directory".to_string(),
+                ))
+            }
+        },
+        Err(error) => {
+            return Ok(codex_stats_error(format!(
+                "Could not resolve Codex history directory: {error}"
+            )));
         }
     };
 
