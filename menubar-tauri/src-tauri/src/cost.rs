@@ -94,6 +94,12 @@ fn build_cost_overview(
     force: bool,
 ) -> Result<CostOverview, String> {
     let source = UsageSource::from_str(&source).map_err(|err| err.to_string())?;
+    if !matches!(
+        source,
+        UsageSource::Claude | UsageSource::Codex | UsageSource::Cursor
+    ) {
+        return Err(format!("Unsupported cost source: {}", source.as_str()));
+    }
     let currency = normalize_optional(currency);
     let timezone = normalize_optional(timezone);
     let cache_key = format!(
@@ -135,6 +141,7 @@ fn build_cost_overview(
             UsageSource::Claude => "Claude Code".to_string(),
             UsageSource::Codex => "Codex".to_string(),
             UsageSource::Cursor => "Cursor".to_string(),
+            _ => source.as_str().to_string(),
         });
     let currency = ranges
         .first()
@@ -229,5 +236,16 @@ impl From<ModelCostSummary> for CostModelSummary {
             cost_usd: model.cost_usd,
             tokens: CostTokenBreakdown::from(model.tokens),
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn newer_sdk_sources_do_not_expand_the_menubar_cost_domain() {
+        let result = build_cost_overview("gemini".to_string(), None, None, true);
+        assert!(matches!(result, Err(error) if error == "Unsupported cost source: gemini"));
     }
 }

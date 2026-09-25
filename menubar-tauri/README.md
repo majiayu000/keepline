@@ -43,6 +43,32 @@ does not apply to the notarized Release artifacts.
 5. Click outside the panel to close it
 6. Right-click the tray icon to quit
 
+## Local Codex history statistics
+
+The Rust menubar backend reads `history.jsonl` through `agent-sessions`. Set
+`CODEX_HOME` to choose its history directory; otherwise it uses `~/.codex`.
+An empty override is reported as an error. Authentication and quota requests
+retain their existing configuration.
+
+The API fields `totalSessions` and `todaySessions` count history entries, including
+repeated entries for the same session. Daily counts use UTC. Valid JSON entries
+with missing or invalid optional fields still count toward the total. Malformed
+JSON, an incomplete last record, invalid UTF-8, or an I/O error clears the result
+and reports an error instead of returning partial statistics. A missing history
+file means no history yet.
+
+The Bun session adapters continue to parse full transcripts independently; their
+existing synthetic fixtures and the shared library's format documentation cover
+the overlapping formats. History entries are a different source from transcript
+messages and should not be combined into one session count.
+
+## Migration candidate status
+
+This branch targets registry releases `agent-sessions 0.2.0` and `ccstats 0.9.0`.
+Integration checks currently use local Cargo patches for those release candidates.
+Publish the upstream crates and refresh the registry lockfile before releasing
+this menubar build; local checks alone do not establish registry availability.
+
 ## Building from Source
 
 ```bash
