@@ -64,10 +64,12 @@ messages and should not be combined into one session count.
 
 ## Migration candidate status
 
-This branch targets registry releases `agent-sessions 0.2.0` and `ccstats 0.9.0`.
-Integration checks currently use local Cargo patches for those release candidates.
-Publish the upstream crates and refresh the registry lockfile before releasing
-this menubar build; local checks alone do not establish registry availability.
+`agent-sessions 0.2.0` is published and resolves from the registry. The menubar
+also targets `ccstats 0.9.0`; SDK compatibility checks use the local candidate at
+commit `666b9ec` through an explicit Cargo patch outside the manifest. Publish
+ccstats, refresh its registry lockfile entry without that patch, and rerun CI
+before releasing this menubar build. Candidate checks do not establish ccstats
+registry availability.
 
 ## Building from Source
 
