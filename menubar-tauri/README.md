@@ -62,14 +62,11 @@ existing synthetic fixtures and the shared library's format documentation cover
 the overlapping formats. History entries are a different source from transcript
 messages and should not be combined into one session count.
 
-## Migration candidate status
+## Shared dependencies
 
-`agent-sessions 0.2.0` is published and resolves from the registry. The menubar
-also targets `ccstats 0.9.0`; SDK compatibility checks use the local candidate at
-commit `666b9ec` through an explicit Cargo patch outside the manifest. Publish
-ccstats, refresh its registry lockfile entry without that patch, and rerun CI
-before releasing this menubar build. Candidate checks do not establish ccstats
-registry availability.
+The menubar uses the published crates.io releases `agent-sessions 0.2.0` and
+`ccstats 0.9.0`. The lockfile records their registry sources and checksums;
+source builds do not require local dependency checkouts or Cargo patches.
 
 ## Building from Source
 
