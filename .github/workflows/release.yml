@@ -88,6 +88,59 @@ jobs:
           tagName: ${{ github.ref_name }}
           releaseName: '${{ github.ref_name }}'
           releaseBody: 'See the assets to download this version.'
-          releaseDraft: false
+          releaseDraft: true
           prerelease: false
           args: ${{ matrix.args }}
+
+
+      - name: Notarize and verify macOS DMG
+        if: runner.os == 'macOS'
+        env:
+          APPLE_API_KEY: ${{ secrets.APPLE_API_KEY }}
+          APPLE_API_ISSUER: ${{ secrets.APPLE_API_ISSUER }}
+          APPLE_API_KEY_CONTENT: ${{ secrets.APPLE_API_KEY_CONTENT }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          RELEASE_TAG: ${{ github.ref_name }}
+        run: |
+          set -euo pipefail
+          dmg_count="$(find menubar-tauri/src-tauri/target -type f -path '*/release/bundle/dmg/*.dmg' | wc -l | tr -d ' ')"
+          if [ "$dmg_count" -ne 1 ]; then
+            echo "Expected exactly one release DMG, found $dmg_count" >&2
+            exit 1
+          fi
+          dmg_path="$(find menubar-tauri/src-tauri/target -type f -path '*/release/bundle/dmg/*.dmg' -print -quit)"
+          # Prepare the scoped key for DMG notarization.
+          printf '%s' "$APPLE_API_KEY_CONTENT" | base64 --decode > "$APPLE_API_KEY_PATH"
+          chmod 600 "$APPLE_API_KEY_PATH"
+          bash menubar-tauri/scripts/notarize-dmg.sh "$dmg_path"
+          # Match the space-normalized asset name produced by tauri-action.
+          asset_name="$(basename "$dmg_path" | tr ' ' '.')"
+          mkdir -p "$RUNNER_TEMP/notarized-assets"
+          upload_path="$RUNNER_TEMP/notarized-assets/$asset_name"
+          cp "$dmg_path" "$upload_path"
+          gh release upload "$RELEASE_TAG" "$upload_path" --repo "$GITHUB_REPOSITORY" --clobber
+
+      - name: Remove temporary Apple notarization key
+        if: always() && runner.os == 'macOS'
+        run: |
+          if [ -n "${APPLE_API_KEY_PATH:-}" ]; then rm -f "$APPLE_API_KEY_PATH"; fi
+
+  publish:
+    needs: build
+    runs-on: ubuntu-latest
+    env:
+      GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      RELEASE_TAG: ${{ github.ref_name }}
+    steps:
+      - name: Download verified release assets
+        run: gh release download "$RELEASE_TAG" --repo "$GITHUB_REPOSITORY" --dir artifacts
+      - name: Create checksums
+        working-directory: artifacts
+        run: |
+          set -euo pipefail
+          test "$(find . -maxdepth 1 -name '*.dmg' | wc -l)" -eq 2
+          test "$(find . -maxdepth 1 -name '*.exe' | wc -l)" -eq 1
+          sha256sum ./*.dmg ./*.exe > SHA256SUMS.txt
+          gh release upload "$RELEASE_TAG" SHA256SUMS.txt --repo "$GITHUB_REPOSITORY"
+      - name: Publish verified release
+        run: gh release edit "$RELEASE_TAG" --repo "$GITHUB_REPOSITORY" --draft=false

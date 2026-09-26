@@ -37,6 +37,9 @@ jobs:
         working-directory: menubar-tauri
         run: npm ci
 
+      - name: Test DMG notarization failure gates
+        run: python3 menubar-tauri/scripts/test_notarize_dmg.py
+
       - name: Build menubar frontend
         working-directory: menubar-tauri
         run: npm run build
