@@ -40,7 +40,7 @@ jobs:
 
       - name: Install frontend dependencies
         working-directory: menubar-tauri
-        run: npm install
+        run: npm ci
 
       - name: Prepare Apple notarization key
         if: runner.os == 'macOS'
