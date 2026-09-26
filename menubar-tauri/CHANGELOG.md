@@ -1,5 +1,11 @@
 # Menubar changelog
 
+## 1.1.3 - 2026-09-26
+
+- Lock npm dependencies and keep Tauri API/CLI on the Rust runtime's 2.10 minor line, preventing fresh release builds from selecting an incompatible 2.11 API.
+- Use `npm ci` in the release workflow and validate the locked frontend with Node 20 in CI.
+- Preserve failed 1.1.1/1.1.2 tags; neither candidate produced a completed release.
+
 ## 1.1.2
 
 - Run release builds through npm explicitly, matching the installed frontend
