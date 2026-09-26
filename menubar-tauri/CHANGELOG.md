@@ -1,5 +1,11 @@
 # Menubar changelog
 
+## 1.1.4 - 2026-09-26
+
+- Notarize the signed DMG separately from its enclosed app, require acceptance, staple its ticket with bounded retries, and verify both layers with Gatekeeper.
+- Keep releases in draft until every platform build and macOS verification succeeds; attach SHA-256 checksums before publishing.
+- Supersede 1.1.3, whose apps were notarized but DMG containers were not.
+
 ## 1.1.3 - 2026-09-26
 
 - Lock npm dependencies and keep Tauri API/CLI on the Rust runtime's 2.10 minor line, preventing fresh release builds from selecting an incompatible 2.11 API.
