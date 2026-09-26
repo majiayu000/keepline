@@ -29,6 +29,18 @@ jobs:
         working-directory: src/web/client
         run: bun install --frozen-lockfile
 
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Install locked menubar dependencies
+        working-directory: menubar-tauri
+        run: npm ci
+
+      - name: Build menubar frontend
+        working-directory: menubar-tauri
+        run: npm run build
+
       - name: Typecheck
         run: bun run typecheck
 
