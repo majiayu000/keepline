@@ -83,6 +83,8 @@ jobs:
           APPLE_API_KEY_CONTENT: ${{ secrets.APPLE_API_KEY_CONTENT }}
         with:
           projectPath: menubar-tauri
+          # Match the npm toolchain used to install frontend dependencies.
+          tauriScript: npm run tauri
           tagName: ${{ github.ref_name }}
           releaseName: '${{ github.ref_name }}'
           releaseBody: 'See the assets to download this version.'
