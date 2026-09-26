@@ -1,5 +1,10 @@
 # Menubar changelog
 
+## 1.1.2
+
+- Run release builds through npm explicitly, matching the installed frontend
+  toolchain and avoiding automatic selection of an unavailable Bun executable.
+
 ## 1.1.1
 
 - Read Codex history statistics through `agent-sessions`, including custom
