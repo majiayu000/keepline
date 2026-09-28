@@ -50,6 +50,16 @@ pub(crate) fn read_frame(stream: &mut impl Read) -> io::Result<Vec<u8>> {
     Ok(buf)
 }
 
+pub(crate) fn response_exceeds_frame(id: &str, result: &Value) -> io::Result<bool> {
+    let bytes = serde_json::to_vec(&ok_response(id, result.clone())).map_err(|err| {
+        io::Error::new(
+            io::ErrorKind::InvalidData,
+            format!("encode response: {err}"),
+        )
+    })?;
+    Ok(bytes.len() > MAX_FRAME_BYTES as usize)
+}
+
 pub(crate) fn write_frame(stream: &mut impl Write, payload: &[u8]) -> io::Result<()> {
     if payload.len() > MAX_FRAME_BYTES as usize {
         return Err(io::Error::new(
@@ -144,7 +154,76 @@ pub(crate) fn is_disconnect(err: &io::Error) -> bool {
 
 #[cfg(test)]
 mod tests {
-    use super::{classify_pull, PullClass};
+    use super::{classify_pull, response_exceeds_frame, PullClass, MAX_FRAME_BYTES};
+    use serde_json::{json, Value};
+
+    fn page(text: &str, count: u64) -> Value {
+        let deltas: Vec<Value> = (1..=count)
+            .map(|revision| {
+                json!({
+                    "revision": revision,
+                    "checksum": "0123456789abcdef",
+                    "text": text,
+                })
+            })
+            .collect();
+        json!({
+            "resync_required": false,
+            "revision": count,
+            "alive": true,
+            "exit_code": null,
+            "deltas": deltas,
+        })
+    }
+
+    fn quote_screen() -> String {
+        let cols = usize::from(super::MAX_COLUMNS);
+        let rows = usize::from(super::MAX_ROWS);
+        let mut text = String::with_capacity((cols + 1) * rows);
+        for _ in 0..rows {
+            text.extend(std::iter::repeat_n('"', cols));
+            text.push('\n');
+        }
+        text
+    }
+
+    #[test]
+    fn eight_max_quote_grids_exceed_one_frame() {
+        let text = quote_screen();
+        assert!(matches!(
+            response_exceeds_frame("1", &page(&text, 8)),
+            Ok(true)
+        ));
+        assert!(matches!(
+            response_exceeds_frame("1", &page(&text, 1)),
+            Ok(false)
+        ));
+    }
+
+    #[test]
+    fn frame_check_includes_the_response_envelope() {
+        let mut low = 0usize;
+        let mut high = MAX_FRAME_BYTES as usize;
+        while low < high {
+            let mid = low + (high - low).div_ceil(2);
+            let len = serde_json::to_vec(&super::ok_response("1", page(&"a".repeat(mid), 1)))
+                .expect("encode")
+                .len();
+            if len <= MAX_FRAME_BYTES as usize {
+                low = mid;
+            } else {
+                high = mid - 1;
+            }
+        }
+        assert!(matches!(
+            response_exceeds_frame("1", &page(&"a".repeat(low), 1)),
+            Ok(false)
+        ));
+        assert!(matches!(
+            response_exceeds_frame("1", &page(&"a".repeat(low + 1), 1)),
+            Ok(true)
+        ));
+    }
 
     #[test]
     fn revision_gap_is_explicit() {

@@ -69,10 +69,9 @@ impl Drop for LeaseGuard {
 }
 
 pub fn serve(runtime_dir: &Path) -> io::Result<()> {
-    // SAFETY: umask is process-global and this runs before worker threads exist.
-    unsafe {
-        libc::umask(0o077);
-    }
+    // Tight umask covers creation of the runtime directory, lock, and socket.
+    // Drop restores the mask the process started with before any child is spawned.
+    let umask_guard = UmaskGuard::restrict();
     fs::create_dir_all(runtime_dir)?;
     let runtime_dir = runtime_dir.canonicalize()?;
     intent::set_mode(&runtime_dir, 0o700)?;
@@ -87,6 +86,7 @@ pub fn serve(runtime_dir: &Path) -> io::Result<()> {
     let listener = UnixListener::bind(&socket_path)?;
     intent::set_mode(&socket_path, 0o600)?;
     intent::require_mode(&socket_path, 0o600, "socket")?;
+    drop(umask_guard);
 
     let state = Arc::new(Mutex::new(load_state(&runtime_dir)?));
     loop {
@@ -465,13 +465,18 @@ fn pull(state: &mut DaemonState, request: &Request) -> Result<Value, OpError> {
                     })
                 })
                 .collect();
-            Ok(pull_page(live, deltas))
+            let page = pull_page(live, deltas);
+            // A partial delta list is not a valid splice. One grid fits; eight max
+            // grids may not. The snapshot path is the same response as a gap.
+            if protocol::response_exceeds_frame(&request.id, &page)
+                .map_err(|err| OpError::io("internal", err))?
+            {
+                resync_snapshot(live)
+            } else {
+                Ok(page)
+            }
         }
-        PullClass::Resync => {
-            let mut snapshot = live.snapshot().map_err(|err| OpError::io("pty_io", err))?;
-            snapshot["resync_required"] = json!(true);
-            Ok(snapshot)
-        }
+        PullClass::Resync => resync_snapshot(live),
     }
 }
 
@@ -627,6 +632,31 @@ fn pull_page(live: &crate::session::LiveSession, deltas: Vec<Value>) -> Value {
         "exit_code": live.exit_code(),
         "deltas": deltas,
     })
+}
+
+fn resync_snapshot(live: &mut LiveSession) -> Result<Value, OpError> {
+    let mut snapshot = live.snapshot().map_err(|err| OpError::io("pty_io", err))?;
+    snapshot["resync_required"] = json!(true);
+    Ok(snapshot)
+}
+
+struct UmaskGuard(libc::mode_t);
+
+impl UmaskGuard {
+    fn restrict() -> Self {
+        // SAFETY: umask is process-global. serve calls this before any worker thread exists.
+        Self(unsafe { libc::umask(0o077) })
+    }
+}
+
+impl Drop for UmaskGuard {
+    fn drop(&mut self) {
+        // SAFETY: restores the mask captured in restrict(). The explicit drop in serve
+        // runs before worker threads exist; early returns drop the guard the same way.
+        unsafe {
+            libc::umask(self.0);
+        }
+    }
 }
 
 fn already_running() -> io::Error {

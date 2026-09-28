@@ -12,8 +12,10 @@ Bun SQLite database and does not restore a browser terminal.
 ## What this slice does
 
 `keeplined serve --runtime <dir>` creates a user-private Unix socket. The
-runtime directory is mode `0700` and the socket is mode `0600`. A peer whose
-uid does not match the daemon is rejected. One runtime directory has one live
+runtime directory is mode `0700` and the socket is mode `0600`. The process
+umask is tightened only while those paths are created, then restored, so a
+launched child keeps the umask the daemon started with. A peer whose uid does
+not match the daemon is rejected. One runtime directory has one live
 daemon. A second `serve` that can reach the existing socket exits with
 `already_running` and does not unlink that socket or touch its children. A
 stale socket is replaced only after an exclusive lock shows that no peer is
@@ -58,9 +60,10 @@ grid revision.
 
 The daemon keeps eight grid views. A contiguous `pull` returns, for each
 revision after `after_revision`, the grid text and checksum from that
-revision. Every pull response includes `alive` and `exit_code`, including a
-client that is already at the current revision. A gap returns one snapshot
-with `resync_required` and no delta list to splice.
+revision when that response fits in one frame. Every pull response includes
+`alive` and `exit_code`, including a client that is already at the current
+revision. A gap, and a contiguous pull whose encoded frame would exceed
+1 MiB, returns one snapshot with `resync_required` and no delta list to splice.
 
 Frames are a 4-byte big-endian length plus JSON, at most 1 MiB. Major 0 is
 experimental. A hello with any other major returns `unsupported_protocol`.

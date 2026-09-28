@@ -21,16 +21,40 @@ impl Daemon {
     }
 
     fn start_with(script_body: &str, env: &[(&str, &str)]) -> Self {
+        Self::start_inner(script_body, env, None)
+    }
+
+    fn start_with_umask(script_body: &str, umask: &str) -> Self {
+        assert!(
+            !umask.is_empty() && umask.bytes().all(|byte| byte.is_ascii_digit()),
+            "umask must be octal digits"
+        );
+        Self::start_inner(script_body, &[], Some(umask))
+    }
+
+    fn start_inner(script_body: &str, env: &[(&str, &str)], umask: Option<&str>) -> Self {
         static NEXT_RUNTIME: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
         let id = NEXT_RUNTIME.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
         let runtime = PathBuf::from(format!("/tmp/kl{}-{id}", std::process::id()));
         fs::create_dir_all(&runtime).expect("runtime dir");
         let script = runtime.join("child.sh");
         fs::write(&script, script_body).expect("script");
-        let mut command = Command::new(env!("CARGO_BIN_EXE_keeplined"));
+        let bin = env!("CARGO_BIN_EXE_keeplined");
+        let mut command = if let Some(mask) = umask {
+            let mut command = Command::new("/bin/sh");
+            command
+                .arg("-c")
+                .arg(format!("umask {mask}; exec \"$0\" \"$@\""))
+                .arg(bin)
+                .args(["serve", "--runtime"])
+                .arg(&runtime);
+            command
+        } else {
+            let mut command = Command::new(bin);
+            command.args(["serve", "--runtime"]).arg(&runtime);
+            command
+        };
         command
-            .args(["serve", "--runtime"])
-            .arg(&runtime)
             .stdin(Stdio::null())
             .stdout(Stdio::null())
             .stderr(Stdio::piped());
@@ -1110,6 +1134,104 @@ fn eof_reaps_the_child_with_no_client_attached() {
 }
 
 #[test]
+fn launched_child_keeps_the_daemon_umask() {
+    let daemon = Daemon::start_with_umask(
+        "#!/bin/sh\numask > child-umask\n: > child-created\nmkdir child-dir\nprintf 'READY\\n'\nwhile true; do sleep 30; done\n",
+        "022",
+    );
+    let mut client = Client::connect(&daemon.runtime);
+    let cwd = daemon.runtime.canonicalize().expect("cwd");
+    let launch = client.call(json!({
+        "op": "launch",
+        "operation_id": "op-umask",
+        "argv": ["/bin/sh", daemon.script],
+        "cwd": cwd,
+        "cols": 80,
+        "rows": 24,
+    }));
+    assert!(launch["ok"].as_bool().unwrap_or(false), "{launch}");
+    let terminal_id = launch["result"]["terminal_id"].as_str().unwrap().to_owned();
+    let _snap = wait_text(&mut client, &terminal_id, "READY");
+    let printed = fs::read_to_string(cwd.join("child-umask")).expect("child umask");
+    let mask = u32::from_str_radix(printed.trim(), 8).expect(&printed);
+    assert_eq!(mask, 0o022, "{printed}");
+    assert_eq!(mode_bits(&cwd.join("child-created")), 0o644);
+    assert_eq!(mode_bits(&cwd.join("child-dir")), 0o755);
+    assert_eq!(mode_bits(&intent_path(&cwd, "op-umask")), 0o600);
+}
+
+#[test]
+fn oversized_pull_returns_a_resync_snapshot() {
+    let daemon = Daemon::start("#!/bin/sh\nsleep 30\n");
+    let runtime = daemon.runtime.canonicalize().expect("runtime");
+    let py = runtime.join("fill.py");
+    fs::write(&py, quote_fill_script()).expect("fill script");
+    let mut client = Client::connect(&daemon.runtime);
+    let launch = client.call(json!({
+        "op": "launch",
+        "operation_id": "op-frame",
+        "argv": ["/usr/bin/python3", py, runtime],
+        "cwd": runtime,
+        "cols": 400,
+        "rows": 200,
+    }));
+    assert!(launch["ok"].as_bool().unwrap_or(false), "{launch}");
+    let terminal_id = launch["result"]["terminal_id"].as_str().unwrap().to_owned();
+    let settled = wait_quote_screen(&mut client, &terminal_id, &runtime);
+    let mut revision = settled["revision"].as_u64().expect("revision");
+    for index in 0..keeplined::DELTA_LIMIT {
+        fs::write(runtime.join(format!("go-{index}")), "1").expect("go");
+        let advanced = wait_revision_above(&mut client, &terminal_id, revision);
+        revision = advanced["revision"].as_u64().expect("revision");
+        assert!(
+            wait_until(Duration::from_secs(5), || {
+                runtime.join(format!("done-{index}")).exists()
+            }),
+            "child did not record update {index}"
+        );
+    }
+    let snap = client.call(json!({"op": "attach", "terminal_id": terminal_id}));
+    assert!(snap["ok"].as_bool().unwrap_or(false), "{snap}");
+    let current = snap["result"]["revision"].as_u64().expect("revision");
+    let oldest = snap["result"]["oldest_retained_revision"]
+        .as_u64()
+        .expect("oldest");
+    assert_eq!(
+        current - oldest,
+        (keeplined::DELTA_LIMIT - 1) as u64,
+        "{snap}"
+    );
+    let pull = client.call(json!({
+        "op": "pull",
+        "terminal_id": terminal_id,
+        "after_revision": oldest - 1,
+    }));
+    assert!(pull["ok"].as_bool().unwrap_or(false), "{pull}");
+    assert_eq!(pull["result"]["resync_required"], true, "{pull}");
+    assert!(pull["result"].get("deltas").is_none(), "{pull}");
+    assert_eq!(pull["result"]["alive"], true, "{pull}");
+    assert_eq!(pull["result"]["revision"], current);
+    assert_eq!(pull["result"]["checksum"], snap["result"]["checksum"]);
+    assert!(
+        pull["result"]["text"].as_str().unwrap_or("").contains('"'),
+        "{pull}"
+    );
+    let one = client.call(json!({
+        "op": "pull",
+        "terminal_id": terminal_id,
+        "after_revision": current - 1,
+    }));
+    assert!(one["ok"].as_bool().unwrap_or(false), "{one}");
+    assert_eq!(one["result"]["resync_required"], false, "{one}");
+    let deltas = one["result"]["deltas"].as_array().expect("deltas");
+    assert_eq!(deltas.len(), 1, "{one}");
+    assert!(
+        deltas[0]["text"].as_str().unwrap_or("").len() > 70_000,
+        "one grid was too small to prove the frame limit"
+    );
+}
+
+#[test]
 fn default_keepline_entry_does_not_name_the_daemon() {
     let root = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../..");
     for relative in [
@@ -1199,6 +1321,92 @@ fn wait_until(timeout: Duration, mut ready: impl FnMut() -> bool) -> bool {
         thread::sleep(Duration::from_millis(20));
     }
     ready()
+}
+
+fn mode_bits(path: &Path) -> u32 {
+    fs::metadata(path)
+        .unwrap_or_else(|err| panic!("metadata {}: {err}", path.display()))
+        .permissions()
+        .mode()
+        & 0o777
+}
+
+fn wait_revision_above(client: &mut Client, terminal_id: &str, revision: u64) -> Value {
+    let start = Instant::now();
+    loop {
+        let response = client.call(json!({"op": "attach", "terminal_id": terminal_id}));
+        assert!(response["ok"].as_bool().unwrap_or(false), "{response}");
+        let current = response["result"]["revision"].as_u64().unwrap_or(0);
+        if current > revision {
+            return response["result"].clone();
+        }
+        if start.elapsed() > Duration::from_secs(5) {
+            panic!("revision stayed at {current}, wanted above {revision}");
+        }
+        thread::sleep(Duration::from_millis(20));
+    }
+}
+
+fn wait_quote_screen(client: &mut Client, terminal_id: &str, runtime: &Path) -> Value {
+    let start = Instant::now();
+    let mut last_revision = None;
+    let mut changed_at = Instant::now();
+    loop {
+        if runtime.join("filled").exists() {
+            let response = client.call(json!({"op": "attach", "terminal_id": terminal_id}));
+            assert!(response["ok"].as_bool().unwrap_or(false), "{response}");
+            let revision = response["result"]["revision"].as_u64().unwrap_or(0);
+            if Some(revision) != last_revision {
+                last_revision = Some(revision);
+                changed_at = Instant::now();
+            }
+            let text = response["result"]["text"].as_str().unwrap_or("");
+            let quotes = text.matches('"').count();
+            if quotes >= 400 * 180 && changed_at.elapsed() >= Duration::from_millis(250) {
+                return response["result"].clone();
+            }
+            if start.elapsed() > Duration::from_secs(8) {
+                panic!(
+                    "quote screen did not settle: quotes={quotes} revision={revision} bytes={}",
+                    text.len()
+                );
+            }
+        } else if start.elapsed() > Duration::from_secs(8) {
+            panic!("child did not fill the screen");
+        }
+        thread::sleep(Duration::from_millis(20));
+    }
+}
+
+fn quote_fill_script() -> &'static str {
+    r#"import os, sys, time
+runtime = sys.argv[1]
+cols = 400
+rows = 200
+row = b'"' * cols
+
+def write_all(payload):
+    view = memoryview(payload)
+    while view:
+        written = os.write(1, view)
+        if written == 0:
+            raise SystemExit("pty write returned no bytes")
+        view = view[written:]
+
+parts = [b"\x1b[H"]
+for number in range(1, rows + 1):
+    parts.append(b"\x1b[%d;1H" % number)
+    parts.append(row)
+write_all(b"".join(parts))
+open(os.path.join(runtime, "filled"), "w").close()
+for index in range(8):
+    flag = os.path.join(runtime, "go-%d" % index)
+    while not os.path.exists(flag):
+        time.sleep(0.02)
+    write_all(b"\x1b[1;1H" + str(index).encode())
+    open(os.path.join(runtime, "done-%d" % index), "w").close()
+time.sleep(30)
+"#
 }
 
 fn wait_mode(path: &Path, expected: u32) {
