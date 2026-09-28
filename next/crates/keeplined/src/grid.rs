@@ -236,27 +236,37 @@ impl Drop for PtyProcess {
     }
 }
 
-/// `SIG_IGN` survives `exec`. A launcher that ignores terminal signals would
-/// otherwise drop the interrupt and `SIGWINCH` this session promises to deliver.
+/// `SIG_IGN` and a blocked signal both survive `exec`. A launcher that ignores
+/// or blocks terminal signals would otherwise drop the interrupt and `SIGWINCH`.
 fn reset_terminal_signals() -> io::Result<()> {
-    for signal in [
-        libc::SIGINT,
-        libc::SIGQUIT,
-        libc::SIGTSTP,
-        libc::SIGTTIN,
-        libc::SIGTTOU,
-        libc::SIGWINCH,
-    ] {
-        let mut action: libc::sigaction = unsafe { std::mem::zeroed() };
-        action.sa_sigaction = libc::SIG_DFL;
-        // SAFETY: called in the forked child. Both calls are async-signal-safe.
-        let rc = unsafe {
+    // SAFETY: this runs in the single-threaded forked child. These calls are
+    // async-signal-safe. sigprocmask is the process mask exec preserves.
+    unsafe {
+        let mut unblock: libc::sigset_t = std::mem::zeroed();
+        if libc::sigemptyset(&mut unblock) < 0 {
+            return Err(io::Error::last_os_error());
+        }
+        for signal in [
+            libc::SIGINT,
+            libc::SIGQUIT,
+            libc::SIGTSTP,
+            libc::SIGTTIN,
+            libc::SIGTTOU,
+            libc::SIGWINCH,
+        ] {
+            let mut action: libc::sigaction = std::mem::zeroed();
+            action.sa_sigaction = libc::SIG_DFL;
             if libc::sigemptyset(&mut action.sa_mask) < 0 {
                 return Err(io::Error::last_os_error());
             }
-            libc::sigaction(signal, &action, std::ptr::null_mut())
-        };
-        if rc < 0 {
+            if libc::sigaction(signal, &action, std::ptr::null_mut()) < 0 {
+                return Err(io::Error::last_os_error());
+            }
+            if libc::sigaddset(&mut unblock, signal) < 0 {
+                return Err(io::Error::last_os_error());
+            }
+        }
+        if libc::sigprocmask(libc::SIG_UNBLOCK, &unblock, std::ptr::null_mut()) < 0 {
             return Err(io::Error::last_os_error());
         }
     }
@@ -309,7 +319,7 @@ pub(crate) fn spawn_pty(
         .stdout(Stdio::from(slave_fd.try_clone()?))
         .stderr(Stdio::from(slave_fd));
     // SAFETY: this runs in the forked child after stdin/stdout/stderr are the slave.
-    // setsid, ioctl, getpid, tcsetpgrp, sigemptyset, and sigaction are async-signal-safe.
+    // setsid, ioctl, getpid, tcsetpgrp, and the signal reset are async-signal-safe.
     unsafe {
         command.pre_exec(|| {
             if libc::setsid() < 0 {
