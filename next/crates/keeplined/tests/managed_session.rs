@@ -295,6 +295,10 @@ fn managed_session_keeps_one_pty_and_one_writer() {
         "data": "ping\n",
     }));
     assert!(accepted["ok"].as_bool().unwrap_or(false), "{accepted}");
+    assert_eq!(
+        accepted["result"]["accepted"].as_u64(),
+        Some(u64::try_from("ping\n".len()).expect("len"))
+    );
     let pong = wait_text(&mut owner, &terminal_id, "pong");
     assert!(!pong["text"].as_str().unwrap_or("").contains("OLDTOKEN"));
 
@@ -373,9 +377,6 @@ fn repeating_a_recorded_operation_does_not_spawn_again() {
     let (runtime, script) = daemon.detach();
 
     let socket = runtime.join(keeplined::SOCKET_FILE_NAME);
-    if socket.exists() {
-        fs::remove_file(&socket).expect("remove stale socket");
-    }
     let mut restarted = Command::new(env!("CARGO_BIN_EXE_keeplined"))
         .args(["serve", "--runtime"])
         .arg(&runtime)
@@ -516,6 +517,163 @@ fn default_keepline_entry_does_not_name_the_daemon() {
     }
 }
 
+#[test]
+fn second_serve_does_not_replace_a_live_socket() {
+    let daemon = Daemon::start(&script(1));
+    let cwd = daemon.runtime.canonicalize().expect("cwd");
+    let mut client = Client::connect(&daemon.runtime);
+    let launch = client.call(json!({
+        "op": "launch",
+        "operation_id": "op-live",
+        "argv": ["/bin/sh", daemon.script],
+        "cwd": cwd,
+        "cols": 80,
+        "rows": 24,
+    }));
+    assert!(launch["ok"].as_bool().unwrap_or(false), "{launch}");
+    let terminal_id = launch["result"]["terminal_id"]
+        .as_str()
+        .expect("terminal id")
+        .to_owned();
+    let pid = launch["result"]["pid"].as_u64().expect("pid") as u32;
+
+    let mut second = Command::new(env!("CARGO_BIN_EXE_keeplined"))
+        .args(["serve", "--runtime"])
+        .arg(&daemon.runtime)
+        .stdin(Stdio::null())
+        .stdout(Stdio::null())
+        .stderr(Stdio::piped())
+        .spawn()
+        .expect("second serve");
+    let started = Instant::now();
+    let status = loop {
+        match second.try_wait() {
+            Ok(Some(status)) => break status,
+            Ok(None) if started.elapsed() > Duration::from_secs(5) => {
+                let _ = second.kill();
+                let _ = second.wait();
+                let mut note = String::new();
+                if let Some(mut err) = second.stderr.take() {
+                    let _ = err.read_to_string(&mut note);
+                }
+                panic!("second serve kept running: {note}");
+            }
+            Ok(None) => thread::sleep(Duration::from_millis(20)),
+            Err(err) => panic!("wait for second serve: {err}"),
+        }
+    };
+    let mut note = String::new();
+    if let Some(mut err) = second.stderr.take() {
+        err.read_to_string(&mut note).expect("second stderr");
+    }
+    assert!(!status.success(), "second serve exited 0: {note}");
+    assert!(
+        note.contains("already accepts"),
+        "second serve stderr was {note}"
+    );
+
+    let mut again = Client::connect(&daemon.runtime);
+    let attach = again.call(json!({"op": "attach", "terminal_id": terminal_id}));
+    assert!(attach["ok"].as_bool().unwrap_or(false), "{attach}");
+    assert_eq!(attach["result"]["pid"], pid);
+    assert!(pid_alive(pid), "original child {pid} died");
+}
+
+#[test]
+fn replay_ignores_a_removed_cwd() {
+    let daemon = Daemon::start(&script(1));
+    let work = daemon.runtime.join("work");
+    fs::create_dir(&work).expect("work");
+    let cwd = work.canonicalize().expect("cwd");
+    let mut client = Client::connect(&daemon.runtime);
+    let launch = client.call(json!({
+        "op": "launch",
+        "operation_id": "op-cwd",
+        "argv": ["/bin/sh", daemon.script],
+        "cwd": cwd,
+        "cols": 80,
+        "rows": 24,
+    }));
+    assert!(launch["ok"].as_bool().unwrap_or(false), "{launch}");
+    let terminal_id = launch["result"]["terminal_id"]
+        .as_str()
+        .expect("terminal id")
+        .to_owned();
+    let pid = launch["result"]["pid"].as_u64().expect("pid");
+    fs::rename(&work, daemon.runtime.join("work-gone")).expect("rename work");
+
+    let replay = client.call(json!({
+        "op": "launch",
+        "operation_id": "op-cwd",
+        "argv": ["/bin/sh", daemon.script],
+        "cwd": cwd,
+        "cols": 80,
+        "rows": 24,
+    }));
+    assert!(replay["ok"].as_bool().unwrap_or(false), "{replay}");
+    assert_eq!(replay["result"]["spawned"], false);
+    assert_eq!(replay["result"]["terminal_id"], terminal_id);
+    assert_eq!(replay["result"]["pid"], pid);
+    assert_eq!(
+        pids_matching(&daemon.script.display().to_string()),
+        vec![pid as u32]
+    );
+
+    let conflict = client.call(json!({
+        "op": "launch",
+        "operation_id": "op-cwd",
+        "argv": ["/bin/sh", daemon.script],
+        "cwd": cwd,
+        "cols": 80,
+        "rows": 30,
+    }));
+    assert_eq!(conflict["error"]["code"], "operation_conflict");
+
+    let rejected = client.call(json!({
+        "op": "launch",
+        "operation_id": "op-cwd-new",
+        "argv": ["/bin/sh", daemon.script],
+        "cwd": cwd,
+        "cols": 80,
+        "rows": 24,
+    }));
+    assert_eq!(rejected["error"]["code"], "cwd_rejected");
+    assert_eq!(
+        pids_matching(&daemon.script.display().to_string()),
+        vec![pid as u32]
+    );
+}
+
+#[test]
+fn exited_child_is_reaped_without_another_request() {
+    let daemon = Daemon::start("#!/bin/sh\nprintf 'bye\\n'\nexit 0\n");
+    let cwd = daemon.runtime.canonicalize().expect("cwd");
+    let mut client = Client::connect(&daemon.runtime);
+    let launch = client.call(json!({
+        "op": "launch",
+        "operation_id": "op-exit",
+        "argv": ["/bin/sh", daemon.script],
+        "cwd": cwd,
+        "cols": 80,
+        "rows": 24,
+    }));
+    assert!(launch["ok"].as_bool().unwrap_or(false), "{launch}");
+    let terminal_id = launch["result"]["terminal_id"]
+        .as_str()
+        .expect("terminal id")
+        .to_owned();
+    let pid = launch["result"]["pid"].as_u64().expect("pid") as u32;
+    assert!(
+        wait_until(Duration::from_secs(2), || process_state(pid).is_none()),
+        "child {pid} was not reaped (state {:?})",
+        process_state(pid)
+    );
+    let attach = client.call(json!({"op": "attach", "terminal_id": terminal_id}));
+    assert!(attach["ok"].as_bool().unwrap_or(false), "{attach}");
+    assert_eq!(attach["result"]["alive"], false);
+    assert_eq!(attach["result"]["exit_code"], 0);
+}
+
 fn script(ticks: usize) -> String {
     format!(
         r#"#!/bin/sh
@@ -587,6 +745,19 @@ fn wait_mode(path: &Path, expected: u32) {
             .map(|metadata| metadata.permissions().mode() & 0o777)
             .unwrap_or(0)
     );
+}
+
+fn process_state(pid: u32) -> Option<String> {
+    let output = Command::new("/bin/ps")
+        .args(["-p", &pid.to_string(), "-o", "state="])
+        .output()
+        .expect("ps");
+    let state = String::from_utf8_lossy(&output.stdout).trim().to_owned();
+    if state.is_empty() {
+        None
+    } else {
+        Some(state)
+    }
 }
 
 fn pid_alive(pid: u32) -> bool {

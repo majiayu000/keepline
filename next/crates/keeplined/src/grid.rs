@@ -169,15 +169,23 @@ pub(crate) struct PtyProcess {
 }
 
 impl PtyProcess {
+    #[cfg(test)]
+    fn child_id(&self) -> Option<u32> {
+        self.child.as_ref().map(|child| child.id())
+    }
+
     pub(crate) fn into_parts(mut self) -> io::Result<(Child, File, u16, u16)> {
         let child = self
             .child
             .take()
             .ok_or_else(|| io::Error::other("pty child is already taken"))?;
-        let master = self
-            .master
-            .take()
-            .ok_or_else(|| io::Error::other("pty master is already taken"))?;
+        let master = match self.master.take() {
+            Some(master) => master,
+            None => {
+                self.child = Some(child);
+                return Err(io::Error::other("pty master is already taken"));
+            }
+        };
         Ok((child, master, self.cols, self.rows))
     }
 }
@@ -243,38 +251,53 @@ pub(crate) fn spawn_pty(
     let child = command
         .spawn()
         .map_err(|err| io::Error::new(err.kind(), format!("failed to spawn {}: {err}", program)))?;
-    let master = File::from(master_fd);
-    let (cols, rows) = read_winsize(&master)?;
-    Ok(PtyProcess {
+    // Own the child before the fallible winsize read so Drop can kill and wait it.
+    let mut process = PtyProcess {
         child: Some(child),
-        master: Some(master),
+        master: Some(File::from(master_fd)),
         cols,
         rows,
-    })
+    };
+    let (actual_cols, actual_rows) = {
+        let master = process
+            .master
+            .as_ref()
+            .ok_or_else(|| io::Error::other("pty master is missing"))?;
+        read_winsize(master)?
+    };
+    process.cols = actual_cols;
+    process.rows = actual_rows;
+    Ok(process)
 }
 
-pub(crate) fn write_pty(master: &mut File, data: &[u8]) -> io::Result<()> {
+/// Write as many bytes as the nonblocking master accepts without waiting.
+///
+/// `WouldBlock` is returned only when no new byte was delivered. A short write
+/// returns that prefix so the caller does not send it again.
+pub(crate) fn write_pty(master: &mut File, data: &[u8]) -> io::Result<usize> {
     let mut offset = 0;
     while offset < data.len() {
         match master.write(&data[offset..]) {
-            Ok(0) => {
+            Ok(0) if offset == 0 => {
                 return Err(io::Error::new(
                     io::ErrorKind::WriteZero,
                     "pty write returned no bytes",
                 ));
             }
+            Ok(0) => return Ok(offset),
             Ok(written) => offset += written,
             Err(err) if err.kind() == io::ErrorKind::Interrupted => continue,
-            Err(err) if err.kind() == io::ErrorKind::WouldBlock => {
+            Err(err) if err.kind() == io::ErrorKind::WouldBlock && offset == 0 => {
                 return Err(io::Error::new(
                     io::ErrorKind::WouldBlock,
                     "pty backpressure",
                 ));
             }
+            Err(_) if offset > 0 => return Ok(offset),
             Err(err) => return Err(err),
         }
     }
-    Ok(())
+    Ok(offset)
 }
 
 pub(crate) fn set_winsize(master: &File, cols: u16, rows: u16) -> io::Result<()> {
@@ -352,7 +375,12 @@ fn set_fd_flag(fd: i32, get: libc::c_int, set: libc::c_int, flag: libc::c_int) -
 
 #[cfg(test)]
 mod tests {
-    use super::Screen;
+    use std::fs::File;
+    use std::io::{Read, Write};
+    use std::os::fd::{AsRawFd, FromRawFd};
+    use std::process::Command;
+
+    use super::{set_nonblocking, spawn_pty, write_pty, Screen};
 
     #[test]
     fn parses_plain_text_and_one_sgr_sequence_once() {
@@ -383,5 +411,90 @@ mod tests {
         }
         assert!(plain_default);
         assert!(red_attributed);
+    }
+
+    #[test]
+    fn backpressure_delivers_nothing_and_partial_write_reports_the_prefix() {
+        let mut ends = [0; 2];
+        // SAFETY: pipe writes two new fds into a caller-owned array.
+        let rc = unsafe { libc::pipe(ends.as_mut_ptr()) };
+        assert_eq!(rc, 0, "pipe: {}", std::io::Error::last_os_error());
+        // SAFETY: both fds came from pipe and are not owned elsewhere.
+        let mut read_end = unsafe { File::from_raw_fd(ends[0]) };
+        let mut write_end = unsafe { File::from_raw_fd(ends[1]) };
+        set_nonblocking(write_end.as_raw_fd()).unwrap();
+
+        let chunk = [b'a'; 8192];
+        let mut filled = 0usize;
+        loop {
+            assert!(filled <= 1024 * 1024, "pipe did not fill");
+            match write_end.write(&chunk) {
+                Ok(0) => panic!("write returned no bytes while filling the pipe"),
+                Ok(n) => filled += n,
+                Err(err) if err.kind() == std::io::ErrorKind::Interrupted => continue,
+                Err(err) if err.kind() == std::io::ErrorKind::WouldBlock => break,
+                Err(err) => panic!("fill pipe: {err}"),
+            }
+        }
+        assert!(filled > 32, "filled {filled}");
+
+        let blocked = write_pty(&mut write_end, b"more").unwrap_err();
+        assert_eq!(blocked.kind(), std::io::ErrorKind::WouldBlock);
+
+        let mut prefix = [0u8; 32];
+        read_end.read_exact(&mut prefix).unwrap();
+        assert!(prefix.iter().all(|byte| *byte == b'a'));
+
+        let payload = vec![b'b'; 64 * 1024];
+        let accepted = write_pty(&mut write_end, &payload).unwrap();
+        assert!(accepted > 0 && accepted < payload.len(), "{accepted}");
+        let blocked_again = write_pty(&mut write_end, b"z").unwrap_err();
+        assert_eq!(blocked_again.kind(), std::io::ErrorKind::WouldBlock);
+
+        set_nonblocking(read_end.as_raw_fd()).unwrap();
+        let mut rest = Vec::new();
+        let mut buf = [0u8; 8192];
+        loop {
+            match read_end.read(&mut buf) {
+                Ok(0) => break,
+                Ok(n) => rest.extend_from_slice(&buf[..n]),
+                Err(err) if err.kind() == std::io::ErrorKind::Interrupted => continue,
+                Err(err) if err.kind() == std::io::ErrorKind::WouldBlock => break,
+                Err(err) => panic!("drain pipe: {err}"),
+            }
+        }
+        assert_eq!(rest.len(), filled - prefix.len() + accepted);
+        assert!(rest[..filled - prefix.len()]
+            .iter()
+            .all(|byte| *byte == b'a'));
+        assert_eq!(&rest[filled - prefix.len()..], &payload[..accepted]);
+    }
+
+    #[test]
+    fn drop_before_handoff_reaps_the_child() {
+        let pty = spawn_pty(
+            &["/bin/sleep".to_owned(), "30".to_owned()],
+            &std::env::temp_dir(),
+            80,
+            24,
+        )
+        .unwrap();
+        let pid = pty.child_id().unwrap();
+        drop(pty);
+        let state = process_state(pid);
+        assert!(state.is_none(), "pid {pid} still present: {state:?}");
+    }
+
+    fn process_state(pid: u32) -> Option<String> {
+        let output = Command::new("/bin/ps")
+            .args(["-p", &pid.to_string(), "-o", "state="])
+            .output()
+            .expect("ps");
+        let state = String::from_utf8_lossy(&output.stdout).trim().to_owned();
+        if state.is_empty() {
+            None
+        } else {
+            Some(state)
+        }
     }
 }

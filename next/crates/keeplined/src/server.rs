@@ -81,9 +81,7 @@ pub fn serve(runtime_dir: &Path) -> io::Result<()> {
     intent::set_mode(&intent_dir, 0o700)?;
 
     let socket_path = runtime_dir.join(SOCKET_FILE_NAME);
-    if socket_path.exists() {
-        fs::remove_file(&socket_path)?;
-    }
+    claim_idle_socket(&socket_path)?;
     let listener = UnixListener::bind(&socket_path)?;
     intent::set_mode(&socket_path, 0o600)?;
     intent::require_mode(&socket_path, 0o600, "socket")?;
@@ -105,6 +103,25 @@ pub fn serve(runtime_dir: &Path) -> io::Result<()> {
             Err(err) if err.kind() == ErrorKind::Interrupted => continue,
             Err(err) => return Err(err),
         }
+    }
+}
+
+/// Unlink the socket only when connect proves nothing is listening.
+fn claim_idle_socket(socket_path: &Path) -> io::Result<()> {
+    match UnixStream::connect(socket_path) {
+        Ok(_live) => Err(io::Error::new(
+            ErrorKind::AddrInUse,
+            "runtime socket already accepts connections",
+        )),
+        Err(err) if err.kind() == ErrorKind::NotFound => Ok(()),
+        Err(err) if err.kind() == ErrorKind::ConnectionRefused => {
+            match fs::remove_file(socket_path) {
+                Ok(()) => Ok(()),
+                Err(remove) if remove.kind() == ErrorKind::NotFound => Ok(()),
+                Err(remove) => Err(remove),
+            }
+        }
+        Err(err) => Err(err),
     }
 }
 
@@ -230,7 +247,6 @@ fn launch(
     intent::validate_argv(&argv).map_err(|err| OpError::new("argv_rejected", err))?;
     let cwd = required_str(request.cwd.as_deref(), "cwd")?;
     let cwd_path = intent::intent_cwd(cwd);
-    intent::validate_cwd(&cwd_path).map_err(|err| OpError::new("cwd_rejected", err))?;
     let cols = request.cols.unwrap_or(80);
     let rows = request.rows.unwrap_or(24);
     intent::validate_geometry(cols, rows).map_err(|err| OpError::new("geometry_rejected", err))?;
@@ -240,6 +256,7 @@ fn launch(
     if let Some(terminal_id) = state.operations.get(operation_id).cloned() {
         return replay(state, &terminal_id, &payload);
     }
+    intent::validate_cwd(&cwd_path).map_err(|err| OpError::new("cwd_rejected", err))?;
 
     let terminal_id = format!(
         "t{}",
@@ -280,15 +297,16 @@ fn fail_spawn(
 ) -> Result<Value, OpError> {
     intent.state = IntentState::Failed;
     intent.error = Some(err.to_string());
-    intent::write_intent(&state.runtime_dir, &intent).map_err(|write_err| {
-        OpError::new(
-            "persist_failed",
-            format!("{err}; failed to record it: {write_err}"),
-        )
-    })?;
+    let persisted = intent::write_intent(&state.runtime_dir, &intent);
     state
         .terminals
         .insert(intent.terminal_id.clone(), Slot::Stored(intent));
+    if let Err(write_err) = persisted {
+        return Err(OpError::new(
+            "persist_failed",
+            format!("{err}; failed to record it: {write_err}"),
+        ));
+    }
     Err(OpError::new("spawn_failed", err.to_string()))
 }
 
@@ -298,16 +316,17 @@ fn finish_launch(
     mut intent: IntentRecord,
     pty: PtyProcess,
 ) -> Result<Value, OpError> {
-    let (mut child, master, cols, rows) = pty
-        .into_parts()
-        .map_err(|err| OpError::io("spawn_failed", err))?;
+    let (mut child, master, cols, rows) = match pty.into_parts() {
+        Ok(parts) => parts,
+        Err(err) => return fail_spawn(state, intent, err),
+    };
     intent.state = IntentState::Running;
     intent.pid = Some(child.id());
     intent.cols = cols;
     intent.rows = rows;
     intent.error = None;
     if let Err(err) = intent::write_intent(&state.runtime_dir, &intent) {
-        return Err(stop_child(&mut child, OpError::io("persist_failed", err)));
+        return abort_spawn(state, intent, &mut child, err);
     }
     state
         .terminals
@@ -315,7 +334,7 @@ fn finish_launch(
 
     let reader = match master.try_clone() {
         Ok(reader) => reader,
-        Err(err) => return Err(stop_child(&mut child, OpError::io("spawn_failed", err))),
+        Err(err) => return abort_spawn(state, intent, &mut child, err),
     };
     let pid = child.id();
     let terminal_id = intent.terminal_id.clone();
@@ -338,19 +357,19 @@ fn finish_launch(
     Ok(response)
 }
 
-fn stop_child(child: &mut Child, err: OpError) -> OpError {
-    let kill_err = child.kill().err();
-    let wait_err = child.wait().err();
-    if kill_err.is_none() && wait_err.is_none() {
-        return err;
-    }
-    OpError::new(
-        err.code,
-        format!(
-            "{}; failed to stop child (kill={kill_err:?}, wait={wait_err:?})",
-            err.message
-        ),
-    )
+fn abort_spawn(
+    state: &mut DaemonState,
+    intent: IntentRecord,
+    child: &mut Child,
+    err: io::Error,
+) -> Result<Value, OpError> {
+    let err = match (child.kill(), child.wait()) {
+        (Ok(()), Ok(_)) => err,
+        (kill, wait) => io::Error::other(format!(
+            "{err}; failed to stop child (kill={kill:?}, wait={wait:?})"
+        )),
+    };
+    fail_spawn(state, intent, err)
 }
 
 fn replay(state: &DaemonState, terminal_id: &str, payload: &str) -> Result<Value, OpError> {
@@ -499,7 +518,7 @@ fn input(state: &mut DaemonState, request: &Request) -> Result<Value, OpError> {
     }
     let live = live_mut(state, request)?;
     ensure_lease(live, request)?;
-    grid::write_pty(&mut live.master, data.as_bytes()).map_err(|err| {
+    let accepted = grid::write_pty(&mut live.master, data.as_bytes()).map_err(|err| {
         let code = if err.kind() == ErrorKind::WouldBlock {
             "pty_backpressure"
         } else {
@@ -507,7 +526,7 @@ fn input(state: &mut DaemonState, request: &Request) -> Result<Value, OpError> {
         };
         OpError::new(code, err.to_string())
     })?;
-    Ok(json!({ "accepted": true }))
+    Ok(json!({ "accepted": accepted }))
 }
 
 fn resize(state: &mut DaemonState, request: &Request) -> Result<Value, OpError> {
@@ -613,5 +632,97 @@ fn peer_uid(stream: &UnixStream) -> io::Result<u32> {
         Err(io::Error::last_os_error())
     } else {
         Ok(uid)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use std::fs;
+    use std::io;
+    use std::process::Command;
+
+    use serde_json::Value;
+
+    use super::{abort_spawn, replay, DaemonState};
+    use crate::intent::{self, IntentRecord, IntentState};
+    use crate::protocol::INTENT_DIR_NAME;
+    use crate::session::Slot;
+
+    #[test]
+    fn aborted_launch_reaps_the_child_and_replay_is_spawn_failed() {
+        let runtime = std::env::temp_dir().join(format!(
+            "keeplined-abort-{}-{}",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .expect("clock")
+                .as_nanos()
+        ));
+        let _ = fs::remove_dir_all(&runtime);
+        fs::create_dir_all(&runtime).expect("runtime");
+        let cwd = runtime.to_str().expect("utf-8 runtime path").to_owned();
+        let argv = vec!["/bin/sleep".to_owned(), "30".to_owned()];
+        let payload = intent::canonical_payload(&argv, &cwd, 80, 24).expect("payload");
+        let intent = IntentRecord {
+            operation_id: "op-abort".to_owned(),
+            terminal_id: "t-abort".to_owned(),
+            argv,
+            cwd,
+            cols: 80,
+            rows: 24,
+            payload: payload.clone(),
+            state: IntentState::Running,
+            pid: None,
+            instance_generation: 1,
+            error: None,
+        };
+        intent::write_intent(&runtime, &intent).expect("intent");
+        let mut state = DaemonState {
+            runtime_dir: runtime.clone(),
+            terminals: std::collections::HashMap::new(),
+            operations: std::collections::HashMap::new(),
+        };
+        state
+            .operations
+            .insert(intent.operation_id.clone(), intent.terminal_id.clone());
+        state
+            .terminals
+            .insert(intent.terminal_id.clone(), Slot::Stored(intent.clone()));
+        let mut child = Command::new("/bin/sleep").arg("30").spawn().expect("sleep");
+        let pid = child.id();
+        let err = abort_spawn(
+            &mut state,
+            intent,
+            &mut child,
+            io::Error::other("reader clone failed"),
+        )
+        .expect_err("abort");
+        assert_eq!(err.code, "spawn_failed");
+        let state_text = process_state(pid);
+        assert!(
+            state_text.is_none(),
+            "pid {pid} still present: {state_text:?}"
+        );
+        let again = replay(&state, "t-abort", &payload).expect_err("replay");
+        assert_eq!(again.code, "spawn_failed");
+        let record: Value = serde_json::from_str(
+            &fs::read_to_string(runtime.join(INTENT_DIR_NAME).join("op-abort.json")).expect("read"),
+        )
+        .expect("json");
+        assert_eq!(record["state"], "failed");
+        let _ = fs::remove_dir_all(&runtime);
+    }
+
+    fn process_state(pid: u32) -> Option<String> {
+        let output = Command::new("/bin/ps")
+            .args(["-p", &pid.to_string(), "-o", "state="])
+            .output()
+            .expect("ps");
+        let state = String::from_utf8_lossy(&output.stdout).trim().to_owned();
+        if state.is_empty() {
+            None
+        } else {
+            Some(state)
+        }
     }
 }

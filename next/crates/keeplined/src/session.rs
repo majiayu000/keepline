@@ -5,6 +5,8 @@ use std::os::fd::AsRawFd;
 use std::path::PathBuf;
 use std::process::Child;
 use std::sync::{Arc, Mutex, MutexGuard};
+use std::thread;
+use std::time::Duration;
 
 use serde_json::{json, Value};
 
@@ -52,6 +54,9 @@ pub(crate) struct DaemonState {
 
 impl Drop for LiveSession {
     fn drop(&mut self) {
+        if self.exited {
+            return;
+        }
         if let Err(err) = self.child.kill() {
             eprintln!(
                 "keeplined: failed to stop {}: {err}",
@@ -90,6 +95,11 @@ impl LiveSession {
             exit_code: None,
             wait_error: None,
         }
+    }
+
+    pub(crate) fn poll_running(&mut self) -> bool {
+        self.refresh_exit();
+        !self.exited
     }
 
     pub(crate) fn refresh_exit(&mut self) {
@@ -189,18 +199,29 @@ fn reader_loop(mut reader: File, state: Arc<Mutex<DaemonState>>, terminal_id: St
             }
             Ok(true) => loop {
                 match reader.read(&mut buf) {
-                    Ok(0) => return,
+                    Ok(0) => {
+                        if !keep_polling_child(&state, &terminal_id) {
+                            return;
+                        }
+                    }
                     Ok(n) => ingest(&state, &terminal_id, &buf[..n]),
                     Err(err) if err.kind() == io::ErrorKind::WouldBlock => break,
                     Err(err) if err.kind() == io::ErrorKind::Interrupted => continue,
+                    Err(err) if err.raw_os_error() == Some(libc::EIO) => {
+                        if !keep_polling_child(&state, &terminal_id) {
+                            return;
+                        }
+                    }
                     Err(err) => {
                         eprintln!("keeplined: pty read failed for {terminal_id}: {err}");
+                        reap_if_exited(&state, &terminal_id);
                         return;
                     }
                 }
             },
             Err(err) => {
                 eprintln!("keeplined: pty poll failed for {terminal_id}: {err}");
+                reap_if_exited(&state, &terminal_id);
                 return;
             }
         }
@@ -214,6 +235,33 @@ fn ingest(state: &Mutex<DaemonState>, terminal_id: &str, bytes: &[u8]) {
     if let Some(Slot::Live(live)) = guard.terminals.get_mut(terminal_id) {
         live.ingest(bytes);
         live.refresh_exit();
+    }
+}
+
+/// PTY EOF leaves this reader as the only waiter. A child that is still
+/// alive must stay on this thread; `try_wait` runs only while the lock is held.
+fn keep_polling_child(state: &Mutex<DaemonState>, terminal_id: &str) -> bool {
+    if child_is_running(state, terminal_id) {
+        thread::sleep(Duration::from_millis(200));
+        true
+    } else {
+        false
+    }
+}
+
+fn reap_if_exited(state: &Mutex<DaemonState>, terminal_id: &str) {
+    if child_is_running(state, terminal_id) {
+        eprintln!("keeplined: reader stopped while {terminal_id} is still running");
+    }
+}
+
+fn child_is_running(state: &Mutex<DaemonState>, terminal_id: &str) -> bool {
+    let Some(mut guard) = lock_state(state) else {
+        return false;
+    };
+    match guard.terminals.get_mut(terminal_id) {
+        Some(Slot::Live(live)) => live.poll_running(),
+        _ => false,
     }
 }
 
