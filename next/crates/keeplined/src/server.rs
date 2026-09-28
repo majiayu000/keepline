@@ -68,6 +68,9 @@ impl Drop for LeaseGuard {
 }
 
 pub fn serve(runtime_dir: &Path) -> io::Result<()> {
+    // A launcher can exec this process with SIGCHLD ignored. That disposition
+    // survives exec and makes the kernel discard child status before wait.
+    reset_inherited_sigchld()?;
     // Tight umask covers creation of the runtime directory, lock, and socket.
     // Drop restores the mask the process started with before any child is spawned.
     let umask_guard = UmaskGuard::restrict();
@@ -501,6 +504,12 @@ fn input(state: &mut DaemonState, request: &Request) -> Result<Value, OpError> {
     }
     let live = live_mut(state, request)?;
     ensure_lease(live, request)?;
+    if !live.alive() {
+        return Err(OpError::new(
+            "terminal_exited",
+            "input is rejected after the child exits",
+        ));
+    }
     live.accept_input(data.as_bytes()).map_err(|err| {
         let code = if err.kind() == ErrorKind::WouldBlock {
             "pty_backpressure"
@@ -530,11 +539,12 @@ fn resize(state: &mut DaemonState, request: &Request) -> Result<Value, OpError> 
     }
     let previous_cols = live.cols;
     let previous_rows = live.rows;
-    grid::set_winsize(&live.master, cols, rows).map_err(|err| OpError::io("pty_io", err))?;
-    let (actual_cols, actual_rows) = match grid::read_resize_winsize(&live.master) {
+    live.set_pty_winsize(cols, rows)
+        .map_err(|err| OpError::io("pty_io", err))?;
+    let (actual_cols, actual_rows) = match live.read_pty_winsize() {
         Ok(size) => size,
         Err(err) => {
-            if let Err(rollback) = grid::set_winsize(&live.master, previous_cols, previous_rows) {
+            if let Err(rollback) = live.set_pty_winsize(previous_cols, previous_rows) {
                 return Err(OpError::new(
                     "pty_io",
                     format!("winsize read failed ({err}) and rollback failed ({rollback})"),
@@ -569,7 +579,7 @@ fn restore_winsize(
     code: &'static str,
     message: String,
 ) -> Result<Value, OpError> {
-    if let Err(rollback) = grid::set_winsize(&live.master, cols, rows) {
+    if let Err(rollback) = live.set_pty_winsize(cols, rows) {
         return Err(OpError::new(
             "pty_io",
             format!("{message} and rollback failed ({rollback})"),
@@ -684,6 +694,22 @@ impl Drop for UmaskGuard {
             libc::umask(self.0);
         }
     }
+}
+
+fn reset_inherited_sigchld() -> io::Result<()> {
+    // SAFETY: serve calls this before any worker thread exists. sigaction is
+    // async-signal-safe and only replaces the SIGCHLD disposition.
+    unsafe {
+        let mut action: libc::sigaction = std::mem::zeroed();
+        action.sa_sigaction = libc::SIG_DFL;
+        if libc::sigemptyset(&mut action.sa_mask) < 0 {
+            return Err(io::Error::last_os_error());
+        }
+        if libc::sigaction(libc::SIGCHLD, &action, std::ptr::null_mut()) < 0 {
+            return Err(io::Error::last_os_error());
+        }
+    }
+    Ok(())
 }
 
 fn already_running() -> io::Error {

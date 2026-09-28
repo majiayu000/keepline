@@ -45,6 +45,10 @@ impl Daemon {
         Self::start_inner(script_body, &[], None, true)
     }
 
+    fn start_with_ignored_sigchld(script_body: &str) -> Self {
+        Self::start_inner(script_body, &[], Some("trap '' CHLD; "), false)
+    }
+
     fn start_inner(
         script_body: &str,
         env: &[(&str, &str)],
@@ -717,6 +721,49 @@ fn blocked_sigint_still_reaches_the_child() {
     assert_child_receives_interrupt_and_sigwinch(Daemon::start_with_blocked_sigint(
         TTY_CHILD_SCRIPT,
     ));
+}
+
+#[test]
+fn ignored_sigchld_still_reports_the_child_status() {
+    let daemon = Daemon::start_with_ignored_sigchld(
+        r#"#!/bin/sh
+printf 'READY\n'
+exit 4
+"#,
+    );
+    let mut client = Client::connect(&daemon.runtime);
+    let cwd = daemon.runtime.canonicalize().expect("cwd");
+    let launch = client.call(json!({
+        "op": "launch",
+        "operation_id": "op-sigchld",
+        "argv": ["/bin/sh", daemon.script],
+        "cwd": cwd,
+        "cols": 80,
+        "rows": 24,
+    }));
+    assert!(launch["ok"].as_bool().unwrap_or(false), "{launch}");
+    let terminal_id = launch["result"]["terminal_id"].as_str().unwrap().to_owned();
+    let pid = launch["result"]["pid"].as_u64().expect("pid");
+    let exited = wait_until_exited(&mut client, &terminal_id);
+    assert_eq!(exited["result"]["exit_code"], 4, "{exited}");
+    assert_eq!(exited["result"]["pid"], pid, "{exited}");
+    assert!(
+        exited["result"]["text"]
+            .as_str()
+            .unwrap_or("")
+            .contains("READY"),
+        "{exited}"
+    );
+    let revision = exited["result"]["revision"].as_u64().expect("revision");
+    let pull = client.call(json!({
+        "op": "pull",
+        "terminal_id": terminal_id,
+        "after_revision": revision,
+    }));
+    assert!(pull["ok"].as_bool().unwrap_or(false), "{pull}");
+    assert_eq!(pull["result"]["alive"], false, "{pull}");
+    assert_eq!(pull["result"]["exit_code"], 4, "{pull}");
+    assert_eq!(pull["result"]["revision"], revision, "{pull}");
 }
 
 fn assert_child_receives_interrupt_and_sigwinch(daemon: Daemon) {
@@ -1571,6 +1618,133 @@ done
 }
 
 #[test]
+fn published_exit_closes_the_pty_master() {
+    let daemon = Daemon::start(
+        r#"#!/bin/sh
+if [ "$1" = hold ]; then
+  exec /bin/sleep 30
+fi
+printf 'DONE\n'
+exit 4
+"#,
+    );
+    let mut client = Client::connect(&daemon.runtime);
+    let cwd = daemon.runtime.canonicalize().expect("cwd");
+    let hold = client.call(json!({
+        "op": "launch",
+        "operation_id": "op-hold",
+        "argv": ["/bin/sh", daemon.script, "hold"],
+        "cwd": cwd,
+        "cols": 80,
+        "rows": 24,
+    }));
+    assert!(hold["ok"].as_bool().unwrap_or(false), "{hold}");
+    let hold_id = hold["result"]["terminal_id"].as_str().unwrap().to_owned();
+    let hold_pid = hold["result"]["pid"].as_u64().expect("pid") as u32;
+    assert!(pid_alive(hold_pid), "hold child was not alive");
+    let daemon_pid = daemon.child.id();
+    let live_masters = pty_master_fds(daemon_pid);
+    assert!(
+        live_masters >= 1,
+        "live session did not open a pty master ({live_masters})"
+    );
+
+    let mut finished = Vec::new();
+    for index in 0..8 {
+        let launch = client.call(json!({
+            "op": "launch",
+            "operation_id": format!("op-exit-{index}"),
+            "argv": ["/bin/sh", daemon.script],
+            "cwd": cwd,
+            "cols": 80,
+            "rows": 24,
+        }));
+        assert!(launch["ok"].as_bool().unwrap_or(false), "{launch}");
+        let terminal_id = launch["result"]["terminal_id"].as_str().unwrap().to_owned();
+        let pid = launch["result"]["pid"].as_u64().expect("pid");
+        let exited = wait_until_exited(&mut client, &terminal_id);
+        assert_eq!(exited["result"]["exit_code"], 4, "{exited}");
+        assert_eq!(exited["result"]["pid"], pid, "{exited}");
+        assert_eq!(exited["result"]["cols"], 80, "{exited}");
+        assert_eq!(exited["result"]["rows"], 24, "{exited}");
+        assert!(
+            exited["result"]["text"]
+                .as_str()
+                .unwrap_or("")
+                .contains("DONE"),
+            "{exited}"
+        );
+        finished.push((
+            terminal_id,
+            exited["result"]["revision"].clone(),
+            exited["result"]["text"].clone(),
+        ));
+    }
+
+    assert!(
+        wait_until(Duration::from_secs(5), || {
+            pty_master_fds(daemon_pid) == live_masters
+        }),
+        "exited sessions left pty masters open: {} (live session held {live_masters})",
+        pty_master_fds(daemon_pid)
+    );
+
+    let (terminal_id, revision, text) = finished.last().expect("finished session");
+    let pull = client.call(json!({
+        "op": "pull",
+        "terminal_id": terminal_id,
+        "after_revision": revision,
+    }));
+    assert!(pull["ok"].as_bool().unwrap_or(false), "{pull}");
+    assert_eq!(pull["result"]["alive"], false, "{pull}");
+    assert_eq!(pull["result"]["exit_code"], 4, "{pull}");
+    assert_eq!(pull["result"]["revision"], *revision, "{pull}");
+    assert_eq!(
+        pull["result"]["deltas"].as_array().unwrap().len(),
+        0,
+        "{pull}"
+    );
+
+    let lease = client.call(json!({"op": "acquire", "terminal_id": terminal_id}));
+    assert!(lease["ok"].as_bool().unwrap_or(false), "{lease}");
+    let input = client.call(json!({
+        "op": "input",
+        "terminal_id": terminal_id,
+        "generation": lease["result"]["generation"],
+        "token": lease["result"]["token"],
+        "data": "later\n",
+    }));
+    assert_eq!(input["ok"], false, "{input}");
+    assert_eq!(input["error"]["code"], "terminal_exited", "{input}");
+    let resized = client.call(json!({
+        "op": "resize",
+        "terminal_id": terminal_id,
+        "generation": lease["result"]["generation"],
+        "token": lease["result"]["token"],
+        "cols": 100,
+        "rows": 30,
+    }));
+    assert_eq!(resized["ok"], false, "{resized}");
+    assert_eq!(resized["error"]["code"], "terminal_exited", "{resized}");
+    let after = client.call(json!({"op": "attach", "terminal_id": terminal_id}));
+    assert!(after["ok"].as_bool().unwrap_or(false), "{after}");
+    assert_eq!(after["result"]["revision"], *revision, "{after}");
+    assert_eq!(after["result"]["text"], *text, "{after}");
+    assert_eq!(after["result"]["cols"], 80, "{after}");
+    assert_eq!(after["result"]["rows"], 24, "{after}");
+    assert_eq!(after["result"]["alive"], false, "{after}");
+
+    let hold_after = client.call(json!({"op": "attach", "terminal_id": hold_id}));
+    assert!(hold_after["ok"].as_bool().unwrap_or(false), "{hold_after}");
+    assert_eq!(hold_after["result"]["alive"], true, "{hold_after}");
+    assert!(
+        pid_alive(hold_pid),
+        "closing exited masters stopped the live child"
+    );
+    assert_eq!(pty_master_fds(daemon_pid), live_masters);
+}
+
+#[test]
 fn partial_write_resumes_without_duplicating_a_prefix() {
     let daemon = Daemon::start("#!/bin/sh\nsleep 30\n");
     let py = daemon.runtime.join("capture.py");
@@ -2003,6 +2177,40 @@ fn intent_path(runtime: &Path, operation_id: &str) -> PathBuf {
     runtime
         .join(keeplined::INTENT_DIR_NAME)
         .join(format!("{stem}.json"))
+}
+
+fn wait_until_exited(client: &mut Client, terminal_id: &str) -> Value {
+    let started = Instant::now();
+    loop {
+        let snap = client.call(json!({"op": "attach", "terminal_id": terminal_id}));
+        assert!(snap["ok"].as_bool().unwrap_or(false), "{snap}");
+        if snap["result"]["alive"] == false {
+            return snap;
+        }
+        if started.elapsed() > Duration::from_secs(5) {
+            panic!("child stayed alive: {snap}");
+        }
+        thread::sleep(Duration::from_millis(20));
+    }
+}
+
+fn pty_master_fds(pid: u32) -> usize {
+    let output = Command::new("/usr/sbin/lsof")
+        .args(["-n", "-P", "-p", &pid.to_string()])
+        .output()
+        .unwrap_or_else(|err| panic!("lsof: {err}"));
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    if !output.status.success() && stdout.trim().is_empty() {
+        panic!(
+            "lsof failed: {} {}",
+            output.status,
+            String::from_utf8_lossy(&output.stderr)
+        );
+    }
+    stdout
+        .lines()
+        .filter(|line| line.contains(" /dev/ptmx"))
+        .count()
 }
 
 fn wait_text(client: &mut Client, terminal_id: &str, needle: &str) -> Value {

@@ -38,6 +38,9 @@ process group are the PTY, so an interrupt written to the master and
 `SIGWINCH` from a winsize change reach that child. The child starts with the
 default dispositions for those terminal signals, and with those signals
 unblocked, including when the daemon inherited them as ignored or blocked.
+Before it accepts clients, the daemon sets `SIGCHLD` to the default
+disposition, including when a launcher exec'd it as ignored, so the kernel
+does not discard managed child status.
 Repeating an `operation_id`
 compares the canonical payload before any cwd existence check. The same
 payload returns the original terminal even if that directory was removed. A
@@ -68,19 +71,22 @@ token; the previous token is rejected. A resize without the current token
 does not change the PTY winsize. A resize readback inside 2..=400 columns by
 2..=200 rows is kept, including one that differs from the request. A readback
 outside that range restores the previous winsize and does not resize the
-screen. A later child `stty` does not resize the parser. A resize after the
-child exit has been published does not change the grid. An input request is either accepted in full,
-with any unwritten tail queued in daemon order, or rejected with
-`pty_backpressure` before any byte of that request is written. A later flush
-writes the queued tail once, so a client retry does not duplicate an accepted
-prefix. Disconnecting every client revokes the lease and leaves the child
-running. A later attach uses the same pid. When the PTY reaches EOF or the
+screen. A later child `stty` does not resize the parser. When the PTY reaches EOF or the
 reader hits a read or poll error, the child is waited and the exit is
 published without holding the daemon-wide mutex across that wait. That
 publication waits until the reader has drained the PTY, so an earlier child
-exit does not hide output still buffered in the master. Exit with
-no new bytes is visible from `alive` and `exit_code`; it does not invent a
-grid revision.
+exit does not hide output still buffered in the master. Publishing the exit
+closes the session's PTY master. The session stays stored with its screen,
+geometry, pid, `alive`, and `exit_code`, so attach and pull still return the
+final snapshot. Exit with no new bytes is visible from `alive` and `exit_code`;
+it does not invent a grid revision. A resize after that publication does not
+change the grid. Input and resize then fail with `terminal_exited` and do not
+write or ioctl the closed master. Before publication, an input request is
+either accepted in full, with any unwritten tail queued in daemon order, or
+rejected with `pty_backpressure` before any byte of that request is written.
+A later flush writes the queued tail once, so a client retry does not
+duplicate an accepted prefix. Disconnecting every client revokes the lease
+and leaves the child running. A later attach uses the same pid.
 
 The daemon keeps eight grid views. A contiguous `pull` returns, for each
 revision after `after_revision`, the grid text, checksum, and geometry from

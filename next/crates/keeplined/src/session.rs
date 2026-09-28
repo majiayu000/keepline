@@ -30,7 +30,7 @@ pub(crate) struct Lease {
 pub(crate) struct LiveSession {
     pub intent: IntentRecord,
     pub child: Option<Child>,
-    pub master: File,
+    master: Option<File>,
     pub screen: Screen,
     pub cols: u16,
     pub rows: u16,
@@ -86,7 +86,7 @@ impl LiveSession {
         Self {
             intent,
             child: Some(child),
-            master,
+            master: Some(master),
             screen: Screen::new(cols, rows),
             cols,
             rows,
@@ -121,15 +121,38 @@ impl LiveSession {
         self.exited = true;
         self.exit_code = status.code();
         self.child = None;
+        self.close_master();
     }
 
     fn note_wait_error(&mut self, err: io::Error) {
+        self.exited = true;
+        self.close_master();
         if self.wait_error.is_none() {
             eprintln!(
                 "keeplined: could not check child {}: {err}",
                 self.intent.terminal_id
             );
             self.wait_error = Some(err.to_string());
+        }
+    }
+
+    /// Drops the PTY master after exit is published. Screen, geometry, pid,
+    /// alive, and exit code stay so attach and pull can return the snapshot.
+    fn close_master(&mut self) {
+        self.master = None;
+    }
+
+    pub(crate) fn set_pty_winsize(&self, cols: u16, rows: u16) -> io::Result<()> {
+        match self.master.as_ref() {
+            Some(master) => grid::set_winsize(master, cols, rows),
+            None => Err(master_closed()),
+        }
+    }
+
+    pub(crate) fn read_pty_winsize(&self) -> io::Result<(u16, u16)> {
+        match self.master.as_ref() {
+            Some(master) => grid::read_resize_winsize(master),
+            None => Err(master_closed()),
         }
     }
 
@@ -164,11 +187,17 @@ impl LiveSession {
     }
 
     pub(crate) fn accept_input(&mut self, data: &[u8]) -> io::Result<()> {
+        if self.master.is_none() {
+            return Err(master_closed());
+        }
         self.flush_pending()?;
         if !self.pending.is_empty() {
             return Err(backpressure());
         }
-        let written = grid::write_available(&mut self.master, data)?;
+        let written = match self.master.as_mut() {
+            Some(master) => grid::write_available(master, data)?,
+            None => return Err(master_closed()),
+        };
         if written == data.len() {
             return Ok(());
         }
@@ -180,12 +209,22 @@ impl LiveSession {
     }
 
     pub(crate) fn flush_pending(&mut self) -> io::Result<()> {
-        while !self.pending.is_empty() {
-            let written = grid::write_available(&mut self.master, &self.pending)?;
+        let Self {
+            master, pending, ..
+        } = self;
+        let Some(master) = master.as_mut() else {
+            return if pending.is_empty() {
+                Ok(())
+            } else {
+                Err(master_closed())
+            };
+        };
+        while !pending.is_empty() {
+            let written = grid::write_available(master, pending)?;
             if written == 0 {
                 return Ok(());
             }
-            self.pending.drain(..written);
+            pending.drain(..written);
         }
         Ok(())
     }
@@ -234,6 +273,10 @@ impl LiveSession {
 
 fn backpressure() -> io::Error {
     io::Error::new(io::ErrorKind::WouldBlock, "pty backpressure")
+}
+
+fn master_closed() -> io::Error {
+    io::Error::new(io::ErrorKind::BrokenPipe, "pty master is closed")
 }
 
 pub(crate) fn spawn_reader(reader: File, state: Arc<Mutex<DaemonState>>, terminal_id: String) {
@@ -430,7 +473,6 @@ fn reap_child(state: &Mutex<DaemonState>, terminal_id: &str) {
             Ok(status) => live.note_exit(status),
             Err(err) => {
                 eprintln!("keeplined: failed to reap {terminal_id}: {err}");
-                live.exited = true;
                 live.note_wait_error(err);
             }
         }
