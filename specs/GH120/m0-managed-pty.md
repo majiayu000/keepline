@@ -48,8 +48,10 @@ are not executed as client actions and are not answered separately by each
 client. Clients attach read-only and receive the same snapshot revision and
 grid checksum. The checksum covers cell text, including zero-width combining
 characters, and SGR color. The visible grid for the fixture includes plain
-text plus one red SGR sequence. Queued writes to the master stay bounded: once
-they pass the input-tail budget, the reader stops taking further PTY output
+text plus one red SGR sequence. Snapshot and pull text keep that cell text,
+including trailing non-ASCII spacing, and omit only U+0020 padding. Queued
+writes to the master stay bounded: once they pass the input-tail budget, the
+reader stops taking further PTY output
 until those bytes flush.
 
 Input and resize require an explicit fencing lease. `acquire` fails when a

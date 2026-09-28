@@ -153,8 +153,9 @@ impl Screen {
     }
 }
 
+// Empty padding cells are U+0020. Other trailing spaces are cell content.
 fn push_line(text: &mut String, line: &str) {
-    text.push_str(line.trim_end());
+    text.push_str(line.trim_end_matches(' '));
     text.push('\n');
 }
 
@@ -542,6 +543,37 @@ mod tests {
         assert_ne!(combined_view.text, plain_view.text);
         assert_ne!(combined_view.checksum, plain_view.checksum);
         assert_ne!(combined_view.text_checksum, plain_view.text_checksum);
+    }
+
+    #[test]
+    fn trailing_unicode_spacing_stays_in_grid_text() {
+        let mut spaced = Screen::new(8, 2);
+        spaced.advance("a\u{00A0}\n".as_bytes());
+        let spaced_view = spaced.view();
+        assert_eq!(spaced_view.text, "a\u{00A0}\n\n");
+
+        let mut last_cell = Screen::new(4, 2);
+        last_cell.advance("abc\u{00A0}".as_bytes());
+        assert_eq!(last_cell.view().text, "abc\u{00A0}\n\n");
+
+        let mut em = Screen::new(8, 2);
+        em.advance("\u{2003}\n".as_bytes());
+        assert_eq!(em.view().text, "\u{2003}\n\n");
+
+        let mut ideographic = Screen::new(8, 2);
+        ideographic.advance("\u{3000}\n".as_bytes());
+        assert!(
+            ideographic.view().text.starts_with('\u{3000}'),
+            "grid text was {:?}",
+            ideographic.view().text
+        );
+
+        let mut plain = Screen::new(8, 2);
+        plain.advance(b"a\n");
+        let plain_view = plain.view();
+        assert_eq!(plain_view.text, "a\n\n");
+        assert_ne!(spaced_view.checksum, plain_view.checksum);
+        assert_ne!(spaced_view.text_checksum, plain_view.text_checksum);
     }
 
     #[test]
