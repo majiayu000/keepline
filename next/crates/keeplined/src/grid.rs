@@ -172,8 +172,10 @@ fn color_code(color: Color) -> u64 {
     match color {
         Color::Named(named) => 0x1_0000 | u64::from(named as u16),
         Color::Indexed(index) => 0x2_0000 | u64::from(index),
+        // The tag is above the 24-bit value. A tag inside those bits
+        // overwrites the low red channel and collapses distinct colors.
         Color::Spec(rgb) => {
-            0x3_0000 | (u64::from(rgb.r) << 16) | (u64::from(rgb.g) << 8) | u64::from(rgb.b)
+            (3u64 << 24) | (u64::from(rgb.r) << 16) | (u64::from(rgb.g) << 8) | u64::from(rgb.b)
         }
     }
 }
@@ -582,6 +584,43 @@ mod tests {
         }
         assert!(plain_default);
         assert!(red_attributed);
+    }
+
+    #[test]
+    fn true_color_spec_tag_does_not_collapse_low_red_bits() {
+        use alacritty_terminal::vte::ansi::{Color, Rgb};
+
+        let code = |r: u8| super::color_code(Color::Spec(Rgb { r, g: 0, b: 0 }));
+        let black = code(0);
+        let red1 = code(1);
+        let red2 = code(2);
+        let red3 = code(3);
+        let red4 = code(4);
+        let red7 = code(7);
+        assert_ne!(black, red1);
+        assert_ne!(black, red2);
+        assert_ne!(black, red3);
+        assert_ne!(red1, red2);
+        assert_ne!(red1, red3);
+        assert_ne!(red2, red3);
+        assert_ne!(red4, red7);
+        assert_eq!(black, 3u64 << 24);
+        assert_eq!(red1, (3u64 << 24) | (1u64 << 16));
+        assert_eq!(red3, (3u64 << 24) | (3u64 << 16));
+        assert_eq!(red4, (3u64 << 24) | (4u64 << 16));
+        assert_eq!(red7, (3u64 << 24) | (7u64 << 16));
+
+        let view = |r: u8| {
+            let mut screen = Screen::new(4, 1);
+            screen.advance(format!("\x1b[38;2;{r};0;0mX").as_bytes());
+            screen.view()
+        };
+        let plain = view(0);
+        let tinted = view(1);
+        assert_eq!(plain.text, tinted.text);
+        assert_eq!(plain.text_checksum, tinted.text_checksum);
+        assert_ne!(plain.checksum, tinted.checksum);
+        assert_ne!(view(4).checksum, view(7).checksum);
     }
 
     #[test]
