@@ -183,12 +183,10 @@ fn managed_session_keeps_one_pty_and_one_writer() {
         vec![pid]
     );
 
-    let intent_path = daemon
-        .runtime
-        .join(keeplined::INTENT_DIR_NAME)
-        .join("op-main.json");
+    let intent_path = intent_path(&daemon.runtime, "op-main");
     let intent: Value = serde_json::from_str(&fs::read_to_string(&intent_path).expect("intent"))
         .expect("intent json");
+    assert_eq!(intent["operation_id"], "op-main");
     assert_eq!(intent["state"], "running");
     assert_eq!(intent["pid"], pid);
     assert_eq!(intent["argv"][0], "/bin/sh");
@@ -471,13 +469,7 @@ fn failed_spawn_is_recorded_and_not_retried() {
     assert_eq!(launch["ok"], false, "{launch}");
     assert_eq!(launch["error"]["code"], "spawn_failed");
     let intent: Value = serde_json::from_str(
-        &fs::read_to_string(
-            daemon
-                .runtime
-                .join(keeplined::INTENT_DIR_NAME)
-                .join("op-missing.json"),
-        )
-        .unwrap(),
+        &fs::read_to_string(intent_path(&daemon.runtime, "op-missing")).unwrap(),
     )
     .unwrap();
     assert_eq!(intent["state"], "failed");
@@ -1049,16 +1041,9 @@ fn failed_post_spawn_setup_is_marked_failed() {
     }));
     assert_eq!(launch["ok"], false, "{launch}");
     assert_eq!(launch["error"]["code"], "spawn_failed");
-    let intent: Value = serde_json::from_str(
-        &fs::read_to_string(
-            daemon
-                .runtime
-                .join(keeplined::INTENT_DIR_NAME)
-                .join("op-post.json"),
-        )
-        .unwrap(),
-    )
-    .unwrap();
+    let intent: Value =
+        serde_json::from_str(&fs::read_to_string(intent_path(&daemon.runtime, "op-post")).unwrap())
+            .unwrap();
     assert_eq!(intent["state"], "failed", "{intent}");
     assert!(
         pids_matching(&daemon.script.display().to_string()).is_empty(),
@@ -1177,6 +1162,16 @@ fn wait_snapshot(client: &mut Client, terminal_id: &str) -> Value {
         }
         thread::sleep(Duration::from_millis(20));
     }
+}
+
+fn intent_path(runtime: &Path, operation_id: &str) -> PathBuf {
+    let stem: String = operation_id
+        .bytes()
+        .map(|byte| format!("{byte:02x}"))
+        .collect();
+    runtime
+        .join(keeplined::INTENT_DIR_NAME)
+        .join(format!("{stem}.json"))
 }
 
 fn wait_text(client: &mut Client, terminal_id: &str, needle: &str) -> Value {

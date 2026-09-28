@@ -50,7 +50,7 @@ pub(crate) fn load_intents(runtime_dir: &Path) -> io::Result<Vec<IntentRecord>> 
             .file_stem()
             .and_then(|stem| stem.to_str())
             .unwrap_or_default();
-        if stem != intent.operation_id {
+        if stem != intent_file_stem(&intent.operation_id) {
             return Err(io::Error::new(
                 io::ErrorKind::InvalidData,
                 format!("intent filename does not match {}", intent.operation_id),
@@ -65,7 +65,8 @@ pub(crate) fn write_intent(runtime_dir: &Path, intent: &IntentRecord) -> io::Res
     let dir = runtime_dir.join(INTENT_DIR_NAME);
     fs::create_dir_all(&dir)?;
     set_mode(&dir, 0o700)?;
-    let path = dir.join(format!("{}.json", intent.operation_id));
+    // Lowercase hex keeps `build` and `BUILD` as two files on a case-insensitive volume.
+    let path = dir.join(format!("{}.json", intent_file_stem(&intent.operation_id)));
     let bytes = serde_json::to_vec_pretty(intent).map_err(|err| {
         io::Error::new(io::ErrorKind::InvalidData, format!("encode intent: {err}"))
     })?;
@@ -170,6 +171,14 @@ pub(crate) fn validate_geometry(cols: u16, rows: u16) -> Result<(), String> {
     Ok(())
 }
 
+pub(crate) fn intent_file_stem(operation_id: &str) -> String {
+    hex_encode(operation_id.as_bytes())
+}
+
+fn hex_encode(bytes: &[u8]) -> String {
+    bytes.iter().map(|byte| format!("{byte:02x}")).collect()
+}
+
 pub(crate) fn valid_operation_id(id: &str) -> bool {
     let bytes = id.as_bytes();
     (1..=80).contains(&bytes.len())
@@ -198,9 +207,71 @@ pub(crate) fn require_mode(path: &Path, expected: u32, label: &str) -> io::Resul
 pub(crate) fn random_hex(nbytes: usize) -> io::Result<String> {
     let mut bytes = vec![0u8; nbytes];
     File::open("/dev/urandom")?.read_exact(&mut bytes)?;
-    Ok(bytes.iter().map(|byte| format!("{byte:02x}")).collect())
+    Ok(hex_encode(&bytes))
 }
 
 pub(crate) fn intent_cwd(cwd: &str) -> PathBuf {
     PathBuf::from(cwd)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::os::unix::fs::MetadataExt;
+
+    fn sample(operation_id: &str) -> IntentRecord {
+        let argv = vec!["/bin/sh".to_owned()];
+        let cwd = "/tmp".to_owned();
+        let payload = canonical_payload(&argv, &cwd, 80, 24).expect("payload");
+        IntentRecord {
+            operation_id: operation_id.to_owned(),
+            terminal_id: format!("term-{operation_id}"),
+            argv,
+            cwd,
+            cols: 80,
+            rows: 24,
+            payload,
+            state: IntentState::Intent,
+            pid: None,
+            instance_generation: 1,
+            error: None,
+        }
+    }
+
+    #[test]
+    fn case_variant_operation_ids_keep_distinct_intent_files() {
+        let runtime = std::env::temp_dir().join(format!(
+            "keeplined-intent-{}-{}",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .expect("clock")
+                .as_nanos()
+        ));
+        let _ = fs::remove_dir_all(&runtime);
+        write_intent(&runtime, &sample("build")).expect("write build");
+        write_intent(&runtime, &sample("BUILD")).expect("write BUILD");
+
+        let dir = runtime.join(INTENT_DIR_NAME);
+        let lower = dir.join(format!("{}.json", intent_file_stem("build")));
+        let upper = dir.join(format!("{}.json", intent_file_stem("BUILD")));
+        assert_ne!(lower, upper);
+        let lower_meta = fs::metadata(&lower).expect("build intent");
+        let upper_meta = fs::metadata(&upper).expect("BUILD intent");
+        assert_ne!(
+            (lower_meta.dev(), lower_meta.ino()),
+            (upper_meta.dev(), upper_meta.ino())
+        );
+
+        let mut loaded = load_intents(&runtime).expect("load");
+        loaded.sort_by(|left, right| left.operation_id.cmp(&right.operation_id));
+        let ids: Vec<_> = loaded
+            .iter()
+            .map(|intent| intent.operation_id.as_str())
+            .collect();
+        assert_eq!(ids, ["BUILD", "build"]);
+        assert_eq!(loaded[0].terminal_id, "term-BUILD");
+        assert_eq!(loaded[1].terminal_id, "term-build");
+        let _ = fs::remove_dir_all(&runtime);
+    }
 }
