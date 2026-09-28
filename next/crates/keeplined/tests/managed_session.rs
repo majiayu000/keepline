@@ -1,6 +1,6 @@
 use std::fs;
 use std::io::{Read, Write};
-use std::os::unix::fs::PermissionsExt;
+use std::os::unix::fs::{MetadataExt, PermissionsExt};
 use std::path::{Path, PathBuf};
 use std::process::{Child, Command, Stdio};
 use std::thread;
@@ -17,20 +17,27 @@ struct Daemon {
 
 impl Daemon {
     fn start(script_body: &str) -> Self {
+        Self::start_with(script_body, &[])
+    }
+
+    fn start_with(script_body: &str, env: &[(&str, &str)]) -> Self {
         static NEXT_RUNTIME: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
         let id = NEXT_RUNTIME.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
         let runtime = PathBuf::from(format!("/tmp/kl{}-{id}", std::process::id()));
         fs::create_dir_all(&runtime).expect("runtime dir");
         let script = runtime.join("child.sh");
         fs::write(&script, script_body).expect("script");
-        let mut child = Command::new(env!("CARGO_BIN_EXE_keeplined"))
+        let mut command = Command::new(env!("CARGO_BIN_EXE_keeplined"));
+        command
             .args(["serve", "--runtime"])
             .arg(&runtime)
             .stdin(Stdio::null())
             .stdout(Stdio::null())
-            .stderr(Stdio::piped())
-            .spawn()
-            .expect("spawn keeplined");
+            .stderr(Stdio::piped());
+        for (key, value) in env {
+            command.env(key, value);
+        }
+        let mut child = command.spawn().expect("spawn keeplined");
         let stderr = std::sync::Arc::new(std::sync::Mutex::new(String::new()));
         let pipe = child.stderr.take().expect("stderr");
         let captured = std::sync::Arc::clone(&stderr);
@@ -217,6 +224,13 @@ fn managed_session_keeps_one_pty_and_one_writer() {
     let deltas = follow["result"]["deltas"].as_array().expect("deltas");
     assert_eq!(deltas.len(), 1);
     assert_eq!(deltas[0]["revision"], revision);
+    assert_eq!(deltas[0]["checksum"], left["checksum"]);
+    assert!(
+        deltas[0]["text"].as_str().unwrap_or("").contains("READY"),
+        "{follow}"
+    );
+    assert_eq!(follow["result"]["alive"], true);
+    assert!(follow["result"]["exit_code"].is_null(), "{follow}");
 
     let replay = reader.call(json!({
         "op": "launch",
@@ -503,6 +517,614 @@ fn unsupported_protocol_major_is_rejected() {
 }
 
 #[test]
+fn second_serve_does_not_replace_a_live_socket() {
+    let daemon = Daemon::start(&script(1));
+    let mut client = Client::connect(&daemon.runtime);
+    let cwd = daemon.runtime.canonicalize().expect("cwd");
+    let launch = client.call(json!({
+        "op": "launch",
+        "operation_id": "op-lock",
+        "argv": ["/bin/sh", daemon.script],
+        "cwd": cwd,
+        "cols": 80,
+        "rows": 24,
+    }));
+    assert!(launch["ok"].as_bool().unwrap_or(false), "{launch}");
+    let pid = launch["result"]["pid"].as_u64().expect("pid") as u32;
+    let terminal_id = launch["result"]["terminal_id"]
+        .as_str()
+        .expect("terminal")
+        .to_owned();
+    let socket = daemon.runtime.join(keeplined::SOCKET_FILE_NAME);
+    let inode = fs::metadata(&socket).expect("socket").ino();
+
+    let mut second = Command::new(env!("CARGO_BIN_EXE_keeplined"))
+        .args(["serve", "--runtime"])
+        .arg(&daemon.runtime)
+        .stdin(Stdio::null())
+        .stdout(Stdio::null())
+        .stderr(Stdio::piped())
+        .spawn()
+        .expect("second serve");
+    let mut stderr_pipe = second.stderr.take().expect("second stderr");
+    let started = Instant::now();
+    let status = loop {
+        match second.try_wait() {
+            Ok(Some(status)) => break status,
+            Ok(None) if started.elapsed() > Duration::from_secs(5) => {
+                let _ = second.kill();
+                let _ = second.wait();
+                panic!("second serve stayed up");
+            }
+            Ok(None) => thread::sleep(Duration::from_millis(20)),
+            Err(err) => panic!("wait second serve: {err}"),
+        }
+    };
+    let mut stderr = String::new();
+    stderr_pipe
+        .read_to_string(&mut stderr)
+        .expect("read stderr");
+    assert!(!status.success(), "{stderr}");
+    assert!(
+        stderr.contains("already_running"),
+        "second serve stderr was {stderr}"
+    );
+    assert_eq!(fs::metadata(&socket).expect("socket").ino(), inode);
+    assert!(pid_alive(pid), "second serve disturbed the child");
+    let attached = client.call(json!({"op": "attach", "terminal_id": terminal_id}));
+    assert!(attached["ok"].as_bool().unwrap_or(false), "{attached}");
+    assert_eq!(attached["result"]["pid"], pid);
+}
+
+#[test]
+fn stale_socket_is_replaced_when_no_peer_accepts() {
+    let daemon = Daemon::start("#!/bin/sh\nexit 0\n");
+    let (runtime, _script) = daemon.detach();
+    let socket = runtime.join(keeplined::SOCKET_FILE_NAME);
+    assert!(socket.exists(), "stopped daemon left no socket");
+    let mut restarted = Command::new(env!("CARGO_BIN_EXE_keeplined"))
+        .args(["serve", "--runtime"])
+        .arg(&runtime)
+        .stdin(Stdio::null())
+        .stdout(Stdio::null())
+        .stderr(Stdio::piped())
+        .spawn()
+        .expect("replace stale socket");
+    let mut stderr_pipe = restarted.stderr.take().expect("stderr");
+    let log = std::sync::Arc::new(std::sync::Mutex::new(String::new()));
+    let captured = std::sync::Arc::clone(&log);
+    thread::spawn(move || {
+        let mut text = String::new();
+        let _ = stderr_pipe.read_to_string(&mut text);
+        *captured.lock().expect("log") = text;
+    });
+    let started = Instant::now();
+    while std::os::unix::net::UnixStream::connect(&socket).is_err() {
+        if started.elapsed() > Duration::from_secs(5) {
+            let _ = restarted.kill();
+            let _ = restarted.wait();
+            panic!(
+                "stale socket was not replaced: {}",
+                log.lock().expect("log")
+            );
+        }
+        thread::sleep(Duration::from_millis(20));
+    }
+    drop(Client::connect(&runtime));
+    if let Err(err) = restarted.kill() {
+        eprintln!("failed to stop replacement daemon: {err}");
+    }
+    if let Err(err) = restarted.wait() {
+        eprintln!("failed to reap replacement daemon: {err}");
+    }
+    let _ = fs::remove_dir_all(&runtime);
+}
+
+#[test]
+fn child_session_receives_interrupt_and_sigwinch() {
+    let daemon = Daemon::start(
+        r#"#!/bin/sh
+printf 'SID %s\n' "$(/usr/bin/python3 -c 'import os; print(os.getsid(0))')"
+printf 'PGID %s\n' "$(/usr/bin/python3 -c 'import os; print(os.getpgrp())')"
+trap 'printf WINCH\n' WINCH
+trap 'printf INT\n' INT
+printf 'READY\n'
+i=0
+while [ "$i" -lt 40 ]; do
+  sleep 0.2
+  i=$((i + 1))
+done
+"#,
+    );
+    let mut client = Client::connect(&daemon.runtime);
+    let cwd = daemon.runtime.canonicalize().expect("cwd");
+    let launch = client.call(json!({
+        "op": "launch",
+        "operation_id": "op-tty",
+        "argv": ["/bin/sh", daemon.script],
+        "cwd": cwd,
+        "cols": 80,
+        "rows": 24,
+    }));
+    assert!(launch["ok"].as_bool().unwrap_or(false), "{launch}");
+    let pid = launch["result"]["pid"].as_u64().expect("pid") as u32;
+    let terminal_id = launch["result"]["terminal_id"].as_str().unwrap().to_owned();
+    let snap = wait_text(&mut client, &terminal_id, "READY");
+    let text = snap["text"].as_str().unwrap_or("");
+    assert!(
+        text.contains(&format!("SID {pid}")) && text.contains(&format!("PGID {pid}")),
+        "{text}"
+    );
+    let (pgid, tpgid, tty, flags) = foreground_tty(pid);
+    assert_eq!(pgid, pid, "child is not its own process group");
+    assert_eq!(tpgid, pid, "child is not the foreground group");
+    assert_ne!(tty, "??", "child has no controlling terminal");
+    assert_ne!(flags & 0x2, 0, "P_CONTROLT missing from flags {flags:x}");
+
+    let lease = client.call(json!({"op": "acquire", "terminal_id": terminal_id}));
+    assert!(lease["ok"].as_bool().unwrap_or(false), "{lease}");
+    let generation = lease["result"]["generation"].as_u64().unwrap();
+    let token = lease["result"]["token"].as_str().unwrap().to_owned();
+    let resized = client.call(json!({
+        "op": "resize",
+        "terminal_id": terminal_id,
+        "generation": generation,
+        "token": token,
+        "cols": 90,
+        "rows": 20,
+    }));
+    assert!(resized["ok"].as_bool().unwrap_or(false), "{resized}");
+    let winch = wait_text(&mut client, &terminal_id, "WINCH");
+    assert!(winch["text"].as_str().unwrap_or("").contains("WINCH"));
+    let interrupted = client.call(json!({
+        "op": "input",
+        "terminal_id": terminal_id,
+        "generation": generation,
+        "token": token,
+        "data": "\u{0003}",
+    }));
+    assert!(
+        interrupted["ok"].as_bool().unwrap_or(false),
+        "{interrupted}"
+    );
+    let int_text = wait_text(&mut client, &terminal_id, "INT");
+    assert!(int_text["text"].as_str().unwrap_or("").contains("INT"));
+}
+
+#[test]
+fn contiguous_pull_returns_the_grid_text() {
+    let daemon = Daemon::start(
+        "#!/bin/sh\nprintf 'alpha\\n'\nsleep 0.1\nprintf 'beta\\n'\nsleep 0.1\nprintf 'READY\\n'\nsleep 30\n",
+    );
+    let mut client = Client::connect(&daemon.runtime);
+    let cwd = daemon.runtime.canonicalize().expect("cwd");
+    let launch = client.call(json!({
+        "op": "launch",
+        "operation_id": "op-pull",
+        "argv": ["/bin/sh", daemon.script],
+        "cwd": cwd,
+        "cols": 80,
+        "rows": 24,
+    }));
+    assert!(launch["ok"].as_bool().unwrap_or(false), "{launch}");
+    let terminal_id = launch["result"]["terminal_id"].as_str().unwrap().to_owned();
+    let snap = wait_text(&mut client, &terminal_id, "READY");
+    let revision = snap["revision"].as_u64().expect("revision");
+    assert!(revision >= 1, "{snap}");
+    let follow = client.call(json!({
+        "op": "pull",
+        "terminal_id": terminal_id,
+        "after_revision": revision - 1,
+    }));
+    assert!(follow["ok"].as_bool().unwrap_or(false), "{follow}");
+    assert_eq!(follow["result"]["resync_required"], false);
+    assert_eq!(follow["result"]["alive"], true);
+    assert!(follow["result"]["exit_code"].is_null(), "{follow}");
+    let deltas = follow["result"]["deltas"].as_array().expect("deltas");
+    assert_eq!(deltas.len(), 1, "{follow}");
+    assert_eq!(deltas[0]["text"], snap["text"]);
+    assert_eq!(deltas[0]["checksum"], snap["checksum"]);
+}
+
+#[test]
+fn one_read_with_several_newlines_is_one_revision() {
+    let daemon = Daemon::start(
+        r#"#!/bin/sh
+stty -echo
+printf 'READY\n'
+while IFS= read -r line; do
+  case "$line" in
+    burst)
+      printf 'L1\nL2\nL3\n'
+      ;;
+  esac
+done
+"#,
+    );
+    let mut client = Client::connect(&daemon.runtime);
+    let cwd = daemon.runtime.canonicalize().expect("cwd");
+    let launch = client.call(json!({
+        "op": "launch",
+        "operation_id": "op-burst",
+        "argv": ["/bin/sh", daemon.script],
+        "cwd": cwd,
+        "cols": 80,
+        "rows": 24,
+    }));
+    assert!(launch["ok"].as_bool().unwrap_or(false), "{launch}");
+    let terminal_id = launch["result"]["terminal_id"].as_str().unwrap().to_owned();
+    let before = wait_text(&mut client, &terminal_id, "READY");
+    let revision = before["revision"].as_u64().expect("revision");
+    let lease = client.call(json!({"op": "acquire", "terminal_id": terminal_id}));
+    assert!(lease["ok"].as_bool().unwrap_or(false), "{lease}");
+    let sent = client.call(json!({
+        "op": "input",
+        "terminal_id": terminal_id,
+        "generation": lease["result"]["generation"],
+        "token": lease["result"]["token"],
+        "data": "burst\n",
+    }));
+    assert!(sent["ok"].as_bool().unwrap_or(false), "{sent}");
+    let after = wait_text(&mut client, &terminal_id, "L3");
+    assert!(
+        after["text"].as_str().unwrap_or("").contains("L1"),
+        "{after}"
+    );
+    assert!(
+        after["text"].as_str().unwrap_or("").contains("L2"),
+        "{after}"
+    );
+    assert_eq!(after["revision"].as_u64(), Some(revision + 1), "{after}");
+}
+
+#[test]
+fn exit_is_visible_without_a_new_revision() {
+    let daemon = Daemon::start(
+        r#"#!/bin/sh
+stty -echo
+printf 'READY\n'
+while IFS= read -r line; do
+  case "$line" in
+    quit) exit 4 ;;
+  esac
+done
+"#,
+    );
+    let mut client = Client::connect(&daemon.runtime);
+    let cwd = daemon.runtime.canonicalize().expect("cwd");
+    let launch = client.call(json!({
+        "op": "launch",
+        "operation_id": "op-exit",
+        "argv": ["/bin/sh", daemon.script],
+        "cwd": cwd,
+        "cols": 80,
+        "rows": 24,
+    }));
+    assert!(launch["ok"].as_bool().unwrap_or(false), "{launch}");
+    let terminal_id = launch["result"]["terminal_id"].as_str().unwrap().to_owned();
+    let snap = wait_text(&mut client, &terminal_id, "READY");
+    let revision = snap["revision"].as_u64().expect("revision");
+    let current = client.call(json!({
+        "op": "pull",
+        "terminal_id": terminal_id,
+        "after_revision": revision,
+    }));
+    assert!(current["ok"].as_bool().unwrap_or(false), "{current}");
+    assert_eq!(current["result"]["alive"], true);
+    assert!(current["result"]["exit_code"].is_null(), "{current}");
+    assert_eq!(current["result"]["deltas"].as_array().unwrap().len(), 0);
+    let lease = client.call(json!({"op": "acquire", "terminal_id": terminal_id}));
+    assert!(lease["ok"].as_bool().unwrap_or(false), "{lease}");
+    let quit = client.call(json!({
+        "op": "input",
+        "terminal_id": terminal_id,
+        "generation": lease["result"]["generation"],
+        "token": lease["result"]["token"],
+        "data": "quit\n",
+    }));
+    assert!(quit["ok"].as_bool().unwrap_or(false), "{quit}");
+    let started = Instant::now();
+    let exited = loop {
+        let pull = client.call(json!({
+            "op": "pull",
+            "terminal_id": terminal_id,
+            "after_revision": revision,
+        }));
+        assert!(pull["ok"].as_bool().unwrap_or(false), "{pull}");
+        if pull["result"]["alive"] == false {
+            break pull;
+        }
+        if started.elapsed() > Duration::from_secs(5) {
+            panic!("child stayed alive at revision {revision}: {pull}");
+        }
+        thread::sleep(Duration::from_millis(20));
+    };
+    assert_eq!(exited["result"]["revision"], revision);
+    assert_eq!(exited["result"]["exit_code"], 4);
+    assert_eq!(exited["result"]["resync_required"], false);
+    assert_eq!(exited["result"]["deltas"].as_array().unwrap().len(), 0);
+}
+
+#[test]
+fn partial_write_resumes_without_duplicating_a_prefix() {
+    let daemon = Daemon::start("#!/bin/sh\nsleep 30\n");
+    let py = daemon.runtime.join("capture.py");
+    fs::write(&py, include_capture_script()).expect("capture script");
+    let mut client = Client::connect(&daemon.runtime);
+    let cwd = daemon.runtime.canonicalize().expect("cwd");
+    let runtime = cwd.clone();
+    let launch = client.call(json!({
+        "op": "launch",
+        "operation_id": "op-partial",
+        "argv": ["/usr/bin/python3", py, runtime],
+        "cwd": cwd,
+        "cols": 80,
+        "rows": 24,
+    }));
+    assert!(launch["ok"].as_bool().unwrap_or(false), "{launch}");
+    let terminal_id = launch["result"]["terminal_id"].as_str().unwrap().to_owned();
+    let _ = wait_text(&mut client, &terminal_id, "READY");
+    let lease = client.call(json!({"op": "acquire", "terminal_id": terminal_id}));
+    assert!(lease["ok"].as_bool().unwrap_or(false), "{lease}");
+    let generation = lease["result"]["generation"].as_u64().unwrap();
+    let token = lease["result"]["token"].as_str().unwrap().to_owned();
+
+    let mut accepted = Vec::<u8>::new();
+    let mut rejected = None;
+    for index in 0..400 {
+        let chunk = format!("ROW{index:04}{:.<64}\n", "X");
+        let response = client.call(json!({
+            "op": "input",
+            "terminal_id": terminal_id,
+            "generation": generation,
+            "token": token,
+            "data": chunk,
+        }));
+        if response["ok"].as_bool().unwrap_or(false) {
+            accepted.extend(chunk.as_bytes());
+        } else {
+            assert_eq!(response["error"]["code"], "pty_backpressure", "{response}");
+            rejected = Some(chunk);
+            break;
+        }
+    }
+    let rejected = rejected.expect("pty did not report backpressure");
+    fs::write(daemon.runtime.join("expect"), accepted.len().to_string()).unwrap();
+    fs::write(daemon.runtime.join("go"), "1").unwrap();
+    assert!(
+        wait_until(Duration::from_secs(5), || {
+            daemon.runtime.join("captured").exists()
+        }),
+        "child did not capture the queued input"
+    );
+    let captured = fs::read(daemon.runtime.join("captured")).unwrap();
+    let extra = fs::read(daemon.runtime.join("captured.extra")).unwrap_or_default();
+    assert_eq!(
+        captured, accepted,
+        "queued tail was truncated or duplicated"
+    );
+    assert!(
+        extra.is_empty(),
+        "rejected prefix leaked into the first read: {extra:?}"
+    );
+    assert!(!captured
+        .windows(rejected.len())
+        .any(|window| window == rejected.as_bytes()));
+
+    let again = client.call(json!({
+        "op": "input",
+        "terminal_id": terminal_id,
+        "generation": generation,
+        "token": token,
+        "data": rejected,
+    }));
+    assert!(again["ok"].as_bool().unwrap_or(false), "{again}");
+    fs::write(daemon.runtime.join("expect2"), rejected.len().to_string()).unwrap();
+    fs::write(daemon.runtime.join("go2"), "1").unwrap();
+    assert!(
+        wait_until(Duration::from_secs(5), || {
+            daemon.runtime.join("captured2").exists()
+        }),
+        "retry was not captured"
+    );
+    let captured2 = fs::read(daemon.runtime.join("captured2")).unwrap();
+    let extra2 = fs::read(daemon.runtime.join("captured2.extra")).unwrap_or_default();
+    assert_eq!(captured2, rejected.as_bytes());
+    assert!(extra2.is_empty(), "retry duplicated bytes: {extra2:?}");
+}
+
+#[test]
+fn deleted_cwd_still_replays_the_same_operation() {
+    let daemon = Daemon::start("#!/bin/sh\nsleep 30\n");
+    let work = daemon.runtime.join("work");
+    fs::create_dir(&work).expect("work");
+    let cwd = work.canonicalize().expect("work cwd");
+    let mut client = Client::connect(&daemon.runtime);
+    let launch = client.call(json!({
+        "op": "launch",
+        "operation_id": "op-cwd",
+        "argv": ["/bin/sh", daemon.script],
+        "cwd": cwd,
+        "cols": 80,
+        "rows": 24,
+    }));
+    assert!(launch["ok"].as_bool().unwrap_or(false), "{launch}");
+    let terminal_id = launch["result"]["terminal_id"].as_str().unwrap().to_owned();
+    let pid = launch["result"]["pid"].as_u64().unwrap();
+    fs::remove_dir(&work).expect("remove cwd");
+    let replay = client.call(json!({
+        "op": "launch",
+        "operation_id": "op-cwd",
+        "argv": ["/bin/sh", daemon.script],
+        "cwd": cwd,
+        "cols": 80,
+        "rows": 24,
+    }));
+    assert!(replay["ok"].as_bool().unwrap_or(false), "{replay}");
+    assert_eq!(replay["result"]["spawned"], false);
+    assert_eq!(replay["result"]["terminal_id"], terminal_id);
+    assert_eq!(replay["result"]["pid"], pid);
+    let conflict = client.call(json!({
+        "op": "launch",
+        "operation_id": "op-cwd",
+        "argv": ["/bin/sh", daemon.script],
+        "cwd": cwd,
+        "cols": 80,
+        "rows": 30,
+    }));
+    assert_eq!(conflict["ok"], false, "{conflict}");
+    assert_eq!(conflict["error"]["code"], "operation_conflict");
+    let missing = client.call(json!({
+        "op": "launch",
+        "operation_id": "op-new-cwd",
+        "argv": ["/bin/sh", daemon.script],
+        "cwd": cwd,
+        "cols": 80,
+        "rows": 24,
+    }));
+    assert_eq!(missing["ok"], false, "{missing}");
+    assert_eq!(missing["error"]["code"], "cwd_rejected");
+    assert!(pid_alive(pid as u32));
+}
+
+#[test]
+fn device_status_reply_is_written_to_the_master() {
+    let daemon = Daemon::start("#!/bin/sh\nsleep 30\n");
+    let py = daemon.runtime.join("dsr.py");
+    fs::write(
+        &py,
+        r#"import os, termios, time
+attr = termios.tcgetattr(0)
+attr[3] = attr[3] & ~(termios.ECHO | termios.ICANON)
+attr[6][termios.VMIN] = 1
+attr[6][termios.VTIME] = 0
+termios.tcsetattr(0, termios.TCSANOW, attr)
+os.write(1, b"\x1b[6n")
+buf = b""
+while b"R" not in buf and len(buf) < 32:
+    chunk = os.read(0, 16)
+    if not chunk:
+        break
+    buf += chunk
+os.write(1, b"CPR " + buf.hex().encode() + b"\n")
+time.sleep(30)
+"#,
+    )
+    .unwrap();
+    let mut client = Client::connect(&daemon.runtime);
+    let cwd = daemon.runtime.canonicalize().expect("cwd");
+    let launch = client.call(json!({
+        "op": "launch",
+        "operation_id": "op-dsr",
+        "argv": ["/usr/bin/python3", py],
+        "cwd": cwd,
+        "cols": 80,
+        "rows": 24,
+    }));
+    assert!(launch["ok"].as_bool().unwrap_or(false), "{launch}");
+    let terminal_id = launch["result"]["terminal_id"].as_str().unwrap().to_owned();
+    let snap = wait_text(&mut client, &terminal_id, "CPR");
+    let text = snap["text"].as_str().unwrap_or("");
+    assert!(
+        text.contains("1b5b") && text.contains("52"),
+        "cursor reply was {text}"
+    );
+}
+
+#[test]
+fn failed_post_spawn_setup_is_marked_failed() {
+    let daemon = Daemon::start_with(
+        "#!/bin/sh\nsleep 30\n",
+        &[("KEEPLINED_TEST_FAIL_POST_SPAWN", "winsize")],
+    );
+    let cwd = daemon.runtime.canonicalize().expect("cwd");
+    let mut client = Client::connect(&daemon.runtime);
+    let launch = client.call(json!({
+        "op": "launch",
+        "operation_id": "op-post",
+        "argv": ["/bin/sh", daemon.script],
+        "cwd": cwd,
+        "cols": 80,
+        "rows": 24,
+    }));
+    assert_eq!(launch["ok"], false, "{launch}");
+    assert_eq!(launch["error"]["code"], "spawn_failed");
+    let intent: Value = serde_json::from_str(
+        &fs::read_to_string(
+            daemon
+                .runtime
+                .join(keeplined::INTENT_DIR_NAME)
+                .join("op-post.json"),
+        )
+        .unwrap(),
+    )
+    .unwrap();
+    assert_eq!(intent["state"], "failed", "{intent}");
+    assert!(
+        pids_matching(&daemon.script.display().to_string()).is_empty(),
+        "failed setup left a child"
+    );
+    let again = client.call(json!({
+        "op": "launch",
+        "operation_id": "op-post",
+        "argv": ["/bin/sh", daemon.script],
+        "cwd": cwd,
+        "cols": 80,
+        "rows": 24,
+    }));
+    assert_eq!(again["ok"], false, "{again}");
+    assert_eq!(again["error"]["code"], "spawn_failed");
+    assert!(again.get("result").is_none() || again["result"].is_null());
+}
+
+#[test]
+fn eof_reaps_the_child_with_no_client_attached() {
+    let daemon = Daemon::start("#!/bin/sh\nprintf 'gone\\n'\nexit 9\n");
+    let mut client = Client::connect(&daemon.runtime);
+    let cwd = daemon.runtime.canonicalize().expect("cwd");
+    let launch = client.call(json!({
+        "op": "launch",
+        "operation_id": "op-eof",
+        "argv": ["/bin/sh", daemon.script],
+        "cwd": cwd,
+        "cols": 80,
+        "rows": 24,
+    }));
+    assert!(launch["ok"].as_bool().unwrap_or(false), "{launch}");
+    let pid = launch["result"]["pid"].as_u64().expect("pid") as u32;
+    let terminal_id = launch["result"]["terminal_id"].as_str().unwrap().to_owned();
+    drop(client);
+    let started = Instant::now();
+    while pid_alive(pid) || process_stat(pid).is_some() {
+        if started.elapsed() > Duration::from_secs(5) {
+            panic!("child {pid} was not reaped, stat={:?}", process_stat(pid));
+        }
+        thread::sleep(Duration::from_millis(20));
+    }
+    let mut client = Client::connect(&daemon.runtime);
+    let pull = client.call(json!({
+        "op": "pull",
+        "terminal_id": terminal_id,
+        "after_revision": 0,
+    }));
+    assert!(pull["ok"].as_bool().unwrap_or(false), "{pull}");
+    assert_eq!(pull["result"]["alive"], false, "{pull}");
+    assert_eq!(pull["result"]["exit_code"], 9, "{pull}");
+    let revision = pull["result"]["revision"].as_u64().expect("revision");
+    let current = client.call(json!({
+        "op": "pull",
+        "terminal_id": terminal_id,
+        "after_revision": revision,
+    }));
+    assert!(current["ok"].as_bool().unwrap_or(false), "{current}");
+    assert_eq!(current["result"]["alive"], false);
+    assert_eq!(current["result"]["exit_code"], 9);
+    assert_eq!(current["result"]["resync_required"], false);
+    assert!(current["result"].get("deltas").is_some());
+    assert_eq!(current["result"]["deltas"].as_array().unwrap().len(), 0);
+}
+
+#[test]
 fn default_keepline_entry_does_not_name_the_daemon() {
     let root = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../..");
     for relative in [
@@ -524,6 +1146,7 @@ i=0
 while [ "$i" -lt {ticks} ]; do
   printf 'tick %s\n' "$i"
   i=$((i + 1))
+  sleep 0.05
 done
 printf 'READY\n'
 while IFS= read -r line; do
@@ -542,7 +1165,18 @@ done
 }
 
 fn wait_snapshot(client: &mut Client, terminal_id: &str) -> Value {
-    wait_text(client, terminal_id, "READY")
+    let start = Instant::now();
+    loop {
+        let result = wait_text(client, terminal_id, "READY");
+        let text = result["text"].as_str().unwrap_or("");
+        if text.contains("plain") && text.contains("red") {
+            return result;
+        }
+        if start.elapsed() > Duration::from_secs(5) {
+            panic!("timed out waiting for the colored fixture in {text}");
+        }
+        thread::sleep(Duration::from_millis(20));
+    }
 }
 
 fn wait_text(client: &mut Client, terminal_id: &str, needle: &str) -> Value {
@@ -551,9 +1185,7 @@ fn wait_text(client: &mut Client, terminal_id: &str, needle: &str) -> Value {
         let response = client.call(json!({"op": "attach", "terminal_id": terminal_id}));
         assert!(response["ok"].as_bool().unwrap_or(false), "{response}");
         let text = response["result"]["text"].as_str().unwrap_or("").to_owned();
-        if text.contains(needle)
-            && (needle != "READY" || (text.contains("plain") && text.contains("red")))
-        {
+        if text.contains(needle) {
             return response["result"].clone();
         }
         if start.elapsed() > Duration::from_secs(5) {
@@ -587,6 +1219,88 @@ fn wait_mode(path: &Path, expected: u32) {
             .map(|metadata| metadata.permissions().mode() & 0o777)
             .unwrap_or(0)
     );
+}
+
+fn include_capture_script() -> &'static str {
+    r#"import fcntl
+import os
+import sys
+import termios
+import time
+
+runtime = sys.argv[1]
+attr = termios.tcgetattr(0)
+attr[3] = attr[3] & ~termios.ECHO
+termios.tcsetattr(0, termios.TCSANOW, attr)
+os.write(1, b"READY\n")
+
+def wait_flag(name):
+    path = os.path.join(runtime, name)
+    while not os.path.exists(path):
+        time.sleep(0.02)
+
+def read_exact(n):
+    buf = bytearray()
+    while len(buf) < n:
+        chunk = os.read(0, n - len(buf))
+        if not chunk:
+            break
+        buf += chunk
+    return bytes(buf)
+
+def read_extra():
+    flags = fcntl.fcntl(0, fcntl.F_GETFL)
+    fcntl.fcntl(0, fcntl.F_SETFL, flags | os.O_NONBLOCK)
+    try:
+        return os.read(0, 256)
+    except BlockingIOError:
+        return b""
+    finally:
+        fcntl.fcntl(0, fcntl.F_SETFL, flags)
+
+wait_flag("go")
+expect = int(open(os.path.join(runtime, "expect"), encoding="utf-8").read())
+got = read_exact(expect)
+extra = read_extra()
+open(os.path.join(runtime, "captured"), "wb").write(got)
+open(os.path.join(runtime, "captured.extra"), "wb").write(extra)
+os.write(1, f"PHASE1 {len(got)}\n".encode())
+wait_flag("go2")
+expect2 = int(open(os.path.join(runtime, "expect2"), encoding="utf-8").read())
+got2 = read_exact(expect2)
+extra2 = read_extra()
+open(os.path.join(runtime, "captured2"), "wb").write(got2)
+open(os.path.join(runtime, "captured2.extra"), "wb").write(extra2)
+os.write(1, f"PHASE2 {len(got2)}\n".encode())
+time.sleep(30)
+"#
+}
+
+fn foreground_tty(pid: u32) -> (u32, u32, String, u32) {
+    let output = Command::new("/bin/ps")
+        .args(["-p", &pid.to_string(), "-o", "pgid=,tpgid=,tty=,flags="])
+        .output()
+        .expect("ps");
+    let line = String::from_utf8_lossy(&output.stdout);
+    let mut parts = line.split_whitespace();
+    let pgid = parts.next().unwrap_or("0").parse().expect("pgid");
+    let tpgid = parts.next().unwrap_or("0").parse().expect("tpgid");
+    let tty = parts.next().unwrap_or("??").to_owned();
+    let flags = u32::from_str_radix(parts.next().unwrap_or("0"), 16).expect("flags");
+    (pgid, tpgid, tty, flags)
+}
+
+fn process_stat(pid: u32) -> Option<String> {
+    let output = Command::new("/bin/ps")
+        .args(["-p", &pid.to_string(), "-o", "stat="])
+        .output()
+        .expect("ps");
+    let text = String::from_utf8_lossy(&output.stdout).trim().to_owned();
+    if text.is_empty() {
+        None
+    } else {
+        Some(text)
+    }
 }
 
 fn pid_alive(pid: u32) -> bool {

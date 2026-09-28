@@ -1,10 +1,12 @@
 use std::fs::File;
 use std::io::{self, Write};
 use std::os::fd::{AsRawFd, FromRawFd, OwnedFd};
+use std::os::unix::process::CommandExt;
 use std::path::Path;
 use std::process::{Child, Command, Stdio};
+use std::sync::{Arc, Mutex};
 
-use alacritty_terminal::event::VoidListener;
+use alacritty_terminal::event::{Event, EventListener};
 use alacritty_terminal::grid::Dimensions;
 use alacritty_terminal::term::cell::Flags;
 use alacritty_terminal::term::Term;
@@ -36,9 +38,29 @@ pub(crate) struct GridView {
     pub attributed_cells: u64,
 }
 
+struct ReplyBus {
+    replies: Arc<Mutex<Vec<u8>>>,
+}
+
+impl EventListener for ReplyBus {
+    fn send_event(&self, event: Event) {
+        // Clipboard, color, and text-area requests stay inside the daemon.
+        // Clients do not answer them, and only PtyWrite bytes go back to the master.
+        let Event::PtyWrite(text) = event else {
+            return;
+        };
+        let mut replies = match self.replies.lock() {
+            Ok(replies) => replies,
+            Err(poisoned) => poisoned.into_inner(),
+        };
+        replies.extend(text.into_bytes());
+    }
+}
+
 pub(crate) struct Screen {
-    term: Term<VoidListener>,
+    term: Term<ReplyBus>,
     processor: Processor,
+    replies: Arc<Mutex<Vec<u8>>>,
 }
 
 impl Screen {
@@ -51,14 +73,24 @@ impl Screen {
             scrolling_history: 200,
             ..alacritty_terminal::term::Config::default()
         };
+        let replies = Arc::new(Mutex::new(Vec::new()));
+        let listener = ReplyBus {
+            replies: Arc::clone(&replies),
+        };
         Self {
-            term: Term::new(config, &size, VoidListener),
+            term: Term::new(config, &size, listener),
             processor: Processor::new(),
+            replies,
         }
     }
 
-    pub(crate) fn advance(&mut self, bytes: &[u8]) {
+    pub(crate) fn advance(&mut self, bytes: &[u8]) -> Vec<u8> {
         self.processor.advance(&mut self.term, bytes);
+        let mut replies = match self.replies.lock() {
+            Ok(replies) => replies,
+            Err(poisoned) => poisoned.into_inner(),
+        };
+        std::mem::take(&mut *replies)
     }
 
     pub(crate) fn resize(&mut self, cols: u16, rows: u16) {
@@ -170,15 +202,16 @@ pub(crate) struct PtyProcess {
 
 impl PtyProcess {
     pub(crate) fn into_parts(mut self) -> io::Result<(Child, File, u16, u16)> {
-        let child = self
-            .child
-            .take()
-            .ok_or_else(|| io::Error::other("pty child is already taken"))?;
-        let master = self
-            .master
-            .take()
-            .ok_or_else(|| io::Error::other("pty master is already taken"))?;
-        Ok((child, master, self.cols, self.rows))
+        let child = self.child.take();
+        let master = self.master.take();
+        match (child, master) {
+            (Some(child), Some(master)) => Ok((child, master, self.cols, self.rows)),
+            (child, master) => {
+                self.child = child;
+                self.master = master;
+                Err(io::Error::other("pty child is already taken"))
+            }
+        }
     }
 }
 
@@ -240,20 +273,67 @@ pub(crate) fn spawn_pty(
         .stdin(Stdio::from(slave_fd.try_clone()?))
         .stdout(Stdio::from(slave_fd.try_clone()?))
         .stderr(Stdio::from(slave_fd));
+    // SAFETY: this runs in the forked child after stdin/stdout/stderr are the slave.
+    // setsid, ioctl, getpid, and tcsetpgrp are async-signal-safe.
+    unsafe {
+        command.pre_exec(|| {
+            if libc::setsid() < 0 {
+                return Err(io::Error::last_os_error());
+            }
+            let tty = libc::STDIN_FILENO;
+            if libc::ioctl(tty, libc::c_ulong::from(libc::TIOCSCTTY), 0) < 0 {
+                return Err(io::Error::last_os_error());
+            }
+            let pid = libc::getpid();
+            if libc::tcsetpgrp(tty, pid) < 0 {
+                return Err(io::Error::last_os_error());
+            }
+            Ok(())
+        });
+    }
     let child = command
         .spawn()
         .map_err(|err| io::Error::new(err.kind(), format!("failed to spawn {}: {err}", program)))?;
-    let master = File::from(master_fd);
-    let (cols, rows) = read_winsize(&master)?;
-    Ok(PtyProcess {
+    let mut pty = PtyProcess {
         child: Some(child),
-        master: Some(master),
+        master: Some(File::from(master_fd)),
         cols,
         rows,
-    })
+    };
+    // The child is inside PtyProcess, so a later setup error kills and reaps it.
+    if let Some(err) = injected_winsize_failure() {
+        return Err(err);
+    }
+    let size = {
+        let Some(master) = pty.master.as_ref() else {
+            return Err(io::Error::other("pty master missing after spawn"));
+        };
+        read_winsize(master)
+    };
+    match size {
+        Ok((actual_cols, actual_rows)) => {
+            pty.cols = actual_cols;
+            pty.rows = actual_rows;
+            Ok(pty)
+        }
+        Err(err) => Err(err),
+    }
 }
 
-pub(crate) fn write_pty(master: &mut File, data: &[u8]) -> io::Result<()> {
+fn injected_winsize_failure() -> Option<io::Error> {
+    match std::env::var("KEEPLINED_TEST_FAIL_POST_SPAWN") {
+        Ok(stage) if stage == "winsize" => {
+            Some(io::Error::other("injected post-spawn winsize failure"))
+        }
+        _ => None,
+    }
+}
+
+/// Writes as many bytes as the nonblocking master accepts.
+///
+/// `Ok(0)` means the kernel accepted nothing (`WouldBlock` before the first byte).
+/// A short `Ok(n)` means the prefix was written and the caller still owns `data[n..]`.
+pub(crate) fn write_available(master: &mut File, data: &[u8]) -> io::Result<usize> {
     let mut offset = 0;
     while offset < data.len() {
         match master.write(&data[offset..]) {
@@ -265,16 +345,11 @@ pub(crate) fn write_pty(master: &mut File, data: &[u8]) -> io::Result<()> {
             }
             Ok(written) => offset += written,
             Err(err) if err.kind() == io::ErrorKind::Interrupted => continue,
-            Err(err) if err.kind() == io::ErrorKind::WouldBlock => {
-                return Err(io::Error::new(
-                    io::ErrorKind::WouldBlock,
-                    "pty backpressure",
-                ));
-            }
+            Err(err) if err.kind() == io::ErrorKind::WouldBlock => return Ok(offset),
             Err(err) => return Err(err),
         }
     }
-    Ok(())
+    Ok(offset)
 }
 
 pub(crate) fn set_winsize(master: &File, cols: u16, rows: u16) -> io::Result<()> {
@@ -309,10 +384,19 @@ pub(crate) fn read_winsize(master: &File) -> io::Result<(u16, u16)> {
     }
 }
 
-pub(crate) fn wait_readable(fd: i32, timeout_ms: i32) -> io::Result<bool> {
+pub(crate) struct PtyReady {
+    pub readable: bool,
+    pub writable: bool,
+}
+
+pub(crate) fn wait_pty(fd: i32, want_write: bool, timeout_ms: i32) -> io::Result<PtyReady> {
+    let mut events = libc::POLLIN;
+    if want_write {
+        events |= libc::POLLOUT;
+    }
     let mut fds = [libc::pollfd {
         fd,
-        events: libc::POLLIN,
+        events,
         revents: 0,
     }];
     // SAFETY: fds contains one initialized pollfd for a live descriptor.
@@ -320,11 +404,18 @@ pub(crate) fn wait_readable(fd: i32, timeout_ms: i32) -> io::Result<bool> {
     if rc < 0 {
         let err = io::Error::last_os_error();
         if err.kind() == io::ErrorKind::Interrupted {
-            return Ok(false);
+            return Ok(PtyReady {
+                readable: false,
+                writable: false,
+            });
         }
         return Err(err);
     }
-    Ok(rc > 0)
+    let revents = fds[0].revents;
+    Ok(PtyReady {
+        readable: revents & (libc::POLLIN | libc::POLLHUP | libc::POLLERR) != 0,
+        writable: revents & libc::POLLOUT != 0,
+    })
 }
 
 fn set_cloexec(fd: i32) -> io::Result<()> {
@@ -357,7 +448,8 @@ mod tests {
     #[test]
     fn parses_plain_text_and_one_sgr_sequence_once() {
         let mut screen = Screen::new(80, 24);
-        screen.advance(b"plain\x1b[31mred\x1b[0m\n");
+        let replies = screen.advance(b"plain\x1b[31mred\x1b[0m\n");
+        assert!(replies.is_empty(), "plain text produced {replies:?}");
         let view = screen.view();
         assert!(
             view.text.contains("plainred"),
@@ -383,5 +475,14 @@ mod tests {
         }
         assert!(plain_default);
         assert!(red_attributed);
+    }
+
+    #[test]
+    fn pty_write_replies_are_returned_once() {
+        let mut screen = Screen::new(80, 24);
+        assert_eq!(screen.advance(b"\x1b[5n"), b"\x1b[0n");
+        assert_eq!(screen.advance(b"\x1b[6n"), b"\x1b[1;1R");
+        // OSC 52 store is not turned into a client-specific answer.
+        assert!(screen.advance(b"\x1b]52;c;aGVsbG8=\x07").is_empty());
     }
 }

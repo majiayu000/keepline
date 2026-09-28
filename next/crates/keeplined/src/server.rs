@@ -1,7 +1,8 @@
 use std::collections::HashMap;
-use std::fs;
+use std::fs::{self, File, OpenOptions};
 use std::io::{self, ErrorKind};
 use std::os::fd::AsRawFd;
+use std::os::unix::fs::OpenOptionsExt;
 use std::os::unix::net::{UnixListener, UnixStream};
 use std::path::Path;
 use std::process::Child;
@@ -80,10 +81,9 @@ pub fn serve(runtime_dir: &Path) -> io::Result<()> {
     fs::create_dir_all(&intent_dir)?;
     intent::set_mode(&intent_dir, 0o700)?;
 
+    let _instance_lock = lock_runtime(&runtime_dir)?;
     let socket_path = runtime_dir.join(SOCKET_FILE_NAME);
-    if socket_path.exists() {
-        fs::remove_file(&socket_path)?;
-    }
+    prepare_socket(&socket_path)?;
     let listener = UnixListener::bind(&socket_path)?;
     intent::set_mode(&socket_path, 0o600)?;
     intent::require_mode(&socket_path, 0o600, "socket")?;
@@ -229,8 +229,6 @@ fn launch(
         .ok_or_else(|| OpError::new("argv_rejected", "argv is required"))?;
     intent::validate_argv(&argv).map_err(|err| OpError::new("argv_rejected", err))?;
     let cwd = required_str(request.cwd.as_deref(), "cwd")?;
-    let cwd_path = intent::intent_cwd(cwd);
-    intent::validate_cwd(&cwd_path).map_err(|err| OpError::new("cwd_rejected", err))?;
     let cols = request.cols.unwrap_or(80);
     let rows = request.rows.unwrap_or(24);
     intent::validate_geometry(cols, rows).map_err(|err| OpError::new("geometry_rejected", err))?;
@@ -240,6 +238,9 @@ fn launch(
     if let Some(terminal_id) = state.operations.get(operation_id).cloned() {
         return replay(state, &terminal_id, &payload);
     }
+
+    let cwd_path = intent::intent_cwd(cwd);
+    intent::validate_cwd(&cwd_path).map_err(|err| OpError::new("cwd_rejected", err))?;
 
     let terminal_id = format!(
         "t{}",
@@ -298,25 +299,27 @@ fn finish_launch(
     mut intent: IntentRecord,
     pty: PtyProcess,
 ) -> Result<Value, OpError> {
-    let (mut child, master, cols, rows) = pty
-        .into_parts()
-        .map_err(|err| OpError::io("spawn_failed", err))?;
+    let (mut child, master, cols, rows) = match pty.into_parts() {
+        Ok(parts) => parts,
+        Err(err) => return fail_spawn(state, intent, err),
+    };
+    let reader = match master.try_clone() {
+        Ok(reader) => reader,
+        Err(err) => return Err(abandon_spawn(state, intent, &mut child, err)),
+    };
     intent.state = IntentState::Running;
     intent.pid = Some(child.id());
     intent.cols = cols;
     intent.rows = rows;
     intent.error = None;
     if let Err(err) = intent::write_intent(&state.runtime_dir, &intent) {
-        return Err(stop_child(&mut child, OpError::io("persist_failed", err)));
+        return Err(abandon_spawn(
+            state,
+            intent,
+            &mut child,
+            io::Error::other(format!("record running: {err}")),
+        ));
     }
-    state
-        .terminals
-        .insert(intent.terminal_id.clone(), Slot::Stored(intent.clone()));
-
-    let reader = match master.try_clone() {
-        Ok(reader) => reader,
-        Err(err) => return Err(stop_child(&mut child, OpError::io("spawn_failed", err))),
-    };
     let pid = child.id();
     let terminal_id = intent.terminal_id.clone();
     let response = json!({
@@ -336,6 +339,31 @@ fn finish_launch(
     );
     spawn_reader(reader, Arc::clone(arc), terminal_id);
     Ok(response)
+}
+
+fn abandon_spawn(
+    state: &mut DaemonState,
+    mut intent: IntentRecord,
+    child: &mut Child,
+    err: io::Error,
+) -> OpError {
+    let stop_err = stop_child(child, OpError::io("spawn_failed", err));
+    intent.state = IntentState::Failed;
+    intent.pid = Some(child.id());
+    intent.error = Some(stop_err.message.clone());
+    if let Err(write_err) = intent::write_intent(&state.runtime_dir, &intent) {
+        state
+            .terminals
+            .insert(intent.terminal_id.clone(), Slot::Stored(intent));
+        return OpError::new(
+            "persist_failed",
+            format!("{}; failed to record it: {write_err}", stop_err.message),
+        );
+    }
+    state
+        .terminals
+        .insert(intent.terminal_id.clone(), Slot::Stored(intent));
+    stop_err
 }
 
 fn stop_child(child: &mut Child, err: OpError) -> OpError {
@@ -372,7 +400,7 @@ fn replay(state: &DaemonState, terminal_id: &str, payload: &str) -> Result<Value
         Slot::Live(live) => Ok(json!({
             "terminal_id": live.intent.terminal_id,
             "instance_generation": live.intent.instance_generation,
-            "pid": live.child.id(),
+            "pid": live.pid(),
             "spawned": false,
             "attachable": true,
             "cols": live.cols,
@@ -423,13 +451,8 @@ fn pull(state: &mut DaemonState, request: &Request) -> Result<Value, OpError> {
                 live.revision
             ),
         )),
-        PullClass::Current => Ok(json!({
-            "resync_required": false,
-            "revision": live.revision,
-            "deltas": [],
-        })),
+        PullClass::Current => Ok(pull_page(live, Vec::new())),
         PullClass::Deltas => {
-            let revision = live.revision;
             let deltas: Vec<Value> = live
                 .deltas
                 .iter()
@@ -438,14 +461,11 @@ fn pull(state: &mut DaemonState, request: &Request) -> Result<Value, OpError> {
                     json!({
                         "revision": delta.revision,
                         "checksum": format!("{:016x}", delta.checksum),
+                        "text": delta.text,
                     })
                 })
                 .collect();
-            Ok(json!({
-                "resync_required": false,
-                "revision": revision,
-                "deltas": deltas,
-            }))
+            Ok(pull_page(live, deltas))
         }
         PullClass::Resync => {
             let mut snapshot = live.snapshot().map_err(|err| OpError::io("pty_io", err))?;
@@ -499,7 +519,7 @@ fn input(state: &mut DaemonState, request: &Request) -> Result<Value, OpError> {
     }
     let live = live_mut(state, request)?;
     ensure_lease(live, request)?;
-    grid::write_pty(&mut live.master, data.as_bytes()).map_err(|err| {
+    live.accept_input(data.as_bytes()).map_err(|err| {
         let code = if err.kind() == ErrorKind::WouldBlock {
             "pty_backpressure"
         } else {
@@ -597,6 +617,67 @@ fn required_str<'a>(value: Option<&'a str>, name: &str) -> Result<&'a str, OpErr
         Some(value) if !value.is_empty() => Ok(value),
         _ => Err(OpError::new("bad_frame", format!("{name} is required"))),
     }
+}
+
+fn pull_page(live: &crate::session::LiveSession, deltas: Vec<Value>) -> Value {
+    json!({
+        "resync_required": false,
+        "revision": live.revision,
+        "alive": live.alive(),
+        "exit_code": live.exit_code(),
+        "deltas": deltas,
+    })
+}
+
+fn already_running() -> io::Error {
+    io::Error::new(ErrorKind::AlreadyExists, "already_running")
+}
+
+fn lock_runtime(runtime_dir: &Path) -> io::Result<File> {
+    let path = runtime_dir.join("keeplined.lock");
+    let file = OpenOptions::new()
+        .create(true)
+        .truncate(false)
+        .read(true)
+        .write(true)
+        .mode(0o600)
+        .open(&path)?;
+    intent::set_mode(&path, 0o600)?;
+    // SAFETY: file is an open descriptor and LOCK_EX|LOCK_NB does not touch other memory.
+    let rc = unsafe { libc::flock(file.as_raw_fd(), libc::LOCK_EX | libc::LOCK_NB) };
+    if rc == 0 {
+        return Ok(file);
+    }
+    let err = io::Error::last_os_error();
+    if err.kind() == ErrorKind::WouldBlock || err.raw_os_error() == Some(libc::EWOULDBLOCK) {
+        Err(already_running())
+    } else {
+        Err(err)
+    }
+}
+
+fn prepare_socket(socket_path: &Path) -> io::Result<()> {
+    if !socket_path.exists() {
+        return Ok(());
+    }
+    match UnixStream::connect(socket_path) {
+        Ok(stream) => {
+            drop(stream);
+            Err(already_running())
+        }
+        Err(err) if stale_socket(&err) => {
+            fs::remove_file(socket_path)?;
+            Ok(())
+        }
+        Err(err) => Err(err),
+    }
+}
+
+fn stale_socket(err: &io::Error) -> bool {
+    matches!(
+        err.kind(),
+        ErrorKind::ConnectionRefused | ErrorKind::NotFound | ErrorKind::ConnectionReset
+    )
 }
 
 fn current_uid() -> u32 {
