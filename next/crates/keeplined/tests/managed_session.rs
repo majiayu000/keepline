@@ -59,7 +59,11 @@ impl Daemon {
             .stdout(Stdio::null())
             .stderr(Stdio::piped());
         for (key, value) in env {
-            command.env(key, value);
+            if *value == "@runtime" {
+                command.env(key, &runtime);
+            } else {
+                command.env(key, value);
+            }
         }
         let mut child = command.spawn().expect("spawn keeplined");
         let stderr = std::sync::Arc::new(std::sync::Mutex::new(String::new()));
@@ -1183,6 +1187,131 @@ fn exit_is_published_only_after_the_pty_is_drained() {
 }
 
 #[test]
+fn exit_is_not_visible_until_the_final_chunk_is_ingested() {
+    let daemon = Daemon::start_with(
+        "#!/bin/sh\nsleep 30\n",
+        &[("KEEPLINED_TEST_PAUSE_AFTER_READ", "@runtime")],
+    );
+    let py = daemon.runtime.join("burst.py");
+    fs::write(
+        &py,
+        r#"import os, sys, time
+runtime = sys.argv[1]
+os.write(1, b"Q" * 8192 + b"\nREADY\n")
+arm = os.path.join(runtime, "arm")
+while not os.path.exists(arm):
+    time.sleep(0.02)
+os.write(1, b"TAIL\n")
+paused = os.path.join(runtime, "paused")
+while not os.path.exists(paused):
+    time.sleep(0.02)
+os._exit(6)
+"#,
+    )
+    .expect("burst script");
+    let mut client = Client::connect(&daemon.runtime);
+    let cwd = daemon.runtime.canonicalize().expect("cwd");
+    let launch = client.call(json!({
+        "op": "launch",
+        "operation_id": "op-final-chunk",
+        "argv": ["/usr/bin/python3", py, daemon.runtime],
+        "cwd": cwd,
+        "cols": 80,
+        "rows": 24,
+    }));
+    assert!(launch["ok"].as_bool().unwrap_or(false), "{launch}");
+    let terminal_id = launch["result"]["terminal_id"].as_str().unwrap().to_owned();
+    let pid = launch["result"]["pid"].as_u64().expect("pid") as u32;
+    let ready = wait_text(&mut client, &terminal_id, "READY");
+    let revision = ready["revision"].as_u64().expect("revision");
+    assert!(
+        revision >= 2,
+        "a write larger than the read buffer collapsed into revision {revision}"
+    );
+    assert!(
+        !ready["text"].as_str().unwrap_or("").contains("TAIL"),
+        "{ready}"
+    );
+    fs::write(daemon.runtime.join("arm"), "1").expect("arm");
+    assert!(
+        wait_until(Duration::from_secs(5), || {
+            daemon.runtime.join("paused").exists()
+        }),
+        "reader did not pause on the final chunk: {}",
+        daemon.stderr_text()
+    );
+    assert!(
+        wait_until(Duration::from_secs(5), || child_has_exited(pid)),
+        "child was still running after the final read was held, stat={:?}",
+        process_stat(pid)
+    );
+    let held = client.call(json!({
+        "op": "pull",
+        "terminal_id": terminal_id,
+        "after_revision": revision,
+    }));
+    assert!(held["ok"].as_bool().unwrap_or(false), "{held}");
+    assert_eq!(held["result"]["alive"], true, "{held}");
+    assert!(held["result"]["exit_code"].is_null(), "{held}");
+    assert_eq!(held["result"]["revision"], revision, "{held}");
+    assert_eq!(
+        held["result"]["deltas"].as_array().unwrap().len(),
+        0,
+        "{held}"
+    );
+    let snap = client.call(json!({"op": "attach", "terminal_id": terminal_id}));
+    assert!(snap["ok"].as_bool().unwrap_or(false), "{snap}");
+    let held_text = snap["result"]["text"].as_str().unwrap_or("");
+    assert!(held_text.contains("READY"), "{snap}");
+    assert!(!held_text.contains("TAIL"), "{snap}");
+    assert_eq!(snap["result"]["alive"], true, "{snap}");
+
+    fs::write(daemon.runtime.join("resume"), "1").expect("resume");
+    let started = Instant::now();
+    let exited = loop {
+        let pull = client.call(json!({
+            "op": "pull",
+            "terminal_id": terminal_id,
+            "after_revision": revision,
+        }));
+        assert!(pull["ok"].as_bool().unwrap_or(false), "{pull}");
+        if pull["result"]["alive"] == false {
+            break pull;
+        }
+        if started.elapsed() > Duration::from_secs(5) {
+            panic!("child exit was not published: {pull}");
+        }
+        thread::sleep(Duration::from_millis(20));
+    };
+    let deltas = exited["result"]["deltas"].as_array().expect("deltas");
+    assert!(
+        deltas
+            .iter()
+            .any(|delta| delta["text"].as_str().unwrap_or("").contains("TAIL")),
+        "first exited pull missed the final grid: {exited}"
+    );
+    assert_eq!(exited["result"]["exit_code"], 6, "{exited}");
+    assert_eq!(exited["result"]["resync_required"], false, "{exited}");
+    let final_revision = exited["result"]["revision"].as_u64().expect("revision");
+    assert!(final_revision > revision, "{exited}");
+    let again = client.call(json!({
+        "op": "pull",
+        "terminal_id": terminal_id,
+        "after_revision": final_revision,
+    }));
+    assert!(again["ok"].as_bool().unwrap_or(false), "{again}");
+    assert_eq!(again["result"]["alive"], false, "{again}");
+    assert_eq!(again["result"]["exit_code"], 6, "{again}");
+    assert_eq!(again["result"]["revision"], final_revision, "{again}");
+    assert_eq!(again["result"]["resync_required"], false, "{again}");
+    assert_eq!(
+        again["result"]["deltas"].as_array().unwrap().len(),
+        0,
+        "{again}"
+    );
+}
+
+#[test]
 fn resize_after_exit_leaves_the_grid_unchanged() {
     let daemon = Daemon::start(
         r#"#!/bin/sh
@@ -1902,6 +2031,15 @@ fn pid_alive(pid: u32) -> bool {
         .status()
         .map(|status| status.success())
         .unwrap_or(false)
+}
+
+fn child_has_exited(pid: u32) -> bool {
+    if !pid_alive(pid) {
+        return true;
+    }
+    process_stat(pid)
+        .map(|stat| stat.starts_with('Z'))
+        .unwrap_or(true)
 }
 
 fn pids_matching(marker: &str) -> Vec<u32> {

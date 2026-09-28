@@ -4,6 +4,7 @@ use std::io::{self, Read};
 use std::os::fd::AsRawFd;
 use std::path::PathBuf;
 use std::process::{Child, ExitStatus};
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex, MutexGuard};
 
 use serde_json::{json, Value};
@@ -273,7 +274,10 @@ fn reader_loop(mut reader: File, state: Arc<Mutex<DaemonState>>, terminal_id: St
                                 reap_child(&state, &terminal_id);
                                 return;
                             }
-                            Ok(n) => ingest(&state, &terminal_id, &buf[..n]),
+                            Ok(n) => {
+                                pause_once_after_read_for_test(&buf[..n]);
+                                ingest(&state, &terminal_id, &buf[..n]);
+                            }
                             Err(err) if err.kind() == io::ErrorKind::WouldBlock => break,
                             Err(err) if err.kind() == io::ErrorKind::Interrupted => continue,
                             Err(err) => {
@@ -375,6 +379,34 @@ fn pause_reader_for_test(done: &mut bool) {
             eprintln!("keeplined: test hold expired for {}", held.display());
             return;
         }
+        std::thread::sleep(std::time::Duration::from_millis(20));
+    }
+}
+
+/// Pauses once, outside the daemon mutex, after a non-empty read and before ingest.
+/// `KEEPLINED_TEST_PAUSE_AFTER_READ` is the directory. The pause starts on the first
+/// non-empty read after `arm` exists, so a test can ingest a preamble and then hold
+/// the final chunk. Creating `arm` before the first read holds that read.
+fn pause_once_after_read_for_test(bytes: &[u8]) {
+    if bytes.is_empty() {
+        return;
+    }
+    let Ok(dir) = std::env::var("KEEPLINED_TEST_PAUSE_AFTER_READ") else {
+        return;
+    };
+    let root = PathBuf::from(dir);
+    if !root.join("arm").exists() {
+        return;
+    }
+    static PAUSED: AtomicBool = AtomicBool::new(false);
+    if PAUSED.swap(true, Ordering::SeqCst) {
+        return;
+    }
+    if let Err(err) = std::fs::write(root.join("paused"), b"1") {
+        eprintln!("keeplined: failed to record test read pause: {err}");
+    }
+    let resume = root.join("resume");
+    while !resume.exists() {
         std::thread::sleep(std::time::Duration::from_millis(20));
     }
 }
