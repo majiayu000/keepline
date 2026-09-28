@@ -7,6 +7,10 @@ pub const PROTOCOL_MAJOR: u16 = 0;
 pub const PROTOCOL_MINOR: u16 = 0;
 pub const DELTA_LIMIT: usize = 8;
 pub const MAX_FRAME_BYTES: u32 = 1024 * 1024;
+pub(crate) const MAX_INPUT_BYTES: usize = 64 * 1024;
+/// Queued master writes above this pause further PTY reads.
+/// The threshold stays above one accepted input so that tail does not stall output.
+pub(crate) const PTY_READ_PAUSE_BYTES: usize = MAX_INPUT_BYTES * 4;
 pub const SOCKET_FILE_NAME: &str = "keeplined.sock";
 pub const INTENT_DIR_NAME: &str = "intents";
 

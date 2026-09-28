@@ -126,6 +126,13 @@ impl Screen {
             line.push(cell.c);
             hash_char(&mut text_only, cell.c);
             hash_char(&mut full, cell.c);
+            if let Some(zerowidth) = cell.zerowidth() {
+                for ch in zerowidth {
+                    line.push(*ch);
+                    hash_char(&mut text_only, *ch);
+                    hash_char(&mut full, *ch);
+                }
+            }
             full.write_u64(color_code(cell.fg));
             full.write_u64(color_code(cell.bg));
             full.write_u64(u64::from(cell.flags.bits()));
@@ -308,7 +315,7 @@ pub(crate) fn spawn_pty(
         let Some(master) = pty.master.as_ref() else {
             return Err(io::Error::other("pty master missing after spawn"));
         };
-        read_winsize(master)
+        read_post_spawn_winsize(master)
     };
     match size {
         Ok((actual_cols, actual_rows)) => {
@@ -327,6 +334,25 @@ fn injected_winsize_failure() -> Option<io::Error> {
         }
         _ => None,
     }
+}
+
+fn read_post_spawn_winsize(master: &File) -> io::Result<(u16, u16)> {
+    if let Ok(raw) = std::env::var("KEEPLINED_TEST_POST_SPAWN_WINSIZE") {
+        let (cols, rows) = raw.split_once('x').ok_or_else(|| {
+            io::Error::new(
+                io::ErrorKind::InvalidInput,
+                "KEEPLINED_TEST_POST_SPAWN_WINSIZE must be COLSxROWS",
+            )
+        })?;
+        let cols: u16 = cols
+            .parse()
+            .map_err(|_| io::Error::new(io::ErrorKind::InvalidInput, "bad test winsize columns"))?;
+        let rows: u16 = rows
+            .parse()
+            .map_err(|_| io::Error::new(io::ErrorKind::InvalidInput, "bad test winsize rows"))?;
+        return Ok((cols, rows));
+    }
+    read_winsize(master)
 }
 
 /// Writes as many bytes as the nonblocking master accepts.
@@ -387,12 +413,24 @@ pub(crate) fn read_winsize(master: &File) -> io::Result<(u16, u16)> {
 pub(crate) struct PtyReady {
     pub readable: bool,
     pub writable: bool,
+    pub hangup: bool,
 }
 
-pub(crate) fn wait_pty(fd: i32, want_write: bool, timeout_ms: i32) -> io::Result<PtyReady> {
-    let mut events = libc::POLLIN;
+pub(crate) fn wait_pty(
+    fd: i32,
+    want_read: bool,
+    want_write: bool,
+    timeout_ms: i32,
+) -> io::Result<PtyReady> {
+    let mut events = 0;
+    if want_read {
+        events |= libc::POLLIN;
+    }
     if want_write {
         events |= libc::POLLOUT;
+    }
+    if events == 0 {
+        events = libc::POLLIN;
     }
     let mut fds = [libc::pollfd {
         fd,
@@ -407,6 +445,7 @@ pub(crate) fn wait_pty(fd: i32, want_write: bool, timeout_ms: i32) -> io::Result
             return Ok(PtyReady {
                 readable: false,
                 writable: false,
+                hangup: false,
             });
         }
         return Err(err);
@@ -415,6 +454,7 @@ pub(crate) fn wait_pty(fd: i32, want_write: bool, timeout_ms: i32) -> io::Result
     Ok(PtyReady {
         readable: revents & (libc::POLLIN | libc::POLLHUP | libc::POLLERR) != 0,
         writable: revents & libc::POLLOUT != 0,
+        hangup: revents & (libc::POLLHUP | libc::POLLERR) != 0,
     })
 }
 
@@ -475,6 +515,33 @@ mod tests {
         }
         assert!(plain_default);
         assert!(red_attributed);
+    }
+
+    #[test]
+    fn combining_character_is_part_of_the_cell_text_and_checksums() {
+        let mut combined = Screen::new(80, 24);
+        combined.advance("e\u{0301}\n".as_bytes());
+        let combined_view = combined.view();
+        assert!(
+            combined_view.text.contains("e\u{0301}"),
+            "grid text was {}",
+            combined_view.text
+        );
+        let stored = combined.term.grid().display_iter().any(|indexed| {
+            indexed.cell.c == 'e'
+                && indexed
+                    .cell
+                    .zerowidth()
+                    .is_some_and(|chars| chars.contains(&'\u{0301}'))
+        });
+        assert!(stored, "U+0301 was not stored as zerowidth");
+
+        let mut plain = Screen::new(80, 24);
+        plain.advance(b"e\n");
+        let plain_view = plain.view();
+        assert_ne!(combined_view.text, plain_view.text);
+        assert_ne!(combined_view.checksum, plain_view.checksum);
+        assert_ne!(combined_view.text_checksum, plain_view.text_checksum);
     }
 
     #[test]

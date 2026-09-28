@@ -357,6 +357,21 @@ fn managed_session_keeps_one_pty_and_one_writer() {
     assert!(resized["ok"].as_bool().unwrap_or(false), "{resized}");
     assert_eq!(resized["result"]["cols"], 100);
     assert_eq!(resized["result"]["rows"], 30);
+    let resize_from = unchanged["result"]["revision"].as_u64().expect("revision");
+    let pulled = owner.call(json!({
+        "op": "pull",
+        "terminal_id": terminal_id,
+        "after_revision": resize_from,
+    }));
+    assert!(pulled["ok"].as_bool().unwrap_or(false), "{pulled}");
+    assert_eq!(pulled["result"]["resync_required"], false, "{pulled}");
+    let resize_deltas = pulled["result"]["deltas"].as_array().expect("deltas");
+    assert!(
+        resize_deltas
+            .iter()
+            .any(|delta| delta["cols"] == 100 && delta["rows"] == 30),
+        "{pulled}"
+    );
     let _ = reader.call(json!({
         "op": "input",
         "terminal_id": terminal_id,
@@ -740,6 +755,130 @@ fn contiguous_pull_returns_the_grid_text() {
     assert_eq!(deltas.len(), 1, "{follow}");
     assert_eq!(deltas[0]["text"], snap["text"]);
     assert_eq!(deltas[0]["checksum"], snap["checksum"]);
+    assert_eq!(deltas[0]["cols"], 80);
+    assert_eq!(deltas[0]["rows"], 24);
+}
+
+#[test]
+fn child_winsize_change_keeps_the_requested_payload() {
+    let daemon = Daemon::start_with(
+        "#!/bin/sh\nsleep 30\n",
+        &[("KEEPLINED_TEST_POST_SPAWN_WINSIZE", "100x40")],
+    );
+    let cwd = daemon.runtime.canonicalize().expect("cwd");
+    let mut client = Client::connect(&daemon.runtime);
+    let launch = client.call(json!({
+        "op": "launch",
+        "operation_id": "op-winsize",
+        "argv": ["/bin/sh", daemon.script],
+        "cwd": cwd,
+        "cols": 80,
+        "rows": 24,
+    }));
+    assert!(launch["ok"].as_bool().unwrap_or(false), "{launch}");
+    assert_eq!(launch["result"]["cols"], 100);
+    assert_eq!(launch["result"]["rows"], 40);
+    let terminal_id = launch["result"]["terminal_id"].as_str().unwrap().to_owned();
+    let intent: Value = serde_json::from_str(
+        &fs::read_to_string(intent_path(&daemon.runtime, "op-winsize")).unwrap(),
+    )
+    .unwrap();
+    assert_eq!(intent["cols"], 80, "{intent}");
+    assert_eq!(intent["rows"], 24, "{intent}");
+    drop(client);
+    let (runtime, script) = daemon.detach();
+    let socket = runtime.join(keeplined::SOCKET_FILE_NAME);
+    if socket.exists() {
+        fs::remove_file(&socket).expect("remove stale socket");
+    }
+    let mut restarted = Command::new(env!("CARGO_BIN_EXE_keeplined"))
+        .args(["serve", "--runtime"])
+        .arg(&runtime)
+        .stdin(Stdio::null())
+        .stdout(Stdio::null())
+        .stderr(Stdio::piped())
+        .spawn()
+        .expect("restart keeplined");
+    assert!(
+        wait_until(Duration::from_secs(5), || {
+            std::os::unix::net::UnixStream::connect(&socket).is_ok()
+        }),
+        "restarted daemon did not accept connections: {:?}",
+        restarted.try_wait()
+    );
+    let mut client = Client::connect(&runtime);
+    let replay = client.call(json!({
+        "op": "launch",
+        "operation_id": "op-winsize",
+        "argv": ["/bin/sh", script],
+        "cwd": cwd,
+        "cols": 80,
+        "rows": 24,
+    }));
+    assert!(replay["ok"].as_bool().unwrap_or(false), "{replay}");
+    assert_eq!(replay["result"]["spawned"], false);
+    assert_eq!(replay["result"]["attachable"], false);
+    assert_eq!(replay["result"]["terminal_id"], terminal_id);
+    if let Err(err) = restarted.kill() {
+        eprintln!("failed to stop restarted daemon: {err}");
+    }
+    if let Err(err) = restarted.wait() {
+        eprintln!("failed to reap restarted daemon: {err}");
+    }
+    for found in pids_matching(&script.display().to_string()) {
+        let _ = Command::new("/bin/kill")
+            .args(["-9", &found.to_string()])
+            .status();
+    }
+    let _ = fs::remove_dir_all(&runtime);
+}
+
+#[test]
+fn query_replies_do_not_stall_other_sessions() {
+    let daemon = Daemon::start("#!/bin/sh\nsleep 30\n");
+    let py = daemon.runtime.join("spam.py");
+    fs::write(
+        &py,
+        "import os, time\nos.write(1, b'\\x1b[6n' * 200000)\ntime.sleep(60)\n",
+    )
+    .unwrap();
+    let mut client = Client::connect(&daemon.runtime);
+    let cwd = daemon.runtime.canonicalize().expect("cwd");
+    let launch = client.call(json!({
+        "op": "launch",
+        "operation_id": "op-spam",
+        "argv": ["/usr/bin/python3", py],
+        "cwd": cwd,
+        "cols": 80,
+        "rows": 24,
+    }));
+    assert!(launch["ok"].as_bool().unwrap_or(false), "{launch}");
+    let terminal_id = launch["result"]["terminal_id"].as_str().unwrap().to_owned();
+    let started = Instant::now();
+    loop {
+        let response = client.call(json!({"op": "attach", "terminal_id": terminal_id}));
+        assert!(response["ok"].as_bool().unwrap_or(false), "{response}");
+        if response["result"]["revision"].as_u64().unwrap_or(0) >= 1 {
+            break;
+        }
+        if started.elapsed() > Duration::from_secs(5) {
+            panic!("spam child produced no revision: {response}");
+        }
+        thread::sleep(Duration::from_millis(20));
+    }
+    thread::sleep(Duration::from_millis(200));
+    let still = client.call(json!({"op": "attach", "terminal_id": terminal_id}));
+    assert!(still["ok"].as_bool().unwrap_or(false), "{still}");
+    let other = client.call(json!({
+        "op": "launch",
+        "operation_id": "op-other",
+        "argv": ["/bin/sh", daemon.script],
+        "cwd": cwd,
+        "cols": 80,
+        "rows": 24,
+    }));
+    assert!(other["ok"].as_bool().unwrap_or(false), "{other}");
+    assert_eq!(other["result"]["spawned"], true);
 }
 
 #[test]

@@ -10,12 +10,14 @@ use serde_json::{json, Value};
 
 use crate::grid::{self, Screen};
 use crate::intent::IntentRecord;
-use crate::protocol::DELTA_LIMIT;
+use crate::protocol::{DELTA_LIMIT, PTY_READ_PAUSE_BYTES};
 
 pub(crate) struct Delta {
     pub revision: u64,
     pub checksum: u64,
     pub text: String,
+    pub cols: u16,
+    pub rows: u16,
 }
 
 pub(crate) struct Lease {
@@ -162,6 +164,8 @@ impl LiveSession {
             revision: self.revision,
             checksum: view.checksum,
             text: view.text,
+            cols: self.cols,
+            rows: self.rows,
         });
         while self.deltas.len() > DELTA_LIMIT {
             self.deltas.pop_front();
@@ -220,6 +224,10 @@ impl LiveSession {
         !self.pending.is_empty()
     }
 
+    pub(crate) fn output_read_paused(&self) -> bool {
+        self.pending.len() >= PTY_READ_PAUSE_BYTES
+    }
+
     pub(crate) fn snapshot(&mut self) -> io::Result<Value> {
         self.refresh_exit();
         let (cols, rows) = grid::read_winsize(&self.master)?;
@@ -257,14 +265,19 @@ pub(crate) fn spawn_reader(reader: File, state: Arc<Mutex<DaemonState>>, termina
 fn reader_loop(mut reader: File, state: Arc<Mutex<DaemonState>>, terminal_id: String) {
     let mut buf = [0u8; 8192];
     loop {
-        let want_write = has_pending(&state, &terminal_id);
-        match grid::wait_pty(reader.as_raw_fd(), want_write, 200) {
+        let pause_output = output_paused(&state, &terminal_id);
+        let want_write = pause_output || has_pending(&state, &terminal_id);
+        match grid::wait_pty(reader.as_raw_fd(), true, want_write, 200) {
             Ok(ready) => {
                 if ready.writable {
                     flush_output(&state, &terminal_id);
                 }
-                if ready.readable {
+                let pause_output = output_paused(&state, &terminal_id);
+                if ready.readable && (!pause_output || ready.hangup) {
                     loop {
+                        if output_paused(&state, &terminal_id) && !ready.hangup {
+                            break;
+                        }
                         match reader.read(&mut buf) {
                             Ok(0) => {
                                 reap_child(&state, &terminal_id);
@@ -280,6 +293,10 @@ fn reader_loop(mut reader: File, state: Arc<Mutex<DaemonState>>, terminal_id: St
                             }
                         }
                     }
+                } else if pause_output && ready.readable {
+                    // The master still has output, but queued replies are over the budget.
+                    // Sleep so this poll does not spin until the child reads.
+                    std::thread::sleep(std::time::Duration::from_millis(20));
                 } else if !session_open(&state, &terminal_id) {
                     return;
                 }
@@ -320,6 +337,16 @@ fn has_pending(state: &Mutex<DaemonState>, terminal_id: &str) -> bool {
     };
     match guard.terminals.get(terminal_id) {
         Some(Slot::Live(live)) => live.has_pending(),
+        _ => false,
+    }
+}
+
+fn output_paused(state: &Mutex<DaemonState>, terminal_id: &str) -> bool {
+    let Some(guard) = lock_state(state) else {
+        return false;
+    };
+    match guard.terminals.get(terminal_id) {
+        Some(Slot::Live(live)) => live.output_read_paused(),
         _ => false,
     }
 }

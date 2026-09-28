@@ -16,7 +16,7 @@ use crate::grid::{self, PtyProcess};
 use crate::intent::{self, IntentRecord, IntentState};
 use crate::protocol::{
     self, error_response, ok_response, PullClass, Request, DELTA_LIMIT, INTENT_DIR_NAME,
-    PROTOCOL_MAJOR, PROTOCOL_MINOR, SOCKET_FILE_NAME,
+    MAX_INPUT_BYTES, PROTOCOL_MAJOR, PROTOCOL_MINOR, SOCKET_FILE_NAME,
 };
 use crate::session::{spawn_reader, DaemonState, Lease, LiveSession, Slot};
 
@@ -72,14 +72,7 @@ pub fn serve(runtime_dir: &Path) -> io::Result<()> {
     // Tight umask covers creation of the runtime directory, lock, and socket.
     // Drop restores the mask the process started with before any child is spawned.
     let umask_guard = UmaskGuard::restrict();
-    fs::create_dir_all(runtime_dir)?;
-    let runtime_dir = runtime_dir.canonicalize()?;
-    intent::set_mode(&runtime_dir, 0o700)?;
-    intent::require_mode(&runtime_dir, 0o700, "runtime directory")?;
-    let intent_dir = runtime_dir.join(INTENT_DIR_NAME);
-    fs::create_dir_all(&intent_dir)?;
-    intent::set_mode(&intent_dir, 0o700)?;
-
+    let runtime_dir = prepare_runtime(runtime_dir)?;
     let _instance_lock = lock_runtime(&runtime_dir)?;
     let socket_path = runtime_dir.join(SOCKET_FILE_NAME);
     prepare_socket(&socket_path)?;
@@ -309,8 +302,8 @@ fn finish_launch(
     };
     intent.state = IntentState::Running;
     intent.pid = Some(child.id());
-    intent.cols = cols;
-    intent.rows = rows;
+    // cols/rows on the intent stay the requested geometry. The live PTY may
+    // already differ, and writing that size would make the payload fail to load.
     intent.error = None;
     if let Err(err) = intent::write_intent(&state.runtime_dir, &intent) {
         return Err(abandon_spawn(
@@ -453,19 +446,7 @@ fn pull(state: &mut DaemonState, request: &Request) -> Result<Value, OpError> {
         )),
         PullClass::Current => Ok(pull_page(live, Vec::new())),
         PullClass::Deltas => {
-            let deltas: Vec<Value> = live
-                .deltas
-                .iter()
-                .filter(|delta| delta.revision > after)
-                .map(|delta| {
-                    json!({
-                        "revision": delta.revision,
-                        "checksum": format!("{:016x}", delta.checksum),
-                        "text": delta.text,
-                    })
-                })
-                .collect();
-            let page = pull_page(live, deltas);
+            let page = pull_page(live, delta_page(live, after));
             // A partial delta list is not a valid splice. One grid fits; eight max
             // grids may not. The snapshot path is the same response as a gap.
             if protocol::response_exceeds_frame(&request.id, &page)
@@ -516,10 +497,10 @@ fn input(state: &mut DaemonState, request: &Request) -> Result<Value, OpError> {
         .data
         .clone()
         .ok_or_else(|| OpError::new("input_rejected", "data is required"))?;
-    if data.is_empty() || data.len() > 64 * 1024 {
+    if data.is_empty() || data.len() > MAX_INPUT_BYTES {
         return Err(OpError::new(
             "input_rejected",
-            "input must be 1 to 65536 bytes",
+            format!("input must be 1 to {MAX_INPUT_BYTES} bytes"),
         ));
     }
     let live = live_mut(state, request)?;
@@ -624,6 +605,44 @@ fn required_str<'a>(value: Option<&'a str>, name: &str) -> Result<&'a str, OpErr
     }
 }
 
+fn prepare_runtime(runtime_dir: &Path) -> io::Result<std::path::PathBuf> {
+    let created_runtime = !runtime_dir.exists();
+    fs::create_dir_all(runtime_dir)?;
+    let runtime_dir = runtime_dir.canonicalize()?;
+    intent::set_mode(&runtime_dir, 0o700)?;
+    intent::require_mode(&runtime_dir, 0o700, "runtime directory")?;
+    let intent_dir = runtime_dir.join(INTENT_DIR_NAME);
+    fs::create_dir_all(&intent_dir)?;
+    intent::set_mode(&intent_dir, 0o700)?;
+    // A file fsync does not persist the new directory entry in its parent.
+    intent::sync_dir(&runtime_dir)?;
+    if created_runtime {
+        if let Some(parent) = runtime_dir
+            .parent()
+            .filter(|parent| !parent.as_os_str().is_empty())
+        {
+            intent::sync_dir(parent)?;
+        }
+    }
+    Ok(runtime_dir)
+}
+
+fn delta_page(live: &crate::session::LiveSession, after: u64) -> Vec<Value> {
+    live.deltas
+        .iter()
+        .filter(|delta| delta.revision > after)
+        .map(|delta| {
+            json!({
+                "revision": delta.revision,
+                "checksum": format!("{:016x}", delta.checksum),
+                "text": delta.text,
+                "cols": delta.cols,
+                "rows": delta.rows,
+            })
+        })
+        .collect()
+}
+
 fn pull_page(live: &crate::session::LiveSession, deltas: Vec<Value>) -> Value {
     json!({
         "resync_required": false,
@@ -724,5 +743,29 @@ fn peer_uid(stream: &UnixStream) -> io::Result<u32> {
         Err(io::Error::last_os_error())
     } else {
         Ok(uid)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn new_runtime_directory_persists_intents() {
+        let root = std::env::temp_dir().join(format!(
+            "keeplined-fsync-{}-{}",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .expect("clock")
+                .as_nanos()
+        ));
+        let _ = fs::remove_dir_all(&root);
+        let canonical = prepare_runtime(&root.join("runtime")).expect("prepare");
+        assert!(canonical.join(INTENT_DIR_NAME).is_dir());
+        intent::require_mode(&canonical, 0o700, "runtime").expect("runtime mode");
+        intent::require_mode(&canonical.join(INTENT_DIR_NAME), 0o700, "intents")
+            .expect("intents mode");
+        let _ = fs::remove_dir_all(&root);
     }
 }

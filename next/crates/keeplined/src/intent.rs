@@ -111,9 +111,13 @@ fn write_atomic(path: &Path, bytes: &[u8]) -> io::Result<()> {
     fs::rename(&tmp, path)?;
     set_mode(path, 0o600)?;
     if let Some(parent) = path.parent() {
-        File::open(parent)?.sync_all()?;
+        sync_dir(parent)?;
     }
     Ok(())
+}
+
+pub(crate) fn sync_dir(path: &Path) -> io::Result<()> {
+    File::open(path)?.sync_all()
 }
 
 pub(crate) fn canonical_payload(

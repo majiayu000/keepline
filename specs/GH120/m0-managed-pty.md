@@ -15,15 +15,20 @@ Bun SQLite database and does not restore a browser terminal.
 runtime directory is mode `0700` and the socket is mode `0600`. The process
 umask is tightened only while those paths are created, then restored, so a
 launched child keeps the umask the daemon started with. A peer whose uid does
-not match the daemon is rejected. One runtime directory has one live
-daemon. A second `serve` that can reach the existing socket exits with
+not match the daemon is rejected. Creating `intents/` fsyncs that directory
+entry in the runtime directory before any child is spawned. If this process
+created the runtime directory, it also fsyncs the parent directory entry. One
+runtime directory has one live daemon. A second `serve` that can reach the
+existing socket exits with
 `already_running` and does not unlink that socket or touch its children. A
 stale socket is replaced only after an exclusive lock shows that no peer is
 accepting on it.
 
 `launch` writes an intent file and fsyncs it before `Command` spawns
-`argv`. `argv[0]` is an absolute path; the daemon does not join a shell
-string. The child is a session leader. Its controlling terminal and foreground
+`argv`. The stored cols and rows stay the requested geometry, so the
+canonical payload still matches if the child changes the PTY winsize before
+the daemon reads it. `argv[0]` is an absolute path; the daemon does not join
+a shell string. The child is a session leader. Its controlling terminal and foreground
 process group are the PTY, so an interrupt written to the master and
 `SIGWINCH` from a winsize change reach that child. Repeating an `operation_id`
 compares the canonical payload before any cwd existence check. The same
@@ -41,8 +46,11 @@ replies, including device-status and cursor-position reports, are written
 back to the PTY master by the daemon. Clipboard, color, and text-area requests
 are not executed as client actions and are not answered separately by each
 client. Clients attach read-only and receive the same snapshot revision and
-grid checksum. The checksum covers cell text and SGR color. The visible grid
-for the fixture includes plain text plus one red SGR sequence.
+grid checksum. The checksum covers cell text, including zero-width combining
+characters, and SGR color. The visible grid for the fixture includes plain
+text plus one red SGR sequence. Queued writes to the master stay bounded: once
+they pass the input-tail budget, the reader stops taking further PTY output
+until those bytes flush.
 
 Input and resize require an explicit fencing lease. `acquire` fails when a
 lease is already held. `takeover` increments the generation and replaces the
@@ -59,11 +67,12 @@ no new bytes is visible from `alive` and `exit_code`; it does not invent a
 grid revision.
 
 The daemon keeps eight grid views. A contiguous `pull` returns, for each
-revision after `after_revision`, the grid text and checksum from that
-revision when that response fits in one frame. Every pull response includes
-`alive` and `exit_code`, including a client that is already at the current
-revision. A gap, and a contiguous pull whose encoded frame would exceed
-1 MiB, returns one snapshot with `resync_required` and no delta list to splice.
+revision after `after_revision`, the grid text, checksum, and geometry from
+that revision when that response fits in one frame. Every pull response
+includes `alive` and `exit_code`, including a client that is already at the
+current revision. A gap, and a contiguous pull whose encoded frame would
+exceed 1 MiB, returns one snapshot with `resync_required` and no delta list
+to splice.
 
 Frames are a 4-byte big-endian length plus JSON, at most 1 MiB. Major 0 is
 experimental. A hello with any other major returns `unsupported_protocol`.
