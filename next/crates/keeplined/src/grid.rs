@@ -312,20 +312,18 @@ pub(crate) fn spawn_pty(
     if let Some(err) = injected_winsize_failure() {
         return Err(err);
     }
-    let size = {
+    let (actual_cols, actual_rows) = {
         let Some(master) = pty.master.as_ref() else {
             return Err(io::Error::other("pty master missing after spawn"));
         };
-        read_post_spawn_winsize(master)
+        read_post_spawn_winsize(master)?
     };
-    match size {
-        Ok((actual_cols, actual_rows)) => {
-            pty.cols = actual_cols;
-            pty.rows = actual_rows;
-            Ok(pty)
-        }
-        Err(err) => Err(err),
-    }
+    // Screen::new allocates the grid from this size. Returning here drops the
+    // child through PtyProcess before that allocation.
+    let (actual_cols, actual_rows) = supported_winsize(actual_cols, actual_rows)?;
+    pty.cols = actual_cols;
+    pty.rows = actual_rows;
+    Ok(pty)
 }
 
 fn injected_winsize_failure() -> Option<io::Error> {
@@ -338,22 +336,53 @@ fn injected_winsize_failure() -> Option<io::Error> {
 }
 
 fn read_post_spawn_winsize(master: &File) -> io::Result<(u16, u16)> {
-    if let Ok(raw) = std::env::var("KEEPLINED_TEST_POST_SPAWN_WINSIZE") {
-        let (cols, rows) = raw.split_once('x').ok_or_else(|| {
-            io::Error::new(
-                io::ErrorKind::InvalidInput,
-                "KEEPLINED_TEST_POST_SPAWN_WINSIZE must be COLSxROWS",
-            )
-        })?;
-        let cols: u16 = cols
-            .parse()
-            .map_err(|_| io::Error::new(io::ErrorKind::InvalidInput, "bad test winsize columns"))?;
-        let rows: u16 = rows
-            .parse()
-            .map_err(|_| io::Error::new(io::ErrorKind::InvalidInput, "bad test winsize rows"))?;
-        return Ok((cols, rows));
+    if let Some(size) = configured_test_winsize("KEEPLINED_TEST_POST_SPAWN_WINSIZE") {
+        return size;
     }
     read_winsize(master)
+}
+
+pub(crate) fn read_resize_winsize(master: &File) -> io::Result<(u16, u16)> {
+    if let Some(size) = configured_test_winsize("KEEPLINED_TEST_RESIZE_WINSIZE") {
+        return size;
+    }
+    read_winsize(master)
+}
+
+/// Accepts a winsize only inside the same bounds as a launch request.
+pub(crate) fn supported_winsize(cols: u16, rows: u16) -> io::Result<(u16, u16)> {
+    match crate::intent::validate_geometry(cols, rows) {
+        Ok(()) => Ok((cols, rows)),
+        Err(message) => Err(io::Error::new(
+            io::ErrorKind::InvalidInput,
+            format!("pty winsize {cols}x{rows} rejected: {message}"),
+        )),
+    }
+}
+
+fn configured_test_winsize(name: &str) -> Option<io::Result<(u16, u16)>> {
+    let Ok(raw) = std::env::var(name) else {
+        return None;
+    };
+    let Some((cols, rows)) = raw.split_once('x') else {
+        return Some(Err(io::Error::new(
+            io::ErrorKind::InvalidInput,
+            format!("{name} must be COLSxROWS"),
+        )));
+    };
+    let Ok(cols) = cols.parse::<u16>() else {
+        return Some(Err(io::Error::new(
+            io::ErrorKind::InvalidInput,
+            "bad test winsize columns",
+        )));
+    };
+    let Ok(rows) = rows.parse::<u16>() else {
+        return Some(Err(io::Error::new(
+            io::ErrorKind::InvalidInput,
+            "bad test winsize rows",
+        )));
+    };
+    Some(Ok((cols, rows)))
 }
 
 /// Writes as many bytes as the nonblocking master accepts.

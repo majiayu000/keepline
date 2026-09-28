@@ -529,7 +529,7 @@ fn resize(state: &mut DaemonState, request: &Request) -> Result<Value, OpError> 
     let previous_cols = live.cols;
     let previous_rows = live.rows;
     grid::set_winsize(&live.master, cols, rows).map_err(|err| OpError::io("pty_io", err))?;
-    let (actual_cols, actual_rows) = match grid::read_winsize(&live.master) {
+    let (actual_cols, actual_rows) = match grid::read_resize_winsize(&live.master) {
         Ok(size) => size,
         Err(err) => {
             if let Err(rollback) = grid::set_winsize(&live.master, previous_cols, previous_rows) {
@@ -541,11 +541,39 @@ fn resize(state: &mut DaemonState, request: &Request) -> Result<Value, OpError> 
             return Err(OpError::io("pty_io", err));
         }
     };
+    let (actual_cols, actual_rows) = match grid::supported_winsize(actual_cols, actual_rows) {
+        Ok(size) => size,
+        Err(err) => {
+            return restore_winsize(
+                live,
+                previous_cols,
+                previous_rows,
+                "geometry_rejected",
+                err.to_string(),
+            );
+        }
+    };
     live.cols = actual_cols;
     live.rows = actual_rows;
     live.screen.resize(actual_cols, actual_rows);
     live.push_revision();
     Ok(json!({ "cols": actual_cols, "rows": actual_rows }))
+}
+
+fn restore_winsize(
+    live: &LiveSession,
+    cols: u16,
+    rows: u16,
+    code: &'static str,
+    message: String,
+) -> Result<Value, OpError> {
+    if let Err(rollback) = grid::set_winsize(&live.master, cols, rows) {
+        return Err(OpError::new(
+            "pty_io",
+            format!("{message} and rollback failed ({rollback})"),
+        ));
+    }
+    Err(OpError::new(code, message))
 }
 
 fn ensure_lease(live: &LiveSession, request: &Request) -> Result<(), OpError> {

@@ -834,6 +834,120 @@ fn child_winsize_change_keeps_the_requested_payload() {
 }
 
 #[test]
+fn out_of_range_winsize_readback_fails_the_spawn() {
+    let daemon = Daemon::start_with(
+        "#!/bin/sh\nsleep 30\n",
+        &[("KEEPLINED_TEST_POST_SPAWN_WINSIZE", "65535x65535")],
+    );
+    let cwd = daemon.runtime.canonicalize().expect("cwd");
+    let mut client = Client::connect(&daemon.runtime);
+    let launch = client.call(json!({
+        "op": "launch",
+        "operation_id": "op-huge",
+        "argv": ["/bin/sh", daemon.script],
+        "cwd": cwd,
+        "cols": 80,
+        "rows": 24,
+    }));
+    assert_eq!(launch["ok"], false, "{launch}");
+    assert_eq!(launch["error"]["code"], "spawn_failed");
+    assert!(
+        launch["error"]["message"]
+            .as_str()
+            .unwrap_or("")
+            .contains("65535x65535"),
+        "{launch}"
+    );
+    let intent: Value =
+        serde_json::from_str(&fs::read_to_string(intent_path(&daemon.runtime, "op-huge")).unwrap())
+            .unwrap();
+    assert_eq!(intent["state"], "failed", "{intent}");
+    assert_eq!(intent["cols"], 80, "{intent}");
+    assert_eq!(intent["rows"], 24, "{intent}");
+    assert!(
+        pids_matching(&daemon.script.display().to_string()).is_empty(),
+        "out-of-range winsize left a child"
+    );
+    let again = client.call(json!({
+        "op": "launch",
+        "operation_id": "op-huge",
+        "argv": ["/bin/sh", daemon.script],
+        "cwd": cwd,
+        "cols": 80,
+        "rows": 24,
+    }));
+    assert_eq!(again["ok"], false, "{again}");
+    assert_eq!(again["error"]["code"], "spawn_failed");
+}
+
+#[test]
+fn out_of_range_resize_readback_keeps_the_previous_screen() {
+    let daemon = Daemon::start_with(
+        "#!/bin/sh\nsleep 30\n",
+        &[("KEEPLINED_TEST_RESIZE_WINSIZE", "65535x65535")],
+    );
+    let cwd = daemon.runtime.canonicalize().expect("cwd");
+    let mut client = Client::connect(&daemon.runtime);
+    let launch = client.call(json!({
+        "op": "launch",
+        "operation_id": "op-resize-huge",
+        "argv": ["/bin/sh", daemon.script],
+        "cwd": cwd,
+        "cols": 80,
+        "rows": 24,
+    }));
+    assert!(launch["ok"].as_bool().unwrap_or(false), "{launch}");
+    assert_eq!(launch["result"]["cols"], 80, "{launch}");
+    assert_eq!(launch["result"]["rows"], 24, "{launch}");
+    let pid = launch["result"]["pid"].as_u64().expect("pid") as u32;
+    let terminal_id = launch["result"]["terminal_id"].as_str().unwrap().to_owned();
+    let before = client.call(json!({"op": "attach", "terminal_id": terminal_id}));
+    assert!(before["ok"].as_bool().unwrap_or(false), "{before}");
+    assert_eq!(before["result"]["cols"], 80, "{before}");
+    assert_eq!(before["result"]["rows"], 24, "{before}");
+    let lines_before = before["result"]["text"]
+        .as_str()
+        .unwrap_or("")
+        .matches('\n')
+        .count();
+    let revision = before["result"]["revision"].as_u64().expect("revision");
+    let lease = client.call(json!({"op": "acquire", "terminal_id": terminal_id}));
+    assert!(lease["ok"].as_bool().unwrap_or(false), "{lease}");
+    let resized = client.call(json!({
+        "op": "resize",
+        "terminal_id": terminal_id,
+        "generation": lease["result"]["generation"],
+        "token": lease["result"]["token"],
+        "cols": 100,
+        "rows": 40,
+    }));
+    assert_eq!(resized["ok"], false, "{resized}");
+    assert_eq!(resized["error"]["code"], "geometry_rejected", "{resized}");
+    assert!(
+        resized["error"]["message"]
+            .as_str()
+            .unwrap_or("")
+            .contains("65535x65535"),
+        "{resized}"
+    );
+    let after = client.call(json!({"op": "attach", "terminal_id": terminal_id}));
+    assert!(after["ok"].as_bool().unwrap_or(false), "{after}");
+    assert_eq!(after["result"]["cols"], 80, "{after}");
+    assert_eq!(after["result"]["rows"], 24, "{after}");
+    assert_eq!(after["result"]["revision"], revision, "{after}");
+    assert_eq!(
+        after["result"]["text"]
+            .as_str()
+            .unwrap_or("")
+            .matches('\n')
+            .count(),
+        lines_before,
+        "{after}"
+    );
+    assert!(pid_alive(pid), "resize rejection stopped the child");
+}
+
+#[test]
 fn query_replies_do_not_stall_other_sessions() {
     let daemon = Daemon::start("#!/bin/sh\nsleep 30\n");
     let py = daemon.runtime.join("spam.py");

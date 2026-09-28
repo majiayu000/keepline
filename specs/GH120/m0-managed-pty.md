@@ -27,7 +27,9 @@ accepting on it.
 `launch` writes an intent file and fsyncs it before `Command` spawns
 `argv`. The stored cols and rows stay the requested geometry, so the
 canonical payload still matches if the child changes the PTY winsize before
-the daemon reads it. `argv[0]` is an absolute path; the daemon does not join
+the daemon reads it. That readback becomes the live size only inside 2..=400
+columns by 2..=200 rows. A readback outside that range is a failed spawn.
+`argv[0]` is an absolute path; the daemon does not join
 a shell string. The child is a session leader. Its controlling terminal and foreground
 process group are the PTY, so an interrupt written to the master and
 `SIGWINCH` from a winsize change reach that child. Repeating an `operation_id`
@@ -57,7 +59,10 @@ until those bytes flush.
 Input and resize require an explicit fencing lease. `acquire` fails when a
 lease is already held. `takeover` increments the generation and replaces the
 token; the previous token is rejected. A resize without the current token
-does not change the PTY winsize. An input request is either accepted in full,
+does not change the PTY winsize. A resize readback inside 2..=400 columns by
+2..=200 rows is kept, including one that differs from the request. A readback
+outside that range restores the previous winsize and does not resize the
+screen. An input request is either accepted in full,
 with any unwritten tail queued in daemon order, or rejected with
 `pty_backpressure` before any byte of that request is written. A later flush
 writes the queued tail once, so a client retry does not duplicate an accepted
