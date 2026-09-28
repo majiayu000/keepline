@@ -21,7 +21,7 @@ impl Daemon {
     }
 
     fn start_with(script_body: &str, env: &[(&str, &str)]) -> Self {
-        Self::start_inner(script_body, env, None)
+        Self::start_inner(script_body, env, None, false)
     }
 
     fn start_with_umask(script_body: &str, umask: &str) -> Self {
@@ -29,7 +29,7 @@ impl Daemon {
             !umask.is_empty() && umask.bytes().all(|byte| byte.is_ascii_digit()),
             "umask must be octal digits"
         );
-        Self::start_inner(script_body, &[], Some(&format!("umask {umask}; ")))
+        Self::start_inner(script_body, &[], Some(&format!("umask {umask}; ")), false)
     }
 
     fn start_with_ignored_tty_signals(script_body: &str) -> Self {
@@ -37,10 +37,20 @@ impl Daemon {
             script_body,
             &[],
             Some("trap '' INT QUIT TSTP TTIN TTOU WINCH; "),
+            false,
         )
     }
 
-    fn start_inner(script_body: &str, env: &[(&str, &str)], shell_prefix: Option<&str>) -> Self {
+    fn start_with_blocked_sigint(script_body: &str) -> Self {
+        Self::start_inner(script_body, &[], None, true)
+    }
+
+    fn start_inner(
+        script_body: &str,
+        env: &[(&str, &str)],
+        shell_prefix: Option<&str>,
+        block_sigint: bool,
+    ) -> Self {
         static NEXT_RUNTIME: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
         let id = NEXT_RUNTIME.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
         let runtime = PathBuf::from(format!("/tmp/kl{}-{id}", std::process::id()));
@@ -48,7 +58,21 @@ impl Daemon {
         let script = runtime.join("child.sh");
         fs::write(&script, script_body).expect("script");
         let bin = env!("CARGO_BIN_EXE_keeplined");
-        let mut command = if let Some(prefix) = shell_prefix {
+        let mut command = if block_sigint {
+            // This helper blocks SIGINT, then execs the daemon so the mask is inherited.
+            let mut command = Command::new("/usr/bin/python3");
+            command
+                .arg("-c")
+                .arg(
+                    "import os, signal, sys\n\
+                     signal.pthread_sigmask(signal.SIG_BLOCK, {signal.SIGINT})\n\
+                     os.execv(sys.argv[1], sys.argv[1:])\n",
+                )
+                .arg(bin)
+                .args(["serve", "--runtime"])
+                .arg(&runtime);
+            command
+        } else if let Some(prefix) = shell_prefix {
             let mut command = Command::new("/bin/sh");
             command
                 .arg("-c")
@@ -684,6 +708,13 @@ fn child_session_receives_interrupt_and_sigwinch() {
 #[test]
 fn ignored_terminal_signals_still_reach_the_child() {
     assert_child_receives_interrupt_and_sigwinch(Daemon::start_with_ignored_tty_signals(
+        TTY_CHILD_SCRIPT,
+    ));
+}
+
+#[test]
+fn blocked_sigint_still_reaches_the_child() {
+    assert_child_receives_interrupt_and_sigwinch(Daemon::start_with_blocked_sigint(
         TTY_CHILD_SCRIPT,
     ));
 }
