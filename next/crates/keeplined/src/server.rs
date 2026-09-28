@@ -110,10 +110,10 @@ fn handle_connection(
         conn_id,
     };
     let peer_uid = peer_uid(&stream)?;
-    if peer_uid != current_uid() {
+    if peer_uid != intent::daemon_euid() {
         return Err(io::Error::new(
             ErrorKind::PermissionDenied,
-            "peer uid does not match the daemon user",
+            "peer uid does not match the daemon euid",
         ));
     }
 
@@ -714,11 +714,6 @@ fn stale_socket(err: &io::Error) -> bool {
         err.kind(),
         ErrorKind::ConnectionRefused | ErrorKind::NotFound | ErrorKind::ConnectionReset
     )
-}
-
-fn current_uid() -> u32 {
-    // SAFETY: getuid has no inputs and cannot fail.
-    unsafe { libc::getuid() }
 }
 
 fn peer_uid(stream: &UnixStream) -> io::Result<u32> {

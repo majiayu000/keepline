@@ -18,7 +18,7 @@ canonicalizing, the daemon refuses the runtime directory and `intents/` unless
 does not own. The runtime lock is opened without following a symlink. The process
 umask is tightened only while those paths are created, then restored, so a
 launched child keeps the umask the daemon started with. A peer whose uid does
-not match the daemon is rejected. Creating `intents/` fsyncs that directory
+not match the daemon euid is rejected. Creating `intents/` fsyncs that directory
 entry in the runtime directory before any child is spawned. If this process
 created any missing path component, it fsyncs that component's parent. One
 runtime directory has one live daemon. A second `serve` that can reach the
@@ -35,7 +35,9 @@ columns by 2..=200 rows. A readback outside that range is a failed spawn.
 `argv[0]` is an absolute path; the daemon does not join
 a shell string. The child is a session leader. Its controlling terminal and foreground
 process group are the PTY, so an interrupt written to the master and
-`SIGWINCH` from a winsize change reach that child. Repeating an `operation_id`
+`SIGWINCH` from a winsize change reach that child. The child starts with the
+default dispositions for those terminal signals, including when the daemon
+inherited them as ignored. Repeating an `operation_id`
 compares the canonical payload before any cwd existence check. The same
 payload returns the original terminal even if that directory was removed. A
 different payload is `operation_conflict`. A new launch still rejects a

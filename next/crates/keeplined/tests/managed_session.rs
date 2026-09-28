@@ -29,10 +29,18 @@ impl Daemon {
             !umask.is_empty() && umask.bytes().all(|byte| byte.is_ascii_digit()),
             "umask must be octal digits"
         );
-        Self::start_inner(script_body, &[], Some(umask))
+        Self::start_inner(script_body, &[], Some(&format!("umask {umask}; ")))
     }
 
-    fn start_inner(script_body: &str, env: &[(&str, &str)], umask: Option<&str>) -> Self {
+    fn start_with_ignored_tty_signals(script_body: &str) -> Self {
+        Self::start_inner(
+            script_body,
+            &[],
+            Some("trap '' INT QUIT TSTP TTIN TTOU WINCH; "),
+        )
+    }
+
+    fn start_inner(script_body: &str, env: &[(&str, &str)], shell_prefix: Option<&str>) -> Self {
         static NEXT_RUNTIME: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
         let id = NEXT_RUNTIME.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
         let runtime = PathBuf::from(format!("/tmp/kl{}-{id}", std::process::id()));
@@ -40,11 +48,11 @@ impl Daemon {
         let script = runtime.join("child.sh");
         fs::write(&script, script_body).expect("script");
         let bin = env!("CARGO_BIN_EXE_keeplined");
-        let mut command = if let Some(mask) = umask {
+        let mut command = if let Some(prefix) = shell_prefix {
             let mut command = Command::new("/bin/sh");
             command
                 .arg("-c")
-                .arg(format!("umask {mask}; exec \"$0\" \"$@\""))
+                .arg(format!("{prefix}exec \"$0\" \"$@\""))
                 .arg(bin)
                 .args(["serve", "--runtime"])
                 .arg(&runtime);
@@ -655,10 +663,7 @@ fn stale_socket_is_replaced_when_no_peer_accepts() {
     let _ = fs::remove_dir_all(&runtime);
 }
 
-#[test]
-fn child_session_receives_interrupt_and_sigwinch() {
-    let daemon = Daemon::start(
-        r#"#!/bin/sh
+const TTY_CHILD_SCRIPT: &str = r#"#!/bin/sh
 printf 'SID %s\n' "$(/usr/bin/python3 -c 'import os; print(os.getsid(0))')"
 printf 'PGID %s\n' "$(/usr/bin/python3 -c 'import os; print(os.getpgrp())')"
 trap 'printf WINCH\n' WINCH
@@ -669,8 +674,21 @@ while [ "$i" -lt 40 ]; do
   sleep 0.2
   i=$((i + 1))
 done
-"#,
-    );
+"#;
+
+#[test]
+fn child_session_receives_interrupt_and_sigwinch() {
+    assert_child_receives_interrupt_and_sigwinch(Daemon::start(TTY_CHILD_SCRIPT));
+}
+
+#[test]
+fn ignored_terminal_signals_still_reach_the_child() {
+    assert_child_receives_interrupt_and_sigwinch(Daemon::start_with_ignored_tty_signals(
+        TTY_CHILD_SCRIPT,
+    ));
+}
+
+fn assert_child_receives_interrupt_and_sigwinch(daemon: Daemon) {
     let mut client = Client::connect(&daemon.runtime);
     let cwd = daemon.runtime.canonicalize().expect("cwd");
     let launch = client.call(json!({

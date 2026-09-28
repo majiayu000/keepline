@@ -224,7 +224,7 @@ pub(crate) fn chmod_owned_directory(path: &Path, label: &str) -> io::Result<()> 
     require_mode(path, 0o700, label)
 }
 
-fn daemon_euid() -> u32 {
+pub(crate) fn daemon_euid() -> u32 {
     // SAFETY: geteuid has no inputs and cannot fail.
     unsafe { libc::geteuid() }
 }
