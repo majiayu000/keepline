@@ -116,27 +116,6 @@ impl LiveSession {
         self.exit_code
     }
 
-    pub(crate) fn refresh_exit(&mut self) {
-        if self.exited {
-            return;
-        }
-        let status = {
-            let Some(child) = self.child.as_mut() else {
-                return;
-            };
-            match child.try_wait() {
-                Ok(Some(status)) => Some(Ok(status)),
-                Ok(None) => None,
-                Err(err) => Some(Err(err)),
-            }
-        };
-        match status {
-            Some(Ok(status)) => self.note_exit(status),
-            Some(Err(err)) => self.note_wait_error(err),
-            None => {}
-        }
-    }
-
     fn note_exit(&mut self, status: ExitStatus) {
         self.exited = true;
         self.exit_code = status.code();
@@ -229,10 +208,17 @@ impl LiveSession {
     }
 
     pub(crate) fn snapshot(&mut self) -> io::Result<Value> {
-        self.refresh_exit();
-        let (cols, rows) = grid::read_winsize(&self.master)?;
-        self.cols = cols;
-        self.rows = rows;
+        // A child stty must not resize the parser. An out-of-range readback
+        // must also not replace the in-range size a resize rolls back to.
+        let (cols, rows) = match grid::read_winsize(&self.master) {
+            Ok((cols, rows)) if crate::intent::validate_geometry(cols, rows).is_ok() => {
+                self.cols = cols;
+                self.rows = rows;
+                (cols, rows)
+            }
+            Ok(_) => (self.cols, self.rows),
+            Err(err) => return Err(err),
+        };
         let view = self.screen.view();
         Ok(json!({
             "terminal_id": self.intent.terminal_id,
@@ -264,6 +250,10 @@ pub(crate) fn spawn_reader(reader: File, state: Arc<Mutex<DaemonState>>, termina
 
 fn reader_loop(mut reader: File, state: Arc<Mutex<DaemonState>>, terminal_id: String) {
     let mut buf = [0u8; 8192];
+    let mut hold_checked = false;
+    // A test can pause before the first read. Exit stays unpublished until EOF,
+    // so a client cannot observe a dead child while this buffer is still full.
+    pause_reader_for_test(&mut hold_checked);
     loop {
         let pause_output = output_paused(&state, &terminal_id);
         let want_write = pause_output || has_pending(&state, &terminal_id);
@@ -316,7 +306,6 @@ fn ingest(state: &Mutex<DaemonState>, terminal_id: &str, bytes: &[u8]) {
     };
     if let Some(Slot::Live(live)) = guard.terminals.get_mut(terminal_id) {
         live.ingest(bytes);
-        live.refresh_exit();
     }
 }
 
@@ -352,18 +341,46 @@ fn output_paused(state: &Mutex<DaemonState>, terminal_id: &str) -> bool {
 }
 
 fn session_open(state: &Mutex<DaemonState>, terminal_id: &str) -> bool {
-    let Some(mut guard) = lock_state(state) else {
+    let Some(guard) = lock_state(state) else {
         return false;
     };
-    if let Some(Slot::Live(live)) = guard.terminals.get_mut(terminal_id) {
-        live.refresh_exit();
-        true
-    } else {
-        false
+    matches!(guard.terminals.get(terminal_id), Some(Slot::Live(_)))
+}
+
+fn pause_reader_for_test(done: &mut bool) {
+    if *done {
+        return;
+    }
+    let Ok(path) = std::env::var("KEEPLINED_TEST_HOLD_READER") else {
+        *done = true;
+        return;
+    };
+    if path.is_empty() {
+        *done = true;
+        return;
+    }
+    *done = true;
+    let held = std::path::PathBuf::from(&path);
+    if let Err(err) = std::fs::write(&held, b"held") {
+        eprintln!(
+            "keeplined: failed to mark the test hold {}: {err}",
+            held.display()
+        );
+        return;
+    }
+    let release = held.with_extension("release");
+    let start = std::time::Instant::now();
+    while !release.exists() {
+        if start.elapsed() > std::time::Duration::from_secs(10) {
+            eprintln!("keeplined: test hold expired for {}", held.display());
+            return;
+        }
+        std::thread::sleep(std::time::Duration::from_millis(20));
     }
 }
 
-/// Waits for the child outside the daemon mutex so other sessions can proceed.
+/// Waits for the child outside the daemon mutex. This is the only place a live
+/// session becomes exited, after the reader has drained the PTY.
 fn reap_child(state: &Mutex<DaemonState>, terminal_id: &str) {
     let child = {
         let Some(mut guard) = lock_state(state) else {

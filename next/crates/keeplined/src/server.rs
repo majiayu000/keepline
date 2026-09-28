@@ -1,8 +1,7 @@
 use std::collections::HashMap;
-use std::fs::{self, File, OpenOptions};
+use std::fs;
 use std::io::{self, ErrorKind};
 use std::os::fd::AsRawFd;
-use std::os::unix::fs::OpenOptionsExt;
 use std::os::unix::net::{UnixListener, UnixStream};
 use std::path::Path;
 use std::process::Child;
@@ -15,8 +14,8 @@ use serde_json::{json, Value};
 use crate::grid::{self, PtyProcess};
 use crate::intent::{self, IntentRecord, IntentState};
 use crate::protocol::{
-    self, error_response, ok_response, PullClass, Request, DELTA_LIMIT, INTENT_DIR_NAME,
-    MAX_INPUT_BYTES, PROTOCOL_MAJOR, PROTOCOL_MINOR, SOCKET_FILE_NAME,
+    self, error_response, ok_response, PullClass, Request, DELTA_LIMIT, MAX_INPUT_BYTES,
+    PROTOCOL_MAJOR, PROTOCOL_MINOR, SOCKET_FILE_NAME,
 };
 use crate::session::{spawn_reader, DaemonState, Lease, LiveSession, Slot};
 
@@ -72,8 +71,8 @@ pub fn serve(runtime_dir: &Path) -> io::Result<()> {
     // Tight umask covers creation of the runtime directory, lock, and socket.
     // Drop restores the mask the process started with before any child is spawned.
     let umask_guard = UmaskGuard::restrict();
-    let runtime_dir = prepare_runtime(runtime_dir)?;
-    let _instance_lock = lock_runtime(&runtime_dir)?;
+    let runtime_dir = intent::prepare_runtime(runtime_dir)?;
+    let _instance_lock = intent::lock_runtime(&runtime_dir)?;
     let socket_path = runtime_dir.join(SOCKET_FILE_NAME);
     prepare_socket(&socket_path)?;
     let listener = UnixListener::bind(&socket_path)?;
@@ -435,7 +434,6 @@ fn pull(state: &mut DaemonState, request: &Request) -> Result<Value, OpError> {
         .after_revision
         .ok_or_else(|| OpError::new("revision_required", "after_revision is required"))?;
     let live = live_mut(state, request)?;
-    live.refresh_exit();
     match protocol::classify_pull(live.oldest_retained(), live.revision, after) {
         PullClass::Ahead => Err(OpError::new(
             "revision_ahead",
@@ -526,6 +524,12 @@ fn resize(state: &mut DaemonState, request: &Request) -> Result<Value, OpError> 
     intent::validate_geometry(cols, rows).map_err(|err| OpError::new("geometry_rejected", err))?;
     let live = live_mut(state, request)?;
     ensure_lease(live, request)?;
+    if !live.alive() {
+        return Err(OpError::new(
+            "terminal_exited",
+            "resize is rejected after the child exits",
+        ));
+    }
     let previous_cols = live.cols;
     let previous_rows = live.rows;
     grid::set_winsize(&live.master, cols, rows).map_err(|err| OpError::io("pty_io", err))?;
@@ -633,28 +637,6 @@ fn required_str<'a>(value: Option<&'a str>, name: &str) -> Result<&'a str, OpErr
     }
 }
 
-fn prepare_runtime(runtime_dir: &Path) -> io::Result<std::path::PathBuf> {
-    let created_runtime = !runtime_dir.exists();
-    fs::create_dir_all(runtime_dir)?;
-    let runtime_dir = runtime_dir.canonicalize()?;
-    intent::set_mode(&runtime_dir, 0o700)?;
-    intent::require_mode(&runtime_dir, 0o700, "runtime directory")?;
-    let intent_dir = runtime_dir.join(INTENT_DIR_NAME);
-    fs::create_dir_all(&intent_dir)?;
-    intent::set_mode(&intent_dir, 0o700)?;
-    // A file fsync does not persist the new directory entry in its parent.
-    intent::sync_dir(&runtime_dir)?;
-    if created_runtime {
-        if let Some(parent) = runtime_dir
-            .parent()
-            .filter(|parent| !parent.as_os_str().is_empty())
-        {
-            intent::sync_dir(parent)?;
-        }
-    }
-    Ok(runtime_dir)
-}
-
 fn delta_page(live: &crate::session::LiveSession, after: u64) -> Vec<Value> {
     live.deltas
         .iter()
@@ -710,29 +692,6 @@ fn already_running() -> io::Error {
     io::Error::new(ErrorKind::AlreadyExists, "already_running")
 }
 
-fn lock_runtime(runtime_dir: &Path) -> io::Result<File> {
-    let path = runtime_dir.join("keeplined.lock");
-    let file = OpenOptions::new()
-        .create(true)
-        .truncate(false)
-        .read(true)
-        .write(true)
-        .mode(0o600)
-        .open(&path)?;
-    intent::set_mode(&path, 0o600)?;
-    // SAFETY: file is an open descriptor and LOCK_EX|LOCK_NB does not touch other memory.
-    let rc = unsafe { libc::flock(file.as_raw_fd(), libc::LOCK_EX | libc::LOCK_NB) };
-    if rc == 0 {
-        return Ok(file);
-    }
-    let err = io::Error::last_os_error();
-    if err.kind() == ErrorKind::WouldBlock || err.raw_os_error() == Some(libc::EWOULDBLOCK) {
-        Err(already_running())
-    } else {
-        Err(err)
-    }
-}
-
 fn prepare_socket(socket_path: &Path) -> io::Result<()> {
     if !socket_path.exists() {
         return Ok(());
@@ -771,29 +730,5 @@ fn peer_uid(stream: &UnixStream) -> io::Result<u32> {
         Err(io::Error::last_os_error())
     } else {
         Ok(uid)
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn new_runtime_directory_persists_intents() {
-        let root = std::env::temp_dir().join(format!(
-            "keeplined-fsync-{}-{}",
-            std::process::id(),
-            std::time::SystemTime::now()
-                .duration_since(std::time::UNIX_EPOCH)
-                .expect("clock")
-                .as_nanos()
-        ));
-        let _ = fs::remove_dir_all(&root);
-        let canonical = prepare_runtime(&root.join("runtime")).expect("prepare");
-        assert!(canonical.join(INTENT_DIR_NAME).is_dir());
-        intent::require_mode(&canonical, 0o700, "runtime").expect("runtime mode");
-        intent::require_mode(&canonical.join(INTENT_DIR_NAME), 0o700, "intents")
-            .expect("intents mode");
-        let _ = fs::remove_dir_all(&root);
     }
 }

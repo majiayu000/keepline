@@ -12,12 +12,15 @@ Bun SQLite database and does not restore a browser terminal.
 ## What this slice does
 
 `keeplined serve --runtime <dir>` creates a user-private Unix socket. The
-runtime directory is mode `0700` and the socket is mode `0600`. The process
+runtime directory is mode `0700` and the socket is mode `0600`. After
+canonicalizing, the daemon refuses the runtime directory and `intents/` unless
+`st_uid` is the daemon euid, and it does not change the mode of a directory it
+does not own. The runtime lock is opened without following a symlink. The process
 umask is tightened only while those paths are created, then restored, so a
 launched child keeps the umask the daemon started with. A peer whose uid does
 not match the daemon is rejected. Creating `intents/` fsyncs that directory
 entry in the runtime directory before any child is spawned. If this process
-created the runtime directory, it also fsyncs the parent directory entry. One
+created any missing path component, it fsyncs that component's parent. One
 runtime directory has one live daemon. A second `serve` that can reach the
 existing socket exits with
 `already_running` and does not unlink that socket or touch its children. A
@@ -48,8 +51,8 @@ replies, including device-status and cursor-position reports, are written
 back to the PTY master by the daemon. Clipboard, color, and text-area requests
 are not executed as client actions and are not answered separately by each
 client. Clients attach read-only and receive the same snapshot revision and
-grid checksum. The checksum covers cell text, including zero-width combining
-characters, and SGR color. The visible grid for the fixture includes plain
+grid checksum. The checksum covers cell text, including at most one zero-width
+scalar per cell, and SGR color. The visible grid for the fixture includes plain
 text plus one red SGR sequence. Snapshot and pull text keep that cell text,
 including trailing non-ASCII spacing, and omit only U+0020 padding. Queued
 writes to the master stay bounded: once they pass the input-tail budget, the
@@ -62,14 +65,17 @@ token; the previous token is rejected. A resize without the current token
 does not change the PTY winsize. A resize readback inside 2..=400 columns by
 2..=200 rows is kept, including one that differs from the request. A readback
 outside that range restores the previous winsize and does not resize the
-screen. An input request is either accepted in full,
+screen. A later child `stty` does not resize the parser. A resize after the
+child exit has been published does not change the grid. An input request is either accepted in full,
 with any unwritten tail queued in daemon order, or rejected with
 `pty_backpressure` before any byte of that request is written. A later flush
 writes the queued tail once, so a client retry does not duplicate an accepted
 prefix. Disconnecting every client revokes the lease and leaves the child
 running. A later attach uses the same pid. When the PTY reaches EOF or the
 reader hits a read or poll error, the child is waited and the exit is
-published without holding the daemon-wide mutex across that wait. Exit with
+published without holding the daemon-wide mutex across that wait. That
+publication waits until the reader has drained the PTY, so an earlier child
+exit does not hide output still buffered in the master. Exit with
 no new bytes is visible from `alive` and `exit_code`; it does not invent a
 grid revision.
 

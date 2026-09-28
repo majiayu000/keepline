@@ -126,12 +126,12 @@ impl Screen {
             line.push(cell.c);
             hash_char(&mut text_only, cell.c);
             hash_char(&mut full, cell.c);
-            if let Some(zerowidth) = cell.zerowidth() {
-                for ch in zerowidth {
-                    line.push(*ch);
-                    hash_char(&mut text_only, *ch);
-                    hash_char(&mut full, *ch);
-                }
+            // The parser stores an unbounded zerowidth list. One scalar keeps
+            // text and checksum aligned and a 400x200 snapshot inside 1 MiB.
+            if let Some(ch) = cell.zerowidth().and_then(|chars| chars.first().copied()) {
+                line.push(ch);
+                hash_char(&mut text_only, ch);
+                hash_char(&mut full, ch);
             }
             full.write_u64(color_code(cell.fg));
             full.write_u64(color_code(cell.bg));
@@ -572,6 +572,76 @@ mod tests {
         assert_ne!(combined_view.text, plain_view.text);
         assert_ne!(combined_view.checksum, plain_view.checksum);
         assert_ne!(combined_view.text_checksum, plain_view.text_checksum);
+    }
+
+    #[test]
+    fn extra_zero_width_scalars_stay_out_of_the_published_cell() {
+        let mut many = Screen::new(8, 2);
+        many.advance("e\u{0301}\u{0302}\n".as_bytes());
+        let stored: Vec<char> = many
+            .term
+            .grid()
+            .display_iter()
+            .find_map(|indexed| {
+                indexed.cell.zerowidth().and_then(|chars| {
+                    if chars.len() >= 2 {
+                        Some(chars.to_vec())
+                    } else {
+                        None
+                    }
+                })
+            })
+            .expect("alacritty kept only one zerowidth scalar");
+        assert!(stored.contains(&'\u{0301}'));
+        assert!(stored.contains(&'\u{0302}'));
+
+        let mut one = Screen::new(8, 2);
+        one.advance("e\u{0301}\n".as_bytes());
+        let many_view = many.view();
+        let one_view = one.view();
+        assert_eq!(many_view.text, one_view.text);
+        assert!(!many_view.text.contains('\u{0302}'));
+        assert_eq!(many_view.checksum, one_view.checksum);
+        assert_eq!(many_view.text_checksum, one_view.text_checksum);
+    }
+
+    #[test]
+    fn one_zero_width_scalar_keeps_a_max_snapshot_in_one_frame() {
+        let cols = usize::from(crate::protocol::MAX_COLUMNS);
+        let rows = usize::from(crate::protocol::MAX_ROWS);
+        let mut screen = Screen::new(crate::protocol::MAX_COLUMNS, crate::protocol::MAX_ROWS);
+        let cell = "e\u{0301}\u{0302}";
+        let mut bytes = Vec::with_capacity(cols * rows * cell.len());
+        for _ in 0..(cols * rows) {
+            bytes.extend(cell.as_bytes());
+        }
+        screen.advance(&bytes);
+        let view = screen.view();
+        assert!(view.text.contains('\u{0301}'));
+        assert!(!view.text.contains('\u{0302}'));
+        assert!(view.text.len() <= cols * rows * "e\u{0301}".len() + rows);
+        let payload = serde_json::json!({
+            "terminal_id": "t",
+            "instance_generation": 1,
+            "pid": 1,
+            "alive": true,
+            "exit_code": null,
+            "attachable": true,
+            "revision": 1,
+            "oldest_retained_revision": 1,
+            "cols": crate::protocol::MAX_COLUMNS,
+            "rows": crate::protocol::MAX_ROWS,
+            "checksum": format!("{:016x}", view.checksum),
+            "text_checksum": format!("{:016x}", view.text_checksum),
+            "attributed_cells": view.attributed_cells,
+            "text": view.text,
+            "lease_generation": 0,
+            "resync_required": true,
+        });
+        assert!(
+            !crate::protocol::response_exceeds_frame("1", &payload).expect("encode"),
+            "max snapshot exceeded one frame"
+        );
     }
 
     #[test]

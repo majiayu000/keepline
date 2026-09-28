@@ -1,6 +1,7 @@
 use std::fs::{self, File, OpenOptions};
-use std::io::{self, Read, Write};
-use std::os::unix::fs::{OpenOptionsExt, PermissionsExt};
+use std::io::{self, ErrorKind, Read, Write};
+use std::os::fd::AsRawFd;
+use std::os::unix::fs::{MetadataExt, OpenOptionsExt, PermissionsExt};
 use std::path::{Path, PathBuf};
 
 use serde::{Deserialize, Serialize};
@@ -64,7 +65,8 @@ pub(crate) fn load_intents(runtime_dir: &Path) -> io::Result<Vec<IntentRecord>> 
 pub(crate) fn write_intent(runtime_dir: &Path, intent: &IntentRecord) -> io::Result<()> {
     let dir = runtime_dir.join(INTENT_DIR_NAME);
     fs::create_dir_all(&dir)?;
-    set_mode(&dir, 0o700)?;
+    let dir = dir.canonicalize()?;
+    chmod_owned_directory(&dir, "intents directory")?;
     // Lowercase hex keeps `build` and `BUILD` as two files on a case-insensitive volume.
     let path = dir.join(format!("{}.json", intent_file_stem(&intent.operation_id)));
     let bytes = serde_json::to_vec_pretty(intent).map_err(|err| {
@@ -197,6 +199,36 @@ pub(crate) fn set_mode(path: &Path, mode: u32) -> io::Result<()> {
     fs::set_permissions(path, permissions)
 }
 
+pub(crate) fn require_owned_directory(path: &Path, label: &str) -> io::Result<()> {
+    let metadata = fs::symlink_metadata(path)?;
+    if !metadata.is_dir() {
+        return Err(io::Error::new(
+            io::ErrorKind::PermissionDenied,
+            format!("{label} must be a directory owned by the daemon"),
+        ));
+    }
+    let uid = metadata.uid();
+    let euid = daemon_euid();
+    if uid != euid {
+        return Err(io::Error::new(
+            io::ErrorKind::PermissionDenied,
+            format!("{label} is owned by uid {uid}, not the daemon euid {euid}"),
+        ));
+    }
+    Ok(())
+}
+
+pub(crate) fn chmod_owned_directory(path: &Path, label: &str) -> io::Result<()> {
+    require_owned_directory(path, label)?;
+    set_mode(path, 0o700)?;
+    require_mode(path, 0o700, label)
+}
+
+fn daemon_euid() -> u32 {
+    // SAFETY: geteuid has no inputs and cannot fail.
+    unsafe { libc::geteuid() }
+}
+
 pub(crate) fn require_mode(path: &Path, expected: u32, label: &str) -> io::Result<()> {
     let mode = fs::metadata(path)?.permissions().mode() & 0o777;
     if mode != expected {
@@ -206,6 +238,99 @@ pub(crate) fn require_mode(path: &Path, expected: u32, label: &str) -> io::Resul
         ));
     }
     Ok(())
+}
+
+pub(crate) fn prepare_runtime(runtime_dir: &Path) -> io::Result<PathBuf> {
+    let created = nonexistent_chain(runtime_dir)?;
+    fs::create_dir_all(runtime_dir)?;
+    let runtime_dir = runtime_dir.canonicalize()?;
+    chmod_owned_directory(&runtime_dir, "runtime directory")?;
+    let intent_dir = runtime_dir.join(INTENT_DIR_NAME);
+    fs::create_dir_all(&intent_dir)?;
+    let intent_dir = intent_dir.canonicalize()?;
+    chmod_owned_directory(&intent_dir, "intents directory")?;
+    sync_created_parents(&created)?;
+    // A file fsync does not persist the new directory entry in its parent.
+    sync_dir(&runtime_dir)?;
+    Ok(runtime_dir)
+}
+
+fn nonexistent_chain(path: &Path) -> io::Result<Vec<PathBuf>> {
+    let mut cursor = if path.is_absolute() {
+        path.to_path_buf()
+    } else {
+        std::env::current_dir()?.join(path)
+    };
+    let mut missing = Vec::new();
+    while !cursor.exists() {
+        missing.push(cursor.clone());
+        if !cursor.pop() {
+            break;
+        }
+    }
+    missing.reverse();
+    Ok(missing)
+}
+
+fn sync_created_parents(created: &[PathBuf]) -> io::Result<()> {
+    let mut synced = Vec::new();
+    for dir in created {
+        let Some(parent) = dir.parent().filter(|parent| !parent.as_os_str().is_empty()) else {
+            continue;
+        };
+        let parent = parent.canonicalize()?;
+        if synced.iter().any(|done| done == &parent) {
+            continue;
+        }
+        sync_dir(&parent)?;
+        synced.push(parent);
+    }
+    Ok(())
+}
+
+pub(crate) fn lock_runtime(runtime_dir: &Path) -> io::Result<File> {
+    let path = runtime_dir.join("keeplined.lock");
+    let file = OpenOptions::new()
+        .create(true)
+        .truncate(false)
+        .read(true)
+        .write(true)
+        .mode(0o600)
+        .custom_flags(libc::O_NOFOLLOW)
+        .open(&path)
+        .map_err(|err| {
+            if err.raw_os_error() == Some(libc::ELOOP) {
+                io::Error::new(
+                    ErrorKind::PermissionDenied,
+                    "runtime lock must not be a symlink",
+                )
+            } else {
+                err
+            }
+        })?;
+    set_lock_mode(&file)?;
+    // SAFETY: file is an open descriptor and LOCK_EX|LOCK_NB does not touch other memory.
+    let rc = unsafe { libc::flock(file.as_raw_fd(), libc::LOCK_EX | libc::LOCK_NB) };
+    if rc == 0 {
+        return Ok(file);
+    }
+    let err = io::Error::last_os_error();
+    if err.kind() == ErrorKind::WouldBlock || err.raw_os_error() == Some(libc::EWOULDBLOCK) {
+        Err(io::Error::new(ErrorKind::AlreadyExists, "already_running"))
+    } else {
+        Err(err)
+    }
+}
+
+fn set_lock_mode(file: &File) -> io::Result<()> {
+    // SAFETY: file is the descriptor opened above, so this does not follow a
+    // path that was replaced with a symlink.
+    let rc = unsafe { libc::fchmod(file.as_raw_fd(), 0o600) };
+    if rc == 0 {
+        Ok(())
+    } else {
+        Err(io::Error::last_os_error())
+    }
 }
 
 pub(crate) fn random_hex(nbytes: usize) -> io::Result<String> {
@@ -221,7 +346,7 @@ pub(crate) fn intent_cwd(cwd: &str) -> PathBuf {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::os::unix::fs::MetadataExt;
+    use std::os::unix::fs::{symlink, MetadataExt, PermissionsExt};
 
     fn sample(operation_id: &str) -> IntentRecord {
         let argv = vec!["/bin/sh".to_owned()];
@@ -277,5 +402,118 @@ mod tests {
         assert_eq!(loaded[0].terminal_id, "term-BUILD");
         assert_eq!(loaded[1].terminal_id, "term-build");
         let _ = fs::remove_dir_all(&runtime);
+    }
+
+    #[test]
+    fn write_intent_does_not_chmod_an_unowned_intents_directory() {
+        let Some(foreign) = unowned_directory() else {
+            return;
+        };
+        let before = fs::metadata(foreign).expect("foreign metadata").mode();
+        let runtime = std::env::temp_dir().join(format!(
+            "keeplined-intent-owner-{}-{}",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .expect("clock")
+                .as_nanos()
+        ));
+        let _ = fs::remove_dir_all(&runtime);
+        fs::create_dir_all(&runtime).expect("runtime");
+        symlink(foreign, runtime.join(INTENT_DIR_NAME)).expect("symlink");
+        let err = write_intent(&runtime, &sample("op")).expect_err("unowned intents");
+        assert!(err.to_string().contains("not the daemon euid"), "{err}");
+        assert_eq!(
+            fs::metadata(foreign).expect("foreign metadata").mode(),
+            before
+        );
+        let _ = fs::remove_dir_all(&runtime);
+    }
+
+    #[test]
+    fn nested_runtime_directory_is_private() {
+        let root = temp_root("nested");
+        let canonical = prepare_runtime(&root.join("nested").join("runtime")).expect("prepare");
+        assert!(canonical.parent().unwrap().ends_with("nested"));
+        assert_eq!(canonical.metadata().expect("meta").uid(), daemon_euid());
+        require_mode(&canonical, 0o700, "runtime").expect("runtime mode");
+        require_mode(&canonical.join(INTENT_DIR_NAME), 0o700, "intents").expect("intents mode");
+        let _ = fs::remove_dir_all(&root);
+    }
+
+    #[test]
+    fn prepare_runtime_refuses_a_directory_it_does_not_own() {
+        let Some(foreign) = unowned_directory() else {
+            return;
+        };
+        let before = fs::metadata(foreign).expect("foreign").mode();
+        let err = prepare_runtime(foreign).expect_err("foreign runtime");
+        assert!(err.to_string().contains("not the daemon euid"), "{err}");
+        assert_eq!(fs::metadata(foreign).expect("foreign").mode(), before);
+
+        let root = temp_root("foreign-intents");
+        let runtime = root.join("runtime");
+        fs::create_dir_all(&runtime).expect("runtime");
+        symlink(foreign, runtime.join(INTENT_DIR_NAME)).expect("symlink");
+        let err = prepare_runtime(&runtime).expect_err("foreign intents");
+        assert!(err.to_string().contains("not the daemon euid"), "{err}");
+        assert_eq!(fs::metadata(foreign).expect("foreign").mode(), before);
+        let _ = fs::remove_dir_all(&root);
+    }
+
+    #[test]
+    fn lock_runtime_creates_a_private_lock() {
+        let root = temp_root("lock");
+        let runtime = prepare_runtime(&root.join("runtime")).expect("prepare");
+        let file = lock_runtime(&runtime).expect("lock");
+        assert_eq!(
+            file.metadata().expect("meta").permissions().mode() & 0o777,
+            0o600
+        );
+        let err = lock_runtime(&runtime).expect_err("second lock");
+        assert_eq!(err.kind(), ErrorKind::AlreadyExists);
+        drop(file);
+        let _ = fs::remove_dir_all(&root);
+    }
+
+    #[test]
+    fn lock_runtime_does_not_follow_a_symlink() {
+        let root = temp_root("lock-link");
+        let runtime = prepare_runtime(&root.join("runtime")).expect("prepare");
+        let secret = root.join("secret");
+        fs::write(&secret, b"keep").expect("secret");
+        let mode = fs::metadata(&secret).expect("meta").mode();
+        symlink(&secret, runtime.join("keeplined.lock")).expect("symlink");
+        let err = lock_runtime(&runtime).expect_err("symlink lock");
+        assert_eq!(err.kind(), ErrorKind::PermissionDenied, "{err}");
+        assert!(err.to_string().contains("symlink"), "{err}");
+        assert_eq!(fs::read(&secret).expect("secret"), b"keep");
+        assert_eq!(fs::metadata(&secret).expect("meta").mode(), mode);
+        assert!(fs::symlink_metadata(runtime.join("keeplined.lock"))
+            .expect("lock")
+            .file_type()
+            .is_symlink());
+        let _ = fs::remove_dir_all(&root);
+    }
+
+    fn temp_root(label: &str) -> PathBuf {
+        std::env::temp_dir().join(format!(
+            "keeplined-{label}-{}-{}",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .expect("clock")
+                .as_nanos()
+        ))
+    }
+
+    fn unowned_directory() -> Option<&'static Path> {
+        let path = Path::new("/usr");
+        let meta = fs::metadata(path).ok()?;
+        if meta.uid() == daemon_euid() {
+            None
+        } else {
+            Some(path)
+        }
     }
 }

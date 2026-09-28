@@ -1115,6 +1115,143 @@ done
 }
 
 #[test]
+fn exit_is_published_only_after_the_pty_is_drained() {
+    let hold = std::env::temp_dir().join(format!(
+        "keeplined-hold-{}-{}",
+        std::process::id(),
+        std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .expect("clock")
+            .as_nanos()
+    ));
+    let _ = fs::remove_file(&hold);
+    let release = hold.with_extension("release");
+    let _ = fs::remove_file(&release);
+    let daemon = Daemon::start_with(
+        "#!/bin/sh\nprintf 'END\\n'\n",
+        &[(
+            "KEEPLINED_TEST_HOLD_READER",
+            hold.to_str().expect("hold path"),
+        )],
+    );
+    let mut client = Client::connect(&daemon.runtime);
+    let cwd = daemon.runtime.canonicalize().expect("cwd");
+    let launch = client.call(json!({
+        "op": "launch",
+        "operation_id": "op-drain",
+        "argv": ["/bin/sh", daemon.script],
+        "cwd": cwd,
+        "cols": 80,
+        "rows": 24,
+    }));
+    assert!(launch["ok"].as_bool().unwrap_or(false), "{launch}");
+    let terminal_id = launch["result"]["terminal_id"].as_str().unwrap().to_owned();
+    assert!(
+        wait_until(Duration::from_secs(5), || hold.exists()),
+        "reader did not pause: {}",
+        daemon.stderr_text()
+    );
+    let mid = client.call(json!({"op": "attach", "terminal_id": terminal_id}));
+    assert!(mid["ok"].as_bool().unwrap_or(false), "{mid}");
+    assert_eq!(mid["result"]["alive"], true, "{mid}");
+    assert!(
+        !mid["result"]["text"].as_str().unwrap_or("").contains("END"),
+        "{mid}"
+    );
+    fs::write(&release, b"go").expect("release");
+    let started = Instant::now();
+    let done = loop {
+        let snap = client.call(json!({"op": "attach", "terminal_id": terminal_id}));
+        assert!(snap["ok"].as_bool().unwrap_or(false), "{snap}");
+        if snap["result"]["alive"] == false {
+            break snap;
+        }
+        if started.elapsed() > Duration::from_secs(5) {
+            panic!("exit was not published after the reader resumed: {snap}");
+        }
+        thread::sleep(Duration::from_millis(20));
+    };
+    assert!(
+        done["result"]["text"]
+            .as_str()
+            .unwrap_or("")
+            .contains("END"),
+        "{done}"
+    );
+    let _ = fs::remove_file(&hold);
+    let _ = fs::remove_file(&release);
+}
+
+#[test]
+fn resize_after_exit_leaves_the_grid_unchanged() {
+    let daemon = Daemon::start(
+        r#"#!/bin/sh
+stty -echo
+printf 'READY\n'
+while IFS= read -r line; do
+  case "$line" in
+    quit) exit 4 ;;
+  esac
+done
+"#,
+    );
+    let mut client = Client::connect(&daemon.runtime);
+    let cwd = daemon.runtime.canonicalize().expect("cwd");
+    let launch = client.call(json!({
+        "op": "launch",
+        "operation_id": "op-resize-exit",
+        "argv": ["/bin/sh", daemon.script],
+        "cwd": cwd,
+        "cols": 80,
+        "rows": 24,
+    }));
+    assert!(launch["ok"].as_bool().unwrap_or(false), "{launch}");
+    let terminal_id = launch["result"]["terminal_id"].as_str().unwrap().to_owned();
+    wait_text(&mut client, &terminal_id, "READY");
+    let lease = client.call(json!({"op": "acquire", "terminal_id": terminal_id}));
+    assert!(lease["ok"].as_bool().unwrap_or(false), "{lease}");
+    let quit = client.call(json!({
+        "op": "input",
+        "terminal_id": terminal_id,
+        "generation": lease["result"]["generation"],
+        "token": lease["result"]["token"],
+        "data": "quit\n",
+    }));
+    assert!(quit["ok"].as_bool().unwrap_or(false), "{quit}");
+    let started = Instant::now();
+    let exited = loop {
+        let snap = client.call(json!({"op": "attach", "terminal_id": terminal_id}));
+        assert!(snap["ok"].as_bool().unwrap_or(false), "{snap}");
+        if snap["result"]["alive"] == false {
+            break snap;
+        }
+        if started.elapsed() > Duration::from_secs(5) {
+            panic!("child stayed alive: {snap}");
+        }
+        thread::sleep(Duration::from_millis(20));
+    };
+    let revision = exited["result"]["revision"].clone();
+    let text = exited["result"]["text"].clone();
+    let resized = client.call(json!({
+        "op": "resize",
+        "terminal_id": terminal_id,
+        "generation": lease["result"]["generation"],
+        "token": lease["result"]["token"],
+        "cols": 100,
+        "rows": 30,
+    }));
+    assert_eq!(resized["ok"], false, "{resized}");
+    assert_eq!(resized["error"]["code"], "terminal_exited", "{resized}");
+    let after = client.call(json!({"op": "attach", "terminal_id": terminal_id}));
+    assert!(after["ok"].as_bool().unwrap_or(false), "{after}");
+    assert_eq!(after["result"]["revision"], revision, "{after}");
+    assert_eq!(after["result"]["text"], text, "{after}");
+    assert_eq!(after["result"]["cols"], 80, "{after}");
+    assert_eq!(after["result"]["rows"], 24, "{after}");
+    assert_eq!(after["result"]["alive"], false, "{after}");
+}
+
+#[test]
 fn partial_write_resumes_without_duplicating_a_prefix() {
     let daemon = Daemon::start("#!/bin/sh\nsleep 30\n");
     let py = daemon.runtime.join("capture.py");
