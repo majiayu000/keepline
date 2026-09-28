@@ -424,9 +424,7 @@ fn replay(state: &DaemonState, terminal_id: &str, payload: &str) -> Result<Value
 }
 
 fn attach(state: &mut DaemonState, request: &Request) -> Result<Value, OpError> {
-    live_mut(state, request)?
-        .snapshot()
-        .map_err(|err| OpError::io("pty_io", err))
+    Ok(live_mut(state, request)?.snapshot())
 }
 
 fn pull(state: &mut DaemonState, request: &Request) -> Result<Value, OpError> {
@@ -663,8 +661,8 @@ fn pull_page(live: &crate::session::LiveSession, deltas: Vec<Value>) -> Value {
     })
 }
 
-fn resync_snapshot(live: &mut LiveSession) -> Result<Value, OpError> {
-    let mut snapshot = live.snapshot().map_err(|err| OpError::io("pty_io", err))?;
+fn resync_snapshot(live: &LiveSession) -> Result<Value, OpError> {
+    let mut snapshot = live.snapshot();
     snapshot["resync_required"] = json!(true);
     Ok(snapshot)
 }

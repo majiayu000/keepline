@@ -208,20 +208,11 @@ impl LiveSession {
         self.pending.len() >= PTY_READ_PAUSE_BYTES
     }
 
-    pub(crate) fn snapshot(&mut self) -> io::Result<Value> {
-        // A child stty must not resize the parser. An out-of-range readback
-        // must also not replace the in-range size a resize rolls back to.
-        let (cols, rows) = match grid::read_winsize(&self.master) {
-            Ok((cols, rows)) if crate::intent::validate_geometry(cols, rows).is_ok() => {
-                self.cols = cols;
-                self.rows = rows;
-                (cols, rows)
-            }
-            Ok(_) => (self.cols, self.rows),
-            Err(err) => return Err(err),
-        };
+    pub(crate) fn snapshot(&self) -> Value {
+        // Geometry is the parser size. resize() records an accepted readback;
+        // a later child stty must not replace it or the rollback size.
         let view = self.screen.view();
-        Ok(json!({
+        json!({
             "terminal_id": self.intent.terminal_id,
             "instance_generation": self.intent.instance_generation,
             "pid": self.pid(),
@@ -230,14 +221,14 @@ impl LiveSession {
             "attachable": true,
             "revision": self.revision,
             "oldest_retained_revision": self.oldest_retained().unwrap_or(self.revision),
-            "cols": cols,
-            "rows": rows,
+            "cols": self.cols,
+            "rows": self.rows,
             "checksum": format!("{:016x}", view.checksum),
             "text_checksum": format!("{:016x}", view.text_checksum),
             "attributed_cells": view.attributed_cells,
             "text": view.text,
             "lease_generation": self.lease_generation,
-        }))
+        })
     }
 }
 

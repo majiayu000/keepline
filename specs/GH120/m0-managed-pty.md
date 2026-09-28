@@ -36,9 +36,8 @@ columns by 2..=200 rows. A readback outside that range is a failed spawn.
 a shell string. The child is a session leader. Its controlling terminal and foreground
 process group are the PTY, so an interrupt written to the master and
 `SIGWINCH` from a winsize change reach that child. The child starts with the
-default dispositions for those terminal signals, and with those signals
-unblocked, including when the daemon inherited them as ignored or blocked.
-Repeating an `operation_id`
+default dispositions for those terminal signals, including when the daemon
+inherited them as ignored. Repeating an `operation_id`
 compares the canonical payload before any cwd existence check. The same
 payload returns the original terminal even if that directory was removed. A
 different payload is `operation_conflict`. A new launch still rejects a

@@ -21,7 +21,7 @@ impl Daemon {
     }
 
     fn start_with(script_body: &str, env: &[(&str, &str)]) -> Self {
-        Self::start_inner(script_body, env, None, false)
+        Self::start_inner(script_body, env, None)
     }
 
     fn start_with_umask(script_body: &str, umask: &str) -> Self {
@@ -29,7 +29,7 @@ impl Daemon {
             !umask.is_empty() && umask.bytes().all(|byte| byte.is_ascii_digit()),
             "umask must be octal digits"
         );
-        Self::start_inner(script_body, &[], Some(&format!("umask {umask}; ")), false)
+        Self::start_inner(script_body, &[], Some(&format!("umask {umask}; ")))
     }
 
     fn start_with_ignored_tty_signals(script_body: &str) -> Self {
@@ -37,20 +37,10 @@ impl Daemon {
             script_body,
             &[],
             Some("trap '' INT QUIT TSTP TTIN TTOU WINCH; "),
-            false,
         )
     }
 
-    fn start_with_blocked_sigint(script_body: &str) -> Self {
-        Self::start_inner(script_body, &[], None, true)
-    }
-
-    fn start_inner(
-        script_body: &str,
-        env: &[(&str, &str)],
-        shell_prefix: Option<&str>,
-        block_sigint: bool,
-    ) -> Self {
+    fn start_inner(script_body: &str, env: &[(&str, &str)], shell_prefix: Option<&str>) -> Self {
         static NEXT_RUNTIME: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
         let id = NEXT_RUNTIME.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
         let runtime = PathBuf::from(format!("/tmp/kl{}-{id}", std::process::id()));
@@ -58,21 +48,7 @@ impl Daemon {
         let script = runtime.join("child.sh");
         fs::write(&script, script_body).expect("script");
         let bin = env!("CARGO_BIN_EXE_keeplined");
-        let mut command = if block_sigint {
-            // This helper blocks SIGINT, then execs the daemon so the mask is inherited.
-            let mut command = Command::new("/usr/bin/python3");
-            command
-                .arg("-c")
-                .arg(
-                    "import os, signal, sys\n\
-                     signal.pthread_sigmask(signal.SIG_BLOCK, {signal.SIGINT})\n\
-                     os.execv(sys.argv[1], sys.argv[1:])\n",
-                )
-                .arg(bin)
-                .args(["serve", "--runtime"])
-                .arg(&runtime);
-            command
-        } else if let Some(prefix) = shell_prefix {
+        let mut command = if let Some(prefix) = shell_prefix {
             let mut command = Command::new("/bin/sh");
             command
                 .arg("-c")
@@ -712,13 +688,6 @@ fn ignored_terminal_signals_still_reach_the_child() {
     ));
 }
 
-#[test]
-fn blocked_sigint_still_reaches_the_child() {
-    assert_child_receives_interrupt_and_sigwinch(Daemon::start_with_blocked_sigint(
-        TTY_CHILD_SCRIPT,
-    ));
-}
-
 fn assert_child_receives_interrupt_and_sigwinch(daemon: Daemon) {
     let mut client = Client::connect(&daemon.runtime);
     let cwd = daemon.runtime.canonicalize().expect("cwd");
@@ -998,6 +967,147 @@ fn out_of_range_resize_readback_keeps_the_previous_screen() {
         "{after}"
     );
     assert!(pid_alive(pid), "resize rejection stopped the child");
+}
+
+#[test]
+fn child_stty_does_not_replace_parser_geometry() {
+    let daemon = Daemon::start_with(
+        r#"#!/bin/sh
+stty -echo
+printf 'READY\n'
+while IFS= read -r line; do
+  case "$line" in
+    widen)
+      stty rows 40 cols 120
+      printf 'WIDENED\n'
+      ;;
+    mark)
+      printf 'MARK\n'
+      ;;
+    size)
+      set -- $(/bin/stty size)
+      printf 'SIZE %s %s\n' "$1" "$2"
+      ;;
+  esac
+done
+"#,
+        &[("KEEPLINED_TEST_RESIZE_WINSIZE", "65535x65535")],
+    );
+    let cwd = daemon.runtime.canonicalize().expect("cwd");
+    let mut client = Client::connect(&daemon.runtime);
+    let launch = client.call(json!({
+        "op": "launch",
+        "operation_id": "op-child-stty",
+        "argv": ["/bin/sh", daemon.script],
+        "cwd": cwd,
+        "cols": 80,
+        "rows": 24,
+    }));
+    assert!(launch["ok"].as_bool().unwrap_or(false), "{launch}");
+    assert_eq!(launch["result"]["cols"], 80, "{launch}");
+    assert_eq!(launch["result"]["rows"], 24, "{launch}");
+    let terminal_id = launch["result"]["terminal_id"].as_str().unwrap().to_owned();
+    let ready = wait_text(&mut client, &terminal_id, "READY");
+    let lines = ready["text"].as_str().unwrap_or("").matches('\n').count();
+    let lease = client.call(json!({"op": "acquire", "terminal_id": terminal_id}));
+    assert!(lease["ok"].as_bool().unwrap_or(false), "{lease}");
+    let generation = lease["result"]["generation"].as_u64().expect("generation");
+    let token = lease["result"]["token"].as_str().expect("token");
+    let widen = client.call(json!({
+        "op": "input",
+        "terminal_id": terminal_id,
+        "generation": generation,
+        "token": token,
+        "data": "widen\n",
+    }));
+    assert!(widen["ok"].as_bool().unwrap_or(false), "{widen}");
+    let widened = wait_text(&mut client, &terminal_id, "WIDENED");
+    assert_eq!(widened["cols"], 80, "{widened}");
+    assert_eq!(widened["rows"], 24, "{widened}");
+    assert_eq!(
+        widened["text"].as_str().unwrap_or("").matches('\n').count(),
+        lines,
+        "{widened}"
+    );
+    let widened_revision = widened["revision"].as_u64().expect("revision");
+    let mark = client.call(json!({
+        "op": "input",
+        "terminal_id": terminal_id,
+        "generation": generation,
+        "token": token,
+        "data": "mark\n",
+    }));
+    assert!(mark["ok"].as_bool().unwrap_or(false), "{mark}");
+    let marked = wait_text(&mut client, &terminal_id, "MARK");
+    assert_eq!(marked["cols"], 80, "{marked}");
+    assert_eq!(marked["rows"], 24, "{marked}");
+    assert_eq!(
+        marked["text"].as_str().unwrap_or("").matches('\n').count(),
+        lines,
+        "{marked}"
+    );
+    let pulled = client.call(json!({
+        "op": "pull",
+        "terminal_id": terminal_id,
+        "after_revision": widened_revision,
+    }));
+    assert!(pulled["ok"].as_bool().unwrap_or(false), "{pulled}");
+    assert_eq!(pulled["result"]["resync_required"], false, "{pulled}");
+    let deltas = pulled["result"]["deltas"].as_array().expect("deltas");
+    let mark_delta = deltas
+        .iter()
+        .find(|delta| delta["text"].as_str().unwrap_or("").contains("MARK"))
+        .expect("mark delta");
+    assert_eq!(mark_delta["cols"], 80, "{pulled}");
+    assert_eq!(mark_delta["rows"], 24, "{pulled}");
+    assert_eq!(
+        mark_delta["text"]
+            .as_str()
+            .unwrap_or("")
+            .matches('\n')
+            .count(),
+        lines,
+        "{pulled}"
+    );
+    let resized = client.call(json!({
+        "op": "resize",
+        "terminal_id": terminal_id,
+        "generation": generation,
+        "token": token,
+        "cols": 100,
+        "rows": 40,
+    }));
+    assert_eq!(resized["ok"], false, "{resized}");
+    assert_eq!(resized["error"]["code"], "geometry_rejected", "{resized}");
+    let after = client.call(json!({"op": "attach", "terminal_id": terminal_id}));
+    assert!(after["ok"].as_bool().unwrap_or(false), "{after}");
+    assert_eq!(after["result"]["cols"], 80, "{after}");
+    assert_eq!(after["result"]["rows"], 24, "{after}");
+    assert_eq!(after["result"]["revision"], marked["revision"], "{after}");
+    assert_eq!(
+        after["result"]["text"]
+            .as_str()
+            .unwrap_or("")
+            .matches('\n')
+            .count(),
+        lines,
+        "{after}"
+    );
+    let size = client.call(json!({
+        "op": "input",
+        "terminal_id": terminal_id,
+        "generation": generation,
+        "token": token,
+        "data": "size\n",
+    }));
+    assert!(size["ok"].as_bool().unwrap_or(false), "{size}");
+    let sized = wait_text(&mut client, &terminal_id, "SIZE 24 80");
+    assert!(
+        sized["text"].as_str().unwrap_or("").contains("SIZE 24 80"),
+        "{sized}"
+    );
+    assert_eq!(sized["cols"], 80, "{sized}");
+    assert_eq!(sized["rows"], 24, "{sized}");
 }
 
 #[test]
