@@ -5,11 +5,14 @@ use agent_sessions::{
     read_history_from, Agent, HistoryOptions, LineErrorKind, RawReadOptions, Roots, StreamError,
 };
 use base64::{engine::general_purpose::STANDARD_NO_PAD, Engine as _};
-use chrono::{DateTime, NaiveDate, Utc};
+use chrono::{DateTime, NaiveDate, SecondsFormat, Utc};
 use serde::{Deserialize, Serialize};
 use std::fs;
 use std::io::{BufRead, BufReader};
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
+
+mod codex_auth_file;
+use codex_auth_file::{atomic_replace_private_file, refresh_lock_path, ExclusiveFileLock};
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct CodexData {
@@ -25,215 +28,8 @@ pub struct CodexData {
 }
 
 #[cfg(test)]
-mod tests {
-    use super::*;
-    use std::io::Cursor;
-
-    fn ts(value: &str) -> i64 {
-        match DateTime::parse_from_rfc3339(value) {
-            Ok(parsed) => parsed.timestamp(),
-            Err(error) => panic!("invalid fixed test timestamp: {}", error),
-        }
-    }
-
-    fn test_date() -> NaiveDate {
-        match NaiveDate::from_ymd_opt(2026, 4, 13) {
-            Some(date) => date,
-            None => panic!("invalid fixed test date"),
-        }
-    }
-
-    #[test]
-    fn collect_codex_stats_counts_valid_history() {
-        let today = test_date();
-        let history = format!(
-            "{{\"ts\":{}}}\n{{\"ts\":{}}}\n",
-            ts("2026-04-13T10:00:00Z"),
-            ts("2026-04-12T10:00:00Z")
-        );
-
-        let stats = collect_codex_stats(Cursor::new(history), today);
-
-        assert_eq!(stats.total_sessions, 2);
-        assert_eq!(stats.today_sessions, 1);
-        assert!(stats.last_activity.is_some());
-        assert_eq!(stats.error, None);
-    }
-
-    #[test]
-    fn collect_codex_stats_surfaces_malformed_history_line() {
-        let today = test_date();
-        let history = format!("{{\"ts\":{}}}\nnot-json\n", ts("2026-04-13T10:00:00Z"));
-
-        let stats = collect_codex_stats(Cursor::new(history), today);
-
-        assert_eq!(stats.total_sessions, 0);
-        assert_eq!(stats.today_sessions, 0);
-        assert!(stats.last_activity.is_none());
-        assert!(stats
-            .error
-            .as_deref()
-            .is_some_and(|message| message.contains("Failed to parse history.jsonl line 2")));
-    }
-
-    #[test]
-    fn collect_codex_stats_keeps_lenient_record_count_and_utc_dates() {
-        let history = concat!(
-            "\n\u{2003}\r\n",
-            "{\"session_id\":\"same\",\"ts\":1776038400}\r\n",
-            "{\"session_id\":\"same\",\"ts\":1776038460}\n",
-            "{\"ts\":1776124800}\n",
-            "{\"ts\":\"1776038400\"}\n",
-            "{\"ts\":null}\n",
-            "{\"ts\":1.5}\n",
-            "{\"ts\":-1,\"text\":42}\n",
-            "{}\nnull\n[]\ntrue\n17\n\"text\""
-        );
-        let stats = collect_codex_stats(Cursor::new(history), test_date());
-        assert_eq!(stats.total_sessions, 13);
-        assert_eq!(stats.today_sessions, 2);
-        assert_eq!(stats.last_activity.as_deref(), Some("2026-04-14 00:00"));
-        assert_eq!(stats.error, None);
-    }
-
-    #[test]
-    fn collect_codex_stats_preserves_out_of_range_latest_timestamp() {
-        let history = "{\"ts\":1776038400}\n{\"ts\":9223372036854775807}\n";
-        let stats = collect_codex_stats(Cursor::new(history), test_date());
-        assert_eq!(stats.total_sessions, 2);
-        assert_eq!(stats.today_sessions, 1);
-        assert_eq!(stats.last_activity, None);
-        assert_eq!(stats.error, None);
-    }
-
-    #[test]
-    fn collect_codex_stats_rejects_incomplete_tail() {
-        let stats = collect_codex_stats(Cursor::new("{}\n\n{\"ts\":"), test_date());
-        assert_eq!(stats.total_sessions, 0);
-        assert_eq!(stats.today_sessions, 0);
-        assert_eq!(stats.last_activity, None);
-        assert!(stats
-            .error
-            .as_deref()
-            .is_some_and(|error| error.starts_with("Failed to parse history.jsonl line 3:")));
-    }
-
-    #[test]
-    fn collect_codex_stats_reports_invalid_utf8_as_read_failure() {
-        let stats = collect_codex_stats(Cursor::new(b"{}\n\xff\n"), test_date());
-        assert_eq!(stats.total_sessions, 0);
-        assert_eq!(stats.today_sessions, 0);
-        assert_eq!(stats.last_activity, None);
-        assert!(stats
-            .error
-            .as_deref()
-            .is_some_and(|error| error.starts_with("Failed to read history.jsonl line 2:")));
-    }
-
-    #[test]
-    fn collect_codex_stats_reports_io_failure_after_blank_lines() {
-        struct FailingReader;
-        impl std::io::Read for FailingReader {
-            fn read(&mut self, _: &mut [u8]) -> std::io::Result<usize> {
-                Err(std::io::Error::other("synthetic read failure"))
-            }
-        }
-        impl BufRead for FailingReader {
-            fn fill_buf(&mut self) -> std::io::Result<&[u8]> {
-                Err(std::io::Error::other("synthetic read failure"))
-            }
-            fn consume(&mut self, _: usize) {}
-        }
-        let reader = std::io::Read::chain(Cursor::new("{}\n\n"), FailingReader);
-        let stats = collect_codex_stats(reader, test_date());
-        assert_eq!(stats.total_sessions, 0);
-        assert_eq!(stats.today_sessions, 0);
-        assert_eq!(stats.last_activity, None);
-        assert_eq!(
-            stats.error.as_deref(),
-            Some("Failed to read history.jsonl line 3: synthetic read failure")
-        );
-    }
-
-    #[test]
-    fn codex_stats_environment_child() {
-        let Ok(scenario) = std::env::var("KEEPLINE_HISTORY_TEST_SCENARIO") else {
-            return;
-        };
-        let runtime = tokio::runtime::Runtime::new().expect("test runtime");
-        let stats = runtime
-            .block_on(get_codex_stats())
-            .expect("stats command result");
-        match scenario.as_str() {
-            "override" => {
-                assert_eq!(stats.total_sessions, 2);
-                assert_eq!(stats.error, None);
-            }
-            "fallback" => {
-                assert_eq!(stats.total_sessions, 1);
-                assert_eq!(stats.error, None);
-            }
-            "missing" => {
-                assert_eq!(stats.total_sessions, 0);
-                assert_eq!(stats.error, None);
-            }
-            "empty" => {
-                assert_eq!(stats.total_sessions, 0);
-                assert!(stats
-                    .error
-                    .as_deref()
-                    .is_some_and(|error| error.contains("CODEX_HOME is empty")));
-            }
-            _ => panic!("unknown test scenario"),
-        }
-    }
-
-    #[test]
-    fn codex_stats_respects_codex_home_in_isolated_processes() {
-        let home = tempfile::tempdir().expect("isolated home");
-        let default_root = home.path().join(".codex");
-        let custom_root = home.path().join("custom-codex");
-        fs::create_dir_all(&default_root).expect("default root");
-        fs::create_dir_all(&custom_root).expect("custom root");
-        fs::write(default_root.join("history.jsonl"), "{}\n").expect("default history");
-        fs::write(custom_root.join("history.jsonl"), "{}\n{}\n").expect("custom history");
-        for scenario in ["override", "fallback", "missing", "empty"] {
-            let mut child =
-                std::process::Command::new(std::env::current_exe().expect("test binary"));
-            child
-                .args([
-                    "--exact",
-                    "codex::tests::codex_stats_environment_child",
-                    "--nocapture",
-                ])
-                .env("HOME", home.path())
-                .env("CLAUDE_CONFIG_DIR", "")
-                .env("KEEPLINE_HISTORY_TEST_SCENARIO", scenario);
-            match scenario {
-                "override" => {
-                    child.env("CODEX_HOME", &custom_root);
-                }
-                "fallback" => {
-                    child.env_remove("CODEX_HOME");
-                }
-                "missing" => {
-                    child.env("CODEX_HOME", home.path().join("absent"));
-                }
-                "empty" => {
-                    child.env("CODEX_HOME", "");
-                }
-                _ => unreachable!(),
-            }
-            let output = child.output().expect("isolated test process");
-            assert!(
-                output.status.success(),
-                "{scenario}: {} {}",
-                String::from_utf8_lossy(&output.stdout),
-                String::from_utf8_lossy(&output.stderr)
-            );
-        }
-    }
-}
+#[path = "codex_tests.rs"]
+mod tests;
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct CodexStats {
@@ -408,7 +204,148 @@ fn is_token_expired(token: &str) -> bool {
     exp * 1000 < now_ms + 60_000
 }
 
-async fn refresh_codex_access_token(refresh_token: &str) -> Option<String> {
+#[derive(Debug)]
+struct CodexQuotaAuth {
+    access_token: String,
+    id_token: Option<String>,
+}
+
+#[derive(Debug)]
+enum CodexAuthRefreshError {
+    Persist(String),
+    Unavailable(String),
+}
+
+fn non_empty_json_string(value: &serde_json::Value, key: &str) -> Option<String> {
+    value
+        .get(key)
+        .and_then(serde_json::Value::as_str)
+        .filter(|text| !text.is_empty())
+        .map(str::to_string)
+}
+
+fn token_string(auth: &serde_json::Value, key: &str) -> Option<String> {
+    auth.get("tokens")
+        .and_then(|tokens| non_empty_json_string(tokens, key))
+}
+
+fn read_codex_auth(auth_path: &Path) -> Result<serde_json::Value, CodexAuthRefreshError> {
+    let content = fs::read_to_string(auth_path).map_err(|error| {
+        CodexAuthRefreshError::Unavailable(format!("Failed to read auth.json: {error}"))
+    })?;
+    let auth_json: serde_json::Value = serde_json::from_str(&content).map_err(|error| {
+        CodexAuthRefreshError::Unavailable(format!("Failed to parse auth.json: {error}"))
+    })?;
+    if auth_json.is_object() {
+        Ok(auth_json)
+    } else {
+        Err(CodexAuthRefreshError::Unavailable(
+            "Failed to parse auth.json: expected object".to_string(),
+        ))
+    }
+}
+
+fn current_quota_auth(auth: &serde_json::Value) -> Result<CodexQuotaAuth, CodexAuthRefreshError> {
+    let Some(access_token) = token_string(auth, "access_token") else {
+        return Err(CodexAuthRefreshError::Unavailable(
+            "No access_token found in auth.json".to_string(),
+        ));
+    };
+    Ok(CodexQuotaAuth {
+        access_token,
+        id_token: token_string(auth, "id_token"),
+    })
+}
+
+fn store_refresh_response(
+    auth: &mut serde_json::Value,
+    response: &serde_json::Value,
+) -> Result<String, CodexAuthRefreshError> {
+    let Some(new_access) = non_empty_json_string(response, "access_token") else {
+        return Err(CodexAuthRefreshError::Unavailable(String::new()));
+    };
+    let tokens = auth
+        .get_mut("tokens")
+        .and_then(serde_json::Value::as_object_mut)
+        .ok_or_else(|| {
+            CodexAuthRefreshError::Persist(
+                "Failed to persist Codex auth: tokens object missing".to_string(),
+            )
+        })?;
+    tokens.insert(
+        "access_token".to_string(),
+        serde_json::Value::String(new_access.clone()),
+    );
+    if let Some(refresh) = non_empty_json_string(response, "refresh_token") {
+        tokens.insert(
+            "refresh_token".to_string(),
+            serde_json::Value::String(refresh),
+        );
+    }
+    if let Some(id_token) = non_empty_json_string(response, "id_token") {
+        tokens.insert("id_token".to_string(), serde_json::Value::String(id_token));
+    }
+    auth.as_object_mut()
+        .ok_or_else(|| {
+            CodexAuthRefreshError::Persist(
+                "Failed to persist Codex auth: expected object".to_string(),
+            )
+        })?
+        .insert(
+            "last_refresh".to_string(),
+            serde_json::Value::String(Utc::now().to_rfc3339_opts(SecondsFormat::Millis, true)),
+        );
+    Ok(new_access)
+}
+
+// Re-reads auth.json under an exclusive lock. One token POST is attempted only
+// when the locked access token is inside the 60-second expiry window.
+async fn refresh_persisted_codex_auth<F, Fut>(
+    auth_path: &Path,
+    exchange: F,
+) -> Result<CodexQuotaAuth, CodexAuthRefreshError>
+where
+    F: FnOnce(String) -> Fut,
+    Fut: std::future::Future<Output = Result<serde_json::Value, String>>,
+{
+    let _lock = ExclusiveFileLock::acquire(&refresh_lock_path(auth_path)).map_err(|error| {
+        CodexAuthRefreshError::Persist(format!("Failed to lock Codex auth: {error}"))
+    })?;
+    let mut auth_json = read_codex_auth(auth_path)?;
+    let current = current_quota_auth(&auth_json)?;
+    if !is_token_expired(&current.access_token) {
+        return Ok(current);
+    }
+    let Some(refresh_token) = token_string(&auth_json, "refresh_token") else {
+        return Ok(current);
+    };
+
+    let response = match exchange(refresh_token).await {
+        Ok(response) => response,
+        Err(_) => return Ok(current),
+    };
+    if non_empty_json_string(&response, "access_token").is_none() {
+        return Ok(current);
+    }
+    let new_access = match store_refresh_response(&mut auth_json, &response) {
+        Ok(access) => access,
+        Err(CodexAuthRefreshError::Unavailable(_)) => return Ok(current),
+        Err(error) => return Err(error),
+    };
+    let mut bytes = serde_json::to_vec_pretty(&auth_json).map_err(|error| {
+        CodexAuthRefreshError::Persist(format!("Failed to persist Codex auth: {error}"))
+    })?;
+    bytes.push(b'\n');
+    atomic_replace_private_file(auth_path, &bytes).map_err(|error| {
+        CodexAuthRefreshError::Persist(format!("Failed to persist Codex auth: {error}"))
+    })?;
+    Ok(CodexQuotaAuth {
+        access_token: new_access,
+        id_token: token_string(&auth_json, "id_token"),
+    })
+}
+
+async fn exchange_codex_refresh_token(refresh_token: String) -> Result<serde_json::Value, String> {
     let body = serde_json::json!({
         "grant_type": "refresh_token",
         "refresh_token": refresh_token,
@@ -422,12 +359,21 @@ async fn refresh_codex_access_token(refresh_token: &str) -> Option<String> {
         .timeout(std::time::Duration::from_secs(10))
         .send()
         .await
-        .ok()?;
+        .map_err(|error| error.to_string())?;
     if !response.status().is_success() {
-        return None;
+        return Err(format!("token endpoint status {}", response.status()));
     }
-    let json: serde_json::Value = response.json().await.ok()?;
-    json["access_token"].as_str().map(|s| s.to_string())
+    response.json().await.map_err(|error| error.to_string())
+}
+
+fn chatgpt_account_id_from_id_token(id_token: &str) -> Option<String> {
+    decode_jwt_payload(id_token).and_then(|payload| {
+        payload
+            .get("https://api.openai.com/auth")
+            .and_then(|auth| auth.get("chatgpt_account_id"))
+            .and_then(serde_json::Value::as_str)
+            .map(str::to_string)
+    })
 }
 
 #[tauri::command]
@@ -616,66 +562,28 @@ pub async fn get_codex_rate_limits() -> Result<CodexRateLimits, String> {
         });
     }
 
-    let auth_content = match fs::read_to_string(&auth_file) {
-        Ok(content) => content,
-        Err(e) => {
-            return Ok(CodexRateLimits {
-                connected: false,
-                plan_type: None,
-                primary: None,
-                secondary: None,
-                credits: None,
-                error: Some(format!("Failed to read auth.json: {}", e)),
-            });
-        }
-    };
-
-    let auth_json: serde_json::Value = match serde_json::from_str(&auth_content) {
-        Ok(json) => json,
-        Err(e) => {
-            return Ok(CodexRateLimits {
-                connected: false,
-                plan_type: None,
-                primary: None,
-                secondary: None,
-                credits: None,
-                error: Some(format!("Failed to parse auth.json: {}", e)),
-            });
-        }
-    };
-
-    let mut access_token = match auth_json["tokens"]["access_token"].as_str() {
-        Some(token) => token.to_string(),
-        None => {
-            return Ok(CodexRateLimits {
-                connected: false,
-                plan_type: None,
-                primary: None,
-                secondary: None,
-                credits: None,
-                error: Some("No access_token found in auth.json".to_string()),
-            });
-        }
-    };
-
-    // Mirror src/web/api/routes/usage.ts: refresh expired access tokens before
-    // calling WHAM so users don't get a spurious "disconnected" between logins.
-    if is_token_expired(&access_token) {
-        if let Some(refresh_token) = auth_json["tokens"]["refresh_token"].as_str() {
-            if let Some(new_token) = refresh_codex_access_token(refresh_token).await {
-                access_token = new_token;
+    // Refresh under the auth lock and use the persisted id_token for the
+    // WHAM account header, including one saved by this refresh.
+    let quota_auth =
+        match refresh_persisted_codex_auth(&auth_file, exchange_codex_refresh_token).await {
+            Ok(auth) => auth,
+            Err(CodexAuthRefreshError::Persist(message)) => return Err(message),
+            Err(CodexAuthRefreshError::Unavailable(message)) => {
+                return Ok(CodexRateLimits {
+                    connected: false,
+                    plan_type: None,
+                    primary: None,
+                    secondary: None,
+                    credits: None,
+                    error: Some(message),
+                });
             }
-        }
-    }
-
-    let account_id = auth_json["tokens"]["id_token"]
-        .as_str()
-        .and_then(|token| decode_jwt_payload(token))
-        .and_then(|payload| {
-            payload["https://api.openai.com/auth"]["chatgpt_account_id"]
-                .as_str()
-                .map(|s| s.to_string())
-        });
+        };
+    let access_token = quota_auth.access_token;
+    let account_id = quota_auth
+        .id_token
+        .as_deref()
+        .and_then(chatgpt_account_id_from_id_token);
 
     let client = reqwest::Client::new();
     let mut request = client

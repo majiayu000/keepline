@@ -4,8 +4,11 @@
  * Handles usage analytics and quota endpoints
  */
 
+import { dlopen, FFIType, read } from 'bun:ffi';
 import { Hono } from 'hono';
-import { join } from 'path';
+import { randomBytes } from 'node:crypto';
+import { open, readFile, rename, unlink, type FileHandle } from 'node:fs/promises';
+import { basename, dirname, join } from 'path';
 import { logger } from '../../../lib/logger.js';
 import { KEEPLINE_HOME } from '../../../lib/paths.js';
 import { getCostPrediction, getCostForDateRange } from '../../../services/cost.predictor.js';
@@ -35,17 +38,6 @@ const DEFAULT_CODEX_AUTH_FILE = (() => {
   return join(homeDir, '.codex', 'auth.json');
 })();
 
-type CodexAuthFile = {
-  OPENAI_API_KEY?: string;
-  tokens?: {
-    id_token?: string;
-    access_token?: string;
-    refresh_token?: string;
-    account_id?: string;
-  };
-  last_refresh?: string;
-};
-
 function decodeJwtPayload(token: string): Record<string, unknown> | null {
   const segments = token.split('.');
   if (segments.length < 2) return null;
@@ -68,26 +60,282 @@ function isTokenExpired(token: string): boolean {
   return expiryMs < Date.now() + 60_000;
 }
 
-async function refreshCodexAccessToken(refreshToken: string): Promise<string | null> {
-  const response = await fetch(CODEX_REFRESH_URL, {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      Accept: 'application/json',
-    },
-    body: JSON.stringify({
-      grant_type: 'refresh_token',
-      refresh_token: refreshToken,
-      client_id: CODEX_CLIENT_ID,
-    }),
-  });
+const LOCK_EX = 2;
+const LOCK_NB = 4;
+const LOCK_UN = 8;
+const EINTR = 4;
+// Darwin defines EAGAIN and EWOULDBLOCK as 35. Linux defines both as 11.
+const EAGAIN = process.platform === 'linux' ? 11 : 35;
+const CODEX_REFRESH_TIMEOUT_MS = 10_000;
 
-  if (!response.ok) {
-    return null;
+type FlockFn = (fd: number, operation: number) => number;
+type LockFns = { flock: FlockFn; errno: () => number };
+type FlockAttempt = { rc: number; errno: number };
+
+let lockFns: LockFns | undefined;
+let flockAttemptForTests: ((fd: number, operation: number) => FlockAttempt) | undefined;
+
+export function isRetryableFlockErrno(errno: number): boolean {
+  return errno === EINTR || errno === EAGAIN;
+}
+
+export function setCodexAuthFlockAttemptForTests(
+  attempt: ((fd: number, operation: number) => FlockAttempt) | undefined,
+): void {
+  flockAttemptForTests = attempt;
+}
+
+let codexAuthPlatformForTests: string | undefined;
+
+export function setCodexAuthPlatformForTests(platform: string | undefined): void {
+  codexAuthPlatformForTests = platform;
+}
+
+function codexAuthPlatform(): string {
+  return codexAuthPlatformForTests ?? process.platform;
+}
+
+function supportsPosixCodexAuthLock(): boolean {
+  const platform = codexAuthPlatform();
+  return platform === 'darwin' || platform === 'linux';
+}
+
+function loadLockFns(): LockFns {
+  if (lockFns) return lockFns;
+  if (process.platform === 'darwin') {
+    const lib = dlopen('libSystem.B.dylib', {
+      flock: { args: [FFIType.i32, FFIType.i32], returns: FFIType.i32 },
+      __error: { args: [], returns: FFIType.ptr },
+    });
+    const errnoPtr = lib.symbols.__error();
+    if (errnoPtr == null) throw new Error('Failed to locate errno');
+    lockFns = {
+      flock: (fileFd, op) => lib.symbols.flock(fileFd, op),
+      errno: () => read.i32(errnoPtr),
+    };
+    return lockFns;
+  }
+  if (process.platform === 'linux') {
+    const lib = dlopen('libc.so.6', {
+      flock: { args: [FFIType.i32, FFIType.i32], returns: FFIType.i32 },
+      __errno_location: { args: [], returns: FFIType.ptr },
+    });
+    const errnoPtr = lib.symbols.__errno_location();
+    if (errnoPtr == null) throw new Error('Failed to locate errno');
+    lockFns = {
+      flock: (fileFd, op) => lib.symbols.flock(fileFd, op),
+      errno: () => read.i32(errnoPtr),
+    };
+    return lockFns;
+  }
+  throw new Error(`POSIX flock is unavailable on ${process.platform}`);
+}
+
+function attemptFlock(fd: number, operation: number): FlockAttempt {
+  if (flockAttemptForTests) return flockAttemptForTests(fd, operation);
+  const fns = loadLockFns();
+  const rc = fns.flock(fd, operation);
+  if (rc === 0) return { rc, errno: 0 };
+  return { rc, errno: fns.errno() };
+}
+
+function wait(ms: number): Promise<void> {
+  return new Promise((resolve) => {
+    setTimeout(resolve, ms);
+  });
+}
+
+export class CodexAuthPersistError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = 'CodexAuthPersistError';
+  }
+}
+
+export type CodexQuotaAuth = {
+  accessToken: string;
+  idToken?: string;
+};
+
+export type CodexTokenExchange = (
+  input: string,
+  init?: RequestInit,
+) => Promise<Response>;
+
+function asRecord(value: unknown): Record<string, unknown> | null {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return null;
+  return value as Record<string, unknown>;
+}
+
+function nonEmptyString(value: unknown): string | undefined {
+  return typeof value === 'string' && value.length > 0 ? value : undefined;
+}
+
+export async function acquireCodexAuthRefreshLock(
+  authPath: string,
+): Promise<{ release(): Promise<void> }> {
+  const handle = await open(`${authPath}.refresh.lock`, 'a+', 0o600);
+  try {
+    // LOCK_NB plus a short wait keeps the dashboard event loop responsive
+    // while the menubar holds the same POSIX lock.
+    for (;;) {
+      const attempt = attemptFlock(handle.fd, LOCK_EX | LOCK_NB);
+      if (attempt.rc === 0) break;
+      if (!isRetryableFlockErrno(attempt.errno)) {
+        throw new Error(`Failed to lock Codex auth: errno ${attempt.errno}`);
+      }
+      await wait(20);
+    }
+  } catch (error) {
+    await handle.close();
+    throw error;
+  }
+  return {
+    async release() {
+      try {
+        attemptFlock(handle.fd, LOCK_UN);
+      } finally {
+        await handle.close();
+      }
+    },
+  };
+}
+
+async function atomicReplaceAuthFile(authPath: string, contents: string): Promise<void> {
+  const tmpPath = join(
+    dirname(authPath),
+    `.${basename(authPath)}.${process.pid}.${randomBytes(6).toString('hex')}.tmp`,
+  );
+  let handle: FileHandle | undefined;
+  try {
+    handle = await open(tmpPath, 'wx', 0o600);
+    await handle.chmod(0o600);
+    await handle.writeFile(contents);
+    await handle.sync();
+    await handle.close();
+    handle = undefined;
+    await rename(tmpPath, authPath);
+  } catch (error) {
+    if (handle) await handle.close().catch(() => undefined);
+    await unlink(tmpPath).catch(() => undefined);
+    throw error;
+  }
+}
+
+type CodexAuthBundle = {
+  authData: Record<string, unknown>;
+  tokens: Record<string, unknown>;
+  accessToken: string;
+  idToken?: string;
+  refreshToken?: string;
+};
+
+async function readCodexAuthBundle(authPath: string): Promise<CodexAuthBundle> {
+  const raw = await readFile(authPath, 'utf8');
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(raw);
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    throw new Error(`Failed to parse auth.json: ${message}`);
+  }
+  const authData = asRecord(parsed);
+  const tokens = asRecord(authData?.tokens);
+  if (!authData || !tokens) {
+    throw new Error('Codex access token not found');
+  }
+  const accessToken = nonEmptyString(tokens.access_token);
+  if (!accessToken) {
+    throw new Error('Codex access token not found');
+  }
+  return {
+    authData,
+    tokens,
+    accessToken,
+    idToken: nonEmptyString(tokens.id_token),
+    refreshToken: nonEmptyString(tokens.refresh_token),
+  };
+}
+
+export async function refreshPersistedCodexAuth(
+  authPath: string,
+  fetchImpl: CodexTokenExchange,
+  refreshTimeoutMs = CODEX_REFRESH_TIMEOUT_MS,
+): Promise<CodexQuotaAuth> {
+  // The menubar shares the POSIX lock on darwin and linux. Elsewhere the
+  // dashboard cannot persist a rotated refresh token, so it must not post one.
+  if (!supportsPosixCodexAuthLock()) {
+    const bundle = await readCodexAuthBundle(authPath);
+    if (!isTokenExpired(bundle.accessToken) || !bundle.refreshToken) {
+      return { accessToken: bundle.accessToken, idToken: bundle.idToken };
+    }
+    throw new Error(`Codex auth refresh cannot be persisted on ${codexAuthPlatform()}`);
   }
 
-  const data = await response.json() as { access_token?: string };
-  return data.access_token ?? null;
+  const lock = await acquireCodexAuthRefreshLock(authPath);
+  try {
+    const bundle = await readCodexAuthBundle(authPath);
+    const { authData, tokens, accessToken, idToken, refreshToken } = bundle;
+    if (!isTokenExpired(accessToken) || !refreshToken) {
+      return { accessToken, idToken };
+    }
+
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), refreshTimeoutMs);
+    let response: Response;
+    try {
+      response = await fetchImpl(CODEX_REFRESH_URL, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Accept: 'application/json',
+        },
+        body: JSON.stringify({
+          grant_type: 'refresh_token',
+          refresh_token: refreshToken,
+          client_id: CODEX_CLIENT_ID,
+        }),
+        signal: controller.signal,
+      });
+    } catch {
+      return { accessToken, idToken };
+    } finally {
+      clearTimeout(timer);
+    }
+    if (!response.ok) {
+      return { accessToken, idToken };
+    }
+
+    let body: unknown;
+    try {
+      body = await response.json();
+    } catch {
+      return { accessToken, idToken };
+    }
+    const newAccess = nonEmptyString(asRecord(body)?.access_token);
+    if (!newAccess) {
+      return { accessToken, idToken };
+    }
+    tokens.access_token = newAccess;
+    const newRefresh = nonEmptyString(asRecord(body)?.refresh_token);
+    if (newRefresh) tokens.refresh_token = newRefresh;
+    const newId = nonEmptyString(asRecord(body)?.id_token);
+    if (newId) tokens.id_token = newId;
+    authData.last_refresh = new Date().toISOString();
+
+    try {
+      await atomicReplaceAuthFile(authPath, `${JSON.stringify(authData, null, 2)}\n`);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      throw new CodexAuthPersistError(`Failed to persist Codex auth: ${message}`);
+    }
+    return {
+      accessToken: newAccess,
+      idToken: nonEmptyString(tokens.id_token),
+    };
+  } finally {
+    await lock.release();
+  }
 }
 
 function parseCodexUsageResponse(json: Record<string, unknown>) {
@@ -188,19 +436,21 @@ app.get('/codex/quota', async (c) => {
       return c.json({ success: false, error: 'Codex auth file not found' }, 404);
     }
 
-    const raw = await authFile.text();
-    const authData = JSON.parse(raw) as CodexAuthFile;
-    const tokens = authData.tokens;
-    if (!tokens?.access_token) {
-      return c.json({ success: false, error: 'Codex access token not found' }, 401);
-    }
-
-    let accessToken = tokens.access_token;
-    if (isTokenExpired(accessToken) && tokens.refresh_token) {
-      const refreshed = await refreshCodexAccessToken(tokens.refresh_token);
-      if (refreshed) {
-        accessToken = refreshed;
+    let accessToken: string;
+    let idToken: string | undefined;
+    try {
+      const refreshed = await refreshPersistedCodexAuth(authPath, fetch);
+      accessToken = refreshed.accessToken;
+      idToken = refreshed.idToken;
+    } catch (error) {
+      if (error instanceof CodexAuthPersistError) {
+        logger.error('Failed to persist refreshed Codex auth', { message: error.message });
+        return c.json({ success: false, error: 'Failed to persist Codex auth' }, 500);
       }
+      if (error instanceof Error && error.message === 'Codex access token not found') {
+        return c.json({ success: false, error: 'Codex access token not found' }, 401);
+      }
+      throw error;
     }
 
     const response = await fetch(CODEX_USAGE_URL, {
@@ -218,7 +468,6 @@ app.get('/codex/quota', async (c) => {
 
     const json = await response.json() as Record<string, unknown>;
     const payload = parseCodexUsageResponse(json);
-    const idToken = tokens.id_token;
     const claims = idToken ? decodeJwtPayload(idToken) : null;
     const email = typeof claims?.email === 'string' ? claims.email : undefined;
 

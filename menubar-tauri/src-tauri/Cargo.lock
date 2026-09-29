@@ -780,6 +780,7 @@ dependencies = [
  "cocoa",
  "dirs 5.0.1",
  "image",
+ "libc",
  "once_cell",
  "reqwest 0.12.28",
  "serde",
