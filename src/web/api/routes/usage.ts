@@ -4,7 +4,7 @@
  * Handles usage analytics and quota endpoints
  */
 
-import { dlopen, FFIType } from 'bun:ffi';
+import { dlopen, FFIType, read } from 'bun:ffi';
 import { Hono } from 'hono';
 import { randomBytes } from 'node:crypto';
 import { open, readFile, rename, unlink, type FileHandle } from 'node:fs/promises';
@@ -63,30 +63,65 @@ function isTokenExpired(token: string): boolean {
 const LOCK_EX = 2;
 const LOCK_NB = 4;
 const LOCK_UN = 8;
+const EINTR = 4;
+// Darwin defines EAGAIN and EWOULDBLOCK as 35. Linux defines both as 11.
+const EAGAIN = process.platform === 'linux' ? 11 : 35;
+const CODEX_REFRESH_TIMEOUT_MS = 10_000;
 
 type FlockFn = (fd: number, operation: number) => number;
+type LockFns = { flock: FlockFn; errno: () => number };
+type FlockAttempt = { rc: number; errno: number };
 
-let flockFn: FlockFn | undefined;
+let lockFns: LockFns | undefined;
+let flockAttemptForTests: ((fd: number, operation: number) => FlockAttempt) | undefined;
 
-function libcFlock(fd: number, operation: number): number {
-  if (!flockFn) {
-    const libPath = process.platform === 'darwin'
-      ? 'libSystem.B.dylib'
-      : process.platform === 'linux'
-        ? 'libc.so.6'
-        : null;
-    if (!libPath) {
-      throw new Error(`POSIX flock is unavailable on ${process.platform}`);
-    }
-    const lib = dlopen(libPath, {
-      flock: {
-        args: [FFIType.i32, FFIType.i32],
-        returns: FFIType.i32,
-      },
+export function isRetryableFlockErrno(errno: number): boolean {
+  return errno === EINTR || errno === EAGAIN;
+}
+
+export function setCodexAuthFlockAttemptForTests(
+  attempt: ((fd: number, operation: number) => FlockAttempt) | undefined,
+): void {
+  flockAttemptForTests = attempt;
+}
+
+function loadLockFns(): LockFns {
+  if (lockFns) return lockFns;
+  if (process.platform === 'darwin') {
+    const lib = dlopen('libSystem.B.dylib', {
+      flock: { args: [FFIType.i32, FFIType.i32], returns: FFIType.i32 },
+      __error: { args: [], returns: FFIType.ptr },
     });
-    flockFn = (fileFd, op) => lib.symbols.flock(fileFd, op);
+    const errnoPtr = lib.symbols.__error();
+    if (errnoPtr == null) throw new Error('Failed to locate errno');
+    lockFns = {
+      flock: (fileFd, op) => lib.symbols.flock(fileFd, op),
+      errno: () => read.i32(errnoPtr),
+    };
+    return lockFns;
   }
-  return flockFn(fd, operation);
+  if (process.platform === 'linux') {
+    const lib = dlopen('libc.so.6', {
+      flock: { args: [FFIType.i32, FFIType.i32], returns: FFIType.i32 },
+      __errno_location: { args: [], returns: FFIType.ptr },
+    });
+    const errnoPtr = lib.symbols.__errno_location();
+    if (errnoPtr == null) throw new Error('Failed to locate errno');
+    lockFns = {
+      flock: (fileFd, op) => lib.symbols.flock(fileFd, op),
+      errno: () => read.i32(errnoPtr),
+    };
+    return lockFns;
+  }
+  throw new Error(`POSIX flock is unavailable on ${process.platform}`);
+}
+
+function attemptFlock(fd: number, operation: number): FlockAttempt {
+  if (flockAttemptForTests) return flockAttemptForTests(fd, operation);
+  const fns = loadLockFns();
+  const rc = fns.flock(fd, operation);
+  if (rc === 0) return { rc, errno: 0 };
+  return { rc, errno: fns.errno() };
 }
 
 function wait(ms: number): Promise<void> {
@@ -129,7 +164,11 @@ export async function acquireCodexAuthRefreshLock(
     // LOCK_NB plus a short wait keeps the dashboard event loop responsive
     // while the menubar holds the same POSIX lock.
     for (;;) {
-      if (libcFlock(handle.fd, LOCK_EX | LOCK_NB) === 0) break;
+      const attempt = attemptFlock(handle.fd, LOCK_EX | LOCK_NB);
+      if (attempt.rc === 0) break;
+      if (!isRetryableFlockErrno(attempt.errno)) {
+        throw new Error(`Failed to lock Codex auth: errno ${attempt.errno}`);
+      }
       await wait(20);
     }
   } catch (error) {
@@ -139,7 +178,7 @@ export async function acquireCodexAuthRefreshLock(
   return {
     async release() {
       try {
-        libcFlock(handle.fd, LOCK_UN);
+        attemptFlock(handle.fd, LOCK_UN);
       } finally {
         await handle.close();
       }
@@ -171,6 +210,7 @@ async function atomicReplaceAuthFile(authPath: string, contents: string): Promis
 export async function refreshPersistedCodexAuth(
   authPath: string,
   fetchImpl: CodexTokenExchange,
+  refreshTimeoutMs = CODEX_REFRESH_TIMEOUT_MS,
 ): Promise<CodexQuotaAuth> {
   const lock = await acquireCodexAuthRefreshLock(authPath);
   try {
@@ -197,6 +237,8 @@ export async function refreshPersistedCodexAuth(
       return { accessToken, idToken };
     }
 
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), refreshTimeoutMs);
     let response: Response;
     try {
       response = await fetchImpl(CODEX_REFRESH_URL, {
@@ -210,9 +252,12 @@ export async function refreshPersistedCodexAuth(
           refresh_token: refreshToken,
           client_id: CODEX_CLIENT_ID,
         }),
+        signal: controller.signal,
       });
     } catch {
       return { accessToken, idToken };
+    } finally {
+      clearTimeout(timer);
     }
     if (!response.ok) {
       return { accessToken, idToken };

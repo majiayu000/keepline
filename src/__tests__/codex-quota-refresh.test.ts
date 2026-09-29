@@ -6,7 +6,9 @@ import { join } from 'node:path';
 import {
   acquireCodexAuthRefreshLock,
   CodexAuthPersistError,
+  isRetryableFlockErrno,
   refreshPersistedCodexAuth,
+  setCodexAuthFlockAttemptForTests,
 } from '../web/api/routes/usage.js';
 
 const originalFetch = globalThis.fetch;
@@ -21,6 +23,7 @@ beforeEach(() => {
 
 afterEach(() => {
   globalThis.fetch = originalFetch;
+  setCodexAuthFlockAttemptForTests(undefined);
 });
 
 function jwtWithExp(exp: number): string {
@@ -229,6 +232,117 @@ test('token endpoint failure leaves auth.json unchanged', async () => {
     expect(calls).toBe(1);
     expect(refreshed.accessToken).toBe(oldAccess);
     expect(refreshed.idToken).toBe('old-id');
+    const saved = readAuth(authPath);
+    expect(saved.tokens.refresh_token).toBe('old-refresh');
+    expect(saved.last_refresh).toBe('2020-01-01T00:00:00Z');
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test('flock retries only contention and interruption', async () => {
+  expect(isRetryableFlockErrno(4)).toBe(true);
+  expect(isRetryableFlockErrno(9)).toBe(false);
+  if (process.platform === 'linux') {
+    expect(isRetryableFlockErrno(11)).toBe(true);
+    expect(isRetryableFlockErrno(35)).toBe(false);
+  } else {
+    expect(isRetryableFlockErrno(35)).toBe(true);
+    expect(isRetryableFlockErrno(11)).toBe(false);
+  }
+
+  const { dir, authPath } = tempAuthPath();
+  const oldAccess = expiredAccessToken();
+  try {
+    writeAuth(authPath, oldAccess, 'old-refresh', 'old-id');
+    const retryable = process.platform === 'linux' ? [11, 4] : [35, 4];
+    let attempts = 0;
+    setCodexAuthFlockAttemptForTests(() => {
+      const errno = retryable[attempts];
+      attempts += 1;
+      if (errno === undefined) return { rc: 0, errno: 0 };
+      return { rc: -1, errno };
+    });
+    let calls = 0;
+    const refreshed = await refreshPersistedCodexAuth(authPath, async () => {
+      calls += 1;
+      return Response.json({
+        access_token: 'new-access',
+        refresh_token: 'new-refresh',
+        id_token: 'new-id',
+      });
+    });
+    expect(calls).toBe(1);
+    expect(refreshed.accessToken).toBe('new-access');
+    expect(attempts).toBe(4);
+
+    attempts = 0;
+    setCodexAuthFlockAttemptForTests(() => {
+      attempts += 1;
+      return { rc: -1, errno: 9 };
+    });
+    const started = Date.now();
+    let posts = 0;
+    const error = await Promise.race([
+      refreshPersistedCodexAuth(authPath, async () => {
+        posts += 1;
+        return Response.json({ access_token: 'should-not-post' });
+      }).then(
+        () => new Error('expected lock failure'),
+        (caught: unknown) => caught,
+      ),
+      new Promise((resolve) => {
+        setTimeout(() => resolve(new Error('lock retry did not stop')), 500);
+      }),
+    ]);
+    expect(Date.now() - started).toBeLessThan(500);
+    expect(error).toBeInstanceOf(Error);
+    expect(error instanceof Error ? error.message : '').toContain('errno 9');
+    expect(posts).toBe(0);
+    expect(attempts).toBe(1);
+    const saved = readAuth(authPath);
+    expect(saved.tokens.access_token).toBe('new-access');
+    expect(saved.tokens.refresh_token).toBe('new-refresh');
+  } finally {
+    setCodexAuthFlockAttemptForTests(undefined);
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test('stalled token refresh aborts and releases the lock without a second post', async () => {
+  const { dir, authPath } = tempAuthPath();
+  const oldAccess = expiredAccessToken();
+  try {
+    writeAuth(authPath, oldAccess, 'old-refresh', 'old-id');
+    let calls = 0;
+    const refreshed = await refreshPersistedCodexAuth(authPath, (_input, init) => {
+      calls += 1;
+      const signal = init?.signal;
+      if (!signal) return Promise.reject(new Error('missing abort signal'));
+      return new Promise<Response>((_resolve, reject) => {
+        const abort = () => reject(new Error('aborted'));
+        if (signal.aborted) {
+          abort();
+          return;
+        }
+        signal.addEventListener('abort', abort, { once: true });
+      });
+    }, 40);
+    expect(calls).toBe(1);
+    expect(refreshed.accessToken).toBe(oldAccess);
+
+    let secondCalls = 0;
+    const second = await Promise.race([
+      refreshPersistedCodexAuth(authPath, async () => {
+        secondCalls += 1;
+        return new Response('nope', { status: 401 });
+      }),
+      new Promise<never>((_resolve, reject) => {
+        setTimeout(() => reject(new Error('lock still held')), 1000);
+      }),
+    ]);
+    expect(secondCalls).toBe(1);
+    expect(second.accessToken).toBe(oldAccess);
     const saved = readAuth(authPath);
     expect(saved.tokens.refresh_token).toBe('old-refresh');
     expect(saved.last_refresh).toBe('2020-01-01T00:00:00Z');

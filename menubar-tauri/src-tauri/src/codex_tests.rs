@@ -205,6 +205,7 @@ fn codex_stats_respects_codex_home_in_isolated_processes() {
     }
 }
 
+#[cfg(unix)]
 use std::os::unix::fs::PermissionsExt;
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::{mpsc, Arc};
@@ -257,10 +258,12 @@ fn read_auth_file(path: &std::path::Path) -> serde_json::Value {
     serde_json::from_str(&fs::read_to_string(path).expect("read auth")).expect("parse auth")
 }
 
+#[cfg(unix)]
 struct DirModeGuard<'a> {
     path: &'a std::path::Path,
 }
 
+#[cfg(unix)]
 impl Drop for DirModeGuard<'_> {
     fn drop(&mut self) {
         let Ok(metadata) = fs::metadata(self.path) else {
@@ -309,12 +312,15 @@ async fn persisted_refresh_updates_bundle_and_keeps_mode_0600() {
     let last_refresh = saved["last_refresh"].as_str().expect("last_refresh");
     assert!(last_refresh.ends_with('Z'));
     DateTime::parse_from_rfc3339(last_refresh).expect("chrono accepts last_refresh");
-    let mode = fs::metadata(&auth_path)
-        .expect("metadata")
-        .permissions()
-        .mode()
-        & 0o777;
-    assert_eq!(mode, 0o600);
+    #[cfg(unix)]
+    {
+        let mode = fs::metadata(&auth_path)
+            .expect("metadata")
+            .permissions()
+            .mode()
+            & 0o777;
+        assert_eq!(mode, 0o600);
+    }
 }
 
 #[tokio::test]
@@ -406,6 +412,7 @@ fn locked_reread_of_fresh_token_skips_exchange() {
     assert_eq!(saved["last_refresh"], "2020-01-01T00:00:00Z");
 }
 
+#[cfg(unix)]
 #[tokio::test]
 async fn failed_atomic_write_does_not_return_new_token_or_retry() {
     let dir = tempfile::tempdir().expect("tempdir");

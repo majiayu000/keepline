@@ -7,11 +7,12 @@ use agent_sessions::{
 use base64::{engine::general_purpose::STANDARD_NO_PAD, Engine as _};
 use chrono::{DateTime, NaiveDate, SecondsFormat, Utc};
 use serde::{Deserialize, Serialize};
-use std::fs::{self, OpenOptions};
-use std::io::{self, BufRead, BufReader, Write};
-use std::os::unix::fs::OpenOptionsExt;
-use std::os::unix::io::AsRawFd;
+use std::fs;
+use std::io::{BufRead, BufReader};
 use std::path::{Path, PathBuf};
+
+mod codex_auth_file;
+use codex_auth_file::{atomic_replace_private_file, refresh_lock_path, ExclusiveFileLock};
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct CodexData {
@@ -215,48 +216,6 @@ enum CodexAuthRefreshError {
     Unavailable(String),
 }
 
-struct ExclusiveFileLock {
-    file: fs::File,
-}
-
-impl ExclusiveFileLock {
-    fn acquire(path: &Path) -> io::Result<Self> {
-        if let Some(parent) = path.parent() {
-            if !parent.as_os_str().is_empty() {
-                fs::create_dir_all(parent)?;
-            }
-        }
-        let file = OpenOptions::new()
-            .create(true)
-            .read(true)
-            .write(true)
-            .mode(0o600)
-            .open(path)?;
-        // SAFETY: `file` is the descriptor opened above. LOCK_EX only updates
-        // that descriptor's advisory lock.
-        let rc = unsafe { libc::flock(file.as_raw_fd(), libc::LOCK_EX) };
-        if rc != 0 {
-            return Err(io::Error::last_os_error());
-        }
-        Ok(Self { file })
-    }
-}
-
-impl Drop for ExclusiveFileLock {
-    fn drop(&mut self) {
-        // SAFETY: same descriptor acquired above.
-        unsafe {
-            libc::flock(self.file.as_raw_fd(), libc::LOCK_UN);
-        }
-    }
-}
-
-fn refresh_lock_path(auth_path: &Path) -> PathBuf {
-    let mut lock_path = auth_path.as_os_str().to_os_string();
-    lock_path.push(".refresh.lock");
-    PathBuf::from(lock_path)
-}
-
 fn non_empty_json_string(value: &serde_json::Value, key: &str) -> Option<String> {
     value
         .get(key)
@@ -268,46 +227,6 @@ fn non_empty_json_string(value: &serde_json::Value, key: &str) -> Option<String>
 fn token_string(auth: &serde_json::Value, key: &str) -> Option<String> {
     auth.get("tokens")
         .and_then(|tokens| non_empty_json_string(tokens, key))
-}
-
-fn atomic_replace_private_file(destination: &Path, bytes: &[u8]) -> io::Result<()> {
-    let parent = destination
-        .parent()
-        .filter(|parent| !parent.as_os_str().is_empty())
-        .unwrap_or_else(|| Path::new("."));
-    let file_name = destination
-        .file_name()
-        .and_then(|name| name.to_str())
-        .unwrap_or("auth.json");
-    let nanos = std::time::SystemTime::now()
-        .duration_since(std::time::UNIX_EPOCH)
-        .map(|duration| duration.as_nanos())
-        .unwrap_or(0);
-    let tmp_path = parent.join(format!(".{file_name}.{}.{nanos}.tmp", std::process::id()));
-
-    let write_result = (|| -> io::Result<()> {
-        let mut file = OpenOptions::new()
-            .write(true)
-            .create_new(true)
-            .mode(0o600)
-            .open(&tmp_path)?;
-        // SAFETY: `file` is the temp auth file just opened. fchmod runs before
-        // secret bytes are written so umask cannot leave it world-readable.
-        let rc = unsafe { libc::fchmod(file.as_raw_fd(), 0o600) };
-        if rc != 0 {
-            return Err(io::Error::last_os_error());
-        }
-        file.write_all(bytes)?;
-        file.sync_all()?;
-        drop(file);
-        fs::rename(&tmp_path, destination)?;
-        Ok(())
-    })();
-
-    if write_result.is_err() {
-        let _ = fs::remove_file(&tmp_path);
-    }
-    write_result
 }
 
 fn read_codex_auth(auth_path: &Path) -> Result<serde_json::Value, CodexAuthRefreshError> {
