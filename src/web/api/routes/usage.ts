@@ -85,6 +85,21 @@ export function setCodexAuthFlockAttemptForTests(
   flockAttemptForTests = attempt;
 }
 
+let codexAuthPlatformForTests: string | undefined;
+
+export function setCodexAuthPlatformForTests(platform: string | undefined): void {
+  codexAuthPlatformForTests = platform;
+}
+
+function codexAuthPlatform(): string {
+  return codexAuthPlatformForTests ?? process.platform;
+}
+
+function supportsPosixCodexAuthLock(): boolean {
+  const platform = codexAuthPlatform();
+  return platform === 'darwin' || platform === 'linux';
+}
+
 function loadLockFns(): LockFns {
   if (lockFns) return lockFns;
   if (process.platform === 'darwin') {
@@ -207,32 +222,60 @@ async function atomicReplaceAuthFile(authPath: string, contents: string): Promis
   }
 }
 
+type CodexAuthBundle = {
+  authData: Record<string, unknown>;
+  tokens: Record<string, unknown>;
+  accessToken: string;
+  idToken?: string;
+  refreshToken?: string;
+};
+
+async function readCodexAuthBundle(authPath: string): Promise<CodexAuthBundle> {
+  const raw = await readFile(authPath, 'utf8');
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(raw);
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    throw new Error(`Failed to parse auth.json: ${message}`);
+  }
+  const authData = asRecord(parsed);
+  const tokens = asRecord(authData?.tokens);
+  if (!authData || !tokens) {
+    throw new Error('Codex access token not found');
+  }
+  const accessToken = nonEmptyString(tokens.access_token);
+  if (!accessToken) {
+    throw new Error('Codex access token not found');
+  }
+  return {
+    authData,
+    tokens,
+    accessToken,
+    idToken: nonEmptyString(tokens.id_token),
+    refreshToken: nonEmptyString(tokens.refresh_token),
+  };
+}
+
 export async function refreshPersistedCodexAuth(
   authPath: string,
   fetchImpl: CodexTokenExchange,
   refreshTimeoutMs = CODEX_REFRESH_TIMEOUT_MS,
 ): Promise<CodexQuotaAuth> {
+  // The menubar shares the POSIX lock on darwin and linux. Elsewhere the
+  // dashboard cannot persist a rotated refresh token, so it must not post one.
+  if (!supportsPosixCodexAuthLock()) {
+    const bundle = await readCodexAuthBundle(authPath);
+    if (!isTokenExpired(bundle.accessToken) || !bundle.refreshToken) {
+      return { accessToken: bundle.accessToken, idToken: bundle.idToken };
+    }
+    throw new Error(`Codex auth refresh cannot be persisted on ${codexAuthPlatform()}`);
+  }
+
   const lock = await acquireCodexAuthRefreshLock(authPath);
   try {
-    const raw = await readFile(authPath, 'utf8');
-    let parsed: unknown;
-    try {
-      parsed = JSON.parse(raw);
-    } catch (error) {
-      const message = error instanceof Error ? error.message : String(error);
-      throw new Error(`Failed to parse auth.json: ${message}`);
-    }
-    const authData = asRecord(parsed);
-    const tokens = asRecord(authData?.tokens);
-    if (!authData || !tokens) {
-      throw new Error('Codex access token not found');
-    }
-    const accessToken = nonEmptyString(tokens.access_token);
-    if (!accessToken) {
-      throw new Error('Codex access token not found');
-    }
-    const idToken = nonEmptyString(tokens.id_token);
-    const refreshToken = nonEmptyString(tokens.refresh_token);
+    const bundle = await readCodexAuthBundle(authPath);
+    const { authData, tokens, accessToken, idToken, refreshToken } = bundle;
     if (!isTokenExpired(accessToken) || !refreshToken) {
       return { accessToken, idToken };
     }

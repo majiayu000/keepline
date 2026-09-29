@@ -9,6 +9,7 @@ import {
   isRetryableFlockErrno,
   refreshPersistedCodexAuth,
   setCodexAuthFlockAttemptForTests,
+  setCodexAuthPlatformForTests,
 } from '../web/api/routes/usage.js';
 
 const originalFetch = globalThis.fetch;
@@ -24,6 +25,7 @@ beforeEach(() => {
 afterEach(() => {
   globalThis.fetch = originalFetch;
   setCodexAuthFlockAttemptForTests(undefined);
+  setCodexAuthPlatformForTests(undefined);
 });
 
 function jwtWithExp(exp: number): string {
@@ -305,6 +307,114 @@ test('flock retries only contention and interruption', async () => {
     expect(saved.tokens.refresh_token).toBe('new-refresh');
   } finally {
     setCodexAuthFlockAttemptForTests(undefined);
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+function expectNoRefreshLock(dir: string): void {
+  expect(readdirSync(dir).filter((name) => name.includes('refresh.lock'))).toEqual([]);
+}
+
+test('non-posix platform serves a fresh token without locking or posting', async () => {
+  const { dir, authPath } = tempAuthPath();
+  try {
+    setCodexAuthPlatformForTests('win32');
+    const fresh = freshAccessToken();
+    writeAuth(authPath, fresh, 'refresh-keep', 'id-keep');
+    let calls = 0;
+    const refreshed = await refreshPersistedCodexAuth(authPath, async () => {
+      calls += 1;
+      throw new Error('token endpoint must not be called');
+    });
+    expect(calls).toBe(0);
+    expect(refreshed).toEqual({ accessToken: fresh, idToken: 'id-keep' });
+    const saved = readAuth(authPath);
+    expect(saved.tokens.refresh_token).toBe('refresh-keep');
+    expect(saved.last_refresh).toBe('2020-01-01T00:00:00Z');
+    expectNoRefreshLock(dir);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test('non-posix platform serves an access token when no refresh token is stored', async () => {
+  const { dir, authPath } = tempAuthPath();
+  try {
+    setCodexAuthPlatformForTests('win32');
+    const expired = expiredAccessToken();
+    writeFileSync(authPath, `${JSON.stringify({
+      auth_mode: 'chatgpt',
+      tokens: {
+        access_token: expired,
+        id_token: 'id-keep',
+      },
+      last_refresh: '2020-01-01T00:00:00Z',
+    }, null, 2)}\n`);
+    let calls = 0;
+    const refreshed = await refreshPersistedCodexAuth(authPath, async () => {
+      calls += 1;
+      throw new Error('token endpoint must not be called');
+    });
+    expect(calls).toBe(0);
+    expect(refreshed).toEqual({ accessToken: expired, idToken: 'id-keep' });
+    expectNoRefreshLock(dir);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test('non-posix platform fails before the token post when a refresh is required', async () => {
+  const { dir, authPath } = tempAuthPath();
+  const oldAccess = expiredAccessToken();
+  try {
+    setCodexAuthPlatformForTests('win32');
+    writeAuth(authPath, oldAccess, 'old-refresh', 'old-id');
+    let calls = 0;
+    const error = await refreshPersistedCodexAuth(authPath, async () => {
+      calls += 1;
+      return Response.json({
+        access_token: 'new-access',
+        refresh_token: 'new-refresh',
+        id_token: 'new-id',
+      });
+    }).then(
+      () => {
+        throw new Error('expected refresh to fail before the token post');
+      },
+      (caught: unknown) => caught,
+    );
+    expect(calls).toBe(0);
+    expect(error).toBeInstanceOf(Error);
+    expect(error instanceof CodexAuthPersistError).toBe(false);
+    expect(error instanceof Error ? error.message : '').toBe(
+      'Codex auth refresh cannot be persisted on win32',
+    );
+    const saved = readAuth(authPath);
+    expect(saved.tokens.access_token).toBe(oldAccess);
+    expect(saved.tokens.refresh_token).toBe('old-refresh');
+    expect(saved.tokens.id_token).toBe('old-id');
+    expect(saved.last_refresh).toBe('2020-01-01T00:00:00Z');
+    expectNoRefreshLock(dir);
+
+    const soon = jwtWithExp(Math.floor(Date.now() / 1000) + 30);
+    writeAuth(authPath, soon, 'old-refresh', 'old-id');
+    calls = 0;
+    const soonError = await refreshPersistedCodexAuth(authPath, async () => {
+      calls += 1;
+      return Response.json({ access_token: 'new-access' });
+    }).then(
+      () => {
+        throw new Error('expected the 60-second window to fail closed');
+      },
+      (caught: unknown) => caught,
+    );
+    expect(calls).toBe(0);
+    expect(soonError instanceof Error ? soonError.message : '').toBe(
+      'Codex auth refresh cannot be persisted on win32',
+    );
+    expect(readAuth(authPath).tokens.access_token).toBe(soon);
+    expectNoRefreshLock(dir);
+  } finally {
     rmSync(dir, { recursive: true, force: true });
   }
 });
