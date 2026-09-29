@@ -4,8 +4,11 @@
  * Handles usage analytics and quota endpoints
  */
 
+import { dlopen, FFIType } from 'bun:ffi';
 import { Hono } from 'hono';
-import { join } from 'path';
+import { randomBytes } from 'node:crypto';
+import { open, readFile, rename, unlink, type FileHandle } from 'node:fs/promises';
+import { basename, dirname, join } from 'path';
 import { logger } from '../../../lib/logger.js';
 import { KEEPLINE_HOME } from '../../../lib/paths.js';
 import { getCostPrediction, getCostForDateRange } from '../../../services/cost.predictor.js';
@@ -35,17 +38,6 @@ const DEFAULT_CODEX_AUTH_FILE = (() => {
   return join(homeDir, '.codex', 'auth.json');
 })();
 
-type CodexAuthFile = {
-  OPENAI_API_KEY?: string;
-  tokens?: {
-    id_token?: string;
-    access_token?: string;
-    refresh_token?: string;
-    account_id?: string;
-  };
-  last_refresh?: string;
-};
-
 function decodeJwtPayload(token: string): Record<string, unknown> | null {
   const segments = token.split('.');
   if (segments.length < 2) return null;
@@ -68,26 +60,194 @@ function isTokenExpired(token: string): boolean {
   return expiryMs < Date.now() + 60_000;
 }
 
-async function refreshCodexAccessToken(refreshToken: string): Promise<string | null> {
-  const response = await fetch(CODEX_REFRESH_URL, {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      Accept: 'application/json',
-    },
-    body: JSON.stringify({
-      grant_type: 'refresh_token',
-      refresh_token: refreshToken,
-      client_id: CODEX_CLIENT_ID,
-    }),
-  });
+const LOCK_EX = 2;
+const LOCK_NB = 4;
+const LOCK_UN = 8;
 
-  if (!response.ok) {
-    return null;
+type FlockFn = (fd: number, operation: number) => number;
+
+let flockFn: FlockFn | undefined;
+
+function libcFlock(fd: number, operation: number): number {
+  if (!flockFn) {
+    const libPath = process.platform === 'darwin'
+      ? 'libSystem.B.dylib'
+      : process.platform === 'linux'
+        ? 'libc.so.6'
+        : null;
+    if (!libPath) {
+      throw new Error(`POSIX flock is unavailable on ${process.platform}`);
+    }
+    const lib = dlopen(libPath, {
+      flock: {
+        args: [FFIType.i32, FFIType.i32],
+        returns: FFIType.i32,
+      },
+    });
+    flockFn = (fileFd, op) => lib.symbols.flock(fileFd, op);
   }
+  return flockFn(fd, operation);
+}
 
-  const data = await response.json() as { access_token?: string };
-  return data.access_token ?? null;
+function wait(ms: number): Promise<void> {
+  return new Promise((resolve) => {
+    setTimeout(resolve, ms);
+  });
+}
+
+export class CodexAuthPersistError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = 'CodexAuthPersistError';
+  }
+}
+
+export type CodexQuotaAuth = {
+  accessToken: string;
+  idToken?: string;
+};
+
+export type CodexTokenExchange = (
+  input: string,
+  init?: RequestInit,
+) => Promise<Response>;
+
+function asRecord(value: unknown): Record<string, unknown> | null {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return null;
+  return value as Record<string, unknown>;
+}
+
+function nonEmptyString(value: unknown): string | undefined {
+  return typeof value === 'string' && value.length > 0 ? value : undefined;
+}
+
+export async function acquireCodexAuthRefreshLock(
+  authPath: string,
+): Promise<{ release(): Promise<void> }> {
+  const handle = await open(`${authPath}.refresh.lock`, 'a+', 0o600);
+  try {
+    // LOCK_NB plus a short wait keeps the dashboard event loop responsive
+    // while the menubar holds the same POSIX lock.
+    for (;;) {
+      if (libcFlock(handle.fd, LOCK_EX | LOCK_NB) === 0) break;
+      await wait(20);
+    }
+  } catch (error) {
+    await handle.close();
+    throw error;
+  }
+  return {
+    async release() {
+      try {
+        libcFlock(handle.fd, LOCK_UN);
+      } finally {
+        await handle.close();
+      }
+    },
+  };
+}
+
+async function atomicReplaceAuthFile(authPath: string, contents: string): Promise<void> {
+  const tmpPath = join(
+    dirname(authPath),
+    `.${basename(authPath)}.${process.pid}.${randomBytes(6).toString('hex')}.tmp`,
+  );
+  let handle: FileHandle | undefined;
+  try {
+    handle = await open(tmpPath, 'wx', 0o600);
+    await handle.chmod(0o600);
+    await handle.writeFile(contents);
+    await handle.sync();
+    await handle.close();
+    handle = undefined;
+    await rename(tmpPath, authPath);
+  } catch (error) {
+    if (handle) await handle.close().catch(() => undefined);
+    await unlink(tmpPath).catch(() => undefined);
+    throw error;
+  }
+}
+
+export async function refreshPersistedCodexAuth(
+  authPath: string,
+  fetchImpl: CodexTokenExchange,
+): Promise<CodexQuotaAuth> {
+  const lock = await acquireCodexAuthRefreshLock(authPath);
+  try {
+    const raw = await readFile(authPath, 'utf8');
+    let parsed: unknown;
+    try {
+      parsed = JSON.parse(raw);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      throw new Error(`Failed to parse auth.json: ${message}`);
+    }
+    const authData = asRecord(parsed);
+    const tokens = asRecord(authData?.tokens);
+    if (!authData || !tokens) {
+      throw new Error('Codex access token not found');
+    }
+    const accessToken = nonEmptyString(tokens.access_token);
+    if (!accessToken) {
+      throw new Error('Codex access token not found');
+    }
+    const idToken = nonEmptyString(tokens.id_token);
+    const refreshToken = nonEmptyString(tokens.refresh_token);
+    if (!isTokenExpired(accessToken) || !refreshToken) {
+      return { accessToken, idToken };
+    }
+
+    let response: Response;
+    try {
+      response = await fetchImpl(CODEX_REFRESH_URL, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Accept: 'application/json',
+        },
+        body: JSON.stringify({
+          grant_type: 'refresh_token',
+          refresh_token: refreshToken,
+          client_id: CODEX_CLIENT_ID,
+        }),
+      });
+    } catch {
+      return { accessToken, idToken };
+    }
+    if (!response.ok) {
+      return { accessToken, idToken };
+    }
+
+    let body: unknown;
+    try {
+      body = await response.json();
+    } catch {
+      return { accessToken, idToken };
+    }
+    const newAccess = nonEmptyString(asRecord(body)?.access_token);
+    if (!newAccess) {
+      return { accessToken, idToken };
+    }
+    tokens.access_token = newAccess;
+    const newRefresh = nonEmptyString(asRecord(body)?.refresh_token);
+    if (newRefresh) tokens.refresh_token = newRefresh;
+    const newId = nonEmptyString(asRecord(body)?.id_token);
+    if (newId) tokens.id_token = newId;
+    authData.last_refresh = new Date().toISOString();
+
+    try {
+      await atomicReplaceAuthFile(authPath, `${JSON.stringify(authData, null, 2)}\n`);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      throw new CodexAuthPersistError(`Failed to persist Codex auth: ${message}`);
+    }
+    return {
+      accessToken: newAccess,
+      idToken: nonEmptyString(tokens.id_token),
+    };
+  } finally {
+    await lock.release();
+  }
 }
 
 function parseCodexUsageResponse(json: Record<string, unknown>) {
@@ -188,19 +348,21 @@ app.get('/codex/quota', async (c) => {
       return c.json({ success: false, error: 'Codex auth file not found' }, 404);
     }
 
-    const raw = await authFile.text();
-    const authData = JSON.parse(raw) as CodexAuthFile;
-    const tokens = authData.tokens;
-    if (!tokens?.access_token) {
-      return c.json({ success: false, error: 'Codex access token not found' }, 401);
-    }
-
-    let accessToken = tokens.access_token;
-    if (isTokenExpired(accessToken) && tokens.refresh_token) {
-      const refreshed = await refreshCodexAccessToken(tokens.refresh_token);
-      if (refreshed) {
-        accessToken = refreshed;
+    let accessToken: string;
+    let idToken: string | undefined;
+    try {
+      const refreshed = await refreshPersistedCodexAuth(authPath, fetch);
+      accessToken = refreshed.accessToken;
+      idToken = refreshed.idToken;
+    } catch (error) {
+      if (error instanceof CodexAuthPersistError) {
+        logger.error('Failed to persist refreshed Codex auth', { message: error.message });
+        return c.json({ success: false, error: 'Failed to persist Codex auth' }, 500);
       }
+      if (error instanceof Error && error.message === 'Codex access token not found') {
+        return c.json({ success: false, error: 'Codex access token not found' }, 401);
+      }
+      throw error;
     }
 
     const response = await fetch(CODEX_USAGE_URL, {
@@ -218,7 +380,6 @@ app.get('/codex/quota', async (c) => {
 
     const json = await response.json() as Record<string, unknown>;
     const payload = parseCodexUsageResponse(json);
-    const idToken = tokens.id_token;
     const claims = idToken ? decodeJwtPayload(idToken) : null;
     const email = typeof claims?.email === 'string' ? claims.email : undefined;
 
