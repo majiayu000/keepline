@@ -32,11 +32,12 @@ const codexQuotaCache = new ExpiringCache<Record<string, unknown>>();
 const usageCache = new ExpiringCache<unknown>();
 const costPredictionCache = new ExpiringCache<unknown>();
 
-const DEFAULT_CODEX_AUTH_FILE = (() => {
-  const homeDir = process.env.HOME;
-  if (!homeDir) return null;
-  return join(homeDir, '.codex', 'auth.json');
-})();
+function getCodexAuthPath(): string | null {
+  if (process.env.CODEX_AUTH_PATH) return process.env.CODEX_AUTH_PATH;
+  const codexHome = process.env.CODEX_HOME ||
+    (process.env.HOME ? join(process.env.HOME, '.codex') : null);
+  return codexHome ? join(codexHome, 'auth.json') : null;
+}
 
 function decodeJwtPayload(token: string): Record<string, unknown> | null {
   const segments = token.split('.');
@@ -417,18 +418,17 @@ app.get('/clients', async (c) => {
   }
 });
 
-// GET /api/codex/quota - Get Codex CLI quota from ~/.codex/auth.json
+// GET /api/codex/quota - Get quota from the active Codex auth file
 app.get('/codex/quota', async (c) => {
   try {
-    const cacheKey = process.env.CODEX_AUTH_PATH || DEFAULT_CODEX_AUTH_FILE || 'default';
+    const authPath = getCodexAuthPath();
+    if (!authPath) {
+      return c.json({ success: false, error: 'Codex auth path not available' }, 500);
+    }
+    const cacheKey = authPath;
     const cached = codexQuotaCache.get(cacheKey);
     if (cached) {
       return c.json({ success: true, data: cached });
-    }
-
-    const authPath = process.env.CODEX_AUTH_PATH || DEFAULT_CODEX_AUTH_FILE;
-    if (!authPath) {
-      return c.json({ success: false, error: 'Codex auth path not available' }, 500);
     }
 
     const authFile = Bun.file(authPath);
