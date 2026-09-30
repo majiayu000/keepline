@@ -11,7 +11,8 @@
  */
 
 import { randomUUID } from 'crypto';
-import { queryOne, runSql } from '../infrastructure/database/sqlite.js';
+import { queryOne, runSql, transaction } from '../infrastructure/database/sqlite.js';
+import { sessionRepository } from '../infrastructure/database/repositories/session.repository.js';
 
 const METADATA_KEY = 'session_reconciliation';
 
@@ -20,7 +21,7 @@ export type SessionReconciliationOwner = 'daemon' | 'service' | 'web';
 export type SessionReconciliationToken = string;
 
 interface SessionReconciliationState {
-  status: 'running' | 'ready' | 'failed';
+  status: 'running' | 'invalidated' | 'ready' | 'failed';
   owner?: SessionReconciliationOwner;
   token?: SessionReconciliationToken;
   pid?: number;
@@ -66,33 +67,50 @@ export function beginSessionReconciliation(
   owner: SessionReconciliationOwner
 ): SessionReconciliationToken {
   const token = randomUUID();
-  writeState({
-    status: 'running',
-    owner,
-    token,
-    pid: process.pid,
-    startedAt: new Date().toISOString(),
+  transaction(() => {
+    const previous = readState();
+    writeState({
+      // Acquiring a new owner must not discard an unfinished invalidation.
+      status: previous?.status === 'invalidated' || previous?.status === 'failed'
+        ? 'invalidated' : 'running',
+      owner,
+      token,
+      pid: process.pid,
+      startedAt: new Date().toISOString(),
+    });
   });
   return token;
 }
 
+/** Persist invalidation and clear live claims in the same SQLite transaction. */
+export function invalidateSessionClaims(token: SessionReconciliationToken): number {
+  return transaction(() => {
+    const state = readState();
+    if (!token || !state || state.token !== token ||
+        (state.status !== 'running' && state.status !== 'invalidated')) {
+      throw new Error('Session reconciliation ownership changed before invalidation');
+    }
+    writeState({ ...state, status: 'invalidated' });
+    return sessionRepository.markActiveSessionsInterrupted();
+  });
+}
+
 /**
  * Clear the shared gate after live claims are restored.
- * Only the current owner token may transition running → ready.
+ * Only the current owner token may complete, including a successful retry.
  */
 export function completeSessionReconciliation(
-  token?: SessionReconciliationToken
+  token: SessionReconciliationToken
 ): boolean {
-  const state = readState();
-  if (!state || state.status !== 'running') return false;
-  if (token != null && state.token != null && state.token !== token) {
-    return false;
-  }
-  writeState({
-    status: 'ready',
-    completedAt: new Date().toISOString(),
+  return transaction(() => {
+    const state = readState();
+    if (!token || !state || state.status === 'ready' || state.token !== token) return false;
+    writeState({
+      status: 'ready',
+      completedAt: new Date().toISOString(),
+    });
+    return true;
   });
-  return true;
 }
 
 /**
@@ -100,38 +118,42 @@ export function completeSessionReconciliation(
  * the owner process exits. Only the current owner token may write failure.
  */
 export function failSessionReconciliation(
-  token?: SessionReconciliationToken,
+  token: SessionReconciliationToken,
   error?: string
 ): boolean {
-  const state = readState();
-  if (!state || state.status !== 'running') return false;
-  if (token != null && state.token != null && state.token !== token) {
-    return false;
-  }
-  writeState({
-    status: 'failed',
-    owner: state.owner,
-    token: state.token,
-    pid: state.pid,
-    startedAt: state.startedAt,
-    failedAt: new Date().toISOString(),
-    error,
+  return transaction(() => {
+    const state = readState();
+    if (!token || !state || state.token !== token ||
+        (state.status !== 'running' && state.status !== 'invalidated')) return false;
+    writeState({
+      ...state,
+      status: 'failed',
+      failedAt: new Date().toISOString(),
+      error,
+    });
+    return true;
   });
-  return true;
 }
 
 /**
  * True while another Keepline process is mid invalidate-and-full-scan, or after
  * a failed reconciliation that has not yet been superseded by a successful one.
- * Stale `running` locks from crashed owners (without a durable failure) clear.
+ * Dead owners are safe to ignore only before live claims have been invalidated.
  */
 export function isSessionReconciliationRunning(): boolean {
-  const state = readState();
-  if (!state) return false;
-  if (state.status === 'failed') return true;
-  if (state.status !== 'running') return false;
-  if (typeof state.pid === 'number' && state.pid !== process.pid && !processExists(state.pid)) {
-    return false;
-  }
-  return true;
+  return transaction(() => {
+    const state = readState();
+    if (!state || state.status === 'ready') return false;
+    if (state.status === 'failed') return true;
+    if (typeof state.pid === 'number' && state.pid !== process.pid && !processExists(state.pid)) {
+      if (state.status === 'running') return false;
+      writeState({
+        ...state,
+        status: 'failed',
+        failedAt: new Date().toISOString(),
+        error: 'Reconciliation owner exited after live claims were invalidated',
+      });
+    }
+    return true;
+  });
 }
