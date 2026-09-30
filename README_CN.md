@@ -10,16 +10,16 @@
 
 [![npm version](https://img.shields.io/npm/v/keepline.svg?style=flat-square&color=00d4ff)](https://www.npmjs.com/package/keepline)
 [![npm downloads](https://img.shields.io/npm/dm/keepline.svg?style=flat-square&color=ff00ff)](https://www.npmjs.com/package/keepline)
-[![GitHub stars](https://img.shields.io/github/stars/majiayu000/claude-hub?style=flat-square&color=ffcc00)](https://github.com/majiayu000/claude-hub)
+[![GitHub stars](https://img.shields.io/github/stars/majiayu000/keepline?style=flat-square&color=ffcc00)](https://github.com/majiayu000/keepline)
 [![License](https://img.shields.io/badge/license-MIT-blue.svg?style=flat-square)](LICENSE)
 
 [English](README.md) | 中文
 
-[快速开始](#-快速开始) | [功能特性](#-功能特性) | [截图](#-截图) | [文档](#-文档)
+[快速开始](#快速开始) | [功能特性](#功能特性) | [截图](#web-仪表板) | [CLI 命令](#cli-命令)
 
 <br />
 
-<img src="docs/assets/hero-demo.gif" alt="Keepline Demo" width="800" />
+<img src="docs/assets/Sessions.png" alt="Keepline 会话仪表板" width="800" />
 
 </div>
 
@@ -86,9 +86,11 @@ keepline web
 ### 方式三：从源码
 
 ```bash
-git clone https://github.com/majiayu000/claude-hub.git keepline
+git clone https://github.com/majiayu000/keepline.git keepline
 cd keepline
-bun install && bun run build
+bun install --frozen-lockfile
+(cd src/web/client && bun install --frozen-lockfile)
+bun run build
 bun run start web
 ```
 
