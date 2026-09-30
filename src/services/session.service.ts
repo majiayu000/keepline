@@ -236,7 +236,6 @@ export class SessionService {
       const agentSessions = scannedSessions.filter((session) =>
         isValidSessionId(session.sessionId)
       );
-      const processMatches = matchProcessesToSessions(agentSessions, processes);
       const existingSessions = this.repository.findBySessionIdsSummary(
         agentSessions.map((session) => session.sessionId)
       );
@@ -244,23 +243,30 @@ export class SessionService {
         existingSessions.map((session) => [session.sessionId, session])
       );
 
+      const processByPid = new Map(processes.map((process) => [process.pid, process]));
+      const processMatches = matchProcessesToSessions(agentSessions.map((session) => {
+        const existing = existingSessionMap.get(session.sessionId);
+        return {
+          ...session,
+          pid: existing?.pid,
+          // PID reuse must be checked against the previous observation, not new transcript activity.
+          lastActiveAt: existing?.pid ? existing.lastActiveAt : session.lastActiveAt,
+        };
+      }), processes);
+
       // Process each scanned session
       for (const agentSession of agentSessions) {
         const client = agentSession.client ?? 'claude';
         const existing = existingSessionMap.get(agentSession.sessionId);
         const process = processMatches.get(agentSession.sessionId);
         // An unmatched cwd is not evidence that an already observed PID exited.
-        const unmatchedExisting = !process && existing &&
-          existing.status !== 'lost' && existing.status !== 'completed'
-          ? this.repository.findBySessionId(agentSession.sessionId)
-          : null;
-        const keepLiveSession = Boolean(unmatchedExisting?.pid && (
-          runningAgentPids.has(unmatchedExisting.pid) || isProcessRunning(unmatchedExisting.pid)
-        ));
-        if (keepLiveSession && unmatchedExisting?.pid) runningAgentPids.add(unmatchedExisting.pid);
+        const keepLiveSession = Boolean(!process && existing?.pid &&
+          existing.status !== 'lost' && existing.status !== 'completed' &&
+          !processByPid.has(existing.pid) && isProcessRunning(existing.pid));
+        if (keepLiveSession && existing?.pid) runningAgentPids.add(existing.pid);
 
         const detectedStatus = detectSessionStatus(
-          process || null,
+          process ?? (keepLiveSession ? { cpu: 0 } : null),
           agentSession.lastActiveAt
         );
         // A lifecycle hook is received after the transcript record that caused it.
@@ -277,7 +283,7 @@ export class SessionService {
         // process scan must not downgrade that durable signal to lost/idle.
         const status = existing?.status === 'completed'
           ? 'completed'
-          : hasNewerHookObservation || keepLiveSession ? existing!.status : detectedStatus;
+          : hasNewerHookObservation ? existing!.status : detectedStatus;
         const lastActiveAt = hasNewerHookObservation
           ? existing!.lastActiveAt
           : agentSession.lastActiveAt;
@@ -297,7 +303,7 @@ export class SessionService {
             sessionId: agentSession.sessionId,
             client,
             status: nextStatus,
-            statusSource: existing.status === 'completed' || hasNewerHookObservation || keepLiveSession
+            statusSource: existing.status === 'completed' || hasNewerHookObservation
               ? existing.statusSource
               : 'scan',
             ...(shouldUpdateTitle && {
