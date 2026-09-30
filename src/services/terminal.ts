@@ -2,7 +2,7 @@
  * Terminal operations for recovery
  */
 
-import { execSync, spawn } from 'child_process';
+import { execFileSync, spawn } from 'child_process';
 import path from 'path';
 import { existsSync } from 'fs';
 import { logger } from '../lib/logger.js';
@@ -11,6 +11,9 @@ import type { TerminalApp } from './recovery.types.js';
 
 // Allowed commands whitelist for recovery
 const ALLOWED_COMMANDS = ['claude', 'claude-code', 'codex', 'npx'];
+// Auto detection plus launch must finish before SQLite's 5-second busy timeout.
+const DETECTION_TIMEOUT_MS = 500;
+const OPEN_TIMEOUT_MS = 3_000;
 
 /** Validate directory path */
 function validateDirectory(directory: string): boolean {
@@ -40,9 +43,9 @@ function validateCommand(command: string): boolean {
 export function detectTerminalApp(): TerminalApp {
   try {
     // Check if Warp is running
-    const warpResult = execSync(
-      `osascript -e 'tell application "System Events" to (name of processes) contains "Warp"'`,
-      { encoding: 'utf-8' }
+    const warpResult = execFileSync(
+      'osascript', ['-e', 'tell application "System Events" to (name of processes) contains "Warp"'],
+      { encoding: 'utf-8', timeout: DETECTION_TIMEOUT_MS, killSignal: 'SIGKILL' }
     ).trim();
 
     if (warpResult === 'true') {
@@ -50,9 +53,9 @@ export function detectTerminalApp(): TerminalApp {
     }
 
     // Check if iTerm is running
-    const iTermResult = execSync(
-      `osascript -e 'tell application "System Events" to (name of processes) contains "iTerm2"'`,
-      { encoding: 'utf-8' }
+    const iTermResult = execFileSync(
+      'osascript', ['-e', 'tell application "System Events" to (name of processes) contains "iTerm2"'],
+      { encoding: 'utf-8', timeout: DETECTION_TIMEOUT_MS, killSignal: 'SIGKILL' }
     ).trim();
 
     if (iTermResult === 'true') {
@@ -117,7 +120,9 @@ function openTerminalApp(command: string, directory: string): void {
   `;
 
   try {
-    execSync(`osascript -e '${script}'`, { encoding: 'utf-8' });
+    execFileSync('osascript', ['-e', script], {
+      encoding: 'utf-8', timeout: OPEN_TIMEOUT_MS, killSignal: 'SIGKILL',
+    });
     logger.debug('Opened Terminal.app with command');
   } catch (error) {
     logger.error('Failed to open Terminal.app', error);
@@ -139,7 +144,9 @@ function openITerm(command: string, directory: string): void {
   `;
 
   try {
-    execSync(`osascript -e '${script}'`, { encoding: 'utf-8' });
+    execFileSync('osascript', ['-e', script], {
+      encoding: 'utf-8', timeout: OPEN_TIMEOUT_MS, killSignal: 'SIGKILL',
+    });
     logger.debug('Opened iTerm with command');
   } catch (error) {
     logger.error('Failed to open iTerm', error);
@@ -166,7 +173,9 @@ function openWarp(command: string, directory: string): void {
   `;
 
   try {
-    execSync(`osascript -e '${script}'`, { encoding: 'utf-8' });
+    execFileSync('osascript', ['-e', script], {
+      encoding: 'utf-8', timeout: OPEN_TIMEOUT_MS, killSignal: 'SIGKILL',
+    });
     logger.debug('Opened Warp with command');
   } catch (error) {
     logger.error('Failed to open Warp', error);
@@ -178,8 +187,7 @@ function openWarp(command: string, directory: string): void {
 function escapeForAppleScript(str: string): string {
   return str
     .replace(/\\/g, '\\\\')
-    .replace(/"/g, '\\"')
-    .replace(/'/g, "'\"'\"'");
+    .replace(/"/g, '\\"');
 }
 
 /** Execute command in current terminal */
