@@ -1,10 +1,10 @@
 import { afterEach, beforeEach, describe, expect, test } from 'bun:test';
-import { mkdtempSync, writeFileSync } from 'fs';
+import { chmodSync, mkdtempSync, writeFileSync } from 'fs';
 import { tmpdir } from 'os';
 import { join } from 'path';
 import { createLocalApiApp } from '../local-api/app.js';
 import { resetDatabase } from '../db/migrations.js';
-import { closeDatabase } from '../infrastructure/database/sqlite.js';
+import { closeDatabase, runSql } from '../infrastructure/database/sqlite.js';
 import { sessionRepository } from '../infrastructure/database/repositories/session.repository.js';
 import { setupUser } from '../services/auth.service.js';
 import { createServiceRecoveryHandler } from '../cli/service-recovery.js';
@@ -95,6 +95,45 @@ describe('Local API recovery confirmation', () => {
       confirmationId: preview.confirmationId, terminalApp: 'auto',
     })).rejects.toMatchObject({ status: 503, message: 'Startup reconciliation is still running' });
   });
+
+  test('stalled terminal automation releases the writer before peers time out', async () => {
+    sessionRepository.upsert({
+      sessionId: preview.sessionId, client: 'codex', directory: preview.directory, status: 'lost',
+    });
+    const directory = mkdtempSync(join(tmpdir(), 'keepline-stalled-automation-'));
+    const osascript = join(directory, 'osascript');
+    writeFileSync(osascript, '#!/bin/sh\nexec /bin/sleep 6\n');
+    chmodSync(osascript, 0o755);
+    const child = Bun.spawn([process.execPath, '-e', `
+      import { createServiceRecoveryHandler } from './src/cli/service-recovery.ts';
+      import { openTerminalWithArgv } from './src/services/terminal.ts';
+      import { sessionRepository } from './src/infrastructure/database/repositories/session.repository.ts';
+      const sessionId = ${JSON.stringify(preview.sessionId)};
+      const handler = createServiceRecoveryHandler({
+        recoverySource: () => ({ sessionId, runtimeId: 'codex', status: 'lost',
+          directory: ${JSON.stringify(preview.directory)}, availableMethods: ['resume'], recommendedMethod: 'resume' }),
+        openTerminal: (...args) => { console.log('automation-start'); openTerminalWithArgv(...args); },
+        markRunning: () => sessionRepository.upsert({ sessionId, status: 'running' }),
+      });
+      const confirmed = handler.preview(sessionId);
+      try { handler.execute(sessionId, confirmed.confirmationId, 'auto'); }
+      catch { process.exitCode = 1; }
+    `], {
+      env: { ...process.env, PATH: directory + ':' + process.env.PATH }, stdout: 'pipe', stderr: 'pipe',
+    });
+    try {
+      const output = await child.stdout.getReader().read();
+      expect(new TextDecoder().decode(output.value)).toContain('automation-start');
+      const started = Date.now();
+      runSql("INSERT INTO metadata (key, value) VALUES ('peer-writer-probe', 'unblocked')");
+      expect(Date.now() - started).toBeLessThan(4_500);
+      expect(await child.exited).toBe(1);
+      expect(sessionRepository.findBySessionId(preview.sessionId)?.status).toBe('lost');
+    } finally {
+      if (child.exitCode === null) child.kill('SIGKILL');
+      await child.exited;
+    }
+  }, 10_000);
 
   test('previews once and executes an unchanged recovery idempotently', async () => {
     const requests: Array<{ action: string; sessionId: string }> = [];
