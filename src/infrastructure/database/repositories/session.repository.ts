@@ -97,6 +97,7 @@ interface ActiveSessionRow {
 }
 
 interface ExistingSessionSummaryRow {
+  pid: number | null;
   session_id: string;
   client: string;
   status: string;
@@ -204,6 +205,7 @@ function rowToExistingSessionSummary(row: ExistingSessionSummaryRow): ExistingSe
     statusSource: row.status_source as ExistingSessionSummary['statusSource'],
     title: row.title || '',
     lastActiveAt: new Date(row.last_active_at),
+    pid: row.pid || undefined,
   };
 }
 
@@ -249,7 +251,7 @@ class SessionRepository implements ISessionRepository {
     const db = getDatabase();
     const placeholders = sessionIds.map(() => '?').join(', ');
     const rows = db
-      .prepare(`SELECT session_id, client, status, status_source, title, last_active_at FROM sessions WHERE session_id IN (${placeholders})`)
+      .prepare(`SELECT session_id, client, status, status_source, title, last_active_at, pid FROM sessions WHERE session_id IN (${placeholders})`)
       .all(...sessionIds) as ExistingSessionSummaryRow[];
 
     return rows.map(rowToExistingSessionSummary);

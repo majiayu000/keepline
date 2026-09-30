@@ -189,7 +189,19 @@ export function matchProcessesToSessions<T extends SessionProcessCandidate>(
   const groupKey = (client: AgentClient | undefined, directory: string) =>
     `${client ?? 'claude'}\u0000${directory}`;
 
+  const processByPid = new Map(processes.map((process) => [process.pid, process]));
+  const usedProcessPids = new Set<number>();
   for (const session of sessions) {
+    const process = session.pid ? processByPid.get(session.pid) : undefined;
+    if (process && process.client === (session.client ?? 'claude') &&
+        (!process.cwd || process.cwd === session.directory)) {
+      if (!isPidContinuityCompatible(session, process)) continue;
+      if (!usedProcessPids.has(process.pid)) {
+        matches.set(session.sessionId, process);
+        usedProcessPids.add(process.pid);
+        continue;
+      }
+    }
     const key = groupKey(session.client, session.directory);
     const existing = sessionsByDirectory.get(key) || [];
     existing.push(session);
@@ -197,7 +209,7 @@ export function matchProcessesToSessions<T extends SessionProcessCandidate>(
   }
 
   for (const process of processes) {
-    if (!process.cwd) continue;
+    if (!process.cwd || usedProcessPids.has(process.pid)) continue;
     const key = groupKey(process.client, process.cwd);
     const existing = processesByDirectory.get(key) || [];
     existing.push(process);
@@ -210,40 +222,8 @@ export function matchProcessesToSessions<T extends SessionProcessCandidate>(
     const directoryProcesses = processesByDirectory.get(directoryKey) || [];
     if (directoryProcesses.length === 0) continue;
 
-    const unmatchedSessions: T[] = [];
-    const usedProcessPids = new Set<number>();
-    const hasKnownPid = directorySessions.some((session) => session.pid !== undefined);
-
-    if (hasKnownPid) {
-      const processByPid = new Map(directoryProcesses.map((process) => [process.pid, process]));
-
-      // Prefer stable PID continuity when the previous sync already knew the process.
-      for (const session of directorySessions) {
-        if (!session.pid) {
-          unmatchedSessions.push(session);
-          continue;
-        }
-
-        const process = processByPid.get(session.pid);
-        if (!process || usedProcessPids.has(process.pid)) {
-          unmatchedSessions.push(session);
-          continue;
-        }
-
-        if (!isPidContinuityCompatible(session, process)) {
-          continue;
-        }
-
-        matches.set(session.sessionId, process);
-        usedProcessPids.add(process.pid);
-      }
-    } else {
-      unmatchedSessions.push(...directorySessions);
-    }
-
-    const unmatchedProcesses = directoryProcesses.filter(
-      (process) => !usedProcessPids.has(process.pid)
-    );
+    const unmatchedSessions = directorySessions;
+    const unmatchedProcesses = directoryProcesses;
 
     if (unmatchedSessions.length === 0 || unmatchedProcesses.length === 0) {
       continue;
