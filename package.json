@@ -25,12 +25,12 @@
   ],
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/majiayu000/claude-hub.git"
+    "url": "git+https://github.com/majiayu000/keepline.git"
   },
   "bugs": {
-    "url": "https://github.com/majiayu000/claude-hub/issues"
+    "url": "https://github.com/majiayu000/keepline/issues"
   },
-  "homepage": "https://github.com/majiayu000/claude-hub#readme",
+  "homepage": "https://github.com/majiayu000/keepline#readme",
   "engines": {
     "bun": ">=1.1.0"
   },
