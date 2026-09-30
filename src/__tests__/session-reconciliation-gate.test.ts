@@ -146,6 +146,30 @@ describe('session reconciliation gate', () => {
     expect(completeSessionReconciliation(second)).toBe(true);
   });
 
+  test('waits for a concurrent writer before acquiring reconciliation ownership', async () => {
+    beginSessionReconciliation('daemon');
+    const child = Bun.spawn([process.execPath, '-e', `
+      import { getDatabase } from './src/infrastructure/database/sqlite.ts';
+      const db = getDatabase();
+      db.exec('BEGIN IMMEDIATE');
+      db.prepare("UPDATE metadata SET updated_at = datetime('now') WHERE key = ?")
+        .run('session_reconciliation');
+      console.log('write-lock-held');
+      await Bun.sleep(350);
+      db.exec('COMMIT');
+    `], { env: process.env, stdout: 'pipe', stderr: 'pipe' });
+    try {
+      const output = await child.stdout.getReader().read();
+      expect(new TextDecoder().decode(output.value)).toContain('write-lock-held');
+      const token = beginSessionReconciliation('web');
+      expect(completeSessionReconciliation(token)).toBe(true);
+      expect(await child.exited).toBe(0);
+    } finally {
+      if (child.exitCode === null) child.kill('SIGKILL');
+      await child.exited;
+    }
+  });
+
   test('only the current owner token may complete reconciliation', () => {
     const first = beginSessionReconciliation('daemon');
     const second = beginSessionReconciliation('service');

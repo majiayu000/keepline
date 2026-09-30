@@ -11,7 +11,7 @@
  */
 
 import { randomUUID } from 'crypto';
-import { queryOne, runSql, transaction } from '../infrastructure/database/sqlite.js';
+import { getDatabase, queryOne, runSql } from '../infrastructure/database/sqlite.js';
 import { sessionRepository } from '../infrastructure/database/repositories/session.repository.js';
 
 const METADATA_KEY = 'session_reconciliation';
@@ -67,7 +67,7 @@ export function beginSessionReconciliation(
   owner: SessionReconciliationOwner
 ): SessionReconciliationToken {
   const token = randomUUID();
-  transaction(() => {
+  getDatabase().transaction(() => {
     const previous = readState();
     writeState({
       // Acquiring a new owner must not discard an unfinished invalidation.
@@ -78,13 +78,13 @@ export function beginSessionReconciliation(
       pid: process.pid,
       startedAt: new Date().toISOString(),
     });
-  });
+  }).immediate();
   return token;
 }
 
 /** Persist invalidation and clear live claims in the same SQLite transaction. */
 export function invalidateSessionClaims(token: SessionReconciliationToken): number {
-  return transaction(() => {
+  return getDatabase().transaction(() => {
     const state = readState();
     if (!token || !state || state.token !== token ||
         (state.status !== 'running' && state.status !== 'invalidated')) {
@@ -92,7 +92,7 @@ export function invalidateSessionClaims(token: SessionReconciliationToken): numb
     }
     writeState({ ...state, status: 'invalidated' });
     return sessionRepository.markActiveSessionsInterrupted();
-  });
+  }).immediate();
 }
 
 /**
@@ -102,7 +102,7 @@ export function invalidateSessionClaims(token: SessionReconciliationToken): numb
 export function completeSessionReconciliation(
   token: SessionReconciliationToken
 ): boolean {
-  return transaction(() => {
+  return getDatabase().transaction(() => {
     const state = readState();
     if (!token || !state || state.status === 'ready' || state.token !== token) return false;
     writeState({
@@ -110,7 +110,7 @@ export function completeSessionReconciliation(
       completedAt: new Date().toISOString(),
     });
     return true;
-  });
+  }).immediate();
 }
 
 /**
@@ -121,7 +121,7 @@ export function failSessionReconciliation(
   token: SessionReconciliationToken,
   error?: string
 ): boolean {
-  return transaction(() => {
+  return getDatabase().transaction(() => {
     const state = readState();
     if (!token || !state || state.token !== token ||
         (state.status !== 'running' && state.status !== 'invalidated')) return false;
@@ -132,7 +132,7 @@ export function failSessionReconciliation(
       error,
     });
     return true;
-  });
+  }).immediate();
 }
 
 /**
@@ -141,7 +141,7 @@ export function failSessionReconciliation(
  * Dead owners are safe to ignore only before live claims have been invalidated.
  */
 export function isSessionReconciliationRunning(): boolean {
-  return transaction(() => {
+  return getDatabase().transaction(() => {
     const state = readState();
     if (!state || state.status === 'ready') return false;
     if (state.status === 'failed') return true;
@@ -155,5 +155,5 @@ export function isSessionReconciliationRunning(): boolean {
       });
     }
     return true;
-  });
+  }).immediate();
 }
