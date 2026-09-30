@@ -13,6 +13,7 @@ import { getDatabase } from '../infrastructure/database/sqlite.js';
 import { taskDispatchRepository } from '../infrastructure/database/repositories/task-dispatch.repository.js';
 import { reconcileLinkedAgentSessions } from '../services/work-item-session-reconciler.js';
 import { scopeCodexSessionId } from '../adapters/codex/parser.js';
+import { isSessionReconciliationRunning } from '../services/session-reconciliation-gate.js';
 
 const SCAN_RESULT_PREFIX = '__KEEPLINE_SERVICE_SCAN__';
 let liveService: KeeplineService | undefined;
@@ -611,6 +612,14 @@ describe('service runtime isolation', () => {
     });
     const baseURL = `http://127.0.0.1:${liveService.server.port}`;
 
+    await waitUntil(() => {
+      const row = getDatabase().prepare(
+        "SELECT value FROM metadata WHERE key = 'session_reconciliation'"
+      ).get() as { value: string };
+      return JSON.parse(row.value).status === 'failed';
+    });
+    expect(isSessionReconciliationRunning()).toBe(true);
+
     await waitUntil(async () => {
       const response = await fetch(`${baseURL}/api/v1/health`);
       const body = await response.json() as { data: { scan: { completed: boolean } } };
@@ -622,6 +631,7 @@ describe('service runtime isolation', () => {
     const headers = { Authorization: `Bearer ${authBody.data.token}` };
     expect((await fetch(`${baseURL}/api/v1/sessions?fields=basic`, { headers })).status).toBe(200);
     expect(readFileSync(callsPath, 'utf8').length).toBeGreaterThanOrEqual(2);
+    expect(isSessionReconciliationRunning()).toBe(false);
   });
 
   test('allows a longer initial scan while retaining the incremental watchdog', async () => {

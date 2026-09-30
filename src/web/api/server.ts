@@ -10,12 +10,12 @@ import { serveStatic } from 'hono/bun';
 import { existsSync } from 'fs';
 import path from 'path';
 import { runMigrations } from '../../db/migrations.js';
-import { sessionRepository } from '../../infrastructure/database/repositories/session.repository.js';
 import { syncSessions } from '../../services/session.service.js';
 import {
   beginSessionReconciliation,
   completeSessionReconciliation,
   failSessionReconciliation,
+  invalidateSessionClaims,
   isSessionReconciliationRunning,
 } from '../../services/session-reconciliation-gate.js';
 import { getSessionStats } from '../../services/session.aggregator.js';
@@ -326,7 +326,7 @@ export async function startWebServer(
     const reconciliationToken = beginSessionReconciliation('web');
     try {
       logger.info('Running initial session reconciliation...');
-      const interruptedSessions = sessionRepository.markActiveSessionsInterrupted();
+      const interruptedSessions = invalidateSessionClaims(reconciliationToken);
       if (interruptedSessions > 0) {
         logger.info(
           `Marked ${interruptedSessions} persisted live session(s) interrupted before reconciliation`

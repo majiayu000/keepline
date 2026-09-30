@@ -12,11 +12,11 @@ import { emit } from '../lib/events.js';
 import { initializeMemoryService } from './memory.service.js';
 import { runRetentionCleanup } from './retention.service.js';
 import { initPricing } from './usage.pricing.js';
-import { sessionRepository } from '../infrastructure/database/repositories/session.repository.js';
 import {
   beginSessionReconciliation,
   completeSessionReconciliation,
   failSessionReconciliation,
+  invalidateSessionClaims,
 } from './session-reconciliation-gate.js';
 
 let scanInterval: NodeJS.Timeout | null = null;
@@ -73,7 +73,7 @@ export async function startScheduler(): Promise<void> {
 
   const reconciliationToken = beginSessionReconciliation('daemon');
   try {
-    const interruptedSessions = sessionRepository.markActiveSessionsInterrupted();
+    const interruptedSessions = invalidateSessionClaims(reconciliationToken);
     if (interruptedSessions > 0) {
       logger.info(
         `Marked ${interruptedSessions} persisted live session(s) interrupted before reconciliation`

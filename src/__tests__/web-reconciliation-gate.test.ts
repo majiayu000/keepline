@@ -1,11 +1,11 @@
 import { afterEach, beforeEach, describe, expect, test } from 'bun:test';
 import { resetDatabase } from '../db/migrations.js';
-import { closeDatabase } from '../infrastructure/database/sqlite.js';
+import { closeDatabase, runSql } from '../infrastructure/database/sqlite.js';
 import { sessionRepository } from '../infrastructure/database/repositories/session.repository.js';
 import { setupUser } from '../services/auth.service.js';
 import {
   beginSessionReconciliation,
-  completeSessionReconciliation,
+  invalidateSessionClaims,
 } from '../services/session-reconciliation-gate.js';
 import { startWebServer } from '../web/api/server.js';
 import recovery from '../web/api/routes/recovery.js';
@@ -18,11 +18,11 @@ describe('web recovery reconciliation gate', () => {
   });
 
   afterEach(() => {
-    completeSessionReconciliation();
+    runSql("DELETE FROM metadata WHERE key = 'session_reconciliation'");
     closeDatabase();
   });
 
-  test('rejects recovery while a peer owner is reconciling', async () => {
+  test.each([false, true])('rejects recovery after peer invalidation (owner dead: %s)', async (ownerDead) => {
     sessionRepository.upsert({
       sessionId: 'gate-recovery-session',
       directory: '/tmp/gate-recovery',
@@ -31,7 +31,12 @@ describe('web recovery reconciliation gate', () => {
       initialPrompt: 'Prompt',
       lastActiveAt: new Date(),
     });
-    beginSessionReconciliation('daemon');
+    const ownerToken = beginSessionReconciliation('daemon');
+    invalidateSessionClaims(ownerToken);
+    if (ownerDead) {
+      runSql(`UPDATE metadata SET value = json_set(value, '$.pid', ?)
+        WHERE key = 'session_reconciliation'`, [2_147_483_646]);
+    }
     const { token } = await setupUser('gate-recovery-user', 'password123');
 
     const response = await recovery.fetch(new Request(

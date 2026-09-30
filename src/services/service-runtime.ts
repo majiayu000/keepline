@@ -5,7 +5,6 @@ import {
 } from '../adapters/hook/completion-receiver.js';
 import { runServiceMigrations } from '../local-api/migrations.js';
 import { closeDatabase } from '../infrastructure/database/sqlite.js';
-import { sessionRepository } from '../infrastructure/database/repositories/session.repository.js';
 import { logger } from '../lib/logger.js';
 import { config } from '../lib/config.js';
 import { events } from '../lib/events.js';
@@ -17,6 +16,7 @@ import {
   beginSessionReconciliation,
   completeSessionReconciliation,
   failSessionReconciliation,
+  invalidateSessionClaims,
 } from './session-reconciliation-gate.js';
 
 const SCAN_RESULT_PREFIX = '__KEEPLINE_SERVICE_SCAN__';
@@ -211,7 +211,7 @@ export async function startKeeplineService(
   localServiceState.lifecycleHook.port = lifecycleReceiver.port;
   const reconciliationToken = beginSessionReconciliation('service');
   try {
-    const interruptedSessions = sessionRepository.markActiveSessionsInterrupted();
+    const interruptedSessions = invalidateSessionClaims(reconciliationToken);
     if (interruptedSessions > 0) {
       logger.info(
         `Marked ${interruptedSessions} persisted live session(s) interrupted before reconciliation`
@@ -315,6 +315,9 @@ export async function startKeeplineService(
       });
     } catch (error) {
       localServiceState.scan.lastError = error instanceof Error ? error.message : String(error);
+      if (isInitialScan) {
+        failSessionReconciliation(reconciliationToken, localServiceState.scan.lastError);
+      }
       if (!stopped) logger.error('Service scan failed', {
         full: isInitialScan, elapsedMs: Date.now() - startedAt, message: localServiceState.scan.lastError,
       });
