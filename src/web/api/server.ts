@@ -287,9 +287,8 @@ export async function startWebServer(
         return new Response('WebSocket upgrade failed', { status: 400 });
       }
 
-      const blocksRecovery =
-        !standaloneReconciliationComplete || isSessionReconciliationRunning();
-      if (blocksRecovery && isRecoveryMutatingPath(url.pathname)) {
+      if (isRecoveryMutatingPath(url.pathname) &&
+          (!standaloneReconciliationComplete || isSessionReconciliationRunning())) {
         return Response.json(
           { success: false, error: 'Startup reconciliation is still running' },
           { status: 503 }
