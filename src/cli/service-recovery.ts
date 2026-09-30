@@ -9,7 +9,11 @@ import {
 import type { RecoveryMethod, TerminalApp } from '../services/recovery.types.js';
 import { openTerminalWithArgv } from '../services/terminal.js';
 import type { LocalRecoveryPreview, RecoveryRunnerResult } from '../local-api/routes/recovery.js';
-import { isSessionReconciliationRunning } from '../services/session-reconciliation-gate.js';
+import {
+  beginSessionReconciliation,
+  failSessionReconciliation,
+  isSessionReconciliationRunning,
+} from '../services/session-reconciliation-gate.js';
 
 const RECOVERY_RESULT_PREFIX = '__KEEPLINE_SERVICE_RECOVERY__';
 
@@ -124,20 +128,35 @@ export function createServiceRecoveryHandler(
       throw new ServiceRecoveryError(400, 'Invalid terminal app');
     }
     // Keep peer invalidation outside the confirmed check-and-launch boundary.
-    return getDatabase().transaction(() => {
+    let launchError: unknown;
+    const result = getDatabase().transaction(() => {
       const current = preview(sessionId);
       if (current.confirmationId !== confirmationId) {
         throw new ServiceRecoveryError(409, 'Recovery preview changed; review it again');
       }
-      dependencies.openTerminal(
-        current.executable,
-        current.arguments,
-        current.directory,
-        terminalApp
-      );
+      try {
+        dependencies.openTerminal(
+          current.executable,
+          current.arguments,
+          current.directory,
+          terminalApp
+        );
+      } catch (error) {
+        if (!(error instanceof Error && 'code' in error && error.code === 'ETIMEDOUT')) {
+          throw error;
+        }
+        // The terminal may have accepted the command before automation timed out.
+        // Commit the existing failed gate before reporting the original error.
+        const token = beginSessionReconciliation('service');
+        failSessionReconciliation(token, 'Recovery launch outcome is unknown after automation timed out');
+        launchError = error;
+        return;
+      }
       dependencies.markRunning(sessionId);
       return { preview: current, executed: true };
     }).immediate();
+    if (!result) throw launchError;
+    return result;
   }
 
   return { preview, execute };

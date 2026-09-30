@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, test } from 'bun:test';
-import { chmodSync, mkdtempSync, writeFileSync } from 'fs';
+import { chmodSync, mkdtempSync, readFileSync, writeFileSync } from 'fs';
 import { tmpdir } from 'os';
 import { join } from 'path';
 import { createLocalApiApp } from '../local-api/app.js';
@@ -9,7 +9,7 @@ import { sessionRepository } from '../infrastructure/database/repositories/sessi
 import { setupUser } from '../services/auth.service.js';
 import { createServiceRecoveryHandler } from '../cli/service-recovery.js';
 import {
-  beginSessionReconciliation, invalidateSessionClaims,
+  beginSessionReconciliation, invalidateSessionClaims, isSessionReconciliationRunning,
 } from '../services/session-reconciliation-gate.js';
 import {
   createRecoveryProcessRunner,
@@ -96,13 +96,14 @@ describe('Local API recovery confirmation', () => {
     })).rejects.toMatchObject({ status: 503, message: 'Startup reconciliation is still running' });
   });
 
-  test('stalled terminal automation releases the writer before peers time out', async () => {
+  test('stalled terminal automation releases the writer and blocks uncertain-launch retries', async () => {
     sessionRepository.upsert({
       sessionId: preview.sessionId, client: 'codex', directory: preview.directory, status: 'lost',
     });
     const directory = mkdtempSync(join(tmpdir(), 'keepline-stalled-automation-'));
     const osascript = join(directory, 'osascript');
-    writeFileSync(osascript, '#!/bin/sh\nexec /bin/sleep 6\n');
+    const launches = join(directory, 'launches');
+    writeFileSync(osascript, '#!/bin/sh\ncase "$2" in *"System Events"*) printf false; exit 0;; esac\nprintf "launched\\n" >> "$KEEPLINE_TEST_LAUNCH_RECORD"\nexec /bin/sleep 6\n');
     chmodSync(osascript, 0o755);
     const child = Bun.spawn([process.execPath, '-e', `
       import { createServiceRecoveryHandler } from './src/cli/service-recovery.ts';
@@ -119,7 +120,8 @@ describe('Local API recovery confirmation', () => {
       try { handler.execute(sessionId, confirmed.confirmationId, 'auto'); }
       catch { process.exitCode = 1; }
     `], {
-      env: { ...process.env, PATH: directory + ':' + process.env.PATH }, stdout: 'pipe', stderr: 'pipe',
+      env: { ...process.env, PATH: directory + ':' + process.env.PATH,
+        KEEPLINE_TEST_LAUNCH_RECORD: launches }, stdout: 'pipe', stderr: 'pipe',
     });
     try {
       const output = await child.stdout.getReader().read();
@@ -129,11 +131,37 @@ describe('Local API recovery confirmation', () => {
       expect(Date.now() - started).toBeLessThan(4_500);
       expect(await child.exited).toBe(1);
       expect(sessionRepository.findBySessionId(preview.sessionId)?.status).toBe('lost');
+      expect(readFileSync(launches, 'utf8')).toBe('launched\n');
+      expect(isSessionReconciliationRunning()).toBe(true);
+      const retry = createServiceRecoveryHandler();
+      expect(() => retry.preview(preview.sessionId)).toThrow('Startup reconciliation is still running');
+      expect(() => retry.execute(preview.sessionId, preview.confirmationId, 'auto')).toThrow(
+        'Startup reconciliation is still running'
+      );
+      expect(readFileSync(launches, 'utf8')).toBe('launched\n');
     } finally {
       if (child.exitCode === null) child.kill('SIGKILL');
       await child.exited;
     }
   }, 10_000);
+
+  test('ordinary terminal launch errors preserve the error and leave the gate clear', () => {
+    let markedRunning = false;
+    const handler = createServiceRecoveryHandler({
+      recoverySource: () => ({
+        sessionId: preview.sessionId, runtimeId: 'codex', directory: preview.directory,
+        status: 'lost', availableMethods: ['resume'], recommendedMethod: 'resume',
+      }),
+      openTerminal: () => { throw Object.assign(new Error('Terminal unavailable'), { code: 'ENOENT' }); },
+      markRunning: () => { markedRunning = true; },
+    });
+    const confirmed = handler.preview(preview.sessionId);
+    expect(() => handler.execute(preview.sessionId, confirmed.confirmationId, 'Terminal')).toThrow(
+      'Terminal unavailable'
+    );
+    expect(markedRunning).toBe(false);
+    expect(isSessionReconciliationRunning()).toBe(false);
+  });
 
   test('previews once and executes an unchanged recovery idempotently', async () => {
     const requests: Array<{ action: string; sessionId: string }> = [];
