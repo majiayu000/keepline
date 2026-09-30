@@ -197,6 +197,7 @@ export function matchProcessesToSessions<T extends SessionProcessCandidate>(
   }
 
   for (const process of processes) {
+    if (!process.cwd) continue;
     const key = groupKey(process.client, process.cwd);
     const existing = processesByDirectory.get(key) || [];
     existing.push(process);

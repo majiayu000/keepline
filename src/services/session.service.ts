@@ -10,7 +10,7 @@ import { generateTitle, isGeneratedSessionTitle } from '../domain/session/index.
 import type { ISessionRepository } from '../domain/session/repository.js';
 import { sessionRepository } from '../infrastructure/database/repositories/session.repository.js';
 import { emit } from '../lib/events.js';
-import { getCachedProcesses, clearProcessCache } from '../adapters/process/scanner.js';
+import { getCachedProcesses, clearProcessCache, isProcessRunning } from '../adapters/process/scanner.js';
 import { detectSessionStatus } from '../adapters/process/detector.js';
 import {
   clearSessionCache,
@@ -249,6 +249,15 @@ export class SessionService {
         const client = agentSession.client ?? 'claude';
         const existing = existingSessionMap.get(agentSession.sessionId);
         const process = processMatches.get(agentSession.sessionId);
+        // An unmatched cwd is not evidence that an already observed PID exited.
+        const unmatchedExisting = !process && existing &&
+          existing.status !== 'lost' && existing.status !== 'completed'
+          ? this.repository.findBySessionId(agentSession.sessionId)
+          : null;
+        const keepLiveSession = Boolean(unmatchedExisting?.pid && (
+          runningAgentPids.has(unmatchedExisting.pid) || isProcessRunning(unmatchedExisting.pid)
+        ));
+        if (keepLiveSession && unmatchedExisting?.pid) runningAgentPids.add(unmatchedExisting.pid);
 
         const detectedStatus = detectSessionStatus(
           process || null,
@@ -259,7 +268,7 @@ export class SessionService {
         // otherwise the CPU/time heuristic would immediately overwrite it.
         const hasNewerHookObservation = Boolean(
           existing &&
-          process &&
+          (process || keepLiveSession) &&
           existing.statusSource === 'hook' &&
           (existing.status === 'running' || existing.status === 'waiting') &&
           existing.lastActiveAt.getTime() > agentSession.lastActiveAt.getTime()
@@ -268,7 +277,7 @@ export class SessionService {
         // process scan must not downgrade that durable signal to lost/idle.
         const status = existing?.status === 'completed'
           ? 'completed'
-          : hasNewerHookObservation ? existing!.status : detectedStatus;
+          : hasNewerHookObservation || keepLiveSession ? existing!.status : detectedStatus;
         const lastActiveAt = hasNewerHookObservation
           ? existing!.lastActiveAt
           : agentSession.lastActiveAt;
@@ -288,7 +297,7 @@ export class SessionService {
             sessionId: agentSession.sessionId,
             client,
             status: nextStatus,
-            statusSource: existing.status === 'completed' || hasNewerHookObservation
+            statusSource: existing.status === 'completed' || hasNewerHookObservation || keepLiveSession
               ? existing.statusSource
               : 'scan',
             ...(shouldUpdateTitle && {
@@ -302,8 +311,9 @@ export class SessionService {
             currentFile: agentSession.currentFile,
             lastMessage: agentSession.lastMessage,
             lastActiveAt,
-            pid: process?.pid,
-            tty: process?.tty,
+            ...(keepLiveSession
+              ? {}
+              : { pid: process?.pid, tty: process?.tty }),
             toolCount: agentSession.toolCount,
             messageCount: agentSession.messageCount,
             agentId: agentSession.agentId,
@@ -362,7 +372,7 @@ export class SessionService {
       // Check for sessions whose processes have died
       const activeSessions = this.repository.findActiveLightweight();
       for (const session of activeSessions) {
-        if (session.pid && !runningAgentPids.has(session.pid)) {
+        if (session.pid && !runningAgentPids.has(session.pid) && !isProcessRunning(session.pid)) {
           // Process died, mark as lost unless it was completed
           if (session.status !== 'completed') {
             const lostSession = this.repository.upsert({

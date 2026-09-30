@@ -49,28 +49,35 @@ function batchGetProcessCwd(pids: number[]): Map<number, string> {
   const validPids = pids.filter(pid => validatePid(pid));
   if (validPids.length === 0) return cwdMap;
 
+  let output = '';
   try {
     // Use lsof with multiple PIDs in one call: lsof -a -d cwd -p pid1,pid2,pid3
     const pidList = validPids.join(',');
-    const output = execSync(`lsof -a -d cwd -p ${pidList} 2>/dev/null`, {
+    output = execSync(`lsof -a -d cwd -p ${pidList} 2>/dev/null`, {
       encoding: 'utf-8',
       timeout: 10000,
     });
+  } catch (error) {
+    const failure = error as { status?: number | null; signal?: string | null; stdout?: string | Buffer };
+    // lsof can print valid cwd rows and exit nonzero when another PID has exited.
+    // A timeout or launch failure does not provide a completed lookup.
+    if (typeof failure.status === 'number' && !failure.signal && failure.stdout) {
+      output = failure.stdout.toString();
+    } else {
+      logger.debug('lsof batch cwd lookup failed or returned empty');
+    }
+  }
 
-    // Parse output: COMMAND PID USER FD TYPE DEVICE SIZE/OFF NODE NAME
-    for (const line of output.trim().split('\n')) {
-      const parts = line.trim().split(/\s+/);
-      if (parts.length >= 9 && parts[3] === 'cwd') {
-        const pid = parseInt(parts[1], 10);
-        const cwd = parts.slice(8).join(' ');
-        if (!isNaN(pid) && cwd) {
-          cwdMap.set(pid, cwd);
-        }
+  // Parse output: COMMAND PID USER FD TYPE DEVICE SIZE/OFF NODE NAME
+  for (const line of output.trim().split('\n')) {
+    const parts = line.trim().split(/\s+/);
+    if (parts.length >= 9 && parts[3] === 'cwd') {
+      const pid = parseInt(parts[1], 10);
+      const cwd = parts.slice(8).join(' ');
+      if (!isNaN(pid) && cwd) {
+        cwdMap.set(pid, cwd);
       }
     }
-  } catch {
-    // lsof may fail if no processes match
-    logger.debug('lsof batch cwd lookup failed or returned empty');
   }
 
   return cwdMap;
@@ -262,8 +269,8 @@ export function scanAgentProcesses(): ClaudeProcessInfo[] {
     // Build final process list
     const processes: ClaudeProcessInfo[] = [];
     for (const parsedProcess of parsedProcesses) {
-      const cwd = cwdMap.get(parsedProcess.pid);
-      if (!cwd) continue; // Skip if we can't get working directory
+      // Missing cwd prevents directory matching, but does not negate ps liveness.
+      const cwd = cwdMap.get(parsedProcess.pid) ?? '';
 
       processes.push({
         client: parsedProcess.client,
