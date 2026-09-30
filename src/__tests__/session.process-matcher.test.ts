@@ -34,6 +34,12 @@ function processCandidate(overrides: Partial<ClaudeProcessInfo> = {}): ClaudePro
 }
 
 describe('matchProcessesToSessions', () => {
+  test('does not use a missing cwd to match a session with an empty directory', () => {
+    const sessions = [{ ...sessionCandidate({ sessionId: 'unknown-directory' }), directory: '' }];
+    const processes = [{ ...processCandidate(), cwd: '' }];
+    expect(matchProcessesToSessions(sessions, processes).size).toBe(0);
+  });
+
   test('preserves PID continuity when known', () => {
     const sessions = [
       sessionCandidate({ sessionId: 'session-a', pid: 1001 }),
