@@ -196,6 +196,27 @@ describe('session reconciliation gate', () => {
     }
   });
 
+  test.each(['invalidated', 'failed'])('allows takeover after an owner PID is reused in %s state', async (status) => {
+    const token = beginSessionReconciliation('daemon');
+    invalidateSessionClaims(token);
+    if (status === 'failed') failSessionReconciliation(token, 'failed before exit');
+    const unrelated = Bun.spawn([process.execPath, '-e', `
+      console.log('unrelated-process'); setInterval(() => {}, 1000);
+    `], { env: process.env, stdout: 'pipe', stderr: 'pipe' });
+    try {
+      await unrelated.stdout.getReader().read();
+      runSql(`UPDATE metadata SET value = json_set(value,
+        '$.pid', ?, '$.processStartedAt', 'Sat Jan 1 00:00:00 2000')
+        WHERE key = 'session_reconciliation'`, [unrelated.pid]);
+      const replacement = beginSessionReconciliation('web');
+      expect(isSessionReconciliationRunning()).toBe(true);
+      expect(completeSessionReconciliation(replacement)).toBe(true);
+    } finally {
+      unrelated.kill('SIGKILL');
+      await unrelated.exited;
+    }
+  });
+
   test('only the current owner token may complete reconciliation', () => {
     const first = beginSessionReconciliation('daemon');
     const second = beginSessionReconciliation('service');

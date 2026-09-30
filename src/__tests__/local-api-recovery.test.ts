@@ -9,6 +9,9 @@ import { sessionRepository } from '../infrastructure/database/repositories/sessi
 import { setupUser } from '../services/auth.service.js';
 import { createServiceRecoveryHandler } from '../cli/service-recovery.js';
 import {
+  beginSessionReconciliation, invalidateSessionClaims,
+} from '../services/session-reconciliation-gate.js';
+import {
   createRecoveryProcessRunner,
   type LocalRecoveryPreview,
 } from '../local-api/routes/recovery.js';
@@ -27,6 +30,71 @@ const preview: LocalRecoveryPreview = {
 describe('Local API recovery confirmation', () => {
   beforeEach(() => resetDatabase());
   afterEach(() => closeDatabase());
+
+  test('blocks preview and execution while a peer has invalidated live claims', async () => {
+    let calls = 0;
+    const app = createLocalApiApp({ recoveryRunner: async () => {
+      calls++;
+      return { preview, executed: true };
+    } });
+    const { token } = await setupUser('peer-gate-recovery-user', 'password123');
+    invalidateSessionClaims(beginSessionReconciliation('daemon'));
+    const headers = { Authorization: `Bearer ${token}`, 'content-type': 'application/json' };
+    for (const [path, method, body] of [
+      ['recovery-preview', 'GET', undefined],
+      ['recover', 'POST', JSON.stringify({
+        confirmationId: preview.confirmationId, terminalApp: 'auto',
+        idempotencyKey: 'peer-gate-recovery-request',
+      })],
+    ] as const) {
+      const response = await app.fetch(new Request(
+        `http://localhost/api/v1/sessions/${preview.sessionId}/${path}`, { method, headers, body }
+      ));
+      expect(response.status).toBe(503);
+      expect(await response.json()).toEqual({
+        success: false, error: 'Startup reconciliation is still running',
+      });
+    }
+    expect(calls).toBe(0);
+  });
+
+  test('isolated execution rechecks a gate acquired after confirmation preview', () => {
+    let opened = false;
+    let markedRunning = false;
+    const handler = createServiceRecoveryHandler({
+      recoverySource: () => ({
+        sessionId: preview.sessionId, runtimeId: 'codex', directory: preview.directory,
+        status: 'lost', availableMethods: ['resume'], recommendedMethod: 'resume',
+      }),
+      openTerminal: () => { opened = true; },
+      markRunning: () => { markedRunning = true; },
+    });
+    const confirmed = handler.preview(preview.sessionId);
+    invalidateSessionClaims(beginSessionReconciliation('daemon'));
+    expect(() => handler.execute(preview.sessionId, confirmed.confirmationId, 'auto')).toThrow(
+      'Startup reconciliation is still running'
+    );
+    expect(opened).toBe(false);
+    expect(markedRunning).toBe(false);
+  });
+
+  test('production recovery helper reads the same blocked gate in its child process', async () => {
+    const directory = mkdtempSync(join(tmpdir(), 'keepline-gated-helper-'));
+    const script = join(directory, 'helper.ts');
+    writeFileSync(script, `
+      import { serviceRecoveryCommand } from ${JSON.stringify(new URL('../cli/service-recovery.ts', import.meta.url).href)};
+      await serviceRecoveryCommand(process.argv.slice(2));
+    `);
+    invalidateSessionClaims(beginSessionReconciliation('daemon'));
+    const runner = createRecoveryProcessRunner([process.execPath, script]);
+    await expect(runner({ action: 'preview', sessionId: preview.sessionId })).rejects.toMatchObject({
+      status: 503, message: 'Startup reconciliation is still running',
+    });
+    await expect(runner({
+      action: 'execute', sessionId: preview.sessionId,
+      confirmationId: preview.confirmationId, terminalApp: 'auto',
+    })).rejects.toMatchObject({ status: 503, message: 'Startup reconciliation is still running' });
+  });
 
   test('previews once and executes an unchanged recovery idempotently', async () => {
     const requests: Array<{ action: string; sessionId: string }> = [];
