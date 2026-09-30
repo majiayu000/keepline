@@ -209,8 +209,9 @@ export async function startKeeplineService(
   }
   localServiceState.lifecycleHook.receiverRunning = true;
   localServiceState.lifecycleHook.port = lifecycleReceiver.port;
-  const reconciliationToken = beginSessionReconciliation('service');
+  let reconciliationToken: string | undefined;
   try {
+    reconciliationToken = beginSessionReconciliation('service');
     const interruptedSessions = invalidateSessionClaims(reconciliationToken);
     if (interruptedSessions > 0) {
       logger.info(
@@ -218,10 +219,12 @@ export async function startKeeplineService(
       );
     }
   } catch (error) {
-    failSessionReconciliation(
-      reconciliationToken,
-      error instanceof Error ? error.message : String(error)
-    );
+    if (reconciliationToken) {
+      failSessionReconciliation(
+        reconciliationToken,
+        error instanceof Error ? error.message : String(error)
+      );
+    }
     lifecycleReceiver.stop();
     localServiceState.lifecycleHook.receiverRunning = false;
     localServiceState.lifecycleHook.port = undefined;

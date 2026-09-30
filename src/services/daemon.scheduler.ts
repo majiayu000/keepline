@@ -71,8 +71,9 @@ export async function startScheduler(): Promise<void> {
   // Start hook server
   await startHookServer();
 
-  const reconciliationToken = beginSessionReconciliation('daemon');
+  let reconciliationToken: string | undefined;
   try {
+    reconciliationToken = beginSessionReconciliation('daemon');
     const interruptedSessions = invalidateSessionClaims(reconciliationToken);
     if (interruptedSessions > 0) {
       logger.info(
@@ -88,10 +89,12 @@ export async function startScheduler(): Promise<void> {
     completeSessionReconciliation(reconciliationToken);
   } catch (error) {
     // Keep peer recovery blocked after a failed full scan; do not advertise ready.
-    failSessionReconciliation(
-      reconciliationToken,
-      error instanceof Error ? error.message : String(error)
-    );
+    if (reconciliationToken) {
+      failSessionReconciliation(
+        reconciliationToken,
+        error instanceof Error ? error.message : String(error)
+      );
+    }
     logger.error('Initial scan failed', error);
     emit('error', { error: error as Error, context: 'initial_scan' });
     await stopHookServer();

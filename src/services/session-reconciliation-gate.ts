@@ -69,6 +69,12 @@ export function beginSessionReconciliation(
   const token = randomUUID();
   getDatabase().transaction(() => {
     const previous = readState();
+    // A process may reacquire its own gate; peers must let the live owner finish.
+    if (previous && previous.status !== 'ready' &&
+        typeof previous.pid === 'number' && previous.pid !== process.pid &&
+        processExists(previous.pid)) {
+      throw new Error('Session reconciliation is already owned by another live process');
+    }
     writeState({
       // Acquiring a new owner must not discard an unfinished invalidation.
       status: previous?.status === 'invalidated' || previous?.status === 'failed'
