@@ -10,7 +10,7 @@ import { generateTitle, isGeneratedSessionTitle } from '../domain/session/index.
 import type { ISessionRepository } from '../domain/session/repository.js';
 import { sessionRepository } from '../infrastructure/database/repositories/session.repository.js';
 import { emit } from '../lib/events.js';
-import { getCachedProcesses, clearProcessCache, isProcessRunning } from '../adapters/process/scanner.js';
+import { getCachedProcesses, clearProcessCache } from '../adapters/process/scanner.js';
 import { detectSessionStatus } from '../adapters/process/detector.js';
 import {
   clearSessionCache,
@@ -243,7 +243,6 @@ export class SessionService {
         existingSessions.map((session) => [session.sessionId, session])
       );
 
-      const processByPid = new Map(processes.map((process) => [process.pid, process]));
       const processMatches = matchProcessesToSessions(agentSessions.map((session) => {
         const existing = existingSessionMap.get(session.sessionId);
         return {
@@ -259,22 +258,13 @@ export class SessionService {
         const client = agentSession.client ?? 'claude';
         const existing = existingSessionMap.get(agentSession.sessionId);
         const process = processMatches.get(agentSession.sessionId);
-        // An unmatched cwd is not evidence that an already observed PID exited.
-        const keepLiveSession = Boolean(!process && existing?.pid &&
-          existing.status !== 'lost' && existing.status !== 'completed' &&
-          !processByPid.has(existing.pid) && isProcessRunning(existing.pid));
-        if (keepLiveSession && existing?.pid) runningAgentPids.add(existing.pid);
-
-        const detectedStatus = detectSessionStatus(
-          process ?? (keepLiveSession ? { cpu: 0 } : null),
-          agentSession.lastActiveAt
-        );
+        const detectedStatus = detectSessionStatus(process || null, agentSession.lastActiveAt);
         // A lifecycle hook is received after the transcript record that caused it.
         // Keep that newer semantic observation while its process is still alive;
         // otherwise the CPU/time heuristic would immediately overwrite it.
         const hasNewerHookObservation = Boolean(
           existing &&
-          (process || keepLiveSession) &&
+          process &&
           existing.statusSource === 'hook' &&
           (existing.status === 'running' || existing.status === 'waiting') &&
           existing.lastActiveAt.getTime() > agentSession.lastActiveAt.getTime()
@@ -317,9 +307,8 @@ export class SessionService {
             currentFile: agentSession.currentFile,
             lastMessage: agentSession.lastMessage,
             lastActiveAt,
-            ...(keepLiveSession
-              ? {}
-              : { pid: process?.pid, tty: process?.tty }),
+            pid: process?.pid,
+            tty: process?.tty,
             toolCount: agentSession.toolCount,
             messageCount: agentSession.messageCount,
             agentId: agentSession.agentId,
@@ -378,7 +367,7 @@ export class SessionService {
       // Check for sessions whose processes have died
       const activeSessions = this.repository.findActiveLightweight();
       for (const session of activeSessions) {
-        if (session.pid && !runningAgentPids.has(session.pid) && !isProcessRunning(session.pid)) {
+        if (session.pid && !runningAgentPids.has(session.pid)) {
           // Process died, mark as lost unless it was completed
           if (session.status !== 'completed') {
             const lostSession = this.repository.upsert({
