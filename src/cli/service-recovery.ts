@@ -1,4 +1,5 @@
 import { createHash } from 'crypto';
+import { getDatabase } from '../infrastructure/database/sqlite.js';
 import { sessionRepository } from '../infrastructure/database/repositories/session.repository.js';
 import {
   buildClaudeCommandArgs,
@@ -8,6 +9,7 @@ import {
 import type { RecoveryMethod, TerminalApp } from '../services/recovery.types.js';
 import { openTerminalWithArgv } from '../services/terminal.js';
 import type { LocalRecoveryPreview, RecoveryRunnerResult } from '../local-api/routes/recovery.js';
+import { isSessionReconciliationRunning } from '../services/session-reconciliation-gate.js';
 
 const RECOVERY_RESULT_PREFIX = '__KEEPLINE_SERVICE_RECOVERY__';
 
@@ -33,7 +35,7 @@ interface ServiceRecoveryDependencies {
 }
 
 export class ServiceRecoveryError extends Error {
-  constructor(readonly status: 400 | 404 | 409 | 500, message: string) {
+  constructor(readonly status: 400 | 404 | 409 | 500 | 503, message: string) {
     super(message);
   }
 }
@@ -67,6 +69,9 @@ export function createServiceRecoveryHandler(
   dependencies: ServiceRecoveryDependencies = productionDependencies()
 ) {
   function preview(sessionId: string): LocalRecoveryPreview {
+    if (isSessionReconciliationRunning()) {
+      throw new ServiceRecoveryError(503, 'Startup reconciliation is still running');
+    }
     const source = dependencies.recoverySource(sessionId);
     if (!source) throw new ServiceRecoveryError(404, 'Session not found');
     if (source.sessionId !== sessionId) {
@@ -118,18 +123,21 @@ export function createServiceRecoveryHandler(
     if (!['auto', 'Terminal', 'iTerm', 'Warp'].includes(terminalApp)) {
       throw new ServiceRecoveryError(400, 'Invalid terminal app');
     }
-    const current = preview(sessionId);
-    if (current.confirmationId !== confirmationId) {
-      throw new ServiceRecoveryError(409, 'Recovery preview changed; review it again');
-    }
-    dependencies.openTerminal(
-      current.executable,
-      current.arguments,
-      current.directory,
-      terminalApp
-    );
-    dependencies.markRunning(sessionId);
-    return { preview: current, executed: true };
+    // Keep peer invalidation outside the confirmed check-and-launch boundary.
+    return getDatabase().transaction(() => {
+      const current = preview(sessionId);
+      if (current.confirmationId !== confirmationId) {
+        throw new ServiceRecoveryError(409, 'Recovery preview changed; review it again');
+      }
+      dependencies.openTerminal(
+        current.executable,
+        current.arguments,
+        current.directory,
+        terminalApp
+      );
+      dependencies.markRunning(sessionId);
+      return { preview: current, executed: true };
+    }).immediate();
   }
 
   return { preview, execute };

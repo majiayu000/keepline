@@ -11,6 +11,7 @@
  */
 
 import { randomUUID } from 'crypto';
+import { execFileSync } from 'child_process';
 import { getDatabase, queryOne, runSql } from '../infrastructure/database/sqlite.js';
 import { sessionRepository } from '../infrastructure/database/repositories/session.repository.js';
 
@@ -25,6 +26,7 @@ interface SessionReconciliationState {
   owner?: SessionReconciliationOwner;
   token?: SessionReconciliationToken;
   pid?: number;
+  processStartedAt?: string;
   startedAt?: string;
   completedAt?: string;
   failedAt?: string;
@@ -62,17 +64,39 @@ function processExists(pid: number): boolean {
   }
 }
 
+function readProcessStartTime(pid: number): string | undefined {
+  try {
+    const startedAt = execFileSync('/bin/ps', ['-p', String(pid), '-o', 'lstart='], {
+      encoding: 'utf8', timeout: 5_000,
+      env: { ...process.env, LC_ALL: 'C', TZ: 'UTC' },
+      stdio: ['ignore', 'pipe', 'pipe'],
+    }).trim();
+    if (!startedAt) throw new Error('Process start time is unavailable');
+    return startedAt;
+  } catch (error) {
+    if (!processExists(pid)) return undefined;
+    throw error;
+  }
+}
+
+function ownerIsLive(state: SessionReconciliationState): boolean {
+  return typeof state.pid === 'number' && !!state.processStartedAt &&
+    readProcessStartTime(state.pid) === state.processStartedAt;
+}
+
 /** Mark shared session state as under reconciliation. Returns an owner token. */
 export function beginSessionReconciliation(
   owner: SessionReconciliationOwner
 ): SessionReconciliationToken {
   const token = randomUUID();
+  const processStartedAt = readProcessStartTime(process.pid);
+  if (!processStartedAt) throw new Error('Reconciliation owner process identity is unavailable');
   getDatabase().transaction(() => {
     const previous = readState();
     // A process may reacquire its own gate; peers must let the live owner finish.
     if (previous && previous.status !== 'ready' &&
         typeof previous.pid === 'number' && previous.pid !== process.pid &&
-        processExists(previous.pid)) {
+        ownerIsLive(previous)) {
       throw new Error('Session reconciliation is already owned by another live process');
     }
     writeState({
@@ -82,6 +106,7 @@ export function beginSessionReconciliation(
       owner,
       token,
       pid: process.pid,
+      processStartedAt,
       startedAt: new Date().toISOString(),
     });
   }).immediate();
@@ -151,7 +176,7 @@ export function isSessionReconciliationRunning(): boolean {
     const state = readState();
     if (!state || state.status === 'ready') return false;
     if (state.status === 'failed') return true;
-    if (typeof state.pid === 'number' && state.pid !== process.pid && !processExists(state.pid)) {
+    if (typeof state.pid === 'number' && state.pid !== process.pid && !ownerIsLive(state)) {
       if (state.status === 'running') return false;
       writeState({
         ...state,
