@@ -323,8 +323,9 @@ export async function startWebServer(
   if (getWebSessionSource() === 'standalone') {
     // Match daemon/Service Mode: invalidate live claims, then fully reconcile
     // only after this process owns the HTTP listener.
-    const reconciliationToken = beginSessionReconciliation('web');
+    let reconciliationToken: string | undefined;
     try {
+      reconciliationToken = beginSessionReconciliation('web');
       logger.info('Running initial session reconciliation...');
       const interruptedSessions = invalidateSessionClaims(reconciliationToken);
       if (interruptedSessions > 0) {
@@ -337,10 +338,12 @@ export async function startWebServer(
       standaloneReconciliationComplete = true;
       completeSessionReconciliation(reconciliationToken);
     } catch (error) {
-      failSessionReconciliation(
-        reconciliationToken,
-        error instanceof Error ? error.message : String(error)
-      );
+      if (reconciliationToken) {
+        failSessionReconciliation(
+          reconciliationToken,
+          error instanceof Error ? error.message : String(error)
+        );
+      }
       server.stop(true);
       throw error;
     }

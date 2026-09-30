@@ -170,6 +170,32 @@ describe('session reconciliation gate', () => {
     }
   });
 
+  test.each(['invalidated', 'failed'])('preserves another live process owner in %s state', async (status) => {
+    const child = Bun.spawn([process.execPath, '-e', `
+      import {
+        beginSessionReconciliation, invalidateSessionClaims,
+        failSessionReconciliation, completeSessionReconciliation,
+      } from './src/services/session-reconciliation-gate.ts';
+      const token = beginSessionReconciliation('daemon');
+      invalidateSessionClaims(token);
+      if (${JSON.stringify(status)} === 'failed') failSessionReconciliation(token, 'retrying');
+      console.log('owner-acquired');
+      await Bun.sleep(350);
+      if (!completeSessionReconciliation(token)) process.exit(1);
+    `], { env: process.env, stdout: 'pipe', stderr: 'pipe' });
+    try {
+      const output = await child.stdout.getReader().read();
+      expect(new TextDecoder().decode(output.value)).toContain('owner-acquired');
+      expect(() => beginSessionReconciliation('web')).toThrow('live process');
+      expect(isSessionReconciliationRunning()).toBe(true);
+      expect(await child.exited).toBe(0);
+      expect(isSessionReconciliationRunning()).toBe(false);
+    } finally {
+      if (child.exitCode === null) child.kill('SIGKILL');
+      await child.exited;
+    }
+  });
+
   test('only the current owner token may complete reconciliation', () => {
     const first = beginSessionReconciliation('daemon');
     const second = beginSessionReconciliation('service');

@@ -504,6 +504,49 @@ describe('service runtime isolation', () => {
     }
   });
 
+  test('closes acquired service listeners when another live process owns reconciliation', async () => {
+    resetDatabase();
+    const probe = () => Bun.serve({
+      hostname: '127.0.0.1', port: 0, fetch: () => new Response('probe'),
+    });
+    const httpProbe = probe();
+    const hookProbe = probe();
+    const port = httpProbe.port!;
+    const hookPort = hookProbe.port!;
+    httpProbe.stop(true);
+    hookProbe.stop(true);
+    const child = Bun.spawn([process.execPath, '-e', `
+      import { beginSessionReconciliation, failSessionReconciliation }
+        from './src/services/session-reconciliation-gate.ts';
+      const token = beginSessionReconciliation('daemon');
+      failSessionReconciliation(token, 'retrying');
+      console.log('peer-ready');
+      setInterval(() => {}, 1000);
+    `], { env: process.env, stdout: 'pipe', stderr: 'pipe' });
+    try {
+      const output = await child.stdout.getReader().read();
+      expect(new TextDecoder().decode(output.value)).toContain('peer-ready');
+      await expect(startKeeplineService({
+        port, hookPort, scanIntervalMs: 0, scanCommand: successfulScanCommand(),
+      })).rejects.toThrow('live process');
+      expect(isSessionReconciliationRunning()).toBe(true);
+      const reopenedHttp = Bun.serve({
+        hostname: '127.0.0.1', port, fetch: () => new Response('released'),
+      });
+      try {
+        const reopenedHook = Bun.serve({
+          hostname: '127.0.0.1', port: hookPort, fetch: () => new Response('released'),
+        });
+        reopenedHook.stop(true);
+      } finally {
+        reopenedHttp.stop(true);
+      }
+    } finally {
+      if (child.exitCode === null) child.kill('SIGKILL');
+      await child.exited;
+    }
+  });
+
   test('uses a complete first scan and blocks operational routes until it finishes', async () => {
     const directory = mkdtempSync(join(tmpdir(), 'keepline-initial-scan-'));
     const callsPath = join(directory, 'calls');
