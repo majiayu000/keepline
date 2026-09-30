@@ -1,4 +1,7 @@
 import { afterEach, beforeEach, describe, expect, test } from 'bun:test';
+import { chmodSync, mkdtempSync, writeFileSync } from 'fs';
+import { tmpdir } from 'os';
+import { join } from 'path';
 import { resetDatabase } from '../db/migrations.js';
 import { closeDatabase, execSql, queryOne, runSql } from '../infrastructure/database/sqlite.js';
 import { sessionRepository } from '../infrastructure/database/repositories/session.repository.js';
@@ -215,6 +218,27 @@ describe('session reconciliation gate', () => {
       unrelated.kill('SIGKILL');
       await unrelated.exited;
     }
+  });
+
+  test('resolves process identity through PATH', async () => {
+    const directory = mkdtempSync(join(tmpdir(), 'keepline-identity-path-'));
+    const ps = join(directory, 'ps');
+    writeFileSync(ps, "#!/bin/sh\nprintf '%s\\n' 'fixture process start from PATH'\n");
+    chmodSync(ps, 0o755);
+    const child = Bun.spawn([process.execPath, '-e', `
+      import { beginSessionReconciliation, completeSessionReconciliation }
+        from './src/services/session-reconciliation-gate.ts';
+      import { queryOne } from './src/infrastructure/database/sqlite.ts';
+      const token = beginSessionReconciliation('web');
+      const state = JSON.parse(queryOne("SELECT value FROM metadata WHERE key = 'session_reconciliation'").value);
+      console.log(state.processStartedAt);
+      completeSessionReconciliation(token);
+    `], {
+      env: { ...process.env, PATH: directory + ':' + process.env.PATH },
+      stdout: 'pipe', stderr: 'pipe',
+    });
+    expect(await child.exited).toBe(0);
+    expect((await new Response(child.stdout).text()).trim()).toBe('fixture process start from PATH');
   });
 
   test('only the current owner token may complete reconciliation', () => {

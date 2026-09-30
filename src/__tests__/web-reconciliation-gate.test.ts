@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, test } from 'bun:test';
 import { resetDatabase } from '../db/migrations.js';
-import { closeDatabase, runSql } from '../infrastructure/database/sqlite.js';
+import { closeDatabase, getDatabase, runSql } from '../infrastructure/database/sqlite.js';
 import { sessionRepository } from '../infrastructure/database/repositories/session.repository.js';
 import { setupUser } from '../services/auth.service.js';
 import {
@@ -66,6 +66,35 @@ describe('standalone web server bind-before-invalidate', () => {
 
   afterEach(() => {
     closeDatabase();
+  });
+
+  test('serves static requests without acquiring the shared SQLite write lock', async () => {
+    const server = await startWebServer(0, {
+      serviceURL: 'http://127.0.0.1:3377',
+      serviceProbe: async () => Response.json({
+        success: true, data: { status: 'ok', mode: 'service', scan: { completed: true } },
+      }),
+    });
+    const db = getDatabase();
+    db.exec('PRAGMA busy_timeout = 0');
+    const child = Bun.spawn([process.execPath, '-e', `
+      import { getDatabase } from './src/infrastructure/database/sqlite.ts';
+      const db = getDatabase(); db.exec('BEGIN IMMEDIATE');
+      console.log('write-lock-held'); await Bun.sleep(350); db.exec('COMMIT');
+    `], { env: process.env, stdout: 'pipe', stderr: 'pipe' });
+    try {
+      const output = await child.stdout.getReader().read();
+      expect(new TextDecoder().decode(output.value)).toContain('write-lock-held');
+      const response = await fetch(`http://127.0.0.1:${server.port}/assets/absent-gate-fixture.js`, {
+        headers: { host: '127.0.0.1:0' },
+      });
+      expect(response.status).toBe(404);
+    } finally {
+      if (child.exitCode === null) child.kill('SIGKILL');
+      await child.exited;
+      db.exec('PRAGMA busy_timeout = 5000');
+      server.stop(true);
+    }
   });
 
   test('does not invalidate live claims when the dashboard port is occupied', async () => {

@@ -66,7 +66,7 @@ function processExists(pid: number): boolean {
 
 function readProcessStartTime(pid: number): string | undefined {
   try {
-    const startedAt = execFileSync('/bin/ps', ['-p', String(pid), '-o', 'lstart='], {
+    const startedAt = execFileSync('ps', ['-p', String(pid), '-o', 'lstart='], {
       encoding: 'utf8', timeout: 5_000,
       env: { ...process.env, LC_ALL: 'C', TZ: 'UTC' },
       stdio: ['ignore', 'pipe', 'pipe'],
