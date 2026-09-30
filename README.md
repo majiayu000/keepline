@@ -6,18 +6,18 @@
 
 ### Never lose your local agent runtime work again.
 
-**The command center for agent CLI power users**
+**A local CLI and dashboard for monitoring Codex and Claude Code sessions, recovering interrupted work where supported, and tracking available token and cost data.**
 
 [![npm version](https://img.shields.io/npm/v/keepline.svg?style=flat-square&color=00d4ff)](https://www.npmjs.com/package/keepline)
 [![npm downloads](https://img.shields.io/npm/dm/keepline.svg?style=flat-square&color=ff00ff)](https://www.npmjs.com/package/keepline)
-[![GitHub stars](https://img.shields.io/github/stars/majiayu000/claude-hub?style=flat-square&color=ffcc00)](https://github.com/majiayu000/claude-hub)
+[![GitHub stars](https://img.shields.io/github/stars/majiayu000/keepline?style=flat-square&color=ffcc00)](https://github.com/majiayu000/keepline)
 [![License](https://img.shields.io/badge/license-MIT-blue.svg?style=flat-square)](LICENSE)
 
-[Quick Start](#-quick-start) | [Features](#-features) | [Screenshots](#-screenshots) | [Documentation](#-documentation)
+[Quick Start](#quick-start) | [Features](#features) | [Screenshots](#web-dashboard) | [CLI reference](#cli-reference) | [中文](README_CN.md)
 
 <br />
 
-<img src="docs/assets/hero-demo.gif" alt="Keepline Demo" width="800" />
+<img src="docs/assets/Sessions.png" alt="Keepline session dashboard" width="800" />
 
 </div>
 
@@ -84,9 +84,11 @@ keepline web
 ### Option 3: From source
 
 ```bash
-git clone https://github.com/majiayu000/claude-hub.git keepline
+git clone https://github.com/majiayu000/keepline.git keepline
 cd keepline
-bun install && bun run build
+bun install --frozen-lockfile
+(cd src/web/client && bun install --frozen-lockfile)
+bun run build
 bun run start web
 ```
 
@@ -400,8 +402,8 @@ bun test             # Run tests
 
 ## Support
 
-- [GitHub Issues](https://github.com/majiayu000/claude-hub/issues)
-- [Discussions](https://github.com/majiayu000/claude-hub/discussions)
+- [GitHub Issues](https://github.com/majiayu000/keepline/issues)
+- [Discussions](https://github.com/majiayu000/keepline/discussions)
 
 ---
 
@@ -409,7 +411,7 @@ bun test             # Run tests
 
 **Built for local agent runtime power users**
 
-[GitHub](https://github.com/majiayu000/claude-hub) | [npm](https://www.npmjs.com/package/keepline) | [Documentation](https://keepline.dev)
+[GitHub](https://github.com/majiayu000/keepline) | [npm](https://www.npmjs.com/package/keepline) | [CLI reference](#cli-reference)
 
 MIT License
 
