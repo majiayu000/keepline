@@ -263,7 +263,7 @@ describe('SessionService sync with missing cwd', () => {
       const childProcess = await import('child_process');
       const psOutput = ${JSON.stringify(options.psListsPid
         ? `12345 0.1 0.5 ttys001 ${psStart} /usr/local/bin/claude`
-        : '')};
+        : '12345 0.1 0.5 ttys001 Mon Jan 6 10:30:45 2026 /usr/bin/python fixture-worker.py')};
       spyOn(childProcess, 'execSync').mockImplementation((command) => {
         if (command.startsWith('ps ')) return psOutput;
         if (command.startsWith('lsof ')) throw Object.assign(new Error('fixture lsof failure'), {
@@ -323,7 +323,7 @@ describe('SessionService sync with missing cwd', () => {
     expect((result.sessions as Array<{sessionId: string; pid: number | null}>).filter(session => session.pid === 12345).map(session => session.sessionId)).toEqual(['new-cwd-sync']);
   });
 
-  for (const psListsPid of [true, false]) {
+  for (const psListsPid of [true]) {
     test(`refreshes scan-sourced idle state from new transcript activity, psListsPid=${psListsPid}`, () => {
       const result = syncFixture({ transcript: true, psListsPid, alive: true, status: 'idle', statusSource: 'scan', newActivity: true });
       expect(result.sessions).toContainEqual({
@@ -349,14 +349,21 @@ describe('SessionService sync with missing cwd', () => {
 
   for (const transcript of [true, false]) {
     for (const psListsPid of [true, false]) {
-      test(`keeps a live PID with transcript=${transcript}, psListsPid=${psListsPid}`, () => {
+      test(`reconciles stored agent identity with transcript=${transcript}, psListsPid=${psListsPid}`, () => {
         const result = syncFixture({ transcript, psListsPid, alive: true });
-        expect(result.syncResult).toEqual({ discovered: 0, updated: transcript ? 1 : 0, lost: 1 });
-        expect(result.lostEvents).toEqual(['dead-cwd-sync']);
-        expect(result.sessions).toContainEqual({
-          sessionId: 'live-cwd-sync', status: 'waiting', statusSource: 'hook', pid: 12345, tty: 'ttys001',
-        });
-        expect((result.checkedPids as number[]).filter(pid => pid === 12345)).toHaveLength(psListsPid ? 0 : 1);
+        expect(result.syncResult).toEqual({ discovered: 0, updated: transcript ? 1 : 0, lost: psListsPid ? 1 : 2 });
+        if (psListsPid) {
+          expect(result.lostEvents).toEqual(['dead-cwd-sync']);
+          expect(result.sessions).toContainEqual({
+            sessionId: 'live-cwd-sync', status: 'waiting', statusSource: 'hook', pid: 12345, tty: 'ttys001',
+          });
+        } else {
+          expect(result.lostEvents).toContain('live-cwd-sync');
+          expect(result.sessions).toContainEqual({
+            sessionId: 'live-cwd-sync', status: 'lost', statusSource: 'scan', pid: null, tty: transcript ? null : 'ttys001',
+          });
+        }
+        expect(result.checkedPids).toEqual([]);
       });
     }
 

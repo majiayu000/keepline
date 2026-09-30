@@ -10,7 +10,7 @@ import { config } from '../../lib/config.js';
 
 /** Detect session status based on process info */
 export function detectSessionStatus(
-  process: Pick<ClaudeProcessInfo, 'cpu'> | null,
+  process: ClaudeProcessInfo | null,
   lastActivityAt?: Date
 ): SessionStatus {
   const cfg = config.get();
