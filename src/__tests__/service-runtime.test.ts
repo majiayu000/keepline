@@ -43,7 +43,7 @@ function successfulScanCommand(): string[] {
 }
 
 describe('service runtime isolation', () => {
-  for (const hookPath of ['logical', 'canonical', 'removed', 'not_directory'] as const) {
+  for (const hookPath of ['logical', 'canonical', 'removed', 'not_directory', 'regular_file'] as const) {
     test(`handles an early ${hookPath} cwd completion claim after a symlinked dispatch links`, async () => {
       resetDatabase();
       const root = mkdtempSync(join(tmpdir(), 'keepline-completion-cwd-'));
@@ -118,9 +118,14 @@ describe('service runtime isolation', () => {
         await dispatchService.reconcilePending();
         const linked = taskDispatchRepository.findById(dispatch.id)!;
         expect(linked.state).toBe('linked');
-        if (hookPath === 'removed' || hookPath === 'not_directory') {
-          rmSync(alias);
-          if (hookPath === 'not_directory') writeFileSync(alias, 'Not a directory');
+        if (hookPath === 'removed' || hookPath === 'not_directory' || hookPath === 'regular_file') {
+          if (hookPath === 'regular_file') {
+            rmSync(project, { recursive: true });
+            writeFileSync(project, 'Not a directory');
+          } else {
+            rmSync(alias);
+            if (hookPath === 'not_directory') writeFileSync(alias, 'Not a directory');
+          }
           expect(reconcileLinkedAgentSessions().evidenceCreated).toBe(0);
           expect(workItemEvidenceRepository.findLatestExplicitCompletionForAgentSession(
             linked.linkedAgentSessionId!
@@ -148,6 +153,38 @@ describe('service runtime isolation', () => {
       }
     });
   }
+
+  test('ignores a regular-file Stop cwd and still reports unexpected filesystem errors', async () => {
+    resetDatabase();
+    const root = mkdtempSync(join(tmpdir(), 'keepline-file-completion-'));
+    const file = join(root, 'file');
+    const loop = join(root, 'loop');
+    writeFileSync(file, 'Not a directory');
+    symlinkSync('loop', loop);
+    try {
+      const item = workItemRepository.create({ title: 'Ignore file completion' });
+      await new TaskDispatchService({ launch: () => {} }).dispatch(item.id, {
+        runtimeId: 'claude-code', cwd: root, prompt: item.title, idempotencyKey: 'file-completion',
+      });
+      liveService = await startKeeplineService({
+        port: 0, hookPort: 0, scanIntervalMs: 0, scanCommand: successfulScanCommand(),
+      });
+      for (const [cwd, status] of [[file, 404], [loop, 500]] as const) {
+        const response = await fetch(`http://127.0.0.1:${liveService.hookPort}/hook`, {
+          method: 'POST', headers: { 'content-type': 'application/json' },
+          body: JSON.stringify({
+            hook_event_name: 'Stop', session_id: 'file-completion', cwd,
+            last_assistant_message: `Verified\nKEEPLINE_COMPLETE_WORK_ITEM:${item.id}`,
+          }),
+        });
+        expect(response.status).toBe(status);
+        expect(workItemEvidenceRepository.findPendingAgentCompletionClaims(item.id, 'file-completion'))
+          .toHaveLength(0);
+      }
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
 
   test('does not trust a completion claim when the canonical session is missing', async () => {
     liveService = await startKeeplineService({
