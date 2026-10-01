@@ -157,7 +157,7 @@ describe('persistent transcript summary cache', () => {
     const { path, summary } = fixture();
     await cachedSessionSummary('codex', path, async () => summary);
     closeSessionSummaryCache();
-    const db = new Database(join(process.env.KEEPLINE_HOME!, 'session-summaries-v1.sqlite'));
+    const db = new Database(join(process.env.KEEPLINE_HOME!, 'session-summaries-v2.sqlite'));
     db.query('UPDATE summaries SET data = ? WHERE cache_key = ?').run('{bad', `codex:${path}`);
     db.close();
     await expect(cachedSessionSummary('codex', path, async () => summary))

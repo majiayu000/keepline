@@ -145,7 +145,7 @@ export class TaskDispatchRepository {
   findCorrelationPending(): TaskDispatch[] {
     const rows = getDatabase().prepare(`
       SELECT * FROM task_dispatches
-      WHERE state IN ('queued', 'launching', 'awaiting_session')
+      WHERE state IN ('queued', 'launching', 'awaiting_session', 'ambiguous')
       ORDER BY created_at ASC
     `).all() as DispatchRow[];
     return rows.map(rowToDispatch);

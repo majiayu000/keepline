@@ -39,6 +39,7 @@ interface SessionSummaryAccumulator {
   isSubAgent: boolean;
   parentSessionId?: string;
   firstMessage?: string;
+  launchPrompt?: string;
   lastMessage?: string;
   firstSystemCommand?: string;
   messageCount: number;
@@ -333,7 +334,10 @@ function accumulateSessionEntry(
   if (entry.type === 'user' && entry.userType === 'external') {
     accumulator.messageCount++;
     const taskPrompt = extractUserPrompt(entry as ClaudeUserEntry);
-    if (taskPrompt) accumulator.firstMessage = taskPrompt;
+    if (taskPrompt) {
+      accumulator.firstMessage = taskPrompt;
+      accumulator.launchPrompt ??= taskPrompt;
+    }
   }
 
   if ((entry as { type?: string }).type === 'system' && !accumulator.firstSystemCommand) {
@@ -425,6 +429,7 @@ function finalizeSessionAccumulator(
       : accumulator.sessionId,
     directory: accumulator.directory,
     firstMessage: accumulator.firstMessage,
+    launchPrompt: accumulator.launchPrompt,
     lastMessage: accumulator.lastMessage,
     messageCount: accumulator.messageCount,
     toolCount: accumulator.toolCount,
