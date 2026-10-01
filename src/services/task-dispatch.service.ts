@@ -112,6 +112,7 @@ export class TaskDispatchService {
       throw new Error('prompt is required');
     }
     const cwd = canonicalDirectory(input.cwd);
+    if (cwd === null) throw new Error('cwd must be a directory');
     const prompt = input.prompt.trim();
     const terminalApp = input.terminalApp ?? 'auto';
     const idempotencyKey = input.idempotencyKey.trim();

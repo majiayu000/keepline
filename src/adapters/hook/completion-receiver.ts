@@ -118,7 +118,7 @@ function recordCompletionClaim(
   const summary = lines.slice(0, -1).join(' ').slice(0, 500) ||
     'Agent explicitly claimed the linked work item is complete.';
   if (!link || !allowExplicitCompletion) {
-    let canonicalCwd: string;
+    let canonicalCwd: string | null;
     try {
       canonicalCwd = canonicalDirectory(cwd);
     } catch (error) {

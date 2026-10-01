@@ -59,6 +59,20 @@ describe('task dispatch correctness', () => {
       })).rejects.toMatchObject({ code: 'ENOTDIR' });
       expect(taskDispatchRepository.findByIdempotencyKey('absent-intermediate')).toBeNull();
 
+      sessionRepository.upsert({
+        sessionId: 'codex_regular-file', client: 'codex', directory: file,
+        status: 'running', lastActiveAt: now,
+      });
+      await service.reconcilePending();
+      expect(taskDispatchRepository.findById(dispatch.id)?.candidateSessionIds).toEqual([]);
+      const fileError = await service.dispatch(item.id, {
+        runtimeId: 'codex', cwd: file, prompt: item.title, idempotencyKey: 'regular-file',
+      }).then(() => null, (error: NodeJS.ErrnoException) => error);
+      expect(fileError).toBeInstanceOf(Error);
+      expect(fileError?.message).toBe('cwd must be a directory');
+      expect(fileError?.code).toBeUndefined();
+      expect(taskDispatchRepository.findByIdempotencyKey('regular-file')).toBeNull();
+
       const loop = join(root, 'loop');
       symlinkSync('loop', loop);
       sessionRepository.upsert({

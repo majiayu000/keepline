@@ -6,10 +6,10 @@ import { existsSync, mkdirSync, realpathSync, statSync } from 'fs';
 import { homedir } from 'os';
 import { dirname, join } from 'path';
 
-export function canonicalDirectory(directory: string): string {
+export function canonicalDirectory(directory: string): string | null {
   if (!directory || directory.length > 2048) throw new Error('cwd is required');
   const canonical = realpathSync(directory);
-  if (!statSync(canonical).isDirectory()) throw new Error('cwd must be a directory');
+  if (!statSync(canonical).isDirectory()) return null;
   return canonical;
 }
 
