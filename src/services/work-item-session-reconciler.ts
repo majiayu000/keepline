@@ -2,6 +2,7 @@ import { runtimeIdForClient } from './runtime-status.js';
 import { sessionRepository } from '../infrastructure/database/repositories/session.repository.js';
 import { taskDispatchRepository } from '../infrastructure/database/repositories/task-dispatch.repository.js';
 import { workItemEvidenceRepository } from '../infrastructure/database/repositories/work-item-evidence.repository.js';
+import { canonicalDirectory } from '../lib/paths.js';
 
 export interface LinkedSessionReconcileResult {
   updated: number;
@@ -54,12 +55,18 @@ export function reconcileLinkedAgentSessions(): LinkedSessionReconcileResult {
         const dispatch = typeof dispatchId === 'string'
           ? taskDispatchRepository.findById(dispatchId)
           : null;
-        const dispatchMatches = dispatch?.state === 'linked' &&
-          dispatch.workItemId === link.workItemId &&
-          dispatch.runtimeId === linked.runtimeId &&
-          dispatch.cwd === canonical.directory &&
-          dispatch.linkedAgentSessionId === linked.id &&
-          dispatch.candidateSessionIds.includes(canonical.sessionId);
+        let dispatchMatches = false;
+        try {
+          dispatchMatches = dispatch?.state === 'linked' &&
+            dispatch.workItemId === link.workItemId &&
+            dispatch.runtimeId === linked.runtimeId &&
+            dispatch.linkedAgentSessionId === linked.id &&
+            dispatch.candidateSessionIds.includes(canonical.sessionId) &&
+            dispatch.cwd === canonicalDirectory(canonical.directory);
+        } catch (error) {
+          const code = (error as NodeJS.ErrnoException).code;
+          if (code !== 'ENOENT' && code !== 'ENOTDIR') throw error;
+        }
         if (!dispatchMatches) {
           workItemEvidenceRepository.deletePendingAgentCompletionClaim(pending.id);
           continue;

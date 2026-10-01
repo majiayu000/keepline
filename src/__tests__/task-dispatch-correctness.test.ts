@@ -1,4 +1,7 @@
 import { beforeEach, describe, expect, test } from 'bun:test';
+import { mkdirSync, mkdtempSync, rmSync, symlinkSync, writeFileSync } from 'fs';
+import { tmpdir } from 'os';
+import { join } from 'path';
 import { createLocalApiApp } from '../local-api/app.js';
 import { resetDatabase } from '../db/migrations.js';
 import { encodeAgentSessionId } from '../domain/work-item/index.js';
@@ -17,6 +20,58 @@ import {
 
 describe('task dispatch correctness', () => {
   beforeEach(() => resetDatabase());
+
+  test('skips a removed candidate directory while preserving dispatch cwd errors', async () => {
+    const root = mkdtempSync(join(tmpdir(), 'keepline-dispatch-cwd-'));
+    const directory = join(root, 'project');
+    mkdirSync(directory);
+    const now = new Date();
+    const service = new TaskDispatchService({ now: () => now, launch: () => {} });
+    const item = workItemRepository.create({ title: 'Removed candidate' });
+    try {
+      const dispatch = await service.dispatch(item.id, {
+        runtimeId: 'codex', cwd: directory, prompt: item.title, idempotencyKey: 'removed-candidate',
+      });
+      sessionRepository.upsert({
+        sessionId: 'codex_removed-candidate', client: 'codex', directory,
+        initialPrompt: `KEEPLINE_DISPATCH_ID:${dispatch.id}`, status: 'running', lastActiveAt: now,
+      });
+      rmSync(directory, { recursive: true });
+      await service.reconcilePending();
+      expect(taskDispatchRepository.findById(dispatch.id)?.state).toBe('awaiting_session');
+      expect(taskDispatchRepository.findById(dispatch.id)?.candidateSessionIds).toEqual([]);
+      await expect(service.dispatch(item.id, {
+        runtimeId: 'codex', cwd: directory, prompt: item.title, idempotencyKey: 'missing-directory',
+      })).rejects.toMatchObject({ code: 'ENOENT' });
+      expect(taskDispatchRepository.findByIdempotencyKey('missing-directory')).toBeNull();
+
+      const file = join(root, 'file');
+      writeFileSync(file, 'Not a directory');
+      sessionRepository.upsert({
+        sessionId: 'codex_absent-intermediate', client: 'codex', directory: join(file, 'child'),
+        status: 'running', lastActiveAt: now,
+      });
+      await service.reconcilePending();
+      expect(taskDispatchRepository.findById(dispatch.id)?.state).toBe('awaiting_session');
+      await expect(service.dispatch(item.id, {
+        runtimeId: 'codex', cwd: join(file, 'child'), prompt: item.title,
+        idempotencyKey: 'absent-intermediate',
+      })).rejects.toMatchObject({ code: 'ENOTDIR' });
+      expect(taskDispatchRepository.findByIdempotencyKey('absent-intermediate')).toBeNull();
+
+      const loop = join(root, 'loop');
+      symlinkSync('loop', loop);
+      sessionRepository.upsert({
+        sessionId: 'codex_loop-candidate', client: 'codex', directory: loop,
+        status: 'running', lastActiveAt: now,
+      });
+      await expect(Promise.resolve().then(() => service.reconcilePending()))
+        .rejects.toMatchObject({ code: 'ELOOP' });
+      expect(taskDispatchRepository.findById(dispatch.id)?.state).toBe('awaiting_session');
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
 
   test('gives launched agents a dispatch marker without changing stored prompts', async () => {
     const launches: Array<{ executable: string; args: string[] }> = [];

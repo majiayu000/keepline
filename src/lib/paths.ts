@@ -2,9 +2,16 @@
  * Path utilities for Keepline.
  */
 
-import { existsSync, mkdirSync } from 'fs';
+import { existsSync, mkdirSync, realpathSync, statSync } from 'fs';
 import { homedir } from 'os';
 import { dirname, join } from 'path';
+
+export function canonicalDirectory(directory: string): string {
+  if (!directory || directory.length > 2048) throw new Error('cwd is required');
+  const canonical = realpathSync(directory);
+  if (!statSync(canonical).isDirectory()) throw new Error('cwd must be a directory');
+  return canonical;
+}
 
 /** Claude base directory */
 export const CLAUDE_HOME = join(homedir(), '.claude');
