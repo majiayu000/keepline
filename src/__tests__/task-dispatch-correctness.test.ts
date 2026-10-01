@@ -856,6 +856,148 @@ for (const runtimeId of ['codex', 'claude-code'] as const) {
 }
 
 for (const runtimeId of ['codex', 'claude-code'] as const) {
+  for (const scenario of ['marked', 'expired', 'unmarked'] as const) {
+    test(`uses the scan-start deadline for a ${scenario} ${runtimeId} transcript`, () => {
+      const fixtureHome = realpathSync(mkdtempSync(join(tmpdir(), 'keepline-test-dispatch-deadline-')));
+      transcriptHomes.push(fixtureHome);
+      const bin = join(fixtureHome, 'bin');
+      mkdirSync(bin);
+      writeFileSync(join(bin, 'ps'), '#!/bin/sh\nprintf "PID %%CPU %%MEM TTY LSTART COMMAND\\n"\n', { mode: 0o755 });
+      const child = Bun.spawnSync({
+        cmd: [process.execPath, '--eval', `
+          import { spyOn } from 'bun:test';
+          import { mkdirSync, writeFileSync } from 'fs';
+          import { join } from 'path';
+          import * as codexScanner from './src/adapters/codex/scanner.ts';
+          import * as claudeScanner from './src/adapters/claude/scanner.ts';
+          import { resetDatabase } from './src/db/migrations.ts';
+          import { getDatabase } from './src/infrastructure/database/sqlite.ts';
+          import { workItemRepository } from './src/infrastructure/database/repositories/work-item.repository.ts';
+          import { taskDispatchRepository } from './src/infrastructure/database/repositories/task-dispatch.repository.ts';
+          import { sessionRepository } from './src/infrastructure/database/repositories/session.repository.ts';
+          import { TaskDispatchService, taskDispatchService } from './src/services/task-dispatch.service.ts';
+          import { serviceScanCommand } from './src/cli/service-scan.ts';
+          import { setupUser } from './src/services/auth.service.ts';
+          import { createLocalApiApp } from './src/local-api/app.ts';
+          resetDatabase();
+          const runtimeId = ${JSON.stringify(runtimeId)};
+          const scenario = ${JSON.stringify(scenario)};
+          const home = ${JSON.stringify(fixtureHome)};
+          const launchedAt = new Date();
+          let clock = launchedAt;
+          let launchPrompt;
+          const service = new TaskDispatchService({
+            now: () => clock, correlationTimeoutMs: 1000,
+            launch: (_executable, args) => { launchPrompt = args[0]; },
+          });
+          const item = workItemRepository.create({ title: 'Slow transcript scan' });
+          const dispatch = await service.dispatch(item.id, {
+            runtimeId, cwd: home, prompt: 'Launch', idempotencyKey: 'slow-scan',
+          });
+          const id = '019ed4a3-2186-7e51-9aa1-ca1e376549b8';
+          const sessionId = runtimeId === 'codex' ? 'codex_' + id : id;
+          const timestamp = new Date(launchedAt.getTime() + 1).toISOString();
+          const prompt = scenario === 'unmarked' ? 'Unrelated task' : launchPrompt;
+          const directory = runtimeId === 'codex'
+            ? join(home, '.codex', 'sessions') : join(home, '.claude', 'projects', '-fixture');
+          mkdirSync(directory, { recursive: true });
+          const entries = runtimeId === 'codex' ? [
+            { type: 'session_meta', timestamp, payload: { id, cwd: home } },
+            { type: 'response_item', timestamp, payload: {
+              type: 'message', role: 'user', content: [{ type: 'input_text', text: prompt }],
+            } },
+          ] : [{ type: 'user', uuid: 'user-1', sessionId: id, cwd: home,
+            timestamp, userType: 'external', message: { role: 'user', content: prompt } }];
+          writeFileSync(join(directory, (runtimeId === 'codex' ? 'rollout-' : '') + id + '.jsonl'),
+            entries.map(entry => JSON.stringify(entry)).join('\\n') + '\\n');
+          clock = new Date(launchedAt.getTime() + (scenario === 'expired' ? 1001 : 100));
+          const scanStartedAt = clock.toISOString();
+          let observed;
+          let snapshot;
+          let reads = 0;
+          // Keep the real service and scanners; inject only the service clock and delayed return.
+          spyOn(taskDispatchService, 'reconcilePending').mockImplementation(async () => {
+            snapshot = sessionRepository.findBySessionId(sessionId);
+            const scanner = runtimeId === 'codex' ? codexScanner : claudeScanner;
+            const method = runtimeId === 'codex' ? 'getAllCodexSessionsWithFailures' : 'getAllSessionsWithFailures';
+            const original = scanner[method];
+            const read = spyOn(scanner, method).mockImplementation(async (options) => {
+              const result = await original(options);
+              reads++;
+              const parsed = result.sessions.find(session => session.sessionId === sessionId);
+              observed = { at: clock.toISOString(), prompt: parsed?.launchPrompt, failures: result.failures };
+              await Bun.sleep(1);
+              clock = new Date(dispatch.correlationDeadlineAt.getTime() + 1);
+              return result;
+            });
+            try { return await service.reconcilePending(); } finally { read.mockRestore(); }
+          });
+          await serviceScanCommand({ full: true });
+          const first = taskDispatchRepository.findById(dispatch.id);
+          let manual;
+          if (scenario === 'unmarked') {
+            spyOn(taskDispatchService, 'resolveSession').mockImplementation((...args) => service.resolveSession(...args));
+            const { token } = await setupUser('deadline-user', 'password123');
+            const response = await createLocalApiApp().fetch(new Request(
+              'http://localhost/api/v1/dispatches/' + dispatch.id + '/resolve-session', {
+                method: 'POST', headers: { Authorization: 'Bearer ' + token, 'Content-Type': 'application/json' },
+                body: JSON.stringify({ sessionId }),
+              }));
+            manual = { status: response.status, body: await response.json() };
+            await service.reconcilePending();
+          }
+          const final = taskDispatchRepository.findById(dispatch.id);
+          const links = getDatabase().prepare(
+            "SELECT agent_session_id FROM work_item_session_links WHERE acceptance_status = 'accepted'"
+          ).all();
+          console.log('__DEADLINE__' + JSON.stringify({
+            scanStartedAt, finishedAt: clock.toISOString(), deadline: dispatch.correlationDeadlineAt.toISOString(),
+            persistedDeadline: final.correlationDeadlineAt.toISOString(), snapshot, observed, reads,
+            firstState: first.state, finalState: final.state, error: final.error,
+            linkedAgentSessionId: final.linkedAgentSessionId, sessionId, links, manual,
+          }));
+        `],
+        cwd: process.cwd(),
+        env: {
+          ...process.env, HOME: fixtureHome, KEEPLINE_HOME: fixtureHome,
+          KEEPLINE_TEST_HOME: fixtureHome, KEEPLINE_TEST_ISOLATED: '1',
+          KEEPLINE_PROJECT_ROOTS: join(fixtureHome, '.claude', 'projects'),
+          PATH: `${bin}:${process.env.PATH}`,
+        },
+        stdout: 'pipe', stderr: 'pipe',
+      });
+      if (child.exitCode !== 0) throw new Error(child.stderr.toString());
+      const output = child.stdout.toString();
+      expect(output).toContain('__KEEPLINE_SERVICE_SCAN__');
+      const result = JSON.parse(output.split('__DEADLINE__')[1]);
+      expect(result.snapshot.sessionId).toBe(result.sessionId);
+      expect(result.snapshot.lastActiveAt < result.deadline).toBe(true);
+      expect(result.finishedAt > result.deadline).toBe(true);
+      expect(result.persistedDeadline).toBe(result.deadline);
+      expect(result.reads).toBe(scenario === 'expired' ? 0 : 1);
+      if (scenario !== 'expired') {
+        expect(result.scanStartedAt < result.deadline).toBe(true);
+        expect(result.observed.at < result.deadline).toBe(true);
+        expect(result.observed.failures).toEqual([]);
+        expect(result.observed.prompt.includes('KEEPLINE_DISPATCH_ID:')).toBe(scenario === 'marked');
+      }
+      expect(result.firstState).toBe(scenario === 'marked' ? 'linked' : 'failed');
+      expect(result.finalState).toBe(scenario === 'marked' ? 'linked' : 'failed');
+      if (scenario === 'marked') {
+        expect(result.linkedAgentSessionId).toBe(encodeAgentSessionId(runtimeId, result.sessionId));
+        expect(result.links).toEqual([{ agent_session_id: result.linkedAgentSessionId }]);
+      } else {
+        expect(result.error).toBe(DISPATCH_CORRELATION_TIMEOUT_ERROR);
+        expect(result.links).toEqual([]);
+      }
+      if (scenario === 'unmarked') {
+        expect(result.manual).toEqual({ status: 400, body: { success: false, error: 'Dispatch is not awaiting session resolution' } });
+      }
+    });
+  }
+}
+
+for (const runtimeId of ['codex', 'claude-code'] as const) {
   for (const failure of ['malformed', 'unreadable', 'missing'] as const) {
     test(`isolates a real ${failure} ${runtimeId} transcript from another dispatch`, () => {
       const fixtureHome = realpathSync(mkdtempSync(join(tmpdir(), 'keepline-test-dispatch-failure-')));
