@@ -87,6 +87,44 @@ describe('task dispatch correctness', () => {
     }
   });
 
+  for (const directory of ['', 'x'.repeat(2049)]) {
+    test(`skips a ${directory.length}-character candidate cwd and preserves strict dispatch errors`, async () => {
+      const root = mkdtempSync(join(tmpdir(), 'keepline-invalid-candidate-'));
+      const now = new Date();
+      let launches = 0;
+      const service = new TaskDispatchService({ now: () => now, launch: () => { launches++; } });
+      const item = workItemRepository.create({ title: 'Valid dispatch with an invalid candidate' });
+      try {
+        const dispatch = await service.dispatch(item.id, {
+          runtimeId: 'claude-code', cwd: root, prompt: item.title, idempotencyKey: 'valid',
+        });
+        const invalid = sessionRepository.upsert({
+          sessionId: 'invalid-candidate', client: 'claude', directory,
+          initialPrompt: `KEEPLINE_DISPATCH_ID:${dispatch.id}`, status: 'running', lastActiveAt: now,
+        });
+        expect(invalid.directory).toBe(directory);
+        sessionRepository.upsert({
+          sessionId: 'valid-candidate', client: 'claude', directory: root,
+          initialPrompt: `KEEPLINE_DISPATCH_ID:${dispatch.id}`, status: 'running', lastActiveAt: now,
+        });
+        await service.reconcilePending();
+        expect(taskDispatchRepository.findById(dispatch.id)).toMatchObject({
+          state: 'linked', candidateSessionIds: ['valid-candidate'],
+        });
+        const error = await service.dispatch(item.id, {
+          runtimeId: 'claude-code', cwd: directory, prompt: item.title, idempotencyKey: 'invalid',
+        }).then(() => null, (error: NodeJS.ErrnoException) => error);
+        expect(error).toBeInstanceOf(Error);
+        expect(error?.message).toBe('cwd is required');
+        expect(error?.code).toBeUndefined();
+        expect(taskDispatchRepository.findByIdempotencyKey('invalid')).toBeNull();
+        expect(launches).toBe(1);
+      } finally {
+        rmSync(root, { recursive: true, force: true });
+      }
+    });
+  }
+
   test('gives launched agents a dispatch marker without changing stored prompts', async () => {
     const launches: Array<{ executable: string; args: string[] }> = [];
     const service = new TaskDispatchService({
