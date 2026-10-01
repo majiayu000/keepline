@@ -111,6 +111,7 @@ export class TaskDispatchService {
     if (!input.prompt.trim() || input.prompt.length > 20_000) {
       throw new Error('prompt is required');
     }
+    if (!input.cwd || input.cwd.length > 2048) throw new Error('cwd is required');
     const cwd = canonicalDirectory(input.cwd);
     if (cwd === null) throw new Error('cwd must be a directory');
     const prompt = input.prompt.trim();

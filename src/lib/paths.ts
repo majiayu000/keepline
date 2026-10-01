@@ -7,7 +7,7 @@ import { homedir } from 'os';
 import { dirname, join } from 'path';
 
 export function canonicalDirectory(directory: string): string | null {
-  if (!directory || directory.length > 2048) throw new Error('cwd is required');
+  if (!directory || directory.length > 2048) return null;
   const canonical = realpathSync(directory);
   if (!statSync(canonical).isDirectory()) return null;
   return canonical;

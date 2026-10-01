@@ -43,8 +43,8 @@ function successfulScanCommand(): string[] {
 }
 
 describe('service runtime isolation', () => {
-  for (const hookPath of ['logical', 'canonical', 'removed', 'not_directory', 'regular_file'] as const) {
-    test(`handles an early ${hookPath} cwd completion claim after a symlinked dispatch links`, async () => {
+  for (const hookPath of ['logical', 'canonical', 'removed', 'not_directory', 'regular_file', 'empty', 'overlong'] as const) {
+    test(`handles a ${hookPath} session cwd after an early symlinked completion claim`, async () => {
       resetDatabase();
       const root = mkdtempSync(join(tmpdir(), 'keepline-completion-cwd-'));
       const project = join(root, 'project', 'child');
@@ -118,8 +118,12 @@ describe('service runtime isolation', () => {
         await dispatchService.reconcilePending();
         const linked = taskDispatchRepository.findById(dispatch.id)!;
         expect(linked.state).toBe('linked');
-        if (hookPath === 'removed' || hookPath === 'not_directory' || hookPath === 'regular_file') {
-          if (hookPath === 'regular_file') {
+        if (hookPath === 'removed' || hookPath === 'not_directory' || hookPath === 'regular_file' ||
+            hookPath === 'empty' || hookPath === 'overlong') {
+          if (hookPath === 'empty' || hookPath === 'overlong') {
+            getDatabase().prepare('UPDATE sessions SET directory = ? WHERE session_id = ?')
+              .run(hookPath === 'empty' ? '' : 'x'.repeat(2049), sessionId);
+          } else if (hookPath === 'regular_file') {
             rmSync(project, { recursive: true });
             writeFileSync(project, 'Not a directory');
           } else {
@@ -154,7 +158,7 @@ describe('service runtime isolation', () => {
     });
   }
 
-  test('ignores a regular-file Stop cwd and still reports unexpected filesystem errors', async () => {
+  test('ignores invalid Stop cwd values and still reports unexpected filesystem errors', async () => {
     resetDatabase();
     const root = mkdtempSync(join(tmpdir(), 'keepline-file-completion-'));
     const file = join(root, 'file');
@@ -169,7 +173,7 @@ describe('service runtime isolation', () => {
       liveService = await startKeeplineService({
         port: 0, hookPort: 0, scanIntervalMs: 0, scanCommand: successfulScanCommand(),
       });
-      for (const [cwd, status] of [[file, 404], [loop, 500]] as const) {
+      for (const [cwd, status] of [['', 400], ['x'.repeat(2049), 404], [file, 404], [loop, 500]] as const) {
         const response = await fetch(`http://127.0.0.1:${liveService.hookPort}/hook`, {
           method: 'POST', headers: { 'content-type': 'application/json' },
           body: JSON.stringify({
