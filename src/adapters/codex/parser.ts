@@ -23,6 +23,7 @@ interface CodexAccumulator {
   sessionId: string;
   directory: string;
   firstMessage?: string;
+  launchPrompt?: string;
   lastMessage?: string;
   lastTool?: string;
   lastToolInput?: Record<string, unknown>;
@@ -156,7 +157,10 @@ function accumulateResponseItem(accumulator: CodexAccumulator, entry: CodexJsonl
 
     if (payload.role === 'user' && text) {
       const taskPrompt = extractTaskPrompt(text);
-      if (taskPrompt) accumulator.firstMessage = taskPrompt;
+      if (taskPrompt) {
+        accumulator.firstMessage = taskPrompt;
+        accumulator.launchPrompt ??= taskPrompt;
+      }
     }
     if (payload.role === 'assistant' && text) {
       accumulator.lastMessage = text;
@@ -277,6 +281,7 @@ function finalizeAccumulator(accumulator: CodexAccumulator): CodexParsedSessionD
     sessionId: accumulator.sessionId,
     directory: accumulator.directory,
     firstMessage: accumulator.firstMessage,
+    launchPrompt: accumulator.launchPrompt,
     lastMessage: accumulator.lastMessage,
     messageCount: accumulator.messageCount,
     toolCount: accumulator.toolCount,

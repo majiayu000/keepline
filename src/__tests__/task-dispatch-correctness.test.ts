@@ -1,4 +1,8 @@
-import { beforeEach, describe, expect, test } from 'bun:test';
+import { afterEach, beforeEach, describe, expect, spyOn, test } from 'bun:test';
+import { mkdirSync, mkdtempSync, realpathSync, rmSync, writeFileSync } from 'fs';
+import { tmpdir } from 'os';
+import { join } from 'path';
+import * as codexScanner from '../adapters/codex/scanner.js';
 import { createLocalApiApp } from '../local-api/app.js';
 import { resetDatabase } from '../db/migrations.js';
 import { encodeAgentSessionId } from '../domain/work-item/index.js';
@@ -64,7 +68,7 @@ describe('task dispatch correctness', () => {
       lastActiveAt: new Date(now.getTime() + 1),
     });
 
-    service.reconcilePending();
+    await service.reconcilePending();
 
     expect(taskDispatchRepository.findById(dispatch.id)?.state).toBe('ambiguous');
     expect(taskDispatchRepository.findById(dispatch.id)?.linkedAgentSessionId).toBeUndefined();
@@ -74,12 +78,80 @@ describe('task dispatch correctness', () => {
       initialPrompt: launches[0].args[0], title: 'Trusted', status: 'running',
       lastActiveAt: new Date(now.getTime() + 2),
     });
-    taskDispatchRepository.updateState(dispatch.id, 'awaiting_session');
-    service.reconcilePending();
+    await service.reconcilePending();
 
     expect(taskDispatchRepository.findById(dispatch.id)?.state).toBe('linked');
     expect(taskDispatchRepository.findById(dispatch.id)?.linkedAgentSessionId)
       .toBe(encodeAgentSessionId('codex', 'codex_trusted-session'));
+  });
+
+  test('refreshes ambiguous candidates so a later session can be resolved through the API', async () => {
+    const now = new Date('2026-08-30T00:00:00.000Z');
+    const service = new TaskDispatchService({ now: () => now, launch: () => {} });
+    const item = workItemRepository.create({ title: 'Refresh candidates' });
+    const dispatch = await service.dispatch(item.id, {
+      runtimeId: 'codex', cwd: '/tmp', prompt: 'Refresh', idempotencyKey: 'refresh-candidates',
+    });
+    sessionRepository.upsert({
+      sessionId: 'codex_first-candidate', client: 'codex', directory: '/tmp',
+      initialPrompt: 'Unmarked first', title: 'First', status: 'running',
+      lastActiveAt: new Date(now.getTime() + 1),
+    });
+    await service.reconcilePending();
+    expect(taskDispatchRepository.findById(dispatch.id)?.candidateSessionIds)
+      .toEqual(['codex_first-candidate']);
+    expect(taskDispatchRepository.findCorrelationPending().map((row) => row.id))
+      .toContain(dispatch.id);
+
+    sessionRepository.upsert({
+      sessionId: 'codex_first-candidate', client: 'codex', directory: '/tmp',
+      lastActiveAt: new Date(now.getTime() - 1),
+    });
+    sessionRepository.upsert({
+      sessionId: 'codex_later-candidate', client: 'codex', directory: '/tmp',
+      initialPrompt: 'Unmarked later', title: 'Later', status: 'running',
+      lastActiveAt: new Date(now.getTime() + 2),
+    });
+    await service.reconcilePending();
+    expect(taskDispatchRepository.findById(dispatch.id)?.candidateSessionIds)
+      .toEqual(['codex_later-candidate']);
+
+    const { token } = await setupUser('late-candidate-user', 'password123');
+    const response = await createLocalApiApp().fetch(new Request(
+      `http://localhost/api/v1/dispatches/${dispatch.id}/resolve-session`,
+      {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ sessionId: 'codex_later-candidate' }),
+      }
+    ));
+    expect(response.status).toBe(200);
+    expect(taskDispatchRepository.findById(dispatch.id)?.linkedAgentSessionId)
+      .toBe(encodeAgentSessionId('codex', 'codex_later-candidate'));
+  });
+
+  test('fails an ambiguous dispatch at its deadline and stops correlation scans', async () => {
+    let now = new Date('2026-08-30T00:00:00.000Z');
+    const service = new TaskDispatchService({
+      now: () => now, correlationTimeoutMs: 1_000, launch: () => {},
+    });
+    const item = workItemRepository.create({ title: 'Ambiguous deadline' });
+    const dispatch = await service.dispatch(item.id, {
+      runtimeId: 'codex', cwd: '/tmp', prompt: 'Wait', idempotencyKey: 'ambiguous-deadline',
+    });
+    sessionRepository.upsert({
+      sessionId: 'codex_unmarked-deadline', client: 'codex', directory: '/tmp',
+      initialPrompt: 'Unmarked', title: 'Unmarked', status: 'running',
+      lastActiveAt: new Date(now.getTime() + 1),
+    });
+    await service.reconcilePending();
+    expect(taskDispatchRepository.findById(dispatch.id)?.state).toBe('ambiguous');
+    now = new Date(now.getTime() + 1_001);
+    await service.reconcilePending();
+    expect(taskDispatchRepository.findById(dispatch.id)?.state).toBe('failed');
+    expect(taskDispatchRepository.findById(dispatch.id)?.error)
+      .toBe(DISPATCH_CORRELATION_TIMEOUT_ERROR);
+    expect(taskDispatchRepository.findCorrelationPending()).toEqual([]);
   });
 
   test('makes every dispatch ambiguous when multiple tasks match the same new session', async () => {
@@ -103,7 +175,7 @@ describe('task dispatch correctness', () => {
       lastActiveAt: new Date(now.getTime() + 1),
     });
 
-    service.reconcilePending();
+    await service.reconcilePending();
 
     for (const id of [firstDispatch.id, secondDispatch.id]) {
       const dispatch = taskDispatchRepository.findById(id)!;
@@ -128,7 +200,7 @@ describe('task dispatch correctness', () => {
       sessionId: 'codex_manual-claim', client: 'codex', directory: '/tmp',
       title: 'Manual claim', status: 'running', lastActiveAt: new Date(now.getTime() + 1),
     });
-    service.reconcilePending();
+    await service.reconcilePending();
 
     const linked = service.resolveSession(firstDispatch.id, 'codex_manual-claim');
     expect(linked.state).toBe('linked');
@@ -163,7 +235,7 @@ describe('task dispatch correctness', () => {
       sessionId: 'codex_racing-claim', client: 'codex', directory: '/tmp',
       title: 'Racing claim', status: 'running', lastActiveAt: new Date(now.getTime() + 1),
     });
-    service.reconcilePending();
+    await service.reconcilePending();
     const { token } = await setupUser('dispatch-race-user', 'password123');
     const app = createLocalApiApp();
     const responses = await Promise.all(dispatches.map((dispatch) => app.fetch(new Request(
@@ -183,6 +255,41 @@ describe('task dispatch correctness', () => {
       WHERE agent_session_id = ? AND acceptance_status = 'accepted'
     `).get(agentSessionId) as { count: number };
     expect(acceptedLinks.count).toBe(1);
+  });
+
+  test('preserves a manual resolution committed while correlation reads a transcript', async () => {
+    const now = new Date('2026-08-30T00:00:00.000Z');
+    const service = new TaskDispatchService({ now: () => now, launch: () => {} });
+    const item = workItemRepository.create({ title: 'Concurrent resolution' });
+    const dispatch = await service.dispatch(item.id, {
+      runtimeId: 'codex', cwd: '/tmp', prompt: 'Resolve', idempotencyKey: 'resolve-during-read',
+    });
+    sessionRepository.upsert({
+      sessionId: 'codex_resolve-during-read', client: 'codex', directory: '/tmp',
+      initialPrompt: 'Unmarked candidate', title: 'Candidate', status: 'running',
+      lastActiveAt: new Date(now.getTime() + 1),
+    });
+    await service.reconcilePending();
+    let release!: () => void;
+    const blocked = new Promise<void>((resolve) => { release = resolve; });
+    let reading!: () => void;
+    const started = new Promise<void>((resolve) => { reading = resolve; });
+    const read = spyOn(codexScanner, 'getCodexSessionById').mockImplementation(async () => {
+      reading();
+      await blocked;
+      return null;
+    });
+    try {
+      const scan = service.reconcilePending();
+      await started;
+      service.resolveSession(dispatch.id, 'codex_resolve-during-read');
+      release();
+      await scan;
+      expect(taskDispatchRepository.findById(dispatch.id)?.state).toBe('linked');
+    } finally {
+      release();
+      read.mockRestore();
+    }
   });
 
   test('reuses only a canonical idempotent payload and returns 409 for conflicts', async () => {
@@ -230,7 +337,7 @@ describe('task dispatch correctness', () => {
 
     now = new Date('2026-08-30T00:00:01.001Z');
     const restartedProcess = new TaskDispatchService({ now: () => now, launch: () => {} });
-    restartedProcess.reconcilePending();
+    await restartedProcess.reconcilePending();
     const failed = taskDispatchRepository.findById(created.id)!;
     expect(failed.state).toBe('failed');
     expect(failed.error).toBe(DISPATCH_CORRELATION_TIMEOUT_ERROR);
@@ -285,3 +392,100 @@ describe('task dispatch correctness', () => {
     expect(workItemRepository.findById(stashItem.id)?.status).toBe('done');
   });
 });
+
+const transcriptHomes: string[] = [];
+afterEach(() => {
+  while (transcriptHomes.length) rmSync(transcriptHomes.pop()!, { recursive: true, force: true });
+});
+
+for (const runtimeId of ['codex', 'claude-code'] as const) {
+  test(`links a delayed ${runtimeId} launch transcript after a follow-up changed the stored prompt`, () => {
+    const fixtureHome = realpathSync(mkdtempSync(join(tmpdir(), 'keepline-test-dispatch-transcript-')));
+    transcriptHomes.push(fixtureHome);
+    const bin = join(fixtureHome, 'bin');
+    mkdirSync(bin);
+    writeFileSync(join(bin, 'ps'), '#!/bin/sh\nprintf "PID %%CPU %%MEM TTY LSTART COMMAND\\n"\n', { mode: 0o755 });
+    const child = Bun.spawnSync({
+      cmd: [process.execPath, '--eval', `
+        import { mkdirSync, writeFileSync } from 'fs';
+        import { join } from 'path';
+        import { resetDatabase } from './src/db/migrations.ts';
+        import { workItemRepository } from './src/infrastructure/database/repositories/work-item.repository.ts';
+        import { taskDispatchRepository } from './src/infrastructure/database/repositories/task-dispatch.repository.ts';
+        import { sessionRepository } from './src/infrastructure/database/repositories/session.repository.ts';
+        import { TaskDispatchService } from './src/services/task-dispatch.service.ts';
+        import { serviceScanCommand } from './src/cli/service-scan.ts';
+        resetDatabase();
+        const runtimeId = ${JSON.stringify(runtimeId)};
+        const fixtureHome = ${JSON.stringify(fixtureHome)};
+        const launchedAt = new Date();
+        let launchPrompt;
+        const service = new TaskDispatchService({
+          now: () => launchedAt,
+          launch: (_executable, args) => { launchPrompt = args[0]; },
+        });
+        const item = workItemRepository.create({ title: 'Delayed transcript' });
+        const dispatch = await service.dispatch(item.id, {
+          runtimeId, cwd: fixtureHome, prompt: 'Launch task', idempotencyKey: 'delayed-transcript',
+        });
+        const firstId = '019ed4a3-2186-7e51-9aa1-ca1e376549b8';
+        const laterId = '019ed4a3-2186-7e51-9aa1-ca1e376549b9';
+        function writeTranscript(id, messages) {
+          const directory = runtimeId === 'codex'
+            ? join(fixtureHome, '.codex', 'sessions')
+            : join(fixtureHome, '.claude', 'projects', '-fixture');
+          mkdirSync(directory, { recursive: true });
+          const entries = runtimeId === 'codex' ? [{
+            type: 'session_meta', timestamp: launchedAt.toISOString(),
+            payload: { id, cwd: fixtureHome },
+          }] : [];
+          for (const [index, content] of messages.entries()) {
+            const timestamp = new Date(launchedAt.getTime() + index + 1).toISOString();
+            entries.push(runtimeId === 'codex' ? {
+              type: 'response_item', timestamp,
+              payload: { type: 'message', role: 'user', content: [{ type: 'input_text', text: content }] },
+            } : {
+              type: 'user', uuid: 'user-' + index, sessionId: id, cwd: fixtureHome,
+              timestamp, userType: 'external', message: { role: 'user', content },
+            });
+          }
+          writeFileSync(join(directory, (runtimeId === 'codex' ? 'rollout-' : '') + id + '.jsonl'),
+            entries.map(entry => JSON.stringify(entry)).join('\\n') + '\\n');
+        }
+        writeTranscript(firstId, ['An unrelated task']);
+        await serviceScanCommand({ full: true });
+        const first = taskDispatchRepository.findById(dispatch.id);
+        const pendingBeforeMarker = taskDispatchRepository.findCorrelationPending().length;
+        writeTranscript(laterId, [
+          '<environment_context>fixture context</environment_context>',
+          launchPrompt, 'Follow-up task already in transcript',
+        ]);
+        await serviceScanCommand({ full: true });
+        const linked = taskDispatchRepository.findById(dispatch.id);
+        const sessionId = runtimeId === 'codex' ? 'codex_' + laterId : laterId;
+        const stored = sessionRepository.findBySessionId(sessionId);
+        console.log(JSON.stringify({
+          firstState: first.state, pendingBeforeMarker, linkedState: linked.state,
+          linkedAgentSessionId: linked.linkedAgentSessionId, sessionId,
+          storedPrompt: stored.initialPrompt, title: stored.title,
+        }));
+      `],
+      cwd: process.cwd(),
+      env: {
+        ...process.env, HOME: fixtureHome, KEEPLINE_HOME: fixtureHome,
+        KEEPLINE_TEST_HOME: fixtureHome, KEEPLINE_TEST_ISOLATED: '1',
+        KEEPLINE_PROJECT_ROOTS: join(fixtureHome, '.claude', 'projects'),
+        PATH: `${bin}:${process.env.PATH}`,
+      },
+      stdout: 'pipe', stderr: 'pipe',
+    });
+    if (child.exitCode !== 0) throw new Error(child.stderr.toString());
+    const result = JSON.parse(child.stdout.toString().trim().split('\n').pop()!);
+    expect(result.firstState).toBe('ambiguous');
+    expect(result.linkedState).toBe('linked');
+    expect(result.pendingBeforeMarker).toBe(1);
+    expect(result.linkedAgentSessionId).toBe(encodeAgentSessionId(runtimeId, result.sessionId));
+    expect(result.storedPrompt).toBe('Follow-up task already in transcript');
+    expect(result.title).toBe('Follow-up task already in transcript');
+  });
+}

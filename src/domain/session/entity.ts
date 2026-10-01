@@ -65,6 +65,8 @@ export interface ParsedSessionData {
   client?: AgentClient;
   directory: string;
   firstMessage?: string;
+  /** First real user task, retained separately from the latest task/title. */
+  launchPrompt?: string;
   lastMessage?: string;
   messageCount: number;
   toolCount: number;

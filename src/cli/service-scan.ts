@@ -20,7 +20,7 @@ export async function serviceScanCommand(options: ServiceScanOptions = {}): Prom
     const sync = await syncSessions(options.full
       ? { fullSync: true, includeSubAgents: true }
       : { maxAgeDays: 1, includeSubAgents: false });
-    const dispatches = taskDispatchService.reconcilePending();
+    const dispatches = await taskDispatchService.reconcilePending();
     const linkedSessions = reconcileLinkedAgentSessions();
     console.log(`${SCAN_RESULT_PREFIX}${JSON.stringify({
       sync,

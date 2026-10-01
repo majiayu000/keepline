@@ -174,15 +174,16 @@ export class TaskDispatchService {
     }
   }
 
-  reconcilePending(): TaskDispatch[] {
+  async reconcilePending(): Promise<TaskDispatch[]> {
     const sessions = sessionRepository.findAll();
     const now = this.now();
     const pending = taskDispatchRepository.findPending();
     const candidatesByDispatch = new Map<string, Session[]>();
+    const candidatePrompts = new Map<string, string>();
     const dispatchOwnersBySession = new Map<string, Set<string>>();
 
     for (const dispatch of pending) {
-      if (dispatch.state === 'ambiguous' || !dispatch.launchedAt ||
+      if (!dispatch.launchedAt ||
           now > dispatch.correlationDeadlineAt) continue;
       const preLaunch = new Set(dispatch.preLaunchSessionIds);
       const candidates = sessions.filter((session) => {
@@ -193,9 +194,16 @@ export class TaskDispatchService {
         return canonicalDirectory(session.directory) === dispatch.cwd;
       });
       candidatesByDispatch.set(dispatch.id, candidates);
+      for (const candidate of candidates) {
+        if (candidatePrompts.has(candidate.sessionId)) continue;
+        const parsed = candidate.client === 'codex'
+          ? await (await import('../adapters/codex/scanner.js')).getCodexSessionById(candidate.sessionId)
+          : await (await import('../adapters/claude/scanner.js')).getSessionById(candidate.sessionId);
+        candidatePrompts.set(candidate.sessionId, parsed?.launchPrompt ?? candidate.initialPrompt);
+      }
       const dispatchMarker = `KEEPLINE_DISPATCH_ID:${dispatch.id}`;
       for (const candidate of candidates.filter((session) =>
-        session.initialPrompt.split('\n').includes(dispatchMarker)
+        candidatePrompts.get(session.sessionId)!.split('\n').includes(dispatchMarker)
       )) {
         const owners = dispatchOwnersBySession.get(candidate.sessionId) ?? new Set<string>();
         owners.add(dispatch.id);
@@ -203,17 +211,21 @@ export class TaskDispatchService {
       }
     }
 
-    return pending.map((dispatch) => {
-      if (dispatch.state !== 'ambiguous' && now > dispatch.correlationDeadlineAt) {
+    return pending.map((snapshot) => {
+      // Transcript reads yield; preserve a claim committed while they were in flight.
+      const dispatch = taskDispatchRepository.findById(snapshot.id);
+      if (!dispatch) throw new Error('Dispatch not found');
+      if (dispatch.state === 'linked' || dispatch.state === 'failed') return dispatch;
+      if (this.now() > dispatch.correlationDeadlineAt) {
         return taskDispatchRepository.updateState(dispatch.id, 'failed', {
           error: DISPATCH_CORRELATION_TIMEOUT_ERROR,
         })!;
       }
-      if (dispatch.state === 'ambiguous' || !dispatch.launchedAt) return dispatch;
+      if (!dispatch.launchedAt) return dispatch;
       const candidates = candidatesByDispatch.get(dispatch.id) ?? [];
       const dispatchMarker = `KEEPLINE_DISPATCH_ID:${dispatch.id}`;
       const trustedCandidates = candidates.filter((session) =>
-        session.initialPrompt.split('\n').includes(dispatchMarker)
+        candidatePrompts.get(session.sessionId)!.split('\n').includes(dispatchMarker)
       );
       const hasSharedCandidate = trustedCandidates.some((session) => {
         const owners = dispatchOwnersBySession.get(session.sessionId);
