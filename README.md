@@ -50,10 +50,10 @@ That is it. Open `http://127.0.0.1:3377` and take control.
 
 |  | Without Keepline | With Keepline |
 |--|-------------------|-----------------|
-| **Terminal crash** | Lose all context, start over | One-click recovery with full context |
+| **Terminal crash** | Find the owning CLI's local session records | Aggregate lost sessions and available recovery methods |
 | **Multiple sessions** | Switch terminals, lose track | See all sessions in one dashboard |
 | **Cost tracking** | Check Anthropic console manually | Real-time costs with predictions |
-| **Session context** | Gone when terminal closes | Persisted and searchable |
+| **Session context** | Local transcripts usually remain; locate the right one | Persisted and searchable |
 | **Project overview** | Scattered across directories | Aggregated by project |
 
 ## Repository Scope
@@ -139,16 +139,38 @@ Monitor local agent runtime sessions across your system. See runtime, status, cu
 
 ### One-Click Session Recovery
 
-Terminal crashed? Session lost? Recover in seconds with full context preserved.
+After a terminal exits, locate a session marked lost and choose an available recovery method. Recovery depends on local files, the project directory and the owning CLI.
 
 ```bash
 keepline recover <session-id>
 ```
 
 Three recovery methods:
-- **Resume** — Restore exact session state (recommended)
-- **Continue** — New session in same directory
+- **Resume** — Ask the owning CLI to resume the specified session when its file exists
+- **Continue** — Continue the owning CLI's latest session in that directory (may differ from the selected ID)
 - **New** — Fresh start with original prompt
+
+### Recover an interrupted Codex or Claude Code session
+
+```bash
+keepline list --status lost
+keepline recover
+keepline recover <session-id> --method resume
+```
+
+The first command lists lost sessions; `recover` without an argument lists
+recovery candidates and methods. Prefer the full session ID, confirm the project
+directory and owning CLI, then choose `resume`, `continue` or `new`.
+Without `--terminal`, recovery prints a command for you to run; with
+`--terminal`, it attempts to open a terminal and execute that command.
+Running/completed sessions are outside lost-session recovery, and a missing
+project directory is an error.
+
+`resume` cannot recreate a deleted transcript. `new` starts with the original
+prompt rather than the previous conversation. For encrypted backup and export
+recovery drills, see [chat-archive-rs](https://github.com/majiayu000/chat-archive-rs).
+Session monitoring and runtime recovery serve a different purpose from archives.
+
 
 ### Cost Analytics & Predictions
 
@@ -319,7 +341,7 @@ version in `src/infrastructure/session-summary-cache.ts`.
 | Feature | Manual | claude-mem | **Keepline** |
 |---------|:------:|:----------:|:--------------:|
 | Multi-session monitoring | - | - | **Yes** |
-| Session recovery | - | - | **3 methods** |
+| Session recovery | Owning CLI resume commands | - | **3 methods, where supported** |
 | Cost tracking | - | - | **Yes + predictions** |
 | Cache token analysis | - | - | **Yes** |
 | Cross-session memory | - | Yes | **Yes** |
