@@ -400,7 +400,6 @@ bun test             # Run tests
 ## Support
 
 - [GitHub Issues](https://github.com/majiayu000/keepline/issues)
-- [Discussions](https://github.com/majiayu000/keepline/discussions)
 
 ---
 
