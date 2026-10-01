@@ -52,10 +52,10 @@ bunx keepline
 
 |  | 没有 Keepline | 有 Keepline |
 |--|-----------------|---------------|
-| **终端崩溃** | 丢失所有上下文，从头开始 | 一键恢复，完整上下文 |
+| **终端崩溃** | 需要查找 CLI 的本地会话记录 | 聚合丢失会话与可用恢复方式 |
 | **多个会话** | 切换终端，容易搞混 | 所有会话一个仪表板 |
 | **费用追踪** | 手动查 Anthropic 控制台 | 实时费用 + 预测 |
-| **会话上下文** | 关掉终端就没了 | 持久化，可搜索 |
+| **会话上下文** | 本地 transcript 通常仍在，但需要定位 | 持久化，可搜索 |
 | **项目概览** | 散落在各个目录 | 按项目聚合 |
 
 ## 仓库范围
@@ -119,16 +119,34 @@ bun run start web
 
 ### 一键会话恢复
 
-终端崩溃？会话丢失？几秒钟恢复，完整上下文。
+终端退出后，先定位被标记为 lost 的会话，再选择该会话可用的恢复方式。恢复依赖本地文件、项目目录和原 CLI 的能力。
 
 ```bash
 keepline recover <session-id>
 ```
 
 三种恢复方式：
-- **Resume（恢复）** — 恢复精确的会话状态（推荐）
-- **Continue（继续）** — 在同一目录新建会话
+- **Resume（恢复）** — 有对应会话文件时，用原 CLI 恢复指定会话
+- **Continue（继续）** — 用原 CLI 继续该目录的最近会话（可能不是指定 ID）
 - **New（新建）** — 用原始 prompt 全新开始
+
+### 找回中断的 Codex 或 Claude Code 会话
+
+```bash
+keepline list --status lost
+keepline recover
+keepline recover <session-id> --method resume
+```
+
+第一条命令列出 lost 会话；不带参数的 `recover` 显示恢复候选与可用方法。
+优先使用完整 session ID，确认项目目录和 CLI，再选择 `resume`、`continue` 或 `new`。
+不带 `--terminal` 时，命令显示需要你在终端执行的恢复命令；`--terminal` 会尝试打开终端执行。
+运行中或已完成的会话不属于 lost 恢复范围，目录不存在也会报错。
+
+`resume` 不会重建已经被删除的 transcript，`new` 只以原始 prompt 开始新会话。
+需要加密备份和导出恢复演练时，参见 [chat-archive-rs](https://github.com/majiayu000/chat-archive-rs)；
+Keepline 的监控和运行时恢复不等于归档备份。
+
 
 ### 费用分析与预测
 
@@ -249,7 +267,7 @@ hook receiver。`keepline hooks install` 只安装转发命令；用 `keepline s
 | 功能 | 手动 | claude-mem | **Keepline** |
 |------|:----:|:----------:|:--------------:|
 | 多会话监控 | - | - | **支持** |
-| 会话恢复 | - | - | **3 种方式** |
+| 会话恢复 | 原 CLI 的 resume 命令 | - | **按会话提供可用方式** |
 | 费用追踪 | - | - | **支持 + 预测** |
 | 缓存 token 分析 | - | - | **支持** |
 | 跨会话记忆 | - | 支持 | **支持** |
