@@ -2,6 +2,7 @@ import { existsSync, realpathSync, statSync } from 'fs';
 import type { Session, ParsedSessionData } from '../domain/session/index.js';
 import type { RuntimeId } from '../domain/runtime/index.js';
 import { encodeAgentSessionId, type TaskDispatch } from '../domain/work-item/index.js';
+import { getDatabase } from '../infrastructure/database/sqlite.js';
 import { sessionRepository } from '../infrastructure/database/repositories/session.repository.js';
 import {
   DispatchSessionClaimConflictError,
@@ -237,8 +238,8 @@ export class TaskDispatchService {
       }
     }
 
-    return pending.map((snapshot) => {
-      // Transcript reads yield; preserve committed claims and skip concurrent deletions.
+    return pending.map((snapshot) => getDatabase().transaction(() => {
+      // Lock after transcript I/O, before reading the state used by these writes.
       const dispatch = taskDispatchRepository.findById(snapshot.id);
       if (!dispatch) return null;
       if (dispatch.state === 'linked' || dispatch.state === 'failed') return dispatch;
@@ -279,24 +280,26 @@ export class TaskDispatchService {
       return taskDispatchRepository.updateState(dispatch.id, 'awaiting_session', {
         candidateSessionIds: [],
       })!;
-    }).filter((dispatch): dispatch is TaskDispatch => dispatch !== null);
+    }).immediate()).filter((dispatch): dispatch is TaskDispatch => dispatch !== null);
   }
 
   resolveSession(dispatchId: string, sessionId: string): TaskDispatch {
-    const dispatch = taskDispatchRepository.findById(dispatchId);
-    if (!dispatch) throw new Error('Dispatch not found');
-    if (dispatch.state !== 'ambiguous' && dispatch.state !== 'awaiting_session') {
-      throw new Error('Dispatch is not awaiting session resolution');
-    }
-    if (this.now() > dispatch.correlationDeadlineAt) {
-      throw new Error(DISPATCH_CORRELATION_TIMEOUT_ERROR);
-    }
-    if (!dispatch.candidateSessionIds.includes(sessionId)) {
-      throw new Error('Session is not a dispatch candidate');
-    }
-    const session = sessionRepository.findBySessionId(sessionId);
-    if (!session) throw new Error('Session not found');
-    return this.link(dispatch, session);
+    return getDatabase().transaction(() => {
+      const dispatch = taskDispatchRepository.findById(dispatchId);
+      if (!dispatch) throw new Error('Dispatch not found');
+      if (dispatch.state !== 'ambiguous' && dispatch.state !== 'awaiting_session') {
+        throw new Error('Dispatch is not awaiting session resolution');
+      }
+      if (this.now() > dispatch.correlationDeadlineAt) {
+        throw new Error(DISPATCH_CORRELATION_TIMEOUT_ERROR);
+      }
+      if (!dispatch.candidateSessionIds.includes(sessionId)) {
+        throw new Error('Session is not a dispatch candidate');
+      }
+      const session = sessionRepository.findBySessionId(sessionId);
+      if (!session) throw new Error('Session not found');
+      return this.link(dispatch, session);
+    }).immediate();
   }
 
   private link(dispatch: TaskDispatch, session: Session): TaskDispatch {

@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, spyOn, test } from 'bun:test';
-import { mkdirSync, mkdtempSync, realpathSync, rmSync, writeFileSync } from 'fs';
+import { existsSync, readFileSync, mkdirSync, mkdtempSync, realpathSync, rmSync, writeFileSync } from 'fs';
 import { tmpdir } from 'os';
 import { join } from 'path';
 import * as codexScanner from '../adapters/codex/scanner.js';
@@ -606,6 +606,162 @@ const transcriptHomes: string[] = [];
 afterEach(() => {
   while (transcriptHomes.length) rmSync(transcriptHomes.pop()!, { recursive: true, force: true });
 });
+
+
+for (const runtimeId of ['codex', 'claude-code'] as const) {
+  for (const boundary of ['scan', 'manual'] as const) {
+    for (const transition of boundary === 'scan' ? ['ambiguous', 'awaiting_session', 'linked'] : ['linked']) {
+      test(`serializes ${runtimeId} ${transition} correlation with manual resolution at the ${boundary} read/write boundary`, async () => {
+        const fixtureHome = realpathSync(mkdtempSync(join(tmpdir(), 'keepline-test-dispatch-atomic-')));
+        transcriptHomes.push(fixtureHome);
+        const bin = join(fixtureHome, 'bin');
+        mkdirSync(bin);
+        writeFileSync(join(bin, 'ps'), '#!/bin/sh\nprintf "PID %%CPU %%MEM TTY LSTART COMMAND\\n"\n', { mode: 0o755 });
+        const env = {
+          ...process.env, HOME: fixtureHome, KEEPLINE_HOME: fixtureHome, KEEPLINE_TEST_HOME: fixtureHome,
+          CODEX_HOME: join(fixtureHome, '.codex'),
+          KEEPLINE_PROJECT_ROOTS: join(fixtureHome, '.claude', 'projects'),
+          PATH: `${bin}:${process.env.PATH}`,
+        };
+        const common = `
+          import { existsSync, readFileSync, writeFileSync } from 'fs';
+          import { join } from 'path';
+          import { taskDispatchRepository } from './src/infrastructure/database/repositories/task-dispatch.repository.ts';
+          import { getDatabase } from './src/infrastructure/database/sqlite.ts';
+          const home = ${JSON.stringify(fixtureHome)};
+          const boundary = ${JSON.stringify(boundary)};
+          function pauseAfterRead(owner, id) {
+            const original = taskDispatchRepository.findById.bind(taskDispatchRepository);
+            let paused = false;
+            taskDispatchRepository.findById = (lookupId) => {
+              const row = original(lookupId);
+              if (lookupId === id && !paused && boundary === owner) {
+                paused = true;
+                writeFileSync(join(home, 'read-ready'), JSON.stringify({ owner, state: row?.state }));
+                const until = Date.now() + 8000;
+                while (!existsSync(join(home, 'release'))) {
+                  if (Date.now() > until) throw new Error('Read/write boundary was not released');
+                  Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 5);
+                }
+              }
+              return row;
+            };
+          }
+        `;
+        const scan = Bun.spawn({
+          cmd: [process.execPath, '--eval', common + `
+            import { resetDatabase } from './src/db/migrations.ts';
+            import { workItemRepository } from './src/infrastructure/database/repositories/work-item.repository.ts';
+            import { sessionRepository } from './src/infrastructure/database/repositories/session.repository.ts';
+            import { TaskDispatchService } from './src/services/task-dispatch.service.ts';
+            import { serviceScanCommand } from './src/cli/service-scan.ts';
+            import { setupUser } from './src/services/auth.service.ts';
+            resetDatabase();
+            const runtimeId = ${JSON.stringify(runtimeId)};
+            const transition = ${JSON.stringify(transition)};
+            const service = new TaskDispatchService({ launch: () => {} });
+            const item = workItemRepository.create({ title: 'Atomic dispatch' });
+            const dispatch = await service.dispatch(item.id, {
+              runtimeId, cwd: home, prompt: 'Atomic', idempotencyKey: 'atomic',
+            });
+            const manualId = 'manual-candidate';
+            const markedId = 'marked-candidate';
+            for (const sessionId of [manualId, markedId]) {
+              sessionRepository.upsert({
+                sessionId, client: runtimeId === 'codex' ? 'codex' : 'claude', directory: home,
+                initialPrompt: sessionId === markedId && transition === 'linked'
+                  ? 'KEEPLINE_DISPATCH_ID:' + dispatch.id : 'Unmarked task',
+                title: sessionId, status: 'running', lastActiveAt: new Date(Date.now() + 1000),
+              });
+            }
+            taskDispatchRepository.updateState(dispatch.id, 'ambiguous', { candidateSessionIds: [manualId] });
+            if (transition === 'awaiting_session') {
+              getDatabase().prepare('UPDATE task_dispatches SET pre_launch_session_ids = ? WHERE id = ?')
+                .run(JSON.stringify([manualId, markedId]), dispatch.id);
+            }
+            const { token } = await setupUser('atomic-user', 'password123');
+            writeFileSync(join(home, 'setup'), JSON.stringify({ id: dispatch.id, workItemId: item.id, token }));
+            if (boundary === 'manual') {
+              while (!existsSync(join(home, 'read-ready'))) await Bun.sleep(5);
+            }
+            pauseAfterRead('scan', dispatch.id);
+            writeFileSync(join(home, 'scan-started'), '1');
+            await serviceScanCommand();
+            writeFileSync(join(home, 'scan-done'), '1');
+            while (!existsSync(join(home, 'api-result'))) await Bun.sleep(5);
+            const row = taskDispatchRepository.findById(dispatch.id);
+            const links = getDatabase().prepare(
+              "SELECT agent_session_id FROM work_item_session_links WHERE work_item_id = ? AND acceptance_status = 'accepted'"
+            ).all(item.id);
+            console.log('__ATOMIC__' + JSON.stringify({ row, links }));
+          `], env, stdout: 'pipe', stderr: 'pipe',
+        });
+        let api: Bun.Subprocess<'ignore', 'pipe', 'pipe'> | undefined;
+        const waitFor = async (file: string) => {
+          const until = Date.now() + 8000;
+          while (!existsSync(join(fixtureHome, file))) {
+            if (scan.exitCode !== null) throw new Error(await new Response(scan.stderr).text());
+            if (Date.now() > until) throw new Error(`Timed out waiting for ${file}`);
+            await Bun.sleep(5);
+          }
+        };
+        try {
+          await waitFor(boundary === 'scan' ? 'read-ready' : 'setup');
+          api = Bun.spawn({
+            cmd: [process.execPath, '--eval', common + `
+              import { createLocalApiApp } from './src/local-api/app.ts';
+              const setup = JSON.parse(readFileSync(join(home, 'setup'), 'utf8'));
+              pauseAfterRead('manual', setup.id);
+              writeFileSync(join(home, 'api-started'), '1');
+              const response = await createLocalApiApp().fetch(new Request(
+                'http://localhost/api/v1/dispatches/' + setup.id + '/resolve-session', {
+                  method: 'POST', headers: { Authorization: 'Bearer ' + setup.token, 'Content-Type': 'application/json' },
+                  body: JSON.stringify({ sessionId: 'manual-candidate' }),
+                }
+              ));
+              writeFileSync(join(home, 'api-result'), JSON.stringify({ status: response.status, body: await response.json() }));
+            `], env, stdin: 'ignore', stdout: 'pipe', stderr: 'pipe',
+          });
+          await waitFor(boundary === 'scan' ? 'api-started' : 'scan-started');
+          // A free writer commits before release; an atomic writer waits for the lock.
+          const until = Date.now() + 300;
+          const done = boundary === 'scan' ? 'api-result' : 'scan-done';
+          while (!existsSync(join(fixtureHome, done)) && Date.now() < until) await Bun.sleep(5);
+          writeFileSync(join(fixtureHome, 'release'), '1');
+          const [scanExit, apiExit, scanOut, scanErr, apiErr] = await Promise.all([
+            scan.exited, api.exited, new Response(scan.stdout).text(),
+            new Response(scan.stderr).text(), new Response(api.stderr).text(),
+          ]);
+          expect({ scanExit, scanErr }).toMatchObject({ scanExit: 0 });
+          expect({ apiExit, apiErr }).toMatchObject({ apiExit: 0 });
+          const result = JSON.parse(scanOut.split('__ATOMIC__')[1]);
+          const resolved = JSON.parse(readFileSync(join(fixtureHome, 'api-result'), 'utf8'));
+          expect(JSON.parse(readFileSync(join(fixtureHome, 'read-ready'), 'utf8')))
+            .toEqual({ owner: boundary, state: 'ambiguous' });
+          expect(resolved.status).toBe(boundary === 'manual' || transition === 'ambiguous' ? 200 : 400);
+          if (resolved.status === 200) {
+            expect(result.row.state).toBe('linked');
+            expect(result.row.linkedAgentSessionId).toBe(encodeAgentSessionId(runtimeId, 'manual-candidate'));
+            expect(result.links).toEqual([{ agent_session_id: result.row.linkedAgentSessionId }]);
+          } else {
+            expect(resolved.body).toEqual({
+              success: false, error: transition === 'linked'
+                ? 'Dispatch is not awaiting session resolution' : 'Session is not a dispatch candidate',
+            });
+            expect(result.row.state).toBe(transition);
+            expect(result.links).toEqual(transition === 'linked'
+              ? [{ agent_session_id: encodeAgentSessionId(runtimeId, 'marked-candidate') }] : []);
+          }
+          expect(scanOut).toContain('__KEEPLINE_SERVICE_SCAN__');
+        } finally {
+          writeFileSync(join(fixtureHome, 'release'), '1');
+          scan.kill();
+          api?.kill();
+        }
+      }, 20000);
+    }
+  }
+}
 
 for (const runtimeId of ['codex', 'claude-code'] as const) {
   test(`links a delayed ${runtimeId} launch transcript after a follow-up changed the stored prompt`, () => {
