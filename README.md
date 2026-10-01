@@ -8,8 +8,6 @@
 
 **A local CLI and dashboard for monitoring Codex and Claude Code sessions, recovering interrupted work where supported, and tracking available token and cost data.**
 
-[![npm version](https://img.shields.io/npm/v/keepline.svg?style=flat-square&color=00d4ff)](https://www.npmjs.com/package/keepline)
-[![npm downloads](https://img.shields.io/npm/dm/keepline.svg?style=flat-square&color=ff00ff)](https://www.npmjs.com/package/keepline)
 [![GitHub stars](https://img.shields.io/github/stars/majiayu000/keepline?style=flat-square&color=ffcc00)](https://github.com/majiayu000/keepline)
 [![License](https://img.shields.io/badge/license-MIT-blue.svg?style=flat-square)](LICENSE)
 
@@ -38,11 +36,8 @@ You're deep in a coding session with one or more local agent runtimes. Everythin
 
 For the implementation details behind the rename and Codex detection, see [Keepline Rebrand and Codex Detection Spec](docs/KEEPLINE_REBRAND_AND_CODEX_DETECTION_SPEC.md).
 
-```bash
-bunx keepline
-```
-
-That is it. Open `http://127.0.0.1:3377` and take control.
+Build the Bun CLI and dashboard with the [source setup](#quick-start) below,
+then open `http://127.0.0.1:3377`.
 
 ---
 
@@ -66,22 +61,9 @@ Experimental runner workspaces that used to live here have been moved out to the
 
 ## Quick Start
 
-### Option 1: bunx (Recommended)
+### Bun CLI and dashboard from source
 
-```bash
-bunx keepline
-```
-
-Requires Bun 1.1+ on your machine.
-
-### Option 2: Install globally
-
-```bash
-bun install -g keepline
-keepline web
-```
-
-### Option 3: From source
+Requires Git and Bun 1.1+.
 
 ```bash
 git clone https://github.com/majiayu000/keepline.git keepline
@@ -92,7 +74,8 @@ bun run build
 bun run start web
 ```
 
-Open **http://127.0.0.1:3377**
+Open **http://127.0.0.1:3377**. For CLI commands shown below, run
+`bun dist/index.js` in place of `keepline` from this checkout.
 
 By default the web server binds to loopback only. To expose it intentionally, set `KEEPLINE_HOST`.
 
@@ -100,23 +83,15 @@ If you put Keepline behind a reverse proxy (Caddy, nginx, cloudflared), set `KEE
 
 If you also want the in-process rate limiter to identify real clients behind that proxy, set `KEEPLINE_TRUST_PROXY=true`. Without that flag, `X-Forwarded-For` is treated as untrusted input and the limiter keys on the actual TCP peer instead — this is intentional, so a malicious caller cannot bypass throttling by spoofing forwarded headers.
 
-### macOS Security Note
+### Claude Quota menu-bar app
 
-If you see an error like **"Keepline is damaged and can't be opened"** when running the desktop app, this is macOS Gatekeeper blocking unsigned apps — the app is not actually damaged.
+The `menubar-tauri` companion is distributed as **Claude Quota** through
+[GitHub Releases](https://github.com/majiayu000/keepline/releases/latest).
+These installers provide the quota-monitoring menu-bar app. Use the source
+setup above for the Bun session-management CLI and dashboard.
 
-**Fix it with:**
-
-```bash
-xattr -cr /Applications/Keepline.app
-```
-
-Or if downloaded elsewhere:
-
-```bash
-xattr -cr ~/Downloads/Keepline.app
-```
-
-This removes the quarantine attribute that macOS adds to downloaded files.
+The menu-bar app and root Bun CLI have independent versions; a menu-bar
+release does not publish or install the Bun CLI.
 
 ---
 
@@ -433,7 +408,7 @@ bun test             # Run tests
 
 **Built for local agent runtime power users**
 
-[GitHub](https://github.com/majiayu000/keepline) | [npm](https://www.npmjs.com/package/keepline) | [CLI reference](#cli-reference)
+[GitHub](https://github.com/majiayu000/keepline) | [Source setup](#quick-start) | [CLI reference](#cli-reference)
 
 MIT License
 

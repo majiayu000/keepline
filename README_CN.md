@@ -8,8 +8,6 @@
 
 **Agent CLI 重度用户的控制中心**
 
-[![npm version](https://img.shields.io/npm/v/keepline.svg?style=flat-square&color=00d4ff)](https://www.npmjs.com/package/keepline)
-[![npm downloads](https://img.shields.io/npm/dm/keepline.svg?style=flat-square&color=ff00ff)](https://www.npmjs.com/package/keepline)
 [![GitHub stars](https://img.shields.io/github/stars/majiayu000/keepline?style=flat-square&color=ffcc00)](https://github.com/majiayu000/keepline)
 [![License](https://img.shields.io/badge/license-MIT-blue.svg?style=flat-square)](LICENSE)
 
@@ -40,11 +38,8 @@
 
 改名和 Codex 检测的完整实现说明见 [Keepline Rebrand and Codex Detection Spec](docs/KEEPLINE_REBRAND_AND_CODEX_DETECTION_SPEC.md)。
 
-```bash
-bunx keepline
-```
-
-就这么简单。打开 `http://127.0.0.1:3377` 开始掌控。
+按下面的[源码安装步骤](#快速开始)构建 Bun CLI 和仪表板，再打开
+`http://127.0.0.1:3377`。
 
 ---
 
@@ -68,22 +63,9 @@ bunx keepline
 
 ## 快速开始
 
-### 方式一：bunx（推荐）
+### 从源码构建 Bun CLI 和仪表板
 
-```bash
-bunx keepline
-```
-
-需要先安装 Bun 1.1+。
-
-### 方式二：全局安装
-
-```bash
-bun install -g keepline
-keepline web
-```
-
-### 方式三：从源码
+需要 Git 和 Bun 1.1+。
 
 ```bash
 git clone https://github.com/majiayu000/keepline.git keepline
@@ -94,9 +76,18 @@ bun run build
 bun run start web
 ```
 
-打开 **http://127.0.0.1:3377**
+打开 **http://127.0.0.1:3377**。使用源码 checkout 时，下面的 CLI 示例中，
+请在本仓库目录用 `bun dist/index.js` 代替 `keepline`。
 
 默认只绑定本机回环地址；如果你确实要对外暴露，再设置 `KEEPLINE_HOST`。
+
+### Claude Quota 菜单栏应用
+
+`menubar-tauri` 配套应用以 **Claude Quota** 名称通过
+[GitHub Releases](https://github.com/majiayu000/keepline/releases/latest) 分发。
+这些安装器提供额度监控菜单栏应用；Bun 会话管理 CLI 和仪表板请使用上面的源码安装步骤。
+
+菜单栏应用和仓库根目录的 Bun CLI 使用独立的版本号；发布菜单栏安装包不等于发布或安装 Bun CLI。
 
 ---
 
