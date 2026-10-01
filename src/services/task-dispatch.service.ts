@@ -243,12 +243,6 @@ export class TaskDispatchService {
       const dispatch = taskDispatchRepository.findById(snapshot.id);
       if (!dispatch) return null;
       if (dispatch.state === 'linked' || dispatch.state === 'failed') return dispatch;
-      if (this.now() > dispatch.correlationDeadlineAt) {
-        return taskDispatchRepository.updateState(dispatch.id, 'failed', {
-          error: DISPATCH_CORRELATION_TIMEOUT_ERROR,
-        })!;
-      }
-      if (!dispatch.launchedAt) return dispatch;
       const candidates = candidatesByDispatch.get(dispatch.id) ?? [];
       const dispatchMarker = `KEEPLINE_DISPATCH_ID:${dispatch.id}`;
       const trustedCandidates = candidates.filter((session) =>
@@ -261,6 +255,15 @@ export class TaskDispatchService {
         return taskDispatchRepository.findLinkedByAgentSessionId(agentSessionId)
           .some((linked) => linked.id !== dispatch.id);
       });
+      // A unique marked candidate belongs to this scan's in-time snapshot.
+      // Unmatched/shared candidates still expire after a slow scan.
+      const correlationNow = trustedCandidates.length === 1 && !hasSharedCandidate ? now : this.now();
+      if (correlationNow > dispatch.correlationDeadlineAt) {
+        return taskDispatchRepository.updateState(dispatch.id, 'failed', {
+          error: DISPATCH_CORRELATION_TIMEOUT_ERROR,
+        })!;
+      }
+      if (!dispatch.launchedAt) return dispatch;
       if (trustedCandidates.length === 1 && !hasSharedCandidate) {
         try {
           return this.link(dispatch, trustedCandidates[0]);
