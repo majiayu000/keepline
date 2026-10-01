@@ -7,6 +7,8 @@ import * as claudeScanner from '../adapters/claude/scanner.js';
 import { getRuntimeScanStatus } from '../services/runtime-status.js';
 import { SessionSummaryCacheError } from '../infrastructure/session-summary-cache.js';
 import { createLocalApiApp } from '../local-api/app.js';
+import workItems from '../web/api/routes/work-items.js';
+import { reconcileLinkedAgentSessions } from '../services/work-item-session-reconciler.js';
 import { resetDatabase } from '../db/migrations.js';
 import { encodeAgentSessionId } from '../domain/work-item/index.js';
 import { sessionRepository } from '../infrastructure/database/repositories/session.repository.js';
@@ -306,6 +308,76 @@ describe('task dispatch correctness', () => {
       release();
       read.mockRestore();
     }
+  });
+
+  for (const runtimeId of ['codex', 'claude-code'] as const) {
+    for (const remove of [true, false]) {
+      test(`${remove ? 'skips a deleted' : 'retains an existing'} dispatch during an awaited ${runtimeId} scan`, async () => {
+        const now = new Date();
+        const service = new TaskDispatchService({ now: () => now, launch: () => {} });
+        const item = workItemRepository.create({ title: 'Concurrent deletion' });
+        const survivor = workItemRepository.create({ title: 'Unrelated pending task' });
+        const dispatch = await service.dispatch(item.id, {
+          runtimeId, cwd: '/tmp', prompt: 'Delete', idempotencyKey: 'delete-during-scan',
+        });
+        const survivingDispatch = await service.dispatch(survivor.id, {
+          runtimeId, cwd: '/tmp', prompt: 'Keep', idempotencyKey: 'keep-during-scan',
+        });
+        const sessionId = `${runtimeId}-surviving-session`;
+        sessionRepository.upsert({
+          sessionId, client: runtimeId === 'codex' ? 'codex' : 'claude', directory: '/tmp',
+          initialPrompt: `KEEPLINE_DISPATCH_ID:${survivingDispatch.id}`, title: 'Surviving session',
+          status: 'running', lastActiveAt: new Date(now.getTime() + 1),
+        });
+        const { token } = await setupUser('delete-during-scan-user', 'password123');
+        let release!: () => void;
+        const blocked = new Promise<void>((resolve) => { release = resolve; });
+        let reading!: () => void;
+        const started = new Promise<void>((resolve) => { reading = resolve; });
+        const scanSummary = runtimeId === 'codex' ? codexSummary : claudeSummary;
+        scanSummary.mockImplementation(async () => {
+          reading();
+          await blocked;
+          return { sessions: [], failures: [] };
+        });
+        const scan = service.reconcilePending();
+        try {
+          await started;
+          if (remove) {
+            const response = await workItems.fetch(new Request(`http://localhost/${item.id}`, {
+              method: 'DELETE', headers: { Authorization: `Bearer ${token}` },
+            }));
+            expect(response.status).toBe(200);
+            expect(workItemRepository.findById(item.id)).toBeNull();
+            expect(taskDispatchRepository.findById(dispatch.id)).toBeNull();
+          }
+        } finally { release(); }
+        const reconciled = await scan;
+        expect(reconciled.map((row) => row.id).sort()).toEqual(
+          (remove ? [survivingDispatch.id] : [dispatch.id, survivingDispatch.id]).sort()
+        );
+        const linked = taskDispatchRepository.findById(survivingDispatch.id)!;
+        expect(linked.state).toBe('linked');
+        expect(linked.linkedAgentSessionId).toBe(encodeAgentSessionId(runtimeId, sessionId));
+        sessionRepository.upsert({ sessionId, title: 'Fresh surviving session' });
+        expect(reconcileLinkedAgentSessions()).toEqual({ updated: 1, missing: 0, evidenceCreated: 0 });
+        expect(workItemEvidenceRepository.findAgentSessionById(linked.linkedAgentSessionId!)?.title)
+          .toBe('Fresh surviving session');
+      });
+    }
+  }
+
+  test('keeps repository lookup errors fatal during correlation', async () => {
+    const service = new TaskDispatchService({ launch: () => {} });
+    const item = workItemRepository.create({ title: 'Repository error' });
+    await service.dispatch(item.id, {
+      runtimeId: 'codex', cwd: '/tmp', prompt: 'Wait', idempotencyKey: 'repository-error',
+    });
+    const failure = new Error('Repository lookup failed');
+    const lookup = spyOn(taskDispatchRepository, 'findById').mockImplementation(() => { throw failure; });
+    try {
+      await expect(service.reconcilePending()).rejects.toBe(failure);
+    } finally { lookup.mockRestore(); }
   });
 
   test('rejects stale manual resolution before and after deadline reconciliation', async () => {

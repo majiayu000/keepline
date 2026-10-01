@@ -238,9 +238,9 @@ export class TaskDispatchService {
     }
 
     return pending.map((snapshot) => {
-      // Transcript reads yield; preserve a claim committed while they were in flight.
+      // Transcript reads yield; preserve committed claims and skip concurrent deletions.
       const dispatch = taskDispatchRepository.findById(snapshot.id);
-      if (!dispatch) throw new Error('Dispatch not found');
+      if (!dispatch) return null;
       if (dispatch.state === 'linked' || dispatch.state === 'failed') return dispatch;
       if (this.now() > dispatch.correlationDeadlineAt) {
         return taskDispatchRepository.updateState(dispatch.id, 'failed', {
@@ -279,7 +279,7 @@ export class TaskDispatchService {
       return taskDispatchRepository.updateState(dispatch.id, 'awaiting_session', {
         candidateSessionIds: [],
       })!;
-    });
+    }).filter((dispatch): dispatch is TaskDispatch => dispatch !== null);
   }
 
   resolveSession(dispatchId: string, sessionId: string): TaskDispatch {
