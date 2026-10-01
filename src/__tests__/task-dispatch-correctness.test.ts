@@ -3,6 +3,9 @@ import { mkdirSync, mkdtempSync, realpathSync, rmSync, writeFileSync } from 'fs'
 import { tmpdir } from 'os';
 import { join } from 'path';
 import * as codexScanner from '../adapters/codex/scanner.js';
+import * as claudeScanner from '../adapters/claude/scanner.js';
+import { getRuntimeScanStatus } from '../services/runtime-status.js';
+import { SessionSummaryCacheError } from '../infrastructure/session-summary-cache.js';
 import { createLocalApiApp } from '../local-api/app.js';
 import { resetDatabase } from '../db/migrations.js';
 import { encodeAgentSessionId } from '../domain/work-item/index.js';
@@ -20,7 +23,20 @@ import {
 } from '../services/task-dispatch.service.js';
 
 describe('task dispatch correctness', () => {
-  beforeEach(() => resetDatabase());
+  let codexSummary: ReturnType<typeof spyOn>;
+  let claudeSummary: ReturnType<typeof spyOn>;
+  beforeEach(() => {
+    resetDatabase();
+    // These database-only cases have no transcript fixtures. Do not scan the user's history.
+    codexSummary = spyOn(codexScanner, 'getAllCodexSessionsWithFailures')
+      .mockResolvedValue({ sessions: [], failures: [] });
+    claudeSummary = spyOn(claudeScanner, 'getAllSessionsWithFailures')
+      .mockResolvedValue({ sessions: [], failures: [] });
+  });
+  afterEach(() => {
+    codexSummary.mockRestore();
+    claudeSummary.mockRestore();
+  });
 
   test('gives launched agents a dispatch marker without changing stored prompts', async () => {
     const launches: Array<{ executable: string; args: string[] }> = [];
@@ -86,7 +102,7 @@ describe('task dispatch correctness', () => {
   });
 
   test('refreshes ambiguous candidates so a later session can be resolved through the API', async () => {
-    const now = new Date('2026-08-30T00:00:00.000Z');
+    const now = new Date();
     const service = new TaskDispatchService({ now: () => now, launch: () => {} });
     const item = workItemRepository.create({ title: 'Refresh candidates' });
     const dispatch = await service.dispatch(item.id, {
@@ -219,7 +235,7 @@ describe('task dispatch correctness', () => {
   });
 
   test('returns one success and one 409 when manual resolve requests race', async () => {
-    const now = new Date('2026-08-30T00:00:00.000Z');
+    const now = new Date();
     const service = new TaskDispatchService({ now: () => now, launch: () => {} });
     const first = workItemRepository.create({ title: 'Race first' });
     const second = workItemRepository.create({ title: 'Race second' });
@@ -274,10 +290,10 @@ describe('task dispatch correctness', () => {
     const blocked = new Promise<void>((resolve) => { release = resolve; });
     let reading!: () => void;
     const started = new Promise<void>((resolve) => { reading = resolve; });
-    const read = spyOn(codexScanner, 'getCodexSessionById').mockImplementation(async () => {
+    const read = spyOn(codexScanner, 'getAllCodexSessionsWithFailures').mockImplementation(async () => {
       reading();
       await blocked;
-      return null;
+      return { sessions: [], failures: [] };
     });
     try {
       const scan = service.reconcilePending();
@@ -290,6 +306,127 @@ describe('task dispatch correctness', () => {
       release();
       read.mockRestore();
     }
+  });
+
+  test('rejects stale manual resolution before and after deadline reconciliation', async () => {
+    let now = new Date('2026-08-30T00:00:00.000Z');
+    const service = new TaskDispatchService({
+      now: () => now, correlationTimeoutMs: 1_000, launch: () => {},
+    });
+    const item = workItemRepository.create({ title: 'Stale resolution' });
+    const dispatch = await service.dispatch(item.id, {
+      runtimeId: 'codex', cwd: '/tmp', prompt: 'Wait', idempotencyKey: 'stale-resolution',
+    });
+    const sessionId = 'codex_stale-resolution';
+    sessionRepository.upsert({
+      sessionId, client: 'codex', directory: '/tmp', title: 'Candidate',
+      status: 'running', lastActiveAt: new Date(now.getTime() + 1),
+    });
+    await service.reconcilePending();
+    expect(taskDispatchRepository.findById(dispatch.id)?.state).toBe('ambiguous');
+    now = new Date(now.getTime() + 1_001);
+    expect(() => service.resolveSession(dispatch.id, sessionId))
+      .toThrow(DISPATCH_CORRELATION_TIMEOUT_ERROR);
+    await service.reconcilePending();
+    expect(() => service.resolveSession(dispatch.id, sessionId)).toThrow();
+    expect(taskDispatchRepository.findById(dispatch.id)?.state).toBe('failed');
+    const { token } = await setupUser('stale-resolution-user', 'password123');
+    const response = await createLocalApiApp().fetch(new Request(
+      `http://localhost/api/v1/dispatches/${dispatch.id}/resolve-session`,
+      {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ sessionId }),
+      }
+    ));
+    expect(response.status).toBe(400);
+    const links = getDatabase().prepare(
+      "SELECT COUNT(*) AS count FROM work_item_session_links WHERE acceptance_status = 'accepted'"
+    ).get() as { count: number };
+    expect(links.count).toBe(0);
+  });
+
+  test('uses one summary scan per relevant runtime instead of a detail scan per candidate', async () => {
+    const now = new Date('2026-08-30T00:00:00.000Z');
+    const service = new TaskDispatchService({ now: () => now, launch: () => {} });
+    for (const runtimeId of ['codex', 'claude-code'] as const) {
+      const item = workItemRepository.create({ title: runtimeId });
+      await service.dispatch(item.id, {
+        runtimeId, cwd: '/tmp', prompt: 'Wait', idempotencyKey: runtimeId,
+      });
+      for (let index = 0; index < 3; index++) {
+        sessionRepository.upsert({
+          sessionId: `${runtimeId}-${index}`, client: runtimeId === 'codex' ? 'codex' : 'claude',
+          directory: '/tmp', title: 'Candidate', status: 'running',
+          lastActiveAt: new Date(now.getTime() + 1),
+        });
+      }
+    }
+    const codexSummary = spyOn(codexScanner, 'getAllCodexSessionsWithFailures')
+      .mockResolvedValue({ sessions: [], failures: [] });
+    const claudeSummary = spyOn(claudeScanner, 'getAllSessionsWithFailures')
+      .mockResolvedValue({ sessions: [], failures: [] });
+    const codexDetail = spyOn(codexScanner, 'getCodexSessionById').mockResolvedValue(null);
+    const claudeDetail = spyOn(claudeScanner, 'getSessionById').mockResolvedValue(null);
+    try {
+      await service.reconcilePending();
+      const actualCalls = {
+        codexSummary: codexSummary.mock.calls.length,
+        claudeSummary: claudeSummary.mock.calls.length,
+        codexDetail: codexDetail.mock.calls.length,
+        claudeDetail: claudeDetail.mock.calls.length,
+      };
+      console.log('Correlation scan calls for six candidates:', JSON.stringify(actualCalls));
+      expect(actualCalls).toEqual({ codexSummary: 1, claudeSummary: 1, codexDetail: 0, claudeDetail: 0 });
+      expect(codexSummary.mock.calls[0][0]?.includeToolCalls).toBe(false);
+      expect(claudeSummary.mock.calls[0][0]?.includeToolCalls).toBe(false);
+    } finally {
+      codexSummary.mockRestore(); claudeSummary.mockRestore();
+      codexDetail.mockRestore(); claudeDetail.mockRestore();
+    }
+  });
+
+  test('keeps a rejected runtime scan diagnostic while unrelated dispatches reconcile', async () => {
+    const now = new Date('2026-08-30T00:00:00.000Z');
+    const service = new TaskDispatchService({ now: () => now, launch: () => {} });
+    for (const runtimeId of ['codex', 'claude-code'] as const) {
+      const item = workItemRepository.create({ title: runtimeId });
+      const dispatch = await service.dispatch(item.id, {
+        runtimeId, cwd: '/tmp', prompt: 'Wait', idempotencyKey: runtimeId,
+      });
+      sessionRepository.upsert({
+        sessionId: `${runtimeId}-scan-failure`, client: runtimeId === 'codex' ? 'codex' : 'claude',
+        directory: '/tmp', initialPrompt: `KEEPLINE_DISPATCH_ID:${dispatch.id}`,
+        title: 'Candidate', status: 'running', lastActiveAt: new Date(now.getTime() + 1),
+      });
+    }
+    const scan = spyOn(claudeScanner, 'getAllSessionsWithFailures')
+      .mockRejectedValue(new Error('Cannot read Claude project tree'));
+    try {
+      await service.reconcilePending();
+      expect(taskDispatchRepository.findByIdempotencyKey('codex')?.state).toBe('linked');
+      expect(taskDispatchRepository.findByIdempotencyKey('claude-code')?.state).toBe('ambiguous');
+      expect(getRuntimeScanStatus().find((scan) => scan.runtimeId === 'claude-code'))
+        .toMatchObject({ degraded: true, errorCount: 1 });
+    } finally { scan.mockRestore(); }
+  });
+
+  test('preserves fatal summary-cache errors during correlation', async () => {
+    const now = new Date('2026-08-30T00:00:00.000Z');
+    const service = new TaskDispatchService({ now: () => now, launch: () => {} });
+    const item = workItemRepository.create({ title: 'Cache failure' });
+    await service.dispatch(item.id, {
+      runtimeId: 'codex', cwd: '/tmp', prompt: 'Wait', idempotencyKey: 'cache-failure',
+    });
+    sessionRepository.upsert({
+      sessionId: 'codex_cache-failure', client: 'codex', directory: '/tmp', title: 'Candidate',
+      status: 'running', lastActiveAt: new Date(now.getTime() + 1),
+    });
+    const scan = spyOn(codexScanner, 'getAllCodexSessionsWithFailures')
+      .mockRejectedValue(new SessionSummaryCacheError('Corrupt cache'));
+    try {
+      await expect(service.reconcilePending()).rejects.toBeInstanceOf(SessionSummaryCacheError);
+    } finally { scan.mockRestore(); }
   });
 
   test('reuses only a canonical idempotent payload and returns 409 for conflicts', async () => {
@@ -488,4 +625,93 @@ for (const runtimeId of ['codex', 'claude-code'] as const) {
     expect(result.storedPrompt).toBe('Follow-up task already in transcript');
     expect(result.title).toBe('Follow-up task already in transcript');
   });
+}
+
+for (const runtimeId of ['codex', 'claude-code'] as const) {
+  for (const failure of ['malformed', 'unreadable', 'missing'] as const) {
+    test(`isolates a real ${failure} ${runtimeId} transcript from another dispatch`, () => {
+      const fixtureHome = realpathSync(mkdtempSync(join(tmpdir(), 'keepline-test-dispatch-failure-')));
+      transcriptHomes.push(fixtureHome);
+      const bin = join(fixtureHome, 'bin');
+      mkdirSync(bin);
+      writeFileSync(join(bin, 'ps'), '#!/bin/sh\nprintf "PID %%CPU %%MEM TTY LSTART COMMAND\\n"\n', { mode: 0o755 });
+      const child = Bun.spawnSync({
+        cmd: [process.execPath, '--eval', `
+          import { chmodSync, mkdirSync, writeFileSync } from 'fs';
+          import { join } from 'path';
+          import { resetDatabase } from './src/db/migrations.ts';
+          import { workItemRepository } from './src/infrastructure/database/repositories/work-item.repository.ts';
+          import { taskDispatchRepository } from './src/infrastructure/database/repositories/task-dispatch.repository.ts';
+          import { sessionRepository } from './src/infrastructure/database/repositories/session.repository.ts';
+          import { TaskDispatchService } from './src/services/task-dispatch.service.ts';
+          import { serviceScanCommand } from './src/cli/service-scan.ts';
+          resetDatabase();
+          const runtimeId = ${JSON.stringify(runtimeId)};
+          const failure = ${JSON.stringify(failure)};
+          const fixtureHome = ${JSON.stringify(fixtureHome)};
+          let now = new Date();
+          const service = new TaskDispatchService({ now: () => now, launch: () => {} });
+          const dispatches = [];
+          for (const title of ['Bad transcript', 'Valid transcript', 'Expired dispatch']) {
+            const item = workItemRepository.create({ title });
+            dispatches.push(await service.dispatch(item.id, {
+              runtimeId, cwd: fixtureHome, prompt: title, idempotencyKey: title,
+            }));
+          }
+          const ids = ['019ed4a3-2186-7e51-9aa1-ca1e376549a0', '019ed4a3-2186-7e51-9aa1-ca1e376549a1'];
+          const directory = runtimeId === 'codex'
+            ? join(fixtureHome, '.codex', 'sessions')
+            : join(fixtureHome, '.claude', 'projects', '-fixture');
+          mkdirSync(directory, { recursive: true });
+          const timestamp = new Date(now.getTime() + 1).toISOString();
+          for (const [index, id] of ids.entries()) {
+            const sessionId = runtimeId === 'codex' ? 'codex_' + id : id;
+            const prompt = 'Task\\nKEEPLINE_DISPATCH_ID:' + dispatches[index].id;
+            sessionRepository.upsert({
+              sessionId, client: runtimeId === 'codex' ? 'codex' : 'claude',
+              directory: fixtureHome, initialPrompt: index === 0 && failure === 'missing' ? 'Unverified candidate' : prompt,
+              title: 'Existing candidate', status: 'running', lastActiveAt: new Date(timestamp),
+            });
+            const path = join(directory, (runtimeId === 'codex' ? 'rollout-' : '') + id + '.jsonl');
+            const entries = runtimeId === 'codex' ? [
+              { type: 'session_meta', timestamp, payload: { id, cwd: fixtureHome } },
+              { type: 'response_item', timestamp, payload: { type: 'message', role: 'user', content: [{ type: 'input_text', text: prompt }] } },
+            ] : [{ type: 'user', uuid: id, sessionId: id, cwd: fixtureHome, timestamp,
+              userType: 'external', message: { role: 'user', content: prompt } }];
+            if (index === 0 && failure === 'missing') continue;
+            writeFileSync(path, (index === 0 && failure === 'malformed' ? '{broken\\n' : '') +
+              entries.map(entry => JSON.stringify(entry)).join('\\n') + '\\n');
+            if (index === 0 && failure === 'unreadable') chmodSync(path, 0);
+          }
+          const db = (await import('./src/infrastructure/database/sqlite.ts')).getDatabase();
+          db.prepare('UPDATE task_dispatches SET correlation_deadline_at = ? WHERE id = ?')
+            .run(new Date(now.getTime() - 1).toISOString(), dispatches[2].id);
+          await serviceScanCommand();
+          const rows = dispatches.map(dispatch => taskDispatchRepository.findById(dispatch.id));
+          const runtimeScan = (await import('./src/services/runtime-status.ts')).getRuntimeScanStatus()
+            .find(scan => scan.runtimeId === runtimeId);
+          console.log(JSON.stringify({ states: rows.map(row => row.state),
+            linked: rows[1].linkedAgentSessionId, validSessionId: runtimeId === 'codex' ? 'codex_' + ids[1] : ids[1],
+            runtimeScan }));
+        `],
+        cwd: process.cwd(),
+        env: {
+          ...process.env, HOME: fixtureHome, KEEPLINE_HOME: fixtureHome,
+          KEEPLINE_TEST_HOME: fixtureHome, KEEPLINE_TEST_ISOLATED: '1',
+          KEEPLINE_PROJECT_ROOTS: join(fixtureHome, '.claude', 'projects'),
+          PATH: `${bin}:${process.env.PATH}`,
+        },
+        stdout: 'pipe', stderr: 'pipe',
+      });
+      if (child.exitCode !== 0) throw new Error(child.stderr.toString());
+      const result = JSON.parse(child.stdout.toString().trim().split('\n').pop()!);
+      expect(result.states).toEqual(['ambiguous', 'linked', 'failed']);
+      expect(result.linked).toBe(encodeAgentSessionId(runtimeId, result.validSessionId));
+      if (failure !== 'missing') {
+        expect(result.runtimeScan.degraded).toBe(true);
+        expect(result.runtimeScan.errorCount).toBe(1);
+        expect(result.runtimeScan.errors[0].sourcePath).toContain('019ed4a3-2186-7e51-9aa1-ca1e376549a0');
+      }
+    });
+  }
 }

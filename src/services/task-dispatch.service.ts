@@ -1,5 +1,5 @@
 import { existsSync, realpathSync, statSync } from 'fs';
-import type { Session } from '../domain/session/index.js';
+import type { Session, ParsedSessionData } from '../domain/session/index.js';
 import type { RuntimeId } from '../domain/runtime/index.js';
 import { encodeAgentSessionId, type TaskDispatch } from '../domain/work-item/index.js';
 import { sessionRepository } from '../infrastructure/database/repositories/session.repository.js';
@@ -9,8 +9,10 @@ import {
 } from '../infrastructure/database/repositories/task-dispatch.repository.js';
 import { workItemEvidenceRepository } from '../infrastructure/database/repositories/work-item-evidence.repository.js';
 import { workItemRepository } from '../infrastructure/database/repositories/work-item.repository.js';
-import { runtimeIdForClient } from './runtime-status.js';
+import { recordRuntimeScanFailures, runtimeIdForClient, type RuntimeScanFailure } from './runtime-status.js';
 import { emit } from '../lib/events.js';
+import { logger } from '../lib/logger.js';
+import { SessionSummaryCacheError } from '../infrastructure/session-summary-cache.js';
 
 const SUPPORTED_RUNTIMES = new Set<RuntimeId>(['codex', 'claude-code']);
 export const DEFAULT_DISPATCH_CORRELATION_TIMEOUT_MS = 2 * 60_000;
@@ -180,6 +182,7 @@ export class TaskDispatchService {
     const pending = taskDispatchRepository.findPending();
     const candidatesByDispatch = new Map<string, Session[]>();
     const candidatePrompts = new Map<string, string>();
+    const candidatesBySession = new Map<string, Session>();
     const dispatchOwnersBySession = new Map<string, Set<string>>();
 
     for (const dispatch of pending) {
@@ -194,13 +197,36 @@ export class TaskDispatchService {
         return canonicalDirectory(session.directory) === dispatch.cwd;
       });
       candidatesByDispatch.set(dispatch.id, candidates);
-      for (const candidate of candidates) {
-        if (candidatePrompts.has(candidate.sessionId)) continue;
-        const parsed = candidate.client === 'codex'
-          ? await (await import('../adapters/codex/scanner.js')).getCodexSessionById(candidate.sessionId)
-          : await (await import('../adapters/claude/scanner.js')).getSessionById(candidate.sessionId);
-        candidatePrompts.set(candidate.sessionId, parsed?.launchPrompt ?? candidate.initialPrompt);
+      for (const candidate of candidates) candidatesBySession.set(candidate.sessionId, candidate);
+    }
+
+    // Reuse the scanners' summary caches and per-file failure isolation once per runtime.
+    for (const client of new Set([...candidatesBySession.values()].map((session) => session.client))) {
+      const runtimeId = runtimeIdForClient(client);
+      let scan: { sessions: ParsedSessionData[]; failures: RuntimeScanFailure[] };
+      try {
+        scan = client === 'codex'
+          ? await (await import('../adapters/codex/scanner.js')).getAllCodexSessionsWithFailures({ maxAgeDays: 1, includeToolCalls: false })
+          : await (await import('../adapters/claude/scanner.js')).getAllSessionsWithFailures({ maxAgeDays: 1, includeToolCalls: false });
+      } catch (error) {
+        if (error instanceof SessionSummaryCacheError) throw error;
+        const message = error instanceof Error ? error.message : String(error);
+        scan = { sessions: [], failures: [{ code: 'unknown', message }] };
+        logger.error('Runtime session scan failed during dispatch correlation', { runtimeId, message });
       }
+      recordRuntimeScanFailures(runtimeId, scan.failures);
+      const summaries = new Map(scan.sessions.map((session) => [session.sessionId, session]));
+      for (const candidate of candidatesBySession.values()) {
+        if (candidate.client !== client) continue;
+        const parsed = summaries.get(candidate.sessionId);
+        // A failed read is not evidence for trusting a prior database prompt.
+        candidatePrompts.set(candidate.sessionId,
+          parsed?.launchPrompt ?? (scan.failures.length > 0 ? '' : candidate.initialPrompt));
+      }
+    }
+
+    for (const dispatch of pending) {
+      const candidates = candidatesByDispatch.get(dispatch.id) ?? [];
       const dispatchMarker = `KEEPLINE_DISPATCH_ID:${dispatch.id}`;
       for (const candidate of candidates.filter((session) =>
         candidatePrompts.get(session.sessionId)!.split('\n').includes(dispatchMarker)
@@ -259,6 +285,12 @@ export class TaskDispatchService {
   resolveSession(dispatchId: string, sessionId: string): TaskDispatch {
     const dispatch = taskDispatchRepository.findById(dispatchId);
     if (!dispatch) throw new Error('Dispatch not found');
+    if (dispatch.state !== 'ambiguous' && dispatch.state !== 'awaiting_session') {
+      throw new Error('Dispatch is not awaiting session resolution');
+    }
+    if (this.now() > dispatch.correlationDeadlineAt) {
+      throw new Error(DISPATCH_CORRELATION_TIMEOUT_ERROR);
+    }
     if (!dispatch.candidateSessionIds.includes(sessionId)) {
       throw new Error('Session is not a dispatch candidate');
     }
