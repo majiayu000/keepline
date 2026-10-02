@@ -1,4 +1,3 @@
-import { existsSync, realpathSync, statSync } from 'fs';
 import type { Session } from '../domain/session/index.js';
 import type { RuntimeId } from '../domain/runtime/index.js';
 import { encodeAgentSessionId, type TaskDispatch } from '../domain/work-item/index.js';
@@ -11,6 +10,7 @@ import { workItemEvidenceRepository } from '../infrastructure/database/repositor
 import { workItemRepository } from '../infrastructure/database/repositories/work-item.repository.js';
 import { runtimeIdForClient } from './runtime-status.js';
 import { emit } from '../lib/events.js';
+import { canonicalDirectory } from '../lib/paths.js';
 
 const SUPPORTED_RUNTIMES = new Set<RuntimeId>(['codex', 'claude-code']);
 export const DEFAULT_DISPATCH_CORRELATION_TIMEOUT_MS = 2 * 60_000;
@@ -47,13 +47,6 @@ type LaunchTerminal = (
   cwd: string,
   terminalApp: TaskDispatch['terminalApp']
 ) => void | Promise<void>;
-
-function canonicalDirectory(directory: string): string {
-  if (!directory || directory.length > 2048) throw new Error('cwd is required');
-  const canonical = realpathSync(directory);
-  if (!statSync(canonical).isDirectory()) throw new Error('cwd must be a directory');
-  return canonical;
-}
 
 function isRootSession(session: Pick<Session, 'isSubAgent' | 'sessionId'>): boolean {
   return !session.isSubAgent && !session.sessionId.startsWith('agent-');
@@ -118,7 +111,9 @@ export class TaskDispatchService {
     if (!input.prompt.trim() || input.prompt.length > 20_000) {
       throw new Error('prompt is required');
     }
+    if (!input.cwd || input.cwd.length > 2048) throw new Error('cwd is required');
     const cwd = canonicalDirectory(input.cwd);
+    if (cwd === null) throw new Error('cwd must be a directory');
     const prompt = input.prompt.trim();
     const terminalApp = input.terminalApp ?? 'auto';
     const idempotencyKey = input.idempotencyKey.trim();
@@ -189,8 +184,13 @@ export class TaskDispatchService {
         if (!isRootSession(session) || !matchesRuntime(session, dispatch.runtimeId)) return false;
         if (preLaunch.has(session.sessionId)) return false;
         if (session.lastActiveAt.getTime() < dispatch.launchedAt!.getTime()) return false;
-        if (!existsSync(session.directory)) return false;
-        return canonicalDirectory(session.directory) === dispatch.cwd;
+        try {
+          return canonicalDirectory(session.directory) === dispatch.cwd;
+        } catch (error) {
+          const code = (error as NodeJS.ErrnoException).code;
+          if (code === 'ENOENT' || code === 'ENOTDIR') return false;
+          throw error;
+        }
       });
       candidatesByDispatch.set(dispatch.id, candidates);
       const dispatchMarker = `KEEPLINE_DISPATCH_ID:${dispatch.id}`;
