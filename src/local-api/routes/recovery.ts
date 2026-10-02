@@ -1,6 +1,7 @@
 import { Hono } from 'hono';
 import { isValidSessionId } from '../../lib/session-id.js';
 import { authMiddleware } from '../../web/api/middleware/auth.js';
+import { isSessionReconciliationRunning } from '../../services/session-reconciliation-gate.js';
 
 const RECOVERY_RESULT_PREFIX = '__KEEPLINE_SERVICE_RECOVERY__';
 const TERMINAL_APPS = new Set(['auto', 'Terminal', 'iTerm', 'Warp']);
@@ -75,7 +76,7 @@ export function createRecoveryProcessRunner(command: string[]): RecoveryRunner {
     const args = request.action === 'preview'
       ? ['preview', request.sessionId]
       : ['execute', request.sessionId, request.confirmationId, request.terminalApp];
-    const child = Bun.spawn([...command, ...args], { stdout: 'pipe', stderr: 'pipe' });
+    const child = Bun.spawn([...command, ...args], { env: process.env, stdout: 'pipe', stderr: 'pipe' });
     if (!child.stdout || typeof child.stdout === 'number' ||
         !child.stderr || typeof child.stderr === 'number') {
       child.kill('SIGTERM');
@@ -123,6 +124,12 @@ export function createRecoveryRoutes(runRecovery: RecoveryRunner): Hono {
     { fingerprint: string; result: Promise<RecoveryRunnerResult> }
   >();
   app.use('*', authMiddleware);
+  app.use('*', async (c, next) => {
+    if (isSessionReconciliationRunning()) {
+      return c.json({ success: false, error: 'Startup reconciliation is still running' }, 503);
+    }
+    return next();
+  });
 
   app.get('/:id/recovery-preview', async (c) => {
     const sessionId = c.req.param('id');
