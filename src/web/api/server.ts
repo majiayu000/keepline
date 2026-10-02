@@ -10,12 +10,12 @@ import { serveStatic } from 'hono/bun';
 import { existsSync } from 'fs';
 import path from 'path';
 import { runMigrations } from '../../db/migrations.js';
-import { sessionRepository } from '../../infrastructure/database/repositories/session.repository.js';
 import { syncSessions } from '../../services/session.service.js';
 import {
   beginSessionReconciliation,
   completeSessionReconciliation,
   failSessionReconciliation,
+  invalidateSessionClaims,
   isSessionReconciliationRunning,
 } from '../../services/session-reconciliation-gate.js';
 import { getSessionStats } from '../../services/session.aggregator.js';
@@ -287,9 +287,8 @@ export async function startWebServer(
         return new Response('WebSocket upgrade failed', { status: 400 });
       }
 
-      const blocksRecovery =
-        !standaloneReconciliationComplete || isSessionReconciliationRunning();
-      if (blocksRecovery && isRecoveryMutatingPath(url.pathname)) {
+      if (isRecoveryMutatingPath(url.pathname) &&
+          (!standaloneReconciliationComplete || isSessionReconciliationRunning())) {
         return Response.json(
           { success: false, error: 'Startup reconciliation is still running' },
           { status: 503 }
@@ -323,10 +322,11 @@ export async function startWebServer(
   if (getWebSessionSource() === 'standalone') {
     // Match daemon/Service Mode: invalidate live claims, then fully reconcile
     // only after this process owns the HTTP listener.
-    const reconciliationToken = beginSessionReconciliation('web');
+    let reconciliationToken: string | undefined;
     try {
+      reconciliationToken = beginSessionReconciliation('web');
       logger.info('Running initial session reconciliation...');
-      const interruptedSessions = sessionRepository.markActiveSessionsInterrupted();
+      const interruptedSessions = invalidateSessionClaims(reconciliationToken);
       if (interruptedSessions > 0) {
         logger.info(
           `Marked ${interruptedSessions} persisted live session(s) interrupted before reconciliation`
@@ -337,10 +337,12 @@ export async function startWebServer(
       standaloneReconciliationComplete = true;
       completeSessionReconciliation(reconciliationToken);
     } catch (error) {
-      failSessionReconciliation(
-        reconciliationToken,
-        error instanceof Error ? error.message : String(error)
-      );
+      if (reconciliationToken) {
+        failSessionReconciliation(
+          reconciliationToken,
+          error instanceof Error ? error.message : String(error)
+        );
+      }
       server.stop(true);
       throw error;
     }

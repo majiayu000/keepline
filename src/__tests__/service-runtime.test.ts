@@ -13,6 +13,7 @@ import { getDatabase } from '../infrastructure/database/sqlite.js';
 import { taskDispatchRepository } from '../infrastructure/database/repositories/task-dispatch.repository.js';
 import { reconcileLinkedAgentSessions } from '../services/work-item-session-reconciler.js';
 import { scopeCodexSessionId } from '../adapters/codex/parser.js';
+import { isSessionReconciliationRunning } from '../services/session-reconciliation-gate.js';
 import { TaskDispatchService } from '../services/task-dispatch.service.js';
 import * as claudeScanner from '../adapters/claude/scanner.js';
 
@@ -653,6 +654,49 @@ describe('service runtime isolation', () => {
     }
   });
 
+  test('closes acquired service listeners when another live process owns reconciliation', async () => {
+    resetDatabase();
+    const probe = () => Bun.serve({
+      hostname: '127.0.0.1', port: 0, fetch: () => new Response('probe'),
+    });
+    const httpProbe = probe();
+    const hookProbe = probe();
+    const port = httpProbe.port!;
+    const hookPort = hookProbe.port!;
+    httpProbe.stop(true);
+    hookProbe.stop(true);
+    const child = Bun.spawn([process.execPath, '-e', `
+      import { beginSessionReconciliation, failSessionReconciliation }
+        from './src/services/session-reconciliation-gate.ts';
+      const token = beginSessionReconciliation('daemon');
+      failSessionReconciliation(token, 'retrying');
+      console.log('peer-ready');
+      setInterval(() => {}, 1000);
+    `], { env: process.env, stdout: 'pipe', stderr: 'pipe' });
+    try {
+      const output = await child.stdout.getReader().read();
+      expect(new TextDecoder().decode(output.value)).toContain('peer-ready');
+      await expect(startKeeplineService({
+        port, hookPort, scanIntervalMs: 0, scanCommand: successfulScanCommand(),
+      })).rejects.toThrow('live process');
+      expect(isSessionReconciliationRunning()).toBe(true);
+      const reopenedHttp = Bun.serve({
+        hostname: '127.0.0.1', port, fetch: () => new Response('released'),
+      });
+      try {
+        const reopenedHook = Bun.serve({
+          hostname: '127.0.0.1', port: hookPort, fetch: () => new Response('released'),
+        });
+        reopenedHook.stop(true);
+      } finally {
+        reopenedHttp.stop(true);
+      }
+    } finally {
+      if (child.exitCode === null) child.kill('SIGKILL');
+      await child.exited;
+    }
+  });
+
   test('uses a complete first scan and blocks operational routes until it finishes', async () => {
     const directory = mkdtempSync(join(tmpdir(), 'keepline-initial-scan-'));
     const callsPath = join(directory, 'calls');
@@ -761,6 +805,14 @@ describe('service runtime isolation', () => {
     });
     const baseURL = `http://127.0.0.1:${liveService.server.port}`;
 
+    await waitUntil(() => {
+      const row = getDatabase().prepare(
+        "SELECT value FROM metadata WHERE key = 'session_reconciliation'"
+      ).get() as { value: string };
+      return JSON.parse(row.value).status === 'failed';
+    });
+    expect(isSessionReconciliationRunning()).toBe(true);
+
     await waitUntil(async () => {
       const response = await fetch(`${baseURL}/api/v1/health`);
       const body = await response.json() as { data: { scan: { completed: boolean } } };
@@ -772,6 +824,7 @@ describe('service runtime isolation', () => {
     const headers = { Authorization: `Bearer ${authBody.data.token}` };
     expect((await fetch(`${baseURL}/api/v1/sessions?fields=basic`, { headers })).status).toBe(200);
     expect(readFileSync(callsPath, 'utf8').length).toBeGreaterThanOrEqual(2);
+    expect(isSessionReconciliationRunning()).toBe(false);
   });
 
   test('allows a longer initial scan while retaining the incremental watchdog', async () => {
