@@ -1,4 +1,7 @@
 import { beforeEach, describe, expect, test } from 'bun:test';
+import { mkdirSync, mkdtempSync, rmSync, symlinkSync, writeFileSync } from 'fs';
+import { tmpdir } from 'os';
+import { join } from 'path';
 import { createLocalApiApp } from '../local-api/app.js';
 import { resetDatabase } from '../db/migrations.js';
 import { encodeAgentSessionId } from '../domain/work-item/index.js';
@@ -17,6 +20,110 @@ import {
 
 describe('task dispatch correctness', () => {
   beforeEach(() => resetDatabase());
+
+  test('skips a removed candidate directory while preserving dispatch cwd errors', async () => {
+    const root = mkdtempSync(join(tmpdir(), 'keepline-dispatch-cwd-'));
+    const directory = join(root, 'project');
+    mkdirSync(directory);
+    const now = new Date();
+    const service = new TaskDispatchService({ now: () => now, launch: () => {} });
+    const item = workItemRepository.create({ title: 'Removed candidate' });
+    try {
+      const dispatch = await service.dispatch(item.id, {
+        runtimeId: 'codex', cwd: directory, prompt: item.title, idempotencyKey: 'removed-candidate',
+      });
+      sessionRepository.upsert({
+        sessionId: 'codex_removed-candidate', client: 'codex', directory,
+        initialPrompt: `KEEPLINE_DISPATCH_ID:${dispatch.id}`, status: 'running', lastActiveAt: now,
+      });
+      rmSync(directory, { recursive: true });
+      await service.reconcilePending();
+      expect(taskDispatchRepository.findById(dispatch.id)?.state).toBe('awaiting_session');
+      expect(taskDispatchRepository.findById(dispatch.id)?.candidateSessionIds).toEqual([]);
+      await expect(service.dispatch(item.id, {
+        runtimeId: 'codex', cwd: directory, prompt: item.title, idempotencyKey: 'missing-directory',
+      })).rejects.toMatchObject({ code: 'ENOENT' });
+      expect(taskDispatchRepository.findByIdempotencyKey('missing-directory')).toBeNull();
+
+      const file = join(root, 'file');
+      writeFileSync(file, 'Not a directory');
+      sessionRepository.upsert({
+        sessionId: 'codex_absent-intermediate', client: 'codex', directory: join(file, 'child'),
+        status: 'running', lastActiveAt: now,
+      });
+      await service.reconcilePending();
+      expect(taskDispatchRepository.findById(dispatch.id)?.state).toBe('awaiting_session');
+      await expect(service.dispatch(item.id, {
+        runtimeId: 'codex', cwd: join(file, 'child'), prompt: item.title,
+        idempotencyKey: 'absent-intermediate',
+      })).rejects.toMatchObject({ code: 'ENOTDIR' });
+      expect(taskDispatchRepository.findByIdempotencyKey('absent-intermediate')).toBeNull();
+
+      sessionRepository.upsert({
+        sessionId: 'codex_regular-file', client: 'codex', directory: file,
+        status: 'running', lastActiveAt: now,
+      });
+      await service.reconcilePending();
+      expect(taskDispatchRepository.findById(dispatch.id)?.candidateSessionIds).toEqual([]);
+      const fileError = await service.dispatch(item.id, {
+        runtimeId: 'codex', cwd: file, prompt: item.title, idempotencyKey: 'regular-file',
+      }).then(() => null, (error: NodeJS.ErrnoException) => error);
+      expect(fileError).toBeInstanceOf(Error);
+      expect(fileError?.message).toBe('cwd must be a directory');
+      expect(fileError?.code).toBeUndefined();
+      expect(taskDispatchRepository.findByIdempotencyKey('regular-file')).toBeNull();
+
+      const loop = join(root, 'loop');
+      symlinkSync('loop', loop);
+      sessionRepository.upsert({
+        sessionId: 'codex_loop-candidate', client: 'codex', directory: loop,
+        status: 'running', lastActiveAt: now,
+      });
+      await expect(Promise.resolve().then(() => service.reconcilePending()))
+        .rejects.toMatchObject({ code: 'ELOOP' });
+      expect(taskDispatchRepository.findById(dispatch.id)?.state).toBe('awaiting_session');
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
+
+  for (const directory of ['', 'x'.repeat(2049)]) {
+    test(`skips a ${directory.length}-character candidate cwd and preserves strict dispatch errors`, async () => {
+      const root = mkdtempSync(join(tmpdir(), 'keepline-invalid-candidate-'));
+      const now = new Date();
+      let launches = 0;
+      const service = new TaskDispatchService({ now: () => now, launch: () => { launches++; } });
+      const item = workItemRepository.create({ title: 'Valid dispatch with an invalid candidate' });
+      try {
+        const dispatch = await service.dispatch(item.id, {
+          runtimeId: 'claude-code', cwd: root, prompt: item.title, idempotencyKey: 'valid',
+        });
+        const invalid = sessionRepository.upsert({
+          sessionId: 'invalid-candidate', client: 'claude', directory,
+          initialPrompt: `KEEPLINE_DISPATCH_ID:${dispatch.id}`, status: 'running', lastActiveAt: now,
+        });
+        expect(invalid.directory).toBe(directory);
+        sessionRepository.upsert({
+          sessionId: 'valid-candidate', client: 'claude', directory: root,
+          initialPrompt: `KEEPLINE_DISPATCH_ID:${dispatch.id}`, status: 'running', lastActiveAt: now,
+        });
+        await service.reconcilePending();
+        expect(taskDispatchRepository.findById(dispatch.id)).toMatchObject({
+          state: 'linked', candidateSessionIds: ['valid-candidate'],
+        });
+        const error = await service.dispatch(item.id, {
+          runtimeId: 'claude-code', cwd: directory, prompt: item.title, idempotencyKey: 'invalid',
+        }).then(() => null, (error: NodeJS.ErrnoException) => error);
+        expect(error).toBeInstanceOf(Error);
+        expect(error?.message).toBe('cwd is required');
+        expect(error?.code).toBeUndefined();
+        expect(taskDispatchRepository.findByIdempotencyKey('invalid')).toBeNull();
+        expect(launches).toBe(1);
+      } finally {
+        rmSync(root, { recursive: true, force: true });
+      }
+    });
+  }
 
   test('gives launched agents a dispatch marker without changing stored prompts', async () => {
     const launches: Array<{ executable: string; args: string[] }> = [];
