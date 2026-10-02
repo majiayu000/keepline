@@ -58,6 +58,8 @@ function runSyncScript(homeDir: string, script: string): Record<string, unknown>
     env: {
       ...process.env,
       HOME: homeDir,
+      CODEX_HOME: join(homeDir, '.codex'),
+      CLAUDE_CONFIG_DIR: join(homeDir, '.claude'),
       PATH: `${join(homeDir, 'fixture-bin')}:${process.env.PATH}`,
       KEEPLINE_HOME: homeDir,
       KEEPLINE_TEST_HOME: homeDir,
@@ -250,7 +252,7 @@ describe('SessionService sync', () => {
 
 
 describe('SessionService sync with missing cwd', () => {
-  function syncFixture(options: { transcript: boolean; psListsPid: boolean; alive: boolean; partialCwd?: boolean; status?: 'idle' | 'waiting'; statusSource?: 'hook' | 'scan'; newActivity?: boolean; reusePid?: boolean }) {
+  function syncFixture(options: { transcript: boolean; psListsPid: boolean; alive: boolean; partialCwd?: boolean; status?: 'idle' | 'waiting'; statusSource?: 'hook' | 'scan'; newActivity?: boolean; reusePid?: boolean; daemonEntry?: boolean }) {
     const homeDir = createTempHome();
     const sessionId = 'live-cwd-sync';
     if (options.transcript) writeClaudeSessionFile(homeDir, sessionId, options.newActivity ? new Date().toISOString() : undefined);
@@ -297,7 +299,9 @@ describe('SessionService sync with missing cwd', () => {
       const lostEvents = [];
       const { on } = await import('./src/lib/events.ts');
       on('session:lost', ({session}) => lostEvents.push(session.sessionId));
-      const syncResult = await sessionService.syncSessions({ fullSync: true });
+      const syncResult = ${options.daemonEntry
+        ? "await (await import('./src/services/daemon.scheduler.ts')).triggerSync()"
+        : 'await sessionService.syncSessions({ fullSync: true })'};
       const { SessionAggregator } = await import('./src/services/session.aggregator.ts');
       console.log(JSON.stringify({
         aggregated: new SessionAggregator(sessionRepository).getAggregatedSessions().map(({sessionId,status,processRunning}) => ({sessionId,status,processRunning})),
@@ -312,6 +316,44 @@ describe('SessionService sync with missing cwd', () => {
   test('standalone aggregation keeps a known PID live without cwd', () => {
     const result = syncFixture({ transcript: true, psListsPid: true, alive: true });
     expect(result.aggregated).toContainEqual({ sessionId: 'live-cwd-sync', status: 'waiting', processRunning: true });
+  });
+
+  test('daemon manual sync retains a known live PID without cwd', () => {
+    const result = syncFixture({ transcript: true, psListsPid: true, alive: true,
+      statusSource: 'scan', newActivity: true, daemonEntry: true });
+    expect(result.sessions).toContainEqual({
+      sessionId: 'live-cwd-sync', status: 'running', statusSource: 'scan', pid: 12345, tty: 'ttys001',
+    });
+    expect(result.lostEvents).toEqual(['dead-cwd-sync']);
+  });
+
+  test('daemon manual sync propagates ps failure without changing stored sessions', () => {
+    const homeDir = createTempHome();
+    writeFileSync(join(homeDir, 'fixture-bin', 'ps'), '#!/bin/sh\nexit 1\n', { mode: 0o755 });
+    const result = runSyncScript(homeDir, `
+      const { resetDatabase } = await import('./src/db/migrations.ts');
+      const { closeDatabase } = await import('./src/infrastructure/database/sqlite.ts');
+      const { sessionRepository } = await import('./src/infrastructure/database/repositories/session.repository.ts');
+      const { triggerSync } = await import('./src/services/daemon.scheduler.ts');
+      resetDatabase();
+      sessionRepository.upsert({ sessionId: 'ps-failure-live', client: 'claude',
+        directory: '/tmp/completed-sync', status: 'waiting', statusSource: 'hook', pid: 12345,
+        title: 'Fixture task', initialPrompt: 'Fixture task',
+        startedAt: new Date(), lastActiveAt: new Date(), wasProcessObserved: true });
+      const before = sessionRepository.findBySessionId('ps-failure-live');
+      const lostEvents = [];
+      const { on } = await import('./src/lib/events.ts');
+      on('session:lost', ({session}) => lostEvents.push(session.sessionId));
+      let failure;
+      try { await triggerSync(); }
+      catch (error) { failure = { name: error.name, code: error.code, message: error.message }; }
+      console.log(JSON.stringify({ failure, lostEvents,
+        unchanged: JSON.stringify(before) === JSON.stringify(sessionRepository.findBySessionId('ps-failure-live')) }));
+      closeDatabase();
+    `);
+    expect(result).toEqual({ unchanged: true, lostEvents: [], failure: {
+      name: 'ProcessScanError', code: 'PROCESS_SCAN_ERROR', message: 'Failed to scan processes',
+    } });
   });
 
   test('does not retain an old PID that was attributed to a new transcript', () => {
