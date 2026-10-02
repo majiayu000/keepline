@@ -34,6 +34,36 @@ function processCandidate(overrides: Partial<ClaudeProcessInfo> = {}): ClaudePro
 }
 
 describe('matchProcessesToSessions', () => {
+  test('does not use a missing cwd to match a session with an empty directory', () => {
+    const sessions = [{ ...sessionCandidate({ sessionId: 'unknown-directory' }), directory: '' }];
+    const processes = [{ ...processCandidate(), cwd: '' }];
+    expect(matchProcessesToSessions(sessions, processes).size).toBe(0);
+  });
+
+  test('preserves compatible known PID matches without cwd', () => {
+    const session = sessionCandidate({ sessionId: 'known-no-cwd', pid: 1000 });
+    const process = { ...processCandidate(), cwd: '' };
+    expect(matchProcessesToSessions([session], [process]).get(session.sessionId)).toBe(process);
+  });
+
+  test('does not preserve a cwdless PID reused by another client', () => {
+    const session = sessionCandidate({ sessionId: 'wrong-client-no-cwd', pid: 1000 });
+    const process = { ...processCandidate({ client: 'codex' }), cwd: '' };
+    expect(matchProcessesToSessions([session], [process]).size).toBe(0);
+  });
+
+  test('does not preserve a cwdless PID with a newer process start time', () => {
+    const session = sessionCandidate({ sessionId: 'reused-no-cwd', pid: 1000, lastActiveAt: new Date(Date.now() - 120_000) });
+    const process = { ...processCandidate(), cwd: '' };
+    expect(matchProcessesToSessions([session], [process]).size).toBe(0);
+  });
+
+  test('attributes a cwdless PID to only one known session', () => {
+    const sessions = [sessionCandidate({ pid: 1000 }), sessionCandidate({ pid: 1000 })];
+    const process = { ...processCandidate(), cwd: '' };
+    expect(matchProcessesToSessions(sessions, [process]).size).toBe(1);
+  });
+
   test('preserves PID continuity when known', () => {
     const sessions = [
       sessionCandidate({ sessionId: 'session-a', pid: 1001 }),
