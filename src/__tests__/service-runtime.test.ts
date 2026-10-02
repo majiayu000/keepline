@@ -1,5 +1,5 @@
-import { afterEach, describe, expect, test } from 'bun:test';
-import { existsSync, mkdtempSync, readFileSync, writeFileSync } from 'fs';
+import { afterEach, describe, expect, spyOn, test } from 'bun:test';
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, symlinkSync, writeFileSync } from 'fs';
 import { tmpdir } from 'os';
 import { join, resolve } from 'path';
 import { emit } from '../lib/events.js';
@@ -13,6 +13,9 @@ import { getDatabase } from '../infrastructure/database/sqlite.js';
 import { taskDispatchRepository } from '../infrastructure/database/repositories/task-dispatch.repository.js';
 import { reconcileLinkedAgentSessions } from '../services/work-item-session-reconciler.js';
 import { scopeCodexSessionId } from '../adapters/codex/parser.js';
+import { isSessionReconciliationRunning } from '../services/session-reconciliation-gate.js';
+import { TaskDispatchService } from '../services/task-dispatch.service.js';
+import * as claudeScanner from '../adapters/claude/scanner.js';
 
 const SCAN_RESULT_PREFIX = '__KEEPLINE_SERVICE_SCAN__';
 let liveService: KeeplineService | undefined;
@@ -41,6 +44,153 @@ function successfulScanCommand(): string[] {
 }
 
 describe('service runtime isolation', () => {
+  for (const hookPath of ['logical', 'canonical', 'removed', 'not_directory', 'regular_file', 'empty', 'overlong'] as const) {
+    test(`handles a ${hookPath} session cwd after an early symlinked completion claim`, async () => {
+      resetDatabase();
+      const root = mkdtempSync(join(tmpdir(), 'keepline-completion-cwd-'));
+      const project = join(root, 'project', 'child');
+      const alias = join(root, 'logical');
+      const logical = join(alias, 'child');
+      mkdirSync(project, { recursive: true });
+      symlinkSync(join(root, 'project'), alias);
+      writeFileSync(join(root, 'file'), 'Not a directory');
+      const canonical = realpathSync(project);
+      const now = new Date();
+      let launchedPrompt = '';
+      const dispatchService = new TaskDispatchService({
+        now: () => now,
+        launch: (_executable, args, cwd) => {
+          launchedPrompt = args[0];
+          expect(cwd).toBe(canonical);
+        },
+      });
+      const scan = spyOn(claudeScanner, 'getAllSessionsWithFailures')
+        .mockResolvedValue({ sessions: [], failures: [] });
+      try {
+        liveService = await startKeeplineService({
+          port: 0, hookPort: 0, scanIntervalMs: 0, scanCommand: successfulScanCommand(),
+        });
+        const item = workItemRepository.create({ title: 'Complete through a symlink' });
+        const dispatch = await dispatchService.dispatch(item.id, {
+          runtimeId: 'claude-code', cwd: logical, prompt: item.title,
+          idempotencyKey: `symlink-completion-${hookPath}`,
+        });
+        expect(dispatch.cwd).toBe(canonical);
+        expect(dispatch.cwd).not.toBe(logical);
+        const sessionId = `symlink-completion-${hookPath}`;
+        const claimAt = new Date(now.getTime() + 1);
+        for (const [cwd, message] of [
+          [root, `Verified\nKEEPLINE_COMPLETE_WORK_ITEM:${item.id}`],
+          [join(root, 'missing'), `Verified\nKEEPLINE_COMPLETE_WORK_ITEM:${item.id}`],
+          [join(root, 'file', 'child'), `Verified\nKEEPLINE_COMPLETE_WORK_ITEM:${item.id}`],
+          [logical, 'Verified without an explicit marker'],
+        ]) {
+          const ignored = await fetch(`http://127.0.0.1:${liveService.hookPort}/hook`, {
+            method: 'POST', headers: { 'content-type': 'application/json' },
+            body: JSON.stringify({
+              hook_event_name: 'Stop', session_id: sessionId, cwd,
+              last_assistant_message: message,
+            }),
+          });
+          expect(ignored.status).toBe(404);
+          expect(workItemEvidenceRepository.findPendingAgentCompletionClaims(item.id, sessionId))
+            .toHaveLength(0);
+        }
+        const response = await fetch(`http://127.0.0.1:${liveService.hookPort}/hook`, {
+          method: 'POST',
+          headers: { 'content-type': 'application/json' },
+          body: JSON.stringify({
+            hook_event_name: 'Stop', session_id: sessionId,
+            cwd: hookPath === 'logical' ? logical : canonical,
+            timestamp: claimAt.toISOString(),
+            last_assistant_message: `Verified\nKEEPLINE_COMPLETE_WORK_ITEM:${item.id}`,
+          }),
+        });
+        expect(response.status).toBe(202);
+        expect(sessionRepository.findBySessionId(sessionId)).toBeNull();
+        expect(workItemEvidenceRepository.findPendingAgentCompletionClaims(item.id, sessionId))
+          .toHaveLength(1);
+        expect(reconcileLinkedAgentSessions().evidenceCreated).toBe(0);
+
+        sessionRepository.upsert({
+          sessionId, client: 'claude', directory: logical, title: item.title,
+          initialPrompt: launchedPrompt, status: 'waiting', lastActiveAt: claimAt,
+        });
+        await dispatchService.reconcilePending();
+        const linked = taskDispatchRepository.findById(dispatch.id)!;
+        expect(linked.state).toBe('linked');
+        if (hookPath === 'removed' || hookPath === 'not_directory' || hookPath === 'regular_file' ||
+            hookPath === 'empty' || hookPath === 'overlong') {
+          if (hookPath === 'empty' || hookPath === 'overlong') {
+            getDatabase().prepare('UPDATE sessions SET directory = ? WHERE session_id = ?')
+              .run(hookPath === 'empty' ? '' : 'x'.repeat(2049), sessionId);
+          } else if (hookPath === 'regular_file') {
+            rmSync(project, { recursive: true });
+            writeFileSync(project, 'Not a directory');
+          } else {
+            rmSync(alias);
+            if (hookPath === 'not_directory') writeFileSync(alias, 'Not a directory');
+          }
+          expect(reconcileLinkedAgentSessions().evidenceCreated).toBe(0);
+          expect(workItemEvidenceRepository.findLatestExplicitCompletionForAgentSession(
+            linked.linkedAgentSessionId!
+          )).toBeNull();
+          expect(workItemEvidenceRepository.findPendingAgentCompletionClaims(item.id, sessionId))
+            .toHaveLength(0);
+          return;
+        }
+        expect(reconcileLinkedAgentSessions().evidenceCreated).toBe(1);
+        const evidence = workItemEvidenceRepository.findLatestExplicitCompletionForAgentSession(
+          linked.linkedAgentSessionId!
+        );
+        expect(evidence).toMatchObject({
+          workItemId: item.id, outcome: 'completed', confidence: 'explicit',
+          metadata: { source: 'agent_completion_claim', claimAt: claimAt.toISOString() },
+        });
+        expect(workItemEvidenceRepository.findPendingAgentCompletionClaims(item.id, sessionId))
+          .toHaveLength(0);
+        expect(reconcileLinkedAgentSessions().evidenceCreated).toBe(0);
+        expect(sessionRepository.findBySessionId(sessionId)?.completedAt).toBeUndefined();
+        expect(workItemRepository.findById(item.id)?.status).toBe('active');
+      } finally {
+        scan.mockRestore();
+        rmSync(root, { recursive: true, force: true });
+      }
+    });
+  }
+
+  test('ignores invalid Stop cwd values and still reports unexpected filesystem errors', async () => {
+    resetDatabase();
+    const root = mkdtempSync(join(tmpdir(), 'keepline-file-completion-'));
+    const file = join(root, 'file');
+    const loop = join(root, 'loop');
+    writeFileSync(file, 'Not a directory');
+    symlinkSync('loop', loop);
+    try {
+      const item = workItemRepository.create({ title: 'Ignore file completion' });
+      await new TaskDispatchService({ launch: () => {} }).dispatch(item.id, {
+        runtimeId: 'claude-code', cwd: root, prompt: item.title, idempotencyKey: 'file-completion',
+      });
+      liveService = await startKeeplineService({
+        port: 0, hookPort: 0, scanIntervalMs: 0, scanCommand: successfulScanCommand(),
+      });
+      for (const [cwd, status] of [['', 400], ['x'.repeat(2049), 404], [file, 404], [loop, 500]] as const) {
+        const response = await fetch(`http://127.0.0.1:${liveService.hookPort}/hook`, {
+          method: 'POST', headers: { 'content-type': 'application/json' },
+          body: JSON.stringify({
+            hook_event_name: 'Stop', session_id: 'file-completion', cwd,
+            last_assistant_message: `Verified\nKEEPLINE_COMPLETE_WORK_ITEM:${item.id}`,
+          }),
+        });
+        expect(response.status).toBe(status);
+        expect(workItemEvidenceRepository.findPendingAgentCompletionClaims(item.id, 'file-completion'))
+          .toHaveLength(0);
+      }
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
+
   test('does not trust a completion claim when the canonical session is missing', async () => {
     liveService = await startKeeplineService({
       port: 0,
@@ -151,6 +301,7 @@ describe('service runtime isolation', () => {
   });
 
   test('treats Claude Stop as a turn boundary, never task completion', async () => {
+    const serviceStopCwd = realpathSync(tmpdir());
     liveService = await startKeeplineService({
       port: 0,
       hookPort: 0,
@@ -182,7 +333,7 @@ describe('service runtime isolation', () => {
     sessionRepository.upsert({
       sessionId,
       client: 'claude',
-      directory: '/tmp/service-stop',
+      directory: serviceStopCwd,
       title: 'Exercise embedded completion',
       initialPrompt: 'Exercise embedded completion',
       status: 'running',
@@ -200,7 +351,7 @@ describe('service runtime isolation', () => {
         body: JSON.stringify({
           hook_event_name: 'Stop',
           session_id: sessionId,
-          cwd: '/tmp/service-stop',
+          cwd: serviceStopCwd,
           timestamp: '2026-08-30T10:05:00.000Z',
           ...body,
         }),
@@ -252,7 +403,7 @@ describe('service runtime isolation', () => {
         body: JSON.stringify({
           hook_event_name: 'UserPromptSubmit',
           session_id: sessionId,
-          cwd: '/tmp/service-stop',
+          cwd: serviceStopCwd,
           prompt: 'Continue the task',
         }),
       }
@@ -308,7 +459,7 @@ describe('service runtime isolation', () => {
     const agentSession = workItemEvidenceRepository.upsertAgentSession({
       runtimeId: 'claude-code',
       runtimeSessionId: sessionId,
-      cwd: '/tmp/service-stop',
+      cwd: serviceStopCwd,
       status: 'running',
       title: 'Exercise embedded completion',
     });
@@ -357,7 +508,7 @@ describe('service runtime isolation', () => {
     const pendingDispatch = taskDispatchRepository.create({
       workItemId: pendingWorkItem.id,
       runtimeId: 'claude-code',
-      cwd: '/tmp/service-stop',
+      cwd: serviceStopCwd,
       prompt: 'Finish quickly',
       terminalApp: 'auto',
       idempotencyKey: 'pending-claim-dispatch',
@@ -389,7 +540,7 @@ describe('service runtime isolation', () => {
     sessionRepository.upsert({
       sessionId: pendingSessionId,
       client: 'claude',
-      directory: '/tmp/service-stop',
+      directory: serviceStopCwd,
       title: 'Fast completion claim',
       status: 'running',
       lastActiveAt: new Date(pendingTimestamp),
@@ -397,7 +548,7 @@ describe('service runtime isolation', () => {
     const pendingAgentSession = workItemEvidenceRepository.upsertAgentSession({
       runtimeId: 'claude-code',
       runtimeSessionId: pendingSessionId,
-      cwd: '/tmp/service-stop',
+      cwd: serviceStopCwd,
       status: 'running',
       title: 'Fast completion claim',
       lastActiveAt: new Date(pendingTimestamp),
@@ -421,7 +572,7 @@ describe('service runtime isolation', () => {
     const oversizedBody = JSON.stringify({
       hook_event_name: 'Notification',
       session_id: sessionId,
-      cwd: '/tmp/service-stop',
+      cwd: serviceStopCwd,
       message: 'x'.repeat(70 * 1024),
     });
     const stream = new ReadableStream<Uint8Array>({
@@ -500,6 +651,49 @@ describe('service runtime isolation', () => {
       expect(persisted?.tty).toBe('ttys006');
     } finally {
       occupied.stop(true);
+    }
+  });
+
+  test('closes acquired service listeners when another live process owns reconciliation', async () => {
+    resetDatabase();
+    const probe = () => Bun.serve({
+      hostname: '127.0.0.1', port: 0, fetch: () => new Response('probe'),
+    });
+    const httpProbe = probe();
+    const hookProbe = probe();
+    const port = httpProbe.port!;
+    const hookPort = hookProbe.port!;
+    httpProbe.stop(true);
+    hookProbe.stop(true);
+    const child = Bun.spawn([process.execPath, '-e', `
+      import { beginSessionReconciliation, failSessionReconciliation }
+        from './src/services/session-reconciliation-gate.ts';
+      const token = beginSessionReconciliation('daemon');
+      failSessionReconciliation(token, 'retrying');
+      console.log('peer-ready');
+      setInterval(() => {}, 1000);
+    `], { env: process.env, stdout: 'pipe', stderr: 'pipe' });
+    try {
+      const output = await child.stdout.getReader().read();
+      expect(new TextDecoder().decode(output.value)).toContain('peer-ready');
+      await expect(startKeeplineService({
+        port, hookPort, scanIntervalMs: 0, scanCommand: successfulScanCommand(),
+      })).rejects.toThrow('live process');
+      expect(isSessionReconciliationRunning()).toBe(true);
+      const reopenedHttp = Bun.serve({
+        hostname: '127.0.0.1', port, fetch: () => new Response('released'),
+      });
+      try {
+        const reopenedHook = Bun.serve({
+          hostname: '127.0.0.1', port: hookPort, fetch: () => new Response('released'),
+        });
+        reopenedHook.stop(true);
+      } finally {
+        reopenedHttp.stop(true);
+      }
+    } finally {
+      if (child.exitCode === null) child.kill('SIGKILL');
+      await child.exited;
     }
   });
 
@@ -611,6 +805,14 @@ describe('service runtime isolation', () => {
     });
     const baseURL = `http://127.0.0.1:${liveService.server.port}`;
 
+    await waitUntil(() => {
+      const row = getDatabase().prepare(
+        "SELECT value FROM metadata WHERE key = 'session_reconciliation'"
+      ).get() as { value: string };
+      return JSON.parse(row.value).status === 'failed';
+    });
+    expect(isSessionReconciliationRunning()).toBe(true);
+
     await waitUntil(async () => {
       const response = await fetch(`${baseURL}/api/v1/health`);
       const body = await response.json() as { data: { scan: { completed: boolean } } };
@@ -622,6 +824,7 @@ describe('service runtime isolation', () => {
     const headers = { Authorization: `Bearer ${authBody.data.token}` };
     expect((await fetch(`${baseURL}/api/v1/sessions?fields=basic`, { headers })).status).toBe(200);
     expect(readFileSync(callsPath, 'utf8').length).toBeGreaterThanOrEqual(2);
+    expect(isSessionReconciliationRunning()).toBe(false);
   });
 
   test('allows a longer initial scan while retaining the incremental watchdog', async () => {

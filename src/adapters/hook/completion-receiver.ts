@@ -6,6 +6,7 @@ import { workItemRepository } from '../../infrastructure/database/repositories/w
 import { taskDispatchRepository } from '../../infrastructure/database/repositories/task-dispatch.repository.js';
 import { emit } from '../../lib/events.js';
 import { logger } from '../../lib/logger.js';
+import { canonicalDirectory } from '../../lib/paths.js';
 import { isValidSessionId, scopeCodexSessionId } from '../../lib/session-id.js';
 import {
   generateTitle,
@@ -117,9 +118,17 @@ function recordCompletionClaim(
   const summary = lines.slice(0, -1).join(' ').slice(0, 500) ||
     'Agent explicitly claimed the linked work item is complete.';
   if (!link || !allowExplicitCompletion) {
+    let canonicalCwd: string | null;
+    try {
+      canonicalCwd = canonicalDirectory(cwd);
+    } catch (error) {
+      const code = (error as NodeJS.ErrnoException).code;
+      if (code === 'ENOENT' || code === 'ENOTDIR') return 'ignored';
+      throw error;
+    }
     const matchingDispatches = taskDispatchRepository.findByWorkItemId(workItem.id).filter(
       (dispatch) => dispatch.runtimeId === 'claude-code' &&
-        dispatch.cwd === cwd &&
+        dispatch.cwd === canonicalCwd &&
         ['launching', 'awaiting_session', 'ambiguous', 'linked'].includes(dispatch.state)
     );
     if (matchingDispatches.length !== 1) return 'ignored';
