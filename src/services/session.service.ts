@@ -236,7 +236,6 @@ export class SessionService {
       const agentSessions = scannedSessions.filter((session) =>
         isValidSessionId(session.sessionId)
       );
-      const processMatches = matchProcessesToSessions(agentSessions, processes);
       const existingSessions = this.repository.findBySessionIdsSummary(
         agentSessions.map((session) => session.sessionId)
       );
@@ -244,16 +243,22 @@ export class SessionService {
         existingSessions.map((session) => [session.sessionId, session])
       );
 
+      const processMatches = matchProcessesToSessions(agentSessions.map((session) => {
+        const existing = existingSessionMap.get(session.sessionId);
+        return {
+          ...session,
+          pid: existing?.pid,
+          // PID reuse must be checked against the previous observation, not new transcript activity.
+          lastActiveAt: existing?.pid ? existing.lastActiveAt : session.lastActiveAt,
+        };
+      }), processes);
+
       // Process each scanned session
       for (const agentSession of agentSessions) {
         const client = agentSession.client ?? 'claude';
         const existing = existingSessionMap.get(agentSession.sessionId);
         const process = processMatches.get(agentSession.sessionId);
-
-        const detectedStatus = detectSessionStatus(
-          process || null,
-          agentSession.lastActiveAt
-        );
+        const detectedStatus = detectSessionStatus(process || null, agentSession.lastActiveAt);
         // A lifecycle hook is received after the transcript record that caused it.
         // Keep that newer semantic observation while its process is still alive;
         // otherwise the CPU/time heuristic would immediately overwrite it.

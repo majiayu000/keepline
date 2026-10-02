@@ -8,10 +8,15 @@ const tempDirs: string[] = [];
 function createTempHome(): string {
   const homeDir = mkdtempSync(join(tmpdir(), 'keepline-test-sync-home-'));
   tempDirs.push(homeDir);
+  const bin = join(homeDir, 'fixture-bin');
+  mkdirSync(bin);
+  for (const tool of ['ps', 'lsof']) {
+    writeFileSync(join(bin, tool), '#!/bin/sh\nexit 0\n', { mode: 0o755 });
+  }
   return homeDir;
 }
 
-function writeClaudeSessionFile(homeDir: string, sessionId: string): void {
+function writeClaudeSessionFile(homeDir: string, sessionId: string, timestamp = '2026-04-13T16:05:00.000Z'): void {
   const projectDir = join(homeDir, '.claude', 'projects', '-tmp-completed-sync');
   mkdirSync(projectDir, { recursive: true });
   writeFileSync(
@@ -21,7 +26,7 @@ function writeClaudeSessionFile(homeDir: string, sessionId: string): void {
       uuid: 'user-1',
       sessionId,
       cwd: '/tmp/completed-sync',
-      timestamp: '2026-04-13T16:05:00.000Z',
+      timestamp,
       userType: 'external',
       message: {
         role: 'user',
@@ -53,6 +58,9 @@ function runSyncScript(homeDir: string, script: string): Record<string, unknown>
     env: {
       ...process.env,
       HOME: homeDir,
+      CODEX_HOME: join(homeDir, '.codex'),
+      CLAUDE_CONFIG_DIR: join(homeDir, '.claude'),
+      PATH: `${join(homeDir, 'fixture-bin')}:${process.env.PATH}`,
       KEEPLINE_HOME: homeDir,
       KEEPLINE_TEST_HOME: homeDir,
       KEEPLINE_TEST_ISOLATED: '1',
@@ -240,4 +248,176 @@ describe('SessionService sync', () => {
       initialPrompt: 'Original user task',
     });
   });
+});
+
+
+describe('SessionService sync with missing cwd', () => {
+  function syncFixture(options: { transcript: boolean; psListsPid: boolean; alive: boolean; partialCwd?: boolean; status?: 'idle' | 'waiting'; statusSource?: 'hook' | 'scan'; newActivity?: boolean; reusePid?: boolean; daemonEntry?: boolean }) {
+    const homeDir = createTempHome();
+    const sessionId = 'live-cwd-sync';
+    if (options.transcript) writeClaudeSessionFile(homeDir, sessionId, options.newActivity ? new Date().toISOString() : undefined);
+    if (options.reusePid) writeClaudeSessionFile(homeDir, 'new-cwd-sync', new Date().toISOString());
+    const now = new Date();
+    const [day, month, date, year] = now.toDateString().split(' ');
+    const psStart = options.reusePid ? `${day} ${month} ${date} ${now.toTimeString().slice(0, 8)} ${year}` : 'Mon Jan 6 10:30:45 2026';
+    return runSyncScript(homeDir, `
+      const { spyOn } = await import('bun:test');
+      const childProcess = await import('child_process');
+      const psOutput = ${JSON.stringify(options.psListsPid
+        ? `12345 0.1 0.5 ttys001 ${psStart} /usr/local/bin/claude`
+        : '12345 0.1 0.5 ttys001 Mon Jan 6 10:30:45 2026 /usr/bin/python fixture-worker.py')};
+      spyOn(childProcess, 'execSync').mockImplementation((command) => {
+        if (command.startsWith('ps ')) return psOutput;
+        if (command.startsWith('lsof ')) throw Object.assign(new Error('fixture lsof failure'), {
+          status: 1, signal: null,
+          stdout: ${JSON.stringify(options.partialCwd ? 'claude 12345 fixture cwd DIR 1,1 0 1 /tmp/completed-sync\n' : '')},
+        });
+        throw new Error('Unexpected command: ' + command);
+      });
+      const checkedPids = [];
+      process.kill = (pid, signal) => {
+        if (signal !== 0) throw new Error('Only liveness checks are allowed');
+        checkedPids.push(pid);
+        if (pid === 12345 && ${options.alive}) return true;
+        throw Object.assign(new Error('fixture process exited'), { code: 'ESRCH' });
+      };
+      const { resetDatabase } = await import('./src/db/migrations.ts');
+      const { closeDatabase } = await import('./src/infrastructure/database/sqlite.ts');
+      const { sessionRepository } = await import('./src/infrastructure/database/repositories/session.repository.ts');
+      const { sessionService } = await import('./src/services/session.service.ts');
+      resetDatabase();
+      for (const [id, pid] of [[${JSON.stringify(sessionId)}, 12345], ['dead-cwd-sync', 12346]]) {
+        sessionRepository.upsert({
+          sessionId: id, client: 'claude', directory: '/tmp/completed-sync',
+          status: ${JSON.stringify(options.status ?? 'waiting')}, statusSource: ${JSON.stringify(options.statusSource ?? 'hook')}, pid, tty: 'ttys001',
+          title: 'Fixture task', initialPrompt: 'Fixture task',
+          startedAt: new Date('2026-01-06T10:00:00Z'),
+          lastActiveAt: new Date('2026-04-13T16:06:00Z'),
+          wasProcessObserved: true,
+        });
+      }
+      const lostEvents = [];
+      const { on } = await import('./src/lib/events.ts');
+      on('session:lost', ({session}) => lostEvents.push(session.sessionId));
+      const syncResult = ${options.daemonEntry
+        ? "await (await import('./src/services/daemon.scheduler.ts')).triggerSync()"
+        : 'await sessionService.syncSessions({ fullSync: true })'};
+      const { SessionAggregator } = await import('./src/services/session.aggregator.ts');
+      console.log(JSON.stringify({
+        aggregated: new SessionAggregator(sessionRepository).getAggregatedSessions().map(({sessionId,status,processRunning}) => ({sessionId,status,processRunning})),
+        syncResult, checkedPids, lostEvents,
+        sessions: sessionRepository.findAll().map(({sessionId,status,statusSource,pid,tty}) =>
+          ({sessionId,status,statusSource,pid: pid ?? null,tty: tty ?? null})),
+      }));
+      closeDatabase();
+    `);
+  }
+
+  test('standalone aggregation keeps a known PID live without cwd', () => {
+    const result = syncFixture({ transcript: true, psListsPid: true, alive: true });
+    expect(result.aggregated).toContainEqual({ sessionId: 'live-cwd-sync', status: 'waiting', processRunning: true });
+  });
+
+  test('daemon manual sync retains a known live PID without cwd', () => {
+    const result = syncFixture({ transcript: true, psListsPid: true, alive: true,
+      statusSource: 'scan', newActivity: true, daemonEntry: true });
+    expect(result.sessions).toContainEqual({
+      sessionId: 'live-cwd-sync', status: 'running', statusSource: 'scan', pid: 12345, tty: 'ttys001',
+    });
+    expect(result.lostEvents).toEqual(['dead-cwd-sync']);
+  });
+
+  test('daemon manual sync propagates ps failure without changing stored sessions', () => {
+    const homeDir = createTempHome();
+    writeFileSync(join(homeDir, 'fixture-bin', 'ps'), '#!/bin/sh\nexit 1\n', { mode: 0o755 });
+    const result = runSyncScript(homeDir, `
+      const { resetDatabase } = await import('./src/db/migrations.ts');
+      const { closeDatabase } = await import('./src/infrastructure/database/sqlite.ts');
+      const { sessionRepository } = await import('./src/infrastructure/database/repositories/session.repository.ts');
+      const { triggerSync } = await import('./src/services/daemon.scheduler.ts');
+      resetDatabase();
+      sessionRepository.upsert({ sessionId: 'ps-failure-live', client: 'claude',
+        directory: '/tmp/completed-sync', status: 'waiting', statusSource: 'hook', pid: 12345,
+        title: 'Fixture task', initialPrompt: 'Fixture task',
+        startedAt: new Date(), lastActiveAt: new Date(), wasProcessObserved: true });
+      const before = sessionRepository.findBySessionId('ps-failure-live');
+      const lostEvents = [];
+      const { on } = await import('./src/lib/events.ts');
+      on('session:lost', ({session}) => lostEvents.push(session.sessionId));
+      let failure;
+      try { await triggerSync(); }
+      catch (error) { failure = { name: error.name, code: error.code, message: error.message }; }
+      console.log(JSON.stringify({ failure, lostEvents,
+        unchanged: JSON.stringify(before) === JSON.stringify(sessionRepository.findBySessionId('ps-failure-live')) }));
+      closeDatabase();
+    `);
+    expect(result).toEqual({ unchanged: true, lostEvents: [], failure: {
+      name: 'ProcessScanError', code: 'PROCESS_SCAN_ERROR', message: 'Failed to scan processes',
+    } });
+  });
+
+  test('does not retain an old PID that was attributed to a new transcript', () => {
+    const result = syncFixture({ transcript: true, psListsPid: true, alive: true, partialCwd: true, reusePid: true });
+    expect(result.syncResult).toEqual({ discovered: 1, updated: 1, lost: 2 });
+    expect(result.sessions).toContainEqual({
+      sessionId: 'live-cwd-sync', status: 'lost', statusSource: 'scan', pid: null, tty: null,
+    });
+    expect((result.sessions as Array<{sessionId: string; pid: number | null}>).filter(session => session.pid === 12345).map(session => session.sessionId)).toEqual(['new-cwd-sync']);
+  });
+
+  for (const psListsPid of [true]) {
+    test(`refreshes scan-sourced idle state from new transcript activity, psListsPid=${psListsPid}`, () => {
+      const result = syncFixture({ transcript: true, psListsPid, alive: true, status: 'idle', statusSource: 'scan', newActivity: true });
+      expect(result.sessions).toContainEqual({
+        sessionId: 'live-cwd-sync', status: 'running', statusSource: 'scan', pid: 12345, tty: 'ttys001',
+      });
+    });
+    test(`ages scan-sourced waiting state into idle, psListsPid=${psListsPid}`, () => {
+      const result = syncFixture({ transcript: true, psListsPid, alive: true, statusSource: 'scan' });
+      expect(result.sessions).toContainEqual({
+        sessionId: 'live-cwd-sync', status: 'idle', statusSource: 'scan', pid: 12345, tty: 'ttys001',
+      });
+    });
+  }
+
+  test('uses cwd stdout from a nonzero exit without losing the live session', () => {
+    const result = syncFixture({ transcript: true, psListsPid: true, alive: true, partialCwd: true });
+    expect(result.syncResult).toEqual({ discovered: 0, updated: 1, lost: 1 });
+    expect(result.lostEvents).toEqual(['dead-cwd-sync']);
+    expect(result.sessions).toContainEqual({
+      sessionId: 'live-cwd-sync', status: 'waiting', statusSource: 'hook', pid: 12345, tty: 'ttys001',
+    });
+  });
+
+  for (const transcript of [true, false]) {
+    for (const psListsPid of [true, false]) {
+      test(`reconciles stored agent identity with transcript=${transcript}, psListsPid=${psListsPid}`, () => {
+        const result = syncFixture({ transcript, psListsPid, alive: true });
+        expect(result.syncResult).toEqual({ discovered: 0, updated: transcript ? 1 : 0, lost: psListsPid ? 1 : 2 });
+        if (psListsPid) {
+          expect(result.lostEvents).toEqual(['dead-cwd-sync']);
+          expect(result.sessions).toContainEqual({
+            sessionId: 'live-cwd-sync', status: 'waiting', statusSource: 'hook', pid: 12345, tty: 'ttys001',
+          });
+        } else {
+          expect(result.lostEvents).toContain('live-cwd-sync');
+          expect(result.sessions).toContainEqual({
+            sessionId: 'live-cwd-sync', status: 'lost', statusSource: 'scan', pid: null, tty: transcript ? null : 'ttys001',
+          });
+        }
+        expect(result.checkedPids).toEqual([]);
+      });
+    }
+
+    test(`still marks dead sessions lost with transcript=${transcript}`, () => {
+      const result = syncFixture({ transcript, psListsPid: false, alive: false });
+      expect(result.syncResult).toEqual({ discovered: 0, updated: transcript ? 1 : 0, lost: 2 });
+      expect(result.lostEvents).toContain('live-cwd-sync');
+      expect(result.lostEvents).toContain('dead-cwd-sync');
+      expect(result.sessions).toContainEqual({
+        sessionId: 'live-cwd-sync', status: 'lost', statusSource: 'scan', pid: null,
+        tty: transcript ? null : 'ttys001',
+      });
+    });
+  }
 });
