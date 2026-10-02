@@ -1,4 +1,7 @@
-import { describe, expect, test } from 'bun:test';
+import { afterEach, describe, expect, test } from 'bun:test';
+import { mkdtempSync, rmSync, writeFileSync } from 'fs';
+import { tmpdir } from 'os';
+import { join } from 'path';
 import { parseAgentPsOutput, parseClaudePsOutput } from '../adapters/process/scanner.js';
 
 describe('Process Parser', () => {
@@ -58,6 +61,109 @@ describe('Process Parser', () => {
       client: 'codex',
       pid: 22344,
       argsRaw: 'resume --last',
+    });
+  });
+});
+
+
+describe('Process scanner cwd failures', () => {
+  const psOutput = [
+    '12345 1.2 0.5 ttys001 Mon Jan  6 10:30:45 2026 /usr/local/bin/claude',
+    '22345 0.4 0.2 ttys002 Mon Jan  6 10:30:44 2026 /usr/local/bin/codex',
+  ].join('\n');
+  const cwdOutput = 'claude 12345 fixture cwd DIR 1,1 0 1 /tmp/fixture project\n';
+
+  const fixtureDirs: string[] = [];
+  afterEach(() => {
+    while (fixtureDirs.length) rmSync(fixtureDirs.pop()!, { recursive: true, force: true });
+  });
+
+  function runScannerScript(script: string, fixtures?: { ps: string; cwd: string }) {
+    const bin = mkdtempSync(join(tmpdir(), 'keepline-test-process-bin-'));
+    fixtureDirs.push(bin);
+    // Block real process inspection even if a builtin mock stops working.
+    writeFileSync(join(bin, 'ps'), '#!/bin/sh\nprintf \'%s\' "$KEEPLINE_FIXTURE_PS"\n', { mode: 0o755 });
+    writeFileSync(join(bin, 'lsof'), '#!/bin/sh\nprintf \'%s\' "$KEEPLINE_FIXTURE_CWD"\nexit 1\n', { mode: 0o755 });
+    return Bun.spawnSync({
+      cmd: [process.execPath, '--eval', script],
+      env: {
+        ...process.env, PATH: `${bin}:${process.env.PATH}`,
+        KEEPLINE_FIXTURE_PS: fixtures?.ps ?? '', KEEPLINE_FIXTURE_CWD: fixtures?.cwd ?? '',
+      },
+      stdout: 'pipe', stderr: 'pipe',
+    });
+  }
+
+  function scanWithLsof(error: Record<string, unknown> | null, output = cwdOutput) {
+    const script = `
+      const { spyOn } = await import('bun:test');
+      const childProcess = await import('child_process');
+      spyOn(childProcess, 'execSync').mockImplementation((command) => {
+        if (command.startsWith('ps ')) return ${JSON.stringify(psOutput)};
+        if (command.startsWith('lsof ')) {
+          const details = ${JSON.stringify(error)};
+          if (details) throw Object.assign(new Error('fixture lsof failure'), details);
+          return ${JSON.stringify(output)};
+        }
+        throw new Error('Unexpected command: ' + command);
+      });
+      const { scanAgentProcesses } = await import('./src/adapters/process/scanner.ts');
+      console.log(JSON.stringify(scanAgentProcesses().map(({pid, client, cwd}) => ({pid, client, cwd}))));
+    `;
+    const proc = runScannerScript(script);
+    if (proc.exitCode !== 0) throw new Error(proc.stderr.toString());
+    return JSON.parse(proc.stdout.toString().trim());
+  }
+
+  test('reads stdout from an actual mocked lsof command exiting one', () => {
+    const proc = runScannerScript(`
+      const { scanAgentProcesses } = await import('./src/adapters/process/scanner.ts');
+      console.log(JSON.stringify(scanAgentProcesses().map(({pid, cwd}) => ({pid, cwd}))));
+    `, { ps: psOutput, cwd: cwdOutput });
+    expect(proc.exitCode).toBe(0);
+    expect(JSON.parse(proc.stdout.toString().trim())).toEqual([
+      { pid: 12345, cwd: '/tmp/fixture project' }, { pid: 22345, cwd: '' },
+    ]);
+  });
+
+  test('retains partial cwd stdout when lsof exits one', () => {
+    expect(scanWithLsof({ status: 1, signal: null, stdout: cwdOutput })).toEqual([
+      { pid: 12345, client: 'claude', cwd: '/tmp/fixture project' },
+      { pid: 22345, client: 'codex', cwd: '' },
+    ]);
+  });
+
+  test('retains live ps rows when lsof returns no cwd data', () => {
+    expect(scanWithLsof({ status: 1, signal: null, stdout: '' })).toEqual([
+      { pid: 12345, client: 'claude', cwd: '' },
+      { pid: 22345, client: 'codex', cwd: '' },
+    ]);
+  });
+
+  for (const error of [
+    { status: null, signal: 'SIGTERM', stdout: cwdOutput },
+    { code: 'ENOENT', stdout: cwdOutput },
+  ]) {
+    test(`ignores partial cwd data for ${error.signal ?? error.code}`, () => {
+      expect(scanWithLsof(error)).toEqual([
+        { pid: 12345, client: 'claude', cwd: '' },
+        { pid: 22345, client: 'codex', cwd: '' },
+      ]);
+    });
+  }
+
+  test('preserves the process scan error contract when ps fails', () => {
+    const proc = runScannerScript(`
+        const { spyOn } = await import('bun:test');
+        const childProcess = await import('child_process');
+        spyOn(childProcess, 'execSync').mockImplementation(() => { throw new Error('fixture ps failure'); });
+        const { scanAgentProcesses } = await import('./src/adapters/process/scanner.ts');
+        try { scanAgentProcesses(); throw new Error('scan should fail'); }
+        catch (error) { console.log(JSON.stringify({name: error.name, code: error.code, message: error.message})); }
+      `);
+    expect(proc.exitCode).toBe(0);
+    expect(JSON.parse(proc.stdout.toString().trim())).toEqual({
+      name: 'ProcessScanError', code: 'PROCESS_SCAN_ERROR', message: 'Failed to scan processes',
     });
   });
 });

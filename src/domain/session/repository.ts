@@ -28,6 +28,7 @@ export interface ExistingSessionSummary {
   statusSource: SessionStatusSource;
   title: string;
   lastActiveAt: Date;
+  pid?: number;
 }
 
 /** Session upsert data (for create or update) */
