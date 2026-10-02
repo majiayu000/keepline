@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, expect, test } from 'bun:test';
-import { mkdtempSync, readdirSync, readFileSync, rmSync, statSync, writeFileSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, statSync, writeFileSync } from 'node:fs';
 import { chmod } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -460,3 +460,79 @@ test('stalled token refresh aborts and releases the lock without a second post',
     rmSync(dir, { recursive: true, force: true });
   }
 });
+
+for (const scenario of ['override', 'fallback', 'empty', 'explicit', 'missing', 'no-home', 'switch'] as const) {
+  test(`quota route resolves the active auth file: ${scenario}`, async () => {
+    const dir = mkdtempSync(join(tmpdir(), 'codex-quota-home-'));
+    const defaultPath = join(dir, '.codex', 'auth.json');
+    const customPath = join(dir, 'custom-codex', 'auth.json');
+    const explicitPath = join(dir, 'explicit', 'auth.json');
+    try {
+      for (const authPath of [defaultPath, customPath, explicitPath]) {
+        mkdirSync(join(authPath, '..'), { recursive: true });
+        writeAuth(authPath, expiredAccessToken(), 'dummy-shared-refresh', 'dummy-id');
+      }
+      const env: Record<string, string | undefined> = { ...process.env, HOME: dir, KEEPLINE_HOME: join(dir, 'keepline') };
+      delete env.CODEX_AUTH_PATH;
+      delete env.CODEX_HOME;
+      if (['override', 'explicit', 'switch'].includes(scenario)) env.CODEX_HOME = join(dir, 'custom-codex');
+      if (scenario === 'empty') env.CODEX_HOME = '';
+      if (scenario === 'explicit') env.CODEX_AUTH_PATH = explicitPath;
+      if (scenario === 'missing') env.CODEX_HOME = join(dir, 'absent');
+      if (scenario === 'no-home') delete env.HOME;
+      const child = Bun.spawn([process.execPath, '-e', `
+        import { expect } from 'bun:test';
+        import usage from './src/web/api/routes/usage.ts';
+        import { setupUser } from './src/services/auth.service.ts';
+        import { runMigrations } from './src/db/migrations.ts';
+        runMigrations();
+        const scenario = ${JSON.stringify(scenario)};
+        const paths = ${JSON.stringify([defaultPath, customPath, explicitPath])};
+        let refreshCalls = 0;
+        let usageCalls = 0;
+        globalThis.fetch = async (input, init) => {
+          if (String(input) === ${JSON.stringify(TOKEN_URL)}) {
+            refreshCalls++;
+            expect(JSON.parse(String(init?.body)).refresh_token).toBe('dummy-shared-refresh');
+            return Response.json({ access_token: 'dummy-new-access', refresh_token: 'dummy-rotated-refresh' });
+          }
+          expect(String(input)).toBe('https://chatgpt.com/backend-api/wham/usage');
+          usageCalls++;
+          expect(init.headers.Authorization).toBe('Bearer dummy-new-access');
+          return Response.json({ plan_type: 'dummy-' + usageCalls });
+        };
+        const { token } = await setupUser('dummy-user', 'dummy-password');
+        const request = () => usage.request('/codex/quota', { headers: { Authorization: 'Bearer ' + token } });
+        const before = await Promise.all(paths.map(path => Bun.file(path).text()));
+        const response = await request();
+        expect(response.status).toBe(scenario === 'missing' ? 404 : scenario === 'no-home' ? 500 : 200);
+        const selected = scenario === 'explicit' ? 2 : ['override', 'switch'].includes(scenario) ? 1 : 0;
+        for (let i = 0; i < paths.length; i++) {
+          const contents = await Bun.file(paths[i]).text();
+          if (['missing', 'no-home'].includes(scenario) || i !== selected) {
+            expect(contents).toBe(before[i]);
+            expect(await Bun.file(paths[i] + '.refresh.lock').exists()).toBe(false);
+          } else {
+            expect(JSON.parse(contents).tokens.refresh_token).toBe('dummy-rotated-refresh');
+          }
+        }
+        if (scenario === 'switch') {
+          const first = await response.json();
+          delete process.env.CODEX_HOME;
+          const second = await request();
+          expect(second.status).toBe(200);
+          expect((await second.json()).data.plan_type).not.toBe(first.data.plan_type);
+          expect(JSON.parse(await Bun.file(paths[0]).text()).tokens.refresh_token).toBe('dummy-rotated-refresh');
+        }
+        expect(refreshCalls).toBe(['missing', 'no-home'].includes(scenario) ? 0 : scenario === 'switch' ? 2 : 1);
+        expect(usageCalls).toBe(refreshCalls);
+      `], { cwd: process.cwd(), env, stdout: 'pipe', stderr: 'pipe' });
+      const [exitCode, stdout, stderr] = await Promise.all([
+        child.exited, new Response(child.stdout).text(), new Response(child.stderr).text(),
+      ]);
+      expect({ exitCode, output: exitCode === 0 ? '' : stdout + stderr }).toEqual({ exitCode: 0, output: '' });
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+}
