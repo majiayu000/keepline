@@ -484,3 +484,129 @@ async fn token_endpoint_failure_leaves_auth_unchanged_and_returns_old_token() {
     assert_eq!(saved["tokens"]["refresh_token"], "old-refresh");
     assert_eq!(saved["last_refresh"], "2020-01-01T00:00:00Z");
 }
+
+#[test]
+fn codex_auth_environment_child() {
+    let Ok(scenario) = std::env::var("KEEPLINE_AUTH_TEST_SCENARIO") else {
+        return;
+    };
+    let home = PathBuf::from(std::env::var_os("HOME").expect("isolated home"));
+    let default_path = home.join(".codex/auth.json");
+    let expected_home = match scenario.as_str() {
+        "override" => home.join("custom-codex"),
+        "missing" => home.join("absent"),
+        "fallback" | "empty" => home.join(".codex"),
+        _ => panic!("unknown auth scenario"),
+    };
+    assert_eq!(get_codex_home(), Some(expected_home.clone()));
+    let auth_path = expected_home.join("auth.json");
+    let runtime = tokio::runtime::Runtime::new().expect("test runtime");
+    let info = runtime.block_on(get_codex_info()).expect("info command");
+    if scenario == "missing" {
+        assert!(!info.connected);
+        let limits = runtime
+            .block_on(get_codex_rate_limits())
+            .expect("quota command");
+        assert!(!limits.connected);
+        assert!(limits
+            .error
+            .as_deref()
+            .is_some_and(|error| error.contains("Codex not configured")));
+        return;
+    }
+    assert_eq!(
+        info.email.as_deref(),
+        Some(if scenario == "override" {
+            "custom@example.test"
+        } else {
+            "default@example.test"
+        })
+    );
+    let default_before = fs::read(&default_path).expect("default auth");
+    runtime
+        .block_on(refresh_persisted_codex_auth(
+            &auth_path,
+            |refresh| async move {
+                assert_eq!(refresh, "dummy-shared-refresh");
+                Ok(serde_json::json!({
+                    "access_token": "dummy-new-access",
+                    "refresh_token": "dummy-rotated-refresh",
+                }))
+            },
+        ))
+        .expect("isolated refresh");
+    assert_eq!(
+        read_auth_file(&auth_path)["tokens"]["refresh_token"],
+        "dummy-rotated-refresh"
+    );
+    if scenario == "override" {
+        assert_eq!(
+            fs::read(&default_path).expect("default auth after refresh"),
+            default_before
+        );
+        assert!(!refresh_lock_path(&default_path).exists());
+        fs::write(&default_path, "invalid-default-auth").expect("default sentinel");
+    }
+    // Exercise the real quota command without reaching either HTTP endpoint.
+    fs::write(&auth_path, r#"{"tokens":{}}"#).expect("auth without access token");
+    let limits = runtime
+        .block_on(get_codex_rate_limits())
+        .expect("quota command");
+    assert!(!limits.connected);
+    assert_eq!(
+        limits.error.as_deref(),
+        Some("No access_token found in auth.json")
+    );
+}
+
+#[test]
+fn codex_auth_respects_codex_home_in_isolated_processes() {
+    for scenario in ["override", "fallback", "empty", "missing"] {
+        let home = tempfile::tempdir().expect("isolated home");
+        let default_root = home.path().join(".codex");
+        let custom_root = home.path().join("custom-codex");
+        for (root, email) in [
+            (&default_root, "default@example.test"),
+            (&custom_root, "custom@example.test"),
+        ] {
+            fs::create_dir_all(root).expect("dummy auth root");
+            write_auth_file(
+                &root.join("auth.json"),
+                &expired_access_token(),
+                "dummy-shared-refresh",
+                &test_jwt(serde_json::json!({"email": email})),
+            );
+        }
+        let mut child = std::process::Command::new(std::env::current_exe().expect("test binary"));
+        child
+            .args([
+                "--exact",
+                "codex::tests::codex_auth_environment_child",
+                "--nocapture",
+            ])
+            .env("HOME", home.path())
+            .env("KEEPLINE_AUTH_TEST_SCENARIO", scenario);
+        match scenario {
+            "override" => {
+                child.env("CODEX_HOME", &custom_root);
+            }
+            "missing" => {
+                child.env("CODEX_HOME", home.path().join("absent"));
+            }
+            "empty" => {
+                child.env("CODEX_HOME", "");
+            }
+            "fallback" => {
+                child.env_remove("CODEX_HOME");
+            }
+            _ => unreachable!(),
+        }
+        let output = child.output().expect("isolated auth process");
+        assert!(
+            output.status.success(),
+            "{scenario}: {} {}",
+            String::from_utf8_lossy(&output.stdout),
+            String::from_utf8_lossy(&output.stderr)
+        );
+    }
+}
