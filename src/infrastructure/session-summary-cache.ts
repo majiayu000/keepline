@@ -5,7 +5,7 @@ import type { ParsedSessionData } from '../domain/session/index.js';
 import { ensureKeeplineDataHome } from '../lib/paths.js';
 
 // Increment when parser semantics change. This is derived data, never task/session truth.
-const CACHE_VERSION = 1;
+const CACHE_VERSION = 2;
 let database: Database | undefined;
 const stats = { hits: 0, misses: 0, writes: 0 };
 

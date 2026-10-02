@@ -121,6 +121,7 @@ export interface ParsedSessionData {
   client?: AgentClient;
   directory: string;
   firstMessage?: string;
+  launchPrompt?: string;
   lastMessage?: string;
   messageCount: number;
   toolCount: number;

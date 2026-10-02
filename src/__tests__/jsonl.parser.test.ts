@@ -175,6 +175,7 @@ describe('JSONL Session Parser', () => {
     const parsed = await parseSessionFile(filePath);
 
     expect(parsed?.firstMessage).toBe('Fix the Claude session title boundary');
+    expect(parsed?.launchPrompt).toBe('Inspect the Claude session title boundary');
     expect(parsed?.messageCount).toBe(8);
   });
 

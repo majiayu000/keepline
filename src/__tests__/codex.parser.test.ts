@@ -182,6 +182,7 @@ describe('Codex JSONL parser', () => {
     const parsed = await parseCodexSessionFile(filePath);
 
     expect(parsed?.firstMessage).toBe('Fix the session title boundary');
+    expect(parsed?.launchPrompt).toBe('Inspect the session title boundary');
     expect(parsed?.messageCount).toBe(8);
   });
 
