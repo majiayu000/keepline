@@ -1,0 +1,370 @@
+# Progress Ledger Tech Spec
+
+Product spec: `specs/progress-ledger/product.md`
+
+Issue: https://github.com/majiayu000/keepline/issues/138
+
+## Current State (as of e6860ba, 2026-09-17)
+
+Facts this design builds on, with the gaps it must close:
+
+- Runtimes: only `claude-code` and `codex` adapters
+  (`src/domain/runtime/types.ts`). Codex reads `~/.codex/sessions/**/rollout-*.jsonl`
+  only (`src/adapters/codex/scanner.ts`); it parses messages, function calls,
+  and usage, but not tool outputs or turn lifecycle events.
+- The process scanner ignores `Codex.app` and `app-server` processes
+  (`src/adapters/process/scanner.ts`), so Codex desktop sessions have no process
+  and are classified `lost`.
+- Status is a time heuristic (`src/adapters/process/detector.ts`): no process is
+  `lost`; CPU above threshold or activity under 5 s is `running`; under 30 s is
+  `waiting`; otherwise `idle`. Hook-sourced status overrides scans while the
+  process is alive (`src/services/session.aggregator.ts`).
+- Permission waits are not detected. Claude `Notification` hooks are logged
+  only; `Stop` maps to `waiting` (`src/adapters/hook/server.ts`,
+  `src/adapters/hook/completion-receiver.ts`).
+- Tool-call extraction keeps `{name, input, timestamp}` only. Tool results, exit
+  codes, commits, and PRs are not extracted.
+- Evidence storage exists: `progress_evidence` (migration 008) with
+  `kind IN (message, tool_call, file_change, plan_event, test_result)`,
+  `outcome`, `confidence IN (explicit, inferred)`, and `metadata`.
+  `work_items`, `agent_sessions`, `work_item_session_links`, `task_dispatches`,
+  and `completion_reviews` already link stash work to sessions.
+- LLM access exists in `transcript.compressor.ts` (Agent SDK / Anthropic SDK)
+  and a loopback-only OpenAI-compatible summarizer, disabled by default
+  (`src/lib/config.ts`).
+- Notifications are browser-only (`src/web/client/src/hooks/useNotifications.ts`).
+- Config is `~/.keepline/config.json`, deep-merged over typed defaults with
+  range validation (`src/lib/config.ts`).
+- `work_items` (migration 007) has `kind IN (todo, idea, note, project_task)`
+  and, since migration 010, `external_source` / `external_id` populated by
+  `PUT /api/work-items/external/:source/:externalId`. It has no parent link, no
+  outcome, and no checklist. stash's own `WorkItem` has `parentId`, `kind`
+  including `epic`, `outcome`, and `checklist`
+  (`stash/shared/src/work-item.ts`).
+- `work_item_session_links.link_source` already supports
+  `heuristic_suggestion` with `acceptance_status = pending`.
+
+Codex transcripts contain what we need: `event_msg` records of type
+`task_started`, `task_complete` (with `last_agent_message`), and `turn_aborted`
+(with `reason`); tool outputs carry `exit_code` values. On the reference
+machine, `lsof` shows the Codex desktop process holding each live rollout file
+open, which identifies live desktop sessions without the process-to-cwd match.
+
+## Implementation Scope
+
+- `src/adapters/codex/parser.ts`, `src/adapters/codex/scanner.ts`
+- `src/adapters/claude/jsonl.ts`
+- `src/adapters/process/scanner.ts`, `src/adapters/process/detector.ts`
+- `src/adapters/hook/installer.ts`, `src/adapters/hook/completion-receiver.ts`,
+  `src/adapters/hook/server.ts`
+- `src/domain/ledger/` (new): types, evidence extraction, matcher, progress
+- `src/services/ledger/` (new): decomposer, judge, alert router, retention
+- `src/infrastructure/database/migrations/015_progress_ledger.ts` (new)
+- `src/infrastructure/notify/macos.ts` (new)
+- `src/web/api/routes/ledger.ts` (new), `src/web/api/routes/goals.ts` (new),
+  `src/web/api/routes/work-items.ts` (hierarchy and checklist fields),
+  `src/web/api/server.ts`
+- `src/domain/work-item/` (parent, level, outcome, acceptance)
+- `src/web/client/src/components/WorkItemsPanel/` (goal, todo, checklist
+  editing)
+- `src/web/client/src/pages/ledger/` (new)
+- `src/lib/config.ts`
+- `src/__tests__/ledger/` (new) with transcript fixtures
+
+## Design
+
+### 1. Transcript facts (prerequisite)
+
+Extend both parsers to emit a normalized `TranscriptFact` stream alongside the
+existing `RuntimeSession` fields:
+
+```ts
+type TranscriptFact =
+  | { kind: 'user_message'; text: string; at: string; turnId?: string }
+  | { kind: 'agent_message'; text: string; at: string; turnId?: string; final: boolean }
+  | { kind: 'turn'; phase: 'started' | 'completed' | 'aborted'; at: string; turnId: string; reason?: string }
+  | { kind: 'tool'; callId: string; name: string; input: unknown; at: string;
+      mutating: boolean; exitCode?: number; outputHead?: string }
+  | { kind: 'limit'; scope: 'usage' | 'budget'; at: string };
+```
+
+- Claude: pair `tool_use` with `tool_result` by id; `is_error` and Bash output
+  give the exit status.
+- Codex: pair `function_call`/`custom_tool_call` with their `*_output` records
+  and `item_completed` payloads by call id; read `exit_code`. Map
+  `task_started`/`task_complete`/`turn_aborted` to `turn` facts.
+- `mutating` is false for a fixed allowlist: sleep/wait, file reads, directory
+  listings, search, `git status|diff|log`, and plain `cat|ls|rg|grep|sed -n`.
+- Facts are derived on read from the transcript tail and cached in memory by
+  `(path, mtime, size)`. They are not persisted.
+
+### 2. Codex desktop and turn status
+
+- Add an open-file liveness probe: one batched `lsof -Fn -c codex` per scan;
+  a rollout path held open by any Codex process marks that session live.
+- Session status for Codex comes from the last `turn` fact: `started` with a
+  live file is `running`; `started` with no live holder and no writes for
+  `stalledAfterSeconds` (default 900) is `stalled`; `completed` is `idle`
+  (turn done, awaiting next prompt); `aborted` is `interrupted`.
+- Optional enrichment: when `~/.codex/state_5.sqlite` exists, read it with
+  `mode=ro` for thread titles and `thread_spawn_edges`, and
+  `~/.codex/goals_1.sqlite` for goal status (`usage_limited`,
+  `budget_limited`, `blocked`). A missing file or unknown schema version is
+  ignored and logged once.
+
+### 3. Needs-input status
+
+- Add `needs_input` to `SessionStatus` with a `statusReason` string.
+- Installer: add Claude `PermissionRequest`; keep `Notification` and map
+  `notification_type` in (`permission_prompt`, `idle_prompt`,
+  `agent_needs_input`) to `needs_input`. Add Codex `PermissionRequest`.
+- The next `PreToolUse`, `PostToolUse`, or `UserPromptSubmit` for the same
+  session clears `needs_input`.
+- Without hooks installed, `needs_input` is never inferred from timing.
+
+### 4. Storage (migration 015)
+
+```sql
+CREATE TABLE ledger_asks (
+  id TEXT PRIMARY KEY, agent_session_id TEXT NOT NULL,
+  ordinal INTEGER NOT NULL, text TEXT NOT NULL, kind TEXT NOT NULL
+    CHECK (kind IN ('initial', 'addition')),
+  occurred_at TEXT NOT NULL, created_at TEXT NOT NULL
+);
+CREATE TABLE requirement_items (
+  id TEXT PRIMARY KEY, agent_session_id TEXT NOT NULL,
+  ordinal INTEGER NOT NULL, title TEXT NOT NULL,
+  anchors TEXT NOT NULL DEFAULT '{}',      -- {paths:[], commands:[], keywords:[]}
+  constraints TEXT NOT NULL DEFAULT '[]',  -- [{kind, value}]
+  source TEXT NOT NULL CHECK (source IN ('work_item', 'model', 'fallback', 'user')),
+  status TEXT NOT NULL CHECK (status IN ('todo', 'doing', 'done', 'unverified')),
+  status_source TEXT NOT NULL CHECK (status_source IN ('rule', 'model', 'user')),
+  evidence_ids TEXT NOT NULL DEFAULT '[]',
+  deleted_by_user INTEGER NOT NULL DEFAULT 0,
+  created_at TEXT NOT NULL, updated_at TEXT NOT NULL
+);
+CREATE TABLE ledger_corrections (
+  id TEXT PRIMARY KEY, agent_session_id TEXT NOT NULL,
+  step_call_id TEXT NOT NULL,
+  requirement_item_id TEXT,                -- NULL with accept_off_plan = 1
+  accept_off_plan INTEGER NOT NULL DEFAULT 0,
+  created_at TEXT NOT NULL
+);
+CREATE TABLE ledger_alerts (
+  id TEXT PRIMARY KEY, agent_session_id TEXT NOT NULL,
+  kind TEXT NOT NULL CHECK (kind IN ('needs_input', 'off_plan', 'claimed_unverified', 'stalled', 'limited')),
+  detail TEXT NOT NULL, raised_at TEXT NOT NULL, cleared_at TEXT,
+  notified INTEGER NOT NULL DEFAULT 0
+);
+```
+
+Evidence reuses `progress_evidence` with `confidence = 'explicit'` and
+`metadata` holding `{callId, command, exitCode, testSummary, commitSha, prUrl}`.
+Existing `kind` values suffice: `tool_call` for commands, commits, and PRs;
+`test_result` for parsed test summaries; `file_change` for edits. Evidence rows
+are written only for steps that matter to the ledger, not for every tool call.
+
+Retention: the existing daemon retention job deletes ledger rows and
+ledger-sourced evidence whose session `last_active_at` is older than
+`ledger.retentionDays` (default 30).
+
+### 5. Decomposition
+
+- Trigger: a new `user_message` fact that is the first in the session or that
+  the ask extractor classifies as a scope addition (not "continue", "ok", or a
+  bare approval).
+- Source a: if the session is linked to a work item (accepted link or dispatch),
+  split the work item body's acceptance-criteria list into items.
+- Source b: if model judgment is enabled, call the judge backend once with the
+  asks and ask for JSON `{items:[{title, anchors, constraints}]}`. Validate with
+  a schema. Reject anchors not present in the ask or repo tree.
+- Source c: one item titled with the first 120 characters of the ask.
+- Re-decomposition replaces items with `source != 'user'` and keeps user items
+  and corrections.
+
+### 6. Rule matcher (always on, zero tokens)
+
+- For each mutating step, score items by anchor hits: path prefix or glob match
+  on edited files, command regex, keyword overlap with the step summary. The
+  best-scoring item above a threshold wins; ties go to the most recent item.
+- Constraint checks run per step: `no_public_api_change` flags diffs that add,
+  remove, or modify `pub` items (Rust) or `export` declarations (TS/JS);
+  `path_forbidden` flags edits under listed globs.
+- Rule status: an item with evidence of a successful command or test that
+  matches its anchors becomes `done`; an item with matched steps but no
+  successful evidence is `doing`.
+- Deviation: `conservative` raises off-plan after at least 8 consecutive
+  unmatched mutating steps spanning at least 10 minutes; `sensitive` after 3
+  steps. Constraint violations always raise when constraint checks are on.
+  `ledger_corrections` with `accept_off_plan` suppress that run.
+
+### 7. Model judge (optional)
+
+- Backends: `cli-claude` (`claude -p --output-format json`), `cli-codex`
+  (`codex exec --json`), `local` (existing loopback OpenAI-compatible
+  summarizer), `sdk` (existing Agent SDK path). Default: disabled.
+- Triggers, at most one in flight per session: turn completed; at least
+  `judgeBacklogSteps` (default 12) unmatched steps since the last judgment;
+  final agent message containing a completion claim. Minimum interval per
+  session: `judgeMinIntervalSeconds` (default 300).
+- Input: asks, items with anchors, the last N steps as one-line summaries with
+  evidence ids, and the final agent message. No raw tool output beyond
+  `outputHead` (max 400 characters per evidence row). Target under 5k tokens.
+- Output JSON: per item `{id, status, evidenceIds[], note}`, `remaining[]`,
+  `offPlan: {isOffPlan, why}`, `claims: [{text, evidenceIds[]}]`.
+- Enforcement: any `done` without a valid evidence id for this session becomes
+  `unverified`. Unknown item ids are dropped. User-set statuses are never
+  overwritten.
+
+### 8. Alerts and notifications
+
+- `AlertRouter` evaluates after each sync and hook event, writes
+  `ledger_alerts`, and coalesces per `(session, kind)` within
+  `alertCoalesceSeconds` (default 600).
+- Channels: existing WebSocket broadcast (`ledger:alert`) and native macOS
+  notifications via `osascript -e 'display notification ...'` with arguments
+  passed through argv, never string-interpolated into AppleScript source.
+- Each kind has its own toggle. `claimed_unverified` fires only on turn
+  completion.
+
+### 9. Config
+
+```jsonc
+"ledger": {
+  "enabled": true,
+  "retentionDays": 30,
+  "judge": { "enabled": false, "backend": "cli-claude", "model": null,
+             "minIntervalSeconds": 300, "backlogSteps": 12 },
+  "deviation": "conservative",          // off | conservative | sensitive
+  "constraints": true,
+  "alerts": { "needs_input": true, "off_plan": true,
+              "claimed_unverified": true, "stalled": true, "limited": true },
+  "nativeNotifications": true,
+  "focus": { "minutes": 30, "until": null },
+  "staleGoalDays": 7,
+  "exclude": { "projects": [], "runtimes": [] }
+}
+```
+
+Validated by the existing `ConfigManager`; exposed through
+`GET/PUT /api/settings/ledger`.
+
+### 10. API and UI
+
+- `GET /api/ledger?hours=` overview rows.
+- `GET /api/ledger/:sessionId` ledger detail: asks, items, trail, claims.
+- `PUT /api/ledger/:sessionId/items` replace user-edited items.
+- `POST /api/ledger/:sessionId/corrections` step reassignment or off-plan
+  acceptance.
+- `POST /api/ledger/:sessionId/redecompose`.
+- `POST /api/ledger/:sessionId/acceptances` with `decision`, optional
+  `droppedItemIds` and `reason`.
+- `GET /api/ledger/:sessionId/follow-up` and
+  `GET /api/ledger/:sessionId/correction?runId=` return prompt text only.
+- `POST /api/ledger/:sessionId/attribution` confirms, replaces, or clears a
+  link (`workItemId` or `none`).
+- `GET /api/goals?area=` goal rows with child todos and live session state;
+  `GET /api/ledger/review?date=` and `?week=` for the review pages;
+  `POST /api/goals/todos/:id/complete` and
+  `POST /api/ledger/:sessionId/carry-over` (creates or updates a Keepline
+  todo).
+- UI: Overview, Goals, Task ledger, Review, and Settings pages matching the
+  design canvas. Live updates ride the existing `/ws` channel.
+
+### 11. Acceptance, follow-ups, corrections
+
+- `ledger_acceptances` (migration 015):
+  `id, agent_session_id, turn_id, decision CHECK (decision IN ('accepted',
+  'accepted_with_gaps', 'follow_up')), dropped_item_ids TEXT, reason TEXT,
+  created_at`. A session's user-facing state is derived: last turn completed
+  and no acceptance for it → `review`; latest decision `accepted` or
+  `accepted_with_gaps` → `accepted`; `follow_up` → back to `running` when the
+  next turn starts.
+- Follow-up and correction prompts are deterministic templates over remaining,
+  unverified, and dropped items plus constraint violations. No model call.
+  The API returns text; the client copies it. Nothing is sent to an agent.
+- `ledger_rules`: `id, agent_session_id, matcher TEXT` (`{paths, commands}`),
+  `requirement_item_id`, `created_at`. Created when a step correction is saved
+  with "apply to similar steps". The rule matcher consults these before anchors.
+
+### 12. Goals and todos (Keepline-native)
+
+- Keepline is the system of record for goals and todos in this tranche. stash
+  is optional: when present, it can feed the same rows through the external
+  upsert, but no behavior depends on it.
+- Migration 015 adds to `work_items`: `parent_id TEXT`, `level TEXT` (`goal` or
+  `task`, validated in code because SQLite cannot alter the existing `kind`
+  CHECK), `outcome TEXT`, `acceptance TEXT` (JSON array of
+  `{id, text, completed}`).
+- Extend `POST /api/work-items` and `PATCH /api/work-items/:id` with
+  `parentId`, `level`, `outcome`, and `acceptance`, with validation: a goal has
+  no parent; a todo's parent must be a goal; checklist items need non-empty
+  text. Deleting a goal requires moving or deleting its todos first.
+- Extend the existing `WorkItemsPanel` (or a new Goals page reusing its hooks)
+  to create and edit goals, todos, and checklists inline.
+- Optional, later: accept the same fields on
+  `PUT /api/work-items/external/stash/:externalId` (`parentExternalId`,
+  `level` from stash `epic`, `outcome`, `checklist`). Write-back to stash is out
+  of scope.
+- Requirement items with `source = 'work_item'` are created from `acceptance`
+  when a session is linked by dispatch or accepted link, and stay in sync with
+  later checklist edits.
+- Roll-up service: a todo's checklist item is satisfied when any linked
+  session has an item for it with status `done` and an accepted turn. When all
+  are satisfied, the todo gets a `ready_to_complete` flag that the UI turns
+  into a prompt. Goal progress = child todos with status `done` over all child
+  todos; `active` count = todos with a running linked session.
+- Stale goal: no child todo status change, no linked session activity, and no
+  edit for 7 days (`ledger.staleGoalDays`).
+
+### 13. Attribution
+
+- On first sight of an unlinked session, score open todos by: same project
+  root (strong), ask mentions the todo title or an id token like `T1` or
+  `cove-183` (strong), keyword overlap with title and checklist (weak), and the
+  todo being `active` (weak). Above the threshold, write a
+  `work_item_session_links` row with `heuristic_suggestion` / `pending` and the
+  reasons in metadata. Below it, the session stays unattributed.
+- Confirmation flips the link to `accepted`. Resumed and compacted sessions
+  keep the link because it is keyed by runtime session id.
+- Unattributed share for the weekly view: sum of turn durations (turn start to
+  turn end or last write) for sessions without an accepted link, divided by the
+  sum for all sessions in the week.
+
+### 14. Alert routing additions
+
+- Focus mode: `ledger.focus.until` timestamp; while set, only `needs_input`
+  notifies; others are queued and summarized in one notification at expiry.
+- Withdrawal: when an alert's condition clears, `cleared_at` is set and the
+  native notification is removed where the OS allows; the WebSocket emits
+  `ledger:alert-cleared`.
+- Suppression: the client reports the session it is displaying; alerts for
+  that session are recorded but not notified.
+- `needs_input` inferred without hooks is a display-only `possibly_waiting`
+  flag and never routes to notifications.
+
+## Verification
+
+- Fixture transcripts under `src/__tests__/ledger/fixtures/` for Claude CLI,
+  Codex CLI, and Codex desktop, with known exit codes, tests, a commit, a PR
+  URL, a permission request, an abort, and an off-plan run.
+- Unit tests per stage: fact extraction, liveness, needs-input mapping, matcher,
+  deviation thresholds, judge enforcement (with a stubbed backend), alert
+  coalescing, retention, config validation.
+- A no-network test asserts no subprocess or HTTP model call when
+  `judge.enabled` is false.
+- `bun run typecheck` and the architecture import test stay green.
+
+## Risks And Rollback
+
+- **Transcript format drift.** Parsers degrade per record: an unknown record is
+  skipped and counted; a session with too many unknown records shows "ledger
+  unavailable" instead of wrong progress.
+- **lsof cost.** One batched call per scan; disable with
+  `ledger.enabled = false` or by excluding the Codex runtime.
+- **Judge cost or leakage.** Off by default; interval and backlog limits cap
+  calls; input is summaries plus capped output heads.
+- **Hook churn.** New hook entries use the existing marker and are removed by
+  `keepline hooks uninstall`.
+- **Rollback.** `ledger.enabled = false` stops all ledger work; migration 015
+  only adds tables, so older builds ignore them.
