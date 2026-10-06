@@ -70,6 +70,11 @@ export function isAllowedFetchMetadata(req: Request): boolean {
   return ['same-origin', 'same-site', 'none'].includes(fetchSite.trim().toLowerCase());
 }
 
+export function webContentSecurityPolicy(requestUrl: string): string {
+  const socket = new URL(requestUrl); socket.protocol = socket.protocol === 'https:' ? 'wss:' : 'ws:';
+  return `default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; img-src 'self' data:; connect-src 'self' ${socket.origin} ipc: http://ipc.localhost; object-src 'none'; base-uri 'self'; frame-ancestors 'none'`;
+}
+
 function addHost(allowed: Set<string>, hostname: string, port: number) {
   const host = normalizeHostHeader(formatHost(hostname));
   if (!host) return;

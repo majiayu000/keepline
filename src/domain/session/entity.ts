@@ -2,6 +2,7 @@
  * Session entity definition
  */
 
+import type { TranscriptFact } from '../ledger/types.js';
 import type { Entity } from '../shared/types.js';
 import type {
   AgentClient,
@@ -25,6 +26,7 @@ export interface Session extends Entity {
   /** Current status */
   status: SessionStatus;
   statusSource: SessionStatusSource;
+  statusReason?: string | null;
 
   /** Task information */
   title: string;
@@ -61,6 +63,9 @@ export interface Session extends Entity {
 
 /** Parsed session data from JSONL files */
 export interface ParsedSessionData {
+  sourcePath?: string;
+  transcriptFacts?: TranscriptFact[];
+  unknownRecords?: number;
   sessionId: string;
   client?: AgentClient;
   directory: string;
@@ -100,6 +105,7 @@ export type SessionListItem = Pick<
   | 'directory'
   | 'status'
   | 'statusSource'
+  | 'statusReason'
   | 'title'
   | 'startedAt'
   | 'lastActiveAt'
@@ -130,6 +136,7 @@ export interface CreateSessionInput {
   pid?: number;
   tty?: string;
   statusSource?: SessionStatusSource;
+  statusReason?: string | null;
 }
 
 /** Input for updating an existing session */
@@ -137,6 +144,7 @@ export interface UpdateSessionInput {
   directory?: string;
   status?: SessionStatus;
   statusSource?: SessionStatusSource;
+  statusReason?: string | null;
   title?: string;
   initialPrompt?: string;
   lastTool?: string;
@@ -185,8 +193,7 @@ export function generateTitle(prompt: string): string {
 export function isGeneratedSessionTitle(title: string): boolean {
   return title === 'Unknown task' ||
     /^继续[。.!！]?$/.test(title) ||
-    /^<recommended_plugins(?:\s|>)/i.test(title) ||
-    /^<environment_context(?:\s|>)/i.test(title) ||
+    /^<[a-z][\w:-]*(?:\s|>)/i.test(title) ||
     /^#\s*AGENTS\.md instructions for(?:\s|$)/i.test(title) ||
     /^AGENTS\.md: [^\n]+$/i.test(title) ||
     /^AGENTS\.md instructions$/i.test(title);
@@ -197,17 +204,24 @@ export function extractTaskPrompt(prompt: string): string | undefined {
   const trimmed = prompt.trim();
   if (!trimmed) return undefined;
 
-  if (/^<recommended_plugins(?:\s|>)/i.test(trimmed)) {
-    const remainder = textAfterClosingTag(trimmed, '</recommended_plugins>');
-    return remainder ? extractTaskPrompt(remainder) : undefined;
-  }
   if (/^#\s*AGENTS\.md instructions(?:\s|$)/i.test(trimmed)) {
     const remainder = extractPromptAfterAgentInstructions(trimmed);
     return remainder ? extractTaskPrompt(remainder) : undefined;
   }
-  if (/^<environment_context(?:\s|>)/i.test(trimmed)) {
-    const remainder = textAfterClosingTag(trimmed, '</environment_context>');
-    return remainder ? extractTaskPrompt(remainder) : undefined;
+  const opening = trimmed.match(/^<([a-z][\w:-]*)\b[^>]*>/i);
+  if (opening) {
+    if (/\/\s*>$/.test(opening[0])) return extractTaskPrompt(trimmed.slice(opening[0].length));
+    // Host blocks can be consecutive or nested. Stop at the matching close so
+    // authored text after the block (including later quotations) stays intact.
+    const tags = new RegExp(`<(/?)${opening[1]}(?=\\s|/?>)[^>]*>`, 'gi');
+    tags.lastIndex = opening[0].length;
+    let depth = 1;
+    for (let tag = tags.exec(trimmed); tag; tag = tags.exec(trimmed)) {
+      if (tag[1]) depth--;
+      else if (!/\/\s*>$/.test(tag[0])) depth++;
+      if (depth === 0) return extractTaskPrompt(trimmed.slice(tags.lastIndex));
+    }
+    return undefined;
   }
 
   if (/^继续[。.!！]?$/.test(trimmed)) return undefined;
@@ -240,11 +254,4 @@ function extractPromptAfterAgentInstructions(prompt: string): string | null {
   }
 
   return null;
-}
-
-function textAfterClosingTag(prompt: string, closingTag: string): string | undefined {
-  const close = prompt.lastIndexOf(closingTag);
-  if (close === -1) return undefined;
-  const rest = prompt.slice(close + closingTag.length).trim();
-  return rest || undefined;
 }

@@ -16,7 +16,19 @@ export function runMigrations(): void {
 export function resetDatabase(): void {
   assertSafeTestDatabaseReset();
   const db = getDatabase();
-  db.exec(`
+  // Test-only teardown includes the self-referencing goal/todo table.
+  db.exec('PRAGMA foreign_keys = OFF');
+  try { db.exec(`
+    DROP TABLE IF EXISTS ledger_corrections;
+    DROP TABLE IF EXISTS ledger_rules;
+    DROP TABLE IF EXISTS ledger_acceptances;
+    DROP TABLE IF EXISTS ledger_alerts;
+    DROP TABLE IF EXISTS ledger_asks;
+    DROP TABLE IF EXISTS ledger_attributions;
+    DROP TABLE IF EXISTS ledger_judgments;
+    DROP TABLE IF EXISTS ledger_views;
+    DROP TABLE IF EXISTS hook_spool_events;
+    DROP TABLE IF EXISTS requirement_items;
     DROP TABLE IF EXISTS completion_reviews;
     DROP TABLE IF EXISTS task_dispatches;
     DROP TABLE IF EXISTS progress_evidence;
@@ -36,7 +48,7 @@ export function resetDatabase(): void {
     DROP TABLE IF EXISTS sessions;
     DROP TABLE IF EXISTS metadata;
     DROP TABLE IF EXISTS schema_migrations;
-  `);
+  `); } finally { db.exec('PRAGMA foreign_keys = ON'); }
   runMigrations();
   logger.info('Database reset completed');
 }

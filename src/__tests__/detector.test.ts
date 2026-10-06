@@ -264,8 +264,11 @@ describe('Status Descriptions', () => {
   test('each status has a human-readable description', () => {
     const descriptions: Record<SessionStatus, string> = {
       running: 'Actively processing',
+      needs_input: 'Waiting for user input',
       waiting: 'Waiting for user input',
       idle: 'Idle but running',
+      stalled: 'No recent turn activity',
+      interrupted: 'Turn interrupted',
       lost: 'Process terminated unexpectedly',
       completed: 'Session completed',
     };

@@ -2,7 +2,7 @@
  * Session types - mirrors backend types from core/types.ts
  */
 
-export type SessionStatus = 'running' | 'waiting' | 'idle' | 'lost' | 'completed'
+export type SessionStatus = 'needs_input' | 'stalled' | 'interrupted' | 'running' | 'waiting' | 'idle' | 'lost' | 'completed'
 export type AgentClient = 'claude' | 'codex'
 export type SessionRuntimeId = 'claude-code' | 'codex'
 export type RuntimeFilter = SessionRuntimeId | 'all'
@@ -30,6 +30,7 @@ export interface Session {
   runtimeId: SessionRuntimeId
   directory: string
   status: SessionStatus
+  statusReason?: string
   title: string
   initialPrompt: string
   lastTool?: string
@@ -69,6 +70,9 @@ export interface SubAgent {
 }
 
 export interface SessionStats {
+  needs_input?: number
+  stalled?: number
+  interrupted?: number
   total: number
   running: number
   waiting: number

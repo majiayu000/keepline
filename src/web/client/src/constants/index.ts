@@ -17,6 +17,7 @@ export const API_TIMEOUT_MS = 30000
 
 /** Session status colors */
 export const STATUS_COLORS: Record<SessionStatus, string> = {
+  needs_input: 'var(--warning)', stalled: 'var(--danger)', interrupted: 'var(--danger)',
   running: 'var(--success)',
   waiting: 'var(--warning)',
   idle: 'var(--info)',
@@ -31,6 +32,9 @@ export function getStatusColor(status: string): string {
 
 /** Session status icons */
 export const STATUS_ICONS: Record<SessionStatus, string> = {
+  needs_input: SESSION_STATUS_PRESENTATION.needs_input.icon,
+  stalled: SESSION_STATUS_PRESENTATION.stalled.icon,
+  interrupted: SESSION_STATUS_PRESENTATION.interrupted.icon,
   running: SESSION_STATUS_PRESENTATION.running.icon,
   waiting: SESSION_STATUS_PRESENTATION.waiting.icon,
   idle: SESSION_STATUS_PRESENTATION.idle.icon,
@@ -40,6 +44,9 @@ export const STATUS_ICONS: Record<SessionStatus, string> = {
 
 /** Session status labels */
 export const STATUS_LABELS: Record<SessionStatus, string> = {
+  needs_input: SESSION_STATUS_PRESENTATION.needs_input.shortLabel,
+  stalled: SESSION_STATUS_PRESENTATION.stalled.shortLabel,
+  interrupted: SESSION_STATUS_PRESENTATION.interrupted.shortLabel,
   running: SESSION_STATUS_PRESENTATION.running.shortLabel,
   waiting: SESSION_STATUS_PRESENTATION.waiting.shortLabel,
   idle: SESSION_STATUS_PRESENTATION.idle.shortLabel,

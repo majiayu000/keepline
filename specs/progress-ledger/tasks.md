@@ -164,12 +164,46 @@ Verify:
 bun test src/__tests__/ledger/review.test.ts src/__tests__/ledger/alerts.test.ts
 ```
 
-### SPPL-T9: Optional model judge
+### SPPL-T14: Hook spool
 
-Done when the judge runs only when enabled, respects interval and backlog
-limits, supports `cli-claude`, `cli-codex`, `local`, and `sdk` backends, and
-downgrades any `done` without valid evidence to `unverified`. A test proves no
-model call happens when disabled.
+Done when installed hooks append to the spool and exit 0 within the timeout
+whether or not the service is running, and the service replays and
+deduplicates spooled events on startup and each scan. Land before or with T3.
+
+Verify:
+
+```sh
+bun test src/__tests__/ledger/spool.test.ts src/__tests__/hook.installer.test.ts
+```
+
+### SPPL-T15: Menubar app shell
+
+Done when `menubar-tauri` bundles the service as a sidecar, attaches to or
+starts it, starts at login, shows live counts in the tray, opens the popover
+and main window on the existing React client, and delivers notifications whose
+click opens the window at the anchored section. Includes the notification
+click spike from tech section 15.
+
+Verify:
+
+```sh
+cd menubar-tauri && bun run tauri build
+```
+
+Manual check on the author's Mac: log out and in, confirm counts appear
+without running any command; quit the app, trigger a hook, relaunch, confirm
+the event is in the ledger.
+
+### SPPL-T9: Optional requirement recognition
+
+Done when recognition runs only when enabled, once per new candidate user
+message, with results reused across processes and restarts. It supports
+`cli-claude`, `cli-codex`, `local`, and `sdk`, recognizes intent and decomposes
+requirements only, and cannot set completion or evidence. No tool-step or
+agent-report trigger remains. Tests prove zero provider/subprocess calls while
+disabled, concurrent deduplication, retained questions excluded from progress,
+and persistent user corrections. Failed attempts retain the raw candidate and
+do not retry automatically; explicit re-decomposition can retry.
 
 Verify:
 

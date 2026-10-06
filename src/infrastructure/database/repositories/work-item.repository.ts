@@ -25,6 +25,7 @@ interface AreaRow {
 
 interface WorkItemRow {
   id: string;
+  parent_id: string | null; level: 'goal' | 'task'; outcome: string | null; acceptance: string;
   kind: string;
   status: string;
   title: string;
@@ -53,6 +54,7 @@ function rowToArea(row: AreaRow): Area {
 function rowToWorkItem(row: WorkItemRow): WorkItem {
   return {
     id: row.id,
+    parentId: row.parent_id ?? undefined, level: row.level, outcome: row.outcome ?? undefined, acceptance: JSON.parse(row.acceptance),
     kind: row.kind as WorkItemKind,
     status: row.status as WorkItemStatus,
     title: row.title,
@@ -173,6 +175,7 @@ class WorkItemRepository implements IWorkItemRepository {
   }
 
   create(input: WorkItemCreateInput): WorkItem {
+    validateWorkItemHierarchy(input);
     const db = getDatabase();
 
     return transaction(() => {
@@ -187,8 +190,8 @@ class WorkItemRepository implements IWorkItemRepository {
       db.prepare(`
         INSERT INTO work_items (
           id, kind, status, title, body, project_root, area_id, status_source,
-          external_source, external_id, completed_at, created_at, updated_at
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+          external_source, external_id, completed_at, created_at, updated_at, parent_id, level, outcome, acceptance
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
       `).run(
         id,
         kind,
@@ -202,7 +205,8 @@ class WorkItemRepository implements IWorkItemRepository {
         input.externalId ?? null,
         completedAt,
         now,
-        now
+        now,
+        input.parentId ?? null, input.level ?? 'task', input.outcome ?? null, JSON.stringify(input.acceptance ?? [])
       );
 
       return this.findById(id)!;
@@ -212,12 +216,17 @@ class WorkItemRepository implements IWorkItemRepository {
   update(id: string, input: WorkItemUpdateInput): WorkItem | null {
     const existing = this.findById(id);
     if (!existing) return null;
+    validateWorkItemHierarchy({ ...existing, ...input }, id);
 
     const db = getDatabase();
     return transaction(() => {
       const now = new Date().toISOString();
       const setClauses: string[] = [];
       const params: Array<string | null> = [];
+
+      for (const [key, column] of [['parentId','parent_id'],['level','level'],['outcome','outcome'],['acceptance','acceptance']] as const) {
+        if (input[key] !== undefined) { setClauses.push(`${column} = ?`); params.push(key === 'acceptance' ? JSON.stringify(input[key]) : input[key] as string | null); }
+      }
 
       if (input.kind) {
         setClauses.push('kind = ?');
@@ -273,6 +282,7 @@ class WorkItemRepository implements IWorkItemRepository {
 
   delete(id: string): boolean {
     const db = getDatabase();
+    if (db.query('SELECT 1 FROM work_items WHERE parent_id = ?').get(id)) throw new WorkItemValidationError('Move or delete child todos first');
     const result = db.prepare('DELETE FROM work_items WHERE id = ?').run(id);
     return result.changes > 0;
   }
@@ -296,3 +306,16 @@ class WorkItemRepository implements IWorkItemRepository {
 }
 
 export const workItemRepository = new WorkItemRepository();
+
+export class WorkItemValidationError extends Error {}
+export function validateWorkItemHierarchy(input: Pick<WorkItem, 'parentId' | 'level' | 'outcome' | 'acceptance'>, id?: string): void {
+  if (input.level !== undefined && !['goal','task'].includes(input.level)) throw new WorkItemValidationError('level must be goal or task');
+  if (input.parentId !== undefined && input.parentId !== null && (typeof input.parentId !== 'string' || !input.parentId)) throw new WorkItemValidationError('parentId must be a non-empty string or null');
+  if (input.outcome !== undefined && input.outcome !== null && typeof input.outcome !== 'string') throw new WorkItemValidationError('outcome must be text or null');
+  if (input.level === 'goal' && input.parentId) throw new WorkItemValidationError('A goal cannot have a parent');
+  if (input.parentId && (input.parentId === id || workItemRepository.findById(input.parentId)?.level !== 'goal')) throw new WorkItemValidationError('Todo parent must be a goal');
+  if (input.level === 'task' && id && getDatabase().query('SELECT 1 FROM work_items WHERE parent_id = ?').get(id)) throw new WorkItemValidationError('Move child todos before changing goal level');
+  if (input.acceptance !== undefined) {
+    if (!Array.isArray(input.acceptance) || !input.acceptance.every(c => c && typeof c.id === 'string' && c.id.trim() && typeof c.text === 'string' && c.text.trim() && typeof c.completed === 'boolean') || new Set(input.acceptance.map(c => c.id)).size !== input.acceptance.length) throw new WorkItemValidationError('Checklist requires unique ids, non-empty text and boolean completed');
+  }
+}

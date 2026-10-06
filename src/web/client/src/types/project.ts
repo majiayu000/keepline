@@ -9,6 +9,9 @@ export type ProjectRuntime = SessionRuntimeId | 'unknown'
 
 /** Statistics for a single project */
 export interface ProjectStats {
+  needs_input?: number
+  stalled?: number
+  interrupted?: number
   running: number
   waiting: number
   idle: number
@@ -206,7 +209,7 @@ export function calculateProjectStats(sessions: Session[]): ProjectStats {
   for (const session of sessions) {
     const status = session.status as SessionStatus
     if (status in stats) {
-      stats[status]++
+      stats[status] = (stats[status] ?? 0) + 1
     }
   }
 

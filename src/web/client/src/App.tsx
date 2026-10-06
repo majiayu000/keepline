@@ -1,3 +1,4 @@
+import { MenubarPage } from '@/pages/ledger/MenubarPage'
 import { useCallback, useState, useRef, useEffect, lazy, Suspense } from 'react'
 import { ThemeProvider, useTheme, type Theme } from '@/contexts/ThemeContext'
 import { ToastProvider, useToast } from '@/components/Toast'
@@ -12,6 +13,7 @@ import type { ProjectInfo, RuntimeFilter, SessionStatus } from '@/types'
 import { useAuth, useSessions, useKeyboardShortcuts, useNotifications, useProjects } from '@/hooks'
 import { fetchSession } from '@/services/api'
 
+const LedgerPage = lazy(() => import('@/pages/ledger/LedgerPage').then(m => ({ default: m.LedgerPage })))
 const SessionList = lazy(() => import('@/components/SessionList').then(m => ({ default: m.SessionList })))
 const UsagePanel = lazy(() => import('@/components/UsagePanel').then(m => ({ default: m.UsagePanel })))
 const ProjectStatsBar = lazy(() => import('@/components/ProjectStatsBar').then(m => ({ default: m.ProjectStatsBar })))
@@ -228,6 +230,9 @@ function DashboardApp({ token, onLogout }: DashboardAppProps) {
       )}
 
       <Suspense fallback={<SessionCardSkeleton count={4} />}>
+        {(activeTab === 'overview' || activeTab === 'goals' || activeTab === 'review' || activeTab === 'ledger-settings') && !loading && (
+          <LedgerPage view={activeTab} onOpenSession={handleOpenOrchestratorSession} />
+        )}
         {activeTab === 'sessions' && !loading && (
           <>
             {selectedProjectRoot && (
@@ -272,7 +277,7 @@ function DashboardApp({ token, onLogout }: DashboardAppProps) {
           <UsagePanel />
         )}
 
-        {(activeTab === 'overview' || activeTab === 'orchestrator') && !loading && (
+        {activeTab === 'orchestrator' && !loading && (
           <OrchestratorPanel
             token={token}
             onOpenSession={handleOpenOrchestratorSession}
@@ -337,6 +342,7 @@ function AppContent() {
     return <AuthLogin onLogin={auth.login} onLocalLogin={auth.localLogin} error={auth.error} />
   }
 
+  if (window.location.pathname === '/menubar') return <MenubarPage token={token} />
   return <DashboardApp token={token} onLogout={auth.logout} />
 }
 

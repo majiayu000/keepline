@@ -4,6 +4,9 @@
 
 /** Session status enumeration */
 export type SessionStatus =
+  | 'needs_input'
+  | 'stalled'
+  | 'interrupted'
   | 'running'    // Process exists and actively processing
   | 'waiting'    // Process exists but waiting for input
   | 'idle'       // Process exists but inactive
@@ -15,6 +18,9 @@ export type SessionStatusSource = 'scan' | 'hook' | 'user';
 
 /** All possible session statuses */
 export const SESSION_STATUSES: readonly SessionStatus[] = [
+  'needs_input',
+  'stalled',
+  'interrupted',
   'running',
   'waiting',
   'idle',
@@ -30,12 +36,12 @@ export const AGENT_CLIENTS: readonly AgentClient[] = ['claude', 'codex'] as cons
 
 /** Check if a status is active (has or should have a running process) */
 export function isActiveStatus(status: SessionStatus): boolean {
-  return status === 'running' || status === 'waiting' || status === 'idle';
+  return status === 'needs_input' || status === 'running' || status === 'waiting' || status === 'idle';
 }
 
 /** Check if a status indicates the session needs attention */
 export function needsAttention(status: SessionStatus): boolean {
-  return status === 'lost' || status === 'waiting';
+  return ['lost','waiting','needs_input','stalled','interrupted'].includes(status);
 }
 
 /** Tool call information */

@@ -23,7 +23,7 @@ function fixture() {
   const path = join(tempDirectory(), 'session.jsonl');
   writeFileSync(path, 'first');
   const summary = {
-    sessionId: 'cached-session', directory: '/tmp/cache-project',
+    sourcePath: path, sessionId: 'cached-session', directory: '/tmp/cache-project',
     firstMessage: 'Original task', lastMessage: 'Latest evidence',
     messageCount: 3, toolCount: 1,
     startedAt: new Date('2026-09-17T01:00:00Z'),
@@ -74,7 +74,9 @@ describe('persistent transcript summary cache', () => {
     expect(cold.sessions).toHaveLength(1);
     expect(cold.cache).toEqual({ hits: 0, misses: 1, writes: 1 });
     const warm = scan();
-    expect(warm.sessions).toEqual(cold.sessions);
+    expect(warm.sessions).toEqual(cold.sessions.map(({ transcriptFacts, ...summary }: { transcriptFacts?: unknown; [key: string]: unknown }) => summary));
+    expect(warm.sessions[0].transcriptFacts).toBeUndefined();
+    expect(cold.sessions[0].transcriptFacts).toBeUndefined();
     expect(warm.cache).toEqual({ hits: 1, misses: 0, writes: 0 });
     expect(warm.sessions[0].toolCalls).toBeUndefined();
     const details = scan(true);

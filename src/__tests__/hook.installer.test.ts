@@ -190,7 +190,9 @@ describe('hook installer ownership detection', () => {
     installKeeplineHookConfig(settings);
     const command = matcherBlock(settings.hooks?.PostToolUse?.[0]).hooks[0].command;
 
-    expect(command).toContain('--data-binary @-');
+    expect(command).toContain('bin/keepline-hook');
+    expect(command).toContain('claude-code');
+    expect(command).toContain('|| true');
     expect(command).not.toContain('$CLAUDE_EVENT_TYPE');
     expect(command).not.toContain('$CLAUDE_SESSION_ID');
     expect(command).not.toContain('$CLAUDE_TOOL_INPUT');

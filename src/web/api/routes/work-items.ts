@@ -1,7 +1,7 @@
 import { Hono } from 'hono';
 import { taskDispatchRepository } from '../../../infrastructure/database/repositories/task-dispatch.repository.js';
 import { workItemEvidenceRepository } from '../../../infrastructure/database/repositories/work-item-evidence.repository.js';
-import { workItemRepository } from '../../../infrastructure/database/repositories/work-item.repository.js';
+import { WorkItemValidationError, workItemRepository } from '../../../infrastructure/database/repositories/work-item.repository.js';
 import {
   DEFAULT_WORKBOARD_STALE_WINDOW_HOURS,
   buildWorkboardProjection,
@@ -226,7 +226,9 @@ app.put('/external/:source/:externalId', async (c) => {
     const existing = workItemRepository.findByExternalIdentity(source, externalId);
     const item = existing
       ? workItemRepository.update(existing.id, {
-          title: title.value!,
+          parentId: data.parentId as string | null | undefined, level: data.level as WorkItemCreateInput['level'],
+      outcome: data.outcome as string | null | undefined, acceptance: data.acceptance as WorkItemCreateInput['acceptance'],
+      title: title.value!,
           body: body.value ?? null,
           projectRoot: projectRoot.value ?? null,
           kind: kind.value,
@@ -234,7 +236,9 @@ app.put('/external/:source/:externalId', async (c) => {
           statusSource: 'user',
         })!
       : workItemRepository.create({
-          title: title.value!,
+          parentId: data.parentId as string | null | undefined, level: data.level as WorkItemCreateInput['level'],
+      outcome: data.outcome as string | null | undefined, acceptance: data.acceptance as WorkItemCreateInput['acceptance'],
+      title: title.value!,
           body: body.value,
           projectRoot: projectRoot.value,
           kind: kind.value,
@@ -335,6 +339,8 @@ app.post('/', async (c) => {
 
   try {
     const item = workItemRepository.create({
+      parentId: data.parentId as string | null | undefined, level: data.level as WorkItemCreateInput['level'],
+      outcome: data.outcome as string | null | undefined, acceptance: data.acceptance as WorkItemCreateInput['acceptance'],
       title: title.value!,
       body: body.value,
       projectRoot: projectRoot.value,
@@ -346,6 +352,7 @@ app.post('/', async (c) => {
 
     return c.json({ success: true, data: { item: serializeWorkItem(item) } }, 201);
   } catch (error) {
+    if (error instanceof WorkItemValidationError) return c.json({ success: false, error: error.message }, 400);
     logger.error('Failed to create work item', error);
     return c.json({ success: false, error: 'Failed to create work item' }, 500);
   }
@@ -357,6 +364,7 @@ app.patch('/:id', async (c) => {
   const data = parsedBody.data!;
 
   const input: WorkItemUpdateInput = {};
+  for (const key of ['parentId','level','outcome','acceptance'] as const) if (key in data) Object.assign(input, { [key]: data[key] });
   const title = readString(data, 'title', { maxLength: 200 });
   if (title.error) return c.json({ success: false, error: title.error }, 400);
   if ('title' in data) {
@@ -395,6 +403,7 @@ app.patch('/:id', async (c) => {
     }
     return c.json({ success: true, data: { item: serializeWorkItem(item) } });
   } catch (error) {
+    if (error instanceof WorkItemValidationError) return c.json({ success: false, error: error.message }, 400);
     logger.error('Failed to update work item', error);
     return c.json({ success: false, error: 'Failed to update work item' }, 500);
   }
@@ -408,6 +417,7 @@ app.delete('/:id', (c) => {
     }
     return c.json({ success: true });
   } catch (error) {
+    if (error instanceof WorkItemValidationError) return c.json({ success: false, error: error.message }, 400);
     logger.error('Failed to delete work item', error);
     return c.json({ success: false, error: 'Failed to delete work item' }, 500);
   }

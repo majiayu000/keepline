@@ -1,3 +1,8 @@
+import { mountServiceClient } from '../web/api/service-client.js';
+import { replayHookSpool } from '../adapters/hook/spool.js';
+import { broadcast, websocketHandler } from '../web/api/websocket.js';
+import { verifyToken } from './auth.service.js';
+import { setWebSessionSource } from '../web/api/session-source.js';
 import type { Server } from 'bun';
 import {
   startLifecycleReceiver,
@@ -170,9 +175,11 @@ export async function startKeeplineService(
   localServiceState.scan.lastStartedAt = undefined;
   localServiceState.scan.lastCompletedAt = undefined;
   localServiceState.scan.lastError = undefined;
+  setWebSessionSource('service');
   const app = createLocalApiApp({
     recoveryRunner: createRecoveryProcessRunner(recoveryCommand),
   });
+  const disposeClient = mountServiceClient(app);
   const hostname = '127.0.0.1';
   const server = Bun.serve({
     hostname,
@@ -182,7 +189,12 @@ export async function startKeeplineService(
         return new Response('Forbidden', { status: 403 });
       }
       const pathname = new URL(req.url).pathname;
-      if (!localServiceState.scan.completed &&
+      if (pathname === '/ws') {
+        const token = new URL(req.url).searchParams.get('token');
+        if (!token || !verifyToken(token)) return new Response('Unauthorized',{ status: 401 });
+        return bunServer.upgrade(req,{ data: { token,sessionIds: new Set<string>() } }) ? undefined : new Response('Upgrade failed',{ status: 400 });
+      }
+      if (!localServiceState.scan.completed && pathname.startsWith('/api/') && !pathname.startsWith('/api/auth/') &&
           pathname !== '/api/v1/health' &&
           pathname !== '/api/v1/meta' &&
           pathname !== '/api/v1/auth/local') {
@@ -198,6 +210,7 @@ export async function startKeeplineService(
       }
       return app.fetch(req, { server: bunServer });
     },
+    websocket: websocketHandler,
   });
   let lifecycleReceiver: LifecycleReceiver;
   try {
@@ -209,6 +222,14 @@ export async function startKeeplineService(
   }
   localServiceState.lifecycleHook.receiverRunning = true;
   localServiceState.lifecycleHook.port = lifecycleReceiver.port;
+  const replaySpool = () => replayHookSpool(async event => {
+    const response = await fetch(`http://127.0.0.1:${lifecycleReceiver.port}/hook?runtime=${event.runtime}`,{ method: 'POST',headers: { 'Content-Type': 'application/json','X-Keepline-Event-Id': event.id },body: JSON.stringify({ ...event.payload,timestamp: event.payload.timestamp ?? event.receivedAt }) });
+    if (response.ok) return true;
+    if (response.status === 400 || response.status === 413 || response.status === 422) {
+      logger.warn('Hook spool delivery rejected',{ id: event.id,status: response.status }); return 'reject';
+    }
+    return false;
+  });
   let reconciliationToken: string | undefined;
   try {
     reconciliationToken = beginSessionReconciliation('service');
@@ -254,6 +275,7 @@ export async function startKeeplineService(
     localServiceState.scan.lastError = undefined;
     logger.info('Service scan started', { full: isInitialScan, timeoutMs: activeScanTimeoutMs });
     try {
+      await replaySpool();
       const command = typeof options === 'number'
         ? undefined
         : localServiceState.scan.completed
@@ -301,6 +323,7 @@ export async function startKeeplineService(
         runtimeScan?: RuntimeScanSummary[];
         pendingDispatches?: number;
         summaryCache?: { hits: number; misses: number; writes: number };
+        cpuMicros?: { user: number; system: number };
       };
       if (Array.isArray(payload.runtimeScan)) {
         replaceRuntimeScanStatus(payload.runtimeScan);
@@ -310,11 +333,13 @@ export async function startKeeplineService(
       nextScanDelayMs = continueCorrelation
         ? (configuredScanInterval === 0 ? 3_000 : Math.min(configuredScanInterval, 3_000))
         : configuredScanInterval;
+      await replaySpool();
+      broadcast('ledger:update',{});
       localServiceState.scan.completed = true;
       localServiceState.scan.lastCompletedAt = new Date();
       completeSessionReconciliation(reconciliationToken);
       logger.info('Service scan completed', {
-        full: isInitialScan, elapsedMs: Date.now() - startedAt, summaryCache: payload.summaryCache,
+        full: isInitialScan, elapsedMs: Date.now() - startedAt, summaryCache: payload.summaryCache, cpuMicros: payload.cpuMicros,
       });
     } catch (error) {
       localServiceState.scan.lastError = error instanceof Error ? error.message : String(error);
@@ -375,6 +400,7 @@ export async function startKeeplineService(
     async stop() {
       if (stopped) return;
       stopped = true;
+      disposeClient();
       if (scanTimer) clearTimeout(scanTimer);
       events.off('dispatch:created', requestScan);
       events.off('session:turn-ended', requestScan);
@@ -395,6 +421,7 @@ export async function startKeeplineService(
         localServiceState.lifecycleHook.receiverRunning = false;
         localServiceState.lifecycleHook.port = undefined;
         server.stop(true);
+        setWebSessionSource('standalone');
         closeDatabase();
       }
     },

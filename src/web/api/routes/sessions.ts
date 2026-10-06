@@ -5,6 +5,7 @@
  */
 
 import { Hono } from 'hono';
+import { SESSION_STATUSES } from '../../../domain/session/value-objects.js';
 import { syncSessions, getAllSessions } from '../../../services/session.service.js';
 import { getSessionStats } from '../../../services/session.aggregator.js';
 import { isProcessRunning } from '../../../adapters/process/scanner.js';
@@ -60,7 +61,7 @@ type SearchableSession = {
   currentFile?: string;
 };
 
-const VALID_STATUSES = new Set(['running', 'waiting', 'idle', 'lost', 'completed']);
+const VALID_STATUSES = new Set<string>(SESSION_STATUSES);
 const DEFAULT_SESSION_LIMIT = 50;
 const MAX_SESSION_LIMIT = 100;
 

@@ -40,6 +40,7 @@ app.get('/meta', (c) => {
     instanceId: localServiceState.instanceId,
     mode: 'service',
     capabilities: [
+      'ledger',
       'sessions.list',
       'sessions.complete',
       'sessions.recovery.preview',

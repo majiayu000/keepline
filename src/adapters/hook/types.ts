@@ -4,6 +4,7 @@
 
 /** Lifecycle hook event types from Claude Code and Codex that Keepline consumes. */
 export type HookEventType =
+  | 'PermissionRequest'
   | 'PreToolUse'
   | 'PostToolUse'
   | 'Notification'
@@ -37,6 +38,7 @@ export interface ToolUseHookEvent extends HookEventPayload {
 /** Notification hook event */
 export interface NotificationHookEvent extends HookEventPayload {
   event_type: 'Notification';
+  notification_type?: string;
   message: string;
 }
 
@@ -59,7 +61,10 @@ export interface UserPromptSubmitHookEvent extends HookEventPayload {
 }
 
 /** Union type for all hook events */
+export interface PermissionHookEvent extends HookEventPayload { event_type: 'PermissionRequest'; tool_name?: string; message?: string }
+
 export type HookEvent =
+  | PermissionHookEvent
   | ToolUseHookEvent
   | NotificationHookEvent
   | SessionStartHookEvent

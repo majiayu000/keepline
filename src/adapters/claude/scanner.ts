@@ -286,8 +286,8 @@ async function scanAllSessionsWithFailures(
       }
 
       // Parse file and update cache
-      const parse = async () => requireValidParsedSession(
-        await parseSessionFile(file.filePath, { includeToolCalls }), file.filePath
+      const parse = async (onRecord?: (entry: unknown) => void) => requireValidParsedSession(
+        await parseSessionFile(file.filePath, { includeToolCalls,onRecord }), file.filePath
       );
       const parsed = includeToolCalls ? await parse()
         : await cachedSessionSummary('claude', file.filePath, parse);
@@ -454,14 +454,14 @@ async function getOrParseSessionSummary(file: ClaudeSessionFile): Promise<Parsed
 
 /** Get session by ID (uses cache) */
 export async function getSessionById(
-  sessionId: string
+  sessionId: string, includeToolCalls = true
 ): Promise<ParsedSessionData | null> {
   const sessionFiles = scanProjectsDirectory();
   const file = sessionFiles.find((f) => f.sessionId === sessionId);
 
   if (!file) return null;
 
-  return getOrParseSession(file);
+  return includeToolCalls ? getOrParseSession(file) : getOrParseSessionSummary(file);
 }
 
 /** Get sessions for a specific directory (uses cache) */

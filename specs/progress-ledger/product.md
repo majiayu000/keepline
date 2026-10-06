@@ -20,7 +20,9 @@ while delegating:
 - How far along is each long-term goal, given the work all agents did for it?
 
 The Progress Ledger adds an "ask vs actual" layer on top of the existing
-session pipeline and rolls it up through todos to long-term goals. Progress is
+session pipeline and rolls it up through todos to long-term goals. It ships as
+a macOS menubar app that embeds the Keepline service, so the user never starts
+or manages a local server. Progress is
 computed from **requirement items** backed by **evidence** mechanically
 extracted from transcripts and confirmed by the user's **acceptance**. Model
 judgment is optional, rate-limited, and never allowed to invent evidence.
@@ -53,10 +55,20 @@ judgment is optional, rate-limited, and never allowed to invent evidence.
 1. Keepline builds a ledger for every Claude Code and Codex session active in
    the retention window, without requiring the user to launch agents through
    Keepline. Codex desktop sessions are included.
-2. The ledger shows the ask verbatim. Keepline never rewrites the user's words.
+2. The ledger keeps user words verbatim. Uncertain user intent becomes a
+   candidate requirement by default, without an action-keyword allowlist.
+   Exclude explicit system injections, pasted/quoted reports, pure commands or
+   code, short status follow-ups and bare approvals. Strip quoted/code blocks
+   from matching input while preserving the original mixed message for display.
+   Questions remain in the words list as questions and do not count toward
+   progress. Leading host tag blocks are removed, keeping the authored text that
+   follows them; this does not depend on a list of known tag names. Questions
+   ending in “呢” also stay outside progress. Users can remove candidates or add
+   missing items in the item editor. With AI disabled and more than eight active
+   fallback candidates, show a prompt to enable recognition or edit the items.
 3. Requirement items come from, in priority order:
    a. the acceptance checklist of the linked todo;
-   b. model decomposition of the ask, when model judgment is enabled;
+   b. model decomposition of the ask, when model recognition is enabled;
    c. a single item equal to the whole ask, as a fallback.
    Each item shows its source (todo, model, added later, edited by you).
 4. Each item shows a status: `done`, `doing`, `todo`, or `unverified`, and the
@@ -136,7 +148,7 @@ judgment is optional, rate-limited, and never allowed to invent evidence.
     fires for a task the user is currently viewing.
 24. Without hooks, "needs input" is shown only as an inferred "possibly waiting"
     state with a dashed outline, and never triggers a notification.
-25. Every behavior with cost or noise is a toggle: model judgment (and backend),
+25. Every behavior with cost or noise is a toggle: model recognition (and backend),
     deviation detection (`off` / `conservative` / `sensitive`), constraint
     checks, each alert kind, native notifications, focus duration, per-project
     or per-runtime exclusion.
@@ -147,12 +159,34 @@ judgment is optional, rate-limited, and never allowed to invent evidence.
 ### First run and edge states
 
 27. First run shows discovered agents and session counts immediately, then two
-    optional steps (enhanced detection via hooks; model judgment), both off by
+    optional steps (enhanced detection via hooks; model recognition), both off by
     default and skippable.
 28. Edge states say what is known and offer a next step: no sessions (list the
     paths scanned); unrecognized transcript format (ledger unavailable, status
     only); vague ask (offer to import the ask from the previous session or
     linked todo); process gone without a turn end (no invented cause).
+
+### App
+
+29. Keepline is delivered as a menubar app built on the existing
+    `menubar-tauri` shell. The menubar shows "needs you" and "running" counts;
+    clicking opens a compact panel (needs you, running, focus toggle, open
+    window). "Open" shows a full window with overview, goals, task ledger,
+    review, and settings. There is no Dock icon unless the window is open.
+30. The app embeds the Keepline service and supervises it. If a compatible
+    service is already running, the app attaches to it instead of starting a
+    second one. The user never sees or manages a server, port, or token.
+31. The app starts at login by default (toggle in settings). Quitting from the
+    menu asks whether to stop monitoring; stopping shuts down only a service the
+    app started itself.
+32. Hooks never fail or slow an agent when the app is not running: events are
+    first appended to a local spool file, then delivered best-effort; the
+    service replays the spool when it starts. No hook event is lost while the
+    app is closed.
+33. Native notifications come from the app. Clicking one opens the window at the
+    exact section that raised it (current step, off-plan group, or item).
+34. The first version targets the author's own Mac: local builds, no
+    auto-update, no crash reporting. Public distribution comes later.
 
 ## Non-Goals
 
@@ -161,15 +195,16 @@ judgment is optional, rate-limited, and never allowed to invent evidence.
 - Do not require stash. Two-way sync with stash is out of scope for this
   tranche.
 - Do not copy or archive agent transcripts.
-- Do not send transcript content anywhere unless model judgment is enabled, and
+- Do not send transcript content anywhere unless model recognition is enabled, and
   then only to the configured backend.
 - Do not estimate completion times.
 - Do not support team or multi-device views.
-- Menubar integration waits until the menubar talks to the service.
+- No auto-update, crash reporting, or public onboarding polish in the first
+  version; no Windows or Linux build.
 
 ## Acceptance Criteria
 
-1. With model judgment disabled, a Codex and a Claude Code session each show a
+1. With model recognition disabled, a Codex and a Claude Code session each show a
    ledger with verbatim ask, a fallback item, an evidence-tagged trail grouped
    by turn, and correct state. No subprocess or network model call occurs.
 2. A Codex desktop session appears with state derived from its turn events.
@@ -184,8 +219,11 @@ judgment is optional, rate-limited, and never allowed to invent evidence.
    only copied, never sent.
 7. With deviation `conservative`, a fixture with a long unmatched run raises
    exactly one off-plan alert; with `off`, none.
-8. With model judgment enabled, an item becomes `done` only if the judge cites
-   an existing evidence id for that session; otherwise `unverified`.
+8. With model recognition enabled, each new candidate user message triggers at
+   most one recognition/decomposition call, persisted across scans and restarts.
+   Tools and agent reports do not trigger model calls. The model cannot set
+   completion or supply evidence; matching still requires actual successful
+   execution evidence. User edits and removals survive AI toggles and rescans.
 9. A session dispatched from a todo uses that todo's checklist as its
    requirement items; an attribution suggestion, once confirmed, survives
    resume and restart.
@@ -200,3 +238,10 @@ judgment is optional, rate-limited, and never allowed to invent evidence.
 14. With no stash installed and no external upserts, a user can create a goal,
     add todos with checklists, dispatch or attribute sessions, accept work, and
     see goal progress, entirely inside Keepline.
+15. On a fresh login, the app starts, its embedded service starts, and the
+    menubar counts match the overview within one scan interval, with no manual
+    command.
+16. With the app quit, an agent's hook completes without error and without
+    measurable delay; after relaunch, that event appears in the ledger.
+17. Clicking a needs-input notification opens the window on that session's
+    current step.

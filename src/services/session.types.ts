@@ -20,12 +20,14 @@ export interface CreateSessionInput {
   pid?: number;
   tty?: string;
   statusSource?: SessionStatusSource;
+  statusReason?: string | null;
 }
 
 /** Session update input */
 export interface UpdateSessionInput {
   status?: SessionStatus;
   statusSource?: SessionStatusSource;
+  statusReason?: string | null;
   title?: string;
   initialPrompt?: string;
   lastTool?: string;

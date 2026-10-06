@@ -1,3 +1,4 @@
+import { ledgerRepository } from '../infrastructure/database/repositories/ledger.repository.js';
 import { config } from '../lib/config.js';
 import { logger } from '../lib/logger.js';
 import { sessionRepository } from '../infrastructure/database/repositories/session.repository.js';
@@ -19,6 +20,7 @@ export async function runRetentionCleanup(
   retentionDays: number = config.get().retentionDays,
   now: Date = new Date()
 ): Promise<RetentionCleanupResult> {
+  ledgerRepository.clean(config.get().ledger.retentionDays,now);
   if (retentionDays <= 0) {
     logger.debug('Retention cleanup disabled', { retentionDays });
     return {
