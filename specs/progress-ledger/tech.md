@@ -200,9 +200,31 @@ ledger-sourced evidence whose session `last_active_at` is older than
 - Constraint checks run per step: `no_public_api_change` flags diffs that add,
   remove, or modify `pub` items (Rust) or `export` declarations (TS/JS);
   `path_forbidden` flags edits under listed globs.
-- Rule status: an item with evidence of a successful command or test that
-  matches its anchors becomes `done`; an item with matched steps but no
-  successful evidence is `doing`.
+- Completion is independent of attribution: each command anchor is a literal
+  execution criterion, not a regex proof. Every command in an item must have
+  its own latest successful result from a directly recorded Bash/exec_command
+  call. Both the tool exit code and any observed test summaries must succeed.
+  Text printed by echo, source code containing an unexecuted nested call, and
+  shell control-flow wrappers do not prove the anchored command ran.
+- A newer failed or pending attempt replaces the older success for the same
+  command, even when a correction assigns that attempt to another item.
+  An observed file edit or a later mutating execution wrapper without a
+  direct command receipt invalidates prior automatic checks for the session.
+  Without a complete dependency graph or nested execution receipts, this
+  conservatively requires rechecking; wrapper text never grants success.
+  Historical evidence stays in the trail, but only current evidence counts.
+  Existing explicit user status decisions remain distinct from rule status.
+- An item becomes `done` only when all its command criteria have current
+  evidence; matched work without successful checks is `doing`. A check
+  invalidated by an observed edit or uncertain execution is `unverified`
+  until it runs again.
+- Existing cached facts and computed ledgers use new fingerprint versions so
+  a deployment recomputes old completion results even without a file append.
+  Computed ledger fingerprints and startup cleanup share one version from
+  the infrastructure cache, preserving current-day scan/detail rows across
+  processes while discarding rows from older versions or days.
+  Scanner fallback imports are lazy; the resident service's static dependency
+  graph must continue to exclude app-only usage/pricing code.
 - Deviation: `conservative` raises off-plan after at least 8 consecutive
   unmatched mutating steps spanning at least 10 minutes; `sensitive` after 3
   steps. Constraint violations always raise when constraint checks are on.

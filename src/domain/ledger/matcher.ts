@@ -74,6 +74,19 @@ export function pathMatches(pattern: string, path: string): boolean {
 function commandMatches(pattern: string,summary: string): boolean {
   try { return new RegExp(pattern).test(summary); } catch { return summary.includes(pattern); }
 }
+// Attribution may use a regex; completion requires the literal command recorded
+// by the execution tool. A script's source text or outer exit code is not proof
+// that a nested command ran. Shell control flow also needs its own receipts.
+function literalCommand(value: unknown): string | undefined {
+  if (typeof value !== 'string') return undefined;
+  const command = value.trim();
+  return command && !/[\r\n;&|<>`$]/.test(command) ? command : undefined;
+}
+function executedCommand(fact: Extract<TranscriptFact, { kind: 'tool' }>): string | undefined {
+  if (!/^(?:Bash|(?:[\w]+\.)?exec_command)$/.test(fact.name)) return undefined;
+  const data = fact.input && typeof fact.input === 'object' ? fact.input as Record<string, unknown> : {};
+  return literalCommand(data.command ?? data.cmd);
+}
 function score(anchors: Anchors, summary: string, paths: string[], lowerSummary: string): number {
   return anchors.paths.reduce((n, path) => n + (paths.some(p => pathMatches(path,p)) || summary.includes(path) ? 5 : 0), 0)
     + anchors.commands.reduce((n, cmd) => n + (commandMatches(cmd,summary) ? 5 : 0), 0)
@@ -86,6 +99,8 @@ export function matchLedger(facts: TranscriptFact[], inputItems: RequirementItem
   const evidence: LedgerEvidence[] = [];
   const evidenceIds = new Set<string>();
   const trail: LedgerStep[] = [];
+  const latestChecks = new Map<string, string[]>();
+  const invalidatedChecks = new Set<string>();
   let readOnlyCount = 0;
   for (const fact of facts) {
     if (fact.kind !== 'tool') continue;
@@ -105,6 +120,27 @@ export function matchLedger(facts: TranscriptFact[], inputItems: RequirementItem
     paths.push(...ownEvidence.filter(e => e.kind === 'file').map(e => e.value));
     // Successful tests are evidence even though the test invocation is not a file edit.
     if (!fact.mutating) { readOnlyCount++; continue; }
+    const command = executedCommand(fact);
+    // A transcript does not provide a complete test dependency graph. An
+    // observed edit or execution wrapper without a direct command receipt
+    // conservatively invalidates earlier checks, regardless of attribution.
+    // Wrapper source text can invalidate old proof, but never creates proof.
+    const uncertainExecution = !command && /(?:^|[_.])(?:Bash|exec|exec_command)$/.test(fact.name);
+    if (uncertainExecution || ownEvidence.some(e => e.kind === 'file') || /(?:^|[_.])(?:apply_patch|Write|Edit)$/.test(fact.name)) {
+      for (const [command, ids] of latestChecks) if (ids.length) invalidatedChecks.add(command);
+      latestChecks.clear();
+    }
+    if (command) {
+      const successful = fact.exitCode === 0
+        && !ownEvidence.some(e => e.kind === 'test' && e.exitCode !== 0)
+        && ownEvidence.some(e => e.kind === 'command' && literalCommand(e.value) === command && e.exitCode === 0);
+      // A failure or an in-flight retry replaces prior success. Corrections
+      // affect trail attribution only and cannot hide this newer observation.
+      latestChecks.set(command, successful
+        ? ownEvidence.filter(e => (e.kind === 'command' || e.kind === 'test') && e.exitCode === 0).map(e => e.id)
+        : []);
+      invalidatedChecks.delete(command);
+    }
     const correction = corrections.find(c => c.callId === fact.callId);
     const rule = rules.find(r => r.matcher.paths.some(p => paths.some(path => pathMatches(p,path)) || summary.includes(p)) || r.matcher.commands.some(c => commandMatches(c,summary)));
     const candidates = confirmed.map(item => ({ item, score: score(item.anchors, summary, paths,lowerSummary) })).sort((a,b) => b.score - a.score || b.item.ordinal - a.item.ordinal);
@@ -123,21 +159,20 @@ export function matchLedger(facts: TranscriptFact[], inputItems: RequirementItem
         if (removed > added || typeof data.old_string === 'string' && data.old_string.includes(c.value) && typeof data.new_string === 'string' && !data.new_string.includes(c.value)) violations.push(`Preserved text removed: ${c.value}`);
       }
     }
-    const successful = ownEvidence.some(e => e.kind === 'test' && e.exitCode !== 0) ? [] : ownEvidence.filter(e => (e.kind === 'command' || e.kind === 'test') && e.exitCode === 0);
-    const anchoredCheck = item && item.source !== 'fallback' && fact.exitCode === 0 && item.anchors.commands.some(cmd => commandMatches(cmd,summary));
     if (item && item.statusSource !== 'user') {
-      // Raw, potentially multi-part asks never become done through keyword overlap.
-      const ids = anchoredCheck ? successful.map(e => e.id) : [];
-      item.evidenceIds = [...new Set([...item.evidenceIds, ...ids])].filter(id => evidenceIds.has(id));
-      item.status = item.source !== 'fallback' && item.evidenceIds.length ? 'done' : 'doing'; item.statusSource = 'rule';
+      item.status = 'doing'; item.statusSource = 'rule';
     }
     trail.push({ callId: fact.callId, name: fact.name, summary: summary.slice(0, 600), at: fact.at, turnId: fact.turnId || 'unknown', itemId: item?.id,
       evidenceIds: ownEvidence.map(e => e.id), violations, acceptedOffPlan: correction?.acceptOffPlan ?? false });
   }
-  // Revalidate computed done rows against current evidence; never invent completion from prose.
-  for (const item of items) if (item.statusSource !== 'user') {
-    item.evidenceIds = item.evidenceIds.filter(id => evidenceIds.has(id));
-    if (item.status === 'done' && !item.evidenceIds.length) item.status = 'unverified';
+  // Evaluate all literal criteria independently of the step-assignment score.
+  // Every command in a criterion needs its latest successful execution result.
+  for (const item of confirmed) if (item.statusSource !== 'user') {
+    const commands = item.anchors.commands.map(literalCommand);
+    const current = commands.map(command => command ? latestChecks.get(command) ?? [] : []);
+    item.evidenceIds = [...new Set(current.flat())].filter(id => evidenceIds.has(id));
+    if (commands.length && current.every(ids => ids.length > 0)) item.status = 'done';
+    else if (commands.some(command => command && invalidatedChecks.has(command))) item.status = 'unverified';
   }
   const offPlan: OffPlanRun[] = [];
   let unmatched: LedgerStep[] = [];
