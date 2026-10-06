@@ -9,7 +9,7 @@ import Fastify, { FastifyInstance, FastifyRequest } from 'fastify';
 import { logger } from '../../lib/logger.js';
 import { config } from '../../lib/config.js';
 import { emit } from '../../lib/events.js';
-import { isValidSessionId } from '../../lib/session-id.js';
+import { isValidSessionId, scopeCodexSessionId } from '../../lib/session-id.js';
 import {
   isAllowedFetchMetadata,
   isLoopbackHostHeader,
@@ -23,7 +23,6 @@ import {
 } from '../../services/compression.queue.js';
 import { generateSessionContext } from '../../services/context.injection.js';
 import { generateTitle, isGeneratedSessionTitle } from '../../domain/session/index.js';
-import { scopeCodexSessionId } from '../codex/parser.js';
 import type {
   HookEvent,
   ToolUseHookEvent,

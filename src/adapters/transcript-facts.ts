@@ -39,6 +39,9 @@ function outputEvidence(output: unknown, input: unknown, name: string): { exitCo
   const out = textContent(output);
   let obj = record(output);
   if (typeof output === 'string') { try { obj = record(JSON.parse(output)); } catch { /* plain terminal result */ } }
+  // Structured exec results contain the real newlines inside output. Scanning
+  // their JSON encoding can miss a failure after a literal escaped newline.
+  const observed = typeof obj.output === 'string' ? obj.output : out;
   const code = obj.exit_code ?? obj.exitCode ?? record(obj.metadata).exit_code;
   const codes = [...out.matchAll(/(?:Process exited with code|exit[_ ]code[^0-9-]{0,8}|Exit code:)\s*(-?\d+)/gi)].map(m => Number(m[1]));
   // A wrapper may contain several command results. Any failure prevents whole-call success.
@@ -48,11 +51,11 @@ function outputEvidence(output: unknown, input: unknown, name: string): { exitCo
   const embedded = typeof data.input === 'string' ? [...data.input.matchAll(/(?:cmd|command)\s*:\s*["']([^"']+)["']/g)].map(m => m[1]) : [];
   const command = data.command ?? data.cmd ?? (embedded.length === 1 ? embedded[0] : undefined);
   if (command && exitCode !== undefined) facts.push({ kind: 'command', value: String(command), exitCode });
-  const counts = [...out.matchAll(/\b(\d+)\s+(passed|failed|pass|fail)\b/gi)];
+  const counts = [...observed.matchAll(/\b(\d+)\s+(passed|failed|pass|fail)\b/gi)];
   const failed = counts.some(m => /^fail/i.test(m[2]) && Number(m[1]) > 0);
   const passed = counts.some(m => /^pass/i.test(m[2]) && Number(m[1]) > 0);
   const testCode = failed ? 1 : passed ? 0 : exitCode;
-  for (const m of out.matchAll(/(?:\d+\s+(?:passed|failed|pass|fail)(?:\b)|Tests?:[^\n]*|test result:[^\n]*)/gi)) facts.push({ kind: 'test', value: detached(m[0]), exitCode: exitCode && exitCode !== 0 ? exitCode : testCode });
+  for (const m of observed.matchAll(/(?:\d+\s+(?:passed|failed|pass|fail)(?:\b)|Tests?:[^\n]*|test result:[^\n]*)/gi)) facts.push({ kind: 'test', value: detached(m[0]), exitCode: exitCode && exitCode !== 0 ? exitCode : testCode });
   for (const m of out.matchAll(/\[[^\]\n]+\s+([a-f0-9]{7,40})\][^\n]*/g)) facts.push({ kind: 'commit', value: detached(m[0]), exitCode });
   for (const m of out.matchAll(/https:\/\/github\.com\/[^\s"\\]+\/pull\/\d+/g)) facts.push({ kind: 'pr', value: detached(m[0]), exitCode });
   if (exitCode === 0 || /(?:Success|successfully|updated|created)/i.test(out) || /^(?:Write|Edit)$/.test(name) && !obj.is_error) {

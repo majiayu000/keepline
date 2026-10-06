@@ -73,6 +73,13 @@ judgment is optional, rate-limited, and never allowed to invent evidence.
    Each item shows its source (todo, model, added later, edited by you).
 4. Each item shows a status: `done`, `doing`, `todo`, or `unverified`, and the
    provenance of that status (rule, model, you).
+   Automatic completion requires a successful direct execution of every
+   literal command criterion. Printed command text and wrapper source code
+   do not count. The latest failed or pending attempt supersedes an earlier
+   success. After an observed file edit or a later execution wrapper without
+   a direct command receipt, earlier automatic checks need to run again;
+   their history remains visible. These rules do not turn an agent's
+   completion claim into user acceptance.
 5. The trail groups steps by turn and tags each step with its requirement item
    or `off-plan`. Read-only and waiting calls are collapsed into a count.
    Selecting an item filters the trail to its steps.
