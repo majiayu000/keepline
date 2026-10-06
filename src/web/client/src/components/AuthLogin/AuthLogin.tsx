@@ -51,10 +51,10 @@ export function AuthLogin({ onLogin, onLocalLogin, error }: AuthLoginProps) {
   return (
     <div className={styles.container}>
       <div className={styles.card}>
-        <h2 className={styles.title}>Terminal Login</h2>
+        <h2 className={styles.title}>登录 Keepline</h2>
         <form onSubmit={handleSubmit} className={styles.form}>
           <div className={styles.field}>
-            <label htmlFor="login-username">Username</label>
+            <label htmlFor="login-username">用户名</label>
             <input
               id="login-username"
               type="text"
@@ -66,7 +66,7 @@ export function AuthLogin({ onLogin, onLocalLogin, error }: AuthLoginProps) {
             />
           </div>
           <div className={styles.field}>
-            <label htmlFor="login-password">Password</label>
+            <label htmlFor="login-password">密码</label>
             <input
               id="login-password"
               type="password"
@@ -78,13 +78,13 @@ export function AuthLogin({ onLogin, onLocalLogin, error }: AuthLoginProps) {
           </div>
           {showTotp && (
             <div className={styles.field}>
-              <label htmlFor="login-totp">TOTP Code</label>
+              <label htmlFor="login-totp">动态验证码</label>
               <input
                 id="login-totp"
                 type="text"
                 value={totpCode}
                 onChange={e => setTotpCode(e.target.value)}
-                placeholder="6-digit code"
+                placeholder="6 位验证码"
                 maxLength={6}
                 autoComplete="one-time-code"
               />
@@ -94,11 +94,11 @@ export function AuthLogin({ onLogin, onLocalLogin, error }: AuthLoginProps) {
             <div className={styles.error}>{localError || error}</div>
           )}
           <button type="submit" className={styles.submit} disabled={submitting}>
-            {submitting ? 'Logging in...' : 'Login'}
+            {submitting ? '正在登录…' : '登录'}
           </button>
-          <div className={styles.divider}>or</div>
+          <div className={styles.divider}>或</div>
           <button type="button" className={styles.localBtn} disabled={submitting} onClick={handleLocalLogin}>
-            Local Login (no password)
+            本机免密登录
           </button>
         </form>
       </div>

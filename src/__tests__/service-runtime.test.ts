@@ -997,6 +997,40 @@ describe('service runtime isolation', () => {
     expect(Number(readFileSync(counterPath, 'utf8'))).toBe(4);
   });
 
+  test('allows dashboard local login over the original loopback connection', async () => {
+    liveService = await startKeeplineService({
+      port: 0,
+      hookPort: 0,
+      scanIntervalMs: 0,
+      scanCommand: successfulScanCommand(),
+    });
+    const baseURL = `http://127.0.0.1:${liveService.server.port}`;
+    const response = await fetch(`${baseURL}/api/auth/local`, {
+      method: 'POST',
+      headers: { origin: baseURL, 'sec-fetch-site': 'same-origin' },
+    });
+    const body = await response.json() as { success: boolean; data?: { token?: string } };
+    expect(response.status).toBe(200);
+    expect(body.success).toBe(true);
+    expect(body.data?.token).toBeString();
+
+    const status = await fetch(`${baseURL}/api/auth/status`, {
+      headers: { Authorization: `Bearer ${body.data?.token}` },
+    });
+    const statusBody = await status.json() as { data: { authenticated: boolean } };
+    expect(status.status).toBe(200);
+    expect(statusBody.data.authenticated).toBe(true);
+
+    const crossSite = await fetch(`${baseURL}/api/auth/local`, {
+      method: 'POST',
+      headers: { origin: 'https://evil.test', 'sec-fetch-site': 'cross-site' },
+    });
+    const rejected = await crossSite.json() as { success: boolean; data?: { token?: string } };
+    expect(crossSite.status).toBe(403);
+    expect(rejected.success).toBe(false);
+    expect(rejected.data?.token).toBeUndefined();
+  });
+
   test('allows local auth in actual loopback service mode despite a wildcard web host env', async () => {
     const previousHost = process.env.KEEPLINE_HOST;
     process.env.KEEPLINE_HOST = '0.0.0.0';

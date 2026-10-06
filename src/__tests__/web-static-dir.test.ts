@@ -2,6 +2,7 @@ import { afterEach, describe, expect, test } from 'bun:test';
 import { mkdtempSync, mkdirSync, rmSync, writeFileSync } from 'fs';
 import { tmpdir } from 'os';
 import { join } from 'path';
+import { Hono } from 'hono';
 import { getWebStaticCandidates, selectWebStaticDir } from '../web/api/server.js';
 
 describe('web static directory selection', () => {
@@ -75,5 +76,45 @@ describe('web static directory selection', () => {
 
     expect(candidates).toEqual([packageBuildDist]);
     expect(selectWebStaticDir(candidates)).toBe(packageBuildDist);
+  });
+
+  test('serves the packaged dashboard and assets from the built service client', async () => {
+    const root = tempDir();
+    const packageDir = join(root, 'package');
+    const outputDir = join(packageDir, 'dist');
+    const webDir = join(packageDir, 'public', 'dist');
+    writeIndex(webDir, 'Keepline');
+    mkdirSync(join(webDir, 'assets'));
+    writeFileSync(join(webDir, 'assets', 'app.js'), 'console.log("Keepline");');
+    writeFileSync(join(webDir, 'assets', 'app.css'), 'body { color: white; }');
+    const build = await Bun.build({
+      entrypoints: ['src/web/api/service-client.ts'],
+      outdir: outputDir,
+      target: 'bun',
+      splitting: true,
+    });
+    expect(build.success).toBe(true);
+    const { mountServiceClient } = await import(join(outputDir, 'service-client.js'));
+    const app = new Hono();
+    const dispose = mountServiceClient(app);
+    const previousDist = process.env.KEEPLINE_WEB_DIST;
+    delete process.env.KEEPLINE_WEB_DIST;
+    process.chdir(root);
+    try {
+      for (const route of ['/', '/sessions']) {
+        const response = await app.request(`http://localhost${route}`);
+        expect(response.status).toBe(200);
+        expect(await response.text()).toContain('<title>Keepline</title>');
+      }
+      for (const asset of ['app.js', 'app.css']) {
+        const response = await app.request(`http://localhost/assets/${asset}`);
+        expect(response.status).toBe(200);
+        expect(await response.text()).toBe(await Bun.file(join(webDir, 'assets', asset)).text());
+      }
+    } finally {
+      dispose();
+      if (previousDist === undefined) delete process.env.KEEPLINE_WEB_DIST;
+      else process.env.KEEPLINE_WEB_DIST = previousDist;
+    }
   });
 });

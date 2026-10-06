@@ -66,7 +66,7 @@ pub fn run() {
                 let menu = tauri::menu::Menu::default(app.handle())?;
                 if let Some(tauri::menu::MenuItemKind::Submenu(app_menu)) = menu.items()?.first() {
                     app_menu.remove_at(app_menu.items()?.len() - 1)?;
-                    let quit = MenuItemBuilder::with_id("app-quit","Quit Keepline").accelerator("CmdOrCtrl+Q").build(app)?;
+                    let quit = MenuItemBuilder::with_id("app-quit","退出 Keepline").accelerator("CmdOrCtrl+Q").build(app)?;
                     app_menu.append(&quit)?;
                 }
                 app.set_menu(menu)?;
@@ -81,7 +81,7 @@ pub fn run() {
             let icon_bytes = tray_icon::generate_tray_icon_with_ring(0, 44);
             let initial_icon = Image::from_bytes(&icon_bytes)?;
 
-            let quit_item = MenuItemBuilder::with_id("quit", "Quit").build(app)?;
+            let quit_item = MenuItemBuilder::with_id("quit", "退出").build(app)?;
             let menu = MenuBuilder::new(app).items(&[&quit_item]).build()?;
 
             let tray = match TrayIconBuilder::with_id("quota-tray")
