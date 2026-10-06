@@ -1,11 +1,12 @@
 import { describe,test,expect } from 'bun:test';
 import { setupLedgerTest,seededLedger,sampleFacts } from './helpers.js';
 import { ledgerReview } from '../../services/ledger/goals.js';
-import { carryOver,acceptLedger } from '../../services/ledger/service.js';
+import { carryOver,acceptLedger,replaceLedgerItems } from '../../services/ledger/service.js';
 describe('daily and weekly review',() => {
   setupLedgerTest();
   test('remaining items carry forward idempotently and accepted work appears in review',async () => {
-    const d = await seededLedger(sampleFacts().filter(f => f.kind !== 'tool'));
+    const raw = await seededLedger(sampleFacts().filter(f => f.kind !== 'tool'));
+    const d = (await replaceLedgerItems(raw.sessionId,raw.items))!;
     const first = await carryOver(d.sessionId); const second = await carryOver(d.sessionId);
     expect(first.id).toBe(second.id); expect(second.acceptance).toHaveLength(1);
     await acceptLedger(d.sessionId,{ decision: 'accepted_with_gaps',droppedItemIds: d.items.map(i => i.id),reason: 'Carry to tomorrow' });

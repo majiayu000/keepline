@@ -1,3 +1,5 @@
+import { basename } from 'path';
+import { sessionRepository } from '../../infrastructure/database/repositories/session.repository.js';
 import { randomUUID } from 'crypto';
 import { config } from '../../lib/config.js';
 import { emit } from '../../lib/events.js';
@@ -6,7 +8,7 @@ import { getDatabase } from '../../infrastructure/database/sqlite.js';
 import { macOSNotification } from '../../infrastructure/notify/macos.js';
 import type { LedgerDetail, LedgerConfig } from '../../domain/ledger/types.js';
 
-type AlertDetail = Pick<LedgerDetail,'state' | 'statusReason' | 'offPlan' | 'claims' | 'progress' | 'limited' | 'agentSessionId' | 'sessionId' | 'title'>;
+type AlertDetail = Pick<LedgerDetail,'state' | 'statusReason' | 'offPlan' | 'claims' | 'progress' | 'limited' | 'agentSessionId' | 'sessionId' | 'title' | 'projectRoot' | 'parentSessionId' | 'turnId'>;
 type AlertKind = keyof LedgerConfig['alerts'];
 export interface LedgerAlert { id: string; agent_session_id: string; kind: AlertKind; detail: string; raised_at: string; cleared_at: string | null; notified: number }
 export function markLedgerViewed(sessionId: string, viewed: boolean, now = Date.now()) {
@@ -16,24 +18,23 @@ export function markLedgerViewed(sessionId: string, viewed: boolean, now = Date.
 }
 export function ledgerAlertConditions(d: AlertDetail): Partial<Record<AlertKind,string>> {
   const conditions: Partial<Record<AlertKind,string>> = {};
-  if (d.state === 'needs_input') conditions.needs_input = d.statusReason ?? 'Agent needs input';
-  if (d.offPlan.length) conditions.off_plan = `${d.offPlan.length} off-plan run(s)`;
-  if (d.state === 'review' && d.claims.length && (d.claims.some(c => !c.evidenceIds.length) || d.progress.done < d.progress.total)) conditions.claimed_unverified = 'Completion claims need evidence';
-  if (d.state === 'stopped') conditions.stalled = 'Session stopped; inspect the transcript';
-  if (d.limited) conditions.limited = d.statusReason?.startsWith('Codex goal ') ? d.statusReason : 'Agent reached a usage or budget limit';
+  if (d.state === 'needs_input') conditions.needs_input = '正在等待你审批或补充信息';
+  if (!d.parentSessionId && d.progress.total > 0 && ['running','needs_input'].includes(d.state) && d.offPlan.length) conditions.off_plan = `发现 ${d.offPlan.length} 段可能偏离要求的操作`;
+  if (!d.parentSessionId && d.progress.total > 0 && d.state === 'review' && d.claims.some(c => c.turnId === d.turnId) && d.progress.done < d.progress.total) conditions.claimed_unverified = '已确认要求的完成说法还需要证据';
+  if (!d.parentSessionId && d.state === 'stopped') conditions.stalled = '会话已停下，可查看执行记录';
+  if (!d.parentSessionId && d.limited) conditions.limited = d.statusReason?.startsWith('Codex 目标') ? d.statusReason : '会话额度或预算已用尽';
   return conditions;
 }
 export async function evaluateLedgerAlerts(d: AlertDetail, cfg = config.get().ledger, now = new Date(), notify = macOSNotification) {
   const db = getDatabase(); const at = now.toISOString(); const nowMs = now.getTime();
   const conditions = cfg.enabled ? ledgerAlertConditions(d) : {};
   const alerts = db.query('SELECT * FROM ledger_alerts WHERE agent_session_id = ? ORDER BY raised_at DESC').all(d.agentSessionId) as LedgerAlert[];
-  for (const alert of alerts) if (!alert.cleared_at && (!conditions[alert.kind] || !cfg.alerts[alert.kind])) {
+  for (const alert of alerts) if (!alert.cleared_at && !conditions[alert.kind]) {
     db.query('UPDATE ledger_alerts SET cleared_at = ? WHERE id = ?').run(at,alert.id);
     emit('ledger:alert-cleared',{ id: alert.id, sessionId: d.sessionId });
   }
   const raised: LedgerAlert[] = [];
   for (const [kind, message] of Object.entries(conditions) as Array<[AlertKind,string]>) {
-    if (!cfg.alerts[kind]) continue;
     const last = alerts.find(a => a.kind === kind);
     if (last && !last.cleared_at) continue;
     // Coalesce recurrence, but reopen it so withdrawal remains correct.
@@ -55,12 +56,13 @@ export async function evaluateLedgerAlerts(d: AlertDetail, cfg = config.get().le
     return raised;
   }
   for (const alert of pending) {
+    if (!cfg.alerts[alert.kind]) { db.query('UPDATE ledger_alerts SET notified = 1 WHERE id = ?').run(alert.id); continue; }
     if (focused && alert.kind !== 'needs_input' || alert.notified === 2) continue;
     // Merge simultaneous permission requests into one notification in a short time window.
     const simultaneous = alert.kind === 'needs_input' && db.query("SELECT 1 FROM ledger_alerts WHERE kind='needs_input' AND notified=1 AND raised_at >= ? AND id <> ?").get(new Date(nowMs - 1000).toISOString(),alert.id);
     try {
       if (nativeChannel) { db.query('UPDATE ledger_alerts SET notified = 2 WHERE id = ?').run(alert.id); continue; }
-      if (!simultaneous) await notify(`${d.title}: ${alert.detail}`,alert.kind === 'needs_input');
+      if (!simultaneous) await notify(`${ledgerNotificationTitle(d.sessionId,d.title,d.projectRoot,d.parentSessionId)}：${alert.detail}`,alert.kind === 'needs_input');
       db.query('UPDATE ledger_alerts SET notified = 1 WHERE id = ?').run(alert.id);
     } catch (error) { logger.warn('Ledger notification failed', { error: error instanceof Error ? error.message : String(error) }); }
   }
@@ -70,14 +72,24 @@ export async function flushFocusSummary(cfg = config.get().ledger, now = new Dat
   if (!cfg.enabled || !cfg.focus.until || Date.parse(cfg.focus.until) > now.getTime()) return;
   const db = getDatabase();
   const pending = db.query("SELECT * FROM ledger_alerts WHERE notified = 0 AND cleared_at IS NULL AND kind <> 'needs_input'").all() as LedgerAlert[];
-  if (pending.length && cfg.nativeNotifications) {
+  const enabled = pending.filter(alert => cfg.alerts[alert.kind]);
+  for (const alert of pending.filter(alert => !cfg.alerts[alert.kind])) db.query('UPDATE ledger_alerts SET notified=1 WHERE id=?').run(alert.id);
+  if (enabled.length && cfg.nativeNotifications) {
     const nativeChannel = !!db.query('SELECT 1 FROM ledger_views WHERE session_id = ? AND expires_at > ?').get('__native__',now.toISOString());
     if (nativeChannel) {
-      for (const alert of pending) db.query('UPDATE ledger_alerts SET notified = 2 WHERE id = ?').run(alert.id);
+      for (const alert of enabled) db.query('UPDATE ledger_alerts SET notified = 2 WHERE id = ?').run(alert.id);
       config.set('ledger',{ ...cfg,focus: { ...cfg.focus,until: null } }); return;
     }
-    await notify(`${pending.length} alerts during focus: ${pending.map(a => a.detail).join('; ').slice(0,600)}`,false);
-    for (const alert of pending) db.query('UPDATE ledger_alerts SET notified = 1 WHERE id = ?').run(alert.id);
+    await notify(`${enabled.length} 条专注期间的提醒：${enabled.map(a => a.detail).join('; ').slice(0,600)}`,false);
+    for (const alert of enabled) db.query('UPDATE ledger_alerts SET notified = 1 WHERE id = ?').run(alert.id);
   }
   config.set('ledger',{ ...cfg, focus: { ...cfg.focus, until: null } });
+}
+
+export function ledgerNotificationTitle(sessionId: string,title: string,projectRoot: string,parentSessionId?: string): string {
+  const session = sessionRepository.findBySessionId(sessionId);
+  const parentId = parentSessionId ?? session?.parentSessionId;
+  const parent = parentId && (sessionRepository.findBySessionId(parentId) ?? sessionRepository.findBySessionId(`codex_${parentId}`));
+  const name = parent ? parent.title : title;
+  return name && name !== 'Unknown task' ? name : `未命名会话 · ${basename(parent ? parent.directory : projectRoot)}`;
 }

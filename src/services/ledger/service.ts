@@ -1,4 +1,6 @@
 import { statSync, existsSync } from 'fs';
+import { basename } from 'path';
+import { confirmedRequirement,ledgerNeedsAttention } from '../../domain/ledger/types.js';
 import { createHash } from 'crypto';
 import { readLedgerComputation, writeLedgerComputation } from '../../infrastructure/session-summary-cache.js';
 import { events } from '../../lib/events.js';
@@ -29,11 +31,11 @@ export function ledgerEnabled(session: Pick<Session, 'client' | 'directory' | 'l
     !cfg.exclude.projects.some(p => session.directory === p || session.directory.startsWith(`${p}/`)) &&
     session.lastActiveAt.getTime() >= Date.now() - cfg.retentionDays * 86400000;
 }
-type LedgerStatus = Pick<LedgerDetail,'sessionId' | 'agentSessionId' | 'title' | 'state' | 'statusReason' | 'possiblyWaiting' | 'limited' | 'lastActiveAt' | 'turnId' | 'acceptances' | 'claims' | 'progress' | 'offPlan' | 'turns'>;
+type LedgerStatus = Pick<LedgerDetail,'sessionId' | 'agentSessionId' | 'title' | 'state' | 'statusReason' | 'possiblyWaiting' | 'limited' | 'lastActiveAt' | 'turnId' | 'acceptances' | 'claims' | 'progress' | 'offPlan' | 'turns' | 'parentSessionId' | 'projectRoot'>;
 interface LedgerScanSnapshot { path: string; transcript: string; signature: string; statusKey: string; transcriptLimited: boolean; summary: LedgerStatus; lastTurn?: Extract<TranscriptFact,{ kind: 'turn' }> }
 function transcriptFingerprint(path: string): string {
   const info = statSync(path);
-  return `ledger-9:${config.get().ledger.retentionDays}:${new Date().toISOString().slice(0,10)}:${info.size}:${info.mtimeMs}:${info.ctimeMs}`;
+  return `ledger-10:${config.get().ledger.retentionDays}:${new Date().toISOString().slice(0,10)}:${info.size}:${info.mtimeMs}:${info.ctimeMs}`;
 }
 export function ledgerScanSnapshot(sessionId: string, path: string): LedgerScanSnapshot | undefined {
   const row = readLedgerComputation<LedgerScanSnapshot>(`scan:${sessionId}`);
@@ -49,16 +51,20 @@ function computationSignature(session: Session, transcript: string): string {
   return `${transcript}:` + createHash('sha256').update(JSON.stringify([transcript,id,session.directory,config.get().ledger,edits,items,links])).digest('hex');
 }
 function currentGoalStatus(session: Session) { return session.client === 'codex' ? readCodexMetadata(session.sessionId.replace(/^codex_/, '')).limited : undefined; }
-function statusKey(session: Session, goalStatus?: string) { return JSON.stringify([session.title,session.status,session.statusSource,session.statusReason,session.lastActiveAt,goalStatus]); }
+function statusKey(session: Session, goalStatus?: string) { return JSON.stringify([session.title,session.status,session.statusSource,session.statusReason,session.lastActiveAt,session.parentSessionId,goalStatus]); }
 function refreshStatus(detail: LedgerStatus,session: Session,goalStatus: string | undefined,transcriptLimited: boolean) {
   const turn = detail.turns.find(t => t.id === detail.turnId);
-  detail.state = turn?.phase === 'completed' ? 'review' : 'running';
+  const completed = turn?.phase === 'completed';
+  const reviewExpired = completed && Date.now() - Date.parse(turn.at) - turn.durationMs >= 12 * 3600000;
+  detail.state = completed ? detail.progress.total > 0 && !reviewExpired ? 'review' : 'ended' : 'running';
   if (detail.acceptances.some(a => a.turnId === detail.turnId && a.decision !== 'follow_up')) detail.state = 'accepted';
-  if (turn?.phase === 'aborted' || ['lost','stalled','interrupted'].includes(session.status)) detail.state = 'stopped';
+  if (turn?.phase === 'aborted' || !completed && ['lost','stalled','interrupted'].includes(session.status)) detail.state = 'stopped';
   if (session.status === 'needs_input' && session.statusSource === 'hook') detail.state = 'needs_input';
   if (goalStatus) detail.state = 'stopped';
-  detail.title = session.title; detail.lastActiveAt = session.lastActiveAt.toISOString();
-  detail.statusReason = goalStatus ? `Codex goal ${goalStatus}` : session.statusReason;
+  detail.title = session.title === 'Unknown task' ? session.parentSessionId ? `子任务 · ${session.sessionId.slice(-6)}` : `未命名会话 · ${basename(session.directory)}` : session.title;
+  detail.parentSessionId = session.parentSessionId ? session.client === 'codex' && !session.parentSessionId.startsWith('codex_') ? `codex_${session.parentSessionId}` : session.parentSessionId : undefined;
+  detail.lastActiveAt = session.lastActiveAt.toISOString();
+  detail.statusReason = goalStatus ? `Codex 目标${goalStatus === 'blocked' ? '受阻' : goalStatus === 'budget_limited' ? '预算用尽' : '额度用尽'}` : session.statusReason;
   detail.possiblyWaiting = session.status === 'waiting' && session.statusSource !== 'hook';
   detail.limited = !!goalStatus || transcriptLimited;
 }
@@ -91,8 +97,8 @@ export async function ingestLedger(session: Session, parsed: ParsedSessionData, 
   if (transcript && transcriptFingerprint(parsed.sourcePath!) === transcript) {
     const signature = computationSignature(session,transcript);
     writeLedgerComputation(`detail:${session.sessionId}`,signature,detail);
-    const { sessionId,agentSessionId,title,state,statusReason,possiblyWaiting,limited,lastActiveAt,turnId,acceptances,claims,progress,offPlan } = detail;
-    const summary: LedgerStatus = { sessionId,agentSessionId,title,state,statusReason,possiblyWaiting,limited,lastActiveAt,turnId,acceptances,claims,progress,offPlan,turns: detail.turns.filter(t => t.id === turnId) };
+    const { sessionId,agentSessionId,title,state,statusReason,possiblyWaiting,limited,lastActiveAt,turnId,acceptances,claims,progress,offPlan,parentSessionId,projectRoot } = detail;
+    const summary: LedgerStatus = { sessionId,agentSessionId,title,state,statusReason,possiblyWaiting,limited,lastActiveAt,turnId,acceptances,claims,progress,offPlan,parentSessionId,projectRoot,turns: detail.turns.filter(t => t.id === turnId) };
     writeLedgerComputation(`scan:${session.sessionId}`,transcript,{ path: parsed.sourcePath,transcript,signature,summary,transcriptLimited: derived.facts.some(f => f.kind === 'limit'),statusKey: statusKey(session,currentGoalStatus(session)),lastTurn: [...derived.facts].reverse().find(f => f.kind === 'turn') });
   }
   return detail;
@@ -100,12 +106,12 @@ export async function ingestLedger(session: Session, parsed: ParsedSessionData, 
 export function suggestAttribution(session: Session, ask: string) {
   return workItemRepository.findAll().filter(t => t.level !== 'goal' && t.kind === 'todo' && !['done','archived'].includes(t.status)).map(todo => {
     const reasons: string[] = []; let score = 0;
-    if (todo.projectRoot === session.directory) { score += 5; reasons.push('Same project'); }
-    if (ask.toLowerCase().includes(todo.title.toLowerCase()) || ask.includes(todo.id)) { score += 6; reasons.push('Ask names this todo'); }
+    if (todo.projectRoot === session.directory) { score += 5; reasons.push('同一项目'); }
+    if (ask.toLowerCase().includes(todo.title.toLowerCase()) || ask.includes(todo.id)) { score += 6; reasons.push('原话提到这条待办'); }
     const words = anchorsFromText(`${todo.title} ${(todo.acceptance ?? []).map(c => c.text).join(' ')}`).keywords;
     const hits = words.filter(w => ask.toLowerCase().includes(w));
-    if (hits.length) { score += Math.min(3,hits.length); reasons.push(`Matching terms: ${hits.slice(0,4).join(', ')}`); }
-    if (todo.status === 'active') { score++; reasons.push('Todo is active'); }
+    if (hits.length) { score += Math.min(3,hits.length); reasons.push(`匹配关键词：${hits.slice(0,4).join(', ')}`); }
+    if (todo.status === 'active') { score++; reasons.push('待办正在进行'); }
     return { workItemId: todo.id, title: todo.title, score, reasons };
   }).filter(t => t.score >= 6).sort((a,b) => b.score - a.score).slice(0,3);
 }
@@ -179,14 +185,16 @@ async function buildLedger(session: Session, facts: TranscriptFact[], unknownRec
   const detail: LedgerDetail = {
     sessionId: session.sessionId, agentSessionId: agent.id, title: session.title, projectRoot: session.directory, runtimeId,
     state, statusReason: session.statusReason, possiblyWaiting: session.status === 'waiting' && session.statusSource !== 'hook',
-    available: facts.length > 0 && unknownRecords < Math.max(10,facts.length), unavailableReason: facts.length ? unknownRecords >= Math.max(10,facts.length) ? 'Unrecognized transcript format; session status only' : undefined : 'Transcript ledger unavailable',
+    available: facts.length > 0 && unknownRecords < Math.max(10,facts.length), unavailableReason: facts.length ? unknownRecords >= Math.max(10,facts.length) ? '无法识别记录格式，仅显示会话状态' : undefined : '暂时无法读取执行记录',
     asks: ledgerRepository.asks(agent.id), ...matched, turns, claims, acceptances, turnId, workItemId: link?.workItemId,
     lastActiveAt: session.lastActiveAt.toISOString(), attribution, limited: !!goalStatus || facts.some(f => f.kind === 'limit'),
     followUpSuggestions: followUpSuggestions(facts),
+    activity: { ...latestActivity(facts),evidence: matched.evidence.filter(e => e.kind !== 'command' && e.kind !== 'verdict').slice(-3).reverse() },
   };
   refreshImportSuggestions(detail,session);
-  if (goalStatus) detail.statusReason = `Codex goal ${goalStatus}`;
+  if (goalStatus) detail.statusReason = `Codex 目标${goalStatus === 'blocked' ? '受阻' : goalStatus === 'budget_limited' ? '预算用尽' : '额度用尽'}`;
   if (acceptance?.decision === 'accepted_with_gaps') for (const item of detail.items) item.dropped = acceptance.droppedItemIds.includes(item.id);
+  refreshStatus(detail,session,goalStatus,detail.limited ?? false);
   await evaluateLedgerAlerts(detail);
   return detail;
 }
@@ -218,25 +226,80 @@ async function ledgerFromPath(session: Session, path: string): Promise<LedgerDet
   return (await ingestLedger(session,parsed))!;
 }
 export async function ledgerOverview(hours = 24) {
-  const sessions = sessionRepository.findAll().filter(s => s.lastActiveAt.getTime() >= Date.now() - hours * 3600000 && ledgerEnabled(s));
-  const rows: LedgerDetail[] = [];
-  for (const session of sessions) { const detail = await getLedger(session.sessionId); if (detail) rows.push(detail); }
-  const urgency = (d: LedgerDetail) => d.state === 'needs_input' || d.offPlan.length || d.state === 'review' && d.progress.done < d.progress.total ? 0 : d.state === 'accepted' ? 2 : 1;
-  return rows.sort((a,b) => urgency(a) - urgency(b) || Date.parse(b.lastActiveAt) - Date.parse(a.lastActiveAt));
+  const all = sessionRepository.findAll().filter(ledgerEnabled);
+  const byId = new Map(all.map(session => [session.sessionId,session]));
+  const sessions = all.filter(s => s.lastActiveAt.getTime() >= Date.now() - hours * 3600000);
+  const details = new Map<string,LedgerDetail>();
+  for (const session of sessions) { const detail = await getLedger(session.sessionId); if (detail) details.set(detail.sessionId,detail); }
+  const roots = new Map<string,LedgerDetail>();
+  for (const child of [...details.values()]) {
+    let root = child;
+    const seen = new Set([child.sessionId]);
+    while (root.parentSessionId && !seen.has(root.parentSessionId)) {
+      seen.add(root.parentSessionId);
+      const parentId = root.parentSessionId;
+      let parent = details.get(parentId);
+      if (!parent && byId.has(parentId)) { parent = await getLedger(parentId) ?? undefined; if (parent) details.set(parentId,parent); }
+      if (!parent) break;
+      root = parent;
+    }
+    roots.set(root.sessionId,root);
+    if (root !== child) {
+      attachSubagent(root,child);
+    }
+  }
+  const urgency = (d: LedgerDetail) => ledgerNeedsAttention(d) ? 0 : d.state === 'running' ? 1 : 2;
+  return [...roots.values()].sort((a,b) => urgency(a) - urgency(b) || Date.parse(b.lastActiveAt) - Date.parse(a.lastActiveAt));
+}
+function attachSubagent(parent: LedgerDetail,child: LedgerDetail) {
+  parent.subagents ??= [];
+  if (Date.parse(child.activity?.at ?? child.lastActiveAt) > Date.parse(parent.activity?.at ?? parent.lastActiveAt)) parent.activity = child.activity && { ...child.activity,action: `子任务 ${child.title}：${child.activity.action ?? '执行中'}` };
+  if (Date.parse(child.lastActiveAt) > Date.parse(parent.lastActiveAt)) parent.lastActiveAt = child.lastActiveAt;
+  parent.subagents.push({ sessionId: child.sessionId,title: child.title,state: child.state,lastActiveAt: child.lastActiveAt,activity: child.activity });
+  if (child.state === 'needs_input') { parent.state = 'needs_input'; parent.statusReason = '子任务正在等待审批'; }
+  else if (child.state === 'running' && ['ended','stopped','review'].includes(parent.state)) parent.state = 'running';
+}
+export async function ledgerDetail(sessionId: string) {
+  const detail = await getLedger(sessionId);
+  if (!detail) return null;
+  const all = sessionRepository.findAll().filter(ledgerEnabled);
+  const byId = new Map(all.map(session => [session.sessionId,session]));
+  for (const session of all) {
+    let parentId = session.parentSessionId;
+    const seen = new Set([session.sessionId]);
+    while (parentId) {
+      if (session.client === 'codex' && !parentId.startsWith('codex_')) parentId = `codex_${parentId}`;
+      if (seen.has(parentId)) break;
+      if (parentId === sessionId) { const child = await getLedger(session.sessionId); if (child) attachSubagent(detail,child); break; }
+      seen.add(parentId);parentId = byId.get(parentId)?.parentSessionId;
+    }
+  }
+  return detail;
+}
+function latestActivity(facts: TranscriptFact[]): { action?: string; at?: string; lastMessage?: string } {
+  let tool: Extract<TranscriptFact,{kind:'tool'}> | undefined;
+  let message: Extract<TranscriptFact,{kind:'agent_message'}> | undefined;
+  for (const fact of facts) {
+    if (fact.kind === 'tool') tool = fact;
+    if (fact.kind === 'agent_message') message = fact;
+  }
+  const input = tool?.input && typeof tool.input === 'object' ? tool.input as Record<string,unknown> : {};
+  return { action: tool ? `${tool.name} ${String(input.command ?? input.cmd ?? input.file_path ?? input.path ?? '').slice(0,300)}`.trim() : undefined,
+    at: tool?.at,lastMessage: message?.text.slice(0,600) };
 }
 export function followUpPrompt(detail: LedgerDetail, correctionRun?: string): string {
   if (correctionRun) {
     const run = detail.offPlan.find(r => r.id === correctionRun);
     if (!run) throw new LedgerInputError('Off-plan run not found');
     const steps = detail.trail.filter(s => run.callIds.includes(s.callId));
-    return `Please return to the requested scope.\n\nOriginal asks:\n${detail.asks.map(a => a.text).join('\n\n')}\n\nReview these steps:\n${steps.map(s => `${s.summary}\n${s.violations.join('\n')}`).join('\n')}\n\nExplain why these steps are necessary, or correct the deviation. Cite verifiable evidence.`;
+    return `请回到原定任务范围。\n\n原始要求：\n${detail.asks.map(a => a.text).join('\n\n')}\n\n请核对这些步骤：\n${steps.map(s => `${s.summary}\n${s.violations.join('\n')}`).join('\n')}\n\n说明这些步骤为什么必要，或纠正偏离。请提供可核验的证据。`;
   }
-  const remaining = detail.items.filter(i => i.status !== 'done' || !i.evidenceIds.length);
-  return `Please finish or provide evidence for these requirements:\n${remaining.map(i => `- ${i.title}${i.dropped ? ' (previously dropped)' : ''}`).join('\n')}\n\nClaims needing evidence:\n${detail.claims.filter(c => !c.evidenceIds.length).map(c => `- ${c.text}`).join('\n')}\n\nConstraints:\n${detail.items.flatMap(i => i.constraints.map(c => `- ${c.kind}: ${c.value ?? ''}`)).join('\n')}\n\nReport the actual checks and their results. Do not claim completion without evidence.`;
+  const remaining = detail.items.filter(i => confirmedRequirement(i) && (i.status !== 'done' || !i.evidenceIds.length));
+  return `请完成以下已确认要求，或补充证据：\n${remaining.map(i => `- ${i.title}${i.dropped ? '（先前已放弃）' : ''}`).join('\n')}\n\n需要补充证据的汇报：\n${detail.claims.filter(c => !c.evidenceIds.length).map(c => `- ${c.text}`).join('\n')}\n\n约束：\n${detail.items.flatMap(i => i.constraints.map(c => `- ${c.kind}: ${c.value ?? ''}`)).join('\n')}\n\n汇报实际执行的检查及结果；没有证据时不要宣称完成。`;
 }
 export async function acceptLedger(sessionId: string, input: Omit<LedgerAcceptance, 'turnId' | 'at'>) {
   const detail = await getLedger(sessionId);
-  if (!detail || !detail.turnId || !['review','accepted'].includes(detail.state)) throw new LedgerInputError('Only a finished turn can be accepted');
+  if (!detail || !detail.turnId || (!['review','accepted','ended'].includes(detail.state) || detail.progress.total === 0)) throw new LedgerInputError('Only a finished turn can be accepted');
   if (input.decision === 'accepted' && detail.progress.done !== detail.progress.total) throw new LedgerInputError('Remaining items require accept-with-gaps or follow-up');
   const missing = detail.items.filter(i => i.status !== 'done' || !i.evidenceIds.length).map(i => i.id);
   if (input.decision === 'accepted_with_gaps' && (!input.reason?.trim() || missing.some(id => !input.droppedItemIds.includes(id)))) throw new LedgerInputError('Give a reason and drop every remaining item');
@@ -271,7 +334,7 @@ export async function attributeLedger(sessionId: string, workItemId: string | nu
 }
 export async function carryOver(sessionId: string) {
   const detail = await getLedger(sessionId); if (!detail) throw new LedgerInputError('Session not found');
-  const remaining = detail.items.filter(i => i.status !== 'done' || !i.evidenceIds.length);
+  const remaining = detail.items.filter(i => confirmedRequirement(i) && (i.status !== 'done' || !i.evidenceIds.length));
   if (!remaining.length) throw new LedgerInputError('No remaining items');
   const db = getDatabase();
   const row = db.query('SELECT carry_item_id FROM ledger_attributions WHERE agent_session_id = ?').get(detail.agentSessionId) as { carry_item_id: string | null } | null;

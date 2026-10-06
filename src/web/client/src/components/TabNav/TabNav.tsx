@@ -22,20 +22,20 @@ interface Tab {
 }
 
 const PRIMARY_TABS: Tab[] = [
-  { id: 'overview', label: 'Overview', icon: '01' },
-  { id: 'goals', label: 'Goals', icon: '+' },
-  { id: 'review', label: 'Review', icon: '✓' },
-  { id: 'sessions', label: 'Sessions', icon: '>' },
+  { id: 'overview', label: '总览', icon: '01' },
+  { id: 'goals', label: '目标', icon: '+' },
+  { id: 'review', label: '回顾', icon: '✓' },
+  { id: 'sessions', label: '会话', icon: '>' },
 ]
 
 const SECONDARY_TABS: Tab[] = [
-  { id: 'work', label: 'Work', icon: '+' },
-  { id: 'orchestrator', label: 'Agent board', icon: '>' },
-  { id: 'ledger-settings', label: 'Ledger settings', icon: '⚙' },
-  { id: 'projects', label: 'Projects', icon: '#' },
-  { id: 'plans', label: 'Plans', icon: '%' },
-  { id: 'memory', label: 'Memory', icon: '@' },
-  { id: 'analytics', label: 'Analytics', icon: '$' },
+  { id: 'work', label: '工作项', icon: '+' },
+  { id: 'orchestrator', label: 'Agent 任务板', icon: '>' },
+  { id: 'ledger-settings', label: '进度账设置', icon: '⚙' },
+  { id: 'projects', label: '项目', icon: '#' },
+  { id: 'plans', label: '计划', icon: '%' },
+  { id: 'memory', label: '记忆', icon: '@' },
+  { id: 'analytics', label: '统计', icon: '$' },
 ]
 
 interface TabNavProps {

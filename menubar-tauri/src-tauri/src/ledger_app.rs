@@ -229,7 +229,7 @@ pub fn start(app: AppHandle) {
 pub fn set_ledger_counts(app: AppHandle,needs_you: usize,running: usize) -> Result<(),String> {
     if let Some(tray) = app.tray_by_id("quota-tray") {
         tray.set_title(Some(format!("{needs_you} ! · {running} ▶"))).map_err(|e| e.to_string())?;
-        tray.set_tooltip(Some(format!("Keepline: {needs_you} need you, {running} running"))).map_err(|e| e.to_string())?;
+        tray.set_tooltip(Some(format!("Keepline：{needs_you} 项需要你，{running} 项正在执行"))).map_err(|e| e.to_string())?;
     }
     Ok(())
 }

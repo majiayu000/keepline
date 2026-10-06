@@ -47,7 +47,7 @@ export async function ledgerReview(date: string, weekly = false) {
     totalRuntime += duration; if (!row.workItemId) unattributedRuntime += duration;
   }
   return { start: start.toISOString(),end: end.toISOString(),
-    open: rows.filter(r => r.state !== 'accepted').map(r => ({ ...r, remaining: r.items.filter(i => i.status !== 'done' || !i.evidenceIds.length) })),
+    open: rows.filter(r => r.state === 'review' || r.state === 'needs_input' || r.state === 'running' && r.progress.total > 0).map(r => ({ ...r, remaining: r.items.filter(i => i.status !== 'done' || !i.evidenceIds.length) })),
     accepted: rows.filter(r => r.acceptances.some(a => a.decision !== 'follow_up' && inPeriod(a.at))),
     offPlan: rows.flatMap(r => r.offPlan.filter(run => inPeriod(run.at)).map(run => ({ sessionId: r.sessionId,title: r.title,...run }))),
     corrections: getDatabase().query(`SELECT c.*,a.title FROM ledger_corrections c JOIN agent_sessions a ON a.id=c.agent_session_id WHERE c.created_at >= ? AND c.created_at < ?`).all(start.toISOString(),end.toISOString()),

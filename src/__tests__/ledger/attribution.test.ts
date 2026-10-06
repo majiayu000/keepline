@@ -21,7 +21,7 @@ describe('attribution',() => {
   });
   test('high-confidence suggestions have reasons, confirmation survives restart and no-goal suppresses suggestions',async () => {
     const todo = workItemRepository.create({ title: 'Widget tests',projectRoot: '/project',acceptance: [{ id: 'check',text: 'bun test src/widget.test.ts',completed: false }] });
-    const detail = await seededLedger(); expect(detail.attribution?.[0].reasons).toContain('Same project');
+    const detail = await seededLedger(); expect(detail.attribution?.[0].reasons).toContain('同一项目');
     expect(detail.workItemId).toBeUndefined(); await attributeLedger(detail.sessionId,todo.id); closeDatabase();
     expect((await getLedger(detail.sessionId))?.workItemId).toBe(todo.id);
     await attributeLedger(detail.sessionId,null); closeDatabase(); expect((await getLedger(detail.sessionId))?.attribution).toHaveLength(0);
