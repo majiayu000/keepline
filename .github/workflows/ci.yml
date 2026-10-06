@@ -58,6 +58,20 @@ jobs:
 
       - uses: dtolnay/rust-toolchain@stable
 
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+
+      - name: Install root dependencies
+        run: bun install --frozen-lockfile
+
+      - name: Install web client dependencies
+        working-directory: src/web/client
+        run: bun install --frozen-lockfile
+
+      - name: Build dashboard and embedded service for Tauri checks
+        run: bun run scripts/build-ledger-app.ts
+
       - name: Cargo check
         working-directory: menubar-tauri/src-tauri
         run: cargo check
