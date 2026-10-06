@@ -3,9 +3,9 @@ import { authMiddleware } from '../middleware/auth.js';
 import { readJsonObject } from '../../../local-api/http.js';
 import { config, mergeLedgerConfig, validateLedgerConfig } from '../../../lib/config.js';
 import { logger } from '../../../lib/logger.js';
-import { getLedger, ledgerOverview, acceptLedger, attributeLedger, carryOver, correctLedger, followUpPrompt, importLedgerRequirements, replaceLedgerItems, LedgerInputError } from '../../../services/ledger/service.js';
+import { getLedger, ledgerDetail, ledgerOverview, acceptLedger, attributeLedger, carryOver, correctLedger, followUpPrompt, importLedgerRequirements, replaceLedgerItems, LedgerInputError } from '../../../services/ledger/service.js';
 import { ledgerReview } from '../../../services/ledger/goals.js';
-import { markLedgerViewed } from '../../../services/ledger/alerts.js';
+import { markLedgerViewed,ledgerNotificationTitle } from '../../../services/ledger/alerts.js';
 import type { RequirementItem, LedgerRule, LedgerAcceptance } from '../../../domain/ledger/types.js';
 import { getDatabase } from '../../../infrastructure/database/sqlite.js';
 
@@ -22,14 +22,14 @@ app.get('/',async c => {
 app.post('/native-channel',async c => {
   markLedgerViewed('__native__',true); return c.json({ success: true });
 });
-app.get('/active-alerts',c => c.json({ success: true,data: getDatabase().query('SELECT id FROM ledger_alerts WHERE cleared_at IS NULL').all() }));
+app.get('/active-alerts',c => c.json({ success: true,data: getDatabase().query('SELECT id,kind FROM ledger_alerts WHERE cleared_at IS NULL').all().filter(row => config.get().ledger.alerts[(row as { kind: 'needs_input' | 'off_plan' | 'claimed_unverified' | 'stalled' | 'limited' }).kind]) }));
 app.get('/notifications',c => {
-  const data = getDatabase().query(`SELECT l.*,a.runtime_session_id AS sessionId FROM ledger_alerts l JOIN agent_sessions a ON a.id=l.agent_session_id WHERE l.notified=2 AND l.cleared_at IS NULL`).all();
+  const data = getDatabase().query(`SELECT l.*,a.runtime_session_id AS sessionId,a.title,a.project_root AS projectRoot FROM ledger_alerts l JOIN agent_sessions a ON a.id=l.agent_session_id WHERE l.notified=2 AND l.cleared_at IS NULL`).all();
   // One native delivery for concurrent permission requests or a focus backlog.
-  const alerts = data as Array<Record<string,unknown>>;
+  const alerts = (data as Array<Record<string,unknown>>).filter(a => config.get().ledger.alerts[a.kind as 'needs_input' | 'off_plan' | 'claimed_unverified' | 'stalled' | 'limited']);
   const grouped = [alerts.filter(a => a.kind === 'needs_input'),alerts.filter(a => a.kind !== 'needs_input')].filter(a => a.length).map(rows => ({
     ...rows[0], bundledIds: rows.map(a => a.id),
-    detail: rows.length === 1 ? rows[0].detail : `${rows.length} alerts: ${rows.map(a => a.detail).join('; ').slice(0,600)}`,
+    detail: rows.length === 1 ? `${ledgerNotificationTitle(String(rows[0].sessionId),String(rows[0].title),String(rows[0].projectRoot))}：${rows[0].detail}` : `${rows.length} 条提醒：${rows.map(a => a.detail).join('；').slice(0,600)}`,
   }));
   return c.json({ success: true,data: grouped });
 });
@@ -43,7 +43,7 @@ app.get('/review',async c => {
   return c.json({ success: true,data: await ledgerReview(date,Boolean(c.req.query('week'))) });
 });
 app.get('/:sessionId',async c => {
-  const detail = await getLedger(c.req.param('sessionId'));
+  const detail = await ledgerDetail(c.req.param('sessionId'));
   return detail ? c.json({ success: true,data: detail }) : c.json({ success: false,error: 'Ledger not found or excluded' },404);
 });
 app.put('/:sessionId/items',async c => {
