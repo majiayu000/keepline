@@ -151,7 +151,7 @@ async function getOrParseCodexSession(
   const parsed = includeToolCalls
     ? await parseCodexSessionFile(file.filePath, { includeToolCalls: true })
     : await cachedSessionSummary('codex', file.filePath,
-      () => parseCodexSessionFile(file.filePath, { includeToolCalls: false }));
+      (onRecord) => parseCodexSessionFile(file.filePath, { includeToolCalls: false,onRecord }));
   cache.set(file.filePath, {
     data: parsed,
     modifiedAt: fileModTime,
@@ -242,7 +242,7 @@ export async function getAllCodexSessionsWithFailures(
 }
 
 export async function getCodexSessionById(
-  sessionId: string
+  sessionId: string, includeToolCalls = true
 ): Promise<CodexParsedSessionData | null> {
   const scopedSessionId = scopeCodexSessionId(sessionId);
   const sessionFile = scanCodexSessionsDirectory()
@@ -251,5 +251,5 @@ export async function getCodexSessionById(
     return null;
   }
 
-  return getOrParseCodexSession(sessionFile, sessionDetailCache, true);
+  return getOrParseCodexSession(sessionFile, includeToolCalls ? sessionDetailCache : sessionSummaryCache, includeToolCalls);
 }

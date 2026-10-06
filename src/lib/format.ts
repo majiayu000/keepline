@@ -13,8 +13,11 @@ import {
 /** Status display configuration */
 const statusConfig: Record<SessionStatus, { label: string; color: (s: string) => string }> = {
   running: { label: 'Running', color: chalk.green },
+  needs_input: { label: 'Waiting', color: chalk.yellow },
   waiting: { label: 'Waiting', color: chalk.yellow },
   idle: { label: 'Idle', color: chalk.blue },
+  stalled: { label: SESSION_STATUS_PRESENTATION.stalled.label, color: chalk.red },
+  interrupted: { label: SESSION_STATUS_PRESENTATION.interrupted.label, color: chalk.red },
   lost: { label: SESSION_STATUS_PRESENTATION.lost.label, color: chalk.red },
   completed: { label: 'Done', color: chalk.gray },
 };

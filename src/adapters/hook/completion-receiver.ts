@@ -1,3 +1,5 @@
+import { isHookEventProcessed, markHookEventProcessed } from './spool.js';
+import { transaction } from '../../infrastructure/database/sqlite.js';
 import type { Server } from 'bun';
 import { sessionRepository } from '../../infrastructure/database/repositories/session.repository.js';
 import { workItemEvidenceRepository } from '../../infrastructure/database/repositories/work-item-evidence.repository.js';
@@ -21,6 +23,7 @@ import {
 } from '../../web/api/request-security.js';
 
 const ACCEPTED_EVENT_TYPES = new Set([
+  'PermissionRequest',
   'PreToolUse',
   'PostToolUse',
   'Notification',
@@ -86,7 +89,8 @@ function parseRuntimeHint(url: URL): AgentClient | null | undefined {
   return null;
 }
 
-function observedStatus(eventType: string): SessionStatus | undefined {
+function observedStatus(eventType: string, body: Record<string, unknown>): SessionStatus | undefined {
+  if (eventType === 'PermissionRequest' || eventType === 'Notification' && ['permission_prompt','idle_prompt','agent_needs_input'].includes(String(body.notification_type))) return 'needs_input';
   if (eventType === 'Stop') return 'waiting';
   if (eventType === 'SessionStart' || eventType === 'UserPromptSubmit' ||
       eventType === 'PreToolUse' || eventType === 'PostToolUse') {
@@ -234,6 +238,8 @@ export function startLifecycleReceiver(port: number): LifecycleReceiver {
         if (Number.isNaN(eventTimestamp.getTime())) {
           return json({ success: false, error: 'Invalid hook event timestamp' }, 400);
         }
+        const eventId = request.headers.get('X-Keepline-Event-Id');
+        if (eventId && isHookEventProcessed(eventId)) return json({ success: true, duplicate: true });
         let existing = sessionRepository.findBySessionId(sessionId);
         if (!existing) {
           if (eventType === 'Stop') {
@@ -252,7 +258,7 @@ export function startLifecycleReceiver(port: number): LifecycleReceiver {
             }
             return json({ success: false, error: 'Session not found' }, 404);
           }
-          const status = observedStatus(eventType);
+          const status = observedStatus(eventType, body);
           if (!status) return json({ success: false, error: 'Session not found' }, 404);
           const initialPrompt = eventType === 'UserPromptSubmit' && typeof body.prompt === 'string'
             ? body.prompt
@@ -263,6 +269,7 @@ export function startLifecycleReceiver(port: number): LifecycleReceiver {
             directory: body.cwd,
             status,
             statusSource: 'hook',
+            statusReason: status === 'needs_input' ? String(body.message ?? body.tool_name ?? 'Agent requests input') : null,
             title: generateTitle(initialPrompt),
             initialPrompt,
             startedAt: new Date(),
@@ -277,7 +284,7 @@ export function startLifecycleReceiver(port: number): LifecycleReceiver {
           return json({ success: false, error: 'Hook cwd does not match the session' }, 409);
         }
 
-        const status = observedStatus(eventType);
+        const status = observedStatus(eventType, body);
         if (status && existing.status !== 'completed') {
           const previousStatus = existing.status;
           const prompt = eventType === 'UserPromptSubmit' && typeof body.prompt === 'string'
@@ -287,6 +294,7 @@ export function startLifecycleReceiver(port: number): LifecycleReceiver {
             sessionId,
             status,
             statusSource: 'hook',
+            statusReason: status === 'needs_input' ? String(body.message ?? body.tool_name ?? 'Agent requests input') : null,
             lastActiveAt: eventTimestamp,
             ...(typeof body.tool_name === 'string' && { lastTool: body.tool_name }),
             ...(prompt && isGeneratedSessionTitle(existing.title) && {
@@ -319,6 +327,7 @@ export function startLifecycleReceiver(port: number): LifecycleReceiver {
               : typeof body.reason === 'string' ? body.reason : undefined,
           });
         }
+        if (eventId) transaction(() => markHookEventProcessed(eventId));
         return json({ success: true });
       } catch (error) {
         logger.error('Failed to receive lifecycle hook', error);

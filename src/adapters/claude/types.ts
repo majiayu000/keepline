@@ -1,3 +1,4 @@
+import type { TranscriptFact } from '../../domain/ledger/types.js';
 /**
  * Claude Code data types (from JSONL files)
  */
@@ -117,6 +118,7 @@ export interface SessionUsageStats {
 
 /** Parsed session data */
 export interface ParsedSessionData {
+  sourcePath?: string; transcriptFacts?: TranscriptFact[]; unknownRecords?: number;
   sessionId: string;
   client?: AgentClient;
   directory: string;

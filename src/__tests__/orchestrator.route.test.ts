@@ -1,3 +1,6 @@
+import { mkdirSync } from 'fs';
+import { join } from 'path';
+import { getKeeplineHome } from '../lib/paths.js';
 import { afterEach, beforeEach, describe, expect, test } from 'bun:test';
 import orchestrator from '../web/api/routes/orchestrator.js';
 import { app } from '../web/api/server.js';
@@ -28,11 +31,13 @@ describe('Orchestrator Route Contract', () => {
 
   test('overview returns serialized attention queue with auth', async () => {
     const lastActiveAt = recentSessionDate();
+    const project = join(getKeeplineHome(),'orchestrator-project');
+    mkdirSync(project,{ recursive: true });
 
     sessionRepository.upsert({
       sessionId: 'orchestrator-route-cost',
       client: 'codex',
-      directory: process.cwd(),
+      directory: project,
       status: 'running',
       title: 'Expensive local run',
       initialPrompt: 'Track cost',

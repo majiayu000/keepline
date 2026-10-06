@@ -4,6 +4,10 @@ export type WorkItemStatusSource = 'user' | 'accepted_agent_suggestion'
 export type WorkboardBucketId = 'now' | 'waiting' | 'stale' | 'done'
 
 export interface WorkItem {
+  parentId?: string | null
+  level?: 'goal' | 'task'
+  outcome?: string | null
+  acceptance?: Array<{ id: string; text: string; completed: boolean }>
   id: string
   kind: WorkItemKind
   status: WorkItemStatus
@@ -78,6 +82,10 @@ export interface WorkboardData {
 }
 
 export interface WorkItemCreateInput {
+  parentId?: string | null
+  level?: 'goal' | 'task'
+  outcome?: string | null
+  acceptance?: Array<{ id: string; text: string; completed: boolean }>
   title: string
   kind?: WorkItemKind
   status?: WorkItemStatus
@@ -88,6 +96,10 @@ export interface WorkItemCreateInput {
 }
 
 export interface WorkItemUpdateInput {
+  parentId?: string | null
+  level?: 'goal' | 'task'
+  outcome?: string | null
+  acceptance?: Array<{ id: string; text: string; completed: boolean }>
   title?: string
   kind?: WorkItemKind
   status?: WorkItemStatus

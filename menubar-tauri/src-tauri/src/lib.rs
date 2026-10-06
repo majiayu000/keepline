@@ -1,3 +1,5 @@
+mod ledger_app;
+mod notifications;
 mod codex;
 mod cost;
 mod panel_position;
@@ -19,15 +21,27 @@ use cost::get_cost_overview;
 use quota::get_quota;
 use tray_commands::{resize_window, set_dock_visibility, update_tray_icon, TrayState};
 
+// Keep the generated Info.plist symbol unique when testing the compiled ACL.
+fn app_context<R: tauri::Runtime>() -> tauri::Context<R> { tauri::generate_context!() }
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_process::init())
+        .plugin(tauri_plugin_shell::init())
+        .plugin(tauri_plugin_notification::init())
+        .plugin(tauri_plugin_autostart::init(tauri_plugin_autostart::MacosLauncher::LaunchAgent,Some(vec!["--background"])))
+        .manage(ledger_app::ServiceState { child: Mutex::new(None),connection: Mutex::new(None) })
         .manage(TrayState {
             tray_id: Mutex::new(None),
         })
         .invoke_handler(tauri::generate_handler![
+            ledger_app::open_ledger,
+            ledger_app::set_ledger_counts,
+            ledger_app::get_app_autostart,
+            ledger_app::set_app_autostart,
+            ledger_app::quit_app,
             get_quota,
             update_tray_icon,
             resize_window,
@@ -38,14 +52,32 @@ pub fn run() {
             get_codex_rate_limits,
             get_cost_overview,
         ])
+        .on_menu_event(|app, event| {
+            if event.id().as_ref() == "app-quit" { ledger_app::request_quit(app); }
+        })
         .setup(|app| {
             // Start in accessory mode for menubar behavior consistency on macOS.
             #[cfg(target_os = "macos")]
             {
                 use tauri::ActivationPolicy;
                 let _ = app.set_activation_policy(ActivationPolicy::Accessory);
+                // The predefined macOS Quit item terminates NSApplication directly.
+                // Use an ordinary item so Cmd+Q offers the monitoring choice too.
+                let menu = tauri::menu::Menu::default(app.handle())?;
+                if let Some(tauri::menu::MenuItemKind::Submenu(app_menu)) = menu.items()?.first() {
+                    app_menu.remove_at(app_menu.items()?.len() - 1)?;
+                    let quit = MenuItemBuilder::with_id("app-quit","Quit Keepline").accelerator("CmdOrCtrl+Q").build(app)?;
+                    app_menu.append(&quit)?;
+                }
+                app.set_menu(menu)?;
             }
 
+            let handle = app.handle().clone();
+            notifications::init(&handle);
+            let home = std::env::var_os("KEEPLINE_HOME").map(std::path::PathBuf::from).unwrap_or_else(|| dirs::home_dir().unwrap_or_default().join(".keepline"));
+            let autostart = std::fs::read_to_string(home.join("app-autostart.json")).map(|v| v.trim() != "false").unwrap_or(true);
+            if autostart { use tauri_plugin_autostart::ManagerExt; app.autolaunch().enable()?; }
+            ledger_app::start(handle);
             let icon_bytes = tray_icon::generate_tray_icon_with_ring(0, 44);
             let initial_icon = Image::from_bytes(&icon_bytes)?;
 
@@ -55,12 +87,12 @@ pub fn run() {
             let tray = match TrayIconBuilder::with_id("quota-tray")
                 .icon(initial_icon)
                 .icon_as_template(false)
-                .tooltip("Claude Quota Monitor")
+                .tooltip("Keepline")
                 .menu(&menu)
                 .show_menu_on_left_click(false)
                 .on_menu_event(|app, event| {
                     if event.id().as_ref() == "quit" {
-                        app.exit(0);
+                        ledger_app::request_quit(app);
                     }
                 })
                 .on_tray_icon_event(|tray, event| {
@@ -210,6 +242,14 @@ pub fn run() {
 
             Ok(())
         })
-        .run(tauri::generate_context!())
-        .expect("error while running tauri application");
+        .build(app_context())
+        .expect("error while building tauri application")
+        .run(|app, event| {
+            #[cfg(target_os = "macos")]
+            if let tauri::RunEvent::Reopen { .. } = event {
+                if let Err(error) = ledger_app::open_ledger_window(app, None, None) {
+                    eprintln!("Could not reopen Keepline: {error}");
+                }
+            }
+        });
 }

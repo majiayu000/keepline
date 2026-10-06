@@ -17,8 +17,11 @@ interface SessionListProps {
 
 const statusStyles: Record<SessionStatus, { icon: string; color: string; bg?: string }> = {
   running: { icon: SESSION_STATUS_PRESENTATION.running.icon, color: 'green' },
+  needs_input: { icon: SESSION_STATUS_PRESENTATION.needs_input.icon, color: 'yellow' },
   waiting: { icon: SESSION_STATUS_PRESENTATION.waiting.icon, color: 'yellow' },
   idle: { icon: SESSION_STATUS_PRESENTATION.idle.icon, color: 'blue' },
+  stalled: { icon: SESSION_STATUS_PRESENTATION.stalled.icon, color: 'red' },
+  interrupted: { icon: SESSION_STATUS_PRESENTATION.interrupted.icon, color: 'red' },
   lost: { icon: SESSION_STATUS_PRESENTATION.lost.icon, color: 'red' },
   completed: { icon: SESSION_STATUS_PRESENTATION.completed.icon, color: 'gray' },
 };

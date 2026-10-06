@@ -22,6 +22,7 @@ export interface ActiveSessionRecord {
 }
 
 export interface ExistingSessionSummary {
+  statusReason?: string | null;
   sessionId: string;
   client: AgentClient;
   status: SessionStatus;
@@ -38,6 +39,7 @@ export interface SessionUpsertData {
   directory?: string;
   status?: SessionStatus;
   statusSource?: SessionStatusSource;
+  statusReason?: string | null;
   title?: string;
   initialPrompt?: string;
   lastTool?: string;

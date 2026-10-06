@@ -21,8 +21,11 @@ interface Props {
 
 const icons: Record<SessionStatus, string> = {
   running: '🟢',
+  needs_input: '🟡',
   waiting: '🟡',
   idle: '⚪',
+  stalled: '🔴',
+  interrupted: '🔴',
   lost: '🔴',
   completed: '✅',
 };
@@ -30,8 +33,11 @@ const icons: Record<SessionStatus, string> = {
 // Status colors (for potential future use)
 const _colors: Record<SessionStatus, string> = {
   running: '#34c759',
+  needs_input: '#ff9500',
   waiting: '#ff9500',
   idle: '#007aff',
+  stalled: '#ff3b30',
+  interrupted: '#ff3b30',
   lost: '#ff3b30',
   completed: '#8e8e93',
 };

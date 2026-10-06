@@ -15,8 +15,11 @@ interface StatusBadgeProps {
 
 const statusConfig: Record<SessionStatus, { icon: string; color: string; bgColor?: string }> = {
   running: { icon: '●', color: 'green' },
+  needs_input: { icon: '◐', color: 'yellow' },
   waiting: { icon: '◐', color: 'yellow' },
   idle: { icon: '○', color: 'blue' },
+  stalled: { icon: '✖', color: 'red' },
+  interrupted: { icon: '✖', color: 'red' },
   lost: { icon: '✖', color: 'red' },
   completed: { icon: '✓', color: 'gray' },
 };

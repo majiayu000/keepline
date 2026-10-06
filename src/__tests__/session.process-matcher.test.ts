@@ -64,6 +64,15 @@ describe('matchProcessesToSessions', () => {
     expect(matchProcessesToSessions(sessions, [process]).size).toBe(1);
   });
 
+  test('desktop resume identities bind exactly even when many sessions share a directory',() => {
+    const sessions = Array.from({ length: 30 },(_,i) => sessionCandidate({ sessionId: `desktop-${i}` }));
+    const processes = Array.from({ length: 15 },(_,i) => processCandidate({ pid: 2000+i,args: [`--resume=desktop-${i}`] }));
+    processes[0].args = ['--session-id','desktop-0'];
+    const matches = matchProcessesToSessions(sessions,processes);
+    processes.push(processCandidate({ pid: 3000,args: ['--resume=outside-scan-window'] }));
+    expect(matchProcessesToSessions(sessions,processes).size).toBe(15);
+    expect(matches.size).toBe(15); processes.slice(0,15).forEach((p,i) => expect(matches.get(`desktop-${i}`)?.pid).toBe(p.pid));
+  });
   test('preserves PID continuity when known', () => {
     const sessions = [
       sessionCandidate({ sessionId: 'session-a', pid: 1001 }),

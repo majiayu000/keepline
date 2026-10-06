@@ -25,6 +25,7 @@ export async function serviceScanCommand(options: ServiceScanOptions = {}): Prom
     console.log(`${SCAN_RESULT_PREFIX}${JSON.stringify({
       sync,
       summaryCache: sessionSummaryCacheStats(),
+      cpuMicros: process.cpuUsage(),
       reconciledDispatches: dispatches.length,
       pendingDispatches: taskDispatchRepository.findCorrelationPending().length,
       linkedSessions,

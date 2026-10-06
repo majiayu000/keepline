@@ -1,3 +1,4 @@
+import { migration015 } from '../infrastructure/database/migrations/015_progress_ledger.js';
 import { migration001 } from '../infrastructure/database/migrations/001_initial.js';
 import { migration004 } from '../infrastructure/database/migrations/004_sessions_last_message.js';
 import { migration005 } from '../infrastructure/database/migrations/005_session_metadata.js';
@@ -27,6 +28,7 @@ const serviceMigrations = [
   migration012,
   migration013,
   migration014,
+  migration015,
 ];
 
 export function runServiceMigrations(): void {
