@@ -230,7 +230,7 @@ function DashboardApp({ token, onLogout }: DashboardAppProps) {
       )}
 
       <Suspense fallback={<SessionCardSkeleton count={4} />}>
-        {(activeTab === 'overview' || activeTab === 'goals' || activeTab === 'review' || activeTab === 'ledger-settings') && !loading && (
+        {(activeTab === 'overview' || activeTab === 'goals' || activeTab === 'review' || activeTab === 'ledger-settings') && (
           <LedgerPage view={activeTab} onOpenSession={handleOpenOrchestratorSession} />
         )}
         {activeTab === 'sessions' && !loading && (

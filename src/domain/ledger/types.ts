@@ -24,7 +24,10 @@ export interface LedgerClaim { text: string; evidenceIds: string[]; turnId?: str
 export interface LedgerAcceptance { turnId: string; decision: 'accepted' | 'accepted_with_gaps' | 'follow_up'; droppedItemIds: string[]; reason?: string; at: string }
 export interface LedgerDetail {
   sessionId: string; agentSessionId: string; title: string; projectRoot: string; runtimeId: string;
-  state: 'running' | 'needs_input' | 'review' | 'accepted' | 'stopped'; statusReason?: string | null;
+  state: 'running' | 'needs_input' | 'review' | 'accepted' | 'stopped' | 'ended'; statusReason?: string | null;
+  parentSessionId?: string;
+  activity?: { action?: string; at?: string; lastMessage?: string; evidence: LedgerEvidence[] };
+  subagents?: Array<Pick<LedgerDetail,'sessionId' | 'title' | 'state' | 'lastActiveAt' | 'activity'>>;
   possiblyWaiting: boolean; available: boolean; unavailableReason?: string;
   asks: Ask[]; items: RequirementItem[]; evidence: LedgerEvidence[]; trail: LedgerStep[];
   readOnlyCount: number; turns: Array<{ id: string; at: string; phase: string; readOnlyCount: number; durationMs: number }>;
@@ -47,7 +50,15 @@ export const DEFAULT_LEDGER_CONFIG: LedgerConfig = {
   enabled: true, retentionDays: 30, stalledAfterSeconds: 900, alertCoalesceSeconds: 600,
   judge: { enabled: false, backend: 'cli-claude', model: null },
   deviation: 'conservative', constraints: true,
-  alerts: { needs_input: true, off_plan: true, claimed_unverified: true, stalled: true, limited: true },
+  alerts: { needs_input: true, off_plan: false, claimed_unverified: false, stalled: false, limited: false },
   nativeNotifications: true, focus: { minutes: 30, until: null }, staleGoalDays: 7,
   exclude: { projects: [], runtimes: [] },
 };
+
+/** Only explicit criteria participate in progress and deviation decisions. */
+export function confirmedRequirement(item: RequirementItem): boolean {
+  return item.source !== 'fallback' && !item.dropped;
+}
+export function ledgerNeedsAttention(row: Pick<LedgerDetail,'state' | 'offPlan'>): boolean {
+  return row.state === 'needs_input' || row.state === 'review' || row.state === 'running' && row.offPlan.length > 0;
+}

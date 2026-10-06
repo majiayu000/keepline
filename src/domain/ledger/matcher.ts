@@ -1,3 +1,4 @@
+import { confirmedRequirement } from './types.js';
 import { createHash } from 'crypto';
 import { extractTaskPrompt } from '../session/index.js';
 import type { Anchors, Ask, Constraint, Correction, LedgerConfig, LedgerEvidence, LedgerRule, LedgerStep, OffPlanRun, RequirementItem, TranscriptFact } from './types.js';
@@ -81,6 +82,7 @@ function score(anchors: Anchors, summary: string, paths: string[], lowerSummary:
 export function matchLedger(facts: TranscriptFact[], inputItems: RequirementItem[], corrections: Correction[], rules: LedgerRule[], cfg: LedgerConfig, sessionId = '') {
   const items = structuredClone(inputItems);
   for (const item of items) if (item.statusSource !== 'user') { item.evidenceIds = []; item.status = 'todo'; }
+  const confirmed = items.filter(confirmedRequirement);
   const evidence: LedgerEvidence[] = [];
   const evidenceIds = new Set<string>();
   const trail: LedgerStep[] = [];
@@ -105,11 +107,11 @@ export function matchLedger(facts: TranscriptFact[], inputItems: RequirementItem
     if (!fact.mutating) { readOnlyCount++; continue; }
     const correction = corrections.find(c => c.callId === fact.callId);
     const rule = rules.find(r => r.matcher.paths.some(p => paths.some(path => pathMatches(p,path)) || summary.includes(p)) || r.matcher.commands.some(c => commandMatches(c,summary)));
-    const candidates = items.filter(i => !i.dropped).map(item => ({ item, score: score(item.anchors, summary, paths,lowerSummary) })).sort((a,b) => b.score - a.score || b.item.ordinal - a.item.ordinal);
+    const candidates = confirmed.map(item => ({ item, score: score(item.anchors, summary, paths,lowerSummary) })).sort((a,b) => b.score - a.score || b.item.ordinal - a.item.ordinal);
     const itemId = correction ? correction.itemId : rule?.itemId ?? (candidates[0]?.score >= 2 ? candidates[0].item.id : undefined);
     const item = items.find(i => i.id === itemId);
     const violations: string[] = [];
-    if (cfg.constraints) for (const i of items) for (const c of i.constraints) {
+    if (cfg.constraints) for (const i of confirmed) for (const c of i.constraints) {
       const files = ownEvidence.filter(e => e.kind === 'file');
       if (c.kind === 'path_forbidden' && c.value && files.some(f => pathMatches(c.value!, f.value))) violations.push(`Forbidden path: ${c.value}`);
       if (c.kind === 'no_public_api_change' && /apply_patch|Edit|Write/.test(fact.name) && /(?:\\n|^|\n)[+-](?![+-])[^\n]*\b(?:export|pub)\b/.test(JSON.stringify(fact.input))) violations.push('Public API declaration changed');
@@ -140,7 +142,7 @@ export function matchLedger(facts: TranscriptFact[], inputItems: RequirementItem
   const offPlan: OffPlanRun[] = [];
   let unmatched: LedgerStep[] = [];
   const flush = () => {
-    if (cfg.deviation !== 'off' && unmatched.length >= (cfg.deviation === 'sensitive' ? 3 : 8) &&
+    if (confirmed.length && cfg.deviation !== 'off' && unmatched.length >= (cfg.deviation === 'sensitive' ? 3 : 8) &&
       (cfg.deviation === 'sensitive' || Date.parse(unmatched.at(-1)!.at) - Date.parse(unmatched[0].at) >= 600_000)) {
       offPlan.push({ id: unmatched[0].callId, callIds: unmatched.map(s => s.callId), at: unmatched[0].at });
     }
@@ -151,5 +153,5 @@ export function matchLedger(facts: TranscriptFact[], inputItems: RequirementItem
     if (!step.itemId && !step.acceptedOffPlan) unmatched.push(step); else flush();
   }
   flush();
-  return { items, evidence, trail, readOnlyCount, offPlan, progress: { done: items.filter(i => i.status === 'done' && i.evidenceIds.some(id => evidenceIds.has(id))).length, total: items.length } };
+  return { items, evidence, trail, readOnlyCount, offPlan, progress: { done: confirmed.filter(i => i.status === 'done' && i.evidenceIds.some(id => evidenceIds.has(id))).length, total: confirmed.length } };
 }
