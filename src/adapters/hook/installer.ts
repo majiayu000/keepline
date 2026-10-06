@@ -1,3 +1,5 @@
+import { installHookSpoolScript } from './spool.js';
+import { getKeeplineHome } from '../../lib/paths.js';
 /**
  * Claude Code and Codex hooks installer
  *
@@ -9,7 +11,7 @@
  */
 
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'fs';
-import { dirname } from 'path';
+import { dirname, join } from 'path';
 import { CLAUDE_SETTINGS, getCodexHooksPath } from '../../lib/paths.js';
 import { config } from '../../lib/config.js';
 import { logger } from '../../lib/logger.js';
@@ -23,6 +25,7 @@ import type {
 
 const KEEPLINE_HOOK_MARKER = 'KEEPLINE_HOOK_MARKER=keepline-hook-v2';
 const CLAUDE_HOOK_TYPES: HookEventType[] = [
+  'PermissionRequest',
   'PreToolUse',
   'PostToolUse',
   'Notification',
@@ -32,6 +35,7 @@ const CLAUDE_HOOK_TYPES: HookEventType[] = [
 ];
 
 const CODEX_HOOK_TYPES: HookEventType[] = [
+  'PermissionRequest',
   'PreToolUse',
   'PostToolUse',
   'SessionStart',
@@ -89,7 +93,8 @@ function getHookCommand(
   port: number = config.get().hookPort,
   runtimeId: HookRuntimeId = 'claude-code'
 ): string {
-  return `${KEEPLINE_HOOK_MARKER} curl -fsS -X POST "http://127.0.0.1:${port}/hook?runtime=${runtimeId}" -H "Content-Type: application/json" --data-binary @- > /dev/null 2>&1 || true`;
+  const quote = (value: string) => "'" + value.replace(/'/g, "'\"'\"'") + "'";
+  return `${KEEPLINE_HOOK_MARKER} ${quote(join(getKeeplineHome(),'bin','keepline-hook'))} ${runtimeId} ${port} ${quote(getKeeplineHome())} > /dev/null 2>&1 || true`;
 }
 
 /** Detect the pre-v2 command that incorrectly relied on `$CLAUDE_*` env vars */
@@ -282,6 +287,7 @@ export function areHooksInstalled(): boolean {
 
 /** Install Keepline hooks into Claude Code and Codex settings. */
 export function installHooks(): void {
+  installHookSpoolScript();
   const targets = getHookTargets().map((target) => ({
     ...target,
     settings: getHookSettings(target.settingsPath),

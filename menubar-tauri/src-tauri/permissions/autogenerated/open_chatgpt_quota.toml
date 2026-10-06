@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-open-chatgpt-quota"
+description = "Enables the open_chatgpt_quota command without any pre-configured scope."
+commands.allow = ["open_chatgpt_quota"]
+
+[[permission]]
+identifier = "deny-open-chatgpt-quota"
+description = "Denies the open_chatgpt_quota command without any pre-configured scope."
+commands.deny = ["open_chatgpt_quota"]

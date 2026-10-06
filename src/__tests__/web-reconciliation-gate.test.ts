@@ -1,4 +1,4 @@
-import { afterEach, beforeEach, describe, expect, test } from 'bun:test';
+import { afterEach, beforeEach, describe, expect, test, spyOn } from 'bun:test';
 import { resetDatabase } from '../db/migrations.js';
 import { closeDatabase, getDatabase, runSql } from '../infrastructure/database/sqlite.js';
 import { sessionRepository } from '../infrastructure/database/repositories/session.repository.js';
@@ -10,6 +10,7 @@ import {
 import { startWebServer } from '../web/api/server.js';
 import recovery from '../web/api/routes/recovery.js';
 import { setWebSessionSource } from '../web/api/session-source.js';
+import { resetPricingForTests } from '../services/usage.pricing.js';
 
 describe('web recovery reconciliation gate', () => {
   beforeEach(() => {
@@ -111,6 +112,9 @@ describe('standalone web server bind-before-invalidate', () => {
       port: 0,
       fetch: () => new Response('occupied'),
     });
+    // Port ownership is the subject here; the unrelated price download must not
+    // turn a deterministic bind check into a remote-network timeout.
+    const pricingFetch = spyOn(globalThis,'fetch').mockResolvedValueOnce(Response.json({}));
 
     try {
       // Same port as the probe URL → hasCompatibleService short-circuits to false,
@@ -125,6 +129,7 @@ describe('standalone web server bind-before-invalidate', () => {
       expect(persisted?.tty).toBe('ttys009');
     } finally {
       occupied.stop(true);
+      pricingFetch.mockRestore(); resetPricingForTests();
     }
   });
 });

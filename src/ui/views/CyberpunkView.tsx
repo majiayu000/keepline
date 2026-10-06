@@ -36,6 +36,9 @@ const C = {
 };
 
 const statusConfig: Record<SessionStatus, { icon: string; color: string; label: string }> = {
+  needs_input: { icon: '?', color: C.yellow, label: 'INPUT' },
+  stalled: { icon: '!', color: C.red, label: 'STALL' },
+  interrupted: { icon: '↻', color: C.red, label: 'INTR' },
   running: {
     icon: SESSION_STATUS_PRESENTATION.running.icon,
     color: C.green,

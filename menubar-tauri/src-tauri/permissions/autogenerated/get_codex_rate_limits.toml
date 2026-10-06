@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-get-codex-rate-limits"
+description = "Enables the get_codex_rate_limits command without any pre-configured scope."
+commands.allow = ["get_codex_rate_limits"]
+
+[[permission]]
+identifier = "deny-get-codex-rate-limits"
+description = "Denies the get_codex_rate_limits command without any pre-configured scope."
+commands.deny = ["get_codex_rate_limits"]

@@ -70,6 +70,7 @@ function createRepository(session: Session | null): ISessionRepository {
     }),
     deleteOldSessions: () => 0,
     countByStatus: () => ({
+      needs_input: 0, stalled: 0, interrupted: 0,
       running: 0,
       waiting: 0,
       idle: 0,

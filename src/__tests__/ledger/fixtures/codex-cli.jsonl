@@ -1,0 +1,8 @@
+{"type": "session_meta", "timestamp": "2026-10-06T00:00:00.000Z", "payload": {"id": "codex-fixture-123", "cwd": "/project"}}
+{"type": "event_msg", "timestamp": "2026-10-06T00:00:00.000Z", "payload": {"type": "task_started", "turn_id": "turn-1"}}
+{"type": "response_item", "timestamp": "2026-10-06T00:00:00.000Z", "payload": {"type": "message", "role": "user", "content": [{"type": "input_text", "text": "Fix widget and run tests"}]}}
+{"type": "response_item", "timestamp": "2026-10-06T00:00:00.000Z", "payload": {"type": "function_call", "call_id": "c1", "name": "exec_command", "arguments": "{\"cmd\": \"bun test src/widget.test.ts\"}"}}
+{"type": "response_item", "timestamp": "2026-10-06T00:00:00.000Z", "payload": {"type": "function_call_output", "call_id": "c1", "output": "{\"exit_code\": 1, \"output\": \"2 pass\\n1 fail\"}"}}
+{"type": "response_item", "timestamp": "2026-10-06T00:00:00.000Z", "payload": {"type": "function_call", "call_id": "c2", "name": "exec_command", "arguments": "{\"cmd\": \"git commit -m fix\"}"}}
+{"type": "response_item", "timestamp": "2026-10-06T00:00:00.000Z", "payload": {"type": "function_call_output", "call_id": "c2", "output": "Process exited with code 0\n[main abc1234] fix\nhttps://github.com/example/project/pull/42"}}
+{"type": "event_msg", "timestamp": "2026-10-06T00:00:00.000Z", "payload": {"type": "task_complete", "turn_id": "turn-1", "last_agent_message": "Tests completed"}}

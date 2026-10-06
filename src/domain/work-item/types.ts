@@ -81,7 +81,13 @@ export interface Area {
   updatedAt: Date;
 }
 
+export interface AcceptanceCriterion { id: string; text: string; completed: boolean }
+
 export interface WorkItem {
+  parentId?: string | null;
+  level?: 'goal' | 'task';
+  outcome?: string | null;
+  acceptance?: AcceptanceCriterion[];
   id: string;
   kind: WorkItemKind;
   status: WorkItemStatus;
@@ -99,6 +105,10 @@ export interface WorkItem {
 }
 
 export interface WorkItemCreateInput {
+  parentId?: string | null;
+  level?: 'goal' | 'task';
+  outcome?: string | null;
+  acceptance?: AcceptanceCriterion[];
   kind?: WorkItemKind;
   status?: WorkItemStatus;
   title: string;
@@ -111,6 +121,10 @@ export interface WorkItemCreateInput {
 }
 
 export interface WorkItemUpdateInput {
+  parentId?: string | null;
+  level?: 'goal' | 'task';
+  outcome?: string | null;
+  acceptance?: AcceptanceCriterion[];
   kind?: WorkItemKind;
   status?: WorkItemStatus;
   title?: string;

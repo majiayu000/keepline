@@ -25,9 +25,12 @@ interface SessionListProps {
   onInitialExpansionConsumed?: () => void
 }
 
-type SessionStatus = 'running' | 'waiting' | 'idle' | 'lost' | 'completed'
+type SessionStatus = 'needs_input' | 'stalled' | 'interrupted' | 'running' | 'waiting' | 'idle' | 'lost' | 'completed'
 
 interface GroupedSessions {
+  needs_input: Session[]
+  stalled: Session[]
+  interrupted: Session[]
   running: Session[]
   waiting: Session[]
   idle: Session[]
@@ -55,6 +58,7 @@ export const SessionList = memo(function SessionList({
   // Memoize grouped and sorted sessions
   const groupedSessions = useMemo(() => {
     const groups: GroupedSessions = {
+      needs_input: [], stalled: [], interrupted: [],
       running: [],
       waiting: [],
       idle: [],

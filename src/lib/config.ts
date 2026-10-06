@@ -1,3 +1,4 @@
+import { DEFAULT_LEDGER_CONFIG, type LedgerConfig } from '../domain/ledger/types.js';
 /**
  * Configuration management for Keepline.
  */
@@ -31,6 +32,7 @@ export interface SessionDigestSummarizerConfig {
 }
 
 export interface KeeplineConfig {
+  ledger: LedgerConfig;
   /** Scan interval in milliseconds */
   scanInterval: number;
 
@@ -79,6 +81,7 @@ export interface KeeplineConfig {
 }
 
 const defaultConfig: KeeplineConfig = {
+  ledger: DEFAULT_LEDGER_CONFIG,
   scanInterval: 5000,
   hookPort: 7890,
   webPort: DEFAULT_WEB_PORT,
@@ -197,12 +200,18 @@ export function validateConfig(cfg: KeeplineConfig): void {
     }
   }
 
+  errors.push(...validateLedgerConfig(cfg.ledger));
+
   if (errors.length > 0) {
     throw new ConfigError(`Invalid config: ${errors.join('; ')}`);
   }
 }
 
-type PartialKeeplineConfig = Partial<Omit<KeeplineConfig, 'webTerminal' | 'sessionDigest'>> & {
+type PartialKeeplineConfig = Partial<Omit<KeeplineConfig, 'webTerminal' | 'sessionDigest' | 'ledger'>> & {
+  ledger?: Partial<Omit<LedgerConfig, 'judge' | 'alerts' | 'focus' | 'exclude'>> & {
+    judge?: Partial<LedgerConfig['judge']>; alerts?: Partial<LedgerConfig['alerts']>;
+    focus?: Partial<LedgerConfig['focus']>; exclude?: Partial<LedgerConfig['exclude']>;
+  };
   webTerminal?: Partial<KeeplineConfig['webTerminal']>;
   sessionDigest?: {
     summarizer?: Partial<SessionDigestSummarizerConfig>;
@@ -212,6 +221,7 @@ type PartialKeeplineConfig = Partial<Omit<KeeplineConfig, 'webTerminal' | 'sessi
 function cloneDefaultConfig(): KeeplineConfig {
   return {
     ...defaultConfig,
+    ledger: structuredClone(DEFAULT_LEDGER_CONFIG),
     webTerminal: { ...defaultConfig.webTerminal },
     sessionDigest: {
       summarizer: { ...defaultConfig.sessionDigest.summarizer },
@@ -223,6 +233,7 @@ function mergeConfig(parsed: PartialKeeplineConfig): KeeplineConfig {
   return {
     ...defaultConfig,
     ...parsed,
+    ledger: mergeLedgerConfig(parsed.ledger),
     webTerminal: {
       ...defaultConfig.webTerminal,
       ...(parsed.webTerminal ?? {}),
@@ -314,3 +325,27 @@ class ConfigManager {
 }
 
 export const config = new ConfigManager();
+
+export function mergeLedgerConfig(input: PartialKeeplineConfig['ledger'] = {}): LedgerConfig {
+  const defaults = structuredClone(DEFAULT_LEDGER_CONFIG);
+  return { ...defaults, ...input, judge: { ...defaults.judge, ...input.judge },
+    alerts: { ...defaults.alerts, ...input.alerts }, focus: { ...defaults.focus, ...input.focus },
+    exclude: { ...defaults.exclude, ...input.exclude } };
+}
+export function validateLedgerConfig(value: LedgerConfig): string[] {
+  const errors: string[] = [];
+  if (!value || typeof value !== 'object') return ['ledger must be an object'];
+  for (const [key, v] of Object.entries({ enabled: value.enabled, constraints: value.constraints, nativeNotifications: value.nativeNotifications, judgeEnabled: value.judge?.enabled, ...value.alerts })) {
+    if (typeof v !== 'boolean') errors.push(`ledger.${key} must be boolean`);
+  }
+  for (const [key, v] of Object.entries({ retentionDays: value.retentionDays, stalledAfterSeconds: value.stalledAfterSeconds,
+    alertCoalesceSeconds: value.alertCoalesceSeconds, staleGoalDays: value.staleGoalDays, focusMinutes: value.focus?.minutes })) {
+    if (!Number.isInteger(v) || v < 1) errors.push(`ledger.${key} must be a positive integer`);
+  }
+  if (!['off','conservative','sensitive'].includes(value.deviation)) errors.push('Invalid ledger.deviation');
+  if (!['cli-claude','cli-codex','local','sdk'].includes(value.judge?.backend)) errors.push('Invalid ledger.judge.backend');
+  if (value.judge?.model !== null && typeof value.judge?.model !== 'string') errors.push('Invalid ledger.judge.model');
+  if (value.focus?.until !== null && (typeof value.focus?.until !== 'string' || !Number.isFinite(Date.parse(value.focus.until)))) errors.push('Invalid ledger.focus.until');
+  for (const key of ['projects','runtimes'] as const) if (!Array.isArray(value.exclude?.[key]) || !value.exclude[key].every(v => typeof v === 'string')) errors.push(`Invalid ledger.exclude.${key}`);
+  return errors;
+}

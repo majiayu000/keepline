@@ -11,6 +11,7 @@ export function serializeBasicSession(session: SerializableBasicSession) {
     runtimeId: runtimeIdForClient(session.client),
     directory: session.directory,
     status: session.status,
+    ...(session.statusReason ? { statusReason: session.statusReason } : {}),
     title: session.title,
     lastActiveAt: session.lastActiveAt.toISOString(),
     startedAt: session.startedAt?.toISOString(),

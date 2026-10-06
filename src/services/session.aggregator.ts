@@ -19,10 +19,13 @@ import type {
 import { matchProcessesToSessions } from './session.process-matcher.js';
 
 export function resolveAggregatedStatus(
-  session: Pick<AggregatedSession, 'status' | 'statusSource' | 'lastActiveAt'>,
+  session: Pick<AggregatedSession, 'status' | 'statusSource' | 'lastActiveAt'> & Partial<Pick<AggregatedSession, 'client' | 'statusReason'>>,
   process: ClaudeProcessInfo | undefined
 ): SessionStatus {
   if (session.status === 'completed') return 'completed';
+  if (session.client === 'codex' && session.statusSource === 'scan' && session.statusReason?.startsWith('Codex turn ')) return session.status;
+  if (session.statusSource === 'hook' && session.status === 'needs_input') return 'needs_input';
+  if (['stalled','interrupted'].includes(session.status)) return session.status;
   if (process && session.statusSource === 'hook' &&
       (session.status === 'running' || session.status === 'waiting')) {
     return session.status;

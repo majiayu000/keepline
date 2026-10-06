@@ -1,3 +1,4 @@
+import { TranscriptFacts } from '../transcript-facts.js';
 /**
  * JSONL parser for Codex saved session files.
  */
@@ -16,6 +17,7 @@ import {
 
 export interface ParseCodexSessionOptions {
   includeToolCalls?: boolean;
+  onRecord?: (entry: unknown) => void;
 }
 
 interface CodexAccumulator {
@@ -301,6 +303,7 @@ export async function parseCodexSessionFile(
   filePath: string,
   options: ParseCodexSessionOptions = {}
 ): Promise<CodexParsedSessionData | null> {
+  const facts = options.includeToolCalls === false ? undefined : new TranscriptFacts('codex');
   const fileStream = createReadStream(filePath);
   const rl = createInterface({
     input: fileStream,
@@ -314,7 +317,9 @@ export async function parseCodexSessionFile(
 
   const processLine = (line: string, currentLineNumber: number, isLastLine: boolean): void => {
     const entry = parseCodexLine(line, currentLineNumber, filePath, isLastLine);
+    if (line.trim()) options.onRecord?.(entry);
     if (!entry) return;
+    facts?.add(entry);
 
     if (!accumulator) {
       accumulator = createAccumulator(entry, includeToolCalls);
@@ -347,5 +352,5 @@ export async function parseCodexSessionFile(
     processLine(pendingLine.line, pendingLine.lineNumber, true);
   }
 
-  return accumulator ? finalizeAccumulator(accumulator) : null;
+  return accumulator ? { ...finalizeAccumulator(accumulator), sourcePath: filePath, transcriptFacts: facts?.facts, unknownRecords: facts?.unknownRecords } : null;
 }

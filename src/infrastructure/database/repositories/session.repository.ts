@@ -22,6 +22,7 @@ interface SessionRow {
   directory: string;
   status: string;
   status_source: string;
+  status_reason?: string | null;
   title: string | null;
   initial_prompt: string;
   last_tool: string | null;
@@ -55,6 +56,7 @@ interface SessionListRow {
   directory: string;
   status: string;
   status_source: string;
+  status_reason?: string | null;
   title: string | null;
   started_at: string | null;
   last_active_at: string;
@@ -102,6 +104,7 @@ interface ExistingSessionSummaryRow {
   client: string;
   status: string;
   status_source: string;
+  status_reason?: string | null;
   title: string | null;
   last_active_at: string;
 }
@@ -143,6 +146,7 @@ function rowToSession(row: SessionRow): Session {
     directory: row.directory,
     status: row.status as SessionStatus,
     statusSource: row.status_source as Session['statusSource'],
+    statusReason: row.status_reason ?? undefined,
     title: row.title || '',
     initialPrompt: row.initial_prompt,
     lastTool: row.last_tool || undefined,
@@ -174,6 +178,7 @@ function rowToSessionListItem(row: SessionListRow): SessionListItem {
     directory: row.directory,
     status: row.status as SessionStatus,
     statusSource: row.status_source as Session['statusSource'],
+    statusReason: row.status_reason ?? undefined,
     title: row.title || '',
     startedAt: row.started_at ? new Date(row.started_at) : undefined,
     lastActiveAt: new Date(row.last_active_at),
@@ -203,6 +208,7 @@ function rowToExistingSessionSummary(row: ExistingSessionSummaryRow): ExistingSe
     client: row.client === 'codex' ? 'codex' : 'claude',
     status: row.status as SessionStatus,
     statusSource: row.status_source as ExistingSessionSummary['statusSource'],
+    statusReason: row.status_reason ?? undefined,
     title: row.title || '',
     lastActiveAt: new Date(row.last_active_at),
     pid: row.pid || undefined,
@@ -251,7 +257,7 @@ class SessionRepository implements ISessionRepository {
     const db = getDatabase();
     const placeholders = sessionIds.map(() => '?').join(', ');
     const rows = db
-      .prepare(`SELECT session_id, client, status, status_source, title, last_active_at, pid FROM sessions WHERE session_id IN (${placeholders})`)
+      .prepare(`SELECT session_id, client, status, status_source, status_reason, title, last_active_at, pid FROM sessions WHERE session_id IN (${placeholders})`)
       .all(...sessionIds) as ExistingSessionSummaryRow[];
 
     return rows.map(rowToExistingSessionSummary);
@@ -423,6 +429,7 @@ class SessionRepository implements ISessionRepository {
         UPDATE sessions SET
           status = COALESCE(?, status),
           status_source = COALESCE(?, status_source),
+          status_reason = CASE WHEN ? THEN ? ELSE status_reason END,
           client = COALESCE(?, client),
           title = COALESCE(?, title),
           initial_prompt = COALESCE(?, initial_prompt),
@@ -452,6 +459,8 @@ class SessionRepository implements ISessionRepository {
       `).run(
         data.status ?? null,
         data.statusSource ?? null,
+        'statusReason' in data ? 1 : 0,
+        data.statusReason ?? null,
         data.client ?? null,
         data.title ?? null,
         data.initialPrompt ?? null,
@@ -506,7 +515,7 @@ class SessionRepository implements ISessionRepository {
         db.prepare(`
           INSERT INTO sessions (
             id, session_id, directory, status, title, initial_prompt,
-            client, status_source,
+            client, status_source, status_reason,
             last_tool, last_tool_input, current_file, last_message,
             started_at, last_active_at, completed_at, pid, tty,
             tool_count, message_count,
@@ -515,7 +524,7 @@ class SessionRepository implements ISessionRepository {
             tool_calls,
             was_process_observed,
             created_at, updated_at
-          ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+          ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         `).run(
           id,
           data.sessionId,
@@ -525,6 +534,7 @@ class SessionRepository implements ISessionRepository {
           data.initialPrompt || '',
           data.client || 'claude',
           data.statusSource || 'scan',
+          data.statusReason ?? null,
           data.lastTool ?? null,
           data.lastToolInput ?? null,
           data.currentFile ?? null,
@@ -599,6 +609,7 @@ class SessionRepository implements ISessionRepository {
     `).all() as Array<{ status: string; count: number }>;
 
     const result: Record<SessionStatus, number> = {
+      needs_input: 0, stalled: 0, interrupted: 0,
       running: 0,
       waiting: 0,
       idle: 0,

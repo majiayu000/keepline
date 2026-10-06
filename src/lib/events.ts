@@ -42,6 +42,10 @@ export type KeeplineEvents = {
   'tool:pre': ToolEventPayload;
   'tool:post': ToolEventPayload;
 
+  'ledger:alert': Record<string, unknown>;
+  'ledger:alert-cleared': { id: string; sessionId: string };
+  'ledger:update': { sessionId: string };
+
   // System events
   'daemon:started': { pid: number };
   'daemon:stopped': { reason: string };
