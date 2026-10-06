@@ -189,9 +189,20 @@ export function matchProcessesToSessions<T extends SessionProcessCandidate>(
   const groupKey = (client: AgentClient | undefined, directory: string) =>
     `${client ?? 'claude'}\u0000${directory}`;
 
+  // Desktop sessions expose their exact identity; bind it before heuristic assignment.
+  const explicitPids = new Set<number>();
+  for (const process of processes) {
+    const index = process.args.findIndex(arg => /^(?:--session-id|--resume)(?:=|$)/.test(arg));
+    const id = index >= 0 ? process.args[index].split('=')[1] ?? process.args[index + 1] : undefined;
+    if (id && !id.startsWith('-')) explicitPids.add(process.pid);
+    const session = id && sessions.find(s => s.sessionId === id && (s.client ?? 'claude') === process.client);
+    if (session) matches.set(session.sessionId,process);
+  }
+
   const processByPid = new Map(processes.map((process) => [process.pid, process]));
-  const usedProcessPids = new Set<number>();
+  const usedProcessPids = new Set<number>(explicitPids);
   for (const session of sessions) {
+    if (matches.has(session.sessionId)) continue;
     const process = session.pid ? processByPid.get(session.pid) : undefined;
     if (process && process.client === (session.client ?? 'claude') &&
         (!process.cwd || process.cwd === session.directory)) {
@@ -219,10 +230,11 @@ export function matchProcessesToSessions<T extends SessionProcessCandidate>(
   const nowMs = Date.now();
 
   for (const [directoryKey, directorySessions] of sessionsByDirectory.entries()) {
-    const directoryProcesses = processesByDirectory.get(directoryKey) || [];
+    const directoryProcesses = (processesByDirectory.get(directoryKey) || []).filter(p => !explicitPids.has(p.pid));
+    const availableSessions = directorySessions.filter(s => !matches.has(s.sessionId));
     if (directoryProcesses.length === 0) continue;
 
-    const unmatchedSessions = directorySessions;
+    const unmatchedSessions = availableSessions;
     const unmatchedProcesses = directoryProcesses;
 
     if (unmatchedSessions.length === 0 || unmatchedProcesses.length === 0) {

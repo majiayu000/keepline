@@ -1,3 +1,4 @@
+import { isHookEventProcessed, markHookEventProcessed } from './spool.js';
 /**
  * HTTP server for receiving hook events
  *
@@ -34,6 +35,7 @@ let server: FastifyInstance | null = null;
 
 /** Valid hook event types */
 const VALID_EVENT_TYPES: Set<HookEventType> = new Set([
+  'PermissionRequest',
   'PreToolUse',
   'PostToolUse',
   'Notification',
@@ -103,6 +105,8 @@ function normalizeKnownHookEvent(
     };
   }
 
+  if (eventType === 'PermissionRequest') return { ...base, event_type: 'PermissionRequest', tool_name: typeof event.tool_name === 'string' ? event.tool_name : undefined };
+
   if (eventType === 'Notification') {
     if (typeof event.message !== 'string') {
       return null;
@@ -110,6 +114,7 @@ function normalizeKnownHookEvent(
     return {
       ...base,
       event_type: 'Notification',
+      notification_type: typeof event.notification_type === 'string' ? event.notification_type : undefined,
       message: event.message,
     };
   }
@@ -264,6 +269,7 @@ async function handleHookEvent(
         lastToolInput: JSON.stringify(toolEvent.tool_input),
         lastActiveAt: new Date(toolEvent.timestamp),
         status: 'running',
+        statusReason: null,
         statusSource: 'hook',
       });
 
@@ -292,15 +298,21 @@ async function handleHookEvent(
       break;
     }
 
-    case 'Notification':
-      // Just log notifications for now
-      logger.info(`Notification from ${sessionId}: ${(event as { message: string }).message}`);
+    case 'PermissionRequest':
+    case 'Notification': {
+      const notification = event as { notification_type?: string; message?: string; tool_name?: string };
+      if (event.event_type === 'PermissionRequest' || ['permission_prompt','idle_prompt','agent_needs_input'].includes(notification.notification_type ?? '')) {
+        ensureSession('Unknown task');
+        updateSession(sessionId, { status: 'needs_input', statusSource: 'hook', statusReason: notification.message ?? notification.tool_name ?? 'Agent requests input', lastActiveAt: new Date(event.timestamp) });
+      }
       break;
+    }
 
     case 'SessionStart':
       ensureSession('Unknown task');
       updateSession(sessionId, {
         status: 'running',
+        statusReason: null,
         statusSource: 'hook',
         lastActiveAt: new Date(event.timestamp),
       });
@@ -326,6 +338,7 @@ async function handleHookEvent(
       ensureSession(promptEvent.prompt);
       updateSession(sessionId, {
         status: 'running',
+        statusReason: null,
         statusSource: 'hook',
         lastActiveAt: new Date(event.timestamp),
       });
@@ -411,7 +424,10 @@ export function createHookServer(): FastifyInstance {
         reply.status(400);
         return { success: false, error: 'Invalid hook runtime' };
       }
+      const eventId = request.headers['x-keepline-event-id'];
+      if (typeof eventId === 'string' && isHookEventProcessed(eventId)) return { success: true, duplicate: true };
       await handleHookEvent(event, runtime === 'codex' ? 'codex' : 'claude');
+      if (typeof eventId === 'string') markHookEventProcessed(eventId);
       return { success: true };
     } catch (error) {
       logger.error('Failed to handle hook event', error);

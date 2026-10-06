@@ -168,6 +168,8 @@ describe('Codex JSONL parser', () => {
         '# AGENTS.md instructions for /tmp/codex-project\n\n<INSTRUCTIONS>compacted rules</INSTRUCTIONS>',
         'Fix the session title boundary',
         '继续。',
+        '<codex_internal_context source="goal">Resume internal goal</codex_internal_context>',
+        '<send_user_message_question_reply>[{"answer":"yes"}]</send_user_message_question_reply>',
       ].map((text, index) => ({
         type: 'response_item',
         timestamp: `2026-06-17T01:00:0${index + 1}.000Z`,
@@ -183,7 +185,7 @@ describe('Codex JSONL parser', () => {
 
     expect(parsed?.firstMessage).toBe('Fix the session title boundary');
     expect(parsed?.launchPrompt).toBe('Inspect the session title boundary');
-    expect(parsed?.messageCount).toBe(8);
+    expect(parsed?.messageCount).toBe(10);
   });
 
   test('skips a truncated final JSONL line while preserving parsed session data', async () => {

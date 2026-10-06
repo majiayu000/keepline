@@ -113,4 +113,15 @@ Repair the active queue`);
       'Explain AGENTS.md instructions parsing'
     );
   });
+
+  test('leading host blocks are removed without removing trailing authored text', () => {
+    for (const tag of ['external_codex_apps_open_page', 'in-app-browser-context', 'image',
+      'artifact-view-context', 'command-name', 'local-command-stdout', 'future-host-context']) {
+      expect(extractTaskPrompt(`<${tag} source="host">metadata</${tag}>`)).toBeUndefined();
+      expect(extractTaskPrompt(`<${tag}>metadata</${tag}>\n修复任务板`)).toBe('修复任务板');
+    }
+    expect(extractTaskPrompt('<image />\n<host><host>nested</host></host>\n保留轨迹')).toBe('保留轨迹');
+    expect(extractTaskPrompt('<host>context</host>保留这段<host>后面的引用</host>')).toBe('保留这段<host>后面的引用</host>');
+    expect(extractTaskPrompt('<command-name>/help</command-name><command-message>help</command-message><command-args></command-args>')).toBeUndefined();
+  });
 });

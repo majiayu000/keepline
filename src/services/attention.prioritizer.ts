@@ -280,6 +280,9 @@ function buildAttentionItem(
 
 export function getAgentBoardLane(status: SessionStatus): AgentBoardLane {
   switch (status) {
+    case 'needs_input':
+    case 'stalled':
+    case 'interrupted':
     case 'waiting':
     case 'lost':
       return 'needs_you';

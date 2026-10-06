@@ -1,3 +1,8 @@
+import { config } from '../lib/config.js';
+import { ingestLedger, ledgerEnabled, ledgerScanSnapshot } from './ledger/service.js';
+import { flushFocusSummary } from './ledger/alerts.js';
+import { readTranscriptFacts } from './ledger/facts.js';
+import { codexTurnStatus, probeOpenRollouts, readCodexMetadata, closeCodexMetadata } from '../adapters/codex/liveness.js';
 /**
  * Session service - business logic for session management
  *
@@ -190,7 +195,7 @@ export class SessionService {
     let lost = 0;
 
     // Default to 7 days for fast sync, unless fullSync is requested
-    const maxAgeDays = options.fullSync ? undefined : (options.maxAgeDays ?? 7);
+    const maxAgeDays = options.maxAgeDays ?? (options.fullSync ? (config.get().ledger.enabled ? config.get().ledger.retentionDays : undefined) : 7);
     // Startup/full reconciliation must not soft-fail a whole-runtime adapter
     // rejection; that would leave just-invalidated live rows as Interrupted.
     const softFailRuntimeScans = !options.fullSync;
@@ -252,22 +257,39 @@ export class SessionService {
           lastActiveAt: existing?.pid ? existing.lastActiveAt : session.lastActiveAt,
         };
       }), processes);
+      const ledgerConfig = config.get().ledger;
+      const openRollouts = ledgerConfig.enabled && !ledgerConfig.exclude.runtimes.includes('codex') ? await probeOpenRollouts() : new Map<string,number>();
 
       // Process each scanned session
       for (const agentSession of agentSessions) {
         const client = agentSession.client ?? 'claude';
         const existing = existingSessionMap.get(agentSession.sessionId);
-        const process = processMatches.get(agentSession.sessionId);
-        const detectedStatus = detectSessionStatus(process || null, agentSession.lastActiveAt);
+        let process = processMatches.get(agentSession.sessionId);
+        const livePid = agentSession.sourcePath && openRollouts.get(agentSession.sourcePath);
+        if (!process && livePid) process = { client: 'codex', pid: livePid, cwd: agentSession.directory, cpu: 0, memory: 0, startTime: agentSession.startedAt ?? new Date(), args: ['Codex desktop'] };
+        // Keep the summary cache free of ledger arrays; process one eligible transcript at a time.
+        const ledgerEligible = ledgerEnabled({ client, directory: agentSession.directory, lastActiveAt: agentSession.lastActiveAt });
+        const ledgerParsed = { ...agentSession };
+        const scanSnapshot = ledgerEligible && agentSession.sourcePath ? ledgerScanSnapshot(agentSession.sessionId,agentSession.sourcePath) : undefined;
+        if (client === 'codex' && ledgerEligible && agentSession.sourcePath && !scanSnapshot) {
+          const facts = await readTranscriptFacts(agentSession.sourcePath, 'codex');
+          ledgerParsed.transcriptFacts = facts.facts; ledgerParsed.unknownRecords = facts.unknownRecords;
+        }
+        const metadata = client === 'codex' && ledgerConfig.enabled ? readCodexMetadata(agentSession.sessionId.replace(/^codex_/,'')) : {};
+        if (metadata.parentId) agentSession.parentSessionId = metadata.parentId;
+        if (metadata.title && (!agentSession.firstMessage || isGeneratedSessionTitle(agentSession.firstMessage))) agentSession.firstMessage = metadata.title;
+
+        const turnStatus = client === 'codex' && ledgerEligible ? codexTurnStatus(ledgerParsed.transcriptFacts ?? (scanSnapshot?.lastTurn ? [scanSnapshot.lastTurn] : []), Boolean(process), agentSession.lastActiveAt, ledgerConfig.stalledAfterSeconds) : undefined;
+        const detectedStatus = turnStatus ?? detectSessionStatus(process || null,agentSession.lastActiveAt);
         // A lifecycle hook is received after the transcript record that caused it.
         // Keep that newer semantic observation while its process is still alive;
         // otherwise the CPU/time heuristic would immediately overwrite it.
         const hasNewerHookObservation = Boolean(
           existing &&
-          process &&
+          (process || existing.status === 'needs_input') &&
           existing.statusSource === 'hook' &&
-          (existing.status === 'running' || existing.status === 'waiting') &&
-          existing.lastActiveAt.getTime() > agentSession.lastActiveAt.getTime()
+          (existing.status === 'running' || existing.status === 'waiting' || existing.status === 'needs_input') &&
+          existing.lastActiveAt.getTime() >= agentSession.lastActiveAt.getTime()
         );
         // `completed` is written only by an explicit hook/user action. A later
         // process scan must not downgrade that durable signal to lost/idle.
@@ -285,20 +307,20 @@ export class SessionService {
 
           // Replace only generated context noise; preserve normal and user-edited titles.
           const shouldUpdateTitle =
-            isGeneratedSessionTitle(existing.title) &&
-            agentSession.firstMessage &&
-            agentSession.firstMessage !== 'Unknown task';
+            (isGeneratedSessionTitle(existing.title) || metadata.name && existing.title === generateTitle(agentSession.firstMessage ?? metadata.title ?? 'Unknown task')) &&
+            (metadata.name || agentSession.firstMessage && agentSession.firstMessage !== 'Unknown task');
 
           const updatedSession = this.repository.upsert({
             sessionId: agentSession.sessionId,
             client,
             status: nextStatus,
+            statusReason: hasNewerHookObservation ? existing.statusReason : turnStatus ? `Codex turn ${turnStatus}` : null,
             statusSource: existing.status === 'completed' || hasNewerHookObservation
               ? existing.statusSource
               : 'scan',
             ...(shouldUpdateTitle && {
-              title: generateTitle(agentSession.firstMessage!),
-              initialPrompt: agentSession.firstMessage,
+              title: metadata.name || generateTitle(agentSession.firstMessage!),
+              ...(!metadata.name && { initialPrompt: agentSession.firstMessage }),
             }),
             lastTool: agentSession.lastTool,
             lastToolInput: agentSession.lastToolInput
@@ -319,6 +341,7 @@ export class SessionService {
             ...(process && { wasProcessObserved: true }),
           });
           existingSessionMap.set(agentSession.sessionId, updatedSession);
+          await ingestLedger(updatedSession,ledgerParsed);
 
           updated++;
           if (wasLost) {
@@ -327,9 +350,9 @@ export class SessionService {
           }
         } else {
           // Create new session with all data in single upsert (no redundant calls)
-          const title = agentSession.firstMessage
+          const title = metadata.name || (agentSession.firstMessage
             ? generateTitle(agentSession.firstMessage)
-            : 'Unknown task';
+            : 'Unknown task');
 
           const newSession = this.repository.upsert({
             sessionId: agentSession.sessionId,
@@ -338,6 +361,7 @@ export class SessionService {
             initialPrompt: agentSession.firstMessage || 'Unknown task',
             title,
             status,
+            statusReason: turnStatus ? `Codex turn ${turnStatus}` : null,
             statusSource: 'scan',
             lastTool: agentSession.lastTool,
             lastToolInput: agentSession.lastToolInput
@@ -359,6 +383,7 @@ export class SessionService {
             ...(process && { wasProcessObserved: true }),
           });
           existingSessionMap.set(agentSession.sessionId, newSession);
+          await ingestLedger(newSession,ledgerParsed);
           emit('session:discovered', { session: newSession });
           discovered++;
         }
@@ -389,6 +414,7 @@ export class SessionService {
       if (discovered > 0 || lost > 0) {
         logger.info(`Session sync: ${discovered} new, ${lost} lost`);
       }
+      await flushFocusSummary();
       emit('scan:complete', { sessionCount: agentSessions.length, duration });
       logger.debug(`Sync complete: ${discovered} new, ${updated} updated, ${lost} lost (${duration}ms)`);
 
@@ -450,6 +476,7 @@ export const completeSession = sessionService.completeSession.bind(sessionServic
 
 /** Release parsed transcript summaries retained by the bulk scanners. */
 export function releaseSessionScanCaches(): void {
+  closeCodexMetadata();
   clearSessionCache();
   clearCodexSessionCache();
 }

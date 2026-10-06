@@ -40,6 +40,11 @@ describe('Process Parser', () => {
     });
   });
 
+  test('desktop Claude paths with spaces preserve arguments and skip disclaimer wrappers',() => {
+    const command = '/Users/me/Library/Application Support/Claude/claude-code/2.1.288/build/claude.app/Contents/MacOS/claude --output-format stream-json --resume=session-123';
+    const parsed = parseAgentPsOutput(`12345 1.2 0.5 ?? Mon Jan  6 10:30:45 2026 ${command}\n12346 0 0 ?? Mon Jan  6 10:30:45 2026 /Applications/Claude.app/Contents/Helpers/disclaimer --pgroup -- ${command}`);
+    expect(parsed).toHaveLength(1); expect(parsed[0]).toMatchObject({ client: 'claude',argsRaw: '--output-format stream-json --resume=session-123' });
+  });
   test('parses Codex CLI rows and filters Codex helper processes', () => {
     const output = [
       '22345 1.2 0.5 ttys001 Mon Jan  6 10:30:45 2026 /usr/local/bin/codex resume 019ed4a3-2186-7e51-9aa1-ca1e376549b8',

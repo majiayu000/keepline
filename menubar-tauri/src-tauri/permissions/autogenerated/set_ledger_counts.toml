@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-set-ledger-counts"
+description = "Enables the set_ledger_counts command without any pre-configured scope."
+commands.allow = ["set_ledger_counts"]
+
+[[permission]]
+identifier = "deny-set-ledger-counts"
+description = "Denies the set_ledger_counts command without any pre-configured scope."
+commands.deny = ["set_ledger_counts"]

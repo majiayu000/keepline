@@ -17,8 +17,11 @@ interface SessionTableProps {
 /** Status colors */
 const statusColors: Record<SessionStatus, string> = {
   running: 'green',
+  needs_input: 'yellow',
   waiting: 'yellow',
   idle: 'blue',
+  stalled: 'red',
+  interrupted: 'red',
   lost: 'red',
   completed: 'gray',
 };
@@ -26,8 +29,11 @@ const statusColors: Record<SessionStatus, string> = {
 /** Status icons */
 const statusIcons: Record<SessionStatus, string> = {
   running: '●',
+  needs_input: '◐',
   waiting: '◐',
   idle: '○',
+  stalled: '✖',
+  interrupted: '✖',
   lost: '✖',
   completed: '✓',
 };

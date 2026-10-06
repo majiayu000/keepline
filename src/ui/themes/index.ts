@@ -15,6 +15,9 @@ export interface Theme {
     border: string;
   };
   icons: {
+    needs_input: '?',
+    stalled: '!',
+    interrupted: '↻',
     running: string;
     waiting: string;
     idle: string;
@@ -40,6 +43,9 @@ export const minimalTheme: Theme = {
     border: '#3e4451',
   },
   icons: {
+    needs_input: '?',
+    stalled: '!',
+    interrupted: '↻',
     running: '▸',
     waiting: '◦',
     idle: '·',
@@ -63,6 +69,9 @@ export const dashboardTheme: Theme = {
     border: '#414868',
   },
   icons: {
+    needs_input: '?',
+    stalled: '!',
+    interrupted: '↻',
     running: '●',
     waiting: '◐',
     idle: '○',
@@ -86,6 +95,9 @@ export const neonTheme: Theme = {
     border: '#333366',
   },
   icons: {
+    needs_input: '?',
+    stalled: '!',
+    interrupted: '↻',
     running: '⚡',
     waiting: '⏳',
     idle: '◇',
@@ -109,6 +121,9 @@ export const macosTheme: Theme = {
     border: '#c7c7cc',
   },
   icons: {
+    needs_input: '?',
+    stalled: '!',
+    interrupted: '↻',
     running: '🟢',
     waiting: '🟡',
     idle: '⚪',

@@ -1,3 +1,6 @@
+import { events } from '../../lib/events.js';
+import ledger, { ledgerSettings } from './routes/ledger.js';
+import goals from './routes/goals.js';
 /**
  * Web API Server for Keepline
  * Provides REST endpoints for session management
@@ -45,7 +48,7 @@ import {
   REALTIME_POLL_INTERVAL_MS,
   shouldRunRealtimeFullSync,
 } from './realtime-updates.js';
-import { isAllowedRequestHost } from './request-security.js';
+import { isAllowedRequestHost, webContentSecurityPolicy } from './request-security.js';
 import {
   getWebSessionsBasic,
   getWebSessionSource,
@@ -53,6 +56,9 @@ import {
 } from './session-source.js';
 
 const app = new Hono();
+events.on('ledger:alert', payload => broadcast('ledger:alert',payload));
+events.on('ledger:alert-cleared', payload => broadcast('ledger:alert-cleared',payload));
+events.on('ledger:update', payload => broadcast('ledger:update',payload));
 
 export function getWebStaticCandidates(moduleDir: string = import.meta.dir): string[] {
   const normalizedModuleDir = moduleDir.split(path.sep).join('/');
@@ -119,12 +125,15 @@ app.route('/api/work-items', workItems);
 app.route('/api', usage);
 app.route('/api/memory', memory);
 app.route('/api/plans', plans);
+app.route('/api/ledger', ledger);
+app.route('/api/goals', goals);
+app.route('/api/settings/ledger', ledgerSettings);
 
 // Serve React app index.html for root
-app.get('/', async () => {
+app.get('/', async (c) => {
   const file = Bun.file(path.join(getWebDistDir(), 'index.html'));
   return new Response(file, {
-    headers: { 'Content-Type': 'text/html' },
+    headers: { 'Content-Type': 'text/html', 'Content-Security-Policy': webContentSecurityPolicy(c.req.url) },
   });
 });
 
@@ -137,7 +146,7 @@ app.get('/*', async (c) => {
   }
   const file = Bun.file(path.join(getWebDistDir(), 'index.html'));
   return new Response(file, {
-    headers: { 'Content-Type': 'text/html' },
+    headers: { 'Content-Type': 'text/html', 'Content-Security-Policy': webContentSecurityPolicy(c.req.url) },
   });
 });
 

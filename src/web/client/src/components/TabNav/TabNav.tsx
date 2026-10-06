@@ -1,7 +1,11 @@
+import { isNativeApp } from '@/pages/ledger/native'
 import { memo, useEffect, useRef, useState } from 'react'
 import styles from './TabNav.module.css'
 
 export type TabId =
+  | 'goals'
+  | 'review'
+  | 'ledger-settings'
   | 'overview'
   | 'sessions'
   | 'orchestrator'
@@ -19,11 +23,15 @@ interface Tab {
 
 const PRIMARY_TABS: Tab[] = [
   { id: 'overview', label: 'Overview', icon: '01' },
-  { id: 'work', label: 'Work', icon: '+' },
+  { id: 'goals', label: 'Goals', icon: '+' },
+  { id: 'review', label: 'Review', icon: '✓' },
   { id: 'sessions', label: 'Sessions', icon: '>' },
 ]
 
 const SECONDARY_TABS: Tab[] = [
+  { id: 'work', label: 'Work', icon: '+' },
+  { id: 'orchestrator', label: 'Agent board', icon: '>' },
+  { id: 'ledger-settings', label: 'Ledger settings', icon: '⚙' },
   { id: 'projects', label: 'Projects', icon: '#' },
   { id: 'plans', label: 'Plans', icon: '%' },
   { id: 'memory', label: 'Memory', icon: '@' },
@@ -98,7 +106,7 @@ export const TabNav = memo(function TabNav({ activeTab, onTabChange }: TabNavPro
         {moreOpen && (
           <div className={styles.menu} role="menu" aria-label="More views">
             <div className={styles.menuLabel}>Workspace</div>
-            {SECONDARY_TABS.map((tab) => (
+            {SECONDARY_TABS.filter(tab => !isNativeApp() || !['memory','plans','analytics','orchestrator'].includes(tab.id)).map((tab) => (
               <button
                 key={tab.id}
                 type="button"

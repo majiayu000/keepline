@@ -174,6 +174,9 @@ function getProcessCommandMatch(command: string, rawLine: string): ProcessComman
   const commandTokens = command.trim().split(/\s+/).filter(Boolean);
   if (commandTokens.length === 0) return null;
 
+  // ps does not quote argv[0]; desktop executable paths contain spaces.
+  const desktopExecutable = command.match(/^\/?[^\n]*?\/Claude\/claude-code\/[^\n]*?\/(?:claude|claude-code)(?=\s|$)/i)?.[0];
+  if (desktopExecutable && !/\s--?\S/.test(desktopExecutable)) return { client: 'claude', argStartTokenIndex: desktopExecutable.trim().split(/\s+/).length };
   const executableName = commandTokens[0].split('/').pop()?.toLowerCase() ?? '';
   const directClient = getAgentClientFromExecutableName(executableName);
   if (directClient) {

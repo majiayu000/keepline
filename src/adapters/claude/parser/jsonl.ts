@@ -1,3 +1,4 @@
+import { TranscriptFacts } from '../../transcript-facts.js';
 /**
  * JSONL file parser for Claude session files
  */
@@ -30,6 +31,7 @@ export type ClaudeEntryWithAgent = ClaudeEntry & {
 
 export interface ParseSessionOptions {
   includeToolCalls?: boolean;
+  onRecord?: (entry: unknown) => void;
 }
 
 interface SessionSummaryAccumulator {
@@ -482,6 +484,7 @@ export async function parseSessionFile(
   let accumulator: SessionSummaryAccumulator | null = null;
   let pendingLine: { line: string; lineNumber: number } | null = null;
 
+  const facts = options.includeToolCalls === false ? undefined : new TranscriptFacts('claude');
   const fileStream = createReadStream(filePath);
   const rl = createInterface({
     input: fileStream,
@@ -490,6 +493,8 @@ export async function parseSessionFile(
 
   const processLine = (line: string, currentLineNumber: number, isLastLine: boolean): void => {
     const entry = parseLine(line, currentLineNumber, filePath, isLastLine);
+    if (line.trim()) options.onRecord?.(entry);
+    if (entry) facts?.add(entry);
     if (
       !entry ||
       isFileHistorySnapshot(entry) ||
@@ -525,5 +530,5 @@ export async function parseSessionFile(
     processLine(pendingLine.line, pendingLine.lineNumber, true);
   }
 
-  return accumulator ? finalizeSessionAccumulator(accumulator) : null;
+  return accumulator ? { ...finalizeSessionAccumulator(accumulator), sourcePath: filePath, transcriptFacts: facts?.facts, unknownRecords: facts?.unknownRecords } : null;
 }

@@ -60,7 +60,10 @@ open, which identifies live desktop sessions without the process-to-cwd match.
 - `src/domain/ledger/` (new): types, evidence extraction, matcher, progress
 - `src/services/ledger/` (new): decomposer, judge, alert router, retention
 - `src/infrastructure/database/migrations/015_progress_ledger.ts` (new)
-- `src/infrastructure/notify/macos.ts` (new)
+- `src/infrastructure/notify/macos.ts` (new, CLI-mode fallback)
+- `src/adapters/hook/installer.ts`, `src/adapters/hook/spool.ts` (new)
+- `menubar-tauri/` (sidecar, autostart, notifications, popover and main
+  windows)
 - `src/web/api/routes/ledger.ts` (new), `src/web/api/routes/goals.ts` (new),
   `src/web/api/routes/work-items.ts` (hierarchy and checklist fields),
   `src/web/api/server.ts`
@@ -127,8 +130,8 @@ type TranscriptFact =
 ```sql
 CREATE TABLE ledger_asks (
   id TEXT PRIMARY KEY, agent_session_id TEXT NOT NULL,
-  ordinal INTEGER NOT NULL, text TEXT NOT NULL, kind TEXT NOT NULL
-    CHECK (kind IN ('initial', 'addition')),
+  ordinal INTEGER NOT NULL, text TEXT NOT NULL, authored_text TEXT NOT NULL,
+  kind TEXT NOT NULL CHECK (kind IN ('initial', 'addition', 'question')),
   occurred_at TEXT NOT NULL, created_at TEXT NOT NULL
 );
 CREATE TABLE requirement_items (
@@ -170,14 +173,21 @@ ledger-sourced evidence whose session `last_active_at` is older than
 
 ### 5. Decomposition
 
-- Trigger: a new `user_message` fact that is the first in the session or that
-  the ask extractor classifies as a scope addition (not "continue", "ok", or a
-  bare approval).
+- Trigger: a new candidate `user_message`. Keep uncertain intent by default;
+  exclude only explicit injections, quoted/pasted reports, pure commands/code,
+  short status follow-ups and bare approvals. Strip consecutive leading host
+  tag blocks (including nested and self-closing blocks), preserving trailing
+  authored text rather than relying on a known-tag list. Preserve questions,
+  including Chinese questions ending in “呢”, verbatim with
+  `kind=question`, excluding them from progress. `authored_text` holds the input
+  outside quoted/code blocks; `text` remains the original displayed message.
 - Source a: if the session is linked to a work item (accepted link or dispatch),
   split the work item body's acceptance-criteria list into items.
-- Source b: if model judgment is enabled, call the judge backend once with the
-  asks and ask for JSON `{items:[{title, anchors, constraints}]}`. Validate with
-  a schema. Reject anchors not present in the ask or repo tree.
+- Source b: if model recognition is enabled, recognize/decompose the latest
+  candidate message once into JSON `{items:[{title, anchors}]}`. Earlier
+  processed messages reuse their saved items; older unprocessed candidates
+  remain fallback items rather than causing historical model calls. Reject
+  anchors not present in the authored text; derive constraints from user words.
 - Source c: one item titled with the first 120 characters of the ask.
 - Re-decomposition replaces items with `source != 'user'` and keeps user items
   and corrections.
@@ -198,32 +208,31 @@ ledger-sourced evidence whose session `last_active_at` is older than
   steps. Constraint violations always raise when constraint checks are on.
   `ledger_corrections` with `accept_off_plan` suppress that run.
 
-### 7. Model judge (optional)
+### 7. Requirement recognition (optional)
 
 - Backends: `cli-claude` (`claude -p --output-format json`), `cli-codex`
   (`codex exec --json`), `local` (existing loopback OpenAI-compatible
   summarizer), `sdk` (existing Agent SDK path). Default: disabled.
-- Triggers, at most one in flight per session: turn completed; at least
-  `judgeBacklogSteps` (default 12) unmatched steps since the last judgment;
-  final agent message containing a completion claim. Minimum interval per
-  session: `judgeMinIntervalSeconds` (default 300).
-- Input: asks, items with anchors, the last N steps as one-line summaries with
-  evidence ids, and the final agent message. No raw tool output beyond
-  `outputHead` (max 400 characters per evidence row). Target under 5k tokens.
-- Output JSON: per item `{id, status, evidenceIds[], note}`, `remaining[]`,
-  `offPlan: {isOffPlan, why}`, `claims: [{text, evidenceIds[]}]`.
-- Enforcement: any `done` without a valid evidence id for this session becomes
-  `unverified`. Unknown item ids are dropped. User-set statuses are never
-  overwritten.
+- Trigger: latest new candidate user message only, at most one in flight per
+  session. An atomic claim in `ledger_judgments`, keyed by `(agent_session_id,
+  ask_id)`, deduplicates scanner/HTTP processes and restarts before invoking a
+  provider. Store `judged_at` and recognized `items` JSON there; a null result
+  retains the fallback and does not retry automatically.
+- Input: the current authored user message, plus bounded previous user context.
+  No tool output, execution evidence, agent report or completion claim is sent.
+- Output JSON: `{items:[{title,anchors:{paths,commands,keywords}}]}`; an empty
+  items array rejects a non-requirement candidate. Model status/evidence fields
+  are ignored. Actual evidence matching runs after decomposition.
+- User edits/removals override derived items across rescans and AI toggles.
+  Explicit re-decomposition may retry; ordinary tools and reports never do.
 
 ### 8. Alerts and notifications
 
 - `AlertRouter` evaluates after each sync and hook event, writes
   `ledger_alerts`, and coalesces per `(session, kind)` within
   `alertCoalesceSeconds` (default 600).
-- Channels: existing WebSocket broadcast (`ledger:alert`) and native macOS
-  notifications via `osascript -e 'display notification ...'` with arguments
-  passed through argv, never string-interpolated into AppleScript source.
+- Channels: existing WebSocket broadcast (`ledger:alert`), consumed by the web
+  UI and by the app, which turns it into a native notification (section 14a).
 - Each kind has its own toggle. `claimed_unverified` fires only on turn
   completion.
 
@@ -233,8 +242,7 @@ ledger-sourced evidence whose session `last_active_at` is older than
 "ledger": {
   "enabled": true,
   "retentionDays": 30,
-  "judge": { "enabled": false, "backend": "cli-claude", "model": null,
-             "minIntervalSeconds": 300, "backlogSteps": 12 },
+  "judge": { "enabled": false, "backend": "cli-claude", "model": null },
   "deviation": "conservative",          // off | conservative | sensitive
   "constraints": true,
   "alerts": { "needs_input": true, "off_plan": true,
@@ -331,6 +339,13 @@ Validated by the existing `ConfigManager`; exposed through
   turn end or last write) for sessions without an accepted link, divided by the
   sum for all sessions in the week.
 
+### 14a. Native notification channel
+
+Native notifications are delivered by the app (section 15). When the service
+runs without the app (CLI or daemon mode), it falls back to
+`osascript -e 'display notification ...'` with argv-passed arguments; that
+fallback cannot open the window on click.
+
 ### 14. Alert routing additions
 
 - Focus mode: `ledger.focus.until` timestamp; while set, only `needs_input`
@@ -343,13 +358,52 @@ Validated by the existing `ConfigManager`; exposed through
 - `needs_input` inferred without hooks is a display-only `possibly_waiting`
   flag and never routes to notifications.
 
+### 15. App shell (Tauri, extends `menubar-tauri`)
+
+- Base: `menubar-tauri` is Tauri v2 with `tray-icon`, dock visibility, and
+  window resize already in place; today it reads quota files only and does not
+  talk to the service.
+- Embedded service: ship `dist/keepline-service` (`bun run
+  build:embedded-service`) as a Tauri sidecar (`bundle.externalBin`). On
+  launch, probe the loopback health endpoint; attach to a compatible running
+  service, otherwise spawn the sidecar and record that the app owns it. Mirror
+  the lifecycle stash Time Ledger already uses for the same binary.
+- Auth: the app obtains the local API token from the service it owns or
+  attaches to and injects it into its webviews; the user never handles it.
+- Windows: a tray popover webview at the client route `/menubar` and a main
+  webview for the full UI. Both load the existing React client; no second UI
+  codebase. The tray title shows counts pushed over `/ws`.
+- Login start: `tauri-plugin-autostart` (LaunchAgent), on by default.
+- Notifications: deliver with `tauri-plugin-notification`. Click-to-open on
+  macOS desktop must be verified in a spike; if the plugin cannot report the
+  click, use a small native bridge (`UNUserNotificationCenter` delegate) behind
+  the same interface. The payload carries `{sessionId, anchor}` for deep links.
+- First version: local builds signed for the author's machine; no updater, no
+  crash reporter.
+
+### 16. Hook spool
+
+- Replace the installed `curl` command with a small `keepline-hook` script
+  installed under `~/.keepline/bin/`. Each event (id, runtime, payload, received
+  time) is fsynced to a private temporary file, then atomically renamed into
+  `~/.keepline/spool/events/<id>.json`. Independent event files require no
+  shared lock and cannot drop events on lock contention or abandoned locks.
+  HTTP delivery is detached with a 1-second timeout; the hook always exits 0.
+- The service ingests the spool at startup and on each scan, deduplicating by
+  event id, and removes delivered files. It also drains existing JSONL spool
+  records independently. Transient failures remain retryable; malformed or
+  permanently rejected records are preserved under `spool/rejected/` and do
+  not block later events. Ingested events use the same receivers as live POSTs.
+- The installer keeps using `KEEPLINE_HOOK_MARKER`; uninstall removes the
+  script entries and leaves the spool for the service to drain.
+
 ## Verification
 
 - Fixture transcripts under `src/__tests__/ledger/fixtures/` for Claude CLI,
   Codex CLI, and Codex desktop, with known exit codes, tests, a commit, a PR
   URL, a permission request, an abort, and an off-plan run.
 - Unit tests per stage: fact extraction, liveness, needs-input mapping, matcher,
-  deviation thresholds, judge enforcement (with a stubbed backend), alert
+  deviation thresholds, requirement recognition and message deduplication (with a stubbed backend), alert
   coalescing, retention, config validation.
 - A no-network test asserts no subprocess or HTTP model call when
   `judge.enabled` is false.
@@ -362,8 +416,9 @@ Validated by the existing `ConfigManager`; exposed through
   unavailable" instead of wrong progress.
 - **lsof cost.** One batched call per scan; disable with
   `ledger.enabled = false` or by excluding the Codex runtime.
-- **Judge cost or leakage.** Off by default; interval and backlog limits cap
-  calls; input is summaries plus capped output heads.
+- **Model cost or leakage.** Off by default; one persisted attempt per new
+  candidate user message caps calls. Input is authored user text plus bounded
+  user context; execution output and agent reports are not sent.
 - **Hook churn.** New hook entries use the existing marker and are removed by
   `keepline hooks uninstall`.
 - **Rollback.** `ledger.enabled = false` stops all ledger work; migration 015

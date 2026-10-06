@@ -16,16 +16,22 @@ interface Props {
 
 const icons: Record<SessionStatus, string> = {
   running: '▸',
+  needs_input: '◦',
   waiting: '◦',
   idle: '·',
+  stalled: '×',
+  interrupted: '×',
   lost: '×',
   completed: '✓',
 };
 
 const colors: Record<SessionStatus, string> = {
   running: '#98c379',
+  needs_input: '#e5c07b',
   waiting: '#e5c07b',
   idle: '#61afef',
+  stalled: '#e06c75',
+  interrupted: '#e06c75',
   lost: '#e06c75',
   completed: '#5c6370',
 };

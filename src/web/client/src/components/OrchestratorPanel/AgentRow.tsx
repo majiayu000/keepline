@@ -15,6 +15,7 @@ interface AgentRowProps {
 }
 
 const STATUS_LABELS: Record<OrchestratorQueueItem['status'], string> = {
+  needs_input: 'Input needed', stalled: 'Stalled', interrupted: 'Interrupted',
   waiting: 'Input needed',
   lost: 'Interrupted',
   running: 'Working',
