@@ -93,22 +93,19 @@ function literalCommand(value: unknown): string | undefined {
   return command && directWords(command)?.length ? command : undefined;
 }
 function executedCommand(fact: Extract<TranscriptFact, { kind: 'tool' }>): string | undefined {
-  if (!/^(?:Bash|(?:[\w]+\.)?exec_command)$/.test(fact.name)) return undefined;
+  if (fact.name !== 'Bash' && !/(?:^|[_.])exec_command$/.test(fact.name)) return undefined;
   const data = fact.input && typeof fact.input === 'object' ? fact.input as Record<string, unknown> : {};
   return literalCommand(data.command ?? data.cmd);
 }
-function isGitWriteCommand(command: string): boolean {
+function isVerificationCommand(command: string): boolean {
   const words = directCommandWords(command);
-  if (words?.[0]?.split('/').at(-1) !== 'git') return false;
-  // Match the same unambiguous Git options accepted by transcript read facts.
-  let index = 1;
-  while (index < words.length) {
-    if (words[index] === '--no-pager') index++;
-    else if (words[index] === '-C' && words[index + 1] !== undefined) index += 2;
-    else if (words[index].startsWith('-C') && words[index].length > 2) index++;
-    else break;
-  }
-  return !/^(?:status|diff|log|show|ls-files)$/.test(words[index] ?? '');
+  const executable = words?.[0]?.split('/').at(-1);
+  if (!words || !executable) return false;
+  if (executable === 'pytest') return true;
+  if (/^(?:cargo|go)$/.test(executable)) return /^(?:test|check)$/.test(words[1] ?? '');
+  if (!/^(?:bun|npm|pnpm|yarn)$/.test(executable)) return false;
+  const script = words[1] === 'run' ? words[2] : words[1];
+  return /^(?:tests?|typecheck|check)$/.test(script ?? '');
 }
 function score(anchors: Anchors, summary: string, paths: string[], lowerSummary: string): number {
   return anchors.paths.reduce((n, path) => n + (paths.some(p => pathMatches(path,p)) || summary.includes(path) ? 5 : 0), 0)
@@ -119,7 +116,6 @@ export function matchLedger(facts: TranscriptFact[], inputItems: RequirementItem
   const items = structuredClone(inputItems);
   for (const item of items) if (item.statusSource !== 'user') { item.evidenceIds = []; item.status = 'todo'; }
   const confirmed = items.filter(confirmedRequirement);
-  const criterionCommands = new Set(confirmed.flatMap(item => item.anchors.commands.map(literalCommand)).filter(Boolean));
   const evidence: LedgerEvidence[] = [];
   const evidenceIds = new Set<string>();
   const trail: LedgerStep[] = [];
@@ -145,16 +141,16 @@ export function matchLedger(facts: TranscriptFact[], inputItems: RequirementItem
     // Successful tests are evidence even though the test invocation is not a file edit.
     const command = executedCommand(fact);
     // A transcript does not provide a complete test dependency graph. An
-    // observed edit or shell mutation outside the current command criteria
+    // observed edit or shell mutation outside known verification invocations
     // conservatively invalidates earlier checks, regardless of attribution.
     // Wrapper source text can invalidate old proof, but never creates proof.
     const uncertainExecution = !command && /(?:^|[_.])(?:Bash|exec|exec_command|write_stdin)$/.test(fact.name);
     // sed can change earlier files before a later input fails. A nonzero exit
     // cannot establish that no write happened, or supply successful file proof.
     const possibleSedWrite = isSedWriteCommand(command);
-    // A Git write criterion invalidates earlier checks even with an explicit
-    // environment or executable path. The literal receipt stays unchanged.
-    const directShellMutation = command && fact.mutating && (!criterionCommands.has(command) || isGitWriteCommand(command));
+    // Only known direct verification invocations retain peer check receipts.
+    // Other mutations invalidate old proof before registering their own receipt.
+    const directShellMutation = command && fact.mutating && !isVerificationCommand(command);
     const pathMutation = !command && paths.length > 0 && fact.mutating && (fact.exitCode === undefined || fact.exitCode === 0);
     if (pathMutation || (uncertainExecution || directShellMutation) && fact.mutating || possibleSedWrite || ownEvidence.some(e => e.kind === 'file') || fact.exitCode === undefined && /(?:^|[_.])(?:apply_patch|Write|Edit)$/.test(fact.name)) {
       for (const [command, ids] of latestChecks) if (ids.length) invalidatedChecks.add(command);

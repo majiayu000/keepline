@@ -140,6 +140,35 @@ describe('normalized transcript facts',() => {
     expect(isMutatingTool('functions.exec',{ input: 'text(await tools.exec_command({cmd: "bun test"}));' })).toBe(true);
     expect(isMutatingTool('functions.exec',{ input: 'text(await tools.write_stdin({session_id: 1,chars: ""}));' })).toBe(false);
   });
+  test('prefixed Git reads use direct executable normalization without guessing wrappers',() => {
+    for (const cmd of ['CI=1 /usr/bin/git status --short','env -- CI=1 git -C repo diff --check','/usr/bin/env CI=1 /usr/bin/git --no-pager -Crepo log -1']) expect(isMutatingTool('exec_command',{ cmd })).toBe(false);
+    for (const cmd of ['env --unknown git status','sh -c "git status"','CI=1 git --unknown status','CI=1 git -C']) expect(isMutatingTool('exec_command',{ cmd })).toBe(true);
+  });
+  test.each(['read_text_file','list_directory','mcp__filesystem__read_text_file','mcp__filesystem__list_directory'])(
+    '%s is read-only and cannot turn copied test output into evidence',name => {
+      expect(isMutatingTool(name,{ path: 'src/widget.ts' })).toBe(false);
+      const parser = new TranscriptFacts('codex'),timestamp = new Date().toISOString();
+      parser.add({ type: 'response_item',timestamp,payload: { type: 'function_call',call_id: 'read',name,arguments: '{"path":"src/widget.ts"}' } });
+      parser.add({ type: 'response_item',timestamp,payload: { type: 'function_call_output',call_id: 'read',output: 'Exit code: 0\n3 pass' } });
+      expect(parser.facts[0]).toMatchObject({ mutating: false,facts: [] });
+    });
+  test.each(['mcp__filesystem__read_and_write_file','read_text_file_extra','list_directory_extra'])(
+    '%s is not classified as a read',name => {
+      expect(isMutatingTool(name,{ path: 'src/widget.ts' })).toBe(true);
+    });
+  test('MCP exec terminal completion moves a pending mutation after a mid-flight check',() => {
+    const parser = new TranscriptFacts('codex');
+    const add = (payload: unknown,second: number) => parser.add({ type: 'response_item',timestamp: new Date(Date.UTC(2026,9,8,1,0,second)).toISOString(),payload });
+    add({ type: 'function_call',call_id: 'write',name: 'mcp__shell__exec_command',arguments: '{"cmd":"node write.js"}' },0);
+    add({ type: 'function_call_output',call_id: 'write',output: '{"session_id":91,"output":"running"}' },1);
+    add({ type: 'function_call',call_id: 'check',name: 'exec_command',arguments: '{"cmd":"bun test"}' },2);
+    add({ type: 'function_call_output',call_id: 'check',output: '{"exit_code":0,"output":"1 pass"}' },3);
+    add({ type: 'function_call',call_id: 'poll',name: 'write_stdin',arguments: '{"session_id":91,"chars":""}' },4);
+    add({ type: 'function_call_output',call_id: 'poll',output: '{"exit_code":0,"output":""}' },5);
+    expect(parser.facts.at(-1)).toMatchObject({ callId: 'write',name: 'mcp__shell__exec_command',exitCode: 0,at: '2026-10-08T01:00:05.000Z' });
+    const items = decompose([],'mcp-async',[{ id: 'check',text: 'Run `bun test`' }]);
+    expect(matchLedger(parser.facts,items,[],[],DEFAULT_LEDGER_CONFIG).items[0].status).toBe('unverified');
+  });
   test('unknown and malformed records degrade individually',() => {
     const parser = new TranscriptFacts('codex'); parser.add({ type: 'future',timestamp: new Date().toISOString() }); parser.add(null);
     expect(parser.unknownRecords).toBe(1);
