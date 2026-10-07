@@ -1,19 +1,22 @@
 import { confirmedRequirement } from './types.js';
-import { isSedInPlaceCommand } from './sed-in-place.js';
+import { directWords, isSedWriteCommand } from './sed-in-place.js';
 import { createHash } from 'crypto';
 import { extractTaskPrompt } from '../session/index.js';
 import type { Anchors, Ask, Constraint, Correction, LedgerConfig, LedgerEvidence, LedgerRule, LedgerStep, OffPlanRun, RequirementItem, TranscriptFact } from './types.js';
 
 export function ledgerId(...parts: string[]): string { return createHash('sha256').update(parts.join('\0')).digest('hex').slice(0, 32); }
 export function anchorsFromText(text: string): Anchors {
+  const delimitedCommands = /\b(?:run|execute|ensure)\s+`([^`]+)`/gi;
+  const explicitCommands = [...text.matchAll(delimitedCommands)].map(m => m[1].trim());
+  const prose = text.replace(delimitedCommands, ' ');
   return {
     paths: [...new Set([...text.matchAll(/(?:`|\s|^)((?:[\w.-]+\/)+[\w.*?/-]+|[\w.-]+\.(?:ts|tsx|js|json|rs|py|md|toml))/g)].map(m => m[1]))],
-    commands: [...text.matchAll(/(?:`|\b)((?:[A-Za-z_]\w*=[^\s`]+\s+)*(?:bun|npm|pnpm|cargo|pytest|git)\s+[^`\n。;]+)(?:`|$)/g)].map(m => {
+    commands: [...new Set(explicitCommands.concat([...prose.matchAll(/(?:`|\b)((?:[A-Za-z_]\w*=[^\s`]+\s+)*(?:bun|npm|pnpm|cargo|pytest|git)\s+[^`\n。;]+)(?:`|$)/g)].map(m => {
       if (m[0].endsWith('`')) return m[1].trim();
       const command = m[1].split(/,\s+then\b/i)[0].trim();
       // A final dot path component is an operand, not sentence punctuation.
       return /(?:^|[\s/])\.+$/.test(command) ? command : command.replace(/[.!?]+$/, '');
-    }),
+    })))],
     keywords: [...new Set(text.toLowerCase().match(/[\p{L}\p{N}_-]{3,}/gu) ?? [])].slice(0, 30),
   };
 }
@@ -86,7 +89,7 @@ function commandMatches(pattern: string,summary: string): boolean {
 function literalCommand(value: unknown): string | undefined {
   if (typeof value !== 'string') return undefined;
   const command = value.trim();
-  return command && !/[\r\n;&|<>`$]/.test(command) ? command : undefined;
+  return command && directWords(command)?.length ? command : undefined;
 }
 function executedCommand(fact: Extract<TranscriptFact, { kind: 'tool' }>): string | undefined {
   if (!/^(?:Bash|(?:[\w]+\.)?exec_command)$/.test(fact.name)) return undefined;
@@ -134,9 +137,10 @@ export function matchLedger(facts: TranscriptFact[], inputItems: RequirementItem
     const uncertainExecution = !command && /(?:^|[_.])(?:Bash|exec|exec_command|write_stdin)$/.test(fact.name);
     // sed can change earlier files before a later input fails. A nonzero exit
     // cannot establish that no write happened, or supply successful file proof.
-    const possibleInPlaceEdit = isSedInPlaceCommand(command);
+    const possibleSedWrite = isSedWriteCommand(command);
     const directShellMutation = command && fact.mutating && !criterionCommands.has(command);
-    if ((uncertainExecution || directShellMutation) && fact.mutating || possibleInPlaceEdit || ownEvidence.some(e => e.kind === 'file') || fact.exitCode === undefined && /(?:^|[_.])(?:apply_patch|Write|Edit)$/.test(fact.name)) {
+    const pathMutation = !command && paths.length > 0 && fact.mutating && (fact.exitCode === undefined || fact.exitCode === 0);
+    if (pathMutation || (uncertainExecution || directShellMutation) && fact.mutating || possibleSedWrite || ownEvidence.some(e => e.kind === 'file') || fact.exitCode === undefined && /(?:^|[_.])(?:apply_patch|Write|Edit)$/.test(fact.name)) {
       for (const [command, ids] of latestChecks) if (ids.length) invalidatedChecks.add(command);
       latestChecks.clear();
     }

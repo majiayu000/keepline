@@ -8,6 +8,9 @@ import { decompose, matchLedger } from '../../domain/ledger/matcher.js';
 import { DEFAULT_LEDGER_CONFIG } from '../../domain/ledger/types.js';
 
 const command = 'bun test src/widget.test.ts';
+// GNU information options are absent from BSD sed; hook receipts below are portable.
+const sedVersion = spawnSync('sed', ['--version'], { encoding: 'utf8' });
+const hasGnuSed = sedVersion.status === 0 && /GNU sed/.test(sedVersion.stdout);
 type Call = { cmd?: string; name?: string; input?: unknown; code?: number; output?: string; result?: unknown };
 
 function recordedCalls(calls: Call[]) {
@@ -35,7 +38,77 @@ function match(calls: Call[], commands = [command]) {
 }
 
 describe('completion requires current execution evidence', () => {
-  test.each(['--help', '--version'])('a real sed %s option does not invent file edits', (option) => {
+  test.each([
+    "grep 'foo|bar' file.txt",
+    "printf '%s' 'bun test'",
+    "printf '%s\\n' '$HOME'",
+    'printf "%s\\n" "a|b"',
+    'printf "%s" "\\$HOME"',
+    "grep foo\\|bar file.txt",
+  ])('quoted or escaped shell data permits an exact receipt: %s', (cmd) => {
+    const items = decompose([], 'quoted-receipt', [{ id: 'check', text: `Run \`${cmd}\`` }]);
+    expect(items[0].anchors.commands).toEqual([cmd]);
+    expect(matchLedger(recordedCalls([{ cmd, code: 0, output: '' }]), items, [], [], DEFAULT_LEDGER_CONFIG).progress.done).toBe(1);
+    expect(matchLedger(recordedCalls([{ cmd, code: 1, output: '' }]), items, [], [], DEFAULT_LEDGER_CONFIG).progress.done).toBe(0);
+  });
+
+  test.each(['grep foo|cat', 'echo "$HOME"', 'echo "$(touch file.txt)"', 'echo `pwd`', 'echo (foo)', "printf '%s' 'unclosed"])(
+    'shell control flow or expansion cannot prove a literal receipt: %s', (cmd) => {
+      const items = decompose([], 'uncertain-receipt', [{ id: 'check', text: 'Run `bun test`' }]);
+      items[0].anchors.commands = [cmd];
+      expect(matchLedger(recordedCalls([{ cmd, code: 0, output: '' }]), items, [], [], DEFAULT_LEDGER_CONFIG).progress.done).toBe(0);
+    });
+
+  test.each(["sed -e 'w generated.ts' input.txt", "sed 's/a/b/w generated.ts' input.txt", "sed -f edits.sed input.txt", "sed -n -f '-i' widget.ts", "sed -n --file '-i' widget.ts"])(
+    'sed scripts that write or are unknown invalidate prior checks: %s', (cmd) => {
+      // -f names an external script, even when its filename resembles -i. Its contents are unknown.
+      const stale = match([{ code: 0 }, { cmd, code: 0, output: '' }]);
+      expect(stale.items[0].status).toBe('unverified');
+      expect(stale.evidence.filter(e => e.kind === 'file')).toEqual([]);
+      expect(match([{ code: 0 }, { cmd, code: 0, output: '' }, { code: 0 }]).progress.done).toBe(1);
+    });
+
+  test('a real sed write script invalidates checks without -i', () => {
+    const root = mkdtempSync(join(tmpdir(), 'keepline-sed-write-'));
+    try {
+      writeFileSync(join(root, 'input.txt'), 'a\n');
+      const cmd = "sed -e 'w generated.ts' input.txt";
+      const result = spawnSync('sh', ['-c', cmd], { cwd: root, encoding: 'utf8' });
+      if (result.error) throw result.error;
+      expect(result.status).toBe(0);
+      expect(readFileSync(join(root, 'generated.ts'), 'utf8')).toBe('a\n');
+      expect(match([{ code: 0 }, { cmd, result: { exit_code: result.status, output: result.stdout + result.stderr } }]).progress.done).toBe(0);
+    } finally { rmSync(root, { recursive: true, force: true }); }
+  });
+
+  test.each([0, 1])('Claude Bash supplies trusted exit evidence before extracting sed files: %s', (code) => {
+    const parser = new TranscriptFacts('claude');
+    const timestamp = '2026-10-08T01:00:00.000Z';
+    parser.add({ type: 'assistant', timestamp, message: { content: [{ type: 'tool_use', id: 'sed', name: 'Bash', input: { command: "sed -i.bak 's/a/b/' src/private/a.ts" } }] } });
+    parser.add({ type: 'user', timestamp, message: { content: [{ type: 'tool_result', tool_use_id: 'sed', content: '', is_error: code !== 0 }] } });
+    const items = decompose([], 'claude-sed', [{ id: 'edit', text: 'Do not edit src/private/**' }]);
+    const result = matchLedger(parser.facts, items, [], [], DEFAULT_LEDGER_CONFIG);
+    expect(result.evidence.filter(e => e.kind === 'file').map(e => e.value)).toEqual(code === 0 ? ['src/private/a.ts'] : []);
+    expect(result.trail.flatMap(t => t.violations)).toEqual(code === 0 ? ['Forbidden path: src/private/**'] : []);
+  });
+
+  test.each([0, undefined, 1])('a custom path writer respects success, pending and failure: %s', (code) => {
+    const write = { name: 'mcp__filesystem__write_file', input: { path: 'src/widget.ts', content: 'updated' }, code, output: '' };
+    expect(match([{ code: 0 }, write]).progress.done).toBe(code === 1 ? 1 : 0);
+    expect(match([{ code: 0 }, write, { code: 0 }]).progress.done).toBe(1);
+    expect(match([{ code: 0 }, { ...write, name: 'mcp__filesystem__read_file', code: 0 }]).progress.done).toBe(1);
+  });
+
+  test.each(['--help', '--version'])('GNU sed information hook receipts preserve option boundaries: %s', (option) => {
+    const information = `sed ${option} -i.bak 's/a/b/' private.ts public.ts`;
+    expect(match([{ code: 0 }, { cmd: information, code: 0, output: '' }]).progress.done).toBe(1);
+    expect(recordedCalls([{ cmd: information, code: 0, output: '' }]).filter(f => f.kind === 'tool').flatMap(f => f.facts ?? []).filter(e => e.kind === 'file')).toEqual([]);
+    const edit = `sed -i.bak 's/a/b/' -- ${option} public.ts`;
+    const facts = recordedCalls([{ cmd: edit, code: 0, output: '' }]);
+    expect(facts.filter(f => f.kind === 'tool').flatMap(f => f.facts ?? []).filter(e => e.kind === 'file').map(e => e.value)).toEqual([option, 'public.ts']);
+  });
+
+  test.skipIf(!hasGnuSed).each(['--help', '--version'])('a real sed %s option does not invent file edits', (option) => {
     const root = mkdtempSync(join(tmpdir(), 'keepline-sed-information-'));
     const cmd = `sed ${option} -i.bak 's/a/b/' private.ts public.ts`;
     try {
@@ -56,7 +129,7 @@ describe('completion requires current execution evidence', () => {
     }
   });
 
-  test.each(['--help', '--version'])('a real sed file named %s after -- retains edit evidence', (path) => {
+  test.skipIf(!hasGnuSed).each(['--help', '--version'])('a real sed file named %s after -- retains edit evidence', (path) => {
     const root = mkdtempSync(join(tmpdir(), 'keepline-sed-option-file-'));
     const cmd = `sed -i.bak 's/a/b/' -- ${path} public.ts`;
     try {
@@ -304,11 +377,11 @@ describe('completion requires current execution evidence', () => {
     `sed -n 's/x/ -i /p' widget.ts`,
     `sed -n "s/x/ -i/p" widget.ts`,
     `sed -n -e '-i' widget.ts`,
-    `sed -n -f '-i' widget.ts`,
     `sed -n --expression '-i' widget.ts`,
-    `sed -n --file '-i' widget.ts`,
     `sed -n --expression=-i widget.ts`,
     `sed -n 's/x/y/p' widget.ts # -i`,
+    `sed -n 's/new/write/p' widget.ts`,
+    `sed -n '/new/p' widget.ts`,
     `sed -- -i widget.ts`,
   ])('option-like text is never in-place edit evidence: %s', (cmd) => {
     for (const code of [undefined, 0, 1]) {

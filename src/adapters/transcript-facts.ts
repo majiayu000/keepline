@@ -1,5 +1,5 @@
 import type { TranscriptFact, ToolEvidence } from '../domain/ledger/types.js';
-import { isSedInPlaceCommand, sedInPlaceFiles } from '../domain/ledger/sed-in-place.js';
+import { directWords, isSedWriteCommand, sedInPlaceFiles } from '../domain/ledger/sed-in-place.js';
 import { extractTaskPrompt } from '../domain/session/index.js';
 
 function record(value: unknown): Record<string, any> {
@@ -19,13 +19,13 @@ function detached(text: string): string { return Buffer.from(text).toString(); }
 export function isMutatingTool(name: string, input: unknown): boolean {
   const data = record(input);
   const command = data.command ?? data.cmd;
-  if (isSedInPlaceCommand(command)) return true;
+  if (isSedWriteCommand(command)) return true;
   if (typeof command === 'string' && /^find\b/.test(command.trim()) && /(?:^|\s)-(?:delete|exec|execdir|ok|okdir|fprint|fprintf|fls)\b/.test(command)) return true;
   if (/(?:^|[_.])(?:wait|sleep|read_file|read|list|list_agents|search|find|view_image|getState|get_goal|clock__curr_time)$/.test(name) || /^(Read|Glob|Grep|LS|TodoWrite)$/.test(name)) return false;
   if (/write_stdin$/.test(name) && !data.chars) return false;
   if (typeof command === 'string') {
     // A read followed by a write must remain a step. Shell substitution is not read-only.
-    if (/[\r\n;&|<>`$]/.test(command)) return true;
+    if (!directWords(command)) return true;
     return !/^(?:sleep|cat|ls|rg|grep|head|tail|pwd|stat|find|sed|git\s+(?:status|diff|log|show|ls-files))\b/.test(command.trim());
   }
   if (/functions.exec$/.test(name) && typeof data.input === 'string') {
@@ -37,7 +37,7 @@ export function isMutatingTool(name: string, input: unknown): boolean {
   }
   return true;
 }
-function outputEvidence(output: unknown, input: unknown, name: string): { exitCode?: number; outputHead: string; facts: ToolEvidence[] } {
+function outputEvidence(output: unknown, input: unknown, name: string, resultCode?: number, implicit = false): { exitCode?: number; outputHead: string; facts: ToolEvidence[] } {
   const out = textContent(output);
   let obj = record(output);
   if (typeof output === 'string') { try { obj = record(JSON.parse(output)); } catch { /* plain terminal result */ } }
@@ -47,7 +47,8 @@ function outputEvidence(output: unknown, input: unknown, name: string): { exitCo
   const code = obj.exit_code ?? obj.exitCode ?? record(obj.metadata).exit_code;
   const codes = [...out.matchAll(/(?:Process exited with code|exit[_ ]code[^0-9-]{0,8}|Exit code:)\s*(-?\d+)/gi)].map(m => Number(m[1]));
   // A wrapper may contain several command results. Any failure prevents whole-call success.
-  const exitCode = typeof code === 'number' ? code : codes.find(c => c !== 0) ?? codes.at(-1) ?? (obj.is_error === true ? 1 : undefined);
+  const observedCode = typeof code === 'number' ? code : codes.find(c => c !== 0) ?? codes.at(-1) ?? (obj.is_error === true ? 1 : undefined);
+  const exitCode = typeof resultCode === 'number' && !(implicit && resultCode === 0 && observedCode !== undefined) ? resultCode : observedCode;
   const facts: ToolEvidence[] = [];
   const data = record(input);
   const embedded = typeof data.input === 'string' ? [...data.input.matchAll(/(?:cmd|command)\s*:\s*["']([^"']+)["']/g)].map(m => m[1]) : [];
@@ -190,16 +191,9 @@ export class TranscriptFacts {
       call.exitCode = code; call.facts = []; return;
     }
     const priorFailure = call.facts?.find(fact => fact.kind === 'test' && fact.exitCode !== undefined && fact.exitCode !== 0);
-    Object.assign(call, outputEvidence(output, call.input, call.name));
+    Object.assign(call, outputEvidence(output, call.input, call.name, code, implicit));
     if (priorFailure) call.facts?.push(priorFailure);
     // Shell reads still prove their own literal command, never tests copied from a log.
     if (!call.mutating) call.facts = call.facts?.filter(f => f.kind === 'command');
-    if (typeof code === 'number') {
-      // Claude success is implicit; an explicit nonzero result still wins.
-      call.exitCode = implicit && code === 0 && call.exitCode !== undefined ? call.exitCode : code;
-      for (const fact of call.facts ?? []) if (fact.kind !== 'test' || call.exitCode !== 0) fact.exitCode = call.exitCode;
-      const data = record(call.input);
-      if ((data.cmd ?? data.command) && !call.facts?.some(f => f.kind === 'command')) call.facts?.push({ kind: 'command', value: data.cmd ?? data.command, exitCode: call.exitCode });
-    }
   }
 }
