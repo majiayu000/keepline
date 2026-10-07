@@ -44,6 +44,8 @@ export function sedInPlaceFiles(command: unknown): string[] | undefined {
       else files.push(option);
       continue;
     }
+    // These options exit before editing; after -- they are ordinary file names.
+    if (option === '--help' || option === '--version') return undefined;
     if (option === '--in-place' || option.startsWith('--in-place=')) { inPlace = true; continue; }
     if (option === '--expression' || option === '--file') { hasScript = true; index++; continue; }
     if (option.startsWith('--expression=') || option.startsWith('--file=')) { hasScript = true; continue; }
