@@ -39,6 +39,18 @@ function match(calls: Call[], commands = [command]) {
 
 describe('completion requires current execution evidence', () => {
   test.each([
+    'cat input.txt # note\nprintf changed > src/widget.ts',
+    'cat input.txt # note\r\nprintf changed > src/widget.ts',
+    'cat input.txt # note\n# another comment\nprintf changed > src/widget.ts',
+  ])('a shell command after a comment newline invalidates prior checks: %s', cmd => {
+    expect(match([{ code: 0 }, { cmd, code: 0, output: '' }]).items[0].status).toBe('unverified');
+  });
+
+  test.each(['cat input.txt # note', 'cat input.txt # note\n   ', "cat '# literal'"])(
+    'a trailing comment or quoted marker remains read-only: %s', cmd => {
+      expect(match([{ code: 0 }, { cmd, code: 0, output: '' }]).progress.done).toBe(1);
+    });
+  test.each([
     "grep 'foo|bar' file.txt",
     "printf '%s' 'bun test'",
     "printf '%s\\n' '$HOME'",
