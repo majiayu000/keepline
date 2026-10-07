@@ -1,4 +1,5 @@
 import { confirmedRequirement } from './types.js';
+import { isSedInPlaceCommand } from './sed-in-place.js';
 import { createHash } from 'crypto';
 import { extractTaskPrompt } from '../session/index.js';
 import type { Anchors, Ask, Constraint, Correction, LedgerConfig, LedgerEvidence, LedgerRule, LedgerStep, OffPlanRun, RequirementItem, TranscriptFact } from './types.js';
@@ -125,7 +126,10 @@ export function matchLedger(facts: TranscriptFact[], inputItems: RequirementItem
     // conservatively invalidates earlier checks, regardless of attribution.
     // Wrapper source text can invalidate old proof, but never creates proof.
     const uncertainExecution = !command && /(?:^|[_.])(?:Bash|exec|exec_command)$/.test(fact.name);
-    if (uncertainExecution && fact.mutating || ownEvidence.some(e => e.kind === 'file') || fact.exitCode === undefined && /(?:^|[_.])(?:apply_patch|Write|Edit)$/.test(fact.name)) {
+    // sed can change earlier files before a later input fails. A nonzero exit
+    // cannot establish that no write happened, or supply successful file proof.
+    const possibleInPlaceEdit = isSedInPlaceCommand(command);
+    if (uncertainExecution && fact.mutating || possibleInPlaceEdit || ownEvidence.some(e => e.kind === 'file') || fact.exitCode === undefined && /(?:^|[_.])(?:apply_patch|Write|Edit)$/.test(fact.name)) {
       for (const [command, ids] of latestChecks) if (ids.length) invalidatedChecks.add(command);
       latestChecks.clear();
     }
