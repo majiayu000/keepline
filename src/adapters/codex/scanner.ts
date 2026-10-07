@@ -151,7 +151,7 @@ async function getOrParseCodexSession(
   const parsed = includeToolCalls
     ? await parseCodexSessionFile(file.filePath, { includeToolCalls: true })
     : await cachedSessionSummary('codex', file.filePath,
-      (onRecord) => parseCodexSessionFile(file.filePath, { includeToolCalls: false,onRecord }));
+      (onRecord,cursor) => parseCodexSessionFile(file.filePath, { includeToolCalls: false,onRecord,...cursor }));
   cache.set(file.filePath, {
     data: parsed,
     modifiedAt: fileModTime,

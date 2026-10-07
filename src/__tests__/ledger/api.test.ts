@@ -21,6 +21,28 @@ describe('ledger API',() => {
     expect((await request(token,'/settings','PUT',{ retentionDays: 0 })).status).toBe(400);
     expect((await request(token,'/settings','PUT',{ alerts: { off_plan: false } })).status).toBe(200);
   });
+  test('unchanged ledger responses use 304 and changes invalidate the browser cache',async () => {
+    const { token } = await setupUser('ledger-conditional','password123');
+    const row = await seededLedger();
+    for (const path of ['/ledger',`/ledger/${row.sessionId}`]) {
+      const first = await request(token,path);
+      expect(first.status).toBe(200);
+      const tag = first.headers.get('etag')!;
+      expect(tag).toBeTruthy();
+      expect(first.headers.get('cache-control')).toBe('private, no-cache');
+      expect(first.headers.get('vary')).toBe('Authorization');
+      const headers = { Authorization: `Bearer ${token}`,'If-None-Match': tag };
+      const unchanged = await app.request(path,{ headers });
+      expect(unchanged.status).toBe(304);
+      expect(await unchanged.text()).toBe('');
+      expect((await app.request(path,{ headers: { 'If-None-Match': tag } })).status).toBe(401);
+      await request(token,`/ledger/${row.sessionId}/items`,'PUT',{ items: [{ ...row.items[0],title: `Changed ${path}` }] });
+      const changed = await app.request(path,{ headers });
+      expect(changed.status).toBe(200);
+      expect(changed.headers.get('etag')).not.toBe(tag);
+    }
+    expect((await app.request('/ledger/missing',{ headers: { Authorization: `Bearer ${token}`,'If-None-Match': '*' } })).status).toBe(404);
+  });
   test('goal, checklist, attribution, correction and acceptance through existing APIs',async () => {
     const { token } = await setupUser('ledger-api-flow','password123');
     const goalResponse = await request(token,'/work-items','POST',{ title: 'Ship widget',level: 'goal',outcome: 'Widget works' });

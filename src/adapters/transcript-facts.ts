@@ -77,6 +77,13 @@ function outputEvidence(output: unknown, input: unknown, name: string): { exitCo
   return { exitCode, outputHead: detached(out.slice(0, 400)), facts };
 }
 
+export interface TranscriptFactsState {
+  facts: TranscriptFact[];
+  unknownRecords: number;
+  turnId: string;
+  messages: string[];
+}
+
 /** Record-local normalization; tool results update the original call, never become agent claims. */
 export class TranscriptFacts {
   readonly facts: TranscriptFact[] = [];
@@ -84,7 +91,18 @@ export class TranscriptFacts {
   private calls = new Map<string, Extract<TranscriptFact, { kind: 'tool' }>>();
   private turnId = '';
   private messages = new Set<string>();
-  constructor(private runtime: 'codex' | 'claude', private since = 0) {}
+  constructor(private runtime: 'codex' | 'claude', private since = 0, state?: TranscriptFactsState) {
+    if (state) {
+      this.facts = state.facts.filter(f => Date.parse(f.at) >= since);
+      this.unknownRecords = state.unknownRecords;
+      this.turnId = state.turnId;
+      this.messages = new Set(state.messages);
+      for (const fact of this.facts) if (fact.kind === 'tool') this.calls.set(fact.callId,fact);
+    }
+  }
+  snapshot(): TranscriptFactsState {
+    return { facts: this.facts,unknownRecords: this.unknownRecords,turnId: this.turnId,messages: [...this.messages] };
+  }
   add(value: unknown): void {
     const entry = record(value);
     const at = typeof entry.timestamp === 'string' ? entry.timestamp : undefined;

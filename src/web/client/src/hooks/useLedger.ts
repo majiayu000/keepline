@@ -27,7 +27,8 @@ function savedHours() {
 }
 
 export function useLedger({ view, token }: LedgerProps) {
-  useWebSocket({ token });
+  const { status: connectionStatus } = useWebSocket({ token });
+  const [lastSyncedAt, setLastSyncedAt] = useState<Date | null>(null);
   const [hours, setHours] = useState(savedHours);
   const hoursRef = useRef(hours);
   const [rows, setRows] = useState<LedgerDetail[]>([]);
@@ -35,9 +36,7 @@ export function useLedger({ view, token }: LedgerProps) {
   const [projectMapGoalId, setProjectMapGoalId] = useState<string | null>(null);
   const projectMapGoalRef = useRef(projectMapGoalId);
   projectMapGoalRef.current = projectMapGoalId;
-  useEffect(() => {
-    if (view !== "goals") setProjectMapGoalId(null);
-  }, [view]);
+  useEffect(() => { if (view !== "goals") setProjectMapGoalId(null); }, [view]);
   const [todos, setTodos] = useState<WorkItem[]>([]);
   const [settings, setSettings] = useState<LedgerConfig>(
     structuredClone(DEFAULT_LEDGER_CONFIG),
@@ -76,6 +75,10 @@ export function useLedger({ view, token }: LedgerProps) {
   const [itemFilter, setItemFilter] = useState<string | null>(null);
   const hovering = useRef(false);
   const [queuedRows, setQueuedRows] = useState<LedgerDetail[] | null>(null);
+  const listRequest = useRef(0);
+  const detailRequest = useRef(0);
+  const selectedRef = useRef(selectedId);
+  const viewRef = useRef(view);
   const settingsLoaded = useRef(false);
   const changeHours = (next: number) => {
     if (next === hours) return;
@@ -92,6 +95,8 @@ export function useLedger({ view, token }: LedgerProps) {
       // Saving the preference is optional.
     }
   }, [hours]);
+  selectedRef.current = selectedId;
+  viewRef.current = view;
   useEffect(() => {
     const url = new URL(window.location.href);
     if (selectedId) url.searchParams.set("sessionId", selectedId);
@@ -101,25 +106,55 @@ export function useLedger({ view, token }: LedgerProps) {
     }
     window.history.replaceState(null, "", url);
   }, [selectedId]);
-  const load = useCallback(async () => {
-    const [ledger, goalData, work, cfg] = await Promise.all([
-      api<LedgerDetail[]>(`/ledger?hours=${hours}`),
-      api<Goal[]>(projectMapGoalId ? `/goals?projectMap=${encodeURIComponent(projectMapGoalId)}` : "/goals"),
-      api<{ items: WorkItem[] }>("/work-items"),
-      api<LedgerConfig>("/settings/ledger"),
-    ]);
-    if (hoursRef.current !== hours || projectMapGoalRef.current !== projectMapGoalId) return;
-    if (hovering.current) setQueuedRows(ledger);
-    else setRows(ledger);
-    setGoals(goalData);
-    setTodos(work.items.filter((w) => w.level !== "goal" && w.kind === "todo"));
-    if (!settingsLoaded.current) {
-      setSettings(cfg);
-      settingsLoaded.current = true;
+  const load = useCallback(async (includeRelated = true) => {
+    const request = ++listRequest.current;
+    try {
+      const [ledger, related] = await Promise.all([
+        api<LedgerDetail[]>(`/ledger?hours=${hours}`),
+        includeRelated ? Promise.all([api<Goal[]>(projectMapGoalId ? `/goals?projectMap=${encodeURIComponent(projectMapGoalId)}` : "/goals"), api<{ items: WorkItem[] }>("/work-items")]) : undefined,
+      ]);
+      if (request !== listRequest.current || hoursRef.current !== hours || projectMapGoalRef.current !== projectMapGoalId) return;
+      if (hovering.current) {
+        // Hold ordering while pointing, never freeze status, evidence or newly discovered sessions.
+        setRows(current => {
+          const incoming = new Map(ledger.map(row => [row.sessionId,row]));
+          const present = new Set(current.map(row => row.sessionId));
+          return [...current.flatMap(row => incoming.has(row.sessionId) ? [incoming.get(row.sessionId)!] : []),
+            ...ledger.filter(row => !present.has(row.sessionId))];
+        });
+        setQueuedRows(ledger);
+      } else setRows(ledger);
+      if (related) {
+        setGoals(related[0]);
+        setTodos(related[1].items.filter((w) => w.level !== "goal" && w.kind === "todo"));
+      }
+      setLastSyncedAt(new Date());
+      setError("");
+      setLoading(false);
+    } catch (error) {
+      if (request === listRequest.current) throw error;
     }
-    setError("");
-    setLoading(false);
   }, [hours, projectMapGoalId]);
+  useEffect(() => {
+    if (settingsLoaded.current && view !== "ledger-settings") return;
+    let active = true;
+    void api<LedgerConfig>("/settings/ledger").then(cfg => {
+      if (active) { setSettings(cfg); settingsLoaded.current = true; }
+    }).catch(e => { if (active) setError(String(e)); });
+    return () => { active = false; };
+  }, [view === "ledger-settings"]);
+  const refreshDetail = useCallback(async (sessionId: string, request = ++detailRequest.current) => {
+    if (request !== detailRequest.current) return;
+    try {
+      const data = await api<LedgerDetail>(`/ledger/${encodeURIComponent(sessionId)}`);
+      if (request === detailRequest.current && selectedRef.current === sessionId) {
+        setDetail(data);
+        setLastSyncedAt(new Date());
+      }
+    } catch (error) {
+      if (request === detailRequest.current && selectedRef.current === sessionId) throw error;
+    }
+  }, []);
   const pauseRows = () => {
     hovering.current = true;
   };
@@ -131,26 +166,22 @@ export function useLedger({ view, token }: LedgerProps) {
     }
   };
   const perform = useCallback(
-    async (action: () => Promise<unknown>) => {
+    async (action?: () => Promise<unknown>) => {
       setError("");
       setBusy(true);
       try {
-        await action();
+        ++detailRequest.current;
+        await action?.();
         await load();
         setReviewRevision((revision) => revision + 1);
-        if (selectedId)
-          setDetail(
-            await api<LedgerDetail>(
-              `/ledger/${encodeURIComponent(selectedId)}`,
-            ),
-          );
+        if (selectedRef.current) await refreshDetail(selectedRef.current);
       } catch (e) {
         setError(e instanceof Error ? e.message : "操作失败");
       } finally {
         setBusy(false);
       }
     },
-    [load, selectedId],
+    [load, refreshDetail],
   );
   useEffect(() => {
     void load().catch((e) => {
@@ -158,38 +189,50 @@ export function useLedger({ view, token }: LedgerProps) {
       setLoading(false);
     });
     const timer = window.setInterval(() => {
+      if (document.visibilityState === "hidden") return;
       void load().catch((e) => {
         setError(String(e));
         setLoading(false);
       });
     }, 30000);
-    return () => window.clearInterval(timer);
+    return () => { ++listRequest.current; window.clearInterval(timer); };
   }, [load]);
   useEffect(() => {
     setDetail(null);
     if (!selectedId || !["overview", "todos", "goals", "review"].includes(view)) return;
     let active = true;
     const update = async () => {
+      if (document.visibilityState === "hidden") return;
+      const request = ++detailRequest.current;
       await api(`/ledger/${encodeURIComponent(selectedId)}/viewing`, "POST", {
         viewed: true,
       });
-      const data = await api<LedgerDetail>(
-        `/ledger/${encodeURIComponent(selectedId)}`,
-      );
-      if (active) setDetail(data);
+      if (active) await refreshDetail(selectedId,request);
     };
-    void update().catch((e) => setError(String(e)));
-    const timer = window.setInterval(() => {
-      void update().catch((e) => setError(String(e)));
-    }, 15000);
+    const refresh = () => { void update().catch((e) => { if (active) setError(String(e)); }); };
+    let refreshTimer: ReturnType<typeof setTimeout> | undefined;
+    const unsubscribe = getWebSocketManager().onMessage(message => {
+      const sessionId = message.sessionId ?? (message.data as { sessionId?: string } | undefined)?.sessionId;
+      if ((!sessionId || sessionId === selectedId) && (message.type === 'connected' || message.type.startsWith('ledger:') || message.type === 'sessions:update' || message.type === 'sync:complete')) {
+        if (refreshTimer) clearTimeout(refreshTimer);
+        refreshTimer = setTimeout(refresh,100);
+      }
+    });
+    refresh();
+    const timer = window.setInterval(refresh, 15000);
+    document.addEventListener("visibilitychange", refresh);
     return () => {
       active = false;
+      ++detailRequest.current;
+      unsubscribe();
+      document.removeEventListener("visibilitychange", refresh);
+      if (refreshTimer) clearTimeout(refreshTimer);
       window.clearInterval(timer);
       void api(`/ledger/${encodeURIComponent(selectedId)}/viewing`, "POST", {
         viewed: false,
       }).catch((e) => console.warn("Unable to clear ledger viewing state", e));
     };
-  }, [selectedId, view]);
+  }, [selectedId, view, refreshDetail]);
   useEffect(() => {
     if (view !== "review") return;
     let active = true;
@@ -212,20 +255,40 @@ export function useLedger({ view, token }: LedgerProps) {
     );
     setPrompt({ text: result.text, sessionId: row.sessionId });
   };
-  useEffect(
-    () =>
-      getWebSocketManager().onMessage((message) => {
-        if (
-          message.type.startsWith("ledger:") ||
-          message.type === "sessions:update"
-        )
-          void load().catch((e) => {
-            setError(String(e));
-            setLoading(false);
-          });
-      }),
-    [load],
-  );
+  useEffect(() => {
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    let pending = false, again = false, active = true, includeRelated = false;
+    const refresh = async () => {
+      if (!active || document.visibilityState === "hidden") return;
+      if (pending) { again = true; return; }
+      pending = true;
+      try {
+        do {
+          again = false;
+          const related = includeRelated;
+          includeRelated = false;
+          await load(related);
+          if (active) setReviewRevision(revision => revision + 1);
+        } while (again && active);
+      } catch (e) {
+        if (active) { setError(String(e)); setLoading(false); }
+      } finally { pending = false; }
+    };
+    const schedule = (related = false) => {
+      if (document.visibilityState === "hidden") return;
+      includeRelated ||= related;
+      if (timer) clearTimeout(timer);
+      timer = setTimeout(() => { void refresh(); },100);
+    };
+    const unsubscribe = getWebSocketManager().onMessage(message => {
+      if (message.type === 'connected' || message.type.startsWith('ledger:') || message.type === 'sessions:update' || message.type === 'sync:complete') schedule(message.type === 'connected' || viewRef.current === 'goals' || viewRef.current === 'todos');
+    });
+    const resume = () => schedule(true);
+    const unsubscribeStatus = getWebSocketManager().onStatusChange(status => { if (status === 'connected') schedule(true); });
+    window.addEventListener('focus',resume);
+    document.addEventListener('visibilitychange',resume);
+    return () => { active = false; unsubscribe(); unsubscribeStatus(); if (timer) clearTimeout(timer); window.removeEventListener('focus',resume); document.removeEventListener('visibilitychange',resume); };
+  },[load]);
   useEffect(() => {
     if (isNativeApp())
       void getAutostart()
@@ -248,12 +311,13 @@ export function useLedger({ view, token }: LedgerProps) {
   };
   const mutateDetail = async (path: string, data: unknown, method = "POST") => {
     if (!detail) return;
+    const request = ++detailRequest.current;
     const result = await api<LedgerDetail>(
       `/ledger/${encodeURIComponent(detail.sessionId)}/${path}`,
       method,
       data,
     );
-    setDetail(result);
+    if (request === detailRequest.current && selectedRef.current === detail.sessionId) setDetail(result);
   };
   const saveWorkItem = async () => {
     if (!editing) return;
@@ -415,13 +479,16 @@ export function useLedger({ view, token }: LedgerProps) {
     };
   }, [detail?.sessionId, detail?.state]);
   return {
+    connectionStatus,
+    lastSyncedAt,
+    syncStatus: `${connectionStatus === 'connected' ? '已连接' : connectionStatus === 'connecting' ? '正在连接' : '连接中断，等待重连'}${lastSyncedAt ? ` · 上次同步 ${lastSyncedAt.toLocaleTimeString('zh-CN', { hour12: false })}` : ' · 等待首次同步'}`,
     hours,
     changeHours,
+    projectMapGoalId,
+    setProjectMapGoalId,
     rows,
     setRows,
     goals,
-    projectMapGoalId,
-    setProjectMapGoalId,
     todos,
     settings,
     setSettings,

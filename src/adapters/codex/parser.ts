@@ -3,8 +3,7 @@ import { TranscriptFacts } from '../transcript-facts.js';
  * JSONL parser for Codex saved session files.
  */
 
-import { createReadStream } from 'fs';
-import { createInterface } from 'readline';
+import { jsonlLines, type JsonlCursorOptions } from '../jsonl-cursor.js';
 import { ParseError } from '../../lib/errors.js';
 import { scopeCodexSessionId } from '../../lib/session-id.js';
 import { extractTaskPrompt, type ToolCallInfo } from '../../domain/session/index.js';
@@ -15,7 +14,7 @@ import {
   usageStatsFromAccumulator,
 } from '../../services/usage.extractor.js';
 
-export interface ParseCodexSessionOptions {
+export interface ParseCodexSessionOptions extends JsonlCursorOptions {
   includeToolCalls?: boolean;
   onRecord?: (entry: unknown) => void;
 }
@@ -304,16 +303,8 @@ export async function parseCodexSessionFile(
   options: ParseCodexSessionOptions = {}
 ): Promise<CodexParsedSessionData | null> {
   const facts = options.includeToolCalls === false ? undefined : new TranscriptFacts('codex');
-  const fileStream = createReadStream(filePath);
-  const rl = createInterface({
-    input: fileStream,
-    crlfDelay: Infinity,
-  });
-
-  let lineNumber = 0;
-  let accumulator: CodexAccumulator | null = null;
+  let accumulator: CodexAccumulator | null = options.resume?.state as CodexAccumulator | null ?? null;
   const includeToolCalls = options.includeToolCalls ?? true;
-  let pendingLine: { line: string; lineNumber: number } | null = null;
 
   const processLine = (line: string, currentLineNumber: number, isLastLine: boolean): void => {
     const entry = parseCodexLine(line, currentLineNumber, filePath, isLastLine);
@@ -339,18 +330,15 @@ export async function parseCodexSessionFile(
     }
   };
 
-  for await (const line of rl) {
-    if (pendingLine) {
-      processLine(pendingLine.line, pendingLine.lineNumber, false);
-    }
-
-    lineNumber++;
-    pendingLine = { line, lineNumber };
+  let partial = false;
+  let checkpoint = options.resume ?? { offset: 0,lineNumber: 0,state: null };
+  for await (const line of jsonlLines(filePath,options)) {
+    if (!line.terminated) { partial = true; options.onCheckpoint?.({ ...checkpoint,state: accumulator }); }
+    processLine(line.text,line.lineNumber,line.last);
+    if (line.terminated) checkpoint = { offset: line.offset,lineNumber: line.lineNumber,state: accumulator };
   }
-
-  if (pendingLine) {
-    processLine(pendingLine.line, pendingLine.lineNumber, true);
-  }
+  // A partial final line is replayed on the next append, including any completion/result.
+  if (!partial) options.onCheckpoint?.({ ...checkpoint,state: accumulator });
 
   return accumulator ? { ...finalizeAccumulator(accumulator), sourcePath: filePath, transcriptFacts: facts?.facts, unknownRecords: facts?.unknownRecords } : null;
 }

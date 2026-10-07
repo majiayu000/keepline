@@ -44,7 +44,7 @@ export const runJudgeBackend: JudgeBackend = async (prompt,cfg) => {
     const output = parseJSON(await cli(['claude','-p','--output-format','json','--tools','',...(cfg.model ? ['--model',cfg.model] : [])],prompt)) as Record<string,unknown>;
     return typeof output.result === 'string' ? parseJSON(output.result) : output;
   }
-  const out = await cli(['codex','exec','--json','--sandbox','read-only','--ephemeral',...(cfg.model ? ['--model',cfg.model] : []),'-'],prompt);
+  const out = await cli(['codex','exec','--json','--sandbox','read-only','--skip-git-repo-check','--ephemeral',...(cfg.model ? ['--model',cfg.model] : []),'-'],prompt);
   let result = '';
   for (const line of out.split('\n').filter(Boolean)) {
     const event = JSON.parse(line);

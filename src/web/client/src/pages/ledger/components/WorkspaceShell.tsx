@@ -42,6 +42,7 @@ export function WorkspaceShell({
   onFocus,
   onLogout,
   onRefresh,
+  syncStatus,
   children,
 }: {
   view: TabId;
@@ -59,6 +60,7 @@ export function WorkspaceShell({
   onFocus?: () => void;
   onLogout?: () => void;
   onRefresh?: () => void;
+  syncStatus?: string;
   children: ReactNode;
 }) {
   const [more, setMore] = useState(false);
@@ -310,6 +312,7 @@ export function WorkspaceShell({
           <h1>{title}</h1>
           <span className={styles.subtitle}>{subtitle}</span>
           <span className={styles.headerRight}>
+            {syncStatus && <span className={styles.clock} role="status" aria-label="同步状态">{syncStatus}</span>}
             {onSearch && (
               <span className={styles.searchField}>
                 <i
