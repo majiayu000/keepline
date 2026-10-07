@@ -188,7 +188,9 @@ export class TranscriptFacts {
       call.outputHead = detached(textContent(output).slice(0,400));
       call.exitCode = code; call.facts = []; return;
     }
+    const priorFailure = call.facts?.find(fact => fact.kind === 'test' && fact.exitCode !== undefined && fact.exitCode !== 0);
     Object.assign(call, outputEvidence(output, call.input, call.name));
+    if (priorFailure) call.facts?.push(priorFailure);
     // Shell reads still prove their own literal command, never tests copied from a log.
     if (!call.mutating) call.facts = call.facts?.filter(f => f.kind === 'command');
     if (typeof code === 'number') {
