@@ -119,14 +119,13 @@ export function matchLedger(facts: TranscriptFact[], inputItems: RequirementItem
     evidence.push(...ownEvidence); ownEvidence.forEach(e => evidenceIds.add(e.id));
     paths.push(...ownEvidence.filter(e => e.kind === 'file').map(e => e.value));
     // Successful tests are evidence even though the test invocation is not a file edit.
-    if (!fact.mutating) { readOnlyCount++; continue; }
     const command = executedCommand(fact);
     // A transcript does not provide a complete test dependency graph. An
     // observed edit or execution wrapper without a direct command receipt
     // conservatively invalidates earlier checks, regardless of attribution.
     // Wrapper source text can invalidate old proof, but never creates proof.
     const uncertainExecution = !command && /(?:^|[_.])(?:Bash|exec|exec_command)$/.test(fact.name);
-    if (uncertainExecution || ownEvidence.some(e => e.kind === 'file') || /(?:^|[_.])(?:apply_patch|Write|Edit)$/.test(fact.name)) {
+    if (uncertainExecution && fact.mutating || ownEvidence.some(e => e.kind === 'file') || fact.exitCode === undefined && /(?:^|[_.])(?:apply_patch|Write|Edit)$/.test(fact.name)) {
       for (const [command, ids] of latestChecks) if (ids.length) invalidatedChecks.add(command);
       latestChecks.clear();
     }
@@ -141,6 +140,7 @@ export function matchLedger(facts: TranscriptFact[], inputItems: RequirementItem
         : []);
       invalidatedChecks.delete(command);
     }
+    if (!fact.mutating) { readOnlyCount++; continue; }
     const correction = corrections.find(c => c.callId === fact.callId);
     const rule = rules.find(r => r.matcher.paths.some(p => paths.some(path => pathMatches(p,path)) || summary.includes(p)) || r.matcher.commands.some(c => commandMatches(c,summary)));
     const candidates = confirmed.map(item => ({ item, score: score(item.anchors, summary, paths,lowerSummary) })).sort((a,b) => b.score - a.score || b.item.ordinal - a.item.ordinal);
