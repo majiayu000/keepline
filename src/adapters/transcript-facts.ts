@@ -25,8 +25,19 @@ export function isMutatingTool(name: string, input: unknown): boolean {
   if (/write_stdin$/.test(name) && !data.chars) return false;
   if (typeof command === 'string') {
     // A read followed by a write must remain a step. Shell substitution is not read-only.
-    if (!directWords(command)) return true;
-    return !/^(?:sleep|cat|ls|rg|grep|head|tail|pwd|stat|find|sed|git\s+(?:status|diff|log|show|ls-files))\b/.test(command.trim());
+    const words = directWords(command);
+    if (!words) return true;
+    if (words[0] === 'git') {
+      let index = 1;
+      while (index < words.length) {
+        if (words[index] === '--no-pager') index++;
+        else if (words[index] === '-C' && words[index + 1] !== undefined) index += 2;
+        else if (words[index].startsWith('-C') && words[index].length > 2) index++;
+        else break;
+      }
+      return !/^(?:status|diff|log|show|ls-files)$/.test(words[index] ?? '');
+    }
+    return !/^(?:sleep|cat|ls|rg|grep|head|tail|pwd|stat|find|sed)\b/.test(command.trim());
   }
   if (/functions.exec$/.test(name) && typeof data.input === 'string') {
     const calls = [...data.input.matchAll(/tools\.([\w]+)\s*\(/g)].map(m => m[1]);
