@@ -7,14 +7,14 @@ interface ConnectionStatusProps {
 }
 
 const STATUS_LABELS: Record<ConnectionStatusType, string> = {
-  realtime: 'Live',
-  polling: 'Polling',
-  disconnected: 'Offline',
+  realtime: '实时',
+  polling: '定时刷新',
+  disconnected: '离线',
 }
 
 export const ConnectionStatus = memo(function ConnectionStatus({ status }: ConnectionStatusProps) {
   return (
-    <div className={styles.container} title={`Connection: ${status}`}>
+    <div className={styles.container} title={`连接状态：${STATUS_LABELS[status]}`}>
       <span className={`${styles.dot} ${styles[status]}`} />
       <span className={`${styles.label} ${styles[status]}`}>
         {STATUS_LABELS[status]}

@@ -9,7 +9,7 @@ import { ensureKeeplineDataHome } from '../lib/paths.js';
 // Increment when parser semantics change. This is derived data, never task/session truth.
 const CACHE_VERSION = 2;
 // Keep computed fingerprints and persistent cleanup on the same semantic version.
-export const LEDGER_COMPUTATION_VERSION = 11;
+export const LEDGER_COMPUTATION_VERSION = 14;
 let database: Database | undefined;
 let ledgerWindow: string | undefined;
 let computationWindow: string | undefined;
@@ -104,6 +104,8 @@ export function sessionSummaryCacheStats(): Readonly<typeof stats> {
 export function closeSessionSummaryCache(): void {
   database?.close();
   database = undefined;
+  ledgerWindow = undefined;
+  computationWindow = undefined;
 }
 
 /** Ledger facts use the same derived-data disk cache, never the transcript summary arrays. */

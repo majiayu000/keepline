@@ -15,6 +15,14 @@ function parseInput(value: unknown): unknown {
 }
 // Substrings of large outputs can retain their entire backing transcript record.
 function detached(text: string): string { return Buffer.from(text).toString(); }
+export function isInputRequestTool(name: string): boolean {
+  return name === 'AskUserQuestion' || /(?:^|[._])request_user_input$/.test(name);
+}
+export function pendingInputTool(facts: TranscriptFact[]) {
+  const turn = [...facts].reverse().find(f => f.kind === 'turn');
+  if (turn?.kind === 'turn' && turn.phase !== 'started') return undefined;
+  return facts.find(f => f.kind === 'tool' && isInputRequestTool(f.name) && !f.completed && (!turn || f.turnId === turn.turnId));
+}
 export function isMutatingTool(name: string, input: unknown): boolean {
   const data = record(input);
   const command = data.command ?? data.cmd;
@@ -166,6 +174,7 @@ export class TranscriptFacts {
   private result(callId: string, output: unknown, code?: number, implicit = false): void {
     const call = this.calls.get(callId);
     if (!call) return;
+    call.completed = true;
     if (!call.mutating) {
       call.outputHead = detached(textContent(output).slice(0,400));
       call.exitCode = code; call.facts = []; return;

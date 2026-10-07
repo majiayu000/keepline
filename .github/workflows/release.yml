@@ -17,16 +17,26 @@ jobs:
           - platform: 'macos-latest'
             args: '--target aarch64-apple-darwin'
             name: 'macOS-ARM'
+            target: 'aarch64-apple-darwin'
           - platform: 'macos-latest'
             args: '--target x86_64-apple-darwin'
             name: 'macOS-Intel'
-          - platform: 'windows-latest'
-            args: ''
-            name: 'Windows'
+            target: 'x86_64-apple-darwin'
 
     runs-on: ${{ matrix.platform }}
     steps:
       - uses: actions/checkout@v4
+
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+
+      - name: Install service dependencies
+        run: bun install --frozen-lockfile
+
+      - name: Install web client dependencies
+        working-directory: src/web/client
+        run: bun install --frozen-lockfile
 
       - name: Setup Node
         uses: actions/setup-node@v4
@@ -75,6 +85,7 @@ jobs:
         uses: tauri-apps/tauri-action@v0
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          KEEPLINE_BUILD_TARGET: ${{ matrix.target }}
           APPLE_CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE }}
           APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
           APPLE_SIGNING_IDENTITY: ${{ secrets.APPLE_SIGNING_IDENTITY }}
@@ -139,8 +150,7 @@ jobs:
         run: |
           set -euo pipefail
           test "$(find . -maxdepth 1 -name '*.dmg' | wc -l)" -eq 2
-          test "$(find . -maxdepth 1 -name '*.exe' | wc -l)" -eq 1
-          sha256sum ./*.dmg ./*.exe > SHA256SUMS.txt
+          sha256sum ./*.dmg > SHA256SUMS.txt
           gh release upload "$RELEASE_TAG" SHA256SUMS.txt --repo "$GITHUB_REPOSITORY"
       - name: Publish verified release
         run: gh release edit "$RELEASE_TAG" --repo "$GITHUB_REPOSITORY" --draft=false

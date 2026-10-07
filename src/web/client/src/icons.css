@@ -1,0 +1,139 @@
+@font-face {
+  font-family: "Phosphor-Duotone";
+  src: url("./assets/fonts/Phosphor-Duotone.woff2") format("woff2");
+  font-weight: normal;
+  font-style: normal;
+  font-display: block;
+}
+
+.ph-duotone {
+  /* use !important to prevent issues with browser extensions that change fonts */
+  font-family: "Phosphor-Duotone" !important;
+  speak: never;
+  font-style: normal;
+  font-weight: normal;
+  font-variant: normal;
+  text-transform: none;
+  line-height: 1;
+
+  /* Better Font Rendering =========== */
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+.ph-duotone.ph-squares-four:before {
+  content: "\e464";
+  opacity: 0.2;
+}
+.ph-duotone.ph-squares-four:after {
+  content: "\e465";
+  margin-left: -1em;
+}
+
+.ph-duotone.ph-check-square:before {
+  content: "\e186";
+  opacity: 0.2;
+}
+.ph-duotone.ph-check-square:after {
+  content: "\e187";
+  margin-left: -1em;
+}
+
+.ph-duotone.ph-target:before {
+  content: "\e47c";
+  opacity: 0.2;
+}
+.ph-duotone.ph-target:after {
+  content: "\e47d";
+  margin-left: -1em;
+}
+
+.ph-duotone.ph-moon-stars:before {
+  content: "\e58e";
+  opacity: 0.2;
+}
+.ph-duotone.ph-moon-stars:after {
+  content: "\e58f";
+  margin-left: -1em;
+}
+
+.ph-duotone.ph-timer:before {
+  content: "\e492";
+  opacity: 0.2;
+}
+.ph-duotone.ph-timer:after {
+  content: "\e493";
+  margin-left: -1em;
+}
+
+.ph-duotone.ph-dots-three-outline:before {
+  content: "\e204";
+  opacity: 0.2;
+}
+.ph-duotone.ph-dots-three-outline:after {
+  content: "\e205";
+  margin-left: -1em;
+}
+
+.ph-duotone.ph-caret-down:before {
+  content: "\e136";
+  opacity: 0.2;
+}
+.ph-duotone.ph-caret-down:after {
+  content: "\e137";
+  margin-left: -1em;
+}
+
+.ph-duotone.ph-gear-six:before {
+  content: "\e272";
+  opacity: 0.2;
+}
+.ph-duotone.ph-gear-six:after {
+  content: "\e273";
+  margin-left: -1em;
+}
+
+.ph-duotone.ph-magnifying-glass:before {
+  content: "\e30c";
+  opacity: 0.2;
+}
+.ph-duotone.ph-magnifying-glass:after {
+  content: "\e30d";
+  margin-left: -1em;
+}
+
+.ph-duotone.ph-dots-three:before {
+  content: "\e1fe";
+  opacity: 0.2;
+}
+.ph-duotone.ph-dots-three:after {
+  content: "\e1ff";
+  margin-left: -1em;
+}
+
+.ph-duotone.ph-x:before {
+  content: "\e4f6";
+  opacity: 0.2;
+}
+.ph-duotone.ph-x:after {
+  content: "\e4f7";
+  margin-left: -1em;
+}
+
+.ph-duotone.ph-caret-left:before {
+  content: "\e138";
+  opacity: 0.2;
+}
+.ph-duotone.ph-caret-left:after {
+  content: "\e139";
+  margin-left: -1em;
+}
+
+.ph-duotone.ph-caret-right:before {
+  content: "\e13a";
+  opacity: 0.2;
+}
+.ph-duotone.ph-caret-right:after {
+  content: "\e13b";
+  margin-left: -1em;
+}

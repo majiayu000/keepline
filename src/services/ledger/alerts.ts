@@ -11,10 +11,11 @@ import type { LedgerDetail, LedgerConfig } from '../../domain/ledger/types.js';
 type AlertDetail = Pick<LedgerDetail,'state' | 'statusReason' | 'offPlan' | 'claims' | 'progress' | 'limited' | 'agentSessionId' | 'sessionId' | 'title' | 'projectRoot' | 'parentSessionId' | 'turnId'>;
 type AlertKind = keyof LedgerConfig['alerts'];
 export interface LedgerAlert { id: string; agent_session_id: string; kind: AlertKind; detail: string; raised_at: string; cleared_at: string | null; notified: number }
-export function markLedgerViewed(sessionId: string, viewed: boolean, now = Date.now()) {
+export function markLedgerViewed(sessionId: string, viewed: boolean, now = Date.now(), turnId?: string) {
   const db = getDatabase();
-  if (viewed) db.query('INSERT INTO ledger_views VALUES(?,?) ON CONFLICT(session_id) DO UPDATE SET expires_at=excluded.expires_at').run(sessionId,new Date(now+45000).toISOString());
-  else db.query('DELETE FROM ledger_views WHERE session_id = ?').run(sessionId);
+  if (viewed) db.query(`INSERT INTO ledger_views(session_id,expires_at,last_viewed_turn_id) VALUES(?,?,?) ON CONFLICT(session_id) DO UPDATE SET
+    expires_at=excluded.expires_at,last_viewed_turn_id=COALESCE(excluded.last_viewed_turn_id,ledger_views.last_viewed_turn_id)`).run(sessionId,new Date(now+45000).toISOString(),turnId ?? null);
+  else db.query('UPDATE ledger_views SET expires_at=? WHERE session_id=?').run(new Date(now).toISOString(),sessionId);
 }
 export function ledgerAlertConditions(d: AlertDetail): Partial<Record<AlertKind,string>> {
   const conditions: Partial<Record<AlertKind,string>> = {};
@@ -88,8 +89,17 @@ export async function flushFocusSummary(cfg = config.get().ledger, now = new Dat
 
 export function ledgerNotificationTitle(sessionId: string,title: string,projectRoot: string,parentSessionId?: string): string {
   const session = sessionRepository.findBySessionId(sessionId);
-  const parentId = parentSessionId ?? session?.parentSessionId;
-  const parent = parentId && (sessionRepository.findBySessionId(parentId) ?? sessionRepository.findBySessionId(`codex_${parentId}`));
-  const name = parent ? parent.title : title;
-  return name && name !== 'Unknown task' ? name : `未命名会话 · ${basename(parent ? parent.directory : projectRoot)}`;
+  let parentId = parentSessionId ?? session?.parentSessionId;
+  let name = title, directory = projectRoot;
+  const seen = new Set([sessionId]);
+  while (parentId && !seen.has(parentId)) {
+    seen.add(parentId);
+    const parent = sessionRepository.findBySessionId(parentId) ?? sessionRepository.findBySessionId(`codex_${parentId}`);
+    if (!parent) break;
+    const persisted = getDatabase().query('SELECT title FROM agent_sessions WHERE runtime_session_id=?').get(parent.sessionId) as { title: string } | null;
+    name = parent.title === 'Unknown task' ? persisted?.title ?? parent.title : parent.title;
+    directory = parent.directory;parentId = parent.parentSessionId;
+  }
+  return name && name !== 'Unknown task' ? name : `未命名会话 · ${basename(directory)}`;
+
 }
