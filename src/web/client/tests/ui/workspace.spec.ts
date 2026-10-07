@@ -564,6 +564,8 @@ test("v3 风格回归、固定组件像素对照及功能变更差异记录", as
   browser,
   baseURL,
 }, info) => {
+  // This single case renders every view at multiple sizes and compares PNGs.
+  test.setTimeout(90_000);
   // Render the supplied HTML itself, preserving its template and styles. Only data is normalized.
   const { state, goal, task } = await mockApi(page);
   await page.route("**/api/goals", (r) =>
