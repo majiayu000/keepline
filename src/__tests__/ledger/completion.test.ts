@@ -35,6 +35,23 @@ function match(calls: Call[], commands = [command]) {
 }
 
 describe('completion requires current execution evidence', () => {
+  test('environment assignments remain part of the exact command criterion', () => {
+    expect(match([{ cmd: 'CI=1 bun test', code: 0 }], ['CI=1 bun test']).progress.done).toBe(1);
+    expect(match([{ cmd: 'bun test', code: 0 }], ['CI=1 bun test']).progress.done).toBe(0);
+  });
+
+  test('direct shell mutation invalidates earlier checks and a rerun restores them', () => {
+    const mutation = { cmd: 'git checkout -- src/widget.ts', code: 0, output: '' };
+    const stale = match([{ code: 0 }, mutation]);
+    expect(stale.items[0].status).toBe('unverified');
+    expect(stale.items[0].evidenceIds).toEqual([]);
+    expect(match([{ code: 0 }, mutation, { code: 0 }]).progress.done).toBe(1);
+  });
+
+  test('independent current command criteria retain their own receipts', () => {
+    expect(match([{ code: 0 }, { cmd: 'bun run typecheck', code: 0 }], [command, 'bun run typecheck']).progress.done).toBe(1);
+  });
+
   test('a directly recorded successful command proves its literal criterion', () => {
     expect(match([{ code: 0 }]).progress).toEqual({ done: 1, total: 1 });
   });

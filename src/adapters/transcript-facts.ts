@@ -26,7 +26,7 @@ export function isMutatingTool(name: string, input: unknown): boolean {
   if (typeof command === 'string') {
     // A read followed by a write must remain a step. Shell substitution is not read-only.
     if (/[\r\n;&|<>`$]/.test(command)) return true;
-    return !/^(?:sleep|cat|ls|rg|grep|head|tail|pwd|stat|find|sed\s+-n|git\s+(?:status|diff|log|show|ls-files))\b/.test(command.trim());
+    return !/^(?:sleep|cat|ls|rg|grep|head|tail|pwd|stat|find|sed|git\s+(?:status|diff|log|show|ls-files))\b/.test(command.trim());
   }
   if (/functions.exec$/.test(name) && typeof data.input === 'string') {
     const calls = [...data.input.matchAll(/tools\.([\w]+)\s*\(/g)].map(m => m[1]);
