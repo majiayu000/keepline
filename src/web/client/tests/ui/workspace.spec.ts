@@ -202,7 +202,7 @@ test("三种布局、项目过滤、搜索和详情保持可用", async ({ page 
   await page
     .getByRole("textbox", { name: "搜索", exact: true })
     .fill("不存在的会话");
-  await expect(page.getByRole("status")).toContainText("暂无会话");
+  await expect(page.getByRole("status").filter({ hasText: "暂无会话" })).toBeVisible();
   await page.getByRole("textbox", { name: "搜索", exact: true }).fill("");
   await page.getByRole("button", { name: row.title, exact: true }).click();
   await expect(page.getByRole("dialog")).toContainText("上下文");
@@ -1174,4 +1174,183 @@ test("v3 风格回归、固定组件像素对照及功能变更差异记录", as
     JSON.stringify(pixelChecks, null, 2),
   );
   await reference.close();
+});
+
+test("推送更新悬停中的卡片与已打开详情，重连后补齐内容，无需刷新", async ({ page }) => {
+  const { state } = await mockApi(page);
+  let socket: { send: (data: string) => void } | undefined;
+  await page.routeWebSocket(/\/ws\?/, (ws) => {
+    socket = ws;
+    ws.send(JSON.stringify({ type: "connected", timestamp: now }));
+  });
+  await ready(page);
+  const card = page.getByRole("button", { name: row.title, exact: true });
+  await card.hover();
+  state.row.activity = { ...state.row.activity!,action: "bun test realtime-card" };
+  socket!.send(JSON.stringify({ type: "ledger:update", data: {}, timestamp: now }));
+  await page.clock.runFor(250);
+  await expect(card).toContainText("bun test realtime-card");
+  await card.click();
+  const drawer = page.getByRole("dialog");
+  await expect(drawer).toBeVisible();
+  state.row.activity = { ...state.row.activity!,lastMessage: "新证据已经实时显示" };
+  state.row.progress.done = 2;
+  state.row.items[1].status = "done";
+  socket!.send(JSON.stringify({ type: "ledger:update", data: {}, timestamp: now }));
+  await page.clock.runFor(250);
+  await expect(drawer).toContainText("新证据已经实时显示");
+  await expect(drawer).toContainText("2 / 3");
+  // The manager emits connected after every reconnect; missed state must be re-fetched.
+  state.row.activity.lastMessage = "重连期间错过的内容已补齐";
+  socket!.send(JSON.stringify({ type: "connected", timestamp: now }));
+  await page.clock.runFor(250);
+  await expect(drawer).toContainText("重连期间错过的内容已补齐");
+});
+
+test("推送不重复读取设置和目标，后台暂停请求，回到前台补齐", async ({ page }) => {
+  const { state, calls } = await mockApi(page);
+  let socket: { send: (data: string) => void } | undefined;
+  await page.routeWebSocket(/\/ws\?/, ws => {
+    socket = ws;
+  });
+  await ready(page);
+  await expect(page.getByRole("status", { name: "同步状态" })).toContainText("已连接");
+  await page.clock.runFor(500);
+  await page.waitForLoadState("networkidle");
+  await page.evaluate(() => {
+    document.documentElement.dataset.pushCount = "0";
+    const manager = (window as unknown as { __wsManager: { onMessage: (fn: (m: { type: string }) => void) => void } }).__wsManager;
+    manager.onMessage(m => {
+      if (m.type === "ledger:update") document.documentElement.dataset.pushCount = String(Number(document.documentElement.dataset.pushCount) + 1);
+    });
+  });
+  const start = calls.length;
+  for (let i = 0; i < 20; i++) socket!.send(JSON.stringify({ type: "ledger:update", data: {}, timestamp: now }));
+  await expect(page.locator("html")).toHaveAttribute("data-push-count", "20");
+  await page.clock.runFor(500);
+  await page.waitForLoadState("networkidle");
+  await expect.poll(() => calls.slice(start).filter(c => c.path === "/api/ledger").length).toBe(1);
+  expect(calls.slice(start).filter(c => ["/api/settings/ledger", "/api/goals", "/api/work-items"].includes(c.path))).toHaveLength(0);
+  const refreshStart = calls.length;
+  await page.getByRole("button", { name: "更多", exact: true }).click();
+  await page.getByRole("menuitem", { name: "刷新数据", exact: true }).click();
+  await expect.poll(() => calls.slice(refreshStart).filter(c => c.path === "/api/ledger").length).toBe(1);
+  await page.waitForLoadState("networkidle");
+  expect(calls.slice(refreshStart).filter(c => c.path === "/api/ledger")).toHaveLength(1);
+  const card = page.getByRole("button", { name: row.title, exact: true });
+  await card.click();
+  await expect(page.getByRole("dialog")).toBeVisible();
+  await page.evaluate(() => {
+    Object.defineProperty(document, "visibilityState", { configurable: true, get: () => "hidden" });
+    document.dispatchEvent(new Event("visibilitychange"));
+  });
+  const hiddenStart = calls.length;
+  state.row.activity = { ...state.row.activity!, lastMessage: "后台期间追加的证据" };
+  socket!.send(JSON.stringify({ type: "ledger:update", timestamp: now }));
+  await page.clock.runFor(31000);
+  expect(calls.slice(hiddenStart)).toHaveLength(0);
+  await page.evaluate(() => {
+    Object.defineProperty(document, "visibilityState", { configurable: true, get: () => "visible" });
+    document.dispatchEvent(new Event("visibilitychange"));
+  });
+  await page.clock.runFor(500);
+  await expect(page.getByRole("dialog")).toContainText("后台期间追加的证据");
+  await expect(page.getByRole("status", { name: "同步状态" })).toContainText("已连接 · 上次同步");
+});
+
+test("详情请求乱序时较晚返回的旧内容不会覆盖新内容", async ({ page }) => {
+  const { state } = await mockApi(page);
+  let socket: { send: (data: string) => void } | undefined;
+  await page.routeWebSocket(/\/ws\?/, ws => {
+    socket = ws;
+    ws.send(JSON.stringify({ type: "connected", timestamp: now }));
+  });
+  await ready(page);
+  await page.getByRole("button", { name: row.title, exact: true }).click();
+  const drawer = page.getByRole("dialog");
+  await expect(drawer).toBeVisible();
+  let release: (() => Promise<void>) | undefined;
+  let held = false;
+  await page.route(`**/api/ledger/${row.sessionId}`, async route => {
+    if (held) return route.fallback();
+    held = true;
+    const old = structuredClone(state.row);
+    old.activity = { ...old.activity!, lastMessage: "过期的汇报不能覆盖新汇报" };
+    release = () => route.fulfill({ json: { success: true, data: old } });
+  });
+  socket!.send(JSON.stringify({ type: "ledger:update", timestamp: now }));
+  await page.clock.runFor(500);
+  await expect.poll(() => held).toBe(true);
+  state.row.activity = { ...state.row.activity!, lastMessage: "最新汇报必须保留" };
+  socket!.send(JSON.stringify({ type: "ledger:update", timestamp: now }));
+  await page.clock.runFor(500);
+  await expect(drawer).toContainText("最新汇报必须保留");
+  await release!();
+  // Confirm the delayed response has reached the hook before asserting the final state.
+  await page.waitForLoadState("networkidle");
+  await expect(drawer).toContainText("最新汇报必须保留");
+  await expect(drawer).not.toContainText("过期的汇报不能覆盖新汇报");
+});
+
+test("WebSocket 没有心跳回应时自动重连并补齐数据", async ({ page }) => {
+  const { state } = await mockApi(page);
+  let connections = 0;
+  await page.routeWebSocket(/\/ws\?/, ws => {
+    connections++;
+    ws.send(JSON.stringify({ type: "connected", timestamp: now }));
+    // Deliberately omit pong to simulate an apparently open but dead connection.
+  });
+  await ready(page);
+  await page.clock.runFor(500);
+  await page.waitForLoadState("networkidle");
+  const initialConnections = connections;
+  state.row.activity = { ...state.row.activity!, action: "心跳恢复后读取的新动作" };
+  await page.clock.runFor(46000);
+  await expect.poll(() => connections).toBeGreaterThan(initialConnections);
+  await page.clock.runFor(500);
+  await expect(page.getByRole("button", { name: row.title, exact: true })).toContainText("心跳恢复后读取的新动作");
+});
+
+test("列表请求乱序不会倒退，正常心跳保持同一连接", async ({ page }) => {
+  const { state } = await mockApi(page);
+  let connections = 0;
+  let pongs = 0;
+  let socket: { send: (data: string) => void } | undefined;
+  await page.routeWebSocket(/\/ws\?/, ws => {
+    connections++;
+    socket = ws;
+    ws.onMessage(data => {
+      if (JSON.parse(String(data)).type === "ping") {
+        pongs++;
+        ws.send(JSON.stringify({ type: "pong", timestamp: now }));
+      }
+    });
+  });
+  await ready(page);
+  await page.clock.runFor(500);
+  await page.waitForLoadState("networkidle");
+  const initialConnections = connections;
+  let release: (() => Promise<void>) | undefined;
+  let held = false;
+  await page.route(url => url.pathname === "/api/ledger", async route => {
+    if (held) return route.fallback();
+    held = true;
+    const old = structuredClone(state.row);
+    old.activity = { ...old.activity!, action: "过期的列表动作" };
+    release = () => route.fulfill({ json: { success: true, data: [old] } });
+  });
+  socket!.send(JSON.stringify({ type: "ledger:update", timestamp: now }));
+  await page.clock.runFor(500);
+  await expect.poll(() => held).toBe(true);
+  state.row.activity = { ...state.row.activity!, action: "最新的列表动作" };
+  await page.clock.runFor(30000);
+  const card = page.getByRole("button", { name: row.title, exact: true });
+  await expect(card).toContainText("最新的列表动作");
+  await release!();
+  await page.waitForLoadState("networkidle");
+  await expect(card).not.toContainText("过期的列表动作");
+  await expect.poll(() => pongs).toBeGreaterThan(0);
+  await page.waitForFunction(() => (window as unknown as { __wsManager: { pongTimeout: unknown } }).__wsManager.pongTimeout === null);
+  await page.clock.runFor(16000);
+  expect(connections).toBe(initialConnections);
 });

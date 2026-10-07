@@ -267,12 +267,13 @@ export function LedgerPage({
       focusMinutes={c.settings.focus.minutes}
       onFocus={() => void c.perform(c.toggleFocus)}
       onLogout={() => void onLogout()}
-      onRefresh={() => void c.perform(c.load)}
+      onRefresh={() => void c.perform()}
+      syncStatus={c.syncStatus}
     >
       {c.error && (
         <div className={styles.errorBanner} role="alert">
           {c.error}
-          <ActionButton onClick={() => void c.perform(c.load)}>
+          <ActionButton onClick={() => void c.perform()}>
             重试
           </ActionButton>
         </div>

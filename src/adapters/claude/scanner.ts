@@ -1,3 +1,4 @@
+import type { JsonlCursorOptions } from '../jsonl-cursor.js';
 /**
  * Claude projects directory scanner
  *
@@ -286,8 +287,8 @@ async function scanAllSessionsWithFailures(
       }
 
       // Parse file and update cache
-      const parse = async (onRecord?: (entry: unknown) => void) => requireValidParsedSession(
-        await parseSessionFile(file.filePath, { includeToolCalls,onRecord }), file.filePath
+      const parse = async (onRecord?: (entry: unknown) => void,cursor?: JsonlCursorOptions) => requireValidParsedSession(
+        await parseSessionFile(file.filePath, { includeToolCalls,onRecord,...cursor }), file.filePath
       );
       const parsed = includeToolCalls ? await parse()
         : await cachedSessionSummary('claude', file.filePath, parse);

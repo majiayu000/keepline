@@ -50,6 +50,14 @@ jobs:
       - name: Test
         run: bun run test
 
+      - name: Install browser for UI checks
+        working-directory: src/web/client
+        run: bun x playwright install --with-deps chromium
+
+      - name: Test UI workflows
+        working-directory: src/web/client
+        run: bun run test:ui
+
   tauri:
     name: Tauri Rust checks
     runs-on: macos-latest
