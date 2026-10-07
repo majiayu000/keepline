@@ -35,6 +35,48 @@ function match(calls: Call[], commands = [command]) {
 }
 
 describe('completion requires current execution evidence', () => {
+  test.each(['--help', '--version'])('a real sed %s option does not invent file edits', (option) => {
+    const root = mkdtempSync(join(tmpdir(), 'keepline-sed-information-'));
+    const cmd = `sed ${option} -i.bak 's/a/b/' private.ts public.ts`;
+    try {
+      for (const path of ['private.ts', 'public.ts']) writeFileSync(join(root, path), 'a\n');
+      const result = spawnSync('sh', ['-c', cmd], { cwd: root, encoding: 'utf8' });
+      if (result.error) throw result.error;
+      expect(result.status).toBe(0);
+      for (const path of ['private.ts', 'public.ts']) expect(readFileSync(join(root, path), 'utf8')).toBe('a\n');
+      const facts = recordedCalls([{ cmd, result: { exit_code: result.status, output: result.stdout + result.stderr } }]);
+      const items = decompose([], 'sed-information', [{ id: 'edit', text: 'Edit public.ts' }]);
+      items[0].constraints = [{ kind: 'path_forbidden', value: 'private.ts' }];
+      const matched = matchLedger(facts, items, [], [], DEFAULT_LEDGER_CONFIG);
+      expect(matched.evidence.filter(e => e.kind === 'file')).toEqual([]);
+      expect(matched.trail.flatMap(t => t.violations)).toEqual([]);
+      expect(facts.find(fact => fact.kind === 'tool')?.mutating).toBe(false);
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
+
+  test.each(['--help', '--version'])('a real sed file named %s after -- retains edit evidence', (path) => {
+    const root = mkdtempSync(join(tmpdir(), 'keepline-sed-option-file-'));
+    const cmd = `sed -i.bak 's/a/b/' -- ${path} public.ts`;
+    try {
+      for (const file of [path, 'public.ts']) writeFileSync(join(root, file), 'a\n');
+      const result = spawnSync('sh', ['-c', cmd], { cwd: root, encoding: 'utf8' });
+      if (result.error) throw result.error;
+      expect(result.status).toBe(0);
+      for (const file of [path, 'public.ts']) expect(readFileSync(join(root, file), 'utf8')).toBe('b\n');
+      const facts = recordedCalls([{ cmd, result: { exit_code: result.status, output: result.stdout + result.stderr } }]);
+      const items = decompose([], 'sed-option-file', [{ id: 'edit', text: 'Edit public.ts' }]);
+      items[0].constraints = [{ kind: 'path_forbidden', value: path }];
+      const matched = matchLedger(facts, items, [], [], DEFAULT_LEDGER_CONFIG);
+      expect(matched.evidence.filter(e => e.kind === 'file').map(e => e.value)).toEqual([path, 'public.ts']);
+      expect(matched.trail.flatMap(t => t.violations)).toEqual([`Forbidden path: ${path}`]);
+      expect(facts.find(fact => fact.kind === 'tool')?.mutating).toBe(true);
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
+
   test.each(['.', '..', '../..', 'src/..'])('plain command prose preserves a dot path operand: %s', (path) => {
     const items = decompose([], 'dot-command', [{ id: 'checkout', text: `Run git checkout ${path}` }]);
     expect(items[0].anchors.commands).toEqual([`git checkout ${path}`]);
