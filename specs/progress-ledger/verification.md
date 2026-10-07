@@ -1,5 +1,46 @@
 # Progress Ledger 实现与修复验收
 
+## 2026-10-08 收尾候选：macOS 1.2.0
+
+本节是最新结果，后面的轮次为历史记录。整合工作位于独立工作树 `keepline-closeout`、分支 `fix/ledger-closeout-20261007`；原工作树、实时预览及现有 3377 服务保留。审阅入口：https://github.com/majiayu000/keepline/pull/141 。本分支包含 #140 的当前执行证据和服务隔离修复。
+
+### 产品结果
+
+- 总览、详情、待办、目标、回顾、设置及核对验收沿用已有契约；待办页的偏离统计来自当前范围的实际步骤，关联会话可以打开详情处理归属。
+- 项目进度图是可选增强：目标页默认列表，只有主动打开某个目标才获取近期进展；离开目标页或刷新后关闭。图中区分执行证据与人工验收，不自动派发或调用模型。
+- 文件追加增量读取支持 UTF-8、CRLF、未完成行和跨日恢复；同步完成后推送。悬停保留卡片顺序，同时更新内容；详情同步刷新；断线重连及回到前台补齐，后台暂停页面请求，旧请求不能覆盖新数据。设置不随每次推送重复读取。
+- 中文要求与问句无空格相邻时仍保留要求。可选 Codex 识别在非 Git 目录可用，保持只读沙箱与临时会话；默认识别关闭，失败保留候选且不自动重试。
+- macOS ARM / Intel 发布构建按目标编译对应内嵌服务。桌面版本为 1.2.0；本机产物为 ARM、ad-hoc 签名，公开签名与公证由发布流程处理。本轮没有创建发布标签或公开 Release。
+
+### 当前验证
+
+| 检查 | 当前结果 | 证据 |
+| --- | --- | --- |
+| 完整 Bun 测试 | 757 通过，0 失败，91 文件 | `/tmp/keepline-closeout-tests-serial.log` |
+| 根目录、客户端类型检查 | 通过 | `/tmp/keepline-closeout-typecheck-final.log` |
+| 浏览器功能与固定组件回归 | 21 通过 | `/tmp/keepline-closeout-ui-final.log` |
+| Tauri 原生测试 | 29 通过，0 失败 | `/tmp/keepline-closeout-rust-final.log` |
+| DMG 公证失败门槛测试 | 8 通过 | `python3 menubar-tauri/scripts/test_notarize_dmg.py` |
+| 生产构建及 macOS ARM 打包 | 通过 | `/tmp/keepline-closeout-package-final.log` |
+| 签名完整性、DMG 校验、内嵌页面一致性 | 通过；本地 ad-hoc，无公证 | `/tmp/keepline-closeout-package-results.json` |
+| 包内服务实际启动及浏览器冒烟 | 本地登录、设置 API、生产页面与默认关闭项目图通过，JS 错误 0 | `/tmp/keepline-closeout-packaged-smoke.json` |
+| 独立严格原稿对照 | 0 零差异、35 差异、10 缺少原稿、0 执行错误；构建稳定 | `/tmp/keepline-closeout-pixels/results.json` |
+
+完整测试曾在并行编译/截图时出现子进程启动超时；构建结束后使用原命令、原断言完整重跑，757 项全部通过。浏览器的多页面截图用例单独给予 90 秒，不修改像素阈值。CI 的界面回归放在 macOS，与桌面产品目标一致；Ubuntu 继续执行完整 Bun 与类型检查。Linux 运行中的首轮对照在派发箭头处出现 41 像素差异，保留在 Actions 记录中，不把跨系统零差异记为通过。
+
+真实原始记录只读、数据库和配置隔离，首次扫描完成后观察 600.6 秒，共 129 轮增量扫描：最小 643 ms、平均 1939.9 ms、最大 7967 ms。扫描累计 CPU 76.9 秒，折合单核平均 12.82%；进程树采样 CPU 中位数 0.4%、均值 13.39%；RSS 中位数 70.0 MiB、峰值 224.6 MiB、末值 153.4 MiB。首轮 61.659 秒，派生缓存 1485 命中 / 6 未命中，不能作为冷启动成绩。观察期间有编译和测试负载，本轮只能证明有限窗口内持续扫描，无“平均增量低于一秒”“接近零 CPU”或全天稳定性的结论。监测已自动停止本轮服务；没有停止现有 3377 服务。记录：`/tmp/keepline-closeout-soak-results.json`、`/tmp/keepline-closeout-soak-samples.json`、`/tmp/keepline-closeout-soak-service.log`。
+
+候选安装包：`menubar-tauri/src-tauri/target/release/bundle/dmg/Keepline_1.2.0_aarch64.dmg`；SHA-256：`0a9fa5a4b38450b83a87a093f31d28fc9922ca79fcc2c818214b173997d7056b`。此本地产物用于试用，正式分发须经 Developer ID 签名、公证及发布门槛。
+
+### 明确保留的验收边界
+
+- 原生退出已实际点击验证：取消保持应用运行；“停止监控并退出”关闭测试应用、它拥有的服务和监听端口。记录：`/tmp/keepline-closeout-native-result.json`。不再沿用历史章节中退出按钮无法点击的结论。
+- 用户此前选择跳过系统通知点击，本轮保留通知偏好；真实通知点击、macOS 展示时限，以及注销后重新登录启动仍未验收。未为了检查而开启登录自启。
+- 使用本机已有 Codex 后端，隔离目录中的四条合成输入全部通过：要求拆分、完成汇报、审批回复、混合要求与提问；重复读取复用结果。耗时分别为 38.480 / 33.194 / 29.061 / 35.456 秒。这是小样本连通性验证，不是泛化准确率或所有提供者的证明。记录：`/tmp/keepline-closeout-judge-codex-results.json`。
+- 本机 Claude CLI 默认模型被提供者拒绝；未替换用户模型或修改密钥。选用 Claude 识别前仍需修正其提供者配置；不影响默认关闭识别的流程和已验证的 Codex 路径。
+- 功能回归与严格原稿一致性分别记录。旧原稿未包含活动时间筛选、同步状态、未读入口、可选图和移动端重排，新增页面也缺少对应稿件；严格零像素验收不作为已通过。当前对照入口：`/tmp/keepline-closeout-pixels/index.html`，原始统计：`results.json`。报告保留真实差异与非零退出码。
+
+
 Issue: https://github.com/majiayu000/keepline/issues/138
 
 ## 总览时间范围
