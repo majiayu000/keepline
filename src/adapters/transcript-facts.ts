@@ -20,14 +20,15 @@ export function isMutatingTool(name: string, input: unknown): boolean {
   const data = record(input);
   const command = data.command ?? data.cmd;
   if (isSedWriteCommand(command)) return true;
-  if (typeof command === 'string' && /^find\b/.test(command.trim()) && /(?:^|\s)-(?:delete|exec|execdir|ok|okdir|fprint|fprintf|fls)\b/.test(command)) return true;
+  const words = typeof command === 'string' ? directCommandWords(command) : undefined;
+  const executable = words?.[0]?.split('/').at(-1);
+  if (executable === 'find' && words?.slice(1).some(word => /^-(?:delete|exec|execdir|ok|okdir|fprint|fprintf|fls)$/.test(word))) return true;
   if (/(?:^|[_.])(?:wait|sleep|read_file|read_text_file|read|list|list_directory|list_agents|search|find|view_image|getState|get_goal|clock__curr_time)$/.test(name) || /^(Read|Glob|Grep|LS|TodoWrite)$/.test(name)) return false;
   if (/write_stdin$/.test(name) && !data.chars) return false;
   if (typeof command === 'string') {
     // A read followed by a write must remain a step. Shell substitution is not read-only.
-    const words = directCommandWords(command);
     if (!words) return true;
-    if (words[0]?.split('/').at(-1) === 'git') {
+    if (executable === 'git') {
       let index = 1;
       while (index < words.length) {
         if (words[index] === '--no-pager') index++;
@@ -37,7 +38,7 @@ export function isMutatingTool(name: string, input: unknown): boolean {
       }
       return !/^(?:status|diff|log|show|ls-files)$/.test(words[index] ?? '');
     }
-    return !/^(?:sleep|cat|ls|rg|grep|head|tail|pwd|stat|find|sed)\b/.test(command.trim());
+    return !/^(?:sleep|cat|ls|rg|grep|head|tail|pwd|stat|find|sed)$/.test(executable ?? '');
   }
   if (/functions.exec$/.test(name) && typeof data.input === 'string') {
     const calls = [...data.input.matchAll(/tools\.([\w]+)\s*\(/g)].map(m => m[1]);

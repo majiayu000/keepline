@@ -38,6 +38,45 @@ function match(calls: Call[], commands = [command]) {
 }
 
 describe('completion requires current execution evidence', () => {
+  test.each([
+    'LC_ALL=C rg foo src',
+    '/usr/bin/rg foo src',
+    '/usr/bin/env -- LC_ALL=C /usr/bin/rg foo src',
+  ])('normalized read commands preserve completed checks: %s', cmd => {
+    const result = match([{ code: 0 }, { cmd, code: 0, output: 'src/widget.ts' }]);
+    expect(result.items[0].status).toBe('done');
+    expect(result.readOnlyCount).toBe(1);
+  });
+
+  test.each([
+    'LC_ALL=C find src -delete',
+    '/usr/bin/find src -exec rm {} +',
+    '/usr/bin/env -- LC_ALL=C /usr/bin/find src -fprint listing.txt',
+  ])('normalized mutating find still invalidates checks: %s', cmd => {
+    expect(match([{ code: 0 }, { cmd, code: 0, output: '' }]).items[0].status).toBe('unverified');
+  });
+
+  test.each([
+    { code: 1 },
+    { result: { session_id: 91, output: 'running' } },
+  ])('attempted readonly criterion is doing until success: %j', result => {
+    const cmd = 'git diff --check';
+    const observed = match([{ cmd, ...result }], [cmd]);
+    expect(observed.items[0].status).toBe('doing');
+    expect(observed.progress.done).toBe(0);
+    expect(observed.trail).toHaveLength(0);
+    expect(match([{ cmd, ...result }, { cmd, code: 0, output: '' }], [cmd]).items[0].status).toBe('done');
+  });
+
+  test('partial readonly criteria are doing without inventing complete success', () => {
+    const first = 'git status --short', second = 'git diff --check';
+    const result = match([{ cmd: first, code: 0, output: '' }], [first, second]);
+    expect(result.items[0].status).toBe('doing');
+    expect(result.items[0].evidenceIds.length).toBeGreaterThan(0);
+    expect(result.progress.done).toBe(0);
+    expect(match([{ cmd: first, code: 0, output: '' }, { cmd: second, code: 0, output: '' }], [first, second]).items[0].status).toBe('done');
+  });
+
   test.each(['src/file?', 'src/file[ab]?', 'src/file?.'])(
     'plain command criteria retain glob operands: %s', path => {
       const cmd = `git ls-files ${path}`;

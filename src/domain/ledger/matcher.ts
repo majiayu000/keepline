@@ -200,6 +200,7 @@ export function matchLedger(facts: TranscriptFact[], inputItems: RequirementItem
     item.evidenceIds = [...new Set(current.flat())].filter(id => evidenceIds.has(id));
     if (commands.length && current.every(ids => ids.length > 0)) item.status = 'done';
     else if (commands.some(command => command && invalidatedChecks.has(command))) item.status = 'unverified';
+    else if (commands.some(command => command && latestChecks.has(command))) item.status = 'doing';
   }
   const offPlan: OffPlanRun[] = [];
   let unmatched: LedgerStep[] = [];
