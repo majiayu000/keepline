@@ -36,11 +36,21 @@ export function directWords(command: string): string[] | undefined {
 function sedCommand(command: unknown) {
   if (typeof command !== 'string') return undefined;
   const words = directWords(command);
-  if (words?.[0] !== 'sed') return undefined;
+  if (!words) return undefined;
+  let executable = 0;
+  while (/^[A-Za-z_]\w*=/.test(words[executable] ?? '')) executable++;
+  // env's option terminator and assignments are well-defined prefixes. Other
+  // wrapper options and shell programs remain uncertain, without guessed paths.
+  if (words[executable]?.split('/').at(-1) === 'env') {
+    executable++;
+    if (words[executable] === '--') executable++;
+    while (/^[A-Za-z_]\w*=/.test(words[executable] ?? '')) executable++;
+  }
+  if (words[executable]?.split('/').at(-1) !== 'sed') return undefined;
   const files: string[] = [];
   let inPlace = false, hasScript = false, options = true, ambiguousSuffix = false, scriptFile = false;
   const scripts: string[] = [];
-  for (let index = 1; index < words.length; index++) {
+  for (let index = executable + 1; index < words.length; index++) {
     const option = words[index];
     if (options && option === '--') { options = false; continue; }
     if (!options || !option.startsWith('-') || option === '-') {

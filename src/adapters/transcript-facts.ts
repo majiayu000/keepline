@@ -118,8 +118,8 @@ export class TranscriptFacts {
         else if (/^(?:command_execution|CommandExecution)$/.test(p.type)) {
           const id = p.call_id ?? p.id;
           if (!this.calls.has(id) && typeof p.command === 'string') this.tool(id,'exec_command',{ command: p.command },at);
-          this.result(id,p.output ?? p.aggregated_output ?? p,p.exit_code ?? p.exitCode);
-        } else if (/^(?:function_call_output|custom_tool_call_output)$/.test(p.type)) this.result(p.call_id ?? p.id, p.output ?? p, p.exit_code);
+          this.result(id,p.output ?? p.aggregated_output ?? p,p.exit_code ?? p.exitCode,false,at);
+        } else if (/^(?:function_call_output|custom_tool_call_output)$/.test(p.type)) this.result(p.call_id ?? p.id, p.output ?? p, p.exit_code,false,at);
         return;
       }
       if (!['session_meta', 'turn_context', 'token_usage_record', 'world_state', 'inter_agent_communication_metadata', 'compacted'].includes(entry.type)) this.unknownRecords++;
@@ -145,7 +145,7 @@ export class TranscriptFacts {
         const background = record(entry.toolUseResult).backgroundTaskId || /running in (?:the )?background|background task/i.test(textContent(block.content));
         const call = this.calls.get(block.tool_use_id);
         const succeeded = /^(?:Bash|Write|Edit)$/.test(call?.name ?? '') ? 0 : undefined;
-        this.result(block.tool_use_id, block.content, block.is_error ? 1 : background ? undefined : succeeded,true);
+        this.result(block.tool_use_id, block.content, block.is_error ? 1 : background ? undefined : succeeded,true,at);
       }
     }
     if (entry.type === 'assistant') {
@@ -175,9 +175,10 @@ export class TranscriptFacts {
     const fact: Extract<TranscriptFact, { kind: 'tool' }> = { kind: 'tool', callId, name, input, at, turnId: this.turnId, mutating: isMutatingTool(name, input) };
     this.calls.set(callId, fact); this.facts.push(fact);
   }
-  private result(callId: string, output: unknown, code?: number, implicit = false): void {
+  private result(callId: string, output: unknown, code?: number, implicit = false, at?: string): void {
     const call = this.calls.get(callId);
     if (!call) return;
+    const previousExitCode = call.exitCode;
     const data = record(call.input);
     let result = record(output);
     if (typeof output === 'string') { try { result = record(JSON.parse(output)); } catch { /* plain terminal result */ } }
@@ -187,7 +188,9 @@ export class TranscriptFacts {
     }
     if (/(?:^|[_.])write_stdin$/.test(call.name)) {
       const original = this.sessions.get(String(data.session_id));
-      if (original) this.result(original, output, code, implicit);
+      if (original) {
+        this.result(original, output, code, implicit,at);
+      }
     }
     const execution = /^(?:Bash|(?:[\w]+\.)?exec_command)$/.test(call.name);
     if (!call.mutating && !execution) {
@@ -199,5 +202,12 @@ export class TranscriptFacts {
     if (priorFailure) call.facts?.push(priorFailure);
     // Shell reads still prove their own literal command, never tests copied from a log.
     if (!call.mutating) call.facts = call.facts?.filter(f => f.kind === 'command');
+    if (execution && previousExitCode !== call.exitCode && call.exitCode !== undefined) {
+      // Reuse the execution fact at its terminal receipt boundary. Empty polls
+      // remain reads, and no duplicate execution or synthetic stdin write is added.
+      const index = this.facts.indexOf(call);
+      if (index >= 0) { this.facts.splice(index, 1); this.facts.push(call); }
+      if (at) call.at = at;
+    }
   }
 }

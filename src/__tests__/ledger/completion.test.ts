@@ -38,6 +38,58 @@ function match(calls: Call[], commands = [command]) {
 }
 
 describe('completion requires current execution evidence', () => {
+  test.each(['src/file?', 'src/file[ab]?', 'src/file?.'])(
+    'plain command criteria retain glob operands: %s', path => {
+      const cmd = `git ls-files ${path}`;
+      const items = decompose([], 'glob-criteria', [{ id: 'glob', text: `Run ${cmd}` }]);
+      expect(items[0].anchors.commands).toEqual([cmd]);
+      expect(matchLedger(recordedCalls([{ cmd, code: 0, output: '' }]), items, [], [], DEFAULT_LEDGER_CONFIG).progress.done).toBe(1);
+    });
+
+  test.each([
+    "LC_ALL=C sed -i.bak 's/a/b/' src/private/a.ts",
+    "LC_ALL='C' LANG=C /usr/bin/sed -i.bak 's/a/b/' src/private/a.ts",
+    "/usr/bin/sed -i.bak 's/a/b/' src/private/a.ts",
+    "env LC_ALL=C sed -i.bak 's/a/b/' src/private/a.ts",
+    "/usr/bin/env -- LC_ALL=C /usr/bin/sed -i.bak 's/a/b/' src/private/a.ts",
+  ])('prefixed sed exposes reliable operands to forbidden paths: %s', cmd => {
+    const items = decompose([], 'prefixed-sed', [{ id: 'private', text: 'Do not edit src/private/**' }]);
+    const result = matchLedger(recordedCalls([{ cmd, code: 0, output: '' }]), items, [], [], DEFAULT_LEDGER_CONFIG);
+    expect(result.evidence.filter(e => e.kind === 'file').map(e => e.value)).toEqual(['src/private/a.ts']);
+    expect(result.trail.flatMap(t => t.violations)).toEqual(['Forbidden path: src/private/**']);
+    expect(matchLedger(recordedCalls([{ cmd, code: 1, output: '' }]), items, [], [], DEFAULT_LEDGER_CONFIG).evidence.filter(e => e.kind === 'file')).toEqual([]);
+  });
+
+  test('prefixed ambiguous BSD/GNU sed keeps mutation without guessed file facts', () => {
+    const cmd = "LC_ALL=C /usr/bin/sed -i .bak 's@/src/private/a.ts@new@' public.ts";
+    const result = match([{ code: 0 }, { cmd, code: 0, output: '' }]);
+    expect(result.items[0].status).toBe('unverified');
+    expect(result.evidence.filter(e => e.kind === 'file')).toEqual([]);
+  });
+
+  test.each([0, 1])('a mutation completion invalidates a check run while pending: %s', code => {
+    const start = { cmd: 'node write.js', result: { session_id: 91, output: 'running' } };
+    const pending = { name: 'write_stdin', input: { session_id: 91, chars: '' }, result: { session_id: 91, output: 'still running' } };
+    const completed = { name: 'write_stdin', input: { session_id: 91, chars: '' }, code, output: '' };
+    const calls: Call[] = [start, { code: 0 }, pending];
+    expect(match(calls).progress.done).toBe(1);
+    const stale = match([...calls, completed]);
+    expect(stale.items[0].status).toBe('unverified');
+    const facts = recordedCalls([...calls, completed]);
+    expect(facts.filter(f => f.kind === 'tool')).toHaveLength(4);
+    expect(facts.at(-1)).toMatchObject({ kind: 'tool', callId: 'completion-0', name: 'exec_command', at: '2026-10-06T16:00:03.000Z' });
+    expect(facts.find(f => f.kind === 'tool' && f.callId === 'completion-3')).toMatchObject({ name: 'write_stdin', mutating: false });
+    expect(match([...calls, completed, { code: 0 }, completed]).progress.done).toBe(1);
+  });
+
+  test('a read-only process completion preserves a mid-flight check', () => {
+    expect(match([
+      { cmd: 'cat input.txt', result: { session_id: 91, output: 'running' } },
+      { code: 0 },
+      { name: 'write_stdin', input: { session_id: 91, chars: '' }, code: 0, output: '' },
+    ]).progress.done).toBe(1);
+  });
+
   test.each([
     'cat input.txt # note\nprintf changed > src/widget.ts',
     'cat input.txt # note\r\nprintf changed > src/widget.ts',
@@ -120,7 +172,7 @@ describe('completion requires current execution evidence', () => {
     expect(facts.filter(f => f.kind === 'tool').flatMap(f => f.facts ?? []).filter(e => e.kind === 'file').map(e => e.value)).toEqual([option, 'public.ts']);
   });
 
-  test.skipIf(!hasGnuSed).each(['--help', '--version'])('a real sed %s option does not invent file edits', (option) => {
+  for (const option of ['--help', '--version']) test.skipIf(!hasGnuSed)(`a real sed ${option} option does not invent file edits`, () => {
     const root = mkdtempSync(join(tmpdir(), 'keepline-sed-information-'));
     const cmd = `sed ${option} -i.bak 's/a/b/' private.ts public.ts`;
     try {
@@ -141,7 +193,7 @@ describe('completion requires current execution evidence', () => {
     }
   });
 
-  test.skipIf(!hasGnuSed).each(['--help', '--version'])('a real sed file named %s after -- retains edit evidence', (path) => {
+  for (const path of ['--help', '--version']) test.skipIf(!hasGnuSed)(`a real sed file named ${path} after -- retains edit evidence`, () => {
     const root = mkdtempSync(join(tmpdir(), 'keepline-sed-option-file-'));
     const cmd = `sed -i.bak 's/a/b/' -- ${path} public.ts`;
     try {
