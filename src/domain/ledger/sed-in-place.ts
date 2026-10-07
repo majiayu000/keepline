@@ -17,6 +17,8 @@ export function directWords(command: string): string[] | undefined {
     } else if (char === "'" || char === '"') {
       quote = char; started = true;
     } else if (char === '#' && !started) {
+      const newline = command.indexOf('\n', index);
+      if (newline >= 0 && command.slice(newline + 1).trim()) return undefined;
       break;
     } else if (char === ' ' || char === '\t') {
       if (started) { words.push(word); word = ''; started = false; }
