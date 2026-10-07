@@ -277,6 +277,42 @@ describe('completion requires current execution evidence', () => {
     expect(match([{ code: 0 }, mutation, { code: 0 }]).progress.done).toBe(1);
   });
 
+  test('a Git write criterion invalidates older checks before proving its own execution', () => {
+    const checkout = 'git checkout -- src/widget.ts';
+    const items = decompose([], 'git-write-criteria', [
+      { id: 'tests', text: `Run \`${command}\`` },
+      { id: 'restore', text: `Run \`${checkout}\`` },
+    ]);
+    const calls: Call[] = [{ code: 0 }, { cmd: checkout, code: 0, output: '' }];
+    const stale = matchLedger(recordedCalls(calls), items, [], [], DEFAULT_LEDGER_CONFIG);
+    expect(stale.items.map(item => item.status)).toEqual(['unverified', 'done']);
+    expect(stale.items[0].evidenceIds).toEqual([]);
+    expect(matchLedger(recordedCalls([...calls, { code: 0 }]), items, [], [], DEFAULT_LEDGER_CONFIG).items.map(item => item.status)).toEqual(['done', 'done']);
+    expect(matchLedger(recordedCalls([...calls, { code: 0 }, { cmd: checkout, code: 0, output: '' }]), items, [], [], DEFAULT_LEDGER_CONFIG).items.map(item => item.status)).toEqual(['unverified', 'done']);
+  });
+
+  test.each(['git log -1', 'git status --short', 'git diff --check'])(
+    'read-only Git criterion preserves older check receipts: %s', cmd => {
+      expect(match([{ code: 0 }, { cmd, code: 0, output: '' }], [command, cmd]).progress.done).toBe(1);
+    });
+
+  test.each([
+    { output: 'Commit message: Exit code: 1', is_error: false, expected: 0 },
+    { output: 'Commit message: Exit code: 0', is_error: true, expected: 1 },
+    { output: { exit_code: 1, output: 'Commit message: Exit code: 0' }, is_error: false, expected: 1 },
+    { output: { exit_code: 0, output: 'Commit message: Exit code: 1' }, is_error: false, expected: 0 },
+  ])('Claude host status outranks ordinary stdout exit phrases: %j', ({ output, is_error, expected }) => {
+    const parser = new TranscriptFacts('claude');
+    const timestamp = '2026-10-08T10:00:00.000Z';
+    const cmd = 'git log -1 --format=%B';
+    parser.add({ type: 'assistant', timestamp, message: { content: [{ type: 'tool_use', id: 'git-log', name: 'Bash', input: { command: cmd } }] } });
+    parser.add({ type: 'user', timestamp, message: { content: [{ type: 'tool_result', tool_use_id: 'git-log', content: output, is_error }] } });
+    const tool = parser.facts.find(f => f.kind === 'tool');
+    expect(tool?.kind === 'tool' ? tool.exitCode : undefined).toBe(expected);
+    const items = decompose([], 'claude-log-status', [{ id: 'log', text: `Run \`${cmd}\`` }]);
+    expect(matchLedger(parser.facts, items, [], [], DEFAULT_LEDGER_CONFIG).progress.done).toBe(expected === 0 ? 1 : 0);
+  });
+
   test('independent current command criteria retain their own receipts', () => {
     expect(match([{ code: 0 }, { cmd: 'bun run typecheck', code: 0 }], [command, 'bun run typecheck']).progress.done).toBe(1);
   });

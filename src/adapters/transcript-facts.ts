@@ -47,8 +47,12 @@ function outputEvidence(output: unknown, input: unknown, name: string, resultCod
   const code = obj.exit_code ?? obj.exitCode ?? record(obj.metadata).exit_code;
   const codes = [...out.matchAll(/(?:Process exited with code|exit[_ ]code[^0-9-]{0,8}|Exit code:)\s*(-?\d+)/gi)].map(m => Number(m[1]));
   // A wrapper may contain several command results. Any failure prevents whole-call success.
-  const observedCode = typeof code === 'number' ? code : codes.find(c => c !== 0) ?? codes.at(-1) ?? (obj.is_error === true ? 1 : undefined);
-  const exitCode = typeof resultCode === 'number' && !(implicit && resultCode === 0 && observedCode !== undefined) ? resultCode : observedCode;
+  const structuredCode = typeof code === 'number' ? code : obj.is_error === true ? 1 : undefined;
+  // Host status and numeric result fields outrank ordinary text in stdout.
+  // Claude success remains implicit only relative to another structured status.
+  const exitCode = typeof resultCode === 'number'
+    ? implicit && resultCode === 0 && structuredCode !== undefined ? structuredCode : resultCode
+    : structuredCode ?? codes.find(c => c !== 0) ?? codes.at(-1);
   const facts: ToolEvidence[] = [];
   const data = record(input);
   const embedded = typeof data.input === 'string' ? [...data.input.matchAll(/(?:cmd|command)\s*:\s*["']([^"']+)["']/g)].map(m => m[1]) : [];
