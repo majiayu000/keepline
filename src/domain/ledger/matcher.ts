@@ -138,7 +138,9 @@ export function matchLedger(facts: TranscriptFact[], inputItems: RequirementItem
     // sed can change earlier files before a later input fails. A nonzero exit
     // cannot establish that no write happened, or supply successful file proof.
     const possibleSedWrite = isSedWriteCommand(command);
-    const directShellMutation = command && fact.mutating && !criterionCommands.has(command);
+    // Git reads are already classified as read-only; a Git write criterion
+    // still invalidates older checks before its own fresh receipt is registered.
+    const directShellMutation = command && fact.mutating && (!criterionCommands.has(command) || directWords(command)?.[0] === 'git');
     const pathMutation = !command && paths.length > 0 && fact.mutating && (fact.exitCode === undefined || fact.exitCode === 0);
     if (pathMutation || (uncertainExecution || directShellMutation) && fact.mutating || possibleSedWrite || ownEvidence.some(e => e.kind === 'file') || fact.exitCode === undefined && /(?:^|[_.])(?:apply_patch|Write|Edit)$/.test(fact.name)) {
       for (const [command, ids] of latestChecks) if (ids.length) invalidatedChecks.add(command);
