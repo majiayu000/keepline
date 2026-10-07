@@ -8,7 +8,12 @@ export function ledgerId(...parts: string[]): string { return createHash('sha256
 export function anchorsFromText(text: string): Anchors {
   return {
     paths: [...new Set([...text.matchAll(/(?:`|\s|^)((?:[\w.-]+\/)+[\w.*?/-]+|[\w.-]+\.(?:ts|tsx|js|json|rs|py|md|toml))/g)].map(m => m[1]))],
-    commands: [...text.matchAll(/(?:`|\b)((?:[A-Za-z_]\w*=[^\s`]+\s+)*(?:bun|npm|pnpm|cargo|pytest|git)\s+[^`\n。;]+)(?:`|$)/g)].map(m => m[0].endsWith('`') ? m[1].trim() : m[1].split(/,\s+then\b/i)[0].trim().replace(/[.!?]+$/, '')),
+    commands: [...text.matchAll(/(?:`|\b)((?:[A-Za-z_]\w*=[^\s`]+\s+)*(?:bun|npm|pnpm|cargo|pytest|git)\s+[^`\n。;]+)(?:`|$)/g)].map(m => {
+      if (m[0].endsWith('`')) return m[1].trim();
+      const command = m[1].split(/,\s+then\b/i)[0].trim();
+      // A final dot path component is an operand, not sentence punctuation.
+      return /(?:^|[\s/])\.+$/.test(command) ? command : command.replace(/[.!?]+$/, '');
+    }),
     keywords: [...new Set(text.toLowerCase().match(/[\p{L}\p{N}_-]{3,}/gu) ?? [])].slice(0, 30),
   };
 }

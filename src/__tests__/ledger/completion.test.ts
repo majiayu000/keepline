@@ -35,6 +35,40 @@ function match(calls: Call[], commands = [command]) {
 }
 
 describe('completion requires current execution evidence', () => {
+  test.each(['.', '..', '../..', 'src/..'])('plain command prose preserves a dot path operand: %s', (path) => {
+    const items = decompose([], 'dot-command', [{ id: 'checkout', text: `Run git checkout ${path}` }]);
+    expect(items[0].anchors.commands).toEqual([`git checkout ${path}`]);
+    expect(matchLedger(recordedCalls([{ cmd: 'git checkout', code: 0 }]), items, [], [], DEFAULT_LEDGER_CONFIG).progress.done).toBe(0);
+  });
+
+  test('a successful checkout without a path cannot prove that the working tree was restored', () => {
+    const root = mkdtempSync(join(tmpdir(), 'keepline-checkout-dot-'));
+    const runGit = (...args: string[]) => {
+      const result = spawnSync('git', args, { cwd: root, encoding: 'utf8' });
+      if (result.error) throw result.error;
+      expect(result.status).toBe(0);
+      return result;
+    };
+    try {
+      runGit('init', '--quiet');
+      writeFileSync(join(root, 'widget.ts'), 'before\n');
+      runGit('add', 'widget.ts');
+      runGit('-c', 'user.name=Ledger regression', '-c', 'user.email=ledger@example.invalid', '-c', 'commit.gpgsign=false', '-c', 'core.hooksPath=/dev/null', 'commit', '--quiet', '-m', 'fixture');
+      writeFileSync(join(root, 'widget.ts'), 'after\n');
+      const bare = runGit('checkout');
+      expect(readFileSync(join(root, 'widget.ts'), 'utf8')).toBe('after\n');
+      const items = decompose([], 'real-checkout-dot', [{ id: 'checkout', text: 'Run git checkout .' }]);
+      const calls: Call[] = [{ cmd: 'git checkout', result: { exit_code: bare.status, output: bare.stdout + bare.stderr } }];
+      expect(matchLedger(recordedCalls(calls), items, [], [], DEFAULT_LEDGER_CONFIG).progress.done).toBe(0);
+      const restored = runGit('checkout', '.');
+      expect(readFileSync(join(root, 'widget.ts'), 'utf8')).toBe('before\n');
+      calls.push({ cmd: 'git checkout .', result: { exit_code: restored.status, output: restored.stdout + restored.stderr } });
+      expect(matchLedger(recordedCalls(calls), items, [], [], DEFAULT_LEDGER_CONFIG).progress.done).toBe(1);
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
+
   test.each(['Run bun test.', 'Run bun test, then report.'])('plain command prose preserves the executed criterion: %s', (text) => {
     const items = decompose([], 'plain-command', [{ id: 'tests', text }]);
     expect(items[0].anchors.commands).toEqual(['bun test']);
