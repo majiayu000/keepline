@@ -14,8 +14,9 @@ export function anchorsFromText(text: string): Anchors {
     commands: [...new Set(explicitCommands.concat([...prose.matchAll(/(?:`|\b)((?:[A-Za-z_]\w*=[^\s`]+\s+)*(?:bun|npm|pnpm|cargo|pytest|git)\s+[^`\n。;]+)(?:`|$)/g)].map(m => {
       if (m[0].endsWith('`')) return m[1].trim();
       const command = m[1].split(/,\s+then\b/i)[0].trim();
-      // A final dot path component is an operand, not sentence punctuation.
-      return /(?:^|[\s/])\.+$/.test(command) ? command : command.replace(/[.!?]+$/, '');
+      // Dot path components and glob operands are command data, not prose.
+      const operand = directWords(command)?.at(-1) ?? '';
+      return /(?:^|[\s/])\.+$/.test(command) || /[?*\[\]]/.test(operand) ? command : command.replace(/[.!?]+$/, '');
     })))],
     keywords: [...new Set(text.toLowerCase().match(/[\p{L}\p{N}_-]{3,}/gu) ?? [])].slice(0, 30),
   };
