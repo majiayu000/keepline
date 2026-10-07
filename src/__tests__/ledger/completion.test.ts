@@ -343,6 +343,42 @@ describe('completion requires current execution evidence', () => {
     expect(matchLedger(recordedCalls([...calls, { code: 0 }, { cmd: checkout, code: 0, output: '' }]), items, [], [], DEFAULT_LEDGER_CONFIG).items.map(item => item.status)).toEqual(['unverified', 'done']);
   });
 
+  test.each([
+    'CI=1 git checkout -- src/widget.ts',
+    'CI=1 LANG=C /usr/bin/git checkout -- src/widget.ts',
+    'env CI=1 git checkout -- src/widget.ts',
+    '/usr/bin/env -- CI=1 /usr/bin/git checkout -- src/widget.ts',
+    '/usr/bin/git checkout -- src/widget.ts',
+    'CI=1 git --no-pager -C . checkout -- src/widget.ts',
+  ])('a prefixed Git write criterion invalidates older checks: %s', checkout => {
+    const items = decompose([], 'prefixed-git-write-criteria', [
+      { id: 'tests', text: `Run \`${command}\`` },
+      { id: 'restore', text: `Run \`${checkout}\`` },
+    ]);
+    const calls: Call[] = [{ code: 0 }, { cmd: checkout, code: 0, output: '' }];
+    const stale = matchLedger(recordedCalls(calls), items, [], [], DEFAULT_LEDGER_CONFIG);
+    expect(stale.items.map(item => item.status)).toEqual(['unverified', 'done']);
+    expect(stale.items[0].evidenceIds).toEqual([]);
+    const refreshed = [...calls, { code: 0 }];
+    expect(matchLedger(recordedCalls(refreshed), items, [], [], DEFAULT_LEDGER_CONFIG).items.map(item => item.status)).toEqual(['done', 'done']);
+    expect(matchLedger(recordedCalls([...refreshed, { cmd: checkout, code: 0, output: '' }]), items, [], [], DEFAULT_LEDGER_CONFIG).items.map(item => item.status)).toEqual(['unverified', 'done']);
+  });
+
+  test.each([
+    'CI=1 git status --short',
+    '/usr/bin/env -- CI=1 /usr/bin/git diff --check',
+    '/usr/bin/git log -1',
+    '/usr/bin/env -- CI=1 /usr/bin/git --no-pager -C "repo path" diff --check',
+    'CI=1 git -Crepo status --short',
+  ])('a prefixed read-only Git criterion preserves earlier checks: %s', cmd => {
+    const facts = recordedCalls([{ code: 0 }, { cmd, code: 0, output: '' }]);
+    const items = decompose([], 'prefixed-git-read-criteria', [
+      { id: 'tests', text: `Run \`${command}\`` },
+      { id: 'read', text: `Run \`${cmd}\`` },
+    ]);
+    expect(matchLedger(facts, items, [], [], DEFAULT_LEDGER_CONFIG).items.map(item => item.status)).toEqual(['done', 'done']);
+  });
+
   test.each(['git log -1', 'git status --short', 'git diff --check', 'git -C repo status --short', 'git --no-pager log -1', 'git --no-pager -C "repo path" diff --check', 'git -Crepo status --short'])(
     'read-only Git criterion preserves older check receipts: %s', cmd => {
       expect(match([{ code: 0 }, { cmd, code: 0, output: '' }], [command, cmd]).progress.done).toBe(1);

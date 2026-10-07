@@ -32,9 +32,8 @@ export function directWords(command: string): string[] | undefined {
   return words;
 }
 
-/** File operands of a direct in-place edit; expansions/control flow stay unknown. */
-function sedCommand(command: unknown) {
-  if (typeof command !== 'string') return undefined;
+/** Direct invocation after explicit assignments and the supported env prefix. */
+export function directCommandWords(command: string): string[] | undefined {
   const words = directWords(command);
   if (!words) return undefined;
   let executable = 0;
@@ -46,11 +45,18 @@ function sedCommand(command: unknown) {
     if (words[executable] === '--') executable++;
     while (/^[A-Za-z_]\w*=/.test(words[executable] ?? '')) executable++;
   }
-  if (words[executable]?.split('/').at(-1) !== 'sed') return undefined;
+  return words.slice(executable);
+}
+
+/** File operands of a direct in-place edit; expansions/control flow stay unknown. */
+function sedCommand(command: unknown) {
+  if (typeof command !== 'string') return undefined;
+  const words = directCommandWords(command);
+  if (words?.[0]?.split('/').at(-1) !== 'sed') return undefined;
   const files: string[] = [];
   let inPlace = false, hasScript = false, options = true, ambiguousSuffix = false, scriptFile = false;
   const scripts: string[] = [];
-  for (let index = executable + 1; index < words.length; index++) {
+  for (let index = 1; index < words.length; index++) {
     const option = words[index];
     if (options && option === '--') { options = false; continue; }
     if (!options || !option.startsWith('-') || option === '-') {
