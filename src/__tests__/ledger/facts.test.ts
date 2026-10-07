@@ -32,7 +32,7 @@ describe('normalized transcript facts',() => {
         parser.add({ type: 'response_item',timestamp,payload: { type: 'function_call',call_id: 'read',name: 'exec_command',arguments: '{"cmd":"cat test.log"}' } });
         parser.add({ type: 'response_item',timestamp,payload: { type: 'function_call_output',call_id: 'read',output: 'Exit code: 0\n3 passed; 0 failed' } });
       }
-      expect(parser.facts[0]).toMatchObject({ kind: 'tool',mutating: false,facts: [] });
+      expect(parser.facts[0]).toMatchObject({ kind: 'tool',mutating: false,facts: [{ kind: 'command',value: 'cat test.log',exitCode: 0 }] });
     }
   });
   test('expired files are not opened; large fact sets survive cache eviction through disk',async () => {

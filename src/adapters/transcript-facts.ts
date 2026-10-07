@@ -45,7 +45,7 @@ function outputEvidence(output: unknown, input: unknown, name: string): { exitCo
   const code = obj.exit_code ?? obj.exitCode ?? record(obj.metadata).exit_code;
   const codes = [...out.matchAll(/(?:Process exited with code|exit[_ ]code[^0-9-]{0,8}|Exit code:)\s*(-?\d+)/gi)].map(m => Number(m[1]));
   // A wrapper may contain several command results. Any failure prevents whole-call success.
-  const exitCode = typeof code === 'number' ? code : codes.find(c => c !== 0) ?? codes.at(-1);
+  const exitCode = typeof code === 'number' ? code : codes.find(c => c !== 0) ?? codes.at(-1) ?? (obj.is_error === true ? 1 : undefined);
   const facts: ToolEvidence[] = [];
   const data = record(input);
   const embedded = typeof data.input === 'string' ? [...data.input.matchAll(/(?:cmd|command)\s*:\s*["']([^"']+)["']/g)].map(m => m[1]) : [];
@@ -58,12 +58,17 @@ function outputEvidence(output: unknown, input: unknown, name: string): { exitCo
   for (const m of observed.matchAll(/(?:\d+\s+(?:passed|failed|pass|fail)(?:\b)|Tests?:[^\n]*|test result:[^\n]*)/gi)) facts.push({ kind: 'test', value: detached(m[0]), exitCode: exitCode && exitCode !== 0 ? exitCode : testCode });
   for (const m of out.matchAll(/\[[^\]\n]+\s+([a-f0-9]{7,40})\][^\n]*/g)) facts.push({ kind: 'commit', value: detached(m[0]), exitCode });
   for (const m of out.matchAll(/https:\/\/github\.com\/[^\s"\\]+\/pull\/\d+/g)) facts.push({ kind: 'pr', value: detached(m[0]), exitCode });
-  if (exitCode === 0 || /(?:Success|successfully|updated|created)/i.test(out) || /^(?:Write|Edit)$/.test(name) && !obj.is_error) {
+  if (exitCode === 0 || exitCode === undefined && !obj.is_error && (/(?:Success|successfully|updated|created)/i.test(out) || /^(?:Write|Edit)$/.test(name))) {
     if (/apply_patch|^(?:Write|Edit)$/.test(name) || /apply_patch/.test(String(data.input ?? ''))) {
       const patch = String(data.input ?? data.patch ?? '').replace(/\\n/g,'\n');
       const paths = [data.file_path, data.path, ...[...String(patch).matchAll(/\*\*\* (?:Update|Add|Delete) File: (.+)/g)].map(m => m[1])].filter(Boolean);
       for (const path of paths) facts.push({ kind: 'file', value: String(path), exitCode });
     }
+  }
+  // In-place shell edits carry file evidence just like Edit/apply_patch.
+  if (exitCode === 0 && typeof command === 'string' && /^sed\b.*\s-[A-Za-z]*i(?:\s|$)/.test(command)) {
+    const path = command.trim().match(/(?:^|\s)([^\s]+)$/)?.[1];
+    if (path) facts.push({ kind: 'file', value: path.replace(/^['"]|['"]$/g, ''), exitCode });
   }
   if (/agent|collaboration/.test(name) && /(?:FINAL_ANSWER|verdict|findings|approved)/i.test(out)) facts.push({ kind: 'verdict', value: detached(out.slice(0, 400)) });
   return { exitCode, outputHead: detached(out.slice(0, 400)), facts };
@@ -74,6 +79,7 @@ export class TranscriptFacts {
   readonly facts: TranscriptFact[] = [];
   unknownRecords = 0;
   private calls = new Map<string, Extract<TranscriptFact, { kind: 'tool' }>>();
+  private sessions = new Map<string, string>();
   private turnId = '';
   private messages = new Set<string>();
   constructor(private runtime: 'codex' | 'claude', private since = 0) {}
@@ -166,11 +172,25 @@ export class TranscriptFacts {
   private result(callId: string, output: unknown, code?: number, implicit = false): void {
     const call = this.calls.get(callId);
     if (!call) return;
-    if (!call.mutating) {
+    const data = record(call.input);
+    let result = record(output);
+    if (typeof output === 'string') { try { result = record(JSON.parse(output)); } catch { /* plain terminal result */ } }
+    if (/(?:^|[_.])exec_command$/.test(call.name)) {
+      const sessionId = result.session_id ?? textContent(output).match(/session ID\s+(\d+)/i)?.[1];
+      if (sessionId !== undefined) this.sessions.set(String(sessionId), callId);
+    }
+    if (/(?:^|[_.])write_stdin$/.test(call.name)) {
+      const original = this.sessions.get(String(data.session_id));
+      if (original) this.result(original, output, code, implicit);
+    }
+    const execution = /^(?:Bash|(?:[\w]+\.)?exec_command)$/.test(call.name);
+    if (!call.mutating && !execution) {
       call.outputHead = detached(textContent(output).slice(0,400));
       call.exitCode = code; call.facts = []; return;
     }
     Object.assign(call, outputEvidence(output, call.input, call.name));
+    // Shell reads still prove their own literal command, never tests copied from a log.
+    if (!call.mutating) call.facts = call.facts?.filter(f => f.kind === 'command');
     if (typeof code === 'number') {
       // Claude success is implicit; an explicit nonzero result still wins.
       call.exitCode = implicit && code === 0 && call.exitCode !== undefined ? call.exitCode : code;
