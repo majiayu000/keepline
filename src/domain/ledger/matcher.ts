@@ -1,5 +1,5 @@
 import { confirmedRequirement } from './types.js';
-import { directWords, isSedWriteCommand } from './sed-in-place.js';
+import { directCommandWords, directWords, isSedWriteCommand } from './sed-in-place.js';
 import { createHash } from 'crypto';
 import { extractTaskPrompt } from '../session/index.js';
 import type { Anchors, Ask, Constraint, Correction, LedgerConfig, LedgerEvidence, LedgerRule, LedgerStep, OffPlanRun, RequirementItem, TranscriptFact } from './types.js';
@@ -97,6 +97,19 @@ function executedCommand(fact: Extract<TranscriptFact, { kind: 'tool' }>): strin
   const data = fact.input && typeof fact.input === 'object' ? fact.input as Record<string, unknown> : {};
   return literalCommand(data.command ?? data.cmd);
 }
+function isGitWriteCommand(command: string): boolean {
+  const words = directCommandWords(command);
+  if (words?.[0]?.split('/').at(-1) !== 'git') return false;
+  // Match the same unambiguous Git options accepted by transcript read facts.
+  let index = 1;
+  while (index < words.length) {
+    if (words[index] === '--no-pager') index++;
+    else if (words[index] === '-C' && words[index + 1] !== undefined) index += 2;
+    else if (words[index].startsWith('-C') && words[index].length > 2) index++;
+    else break;
+  }
+  return !/^(?:status|diff|log|show|ls-files)$/.test(words[index] ?? '');
+}
 function score(anchors: Anchors, summary: string, paths: string[], lowerSummary: string): number {
   return anchors.paths.reduce((n, path) => n + (paths.some(p => pathMatches(path,p)) || summary.includes(path) ? 5 : 0), 0)
     + anchors.commands.reduce((n, cmd) => n + (commandMatches(cmd,summary) ? 5 : 0), 0)
@@ -139,9 +152,9 @@ export function matchLedger(facts: TranscriptFact[], inputItems: RequirementItem
     // sed can change earlier files before a later input fails. A nonzero exit
     // cannot establish that no write happened, or supply successful file proof.
     const possibleSedWrite = isSedWriteCommand(command);
-    // Git reads are already classified as read-only; a Git write criterion
-    // still invalidates older checks before its own fresh receipt is registered.
-    const directShellMutation = command && fact.mutating && (!criterionCommands.has(command) || directWords(command)?.[0] === 'git');
+    // A Git write criterion invalidates earlier checks even with an explicit
+    // environment or executable path. The literal receipt stays unchanged.
+    const directShellMutation = command && fact.mutating && (!criterionCommands.has(command) || isGitWriteCommand(command));
     const pathMutation = !command && paths.length > 0 && fact.mutating && (fact.exitCode === undefined || fact.exitCode === 0);
     if (pathMutation || (uncertainExecution || directShellMutation) && fact.mutating || possibleSedWrite || ownEvidence.some(e => e.kind === 'file') || fact.exitCode === undefined && /(?:^|[_.])(?:apply_patch|Write|Edit)$/.test(fact.name)) {
       for (const [command, ids] of latestChecks) if (ids.length) invalidatedChecks.add(command);
