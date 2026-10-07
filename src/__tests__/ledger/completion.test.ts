@@ -35,6 +35,62 @@ function match(calls: Call[], commands = [command]) {
 }
 
 describe('completion requires current execution evidence', () => {
+  test.each(['Run bun test.', 'Run bun test, then report.'])('plain command prose preserves the executed criterion: %s', (text) => {
+    const items = decompose([], 'plain-command', [{ id: 'tests', text }]);
+    expect(items[0].anchors.commands).toEqual(['bun test']);
+    expect(matchLedger(recordedCalls([{ cmd: 'bun test', code: 0 }]), items, [], [], DEFAULT_LEDGER_CONFIG).progress.done).toBe(1);
+  });
+
+  test('explicit command delimiters preserve punctuation and environment assignments', () => {
+    const items = decompose([], 'quoted-command', [{ id: 'tests', text: 'Run `CI=1 bun test src/widget.test.ts`.' }]);
+    expect(items[0].anchors.commands).toEqual(['CI=1 bun test src/widget.test.ts']);
+    expect(matchLedger(recordedCalls([{ cmd: 'bun test src/widget.test.ts', code: 0 }]), items, [], [], DEFAULT_LEDGER_CONFIG).progress.done).toBe(0);
+  });
+
+  test.each([
+    "sed -i 's/a/b/' src/private/a.ts src/public/b.ts",
+    "sed -i.bak -e 's/a/b/' src/private/a.ts src/public/b.ts",
+    "sed -n -i '' 's/a/b/p' src/private/a.ts src/public/b.ts",
+    "sed --in-place=.bak --expression='s/a/b/' -- src/private/a.ts src/public/b.ts",
+    "sed -ni.bak -f edits.sed 'src/private/a.ts' 'src/public/b.ts'",
+  ])('all in-place sed file operands participate in forbidden-path checks: %s', (cmd) => {
+    const items = decompose([], 'sed-files', [{ id: 'edit', text: 'Do not edit src/private/**' }]);
+    const result = matchLedger(recordedCalls([{ cmd, code: 0, output: '' }]), items, [], [], DEFAULT_LEDGER_CONFIG);
+    expect(result.evidence.filter(e => e.kind === 'file').map(e => e.value)).toEqual(['src/private/a.ts', 'src/public/b.ts']);
+    expect(result.trail[0].violations).toEqual(['Forbidden path: src/private/**']);
+  });
+
+  test.each(['write_stdin', 'functions.write_stdin'])('nonempty %s input invalidates checks from before the write', (name) => {
+    const start = { cmd: 'cat', result: { session_id: 91, output: 'Process running with session ID 91' } };
+    const input = { name, input: { session_id: 91, chars: 'edit files\n' }, result: { session_id: 91, output: '' } };
+    const stale = match([start, { code: 0 }, input]);
+    expect(stale.progress.done).toBe(0);
+    expect(stale.items[0].status).toBe('unverified');
+    expect(stale.items[0].evidenceIds).toEqual([]);
+    expect(match([start, { code: 0 }, input, { code: 0 }]).progress.done).toBe(1);
+    expect(match([start, { code: 0 }, { ...input, input: { session_id: 91, chars: '' } }]).progress.done).toBe(1);
+  });
+
+  test('a real successful multi-file sed edit exposes every changed file', () => {
+    const root = mkdtempSync(join(tmpdir(), 'keepline-multiple-edits-'));
+    const cmd = "sed -i.bak 's/a/b/' 'private file.ts' public.ts";
+    try {
+      for (const path of ['private file.ts', 'public.ts']) writeFileSync(join(root, path), 'a\n');
+      const result = spawnSync('sh', ['-c', cmd], { cwd: root, encoding: 'utf8' });
+      if (result.error) throw result.error;
+      expect(result.status).toBe(0);
+      for (const path of ['private file.ts', 'public.ts']) expect(readFileSync(join(root, path), 'utf8')).toBe('b\n');
+      const facts = recordedCalls([{ cmd, result: { exit_code: result.status, output: result.stdout + result.stderr } }]);
+      const items = decompose([], 'real-sed', [{ id: 'edit', text: 'Edit public.ts' }]);
+      items[0].constraints = [{ kind: 'path_forbidden', value: 'private file.ts' }];
+      const matched = matchLedger(facts, items, [], [], DEFAULT_LEDGER_CONFIG);
+      expect(matched.evidence.filter(e => e.kind === 'file').map(e => e.value)).toEqual(['private file.ts', 'public.ts']);
+      expect(matched.trail[0].violations).toEqual(['Forbidden path: private file.ts']);
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
+
   test('environment assignments remain part of the exact command criterion', () => {
     expect(match([{ cmd: 'CI=1 bun test', code: 0 }], ['CI=1 bun test']).progress.done).toBe(1);
     expect(match([{ cmd: 'bun test', code: 0 }], ['CI=1 bun test']).progress.done).toBe(0);

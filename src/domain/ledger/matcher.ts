@@ -8,7 +8,7 @@ export function ledgerId(...parts: string[]): string { return createHash('sha256
 export function anchorsFromText(text: string): Anchors {
   return {
     paths: [...new Set([...text.matchAll(/(?:`|\s|^)((?:[\w.-]+\/)+[\w.*?/-]+|[\w.-]+\.(?:ts|tsx|js|json|rs|py|md|toml))/g)].map(m => m[1]))],
-    commands: [...text.matchAll(/(?:`|\b)((?:[A-Za-z_]\w*=[^\s`]+\s+)*(?:bun|npm|pnpm|cargo|pytest|git)\s+[^`\n。;]+)(?:`|$)/g)].map(m => m[1].trim()),
+    commands: [...text.matchAll(/(?:`|\b)((?:[A-Za-z_]\w*=[^\s`]+\s+)*(?:bun|npm|pnpm|cargo|pytest|git)\s+[^`\n。;]+)(?:`|$)/g)].map(m => m[0].endsWith('`') ? m[1].trim() : m[1].split(/,\s+then\b/i)[0].trim().replace(/[.!?]+$/, '')),
     keywords: [...new Set(text.toLowerCase().match(/[\p{L}\p{N}_-]{3,}/gu) ?? [])].slice(0, 30),
   };
 }
@@ -126,7 +126,7 @@ export function matchLedger(facts: TranscriptFact[], inputItems: RequirementItem
     // observed edit or shell mutation outside the current command criteria
     // conservatively invalidates earlier checks, regardless of attribution.
     // Wrapper source text can invalidate old proof, but never creates proof.
-    const uncertainExecution = !command && /(?:^|[_.])(?:Bash|exec|exec_command)$/.test(fact.name);
+    const uncertainExecution = !command && /(?:^|[_.])(?:Bash|exec|exec_command|write_stdin)$/.test(fact.name);
     // sed can change earlier files before a later input fails. A nonzero exit
     // cannot establish that no write happened, or supply successful file proof.
     const possibleInPlaceEdit = isSedInPlaceCommand(command);
