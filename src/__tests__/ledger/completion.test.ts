@@ -129,6 +129,15 @@ describe('completion requires current execution evidence', () => {
     expect(match([start, { ...poll, code: 0 }, { ...poll, code: 1 }]).progress.done).toBe(0);
   });
 
+  test.each(['', '2 pass'])('a later chunk %j cannot erase an observed test failure', (output) => {
+    const start = { result: { session_id: 91, output: '1 pass\n1 fail' } };
+    const chunk = { name: 'write_stdin', input: { session_id: 91, chars: '' } };
+    const calls = [start, { ...chunk, result: { session_id: 91, output: 'still running' } }, { ...chunk, code: 0, output }];
+    expect(match(calls).progress.done).toBe(0);
+    // A separate execution can still establish a new successful check.
+    expect(match([...calls, { code: 0 }]).progress.done).toBe(1);
+  });
+
   test('every command in a criterion needs current successful evidence', () => {
     const second = 'bun test src/integration.test.ts';
     expect(match([{ code: 0 }], [command, second]).progress.done).toBe(0);
