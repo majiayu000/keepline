@@ -29,25 +29,44 @@ function directWords(command: string): string[] | undefined {
   return words;
 }
 
-/** Identify sed's in-place option, never option-like text in an expression or file name. */
-export function isSedInPlaceCommand(command: unknown): boolean {
-  if (typeof command !== 'string') return false;
+/** File operands of a direct in-place edit; expansions/control flow stay unknown. */
+export function sedInPlaceFiles(command: unknown): string[] | undefined {
+  if (typeof command !== 'string') return undefined;
   const words = directWords(command);
-  if (words?.[0] !== 'sed') return false;
+  if (words?.[0] !== 'sed') return undefined;
+  const files: string[] = [];
+  let inPlace = false, hasScript = false, options = true;
   for (let index = 1; index < words.length; index++) {
     const option = words[index];
-    if (option === '--') break;
-    if (option === '--in-place' || option.startsWith('--in-place=')) return true;
-    if (option === '--expression' || option === '--file') { index++; continue; }
-    if (!option.startsWith('-') || option.startsWith('--')) continue;
+    if (options && option === '--') { options = false; continue; }
+    if (!options || !option.startsWith('-') || option === '-') {
+      if (!hasScript) hasScript = true;
+      else files.push(option);
+      continue;
+    }
+    if (option === '--in-place' || option.startsWith('--in-place=')) { inPlace = true; continue; }
+    if (option === '--expression' || option === '--file') { hasScript = true; index++; continue; }
+    if (option.startsWith('--expression=') || option.startsWith('--file=')) { hasScript = true; continue; }
+    if (option.startsWith('--')) continue;
     for (let flag = 1; flag < option.length; flag++) {
-      if (option[flag] === 'i') return true;
+      if (option[flag] === 'i') {
+        inPlace = true;
+        // BSD sed accepts an empty backup suffix as a separate shell word.
+        if (flag + 1 === option.length && words[index + 1] === '') index++;
+        break;
+      }
       if (option[flag] === 'e' || option[flag] === 'f') {
+        hasScript = true;
         // -e/-f consume the rest of their word, or the next complete shell word.
         if (flag + 1 === option.length) index++;
         break;
       }
     }
   }
-  return false;
+  return inPlace ? files : undefined;
+}
+
+/** Identify sed's in-place option, never option-like text in an expression or file name. */
+export function isSedInPlaceCommand(command: unknown): boolean {
+  return sedInPlaceFiles(command) !== undefined;
 }

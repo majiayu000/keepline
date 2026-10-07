@@ -1,5 +1,5 @@
 import type { TranscriptFact, ToolEvidence } from '../domain/ledger/types.js';
-import { isSedInPlaceCommand } from '../domain/ledger/sed-in-place.js';
+import { isSedInPlaceCommand, sedInPlaceFiles } from '../domain/ledger/sed-in-place.js';
 import { extractTaskPrompt } from '../domain/session/index.js';
 
 function record(value: unknown): Record<string, any> {
@@ -68,9 +68,8 @@ function outputEvidence(output: unknown, input: unknown, name: string): { exitCo
     }
   }
   // In-place shell edits carry file evidence just like Edit/apply_patch.
-  if (exitCode === 0 && typeof command === 'string' && isSedInPlaceCommand(command)) {
-    const path = command.trim().match(/(?:^|\s)([^\s]+)$/)?.[1];
-    if (path) facts.push({ kind: 'file', value: path.replace(/^['"]|['"]$/g, ''), exitCode });
+  if (exitCode === 0) {
+    for (const path of sedInPlaceFiles(command) ?? []) facts.push({ kind: 'file', value: path, exitCode });
   }
   if (/agent|collaboration/.test(name) && /(?:FINAL_ANSWER|verdict|findings|approved)/i.test(out)) facts.push({ kind: 'verdict', value: detached(out.slice(0, 400)) });
   return { exitCode, outputHead: detached(out.slice(0, 400)), facts };
