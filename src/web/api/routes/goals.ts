@@ -10,7 +10,7 @@ app.onError((error,c) => {
   if (error instanceof LedgerInputError) return c.json({ success: false,error: error.message },400);
   logger.error('Goals request failed',error); return c.json({ success: false,error: 'Goals request failed' },500);
 });
-app.get('/',c => c.json({ success: true,data: goalRows(c.req.query('area')) }));
+app.get('/',c => c.json({ success: true,data: goalRows(c.req.query('area'),undefined,c.req.query('projectMap')) }));
 app.post('/todos/:id/complete',c => c.json({ success: true,data: completeTodo(c.req.param('id')) }));
 app.post('/todos/:id/dispatch',async c => {
   const body = await readJsonObject(c); if (body.response) return body.response;

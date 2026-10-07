@@ -1,7 +1,7 @@
 import { describe,test,expect } from 'bun:test';
 import { setupLedgerTest,seededLedger,sampleFacts } from './helpers.js';
 import { ledgerReview } from '../../services/ledger/goals.js';
-import { carryOver,acceptLedger,replaceLedgerItems } from '../../services/ledger/service.js';
+import { carryOver,acceptLedger,replaceLedgerItems,getLedger } from '../../services/ledger/service.js';
 describe('daily and weekly review',() => {
   setupLedgerTest();
   test('remaining items carry forward idempotently and accepted work appears in review',async () => {
@@ -12,6 +12,9 @@ describe('daily and weekly review',() => {
     await acceptLedger(d.sessionId,{ decision: 'accepted_with_gaps',droppedItemIds: d.items.map(i => i.id),reason: 'Carry to tomorrow' });
     // The review API uses local calendar days, just like the dashboard picker.
     const review = await ledgerReview(new Date().toLocaleDateString('en-CA')); expect(review.accepted).toHaveLength(1);
+    expect(review.accepted[0].asks).toEqual([]);
+    expect(review.accepted[0].trail).toEqual([]);
+    expect((await getLedger(d.sessionId))!.asks.length).toBeGreaterThan(0);
   });
   test('weekly runtime clips turn duration to period and reports unattributed share',async () => {
     const facts = sampleFacts(); const today = new Date().toISOString().slice(0,10);

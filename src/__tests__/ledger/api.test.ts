@@ -36,6 +36,9 @@ describe('ledger API',() => {
     expect((await request(token,`/ledger/${detail.sessionId}/acceptances`,'POST',{ decision: 'accepted' })).status).toBe(200);
     const rolled = (await (await request(token,'/goals')).json() as { data: Array<{ todos: Array<{ readyToComplete: boolean }>; progress: { done: number } }> }).data;
     expect(rolled[0].todos[0].readyToComplete).toBe(true);
+    const map = (await (await request(token,`/goals?projectMap=${goal.id}`)).json() as { data: Array<{ recent: unknown[] }> }).data;
+    expect(map[0].recent.length).toBeGreaterThan(0);
+    expect((await (await request(token,'/goals')).json() as { data: Array<{ recent: unknown[] }> }).data[0].recent).toEqual([]);
     expect((await request(token,`/goals/todos/${todo.id}/complete`,'POST')).status).toBe(200);
     expect((await (await request(token,'/goals')).json() as { data: Array<{ todos: Array<{ readyToComplete: boolean }>; progress: { done: number } }> }).data[0].progress.done).toBe(1);
     expect((await request(token,'/ledger/review')).status).toBe(200);
@@ -45,6 +48,16 @@ describe('ledger API',() => {
     const second = await seededLedger(sampleFacts(),'evidence-session-b');
     expect(first.evidence[0].id).not.toBe(second.evidence[0].id);
     expect(ledgerRepository.items(first.agentSessionId)[0].evidenceIds).toEqual(first.items[0].evidenceIds);
+  });
+  test('opening and closing a reply records reading without acceptance',async () => {
+    const { token } = await setupUser('ledger-reading','password123');
+    const row = await seededLedger();
+    expect(row.unread).toBe(true);
+    expect((await request(token,`/ledger/${row.sessionId}/viewing`,'POST',{ viewed: true })).status).toBe(200);
+    expect((await request(token,`/ledger/${row.sessionId}/viewing`,'POST',{ viewed: false })).status).toBe(200);
+    const detail = await (await request(token,`/ledger/${row.sessionId}`)).json() as { data: { state: string; unread: boolean; acceptances: unknown[] } };
+    expect(detail.data).toMatchObject({ state: 'ended',unread: false,acceptances: [] });
+    expect((await request(token,`/ledger/${row.sessionId}/viewing`,'POST',{ viewed: 'yes' })).status).toBe(400);
   });
 });
 

@@ -29,7 +29,7 @@ export function extractAsks(facts: TranscriptFact[], sessionId: string): Ask[] {
     if (lines.length && lines.every(line => /^(?:[$>]\s*|(?:bun|npm|pnpm|yarn|git|cargo|go|uv|python3?|node|bash|zsh|sh|ls|pwd|cd|cat|rg|grep|find|curl|echo|sleep|mkdir|touch|rm|make|keepline)(?:\s|$)|\.{0,2}\/\S+|\/\w+(?:\s|$))/.test(line.replace(/^`([^`]+)`$/,'$1')))) continue;
     if (/^(?:import\s+(?:[^\n]+\bfrom\s+['"]|['"])|export\s+(?:default|const|function|class|interface|type)\b|(?:const|let|var)\s+\w+\s*[=:]|function\s+\w+\s*\(|def\s+\w+\s*\(|class\s+\w+\s*[:{])/.test(authoredText)) continue;
     if (/^[{[]/.test(authoredText)) { try { JSON.parse(authoredText); continue; } catch {} }
-    const sentences = authoredText.split(/\n+|(?<=[。.!！])\s+/).filter(s => s.trim());
+    const sentences = authoredText.split(/\n+|(?<=[。！？])\s*|(?<=[.!?])\s+/).filter(s => s.trim());
     const question = sentences.every(sentence => /[?？]\s*$|(?:吗|么|呢|有没有|什么|如何|怎么)\s*[.!。！]*$/i.test(sentence) || /^(?:什么|怎么|为何|为什么|如何|有没有|是否|what\b|how\b|why\b|where\b|when\b|can\s+you\b|could\s+you\b|would\s+you\b)/i.test(sentence));
     const kind = question ? 'question' : hasRequirement ? 'addition' : 'initial';
     if (!question) hasRequirement = true;

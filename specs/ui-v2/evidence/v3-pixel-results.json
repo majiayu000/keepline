@@ -1,0 +1,140 @@
+[
+  {
+    "label": "整张总览卡片与原稿逐像素一致",
+    "changed": 0,
+    "width": 280,
+    "height": 153
+  },
+  {
+    "label": "总览整页与原稿逐像素一致",
+    "changed": 0,
+    "width": 1440,
+    "height": 1000
+  },
+  {
+    "label": "侧栏与原稿逐像素一致",
+    "changed": 0,
+    "width": 232,
+    "height": 984
+  },
+  {
+    "label": "顶栏与原稿逐像素一致",
+    "changed": 0,
+    "width": 1198,
+    "height": 57
+  },
+  {
+    "label": "抽屉与原稿逐像素一致",
+    "changed": 0,
+    "width": 440,
+    "height": 984
+  },
+  {
+    "label": "详细整卡与原稿逐像素一致",
+    "changed": 0,
+    "width": 280,
+    "height": 153
+  },
+  {
+    "label": "看板整卡与原稿逐像素一致",
+    "changed": 0,
+    "width": 370,
+    "height": 153
+  },
+  {
+    "label": "列表整卡与原稿逐像素一致",
+    "changed": 0,
+    "width": 1150,
+    "height": 59
+  },
+  {
+    "label": "needs_input状态整卡与原稿逐像素一致",
+    "changed": 0,
+    "width": 280,
+    "height": 195
+  },
+  {
+    "label": "running状态整卡与原稿逐像素一致",
+    "changed": 0,
+    "width": 280,
+    "height": 195
+  },
+  {
+    "label": "review有缺口状态整卡与原稿逐像素一致",
+    "changed": 0,
+    "width": 280,
+    "height": 195
+  },
+  {
+    "label": "review状态整卡与原稿逐像素一致",
+    "changed": 0,
+    "width": 280,
+    "height": 195
+  },
+  {
+    "label": "accepted状态整卡与原稿逐像素一致",
+    "changed": 0,
+    "width": 280,
+    "height": 153
+  },
+  {
+    "label": "ended状态整卡与原稿逐像素一致",
+    "changed": 0,
+    "width": 280,
+    "height": 153
+  },
+  {
+    "label": "stopped状态整卡与原稿逐像素一致",
+    "changed": 0,
+    "width": 280,
+    "height": 153
+  },
+  {
+    "label": "八会话多状态总览整页与原稿逐像素一致",
+    "changed": 0,
+    "width": 1440,
+    "height": 1000
+  },
+  {
+    "label": "待办分组与原稿逐像素一致",
+    "changed": 0,
+    "width": 992,
+    "height": 87
+  },
+  {
+    "label": "添加待办按钮与原稿逐像素一致",
+    "changed": 0,
+    "width": 90,
+    "height": 36
+  },
+  {
+    "label": "回顾 还挂着与原稿逐像素一致",
+    "changed": 0,
+    "width": 992,
+    "height": 82
+  },
+  {
+    "label": "设置 通知与原稿逐像素一致",
+    "changed": 0,
+    "width": 772,
+    "height": 386
+  },
+  {
+    "label": "设置 偏离检测与原稿逐像素一致",
+    "changed": 0,
+    "width": 772,
+    "height": 146
+  },
+  {
+    "label": "设置 AI 判断与原稿逐像素一致",
+    "changed": 0,
+    "width": 772,
+    "height": 146
+  },
+  {
+    "label": "设置 待核对与保留与原稿逐像素一致",
+    "changed": 0,
+    "width": 772,
+    "height": 206
+  }
+]

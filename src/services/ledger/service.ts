@@ -19,6 +19,7 @@ import { readCodexMetadata } from '../../adapters/codex/liveness.js';
 import { readTranscriptFacts } from './facts.js';
 import { evaluateLedgerAlerts } from './alerts.js';
 import { judgeLedger } from './judge.js';
+import { pendingInputTool } from '../../adapters/transcript-facts.js';
 
 export class LedgerInputError extends Error {}
 const parsedSnapshots = new Map<string, { path?: string; facts?: TranscriptFact[]; unknownRecords: number }>();
@@ -29,7 +30,7 @@ export function ledgerEnabled(session: Pick<Session, 'client' | 'directory' | 'l
     !cfg.exclude.projects.some(p => session.directory === p || session.directory.startsWith(`${p}/`)) &&
     session.lastActiveAt.getTime() >= Date.now() - cfg.retentionDays * 86400000;
 }
-type LedgerStatus = Pick<LedgerDetail,'sessionId' | 'agentSessionId' | 'title' | 'state' | 'statusReason' | 'possiblyWaiting' | 'limited' | 'lastActiveAt' | 'turnId' | 'acceptances' | 'claims' | 'progress' | 'offPlan' | 'turns' | 'parentSessionId' | 'projectRoot'>;
+type LedgerStatus = Pick<LedgerDetail,'sessionId' | 'agentSessionId' | 'title' | 'state' | 'statusReason' | 'possiblyWaiting' | 'limited' | 'lastActiveAt' | 'turnId' | 'acceptances' | 'claims' | 'progress' | 'offPlan' | 'turns' | 'parentSessionId' | 'projectRoot' | 'unread' | 'pendingInput'>;
 interface LedgerScanSnapshot { path: string; transcript: string; signature: string; statusKey: string; transcriptLimited: boolean; summary: LedgerStatus; lastTurn?: Extract<TranscriptFact,{ kind: 'turn' }> }
 function transcriptFingerprint(path: string): string {
   const info = statSync(path);
@@ -54,12 +55,16 @@ function refreshStatus(detail: LedgerStatus,session: Session,goalStatus: string 
   const turn = detail.turns.find(t => t.id === detail.turnId);
   const completed = turn?.phase === 'completed';
   const reviewExpired = completed && Date.now() - Date.parse(turn.at) - turn.durationMs >= 12 * 3600000;
-  detail.state = completed ? detail.progress.total > 0 && !reviewExpired ? 'review' : 'ended' : 'running';
+  const viewed = getDatabase().query('SELECT last_viewed_turn_id FROM ledger_views WHERE session_id=?').get(session.sessionId) as { last_viewed_turn_id: string | null } | null;
+  detail.unread = completed && !reviewExpired && session.status !== 'completed' && viewed?.last_viewed_turn_id !== detail.turnId;
+  detail.state = completed ? !reviewExpired && (detail.progress.total > 0 || detail.unread) ? 'review' : 'ended' : 'running';
   if (detail.acceptances.some(a => a.turnId === detail.turnId && a.decision !== 'follow_up')) detail.state = 'accepted';
   if (turn?.phase === 'aborted' || !completed && ['lost','stalled','interrupted'].includes(session.status)) detail.state = 'stopped';
-  if (session.status === 'needs_input' && session.statusSource === 'hook') detail.state = 'needs_input';
+  if (detail.pendingInput || session.status === 'needs_input' && session.statusSource === 'hook') detail.state = 'needs_input';
   if (goalStatus) detail.state = 'stopped';
-  detail.title = session.title === 'Unknown task' ? session.parentSessionId ? `子任务 · ${session.sessionId.slice(-6)}` : `未命名会话 · ${basename(session.directory)}` : session.title;
+  if (detail.state === 'accepted') detail.unread = false;
+  if (session.title !== 'Unknown task') detail.title = session.title;
+  else if (!detail.title || detail.title === 'Unknown task') detail.title = session.parentSessionId ? `子任务 · ${session.sessionId.slice(-6)}` : `未命名会话 · ${basename(session.directory)}`;
   detail.parentSessionId = session.parentSessionId ? session.client === 'codex' && !session.parentSessionId.startsWith('codex_') ? `codex_${session.parentSessionId}` : session.parentSessionId : undefined;
   detail.lastActiveAt = session.lastActiveAt.toISOString();
   detail.statusReason = goalStatus ? `Codex 目标${goalStatus === 'blocked' ? '受阻' : goalStatus === 'budget_limited' ? '预算用尽' : '额度用尽'}` : session.statusReason;
@@ -81,7 +86,7 @@ export async function ingestLedger(session: Session, parsed: ParsedSessionData, 
     const goalStatus = currentGoalStatus(session), key = statusKey(session,goalStatus);
     refreshStatus(snapshot.summary,session,goalStatus,snapshot.transcriptLimited);
     if (key !== snapshot.statusKey) {
-      workItemEvidenceRepository.upsertAgentSession({ runtimeId: session.client === 'codex' ? 'codex' : 'claude-code',runtimeSessionId: session.sessionId,cwd: session.directory,projectRoot: session.directory,title: session.title,status: session.status,lastActiveAt: session.lastActiveAt });
+      workItemEvidenceRepository.upsertAgentSession({ runtimeId: session.client === 'codex' ? 'codex' : 'claude-code',runtimeSessionId: session.sessionId,cwd: session.directory,projectRoot: session.directory,title: snapshot.summary.title,status: session.status,lastActiveAt: session.lastActiveAt });
       snapshot.statusKey = key; writeLedgerComputation(`scan:${session.sessionId}`,transcript!,snapshot);
     }
     await evaluateLedgerAlerts(snapshot.summary);
@@ -95,8 +100,8 @@ export async function ingestLedger(session: Session, parsed: ParsedSessionData, 
   if (transcript && transcriptFingerprint(parsed.sourcePath!) === transcript) {
     const signature = computationSignature(session,transcript);
     writeLedgerComputation(`detail:${session.sessionId}`,signature,detail);
-    const { sessionId,agentSessionId,title,state,statusReason,possiblyWaiting,limited,lastActiveAt,turnId,acceptances,claims,progress,offPlan,parentSessionId,projectRoot } = detail;
-    const summary: LedgerStatus = { sessionId,agentSessionId,title,state,statusReason,possiblyWaiting,limited,lastActiveAt,turnId,acceptances,claims,progress,offPlan,parentSessionId,projectRoot,turns: detail.turns.filter(t => t.id === turnId) };
+    const { sessionId,agentSessionId,title,state,statusReason,possiblyWaiting,limited,lastActiveAt,turnId,acceptances,claims,progress,offPlan,parentSessionId,projectRoot,unread,pendingInput } = detail;
+    const summary: LedgerStatus = { sessionId,agentSessionId,title,state,statusReason,possiblyWaiting,limited,lastActiveAt,turnId,acceptances,claims,progress,offPlan,parentSessionId,projectRoot,unread,pendingInput,turns: detail.turns.filter(t => t.id === turnId) };
     writeLedgerComputation(`scan:${session.sessionId}`,transcript,{ path: parsed.sourcePath,transcript,signature,summary,transcriptLimited: derived.facts.some(f => f.kind === 'limit'),statusKey: statusKey(session,currentGoalStatus(session)),lastTurn: [...derived.facts].reverse().find(f => f.kind === 'turn') });
   }
   return detail;
@@ -116,13 +121,14 @@ export function suggestAttribution(session: Session, ask: string) {
 async function buildLedger(session: Session, facts: TranscriptFact[], unknownRecords = 0): Promise<LedgerDetail> {
   const cfg = config.get().ledger;
   const runtimeId = session.client === 'codex' ? 'codex' : 'claude-code';
+  const asks = extractAsks(facts, session.sessionId);
+  const ledgerTitle = session.title === 'Unknown task' ? asks[0]?.authoredText.slice(0,80) ?? session.title : session.title;
   const goalStatus = session.client === 'codex' ? readCodexMetadata(session.sessionId.replace(/^codex_/, '')).limited : undefined;
   const agent = workItemEvidenceRepository.upsertAgentSession({ runtimeId, runtimeSessionId: session.sessionId, cwd: session.directory,
-    projectRoot: session.directory, title: session.title, status: session.status, lastActiveAt: session.lastActiveAt });
+    projectRoot: session.directory, title: ledgerTitle, status: session.status, lastActiveAt: session.lastActiveAt });
   const db = getDatabase();
   const link = workItemEvidenceRepository.findAcceptedSessionLinks(agent.id)[0];
   const workItem = link && workItemRepository.findById(link.workItemId);
-  const asks = extractAsks(facts, session.sessionId);
   ledgerRepository.saveAsks(agent.id, asks);
   const existing = ledgerRepository.items(agent.id, true);
   const modelAsks = asks.filter(ask => !existing.some(item => item.id === ledgerId(agent.id,'item',ask.id) && (item.dropped || item.source === 'user')));
@@ -181,8 +187,9 @@ async function buildLedger(session: Session, facts: TranscriptFact[], unknownRec
   const attribution = !link && !noGoal ? suggestAttribution(session, asks.filter(a => a.kind !== 'question').map(a => a.authoredText).join('\n')) : [];
   for (const suggestion of attribution) workItemEvidenceRepository.createSessionLink({ workItemId: suggestion.workItemId, agentSessionId: agent.id, linkSource: 'heuristic_suggestion' });
   const detail: LedgerDetail = {
-    sessionId: session.sessionId, agentSessionId: agent.id, title: session.title, projectRoot: session.directory, runtimeId,
+    sessionId: session.sessionId, agentSessionId: agent.id, title: ledgerTitle, projectRoot: session.directory, runtimeId,
     state, statusReason: session.statusReason, possiblyWaiting: session.status === 'waiting' && session.statusSource !== 'hook',
+    pendingInput: !!pendingInputTool(facts),
     available: facts.length > 0 && unknownRecords < Math.max(10,facts.length), unavailableReason: facts.length ? unknownRecords >= Math.max(10,facts.length) ? '无法识别记录格式，仅显示会话状态' : undefined : '暂时无法读取执行记录',
     asks: ledgerRepository.asks(agent.id), ...matched, turns, claims, acceptances, turnId, workItemId: link?.workItemId,
     lastActiveAt: session.lastActiveAt.toISOString(), attribution, limited: !!goalStatus || facts.some(f => f.kind === 'limit'),
@@ -227,12 +234,22 @@ async function ledgerFromPath(session: Session, path: string): Promise<LedgerDet
   }
   return (await ingestLedger(session,parsed))!;
 }
-export async function ledgerOverview(hours = 24) {
+export async function ledgerOverview(hours = 24, omitTranscript = false) {
   const all = sessionRepository.findAll().filter(ledgerEnabled);
   const byId = new Map(all.map(session => [session.sessionId,session]));
   const sessions = all.filter(s => s.lastActiveAt.getTime() >= Date.now() - hours * 3600000);
   const details = new Map<string,LedgerDetail>();
-  for (const session of sessions) { const detail = await getLedger(session.sessionId); if (detail) details.set(detail.sessionId,detail); }
+  const retain = (detail: LedgerDetail) => {
+    // Reviews aggregate a retention window; keep evidence and progress, not every
+    // transcript/tool input in memory. Full records remain available by session ID.
+    if (omitTranscript) {
+      detail.asks = []; detail.trail = []; detail.claims = [];
+      detail.followUpSuggestions = []; detail.importSuggestions = [];
+      if (detail.activity) detail.activity = { ...detail.activity,lastMessage: undefined };
+    }
+    details.set(detail.sessionId,detail);
+  };
+  for (const session of sessions) { const detail = await getLedger(session.sessionId); if (detail) retain(detail); }
   const roots = new Map<string,LedgerDetail>();
   for (const child of [...details.values()]) {
     let root = child;
@@ -241,7 +258,7 @@ export async function ledgerOverview(hours = 24) {
       seen.add(root.parentSessionId);
       const parentId = root.parentSessionId;
       let parent = details.get(parentId);
-      if (!parent && byId.has(parentId)) { parent = await getLedger(parentId) ?? undefined; if (parent) details.set(parentId,parent); }
+      if (!parent && byId.has(parentId)) { parent = await getLedger(parentId) ?? undefined; if (parent) retain(parent); }
       if (!parent) break;
       root = parent;
     }
@@ -250,7 +267,7 @@ export async function ledgerOverview(hours = 24) {
       attachSubagent(root,child);
     }
   }
-  const urgency = (d: LedgerDetail) => ledgerNeedsAttention(d) ? 0 : d.state === 'running' ? 1 : 2;
+  const urgency = (d: LedgerDetail) => d.state === 'needs_input' ? 0 : ledgerNeedsAttention(d) ? 1 : d.state === 'running' ? 2 : 3;
   return [...roots.values()].sort((a,b) => urgency(a) - urgency(b) || Date.parse(b.lastActiveAt) - Date.parse(a.lastActiveAt));
 }
 function attachSubagent(parent: LedgerDetail,child: LedgerDetail) {
@@ -365,7 +382,7 @@ export async function replaceLedgerItems(sessionId: string, values: RequirementI
     if (ids.has(id)) throw new LedgerInputError('Duplicate item id'); ids.add(id);
     if (value.id && !own.some(i => i.id === id)) throw new LedgerInputError('Unknown item id');
     const old = own.find(i => i.id === id);
-    return { ...value,id,ordinal,source: 'user' as const, statusSource: value.status !== old?.status ? 'user' as const : old?.statusSource ?? 'rule' as const, evidenceIds: (value.evidenceIds ?? []).filter(id => detail.evidence.some(e => e.id === id)), checklistId: old?.checklistId };
+    return { ...value,id,ordinal,source: 'user' as const, statusSource: old ? value.status !== old.status ? 'user' as const : old.statusSource : value.status === 'todo' ? 'rule' as const : 'user' as const, evidenceIds: (value.evidenceIds ?? []).filter(id => detail.evidence.some(e => e.id === id)), checklistId: old?.checklistId };
   });
   transaction(() => {
     // Record the correction against raw candidates too, so toggling AI cannot resurrect them.

@@ -8,6 +8,7 @@ import { ledgerReview } from '../../../services/ledger/goals.js';
 import { markLedgerViewed,ledgerNotificationTitle } from '../../../services/ledger/alerts.js';
 import type { RequirementItem, LedgerRule, LedgerAcceptance } from '../../../domain/ledger/types.js';
 import { getDatabase } from '../../../infrastructure/database/sqlite.js';
+import { emit } from '../../../lib/events.js';
 
 const app = new Hono(); app.use('*',authMiddleware);
 app.onError((error,c) => {
@@ -107,7 +108,12 @@ app.post('/:sessionId/import-requirements',async c => {
 app.post('/:sessionId/viewing',async c => {
   const body = await readJsonObject(c); if (body.response) return body.response;
   if (typeof body.data!.viewed !== 'boolean') throw new LedgerInputError('viewed must be boolean');
-  markLedgerViewed(c.req.param('sessionId'),body.data!.viewed); return c.json({ success: true });
+  const sessionId = c.req.param('sessionId');
+  const detail = body.data!.viewed ? await getLedger(sessionId) : null;
+  const turnId = detail?.turns.find(t => t.id === detail.turnId)?.phase === 'completed' ? detail.turnId : undefined;
+  markLedgerViewed(sessionId,body.data!.viewed,Date.now(),turnId);
+  if (detail?.unread) emit('ledger:update',{ sessionId });
+  return c.json({ success: true });
 });
 export const ledgerSettings = new Hono(); ledgerSettings.use('*',authMiddleware);
 ledgerSettings.get('/',c => c.json({ success: true,data: config.get().ledger }));
