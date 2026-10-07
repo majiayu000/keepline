@@ -401,6 +401,52 @@ describe('completion requires current execution evidence', () => {
     expect(matchLedger(parser.facts, items, [], [], DEFAULT_LEDGER_CONFIG).progress.done).toBe(expected === 0 ? 1 : 0);
   });
 
+  test.each([
+    'cp fixture.ts src/widget.ts',
+    'node write.js',
+    'env CI=1 /usr/bin/node write.js',
+    'npm run generate',
+    './scripts/check',
+    'env --unknown bun test',
+  ])('a non-verification mutation criterion invalidates older checks: %s', cmd => {
+    const items = decompose([], 'mutation-criteria', [
+      { id: 'tests', text: `Run \`${command}\`` },
+      { id: 'write', text: `Run \`${cmd}\`` },
+    ]);
+    const calls: Call[] = [{ code: 0 }, { cmd, code: 0, output: '' }];
+    const stale = matchLedger(recordedCalls(calls), items, [], [], DEFAULT_LEDGER_CONFIG);
+    expect(stale.items.map(item => item.status)).toEqual(['unverified', 'done']);
+    expect(stale.items[0].evidenceIds).toEqual([]);
+    expect(matchLedger(recordedCalls([...calls, { code: 0 }]), items, [], [], DEFAULT_LEDGER_CONFIG).items.map(item => item.status)).toEqual(['done', 'done']);
+  });
+
+  test.each([
+    'bun test src/other.test.ts', 'npm test', 'pnpm run tests',
+    'yarn run check', 'bun run typecheck', 'cargo test', 'cargo check',
+    'pytest tests/widget.py', 'go test ./...',
+    'CI=1 /usr/bin/env -- LANG=C /usr/local/bin/bun run typecheck',
+  ])('a known direct verification criterion retains peer receipts: %s', cmd => {
+    expect(match([{ code: 0 }, { cmd, code: 0 }], [command, cmd]).progress.done).toBe(1);
+  });
+
+  test.each(['exec_command', 'functions.exec_command', 'mcp__shell__exec_command'])(
+    '%s supplies direct and asynchronous literal command receipts', name => {
+      expect(match([{ name, code: 0 }]).progress.done).toBe(1);
+      const start = { name, result: { session_id: 91, output: 'running' } };
+      const poll = { name: 'write_stdin', input: { session_id: 91, chars: '' } };
+      expect(match([start, { ...poll, code: 0 }]).progress.done).toBe(1);
+      expect(match([start, { ...poll, code: 1 }]).progress.done).toBe(0);
+    });
+
+  test.each(['read_text_file', 'list_directory', 'mcp__filesystem__read_text_file', 'mcp__filesystem__list_directory'])(
+    'path-bearing %s preserves successful checks', name => {
+      expect(match([{ code: 0 }, { name, input: { path: 'src/widget.ts' }, code: 0, output: '1 pass' }]).progress.done).toBe(1);
+    });
+
+  test('read_and_write_file remains a path-bearing mutation', () => {
+    expect(match([{ code: 0 }, { name: 'mcp__filesystem__read_and_write_file', input: { path: 'src/widget.ts' }, code: 0 }]).items[0].status).toBe('unverified');
+  });
+
   test('independent current command criteria retain their own receipts', () => {
     expect(match([{ code: 0 }, { cmd: 'bun run typecheck', code: 0 }], [command, 'bun run typecheck']).progress.done).toBe(1);
   });

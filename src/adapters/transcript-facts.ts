@@ -1,5 +1,5 @@
 import type { TranscriptFact, ToolEvidence } from '../domain/ledger/types.js';
-import { directWords, isSedWriteCommand, sedInPlaceFiles } from '../domain/ledger/sed-in-place.js';
+import { directCommandWords, isSedWriteCommand, sedInPlaceFiles } from '../domain/ledger/sed-in-place.js';
 import { extractTaskPrompt } from '../domain/session/index.js';
 
 function record(value: unknown): Record<string, any> {
@@ -21,13 +21,13 @@ export function isMutatingTool(name: string, input: unknown): boolean {
   const command = data.command ?? data.cmd;
   if (isSedWriteCommand(command)) return true;
   if (typeof command === 'string' && /^find\b/.test(command.trim()) && /(?:^|\s)-(?:delete|exec|execdir|ok|okdir|fprint|fprintf|fls)\b/.test(command)) return true;
-  if (/(?:^|[_.])(?:wait|sleep|read_file|read|list|list_agents|search|find|view_image|getState|get_goal|clock__curr_time)$/.test(name) || /^(Read|Glob|Grep|LS|TodoWrite)$/.test(name)) return false;
+  if (/(?:^|[_.])(?:wait|sleep|read_file|read_text_file|read|list|list_directory|list_agents|search|find|view_image|getState|get_goal|clock__curr_time)$/.test(name) || /^(Read|Glob|Grep|LS|TodoWrite)$/.test(name)) return false;
   if (/write_stdin$/.test(name) && !data.chars) return false;
   if (typeof command === 'string') {
     // A read followed by a write must remain a step. Shell substitution is not read-only.
-    const words = directWords(command);
+    const words = directCommandWords(command);
     if (!words) return true;
-    if (words[0] === 'git') {
+    if (words[0]?.split('/').at(-1) === 'git') {
       let index = 1;
       while (index < words.length) {
         if (words[index] === '--no-pager') index++;
@@ -203,7 +203,7 @@ export class TranscriptFacts {
         this.result(original, output, code, implicit,at);
       }
     }
-    const execution = /^(?:Bash|(?:[\w]+\.)?exec_command)$/.test(call.name);
+    const execution = call.name === 'Bash' || /(?:^|[_.])exec_command$/.test(call.name);
     if (!call.mutating && !execution) {
       call.outputHead = detached(textContent(output).slice(0,400));
       call.exitCode = code; call.facts = []; return;
