@@ -8,7 +8,7 @@ export function ledgerId(...parts: string[]): string { return createHash('sha256
 export function anchorsFromText(text: string): Anchors {
   return {
     paths: [...new Set([...text.matchAll(/(?:`|\s|^)((?:[\w.-]+\/)+[\w.*?/-]+|[\w.-]+\.(?:ts|tsx|js|json|rs|py|md|toml))/g)].map(m => m[1]))],
-    commands: [...text.matchAll(/(?:`|\b)((?:bun|npm|pnpm|cargo|pytest|git)\s+[^`\n。;]+)(?:`|$)/g)].map(m => m[1].trim()),
+    commands: [...text.matchAll(/(?:`|\b)((?:[A-Za-z_]\w*=[^\s`]+\s+)*(?:bun|npm|pnpm|cargo|pytest|git)\s+[^`\n。;]+)(?:`|$)/g)].map(m => m[1].trim()),
     keywords: [...new Set(text.toLowerCase().match(/[\p{L}\p{N}_-]{3,}/gu) ?? [])].slice(0, 30),
   };
 }
@@ -97,6 +97,7 @@ export function matchLedger(facts: TranscriptFact[], inputItems: RequirementItem
   const items = structuredClone(inputItems);
   for (const item of items) if (item.statusSource !== 'user') { item.evidenceIds = []; item.status = 'todo'; }
   const confirmed = items.filter(confirmedRequirement);
+  const criterionCommands = new Set(confirmed.flatMap(item => item.anchors.commands.map(literalCommand)).filter(Boolean));
   const evidence: LedgerEvidence[] = [];
   const evidenceIds = new Set<string>();
   const trail: LedgerStep[] = [];
@@ -122,14 +123,15 @@ export function matchLedger(facts: TranscriptFact[], inputItems: RequirementItem
     // Successful tests are evidence even though the test invocation is not a file edit.
     const command = executedCommand(fact);
     // A transcript does not provide a complete test dependency graph. An
-    // observed edit or execution wrapper without a direct command receipt
+    // observed edit or shell mutation outside the current command criteria
     // conservatively invalidates earlier checks, regardless of attribution.
     // Wrapper source text can invalidate old proof, but never creates proof.
     const uncertainExecution = !command && /(?:^|[_.])(?:Bash|exec|exec_command)$/.test(fact.name);
     // sed can change earlier files before a later input fails. A nonzero exit
     // cannot establish that no write happened, or supply successful file proof.
     const possibleInPlaceEdit = isSedInPlaceCommand(command);
-    if (uncertainExecution && fact.mutating || possibleInPlaceEdit || ownEvidence.some(e => e.kind === 'file') || fact.exitCode === undefined && /(?:^|[_.])(?:apply_patch|Write|Edit)$/.test(fact.name)) {
+    const directShellMutation = command && fact.mutating && !criterionCommands.has(command);
+    if ((uncertainExecution || directShellMutation) && fact.mutating || possibleInPlaceEdit || ownEvidence.some(e => e.kind === 'file') || fact.exitCode === undefined && /(?:^|[_.])(?:apply_patch|Write|Edit)$/.test(fact.name)) {
       for (const [command, ids] of latestChecks) if (ids.length) invalidatedChecks.add(command);
       latestChecks.clear();
     }
