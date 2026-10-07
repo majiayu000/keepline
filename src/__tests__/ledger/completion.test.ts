@@ -1,4 +1,8 @@
 import { describe, expect, test } from 'bun:test';
+import { spawnSync } from 'node:child_process';
+import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import { TranscriptFacts } from '../../adapters/transcript-facts.js';
 import { decompose, matchLedger } from '../../domain/ledger/matcher.js';
 import { DEFAULT_LEDGER_CONFIG } from '../../domain/ledger/types.js';
@@ -112,11 +116,107 @@ describe('completion requires current execution evidence', () => {
     expect(match([{ code: 0 }, { name: 'Edit', input: { file_path: 'src/widget.ts' } }]).progress.done).toBe(0);
   });
 
-  test('successful shell in-place edits invalidate checks, failed edits do not', () => {
-    const edit = { cmd: 'sed -i s/a/b/ src/widget.ts', output: '' };
+  test.each([
+    'sed -i s/a/b/ src/widget.ts',
+    'sed -i.bak s/a/b/ src/widget.ts',
+    'sed --in-place s/a/b/ src/widget.ts',
+    'sed --in-place=.bak s/a/b/ src/widget.ts',
+    'sed -ni s/a/b/p src/widget.ts',
+    'sed -n -i s/a/b/p src/widget.ts',
+    `sed "-""i".bak 's/a/b/' src/widget.ts`,
+    `sed -e 's/a/b/' -i.bak src/widget.ts`,
+  ])('in-place edit attempts require fresh checks regardless of exit status: %s', (cmd) => {
+    const edit = { cmd, output: '' };
     expect(match([{ code: 0 }, { ...edit, code: 0 }]).progress.done).toBe(0);
-    expect(match([{ code: 0 }, { ...edit, code: 1 }]).progress.done).toBe(1);
+    expect(match([{ code: 0 }, { ...edit, code: 1 }]).progress.done).toBe(0);
+    expect(match([{ code: 0 }, edit]).progress.done).toBe(0);
     expect(match([{ code: 0 }, { ...edit, code: 0 }, { code: 0 }]).progress.done).toBe(1);
+  });
+
+  test('a read-only sed failure preserves earlier successful checks', () => {
+    expect(match([{ code: 0 }, { cmd: 'sed -n 1,3p missing.ts', code: 1, output: 'not found' }])
+      .progress.done).toBe(1);
+  });
+
+  test.each([
+    `sed -n 's/x/ -i/p' widget.ts`,
+    `sed -n 's/x/ -i /p' widget.ts`,
+    `sed -n "s/x/ -i/p" widget.ts`,
+    `sed -n -e '-i' widget.ts`,
+    `sed -n -f '-i' widget.ts`,
+    `sed -n --expression '-i' widget.ts`,
+    `sed -n --file '-i' widget.ts`,
+    `sed -n --expression=-i widget.ts`,
+    `sed -n 's/x/y/p' widget.ts # -i`,
+    `sed -- -i widget.ts`,
+  ])('option-like text is never in-place edit evidence: %s', (cmd) => {
+    for (const code of [undefined, 0, 1]) {
+      const result = match([{ code: 0 }, { cmd, code, output: '' }]);
+      expect(result.progress.done).toBe(1);
+      expect(result.evidence.filter(e => e.callId === 'completion-1' && e.kind === 'file')).toEqual([]);
+    }
+  });
+
+  test.each([
+    'sed -i s/a/b/ "$TARGET"',
+    `sed -n -i 's/a/b/p' "$TARGET"`,
+    `sed -ni 's/a/b/p' "$TARGET"`,
+    'sed -i s/a/b/ src/widget.ts || true',
+  ])('uncertain sed execution invalidates checks without proving a file write: %s', (cmd) => {
+    const result = match([{ code: 0 }, { cmd, code: 0, output: '' }]);
+    expect(result.progress.done).toBe(0);
+    expect(result.items[0].status).toBe('unverified');
+    expect(result.evidence.filter(e => e.callId === 'completion-1' && e.kind === 'file')).toEqual([]);
+  });
+
+  test.each([
+    `sed -i.bak 's/a/b /' widget.ts missing.ts`,
+    `sed -n -i.bak 's/a/b /p' "$TARGET" missing.ts`,
+    `sed -ni.bak 's/a/b /p' "$TARGET" missing.ts`,
+    `cat widget.ts\nsed -i.bak 's/a/b /' widget.ts missing.ts`,
+  ])('a failed multi-file in-place edit invalidates a real earlier check: %s', (editCommand) => {
+    const root = mkdtempSync(join(tmpdir(), 'keepline-partial-edit-'));
+    const execute = (cmd: string, args: string[]) => {
+      const result = spawnSync(cmd, args, { cwd: root, encoding: 'utf8', env: { ...process.env, TARGET: 'widget.ts' } });
+      if (result.error) throw result.error;
+      if (result.status === null) throw new Error(`Command stopped before an exit receipt: ${cmd}`);
+      return { exit_code: result.status, output: result.stdout + result.stderr };
+    };
+    try {
+      expect(execute('git', ['init', '--quiet']).exit_code).toBe(0);
+      writeFileSync(join(root, 'widget.ts'), 'a\n');
+      expect(execute('git', ['add', 'widget.ts']).exit_code).toBe(0);
+      const before = execute('git', ['diff', '--check']);
+      expect(before.exit_code).toBe(0);
+      // A backup suffix works with both GNU and BSD sed. The existing first
+      // file is changed before the missing second file makes the command fail.
+      const edit = execute('sh', ['-c', editCommand]);
+      expect(edit.exit_code).not.toBe(0);
+      expect(readFileSync(join(root, 'widget.ts'), 'utf8')).toBe('b \n');
+      expect(execute('git', ['diff', '--check']).exit_code).not.toBe(0);
+      const calls = [
+        { cmd: 'git diff --check', result: before },
+        { cmd: editCommand, result: edit },
+      ];
+      // Only the original success and failed edit enter the transcript. The
+      // independently failed recheck above must not be needed to invalidate it.
+      const stale = match(calls, ['git diff --check']);
+      expect(stale.progress).toEqual({ done: 0, total: 1 });
+      expect(stale.items[0].status).toBe('unverified');
+      expect(stale.items[0].evidenceIds).toEqual([]);
+      expect(stale.evidence.filter(e => e.callId === 'completion-1' && e.kind === 'file')).toEqual([]);
+      expect(stale.evidence.filter(e => e.callId === 'completion-1').every(e => e.exitCode !== 0)).toBe(true);
+
+      writeFileSync(join(root, 'widget.ts'), 'b\n');
+      const current = execute('git', ['diff', '--check']);
+      expect(current.exit_code).toBe(0);
+      const verified = match([...calls, { cmd: 'git diff --check', result: current }], ['git diff --check']);
+      expect(verified.progress).toEqual({ done: 1, total: 1 });
+      expect(verified.evidence.filter(e => verified.items[0].evidenceIds.includes(e.id))
+        .every(e => e.callId === 'completion-2')).toBe(true);
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
   });
 
   test('async terminal completion belongs to the original command and session', () => {

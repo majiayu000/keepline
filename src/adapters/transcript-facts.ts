@@ -1,4 +1,5 @@
 import type { TranscriptFact, ToolEvidence } from '../domain/ledger/types.js';
+import { isSedInPlaceCommand } from '../domain/ledger/sed-in-place.js';
 import { extractTaskPrompt } from '../domain/session/index.js';
 
 function record(value: unknown): Record<string, any> {
@@ -18,12 +19,13 @@ function detached(text: string): string { return Buffer.from(text).toString(); }
 export function isMutatingTool(name: string, input: unknown): boolean {
   const data = record(input);
   const command = data.command ?? data.cmd;
+  if (isSedInPlaceCommand(command)) return true;
   if (typeof command === 'string' && /^find\b/.test(command.trim()) && /(?:^|\s)-(?:delete|exec|execdir|ok|okdir|fprint|fprintf|fls)\b/.test(command)) return true;
   if (/(?:^|[_.])(?:wait|sleep|read_file|read|list|list_agents|search|find|view_image|getState|get_goal|clock__curr_time)$/.test(name) || /^(Read|Glob|Grep|LS|TodoWrite)$/.test(name)) return false;
   if (/write_stdin$/.test(name) && !data.chars) return false;
   if (typeof command === 'string') {
     // A read followed by a write must remain a step. Shell substitution is not read-only.
-    if (/[;&|>`]|\$\(/.test(command)) return true;
+    if (/[\r\n;&|<>`$]/.test(command)) return true;
     return !/^(?:sleep|cat|ls|rg|grep|head|tail|pwd|stat|find|sed\s+-n|git\s+(?:status|diff|log|show|ls-files))\b/.test(command.trim());
   }
   if (/functions.exec$/.test(name) && typeof data.input === 'string') {
@@ -66,7 +68,7 @@ function outputEvidence(output: unknown, input: unknown, name: string): { exitCo
     }
   }
   // In-place shell edits carry file evidence just like Edit/apply_patch.
-  if (exitCode === 0 && typeof command === 'string' && /^sed\b.*\s-[A-Za-z]*i(?:\s|$)/.test(command)) {
+  if (exitCode === 0 && typeof command === 'string' && isSedInPlaceCommand(command)) {
     const path = command.trim().match(/(?:^|\s)([^\s]+)$/)?.[1];
     if (path) facts.push({ kind: 'file', value: path.replace(/^['"]|['"]$/g, ''), exitCode });
   }
