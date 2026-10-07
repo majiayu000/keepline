@@ -48,7 +48,7 @@ describe('completion requires current execution evidence', () => {
   });
 
   test.each([
-    "sed -i 's/a/b/' src/private/a.ts src/public/b.ts",
+    "sed -i.bak 's/a/b/' src/private/a.ts src/public/b.ts",
     "sed -i.bak -e 's/a/b/' src/private/a.ts src/public/b.ts",
     "sed -n -i '' 's/a/b/p' src/private/a.ts src/public/b.ts",
     "sed --in-place=.bak --expression='s/a/b/' -- src/private/a.ts src/public/b.ts",
@@ -58,6 +58,18 @@ describe('completion requires current execution evidence', () => {
     const result = matchLedger(recordedCalls([{ cmd, code: 0, output: '' }]), items, [], [], DEFAULT_LEDGER_CONFIG);
     expect(result.evidence.filter(e => e.kind === 'file').map(e => e.value)).toEqual(['src/private/a.ts', 'src/public/b.ts']);
     expect(result.trail[0].violations).toEqual(['Forbidden path: src/private/**']);
+  });
+
+  test.each([
+    "sed -i .bak 's@/src/private/a.ts@new@' public.ts",
+    "sed -i 's@/src/private/a.ts@new@' public.ts",
+  ])('ambiguous GNU/BSD bare -i invalidates checks without invented file facts: %s', (cmd) => {
+    const items = decompose([], 'sed-ambiguous', [{ id: 'edit', text: 'Do not edit src/private/**' }]);
+    const result = matchLedger(recordedCalls([{ cmd, code: 0, output: '' }]), items, [], [], DEFAULT_LEDGER_CONFIG);
+    expect(result.evidence.filter(e => e.kind === 'file')).toEqual([]);
+    expect(result.trail.flatMap(t => t.violations)).toEqual([]);
+    expect(match([{ code: 0 }, { cmd, code: 0, output: '' }]).progress.done).toBe(0);
+    expect(match([{ code: 0 }, { cmd, code: 0, output: '' }, { code: 0 }]).progress.done).toBe(1);
   });
 
   test.each(['write_stdin', 'functions.write_stdin'])('nonempty %s input invalidates checks from before the write', (name) => {

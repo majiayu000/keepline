@@ -35,7 +35,7 @@ export function sedInPlaceFiles(command: unknown): string[] | undefined {
   const words = directWords(command);
   if (words?.[0] !== 'sed') return undefined;
   const files: string[] = [];
-  let inPlace = false, hasScript = false, options = true;
+  let inPlace = false, hasScript = false, options = true, ambiguousSuffix = false;
   for (let index = 1; index < words.length; index++) {
     const option = words[index];
     if (options && option === '--') { options = false; continue; }
@@ -51,8 +51,12 @@ export function sedInPlaceFiles(command: unknown): string[] | undefined {
     for (let flag = 1; flag < option.length; flag++) {
       if (option[flag] === 'i') {
         inPlace = true;
-        // BSD sed accepts an empty backup suffix as a separate shell word.
-        if (flag + 1 === option.length && words[index + 1] === '') index++;
+        // Bare -i consumes a suffix on BSD but not GNU. Without host
+        // provenance, retain the mutation attempt and avoid guessing files.
+        if (flag + 1 === option.length) {
+          if (words[index + 1] === '') index++;
+          else ambiguousSuffix = true;
+        }
         break;
       }
       if (option[flag] === 'e' || option[flag] === 'f') {
@@ -63,7 +67,7 @@ export function sedInPlaceFiles(command: unknown): string[] | undefined {
       }
     }
   }
-  return inPlace ? files : undefined;
+  return inPlace ? (ambiguousSuffix ? [] : files) : undefined;
 }
 
 /** Identify sed's in-place option, never option-like text in an expression or file name. */
