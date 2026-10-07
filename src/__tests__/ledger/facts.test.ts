@@ -129,8 +129,8 @@ describe('normalized transcript facts',() => {
     expect(tool.facts?.find(e => e.kind === 'pr')?.value).toBe('https://github.com/example/project/pull/42');
   });
   test('read-only commands collapse, combined writes remain steps',() => {
-    for (const cmd of ['cat a.ts','git status','git diff','rg widget src','sed -n 1,3p a.ts']) expect(isMutatingTool('Bash',{ command: cmd })).toBe(false);
-    for (const cmd of ['cat a.ts > b.ts','git status && git commit -m fix','bun test','sed -i s/a/b/ a.ts']) expect(isMutatingTool('Bash',{ command: cmd })).toBe(true);
+    for (const cmd of ['cat a.ts','git status','git diff','git -C repo status --short','git --no-pager log -1','git --no-pager -C "repo path" diff --check','git -Crepo status --short','rg widget src','sed -n 1,3p a.ts']) expect(isMutatingTool('Bash',{ command: cmd })).toBe(false);
+    for (const cmd of ['cat a.ts > b.ts','git status && git commit -m fix','git -C repo status && git -C repo checkout .','git --no-pager checkout .','git -C repo commit -m fix','git --unknown status','git -C','bun test','sed -i s/a/b/ a.ts']) expect(isMutatingTool('Bash',{ command: cmd })).toBe(true);
     expect(isMutatingTool('functions.find',{ command: 'find . -delete' })).toBe(true);
     expect(isMutatingTool('functions.wait',{})).toBe(false);
     expect(isMutatingTool('Bash',{ command: 'sleep 60' })).toBe(false);
