@@ -36,6 +36,11 @@ export function isMutatingTool(name: string, input: unknown): boolean {
         else if (words[index].startsWith('-C') && words[index].length > 2) index++;
         else break;
       }
+      const args = words.slice(index + 1);
+      const separator = args.indexOf('--');
+      const options = separator < 0 ? args : args.slice(0, separator);
+      if (options.some(option => option === '--output' || option.startsWith('--output='))) return true;
+      if (words[index] === 'branch') return !(args.length === 1 && args[0] === '--show-current');
       return !/^(?:status|diff|log|show|ls-files)$/.test(words[index] ?? '');
     }
     return !/^(?:sleep|cat|ls|rg|grep|head|tail|pwd|stat|find|sed)$/.test(executable ?? '');
@@ -100,11 +105,13 @@ export class TranscriptFacts {
   private sessions = new Map<string, string>();
   private turnId = '';
   private messages = new Set<string>();
+  private order = 0;
   constructor(private runtime: 'codex' | 'claude', private since = 0) {}
   add(value: unknown): void {
     const entry = record(value);
     const at = typeof entry.timestamp === 'string' ? entry.timestamp : undefined;
     if (!at || !Number.isFinite(Date.parse(at)) || Date.parse(at) < this.since) return;
+    this.order++;
     const payload = record(entry.payload);
     if (this.runtime === 'codex') {
       if (entry.type === 'event_msg' && payload.type === 'item_completed') {
@@ -184,7 +191,7 @@ export class TranscriptFacts {
   }
   private tool(callId: string, name: string, input: unknown, at: string): void {
     if (!callId || !name) return;
-    const fact: Extract<TranscriptFact, { kind: 'tool' }> = { kind: 'tool', callId, name, input, at, turnId: this.turnId, mutating: isMutatingTool(name, input) };
+    const fact: Extract<TranscriptFact, { kind: 'tool' }> = { kind: 'tool', callId, name, input, at, turnId: this.turnId, startedOrder: this.order, mutating: isMutatingTool(name, input) };
     this.calls.set(callId, fact); this.facts.push(fact);
   }
   private result(callId: string, output: unknown, code?: number, implicit = false, at?: string): void {
@@ -214,6 +221,10 @@ export class TranscriptFacts {
     if (priorFailure) call.facts?.push(priorFailure);
     // Shell reads still prove their own literal command, never tests copied from a log.
     if (!call.mutating) call.facts = call.facts?.filter(f => f.kind === 'command');
+    // Keep both boundaries even when timestamps are equal. Repeated terminal
+    // polls must not move an old attempt past a newer check.
+    const terminal = call.exitCode !== undefined || !execution && call.facts?.some(f => f.kind === 'file');
+    if (terminal && (call.completedOrder === undefined || previousExitCode !== call.exitCode)) call.completedOrder = this.order;
     if (execution && previousExitCode !== call.exitCode && call.exitCode !== undefined) {
       // Reuse the execution fact at its terminal receipt boundary. Empty polls
       // remain reads, and no duplicate execution or synthetic stdin write is added.
