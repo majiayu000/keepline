@@ -53,6 +53,8 @@ describe('completion requires current execution evidence', () => {
     { content: JSON.stringify({ session_id: 27, output: 'still running' }), expected: undefined },
     { content: 'Process running with session ID 27', expected: undefined },
     { content: JSON.stringify({ exit_code: 1, output: 'failed' }), expected: 1 },
+    { content: 'Process exited with code 1\nCommand failed', expected: 1 },
+    { content: 'Exit code: 2\nCommand finished', expected: 2 },
   ])('Claude qualified exec preserves pending and failed structured receipts: $content', ({ content, expected }) => {
     const parser = new TranscriptFacts('claude'), timestamp = new Date().toISOString();
     parser.add({ type: 'assistant', timestamp, message: { content: [{ type: 'tool_use', id: 'check', name: 'mcp__shell__exec_command', input: { cmd: command } }] } });
@@ -64,6 +66,7 @@ describe('completion requires current execution evidence', () => {
 
   test.each([
     'git diff --ext-diff', 'git log --ext-diff -1', 'git show --textconv HEAD',
+    'git log -p --pretty --ext-diff HEAD~1..HEAD',
     'git --no-pager -C repo diff --no-ext-diff --ext-diff',
     'python -m pytest --junitxml=src/widget.ts', 'python3 -m pytest --basetemp src/widget.ts',
     'python3 -c "print(1)" -m pytest', 'python3 script.py -m pytest',
@@ -85,6 +88,15 @@ describe('completion requires current execution evidence', () => {
     "sed -n 'R included; e writer' input.txt",
   ])('helper disables, Python pytest and newline-terminated sed data preserve peer proof: %s', cmd => {
     expect(match([{ code: 0 }, { cmd, code: 0 }], [command, cmd]).progress.done).toBe(1);
+  });
+
+  test('Claude qualified exec trusts a structured exit code over text in stdout', () => {
+    const parser = new TranscriptFacts('claude'), timestamp = new Date().toISOString();
+    parser.add({ type: 'assistant', timestamp, message: { content: [{ type: 'tool_use', id: 'check', name: 'mcp__shell__exec_command', input: { cmd: command } }] } });
+    parser.add({ type: 'user', timestamp, message: { content: [{ type: 'tool_result', tool_use_id: 'check', content: JSON.stringify({ exit_code: 0, output: 'example: Process exited with code 1' }), is_error: false }] } });
+    expect(parser.facts[0]).toMatchObject({ exitCode: 0 });
+    const items = decompose([], 'qualified-status', [{ id: 'check', text: `Run \`${command}\`` }]);
+    expect(matchLedger(parser.facts, items, [], [], DEFAULT_LEDGER_CONFIG).progress.done).toBe(1);
   });
 
   for (const script of ['# comment; w output.ts', 'r included; w output.ts', 'R included; w output.ts']) {

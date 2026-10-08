@@ -12,7 +12,7 @@ import { DEFAULT_LEDGER_CONFIG } from '../../domain/ledger/types.js';
 const fixtures = `${import.meta.dir}/fixtures`;
 describe('normalized transcript facts',() => {
 
-  test('changed shell classification replaces persisted facts-22 and survives memory eviction', async () => {
+  test.each([22, 23])('changed shell classification replaces persisted facts-%i and survives memory eviction', async version => {
     const root = mkdtempSync(join(tmpdir(), 'keepline-mutating-facts-version-'));
     const path = join(root, 'session.jsonl');
     const now = Date.now(), timestamp = new Date(now).toISOString();
@@ -22,6 +22,7 @@ describe('normalized transcript facts',() => {
       "sed -n -l 80 'w src/widget.ts' input.txt",
       "sed -n --line-length 80 'w src/widget.ts' input.txt",
       'git diff --ext-diff',
+      'git log -p --pretty --ext-diff HEAD~1..HEAD',
     ];
     const entries = commands.flatMap((cmd, index) => [
       { type: 'response_item', timestamp, payload: {
@@ -36,7 +37,7 @@ describe('normalized transcript facts',() => {
       const parser = new TranscriptFacts('codex');
       entries.forEach(entry => parser.add(entry));
       const current = ledgerFactFingerprint(statSync(path), now);
-      const oldFingerprint = current.fingerprint.replace(/^facts-\d+-/, 'facts-22-');
+      const oldFingerprint = current.fingerprint.replace(/^facts-\d+-/, `facts-${version}-`);
       writeCachedLedgerFacts(`codex:${path}`, oldFingerprint, {
         fingerprint: oldFingerprint,
         facts: parser.facts.map(fact => fact.kind === 'tool' ? { ...fact, mutating: false } : fact),
@@ -45,7 +46,7 @@ describe('normalized transcript facts',() => {
       clearLedgerFactCache();
       const before = ledgerFactCacheStats();
       const fresh = await readTranscriptFacts(path, 'codex', now);
-      expect(fresh.facts.filter(fact => fact.kind === 'tool').map(fact => fact.mutating)).toEqual([true, true, true, true, true]);
+      expect(fresh.facts.filter(fact => fact.kind === 'tool').map(fact => fact.mutating)).toEqual([true, true, true, true, true, true]);
       expect(ledgerFactCacheStats().reads).toBe(before.reads + 1);
       clearLedgerFactCache();
       const disk = await readTranscriptFacts(path, 'codex', now);
