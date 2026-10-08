@@ -3,10 +3,16 @@ export type TranscriptFact =
   | { kind: 'agent_message'; text: string; at: string; turnId?: string; final: boolean }
   | { kind: 'turn'; phase: 'started' | 'completed' | 'aborted'; at: string; turnId: string; reason?: string }
   | { kind: 'tool'; callId: string; name: string; input: unknown; at: string; turnId?: string;
-      mutating: boolean; exitCode?: number; outputHead?: string; facts?: ToolEvidence[] }
+      mutating: boolean; startedOrder?: number; completedOrder?: number; exitCode?: number; outputHead?: string; facts?: ToolEvidence[] }
   | { kind: 'limit'; scope: 'usage' | 'budget'; at: string };
 export interface ToolEvidence { kind: 'command' | 'test' | 'file' | 'commit' | 'pr' | 'verdict'; value: string; exitCode?: number }
-export interface Anchors { paths: string[]; commands: string[]; keywords: string[] }
+export interface Anchors {
+  paths: string[]; commands: string[]; keywords: string[];
+  /** Persisted user criteria without a format need explicit command confirmation. */
+  commandFormat?: 'legacy-unconfirmed' | 'literal-v2';
+  /** Original patterns remain available for attribution, never completion. */
+  legacyCommands?: string[];
+}
 export interface Constraint { kind: 'path_forbidden' | 'no_public_api_change' | 'preserve_text'; value?: string }
 export interface RequirementItem {
   id: string; ordinal: number; title: string; anchors: Anchors; constraints: Constraint[];

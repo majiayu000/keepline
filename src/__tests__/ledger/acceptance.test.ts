@@ -31,4 +31,17 @@ describe('acceptance and follow-ups',() => {
     expect((await getLedger(detail.sessionId))?.items[0]).toMatchObject({ title: 'User edited criterion',source: 'user',statusSource: 'user',status: 'unverified' });
     await replaceLedgerItems(detail.sessionId,[]); expect((await getLedger(detail.sessionId))?.items).toHaveLength(0);
   });
+  test('a newer failed check blocks plain acceptance after a previous success',async () => {
+    const facts = sampleFacts();
+    const raw = await seededLedger(facts);
+    const confirmed = (await replaceLedgerItems(raw.sessionId,raw.items))!;
+    expect(confirmed.progress.done).toBe(1);
+    const failed = { ...facts.find(f => f.kind === 'tool')!,callId: 'failed-recheck',exitCode: 1,
+      facts: [{ kind: 'command' as const,value: 'bun test src/widget.test.ts',exitCode: 1 },{ kind: 'test' as const,value: '1 fail',exitCode: 1 }] };
+    facts.splice(facts.length-2,0,failed);
+    const session = sessionRepository.findBySessionId(raw.sessionId)!;
+    const updated = await ingestLedger(session,{ sessionId: session.sessionId,directory: session.directory,lastActiveAt: new Date(),messageCount: 2,toolCount: 2 },facts);
+    expect(updated?.progress.done).toBe(0);
+    await expect(acceptLedger(raw.sessionId,{ decision: 'accepted',droppedItemIds: [] })).rejects.toThrow('Remaining');
+  });
 });

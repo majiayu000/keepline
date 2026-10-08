@@ -1,4 +1,5 @@
 import type { TranscriptFact, ToolEvidence } from '../domain/ledger/types.js';
+import { directCommandWords, isSedWriteCommand, sedInPlaceFiles } from '../domain/ledger/sed-in-place.js';
 import { extractTaskPrompt } from '../domain/session/index.js';
 
 function record(value: unknown): Record<string, any> {
@@ -15,16 +16,76 @@ function parseInput(value: unknown): unknown {
 }
 // Substrings of large outputs can retain their entire backing transcript record.
 function detached(text: string): string { return Buffer.from(text).toString(); }
+function ripgrepRunsPreprocessor(words: string[]): boolean {
+  let enabled = false;
+  for (let index = 1; index < words.length; index++) {
+    const option = words[index];
+    if (option === '--') break;
+    if (option === '--no-pre') { enabled = false; continue; }
+    if (option === '--pre') { enabled = words[++index] !== ''; continue; }
+    if (option.startsWith('--pre=')) { enabled = option.slice('--pre='.length) !== ''; continue; }
+    // Values are data even when they resemble --pre or --no-pre. Long option
+    // values attached with =, and short values attached in a cluster, stay here.
+    if (/^--(?:after-context|before-context|color|colors|context|context-separator|dfa-size-limit|encoding|engine|field-context-separator|field-match-separator|file|generate|glob|hostname-bin|hyperlink-format|iglob|ignore-file|max-columns|max-count|max-depth|maxdepth|max-filesize|path-separator|pre-glob|regex-size-limit|regexp|replace|sort|sortr|threads|type|type-add|type-clear|type-not)$/.test(option)) {
+      index++; continue;
+    }
+    if (option.startsWith('-') && !option.startsWith('--')) {
+      for (let flag = 1; flag < option.length; flag++) {
+        if (!'ABCEefgMmdrjtT'.includes(option[flag])) continue;
+        if (flag + 1 === option.length) index++;
+        break;
+      }
+    }
+  }
+  return enabled;
+}
 export function isMutatingTool(name: string, input: unknown): boolean {
   const data = record(input);
   const command = data.command ?? data.cmd;
-  if (typeof command === 'string' && /^find\b/.test(command.trim()) && /(?:^|\s)-(?:delete|exec|execdir|ok|okdir|fprint|fprintf|fls)\b/.test(command)) return true;
-  if (/(?:^|[_.])(?:wait|sleep|read_file|read|list|list_agents|search|find|view_image|getState|get_goal|clock__curr_time)$/.test(name) || /^(Read|Glob|Grep|LS|TodoWrite)$/.test(name)) return false;
+  if (isSedWriteCommand(command)) return true;
+  const words = typeof command === 'string' ? directCommandWords(command) : undefined;
+  const executable = words?.[0]?.split('/').at(-1);
+  if (executable === 'find' && words) {
+    for (let index = 1; index < words.length; index++) {
+      const option = words[index];
+      if (/^-(?:delete|exec|execdir|ok|okdir|fprint|fprint0|fprintf|fls)$/.test(option)) return true;
+      // A predicate's pattern, path, or printf format is data, not an action.
+      if (/^-(?:name|iname|path|ipath|wholename|iwholename|regex|iregex|lname|ilname|printf|files0-from|samefile|newer|anewer|cnewer|newer[aBcm][aBcmt]|type|xtype|uid|gid|user|group|inum|links|perm|size|used|amin|atime|cmin|ctime|mmin|mtime|context|fstype|maxdepth|mindepth|regextype|D)$/.test(option)) index++;
+    }
+  }
+  if (executable === 'rg' && words && ripgrepRunsPreprocessor(words)) return true;
+  if (/(?:^|[_.])(?:wait|sleep|read_file|read_text_file|read|list|list_directory|list_agents|search|find|view_image|getState|get_goal|clock__curr_time)$/.test(name) || /^(Read|Glob|Grep|LS|TodoWrite)$/.test(name)) return false;
   if (/write_stdin$/.test(name) && !data.chars) return false;
   if (typeof command === 'string') {
     // A read followed by a write must remain a step. Shell substitution is not read-only.
-    if (/[;&|>`]|\$\(/.test(command)) return true;
-    return !/^(?:sleep|cat|ls|rg|grep|head|tail|pwd|stat|find|sed\s+-n|git\s+(?:status|diff|log|show|ls-files))\b/.test(command.trim());
+    if (!words) return true;
+    if (executable === 'git') {
+      let index = 1;
+      while (index < words.length) {
+        if (words[index] === '--no-pager') index++;
+        else if (words[index] === '-C' && words[index + 1] !== undefined) index += 2;
+        else if (words[index].startsWith('-C') && words[index].length > 2) index++;
+        else break;
+      }
+      const args = words.slice(index + 1);
+      const separator = args.indexOf('--');
+      const options = separator < 0 ? args : args.slice(0, separator);
+      if (options.some(option => option === '--output' || option.startsWith('--output='))) return true;
+      let externalDiff = false, textconv = false;
+      for (let optionIndex = 0; optionIndex < options.length; optionIndex++) {
+        const option = options[optionIndex];
+        if (option === '--ext-diff') externalDiff = true;
+        else if (option === '--no-ext-diff') externalDiff = false;
+        else if (option === '--textconv') textconv = true;
+        else if (option === '--no-textconv') textconv = false;
+        // Pattern/format operands can look like helper flags without enabling them.
+        else if (/^(?:-G|-S|--grep|--author|--committer|--format|--since|--until|--after|--before|--date|--diff-filter|--find-object|--max-count|-n)$/.test(option)) optionIndex++;
+      }
+      if (externalDiff || textconv) return true;
+      if (words[index] === 'branch') return !(args.length === 1 && args[0] === '--show-current');
+      return !/^(?:status|diff|log|show|ls-files)$/.test(words[index] ?? '');
+    }
+    return !/^(?:sleep|cat|ls|rg|grep|head|tail|pwd|stat|find|sed)$/.test(executable ?? '');
   }
   if (/functions.exec$/.test(name) && typeof data.input === 'string') {
     const calls = [...data.input.matchAll(/tools\.([\w]+)\s*\(/g)].map(m => m[1]);
@@ -35,32 +96,48 @@ export function isMutatingTool(name: string, input: unknown): boolean {
   }
   return true;
 }
-function outputEvidence(output: unknown, input: unknown, name: string): { exitCode?: number; outputHead: string; facts: ToolEvidence[] } {
+function outputEvidence(output: unknown, input: unknown, name: string, resultCode?: number, implicit = false): { exitCode?: number; outputHead: string; facts: ToolEvidence[] } {
   const out = textContent(output);
   let obj = record(output);
   if (typeof output === 'string') { try { obj = record(JSON.parse(output)); } catch { /* plain terminal result */ } }
+  // Structured exec results contain the real newlines inside output. Scanning
+  // their JSON encoding can miss a failure after a literal escaped newline.
+  const observed = typeof obj.output === 'string' ? obj.output : out;
   const code = obj.exit_code ?? obj.exitCode ?? record(obj.metadata).exit_code;
   const codes = [...out.matchAll(/(?:Process exited with code|exit[_ ]code[^0-9-]{0,8}|Exit code:)\s*(-?\d+)/gi)].map(m => Number(m[1]));
   // A wrapper may contain several command results. Any failure prevents whole-call success.
-  const exitCode = typeof code === 'number' ? code : codes.find(c => c !== 0) ?? codes.at(-1);
+  const structuredCode = typeof code === 'number' ? code : obj.is_error === true ? 1 : undefined;
+  // Host status and numeric result fields outrank ordinary text in stdout.
+  // Claude success remains implicit only relative to another structured status.
+  const reportedCode = structuredCode ?? codes.find(c => c !== 0) ?? codes.at(-1);
+  // An MCP exec tool can succeed while its child command fails. Its host flag
+  // is only a fallback; explicit process receipts still determine completion.
+  const execFallback = implicit && resultCode === 0 && /(?:^|[_.])exec_command$/.test(name);
+  const exitCode = execFallback ? reportedCode ?? resultCode : typeof resultCode === 'number'
+    ? implicit && resultCode === 0 && structuredCode !== undefined ? structuredCode : resultCode
+    : reportedCode;
   const facts: ToolEvidence[] = [];
   const data = record(input);
   const embedded = typeof data.input === 'string' ? [...data.input.matchAll(/(?:cmd|command)\s*:\s*["']([^"']+)["']/g)].map(m => m[1]) : [];
   const command = data.command ?? data.cmd ?? (embedded.length === 1 ? embedded[0] : undefined);
   if (command && exitCode !== undefined) facts.push({ kind: 'command', value: String(command), exitCode });
-  const counts = [...out.matchAll(/\b(\d+)\s+(passed|failed|pass|fail)\b/gi)];
+  const counts = [...observed.matchAll(/\b(\d+)\s+(passed|failed|pass|fail)\b/gi)];
   const failed = counts.some(m => /^fail/i.test(m[2]) && Number(m[1]) > 0);
   const passed = counts.some(m => /^pass/i.test(m[2]) && Number(m[1]) > 0);
   const testCode = failed ? 1 : passed ? 0 : exitCode;
-  for (const m of out.matchAll(/(?:\d+\s+(?:passed|failed|pass|fail)(?:\b)|Tests?:[^\n]*|test result:[^\n]*)/gi)) facts.push({ kind: 'test', value: detached(m[0]), exitCode: exitCode && exitCode !== 0 ? exitCode : testCode });
+  for (const m of observed.matchAll(/(?:\d+\s+(?:passed|failed|pass|fail)(?:\b)|Tests?:[^\n]*|test result:[^\n]*)/gi)) facts.push({ kind: 'test', value: detached(m[0]), exitCode: exitCode && exitCode !== 0 ? exitCode : testCode });
   for (const m of out.matchAll(/\[[^\]\n]+\s+([a-f0-9]{7,40})\][^\n]*/g)) facts.push({ kind: 'commit', value: detached(m[0]), exitCode });
   for (const m of out.matchAll(/https:\/\/github\.com\/[^\s"\\]+\/pull\/\d+/g)) facts.push({ kind: 'pr', value: detached(m[0]), exitCode });
-  if (exitCode === 0 || /(?:Success|successfully|updated|created)/i.test(out) || /^(?:Write|Edit)$/.test(name) && !obj.is_error) {
+  if (exitCode === 0 || exitCode === undefined && !obj.is_error && (/(?:Success|successfully|updated|created)/i.test(out) || /^(?:Write|Edit)$/.test(name))) {
     if (/apply_patch|^(?:Write|Edit)$/.test(name) || /apply_patch/.test(String(data.input ?? ''))) {
       const patch = String(data.input ?? data.patch ?? '').replace(/\\n/g,'\n');
       const paths = [data.file_path, data.path, ...[...String(patch).matchAll(/\*\*\* (?:Update|Add|Delete) File: (.+)/g)].map(m => m[1])].filter(Boolean);
       for (const path of paths) facts.push({ kind: 'file', value: String(path), exitCode });
     }
+  }
+  // In-place shell edits carry file evidence just like Edit/apply_patch.
+  if (exitCode === 0) {
+    for (const path of sedInPlaceFiles(command) ?? []) facts.push({ kind: 'file', value: path, exitCode });
   }
   if (/agent|collaboration/.test(name) && /(?:FINAL_ANSWER|verdict|findings|approved)/i.test(out)) facts.push({ kind: 'verdict', value: detached(out.slice(0, 400)) });
   return { exitCode, outputHead: detached(out.slice(0, 400)), facts };
@@ -71,13 +148,16 @@ export class TranscriptFacts {
   readonly facts: TranscriptFact[] = [];
   unknownRecords = 0;
   private calls = new Map<string, Extract<TranscriptFact, { kind: 'tool' }>>();
+  private sessions = new Map<string, string>();
   private turnId = '';
   private messages = new Set<string>();
+  private order = 0;
   constructor(private runtime: 'codex' | 'claude', private since = 0) {}
   add(value: unknown): void {
     const entry = record(value);
     const at = typeof entry.timestamp === 'string' ? entry.timestamp : undefined;
     if (!at || !Number.isFinite(Date.parse(at)) || Date.parse(at) < this.since) return;
+    this.order++;
     const payload = record(entry.payload);
     if (this.runtime === 'codex') {
       if (entry.type === 'event_msg' && payload.type === 'item_completed') {
@@ -103,8 +183,8 @@ export class TranscriptFacts {
         else if (/^(?:command_execution|CommandExecution)$/.test(p.type)) {
           const id = p.call_id ?? p.id;
           if (!this.calls.has(id) && typeof p.command === 'string') this.tool(id,'exec_command',{ command: p.command },at);
-          this.result(id,p.output ?? p.aggregated_output ?? p,p.exit_code ?? p.exitCode);
-        } else if (/^(?:function_call_output|custom_tool_call_output)$/.test(p.type)) this.result(p.call_id ?? p.id, p.output ?? p, p.exit_code);
+          this.result(id,p.output ?? p.aggregated_output ?? p,p.exit_code ?? p.exitCode,false,at);
+        } else if (/^(?:function_call_output|custom_tool_call_output)$/.test(p.type)) this.result(p.call_id ?? p.id, p.output ?? p, p.exit_code,false,at);
         return;
       }
       if (!['session_meta', 'turn_context', 'token_usage_record', 'world_state', 'inter_agent_communication_metadata', 'compacted'].includes(entry.type)) this.unknownRecords++;
@@ -127,10 +207,13 @@ export class TranscriptFacts {
       else if (block.type === 'tool_result') {
         // Claude's completed tool_result uses is_error instead of a successful exit code.
         // Background Bash results only announce a task ID; they are not completed commands.
-        const background = record(entry.toolUseResult).backgroundTaskId || /running in (?:the )?background|background task/i.test(textContent(block.content));
         const call = this.calls.get(block.tool_use_id);
-        const succeeded = /^(?:Bash|Write|Edit)$/.test(call?.name ?? '') ? 0 : undefined;
-        this.result(block.tool_use_id, block.content, block.is_error ? 1 : background ? undefined : succeeded,true);
+        const exec = /(?:^|[_.])exec_command$/.test(call?.name ?? '');
+        const output = textContent(block.content);
+        const pendingExecution = exec && (record(parseInput(output)).session_id !== undefined || /Process running with session ID\s+\d+/i.test(output));
+        const background = record(entry.toolUseResult).backgroundTaskId || /running in (?:the )?background|background task/i.test(output) || pendingExecution;
+        const succeeded = /^(?:Bash|Write|Edit)$/.test(call?.name ?? '') || exec ? 0 : undefined;
+        this.result(block.tool_use_id, block.content, block.is_error ? 1 : background ? undefined : succeeded,true,at);
       }
     }
     if (entry.type === 'assistant') {
@@ -157,23 +240,46 @@ export class TranscriptFacts {
   }
   private tool(callId: string, name: string, input: unknown, at: string): void {
     if (!callId || !name) return;
-    const fact: Extract<TranscriptFact, { kind: 'tool' }> = { kind: 'tool', callId, name, input, at, turnId: this.turnId, mutating: isMutatingTool(name, input) };
+    const fact: Extract<TranscriptFact, { kind: 'tool' }> = { kind: 'tool', callId, name, input, at, turnId: this.turnId, startedOrder: this.order, mutating: isMutatingTool(name, input) };
     this.calls.set(callId, fact); this.facts.push(fact);
   }
-  private result(callId: string, output: unknown, code?: number, implicit = false): void {
+  private result(callId: string, output: unknown, code?: number, implicit = false, at?: string): void {
     const call = this.calls.get(callId);
     if (!call) return;
-    if (!call.mutating) {
+    const previousExitCode = call.exitCode;
+    const data = record(call.input);
+    let result = record(output);
+    if (typeof output === 'string') { try { result = record(JSON.parse(output)); } catch { /* plain terminal result */ } }
+    if (/(?:^|[_.])exec_command$/.test(call.name)) {
+      const sessionId = result.session_id ?? textContent(output).match(/session ID\s+(\d+)/i)?.[1];
+      if (sessionId !== undefined) this.sessions.set(String(sessionId), callId);
+    }
+    if (/(?:^|[_.])write_stdin$/.test(call.name)) {
+      const original = this.sessions.get(String(data.session_id));
+      if (original) {
+        this.result(original, output, code, implicit,at);
+      }
+    }
+    const execution = call.name === 'Bash' || /(?:^|[_.])exec_command$/.test(call.name);
+    if (!call.mutating && !execution) {
       call.outputHead = detached(textContent(output).slice(0,400));
       call.exitCode = code; call.facts = []; return;
     }
-    Object.assign(call, outputEvidence(output, call.input, call.name));
-    if (typeof code === 'number') {
-      // Claude success is implicit; an explicit nonzero result still wins.
-      call.exitCode = implicit && code === 0 && call.exitCode !== undefined ? call.exitCode : code;
-      for (const fact of call.facts ?? []) if (fact.kind !== 'test' || call.exitCode !== 0) fact.exitCode = call.exitCode;
-      const data = record(call.input);
-      if ((data.cmd ?? data.command) && !call.facts?.some(f => f.kind === 'command')) call.facts?.push({ kind: 'command', value: data.cmd ?? data.command, exitCode: call.exitCode });
+    const priorFailure = call.facts?.find(fact => fact.kind === 'test' && fact.exitCode !== undefined && fact.exitCode !== 0);
+    Object.assign(call, outputEvidence(output, call.input, call.name, code, implicit));
+    if (priorFailure) call.facts?.push(priorFailure);
+    // Shell reads still prove their own literal command, never tests copied from a log.
+    if (!call.mutating) call.facts = call.facts?.filter(f => f.kind === 'command');
+    // Keep both boundaries even when timestamps are equal. Repeated terminal
+    // polls must not move an old attempt past a newer check.
+    const terminal = call.exitCode !== undefined || !execution && call.facts?.some(f => f.kind === 'file');
+    if (terminal && (call.completedOrder === undefined || previousExitCode !== call.exitCode)) call.completedOrder = this.order;
+    if (execution && previousExitCode !== call.exitCode && call.exitCode !== undefined) {
+      // Reuse the execution fact at its terminal receipt boundary. Empty polls
+      // remain reads, and no duplicate execution or synthetic stdin write is added.
+      const index = this.facts.indexOf(call);
+      if (index >= 0) { this.facts.splice(index, 1); this.facts.push(call); }
+      if (at) call.at = at;
     }
   }
 }

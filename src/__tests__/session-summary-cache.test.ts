@@ -4,13 +4,46 @@ import { mkdirSync, mkdtempSync, rmSync, writeFileSync, appendFileSync, statSync
 import { tmpdir } from 'os';
 import { join, resolve } from 'path';
 import {
-  cachedSessionSummary, closeSessionSummaryCache, SessionSummaryCacheError,
+  cachedSessionSummary, closeSessionSummaryCache, LEDGER_COMPUTATION_VERSION, SessionSummaryCacheError,
 } from '../infrastructure/session-summary-cache.js';
 
 const tempDirs: string[] = [];
 afterEach(() => {
   closeSessionSummaryCache();
   for (const dir of tempDirs.splice(0)) rmSync(dir, { recursive: true, force: true });
+});
+
+describe('persistent ledger computation cache', () => {
+  test.each(['scan', 'detail'])('%s rows retain the current version and discard the previous version on process startup', (kind) => {
+    const root = tempDirectory();
+    const modulePath = resolve('src/infrastructure/session-summary-cache.ts');
+    const day = new Date().toISOString().slice(0, 10);
+    const fingerprint = (version: number) => `ledger-${version}:7:${day}:100:123:123${kind === 'detail' ? ':signature' : ''}`;
+    const current = fingerprint(LEDGER_COMPUTATION_VERSION);
+    const previous = fingerprint(LEDGER_COMPUTATION_VERSION - 1);
+    const run = (script: string) => {
+      const child = Bun.spawnSync([process.execPath, '-e', `
+        const cache = await import(${JSON.stringify(modulePath)});
+        ${script}
+        cache.closeSessionSummaryCache();
+      `], { env: { ...process.env, KEEPLINE_HOME: root }, stdout: 'pipe', stderr: 'pipe' });
+      expect(child.stderr.toString()).toBe('');
+      expect(child.exitCode).toBe(0);
+      return child.stdout.toString();
+    };
+    run(`
+      cache.writeLedgerComputation('${kind}:current', ${JSON.stringify(current)}, { state: 'current' });
+      cache.writeLedgerComputation('${kind}:previous', ${JSON.stringify(previous)}, { state: 'previous' });
+    `);
+    // A separate process exercises its first-read cleanup, not a warm module window.
+    const restored = JSON.parse(run(`
+      console.log(JSON.stringify({
+        current: cache.readLedgerComputation('${kind}:current', ${JSON.stringify(current)}) ?? null,
+        previous: cache.readLedgerComputation('${kind}:previous') ?? null,
+      }));
+    `));
+    expect(restored).toEqual({ current: { state: 'current' }, previous: null });
+  });
 });
 
 function tempDirectory(): string {

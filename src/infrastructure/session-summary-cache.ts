@@ -8,6 +8,8 @@ import { ensureKeeplineDataHome } from '../lib/paths.js';
 
 // Increment when parser semantics change. This is derived data, never task/session truth.
 const CACHE_VERSION = 2;
+// Keep computed fingerprints and persistent cleanup on the same semantic version.
+export const LEDGER_COMPUTATION_VERSION = 34;
 let database: Database | undefined;
 let ledgerWindow: string | undefined;
 let computationWindow: string | undefined;
@@ -121,9 +123,10 @@ export function writeCachedLedgerFacts(key: string, fingerprint: string, value: 
 
 /** Computed ledger rows are derived data shared by the isolated scanner and HTTP process. */
 export function readLedgerComputation<T>(key: string, fingerprint?: string): T | undefined {
-  const window = `ledger-8:${new Date().toISOString().slice(0,10)}`;
+  const day = new Date().toISOString().slice(0,10);
+  const window = `ledger-${LEDGER_COMPUTATION_VERSION}:${day}`;
   if (computationWindow !== window) {
-    cacheOperation(() => cacheDatabase().query("DELETE FROM summaries WHERE cache_key LIKE 'ledger-computed:%' AND fingerprint NOT LIKE ?").run(`ledger-8:%:${new Date().toISOString().slice(0,10)}:%`));
+    cacheOperation(() => cacheDatabase().query("DELETE FROM summaries WHERE cache_key LIKE 'ledger-computed:%' AND fingerprint NOT LIKE ?").run(`ledger-${LEDGER_COMPUTATION_VERSION}:%:${day}:%`));
     computationWindow = window;
   }
   const row = cacheOperation(() => cacheDatabase().query(`SELECT data FROM summaries WHERE cache_key=? ${fingerprint ? 'AND fingerprint=?' : ''}`)
@@ -137,6 +140,6 @@ export function writeLedgerComputation(key: string, fingerprint: string, value: 
 
 export function ledgerFactFingerprint(info: { mtimeMs: number; ctimeMs: number; size: number },now = Date.now()) {
   const days = config.get().ledger.retentionDays;
-  const window = `facts-5-${days}-${new Date(now).toISOString().slice(0,10)}`;
+  const window = `facts-24-${days}-${new Date(now).toISOString().slice(0,10)}`;
   return { window,since: now-days*86400000,fingerprint: `${window}:${info.mtimeMs}:${info.ctimeMs}:${info.size}` };
 }

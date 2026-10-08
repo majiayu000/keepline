@@ -10,7 +10,8 @@ describe('daily and weekly review',() => {
     const first = await carryOver(d.sessionId); const second = await carryOver(d.sessionId);
     expect(first.id).toBe(second.id); expect(second.acceptance).toHaveLength(1);
     await acceptLedger(d.sessionId,{ decision: 'accepted_with_gaps',droppedItemIds: d.items.map(i => i.id),reason: 'Carry to tomorrow' });
-    const review = await ledgerReview(new Date().toISOString().slice(0,10)); expect(review.accepted).toHaveLength(1);
+    // The review API uses local calendar days, just like the dashboard picker.
+    const review = await ledgerReview(new Date().toLocaleDateString('en-CA')); expect(review.accepted).toHaveLength(1);
   });
   test('weekly runtime clips turn duration to period and reports unattributed share',async () => {
     const facts = sampleFacts(); const today = new Date().toISOString().slice(0,10);

@@ -2,7 +2,7 @@ import { statSync, existsSync } from 'fs';
 import { basename } from 'path';
 import { confirmedRequirement,ledgerNeedsAttention } from '../../domain/ledger/types.js';
 import { createHash } from 'crypto';
-import { readLedgerComputation, writeLedgerComputation } from '../../infrastructure/session-summary-cache.js';
+import { LEDGER_COMPUTATION_VERSION, readLedgerComputation, writeLedgerComputation } from '../../infrastructure/session-summary-cache.js';
 import { events } from '../../lib/events.js';
 import { logger } from '../../lib/logger.js';
 import { randomUUID } from 'crypto';
@@ -17,8 +17,6 @@ import type { LedgerAcceptance, LedgerDetail, LedgerRule, RequirementItem, Trans
 import { anchorsFromText, decompose, extractAsks, followUpSuggestions, ledgerId, matchLedger } from '../../domain/ledger/matcher.js';
 import { readCodexMetadata } from '../../adapters/codex/liveness.js';
 import { readTranscriptFacts } from './facts.js';
-import { getCodexSessionById } from '../../adapters/codex/scanner.js';
-import { getSessionById } from '../../adapters/claude/scanner.js';
 import { evaluateLedgerAlerts } from './alerts.js';
 import { judgeLedger } from './judge.js';
 
@@ -35,7 +33,7 @@ type LedgerStatus = Pick<LedgerDetail,'sessionId' | 'agentSessionId' | 'title' |
 interface LedgerScanSnapshot { path: string; transcript: string; signature: string; statusKey: string; transcriptLimited: boolean; summary: LedgerStatus; lastTurn?: Extract<TranscriptFact,{ kind: 'turn' }> }
 function transcriptFingerprint(path: string): string {
   const info = statSync(path);
-  return `ledger-10:${config.get().ledger.retentionDays}:${new Date().toISOString().slice(0,10)}:${info.size}:${info.mtimeMs}:${info.ctimeMs}`;
+  return `ledger-${LEDGER_COMPUTATION_VERSION}:${config.get().ledger.retentionDays}:${new Date().toISOString().slice(0,10)}:${info.size}:${info.mtimeMs}:${info.ctimeMs}`;
 }
 export function ledgerScanSnapshot(sessionId: string, path: string): LedgerScanSnapshot | undefined {
   const row = readLedgerComputation<LedgerScanSnapshot>(`scan:${sessionId}`);
@@ -135,7 +133,16 @@ async function buildLedger(session: Session, facts: TranscriptFact[], unknownRec
     return old?.source === 'user' ? old : old && old.title === i.title && JSON.stringify(old.anchors) === JSON.stringify(i.anchors) ? { ...i, status: old.status, statusSource: old.statusSource, evidenceIds: old.evidenceIds } : i;
   });
   items.push(...existing.filter(i => i.source === 'user' && !i.dropped && !items.some(c => c.id === i.id)));
-  const matched = matchLedger(facts, items, ledgerRepository.corrections(agent.id), ledgerRepository.rules(agent.id), cfg, agent.id);
+  const legacy = items.filter(item => item.source === 'user' && item.anchors.legacyCommands?.length);
+  const rules = [...ledgerRepository.rules(agent.id),...legacy.map(item => ({
+    itemId: item.id, matcher: { paths: [],commands: item.anchors.legacyCommands! },
+  }))];
+  // Unversioned saved user patterns still attribute steps, but need a literal
+  // command decision before they can participate in automatic completion.
+  const pending = new Map(items.filter(item => item.source === 'user' && item.anchors.commandFormat === 'legacy-unconfirmed').map(item => [item.id,item.anchors]));
+  const matchingItems = items.map(item => pending.has(item.id) ? { ...item,anchors: { ...item.anchors,commands: [] } } : item);
+  const matched = matchLedger(facts, matchingItems, ledgerRepository.corrections(agent.id), rules, cfg, agent.id);
+  for (const item of matched.items) if (pending.has(item.id)) item.anchors = pending.get(item.id)!;
   ledgerRepository.saveItems(agent.id, matched.items);
   // Preserve references to obsolete derived items without treating retirement as a user deletion.
   for (const old of existing) if (old.source !== 'user' && !matched.items.some(i => i.id === old.id)) db.query("UPDATE requirement_items SET status='unverified',evidence_ids='[]' WHERE id=?").run(old.id);
@@ -209,7 +216,11 @@ export async function getLedger(sessionId: string): Promise<LedgerDetail | null>
     if (snapshot.path) return ledgerFromPath(session,snapshot.path);
     return buildLedger(session,derived.facts,derived.unknownRecords);
   }
-  const parsed = session.client === 'codex' ? await getCodexSessionById(sessionId,false) : await getSessionById(sessionId,false);
+  // Scanner parsers also load usage/pricing. The resident service only needs
+  // them on this uncached lookup; keep that app-only graph out of startup.
+  const parsed = session.client === 'codex'
+    ? await (await import('../../adapters/codex/scanner.js')).getCodexSessionById(sessionId,false)
+    : await (await import('../../adapters/claude/scanner.js')).getSessionById(sessionId,false);
   if (parsed?.sourcePath) return ledgerFromPath(session,parsed.sourcePath);
   return ingestLedger(session,parsed ?? { sessionId: session.sessionId, directory: session.directory, lastActiveAt: session.lastActiveAt, messageCount: session.messageCount, toolCount: session.toolCount });
 }
@@ -350,7 +361,7 @@ export async function importLedgerRequirements(sessionId: string, fromSessionId:
   if (!target?.importSuggestions?.some(s => s.sessionId === fromSessionId)) throw new LedgerInputError('Choose a suggested previous session');
   const previous = await getLedger(fromSessionId);
   if (!previous?.items.length) throw new LedgerInputError('Previous session has no requirements');
-  const items = previous.items.filter(i => !i.dropped).map((i,ordinal) => ({ ...i,id: randomUUID(),ordinal,source: 'user' as const,status: 'todo' as const,statusSource: 'rule' as const,evidenceIds: [],checklistId: undefined }));
+  const items = previous.items.filter(i => !i.dropped).map((i,ordinal) => ({ ...i,id: randomUUID(),ordinal,source: 'user' as const,anchors: { ...i.anchors,commandFormat: i.anchors.commandFormat ?? 'literal-v2' as const },status: 'todo' as const,statusSource: 'rule' as const,evidenceIds: [],checklistId: undefined }));
   ledgerRepository.replaceUserItems(target.agentSessionId,items);
   return getLedger(sessionId);
 }
@@ -363,7 +374,18 @@ export async function replaceLedgerItems(sessionId: string, values: RequirementI
     if (ids.has(id)) throw new LedgerInputError('Duplicate item id'); ids.add(id);
     if (value.id && !own.some(i => i.id === id)) throw new LedgerInputError('Unknown item id');
     const old = own.find(i => i.id === id);
-    return { ...value,id,ordinal,source: 'user' as const, statusSource: value.status !== old?.status ? 'user' as const : old?.statusSource ?? 'rule' as const, evidenceIds: (value.evidenceIds ?? []).filter(id => detail.evidence.some(e => e.id === id)), checklistId: old?.checklistId };
+    const pending = old?.source === 'user' && old.anchors.commandFormat === 'legacy-unconfirmed';
+    const confirmed = pending && value.anchors.commandFormat === 'literal-v2';
+    if (confirmed && !value.anchors.commands.some(command => command.trim())) throw new LedgerInputError('Enter a complete command before confirming legacy criteria');
+    const anchors = {
+      ...value.anchors,
+      commandFormat: pending && !confirmed ? 'legacy-unconfirmed' as const : 'literal-v2' as const,
+      // Original patterns are server-owned history. Omitting them in an old
+      // client or editing their serialized copy cannot erase their attribution.
+      legacyCommands: old?.source === 'user' ? old.anchors.legacyCommands : undefined,
+      ...(pending && !confirmed ? { commands: old.anchors.commands } : {}),
+    };
+    return { ...value,anchors,id,ordinal,source: 'user' as const, statusSource: value.status !== old?.status ? 'user' as const : old?.statusSource ?? 'rule' as const, evidenceIds: (value.evidenceIds ?? []).filter(id => detail.evidence.some(e => e.id === id)), checklistId: old?.checklistId };
   });
   transaction(() => {
     // Record the correction against raw candidates too, so toggling AI cannot resurrect them.
