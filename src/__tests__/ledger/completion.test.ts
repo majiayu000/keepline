@@ -39,6 +39,69 @@ function match(calls: Call[], commands = [command]) {
 
 describe('completion requires current execution evidence', () => {
 
+  test.each(['exec_command', 'functions.exec_command', 'mcp__shell__exec_command'])(
+    'Claude terminal host receipts complete qualified execution tools: %s', name => {
+      const parser = new TranscriptFacts('claude'), timestamp = new Date().toISOString();
+      parser.add({ type: 'assistant', timestamp, message: { content: [{ type: 'tool_use', id: 'check', name, input: { cmd: command } }] } });
+      parser.add({ type: 'user', timestamp, message: { content: [{ type: 'tool_result', tool_use_id: 'check', content: 'Command completed', is_error: false }] } });
+      const items = decompose([], 'qualified-claude', [{ id: 'check', text: `Run \`${command}\`` }]);
+      expect(matchLedger(parser.facts, items, [], [], DEFAULT_LEDGER_CONFIG).progress.done).toBe(1);
+      expect(parser.facts[0]).toMatchObject({ exitCode: 0, facts: [{ kind: 'command', value: command, exitCode: 0 }] });
+    });
+
+  test.each([
+    { content: JSON.stringify({ session_id: 27, output: 'still running' }), expected: undefined },
+    { content: 'Process running with session ID 27', expected: undefined },
+    { content: JSON.stringify({ exit_code: 1, output: 'failed' }), expected: 1 },
+  ])('Claude qualified exec preserves pending and failed structured receipts: $content', ({ content, expected }) => {
+    const parser = new TranscriptFacts('claude'), timestamp = new Date().toISOString();
+    parser.add({ type: 'assistant', timestamp, message: { content: [{ type: 'tool_use', id: 'check', name: 'mcp__shell__exec_command', input: { cmd: command } }] } });
+    parser.add({ type: 'user', timestamp, message: { content: [{ type: 'tool_result', tool_use_id: 'check', content, is_error: false }] } });
+    expect(parser.facts[0]).toMatchObject({ exitCode: expected });
+    const items = decompose([], 'qualified-pending', [{ id: 'check', text: `Run \`${command}\`` }]);
+    expect(matchLedger(parser.facts, items, [], [], DEFAULT_LEDGER_CONFIG).progress.done).toBe(0);
+  });
+
+  test.each([
+    'git diff --ext-diff', 'git log --ext-diff -1', 'git show --textconv HEAD',
+    'git --no-pager -C repo diff --no-ext-diff --ext-diff',
+    'python -m pytest --junitxml=src/widget.ts', 'python3 -m pytest --basetemp src/widget.ts',
+    'python3 -c "print(1)" -m pytest', 'python3 script.py -m pytest',
+    "sed -n '# comment; harmless\nw output.ts' input.txt",
+    "sed -n 'r included.txt\nw output.ts' input.txt",
+    "sed -n 'b end; w output.ts\n:end' input.txt",
+  ])('explicit helpers, pytest outputs and real sed commands invalidate prior checks: %s', cmd => {
+    expect(match([{ code: 0 }, { cmd, code: 0 }]).items[0].status).toBe('unverified');
+  });
+
+  test.each([
+    'git diff --ext-diff --no-ext-diff', 'git show --textconv --no-textconv HEAD',
+    'git diff -- --ext-diff', 'git log --grep --ext-diff', 'git diff -G --textconv',
+    'python -m pytest tests/widget.py', 'python3 -m pytest tests/widget.py',
+    '/usr/bin/python3.12 -m pytest tests/widget.py', 'env CI=1 python3 -m pytest tests/widget.py',
+    'python -m pytest -k --junitxml=src/widget.ts', 'python -m pytest -- --junitxml=src/widget.ts',
+    "sed -n '# comment; w output.ts' input.txt",
+    "sed -n 'r included; w output.ts' input.txt",
+    "sed -n 'R included; e writer' input.txt",
+  ])('helper disables, Python pytest and newline-terminated sed data preserve peer proof: %s', cmd => {
+    expect(match([{ code: 0 }, { cmd, code: 0 }], [command, cmd]).progress.done).toBe(1);
+  });
+
+  for (const script of ['# comment; w output.ts', 'r included; w output.ts', 'R included; w output.ts']) {
+    test.skipIf(!hasGnuSed)(`real GNU sed treats the full newline-terminated argument as data: ${script}`, () => {
+      const root = mkdtempSync(join(tmpdir(), 'keepline-sed-line-'));
+      try {
+        writeFileSync(join(root, 'input.txt'), 'input\n');
+        writeFileSync(join(root, 'included; w output.ts'), 'included\n');
+        const receipt = spawnSync('sed', ['-n', script, 'input.txt'], { cwd: root, encoding: 'utf8' });
+        expect(receipt.status).toBe(0);
+        expect(readFileSync(join(root, 'input.txt'), 'utf8')).toBe('input\n');
+        expect(() => readFileSync(join(root, 'output.ts'), 'utf8')).toThrow();
+        expect(match([{ code: 0 }, { cmd: `sed -n '${script}' input.txt`, code: receipt.status!, output: receipt.stdout }]).progress.done).toBe(1);
+      } finally { rmSync(root, { recursive: true, force: true }); }
+    });
+  }
+
   test.each([
     "go test -coverprofile=src/widget.ts ./...",
     "go test -coverprofile src/widget.ts ./...",
