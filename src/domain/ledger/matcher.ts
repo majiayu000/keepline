@@ -123,7 +123,13 @@ function isVerificationCommand(command: string): boolean {
   } else if (words[index] === 'run') {
     index++;
     if (executable === 'npm') {
-      while (/^(?:--if-present|--silent)$/.test(words[index] ?? '')) index++;
+      while (words[index]?.startsWith('-')) {
+        const option = words[index];
+        if (/^(?:--if-present|--silent|--foreground-scripts)$/.test(option)) index++;
+        else if (option === '--script-shell' && words[index + 1] !== undefined) index += 2;
+        else if (/^--script-shell=.+$/.test(option)) index++;
+        else break;
+      }
     }
   }
   if (!/^(?:tests?|typecheck|check)$/.test(words[index] ?? '')) return false;
@@ -190,7 +196,7 @@ export function matchLedger(facts: TranscriptFact[], inputItems: RequirementItem
     if (mutation) {
       for (const [command, ids] of latestChecks) if (ids.length) invalidatedChecks.add(command);
       latestChecks.clear();
-      latestMutationOrder = Math.max(latestMutationOrder, fact.completedOrder ?? startedOrder);
+      latestMutationOrder = Math.max(latestMutationOrder, fact.completedOrder ?? (fact.exitCode === undefined && (fact.name === 'Bash' || /(?:^|[_.])exec_command$/.test(fact.name)) ? Number.POSITIVE_INFINITY : startedOrder));
     }
     if (command && startedOrder >= (latestCheckStarts.get(command) ?? -1)) {
       latestCheckStarts.set(command, startedOrder);
