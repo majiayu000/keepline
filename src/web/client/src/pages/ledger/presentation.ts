@@ -4,6 +4,7 @@ import type {
   LedgerStep,
   RequirementItem,
 } from "../../../../../domain/ledger/types";
+import type { WorkItem } from "../../types/work-item";
 import {
   confirmedRequirement,
   ledgerNeedsAttention,
@@ -59,7 +60,7 @@ export function projectName(root: string) {
   return root.split("/").filter(Boolean).at(-1) || "未关联项目";
 }
 export function evidenceText(row: LedgerDetail) {
-  const e = row.activity?.evidence.at(-1) ?? row.evidence.at(-1);
+  const e = row.activity?.evidence[0] ?? row.evidence.at(-1);
   return e
     ? `${e.value}${e.exitCode === undefined ? "" : e.exitCode === 0 ? " · 成功" : ` · exit ${e.exitCode}`}`
     : "暂无执行证据";
@@ -71,6 +72,11 @@ export function evidenceSummary(e: LedgerEvidence) {
     : e.exitCode === 0
       ? `${value} · 成功`
       : `本次执行失败（exit ${e.exitCode}） · ${value}`;
+}
+export function reviewAcceptanceAt(row: LedgerDetail, start: string, end: string) {
+  return row.acceptances.filter(acceptance => acceptance.decision !== "follow_up" &&
+    Date.parse(acceptance.at) >= Date.parse(start) && Date.parse(acceptance.at) < Date.parse(end))
+    .sort((a, b) => Date.parse(b.at) - Date.parse(a.at))[0]?.at;
 }
 export function keyStep(step: LedgerStep, evidence: LedgerEvidence[]) {
   return (
@@ -120,7 +126,7 @@ export function rowPresentation(row: LedgerDetail, now = Date.now()) {
         60000,
     ),
   );
-  const latestEvidence = row.activity?.evidence.at(-1) ?? row.evidence.at(-1);
+  const latestEvidence = row.activity?.evidence[0] ?? row.evidence.at(-1);
   const activityMinutes = Math.max(0, Math.floor((now - Date.parse(row.lastActiveAt)) / 60000));
   const activeAgo = activityMinutes < 1
     ? "刚刚"
@@ -189,9 +195,24 @@ export function rowPresentation(row: LedgerDetail, now = Date.now()) {
 export type RowPresentation = ReturnType<typeof rowPresentation>;
 export function groupRows(
   rows: LedgerDetail[],
-  grouping: "urgency" | "project",
+  grouping: "urgency" | "project" | "goal",
   now = Date.now(),
+  goalContext?: { todos: Pick<WorkItem, "id" | "parentId">[]; goals: Pick<WorkItem, "id" | "title">[] },
 ) {
+  if (grouping === "goal") {
+    const todoGoals = new Map(goalContext?.todos.map(todo => [todo.id, todo.parentId]));
+    const goals = new Map(goalContext?.goals.map(goal => [goal.id, goal.title]));
+    const goalId = (row: LedgerDetail) => {
+      const id = row.workItemId ? todoGoals.get(row.workItemId) : undefined;
+      return id && goals.has(id) ? id : "unassigned";
+    };
+    return [...new Set(rows.map(goalId))].map(id => {
+      const grouped = rows.filter(row => goalId(row) === id);
+      return { key: id, label: goals.get(id) ?? "未关联目标",
+        hint: `${grouped.filter(row => rowPresentation(row, now).need).length} 需要你`,
+        rows: grouped.sort((a, b) => Number(rowPresentation(b, now).need) - Number(rowPresentation(a, now).need)) };
+    });
+  }
   if (grouping === "project")
     return [...new Set(rows.map((r) => r.projectRoot))].map((root) => ({
       key: root,

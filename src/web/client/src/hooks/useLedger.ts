@@ -14,11 +14,12 @@ import type {
 import { DEFAULT_LEDGER_CONFIG } from "../../../../domain/ledger/types";
 
 import type { LedgerProps, Todo, Goal, Review } from "@/pages/ledger/types";
+import { clampOverviewHours, cleanRequirementAnchors, reconcileChecklist } from "@/pages/ledger/editing";
 
 function savedHours() {
   try {
     const hours = Number(localStorage.getItem("keepline.overview-hours"));
-    if (Number.isInteger(hours) && hours >= 1 && hours <= DEFAULT_LEDGER_CONFIG.retentionDays * 24)
+    if (Number.isSafeInteger(hours) && hours >= 1)
       return hours;
   } catch {
     // The time filter still works when browser storage is unavailable.
@@ -37,7 +38,7 @@ export function useLedger({ view, token }: LedgerProps) {
   const projectMapGoalRef = useRef(projectMapGoalId);
   projectMapGoalRef.current = projectMapGoalId;
   useEffect(() => { if (view !== "goals") setProjectMapGoalId(null); }, [view]);
-  const [todos, setTodos] = useState<WorkItem[]>([]);
+  const [todos, setTodos] = useState<Todo[]>([]);
   const [settings, setSettings] = useState<LedgerConfig>(
     structuredClone(DEFAULT_LEDGER_CONFIG),
   );
@@ -80,14 +81,31 @@ export function useLedger({ view, token }: LedgerProps) {
   const selectedRef = useRef(selectedId);
   const viewRef = useRef(view);
   const settingsLoaded = useRef(false);
-  const changeHours = (next: number) => {
-    if (next === hours) return;
+  const settingsRequest = useRef<Promise<LedgerConfig> | null>(null);
+  const [settingsReady, setSettingsReady] = useState(false);
+  const retentionDaysRef = useRef(DEFAULT_LEDGER_CONFIG.retentionDays);
+  const changeHours = useCallback((next: number) => {
+    next = clampOverviewHours(next, retentionDaysRef.current);
+    if (next === hoursRef.current) return;
     hoursRef.current = next;
     hovering.current = false;
     setQueuedRows(null);
     setRows([]);
     setHours(next);
-  };
+  }, []);
+  const applySettings = useCallback((cfg: LedgerConfig) => {
+    retentionDaysRef.current = cfg.retentionDays;
+    changeHours(hoursRef.current);
+    setSettings(cfg);
+    settingsLoaded.current = true;
+    setSettingsReady(true);
+  }, [changeHours]);
+  const refreshSettings = useCallback(async () => {
+    const pending = settingsRequest.current ?? api<LedgerConfig>("/settings/ledger");
+    settingsRequest.current = pending;
+    try { applySettings(await pending); }
+    finally { if (settingsRequest.current === pending) settingsRequest.current = null; }
+  }, [applySettings]);
   useEffect(() => {
     try {
       localStorage.setItem("keepline.overview-hours", String(hours));
@@ -107,13 +125,21 @@ export function useLedger({ view, token }: LedgerProps) {
     window.history.replaceState(null, "", url);
   }, [selectedId]);
   const load = useCallback(async (includeRelated = true) => {
+    // The saved time filter is usable only after the server retention limit is known.
+    if (!settingsLoaded.current) {
+      // A failed initial read is retried by manual refresh or the next poll.
+      // Success schedules the first ledger load after hours/settings are applied.
+      await refreshSettings();
+      return;
+    }
     const request = ++listRequest.current;
+    const requestedHours = hoursRef.current;
     try {
       const [ledger, related] = await Promise.all([
-        api<LedgerDetail[]>(`/ledger?hours=${hours}`),
-        includeRelated ? Promise.all([api<Goal[]>(projectMapGoalId ? `/goals?projectMap=${encodeURIComponent(projectMapGoalId)}` : "/goals"), api<{ items: WorkItem[] }>("/work-items")]) : undefined,
+        api<LedgerDetail[]>(`/ledger?hours=${requestedHours}`),
+        includeRelated ? Promise.all([api<Goal[]>(projectMapGoalId ? `/goals?projectMap=${encodeURIComponent(projectMapGoalId)}` : "/goals"), api<Todo[]>("/goals/todos")]) : undefined,
       ]);
-      if (request !== listRequest.current || hoursRef.current !== hours || projectMapGoalRef.current !== projectMapGoalId) return;
+      if (request !== listRequest.current || hoursRef.current !== requestedHours || projectMapGoalRef.current !== projectMapGoalId) return;
       if (hovering.current) {
         // Hold ordering while pointing, never freeze status, evidence or newly discovered sessions.
         setRows(current => {
@@ -126,7 +152,7 @@ export function useLedger({ view, token }: LedgerProps) {
       } else setRows(ledger);
       if (related) {
         setGoals(related[0]);
-        setTodos(related[1].items.filter((w) => w.level !== "goal" && w.kind === "todo"));
+        setTodos(related[1].filter(todo => todo.kind === "todo"));
       }
       setLastSyncedAt(new Date());
       setError("");
@@ -134,15 +160,13 @@ export function useLedger({ view, token }: LedgerProps) {
     } catch (error) {
       if (request === listRequest.current) throw error;
     }
-  }, [hours, projectMapGoalId]);
+  }, [hours, projectMapGoalId, settingsReady, refreshSettings]);
   useEffect(() => {
-    if (settingsLoaded.current && view !== "ledger-settings") return;
+    if (!settingsLoaded.current || view !== "ledger-settings") return;
     let active = true;
-    void api<LedgerConfig>("/settings/ledger").then(cfg => {
-      if (active) { setSettings(cfg); settingsLoaded.current = true; }
-    }).catch(e => { if (active) setError(String(e)); });
+    void refreshSettings().catch(e => { if (active) { setError(String(e)); setLoading(false); } });
     return () => { active = false; };
-  }, [view === "ledger-settings"]);
+  }, [view === "ledger-settings", refreshSettings]);
   const refreshDetail = useCallback(async (sessionId: string, request = ++detailRequest.current) => {
     if (request !== detailRequest.current) return;
     try {
@@ -322,15 +346,7 @@ export function useLedger({ view, token }: LedgerProps) {
   const saveWorkItem = async () => {
     if (!editing) return;
     const old = [...goals, ...todos].find((i) => i.id === editing.id);
-    const texts = editing.checklist
-      .split("\n")
-      .map((t) => t.trim())
-      .filter(Boolean);
-    const acceptance = texts.map((text, i) => ({
-      id: old?.acceptance?.[i]?.id ?? crypto.randomUUID(),
-      text,
-      completed: old?.acceptance?.[i]?.completed ?? false,
-    }));
+    const acceptance = reconcileChecklist(editing.checklist, old?.acceptance);
     await api(
       `/work-items${editing.id ? `/${editing.id}` : ""}`,
       editing.id ? "PATCH" : "POST",
@@ -370,7 +386,7 @@ export function useLedger({ view, token }: LedgerProps) {
           .filter(Boolean),
       },
     });
-    setSettings(saved);
+    applySettings(saved);
   };
   const toggleAutostart = async (on: boolean) => {
     await setAutostart(on);
@@ -441,12 +457,7 @@ export function useLedger({ view, token }: LedgerProps) {
           id: detail?.items.some((existing) => existing.id === item.id)
             ? item.id
             : undefined,
-          anchors: Object.fromEntries(
-            Object.entries(item.anchors).map(([key, values]) => [
-              key,
-              values.map((value: string) => value.trim()).filter(Boolean),
-            ]),
-          ),
+          anchors: cleanRequirementAnchors(item.anchors),
           constraints: item.constraints
             .filter((c) => c.kind !== "path_forbidden" || c.value?.trim())
             .map((c) => ({

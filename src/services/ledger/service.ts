@@ -139,7 +139,16 @@ async function buildLedger(session: Session, facts: TranscriptFact[], unknownRec
     return old?.source === 'user' ? old : old && old.title === i.title && JSON.stringify(old.anchors) === JSON.stringify(i.anchors) ? { ...i, status: old.status, statusSource: old.statusSource, evidenceIds: old.evidenceIds } : i;
   });
   items.push(...existing.filter(i => i.source === 'user' && !i.dropped && !items.some(c => c.id === i.id)));
-  const matched = matchLedger(facts, items, ledgerRepository.corrections(agent.id), ledgerRepository.rules(agent.id), cfg, agent.id);
+  const legacy = items.filter(item => item.source === 'user' && item.anchors.legacyCommands?.length);
+  const rules = [...ledgerRepository.rules(agent.id),...legacy.map(item => ({
+    itemId: item.id, matcher: { paths: [],commands: item.anchors.legacyCommands! },
+  }))];
+  // Unversioned saved user patterns still attribute steps, but need a literal
+  // command decision before they can participate in automatic completion.
+  const pending = new Map(items.filter(item => item.source === 'user' && item.anchors.commandFormat === 'legacy-unconfirmed').map(item => [item.id,item.anchors]));
+  const matchingItems = items.map(item => pending.has(item.id) ? { ...item,anchors: { ...item.anchors,commands: [] } } : item);
+  const matched = matchLedger(facts, matchingItems, ledgerRepository.corrections(agent.id), rules, cfg, agent.id);
+  for (const item of matched.items) if (pending.has(item.id)) item.anchors = pending.get(item.id)!;
   ledgerRepository.saveItems(agent.id, matched.items);
   // Preserve references to obsolete derived items without treating retirement as a user deletion.
   for (const old of existing) if (old.source !== 'user' && !matched.items.some(i => i.id === old.id)) db.query("UPDATE requirement_items SET status='unverified',evidence_ids='[]' WHERE id=?").run(old.id);
@@ -369,7 +378,7 @@ export async function importLedgerRequirements(sessionId: string, fromSessionId:
   if (!target?.importSuggestions?.some(s => s.sessionId === fromSessionId)) throw new LedgerInputError('Choose a suggested previous session');
   const previous = await getLedger(fromSessionId);
   if (!previous?.items.length) throw new LedgerInputError('Previous session has no requirements');
-  const items = previous.items.filter(i => !i.dropped).map((i,ordinal) => ({ ...i,id: randomUUID(),ordinal,source: 'user' as const,status: 'todo' as const,statusSource: 'rule' as const,evidenceIds: [],checklistId: undefined }));
+  const items = previous.items.filter(i => !i.dropped).map((i,ordinal) => ({ ...i,id: randomUUID(),ordinal,source: 'user' as const,anchors: { ...i.anchors,commandFormat: i.anchors.commandFormat ?? 'literal-v2' as const },status: 'todo' as const,statusSource: 'rule' as const,evidenceIds: [],checklistId: undefined }));
   ledgerRepository.replaceUserItems(target.agentSessionId,items);
   return getLedger(sessionId);
 }
@@ -382,7 +391,18 @@ export async function replaceLedgerItems(sessionId: string, values: RequirementI
     if (ids.has(id)) throw new LedgerInputError('Duplicate item id'); ids.add(id);
     if (value.id && !own.some(i => i.id === id)) throw new LedgerInputError('Unknown item id');
     const old = own.find(i => i.id === id);
-    return { ...value,id,ordinal,source: 'user' as const, statusSource: old ? value.status !== old.status ? 'user' as const : old.statusSource : value.status === 'todo' ? 'rule' as const : 'user' as const, evidenceIds: (value.evidenceIds ?? []).filter(id => detail.evidence.some(e => e.id === id)), checklistId: old?.checklistId };
+    const pending = old?.source === 'user' && old.anchors.commandFormat === 'legacy-unconfirmed';
+    const confirmed = pending && value.anchors.commandFormat === 'literal-v2';
+    if (confirmed && !value.anchors.commands.some(command => command.trim())) throw new LedgerInputError('Enter a complete command before confirming legacy criteria');
+    const anchors = {
+      ...value.anchors,
+      commandFormat: pending && !confirmed ? 'legacy-unconfirmed' as const : 'literal-v2' as const,
+      // Original patterns are server-owned history. Omitting them in an old
+      // client or editing their serialized copy cannot erase their attribution.
+      legacyCommands: old?.source === 'user' ? old.anchors.legacyCommands : undefined,
+      ...(pending && !confirmed ? { commands: old.anchors.commands } : {}),
+    };
+    return { ...value,anchors,id,ordinal,source: 'user' as const, statusSource: old ? value.status !== old.status ? 'user' as const : old.statusSource : value.status === 'todo' ? 'rule' as const : 'user' as const, evidenceIds: (value.evidenceIds ?? []).filter(id => detail.evidence.some(e => e.id === id)), checklistId: old?.checklistId };
   });
   transaction(() => {
     // Record the correction against raw candidates too, so toggling AI cannot resurrect them.

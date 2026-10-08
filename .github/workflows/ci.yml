@@ -33,6 +33,9 @@ jobs:
         with:
           node-version: 20
 
+      - name: Install pinned pnpm for real command fixtures
+        run: npm install --global pnpm@10.11.0
+
       - name: Install locked menubar dependencies
         working-directory: menubar-tauri
         run: npm ci

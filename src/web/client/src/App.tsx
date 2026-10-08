@@ -8,6 +8,7 @@ import { MenubarPage } from "@/pages/ledger/MenubarPage";
 import { useAuth } from "@/hooks/useAuth";
 import { stopSession } from "@/services/api";
 import type { TabId } from "@/components/TabNav";
+import { workspaceLocation } from "@/pages/ledger/navigation";
 
 const LedgerPage = lazy(() =>
   import("@/pages/ledger/LedgerPage").then((m) => ({ default: m.LedgerPage })),
@@ -39,8 +40,7 @@ function AppContent() {
   });
   const [openSessionId, setOpenSessionId] = useState<string | null>(null);
   useEffect(() => {
-    const url = new URL(window.location.href);
-    url.searchParams.set("view", view);
+    const url = workspaceLocation(window.location.href, view);
     window.history.replaceState(null, "", url);
   }, [view]);
   const navigate = useCallback((next: TabId) => {

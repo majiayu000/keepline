@@ -2,15 +2,62 @@ import { describe, test, expect } from 'bun:test';
 import { parseCodexSessionFile } from '../../adapters/codex/parser.js';
 import { parseSessionFile } from '../../adapters/claude/parser/jsonl.js';
 import { isMutatingTool, TranscriptFacts } from '../../adapters/transcript-facts.js';
-import { cachedSessionSummary } from '../../infrastructure/session-summary-cache.js';
+import { cachedSessionSummary, ledgerFactFingerprint, writeCachedLedgerFacts } from '../../infrastructure/session-summary-cache.js';
 import { readTranscriptFacts,clearLedgerFactCache,ledgerFactCacheStats } from '../../services/ledger/facts.js';
-import { mkdtempSync,writeFileSync,utimesSync,rmSync,copyFileSync,appendFileSync } from 'fs';
+import { mkdtempSync,writeFileSync,utimesSync,rmSync,copyFileSync,appendFileSync,statSync } from 'fs';
 import { tmpdir } from 'os';
 import { join } from 'path';
 import { matchLedger, decompose, extractAsks } from '../../domain/ledger/matcher.js';
 import { DEFAULT_LEDGER_CONFIG } from '../../domain/ledger/types.js';
 const fixtures = `${import.meta.dir}/fixtures`;
 describe('normalized transcript facts',() => {
+
+  test.each([22, 23, 24])('changed shell classification replaces persisted facts-%i and survives memory eviction', async version => {
+    const root = mkdtempSync(join(tmpdir(), 'keepline-mutating-facts-version-'));
+    const path = join(root, 'session.jsonl');
+    const now = Date.now(), timestamp = new Date(now).toISOString();
+    const commands = [
+      'rg --pre ./writer needle input.txt',
+      'find src -fprint0 src/widget.ts',
+      "sed -n -l 80 'w src/widget.ts' input.txt",
+      "sed -n --line-length 80 'w src/widget.ts' input.txt",
+      'git diff --ext-diff',
+      'git log -p --pretty --ext-diff HEAD~1..HEAD',
+    ];
+    const entries = commands.flatMap((cmd, index) => [
+      { type: 'response_item', timestamp, payload: {
+        type: 'function_call', call_id: `version-${index}`, name: 'exec_command', arguments: JSON.stringify({ cmd }),
+      } },
+      { type: 'response_item', timestamp, payload: {
+        type: 'function_call_output', call_id: `version-${index}`, output: JSON.stringify({ exit_code: 0, output: '' }),
+      } },
+    ]);
+    try {
+      writeFileSync(path, entries.map(entry => JSON.stringify(entry)).join('\n') + '\n');
+      const parser = new TranscriptFacts('codex');
+      entries.forEach(entry => parser.add(entry));
+      const current = ledgerFactFingerprint(statSync(path), now);
+      const oldFingerprint = current.fingerprint.replace(/^facts-\d+-/, `facts-${version}-`);
+      writeCachedLedgerFacts(`codex:${path}`, oldFingerprint, {
+        fingerprint: oldFingerprint,
+        facts: parser.facts.map(fact => fact.kind === 'tool' ? { ...fact, mutating: false } : fact),
+        unknownRecords: 0,
+      });
+      clearLedgerFactCache();
+      const before = ledgerFactCacheStats();
+      const fresh = await readTranscriptFacts(path, 'codex', now);
+      expect(fresh.facts.filter(fact => fact.kind === 'tool').map(fact => fact.mutating)).toEqual([true, true, true, true, true, true]);
+      expect(ledgerFactCacheStats().reads).toBe(before.reads + 1);
+      clearLedgerFactCache();
+      const disk = await readTranscriptFacts(path, 'codex', now);
+      expect(disk.facts).toEqual(fresh.facts);
+      expect(ledgerFactCacheStats().reads).toBe(before.reads + 1);
+      expect(ledgerFactCacheStats().diskHits).toBe(before.diskHits + 1);
+    } finally {
+      clearLedgerFactCache();
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
   test('reading a saved test log is not a successful test execution',() => {
     const parser = new TranscriptFacts('claude'),timestamp = new Date().toISOString();
     parser.add({ type: 'assistant',timestamp,message: { content: [{ type: 'tool_use',id: 'read',name: 'Read',input: { file_path: 'test.log' } }] } });
@@ -32,7 +79,7 @@ describe('normalized transcript facts',() => {
         parser.add({ type: 'response_item',timestamp,payload: { type: 'function_call',call_id: 'read',name: 'exec_command',arguments: '{"cmd":"cat test.log"}' } });
         parser.add({ type: 'response_item',timestamp,payload: { type: 'function_call_output',call_id: 'read',output: 'Exit code: 0\n3 passed; 0 failed' } });
       }
-      expect(parser.facts[0]).toMatchObject({ kind: 'tool',mutating: false,facts: [] });
+      expect(parser.facts[0]).toMatchObject({ kind: 'tool',mutating: false,facts: [{ kind: 'command',value: 'cat test.log',exitCode: 0 }] });
     }
   });
   test('expired files are not opened; large fact sets survive cache eviction through disk',async () => {
@@ -129,8 +176,8 @@ describe('normalized transcript facts',() => {
     expect(tool.facts?.find(e => e.kind === 'pr')?.value).toBe('https://github.com/example/project/pull/42');
   });
   test('read-only commands collapse, combined writes remain steps',() => {
-    for (const cmd of ['cat a.ts','git status','git diff','rg widget src','sed -n 1,3p a.ts']) expect(isMutatingTool('Bash',{ command: cmd })).toBe(false);
-    for (const cmd of ['cat a.ts > b.ts','git status && git commit -m fix','bun test','sed -i s/a/b/ a.ts']) expect(isMutatingTool('Bash',{ command: cmd })).toBe(true);
+    for (const cmd of ['cat a.ts','git status','git diff','git -C repo status --short','git --no-pager log -1','git --no-pager -C "repo path" diff --check','git -Crepo status --short','rg widget src','sed -n 1,3p a.ts']) expect(isMutatingTool('Bash',{ command: cmd })).toBe(false);
+    for (const cmd of ['cat a.ts > b.ts','git status && git commit -m fix','git -C repo status && git -C repo checkout .','git --no-pager checkout .','git -C repo commit -m fix','git --unknown status','git -C','bun test','sed -i s/a/b/ a.ts']) expect(isMutatingTool('Bash',{ command: cmd })).toBe(true);
     expect(isMutatingTool('functions.find',{ command: 'find . -delete' })).toBe(true);
     expect(isMutatingTool('functions.wait',{})).toBe(false);
     expect(isMutatingTool('Bash',{ command: 'sleep 60' })).toBe(false);
@@ -139,6 +186,35 @@ describe('normalized transcript facts',() => {
     expect(isMutatingTool('functions.exec',{ input: 'text(await tools.exec_command({cmd: "rg widget src"}));' })).toBe(false);
     expect(isMutatingTool('functions.exec',{ input: 'text(await tools.exec_command({cmd: "bun test"}));' })).toBe(true);
     expect(isMutatingTool('functions.exec',{ input: 'text(await tools.write_stdin({session_id: 1,chars: ""}));' })).toBe(false);
+  });
+  test('prefixed Git reads use direct executable normalization without guessing wrappers',() => {
+    for (const cmd of ['CI=1 /usr/bin/git status --short','env -- CI=1 git -C repo diff --check','/usr/bin/env CI=1 /usr/bin/git --no-pager -Crepo log -1']) expect(isMutatingTool('exec_command',{ cmd })).toBe(false);
+    for (const cmd of ['env --unknown git status','sh -c "git status"','CI=1 git --unknown status','CI=1 git -C']) expect(isMutatingTool('exec_command',{ cmd })).toBe(true);
+  });
+  test.each(['read_text_file','list_directory','mcp__filesystem__read_text_file','mcp__filesystem__list_directory'])(
+    '%s is read-only and cannot turn copied test output into evidence',name => {
+      expect(isMutatingTool(name,{ path: 'src/widget.ts' })).toBe(false);
+      const parser = new TranscriptFacts('codex'),timestamp = new Date().toISOString();
+      parser.add({ type: 'response_item',timestamp,payload: { type: 'function_call',call_id: 'read',name,arguments: '{"path":"src/widget.ts"}' } });
+      parser.add({ type: 'response_item',timestamp,payload: { type: 'function_call_output',call_id: 'read',output: 'Exit code: 0\n3 pass' } });
+      expect(parser.facts[0]).toMatchObject({ mutating: false,facts: [] });
+    });
+  test.each(['mcp__filesystem__read_and_write_file','read_text_file_extra','list_directory_extra'])(
+    '%s is not classified as a read',name => {
+      expect(isMutatingTool(name,{ path: 'src/widget.ts' })).toBe(true);
+    });
+  test('MCP exec terminal completion moves a pending mutation after a mid-flight check',() => {
+    const parser = new TranscriptFacts('codex');
+    const add = (payload: unknown,second: number) => parser.add({ type: 'response_item',timestamp: new Date(Date.UTC(2026,9,8,1,0,second)).toISOString(),payload });
+    add({ type: 'function_call',call_id: 'write',name: 'mcp__shell__exec_command',arguments: '{"cmd":"node write.js"}' },0);
+    add({ type: 'function_call_output',call_id: 'write',output: '{"session_id":91,"output":"running"}' },1);
+    add({ type: 'function_call',call_id: 'check',name: 'exec_command',arguments: '{"cmd":"bun test"}' },2);
+    add({ type: 'function_call_output',call_id: 'check',output: '{"exit_code":0,"output":"1 pass"}' },3);
+    add({ type: 'function_call',call_id: 'poll',name: 'write_stdin',arguments: '{"session_id":91,"chars":""}' },4);
+    add({ type: 'function_call_output',call_id: 'poll',output: '{"exit_code":0,"output":""}' },5);
+    expect(parser.facts.at(-1)).toMatchObject({ callId: 'write',name: 'mcp__shell__exec_command',exitCode: 0,at: '2026-10-08T01:00:05.000Z' });
+    const items = decompose([],'mcp-async',[{ id: 'check',text: 'Run `bun test`' }]);
+    expect(matchLedger(parser.facts,items,[],[],DEFAULT_LEDGER_CONFIG).items[0].status).toBe('unverified');
   });
   test('unknown and malformed records degrade individually',() => {
     const parser = new TranscriptFacts('codex'); parser.add({ type: 'future',timestamp: new Date().toISOString() }); parser.add(null);

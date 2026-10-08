@@ -7,6 +7,7 @@ import {
   rowPresentation,
   evidenceText,
   time,
+  reviewAcceptanceAt,
 } from "../presentation";
 import {
   ActionButton,
@@ -40,23 +41,7 @@ export function LedgerTodos({
       weekly: 0,
       stale: false,
       todos: c.todos
-        .filter((t) => !t.parentId)
-        .map((t) => ({
-          ...t,
-          readyToComplete: false,
-          checklist: (t.acceptance ?? []).map((a) => ({
-            ...a,
-            satisfied: a.completed,
-            evidenced: false,
-          })),
-          sessions: c.rows
-            .filter((r) => r.workItemId === t.id)
-            .map((r) => ({
-              runtime_session_id: r.sessionId,
-              title: r.title,
-              status: r.state,
-            })),
-        })),
+        .filter((t) => !c.goals.some(goal => goal.id === t.parentId)),
     },
   ];
   const dispatch = (todo: Todo) => c.prepareDispatch(todo);
@@ -297,7 +282,10 @@ export function LedgerReview({
                 {row.title}
               </button>
               <span className={styles.subtle} style={{ marginLeft: 8 }}>
-                {accepted ? time(row.lastActiveAt) : rowPresentation(row).agent}
+                {accepted ? (() => {
+                  const at = review && reviewAcceptanceAt(row, review.start, review.end);
+                  return at ? time(at) : "—";
+                })() : rowPresentation(row).agent}
               </span>
             </span>
             <span className={`${styles.reviewDetail} ${styles.subtle}`}>

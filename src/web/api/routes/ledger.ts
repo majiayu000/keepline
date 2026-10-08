@@ -65,6 +65,7 @@ app.put('/:sessionId/items',async c => {
   for (const item of items) {
     if (!item || typeof item.title !== 'string' || !item.title.trim() || item.title.length > 2000 || !['todo','doing','done','unverified'].includes(item.status)) throw new LedgerInputError('Invalid requirement item');
     if (!item.anchors || !['paths','commands','keywords'].every(k => Array.isArray(item.anchors[k]) && item.anchors[k].every((v: unknown) => typeof v === 'string'))) throw new LedgerInputError('Invalid anchors');
+    if (item.anchors.commandFormat !== undefined && !['legacy-unconfirmed','literal-v2'].includes(item.anchors.commandFormat) || item.anchors.legacyCommands !== undefined && (!Array.isArray(item.anchors.legacyCommands) || !item.anchors.legacyCommands.every((v: unknown) => typeof v === 'string'))) throw new LedgerInputError('Invalid command format');
     if (!Array.isArray(item.constraints) || !item.constraints.every((r: Record<string,unknown>) => r && (r.kind === 'no_public_api_change' || ['path_forbidden','preserve_text'].includes(String(r.kind)) && typeof r.value === 'string'))) throw new LedgerInputError('Invalid constraints');
     if (item.id !== undefined && typeof item.id !== 'string' || item.evidenceIds !== undefined && (!Array.isArray(item.evidenceIds) || !item.evidenceIds.every((id: unknown) => typeof id === 'string'))) throw new LedgerInputError('Invalid item identity or evidence');
   }
@@ -83,7 +84,7 @@ app.post('/:sessionId/redecompose',async c => {
   const detail = await getLedger(c.req.param('sessionId')); if (!detail) return c.json({ success: false,error: 'Ledger not found' },404);
   const db = getDatabase();
   // A corrected target is a user choice; keep it and its rules when replacing model items.
-  db.query(`UPDATE requirement_items SET source='user' WHERE agent_session_id=? AND id IN
+  db.query(`UPDATE requirement_items SET anchors=CASE WHEN source<>'user' THEN json_set(anchors,'$.commandFormat','literal-v2') ELSE anchors END,source='user' WHERE agent_session_id=? AND id IN
     (SELECT requirement_item_id FROM ledger_corrections WHERE agent_session_id=? UNION SELECT requirement_item_id FROM ledger_rules WHERE agent_session_id=?)`).run(detail.agentSessionId,detail.agentSessionId,detail.agentSessionId);
   db.query("DELETE FROM requirement_items WHERE agent_session_id = ? AND source <> 'user' AND deleted_by_user = 0").run(detail.agentSessionId);
   getDatabase().query('DELETE FROM ledger_judgments WHERE agent_session_id = ?').run(detail.agentSessionId);

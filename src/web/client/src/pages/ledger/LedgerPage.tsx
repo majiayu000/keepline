@@ -291,6 +291,8 @@ export function LedgerPage({
       {!c.loading && view === "overview" && (
         <LedgerOverview
           rows={filtered}
+          goals={c.goals}
+          todos={c.todos}
           hours={c.hours}
           maxHours={c.settings.retentionDays * 24}
           onHoursChange={c.changeHours}

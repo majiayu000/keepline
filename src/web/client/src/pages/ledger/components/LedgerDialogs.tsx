@@ -273,6 +273,11 @@ export function LedgerDialogs({
                       ))}
                     </select>
                   </label>
+                  {!!item.anchors.legacyCommands?.length && (
+                    <p className={styles.subtle}>
+                      原有匹配模式保留用于关联：{item.anchors.legacyCommands.join("、")}。验收请确认下面的完整命令。
+                    </p>
+                  )}
                   {(["paths", "commands", "keywords"] as const).map((kind) => (
                     <label key={kind}>
                       {kind === "paths"
@@ -295,6 +300,14 @@ export function LedgerDialogs({
                       />
                     </label>
                   ))}
+                  {item.anchors.commandFormat === "legacy-unconfirmed" && (
+                    <button
+                      disabled={!item.anchors.commands.some(command => command.trim())}
+                      onClick={() => update({ anchors: { ...item.anchors, commandFormat: "literal-v2" } })}
+                    >
+                      确认这些是完整验收命令
+                    </button>
+                  )}
                   <label className={styles.toggle}>
                     <input
                       type="checkbox"
@@ -382,7 +395,7 @@ export function LedgerDialogs({
                     id: crypto.randomUUID(),
                     ordinal: items!.length,
                     title: "",
-                    anchors: { paths: [], commands: [], keywords: [] },
+                    anchors: { paths: [], commands: [], keywords: [], commandFormat: "literal-v2" },
                     constraints: [],
                     source: "user",
                     status: "todo",
@@ -396,7 +409,7 @@ export function LedgerDialogs({
             </button>
             <div className={styles.actions}>
               <button
-                disabled={busy || itemEditor.some((item) => !item.title.trim())}
+                disabled={busy || itemEditor.some((item) => !item.title.trim() || item.anchors.commandFormat === "legacy-unconfirmed" && item.anchors.commands.some(command => command.trim()))}
                 onClick={() => void perform(c.saveRequirements)}
               >
                 保存并确认

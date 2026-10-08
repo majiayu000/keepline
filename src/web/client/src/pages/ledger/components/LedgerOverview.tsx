@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import type { LedgerDetail } from "../../../../../../domain/ledger/types";
+import type { Goal, Todo } from "../types";
 import { groupRows, rowPresentation } from "../presentation";
 import {
   ProgressSegments,
@@ -18,6 +19,8 @@ function savedView() {
 }
 export function LedgerOverview({
   rows,
+  goals,
+  todos,
   hours,
   maxHours,
   onHoursChange,
@@ -30,6 +33,8 @@ export function LedgerOverview({
   cursor,
 }: {
   rows: LedgerDetail[];
+  goals: Goal[];
+  todos: Todo[];
   hours: number;
   maxHours: number;
   onHoursChange: (hours: number) => void;
@@ -50,8 +55,8 @@ export function LedgerOverview({
   const [density, setDensity] = useState<"compact" | "detailed">(
     saved?.density === "detailed" ? "detailed" : "compact",
   );
-  const [grouping, setGrouping] = useState<"urgency" | "project">(
-    saved?.grouping === "project" ? "project" : "urgency",
+  const [grouping, setGrouping] = useState<"urgency" | "project" | "goal">(
+    saved?.grouping === "project" || saved?.grouping === "goal" ? saved.grouping : "urgency",
   );
   const [expandedHistory, setExpandedHistory] = useState<string[]>([]);
   const [collapsedCursor, setCollapsedCursor] = useState<string>();
@@ -66,7 +71,7 @@ export function LedgerOverview({
     }
   }, [layout, density, grouping]);
   const [menu, setMenu] = useState<string | null>(null);
-  const groups = groupRows(rows, grouping);
+  const groups = groupRows(rows, grouping, Date.now(), { goals, todos });
   return (
     <>
       <div className={styles.overviewToolbar}>
@@ -96,6 +101,7 @@ export function LedgerOverview({
           options={[
             ["urgency", "按紧急度"],
             ["project", "按项目"],
+            ["goal", "按目标"],
           ]}
         />
         <form

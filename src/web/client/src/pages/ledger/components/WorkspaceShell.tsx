@@ -115,7 +115,7 @@ export function WorkspaceShell({
         <div className={styles.brand}>
           <span />
           <strong>Keepline</strong>
-          <small className={styles.version}>v0.4</small>
+          <small className={styles.version}>v{__KEEPLINE_VERSION__}</small>
         </div>
         <div className={styles.navGroup}>
           {navigation.map(([id, label, icon]) => {
