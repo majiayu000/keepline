@@ -79,7 +79,7 @@ export function isMutatingTool(name: string, input: unknown): boolean {
         else if (option === '--textconv') textconv = true;
         else if (option === '--no-textconv') textconv = false;
         // Pattern/format operands can look like helper flags without enabling them.
-        else if (/^(?:-G|-S|--grep|--author|--committer|--format|--pretty|--since|--until|--after|--before|--date|--diff-filter|--find-object|--max-count|-n)$/.test(option)) optionIndex++;
+        else if (/^(?:-G|-S|--grep|--author|--committer|--format|--since|--until|--after|--before|--date|--diff-filter|--find-object|--max-count|-n)$/.test(option)) optionIndex++;
       }
       if (externalDiff || textconv) return true;
       if (words[index] === 'branch') return !(args.length === 1 && args[0] === '--show-current');
@@ -109,9 +109,13 @@ function outputEvidence(output: unknown, input: unknown, name: string, resultCod
   const structuredCode = typeof code === 'number' ? code : obj.is_error === true ? 1 : undefined;
   // Host status and numeric result fields outrank ordinary text in stdout.
   // Claude success remains implicit only relative to another structured status.
-  const exitCode = typeof resultCode === 'number'
+  const reportedCode = structuredCode ?? codes.find(c => c !== 0) ?? codes.at(-1);
+  // An MCP exec tool can succeed while its child command fails. Its host flag
+  // is only a fallback; explicit process receipts still determine completion.
+  const execFallback = implicit && resultCode === 0 && /(?:^|[_.])exec_command$/.test(name);
+  const exitCode = execFallback ? reportedCode ?? resultCode : typeof resultCode === 'number'
     ? implicit && resultCode === 0 && structuredCode !== undefined ? structuredCode : resultCode
-    : structuredCode ?? codes.find(c => c !== 0) ?? codes.at(-1);
+    : reportedCode;
   const facts: ToolEvidence[] = [];
   const data = record(input);
   const embedded = typeof data.input === 'string' ? [...data.input.matchAll(/(?:cmd|command)\s*:\s*["']([^"']+)["']/g)].map(m => m[1]) : [];
