@@ -125,7 +125,12 @@ export function sedInPlaceFiles(command: unknown): string[] | undefined {
 function scriptMayWrite(script: string): boolean {
   for (let index = 0; index < script.length; index++) {
     const char = script[index];
-    if (char === '#' || /[rRbBtT:]/.test(char)) {
+    if (char === '#' || char === 'r' || char === 'R') {
+      // Comments and read-file names consume semicolons until the next newline.
+      while (index + 1 < script.length && script[index + 1] !== '\n') index++;
+      continue;
+    }
+    if (/[bBtT:]/.test(char)) {
       while (index + 1 < script.length && !/[;\n]/.test(script[index + 1])) index++;
       continue;
     }

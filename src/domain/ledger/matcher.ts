@@ -107,9 +107,13 @@ function hasWritingOption(args: string[], writing: RegExp, takesValue: RegExp): 
   return false;
 }
 function isVerificationCommand(command: string): boolean {
-  const words = directCommandWords(command);
-  const executable = words?.[0]?.split('/').at(-1);
+  let words = directCommandWords(command);
+  let executable = words?.[0]?.split('/').at(-1);
   if (!words || !executable) return false;
+  if (/^python(?:\d+(?:\.\d+)*)?$/.test(executable) && words[1] === '-m' && words[2] === 'pytest') {
+    words = words.slice(2);
+    executable = 'pytest';
+  }
   if (executable === 'pytest') return !hasWritingOption(words.slice(1),
     /^--(?:junitxml|junit-xml|log-file|debug|basetemp)(?:=|$)/,
     /^(?:-k|-m|-c|-o|-p|--override-ini|--maxfail|--tb|--capture|--color|--confcutdir|--rootdir|--import-mode|--junit-prefix|--junitprefix|--deselect|--ignore|--ignore-glob|--log-level|--log-format|--log-date-format)$/);

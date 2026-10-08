@@ -71,6 +71,17 @@ export function isMutatingTool(name: string, input: unknown): boolean {
       const separator = args.indexOf('--');
       const options = separator < 0 ? args : args.slice(0, separator);
       if (options.some(option => option === '--output' || option.startsWith('--output='))) return true;
+      let externalDiff = false, textconv = false;
+      for (let optionIndex = 0; optionIndex < options.length; optionIndex++) {
+        const option = options[optionIndex];
+        if (option === '--ext-diff') externalDiff = true;
+        else if (option === '--no-ext-diff') externalDiff = false;
+        else if (option === '--textconv') textconv = true;
+        else if (option === '--no-textconv') textconv = false;
+        // Pattern/format operands can look like helper flags without enabling them.
+        else if (/^(?:-G|-S|--grep|--author|--committer|--format|--pretty|--since|--until|--after|--before|--date|--diff-filter|--find-object|--max-count|-n)$/.test(option)) optionIndex++;
+      }
+      if (externalDiff || textconv) return true;
       if (words[index] === 'branch') return !(args.length === 1 && args[0] === '--show-current');
       return !/^(?:status|diff|log|show|ls-files)$/.test(words[index] ?? '');
     }
@@ -192,9 +203,12 @@ export class TranscriptFacts {
       else if (block.type === 'tool_result') {
         // Claude's completed tool_result uses is_error instead of a successful exit code.
         // Background Bash results only announce a task ID; they are not completed commands.
-        const background = record(entry.toolUseResult).backgroundTaskId || /running in (?:the )?background|background task/i.test(textContent(block.content));
         const call = this.calls.get(block.tool_use_id);
-        const succeeded = /^(?:Bash|Write|Edit)$/.test(call?.name ?? '') ? 0 : undefined;
+        const exec = /(?:^|[_.])exec_command$/.test(call?.name ?? '');
+        const output = textContent(block.content);
+        const pendingExecution = exec && (record(parseInput(output)).session_id !== undefined || /Process running with session ID\s+\d+/i.test(output));
+        const background = record(entry.toolUseResult).backgroundTaskId || /running in (?:the )?background|background task/i.test(output) || pendingExecution;
+        const succeeded = /^(?:Bash|Write|Edit)$/.test(call?.name ?? '') || exec ? 0 : undefined;
         this.result(block.tool_use_id, block.content, block.is_error ? 1 : background ? undefined : succeeded,true,at);
       }
     }
