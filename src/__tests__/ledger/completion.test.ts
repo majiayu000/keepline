@@ -84,7 +84,7 @@ describe('completion requires current execution evidence', () => {
       const path = join(root, 'widget.test.ts');
       const writeTest = (value: string) => writeFileSync(path, `import { test, expect } from 'bun:test';\ntest('value', () => expect('${value}').toMatchSnapshot());\n`);
       writeTest('before');
-      expect(spawnSync('bun', ['test', 'widget.test.ts'], { cwd: root, encoding: 'utf8' }).status).toBe(0);
+      expect(spawnSync('bun', ['test', '-u', 'widget.test.ts'], { cwd: root, encoding: 'utf8' }).status).toBe(0);
       const snapshot = join(root, '__snapshots__', 'widget.test.ts.snap');
       expect(readFileSync(snapshot, 'utf8')).toContain('before');
       writeTest('after');
@@ -99,7 +99,7 @@ describe('completion requires current execution evidence', () => {
     } finally { rmSync(root, { recursive: true, force: true }); }
   });
 
-  test('real pnpm run options locate the script after an option operand', () => {
+  test.skipIf(Bun.which('pnpm') === null)('real pnpm run options locate the script after an option operand', () => {
     const root = mkdtempSync(join(tmpdir(), 'keepline-pnpm-run-'));
     try {
       writeFileSync(join(root, 'package.json'), JSON.stringify({ scripts: { test: `node -e "console.log('1 pass')"` } }));
@@ -117,6 +117,31 @@ describe('completion requires current execution evidence', () => {
     'recognized package run options preserve peer checks: %s', cmd => {
       expect(match([{ code: 0 }, { cmd, code: 0 }], [command, cmd]).progress.done).toBe(1);
     });
+  test.each([
+    { options: ['--script-shell', '/bin/sh'] },
+    { options: ['--script-shell=/bin/sh'] },
+    { options: ['--foreground-scripts'] },
+  ])('npm run options with operands preserve current receipts: %j', ({ options }) => {
+    const root = mkdtempSync(join(tmpdir(), 'keepline-npm-run-options-'));
+    try {
+      writeFileSync(join(root, 'package.json'), JSON.stringify({ scripts: { test: `node -e "console.log('1 pass')"` } }));
+      const receipt = spawnSync('npm', ['run', ...options, 'test'], { cwd: root, encoding: 'utf8' });
+      if (receipt.error) throw receipt.error;
+      expect(receipt.status).toBe(0);
+      expect(receipt.stdout).toContain('1 pass');
+      const cmd = `npm run ${options.join(' ')} test`;
+      expect(match([{ code: 0 }, { cmd, result: { exit_code: receipt.status, output: receipt.stdout + receipt.stderr } }], [command, cmd]).progress.done).toBe(1);
+    } finally { rmSync(root, { recursive: true, force: true }); }
+  });
+
+  test('a pending writer blocks later checks until completion and recheck', () => {
+    const start: Call = { cmd: 'node write.js', result: { session_id: 91, output: 'running' } };
+    const end: Call = { name: 'write_stdin', input: { session_id: 91, chars: '' }, code: 0, output: '' };
+    expect(match([start, { code: 0 }]).progress.done).toBe(0);
+    expect(match([start, { code: 0 }, end]).progress.done).toBe(0);
+    expect(match([start, end, { code: 0 }]).progress.done).toBe(1);
+  });
+
   test('npm if-present runs the actual script and preserves peer checks', () => {
     const root = mkdtempSync(join(tmpdir(), 'keepline-npm-if-present-'));
     try {
@@ -374,7 +399,7 @@ describe('completion requires current execution evidence', () => {
     const pending = { name: 'write_stdin', input: { session_id: 91, chars: '' }, result: { session_id: 91, output: 'still running' } };
     const completed = { name: 'write_stdin', input: { session_id: 91, chars: '' }, code, output: '' };
     const calls: Call[] = [start, { code: 0 }, pending];
-    expect(match(calls).progress.done).toBe(1);
+    expect(match(calls).progress.done).toBe(0);
     const stale = match([...calls, completed]);
     expect(stale.items[0].status).toBe('unverified');
     const facts = recordedCalls([...calls, completed]);
@@ -799,7 +824,7 @@ describe('completion requires current execution evidence', () => {
     expect(stale.progress.done).toBe(0);
     expect(stale.items[0].status).toBe('unverified');
     expect(stale.items[0].evidenceIds).toEqual([]);
-    expect(match([{ code: 0 }, call, { code: 0 }]).progress.done).toBe(1);
+    expect(match([{ code: 0 }, call, { code: 0 }]).progress.done).toBe(call.cmd && call.code === undefined ? 0 : 1);
   });
 
   test('a later success restores completion after a failed attempt', () => {
