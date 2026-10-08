@@ -120,9 +120,21 @@ function isVerificationCommand(command: string): boolean {
     };
     if (!skipOptions()) return false;
     if (words[index] === 'run') { index++; if (!skipOptions()) return false; }
-  } else if (words[index] === 'run') index++;
+  } else if (words[index] === 'run') {
+    index++;
+    if (executable === 'npm') {
+      while (/^(?:--if-present|--silent)$/.test(words[index] ?? '')) index++;
+    }
+  }
   if (!/^(?:tests?|typecheck|check)$/.test(words[index] ?? '')) return false;
-  return !words.slice(index + 1).some(option => /^(?:-u|--update-snapshots(?:=.*)?|--updateSnapshot(?:=.*)?)$/.test(option));
+  const args = words.slice(index + 1);
+  const separator = args.indexOf('--');
+  // npm/pnpm/yarn forward arguments after -- to the underlying test script.
+  const options = executable === 'bun' && separator >= 0 ? args.slice(0, separator) : args;
+  return !options.some((option, i) => /^(?:-u|--update-snapshots(?:=.*)?|--updateSnapshot(?:=.*)?)$/.test(option)
+    || /^--(?:reporter-outfile|coverage-dir)(?:=|$)/.test(option)
+    || option === '--coverage-reporter=lcov'
+    || option === '--coverage-reporter' && options[i + 1] === 'lcov');
 }
 function score(anchors: Anchors, summary: string, paths: string[], lowerSummary: string): number {
   return anchors.paths.reduce((n, path) => n + (paths.some(p => pathMatches(path,p)) || summary.includes(path) ? 5 : 0), 0)
