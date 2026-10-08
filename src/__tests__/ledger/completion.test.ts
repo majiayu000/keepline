@@ -38,6 +38,100 @@ function match(calls: Call[], commands = [command]) {
 }
 
 describe('completion requires current execution evidence', () => {
+
+  for (const subcommand of ['diff', 'log', 'show']) for (const separated of [false, true]) {
+    test(`real git ${subcommand} output-file ${separated ? 'operand' : 'equals'} invalidates prior checks`, () => {
+      const root = mkdtempSync(join(tmpdir(), 'keepline-git-output-'));
+      const git = (...args: string[]) => {
+        const result = spawnSync('git', args, { cwd: root, encoding: 'utf8' });
+        if (result.error) throw result.error;
+        return result;
+      };
+      try {
+        expect(git('init', '--quiet').status).toBe(0);
+        writeFileSync(join(root, 'widget.ts'), 'before\n');
+        expect(git('add', 'widget.ts').status).toBe(0);
+        expect(git('-c', 'user.name=Ledger regression', '-c', 'user.email=ledger@example.invalid', '-c', 'commit.gpgsign=false', '-c', 'core.hooksPath=/dev/null', 'commit', '--quiet', '-m', 'fixture').status).toBe(0);
+        writeFileSync(join(root, 'widget.ts'), 'after\n');
+        const args = [subcommand, ...(subcommand === 'diff' ? ['--exit-code'] : []), ...(separated ? ['--output', 'generated.ts'] : ['--output=generated.ts'])];
+        const receipt = git(...args);
+        expect(receipt.status).toBe(subcommand === 'diff' ? 1 : 0);
+        expect(readFileSync(join(root, 'generated.ts'), 'utf8').length).toBeGreaterThan(0);
+        const cmd = `git ${args.join(' ')}`;
+        expect(match([{ code: 0 }, { cmd, result: { exit_code: receipt.status, output: receipt.stdout + receipt.stderr } }]).items[0].status).toBe('unverified');
+        expect(match([{ code: 0 }, { cmd, code: 0 }, { code: 0 }]).progress.done).toBe(1);
+      } finally { rmSync(root, { recursive: true, force: true }); }
+    });
+  }
+
+  test.each(['git diff -- --output=generated.ts', 'git log -- --output generated.ts', 'git show -- --output=generated.ts'])(
+    'Git output-looking paths after -- remain reads: %s', cmd => {
+      expect(match([{ code: 0 }, { cmd, code: 0, output: '' }]).progress.done).toBe(1);
+    });
+
+  test.each(['git branch --show-current', 'CI=1 git --no-pager -C repo branch --show-current'])(
+    'exact current-branch inspection preserves prior checks: %s', cmd => {
+      expect(match([{ code: 0 }, { cmd, code: 0, output: '' }]).progress.done).toBe(1);
+    });
+  test.each(['git branch -D old', 'git branch new', 'git branch --show-current -D old'])(
+    'other branch forms remain mutations: %s', cmd => {
+      expect(match([{ code: 0 }, { cmd, code: 0, output: '' }]).items[0].status).toBe('unverified');
+    });
+
+  test.each(['-u', '--update-snapshots'])('real Bun snapshot mode %s invalidates peers but proves its own criterion', option => {
+    const root = mkdtempSync(join(tmpdir(), 'keepline-snapshot-update-'));
+    try {
+      const path = join(root, 'widget.test.ts');
+      const writeTest = (value: string) => writeFileSync(path, `import { test, expect } from 'bun:test';\ntest('value', () => expect('${value}').toMatchSnapshot());\n`);
+      writeTest('before');
+      expect(spawnSync('bun', ['test', 'widget.test.ts'], { cwd: root, encoding: 'utf8' }).status).toBe(0);
+      const snapshot = join(root, '__snapshots__', 'widget.test.ts.snap');
+      expect(readFileSync(snapshot, 'utf8')).toContain('before');
+      writeTest('after');
+      const receipt = spawnSync('bun', ['test', option, 'widget.test.ts'], { cwd: root, encoding: 'utf8' });
+      if (receipt.error) throw receipt.error;
+      expect(receipt.status).toBe(0);
+      expect(readFileSync(snapshot, 'utf8')).toContain('after');
+      const cmd = `bun test ${option} widget.test.ts`;
+      const calls = [{ code: 0 }, { cmd, result: { exit_code: receipt.status, output: receipt.stdout + receipt.stderr } }];
+      const items = decompose([], 'snapshot-mode', [{ id: 'peer', text: `Run \`${command}\`` }, { id: 'snapshot', text: `Run \`${cmd}\`` }]);
+      expect(matchLedger(recordedCalls(calls), items, [], [], DEFAULT_LEDGER_CONFIG).items.map(item => item.status)).toEqual(['unverified', 'done']);
+    } finally { rmSync(root, { recursive: true, force: true }); }
+  });
+
+  test('real pnpm run options locate the script after an option operand', () => {
+    const root = mkdtempSync(join(tmpdir(), 'keepline-pnpm-run-'));
+    try {
+      writeFileSync(join(root, 'package.json'), JSON.stringify({ scripts: { test: `node -e "console.log('1 pass')"` } }));
+      const args = ['run', '--if-present', '--dir', root, 'test'];
+      const receipt = spawnSync('pnpm', args, { cwd: root, encoding: 'utf8' });
+      if (receipt.error) throw receipt.error;
+      expect(receipt.status).toBe(0);
+      expect(receipt.stdout).toContain('1 pass');
+      const cmd = `pnpm run --if-present --dir ${root} test`;
+      expect(match([{ code: 0 }, { cmd, result: { exit_code: receipt.status, output: receipt.stdout + receipt.stderr } }], [command, cmd]).progress.done).toBe(1);
+    } finally { rmSync(root, { recursive: true, force: true }); }
+  });
+
+  test.each(['pnpm run --if-present test', 'pnpm run --if-present --dir "fixture path" test', 'pnpm run --dir="fixture path" --if-present test', 'pnpm run --no-bail test'])(
+    'recognized package run options preserve peer checks: %s', cmd => {
+      expect(match([{ code: 0 }, { cmd, code: 0 }], [command, cmd]).progress.done).toBe(1);
+    });
+  test.each(['pnpm run --unknown test', 'pnpm run --dir', 'pnpm run --report-summary test'])(
+    'unknown, incomplete or writing run modes remain conservative: %s', cmd => {
+      expect(match([{ code: 0 }, { cmd, code: 0 }]).items[0].status).toBe('unverified');
+    });
+
+  test.each([command, 'git diff --check', 'bun test -u widget.test.ts'])(
+    'a check started before a later edit stays stale after terminal success: %s', cmd => {
+      const start = { cmd, result: { session_id: 91, output: 'running' } };
+      const edit = { name: 'Edit', input: { file_path: 'src/widget.ts', old_string: 'old', new_string: 'new' }, code: 0, output: '' };
+      const poll = { name: 'write_stdin', input: { session_id: 91, chars: '' }, code: 0, output: '' };
+      expect(match([start, poll], [cmd]).progress.done).toBe(1);
+      expect(match([start, edit, poll], [cmd]).items[0].status).toBe('unverified');
+      expect(match([start, edit, poll, { cmd, code: 0 }], [cmd]).progress.done).toBe(1);
+      expect(match([edit, start, poll], [cmd]).progress.done).toBe(1);
+    });
   test.each([
     'git diff --output=src/widget.ts',
     'git diff --output src/widget.ts',

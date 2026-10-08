@@ -9,7 +9,7 @@ import { ensureKeeplineDataHome } from '../lib/paths.js';
 // Increment when parser semantics change. This is derived data, never task/session truth.
 const CACHE_VERSION = 2;
 // Keep computed fingerprints and persistent cleanup on the same semantic version.
-export const LEDGER_COMPUTATION_VERSION = 25;
+export const LEDGER_COMPUTATION_VERSION = 26;
 let database: Database | undefined;
 let ledgerWindow: string | undefined;
 let computationWindow: string | undefined;
@@ -140,6 +140,6 @@ export function writeLedgerComputation(key: string, fingerprint: string, value: 
 
 export function ledgerFactFingerprint(info: { mtimeMs: number; ctimeMs: number; size: number },now = Date.now()) {
   const days = config.get().ledger.retentionDays;
-  const window = `facts-17-${days}-${new Date(now).toISOString().slice(0,10)}`;
+  const window = `facts-18-${days}-${new Date(now).toISOString().slice(0,10)}`;
   return { window,since: now-days*86400000,fingerprint: `${window}:${info.mtimeMs}:${info.ctimeMs}:${info.size}` };
 }
