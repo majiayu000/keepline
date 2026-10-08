@@ -9,10 +9,45 @@ import { parseSessionFile } from '../adapters/claude/parser/jsonl.js';
 import type { JsonlCursorOptions } from '../adapters/jsonl-cursor.js';
 import { readTranscriptFacts, clearLedgerFactCache } from '../services/ledger/facts.js';
 import { TranscriptFacts } from '../adapters/transcript-facts.js';
+import { decompose, matchLedger } from '../domain/ledger/matcher.js';
+import { DEFAULT_LEDGER_CONFIG } from '../domain/ledger/types.js';
 
 const roots: string[] = [];
 const original = structuredClone(config.get().ledger);
 afterEach(() => { closeSessionSummaryCache(); clearLedgerFactCache(); config.set('ledger',original); for (const dir of roots.splice(0)) rmSync(dir,{ recursive: true,force: true }); });
+
+test('restart preserves asynchronous session receipts and mutation ordering until a fresh check completes', async () => {
+  const root = mkdtempSync(join(tmpdir(), 'keepline-async-restart-')); roots.push(root);
+  const path = join(root, 'session.jsonl'), timestamp = new Date().toISOString();
+  config.set('ledger', { ...original, enabled: true, exclude: { projects: [], runtimes: [] } });
+  const call = (id: string, name: string, input: unknown) => ({ type: 'response_item', timestamp, payload: { type: 'function_call', call_id: id, name, arguments: JSON.stringify(input) } });
+  const result = (id: string, output: unknown) => ({ type: 'response_item', timestamp, payload: { type: 'function_call_output', call_id: id, output: JSON.stringify(output) } });
+  const records = [
+    { type: 'session_meta', timestamp, payload: { id: 'async-restart', cwd: root } },
+    call('writer', 'exec_command', { cmd: 'sed -i.bak s/old/new/ widget.ts' }),
+    result('writer', { session_id: 91, output: 'still running' }),
+    call('during', 'exec_command', { cmd: 'bun test widget' }),
+    result('during', { exit_code: 0, output: '1 pass' }),
+  ];
+  writeFileSync(path, records.map(record => JSON.stringify(record)).join('\n') + '\n');
+  const parse = (onRecord?: (entry: unknown) => void, cursor?: JsonlCursorOptions) => parseCodexSessionFile(path, { includeToolCalls: false, onRecord, ...cursor });
+  await cachedSessionSummary('codex', path, parse); closeSessionSummaryCache();
+  appendFileSync(path, [call('poll', 'write_stdin', { session_id: 91, chars: '' }), result('poll', { exit_code: 0, output: '' })].map(record => JSON.stringify(record)).join('\n') + '\n');
+  await cachedSessionSummary('codex', path, parse);
+  const resumed = await readTranscriptFacts(path, 'codex');
+  const fresh = new TranscriptFacts('codex'); await parse(entry => fresh.add(entry));
+  expect(resumed.facts).toEqual(fresh.facts);
+  const writer = resumed.facts.find(fact => fact.kind === 'tool' && fact.callId === 'writer');
+  const during = resumed.facts.find(fact => fact.kind === 'tool' && fact.callId === 'during');
+  expect(writer).toMatchObject({ kind: 'tool', completed: true, exitCode: 0 });
+  if (writer?.kind === 'tool' && during?.kind === 'tool') expect(writer.completedOrder!).toBeGreaterThan(during.completedOrder!);
+  const items = decompose([], 'async-restart', [{ id: 'check', text: 'Run `bun test widget`' }]);
+  expect(matchLedger(resumed.facts, items, [], [], DEFAULT_LEDGER_CONFIG).progress.done).toBe(0);
+  closeSessionSummaryCache(); clearLedgerFactCache();
+  appendFileSync(path, [call('after', 'exec_command', { cmd: 'bun test widget' }), result('after', { exit_code: 0, output: '1 pass' })].map(record => JSON.stringify(record)).join('\n') + '\n');
+  await cachedSessionSummary('codex', path, parse);
+  expect(matchLedger((await readTranscriptFacts(path, 'codex')).facts, items, [], [], DEFAULT_LEDGER_CONFIG).progress.done).toBe(1);
+});
 
 for (const runtime of ['codex','claude'] as const) {
   test(`${runtime}: next-day append reuses the persisted position and writes fresh retention-window facts`,async () => {

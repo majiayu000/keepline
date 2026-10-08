@@ -1,5 +1,6 @@
 import type { LedgerController } from "@/hooks/useLedger";
 import type { LedgerConfig } from "../../../../../../domain/ledger/types";
+import { DEVIATION_MIN_STEPS } from "../../../../../../domain/ledger/types";
 import { isNativeApp } from "../native";
 import { ActionButton } from "./LedgerPrimitives";
 import type { ReactNode } from "react";
@@ -176,15 +177,15 @@ export function LedgerSettings({
         <>
           <Row
             title="敏感度"
-            desc="保守：连续 6 步计划外才标偏离；敏感：连续 3 步。关闭则不判。"
+            desc={`保守：连续 ${DEVIATION_MIN_STEPS.conservative} 步计划外且持续至少 10 分钟才标偏离；敏感：连续 ${DEVIATION_MIN_STEPS.sensitive} 步。关闭则不判。`}
           >
             <Value
               label={
                 s.deviation === "off"
                   ? "关闭"
                   : s.deviation === "conservative"
-                    ? "保守 · 6 步"
-                    : "敏感 · 3 步"
+                    ? `保守 · ${DEVIATION_MIN_STEPS.conservative} 步`
+                    : `敏感 · ${DEVIATION_MIN_STEPS.sensitive} 步`
               }
             >
               <select
@@ -198,8 +199,8 @@ export function LedgerSettings({
                 }
               >
                 <option value="off">关闭</option>
-                <option value="conservative">保守 · 6 步</option>
-                <option value="sensitive">敏感 · 3 步</option>
+                <option value="conservative">保守 · {DEVIATION_MIN_STEPS.conservative} 步</option>
+                <option value="sensitive">敏感 · {DEVIATION_MIN_STEPS.sensitive} 步</option>
               </select>
             </Value>
           </Row>

@@ -86,10 +86,13 @@ async function mockApi(page: Page) {
       if (method === "PUT") state.settings = data as unknown as typeof settings;
       result = state.settings;
     } else if (path === "/api/goals") result = [goal];
+    else if (path === "/api/goals/todos") result = goal.todos;
     else if (path === "/api/work-items")
       result = method === "GET" ? { items: [task] } : { ...task, ...data };
     else if (path === "/api/ledger/review")
       result = {
+        start: new Date(now).toISOString(),
+        end: new Date(Date.parse(now) + 86400000).toISOString(),
         open: [state.row],
         accepted: [],
         offPlan: [],
@@ -138,6 +141,93 @@ async function ready(page: Page) {
   await page.getByRole("button", { name: row.title, exact: true }).waitFor();
   await page.evaluate(() => document.fonts.ready);
 }
+
+test("保存的时间范围先适配服务器保留期，缩短保留期后的刷新也使用新上限", async ({ page }) => {
+  const { state, calls } = await mockApi(page);
+  state.settings.retentionDays = 7;
+  await page.addInitScript(() => localStorage.setItem("keepline.overview-hours", "720"));
+  const requests: Array<{ hours: number; limit: number }> = [];
+  await page.route("**/api/ledger?*", route => {
+    const hours = Number(new URL(route.request().url()).searchParams.get("hours"));
+    const limit = state.settings.retentionDays * 24;
+    requests.push({ hours, limit });
+    return route.fulfill({ status: hours <= limit ? 200 : 400, json: hours <= limit ? { success: true, data: [state.row] } : { success: false, error: "hours exceeds retention" } });
+  });
+  await ready(page);
+  await expect(page.getByRole("spinbutton", { name: "最近活动小时数" })).toHaveValue("168");
+  expect(requests[0]).toEqual({ hours: 168, limit: 168 });
+  await page.getByRole("button", { name: "设置", exact: false }).first().click();
+  await page.getByText("7 天", { exact: true }).click();
+  await page.getByRole("spinbutton", { name: "记录保留天数" }).fill("1");
+  await page.getByRole("heading", { name: "待核对与保留", exact: true }).click();
+  await expect.poll(() => calls.some(call => call.path === "/api/settings/ledger" && call.method === "PUT" && call.data?.retentionDays === 1)).toBe(true);
+  await page.getByRole("button", { name: "总览", exact: true }).click();
+  await expect(page.getByRole("spinbutton", { name: "最近活动小时数" })).toHaveValue("24");
+  expect(requests.every(request => request.hours <= request.limit)).toBe(true);
+  expect(await page.evaluate(() => localStorage.getItem("keepline.overview-hours"))).toBe("24");
+});
+
+test("首次设置读取失败后手动刷新恢复，首个账本请求仍先限制保留期", async ({ page }) => {
+  const { state } = await mockApi(page);
+  state.settings.retentionDays = 7;
+  await page.addInitScript(() => localStorage.setItem("keepline.overview-hours", "720"));
+  let reads = 0;
+  await page.route("**/api/settings/ledger", route => {
+    reads++;
+    return route.fulfill(reads === 1
+      ? { status: 503, json: { success: false, error: "设置暂时不可用" } }
+      : { json: { success: true, data: state.settings } });
+  });
+  const hours: number[] = [];
+  await page.route("**/api/ledger?*", route => {
+    hours.push(Number(new URL(route.request().url()).searchParams.get("hours")));
+    return route.fulfill({ json: { success: true, data: [state.row] } });
+  });
+  await page.goto("/");
+  await expect(page.getByRole("alert")).toContainText("设置暂时不可用");
+  expect(hours).toEqual([]);
+  await page.getByRole("button", { name: "更多", exact: true }).click();
+  await page.getByRole("menuitem", { name: "刷新数据", exact: true }).click();
+  await expect(page.getByRole("button", { name: row.title, exact: true })).toBeVisible();
+  await expect(page.getByRole("spinbutton", { name: "最近活动小时数" })).toHaveValue("168");
+  expect(hours.every(value => value === 168)).toBe(true);
+  expect(reads).toBe(2);
+  await page.getByRole("button", { name: "更多", exact: true }).click();
+  await page.getByRole("menuitem", { name: "刷新数据", exact: true }).click();
+  await expect.poll(() => hours.length).toBeGreaterThan(1);
+  expect(reads).toBe(2);
+});
+
+test("编辑待办时插入和重排清单不会将已完成 ID 转给新要求", async ({ page }) => {
+  const { task, goal, calls } = await mockApi(page);
+  task.acceptance = [{ id: "api", text: "测试 API", completed: true }, { id: "ui", text: "测试 UI", completed: false }];
+  goal.todos[0].acceptance = task.acceptance;
+  await ready(page);
+  await page.getByRole("button", { name: "待办", exact: true }).click();
+  await page.getByRole("button", { name: task.title, exact: true }).click();
+  await page.getByLabel("验收清单（每行一项）").fill("新的安全检查\n测试 UI\n测试 API");
+  await page.getByRole("button", { name: "保存", exact: true }).click();
+  await expect.poll(() => calls.some(call => call.path === `/api/work-items/${task.id}` && call.method === "PATCH")).toBe(true);
+  const saved = calls.find(call => call.path === `/api/work-items/${task.id}` && call.method === "PATCH")!.data!.acceptance as Array<{ id: string; text: string; completed: boolean }>;
+  expect(saved.slice(1)).toEqual([task.acceptance[1], task.acceptance[0]]);
+  expect(saved[0]).toMatchObject({ text: "新的安全检查", completed: false });
+  expect(["api", "ui"]).not.toContain(saved[0].id);
+});
+
+test("按目标分组保留目标名称且从进度面板跳到 agent 后清理旧详情 URL", async ({ page }) => {
+  const { state, task, goal } = await mockApi(page);
+  state.row.workItemId = task.id;
+  await ready(page);
+  await page.getByRole("button", { name: "按目标", exact: true }).click();
+  await expect(page.getByRole("heading", { name: goal.title, exact: true })).toBeVisible();
+  await page.goto(`/?view=overview&sessionId=${row.sessionId}&anchor=item-1&detail=full`);
+  const jump = page.getByRole("button", { name: "跳到 agent", exact: true }).last();
+  await expect(jump).toBeVisible();
+  await jump.click();
+  await expect.poll(() => new URL(page.url()).searchParams.get("view")).toBe("sessions");
+  const params = new URL(page.url()).searchParams;
+  for (const key of ["sessionId", "anchor", "detail"]) expect(params.has(key)).toBe(false);
+});
 
 test("时间范围按最后活动筛选，支持自定义 7 小时并在刷新后保留", async ({ page }) => {
   const { state } = await mockApi(page);
@@ -571,8 +661,8 @@ test("v3 风格回归、固定组件像素对照及功能变更差异记录", as
   await page.route("**/api/goals", (r) =>
     r.fulfill({ json: { success: true, data: [] } }),
   );
-  await page.route("**/api/work-items", (r) =>
-    r.fulfill({ json: { success: true, data: { items: [] } } }),
+  await page.route("**/api/goals/todos", (r) =>
+    r.fulfill({ json: { success: true, data: [] } }),
   );
   await ready(page);
   const reference = await browser.newPage({
@@ -1017,8 +1107,8 @@ test("v3 风格回归、固定组件像素对照及功能变更差异记录", as
   await page.route("**/api/goals", (r) =>
     r.fulfill({ json: { success: true, data: [goal] } }),
   );
-  await page.route("**/api/work-items", (r) =>
-    r.fulfill({ json: { success: true, data: { items: [task] } } }),
+  await page.route("**/api/goals/todos", (r) =>
+    r.fulfill({ json: { success: true, data: goal.todos } }),
   );
   const referenceGoal = {
     id: goal.id,
@@ -1232,7 +1322,7 @@ test("推送不重复读取设置和目标，后台暂停请求，回到前台�
   await page.clock.runFor(500);
   await page.waitForLoadState("networkidle");
   await expect.poll(() => calls.slice(start).filter(c => c.path === "/api/ledger").length).toBe(1);
-  expect(calls.slice(start).filter(c => ["/api/settings/ledger", "/api/goals", "/api/work-items"].includes(c.path))).toHaveLength(0);
+  expect(calls.slice(start).filter(c => ["/api/settings/ledger", "/api/goals", "/api/goals/todos", "/api/work-items"].includes(c.path))).toHaveLength(0);
   const refreshStart = calls.length;
   await page.getByRole("button", { name: "更多", exact: true }).click();
   await page.getByRole("menuitem", { name: "刷新数据", exact: true }).click();

@@ -26,6 +26,8 @@ export interface Goal extends WorkItem {
   recent: Array<{ id: string; kind: string; title: string; at: string; todoId: string; sessionId: string | null }>;
 }
 export interface Review {
+  start: string;
+  end: string;
   open: LedgerDetail[];
   accepted: LedgerDetail[];
   offPlan: Array<{ id: string; title: string; sessionId: string }>;

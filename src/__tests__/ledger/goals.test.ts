@@ -2,11 +2,44 @@ import { describe,test,expect } from 'bun:test';
 import { setupLedgerTest,seededLedger } from './helpers.js';
 import { workItemRepository } from '../../infrastructure/database/repositories/work-item.repository.js';
 import { acceptLedger,attributeLedger,getLedger } from '../../services/ledger/service.js';
-import { goalRows,completeTodo } from '../../services/ledger/goals.js';
+import { goalRows,todoRows,completeTodo } from '../../services/ledger/goals.js';
 import { getDatabase } from '../../infrastructure/database/sqlite.js';
 import { sessionRepository } from '../../infrastructure/database/repositories/session.repository.js';
 describe('Keepline-native goals and todos',() => {
   setupLedgerTest();
+  test('shared todo projection retains existing project-task children of goals', () => {
+    const goal = workItemRepository.create({ title: 'Goal', level: 'goal' });
+    const task = workItemRepository.create({ title: 'Project task', kind: 'project_task', parentId: goal.id });
+    workItemRepository.create({ title: 'Standalone note', kind: 'note' });
+    expect(goalRows()[0].todos.map(todo => todo.id)).toEqual([task.id]);
+    expect(todoRows().map(todo => todo.id)).toEqual([task.id]);
+  });
+  test('unassigned todos use the same accepted-evidence completion gate as goal children', async () => {
+    const todo = workItemRepository.create({ title: 'Standalone widget tests', acceptance: [{ id: 'verify', text: 'Run bun test src/widget.test.ts', completed: false }] });
+    const detail = await seededLedger();
+    await attributeLedger(detail.sessionId, todo.id);
+    await getLedger(detail.sessionId);
+    expect(goalRows()).toEqual([]);
+    expect(todoRows()[0]).toMatchObject({ id: todo.id, readyToComplete: false });
+    expect(todoRows()[0].checklist[0]).toMatchObject({ evidenced: true, satisfied: false });
+    expect(() => completeTodo(todo.id)).toThrow('Checklist is not satisfied');
+    await acceptLedger(detail.sessionId, { decision: 'accepted', droppedItemIds: [] });
+    expect(todoRows()[0].readyToComplete).toBe(true);
+    completeTodo(todo.id);
+    expect(workItemRepository.findById(todo.id)?.status).toBe('done');
+    expect(todoRows()[0].readyToComplete).toBe(false);
+  });
+  test('explicit scanner input requests count as active without turning inferred waiting into approval', async () => {
+    const goal = workItemRepository.create({ title: 'Goal', level: 'goal' });
+    const todo = workItemRepository.create({ title: 'Todo', parentId: goal.id });
+    const detail = await seededLedger();
+    await attributeLedger(detail.sessionId, todo.id);
+    sessionRepository.upsert({ sessionId: detail.sessionId, status: 'needs_input', statusSource: 'scan', statusReason: 'request_user_input still pending' });
+    expect(goalRows()[0].todos[0].sessions[0].needsInput).toBe(true);
+    expect(goalRows()[0].progress.active).toBe(1);
+    sessionRepository.upsert({ sessionId: detail.sessionId, status: 'waiting', statusSource: 'scan' });
+    expect(goalRows()[0].todos[0].sessions[0].needsInput).toBe(false);
+  });
   test('create, attribute, verify, accept and roll up without external upserts',async () => {
     const goal = workItemRepository.create({ title: 'Ship widget',level: 'goal',outcome: 'Widget works' });
     const todo = workItemRepository.create({ title: 'Widget tests',parentId: goal.id,acceptance: [{ id: 'test-check',text: 'Run bun test src/widget.test.ts',completed: false }] });

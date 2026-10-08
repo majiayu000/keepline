@@ -1,13 +1,23 @@
-import { confirmedRequirement } from './types.js';
+import { confirmedRequirement, DEVIATION_MIN_STEPS } from './types.js';
+import { directCommandWords, directWords, isSedWriteCommand } from './sed-in-place.js';
 import { createHash } from 'crypto';
 import { extractTaskPrompt } from '../session/index.js';
 import type { Anchors, Ask, Constraint, Correction, LedgerConfig, LedgerEvidence, LedgerRule, LedgerStep, OffPlanRun, RequirementItem, TranscriptFact } from './types.js';
 
 export function ledgerId(...parts: string[]): string { return createHash('sha256').update(parts.join('\0')).digest('hex').slice(0, 32); }
 export function anchorsFromText(text: string): Anchors {
+  const delimitedCommands = /\b(?:run|execute|ensure)\s+`([^`]+)`/gi;
+  const explicitCommands = [...text.matchAll(delimitedCommands)].map(m => m[1].trim());
+  const prose = text.replace(delimitedCommands, ' ');
   return {
     paths: [...new Set([...text.matchAll(/(?:`|\s|^)((?:[\w.-]+\/)+[\w.*?/-]+|[\w.-]+\.(?:ts|tsx|js|json|rs|py|md|toml))/g)].map(m => m[1]))],
-    commands: [...text.matchAll(/(?:`|\b)((?:bun|npm|pnpm|cargo|pytest|git)\s+[^`\n。;]+)(?:`|$)/g)].map(m => m[1].trim()),
+    commands: [...new Set(explicitCommands.concat([...prose.matchAll(/(?:`|\b)((?:[A-Za-z_]\w*=[^\s`]+\s+)*(?:bun|npm|pnpm|cargo|pytest|git)\s+[^`\n。;]+)(?:`|$)/g)].map(m => {
+      if (m[0].endsWith('`')) return m[1].trim();
+      const command = m[1].split(/,\s+then\b/i)[0].trim();
+      // Dot path components and glob operands are command data, not prose.
+      const operand = directWords(command)?.at(-1) ?? '';
+      return /(?:^|[\s/])\.+$/.test(command) || /[?*\[\]]/.test(operand) ? command : command.replace(/[.!?]+$/, '');
+    })))],
     keywords: [...new Set(text.toLowerCase().match(/[\p{L}\p{N}_-]{3,}/gu) ?? [])].slice(0, 30),
   };
 }
@@ -80,12 +90,79 @@ function commandMatches(pattern: string,summary: string): boolean {
 function literalCommand(value: unknown): string | undefined {
   if (typeof value !== 'string') return undefined;
   const command = value.trim();
-  return command && !/[\r\n;&|<>`$]/.test(command) ? command : undefined;
+  return command && directWords(command)?.length ? command : undefined;
 }
 function executedCommand(fact: Extract<TranscriptFact, { kind: 'tool' }>): string | undefined {
-  if (!/^(?:Bash|(?:[\w]+\.)?exec_command)$/.test(fact.name)) return undefined;
+  if (fact.name !== 'Bash' && !/(?:^|[_.])exec_command$/.test(fact.name)) return undefined;
   const data = fact.input && typeof fact.input === 'object' ? fact.input as Record<string, unknown> : {};
   return literalCommand(data.command ?? data.cmd);
+}
+function hasWritingOption(args: string[], writing: RegExp, takesValue: RegExp): boolean {
+  for (let index = 0; index < args.length; index++) {
+    const option = args[index];
+    if (option === '--') break;
+    if (writing.test(option)) return true;
+    if (!option.includes('=') && takesValue.test(option)) index++;
+  }
+  return false;
+}
+function isVerificationCommand(command: string): boolean {
+  let words = directCommandWords(command);
+  let executable = words?.[0]?.split('/').at(-1);
+  if (!words || !executable) return false;
+  if (/^python(?:\d+(?:\.\d+)*)?$/.test(executable) && words[1] === '-m' && words[2] === 'pytest') {
+    words = words.slice(2);
+    executable = 'pytest';
+  }
+  if (executable === 'pytest') return !hasWritingOption(words.slice(1),
+    /^--(?:junitxml|junit-xml|log-file|debug|basetemp)(?:=|$)/,
+    /^(?:-k|-m|-c|-o|-p|--override-ini|--maxfail|--tb|--capture|--color|--confcutdir|--rootdir|--import-mode|--junit-prefix|--junitprefix|--deselect|--ignore|--ignore-glob|--log-level|--log-format|--log-date-format)$/);
+  if (executable === 'go') return /^(?:test|check)$/.test(words[1] ?? '') && !hasWritingOption(words.slice(2),
+    /^--?(?:(?:(?:test\.)?(?:coverprofile|cpuprofile|memprofile|blockprofile|mutexprofile|trace)|o|args)(?:=|$)|c(?:=(?:1|t|T|true|TRUE|True))?$)/,
+    /^--?(?:(?:test\.)?(?:run|skip|bench|benchtime|count|cpu|parallel|timeout|list|shuffle|blockprofilerate|memprofilerate|mutexprofilefraction|outputdir)|covermode|coverpkg|vet|p|tags|gcflags|ldflags|asmflags|gccgoflags|buildmode|compiler|installsuffix|mod|modfile|overlay|pgo|pkgdir)$/);
+  if (executable === 'cargo') return /^(?:test|check)$/.test(words[1] ?? '');
+  if (!/^(?:bun|npm|pnpm|yarn)$/.test(executable)) return false;
+  let index = 1;
+  if (executable === 'pnpm') {
+    // Only documented options are skipped, together with their operands.
+    // Unknown flags (including file-producing report modes) remain uncertain.
+    const skipOptions = () => {
+      while (words[index]?.startsWith('-')) {
+        const option = words[index];
+        if (/^(?:--if-present|--silent|--recursive|-r|--parallel|--stream|--aggregate-output|--no-bail|--no-sort)$/.test(option)) index++;
+        else if (/^(?:--filter|--dir|-C|--resume-from|--workspace-concurrency)$/.test(option) && words[index + 1] !== undefined) index += 2;
+        else if (/^--(?:filter|dir|resume-from|workspace-concurrency)=.+$/.test(option)) index++;
+        else return false;
+      }
+      return true;
+    };
+    if (!skipOptions()) return false;
+    if (words[index] === 'run') { index++; if (!skipOptions()) return false; }
+  } else if (executable === 'npm') {
+    const skipOptions = () => {
+      while (words[index]?.startsWith('-')) {
+        const option = words[index];
+        if (/^(?:--if-present|--silent|-s|--foreground-scripts|--workspaces|-ws)$/.test(option)) index++;
+        else if (/^(?:--script-shell|--loglevel|--prefix|--workspace|-w)$/.test(option) && words[index + 1] !== undefined) index += 2;
+        else if (/^--(?:script-shell|loglevel|prefix|workspace)=.+$/.test(option)) index++;
+        else return false;
+      }
+      return true;
+    };
+    if (!skipOptions()) return false;
+    if (words[index] === 'run') { index++; if (!skipOptions()) return false; }
+  } else if (words[index] === 'run') {
+    index++;
+  }
+  if (!/^(?:tests?|typecheck|check)$/.test(words[index] ?? '')) return false;
+  const args = words.slice(index + 1);
+  const separator = args.indexOf('--');
+  // Script runners (including bun run) forward -- arguments; direct bun test does not.
+  const options = executable === 'bun' && words[1] !== 'run' && separator >= 0 ? args.slice(0, separator) : args;
+  return !options.some((option, i) => /^(?:-u|--update-snapshots(?:=.*)?|--updateSnapshot(?:=.*)?)$/.test(option)
+    || /^--(?:reporter-outfile|coverage-dir)(?:=|$)/.test(option)
+    || option === '--coverage-reporter=lcov'
+    || option === '--coverage-reporter' && options[i + 1] === 'lcov');
 }
 function score(anchors: Anchors, summary: string, paths: string[], lowerSummary: string): number {
   return anchors.paths.reduce((n, path) => n + (paths.some(p => pathMatches(path,p)) || summary.includes(path) ? 5 : 0), 0)
@@ -100,10 +177,13 @@ export function matchLedger(facts: TranscriptFact[], inputItems: RequirementItem
   const evidenceIds = new Set<string>();
   const trail: LedgerStep[] = [];
   const latestChecks = new Map<string, string[]>();
+  const latestCheckStarts = new Map<string, number>();
   const invalidatedChecks = new Set<string>();
+  let latestMutationOrder = -1;
   let readOnlyCount = 0;
-  for (const fact of facts) {
+  for (const [factIndex, fact] of facts.entries()) {
     if (fact.kind !== 'tool') continue;
+    const startedOrder = fact.startedOrder ?? factIndex;
     const summary = `${fact.name} ${JSON.stringify(fact.input)}`;
     const lowerSummary = summary.toLowerCase();
     const paths: string[] = [];
@@ -119,19 +199,32 @@ export function matchLedger(facts: TranscriptFact[], inputItems: RequirementItem
     evidence.push(...ownEvidence); ownEvidence.forEach(e => evidenceIds.add(e.id));
     paths.push(...ownEvidence.filter(e => e.kind === 'file').map(e => e.value));
     // Successful tests are evidence even though the test invocation is not a file edit.
-    if (!fact.mutating) { readOnlyCount++; continue; }
     const command = executedCommand(fact);
     // A transcript does not provide a complete test dependency graph. An
-    // observed edit or execution wrapper without a direct command receipt
+    // observed edit or shell mutation outside known verification invocations
     // conservatively invalidates earlier checks, regardless of attribution.
     // Wrapper source text can invalidate old proof, but never creates proof.
-    const uncertainExecution = !command && /(?:^|[_.])(?:Bash|exec|exec_command)$/.test(fact.name);
-    if (uncertainExecution || ownEvidence.some(e => e.kind === 'file') || /(?:^|[_.])(?:apply_patch|Write|Edit)$/.test(fact.name)) {
+    const uncertainExecution = !command && /(?:^|[_.])(?:Bash|exec|exec_command|write_stdin)$/.test(fact.name);
+    // sed can change earlier files before a later input fails. A nonzero exit
+    // cannot establish that no write happened, or supply successful file proof.
+    const possibleSedWrite = isSedWriteCommand(command);
+    // Only known direct verification invocations retain peer check receipts.
+    // Other mutations invalidate old proof before registering their own receipt.
+    const directShellMutation = command && fact.mutating && !isVerificationCommand(command);
+    const pathMutation = !command && paths.length > 0 && fact.mutating && (fact.exitCode === undefined || fact.exitCode === 0);
+    const mutation = pathMutation || (uncertainExecution || directShellMutation) && fact.mutating || possibleSedWrite || ownEvidence.some(e => e.kind === 'file') || fact.exitCode === undefined && /(?:^|[_.])(?:apply_patch|Write|Edit)$/.test(fact.name);
+    // Compare against earlier mutations before recording this invocation's own write.
+    const overlappedMutation = latestMutationOrder > startedOrder;
+    if (mutation) {
       for (const [command, ids] of latestChecks) if (ids.length) invalidatedChecks.add(command);
       latestChecks.clear();
+      latestMutationOrder = Math.max(latestMutationOrder, fact.completedOrder ?? (fact.exitCode === undefined && (fact.name === 'Bash' || /(?:^|[_.])exec_command$/.test(fact.name)) ? Number.POSITIVE_INFINITY : startedOrder));
     }
-    if (command) {
-      const successful = fact.exitCode === 0
+    if (command && startedOrder >= (latestCheckStarts.get(command) ?? -1)) {
+      latestCheckStarts.set(command, startedOrder);
+      // A check that overlapped a mutation cannot validate the resulting state,
+      // even when its terminal receipt arrives after that mutation.
+      const successful = !overlappedMutation && fact.exitCode === 0
         && !ownEvidence.some(e => e.kind === 'test' && e.exitCode !== 0)
         && ownEvidence.some(e => e.kind === 'command' && literalCommand(e.value) === command && e.exitCode === 0);
       // A failure or an in-flight retry replaces prior success. Corrections
@@ -139,8 +232,10 @@ export function matchLedger(facts: TranscriptFact[], inputItems: RequirementItem
       latestChecks.set(command, successful
         ? ownEvidence.filter(e => (e.kind === 'command' || e.kind === 'test') && e.exitCode === 0).map(e => e.id)
         : []);
-      invalidatedChecks.delete(command);
+      if (overlappedMutation) invalidatedChecks.add(command);
+      else invalidatedChecks.delete(command);
     }
+    if (!fact.mutating) { readOnlyCount++; continue; }
     const correction = corrections.find(c => c.callId === fact.callId);
     const rule = rules.find(r => r.matcher.paths.some(p => paths.some(path => pathMatches(p,path)) || summary.includes(p)) || r.matcher.commands.some(c => commandMatches(c,summary)));
     const candidates = confirmed.map(item => ({ item, score: score(item.anchors, summary, paths,lowerSummary) })).sort((a,b) => b.score - a.score || b.item.ordinal - a.item.ordinal);
@@ -173,11 +268,12 @@ export function matchLedger(facts: TranscriptFact[], inputItems: RequirementItem
     item.evidenceIds = [...new Set(current.flat())].filter(id => evidenceIds.has(id));
     if (commands.length && current.every(ids => ids.length > 0)) item.status = 'done';
     else if (commands.some(command => command && invalidatedChecks.has(command))) item.status = 'unverified';
+    else if (commands.some(command => command && latestChecks.has(command))) item.status = 'doing';
   }
   const offPlan: OffPlanRun[] = [];
   let unmatched: LedgerStep[] = [];
   const flush = () => {
-    if (confirmed.length && cfg.deviation !== 'off' && unmatched.length >= (cfg.deviation === 'sensitive' ? 3 : 8) &&
+    if (confirmed.length && cfg.deviation !== 'off' && unmatched.length >= DEVIATION_MIN_STEPS[cfg.deviation] &&
       (cfg.deviation === 'sensitive' || Date.parse(unmatched.at(-1)!.at) - Date.parse(unmatched[0].at) >= 600_000)) {
       offPlan.push({ id: unmatched[0].callId, callIds: unmatched.map(s => s.callId), at: unmatched[0].at });
     }

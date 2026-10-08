@@ -4,14 +4,15 @@ import { getDatabase } from '../../infrastructure/database/sqlite.js';
 import { config } from '../../lib/config.js';
 import { ledgerOverview, LedgerInputError } from './service.js';
 
-export function goalRows(area?: string, now = new Date(), projectMapGoalId?: string) {
-  const items = workItemRepository.findAll({ includeArchived: true }); const db = getDatabase();
+export function todoRows(items = workItemRepository.findAll({ includeArchived: true })) {
+  const db = getDatabase();
+  const goalIds = new Set(items.filter(item => item.level === 'goal' && item.status !== 'archived').map(item => item.id));
   const sessions = db.query(`SELECT a.*,l.work_item_id,s.status AS live_status,s.status_source,s.status_reason
     FROM agent_sessions a JOIN work_item_session_links l ON l.agent_session_id=a.id
     LEFT JOIN sessions s ON s.session_id=a.runtime_session_id WHERE l.acceptance_status='accepted'`).all() as Array<{ id: string; runtime_session_id: string; title: string; status: string; last_active_at: string; work_item_id: string; live_status: string | null; status_source: string | null; status_reason: string | null }>;
-  const mappedSessions = sessions.map(s => ({ ...s, needsInput: s.live_status === 'needs_input' && s.status_source === 'hook', statusReason: s.status_reason }));
-  return items.filter(i => i.level === 'goal' && i.status !== 'archived' && (!area || i.area === area)).map(goal => {
-    const todos = items.filter(t => t.parentId === goal.id && t.status !== 'archived').map(todo => {
+  const mappedSessions = sessions.map(s => ({ ...s, needsInput: s.live_status === 'needs_input', statusReason: s.status_reason }));
+  // Preserve existing goal children of other work-item kinds as well as standalone todos.
+  return items.filter(t => t.level !== 'goal' && t.status !== 'archived' && (t.kind === 'todo' || goalIds.has(t.parentId ?? ''))).map(todo => {
       const linked = mappedSessions.filter(s => s.work_item_id === todo.id).sort((a,b) => Date.parse(b.last_active_at) - Date.parse(a.last_active_at));
       const records = linked.map(s => ({ session: s, entries: ledgerRepository.items(s.id), acceptances: ledgerRepository.acceptances(s.id).filter(a => a.decision !== 'follow_up') }));
       const checklist = (todo.acceptance ?? []).map(c => {
@@ -27,6 +28,12 @@ export function goalRows(area?: string, now = new Date(), projectMapGoalId?: str
       });
       return { ...todo, checklist, readyToComplete: checklist.length > 0 && checklist.every(c => c.satisfied) && todo.status !== 'done', sessions: linked };
     });
+}
+export function goalRows(area?: string, now = new Date(), projectMapGoalId?: string) {
+  const items = workItemRepository.findAll({ includeArchived: true }), db = getDatabase();
+  const allTodos = todoRows(items);
+  return items.filter(i => i.level === 'goal' && i.status !== 'archived' && (!area || i.area === area)).map(goal => {
+    const todos = allTodos.filter(t => t.parentId === goal.id);
     const recent = (projectMapGoalId === goal.id ? todos : []).flatMap(todo => {
       const completed = todo.status === 'done' && todo.completedAt ? [{ id: `todo:${todo.id}`, kind: 'completed', title: todo.title, at: todo.completedAt.toISOString(), todoId: todo.id, sessionId: null as string | null }] : [];
       const ids = todo.sessions.map(s => s.id);
@@ -50,7 +57,7 @@ export function goalRows(area?: string, now = new Date(), projectMapGoalId?: str
   });
 }
 export function completeTodo(id: string) {
-  const todo = goalRows().flatMap(g => g.todos).find(t => t.id === id);
+  const todo = todoRows().find(t => t.id === id);
   if (!todo) throw new LedgerInputError('Todo not found');
   if (!todo.readyToComplete) throw new LedgerInputError('Checklist is not satisfied by accepted evidence');
   return workItemRepository.update(id,{ status: 'done', statusSource: 'user', acceptance: (todo.acceptance ?? []).map(c => ({ ...c,completed: true })) });

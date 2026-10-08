@@ -125,6 +125,7 @@ async function mapApi(page: Page, open = true) {
               : [],
         },
       ];
+    else if (path === "/api/goals/todos") data = goal.todos;
     else if (path === "/api/work-items") data = { items: goal.todos };
     else if (path.endsWith("/follow-up"))
       data = { text: "请完成通知适配并运行测试。" };

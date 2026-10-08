@@ -12,7 +12,7 @@ import { ensureKeeplineDataHome } from '../lib/paths.js';
 // Increment when parser semantics change. This is derived data, never task/session truth.
 const CACHE_VERSION = 2;
 // Keep computed fingerprints and persistent cleanup on the same semantic version.
-export const LEDGER_COMPUTATION_VERSION = 14;
+export const LEDGER_COMPUTATION_VERSION = 35;
 let database: Database | undefined;
 let ledgerWindow: string | undefined;
 let computationWindow: string | undefined;
@@ -95,7 +95,7 @@ export async function cachedSessionSummary<T extends ParsedSessionData>(
   const cfg = config.get().ledger, info = statSync(path);
   const factKey = ledgerFactFingerprint(info);
   // Midnight changes the fact retention window, not the position in an append-only file.
-  const window = JSON.stringify(['cursor-2',cfg.retentionDays,cfg.enabled,cfg.exclude]);
+  const window = JSON.stringify(['cursor-3',cfg.retentionDays,cfg.enabled,cfg.exclude]);
   const saved = cacheOperation(() => db.query('SELECT data FROM summaries WHERE cache_key=?').get(`cursor-v1:${key}`) as { data: Uint8Array } | null);
   let previous = saved ? cacheOperation(() => deserialize(saved.data) as ParserCursor) : undefined;
   if (previous && (previous.window !== window || previous.dev !== info.dev || previous.ino !== info.ino ||
@@ -193,6 +193,6 @@ export function writeLedgerComputation(key: string, fingerprint: string, value: 
 
 export function ledgerFactFingerprint(info: { mtimeMs: number; ctimeMs: number; size: number },now = Date.now()) {
   const days = config.get().ledger.retentionDays;
-  const window = `facts-6-${days}-${new Date(now).toISOString().slice(0,10)}`;
+  const window = `facts-25-${days}-${new Date(now).toISOString().slice(0,10)}`;
   return { window,since: now-days*86400000,fingerprint: `${window}:${info.mtimeMs}:${info.ctimeMs}:${info.size}` };
 }
