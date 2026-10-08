@@ -117,6 +117,46 @@ describe('completion requires current execution evidence', () => {
     'recognized package run options preserve peer checks: %s', cmd => {
       expect(match([{ code: 0 }, { cmd, code: 0 }], [command, cmd]).progress.done).toBe(1);
     });
+  test('npm if-present runs the actual script and preserves peer checks', () => {
+    const root = mkdtempSync(join(tmpdir(), 'keepline-npm-if-present-'));
+    try {
+      writeFileSync(join(root, 'package.json'), JSON.stringify({ scripts: { test: `node -e "console.log('1 pass')"` } }));
+      const receipt = spawnSync('npm', ['run', '--if-present', 'test'], { cwd: root, encoding: 'utf8' });
+      if (receipt.error) throw receipt.error;
+      expect(receipt.status).toBe(0);
+      expect(receipt.stdout).toContain('1 pass');
+      const cmd = 'npm run --if-present test';
+      expect(match([{ code: 0 }, { cmd, result: { exit_code: receipt.status, output: receipt.stdout + receipt.stderr } }], [command, cmd]).progress.done).toBe(1);
+    } finally { rmSync(root, { recursive: true, force: true }); }
+  });
+  test.each([
+    'bun test --reporter=junit --reporter-outfile=src/widget.ts',
+    'npm test -- --reporter=junit --reporter-outfile=src/widget.ts',
+    'bun test --reporter=junit --reporter-outfile src/widget.ts',
+    'bun test --coverage --coverage-reporter=lcov',
+    'bun test --coverage --coverage-reporter lcov --coverage-dir src',
+  ])('test report output invalidates earlier evidence: %s', cmd => {
+    expect(match([{ code: 0 }, { cmd, code: 0 }]).items[0].status).toBe('unverified');
+    expect(match([{ cmd, code: 0 }], [cmd]).progress.done).toBe(1);
+  });
+  test('Bun actually writes the explicit reporter destination', () => {
+    const root = mkdtempSync(join(tmpdir(), 'keepline-bun-reporter-'));
+    try {
+      writeFileSync(join(root, 'pass.test.ts'), "import {test,expect} from 'bun:test'; test('pass',()=>expect(1).toBe(1));\n");
+      const dest = join(root, 'report.xml');
+      writeFileSync(dest, 'old source bytes');
+      const receipt = spawnSync(process.execPath, ['test', 'pass.test.ts', '--reporter=junit', '--reporter-outfile', dest], { cwd: root, encoding: 'utf8' });
+      if (receipt.error) throw receipt.error;
+      expect(receipt.status).toBe(0);
+      expect(readFileSync(dest, 'utf8')).toContain('<testsuites');
+      const cmd = `bun test pass.test.ts --reporter=junit --reporter-outfile=${dest}`;
+      expect(match([{ code: 0 }, { cmd, result: { exit_code: receipt.status, output: receipt.stdout + receipt.stderr } }]).items[0].status).toBe('unverified');
+    } finally { rmSync(root, { recursive: true, force: true }); }
+  });
+  test('report flag-looking filename after separator preserves peer evidence', () => {
+    expect(match([{ code: 0 }, { cmd: 'bun test -- --reporter-outfile=src/widget.ts', code: 0 }]).progress.done).toBe(1);
+  });
+
   test.each(['pnpm run --unknown test', 'pnpm run --dir', 'pnpm run --report-summary test'])(
     'unknown, incomplete or writing run modes remain conservative: %s', cmd => {
       expect(match([{ code: 0 }, { cmd, code: 0 }]).items[0].status).toBe('unverified');
