@@ -1,8 +1,15 @@
 import { randomUUID } from 'crypto';
 import { getDatabase, transaction } from '../sqlite.js';
-import type { Ask, Correction, LedgerAcceptance, LedgerEvidence, LedgerRule, RequirementItem } from '../../../domain/ledger/types.js';
+import type { Anchors, Ask, Correction, LedgerAcceptance, LedgerEvidence, LedgerRule, RequirementItem } from '../../../domain/ledger/types.js';
 
 type Row = Record<string, any>;
+function storedAnchors(raw: string, source: RequirementItem['source']): Anchors {
+  const anchors = JSON.parse(raw) as Anchors;
+  if (source !== 'user' || anchors.commandFormat) return anchors;
+  return anchors.commands.length
+    ? { ...anchors, commandFormat: 'legacy-unconfirmed', legacyCommands: [...anchors.commands] }
+    : { ...anchors, commandFormat: 'literal-v2' };
+}
 export const ledgerRepository = {
   asks(sessionId: string): Ask[] {
     return (getDatabase().query('SELECT * FROM ledger_asks WHERE agent_session_id = ? ORDER BY ordinal').all(sessionId) as Row[])
@@ -17,16 +24,26 @@ export const ledgerRepository = {
   },
   items(sessionId: string, includeDeleted = false): RequirementItem[] {
     return (getDatabase().query(`SELECT * FROM requirement_items WHERE agent_session_id = ? ${includeDeleted ? '' : 'AND deleted_by_user = 0'} ORDER BY ordinal`).all(sessionId) as Row[])
-      .map(r => ({ id: r.id, ordinal: r.ordinal, title: r.title, anchors: JSON.parse(r.anchors), constraints: JSON.parse(r.constraints), source: r.source,
+      .map(r => ({ id: r.id, ordinal: r.ordinal, title: r.title, anchors: storedAnchors(r.anchors,r.source), constraints: JSON.parse(r.constraints), source: r.source,
         status: r.status, statusSource: r.status_source, evidenceIds: JSON.parse(r.evidence_ids), checklistId: r.checklist_id ?? undefined, dropped: Boolean(r.deleted_by_user) }));
   },
   saveItems(sessionId: string, items: RequirementItem[]) {
     const db = getDatabase(); const now = new Date().toISOString();
     transaction(() => {
-      for (const i of items) db.query(`INSERT INTO requirement_items(id,agent_session_id,ordinal,title,anchors,constraints,source,status,status_source,evidence_ids,checklist_id,created_at,updated_at)
+      for (const i of items) {
+        // Old callers that omit metadata must not silently confirm persisted patterns.
+        const previous = i.source === 'user' && !i.anchors.commandFormat
+          ? db.query('SELECT anchors,source FROM requirement_items WHERE id=? AND agent_session_id=?').get(i.id,sessionId) as Row | null : null;
+        const oldAnchors = previous?.source === 'user' ? storedAnchors(previous.anchors,previous.source) : undefined;
+        const anchors: Anchors = i.source !== 'user' ? i.anchors : i.anchors.commandFormat ? i.anchors
+          : oldAnchors ? { ...i.anchors, commandFormat: oldAnchors.commandFormat, legacyCommands: oldAnchors.legacyCommands,
+              ...(oldAnchors.commandFormat === 'legacy-unconfirmed' ? { commands: oldAnchors.commands } : {}) }
+          : { ...i.anchors, commandFormat: 'literal-v2' };
+        db.query(`INSERT INTO requirement_items(id,agent_session_id,ordinal,title,anchors,constraints,source,status,status_source,evidence_ids,checklist_id,created_at,updated_at)
         VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?) ON CONFLICT(id) DO UPDATE SET ordinal=excluded.ordinal,title=excluded.title,anchors=excluded.anchors,constraints=excluded.constraints,
         source=excluded.source,status=excluded.status,status_source=excluded.status_source,evidence_ids=excluded.evidence_ids,checklist_id=excluded.checklist_id,updated_at=excluded.updated_at
-        WHERE requirement_items.agent_session_id=excluded.agent_session_id`).run(i.id,sessionId,i.ordinal,i.title,JSON.stringify(i.anchors),JSON.stringify(i.constraints),i.source,i.status,i.statusSource,JSON.stringify(i.evidenceIds),i.checklistId ?? null,now,now);
+        WHERE requirement_items.agent_session_id=excluded.agent_session_id`).run(i.id,sessionId,i.ordinal,i.title,JSON.stringify(anchors),JSON.stringify(i.constraints),i.source,i.status,i.statusSource,JSON.stringify(i.evidenceIds),i.checklistId ?? null,now,now);
+      }
     });
   },
   replaceUserItems(sessionId: string, items: RequirementItem[]) {

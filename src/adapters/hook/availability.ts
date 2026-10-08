@@ -1,5 +1,4 @@
 import { getHookStatus } from './installer.js';
-import { getHookServerUrl, isHookServerRunning } from './server.js';
 import { logger } from '../../lib/logger.js';
 import { getDaemonStatus } from '../../services/daemon.manager.js';
 
@@ -80,6 +79,9 @@ export async function isHookReceiverRunning(input: {
 }
 
 export async function getHookAvailability(): Promise<HookAvailability> {
+  // Hook status is also exposed by the lightweight resident service. Load the
+  // app hook receiver only when its status is requested, not during startup.
+  const { getHookServerUrl, isHookServerRunning } = await import('./server.js');
   const status = getHookStatus();
   const daemon = getDaemonStatus();
   const hookServerUrl = getHookServerUrl();
