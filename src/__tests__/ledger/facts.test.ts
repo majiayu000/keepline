@@ -2,15 +2,60 @@ import { describe, test, expect } from 'bun:test';
 import { parseCodexSessionFile } from '../../adapters/codex/parser.js';
 import { parseSessionFile } from '../../adapters/claude/parser/jsonl.js';
 import { isMutatingTool, TranscriptFacts } from '../../adapters/transcript-facts.js';
-import { cachedSessionSummary } from '../../infrastructure/session-summary-cache.js';
+import { cachedSessionSummary, ledgerFactFingerprint, writeCachedLedgerFacts } from '../../infrastructure/session-summary-cache.js';
 import { readTranscriptFacts,clearLedgerFactCache,ledgerFactCacheStats } from '../../services/ledger/facts.js';
-import { mkdtempSync,writeFileSync,utimesSync,rmSync,copyFileSync,appendFileSync } from 'fs';
+import { mkdtempSync,writeFileSync,utimesSync,rmSync,copyFileSync,appendFileSync,statSync } from 'fs';
 import { tmpdir } from 'os';
 import { join } from 'path';
 import { matchLedger, decompose, extractAsks } from '../../domain/ledger/matcher.js';
 import { DEFAULT_LEDGER_CONFIG } from '../../domain/ledger/types.js';
 const fixtures = `${import.meta.dir}/fixtures`;
 describe('normalized transcript facts',() => {
+
+  test('changed shell classification replaces persisted facts-21 and survives memory eviction', async () => {
+    const root = mkdtempSync(join(tmpdir(), 'keepline-mutating-facts-version-'));
+    const path = join(root, 'session.jsonl');
+    const now = Date.now(), timestamp = new Date(now).toISOString();
+    const commands = [
+      'rg --pre ./writer needle input.txt',
+      'find src -fprint0 src/widget.ts',
+      "sed -n -l 80 'w src/widget.ts' input.txt",
+      "sed -n --line-length 80 'w src/widget.ts' input.txt",
+    ];
+    const entries = commands.flatMap((cmd, index) => [
+      { type: 'response_item', timestamp, payload: {
+        type: 'function_call', call_id: `version-${index}`, name: 'exec_command', arguments: JSON.stringify({ cmd }),
+      } },
+      { type: 'response_item', timestamp, payload: {
+        type: 'function_call_output', call_id: `version-${index}`, output: JSON.stringify({ exit_code: 0, output: '' }),
+      } },
+    ]);
+    try {
+      writeFileSync(path, entries.map(entry => JSON.stringify(entry)).join('\n') + '\n');
+      const parser = new TranscriptFacts('codex');
+      entries.forEach(entry => parser.add(entry));
+      const current = ledgerFactFingerprint(statSync(path), now);
+      const oldFingerprint = current.fingerprint.replace(/^facts-\d+-/, 'facts-21-');
+      writeCachedLedgerFacts(`codex:${path}`, oldFingerprint, {
+        fingerprint: oldFingerprint,
+        facts: parser.facts.map(fact => fact.kind === 'tool' ? { ...fact, mutating: false } : fact),
+        unknownRecords: 0,
+      });
+      clearLedgerFactCache();
+      const before = ledgerFactCacheStats();
+      const fresh = await readTranscriptFacts(path, 'codex', now);
+      expect(fresh.facts.filter(fact => fact.kind === 'tool').map(fact => fact.mutating)).toEqual([true, true, true, true]);
+      expect(ledgerFactCacheStats().reads).toBe(before.reads + 1);
+      clearLedgerFactCache();
+      const disk = await readTranscriptFacts(path, 'codex', now);
+      expect(disk.facts).toEqual(fresh.facts);
+      expect(ledgerFactCacheStats().reads).toBe(before.reads + 1);
+      expect(ledgerFactCacheStats().diskHits).toBe(before.diskHits + 1);
+    } finally {
+      clearLedgerFactCache();
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
   test('reading a saved test log is not a successful test execution',() => {
     const parser = new TranscriptFacts('claude'),timestamp = new Date().toISOString();
     parser.add({ type: 'assistant',timestamp,message: { content: [{ type: 'tool_use',id: 'read',name: 'Read',input: { file_path: 'test.log' } }] } });

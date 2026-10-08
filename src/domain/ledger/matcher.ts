@@ -97,12 +97,26 @@ function executedCommand(fact: Extract<TranscriptFact, { kind: 'tool' }>): strin
   const data = fact.input && typeof fact.input === 'object' ? fact.input as Record<string, unknown> : {};
   return literalCommand(data.command ?? data.cmd);
 }
+function hasWritingOption(args: string[], writing: RegExp, takesValue: RegExp): boolean {
+  for (let index = 0; index < args.length; index++) {
+    const option = args[index];
+    if (option === '--') break;
+    if (writing.test(option)) return true;
+    if (!option.includes('=') && takesValue.test(option)) index++;
+  }
+  return false;
+}
 function isVerificationCommand(command: string): boolean {
   const words = directCommandWords(command);
   const executable = words?.[0]?.split('/').at(-1);
   if (!words || !executable) return false;
-  if (executable === 'pytest') return true;
-  if (/^(?:cargo|go)$/.test(executable)) return /^(?:test|check)$/.test(words[1] ?? '');
+  if (executable === 'pytest') return !hasWritingOption(words.slice(1),
+    /^--(?:junitxml|junit-xml|log-file|debug|basetemp)(?:=|$)/,
+    /^(?:-k|-m|-c|-o|-p|--override-ini|--maxfail|--tb|--capture|--color|--confcutdir|--rootdir|--import-mode|--junit-prefix|--junitprefix|--deselect|--ignore|--ignore-glob|--log-level|--log-format|--log-date-format)$/);
+  if (executable === 'go') return /^(?:test|check)$/.test(words[1] ?? '') && !hasWritingOption(words.slice(2),
+    /^--?(?:(?:(?:test\.)?(?:coverprofile|cpuprofile|memprofile|blockprofile|mutexprofile|trace)|o|args)(?:=|$)|c(?:=(?:1|t|T|true|TRUE|True))?$)/,
+    /^--?(?:(?:test\.)?(?:run|skip|bench|benchtime|count|cpu|parallel|timeout|list|shuffle|blockprofilerate|memprofilerate|mutexprofilefraction|outputdir)|covermode|coverpkg|vet|p|tags|gcflags|ldflags|asmflags|gccgoflags|buildmode|compiler|installsuffix|mod|modfile|overlay|pgo|pkgdir)$/);
+  if (executable === 'cargo') return /^(?:test|check)$/.test(words[1] ?? '');
   if (!/^(?:bun|npm|pnpm|yarn)$/.test(executable)) return false;
   let index = 1;
   if (executable === 'pnpm') {
@@ -120,17 +134,21 @@ function isVerificationCommand(command: string): boolean {
     };
     if (!skipOptions()) return false;
     if (words[index] === 'run') { index++; if (!skipOptions()) return false; }
-  } else if (words[index] === 'run') {
-    index++;
-    if (executable === 'npm') {
+  } else if (executable === 'npm') {
+    const skipOptions = () => {
       while (words[index]?.startsWith('-')) {
         const option = words[index];
-        if (/^(?:--if-present|--silent|--foreground-scripts)$/.test(option)) index++;
-        else if (option === '--script-shell' && words[index + 1] !== undefined) index += 2;
-        else if (/^--script-shell=.+$/.test(option)) index++;
-        else break;
+        if (/^(?:--if-present|--silent|-s|--foreground-scripts|--workspaces|-ws)$/.test(option)) index++;
+        else if (/^(?:--script-shell|--loglevel|--prefix|--workspace|-w)$/.test(option) && words[index + 1] !== undefined) index += 2;
+        else if (/^--(?:script-shell|loglevel|prefix|workspace)=.+$/.test(option)) index++;
+        else return false;
       }
-    }
+      return true;
+    };
+    if (!skipOptions()) return false;
+    if (words[index] === 'run') { index++; if (!skipOptions()) return false; }
+  } else if (words[index] === 'run') {
+    index++;
   }
   if (!/^(?:tests?|typecheck|check)$/.test(words[index] ?? '')) return false;
   const args = words.slice(index + 1);

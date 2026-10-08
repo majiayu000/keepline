@@ -39,6 +39,158 @@ function match(calls: Call[], commands = [command]) {
 
 describe('completion requires current execution evidence', () => {
 
+  test.each([
+    "go test -coverprofile=src/widget.ts ./...",
+    "go test -coverprofile src/widget.ts ./...",
+    "go test -cpuprofile=src/widget.ts ./...",
+    "go test -cpuprofile src/widget.ts ./...",
+    "go test -memprofile=src/widget.ts ./...",
+    "go test -memprofile src/widget.ts ./...",
+    "go test -blockprofile=src/widget.ts ./...",
+    "go test -blockprofile src/widget.ts ./...",
+    "go test -mutexprofile=src/widget.ts ./...",
+    "go test -mutexprofile src/widget.ts ./...",
+    "go test -trace=src/widget.ts ./...",
+    "go test -trace src/widget.ts ./...",
+    "go test -test.coverprofile=src/widget.ts ./...",
+    "go test --test.cpuprofile src/widget.ts ./...",
+    "env CI=1 /usr/local/bin/go test -memprofile=src/widget.ts ./...",
+    "go test -o src/widget.ts ./...",
+    "go test -o=src/widget.ts ./...",
+    "go test -c ./...",
+    "go test --c=true ./...",
+    "go test ./... -args -test.memprofile=src/widget.ts",
+    "pytest --junitxml=src/widget.ts",
+    "pytest --junitxml src/widget.ts",
+    "pytest --junit-xml=src/widget.ts",
+    "pytest --junit-xml src/widget.ts",
+    "pytest --log-file=src/widget.ts",
+    "pytest --log-file src/widget.ts",
+    "pytest --debug=src/widget.ts",
+    "pytest --debug src/widget.ts",
+    "pytest --basetemp=src/widget.ts",
+    "pytest --basetemp src/widget.ts",
+    "pytest --debug",
+    "env CI=1 /usr/bin/pytest --junitxml=src/widget.ts",
+    "sed -n -l 80 'w src/widget.ts' input.txt",
+    "sed -n -l80 'w src/widget.ts' input.txt",
+    "sed -n -nl 80 'w src/widget.ts' input.txt",
+    "sed -n -nl80 'w src/widget.ts' input.txt",
+    "sed -n --line-length 80 'w src/widget.ts' input.txt",
+    "sed -n --line-length=80 'w src/widget.ts' input.txt",
+    "rg --pre ./writer needle input.txt",
+    "rg --pre=./writer needle input.txt",
+    "env CI=1 /usr/bin/rg --no-pre --pre ./writer needle input.txt",
+    "rg -e needle --pre ./writer input.txt",
+    "rg --pre ./writer --pre-glob \"*.txt\" needle input.txt",
+    "find src -fprint0 src/widget.ts",
+    "env LC_ALL=C /usr/bin/find src -fprint0 src/widget.ts",
+    "find src -name '-fprint0' -fprint0 src/widget.ts",
+    "sed -n -l 'w src/widget.ts' input.txt",
+    "sed -n -nl 'w src/widget.ts' input.txt",
+    "sed -li '' 's/a/b/' src/widget.ts"
+  ])(
+    'explicit output command invalidates peer proof but retains its own receipt: %s', cmd => {
+      for (const code of [0, 1, undefined]) {
+        expect(match([{ code: 0 }, { cmd, code }]).items[0].status).toBe('unverified');
+      }
+      const items = decompose([], 'explicit-output', [
+        { id: 'peer', text: `Run \`${command}\`` },
+        { id: 'writer', text: `Run \`${cmd}\`` },
+      ]);
+      expect(matchLedger(recordedCalls([{ code: 0 }, { cmd, code: 0 }]), items, [], [], DEFAULT_LEDGER_CONFIG)
+        .items.map(item => item.status)).toEqual(['unverified', 'done']);
+      expect(match([{ code: 0 }, { cmd, code: 0 }, { code: 0 }]).progress.done).toBe(1);
+    });
+
+  test.each([
+    "go test ./...",
+    "go test -run \"-coverprofile=src/widget.ts\" ./...",
+    "go test -bench \"-cpuprofile=src/widget.ts\" ./...",
+    "go test -outputdir \"-memprofile=src/widget.ts\" ./...",
+    "go test ./... -- -coverprofile=src/widget.ts",
+    "go test -c=false ./...",
+    "pytest tests/widget.py",
+    "pytest -k \"--junitxml=src/widget.ts\"",
+    "pytest -m \"--debug\"",
+    "pytest --log-format \"--log-file=src/widget.ts\"",
+    "pytest -- --junit-xml=src/widget.ts",
+    "pytest --rootdir \"--basetemp=src/widget.ts\"",
+    "sed -n -l 80 'p' input.txt",
+    "sed -n -l80 'p' input.txt",
+    "sed -n -nl 80 'p' input.txt",
+    "sed -n -nl80 'p' input.txt",
+    "sed -n --line-length 80 'p' input.txt",
+    "sed -n --line-length=80 'p' input.txt",
+    "rg needle input.txt",
+    "rg -e \"--pre\" input.txt",
+    "rg -e--pre input.txt",
+    "rg -Fe \"--pre=./writer\" input.txt",
+    "rg --regexp --pre input.txt",
+    "rg --regexp=--pre input.txt",
+    "rg --glob --pre needle input.txt",
+    "rg --pre-glob \"--pre\" needle input.txt",
+    "rg -- --pre ./writer input.txt",
+    "rg --pre ./writer --no-pre needle input.txt",
+    "rg --pre ./writer --pre \"\" needle input.txt",
+    "rg --pre= needle input.txt",
+    "npm --silent test",
+    "npm -s test",
+    "npm --loglevel silent test",
+    "npm --loglevel=silent run test",
+    "npm --silent run --if-present test",
+    "npm --prefix \"fixture path\" test",
+    "npm --workspace \"widget\" run test",
+    "npm --script-shell \"/bin/sh\" test",
+    "find src -name '-fprint0'",
+    "find src -path '-fprint0'",
+    "find src -regex '-fprint0'",
+    "find src -printf '-fprint0'",
+    "find -files0-from '-fprint0'",
+    "sed -n -l 'p' input.txt",
+    "sed -n -nl 'p' input.txt"
+  ])(
+    'read controls preserve peer proof across option values and boundaries: %s', cmd => {
+      expect(match([{ code: 0 }, { cmd, code: 0 }], [command, cmd]).progress.done).toBe(1);
+    });
+
+  for (const options of [['-l', '80'], ['-l80'], ['-nl', '80'], ['-nl80'], ['--line-length', '80'], ['--line-length=80']]) {
+    test.skipIf(!hasGnuSed)(`real GNU sed line-length ${options.join(' ')} retains script semantics`, () => {
+      const root = mkdtempSync(join(tmpdir(), 'keepline-sed-line-length-'));
+      try {
+        writeFileSync(join(root, 'input.txt'), 'after\n');
+        writeFileSync(join(root, 'generated.ts'), 'before\n');
+        const script = 'w generated.ts';
+        const receipt = spawnSync('sed', ['-n', ...options, script, 'input.txt'], { cwd: root, encoding: 'utf8' });
+        if (receipt.error) throw receipt.error;
+        expect(receipt.status).toBe(0);
+        expect(readFileSync(join(root, 'generated.ts'), 'utf8')).toBe('after\n');
+        const cmd = `sed -n ${options.join(' ')} '${script}' input.txt`;
+        expect(match([{ code: 0 }, { cmd, result: { exit_code: receipt.status, output: receipt.stdout + receipt.stderr } }]).items[0].status).toBe('unverified');
+        const read = spawnSync('sed', ['-n', ...options, 'p', 'input.txt'], { cwd: root, encoding: 'utf8' });
+        if (read.error) throw read.error;
+        expect(read.status).toBe(0);
+        expect(read.stdout).toBe('after\n');
+        expect(match([{ code: 0 }, { cmd: `sed -n ${options.join(' ')} 'p' input.txt`, code: read.status!, output: read.stdout }]).progress.done).toBe(1);
+      } finally { rmSync(root, { recursive: true, force: true }); }
+    });
+  }
+
+  test('real npm pre-command options preserve independent successful checks', () => {
+    const root = mkdtempSync(join(tmpdir(), 'keepline-npm-leading-options-'));
+    try {
+      writeFileSync(join(root, 'package.json'), JSON.stringify({ scripts: { test: `node -e "console.log('1 pass')"` } }));
+      for (const options of [['--silent'], ['--loglevel', 'silent'], ['--prefix', root]]) {
+        const receipt = spawnSync('npm', [...options, 'test'], { cwd: root, encoding: 'utf8' });
+        if (receipt.error) throw receipt.error;
+        expect(receipt.status).toBe(0);
+        expect(receipt.stdout).toContain('1 pass');
+        const cmd = `npm ${options.join(' ')} test`;
+        expect(match([{ code: 0 }, { cmd, result: { exit_code: receipt.status, output: receipt.stdout + receipt.stderr } }], [command, cmd]).progress.done).toBe(1);
+      }
+    } finally { rmSync(root, { recursive: true, force: true }); }
+  });
+
   for (const subcommand of ['diff', 'log', 'show']) for (const separated of [false, true]) {
     test(`real git ${subcommand} output-file ${separated ? 'operand' : 'equals'} invalidates prior checks`, () => {
       const root = mkdtempSync(join(tmpdir(), 'keepline-git-output-'));

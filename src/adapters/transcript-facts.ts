@@ -16,13 +16,44 @@ function parseInput(value: unknown): unknown {
 }
 // Substrings of large outputs can retain their entire backing transcript record.
 function detached(text: string): string { return Buffer.from(text).toString(); }
+function ripgrepRunsPreprocessor(words: string[]): boolean {
+  let enabled = false;
+  for (let index = 1; index < words.length; index++) {
+    const option = words[index];
+    if (option === '--') break;
+    if (option === '--no-pre') { enabled = false; continue; }
+    if (option === '--pre') { enabled = words[++index] !== ''; continue; }
+    if (option.startsWith('--pre=')) { enabled = option.slice('--pre='.length) !== ''; continue; }
+    // Values are data even when they resemble --pre or --no-pre. Long option
+    // values attached with =, and short values attached in a cluster, stay here.
+    if (/^--(?:after-context|before-context|color|colors|context|context-separator|dfa-size-limit|encoding|engine|field-context-separator|field-match-separator|file|generate|glob|hostname-bin|hyperlink-format|iglob|ignore-file|max-columns|max-count|max-depth|maxdepth|max-filesize|path-separator|pre-glob|regex-size-limit|regexp|replace|sort|sortr|threads|type|type-add|type-clear|type-not)$/.test(option)) {
+      index++; continue;
+    }
+    if (option.startsWith('-') && !option.startsWith('--')) {
+      for (let flag = 1; flag < option.length; flag++) {
+        if (!'ABCEefgMmdrjtT'.includes(option[flag])) continue;
+        if (flag + 1 === option.length) index++;
+        break;
+      }
+    }
+  }
+  return enabled;
+}
 export function isMutatingTool(name: string, input: unknown): boolean {
   const data = record(input);
   const command = data.command ?? data.cmd;
   if (isSedWriteCommand(command)) return true;
   const words = typeof command === 'string' ? directCommandWords(command) : undefined;
   const executable = words?.[0]?.split('/').at(-1);
-  if (executable === 'find' && words?.slice(1).some(word => /^-(?:delete|exec|execdir|ok|okdir|fprint|fprintf|fls)$/.test(word))) return true;
+  if (executable === 'find' && words) {
+    for (let index = 1; index < words.length; index++) {
+      const option = words[index];
+      if (/^-(?:delete|exec|execdir|ok|okdir|fprint|fprint0|fprintf|fls)$/.test(option)) return true;
+      // A predicate's pattern, path, or printf format is data, not an action.
+      if (/^-(?:name|iname|path|ipath|wholename|iwholename|regex|iregex|lname|ilname|printf|files0-from|samefile|newer|anewer|cnewer|newer[aBcm][aBcmt]|type|xtype|uid|gid|user|group|inum|links|perm|size|used|amin|atime|cmin|ctime|mmin|mtime|context|fstype|maxdepth|mindepth|regextype|D)$/.test(option)) index++;
+    }
+  }
+  if (executable === 'rg' && words && ripgrepRunsPreprocessor(words)) return true;
   if (/(?:^|[_.])(?:wait|sleep|read_file|read_text_file|read|list|list_directory|list_agents|search|find|view_image|getState|get_goal|clock__curr_time)$/.test(name) || /^(Read|Glob|Grep|LS|TodoWrite)$/.test(name)) return false;
   if (/write_stdin$/.test(name) && !data.chars) return false;
   if (typeof command === 'string') {
