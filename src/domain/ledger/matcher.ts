@@ -173,6 +173,8 @@ export function matchLedger(facts: TranscriptFact[], inputItems: RequirementItem
     const directShellMutation = command && fact.mutating && !isVerificationCommand(command);
     const pathMutation = !command && paths.length > 0 && fact.mutating && (fact.exitCode === undefined || fact.exitCode === 0);
     const mutation = pathMutation || (uncertainExecution || directShellMutation) && fact.mutating || possibleSedWrite || ownEvidence.some(e => e.kind === 'file') || fact.exitCode === undefined && /(?:^|[_.])(?:apply_patch|Write|Edit)$/.test(fact.name);
+    // Compare against earlier mutations before recording this invocation's own write.
+    const overlappedMutation = latestMutationOrder > startedOrder;
     if (mutation) {
       for (const [command, ids] of latestChecks) if (ids.length) invalidatedChecks.add(command);
       latestChecks.clear();
@@ -182,7 +184,6 @@ export function matchLedger(facts: TranscriptFact[], inputItems: RequirementItem
       latestCheckStarts.set(command, startedOrder);
       // A check that overlapped a mutation cannot validate the resulting state,
       // even when its terminal receipt arrives after that mutation.
-      const overlappedMutation = !mutation && latestMutationOrder > startedOrder;
       const successful = !overlappedMutation && fact.exitCode === 0
         && !ownEvidence.some(e => e.kind === 'test' && e.exitCode !== 0)
         && ownEvidence.some(e => e.kind === 'command' && literalCommand(e.value) === command && e.exitCode === 0);
