@@ -79,6 +79,7 @@ function sedCommand(command: unknown) {
       else scripts.push(option.slice('--expression='.length));
       continue;
     }
+    if (option === '--line-length') { index++; continue; }
     if (option.startsWith('--')) continue;
     for (let flag = 1; flag < option.length; flag++) {
       if (option[flag] === 'i') {
@@ -90,6 +91,16 @@ function sedCommand(command: unknown) {
           else ambiguousSuffix = true;
         }
         break;
+      }
+      if (option[flag] === 'l') {
+        // GNU -l N consumes a numeric length; BSD -l is a bare buffering flag.
+        // Preserve the next script and clustered -i when no length is present.
+        const attached = option.slice(flag + 1);
+        if (/^\d+$/.test(attached || words[index + 1] || '')) {
+          if (!attached) index++;
+          break;
+        }
+        continue;
       }
       if (option[flag] === 'e' || option[flag] === 'f') {
         hasScript = true;
