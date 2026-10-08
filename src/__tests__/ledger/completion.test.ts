@@ -153,6 +153,14 @@ describe('completion requires current execution evidence', () => {
       expect(match([{ code: 0 }, { cmd, result: { exit_code: receipt.status, output: receipt.stdout + receipt.stderr } }]).items[0].status).toBe('unverified');
     } finally { rmSync(root, { recursive: true, force: true }); }
   });
+  test.each([
+    'bun run test -- -u',
+    'bun run test -- --update-snapshots',
+    'bun run test -- --reporter=junit --reporter-outfile=src/widget.ts',
+    'bun run test -- --coverage --coverage-reporter=lcov',
+  ])('Bun run forwards writing flags after separator: %s', cmd => {
+    expect(match([{ code: 0 }, { cmd, code: 0 }]).items[0].status).toBe('unverified');
+  });
   test('report flag-looking filename after separator preserves peer evidence', () => {
     expect(match([{ code: 0 }, { cmd: 'bun test -- --reporter-outfile=src/widget.ts', code: 0 }]).progress.done).toBe(1);
   });

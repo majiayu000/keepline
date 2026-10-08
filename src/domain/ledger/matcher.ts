@@ -129,8 +129,8 @@ function isVerificationCommand(command: string): boolean {
   if (!/^(?:tests?|typecheck|check)$/.test(words[index] ?? '')) return false;
   const args = words.slice(index + 1);
   const separator = args.indexOf('--');
-  // npm/pnpm/yarn forward arguments after -- to the underlying test script.
-  const options = executable === 'bun' && separator >= 0 ? args.slice(0, separator) : args;
+  // Script runners (including bun run) forward -- arguments; direct bun test does not.
+  const options = executable === 'bun' && words[1] !== 'run' && separator >= 0 ? args.slice(0, separator) : args;
   return !options.some((option, i) => /^(?:-u|--update-snapshots(?:=.*)?|--updateSnapshot(?:=.*)?)$/.test(option)
     || /^--(?:reporter-outfile|coverage-dir)(?:=|$)/.test(option)
     || option === '--coverage-reporter=lcov'
