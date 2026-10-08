@@ -882,6 +882,53 @@ describe('completion requires current execution evidence', () => {
   });
 
   test.each([
+    `sed -n '1a welcome' widget.ts`,
+    `sed -n '1c write; e ignored' widget.ts`,
+    `sed -n '1i Write' widget.ts`,
+    "sed -n '1a\\\nwelcome' widget.ts",
+    "sed -n '1c\\\nwelcome\\\nwrite' widget.ts",
+    "sed -n '1i\\\nWrite\\\nexecute' widget.ts",
+  ])('sed text payloads preserve prior successful checks: %s', (cmd) => {
+    for (const code of [undefined, 0, 1]) {
+      const result = match([{ code: 0 }, { cmd, code, output: '' }]);
+      expect(result.progress.done).toBe(1);
+      expect(result.items[0].status).toBe('done');
+      expect(result.evidence.filter(e => e.callId === 'completion-1' && e.kind === 'file')).toEqual([]);
+    }
+  });
+
+  test.each([
+    "sed -n '1a welcome\nw output.ts' widget.ts",
+    "sed -n '1c welcome\nW output.ts' widget.ts",
+    "sed -n '1i welcome\ne touch output.ts' widget.ts",
+    "sed -n '1a\\\nwelcome\\\nwrite\nw output.ts' widget.ts",
+    "sed -n '1a\\\nwelcome\\\\\nw output.ts' widget.ts",
+    `sed -n '\\@a@w output.ts' widget.ts`,
+    `sed -n -e '1a welcome' -e 'w output.ts' widget.ts`,
+    `sed -i.bak '1a welcome' widget.ts`,
+    `sed -n -f commands.sed widget.ts`,
+  ])('sed writes after text payloads still invalidate prior successful checks: %s', (cmd) => {
+    expect(match([{ code: 0 }, { cmd, code: 0, output: '' }]).progress.done).toBe(0);
+  });
+
+  for (const opcode of ['a', 'c', 'i']) test.skipIf(!hasGnuSed)(`real GNU sed ${opcode} text preserves prior successful checks`, () => {
+    const root = mkdtempSync(join(tmpdir(), 'keepline-sed-text-'));
+    try {
+      writeFileSync(join(root, 'widget.ts'), 'original\n');
+      const script = `1${opcode} welcome; w output.ts`;
+      const receipt = spawnSync('sed', ['-n', script, 'widget.ts'], { cwd: root, encoding: 'utf8' });
+      if (receipt.error) throw receipt.error;
+      expect(receipt.status).toBe(0);
+      expect(receipt.stdout).toBe('welcome; w output.ts\n');
+      expect(readFileSync(join(root, 'widget.ts'), 'utf8')).toBe('original\n');
+      const result = match([{ code: 0 }, { cmd: `sed -n '${script}' widget.ts`, code: receipt.status!, output: receipt.stdout }]);
+      expect(result.progress.done).toBe(1);
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
+
+  test.each([
     `sed -n 's/x/ -i/p' widget.ts`,
     `sed -n 's/x/ -i /p' widget.ts`,
     `sed -n "s/x/ -i/p" widget.ts`,
