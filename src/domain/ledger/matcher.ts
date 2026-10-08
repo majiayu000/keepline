@@ -104,8 +104,25 @@ function isVerificationCommand(command: string): boolean {
   if (executable === 'pytest') return true;
   if (/^(?:cargo|go)$/.test(executable)) return /^(?:test|check)$/.test(words[1] ?? '');
   if (!/^(?:bun|npm|pnpm|yarn)$/.test(executable)) return false;
-  const script = words[1] === 'run' ? words[2] : words[1];
-  return /^(?:tests?|typecheck|check)$/.test(script ?? '');
+  let index = 1;
+  if (executable === 'pnpm') {
+    // Only documented options are skipped, together with their operands.
+    // Unknown flags (including file-producing report modes) remain uncertain.
+    const skipOptions = () => {
+      while (words[index]?.startsWith('-')) {
+        const option = words[index];
+        if (/^(?:--if-present|--silent|--recursive|-r|--parallel|--stream|--aggregate-output|--no-bail|--no-sort)$/.test(option)) index++;
+        else if (/^(?:--filter|--dir|-C|--resume-from|--workspace-concurrency)$/.test(option) && words[index + 1] !== undefined) index += 2;
+        else if (/^--(?:filter|dir|resume-from|workspace-concurrency)=.+$/.test(option)) index++;
+        else return false;
+      }
+      return true;
+    };
+    if (!skipOptions()) return false;
+    if (words[index] === 'run') { index++; if (!skipOptions()) return false; }
+  } else if (words[index] === 'run') index++;
+  if (!/^(?:tests?|typecheck|check)$/.test(words[index] ?? '')) return false;
+  return !words.slice(index + 1).some(option => /^(?:-u|--update-snapshots(?:=.*)?|--updateSnapshot(?:=.*)?)$/.test(option));
 }
 function score(anchors: Anchors, summary: string, paths: string[], lowerSummary: string): number {
   return anchors.paths.reduce((n, path) => n + (paths.some(p => pathMatches(path,p)) || summary.includes(path) ? 5 : 0), 0)
@@ -120,10 +137,13 @@ export function matchLedger(facts: TranscriptFact[], inputItems: RequirementItem
   const evidenceIds = new Set<string>();
   const trail: LedgerStep[] = [];
   const latestChecks = new Map<string, string[]>();
+  const latestCheckStarts = new Map<string, number>();
   const invalidatedChecks = new Set<string>();
+  let latestMutationOrder = -1;
   let readOnlyCount = 0;
-  for (const fact of facts) {
+  for (const [factIndex, fact] of facts.entries()) {
     if (fact.kind !== 'tool') continue;
+    const startedOrder = fact.startedOrder ?? factIndex;
     const summary = `${fact.name} ${JSON.stringify(fact.input)}`;
     const lowerSummary = summary.toLowerCase();
     const paths: string[] = [];
@@ -152,12 +172,18 @@ export function matchLedger(facts: TranscriptFact[], inputItems: RequirementItem
     // Other mutations invalidate old proof before registering their own receipt.
     const directShellMutation = command && fact.mutating && !isVerificationCommand(command);
     const pathMutation = !command && paths.length > 0 && fact.mutating && (fact.exitCode === undefined || fact.exitCode === 0);
-    if (pathMutation || (uncertainExecution || directShellMutation) && fact.mutating || possibleSedWrite || ownEvidence.some(e => e.kind === 'file') || fact.exitCode === undefined && /(?:^|[_.])(?:apply_patch|Write|Edit)$/.test(fact.name)) {
+    const mutation = pathMutation || (uncertainExecution || directShellMutation) && fact.mutating || possibleSedWrite || ownEvidence.some(e => e.kind === 'file') || fact.exitCode === undefined && /(?:^|[_.])(?:apply_patch|Write|Edit)$/.test(fact.name);
+    if (mutation) {
       for (const [command, ids] of latestChecks) if (ids.length) invalidatedChecks.add(command);
       latestChecks.clear();
+      latestMutationOrder = Math.max(latestMutationOrder, fact.completedOrder ?? startedOrder);
     }
-    if (command) {
-      const successful = fact.exitCode === 0
+    if (command && startedOrder >= (latestCheckStarts.get(command) ?? -1)) {
+      latestCheckStarts.set(command, startedOrder);
+      // A check that overlapped a mutation cannot validate the resulting state,
+      // even when its terminal receipt arrives after that mutation.
+      const overlappedMutation = !mutation && latestMutationOrder > startedOrder;
+      const successful = !overlappedMutation && fact.exitCode === 0
         && !ownEvidence.some(e => e.kind === 'test' && e.exitCode !== 0)
         && ownEvidence.some(e => e.kind === 'command' && literalCommand(e.value) === command && e.exitCode === 0);
       // A failure or an in-flight retry replaces prior success. Corrections
@@ -165,7 +191,8 @@ export function matchLedger(facts: TranscriptFact[], inputItems: RequirementItem
       latestChecks.set(command, successful
         ? ownEvidence.filter(e => (e.kind === 'command' || e.kind === 'test') && e.exitCode === 0).map(e => e.id)
         : []);
-      invalidatedChecks.delete(command);
+      if (overlappedMutation) invalidatedChecks.add(command);
+      else invalidatedChecks.delete(command);
     }
     if (!fact.mutating) { readOnlyCount++; continue; }
     const correction = corrections.find(c => c.callId === fact.callId);

@@ -39,6 +39,127 @@ function match(calls: Call[], commands = [command]) {
 
 describe('completion requires current execution evidence', () => {
   test.each([
+    'git diff --output=src/widget.ts',
+    'git diff --output src/widget.ts',
+    'CI=1 /usr/bin/git --no-pager -C . log --output=src/widget.ts',
+    'env -- CI=1 git show --output=src/widget.ts',
+  ])('review boundary: Git output modes invalidate previous checks: %s', cmd => {
+    const calls: Call[] = [{ code: 0 }, { cmd, code: 0, output: '' }];
+    const stale = match(calls, [command, cmd]);
+    expect(stale.items[0].status).toBe('unverified');
+    expect(stale.progress.done).toBe(0);
+    expect(match([...calls, { code: 0 }], [command, cmd]).progress.done).toBe(1);
+  });
+
+  test.each(['git diff --output-indicator-new=+', 'git diff -- --output=src/widget.ts', 'git log --format=--output=src/widget.ts'])(
+    'review boundary: Git output-like data remains read-only: %s', cmd => {
+      expect(match([{ code: 0 }, { cmd, code: 0, output: '' }]).progress.done).toBe(1);
+    });
+
+  test.each(['git branch --show-current', 'CI=1 /usr/bin/git --no-pager -C . branch --show-current'])(
+    'review boundary: explicit branch inspection preserves checks: %s', cmd => {
+      expect(match([{ code: 0 }, { cmd, code: 0, output: 'main' }], [command, cmd]).progress.done).toBe(1);
+    });
+  test.each(['git branch new-branch', 'git branch -d old-branch', 'git branch --show-current -m new-branch'])(
+    'review boundary: branch changes stay mutating: %s', cmd => {
+      expect(match([{ code: 0 }, { cmd, code: 0, output: '' }]).items[0].status).toBe('unverified');
+    });
+
+  test.each(['bun test --update-snapshots', 'bun test -u', 'bun test snapshot.test.ts --update-snapshots', 'npm test -- -u', 'pnpm run test --update-snapshots'])(
+    'review boundary: snapshot-updating criteria invalidate previous checks: %s', cmd => {
+      const calls: Call[] = [{ code: 0 }, { cmd, code: 0 }];
+      expect(match(calls, [command, cmd]).items[0].status).toBe('unverified');
+      expect(match([...calls, { code: 0 }], [command, cmd]).progress.done).toBe(1);
+    });
+
+  test.each(['pnpm run --if-present test', 'pnpm --silent run test', 'pnpm --filter widget run --if-present test', 'pnpm run --resume-from widget check'])(
+    'review boundary: supported package-manager options preserve peer checks: %s', cmd => {
+      expect(match([{ code: 0 }, { cmd, code: 0 }], [command, cmd]).progress.done).toBe(1);
+    });
+  test.each(['pnpm run --unknown test', 'pnpm run --resume-from test write'])(
+    'review boundary: unknown options and option operands are not verification scripts: %s', cmd => {
+      expect(match([{ code: 0 }, { cmd, code: 0 }]).items[0].status).toBe('unverified');
+    });
+
+  test('review boundary: a real Git output file makes the prior check stale', () => {
+    const root = mkdtempSync(join(tmpdir(), 'ledger-git-output-'));
+    const git = (...args: string[]) => spawnSync('git', args, { cwd: root, encoding: 'utf8' });
+    const check = () => spawnSync(process.execPath, ['test', 'check.test.ts'], { cwd: root, encoding: 'utf8' });
+    try {
+      expect(git('init', '-b', 'main').status).toBe(0);
+      writeFileSync(join(root, 'widget.txt'), 'before\n');
+      expect(git('add', 'widget.txt').status).toBe(0);
+      expect(git('-c', 'user.name=Ledger Test', '-c', 'user.email=ledger@example.invalid', 'commit', '-m', 'fixture').status).toBe(0);
+      writeFileSync(join(root, 'widget.txt'), 'after\n');
+      writeFileSync(join(root, 'check.test.ts'), "import {test,expect} from 'bun:test'; import {readFileSync} from 'node:fs'; test('current file',()=>expect(readFileSync('widget.txt','utf8')).toBe('after\\n'));\n");
+      const before = check(); expect(before.status).toBe(0);
+      const changed = git('diff', '--output=widget.txt'); expect(changed.status).toBe(0);
+      expect(readFileSync(join(root, 'widget.txt'), 'utf8')).toContain('diff --git');
+      expect(check().status).toBe(1);
+      const cmd = 'bun test check.test.ts';
+      const stale = match([{ cmd, code: 0, output: before.stdout + before.stderr }, { cmd: 'git diff --output=widget.txt', code: 0, output: changed.stdout }], [cmd]);
+      expect(stale.items[0].status).toBe('unverified');
+      expect(stale.items[0].evidenceIds).toEqual([]);
+    } finally { rmSync(root, { recursive: true, force: true }); }
+  });
+
+  test('review boundary: a real snapshot update invalidates an earlier file check', () => {
+    const root = mkdtempSync(join(tmpdir(), 'ledger-snapshot-update-'));
+    const run = (args: string[], value = 'before') => spawnSync(process.execPath, args, { cwd: root, encoding: 'utf8', env: { ...process.env, SNAPSHOT_VALUE: value } });
+    try {
+      writeFileSync(join(root, 'snapshot.test.ts'), "import {test,expect} from 'bun:test'; test('value',()=>expect(process.env.SNAPSHOT_VALUE).toMatchSnapshot());\n");
+      expect(run(['test', '--update-snapshots', 'snapshot.test.ts']).status).toBe(0);
+      writeFileSync(join(root, 'check.test.ts'), "import {test,expect} from 'bun:test'; import {readFileSync} from 'node:fs'; test('original snapshot',()=>expect(readFileSync('__snapshots__/snapshot.test.ts.snap','utf8')).toContain('before'));\n");
+      const before = run(['test', 'check.test.ts']); expect(before.status).toBe(0);
+      const updated = run(['test', '-u', 'snapshot.test.ts'], 'after'); expect(updated.status).toBe(0);
+      expect(readFileSync(join(root, '__snapshots__/snapshot.test.ts.snap'), 'utf8')).toContain('after');
+      expect(run(['test', 'check.test.ts']).status).toBe(1);
+      const cmd = 'bun test check.test.ts';
+      const stale = match([{ cmd, code: 0, output: before.stdout + before.stderr }, { cmd: 'SNAPSHOT_VALUE=after bun test -u snapshot.test.ts', code: 0, output: updated.stdout + updated.stderr }], [cmd]);
+      expect(stale.items[0].status).toBe('unverified');
+      expect(stale.items[0].evidenceIds).toEqual([]);
+    } finally { rmSync(root, { recursive: true, force: true }); }
+  });
+
+  test.each(['exec_command', 'mcp__shell__exec_command'])(
+    'review boundary: a check started before an edit cannot prove the edited state: %s', name => {
+      const calls: Call[] = [
+        { name, result: { session_id: 91, output: 'running' } },
+        { name: 'apply_patch', input: { input: '*** Update File: src/widget.ts\n-old\n+new' }, code: 0, output: 'Success' },
+        { name: 'write_stdin', input: { session_id: 91, chars: '' }, code: 0 },
+      ];
+      const stale = match(calls);
+      expect(stale.items[0].status).toBe('unverified');
+      expect(stale.progress.done).toBe(0);
+      expect(stale.items[0].evidenceIds).toEqual([]);
+      expect(match([...calls, { code: 0 }, calls[2]]).progress.done).toBe(1);
+    });
+
+  test('review boundary: equal timestamps preserve start/edit/end ordering', () => {
+    const parser = new TranscriptFacts('codex'), timestamp = '2026-10-08T00:00:00.000Z';
+    const add = (payload: unknown) => parser.add({ type: 'response_item', timestamp, payload });
+    add({ type: 'function_call', call_id: 'check', name: 'exec_command', arguments: JSON.stringify({ cmd: command }) });
+    add({ type: 'function_call', call_id: 'edit', name: 'apply_patch', arguments: '{"input":"*** Update File: src/widget.ts"}' });
+    add({ type: 'function_call_output', call_id: 'edit', output: '{"exit_code":0,"output":"Success"}' });
+    add({ type: 'function_call_output', call_id: 'check', output: '{"exit_code":0,"output":"1 pass"}' });
+    const items = decompose([], 'overlap', [{ id: 'check', text: `Run \`${command}\`` }]);
+    expect(matchLedger(parser.facts, items, [], [], DEFAULT_LEDGER_CONFIG).items[0].status).toBe('unverified');
+    add({ type: 'function_call', call_id: 'fresh', name: 'exec_command', arguments: JSON.stringify({ cmd: command }) });
+    add({ type: 'function_call_output', call_id: 'fresh', output: '{"exit_code":0,"output":"1 pass"}' });
+    expect(matchLedger(parser.facts, items, [], [], DEFAULT_LEDGER_CONFIG).progress.done).toBe(1);
+  });
+
+  test.each([0, 1])('review boundary: a late older result cannot replace a newer retry: %s', code => {
+    const calls: Call[] = [
+      { result: { session_id: 91, output: 'running' } },
+      { name: 'apply_patch', input: { input: '*** Update File: src/widget.ts' }, code: 0, output: 'Success' },
+      { code },
+      { name: 'write_stdin', input: { session_id: 91, chars: '' }, code: 0 },
+    ];
+    expect(match(calls).progress.done).toBe(code === 0 ? 1 : 0);
+  });
+
+  test.each([
     'LC_ALL=C rg foo src',
     '/usr/bin/rg foo src',
     '/usr/bin/env -- LC_ALL=C /usr/bin/rg foo src',
