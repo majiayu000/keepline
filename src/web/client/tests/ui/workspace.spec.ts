@@ -692,6 +692,11 @@ test("v3 风格回归、固定组件像素对照及功能变更差异记录", as
     "  renderVals() {",
     `  data(){return ${JSON.stringify([sample])}}\n  goals(){return []}\n  NAMES = {6:${JSON.stringify(row.items.map((i) => i.title))}};\n  CONSTRAINTS = {};\n  renderVals() {`,
   );
+  // Version is release data, like the session titles above; preserve the original
+  // reference styles and the zero-pixel sidebar comparison at the current version.
+  const appVersion = JSON.parse(readFileSync(resolve("../../../menubar-tauri/src-tauri/tauri.conf.json"), "utf8")).version as string;
+  html = html.replace(">v0.4<", `>v${appVersion}<`);
+  await expect(page.locator("nav").getByText(`v${appVersion}`, { exact: true })).toBeVisible();
   html = html.replace(
     '<script src="./support.js"></script>',
     `<script>window.__resources={"https://unpkg.com/react@18.3.1/umd/react.production.min.js":"/__reference/react.js","https://unpkg.com/react-dom@18.3.1/umd/react-dom.production.min.js":"/__reference/react-dom.js"}</script><script src="./support.js"></script>`,

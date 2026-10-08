@@ -177,7 +177,7 @@ export function LedgerSettings({
         <>
           <Row
             title="敏感度"
-            desc={`保守：连续 ${DEVIATION_MIN_STEPS.conservative} 步计划外且持续至少 10 分钟才标偏离；敏感：连续 ${DEVIATION_MIN_STEPS.sensitive} 步。关闭则不判。`}
+            desc={`保守：计划外连续 ${DEVIATION_MIN_STEPS.conservative} 步且跨 10 分钟；敏感：${DEVIATION_MIN_STEPS.sensitive} 步。关闭不判。`}
           >
             <Value
               label={
