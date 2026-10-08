@@ -114,13 +114,24 @@ export function sedInPlaceFiles(command: unknown): string[] | undefined {
 function scriptMayWrite(script: string): boolean {
   for (let index = 0; index < script.length; index++) {
     const char = script[index];
-    if (char === '\\') { index++; continue; }
     if (char === '#' || /[rRbBtT:]/.test(char)) {
       while (index + 1 < script.length && !/[;\n]/.test(script[index + 1])) index++;
       continue;
     }
+    if (char === 'a' || char === 'c' || char === 'i') {
+      // Text consumes semicolons and escaped newlines; only an unescaped newline
+      // starts another command. The traditional form starts with backslash-newline.
+      index++;
+      while (script[index] === ' ' || script[index] === '\t') index++;
+      if (script[index] === '\\' && script[index + 1] === '\n') index += 2;
+      while (index < script.length && script[index] !== '\n') {
+        if (script[index] === '\\') index++;
+        index++;
+      }
+      continue;
+    }
     if (char === 'w' || char === 'W' || char === 'e') return true;
-    const fields = char === 's' || char === 'y' ? 2 : char === '/' ? 1 : 0;
+    const fields = char === 's' || char === 'y' ? 2 : char === '/' || char === '\\' ? 1 : 0;
     if (!fields) continue;
     const delimiter = char === '/' ? '/' : script[++index];
     if (!delimiter) return true;
