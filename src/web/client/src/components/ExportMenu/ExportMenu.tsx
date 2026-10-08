@@ -41,7 +41,7 @@ export const ExportMenu = memo(function ExportMenu({ sessions, disabled }: Expor
         className={styles.trigger}
         onClick={() => setIsOpen(!isOpen)}
         disabled={disabled || isEmpty}
-        title={isEmpty ? 'No sessions to export' : 'Export sessions'}
+        title={isEmpty ? 'No sessions to export' : '导出会话'}
       >
         <span className={styles.triggerIcon}>📥</span>
         Export

@@ -137,7 +137,7 @@ export function registerCommands(program: Command): void {
     .command('service')
     .description('Start the lightweight local API service')
     .option('-p, --port <port>', 'Port to listen on (default: 3377)')
-    .option('--scan-interval <seconds>', 'Periodic transcript scan interval (default: 60; 0 disables)')
+    .option('--scan-interval <seconds>', 'Periodic transcript scan interval (default: 5; 0 disables)')
     .action(async (options) => (await import('./service.js')).serviceCommand(options));
 
   program

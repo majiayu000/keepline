@@ -1,4 +1,5 @@
 import { isHookEventProcessed, markHookEventProcessed } from './spool.js';
+import { isInputRequestTool } from '../transcript-facts.js';
 import { transaction } from '../../infrastructure/database/sqlite.js';
 import type { Server } from 'bun';
 import { sessionRepository } from '../../infrastructure/database/repositories/session.repository.js';
@@ -90,6 +91,7 @@ function parseRuntimeHint(url: URL): AgentClient | null | undefined {
 }
 
 function observedStatus(eventType: string, body: Record<string, unknown>): SessionStatus | undefined {
+  if (eventType === 'PreToolUse' && isInputRequestTool(String(body.tool_name))) return 'needs_input';
   if (eventType === 'PermissionRequest' || eventType === 'Notification' && ['permission_prompt','idle_prompt','agent_needs_input'].includes(String(body.notification_type))) return 'needs_input';
   if (eventType === 'Stop') return 'waiting';
   if (eventType === 'SessionStart' || eventType === 'UserPromptSubmit' ||

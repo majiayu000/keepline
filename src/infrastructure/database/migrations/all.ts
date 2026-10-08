@@ -21,6 +21,7 @@ import { migration013 } from './013_session_process_observation.js';
 import { migration014 } from './014_session_status_source.js';
 
 import { migration015 } from './015_progress_ledger.js';
+import { migration016 } from './016_ledger_read_receipts.js';
 
 /** All available migrations */
 export const allMigrations: Migration[] = [
@@ -39,4 +40,5 @@ export const allMigrations: Migration[] = [
   migration013,
   migration014,
   migration015,
+  migration016,
 ];

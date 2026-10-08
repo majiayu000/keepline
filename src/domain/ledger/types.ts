@@ -3,9 +3,10 @@ export type TranscriptFact =
   | { kind: 'agent_message'; text: string; at: string; turnId?: string; final: boolean }
   | { kind: 'turn'; phase: 'started' | 'completed' | 'aborted'; at: string; turnId: string; reason?: string }
   | { kind: 'tool'; callId: string; name: string; input: unknown; at: string; turnId?: string;
-      mutating: boolean; startedOrder?: number; completedOrder?: number; exitCode?: number; outputHead?: string; facts?: ToolEvidence[] }
+      mutating: boolean; completed?: boolean; startedOrder?: number; completedOrder?: number; exitCode?: number; outputHead?: string; facts?: ToolEvidence[] }
   | { kind: 'limit'; scope: 'usage' | 'budget'; at: string };
 export interface ToolEvidence { kind: 'command' | 'test' | 'file' | 'commit' | 'pr' | 'verdict'; value: string; exitCode?: number }
+export const DEVIATION_MIN_STEPS = { conservative: 8, sensitive: 3 } as const;
 export interface Anchors {
   paths: string[]; commands: string[]; keywords: string[];
   /** Persisted user criteria without a format need explicit command confirmation. */
@@ -31,6 +32,7 @@ export interface LedgerAcceptance { turnId: string; decision: 'accepted' | 'acce
 export interface LedgerDetail {
   sessionId: string; agentSessionId: string; title: string; projectRoot: string; runtimeId: string;
   state: 'running' | 'needs_input' | 'review' | 'accepted' | 'stopped' | 'ended'; statusReason?: string | null;
+  unread?: boolean; pendingInput?: boolean;
   parentSessionId?: string;
   activity?: { action?: string; at?: string; lastMessage?: string; evidence: LedgerEvidence[] };
   subagents?: Array<Pick<LedgerDetail,'sessionId' | 'title' | 'state' | 'lastActiveAt' | 'activity'>>;

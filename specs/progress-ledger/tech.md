@@ -124,6 +124,13 @@ type TranscriptFact =
 - The next `PreToolUse`, `PostToolUse`, or `UserPromptSubmit` for the same
   session clears `needs_input`.
 - Without hooks installed, `needs_input` is never inferred from timing.
+- Unanswered `AskUserQuestion` and `request_user_input` tool calls are explicit
+  input requests in transcript facts; their paired results clear the request.
+  `PreToolUse` for these tools also sets `needs_input` instead of `running`.
+- Migration 016 adds `last_viewed_turn_id` to `ledger_views`. Viewing records
+  the completed turn, independently of notification suppression expiry and
+  acceptance. Ordinary unread responses enter `review` without contributing
+  progress; read responses with no confirmed criteria move to `ended`.
 
 ### 4. Storage (migration 015)
 

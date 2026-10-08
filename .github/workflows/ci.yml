@@ -51,7 +51,7 @@ jobs:
         run: bun run typecheck
 
       - name: Test
-        run: bun test
+        run: bun run test
 
   tauri:
     name: Tauri Rust checks
@@ -82,6 +82,15 @@ jobs:
       - name: Cargo test
         working-directory: menubar-tauri/src-tauri
         run: cargo test --lib
+
+      # The desktop product and zero-tolerance font rendering target macOS.
+      - name: Install browser for UI checks
+        working-directory: src/web/client
+        run: bun x playwright install chromium
+
+      - name: Test UI workflows and macOS visual regression
+        working-directory: src/web/client
+        run: bun run test:ui
 
   # peer_uid calls libc::getpeereid, which the Ubuntu app job cannot build.
   keeplined:

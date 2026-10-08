@@ -50,6 +50,19 @@ judgment is optional, rate-limited, and never allowed to invent evidence.
 
 ## Product Behavior
 
+### Overview time range
+
+- The overview defaults to sessions active in the last 24 hours. Users can enter
+  a whole number of hours (including 7 or 24), up to the configured retention
+  period; the browser remembers the selected range.
+- Filtering uses the last activity, including child-agent activity. A conversation
+  started 40 hours ago remains visible if it was active inside the selected range.
+- Overview timestamps show how long ago the last activity occurred, with the
+  exact date and time on hover. Details label the full wall-clock span as
+  "会话跨度"; that span includes idle time and is not continuous execution time.
+- Counts and all overview layouts use the same time range. The history group is
+  "已结束", since a rolling range does not mean a calendar day.
+
 ### Session ledger
 
 1. Keepline builds a ledger for every Claude Code and Codex session active in
@@ -94,7 +107,11 @@ judgment is optional, rate-limited, and never allowed to invent evidence.
 8. User-facing task states: `running`, `needs_input`, `review` (turn finished,
    awaiting the user), `accepted`, `stopped` (stalled, interrupted, or
    limited). Off-plan is an overlay on `running`, not a state.
-9. In `review`, the user can: accept; accept with gaps (remaining items marked
+9. A newly finished, unread response enters `review` even without a confirmed
+   checklist. Opening it records that turn as read; without confirmed criteria,
+   it then moves to history without creating acceptance. A new response becomes
+   unread again. The existing 12-hour review expiry still applies.
+   In `review` with confirmed criteria, the user can: accept; accept with gaps (remaining items marked
    "dropped by you" with a reason); or generate a follow-up.
 10. A follow-up is text built from remaining and unverified items, shown in an
     editable dialog, and copied to the clipboard ("copy" or "copy and jump to
@@ -125,9 +142,21 @@ judgment is optional, rate-limited, and never allowed to invent evidence.
     percentage averaging.
 17. When an agent's final message proposes follow-up work, Keepline suggests
     adding it as a todo under the same goal; nothing is added without the user.
-18. A goals view lists goals with segmented progress (one segment per todo),
-    weekly movement, and active agents, and flags goals with no progress for 7
-    days. Expanding a goal shows its todos with live session status.
+18. The goals view defaults to a compact list. Each goal offers an optional
+    project map that opens only on user selection and can be collapsed. The
+    map component and recent-progress query are loaded only while selected;
+    opening a fresh page returns to the compact list. Each map treats its goal
+    as the delivery point. It lists remaining todos and unsatisfied acceptance items,
+    segmented progress (one segment per todo), weekly movement, and goals with
+    no progress for 7 days. Todo cards distinguish execution evidence, pending
+    acceptance, and accepted completion. Confirmed input requests, explicit
+    blocked todos, and the latest stopped attempt appear with their recorded
+    reason; an older stopped attempt does not block a newer active run.
+    A suggested next step links to the todo or session, without taking action.
+    Recent progress shows up to six evidence, acceptance, or completion records
+    from seven days, with timestamps and source links. Work-item edits are not
+    historical progress events. Follow-up prompts use the existing preview and
+    copy flow, and completing or dispatching work still requires a user click.
 19. The overview can group by urgency (default), goal, or project; each row
     shows its goal › todo path or "unattributed".
 
