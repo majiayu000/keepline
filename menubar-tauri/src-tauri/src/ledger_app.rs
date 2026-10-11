@@ -85,6 +85,16 @@ fn build_window(app: &AppHandle,label: &str,path: &str,popover: bool) -> Result<
     });
     Ok(())
 }
+pub fn reopen_ledger_window(app: &AppHandle) -> Result<(),String> {
+    let Some(window) = app.get_webview_window("dashboard") else {
+        return open_ledger_window(app,None,None);
+    };
+    // macOS reopens the app after dispatching a notification click. Keep the
+    // session/anchor selected by that callback instead of navigating to overview.
+    app.set_activation_policy(tauri::ActivationPolicy::Regular).map_err(|e| e.to_string())?;
+    window.show().map_err(|e| e.to_string())?;
+    window.set_focus().map_err(|e| e.to_string())
+}
 pub fn open_ledger_window(app: &AppHandle,session: Option<&str>,anchor: Option<&str>) -> Result<(),String> {
     let base = app.state::<ServiceState>().connection.lock().map_err(|e| e.to_string())?.as_ref().map(|v| v.0.clone()).ok_or("Service not ready")?;
     let url = ledger_url(&base,session,anchor)?;

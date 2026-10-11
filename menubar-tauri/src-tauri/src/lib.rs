@@ -247,7 +247,7 @@ pub fn run() {
         .run(|app, event| {
             #[cfg(target_os = "macos")]
             if let tauri::RunEvent::Reopen { .. } = event {
-                if let Err(error) = ledger_app::open_ledger_window(app, None, None) {
+                if let Err(error) = ledger_app::reopen_ledger_window(app) {
                     eprintln!("Could not reopen Keepline: {error}");
                 }
             }
