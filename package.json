@@ -50,8 +50,8 @@
     "start": "bun dist/index.js",
     "web": "bun dist/index.js web",
     "typecheck": "bun x tsc --noEmit && cd src/web/client && bun run typecheck",
-    "test": "bun test --preload ./src/__tests__/test-preload.ts",
-    "test:watch": "bun test --watch --preload ./src/__tests__/test-preload.ts",
+    "test": "bun test src/__tests__ --preload ./src/__tests__/test-preload.ts",
+    "test:watch": "bun test src/__tests__ --watch --preload ./src/__tests__/test-preload.ts",
     "test:sdk:swift": "DEVELOPER_DIR=/Applications/Xcode.app/Contents/Developer swift test --package-path sdk/swift",
     "prepublishOnly": "bun run build"
   },

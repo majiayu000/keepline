@@ -1,40 +1,48 @@
-import { ReactNode, memo } from 'react'
-import { Header } from '@/components/Header'
-import { StatsBar } from '@/components/StatsBar'
-import { Toolbar } from '@/components/Toolbar'
-import { TabNav, type TabId } from '@/components/TabNav'
-import type { RuntimeFilter, Session, SessionStats, SessionStatus } from '@/types'
-import type { NotificationSettings, ConnectionStatus } from '@/hooks'
-import styles from './Layout.module.css'
+import { ReactNode, memo } from "react";
+import { Header } from "@/components/Header";
+import { WorkspaceShell } from "@/pages/ledger/components/WorkspaceShell";
+import { StatsBar } from "@/components/StatsBar";
+import { Toolbar } from "@/components/Toolbar";
+import { type TabId } from "@/components/TabNav";
+import type {
+  RuntimeFilter,
+  Session,
+  SessionStats,
+  SessionStatus,
+} from "@/types";
+import type { NotificationSettings, ConnectionStatus } from "@/hooks";
+import styles from "./Layout.module.css";
 
 interface LayoutProps {
-  children: ReactNode
-  stats: SessionStats | null
-  loading?: boolean
-  onSync: () => void
-  onLogout?: () => void | Promise<void>
-  syncing?: boolean
+  children: ReactNode;
+  stats: SessionStats | null;
+  loading?: boolean;
+  onSync: () => void;
+  onLogout?: () => void | Promise<void>;
+  syncing?: boolean;
   // Search & Filter props
-  searchQuery?: string
-  onSearchChange?: (query: string) => void
-  statusFilters?: Set<SessionStatus>
-  onFilterChange?: (filters: Set<SessionStatus>) => void
-  runtimeFilter?: RuntimeFilter
-  onRuntimeFilterChange?: (filter: RuntimeFilter) => void
-  totalCount?: number
-  filteredCount?: number
+  searchQuery?: string;
+  onSearchChange?: (query: string) => void;
+  statusFilters?: Set<SessionStatus>;
+  onFilterChange?: (filters: Set<SessionStatus>) => void;
+  runtimeFilter?: RuntimeFilter;
+  onRuntimeFilterChange?: (filter: RuntimeFilter) => void;
+  totalCount?: number;
+  filteredCount?: number;
   // Export props
-  sessions?: Session[]
+  sessions?: Session[];
   // Notification props
-  notificationSettings?: NotificationSettings
-  onUpdateNotificationSettings?: (updates: Partial<NotificationSettings>) => void
-  notificationPermission?: NotificationPermission
-  onRequestNotificationPermission?: () => Promise<boolean>
+  notificationSettings?: NotificationSettings;
+  onUpdateNotificationSettings?: (
+    updates: Partial<NotificationSettings>,
+  ) => void;
+  notificationPermission?: NotificationPermission;
+  onRequestNotificationPermission?: () => Promise<boolean>;
   // Connection status
-  connectionStatus?: ConnectionStatus
+  connectionStatus?: ConnectionStatus;
   // Tab navigation
-  activeTab?: TabId
-  onTabChange?: (tab: TabId) => void
+  activeTab?: TabId;
+  onTabChange?: (tab: TabId) => void;
 }
 
 export const Layout = memo(function Layout({
@@ -44,11 +52,11 @@ export const Layout = memo(function Layout({
   onSync,
   onLogout,
   syncing,
-  searchQuery = '',
+  searchQuery = "",
   onSearchChange,
   statusFilters = new Set(),
   onFilterChange,
-  runtimeFilter = 'all',
+  runtimeFilter = "all",
   onRuntimeFilterChange,
   totalCount = 0,
   filteredCount = 0,
@@ -58,13 +66,40 @@ export const Layout = memo(function Layout({
   notificationPermission,
   onRequestNotificationPermission,
   connectionStatus,
-  activeTab = 'sessions',
+  activeTab = "sessions",
   onTabChange,
 }: LayoutProps) {
-  const showToolbar = onSearchChange && onFilterChange && onRuntimeFilterChange
+  const showToolbar = onSearchChange && onFilterChange && onRuntimeFilterChange;
 
   return (
-    <div className={styles.layout}>
+    <WorkspaceShell
+      view={activeTab}
+      onNavigate={(tab) => onTabChange?.(tab)}
+      subtitle={
+        connectionStatus === "realtime"
+          ? "实时连接 · 本地会话记录"
+          : connectionStatus === "disconnected"
+            ? "连接已断开"
+            : "定时刷新 · 本地会话记录"
+      }
+      projects={[...new Set(sessions.map((s) => s.directory))].map((root) => ({
+        root,
+        name: root.split("/").filter(Boolean).at(-1) || root,
+        count: sessions.filter(
+          (s) => s.directory === root && s.status !== "completed",
+        ).length,
+        need: sessions.filter(
+          (s) => s.directory === root && s.status === "needs_input",
+        ).length,
+      }))}
+      needCount={stats?.needs_input}
+      onProject={(root) => {
+        onSearchChange?.(root ?? "");
+        onTabChange?.("sessions");
+      }}
+      onRefresh={onSync}
+      onLogout={() => void onLogout?.()}
+    >
       <Header
         onSync={onSync}
         onLogout={onLogout}
@@ -76,10 +111,7 @@ export const Layout = memo(function Layout({
         onRequestNotificationPermission={onRequestNotificationPermission}
         connectionStatus={connectionStatus}
       />
-      {onTabChange && (
-        <TabNav activeTab={activeTab} onTabChange={onTabChange} />
-      )}
-      {activeTab === 'sessions' && (
+      {activeTab === "sessions" && (
         <>
           <StatsBar stats={stats} loading={loading} />
           {showToolbar && (
@@ -98,9 +130,9 @@ export const Layout = memo(function Layout({
         </>
       )}
       <main className={styles.main}>{children}</main>
-    </div>
-  )
-})
+    </WorkspaceShell>
+  );
+});
 
 // Export styles for use in App.tsx
-export { styles as layoutStyles }
+export { styles as layoutStyles };

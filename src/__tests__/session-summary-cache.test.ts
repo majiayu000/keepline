@@ -3,8 +3,10 @@ import { Database } from 'bun:sqlite';
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync, appendFileSync, statSync, utimesSync } from 'fs';
 import { tmpdir } from 'os';
 import { join, resolve } from 'path';
+import { config } from '../lib/config.js';
 import {
   cachedSessionSummary, closeSessionSummaryCache, LEDGER_COMPUTATION_VERSION, SessionSummaryCacheError,
+  readLedgerComputation, writeLedgerComputation,
 } from '../infrastructure/session-summary-cache.js';
 
 const tempDirs: string[] = [];
@@ -66,6 +68,18 @@ function fixture() {
 }
 
 describe('persistent transcript summary cache', () => {
+  test('keeps current ledger computations after restart and expires old windows', () => {
+    // Initialize cleanup before seeding both windows, then simulate a restart.
+    readLedgerComputation('missing');
+    const window = `ledger-${LEDGER_COMPUTATION_VERSION}:${config.get().ledger.retentionDays}:${new Date().toISOString().slice(0,10)}`;
+    writeLedgerComputation('scan:current',`${window}:123:456:789`,{ path: '/current' });
+    writeLedgerComputation('detail:current',`${window}:123:456:789:hash`,{ progress: 1 });
+    writeLedgerComputation('scan:expired','ledger-8:30:2000-01-01:123',{});
+    closeSessionSummaryCache();
+    expect(readLedgerComputation<{ path: string }>('scan:current')).toEqual({ path: '/current' });
+    expect(readLedgerComputation<{ progress: number }>('detail:current')).toEqual({ progress: 1 });
+    expect(readLedgerComputation('scan:expired')).toBeUndefined();
+  });
   test.each(['claude', 'codex'] as const)('%s scanners reuse summaries across restarts without losing details or updates', (runtime) => {
     const root = tempDirectory();
     const sessionsDir = runtime === 'claude' ? join(root, '.claude', 'projects') : join(root, 'sessions');

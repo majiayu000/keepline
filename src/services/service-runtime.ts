@@ -1,3 +1,6 @@
+import { existsSync, watch, type FSWatcher } from 'fs';
+import { dirname, join, relative, sep } from 'path';
+import { CLAUDE_PROJECT_ROOTS, CODEX_SESSIONS } from '../lib/paths.js';
 import { mountServiceClient } from '../web/api/service-client.js';
 import { replayHookSpool } from '../adapters/hook/spool.js';
 import { broadcast, websocketHandler } from '../web/api/websocket.js';
@@ -137,8 +140,8 @@ export async function startKeeplineService(
     ? config.get().hookPort
     : (options.hookPort ?? config.get().hookPort);
   const configuredScanInterval = typeof options === 'number'
-    ? 60_000
-    : (options.scanIntervalMs ?? 60_000);
+    ? 5_000
+    : (options.scanIntervalMs ?? 5_000);
   const scanTimeoutMs = typeof options === 'number'
     ? DEFAULT_SCAN_TIMEOUT_MS
     : (options.scanTimeoutMs ?? DEFAULT_SCAN_TIMEOUT_MS);
@@ -256,11 +259,13 @@ export async function startKeeplineService(
 
   let stopped = false;
   let scanTimer: ReturnType<typeof setTimeout> | undefined;
+  let nextScanAt = 0;
   let scanPromise: Promise<void> | undefined;
   let scanProcess: ReturnType<typeof Bun.spawn> | undefined;
   let nextScanDelayMs = configuredScanInterval;
   let continueCorrelation = false;
   let rescanRequested = false;
+  let rescanUrgent = false;
   const scan = async () => {
     if (stopped) return;
     if (localServiceState.scan.running) {
@@ -324,6 +329,7 @@ export async function startKeeplineService(
         pendingDispatches?: number;
         summaryCache?: { hits: number; misses: number; writes: number };
         cpuMicros?: { user: number; system: number };
+        incremental?: { resumed: number; bytes: number };
       };
       if (Array.isArray(payload.runtimeScan)) {
         replaceRuntimeScanStatus(payload.runtimeScan);
@@ -334,12 +340,13 @@ export async function startKeeplineService(
         ? (configuredScanInterval === 0 ? 3_000 : Math.min(configuredScanInterval, 3_000))
         : configuredScanInterval;
       await replaySpool();
-      broadcast('ledger:update',{});
       localServiceState.scan.completed = true;
       localServiceState.scan.lastCompletedAt = new Date();
       completeSessionReconciliation(reconciliationToken);
+      broadcast('ledger:update',{});
+      broadcast('sync:complete',{ timestamp: new Date().toISOString() });
       logger.info('Service scan completed', {
-        full: isInitialScan, elapsedMs: Date.now() - startedAt, summaryCache: payload.summaryCache, cpuMicros: payload.cpuMicros,
+        full: isInitialScan, elapsedMs: Date.now() - startedAt, summaryCache: payload.summaryCache, cpuMicros: payload.cpuMicros, incremental: payload.incremental,
       });
     } catch (error) {
       localServiceState.scan.lastError = error instanceof Error ? error.message : String(error);
@@ -358,6 +365,7 @@ export async function startKeeplineService(
   const scheduleScan = (delayMs: number) => {
     if (stopped) return;
     if (scanTimer) clearTimeout(scanTimer);
+    nextScanAt = Date.now() + delayMs;
     scanTimer = setTimeout(() => {
       scanTimer = undefined;
       scanPromise = scan().finally(() => {
@@ -365,7 +373,9 @@ export async function startKeeplineService(
         if (stopped) return;
         if (rescanRequested) {
           rescanRequested = false;
-          scheduleScan(0);
+          const delay = rescanUrgent ? 250 : Math.max(250,2_000 - (Date.now() - (localServiceState.scan.lastStartedAt?.getTime() ?? 0)));
+          rescanUrgent = false;
+          scheduleScan(delay);
         } else if (!localServiceState.scan.completed) {
           // Keep retrying startup reconciliation even when --scan-interval 0.
           scheduleScan(STARTUP_SCAN_RETRY_MS);
@@ -382,10 +392,37 @@ export async function startKeeplineService(
     if (stopped) return;
     if (localServiceState.scan.running) {
       rescanRequested = true;
+      rescanUrgent = true;
       return;
     }
     scheduleScan(250);
   };
+  const requestFileScan = () => {
+    if (stopped) return;
+    if (localServiceState.scan.running) { rescanRequested = true; return; }
+    const delay = Math.max(250,2_000 - (Date.now() - (localServiceState.scan.lastStartedAt?.getTime() ?? 0)));
+    if (!scanTimer || Date.now() + delay < nextScanAt) scheduleScan(delay);
+  };
+  // Watch transcript data only; caches and the dashboard's own files cannot trigger scans.
+  const transcriptWatchers: FSWatcher[] = [];
+  if (configuredScanInterval > 0) for (const root of new Set([...CLAUDE_PROJECT_ROOTS,CODEX_SESSIONS])) {
+    let directory = root;
+    while (!existsSync(directory) && dirname(directory) !== directory) directory = dirname(directory);
+    try {
+      const watcher = watch(directory,{ recursive: true },(_event,filename) => {
+        if (!filename) { requestFileScan(); return; }
+        const changed = join(directory,filename.toString());
+        const rel = relative(root,changed);
+        if (rel !== '..' && !rel.startsWith(`..${sep}`) && (changed.endsWith('.jsonl') || _event === 'rename')) requestFileScan();
+      });
+      watcher.on('error',error => logger.warn('Transcript watch failed; periodic reconciliation remains active',{ root,message: error.message }));
+      transcriptWatchers.push(watcher);
+    } catch (error) {
+      logger.warn('Unable to watch transcripts; periodic reconciliation remains active',{ root,message: error instanceof Error ? error.message : String(error) });
+    }
+  }
+  events.on('session:updated', requestScan);
+  events.on('session:discovered', requestScan);
   events.on('dispatch:created', requestScan);
   events.on('session:turn-ended', requestScan);
   events.on('session:completed', requestScan);
@@ -402,6 +439,9 @@ export async function startKeeplineService(
       stopped = true;
       disposeClient();
       if (scanTimer) clearTimeout(scanTimer);
+      for (const watcher of transcriptWatchers) watcher.close();
+      events.off('session:updated', requestScan);
+      events.off('session:discovered', requestScan);
       events.off('dispatch:created', requestScan);
       events.off('session:turn-ended', requestScan);
       events.off('session:completed', requestScan);

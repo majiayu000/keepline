@@ -5,6 +5,7 @@ import { join } from 'path';
 import { homedir } from 'os';
 import type { TranscriptFact } from '../../domain/ledger/types.js';
 import type { SessionStatus } from '../../domain/session/index.js';
+import { pendingInputTool } from '../transcript-facts.js';
 
 export function parseOpenRollouts(output: string): Map<string, number> {
   const paths = new Map<string, number>(); let pid = 0;
@@ -22,6 +23,7 @@ export function probeOpenRollouts(): Promise<Map<string, number>> {
   }));
 }
 export function codexTurnStatus(facts: TranscriptFact[], live: boolean, lastWrite: Date, stalledAfterSeconds: number, now = Date.now()): SessionStatus | undefined {
+  if (pendingInputTool(facts)) return 'needs_input';
   const turn = [...facts].reverse().find(f => f.kind === 'turn');
   if (!turn || turn.kind !== 'turn') return undefined;
   if (turn.phase === 'completed') return 'idle';

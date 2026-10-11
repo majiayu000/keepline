@@ -14,13 +14,23 @@ import { DEFAULT_LEDGER_CONFIG } from '../../domain/ledger/types.js';
 
 describe('default activity monitoring',() => {
   setupLedgerTest();
-  test('raw candidates retain actual evidence but never create progress, review or deviations',async () => {
+  test('7 and 24 hour windows use last activity rather than the session start', async () => {
+    const now = Date.now();
+    for (const hours of [2, 8, 26]) {
+      const sessionId = `window-${hours}`;
+      await seededLedger(sampleFacts().map(f => ({ ...f, at: new Date(now - hours * 3600000).toISOString() })), sessionId);
+      sessionRepository.upsert({ sessionId, startedAt: new Date(now - 40 * 3600000), lastActiveAt: new Date(now - hours * 3600000) });
+    }
+    expect((await ledgerOverview(7)).map(row => row.sessionId)).toEqual(['window-2']);
+    expect((await ledgerOverview(24)).map(row => row.sessionId).sort()).toEqual(['window-2', 'window-8']);
+  });
+  test('raw candidates retain evidence and unread replies without inventing progress or deviations',async () => {
     config.set('ledger',{ ...config.get().ledger,deviation: 'sensitive' });
     const facts = sampleFacts();
     for (let i = 0; i < 9; i++) facts.splice(3,0,{ kind: 'tool',name: 'Write',callId: `unmatched-${i}`,input: { path: `/other/${i}` },at: new Date().toISOString(),turnId: 'turn-1',mutating: true });
     const d = await seededLedger(facts);
     expect(d.items[0].source).toBe('fallback'); expect(d.progress).toEqual({ done: 0,total: 0 });
-    expect(d.state).toBe('ended'); expect(d.offPlan).toEqual([]);
+    expect(d.state).toBe('review'); expect(d.unread).toBe(true); expect(d.offPlan).toEqual([]);
     expect(d.trail.length).toBe(10); expect(d.activity?.evidence.some(e => e.kind === 'test' && e.exitCode === 0)).toBe(true);
     expect(d.activity?.lastMessage).toContain('Completed');
     let calls = 0;
@@ -31,6 +41,14 @@ describe('default activity monitoring',() => {
     const raw = await seededLedger(); const confirmed = (await replaceLedgerItems(raw.sessionId,raw.items))!;
     expect(confirmed.items[0].source).toBe('user'); expect(confirmed.progress).toEqual({ done: 1,total: 1 });
     expect(confirmed.state).toBe('review');
+  });
+  test('a newly added confirmed criterion follows successful checks automatically',async () => {
+    const raw = await seededLedger();const d = (await replaceLedgerItems(raw.sessionId,[{ ...raw.items[0],id: '',title: 'Run bun test src/widget.test.ts',status: 'todo' }]))!;
+    expect(d.items[0].statusSource).toBe('rule');expect(d.progress.done).toBe(1);
+  });
+  test('unknown titles use authored intent and remain usable on later reads',async () => {
+    const d = await seededLedger();sessionRepository.upsert({ sessionId: d.sessionId,title: 'Unknown task' });
+    const next = (await getLedger(d.sessionId))!;expect(next.title).toContain('Run');expect(next.title).not.toContain('Unknown task');
   });
   test('overdue review becomes ended without creating acceptance or changing completion',async () => {
     const at = new Date(Date.now()-13*3600000).toISOString();

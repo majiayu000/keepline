@@ -27,6 +27,9 @@ describe('asks and decomposition',() => {
     expect(decompose(asks,'s').map(i => i.title)).toEqual(texts.slice(0,3));
     const mixed = extractAsks([{ kind: 'user_message',text: '我想做一个 agent 任务板\n有什么建议？',at },{ kind: 'user_message',text: 'import the previous requirements',at }],'s');
     expect(mixed.every(ask => ask.kind !== 'question')).toBe(true); expect(decompose(mixed,'s')).toHaveLength(2);
+    const inline = extractAsks([{ kind: 'user_message',text: '请补充 README.md 的安装说明。顺便解释一下为什么需要这个步骤？',at }],'s');
+    expect(inline[0].kind).toBe('initial');
+    expect(decompose(inline,'s')).toHaveLength(1);
   });
   test('only explicit non-requests are excluded, with authored text outside pasted blocks preserved',() => {
     const at = new Date().toISOString();

@@ -6,7 +6,7 @@ import { sessionRepository } from '../../infrastructure/database/repositories/se
 describe('acceptance and follow-ups',() => {
   setupLedgerTest();
   test('turn completion means review; only acceptance changes it',async () => {
-    const raw = await seededLedger(); expect(raw.state).toBe('ended');
+    const raw = await seededLedger(); expect(raw.state).toBe('review');
     const detail = (await replaceLedgerItems(raw.sessionId,[{ ...raw.items[0],title: 'Run `bun test src/widget.test.ts`' }]))!;
     expect((await acceptLedger(detail.sessionId,{ decision: 'accepted',droppedItemIds: [] }))?.state).toBe('accepted');
     closeDatabase(); expect((await getLedger(detail.sessionId))?.state).toBe('accepted');

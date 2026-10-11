@@ -35,6 +35,7 @@ class WebSocketManager {
   private reconnectAttempts = 0
   private reconnectTimeout: ReturnType<typeof setTimeout> | null = null
   private pingInterval: ReturnType<typeof setInterval> | null = null
+  private pongTimeout: ReturnType<typeof setTimeout> | null = null
   private messageHandlers = new Set<MessageHandler>()
   private statusHandlers = new Set<StatusHandler>()
   private isDestroyed = false
@@ -97,6 +98,10 @@ class WebSocketManager {
         if (this.isDestroyed) return
         try {
           const message = JSON.parse(event.data) as WebSocketMessage
+          if (message.type === 'pong' && this.pongTimeout) {
+            clearTimeout(this.pongTimeout)
+            this.pongTimeout = null
+          }
           this.messageHandlers.forEach(handler => handler(message))
         } catch (error) {
           console.error('Failed to parse WebSocket message:', error)
@@ -104,7 +109,7 @@ class WebSocketManager {
       }
 
       ws.onclose = () => {
-        if (this.isDestroyed) return
+        if (this.isDestroyed || this.ws !== ws) return
         this.setStatus('disconnected')
         this.ws = null
         this.stopPing()
@@ -140,12 +145,24 @@ class WebSocketManager {
 
   private startPing(): void {
     this.stopPing()
-    this.pingInterval = setInterval(() => {
-      this.send({ type: 'ping' })
-    }, this.pingIntervalMs)
+    this.pingInterval = setInterval(() => this.checkConnection(), this.pingIntervalMs)
+  }
+
+  checkConnection(): void {
+    if (document.visibilityState === 'hidden' || this.pongTimeout || this.ws?.readyState !== WebSocket.OPEN) return
+    const ws = this.ws
+    this.send({ type: 'ping' })
+    this.pongTimeout = setTimeout(() => {
+      this.pongTimeout = null
+      if (document.visibilityState !== 'hidden' && this.ws === ws && !this.isDestroyed) this.reconnect()
+    }, 15000)
   }
 
   private stopPing(): void {
+    if (this.pongTimeout) {
+      clearTimeout(this.pongTimeout)
+      this.pongTimeout = null
+    }
     if (this.pingInterval) {
       clearInterval(this.pingInterval)
       this.pingInterval = null
@@ -203,6 +220,11 @@ class WebSocketManager {
   reconnect(): void {
     this.isDestroyed = false
     this.reconnectAttempts = 0
+    this.stopPing()
+    if (this.reconnectTimeout) {
+      clearTimeout(this.reconnectTimeout)
+      this.reconnectTimeout = null
+    }
     if (this.ws) {
       this.ws.onclose = null
       this.ws.close()
@@ -235,8 +257,9 @@ if (typeof window !== 'undefined' && !window.__wsAutoConnectCalled) {
 
   document.addEventListener('visibilitychange', () => {
     const manager = getWebSocketManager()
-    if (document.visibilityState === 'visible' && manager.getStatus() === 'disconnected') {
-      manager.reconnect()
+    if (document.visibilityState === 'visible') {
+      if (manager.getStatus() === 'disconnected' || manager.getStatus() === 'error') manager.reconnect()
+      else manager.checkConnection()
     }
   })
 

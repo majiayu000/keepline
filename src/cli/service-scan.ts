@@ -1,6 +1,6 @@
 import { runServiceMigrations } from '../local-api/migrations.js';
 import { closeDatabase } from '../infrastructure/database/sqlite.js';
-import { closeSessionSummaryCache, sessionSummaryCacheStats } from '../infrastructure/session-summary-cache.js';
+import { closeSessionSummaryCache, sessionSummaryCacheStats, sessionIncrementalStats } from '../infrastructure/session-summary-cache.js';
 import { taskDispatchRepository } from '../infrastructure/database/repositories/task-dispatch.repository.js';
 import { getRuntimeScanStatus } from '../services/runtime-status.js';
 import { syncSessions } from '../services/session.service.js';
@@ -25,6 +25,7 @@ export async function serviceScanCommand(options: ServiceScanOptions = {}): Prom
     console.log(`${SCAN_RESULT_PREFIX}${JSON.stringify({
       sync,
       summaryCache: sessionSummaryCacheStats(),
+      incremental: sessionIncrementalStats(),
       cpuMicros: process.cpuUsage(),
       reconciledDispatches: dispatches.length,
       pendingDispatches: taskDispatchRepository.findCorrelationPending().length,

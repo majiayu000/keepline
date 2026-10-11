@@ -6,8 +6,8 @@
   background: var(--bg-surface);
   border-bottom: 1px solid var(--border);
   position: sticky;
-  top: 0;
-  z-index: 100;
+  top: 64px;
+  z-index: 1;
 }
 
 .brand {
@@ -60,4 +60,19 @@
     flex-wrap: wrap;
     gap: 0.4rem;
   }
+}
+
+/* Secondary-view actions share the v3 surface. */
+.header {
+  padding: 12px 24px;
+  border-bottom: 1px solid rgba(21,23,28,.08);
+  background: #fff;
+  min-height: 56px;
+}
+.brand {
+  display: none;
+}
+.actions {
+  width: 100%;
+  gap: 10px;
 }

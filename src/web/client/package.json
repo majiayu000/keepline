@@ -7,7 +7,9 @@
     "dev": "vite",
     "build": "bun x tsc && vite build",
     "preview": "vite preview",
-    "typecheck": "bun x tsc --noEmit"
+    "typecheck": "bun x tsc --noEmit",
+    "test:ui": "bun run typecheck:ui && playwright test",
+    "typecheck:ui": "bun x tsc --noEmit --target ES2022 --module ESNext --moduleResolution bundler --skipLibCheck --types bun tests/ui/fixtures.ts tests/ui/workspace.spec.ts tests/ui/project-map.spec.ts playwright.config.ts"
   },
   "dependencies": {
     "@tauri-apps/api": "^2.12.1",
@@ -17,6 +19,7 @@
     "recharts": "^3.5.1"
   },
   "devDependencies": {
+    "@playwright/test": "1.63.0",
     "@types/react": "^18.2.0",
     "@types/react-dom": "^18.2.0",
     "@types/recharts": "^2.0.1",

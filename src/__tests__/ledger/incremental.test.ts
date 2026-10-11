@@ -9,6 +9,7 @@ import { clearLedgerCache,ingestLedger,getLedger,replaceLedgerItems } from '../.
 import { clearLedgerFactCache,ledgerFactCacheStats } from '../../services/ledger/facts.js';
 import { closeSessionSummaryCache } from '../../infrastructure/session-summary-cache.js';
 import { config } from '../../lib/config.js';
+import { markLedgerViewed } from '../../services/ledger/alerts.js';
 
 describe('incremental ledger with isolated scan restarts',() => {
   setupLedgerTest();
@@ -51,6 +52,12 @@ describe('incremental ledger with isolated scan restarts',() => {
       expect(await ingestLedger(session,parsed)).toBeNull();
       expect(ledgerFactCacheStats().reads).toBe(reads); expect(changes()).toBe(before);
       expect((await getLedger(id))?.items[0].source).toBe('fallback');
+      expect((await getLedger(id))?.unread).toBe(true);
+      markLedgerViewed(id,true,Date.now(),first.turnId);
+      markLedgerViewed(id,false);
+      clearLedgerCache(); closeSessionSummaryCache();
+      expect(await getLedger(id)).toMatchObject({ state: 'ended',unread: false,acceptances: [] });
+      expect(ledgerFactCacheStats().reads).toBe(reads);
       const edited = await replaceLedgerItems(id,[{ ...first.items[0],title: 'Run `bun test widget`' }]);
       expect(edited?.progress.done).toBe(1);
       clearLedgerCache(); closeSessionSummaryCache();
