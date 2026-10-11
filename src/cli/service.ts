@@ -21,7 +21,7 @@ export async function serviceCommand(
     throw new Error('Invalid port number');
   }
   const scanIntervalSeconds = options.scanInterval === undefined
-    ? 60
+    ? 5
     : Number.parseFloat(options.scanInterval);
   if (!Number.isFinite(scanIntervalSeconds) || scanIntervalSeconds < 0) {
     throw new Error('Invalid scan interval');

@@ -1,0 +1,241 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet><link rel="stylesheet" href="_ds/broadsheet-c8487732-ba4f-4e10-aeb9-8d3655da7989/styles.css"><script src="_ds/broadsheet-c8487732-ba4f-4e10-aeb9-8d3655da7989/_ds_bundle.js"></script><link href="https://fonts.googleapis.com/css2?family=Noto+Serif+SC:wght@400;600&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet"><style>body{margin:0;background:#F5F6F8;color:#15171C;font-family:"Source Serif 4","Noto Serif SC",serif;font-size:14px;line-height:1.5}a{color:#1D4BB8}a:hover{color:#15171C}button{font:inherit;color:inherit;cursor:pointer}button:focus-visible{outline:2px solid #1D4BB8;outline-offset:2px}@keyframes kl-pulse{0%,100%{opacity:1}50%{opacity:.35}}</style></helmet>
+<div style="display:grid;grid-template-columns:300px minmax(0,1fr);min-height:100vh">
+  <aside style="background:#fff;border-right:1px solid #E3E6EB;display:flex;flex-direction:column">
+    <div style="padding:20px 20px 12px;display:flex;align-items:baseline;gap:10px"><strong style="font-size:16px">Keepline</strong><span style="color:#5B616E;font-size:12px">{{ clock }}</span></div>
+    <div style="padding:0 20px 16px;font-size:15px;line-height:1.4">{{ summary }}</div>
+    <sc-for list="{{ groups }}" as="g" hint-placeholder-count="2">
+      <div style="padding:10px 20px 4px;font-size:12px;color:#5B616E;display:flex;gap:6px"><span style="font-weight:600;color:#15171C">{{ g.label }}</span><span>{{ g.count }}</span></div>
+      <sc-for list="{{ g.rows }}" as="r" hint-placeholder-count="2">
+        <button onClick="{{ r.select }}" style="display:block;width:100%;text-align:left;border:0;border-left:3px solid {{ r.edge }};background:{{ r.bg }};padding:12px 17px;min-height:64px">
+          <div style="display:flex;align-items:center;gap:8px"><span style="background:{{ r.tagBg }};color:{{ r.tagFg }};border-radius:6px;padding:1px 7px;font-size:12px;white-space:nowrap">{{ r.tag }}</span><span style="color:#5B616E;font-size:12px;margin-left:auto;font-family:'IBM Plex Mono',ui-monospace,monospace">{{ r.elapsed }}</span></div>
+          <div style="font-weight:600;margin-top:5px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">{{ r.title }}</div>
+          <div style="color:#5B616E;font-size:12px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">{{ r.meta }}</div>
+          <div style="margin-top:6px;display:flex;align-items:center;gap:8px;font-size:12px;color:#5B616E"><sc-if value="{{ r.hasItems }}" hint-placeholder-val="{{ true }}"><span style="display:inline-flex;gap:2px">{{ r.bar }}</span></sc-if><span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap">{{ r.sub }}</span></div>
+        </button>
+      </sc-for>
+    </sc-for>
+    <div style="margin-top:auto;padding:14px 20px;border-top:1px solid #E3E6EB;font-size:11px;color:#5B616E;font-family:'IBM Plex Mono',ui-monospace,monospace">J/K 切换 · Enter 看进度账 · O 跳到 agent · C 复制追问</div>
+  </aside>
+
+  <main style="padding:24px 32px 40px;display:flex;flex-direction:column;gap:22px;max-width:1180px">
+    <header style="display:flex;flex-direction:column;gap:6px">
+      <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap"><span style="background:{{ a.tagBg }};color:{{ a.tagFg }};border-radius:6px;padding:2px 9px;font-size:12px">{{ a.tag }}</span><span style="color:#5B616E;font-size:12px">{{ a.meta }}</span></div>
+      <div style="display:flex;align-items:flex-start;gap:16px;flex-wrap:wrap">
+        <h1 style="margin:0;font-size:24px;font-weight:600;line-height:1.3;flex:1 1 360px">{{ a.title }}</h1>
+        <div style="display:flex;gap:8px"><button style="border:1px solid #15171C;background:#15171C;color:#fff;border-radius:8px;padding:0 14px;min-height:40px">跳到 agent</button><button onClick="{{ copyFollowUp }}" style="border:1px solid #15171C;background:#fff;border-radius:8px;padding:0 14px;min-height:40px">{{ copyLabel }}</button></div>
+      </div>
+      <div style="color:#5B616E;font-size:13px">已运行 <span style="font-family:'IBM Plex Mono',ui-monospace,monospace;color:#15171C">{{ a.elapsedLong }}</span> · 最后动作 <span style="font-family:'IBM Plex Mono',ui-monospace,monospace;color:#15171C">{{ a.lastActive }}</span> · {{ a.turnCount }} 轮 · 等你共 <span style="font-family:'IBM Plex Mono',ui-monospace,monospace;color:#15171C">{{ a.waitTotal }}</span></div>
+    </header>
+
+    <section>
+      <div style="display:flex;align-items:baseline;gap:12px;margin-bottom:10px"><h2 style="margin:0;font-size:13px;font-weight:600;color:#5B616E">时间线</h2><span style="font-size:12px;color:#5B616E;display:flex;gap:14px"><span><i style="display:inline-block;width:10px;height:10px;background:#1D4BB8;vertical-align:-1px;margin-right:4px"></i>在做</span><span><i style="display:inline-block;width:10px;height:10px;background:#E3E6EB;vertical-align:-1px;margin-right:4px"></i>等你</span><span><i style="display:inline-block;width:10px;height:10px;background:#E08A3C;vertical-align:-1px;margin-right:4px"></i>计划外</span><span>▼ 你发的话</span><span><i style="display:inline-block;width:2px;height:10px;background:#15171C;vertical-align:-1px;margin-right:4px"></i>证据</span></span></div>
+      <div style="position:relative;height:66px">
+        <sc-for list="{{ a.asksOnLine }}" as="m" hint-placeholder-count="2"><button onClick="{{ m.select }}" title="{{ m.text }}" aria-label="你发的话" style="position:absolute;left:{{ m.left }}%;top:0;transform:translateX(-50%);border:0;background:none;padding:0 4px;font-size:12px;line-height:1;min-height:20px;color:#15171C">▼</button></sc-for>
+        <div style="position:absolute;left:0;right:0;top:22px;height:18px;background:#fff;border-radius:4px;overflow:hidden">
+          <sc-for list="{{ a.segments }}" as="s" hint-placeholder-count="3"><div title="{{ s.title }}" style="position:absolute;left:{{ s.left }}%;width:{{ s.width }}%;top:0;bottom:0;background:{{ s.color }}"></div></sc-for>
+          <sc-for list="{{ a.evidenceOnLine }}" as="e" hint-placeholder-count="2"><div title="{{ e.title }}" style="position:absolute;left:{{ e.left }}%;top:0;bottom:0;width:2px;background:#15171C"></div></sc-for>
+          {{ nowMarker }}
+        </div>
+        <sc-for list="{{ a.ticks }}" as="t" hint-placeholder-count="4"><span style="position:absolute;left:{{ t.left }}%;top:46px;transform:{{ t.shift }};white-space:nowrap;font-size:11px;color:#5B616E;font-family:'IBM Plex Mono',ui-monospace,monospace">{{ t.label }}</span></sc-for>
+      </div>
+    </section>
+
+    <section style="background:#fff;border-radius:12px;padding:16px 20px;display:grid;grid-template-columns:72px minmax(0,1fr);gap:8px 16px;font-size:13px">
+      <span style="color:#5B616E">现在</span><span style="display:flex;align-items:center;gap:8px">{{ liveDot }}<span>{{ a.nowAction }}</span><span style="color:#5B616E">· {{ a.nowItem }}</span></span>
+      <span style="color:#5B616E">最近证据</span><span><span style="font-family:'IBM Plex Mono',ui-monospace,monospace;border:1px solid #15171C;padding:0 5px;border-radius:2px">{{ a.lastEvidence }}</span> <span style="color:#5B616E">{{ a.lastEvidenceAt }}</span></span>
+      <span style="color:#5B616E">它说</span><span style="color:#5B616E">“{{ a.lastMessage }}” <span style="font-size:12px">· 口头说法，不算证据</span></span>
+    </section>
+
+    <div style="display:grid;grid-template-columns:minmax(0,5fr) minmax(0,6fr);gap:28px;align-items:start">
+      <section>
+        <h2 style="margin:0 0 10px;font-size:13px;font-weight:600;color:#5B616E">你发了什么 · 原话按时间</h2>
+        <div style="display:flex;flex-direction:column;gap:10px">
+          <sc-for list="{{ a.asks }}" as="k" hint-placeholder-count="3">
+            <div style="display:grid;grid-template-columns:48px minmax(0,1fr);gap:10px;font-size:13px;padding:10px 12px;border-radius:8px;background:{{ k.bg }}">
+              <span style="font-family:'IBM Plex Mono',ui-monospace,monospace;color:#5B616E;font-size:12px;padding-top:2px">{{ k.time }}</span>
+              <div><div style="white-space:pre-wrap">{{ k.text }}</div><div style="color:#5B616E;font-size:12px;margin-top:4px">{{ k.kind }}</div></div>
+            </div>
+          </sc-for>
+        </div>
+      </section>
+      <section>
+        <div style="display:flex;flex-wrap:wrap;align-items:baseline;gap:4px 10px;margin:0 0 10px"><h2 style="margin:0;font-size:13px;font-weight:600;color:#5B616E;white-space:nowrap">做到哪了</h2><span style="font-size:13px;white-space:nowrap">{{ a.progressText }}</span><span style="flex-basis:100%;font-size:12px;color:#5B616E">点一项，下面只看它的步骤</span></div>
+        <div style="display:flex;flex-direction:column;gap:4px">
+          <sc-for list="{{ a.items }}" as="it" hint-placeholder-count="4">
+            <button onClick="{{ it.select }}" style="display:grid;grid-template-columns:20px minmax(0,1fr) auto;gap:10px;align-items:center;text-align:left;border:0;border-radius:8px;padding:10px 12px;min-height:44px;background:{{ it.bg }};outline:{{ it.outline }}">
+              <span style="width:12px;height:12px;background:{{ it.color }};border-radius:{{ it.shape }};display:block"></span>
+              <span><span>{{ it.title }}</span><span style="color:#5B616E;font-size:12px;margin-left:8px">{{ it.source }}</span></span>
+              <span style="font-size:12px;color:{{ it.statusColor }};white-space:nowrap">{{ it.status }}</span>
+            </button>
+          </sc-for>
+        </div>
+        <sc-if value="{{ a.hasConstraints }}" hint-placeholder-val="{{ true }}">
+          <div style="margin-top:14px;font-size:12px;color:#5B616E">约束</div>
+          <sc-for list="{{ a.constraints }}" as="c" hint-placeholder-count="2"><div style="font-size:13px;padding:4px 0;color:{{ c.color }}">{{ c.text }}</div></sc-for>
+        </sc-if>
+      </section>
+    </div>
+
+    <section>
+      <div style="display:flex;align-items:baseline;gap:10px;margin-bottom:10px"><h2 style="margin:0;font-size:13px;font-weight:600;color:#5B616E">它实际做了什么 · 按轮</h2><sc-if value="{{ filterOn }}" hint-placeholder-val="{{ false }}"><button onClick="{{ clearFilter }}" style="border:1px solid #E3E6EB;background:#fff;border-radius:6px;padding:2px 8px;font-size:12px;min-height:24px">只看：{{ filterTitle }} ×</button></sc-if><span style="margin-left:auto;font-size:12px;color:#5B616E">只读和等待的调用已折叠</span></div>
+      <div style="background:#fff;border-radius:12px;padding:6px 20px">
+        <sc-for list="{{ a.turns }}" as="tn" hint-placeholder-count="2">
+          <div style="display:flex;flex-wrap:wrap;gap:4px 10px;align-items:baseline;padding:12px 0 4px;font-size:12px;color:#5B616E;white-space:nowrap"><span style="font-weight:600;color:#15171C">第 {{ tn.n }} 轮</span><span style="font-family:'IBM Plex Mono',ui-monospace,monospace">{{ tn.span }}</span><span>· {{ tn.dur }}</span><span>· 只读 ×{{ tn.ro }}</span><sc-if value="{{ tn.waitAfter }}" hint-placeholder-val="{{ false }}"><span>· 之后等你 {{ tn.waitAfter }}</span></sc-if></div>
+          <sc-for list="{{ tn.steps }}" as="st" hint-placeholder-count="3">
+            <div style="display:grid;grid-template-columns:52px 60px minmax(0,1fr) auto;gap:12px;align-items:center;padding:7px 0;border-top:1px solid #E3E6EB;font-size:13px">
+              <span style="font-family:'IBM Plex Mono',ui-monospace,monospace;color:#5B616E;font-size:12px">{{ st.time }}</span>
+              <span style="font-family:'IBM Plex Mono',ui-monospace,monospace;font-size:12px">{{ st.name }}</span>
+              <span style="font-family:'IBM Plex Mono',ui-monospace,monospace;font-size:12px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">{{ st.summary }}<sc-if value="{{ st.evidence }}" hint-placeholder-val="{{ false }}"><span style="margin-left:10px;border:1px solid #15171C;padding:0 5px;border-radius:2px">{{ st.evidence }}</span></sc-if></span>
+              <span style="font-size:12px;background:{{ st.tagBg }};color:{{ st.tagFg }};border-radius:4px;padding:1px 7px;white-space:nowrap">{{ st.tag }}</span>
+            </div>
+          </sc-for>
+        </sc-for>
+        <sc-if value="{{ a.hasSub }}" hint-placeholder-val="{{ false }}">
+          <div style="margin:12px 0;padding:10px 12px;border:1px dashed #5B616E;border-radius:8px;font-size:13px;color:#5B616E">{{ a.subText }}</div>
+        </sc-if>
+      </div>
+    </section>
+
+    <section>
+      <h2 style="margin:0 0 10px;font-size:13px;font-weight:600;color:#5B616E">它说的 vs 证据显示的</h2>
+      <div style="background:#fff;border-radius:12px;padding:6px 20px">
+        <sc-for list="{{ a.claims }}" as="cl" hint-placeholder-count="2">
+          <div style="display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr) 120px;gap:16px;align-items:center;padding:10px 0;border-top:1px solid #E3E6EB;font-size:13px">
+            <span style="color:#5B616E">“{{ cl.text }}”</span>
+            <span style="color:{{ cl.evColor }}"><span style="display:inline-block;font-family:'IBM Plex Mono',ui-monospace,monospace;border:{{ cl.evBorder }};padding:0 5px;border-radius:2px">{{ cl.evidence }}</span></span>
+            <sc-if value="{{ cl.ok }}" hint-placeholder-val="{{ true }}"><span style="font-size:12px;color:#1F3A8A">■ 一致</span></sc-if>
+            <sc-if value="{{ cl.gap }}" hint-placeholder-val="{{ false }}"><button onClick="{{ copyFollowUp }}" style="border:1px solid #15171C;background:#fff;border-radius:8px;padding:0 10px;min-height:36px;font-size:12px">要求补证据</button></sc-if>
+          </div>
+        </sc-for>
+      </div>
+    </section>
+  </main>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script>
+class Component extends DCLogic {
+  state = { sel: 'a1', filter: null, copied: false };
+  NOW = 12 * 60 + 54;
+  C = { bg: '#F5F6F8', card: '#fff', line: '#E3E6EB', text: '#15171C', sub: '#5B616E', runBg: '#E6EEFC', runFg: '#1D4BB8', needBg: '#FCEBDD', needFg: '#9A3F06', revBg: '#ECEEF2', revFg: '#3A404C', done: '#1F3A8A', doing: '#7EA3F2', unv: '#E08A3C', todo: '#E3E6EB' };
+  data() {
+    const m = (h, mi) => h * 60 + mi;
+    return [
+      { id: 'a1', state: 'running', offPlan: true, title: '把 hook 落盘改成按 agent 分目录，并补齐备份与测试', agent: 'Codex', project: 'keepline', path: '进度账 v1 › hook 本地落盘', start: m(9, 12), lastAt: m(12, 52),
+        asks: [
+          { at: m(9, 12), kind: 'initial', text: '把 hook 落盘改成按 agent 分目录，写入前先备份原文件，别直接覆盖。' },
+          { at: m(9, 40), kind: 'addition', text: '顺便把新路径写进 README 呢' },
+          { at: m(11, 5), kind: 'question', text: '备份目录现在放哪了？' },
+          { at: m(11, 6), kind: 'addition', text: '放到 ~/.keepline/backups，按日期分子目录。然后给备份逻辑补测试。' },
+        ],
+        items: [
+          { title: '按 agent 分目录写入', source: '待办清单', status: 'done', ev: 2 },
+          { title: '写入前备份原文件', source: 'AI 拆分', status: 'done', ev: 1 },
+          { title: '不直接覆盖已有文件', source: 'AI 拆分', status: 'unverified', ev: 0 },
+          { title: '路径写进 README', source: '追加 · 你改过', status: 'done', ev: 1 },
+          { title: '备份放 ~/.keepline/backups 按日期分目录', source: '追加', status: 'doing', ev: 0 },
+          { title: '备份逻辑补测试', source: '追加', status: 'doing', ev: 0 },
+        ],
+        constraints: [{ ok: true, text: '✓ 没有改 ledger/ 以外的目录（除 README）' }, { ok: true, text: '✓ 没有运行 git push' }, { ok: false, text: '— “别直接覆盖”没有可执行的检查规则' }],
+        turns: [
+          { s: m(9, 12), e: m(9, 31), ro: 9, steps: [[m(9, 14), 'edit', 'hooks/write.ts', 1], [m(9, 19), 'edit', 'hooks/backup.ts', 2], [m(9, 27), 'run', 'bun test hooks', 1, '12 通过'], [m(9, 30), 'edit', 'hooks/index.ts', 1]] },
+          { s: m(9, 40), e: m(10, 58), ro: 31, steps: [[m(9, 44), 'edit', 'README.md', 4], [m(10, 2), 'edit', 'ledger/schema.ts', 0], [m(10, 11), 'edit', 'ledger/schema.ts', 0], [m(10, 23), 'edit', 'ledger/migrate.ts', 0], [m(10, 35), 'edit', 'ledger/schema.ts', 0], [m(10, 49), 'run', 'bun test hooks', 1, '12 通过'], [m(10, 55), 'run', 'ls backups/', 2, '3 个文件']] },
+          { s: m(11, 6), e: null, ro: 22, steps: [[m(11, 9), 'edit', 'hooks/backup.ts', 5], [m(11, 31), 'edit', 'hooks/backup.ts', 5], [m(11, 58), 'edit', 'hooks/__tests__/backup.test.ts', 6], [m(12, 20), 'run', 'bun test hooks', 6, '12 通过 · 2 失败'], [m(12, 41), 'edit', 'hooks/backup.ts', 6], [m(12, 52), 'run', 'bun test hooks', 6]] },
+        ],
+        offPlanIds: ['ledger/schema.ts', 'ledger/migrate.ts'],
+        claims: [['已按 agent 分目录写入', 'bun test hooks · 12 通过', true], ['写入前已备份', 'ls backups/ · 3 个文件', true], ['不会覆盖已有文件', '没找到对应测试或命令输出', false]],
+        nowAction: '正在跑 bun test hooks', nowItem: '第 6 项 · 备份逻辑补测试', lastEvidence: 'bun test hooks · 12 通过 · 2 失败', lastEvidenceAt: '34 分钟前', lastMessage: '两个失败是时间戳格式问题，正在修',
+        sub: '子 agent · reviewer（审查）· 第 2 轮派出 · 已结束 · 结论：“备份逻辑缺测试” · 6 步' },
+      { id: 'a2', state: 'needs_input', title: '增量扫描性能回归排查', agent: 'Claude Code', project: 'keepline', path: '未归属', start: m(11, 44), lastAt: m(12, 38),
+        asks: [{ at: m(11, 44), kind: 'initial', text: '只查扫描慢的原因，不要改数据结构。' }],
+        items: [{ title: '定位扫描变慢的原因', source: 'AI 拆分', status: 'doing', ev: 1 }, { title: '不改数据结构', source: '约束', status: 'done', ev: 0 }],
+        constraints: [{ ok: true, text: '✓ 没有改 ledger/schema.ts' }],
+        turns: [{ s: m(11, 44), e: m(12, 38), ro: 44, steps: [[m(11, 52), 'run', 'bun run bench:scan', 1, '平均 3.8 秒'], [m(12, 10), 'run', 'bun run bench:scan --profile', 1, '平均 3.9 秒'], [m(12, 36), 'edit', 'scripts/bench.ts', 1]] }],
+        offPlanIds: [], question: '它问：“可以加一个临时的计时日志到 scanner.ts 吗？会改 3 行。”',
+        claims: [['慢在文件系统遍历', 'bench:scan --profile · 平均 3.9 秒', true]],
+        nowAction: '停下等你回答', nowItem: '已等 16 分钟', lastEvidence: 'bench:scan --profile · 平均 3.9 秒', lastEvidenceAt: '44 分钟前', lastMessage: '可以加一个临时的计时日志到 scanner.ts 吗？会改 3 行' },
+      { id: 'a3', state: 'running', title: '跑全量测试并修复失败用例', agent: 'Codex', project: 'keepline', path: '进度账 v1 › 增量性能', start: m(12, 36), lastAt: m(12, 53), fallback: true,
+        asks: [{ at: m(12, 36), kind: 'initial', text: '把测试跑通' }],
+        items: [], constraints: [],
+        turns: [{ s: m(12, 36), e: null, ro: 6, steps: [[m(12, 38), 'run', 'cargo test', 0]] }], offPlanIds: [],
+        claims: [], nowAction: '正在跑 cargo test', nowItem: '只有整句兜底项，不判进度和偏离', lastEvidence: '1033 通过', lastEvidenceAt: '1 分钟前', lastMessage: '测试还在跑，暂无失败' },
+      { id: 'a4', state: 'review', title: 'Claude 桌面版识别', agent: 'Claude Code', project: 'keepline', path: '进度账 v1 › 数据来源', start: m(8, 2), lastAt: m(12, 29),
+        asks: [{ at: m(8, 2), kind: 'initial', text: '识别 Claude 桌面版的会话文件，三种格式都要。' }],
+        items: [{ title: '识别 JSONL 格式', source: '待办清单', status: 'done', ev: 1 }, { title: '识别 SQLite 格式', source: '待办清单', status: 'done', ev: 1 }, { title: '识别导出 JSON', source: '待办清单', status: 'done', ev: 1 }],
+        constraints: [], turns: [{ s: m(8, 2), e: m(12, 29), ro: 58, steps: [[m(8, 30), 'edit', 'adapters/claude-desktop.ts', 1], [m(9, 48), 'edit', 'adapters/claude-desktop.ts', 2], [m(11, 15), 'edit', 'adapters/claude-desktop.ts', 3], [m(12, 27), 'run', 'bun test desktop', 3, '8 通过']] }], offPlanIds: [],
+        claims: [['三种格式都能识别', 'bun test desktop · 8 通过', true]],
+        nowAction: '这一轮已结束，等你核对', nowItem: '11 小时 35 分钟后自动归入已结束', lastEvidence: 'bun test desktop · 8 通过', lastEvidenceAt: '27 分钟前', lastMessage: '三种格式都能识别了，测试全过' },
+    ];
+  }
+  fmt(min) { const h = Math.floor(min / 60), mi = min % 60; return `${String(h).padStart(2, '0')}:${String(mi).padStart(2, '0')}`; }
+  dur(min) { if (min < 60) return `${min} 分钟`; const h = Math.floor(min / 60), mi = min % 60; return mi ? `${h} 小时 ${mi} 分钟` : `${h} 小时`; }
+  tagOf(s) {
+    const C = this.C;
+    if (s.state === 'needs_input') return { tag: '▲ 等你回答', bg: C.needBg, fg: C.needFg, edge: C.unv };
+    if (s.state === 'running' && s.offPlan) return { tag: '▲ 偏离', bg: C.needBg, fg: C.needFg, edge: C.unv };
+    if (s.state === 'running') return { tag: '● 运行中', bg: C.runBg, fg: C.runFg, edge: C.runFg };
+    if (s.state === 'review') return { tag: '◐ 待核对', bg: C.revBg, fg: C.revFg, edge: C.revFg };
+    return { tag: '已结束', bg: C.revBg, fg: C.revFg, edge: C.line };
+  }
+  itemColor(st) { return { done: this.C.done, doing: this.C.doing, unverified: this.C.unv, todo: this.C.todo }[st]; }
+  bar(items, w = 18) { return items.map((it, i) => React.createElement('i', { key: i, style: { width: w, height: 7, background: this.itemColor(it.status), display: 'block' } })); }
+  renderVals() {
+    const C = this.C, NOW = this.NOW, all = this.data();
+    const sel = all.find(s => s.id === this.state.sel) || all[0];
+    const { filter } = this.state;
+    const needs = all.filter(s => s.state === 'needs_input' || s.offPlan || (s.state === 'review' && s.items.some(i => i.status !== 'done')));
+    const running = all.filter(s => !needs.includes(s) && (s.state === 'running' || s.state === 'review'));
+    const row = s => { const t = this.tagOf(s); const hasItems = s.items.length > 0; const done = s.items.filter(i => i.status === 'done').length; return { title: s.title, tag: t.tag, tagBg: t.bg, tagFg: t.fg, edge: s.id === sel.id ? t.edge : 'transparent', bg: s.id === sel.id ? C.bg : 'transparent', elapsed: this.dur(NOW - s.start), meta: `${s.path} · ${s.agent} · ${s.project}`, hasItems, bar: hasItems ? this.bar(s.items, 14) : null, sub: hasItems ? `${done} / ${s.items.length} 项有证据` : `${s.nowAction} · ${s.lastEvidence}`, select: () => this.setState({ sel: s.id, filter: null, copied: false }) }; };
+    const groups = [{ label: '需要你', count: needs.length, rows: needs.map(row) }, { label: '运行中', count: running.length, rows: running.map(row) }].filter(g => g.count);
+    const span = NOW - sel.start;
+    const pct = t => Math.max(0, Math.min(100, ((t - sel.start) / span) * 100));
+    const segments = []; let cursor = sel.start;
+    sel.turns.forEach((tn, i) => {
+      if (tn.s > cursor) segments.push({ left: pct(cursor), width: pct(tn.s) - pct(cursor), color: C.todo, title: `等你 ${this.dur(tn.s - cursor)}` });
+      const e = tn.e ?? NOW; let c2 = tn.s;
+      tn.steps.forEach((st, j) => { if (st[3] === 0 && sel.offPlanIds.length) { const nxt = tn.steps[j + 1]; const end = Math.min(nxt ? nxt[0] : e, e); segments.push({ left: pct(c2), width: pct(st[0]) - pct(c2), color: C.runFg, title: `第 ${i + 1} 轮` }); segments.push({ left: pct(st[0]), width: pct(end) - pct(st[0]), color: C.unv, title: `计划外 · ${st[2]}` }); c2 = end; } });
+      segments.push({ left: pct(c2), width: pct(e) - pct(c2), color: C.runFg, title: `第 ${i + 1} 轮 · ${this.dur(e - tn.s)}` });
+      cursor = e;
+    });
+    if (sel.state === 'needs_input' && cursor < NOW) segments.push({ left: pct(cursor), width: 100 - pct(cursor), color: C.todo, title: `等你 ${this.dur(NOW - cursor)}` });
+    if (sel.state === 'review' && cursor < NOW) segments.push({ left: pct(cursor), width: 100 - pct(cursor), color: C.revBg, title: '等你核对' });
+    const waitTotal = sel.turns.reduce((acc, tn, i) => acc + (i ? tn.s - (sel.turns[i - 1].e ?? NOW) : 0), 0) + (sel.state === 'needs_input' ? NOW - (sel.turns.at(-1).e ?? NOW) : 0);
+    const asksOnLine = sel.asks.reduce((acc, k) => { const l = pct(k.at); const prev = acc.at(-1); if (prev && l - prev.left < 1.5) { prev.text += '\n' + k.text; return acc; } acc.push({ left: l, text: k.text, select: () => {} }); return acc; }, []);
+    const evidenceOnLine = sel.turns.flatMap(tn => tn.steps.filter(s => s[4]).map(s => ({ left: pct(s[0]), title: `${this.fmt(s[0])} · ${s[2]} · ${s[4]}` })));
+    const ticks = []; const stepMin = span > 180 ? 60 : 30; for (let t = Math.ceil(sel.start / stepMin) * stepMin; t <= NOW; t += stepMin) { const l = pct(t); if (l < 92 && l > 4) ticks.push({ left: l, label: this.fmt(t), shift: 'translateX(-50%)' }); } ticks.unshift({ left: 0, label: this.fmt(sel.start), shift: 'none' }); ticks.push({ left: 100, label: '现在', shift: 'translateX(-100%)' });
+    const itemTag = n => n === 0 ? { tag: '计划外', bg: C.needBg, fg: C.needFg } : { tag: `第 ${n} 项`, bg: C.runBg, fg: C.runFg };
+    const turns = sel.turns.map((tn, i) => { const e = tn.e ?? NOW; const nxt = sel.turns[i + 1]; return { n: i + 1, span: `${this.fmt(tn.s)} – ${tn.e ? this.fmt(tn.e) : '现在'}`, dur: this.dur(e - tn.s), ro: tn.ro, waitAfter: nxt ? this.dur(nxt.s - e) : (sel.state === 'needs_input' ? this.dur(NOW - e) : null), steps: tn.steps.filter(s => filter == null || s[3] === filter).map(s => ({ time: this.fmt(s[0]), name: s[1], summary: s[2], evidence: s[4] || null, ...itemTag(sel.items.length ? s[3] : -1) })).map(s => s.tag === '第 -1 项' ? { ...s, tag: '兜底项', bg: C.revBg, fg: C.revFg } : s).map(s => ({ ...s, tagBg: s.bg, tagFg: s.fg })) }; }).filter(tn => tn.steps.length || filter == null);
+    const statusText = { done: '■ 有证据', doing: '■ 正在做', unverified: '■ 未验证 · 只有口头说法', todo: '□ 未开始' };
+    const items = sel.items.map((it, i) => ({ title: it.title, source: it.source, status: statusText[it.status], statusColor: it.status === 'unverified' ? C.needFg : it.status === 'done' ? C.done : C.sub, color: this.itemColor(it.status), shape: it.status === 'done' ? '0' : it.status === 'doing' ? '50%' : '2px', bg: filter === i + 1 ? C.bg : C.card, outline: filter === i + 1 ? `2px solid ${C.text}` : 'none', select: () => this.setState({ filter: filter === i + 1 ? null : i + 1 }) }));
+    const done = sel.items.filter(i => i.status === 'done').length;
+    const kindText = { initial: '最初要求', addition: '追加要求', question: '问题 · 不计进度' };
+    const asks = sel.asks.map(k => ({ time: this.fmt(k.at), text: k.text, kind: kindText[k.kind], bg: k.kind === 'question' ? 'transparent' : C.card }));
+    const claims = sel.claims.map(([text, ev, ok]) => ({ text, evidence: ev, ok, gap: !ok, evColor: ok ? C.text : C.sub, evBorder: ok ? `1px solid ${C.text}` : '0' }));
+    const t = this.tagOf(sel);
+    const a = { title: sel.title, tag: t.tag, tagBg: t.bg, tagFg: t.fg, meta: `${sel.path} · ${sel.agent} · ${sel.project}`, elapsedLong: this.dur(NOW - sel.start), lastActive: NOW - sel.lastAt < 1 ? '刚刚' : `${NOW - sel.lastAt} 分钟前`, turnCount: sel.turns.length, waitTotal: this.dur(waitTotal), segments, asksOnLine, evidenceOnLine, ticks, nowAction: sel.nowAction, nowItem: sel.question || sel.nowItem, lastEvidence: sel.lastEvidence, lastEvidenceAt: sel.lastEvidenceAt, lastMessage: sel.lastMessage, asks, items, progressText: sel.items.length ? `${done} / ${sel.items.length} 项有证据` : '只有整句兜底项 · 不显示进度条，看「现在」这一行', hasConstraints: sel.constraints.length > 0, constraints: sel.constraints.map(c => ({ text: c.text, color: c.ok ? C.text : C.needFg })), turns, hasSub: !!sel.sub, subText: sel.sub, claims };
+    const liveDot = React.createElement('span', { style: { width: 8, height: 8, borderRadius: 4, background: sel.state === 'running' ? C.runFg : C.unv, display: 'inline-block', animation: sel.state === 'running' ? 'kl-pulse 1.6s ease-in-out infinite' : 'none' } });
+    const nowMarker = React.createElement('div', { style: { position: 'absolute', right: 0, top: 0, bottom: 0, width: 2, background: C.text } });
+    return {
+      clock: '12:54', summary: `${needs.length} 件事需要你，${running.length} 个 agent 在正常推进`, groups, a, liveDot, nowMarker,
+      filterOn: filter != null, filterTitle: filter != null && sel.items[filter - 1] ? sel.items[filter - 1].title : '', clearFilter: () => this.setState({ filter: null }),
+      copyLabel: this.state.copied ? '已复制到剪贴板' : '复制追问 (C)',
+      copyFollowUp: () => { const gaps = sel.items.filter(i => i.status !== 'done').map((i, n) => `${n + 1}. ${i.title}：请给出对应的测试或命令输出`).join('\n'); navigator.clipboard?.writeText(`请补齐以下各项的证据：\n${gaps}`).catch(() => {}); this.setState({ copied: true }); setTimeout(() => this.setState({ copied: false }), 1800); },
+    };
+  }
+  componentDidMount() {
+    this.onKey = e => { if (e.target.closest('input,textarea')) return; const all = this.data(); const i = all.findIndex(s => s.id === this.state.sel); if (e.key === 'j' || e.key === 'J') this.setState({ sel: all[Math.min(i + 1, all.length - 1)].id, filter: null }); if (e.key === 'k' || e.key === 'K') this.setState({ sel: all[Math.max(i - 1, 0)].id, filter: null }); };
+    document.addEventListener('keydown', this.onKey);
+  }
+  componentWillUnmount() { document.removeEventListener('keydown', this.onKey); }
+}
+</script>
+</body>
+</html>

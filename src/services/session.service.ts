@@ -279,7 +279,7 @@ export class SessionService {
         if (metadata.parentId) agentSession.parentSessionId = metadata.parentId;
         if (metadata.title && (!agentSession.firstMessage || isGeneratedSessionTitle(agentSession.firstMessage))) agentSession.firstMessage = metadata.title;
 
-        const turnStatus = client === 'codex' && ledgerEligible ? codexTurnStatus(ledgerParsed.transcriptFacts ?? (scanSnapshot?.lastTurn ? [scanSnapshot.lastTurn] : []), Boolean(process), agentSession.lastActiveAt, ledgerConfig.stalledAfterSeconds) : undefined;
+        const turnStatus = client === 'codex' && ledgerEligible ? scanSnapshot?.summary.pendingInput ? 'needs_input' : codexTurnStatus(ledgerParsed.transcriptFacts ?? (scanSnapshot?.lastTurn ? [scanSnapshot.lastTurn] : []), Boolean(process), agentSession.lastActiveAt, ledgerConfig.stalledAfterSeconds) : undefined;
         const detectedStatus = turnStatus ?? detectSessionStatus(process || null,agentSession.lastActiveAt);
         // A lifecycle hook is received after the transcript record that caused it.
         // Keep that newer semantic observation while its process is still alive;

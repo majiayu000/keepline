@@ -12,7 +12,7 @@ import { DEFAULT_LEDGER_CONFIG } from '../../domain/ledger/types.js';
 const fixtures = `${import.meta.dir}/fixtures`;
 describe('normalized transcript facts',() => {
 
-  test.each([22, 23])('changed shell classification replaces persisted facts-%i and survives memory eviction', async version => {
+  test.each([22, 23, 24])('changed shell classification replaces persisted facts-%i and survives memory eviction', async version => {
     const root = mkdtempSync(join(tmpdir(), 'keepline-mutating-facts-version-'));
     const path = join(root, 'session.jsonl');
     const now = Date.now(), timestamp = new Date(now).toISOString();

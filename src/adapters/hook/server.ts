@@ -1,4 +1,5 @@
 import { isHookEventProcessed, markHookEventProcessed } from './spool.js';
+import { isInputRequestTool } from '../transcript-facts.js';
 /**
  * HTTP server for receiving hook events
  *
@@ -267,8 +268,8 @@ async function handleHookEvent(
         lastTool: toolEvent.tool_name,
         lastToolInput: JSON.stringify(toolEvent.tool_input),
         lastActiveAt: new Date(toolEvent.timestamp),
-        status: 'running',
-        statusReason: null,
+        status: event.event_type === 'PreToolUse' && isInputRequestTool(toolEvent.tool_name) ? 'needs_input' : 'running',
+        statusReason: event.event_type === 'PreToolUse' && isInputRequestTool(toolEvent.tool_name) ? toolEvent.tool_name : null,
         statusSource: 'hook',
       });
 

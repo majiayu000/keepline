@@ -1,0 +1,1804 @@
+{
+  "generatedAt": "2026-10-07T15:15:26.947Z",
+  "origin": "http://127.0.0.1:3377",
+  "browser": "Google Chrome",
+  "scale": 1,
+  "archive": "/Users/lifcc/Downloads/库的UI设计需求.zip",
+  "archiveSha256": "7fea2a59395a20da80dae7ead8689949169a13a43404de7a68f3b7a209002519",
+  "referenceSha256": "99cd38fe743ebad4d929f5a69cae6a44e771a4ec3c8af811282a37a8f229d8f1",
+  "productionBefore": "49cf1d835759bc079b992f6e6fcff4ccea94bb3d1c2fdb3f8a42234a0902b0f6",
+  "productionAfter": "49cf1d835759bc079b992f6e6fcff4ccea94bb3d1c2fdb3f8a42234a0902b0f6",
+  "indexSha256": "3d181e3dcdf63591548174a60889ff8a5d479d1c379b7961aadfe28e5910b513",
+  "indexMatchesDisk": true,
+  "productionStable": true,
+  "normalization": [
+    "会话、目标、待办、回顾记录与计数使用相同测试数据",
+    "时钟固定 2026-10-07 13:02 Asia/Shanghai",
+    "字体、图标和 React 使用本地等价资源",
+    "不修改原稿模板、CSS、按钮文字、设置说明和派发提示词",
+    "动画截图时禁用；鼠标移出内容；不遮罩、不设置容差"
+  ],
+  "verdict": "NOT_ACCEPTED",
+  "summary": {
+    "PASS": 15,
+    "FAIL": 20,
+    "NO_REFERENCE": 10,
+    "ERROR": 0
+  },
+  "results": [
+    {
+      "id": "overview-single",
+      "label": "总览 / 网格紧凑 / 单会话",
+      "status": "PASS",
+      "changed": 0,
+      "total": 1440000,
+      "ratio": 0,
+      "dimensions": {
+        "actual": [
+          1440,
+          1000
+        ],
+        "reference": [
+          1440,
+          1000
+        ]
+      },
+      "bounds": null,
+      "maxChannelDelta": 0,
+      "note": "",
+      "scope": "viewport",
+      "actualGeometry": {
+        "viewport": [
+          1440,
+          1000
+        ],
+        "document": [
+          1440,
+          1000
+        ],
+        "main": [],
+        "font": "Geist, -apple-system, \"PingFang SC\", \"Noto Sans SC\", \"Helvetica Neue\", sans-serif"
+      },
+      "referenceGeometry": {
+        "viewport": [
+          1440,
+          1000
+        ],
+        "document": [
+          1440,
+          1000
+        ],
+        "main": [],
+        "font": "Geist, -apple-system, \"PingFang SC\", \"Noto Sans SC\", \"Helvetica Neue\", sans-serif"
+      }
+    },
+    {
+      "id": "overview-detailed",
+      "label": "总览 / 详细 / 单会话",
+      "status": "PASS",
+      "changed": 0,
+      "total": 1440000,
+      "ratio": 0,
+      "dimensions": {
+        "actual": [
+          1440,
+          1000
+        ],
+        "reference": [
+          1440,
+          1000
+        ]
+      },
+      "bounds": null,
+      "maxChannelDelta": 0,
+      "note": "",
+      "scope": "viewport",
+      "actualGeometry": {
+        "viewport": [
+          1440,
+          1000
+        ],
+        "document": [
+          1440,
+          1000
+        ],
+        "main": [],
+        "font": "Geist, -apple-system, \"PingFang SC\", \"Noto Sans SC\", \"Helvetica Neue\", sans-serif"
+      },
+      "referenceGeometry": {
+        "viewport": [
+          1440,
+          1000
+        ],
+        "document": [
+          1440,
+          1000
+        ],
+        "main": [],
+        "font": "Geist, -apple-system, \"PingFang SC\", \"Noto Sans SC\", \"Helvetica Neue\", sans-serif"
+      }
+    },
+    {
+      "id": "overview-board",
+      "label": "总览 / 看板 / 单会话",
+      "status": "PASS",
+      "changed": 0,
+      "total": 1440000,
+      "ratio": 0,
+      "dimensions": {
+        "actual": [
+          1440,
+          1000
+        ],
+        "reference": [
+          1440,
+          1000
+        ]
+      },
+      "bounds": null,
+      "maxChannelDelta": 0,
+      "note": "",
+      "scope": "viewport",
+      "actualGeometry": {
+        "viewport": [
+          1440,
+          1000
+        ],
+        "document": [
+          1440,
+          1000
+        ],
+        "main": [],
+        "font": "Geist, -apple-system, \"PingFang SC\", \"Noto Sans SC\", \"Helvetica Neue\", sans-serif"
+      },
+      "referenceGeometry": {
+        "viewport": [
+          1440,
+          1000
+        ],
+        "document": [
+          1440,
+          1000
+        ],
+        "main": [],
+        "font": "Geist, -apple-system, \"PingFang SC\", \"Noto Sans SC\", \"Helvetica Neue\", sans-serif"
+      }
+    },
+    {
+      "id": "overview-list",
+      "label": "总览 / 列表 / 单会话",
+      "status": "PASS",
+      "changed": 0,
+      "total": 1440000,
+      "ratio": 0,
+      "dimensions": {
+        "actual": [
+          1440,
+          1000
+        ],
+        "reference": [
+          1440,
+          1000
+        ]
+      },
+      "bounds": null,
+      "maxChannelDelta": 0,
+      "note": "",
+      "scope": "viewport",
+      "actualGeometry": {
+        "viewport": [
+          1440,
+          1000
+        ],
+        "document": [
+          1440,
+          1000
+        ],
+        "main": [],
+        "font": "Geist, -apple-system, \"PingFang SC\", \"Noto Sans SC\", \"Helvetica Neue\", sans-serif"
+      },
+      "referenceGeometry": {
+        "viewport": [
+          1440,
+          1000
+        ],
+        "document": [
+          1440,
+          1000
+        ],
+        "main": [],
+        "font": "Geist, -apple-system, \"PingFang SC\", \"Noto Sans SC\", \"Helvetica Neue\", sans-serif"
+      }
+    },
+    {
+      "id": "overview-project",
+      "label": "总览 / 按项目 / 单会话",
+      "status": "PASS",
+      "changed": 0,
+      "total": 1440000,
+      "ratio": 0,
+      "dimensions": {
+        "actual": [
+          1440,
+          1000
+        ],
+        "reference": [
+          1440,
+          1000
+        ]
+      },
+      "bounds": null,
+      "maxChannelDelta": 0,
+      "note": "",
+      "scope": "viewport",
+      "actualGeometry": {
+        "viewport": [
+          1440,
+          1000
+        ],
+        "document": [
+          1440,
+          1000
+        ],
+        "main": [],
+        "font": "Geist, -apple-system, \"PingFang SC\", \"Noto Sans SC\", \"Helvetica Neue\", sans-serif"
+      },
+      "referenceGeometry": {
+        "viewport": [
+          1440,
+          1000
+        ],
+        "document": [
+          1440,
+          1000
+        ],
+        "main": [],
+        "font": "Geist, -apple-system, \"PingFang SC\", \"Noto Sans SC\", \"Helvetica Neue\", sans-serif"
+      }
+    },
+    {
+      "id": "drawer-screen",
+      "label": "会话抽屉 / 完整屏幕",
+      "status": "FAIL",
+      "changed": 4774,
+      "total": 1440000,
+      "ratio": 0.0033152777777777777,
+      "dimensions": {
+        "actual": [
+          1440,
+          1000
+        ],
+        "reference": [
+          1440,
+          1000
+        ]
+      },
+      "bounds": {
+        "minX": 1101,
+        "minY": 930,
+        "maxX": 1301,
+        "maxY": 973
+      },
+      "maxChannelDelta": 234,
+      "note": "保留原稿原始跳转按钮文字，没有把它改成实际应用文案。",
+      "scope": "viewport",
+      "actualGeometry": {
+        "viewport": [
+          1440,
+          1000
+        ],
+        "document": [
+          1440,
+          1000
+        ],
+        "main": [],
+        "font": "Geist, -apple-system, \"PingFang SC\", \"Noto Sans SC\", \"Helvetica Neue\", sans-serif"
+      },
+      "referenceGeometry": {
+        "viewport": [
+          1440,
+          1000
+        ],
+        "document": [
+          1440,
+          1000
+        ],
+        "main": [],
+        "font": "Geist, -apple-system, \"PingFang SC\", \"Noto Sans SC\", \"Helvetica Neue\", sans-serif"
+      }
+    },
+    {
+      "id": "drawer",
+      "label": "会话抽屉 / 抽屉本身",
+      "status": "FAIL",
+      "changed": 4774,
+      "total": 432960,
+      "ratio": 0.011026422764227642,
+      "dimensions": {
+        "actual": [
+          440,
+          984
+        ],
+        "reference": [
+          440,
+          984
+        ]
+      },
+      "bounds": {
+        "minX": 109,
+        "minY": 922,
+        "maxX": 309,
+        "maxY": 965
+      },
+      "maxChannelDelta": 234,
+      "note": "原稿跳转按钮含运行环境名称，实际按钮为跳到 agent。",
+      "scope": "component",
+      "actualGeometry": {
+        "viewport": [
+          1440,
+          1000
+        ],
+        "document": [
+          1440,
+          1000
+        ],
+        "main": [],
+        "font": "Geist, -apple-system, \"PingFang SC\", \"Noto Sans SC\", \"Helvetica Neue\", sans-serif"
+      },
+      "referenceGeometry": {
+        "viewport": [
+          1440,
+          1000
+        ],
+        "document": [
+          1440,
+          1000
+        ],
+        "main": [],
+        "font": "Geist, -apple-system, \"PingFang SC\", \"Noto Sans SC\", \"Helvetica Neue\", sans-serif"
+      }
+    },
+    {
+      "id": "agent-panel",
+      "label": "完整进度账",
+      "status": "NO_REFERENCE",
+      "note": "压缩包仅有旧版 Agent Panel，未提供 v3 完整详情。当前详情与旧版的侧栏、字体和布局不同，不能验收为 v3 像素一致。",
+      "screenshot": true
+    },
+    {
+      "id": "requirements-editor",
+      "label": "要求编辑器",
+      "status": "NO_REFERENCE",
+      "note": "压缩包没有对应编辑器原稿，不能计入像素通过。",
+      "screenshot": true
+    },
+    {
+      "id": "todos",
+      "label": "待办 / 完整屏幕",
+      "status": "FAIL",
+      "changed": 2245,
+      "total": 1440000,
+      "ratio": 0.0015590277777777779,
+      "dimensions": {
+        "actual": [
+          1440,
+          1000
+        ],
+        "reference": [
+          1440,
+          1000
+        ]
+      },
+      "bounds": {
+        "minX": 257,
+        "minY": 263,
+        "maxX": 630,
+        "maxY": 277
+      },
+      "maxChannelDelta": 226,
+      "note": "",
+      "scope": "viewport",
+      "actualGeometry": {
+        "viewport": [
+          1440,
+          1000
+        ],
+        "document": [
+          1440,
+          1000
+        ],
+        "main": [],
+        "font": "Geist, -apple-system, \"PingFang SC\", \"Noto Sans SC\", \"Helvetica Neue\", sans-serif"
+      },
+      "referenceGeometry": {
+        "viewport": [
+          1440,
+          1000
+        ],
+        "document": [
+          1440,
+          1000
+        ],
+        "main": [],
+        "font": "Geist, -apple-system, \"PingFang SC\", \"Noto Sans SC\", \"Helvetica Neue\", sans-serif"
+      }
+    },
+    {
+      "id": "goals",
+      "label": "目标 / 完整屏幕",
+      "status": "FAIL",
+      "changed": 620963,
+      "total": 1440000,
+      "ratio": 0.4312243055555556,
+      "dimensions": {
+        "actual": [
+          1440,
+          1000
+        ],
+        "reference": [
+          1440,
+          1000
+        ]
+      },
+      "bounds": {
+        "minX": 255,
+        "minY": 85,
+        "maxX": 1250,
+        "maxY": 826
+      },
+      "maxChannelDelta": 234,
+      "note": "当前目标页是项目进度图，原稿是目标卡片，保留差异并判定失败。",
+      "scope": "viewport",
+      "actualGeometry": {
+        "viewport": [
+          1440,
+          1000
+        ],
+        "document": [
+          1440,
+          1000
+        ],
+        "main": [],
+        "font": "Geist, -apple-system, \"PingFang SC\", \"Noto Sans SC\", \"Helvetica Neue\", sans-serif"
+      },
+      "referenceGeometry": {
+        "viewport": [
+          1440,
+          1000
+        ],
+        "document": [
+          1440,
+          1000
+        ],
+        "main": [],
+        "font": "Geist, -apple-system, \"PingFang SC\", \"Noto Sans SC\", \"Helvetica Neue\", sans-serif"
+      }
+    },
+    {
+      "id": "review",
+      "label": "回顾 / 完整屏幕",
+      "status": "FAIL",
+      "changed": 2722,
+      "total": 1440000,
+      "ratio": 0.0018902777777777778,
+      "dimensions": {
+        "actual": [
+          1440,
+          1000
+        ],
+        "reference": [
+          1440,
+          1000
+        ]
+      },
+      "bounds": {
+        "minX": 269,
+        "minY": 88,
+        "maxX": 714,
+        "maxY": 119
+      },
+      "maxChannelDelta": 231,
+      "note": "",
+      "scope": "viewport",
+      "actualGeometry": {
+        "viewport": [
+          1440,
+          1000
+        ],
+        "document": [
+          1440,
+          1000
+        ],
+        "main": [],
+        "font": "Geist, -apple-system, \"PingFang SC\", \"Noto Sans SC\", \"Helvetica Neue\", sans-serif"
+      },
+      "referenceGeometry": {
+        "viewport": [
+          1440,
+          1000
+        ],
+        "document": [
+          1440,
+          1000
+        ],
+        "main": [],
+        "font": "Geist, -apple-system, \"PingFang SC\", \"Noto Sans SC\", \"Helvetica Neue\", sans-serif"
+      }
+    },
+    {
+      "id": "settings-1000",
+      "label": "设置 / 完整屏幕",
+      "status": "FAIL",
+      "changed": 6809,
+      "total": 1440000,
+      "ratio": 0.0047284722222222225,
+      "dimensions": {
+        "actual": [
+          1440,
+          1000
+        ],
+        "reference": [
+          1440,
+          1000
+        ]
+      },
+      "bounds": {
+        "minX": 19,
+        "minY": 203,
+        "maxX": 785,
+        "maxY": 976
+      },
+      "maxChannelDelta": 148,
+      "note": "未统一原稿的三处说明文案；保留真实差异。",
+      "scope": "viewport",
+      "actualGeometry": {
+        "viewport": [
+          1440,
+          1000
+        ],
+        "document": [
+          1440,
+          1130
+        ],
+        "main": [],
+        "font": "Geist, -apple-system, \"PingFang SC\", \"Noto Sans SC\", \"Helvetica Neue\", sans-serif"
+      },
+      "referenceGeometry": {
+        "viewport": [
+          1440,
+          1000
+        ],
+        "document": [
+          1440,
+          1087
+        ],
+        "main": [],
+        "font": "Geist, -apple-system, \"PingFang SC\", \"Noto Sans SC\", \"Helvetica Neue\", sans-serif"
+      }
+    },
+    {
+      "id": "settings-1200",
+      "label": "设置 / 四组可见 / 1440×1200",
+      "status": "FAIL",
+      "changed": 7378,
+      "total": 1728000,
+      "ratio": 0.004269675925925926,
+      "dimensions": {
+        "actual": [
+          1440,
+          1200
+        ],
+        "reference": [
+          1440,
+          1200
+        ]
+      },
+      "bounds": {
+        "minX": 8,
+        "minY": 203,
+        "maxX": 1429,
+        "maxY": 1189
+      },
+      "maxChannelDelta": 148,
+      "note": "",
+      "scope": "viewport",
+      "actualGeometry": {
+        "viewport": [
+          1440,
+          1200
+        ],
+        "document": [
+          1440,
+          1200
+        ],
+        "main": [],
+        "font": "Geist, -apple-system, \"PingFang SC\", \"Noto Sans SC\", \"Helvetica Neue\", sans-serif"
+      },
+      "referenceGeometry": {
+        "viewport": [
+          1440,
+          1200
+        ],
+        "document": [
+          1440,
+          1200
+        ],
+        "main": [],
+        "font": "Geist, -apple-system, \"PingFang SC\", \"Noto Sans SC\", \"Helvetica Neue\", sans-serif"
+      }
+    },
+    {
+      "id": "dispatch",
+      "label": "派发预览 / 完整屏幕",
+      "status": "FAIL",
+      "changed": 286238,
+      "total": 1440000,
+      "ratio": 0.19877638888888888,
+      "dimensions": {
+        "actual": [
+          1440,
+          1000
+        ],
+        "reference": [
+          1440,
+          1000
+        ]
+      },
+      "bounds": {
+        "minX": 244,
+        "minY": 217,
+        "maxX": 1069,
+        "maxY": 830
+      },
+      "maxChannelDelta": 234,
+      "note": "原稿只读 pre，实际是可编辑 textarea；按钮、提示词和弹窗尺寸不做人工统一。",
+      "scope": "viewport",
+      "actualGeometry": {
+        "viewport": [
+          1440,
+          1000
+        ],
+        "document": [
+          1440,
+          1000
+        ],
+        "main": [],
+        "font": "Geist, -apple-system, \"PingFang SC\", \"Noto Sans SC\", \"Helvetica Neue\", sans-serif"
+      },
+      "referenceGeometry": {
+        "viewport": [
+          1440,
+          1000
+        ],
+        "document": [
+          1440,
+          1000
+        ],
+        "main": [],
+        "font": "Geist, -apple-system, \"PingFang SC\", \"Noto Sans SC\", \"Helvetica Neue\", sans-serif"
+      }
+    },
+    {
+      "id": "work-item-editor",
+      "label": "新建待办编辑器",
+      "status": "NO_REFERENCE",
+      "note": "压缩包没有对应编辑器原稿，不能计入像素通过。",
+      "screenshot": true
+    },
+    {
+      "id": "overview-multi",
+      "label": "总览 / 八会话含无缺口待核对 / 紧急度",
+      "status": "FAIL",
+      "changed": 322440,
+      "total": 1440000,
+      "ratio": 0.22391666666666668,
+      "dimensions": {
+        "actual": [
+          1440,
+          1000
+        ],
+        "reference": [
+          1440,
+          1000
+        ]
+      },
+      "bounds": {
+        "minX": 8,
+        "minY": 8,
+        "maxX": 1431,
+        "maxY": 999
+      },
+      "maxChannelDelta": 241,
+      "note": "覆盖上次八会话整页对照未包含的无缺口待核对；当前业务也将它归入需要你。",
+      "scope": "viewport",
+      "actualGeometry": {
+        "viewport": [
+          1440,
+          1000
+        ],
+        "document": [
+          1440,
+          1000
+        ],
+        "main": [],
+        "font": "Geist, -apple-system, \"PingFang SC\", \"Noto Sans SC\", \"Helvetica Neue\", sans-serif"
+      },
+      "referenceGeometry": {
+        "viewport": [
+          1440,
+          1000
+        ],
+        "document": [
+          1440,
+          1031
+        ],
+        "main": [],
+        "font": "Geist, -apple-system, \"PingFang SC\", \"Noto Sans SC\", \"Helvetica Neue\", sans-serif"
+      }
+    },
+    {
+      "id": "multi-详细",
+      "label": "八会话 / 详细",
+      "status": "FAIL",
+      "changed": 322440,
+      "total": 1440000,
+      "ratio": 0.22391666666666668,
+      "dimensions": {
+        "actual": [
+          1440,
+          1000
+        ],
+        "reference": [
+          1440,
+          1000
+        ]
+      },
+      "bounds": {
+        "minX": 8,
+        "minY": 8,
+        "maxX": 1431,
+        "maxY": 999
+      },
+      "maxChannelDelta": 241,
+      "note": "",
+      "scope": "viewport",
+      "actualGeometry": {
+        "viewport": [
+          1440,
+          1000
+        ],
+        "document": [
+          1440,
+          1000
+        ],
+        "main": [],
+        "font": "Geist, -apple-system, \"PingFang SC\", \"Noto Sans SC\", \"Helvetica Neue\", sans-serif"
+      },
+      "referenceGeometry": {
+        "viewport": [
+          1440,
+          1000
+        ],
+        "document": [
+          1440,
+          1031
+        ],
+        "main": [],
+        "font": "Geist, -apple-system, \"PingFang SC\", \"Noto Sans SC\", \"Helvetica Neue\", sans-serif"
+      }
+    },
+    {
+      "id": "multi-看板",
+      "label": "八会话 / 看板",
+      "status": "FAIL",
+      "changed": 190682,
+      "total": 1440000,
+      "ratio": 0.13241805555555555,
+      "dimensions": {
+        "actual": [
+          1440,
+          1000
+        ],
+        "reference": [
+          1440,
+          1000
+        ]
+      },
+      "bounds": {
+        "minX": 8,
+        "minY": 8,
+        "maxX": 1431,
+        "maxY": 999
+      },
+      "maxChannelDelta": 241,
+      "note": "",
+      "scope": "viewport",
+      "actualGeometry": {
+        "viewport": [
+          1440,
+          1000
+        ],
+        "document": [
+          1440,
+          1009
+        ],
+        "main": [],
+        "font": "Geist, -apple-system, \"PingFang SC\", \"Noto Sans SC\", \"Helvetica Neue\", sans-serif"
+      },
+      "referenceGeometry": {
+        "viewport": [
+          1440,
+          1000
+        ],
+        "document": [
+          1440,
+          1000
+        ],
+        "main": [],
+        "font": "Geist, -apple-system, \"PingFang SC\", \"Noto Sans SC\", \"Helvetica Neue\", sans-serif"
+      }
+    },
+    {
+      "id": "multi-列表",
+      "label": "八会话 / 列表",
+      "status": "FAIL",
+      "changed": 119137,
+      "total": 1440000,
+      "ratio": 0.08273402777777777,
+      "dimensions": {
+        "actual": [
+          1440,
+          1000
+        ],
+        "reference": [
+          1440,
+          1000
+        ]
+      },
+      "bounds": {
+        "minX": 191,
+        "minY": 30,
+        "maxX": 1406,
+        "maxY": 473
+      },
+      "maxChannelDelta": 241,
+      "note": "",
+      "scope": "viewport",
+      "actualGeometry": {
+        "viewport": [
+          1440,
+          1000
+        ],
+        "document": [
+          1440,
+          1000
+        ],
+        "main": [],
+        "font": "Geist, -apple-system, \"PingFang SC\", \"Noto Sans SC\", \"Helvetica Neue\", sans-serif"
+      },
+      "referenceGeometry": {
+        "viewport": [
+          1440,
+          1000
+        ],
+        "document": [
+          1440,
+          1000
+        ],
+        "main": [],
+        "font": "Geist, -apple-system, \"PingFang SC\", \"Noto Sans SC\", \"Helvetica Neue\", sans-serif"
+      }
+    },
+    {
+      "id": "multi-按项目",
+      "label": "八会话 / 按项目",
+      "status": "FAIL",
+      "changed": 85352,
+      "total": 1440000,
+      "ratio": 0.05927222222222222,
+      "dimensions": {
+        "actual": [
+          1440,
+          1000
+        ],
+        "reference": [
+          1440,
+          1000
+        ]
+      },
+      "bounds": {
+        "minX": 191,
+        "minY": 30,
+        "maxX": 1408,
+        "maxY": 556
+      },
+      "maxChannelDelta": 234,
+      "note": "",
+      "scope": "viewport",
+      "actualGeometry": {
+        "viewport": [
+          1440,
+          1000
+        ],
+        "document": [
+          1440,
+          1000
+        ],
+        "main": [],
+        "font": "Geist, -apple-system, \"PingFang SC\", \"Noto Sans SC\", \"Helvetica Neue\", sans-serif"
+      },
+      "referenceGeometry": {
+        "viewport": [
+          1440,
+          1000
+        ],
+        "document": [
+          1440,
+          1000
+        ],
+        "main": [],
+        "font": "Geist, -apple-system, \"PingFang SC\", \"Noto Sans SC\", \"Helvetica Neue\", sans-serif"
+      }
+    },
+    {
+      "id": "state-0",
+      "label": "状态卡片 / 备份位置等待确认",
+      "status": "PASS",
+      "changed": 0,
+      "total": 54600,
+      "ratio": 0,
+      "dimensions": {
+        "actual": [
+          280,
+          195
+        ],
+        "reference": [
+          280,
+          195
+        ]
+      },
+      "bounds": null,
+      "maxChannelDelta": 0,
+      "note": "仅验收卡片，不代表其紧急度分组正确。",
+      "scope": "component",
+      "actualGeometry": {
+        "viewport": [
+          1440,
+          1000
+        ],
+        "document": [
+          1440,
+          1000
+        ],
+        "main": [],
+        "font": "Geist, -apple-system, \"PingFang SC\", \"Noto Sans SC\", \"Helvetica Neue\", sans-serif"
+      },
+      "referenceGeometry": {
+        "viewport": [
+          1440,
+          1000
+        ],
+        "document": [
+          1440,
+          1000
+        ],
+        "main": [],
+        "font": "Geist, -apple-system, \"PingFang SC\", \"Noto Sans SC\", \"Helvetica Neue\", sans-serif"
+      }
+    },
+    {
+      "id": "state-1",
+      "label": "状态卡片 / 增量扫描偏离排查",
+      "status": "PASS",
+      "changed": 0,
+      "total": 54600,
+      "ratio": 0,
+      "dimensions": {
+        "actual": [
+          280,
+          195
+        ],
+        "reference": [
+          280,
+          195
+        ]
+      },
+      "bounds": null,
+      "maxChannelDelta": 0,
+      "note": "仅验收卡片，不代表其紧急度分组正确。",
+      "scope": "component",
+      "actualGeometry": {
+        "viewport": [
+          1440,
+          1000
+        ],
+        "document": [
+          1440,
+          1000
+        ],
+        "main": [],
+        "font": "Geist, -apple-system, \"PingFang SC\", \"Noto Sans SC\", \"Helvetica Neue\", sans-serif"
+      },
+      "referenceGeometry": {
+        "viewport": [
+          1440,
+          1000
+        ],
+        "document": [
+          1440,
+          1000
+        ],
+        "main": [],
+        "font": "Geist, -apple-system, \"PingFang SC\", \"Noto Sans SC\", \"Helvetica Neue\", sans-serif"
+      }
+    },
+    {
+      "id": "state-2",
+      "label": "状态卡片 / 导航重构待核对",
+      "status": "PASS",
+      "changed": 0,
+      "total": 54600,
+      "ratio": 0,
+      "dimensions": {
+        "actual": [
+          280,
+          195
+        ],
+        "reference": [
+          280,
+          195
+        ]
+      },
+      "bounds": null,
+      "maxChannelDelta": 0,
+      "note": "仅验收卡片，不代表其紧急度分组正确。",
+      "scope": "component",
+      "actualGeometry": {
+        "viewport": [
+          1440,
+          1000
+        ],
+        "document": [
+          1440,
+          1000
+        ],
+        "main": [],
+        "font": "Geist, -apple-system, \"PingFang SC\", \"Noto Sans SC\", \"Helvetica Neue\", sans-serif"
+      },
+      "referenceGeometry": {
+        "viewport": [
+          1440,
+          1000
+        ],
+        "document": [
+          1440,
+          1000
+        ],
+        "main": [],
+        "font": "Geist, -apple-system, \"PingFang SC\", \"Noto Sans SC\", \"Helvetica Neue\", sans-serif"
+      }
+    },
+    {
+      "id": "state-3",
+      "label": "状态卡片 / 生成 OpenAPI 文档",
+      "status": "PASS",
+      "changed": 0,
+      "total": 42840,
+      "ratio": 0,
+      "dimensions": {
+        "actual": [
+          280,
+          153
+        ],
+        "reference": [
+          280,
+          153
+        ]
+      },
+      "bounds": null,
+      "maxChannelDelta": 0,
+      "note": "仅验收卡片，不代表其紧急度分组正确。",
+      "scope": "component",
+      "actualGeometry": {
+        "viewport": [
+          1440,
+          1000
+        ],
+        "document": [
+          1440,
+          1000
+        ],
+        "main": [],
+        "font": "Geist, -apple-system, \"PingFang SC\", \"Noto Sans SC\", \"Helvetica Neue\", sans-serif"
+      },
+      "referenceGeometry": {
+        "viewport": [
+          1440,
+          1000
+        ],
+        "document": [
+          1440,
+          1000
+        ],
+        "main": [],
+        "font": "Geist, -apple-system, \"PingFang SC\", \"Noto Sans SC\", \"Helvetica Neue\", sans-serif"
+      }
+    },
+    {
+      "id": "state-4",
+      "label": "状态卡片 / 桌面版识别待验收",
+      "status": "PASS",
+      "changed": 0,
+      "total": 54600,
+      "ratio": 0,
+      "dimensions": {
+        "actual": [
+          280,
+          195
+        ],
+        "reference": [
+          280,
+          195
+        ]
+      },
+      "bounds": null,
+      "maxChannelDelta": 0,
+      "note": "仅验收卡片，不代表其紧急度分组正确。",
+      "scope": "component",
+      "actualGeometry": {
+        "viewport": [
+          1440,
+          1000
+        ],
+        "document": [
+          1440,
+          1000
+        ],
+        "main": [],
+        "font": "Geist, -apple-system, \"PingFang SC\", \"Noto Sans SC\", \"Helvetica Neue\", sans-serif"
+      },
+      "referenceGeometry": {
+        "viewport": [
+          1440,
+          1000
+        ],
+        "document": [
+          1440,
+          1000
+        ],
+        "main": [],
+        "font": "Geist, -apple-system, \"PingFang SC\", \"Noto Sans SC\", \"Helvetica Neue\", sans-serif"
+      }
+    },
+    {
+      "id": "state-5",
+      "label": "状态卡片 / 追加要求已验收",
+      "status": "PASS",
+      "changed": 0,
+      "total": 42840,
+      "ratio": 0,
+      "dimensions": {
+        "actual": [
+          280,
+          153
+        ],
+        "reference": [
+          280,
+          153
+        ]
+      },
+      "bounds": null,
+      "maxChannelDelta": 0,
+      "note": "仅验收卡片，不代表其紧急度分组正确。",
+      "scope": "component",
+      "actualGeometry": {
+        "viewport": [
+          1440,
+          1000
+        ],
+        "document": [
+          1440,
+          1000
+        ],
+        "main": [],
+        "font": "Geist, -apple-system, \"PingFang SC\", \"Noto Sans SC\", \"Helvetica Neue\", sans-serif"
+      },
+      "referenceGeometry": {
+        "viewport": [
+          1440,
+          1000
+        ],
+        "document": [
+          1440,
+          1000
+        ],
+        "main": [],
+        "font": "Geist, -apple-system, \"PingFang SC\", \"Noto Sans SC\", \"Helvetica Neue\", sans-serif"
+      }
+    },
+    {
+      "id": "state-6",
+      "label": "状态卡片 / 列表闪烁修复结束",
+      "status": "PASS",
+      "changed": 0,
+      "total": 42840,
+      "ratio": 0,
+      "dimensions": {
+        "actual": [
+          280,
+          153
+        ],
+        "reference": [
+          280,
+          153
+        ]
+      },
+      "bounds": null,
+      "maxChannelDelta": 0,
+      "note": "仅验收卡片，不代表其紧急度分组正确。",
+      "scope": "component",
+      "actualGeometry": {
+        "viewport": [
+          1440,
+          1000
+        ],
+        "document": [
+          1440,
+          1000
+        ],
+        "main": [],
+        "font": "Geist, -apple-system, \"PingFang SC\", \"Noto Sans SC\", \"Helvetica Neue\", sans-serif"
+      },
+      "referenceGeometry": {
+        "viewport": [
+          1440,
+          1000
+        ],
+        "document": [
+          1440,
+          1000
+        ],
+        "main": [],
+        "font": "Geist, -apple-system, \"PingFang SC\", \"Noto Sans SC\", \"Helvetica Neue\", sans-serif"
+      }
+    },
+    {
+      "id": "state-7",
+      "label": "状态卡片 / 数据库迁移已停下",
+      "status": "PASS",
+      "changed": 0,
+      "total": 42840,
+      "ratio": 0,
+      "dimensions": {
+        "actual": [
+          280,
+          153
+        ],
+        "reference": [
+          280,
+          153
+        ]
+      },
+      "bounds": null,
+      "maxChannelDelta": 0,
+      "note": "仅验收卡片，不代表其紧急度分组正确。",
+      "scope": "component",
+      "actualGeometry": {
+        "viewport": [
+          1440,
+          1000
+        ],
+        "document": [
+          1440,
+          1000
+        ],
+        "main": [],
+        "font": "Geist, -apple-system, \"PingFang SC\", \"Noto Sans SC\", \"Helvetica Neue\", sans-serif"
+      },
+      "referenceGeometry": {
+        "viewport": [
+          1440,
+          1000
+        ],
+        "document": [
+          1440,
+          1000
+        ],
+        "main": [],
+        "font": "Geist, -apple-system, \"PingFang SC\", \"Noto Sans SC\", \"Helvetica Neue\", sans-serif"
+      }
+    },
+    {
+      "id": "overview-1920",
+      "label": "总览 / 1920×1080",
+      "status": "PASS",
+      "changed": 0,
+      "total": 2073600,
+      "ratio": 0,
+      "dimensions": {
+        "actual": [
+          1920,
+          1080
+        ],
+        "reference": [
+          1920,
+          1080
+        ]
+      },
+      "bounds": null,
+      "maxChannelDelta": 0,
+      "note": "",
+      "scope": "viewport",
+      "actualGeometry": {
+        "viewport": [
+          1920,
+          1080
+        ],
+        "document": [
+          1920,
+          1080
+        ],
+        "main": [],
+        "font": "Geist, -apple-system, \"PingFang SC\", \"Noto Sans SC\", \"Helvetica Neue\", sans-serif"
+      },
+      "referenceGeometry": {
+        "viewport": [
+          1920,
+          1080
+        ],
+        "document": [
+          1920,
+          1080
+        ],
+        "main": [],
+        "font": "Geist, -apple-system, \"PingFang SC\", \"Noto Sans SC\", \"Helvetica Neue\", sans-serif"
+      }
+    },
+    {
+      "id": "overview-390",
+      "label": "总览 / 390×844",
+      "status": "FAIL",
+      "changed": 234436,
+      "total": 329160,
+      "ratio": 0.7122250577226881,
+      "dimensions": {
+        "actual": [
+          390,
+          844
+        ],
+        "reference": [
+          390,
+          844
+        ]
+      },
+      "bounds": {
+        "minX": 0,
+        "minY": 8,
+        "maxX": 381,
+        "maxY": 835
+      },
+      "maxChannelDelta": 238,
+      "note": "原稿没有移动端重排；实际应用实现了响应式导航。功能适配不等于原稿像素通过。",
+      "scope": "viewport",
+      "actualGeometry": {
+        "viewport": [
+          390,
+          844
+        ],
+        "document": [
+          390,
+          844
+        ],
+        "main": [],
+        "font": "Geist, -apple-system, \"PingFang SC\", \"Noto Sans SC\", \"Helvetica Neue\", sans-serif"
+      },
+      "referenceGeometry": {
+        "viewport": [
+          390,
+          844
+        ],
+        "document": [
+          390,
+          844
+        ],
+        "main": [],
+        "font": "Geist, -apple-system, \"PingFang SC\", \"Noto Sans SC\", \"Helvetica Neue\", sans-serif"
+      }
+    },
+    {
+      "id": "todos-390",
+      "label": "待办 / 390×844",
+      "status": "FAIL",
+      "changed": 211381,
+      "total": 329160,
+      "ratio": 0.6421831328229433,
+      "dimensions": {
+        "actual": [
+          390,
+          844
+        ],
+        "reference": [
+          390,
+          844
+        ]
+      },
+      "bounds": {
+        "minX": 0,
+        "minY": 8,
+        "maxX": 381,
+        "maxY": 835
+      },
+      "maxChannelDelta": 238,
+      "note": "",
+      "scope": "viewport",
+      "actualGeometry": {
+        "viewport": [
+          390,
+          844
+        ],
+        "document": [
+          390,
+          844
+        ],
+        "main": [],
+        "font": "Geist, -apple-system, \"PingFang SC\", \"Noto Sans SC\", \"Helvetica Neue\", sans-serif"
+      },
+      "referenceGeometry": {
+        "viewport": [
+          390,
+          844
+        ],
+        "document": [
+          390,
+          844
+        ],
+        "main": [],
+        "font": "Geist, -apple-system, \"PingFang SC\", \"Noto Sans SC\", \"Helvetica Neue\", sans-serif"
+      }
+    },
+    {
+      "id": "goals-390",
+      "label": "目标 / 390×844",
+      "status": "FAIL",
+      "changed": 258261,
+      "total": 329160,
+      "ratio": 0.7846062705067445,
+      "dimensions": {
+        "actual": [
+          390,
+          844
+        ],
+        "reference": [
+          390,
+          844
+        ]
+      },
+      "bounds": {
+        "minX": 0,
+        "minY": 8,
+        "maxX": 381,
+        "maxY": 843
+      },
+      "maxChannelDelta": 238,
+      "note": "",
+      "scope": "viewport",
+      "actualGeometry": {
+        "viewport": [
+          390,
+          844
+        ],
+        "document": [
+          390,
+          1384
+        ],
+        "main": [],
+        "font": "Geist, -apple-system, \"PingFang SC\", \"Noto Sans SC\", \"Helvetica Neue\", sans-serif"
+      },
+      "referenceGeometry": {
+        "viewport": [
+          390,
+          844
+        ],
+        "document": [
+          390,
+          844
+        ],
+        "main": [],
+        "font": "Geist, -apple-system, \"PingFang SC\", \"Noto Sans SC\", \"Helvetica Neue\", sans-serif"
+      }
+    },
+    {
+      "id": "settings-390",
+      "label": "设置 / 390×844",
+      "status": "FAIL",
+      "changed": 222619,
+      "total": 329160,
+      "ratio": 0.6763245837890388,
+      "dimensions": {
+        "actual": [
+          390,
+          844
+        ],
+        "reference": [
+          390,
+          844
+        ]
+      },
+      "bounds": {
+        "minX": 0,
+        "minY": 8,
+        "maxX": 381,
+        "maxY": 843
+      },
+      "maxChannelDelta": 238,
+      "note": "",
+      "scope": "viewport",
+      "actualGeometry": {
+        "viewport": [
+          390,
+          844
+        ],
+        "document": [
+          390,
+          1555
+        ],
+        "main": [],
+        "font": "Geist, -apple-system, \"PingFang SC\", \"Noto Sans SC\", \"Helvetica Neue\", sans-serif"
+      },
+      "referenceGeometry": {
+        "viewport": [
+          390,
+          844
+        ],
+        "document": [
+          390,
+          6866
+        ],
+        "main": [],
+        "font": "Geist, -apple-system, \"PingFang SC\", \"Noto Sans SC\", \"Helvetica Neue\", sans-serif"
+      }
+    },
+    {
+      "id": "overview-empty",
+      "label": "总览 / 无会话",
+      "status": "FAIL",
+      "changed": 75751,
+      "total": 1440000,
+      "ratio": 0.05260486111111111,
+      "dimensions": {
+        "actual": [
+          1440,
+          1000
+        ],
+        "reference": [
+          1440,
+          1000
+        ]
+      },
+      "bounds": {
+        "minX": 257,
+        "minY": 128,
+        "maxX": 1406,
+        "maxY": 364
+      },
+      "maxChannelDelta": 234,
+      "note": "",
+      "scope": "viewport",
+      "actualGeometry": {
+        "viewport": [
+          1440,
+          1000
+        ],
+        "document": [
+          1440,
+          1000
+        ],
+        "main": [],
+        "font": "Geist, -apple-system, \"PingFang SC\", \"Noto Sans SC\", \"Helvetica Neue\", sans-serif"
+      },
+      "referenceGeometry": {
+        "viewport": [
+          1440,
+          1000
+        ],
+        "document": [
+          1440,
+          1000
+        ],
+        "main": [],
+        "font": "Geist, -apple-system, \"PingFang SC\", \"Noto Sans SC\", \"Helvetica Neue\", sans-serif"
+      }
+    },
+    {
+      "id": "overview-no-items",
+      "label": "总览 / 无确认要求项",
+      "status": "PASS",
+      "changed": 0,
+      "total": 1440000,
+      "ratio": 0,
+      "dimensions": {
+        "actual": [
+          1440,
+          1000
+        ],
+        "reference": [
+          1440,
+          1000
+        ]
+      },
+      "bounds": null,
+      "maxChannelDelta": 0,
+      "note": "",
+      "scope": "viewport",
+      "actualGeometry": {
+        "viewport": [
+          1440,
+          1000
+        ],
+        "document": [
+          1440,
+          1000
+        ],
+        "main": [],
+        "font": "Geist, -apple-system, \"PingFang SC\", \"Noto Sans SC\", \"Helvetica Neue\", sans-serif"
+      },
+      "referenceGeometry": {
+        "viewport": [
+          1440,
+          1000
+        ],
+        "document": [
+          1440,
+          1000
+        ],
+        "main": [],
+        "font": "Geist, -apple-system, \"PingFang SC\", \"Noto Sans SC\", \"Helvetica Neue\", sans-serif"
+      }
+    },
+    {
+      "id": "overview-new-reply",
+      "label": "总览 / 新回复且无确认要求项",
+      "status": "FAIL",
+      "changed": 41506,
+      "total": 1440000,
+      "ratio": 0.028823611111111112,
+      "dimensions": {
+        "actual": [
+          1440,
+          1000
+        ],
+        "reference": [
+          1440,
+          1000
+        ]
+      },
+      "bounds": {
+        "minX": 181,
+        "minY": 30,
+        "maxX": 1406,
+        "maxY": 371
+      },
+      "maxChannelDelta": 234,
+      "note": "用户截图中的灰色新回复：原稿无新回复名称；实际新增查看回复操作并将它放入需要你。双方仍采用灰色标签，差异不是白卡底色本身。",
+      "scope": "viewport",
+      "actualGeometry": {
+        "viewport": [
+          1440,
+          1000
+        ],
+        "document": [
+          1440,
+          1000
+        ],
+        "main": [],
+        "font": "Geist, -apple-system, \"PingFang SC\", \"Noto Sans SC\", \"Helvetica Neue\", sans-serif"
+      },
+      "referenceGeometry": {
+        "viewport": [
+          1440,
+          1000
+        ],
+        "document": [
+          1440,
+          1000
+        ],
+        "main": [],
+        "font": "Geist, -apple-system, \"PingFang SC\", \"Noto Sans SC\", \"Helvetica Neue\", sans-serif"
+      }
+    },
+    {
+      "id": "new-reply-card",
+      "label": "灰色新回复 / 单卡",
+      "status": "FAIL",
+      "changed": 966,
+      "total": 47320,
+      "ratio": 0.020414201183431954,
+      "dimensions": {
+        "actual": [
+          280,
+          169
+        ],
+        "reference": [
+          280,
+          169
+        ]
+      },
+      "bounds": {
+        "minX": 39,
+        "minY": 17,
+        "maxX": 165,
+        "maxY": 143
+      },
+      "maxChannelDelta": 234,
+      "note": "原稿待核对与实际新回复的状态文字和操作按钮不同。",
+      "scope": "component",
+      "actualGeometry": {
+        "viewport": [
+          1440,
+          1000
+        ],
+        "document": [
+          1440,
+          1000
+        ],
+        "main": [],
+        "font": "Geist, -apple-system, \"PingFang SC\", \"Noto Sans SC\", \"Helvetica Neue\", sans-serif"
+      },
+      "referenceGeometry": {
+        "viewport": [
+          1440,
+          1000
+        ],
+        "document": [
+          1440,
+          1000
+        ],
+        "main": [],
+        "font": "Geist, -apple-system, \"PingFang SC\", \"Noto Sans SC\", \"Helvetica Neue\", sans-serif"
+      }
+    },
+    {
+      "id": "aux-sessions",
+      "label": "更多 / 会话记录",
+      "status": "NO_REFERENCE",
+      "note": "压缩包没有对应的 v3 页面。本次未进行像素比较，不计为通过。"
+    },
+    {
+      "id": "aux-orchestrator",
+      "label": "更多 / Agent 任务板",
+      "status": "NO_REFERENCE",
+      "note": "压缩包 Task Board 是独立旧版设计；v3 没有对应页面。本次未进行该旧版的数据映射与像素验收。"
+    },
+    {
+      "id": "aux-work",
+      "label": "更多 / 工作项",
+      "status": "NO_REFERENCE",
+      "note": "压缩包没有对应的 v3 页面。本次未进行像素比较，不计为通过。"
+    },
+    {
+      "id": "aux-projects",
+      "label": "更多 / 项目",
+      "status": "NO_REFERENCE",
+      "note": "压缩包没有对应的 v3 页面。本次未进行像素比较，不计为通过。"
+    },
+    {
+      "id": "aux-plans",
+      "label": "更多 / 计划",
+      "status": "NO_REFERENCE",
+      "note": "压缩包没有对应的 v3 页面。本次未进行像素比较，不计为通过。"
+    },
+    {
+      "id": "aux-memory",
+      "label": "更多 / 记忆",
+      "status": "NO_REFERENCE",
+      "note": "压缩包没有对应的 v3 页面。本次未进行像素比较，不计为通过。"
+    },
+    {
+      "id": "aux-analytics",
+      "label": "更多 / 用量统计",
+      "status": "NO_REFERENCE",
+      "note": "压缩包没有对应的 v3 页面。本次未进行像素比较，不计为通过。"
+    }
+  ],
+  "errors": []
+}

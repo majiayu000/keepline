@@ -70,3 +70,7 @@ temp/
 # Local config
 *.local
 .omx/
+
+# Browser verification artifacts
+src/web/client/test-results/
+src/web/client/playwright-report/

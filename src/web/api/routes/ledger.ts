@@ -1,4 +1,5 @@
-import { Hono } from 'hono';
+import { Hono, type Context } from 'hono';
+import { createHash } from 'node:crypto';
 import { authMiddleware } from '../middleware/auth.js';
 import { readJsonObject } from '../../../local-api/http.js';
 import { config, mergeLedgerConfig, validateLedgerConfig } from '../../../lib/config.js';
@@ -8,8 +9,19 @@ import { ledgerReview } from '../../../services/ledger/goals.js';
 import { markLedgerViewed,ledgerNotificationTitle } from '../../../services/ledger/alerts.js';
 import type { RequirementItem, LedgerRule, LedgerAcceptance } from '../../../domain/ledger/types.js';
 import { getDatabase } from '../../../infrastructure/database/sqlite.js';
+import { emit } from '../../../lib/events.js';
 
 const app = new Hono(); app.use('*',authMiddleware);
+function conditionalJson(c: Context, data: unknown) {
+  const body = JSON.stringify({ success: true,data });
+  const tag = `"${createHash('sha256').update(body).digest('hex')}"`;
+  c.header('ETag',tag);
+  c.header('Cache-Control','private, no-cache');
+  c.header('Vary','Authorization');
+  if (c.req.header('If-None-Match')?.split(/,\s*/).some(value => value === '*' || value.replace(/^W\//,'') === tag)) return c.body(null,304);
+  c.header('Content-Type','application/json; charset=UTF-8');
+  return c.body(body);
+}
 app.onError((error,c) => {
   if (error instanceof LedgerInputError) return c.json({ success: false,error: error.message },400);
   logger.error('Ledger request failed',error); return c.json({ success: false,error: 'Ledger request failed' },500);
@@ -17,7 +29,7 @@ app.onError((error,c) => {
 app.get('/',async c => {
   const hours = Number(c.req.query('hours') ?? 24);
   if (!Number.isFinite(hours) || hours < 1 || hours > config.get().ledger.retentionDays * 24) throw new LedgerInputError('hours outside retention window');
-  return c.json({ success: true,data: await ledgerOverview(hours) });
+  return conditionalJson(c,await ledgerOverview(hours));
 });
 app.post('/native-channel',async c => {
   markLedgerViewed('__native__',true); return c.json({ success: true });
@@ -44,7 +56,7 @@ app.get('/review',async c => {
 });
 app.get('/:sessionId',async c => {
   const detail = await ledgerDetail(c.req.param('sessionId'));
-  return detail ? c.json({ success: true,data: detail }) : c.json({ success: false,error: 'Ledger not found or excluded' },404);
+  return detail ? conditionalJson(c,detail) : c.json({ success: false,error: 'Ledger not found or excluded' },404);
 });
 app.put('/:sessionId/items',async c => {
   const body = await readJsonObject(c); if (body.response) return body.response;
@@ -108,7 +120,12 @@ app.post('/:sessionId/import-requirements',async c => {
 app.post('/:sessionId/viewing',async c => {
   const body = await readJsonObject(c); if (body.response) return body.response;
   if (typeof body.data!.viewed !== 'boolean') throw new LedgerInputError('viewed must be boolean');
-  markLedgerViewed(c.req.param('sessionId'),body.data!.viewed); return c.json({ success: true });
+  const sessionId = c.req.param('sessionId');
+  const detail = body.data!.viewed ? await getLedger(sessionId) : null;
+  const turnId = detail?.turns.find(t => t.id === detail.turnId)?.phase === 'completed' ? detail.turnId : undefined;
+  markLedgerViewed(sessionId,body.data!.viewed,Date.now(),turnId);
+  if (detail?.unread) emit('ledger:update',{ sessionId });
+  return c.json({ success: true });
 });
 export const ledgerSettings = new Hono(); ledgerSettings.use('*',authMiddleware);
 ledgerSettings.get('/',c => c.json({ success: true,data: config.get().ledger }));

@@ -183,6 +183,7 @@ export function useSessions(token: string, options: SessionQueryOptions = {}): U
     onConnect: () => {
       wsConnectedRef.current = true
       setConnectionStatus('realtime')
+      void loadSessionsRef.current()
       if (intervalRef.current) {
         clearInterval(intervalRef.current)
         intervalRef.current = null

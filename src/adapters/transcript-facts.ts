@@ -16,6 +16,14 @@ function parseInput(value: unknown): unknown {
 }
 // Substrings of large outputs can retain their entire backing transcript record.
 function detached(text: string): string { return Buffer.from(text).toString(); }
+export function isInputRequestTool(name: string): boolean {
+  return name === 'AskUserQuestion' || /(?:^|[._])request_user_input$/.test(name);
+}
+export function pendingInputTool(facts: TranscriptFact[]) {
+  const turn = [...facts].reverse().find(f => f.kind === 'turn');
+  if (turn?.kind === 'turn' && turn.phase !== 'started') return undefined;
+  return facts.find(f => f.kind === 'tool' && isInputRequestTool(f.name) && !f.completed && (!turn || f.turnId === turn.turnId));
+}
 function ripgrepRunsPreprocessor(words: string[]): boolean {
   let enabled = false;
   for (let index = 1; index < words.length; index++) {
@@ -143,6 +151,15 @@ function outputEvidence(output: unknown, input: unknown, name: string, resultCod
   return { exitCode, outputHead: detached(out.slice(0, 400)), facts };
 }
 
+export interface TranscriptFactsState {
+  facts: TranscriptFact[];
+  unknownRecords: number;
+  turnId: string;
+  messages: string[];
+  order?: number;
+  sessions?: Array<[string, string]>;
+}
+
 /** Record-local normalization; tool results update the original call, never become agent claims. */
 export class TranscriptFacts {
   readonly facts: TranscriptFact[] = [];
@@ -152,7 +169,23 @@ export class TranscriptFacts {
   private turnId = '';
   private messages = new Set<string>();
   private order = 0;
-  constructor(private runtime: 'codex' | 'claude', private since = 0) {}
+  constructor(private runtime: 'codex' | 'claude', private since = 0, state?: TranscriptFactsState) {
+    if (state) {
+      this.facts = state.facts.filter(f => Date.parse(f.at) >= since);
+      this.unknownRecords = state.unknownRecords;
+      this.turnId = state.turnId;
+      this.messages = new Set(state.messages);
+      this.order = state.order ?? 0;
+      for (const fact of this.facts) if (fact.kind === 'tool') {
+        this.calls.set(fact.callId,fact);
+        this.order = Math.max(this.order,fact.startedOrder ?? 0,fact.completedOrder ?? 0);
+      }
+      this.sessions = new Map((state.sessions ?? []).filter(([,callId]) => this.calls.has(callId)));
+    }
+  }
+  snapshot(): TranscriptFactsState {
+    return { facts: this.facts,unknownRecords: this.unknownRecords,turnId: this.turnId,messages: [...this.messages],order: this.order,sessions: [...this.sessions] };
+  }
   add(value: unknown): void {
     const entry = record(value);
     const at = typeof entry.timestamp === 'string' ? entry.timestamp : undefined;
@@ -246,6 +279,7 @@ export class TranscriptFacts {
   private result(callId: string, output: unknown, code?: number, implicit = false, at?: string): void {
     const call = this.calls.get(callId);
     if (!call) return;
+    call.completed = true;
     const previousExitCode = call.exitCode;
     const data = record(call.input);
     let result = record(output);
