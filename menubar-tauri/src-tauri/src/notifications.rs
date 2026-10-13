@@ -13,11 +13,11 @@ extern "C" fn clicked(session: *const c_char, anchor: *const c_char) {
     let anchor = unsafe { CStr::from_ptr(anchor) }.to_string_lossy().into_owned();
     if let Some(app) = APP.get() {
         let handle = app.clone();
-        let _ = app.run_on_main_thread(move || {
+        if let Err(error) = app.run_on_main_thread(move || {
             if let Err(error) = crate::ledger_app::open_ledger_window(&handle, Some(&session), Some(&anchor)) {
                 eprintln!("Could not open notification target: {error}");
             }
-        });
+        }) { eprintln!("Could not schedule notification target: {error}"); }
     }
 }
 pub fn init(app: &AppHandle) {
