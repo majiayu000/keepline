@@ -13,8 +13,10 @@ import {
   evidenceSummary,
   keyStep,
 } from "../presentation";
-import { ActionButton, ProgressSegments, StatusTag } from "./LedgerPrimitives";
+import { ActionButton, ProgressSegments, StatusTag, SubtaskTag } from "./LedgerPrimitives";
 import styles from "../Workspace.module.css";
+import { LedgerObservation } from "./LedgerObservation";
+import { LedgerAskText } from "./LedgerAskText";
 
 export function LedgerAgentPanel({
   controller: c,
@@ -110,7 +112,7 @@ export function LedgerAgentPanel({
           </button>
         </div>
         <div style={{ padding: "0 20px 16px", fontSize: 15, lineHeight: 1.4 }}>
-          {`${c.rows.filter((r) => rowPresentation(r).need).length} 件事需要你，${c.rows.filter((r) => !rowPresentation(r).need && !rowPresentation(r).ended && !rowPresentation(r).paused).length} 个 agent 在正常推进`}
+          {`${c.rows.filter((r) => rowPresentation(r).need).length} 件事需要你，${c.rows.filter((r) => rowPresentation(r).online && !rowPresentation(r).need && !rowPresentation(r).historical && !rowPresentation(r).paused).length} 个 agent 在正常推进`}
         </div>
         {groups
           .filter((g) => g.rows.length)
@@ -138,6 +140,7 @@ export function LedgerAgentPanel({
                     >
                       <div className={styles.spaceBetween}>
                         <StatusTag tag={rp.tag} bg={rp.tagBg} fg={rp.tagFg} />
+                        {(r.isSubAgent || r.parentSessionId) && <SubtaskTag />}
                         <span className={styles.mono} style={{ fontSize: 12 }}>
                           <span title={rp.elapsed}>{rp.compactElapsed}</span>
                         </span>
@@ -192,7 +195,7 @@ export function LedgerAgentPanel({
           ))}
         <div className={styles.sidebarBottom}>
           <span className={styles.subtle}>
-            J/K 切换 · Enter 看进度账 · O 跳到 agent · C 复制追问
+            J/K 切换 · Enter 看进度账 · O 查看会话记录 · C 复制追问
           </span>
         </div>
       </aside>
@@ -200,6 +203,7 @@ export function LedgerAgentPanel({
         <header className={styles.agentHeader}>
           <div className={styles.agentMeta}>
             <StatusTag tag={p.tag} bg={p.tagBg} fg={p.tagFg} />
+            {(row.isSubAgent || row.parentSessionId) && <SubtaskTag />}
             <span className={styles.subtle}>
               {`${p.agent} · ${row.projectRoot}`}
             </span>
@@ -211,7 +215,7 @@ export function LedgerAgentPanel({
                 primary
                 onClick={() => onOpenSession(row.sessionId)}
               >
-                跳到 agent
+                查看会话记录
               </ActionButton>
               <ActionButton
                 onClick={() => void c.perform(() => c.openPrompt(row))}
@@ -248,6 +252,7 @@ export function LedgerAgentPanel({
             {row.unavailableReason}。可查看会话状态或原始记录。
           </div>
         )}
+        <LedgerObservation row={row} />
         <section>
           <div className={styles.sectionHeading}>
             <h2 className={styles.agentSectionTitle}>时间线</h2>
@@ -354,7 +359,7 @@ export function LedgerAgentPanel({
           </div>
         </section>
         <section className={styles.agentSummary}>
-          <span className={styles.subtle}>现在</span>
+          <span className={styles.subtle}>执行观察</span>
           <span style={{ display: "flex", alignItems: "center", gap: 8 }}>
             <span
               className={row.state === "running" ? styles.liveDot : undefined}
@@ -400,9 +405,9 @@ export function LedgerAgentPanel({
         <div className={styles.agentSplit}>
           <section>
             <h2 className={styles.agentSectionTitle}>
-              你发了什么 · 原话按时间
+              你发的消息 · 最新在前
             </h2>
-            {row.asks.map((ask) => (
+            {[...row.asks].reverse().map((ask) => (
               <div
                 id={`ask-${ask.id}`}
                 key={ask.id}
@@ -415,7 +420,7 @@ export function LedgerAgentPanel({
                   {time(ask.at)}
                 </span>
                 <div>
-                  <p>{ask.text}</p>
+                  <LedgerAskText text={ask.text} />
                   <div
                     className={styles.subtle}
                     style={{ fontSize: 12, marginTop: 4 }}
@@ -758,7 +763,7 @@ export function LedgerAgentPanel({
                     className={styles.todoTitle}
                     onClick={() => c.setSelectedId(child.sessionId)}
                   >
-                    {child.title} · {child.activity?.action}
+                    <SubtaskTag /> {child.title} · {child.activity?.action}
                   </button>
                 ))}
               </div>

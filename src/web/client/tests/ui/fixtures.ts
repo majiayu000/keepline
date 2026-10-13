@@ -1,8 +1,13 @@
 import type {
   LedgerDetail,
   LedgerConfig,
+  LedgerMonitorStatus,
 } from "../../../../domain/ledger/types";
 export const now = "2026-10-07T13:02:00+08:00";
+export const monitor: LedgerMonitorStatus = {
+  scan: { running: false, lastCompletedAt: now, intervalMs: 60000, timeoutMs: 30000, failed: false },
+  runtimes: ['claude-code', 'codex'].map(runtimeId => ({ runtimeId, lastScanAt: now, errorCount: 0, hookInstalled: true, receiverRunning: true, ...(runtimeId === 'claude-code' ? { lastHookAt: now } : {}) })),
+};
 export const row: LedgerDetail = {
   sessionId: "ui-session",
   agentSessionId: "ui-agent",
@@ -10,6 +15,7 @@ export const row: LedgerDetail = {
   projectRoot: "/project/keepline",
   runtimeId: "claude-code",
   state: "running",
+  processState: "online",
   possiblyWaiting: false,
   available: true,
   asks: [
@@ -102,7 +108,7 @@ export const settings: LedgerConfig = {
     stalled: false,
     limited: false,
   },
-  nativeNotifications: true,
+  nativeNotifications: false,
   focus: { minutes: 30, until: null },
   staleGoalDays: 7,
   exclude: { projects: [], runtimes: [] },

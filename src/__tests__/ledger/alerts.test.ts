@@ -4,8 +4,25 @@ import { evaluateLedgerAlerts,flushFocusSummary,markLedgerViewed } from '../../s
 import { replaceLedgerItems } from '../../services/ledger/service.js';
 import { config } from '../../lib/config.js';
 import { getDatabase } from '../../infrastructure/database/sqlite.js';
+import { DEFAULT_LEDGER_CONFIG } from '../../domain/ledger/types.js';
 describe('ledger alerts',() => {
   setupLedgerTest();
+  test('default settings retain input alerts without sending system notifications',async () => {
+    const d = await seededLedger(); d.state = 'needs_input';
+    let deliveries = 0;
+    await evaluateLedgerAlerts(d,structuredClone(DEFAULT_LEDGER_CONFIG),new Date(),async () => { deliveries++; });
+    expect(deliveries).toBe(0);
+    expect(getDatabase().query("SELECT notified,cleared_at FROM ledger_alerts WHERE kind='needs_input'").get()).toMatchObject({ notified: 1,cleared_at: null });
+  });
+  test('confirmed exits withdraw pending input alerts without losing the record', async () => {
+    const d = await seededLedger();
+    d.state = 'needs_input'; d.processState = 'online';
+    await evaluateLedgerAlerts(d);
+    d.processState = 'exited';
+    await evaluateLedgerAlerts(d);
+    expect(getDatabase().query("SELECT COUNT(*) AS count FROM ledger_alerts WHERE cleared_at IS NULL").get()).toMatchObject({ count: 0 });
+    expect(getDatabase().query('SELECT COUNT(*) AS count FROM sessions WHERE session_id=?').get(d.sessionId)).toMatchObject({ count: 1 });
+  });
   test('one continuing deviation produces one notification across repeated scans',async () => {
     const raw = await seededLedger(); const detail = (await replaceLedgerItems(raw.sessionId,raw.items))!; detail.state = 'running'; detail.offPlan = [{ id: 'run',callIds: ['a','b','c'],at: new Date().toISOString() }];
     const cfg = { ...config.get().ledger,nativeNotifications: true,alerts: { ...config.get().ledger.alerts,off_plan: true } }; let deliveries = 0;

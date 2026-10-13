@@ -2,6 +2,18 @@ import { describe,test,expect } from 'bun:test';
 import { decompose,extractAsks,followUpSuggestions,constraintsFromText } from '../../domain/ledger/matcher.js';
 import { sampleFacts } from './helpers.js';
 describe('asks and decomposition',() => {
+  test('polite requests remain candidates even when phrased as questions', () => {
+    const at = new Date().toISOString();
+    const texts = ['帮我修一下登录问题，可以吗？', 'Can you fix the login bug and add a regression test?', '你能帮我把 README 更新一下吗？', '请把检查结果整理出来，好吗？'];
+    const asks = extractAsks(texts.map(text => ({ kind: 'user_message', text, at })), 'polite');
+    expect(asks.map(ask => ask.kind)).toEqual(['initial', 'addition', 'addition', 'addition']);
+    const items = decompose(asks, 'polite');
+    expect(items.map(item => item.title)).toEqual(texts);
+    expect(items.every(item => item.source === 'fallback' && item.status === 'todo')).toBe(true);
+    const question = extractAsks([{ kind: 'user_message', text: '为什么登录会失败？', at }], 'question');
+    expect(question[0].kind).toBe('question');
+    expect(decompose(question, 'question')).toEqual([]);
+  });
   test('raw asks yield constraints without a model and apply to a linked checklist',() => {
     const text = 'Do not change public API.\nDo not edit src/private/**\nKeep old failed tags';
     expect(constraintsFromText(text)).toEqual([{ kind: 'no_public_api_change' },{ kind: 'path_forbidden',value: 'src/private/**' },{ kind: 'preserve_text',value: 'failed' }]);

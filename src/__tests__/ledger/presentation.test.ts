@@ -26,16 +26,36 @@ describe('dashboard attention grouping', () => {
     const groups = groupRows(rows, 'goal', Date.now(), { todos: [{ id: 'todo-0', parentId: 'goal-a' }, { id: 'todo-1', parentId: 'goal-b' }], goals: [{ id: 'goal-a', title: 'First outcome' }, { id: 'goal-b', title: 'Second outcome' }] });
     expect(groups.map(group => [group.label, group.rows.map(row => row.sessionId)])).toEqual([['First outcome', ['one']], ['Second outcome', ['two']], ['未关联目标', ['free']]]);
   });
+
+  test('recent activity orders all states together without changing the source rows', () => {
+    const rows = [
+      { ...blankDetail(), sessionId: 'old-input', state: 'needs_input' as const, lastActiveAt: '2026-10-07T08:00:00Z', projectRoot: '/old' },
+      { ...blankDetail(), sessionId: 'new-ended', state: 'ended' as const, lastActiveAt: '2026-10-07T12:00:00Z', projectRoot: '/new' },
+      { ...blankDetail(), sessionId: 'running', lastActiveAt: '2026-10-07T11:00:00Z', projectRoot: '/old' },
+    ];
+    expect(groupRows(rows, 'recent')[0].rows.map(row => row.sessionId)).toEqual(['new-ended', 'running', 'old-input']);
+    expect(rows.map(row => row.sessionId)).toEqual(['old-input', 'new-ended', 'running']);
+    const projects = groupRows(rows, 'project');
+    expect(projects.map(group => group.key)).toEqual(['/new', '/old']);
+    expect(projects[1].rows.map(row => row.sessionId)).toEqual(['running', 'old-input']);
+  });
+
+  test('unread replies are newest first in the attention group', () => {
+    const old = { ...blankDetail(), sessionId: 'old', state: 'review' as const, lastActiveAt: '2026-10-07T08:00:00Z' };
+    const recent = { ...old, sessionId: 'recent', lastActiveAt: '2026-10-07T12:00:00Z' };
+    expect(groupRows([old, recent], 'urgency')[0].rows.map(row => row.sessionId)).toEqual(['recent', 'old']);
+  });
+
   test('recent activity is distinct from the total span of an old session', () => {
     const now = Date.parse('2026-10-07T12:00:00Z');
     const row = { ...blankDetail(), lastActiveAt: new Date(now - 2 * 3600000).toISOString(), asks: [{ id: 'ask', text: 'Continue work', authoredText: 'Continue work', kind: 'initial' as const, at: new Date(now - 40 * 3600000).toISOString() }] };
     expect(rowPresentation(row, now)).toMatchObject({ elapsed: '40 小时', activeAgo: '2 小时前', lastAgo: '2 小时前' });
     expect(rowPresentation(row, now).activityTitle).toStartWith('最后活动：');
-    expect(groupRows([{ ...row, state: 'ended' }], 'urgency', now).find(group => group.key === 'ended')?.label).toBe('已结束');
+    expect(groupRows([{ ...row, state: 'ended' }], 'urgency', now).find(group => group.key === 'ended')?.label).toBe('历史会话');
   });
   test('a complete review still needs acceptance and never appears as running', () => {
     const row = { ...blankDetail(), state: 'review' as const, progress: { done: 1, total: 1 } };
-    expect(rowPresentation(row)).toMatchObject({ need: true, action: '验收 (A)' });
+    expect(rowPresentation(row)).toMatchObject({ need: true, highlight: true, tagBg: '#FFF1DB', tagFg: '#B45309', action: '验收 (A)' });
     const groups = groupRows([row], 'urgency');
     expect(groups.find(group => group.key === 'need')?.rows).toEqual([row]);
     expect(groups.find(group => group.key === 'running')?.rows).toEqual([]);
@@ -55,11 +75,26 @@ describe('dashboard attention grouping', () => {
 
   test('a reply without a checklist offers reading instead of invalid acceptance', () => {
     const row = { ...blankDetail(), state: 'review' as const, unread: true };
-    expect(rowPresentation(row)).toMatchObject({ need: true, tag: '◐ 新回复', action: '查看回复' });
+    expect(rowPresentation(row)).toMatchObject({ need: true, highlight: true, tagBg: '#FFF1DB', tagFg: '#B45309', tag: '◐ 新回复', action: '查看回复' });
   });
   test('explicit input requests precede older unread replies', () => {
     const reply = { ...blankDetail(), sessionId: 'reply', state: 'review' as const, lastActiveAt: new Date(0).toISOString() };
     const blocked = { ...blankDetail(), sessionId: 'blocked', state: 'needs_input' as const };
     expect(groupRows([reply,blocked], 'urgency')[0].rows.map(row => row.sessionId)).toEqual(['blocked','reply']);
   });
+  test('closed unread replies remain readable in history without counting as online', () => {
+    const closed = { ...blankDetail(), processState: 'exited' as const, state: 'review' as const, unread: true };
+    expect(rowPresentation(closed)).toMatchObject({ online: false, exited: true, historical: true, need: true, tag: '已退出 · 新回复', action: '查看回复' });
+    const groups = groupRows([closed], 'urgency');
+    expect(groups.find(g => g.key === 'need')?.rows).toEqual([]);
+    expect(groups.find(g => g.key === 'running')?.rows).toEqual([]);
+    expect(groups.find(g => g.key === 'ended')?.rows).toEqual([closed]);
+  });
+  test('an unconfirmed process never appears in the running group', () => {
+    const unknown = { ...blankDetail(), processState: 'unknown' as const };
+    expect(rowPresentation(unknown)).toMatchObject({ online: false, unknown: true, historical: false, tag: '无法确认在线 · 未见本轮结束' });
+    expect(groupRows([unknown], 'urgency').find(g => g.key === 'unknown')?.rows).toEqual([unknown]);
+    expect(groupRows([unknown], 'urgency').find(g => g.key === 'running')?.rows).toEqual([]);
+  });
+
 });

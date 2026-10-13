@@ -1,4 +1,5 @@
-import { afterEach, beforeEach, describe, expect, test } from 'bun:test';
+import { afterEach, beforeEach, describe, expect, test, spyOn } from 'bun:test';
+import * as claudeScanner from '../adapters/claude/scanner.js';
 import { mkdtempSync, mkdirSync, rmSync } from 'fs';
 import { tmpdir } from 'os';
 import { join } from 'path';
@@ -14,6 +15,38 @@ import {
 } from '../services/runtime-status.js';
 
 describe('Basic Sessions Route Contract', () => {
+  test('both subagent endpoints return Codex children and keep Claude children separate', async () => {
+    sessionRepository.upsert({ sessionId: 'codex_parent', client: 'codex' });
+    sessionRepository.upsert({ sessionId: 'codex_child', client: 'codex', parentSessionId: 'parent', isSubAgent: true, agentRole: 'you-are-here', agentNickname: 'Chandrasekhar', title: 'you-are-here · Chandrasekhar' });
+    sessionRepository.upsert({ sessionId: 'claude-parent', client: 'claude' });
+    const { token } = await setupUser('subagent-route-user', 'password123');
+    const headers = { Authorization: `Bearer ${token}` };
+    type Subagents = { count: number; subAgents: Array<{ sessionId: string }> };
+    for (const suffix of ['subagents', 'full']) {
+      const response = await sessions.request(`/codex_parent/${suffix}`, { headers });
+      expect(response.status).toBe(200);
+      const result = suffix === 'full'
+        ? (await response.json() as { data: { subAgents: Subagents } }).data.subAgents
+        : (await response.json() as { data: Subagents }).data;
+      expect(result.count).toBe(1);
+      expect(result.subAgents[0]).toMatchObject({ sessionId: 'codex_child', isSubAgent: true, parentSessionId: 'codex_parent', agentRole: 'you-are-here', agentNickname: 'Chandrasekhar' });
+    }
+    const scan = spyOn(claudeScanner, 'getAllSessions').mockResolvedValue([
+      { sessionId: 'claude-child', parentSessionId: 'claude-parent', isSubAgent: true, directory: '/project', lastActiveAt: new Date(), messageCount: 1, toolCount: 0 },
+    ]);
+    try {
+      for (const suffix of ['subagents', 'full']) {
+        const response = await sessions.request(`/claude-parent/${suffix}`, { headers });
+        expect(response.status).toBe(200);
+        const result = suffix === 'full'
+          ? (await response.json() as { data: { subAgents: Subagents } }).data.subAgents
+          : (await response.json() as { data: Subagents }).data;
+        expect(result.subAgents.map(s => s.sessionId)).toEqual(['claude-child']);
+      }
+      expect(scan).toHaveBeenCalledWith({ includeSubAgents: true });
+    } finally { scan.mockRestore(); }
+  });
+
   const tmpRoots: string[] = [];
 
   beforeEach(() => {

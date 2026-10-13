@@ -1,6 +1,6 @@
 import { statSync, existsSync } from 'fs';
 import { basename } from 'path';
-import { confirmedRequirement,ledgerNeedsAttention } from '../../domain/ledger/types.js';
+import { confirmedRequirement } from '../../domain/ledger/types.js';
 import { createHash } from 'crypto';
 import { LEDGER_COMPUTATION_VERSION, readLedgerComputation, writeLedgerComputation } from '../../infrastructure/session-summary-cache.js';
 import { events } from '../../lib/events.js';
@@ -17,6 +17,7 @@ import type { LedgerAcceptance, LedgerDetail, LedgerRule, RequirementItem, Trans
 import { anchorsFromText, decompose, extractAsks, followUpSuggestions, ledgerId, matchLedger } from '../../domain/ledger/matcher.js';
 import { readCodexMetadata } from '../../adapters/codex/liveness.js';
 import { readTranscriptFacts } from './facts.js';
+import { readClaudeContextUsage } from '../../adapters/claude/statusline.js';
 import { evaluateLedgerAlerts } from './alerts.js';
 import { judgeLedger } from './judge.js';
 import { pendingInputTool } from '../../adapters/transcript-facts.js';
@@ -30,8 +31,8 @@ export function ledgerEnabled(session: Pick<Session, 'client' | 'directory' | 'l
     !cfg.exclude.projects.some(p => session.directory === p || session.directory.startsWith(`${p}/`)) &&
     session.lastActiveAt.getTime() >= Date.now() - cfg.retentionDays * 86400000;
 }
-type LedgerStatus = Pick<LedgerDetail,'sessionId' | 'agentSessionId' | 'title' | 'state' | 'statusReason' | 'possiblyWaiting' | 'limited' | 'lastActiveAt' | 'turnId' | 'acceptances' | 'claims' | 'progress' | 'offPlan' | 'turns' | 'parentSessionId' | 'projectRoot' | 'unread' | 'pendingInput'>;
-interface LedgerScanSnapshot { path: string; transcript: string; signature: string; statusKey: string; transcriptLimited: boolean; summary: LedgerStatus; lastTurn?: Extract<TranscriptFact,{ kind: 'turn' }> }
+type LedgerStatus = Pick<LedgerDetail,'sessionId' | 'agentSessionId' | 'title' | 'state' | 'processState' | 'statusReason' | 'possiblyWaiting' | 'limited' | 'lastActiveAt' | 'turnId' | 'acceptances' | 'claims' | 'progress' | 'offPlan' | 'turns' | 'parentSessionId' | 'isSubAgent' | 'agentRole' | 'agentNickname' | 'projectRoot' | 'unread' | 'pendingInput' | 'inputRequest' | 'observation' | 'contextUsage'>;
+interface LedgerScanSnapshot { path: string; transcript: string; signature: string; statusKey: string; transcriptLimited: boolean; summary: LedgerStatus & Pick<LedgerDetail, 'runtimeId' | 'available' | 'activity'>; lastTurn?: Extract<TranscriptFact,{ kind: 'turn' }> }
 function transcriptFingerprint(path: string): string {
   const info = statSync(path);
   return `ledger-${LEDGER_COMPUTATION_VERSION}:${config.get().ledger.retentionDays}:${new Date().toISOString().slice(0,10)}:${info.size}:${info.mtimeMs}:${info.ctimeMs}`;
@@ -50,26 +51,48 @@ function computationSignature(session: Session, transcript: string): string {
   return `${transcript}:` + createHash('sha256').update(JSON.stringify([transcript,id,session.directory,config.get().ledger,edits,items,links])).digest('hex');
 }
 function currentGoalStatus(session: Session) { return session.client === 'codex' ? readCodexMetadata(session.sessionId.replace(/^codex_/, '')).limited : undefined; }
-function statusKey(session: Session, goalStatus?: string) { return JSON.stringify([session.title,session.status,session.statusSource,session.statusReason,session.lastActiveAt,session.parentSessionId,goalStatus]); }
+function statusKey(session: Session, goalStatus?: string) { return JSON.stringify([session.title,session.status,session.processState,session.statusSource,session.statusReason,session.lastActiveAt,session.parentSessionId,session.isSubAgent,session.agentRole,session.agentNickname,goalStatus]); }
 function refreshStatus(detail: LedgerStatus,session: Session,goalStatus: string | undefined,transcriptLimited: boolean) {
+  detail.processState = session.processState ?? 'unknown';
+  if (session.client === 'claude') detail.contextUsage = readClaudeContextUsage(session.sessionId,detail.contextUsage);
   const turn = detail.turns.find(t => t.id === detail.turnId);
   const completed = turn?.phase === 'completed';
   const reviewExpired = completed && Date.now() - Date.parse(turn.at) - turn.durationMs >= 12 * 3600000;
   const viewed = getDatabase().query('SELECT last_viewed_turn_id FROM ledger_views WHERE session_id=?').get(session.sessionId) as { last_viewed_turn_id: string | null } | null;
-  detail.unread = completed && !reviewExpired && session.status !== 'completed' && viewed?.last_viewed_turn_id !== detail.turnId;
-  detail.state = completed ? !reviewExpired && (detail.progress.total > 0 || detail.unread) ? 'review' : 'ended' : 'running';
+  detail.unread = completed && session.status !== 'completed' && viewed?.last_viewed_turn_id !== detail.turnId;
+  detail.state = completed ? detail.unread || !reviewExpired && detail.progress.total > 0 ? 'review' : 'ended' : 'running';
   if (detail.acceptances.some(a => a.turnId === detail.turnId && a.decision !== 'follow_up')) detail.state = 'accepted';
   if (turn?.phase === 'aborted' || !completed && ['lost','stalled','interrupted'].includes(session.status)) detail.state = 'stopped';
   if (detail.pendingInput || session.status === 'needs_input' && session.statusSource === 'hook') detail.state = 'needs_input';
-  if (goalStatus) detail.state = 'stopped';
+  if (goalStatus || detail.processState === 'exited' && !completed && detail.state !== 'accepted') detail.state = 'stopped';
   if (detail.state === 'accepted') detail.unread = false;
   if (session.title !== 'Unknown task') detail.title = session.title;
   else if (!detail.title || detail.title === 'Unknown task') detail.title = session.parentSessionId ? `子任务 · ${session.sessionId.slice(-6)}` : `未命名会话 · ${basename(session.directory)}`;
   detail.parentSessionId = session.parentSessionId ? session.client === 'codex' && !session.parentSessionId.startsWith('codex_') ? `codex_${session.parentSessionId}` : session.parentSessionId : undefined;
+  detail.isSubAgent = Boolean(session.isSubAgent || session.parentSessionId);
+  detail.agentRole = session.agentRole;
+  detail.agentNickname = session.agentNickname;
   detail.lastActiveAt = session.lastActiveAt.toISOString();
   detail.statusReason = goalStatus ? `Codex 目标${goalStatus === 'blocked' ? '受阻' : goalStatus === 'budget_limited' ? '预算用尽' : '额度用尽'}` : session.statusReason;
   detail.possiblyWaiting = session.status === 'waiting' && session.statusSource !== 'hook';
   detail.limited = !!goalStatus || transcriptLimited;
+  const hookInput = session.status === 'needs_input' && session.statusSource === 'hook';
+  detail.observation = {
+    source: goalStatus ? 'inferred' : hookInput ? 'hook' : detail.pendingInput || completed || turn?.phase === 'aborted' ? 'transcript' : 'inferred',
+    reason: goalStatus ? detail.statusReason!
+      : detail.pendingInput ? `记录中存在尚未回答的 ${detail.inputRequest?.tool ?? '问题'}`
+      : hookInput ? `实时事件报告需要输入：${session.statusReason ?? '等待你的决定'}`
+      : detail.state === 'accepted' ? '你已明确验收这一轮'
+      : completed ? detail.unread ? '记录显示这一轮已回复，尚未查看' : detail.state === 'review' ? '这一轮已结束，验收清单待核对' : '记录显示这一轮已结束'
+      : detail.state === 'stopped' ? detail.statusReason ?? '记录或会话状态显示已停下'
+      : detail.possiblyWaiting ? '根据进程状态推测可能在等待，尚无明确输入请求'
+      : '根据会话与进程状态推断，未观察到本轮结束',
+    at: detail.inputRequest?.at ?? (completed && turn ? new Date(Date.parse(turn.at) + turn.durationMs).toISOString() : detail.lastActiveAt),
+  };
+  if (detail.state === 'accepted') {
+    detail.observation.source = 'user';
+    detail.observation.at = [...detail.acceptances].reverse().find(a => a.turnId === detail.turnId && a.decision !== 'follow_up')?.at ?? detail.observation.at;
+  }
 }
 function refreshImportSuggestions(detail: LedgerDetail,session: Session) {
   const candidates = detail.asks.filter(a => a.kind !== 'question');
@@ -100,9 +123,9 @@ export async function ingestLedger(session: Session, parsed: ParsedSessionData, 
   if (transcript && transcriptFingerprint(parsed.sourcePath!) === transcript) {
     const signature = computationSignature(session,transcript);
     writeLedgerComputation(`detail:${session.sessionId}`,signature,detail);
-    const { sessionId,agentSessionId,title,state,statusReason,possiblyWaiting,limited,lastActiveAt,turnId,acceptances,claims,progress,offPlan,parentSessionId,projectRoot,unread,pendingInput } = detail;
-    const summary: LedgerStatus = { sessionId,agentSessionId,title,state,statusReason,possiblyWaiting,limited,lastActiveAt,turnId,acceptances,claims,progress,offPlan,parentSessionId,projectRoot,unread,pendingInput,turns: detail.turns.filter(t => t.id === turnId) };
-    writeLedgerComputation(`scan:${session.sessionId}`,transcript,{ path: parsed.sourcePath,transcript,signature,summary,transcriptLimited: derived.facts.some(f => f.kind === 'limit'),statusKey: statusKey(session,currentGoalStatus(session)),lastTurn: [...derived.facts].reverse().find(f => f.kind === 'turn') });
+    const { sessionId,agentSessionId,title,state,processState,statusReason,possiblyWaiting,limited,lastActiveAt,turnId,acceptances,claims,progress,offPlan,parentSessionId,isSubAgent,agentRole,agentNickname,projectRoot,unread,pendingInput,inputRequest,observation,contextUsage } = detail;
+    const summary: LedgerStatus = { sessionId,agentSessionId,title,state,processState,statusReason,possiblyWaiting,limited,lastActiveAt,turnId,acceptances,claims,progress,offPlan,parentSessionId,isSubAgent,agentRole,agentNickname,projectRoot,unread,pendingInput,inputRequest,observation,contextUsage,turns: detail.turns.filter(t => t.id === turnId) };
+    writeLedgerComputation(`scan:${session.sessionId}`,transcript,{ path: parsed.sourcePath,transcript,signature,summary: { ...summary, runtimeId: detail.runtimeId, available: detail.available, activity: detail.activity && { ...detail.activity, lastMessage: undefined, evidence: [] } },transcriptLimited: derived.facts.some(f => f.kind === 'limit'),statusKey: statusKey(session,currentGoalStatus(session)),lastTurn: [...derived.facts].reverse().find(f => f.kind === 'turn') });
   }
   return detail;
 }
@@ -195,14 +218,17 @@ async function buildLedger(session: Session, facts: TranscriptFact[], unknownRec
   const noGoal = (db.query('SELECT no_goal FROM ledger_attributions WHERE agent_session_id = ?').get(agent.id) as { no_goal: number } | null)?.no_goal;
   const attribution = !link && !noGoal ? suggestAttribution(session, asks.filter(a => a.kind !== 'question').map(a => a.authoredText).join('\n')) : [];
   for (const suggestion of attribution) workItemEvidenceRepository.createSessionLink({ workItemId: suggestion.workItemId, agentSessionId: agent.id, linkSource: 'heuristic_suggestion' });
+  const context = [...facts].reverse().find(f => f.kind === 'context');
   const detail: LedgerDetail = {
     sessionId: session.sessionId, agentSessionId: agent.id, title: ledgerTitle, projectRoot: session.directory, runtimeId,
     state, statusReason: session.statusReason, possiblyWaiting: session.status === 'waiting' && session.statusSource !== 'hook',
     pendingInput: !!pendingInputTool(facts),
+    inputRequest: inputRequest(facts),
     available: facts.length > 0 && unknownRecords < Math.max(10,facts.length), unavailableReason: facts.length ? unknownRecords >= Math.max(10,facts.length) ? '无法识别记录格式，仅显示会话状态' : undefined : '暂时无法读取执行记录',
     asks: ledgerRepository.asks(agent.id), ...matched, turns, claims, acceptances, turnId, workItemId: link?.workItemId,
     lastActiveAt: session.lastActiveAt.toISOString(), attribution, limited: !!goalStatus || facts.some(f => f.kind === 'limit'),
     followUpSuggestions: followUpSuggestions(facts),
+    contextUsage: context?.kind === 'context' ? { usedTokens: context.usedTokens,windowTokens: context.windowTokens,at: context.at } : undefined,
     activity: { ...latestActivity(facts),evidence: matched.evidence.filter(e => e.kind !== 'command' && e.kind !== 'verdict').slice(-3).reverse() },
   };
   refreshImportSuggestions(detail,session);
@@ -243,10 +269,33 @@ async function ledgerFromPath(session: Session, path: string): Promise<LedgerDet
   }
   return (await ingestLedger(session,parsed))!;
 }
-export async function ledgerOverview(hours = 24, omitTranscript = false) {
-  const all = sessionRepository.findAll().filter(ledgerEnabled);
+// Menu rows share presentation/state semantics with the dashboard, but never
+// carry transcripts, evidence collections or editor data to the resident view.
+function compactLedger(detail: LedgerDetail): LedgerDetail {
+  return { ...detail, asks: [], items: [], evidence: [], trail: [], claims: [], acceptances: [],
+    turns: detail.turns.filter(turn => turn.id === detail.turnId), offPlan: detail.offPlan.slice(0, 1),
+    attribution: [], followUpSuggestions: [], importSuggestions: [], subagents: undefined,
+    activity: detail.activity && { ...detail.activity, lastMessage: undefined, evidence: [] } };
+}
+async function menubarLedger(sessionId: string): Promise<LedgerDetail | null> {
+  const session = sessionRepository.findBySessionId(sessionId);
+  if (!session || !ledgerEnabled(session)) return null;
+  const snapshot = readLedgerComputation<LedgerScanSnapshot>(`scan:${sessionId}`);
+  if (snapshot?.path && existsSync(snapshot.path) && snapshot.transcript === transcriptFingerprint(snapshot.path)
+    && snapshot.signature === computationSignature(session, snapshot.transcript)) {
+    refreshStatus(snapshot.summary, session, currentGoalStatus(session), snapshot.transcriptLimited);
+    await evaluateLedgerAlerts(snapshot.summary);
+    return compactLedger({ ...snapshot.summary, asks: [], items: [], evidence: [], trail: [], readOnlyCount: 0 });
+  }
+  const detail = await getLedger(sessionId);
+  return detail && compactLedger(detail);
+}
+export async function ledgerOverview(hours = 24, omitTranscript = false, outsideAttention = false, menubar = false) {
+  const read = menubar ? menubarLedger : getLedger;
+  const all = sessionRepository.findAll(new Date(Date.now() - config.get().ledger.retentionDays * 86400000)).filter(ledgerEnabled);
   const byId = new Map(all.map(session => [session.sessionId,session]));
-  const sessions = all.filter(s => s.lastActiveAt.getTime() >= Date.now() - hours * 3600000);
+  const cutoff = Date.now() - hours * 3600000;
+  const sessions = all.filter(s => outsideAttention ? s.lastActiveAt.getTime() < cutoff : s.lastActiveAt.getTime() >= cutoff);
   const details = new Map<string,LedgerDetail>();
   const retain = (detail: LedgerDetail) => {
     // Reviews aggregate a retention window; keep evidence and progress, not every
@@ -258,7 +307,17 @@ export async function ledgerOverview(hours = 24, omitTranscript = false) {
     }
     details.set(detail.sessionId,detail);
   };
-  for (const session of sessions) { const detail = await getLedger(session.sessionId); if (detail) retain(detail); }
+  for (const session of sessions) {
+    if (outsideAttention) {
+      const snapshot = readLedgerComputation<LedgerScanSnapshot>(`scan:${session.sessionId}`);
+      if (snapshot) {
+        refreshStatus(snapshot.summary, session, currentGoalStatus(session), snapshot.transcriptLimited);
+        if (snapshot.summary.state !== 'needs_input') continue;
+      }
+    }
+    const detail = await read(session.sessionId);
+    if (detail && (!outsideAttention || detail.state === 'needs_input')) retain(detail);
+  }
   const roots = new Map<string,LedgerDetail>();
   for (const child of [...details.values()]) {
     let root = child;
@@ -267,7 +326,7 @@ export async function ledgerOverview(hours = 24, omitTranscript = false) {
       seen.add(root.parentSessionId);
       const parentId = root.parentSessionId;
       let parent = details.get(parentId);
-      if (!parent && byId.has(parentId)) { parent = await getLedger(parentId) ?? undefined; if (parent) retain(parent); }
+      if (!parent && byId.has(parentId)) { parent = await read(parentId) ?? undefined; if (parent) retain(parent); }
       if (!parent) break;
       root = parent;
     }
@@ -276,21 +335,22 @@ export async function ledgerOverview(hours = 24, omitTranscript = false) {
       attachSubagent(root,child);
     }
   }
-  const urgency = (d: LedgerDetail) => d.state === 'needs_input' ? 0 : ledgerNeedsAttention(d) ? 1 : d.state === 'running' ? 2 : 3;
-  return [...roots.values()].sort((a,b) => urgency(a) - urgency(b) || Date.parse(b.lastActiveAt) - Date.parse(a.lastActiveAt));
+  return [...roots.values()].filter(d => !outsideAttention || d.state === 'needs_input').sort((a,b) => Date.parse(b.lastActiveAt) - Date.parse(a.lastActiveAt));
 }
 function attachSubagent(parent: LedgerDetail,child: LedgerDetail) {
   parent.subagents ??= [];
   if (Date.parse(child.activity?.at ?? child.lastActiveAt) > Date.parse(parent.activity?.at ?? parent.lastActiveAt)) parent.activity = child.activity && { ...child.activity,action: `子任务 ${child.title}：${child.activity.action ?? '执行中'}` };
   if (Date.parse(child.lastActiveAt) > Date.parse(parent.lastActiveAt)) parent.lastActiveAt = child.lastActiveAt;
-  parent.subagents.push({ sessionId: child.sessionId,title: child.title,state: child.state,lastActiveAt: child.lastActiveAt,activity: child.activity });
-  if (child.state === 'needs_input') { parent.state = 'needs_input'; parent.statusReason = '子任务正在等待审批'; }
-  else if (child.state === 'running' && ['ended','stopped','review'].includes(parent.state)) parent.state = 'running';
+  parent.subagents.push({ sessionId: child.sessionId,title: child.title,state: child.state,processState: child.processState,lastActiveAt: child.lastActiveAt,activity: child.activity,parentSessionId: child.parentSessionId,isSubAgent: child.isSubAgent,agentRole: child.agentRole,agentNickname: child.agentNickname,runtimeId: child.runtimeId,projectRoot: child.projectRoot,workItemId: child.workItemId,followUpSuggestions: child.followUpSuggestions });
+  if (child.processState === 'online') parent.processState = 'online';
+  else if (parent.processState === 'exited' && child.processState !== 'exited') parent.processState = 'unknown';
+  if (child.state === 'needs_input' && child.processState !== 'exited') { parent.state = 'needs_input'; parent.statusReason = `子任务「${child.title}」正在等待你`; parent.inputRequest = child.inputRequest; parent.observation = child.observation && { ...child.observation, reason: `子任务「${child.title}」：${child.observation.reason}` }; }
+  else if (child.processState === 'online' && child.state === 'running' && ['ended','stopped','review'].includes(parent.state)) parent.state = 'running';
 }
 export async function ledgerDetail(sessionId: string) {
   const detail = await getLedger(sessionId);
   if (!detail) return null;
-  const all = sessionRepository.findAll().filter(ledgerEnabled);
+  const all = sessionRepository.findAll(new Date(Date.now() - config.get().ledger.retentionDays * 86400000)).filter(ledgerEnabled);
   const byId = new Map(all.map(session => [session.sessionId,session]));
   for (const session of all) {
     let parentId = session.parentSessionId;
@@ -302,9 +362,26 @@ export async function ledgerDetail(sessionId: string) {
       seen.add(parentId);parentId = byId.get(parentId)?.parentSessionId;
     }
   }
+  const viewed = getDatabase().query('SELECT last_viewed_at FROM ledger_views WHERE session_id=?').get(sessionId) as { last_viewed_at: string | null } | null;
+  const since = viewed?.last_viewed_at ?? null;
+  const after = (at: string) => since !== null && Date.parse(at) > Date.parse(since);
+  detail.changes = {
+    since,
+    files: detail.evidence.filter(e => e.kind === 'file' && after(e.at)),
+    checks: detail.evidence.filter(e => (e.kind === 'command' || e.kind === 'test') && e.exitCode !== undefined && after(e.at)),
+    steps: detail.trail.filter(step => after(step.at)),
+  };
   return detail;
 }
-function latestActivity(facts: TranscriptFact[]): { action?: string; at?: string; lastMessage?: string } {
+function inputRequest(facts: TranscriptFact[]): LedgerDetail['inputRequest'] {
+  const tool = pendingInputTool(facts);
+  if (tool?.kind !== 'tool') return undefined;
+  const input = tool.input && typeof tool.input === 'object' ? tool.input as Record<string, unknown> : {};
+  const questions = Array.isArray(input.questions) ? input.questions as Array<{ question?: string; title?: string }> : [];
+  const question = questions.filter(q => q && typeof q === 'object').map(q => q.question ?? q.title).filter(q => typeof q === 'string').join('；') || input.question || input.prompt;
+  return { tool: tool.name, at: tool.at, question: typeof question === 'string' ? question.slice(0, 600) : undefined };
+}
+function latestActivity(facts: TranscriptFact[]): Omit<NonNullable<LedgerDetail['activity']>, 'evidence'> {
   let tool: Extract<TranscriptFact,{kind:'tool'}> | undefined;
   let message: Extract<TranscriptFact,{kind:'agent_message'}> | undefined;
   for (const fact of facts) {
@@ -313,7 +390,7 @@ function latestActivity(facts: TranscriptFact[]): { action?: string; at?: string
   }
   const input = tool?.input && typeof tool.input === 'object' ? tool.input as Record<string,unknown> : {};
   return { action: tool ? `${tool.name} ${String(input.command ?? input.cmd ?? input.file_path ?? input.path ?? '').slice(0,300)}`.trim() : undefined,
-    at: tool?.at,lastMessage: message?.text.slice(0,600) };
+    at: tool?.at,callId: tool?.callId,turnId: tool?.turnId,completed: tool ? tool.completed === true || tool.exitCode !== undefined : undefined,exitCode: tool?.exitCode,lastMessage: message?.text.slice(0,600) };
 }
 export function followUpPrompt(detail: LedgerDetail, correctionRun?: string): string {
   if (correctionRun) {

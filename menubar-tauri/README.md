@@ -1,95 +1,60 @@
-# Claude Quota Monitor
+# Keepline desktop
 
-A macOS menubar app to monitor Claude Code and Codex (ChatGPT) usage quotas and local cost estimates.
+Keepline 1.2.0 is a local macOS agent progress dashboard with a menu-bar panel.
+This source candidate has not been published merely because its version is 1.2.0.
+Release downloads must be checked against their own tag and release notes.
 
-## Features
+## What it does
 
-- **Claude Code Quota**: View your 5-hour and 7-day usage limits
-- **Codex Quota**: View your ChatGPT Plus/Pro/Team usage limits
-- **Local Cost Tracking**: View estimated today, week, and month costs from local Claude/Codex logs
-- **Tab Switching**: Easily switch between Claude and Codex views
-- **Tray Icon**: Shows remaining quota percentage for the active tab
-- **Multiple Themes**: 7 beautiful themes including light, dark, and Claude brand
-- **Lazy Loading**: Only loads data when you switch to a tab
+- Shows Codex and Claude Code sessions, requests that need you, and recent replies.
+- Links requirements, execution evidence, goals and todos; acceptance stays explicit.
+- Opens the dashboard from a menu-bar session, with focus mode and opt-in notifications.
+- Embeds the Bun service and uses the same state semantics in the tray and dashboard.
+- Reports unknown process state honestly; missing scan evidence is not proof of exit.
 
-## Installation
+## Build from source
 
-### Download
-
-Download the latest `.dmg` file from the [Releases](https://github.com/majiayu000/keepline/releases) page.
-
-### macOS Gatekeeper
-
-Public GitHub Release DMGs are Developer ID signed and notarized. After
-installing from Releases, macOS should open the app without removing quarantine
-attributes.
-
-Local `npm run tauri build` output is unsigned unless you set the Apple signing
-environment variables. Those local builds may show a Gatekeeper warning; that
-does not apply to the notarized Release artifacts.
-
-## Requirements
-
-- **macOS 10.15+** (Catalina or later)
-- **Claude Code**: Must be logged in (`claude` command in terminal)
-- **Codex**: Must be logged in (`codex` command in terminal)
-
-## Usage
-
-1. Click the menubar icon to open the quota panel
-2. Use the tabs to switch between Claude and Codex
-3. Review live quota windows and local cost estimates in the active tab
-4. The tray icon shows the remaining quota % for the active tab
-5. Click outside the panel to close it
-6. Right-click the tray icon to quit
-
-## Local Codex history statistics
-
-The Rust menubar backend reads `history.jsonl` through `agent-sessions`. Set
-`CODEX_HOME` to choose its history directory; otherwise it uses `~/.codex`.
-An empty override is reported as an error. Authentication and quota requests
-retain their existing configuration.
-
-The API fields `totalSessions` and `todaySessions` count history entries, including
-repeated entries for the same session. Daily counts use UTC. Valid JSON entries
-with missing or invalid optional fields still count toward the total. Malformed
-JSON, an incomplete last record, invalid UTF-8, or an I/O error clears the result
-and reports an error instead of returning partial statistics. A missing history
-file means no history yet.
-
-The Bun session adapters continue to parse full transcripts independently; their
-existing synthetic fixtures and the shared library's format documentation cover
-the overlapping formats. History entries are a different source from transcript
-messages and should not be combined into one session count.
-
-## Shared dependencies
-
-The menubar uses the published crates.io releases `agent-sessions 0.2.0` and
-`ccstats 0.9.0`. The lockfile records their registry sources and checksums;
-source builds do not require local dependency checkouts or Cargo patches.
-
-## Building from Source
+Requires macOS, Bun, Node/npm, Rust and Xcode command-line tools.
+From the repository root:
 
 ```bash
-# Install dependencies
-npm install
-
-# Development
-npm run tauri dev
-
-# Build
-npm run tauri build
+bun install --frozen-lockfile
+(cd src/web/client && bun install --frozen-lockfile)
+(cd menubar-tauri && npm ci)
+(cd menubar-tauri && npm run tauri -- build --bundles app)
 ```
 
-## Tech Stack
+Tauri's build hook builds the dashboard and embeds the service automatically.
+The app is written under `menubar-tauri/src-tauri/target/release/bundle/macos/`.
+Local builds use ad-hoc signing by default. Developer ID signing, notarization
+and public release are separate delivery steps; see the release workflow.
 
-- **Frontend**: React 19 + TypeScript + Vite
-- **Backend**: Rust + Tauri 2
-- **APIs**:
-  - Claude: `api.anthropic.com/api/oauth/usage`
-  - Codex: `chatgpt.com/backend-api/wham/usage`
-- **Local Cost SDK**: `ccstats` reads Claude and Codex local logs for token and cost summaries
+## First run
 
-## License
+1. Open Keepline and wait for the initial scan. Open the main panel from the tray.
+2. In **设置 → 连接 agent**, click **连接实时事件**. Installation updates the Codex
+   and Claude Code hook configuration and preserves unrelated commands.
+3. Trust the hook in Codex, or restart Claude Code, then run one turn.
+4. Check each runtime's status: configuration installed, receiver running and an
+   actual received event are separate states. A configured hook alone is not verified.
+5. Review a session's requirements and evidence, then explicitly accept or follow up.
 
-MIT
+Transcript scanning remains available without hooks. A scan or receiver failure
+is shown in the dashboard; stale data is not presented as a healthy empty state.
+System notifications are off by default and can be enabled in settings.
+
+The legacy quota frontend remains in this directory for historical code context;
+the desktop build serves the progress dashboard from `src/web/client`.
+
+## Checks
+
+```bash
+bun run typecheck
+bun test
+(cd src/web/client && bun run test:ui)
+bun run scripts/build-ledger-app.ts
+(cd menubar-tauri/src-tauri && cargo test --lib)
+```
+
+Browser tests mock the native bridge. Passing them does not replace native app
+launch, menu-bar, notification, login-item or signing/notarization verification.

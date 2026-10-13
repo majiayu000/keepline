@@ -58,6 +58,43 @@ describe('normalized transcript facts',() => {
       rmSync(root, { recursive: true, force: true });
     }
   });
+  test('Claude uses the latest input/cache occupancy over 1M, excludes synthetic errors and resets after compaction',() => {
+    const timestamp = new Date().toISOString();
+    const parser = new TranscriptFacts('claude');
+    const assistant = (input_tokens: number, cache_creation_input_tokens: number, cache_read_input_tokens: number) => ({
+      type: 'assistant',timestamp,message: { model: 'claude-opus-5-5', content: [], usage: {
+        input_tokens,cache_creation_input_tokens,cache_read_input_tokens,output_tokens: 999999,
+      } },
+    });
+    parser.add(assistant(100,900,50000));
+    parser.add(assistant(2,802,84531));
+    const resumed = new TranscriptFacts('claude',0,parser.snapshot());
+    resumed.add({ ...assistant(0,0,0),message: { ...assistant(0,0,0).message,model: '<synthetic>' } });
+    resumed.add(assistant(-1,0,0));
+    resumed.add({ type: 'assistant',timestamp,message: { content: [],usage: { input_tokens: 1 } } });
+    expect(resumed.facts).toEqual([{ kind: 'context',usedTokens: 85335,windowTokens: 1000000,at: timestamp }]);
+    resumed.add({ type: 'system',subtype: 'compact_boundary',timestamp });
+    expect(resumed.facts).toEqual([]);
+    resumed.add(assistant(0,0,0));
+    expect(resumed.facts).toEqual([{ kind: 'context',usedTokens: 0,windowTokens: 1000000,at: timestamp }]);
+  });
+  test('context occupancy uses the latest request, survives incremental state and clears on compaction',() => {
+    const timestamp = new Date().toISOString();
+    const parser = new TranscriptFacts('codex');
+    const tokenCount = (total_tokens: number, model_context_window: number | null) => ({ type: 'event_msg',timestamp,payload: {
+      type: 'token_count',info: { total_token_usage: { total_tokens: 900000 },last_token_usage: { total_tokens },model_context_window },
+    } });
+    parser.add(tokenCount(9100,10000));
+    expect(parser.facts).toEqual([{ kind: 'context',usedTokens: 9100,windowTokens: 10000,at: timestamp }]);
+    const resumed = new TranscriptFacts('codex',0,parser.snapshot());
+    resumed.add({ type: 'compacted',timestamp });
+    expect(resumed.facts).toEqual([]);
+    resumed.add(tokenCount(1200,10000));
+    resumed.add(tokenCount(-1,10000));
+    resumed.add(tokenCount(100,null));
+    expect(resumed.facts).toEqual([{ kind: 'context',usedTokens: 1200,windowTokens: 10000,at: timestamp }]);
+    expect(resumed.unknownRecords).toBe(0);
+  });
   test('reading a saved test log is not a successful test execution',() => {
     const parser = new TranscriptFacts('claude'),timestamp = new Date().toISOString();
     parser.add({ type: 'assistant',timestamp,message: { content: [{ type: 'tool_use',id: 'read',name: 'Read',input: { file_path: 'test.log' } }] } });

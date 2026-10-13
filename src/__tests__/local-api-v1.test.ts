@@ -7,6 +7,7 @@ import { sessionRepository } from '../infrastructure/database/repositories/sessi
 import { workItemEvidenceRepository } from '../infrastructure/database/repositories/work-item-evidence.repository.js';
 import { taskDispatchRepository } from '../infrastructure/database/repositories/task-dispatch.repository.js';
 import { workItemRepository } from '../infrastructure/database/repositories/work-item.repository.js';
+import { SESSION_STATUSES } from '../domain/session/value-objects.js';
 
 describe('Local API v1', () => {
   beforeEach(() => resetDatabase());
@@ -129,5 +130,24 @@ describe('Local API v1', () => {
       linkedAgentSessionId: agentSession.id,
       linkedSessionId: agentSession.runtimeSessionId,
     });
+  });
+
+  test('session totals count needs input, stalled and interrupted sessions', async () => {
+    for (const status of SESSION_STATUSES) {
+      sessionRepository.upsert({
+        sessionId: `local-stats-${status}`, client: 'claude',
+        directory: '/tmp/local-api-statuses', title: status, status,
+        initialPrompt: 'Keep this operational task visible', messageCount: 1, wasProcessObserved: true,
+        lastActiveAt: new Date(),
+      });
+    }
+    const { token } = await setupUser('local-stats-user', 'password123');
+    const response = await createLocalApiApp().fetch(new Request('http://localhost/api/v1/sessions', {
+      headers: { Authorization: `Bearer ${token}` },
+    }));
+    expect(response.status).toBe(200);
+    const body = await response.json() as { data: { stats: Record<string, number> } };
+    for (const status of SESSION_STATUSES) expect(body.data.stats[status]).toBe(1);
+    expect(body.data.stats.total).toBe(SESSION_STATUSES.length);
   });
 });

@@ -37,9 +37,24 @@
 .page button {
   cursor: pointer;
 }
+.page button.primary {
+  background: #15171c;
+  border-color: #15171c;
+  color: #fff;
+  border-radius: 9px;
+  font-weight: 500;
+}
+.page button.cancel {
+  border-color: transparent;
+  background: transparent;
+  color: #6b7280;
+}
 .page button:hover,
 .selected {
   border-color: var(--primary) !important;
+}
+.page button.primary:hover {
+  border-color: #15171c !important;
 }
 .page button:focus-visible,
 .page input:focus-visible,
@@ -235,4 +250,11 @@
 }
 .dispatchDialog .actions {
   justify-content: flex-end;
+  gap: 8px;
+}
+.dispatchDialog .actions button {
+  min-height: 36px;
+  padding: 0 12px;
+  border-radius: 9px;
+  font-weight: 500;
 }

@@ -4,7 +4,7 @@
 
 # Keepline
 
-### 再也不会丢失你的 Codex 或 Claude Code 工作了
+### 看清 agent 做了什么，还有什么需要你处理
 
 **Agent CLI 重度用户的控制中心**
 
@@ -34,7 +34,7 @@
 
 ## 解决方案
 
-**Keepline** 实时监控 Codex 和 Claude Code 会话，自动恢复崩溃的会话，追踪可用的费用数据，并在会话间保持上下文。
+**Keepline** 实时监控 Codex 和 Claude Code 会话，提供中断会话的恢复入口，追踪可用的费用数据，并在会话间保持上下文。
 
 改名和 Codex 检测的完整实现说明见 [Keepline Rebrand and Codex Detection Spec](docs/KEEPLINE_REBRAND_AND_CODEX_DETECTION_SPEC.md)。
 
@@ -81,17 +81,30 @@ bun run start web
 
 默认只绑定本机回环地址；如果你确实要对外暴露，再设置 `KEEPLINE_HOST`。
 
-### Claude Quota 菜单栏应用
+### Keepline 桌面候选（1.2.0）
 
-`menubar-tauri` 配套应用以 **Claude Quota** 名称通过
-[GitHub Releases](https://github.com/majiayu000/keepline/releases/latest) 分发。
-这些安装器提供额度监控菜单栏应用；Bun 会话管理 CLI 和仪表板请使用上面的源码安装步骤。
+当前源码提供菜单栏面板和进度账，内置本地 Bun 服务，无需另外安装 CLI 才能打开面板。
+**当前是候选版本，不能据此认为 1.2.0 已公开发布。** Releases 中已有安装包可能仍是旧版额度应用。
+构建命令见[桌面说明](menubar-tauri/README.md)。
 
-菜单栏应用和仓库根目录的 Bun CLI 使用独立的版本号；发布菜单栏安装包不等于发布或安装 Bun CLI。
+1. 打开 Keepline，等待首次本地扫描结束。
+2. 进入「设置 → 连接 agent」，点击「连接实时事件」。这会安装 Keepline Hook，保留已有命令。
+3. 在 Codex 中信任新 Hook，或重新打开 Claude Code，然后运行一个回合。
+4. 确认状态显示「已收到真实事件」。仅「配置已安装」不能证明连接成功；不安装 Hook 也能定时读取本地执行记录。
+5. 打开会话，核对要求、执行证据和缺口，再由你明确验收。
 
 ---
 
 ## 功能特性
+
+### 进度账与菜单栏
+
+- 对照用户要求、执行步骤、测试证据和明确验收，保留未确认的候选要求。
+- 将会话关联到目标与待办，生成追问，恢复中断会话。
+- 区分进程状态与回合状态：扫描不到不等于已退出。
+- 菜单栏展示待处理数量、会话入口和专注模式；系统通知默认关闭。
+- 默认解析本地执行记录；模型分析需另外配置。
+
 
 ### 实时会话监控
 

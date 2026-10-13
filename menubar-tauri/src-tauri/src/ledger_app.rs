@@ -66,14 +66,25 @@ async fn connect(app: &AppHandle) -> Result<(String,String),String> {
     Ok((base,token))
 }
 fn build_window(app: &AppHandle,label: &str,path: &str,popover: bool) -> Result<(),String> {
-    let (base,token) = app.state::<ServiceState>().connection.lock().map_err(|e| e.to_string())?.clone().ok_or("Service not ready")?;
+    let (base,_) = app.state::<ServiceState>().connection.lock().map_err(|e| e.to_string())?.clone().ok_or("Service not ready")?;
     let url: tauri::Url = format!("{base}{path}").parse::<tauri::Url>().map_err(|e| e.to_string())?;
-    let script = format!("localStorage.setItem('terminal_token',{});",serde_json::to_string(&token).map_err(|e| e.to_string())?);
     let origin = url.origin();
     let window = WebviewWindowBuilder::new(app,label,WebviewUrl::External(url))
         .title("Keepline").inner_size(if popover { 390.0 } else { 1180.0 },if popover { 550.0 } else { 800.0 })
         .resizable(!popover).decorations(!popover).always_on_top(popover).skip_taskbar(popover).visible(!popover)
-        .initialization_script(&script).on_navigation(move |url| url.origin() == origin)
+        .on_navigation(move |url| url.origin() == origin)
+        .on_page_load(|window, payload| {
+            if !matches!(payload.event(), tauri::webview::PageLoadEvent::Finished) { return; }
+            let connection = window.state::<ServiceState>().connection.lock().ok().and_then(|value| value.clone());
+            if let Some((base, token)) = connection {
+                if tauri::Url::parse(&base).is_ok_and(|base| base.origin() == payload.url().origin()) {
+                    // Read the current token on every load. A static initialization
+                    // script would restore the expired token after service restart.
+                    let script = format!("if(localStorage.getItem('terminal_token')!=={0}){{localStorage.setItem('terminal_token',{0});location.reload();}}", serde_json::json!(token));
+                    if let Err(error) = window.eval(&script) { eprintln!("Could not refresh window authentication: {error}"); }
+                }
+            }
+        })
         .build().map_err(|e| e.to_string())?;
     let cloned = window.clone(); let handle = app.clone();
     window.on_window_event(move |event| match event {
@@ -167,17 +178,12 @@ pub fn start(app: AppHandle) {
                     Ok(connection) => {
                         let handle = app.clone();
                         let _ = app.run_on_main_thread(move || {
-                            // Initialization scripts retain their original token. Recreate webviews
-                            // after a service restart so navigation cannot restore an expired token.
+                            // Keep existing window identities, visibility and deep links.
+                            // Destroying and immediately rebuilding the same label races
+                            // Tauri's asynchronous teardown and can close the whole app.
                             for label in ["main","dashboard"] {
                                 if let Some(window) = handle.get_webview_window(label) {
-                                    let visible = window.is_visible().unwrap_or(false);
-                                    let path = window.url().map(|url| format!("{}{}",url.path(),url.query().map(|q| format!("?{q}")).unwrap_or_default())).unwrap_or_else(|_| "/".into());
-                                    let _ = window.destroy();
-                                    if let Err(error) = build_window(&handle,label,&path,label == "main") { eprintln!("Could not reconnect window: {error}"); }
-                                    if let Some(window) = handle.get_webview_window(label) {
-                                        let _ = if visible { window.show() } else { window.hide() };
-                                    }
+                                    if let Err(error) = window.reload() { eprintln!("Could not reload reconnected window: {error}"); }
                                 }
                             }
                             if handle.get_webview_window("main").is_none() {

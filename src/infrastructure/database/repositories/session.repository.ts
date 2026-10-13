@@ -16,6 +16,7 @@ import type { ISessionRepository, SessionUpsertData } from '../../../domain/sess
 
 /** Database row type */
 interface SessionRow {
+  process_state: Session["processState"];
   id: string;
   session_id: string;
   client: string;
@@ -37,6 +38,8 @@ interface SessionRow {
   tool_count: number;
   message_count: number;
   agent_id: string | null;
+  agent_role: string | null;
+  agent_nickname: string | null;
   parent_session_id: string | null;
   is_sub_agent: number;
   total_input_tokens: number | null;
@@ -50,6 +53,10 @@ interface SessionRow {
 }
 
 interface SessionListRow {
+  parent_session_id: string | null;
+  is_sub_agent: number;
+  agent_role: string | null;
+  agent_nickname: string | null;
   id: string;
   session_id: string;
   client: string;
@@ -92,6 +99,7 @@ const OPERATIONAL_SESSION_FILTER = `
 `;
 
 interface ActiveSessionRow {
+  process_state: Session["processState"];
   session_id: string;
   client: string;
   status: string;
@@ -99,6 +107,7 @@ interface ActiveSessionRow {
 }
 
 interface ExistingSessionSummaryRow {
+  process_state: Session["processState"];
   pid: number | null;
   session_id: string;
   client: string;
@@ -140,6 +149,7 @@ function rowToUsageStats(row: UsageStatsRow): Session['usageStats'] {
 /** Convert database row to Session entity */
 function rowToSession(row: SessionRow): Session {
   return {
+    processState: row.process_state,
     id: row.id,
     sessionId: row.session_id,
     client: row.client === 'codex' ? 'codex' : 'claude',
@@ -161,6 +171,8 @@ function rowToSession(row: SessionRow): Session {
     toolCount: row.tool_count,
     messageCount: row.message_count,
     agentId: row.agent_id || undefined,
+    agentRole: row.agent_role || undefined,
+    agentNickname: row.agent_nickname || undefined,
     parentSessionId: row.parent_session_id || undefined,
     isSubAgent: row.is_sub_agent === 1,
     usageStats: rowToUsageStats(row),
@@ -180,6 +192,10 @@ function rowToSessionListItem(row: SessionListRow): SessionListItem {
     statusSource: row.status_source as Session['statusSource'],
     statusReason: row.status_reason ?? undefined,
     title: row.title || '',
+    parentSessionId: row.parent_session_id || undefined,
+    isSubAgent: row.is_sub_agent === 1,
+    agentRole: row.agent_role || undefined,
+    agentNickname: row.agent_nickname || undefined,
     startedAt: row.started_at ? new Date(row.started_at) : undefined,
     lastActiveAt: new Date(row.last_active_at),
     completedAt: row.completed_at ? new Date(row.completed_at) : undefined,
@@ -195,6 +211,7 @@ function rowToSessionListItem(row: SessionListRow): SessionListItem {
 
 function rowToActiveSessionRecord(row: ActiveSessionRow): ActiveSessionRecord {
   return {
+    processState: row.process_state,
     sessionId: row.session_id,
     client: row.client === 'codex' ? 'codex' : 'claude',
     status: row.status as SessionStatus,
@@ -204,6 +221,7 @@ function rowToActiveSessionRecord(row: ActiveSessionRow): ActiveSessionRecord {
 
 function rowToExistingSessionSummary(row: ExistingSessionSummaryRow): ExistingSessionSummary {
   return {
+    processState: row.process_state,
     sessionId: row.session_id,
     client: row.client === 'codex' ? 'codex' : 'claude',
     status: row.status as SessionStatus,
@@ -257,17 +275,17 @@ class SessionRepository implements ISessionRepository {
     const db = getDatabase();
     const placeholders = sessionIds.map(() => '?').join(', ');
     const rows = db
-      .prepare(`SELECT session_id, client, status, status_source, status_reason, title, last_active_at, pid FROM sessions WHERE session_id IN (${placeholders})`)
+      .prepare(`SELECT session_id, client, status, status_source, status_reason, title, last_active_at, pid, process_state FROM sessions WHERE session_id IN (${placeholders})`)
       .all(...sessionIds) as ExistingSessionSummaryRow[];
 
     return rows.map(rowToExistingSessionSummary);
   }
 
-  findAll(): Session[] {
+  findAll(since?: Date): Session[] {
     const db = getDatabase();
     const rows = db
-      .prepare('SELECT * FROM sessions ORDER BY last_active_at DESC')
-      .all() as SessionRow[];
+      .prepare(`SELECT * FROM sessions ${since ? 'WHERE last_active_at >= ?' : ''} ORDER BY last_active_at DESC`)
+      .all(...(since ? [since.toISOString()] : [])) as SessionRow[];
 
     return rows.map(rowToSession);
   }
@@ -297,6 +315,7 @@ class SessionRepository implements ISessionRepository {
           status,
           status_source,
           title,
+          parent_session_id, is_sub_agent, agent_role, agent_nickname,
           started_at,
           last_active_at,
           completed_at,
@@ -331,6 +350,7 @@ class SessionRepository implements ISessionRepository {
           status,
           status_source,
           title,
+          parent_session_id, is_sub_agent, agent_role, agent_nickname,
           started_at,
           last_active_at,
           completed_at,
@@ -371,8 +391,8 @@ class SessionRepository implements ISessionRepository {
     const db = getDatabase();
     const rows = db
       .prepare(`
-        SELECT session_id, client, status, pid FROM sessions
-        WHERE status NOT IN ('completed', 'lost')
+        SELECT session_id, client, status, pid, process_state FROM sessions
+        WHERE status NOT IN ('completed', 'lost') OR pid IS NOT NULL
       `)
       .all() as ActiveSessionRow[];
 
@@ -381,9 +401,10 @@ class SessionRepository implements ISessionRepository {
 
   markActiveSessionsInterrupted(observedAt: Date = new Date()): number {
     const db = getDatabase();
+    db.prepare("UPDATE sessions SET process_state='unknown' WHERE process_state='online'").run();
     const result = db.prepare(`
       UPDATE sessions
-      SET status = 'lost', pid = NULL, tty = NULL, updated_at = ?
+      SET status = 'lost', tty = NULL, updated_at = ?
       WHERE status IN ('running', 'waiting', 'idle')
     `).run(observedAt.toISOString());
 
@@ -421,6 +442,8 @@ class SessionRepository implements ISessionRepository {
       const hasLastMessage = 'lastMessage' in data;
       const hasCompletedAt = 'completedAt' in data;
       const hasAgentId = 'agentId' in data;
+      const hasAgentRole = 'agentRole' in data;
+      const hasAgentNickname = 'agentNickname' in data;
       const hasParentSessionId = 'parentSessionId' in data;
       const hasUsageStats = 'usageStats' in data;
       const hasToolCalls = 'toolCalls' in data;
@@ -429,6 +452,7 @@ class SessionRepository implements ISessionRepository {
         UPDATE sessions SET
           status = COALESCE(?, status),
           status_source = COALESCE(?, status_source),
+          process_state = COALESCE(?, process_state),
           status_reason = CASE WHEN ? THEN ? ELSE status_reason END,
           client = COALESCE(?, client),
           title = COALESCE(?, title),
@@ -445,6 +469,8 @@ class SessionRepository implements ISessionRepository {
           tool_count = COALESCE(?, tool_count),
           message_count = COALESCE(?, message_count),
           agent_id = CASE WHEN ? THEN ? ELSE agent_id END,
+          agent_role = CASE WHEN ? THEN ? ELSE agent_role END,
+          agent_nickname = CASE WHEN ? THEN ? ELSE agent_nickname END,
           parent_session_id = CASE WHEN ? THEN ? ELSE parent_session_id END,
           is_sub_agent = COALESCE(?, is_sub_agent),
           total_input_tokens = CASE WHEN ? THEN ? ELSE total_input_tokens END,
@@ -459,6 +485,7 @@ class SessionRepository implements ISessionRepository {
       `).run(
         data.status ?? null,
         data.statusSource ?? null,
+        data.processState ?? null,
         'statusReason' in data ? 1 : 0,
         data.statusReason ?? null,
         data.client ?? null,
@@ -484,6 +511,10 @@ class SessionRepository implements ISessionRepository {
         data.messageCount ?? null,
         hasAgentId ? 1 : 0,
         data.agentId ?? null,
+        hasAgentRole ? 1 : 0,
+        data.agentRole ?? null,
+        hasAgentNickname ? 1 : 0,
+        data.agentNickname ?? null,
         hasParentSessionId ? 1 : 0,
         data.parentSessionId ?? null,
         data.isSubAgent != null ? (data.isSubAgent ? 1 : 0) : null,
@@ -515,16 +546,16 @@ class SessionRepository implements ISessionRepository {
         db.prepare(`
           INSERT INTO sessions (
             id, session_id, directory, status, title, initial_prompt,
-            client, status_source, status_reason,
+            client, status_source, status_reason, process_state,
             last_tool, last_tool_input, current_file, last_message,
             started_at, last_active_at, completed_at, pid, tty,
             tool_count, message_count,
-            agent_id, parent_session_id, is_sub_agent,
+            agent_id, agent_role, agent_nickname, parent_session_id, is_sub_agent,
             total_input_tokens, total_output_tokens, total_tokens, total_cost, api_calls,
             tool_calls,
             was_process_observed,
             created_at, updated_at
-          ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+          ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         `).run(
           id,
           data.sessionId,
@@ -535,6 +566,7 @@ class SessionRepository implements ISessionRepository {
           data.client || 'claude',
           data.statusSource || 'scan',
           data.statusReason ?? null,
+          data.processState ?? "unknown",
           data.lastTool ?? null,
           data.lastToolInput ?? null,
           data.currentFile ?? null,
@@ -547,6 +579,8 @@ class SessionRepository implements ISessionRepository {
           data.toolCount || 0,
           data.messageCount || 0,
           data.agentId ?? null,
+          data.agentRole ?? null,
+          data.agentNickname ?? null,
           data.parentSessionId ?? null,
           data.isSubAgent ? 1 : 0,
           data.usageStats?.totalInputTokens ?? null,

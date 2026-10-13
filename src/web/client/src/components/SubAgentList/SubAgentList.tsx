@@ -94,7 +94,8 @@ export const SubAgentList = memo(function SubAgentList({ sessionId, cachedData }
                 }}
               >
                 <span className={styles.expandIcon}>{isExpanded ? '▼' : '▶'}</span>
-                <span className={styles.agentId}>{agent.agentId || 'unknown'}</span>
+                <span>子任务</span>
+                <span className={styles.agentId}>{agent.title || [agent.agentRole, agent.agentNickname].filter(Boolean).join(' · ') || agent.agentId || 'unknown'}</span>
                 <span className={styles.agentStats}>
                   {agent.toolCount} tools, {agent.messageCount} msgs
                 </span>

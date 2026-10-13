@@ -17,8 +17,9 @@ export function parseOpenRollouts(output: string): Map<string, number> {
 }
 export function probeOpenRollouts(): Promise<Map<string, number>> {
   if (process.platform !== 'darwin' && process.platform !== 'linux') return Promise.resolve(new Map());
-  return new Promise(resolve => execFile('lsof', ['-Fn', '-c', 'codex', '-c', 'Codex'], { timeout: 5000, maxBuffer: 8 * 1024 * 1024 }, (_error, stdout) => {
+  return new Promise((resolve, reject) => execFile('lsof', ['-Fn', '-c', 'codex', '-c', 'Codex'], { timeout: 5000, maxBuffer: 8 * 1024 * 1024 }, (error, stdout, stderr) => {
     // lsof exits 1 when no matching process is holding files.
+    if (error && !(error.code === 1 && !error.killed && !stderr.trim())) { reject(error); return; }
     resolve(parseOpenRollouts(stdout || ''));
   }));
 }

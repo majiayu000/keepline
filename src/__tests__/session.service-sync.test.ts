@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, test } from 'bun:test';
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'fs';
+import { chmodSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'fs';
 import { join } from 'path';
 import { tmpdir } from 'os';
 
@@ -87,6 +87,89 @@ afterEach(() => {
 });
 
 describe('SessionService sync', () => {
+  test('failed open-file probing withdraws online claims without reporting an exit', () => {
+    const homeDir = createTempHome();
+    const bin = join(homeDir, 'bin'); mkdirSync(bin);
+    const lsof = join(bin, 'lsof');
+    writeFileSync(lsof, '#!/bin/sh\necho "probe failed" >&2\nexit 2\n'); chmodSync(lsof, 0o755);
+    const result = runSyncScript(homeDir, `
+      const { resetDatabase } = await import('./src/db/migrations.ts');
+      const { sessionRepository } = await import('./src/infrastructure/database/repositories/session.repository.ts');
+      const { sessionService } = await import('./src/services/session.service.ts');
+      resetDatabase();
+      process.env.PATH = ${JSON.stringify(bin)} + ':' + process.env.PATH;
+      sessionRepository.upsert({ sessionId: 'probe-failure', status: 'idle', processState: 'online', pid: process.pid });
+      let failed = false;
+      try { await sessionService.syncSessions({ fullSync: true }); } catch { failed = true; }
+      const row = sessionRepository.findBySessionId('probe-failure');
+      console.log(JSON.stringify({ failed, processState: row.processState, retainedPid: row.pid === process.pid, status: row.status }));
+    `);
+    expect(result).toEqual({ failed: true, processState: 'unknown', retainedPid: true, status: 'idle' });
+  });
+  test('a shared live PID becomes unknown, then a real exit is retained separately from turn completion', () => {
+    const homeDir = createTempHome();
+    const dir = join(homeDir, '.codex', 'sessions');
+    mkdirSync(dir, { recursive: true });
+    const id = '01a1173b-b037-7fd0-b0a0-0fb8794e0601';
+    writeFileSync(join(dir, `rollout-${id}.jsonl`), [
+      { type: 'session_meta', timestamp: new Date().toISOString(), payload: { id, cwd: homeDir } },
+      { type: 'event_msg', timestamp: new Date().toISOString(), payload: { type: 'task_complete', turn_id: 'turn-1' } },
+    ].map(line => JSON.stringify(line)).join('\n') + '\n');
+    const result = runSyncScript(homeDir, `
+      const { resetDatabase } = await import('./src/db/migrations.ts');
+      const { sessionRepository } = await import('./src/infrastructure/database/repositories/session.repository.ts');
+      const { sessionService } = await import('./src/services/session.service.ts');
+      const { config } = await import('./src/lib/config.ts');
+      resetDatabase();
+      config.set('ledger', { ...config.get().ledger, enabled: false });
+      const child = Bun.spawn(['/bin/sleep','60'], { stdout: 'ignore', stderr: 'ignore' });
+      const sessionId = 'codex_${id}';
+      try {
+        sessionRepository.upsert({ sessionId, client: 'codex', directory: ${JSON.stringify(homeDir)}, status: 'idle', processState: 'online', pid: child.pid });
+        sessionRepository.markActiveSessionsInterrupted();
+        await sessionService.syncSessions({ fullSync: true });
+        const alive = sessionRepository.findBySessionId(sessionId);
+        child.kill(); await child.exited;
+        await sessionService.syncSessions({ fullSync: true });
+        const dead = sessionRepository.findBySessionId(sessionId);
+        await sessionService.syncSessions({ fullSync: true });
+        const later = sessionRepository.findBySessionId(sessionId);
+        console.log(JSON.stringify({ alive: alive.processState, retainedPid: alive.pid === child.pid, dead: dead.processState, deadPid: dead.pid ?? null, status: dead.status, later: later.processState }));
+      } finally { child.kill(); await child.exited; }
+    `);
+    expect(result).toEqual({ alive: 'unknown', retainedPid: true, dead: 'exited', deadPid: null, status: 'lost', later: 'exited' });
+  });
+  test('Codex spawn identity and titles sync without a state database or ledger enabled', () => {
+    const homeDir = createTempHome();
+    const dir = join(homeDir, '.codex', 'sessions', '2026', '10', '08');
+    mkdirSync(dir, { recursive: true });
+    const ids = ['01a1173b-b037-7fd0-b0a0-0fb8794e0697', '01a1173b-b037-7fd0-b0a0-0fb8794e0698'];
+    for (const id of ids) writeFileSync(join(dir, `rollout-${id}.jsonl`), [
+      { type: 'session_meta', timestamp: new Date().toISOString(), payload: { id, cwd: '/project', source: { subagent: { thread_spawn: { parent_thread_id: '01a1173b-355c-70b0-b842-92b86176d6b9', agent_role: 'you-are-here', agent_nickname: 'Chandrasekhar', agent_path: '/root/map', depth: 1 } } } } },
+      { type: 'response_item', timestamp: new Date().toISOString(), payload: { type: 'message', role: 'user', content: [{ type: 'input_text', text: 'Spawn the custom agent named you-are-here to draw a project map' }] } },
+    ].map(line => JSON.stringify(line)).join('\n') + '\n');
+    const result = runSyncScript(homeDir, `
+      const { resetDatabase } = await import('./src/db/migrations.ts');
+      const { closeDatabase } = await import('./src/infrastructure/database/sqlite.ts');
+      const { sessionRepository } = await import('./src/infrastructure/database/repositories/session.repository.ts');
+      const { sessionService } = await import('./src/services/session.service.ts');
+      const { generateTitle } = await import('./src/domain/session/index.ts');
+      const { config } = await import('./src/lib/config.ts');
+      resetDatabase();
+      config.set('ledger', { ...config.get().ledger, enabled: false });
+      const ids = ${JSON.stringify(ids)};
+      sessionRepository.upsert({ sessionId: 'codex_' + ids[0], client: 'codex', title: generateTitle('Spawn the custom agent named you-are-here to draw a project map') });
+      sessionRepository.upsert({ sessionId: 'codex_' + ids[1], client: 'codex', title: 'My custom map task' });
+      await sessionService.syncSessions({ fullSync: true });
+      console.log(JSON.stringify({ sessions: ids.map(id => {
+        const s = sessionRepository.findBySessionId('codex_' + id);
+        return { title: s.title, parentSessionId: s.parentSessionId, isSubAgent: s.isSubAgent, agentRole: s.agentRole, agentNickname: s.agentNickname };
+      }) }));
+      closeDatabase();
+    `);
+    expect(result.sessions).toEqual(['you-are-here · Chandrasekhar', 'My custom map task'].map(title => ({ title, parentSessionId: '01a1173b-355c-70b0-b842-92b86176d6b9', isSubAgent: true, agentRole: 'you-are-here', agentNickname: 'Chandrasekhar' })));
+  });
+
   test('preserves user-completed sessions during later file syncs', () => {
     const homeDir = createTempHome();
     const sessionId = 'completed-sync-1';
@@ -393,19 +476,17 @@ describe('SessionService sync with missing cwd', () => {
     for (const psListsPid of [true, false]) {
       test(`reconciles stored agent identity with transcript=${transcript}, psListsPid=${psListsPid}`, () => {
         const result = syncFixture({ transcript, psListsPid, alive: true });
-        expect(result.syncResult).toEqual({ discovered: 0, updated: transcript ? 1 : 0, lost: psListsPid ? 1 : 2 });
-        if (psListsPid) {
-          expect(result.lostEvents).toEqual(['dead-cwd-sync']);
-          expect(result.sessions).toContainEqual({
-            sessionId: 'live-cwd-sync', status: 'waiting', statusSource: 'hook', pid: 12345, tty: 'ttys001',
-          });
-        } else {
-          expect(result.lostEvents).toContain('live-cwd-sync');
-          expect(result.sessions).toContainEqual({
-            sessionId: 'live-cwd-sync', status: 'lost', statusSource: 'scan', pid: null, tty: transcript ? null : 'ttys001',
-          });
-        }
-        expect(result.checkedPids).toEqual([]);
+        expect(result.syncResult).toEqual({ discovered: 0, updated: transcript ? 1 : 0, lost: 1 });
+        expect(result.lostEvents).toEqual(['dead-cwd-sync']);
+        expect(result.sessions).toContainEqual({
+          sessionId: 'live-cwd-sync', status: 'waiting', statusSource: 'hook', pid: 12345,
+          tty: transcript && !psListsPid ? null : 'ttys001',
+        });
+        // Missing from an agent-only ps result is not proof of exit. Probe the
+        // retained PID; only ESRCH for the other session establishes its exit.
+        expect(result.checkedPids).toContain(12346);
+        if (!psListsPid) expect(result.checkedPids).toContain(12345);
+        else expect(result.checkedPids).not.toContain(12345);
       });
     }
 
@@ -416,7 +497,7 @@ describe('SessionService sync with missing cwd', () => {
       expect(result.lostEvents).toContain('dead-cwd-sync');
       expect(result.sessions).toContainEqual({
         sessionId: 'live-cwd-sync', status: 'lost', statusSource: 'scan', pid: null,
-        tty: transcript ? null : 'ttys001',
+        tty: null,
       });
     });
   }

@@ -177,7 +177,9 @@ function getProcessCommandMatch(command: string, rawLine: string): ProcessComman
   // ps does not quote argv[0]; desktop executable paths contain spaces.
   const desktopExecutable = command.match(/^\/?[^\n]*?\/Claude\/claude-code\/[^\n]*?\/(?:claude|claude-code)(?=\s|$)/i)?.[0];
   if (desktopExecutable && !/\s--?\S/.test(desktopExecutable)) return { client: 'claude', argStartTokenIndex: desktopExecutable.trim().split(/\s+/).length };
-  const executableName = commandTokens[0].split('/').pop()?.toLowerCase() ?? '';
+  // CLI executable names are case-sensitive. Lowercasing a space-truncated
+  // desktop path turns "Codex Computer Use" or "Claude Helper" into a CLI.
+  const executableName = commandTokens[0].split('/').pop() ?? '';
   const directClient = getAgentClientFromExecutableName(executableName);
   if (directClient) {
     if (directClient === 'codex' && isIgnoredCodexProcess(rawLine)) return null;
@@ -192,7 +194,7 @@ function getProcessCommandMatch(command: string, rawLine: string): ProcessComman
     const token = commandTokens[index];
     if (token.startsWith('-')) continue;
 
-    const shimName = token.split('/').pop()?.toLowerCase() ?? '';
+    const shimName = token.split('/').pop() ?? '';
     const shimClient = getAgentClientFromExecutableName(shimName);
     if (!shimClient) continue;
 

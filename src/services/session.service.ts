@@ -10,13 +10,13 @@ import { codexTurnStatus, probeOpenRollouts, readCodexMetadata, closeCodexMetada
  * Includes sync lock to prevent concurrent sync operations.
  */
 
-import type { Session } from '../domain/session/index.js';
+import type { Session, ParsedSessionData } from '../domain/session/index.js';
 import { generateTitle, isGeneratedSessionTitle } from '../domain/session/index.js';
 import type { ISessionRepository } from '../domain/session/repository.js';
 import { sessionRepository } from '../infrastructure/database/repositories/session.repository.js';
 import { emit } from '../lib/events.js';
 import { getCachedProcesses, clearProcessCache } from '../adapters/process/scanner.js';
-import { detectSessionStatus } from '../adapters/process/detector.js';
+import { detectProcessState, detectSessionStatus } from '../adapters/process/detector.js';
 import {
   clearSessionCache,
   getAllSessionsWithFailures as getClaudeSessionsWithFailures,
@@ -206,7 +206,7 @@ export class SessionService {
 
       // Get current process info (will be cached for duration of sync)
       const processes = getCachedProcesses();
-      const runningAgentPids = new Set(processes.map((process) => process.pid));
+
 
       // Get sessions from file system (with optional age filter for performance)
       const [claudeScan, codexScan] = await Promise.all([
@@ -224,7 +224,7 @@ export class SessionService {
           strictReadFailures: options.fullSync === true,
         }), { softFail: softFailRuntimeScans }),
       ]);
-      const scannedSessions = [...claudeScan.sessions, ...codexScan.sessions];
+      const scannedSessions: ParsedSessionData[] = [...claudeScan.sessions, ...codexScan.sessions];
       const invalidScannedSessions = scannedSessions.filter(
         (session) => !isValidSessionId(session.sessionId)
       );
@@ -259,6 +259,7 @@ export class SessionService {
       }), processes);
       const ledgerConfig = config.get().ledger;
       const openRollouts = ledgerConfig.enabled && !ledgerConfig.exclude.runtimes.includes('codex') ? await probeOpenRollouts() : new Map<string,number>();
+      const processOwners = new Map([...processMatches].map(([id, process]) => [process.pid, id]));
 
       // Process each scanned session
       for (const agentSession of agentSessions) {
@@ -267,6 +268,10 @@ export class SessionService {
         let process = processMatches.get(agentSession.sessionId);
         const livePid = agentSession.sourcePath && openRollouts.get(agentSession.sourcePath);
         if (!process && livePid) process = { client: 'codex', pid: livePid, cwd: agentSession.directory, cpu: 0, memory: 0, startTime: agentSession.startedAt ?? new Date(), args: ['Codex desktop'] };
+        const reassigned = !!existing?.pid && processOwners.has(existing.pid) && processOwners.get(existing.pid) !== agentSession.sessionId;
+        const processState = detectProcessState(Boolean(process), reassigned ? undefined : existing);
+        // Keep an unmatched live PID for a later definitive exit observation.
+        const pid = process?.pid ?? (processState === 'unknown' && !reassigned ? existing?.pid : undefined);
         // Keep the summary cache free of ledger arrays; process one eligible transcript at a time.
         const ledgerEligible = ledgerEnabled({ client, directory: agentSession.directory, lastActiveAt: agentSession.lastActiveAt });
         const ledgerParsed = { ...agentSession };
@@ -276,17 +281,22 @@ export class SessionService {
           ledgerParsed.transcriptFacts = facts.facts; ledgerParsed.unknownRecords = facts.unknownRecords;
         }
         const metadata = client === 'codex' && ledgerConfig.enabled ? readCodexMetadata(agentSession.sessionId.replace(/^codex_/,'')) : {};
-        if (metadata.parentId) agentSession.parentSessionId = metadata.parentId;
+        if (!agentSession.parentSessionId && metadata.parentId) agentSession.parentSessionId = metadata.parentId;
+        if (client === 'codex' && agentSession.parentSessionId) agentSession.isSubAgent = true;
+        const subagentTitle = client === 'codex' && agentSession.isSubAgent
+          ? [agentSession.agentRole,agentSession.agentNickname].filter(Boolean).join(' · ') || `子任务 · ${agentSession.sessionId.slice(-6)}`
+          : undefined;
         if (metadata.title && (!agentSession.firstMessage || isGeneratedSessionTitle(agentSession.firstMessage))) agentSession.firstMessage = metadata.title;
 
         const turnStatus = client === 'codex' && ledgerEligible ? scanSnapshot?.summary.pendingInput ? 'needs_input' : codexTurnStatus(ledgerParsed.transcriptFacts ?? (scanSnapshot?.lastTurn ? [scanSnapshot.lastTurn] : []), Boolean(process), agentSession.lastActiveAt, ledgerConfig.stalledAfterSeconds) : undefined;
-        const detectedStatus = turnStatus ?? detectSessionStatus(process || null,agentSession.lastActiveAt);
+        const detectedStatus = turnStatus ?? (!process && processState === 'unknown' && !reassigned && existing
+          ? existing.status : detectSessionStatus(process || null,agentSession.lastActiveAt));
         // A lifecycle hook is received after the transcript record that caused it.
         // Keep that newer semantic observation while its process is still alive;
         // otherwise the CPU/time heuristic would immediately overwrite it.
         const hasNewerHookObservation = Boolean(
           existing &&
-          (process || existing.status === 'needs_input') &&
+          (process || processState === 'unknown' && !reassigned || existing.status === 'needs_input') &&
           existing.statusSource === 'hook' &&
           (existing.status === 'running' || existing.status === 'waiting' || existing.status === 'needs_input') &&
           existing.lastActiveAt.getTime() >= agentSession.lastActiveAt.getTime()
@@ -307,8 +317,8 @@ export class SessionService {
 
           // Replace only generated context noise; preserve normal and user-edited titles.
           const shouldUpdateTitle =
-            (isGeneratedSessionTitle(existing.title) || metadata.name && existing.title === generateTitle(agentSession.firstMessage ?? metadata.title ?? 'Unknown task')) &&
-            (metadata.name || agentSession.firstMessage && agentSession.firstMessage !== 'Unknown task');
+            (isGeneratedSessionTitle(existing.title) || (metadata.name || subagentTitle) && existing.title === generateTitle(agentSession.firstMessage ?? metadata.title ?? 'Unknown task')) &&
+            (metadata.name || subagentTitle || agentSession.firstMessage && agentSession.firstMessage !== 'Unknown task');
 
           const updatedSession = this.repository.upsert({
             sessionId: agentSession.sessionId,
@@ -319,7 +329,7 @@ export class SessionService {
               ? existing.statusSource
               : 'scan',
             ...(shouldUpdateTitle && {
-              title: metadata.name || generateTitle(agentSession.firstMessage!),
+              title: metadata.name || subagentTitle || generateTitle(agentSession.firstMessage!),
               ...(!metadata.name && { initialPrompt: agentSession.firstMessage }),
             }),
             lastTool: agentSession.lastTool,
@@ -329,11 +339,14 @@ export class SessionService {
             currentFile: agentSession.currentFile,
             lastMessage: agentSession.lastMessage,
             lastActiveAt,
-            pid: process?.pid,
+            pid,
+            processState,
             tty: process?.tty,
             toolCount: agentSession.toolCount,
             messageCount: agentSession.messageCount,
             agentId: agentSession.agentId,
+            agentRole: agentSession.agentRole,
+            agentNickname: agentSession.agentNickname,
             parentSessionId: agentSession.parentSessionId,
             isSubAgent: agentSession.isSubAgent,
             usageStats: agentSession.usageStats,
@@ -350,7 +363,7 @@ export class SessionService {
           }
         } else {
           // Create new session with all data in single upsert (no redundant calls)
-          const title = metadata.name || (agentSession.firstMessage
+          const title = metadata.name || subagentTitle || (agentSession.firstMessage
             ? generateTitle(agentSession.firstMessage)
             : 'Unknown task');
 
@@ -371,11 +384,14 @@ export class SessionService {
             lastMessage: agentSession.lastMessage,
             startedAt: agentSession.startedAt,
             lastActiveAt: agentSession.lastActiveAt,
-            pid: process?.pid,
+            pid,
+            processState,
             tty: process?.tty,
             toolCount: agentSession.toolCount,
             messageCount: agentSession.messageCount,
             agentId: agentSession.agentId,
+            agentRole: agentSession.agentRole,
+            agentNickname: agentSession.agentNickname,
             parentSessionId: agentSession.parentSessionId,
             isSubAgent: agentSession.isSubAgent,
             usageStats: agentSession.usageStats,
@@ -389,24 +405,22 @@ export class SessionService {
         }
       }
 
-      // Check for sessions whose processes have died
-      const activeSessions = this.repository.findActiveLightweight();
-      for (const session of activeSessions) {
-        if (session.pid && !runningAgentPids.has(session.pid)) {
-          // Process died, mark as lost unless it was completed
-          if (session.status !== 'completed') {
-            const lostSession = this.repository.upsert({
-              sessionId: session.sessionId,
-              status: 'lost',
-              statusSource: 'scan',
-              pid: undefined,
-            });
-            lost++;
-            emit('session:lost', {
-              session: lostSession,
-              previousStatus: session.status,
-            });
-          }
+      // Reconcile bound sessions outside the transcript scan window too.
+      const scannedIds = new Set(agentSessions.map(session => session.sessionId));
+      for (const session of this.repository.findActiveLightweight()) {
+        if (scannedIds.has(session.sessionId) || !session.pid) continue;
+        const reassigned = processOwners.has(session.pid) && processOwners.get(session.pid) !== session.sessionId;
+        const matched = !reassigned && processes.some(process => process.pid === session.pid && process.client === session.client);
+        const processState = detectProcessState(matched, reassigned ? undefined : session);
+        const exited = processState === 'exited';
+        const next = this.repository.upsert({
+          sessionId: session.sessionId, processState,
+          ...((exited || reassigned) && { pid: undefined, tty: undefined }),
+          ...(exited && session.status !== 'completed' && { status: 'lost', statusSource: 'scan' }),
+        });
+        if (exited && session.status !== 'completed') {
+          lost++;
+          emit('session:lost', { session: next, previousStatus: session.status });
         }
       }
 
@@ -419,6 +433,12 @@ export class SessionService {
       logger.debug(`Sync complete: ${discovered} new, ${updated} updated, ${lost} lost (${duration}ms)`);
 
       return { discovered, updated, lost };
+    } catch (error) {
+      // Failed observation must withdraw online claims, never invent exits.
+      for (const session of this.repository.findActiveLightweight()) {
+        if (session.processState === 'online') this.repository.upsert({ sessionId: session.sessionId, processState: 'unknown' });
+      }
+      throw error;
     } finally {
       this.isSyncing = false;
     }

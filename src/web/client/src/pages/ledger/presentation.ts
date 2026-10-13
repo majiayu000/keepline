@@ -3,16 +3,18 @@ import type {
   LedgerEvidence,
   LedgerStep,
   RequirementItem,
+  LedgerMonitorStatus,
 } from "../../../../../domain/ledger/types";
 import type { WorkItem } from "../../types/work-item";
 import {
   confirmedRequirement,
   ledgerNeedsAttention,
+  ledgerAttentionKind,
 } from "../../../../../domain/ledger/types";
 
 export const stateText = {
   running: "运行中",
-  needs_input: "等你审批",
+  needs_input: "等你处理",
   review: "待核对",
   accepted: "已验收",
   stopped: "已停下",
@@ -59,6 +61,9 @@ export function time(at: string) {
 export function projectName(root: string) {
   return root.split("/").filter(Boolean).at(-1) || "未关联项目";
 }
+function contextTokens(tokens: number) {
+  return new Intl.NumberFormat("en-US", { notation: "compact", maximumFractionDigits: 1 }).format(tokens).replace("K", "k");
+}
 export function evidenceText(row: LedgerDetail) {
   const e = row.activity?.evidence[0] ?? row.evidence.at(-1);
   return e
@@ -93,16 +98,16 @@ export function keyStep(step: LedgerStep, evidence: LedgerEvidence[]) {
 }
 export function rowPresentation(row: LedgerDetail, now = Date.now()) {
   const need = ledgerNeedsAttention(row);
-  // Attention determines the queue; only missing evidence or intervention uses the orange design treatment.
-  const highlight =
-    row.state === "needs_input" ||
-    (row.state === "running" && row.offPlan.length > 0) ||
-    (row.state === "review" && row.progress.done < row.progress.total);
-  const paused = row.state === "stopped";
+  const highlight = need;
+  const online = row.processState === "online";
+  const exited = row.processState === "exited";
+  const unknown = !online && !exited;
+  const paused = row.state === "stopped" && !exited;
   const ended = row.state === "ended" || row.state === "accepted";
-  const tag =
+  const historical = exited || ended;
+  const workTag =
     row.state === "needs_input"
-      ? `▲ 等你回答 · ${elapsed(row.lastActiveAt, now)}`
+      ? `▲ 等你处理 · ${elapsed(row.inputRequest?.at ?? row.observation?.at ?? row.lastActiveAt, now)}`
       : row.state === "running" && row.offPlan.length
         ? "▲ 偏离"
         : row.state === "review"
@@ -118,58 +123,82 @@ export function rowPresentation(row: LedgerDetail, now = Date.now()) {
               : ended
                 ? "已结束"
                 : "● 运行中";
+  const tag = exited ? `已退出${row.unread ? " · 新回复" : row.state === "review" ? " · 待核对" : ""}`
+    : unknown ? `无法确认在线 · ${row.state === "running" ? "未见本轮结束" : workTag}`
+    : workTag;
   const first = row.asks[0]?.at ?? row.turns[0]?.at ?? row.lastActiveAt;
   const duration = Math.max(
     0,
     Math.floor(
-      ((ended ? Date.parse(row.lastActiveAt) : now) - Date.parse(first)) /
+      ((historical ? Date.parse(row.lastActiveAt) : now) - Date.parse(first)) /
         60000,
     ),
   );
   const latestEvidence = row.activity?.evidence[0] ?? row.evidence.at(-1);
   const activityMinutes = Math.max(0, Math.floor((now - Date.parse(row.lastActiveAt)) / 60000));
+  const pendingTool = row.state === "running" && row.activity?.completed === false && row.activity.turnId === row.turnId;
+  const observationLabel = row.observation?.source === "hook" ? "实时事件"
+    : row.observation?.source === "transcript" ? "执行记录"
+    : row.observation?.source === "user" ? "你的确认" : "推测";
   const activeAgo = activityMinutes < 1
     ? "刚刚"
     : activityMinutes < 60
       ? `${activityMinutes} 分钟前`
       : `${Math.floor(activityMinutes / 60)} 小时前`;
+  const contextPercent = row.contextUsage
+    ? Math.round(row.contextUsage.usedTokens / row.contextUsage.windowTokens * 100)
+    : undefined;
   return {
     need,
     highlight,
     paused,
     ended,
+    online,
+    exited,
+    unknown,
+    historical,
     tag,
+    observationLabel,
+    observationTitle: row.observation ? `${observationLabel}：${row.observation.reason} · ${new Date(row.observation.at).toLocaleString("zh-CN", { hour12: false })}` : "尚无可解释的状态依据",
     agent:
       row.runtimeId === "codex"
         ? "Codex"
         : row.runtimeId === "claude-code"
           ? "Claude Code"
           : row.runtimeId,
-    elapsed: elapsed(first, ended ? Date.parse(row.lastActiveAt) : now),
+    elapsed: elapsed(first, historical ? Date.parse(row.lastActiveAt) : now),
     compactElapsed:
       duration < 60
         ? `${duration}m`
         : `${Math.floor(duration / 60)}h${duration % 60 ? ` ${duration % 60}m` : ""}`,
     activeAgo,
     activityTitle: `最后活动：${new Date(row.lastActiveAt).toLocaleString("zh-CN", { hour12: false })}`,
+    context: contextPercent === undefined ? undefined : {
+      percent: contextPercent,
+      text: `${contextPercent}%`,
+      tooltip: `上下文 ${contextTokens(row.contextUsage!.usedTokens)} / ${contextTokens(row.contextUsage!.windowTokens)} (${contextPercent}%)`,
+      detail: `${contextPercent}% 已用${contextPercent >= 90 ? " · 接近上限，长任务可能被截断" : contextPercent >= 70 ? " · 偏高" : ""}`,
+      fg: contextPercent >= 90 ? "#B45309" : "#6B7280",
+      bar: contextPercent >= 90 ? itemColors.unverified : contextPercent >= 70 ? itemColors.doing : itemColors.done,
+    },
     lastAgo: activityMinutes < 1 ? "刚刚" : `${elapsed(row.lastActiveAt, now)}前`,
     tagBg: highlight
       ? "#FFF1DB"
-      : row.state === "running"
+      : online && row.state === "running"
         ? "#EEF0FD"
         : row.state === "accepted"
           ? "#4F5BD5"
           : "#EEF0F3",
     tagFg: highlight
       ? "#B45309"
-      : row.state === "running"
+      : online && row.state === "running"
         ? "#4F5BD5"
         : row.state === "accepted"
           ? "#fff"
           : "#4B5160",
     action:
       row.state === "needs_input"
-        ? "跳到 agent 回答"
+        ? "查看待响应会话"
         : row.state === "review"
           ? row.progress.total === 0
             ? "查看回复"
@@ -179,11 +208,15 @@ export function rowPresentation(row: LedgerDetail, now = Date.now()) {
           : row.offPlan.length && !ended
             ? "看偏离"
             : null,
-    now:
-      row.activity?.action ??
+    now: exited && row.state !== "review" ? "已确认进程退出，执行记录已保留" : row.state === "needs_input"
+      ? row.inputRequest?.question ?? row.statusReason ?? "等待你的审批或补充信息"
+      : row.activity?.action
+        ? pendingTool ? `工具已发起，尚未观察到结果：${row.activity.action} · ${elapsed(row.activity.at ?? row.lastActiveAt, now)}`
+          : `上次动作：${row.activity.action}${row.activity.exitCode !== undefined ? ` · exit ${row.activity.exitCode}` : ""}`
+        :
       (row.state === "review"
         ? row.progress.total === 0 ? "这一轮已回复，等你查看" : "这一轮已结束，等你核对"
-        : (row.statusReason ?? "暂无可读取的执行活动")),
+        : row.possiblyWaiting ? "可能在等待，暂无明确输入请求" : "暂未观察到新的执行活动"),
     items: row.items.filter(confirmedRequirement),
     evidence: evidenceText(row),
     evidenceSummary: latestEvidence
@@ -192,13 +225,40 @@ export function rowPresentation(row: LedgerDetail, now = Date.now()) {
     ask: row.asks[0]?.text ?? "",
   };
 }
+export function attentionSummary(rows: Array<Pick<LedgerDetail, 'state' | 'processState' | 'offPlan' | 'progress'>>, replyLabel = '条新回复') {
+  const kinds = rows.map(ledgerAttentionKind);
+  return ([['input', '个等你回答或审批'], ['reply', replyLabel], ['acceptance', '个待验收'], ['deviation', '个偏离待核对']] as const)
+    .map(([kind, label]) => { const count = kinds.filter(value => value === kind).length; return count ? `${count} ${label}` : ''; })
+    .filter(Boolean).join(' · ') || '暂无待处理事项';
+}
+export function monitorPresentation(status: LedgerMonitorStatus, now = Date.now()) {
+  const scan = status.scan;
+  const at = scan.lastCompletedAt ?? status.runtimes.map(runtime => runtime.lastScanAt).filter((at): at is string => !!at).sort().at(-1);
+  const stale = !!at && now - Date.parse(at) > (scan.intervalMs ?? 60000) + (scan.timeoutMs ?? 30000) + 15000;
+  const warning = scan.failed || stale || scan.intervalMs === 0 || !at && !scan.running || status.runtimes.some(runtime => runtime.errorCount > 0);
+  const text = scan.failed ? '扫描失败，记录可能不完整'
+    : stale ? `数据已过期 · 最近扫描 ${elapsed(at!, now)}前`
+    : !at ? scan.running ? '首次扫描中，尚不能确认待处理数量' : '尚未观察到扫描，不能确认待处理数量'
+    : scan.intervalMs === 0 ? `定时扫描已关闭 · 最近扫描 ${elapsed(at, now)}前`
+    : `最近扫描 ${now - Date.parse(at) < 60000 ? '刚刚' : `${elapsed(at, now)}前`}${scan.running ? ' · 正在更新' : ''}${status.runtimes.some(runtime => runtime.errorCount > 0) ? ' · 有记录读取失败' : ''}`;
+  return { warning, text };
+}
 export type RowPresentation = ReturnType<typeof rowPresentation>;
 export function groupRows(
   rows: LedgerDetail[],
-  grouping: "urgency" | "project" | "goal",
+  grouping: "recent" | "urgency" | "project" | "goal",
   now = Date.now(),
   goalContext?: { todos: Pick<WorkItem, "id" | "parentId">[]; goals: Pick<WorkItem, "id" | "title">[] },
 ) {
+  const latestFirst = (a: LedgerDetail, b: LedgerDetail) =>
+    Date.parse(b.lastActiveAt) - Date.parse(a.lastActiveAt);
+  if (grouping === "recent")
+    return [{
+      key: "recent",
+      label: "最近活动",
+      hint: "最新在前 · 包含历史会话",
+      rows: [...rows].sort(latestFirst),
+    }];
   if (grouping === "goal") {
     const todoGoals = new Map(goalContext?.todos.map(todo => [todo.id, todo.parentId]));
     const goals = new Map(goalContext?.goals.map(goal => [goal.id, goal.title]));
@@ -214,27 +274,23 @@ export function groupRows(
     });
   }
   if (grouping === "project")
-    return [...new Set(rows.map((r) => r.projectRoot))].map((root) => ({
+    return [...new Set([...rows].sort(latestFirst).map((r) => r.projectRoot))].map((root) => ({
       key: root,
       label: projectName(root),
       hint: `${rows.filter((r) => r.projectRoot === root && rowPresentation(r, now).need).length} 需要你`,
       rows: rows
         .filter((r) => r.projectRoot === root)
-        .sort(
-          (a, b) =>
-            Number(rowPresentation(b, now).need) -
-            Number(rowPresentation(a, now).need),
-        ),
+        .sort(latestFirst),
     }));
   return [
     {
       key: "need",
       label: "需要你",
-      hint: "按等待时长排序",
+      hint: "最新活动在前",
       rows: rows
-        .filter((r) => rowPresentation(r, now).need)
+        .filter((r) => { const p = rowPresentation(r, now); return p.need && !p.historical; })
         .sort(
-          (a, b) => Number(b.state === "needs_input") - Number(a.state === "needs_input") || Date.parse(a.lastActiveAt) - Date.parse(b.lastActiveAt),
+          (a, b) => Number(b.state === "needs_input") - Number(a.state === "needs_input") || latestFirst(a, b),
         ),
     },
     {
@@ -244,7 +300,7 @@ export function groupRows(
       rows: rows
         .filter((r) => {
           const p = rowPresentation(r, now);
-          return !p.need && !p.paused && !p.ended;
+          return p.online && !p.need && !p.paused && !p.historical;
         })
         .sort(
           (a, b) => Date.parse(b.lastActiveAt) - Date.parse(a.lastActiveAt),
@@ -252,21 +308,25 @@ export function groupRows(
     },
     {
       key: "ended",
-      label: "已结束",
+      label: "历史会话",
       hint: "按最后活动排序",
       rows: rows
-        .filter((r) => rowPresentation(r, now).ended)
+        .filter((r) => rowPresentation(r, now).historical)
         .sort(
           (a, b) => Date.parse(b.lastActiveAt) - Date.parse(a.lastActiveAt),
         ),
     },
     {
       key: "paused",
-      label: "暂停",
-      hint: "进程安静、停下或丢失",
-      rows: rows.filter((r) => rowPresentation(r, now).paused),
+      label: "停下了",
+      hint: "本轮中断或暂未继续",
+      rows: rows.filter((r) => rowPresentation(r, now).paused).sort(latestFirst),
     },
-  ].filter((g) => g.rows.length || g.key !== "paused");
+    {
+      key: "unknown", label: "在线状态待确认", hint: "保留记录，不计入在线数量",
+      rows: rows.filter(r => { const p = rowPresentation(r, now); return p.unknown && !p.need && !p.paused && !p.historical; }).sort(latestFirst),
+    },
+  ].filter((g) => g.rows.length || !["paused", "unknown"].includes(g.key));
 }
 export function requirementStatus(item: RequirementItem) {
   return item.dropped

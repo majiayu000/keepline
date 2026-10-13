@@ -1,0 +1,493 @@
+{
+  "retentionDays": 7,
+  "scanIntervalSeconds": 5,
+  "durationSeconds": 300,
+  "pid": 16105,
+  "source": "real local Codex and Claude logs; isolated Keepline database; models disabled",
+  "startupSeconds": 28.14,
+  "requests": {
+    "/api/ledger?hours=24": [
+      {
+        "bytes": 6359442,
+        "ms": 164.88,
+        "rows": 73
+      },
+      {
+        "bytes": 6359442,
+        "ms": 70.09,
+        "rows": 73
+      },
+      {
+        "bytes": 6359442,
+        "ms": 68.85,
+        "rows": 73
+      },
+      {
+        "bytes": 6359442,
+        "ms": 66.75,
+        "rows": 73
+      },
+      {
+        "bytes": 6359442,
+        "ms": 68.41,
+        "rows": 73
+      }
+    ],
+    "/api/ledger/menubar": [
+      {
+        "bytes": 96960,
+        "ms": 15.27,
+        "rows": 73
+      },
+      {
+        "bytes": 96960,
+        "ms": 12.88,
+        "rows": 73
+      },
+      {
+        "bytes": 96960,
+        "ms": 11.89,
+        "rows": 73
+      },
+      {
+        "bytes": 96960,
+        "ms": 11.82,
+        "rows": 73
+      },
+      {
+        "bytes": 96960,
+        "ms": 11.65,
+        "rows": 73
+      }
+    ]
+  },
+  "samples": [
+    {
+      "elapsed": 0.0,
+      "cpuPercent": 66.8,
+      "rssMiB": 266.06,
+      "scanRunning": false,
+      "scanError": null
+    },
+    {
+      "elapsed": 5.1,
+      "cpuPercent": 0.0,
+      "rssMiB": 266.11,
+      "scanRunning": false,
+      "scanError": null
+    },
+    {
+      "elapsed": 10.2,
+      "cpuPercent": 0.1,
+      "rssMiB": 266.05,
+      "scanRunning": false,
+      "scanError": null
+    },
+    {
+      "elapsed": 15.2,
+      "cpuPercent": 0.0,
+      "rssMiB": 307.31,
+      "scanRunning": true,
+      "scanError": null
+    },
+    {
+      "elapsed": 20.3,
+      "cpuPercent": 0.0,
+      "rssMiB": 266.09,
+      "scanRunning": false,
+      "scanError": null
+    },
+    {
+      "elapsed": 25.3,
+      "cpuPercent": 0.0,
+      "rssMiB": 266.12,
+      "scanRunning": false,
+      "scanError": null
+    },
+    {
+      "elapsed": 30.6,
+      "cpuPercent": 0.3,
+      "rssMiB": 286.27,
+      "scanRunning": false,
+      "scanError": null
+    },
+    {
+      "elapsed": 35.6,
+      "cpuPercent": 0.0,
+      "rssMiB": 286.11,
+      "scanRunning": false,
+      "scanError": null
+    },
+    {
+      "elapsed": 40.7,
+      "cpuPercent": 0.0,
+      "rssMiB": 286.11,
+      "scanRunning": false,
+      "scanError": null
+    },
+    {
+      "elapsed": 45.7,
+      "cpuPercent": 0.0,
+      "rssMiB": 286.12,
+      "scanRunning": false,
+      "scanError": null
+    },
+    {
+      "elapsed": 50.8,
+      "cpuPercent": 0.0,
+      "rssMiB": 286.12,
+      "scanRunning": false,
+      "scanError": null
+    },
+    {
+      "elapsed": 55.8,
+      "cpuPercent": 0.0,
+      "rssMiB": 286.12,
+      "scanRunning": false,
+      "scanError": null
+    },
+    {
+      "elapsed": 60.9,
+      "cpuPercent": 0.4,
+      "rssMiB": 286.33,
+      "scanRunning": false,
+      "scanError": null
+    },
+    {
+      "elapsed": 66.0,
+      "cpuPercent": 31.4,
+      "rssMiB": 396.61,
+      "scanRunning": true,
+      "scanError": null
+    },
+    {
+      "elapsed": 71.0,
+      "cpuPercent": 0.0,
+      "rssMiB": 298.08,
+      "scanRunning": true,
+      "scanError": null
+    },
+    {
+      "elapsed": 76.1,
+      "cpuPercent": 0.0,
+      "rssMiB": 286.28,
+      "scanRunning": false,
+      "scanError": null
+    },
+    {
+      "elapsed": 81.2,
+      "cpuPercent": 0.0,
+      "rssMiB": 286.28,
+      "scanRunning": false,
+      "scanError": null
+    },
+    {
+      "elapsed": 86.2,
+      "cpuPercent": 0.0,
+      "rssMiB": 286.23,
+      "scanRunning": false,
+      "scanError": null
+    },
+    {
+      "elapsed": 91.3,
+      "cpuPercent": 0.0,
+      "rssMiB": 288.61,
+      "scanRunning": false,
+      "scanError": null
+    },
+    {
+      "elapsed": 96.4,
+      "cpuPercent": 0.0,
+      "rssMiB": 288.61,
+      "scanRunning": false,
+      "scanError": null
+    },
+    {
+      "elapsed": 101.5,
+      "cpuPercent": 0.0,
+      "rssMiB": 288.61,
+      "scanRunning": false,
+      "scanError": null
+    },
+    {
+      "elapsed": 106.5,
+      "cpuPercent": 0.1,
+      "rssMiB": 288.61,
+      "scanRunning": false,
+      "scanError": null
+    },
+    {
+      "elapsed": 111.6,
+      "cpuPercent": 0.0,
+      "rssMiB": 288.98,
+      "scanRunning": false,
+      "scanError": null
+    },
+    {
+      "elapsed": 116.7,
+      "cpuPercent": 0.0,
+      "rssMiB": 289.75,
+      "scanRunning": false,
+      "scanError": null
+    },
+    {
+      "elapsed": 121.8,
+      "cpuPercent": 0.0,
+      "rssMiB": 292.69,
+      "scanRunning": false,
+      "scanError": null
+    },
+    {
+      "elapsed": 126.8,
+      "cpuPercent": 0.1,
+      "rssMiB": 292.67,
+      "scanRunning": false,
+      "scanError": null
+    },
+    {
+      "elapsed": 131.9,
+      "cpuPercent": 0.2,
+      "rssMiB": 293.42,
+      "scanRunning": false,
+      "scanError": null
+    },
+    {
+      "elapsed": 136.9,
+      "cpuPercent": 3.1,
+      "rssMiB": 351.94,
+      "scanRunning": true,
+      "scanError": null
+    },
+    {
+      "elapsed": 142.0,
+      "cpuPercent": 0.0,
+      "rssMiB": 294.17,
+      "scanRunning": false,
+      "scanError": null
+    },
+    {
+      "elapsed": 147.0,
+      "cpuPercent": 0.0,
+      "rssMiB": 295.17,
+      "scanRunning": false,
+      "scanError": null
+    },
+    {
+      "elapsed": 152.3,
+      "cpuPercent": 0.7,
+      "rssMiB": 312.16,
+      "scanRunning": false,
+      "scanError": null
+    },
+    {
+      "elapsed": 157.4,
+      "cpuPercent": 0.0,
+      "rssMiB": 312.05,
+      "scanRunning": false,
+      "scanError": null
+    },
+    {
+      "elapsed": 162.5,
+      "cpuPercent": 0.2,
+      "rssMiB": 312.05,
+      "scanRunning": false,
+      "scanError": null
+    },
+    {
+      "elapsed": 167.5,
+      "cpuPercent": 0.0,
+      "rssMiB": 312.06,
+      "scanRunning": false,
+      "scanError": null
+    },
+    {
+      "elapsed": 172.6,
+      "cpuPercent": 0.0,
+      "rssMiB": 312.06,
+      "scanRunning": false,
+      "scanError": null
+    },
+    {
+      "elapsed": 177.6,
+      "cpuPercent": 0.1,
+      "rssMiB": 312.12,
+      "scanRunning": false,
+      "scanError": null
+    },
+    {
+      "elapsed": 182.8,
+      "cpuPercent": 0.4,
+      "rssMiB": 312.34,
+      "scanRunning": false,
+      "scanError": null
+    },
+    {
+      "elapsed": 187.8,
+      "cpuPercent": 11.7,
+      "rssMiB": 384.91,
+      "scanRunning": true,
+      "scanError": null
+    },
+    {
+      "elapsed": 192.9,
+      "cpuPercent": 0.0,
+      "rssMiB": 312.34,
+      "scanRunning": false,
+      "scanError": null
+    },
+    {
+      "elapsed": 198.0,
+      "cpuPercent": 0.0,
+      "rssMiB": 312.34,
+      "scanRunning": false,
+      "scanError": null
+    },
+    {
+      "elapsed": 203.1,
+      "cpuPercent": 0.0,
+      "rssMiB": 312.34,
+      "scanRunning": false,
+      "scanError": null
+    },
+    {
+      "elapsed": 208.2,
+      "cpuPercent": 0.0,
+      "rssMiB": 312.3,
+      "scanRunning": false,
+      "scanError": null
+    },
+    {
+      "elapsed": 213.3,
+      "cpuPercent": 0.0,
+      "rssMiB": 312.61,
+      "scanRunning": false,
+      "scanError": null
+    },
+    {
+      "elapsed": 218.4,
+      "cpuPercent": 0.0,
+      "rssMiB": 312.64,
+      "scanRunning": true,
+      "scanError": null
+    },
+    {
+      "elapsed": 223.5,
+      "cpuPercent": 0.0,
+      "rssMiB": 312.61,
+      "scanRunning": true,
+      "scanError": null
+    },
+    {
+      "elapsed": 228.5,
+      "cpuPercent": 0.0,
+      "rssMiB": 312.58,
+      "scanRunning": false,
+      "scanError": null
+    },
+    {
+      "elapsed": 233.6,
+      "cpuPercent": 0.0,
+      "rssMiB": 312.58,
+      "scanRunning": false,
+      "scanError": null
+    },
+    {
+      "elapsed": 238.6,
+      "cpuPercent": 0.1,
+      "rssMiB": 312.58,
+      "scanRunning": false,
+      "scanError": null
+    },
+    {
+      "elapsed": 243.8,
+      "cpuPercent": 0.0,
+      "rssMiB": 312.75,
+      "scanRunning": false,
+      "scanError": null
+    },
+    {
+      "elapsed": 248.9,
+      "cpuPercent": 0.0,
+      "rssMiB": 312.67,
+      "scanRunning": false,
+      "scanError": null
+    },
+    {
+      "elapsed": 253.9,
+      "cpuPercent": 0.3,
+      "rssMiB": 312.67,
+      "scanRunning": false,
+      "scanError": null
+    },
+    {
+      "elapsed": 259.0,
+      "cpuPercent": 13.9,
+      "rssMiB": 381.8,
+      "scanRunning": true,
+      "scanError": null
+    },
+    {
+      "elapsed": 264.1,
+      "cpuPercent": 0.0,
+      "rssMiB": 312.67,
+      "scanRunning": false,
+      "scanError": null
+    },
+    {
+      "elapsed": 269.2,
+      "cpuPercent": 0.0,
+      "rssMiB": 312.67,
+      "scanRunning": false,
+      "scanError": null
+    },
+    {
+      "elapsed": 274.4,
+      "cpuPercent": 0.0,
+      "rssMiB": 312.8,
+      "scanRunning": false,
+      "scanError": null
+    },
+    {
+      "elapsed": 279.4,
+      "cpuPercent": 0.0,
+      "rssMiB": 312.75,
+      "scanRunning": false,
+      "scanError": null
+    },
+    {
+      "elapsed": 284.5,
+      "cpuPercent": 0.0,
+      "rssMiB": 312.7,
+      "scanRunning": false,
+      "scanError": null
+    },
+    {
+      "elapsed": 289.6,
+      "cpuPercent": 0.0,
+      "rssMiB": 312.72,
+      "scanRunning": false,
+      "scanError": null
+    },
+    {
+      "elapsed": 294.6,
+      "cpuPercent": 0.0,
+      "rssMiB": 312.72,
+      "scanRunning": false,
+      "scanError": null
+    },
+    {
+      "elapsed": 299.7,
+      "cpuPercent": 0.0,
+      "rssMiB": 312.72,
+      "scanRunning": false,
+      "scanError": null
+    }
+  ],
+  "summary": {
+    "samples": 60,
+    "meanSampledCpuPercent": 2.17,
+    "medianRssMiB": 312.06,
+    "maxRssMiB": 396.61,
+    "scanErrors": 0
+  }
+}
