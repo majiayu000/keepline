@@ -93,6 +93,7 @@ export const SessionCard = memo(function SessionCard({
           <span className={styles.clientBadge} data-runtime={runtimeId}>
             {runtimeLabel}
           </span>
+          {(session.isSubAgent || session.parentSessionId) && <span className={styles.clientBadge}>子任务</span>}
           <span className={styles.meta}>
             {session.pid ? `PID: ${session.pid}` : 'No process'}
           </span>

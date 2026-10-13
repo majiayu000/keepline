@@ -193,6 +193,11 @@ export class TranscriptFacts {
     this.order++;
     const payload = record(entry.payload);
     if (this.runtime === 'codex') {
+      if (entry.type === 'compacted') {
+        const previous = this.facts.findIndex(f => f.kind === 'context');
+        if (previous >= 0) this.facts.splice(previous,1);
+        return;
+      }
       if (entry.type === 'event_msg' && payload.type === 'item_completed') {
         this.add({ type: 'item_completed',timestamp: at,payload }); return;
       }
@@ -204,6 +209,17 @@ export class TranscriptFacts {
           this.facts.push({ kind: 'turn', phase, at, turnId: this.turnId, reason: payload.reason });
           if (payload.last_agent_message) this.message('agent_message', payload.last_agent_message, at, true);
         } else if (payload.type === 'user_message') this.message('user_message', payload.message, at);
+        else if (payload.type === 'token_count') {
+          const info = record(payload.info);
+          const usedTokens = record(info.last_token_usage).total_tokens;
+          const windowTokens = info.model_context_window;
+          if (typeof usedTokens === 'number' && Number.isFinite(usedTokens) && usedTokens >= 0 &&
+              typeof windowTokens === 'number' && Number.isFinite(windowTokens) && windowTokens > 0) {
+            const previous = this.facts.findIndex(f => f.kind === 'context');
+            if (previous >= 0) this.facts.splice(previous,1);
+            this.facts.push({ kind: 'context',usedTokens,windowTokens,at });
+          }
+        }
         else if (/usage_limited|budget_limited/.test(payload.type ?? '')) this.facts.push({ kind: 'limit', scope: payload.type.startsWith('budget') ? 'budget' : 'usage', at });
         return;
       }
@@ -224,6 +240,23 @@ export class TranscriptFacts {
       return;
     }
     const message = record(entry.message);
+    if (entry.type === 'system' && entry.subtype === 'compact_boundary') {
+      const previous = this.facts.findIndex(f => f.kind === 'context');
+      if (previous >= 0) this.facts.splice(previous,1);
+    }
+    if (entry.type === 'assistant' && message.model !== '<synthetic>' && !entry.isApiErrorMessage) {
+      const usage = record(message.usage);
+      const tokens = [usage.input_tokens,usage.cache_creation_input_tokens,usage.cache_read_input_tokens];
+      if (tokens.every(value => typeof value === 'number' && Number.isFinite(value) && value >= 0)) {
+        const usedTokens = tokens.reduce((total,value) => total + value,0);
+        if (Number.isFinite(usedTokens)) {
+          const previous = this.facts.findIndex(f => f.kind === 'context');
+          if (previous >= 0) this.facts.splice(previous,1);
+          // Use the user's 1M window for transcripts that do not report capacity.
+          this.facts.push({ kind: 'context',usedTokens,windowTokens: 1_000_000,at });
+        }
+      }
+    }
     const content = message.content;
     if (entry.type === 'user' && !entry.isMeta) {
       const authored = Array.isArray(content) ? content.filter(b => record(b).type === 'text') : content;

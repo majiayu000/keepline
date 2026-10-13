@@ -4,7 +4,8 @@ export type TranscriptFact =
   | { kind: 'turn'; phase: 'started' | 'completed' | 'aborted'; at: string; turnId: string; reason?: string }
   | { kind: 'tool'; callId: string; name: string; input: unknown; at: string; turnId?: string;
       mutating: boolean; completed?: boolean; startedOrder?: number; completedOrder?: number; exitCode?: number; outputHead?: string; facts?: ToolEvidence[] }
-  | { kind: 'limit'; scope: 'usage' | 'budget'; at: string };
+  | { kind: 'limit'; scope: 'usage' | 'budget'; at: string }
+  | { kind: 'context'; usedTokens: number; windowTokens: number; at: string };
 export interface ToolEvidence { kind: 'command' | 'test' | 'file' | 'commit' | 'pr' | 'verdict'; value: string; exitCode?: number }
 export const DEVIATION_MIN_STEPS = { conservative: 8, sensitive: 3 } as const;
 export interface Anchors {
@@ -32,10 +33,16 @@ export interface LedgerAcceptance { turnId: string; decision: 'accepted' | 'acce
 export interface LedgerDetail {
   sessionId: string; agentSessionId: string; title: string; projectRoot: string; runtimeId: string;
   state: 'running' | 'needs_input' | 'review' | 'accepted' | 'stopped' | 'ended'; statusReason?: string | null;
+  processState?: 'online' | 'exited' | 'unknown';
   unread?: boolean; pendingInput?: boolean;
+  inputRequest?: { tool: string; question?: string; at: string };
+  observation?: { source: 'hook' | 'transcript' | 'inferred' | 'user'; reason: string; at: string };
+  changes?: { since: string | null; files: LedgerEvidence[]; checks: LedgerEvidence[]; steps: LedgerStep[] };
   parentSessionId?: string;
-  activity?: { action?: string; at?: string; lastMessage?: string; evidence: LedgerEvidence[] };
-  subagents?: Array<Pick<LedgerDetail,'sessionId' | 'title' | 'state' | 'lastActiveAt' | 'activity'>>;
+  isSubAgent?: boolean; agentRole?: string; agentNickname?: string;
+  contextUsage?: { usedTokens: number; windowTokens: number; at: string };
+  activity?: { action?: string; at?: string; lastMessage?: string; callId?: string; turnId?: string; completed?: boolean; exitCode?: number; evidence: LedgerEvidence[] };
+  subagents?: Array<Pick<LedgerDetail,'sessionId' | 'title' | 'state' | 'processState' | 'lastActiveAt' | 'activity' | 'parentSessionId' | 'isSubAgent' | 'agentRole' | 'agentNickname' | 'runtimeId' | 'projectRoot' | 'workItemId' | 'followUpSuggestions'>>;
   possiblyWaiting: boolean; available: boolean; unavailableReason?: string;
   asks: Ask[]; items: RequirementItem[]; evidence: LedgerEvidence[]; trail: LedgerStep[];
   readOnlyCount: number; turns: Array<{ id: string; at: string; phase: string; readOnlyCount: number; durationMs: number }>;
@@ -54,12 +61,31 @@ export interface LedgerConfig {
   nativeNotifications: boolean; focus: { minutes: number; until: string | null }; staleGoalDays: number;
   exclude: { projects: string[]; runtimes: string[] };
 }
+export interface LedgerMonitorStatus {
+  scan: {
+    running: boolean;
+    lastStartedAt?: string;
+    lastCompletedAt?: string;
+    intervalMs?: number;
+    timeoutMs?: number;
+    failed: boolean;
+  };
+  runtimes: Array<{
+    runtimeId: string;
+    lastScanAt?: string;
+    errorCount: number;
+    hookInstalled: boolean;
+    receiverRunning: boolean;
+    lastHookAt?: string;
+  }>;
+}
+export type LedgerOutsideAttention = Pick<LedgerDetail, 'sessionId' | 'title' | 'projectRoot' | 'state' | 'processState' | 'progress' | 'offPlan' | 'lastActiveAt'>;
 export const DEFAULT_LEDGER_CONFIG: LedgerConfig = {
   enabled: true, retentionDays: 30, stalledAfterSeconds: 900, alertCoalesceSeconds: 600,
   judge: { enabled: false, backend: 'cli-claude', model: null },
   deviation: 'conservative', constraints: true,
   alerts: { needs_input: true, off_plan: false, claimed_unverified: false, stalled: false, limited: false },
-  nativeNotifications: true, focus: { minutes: 30, until: null }, staleGoalDays: 7,
+  nativeNotifications: false, focus: { minutes: 30, until: null }, staleGoalDays: 7,
   exclude: { projects: [], runtimes: [] },
 };
 
@@ -67,6 +93,13 @@ export const DEFAULT_LEDGER_CONFIG: LedgerConfig = {
 export function confirmedRequirement(item: RequirementItem): boolean {
   return item.source !== 'fallback' && !item.dropped;
 }
-export function ledgerNeedsAttention(row: Pick<LedgerDetail,'state' | 'offPlan'>): boolean {
-  return row.state === 'needs_input' || row.state === 'review' || row.state === 'running' && row.offPlan.length > 0;
+export function ledgerNeedsAttention(row: Pick<LedgerDetail,'state' | 'processState' | 'offPlan'>): boolean {
+  return row.state === 'review' || row.processState !== 'exited' && (row.state === 'needs_input' || row.state === 'running' && row.offPlan.length > 0);
+}
+export function ledgerAttentionKind(row: Pick<LedgerDetail,'state' | 'processState' | 'offPlan' | 'progress'>) {
+  if (row.processState === 'exited' && row.state !== 'review') return null;
+  if (row.state === 'needs_input') return 'input';
+  if (row.state === 'review') return row.progress.total > 0 ? 'acceptance' : 'reply';
+  if (row.state === 'running' && row.offPlan.length > 0) return 'deviation';
+  return null;
 }

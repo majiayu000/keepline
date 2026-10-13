@@ -76,6 +76,36 @@
 
 Issue: https://github.com/majiayu000/keepline/issues/138
 
+## 2026-10-08：首次加载骨架屏
+
+- 总览等待数据时显示工具栏、分组和卡片骨架；详情等待时显示与实际侧栏对应的标题、执行卡片、回复、消息及底部操作占位，保留真实关闭按钮。首次加载用加载提示替代尚未确认的零值统计。
+- 复用现有 Skeleton 的轻微扫光与减少动态效果支持。四项相关浏览器回归、客户端类型检查和构建通过；加载用例在截图前推进测试时钟一帧后单独复跑通过，验证迟到详情响应不会重新打开已关闭的侧栏。
+- 生产页面资源配合受控请求延迟验证桌面与 390px 窄屏：骨架可见、等待时可关闭、数据返回后被真实内容替换，浏览器错误为 0。3377 已提供新资源；请求延迟验证不代表后端加载速度得到改善。
+- 证据：`/tmp/keepline-skeleton-build.log`、`/tmp/keepline-skeleton-browser.log`、`/tmp/keepline-skeleton-loading-final.log`、`/tmp/keepline-skeleton-typecheck-ui.log`、`/tmp/keepline-skeleton-live-result.log`；截图：`/tmp/keepline-skeleton-desktop.png`、`/tmp/keepline-skeleton-mobile.png`。
+
+## 2026-10-08：详情侧栏排版
+
+- 标题与底部操作固定，中间内容独立滚动；收紧元信息与执行卡片，最近回复使用独立段落，最新用户消息使用浅色强调，状态依据移到内容下方。保持原消息顺序、原文展开和恢复操作。
+- 四项相关浏览器回归、客户端类型检查与构建通过。用「确认公众号 API 能否使用」真实会话检查桌面及 390px 窄屏，按钮滚动时固定、无横向溢出、浏览器运行错误为 0；3377 已提供新版页面资源。
+- 证据：`/tmp/keepline-drawer-style-build.log`、`/tmp/keepline-drawer-style-browser.log`、`/tmp/keepline-drawer-style-typecheck.log`、`/tmp/keepline-drawer-style-live-result.log`；截图：`/tmp/keepline-drawer-style-desktop.png`、`/tmp/keepline-drawer-style-mobile.png`。
+
+## 2026-10-08：详情中的用户消息被长粘贴遮住
+
+- 对照「优先处理 Remem #1106」的原始记录、账本与实际页面，四条用户消息均存在；旧详情从最早消息开始，首条 7142 字符的粘贴内容将末尾要求和后续三条发言推到下方。
+- 抽屉及完整详情改为最新消息在前；超过 600 字符的消息默认展示开头与结尾，中间可展开完整原文，保留 Markdown 展示。没有改写原始消息或调整要求识别规则。
+- 三项浏览器回归通过，覆盖消息顺序、末尾要求可见、展开/收起、完整详情及窄屏；客户端类型检查与构建通过。隔离预览用真实会话验证四条消息、新排序与完整展开，浏览器错误为 0；3377 当前服务已提供新版页面资源。
+- 证据：`/tmp/keepline-user-messages-browser.log`、`/tmp/keepline-user-messages-build.log`、`/tmp/keepline-user-messages-live-result.log`、`/tmp/keepline-user-messages-fixed.png`。真实原话未复制进仓库。
+
+## 2026-10-08：观测信息六项优化
+
+- 按顺序完成监测健康、待处理分类、当前与历史动作区分、范围外提醒、查看后变化及状态依据。监测健康接口在首次扫描期间可读，仍要求认证；安装状态按当前服务的接收端口判断，与实际事件收取时间分开。
+- 迁移 017 保存上次查看结束时间。首次查看无时间基准时明确显示，不回填旧数据；心跳不覆盖变化比较基准。未读回复在保留期内不会因 12 小时到期自动标为已处理。
+- 109 项账本与架构检查通过；修正迁移清单及启动健康接口后，20 项服务/观测检查通过。17 项功能浏览器检查与 1 项原稿像素/风格检查通过；后者仍严格比较固定组件，对已明确改变的卡片记录实际高度与内容差异。类型检查与完整构建通过，最终相关变更另做 10 项针对性回归及 3 项浏览器回归。
+- 第一次并行检查有服务超时、派生缓存版本未同步及迁移版本预期失败；版本已同步，服务检查单独复跑通过。记录：`/tmp/keepline-observability-ledger-final.log`、`/tmp/keepline-observability-service-final.log`、`/tmp/keepline-observability-visual-final.log`、`/tmp/keepline-observability-typecheck-final.log`、`/tmp/keepline-observability-build-final.log`。
+- 更新服务时发现 3377 被 `keepline-closeout/.../Keepline.app/.../keepline-service` 接管；当前库独立预览使用 5577 与 7891、数据库副本及真实记录只读扫描，没有覆盖另一工作树的安装版。原服务 `/api/v1/health` 返回 200、扫描已完成且无最后错误。
+- 数据库备份：`/var/folders/3_/987z6jz91l9_t8mpvflf73xm0000gp/T/keepline-observability-backup-6r9y6y4s/keepline.db`；预览数据：`/var/folders/3_/987z6jz91l9_t8mpvflf73xm0000gp/T/keepline-observability-preview-_kiq9u2y`。副本全量扫描首次约 48.3 秒、缓存启动约 3.4 秒，不等同于安装版长期性能验收。
+- 5577 真实记录复核：健康、7 小时总览、范围外待处理接口均返回 200；详情可展开状态依据与变化证据，浏览器运行错误为 0。范围外回复使用中性提醒，明确“未查看”不等于阻塞；默认只展开 10 条，可继续展开。最终页面截图：`/tmp/keepline-observability-overview.png`、`/tmp/keepline-observability-detail.png`；接口记录：`/tmp/keepline-observability-live-result.json`。预览接收器使用 7891，现有 hook 指向原服务，未将预览的日志扫描当作真实 hook 交付验收。
+
 ## 总览时间范围
 
 - 新增“最近 N 小时内有活动”筛选，默认 24 小时，支持输入 7 小时及保留期内任意正整数小时，刷新后保留选择。全部布局和计数使用同一个范围；切换时丢弃旧范围的延迟响应与悬停队列。

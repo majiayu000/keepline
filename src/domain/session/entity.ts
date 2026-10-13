@@ -41,6 +41,8 @@ export interface Session extends Entity {
 
   /** Multi-session tracking */
   agentId?: string;
+  agentRole?: string;
+  agentNickname?: string;
   parentSessionId?: string;
   isSubAgent?: boolean;
 
@@ -53,6 +55,7 @@ export interface Session extends Entity {
   completedAt?: Date;
 
   /** Process info */
+  processState?: 'online' | 'exited' | 'unknown';
   pid?: number;
   tty?: string;
 
@@ -85,6 +88,8 @@ export interface ParsedSessionData {
 
   /** Multi-session tracking */
   agentId?: string;
+  agentRole?: string;
+  agentNickname?: string;
   parentSessionId?: string;
   isSubAgent?: boolean;
 }
@@ -107,6 +112,10 @@ export type SessionListItem = Pick<
   | 'statusSource'
   | 'statusReason'
   | 'title'
+  | 'parentSessionId'
+  | 'isSubAgent'
+  | 'agentRole'
+  | 'agentNickname'
   | 'startedAt'
   | 'lastActiveAt'
   | 'completedAt'

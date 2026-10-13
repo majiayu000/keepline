@@ -12,6 +12,18 @@ import { getDatabase } from '../../../infrastructure/database/sqlite.js';
 import { emit } from '../../../lib/events.js';
 
 const app = new Hono(); app.use('*',authMiddleware);
+// Share overlapping reads across dashboard tabs; never retain a completed result.
+const overviewReads = new Map<string, ReturnType<typeof ledgerOverview>>();
+function readOverview(hours: number, outside = false, menubar = false) {
+  const key = `${hours}:${outside}:${menubar}`;
+  let pending = overviewReads.get(key);
+  if (!pending) {
+    pending = ledgerOverview(hours, outside, outside, menubar).finally(() => overviewReads.delete(key));
+    overviewReads.set(key, pending);
+  }
+  return pending;
+}
+
 function conditionalJson(c: Context, data: unknown) {
   const body = JSON.stringify({ success: true,data });
   const tag = `"${createHash('sha256').update(body).digest('hex')}"`;
@@ -26,19 +38,38 @@ app.onError((error,c) => {
   if (error instanceof LedgerInputError) return c.json({ success: false,error: error.message },400);
   logger.error('Ledger request failed',error); return c.json({ success: false,error: 'Ledger request failed' },500);
 });
-app.get('/',async c => {
-  const hours = Number(c.req.query('hours') ?? 24);
+function overviewHours(raw: string | undefined) {
+  const hours = Number(raw ?? 24);
   if (!Number.isFinite(hours) || hours < 1 || hours > config.get().ledger.retentionDays * 24) throw new LedgerInputError('hours outside retention window');
-  return conditionalJson(c,await ledgerOverview(hours));
+  return hours;
+}
+app.get('/',async c => {
+  const hours = overviewHours(c.req.query('hours'));
+  return conditionalJson(c,await readOverview(hours));
 });
+app.get('/outside-attention', async c => {
+  const hours = overviewHours(c.req.query('hours'));
+  const rows = await readOverview(hours, true);
+  return c.json({ success: true, data: rows.map(row => ({
+    sessionId: row.sessionId, title: row.title, projectRoot: row.projectRoot,
+    state: row.state, processState: row.processState, progress: row.progress, offPlan: row.offPlan, lastActiveAt: row.lastActiveAt,
+  })) });
+});
+app.get('/menubar', async c => conditionalJson(c, await readOverview(24, false, true)));
 app.post('/native-channel',async c => {
   markLedgerViewed('__native__',true); return c.json({ success: true });
 });
-app.get('/active-alerts',c => c.json({ success: true,data: getDatabase().query('SELECT id,kind FROM ledger_alerts WHERE cleared_at IS NULL').all().filter(row => config.get().ledger.alerts[(row as { kind: 'needs_input' | 'off_plan' | 'claimed_unverified' | 'stalled' | 'limited' }).kind]) }));
+app.get('/active-alerts',c => {
+  const cfg = config.get().ledger;
+  if (!cfg.enabled || !cfg.nativeNotifications) return c.json({ success: true,data: [] });
+  return c.json({ success: true,data: getDatabase().query('SELECT id,kind FROM ledger_alerts WHERE cleared_at IS NULL').all().filter(row => cfg.alerts[(row as { kind: 'needs_input' | 'off_plan' | 'claimed_unverified' | 'stalled' | 'limited' }).kind]) });
+});
 app.get('/notifications',c => {
+  const cfg = config.get().ledger;
+  if (!cfg.enabled || !cfg.nativeNotifications) return c.json({ success: true,data: [] });
   const data = getDatabase().query(`SELECT l.*,a.runtime_session_id AS sessionId,a.title,a.project_root AS projectRoot FROM ledger_alerts l JOIN agent_sessions a ON a.id=l.agent_session_id WHERE l.notified=2 AND l.cleared_at IS NULL`).all();
   // One native delivery for concurrent permission requests or a focus backlog.
-  const alerts = (data as Array<Record<string,unknown>>).filter(a => config.get().ledger.alerts[a.kind as 'needs_input' | 'off_plan' | 'claimed_unverified' | 'stalled' | 'limited']);
+  const alerts = (data as Array<Record<string,unknown>>).filter(a => cfg.alerts[a.kind as 'needs_input' | 'off_plan' | 'claimed_unverified' | 'stalled' | 'limited']);
   const grouped = [alerts.filter(a => a.kind === 'needs_input'),alerts.filter(a => a.kind !== 'needs_input')].filter(a => a.length).map(rows => ({
     ...rows[0], bundledIds: rows.map(a => a.id),
     detail: rows.length === 1 ? `${ledgerNotificationTitle(String(rows[0].sessionId),String(rows[0].title),String(rows[0].projectRoot))}：${rows[0].detail}` : `${rows.length} 条提醒：${rows.map(a => a.detail).join('；').slice(0,600)}`,

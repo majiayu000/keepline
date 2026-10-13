@@ -1,6 +1,6 @@
 import { test, expect, type Page } from "@playwright/test";
 import type { Goal, Todo } from "../../src/pages/ledger/types";
-import { now, row, settings } from "./fixtures";
+import { now, row, settings, monitor } from "./fixtures";
 
 async function mapApi(page: Page, open = true) {
   await page.clock.install({ time: new Date(now) });
@@ -56,6 +56,7 @@ async function mapApi(page: Page, open = true) {
     projectRoot: "/project/keepline",
     outcome: "交付项有可核验的进展",
     stale: false,
+    inactiveDays: 0,
     weeklyMovement: 1,
     progress: { done: 1, total: 4, active: 1 },
     todos: [
@@ -114,6 +115,8 @@ async function mapApi(page: Page, open = true) {
     if (path === "/api/auth/status")
       data = { setupComplete: true, authenticated: true, username: "local" };
     else if (path === "/api/ledger") data = [row];
+    else if (path === "/api/status/monitor") data = monitor;
+    else if (path === "/api/ledger/outside-attention") data = [];
     else if (path === "/api/settings/ledger") data = settings;
     else if (path === "/api/goals")
       data = [

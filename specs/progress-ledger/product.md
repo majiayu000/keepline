@@ -63,6 +63,29 @@ judgment is optional, rate-limited, and never allowed to invent evidence.
 - Counts and all overview layouts use the same time range. The history group is
   "已结束", since a rolling range does not mean a calendar day.
 
+### Observability
+
+- Keep normal scan and integration details in a collapsed monitoring section;
+  surface monitoring warnings in its summary. Show the last completed scan, pending initial scan, stale data, scan failures,
+  and per-runtime read errors. An installed integration and an actually received
+  event are distinct observations; receiver availability alone is not proof of
+  event delivery.
+- Separate input requests, unread replies, acceptance and deviations in overview
+  counts. Explicit questions show their question text and next action.
+- Label the latest tool as a past action after its result. An unmatched call in
+  the current running turn says its result has not yet been observed; quiet
+  sessions are not declared stuck merely from elapsed time.
+- A separate expandable notice lists only explicit input or approval requests
+  outside the selected time range, including child tasks. Ordinary unread
+  historical replies remain accessible by expanding the time range and do not
+  generate this notice. Opening a request preserves the user's time filter.
+- Unread responses remain unread until viewed, within the configured retention
+  period. Time-window filtering does not mark them read.
+- Details show changes since the previous viewing visit ended, with file/check
+  evidence and source call/time. First visits state that no baseline exists.
+- Status explanations identify direct events, transcript observations, user
+  confirmation or inference, with a reason and observation time.
+
 ### Session ledger
 
 1. Keepline builds a ledger for every Claude Code and Codex session active in
@@ -110,7 +133,8 @@ judgment is optional, rate-limited, and never allowed to invent evidence.
 9. A newly finished, unread response enters `review` even without a confirmed
    checklist. Opening it records that turn as read; without confirmed criteria,
    it then moves to history without creating acceptance. A new response becomes
-   unread again. The existing 12-hour review expiry still applies.
+   unread again. Unread responses do not expire at 12 hours; the existing
+   12-hour expiry applies only to already-read pending reviews.
    In `review` with confirmed criteria, the user can: accept; accept with gaps (remaining items marked
    "dropped by you" with a reason); or generate a follow-up.
 10. A follow-up is text built from remaining and unverified items, shown in an
@@ -182,8 +206,9 @@ judgment is optional, rate-limited, and never allowed to invent evidence.
     per session coalesce within 10 minutes; simultaneous needs-input alerts
     merge into one. An alert is withdrawn when the condition clears. No alert
     fires for a task the user is currently viewing.
-24. Without hooks, "needs input" is shown only as an inferred "possibly waiting"
-    state with a dashed outline, and never triggers a notification.
+24. Without explicit input-request evidence, timing-based waiting is display-only
+    "possibly waiting" and never triggers a needs-input notification. Unanswered
+    structured questions in transcripts are explicit evidence even without hooks.
 25. Every behavior with cost or noise is a toggle: model recognition (and backend),
     deviation detection (`off` / `conservative` / `sensitive`), constraint
     checks, each alert kind, native notifications, focus duration, per-project

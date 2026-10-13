@@ -173,6 +173,8 @@ export async function startKeeplineService(
   const recoveryCommand = configuredRecoveryCommand ??
     (entrypoint ? [process.execPath, entrypoint, '_service-recovery'] : []);
   runServiceMigrations();
+  localServiceState.scan.intervalMs = configuredScanInterval;
+  localServiceState.scan.timeoutMs = scanTimeoutMs;
   localServiceState.scan.running = false;
   localServiceState.scan.completed = false;
   localServiceState.scan.lastStartedAt = undefined;
@@ -200,6 +202,7 @@ export async function startKeeplineService(
       if (!localServiceState.scan.completed && pathname.startsWith('/api/') && !pathname.startsWith('/api/auth/') &&
           pathname !== '/api/v1/health' &&
           pathname !== '/api/v1/meta' &&
+          pathname !== '/api/status/monitor' &&
           pathname !== '/api/v1/auth/local') {
         return Response.json(
           {
@@ -460,6 +463,7 @@ export async function startKeeplineService(
       } finally {
         localServiceState.lifecycleHook.receiverRunning = false;
         localServiceState.lifecycleHook.port = undefined;
+        localServiceState.scan.intervalMs = undefined;
         server.stop(true);
         setWebSessionSource('standalone');
         closeDatabase();

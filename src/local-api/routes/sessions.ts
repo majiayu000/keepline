@@ -16,6 +16,9 @@ function getDatabaseSessionStats(
 ) {
   const stats = {
     total: sessions.length,
+    needs_input: 0,
+    stalled: 0,
+    interrupted: 0,
     running: 0,
     waiting: 0,
     idle: 0,
@@ -25,7 +28,7 @@ function getDatabaseSessionStats(
   };
   for (const session of sessions) {
     if (session.status in stats && session.status !== 'total' && session.status !== 'withProcess') {
-      stats[session.status as 'running' | 'waiting' | 'idle' | 'lost' | 'completed']++;
+      stats[session.status as 'needs_input' | 'stalled' | 'interrupted' | 'running' | 'waiting' | 'idle' | 'lost' | 'completed']++;
     }
     if (session.processRunning) stats.withProcess++;
   }

@@ -143,7 +143,7 @@ export function useSessions(token: string, options: SessionQueryOptions = {}): U
 
   const fullDataCacheRef = useRef<Map<string, SessionFullData>>(new Map())
   const loadingFullRef = useRef<Set<string>>(new Set())
-  const [, forceUpdate] = useState(0)
+  const [fullDataVersion, forceUpdate] = useState(0)
 
   const bumpVersionIfChanged = useCallback((snapshot: Session[]) => {
     const nextSignature = getSessionVersionSignature(snapshot)
@@ -389,13 +389,14 @@ export function useSessions(token: string, options: SessionQueryOptions = {}): U
     return null
   }, [])
 
+  // Memoized list/card consumers must re-read the cache when a request settles.
   const getSessionFull = useCallback((sessionId: string): SessionFullData | undefined => {
     return fullDataCacheRef.current.get(sessionId)
-  }, [])
+  }, [fullDataVersion])
 
   const isLoadingFull = useCallback((sessionId: string): boolean => {
     return loadingFullRef.current.has(sessionId)
-  }, [])
+  }, [fullDataVersion])
 
   useEffect(() => {
     mountedRef.current = true

@@ -78,6 +78,24 @@ afterEach(() => {
 });
 
 describe('Codex JSONL parser', () => {
+  test('reads spawn identity from the transcript without a Codex database', async () => {
+    for (const nested of [false, true]) {
+      const identity = { parent_thread_id: 'parent-thread', agent_path: '/root/map', agent_role: 'you-are-here', agent_nickname: 'Chandrasekhar' };
+      const parsed = await parseCodexSessionFile(createCodexJsonlFile([
+        { type: 'session_meta', payload: { id: 'child-thread', cwd: '/project', ...(nested ? { source: { subagent: { thread_spawn: { ...identity, depth: 1 } } } } : identity) } },
+      ]));
+      expect(parsed).toMatchObject({ parentSessionId: 'parent-thread', isSubAgent: true, agentId: '/root/map', agentRole: 'you-are-here', agentNickname: 'Chandrasekhar' });
+    }
+  });
+
+  test('a fork without a spawn relationship remains an independent thread', async () => {
+    const parsed = await parseCodexSessionFile(createCodexJsonlFile([
+      { type: 'session_meta', payload: { id: 'fork-thread', cwd: '/project', forked_from_id: 'original-thread', source: 'cli' } },
+    ]));
+    expect(parsed?.isSubAgent).toBe(false);
+    expect(parsed?.parentSessionId).toBeUndefined();
+  });
+
   test('scopes session ids without changing resume ids', () => {
     const rawId = '019ed4a3-2186-7e51-9aa1-ca1e376549b8';
     expect(scopeCodexSessionId(rawId)).toBe(`codex_${rawId}`);

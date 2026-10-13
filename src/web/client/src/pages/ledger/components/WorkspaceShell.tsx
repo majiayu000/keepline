@@ -10,6 +10,7 @@ export interface SidebarProject {
   name: string;
   count: number;
   need: number;
+  hasWork?: boolean;
 }
 const navigation = [
   ["overview", "总览", "squares-four"],
@@ -31,6 +32,7 @@ export function WorkspaceShell({
   onNavigate,
   subtitle,
   search,
+  searchPlaceholder = "搜索会话、原话、项目",
   onSearch,
   projects,
   project,
@@ -44,11 +46,14 @@ export function WorkspaceShell({
   onRefresh,
   syncStatus,
   children,
+  overlay,
+  modalOpen = false,
 }: {
   view: TabId;
   onNavigate: (view: TabId) => void;
   subtitle?: string;
   search?: string;
+  searchPlaceholder?: string;
   onSearch?: (s: string) => void;
   projects?: SidebarProject[];
   project?: string | null;
@@ -62,7 +67,10 @@ export function WorkspaceShell({
   onRefresh?: () => void;
   syncStatus?: string;
   children: ReactNode;
+  overlay?: ReactNode;
+  modalOpen?: boolean;
 }) {
+  const [mobileNav, setMobileNav] = useState(false);
   const [more, setMore] = useState(false);
   const [allProjects, setAllProjects] = useState(false);
   const [clock, setClock] = useState(new Date());
@@ -75,12 +83,12 @@ export function WorkspaceShell({
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
       if (
-        (e.target as HTMLElement).closest(
+        modalOpen || e.defaultPrevented || (e.target as HTMLElement).closest(
           'input,textarea,select,[contenteditable="true"]',
         )
       )
         return;
-      if (e.key === "/") {
+      if (e.key === "/" && !e.metaKey && !e.ctrlKey && !e.altKey) {
         e.preventDefault();
         searchRef.current?.focus();
       }
@@ -92,7 +100,7 @@ export function WorkspaceShell({
     };
     document.addEventListener("keydown", handler);
     return () => document.removeEventListener("keydown", handler);
-  }, [onNavigate]);
+  }, [onNavigate, modalOpen]);
   useEffect(() => {
     if (!more) return;
     const close = (e: PointerEvent) => {
@@ -103,7 +111,7 @@ export function WorkspaceShell({
   }, [more]);
   const focus = focusUntil && Date.parse(focusUntil) > clock.getTime();
   const hiddenProjectCount = (projects ?? []).filter(
-    (p) => p.count === 0 && p.need === 0 && p.root !== project,
+    (p) => p.count === 0 && p.need === 0 && !p.hasWork && p.root !== project,
   ).length;
   const title =
     titles[view as LedgerView] ??
@@ -111,11 +119,14 @@ export function WorkspaceShell({
     "Keepline";
   return (
     <div className={styles.workspace}>
-      <nav className={styles.sidebar} aria-label="主导航">
+      <nav className={styles.sidebar} aria-label="主导航" data-expanded={mobileNav || undefined} aria-hidden={modalOpen || undefined} {...(modalOpen ? { inert: "" } : {})}>
         <div className={styles.brand}>
           <span />
           <strong>Keepline</strong>
           <small className={styles.version}>v{__KEEPLINE_VERSION__}</small>
+          <button className={styles.mobileNavToggle} aria-expanded={mobileNav} onClick={() => setMobileNav(!mobileNav)}>
+            {mobileNav ? "收起项目和设置" : "展开项目和设置"}
+          </button>
         </div>
         <div className={styles.navGroup}>
           {navigation.map(([id, label, icon]) => {
@@ -145,7 +156,7 @@ export function WorkspaceShell({
             );
           })}
         </div>
-        <div className={styles.projectSection}>
+        {onProject && <div className={styles.projectSection}>
           <div className={`${styles.navLabel} ${styles.projectHeading}`}>
             <span>项目</span>
             {(allProjects || hiddenProjectCount > 0) && (
@@ -176,6 +187,7 @@ export function WorkspaceShell({
                   allProjects ||
                   p.count > 0 ||
                   p.need > 0 ||
+                  p.hasWork ||
                   p.root === project,
               ),
             ].map((p) => (
@@ -208,6 +220,7 @@ export function WorkspaceShell({
             ))}
           </div>
         </div>
+        }
         <div className={styles.sidebarBottom}>
           <button
             className={styles.navButton}
@@ -307,7 +320,7 @@ export function WorkspaceShell({
           </button>
         </div>
       </nav>
-      <div className={styles.mainColumn}>
+      <div className={styles.mainColumn} aria-hidden={modalOpen || undefined} {...(modalOpen ? { inert: "" } : {})}>
         <header className={styles.topbar}>
           <h1>{title}</h1>
           <span className={styles.subtitle}>{subtitle}</span>
@@ -323,7 +336,7 @@ export function WorkspaceShell({
                   ref={searchRef}
                   value={search ?? ""}
                   onChange={(e) => onSearch(e.target.value)}
-                  placeholder="搜索会话、原话、项目"
+                  placeholder={searchPlaceholder}
                   aria-label="搜索"
                 />
                 <kbd aria-hidden="true">/</kbd>
@@ -340,6 +353,7 @@ export function WorkspaceShell({
         </header>
         {children}
       </div>
+      {overlay && <div className={styles.overlay}>{overlay}</div>}
     </div>
   );
 }

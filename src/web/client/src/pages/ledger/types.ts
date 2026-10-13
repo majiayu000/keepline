@@ -23,6 +23,7 @@ export interface Goal extends WorkItem {
   progress: { done: number; total: number; active: number };
   weeklyMovement: number;
   stale: boolean;
+  inactiveDays: number;
   recent: Array<{ id: string; kind: string; title: string; at: string; todoId: string; sessionId: string | null }>;
 }
 export interface Review {
@@ -39,4 +40,6 @@ export interface LedgerProps {
   token: string;
   view: LedgerView;
   onOpenSession: (id: string) => void;
+  selectedId: string | null;
+  onSelectSession: (id: string | null, full?: boolean) => void;
 }

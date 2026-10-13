@@ -32,7 +32,7 @@ You're deep in a coding session with one or more local agent runtimes. Everythin
 
 ## The Solution
 
-**Keepline** monitors local agent runtime sessions in real time, automatically recovers crashed work where supported, tracks costs where supported, and preserves context across iterations. Codex and Claude Code are the first supported runtime adapters.
+**Keepline** monitors local agent runtime sessions in real time, offers recovery actions for interrupted work where supported, tracks costs where supported, and preserves context across iterations. Codex and Claude Code are the first supported runtime adapters.
 
 For the implementation details behind the rename and Codex detection, see [Keepline Rebrand and Codex Detection Spec](docs/KEEPLINE_REBRAND_AND_CODEX_DETECTION_SPEC.md).
 
@@ -83,19 +83,36 @@ If you put Keepline behind a reverse proxy (Caddy, nginx, cloudflared), set `KEE
 
 If you also want the in-process rate limiter to identify real clients behind that proxy, set `KEEPLINE_TRUST_PROXY=true`. Without that flag, `X-Forwarded-For` is treated as untrusted input and the limiter keys on the actual TCP peer instead — this is intentional, so a malicious caller cannot bypass throttling by spoofing forwarded headers.
 
-### Claude Quota menu-bar app
+### Keepline desktop candidate (1.2.0)
 
-The `menubar-tauri` companion is distributed as **Claude Quota** through
-[GitHub Releases](https://github.com/majiayu000/keepline/releases/latest).
-These installers provide the quota-monitoring menu-bar app. Use the source
-setup above for the Bun session-management CLI and dashboard.
+The desktop app now combines a compact menu-bar panel with a progress dashboard.
+It embeds the local Bun service; running the dashboard does not require a separate
+CLI installation. This checkout is a **candidate**, not evidence of a published
+1.2.0 release. Existing release downloads may still contain the older quota app.
 
-The menu-bar app and root Bun CLI have independent versions; a menu-bar
-release does not publish or install the Bun CLI.
+See [desktop build and first-run instructions](menubar-tauri/README.md).
+
+1. Open Keepline and let the initial local scan finish.
+2. Open **Settings → Connect agents** (连接 agent) and click **Connect live events**
+   (连接实时事件). This installs Keepline hooks while preserving other commands.
+3. Approve the new hook in Codex, or restart Claude Code, then run a turn.
+4. Check that the status reports a real received event. “Installed” alone does
+   not mean events are arriving. Local transcript scanning also works without hooks.
+5. Open a session to review requirements, execution evidence and remaining gaps;
+   acceptance is your explicit decision.
 
 ---
 
 ## Features
+
+### Progress dashboard
+
+- Requirements, execution steps, test evidence and explicit acceptance in one view.
+- Goals and todos linked to sessions; follow-up prompts and session recovery.
+- Separate process state from turn state: an unobserved process stays unknown.
+- Menu-bar counts and session navigation, focus mode and opt-in system notifications.
+- Local transcript parsing by default; optional model analysis is configured separately.
+
 
 ### Real-time Session Monitoring
 
@@ -256,9 +273,22 @@ keepline hooks install        # Install Claude Code and Codex lifecycle hooks
 ```
 
 `keepline web` starts the dashboard only. `keepline daemon start` runs the
-background scanner and hook receiver. `keepline hooks install` only installs
-the forwarding commands; run `keepline status` or `keepline hooks status` to
+background scanner and hook receiver. `keepline hooks install` configures
+the forwarding commands and Claude context collector; run `keepline status` or `keepline hooks status` to
 check whether a receiver is running.
+
+Installing hooks also captures Claude Code context usage through its `statusLine`
+JSON input. Keepline preserves the existing status-line output and settings;
+uninstalling hooks restores the original command. Per-session snapshots live in
+`KEEPLINE_HOME/context/claude-code/` and feed the dashboard's context ring using
+the reported window capacity and latest input/cache token counts. New or resumed
+terminal sessions populate this data on their next status-line update. Without a
+snapshot, including Desktop sessions, Keepline uses the latest assistant request's
+input and cache tokens from the transcript with a 1,000,000-token window. This is
+the configured assumption for this setup, not a measured capacity for every model.
+Synthetic error messages do not count as usage; compaction clears the old value
+until the next request. A current status-line snapshot takes precedence and uses
+its reported capacity.
 
 The embedded service performs a full history reconciliation before serving session
 and task routes. Startup scans have a five-minute watchdog; subsequent incremental

@@ -1,4 +1,5 @@
-import { describe,test,expect } from 'bun:test';
+import * as ledgerService from '../../services/ledger/service.js';
+import { describe,test,expect,spyOn } from 'bun:test';
 import { Hono } from 'hono';
 import { setupLedgerTest,seededLedger,sampleFacts } from './helpers.js';
 import ledger,{ ledgerSettings } from '../../web/api/routes/ledger.js';
@@ -6,8 +7,10 @@ import goals from '../../web/api/routes/goals.js';
 import workItems from '../../web/api/routes/work-items.js';
 import { setupUser } from '../../services/auth.service.js';
 import { ledgerRepository } from '../../infrastructure/database/repositories/ledger.repository.js';
+import { evaluateLedgerAlerts } from '../../services/ledger/alerts.js';
 import { getDatabase } from '../../infrastructure/database/sqlite.js';
 import type { LedgerDetail } from '../../domain/ledger/types.js';
+import { groupRows, rowPresentation } from '../../web/client/src/pages/ledger/presentation.js';
 
 const app = new Hono().route('/ledger',ledger).route('/goals',goals).route('/work-items',workItems).route('/settings',ledgerSettings);
 async function request(token: string,path: string,method = 'GET',data?: unknown) {
@@ -15,6 +18,40 @@ async function request(token: string,path: string,method = 'GET',data?: unknown)
 }
 describe('ledger API',() => {
   setupLedgerTest();
+  test('menubar keeps state, counts and current action without shipping transcript collections', async () => {
+    const { token } = await setupUser('menubar-summary', 'password123');
+    await seededLedger();
+    expect((await app.request('/ledger/menubar')).status).toBe(401);
+    const full = ((await (await request(token, '/ledger')).json()) as { data: LedgerDetail[] }).data;
+    const response = await request(token, '/ledger/menubar');
+    const rows = ((await response.json()) as { data: LedgerDetail[] }).data;
+    const counts = (values: LedgerDetail[]) => groupRows(values, 'urgency').map(g => [g.key, g.rows.length]);
+    expect(counts(rows)).toEqual(counts(full));
+    expect(rowPresentation(rows[0]).now).toBe(rowPresentation(full[0]).now);
+    expect(rows[0]).toMatchObject({ asks: [], items: [], trail: [], evidence: [], claims: [] });
+    expect(JSON.stringify(rows).length).toBeLessThan(JSON.stringify(full).length);
+    expect(((await (await request(token, '/ledger')).json()) as { data: LedgerDetail[] }).data).toEqual(full);
+    expect((await request(token, '/ledger/menubar', 'GET')).headers.get('ETag')).toBe(response.headers.get('ETag'));
+  });
+  test('system notifications can be enabled and disabled without losing panel alerts',async () => {
+    const { token } = await setupUser('ledger-notifications','password123');
+    expect(await (await request(token,'/settings')).json()).toMatchObject({ data: { nativeNotifications: false } });
+    const enabled = await request(token,'/settings','PUT',{ nativeNotifications: true });
+    expect(enabled.status).toBe(200);
+    expect(await enabled.json()).toMatchObject({ data: { nativeNotifications: true } });
+    expect((await request(token,'/ledger/native-channel','POST')).status).toBe(200);
+    const d = await seededLedger(); d.state = 'needs_input';
+    await evaluateLedgerAlerts(d);
+    const { data: queued } = await (await request(token,'/ledger/notifications')).json() as { data: Array<{ id: string }> };
+    expect(queued).toHaveLength(1);
+    expect(await (await request(token,'/ledger/active-alerts')).json()).toEqual({ success: true,data: [{ id: queued[0].id,kind: 'needs_input' }] });
+    expect((await request(token,'/settings','PUT',{ nativeNotifications: false })).status).toBe(200);
+    expect(await (await request(token,'/settings')).json()).toMatchObject({ data: { nativeNotifications: false } });
+    for (const path of ['/ledger/notifications','/ledger/active-alerts']) {
+      expect(await (await request(token,path)).json()).toEqual({ success: true,data: [] });
+    }
+    expect(getDatabase().query('SELECT cleared_at FROM ledger_alerts WHERE id=?').get(queued[0].id)).toMatchObject({ cleared_at: null });
+  });
   test('authentication and invalid input preserve HTTP error contracts',async () => {
     expect((await app.request('/ledger')).status).toBe(401);
     expect((await app.request('/goals/todos')).status).toBe(401);
@@ -37,6 +74,27 @@ describe('ledger API',() => {
     const accepted = (await (await request(token, '/goals/todos')).json() as { data: Array<{ id: string; readyToComplete: boolean }> }).data;
     expect(accepted[0]).toMatchObject({ id: todo.id, readyToComplete: true });
     expect((await request(token, `/goals/todos/${todo.id}/complete`, 'POST')).status).toBe(200);
+  });
+  test('concurrent dashboard reads share work, release failures and read fresh data afterwards',async () => {
+    const { token } = await setupUser('ledger-concurrent','password123');
+    const row = await seededLedger();
+    let release!: () => void;
+    const gate = new Promise<void>(resolve => { release = resolve; });
+    const compute = spyOn(ledgerService,'ledgerOverview').mockImplementation(async () => { await gate; return [row]; });
+    try {
+      const reads = Array.from({ length: 6 },() => request(token,'/ledger?hours=24'));
+      await Bun.sleep(10);
+      release();
+      const responses = await Promise.all(reads);
+      expect(responses.every(r => r.status === 200)).toBe(true);
+      expect(compute).toHaveBeenCalledTimes(1);
+      compute.mockRejectedValueOnce(new Error('read failed'));
+      expect((await request(token,'/ledger?hours=24')).status).toBe(500);
+      compute.mockResolvedValue([]);
+      const next = await request(token,'/ledger?hours=24');
+      expect(await next.json()).toEqual({ success: true,data: [] });
+      expect(compute).toHaveBeenCalledTimes(3);
+    } finally { release(); compute.mockRestore(); }
   });
   test('unchanged ledger responses use 304 and changes invalidate the browser cache',async () => {
     const { token } = await setupUser('ledger-conditional','password123');
