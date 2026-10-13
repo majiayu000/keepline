@@ -1,8 +1,43 @@
 # Progress Ledger 实现与修复验收
 
+## 2026-10-13：服务就绪前的通知目标保留（#138）
+
+本轮是 T15 / 产品验收条件 17 的最小修复，不代表 #138 的全部产品验收完成。代码提交：`420c3ae4f115e3f8c776e729d0833ef923fe528d`，基线 `6b68db97517361a743f9f79b721262cce2fbfc55`（#144）。本轮未发布、未正式签名公证，也未替换已安装应用。
+
+### 修复与回归
+
+- 原代码在服务未连接时返回 `Service not ready`，通知回调只记录错误；启动连接成功后会打开总览。新增回归先得到 5 失败 / 4 通过，确认目标丢失及连接成功与窗口初始化之间的覆盖竞态。
+- 在现有 `ServiceState` 中保存一个待打开目标；未连接或打开失败时保留，连接成功后在主线程重放，成功才清除。后来的显式请求覆盖前一个请求；没有持久化队列或新配置。
+- 启动及系统 Reopen 保留通知的 session/anchor。独立 Codex 只读审查指出“用户显式打开总览应覆盖旧目标”，相应回归先失败，再修复；显式导航和自动重放现在分开。
+- 10 项 `ledger_app::tests` 通过：连接前点击、前台/后台启动、Reopen 两种顺序、已连接点击先于启动回调、模拟连接重试、已有窗口重连、最新点击、显式总览覆盖及普通启动。Tauri MockRuntime 验证实际窗口函数和 URL；它不证明真实系统通知点击、可见锚点或窗口焦点。
+
+| 本轮命令 | 结果 |
+| --- | --- |
+| `bun run scripts/build-ledger-app.ts` | 通过；生成生产页面和内嵌服务资源 |
+| `cargo test --manifest-path menubar-tauri/src-tauri/Cargo.toml --lib ledger_app::tests` | 最终 10 通过，0 失败；修复前失败日志保留 |
+| `cargo check --manifest-path menubar-tauri/src-tauri/Cargo.toml` | 通过；现有 Objective-C 旧 API 弃用警告仍在 |
+| `bun run typecheck` | 根目录及客户端通过 |
+| `cd menubar-tauri && bun run tauri build --bundles app` | 通过；按最终代码重新构建，ad-hoc 签名完整性检查通过 |
+| `git diff --check` | 通过 |
+
+Harness 工作区位于另一个 Cargo workspace 内。首次 Cargo 命令在测试前因错误的 workspace 归属退出；本地验证期间临时添加空 `[workspace]`，验证后还原，未作为产品改动提交。完整回归由本次 PR 的新 CI 执行，历史 CI 不算本提交通过证据。
+
+### 原生验收与证据
+
+- 应用使用默认标识 `com.starlight.keepline`，直接运行本工作区内的 `.app`；隔离 `KEEPLINE_HOME=tmp/issue-138/native`，端口 5572 / 5573 / 5574，两条合成会话，扫描关闭，autostart 为 false。没有改系统通知设置或用户配置。
+- Computer Use 读到了原生总览中的两条合成会话；打开 `issue138-ready` 显示预期详情，关闭再重新打开绑定应用后仍为 `?sessionId=issue138-ready`。这是普通原生窗口冒烟，不是通知点击。
+- **通知点击验收受阻**：2026-10-13 15:05:02 CST，应用日志明确记录 `Keepline notification authorization failed: Notifications are not allowed for this application`。合成 needs-input 提醒仍被记录为 `notified=1`，只能记作 acknowledgment，不能作为可见投递、真实点击或锚点验收。已连接、连接未就绪和冷启动的真实通知点击均保留未验收。
+- 用于延迟连接的本地 HTTP 代理未转发 WebSocket，页面显示实时连接中断；这是验收夹具限制，本轮不据此判断产品实时推送行为。因通知权限阻断，未声称执行了原生延迟点击实验。
+- `codesign --verify --deep --strict menubar-tauri/src-tauri/target/release/bundle/macos/Keepline.app` 通过。主程序 SHA-256：`1121904f27bf7458abae274a302222d02fc2bc3986712baf0ca528dd6ad8f4fe`；包内服务 SHA-256：`73524fb2087c1b8c440ec8aad1f138fec9041ea7a185b5b6adb9a51fd273360e`。这是本地 ad-hoc 包，不是正式签名或公证结果。
+- 原生退出命令的工具操作被窗口状态变更拦住，未标为通过。结束时只终止本轮已确认身份的应用与夹具进程；测试目录和证据保留，原有服务未动。
+
+原始日志与本地记录在此 Harness 工作区 `tmp/issue-138/`：`rust-red.log`、`review-regression-red.log`、`rust-final.log`、`cargo-check-final.log`、`app-build-final.log`、`native-app.log`、`native-result.json`、`bundle-sha256.txt`。不提交本地数据库或临时夹具。
+
+明确保留完整注销/登录、原稿人工视觉确认及正式分发验收；本切片不将这些项目标为完成。最终代码仍需工作流的新独立审查；本轮初审发现的代码问题已用失败回归修复。
+
 ## 2026-10-08 收尾候选：macOS 1.2.0
 
-本节是最新结果，后面的轮次为历史记录。整合工作位于独立工作树 `keepline-closeout`、分支 `fix/ledger-closeout-20261007`；原工作树、实时预览及现有 3377 服务保留。审阅入口：https://github.com/majiayu000/keepline/pull/141 。本分支包含 #140 的当前执行证据和服务隔离修复。
+本节保留当时结果，后面的轮次为更早的历史记录。整合工作位于独立工作树 `keepline-closeout`、分支 `fix/ledger-closeout-20261007`；原工作树、实时预览及现有 3377 服务保留。审阅入口：https://github.com/majiayu000/keepline/pull/141 。本分支包含 #140 的当前执行证据和服务隔离修复。
 
 ### 产品结果
 
