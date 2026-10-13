@@ -8,6 +8,7 @@ use std::process::Child;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Arc, Mutex};
 use std::thread;
+use std::time::{Duration, Instant};
 
 use serde_json::{json, Value};
 
@@ -20,6 +21,7 @@ use crate::protocol::{
 use crate::session::{spawn_reader, DaemonState, Lease, LiveSession, Slot};
 
 static NEXT_CONNECTION: AtomicU64 = AtomicU64::new(1);
+const LEASE_DURATION: Duration = Duration::from_secs(15);
 
 struct OpError {
     code: &'static str,
@@ -193,8 +195,9 @@ fn dispatch(
         "pull" => pull(&mut guard, &request),
         "acquire" => acquire(&mut guard, conn_id, &request),
         "takeover" => takeover(&mut guard, conn_id, &request),
-        "input" => input(&mut guard, &request),
-        "resize" => resize(&mut guard, &request),
+        "renew" => renew(&mut guard, conn_id, &request),
+        "input" => input(&mut guard, conn_id, &request),
+        "resize" => resize(&mut guard, conn_id, &request),
         other => Err(OpError::new(
             "unknown_op",
             format!("unknown operation {other}"),
@@ -462,7 +465,7 @@ fn pull(state: &mut DaemonState, request: &Request) -> Result<Value, OpError> {
 
 fn acquire(state: &mut DaemonState, conn_id: u64, request: &Request) -> Result<Value, OpError> {
     let live = live_mut(state, request)?;
-    if live.lease.is_some() {
+    if active_lease(&mut live.lease, Instant::now()).is_some() {
         return Err(OpError::new(
             "lease_held",
             "terminal already has an input owner; takeover is required",
@@ -483,6 +486,7 @@ fn grant_lease(live: &mut LiveSession, conn_id: u64) -> Result<Value, OpError> {
         generation,
         token: token.clone(),
         owner: conn_id,
+        expires_at: Instant::now() + LEASE_DURATION,
     });
     Ok(json!({
         "terminal_id": live.intent.terminal_id,
@@ -491,7 +495,19 @@ fn grant_lease(live: &mut LiveSession, conn_id: u64) -> Result<Value, OpError> {
     }))
 }
 
-fn input(state: &mut DaemonState, request: &Request) -> Result<Value, OpError> {
+fn renew(state: &mut DaemonState, conn_id: u64, request: &Request) -> Result<Value, OpError> {
+    let live = live_mut(state, request)?;
+    let now = Instant::now();
+    let lease = ensure_lease(&mut live.lease, conn_id, request, now)?;
+    lease.expires_at = now + LEASE_DURATION;
+    Ok(json!({
+        "terminal_id": live.intent.terminal_id,
+        "generation": lease.generation,
+        "token": lease.token,
+    }))
+}
+
+fn input(state: &mut DaemonState, conn_id: u64, request: &Request) -> Result<Value, OpError> {
     let data = request
         .data
         .clone()
@@ -503,7 +519,7 @@ fn input(state: &mut DaemonState, request: &Request) -> Result<Value, OpError> {
         ));
     }
     let live = live_mut(state, request)?;
-    ensure_lease(live, request)?;
+    ensure_lease(&mut live.lease, conn_id, request, Instant::now())?;
     if !live.alive() {
         return Err(OpError::new(
             "terminal_exited",
@@ -521,7 +537,7 @@ fn input(state: &mut DaemonState, request: &Request) -> Result<Value, OpError> {
     Ok(json!({ "accepted": true }))
 }
 
-fn resize(state: &mut DaemonState, request: &Request) -> Result<Value, OpError> {
+fn resize(state: &mut DaemonState, conn_id: u64, request: &Request) -> Result<Value, OpError> {
     let cols = request
         .cols
         .ok_or_else(|| OpError::new("geometry_rejected", "cols is required"))?;
@@ -530,7 +546,7 @@ fn resize(state: &mut DaemonState, request: &Request) -> Result<Value, OpError> 
         .ok_or_else(|| OpError::new("geometry_rejected", "rows is required"))?;
     intent::validate_geometry(cols, rows).map_err(|err| OpError::new("geometry_rejected", err))?;
     let live = live_mut(state, request)?;
-    ensure_lease(live, request)?;
+    ensure_lease(&mut live.lease, conn_id, request, Instant::now())?;
     if !live.alive() {
         return Err(OpError::new(
             "terminal_exited",
@@ -588,19 +604,34 @@ fn restore_winsize(
     Err(OpError::new(code, message))
 }
 
-fn ensure_lease(live: &LiveSession, request: &Request) -> Result<(), OpError> {
-    let lease = live.lease.as_ref().ok_or_else(|| {
+// Called while the daemon state is locked, so expiration and the operation
+// using the lease are atomic with respect to acquire, takeover and disconnect.
+fn active_lease(lease: &mut Option<Lease>, now: Instant) -> Option<&mut Lease> {
+    if lease.as_ref().is_some_and(|lease| now >= lease.expires_at) {
+        *lease = None;
+    }
+    lease.as_mut()
+}
+
+fn ensure_lease<'a>(
+    lease: &'a mut Option<Lease>,
+    conn_id: u64,
+    request: &Request,
+    now: Instant,
+) -> Result<&'a mut Lease, OpError> {
+    let lease = active_lease(lease, now).ok_or_else(|| {
         OpError::new(
             "lease_rejected",
-            "input and resize require an explicit fencing lease",
+            "input, resize and renew require an unexpired fencing lease",
         )
     })?;
-    if Some(lease.generation) != request.generation
+    if lease.owner != conn_id
+        || Some(lease.generation) != request.generation
         || Some(lease.token.as_str()) != request.token.as_deref()
     {
         return Err(OpError::new("lease_rejected", "fencing token was rejected"));
     }
-    Ok(())
+    Ok(lease)
 }
 
 fn live_mut<'a>(
@@ -749,5 +780,76 @@ fn peer_uid(stream: &UnixStream) -> io::Result<u32> {
         Err(io::Error::last_os_error())
     } else {
         Ok(uid)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn lease(expires_at: Instant) -> Option<Lease> {
+        Some(Lease {
+            generation: 1,
+            token: "token".to_owned(),
+            owner: 7,
+            expires_at,
+        })
+    }
+
+    fn request() -> Request {
+        serde_json::from_value(json!({
+            "id": "1",
+            "op": "renew",
+            "generation": 1,
+            "token": "token",
+        }))
+        .unwrap()
+    }
+
+    #[test]
+    fn lease_expires_at_the_deadline_and_stays_revoked() {
+        let deadline = Instant::now() + LEASE_DURATION;
+        let request = request();
+        let mut current = lease(deadline);
+        assert!(ensure_lease(
+            &mut current,
+            7,
+            &request,
+            deadline - Duration::from_nanos(1)
+        )
+        .is_ok());
+        assert_eq!(current.as_ref().unwrap().expires_at, deadline);
+        for now in [deadline, deadline + Duration::from_nanos(1)] {
+            let mut current = lease(deadline);
+            assert!(matches!(
+                ensure_lease(&mut current, 7, &request, now),
+                Err(err) if err.code == "lease_rejected"
+            ));
+            assert!(current.is_none());
+            assert!(active_lease(&mut current, deadline - Duration::from_nanos(1)).is_none());
+        }
+        let mut current = lease(deadline);
+        assert!(active_lease(&mut current, deadline).is_none());
+    }
+
+    #[test]
+    fn rejected_credentials_leave_the_current_lease_unchanged() {
+        let now = Instant::now();
+        let deadline = now + LEASE_DURATION;
+        let mut current = lease(deadline);
+        for (owner, generation, token) in [(8, 1, "token"), (7, 2, "token"), (7, 1, "wrong")] {
+            let mut request = request();
+            request.generation = Some(generation);
+            request.token = Some(token.to_owned());
+            assert!(matches!(
+                ensure_lease(&mut current, owner, &request, now),
+                Err(err) if err.code == "lease_rejected"
+            ));
+            let lease = current.as_ref().unwrap();
+            assert_eq!(lease.expires_at, deadline);
+            assert_eq!(lease.owner, 7);
+            assert_eq!(lease.generation, 1);
+            assert_eq!(lease.token, "token");
+        }
     }
 }
