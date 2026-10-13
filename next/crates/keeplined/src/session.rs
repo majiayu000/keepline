@@ -6,6 +6,7 @@ use std::path::PathBuf;
 use std::process::{Child, ExitStatus};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex, MutexGuard};
+use std::time::Instant;
 
 use serde_json::{json, Value};
 
@@ -25,6 +26,7 @@ pub(crate) struct Lease {
     pub generation: u64,
     pub token: String,
     pub owner: u64,
+    pub expires_at: Instant,
 }
 
 pub(crate) struct LiveSession {
