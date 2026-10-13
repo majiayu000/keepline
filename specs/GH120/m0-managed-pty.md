@@ -65,10 +65,22 @@ writes to the master stay bounded: once they pass the input-tail budget, the
 reader stops taking further PTY output
 until those bytes flush.
 
-Input and resize require an explicit fencing lease. `acquire` fails when a
-lease is already held. `takeover` increments the generation and replaces the
-token; the previous token is rejected. A resize without the current token
-does not change the PTY winsize. A resize readback inside 2..=400 columns by
+Input and resize require an explicit fencing lease bound to the connection
+that acquired it. Each lease lasts 15 seconds, measured with the daemon's
+monotonic clock. The owner must send `renew` every 5 seconds on that same
+connection with `terminal_id`, `generation`, and `token`. A successful renewal
+returns those same fields and extends the deadline to 15 seconds after the
+renewal; input, resize, attach, and pull do not renew it implicitly.
+`acquire` fails with `lease_held` while an unexpired lease is held. At or after
+the deadline, `acquire` can grant a new generation and token without a
+takeover or disconnect. `takeover` immediately increments the generation and
+replaces the token. Input, resize, and renewal with expired or replaced
+credentials, or from a different connection even with the current token,
+fail with `lease_rejected`. Renewal cannot revive an expired lease.
+Expiration is checked under the daemon state lock on acquire, renew, input,
+and resize; no periodic expiry worker is needed. Lease expiration leaves the
+PTY running and does not replay input. A rejected resize does not change the
+PTY winsize. A resize readback inside 2..=400 columns by
 2..=200 rows is kept, including one that differs from the request. A readback
 outside that range restores the previous winsize and does not resize the
 screen. A later child `stty` does not resize the parser. When the PTY reaches EOF or the
@@ -85,8 +97,11 @@ write or ioctl the closed master. Before publication, an input request is
 either accepted in full, with any unwritten tail queued in daemon order, or
 rejected with `pty_backpressure` before any byte of that request is written.
 A later flush writes the queued tail once, so a client retry does not
-duplicate an accepted prefix. Disconnecting every client revokes the lease
-and leaves the child running. A later attach uses the same pid.
+duplicate an accepted prefix. Disconnecting the current owner immediately
+revokes its lease and leaves the child running. Disconnecting an old owner
+after takeover does not revoke the new owner's lease. A later attach uses the
+same terminal ID and pid; clients must explicitly acquire control again and
+must not replay keystrokes on timeout or reconnect.
 
 The daemon keeps eight grid views. A contiguous `pull` returns, for each
 revision after `after_revision`, the grid text, checksum, and geometry from
@@ -108,8 +123,14 @@ comparison, and the W0–W3 budgets are later milestones.
 ## Check
 
 ```bash
-cargo test --manifest-path next/Cargo.toml
-cargo fmt --check --manifest-path next/Cargo.toml
-cargo clippy --manifest-path next/Cargo.toml --all-targets -- -D warnings
-bun run typecheck
+cargo test --locked --manifest-path next/Cargo.toml -p keeplined --lib
+cargo test --locked --manifest-path next/Cargo.toml -p keeplined --test managed_session
+cargo fmt --check --manifest-path next/Cargo.toml -p keeplined
+cargo clippy --locked --manifest-path next/Cargo.toml -p keeplined --all-targets -- -D warnings
 ```
+
+The lease regressions use two real socket clients, wait past the actual
+15-second deadline, and exercise renewal at 5-second intervals. Unit tests use
+explicit `Instant` values for the before/at/after deadline boundary. These
+checks do not replace native TUI/App interaction, real Claude/Codex sessions,
+performance budgets, or the other M0/M1 and epic acceptance criteria.

@@ -344,6 +344,21 @@ fn managed_session_keeps_one_pty_and_one_writer() {
     let first_generation = first["result"]["generation"].as_u64().expect("generation");
     let first_token = first["result"]["token"].as_str().expect("token").to_owned();
 
+    let held = reader.call(json!({"op": "acquire", "terminal_id": terminal_id}));
+    assert_eq!(held["error"]["code"], "lease_held", "{held}");
+    for op in ["input", "resize", "renew"] {
+        let foreign = reader.call(json!({
+            "op": op,
+            "terminal_id": terminal_id,
+            "generation": first_generation,
+            "token": first_token,
+            "data": "FOREIGNTOKEN\n",
+            "cols": 40,
+            "rows": 12,
+        }));
+        assert_eq!(foreign["error"]["code"], "lease_rejected", "{foreign}");
+    }
+
     let second = reader.call(json!({"op": "takeover", "terminal_id": terminal_id}));
     assert!(second["ok"].as_bool().unwrap_or(false), "{second}");
     let generation = second["result"]["generation"].as_u64().expect("generation");
@@ -362,6 +377,16 @@ fn managed_session_keeps_one_pty_and_one_writer() {
     }));
     assert_eq!(stale["ok"], false);
     assert_eq!(stale["error"]["code"], "lease_rejected");
+    let stale_renew = owner.call(json!({
+        "op": "renew",
+        "terminal_id": terminal_id,
+        "generation": first_generation,
+        "token": first_token,
+    }));
+    assert_eq!(
+        stale_renew["error"]["code"], "lease_rejected",
+        "{stale_renew}"
+    );
 
     let accepted = reader.call(json!({
         "op": "input",
@@ -373,6 +398,7 @@ fn managed_session_keeps_one_pty_and_one_writer() {
     assert!(accepted["ok"].as_bool().unwrap_or(false), "{accepted}");
     let pong = wait_text(&mut owner, &terminal_id, "pong");
     assert!(!pong["text"].as_str().unwrap_or("").contains("OLDTOKEN"));
+    assert!(!pong["text"].as_str().unwrap_or("").contains("FOREIGNTOKEN"));
 
     let blocked = owner.call(json!({
         "op": "resize",
@@ -426,6 +452,17 @@ fn managed_session_keeps_one_pty_and_one_writer() {
     );
 
     drop(owner);
+    thread::sleep(Duration::from_millis(100));
+    let renewed = reader.call(json!({
+        "op": "renew",
+        "terminal_id": terminal_id,
+        "generation": generation,
+        "token": token,
+    }));
+    assert_eq!(
+        renewed["ok"], true,
+        "old connection revoked the new owner: {renewed}"
+    );
     drop(reader);
     thread::sleep(Duration::from_millis(100));
     assert!(pid_alive(pid), "child exited when clients disconnected");
@@ -437,11 +474,146 @@ fn managed_session_keeps_one_pty_and_one_writer() {
     let reattached = again.call(json!({"op": "attach", "terminal_id": terminal_id}));
     assert!(reattached["ok"].as_bool().unwrap_or(false), "{reattached}");
     assert_eq!(reattached["result"]["pid"], pid);
+    assert_eq!(reattached["result"]["terminal_id"], terminal_id);
+    assert_eq!(
+        reattached["result"]["text"]
+            .as_str()
+            .unwrap()
+            .matches("pong")
+            .count(),
+        1
+    );
+    let reacquired = again.call(json!({"op": "acquire", "terminal_id": terminal_id}));
+    assert_eq!(reacquired["ok"], true, "{reacquired}");
+    assert!(reacquired["result"]["generation"].as_u64().unwrap() > generation);
+    assert_ne!(reacquired["result"]["token"], token);
     drop(again);
 
     let before = pids_matching(&daemon.script.display().to_string());
     // Restart is exercised by a second daemon below; this guard keeps the child observable.
     assert!(before.iter().all(|found| *found == pid));
+}
+
+#[test]
+fn lease_expires_with_clients_still_connected() {
+    let daemon = Daemon::start(&script(0));
+    let mut owner = Client::connect(&daemon.runtime);
+    let mut reader = Client::connect(&daemon.runtime);
+    let mut cases = Vec::new();
+    // Each operation must notice expiry itself, without an earlier request
+    // clearing the lease for it. All terminals share the same real-time wait.
+    for first_op in ["input", "resize", "renew", "acquire"] {
+        let launch = owner.call(json!({
+            "op": "launch",
+            "operation_id": format!("op-expiry-{first_op}"),
+            "argv": ["/bin/sh", daemon.script],
+            "cwd": daemon.runtime.canonicalize().unwrap(),
+            "cols": 80,
+            "rows": 24,
+        }));
+        assert_eq!(launch["ok"], true, "{launch}");
+        let terminal_id = launch["result"]["terminal_id"].as_str().unwrap();
+        wait_text(&mut owner, terminal_id, "READY");
+        let lease = owner.call(json!({"op": "acquire", "terminal_id": terminal_id}));
+        assert_eq!(lease["ok"], true, "{lease}");
+        cases.push((first_op, launch, lease));
+    }
+    thread::sleep(Duration::from_secs(16));
+
+    for (first_op, launch, lease) in cases {
+        let terminal_id = launch["result"]["terminal_id"].as_str().unwrap();
+        if first_op != "acquire" {
+            let rejected = owner.call(json!({
+                "op": first_op,
+                "terminal_id": terminal_id,
+                "generation": lease["result"]["generation"],
+                "token": lease["result"]["token"],
+                "data": "EXPIREDTOKEN\n",
+                "cols": 40,
+                "rows": 12,
+            }));
+            assert_eq!(rejected["error"]["code"], "lease_rejected", "{rejected}");
+        }
+        let next = reader.call(json!({"op": "acquire", "terminal_id": terminal_id}));
+        assert_eq!(next["ok"], true, "{next}");
+        assert!(
+            next["result"]["generation"].as_u64().unwrap()
+                > lease["result"]["generation"].as_u64().unwrap()
+        );
+        assert_ne!(next["result"]["token"], lease["result"]["token"]);
+        for op in ["input", "resize", "renew"] {
+            let stale = owner.call(json!({
+                "op": op,
+                "terminal_id": terminal_id,
+                "generation": lease["result"]["generation"],
+                "token": lease["result"]["token"],
+                "data": "EXPIREDTOKEN\n",
+                "cols": 40,
+                "rows": 12,
+            }));
+            assert_eq!(stale["error"]["code"], "lease_rejected", "{stale}");
+        }
+        let accepted = reader.call(json!({
+            "op": "input",
+            "terminal_id": terminal_id,
+            "generation": next["result"]["generation"],
+            "token": next["result"]["token"],
+            "data": "size\nping\n",
+        }));
+        assert_eq!(accepted["ok"], true, "{accepted}");
+        let snapshot = wait_text(&mut reader, terminal_id, "pong");
+        let text = snapshot["text"].as_str().unwrap();
+        assert!(!text.contains("EXPIREDTOKEN"), "{snapshot}");
+        assert!(text.contains("SIZE 24 80"), "{snapshot}");
+        assert_eq!(snapshot["cols"], 80);
+        assert_eq!(snapshot["rows"], 24);
+        assert_eq!(snapshot["pid"], launch["result"]["pid"]);
+        assert_eq!(snapshot["alive"], true);
+    }
+}
+
+#[test]
+fn lease_renewal_keeps_the_owner_past_the_original_deadline() {
+    let daemon = Daemon::start(&script(0));
+    let mut owner = Client::connect(&daemon.runtime);
+    let mut reader = Client::connect(&daemon.runtime);
+    let launch = owner.call(json!({
+        "op": "launch",
+        "operation_id": "op-renewal",
+        "argv": ["/bin/sh", daemon.script],
+        "cwd": daemon.runtime.canonicalize().unwrap(),
+    }));
+    assert_eq!(launch["ok"], true, "{launch}");
+    let terminal_id = launch["result"]["terminal_id"].as_str().unwrap();
+    wait_text(&mut owner, terminal_id, "READY");
+    let lease = owner.call(json!({"op": "acquire", "terminal_id": terminal_id}));
+    assert_eq!(lease["ok"], true, "{lease}");
+    for _ in 0..3 {
+        thread::sleep(Duration::from_secs(5));
+        let renewed = owner.call(json!({
+            "op": "renew",
+            "terminal_id": terminal_id,
+            "generation": lease["result"]["generation"],
+            "token": lease["result"]["token"],
+        }));
+        assert_eq!(renewed["ok"], true, "{renewed}");
+        assert_eq!(
+            renewed["result"]["generation"],
+            lease["result"]["generation"]
+        );
+        assert_eq!(renewed["result"]["token"], lease["result"]["token"]);
+    }
+    let held = reader.call(json!({"op": "acquire", "terminal_id": terminal_id}));
+    assert_eq!(held["error"]["code"], "lease_held", "{held}");
+    let accepted = owner.call(json!({
+        "op": "input",
+        "terminal_id": terminal_id,
+        "generation": lease["result"]["generation"],
+        "token": lease["result"]["token"],
+        "data": "ping\n",
+    }));
+    assert_eq!(accepted["ok"], true, "{accepted}");
+    wait_text(&mut reader, terminal_id, "pong");
 }
 
 #[test]
