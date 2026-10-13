@@ -4,9 +4,21 @@
  * Thresholds are configurable via config file
  */
 
-import type { SessionStatus } from '../../domain/session/index.js';
+import type { Session, SessionStatus } from '../../domain/session/index.js';
 import type { ClaudeProcessInfo } from './types.js';
 import { config } from '../../lib/config.js';
+
+/** A missing match is not proof of exit, especially for a shared desktop server. */
+export function detectProcessState(
+  matched: boolean,
+  previous?: Pick<Session, 'pid' | 'processState'>,
+  probe: (pid: number, signal: 0) => unknown = process.kill,
+): NonNullable<Session['processState']> {
+  if (matched) return 'online';
+  if (!previous?.pid) return previous?.processState === 'exited' ? 'exited' : 'unknown';
+  try { probe(previous.pid, 0); return 'unknown'; }
+  catch (error) { return (error as NodeJS.ErrnoException).code === 'ESRCH' ? 'exited' : 'unknown'; }
+}
 
 /** Detect session status based on process info */
 export function detectSessionStatus(

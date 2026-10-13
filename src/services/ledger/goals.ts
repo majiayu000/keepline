@@ -2,7 +2,8 @@ import { workItemRepository } from '../../infrastructure/database/repositories/w
 import { ledgerRepository } from '../../infrastructure/database/repositories/ledger.repository.js';
 import { getDatabase } from '../../infrastructure/database/sqlite.js';
 import { config } from '../../lib/config.js';
-import { ledgerOverview, LedgerInputError } from './service.js';
+import { sessionRepository } from '../../infrastructure/database/repositories/session.repository.js';
+import { ledgerEnabled, ledgerOverview, LedgerInputError } from './service.js';
 
 export function todoRows(items = workItemRepository.findAll({ includeArchived: true })) {
   const db = getDatabase();
@@ -10,7 +11,11 @@ export function todoRows(items = workItemRepository.findAll({ includeArchived: t
   const sessions = db.query(`SELECT a.*,l.work_item_id,s.status AS live_status,s.status_source,s.status_reason
     FROM agent_sessions a JOIN work_item_session_links l ON l.agent_session_id=a.id
     LEFT JOIN sessions s ON s.session_id=a.runtime_session_id WHERE l.acceptance_status='accepted'`).all() as Array<{ id: string; runtime_session_id: string; title: string; status: string; last_active_at: string; work_item_id: string; live_status: string | null; status_source: string | null; status_reason: string | null }>;
-  const mappedSessions = sessions.map(s => ({ ...s, needsInput: s.live_status === 'needs_input', statusReason: s.status_reason }));
+  const mappedSessions = sessions.flatMap(s => {
+    const live = sessionRepository.findBySessionId(s.runtime_session_id);
+    if (!live || !ledgerEnabled(live)) return [];
+    return [{ ...s, status: live.status, needsInput: live.status === 'needs_input', statusReason: live.statusReason }];
+  });
   // Preserve existing goal children of other work-item kinds as well as standalone todos.
   return items.filter(t => t.level !== 'goal' && t.status !== 'archived' && (t.kind === 'todo' || goalIds.has(t.parentId ?? ''))).map(todo => {
       const linked = mappedSessions.filter(s => s.work_item_id === todo.id).sort((a,b) => Date.parse(b.last_active_at) - Date.parse(a.last_active_at));
@@ -50,10 +55,11 @@ export function goalRows(area?: string, now = new Date(), projectMapGoalId?: str
       return [...completed,...records];
     }).filter(e => Date.parse(e.at) >= now.getTime()-7*86400000 && Date.parse(e.at) <= now.getTime()).sort((a,b) => Date.parse(b.at)-Date.parse(a.at)).slice(0,6);
     const lastMovement = Math.max(goal.updatedAt.getTime(), ...todos.map(t => t.updatedAt.getTime()), ...todos.flatMap(t => t.sessions.map(s => Date.parse(s.last_active_at))));
+    const inactiveDays = Math.max(0,Math.floor((now.getTime() - lastMovement) / 86400000));
     return { ...goal, todos, recent, progress: { done: todos.filter(t => t.status === 'done').length, total: todos.length,
       active: todos.filter(t => t.status !== 'done' && t.sessions.some(s => s.status === 'running' || s.needsInput)).length },
       weeklyMovement: todos.filter(t => t.completedAt && t.completedAt.getTime() >= now.getTime() - 7 * 86400000).length,
-      stale: now.getTime() - lastMovement >= config.get().ledger.staleGoalDays * 86400000 };
+      inactiveDays, stale: inactiveDays >= config.get().ledger.staleGoalDays };
   });
 }
 export function completeTodo(id: string) {

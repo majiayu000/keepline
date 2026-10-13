@@ -37,6 +37,16 @@ export function useDashboard({
     openSessionId,
   );
 
+  useEffect(() => {
+    setSearchQuery(openSessionId ?? "");
+    setExpandedSessionId(openSessionId);
+    if (openSessionId) {
+      setSelectedProjectRoot(null);
+      setStatusFilters(new Set());
+      setRuntimeFilter("all");
+    }
+  }, [openSessionId]);
+
   const {
     sessions,
     allSessions,

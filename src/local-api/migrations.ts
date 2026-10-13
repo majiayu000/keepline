@@ -1,5 +1,8 @@
 import { migration015 } from '../infrastructure/database/migrations/015_progress_ledger.js';
 import { migration016 } from '../infrastructure/database/migrations/016_ledger_read_receipts.js';
+import { migration017 } from '../infrastructure/database/migrations/017_ledger_viewed_at.js';
+import { migration018 } from '../infrastructure/database/migrations/018_session_agent_identity.js';
+import { migration019 } from '../infrastructure/database/migrations/019_session_process_state.js';
 import { migration001 } from '../infrastructure/database/migrations/001_initial.js';
 import { migration004 } from '../infrastructure/database/migrations/004_sessions_last_message.js';
 import { migration005 } from '../infrastructure/database/migrations/005_session_metadata.js';
@@ -31,6 +34,9 @@ const serviceMigrations = [
   migration014,
   migration015,
   migration016,
+  migration017,
+  migration018,
+  migration019,
 ];
 
 export function runServiceMigrations(): void {

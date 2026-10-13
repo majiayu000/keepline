@@ -8,6 +8,8 @@ import { ledgerApi as api } from "@/services/ledger";
 import type { WorkItem } from "@/types/work-item";
 import type {
   LedgerConfig,
+  LedgerMonitorStatus,
+  LedgerOutsideAttention,
   LedgerDetail,
   RequirementItem,
 } from "../../../../domain/ledger/types";
@@ -27,28 +29,34 @@ function savedHours() {
   return 24;
 }
 
-export function useLedger({ view, token }: LedgerProps) {
+export function useLedger({ view, token, selectedId, onSelectSession: setSelectedId, project }: LedgerProps & { project: string | null }) {
   const { status: connectionStatus } = useWebSocket({ token });
   const [lastSyncedAt, setLastSyncedAt] = useState<Date | null>(null);
   const [hours, setHours] = useState(savedHours);
   const hoursRef = useRef(hours);
   const [rows, setRows] = useState<LedgerDetail[]>([]);
+  const [monitor, setMonitor] = useState<LedgerMonitorStatus | null>(null);
+  const [monitorError, setMonitorError] = useState("");
+  const [outsideAttention, setOutsideAttention] = useState<LedgerOutsideAttention[]>([]);
+  const [outsideError, setOutsideError] = useState("");
   const [goals, setGoals] = useState<Goal[]>([]);
   const [projectMapGoalId, setProjectMapGoalId] = useState<string | null>(null);
   const projectMapGoalRef = useRef(projectMapGoalId);
   projectMapGoalRef.current = projectMapGoalId;
-  useEffect(() => { if (view !== "goals") setProjectMapGoalId(null); }, [view]);
+  useEffect(() => {
+    if (view !== "goals") setProjectMapGoalId(null);
+  }, [view]);
   const [todos, setTodos] = useState<Todo[]>([]);
   const [settings, setSettings] = useState<LedgerConfig>(
     structuredClone(DEFAULT_LEDGER_CONFIG),
   );
+  const savedSettings = useRef(settings);
   const [recovery, setRecovery] = useState<RecoveryInfo | null>(null);
   const [detail, setDetail] = useState<LedgerDetail | null>(null);
-  const [selectedId, setSelectedId] = useState<string | null>(() =>
-    new URLSearchParams(window.location.search).get("sessionId"),
-  );
   const [autostart, setAutostartState] = useState(false);
   const [error, setError] = useState("");
+  const [actionError, setActionError] = useState("");
+  const [detailError, setDetailError] = useState("");
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState(false);
   const [review, setReview] = useState<Review | null>(null);
@@ -74,13 +82,14 @@ export function useLedger({ view, token }: LedgerProps) {
   } | null>(null);
   const [itemEditor, setItemEditor] = useState<RequirementItem[] | null>(null);
   const [itemFilter, setItemFilter] = useState<string | null>(null);
-  const hovering = useRef(false);
-  const [queuedRows, setQueuedRows] = useState<LedgerDetail[] | null>(null);
   const listRequest = useRef(0);
   const detailRequest = useRef(0);
   const selectedRef = useRef(selectedId);
   const viewRef = useRef(view);
   const settingsLoaded = useRef(false);
+  selectedRef.current = selectedId;
+  viewRef.current = view;
+
   const settingsRequest = useRef<Promise<LedgerConfig> | null>(null);
   const [settingsReady, setSettingsReady] = useState(false);
   const retentionDaysRef = useRef(DEFAULT_LEDGER_CONFIG.retentionDays);
@@ -88,14 +97,14 @@ export function useLedger({ view, token }: LedgerProps) {
     next = clampOverviewHours(next, retentionDaysRef.current);
     if (next === hoursRef.current) return;
     hoursRef.current = next;
-    hovering.current = false;
-    setQueuedRows(null);
+    setOutsideAttention([]);
     setRows([]);
     setHours(next);
   }, []);
   const applySettings = useCallback((cfg: LedgerConfig) => {
     retentionDaysRef.current = cfg.retentionDays;
     changeHours(hoursRef.current);
+    savedSettings.current = cfg;
     setSettings(cfg);
     settingsLoaded.current = true;
     setSettingsReady(true);
@@ -113,43 +122,49 @@ export function useLedger({ view, token }: LedgerProps) {
       // Saving the preference is optional.
     }
   }, [hours]);
-  selectedRef.current = selectedId;
-  viewRef.current = view;
   useEffect(() => {
-    const url = new URL(window.location.href);
-    if (selectedId) url.searchParams.set("sessionId", selectedId);
-    else {
-      url.searchParams.delete("sessionId");
-      url.searchParams.delete("anchor");
-    }
-    window.history.replaceState(null, "", url);
-  }, [selectedId]);
+    let active = true;
+    const refreshOutside = async () => {
+      if (!settingsLoaded.current || document.visibilityState === "hidden") return;
+      try {
+        const rows = await api<LedgerOutsideAttention[]>(`/ledger/outside-attention?hours=${hours}`);
+        if (active) { setOutsideAttention(rows); setOutsideError(""); }
+      } catch (e) {
+        if (active) setOutsideError(e instanceof Error ? e.message : "无法读取范围外待处理事项");
+      }
+    };
+    void refreshOutside();
+    const timer = window.setInterval(() => void refreshOutside(), 30000);
+    document.addEventListener("visibilitychange", refreshOutside);
+    return () => { active = false; window.clearInterval(timer); document.removeEventListener("visibilitychange", refreshOutside); };
+  }, [hours, settingsReady]);
+  useEffect(() => {
+    let active = true;
+    const refreshMonitor = async () => {
+      if (document.visibilityState === "hidden") return;
+      try {
+        const status = await api<LedgerMonitorStatus>("/status/monitor");
+        if (active) { setMonitor(status); setMonitorError(""); }
+      } catch (e) {
+        if (active) setMonitorError(e instanceof Error ? e.message : "无法读取监测状态");
+      }
+    };
+    void refreshMonitor();
+    const timer = window.setInterval(() => void refreshMonitor(), 15000);
+    document.addEventListener("visibilitychange", refreshMonitor);
+    return () => { active = false; window.clearInterval(timer); document.removeEventListener("visibilitychange", refreshMonitor); };
+  }, []);
   const load = useCallback(async (includeRelated = true) => {
-    // The saved time filter is usable only after the server retention limit is known.
-    if (!settingsLoaded.current) {
-      // A failed initial read is retried by manual refresh or the next poll.
-      // Success schedules the first ledger load after hours/settings are applied.
-      await refreshSettings();
-      return;
-    }
-    const request = ++listRequest.current;
+    if (!settingsLoaded.current) { await refreshSettings(); return; }
     const requestedHours = hoursRef.current;
+    const request = ++listRequest.current;
     try {
       const [ledger, related] = await Promise.all([
         api<LedgerDetail[]>(`/ledger?hours=${requestedHours}`),
         includeRelated ? Promise.all([api<Goal[]>(projectMapGoalId ? `/goals?projectMap=${encodeURIComponent(projectMapGoalId)}` : "/goals"), api<Todo[]>("/goals/todos")]) : undefined,
       ]);
       if (request !== listRequest.current || hoursRef.current !== requestedHours || projectMapGoalRef.current !== projectMapGoalId) return;
-      if (hovering.current) {
-        // Hold ordering while pointing, never freeze status, evidence or newly discovered sessions.
-        setRows(current => {
-          const incoming = new Map(ledger.map(row => [row.sessionId,row]));
-          const present = new Set(current.map(row => row.sessionId));
-          return [...current.flatMap(row => incoming.has(row.sessionId) ? [incoming.get(row.sessionId)!] : []),
-            ...ledger.filter(row => !present.has(row.sessionId))];
-        });
-        setQueuedRows(ledger);
-      } else setRows(ledger);
+      setRows(ledger);
       if (related) {
         setGoals(related[0]);
         setTodos(related[1].filter(todo => todo.kind === "todo"));
@@ -173,25 +188,19 @@ export function useLedger({ view, token }: LedgerProps) {
       const data = await api<LedgerDetail>(`/ledger/${encodeURIComponent(sessionId)}`);
       if (request === detailRequest.current && selectedRef.current === sessionId) {
         setDetail(data);
+        setDetailError("");
         setLastSyncedAt(new Date());
       }
     } catch (error) {
-      if (request === detailRequest.current && selectedRef.current === sessionId) throw error;
+      if (request === detailRequest.current && selectedRef.current === sessionId) {
+        setDetailError(error instanceof Error ? error.message : "无法读取会话详情");
+        throw error;
+      }
     }
   }, []);
-  const pauseRows = () => {
-    hovering.current = true;
-  };
-  const resumeRows = () => {
-    hovering.current = false;
-    if (queuedRows) {
-      setRows(queuedRows);
-      setQueuedRows(null);
-    }
-  };
   const perform = useCallback(
     async (action?: () => Promise<unknown>) => {
-      setError("");
+      setActionError("");
       setBusy(true);
       try {
         ++detailRequest.current;
@@ -200,13 +209,20 @@ export function useLedger({ view, token }: LedgerProps) {
         setReviewRevision((revision) => revision + 1);
         if (selectedRef.current) await refreshDetail(selectedRef.current);
       } catch (e) {
-        setError(e instanceof Error ? e.message : "操作失败");
+        setActionError(e instanceof Error ? e.message : "操作失败");
       } finally {
         setBusy(false);
       }
     },
     [load, refreshDetail],
   );
+  const retryDetail = async () => {
+    if (!selectedRef.current) return;
+    setBusy(true);
+    try { await refreshDetail(selectedRef.current); }
+    catch { /* refreshDetail keeps the failure visible inside the drawer. */ }
+    finally { setBusy(false); }
+  };
   useEffect(() => {
     void load().catch((e) => {
       setError(String(e));
@@ -223,17 +239,19 @@ export function useLedger({ view, token }: LedgerProps) {
   }, [load]);
   useEffect(() => {
     setDetail(null);
+    setDetailError("");
     if (!selectedId || !["overview", "todos", "goals", "review"].includes(view)) return;
     let active = true;
+    const visible = () => document.visibilityState !== "hidden";
     const update = async () => {
-      if (document.visibilityState === "hidden") return;
+      if (!visible()) return;
       const request = ++detailRequest.current;
       await api(`/ledger/${encodeURIComponent(selectedId)}/viewing`, "POST", {
         viewed: true,
       });
-      if (active) await refreshDetail(selectedId,request);
+      if (active && visible()) await refreshDetail(selectedId,request);
     };
-    const refresh = () => { void update().catch((e) => { if (active) setError(String(e)); }); };
+    const refresh = () => { void update().catch((e) => { if (active) setDetailError(e instanceof Error ? e.message : "无法读取会话详情"); }); };
     let refreshTimer: ReturnType<typeof setTimeout> | undefined;
     const unsubscribe = getWebSocketManager().onMessage(message => {
       const sessionId = message.sessionId ?? (message.data as { sessionId?: string } | undefined)?.sessionId;
@@ -373,19 +391,24 @@ export function useLedger({ view, token }: LedgerProps) {
       projectRoot:
         item?.projectRoot ??
         goals.find((g) => g.id === parentId)?.projectRoot ??
+        project ??
         "",
     });
   const saveSettings = async (patch: Partial<LedgerConfig> = {}) => {
     const next = { ...settings, ...patch };
-    const saved = await api<LedgerConfig>("/settings/ledger", "PUT", {
-      ...next,
-      exclude: {
-        ...next.exclude,
-        projects: next.exclude.projects
-          .map((path) => path.trim())
-          .filter(Boolean),
-      },
-    });
+    let saved: LedgerConfig;
+    try {
+      saved = await api<LedgerConfig>("/settings/ledger", "PUT", {
+        ...next,
+        exclude: {
+          ...next.exclude,
+          projects: next.exclude.projects.map(path => path.trim()).filter(Boolean),
+        },
+      });
+    } catch (error) {
+      setSettings(savedSettings.current);
+      throw error;
+    }
     applySettings(saved);
   };
   const toggleAutostart = async (on: boolean) => {
@@ -492,24 +515,35 @@ export function useLedger({ view, token }: LedgerProps) {
   return {
     connectionStatus,
     lastSyncedAt,
-    syncStatus: `${connectionStatus === 'connected' ? '已连接' : connectionStatus === 'connecting' ? '正在连接' : '连接中断，等待重连'}${lastSyncedAt ? ` · 上次同步 ${lastSyncedAt.toLocaleTimeString('zh-CN', { hour12: false })}` : ' · 等待首次同步'}`,
+    syncStatus: `${connectionStatus === "connected" ? "已连接" : connectionStatus === "connecting" ? "正在连接" : "连接中断，等待重连"}${lastSyncedAt ? ` · 上次同步 ${lastSyncedAt.toLocaleTimeString("zh-CN", { hour12: false })}` : " · 等待首次同步"}`,
+    outsideAttention,
+    outsideError,
+    monitor,
+    monitorError,
+    installHooks: async () => {
+      await api("/status/hooks/install", "POST");
+      setMonitor(await api<LedgerMonitorStatus>("/status/monitor"));
+      setMonitorError("");
+    },
     hours,
     changeHours,
-    projectMapGoalId,
-    setProjectMapGoalId,
     rows,
     setRows,
     goals,
+    projectMapGoalId,
+    setProjectMapGoalId,
     todos,
     settings,
     setSettings,
-    detail,
+    detail: detail?.sessionId === selectedId ? detail : null,
     setDetail,
     selectedId,
     setSelectedId,
     autostart,
     setAutostartState,
-    error: error || (view === "review" ? reviewError : ""),
+    error: actionError || error || (detail?.sessionId === selectedId ? detailError : "") || (view === "review" ? reviewError : ""),
+    detailError,
+    retryDetail,
     loading,
     busy,
     review,
@@ -525,9 +559,6 @@ export function useLedger({ view, token }: LedgerProps) {
     setItemEditor,
     itemFilter,
     setItemFilter,
-    queuedRows,
-    pauseRows,
-    resumeRows,
     load,
     perform,
     openPrompt,

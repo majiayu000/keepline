@@ -1,3 +1,33 @@
+# 主工作区整合验收（2026-10-08）
+
+当前唯一运行入口为 `http://127.0.0.1:3377`，Hook 接收端口为 `7890`；进程从 `/Users/lifcc/Desktop/code/AI/tools/keepline` 启动，使用 `~/.keepline`。`keepline-realtime` 的 5572／5578 服务已停止。工作树和数据备份仍保留，未删除。下方早期 5572 记录为历史证据，不代表当前运行入口。
+
+整合内容：
+
+- 保留主工作区的新版 UI、Markdown／GFM、未读回复、审批／结构化问题、监测来源、自定义时间范围及目标项目图。
+- 合入预览工作树的 JSONL 增量读取、文件变化触发刷新、重连补齐、后台暂停、详情与列表请求乱序保护，以及私有 ETag 响应。
+- 真实多页面读取暴露的重复计算由同时进行的相同列表查询共用一次计算解决；成功或失败后均释放，不缓存已完成结果。
+- 列表与详情直接在 SQL 查询中限制现有保留期，避免先加载全部历史会话再筛选；未删除历史数据，未改变无日期约束的仓库调用。
+
+已完成检查：
+
+- `bun run test`：639 通过，0 失败，90 个文件。
+- `bun run typecheck`、客户端 `bun run typecheck:ui`、生产构建通过；后端最终调整后再次类型检查与构建通过。
+- `bun x playwright test --grep-invert 'v3 风格回归'`：28 项功能交互通过。原稿像素对照测试未在此次整合中验收，不计为通过。
+- 新增并发读取、失败后恢复和查询日期边界回归通过。
+- 真实 3377：首页、登录、监测、列表、范围外提醒均 HTTP 200；最后列表读取约 0.44 秒、范围外提醒约 2.32 秒。这些是单次观测，不是性能保证。
+- 浏览器原 5572 标签页已切换至 3377，原会话详情正常显示，Markdown 加粗可见，无页面横向溢出。
+- 端口核对只有同一个进程监听 3377／7890，5572／5578 已释放。
+- 两个数据库中的目标、用户编辑要求、验收、纠偏、规则和已关联待办均没有预览独有记录，因此无需合并用户编辑数据。
+
+原工作区改动及两个 SQLite 数据库备份：`/var/folders/3_/987z6jz91l9_t8mpvflf73xm0000gp/T/keepline-consolidation-backup-za6hojgb`。备份指针：`/tmp/keepline-consolidation-backup`。
+
+本轮日志：`/tmp/keepline-consolidation-tests-final.log`、`/tmp/keepline-consolidation-ui.log`、`/tmp/keepline-consolidation-typecheck.log`、`/tmp/keepline-consolidation-build.log`、`/tmp/keepline-consolidation-server-build.log`、`/tmp/keepline-consolidated-runtime-final.log`。浏览器截图：`/tmp/keepline-consolidated-live.jpg`。
+
+整合结果位于主工作区；本轮未提交 Git、未推送远端。
+
+---
+
 # 实时更新与增量解析验收
 
 2026-10-07。本轮在 `keepline-realtime` 工作区、`feat/realtime-updates` 分支完成，基于主工作区当时未提交的 UI 改版快照；没有覆盖正在变化的主工作区。以下只描述本轮修复，快照中的 UI、已读记录迁移等属于前置改动。

@@ -170,7 +170,7 @@ export function GoalProjectMap({
           {goal.progress.done} / {goal.progress.total} 已验收 ·{" "}
           {blockers.length} 项需要处理 · 本周完成 {goal.weeklyMovement} 项
         </span>
-        {goal.stale && <StatusTag tag="7 天未推进" bg="#FFF1DB" fg="#92400E" />}
+        {goal.stale && <StatusTag tag={`${goal.inactiveDays} 天没推进`} bg="#FFF4E5" fg="#B45309" />}
         {!!parts.length && (
           <ProgressSegments
             stretch
@@ -270,7 +270,7 @@ export function GoalProjectMap({
                           onOpenSession(p.waiting!.runtime_session_id)
                         }
                       >
-                        跳到 agent 回答
+                        查看待响应会话
                       </ActionButton>
                     ) : p.session ? (
                       <ActionButton
@@ -342,7 +342,7 @@ export function GoalProjectMap({
                           : c.editWorkItem(p.todo)
                     }
                   >
-                    {p.waiting ? "跳到 agent 回答" : "查看卡点"}
+                    {p.waiting ? "查看待响应会话" : "查看卡点"}
                   </ActionButton>
                 </div>
               ))

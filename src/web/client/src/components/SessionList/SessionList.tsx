@@ -1,8 +1,9 @@
 import { useState, useMemo, memo, useCallback, useEffect } from 'react'
-import type { Session, SessionFullData, PaginationInfo, TerminalApp } from '@/types'
+import type { Session, SessionFullData, PaginationInfo, TerminalApp, SessionStatus } from '@/types'
 import { SessionCard } from '@/components/SessionCard'
 import { Button } from '@/components/Button'
 import { STATUS_ORDER } from '@/constants'
+import { SESSION_STATUS_PRESENTATION } from '../../../../../domain/session/status-presentation'
 import styles from './SessionList.module.css'
 
 interface SessionListProps {
@@ -24,8 +25,6 @@ interface SessionListProps {
   initiallyExpandedSessionId?: string
   onInitialExpansionConsumed?: () => void
 }
-
-type SessionStatus = 'needs_input' | 'stalled' | 'interrupted' | 'running' | 'waiting' | 'idle' | 'lost' | 'completed'
 
 interface GroupedSessions {
   needs_input: Session[]
@@ -104,79 +103,22 @@ export const SessionList = memo(function SessionList({
 
   return (
     <div className={styles.container}>
-      {/* Priority: Running, Waiting, Idle */}
-      {groupedSessions.running.length > 0 && (
+      {STATUS_ORDER.filter((status) => groupedSessions[status].length > 0).map((status) => (
         <SessionGroup
-          title="Running"
-          sessions={groupedSessions.running}
+          key={status}
+          title={status === 'waiting' ? 'Waiting for Input' : SESSION_STATUS_PRESENTATION[status].label}
+          sessions={groupedSessions[status]}
           onRecover={onRecover}
           onStop={onStop}
           onComplete={onComplete}
           getSessionFull={getSessionFull}
           loadSessionFull={loadSessionFull}
           isLoadingFull={isLoadingFull}
+          defaultCollapsed={status === 'completed'}
           initiallyExpandedSessionId={initiallyExpandedSessionId}
           onInitialExpansionConsumed={onInitialExpansionConsumed}
         />
-      )}
-      {groupedSessions.waiting.length > 0 && (
-        <SessionGroup
-          title="Waiting for Input"
-          sessions={groupedSessions.waiting}
-          onRecover={onRecover}
-          onStop={onStop}
-          onComplete={onComplete}
-          getSessionFull={getSessionFull}
-          loadSessionFull={loadSessionFull}
-          isLoadingFull={isLoadingFull}
-          initiallyExpandedSessionId={initiallyExpandedSessionId}
-          onInitialExpansionConsumed={onInitialExpansionConsumed}
-        />
-      )}
-      {groupedSessions.idle.length > 0 && (
-        <SessionGroup
-          title="Idle"
-          sessions={groupedSessions.idle}
-          onRecover={onRecover}
-          onStop={onStop}
-          onComplete={onComplete}
-          getSessionFull={getSessionFull}
-          loadSessionFull={loadSessionFull}
-          isLoadingFull={isLoadingFull}
-          initiallyExpandedSessionId={initiallyExpandedSessionId}
-          onInitialExpansionConsumed={onInitialExpansionConsumed}
-        />
-      )}
-      {/* Secondary: Interrupted, Completed */}
-      {groupedSessions.lost.length > 0 && (
-        <SessionGroup
-          title="Interrupted"
-          sessions={groupedSessions.lost}
-          onRecover={onRecover}
-          onStop={onStop}
-          onComplete={onComplete}
-          getSessionFull={getSessionFull}
-          loadSessionFull={loadSessionFull}
-          isLoadingFull={isLoadingFull}
-          initiallyExpandedSessionId={initiallyExpandedSessionId}
-          onInitialExpansionConsumed={onInitialExpansionConsumed}
-        />
-      )}
-      {groupedSessions.completed.length > 0 && (
-        <SessionGroup
-          title="Completed"
-          sessions={groupedSessions.completed}
-          onRecover={onRecover}
-          onStop={onStop}
-          onComplete={onComplete}
-          getSessionFull={getSessionFull}
-          loadSessionFull={loadSessionFull}
-          isLoadingFull={isLoadingFull}
-          defaultCollapsed
-          initiallyExpandedSessionId={initiallyExpandedSessionId}
-          onInitialExpansionConsumed={onInitialExpansionConsumed}
-        />
-      )}
+      ))}
 
       {/* Load More button */}
       {pagination?.hasMore && onLoadMore && (

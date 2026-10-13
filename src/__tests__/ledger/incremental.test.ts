@@ -1,11 +1,12 @@
-import { describe,test,expect } from 'bun:test';
+import { describe,test,expect,spyOn } from 'bun:test';
 import { mkdtempSync,writeFileSync,appendFileSync,rmSync } from 'fs';
 import { join } from 'path';
 import { tmpdir } from 'os';
 import { setupLedgerTest } from './helpers.js';
 import { sessionRepository } from '../../infrastructure/database/repositories/session.repository.js';
 import { getDatabase } from '../../infrastructure/database/sqlite.js';
-import { clearLedgerCache,ingestLedger,getLedger,replaceLedgerItems } from '../../services/ledger/service.js';
+import { clearLedgerCache,ingestLedger,getLedger,replaceLedgerItems,ledgerOverview } from '../../services/ledger/service.js';
+import * as summaryCache from '../../infrastructure/session-summary-cache.js';
 import { clearLedgerFactCache,ledgerFactCacheStats } from '../../services/ledger/facts.js';
 import { closeSessionSummaryCache } from '../../infrastructure/session-summary-cache.js';
 import { config } from '../../lib/config.js';
@@ -51,6 +52,16 @@ describe('incremental ledger with isolated scan restarts',() => {
       const before = changes(); clearLedgerCache(); clearLedgerFactCache(); closeSessionSummaryCache();
       expect(await ingestLedger(session,parsed)).toBeNull();
       expect(ledgerFactCacheStats().reads).toBe(reads); expect(changes()).toBe(before);
+      const cachedRead = spyOn(summaryCache, 'readLedgerComputation');
+      const diskHits = ledgerFactCacheStats().diskHits;
+      try {
+        const menu = (await ledgerOverview(24, false, false, true))[0];
+        expect(menu).toMatchObject({ sessionId: id, state: first.state, progress: first.progress, asks: [], trail: [], evidence: [] });
+        expect(menu.activity?.action).toBe(first.activity?.action);
+        expect(cachedRead.mock.calls.some(([key]) => key === `detail:${id}`)).toBe(false);
+        expect(ledgerFactCacheStats().reads).toBe(reads);
+        expect(ledgerFactCacheStats().diskHits).toBe(diskHits);
+      } finally { cachedRead.mockRestore(); }
       expect((await getLedger(id))?.items[0].source).toBe('fallback');
       expect((await getLedger(id))?.unread).toBe(true);
       markLedgerViewed(id,true,Date.now(),first.turnId);
@@ -60,6 +71,7 @@ describe('incremental ledger with isolated scan restarts',() => {
       expect(ledgerFactCacheStats().reads).toBe(reads);
       const edited = await replaceLedgerItems(id,[{ ...first.items[0],title: 'Run `bun test widget`' }]);
       expect(edited?.progress.done).toBe(1);
+      expect((await ledgerOverview(24, false, false, true))[0].progress.done).toBe(1);
       clearLedgerCache(); closeSessionSummaryCache();
       expect((await getLedger(id))?.progress.done).toBe(1);
       session = sessionRepository.upsert({ sessionId: id,status: 'needs_input',statusSource: 'hook' });

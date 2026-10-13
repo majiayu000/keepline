@@ -298,6 +298,26 @@ export function LedgerSettings({
           </Row>
         </>,
       )}
+      {section("连接 agent", <>
+            <Row title="实时事件" desc="连接后可识别审批请求。会更新 Codex 和 Claude Code 的 hook 配置，保留已有命令。Codex 需要在其界面中信任新 hook。">
+              <ActionButton
+                disabled={c.busy}
+                onClick={() => void c.perform(c.installHooks)}
+              >
+                {c.monitor?.runtimes.length && c.monitor.runtimes.every(r => r.hookInstalled) ? "重新连接" : "连接实时事件"}
+              </ActionButton>
+            </Row>
+            {c.monitor?.runtimes.map(runtime => (
+              <Row key={runtime.runtimeId} title={runtime.runtimeId === "codex" ? "Codex" : "Claude Code"}
+                desc={!runtime.hookInstalled ? "尚未连接；本地执行记录仍会定时读取。"
+                  : !runtime.receiverRunning ? "配置已安装，事件接收服务未运行。重新启动 Keepline 后再检查。"
+                  : runtime.lastHookAt ? "已收到真实事件。"
+                  : runtime.runtimeId === "codex" ? "配置已安装，尚未收到事件。请在 Codex 中信任 hook，再运行一个回合。"
+                  : "配置已安装，尚未收到事件。请重新打开 Claude Code 并运行一个回合。"}>
+                <span>{runtime.lastHookAt ? "已验证" : "待验证"}</span>
+              </Row>
+            ))}
+      </>)}
       <details className={styles.additionalSettings}>
         <summary>更多设置</summary>
         {section(
@@ -308,7 +328,7 @@ export function LedgerSettings({
                 alerts: { ...s.alerts, limited: on },
               }))}
             </Row>
-            <Row title="系统通知" desc="关闭后只在面板中展示提醒。">
+            <Row title="系统通知" desc="默认关闭，只在面板中展示提醒；开启后发送系统横幅通知。">
               {toggle("系统通知", s.nativeNotifications, (on) => ({
                 nativeNotifications: on,
               }))}
@@ -380,17 +400,7 @@ export function LedgerSettings({
                 />
               </Row>
             )}
-            <Row title="Hook 事件" desc="安装 hook 以识别审批请求。">
-              <ActionButton
-                onClick={() =>
-                  void c.perform(() =>
-                    navigator.clipboard.writeText("keepline hooks install"),
-                  )
-                }
-              >
-                复制安装命令
-              </ActionButton>
-            </Row>
+
           </>,
         )}
       </details>

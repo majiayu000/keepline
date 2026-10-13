@@ -6,6 +6,17 @@ import { workItemEvidenceRepository } from '../infrastructure/database/repositor
 import { workItemRepository } from '../infrastructure/database/repositories/work-item.repository.js';
 
 describe('Session Repository Upsert', () => {
+  test('persists child identity in full and lightweight reads, and preserves omitted fields', () => {
+    sessionRepository.upsert({ sessionId: 'codex_child', client: 'codex', parentSessionId: 'parent', isSubAgent: true, agentRole: 'you-are-here', agentNickname: 'Chandrasekhar' });
+    const expected = { parentSessionId: 'parent', isSubAgent: true, agentRole: 'you-are-here', agentNickname: 'Chandrasekhar' };
+    expect(sessionRepository.upsert({ sessionId: 'codex_child', title: 'Map' })).toMatchObject(expected);
+    expect(sessionRepository.findAllLightweight()[0]).toMatchObject(expected);
+    expect(sessionRepository.findOperationalLightweight()[0]).toMatchObject(expected);
+    const updated = sessionRepository.upsert({ sessionId: 'codex_child', agentNickname: 'New name' });
+    expect(updated.agentRole).toBe('you-are-here');
+    expect(updated.agentNickname).toBe('New name');
+  });
+
   beforeEach(() => {
     resetDatabase();
   });
@@ -100,6 +111,7 @@ describe('Session Repository Upsert', () => {
         title: sessionId,
         initialPrompt: 'Prompt',
         pid: 4321,
+        processState: 'online',
         tty: 'ttys003',
         lastActiveAt: new Date('2026-04-13T15:00:00.000Z'),
       });
@@ -118,8 +130,9 @@ describe('Session Repository Upsert', () => {
 
     for (const sessionId of ['restart-running', 'restart-waiting', 'restart-idle']) {
       const session = sessionRepository.findBySessionId(sessionId);
+      expect(session?.processState).toBe('unknown');
       expect(session?.status).toBe('lost');
-      expect(session?.pid).toBeUndefined();
+      expect(session?.pid).toBe(4321);
       expect(session?.tty).toBeUndefined();
     }
     expect(sessionRepository.findBySessionId('restart-completed')?.status).toBe('completed');

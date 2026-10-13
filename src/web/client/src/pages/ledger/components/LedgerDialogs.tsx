@@ -1,16 +1,22 @@
 import { useEffect, useRef } from "react";
 import { Segmented } from "./LedgerPrimitives";
 import type { LedgerController } from "@/hooks/useLedger";
-import type { RequirementItem } from "../../../../../../domain/ledger/types";
+import type { LedgerDetail, RequirementItem } from "../../../../../../domain/ledger/types";
 import { itemStateText } from "../presentation";
 import styles from "../LedgerPage.module.css";
 
 export function LedgerDialogs({
   controller: c,
   onOpenSession,
+  stopRow,
+  setStopRow,
+  onStop,
 }: {
   controller: LedgerController;
   onOpenSession: (id: string) => void;
+  stopRow: LedgerDetail | null;
+  setStopRow: (row: LedgerDetail | null) => void;
+  onStop: (id: string) => Promise<void>;
 }) {
   const {
     prompt,
@@ -25,9 +31,24 @@ export function LedgerDialogs({
     saveWorkItem,
   } = c;
   const ref = useRef<HTMLDivElement>(null);
-  const open = !!(prompt || editing || itemEditor);
+  const open = !!(prompt || editing || itemEditor || stopRow);
+  const draft = JSON.stringify(prompt ?? editing ?? itemEditor);
+  const initialDraft = useRef(draft);
+  const currentDraft = useRef(draft);
+  currentDraft.current = draft;
+  const close = () => {
+    if (busy) return;
+    if (currentDraft.current !== initialDraft.current && !window.confirm("有未保存的修改，确定放弃吗？")) return;
+    setStopRow(null);
+    setPrompt(null);
+    setEditing(null);
+    setItemEditor(null);
+  };
+  const closeRef = useRef(close);
+  closeRef.current = close;
   useEffect(() => {
     if (!open) return;
+    initialDraft.current = currentDraft.current;
     const previous = document.activeElement as HTMLElement | null;
     const dialog = ref.current?.querySelector<HTMLElement>('[role="dialog"]');
     dialog?.querySelector<HTMLElement>("input,textarea,button,select")?.focus();
@@ -35,10 +56,9 @@ export function LedgerDialogs({
     document.body.style.overflow = "hidden";
     const key = (e: KeyboardEvent) => {
       if (e.key === "Escape") {
+        e.preventDefault();
         e.stopPropagation();
-        setPrompt(null);
-        setEditing(null);
-        setItemEditor(null);
+        closeRef.current();
       }
       if (e.key === "Tab") {
         const controls = [
@@ -58,15 +78,40 @@ export function LedgerDialogs({
         }
       }
     };
+    const leave = (event: BeforeUnloadEvent) => {
+      if (currentDraft.current === initialDraft.current) return;
+      event.preventDefault();
+      event.returnValue = "";
+    };
     document.addEventListener("keydown", key, true);
+    window.addEventListener("beforeunload", leave);
     return () => {
       document.removeEventListener("keydown", key, true);
+      window.removeEventListener("beforeunload", leave);
       document.body.style.overflow = before;
       previous?.focus();
     };
-  }, [open, setPrompt, setEditing, setItemEditor]);
+  }, [open]);
   return (
     <div className={styles.page} ref={ref}>
+      {stopRow && (
+        <div className={styles.dialog} role="dialog" aria-modal="true" aria-label="停止会话进程">
+          <div className={styles.card}>
+            <h3>停止这个会话的进程？</h3>
+            <p><strong>{stopRow.title}</strong></p>
+            <p className={styles.subtle}>{stopRow.projectRoot}</p>
+            <p>正在执行的工作会被中断，执行记录仍保留。</p>
+            {c.error && <p role="alert" className={styles.error}>{c.error}</p>}
+            <div className={styles.actions}>
+              <button className={styles.cancel} disabled={busy} onClick={() => setStopRow(null)}>取消</button>
+              <button disabled={busy} onClick={() => void perform(async () => {
+                await onStop(stopRow.sessionId);
+                setStopRow(null);
+              })}>{busy ? "正在停止…" : "停止进程"}</button>
+            </div>
+          </div>
+        </div>
+      )}
       {prompt && (
         <div
           className={`${styles.dialog} ${prompt.dispatch ? styles.dispatchDialog : ""}`}
@@ -101,11 +146,13 @@ export function LedgerDialogs({
               </p>
             )}
             <textarea
-              rows={14}
+              rows={prompt.dispatch ? 8 : 14}
               value={prompt.text}
               onChange={(e) => setPrompt({ ...prompt, text: e.target.value })}
             />
+            {c.error && <p role="alert" className={styles.error}>{c.error}</p>}
             <div className={styles.actions}>
+              {prompt.dispatch && <button className={styles.cancel} disabled={busy} onClick={close}>取消</button>}
               <button
                 onClick={() =>
                   void perform(() => navigator.clipboard.writeText(prompt.text))
@@ -123,11 +170,12 @@ export function LedgerDialogs({
                     })
                   }
                 >
-                  复制并打开 agent
+                  复制并查看会话记录
                 </button>
               )}
               {prompt.dispatch && (
                 <button
+                  className={styles.primary}
                   disabled={
                     busy || !prompt.dispatch.projectRoot || !prompt.text.trim()
                   }
@@ -139,7 +187,7 @@ export function LedgerDialogs({
                   启动 {prompt.runtime === "codex" ? "Codex" : "Claude Code"}
                 </button>
               )}
-              <button onClick={() => setPrompt(null)}>关闭</button>
+              {!prompt.dispatch && <button disabled={busy} onClick={close}>关闭</button>}
             </div>
           </div>
         </div>
@@ -191,7 +239,7 @@ export function LedgerDialogs({
                   <select
                     value={editing.parentId}
                     onChange={(e) =>
-                      setEditing({ ...editing, parentId: e.target.value })
+                      setEditing({ ...editing, parentId: e.target.value, projectRoot: editing.projectRoot || goals.find(goal => goal.id === e.target.value)?.projectRoot || "" })
                     }
                   >
                     <option value="">不关联目标</option>
@@ -214,6 +262,7 @@ export function LedgerDialogs({
                 </label>
               </>
             )}
+            {c.error && <p role="alert" className={styles.error}>{c.error}</p>}
             <div className={styles.actions}>
               <button
                 disabled={!editing.title.trim() || busy}
@@ -221,7 +270,7 @@ export function LedgerDialogs({
               >
                 保存
               </button>
-              <button onClick={() => setEditing(null)}>取消</button>
+              <button disabled={busy} onClick={close}>取消</button>
             </div>
           </div>
         </div>
@@ -407,6 +456,7 @@ export function LedgerDialogs({
             >
               补充要求
             </button>
+            {c.error && <p role="alert" className={styles.error}>{c.error}</p>}
             <div className={styles.actions}>
               <button
                 disabled={busy || itemEditor.some((item) => !item.title.trim() || item.anchors.commandFormat === "legacy-unconfirmed" && item.anchors.commands.some(command => command.trim()))}
@@ -414,7 +464,7 @@ export function LedgerDialogs({
               >
                 保存并确认
               </button>
-              <button onClick={() => setItemEditor(null)}>取消</button>
+              <button disabled={busy} onClick={close}>取消</button>
             </div>
           </div>
         </div>

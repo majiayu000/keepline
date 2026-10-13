@@ -8,7 +8,6 @@ import { MenubarPage } from "@/pages/ledger/MenubarPage";
 import { useAuth } from "@/hooks/useAuth";
 import { stopSession } from "@/services/api";
 import type { TabId } from "@/components/TabNav";
-import { workspaceLocation } from "@/pages/ledger/navigation";
 
 const LedgerPage = lazy(() =>
   import("@/pages/ledger/LedgerPage").then((m) => ({ default: m.LedgerPage })),
@@ -34,23 +33,63 @@ function AppContent() {
   const auth = useAuth();
   const { showToast } = useToast();
   const token = auth.getToken();
-  const [view, setView] = useState<TabId>(() => {
-    const value = new URLSearchParams(window.location.search).get("view");
-    return views.includes(value as TabId) ? (value as TabId) : "overview";
-  });
-  const [openSessionId, setOpenSessionId] = useState<string | null>(null);
+  const [route, setRoute] = useState(() => new URL(window.location.href));
+  const requestedView = route.searchParams.get("view");
+  const view: TabId = views.includes(requestedView as TabId) ? requestedView as TabId : "overview";
+  const selectedId = route.searchParams.get("sessionId");
+  const fullDetail = route.searchParams.get("detail") === "full" || route.searchParams.has("anchor");
+  const commitRoute = useCallback((url: URL, replace = false, detail = false) => {
+    if (url.href === window.location.href) return;
+    const state = detail ? {
+      keeplineBase: window.history.state?.keeplineBase ?? window.location.href,
+      keeplineDepth: (window.history.state?.keeplineDepth ?? 0) + 1,
+    } : null;
+    if (replace) window.history.replaceState(state, "", url);
+    else window.history.pushState(state, "", url);
+    setRoute(url);
+  }, []);
   useEffect(() => {
-    const url = workspaceLocation(window.location.href, view);
-    window.history.replaceState(null, "", url);
-  }, [view]);
+    const back = () => setRoute(new URL(window.location.href));
+    window.addEventListener("popstate", back);
+    return () => window.removeEventListener("popstate", back);
+  }, []);
   const navigate = useCallback((next: TabId) => {
-    setView(next);
-    setOpenSessionId(null);
-  }, []);
+    const url = new URL(window.location.href);
+    url.searchParams.set("view", next);
+    for (const key of ["sessionId", "detail", "anchor"]) url.searchParams.delete(key);
+    commitRoute(url);
+  }, [commitRoute]);
   const openSession = useCallback((id: string) => {
-    setOpenSessionId(id);
-    setView("sessions");
-  }, []);
+    const url = new URL(window.location.href);
+    url.searchParams.set("view", "sessions");
+    url.searchParams.set("sessionId", id);
+    url.searchParams.delete("detail");
+    url.searchParams.delete("anchor");
+    commitRoute(url);
+  }, [commitRoute]);
+  const selectSession = useCallback((id: string | null, full?: boolean) => {
+    const url = new URL(window.location.href);
+    if (id) url.searchParams.set("sessionId", id);
+    else url.searchParams.delete("sessionId");
+    if (id && (full ?? (url.searchParams.get("detail") === "full" || url.searchParams.has("anchor")))) url.searchParams.set("detail", "full");
+    else url.searchParams.delete("detail");
+    url.searchParams.delete("anchor");
+    commitRoute(url, false, !!id);
+  }, [commitRoute]);
+  const closeDetail = useCallback(() => {
+    const url = new URL(window.location.href);
+    for (const key of ["sessionId", "detail", "anchor"]) url.searchParams.delete(key);
+    const state = window.history.state;
+    if (state?.keeplineDepth > 0 && state.keeplineBase === url.href) window.history.go(-state.keeplineDepth);
+    else commitRoute(url, true);
+  }, [commitRoute]);
+  const changeScope = useCallback((key: "q" | "project", value: string | null) => {
+    const url = new URL(window.location.href);
+    if (value) url.searchParams.set(key, value);
+    else url.searchParams.delete(key);
+    for (const name of ["sessionId", "detail", "anchor"]) url.searchParams.delete(name);
+    commitRoute(url, key === "q");
+  }, [commitRoute]);
   const stop = useCallback(
     async (id: string) => {
       const result = await stopSession(id);
@@ -91,6 +130,14 @@ function AppContent() {
           view={view}
           onNavigate={navigate}
           onOpenSession={openSession}
+          selectedId={selectedId}
+          onSelectSession={selectSession}
+          onCloseDetail={closeDetail}
+          fullDetail={fullDetail}
+          search={route.searchParams.get("q") ?? ""}
+          project={route.searchParams.get("project")}
+          onSearch={(value) => changeScope("q", value)}
+          onProject={(value) => changeScope("project", value)}
           onLogout={auth.logout}
           onStop={stop}
         />
@@ -100,7 +147,7 @@ function AppContent() {
           activeTab={view}
           onNavigate={navigate}
           onLogout={auth.logout}
-          openSessionId={openSessionId}
+          openSessionId={view === "sessions" ? selectedId : null}
         />
       )}
     </Suspense>

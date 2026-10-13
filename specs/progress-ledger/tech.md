@@ -103,6 +103,16 @@ type TranscriptFact =
 
 ### 2. Codex desktop and turn status
 
+- Read spawn identity from `session_meta.payload.parent_thread_id` and
+  `source.subagent.thread_spawn`, including `agent_role`, `agent_nickname`,
+  and `agent_path`. Persist the parent, subagent flag, role, and nickname;
+  `forked_from_id` alone does not make a thread a subagent. This works without
+  the optional Codex database and with the ledger disabled.
+- Child titles use role and nickname instead of an inherited parent prompt.
+  Overview cards show a separate child/count tag in both densities; the drawer
+  lists child threads and supports navigation to a child and back to its parent.
+  The session `/subagents` and `/full` endpoints read Codex children from
+  persisted parent links; Claude retains its on-demand transcript scan.
 - Add an open-file liveness probe: one batched `lsof -Fn -c codex` per scan;
   a rollout path held open by any Codex process marks that session live.
 - Session status for Codex comes from the last `turn` fact: `started` with a
@@ -131,6 +141,18 @@ type TranscriptFact =
   the completed turn, independently of notification suppression expiry and
   acceptance. Ordinary unread responses enter `review` without contributing
   progress; read responses with no confirmed criteria move to `ended`.
+- Migration 017 adds `last_viewed_at`, written when a viewing visit closes;
+  viewing heartbeats do not overwrite this comparison baseline. `ledgerDetail`
+  derives change evidence against it on read, outside the transcript cache.
+- `/api/status/monitor` combines existing service scan state, runtime scan
+  summaries and receiver observations. Hook receipt timestamps record successful
+  processing in the receiving process, not client-authored event timestamps.
+- `/api/ledger/outside-attention?hours=N` returns compact attention rows beyond
+  the selected range. Scan summaries skip non-attention sessions before loading
+  full details; the normal overview response remains an array.
+- Unread replies are independent of the 12-hour expiry for read reviews. Tool
+  activity carries result presence, exit code and call/turn identity. Status
+  provenance is refreshed with live session state, including cached ledgers.
 
 ### 4. Storage (migration 015)
 
@@ -276,7 +298,7 @@ ledger-sourced evidence whose session `last_active_at` is older than
   "constraints": true,
   "alerts": { "needs_input": true, "off_plan": true,
               "claimed_unverified": true, "stalled": true, "limited": true },
-  "nativeNotifications": true,
+  "nativeNotifications": false,
   "focus": { "minutes": 30, "until": null },
   "staleGoalDays": 7,
   "exclude": { "projects": [], "runtimes": [] }
@@ -285,6 +307,9 @@ ledger-sourced evidence whose session `last_active_at` is older than
 
 Validated by the existing `ConfigManager`; exposed through
 `GET/PUT /api/settings/ledger`.
+System notifications are opt-in under Settings → More settings → System
+notifications. Disabling them suppresses queued native deliveries and withdraws
+delivered notifications on the app's next poll; panel alerts and history remain.
 
 ### 10. API and UI
 

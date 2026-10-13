@@ -75,7 +75,10 @@ describe('session reconciliation gate', () => {
       child.kill('SIGKILL');
       await child.exited;
       expect(sessionRepository.findBySessionId('killed-owner-live-session')?.status).toBe('lost');
-      expect(sessionRepository.findBySessionId('killed-owner-live-session')?.pid).toBeUndefined();
+      // Failed observation withdraws online status but retains the bound PID
+      // for the next definitive liveness probe; it does not prove agent exit.
+      expect(sessionRepository.findBySessionId('killed-owner-live-session')?.pid).toBe(process.pid);
+      expect(sessionRepository.findBySessionId('killed-owner-live-session')?.processState).toBe('unknown');
       expect(isSessionReconciliationRunning()).toBe(true);
       const state = JSON.parse(queryOne<{ value: string }>(
         "SELECT value FROM metadata WHERE key = 'session_reconciliation'"

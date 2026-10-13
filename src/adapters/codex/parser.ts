@@ -23,6 +23,11 @@ interface CodexAccumulator {
   rawSessionId: string;
   sessionId: string;
   directory: string;
+  parentSessionId?: string;
+  isSubAgent: boolean;
+  agentId?: string;
+  agentRole?: string;
+  agentNickname?: string;
   firstMessage?: string;
   launchPrompt?: string;
   lastMessage?: string;
@@ -121,10 +126,17 @@ function createAccumulator(entry: CodexJsonlEntry, includeToolCalls: boolean): C
   }
 
   const startedAtMs = parseCodexTimestampMs(entry.timestamp);
+  const spawn = asRecord(asRecord(asRecord(entry.payload.source)?.subagent)?.thread_spawn);
+  const parentSessionId = stringField(entry.payload, ['parent_thread_id']) ?? (spawn && stringField(spawn, ['parent_thread_id']));
   return {
     rawSessionId,
     sessionId: scopeCodexSessionId(rawSessionId),
     directory,
+    parentSessionId,
+    isSubAgent: Boolean(parentSessionId || spawn),
+    agentId: stringField(entry.payload, ['agent_path']) ?? (spawn && stringField(spawn, ['agent_path'])),
+    agentRole: stringField(entry.payload, ['agent_role']) ?? (spawn && stringField(spawn, ['agent_role'])),
+    agentNickname: stringField(entry.payload, ['agent_nickname']) ?? (spawn && stringField(spawn, ['agent_nickname'])),
     messageCount: 0,
     toolCount: 0,
     startedAtMs,
@@ -281,6 +293,11 @@ function finalizeAccumulator(accumulator: CodexAccumulator): CodexParsedSessionD
     rawSessionId: accumulator.rawSessionId,
     sessionId: accumulator.sessionId,
     directory: accumulator.directory,
+    parentSessionId: accumulator.parentSessionId,
+    isSubAgent: accumulator.isSubAgent,
+    agentId: accumulator.agentId,
+    agentRole: accumulator.agentRole,
+    agentNickname: accumulator.agentNickname,
     firstMessage: accumulator.firstMessage,
     launchPrompt: accumulator.launchPrompt,
     lastMessage: accumulator.lastMessage,

@@ -1,4 +1,5 @@
 import { installHookSpoolScript } from './spool.js';
+import { installClaudeStatusline, uninstallClaudeStatusline } from '../claude/statusline.js';
 import { getKeeplineHome } from '../../lib/paths.js';
 /**
  * Claude Code and Codex hooks installer
@@ -293,11 +294,12 @@ export function installHooks(): void {
     settings: getHookSettings(target.settingsPath),
   }));
   for (const target of targets) {
-    const changed = installKeeplineHookConfig(
+    let changed = installKeeplineHookConfig(
       target.settings,
       getHookCommand(config.get().hookPort, target.runtimeId),
       target.hookTypes
     );
+    if (target.runtimeId === 'claude-code') changed = installClaudeStatusline(target.settings) || changed;
     if (changed) {
       saveHookSettings(target.settingsPath, target.settings);
       logger.info(`Keepline ${target.runtimeId} hooks installed`);
@@ -318,7 +320,8 @@ export function uninstallHooks(): void {
   }));
   for (const target of targets) {
     const removed = uninstallKeeplineHookConfig(target.settings);
-    if (removed > 0) {
+    const removedStatusline = target.runtimeId === 'claude-code' && uninstallClaudeStatusline(target.settings);
+    if (removed > 0 || removedStatusline) {
       saveHookSettings(target.settingsPath, target.settings);
       logger.info(`Keepline ${target.runtimeId} hooks uninstalled`);
     } else {

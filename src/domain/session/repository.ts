@@ -15,6 +15,7 @@ import type {
 } from './value-objects.js';
 
 export interface ActiveSessionRecord {
+  processState?: Session['processState'];
   sessionId: string;
   client: AgentClient;
   status: SessionStatus;
@@ -22,6 +23,7 @@ export interface ActiveSessionRecord {
 }
 
 export interface ExistingSessionSummary {
+  processState?: Session['processState'];
   statusReason?: string | null;
   sessionId: string;
   client: AgentClient;
@@ -34,6 +36,7 @@ export interface ExistingSessionSummary {
 
 /** Session upsert data (for create or update) */
 export interface SessionUpsertData {
+  processState?: Session['processState'];
   sessionId: string;
   client?: AgentClient;
   directory?: string;
@@ -54,6 +57,8 @@ export interface SessionUpsertData {
   toolCount?: number;
   messageCount?: number;
   agentId?: string;
+  agentRole?: string;
+  agentNickname?: string;
   parentSessionId?: string;
   isSubAgent?: boolean;
   usageStats?: SessionUsageStats;
@@ -94,7 +99,7 @@ export interface ISessionRepository {
   /** Find active sessions with only the fields needed for process reconciliation */
   findActiveLightweight(): ActiveSessionRecord[];
 
-  /** Clear persisted live claims before a fresh process reconciliation. */
+  /** Withdraw live claims before reconciliation; retain PID as evidence to probe. */
   markActiveSessionsInterrupted(observedAt?: Date): number;
 
   /** Find sessions by status */

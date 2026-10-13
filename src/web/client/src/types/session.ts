@@ -26,6 +26,10 @@ export interface UsageStats {
 export interface Session {
   id: string
   sessionId: string
+  parentSessionId?: string
+  isSubAgent?: boolean
+  agentRole?: string
+  agentNickname?: string
   client: AgentClient
   runtimeId: SessionRuntimeId
   directory: string
@@ -56,7 +60,13 @@ export interface Session {
 
 /** Sub-agent session info */
 export interface SubAgent {
+  title?: string
+  status?: SessionStatus
   sessionId: string
+  parentSessionId?: string
+  isSubAgent?: boolean
+  agentRole?: string
+  agentNickname?: string
   agentId?: string
   directory: string
   firstMessage?: string
