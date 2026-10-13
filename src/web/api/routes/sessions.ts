@@ -14,6 +14,7 @@ import {
   getAllSessions as getAllClaudeParsedSessions,
 } from '../../../adapters/claude/scanner.js';
 import { getCodexSessionById } from '../../../adapters/codex/scanner.js';
+import { scopeCodexSessionId } from '../../../lib/session-id.js';
 import { getRecoveryInfo } from '../../../services/recovery.service.js';
 import { logger } from '../../../lib/logger.js';
 import { authMiddleware } from '../middleware/auth.js';
@@ -47,6 +48,29 @@ async function getParsedSessionById(sessionId: string) {
   }
 
   return getClaudeSessionById(sessionId);
+}
+
+async function sessionSubagents(sessionId: string) {
+  // Claude's periodic scan can omit subagents; keep its on-demand transcript read.
+  if (!sessionId.startsWith('codex_')) {
+    return (await getAllClaudeParsedSessions({ includeSubAgents: true }))
+      .filter(s => s.parentSessionId === sessionId)
+      .map(s => ({
+        sessionId: s.sessionId, agentId: s.agentId, parentSessionId: sessionId, isSubAgent: true,
+        directory: s.directory, firstMessage: s.firstMessage, lastMessage: s.lastMessage,
+        messageCount: s.messageCount, toolCount: s.toolCount, lastTool: s.lastTool,
+        startedAt: s.startedAt?.toISOString(), lastActiveAt: s.lastActiveAt.toISOString(), usageStats: s.usageStats,
+      }));
+  }
+  return getAllSessions()
+    .filter(s => s.client === 'codex' && s.parentSessionId && scopeCodexSessionId(s.parentSessionId) === sessionId)
+    .map(s => ({
+      sessionId: s.sessionId, agentId: s.agentId, agentRole: s.agentRole, agentNickname: s.agentNickname,
+      parentSessionId: sessionId, isSubAgent: true, title: s.title, status: s.status,
+      directory: s.directory, firstMessage: s.initialPrompt, lastMessage: s.lastMessage,
+      messageCount: s.messageCount, toolCount: s.toolCount, lastTool: s.lastTool,
+      startedAt: s.startedAt?.toISOString(), lastActiveAt: s.lastActiveAt.toISOString(), usageStats: s.usageStats,
+    }));
 }
 
 type SearchableSession = {
@@ -336,25 +360,7 @@ app.get('/:id/subagents', async (c) => {
   }
 
   try {
-    // Get all sessions including sub-agents
-    const allSessions = await getAllClaudeParsedSessions({ includeSubAgents: true });
-
-    // Find sub-agents that belong to this parent session
-    const subAgents = allSessions
-      .filter(s => s.parentSessionId === sessionId)
-      .map(s => ({
-        sessionId: s.sessionId,
-        agentId: s.agentId,
-        directory: s.directory,
-        firstMessage: s.firstMessage,
-        lastMessage: s.lastMessage,
-        messageCount: s.messageCount,
-        toolCount: s.toolCount,
-        lastTool: s.lastTool,
-        startedAt: s.startedAt?.toISOString(),
-        lastActiveAt: s.lastActiveAt.toISOString(),
-        usageStats: s.usageStats,
-      }));
+    const subAgents = await sessionSubagents(sessionId);
 
     return c.json({
       success: true,
@@ -507,23 +513,7 @@ app.get('/:id/full', async (c) => {
     const parsedSession = await getParsedSessionById(sessionId);
 
     // Get sub-agents
-    const subAgents = dbSession.client === 'claude'
-      ? (await getAllClaudeParsedSessions({ includeSubAgents: true }))
-          .filter(s => s.parentSessionId === sessionId)
-          .map(s => ({
-            sessionId: s.sessionId,
-            agentId: s.agentId,
-            directory: s.directory,
-            firstMessage: s.firstMessage,
-            lastMessage: s.lastMessage,
-            messageCount: s.messageCount,
-            toolCount: s.toolCount,
-            lastTool: s.lastTool,
-            startedAt: s.startedAt?.toISOString(),
-            lastActiveAt: s.lastActiveAt.toISOString(),
-            usageStats: s.usageStats,
-          }))
-      : [];
+    const subAgents = await sessionSubagents(sessionId);
 
     return c.json({
       success: true,

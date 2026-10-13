@@ -68,6 +68,17 @@ describe('Process Parser', () => {
       argsRaw: 'resume --last',
     });
   });
+
+  test('desktop paths with spaces do not turn helper processes into CLI sessions', () => {
+    const commands = [
+      '/Applications/Claude.app/Contents/Frameworks/Claude Helper.app/Contents/MacOS/Claude Helper --type=utility',
+      '/Applications/ChatGPT.app/Contents/Frameworks/Codex Framework.framework/Versions/155/Helpers/browser_crashpad_handler --monitor-self',
+      '/Applications/ChatGPT.app/Contents/Frameworks/Codex Framework.framework/Versions/155/Helpers/Codex (Renderer).app/Contents/MacOS/Codex (Renderer)',
+      '/Users/me/.codex/computer-use/Codex Computer Use.app/Contents/SharedSupport/SkyComputerUseClient.app/Contents/MacOS/SkyComputerUseClient',
+    ];
+    const output = commands.map((command, i) => `${30000 + i} 0.0 0.1 ?? Mon Jan  6 10:30:45 2026 ${command}`).join('\n');
+    expect(parseAgentPsOutput(output)).toEqual([]);
+  });
 });
 
 

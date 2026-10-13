@@ -8,17 +8,18 @@ import { getDatabase } from '../../infrastructure/database/sqlite.js';
 import { macOSNotification } from '../../infrastructure/notify/macos.js';
 import type { LedgerDetail, LedgerConfig } from '../../domain/ledger/types.js';
 
-type AlertDetail = Pick<LedgerDetail,'state' | 'statusReason' | 'offPlan' | 'claims' | 'progress' | 'limited' | 'agentSessionId' | 'sessionId' | 'title' | 'projectRoot' | 'parentSessionId' | 'turnId'>;
+type AlertDetail = Pick<LedgerDetail,'state' | 'processState' | 'statusReason' | 'offPlan' | 'claims' | 'progress' | 'limited' | 'agentSessionId' | 'sessionId' | 'title' | 'projectRoot' | 'parentSessionId' | 'turnId'>;
 type AlertKind = keyof LedgerConfig['alerts'];
 export interface LedgerAlert { id: string; agent_session_id: string; kind: AlertKind; detail: string; raised_at: string; cleared_at: string | null; notified: number }
 export function markLedgerViewed(sessionId: string, viewed: boolean, now = Date.now(), turnId?: string) {
   const db = getDatabase();
   if (viewed) db.query(`INSERT INTO ledger_views(session_id,expires_at,last_viewed_turn_id) VALUES(?,?,?) ON CONFLICT(session_id) DO UPDATE SET
     expires_at=excluded.expires_at,last_viewed_turn_id=COALESCE(excluded.last_viewed_turn_id,ledger_views.last_viewed_turn_id)`).run(sessionId,new Date(now+45000).toISOString(),turnId ?? null);
-  else db.query('UPDATE ledger_views SET expires_at=? WHERE session_id=?').run(new Date(now).toISOString(),sessionId);
+  else db.query('UPDATE ledger_views SET expires_at=?,last_viewed_at=? WHERE session_id=?').run(new Date(now).toISOString(),new Date(now).toISOString(),sessionId);
 }
 export function ledgerAlertConditions(d: AlertDetail): Partial<Record<AlertKind,string>> {
   const conditions: Partial<Record<AlertKind,string>> = {};
+  if (d.processState === 'exited') return conditions;
   if (d.state === 'needs_input') conditions.needs_input = '正在等待你审批或补充信息';
   if (!d.parentSessionId && d.progress.total > 0 && ['running','needs_input'].includes(d.state) && d.offPlan.length) conditions.off_plan = `发现 ${d.offPlan.length} 段可能偏离要求的操作`;
   if (!d.parentSessionId && d.progress.total > 0 && d.state === 'review' && d.claims.some(c => c.turnId === d.turnId) && d.progress.done < d.progress.total) conditions.claimed_unverified = '已确认要求的完成说法还需要证据';

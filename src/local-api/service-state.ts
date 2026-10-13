@@ -4,6 +4,8 @@ export const localServiceState = {
   instanceId: randomUUID(),
   startedAt: new Date(),
   scan: {
+    intervalMs: undefined as number | undefined,
+    timeoutMs: undefined as number | undefined,
     running: false,
     completed: false,
     lastStartedAt: undefined as Date | undefined,

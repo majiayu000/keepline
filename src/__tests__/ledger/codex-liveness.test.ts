@@ -1,5 +1,6 @@
 import { describe,test,expect } from 'bun:test';
 import { codexTurnStatus,parseOpenRollouts,readCodexMetadata,closeCodexMetadata } from '../../adapters/codex/liveness.js';
+import { detectProcessState } from '../../adapters/process/detector.js';
 import { resolveAggregatedStatus } from '../../services/session.aggregator.js';
 import { sampleFacts } from './helpers.js';
 import { Database } from 'bun:sqlite';
@@ -7,6 +8,17 @@ import { mkdtempSync,rmSync } from 'fs';
 import { tmpdir } from 'os';
 import { join } from 'path';
 describe('Codex liveness',() => {
+  test('only a known vanished PID proves exit; missing handles and permission errors do not', () => {
+    expect(detectProcessState(true)).toBe('online');
+    expect(detectProcessState(false)).toBe('unknown');
+    expect(detectProcessState(false, { pid: process.pid })).toBe('unknown');
+    const dead = () => { throw Object.assign(new Error('No such process'), { code: 'ESRCH' }); };
+    const denied = () => { throw Object.assign(new Error('Not permitted'), { code: 'EPERM' }); };
+    expect(detectProcessState(false, { pid: 42, processState: 'online' }, dead)).toBe('exited');
+    expect(detectProcessState(false, { pid: 42, processState: 'online' }, denied)).toBe('unknown');
+    expect(detectProcessState(false, { processState: 'exited' })).toBe('exited');
+    expect(detectProcessState(true, { processState: 'exited' })).toBe('online');
+  });
   test('batched open files identify desktop sessions by file, not cwd',() => {
     const paths = parseOpenRollouts('p42\nn/home/.codex/sessions/rollout-live.jsonl\np43\nn/tmp/other');
     expect(paths.get('/home/.codex/sessions/rollout-live.jsonl')).toBe(42); expect(paths.size).toBe(1);

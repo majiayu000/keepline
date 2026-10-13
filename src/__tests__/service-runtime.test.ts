@@ -619,7 +619,8 @@ describe('service runtime isolation', () => {
 
     const persisted = sessionRepository.findBySessionId('restart-service-running');
     expect(persisted?.status).toBe('lost');
-    expect(persisted?.pid).toBeUndefined();
+    expect(persisted?.processState).toBe('unknown');
+    expect(persisted?.pid).toBe(9876);
     expect(persisted?.tty).toBeUndefined();
   });
 
@@ -720,6 +721,8 @@ describe('service runtime isolation', () => {
       scanCommand: [process.execPath, '-e', regularScript],
     });
     const baseURL = `http://127.0.0.1:${liveService.server.port}`;
+    // Health remains inspectable during reconciliation, while retaining authentication.
+    expect((await fetch(`${baseURL}/api/status/monitor`)).status).toBe(401);
     await waitUntil(() => existsSync(callsPath));
 
     const authResponse = await fetch(`${baseURL}/api/v1/auth/local`, { method: 'POST' });
@@ -892,7 +895,7 @@ describe('service runtime isolation', () => {
       /(?:memory|pricing|recovery\.service|services\/terminal\.ts|pty\.manager|web\/api\/routes\/(?:sessions|recovery|auth|work-items))/.test(path)
     );
     expect(forbidden).toEqual([]);
-    expect(serviceMigrationVersions).toEqual([1, 4, 5, 6, 7, 8, 10, 11, 12, 13, 14, 15, 16]);
+    expect(serviceMigrationVersions).toEqual([1, 4, 5, 6, 7, 8, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19]);
   });
 
   test('uses watchdog TERM then KILL and bounds captured child output', async () => {

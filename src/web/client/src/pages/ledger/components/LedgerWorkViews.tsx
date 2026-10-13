@@ -1,4 +1,4 @@
-import { lazy, Suspense, useState } from "react";
+import { lazy, Suspense, useEffect, useState } from "react";
 import type { LedgerController } from "@/hooks/useLedger";
 import type { LedgerDetail } from "../../../../../../domain/ledger/types";
 import type { Todo } from "../types";
@@ -22,11 +22,30 @@ const GoalProjectMap = lazy(() => import("./GoalProjectMap").then(module => ({ d
 export function LedgerTodos({
   controller: c,
   onSelect,
+  scoped = false,
 }: {
   controller: LedgerController;
   onSelect: (id: string) => void;
+  scoped?: boolean;
 }) {
   const [filter, setFilter] = useState<"all" | "open" | "unassigned">("all");
+  const [ignoredSuggestions, setIgnoredSuggestions] = useState<string[]>(() => {
+    try {
+      const saved: unknown = JSON.parse(localStorage.getItem("keepline.ignored-followups") ?? "[]");
+      return Array.isArray(saved) ? saved.filter((key): key is string => typeof key === "string") : [];
+    }
+    catch { return []; }
+  });
+  useEffect(() => {
+    try { localStorage.setItem("keepline.ignored-followups",JSON.stringify(ignoredSuggestions)); }
+    catch { /* Ignoring still works for this visit when storage is unavailable. */ }
+  },[ignoredSuggestions]);
+  const sources = c.rows.flatMap(row => [row,...(row.subagents ?? []).map(child => ({ ...child,workItemId: child.workItemId ?? row.workItemId }))]);
+  const suggestions = sources.flatMap(row => {
+    const todo = c.goals.flatMap(g => g.todos).find(t => t.id === row.workItemId) ?? c.todos.find(t => t.id === row.workItemId);
+    const parentId = c.goals.some(g => g.id === todo?.parentId) ? todo!.parentId! : "unassigned";
+    return (row.followUpSuggestions ?? []).map(text => ({ key: JSON.stringify([row.sessionId,text]),text,row,parentId }));
+  }).filter(s => !ignoredSuggestions.includes(s.key) && !c.todos.some(t => t.title === s.text && (t.parentId ?? "unassigned") === s.parentId));
   const todoGroups = [
     ...c.goals.map((g) => ({
       id: g.id,
@@ -34,12 +53,14 @@ export function LedgerTodos({
       todos: g.todos,
       weekly: g.weeklyMovement,
       stale: g.stale,
+      inactiveDays: g.inactiveDays,
     })),
     {
       id: "unassigned",
       title: "未关联目标",
       weekly: 0,
       stale: false,
+      inactiveDays: 0,
       todos: c.todos
         .filter((t) => !c.goals.some(goal => goal.id === t.parentId)),
     },
@@ -74,7 +95,8 @@ export function LedgerTodos({
             (filter !== "open" || t.status !== "done") &&
             (filter !== "unassigned" || !t.sessions.length),
         );
-        if (!todos.length) return null;
+        const inferred = suggestions.filter(s => s.parentId === g.id);
+        if (!todos.length && !inferred.length) return null;
         return (
           <section key={g.id}>
             <div className={styles.sectionHeading}>
@@ -93,7 +115,7 @@ export function LedgerTodos({
                 {`${g.todos.filter((t) => t.status === "done").length} / ${g.todos.length} 已验收 · 本周 +${g.weekly}`}
               </span>
               {g.stale && (
-                <StatusTag tag="▲ 未推进" bg="#FFF1DB" fg="#B45309" />
+                <span className={styles.staleGoal}>▲ {g.inactiveDays} 天没推进</span>
               )}
             </div>
             <div className={styles.tableCard}>
@@ -186,12 +208,23 @@ export function LedgerTodos({
                   </div>
                 );
               })}
+              {inferred.map(suggestion => (
+                <div key={suggestion.key} className={styles.todoSuggestion}>
+                  <span className={styles.suggestionLabel}>推断</span>
+                  <span title={suggestion.text}>{suggestion.row.agentRole ?? (suggestion.row.runtimeId === "codex" ? "Codex" : "Claude Code")} 提出：{suggestion.text}</span>
+                  <ActionButton onClick={() => c.setEditing({
+                    title: suggestion.text, level: "task", parentId: g.id === "unassigned" ? "" : g.id,
+                    outcome: "", checklist: "", projectRoot: suggestion.row.projectRoot,
+                  })}>加为待办</ActionButton>
+                  <button className={styles.ignoreSuggestion} aria-label={`忽略建议：${suggestion.text}`} onClick={() => setIgnoredSuggestions(keys => [...keys,suggestion.key])}>忽略</button>
+                </div>
+              ))}
             </div>
           </section>
         );
       })}
-      {!todoGroups.some((g) => g.todos.length) && (
-        <EmptyState>还没有待办，添加任务和验收清单后可派给 agent。</EmptyState>
+      {!todoGroups.some(g => g.todos.some(todo => (filter !== "open" || todo.status !== "done") && (filter !== "unassigned" || !todo.sessions.length))) && !suggestions.length && (
+        <EmptyState>{scoped || filter !== "all" ? "没有符合当前筛选的待办。可清空搜索或切换项目。" : "还没有待办，添加任务和验收清单后可派给 agent。"}</EmptyState>
       )}
       <div className={styles.subtle}>
         当前最近 {c.hours} 小时计划外工作 {totalSteps ? Math.round(offPlanSteps / totalSteps * 100) : 0}%
@@ -222,7 +255,7 @@ export function LedgerGoals({
           <span style={{ minWidth: 0 }}><button className={styles.goalTitle} onClick={onTodos}>{goal.title}</button><span className={styles.goalOutcome}>成功标准：{goal.outcome || "尚未设置"}</span></span>
           <span className={styles.cardProgress}><ProgressSegments stretch items={goal.todos.map(todo => ({ status: todo.status === "done" ? "done" : todo.sessions.length ? "doing" : "todo" }))} /><span className={styles.mono}>{goal.progress.done} / {goal.progress.total}</span></span>
           <span className={styles.goalMeta}>
-            <span>{goal.stale ? <StatusTag tag="▲ 未推进" bg="#FFF1DB" fg="#B45309" /> : `本周 +${goal.weeklyMovement} · ${goal.progress.active} 项在推进`}</span>
+            <span>{goal.stale ? <span className={styles.staleGoal}>▲ {goal.inactiveDays} 天没推进</span> : `本周 +${goal.weeklyMovement} · ${goal.progress.active} 项在推进`}</span>
             <button className={`${styles.cardMenuTrigger} ${styles.goalEdit}`} aria-label={`编辑目标：${goal.title}`} onClick={() => c.editWorkItem(goal)}>⋯</button>
             <div style={{ marginTop: 8 }}><button className={styles.actionButton} aria-expanded={c.projectMapGoalId === goal.id} aria-controls={`project-map-${goal.id}`} onClick={() => c.setProjectMapGoalId(c.projectMapGoalId === goal.id ? null : goal.id)}>{c.projectMapGoalId === goal.id ? "收起项目进度图" : "查看项目进度图"}</button></div>
           </span>
@@ -230,8 +263,8 @@ export function LedgerGoals({
         {c.projectMapGoalId === goal.id && <div id={`project-map-${goal.id}`} style={{ marginTop: 12 }}><Suspense fallback={<div role="status">正在打开项目进度图…</div>}><GoalProjectMap goal={goal} controller={c} onTodos={onTodos} onSelect={onSelect} onOpenSession={onOpenSession} /></Suspense></div>}
       </section>)}
       {!c.goals.length && <EmptyState>创建目标，写下成功标准，再把待办关联到目标。</EmptyState>}
-      <div className={styles.subtle}>一格 = 一个待办。需要查看交付项、卡点与最近进展时，可选择打开项目进度图。</div>
-      <div><ActionButton onClick={() => c.setEditing({ title: "", level: "goal", parentId: "", outcome: "", checklist: "", projectRoot: "" })}>＋ 加目标</ActionButton></div>
+      <div className={styles.subtle}>一格 = 一个待办。深蓝已验收，浅蓝进行中，橙色待核对有缺口，灰未开始。点目标名进入待办页。</div>
+      <div><ActionButton onClick={() => { c.editWorkItem(); c.setEditing(item => item && { ...item, level: "goal" }); }}>＋ 加目标</ActionButton></div>
     </div>
   );
 }
@@ -323,7 +356,7 @@ export function LedgerReview({
               )}
               {!accepted && row.state === "needs_input" && (
                 <ActionButton onClick={() => onOpenSession(row.sessionId)}>
-                  跳到 agent
+                  查看会话记录
                 </ActionButton>
               )}
             </span>

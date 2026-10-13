@@ -25,5 +25,5 @@ export async function seededLedger(facts = sampleFacts(), sessionId = 'ledger-se
   return (await ingestLedger(session,{ sessionId,directory: '/project',lastActiveAt: new Date(),messageCount: 2,toolCount: 1 },facts))!;
 }
 export function blankDetail(): LedgerDetail {
-  return { sessionId: 'session-123',agentSessionId: 'agent-123',title: 'Test',projectRoot: '/project',runtimeId: 'codex',state: 'running',possiblyWaiting: false,available: true,asks: [],items: [],evidence: [],trail: [],readOnlyCount: 0,turns: [],offPlan: [],claims: [],acceptances: [],progress: { done: 0,total: 0 },lastActiveAt: new Date().toISOString() };
+  return { sessionId: 'session-123',agentSessionId: 'agent-123',title: 'Test',projectRoot: '/project',runtimeId: 'codex',state: 'running',processState: 'online',possiblyWaiting: false,available: true,asks: [],items: [],evidence: [],trail: [],readOnlyCount: 0,turns: [],offPlan: [],claims: [],acceptances: [],progress: { done: 0,total: 0 },lastActiveAt: new Date().toISOString() };
 }

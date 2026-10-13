@@ -11,9 +11,28 @@ import { config } from '../../lib/config.js';
 import { getDatabase } from '../../infrastructure/database/sqlite.js';
 import { sessionRepository } from '../../infrastructure/database/repositories/session.repository.js';
 import { DEFAULT_LEDGER_CONFIG } from '../../domain/ledger/types.js';
+import { markLedgerViewed } from '../../services/ledger/alerts.js';
 
 describe('default activity monitoring',() => {
   setupLedgerTest();
+  test('repository time bounds keep recent sessions and preserve unbounded callers',() => {
+    const cutoff = new Date(Date.now() - 86400000);
+    for (const [id,at] of [['history',new Date(cutoff.getTime()-1)],['boundary',cutoff],['recent',new Date()]] as const)
+      sessionRepository.upsert({ sessionId: id,client: 'claude',directory: '/project',status: 'idle',lastActiveAt: at });
+    expect(sessionRepository.findAll(cutoff).map(s => s.sessionId)).toEqual(['recent','boundary']);
+    expect(sessionRepository.findAll().map(s => s.sessionId)).toContain('history');
+  });
+
+  test('overview returns the newest activity before older unread replies', async () => {
+    const now = Date.now();
+    await seededLedger(sampleFacts(), 'old-reply');
+    sessionRepository.upsert({ sessionId: 'old-reply', lastActiveAt: new Date(now - 3600000) });
+    await seededLedger(sampleFacts().filter(f => f.kind !== 'turn' || f.phase !== 'completed'), 'new-running');
+    sessionRepository.upsert({ sessionId: 'new-running', status: 'running', lastActiveAt: new Date(now) });
+    const rows = await ledgerOverview(24);
+    expect(rows.map(row => row.sessionId)).toEqual(['new-running', 'old-reply']);
+    expect(rows.map(row => row.state)).toEqual(['running', 'review']);
+  });
   test('7 and 24 hour windows use last activity rather than the session start', async () => {
     const now = Date.now();
     for (const hours of [2, 8, 26]) {
@@ -53,6 +72,7 @@ describe('default activity monitoring',() => {
   test('overdue review becomes ended without creating acceptance or changing completion',async () => {
     const at = new Date(Date.now()-13*3600000).toISOString();
     const raw = await seededLedger(sampleFacts().map(f => ({ ...f,at })));
+    markLedgerViewed(raw.sessionId,true,Date.now(),raw.turnId);
     const d = (await replaceLedgerItems(raw.sessionId,raw.items))!;
     expect(d.state).toBe('ended'); expect(d.progress.done).toBe(1); expect(d.acceptances).toEqual([]);
     expect((await acceptLedger(d.sessionId,{ decision: 'accepted',droppedItemIds: [] }))?.state).toBe('accepted');
@@ -67,6 +87,7 @@ describe('default activity monitoring',() => {
     const fp = ledgerFactFingerprint(statSync(path));
     writeCachedLedgerFacts('claude:'+path,fp.fingerprint,{ fingerprint: fp.fingerprint,facts,unknownRecords: 0 });
     const confirmed = (await replaceLedgerItems(d.sessionId,d.items))!;expect(confirmed.state).toBe('review');
+    markLedgerViewed(d.sessionId,true,Date.now(),d.turnId);
     const reads = ledgerFactCacheStats().reads;const clock = spyOn(Date,'now').mockReturnValue(Date.now()+13*3600000);
     try { expect((await getLedger(d.sessionId))?.state).toBe('ended');expect(ledgerFactCacheStats().reads).toBe(reads); }
     finally { clock.mockRestore();rmSync(root,{ recursive: true,force: true }); }
@@ -85,14 +106,17 @@ describe('default activity monitoring',() => {
   });
   test('children appear under their parent, including nested children and approvals',async () => {
     await seededLedger(sampleFacts(),'codex_parent');
-    await seededLedger(sampleFacts(),'codex_child');
+    const childFacts = sampleFacts();
+    childFacts.push({ kind: 'agent_message',text: '下一步：\n- 补充恢复接口示例',final: true,at: new Date().toISOString() });
+    await seededLedger(childFacts,'codex_child');
     await seededLedger(sampleFacts(),'codex_grandchild');
-    sessionRepository.upsert({ sessionId: 'codex_child',client: 'codex',parentSessionId: 'parent' });
+    sessionRepository.upsert({ sessionId: 'codex_child',client: 'codex',parentSessionId: 'parent',isSubAgent: true,agentRole: 'you-are-here',agentNickname: 'Chandrasekhar' });
     sessionRepository.upsert({ sessionId: 'codex_grandchild',client: 'codex',parentSessionId: 'child',status: 'needs_input',statusSource: 'hook' });
     const rows = await ledgerOverview(); expect(rows).toHaveLength(1);
     expect(rows[0].sessionId).toBe('codex_parent'); expect(rows[0].state).toBe('needs_input');
     expect(rows[0].subagents?.map(s => s.sessionId).sort()).toEqual(['codex_child','codex_grandchild']);
     expect((await getLedger('codex_child'))?.parentSessionId).toBe('codex_parent');
+    expect(rows[0].subagents?.find(s => s.sessionId === 'codex_child')).toMatchObject({ isSubAgent: true, agentRole: 'you-are-here', agentNickname: 'Chandrasekhar', parentSessionId: 'codex_parent',followUpSuggestions: ['补充恢复接口示例'] });
     expect((await ledgerDetail('codex_parent'))?.subagents).toHaveLength(2);
   });
 });

@@ -103,6 +103,6 @@ export function parsedSessionToRuntimeSession(
     startedAt: session.startedAt,
     lastActiveAt: session.lastActiveAt,
     usageStats: toRuntimeUsageStats(session.usageStats),
-    runtimeMetadata: metadata,
+    runtimeMetadata: { ...metadata, ...(session.agentRole && { agentRole: session.agentRole }), ...(session.agentNickname && { agentNickname: session.agentNickname }) },
   };
 }

@@ -1,5 +1,6 @@
 import { isHookEventProcessed, markHookEventProcessed } from './spool.js';
 import { isInputRequestTool } from '../transcript-facts.js';
+import { recordHookReceipt } from './observation.js';
 import { transaction } from '../../infrastructure/database/sqlite.js';
 import type { Server } from 'bun';
 import { sessionRepository } from '../../infrastructure/database/repositories/session.repository.js';
@@ -330,6 +331,7 @@ export function startLifecycleReceiver(port: number): LifecycleReceiver {
           });
         }
         if (eventId) transaction(() => markHookEventProcessed(eventId));
+        recordHookReceipt(existing.client);
         return json({ success: true });
       } catch (error) {
         logger.error('Failed to receive lifecycle hook', error);

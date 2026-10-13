@@ -65,6 +65,15 @@ describe('Keepline-native goals and todos',() => {
     getDatabase().query("UPDATE work_items SET updated_at='2000-01-01T00:00:00.000Z'").run();
     expect(goalRows()[0].stale).toBe(true);
   });
+  test('inactive days use the latest goal or child movement and reset after an edit',() => {
+    const goal = workItemRepository.create({ title: 'Old goal',level: 'goal' });
+    const todo = workItemRepository.create({ title: 'Child',parentId: goal.id });
+    const now = new Date();
+    getDatabase().query('UPDATE work_items SET updated_at=?').run(new Date(now.getTime()-9*86400000).toISOString());
+    expect(goalRows(undefined,now)[0]).toMatchObject({ inactiveDays: 9,stale: true });
+    workItemRepository.update(todo.id,{ title: 'Moved today' });
+    expect(goalRows()[0]).toMatchObject({ inactiveDays: 0,stale: false });
+  });
   test('project maps use confirmed links and real evidence, and expose hook waiting reasons',async () => {
     const goal = workItemRepository.create({ title: 'Ship',level: 'goal' });
     const todo = workItemRepository.create({ title: 'Widget',parentId: goal.id,acceptance: [{ id: 'check',text: 'Run bun test src/widget.test.ts',completed: false }] });

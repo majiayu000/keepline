@@ -55,16 +55,21 @@ export function StatusTag({
   tag,
   bg,
   fg,
+  title,
 }: {
   tag: string;
   bg: string;
   fg: string;
+  title?: string;
 }) {
   return (
-    <span className={styles.tag} style={{ background: bg, color: fg }}>
+    <span className={styles.tag} style={{ background: bg, color: fg }} title={title}>
       {tag}
     </span>
   );
+}
+export function SubtaskTag({ count }: { count?: number }) {
+  return <StatusTag tag={count === undefined ? "子任务" : `子任务 ${count}`} bg="#EDE9FE" fg="#6D28D9" />;
 }
 export function ActionButton({
   children,

@@ -1,0 +1,10 @@
+{
+  "appPid": 87184,
+  "beforeChildPid": 87194,
+  "afterChildPid": 87921,
+  "serviceRestartSeconds": 8.13,
+  "appSurvived": true,
+  "nativeChannelResumed": true,
+  "tokenRefreshSeconds": 4.02,
+  "nativeChannelResumedAfterTokenRefresh": true
+}

@@ -1,5 +1,6 @@
 import { isHookEventProcessed, markHookEventProcessed } from './spool.js';
 import { isInputRequestTool } from '../transcript-facts.js';
+import { recordHookReceipt } from './observation.js';
 /**
  * HTTP server for receiving hook events
  *
@@ -427,6 +428,7 @@ export function createHookServer(): FastifyInstance {
       const eventId = request.headers['x-keepline-event-id'];
       if (typeof eventId === 'string' && isHookEventProcessed(eventId)) return { success: true, duplicate: true };
       await handleHookEvent(event, runtime === 'codex' ? 'codex' : 'claude');
+      recordHookReceipt(runtime === 'codex' ? 'codex' : 'claude');
       if (typeof eventId === 'string') markHookEventProcessed(eventId);
       return { success: true };
     } catch (error) {

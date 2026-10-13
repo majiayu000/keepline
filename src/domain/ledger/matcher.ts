@@ -40,7 +40,10 @@ export function extractAsks(facts: TranscriptFact[], sessionId: string): Ask[] {
     if (/^(?:import\s+(?:[^\n]+\bfrom\s+['"]|['"])|export\s+(?:default|const|function|class|interface|type)\b|(?:const|let|var)\s+\w+\s*[=:]|function\s+\w+\s*\(|def\s+\w+\s*\(|class\s+\w+\s*[:{])/.test(authoredText)) continue;
     if (/^[{[]/.test(authoredText)) { try { JSON.parse(authoredText); continue; } catch {} }
     const sentences = authoredText.split(/\n+|(?<=[。！？])\s*|(?<=[.!?])\s+/).filter(s => s.trim());
-    const question = sentences.every(sentence => /[?？]\s*$|(?:吗|么|呢|有没有|什么|如何|怎么)\s*[.!。！]*$/i.test(sentence) || /^(?:什么|怎么|为何|为什么|如何|有没有|是否|what\b|how\b|why\b|where\b|when\b|can\s+you\b|could\s+you\b|would\s+you\b)/i.test(sentence));
+    // A question mark does not cancel an explicit request. Keep these as
+    // unconfirmed candidates; this does not infer completion or acceptance.
+    const request = /^(?:请|麻烦|帮我|帮忙|(?:你)?(?:能|可以|能不能|能否)帮我|(?:please\s+)?(?:can|could|would|will)\s+you\b)/i.test(authoredText);
+    const question = !request && sentences.every(sentence => /[?？]\s*$|(?:吗|么|呢|有没有|什么|如何|怎么)\s*[.!。！]*$/i.test(sentence) || /^(?:什么|怎么|为何|为什么|如何|有没有|是否|what\b|how\b|why\b|where\b|when\b)/i.test(sentence));
     const kind = question ? 'question' : hasRequirement ? 'addition' : 'initial';
     if (!question) hasRequirement = true;
     asks.push({ id: ledgerId(sessionId, 'ask', f.at, f.text), text: text === f.text.trim() ? f.text : text, authoredText, at: f.at, turnId: f.turnId, kind });
