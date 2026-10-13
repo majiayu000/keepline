@@ -4,9 +4,16 @@ use tauri::{AppHandle, Manager, WebviewUrl, WebviewWindowBuilder};
 use tauri_plugin_autostart::ManagerExt;
 use tauri_plugin_shell::{ShellExt, process::{CommandChild, CommandEvent}};
 
+#[derive(Default)]
 pub struct ServiceState {
     pub child: Mutex<Option<CommandChild>>,
     pub connection: Mutex<Option<(String,String)>>,
+    pending_open: Mutex<Option<LedgerTarget>>,
+}
+#[derive(Clone)]
+struct LedgerTarget {
+    session: Option<String>,
+    anchor: Option<String>,
 }
 fn data_home() -> std::path::PathBuf {
     std::env::var_os("KEEPLINE_HOME").map(std::path::PathBuf::from)
@@ -65,7 +72,7 @@ async fn connect(app: &AppHandle) -> Result<(String,String),String> {
     *app.state::<ServiceState>().connection.lock().map_err(|e| e.to_string())? = Some((base.clone(),token.clone()));
     Ok((base,token))
 }
-fn build_window(app: &AppHandle,label: &str,path: &str,popover: bool) -> Result<(),String> {
+fn build_window<R: tauri::Runtime>(app: &AppHandle<R>,label: &str,path: &str,popover: bool) -> Result<(),String> {
     let (base,_) = app.state::<ServiceState>().connection.lock().map_err(|e| e.to_string())?.clone().ok_or("Service not ready")?;
     let url: tauri::Url = format!("{base}{path}").parse::<tauri::Url>().map_err(|e| e.to_string())?;
     let origin = url.origin();
@@ -96,7 +103,10 @@ fn build_window(app: &AppHandle,label: &str,path: &str,popover: bool) -> Result<
     });
     Ok(())
 }
-pub fn reopen_ledger_window(app: &AppHandle) -> Result<(),String> {
+pub fn reopen_ledger_window<R: tauri::Runtime>(app: &AppHandle<R>) -> Result<(),String> {
+    if app.state::<ServiceState>().pending_open.lock().map_err(|e| e.to_string())?.is_some() {
+        return open_pending_ledger_window(app);
+    }
     let Some(window) = app.get_webview_window("dashboard") else {
         return open_ledger_window(app,None,None);
     };
@@ -106,9 +116,22 @@ pub fn reopen_ledger_window(app: &AppHandle) -> Result<(),String> {
     window.show().map_err(|e| e.to_string())?;
     window.set_focus().map_err(|e| e.to_string())
 }
-pub fn open_ledger_window(app: &AppHandle,session: Option<&str>,anchor: Option<&str>) -> Result<(),String> {
-    let base = app.state::<ServiceState>().connection.lock().map_err(|e| e.to_string())?.as_ref().map(|v| v.0.clone()).ok_or("Service not ready")?;
-    let url = ledger_url(&base,session,anchor)?;
+pub fn open_ledger_window<R: tauri::Runtime>(app: &AppHandle<R>,session: Option<&str>,anchor: Option<&str>) -> Result<(),String> {
+    // An explicit user request, including the menu's overview action, replaces
+    // the previous target. Startup/Reopen only replay it, on the main thread.
+    *app.state::<ServiceState>().pending_open.lock().map_err(|e| e.to_string())? =
+        Some(LedgerTarget { session: session.map(str::to_owned),anchor: anchor.map(str::to_owned) });
+    open_pending_ledger_window(app)
+}
+fn open_pending_ledger_window<R: tauri::Runtime>(app: &AppHandle<R>) -> Result<(),String> {
+    let state = app.state::<ServiceState>();
+    let Some(target) = state.pending_open.lock().map_err(|e| e.to_string())?.clone() else {
+        return Ok(());
+    };
+    let Some(base) = state.connection.lock().map_err(|e| e.to_string())?.as_ref().map(|v| v.0.clone()) else {
+        return Ok(());
+    };
+    let url = ledger_url(&base,target.session.as_deref(),target.anchor.as_deref())?;
     app.set_activation_policy(tauri::ActivationPolicy::Regular).map_err(|e| e.to_string())?;
     if let Some(window) = app.get_webview_window("dashboard") {
         window.navigate(url).map_err(|e| e.to_string())?;
@@ -117,6 +140,8 @@ pub fn open_ledger_window(app: &AppHandle,session: Option<&str>,anchor: Option<&
         window.show().map_err(|e| e.to_string())?;
         window.set_focus().map_err(|e| e.to_string())?;
     }
+    // Connection or window errors above leave the request available for retry.
+    *state.pending_open.lock().map_err(|e| e.to_string())? = None;
     Ok(())
 }
 fn ledger_url(base: &str,session: Option<&str>,anchor: Option<&str>) -> Result<tauri::Url,String> {
@@ -165,6 +190,23 @@ fn service_capability(port: u16) -> tauri::ipc::CapabilityBuilder {
         .permission("allow-set-ledger-counts").permission("allow-get-app-autostart")
         .permission("allow-set-app-autostart").permission("allow-quit-app")
 }
+fn connected_windows<R: tauri::Runtime>(app: &AppHandle<R>,background: bool) {
+    // Keep existing window identities, visibility and deep links. Destroying
+    // and rebuilding the same label races Tauri's asynchronous teardown.
+    for label in ["main","dashboard"] {
+        if let Some(window) = app.get_webview_window(label) {
+            if let Err(error) = window.reload() { eprintln!("Could not reload reconnected window: {error}"); }
+        }
+    }
+    let initial_start = app.get_webview_window("main").is_none();
+    if initial_start {
+        if let Err(e) = build_window(app,"main","/menubar",true) { eprintln!("Could not open menubar: {e}"); }
+    }
+    let pending = app.state::<ServiceState>().pending_open.lock().unwrap().is_some();
+    if pending || (initial_start && !background && app.get_webview_window("dashboard").is_none()) {
+        if let Err(e) = reopen_ledger_window(app) { eprintln!("Could not open Keepline: {e}"); }
+    }
+}
 pub fn start(app: AppHandle) {
     if let Err(error) = app.add_capability(service_capability(service_port())) { eprintln!("Could not grant service IPC: {error}"); return; }
     tauri::async_runtime::spawn(async move {
@@ -177,22 +219,9 @@ pub fn start(app: AppHandle) {
                 None => match connect(&app).await {
                     Ok(connection) => {
                         let handle = app.clone();
-                        let _ = app.run_on_main_thread(move || {
-                            // Keep existing window identities, visibility and deep links.
-                            // Destroying and immediately rebuilding the same label races
-                            // Tauri's asynchronous teardown and can close the whole app.
-                            for label in ["main","dashboard"] {
-                                if let Some(window) = handle.get_webview_window(label) {
-                                    if let Err(error) = window.reload() { eprintln!("Could not reload reconnected window: {error}"); }
-                                }
-                            }
-                            if handle.get_webview_window("main").is_none() {
-                                if let Err(e) = build_window(&handle,"main","/menubar",true) { eprintln!("Could not open menubar: {e}"); }
-                                if !std::env::args().any(|arg| arg == "--background") {
-                                    if let Err(e) = open_ledger_window(&handle,None,None) { eprintln!("Could not open Keepline: {e}"); }
-                                }
-                            }
-                        });
+                        if let Err(error) = app.run_on_main_thread(move || {
+                            connected_windows(&handle,std::env::args().any(|arg| arg == "--background"));
+                        }) { eprintln!("Could not schedule connected windows: {error}"); }
                         connection
                     },
                     Err(error) => { eprintln!("Keepline service unavailable: {error}"); tokio::time::sleep(Duration::from_secs(5)).await; continue; },
@@ -252,7 +281,7 @@ pub fn set_ledger_counts(app: AppHandle,needs_you: usize,running: usize) -> Resu
 
 #[cfg(test)]
 mod tests {
-    use super::{ledger_url,service_capability,stop_owned_service};
+    use super::{ledger_url,service_capability,stop_owned_service,ServiceState,open_ledger_window,reopen_ledger_window,connected_windows};
     use std::{sync::Mutex,time::Duration};
     use tauri::{Manager,WebviewUrl};
     use tauri_plugin_shell::{ShellExt,process::CommandEvent};
@@ -282,6 +311,104 @@ mod tests {
         let params: std::collections::HashMap<_,_> = url.query_pairs().into_owned().collect();
         assert_eq!(params["sessionId"],"session/?#&"); assert_eq!(params["anchor"],"off-plan");
         assert!(ledger_url("http://127.0.0.1:3377",Some("s"),None).unwrap().as_str().contains("anchor=current-step"));
+    }
+    fn window_app() -> tauri::App<tauri::test::MockRuntime> {
+        tauri::test::mock_builder().manage(ServiceState::default())
+            .build(tauri::test::mock_context(tauri::test::noop_assets())).unwrap()
+    }
+    fn set_connected(app: &tauri::App<tauri::test::MockRuntime>) {
+        *app.state::<ServiceState>().connection.lock().unwrap() = Some(("http://127.0.0.1:3377".into(),"test-token".into()));
+    }
+    fn assert_target(app: &tauri::App<tauri::test::MockRuntime>,session: Option<&str>,anchor: Option<&str>) {
+        assert_eq!(app.get_webview_window("dashboard").unwrap().url().unwrap(),ledger_url("http://127.0.0.1:3377",session,anchor).unwrap());
+    }
+    #[test]
+    fn notification_before_connection_survives_reopen_and_startup() {
+        for background in [false,true] {
+            let app = window_app();
+            open_ledger_window(app.handle(),Some("cold-session"),Some("requirements")).unwrap();
+            reopen_ledger_window(app.handle()).unwrap();
+            assert!(app.get_webview_window("dashboard").is_none());
+            set_connected(&app);
+            connected_windows(app.handle(),background);
+            reopen_ledger_window(app.handle()).unwrap();
+            assert_target(&app,Some("cold-session"),Some("requirements"));
+        }
+    }
+    #[test]
+    fn connected_notification_before_startup_is_not_overwritten() {
+        let app = window_app();
+        set_connected(&app);
+        open_ledger_window(app.handle(),Some("early-session"),Some("off-plan")).unwrap();
+        connected_windows(app.handle(),false);
+        reopen_ledger_window(app.handle()).unwrap();
+        assert_target(&app,Some("early-session"),Some("off-plan"));
+    }
+    #[test]
+    fn notification_survives_connection_retries_and_latest_click_wins() {
+        let app = window_app();
+        set_connected(&app);
+        connected_windows(app.handle(),false);
+        open_ledger_window(app.handle(),Some("old-session"),None).unwrap();
+        *app.state::<ServiceState>().connection.lock().unwrap() = None;
+        open_ledger_window(app.handle(),Some("first-click"),Some("off-plan")).unwrap();
+        // Failed attempts leave the service disconnected; Reopen must not consume
+        // or replace the pending target even with an existing dashboard.
+        for _ in 0..3 { reopen_ledger_window(app.handle()).unwrap(); }
+        open_ledger_window(app.handle(),Some("latest-click"),Some("requirements")).unwrap();
+        reopen_ledger_window(app.handle()).unwrap();
+        set_connected(&app);
+        connected_windows(app.handle(),false);
+        assert_target(&app,Some("latest-click"),Some("requirements"));
+        // Once consumed, a target must not hijack later explicit overview opens.
+        open_ledger_window(app.handle(),None,None).unwrap();
+        assert_target(&app,None,None);
+        connected_windows(app.handle(),false);
+        assert_target(&app,None,None);
+    }
+    #[test]
+    fn reopen_before_notification_and_before_connection_opens_requested_target() {
+        let app = window_app();
+        reopen_ledger_window(app.handle()).unwrap();
+        open_ledger_window(app.handle(),Some("clicked-session"),None).unwrap();
+        set_connected(&app);
+        // Connection can be published before the startup main-thread callback.
+        reopen_ledger_window(app.handle()).unwrap();
+        connected_windows(app.handle(),false);
+        assert_target(&app,Some("clicked-session"),None);
+    }
+    #[test]
+    fn ordinary_reopen_before_connection_overrides_background_startup() {
+        let app = window_app();
+        reopen_ledger_window(app.handle()).unwrap();
+        set_connected(&app);
+        connected_windows(app.handle(),true);
+        assert_target(&app,None,None);
+    }
+    #[test]
+    fn explicit_overview_replaces_pending_notification() {
+        let app = window_app();
+        set_connected(&app);
+        connected_windows(app.handle(),false);
+        *app.state::<ServiceState>().connection.lock().unwrap() = None;
+        open_ledger_window(app.handle(),Some("superseded-click"),Some("off-plan")).unwrap();
+        // The menu's "Open dashboard" is an explicit user choice, unlike Reopen.
+        open_ledger_window(app.handle(),None,None).unwrap();
+        set_connected(&app);
+        connected_windows(app.handle(),false);
+        assert_target(&app,None,None);
+    }
+    #[test]
+    fn ordinary_startup_and_background_reopen() {
+        for background in [false,true] {
+            let app = window_app();
+            set_connected(&app);
+            connected_windows(app.handle(),background);
+            assert!(app.get_webview_window("main").is_some());
+            assert_eq!(app.get_webview_window("dashboard").is_none(),background);
+            reopen_ledger_window(app.handle()).unwrap();
+            assert_target(&app,None,None);
+        }
     }
     #[tokio::test]
     async fn quitting_stops_only_owned_child_and_keep_choice_leaves_it_running() {
