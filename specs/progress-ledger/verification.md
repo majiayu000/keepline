@@ -1,5 +1,35 @@
 # Progress Ledger 实现与修复验收
 
+## 2026-10-15：#145 当前候选的隔离原生验收
+
+本轮验收源代码固定为 PR #145 head `9d6dbe5f5bc4c4a8771b13dea1c52183ff665547`。PR 仍为 Draft / OPEN，#138 仍 OPEN；三项 CI 成功，GraphQL reviewThreads 为空。远端 main 为 `0d32d2b3d126713983634433b8af43b583a7dbcf`，相对 PR base 的新增只涉及 `next/crates/keeplined/` 和 `specs/GH120/m0-managed-pty.md`，与本次通知代码无交叠；本轮未 rebase、push、评论、merge 或发布，也未改产品代码。
+
+### 产物与隔离
+
+复制并复核今天独立审查工作树已生成的 exact-head `.app`，没有重复完整构建或 CI。两个二进制哈希与 PR 现有评论一致：主程序 `cf5d0e5191df3b6dc6afaa77b5cc0441888566cf04e60469df19334b6956c48c`；包内服务 `8071b5575087dbf8987af38031387564151270e53212dd7fc1a5b90ca365e5d4`。`codesign --verify --deep --strict` 通过，仍为本地 ad-hoc 包；本轮 `spctl --assess --type execute` 为 rejected，不能用于声明正式分发通过。
+
+所有应用都从本轮复制的包直接启动，`KEEPLINE_HOME` 指向独立目录，autostart 明确为 false，使用 15772/15773 和 15776/15777。没有安装/覆盖应用、改系统通知权限、写全局 hook、改登录项、注销登录或改密钥。最初选择 5572 时发现已有 Python listener，测试服务因 EADDRINUSE 退出；保留原进程，改用先检查空闲的端口。`--scan-interval 0` 仅关闭周期扫描，仍有首次扫描：第一组包内服务及自有 sidecar 只读真实日志并把派生数据写入隔离目录；合成会话组使用当前源码的生产服务 API 与显式空扫描夹具，不把夹具当作真实扫描验收。
+
+### 实际结果
+
+| 场景 | 本轮证据与结论 |
+| --- | --- |
+| 通知权限 | exact-head 应用于 13:56:15、13:58:26、14:00:36 CST 明确记录 `Notifications are not allowed for this application`；未修改权限 |
+| hook 与 acknowledgment | 合成 Codex `PermissionRequest` 返回 200，needs_input 提醒写为 notified=1；授权拒绝同时存在，仍只记 acknowledgment，不算可见投递 |
+| 服务提醒解除 | 同会话 `PreToolUse` 返回 200，原提醒写入 cleared_at；不算 OS 通知撤回 |
+| 真实通知点击 | 已连接、延迟连接、OS 通知冷启动、可见锚点和展示时限均仍未验收；权限阻塞未解除 |
+| 原生退出取消 | 实际 Cmd+Q 出现三个选项，点击取消后窗口和进程保持 |
+| 附着服务保护 | 点击“停止监控并退出”后应用 PID 85093 消失，独立服务 PID 84890 与健康接口保持；没有误停外部服务 |
+| 服务重启与会话窗口 | 合成服务 instanceId 从 `12e2dc01-3cbd-418c-afad-9bf2ad68e086` 变为 `3a412e07-810c-42e9-9efe-a0647a8a1dba`；已有原生窗口保持 `?sessionId=codex_acceptance-20261015`，置前后出现详情并显示 13:59:31 已连接。后台请求暂停时的加载态不作失败结论；这不是通知点击 |
+| 延迟服务连接 | 本地门闩连续 15 秒返回 503，记录三次 5 秒间隔的失败；换成实际服务后，应用显示正常总览与“已连接 · 上次同步 14:00:57”。未模拟通知 callback，不声明延迟点击通过 |
+| 自有服务保持退出及重启 | 应用 PID 90262 启动 sidecar PID 90275；实际点击“保持监控并退出”后应用消失，服务 instanceId `70b6fc7d-c867-4549-abb0-c12eca76fcad` 保持。重新启动应用 PID 91243 成功附着该实例，原生总览显示已连接 |
+| 自有服务停止退出 | 另一轮应用 PID 92517 启动 sidecar PID 92549；实际点击“停止监控并退出”后两个 PID 均消失，15776/15777 不再监听 |
+| 收尾 | 所有本轮应用与服务进程已结束；15772/15773/15776/15777 均无监听，未遗留登录项。原有 5572 Python listener 未操作 |
+
+详细本地证据：`output/opensource-execution-20261015/keepline_acceptance/report.md`，以及同目录的 `pr145.json`、`pr145-review-threads.json`、`bundle-sha256.json`、`native-quit-external.json`、`notification-ack-withdrawal.json`、`restart.json`、`delay-result.json`、`owned-keep-quit.json`、`owned-restart-attach.json`、`owned-final-before.json`、`cleanup.json` 和应用/服务日志。该路径相对工作区 `/Users/lifcc/Desktop/code/AI/tools`；数据库、缓存及本地包不提交。
+
+下一步须由用户先在方便时允许该应用的通知，再对同一候选执行真实投递→点击→session/anchor、延迟连接点击、通知冷启动和通知撤回；完整注销/登录、原稿人工视觉确认和 Developer ID 签名/公证/发布验收仍独立保留。本轮新增的是可复核的生命周期结果，不解除 PR/issue 的验收阻塞。
+
 ## 2026-10-13：服务就绪前的通知目标保留（#138）
 
 本轮是 T15 / 产品验收条件 17 的最小修复，不代表 #138 的全部产品验收完成。代码提交：`420c3ae4f115e3f8c776e729d0833ef923fe528d`，基线 `6b68db97517361a743f9f79b721262cce2fbfc55`（#144）。本轮未发布、未正式签名公证，也未替换已安装应用。
