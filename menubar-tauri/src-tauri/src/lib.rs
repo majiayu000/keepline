@@ -32,7 +32,7 @@ pub fn run() {
         .plugin(tauri_plugin_shell::init())
         .plugin(tauri_plugin_notification::init())
         .plugin(tauri_plugin_autostart::init(tauri_plugin_autostart::MacosLauncher::LaunchAgent,Some(vec!["--background"])))
-        .manage(ledger_app::ServiceState { child: Mutex::new(None),connection: Mutex::new(None) })
+        .manage(ledger_app::ServiceState::default())
         .manage(TrayState {
             tray_id: Mutex::new(None),
         })

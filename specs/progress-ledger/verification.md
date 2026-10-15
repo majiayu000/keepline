@@ -1,8 +1,73 @@
 # Progress Ledger 实现与修复验收
 
+## 2026-10-15：#145 当前候选的隔离原生验收
+
+本轮验收源代码固定为 PR #145 head `9d6dbe5f5bc4c4a8771b13dea1c52183ff665547`。PR 仍为 Draft / OPEN，#138 仍 OPEN；三项 CI 成功，GraphQL reviewThreads 为空。远端 main 为 `0d32d2b3d126713983634433b8af43b583a7dbcf`，相对 PR base 的新增只涉及 `next/crates/keeplined/` 和 `specs/GH120/m0-managed-pty.md`，与本次通知代码无交叠；本轮未 rebase、push、评论、merge 或发布，也未改产品代码。
+
+### 产物与隔离
+
+复制并复核今天独立审查工作树已生成的 exact-head `.app`，没有重复完整构建或 CI。两个二进制哈希与 PR 现有评论一致：主程序 `cf5d0e5191df3b6dc6afaa77b5cc0441888566cf04e60469df19334b6956c48c`；包内服务 `8071b5575087dbf8987af38031387564151270e53212dd7fc1a5b90ca365e5d4`。`codesign --verify --deep --strict` 通过，仍为本地 ad-hoc 包；本轮 `spctl --assess --type execute` 为 rejected，不能用于声明正式分发通过。
+
+所有应用都从本轮复制的包直接启动，`KEEPLINE_HOME` 指向独立目录，autostart 明确为 false，使用 15772/15773 和 15776/15777。没有安装/覆盖应用、改系统通知权限、写全局 hook、改登录项、注销登录或改密钥。最初选择 5572 时发现已有 Python listener，测试服务因 EADDRINUSE 退出；保留原进程，改用先检查空闲的端口。`--scan-interval 0` 仅关闭周期扫描，仍有首次扫描：第一组包内服务及自有 sidecar 只读真实日志并把派生数据写入隔离目录；合成会话组使用当前源码的生产服务 API 与显式空扫描夹具，不把夹具当作真实扫描验收。
+
+### 实际结果
+
+| 场景 | 本轮证据与结论 |
+| --- | --- |
+| 通知权限 | exact-head 应用于 13:56:15、13:58:26、14:00:36 CST 明确记录 `Notifications are not allowed for this application`；未修改权限 |
+| hook 与 acknowledgment | 合成 Codex `PermissionRequest` 返回 200，needs_input 提醒写为 notified=1；授权拒绝同时存在，仍只记 acknowledgment，不算可见投递 |
+| 服务提醒解除 | 同会话 `PreToolUse` 返回 200，原提醒写入 cleared_at；不算 OS 通知撤回 |
+| 真实通知点击 | 已连接、延迟连接、OS 通知冷启动、可见锚点和展示时限均仍未验收；权限阻塞未解除 |
+| 原生退出取消 | 实际 Cmd+Q 出现三个选项，点击取消后窗口和进程保持 |
+| 附着服务保护 | 点击“停止监控并退出”后应用 PID 85093 消失，独立服务 PID 84890 与健康接口保持；没有误停外部服务 |
+| 服务重启与会话窗口 | 合成服务 instanceId 从 `12e2dc01-3cbd-418c-afad-9bf2ad68e086` 变为 `3a412e07-810c-42e9-9efe-a0647a8a1dba`；已有原生窗口保持 `?sessionId=codex_acceptance-20261015`，置前后出现详情并显示 13:59:31 已连接。后台请求暂停时的加载态不作失败结论；这不是通知点击 |
+| 延迟服务连接 | 本地门闩连续 15 秒返回 503，记录三次 5 秒间隔的失败；换成实际服务后，应用显示正常总览与“已连接 · 上次同步 14:00:57”。未模拟通知 callback，不声明延迟点击通过 |
+| 自有服务保持退出及重启 | 应用 PID 90262 启动 sidecar PID 90275；实际点击“保持监控并退出”后应用消失，服务 instanceId `70b6fc7d-c867-4549-abb0-c12eca76fcad` 保持。重新启动应用 PID 91243 成功附着该实例，原生总览显示已连接 |
+| 自有服务停止退出 | 另一轮应用 PID 92517 启动 sidecar PID 92549；实际点击“停止监控并退出”后两个 PID 均消失，15776/15777 不再监听 |
+| 收尾 | 所有本轮应用与服务进程已结束；15772/15773/15776/15777 均无监听，未遗留登录项。原有 5572 Python listener 未操作 |
+
+详细本地证据：`output/opensource-execution-20261015/keepline_acceptance/report.md`，以及同目录的 `pr145.json`、`pr145-review-threads.json`、`bundle-sha256.json`、`native-quit-external.json`、`notification-ack-withdrawal.json`、`restart.json`、`delay-result.json`、`owned-keep-quit.json`、`owned-restart-attach.json`、`owned-final-before.json`、`cleanup.json` 和应用/服务日志。该路径相对工作区 `/Users/lifcc/Desktop/code/AI/tools`；数据库、缓存及本地包不提交。
+
+下一步须由用户先在方便时允许该应用的通知，再对同一候选执行真实投递→点击→session/anchor、延迟连接点击、通知冷启动和通知撤回；完整注销/登录、原稿人工视觉确认和 Developer ID 签名/公证/发布验收仍独立保留。本轮新增的是可复核的生命周期结果，不解除 PR/issue 的验收阻塞。
+
+## 2026-10-13：服务就绪前的通知目标保留（#138）
+
+本轮是 T15 / 产品验收条件 17 的最小修复，不代表 #138 的全部产品验收完成。代码提交：`420c3ae4f115e3f8c776e729d0833ef923fe528d`，基线 `6b68db97517361a743f9f79b721262cce2fbfc55`（#144）。本轮未发布、未正式签名公证，也未替换已安装应用。
+
+### 修复与回归
+
+- 原代码在服务未连接时返回 `Service not ready`，通知回调只记录错误；启动连接成功后会打开总览。新增回归先得到 5 失败 / 4 通过，确认目标丢失及连接成功与窗口初始化之间的覆盖竞态。
+- 在现有 `ServiceState` 中保存一个待打开目标；未连接或打开失败时保留，连接成功后在主线程重放，成功才清除。后来的显式请求覆盖前一个请求；没有持久化队列或新配置。
+- 启动及系统 Reopen 保留通知的 session/anchor。独立 Codex 只读审查指出“用户显式打开总览应覆盖旧目标”，相应回归先失败，再修复；显式导航和自动重放现在分开。
+- 10 项 `ledger_app::tests` 通过：连接前点击、前台/后台启动、Reopen 两种顺序、已连接点击先于启动回调、模拟连接重试、已有窗口重连、最新点击、显式总览覆盖及普通启动。Tauri MockRuntime 验证实际窗口函数和 URL；它不证明真实系统通知点击、可见锚点或窗口焦点。
+
+| 本轮命令 | 结果 |
+| --- | --- |
+| `bun run scripts/build-ledger-app.ts` | 通过；生成生产页面和内嵌服务资源 |
+| `cargo test --manifest-path menubar-tauri/src-tauri/Cargo.toml --lib ledger_app::tests` | 最终 10 通过，0 失败；修复前失败日志保留 |
+| `cargo check --manifest-path menubar-tauri/src-tauri/Cargo.toml` | 通过；现有 Objective-C 旧 API 弃用警告仍在 |
+| `bun run typecheck` | 根目录及客户端通过 |
+| `cd menubar-tauri && bun run tauri build --bundles app` | 通过；按最终代码重新构建，ad-hoc 签名完整性检查通过 |
+| `git diff --check` | 通过 |
+
+Harness 工作区位于另一个 Cargo workspace 内。首次 Cargo 命令在测试前因错误的 workspace 归属退出；本地验证期间临时添加空 `[workspace]`，验证后还原，未作为产品改动提交。完整回归由本次 PR 的新 CI 执行，历史 CI 不算本提交通过证据。
+
+### 原生验收与证据
+
+- 应用使用默认标识 `com.starlight.keepline`，直接运行本工作区内的 `.app`；隔离 `KEEPLINE_HOME=tmp/issue-138/native`，端口 5572 / 5573 / 5574，两条合成会话，扫描关闭，autostart 为 false。没有改系统通知设置或用户配置。
+- Computer Use 读到了原生总览中的两条合成会话；打开 `issue138-ready` 显示预期详情，关闭再重新打开绑定应用后仍为 `?sessionId=issue138-ready`。这是普通原生窗口冒烟，不是通知点击。
+- **通知点击验收受阻**：2026-10-13 15:05:02 CST，应用日志明确记录 `Keepline notification authorization failed: Notifications are not allowed for this application`。合成 needs-input 提醒仍被记录为 `notified=1`，只能记作 acknowledgment，不能作为可见投递、真实点击或锚点验收。已连接、连接未就绪和冷启动的真实通知点击均保留未验收。
+- 用于延迟连接的本地 HTTP 代理未转发 WebSocket，页面显示实时连接中断；这是验收夹具限制，本轮不据此判断产品实时推送行为。因通知权限阻断，未声称执行了原生延迟点击实验。
+- `codesign --verify --deep --strict menubar-tauri/src-tauri/target/release/bundle/macos/Keepline.app` 通过。主程序 SHA-256：`1121904f27bf7458abae274a302222d02fc2bc3986712baf0ca528dd6ad8f4fe`；包内服务 SHA-256：`73524fb2087c1b8c440ec8aad1f138fec9041ea7a185b5b6adb9a51fd273360e`。这是本地 ad-hoc 包，不是正式签名或公证结果。
+- 原生退出命令的工具操作被窗口状态变更拦住，未标为通过。结束时只终止本轮已确认身份的应用与夹具进程；测试目录和证据保留，原有服务未动。
+
+原始日志与本地记录在此 Harness 工作区 `tmp/issue-138/`：`rust-red.log`、`review-regression-red.log`、`rust-final.log`、`cargo-check-final.log`、`app-build-final.log`、`native-app.log`、`native-result.json`、`bundle-sha256.txt`。不提交本地数据库或临时夹具。
+
+明确保留完整注销/登录、原稿人工视觉确认及正式分发验收；本切片不将这些项目标为完成。最终代码仍需工作流的新独立审查；本轮初审发现的代码问题已用失败回归修复。
+
 ## 2026-10-08 收尾候选：macOS 1.2.0
 
-本节是最新结果，后面的轮次为历史记录。整合工作位于独立工作树 `keepline-closeout`、分支 `fix/ledger-closeout-20261007`；原工作树、实时预览及现有 3377 服务保留。审阅入口：https://github.com/majiayu000/keepline/pull/141 。本分支包含 #140 的当前执行证据和服务隔离修复。
+本节保留当时结果，后面的轮次为更早的历史记录。整合工作位于独立工作树 `keepline-closeout`、分支 `fix/ledger-closeout-20261007`；原工作树、实时预览及现有 3377 服务保留。审阅入口：https://github.com/majiayu000/keepline/pull/141 。本分支包含 #140 的当前执行证据和服务隔离修复。
 
 ### 产品结果
 
