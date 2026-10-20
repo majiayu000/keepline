@@ -1,0 +1,217 @@
+{
+  "revision": 24,
+  "spaces": [
+    {
+      "id": "s",
+      "name": "分屏验收 · 隔离终端",
+      "cwd": "/tmp/kl-split-xcwxa54k"
+    }
+  ],
+  "tasks": [],
+  "tabs": [
+    {
+      "id": "single",
+      "space": "s",
+      "default_task": null,
+      "title": "单画面",
+      "closed": true,
+      "layout": null
+    },
+    {
+      "id": "nested",
+      "space": "s",
+      "default_task": null,
+      "title": "嵌套四分屏",
+      "closed": true,
+      "layout": null
+    },
+    {
+      "id": "eight",
+      "space": "s",
+      "default_task": null,
+      "title": "八画面资源测试",
+      "closed": false,
+      "layout": {
+        "Split": {
+          "axis": "Right",
+          "ratio": 5000,
+          "first": {
+            "Split": {
+              "axis": "Right",
+              "ratio": 5000,
+              "first": {
+                "Split": {
+                  "axis": "Down",
+                  "ratio": 5000,
+                  "first": {
+                    "Leaf": "p0"
+                  },
+                  "second": {
+                    "Leaf": "p1"
+                  }
+                }
+              },
+              "second": {
+                "Split": {
+                  "axis": "Down",
+                  "ratio": 5000,
+                  "first": {
+                    "Leaf": "p2"
+                  },
+                  "second": {
+                    "Leaf": "p3"
+                  }
+                }
+              }
+            }
+          },
+          "second": {
+            "Split": {
+              "axis": "Right",
+              "ratio": 5000,
+              "first": {
+                "Split": {
+                  "axis": "Down",
+                  "ratio": 5000,
+                  "first": {
+                    "Leaf": "p4"
+                  },
+                  "second": {
+                    "Leaf": "p5"
+                  }
+                }
+              },
+              "second": {
+                "Split": {
+                  "axis": "Down",
+                  "ratio": 5000,
+                  "first": {
+                    "Leaf": "p6"
+                  },
+                  "second": {
+                    "Leaf": "p7"
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  ],
+  "terminals": [
+    {
+      "id": "p0",
+      "space": "s",
+      "argv": [
+        "/bin/sh",
+        "-c",
+        "tty > /tmp/kl-split-xcwxa54k/tty0; printf '\\033[38;5;141m            \\033[0m\\n'; printf 'Pane 1 · 中文实现反馈\\n'; printf 'PWD: %s\\n' \"$PWD\"; exec /bin/cat"
+      ],
+      "cwd": "/tmp/kl-split-xcwxa54k",
+      "pid": 90574,
+      "state": "Running",
+      "exit_code": null,
+      "error": null
+    },
+    {
+      "id": "p1",
+      "space": "s",
+      "argv": [
+        "/bin/sh",
+        "-c",
+        "tty > /tmp/kl-split-xcwxa54k/tty1; printf '\\033[38;5;141m            \\033[0m\\n'; printf 'Pane 2 · 中文实现反馈\\n'; printf 'PWD: %s\\n' \"$PWD\"; exec /bin/cat"
+      ],
+      "cwd": "/tmp/kl-split-xcwxa54k",
+      "pid": 90575,
+      "state": "Running",
+      "exit_code": null,
+      "error": null
+    },
+    {
+      "id": "p2",
+      "space": "s",
+      "argv": [
+        "/bin/sh",
+        "-c",
+        "tty > /tmp/kl-split-xcwxa54k/tty2; printf '\\033[38;5;141m            \\033[0m\\n'; printf 'Pane 3 · 中文实现反馈\\n'; printf 'PWD: %s\\n' \"$PWD\"; exec /bin/cat"
+      ],
+      "cwd": "/tmp/kl-split-xcwxa54k",
+      "pid": 90576,
+      "state": "Running",
+      "exit_code": null,
+      "error": null
+    },
+    {
+      "id": "p3",
+      "space": "s",
+      "argv": [
+        "/bin/sh",
+        "-c",
+        "tty > /tmp/kl-split-xcwxa54k/tty3; printf '\\033[38;5;141m            \\033[0m\\n'; printf 'Pane 4 · 中文实现反馈\\n'; printf 'PWD: %s\\n' \"$PWD\"; exec /bin/cat"
+      ],
+      "cwd": "/tmp/kl-split-xcwxa54k",
+      "pid": 90579,
+      "state": "Running",
+      "exit_code": null,
+      "error": null
+    },
+    {
+      "id": "p4",
+      "space": "s",
+      "argv": [
+        "/bin/sh",
+        "-c",
+        "tty > /tmp/kl-split-xcwxa54k/tty4; printf '\\033[38;5;141m            \\033[0m\\n'; printf 'Pane 5 · 中文实现反馈\\n'; printf 'PWD: %s\\n' \"$PWD\"; exec /bin/cat"
+      ],
+      "cwd": "/tmp/kl-split-xcwxa54k",
+      "pid": 90581,
+      "state": "Running",
+      "exit_code": null,
+      "error": null
+    },
+    {
+      "id": "p5",
+      "space": "s",
+      "argv": [
+        "/bin/sh",
+        "-c",
+        "tty > /tmp/kl-split-xcwxa54k/tty5; printf '\\033[38;5;141m            \\033[0m\\n'; printf 'Pane 6 · 中文实现反馈\\n'; printf 'PWD: %s\\n' \"$PWD\"; exec /bin/cat"
+      ],
+      "cwd": "/tmp/kl-split-xcwxa54k",
+      "pid": 90583,
+      "state": "Running",
+      "exit_code": null,
+      "error": null
+    },
+    {
+      "id": "p6",
+      "space": "s",
+      "argv": [
+        "/bin/sh",
+        "-c",
+        "tty > /tmp/kl-split-xcwxa54k/tty6; printf '\\033[38;5;141m            \\033[0m\\n'; printf 'Pane 7 · 中文实现反馈\\n'; printf 'PWD: %s\\n' \"$PWD\"; exec /bin/cat"
+      ],
+      "cwd": "/tmp/kl-split-xcwxa54k",
+      "pid": 90585,
+      "state": "Running",
+      "exit_code": null,
+      "error": null
+    },
+    {
+      "id": "p7",
+      "space": "s",
+      "argv": [
+        "/bin/sh",
+        "-c",
+        "tty > /tmp/kl-split-xcwxa54k/tty7; printf '\\033[38;5;141m            \\033[0m\\n'; printf 'Pane 8 · 中文实现反馈\\n'; printf 'PWD: %s\\n' \"$PWD\"; exec /bin/cat"
+      ],
+      "cwd": "/tmp/kl-split-xcwxa54k",
+      "pid": 90587,
+      "state": "Running",
+      "exit_code": null,
+      "error": null
+    }
+  ],
+  "agent_sessions": []
+}

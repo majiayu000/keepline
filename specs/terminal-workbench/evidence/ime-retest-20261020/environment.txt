@@ -1,0 +1,4 @@
+Original app PID: 33275
+Existing daemon PID: 8926; started 2026-10-20 20:59:19 +0800
+Test bundle: /tmp/Keepline-IME-Retest.app
+Same binary SHA256: 9eabed3ba99f0d5d23fa201968a6a412120ea50261d868d65047f9555fe7be8e

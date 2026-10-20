@@ -1,0 +1,256 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<title>Keepline 分屏工作视图</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500&amp;display=swap">
+<style>
+body{margin:0;background:#0b0c10}
+a{color:#c3c6ff}a:hover{color:#e0e1ff}
+button{font-family:inherit;cursor:pointer}
+.kl-side:hover{background:#1b1e26}
+.kl-tab:hover{color:#ffffff}
+</style>
+</helmet>
+<div style="min-height: 900px; display: flex; flex-direction: column; background: #0b0c10; color: #d7dae0; font-family: -apple-system, BlinkMacSystemFont, 'PingFang SC', 'Hiragino Sans GB', 'Microsoft YaHei', sans-serif; font-size: 13px">
+
+<header style="display: flex; flex-wrap: wrap; align-items: center; gap: 10px 16px; padding: 8px 14px; border-bottom: 1px solid #1d2028; background: #0f1116">
+<div style="display: flex; align-items: center; gap: 8px">
+<div style="width: 18px; height: 18px; border-radius: 5px; background: {{accent}}" aria-hidden="true"></div>
+<span style="font-weight: 600; color: #ffffff">Keepline</span>
+<span style="color: #8b919e">/ lib</span>
+</div>
+<a href="Overview.dc.html" style="display: flex; align-items: center; gap: 8px; height: 30px; padding: 0 12px; border-radius: 8px; background: #1b1e26; border: 1px solid #2a2e38; color: #e9ebef; text-decoration: none; font-size: 12.5px">
+<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#c3c6ff" stroke-width="2" aria-hidden="true"><rect x="3" y="3" width="7" height="7" rx="1"></rect><rect x="14" y="3" width="7" height="7" rx="1"></rect><rect x="3" y="14" width="7" height="7" rx="1"></rect><rect x="14" y="14" width="7" height="7" rx="1"></rect></svg>
+鸟瞰全部
+<span style="font-size: 11px; color: #ffd2b0; background: #4a2a12; border-radius: 4px; padding: 0 6px">3 等你</span>
+</a>
+<label style="display: flex; align-items: center; gap: 8px; height: 30px; padding: 0 10px; border: 1px solid #2a2e38; border-radius: 8px; background: #12141a; flex: 1 1 220px; max-width: 360px; min-width: 160px">
+<span style="position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0)">搜索会话或待办</span>
+<input placeholder="跳到会话、待办或原话" style="border: 0; outline: 0; background: transparent; color: #e9ebef; font-size: 12.5px; flex: 1; min-width: 0; font-family: inherit">
+</label>
+<a href="TodoNew.dc.html" style="margin-left: auto; display: flex; align-items: center; height: 30px; padding: 0 12px; border-radius: 8px; border: 1px solid #2f3448; color: #e9ebef; font-size: 12.5px; text-decoration: none">＋ 新待办</a>
+<button aria-label="设置" style="height: 30px; width: 30px; border: 1px solid #2a2e38; border-radius: 8px; background: transparent; color: #aab0bc">⚙</button>
+</header>
+
+<div style="display: flex; flex-wrap: wrap; flex: 1; min-height: 0">
+
+<nav aria-label="空间、待办与需要你" style="flex: 0 1 240px; min-width: 210px; background: #0f1116; border-right: 1px solid #1d2028; padding: 12px 8px; box-sizing: border-box; display: flex; flex-direction: column; gap: 14px">
+<div style="display: flex; flex-direction: column; gap: 2px">
+<span style="font-size: 11.5px; color: #8b919e; padding: 0 8px 4px">空间</span>
+<sc-for list="{{spaces}}" as="sp" hint-placeholder-count="5">
+<button class="kl-side" style="display: flex; align-items: center; gap: 8px; border: 0; border-radius: 6px; padding: 6px 8px; text-align: left; background: {{sp.bg}}; color: {{sp.ink}}; font-size: 13px">
+<span>{{sp.name}}</span>
+<span style="margin-left: auto; display: flex; gap: 4px">
+<sc-if value="{{sp.wait}}" hint-placeholder-val="{{false}}"><span style="font-size: 11px; color: #ffd2b0; background: #4a2a12; border-radius: 4px; padding: 0 5px">{{sp.wait}}</span></sc-if>
+<span style="font-size: 11px; color: #6b7080">{{sp.total}}</span>
+</span>
+</button>
+</sc-for>
+</div>
+
+<div style="display: flex; flex-direction: column; gap: 2px; border-top: 1px solid #1d2028; padding-top: 12px">
+<span style="display: flex; align-items: center; font-size: 11.5px; color: #8b919e; padding: 0 8px 4px">lib 的待办<a href="TodoNew.dc.html" style="margin-left: auto; text-decoration: none; font-size: 13px" aria-label="新建待办">＋</a></span>
+<sc-for list="{{todos}}" as="td" hint-placeholder-count="3">
+<div class="kl-side" style="display: flex; align-items: center; gap: 8px; border-radius: 6px; padding: 6px 8px; background: {{td.bg}}">
+<span style="flex: none; width: 8px; height: 8px; border-radius: 50%; border: 1.5px solid {{td.ring}}; background: {{td.fill}}; box-sizing: border-box" aria-hidden="true"></span>
+<span style="display: flex; flex-direction: column; min-width: 0">
+<span style="font-size: 12.5px; color: #e9ebef; overflow: hidden; text-overflow: ellipsis; white-space: nowrap">{{td.title}}</span>
+<span style="font-size: 11px; color: #8b919e">{{td.state}}</span>
+</span>
+<sc-if value="{{td.canStart}}" hint-placeholder-val="{{false}}"><a href="TodoStart.dc.html" style="margin-left: auto; flex: none; font-size: 11.5px; text-decoration: none; border: 1px solid #3a3f5c; border-radius: 5px; padding: 1px 7px">开始</a></sc-if>
+</div>
+</sc-for>
+</div>
+
+<div style="display: flex; flex-direction: column; gap: 2px; border-top: 1px solid #1d2028; padding-top: 12px">
+<span style="font-size: 11.5px; color: #8b919e; padding: 0 8px 4px">需要你 · 5</span>
+<sc-for list="{{needs}}" as="n" hint-placeholder-count="3">
+<button class="kl-side" style="display: flex; align-items: center; gap: 8px; border: 0; border-radius: 6px; padding: 6px 8px; text-align: left; background: transparent; color: #e9ebef; font-size: 12.5px">
+<span style="flex: none; width: 7px; height: 7px; border-radius: 50%; background: {{n.dot}}" aria-hidden="true"></span>
+<span style="overflow: hidden; text-overflow: ellipsis; white-space: nowrap">{{n.title}}</span>
+<span style="margin-left: auto; flex: none; font-size: 11px; color: #6b7080">{{n.where}}</span>
+</button>
+</sc-for>
+</div>
+
+<a href="Overview.dc.html" style="margin-top: auto; font-size: 12px; padding: 6px 8px; text-decoration: none">鸟瞰全部 46 个未闭环 →</a>
+</nav>
+
+<main style="flex: 999 1 640px; min-width: 0; display: flex; flex-direction: column">
+<div role="tablist" aria-label="标签" style="display: flex; align-items: stretch; gap: 1px; padding: 0 6px; background: #0b0c10; border-bottom: 1px solid #1d2028; overflow-x: auto">
+<sc-for list="{{tabs}}" as="t" hint-placeholder-count="8">
+<button role="tab" class="kl-tab" style="display: flex; align-items: center; gap: 6px; border: 0; padding: 8px 12px; font-size: 12.5px; white-space: nowrap; background: {{t.bg}}; color: {{t.ink}}">
+<sc-if value="{{t.isTodo}}" hint-placeholder-val="{{false}}"><svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="#c3c6ff" stroke-width="2.4" role="img" aria-label="待办标签"><rect x="4" y="4" width="16" height="16" rx="3"></rect><path d="M8 12l3 3 5-6"></path></svg></sc-if>
+{{t.name}}
+<sc-if value="{{t.badge}}" hint-placeholder-val="{{false}}"><span style="width: 7px; height: 7px; border-radius: 50%; background: {{t.badge}}" aria-hidden="true"></span></sc-if>
+</button>
+</sc-for>
+<button aria-label="新建标签" style="border: 0; background: transparent; color: #c3c6ff; font-size: 16px; padding: 4px 12px">＋</button>
+</div>
+
+<div style="display: flex; flex-wrap: wrap; align-items: center; gap: 8px 14px; padding: 8px 14px; background: #121527; border-bottom: 1px solid #262a3a">
+<span style="font-size: 11px; font-weight: 600; color: #c3c6ff; background: #1e2140; border-radius: 4px; padding: 1px 6px">待办</span>
+<span style="font-size: 13px; font-weight: 600; color: #e9ebef">CLI 问题反馈</span>
+<span style="font-size: 12px; color: #aab0bc">验收 1 / 3 有证据 · 2 个会话</span>
+<span style="margin-left: auto; display: flex; gap: 8px; align-items: center">
+<a href="TodoDetail.dc.html" style="font-size: 12px; text-decoration: none">待办详情</a>
+<button style="height: 26px; padding: 0 10px; border: 1px solid #3a3f5c; border-radius: 6px; background: transparent; color: #e0e1ff; font-size: 12px">标记待办完成</button>
+</span>
+</div>
+
+<div style="flex: 1; display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); grid-template-rows: repeat(2, minmax(360px, 1fr)); gap: 6px; padding: 6px; background: #0b0c10">
+<sc-for list="{{panes}}" as="p" hint-placeholder-count="2">
+<section aria-label="{{p.title}}" onClick="{{p.focus}}" style="position: relative; grid-column: {{p.col}}; grid-row: {{p.row}}; min-width: 0; display: flex; flex-direction: column; background: #101217; border-radius: 8px; border: 1px solid {{p.border}}; overflow: hidden">
+<div style="display: flex; align-items: center; gap: 8px; padding: 6px 10px; background: {{p.headBg}}; border-bottom: 1px solid #1d2028">
+<span style="flex: none; font-size: 11px; font-weight: 600; color: {{p.tagInk}}; background: {{p.tagBg}}; border-radius: 4px; padding: 1px 6px">{{p.group}}</span>
+<span style="font-size: 12.5px; color: #e9ebef; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0">{{p.here}}</span>
+<span style="margin-left: auto; flex: none; font-size: 11.5px; color: #8b919e">{{p.meta}}</span>
+<button onClick="{{p.openCard}}" aria-label="打开你在这里卡" style="flex: none; font-size: 11.5px; color: #c3c6ff; background: transparent; border: 1px solid #2a2e38; border-radius: 5px; padding: 1px 8px">你在这里</button>
+<button aria-label="分屏" style="flex: none; width: 24px; height: 22px; border: 1px solid #2a2e38; border-radius: 5px; background: transparent; display: flex; align-items: center; justify-content: center"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#aab0bc" stroke-width="2" aria-hidden="true"><rect x="3" y="4" width="18" height="16" rx="2"></rect><path d="M12 4v16"></path></svg></button>
+<button aria-label="更多：停止 Agent、中断、搜索、复制粘贴、挂到待办" style="flex: none; width: 24px; height: 22px; border: 1px solid #2a2e38; border-radius: 5px; background: transparent; color: #aab0bc; font-size: 12px; line-height: 1">⋯</button>
+<button aria-label="关闭画面（不停止 Agent）" style="flex: none; width: 22px; height: 22px; border: 0; background: transparent; color: #8b919e; font-size: 14px">×</button>
+</div>
+<div style="flex: 1; padding: 10px 14px; overflow: hidden; font-family: 'JetBrains Mono', 'SF Mono', Menlo, monospace; font-size: 12.5px; line-height: 1.6">
+<sc-for list="{{p.term}}" as="ln" hint-placeholder-count="10">
+<div style="white-space: pre; color: {{ln.c}}; min-height: 1.6em">{{ln.t}}</div>
+</sc-for>
+</div>
+
+<sc-if value="{{p.cardOpen}}" hint-placeholder-val="{{false}}">
+<div role="dialog" aria-label="你在这里" style="position: absolute; top: 40px; right: 10px; width: min(340px, calc(100% - 20px)); max-height: calc(100% - 50px); overflow: auto; background: #ffffff; color: #17181c; border-radius: 12px; border: 1px solid #d5d8de; padding: 14px 16px; display: flex; flex-direction: column; gap: 10px; box-sizing: border-box">
+<div style="display: flex; align-items: flex-start; gap: 8px">
+<div style="display: flex; flex-direction: column; gap: 4px; min-width: 0">
+<span style="font-size: 11.5px; font-weight: 600; color: {{p.tagInkLight}}; background: {{p.tagBgLight}}; border-radius: 4px; padding: 1px 6px; align-self: flex-start">{{p.group}}</span>
+<span style="font-size: 14.5px; font-weight: 600">{{p.title}}</span>
+<span style="font-size: 12px; color: #5d6270">{{p.meta}} · 待办：CLI 问题反馈</span>
+</div>
+<button onClick="{{closeCard}}" aria-label="关闭" style="margin-left: auto; border: 0; background: transparent; font-size: 16px; color: #5d6270">×</button>
+</div>
+<dl style="margin: 0; display: grid; grid-template-columns: 64px minmax(0, 1fr); gap: 7px 10px; font-size: 12.5px; line-height: 1.55">
+<dt style="color: #5d6270">你要它</dt><dd style="margin: 0">{{p.ask}}</dd>
+<dt style="color: #5d6270">做成了</dt>
+<dd style="margin: 0; display: flex; flex-direction: column; gap: 3px">
+<sc-for list="{{p.done}}" as="d" hint-placeholder-count="2"><span style="display: flex; gap: 6px; align-items: flex-start"><span style="flex: none; width: 6px; height: 6px; border-radius: 50%; margin-top: 7px; background: {{d.dot}}" aria-hidden="true"></span>{{d.t}}</span></sc-for>
+</dd>
+<dt style="color: #5d6270">停在</dt><dd style="margin: 0">{{p.stop}}</dd>
+<dt style="color: #5d6270">下一步</dt><dd style="margin: 0; background: #f6f7fb; border-radius: 6px; padding: 6px 8px">{{p.next}}<span style="display: block; font-size: 11px; color: #5d6270">推断</span></dd>
+</dl>
+<div style="display: flex; gap: 8px; border-top: 1px solid #eceef2; padding-top: 10px">
+<button style="height: 30px; padding: 0 12px; border: 0; border-radius: 7px; background: {{accent}}; color: #ffffff; font-size: 12.5px; font-weight: 600">标记完成</button>
+<button style="height: 30px; padding: 0 10px; border: 1px solid #d5d8de; border-radius: 7px; background: #ffffff; color: #17181c; font-size: 12.5px">暂存…</button>
+<button style="height: 30px; padding: 0 10px; border: 1px solid #d5d8de; border-radius: 7px; background: #ffffff; color: #17181c; font-size: 12.5px">放弃</button>
+</div>
+</div>
+</sc-if>
+</section>
+</sc-for>
+
+<section aria-label="空位：再开一个会话" style="grid-column: 2; grid-row: 2; min-width: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 12px; border-radius: 8px; border: 1px dashed #2f3448; background: #0e1015; padding: 20px; box-sizing: border-box">
+<span style="font-size: 13px; color: #aab0bc">这个标签还能再放 2 个画面</span>
+<div style="display: flex; gap: 0">
+<a href="TodoStart.dc.html" style="display: flex; align-items: center; height: 32px; padding: 0 14px; border-radius: 8px 0 0 8px; background: #4b4fd6; color: #ffffff; font-size: 12.5px; font-weight: 600; text-decoration: none">为这个待办再开一个会话</a>
+<button aria-label="选择 Agent" style="height: 32px; padding: 0 10px; border: 0; border-left: 1px solid #6c70e6; border-radius: 0 8px 8px 0; background: #4b4fd6; color: #e0e1ff; font-size: 12px">Codex ▾</button>
+</div>
+<button style="height: 30px; padding: 0 12px; border: 1px solid #2f3448; border-radius: 8px; background: transparent; color: #d7dae0; font-size: 12.5px">开一个空终端</button>
+<span style="font-size: 11.5px; color: #6b7080; text-align: center">命令只会预填，你按回车才启动；在这里开的会话都算这条待办的</span>
+</section>
+</div>
+
+<div style="display: flex; flex-wrap: wrap; gap: 6px 16px; padding: 6px 14px; border-top: 1px solid #1d2028; background: #0f1116; color: #8b919e; font-size: 11.5px">
+<span>本标签 2 个画面 · 后台 44 个会话</span><span>终端宿主已连接</span>
+<button style="margin-left: auto; font-size: 11.5px; color: #ffd2b0; background: #1b1e26; border: 1px solid #2a2e38; border-radius: 6px; padding: 2px 10px">跳到下一个等你的 →</button>
+</div>
+</main>
+</div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"accent":{"editor":"color","default":"#4b4fd6","options":["#4b4fd6","#1f6f5c","#b4490b","#17181c"]},"$preview":{"width":1440,"height":900}}'>
+class Component extends DCLogic {
+  constructor(props) {
+    super(props);
+    this.state = { focus: 'a', card: 'a' };
+  }
+  renderVals() {
+    var accent = this.props.accent ?? '#4b4fd6';
+    var self = this;
+    var FG = '#d7dae0', DIM = '#8b919e', OK = '#6fcf97', WARN = '#e5c07b', CY = '#7fc8d9', PU = '#b8a4f5';
+    function L(t, c) { return { t: t, c: c || FG }; }
+    function box(rows, c) {
+      var w = 0; rows.forEach(function (r) { if (r.length > w) w = r.length; });
+      var out = [L('╭' + '─'.repeat(w + 2) + '╮', c)];
+      rows.forEach(function (r) { out.push(L('│ ' + r + ' '.repeat(w - r.length) + ' │', c)); });
+      out.push(L('╰' + '─'.repeat(w + 2) + '╯', c));
+      return out;
+    }
+    var G = {
+      wait: { label: '等你回答', dot: '#e8823a', ink: '#ffd2b0', bg: '#4a2a12', inkL: '#9a3f06', bgL: '#fff1e6' },
+      review: { label: '待核对', dot: '#8f93ff', ink: '#d6d8ff', bg: '#2a2c5c', inkL: '#3438b0', bgL: '#eef0fe' },
+      run: { label: '进行中', dot: '#4cc38a', ink: '#b9ecd2', bg: '#173a2a', inkL: '#17663f', bgL: '#e7f5ee' },
+      err: { label: '出错了', dot: '#e5534b', ink: '#ffc4bd', bg: '#4a1c18', inkL: '#9b2318', bgL: '#fdecea' }
+    };
+    var ok = '#1f8a55', info = '#9aa0ad', warn = '#c2570c';
+    var P = [
+      { id: 'a', col: '1', row: '1 / span 2', g: 'wait', title: '实现反馈子命令', meta: 'Claude Code · 12 分钟前',
+        here: '等你批准：git push origin feat/feedback',
+        ask: '“给 CLI 加一个 feedback 子命令，把问题提交到反馈接口。”追加：“不要上传本地文件内容。”',
+        done: [{ t: 'bun test：31 通过，0 失败', dot: ok }, { t: '已提交 a1c3f9e，未推送', dot: info }],
+        stop: '推送前请求你批准 git push origin feat/feedback。', next: '在终端里选 1 批准；或先等右边的审查结果。',
+        term: [L('> 给 CLI 加一个 feedback 子命令，把问题提交到反馈接口'), L('> 不要上传本地文件内容'), L(''),
+          L('⏺ Update(src/commands/feedback.ts)', PU), L('  ⎿  Updated with 86 additions', DIM),
+          L('⏺ Bash(bun test)', PU), L('  ⎿  31 pass, 0 fail', OK), L('⏺ Bash(git commit -m "feat: add feedback command")', PU), L('  ⎿  [feat/feedback a1c3f9e]', DIM), L('')]
+          .concat(box(['Bash command', '  git push origin feat/feedback', '', 'Do you want to proceed?', '❯ 1. Yes', '  2. Yes, and don\'t ask again', '  3. No, and tell Claude what to do (esc)'], CY)) },
+      { id: 'b', col: '2', row: '1', g: 'review', title: '审查反馈接口改动', meta: 'Codex · 6 分钟前',
+        here: '说审查完成 · 指出 1 处日志未脱敏',
+        ask: '“审查 feat/feedback 分支的改动，重点看有没有上传本地文件内容。”',
+        done: [{ t: '读了 4 个改动文件', dot: info }, { t: '没有运行测试', dot: warn }],
+        stop: '给出审查意见：feedback.ts 第 58 行把完整命令行写进日志，可能包含路径。', next: '把这条意见转给左边的实现会话，修完再推送。',
+        term: [L('› 审查 feat/feedback 分支的改动，重点看有没有上传本地文件内容'), L(''), L('• Ran git diff main...feat/feedback --stat', CY), L('  └ 4 files changed, 212 insertions(+), 8 deletions(-)', DIM), L(''),
+          L('• 审查结论：'), L('  1. feedback.ts:58 把完整命令行写进日志，可能带本地路径', WARN), L('  2. 其余没有读取或上传文件内容'), L(''), L('› ▌')] }
+    ];
+    var panes = P.map(function (p) {
+      var g = G[p.g], on = p.id === self.state.focus;
+      return { title: p.title, col: p.col, row: p.row, group: g.label, tagInk: g.ink, tagBg: g.bg, tagInkLight: g.inkL, tagBgLight: g.bgL,
+        here: p.here, meta: p.meta, term: p.term, ask: p.ask, done: p.done, stop: p.stop, next: p.next,
+        border: on ? accent : '#1d2028', headBg: on ? '#181a24' : '#12141a', cardOpen: self.state.card === p.id,
+        focus: function () { self.setState({ focus: p.id }); },
+        openCard: function () { self.setState({ focus: p.id, card: p.id }); } };
+    });
+    var tabs = [
+      { name: 'tes' }, { name: 'webs' }, { name: 'steal', badge: G.wait.dot },
+      { name: 'CLI 问题反馈', todo: true, badge: G.wait.dot, on: true },
+      { name: '首屏 1.5 秒以内', todo: true, badge: G.review.dot },
+      { name: '上线前安全检查', todo: true, badge: G.run.dot },
+      { name: 'claude skill', badge: G.err.dot }, { name: 'hrness' }
+    ].map(function (t) {
+      return { name: t.name, isTodo: !!t.todo, badge: t.badge || '', bg: t.on ? '#1b1e26' : 'transparent', ink: t.on ? '#ffffff' : '#8b919e' };
+    });
+    var spaces = [
+      { name: 'lib', wait: 2, total: 14, on: true }, { name: 'sys', wait: 0, total: 11 },
+      { name: '模型上线 work', wait: 1, total: 9 }, { name: 'keepline', wait: 0, total: 5 }, { name: 'codex-mall', wait: 0, total: 6 }
+    ].map(function (s) { return { name: s.name, wait: s.wait || '', total: s.total, bg: s.on ? '#1b1e26' : 'transparent', ink: s.on ? '#ffffff' : '#c4c8d0' }; });
+    var todos = [
+      { title: 'CLI 问题反馈', state: '进行中 · 2 个会话 · 当前标签', ring: '#e8823a', fill: '#e8823a', bg: '#171a26' },
+      { title: '给 CLI 加离线模式', state: '还没开始', ring: '#8b919e', fill: 'transparent', canStart: true, bg: 'transparent' },
+      { title: 'CLI 自动更新', state: '会话都说做完了 · 等你验收', ring: '#8f93ff', fill: '#8f93ff', bg: 'transparent' }
+    ];
+    var needs = [
+      { title: '实现反馈子命令', where: 'lib', dot: G.wait.dot },
+      { title: '评估 Film Studio 方案', where: 'work', dot: G.wait.dot },
+      { title: '核查指纹变更', where: 'lib', dot: G.wait.dot },
+      { title: 'Atlas CLI SSH 异常', where: 'sys', dot: G.err.dot },
+      { title: '通知目标保留验收', where: 'keepline', dot: G.err.dot }
+    ];
+    return { accent: accent, panes: panes, tabs: tabs, spaces: spaces, todos: todos, needs: needs,
+      closeCard: function () { self.setState({ card: null }); } };
+  }
+}
+</script>
+</body>
+</html>
