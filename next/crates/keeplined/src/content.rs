@@ -288,6 +288,48 @@ fn input(v: &Value) -> Value {
         .map(|s| serde_json::from_str(s).unwrap_or_else(|_| json!({"input":s})))
         .unwrap_or_else(|| v.clone())
 }
+fn question_summary(v: &Value) -> String {
+    let questions = v.get("questions").and_then(Value::as_array);
+    if let Some(questions) = questions {
+        return short(
+            &questions
+                .iter()
+                .filter_map(|q| {
+                    let prompt = q["question"].as_str().or_else(|| q["title"].as_str())?;
+                    let options = q["options"]
+                        .as_array()
+                        .map(|items| {
+                            items
+                                .iter()
+                                .filter_map(|o| {
+                                    o.as_str()
+                                        .or_else(|| o["label"].as_str())
+                                        .map(str::to_owned)
+                                })
+                                .collect::<Vec<_>>()
+                                .join(" / ")
+                        })
+                        .unwrap_or_default();
+                    Some(if options.is_empty() {
+                        prompt.to_owned()
+                    } else {
+                        format!("{prompt}（{options}）")
+                    })
+                })
+                .collect::<Vec<_>>()
+                .join("\n"),
+            600,
+        );
+    }
+    short(
+        v["question"]
+            .as_str()
+            .or_else(|| v["message"].as_str())
+            .or_else(|| v["reason"].as_str())
+            .unwrap_or("需要在原终端回答问题或审批"),
+        600,
+    )
+}
 fn seconds(v: &Value) -> u64 {
     v.as_str()
         .and_then(|s| chrono::DateTime::parse_from_rfc3339(s).ok())
@@ -395,10 +437,7 @@ impl Parser {
                 Some("Codex SDK 非交互")
             } else {
                 if matches!(source, "cli" | "vscode")
-                    && matches!(
-                        origin,
-                        "codex-tui" | "codex_cli_rs" | "codex_vscode" | "codex_work_desktop"
-                    )
+                    && matches!(m["thread_source"].as_str(), None | Some("user"))
                 {
                     self.card.interactive = true;
                 }
@@ -454,6 +493,14 @@ impl Parser {
             return;
         }
         if user {
+            if self
+                .card
+                .asks
+                .iter()
+                .any(|q| q.source == *source && q.text == s)
+            {
+                return;
+            }
             if self.last_user == s && self.last_user_turn == self.turn_id {
                 return;
             }
@@ -527,7 +574,7 @@ impl Parser {
             || name.ends_with("request_user_input_async")
         {
             self.card.turn = Turn::Waiting;
-            self.card.waiting = short(&args.to_string(), 600);
+            self.card.waiting = question_summary(&args);
         }
         self.calls.insert(
             id.into(),
@@ -761,7 +808,7 @@ impl Parser {
                     "user_message" => self.message(true, text(&p["message"]), at, &source, false),
                     "agent_message" => self.message(false, text(&p["message"]), at, &source, false),
                     "approval_request" | "permission_request" | "request_user_input" => {
-                        self.card.waiting = short(&p.to_string(), 600);
+                        self.card.waiting = question_summary(p);
                         self.phase(Turn::Waiting, "", at, &source);
                     }
                     "error" | "turn_failed" => {
@@ -997,7 +1044,7 @@ pub fn card(db: &Connection, path: &str) -> io::Result<Option<Content>> {
 }
 pub fn save(db: &Connection, path: &str, parser: &Parser) -> io::Result<()> {
     let mut encoded = serde_json::to_value(parser).map_err(db_err)?;
-    encoded["_rules"] = json!(2);
+    encoded["_rules"] = json!(3);
     db.prepare_cached("INSERT INTO session_content VALUES(?1,?2,?3,?4,?5,?6) ON CONFLICT(path) DO UPDATE SET title=excluded.title,turn=excluded.turn,updated=excluded.updated,projection=excluded.projection,parser=excluded.parser").map_err(db_err)?.execute(params![path,parser.card.title,format!("{:?}",parser.card.turn),i64::try_from(parser.card.updated).map_err(db_err)?,serde_json::to_string(&parser.card).map_err(db_err)?,serde_json::to_string(&encoded).map_err(db_err)?]).map_err(db_err)?;
     let mut ordinals = BTreeMap::new();
     for r in &parser.records {
@@ -1057,6 +1104,39 @@ mod tests {
         item(
             p,
             json!({"type":"function_call_output","call_id":id,"output":s}),
+        );
+    }
+    #[test]
+    fn codex_interactive_entrypoint_is_not_a_brand_whitelist() {
+        for origin in [
+            "Codex Desktop",
+            "codex-tui",
+            "codex_work_desktop",
+            "herdr-client",
+        ] {
+            let mut p = Parser::default();
+            p.metadata(Agent::Codex, &json!({"type":"session_meta","payload":{"source":"vscode","thread_source":"user","originator":origin,"cwd":"/repo"}}));
+            assert!(p.card.hidden_reason().is_none(), "{origin}");
+            p.metadata(
+                Agent::Codex,
+                &json!({"type":"session_meta","payload":{"source":"exec","originator":origin}}),
+            );
+            assert!(p.card.hidden_reason().is_some());
+        }
+    }
+    #[test]
+    fn questions_show_text_and_choices_instead_of_json() {
+        let mut p = Parser::default();
+        call(
+            &mut p,
+            "question",
+            "AskUserQuestion",
+            json!({"questions":[{"question":"要部署吗？","options":[{"label":"仅本地","description":"保留"},{"label":"部署"}]}]}),
+        );
+        assert_eq!(p.card.waiting, "要部署吗？（仅本地 / 部署）");
+        assert_eq!(
+            question_summary(&json!({"questions":[{"title":"选一个","options":["A","B"]}]})),
+            "选一个（A / B）"
         );
     }
     #[test]

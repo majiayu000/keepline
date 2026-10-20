@@ -127,7 +127,7 @@ impl Index {
                 // Content is a newly introduced object. Seed only cached recent identities that
                 // have no projection, once, without another directory walk or replacing cursors.
                 let missing = {
-                    let mut q=self.db.prepare("SELECT runtime,path FROM log_files WHERE updated>=?1 AND NOT EXISTS(SELECT 1 FROM session_content WHERE session_content.path=log_files.path AND json_extract(parser,'$._rules')=2)").map_err(err)?;
+                    let mut q=self.db.prepare("SELECT runtime,path FROM log_files WHERE updated>=?1 AND NOT EXISTS(SELECT 1 FROM session_content WHERE session_content.path=log_files.path AND json_extract(parser,'$._rules')=3)").map_err(err)?;
                     let rows = q
                         .query_map(
                             [keepline_core::content::now()
@@ -405,7 +405,7 @@ impl Index {
             .as_secs();
         let seeded: bool = self
             .db
-            .prepare_cached("SELECT EXISTS(SELECT 1 FROM session_content WHERE path=?1 AND json_extract(parser,'$._rules')=2)")
+            .prepare_cached("SELECT EXISTS(SELECT 1 FROM session_content WHERE path=?1 AND json_extract(parser,'$._rules')=3)")
             .map_err(err)?
             .query_row([&key], |r| r.get(0))
             .map_err(err)?;
@@ -441,50 +441,63 @@ impl Index {
         if seed {
             // Identity requires only the header, even when old bodies are deliberately skipped.
             file.seek(SeekFrom::Start(0))?;
-            let mut head = vec![0; meta.len().min(16 * 1024) as usize];
-            file.read_exact(&mut head)?;
-            self.counts.bytes += head.len() as u64;
-            for line in head.split(|b| *b == b'\n') {
-                parser.observe_header(runtime, line);
-                if c.identity.is_none() {
-                    c.identity = identity(runtime, line);
+            // Recent files get one cached prefix search: 64 KiB steps, at most 384 KiB.
+            // Real Codex developer/environment records often push the first user past 128 KiB.
+            // Old files retain the cheap identity-only 16 KiB read.
+            let recent = self.recent(updated);
+            let budget = meta.len().min(if recent { 384 * 1024 } else { 16 * 1024 });
+            let mut head = Vec::new();
+            let mut parsed = 0usize;
+            while (head.len() as u64) < budget {
+                let end = budget.min(head.len() as u64 + if recent { 64 * 1024 } else { 16 * 1024 })
+                    as usize;
+                let old = head.len();
+                head.resize(end, 0);
+                file.read_exact(&mut head[old..])?;
+                self.counts.bytes += (end - old) as u64;
+                for line in head[parsed..].split_inclusive(|b| *b == b'\n') {
+                    parser.observe_header(runtime, line);
+                    if c.identity.is_none() {
+                        c.identity = identity(runtime, line);
+                    }
+                    if line.last() != Some(&b'\n') {
+                        break;
+                    }
+                    if recent && !parser.card.first_ask_known {
+                        if let Ok(v) = serde_json::from_slice::<serde_json::Value>(line) {
+                            let user = if runtime == Agent::Codex {
+                                v["type"] == "event_msg" && v["payload"]["type"] == "user_message"
+                                    || v["type"] == "response_item"
+                                        && v["payload"]["role"] == "user"
+                            } else {
+                                v["type"] == "user"
+                            };
+                            if user {
+                                parser.add(
+                                    runtime,
+                                    line,
+                                    keepline_core::content::Source {
+                                        path: key.clone(),
+                                        inode: meta.ino(),
+                                        offset: parsed as u64,
+                                    },
+                                );
+                            }
+                        }
+                    }
+                    parsed += line.len();
+                }
+                if parser.card.first_ask_known || !parser.card.hidden_reason.is_empty() || !recent {
+                    break;
                 }
             }
-            c.offset = if self.recent(updated) {
+            c.offset = if recent {
                 meta.len().saturating_sub(128 * 1024)
             } else {
                 meta.len()
             };
-            if c.offset > head.len() as u64 && self.recent(updated) {
-                let mut offset = 0;
-                for line in head.split_inclusive(|b| *b == b'\n') {
-                    if line.last() != Some(&b'\n') {
-                        break;
-                    }
-                    if let Ok(v) = serde_json::from_slice::<serde_json::Value>(line) {
-                        let user = if runtime == Agent::Codex {
-                            v["type"] == "event_msg" && v["payload"]["type"] == "user_message"
-                                || v["type"] == "response_item" && v["payload"]["role"] == "user"
-                        } else {
-                            v["type"] == "user"
-                        };
-                        if user {
-                            parser.add(
-                                runtime,
-                                line,
-                                keepline_core::content::Source {
-                                    path: key.clone(),
-                                    inode: meta.ino(),
-                                    offset,
-                                },
-                            );
-                        }
-                    }
-                    offset += line.len() as u64;
-                }
-                // A known initial request is useful context, never proof the final turn is running.
-                parser.card.turn = keepline_core::content::Turn::Unknown;
-            }
+            // The prefix is original intent, never proof of the current turn.
+            parser.card.turn = keepline_core::content::Turn::Unknown;
             c.pending.clear();
             c.discard = c.offset > 0;
             parser.card.partial_history = c.offset > 0;
@@ -698,6 +711,32 @@ mod tests {
         format!("{{\"type\":\"session_meta\",\"payload\":{{\"id\":\"{id}\",\"cwd\":\"/tmp\"}}}}\n")
     }
     #[test]
+    fn original_request_beyond_16k_is_read_once_within_bounded_prefix() {
+        let f = Fixture::new();
+        let path = f.0.join("logs/head.jsonl");
+        let mut log = format!(
+            "{}\n",
+            serde_json::json!({"type":"session_meta","payload":{"id":"head","cwd":"/repo","source":"vscode","thread_source":"user","originator":"Codex Desktop","base_instructions":"x".repeat(24*1024)}})
+        );
+        let offset = log.len() as u64;
+        log.push_str("{\"type\":\"event_msg\",\"payload\":{\"type\":\"user_message\",\"message\":\"最初真实要求\"}}\n");
+        log.push_str(&" ".repeat(200 * 1024));
+        log.push_str("\n{\"type\":\"event_msg\",\"payload\":{\"type\":\"user_message\",\"message\":\"追加要求\"}}\n");
+        fs::write(&path, log).unwrap();
+        let mut i = f.index();
+        i.initialize().unwrap();
+        i.bootstrap().unwrap();
+        let card = i.card(path.to_str().unwrap()).unwrap().unwrap();
+        assert_eq!(card.title, "最初真实要求");
+        assert_eq!(card.asks[0].source.offset, offset);
+        assert!(card.first_ask_known && card.hidden_reason().is_none());
+        assert!(i.counts.bytes <= 192 * 1024 + 1);
+        i.counts = IoCounts::default();
+        i.bootstrap().unwrap();
+        assert_eq!(i.counts.bytes, 0);
+        assert_eq!(i.counts.opens, 0);
+    }
+    #[test]
     fn changed_content_rules_reseed_once_without_a_directory_walk() {
         let f = Fixture::new();
         let path = f.0.join("logs/rules.jsonl");
@@ -756,7 +795,7 @@ mod tests {
         file.write_all(b"\n{\"type\":\"event_msg\",\"payload\":{\"type\":\"user_message\",\"message\":\"tail request\"}}\n").unwrap();
         let mut index = f.index();
         index.update(Agent::Codex, &path, true).unwrap();
-        assert!(index.counts.bytes <= 144 * 1024 + 1);
+        assert!(index.counts.bytes <= 512 * 1024 + 1);
         assert!(
             index
                 .card(path.to_str().unwrap())
@@ -854,7 +893,7 @@ mod tests {
         let mut i = f.index();
         let checkpoint = i.initialize().unwrap();
         i.bootstrap().unwrap();
-        assert!(i.counts.bytes <= 256 * 1024 + 1);
+        assert!(i.counts.bytes <= 512 * 1024 + 1);
         assert_eq!(i.cached().unwrap()[0].cli_id, "huge");
         assert_eq!(
             i.db.query_row("SELECT offset FROM log_files", [], |r| r.get::<_, i64>(0))
