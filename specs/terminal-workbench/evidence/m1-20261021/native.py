@@ -1,7 +1,7 @@
 """Isolated native acceptance. Fake CLI executables record input; no model/network call."""
 import json,os,pathlib,socket,struct,subprocess,tempfile,time,plistlib,shutil
 BASE=pathlib.Path(__file__).resolve().parents[4]
-OUT=pathlib.Path(__file__).resolve().parent
+OUT=pathlib.Path(os.environ.get('KL_EVIDENCE',str(pathlib.Path(__file__).resolve().parent)));OUT.mkdir(parents=True,exist_ok=True)
 root=pathlib.Path(tempfile.mkdtemp(prefix='kl-m1-',dir='/tmp'));os.chmod(root,0o700)
 home=root/'home';home.mkdir();bins=root/'bin';bins.mkdir()
 (home/'.zprofile').write_text(f"export PATH='{bins}:/usr/bin:/bin:/usr/sbin:/sbin'\n")
@@ -38,6 +38,11 @@ try:
  until=time.monotonic()+15
  while not (root/'workbench.sock').exists():
   assert time.monotonic()<until;time.sleep(.1)
+ if os.environ.get('KL_SEED_STALE'):
+  for i in range(3):
+   at=int(time.time())-4*86400
+   rows=[{'type':'session_meta','payload':{'id':f'stale-{i}','cwd':'/fixture-project','source':'cli','thread_source':'user','originator':'codex-tui'}},{'timestamp':at,'type':'event_msg','payload':{'type':'task_started','turn_id':f'old-{i}'}},{'timestamp':at,'type':'event_msg','payload':{'type':'user_message','message':f'核对第 {i+1} 个暂停项目的测试结果。'}},{'timestamp':at,'type':'event_msg','payload':{'type':'task_complete','last_agent_message':'还需要核对测试环境。'}}]
+   (root/'logs'/f'stale-{i}.jsonl').write_text(''.join(json.dumps(v,ensure_ascii=False)+'\n' for v in rows))
  w=rpc('Workspace')['Workspace']
  rpc({'Edit':{'revision':w['revision'],'edit':{'AddSpace':{'id':'m1','name':'M1 隔离项目','cwd':str(root)}}}})
  bundle=root/'Keepline Milestone Test.app';mac=bundle/'Contents/MacOS';mac.mkdir(parents=True)

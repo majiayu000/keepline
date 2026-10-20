@@ -1193,6 +1193,45 @@ fn external_content_updates_without_probes_saves_full_quotes_and_reopens_on_new_
         assert!(Instant::now() < deadline);
         std::thread::sleep(Duration::from_millis(50));
     }
+    let w = h.workspace();
+    assert!(
+        w.outcome_history
+            .iter()
+            .any(|e| e.reason == "新回合" && e.before == Outcome::Completed)
+    );
+    let due = keepline_core::content::now() + 2;
+    h.call(Request::Edit {
+        revision: w.revision,
+        edit: Edit::SetOutcome {
+            id: s.id.clone(),
+            outcome: Outcome::Deferred {
+                reason: "deadline test".into(),
+                until: due,
+            },
+        },
+    })
+    .unwrap();
+    // Subscribe once: the host deadline must publish without a refresh/poll driving it.
+    let mut stream = UnixStream::connect(h.socket()).unwrap();
+    stream
+        .set_read_timeout(Some(Duration::from_secs(5)))
+        .unwrap();
+    send(&mut stream, CONTROL, &Request::Hello { major: MAJOR }).unwrap();
+    let _: Reply = receive(&mut stream).unwrap();
+    send(&mut stream, CONTROL, &Request::WatchRecognition).unwrap();
+    loop {
+        let _: Reply = receive(&mut stream).unwrap();
+        if keepline_core::content::now() >= due {
+            break;
+        }
+    }
+    let w = h.workspace();
+    assert_eq!(w.agent_sessions[0].outcome, Outcome::Open);
+    assert!(
+        w.outcome_history
+            .iter()
+            .any(|e| e.reason == "暂存到期" && e.at == due)
+    );
     let stats = recognition(&h);
     assert_eq!((stats.metrics.ps_spawns, stats.metrics.lsof_spawns), (0, 0));
 }

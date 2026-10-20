@@ -27,6 +27,9 @@ pub struct Workbench {
     resume: Option<(String, String)>,
     here: Option<String>,
     show_stale: bool,
+    show_closed: bool,
+    cleanup: Vec<String>,
+    cleanup_index: usize,
     show_running: bool,
     show_hidden: bool,
     card_menu: Option<String>,
@@ -118,6 +121,18 @@ fn button(
         .cursor_pointer()
         .hover(|s| s.bg(T::color(T::RAISED)))
         .child(text)
+}
+fn outcome_label(outcome: &Outcome) -> String {
+    match outcome {
+        Outcome::Open => "未结束".into(),
+        Outcome::Completed => "已完成".into(),
+        Outcome::Abandoned => "已放弃".into(),
+        Outcome::Deferred { reason, until } => format!(
+            "暂存：{} · {} 小时后再看",
+            reason,
+            until.saturating_sub(now()).div_ceil(3600)
+        ),
+    }
 }
 fn label(text: impl Into<gpui::SharedString>) -> gpui::Div {
     div()
@@ -374,6 +389,9 @@ impl Workbench {
             resume: None,
             here: None,
             show_stale: false,
+            show_closed: false,
+            cleanup: vec![],
+            cleanup_index: 0,
             show_running: false,
             show_hidden: false,
             card_menu: None,
@@ -444,6 +462,15 @@ impl Workbench {
                 let received_workspace = matches!(&reply, Ok(Reply::Workspace(_)));
                 match reply {
                     Ok(Reply::Workspace(w)) => {
+                        if let Some(id) = this.cleanup.get(this.cleanup_index) {
+                            let old = this.workspace.agent_sessions.iter().find(|s| &s.id == id);
+                            let new = w.agent_sessions.iter().find(|s| &s.id == id);
+                            if old.zip(new).is_some_and(|(a, b)| {
+                                a.outcome != b.outcome && b.outcome != Outcome::Open
+                            }) {
+                                this.cleanup_index += 1;
+                            }
+                        }
                         this.workspace = w;
                         this.sync_panes(cx);
                         if let Some(task) = this.start_after_save.take() {
@@ -731,6 +758,150 @@ impl Workbench {
             });
         })
         .detach();
+    }
+    fn cleanup_view(&self, cx: &Context<Self>) -> gpui::Stateful<gpui::Div> {
+        let mut page = div()
+            .w_full()
+            .max_w(px(T::CLEANUP_WIDTH))
+            .flex()
+            .flex_col()
+            .gap(px(T::S16))
+            .child(div().text_size(px(T::TITLE)).child(format!(
+                "清理很久没动的会话 · {} / {}",
+                (self.cleanup_index + 1).min(self.cleanup.len()),
+                self.cleanup.len()
+            )))
+            .child(
+                div().flex().child(
+                    button("cleanup-exit", "← 返回鸟瞰")
+                        .text_color(T::color(T::ACCENT))
+                        .on_click(cx.listener(|this, _, _, cx| {
+                            this.cleanup.clear();
+                            this.overview = true;
+                            cx.notify();
+                        })),
+                ),
+            );
+        if let Some(s) = self
+            .cleanup
+            .get(self.cleanup_index)
+            .and_then(|id| self.workspace.agent_sessions.iter().find(|s| &s.id == id))
+        {
+            let h = self.workspace.content.get(&s.id).map(|c| c.here());
+            page = page
+                .child(div().text_size(px(T::TITLE)).child(self.session_title(s)))
+                .child(
+                    label(format!("{} · {}", s.runtime.executable(), s.cwd))
+                        .text_color(T::color(T::POPOVER_SECONDARY)),
+                );
+            if let Some(h) = h {
+                let mut card = div()
+                    .p(px(T::S20))
+                    .rounded(px(T::CARD_RADIUS))
+                    .bg(T::color(T::WHITE))
+                    .flex()
+                    .flex_col()
+                    .gap(px(T::S16));
+                for (name, text) in [
+                    ("你要它", h.ask),
+                    ("做成了", h.done),
+                    ("停在", h.stopped),
+                    ("下一步·推断", h.next),
+                ] {
+                    card = card.child(
+                        div()
+                            .p(px(T::S16))
+                            .rounded(px(T::CARD_RADIUS))
+                            .bg(T::color(T::WHITE))
+                            .child(label(name).text_color(T::color(T::POPOVER_SECONDARY)))
+                            .child(text),
+                    );
+                }
+                page = page.child(card);
+            }
+            let mut actions = div().flex().gap(px(T::S8));
+            let resume = s.clone();
+            actions = actions.child(
+                button("cleanup-continue", "继续")
+                    .h(px(T::CLEANUP_ACTION_HEIGHT))
+                    .flex_1()
+                    .justify_center()
+                    .bg(T::color(T::ACCENT))
+                    .text_color(T::color(T::WHITE))
+                    .on_click(cx.listener(move |this, _, window, cx| {
+                        this.cleanup.clear();
+                        this.open_session(&resume, window, cx);
+                    })),
+            );
+            for (name, outcome) in [("完成", Outcome::Completed), ("放弃", Outcome::Abandoned)]
+            {
+                let sid = s.id.clone();
+                actions = actions.child(
+                    button(name, name)
+                        .h(px(T::CLEANUP_ACTION_HEIGHT))
+                        .flex_1()
+                        .justify_center()
+                        .bg(T::color(T::WHITE))
+                        .text_color(T::color(T::POPOVER_TEXT))
+                        .on_click(cx.listener(move |this, _, _, cx| {
+                            this.edit(
+                                Edit::SetOutcome {
+                                    id: sid.clone(),
+                                    outcome: outcome.clone(),
+                                },
+                                cx,
+                            )
+                        })),
+                );
+            }
+            let sid = s.id.clone();
+            actions = actions.child(
+                button("cleanup-defer", "暂存…")
+                    .h(px(T::CLEANUP_ACTION_HEIGHT))
+                    .flex_1()
+                    .justify_center()
+                    .text_color(T::color(T::ACCENT))
+                    .on_click(cx.listener(move |this, _, window, cx| {
+                        this.here = Some(sid.clone());
+                        this.show_form(FormKind::Defer, window, cx);
+                    })),
+            );
+            page = page.child(actions);
+        } else {
+            page = page.child("这一轮已处理完，可以返回鸟瞰。");
+        }
+        page = page.child(
+            div()
+                .flex()
+                .gap(px(T::S8))
+                .child(
+                    button("cleanup-previous", "上一个")
+                        .text_color(T::color(T::POPOVER_TEXT))
+                        .on_click(cx.listener(|this, _, _, cx| {
+                            this.cleanup_index = this.cleanup_index.saturating_sub(1);
+                            cx.notify();
+                        })),
+                )
+                .child(
+                    button("cleanup-skip", "跳过")
+                        .text_color(T::color(T::POPOVER_TEXT))
+                        .on_click(cx.listener(|this, _, _, cx| {
+                            this.cleanup_index = (this.cleanup_index + 1).min(this.cleanup.len());
+                            cx.notify();
+                        })),
+                ),
+        );
+        div()
+            .id("cleanup-page")
+            .size_full()
+            .bg(T::color(T::CLEANUP_BACKGROUND))
+            .text_color(T::color(T::POPOVER_TEXT))
+            .overflow_y_scroll()
+            .p(px(T::S20))
+            .flex()
+            .flex_col()
+            .items_center()
+            .child(page)
     }
     fn task_detail_view(&self, task: &Task, cx: &Context<Self>) -> gpui::Stateful<gpui::Div> {
         let tid = task.id.clone();
@@ -1277,7 +1448,7 @@ impl Workbench {
         let mut actions = div().flex().flex_wrap().gap(px(T::S6));
         let sid = session.id.clone();
         actions = actions.child(
-            button("here-defer", "暂存一天")
+            button("here-defer", "暂存…")
                 .text_color(T::color(T::POPOVER_TEXT))
                 .on_click(cx.listener(move |this, _, window, cx| {
                     this.here = Some(sid.clone());
@@ -1285,7 +1456,11 @@ impl Workbench {
                     this.show_form(FormKind::Defer, window, cx);
                 })),
         );
-        for (name, outcome) in [("已验收", Outcome::Completed), ("放弃", Outcome::Abandoned)] {
+        for (name, outcome) in [
+            ("已验收", Outcome::Completed),
+            ("放弃", Outcome::Abandoned),
+            ("撤销结局", Outcome::Open),
+        ] {
             let sid = session.id.clone();
             actions = actions.child(
                 button(gpui::SharedString::from(format!("here-{name}")), name)
@@ -1300,6 +1475,29 @@ impl Workbench {
                         )
                     })),
             );
+        }
+        for h in self
+            .workspace
+            .outcome_history
+            .iter()
+            .rev()
+            .filter(|h| h.session == session.id)
+            .take(3)
+        {
+            panel = panel.child(
+                label(format!(
+                    "{} · {} → {}",
+                    h.reason,
+                    outcome_label(&h.before),
+                    outcome_label(&h.after)
+                ))
+                .text_color(T::color(T::POPOVER_TEXT)),
+            );
+        }
+        if session.current && session.outcome != Outcome::Open {
+            panel = panel.child(label(
+                "结局已记录，Agent 仍在运行；若要停止，请在画面菜单选择停止 Agent。",
+            ));
         }
         panel.child(actions)
     }
@@ -1355,8 +1553,11 @@ impl Workbench {
                     this.show_form(FormKind::Defer, window, cx);
                 },
             )));
-        for (label, outcome) in [("已验收", Outcome::Completed), ("放弃", Outcome::Abandoned)]
-        {
+        for (label, outcome) in [
+            ("已验收", Outcome::Completed),
+            ("放弃", Outcome::Abandoned),
+            ("撤销结局", Outcome::Open),
+        ] {
             let id = session.id.clone();
             menu = menu.child(
                 button(gpui::SharedString::from(format!("card-{label}")), label).on_click(
@@ -1437,11 +1638,16 @@ impl Workbench {
             .tasks
             .iter()
             .filter(|t| {
-                !self
-                    .workspace
-                    .agent_sessions
-                    .iter()
-                    .any(|s| s.task.as_ref() == Some(&t.id))
+                self.workspace
+                    .task_outcomes
+                    .get(&t.id)
+                    .unwrap_or(&Outcome::Open)
+                    .needs_review(now())
+                    && !self
+                        .workspace
+                        .agent_sessions
+                        .iter()
+                        .any(|s| s.task.as_ref() == Some(&t.id))
             })
             .collect();
         let mut todo_cards = div().flex().flex_wrap().gap(px(T::S10));
@@ -1561,6 +1767,25 @@ impl Workbench {
                         cx.notify();
                     })),
                 );
+                if count > 0 {
+                    view = view.child(button("cleanup", "逐个清理 →").on_click(cx.listener(
+                        |this, _, _, cx| {
+                            this.cleanup = this
+                                .workspace
+                                .agent_sessions
+                                .iter()
+                                .filter(|s| {
+                                    this.session_hidden(s).is_none()
+                                        && this.group(s) == Group::Stale
+                                })
+                                .map(|s| s.id.clone())
+                                .collect();
+                            this.cleanup_index = 0;
+                            this.here = None;
+                            cx.notify();
+                        },
+                    )));
+                }
                 if !self.show_stale {
                     continue;
                 }
@@ -1573,14 +1798,26 @@ impl Workbench {
                 let primary = session.clone();
                 let menu_id = session.id.clone();
                 let meta = format!(
-                    "{} · {} · {}",
+                    "{} · {} · {}{}",
                     if session.terminal.is_none() {
                         "外部·只读"
                     } else {
                         "托管"
                     },
                     session.runtime.executable(),
-                    session.cwd
+                    session.cwd,
+                    if self
+                        .workspace
+                        .outcome_history
+                        .iter()
+                        .rev()
+                        .find(|h| h.session == session.id)
+                        .is_some_and(|h| h.reason == "暂存到期")
+                    {
+                        " · 到期"
+                    } else {
+                        ""
+                    }
                 );
                 let primary_continue =
                     matches!(group, Group::Waiting | Group::Error | Group::Paused);
@@ -1740,10 +1977,41 @@ impl Workbench {
                 .border_t(px(T::BORDER_WIDTH))
                 .border_color(T::color(T::BORDER))
                 .pt(px(T::S16))
-                .child(label(format!(
-                    "暂存 {deferred} · 已结束：完成 {completed} / 放弃 {abandoned}"
-                ))),
+                .child(button("closed-toggle",format!("暂存 {deferred} · 已结束：完成 {completed} / 放弃 {abandoned} · 展开/收起")).on_click(cx.listener(|this, _, _, cx| {this.show_closed=!this.show_closed;cx.notify();}))),
         );
+        if self.show_closed {
+            for s in self
+                .workspace
+                .agent_sessions
+                .iter()
+                .filter(|s| !s.outcome.needs_review(now()) && self.session_hidden(s).is_none())
+            {
+                let sid = s.id.clone();
+                view = view.child(
+                    div()
+                        .p(px(T::S8))
+                        .child(
+                            button(
+                                gpui::SharedString::from(format!("closed-{sid}")),
+                                format!(
+                                    "{} · {}",
+                                    self.session_title(s),
+                                    outcome_label(&s.outcome)
+                                ),
+                            )
+                            .on_click(cx.listener(
+                                move |this, _, _, cx| {
+                                    this.here = Some(sid.clone());
+                                    cx.notify();
+                                },
+                            )),
+                        )
+                        .when(self.here.as_ref() == Some(&s.id), |d| {
+                            d.child(self.here_card(s, cx))
+                        }),
+                );
+            }
+        }
         let hidden: Vec<_> = self
             .workspace
             .agent_sessions
@@ -2407,6 +2675,9 @@ impl Render for Workbench {
             .text_size(px(T::BODY_SIZE))
             .line_height(gpui::relative(T::LINE_HEIGHT))
             .font_family(T::UI_FONT);
+        if !self.cleanup.is_empty() && self.form.is_none() {
+            return root.child(self.cleanup_view(cx));
+        }
         if self.overview && self.form.is_none() {
             return root.child(self.overview_view(window, cx));
         }

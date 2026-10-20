@@ -5,6 +5,8 @@ use serde::{Deserialize, Serialize};
 pub struct Workspace {
     pub revision: u64,
     #[serde(default)]
+    pub outcome_history: Vec<OutcomeChange>,
+    #[serde(default)]
     pub task_outcomes: std::collections::HashMap<String, Outcome>,
     /// One proven binding consumes this override; None cancels the tab default.
     #[serde(default)]
@@ -149,6 +151,14 @@ pub enum Outcome {
     },
     Abandoned,
 }
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct OutcomeChange {
+    pub session: String,
+    pub before: Outcome,
+    pub after: Outcome,
+    pub at: u64,
+    pub reason: String,
+}
 impl Outcome {
     pub fn needs_review(&self, now: u64) -> bool {
         matches!(self, Self::Open) || matches!(self, Self::Deferred { until, .. } if *until <= now)
@@ -197,6 +207,94 @@ fn validate_outcome(outcome: &Outcome) -> Result<(), String> {
     Ok(())
 }
 impl Workspace {
+    pub fn change_outcome(
+        &mut self,
+        id: &str,
+        outcome: Outcome,
+        at: u64,
+        reason: &str,
+    ) -> Result<(), String> {
+        validate_outcome(&outcome)?;
+        let session = self
+            .agent_sessions
+            .iter_mut()
+            .find(|s| s.id == id)
+            .ok_or("Agent 会话不存在")?;
+        if session.outcome != outcome {
+            self.outcome_history.push(OutcomeChange {
+                session: id.into(),
+                before: session.outcome.clone(),
+                after: outcome.clone(),
+                at,
+                reason: reason.into(),
+            });
+            session.outcome = outcome;
+        }
+        Ok(())
+    }
+    pub fn review_since(&self, id: &str) -> u64 {
+        self.outcome_history
+            .iter()
+            .rev()
+            .find(|h| h.session == id && h.reason == "暂存到期")
+            .map(|h| h.at)
+            .unwrap_or(0)
+    }
+    pub fn expire_outcomes(&mut self, now: u64) -> bool {
+        let due: Vec<_> = self
+            .agent_sessions
+            .iter()
+            .filter_map(|s| match s.outcome {
+                Outcome::Deferred { until, .. } if until <= now => Some((s.id.clone(), until)),
+                _ => None,
+            })
+            .collect();
+        let mut changed = !due.is_empty();
+        for (id, at) in due {
+            self.change_outcome(&id, Outcome::Open, at, "暂存到期")
+                .expect("collected session");
+        }
+        for outcome in self.task_outcomes.values_mut() {
+            if matches!(outcome,Outcome::Deferred{until,..} if *until <= now) {
+                *outcome = Outcome::Open;
+                changed = true;
+            }
+        }
+        changed
+    }
+    pub fn next_deadline(&self, now: u64) -> Option<u64> {
+        let mut times = Vec::new();
+        for session in &self.agent_sessions {
+            if let Outcome::Deferred { until, .. } = session.outcome {
+                times.push(until);
+            }
+            if let Some(c) = self.content.get(&session.id) {
+                if c.hidden_reason().is_some() || !session.outcome.needs_review(now) {
+                    continue;
+                }
+                if c.turn == crate::content::Turn::Running && !session.current {
+                    times.push(c.updated.saturating_add(901));
+                }
+                if c.turn != crate::content::Turn::Running || !session.current {
+                    times.push(
+                        (if c.turn_started > 0 {
+                            c.turn_started
+                        } else {
+                            c.updated
+                        })
+                        .max(self.review_since(&session.id))
+                        .saturating_add(3 * 86400 + 1),
+                    );
+                }
+            }
+        }
+        for outcome in self.task_outcomes.values() {
+            if let Outcome::Deferred { until, .. } = outcome {
+                times.push(*until);
+            }
+        }
+        times.into_iter().filter(|t| *t > now).min()
+    }
     pub fn task_terminal(&self, task: &str) -> Option<&Terminal> {
         let running = |t: &&Terminal| t.state == ProcessState::Running;
         self.terminals
@@ -446,12 +544,7 @@ impl Workspace {
                     .closed = true;
             }
             Edit::SetOutcome { id, outcome } => {
-                validate_outcome(&outcome)?;
-                self.agent_sessions
-                    .iter_mut()
-                    .find(|s| s.id == id)
-                    .ok_or("Agent 会话不存在")?
-                    .outcome = outcome;
+                self.change_outcome(&id, outcome, crate::content::now(), "用户操作")?;
             }
             Edit::AssignTask { id, task } => {
                 if task
@@ -530,6 +623,50 @@ mod tests {
             },
         })
         .unwrap();
+    }
+    #[test]
+    fn outcomes_expire_once_preserve_history_and_leave_processes_alone() {
+        use crate::content::{Content, Inbox, Turn};
+        let mut w = workspace();
+        w.observe_agent(observation("one")).unwrap();
+        let now = 4 * 86400;
+        let c = Content {
+            interactive: true,
+            updated: 1,
+            turn_started: 1,
+            turn: Turn::Completed,
+            ..Default::default()
+        };
+        w.content.insert("one".into(), c.clone());
+        assert_eq!(c.group(&w.agent_sessions[0], &w, now), Inbox::Stale);
+        w.change_outcome(
+            "one",
+            Outcome::Deferred {
+                reason: "check later".into(),
+                until: now + 2,
+            },
+            now,
+            "用户操作",
+        )
+        .unwrap();
+        assert_eq!(w.next_deadline(now), Some(now + 2));
+        assert!(!w.expire_outcomes(now + 1));
+        assert!(w.expire_outcomes(now + 2));
+        assert!(!w.expire_outcomes(now + 3));
+        assert_eq!(w.agent_sessions[0].outcome, Outcome::Open);
+        assert_eq!(c.group(&w.agent_sessions[0], &w, now + 2), Inbox::Paused);
+        assert_eq!(w.outcome_history.len(), 2);
+        w.change_outcome("one", Outcome::Abandoned, now + 3, "用户操作")
+            .unwrap();
+        w.change_outcome("one", Outcome::Open, now + 4, "用户操作")
+            .unwrap();
+        assert_eq!(w.outcome_history.len(), 4);
+        assert_eq!(w.terminals[0].state, ProcessState::Running);
+        assert_eq!(
+            w.agent_sessions[0].updated, 1,
+            "outcome dates are not log activity"
+        );
+        assert_eq!(w.next_deadline(now + 4), Some(now + 2 + 3 * 86400 + 1));
     }
     #[test]
     fn task_start_reuses_running_shell_and_unlink_is_consumed_once() {
