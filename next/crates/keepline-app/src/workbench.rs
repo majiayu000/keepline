@@ -23,6 +23,10 @@ pub struct Workbench {
     menu: Option<PaneMenu>,
     split_target: Option<(String, Axis)>,
     prefill_agent: Option<Agent>,
+    resume: Option<(String, String)>,
+    here: Option<String>,
+    show_stale: bool,
+    show_running: bool,
     drag: Option<Vec<bool>>,
     split_bounds: HashMap<Vec<bool>, gpui::Bounds<gpui::Pixels>>,
     overview: bool,
@@ -53,6 +57,7 @@ struct Form {
 enum FormKind {
     Space,
     Task,
+    Defer,
 }
 fn id() -> String {
     static NEXT: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
@@ -357,6 +362,10 @@ impl Workbench {
             menu: None,
             split_target: None,
             prefill_agent: None,
+            resume: None,
+            here: None,
+            show_stale: false,
+            show_running: false,
             drag: None,
             split_bounds: HashMap::new(),
             overview: false,
@@ -524,16 +533,19 @@ impl Workbench {
             return;
         };
         let agent = self.prefill_agent.take();
-        let prefill = task_id
-            .as_ref()
-            .and_then(|id| self.workspace.tasks.iter().find(|t| &t.id == id))
-            .map(|task| {
-                let mut task = task.clone();
-                if let Some(agent) = agent {
-                    task.agent = agent;
-                }
-                task.command()
-            });
+        let resume = self.resume.take();
+        let prefill = resume.as_ref().map(|r| r.0.clone()).or_else(|| {
+            task_id
+                .as_ref()
+                .and_then(|id| self.workspace.tasks.iter().find(|t| &t.id == id))
+                .map(|task| {
+                    let mut task = task.clone();
+                    if let Some(agent) = agent {
+                        task.agent = agent;
+                    }
+                    task.command()
+                })
+        });
         let mut tab = if split {
             let Some(tab) = self
                 .workspace
@@ -580,18 +592,20 @@ impl Workbench {
         } else {
             tab.layout = Some(Layout::Leaf(terminal.clone()));
         }
-        let cwd = previous
-            .map(|t| t.cwd)
-            .or_else(|| {
-                source.as_ref().and_then(|(id, _)| {
-                    self.workspace
-                        .terminals
-                        .iter()
-                        .find(|t| &t.id == id)
-                        .map(|t| t.cwd.clone())
+        let cwd = resume.map(|r| r.1).unwrap_or_else(|| {
+            previous
+                .map(|t| t.cwd)
+                .or_else(|| {
+                    source.as_ref().and_then(|(id, _)| {
+                        self.workspace
+                            .terminals
+                            .iter()
+                            .find(|t| &t.id == id)
+                            .map(|t| t.cwd.clone())
+                    })
                 })
-            })
-            .unwrap_or(space.cwd);
+                .unwrap_or(space.cwd)
+        });
         let cwd_source = source
             .as_ref()
             .and_then(|(id, _)| {
@@ -672,6 +686,7 @@ impl Workbench {
                 cx.new(|cx| Field::new("空间名称", "", cx)),
                 cx.new(|cx| Field::new("工作目录（绝对路径）", "", cx)),
             ],
+            FormKind::Defer => vec![cx.new(|cx| Field::new("暂存原因（明天此时再看）", "", cx))],
             FormKind::Task => vec![
                 cx.new(|cx| Field::new("待办标题", "", cx)),
                 cx.new(|cx| Field::new("说明", "", cx)),
@@ -696,6 +711,18 @@ impl Workbench {
             .map(|f| f.read(cx).text.clone())
             .collect();
         let edit = match form.kind {
+            FormKind::Defer => {
+                let Some(id) = self.here.clone() else {
+                    return;
+                };
+                Edit::SetOutcome {
+                    id,
+                    outcome: Outcome::Deferred {
+                        reason: values[0].clone(),
+                        until: now() + 86400,
+                    },
+                }
+            }
             FormKind::Space => Edit::AddSpace(Space {
                 id: id(),
                 name: values[0].clone(),
@@ -731,8 +758,12 @@ impl Workbench {
             .as_ref()
             .and_then(|id| self.workspace.terminals.iter().find(|t| &t.id == id))
         else {
-            self.error = Some("外部会话没有托管终端，不能接管或重复启动".into());
-            cx.notify();
+            self.resume = Some((
+                session.runtime.resume_command(&session.cli_session_id),
+                session.cwd.clone(),
+            ));
+            self.overview = false;
+            self.launch(false, None, cx);
             return;
         };
         let terminal_id = terminal.id.clone();
@@ -768,22 +799,35 @@ impl Workbench {
 }
 impl Workbench {
     fn group(&self, s: &AgentSession) -> Group {
-        let terminal = s
-            .terminal
-            .as_ref()
-            .and_then(|id| self.workspace.terminals.iter().find(|t| &t.id == id));
-        if terminal.is_some_and(|t| {
-            matches!(t.state, ProcessState::Failed | ProcessState::Interrupted)
-                || t.exit_code.is_some_and(|c| c != 0)
-        }) {
-            Group::Error
-        } else if s.current {
-            Group::Running
-        } else {
-            Group::Paused
+        use keepline_core::content::{Content, Inbox};
+        match self
+            .workspace
+            .content
+            .get(&s.id)
+            .cloned()
+            .unwrap_or_else(|| Content {
+                updated: s.updated,
+                ..Default::default()
+            })
+            .group(s, &self.workspace, now())
+        {
+            Inbox::Waiting => Group::Waiting,
+            Inbox::Error => Group::Error,
+            Inbox::Review => Group::Review,
+            Inbox::Running => Group::Running,
+            Inbox::Stale => Group::Stale,
+            _ => Group::Paused,
         }
     }
     fn session_title(&self, s: &AgentSession) -> String {
+        if let Some(c) = self
+            .workspace
+            .content
+            .get(&s.id)
+            .filter(|c| !c.title.is_empty())
+        {
+            return c.title.clone();
+        }
         s.task
             .as_ref()
             .and_then(|id| self.workspace.tasks.iter().find(|t| &t.id == id))
@@ -791,11 +835,148 @@ impl Workbench {
             .unwrap_or_else(|| format!("{} · {}", s.runtime.executable(), s.cli_session_id))
     }
     fn session_line(&self, s: &AgentSession) -> String {
-        if s.current {
-            "会话已关联 · 运行状态以终端为准".into()
-        } else {
-            "Agent 已退出 · 结局尚未核对".into()
+        self.workspace
+            .content
+            .get(&s.id)
+            .map(|c| keepline_core::content::short(&c.here().stopped, 100))
+            .unwrap_or_else(|| "内容尚未索引".into())
+    }
+    fn save_session_task(&mut self, session: &AgentSession, cx: &mut Context<Self>) {
+        let Some(c) = self.workspace.content.get(&session.id) else {
+            return;
+        };
+        if c.asks.is_empty() {
+            self.error = Some("尾段没有用户原话，不能凭空建立待办".into());
+            cx.notify();
+            return;
         }
+        let task = Task {
+            id: id(),
+            space: self.space.clone(),
+            title: self.session_title(session),
+            description: c
+                .asks
+                .iter()
+                .map(|q| q.text.as_str())
+                .collect::<Vec<_>>()
+                .join("\n\n追加要求："),
+            acceptance: vec![],
+            agent: session.runtime,
+        };
+        self.edit(
+            Edit::SaveSessionTask {
+                session: session.id.clone(),
+                task,
+            },
+            cx,
+        );
+    }
+    fn here_card(&self, session: &AgentSession, cx: &Context<Self>) -> gpui::Stateful<gpui::Div> {
+        let card = self
+            .workspace
+            .content
+            .get(&session.id)
+            .cloned()
+            .unwrap_or_default();
+        let h = card.here();
+        let save = session.clone();
+        let mut panel = div()
+            .id(gpui::SharedString::from(format!(
+                "here-card-{}",
+                session.id
+            )))
+            .w(px(T::HERE_WIDTH))
+            .max_w_full()
+            .max_h(px(T::HERE_HEIGHT))
+            .overflow_y_scroll()
+            .p(px(T::S16))
+            .rounded(px(T::POPOVER_RADIUS))
+            .bg(T::color(T::WHITE))
+            .text_color(T::color(T::POPOVER_TEXT))
+            .border(px(T::BORDER_WIDTH))
+            .border_color(T::color(T::POPOVER_BORDER))
+            .flex()
+            .flex_col()
+            .gap(px(T::S12))
+            .on_mouse_down(gpui::MouseButton::Left, |_, _, cx| cx.stop_propagation())
+            .child(
+                div()
+                    .flex()
+                    .justify_between()
+                    .items_center()
+                    .child(
+                        div()
+                            .font_weight(gpui::FontWeight::SEMIBOLD)
+                            .child("你在这里"),
+                    )
+                    .child(
+                        button("dismiss-here", "×")
+                            .text_color(T::color(T::POPOVER_TEXT))
+                            .on_click(cx.listener(|this, _, _, cx| {
+                                this.here = None;
+                                cx.notify();
+                            })),
+                    ),
+            );
+        for (name, value) in [
+            ("你要它", h.ask),
+            ("做成了", h.done),
+            ("停在", h.stopped),
+            ("下一步·推断", h.next),
+        ] {
+            panel = panel.child(
+                div()
+                    .flex()
+                    .flex_col()
+                    .gap(px(T::S4))
+                    .when(name == "下一步·推断", |d| {
+                        d.bg(T::color(T::INFERENCE)).p(px(T::S8))
+                    })
+                    .child(div().font_weight(gpui::FontWeight::SEMIBOLD).child(name))
+                    .child(div().text_size(px(T::SMALL)).child(value)),
+            );
+        }
+        if card.partial_history {
+            panel = panel.child(
+                div()
+                    .text_size(px(T::META))
+                    .text_color(T::color(T::POPOVER_SECONDARY))
+                    .child("仅覆盖已索引的历史尾段与之后的增量；没有证据不等于没做。"),
+            );
+        }
+        panel = panel.child(
+            button("save-here-task", "存为待办")
+                .text_color(T::color(T::POPOVER_TEXT))
+                .on_click(cx.listener(move |this, _, _, cx| this.save_session_task(&save, cx))),
+        );
+        let mut actions = div().flex().flex_wrap().gap(px(T::S6));
+        let sid = session.id.clone();
+        actions = actions.child(
+            button("here-defer", "暂存一天")
+                .text_color(T::color(T::POPOVER_TEXT))
+                .on_click(cx.listener(move |this, _, window, cx| {
+                    this.here = Some(sid.clone());
+                    this.overview = false;
+                    this.show_form(FormKind::Defer, window, cx);
+                })),
+        );
+        for (name, outcome) in [("已验收", Outcome::Completed), ("放弃", Outcome::Abandoned)] {
+            let sid = session.id.clone();
+            actions = actions.child(
+                button(gpui::SharedString::from(format!("here-{name}")), name)
+                    .text_color(T::color(T::POPOVER_TEXT))
+                    .on_click(cx.listener(move |this, _, _, cx| {
+                        this.edit(
+                            Edit::SetOutcome {
+                                id: sid.clone(),
+                                outcome: outcome.clone(),
+                            },
+                            cx,
+                        )
+                    })),
+            );
+        }
+        panel.child(actions)
     }
     fn overview_view(&self, window: &Window, cx: &Context<Self>) -> gpui::Stateful<gpui::Div> {
         let open: Vec<_> = self
@@ -818,7 +999,7 @@ impl Workbench {
                             .child("欢迎回来"),
                     )
                     .child(label(format!(
-                        "{} 个未闭环会话 · 按已确认的进程状态分组",
+                        "{} 个未闭环会话 · 按日志回合与机械证据分组",
                         open.len()
                     ))),
             )
@@ -931,14 +1112,77 @@ impl Workbench {
                 .child(todo_cards),
         );
         for group in Group::ALL {
+            if group == Group::Running {
+                let count = open
+                    .iter()
+                    .filter(|s| self.group(s) == Group::Running)
+                    .count();
+                view = view.child(
+                    button(
+                        "toggle-running",
+                        format!(
+                            "进行中 {count} · {}",
+                            if self.show_running {
+                                "收起"
+                            } else {
+                                "展开"
+                            }
+                        ),
+                    )
+                    .on_click(cx.listener(|this, _, _, cx| {
+                        this.show_running = !this.show_running;
+                        cx.notify();
+                    })),
+                );
+                if !self.show_running {
+                    continue;
+                }
+            }
+            if group == Group::Stale {
+                let count = open
+                    .iter()
+                    .filter(|s| self.group(s) == Group::Stale)
+                    .count();
+                view = view.child(
+                    button(
+                        "toggle-stale",
+                        format!(
+                            "很久没动 {count} · {}",
+                            if self.show_stale {
+                                "收起"
+                            } else {
+                                "展开核对"
+                            }
+                        ),
+                    )
+                    .on_click(cx.listener(|this, _, _, cx| {
+                        this.show_stale = !this.show_stale;
+                        cx.notify();
+                    })),
+                );
+                if !self.show_stale {
+                    continue;
+                }
+            }
             let sessions: Vec<_> = open.iter().filter(|s| self.group(s) == group).collect();
             let mut cards = div().flex().flex_wrap().gap(px(T::S10));
             for session in &sessions {
                 let session = (**session).clone();
                 let open = session.clone();
+                let save = session.clone();
+                let show = session.id.clone();
                 let complete = session.id.clone();
                 let abandon = session.id.clone();
-                let meta = format!("{} · {}", session.runtime.executable(), session.cwd);
+                let meta = format!(
+                    "{} · {} · {}",
+                    if session.terminal.is_none() {
+                        "外部·只读"
+                    } else {
+                        "托管"
+                    },
+                    session.runtime.executable(),
+                    session.cwd
+                );
                 cards = cards.child(
                     div()
                         .w(px(card_width))
@@ -968,12 +1212,50 @@ impl Workbench {
                         .child(
                             div()
                                 .flex()
+                                .flex_wrap()
+                                .gap(px(T::S6))
+                                .child(
+                                    button(
+                                        gpui::SharedString::from(format!("here-{}", session.id)),
+                                        "你在这里",
+                                    )
+                                    .on_click(cx.listener(
+                                        move |this, _, _, cx| {
+                                            this.here = Some(show.clone());
+                                            cx.notify();
+                                        },
+                                    )),
+                                )
+                                .child(
+                                    button(
+                                        gpui::SharedString::from(format!(
+                                            "save-task-{}",
+                                            session.id
+                                        )),
+                                        "存为待办",
+                                    )
+                                    .on_click(cx.listener(
+                                        move |this, _, _, cx| this.save_session_task(&save, cx),
+                                    )),
+                                ),
+                        )
+                        .when(self.here.as_ref() == Some(&session.id), |d| {
+                            d.child(self.here_card(&session, cx))
+                        })
+                        .child(
+                            div()
+                                .flex()
+                                .flex_wrap()
                                 .gap(px(T::S6))
                                 .mt(px(T::S4))
                                 .child(
                                     button(
                                         gpui::SharedString::from(format!("open-{}", session.id)),
-                                        "打开",
+                                        if session.terminal.is_none() {
+                                            "继续 →"
+                                        } else {
+                                            "打开"
+                                        },
                                     )
                                     .text_color(T::color(T::LINK))
                                     .on_click(cx.listener(
@@ -1036,9 +1318,7 @@ impl Workbench {
                                 .child(group.label()),
                         )
                         .child(label(sessions.len().to_string()))
-                        .when(matches!(group, Group::Waiting | Group::Review), |d| {
-                            d.child(label("尚无已确认的状态证据"))
-                        }),
+                        .when(sessions.is_empty(), |d| d.child(label("暂无会话"))),
                 )
                 .when(!sessions.is_empty(), |d| d.child(cards));
             view = view.child(section);
@@ -1123,7 +1403,7 @@ impl Workbench {
         });
         let group = session.map(|s| self.group(s));
         let title = session
-            .map(|s| self.session_title(s))
+            .map(|s| self.session_line(s))
             .unwrap_or_else(|| "空终端".into());
         let hint = self.recognition.terminal_hints.get(id).cloned();
         let takeover = id.to_owned();
@@ -1135,6 +1415,7 @@ impl Workbench {
         let other_owner = pane.read(cx).has_other_owner();
         div()
             .id(gpui::SharedString::from(format!("pane-{id}")))
+            .relative()
             .on_mouse_down(
                 gpui::MouseButton::Left,
                 cx.listener(move |this, _, window, cx| {
@@ -1216,6 +1497,24 @@ impl Workbench {
                             )),
                         )
                     })
+                    .when_some(session, |d, s| {
+                        let show = s.id.clone();
+                        d.child(
+                            button(
+                                gpui::SharedString::from(format!("here-pane-{id}")),
+                                "你在这里",
+                            )
+                            .h(px(T::ICON_HEIGHT))
+                            .px(px(T::S6))
+                            .text_color(T::color(T::LINK))
+                            .on_click(cx.listener(
+                                move |this, _, _, cx| {
+                                    this.here = Some(show.clone());
+                                    cx.notify();
+                                },
+                            )),
+                        )
+                    })
                     .child(
                         button(gpui::SharedString::from(format!("menu-{id}")), "⋯")
                             .h(px(T::ICON_HEIGHT))
@@ -1246,6 +1545,24 @@ impl Workbench {
                     .px(px(T::S14))
                     .py(px(T::S10))
                     .child(pane.clone()),
+            )
+            .when_some(
+                session.filter(|s| self.here.as_ref() == Some(&s.id)),
+                |d, s| {
+                    d.child(
+                        div()
+                            .absolute()
+                            .top(px(T::PANE_HEADER + T::S10))
+                            .right(px(T::S10))
+                            .left(px(T::S10))
+                            .bottom(px(T::S10))
+                            .flex()
+                            .justify_end()
+                            .items_start()
+                            .overflow_hidden()
+                            .child(self.here_card(s, cx).max_h_full()),
+                    )
+                },
             )
             .into_any_element()
     }
@@ -1756,10 +2073,13 @@ impl Render for Workbench {
             .workspace
             .agent_sessions
             .iter()
-            .filter(|s| s.outcome.needs_review(now()) && !s.current)
+            .filter(|s| {
+                s.outcome.needs_review(now())
+                    && matches!(self.group(s), Group::Waiting | Group::Error)
+            })
             .collect();
         sidebar = sidebar.child(
-            label(format!("需要核对 · {}", needs.len()))
+            label(format!("需要你 · {}", needs.len()))
                 .mt(px(T::S14))
                 .pt(px(T::S12))
                 .px(px(T::S8))

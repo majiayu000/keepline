@@ -108,23 +108,27 @@ pub fn connected_host(socket: &Path) -> io::Result<bool> {
     send(&mut stream, CONTROL, &Request::Hello { major: MAJOR })?;
     match receive::<Reply>(&mut stream)? {
         Reply::Hello { major: MAJOR, .. } => Ok(true),
-        other => {
-            // A version probe only: no workspace reads/writes or compatibility mode.
-            let mut old = UnixStream::connect(socket)?;
-            old.set_read_timeout(Some(Duration::from_secs(2)))?;
-            old.set_write_timeout(Some(Duration::from_secs(2)))?;
-            send(&mut old, CONTROL, &Request::Hello { major: 1 })?;
-            if matches!(
-                receive::<Reply>(&mut old),
-                Ok(Reply::Hello { major: 1, .. })
-            ) {
-                Err(io::Error::other(format!("{OLD_BACKEND}\n\n{RESET_NOTICE}")))
+        Reply::Error(message) if message.starts_with("protocol major ") => {
+            let major = message
+                .split_whitespace()
+                .nth(2)
+                .and_then(|s| s.parse::<u32>().ok());
+            if major.is_some_and(|v| v < MAJOR) {
+                let notice = if major == Some(1) {
+                    RESET_NOTICE
+                } else {
+                    "空间、待办和会话结局沿用现有对象表，不作迁移；重启会中断正在运行的终端。本窗口不会重启后台或删除数据。"
+                };
+                Err(io::Error::other(format!("{OLD_BACKEND}\n\n{notice}")))
             } else {
                 Err(io::Error::other(format!(
-                    "无法连接后台：{other:?}。后台未被重启。"
+                    "后台协议不匹配：{message}。后台未被重启。"
                 )))
             }
         }
+        other => Err(io::Error::other(format!(
+            "无法连接后台：{other:?}。后台未被重启。"
+        ))),
     }
 }
 
@@ -151,31 +155,34 @@ mod tests {
         std::fs::remove_dir_all(dir).unwrap();
     }
     #[test]
-    fn major_one_host_is_reported_without_mutating_it() {
+    fn old_hosts_are_reported_by_one_handshake_without_mutation() {
         use keepline_core::protocol::*;
-        let path = std::env::temp_dir().join(format!("kl-old-host-{}.sock", std::process::id()));
-        let listener = UnixListener::bind(&path).unwrap();
-        let peer = std::thread::spawn(move || {
-            for (i, s) in listener.incoming().take(2).enumerate() {
-                let mut s = s.unwrap();
-                assert!(
-                    matches!(receive::<Request>(&mut s).unwrap(),Request::Hello{major} if major==if i==0 {MAJOR}else{1})
-                );
-                let reply = if i == 0 {
-                    Reply::Error("protocol major 1 required".into())
-                } else {
-                    Reply::Hello {
-                        major: 1,
-                        instance: "old".into(),
-                    }
-                };
-                send(&mut s, CONTROL, &reply).unwrap();
+        for major in [1, 2] {
+            let path = std::env::temp_dir()
+                .join(format!("kl-old-host-{}-{major}.sock", std::process::id()));
+            let listener = UnixListener::bind(&path).unwrap();
+            let peer = std::thread::spawn(move || {
+                let (mut s, _) = listener.accept().unwrap();
+                assert!(matches!(
+                    receive::<Request>(&mut s).unwrap(),
+                    Request::Hello { major: MAJOR }
+                ));
+                send(
+                    &mut s,
+                    CONTROL,
+                    &Reply::Error(format!("protocol major {major} required")),
+                )
+                .unwrap();
+            });
+            let error = connected_host(&path).unwrap_err().to_string();
+            assert!(error.contains(OLD_BACKEND));
+            if major == 1 {
+                assert!(error.contains("结局不会保留"));
+            } else {
+                assert!(error.contains("沿用现有对象表"));
             }
-        });
-        let error = connected_host(&path).unwrap_err().to_string();
-        assert!(error.contains(OLD_BACKEND));
-        assert!(error.contains("结局不会保留"));
-        peer.join().unwrap();
-        std::fs::remove_file(path).unwrap();
+            peer.join().unwrap();
+            std::fs::remove_file(path).unwrap();
+        }
     }
 }
