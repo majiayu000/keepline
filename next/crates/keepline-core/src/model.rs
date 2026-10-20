@@ -4,6 +4,11 @@ use serde::{Deserialize, Serialize};
 #[derive(Clone, Debug, Default, Serialize, Deserialize)]
 pub struct Workspace {
     pub revision: u64,
+    #[serde(default)]
+    pub task_outcomes: std::collections::HashMap<String, Outcome>,
+    /// One proven binding consumes this override; None cancels the tab default.
+    #[serde(default)]
+    pub pending_tasks: std::collections::HashMap<String, Option<String>>,
     pub spaces: Vec<Space>,
     pub tasks: Vec<Task>,
     pub tabs: Vec<Tab>,
@@ -154,14 +159,97 @@ impl Outcome {
 pub enum Edit {
     AddSpace(Space),
     AddTask(Task),
-    PutTab { tab: Tab },
-    CloseTab { id: String },
-    SetOutcome { id: String, outcome: Outcome },
-    AssignTask { id: String, task: Option<String> },
-    SaveSessionTask { session: String, task: Task },
+    UpdateTask(Task),
+    SetTaskOutcome {
+        id: String,
+        outcome: Outcome,
+    },
+    SetPendingTask {
+        terminal: String,
+        task: Option<String>,
+    },
+    PutTab {
+        tab: Tab,
+    },
+    CloseTab {
+        id: String,
+    },
+    SetOutcome {
+        id: String,
+        outcome: Outcome,
+    },
+    AssignTask {
+        id: String,
+        task: Option<String>,
+    },
+    SaveSessionTask {
+        session: String,
+        task: Task,
+    },
 }
 
+fn validate_outcome(outcome: &Outcome) -> Result<(), String> {
+    if let Outcome::Deferred { reason, until } = outcome {
+        if reason.trim().is_empty() || *until == 0 {
+            return Err("暂存需要原因和再看时间".into());
+        }
+    }
+    Ok(())
+}
 impl Workspace {
+    pub fn task_terminal(&self, task: &str) -> Option<&Terminal> {
+        let running = |t: &&Terminal| t.state == ProcessState::Running;
+        self.terminals
+            .iter()
+            .filter(running)
+            .find(|t| {
+                self.current_agent(&t.id)
+                    .is_some_and(|s| s.task.as_deref() == Some(task))
+            })
+            .or_else(|| {
+                self.terminals.iter().filter(running).find(|t| {
+                    self.current_agent(&t.id).is_none()
+                        && self.pending_tasks.get(&t.id) != Some(&None)
+                        && self
+                            .terminal_tab(&t.id)
+                            .is_some_and(|tab| tab.default_task.as_deref() == Some(task))
+                })
+            })
+    }
+
+    pub fn tab_title(&self, tab: &Tab) -> String {
+        let ids = self.tab_terminals(&tab.id);
+        let sessions: Vec<_> = self
+            .agent_sessions
+            .iter()
+            .filter(|s| s.current && s.terminal.as_ref().is_some_and(|id| ids.contains(id)))
+            .collect();
+        if sessions.is_empty() {
+            if let Some(task) = tab
+                .default_task
+                .as_ref()
+                .and_then(|id| self.tasks.iter().find(|t| &t.id == id))
+            {
+                return task.title.clone();
+            }
+        }
+        if let Some(first) = sessions.first().and_then(|s| s.task.as_ref()) {
+            if sessions.iter().all(|s| s.task.as_ref() == Some(first)) {
+                if let Some(task) = self.tasks.iter().find(|t| &t.id == first) {
+                    return task.title.clone();
+                }
+            }
+        }
+        if !tab.title.is_empty() {
+            return tab.title.clone();
+        }
+        self.spaces
+            .iter()
+            .find(|s| s.id == tab.space)
+            .and_then(|s| std::path::Path::new(&s.cwd).file_name())
+            .map(|n| n.to_string_lossy().into_owned())
+            .unwrap_or_else(|| "终端".into())
+    }
     pub fn tab_terminals(&self, id: &str) -> Vec<String> {
         self.tabs
             .iter()
@@ -214,10 +302,16 @@ impl Workspace {
             let first_binding = prior.is_none_or(|i| self.agent_sessions[i].terminal.is_none());
             if first_binding && observed.task.is_none() {
                 observed.task = self
-                    .terminal_tab(&terminal.id)
-                    .and_then(|t| t.default_task.clone());
+                    .pending_tasks
+                    .get(terminal_id)
+                    .cloned()
+                    .unwrap_or_else(|| {
+                        self.terminal_tab(&terminal.id)
+                            .and_then(|t| t.default_task.clone())
+                    });
             }
             if observed.current {
+                self.pending_tasks.remove(terminal_id);
                 for old in &mut self.agent_sessions {
                     if old.terminal.as_ref() == Some(terminal_id) {
                         old.current = false;
@@ -235,6 +329,37 @@ impl Workspace {
     }
     pub fn edit(&mut self, edit: Edit) -> Result<(), String> {
         match edit {
+            Edit::UpdateTask(task) => {
+                let index = self
+                    .tasks
+                    .iter()
+                    .position(|t| t.id == task.id)
+                    .ok_or("待办不存在")?;
+                // Reuse the creation boundary so validation stays in one place.
+                let mut check = self.clone();
+                check.tasks.remove(index);
+                check.edit(Edit::AddTask(task.clone()))?;
+                self.tasks[index] = task;
+            }
+            Edit::SetTaskOutcome { id, outcome } => {
+                if !self.tasks.iter().any(|t| t.id == id) {
+                    return Err("待办不存在".into());
+                }
+                validate_outcome(&outcome)?;
+                self.task_outcomes.insert(id, outcome);
+            }
+            Edit::SetPendingTask { terminal, task } => {
+                if !self.terminals.iter().any(|t| t.id == terminal) {
+                    return Err("终端不存在".into());
+                }
+                if task
+                    .as_ref()
+                    .is_some_and(|id| !self.tasks.iter().any(|t| &t.id == id))
+                {
+                    return Err("待办不存在".into());
+                }
+                self.pending_tasks.insert(terminal, task);
+            }
             Edit::SaveSessionTask { session, task } => {
                 if !self.agent_sessions.iter().any(|s| s.id == session) {
                     return Err("会话不存在".into());
@@ -321,11 +446,7 @@ impl Workspace {
                     .closed = true;
             }
             Edit::SetOutcome { id, outcome } => {
-                if let Outcome::Deferred { reason, until } = &outcome
-                    && (reason.trim().is_empty() || *until == 0)
-                {
-                    return Err("暂存需要原因和再看时间".into());
-                }
+                validate_outcome(&outcome)?;
                 self.agent_sessions
                     .iter_mut()
                     .find(|s| s.id == id)
@@ -409,6 +530,69 @@ mod tests {
             },
         })
         .unwrap();
+    }
+    #[test]
+    fn task_start_reuses_running_shell_and_unlink_is_consumed_once() {
+        let mut w = workspace();
+        tab(&mut w, "tab", "a", "a");
+        assert_eq!(w.task_terminal("a").unwrap().id, "pty");
+        w.edit(Edit::CloseTab { id: "tab".into() }).unwrap();
+        assert_eq!(
+            w.task_terminal("a").unwrap().id,
+            "pty",
+            "closed view retains the launch target"
+        );
+        w.edit(Edit::SetPendingTask {
+            terminal: "pty".into(),
+            task: None,
+        })
+        .unwrap();
+        w.observe_agent(observation("cancelled")).unwrap();
+        assert!(w.agent_sessions[0].task.is_none());
+        assert!(!w.pending_tasks.contains_key("pty"));
+        w.observe_agent(observation("next")).unwrap();
+        assert_eq!(w.agent_sessions[1].task.as_deref(), Some("a"));
+        w.edit(Edit::SetTaskOutcome {
+            id: "a".into(),
+            outcome: Outcome::Completed,
+        })
+        .unwrap();
+        assert_eq!(w.terminals[0].state, ProcessState::Running);
+        assert_eq!(w.agent_sessions[1].outcome, Outcome::Open);
+        w.terminals[0].state = ProcessState::Exited;
+        assert!(w.task_terminal("a").is_none());
+    }
+    #[test]
+    fn task_edit_preserves_individual_criteria_and_tab_title_tracks_ownership() {
+        let mut w = workspace();
+        tab(&mut w, "tab", "a", "a");
+        w.observe_agent(observation("one")).unwrap();
+        let mut task = w.tasks[0].clone();
+        task.title = "新的待办名".into();
+        task.acceptance.push(AcceptanceCriterion {
+            id: "criterion".into(),
+            description: "退出码为零".into(),
+            evidence: Some("/log:42".into()),
+        });
+        w.edit(Edit::UpdateTask(task.clone())).unwrap();
+        assert_eq!(w.tab_title(&w.tabs[0]), "新的待办名");
+        assert_eq!(w.tasks[0].acceptance, task.acceptance);
+        w.edit(Edit::AssignTask {
+            id: "one".into(),
+            task: None,
+        })
+        .unwrap();
+        assert_eq!(w.tab_title(&w.tabs[0]), "tab");
+        assert!(
+            w.edit(Edit::SetTaskOutcome {
+                id: "a".into(),
+                outcome: Outcome::Deferred {
+                    reason: "".into(),
+                    until: 1
+                }
+            })
+            .is_err()
+        );
     }
     #[test]
     fn codex_prefill_and_resume_use_no_daemon_and_preserve_shell_quoting() {

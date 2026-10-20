@@ -1,5 +1,5 @@
 use keepline_core::model::*;
-use rusqlite::{params, Connection};
+use rusqlite::{Connection, params};
 use std::{io, path::Path};
 
 pub struct Store(Connection);
@@ -50,6 +50,8 @@ impl Store {
             INSERT OR IGNORE INTO meta VALUES(1,0);
             CREATE TABLE IF NOT EXISTS spaces (id TEXT PRIMARY KEY, name TEXT NOT NULL, cwd TEXT NOT NULL);
             CREATE TABLE IF NOT EXISTS tasks (id TEXT PRIMARY KEY, space_id TEXT NOT NULL REFERENCES spaces(id), title TEXT NOT NULL, description TEXT NOT NULL, runtime TEXT NOT NULL);
+            CREATE TABLE IF NOT EXISTS task_outcomes (task_id TEXT PRIMARY KEY REFERENCES tasks(id), outcome TEXT NOT NULL);
+            CREATE TABLE IF NOT EXISTS pending_tasks (terminal_id TEXT PRIMARY KEY REFERENCES terminals(id), task_id TEXT REFERENCES tasks(id));
             CREATE TABLE IF NOT EXISTS task_criteria (task_id TEXT NOT NULL REFERENCES tasks(id), id TEXT NOT NULL, position INTEGER NOT NULL,
                 description TEXT NOT NULL, evidence TEXT, PRIMARY KEY(task_id,id), UNIQUE(task_id,position));
             CREATE TABLE IF NOT EXISTS tabs (id TEXT PRIMARY KEY, space_id TEXT NOT NULL REFERENCES spaces(id), default_task_id TEXT REFERENCES tasks(id), title TEXT NOT NULL, closed INTEGER NOT NULL);
@@ -106,6 +108,29 @@ impl Store {
             .map_err(db_error)?,
             ..Workspace::default()
         };
+        for row in self
+            .0
+            .prepare("SELECT task_id,outcome FROM task_outcomes")
+            .map_err(db_error)?
+            .query_map([], |r| Ok((r.get::<_, String>(0)?, r.get::<_, String>(1)?)))
+            .map_err(db_error)?
+        {
+            let (id, value) = row.map_err(db_error)?;
+            w.task_outcomes
+                .insert(id, serde_json::from_str(&value).map_err(db_error)?);
+        }
+        for row in self
+            .0
+            .prepare("SELECT terminal_id,task_id FROM pending_tasks")
+            .map_err(db_error)?
+            .query_map([], |r| {
+                Ok((r.get::<_, String>(0)?, r.get::<_, Option<String>>(1)?))
+            })
+            .map_err(db_error)?
+        {
+            let (id, task) = row.map_err(db_error)?;
+            w.pending_tasks.insert(id, task);
+        }
         let mut statement = self
             .0
             .prepare("SELECT id,name,cwd FROM spaces ORDER BY rowid")
@@ -279,6 +304,28 @@ impl Store {
             };
             tx.execute("INSERT INTO agent_sessions VALUES(?1,?2,?3,?4,?5,?6,?7,?8,?9,?10,?11,?12) ON CONFLICT(id) DO UPDATE SET runtime=excluded.runtime,cli_session_id=excluded.cli_session_id,terminal_id=excluded.terminal_id,is_current=excluded.is_current,task_id=excluded.task_id,outcome=excluded.outcome,deferred_reason=excluded.deferred_reason,deferred_until=excluded.deferred_until,updated=excluded.updated,cwd=excluded.cwd,transcript=excluded.transcript",params![s.id,enum_name(&s.runtime)?,s.cli_session_id,s.terminal,s.current,s.task,kind,reason,until,i64::try_from(s.updated).map_err(db_error)?,s.cwd,s.transcript]).map_err(db_error)?;
         }
+        if before.task_outcomes != w.task_outcomes {
+            for (id, outcome) in &w.task_outcomes {
+                if before.task_outcomes.get(id) != Some(outcome) {
+                    tx.execute("INSERT INTO task_outcomes VALUES(?1,?2) ON CONFLICT(task_id) DO UPDATE SET outcome=excluded.outcome", params![id,serde_json::to_string(outcome).map_err(db_error)?]).map_err(db_error)?;
+                }
+            }
+        }
+        if before.pending_tasks != w.pending_tasks {
+            for id in before
+                .pending_tasks
+                .keys()
+                .filter(|id| !w.pending_tasks.contains_key(*id))
+            {
+                tx.execute("DELETE FROM pending_tasks WHERE terminal_id=?1", [id])
+                    .map_err(db_error)?;
+            }
+            for (id, task) in &w.pending_tasks {
+                if before.pending_tasks.get(id) != Some(task) {
+                    tx.execute("INSERT INTO pending_tasks VALUES(?1,?2) ON CONFLICT(terminal_id) DO UPDATE SET task_id=excluded.task_id", params![id,task]).map_err(db_error)?;
+                }
+            }
+        }
         tx.execute(
             "UPDATE meta SET revision=?1 WHERE id=1",
             [i64::try_from(w.revision).map_err(db_error)?],
@@ -349,4 +396,64 @@ fn save_layout(db: &Connection, tab: &str, path: &str, tree: &Layout) -> io::Res
         }
     }
     Ok(())
+}
+
+#[cfg(test)]
+mod milestone_tests {
+    use super::*;
+    #[test]
+    fn task_outcome_and_pending_override_survive_reopen() {
+        let root = std::env::temp_dir().join(format!("kl-task-store-{}", std::process::id()));
+        std::fs::create_dir_all(&root).unwrap();
+        let (mut store, mut w) = Store::open(&root).unwrap();
+        let before = w.clone();
+        w.spaces.push(Space {
+            id: "s".into(),
+            name: "s".into(),
+            cwd: "/tmp".into(),
+        });
+        w.tasks.push(Task {
+            id: "t".into(),
+            space: "s".into(),
+            title: "task".into(),
+            description: "original".into(),
+            agent: Agent::Codex,
+            acceptance: vec![AcceptanceCriterion {
+                id: "c".into(),
+                description: "check".into(),
+                evidence: Some("source:42".into()),
+            }],
+        });
+        w.terminals.push(Terminal {
+            id: "p".into(),
+            space: "s".into(),
+            argv: vec!["/bin/sh".into()],
+            cwd: "/tmp".into(),
+            pid: None,
+            state: ProcessState::Exited,
+            exit_code: Some(0),
+            error: None,
+        });
+        w.edit(Edit::SetPendingTask {
+            terminal: "p".into(),
+            task: None,
+        })
+        .unwrap();
+        w.edit(Edit::SetTaskOutcome {
+            id: "t".into(),
+            outcome: Outcome::Deferred {
+                reason: "await review".into(),
+                until: 1000,
+            },
+        })
+        .unwrap();
+        store.save(&before, &w).unwrap();
+        drop(store);
+        let (store, read) = Store::open(&root).unwrap();
+        assert_eq!(read.tasks, w.tasks);
+        assert_eq!(read.task_outcomes, w.task_outcomes);
+        assert_eq!(read.pending_tasks, w.pending_tasks);
+        drop(store);
+        std::fs::remove_dir_all(root).unwrap();
+    }
 }

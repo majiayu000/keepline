@@ -27,6 +27,11 @@ impl Field {
             label: label.into(),
         }
     }
+    pub fn set_text(&mut self, text: &str) {
+        self.text = text.into();
+        self.selection = self.text.len()..self.text.len();
+        self.marked = None;
+    }
     fn byte(&self, utf16: usize) -> usize {
         let mut count = 0;
         for (i, ch) in self.text.char_indices() {

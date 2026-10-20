@@ -1,0 +1,168 @@
+{
+  "Workspace": {
+    "revision": 19,
+    "task_outcomes": {
+      "21919-1792517115900840000-2": "Completed"
+    },
+    "pending_tasks": {
+      "21919-1792517228830876000-8": null
+    },
+    "spaces": [
+      {
+        "id": "m1",
+        "name": "M1 隔离项目",
+        "cwd": "/tmp/kl-m1-ui2n0ke1"
+      }
+    ],
+    "tasks": [
+      {
+        "id": "21919-1792517115900840000-2",
+        "space": "m1",
+        "title": "M1：验证待办全流程",
+        "description": "只验证参数，不调用模型。保留引号 \"测试\" 与 $HOME。",
+        "acceptance": [
+          {
+            "id": "21919-1792517115900928000-3",
+            "description": "输入不自动执行",
+            "evidence": null
+          },
+          {
+            "id": "21919-1792517115900931000-4",
+            "description": "重复开始不新增终端",
+            "evidence": null
+          }
+        ],
+        "agent": "Codex"
+      }
+    ],
+    "tabs": [
+      {
+        "id": "21919-1792517042715550000-0",
+        "space": "m1",
+        "default_task": null,
+        "title": "",
+        "closed": false,
+        "layout": {
+          "Leaf": "21919-1792517042715553000-1"
+        }
+      },
+      {
+        "id": "21919-1792517115904986000-5",
+        "space": "m1",
+        "default_task": "21919-1792517115900840000-2",
+        "title": "",
+        "closed": false,
+        "layout": {
+          "Split": {
+            "axis": "Right",
+            "ratio": 5000,
+            "first": {
+              "Leaf": "21919-1792517115904988000-6"
+            },
+            "second": {
+              "Split": {
+                "axis": "Right",
+                "ratio": 5000,
+                "first": {
+                  "Leaf": "21919-1792517190255692000-7"
+                },
+                "second": {
+                  "Leaf": "21919-1792517228830876000-8"
+                }
+              }
+            }
+          }
+        }
+      }
+    ],
+    "terminals": [
+      {
+        "id": "21919-1792517042715553000-1",
+        "space": "m1",
+        "argv": [
+          "/bin/zsh",
+          "-l"
+        ],
+        "cwd": "/tmp/kl-m1-ui2n0ke1",
+        "pid": 21926,
+        "state": "Running",
+        "exit_code": null,
+        "error": null
+      },
+      {
+        "id": "21919-1792517115904988000-6",
+        "space": "m1",
+        "argv": [
+          "/bin/zsh",
+          "-l"
+        ],
+        "cwd": "/tmp/kl-m1-ui2n0ke1",
+        "pid": 22179,
+        "state": "Running",
+        "exit_code": null,
+        "error": null
+      },
+      {
+        "id": "21919-1792517190255692000-7",
+        "space": "m1",
+        "argv": [
+          "/bin/zsh",
+          "-l"
+        ],
+        "cwd": "/tmp/kl-m1-ui2n0ke1",
+        "pid": 22432,
+        "state": "Running",
+        "exit_code": null,
+        "error": null
+      },
+      {
+        "id": "21919-1792517228830876000-8",
+        "space": "m1",
+        "argv": [
+          "/bin/zsh",
+          "-l"
+        ],
+        "cwd": "/tmp/kl-m1-ui2n0ke1",
+        "pid": 22591,
+        "state": "Running",
+        "exit_code": null,
+        "error": null
+      }
+    ],
+    "agent_sessions": [
+      {
+        "id": "f68ae1cd-3244-455c-90ac-e35c505c25ce",
+        "runtime": "Codex",
+        "cli_session_id": "mock-22461",
+        "terminal": "21919-1792517190255692000-7",
+        "current": true,
+        "task": "21919-1792517115900840000-2",
+        "outcome": "Open",
+        "updated": 1792517199,
+        "cwd": "/fixture-project",
+        "transcript": "/private/tmp/kl-m1-ui2n0ke1/logs/mock-22461.jsonl"
+      }
+    ],
+    "content": {
+      "f68ae1cd-3244-455c-90ac-e35c505c25ce": {
+        "interactive": true,
+        "hidden_reason": "",
+        "first_ask_known": false,
+        "title": "",
+        "asks": [],
+        "evidence": [],
+        "last_reply": "",
+        "turn": "Unknown",
+        "turn_started": 0,
+        "turn_key": "",
+        "updated": 0,
+        "completed_claim": false,
+        "waiting": "",
+        "error": "",
+        "partial_history": false,
+        "from_offset": 0,
+        "unknown_records": 0
+      }
+    }
+  }
+}
