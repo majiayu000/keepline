@@ -1,0 +1,17 @@
+{
+  "seconds": 8.171481875,
+  "directories": 1605,
+  "opens": 5578,
+  "bytes": 153445621,
+  "recent_sessions": 49,
+  "sample_sessions": 20,
+  "codex_samples": 3,
+  "claude_samples": 17,
+  "ask_known": 17,
+  "done_with_receipts": 5,
+  "unknown_turn": 4,
+  "source_checks": 33,
+  "reviewed_fields": 80,
+  "supported_or_explicitly_unknown_fields": 80,
+  "self_report_as_done_false_positives": 0
+}
