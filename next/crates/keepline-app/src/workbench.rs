@@ -64,6 +64,7 @@ enum MenuPage {
     Assign,
 }
 struct Form {
+    notifications: bool,
     kind: FormKind,
     fields: Vec<Entity<Field>>,
     agent: Agent,
@@ -71,6 +72,7 @@ struct Form {
 }
 #[derive(Clone, Copy)]
 enum FormKind {
+    Settings,
     Space,
     Task,
     Defer,
@@ -126,8 +128,8 @@ fn live_terminal<'a>(w: &'a Workspace, s: &AgentSession) -> Option<&'a Terminal>
 fn changed_since(w: &Workspace, s: &AgentSession, since: u64) -> bool {
     since > 0 && w.content.get(&s.id).map_or(s.updated, |c| c.updated) > since
 }
-fn show_on_return(left: u64, at: u64) -> bool {
-    left > 0 && at.saturating_sub(left) > 30 * 60
+fn show_on_return(left: u64, at: u64, minutes: u32) -> bool {
+    left > 0 && at.saturating_sub(left) > u64::from(minutes) * 60
 }
 fn record_left(socket: &std::path::Path, at: u64) {
     if let Err(e) = rpc(socket, &Request::ClientLeft { at }) {
@@ -419,14 +421,16 @@ impl Workbench {
             }
         })
         .detach();
+        cx.observe_global::<crate::desktop::Status>(|_, cx| cx.notify())
+            .detach();
         let since = workspace.last_left;
-        let overview = show_on_return(since, now());
+        let overview = show_on_return(since, now(), workspace.settings.away_minutes);
         let search = cx.new(|cx| Field::new("搜索会话、待办或原话", "", cx));
         cx.observe(&search, |_, _, cx| cx.notify()).detach();
         cx.observe_window_activation(window, |this, window, cx| {
             if window.is_window_active() {
                 if let Some(left) = this.away.take() {
-                    if show_on_return(left, now()) {
+                    if show_on_return(left, now(), this.workspace.settings.away_minutes) {
                         this.since = left;
                         this.overview = true;
                         this.sync_panes(cx);
@@ -1198,6 +1202,22 @@ impl Workbench {
         self.editing_task = None;
         self.sync_panes(cx);
         let fields = match kind {
+            FormKind::Settings => vec![
+                cx.new(|cx| {
+                    Field::new(
+                        "很久没动（天，1–365）",
+                        &self.workspace.settings.stale_days.to_string(),
+                        cx,
+                    )
+                }),
+                cx.new(|cx| {
+                    Field::new(
+                        "离开多久显示鸟瞰（分钟，1–1440）",
+                        &self.workspace.settings.away_minutes.to_string(),
+                        cx,
+                    )
+                }),
+            ],
             FormKind::Space => vec![
                 cx.new(|cx| Field::new("空间名称", "", cx)),
                 cx.new(|cx| Field::new("工作目录（绝对路径）", "", cx)),
@@ -1214,9 +1234,10 @@ impl Workbench {
         };
         window.focus(&fields[0].focus_handle(cx), cx);
         self.form = Some(Form {
+            notifications: self.workspace.settings.notifications,
             kind,
             fields,
-            agent: Agent::Codex,
+            agent: self.workspace.settings.default_agent,
             space: self.space.clone(),
         });
         cx.notify();
@@ -1231,6 +1252,30 @@ impl Workbench {
             .map(|f| f.read(cx).text.clone())
             .collect();
         let edit = match form.kind {
+            FormKind::Settings => {
+                let days = values[0]
+                    .trim()
+                    .parse::<u32>()
+                    .ok()
+                    .filter(|n| (1..=365).contains(n));
+                let minutes = values[1]
+                    .trim()
+                    .parse::<u32>()
+                    .ok()
+                    .filter(|n| (1..=1440).contains(n));
+                let (Some(stale_days), Some(away_minutes)) = (days, minutes) else {
+                    self.error = Some("请填写有效天数和分钟数".into());
+                    self.form = Some(form);
+                    return;
+                };
+                Edit::Settings(Settings {
+                    notifications: form.notifications,
+                    stale_days,
+                    away_minutes,
+                    default_agent: form.agent,
+                })
+            }
+
             FormKind::Defer | FormKind::TaskDefer => {
                 let hours = values[1]
                     .trim()
@@ -1687,6 +1732,28 @@ impl Workbench {
         }
         menu
     }
+    pub fn navigate_to(&mut self, id: &str, window: &mut Window, cx: &mut Context<Self>) {
+        self.cleanup.clear();
+        self.form = None;
+        self.search_open = false;
+        if let Some(session) = self
+            .workspace
+            .agent_sessions
+            .iter()
+            .find(|s| s.id == id)
+            .cloned()
+        {
+            self.enter_card(&session, window, cx);
+        } else {
+            self.error = Some("会话尚未载入，请刷新工作台".into());
+            self.request(Request::Workspace, cx);
+        }
+    }
+    fn settings_button(&self, cx: &Context<Self>) -> gpui::Stateful<gpui::Div> {
+        button("settings", "设置").on_click(
+            cx.listener(|this, _, window, cx| this.show_form(FormKind::Settings, window, cx)),
+        )
+    }
     fn matches_filter(&self, s: &AgentSession) -> bool {
         self.filter_space
             .as_deref()
@@ -1917,6 +1984,7 @@ impl Workbench {
                         open.len()
                     ))),
             )
+            .child(self.settings_button(cx))
             .child(self.search_button(cx))
             .child(
                 button("overview-refresh", "刷新")
@@ -3049,6 +3117,7 @@ impl Render for Workbench {
                             })),
                     )
                     .child(div().flex_1())
+                    .child(self.settings_button(cx))
                     .child(self.search_button(cx))
                     .child(button("add-task", "＋ 新待办").on_click(cx.listener(
                         |this, _, window, cx| this.show_form(FormKind::Task, window, cx),
@@ -3334,6 +3403,16 @@ impl Render for Workbench {
                     .text_color(Group::Waiting.colors().1),
             );
         }
+        if let Some(status) = cx
+            .try_global::<crate::desktop::Status>()
+            .filter(|s| !s.0.is_empty())
+        {
+            main = main.child(
+                label(status.0.clone())
+                    .px(px(T::S14))
+                    .text_color(Group::Waiting.colors().1),
+            );
+        }
         if let Some(error) = &self.error {
             main = main.child(
                 label(error.clone())
@@ -3375,6 +3454,8 @@ impl Render for Workbench {
                         })),
                     );
                 }
+            }
+            if matches!(form.kind, FormKind::Task | FormKind::Settings) {
                 panel = panel.child(
                     button(
                         "agent",
@@ -3390,6 +3471,31 @@ impl Render for Workbench {
                         cx.notify();
                     })),
                 );
+            }
+            if matches!(form.kind, FormKind::Settings) {
+                panel = panel
+                    .child(
+                        button(
+                            "notifications-toggle",
+                            if form.notifications {
+                                "✓ 系统通知已开启"
+                            } else {
+                                "系统通知关闭（点击开启）"
+                            },
+                        )
+                        .on_click(cx.listener(|this, _, _, cx| {
+                            if let Some(form) = &mut this.form {
+                                form.notifications = !form.notifications;
+                            }
+                            cx.notify();
+                        })),
+                    )
+                    .child(label(
+                        "保存开启后由 macOS 请求通知权限；默认关闭，退出 App 后不接收通知。",
+                    ));
+                if let Some(status) = cx.try_global::<crate::desktop::Status>() {
+                    panel = panel.child(label(status.0.clone()));
+                }
             }
             main =
                 main.child(
@@ -3638,9 +3744,9 @@ mod tests {
             !changed_since(&w, &s, 99),
             "index mtime cannot mark an old conversation new"
         );
-        assert!(!show_on_return(100, 1900));
-        assert!(show_on_return(100, 1901));
-        assert!(!show_on_return(0, 1901));
+        assert!(!show_on_return(100, 1900, 30));
+        assert!(show_on_return(100, 1901, 30));
+        assert!(!show_on_return(0, 1901, 30));
     }
 
     #[test]

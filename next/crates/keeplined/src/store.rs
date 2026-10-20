@@ -48,6 +48,9 @@ impl Store {
         db.execute_batch("PRAGMA foreign_keys=ON; PRAGMA journal_mode=WAL; PRAGMA synchronous=FULL;
             CREATE TABLE IF NOT EXISTS meta (id INTEGER PRIMARY KEY CHECK(id=1), revision INTEGER NOT NULL);
             INSERT OR IGNORE INTO meta VALUES(1,0);
+            CREATE TABLE IF NOT EXISTS app_settings (id INTEGER PRIMARY KEY CHECK(id=1), notifications INTEGER NOT NULL, stale_days INTEGER NOT NULL, away_minutes INTEGER NOT NULL, default_agent TEXT NOT NULL);
+            INSERT OR IGNORE INTO app_settings VALUES(1,0,3,30,'Codex');
+            CREATE TABLE IF NOT EXISTS notification_receipts (session_id TEXT PRIMARY KEY, fact_key TEXT NOT NULL);
             CREATE TABLE IF NOT EXISTS client_state (id INTEGER PRIMARY KEY CHECK(id=1), last_left INTEGER NOT NULL);
             INSERT OR IGNORE INTO client_state VALUES(1,0);
             CREATE TABLE IF NOT EXISTS spaces (id TEXT PRIMARY KEY, name TEXT NOT NULL, cwd TEXT NOT NULL);
@@ -85,6 +88,9 @@ impl Store {
         store.save(&before, &workspace)?;
         Ok((store, workspace))
     }
+    pub fn claim_notification(&self, session: &str, key: &str) -> io::Result<bool> {
+        self.0.execute("INSERT INTO notification_receipts VALUES(?1,?2) ON CONFLICT(session_id) DO UPDATE SET fact_key=excluded.fact_key WHERE fact_key<>excluded.fact_key",params![session,key]).map(|n|n>0).map_err(db_error)
+    }
     pub fn transcripts(&self) -> io::Result<Vec<crate::recognition::Transcript>> {
         crate::log_index::cached(&self.0)
     }
@@ -111,6 +117,7 @@ impl Store {
             .map_err(db_error)?,
             ..Workspace::default()
         };
+        w.settings=self.0.query_row("SELECT notifications,stale_days,away_minutes,default_agent FROM app_settings WHERE id=1",[],|r| Ok((r.get::<_,bool>(0)?,r.get::<_,u32>(1)?,r.get::<_,u32>(2)?,r.get::<_,String>(3)?))).map_err(db_error).and_then(|(notifications,stale_days,away_minutes,agent)|Ok(Settings {notifications,stale_days,away_minutes,default_agent:enum_value(agent)?}))?;
         w.last_left = u64::try_from(
             self.0
                 .query_row("SELECT last_left FROM client_state WHERE id=1", [], |r| {
@@ -261,6 +268,9 @@ impl Store {
     }
     pub fn save(&mut self, before: &Workspace, w: &Workspace) -> io::Result<()> {
         let tx = self.0.transaction().map_err(db_error)?;
+        if before.settings != w.settings {
+            tx.execute("UPDATE app_settings SET notifications=?1,stale_days=?2,away_minutes=?3,default_agent=?4 WHERE id=1",params![w.settings.notifications,w.settings.stale_days,w.settings.away_minutes,enum_name(&w.settings.default_agent)?]).map_err(db_error)?;
+        }
         if before.last_left != w.last_left {
             tx.execute(
                 "UPDATE client_state SET last_left=?1 WHERE id=1",
@@ -427,6 +437,30 @@ fn save_layout(db: &Connection, tab: &str, path: &str, tree: &Layout) -> io::Res
 #[cfg(test)]
 mod milestone_tests {
     use super::*;
+    #[test]
+    fn settings_and_notification_receipts_survive_restart() {
+        let dir = std::env::temp_dir().join(format!("kl-settings-{}", uuid::Uuid::new_v4()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let (mut db, before) = Store::open(&dir).unwrap();
+        assert!(!before.settings.notifications);
+        let mut after = before.clone();
+        after.settings = Settings {
+            notifications: true,
+            stale_days: 7,
+            away_minutes: 45,
+            default_agent: Agent::Claude,
+        };
+        db.save(&before, &after).unwrap();
+        assert!(db.claim_notification("session", "turn1:waiting").unwrap());
+        assert!(!db.claim_notification("session", "turn1:waiting").unwrap());
+        drop(db);
+        let (db, loaded) = Store::open(&dir).unwrap();
+        assert_eq!(loaded.settings, after.settings);
+        assert!(!db.claim_notification("session", "turn1:waiting").unwrap());
+        assert!(db.claim_notification("session", "turn2:waiting").unwrap());
+        drop(db);
+        std::fs::remove_dir_all(dir).unwrap();
+    }
     #[test]
     fn client_departure_survives_reopen_without_changing_sessions() {
         let dir = std::env::temp_dir().join(format!("kl-visit-{}", uuid::Uuid::new_v4()));

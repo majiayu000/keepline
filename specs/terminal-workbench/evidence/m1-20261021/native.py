@@ -38,14 +38,16 @@ try:
  until=time.monotonic()+15
  while not (root/'workbench.sock').exists():
   assert time.monotonic()<until;time.sleep(.1)
- if os.environ.get('KL_SEED_STALE') or os.environ.get('KL_SEED_NAV'):
+ if os.environ.get('KL_SEED_STALE') or os.environ.get('KL_SEED_NAV') or os.environ.get('KL_SEED_ATTENTION'):
   for i in range(3):
-   at=int(time.time())-(4*86400 if i==2 or not os.environ.get('KL_SEED_NAV') else 60)
-   rows=[{'type':'session_meta','payload':{'id':f'stale-{i}','cwd':str(BASE) if os.environ.get('KL_SEED_NAV') else '/fixture-project','source':'cli','thread_source':'user','originator':'codex-tui'}},{'timestamp':at,'type':'event_msg','payload':{'type':'task_started','turn_id':f'old-{i}'}},{'timestamp':at,'type':'event_msg','payload':{'type':'user_message','message':f'核对第 {i+1} 个暂停项目的测试结果。'}},{'timestamp':at,'type':'event_msg','payload':{'type':'task_complete','last_agent_message':'还需要核对测试环境。'}}]
+   at=int(time.time())-(4*86400 if i==2 or not (os.environ.get('KL_SEED_NAV') or os.environ.get('KL_SEED_ATTENTION')) else 60)
+   rows=[{'type':'session_meta','payload':{'id':f'stale-{i}','cwd':str(BASE) if (os.environ.get('KL_SEED_NAV') or os.environ.get('KL_SEED_ATTENTION')) else '/fixture-project','source':'cli','thread_source':'user','originator':'codex-tui'}},{'timestamp':at,'type':'event_msg','payload':{'type':'task_started','turn_id':f'old-{i}'}},{'timestamp':at,'type':'event_msg','payload':{'type':'user_message','message':f'核对第 {i+1} 个暂停项目的测试结果。'}},{'timestamp':at,'type':'event_msg','payload':{'type':'task_complete','last_agent_message':'还需要核对测试环境。'}}]
+   if os.environ.get('KL_SEED_ATTENTION') and i<2:
+    rows.append({'timestamp':at+1,'type':'event_msg','payload':({'type':'request_user_input','questions':[{'question':'选哪个验收方案？','options':[{'label':'快速检查'},{'label':'完整测试'}]}]} if i==0 else {'type':'error','message':'模拟测试失败，退出码 1'})})
    (root/'logs'/f'stale-{i}.jsonl').write_text(''.join(json.dumps(v,ensure_ascii=False)+'\n' for v in rows))
  if os.environ.get('KL_SEED_NAV'): rpc({'ClientLeft':{'at':int(time.time())-3600}})
  w=rpc('Workspace')['Workspace']
- rpc({'Edit':{'revision':w['revision'],'edit':{'AddSpace':{'id':'m1','name':'M1 隔离项目','cwd':str(BASE) if os.environ.get('KL_SEED_NAV') else str(root)}}}})
+ rpc({'Edit':{'revision':w['revision'],'edit':{'AddSpace':{'id':'m1','name':'M1 隔离项目','cwd':str(BASE) if (os.environ.get('KL_SEED_NAV') or os.environ.get('KL_SEED_ATTENTION')) else str(root)}}}})
  bundle=root/'Keepline Milestone Test.app';mac=bundle/'Contents/MacOS';mac.mkdir(parents=True)
  shutil.copy2(BASE/'next/target/debug/keepline-app',mac/'keepline-app')
  (bundle/'Contents/Info.plist').write_bytes(plistlib.dumps({'CFBundleName':'Keepline Milestone Test','CFBundleExecutable':'keepline-app','CFBundleIdentifier':'local.keepline.milestones','CFBundlePackageType':'APPL','CFBundleVersion':'1'}))

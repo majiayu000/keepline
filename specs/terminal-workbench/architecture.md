@@ -331,3 +331,9 @@ M2 采用结果：结局变化追加 outcome_history；后台只等最近截止�
 统一继续入口：仅 current 且 PTY Running 才切回，其他情况在待办标签或新标签预填 resume，不自动执行。空间筛选按待办归属/终端空间/外部 cwd 路径边界匹配，仅用于展示，绝不据此关联 CLI 身份。离开时间作为 SQLite 单独客户端状态保存；窗口激活事件计算变化基线，无计时轮询。搜索直接检索已缓存标题、待办和原话，不读日志。指标：过期托管不 attach、resume 无回车且归属正确、离开期间变化才标新、筛选与导航一致。缺乏项目路径归属的外部会话保留在全部视图，不猜空间。
 
 M3 采用结果：离开时间存在 client_state 对象表，窗口事件写入，无周期活动探测。更新标记取日志内容更新时间，不取首次索引 mtime；短暂切出不清基线。搜索命中主动解除阻挡目标的筛选，继续对 current+Running 做唯一存活判断。证据见 [M3](evidence/m3-20261021/README.md)。
+
+### M4 实施决定
+
+使用 AppKit NSStatusItem/NSPopover 和 UserNotifications（官方文档：https://developer.apple.com/documentation/appkit/nsstatusbar 、https://developer.apple.com/documentation/usernotifications/unusernotificationcenterdelegate）。仅新增 build.rs、native.m、desktop.rs 三个原生桥接文件；不引入插件框架/跨平台通知抽象。菜单栏订阅现有后台变化，点击复用 M3 路由。设置独立 app_settings 表；通知默认关闭，仅状态进入等你回答/出错时发送，初次装载不补发历史通知，SQLite 保存每个会话最后通知事实键。窗口关闭时菜单栏继续工作，退出 App 则不接通知。指标：菜单直达/无窗口可重开、去重跨客户端重启、默认无权限请求、空闲无额外 I/O；系统拒绝权限或发送错误必须可见，不擅改系统通知设置。
+
+M4 采用结果：原生面板在主窗口关闭后仍能重开并路由；设置已读回 SQLite，默认 Agent 生效。事件订阅及持久化事实键去重通过单测，真实系统通知不改权限，标记未验证等待授权。证据见 [M4](evidence/m4-20261021/README.md)。

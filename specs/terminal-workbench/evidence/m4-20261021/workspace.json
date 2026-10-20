@@ -1,0 +1,177 @@
+{
+  "Workspace": {
+    "revision": 10,
+    "last_left": 1792519131,
+    "settings": {
+      "notifications": false,
+      "stale_days": 3,
+      "away_minutes": 30,
+      "default_agent": "Codex"
+    },
+    "outcome_history": [],
+    "task_outcomes": {},
+    "pending_tasks": {},
+    "spaces": [
+      {
+        "id": "m1",
+        "name": "M1 隔离项目",
+        "cwd": "/Users/lifcc/Desktop/code/AI/tools/keepline-agent-workbench"
+      }
+    ],
+    "tasks": [],
+    "tabs": [
+      {
+        "id": "41017-1792518991407944000-0",
+        "space": "m1",
+        "default_task": null,
+        "title": "",
+        "closed": false,
+        "layout": {
+          "Leaf": "41017-1792518991407945000-1"
+        }
+      }
+    ],
+    "terminals": [
+      {
+        "id": "41017-1792518991407945000-1",
+        "space": "m1",
+        "argv": [
+          "/bin/zsh",
+          "-l"
+        ],
+        "cwd": "/Users/lifcc/Desktop/code/AI/tools/keepline-agent-workbench",
+        "pid": 41030,
+        "state": "Running",
+        "exit_code": null,
+        "error": null
+      }
+    ],
+    "agent_sessions": [
+      {
+        "id": "f95add88-36d4-4b1f-9e68-0f9d61282b24",
+        "runtime": "Codex",
+        "cli_session_id": "stale-0",
+        "terminal": null,
+        "current": false,
+        "task": null,
+        "outcome": "Open",
+        "updated": 1792518990,
+        "cwd": "/Users/lifcc/Desktop/code/AI/tools/keepline-agent-workbench",
+        "transcript": "/private/tmp/kl-m1-dyyazui6/logs/stale-0.jsonl"
+      },
+      {
+        "id": "1ab4b131-a544-4220-805c-5d35727fe3a6",
+        "runtime": "Codex",
+        "cli_session_id": "stale-1",
+        "terminal": null,
+        "current": false,
+        "task": null,
+        "outcome": "Open",
+        "updated": 1792518990,
+        "cwd": "/Users/lifcc/Desktop/code/AI/tools/keepline-agent-workbench",
+        "transcript": "/private/tmp/kl-m1-dyyazui6/logs/stale-1.jsonl"
+      },
+      {
+        "id": "bece8e9a-5a68-4d4e-a860-11c9adc47c70",
+        "runtime": "Codex",
+        "cli_session_id": "stale-2",
+        "terminal": null,
+        "current": false,
+        "task": null,
+        "outcome": "Open",
+        "updated": 1792518990,
+        "cwd": "/Users/lifcc/Desktop/code/AI/tools/keepline-agent-workbench",
+        "transcript": "/private/tmp/kl-m1-dyyazui6/logs/stale-2.jsonl"
+      }
+    ],
+    "content": {
+      "1ab4b131-a544-4220-805c-5d35727fe3a6": {
+        "interactive": true,
+        "hidden_reason": "",
+        "first_ask_known": true,
+        "title": "核对第 2 个暂停项目的测试结果。",
+        "asks": [
+          {
+            "text": "核对第 2 个暂停项目的测试结果。",
+            "at": 1792518930,
+            "source": {
+              "path": "/private/tmp/kl-m1-dyyazui6/logs/stale-1.jsonl",
+              "inode": 379479228,
+              "offset": 298
+            }
+          }
+        ],
+        "evidence": [],
+        "last_reply": "还需要核对测试环境。",
+        "turn": "Error",
+        "turn_started": 1792518930,
+        "turn_key": "old-1",
+        "updated": 1792518931,
+        "completed_claim": false,
+        "waiting": "",
+        "error": "模拟测试失败，退出码 1",
+        "partial_history": false,
+        "from_offset": 0,
+        "unknown_records": 0
+      },
+      "f95add88-36d4-4b1f-9e68-0f9d61282b24": {
+        "interactive": true,
+        "hidden_reason": "",
+        "first_ask_known": true,
+        "title": "核对第 1 个暂停项目的测试结果。",
+        "asks": [
+          {
+            "text": "核对第 1 个暂停项目的测试结果。",
+            "at": 1792518930,
+            "source": {
+              "path": "/private/tmp/kl-m1-dyyazui6/logs/stale-0.jsonl",
+              "inode": 379479227,
+              "offset": 298
+            }
+          }
+        ],
+        "evidence": [],
+        "last_reply": "还需要核对测试环境。",
+        "turn": "Waiting",
+        "turn_started": 1792518930,
+        "turn_key": "old-0",
+        "updated": 1792518931,
+        "completed_claim": false,
+        "waiting": "选哪个验收方案？（快速检查 / 完整测试）",
+        "error": "",
+        "partial_history": false,
+        "from_offset": 0,
+        "unknown_records": 0
+      },
+      "bece8e9a-5a68-4d4e-a860-11c9adc47c70": {
+        "interactive": true,
+        "hidden_reason": "",
+        "first_ask_known": true,
+        "title": "核对第 3 个暂停项目的测试结果。",
+        "asks": [
+          {
+            "text": "核对第 3 个暂停项目的测试结果。",
+            "at": 1792173390,
+            "source": {
+              "path": "/private/tmp/kl-m1-dyyazui6/logs/stale-2.jsonl",
+              "inode": 379479229,
+              "offset": 298
+            }
+          }
+        ],
+        "evidence": [],
+        "last_reply": "还需要核对测试环境。",
+        "turn": "Completed",
+        "turn_started": 1792173390,
+        "turn_key": "old-2",
+        "updated": 1792173390,
+        "completed_claim": false,
+        "waiting": "",
+        "error": "",
+        "partial_history": false,
+        "from_offset": 0,
+        "unknown_records": 0
+      }
+    }
+  }
+}

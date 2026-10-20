@@ -961,6 +961,21 @@ fn dispatch(shared: &Shared, request: Request) -> io::Result<Reply> {
             }
             Ok(Reply::Workspace(host.snapshot()))
         }
+        Request::ClaimNotification { session, key } => {
+            let host = lock(shared)?;
+            if !host.workspace.settings.notifications
+                || !host
+                    .workspace
+                    .agent_sessions
+                    .iter()
+                    .any(|s| s.id == session)
+            {
+                return Ok(Reply::NotificationClaimed(false));
+            }
+            Ok(Reply::NotificationClaimed(
+                host.store.claim_notification(&session, &key)?,
+            ))
+        }
         Request::ClientLeft { at } => {
             let mut host = lock(shared)?;
             let mut next = host.workspace.clone();

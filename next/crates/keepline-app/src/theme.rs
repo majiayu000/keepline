@@ -116,6 +116,9 @@ impl Theme {
     pub const HERE_HEIGHT: f32 = 600.;
     pub const CLEANUP_WIDTH: f32 = 960.;
     pub const CLEANUP_ACTION_HEIGHT: f32 = 64.;
+    pub const MENUBAR_WIDTH: f32 = 360.;
+    pub const MENUBAR_HEIGHT: f32 = 480.;
+    pub const MENUBAR_ROW: f32 = 52.;
     pub const FORM_WIDTH: f32 = 640.;
     pub const FIELD_HEIGHT: f32 = 40.;
     pub const WINDOW_WIDTH: f32 = 1440.;

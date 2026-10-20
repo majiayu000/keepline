@@ -7,6 +7,8 @@ pub struct Workspace {
     #[serde(default)]
     pub last_left: u64,
     #[serde(default)]
+    pub settings: Settings,
+    #[serde(default)]
     pub outcome_history: Vec<OutcomeChange>,
     #[serde(default)]
     pub task_outcomes: std::collections::HashMap<String, Outcome>,
@@ -21,6 +23,23 @@ pub struct Workspace {
     pub content: std::collections::HashMap<String, crate::content::Content>,
 }
 
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct Settings {
+    pub notifications: bool,
+    pub stale_days: u32,
+    pub away_minutes: u32,
+    pub default_agent: Agent,
+}
+impl Default for Settings {
+    fn default() -> Self {
+        Self {
+            notifications: false,
+            stale_days: 3,
+            away_minutes: 30,
+            default_agent: Agent::Codex,
+        }
+    }
+}
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Space {
     pub id: String,
@@ -169,6 +188,7 @@ impl Outcome {
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub enum Edit {
+    Settings(Settings),
     AddSpace(Space),
     AddTask(Task),
     UpdateTask(Task),
@@ -285,7 +305,7 @@ impl Workspace {
                             c.updated
                         })
                         .max(self.review_since(&session.id))
-                        .saturating_add(3 * 86400 + 1),
+                        .saturating_add(u64::from(self.settings.stale_days) * 86400 + 1),
                     );
                 }
             }
@@ -429,6 +449,15 @@ impl Workspace {
     }
     pub fn edit(&mut self, edit: Edit) -> Result<(), String> {
         match edit {
+            Edit::Settings(settings) => {
+                if !(1..=365).contains(&settings.stale_days)
+                    || !(1..=1440).contains(&settings.away_minutes)
+                {
+                    return Err("天数须为 1–365，离开分钟数须为 1–1440".into());
+                }
+                self.settings = settings;
+            }
+
             Edit::UpdateTask(task) => {
                 let index = self
                     .tasks
@@ -625,6 +654,21 @@ mod tests {
             },
         })
         .unwrap();
+    }
+    #[test]
+    fn settings_reject_invalid_intervals_and_drive_stale_boundary() {
+        let mut w = Workspace::default();
+        let mut settings = Settings::default();
+        settings.stale_days = 0;
+        assert!(w.edit(Edit::Settings(settings)).is_err());
+        assert_eq!(w.settings, Settings::default());
+        let settings = Settings {
+            stale_days: 7,
+            away_minutes: 45,
+            ..Default::default()
+        };
+        w.edit(Edit::Settings(settings.clone())).unwrap();
+        assert_eq!(w.settings, settings);
     }
     #[test]
     fn outcomes_expire_once_preserve_history_and_leave_processes_alone() {

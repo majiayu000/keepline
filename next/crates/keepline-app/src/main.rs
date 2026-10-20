@@ -1,4 +1,5 @@
 mod connection;
+mod desktop;
 mod field;
 mod keyboard;
 mod lifecycle;
@@ -71,7 +72,7 @@ fn ensure_host(root: &Path) -> io::Result<()> {
     }
 }
 
-gpui::actions!(keepline, [Quit]);
+gpui::actions!(keepline, [Quit, ShowMenuPanel]);
 
 fn load_workspace(root: &Path) -> io::Result<Workspace> {
     ensure_host(root)?;
@@ -210,8 +211,9 @@ fn run() -> io::Result<()> {
     app.run(move |cx: &mut App| {
         use futures::StreamExt;
         cx.on_action(|_: &Quit, cx| cx.quit());
+        cx.on_action(|_: &ShowMenuPanel, _| desktop::show());
         cx.bind_keys([gpui::KeyBinding::new("cmd-q",Quit,None)]);
-        cx.set_menus([gpui::Menu::new("Keepline").items([gpui::MenuItem::action("退出 Keepline",Quit)])]);
+        cx.set_menus([gpui::Menu::new("Keepline").items([gpui::MenuItem::action("菜单栏面板",ShowMenuPanel),gpui::MenuItem::action("退出 Keepline",Quit)])]);
         let wake_root=root.clone();
         cx.spawn(async move |cx| {
             while reopen.next().await.is_some() {
@@ -223,6 +225,24 @@ fn run() -> io::Result<()> {
         }
         let workspace=match initial {Ok(w)=>w,Err(e)=>{show_startup_error(e.to_string(),cx);return;}};
         let socket=root.join("workbench.sock");
+        let mut desktop_events=desktop::start(&socket,workspace.clone(),cx);
+        let desktop_root=root.clone();
+        cx.spawn(async move |cx| {
+            while let Some(route)=desktop_events.next().await {
+                let _=cx.update(|cx| {
+                    if let Some(message)=route.strip_prefix("error:").or_else(||route.strip_prefix("notice:")) {cx.set_global(desktop::Status(message.into()));return;}
+                    reopen_window(&desktop_root,cx);
+                    if !route.is_empty() {
+                        for handle in cx.windows() {
+                            if let Some(handle)=handle.downcast::<workbench::Workbench>() {
+                                let _=handle.update(cx,|view,window,cx|view.navigate_to(&route,window,cx));
+                                break;
+                            }
+                        }
+                    }
+                });
+            }
+        }).detach();
         let bounds = Bounds::centered(
             None,
             size(
