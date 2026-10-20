@@ -1,0 +1,96 @@
+   Compiling libghostty-vt-sys v0.2.1 (/Users/lifcc/Desktop/code/AI/tools/keepline-agent-workbench/next/.deps/libghostty-rs/crates/libghostty-vt-sys)
+   Compiling libghostty-vt v0.2.1 (/Users/lifcc/Desktop/code/AI/tools/keepline-agent-workbench/next/.deps/libghostty-rs/crates/libghostty-vt)
+   Compiling keepline-core v0.1.0 (/Users/lifcc/Desktop/code/AI/tools/keepline-agent-workbench/next/crates/keepline-core)
+   Compiling keeplined v0.0.0 (/Users/lifcc/Desktop/code/AI/tools/keepline-agent-workbench/next/crates/keeplined)
+    Finished `test` profile [unoptimized] target(s) in 3.18s
+     Running unittests src/lib.rs (next/target/debug/deps/keepline_core-eb688337cdfb6b34)
+
+running 8 tests
+test model::tests::codex_prefill_and_resume_use_no_daemon_and_preserve_shell_quoting ... ok
+test model::tests::task_prompt_and_per_criterion_evidence_are_independent ... ok
+test model::tests::sequential_conversations_keep_independent_tasks_and_outcomes ... ok
+test model::identity_tests::one_cli_identity_cannot_be_current_in_two_terminals ... ok
+test model::tests::log_refresh_never_reopens_or_reassigns_an_existing_conversation ... ok
+test model::tests::cross_space_placement_does_not_reassign_work_and_close_preserves_layout ... ok
+test terminal::tests::truncated_snapshot_is_not_a_ready_terminal ... ok
+test terminal::tests::snapshot_preserves_incomplete_utf8_and_escape_sequence ... ok
+
+test result: ok. 8 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running unittests src/lib.rs (next/target/debug/deps/keeplined-a6cc4bbf10d1e756)
+
+running 6 tests
+test file_events::tests::overflow_keeps_only_affected_subtree_and_does_not_latch ... ok
+test recognition::tests::log_identity_alone_does_not_bind_by_directory_and_ambiguity_stays_unbound ... ok
+test log_index::tests::initial_index_skips_large_bodies_and_never_rewalks_completed_directories ... ok
+test log_index::tests::cursors_survive_restart_partial_lines_truncation_and_inode_replacement ... ok
+test host::recognition_tests::must_scan_repairs_only_event_subtree_and_publishes_status_then_continues ... ok
+test log_index::tests::fsevents_delivers_new_files_and_replays_changes_after_restart ... ok
+
+test result: ok. 6 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.39s
+
+     Running unittests src/main.rs (next/target/debug/deps/keeplined-405022a29779304e)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running tests/managed_session.rs (next/target/debug/deps/managed_session-2c56f01d9ec2fef8)
+
+running 11 tests
+test daemon_fixture ... ignored, subprocess daemon entry for integration fixtures
+keeplined listening on /var/folders/3_/987z6jz91l9_t8mpvflf73xm0000gp/T/kl-dc854c20317741e3b0c380eda991dfae/workbench.sock
+keeplined listening on /var/folders/3_/987z6jz91l9_t8mpvflf73xm0000gp/T/kl-2ddb1b99134f41fb9ff3b2a71829da5c/workbench.sock
+keeplined listening on /var/folders/3_/987z6jz91l9_t8mpvflf73xm0000gp/T/kl-c66ac98fca4f4aea9590f3a783dcd592/workbench.sock
+keeplined listening on /var/folders/3_/987z6jz91l9_t8mpvflf73xm0000gp/T/kl-8032cac95d3e40deaf588058f5f0d13b/workbench.sock
+keeplined listening on /var/folders/3_/987z6jz91l9_t8mpvflf73xm0000gp/T/kl-c05846711351442eb2c69cd23d3ce522/workbench.sock
+keeplined listening on /var/folders/3_/987z6jz91l9_t8mpvflf73xm0000gp/T/kl-8ff26d974f2640b99bd4a8bd92fcb6a9/workbench.sock
+keeplined listening on /var/folders/3_/987z6jz91l9_t8mpvflf73xm0000gp/T/kl-decb88ad60354b46a8567d61ce661383/workbench.sock
+keeplined listening on /var/folders/3_/987z6jz91l9_t8mpvflf73xm0000gp/T/kl-59648dff6c29405fb68559f73ff6d08e/workbench.sock
+keeplined listening on /var/folders/3_/987z6jz91l9_t8mpvflf73xm0000gp/T/kl-8717c0bc5e4144c4abd99d0ed4617785/workbench.sock
+keeplined listening on /var/folders/3_/987z6jz91l9_t8mpvflf73xm0000gp/T/kl-d580f1f40204497581a62ee9a83309f0/workbench.sock
+test a_second_daemon_cannot_replace_the_live_socket ... ok
+test reconnect_input_resize_and_takeover_are_real_pty_operations ... ok
+test launch_is_durable_and_deduplicated_and_tab_close_is_not_stop ... ok
+test process_exit_does_not_complete_user_work ... ok
+test agent_exit_clears_current_without_stopping_shell_or_changing_outcome ... ok
+test manually_entered_unbound_codex_gets_a_hint_and_exit_clears_it ... ok
+keeplined listening on /var/folders/3_/987z6jz91l9_t8mpvflf73xm0000gp/T/kl-dc854c20317741e3b0c380eda991dfae/workbench.sock
+keeplined listening on /var/folders/3_/987z6jz91l9_t8mpvflf73xm0000gp/T/kl-decb88ad60354b46a8567d61ce661383/workbench.sock
+test two_cli_conversations_in_one_real_pty_keep_separate_ownership_after_restart ... ok
+terminal stream ended: Broken pipe (os error 32)
+terminal stream ended: Broken pipe (os error 32)
+test recognition_status_stream_recovers_after_log_root_is_rebuilt ... ok
+40 idle PTYs: CPU 0.0000%, disk read 0 B, write 0 B, Unix syscalls 2
+test forty_idle_terminals_have_no_periodic_background_io ... ok
+4 agents / 30s: daemon CPU 0.0184s (0.059%), ps spawns 0, lsof spawns 0, incremental bytes 87780
+test four_agents_write_for_thirty_seconds_without_repeated_process_probes ... ok
+
+test result: ok. 10 passed; 0 failed; 1 ignored; 0 measured; 0 filtered out; finished in 32.48s
+
+   Doc-tests keepline_core
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+   Doc-tests keeplined
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+
+--- core/daemon clippy ---
+   Compiling libghostty-vt-sys v0.2.1 (/Users/lifcc/Desktop/code/AI/tools/keepline-agent-workbench/next/.deps/libghostty-rs/crates/libghostty-vt-sys)
+    Checking libghostty-vt v0.2.1 (/Users/lifcc/Desktop/code/AI/tools/keepline-agent-workbench/next/.deps/libghostty-rs/crates/libghostty-vt)
+    Checking keepline-core v0.1.0 (/Users/lifcc/Desktop/code/AI/tools/keepline-agent-workbench/next/crates/keepline-core)
+    Checking keeplined v0.0.0 (/Users/lifcc/Desktop/code/AI/tools/keepline-agent-workbench/next/crates/keeplined)
+    Finished `dev` profile [unoptimized] target(s) in 3.36s
+
+--- native client check (tail; upstream deprecated warnings omitted) ---
+warning: `gpui_macos` (lib) generated 695 warnings (1 duplicate)
+    Checking libghostty-vt v0.2.1 (/Users/lifcc/Desktop/code/AI/tools/keepline-agent-workbench/next/.deps/libghostty-rs/crates/libghostty-vt)
+    Checking keepline-core v0.1.0 (/Users/lifcc/Desktop/code/AI/tools/keepline-agent-workbench/next/crates/keepline-core)
+    Checking keepline-app v0.1.0 (/Users/lifcc/Desktop/code/AI/tools/keepline-agent-workbench/next/crates/keepline-app)
+    Finished `dev` profile [unoptimized] target(s) in 5.04s

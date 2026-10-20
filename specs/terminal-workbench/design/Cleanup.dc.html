@@ -1,0 +1,83 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<title>清理很久没动的会话</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<style>
+body{margin:0}
+a{color:#4b4fd6}a:hover{color:#3438b0}
+button{font-family:inherit;cursor:pointer}
+</style>
+</helmet>
+<div style="width: 960px; height: 720px; box-sizing: border-box; background: #eef0f3; color: #17181c; font-family: -apple-system, BlinkMacSystemFont, 'PingFang SC', 'Hiragino Sans GB', 'Microsoft YaHei', sans-serif; padding: 28px 40px; display: flex; flex-direction: column; gap: 18px">
+
+<div style="display: flex; align-items: center; gap: 14px">
+<a href="Main.dc.html" style="font-size: 13px; text-decoration: none">← 回到工作台</a>
+<span style="font-size: 18px; font-weight: 600">清理很久没动的会话</span>
+<span style="margin-left: auto; font-size: 13px; color: #5d6270">第 3 / 38 个 · 已处理 2 个</span>
+</div>
+<div style="height: 6px; border-radius: 3px; background: #dfe2e8" aria-hidden="true">
+<div style="width: 8%; height: 6px; border-radius: 3px; background: #4b4fd6"></div>
+</div>
+
+<div style="background: #ffffff; border: 1px solid #e3e5ea; border-radius: 14px; padding: 24px 28px; display: flex; flex-direction: column; gap: 16px">
+<div style="display: flex; flex-wrap: wrap; align-items: center; gap: 8px">
+<span style="font-size: 12px; font-weight: 600; color: #3b3f4a; background: #eceef2; border-radius: 5px; padding: 2px 8px">6 天没动</span>
+<span style="font-size: 12px; color: #3b3f4a; background: #f1f2f6; border-radius: 5px; padding: 2px 8px">外部 · Ghostty · 进程已退出</span>
+<span style="font-size: 12px; color: #5d6270">原本在：做一半停了</span>
+</div>
+<div>
+<h2 style="margin: 0; font-size: 20px">核查 DeepSeek Flash 指纹变更</h2>
+<span style="font-size: 12.5px; color: #5d6270">stealthprint-issue9 · Codex · 最后一轮 10 月 14 日 21:40</span>
+</div>
+<dl style="margin: 0; display: grid; grid-template-columns: 96px minmax(0, 1fr); gap: 10px 16px; font-size: 14px; line-height: 1.6">
+<dt style="color: #5d6270">你要它</dt>
+<dd style="margin: 0">“看一下 DeepSeek Flash 新版本的浏览器指纹有没有变，对比上周的抓包结果。”</dd>
+<dt style="color: #5d6270">做成了</dt>
+<dd style="margin: 0; display: flex; flex-direction: column; gap: 4px">
+<span>抓取新版本指纹 1 次，保存为 fixtures/deepseek-1014.json</span>
+<span style="color: #9a3f06">对比脚本没有运行</span>
+</dd>
+<dt style="color: #5d6270">停在</dt>
+<dd style="margin: 0">准备运行 diff 脚本时，你没有再回复。</dd>
+<dt style="color: #5d6270">下一步 · 推断</dt>
+<dd style="margin: 0; background: #f6f7fb; border-radius: 8px; padding: 8px 10px">运行对比脚本，看指纹是否变化；如果这件事已经不重要，可以直接放弃。</dd>
+</dl>
+</div>
+
+<div style="display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 12px">
+<button style="height: 64px; border: 0; border-radius: 12px; background: #4b4fd6; color: #ffffff; font-size: 15px; font-weight: 600; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 2px">继续<span style="font-size: 11.5px; font-weight: 400; color: #dfe0fb">新开画面，预填 resume</span></button>
+<button style="height: 64px; border: 1px solid #d5d8de; border-radius: 12px; background: #ffffff; color: #17181c; font-size: 15px; font-weight: 600; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 2px">标记完成<span style="font-size: 11.5px; font-weight: 400; color: #5d6270">不停止进程</span></button>
+<button style="height: 64px; border: 2px solid #4b4fd6; border-radius: 12px; background: #f4f5ff; color: #17181c; font-size: 15px; font-weight: 600; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 2px">暂存…<span style="font-size: 11.5px; font-weight: 400; color: #5d6270">到期再出现</span></button>
+<button style="height: 64px; border: 1px solid #d5d8de; border-radius: 12px; background: #ffffff; color: #17181c; font-size: 15px; font-weight: 600; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 2px">放弃<span style="font-size: 11.5px; font-weight: 400; color: #5d6270">移出鸟瞰</span></button>
+</div>
+
+<div style="background: #ffffff; border: 1px solid #e3e5ea; border-radius: 12px; padding: 14px 18px; display: flex; flex-wrap: wrap; align-items: center; gap: 10px 12px">
+<span style="font-size: 13px; color: #5d6270">什么时候再看</span>
+<button style="height: 32px; padding: 0 12px; border: 1px solid #d5d8de; border-radius: 8px; background: #ffffff; font-size: 13px">明天上午</button>
+<button style="height: 32px; padding: 0 12px; border: 2px solid #4b4fd6; border-radius: 8px; background: #f4f5ff; font-size: 13px; font-weight: 600">下周一</button>
+<button style="height: 32px; padding: 0 12px; border: 1px solid #d5d8de; border-radius: 8px; background: #ffffff; font-size: 13px">选日期</button>
+<label style="display: flex; align-items: center; gap: 8px; flex: 1 1 260px; font-size: 13px; color: #5d6270">原因
+<input value="等 DeepSeek 下周发正式版再对比" style="flex: 1; min-width: 0; height: 32px; border: 1px solid #d5d8de; border-radius: 8px; padding: 0 10px; font-size: 13px; font-family: inherit; color: #17181c">
+</label>
+<button style="height: 32px; padding: 0 14px; border: 0; border-radius: 8px; background: #4b4fd6; color: #ffffff; font-size: 13px; font-weight: 600">暂存并看下一个</button>
+</div>
+
+<div style="margin-top: auto; display: flex; justify-content: space-between; font-size: 12.5px; color: #5d6270">
+<span style="display: flex; gap: 8px"><button style="height: 30px; padding: 0 12px; border: 1px solid #d5d8de; border-radius: 8px; background: #ffffff; font-size: 12.5px">← 上一个</button><button style="height: 30px; padding: 0 12px; border: 1px solid #d5d8de; border-radius: 8px; background: #ffffff; font-size: 12.5px">跳过，稍后再处理 →</button></span>
+<span>处理过的会话不会再出现在这里，除非出现新回合</span>
+</div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":960,"height":720}}'>
+class Component extends DCLogic {
+  renderVals() { return {}; }
+}
+</script>
+</body>
+</html>

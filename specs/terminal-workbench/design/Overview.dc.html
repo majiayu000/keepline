@@ -1,0 +1,162 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<title>Keepline 鸟瞰视图</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<style>
+body{margin:0;background:#0b0c10}
+a{color:#c3c6ff}a:hover{color:#e0e1ff}
+button{font-family:inherit;cursor:pointer}
+.kl-card:hover{border-color:#4b4f63;background:#161922}
+</style>
+</helmet>
+<div style="min-height: 900px; box-sizing: border-box; background: #0b0c10; color: #d7dae0; font-family: -apple-system, BlinkMacSystemFont, 'PingFang SC', 'Hiragino Sans GB', 'Microsoft YaHei', sans-serif; font-size: 13px; padding: 20px 28px 28px; display: flex; flex-direction: column; gap: 18px">
+
+<header style="display: flex; flex-wrap: wrap; align-items: flex-end; gap: 12px 24px">
+<div style="display: flex; flex-direction: column; gap: 4px">
+<span style="font-size: 20px; font-weight: 600; color: #ffffff">欢迎回来，你离开了 3 小时</span>
+<span style="font-size: 13px; color: #9aa0ad">期间 7 个会话有变化 · 46 个未闭环 · 标 “新” 的是你离开后变的</span>
+</div>
+<div style="margin-left: auto; display: flex; flex-wrap: wrap; gap: 6px; align-items: center">
+<sc-for list="{{spaces}}" as="sp" hint-placeholder-count="6">
+<button style="font-size: 12px; border-radius: 999px; padding: 4px 11px; border: 1px solid {{sp.border}}; background: {{sp.bg}}; color: {{sp.ink}}">{{sp.name}}</button>
+</sc-for>
+<label style="display: flex; align-items: center; gap: 6px; font-size: 12px; color: #c4c8d0; margin-left: 6px"><input type="checkbox">只看有变化</label>
+<a href="Main.dc.html" style="font-size: 12.5px; margin-left: 10px; text-decoration: none">← 回到工作区</a>
+</div>
+</header>
+
+<section aria-label="待办 · 还没开始" style="display: flex; flex-direction: column; gap: 10px; padding: 14px 16px; border-radius: 12px; background: #11131b; border: 1px solid #262a3a">
+<div style="display: flex; align-items: center; gap: 8px">
+<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#c3c6ff" stroke-width="2" aria-hidden="true"><rect x="4" y="4" width="16" height="16" rx="3"></rect><path d="M8 12h8"></path></svg>
+<span style="font-size: 14px; font-weight: 600; color: #e0e1ff">待办 · 还没开始</span>
+<span style="font-size: 12.5px; color: #8b919e">3</span>
+<span style="font-size: 12px; color: #6b7080; margin-left: 6px">点「开始」会新开一个画面并预填命令，你按回车才会启动</span>
+<a href="TodoNew.dc.html" style="margin-left: auto; font-size: 12.5px; text-decoration: none; border: 1px solid #2f3448; border-radius: 7px; padding: 4px 10px">＋ 新待办</a>
+</div>
+<div style="display: grid; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); gap: 10px">
+<sc-for list="{{todos}}" as="t" hint-placeholder-count="3">
+<div style="display: flex; flex-direction: column; gap: 8px; padding: 12px 14px; border-radius: 10px; border: 1px solid #22252f; background: #151823">
+<a href="TodoDetail.dc.html" style="display: flex; flex-direction: column; gap: 4px; text-decoration: none; color: #e9ebef">
+<span style="font-size: 13.5px; font-weight: 600">{{t.title}}</span>
+<span style="font-size: 11.5px; color: #8b919e">{{t.meta}}</span>
+</a>
+<div style="display: flex; align-items: center; gap: 6px">
+<a href="TodoStart.dc.html" style="display: flex; align-items: center; height: 28px; padding: 0 12px; border-radius: 7px 0 0 7px; background: #4b4fd6; color: #ffffff; font-size: 12.5px; font-weight: 600; text-decoration: none">开始</a>
+<button aria-label="选择 Agent" style="height: 28px; margin-left: -6px; padding: 0 9px; border: 0; border-left: 1px solid #6c70e6; border-radius: 0 7px 7px 0; background: #4b4fd6; color: #e0e1ff; font-size: 12px">{{t.agent}} ▾</button>
+<a href="TodoDetail.dc.html" style="margin-left: auto; font-size: 12px; text-decoration: none">详情</a>
+<button aria-label="更多：暂存、放弃、编辑" style="border: 0; background: transparent; color: #8b919e; font-size: 14px; padding: 0 4px">⋯</button>
+</div>
+</div>
+</sc-for>
+</div>
+</section>
+
+<sc-for list="{{sections}}" as="s" hint-placeholder-count="5">
+<section aria-label="{{s.label}}" style="display: flex; flex-direction: column; gap: 10px">
+<div style="display: flex; align-items: center; gap: 8px">
+<span style="width: 9px; height: 9px; border-radius: 50%; background: {{s.dot}}" aria-hidden="true"></span>
+<span style="font-size: 14px; font-weight: 600; color: {{s.ink}}">{{s.label}}</span>
+<span style="font-size: 12.5px; color: #8b919e">{{s.count}}</span>
+<span style="font-size: 12px; color: #6b7080; margin-left: 6px">{{s.hint}}</span>
+</div>
+<div style="display: grid; grid-template-columns: repeat(auto-fill, minmax(230px, 1fr)); gap: 10px">
+<sc-for list="{{s.cards}}" as="c" hint-placeholder-count="4">
+<a href="Main.dc.html" class="kl-card" style="display: flex; flex-direction: column; gap: 5px; padding: 11px 13px; border-radius: 10px; border: 1px solid #22252f; background: #12141a; text-decoration: none; color: #e9ebef; opacity: {{s.opacity}}">
+<span style="display: flex; align-items: center; gap: 6px">
+<span style="font-size: 13.5px; font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap">{{c.title}}</span>
+<sc-if value="{{c.fresh}}" hint-placeholder-val="{{false}}"><span style="flex: none; margin-left: auto; font-size: 10.5px; color: #0b0c10; background: #e9ebef; border-radius: 4px; padding: 0 5px">新</span></sc-if>
+</span>
+<span style="font-size: 11.5px; color: #8b919e">{{c.meta}}</span>
+<sc-if value="{{c.todo}}" hint-placeholder-val="{{false}}"><span style="align-self: flex-start; font-size: 11px; color: #c3c6ff; background: #1e2140; border-radius: 4px; padding: 1px 6px">待办：{{c.todo}}</span></sc-if>
+<span style="font-size: 12.5px; line-height: 1.5; color: {{c.lineInk}}">{{c.line}}</span>
+</a>
+</sc-for>
+</div>
+</section>
+</sc-for>
+
+<div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 10px; border-top: 1px solid #1d2028; padding-top: 16px">
+<a href="Cleanup.dc.html" style="display: flex; align-items: center; gap: 10px; padding: 12px 14px; border-radius: 10px; border: 1px solid #22252f; background: #12141a; text-decoration: none; color: #e9ebef">
+<span style="width: 9px; height: 9px; border-radius: 50%; background: #8b919e" aria-hidden="true"></span>
+<span style="font-weight: 600">很久没动</span><span style="color: #8b919e">26</span>
+<span style="margin-left: auto; font-size: 12.5px; color: #c3c6ff">逐个清理 →</span>
+</a>
+<div style="display: flex; align-items: center; gap: 10px; padding: 12px 14px; border-radius: 10px; border: 1px solid #22252f; background: #0f1116">
+<span style="width: 9px; height: 9px; border-radius: 50%; border: 1.5px solid #8b919e; box-sizing: border-box" aria-hidden="true"></span>
+<span style="font-weight: 600">暂存</span><span style="color: #8b919e">5</span>
+<span style="margin-left: auto; font-size: 12.5px; color: #e5c07b">1 个今天到期</span>
+</div>
+<div style="display: flex; align-items: center; gap: 10px; padding: 12px 14px; border-radius: 10px; border: 1px solid #22252f; background: #0f1116">
+<span style="width: 9px; height: 9px; border-radius: 50%; background: #3b3f4a" aria-hidden="true"></span>
+<span style="font-weight: 600">已结束</span><span style="color: #8b919e">完成 112 · 放弃 9</span>
+</div>
+</div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":1440,"height":1060}}'>
+class Component extends DCLogic {
+  renderVals() {
+    var G = {
+      wait: { label: '等你回答', dot: '#e8823a', ink: '#ffd2b0', line: '#ffc59a', hint: '审批、提问或选择' },
+      err: { label: '出错了', dot: '#e5534b', ink: '#ffc4bd', line: '#ffaaa2', hint: '报错、非零退出或进程丢失' },
+      review: { label: '待核对', dot: '#8f93ff', ink: '#d6d8ff', line: '#c3c6ff', hint: '说已完成，等你验收' },
+      half: { label: '做一半停了', dot: '#d9a441', ink: '#f3dca8', line: '#e8cf94', hint: '停下了，没说完成也没在问你' },
+      run: { label: '进行中', dot: '#4cc38a', ink: '#b9ecd2', line: '#9fdcbf', hint: '不用管' }
+    };
+    var data = {
+      wait: [
+        ['添加 CLI 问题反馈接口', 'lib · Claude Code · 12 分钟前', '等你批准 git push origin feat/feedback', 1, 0, 'CLI 问题反馈'],
+        ['评估 Film Studio 实现方案', '模型上线 work · Codex · 1 小时前', '问你：队列方案还是直接调用', 1],
+        ['核查 DeepSeek Flash 指纹变更', 'lib · Codex · 2 小时前', '问你：是否覆盖上周的 fixture', 1]
+      ],
+      err: [
+        ['诊断 Atlas CLI SSH 执行异常', 'sys · Codex · 外部 · 已退出', 'exit 255 · SSH 认证失败', 1],
+        ['通知目标保留验收', 'keepline · Codex · 3 小时前', 'cargo test：2 个失败', 0]
+      ],
+      review: [
+        ['检查前端页面性能', 'sys · Codex · 40 分钟前', '测试 42/42 通过 · 改 5 个文件未提交', 1, 0, '首屏 1.5 秒以内'],
+        ['完善商品详细描述', 'codex-mall · Claude Code · 2 小时前', '说已完成，但没有运行任何检查', 1, 1],
+        ['整理历史汇总首版', 'her · Codex · 4 小时前', '构建通过 · 已提交 3 个 commit', 0],
+        ['评估既有方案并制定实施计划', 'skill-registry · Codex · 5 小时前', '写了计划文档 · 没有代码改动', 0],
+        ['查看库的最新版本', 'page-lingo · Codex · 6 小时前', '只读查询 · 给出版本对比', 0]
+      ],
+      half: [
+        ['整合库并同步到 origin/main', 'stealthprint · Codex · 5 小时前', 'rebase 冲突 2 个文件，停下了', 0],
+        ['继续收尾并交付新版页面', 'lib · Codex · 7 小时前', '改了 3 个文件，没跑测试就停了', 0],
+        ['检查库启动卡顿原因', 'sys · Codex · 9 小时前', '等 profile 结果时回合被中断', 0],
+        ['分析发布页滚动与审核流程', 'sys · Codex · 1 天前', '读完代码，还没给结论', 0]
+      ],
+      run: [
+        ['分析库的安全漏洞', 'codex-mall · Codex', '运行 4 分钟', 1, 0, '上线前安全检查'],
+        ['检查邮箱服务配置异常', 'codex-mall · Claude Code', '运行 1 分钟', 0],
+        ['终端工作台 P0 原型验证', 'keepline · Claude Code', '运行 18 分钟', 0],
+        ['现有 App 加收件箱', 'keepline · Claude Code', '运行 18 分钟', 0],
+        ['查看 Lark 文档', 'her · Codex', '运行 6 分钟', 0],
+        ['梳理 Keepline 产品规划', 'keepline · Codex', '运行 2 分钟', 0]
+      ]
+    };
+    var sections = ['wait', 'err', 'review', 'half', 'run'].map(function (k) {
+      var g = G[k];
+      return { label: g.label, dot: g.dot, ink: g.ink, hint: g.hint, count: data[k].length, opacity: k === 'run' ? '0.72' : '1',
+        cards: data[k].map(function (c) { return { title: c[0], meta: c[1], line: c[2], fresh: !!c[3], lineInk: c[4] ? '#ffc59a' : g.line, todo: c[5] || '' }; }) };
+    });
+    var spaces = ['全部', 'lib', 'sys', '模型上线 work', 'keepline', 'codex-mall', 'her'].map(function (n, i) {
+      return { name: n, bg: i === 0 ? '#e9ebef' : 'transparent', ink: i === 0 ? '#0b0c10' : '#c4c8d0', border: i === 0 ? '#e9ebef' : '#2a2e38' };
+    });
+    var todos = [
+      { title: '给 CLI 加离线模式', meta: 'cli · 3 条验收标准 · 来自目标「CLI 稳定性」', agent: 'Codex' },
+      { title: '商品详情页接入库存提醒', meta: 'codex-mall · 2 条验收标准', agent: 'Codex' },
+      { title: '清理旧的扫描轮询代码', meta: 'keepline · 没写验收标准', agent: 'Claude Code' }
+    ];
+    return { sections: sections, spaces: spaces, todos: todos };
+  }
+}
+</script>
+</body>
+</html>

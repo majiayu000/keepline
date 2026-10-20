@@ -2,6 +2,10 @@
 
 状态：设计建议，尚未实现；2026-10-20 架构修订见第 0 节，优先于本文其余部分。基线与产品范围见 [product.md](product.md)。实施顺序见 [tasks.md](tasks.md)。产品定位见 [产品卡](../product-card.md)。
 
+本地实现已开始。对象模型、SQLite 分表和 P1 身份识别顺序以
+[当前实现架构](architecture.md) 为准：Terminal 与 AgentSession 分开，
+不得沿用本文历史段落中将终端和对话合并的接口假设。
+
 ## 0. 2026-10-20 架构修订（优先于本文其余部分）
 
 依据开源库测评（分支 `claude/terminal-eval-04a203` 的 `eval/terminal/`）与 [产品卡第 3.1 节](../product-card.md#31-技术架构与资源预算2026-10-20-定案)。下列决定取代本文对应内容；与第 0 节冲突的段落一律以第 0 节为准。

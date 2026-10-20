@@ -1,0 +1,73 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<title>新建待办</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<style>
+body{margin:0}
+a{color:#c3c6ff}a:hover{color:#e0e1ff}
+button{font-family:inherit;cursor:pointer}
+</style>
+</helmet>
+<div style="width: 520px; height: 680px; box-sizing: border-box; background: #12141a; border: 1px solid #2a2e38; border-radius: 14px; color: #e9ebef; font-family: -apple-system, BlinkMacSystemFont, 'PingFang SC', 'Hiragino Sans GB', 'Microsoft YaHei', sans-serif; font-size: 13px; padding: 20px 22px; display: flex; flex-direction: column; gap: 14px">
+<div style="display: flex; align-items: center">
+<span style="font-size: 16px; font-weight: 600">新建待办</span>
+<button aria-label="关闭" style="margin-left: auto; border: 0; background: transparent; color: #8b919e; font-size: 16px">×</button>
+</div>
+
+<label style="display: flex; flex-direction: column; gap: 6px; color: #aab0bc; font-size: 12px">要做什么
+<input value="给 CLI 加离线模式" style="height: 34px; border: 1px solid #2f3448; border-radius: 8px; background: #0f1116; color: #e9ebef; padding: 0 10px; font-size: 13.5px; font-family: inherit">
+</label>
+
+<label style="display: flex; flex-direction: column; gap: 6px; color: #aab0bc; font-size: 12px">在哪个项目里做
+<span style="display: flex; align-items: center; height: 34px; border: 1px solid #2f3448; border-radius: 8px; background: #0f1116; padding: 0 10px; gap: 8px">
+<span style="color: #e9ebef; font-size: 13px">lib</span>
+<span style="color: #8b919e; font-size: 12px; font-family: 'JetBrains Mono', 'SF Mono', Menlo, monospace">~/Desktop/code/AI/tools/cli</span>
+<span style="margin-left: auto; color: #8b919e">▾</span>
+</span>
+</label>
+
+<label style="display: flex; flex-direction: column; gap: 6px; color: #aab0bc; font-size: 12px">说明（会原样交给 Agent）
+<textarea rows="3" style="border: 1px solid #2f3448; border-radius: 8px; background: #0f1116; color: #e9ebef; padding: 8px 10px; font-size: 13px; line-height: 1.6; font-family: inherit; resize: vertical">网络不可用时，常用命令照常可用；需要上传的结果先存本地，恢复联网后补传。</textarea>
+</label>
+
+<div style="display: flex; flex-direction: column; gap: 6px">
+<span style="color: #aab0bc; font-size: 12px">验收标准（可选，也会交给 Agent，完成时逐条核对）</span>
+<div style="display: flex; flex-direction: column; gap: 4px; border: 1px solid #2f3448; border-radius: 8px; background: #0f1116; padding: 8px 10px">
+<span style="display: flex; gap: 8px; align-items: center"><span style="width: 12px; height: 12px; border: 1.5px solid #6b7080; border-radius: 3px; box-sizing: border-box" aria-hidden="true"></span>断网时 atlas list 能返回缓存结果</span>
+<span style="display: flex; gap: 8px; align-items: center"><span style="width: 12px; height: 12px; border: 1.5px solid #6b7080; border-radius: 3px; box-sizing: border-box" aria-hidden="true"></span>恢复联网后 30 秒内补传完成</span>
+<span style="display: flex; gap: 8px; align-items: center"><span style="width: 12px; height: 12px; border: 1.5px solid #6b7080; border-radius: 3px; box-sizing: border-box" aria-hidden="true"></span>bun test 全部通过</span>
+<button style="align-self: flex-start; border: 0; background: transparent; color: #c3c6ff; font-size: 12.5px; padding: 2px 0">＋ 添加一条</button>
+</div>
+</div>
+
+<div style="display: flex; flex-direction: column; gap: 6px">
+<span style="color: #aab0bc; font-size: 12px">默认用哪个 Agent 开始（开始时还能改）</span>
+<div role="radiogroup" aria-label="默认 Agent" style="display: flex; gap: 0; align-self: flex-start; border: 1px solid #2f3448; border-radius: 8px; overflow: hidden">
+<button role="radio" aria-checked="true" style="height: 30px; padding: 0 14px; border: 0; background: #2a2d52; color: #ffffff; font-size: 12.5px">Codex</button>
+<button role="radio" aria-checked="false" style="height: 30px; padding: 0 14px; border: 0; border-left: 1px solid #2f3448; background: transparent; color: #aab0bc; font-size: 12.5px">Claude Code</button>
+</div>
+</div>
+
+<div style="margin-top: auto; display: flex; flex-direction: column; gap: 10px">
+<span style="font-size: 12px; color: #8b919e">「保存并开始」会新开一个画面并填好启动命令，不会自动执行，你按回车才开始。</span>
+<div style="display: flex; gap: 8px; justify-content: flex-end">
+<button style="height: 34px; padding: 0 14px; border: 1px solid #2f3448; border-radius: 8px; background: transparent; color: #d7dae0; font-size: 13px">取消</button>
+<a href="Overview.dc.html" style="display: flex; align-items: center; height: 34px; padding: 0 14px; border: 1px solid #2f3448; border-radius: 8px; color: #e9ebef; font-size: 13px; text-decoration: none">保存为待办</a>
+<a href="TodoStart.dc.html" style="display: flex; align-items: center; height: 34px; padding: 0 16px; border-radius: 8px; background: #4b4fd6; color: #ffffff; font-size: 13px; font-weight: 600; text-decoration: none">保存并开始</a>
+</div>
+</div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":520,"height":680}}'>
+class Component extends DCLogic {
+  renderVals() { return {}; }
+}
+</script>
+</body>
+</html>

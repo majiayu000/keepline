@@ -1,0 +1,6 @@
+{
+  "duplicate_exit": 0,
+  "existing_client": 23873,
+  "workspace_unchanged": true,
+  "pids": "  PID  PPID STARTED                      COMMAND\n 8926     1 Tue Oct 20 20:59:19 2026     /Users/lifcc/Desktop/code/AI/tools/keepline-agent-workbench/next/target/debug/keeplined serve --runtime /Users/lifcc/.local/share/keepline-workbench\n23871 23866 Tue Oct 20 22:42:09 2026     /Users/lifcc/Desktop/code/AI/tools/keepline-agent-workbench/next/target/debug/deps/managed_session-aabb0a23860d30d6 --ignored --exact daemon_fixture --nocapture\n23873 23866 Tue Oct 20 22:42:09 2026     /tmp/kl-key-b54in1gm/Keepline Keyboard Check.app/Contents/MacOS/keepline-app --runtime /tmp/kl-key-live-ugpc9ze5\n10304  8926 Tue Oct 20 21:00:34 2026     /bin/zsh -l\n33651  8926 Tue Oct 20 21:21:34 2026     /bin/zsh -l\n33764  8926 Tue Oct 20 21:21:37 2026     /bin/zsh -l\n23872 23871 Tue Oct 20 22:42:09 2026     /bin/zsh -f\n"
+}

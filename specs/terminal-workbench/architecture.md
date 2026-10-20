@@ -1,0 +1,257 @@
+# 工作台实现架构
+
+2026-10-20。决定：采用单 Rust 宿主与 GPUI 客户端。本文件是实现契约；
+product.md 保留用户行为，tech.md 的旧 Tauri/Bun 协议不再作为实现依据。
+目标是让 40 个会话不随窗口关闭而丢失，重新连接能继续输入，业务归属不受分屏布局影响。
+输入法、恢复一致性或资源预算不通过时停止扩展 UI，先修复对应边界。
+
+## 状态归属
+
+**keeplined 是 Terminal 与 AgentSession 的唯一写入者；Terminal 拥有 PTY，Tab 的分割树拥有摆放位置，AgentSession 拥有 CLI 对话身份、待办归属与结局。客户端只拥有显示副本、焦点和输入法组合态。**
+
+按 product.md 4.3，两个对象不能合并：
+
+| 对象 | 权威字段与关系 | 不得推导 |
+|---|---|---|
+| Terminal | argv、cwd、pid、进程状态、原始空间；一个 PTY 可先后承载多个 AgentSession | shell 存在不代表 Agent 对话存在；退出不代表验收完成 |
+| AgentSession | runtime + CLI session ID 唯一身份、terminal、task、outcome、updated、日志来源 | 标签或终端移动不能改变待办或结局 |
+| Tab | 空间、标题、关闭状态、default_task、layout 分割树；叶节点只引用 Terminal ID | default_task 仅用于第一次识别新对话，不拥有已有对话 |
+| Task | 空间、说明、逐条 acceptance；每条有稳定 ID、说明与可为空的证据引用 | 没有证据不等于已验证失败；有证据也不等于用户已验收 |
+
+`Tab.layout` 是摆放的唯一事实源，不在 Terminal 重复保存 tab/position。
+分支保存 Right / Down、万分比 ratio 与两个子树；关闭叶节点折叠父节点，将全部面积归还兄弟子树。
+不限叶节点数量；单叶无分屏边框；放大是客户端临时视图，原树与比例不变。
+`Workspace.tab_terminals()` 提供标签的终端引用。关闭标签保留位置；跨空间摆放只改位置。
+`AgentSession.current` 表示最近一次已证实且尚未结束的对话关联，不代表正在工作或已完成。
+SessionEnd、已证明的 Agent PID 的 kqueue NOTE_EXIT、宿主失联和下一次对话关联会结束该关联；
+退出事件只修改 current，不改任务、结局，也不关闭仍活着的 shell。旧对话保留 terminal 作为历史来源。
+`RecognitionStatus.terminal_hints`、workspace_revision 是宿主的临时识别/同步状态，走现有推送协议；
+Theme、焦点、临时放大、菜单、拖拽预览和视图选择属于客户端，不写入业务对象。
+拖拽结束用一次 PutTab 持久化树与比例；客户端只为当前标签的可见叶节点创建 Pane / 订阅，放大后仅保留一个。
+
+```mermaid
+flowchart LR
+  UI[GPUI 空间 / 标签 / 鸟瞰] -->|类型化命令| Host[keeplined]
+  Host -->|SQLite 事务| Store[spaces / tasks / tabs / terminals / agent_sessions]
+  Host --> PTY[PTY 与进程组]
+  PTY --> VT[Ghostty 权威状态]
+  VT -->|完整快照 + 有序字节 / resize| UI
+```
+
+三个 crate 足够：
+
+| 边界 | 归属 / 禁止依赖 | 验证 |
+|---|---|---|
+| keepline-core | Terminal / AgentSession、逐条验收、wire 数据与 Ghostty 封装；不依赖 GPUI、数据库或进程生成 | 同 PTY 多对话、跨空间移动、独立结局、快照恢复测试 |
+| keeplined | 运行时、PTY、分表 SQLite、进程与日志识别、Unix socket；不依赖 GPUI | 真实 PTY + 模拟 CLI + Hook + JSONL + 数据库重启集成测试 |
+| keepline-app | GPUI、显示副本、输入法；不能写数据库或直接生成 Agent | 编译检查、输入法组合态测试、原生交互验收 |
+
+core 内直接使用具体 Ghostty 类型，不为未选择的引擎引入 trait。
+daemon 保留一个全局业务状态锁，每个终端有独立状态锁。PTY 读阻塞于内核，
+输出只唤醒订阅者；客户端队列有界，慢客户端断开并通过新快照恢复。
+不轮询全部会话，不引入消息总线、插件注册表、事件溯源或旧协议兼容。
+
+## 四个关键契约
+
+1. **生命周期**：启动意图先持久化，再创建 PTY，最后发布进程身份。重复 ID 返回原终端；
+   不重放结果未知的启动。后台重启后旧记录成为 interrupted，不能假装原 PTY 仍可写。
+   客户端 disconnect 只释放控制权；stop 才发送进程组信号。主进程 wait 与 PTY 排空分别记录。
+2. **恢复**：订阅注册和二进制快照在同一终端锁内完成。快照分块，结束标记后才能输入；
+   后续 output / resize 有序。使用 Ghostty snapshot API，不使用文本或 VT formatter 代替完整状态。
+3. **写入**：每个终端只有一个连接可写，其他连接只读；明确接管替换 owner。没有活着的 owner 时自动赋权，断开事件可将已连接的只读客户端提升为 owner。
+   Attach 时用订阅 socket 的非阻塞 peek 排除尚未清理的断线；WRITABLE 帧推送变化，无心跳或周期轮询。
+   input 与 resize 检查同一个 owner。输入应答丢失不得自动重发。
+   仅后台响应终端查询；显示副本不向 PTY 回答。
+4. **业务**：空间→待办→AgentSession 与 空间→标签→Terminal 分别存储。
+   关闭标签不调用 stop；进程退出不等于用户验收。
+   SQLite 是业务事实源，记录 Agent 自述和机械证据时必须区分来源。
+
+## SQLite 与识别边界
+
+五张对象表：`spaces`、`tasks`、`tabs`、`terminals`、`agent_sessions`。
+`task_criteria` 按条保存验收标准与证据引用，`meta` 保存并发 revision。
+`tab_layout_nodes` 规范化保存树节点（tab_id、二进制子路径、terminal_id 或 axis/ratio）；
+终端引用有唯一约束，跨标签移动和树更新处于同一事务，不用 JSON 保存布局。
+不再存在 `workspace.body`。argv 作为有序参数数组保存在 Terminal 的一列中，
+不把业务对象或整个工作区装进 JSON。变更只 upsert 有变化的对象，并在同一事务内更新位置、
+当前关联和 revision；SQLite 外键与唯一索引约束对象关系。
+旧实验 JSON 库及旧 tab/position 固定网格库明确拒绝打开，使用新的隔离目录，不自动迁移、回填或删除。
+
+P1 的身份识别有两条可验证路径：
+
+- **日志 + 进程打开文件**：读取 `~/.codex/sessions`、`~/.claude/projects` 的身份头，
+  用进程父子关系定位托管 PTY，再以该 Agent 实际打开的唯一日志文件确定 CLI session ID。
+- **Hook + 进程 + 日志**：Hook helper 从 stdin 接收原 CLI 的 session_id / transcript_path，
+  后台核对发送进程的祖先链、Agent runtime 与日志身份。三者一致才关联。
+
+只有同目录、只有日志、多个候选或 ID 不一致都不能建立托管关联。
+未关联的历史日志先进入 `log_files` 身份索引，不批量注入实时 Workspace；
+证明托管关联后创建 AgentSession，已有 AgentSession 接收增量更新时间。普通 shell 只产生 Terminal。同一个 CLI 身份已在另一终端
+关联时，拒绝第二个当前关联；明确结束原关联后 resume 保留同一 AgentSession。
+
+本轮提供 `keeplined scan --runtime DIR` 与
+`keeplined hook --runtime DIR --agent codex|claude` 的实际入口。
+Hook 只处理身份关联，不安装或修改用户配置。缺少 transcript_path 时查询 SQLite，
+不会临时遍历日志目录；显式路径也通过同一个持久化游标读取。
+
+### 自动订阅的资源边界（产品卡 3.1）
+
+采用 **一次后台身份索引 + FSEvents 发现 + 托管日志 kqueue 通知 + 持久化增量游标**，无定时器、无轮询后备。
+本机 5500+ 文件、约 17 GB 的历史正文不作为启动时必须读完的数据。
+
+- **进程边界**：从处于 Running 的托管 PTY PID 开始，用 `proc_listchildpids` 遍历其后代，
+  `ps -p` 只读取这些 PID 的命令；`lsof -p` 只接收已证明属于托管终端的 Agent PID。
+  不使用全系统 `ps -ax` 或全 Agent `lsof`。普通空闲没有进程探测。
+  已关联路径追加只更新该文件游标和现有会话时间，不再查询整个索引或执行 ps/lsof。
+  新的未关联身份首次出现、托管终端集合变化或已发现的 Agent 仍未关联时，才在未关联日志事件上探测。
+  已尝试但不属于托管终端的外部日志不随每次追加反复探测；Hook 和手动刷新是显式识别入口。
+- **首次启动**：服务 socket 就绪后，后台消费 SQLite `log_scan_dirs` 目录工作表。
+  完成的目录即从工作表删除；崩溃只允许重做尚未完成的目录，不从根重来。
+  每个历史文件最多读取 256 KiB 身份前缀与 EOF 边界一字节，找到身份提前结束，
+  将旧正文的 EOF 记为基线；这不是历史回合内容导入。
+- **文件事件**：先启动原生 FSEvents FileEvents 再索引，避免扫描窗口漏事件。
+  尚不存在的 CLI 日志目录监听其最近存在的祖先，但回调过滤掉所有旁支路径，
+  避免自身 SQLite 写入触发循环。有界队列按批处理并去重路径，线程阻塞等待事件。
+  FSEvents 在写句柄长期打开时可能延后追加通知，因此只给**当前已关联日志**注册 kqueue vnode 写入、
+  替换和删除通知；不是给 5500 个历史文件开描述符。先注册再读增量关闭竞态窗口。
+  Hook 唤醒同一事件队列，终端退出后撤销对应 vnode 监听；两条事件源均无定时轮询。
+- **增量读取**：`log_files` 持有 runtime、路径、device/inode、offset、有限的未完成行、CLI ID 与更新时间。
+  只读 `[offset, 已捕获文件长度)`；半行跨重启保存，单行超过 256 KiB 后丢弃该行至换行。
+  inode 替换或文件缩短重建游标；删除移除索引但不删除已有 AgentSession 的业务归属和结局。
+  Hook 与监听器串行更新游标，避免同一文件出现两份相互覆盖的进度。
+- **重启续接**：`log_index` 保存已处理的 FSEvents event ID；先持久化文件游标与关联，
+  再更新事件编号。正常重启直接重放期间的文件事件，不重新扫描目录或遍历所有日志文件。
+- **事件缺口**：MustScanSubDirs / 丢事件按事件路径补扫该子树；队列溢出保存丢失事件所属目录，
+  合并嵌套范围。范围记录最多 64 个，超限只扩大到相应 CLI 日志根；编号回绕无法确定更小范围时，
+  修复配置的日志根，不扫描 HOME 或整个文件系统。此为异常触发，不是周期性全量扫描。
+  补扫只读取旧文件身份前缀与新增字节，复用游标；每步最多 128 个目录项，20 ms 后在当前文件操作
+  结束时让出执行机会。未完成范围先写 SQLite；重启继续该范围。缺口内消失的索引路径会清理，
+  不删除 AgentSession 的业务数据。
+- **恢复与状态**：根移动/队列溢出时先重建监听，保留未处理事件的重放起点，再补扫；不直接退出线程。
+  文件系统错误保留未完成范围并等待下一次真实事件重试，不忙重试。
+  `WatchRecognition` 主动推送 `Interrupted → Recovering → Healthy`，GPUI 现有提示区显示
+  “识别中断，正在补扫”；目录尚未重建时显示等待状态，状态连接断开也显示中断。
+  `RecognitionStatus` 提供读回与机械计数；没有状态轮询定时器。
+  FSEvents 历史不是无条件完整保证；异常依据见 [Apple FSEvents 文档](https://developer.apple.com/library/archive/documentation/Darwin/Conceptual/FSEvents_ProgGuide/UsingtheFSEventsFramework/UsingtheFSEventsFramework.html)。
+
+索引历史只保留身份元数据，避免 5500 条外部历史填满实时 Workspace 的 1 MiB 控制帧。
+这轮不新增历史浏览界面或回合内容存储；回合证据仍在 P2。
+真实安装 CLI 的 Hook 配置与完整交互仍须单独验收。
+
+## 依赖与参考
+
+| 来源 | 采用 | 不复制 |
+|---|---|---|
+| 现有 next/keeplined | PTY、同 UID、连接控制权、启动意图原则 | major 0 文本镜像、定时 pull、截断 Unicode |
+| terminal-eval kl-relay | 快照与订阅同锁、后台独立存活 | 无限制客户端队列、忽略错误、无回执写入 |
+| terminal-eval kl-gpui | 单元格绘制、按输出唤醒、空闲补丁 | 测评浮窗、定时统计、多引擎开关 |
+| libghostty-rs | 锁定 0ef80413de1326685743378efbfa06d849e041a7 | 跟随分支或自行重写 VT parser |
+| Zed GPUI | 锁定 2a857f5f2ec368745c1af5209d49836968fe75b8 | 编辑器全套 workspace/插件架构 |
+
+依赖由 next/bootstrap.sh 准备到被忽略的 .deps；提交中保存版本与补丁。
+本机可使用已测评的同版本 checkout，交付必须验证 bootstrap 路径。
+旧 TS 产品继续由原入口运行，不接入新后台；新产品使用独立显式数据目录，
+不迁移、不覆盖用户旧库。当前 wire major 为 2（分割树与控制权推送），不提供旧协议兼容桥；本轮不替换用户正在运行的 major 1 宿主或数据目录。
+
+## 实施与验收
+
+| 阶段 | 交付 | 验证命令 / 门槛 |
+|---|---|---|
+| P0 | 拆分 Terminal / AgentSession；逐条验收；分表 SQLite；真实快照与独立宿主 | `cargo test -p keepline-core -p keeplined`；不得从 PTY 退出推导对话结局 |
+| P1，先完成身份验证 | 进程识别 + Hook + 两家 CLI 日志读取；一个 PTY 先后关联多条对话；外部日志不冒充托管；跨空间摆放不改变归属 | `two_cli_conversations_in_one_real_pty_keep_separate_ownership_after_restart`、`log_identity_alone_does_not_bind_by_directory_and_ambiguity_stays_unbound`；FSEvents/vnode 自动关联、40 空闲会话、4 Agent 30 秒负载和缺口恢复状态测试；再验收真实 CLI |
+| P1，分屏与原生终端 | 任意嵌套分割树、比例持久化、放大还原、同一画面菜单；无活跃 owner 自动赋权；进程内符号字体回退 | 见 [本轮逐项证据](evidence/split-tree-20261020/README.md)：原生单画面/四分屏/菜单截图、布局与控制权测试、8 可见画面 CPU/内存；候选窗及两画面真实拼音由用户手测 |
+| P2 | 按回合的证据卡、逐条证据展示、结局流转、鸟瞰与通知 | 真实 Codex/Claude 回合 fixture；原生通知点击与预算验收 |
+
+每阶段只在验证后更新 tasks.md。编译成功不能证明 IME、通知、功耗或完整 CLI 体验。
+本次无推送、合并、发布、安装替换或用户 Hook 修改授权；本地实现与隔离测试直接执行。
+
+## 本轮模型修正验收
+
+2026-10-20，本地 `feat/agent-workbench`，未提交、未推送：
+
+- `cargo test -p keepline-core -p keeplined`：14 项通过。
+- `cargo clippy -p keepline-core -p keeplined --all-targets -- -D warnings`：通过。
+- `cargo check -p keepline-app`：通过；界面仅适配新模型。GPUI 上游仍有弃用警告。
+- 端到端用例通过真实 PTY 先后运行名为 codex / claude 的隔离模拟进程，
+  实际执行 Hook helper、核对 JSONL 身份、拒绝不匹配 ID，再读回分表 SQLite 并重启后台。
+  证明对象拆分与关联链路，不声称完成官方 CLI、输入法或自动监听验收。
+
+决定：采用此次模型拆分；继续 P1 的识别与生命周期验证，界面扩展继续后置。
+
+## 自动订阅资源验收（复验修订）
+
+前轮“17 项全过”只代表当时一次运行，不能证明空闲断言稳定；用户复验和本轮并行运行均出现
+CPU/磁盘为零但 Unix syscall 增加 2 的失败。本轮不再沿用严格等于零的全局 syscall 断言。
+完整命令、诊断边界、预算和本轮结果见 [复验记录](evidence/resource-recheck-20261020.md)。
+
+- [x] `forty_idle_terminals_have_no_periodic_background_io`：40 个真实 PTY 中的模拟 Codex 自动关联；
+  外部 Agent 不进入托管 PID / lsof 集合。5 秒 CPU <0.5%、磁盘读写增量为零；
+  整体 Unix syscall 容差 0–4，但后台日志读取、目录遍历、索引写入、ps/lsof 计数必须严格不增长。
+- [x] `four_agents_write_for_thirty_seconds_without_repeated_process_probes`：4 个 Agent，约每秒 10 行，
+  持续 30 秒；两条日志始终保持写描述符打开，另外两条逐行开关。暖机后 ps/lsof 启动增量必须为 0，
+  后台累计 CPU <0.6 秒（单核平均约 2%），新增读取 >80 KB，逐文件核对 offset 等于实际 EOF。
+- [x] `overflow_keeps_only_affected_subtree_and_does_not_latch`：队列溢出保留具体子树，恢复后继续收事件。
+- [x] `must_scan_repairs_only_event_subtree_and_publishes_status_then_continues`：仅扫描事件子目录，
+  不读旁支；验证实际序列化的中断、补扫、正常状态和恢复后的增量处理。
+- [x] `recognition_status_stream_recovers_after_log_root_is_rebuilt`：真实 FSEvents WatchRoot、Unix socket
+  状态流、目录移动与重建、旧路径索引清理；同一后台不重启即可继续消费日志。
+- [x] `initial_index_skips_large_bodies_and_never_rewalks_completed_directories`：17 GiB 稀疏历史文件
+  跳过正文；正常重开数据库不遍历目录、不打开日志正文。
+- [x] `cursors_survive_restart_partial_lines_truncation_and_inode_replacement`：半行续接、重复事件、截断、
+  inode 替换和删除。
+- [x] `fsevents_delivers_new_files_and_replays_changes_after_restart`：实际原生文件事件及停机事件重放。
+- [ ] 真实安装的 Codex/Claude 完整身份与 Hook 生命周期、原生提示人工验收、长时间整机功耗仍待验证。
+
+决定：采用已关联文件快速路径、事件范围补扫与推送状态；否定每次追加都探测进程和错误永久闩锁。
+继续 P1 真实 CLI 验证；本轮仅增加故障提示，不恢复其他界面功能扩展。
+
+
+## 2026-10-20：现有界面按设计稿重做
+
+决定：采用 `design/README.md` 与 Main / Overview 的布局、颜色、字体、尺寸；此前“继续暂停界面”的门槛由用户本轮明确恢复视觉重做的指令更新。实现只重做现有功能。详见 [逐项验收与并排图片](evidence/visual-20261020/README.md)。
+
+- `Theme` 是 UI token 的唯一来源；默认终端底色/前景也使用 Theme，CLI 的 ANSI/OSC 颜色保留。字体选择只解析一次，不随每帧枚举字体。
+- 主视图对齐顶栏、左栏、标签、待办条、画面（当时为固定网格，本轮已替换为分割树）、底栏；鸟瞰对齐待办行和分组卡片。只订阅可见终端，空闲无重绘计时器。
+- Codex 预填暂用 `--no-daemon`，续接命令同样携带；用户原始输入不重写。未关联命令提交后有一次 500ms 启动宽限识别，识别到托管 Codex 后才显示指定提示；不是定时 ps/lsof。已关联日志只增量读取。退出监听使用单个阻塞式 kqueue，不对每个 Agent 建立轮询线程。
+- 修订推送只携带状态与版本；客户端收到新版本后读取工作区，处理请求期间漏过的更新也会补取。没有新增后台轮询。
+- 对照图片使用真实 GPUI 原生渲染导出、隔离模拟 CLI 和真实 PTY，逻辑尺寸 1440×900。不是用户正式会话或真实 Agent 调用。原生应用的最终人工体验和输入法仍待手测。
+
+仍未对齐：全局会话搜索、设置、拖动侧栏、智能“你在这里”卡、任务详情/完成、过滤/新标记/清理等此前未实现的功能；会话卡保留显式结局按钮。本轮已取消空位，并完成画面滚动内容搜索及待办菜单中的 Agent 选择。等待/待核对分类没有证据时不伪造设计稿示例。以上均在证据表单列，不能据本轮截图宣称 M2 全部完成。
+
+## 2026-10-20：中文输入法手测后的三项修复
+
+决定：组字属于客户端绘制状态；Terminal 光标坐标与其可见性分离。实际字体度量统一供终端绘制、resize、组字覆盖层及 UTF-16 范围定位使用；未知光标沿用最近已知位置，不回退 (0,0)。组字不写 PTY，提交时才走原 Input 路径。
+
+Interrupted 是已结束进程的持久状态，客户端不得尝试 attach。显示明确中断占位；原位重开创建新 Terminal 并替换摆放，关闭只移除摆放；历史 AgentSession、待办归属与结局保留。宽字符按 Ghostty 的回退字形适配/居中思路，使用两格宽度及真实 shaping 度量绘制。
+
+本轮 6 项应用单元测试、1 项真实 PTY 重启回归及原生字体/组字渲染检查的记录见 [逐项证据](evidence/ime-fixes-20261020/README.md)。用户已确认上一构建的选字、回车上屏字母、退格正常；新构建的系统拼音候选窗位置与交互仍待人工复测。P1/M2 阶段不因这些局部修复自动标记整体验收通过。
+
+## 分割树与终端修复（2026-10-20）
+
+决定：采用 Tab 分割树，取消固定网格、空位与数量上限。布局事务不修改 AgentSession 的待办和结局。
+向右/向下拆分启动空 shell；动作触发时用 proc_pidinfo 读取源托管 shell 的当前目录，包含 cd 后的变化，失败明确报错。
+画面菜单与状态栏 ⋯ 共用同一组动作。中断发送 Ctrl-C；停止 Agent 只向再次核对 runtime 与祖先链的 Agent PID 发 SIGTERM。
+关闭画面仅移除树叶，不停止 PTY。搜索仅在用户提交时读取有界 VT 滚动内容，复制选区/可见内容，粘贴走原输入队列。
+
+终端字体以原等宽字体测量单元格，CoreText 进程级注册内嵌 Symbols Nerd Font Mono v3.4.0（MIT）。
+纯符号字体不含 m，不能用 GPUI 的主字体加载路径；通过 CoreText cascade 回退。不会安装或更改系统字体。
+CJK 与私用区符号按 Ghostty 给定列宽缩放并居中；原生几何检查核对非零 glyph 与单元格边界。
+
+本轮截图和性能使用隔离 fixture、真实 PTY 与原生 GPUI renderer；没有启动真实 Agent，没有重启用户后台。
+详见 [逐项验收与资源数据](evidence/split-tree-20261020/README.md)。原系统拼音候选窗位置、两画面真实拼音继续保留人工待确认，不用渲染测试冒充通过。
+
+本轮另纠正资源计量：本机 `proc_pid_rusage` CPU 字段须按 `mach_timebase_info` 将 ticks 转为纳秒。
+此前直接除以 1e9 的 CPU 结论撤回。修正后负载测试一度超 0.6 秒预算；复用热点 SQL、跳过不变检查点并合并已排队通知后，同预算复测通过（0.5358 秒）。无定时等待、无放宽断言，详见 [计量纠正](evidence/split-tree-20261020/cpu-units-correction.md)。
+
+
+## 2026-10-20 键盘与客户端生命周期修复
+
+采用：键盘输入在 `keyboard.rs` 映射为 Ghostty 物理 Key，同时提供原始字符、未按 Shift 的码点和修饰键。Ctrl/Alt 交由 Ghostty 按当前 VT 模式编码；macOS Option 按 Alt 处理，保留终端 DEC 模式及 Kitty 协商。普通文字继续走 IME 提交路径，marked text 不写入 PTY。未额外实现一套控制字符编码器。Ctrl-[ 保留 Ghostty 的 fixterms CSI-u 行为。
+
+客户端寿命与窗口寿命分开：可见的「退出 Keepline」菜单及 ⌘Q 退出客户端；最后一个窗口关闭不退出进程。GPUI `on_reopen` 和重复启动唤醒共用恢复入口，有窗口则激活，无窗口则读取当前 Workspace 并重新 attach。退出/关窗仅释放客户端连接，不发送 Stop。
+
+同一用户的新客户端通过 `~/.local/share/keepline-client/client.lock` 的系统 flock 保持单实例（不按 runtime 分裂实例）。第二个进程仅连接 `client.sock` 唤醒主实例后退出。通知使用阻塞 accept 和异步消息，无周期轮询；异常退出由系统释放锁，下次启动清理失效 socket。不为此前没有实例锁的旧二进制增加兼容机制。
+
+连接已有宿主时先检查协议。major 1 只做版本探测，不访问其 Workspace 或启动替代宿主；显示「后台版本过旧，需要重启后台（会中断正在运行的终端）」。提示明确说明不迁移的旧空间、待办、标签布局、终端记录、Agent 会话归属与结局，以及原始 CLI 日志不会删除。旧库保持原样，切换到新库需要用户自行处理运行终端、备份与切换，本客户端不执行重启或删除。
+
+验收与边界见 [键盘和生命周期证据](evidence/keyboard-lifecycle-20261020/README.md)。豆包候选窗和两画面拼音已由用户在 21:55 手测通过，来源单独记入 [IME 记录](evidence/ime-retest-20261020/README.md)。

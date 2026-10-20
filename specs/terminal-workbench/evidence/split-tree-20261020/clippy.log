@@ -1,0 +1,5 @@
+   Compiling libghostty-vt-sys v0.2.1 (/Users/lifcc/Desktop/code/AI/tools/keepline-agent-workbench/next/.deps/libghostty-rs/crates/libghostty-vt-sys)
+    Checking libghostty-vt v0.2.1 (/Users/lifcc/Desktop/code/AI/tools/keepline-agent-workbench/next/.deps/libghostty-rs/crates/libghostty-vt)
+    Checking keepline-core v0.1.0 (/Users/lifcc/Desktop/code/AI/tools/keepline-agent-workbench/next/crates/keepline-core)
+    Checking keeplined v0.0.0 (/Users/lifcc/Desktop/code/AI/tools/keepline-agent-workbench/next/crates/keeplined)
+    Finished `dev` profile [unoptimized] target(s) in 3.09s
