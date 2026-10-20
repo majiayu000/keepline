@@ -2,8 +2,8 @@ use crate::model::{Edit, Workspace};
 use serde::{Deserialize, Serialize};
 use std::io::{self, Read, Write};
 
-pub const MAJOR: u32 = 2;
-pub const MAX_FRAME: usize = 1024 * 1024;
+pub const MAJOR: u32 = 3;
+pub const MAX_FRAME: usize = 16 * 1024 * 1024;
 pub const CONTROL: u8 = 1;
 pub const SNAPSHOT: u8 = 2;
 pub const READY: u8 = 3;
@@ -28,6 +28,7 @@ pub enum Request {
         cli_session_id: String,
         transcript: String,
         ended: bool,
+        event: Option<String>,
     },
     Edit {
         revision: u64,

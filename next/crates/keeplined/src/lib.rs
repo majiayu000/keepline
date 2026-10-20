@@ -1,10 +1,12 @@
 mod file_events;
 mod host;
-mod log_index;
+pub mod log_index;
 mod process_exit;
 mod pty;
 pub mod recognition;
 mod store;
-pub use host::{serve, serve_with_roots};
+pub use host::{serve, serve_with_options, serve_with_roots};
 pub const PROTOCOL_MAJOR: u32 = keepline_core::protocol::MAJOR;
 pub const PROTOCOL_MINOR: u32 = 0;
+
+pub mod content;

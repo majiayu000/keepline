@@ -13,8 +13,25 @@ fn run() -> std::io::Result<()> {
     let mut args = std::env::args().skip(1);
     match args.next().as_deref() {
         Some("serve") => {
-            let runtime = runtime_dir(args)?;
-            keeplined::serve(std::path::Path::new(&runtime))
+            let mut remaining = Vec::new();
+            let mut days = 7;
+            while let Some(arg) = args.next() {
+                if arg == "--recent-days" {
+                    days = args
+                        .next()
+                        .ok_or_else(|| std::io::Error::other("missing days"))?
+                        .parse::<u64>()
+                        .map_err(std::io::Error::other)?;
+                } else {
+                    remaining.push(arg);
+                }
+            }
+            let runtime = runtime_dir(remaining.into_iter())?;
+            keeplined::serve_with_options(
+                std::path::Path::new(&runtime),
+                keeplined::recognition::roots()?,
+                days,
+            )
         }
         Some("scan") => scan(args),
         Some("hook") => hook(args),
@@ -81,7 +98,7 @@ fn scan(args: impl Iterator<Item = String>) -> std::io::Result<()> {
         other => {
             return Err(std::io::Error::other(format!(
                 "unexpected scan response: {other:?}"
-            )))
+            )));
         }
     }
     Ok(())
@@ -98,7 +115,7 @@ fn hook(mut args: impl Iterator<Item = String>) -> std::io::Result<()> {
             _ => {
                 return Err(std::io::Error::other(format!(
                     "unknown hook argument: {arg}"
-                )))
+                )));
             }
         }
     }
@@ -127,6 +144,7 @@ fn hook(mut args: impl Iterator<Item = String>) -> std::io::Result<()> {
         cli_session_id: cli_id.into(),
         transcript,
         ended: value["hook_event_name"] == "SessionEnd",
+        event: value["hook_event_name"].as_str().map(str::to_owned),
     };
     match rpc(
         &std::path::Path::new(&runtime).join("workbench.sock"),

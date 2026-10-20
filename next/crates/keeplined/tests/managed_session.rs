@@ -303,7 +303,11 @@ fn two_cli_conversations_in_one_real_pty_keep_separate_ownership_after_restart()
             .unwrap(),
     )
     .unwrap();
-    let first_script=format!("echo $$ > {root}/pid1; while [ ! -f {root}/go ]; do sleep 0.05; done; {helper} hook --runtime {root} --agent codex < {root}/hook.json; echo $? > {root}/hook-status; sleep 30",root=h.root.display(),helper=env!("CARGO_BIN_EXE_keeplined"));
+    let first_script = format!(
+        "echo $$ > {root}/pid1; while [ ! -f {root}/go ]; do sleep 0.05; done; {helper} hook --runtime {root} --agent codex < {root}/hook.json; echo $? > {root}/hook-status; sleep 30",
+        root = h.root.display(),
+        helper = env!("CARGO_BIN_EXE_keeplined")
+    );
     let command = format!(
         "{} -c {}; {} -c {}",
         shell_quote(&codex.to_string_lossy()),
@@ -339,6 +343,7 @@ fn two_cli_conversations_in_one_real_pty_keep_separate_ownership_after_restart()
         cli_session_id: "codex-one".into(),
         transcript: first.to_string_lossy().into_owned(),
         ended: false,
+        event: None,
     };
     h.call(hook()).unwrap();
     h.call(hook()).unwrap();
@@ -359,6 +364,7 @@ fn two_cli_conversations_in_one_real_pty_keep_separate_ownership_after_restart()
         cli_session_id: "wrong".into(),
         transcript: second.to_string_lossy().into_owned(),
         ended: false,
+        event: None,
     })
     .unwrap_err();
     h.call(Request::Hook {
@@ -367,6 +373,7 @@ fn two_cli_conversations_in_one_real_pty_keep_separate_ownership_after_restart()
         cli_session_id: "claude-two".into(),
         transcript: second.to_string_lossy().into_owned(),
         ended: false,
+        event: None,
     })
     .unwrap();
     let second_id = h
@@ -509,18 +516,30 @@ fn forty_idle_terminals_have_no_periodic_background_io() {
         .stdin(Stdio::piped()).spawn().unwrap());
     for i in 0..40 {
         let id = format!("idle-{i}");
-        let script=format!("exec 3>\"{}\"; printf \"%s\\n\" \"{{\\\"type\\\":\\\"session_meta\\\",\\\"payload\\\":{{\\\"id\\\":\\\"{id}\\\",\\\"cwd\\\":\\\"/tmp\\\"}}}}\" >&3; read -r line",logs.join(format!("{id}.jsonl")).display());
+        let script = format!(
+            "exec 3>\"{}\"; printf \"%s\\n\" \"{{\\\"type\\\":\\\"session_meta\\\",\\\"payload\\\":{{\\\"id\\\":\\\"{id}\\\",\\\"cwd\\\":\\\"/tmp\\\"}}}}\" >&3; read -r line",
+            logs.join(format!("{id}.jsonl")).display()
+        );
         let command = format!("exec '{}' -c '{}'", cli.display(), script);
         h.call(h.launch(&id, &command)).unwrap();
     }
     let until = Instant::now() + Duration::from_secs(15);
     loop {
         let workspace = h.workspace();
-        if workspace.agent_sessions.len() == 40 {
-            assert!(workspace
-                .agent_sessions
-                .iter()
-                .all(|s| s.current && s.terminal.is_some() && s.cli_session_id != "external"));
+        if workspace
+            .agent_sessions
+            .iter()
+            .filter(|s| s.current)
+            .count()
+            == 40
+        {
+            assert!(
+                workspace
+                    .agent_sessions
+                    .iter()
+                    .filter(|s| s.current)
+                    .all(|s| s.terminal.is_some() && s.cli_session_id != "external")
+            );
             let mut processes = keeplined::recognition::processes(&workspace).unwrap();
             assert!(!processes.iter().any(|p| p.pid == external.0.id()));
             // Even if passed an unrelated Agent PID, the lsof boundary filters it out.
@@ -678,7 +697,14 @@ read -r finish
         .unwrap();
     }
     let deadline = Instant::now() + Duration::from_secs(15);
-    while h.workspace().agent_sessions.len() != 4 {
+    while h
+        .workspace()
+        .agent_sessions
+        .iter()
+        .filter(|s| s.current)
+        .count()
+        != 4
+    {
         assert!(
             Instant::now() < deadline,
             "automatic association did not finish"
@@ -714,7 +740,10 @@ read -r finish
     let percent = seconds / started.elapsed().as_secs_f64() * 100.;
     let ps = stats.metrics.ps_spawns - before.metrics.ps_spawns;
     let lsof = stats.metrics.lsof_spawns - before.metrics.lsof_spawns;
-    eprintln!("4 agents / 30s: daemon CPU {seconds:.4}s ({percent:.3}%), ps spawns {ps}, lsof spawns {lsof}, incremental bytes {}",stats.metrics.log_bytes-before.metrics.log_bytes);
+    eprintln!(
+        "4 agents / 30s: daemon CPU {seconds:.4}s ({percent:.3}%), ps spawns {ps}, lsof spawns {lsof}, incremental bytes {}",
+        stats.metrics.log_bytes - before.metrics.log_bytes
+    );
     assert_eq!(
         (ps, lsof),
         (0, 0),
@@ -868,6 +897,7 @@ fn stop_agent_clears_current_without_stopping_shell_or_changing_outcome() {
         cli_session_id: "exit-proof".into(),
         transcript: log.to_string_lossy().into_owned(),
         ended: false,
+        event: None,
     })
     .unwrap();
     let before = h.workspace().current_agent("shell").unwrap().clone();
@@ -1100,4 +1130,69 @@ fn stop_agent_refuses_an_unidentified_shell() {
     let terminal = h.workspace().terminals[0].clone();
     assert_eq!(terminal.state, ProcessState::Running);
     assert_eq!(unsafe { libc::kill(terminal.pid.unwrap() as i32, 0) }, 0);
+}
+
+#[test]
+fn external_content_updates_without_probes_saves_full_quotes_and_reopens_on_new_turn() {
+    let h = Host::start();
+    h.setup();
+    let logs = h.root.join("logs/codex");
+    fs::create_dir_all(&logs).unwrap();
+    let path = logs.join("content.jsonl");
+    let at = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap()
+        .as_secs();
+    fs::write(&path,format!("{{\"type\":\"session_meta\",\"payload\":{{\"id\":\"external\",\"cwd\":\"/tmp\"}}}}\n{{\"timestamp\":{at},\"type\":\"event_msg\",\"payload\":{{\"type\":\"task_started\",\"turn_id\":\"one\"}}}}\n{{\"timestamp\":{at},\"type\":\"event_msg\",\"payload\":{{\"type\":\"user_message\",\"message\":\"修复输入法，不要提交\"}}}}\n")).unwrap();
+    let deadline = Instant::now() + Duration::from_secs(10);
+    let w = loop {
+        let w = h.workspace();
+        if !w.content.is_empty() {
+            break w;
+        }
+        assert!(Instant::now() < deadline);
+        std::thread::sleep(Duration::from_millis(50));
+    };
+    let s = w.agent_sessions.first().unwrap();
+    assert!(s.terminal.is_none());
+    assert!(!s.current);
+    assert_eq!(w.content[&s.id].asks[0].text, "修复输入法，不要提交");
+    h.call(Request::Edit {
+        revision: w.revision,
+        edit: Edit::SaveSessionTask {
+            session: s.id.clone(),
+            task: Task {
+                id: "from-session".into(),
+                space: "s".into(),
+                title: "输入法".into(),
+                description: "UI truncated quote is not authoritative".into(),
+                acceptance: vec![],
+                agent: Agent::Codex,
+            },
+        },
+    })
+    .unwrap();
+    let w = h.workspace();
+    assert_eq!(w.tasks[0].description, "修复输入法，不要提交");
+    assert_eq!(w.agent_sessions[0].task.as_deref(), Some("from-session"));
+    h.call(Request::Edit {
+        revision: w.revision,
+        edit: Edit::SetOutcome {
+            id: s.id.clone(),
+            outcome: Outcome::Completed,
+        },
+    })
+    .unwrap();
+    use std::io::Write;
+    writeln!(fs::OpenOptions::new().append(true).open(&path).unwrap(),"{{\"timestamp\":{},\"type\":\"event_msg\",\"payload\":{{\"type\":\"task_started\",\"turn_id\":\"two\"}}}}",at+1).unwrap();
+    let deadline = Instant::now() + Duration::from_secs(10);
+    loop {
+        if h.workspace().agent_sessions[0].outcome == Outcome::Open {
+            break;
+        }
+        assert!(Instant::now() < deadline);
+        std::thread::sleep(Duration::from_millis(50));
+    }
+    let stats = recognition(&h);
+    assert_eq!((stats.metrics.ps_spawns, stats.metrics.lsof_spawns), (0, 0));
 }

@@ -1,10 +1,10 @@
-//! Durable identity index and incremental JSONL cursor. Historical bodies are never imported.
+//! Durable identity/content index. First import is bounded; subsequent reads share one cursor.
 use crate::{
-    file_events::{normalized, Watch},
+    file_events::{Watch, normalized},
     recognition::Transcript,
 };
 use keepline_core::model::Agent;
-use rusqlite::{params, Connection, OptionalExtension};
+use rusqlite::{Connection, OptionalExtension, params};
 use std::{
     fs::{self, File},
     io::{self, Read, Seek, SeekFrom},
@@ -36,6 +36,7 @@ pub struct Index {
     db: Connection,
     pub roots: Vec<(Agent, PathBuf)>,
     pub counts: IoCounts,
+    pub recent_days: u64,
     gate: std::sync::Arc<std::sync::Mutex<()>>,
 }
 impl Index {
@@ -47,6 +48,7 @@ impl Index {
             CREATE TABLE IF NOT EXISTS log_scan_dirs(path TEXT PRIMARY KEY,runtime TEXT NOT NULL);
             CREATE TABLE IF NOT EXISTS log_files(path TEXT PRIMARY KEY,runtime TEXT NOT NULL,dev INTEGER NOT NULL,inode INTEGER NOT NULL,offset INTEGER NOT NULL,pending BLOB NOT NULL,discard INTEGER NOT NULL,cli_id TEXT,cwd TEXT,updated INTEGER NOT NULL);
             CREATE INDEX IF NOT EXISTS log_identity ON log_files(runtime,cli_id);").map_err(err)?;
+        crate::content::schema(&db)?;
         let roots = roots
             .into_iter()
             .map(|(a, p)| Ok((a, normalized(&p)?)))
@@ -54,6 +56,7 @@ impl Index {
         Ok(Self {
             db,
             roots,
+            recent_days: 7,
             counts: IoCounts::default(),
             gate: std::sync::Arc::new(std::sync::Mutex::new(())),
         })
@@ -72,6 +75,7 @@ impl Index {
     pub fn fork(&self, root: &Path) -> io::Result<Self> {
         let mut index = Self::open(root, self.roots.clone())?;
         index.gate = self.gate.clone();
+        index.recent_days = self.recent_days;
         Ok(index)
     }
     /// Durable directory worklist: a crash can repeat only its unfinished directory, not the tree.
@@ -120,6 +124,23 @@ impl Index {
                 .optional()
                 .map_err(err)?;
             let Some((path, runtime)) = dir else {
+                // Content is a newly introduced object. Seed only cached recent identities that
+                // have no projection, once, without another directory walk or replacing cursors.
+                let missing = {
+                    let mut q=self.db.prepare("SELECT runtime,path FROM log_files WHERE updated>=?1 AND NOT EXISTS(SELECT 1 FROM session_content WHERE session_content.path=log_files.path)").map_err(err)?;
+                    let rows = q
+                        .query_map(
+                            [keepline_core::content::now()
+                                .saturating_sub(self.recent_days.saturating_mul(86400))
+                                as i64],
+                            |r| Ok((r.get::<_, String>(0)?, r.get::<_, String>(1)?)),
+                        )
+                        .map_err(err)?;
+                    rows.collect::<Result<Vec<_>, _>>().map_err(err)?
+                };
+                for (runtime, path) in missing {
+                    self.update(agent(&runtime)?, Path::new(&path), true)?;
+                }
                 return Ok(());
             };
             let agent = agent(&runtime)?;
@@ -263,8 +284,47 @@ impl Index {
     pub fn cached(&self) -> io::Result<Vec<Transcript>> {
         cached(&self.db)
     }
+    pub fn original_words(&self, path: &str) -> io::Result<String> {
+        let mut q=self.db.prepare_cached("SELECT text FROM session_records WHERE path=?1 AND kind='user' ORDER BY at,offset,ordinal").map_err(err)?;
+        let rows = q
+            .query_map([path], |r| r.get::<_, String>(0))
+            .map_err(err)?;
+        Ok(rows
+            .collect::<Result<Vec<_>, _>>()
+            .map_err(err)?
+            .join("\n\n追加要求："))
+    }
+    pub fn card(&self, path: &str) -> io::Result<Option<keepline_core::content::Content>> {
+        crate::content::card(&self.db, path)
+    }
+    pub fn recent(&self, updated: u64) -> bool {
+        updated
+            >= keepline_core::content::now().saturating_sub(self.recent_days.saturating_mul(86400))
+    }
+    pub fn hook(&self, path: &str, event: &str) -> io::Result<()> {
+        let _guard = self
+            .gate
+            .lock()
+            .map_err(|_| io::Error::other("log cursor lock poisoned"))?;
+        let mut parser = crate::content::load(&self.db, path)?;
+        parser.hook(
+            event,
+            keepline_core::content::now(),
+            keepline_core::content::Source {
+                path: path.into(),
+                offset: std::time::SystemTime::now()
+                    .duration_since(UNIX_EPOCH)
+                    .map_err(err)?
+                    .as_nanos() as u64,
+                ..Default::default()
+            },
+        );
+        let tx = self.db.unchecked_transaction().map_err(err)?;
+        crate::content::save(&tx, path, &parser)?;
+        tx.commit().map_err(err)
+    }
     /// Read [offset, captured size) only; a bounded partial line survives restart.
-    /// First historical import reads <=256 KiB for identity, then records EOF without reading the body.
+    /// First import reads a 16 KiB identity header and at most 128 KiB of recent content.
     pub fn update(
         &mut self,
         runtime: Agent,
@@ -275,6 +335,48 @@ impl Index {
         let _guard = gate
             .lock()
             .map_err(|_| io::Error::other("log cursor lock poisoned"))?;
+        self.update_unlocked(runtime, path, historical)
+    }
+    /// Coalesced native notifications share one durable commit, with no timer or durability loss.
+    pub fn update_many(
+        &mut self,
+        paths: impl IntoIterator<Item = PathBuf>,
+        event: u64,
+    ) -> io::Result<Vec<Transcript>> {
+        let gate = self.gate.clone();
+        let _guard = gate
+            .lock()
+            .map_err(|_| io::Error::other("log cursor lock poisoned"))?;
+        self.db.execute_batch("BEGIN IMMEDIATE").map_err(err)?;
+        let result = (|| {
+            let mut found = vec![];
+            for path in paths {
+                if let Some(runtime) = self.runtime(&path) {
+                    if let Some(t) = self.update_unlocked(runtime, &path, true)? {
+                        found.push(t);
+                    }
+                }
+            }
+            self.checkpoint(event)?;
+            Ok(found)
+        })();
+        match result {
+            Ok(found) => {
+                self.db.execute_batch("COMMIT").map_err(err)?;
+                Ok(found)
+            }
+            Err(e) => {
+                self.db.execute_batch("ROLLBACK").map_err(err)?;
+                Err(e)
+            }
+        }
+    }
+    fn update_unlocked(
+        &mut self,
+        runtime: Agent,
+        path: &Path,
+        historical: bool,
+    ) -> io::Result<Option<Transcript>> {
         if !is_log(path) {
             return Ok(None);
         }
@@ -301,10 +403,16 @@ impl Index {
             .duration_since(UNIX_EPOCH)
             .map_err(err)?
             .as_secs();
+        let seeded: bool = self
+            .db
+            .prepare_cached("SELECT EXISTS(SELECT 1 FROM session_content WHERE path=?1)")
+            .map_err(err)?
+            .query_row([&key], |r| r.get(0))
+            .map_err(err)?;
         if let Some(c) = &cursor {
             if c.dev != meta.dev() || c.inode != meta.ino() || meta.len() < c.offset {
                 cursor = None;
-            } else if c.offset == meta.len() {
+            } else if c.offset == meta.len() && (seeded || !self.recent(updated)) {
                 return Ok(c.identity.as_ref().map(|(id, cwd)| Transcript {
                     runtime,
                     cli_id: id.clone(),
@@ -324,13 +432,75 @@ impl Index {
                 "log rotated while opening; cursor not advanced",
             ));
         }
-        file.seek(SeekFrom::Start(c.offset))?;
-        let end = if fresh && historical {
-            meta.len().min(256 * 1024)
+        let mut parser = if fresh {
+            crate::content::Parser::default()
         } else {
-            meta.len()
+            crate::content::load(&self.db, &key)?
         };
+        let seed = (fresh && historical) || (!seeded && !fresh);
+        if seed {
+            // Identity requires only the header, even when old bodies are deliberately skipped.
+            file.seek(SeekFrom::Start(0))?;
+            let mut head = vec![0; meta.len().min(16 * 1024) as usize];
+            file.read_exact(&mut head)?;
+            self.counts.bytes += head.len() as u64;
+            for line in head.split(|b| *b == b'\n') {
+                if c.identity.is_none() {
+                    c.identity = identity(runtime, line);
+                }
+            }
+            c.offset = if self.recent(updated) {
+                meta.len().saturating_sub(128 * 1024)
+            } else {
+                meta.len()
+            };
+            if c.offset > head.len() as u64 && self.recent(updated) {
+                let mut offset = 0;
+                for line in head.split_inclusive(|b| *b == b'\n') {
+                    if line.last() != Some(&b'\n') {
+                        break;
+                    }
+                    if let Ok(v) = serde_json::from_slice::<serde_json::Value>(line) {
+                        let user = if runtime == Agent::Codex {
+                            v["type"] == "event_msg" && v["payload"]["type"] == "user_message"
+                                || v["type"] == "response_item" && v["payload"]["role"] == "user"
+                        } else {
+                            v["type"] == "user"
+                        };
+                        if user {
+                            parser.add(
+                                runtime,
+                                line,
+                                keepline_core::content::Source {
+                                    path: key.clone(),
+                                    inode: meta.ino(),
+                                    offset,
+                                },
+                            );
+                        }
+                    }
+                    offset += line.len() as u64;
+                }
+                // A known initial request is useful context, never proof the final turn is running.
+                parser.card.turn = keepline_core::content::Turn::Unknown;
+            }
+            c.pending.clear();
+            c.discard = c.offset > 0;
+            parser.card.partial_history = c.offset > 0;
+            parser.card.from_offset = c.offset;
+            // One preceding byte lets a tail beginning exactly on a line boundary remain usable.
+            if c.offset > 0 {
+                file.seek(SeekFrom::Start(c.offset - 1))?;
+                let mut b = [0];
+                file.read_exact(&mut b)?;
+                self.counts.bytes += 1;
+                c.discard = b[0] != b'\n';
+            }
+        }
+        file.seek(SeekFrom::Start(c.offset))?;
+        let end = meta.len();
         let mut buffer = [0u8; 16 * 1024];
+        let mut line_offset = c.offset.saturating_sub(c.pending.len() as u64);
         while c.offset < end {
             let want = ((end - c.offset) as usize).min(buffer.len());
             let n = file.read(&mut buffer[..want])?;
@@ -338,42 +508,47 @@ impl Index {
                 break;
             }
             self.counts.bytes += n as u64;
-            c.offset += n as u64;
             for byte in &buffer[..n] {
+                c.offset += 1;
                 if *byte == b'\n' {
-                    if !c.discard && c.identity.is_none() {
-                        c.identity = identity(runtime, &c.pending);
+                    if !c.discard {
+                        if c.identity.is_none() {
+                            c.identity = identity(runtime, &c.pending);
+                        }
+                        parser.add(
+                            runtime,
+                            &c.pending,
+                            keepline_core::content::Source {
+                                path: key.clone(),
+                                inode: meta.ino(),
+                                offset: line_offset,
+                            },
+                        );
+                    } else {
+                        parser.card.partial_history = true;
                     }
                     c.pending.clear();
                     c.discard = false;
+                    line_offset = c.offset;
                 } else if !c.discard {
                     if c.pending.len() == 256 * 1024 {
                         c.pending.clear();
                         c.discard = true;
+                        parser.card.unknown_records += 1;
                     } else {
                         c.pending.push(*byte);
                     }
                 }
             }
-            if fresh && historical && c.identity.is_some() {
-                break;
-            }
-        }
-        if fresh && historical && meta.len() > c.offset {
-            c.offset = meta.len();
-            c.pending.clear();
-            // Establish whether EOF is a line boundary with one byte, never read old body.
-            file.seek(SeekFrom::Start(meta.len() - 1))?;
-            let mut last = [0];
-            file.read_exact(&mut last)?;
-            self.counts.bytes += 1;
-            c.discard = last[0] != b'\n';
         }
         c.dev = meta.dev();
         c.inode = meta.ino();
         c.updated = updated;
-        self.db.prepare_cached("INSERT INTO log_files VALUES(?1,?2,?3,?4,?5,?6,?7,?8,?9,?10) ON CONFLICT(path) DO UPDATE SET runtime=excluded.runtime,dev=excluded.dev,inode=excluded.inode,offset=excluded.offset,pending=excluded.pending,discard=excluded.discard,cli_id=excluded.cli_id,cwd=excluded.cwd,updated=excluded.updated").map_err(err)?.execute(
+        let tx = self.db.savepoint().map_err(err)?;
+        tx.prepare_cached("INSERT INTO log_files VALUES(?1,?2,?3,?4,?5,?6,?7,?8,?9,?10) ON CONFLICT(path) DO UPDATE SET runtime=excluded.runtime,dev=excluded.dev,inode=excluded.inode,offset=excluded.offset,pending=excluded.pending,discard=excluded.discard,cli_id=excluded.cli_id,cwd=excluded.cwd,updated=excluded.updated").map_err(err)?.execute(
             params![key,runtime.executable(),i64::try_from(c.dev).map_err(err)?,i64::try_from(c.inode).map_err(err)?,i64::try_from(c.offset).map_err(err)?,c.pending,c.discard,c.identity.as_ref().map(|v| &v.0),c.identity.as_ref().map(|v| &v.1),i64::try_from(c.updated).map_err(err)?]).map_err(err)?;
+        crate::content::save(&tx, &key, &parser)?;
+        tx.commit().map_err(err)?;
         self.counts.writes += 1;
         Ok(c.identity.map(|(cli_id, cwd)| Transcript {
             runtime,
@@ -506,6 +681,52 @@ mod tests {
     }
     fn line(id: &str) -> String {
         format!("{{\"type\":\"session_meta\",\"payload\":{{\"id\":\"{id}\",\"cwd\":\"/tmp\"}}}}\n")
+    }
+    #[test]
+    fn bounded_tail_and_atomic_cursor_content_survive_restart() {
+        use std::io::Write;
+        let f = Fixture::new();
+        let path = f.0.join("logs/content.jsonl");
+        let mut file = File::create(&path).unwrap();
+        file.write_all(line("content").as_bytes()).unwrap();
+        file.write_all(&vec![b'x'; 2 * 1024 * 1024]).unwrap();
+        file.write_all(b"\n{\"type\":\"event_msg\",\"payload\":{\"type\":\"user_message\",\"message\":\"tail request\"}}\n").unwrap();
+        let mut index = f.index();
+        index.update(Agent::Codex, &path, true).unwrap();
+        assert!(index.counts.bytes <= 144 * 1024 + 1);
+        assert!(
+            index
+                .card(path.to_str().unwrap())
+                .unwrap()
+                .unwrap()
+                .partial_history
+        );
+        drop(index);
+        let mut index = f.index();
+        let before = index.card(path.to_str().unwrap()).unwrap().unwrap();
+        index.db.execute_batch("CREATE TRIGGER fail_record BEFORE INSERT ON session_records BEGIN SELECT RAISE(ABORT,'fixture atomic failure'); END;").unwrap();
+        let extra=b"{\"type\":\"event_msg\",\"payload\":{\"type\":\"user_message\",\"message\":\"additional requirement\"}}\n";
+        fs::OpenOptions::new()
+            .append(true)
+            .open(&path)
+            .unwrap()
+            .write_all(extra)
+            .unwrap();
+        assert!(index.update(Agent::Codex, &path, false).is_err());
+        assert_eq!(index.card(path.to_str().unwrap()).unwrap().unwrap(), before);
+        index.db.execute_batch("DROP TRIGGER fail_record").unwrap();
+        index.update(Agent::Codex, &path, false).unwrap();
+        assert_eq!(
+            index.counts.bytes,
+            extra.len() as u64 * 2,
+            "failed transaction retries only the uncommitted delta"
+        );
+        let c = index.card(path.to_str().unwrap()).unwrap().unwrap();
+        assert_eq!(c.asks.len(), 2);
+        assert_eq!(c.asks[1].text, "additional requirement");
+        let counts = index.counts.clone();
+        index.update(Agent::Codex, &path, true).unwrap();
+        assert_eq!(index.counts, counts);
     }
     #[test]
     fn cursors_survive_restart_partial_lines_truncation_and_inode_replacement() {

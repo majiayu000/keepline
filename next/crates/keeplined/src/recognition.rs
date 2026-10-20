@@ -181,7 +181,7 @@ pub fn terminal_for_process(
     }
     None
 }
-fn observation(t: &Transcript, terminal: Option<String>) -> AgentSession {
+pub(crate) fn observation(t: &Transcript, terminal: Option<String>) -> AgentSession {
     AgentSession {
         id: uuid::Uuid::new_v4().to_string(),
         runtime: t.runtime,
@@ -370,19 +370,23 @@ mod tests {
             },
         ];
         reconcile(&mut workspace, &transcripts, &processes, &HashMap::new()).unwrap();
-        assert!(workspace
-            .agent_sessions
-            .iter()
-            .all(|s| s.terminal.is_none()));
+        assert!(
+            workspace
+                .agent_sessions
+                .iter()
+                .all(|s| s.terminal.is_none())
+        );
         let files = HashMap::from([(
             101,
             vec!["/logs/one.jsonl".into(), "/logs/two.jsonl".into()],
         )]);
         reconcile(&mut workspace, &transcripts, &processes, &files).unwrap();
-        assert!(workspace
-            .agent_sessions
-            .iter()
-            .all(|s| s.terminal.is_none()));
+        assert!(
+            workspace
+                .agent_sessions
+                .iter()
+                .all(|s| s.terminal.is_none())
+        );
         let files = HashMap::from([(101, vec!["/logs/two.jsonl".into()])]);
         reconcile(&mut workspace, &transcripts, &processes, &files).unwrap();
         assert_eq!(
