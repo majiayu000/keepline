@@ -27,6 +27,8 @@ pub struct Workbench {
     here: Option<String>,
     show_stale: bool,
     show_running: bool,
+    show_hidden: bool,
+    card_menu: Option<String>,
     drag: Option<Vec<bool>>,
     split_bounds: HashMap<Vec<bool>, gpui::Bounds<gpui::Pixels>>,
     overview: bool,
@@ -366,6 +368,8 @@ impl Workbench {
             here: None,
             show_stale: false,
             show_running: false,
+            show_hidden: false,
+            card_menu: None,
             drag: None,
             split_bounds: HashMap::new(),
             overview: false,
@@ -830,6 +834,17 @@ impl Workbench {
         {
             return c.title.clone();
         }
+        if self
+            .workspace
+            .content
+            .get(&s.id)
+            .is_some_and(|c| !c.first_ask_known)
+        {
+            return format!(
+                "最初原话未覆盖 · {}",
+                &s.cli_session_id.chars().take(8).collect::<String>()
+            );
+        }
         s.task
             .as_ref()
             .and_then(|id| self.workspace.tasks.iter().find(|t| &t.id == id))
@@ -840,7 +855,16 @@ impl Workbench {
         self.workspace
             .content
             .get(&s.id)
-            .map(|c| keepline_core::content::short(&c.here().stopped, 100))
+            .map(|c| {
+                keepline_core::content::short(
+                    &c.here()
+                        .stopped
+                        .split_whitespace()
+                        .collect::<Vec<_>>()
+                        .join(" "),
+                    100,
+                )
+            })
             .unwrap_or_else(|| "内容尚未索引".into())
     }
     fn save_session_task(&mut self, session: &AgentSession, cx: &mut Context<Self>) {
@@ -901,6 +925,7 @@ impl Workbench {
             .flex_col()
             .gap(px(T::S12))
             .on_mouse_down(gpui::MouseButton::Left, |_, _, cx| cx.stop_propagation())
+            .on_click(|_, _, cx| cx.stop_propagation())
             .child(
                 div()
                     .flex()
@@ -980,12 +1005,83 @@ impl Workbench {
         }
         panel.child(actions)
     }
+    fn session_hidden(&self, s: &AgentSession) -> Option<&str> {
+        self.workspace
+            .content
+            .get(&s.id)
+            .map_or(Some("缺少交互入口证据"), |c| c.hidden_reason())
+    }
+    fn enter_card(&mut self, s: &AgentSession, window: &mut Window, cx: &mut Context<Self>) {
+        self.card_menu = None;
+        if s.terminal.is_some() {
+            self.open_session(s, window, cx);
+        } else {
+            self.here = Some(s.id.clone());
+            cx.notify();
+        }
+    }
+    fn session_actions(
+        &self,
+        session: &AgentSession,
+        cx: &Context<Self>,
+    ) -> gpui::Stateful<gpui::Div> {
+        let save = session.clone();
+        let defer = session.id.clone();
+        let mut menu = div()
+            .id(gpui::SharedString::from(format!("actions-{}", session.id)))
+            .w(px(T::MENU_WIDTH))
+            .p(px(T::S6))
+            .bg(T::color(T::RAISED))
+            .border(px(T::BORDER_WIDTH))
+            .border_color(T::color(T::CONTROL))
+            .rounded(px(T::CONTROL_RADIUS))
+            .shadow_lg()
+            .flex()
+            .flex_col()
+            .gap(px(T::S4))
+            .on_click(|_, _, cx| cx.stop_propagation())
+            .child(
+                button("card-save", "存为待办").on_click(cx.listener(move |this, _, _, cx| {
+                    cx.stop_propagation();
+                    this.card_menu = None;
+                    this.save_session_task(&save, cx);
+                })),
+            )
+            .child(button("card-defer", "暂存").on_click(cx.listener(
+                move |this, _, window, cx| {
+                    cx.stop_propagation();
+                    this.card_menu = None;
+                    this.here = Some(defer.clone());
+                    this.show_form(FormKind::Defer, window, cx);
+                },
+            )));
+        for (label, outcome) in [("已验收", Outcome::Completed), ("放弃", Outcome::Abandoned)]
+        {
+            let id = session.id.clone();
+            menu = menu.child(
+                button(gpui::SharedString::from(format!("card-{label}")), label).on_click(
+                    cx.listener(move |this, _, _, cx| {
+                        cx.stop_propagation();
+                        this.card_menu = None;
+                        this.edit(
+                            Edit::SetOutcome {
+                                id: id.clone(),
+                                outcome: outcome.clone(),
+                            },
+                            cx,
+                        );
+                    }),
+                ),
+            );
+        }
+        menu
+    }
     fn overview_view(&self, window: &Window, cx: &Context<Self>) -> gpui::Stateful<gpui::Div> {
         let open: Vec<_> = self
             .workspace
             .agent_sessions
             .iter()
-            .filter(|s| s.outcome.needs_review(now()))
+            .filter(|s| s.outcome.needs_review(now()) && self.session_hidden(s).is_none())
             .collect();
         let header = div()
             .flex()
@@ -1173,11 +1269,9 @@ impl Workbench {
             let mut cards = div().flex().flex_wrap().gap(px(T::S10));
             for session in &sessions {
                 let session = (**session).clone();
-                let open = session.clone();
-                let save = session.clone();
-                let show = session.id.clone();
-                let complete = session.id.clone();
-                let abandon = session.id.clone();
+                let enter = session.clone();
+                let primary = session.clone();
+                let menu_id = session.id.clone();
                 let meta = format!(
                     "{} · {} · {}",
                     if session.terminal.is_none() {
@@ -1188,8 +1282,17 @@ impl Workbench {
                     session.runtime.executable(),
                     session.cwd
                 );
+                let primary_continue =
+                    matches!(group, Group::Waiting | Group::Error | Group::Paused);
                 cards = cards.child(
                     div()
+                        .id(gpui::SharedString::from(format!("card-{}", session.id)))
+                        .role(gpui::accesskit::Role::Button)
+                        .aria_label(gpui::SharedString::from(format!(
+                            "会话：{}",
+                            self.session_title(&session)
+                        )))
+                        .relative()
                         .w(px(card_width))
                         .min_w(px(T::CARD_MIN))
                         .p(px(T::S12))
@@ -1200,110 +1303,94 @@ impl Workbench {
                         .flex()
                         .flex_col()
                         .gap(px(T::S6))
+                        .cursor_pointer()
+                        .hover(|s| s.bg(T::color(T::RAISED)))
+                        .on_click(cx.listener(move |this, _, window, cx| {
+                            this.enter_card(&enter, window, cx)
+                        }))
                         .child(
                             div()
-                                .text_size(px(T::CARD_TITLE))
-                                .font_weight(gpui::FontWeight::SEMIBOLD)
-                                .truncate()
-                                .child(self.session_title(&session)),
+                                .flex()
+                                .items_center()
+                                .gap(px(T::S6))
+                                .child(
+                                    div()
+                                        .flex_1()
+                                        .min_w(px(0.))
+                                        .text_size(px(T::CARD_TITLE))
+                                        .font_weight(gpui::FontWeight::SEMIBOLD)
+                                        .truncate()
+                                        .child(self.session_title(&session)),
+                                )
+                                .child(
+                                    button(
+                                        gpui::SharedString::from(format!("more-{}", session.id)),
+                                        "⋯",
+                                    )
+                                    .border_0()
+                                    .on_click(cx.listener(
+                                        move |this, _, _, cx| {
+                                            cx.stop_propagation();
+                                            this.here = None;
+                                            this.card_menu =
+                                                if this.card_menu.as_ref() == Some(&menu_id) {
+                                                    None
+                                                } else {
+                                                    Some(menu_id.clone())
+                                                };
+                                            cx.notify();
+                                        },
+                                    )),
+                                ),
                         )
                         .child(label(meta).truncate())
                         .child(
                             div()
                                 .text_size(px(T::MONO_SIZE))
+                                .line_clamp(3)
                                 .text_color(group.colors().1)
                                 .child(self.session_line(&session)),
                         )
                         .child(
-                            div()
-                                .flex()
-                                .flex_wrap()
-                                .gap(px(T::S6))
-                                .child(
-                                    button(
-                                        gpui::SharedString::from(format!("here-{}", session.id)),
-                                        "你在这里",
-                                    )
-                                    .on_click(cx.listener(
-                                        move |this, _, _, cx| {
-                                            this.here = Some(show.clone());
-                                            cx.notify();
-                                        },
-                                    )),
+                            div().flex().justify_end().child(
+                                button(
+                                    gpui::SharedString::from(format!("primary-{}", session.id)),
+                                    if primary_continue {
+                                        "继续 →"
+                                    } else {
+                                        "你在这里"
+                                    },
                                 )
-                                .child(
-                                    button(
-                                        gpui::SharedString::from(format!(
-                                            "save-task-{}",
-                                            session.id
-                                        )),
-                                        "存为待办",
-                                    )
-                                    .on_click(cx.listener(
-                                        move |this, _, _, cx| this.save_session_task(&save, cx),
-                                    )),
-                                ),
+                                .text_color(T::color(T::LINK))
+                                .on_click(cx.listener(
+                                    move |this, _, window, cx| {
+                                        cx.stop_propagation();
+                                        this.card_menu = None;
+                                        if primary_continue {
+                                            this.open_session(&primary, window, cx);
+                                        } else {
+                                            this.here = Some(primary.id.clone());
+                                            cx.notify();
+                                        }
+                                    },
+                                )),
+                            ),
                         )
+                        .when(self.card_menu.as_ref() == Some(&session.id), |d| {
+                            d.child(
+                                gpui::deferred(
+                                    self.session_actions(&session, cx)
+                                        .absolute()
+                                        .top(px(T::ROW + T::S12))
+                                        .right(px(T::S12))
+                                        .occlude(),
+                                )
+                                .priority(1),
+                            )
+                        })
                         .when(self.here.as_ref() == Some(&session.id), |d| {
                             d.child(self.here_card(&session, cx))
-                        })
-                        .child(
-                            div()
-                                .flex()
-                                .flex_wrap()
-                                .gap(px(T::S6))
-                                .mt(px(T::S4))
-                                .child(
-                                    button(
-                                        gpui::SharedString::from(format!("open-{}", session.id)),
-                                        if session.terminal.is_none() {
-                                            "继续 →"
-                                        } else {
-                                            "打开"
-                                        },
-                                    )
-                                    .text_color(T::color(T::LINK))
-                                    .on_click(cx.listener(
-                                        move |this, _, window, cx| {
-                                            this.open_session(&open, window, cx)
-                                        },
-                                    )),
-                                )
-                                .child(
-                                    button(
-                                        gpui::SharedString::from(format!("done-{}", session.id)),
-                                        "已验收",
-                                    )
-                                    .on_click(cx.listener(
-                                        move |this, _, _, cx| {
-                                            this.edit(
-                                                Edit::SetOutcome {
-                                                    id: complete.clone(),
-                                                    outcome: Outcome::Completed,
-                                                },
-                                                cx,
-                                            )
-                                        },
-                                    )),
-                                )
-                                .child(
-                                    button(
-                                        gpui::SharedString::from(format!("abandon-{}", session.id)),
-                                        "放弃",
-                                    )
-                                    .on_click(cx.listener(
-                                        move |this, _, _, cx| {
-                                            this.edit(
-                                                Edit::SetOutcome {
-                                                    id: abandon.clone(),
-                                                    outcome: Outcome::Abandoned,
-                                                },
-                                                cx,
-                                            )
-                                        },
-                                    )),
-                                ),
-                        ),
+                        }),
                 );
             }
             let section = div()
@@ -1332,21 +1419,23 @@ impl Workbench {
             .workspace
             .agent_sessions
             .iter()
-            .filter(|s| s.outcome == Outcome::Completed)
+            .filter(|s| s.outcome == Outcome::Completed && self.session_hidden(s).is_none())
             .count();
         let abandoned = self
             .workspace
             .agent_sessions
             .iter()
-            .filter(|s| s.outcome == Outcome::Abandoned)
+            .filter(|s| s.outcome == Outcome::Abandoned && self.session_hidden(s).is_none())
             .count();
         let deferred = self
             .workspace
             .agent_sessions
             .iter()
-            .filter(|s| matches!(s.outcome, Outcome::Deferred { .. }))
+            .filter(|s| {
+                matches!(s.outcome, Outcome::Deferred { .. }) && self.session_hidden(s).is_none()
+            })
             .count();
-        view.child(
+        view = view.child(
             div()
                 .border_t(px(T::BORDER_WIDTH))
                 .border_color(T::color(T::BORDER))
@@ -1354,8 +1443,72 @@ impl Workbench {
                 .child(label(format!(
                     "暂存 {deferred} · 已结束：完成 {completed} / 放弃 {abandoned}"
                 ))),
-        )
+        );
+        let hidden: Vec<_> = self
+            .workspace
+            .agent_sessions
+            .iter()
+            .filter(|s| self.session_hidden(s).is_some())
+            .collect();
+        view = view.child(
+            button(
+                "toggle-hidden",
+                format!(
+                    "已隐藏 {} 个自动化会话 · {}",
+                    hidden.len(),
+                    if self.show_hidden {
+                        "收起"
+                    } else {
+                        "展开查看"
+                    }
+                ),
+            )
+            .border_0()
+            .justify_start()
+            .text_color(T::color(T::SECONDARY))
+            .on_click(cx.listener(|this, _, _, cx| {
+                this.show_hidden = !this.show_hidden;
+                cx.notify();
+            })),
+        );
+        if self.show_hidden {
+            for s in hidden {
+                let sid = s.id.clone();
+                view = view.child(
+                    div()
+                        .p(px(T::S8))
+                        .border_b(px(T::BORDER_WIDTH))
+                        .border_color(T::color(T::BORDER))
+                        .child(
+                            button(
+                                gpui::SharedString::from(format!("hidden-{}", s.id)),
+                                self.session_title(s),
+                            )
+                            .border_0()
+                            .justify_start()
+                            .on_click(cx.listener(
+                                move |this, _, _, cx| {
+                                    this.here = Some(sid.clone());
+                                    cx.notify();
+                                },
+                            )),
+                        )
+                        .child(label(format!(
+                            "{} · {} · {} · {}",
+                            self.session_hidden(s).unwrap_or(""),
+                            s.runtime.executable(),
+                            s.cli_session_id,
+                            s.cwd
+                        )))
+                        .when(self.here.as_ref() == Some(&s.id), |d| {
+                            d.child(self.here_card(s, cx))
+                        }),
+                );
+            }
+        }
+        view
     }
+
     fn pane_view(
         &self,
         id: &str,
@@ -2080,6 +2233,7 @@ impl Render for Workbench {
             .iter()
             .filter(|s| {
                 s.outcome.needs_review(now())
+                    && self.session_hidden(s).is_none()
                     && matches!(self.group(s), Group::Waiting | Group::Error)
             })
             .collect();
