@@ -34,8 +34,13 @@ pub enum Turn {
 }
 #[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Content {
+    #[serde(default)]
+    pub interactive: bool,
+    #[serde(default)]
+    pub hidden_reason: String,
+    #[serde(default)]
+    pub first_ask_known: bool,
     pub title: String,
-    pub cli_title: bool,
     pub asks: Vec<Quote>,
     pub evidence: Vec<Evidence>,
     pub last_reply: String,
@@ -90,6 +95,15 @@ pub fn short(text: &str, limit: usize) -> String {
     s
 }
 impl Content {
+    pub fn hidden_reason(&self) -> Option<&str> {
+        if !self.hidden_reason.is_empty() {
+            Some(&self.hidden_reason)
+        } else if !self.interactive {
+            Some("缺少交互入口证据")
+        } else {
+            None
+        }
+    }
     pub fn group(&self, session: &AgentSession, workspace: &Workspace, now: u64) -> Inbox {
         match session.outcome {
             Outcome::Completed | Outcome::Abandoned => return Inbox::Closed,
@@ -143,6 +157,11 @@ impl Content {
                 .map(|q| short(&q.text, 240))
                 .collect::<Vec<_>>()
                 .join("\n追加：")
+        };
+        let ask = if !self.first_ask_known && !self.asks.is_empty() {
+            format!("最初要求未覆盖；已读取追加：\n{ask}")
+        } else {
+            ask
         };
         let facts: Vec<_> = self
             .evidence

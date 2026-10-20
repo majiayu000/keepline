@@ -65,24 +65,212 @@ fn claims_done(s: &str) -> bool {
     }
     false
 }
+// Strip bounded, explicit wrappers; do not infer the author of arbitrary unmarked prose.
 fn user_text(s: &str) -> String {
-    let clean = INJECTED.replace_all(s, "").trim().to_owned();
-    if CONTEXT.is_match(&clean) {
-        String::new()
-    } else {
-        clean
+    let mut clean = s.to_owned();
+    if clean
+        .trim_start()
+        .starts_with("# Files mentioned by the user:")
+    {
+        clean = clean
+            .split_once("## My request:")
+            .map(|(_, request)| request.to_owned())
+            .unwrap_or_default();
     }
+
+    let reply_open = "<send_user_message_question_reply>";
+    let reply_close = "</send_user_message_question_reply>";
+    if let Some(start) = clean.find(reply_open) {
+        if let Some(end) = clean[start + reply_open.len()..].find(reply_close) {
+            let body = &clean[start + reply_open.len()..start + reply_open.len() + end];
+            let answers = serde_json::from_str::<Vec<Value>>(body)
+                .ok()
+                .map(|a| {
+                    a.iter()
+                        .filter_map(|v| v["answer"].as_str())
+                        .collect::<Vec<_>>()
+                        .join("\n")
+                })
+                .unwrap_or_default();
+            clean.replace_range(
+                start..start + reply_open.len() + end + reply_close.len(),
+                &answers,
+            );
+        }
+    }
+
+    // A copied web page can carry hundreds of lines before the user's own suffix.
+    if let Some(start) = clean.find("要查看键盘快捷键，按下问号") {
+        if let Some(end) = clean[start..].rfind("X Corp.") {
+            clean.replace_range(start..start + end + "X Corp.".len(), "\n");
+        } else {
+            clean.truncate(start);
+        }
+    }
+
+    for tag in [
+        "system-reminder",
+        "environment_context",
+        "instructions",
+        "INSTRUCTIONS",
+        "skills_instructions",
+        "permissions instructions",
+        "collaboration_mode",
+        "command-name",
+        "command-message",
+        "command-args",
+        "local-command-caveat",
+        "local-command-stdout",
+        "hook-output",
+        "hook-context",
+        "task-notification",
+        "cross-session-message",
+        "side-sessions-event",
+        "teammate-message",
+        "context",
+        "quoted_text",
+        "paste",
+        "pasted_text",
+        "pasted_content",
+        "in-app-browser-context",
+        "reference",
+        "file_contents",
+        "skill",
+        "skill_content",
+        "hook-additional-context",
+    ] {
+        let open = format!("<{tag}");
+        let close = format!("</{tag}");
+        while let Some(start) = clean.find(&open) {
+            let boundary = clean.as_bytes().get(start + open.len()).copied();
+            if !boundary.is_some_and(|c| c == b'>' || c.is_ascii_whitespace()) {
+                break;
+            }
+            if let Some(end) = clean[start..]
+                .find(&close)
+                .and_then(|end| clean[start + end..].find('>').map(|last| end + last + 1))
+            {
+                clean.replace_range(start..start + end, "\n");
+            } else {
+                clean.truncate(start);
+                break;
+            }
+        }
+    }
+    // Unquoted multi-bullet assistant explanations sometimes have the user's instruction
+    // appended after the final sentence. Only retain that explicit imperative suffix.
+    if clean
+        .lines()
+        .filter(|l| l.trim_start().starts_with("* "))
+        .count()
+        >= 2
+        && (clean.contains("所以我按") || clean.contains("所以我先") || clean.contains("我先选了"))
+    {
+        if let Some((_, suffix)) = clean.rsplit_once('。') {
+            let suffix = suffix.trim();
+            if [
+                "删掉",
+                "删除",
+                "请",
+                "帮我",
+                "你帮我",
+                "我希望",
+                "我想",
+                "你看看",
+            ]
+            .iter()
+            .any(|s| suffix.starts_with(s))
+            {
+                clean = suffix.to_owned();
+            } else {
+                return String::new();
+            }
+        } else {
+            return String::new();
+        }
+    }
+    // Standalone instruction/skill payloads are generated context, not a user request.
+    if CONTEXT.is_match(clean.trim()) {
+        return String::new();
+    }
+    let mut lines = Vec::new();
+    let mut fence: Option<(char, usize)> = None;
+    let mut instruction = false;
+    for line in clean.lines() {
+        let t = line.trim();
+        if matches!(t, "## My request:" | "# User request" | "# 用户要求") {
+            instruction = false;
+            continue;
+        }
+        if t.starts_with("# AGENTS.md") || t.starts_with("# CLAUDE.md") {
+            instruction = !s.contains("<INSTRUCTIONS>") && !s.contains("<instructions>");
+            continue;
+        }
+        if instruction {
+            if t.starts_with("# User request") || t.starts_with("# 用户要求") {
+                instruction = false;
+            }
+            continue;
+        }
+        let marker = t
+            .chars()
+            .next()
+            .filter(|c| matches!(c, '`' | '~'))
+            .map(|c| (c, t.chars().take_while(|v| *v == c).count()));
+        if let Some((c, n)) = marker.filter(|(_, n)| *n >= 3) {
+            match fence {
+                None => fence = Some((c, n)),
+                Some((ch, len)) if c == ch && n >= len => fence = None,
+                _ => (),
+            }
+            continue;
+        }
+        if fence.is_some() || t.starts_with('>') {
+            continue;
+        }
+        if !t.is_empty()
+            || lines
+                .last()
+                .is_some_and(|last: &&str| !last.trim().is_empty())
+        {
+            lines.push(line);
+        }
+    }
+    lines.join("\n").trim().to_owned()
 }
-static INJECTED: LazyLock<Regex> = LazyLock::new(|| {
-    re(
-        r"(?s)<(?:environment_context|system-reminder|instructions|INSTRUCTIONS|skills_instructions|permissions instructions|collaboration_mode)[^>]*>.*?</(?:environment_context|system-reminder|instructions|INSTRUCTIONS|skills_instructions|permissions instructions|collaboration_mode)>",
-    )
-});
 static CONTEXT: LazyLock<Regex> = LazyLock::new(|| {
     re(
-        r"(?s)^\s*(?:# AGENTS\.md instructions for|# Global Codex Working Agreements|This session is being continued from a previous conversation|<turn_aborted>|<task-notification>|<local-command-caveat>|<command-name>|<external_codex_apps_|<cross-session-message|<side-sessions-event|<teammate-message|<local-command-stdout|<environment_context>|<permissions instructions>|<skills_instructions>)",
+        r"(?s)^\s*(?:# Global Codex Working Agreements|\[Request interrupted by user(?: for tool use)?\]|This session is being continued from a previous conversation|Background \(from the session that started this one\):|Base directory for this skill:|<turn_aborted>|<external_codex_apps_|<skill(?:\s|>)|<available_skills>|<skills>)",
     )
 });
+
+// A session_meta line may exceed the 16 KiB head budget because of base_instructions.
+// Decode only complete top-level metadata values in its prefix, never scan its body.
+pub fn header_value(runtime: Agent, bytes: &[u8]) -> Option<Value> {
+    if let Ok(v) = serde_json::from_slice(bytes) {
+        return Some(v);
+    }
+    if runtime != Agent::Codex {
+        return None;
+    }
+    let s = std::str::from_utf8(bytes).ok()?;
+    if !s.contains("\"session_meta\"") {
+        return None;
+    }
+    static KEYS: LazyLock<Regex> = LazyLock::new(|| {
+        re(
+            r#"(?:^|[,{])\s*"(id|cwd|originator|source|thread_source|parent_thread_id|is_exec)"\s*:\s*"#,
+        )
+    });
+    let mut p = serde_json::Map::new();
+    for m in KEYS.captures_iter(s) {
+        let mut d = serde_json::Deserializer::from_str(&s[m.get(0)?.end()..]);
+        if let Ok(v) = Value::deserialize(&mut d) {
+            p.entry(m[1].to_owned()).or_insert(v);
+        }
+    }
+    Some(json!({"type":"session_meta","payload":p}))
+}
 fn text(v: &Value) -> String {
     match v {
         Value::String(s) => s.clone(),
@@ -139,6 +327,109 @@ pub struct Record {
     pub code: Option<i32>,
 }
 impl Parser {
+    pub fn observe_header(&mut self, runtime: Agent, line: &[u8]) {
+        if let Some(v) = header_value(runtime, line) {
+            self.metadata(runtime, &v);
+        }
+    }
+    fn metadata(&mut self, runtime: Agent, v: &Value) {
+        let m = if runtime == Agent::Codex {
+            &v["payload"]
+        } else {
+            v
+        };
+        let cwd = m["cwd"].as_str().unwrap_or("");
+        let temporary = [
+            "/tmp",
+            "/private/tmp",
+            "/var/tmp",
+            "/private/var/tmp",
+            "/var/folders",
+            "/private/var/folders",
+        ]
+        .iter()
+        .any(|root| cwd == *root || cwd.starts_with(&format!("{root}/")));
+        let reason = if temporary {
+            Some("临时目录会话")
+        } else if runtime == Agent::Claude {
+            let entry = m["entrypoint"].as_str().unwrap_or("");
+            let user_type = m["userType"].as_str().unwrap_or("");
+            if m["isSidechain"] == true
+                || m.get("agentId")
+                    .and_then(Value::as_str)
+                    .is_some_and(|s| !s.is_empty())
+            {
+                Some("Claude 子代理 / sidechain")
+            } else if matches!(entry, "hook" | "sdk-cli")
+                || m["isInteractive"] == false
+                || m["argv"]
+                    .as_array()
+                    .is_some_and(|a| a.iter().any(|x| x == "-p" || x == "--print"))
+                || entry.contains("sdk")
+                || entry.contains("print")
+                || m["isNonInteractive"] == true
+                || m["print"] == true
+            {
+                Some("Claude 非交互 / SDK")
+            } else if !user_type.is_empty() && user_type != "external" {
+                Some("Claude 内部 / Hook 用户来源")
+            } else {
+                if matches!(entry, "cli" | "claude-desktop" | "vscode") && user_type == "external" {
+                    self.card.interactive = true;
+                }
+                None
+            }
+        } else if v["type"] == "session_meta" {
+            let source = m["source"].as_str().unwrap_or("");
+            let origin = m["originator"].as_str().unwrap_or("");
+            if m["source"].get("subagent").is_some()
+                || matches!(
+                    m["thread_source"].as_str(),
+                    Some("subagent" | "guardian_review")
+                )
+            {
+                Some("Codex 子代理")
+            } else if source == "exec" || origin.contains("exec") || m["is_exec"] == true {
+                Some("Codex exec 非交互")
+            } else if origin.contains("sdk") || matches!(source, "sdk" | "api") {
+                Some("Codex SDK 非交互")
+            } else {
+                if matches!(source, "cli" | "vscode")
+                    && matches!(
+                        origin,
+                        "codex-tui" | "codex_cli_rs" | "codex_vscode" | "codex_work_desktop"
+                    )
+                {
+                    self.card.interactive = true;
+                }
+                None
+            }
+        } else {
+            None
+        };
+        if let Some(reason) = reason {
+            if self.card.hidden_reason.is_empty() {
+                self.card.hidden_reason = reason.into();
+            }
+        }
+        // Some launchers inherit the desktop entrypoint. Require an explicit machine task marker.
+        let prompt = if v["type"] == "queue-operation" {
+            text(&v["content"])
+        } else if runtime == Agent::Claude && v["type"] == "user" {
+            text(&v["message"]["content"])
+        } else {
+            String::new()
+        };
+        if (prompt.starts_with("Use the you-are-here skill")
+            && prompt.contains("This is an unattended background refresh:"))
+            || prompt.starts_with("This is an unattended background refresh:")
+            || prompt.starts_with("You are a Claude-Mem")
+            || prompt.starts_with("You are a memory extraction agent")
+            || prompt.starts_with("<remem-hook")
+        {
+            self.card.hidden_reason = "Hook / 无人值守后台任务".into();
+        }
+    }
     fn record(
         &mut self,
         kind: &str,
@@ -168,7 +459,8 @@ impl Parser {
             }
             self.last_user = s.clone();
             self.last_user_turn = self.turn_id.clone();
-            if self.card.title.is_empty() {
+            if self.card.asks.is_empty() && !self.card.partial_history {
+                self.card.first_ask_known = true;
                 self.card.title = short(&s.replace('\n', " "), 70);
             }
             self.record("user", s.clone(), "", None, at, source);
@@ -446,24 +738,10 @@ impl Parser {
             self.card.unknown_records += 1;
             return;
         };
+        self.metadata(runtime, &v);
         let at = seconds(&v["timestamp"]);
         let ty = v["type"].as_str().unwrap_or("");
         let p = &v["payload"];
-        let title = if runtime == Agent::Codex {
-            p["thread_name"].as_str().or_else(|| p["title"].as_str())
-        } else {
-            v["customTitle"].as_str().or_else(|| {
-                if ty == "summary" {
-                    v["summary"].as_str()
-                } else {
-                    None
-                }
-            })
-        };
-        if let Some(title) = title {
-            self.card.title = short(title, 100);
-            self.card.cli_title = true;
-        }
         if runtime == Agent::Codex {
             if ty == "event_msg" && p["type"] != "item_completed" {
                 match p["type"].as_str().unwrap_or("") {
@@ -718,7 +996,9 @@ pub fn card(db: &Connection, path: &str) -> io::Result<Option<Content>> {
         .transpose()
 }
 pub fn save(db: &Connection, path: &str, parser: &Parser) -> io::Result<()> {
-    db.prepare_cached("INSERT INTO session_content VALUES(?1,?2,?3,?4,?5,?6) ON CONFLICT(path) DO UPDATE SET title=excluded.title,turn=excluded.turn,updated=excluded.updated,projection=excluded.projection,parser=excluded.parser").map_err(db_err)?.execute(params![path,parser.card.title,format!("{:?}",parser.card.turn),i64::try_from(parser.card.updated).map_err(db_err)?,serde_json::to_string(&parser.card).map_err(db_err)?,serde_json::to_string(parser).map_err(db_err)?]).map_err(db_err)?;
+    let mut encoded = serde_json::to_value(parser).map_err(db_err)?;
+    encoded["_rules"] = json!(2);
+    db.prepare_cached("INSERT INTO session_content VALUES(?1,?2,?3,?4,?5,?6) ON CONFLICT(path) DO UPDATE SET title=excluded.title,turn=excluded.turn,updated=excluded.updated,projection=excluded.projection,parser=excluded.parser").map_err(db_err)?.execute(params![path,parser.card.title,format!("{:?}",parser.card.turn),i64::try_from(parser.card.updated).map_err(db_err)?,serde_json::to_string(&parser.card).map_err(db_err)?,serde_json::to_string(&encoded).map_err(db_err)?]).map_err(db_err)?;
     let mut ordinals = BTreeMap::new();
     for r in &parser.records {
         let i = ordinals
@@ -778,6 +1058,155 @@ mod tests {
             p,
             json!({"type":"function_call_output","call_id":id,"output":s}),
         );
+    }
+    #[test]
+    fn tail_only_user_is_an_addition_not_a_fabricated_first_request() {
+        let mut p = Parser::default();
+        p.card.partial_history = true;
+        add(
+            &mut p,
+            json!({"type":"event_msg","payload":{"type":"user_message","message":"继续"}}),
+        );
+        assert!(p.card.title.is_empty());
+        assert!(!p.card.first_ask_known);
+        assert!(p.card.here().ask.starts_with("最初要求未覆盖"));
+    }
+    #[test]
+    fn interactive_metadata_and_automation_override_are_not_title_blacklists() {
+        let src = Source::default();
+        for (meta, hidden) in [
+            (
+                json!({"entrypoint":"cli","userType":"external","isSidechain":false,"cwd":"/repo"}),
+                false,
+            ),
+            (
+                json!({"entrypoint":"claude-desktop","userType":"external","cwd":"/repo"}),
+                false,
+            ),
+            (
+                json!({"entrypoint":"sdk-cli","userType":"external","cwd":"/repo"}),
+                true,
+            ),
+            (
+                json!({"entrypoint":"cli","userType":"external","argv":["claude","-p","hello"]}),
+                true,
+            ),
+            (json!({"entrypoint":"cli","userType":"internal"}), true),
+            (
+                json!({"entrypoint":"cli","userType":"external","isSidechain":true}),
+                true,
+            ),
+            (
+                json!({"entrypoint":"cli","userType":"external","cwd":"/private/tmp/check"}),
+                true,
+            ),
+            (json!({"cwd":"/repo"}), true),
+        ] {
+            let mut p = Parser::default();
+            p.metadata(Agent::Claude, &meta);
+            assert_eq!(p.card.hidden_reason().is_some(), hidden, "{meta}");
+        }
+        let mut p = Parser::default();
+        p.metadata(
+            Agent::Claude,
+            &json!({"entrypoint":"claude-desktop","userType":"external"}),
+        );
+        p.add(Agent::Claude,serde_json::to_string(&json!({"type":"user","message":{"content":"请解释 you-are-here 和 remem 怎么使用"}})).unwrap().as_bytes(),src.clone());
+        assert!(p.card.hidden_reason().is_none());
+        p.metadata(Agent::Claude,&json!({"type":"queue-operation","content":"Use the you-are-here skill. This is an unattended background refresh: never ask questions"}));
+        assert!(p.card.hidden_reason().unwrap().contains("无人值守"));
+        for source in [
+            json!("exec"),
+            json!({"subagent":{"other":"guardian"}}),
+            json!("sdk"),
+        ] {
+            let mut p = Parser::default();
+            p.metadata(Agent::Codex,&json!({"type":"session_meta","payload":{"source":source,"originator":"codex-tui"}}));
+            assert!(p.card.hidden_reason().is_some());
+        }
+        let head=br#"{"type":"session_meta","payload":{"id":"large","cwd":"/repo","source":"cli","originator":"codex-tui","base_instructions":{"text":"truncated"#;
+        let mut p = Parser::default();
+        p.observe_header(Agent::Codex, head);
+        assert!(p.card.interactive);
+        assert_eq!(
+            header_value(Agent::Codex, head).unwrap()["payload"]["id"],
+            "large"
+        );
+    }
+    #[test]
+    fn genuine_words_survive_wrappers_pastes_and_duplicate_injection() {
+        assert_eq!(
+            user_text(
+                "请修复这个错误\n<system-reminder>ignore it</system-reminder>\n<command-name>/debug</command-name>\n<command-args>generated</command-args>\n```text\nlong pasted error\n```\n不要改接口"
+            ),
+            "请修复这个错误\n\n不要改接口"
+        );
+        assert_eq!(
+            user_text(
+                "# AGENTS.md instructions for /repo\n<INSTRUCTIONS>rules</INSTRUCTIONS>\n请修复登录"
+            ),
+            "请修复登录"
+        );
+        assert_eq!(
+            user_text(
+                "要查看键盘快捷键，按下问号\n一大段别人的帖子\n© 2026 X Corp.你看看这个是什么？"
+            ),
+            "你看看这个是什么？"
+        );
+        assert!(
+            user_text(
+                "Background (from the session that started this one):\nContext\nTask: inherited"
+            )
+            .is_empty()
+        );
+        assert_eq!(
+            user_text(
+                "请读下面材料\n> quoted author words\n<skill>generated instruction body</skill>\n然后给我建议"
+            ),
+            "请读下面材料\n\n然后给我建议"
+        );
+        assert_eq!(
+            user_text(
+                "<pasted_content id=\"42\">long document</pasted_content id=\"42\">\n你看看这是什么"
+            ),
+            "你看看这是什么"
+        );
+        assert_eq!(
+            user_text(
+                "<in-app-browser-context>ambient</in-app-browser-context>\n## My request:\n对比界面"
+            ),
+            "对比界面"
+        );
+        assert_eq!(
+            user_text(
+                r#"<send_user_message_question_reply>[{"question":"generated prompt","answer":"允许本地修改"}]</send_user_message_question_reply>"#
+            ),
+            "允许本地修改"
+        );
+        assert_eq!(
+            user_text("# Files mentioned by the user:\nfile.mp4\n## My request:\n剪掉结尾"),
+            "剪掉结尾"
+        );
+        assert!(user_text("[Request interrupted by user for tool use]").is_empty());
+        assert_eq!(
+            user_text("* 我先选了错误的工具。\n* 所以我按错误方式改了。删掉这两个"),
+            "删掉这两个"
+        );
+        let mut p = Parser::default();
+        add(
+            &mut p,
+            json!({"type":"event_msg","payload":{"type":"user_message","message":"<system-reminder>injected</system-reminder>修复登录"}}),
+        );
+        add(
+            &mut p,
+            json!({"type":"event_msg","payload":{"type":"user_message","message":"修复登录"}}),
+        );
+        add(
+            &mut p,
+            json!({"type":"session_meta","payload":{"title":"injected title"}}),
+        );
+        assert_eq!(p.card.title, "修复登录");
+        assert_eq!(p.card.asks.len(), 1);
     }
     #[test]
     fn user_dedup_additions_and_claims_are_not_receipts() {
