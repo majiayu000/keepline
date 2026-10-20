@@ -1,3 +1,14 @@
 [workspace]
 resolver = "2"
-members = ["crates/keeplined"]
+members = ["crates/keepline-core", "crates/keeplined", "crates/keepline-app"]
+default-members = ["crates/keepline-core", "crates/keeplined"]
+exclude = [".deps/zed", ".deps/libghostty-rs"]
+
+[workspace.dependencies]
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+libc = "0.2"
+libghostty-vt = { path = ".deps/libghostty-rs/crates/libghostty-vt" }
+
+[profile.dev]
+debug = 0

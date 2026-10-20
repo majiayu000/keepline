@@ -1,15 +1,10 @@
-//! Experimental managed PTY daemon.
-//!
-//! Protocol major 0 is a local JSON framing experiment. The `keepline` CLI does
-//! not start this process, and this crate does not write the Bun session database.
-
-mod grid;
-mod intent;
-mod protocol;
-mod server;
-mod session;
-
-pub use protocol::{
-    DELTA_LIMIT, INTENT_DIR_NAME, MAX_FRAME_BYTES, PROTOCOL_MAJOR, PROTOCOL_MINOR, SOCKET_FILE_NAME,
-};
-pub use server::serve;
+mod file_events;
+mod host;
+mod log_index;
+mod process_exit;
+mod pty;
+pub mod recognition;
+mod store;
+pub use host::{serve, serve_with_roots};
+pub const PROTOCOL_MAJOR: u32 = keepline_core::protocol::MAJOR;
+pub const PROTOCOL_MINOR: u32 = 0;

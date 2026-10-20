@@ -1,0 +1,11 @@
+[package]
+name = "keepline-core"
+version = "0.1.0"
+edition = "2024"
+publish = false
+license = "MIT"
+
+[dependencies]
+serde.workspace = true
+serde_json.workspace = true
+libghostty-vt.workspace = true

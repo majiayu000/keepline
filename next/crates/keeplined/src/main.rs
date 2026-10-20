@@ -16,6 +16,8 @@ fn run() -> std::io::Result<()> {
             let runtime = runtime_dir(args)?;
             keeplined::serve(std::path::Path::new(&runtime))
         }
+        Some("scan") => scan(args),
+        Some("hook") => hook(args),
         Some("--version") => {
             println!(
                 "keeplined protocol {}.{} experimental",
@@ -62,4 +64,77 @@ fn runtime_dir(mut args: impl Iterator<Item = String>) -> std::io::Result<String
             "missing --runtime directory",
         )
     })
+}
+
+fn scan(args: impl Iterator<Item = String>) -> std::io::Result<()> {
+    use keepline_core::protocol::*;
+    let runtime = runtime_dir(args)?;
+    match rpc(
+        &std::path::Path::new(&runtime).join("workbench.sock"),
+        &Request::RefreshAgents,
+    )? {
+        Reply::Workspace(w) => println!(
+            "{} Agent sessions, {} managed terminals",
+            w.agent_sessions.len(),
+            w.terminals.len()
+        ),
+        other => {
+            return Err(std::io::Error::other(format!(
+                "unexpected scan response: {other:?}"
+            )))
+        }
+    }
+    Ok(())
+}
+fn hook(mut args: impl Iterator<Item = String>) -> std::io::Result<()> {
+    use keepline_core::{model::Agent, protocol::*};
+    use std::io::Read;
+    let mut runtime = None;
+    let mut agent = None;
+    while let Some(arg) = args.next() {
+        match arg.as_str() {
+            "--runtime" => runtime = args.next(),
+            "--agent" => agent = args.next(),
+            _ => {
+                return Err(std::io::Error::other(format!(
+                    "unknown hook argument: {arg}"
+                )))
+            }
+        }
+    }
+    let runtime = runtime.ok_or_else(|| std::io::Error::other("hook requires --runtime"))?;
+    let agent = match agent.as_deref() {
+        Some("codex") => Agent::Codex,
+        Some("claude") => Agent::Claude,
+        _ => return Err(std::io::Error::other("hook requires --agent codex|claude")),
+    };
+    let mut bytes = Vec::new();
+    std::io::stdin()
+        .take(1024 * 1024 + 1)
+        .read_to_end(&mut bytes)?;
+    if bytes.len() > 1024 * 1024 {
+        return Err(std::io::Error::other("hook payload exceeds 1 MiB"));
+    }
+    let value: serde_json::Value = serde_json::from_slice(&bytes).map_err(std::io::Error::other)?;
+    let cli_id = value["session_id"]
+        .as_str()
+        .ok_or_else(|| std::io::Error::other("Hook has no session_id"))?;
+    // An absent path is resolved from the daemon's SQLite index, never by walking HOME.
+    let transcript = value["transcript_path"].as_str().unwrap_or("").to_owned();
+    let request = Request::Hook {
+        runtime: agent,
+        pid: unsafe { libc::getppid() } as u32,
+        cli_session_id: cli_id.into(),
+        transcript,
+        ended: value["hook_event_name"] == "SessionEnd",
+    };
+    match rpc(
+        &std::path::Path::new(&runtime).join("workbench.sock"),
+        &request,
+    )? {
+        Reply::Workspace(_) => Ok(()),
+        other => Err(std::io::Error::other(format!(
+            "unexpected hook response: {other:?}"
+        ))),
+    }
 }
