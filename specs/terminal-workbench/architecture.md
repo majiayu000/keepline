@@ -17,6 +17,7 @@ product.md 保留用户行为，tech.md 的旧 Tauri/Bun 协议不再作为实�
 | AgentSession | runtime + CLI session ID 唯一身份、terminal、task、outcome、updated、日志来源 | 标签或终端移动不能改变待办或结局 |
 | Tab | 空间、标题、关闭状态、default_task、layout 分割树；叶节点只引用 Terminal ID | default_task 仅用于第一次识别新对话，不拥有已有对话 |
 | Task | 空间、说明、逐条 acceptance；每条有稳定 ID、说明与可为空的证据引用 | 没有证据不等于已验证失败；有证据也不等于用户已验收 |
+| Content / session_records | 宿主增量解析；标题、用户原话、助手文本、工具调用/回执、来源位置、末轮与活动时间；按 AgentSession 投影 | Agent 自述不是机械成果，日志存在不表示进程在线；派生分组不能替代用户结局 |
 
 `Tab.layout` 是摆放的唯一事实源，不在 Terminal 重复保存 tab/position。
 分支保存 Right / Down、万分比 ratio 与两个子树；关闭叶节点折叠父节点，将全部面积归还兄弟子树。
@@ -85,13 +86,13 @@ P1 的身份识别有两条可验证路径：
   后台核对发送进程的祖先链、Agent runtime 与日志身份。三者一致才关联。
 
 只有同目录、只有日志、多个候选或 ID 不一致都不能建立托管关联。
-未关联的历史日志先进入 `log_files` 身份索引，不批量注入实时 Workspace；
+未关联日志进入 `log_files` 身份索引；内容层阶段将默认最近 7 天的身份作为只读外部 AgentSession 注入 Workspace（无 terminal/current），超期在快照/事件时过滤；
 证明托管关联后创建 AgentSession，已有 AgentSession 接收增量更新时间。普通 shell 只产生 Terminal。同一个 CLI 身份已在另一终端
 关联时，拒绝第二个当前关联；明确结束原关联后 resume 保留同一 AgentSession。
 
 本轮提供 `keeplined scan --runtime DIR` 与
 `keeplined hook --runtime DIR --agent codex|claude` 的实际入口。
-Hook 只处理身份关联，不安装或修改用户配置。缺少 transcript_path 时查询 SQLite，
+Hook 处理身份关联，并接收可选的 PermissionRequest / Stop 等回合事件，不安装或修改用户配置。缺少 transcript_path 时查询 SQLite，
 不会临时遍历日志目录；显式路径也通过同一个持久化游标读取。
 
 ### 自动订阅的资源边界（产品卡 3.1）
@@ -108,7 +109,7 @@ Hook 只处理身份关联，不安装或修改用户配置。缺少 transcript_
 - **首次启动**：服务 socket 就绪后，后台消费 SQLite `log_scan_dirs` 目录工作表。
   完成的目录即从工作表删除；崩溃只允许重做尚未完成的目录，不从根重来。
   每个历史文件最多读取 256 KiB 身份前缀与 EOF 边界一字节，找到身份提前结束，
-  将旧正文的 EOF 记为基线；这不是历史回合内容导入。
+  P1 当时将旧正文的 EOF 记为基线；本阶段对近期文件新增有界尾段导入，历史库仅对缺少内容投影的缓存身份补一次，不重扫目录。
 - **文件事件**：先启动原生 FSEvents FileEvents 再索引，避免扫描窗口漏事件。
   尚不存在的 CLI 日志目录监听其最近存在的祖先，但回调过滤掉所有旁支路径，
   避免自身 SQLite 写入触发循环。有界队列按批处理并去重路径，线程阻塞等待事件。
@@ -135,7 +136,7 @@ Hook 只处理身份关联，不安装或修改用户配置。缺少 transcript_
   FSEvents 历史不是无条件完整保证；异常依据见 [Apple FSEvents 文档](https://developer.apple.com/library/archive/documentation/Darwin/Conceptual/FSEvents_ProgGuide/UsingtheFSEventsFramework/UsingtheFSEventsFramework.html)。
 
 索引历史只保留身份元数据，避免 5500 条外部历史填满实时 Workspace 的 1 MiB 控制帧。
-这轮不新增历史浏览界面或回合内容存储；回合证据仍在 P2。
+P1 当时不包含历史浏览或回合内容存储；P2 内容层已实现，见本文末尾 2026-10-21 记录。
 真实安装 CLI 的 Hook 配置与完整交互仍须单独验收。
 
 ## 依赖与参考
@@ -160,7 +161,8 @@ Hook 只处理身份关联，不安装或修改用户配置。缺少 transcript_
 | P0 | 拆分 Terminal / AgentSession；逐条验收；分表 SQLite；真实快照与独立宿主 | `cargo test -p keepline-core -p keeplined`；不得从 PTY 退出推导对话结局 |
 | P1，先完成身份验证 | 进程识别 + Hook + 两家 CLI 日志读取；一个 PTY 先后关联多条对话；外部日志不冒充托管；跨空间摆放不改变归属 | `two_cli_conversations_in_one_real_pty_keep_separate_ownership_after_restart`、`log_identity_alone_does_not_bind_by_directory_and_ambiguity_stays_unbound`；FSEvents/vnode 自动关联、40 空闲会话、4 Agent 30 秒负载和缺口恢复状态测试；再验收真实 CLI |
 | P1，分屏与原生终端 | 任意嵌套分割树、比例持久化、放大还原、同一画面菜单；无活跃 owner 自动赋权；进程内符号字体回退 | 见 [本轮逐项证据](evidence/split-tree-20261020/README.md)：原生单画面/四分屏/菜单截图、布局与控制权测试、8 可见画面 CPU/内存；候选窗及两画面真实拼音由用户手测 |
-| P2 | 按回合的证据卡、逐条证据展示、结局流转、鸟瞰与通知 | 真实 Codex/Claude 回合 fixture；原生通知点击与预算验收 |
+| P2，会话内容层 | 已实现确定性解析、原话/机械证据落库、四字段卡/分组、近期外部会话、继续/存为待办、状态栏与鸟瞰 | [20 会话逐字段抽查、原生截图与资源](evidence/content-layer-20261021/README.md)；抽查由实现代理核对，不是用户人工签收；真实安装 Hook 与长期功耗仍未验证 |
+| P2，后续验收 | 通知点击、完整真实 CLI 生命周期、长时间预算 | 未完成，不因内容层的局部验收勾选整阶段 |
 
 每阶段只在验证后更新 tasks.md。编译成功不能证明 IME、通知、功耗或完整 CLI 体验。
 本次无推送、合并、发布、安装替换或用户 Hook 修改授权；本地实现与隔离测试直接执行。
@@ -271,3 +273,20 @@ CJK 与私用区符号按 Ghostty 给定列宽缩放并居中；原生几何检�
 验收逐项记录证据：Codex/Claude 各类消息和 Hook 的合成回归；增量跨半行/重启/轮转去重；正文追加不得增加 ps/lsof；离线只读本机至少 20 个真实会话，逐个对照源偏移抽查「你要它/做成了/停在/下一步·推断」，四列分别计准确率，未知明确显示不能算错误补全；目标「做成了」无自述误报，其他字段至少 90% 有源或明确未知。测量全索引耗时、目录数、实际读取字节；40 外部 + 8 托管空闲 30 秒，后台业务 I/O 及进程探测增量为 0，客户端+后台平均 CPU <0.5%、物理内存 <300 MiB（同机 Ghostty 相对预算另记，不冒充已通过）。产出真实原生鸟瞰与锚定卡片截图。
 
 放弃条件：无法证实工具执行结果时放弃成功结论，展示未知；尾段缺失原始要求时放弃猜测，显示历史未覆盖；未知日志结构记录未解析计数；若需要扫描全量正文、周期轮询、改用户 CLI 配置或调用模型才能生成卡片，放弃该路径；资源超预算或抽查出现自述当证据，先修复，不宣布验收通过。真实日志只读，用户正在运行的 major 1 后台不重启；在隔离 runtime 验收。阶段提交依次为合同、内容解析/落库、界面和外部入口、实测证据，不推送。
+
+
+## 会话内容层：实现决定与实测（2026-10-21）
+
+采用上述最小设计：core Content 为有界显示投影；daemon content.rs 负责确定性分类与调用结果关联；SQLite `session_records` 按 path/inode/offset/ordinal 去重，存原话、助手文本、调用/结果及来源；`session_content` 按日志保存有界派生投影和未完成调用关联。全工作区仍按对象分表，不引入整体 JSON 快照。新内容可与缓存游标同事务更新；中途失败回滚，不留下已前进游标却缺内容的状态。
+
+客户端只有 Workspace 显示副本。后台持有所有分组依据和用户结局；卡片原话保留首条与近期追加，完整已读取原话仍在记录表。存为待办从后台记录构造说明，与 AgentSession 关联同次提交；尾段不覆盖的历史明确标注。绘制/传输只用有界投影，不把所有会话正文塞到 GPUI。外部会话无终端控制权；继续动作启动 shell、预填恢复命令，回车才运行 CLI。Codex 续接携带 --no-daemon，Claude 使用 --resume。
+
+采用一次事件触发的 200ms 突发收集窗口合并 vnode/FSEvents 通知与 SQLite 事务，最多 64 批、截止时间不延长；没有事件时无限阻塞等待。该决定更新此前“无定时等待”的表述：**没有周期定时器，但活跃事件批次有一次有界延迟**。原 FULL 持久化不降级。已关联文件只推进内容游标，不额外查 ps/lsof。未关联进程仍按既有边界识别；外部索引不启动全系统进程扫描。
+
+wire major 3 明确断开旧协议；一次只读探测区分 major 1/2。major 1 不迁移旧对象库，major 2 保留同结构空间/待办/结局并增加内容表。任何宿主重启都会中断旧 PTY，客户端给出提示，不执行重启。当前用户后台保持原状；本轮验收使用独立 HOME/runtime。
+
+实测：首次 5,578 文件 / 1,605 目录读 146.34 MiB、8.171 秒；同库再次启动读量与目录遍历为 0。40 外部卡片 + 8 可见模拟 Agent PTY 空闲 30 秒，客户端+后台 CPU 0.0781%、footprint 85.033 MiB，业务 I/O 和进程探测增量 0。4 模拟 Agent 连续写 30 秒 CPU 0.2723 秒，ps/lsof 增量 0。预算通过，不代表长时功耗或真实 Agent 自身资源消耗通过。
+
+真实日志抽查 20 会话（3 Codex、17 Claude）：四字段各 20/20 有源或明确未知/推断，助手自述误记成果 0；已知原话 17/20，机械成功证据 5/20，末轮已知 16/20。**实现代理逐条核对，未获用户人工签收**。未知复合命令/编排工具结果不猜测，成果召回仍有缺口。首次抽查发现并修复转述注入与代码围栏完成声明误判；原生验收发现并修复外部继续的异步 Pane 创建崩溃。
+
+本阶段采用结论与完整逐项边界见 [内容层证据](evidence/content-layer-20261021/README.md)。原生图已对齐鸟瞰分组、画面内锚定白色卡与状态栏；长标题及长文本截断/滚动，不以占位样例填空。全局搜索、通知、安装版 Hook 生命周期、默认守护模式关联、Dock 重开及长期功耗不随本次完成。并行终端渲染对照工作不属于本阶段提交。
