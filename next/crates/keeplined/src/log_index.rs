@@ -127,7 +127,7 @@ impl Index {
                 // Content is a newly introduced object. Seed only cached recent identities that
                 // have no projection, once, without another directory walk or replacing cursors.
                 let missing = {
-                    let mut q=self.db.prepare("SELECT runtime,path FROM log_files WHERE updated>=?1 AND NOT EXISTS(SELECT 1 FROM session_content WHERE session_content.path=log_files.path)").map_err(err)?;
+                    let mut q=self.db.prepare("SELECT runtime,path FROM log_files WHERE updated>=?1 AND NOT EXISTS(SELECT 1 FROM session_content WHERE session_content.path=log_files.path AND json_extract(parser,'$._rules')=2)").map_err(err)?;
                     let rows = q
                         .query_map(
                             [keepline_core::content::now()
@@ -405,7 +405,7 @@ impl Index {
             .as_secs();
         let seeded: bool = self
             .db
-            .prepare_cached("SELECT EXISTS(SELECT 1 FROM session_content WHERE path=?1)")
+            .prepare_cached("SELECT EXISTS(SELECT 1 FROM session_content WHERE path=?1 AND json_extract(parser,'$._rules')=2)")
             .map_err(err)?
             .query_row([&key], |r| r.get(0))
             .map_err(err)?;
@@ -432,7 +432,7 @@ impl Index {
                 "log rotated while opening; cursor not advanced",
             ));
         }
-        let mut parser = if fresh {
+        let mut parser = if fresh || !seeded {
             crate::content::Parser::default()
         } else {
             crate::content::load(&self.db, &key)?
@@ -445,6 +445,7 @@ impl Index {
             file.read_exact(&mut head)?;
             self.counts.bytes += head.len() as u64;
             for line in head.split(|b| *b == b'\n') {
+                parser.observe_header(runtime, line);
                 if c.identity.is_none() {
                     c.identity = identity(runtime, line);
                 }
@@ -547,6 +548,10 @@ impl Index {
         let tx = self.db.savepoint().map_err(err)?;
         tx.prepare_cached("INSERT INTO log_files VALUES(?1,?2,?3,?4,?5,?6,?7,?8,?9,?10) ON CONFLICT(path) DO UPDATE SET runtime=excluded.runtime,dev=excluded.dev,inode=excluded.inode,offset=excluded.offset,pending=excluded.pending,discard=excluded.discard,cli_id=excluded.cli_id,cwd=excluded.cwd,updated=excluded.updated").map_err(err)?.execute(
             params![key,runtime.executable(),i64::try_from(c.dev).map_err(err)?,i64::try_from(c.inode).map_err(err)?,i64::try_from(c.offset).map_err(err)?,c.pending,c.discard,c.identity.as_ref().map(|v| &v.0),c.identity.as_ref().map(|v| &v.1),i64::try_from(c.updated).map_err(err)?]).map_err(err)?;
+        if !seeded {
+            tx.execute("DELETE FROM session_records WHERE path=?1", [&key])
+                .map_err(err)?;
+        }
         crate::content::save(&tx, &key, &parser)?;
         tx.commit().map_err(err)?;
         self.counts.writes += 1;
@@ -588,15 +593,25 @@ fn is_log(path: &Path) -> bool {
 }
 
 fn identity(runtime: Agent, bytes: &[u8]) -> Option<(String, String)> {
-    let value: serde_json::Value = serde_json::from_slice(bytes).ok()?;
+    let value = crate::content::header_value(runtime, bytes)?;
     let (id, cwd) = match runtime {
         Agent::Codex if value["type"] == "session_meta" => (
             value["payload"]["id"].as_str()?,
             value["payload"]["cwd"].as_str()?,
         ),
-        Agent::Claude if value["isSidechain"] != true => {
-            (value["sessionId"].as_str()?, value["cwd"].as_str()?)
+        Agent::Claude if value["isSidechain"] == true => {
+            return Some((
+                format!(
+                    "{}:sidechain:{}",
+                    value["sessionId"].as_str()?,
+                    value["agentId"]
+                        .as_str()
+                        .or_else(|| value["uuid"].as_str())?
+                ),
+                value["cwd"].as_str()?.into(),
+            ));
         }
+        Agent::Claude => (value["sessionId"].as_str()?, value["cwd"].as_str()?),
         _ => return None,
     };
     (!id.is_empty()).then(|| (id.into(), cwd.into()))
@@ -681,6 +696,54 @@ mod tests {
     }
     fn line(id: &str) -> String {
         format!("{{\"type\":\"session_meta\",\"payload\":{{\"id\":\"{id}\",\"cwd\":\"/tmp\"}}}}\n")
+    }
+    #[test]
+    fn changed_content_rules_reseed_once_without_a_directory_walk() {
+        let f = Fixture::new();
+        let path = f.0.join("logs/rules.jsonl");
+        fs::write(&path,concat!("{\"type\":\"session_meta\",\"payload\":{\"id\":\"r\",\"cwd\":\"/repo\",\"originator\":\"codex-tui\",\"source\":\"cli\"}}\n",
+            "{\"type\":\"event_msg\",\"payload\":{\"type\":\"user_message\",\"message\":\"真实要求\"}}\n")).unwrap();
+        let mut i = f.index();
+        i.initialize().unwrap();
+        i.bootstrap().unwrap();
+        i.db.execute(
+            "UPDATE session_content SET parser=json_remove(parser,'$._rules')",
+            [],
+        )
+        .unwrap();
+        i.db.execute(
+            "UPDATE session_records SET text='old injected context' WHERE kind='user'",
+            [],
+        )
+        .unwrap();
+        i.counts = IoCounts::default();
+        i.bootstrap().unwrap();
+        assert_eq!(i.counts.directories, 0);
+        assert!(i.counts.bytes > 0);
+        let c = i.card(path.to_str().unwrap()).unwrap().unwrap();
+        assert!(c.interactive);
+        assert_eq!(c.title, "真实要求");
+        let old: i64 =
+            i.db.query_row(
+                "SELECT count(*) FROM session_records WHERE text='old injected context'",
+                [],
+                |r| r.get(0),
+            )
+            .unwrap();
+        assert_eq!(old, 0);
+        i.counts = IoCounts::default();
+        i.bootstrap().unwrap();
+        assert_eq!(i.counts.bytes, 0);
+        assert_eq!(i.counts.opens, 0);
+        assert_eq!(
+            identity(
+                Agent::Claude,
+                br#"{"sessionId":"parent","cwd":"/repo","isSidechain":true,"agentId":"child"}"#
+            )
+            .unwrap()
+            .0,
+            "parent:sidechain:child"
+        );
     }
     #[test]
     fn bounded_tail_and_atomic_cursor_content_survive_restart() {
