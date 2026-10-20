@@ -122,7 +122,8 @@ impl Content {
             Outcome::Deferred { until, .. } => last_turn.max(until),
             _ => last_turn.max(workspace.review_since(&session.id)),
         };
-        if !running && now.saturating_sub(since) > 3 * 86400 {
+        if !running && now.saturating_sub(since) > u64::from(workspace.settings.stale_days) * 86400
+        {
             return Inbox::Stale;
         }
         if self.turn == Turn::Waiting {

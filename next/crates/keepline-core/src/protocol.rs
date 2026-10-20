@@ -22,6 +22,10 @@ pub enum Request {
     ClientLeft {
         at: u64,
     },
+    ClaimNotification {
+        session: String,
+        key: String,
+    },
     RefreshAgents,
     RecognitionStatus,
     WatchRecognition,
@@ -75,6 +79,7 @@ pub enum Reply {
     },
     Workspace(Workspace),
     Cwd(String),
+    NotificationClaimed(bool),
     Recognition(RecognitionStatus),
     Attached {
         writable: bool,

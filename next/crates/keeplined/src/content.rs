@@ -812,7 +812,10 @@ impl Parser {
                         self.phase(Turn::Waiting, "", at, &source);
                     }
                     "error" | "turn_failed" => {
-                        self.card.error = short(&p.to_string(), 600);
+                        self.card.error = short(
+                            &text(p.get("message").or_else(|| p.get("error")).unwrap_or(p)),
+                            600,
+                        );
                         self.phase(Turn::Error, "", at, &source);
                     }
                     "token_count" | "agent_reasoning" | "context_compacted" => (),
@@ -1044,7 +1047,7 @@ pub fn card(db: &Connection, path: &str) -> io::Result<Option<Content>> {
 }
 pub fn save(db: &Connection, path: &str, parser: &Parser) -> io::Result<()> {
     let mut encoded = serde_json::to_value(parser).map_err(db_err)?;
-    encoded["_rules"] = json!(3);
+    encoded["_rules"] = json!(4);
     db.prepare_cached("INSERT INTO session_content VALUES(?1,?2,?3,?4,?5,?6) ON CONFLICT(path) DO UPDATE SET title=excluded.title,turn=excluded.turn,updated=excluded.updated,projection=excluded.projection,parser=excluded.parser").map_err(db_err)?.execute(params![path,parser.card.title,format!("{:?}",parser.card.turn),i64::try_from(parser.card.updated).map_err(db_err)?,serde_json::to_string(&parser.card).map_err(db_err)?,serde_json::to_string(&encoded).map_err(db_err)?]).map_err(db_err)?;
     let mut ordinals = BTreeMap::new();
     for r in &parser.records {
@@ -1105,6 +1108,15 @@ mod tests {
             p,
             json!({"type":"function_call_output","call_id":id,"output":s}),
         );
+    }
+    #[test]
+    fn error_cards_use_message_text_not_event_json() {
+        let mut p = Parser::default();
+        add(
+            &mut p,
+            json!({"type":"event_msg","payload":{"type":"error","message":"测试失败，退出码 1"}}),
+        );
+        assert_eq!(p.card.error, "测试失败，退出码 1");
     }
     #[test]
     fn codex_interactive_entrypoint_is_not_a_brand_whitelist() {
