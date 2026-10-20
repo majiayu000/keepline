@@ -1,0 +1,1350 @@
+{
+  "counts": {
+    "交互式": 204,
+    "Codex 子代理": 96,
+    "Claude 子代理 / sidechain": 138,
+    "Codex exec 非交互": 24,
+    "Hook / 无人值守后台任务": 4,
+    "缺少交互入口证据": 1,
+    "Claude 非交互 / SDK": 2,
+    "临时目录会话": 1
+  },
+  "hidden": [
+    {
+      "id": "01a158a3-bce1-74f3-84e1-e3da49e47ce5",
+      "reason": "Codex 子代理",
+      "runtime": "Codex"
+    },
+    {
+      "id": "01a158a2-ec81-7bf1-8077-896fb95539c8",
+      "reason": "Codex 子代理",
+      "runtime": "Codex"
+    },
+    {
+      "id": "01a158a3-6406-75a1-a76d-3e64b4e5ec1f",
+      "reason": "Codex 子代理",
+      "runtime": "Codex"
+    },
+    {
+      "id": "290034d6-1cbe-43d5-b47c-1bbe39baa510:sidechain:a6ad9328b47653d9d",
+      "reason": "Claude 子代理 / sidechain",
+      "runtime": "Claude"
+    },
+    {
+      "id": "290034d6-1cbe-43d5-b47c-1bbe39baa510:sidechain:a723bf9743e3fde81",
+      "reason": "Claude 子代理 / sidechain",
+      "runtime": "Claude"
+    },
+    {
+      "id": "290034d6-1cbe-43d5-b47c-1bbe39baa510:sidechain:add32077e04d97ea5",
+      "reason": "Claude 子代理 / sidechain",
+      "runtime": "Claude"
+    },
+    {
+      "id": "290034d6-1cbe-43d5-b47c-1bbe39baa510:sidechain:ad9decac5e8d7d598",
+      "reason": "Claude 子代理 / sidechain",
+      "runtime": "Claude"
+    },
+    {
+      "id": "01a159fe-9e40-7983-8204-62cc6b0f5d19",
+      "reason": "Codex 子代理",
+      "runtime": "Codex"
+    },
+    {
+      "id": "01a159ff-ffce-7240-80ad-fc592168188e",
+      "reason": "Codex 子代理",
+      "runtime": "Codex"
+    },
+    {
+      "id": "01a159fe-5327-7fe2-9854-5a28a4e66cf8",
+      "reason": "Codex 子代理",
+      "runtime": "Codex"
+    },
+    {
+      "id": "01a159c8-dbb3-75e1-9477-0614b3bdd986",
+      "reason": "Codex exec 非交互",
+      "runtime": "Codex"
+    },
+    {
+      "id": "00901779-121b-45d2-bfb5-81abf26a3291:sidechain:a2d2aca8dc737cfb8",
+      "reason": "Claude 子代理 / sidechain",
+      "runtime": "Claude"
+    },
+    {
+      "id": "01a159bb-f5e5-7963-a058-12db0be96c72",
+      "reason": "Codex 子代理",
+      "runtime": "Codex"
+    },
+    {
+      "id": "01a159b5-9f74-7911-93da-f5c72e31353e",
+      "reason": "Codex 子代理",
+      "runtime": "Codex"
+    },
+    {
+      "id": "01a159b2-105c-75c3-8edb-6148630e9c17",
+      "reason": "Codex 子代理",
+      "runtime": "Codex"
+    },
+    {
+      "id": "01a159b1-fa63-7132-8004-30db88910397",
+      "reason": "Codex 子代理",
+      "runtime": "Codex"
+    },
+    {
+      "id": "01a1598e-c9c0-7ca0-9211-bf162bbbb285",
+      "reason": "Codex 子代理",
+      "runtime": "Codex"
+    },
+    {
+      "id": "01a1598f-0529-7512-b0bd-87746d24dbe3",
+      "reason": "Codex 子代理",
+      "runtime": "Codex"
+    },
+    {
+      "id": "01a15943-b9c4-74b1-b435-3716b50ebc83",
+      "reason": "Codex 子代理",
+      "runtime": "Codex"
+    },
+    {
+      "id": "01a15949-ff29-7df2-b317-ccedf09b7568",
+      "reason": "Codex 子代理",
+      "runtime": "Codex"
+    },
+    {
+      "id": "01a158e5-c1f0-7040-b5f5-caf26d4ce833",
+      "reason": "Codex 子代理",
+      "runtime": "Codex"
+    },
+    {
+      "id": "01a158b8-d2ed-7a33-acb3-1b015ebee55a",
+      "reason": "Codex 子代理",
+      "runtime": "Codex"
+    },
+    {
+      "id": "01a15879-b305-7cd2-8f1f-bf3839bfd2ff",
+      "reason": "Codex 子代理",
+      "runtime": "Codex"
+    },
+    {
+      "id": "01a158b2-6e49-7c63-a73a-27181a30be8b",
+      "reason": "Codex 子代理",
+      "runtime": "Codex"
+    },
+    {
+      "id": "01a158a4-e973-7b93-b9d5-ffecd2d503df",
+      "reason": "Codex 子代理",
+      "runtime": "Codex"
+    },
+    {
+      "id": "01a1587b-5ef1-71c2-a931-edad0a30f50f",
+      "reason": "Codex 子代理",
+      "runtime": "Codex"
+    },
+    {
+      "id": "01a15887-6519-7b73-b0a6-55f264ab05c5",
+      "reason": "Codex 子代理",
+      "runtime": "Codex"
+    },
+    {
+      "id": "b19c5eb6-dedb-40ca-9f1f-f53df3ba7966",
+      "reason": "Hook / 无人值守后台任务",
+      "runtime": "Claude"
+    },
+    {
+      "id": "01a1588c-a372-7820-a160-a74685dc4bdf",
+      "reason": "Codex 子代理",
+      "runtime": "Codex"
+    },
+    {
+      "id": "4242896d-059d-4a0b-bf8b-bb7835c8fc36",
+      "reason": "Hook / 无人值守后台任务",
+      "runtime": "Claude"
+    },
+    {
+      "id": "32255d82-9df9-4981-a9c3-a083a35e938c",
+      "reason": "Hook / 无人值守后台任务",
+      "runtime": "Claude"
+    },
+    {
+      "id": "01a1583b-3d1f-7ee1-8e40-24509fbbfb29",
+      "reason": "Codex 子代理",
+      "runtime": "Codex"
+    },
+    {
+      "id": "01a1583f-1287-7982-9f70-4116cdb13ec4",
+      "reason": "Codex 子代理",
+      "runtime": "Codex"
+    },
+    {
+      "id": "01a15854-1c16-70a1-a6dd-3a9fd75bd4d6",
+      "reason": "Codex 子代理",
+      "runtime": "Codex"
+    },
+    {
+      "id": "70f201cf-906d-4ddf-b04a-9ce61e842f96:sidechain:a116ef6d34c32b99a",
+      "reason": "Claude 子代理 / sidechain",
+      "runtime": "Claude"
+    },
+    {
+      "id": "c80e1c96-28dc-45fb-9dbf-51d99b8d4386:sidechain:ae70d67241f5c15aa",
+      "reason": "Claude 子代理 / sidechain",
+      "runtime": "Claude"
+    },
+    {
+      "id": "c80e1c96-28dc-45fb-9dbf-51d99b8d4386:sidechain:abe19113cc5aa45e3",
+      "reason": "Claude 子代理 / sidechain",
+      "runtime": "Claude"
+    },
+    {
+      "id": "c80e1c96-28dc-45fb-9dbf-51d99b8d4386:sidechain:a41ccdaecff0cde95",
+      "reason": "Claude 子代理 / sidechain",
+      "runtime": "Claude"
+    },
+    {
+      "id": "01a10699-26c4-71b1-9c40-44cd4ea720c2",
+      "reason": "缺少交互入口证据",
+      "runtime": "Codex"
+    },
+    {
+      "id": "c80e1c96-28dc-45fb-9dbf-51d99b8d4386:sidechain:a8ca239bb80c5bc82",
+      "reason": "Claude 子代理 / sidechain",
+      "runtime": "Claude"
+    },
+    {
+      "id": "01a15828-7afa-7883-88d7-2eb9428ed079",
+      "reason": "Codex 子代理",
+      "runtime": "Codex"
+    },
+    {
+      "id": "01a15821-cae6-77e3-b435-5e1ec1a41915",
+      "reason": "Codex 子代理",
+      "runtime": "Codex"
+    },
+    {
+      "id": "c80e1c96-28dc-45fb-9dbf-51d99b8d4386:sidechain:ac52bac34a8467dc6",
+      "reason": "Claude 子代理 / sidechain",
+      "runtime": "Claude"
+    },
+    {
+      "id": "75147855-55e7-46c9-a34a-8f59241b7db5:sidechain:a3bea32ffff64301f",
+      "reason": "Claude 子代理 / sidechain",
+      "runtime": "Claude"
+    },
+    {
+      "id": "b870ce40-8435-44b2-bad2-1513f575bb88",
+      "reason": "Claude 非交互 / SDK",
+      "runtime": "Claude"
+    },
+    {
+      "id": "8e0ed805-2d1b-440c-8db9-b2e1cf31bdd8",
+      "reason": "Claude 非交互 / SDK",
+      "runtime": "Claude"
+    },
+    {
+      "id": "f4a31fea-811c-4ab1-8d8e-8e77aeec2f53",
+      "reason": "临时目录会话",
+      "runtime": "Claude"
+    },
+    {
+      "id": "c80e1c96-28dc-45fb-9dbf-51d99b8d4386:sidechain:a668a498a85a566c4",
+      "reason": "Claude 子代理 / sidechain",
+      "runtime": "Claude"
+    },
+    {
+      "id": "c80e1c96-28dc-45fb-9dbf-51d99b8d4386:sidechain:acfc5e02ea2b6bcdf",
+      "reason": "Claude 子代理 / sidechain",
+      "runtime": "Claude"
+    },
+    {
+      "id": "c80e1c96-28dc-45fb-9dbf-51d99b8d4386:sidechain:ad7cdb9ab50ed103e",
+      "reason": "Claude 子代理 / sidechain",
+      "runtime": "Claude"
+    },
+    {
+      "id": "c80e1c96-28dc-45fb-9dbf-51d99b8d4386:sidechain:a8c4b84432c45bedf",
+      "reason": "Claude 子代理 / sidechain",
+      "runtime": "Claude"
+    },
+    {
+      "id": "c80e1c96-28dc-45fb-9dbf-51d99b8d4386:sidechain:ab03f1dd58b2d59f3",
+      "reason": "Claude 子代理 / sidechain",
+      "runtime": "Claude"
+    },
+    {
+      "id": "c80e1c96-28dc-45fb-9dbf-51d99b8d4386:sidechain:a85c97eec1f94502f",
+      "reason": "Claude 子代理 / sidechain",
+      "runtime": "Claude"
+    },
+    {
+      "id": "c80e1c96-28dc-45fb-9dbf-51d99b8d4386:sidechain:a5fc64a5f467ce2ad",
+      "reason": "Claude 子代理 / sidechain",
+      "runtime": "Claude"
+    },
+    {
+      "id": "c80e1c96-28dc-45fb-9dbf-51d99b8d4386:sidechain:aff581dbc140f7897",
+      "reason": "Claude 子代理 / sidechain",
+      "runtime": "Claude"
+    },
+    {
+      "id": "c80e1c96-28dc-45fb-9dbf-51d99b8d4386:sidechain:ab2f9cce2c5277156",
+      "reason": "Claude 子代理 / sidechain",
+      "runtime": "Claude"
+    },
+    {
+      "id": "c80e1c96-28dc-45fb-9dbf-51d99b8d4386:sidechain:a0eb76b6749813ecd",
+      "reason": "Claude 子代理 / sidechain",
+      "runtime": "Claude"
+    },
+    {
+      "id": "c80e1c96-28dc-45fb-9dbf-51d99b8d4386:sidechain:a2c7d6877ba5c7dc1",
+      "reason": "Claude 子代理 / sidechain",
+      "runtime": "Claude"
+    },
+    {
+      "id": "c80e1c96-28dc-45fb-9dbf-51d99b8d4386:sidechain:a3a07d443f058d736",
+      "reason": "Claude 子代理 / sidechain",
+      "runtime": "Claude"
+    },
+    {
+      "id": "c80e1c96-28dc-45fb-9dbf-51d99b8d4386:sidechain:a731ebb0a5a9a3da0",
+      "reason": "Claude 子代理 / sidechain",
+      "runtime": "Claude"
+    },
+    {
+      "id": "c80e1c96-28dc-45fb-9dbf-51d99b8d4386:sidechain:a761951e7a533ace1",
+      "reason": "Claude 子代理 / sidechain",
+      "runtime": "Claude"
+    },
+    {
+      "id": "c80e1c96-28dc-45fb-9dbf-51d99b8d4386:sidechain:abf9d67862c12db34",
+      "reason": "Claude 子代理 / sidechain",
+      "runtime": "Claude"
+    },
+    {
+      "id": "c80e1c96-28dc-45fb-9dbf-51d99b8d4386:sidechain:a5ad62e2037efd8f8",
+      "reason": "Claude 子代理 / sidechain",
+      "runtime": "Claude"
+    },
+    {
+      "id": "c80e1c96-28dc-45fb-9dbf-51d99b8d4386:sidechain:a3ebbf57561569b19",
+      "reason": "Claude 子代理 / sidechain",
+      "runtime": "Claude"
+    },
+    {
+      "id": "c80e1c96-28dc-45fb-9dbf-51d99b8d4386:sidechain:afdd8c63c887cab76",
+      "reason": "Claude 子代理 / sidechain",
+      "runtime": "Claude"
+    },
+    {
+      "id": "c80e1c96-28dc-45fb-9dbf-51d99b8d4386:sidechain:abe420e5e581c1af2",
+      "reason": "Claude 子代理 / sidechain",
+      "runtime": "Claude"
+    },
+    {
+      "id": "c80e1c96-28dc-45fb-9dbf-51d99b8d4386:sidechain:a4b0d5fe8996e3648",
+      "reason": "Claude 子代理 / sidechain",
+      "runtime": "Claude"
+    },
+    {
+      "id": "c80e1c96-28dc-45fb-9dbf-51d99b8d4386:sidechain:a3bc98586cddfa6b7",
+      "reason": "Claude 子代理 / sidechain",
+      "runtime": "Claude"
+    },
+    {
+      "id": "c80e1c96-28dc-45fb-9dbf-51d99b8d4386:sidechain:a6af38188f06bc21d",
+      "reason": "Claude 子代理 / sidechain",
+      "runtime": "Claude"
+    },
+    {
+      "id": "c80e1c96-28dc-45fb-9dbf-51d99b8d4386:sidechain:a7481090e0ec79dec",
+      "reason": "Claude 子代理 / sidechain",
+      "runtime": "Claude"
+    },
+    {
+      "id": "c80e1c96-28dc-45fb-9dbf-51d99b8d4386:sidechain:a5d4b0c97ed67c1c3",
+      "reason": "Claude 子代理 / sidechain",
+      "runtime": "Claude"
+    },
+    {
+      "id": "c80e1c96-28dc-45fb-9dbf-51d99b8d4386:sidechain:a3dbd0dbb3066ec3e",
+      "reason": "Claude 子代理 / sidechain",
+      "runtime": "Claude"
+    },
+    {
+      "id": "c80e1c96-28dc-45fb-9dbf-51d99b8d4386:sidechain:aa8195cbf2fd6992f",
+      "reason": "Claude 子代理 / sidechain",
+      "runtime": "Claude"
+    },
+    {
+      "id": "c80e1c96-28dc-45fb-9dbf-51d99b8d4386:sidechain:aa8b1b656cc4451d0",
+      "reason": "Claude 子代理 / sidechain",
+      "runtime": "Claude"
+    },
+    {
+      "id": "c80e1c96-28dc-45fb-9dbf-51d99b8d4386:sidechain:a38fe2a276f547426",
+      "reason": "Claude 子代理 / sidechain",
+      "runtime": "Claude"
+    },
+    {
+      "id": "75147855-55e7-46c9-a34a-8f59241b7db5:sidechain:aab3719cf32d3e301",
+      "reason": "Claude 子代理 / sidechain",
+      "runtime": "Claude"
+    },
+    {
+      "id": "c80e1c96-28dc-45fb-9dbf-51d99b8d4386:sidechain:abc9c6d502c1183f4",
+      "reason": "Claude 子代理 / sidechain",
+      "runtime": "Claude"
+    },
+    {
+      "id": "75147855-55e7-46c9-a34a-8f59241b7db5:sidechain:a4f3afcd5f656c129",
+      "reason": "Claude 子代理 / sidechain",
+      "runtime": "Claude"
+    },
+    {
+      "id": "75147855-55e7-46c9-a34a-8f59241b7db5:sidechain:a862e62187d29805a",
+      "reason": "Claude 子代理 / sidechain",
+      "runtime": "Claude"
+    },
+    {
+      "id": "75147855-55e7-46c9-a34a-8f59241b7db5:sidechain:a121f313304c47d43",
+      "reason": "Claude 子代理 / sidechain",
+      "runtime": "Claude"
+    },
+    {
+      "id": "75147855-55e7-46c9-a34a-8f59241b7db5:sidechain:af1122a1bec9742df",
+      "reason": "Claude 子代理 / sidechain",
+      "runtime": "Claude"
+    },
+    {
+      "id": "75147855-55e7-46c9-a34a-8f59241b7db5:sidechain:af1704d15de85f303",
+      "reason": "Claude 子代理 / sidechain",
+      "runtime": "Claude"
+    },
+    {
+      "id": "c80e1c96-28dc-45fb-9dbf-51d99b8d4386:sidechain:ab366a16679316d2d",
+      "reason": "Claude 子代理 / sidechain",
+      "runtime": "Claude"
+    },
+    {
+      "id": "1fc5e267-bc3e-4c8b-b4f4-3ed3a2865c58:sidechain:a0d6fab5b43bd5361",
+      "reason": "Claude 子代理 / sidechain",
+      "runtime": "Claude"
+    },
+    {
+      "id": "1fc5e267-bc3e-4c8b-b4f4-3ed3a2865c58:sidechain:ae636a71820c23621",
+      "reason": "Claude 子代理 / sidechain",
+      "runtime": "Claude"
+    },
+    {
+      "id": "1fc5e267-bc3e-4c8b-b4f4-3ed3a2865c58:sidechain:a549722c1429c90f7",
+      "reason": "Claude 子代理 / sidechain",
+      "runtime": "Claude"
+    },
+    {
+      "id": "c80e1c96-28dc-45fb-9dbf-51d99b8d4386:sidechain:a0ecb7c64a43d6d6f",
+      "reason": "Claude 子代理 / sidechain",
+      "runtime": "Claude"
+    },
+    {
+      "id": "c80e1c96-28dc-45fb-9dbf-51d99b8d4386:sidechain:ac2bb3679e0505e17",
+      "reason": "Claude 子代理 / sidechain",
+      "runtime": "Claude"
+    },
+    {
+      "id": "c80e1c96-28dc-45fb-9dbf-51d99b8d4386:sidechain:ade987895e7e64d7f",
+      "reason": "Claude 子代理 / sidechain",
+      "runtime": "Claude"
+    },
+    {
+      "id": "c80e1c96-28dc-45fb-9dbf-51d99b8d4386:sidechain:a30ef99d7df67ae30",
+      "reason": "Claude 子代理 / sidechain",
+      "runtime": "Claude"
+    },
+    {
+      "id": "c80e1c96-28dc-45fb-9dbf-51d99b8d4386:sidechain:af632d284488db077",
+      "reason": "Claude 子代理 / sidechain",
+      "runtime": "Claude"
+    },
+    {
+      "id": "c80e1c96-28dc-45fb-9dbf-51d99b8d4386:sidechain:adae9e120541369b2",
+      "reason": "Claude 子代理 / sidechain",
+      "runtime": "Claude"
+    },
+    {
+      "id": "c80e1c96-28dc-45fb-9dbf-51d99b8d4386:sidechain:ad2dfc00220c47967",
+      "reason": "Claude 子代理 / sidechain",
+      "runtime": "Claude"
+    },
+    {
+      "id": "c80e1c96-28dc-45fb-9dbf-51d99b8d4386:sidechain:ab0fb17623dc92523",
+      "reason": "Claude 子代理 / sidechain",
+      "runtime": "Claude"
+    },
+    {
+      "id": "c80e1c96-28dc-45fb-9dbf-51d99b8d4386:sidechain:a6b9a7585c2fee08e",
+      "reason": "Claude 子代理 / sidechain",
+      "runtime": "Claude"
+    },
+    {
+      "id": "01a154fa-0d77-7ac1-8e36-1ae697c9f240",
+      "reason": "Codex 子代理",
+      "runtime": "Codex"
+    },
+    {
+      "id": "c80e1c96-28dc-45fb-9dbf-51d99b8d4386:sidechain:afcfa6f81b9c183a9",
+      "reason": "Claude 子代理 / sidechain",
+      "runtime": "Claude"
+    },
+    {
+      "id": "1fc5e267-bc3e-4c8b-b4f4-3ed3a2865c58:sidechain:a0b54efdeacbb48f4",
+      "reason": "Claude 子代理 / sidechain",
+      "runtime": "Claude"
+    },
+    {
+      "id": "c80e1c96-28dc-45fb-9dbf-51d99b8d4386:sidechain:a251b4ee3a9f68ad9",
+      "reason": "Claude 子代理 / sidechain",
+      "runtime": "Claude"
+    },
+    {
+      "id": "1fc5e267-bc3e-4c8b-b4f4-3ed3a2865c58:sidechain:af56c318a0571a8d2",
+      "reason": "Claude 子代理 / sidechain",
+      "runtime": "Claude"
+    },
+    {
+      "id": "1fc5e267-bc3e-4c8b-b4f4-3ed3a2865c58:sidechain:a5dcdb677bf307c96",
+      "reason": "Claude 子代理 / sidechain",
+      "runtime": "Claude"
+    },
+    {
+      "id": "1fc5e267-bc3e-4c8b-b4f4-3ed3a2865c58:sidechain:a51ac2eee06d04ab1",
+      "reason": "Claude 子代理 / sidechain",
+      "runtime": "Claude"
+    },
+    {
+      "id": "1fc5e267-bc3e-4c8b-b4f4-3ed3a2865c58:sidechain:ada1f183069262f15",
+      "reason": "Claude 子代理 / sidechain",
+      "runtime": "Claude"
+    },
+    {
+      "id": "c80e1c96-28dc-45fb-9dbf-51d99b8d4386:sidechain:a16b7233ed2a9225d",
+      "reason": "Claude 子代理 / sidechain",
+      "runtime": "Claude"
+    },
+    {
+      "id": "c80e1c96-28dc-45fb-9dbf-51d99b8d4386:sidechain:ae0b7d2e87d3084cd",
+      "reason": "Claude 子代理 / sidechain",
+      "runtime": "Claude"
+    },
+    {
+      "id": "c80e1c96-28dc-45fb-9dbf-51d99b8d4386:sidechain:abfbce3cf43592c34",
+      "reason": "Claude 子代理 / sidechain",
+      "runtime": "Claude"
+    },
+    {
+      "id": "c80e1c96-28dc-45fb-9dbf-51d99b8d4386:sidechain:abea4cb126dba785c",
+      "reason": "Claude 子代理 / sidechain",
+      "runtime": "Claude"
+    },
+    {
+      "id": "1fc5e267-bc3e-4c8b-b4f4-3ed3a2865c58:sidechain:a2a2755089a0f26d2",
+      "reason": "Claude 子代理 / sidechain",
+      "runtime": "Claude"
+    },
+    {
+      "id": "1fc5e267-bc3e-4c8b-b4f4-3ed3a2865c58:sidechain:a9bdcf82dc776edae",
+      "reason": "Claude 子代理 / sidechain",
+      "runtime": "Claude"
+    },
+    {
+      "id": "1fc5e267-bc3e-4c8b-b4f4-3ed3a2865c58:sidechain:af41daf26c5913c4d",
+      "reason": "Claude 子代理 / sidechain",
+      "runtime": "Claude"
+    },
+    {
+      "id": "9617e572-08ae-456e-abe9-18a5803a70cc",
+      "reason": "Hook / 无人值守后台任务",
+      "runtime": "Claude"
+    },
+    {
+      "id": "c80e1c96-28dc-45fb-9dbf-51d99b8d4386:sidechain:a8f0e79cb16fc48c0",
+      "reason": "Claude 子代理 / sidechain",
+      "runtime": "Claude"
+    },
+    {
+      "id": "449f386e-ff12-42e9-8552-7984d3389626:sidechain:a9b4900f8aec0145a",
+      "reason": "Claude 子代理 / sidechain",
+      "runtime": "Claude"
+    },
+    {
+      "id": "449f386e-ff12-42e9-8552-7984d3389626:sidechain:aa8022ae0a26f2103",
+      "reason": "Claude 子代理 / sidechain",
+      "runtime": "Claude"
+    },
+    {
+      "id": "398c22b7-d9be-4114-8e8a-5683ca760191:sidechain:ab0c482296d5930b9",
+      "reason": "Claude 子代理 / sidechain",
+      "runtime": "Claude"
+    },
+    {
+      "id": "398c22b7-d9be-4114-8e8a-5683ca760191:sidechain:a709f8e30c70f2423",
+      "reason": "Claude 子代理 / sidechain",
+      "runtime": "Claude"
+    },
+    {
+      "id": "398c22b7-d9be-4114-8e8a-5683ca760191:sidechain:a08faf0290a31d6fe",
+      "reason": "Claude 子代理 / sidechain",
+      "runtime": "Claude"
+    },
+    {
+      "id": "398c22b7-d9be-4114-8e8a-5683ca760191:sidechain:a3bc3a9ecec0f3eca",
+      "reason": "Claude 子代理 / sidechain",
+      "runtime": "Claude"
+    },
+    {
+      "id": "398c22b7-d9be-4114-8e8a-5683ca760191:sidechain:a57299d57960492cf",
+      "reason": "Claude 子代理 / sidechain",
+      "runtime": "Claude"
+    },
+    {
+      "id": "398c22b7-d9be-4114-8e8a-5683ca760191:sidechain:a68b523cf6f5e37f4",
+      "reason": "Claude 子代理 / sidechain",
+      "runtime": "Claude"
+    },
+    {
+      "id": "398c22b7-d9be-4114-8e8a-5683ca760191:sidechain:ad59fa822d5c9dbb1",
+      "reason": "Claude 子代理 / sidechain",
+      "runtime": "Claude"
+    },
+    {
+      "id": "1fc5e267-bc3e-4c8b-b4f4-3ed3a2865c58:sidechain:a1f44b1a78ee4d480",
+      "reason": "Claude 子代理 / sidechain",
+      "runtime": "Claude"
+    },
+    {
+      "id": "1fc5e267-bc3e-4c8b-b4f4-3ed3a2865c58:sidechain:ab6dd7f86a1c1be1d",
+      "reason": "Claude 子代理 / sidechain",
+      "runtime": "Claude"
+    },
+    {
+      "id": "01a15335-80d8-7501-8b25-84c39d533e0f",
+      "reason": "Codex 子代理",
+      "runtime": "Codex"
+    },
+    {
+      "id": "01a152fb-59bb-7820-851d-339f5eb08ccf",
+      "reason": "Codex 子代理",
+      "runtime": "Codex"
+    },
+    {
+      "id": "01a152f8-a108-7ca0-bb47-7ef49b2121b2",
+      "reason": "Codex 子代理",
+      "runtime": "Codex"
+    },
+    {
+      "id": "01a152db-caa2-7d01-a2ca-7fc57a6fcf13",
+      "reason": "Codex 子代理",
+      "runtime": "Codex"
+    },
+    {
+      "id": "01a152d6-9ba2-7502-9c04-1c6f8f7cae68",
+      "reason": "Codex 子代理",
+      "runtime": "Codex"
+    },
+    {
+      "id": "01a152d6-2577-7153-95e0-4733cced8709",
+      "reason": "Codex 子代理",
+      "runtime": "Codex"
+    },
+    {
+      "id": "01a152d6-60d5-7480-aee2-0f6d0487eff2",
+      "reason": "Codex 子代理",
+      "runtime": "Codex"
+    },
+    {
+      "id": "01a152ce-821c-7293-9ca0-462fadd9866e",
+      "reason": "Codex 子代理",
+      "runtime": "Codex"
+    },
+    {
+      "id": "01a152c9-769a-7053-bcee-cd99f18ab4cf",
+      "reason": "Codex 子代理",
+      "runtime": "Codex"
+    },
+    {
+      "id": "01a152c0-b8e6-7ac0-bd3f-128e65a39b52",
+      "reason": "Codex 子代理",
+      "runtime": "Codex"
+    },
+    {
+      "id": "01a14edc-7030-79a1-870a-cd44611ac38b",
+      "reason": "Codex 子代理",
+      "runtime": "Codex"
+    },
+    {
+      "id": "01a14edc-95c1-7472-9a5a-05eab288abc1",
+      "reason": "Codex 子代理",
+      "runtime": "Codex"
+    },
+    {
+      "id": "01a14edc-82ea-7461-9cc2-7b07707d5b85",
+      "reason": "Codex 子代理",
+      "runtime": "Codex"
+    },
+    {
+      "id": "01a14dc6-34e3-7972-b922-f6c1cdf78ab6",
+      "reason": "Codex 子代理",
+      "runtime": "Codex"
+    },
+    {
+      "id": "01a14b08-46e6-7e10-860a-e0215bfd5060",
+      "reason": "Codex 子代理",
+      "runtime": "Codex"
+    },
+    {
+      "id": "01a14b03-a711-7e12-8348-8becbe4a8009",
+      "reason": "Codex 子代理",
+      "runtime": "Codex"
+    },
+    {
+      "id": "01a14dbc-1dfc-7242-b3c3-3f7a898773bc",
+      "reason": "Codex 子代理",
+      "runtime": "Codex"
+    },
+    {
+      "id": "01a14af6-6e3e-7da0-b176-da77e73e5c20",
+      "reason": "Codex 子代理",
+      "runtime": "Codex"
+    },
+    {
+      "id": "01a14af7-365e-74a1-9446-c403ea47d202",
+      "reason": "Codex 子代理",
+      "runtime": "Codex"
+    },
+    {
+      "id": "01a14af7-0ab7-70c3-8301-2cd7ad6379d4",
+      "reason": "Codex 子代理",
+      "runtime": "Codex"
+    },
+    {
+      "id": "01a14a6b-bd6b-7221-be5a-d864fd3630ce",
+      "reason": "Codex 子代理",
+      "runtime": "Codex"
+    },
+    {
+      "id": "01a14a6b-9b8b-7152-a58e-fe3a8ca8a7c1",
+      "reason": "Codex 子代理",
+      "runtime": "Codex"
+    },
+    {
+      "id": "01a14a6b-83c6-7722-8932-e51b70dd3a21",
+      "reason": "Codex 子代理",
+      "runtime": "Codex"
+    },
+    {
+      "id": "01a145cb-b249-7f90-94e9-891ea0713356",
+      "reason": "Codex 子代理",
+      "runtime": "Codex"
+    },
+    {
+      "id": "01a13ffe-0594-7422-92b2-5fe07cccf853",
+      "reason": "Codex 子代理",
+      "runtime": "Codex"
+    },
+    {
+      "id": "01a13ffd-b492-7152-aa97-1d81af4b1a5b",
+      "reason": "Codex 子代理",
+      "runtime": "Codex"
+    },
+    {
+      "id": "01a14000-bd66-73f0-89c6-3fecbcfe7f82",
+      "reason": "Codex 子代理",
+      "runtime": "Codex"
+    },
+    {
+      "id": "01a13ffe-4abe-7da3-94b1-fa2124d9fec6",
+      "reason": "Codex 子代理",
+      "runtime": "Codex"
+    },
+    {
+      "id": "01a13e33-2830-78e0-a635-242ddf5377da",
+      "reason": "Codex 子代理",
+      "runtime": "Codex"
+    },
+    {
+      "id": "01a13e2f-dfd6-7082-9c38-9363a2b5b84b",
+      "reason": "Codex 子代理",
+      "runtime": "Codex"
+    },
+    {
+      "id": "01a13e2d-4f91-7192-92ff-f2451d560dae",
+      "reason": "Codex 子代理",
+      "runtime": "Codex"
+    },
+    {
+      "id": "01a13e3e-4e2d-77b0-9e4d-681e15cf57b3",
+      "reason": "Codex 子代理",
+      "runtime": "Codex"
+    },
+    {
+      "id": "01a13e31-1ecc-7182-aade-50b4bab4df4b",
+      "reason": "Codex 子代理",
+      "runtime": "Codex"
+    },
+    {
+      "id": "01a13e35-d0f2-7992-96e1-292292247e52",
+      "reason": "Codex 子代理",
+      "runtime": "Codex"
+    },
+    {
+      "id": "01a13e3d-dc97-7593-9a5f-b69990c9c881",
+      "reason": "Codex 子代理",
+      "runtime": "Codex"
+    },
+    {
+      "id": "01a13e3e-2b5a-7cc3-bb97-42b1d7a52605",
+      "reason": "Codex 子代理",
+      "runtime": "Codex"
+    },
+    {
+      "id": "01a13e32-7a1a-7792-b86e-d244e50929b5",
+      "reason": "Codex 子代理",
+      "runtime": "Codex"
+    },
+    {
+      "id": "01a13e32-07b8-79b0-a410-1eced3e07a2b",
+      "reason": "Codex 子代理",
+      "runtime": "Codex"
+    },
+    {
+      "id": "01a13e2d-2402-7373-add2-7af2045fd3f1",
+      "reason": "Codex 子代理",
+      "runtime": "Codex"
+    },
+    {
+      "id": "01a13e2f-2990-77c3-b16b-1163907c26fe",
+      "reason": "Codex 子代理",
+      "runtime": "Codex"
+    },
+    {
+      "id": "01a13e25-1d43-76e0-a432-a582f6e4497e",
+      "reason": "Codex 子代理",
+      "runtime": "Codex"
+    },
+    {
+      "id": "01a13e1f-0977-7192-9824-5951e2bc922a",
+      "reason": "Codex 子代理",
+      "runtime": "Codex"
+    },
+    {
+      "id": "01a13e1f-5e9e-7e81-9cc5-58a724bd46b3",
+      "reason": "Codex 子代理",
+      "runtime": "Codex"
+    },
+    {
+      "id": "01a13e28-0bfe-77e1-aea4-9e2dd4fe6ed9",
+      "reason": "Codex 子代理",
+      "runtime": "Codex"
+    },
+    {
+      "id": "01a13e25-62d5-7631-8601-1efdc200cc1f",
+      "reason": "Codex 子代理",
+      "runtime": "Codex"
+    },
+    {
+      "id": "01a13e28-4af0-7603-a940-2d4a321513ec",
+      "reason": "Codex 子代理",
+      "runtime": "Codex"
+    },
+    {
+      "id": "01a13e24-48d5-75f0-adf0-a8b5e17d38e1",
+      "reason": "Codex 子代理",
+      "runtime": "Codex"
+    },
+    {
+      "id": "01a13e1f-a1a1-7980-8c32-134237600074",
+      "reason": "Codex 子代理",
+      "runtime": "Codex"
+    },
+    {
+      "id": "01a13e15-5b38-7481-9056-1dcfa06987a5",
+      "reason": "Codex 子代理",
+      "runtime": "Codex"
+    },
+    {
+      "id": "01a13e14-fd29-73a3-9a2a-7d40014c42df",
+      "reason": "Codex 子代理",
+      "runtime": "Codex"
+    },
+    {
+      "id": "01a13e15-2d60-7161-b7d9-1be651f32b57",
+      "reason": "Codex 子代理",
+      "runtime": "Codex"
+    },
+    {
+      "id": "01a13d84-8752-7182-99f1-eceb90bec7f5",
+      "reason": "Codex 子代理",
+      "runtime": "Codex"
+    },
+    {
+      "id": "01a13d94-bba9-7942-80b7-c1202176cba7",
+      "reason": "Codex 子代理",
+      "runtime": "Codex"
+    },
+    {
+      "id": "01a13d7f-be89-7f52-99ef-20d1f7f121e9",
+      "reason": "Codex 子代理",
+      "runtime": "Codex"
+    },
+    {
+      "id": "01a13d88-1d79-73d0-b975-75a516c4e962",
+      "reason": "Codex 子代理",
+      "runtime": "Codex"
+    },
+    {
+      "id": "01a13d84-e0b1-76b0-8554-e13feda69f5c",
+      "reason": "Codex 子代理",
+      "runtime": "Codex"
+    },
+    {
+      "id": "01a13d7f-fae3-7f92-8bfb-b2517ac76006",
+      "reason": "Codex 子代理",
+      "runtime": "Codex"
+    },
+    {
+      "id": "01a13d80-3e22-7610-aa5f-58997965e4b3",
+      "reason": "Codex 子代理",
+      "runtime": "Codex"
+    },
+    {
+      "id": "aa6f0c0f-171b-4682-bc7e-9ed462663c1d:sidechain:a1892fa823abd9e4a",
+      "reason": "Claude 子代理 / sidechain",
+      "runtime": "Claude"
+    },
+    {
+      "id": "aa6f0c0f-171b-4682-bc7e-9ed462663c1d:sidechain:ab730cf05f3e85482",
+      "reason": "Claude 子代理 / sidechain",
+      "runtime": "Claude"
+    },
+    {
+      "id": "aa6f0c0f-171b-4682-bc7e-9ed462663c1d:sidechain:a5cdc04115c2db1dd",
+      "reason": "Claude 子代理 / sidechain",
+      "runtime": "Claude"
+    },
+    {
+      "id": "aa6f0c0f-171b-4682-bc7e-9ed462663c1d:sidechain:a7d20e79d06486719",
+      "reason": "Claude 子代理 / sidechain",
+      "runtime": "Claude"
+    },
+    {
+      "id": "aa6f0c0f-171b-4682-bc7e-9ed462663c1d:sidechain:a904bdfbae97ff673",
+      "reason": "Claude 子代理 / sidechain",
+      "runtime": "Claude"
+    },
+    {
+      "id": "aa6f0c0f-171b-4682-bc7e-9ed462663c1d:sidechain:af3fbfbb3559ada80",
+      "reason": "Claude 子代理 / sidechain",
+      "runtime": "Claude"
+    },
+    {
+      "id": "7087f13a-22f1-464e-93c4-b20a6ffced8c:sidechain:a68c42683fa7f752f",
+      "reason": "Claude 子代理 / sidechain",
+      "runtime": "Claude"
+    },
+    {
+      "id": "7087f13a-22f1-464e-93c4-b20a6ffced8c:sidechain:a17cfd0dd4b295d32",
+      "reason": "Claude 子代理 / sidechain",
+      "runtime": "Claude"
+    },
+    {
+      "id": "7087f13a-22f1-464e-93c4-b20a6ffced8c:sidechain:a408574bd01d3d138",
+      "reason": "Claude 子代理 / sidechain",
+      "runtime": "Claude"
+    },
+    {
+      "id": "7087f13a-22f1-464e-93c4-b20a6ffced8c:sidechain:a584b5722c67ce49f",
+      "reason": "Claude 子代理 / sidechain",
+      "runtime": "Claude"
+    },
+    {
+      "id": "7087f13a-22f1-464e-93c4-b20a6ffced8c:sidechain:a1323f564129156ca",
+      "reason": "Claude 子代理 / sidechain",
+      "runtime": "Claude"
+    },
+    {
+      "id": "aa6f0c0f-171b-4682-bc7e-9ed462663c1d:sidechain:a855c775ca795f674",
+      "reason": "Claude 子代理 / sidechain",
+      "runtime": "Claude"
+    },
+    {
+      "id": "aa6f0c0f-171b-4682-bc7e-9ed462663c1d:sidechain:a4713f6cc8652c38d",
+      "reason": "Claude 子代理 / sidechain",
+      "runtime": "Claude"
+    },
+    {
+      "id": "aa6f0c0f-171b-4682-bc7e-9ed462663c1d:sidechain:a646824a078f0c01a",
+      "reason": "Claude 子代理 / sidechain",
+      "runtime": "Claude"
+    },
+    {
+      "id": "aa6f0c0f-171b-4682-bc7e-9ed462663c1d:sidechain:afff1eacc879960f0",
+      "reason": "Claude 子代理 / sidechain",
+      "runtime": "Claude"
+    },
+    {
+      "id": "4ecfe5e4-6e83-4cd1-9243-2f5c25ed6030:sidechain:a9168f28358e11f2c",
+      "reason": "Claude 子代理 / sidechain",
+      "runtime": "Claude"
+    },
+    {
+      "id": "4ecfe5e4-6e83-4cd1-9243-2f5c25ed6030:sidechain:a21e8266a6a2aff32",
+      "reason": "Claude 子代理 / sidechain",
+      "runtime": "Claude"
+    },
+    {
+      "id": "4ecfe5e4-6e83-4cd1-9243-2f5c25ed6030:sidechain:a933a754ab6098f39",
+      "reason": "Claude 子代理 / sidechain",
+      "runtime": "Claude"
+    },
+    {
+      "id": "c05fbfda-1b5a-48cb-9b51-54bb96f26ceb:sidechain:a74ff4b1fcc0662c0",
+      "reason": "Claude 子代理 / sidechain",
+      "runtime": "Claude"
+    },
+    {
+      "id": "c05fbfda-1b5a-48cb-9b51-54bb96f26ceb:sidechain:abfbb2c7d38c3bcd0",
+      "reason": "Claude 子代理 / sidechain",
+      "runtime": "Claude"
+    },
+    {
+      "id": "49456605-a254-436f-bfa2-7f9ba0ccd098:sidechain:ad1f132e0be174d99",
+      "reason": "Claude 子代理 / sidechain",
+      "runtime": "Claude"
+    },
+    {
+      "id": "49456605-a254-436f-bfa2-7f9ba0ccd098:sidechain:a498408daeae21738",
+      "reason": "Claude 子代理 / sidechain",
+      "runtime": "Claude"
+    },
+    {
+      "id": "49456605-a254-436f-bfa2-7f9ba0ccd098:sidechain:a7f6b0524213daa79",
+      "reason": "Claude 子代理 / sidechain",
+      "runtime": "Claude"
+    },
+    {
+      "id": "49456605-a254-436f-bfa2-7f9ba0ccd098:sidechain:a8db4e2d2816a072a",
+      "reason": "Claude 子代理 / sidechain",
+      "runtime": "Claude"
+    },
+    {
+      "id": "49456605-a254-436f-bfa2-7f9ba0ccd098:sidechain:ac8548906ef08869d",
+      "reason": "Claude 子代理 / sidechain",
+      "runtime": "Claude"
+    },
+    {
+      "id": "49456605-a254-436f-bfa2-7f9ba0ccd098:sidechain:ac812104d19e5e16f",
+      "reason": "Claude 子代理 / sidechain",
+      "runtime": "Claude"
+    },
+    {
+      "id": "49456605-a254-436f-bfa2-7f9ba0ccd098:sidechain:af699c67bf95386eb",
+      "reason": "Claude 子代理 / sidechain",
+      "runtime": "Claude"
+    },
+    {
+      "id": "49456605-a254-436f-bfa2-7f9ba0ccd098:sidechain:a41237511497c142a",
+      "reason": "Claude 子代理 / sidechain",
+      "runtime": "Claude"
+    },
+    {
+      "id": "49456605-a254-436f-bfa2-7f9ba0ccd098:sidechain:ac965e8b841296c4d",
+      "reason": "Claude 子代理 / sidechain",
+      "runtime": "Claude"
+    },
+    {
+      "id": "331d5861-4dd2-4f59-8700-05c6f676adee:sidechain:af77b45307f861b24",
+      "reason": "Claude 子代理 / sidechain",
+      "runtime": "Claude"
+    },
+    {
+      "id": "331d5861-4dd2-4f59-8700-05c6f676adee:sidechain:a537c77aa7a0ca857",
+      "reason": "Claude 子代理 / sidechain",
+      "runtime": "Claude"
+    },
+    {
+      "id": "331d5861-4dd2-4f59-8700-05c6f676adee:sidechain:a74e2c8bb64b0b078",
+      "reason": "Claude 子代理 / sidechain",
+      "runtime": "Claude"
+    },
+    {
+      "id": "331d5861-4dd2-4f59-8700-05c6f676adee:sidechain:ac0711a7f8c8b2560",
+      "reason": "Claude 子代理 / sidechain",
+      "runtime": "Claude"
+    },
+    {
+      "id": "331d5861-4dd2-4f59-8700-05c6f676adee:sidechain:abb36830b0d30a99c",
+      "reason": "Claude 子代理 / sidechain",
+      "runtime": "Claude"
+    },
+    {
+      "id": "7087f13a-22f1-464e-93c4-b20a6ffced8c:sidechain:a85cb536c7d88f712",
+      "reason": "Claude 子代理 / sidechain",
+      "runtime": "Claude"
+    },
+    {
+      "id": "aa6f0c0f-171b-4682-bc7e-9ed462663c1d:sidechain:ac305e91be8e80cfb",
+      "reason": "Claude 子代理 / sidechain",
+      "runtime": "Claude"
+    },
+    {
+      "id": "01a13936-734d-7360-a81b-5fe873c6e6ab",
+      "reason": "Codex exec 非交互",
+      "runtime": "Codex"
+    },
+    {
+      "id": "01a13937-b6d5-7453-a3a6-544d447e30a2",
+      "reason": "Codex 子代理",
+      "runtime": "Codex"
+    },
+    {
+      "id": "01a13927-23b9-73e3-b893-a30f833be3d4",
+      "reason": "Codex exec 非交互",
+      "runtime": "Codex"
+    },
+    {
+      "id": "01a13929-7977-7761-a400-2b3c5a10c1a6",
+      "reason": "Codex 子代理",
+      "runtime": "Codex"
+    },
+    {
+      "id": "01a13923-25e6-72b3-b45b-50482048758f",
+      "reason": "Codex 子代理",
+      "runtime": "Codex"
+    },
+    {
+      "id": "01a13921-a82c-7630-a3c2-dbd855717950",
+      "reason": "Codex exec 非交互",
+      "runtime": "Codex"
+    },
+    {
+      "id": "aa6f0c0f-171b-4682-bc7e-9ed462663c1d:sidechain:ae015e60020c72cd4",
+      "reason": "Claude 子代理 / sidechain",
+      "runtime": "Claude"
+    },
+    {
+      "id": "01a13900-376a-7eb0-83ea-3f35601ddf4a",
+      "reason": "Codex exec 非交互",
+      "runtime": "Codex"
+    },
+    {
+      "id": "7087f13a-22f1-464e-93c4-b20a6ffced8c:sidechain:a907816a10c2cd62e",
+      "reason": "Claude 子代理 / sidechain",
+      "runtime": "Claude"
+    },
+    {
+      "id": "01a13900-fe33-7673-b591-ffc928d571e3",
+      "reason": "Codex 子代理",
+      "runtime": "Codex"
+    },
+    {
+      "id": "01a138f4-c1c9-7420-a7a0-b62430dee274",
+      "reason": "Codex exec 非交互",
+      "runtime": "Codex"
+    },
+    {
+      "id": "01a138f6-0577-71e2-8b73-e776a0974cc1",
+      "reason": "Codex 子代理",
+      "runtime": "Codex"
+    },
+    {
+      "id": "aa6f0c0f-171b-4682-bc7e-9ed462663c1d:sidechain:a93db8f8c15df1b90",
+      "reason": "Claude 子代理 / sidechain",
+      "runtime": "Claude"
+    },
+    {
+      "id": "aa6f0c0f-171b-4682-bc7e-9ed462663c1d:sidechain:ac5526e3065653842",
+      "reason": "Claude 子代理 / sidechain",
+      "runtime": "Claude"
+    },
+    {
+      "id": "aa6f0c0f-171b-4682-bc7e-9ed462663c1d:sidechain:ad0e91153ef834923",
+      "reason": "Claude 子代理 / sidechain",
+      "runtime": "Claude"
+    },
+    {
+      "id": "aa6f0c0f-171b-4682-bc7e-9ed462663c1d:sidechain:a36aae4e6adc49d9d",
+      "reason": "Claude 子代理 / sidechain",
+      "runtime": "Claude"
+    },
+    {
+      "id": "aa6f0c0f-171b-4682-bc7e-9ed462663c1d:sidechain:a723c7d620a3a13cf",
+      "reason": "Claude 子代理 / sidechain",
+      "runtime": "Claude"
+    },
+    {
+      "id": "abf9e439-0e5f-419d-bccb-d156d754d55c:sidechain:a1c8a0b74398bb0a7",
+      "reason": "Claude 子代理 / sidechain",
+      "runtime": "Claude"
+    },
+    {
+      "id": "abf9e439-0e5f-419d-bccb-d156d754d55c:sidechain:a9411d9868eb1664e",
+      "reason": "Claude 子代理 / sidechain",
+      "runtime": "Claude"
+    },
+    {
+      "id": "abf9e439-0e5f-419d-bccb-d156d754d55c:sidechain:aa286587b8a34c192",
+      "reason": "Claude 子代理 / sidechain",
+      "runtime": "Claude"
+    },
+    {
+      "id": "abf9e439-0e5f-419d-bccb-d156d754d55c:sidechain:a69e7641240ac0037",
+      "reason": "Claude 子代理 / sidechain",
+      "runtime": "Claude"
+    },
+    {
+      "id": "abf9e439-0e5f-419d-bccb-d156d754d55c:sidechain:a48dea60a33668a50",
+      "reason": "Claude 子代理 / sidechain",
+      "runtime": "Claude"
+    },
+    {
+      "id": "abf9e439-0e5f-419d-bccb-d156d754d55c:sidechain:a9ae6958467796009",
+      "reason": "Claude 子代理 / sidechain",
+      "runtime": "Claude"
+    },
+    {
+      "id": "49456605-a254-436f-bfa2-7f9ba0ccd098:sidechain:a66c1072cbd32c7ed",
+      "reason": "Claude 子代理 / sidechain",
+      "runtime": "Claude"
+    },
+    {
+      "id": "49456605-a254-436f-bfa2-7f9ba0ccd098:sidechain:a91ede230ac2170b0",
+      "reason": "Claude 子代理 / sidechain",
+      "runtime": "Claude"
+    },
+    {
+      "id": "49456605-a254-436f-bfa2-7f9ba0ccd098:sidechain:a58368167ea77f779",
+      "reason": "Claude 子代理 / sidechain",
+      "runtime": "Claude"
+    },
+    {
+      "id": "01a1377b-e9f9-7ef2-bf7a-db826781ce1d",
+      "reason": "Codex exec 非交互",
+      "runtime": "Codex"
+    },
+    {
+      "id": "01a13776-78c5-7353-a3bf-36ae2779dbd1",
+      "reason": "Codex exec 非交互",
+      "runtime": "Codex"
+    },
+    {
+      "id": "01a13770-fcf1-77b0-9085-1432329d7b45",
+      "reason": "Codex exec 非交互",
+      "runtime": "Codex"
+    },
+    {
+      "id": "01a13771-9295-7010-b29b-cc9afe0dfff0",
+      "reason": "Codex 子代理",
+      "runtime": "Codex"
+    },
+    {
+      "id": "01a13687-8c8f-7300-a576-1da45d8c7882",
+      "reason": "Codex exec 非交互",
+      "runtime": "Codex"
+    },
+    {
+      "id": "01a13682-4c76-7370-8d22-e70c9f5091f7",
+      "reason": "Codex exec 非交互",
+      "runtime": "Codex"
+    },
+    {
+      "id": "01a13682-f57c-74e1-bc73-c5942607b6bc",
+      "reason": "Codex 子代理",
+      "runtime": "Codex"
+    },
+    {
+      "id": "01a1367c-d054-7001-b157-1a024bfc6b6e",
+      "reason": "Codex exec 非交互",
+      "runtime": "Codex"
+    },
+    {
+      "id": "01a13677-2971-74b3-9e00-cf29061d94aa",
+      "reason": "Codex exec 非交互",
+      "runtime": "Codex"
+    },
+    {
+      "id": "01a13677-d1f8-7f33-95fa-f5c54816f440",
+      "reason": "Codex 子代理",
+      "runtime": "Codex"
+    },
+    {
+      "id": "01a13671-93cb-7082-a996-31e01fc399ce",
+      "reason": "Codex exec 非交互",
+      "runtime": "Codex"
+    },
+    {
+      "id": "01a1366c-30b1-7750-a9e2-8db5217c22d8",
+      "reason": "Codex exec 非交互",
+      "runtime": "Codex"
+    },
+    {
+      "id": "01a13666-270f-7040-9a38-efaaf170c3a6",
+      "reason": "Codex exec 非交互",
+      "runtime": "Codex"
+    },
+    {
+      "id": "01a13660-a7af-7eb0-8f0a-99253a1213d9",
+      "reason": "Codex exec 非交互",
+      "runtime": "Codex"
+    },
+    {
+      "id": "01a1365a-31a9-7560-8d1d-eb239b79b8c9",
+      "reason": "Codex exec 非交互",
+      "runtime": "Codex"
+    },
+    {
+      "id": "01a13653-c4eb-7b13-93ca-bf25e69bef9e",
+      "reason": "Codex exec 非交互",
+      "runtime": "Codex"
+    },
+    {
+      "id": "01a13654-745a-72d3-afbc-3c1b743cdabf",
+      "reason": "Codex 子代理",
+      "runtime": "Codex"
+    },
+    {
+      "id": "01a1364d-61d7-7e71-a3a4-0699fd42498d",
+      "reason": "Codex exec 非交互",
+      "runtime": "Codex"
+    },
+    {
+      "id": "01a13646-dcf9-7923-a468-bbe4c3e07c73",
+      "reason": "Codex exec 非交互",
+      "runtime": "Codex"
+    },
+    {
+      "id": "01a13640-a32b-7093-a855-791f8209ec0c",
+      "reason": "Codex exec 非交互",
+      "runtime": "Codex"
+    },
+    {
+      "id": "01a1363b-0fe5-7540-a980-bb18a5268087",
+      "reason": "Codex exec 非交互",
+      "runtime": "Codex"
+    },
+    {
+      "id": "01a13636-45b0-70f0-b985-82ddcc3ed69f",
+      "reason": "Codex exec 非交互",
+      "runtime": "Codex"
+    },
+    {
+      "id": "01a13637-0d25-7d52-84a9-0ff89ded07b6",
+      "reason": "Codex 子代理",
+      "runtime": "Codex"
+    }
+  ],
+  "index": {
+    "bytes": 68827656,
+    "directories": 0,
+    "opens": 470,
+    "seconds": 2.401028709
+  }
+}
