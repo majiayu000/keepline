@@ -1,0 +1,28 @@
+{
+  "os": "ProductName:\t\tmacOS\nProductVersion:\t\t26.5.1\nBuildVersion:\t\t25F80\n",
+  "hardware": "Mac15,8",
+  "memory_bytes": 137438953472,
+  "screen_locked": true,
+  "computer_use_error": "cgWindowNotFound; package test timeoutReached",
+  "source_base": "f31295fcf7a9ba0c0425ea80ab48385ddbbd7e20",
+  "source_snapshot": "/tmp/kl-accept-src-0zlkv_s1",
+  "excluded_parallel_files": [
+    "next/crates/keepline-app/src/screen.rs",
+    "next/crates/keepline-app/Cargo.toml",
+    "next/crates/keepline-app/examples",
+    "next/eval",
+    "specs/terminal-workbench/evidence/terminal-reference-20261021"
+  ],
+  "production_overlay": [
+    "next/crates/keepline-app/src/main.rs",
+    "next/crates/keepline-app/src/connection.rs",
+    "next/crates/keepline-core/src/protocol.rs"
+  ],
+  "renderer_sha256": "46ff541bcdda7f91093a7bea10dd653cba186d7137e82aa2328ddacc631510f0",
+  "screen_locked_at_completion": true,
+  "owned_production_sha256": {
+    "next/crates/keepline-app/src/main.rs": "b0f9adbd756859bc07a001aa4e31a3fcafd8eaf29a92101ca2539649bf10faf8",
+    "next/crates/keepline-app/src/connection.rs": "b9871632c49e66401c2f3ce0c7abe9c707450cbe98d43b4321ae487eef1e3df1",
+    "next/crates/keepline-core/src/protocol.rs": "18233fef4665f94e236cdc037c58c29ef37bbb0de070c7441ef021d319436f45"
+  }
+}

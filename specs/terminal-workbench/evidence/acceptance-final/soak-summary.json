@@ -1,0 +1,12 @@
+{
+  "seconds": 7200.008615874918,
+  "samples": 121,
+  "max_sample_gap_seconds": 60.00917574996129,
+  "cpu_seconds": 0.12199862499999997,
+  "footprint_start_MiB": 74.83199310302734,
+  "footprint_end_MiB": 73.56636810302734,
+  "footprint_peak_MiB": 74.83199310302734,
+  "metrics_unchanged": true,
+  "disk_read": 0,
+  "disk_write": 0
+}
