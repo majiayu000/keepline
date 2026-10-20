@@ -23,6 +23,7 @@ pub struct Workbench {
     menu: Option<PaneMenu>,
     split_target: Option<(String, Axis)>,
     prefill_agent: Option<Agent>,
+    staged_agents: HashMap<String, Agent>,
     resume: Option<(String, String)>,
     here: Option<String>,
     show_stale: bool,
@@ -35,6 +36,9 @@ pub struct Workbench {
     busy: bool,
     error: Option<String>,
     form: Option<Form>,
+    task_detail: Option<String>,
+    editing_task: Option<String>,
+    start_after_save: Option<String>,
     recognition: RecognitionStatus,
     _recognition_connection: crate::connection::RecognitionConnection,
 }
@@ -54,12 +58,14 @@ struct Form {
     kind: FormKind,
     fields: Vec<Entity<Field>>,
     agent: Agent,
+    space: String,
 }
 #[derive(Clone, Copy)]
 enum FormKind {
     Space,
     Task,
     Defer,
+    TaskDefer,
 }
 fn id() -> String {
     static NEXT: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
@@ -364,6 +370,7 @@ impl Workbench {
             menu: None,
             split_target: None,
             prefill_agent: None,
+            staged_agents: HashMap::new(),
             resume: None,
             here: None,
             show_stale: false,
@@ -376,6 +383,9 @@ impl Workbench {
             busy: false,
             error: None,
             form: None,
+            task_detail: None,
+            editing_task: None,
+            start_after_save: None,
             recognition: RecognitionStatus::default(),
             _recognition_connection: recognition_connection,
         };
@@ -436,9 +446,15 @@ impl Workbench {
                     Ok(Reply::Workspace(w)) => {
                         this.workspace = w;
                         this.sync_panes(cx);
+                        if let Some(task) = this.start_after_save.take() {
+                            this.launch(false, Some(task), cx);
+                        }
                     }
                     Ok(_) => (),
-                    Err(e) => this.error = Some(e.to_string()),
+                    Err(e) => {
+                        this.start_after_save = None;
+                        this.error = Some(e.to_string());
+                    }
                 }
                 if received_workspace
                     && this.recognition.workspace_revision > this.workspace.revision
@@ -460,6 +476,36 @@ impl Workbench {
         );
     }
     fn launch(&mut self, split: bool, task_id: Option<String>, cx: &mut Context<Self>) {
+        if !split && self.resume.is_none() {
+            if let Some(task) = task_id.as_deref() {
+                if let Some(terminal) = self.workspace.task_terminal(task) {
+                    let id = terminal.id.clone();
+                    if let Some(mut tab) = self.workspace.terminal_tab(&id).cloned() {
+                        self.space = tab.space.clone();
+                        self.tab = Some(tab.id.clone());
+                        self.focused = Some(id);
+                        self.pending_focus = true;
+                        self.overview = false;
+                        self.task_detail = None;
+                        if tab.closed {
+                            tab.closed = false;
+                            self.edit(Edit::PutTab { tab }, cx);
+                        } else {
+                            self.sync_panes(cx);
+                            cx.notify();
+                        }
+                        return;
+                    }
+                }
+            }
+        }
+        if let Some(task) = task_id
+            .as_ref()
+            .and_then(|id| self.workspace.tasks.iter().find(|t| &t.id == id))
+        {
+            self.space = task.space.clone();
+        }
+        self.task_detail = None;
         self.launch_in_slot(split, task_id, None, cx);
     }
     fn close_pane(&mut self, id: &str, cx: &mut Context<Self>) {
@@ -562,11 +608,7 @@ impl Workbench {
             };
             tab
         } else {
-            let title = task_id
-                .as_ref()
-                .and_then(|id| self.workspace.tasks.iter().find(|t| &t.id == id))
-                .map(|t| t.title.clone())
-                .unwrap_or_else(|| "终端".into());
+            let title = String::new();
             Tab {
                 id: id(),
                 space: space.id.clone(),
@@ -596,7 +638,12 @@ impl Workbench {
         } else {
             tab.layout = Some(Layout::Leaf(terminal.clone()));
         }
-        let cwd = resume.map(|r| r.1).unwrap_or_else(|| {
+        let task_cwd = task_id
+            .as_ref()
+            .and_then(|id| self.workspace.tasks.iter().find(|t| &t.id == id))
+            .and_then(|t| self.workspace.spaces.iter().find(|s| s.id == t.space))
+            .map(|s| s.cwd.clone());
+        let cwd = resume.map(|r| r.1).or(task_cwd).unwrap_or_else(|| {
             previous
                 .map(|t| t.cwd)
                 .or_else(|| {
@@ -618,6 +665,7 @@ impl Workbench {
                     .iter()
                     .find(|t| &t.id == id && t.state == ProcessState::Running)
             })
+            .filter(|_| task_id.is_none())
             .map(|t| t.id.clone());
         let mut request = Request::Launch {
             id: terminal.clone(),
@@ -684,19 +732,233 @@ impl Workbench {
         })
         .detach();
     }
+    fn task_detail_view(&self, task: &Task, cx: &Context<Self>) -> gpui::Stateful<gpui::Div> {
+        let tid = task.id.clone();
+        let mut view = div()
+            .id("task-detail")
+            .flex_1()
+            .overflow_y_scroll()
+            .p(px(T::S20))
+            .flex()
+            .flex_col()
+            .gap(px(T::S12))
+            .child(div().text_size(px(T::TITLE)).child(task.title.clone()))
+            .child(label(format!(
+                "{} · {}",
+                task.agent.executable(),
+                match self
+                    .workspace
+                    .task_outcomes
+                    .get(&tid)
+                    .unwrap_or(&Outcome::Open)
+                {
+                    Outcome::Open => "未完成",
+                    Outcome::Completed => "已完成",
+                    Outcome::Deferred { .. } => "暂存",
+                    Outcome::Abandoned => "已放弃",
+                }
+            )))
+            .child(task.description.clone());
+        for criterion in &task.acceptance {
+            view = view.child(
+                div()
+                    .p(px(T::S8))
+                    .bg(T::color(T::TODO))
+                    .child(format!(
+                        "{}  {}",
+                        if criterion.evidence.is_some() {
+                            "有机械证据"
+                        } else {
+                            "无机械证据"
+                        },
+                        criterion.description
+                    ))
+                    .when_some(criterion.evidence.clone(), |d, source| {
+                        d.child(label(source))
+                    }),
+            );
+        }
+        view = view.child(label("关联会话（归属不随画面摆放改变）"));
+        for session in self
+            .workspace
+            .agent_sessions
+            .iter()
+            .filter(|s| s.task.as_ref() == Some(&tid))
+        {
+            let session = session.clone();
+            view = view.child(
+                button(
+                    gpui::SharedString::from(format!("task-session-{}", session.id)),
+                    self.session_title(&session),
+                )
+                .on_click(cx.listener(move |this, _, window, cx| {
+                    this.task_detail = None;
+                    this.enter_card(&session, window, cx);
+                })),
+            );
+        }
+        let mut actions = div().flex().flex_wrap().gap(px(T::S8));
+        for (name, outcome) in [
+            ("标记完成", Outcome::Completed),
+            ("放弃", Outcome::Abandoned),
+            ("撤销结局", Outcome::Open),
+        ] {
+            let tid = tid.clone();
+            actions = actions.child(button(name, name).on_click(cx.listener(
+                move |this, _, _, cx| {
+                    this.edit(
+                        Edit::SetTaskOutcome {
+                            id: tid.clone(),
+                            outcome: outcome.clone(),
+                        },
+                        cx,
+                    )
+                },
+            )));
+        }
+        actions = actions
+            .child(button("task-defer", "暂存").on_click(
+                cx.listener(|this, _, window, cx| this.show_form(FormKind::TaskDefer, window, cx)),
+            ))
+            .child(button("task-edit", "编辑").on_click({
+                let task = task.clone();
+                cx.listener(move |this, _, window, cx| {
+                    this.show_form(FormKind::Task, window, cx);
+                    this.editing_task = Some(task.id.clone());
+                    if let Some(f) = &mut this.form {
+                        f.space = task.space.clone();
+                        f.agent = task.agent;
+                        for (field, value) in f.fields.iter().zip([
+                            task.title.clone(),
+                            task.description.clone(),
+                            task.acceptance
+                                .iter()
+                                .map(|c| c.description.clone())
+                                .collect::<Vec<_>>()
+                                .join("\n"),
+                        ]) {
+                            field.update(cx, |f, cx| {
+                                f.set_text(&value);
+                                cx.notify();
+                            });
+                        }
+                    }
+                })
+            }))
+            .child(button("task-another", "再开一个会话").on_click({
+                let tid = tid.clone();
+                cx.listener(move |this, _, _, cx| {
+                    if let Some(tab) = this
+                        .workspace
+                        .tabs
+                        .iter()
+                        .find(|t| t.default_task.as_ref() == Some(&tid))
+                    {
+                        this.tab = Some(tab.id.clone());
+                        this.launch(true, Some(tid.clone()), cx);
+                    } else {
+                        this.launch(false, Some(tid.clone()), cx);
+                    }
+                })
+            }))
+            .child(
+                button("task-close", "返回画面").on_click(cx.listener(|this, _, _, cx| {
+                    this.task_detail = None;
+                    cx.notify();
+                })),
+            );
+        view.child(actions)
+    }
+    fn staged_controls(&self, terminal: &str, task: &Task, cx: &Context<Self>) -> gpui::Div {
+        let terminal = terminal.to_owned();
+        div()
+            .flex()
+            .flex_wrap()
+            .gap(px(T::S6))
+            .p(px(T::S6))
+            .bg(T::color(T::TODO))
+            .child(label(format!(
+                "为待办 {} 开的画面，按回车才会启动",
+                task.title
+            )))
+            .child(button("staged-agent", "改用另一个 Agent").on_click({
+                let terminal = terminal.clone();
+                let task = task.clone();
+                cx.listener(move |this, _, _, cx| {
+                    if this.workspace.current_agent(&terminal).is_some() {
+                        return;
+                    }
+                    let mut task = task.clone();
+                    let old = this
+                        .staged_agents
+                        .get(&terminal)
+                        .copied()
+                        .unwrap_or(task.agent);
+                    task.agent = if old == Agent::Codex {
+                        Agent::Claude
+                    } else {
+                        Agent::Codex
+                    };
+                    this.staged_agents.insert(terminal.clone(), task.agent);
+                    if let Some(p) = this.panes.get(&terminal) {
+                        p.update(cx, |p, cx| {
+                            p.replace_staged(Some(&task.command()), cx);
+                        });
+                    }
+                })
+            }))
+            .child(button("staged-clear", "清空命令").on_click({
+                let terminal = terminal.clone();
+                cx.listener(move |this, _, _, cx| {
+                    if this.workspace.current_agent(&terminal).is_some() {
+                        return;
+                    }
+                    let cleared = this
+                        .panes
+                        .get(&terminal)
+                        .is_some_and(|p| p.update(cx, |p, cx| p.replace_staged(None, cx)));
+                    if cleared {
+                        this.edit(
+                            Edit::SetPendingTask {
+                                terminal: terminal.clone(),
+                                task: None,
+                            },
+                            cx,
+                        );
+                    }
+                })
+            }))
+            .child(button("staged-unlink", "不关联待办").on_click(cx.listener(
+                move |this, _, _, cx| {
+                    if this.workspace.current_agent(&terminal).is_none() {
+                        this.edit(
+                            Edit::SetPendingTask {
+                                terminal: terminal.clone(),
+                                task: None,
+                            },
+                            cx,
+                        );
+                    }
+                },
+            )))
+    }
     fn show_form(&mut self, kind: FormKind, window: &mut Window, cx: &mut Context<Self>) {
         self.overview = false;
+        self.editing_task = None;
         self.sync_panes(cx);
         let fields = match kind {
             FormKind::Space => vec![
                 cx.new(|cx| Field::new("空间名称", "", cx)),
                 cx.new(|cx| Field::new("工作目录（绝对路径）", "", cx)),
             ],
-            FormKind::Defer => vec![cx.new(|cx| Field::new("暂存原因（明天此时再看）", "", cx))],
+            FormKind::Defer | FormKind::TaskDefer => vec![
+                cx.new(|cx| Field::new("暂存原因（必填）", "", cx)),
+                cx.new(|cx| Field::new("多少小时后再看（必填）", "24", cx)),
+            ],
             FormKind::Task => vec![
-                cx.new(|cx| Field::new("待办标题", "", cx)),
+                cx.new(|cx| Field::new("要做什么", "", cx)),
                 cx.new(|cx| Field::new("说明", "", cx)),
-                cx.new(|cx| Field::new("验收标准", "", cx)),
+                cx.new(|cx| Field::new("验收标准（每行一条）", "", cx)),
             ],
         };
         window.focus(&fields[0].focus_handle(cx), cx);
@@ -704,10 +966,11 @@ impl Workbench {
             kind,
             fields,
             agent: Agent::Codex,
+            space: self.space.clone(),
         });
         cx.notify();
     }
-    fn save_form(&mut self, cx: &mut Context<Self>) {
+    fn save_form(&mut self, start: bool, cx: &mut Context<Self>) {
         let Some(form) = self.form.take() else {
             return;
         };
@@ -717,16 +980,31 @@ impl Workbench {
             .map(|f| f.read(cx).text.clone())
             .collect();
         let edit = match form.kind {
-            FormKind::Defer => {
-                let Some(id) = self.here.clone() else {
+            FormKind::Defer | FormKind::TaskDefer => {
+                let hours = values[1]
+                    .trim()
+                    .parse::<u64>()
+                    .ok()
+                    .filter(|h| *h > 0 && *h <= 24 * 365);
+                if values[0].trim().is_empty() || hours.is_none() {
+                    self.error = Some("请填写暂存原因和 1–8760 小时的再看时间".into());
+                    self.form = Some(form);
                     return;
+                }
+                let outcome = Outcome::Deferred {
+                    reason: values[0].clone(),
+                    until: now() + hours.unwrap() * 3600,
                 };
-                Edit::SetOutcome {
-                    id,
-                    outcome: Outcome::Deferred {
-                        reason: values[0].clone(),
-                        until: now() + 86400,
-                    },
+                if matches!(form.kind, FormKind::TaskDefer) {
+                    let Some(id) = self.task_detail.clone() else {
+                        return;
+                    };
+                    Edit::SetTaskOutcome { id, outcome }
+                } else {
+                    let Some(id) = self.here.clone() else {
+                        return;
+                    };
+                    Edit::SetOutcome { id, outcome }
                 }
             }
             FormKind::Space => Edit::AddSpace(Space {
@@ -734,22 +1012,42 @@ impl Workbench {
                 name: values[0].clone(),
                 cwd: values[1].clone(),
             }),
-            FormKind::Task => Edit::AddTask(Task {
-                id: id(),
-                space: self.space.clone(),
-                title: values[0].clone(),
-                description: values[1].clone(),
-                acceptance: values[2]
-                    .lines()
-                    .filter(|line| !line.trim().is_empty())
-                    .map(|line| AcceptanceCriterion {
-                        id: id(),
-                        description: line.trim().into(),
-                        evidence: None,
-                    })
-                    .collect(),
-                agent: form.agent,
-            }),
+            FormKind::Task => {
+                let task_id = self.editing_task.clone().unwrap_or_else(id);
+                if start {
+                    self.start_after_save = Some(task_id.clone());
+                }
+                let task = Task {
+                    id: task_id,
+                    space: form.space.clone(),
+                    title: values[0].clone(),
+                    description: values[1].clone(),
+                    acceptance: values[2]
+                        .lines()
+                        .filter(|line| !line.trim().is_empty())
+                        .map(|line| {
+                            self.editing_task
+                                .as_ref()
+                                .and_then(|id| self.workspace.tasks.iter().find(|t| &t.id == id))
+                                .and_then(|t| {
+                                    t.acceptance.iter().find(|c| c.description == line.trim())
+                                })
+                                .cloned()
+                                .unwrap_or_else(|| AcceptanceCriterion {
+                                    id: id(),
+                                    description: line.trim().into(),
+                                    evidence: None,
+                                })
+                        })
+                        .collect(),
+                    agent: form.agent,
+                };
+                if self.editing_task.take().is_some() {
+                    Edit::UpdateTask(task)
+                } else {
+                    Edit::AddTask(task)
+                }
+            }
         };
         self.edit(edit, cx);
     }
@@ -1016,6 +1314,8 @@ impl Workbench {
         if s.terminal.is_some() {
             self.open_session(s, window, cx);
         } else {
+            self.overview = true;
+            self.sync_panes(cx);
             self.here = Some(s.id.clone());
             cx.notify();
         }
@@ -1702,6 +2002,23 @@ impl Workbench {
                     .min_h_0()
                     .px(px(T::S14))
                     .py(px(T::S10))
+                    .when(
+                        pane.read(cx).staged_command
+                            && self.workspace.current_agent(id).is_none()
+                            && self.workspace.pending_tasks.get(id) != Some(&None),
+                        |d| {
+                            if let Some(task) = self
+                                .workspace
+                                .terminal_tab(id)
+                                .and_then(|t| t.default_task.as_ref())
+                                .and_then(|tid| self.workspace.tasks.iter().find(|t| &t.id == tid))
+                            {
+                                d.child(self.staged_controls(id, task, cx))
+                            } else {
+                                d
+                            }
+                        },
+                    )
                     .child(pane.clone()),
             )
             .when_some(
@@ -2213,19 +2530,31 @@ impl Render for Workbench {
             .filter(|t| t.space == self.space)
         {
             let id = task.id.clone();
-            sidebar = sidebar.child(
-                button(
-                    gpui::SharedString::from(format!("task-{id}")),
-                    task.title.clone(),
+            sidebar = sidebar
+                .child(
+                    button(
+                        gpui::SharedString::from(format!("task-{id}")),
+                        task.title.clone(),
+                    )
+                    .border_0()
+                    .justify_start()
+                    .px(px(T::S8))
+                    .overflow_hidden()
+                    .on_click(cx.listener(move |this, _, _, cx| {
+                        this.task_detail = Some(id.clone());
+                        cx.notify();
+                    })),
                 )
-                .border_0()
-                .justify_start()
-                .px(px(T::S8))
-                .overflow_hidden()
-                .on_click(
-                    cx.listener(move |this, _, _, cx| this.launch(false, Some(id.clone()), cx)),
-                ),
-            );
+                .child(
+                    button(
+                        gpui::SharedString::from(format!("start-task-{}", task.id)),
+                        "开始 →",
+                    )
+                    .on_click({
+                        let tid = task.id.clone();
+                        cx.listener(move |this, _, _, cx| this.launch(false, Some(tid.clone()), cx))
+                    }),
+                );
         }
         let needs: Vec<_> = self
             .workspace
@@ -2305,7 +2634,7 @@ impl Render for Workbench {
                         } else {
                             ""
                         },
-                        tab.title
+                        self.workspace.tab_title(tab)
                     ),
                 )
                 .h(px(T::TABS))
@@ -2381,6 +2710,25 @@ impl Render for Workbench {
                 panel = panel.child(field.clone());
             }
             if matches!(form.kind, FormKind::Task) {
+                for space in &self.workspace.spaces {
+                    let sid = space.id.clone();
+                    panel = panel.child(
+                        button(
+                            gpui::SharedString::from(format!("project-{sid}")),
+                            format!(
+                                "{} {}",
+                                if form.space == sid { "●" } else { "○" },
+                                space.name
+                            ),
+                        )
+                        .on_click(cx.listener(move |this, _, _, cx| {
+                            if let Some(f) = &mut this.form {
+                                f.space = sid.clone();
+                            }
+                            cx.notify();
+                        })),
+                    );
+                }
                 panel = panel.child(
                     button(
                         "agent",
@@ -2397,30 +2745,48 @@ impl Render for Workbench {
                     })),
                 );
             }
-            main = main.child(
-                panel.child(
-                    div()
-                        .flex()
-                        .gap(px(T::S8))
-                        .child(
-                            button("save", "保存")
+            main =
+                main.child(
+                    panel.child(
+                        div()
+                            .flex()
+                            .gap(px(T::S8))
+                            .child(
+                                button(
+                                    "save",
+                                    if matches!(form.kind, FormKind::Task) {
+                                        "保存为待办"
+                                    } else {
+                                        "保存"
+                                    },
+                                )
                                 .bg(T::color(T::ACCENT))
-                                .on_click(cx.listener(|this, _, _, cx| this.save_form(cx))),
-                        )
-                        .child(
-                            button("cancel", "取消").on_click(cx.listener(|this, _, _, cx| {
-                                this.form = None;
-                                cx.notify();
-                            })),
-                        ),
-                ),
-            );
+                                .on_click(cx.listener(|this, _, _, cx| this.save_form(false, cx))),
+                            )
+                            .when(matches!(form.kind, FormKind::Task), |d| {
+                                d.child(button("save-start", "保存并开始").on_click(
+                                    cx.listener(|this, _, _, cx| this.save_form(true, cx)),
+                                ))
+                            })
+                            .child(button("cancel", "取消").on_click(cx.listener(
+                                |this, _, _, cx| {
+                                    this.form = None;
+                                    cx.notify();
+                                },
+                            ))),
+                    ),
+                );
+        } else if let Some(task) = self
+            .task_detail
+            .as_ref()
+            .and_then(|id| self.workspace.tasks.iter().find(|t| &t.id == id))
+        {
+            main = main.child(self.task_detail_view(task, cx));
         } else {
             if let Some(task) = current
                 .and_then(|t| t.default_task.as_ref())
                 .and_then(|id| self.workspace.tasks.iter().find(|t| &t.id == id))
             {
-                let command = task.command();
                 let evidence = task
                     .acceptance
                     .iter()
@@ -2457,19 +2823,16 @@ impl Render for Workbench {
                         )))
                         .child(div().flex_1())
                         .child(
-                            button("prefill", "填入命令（回车执行）")
+                            button("prefill", "待办详情")
                                 .h(px(T::FOOTER))
                                 .text_color(T::color(T::LINK))
-                                .on_click(cx.listener(move |this, _, window, cx| {
-                                    if let Some(id) = this.tab.as_ref().and_then(|id| {
-                                        this.workspace.tab_terminals(id).first().cloned()
-                                    }) {
-                                        if let Some(pane) = this.panes.get(&id) {
-                                            pane.update(cx, |pane, cx| pane.prefill(&command, cx));
-                                            window.focus(&pane.focus_handle(cx), cx);
-                                        }
-                                    }
-                                })),
+                                .on_click({
+                                    let tid = task.id.clone();
+                                    cx.listener(move |this, _, _, cx| {
+                                        this.task_detail = Some(tid.clone());
+                                        cx.notify();
+                                    })
+                                }),
                         ),
                 );
             }

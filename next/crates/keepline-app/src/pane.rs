@@ -26,6 +26,7 @@ pub struct Pane {
     requested_size: (u16, u16),
     local_error: Option<String>,
     pending_prefill: Option<String>,
+    pub staged_command: bool,
     text_selection: Option<((u16, u16), (u16, u16))>,
     selecting: bool,
     search: Option<gpui::Entity<crate::field::Field>>,
@@ -123,6 +124,7 @@ impl Pane {
             requested_size: (0, 0),
             local_error: None,
             pending_prefill: None,
+            staged_command: false,
             text_selection: None,
             selecting: false,
             search: None,
@@ -239,8 +241,23 @@ impl Pane {
         }
     }
     pub fn queue_prefill(&mut self, command: &str, cx: &mut Context<Self>) {
+        self.staged_command = true;
         self.pending_prefill = Some(command.into());
         cx.notify();
+    }
+    pub fn replace_staged(&mut self, command: Option<&str>, cx: &mut Context<Self>) -> bool {
+        if !self.staged_command {
+            return false;
+        }
+        self.pending_prefill = None;
+        // Only a client-staged, unsubmitted shell line can be cancelled here.
+        self.input(vec![3], cx);
+        self.staged_command = command.is_some();
+        if let Some(command) = command {
+            self.queue_prefill(command, cx);
+        }
+        cx.notify();
+        true
     }
     pub fn prefill(&mut self, command: &str, cx: &mut Context<Self>) {
         let bracketed = self
@@ -286,6 +303,9 @@ impl Pane {
         }
         if !self.marked.is_empty() {
             return;
+        }
+        if k.key == "enter" || (k.modifiers.control && k.key == "c") {
+            self.staged_command = false;
         }
         let Some(key) = crate::keyboard::physical_key(&k.key) else {
             return;

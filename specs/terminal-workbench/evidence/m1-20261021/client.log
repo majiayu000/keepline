@@ -1,0 +1,18 @@
+     Running unittests src/main.rs (next/target/debug/deps/keepline_app-a92d8a8418c703b6)
+
+running 13 tests
+test screen::tests::ime_offsets_are_utf16_not_utf8_and_never_split_surrogates ... ok
+test workbench::tests::reopening_full_tab_replaces_exact_slot_and_preserves_history ... ok
+test screen::tests::cell_aspect_ratio_stays_within_five_percent_of_ghostty_for_the_resolved_font ... ok
+test workbench::tests::interrupted_terminals_never_enter_the_connection_creation_list ... ok
+test keyboard::tests::legacy_control_and_alt_keys ... ok
+test keyboard::tests::kitty_uses_terminal_negotiated_mode ... ok
+test workbench::tests::closing_interrupted_pane_only_removes_its_placement ... ok
+test lifecycle::tests::duplicate_forwards_and_lock_is_reusable ... ok
+test lifecycle::tests::old_hosts_are_reported_by_one_handshake_without_mutation ... ok
+test screen::tests::hidden_cursor_keeps_ime_anchor_and_missing_position_keeps_last_known ... ok
+test screen::tests::sgr_decorations_and_faint_survive_capture ... ok
+test screen::tests::captured_cjk_occupies_two_columns_and_combining_text_stays_separate ... ok
+test screen::tests::decscusr_shape_reaches_the_painter ... ok
+
+test result: ok. 13 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.01s
