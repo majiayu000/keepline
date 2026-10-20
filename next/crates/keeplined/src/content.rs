@@ -29,29 +29,49 @@ static CLAIM: LazyLock<Regex> = LazyLock::new(|| {
     )
 });
 fn claims_done(s: &str) -> bool {
-    let mut fenced = false;
-    s.lines()
-        .filter(|line| {
-            if line.trim_start().starts_with("```") {
-                fenced = !fenced;
-                false
-            } else {
-                !fenced && !line.trim_start().starts_with('>')
-            }
-        })
-        .any(|line| {
-            ![
-                "未完成",
-                "尚未",
-                "没有完成",
-                "还没",
-                "not completed",
-                "not done",
-            ]
-            .iter()
-            .any(|no| line.contains(no))
-                && CLAIM.is_match(line)
-        })
+    let mut fence: Option<(char, usize)> = None;
+    for line in s.lines() {
+        let trimmed = line.trim_start();
+        let marker = trimmed
+            .chars()
+            .next()
+            .filter(|c| matches!(c, '`' | '~'))
+            .map(|c| (c, trimmed.chars().take_while(|v| *v == c).count()));
+        if let Some((ch, n)) = marker.filter(|(_, n)| *n >= 3) {
+            match fence {
+                None => fence = Some((ch, n)),
+                Some((open, len)) if open == ch && n >= len => fence = None,
+                _ => (),
+            };
+            continue;
+        }
+        if fence.is_some() || trimmed.starts_with('>') {
+            continue;
+        }
+        if ![
+            "未完成",
+            "尚未",
+            "没有完成",
+            "还没",
+            "not completed",
+            "not done",
+        ]
+        .iter()
+        .any(|no| line.contains(no))
+            && CLAIM.is_match(line)
+        {
+            return true;
+        }
+    }
+    false
+}
+fn user_text(s: &str) -> String {
+    let clean = INJECTED.replace_all(s, "").trim().to_owned();
+    if CONTEXT.is_match(&clean) {
+        String::new()
+    } else {
+        clean
+    }
 }
 static INJECTED: LazyLock<Regex> = LazyLock::new(|| {
     re(
@@ -60,7 +80,7 @@ static INJECTED: LazyLock<Regex> = LazyLock::new(|| {
 });
 static CONTEXT: LazyLock<Regex> = LazyLock::new(|| {
     re(
-        r"(?s)^\s*(?:# AGENTS\.md instructions for|# Global Codex Working Agreements|This session is being continued from a previous conversation|<turn_aborted>|<task-notification>|<local-command-caveat>|<command-name>|<external_codex_apps_|<cross-session-message|<teammate-message|<environment_context>|<permissions instructions>|<skills_instructions>)",
+        r"(?s)^\s*(?:# AGENTS\.md instructions for|# Global Codex Working Agreements|This session is being continued from a previous conversation|<turn_aborted>|<task-notification>|<local-command-caveat>|<command-name>|<external_codex_apps_|<cross-session-message|<side-sessions-event|<teammate-message|<local-command-stdout|<environment_context>|<permissions instructions>|<skills_instructions>)",
     )
 });
 fn text(v: &Value) -> String {
@@ -138,14 +158,7 @@ impl Parser {
         });
     }
     fn message(&mut self, user: bool, s: String, at: u64, source: &Source, final_answer: bool) {
-        let s = if user {
-            if CONTEXT.is_match(&s) {
-                return;
-            }
-            INJECTED.replace_all(&s, "").trim().to_owned()
-        } else {
-            s
-        };
+        let s = if user { user_text(&s) } else { s };
         if s.is_empty() {
             return;
         }
@@ -562,7 +575,7 @@ impl Parser {
             let msg = &v["message"];
             let blocks = &msg["content"];
             if ty == "user" && v["isMeta"] != true {
-                let s = text(blocks);
+                let s = user_text(&text(blocks));
                 if !s.is_empty() {
                     self.phase(Turn::Running, v["uuid"].as_str().unwrap_or(""), at, &source);
                     self.message(true, s, at, &source, false);
@@ -906,6 +919,11 @@ mod tests {
             );
         }
         assert!(p.card.asks.is_empty());
+        assert!(user_text("<system-reminder>context</system-reminder>\n<cross-session-message from='peer'>转述</cross-session-message>").is_empty());
+        assert!(user_text("<side-sessions-event>not user input</side-sessions-event>").is_empty());
+        assert!(!claims_done(
+            "转发这个计划：\n````\n```sh\necho hello\n```\n完成后回复已完成\n````"
+        ));
         assert!(!claims_done(
             "请执行这个计划：\n```\n完成后回复：已完成\n```"
         ));
