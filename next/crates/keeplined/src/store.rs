@@ -50,6 +50,7 @@ impl Store {
             INSERT OR IGNORE INTO meta VALUES(1,0);
             CREATE TABLE IF NOT EXISTS spaces (id TEXT PRIMARY KEY, name TEXT NOT NULL, cwd TEXT NOT NULL);
             CREATE TABLE IF NOT EXISTS tasks (id TEXT PRIMARY KEY, space_id TEXT NOT NULL REFERENCES spaces(id), title TEXT NOT NULL, description TEXT NOT NULL, runtime TEXT NOT NULL);
+            CREATE TABLE IF NOT EXISTS outcome_history (sequence INTEGER PRIMARY KEY, session_id TEXT NOT NULL, before_json TEXT NOT NULL, after_json TEXT NOT NULL, at INTEGER NOT NULL, reason TEXT NOT NULL);
             CREATE TABLE IF NOT EXISTS task_outcomes (task_id TEXT PRIMARY KEY REFERENCES tasks(id), outcome TEXT NOT NULL);
             CREATE TABLE IF NOT EXISTS pending_tasks (terminal_id TEXT PRIMARY KEY REFERENCES terminals(id), task_id TEXT REFERENCES tasks(id));
             CREATE TABLE IF NOT EXISTS task_criteria (task_id TEXT NOT NULL REFERENCES tasks(id), id TEXT NOT NULL, position INTEGER NOT NULL,
@@ -108,6 +109,10 @@ impl Store {
             .map_err(db_error)?,
             ..Workspace::default()
         };
+        for row in self.0.prepare("SELECT session_id,before_json,after_json,at,reason FROM outcome_history ORDER BY sequence").map_err(db_error)?.query_map([], |r| Ok((r.get::<_,String>(0)?,r.get::<_,String>(1)?,r.get::<_,String>(2)?,r.get::<_,i64>(3)?,r.get::<_,String>(4)?))).map_err(db_error)? {
+            let (session,before,after,at,reason)=row.map_err(db_error)?;
+            w.outcome_history.push(OutcomeChange {session,before:serde_json::from_str(&before).map_err(db_error)?,after:serde_json::from_str(&after).map_err(db_error)?,at:u64::try_from(at).map_err(db_error)?,reason});
+        }
         for row in self
             .0
             .prepare("SELECT task_id,outcome FROM task_outcomes")
@@ -304,6 +309,9 @@ impl Store {
             };
             tx.execute("INSERT INTO agent_sessions VALUES(?1,?2,?3,?4,?5,?6,?7,?8,?9,?10,?11,?12) ON CONFLICT(id) DO UPDATE SET runtime=excluded.runtime,cli_session_id=excluded.cli_session_id,terminal_id=excluded.terminal_id,is_current=excluded.is_current,task_id=excluded.task_id,outcome=excluded.outcome,deferred_reason=excluded.deferred_reason,deferred_until=excluded.deferred_until,updated=excluded.updated,cwd=excluded.cwd,transcript=excluded.transcript",params![s.id,enum_name(&s.runtime)?,s.cli_session_id,s.terminal,s.current,s.task,kind,reason,until,i64::try_from(s.updated).map_err(db_error)?,s.cwd,s.transcript]).map_err(db_error)?;
         }
+        for h in w.outcome_history.iter().skip(before.outcome_history.len()) {
+            tx.execute("INSERT INTO outcome_history(session_id,before_json,after_json,at,reason) VALUES(?1,?2,?3,?4,?5)",params![h.session,serde_json::to_string(&h.before).map_err(db_error)?,serde_json::to_string(&h.after).map_err(db_error)?,i64::try_from(h.at).map_err(db_error)?,h.reason]).map_err(db_error)?;
+        }
         if before.task_outcomes != w.task_outcomes {
             for (id, outcome) in &w.task_outcomes {
                 if before.task_outcomes.get(id) != Some(outcome) {
@@ -447,11 +455,14 @@ mod milestone_tests {
             },
         })
         .unwrap();
+        w.agent_sessions.push(AgentSession {id:"s1".into(),runtime:Agent::Codex,cli_session_id:"s1".into(),terminal:None,current:false,task:None,outcome:Outcome::Open,updated:1,cwd:"/tmp".into(),transcript:"/fixture".into()});
+        w.change_outcome("s1",Outcome::Completed,2,"用户操作").unwrap();
         store.save(&before, &w).unwrap();
         drop(store);
         let (store, read) = Store::open(&root).unwrap();
         assert_eq!(read.tasks, w.tasks);
         assert_eq!(read.task_outcomes, w.task_outcomes);
+        assert_eq!(read.outcome_history, w.outcome_history);
         assert_eq!(read.pending_tasks, w.pending_tasks);
         drop(store);
         std::fs::remove_dir_all(root).unwrap();

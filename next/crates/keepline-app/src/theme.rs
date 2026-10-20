@@ -67,6 +67,7 @@ impl Theme {
     pub const LINK: u32 = 0xc3c6ff;
     pub const CHIP: u32 = 0x1e2140;
     pub const WHITE: u32 = 0xffffff;
+    pub const CLEANUP_BACKGROUND: u32 = 0xeef0f3;
     pub const POPOVER_TEXT: u32 = 0x17181c;
     pub const POPOVER_SECONDARY: u32 = 0x5d6270;
     pub const POPOVER_BORDER: u32 = 0xd5d8de;
@@ -113,6 +114,8 @@ impl Theme {
     pub const MENU_WIDTH: f32 = 230.;
     pub const HERE_WIDTH: f32 = 340.;
     pub const HERE_HEIGHT: f32 = 600.;
+    pub const CLEANUP_WIDTH: f32 = 960.;
+    pub const CLEANUP_ACTION_HEIGHT: f32 = 64.;
     pub const FORM_WIDTH: f32 = 640.;
     pub const FIELD_HEIGHT: f32 = 40.;
     pub const WINDOW_WIDTH: f32 = 1440.;

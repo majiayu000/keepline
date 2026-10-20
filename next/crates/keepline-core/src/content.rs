@@ -113,9 +113,14 @@ impl Content {
         // External logs prove activity, not the existence of a live OS process indefinitely.
         let running = self.turn == Turn::Running
             && (session.current || now.saturating_sub(self.updated) < 900);
+        let last_turn = if self.turn_started > 0 {
+            self.turn_started
+        } else {
+            self.updated
+        };
         let since = match session.outcome {
-            Outcome::Deferred { until, .. } => self.updated.max(until),
-            _ => self.updated,
+            Outcome::Deferred { until, .. } => last_turn.max(until),
+            _ => last_turn.max(workspace.review_since(&session.id)),
         };
         if !running && now.saturating_sub(since) > 3 * 86400 {
             return Inbox::Stale;

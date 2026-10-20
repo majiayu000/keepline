@@ -47,6 +47,7 @@ struct Host {
     agent_pids: HashMap<u32, String>,
     unbound_pids: HashMap<u32, String>,
     input_probes: std::collections::HashSet<String>,
+    deadlines: Option<SyncSender<()>>,
 }
 fn lock<T>(m: &Mutex<T>) -> io::Result<MutexGuard<'_, T>> {
     m.lock()
@@ -166,6 +167,9 @@ impl Host {
         next.revision = self.workspace.revision + 1;
         self.store.save(&self.workspace, &next)?;
         self.workspace = next;
+        if let Some(tx) = &self.deadlines {
+            let _ = tx.try_send(());
+        }
         self.publish_status()?;
         Ok(())
     }
@@ -236,6 +240,56 @@ impl Live {
     }
 }
 
+// One wait until an actual outcome/group deadline. No tick, no directory or process I/O.
+fn start_deadlines(shared: &Shared) -> io::Result<()> {
+    let (tx, rx) = sync_channel(1);
+    lock(shared)?.deadlines = Some(tx);
+    let weak = Arc::downgrade(shared);
+    thread::spawn(move || {
+        let run = || -> io::Result<()> {
+            loop {
+                let Some(shared) = weak.upgrade() else {
+                    return Ok(());
+                };
+                let deadline = {
+                    let mut host = lock(&shared)?;
+                    let now = keepline_core::content::now();
+                    let mut next = host.workspace.clone();
+                    if next.expire_outcomes(now) {
+                        host.commit(next)?;
+                    }
+                    host.workspace.next_deadline(now)
+                };
+                drop(shared);
+                let result = match deadline {
+                    Some(at) => rx.recv_timeout(std::time::Duration::from_secs(
+                        at.saturating_sub(keepline_core::content::now()),
+                    )),
+                    None => rx
+                        .recv()
+                        .map_err(|_| std::sync::mpsc::RecvTimeoutError::Disconnected),
+                };
+                match result {
+                    Ok(()) => (),
+                    Err(std::sync::mpsc::RecvTimeoutError::Disconnected) => return Ok(()),
+                    Err(std::sync::mpsc::RecvTimeoutError::Timeout) => {
+                        let Some(shared) = weak.upgrade() else {
+                            return Ok(());
+                        };
+                        let mut host = lock(&shared)?;
+                        let mut next = host.workspace.clone();
+                        next.expire_outcomes(keepline_core::content::now());
+                        host.commit(next)?;
+                    }
+                }
+            }
+        };
+        if let Err(e) = run() {
+            eprintln!("outcome deadline: {e}");
+        }
+    });
+    Ok(())
+}
 pub fn serve(root: &Path) -> io::Result<()> {
     serve_with_roots(root, crate::recognition::roots()?)
 }
@@ -307,6 +361,7 @@ pub fn serve_with_options(
         agent_pids: HashMap::new(),
         unbound_pids: HashMap::new(),
         input_probes: Default::default(),
+        deadlines: None,
         workspace,
         terminals: HashMap::new(),
         instance: uuid::Uuid::new_v4().to_string(),
@@ -319,6 +374,7 @@ pub fn serve_with_options(
             }
         }
     })?);
+    start_deadlines(&host)?;
     start_subscription(Arc::clone(&host), index);
     eprintln!("keeplined listening on {}", socket.display());
     for (index, stream) in listener.incoming().enumerate() {
@@ -503,7 +559,17 @@ impl Association {
                         if next.content.get(&s.id).is_some_and(|old| {
                             !card.turn_key.is_empty() && card.turn_key != old.turn_key
                         }) {
-                            s.outcome = keepline_core::model::Outcome::Open;
+                            if s.outcome != keepline_core::model::Outcome::Open {
+                                next.outcome_history
+                                    .push(keepline_core::model::OutcomeChange {
+                                        session: s.id.clone(),
+                                        before: s.outcome.clone(),
+                                        after: keepline_core::model::Outcome::Open,
+                                        at: card.turn_started,
+                                        reason: "新回合".into(),
+                                    });
+                                s.outcome = keepline_core::model::Outcome::Open;
+                            }
                         }
                         s.updated = s.updated.max(card.updated);
                         next.content.insert(s.id.clone(), card);
@@ -1407,6 +1473,7 @@ mod recognition_tests {
             agent_pids: HashMap::new(),
             unbound_pids: HashMap::new(),
             input_probes: Default::default(),
+            deadlines: None,
         }));
         let (tx, rx) = sync_channel(16);
         let (socket, _peer) = UnixStream::pair().unwrap();
