@@ -337,3 +337,9 @@ M3 采用结果：离开时间存在 client_state 对象表，窗口事件写入
 使用 AppKit NSStatusItem/NSPopover 和 UserNotifications（官方文档：https://developer.apple.com/documentation/appkit/nsstatusbar 、https://developer.apple.com/documentation/usernotifications/unusernotificationcenterdelegate）。仅新增 build.rs、native.m、desktop.rs 三个原生桥接文件；不引入插件框架/跨平台通知抽象。菜单栏订阅现有后台变化，点击复用 M3 路由。设置独立 app_settings 表；通知默认关闭，仅状态进入等你回答/出错时发送，初次装载不补发历史通知，SQLite 保存每个会话最后通知事实键。窗口关闭时菜单栏继续工作，退出 App 则不接通知。指标：菜单直达/无窗口可重开、去重跨客户端重启、默认无权限请求、空闲无额外 I/O；系统拒绝权限或发送错误必须可见，不擅改系统通知设置。
 
 M4 采用结果：原生面板在主窗口关闭后仍能重开并路由；设置已读回 SQLite，默认 Agent 生效。事件订阅及持久化事实键去重通过单测，真实系统通知不改权限，标记未验证等待授权。证据见 [M4](evidence/m4-20261021/README.md)。
+
+### M5 实施决定
+
+沿用唯一进程/文件关联边界，Claude 不安装 Hook、不改配置；验证两个同目录托管 Claude 的打开文件证据、追加内容、退出与不重复探测。真实日志只读离线抽样，不把模拟进程当官方 CLI 验收。Codex 先审查本机版本导出的 app-server 协议；只有能从托管 TUI PID 唯一追到 thread ID 的事实才替换 --no-daemon。共享 socket、cwd、originator 或最近活动时间均不足。没有可靠映射就保留过渡命令和提示，不增加 socket 代理或改造 CLI。指标：同目录零串线、已关联追加零 ps/lsof、真实 Claude 投影来源可核查；权限/模型额度未授权的真实交互明确未验证。
+
+M5 采用结果：现有 Claude 进程/打开文件路径无需额外架构；新增同 cwd 双 PTY 无 Hook 集成测试，增量追加零探测，5 个真实日志投影按来源位置复核。Codex 0.163.0 本机生成协议没有可用的 TUI PID↔thread 映射，否定据 cwd/originator 猜关联，保留 --no-daemon。官方付费交互待用户授权，见 [M5](evidence/m5-20261021/README.md)。
