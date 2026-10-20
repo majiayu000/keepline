@@ -1,0 +1,36 @@
+{
+  "passed": true,
+  "evidence_type": "packaged process/RPC integration; desktop locked, no Finder double-click or native screenshot proof",
+  "first_client": 65403,
+  "reopened_client": 65407,
+  "host": 65404,
+  "terminal_before": {
+    "id": "package-cat",
+    "space": "default",
+    "argv": [
+      "/bin/cat"
+    ],
+    "cwd": "/tmp/kl-package-rpc-5pksxdlx",
+    "pid": 65405,
+    "state": "Running",
+    "exit_code": null,
+    "error": null
+  },
+  "terminal_after": {
+    "id": "package-cat",
+    "space": "default",
+    "argv": [
+      "/bin/cat"
+    ],
+    "cwd": "/tmp/kl-package-rpc-5pksxdlx",
+    "pid": 65405,
+    "state": "Running",
+    "exit_code": null,
+    "error": null
+  },
+  "duplicate_exit": 0,
+  "auto_host": true,
+  "automatic_input_owner": true,
+  "reconnected_output": true,
+  "external_idle_env_removed": true
+}

@@ -81,7 +81,11 @@ impl Connection {
                 let write_wake = wake.clone();
                 std::thread::spawn(move || {
                     for request in receiver {
-                        if let Err(error) = send(&mut writer, CONTROL, &request) {
+                        let sent = match &request {
+                            Request::Input { bytes } => send_input(&mut writer, bytes),
+                            _ => send(&mut writer, CONTROL, &request),
+                        };
+                        if let Err(error) = sent {
                             let mut state = write_state.lock().unwrap();
                             state.error = Some(format!("{error}；输入结果未知，请勿自动重发"));
                             state.writable = false;

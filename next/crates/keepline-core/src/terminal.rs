@@ -131,6 +131,27 @@ mod tests {
         assert!(vt.search("").unwrap().is_empty());
     }
     #[test]
+    fn untrusted_osc_and_malformed_bytes_remain_terminal_data() {
+        let mut vt = Vt::new(80, 24).unwrap();
+        let replies = std::sync::Arc::new(std::sync::Mutex::new(Vec::new()));
+        let captured = replies.clone();
+        vt.on_reply(move |bytes| captured.lock().unwrap().extend_from_slice(bytes))
+            .unwrap();
+        vt.feed(b"\x1b]52;c;c2VjcmV0\x07\x1b]52;c;?\x07");
+        vt.feed(b"\x1b]8;;javascript:alert(1)\x07LINK\x1b]8;;\x07\r\n");
+        vt.feed(b"\xff\xfe\x1b[999999999999m\x1b[0mRECOVERED");
+        assert!(
+            replies.lock().unwrap().is_empty(),
+            "no clipboard response callback is installed"
+        );
+        assert_eq!(vt.search("LINK").unwrap().len(), 1);
+        assert_eq!(vt.search("RECOVERED").unwrap().len(), 1);
+        assert!(vt.search("javascript").unwrap().is_empty());
+        let restored = Vt::restore(&vt.snapshot().unwrap()).unwrap();
+        assert_eq!(restored.search("RECOVERED").unwrap().len(), 1);
+    }
+
+    #[test]
     fn truncated_snapshot_is_not_a_ready_terminal() {
         let mut source = Vt::new(80, 24).unwrap();
         source.feed(b"hello");

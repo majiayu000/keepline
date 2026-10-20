@@ -1,0 +1,12 @@
+/Users/lifcc/Desktop/code/AI/tools/keepline-agent-workbench/next/target/bundle/Keepline.app/Contents/MacOS/keepline-app: replacing existing signature
+/Users/lifcc/Desktop/code/AI/tools/keepline-agent-workbench/next/target/bundle/Keepline.app/Contents/MacOS/keeplined: replacing existing signature
+/Users/lifcc/Desktop/code/AI/tools/keepline-agent-workbench/next/target/bundle/Keepline.app: replacing existing signature
+{
+  "bundle": "/Users/lifcc/Desktop/code/AI/tools/keepline-agent-workbench/next/target/bundle/Keepline.app",
+  "signature": "ad-hoc; not notarized or published",
+  "git_head": "f31295fcf7a9ba0c0425ea80ab48385ddbbd7e20",
+  "binaries": {
+    "keepline-app": "cb98dd69716e1d824705bcc41f39c88c69edd2e65f8b69a0fe1d54f9180acec7",
+    "keeplined": "539e7e6697233492feb3478b72775c39ea0122b233fe1fd46b5c890cd6df9623"
+  }
+}

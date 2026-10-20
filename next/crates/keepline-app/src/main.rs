@@ -173,7 +173,11 @@ fn show_startup_error(message: String, cx: &mut App) {
     }
     cx.activate(true);
 }
+// Finder launches do not inherit run.sh. Enable the same event-driven idle policy
+// before GPUI or any application thread is created.
 fn main() {
+    // SAFETY: this is the first operation in main, before spawning threads.
+    unsafe { std::env::set_var("GPUI_PAUSE_IDLE_DISPLAY_LINK", "1") };
     if let Err(error) = run() {
         eprintln!("Keepline: {error}");
         std::process::exit(1);

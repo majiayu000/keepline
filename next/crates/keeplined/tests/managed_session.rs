@@ -1319,3 +1319,71 @@ fn claude_open_files_bind_same_cwd_without_hooks_and_append_without_probes() {
         (after.ps_spawns, after.lsof_spawns)
     );
 }
+
+#[test]
+fn large_unicode_input_survives_ack_disconnect_without_replay() {
+    let h = Host::start();
+    h.setup();
+    let output = h.root.join("received");
+    let ready = h.root.join("raw-ready");
+    h.call(h.launch(
+        "paste",
+        &format!(
+            "stty -echo -icanon; printf ready > {}; cat > {}",
+            shell_quote(&ready.to_string_lossy()),
+            shell_quote(&output.to_string_lossy())
+        ),
+    ))
+    .unwrap();
+    wait_file(&ready);
+    let (mut first, _, writable) = h.attach("paste", false);
+    assert!(writable);
+    let bytes = "多行中文 日本語 한국어 e\u{301}\nsecond line\n"
+        .repeat(2048)
+        .into_bytes();
+    send_input(&mut first, &bytes).unwrap();
+    // Observe delivery independently, but deliberately never consume ACKs.
+    // Closing before delivery could legitimately leave an unknown partial input.
+    let deadline = Instant::now() + Duration::from_secs(10);
+    loop {
+        if fs::metadata(&output).is_ok_and(|m| m.len() == bytes.len() as u64) {
+            break;
+        }
+        assert!(Instant::now() < deadline);
+        std::thread::sleep(Duration::from_millis(25));
+    }
+    drop(first);
+    let (_again, _, _) = h.attach("paste", true);
+    std::thread::sleep(Duration::from_millis(100));
+    assert_eq!(fs::read(output).unwrap(), bytes);
+}
+
+#[test]
+fn host_death_interrupts_pty_and_restart_preserves_no_fake_running_process() {
+    let mut h = Host::start();
+    h.setup();
+    h.call(h.launch("dies", "exec cat")).unwrap();
+    let pid = h.workspace().terminals[0].pid.unwrap();
+    h.child.kill().unwrap();
+    h.child.wait().unwrap();
+    let deadline = Instant::now() + Duration::from_secs(5);
+    while unsafe { libc::kill(pid as i32, 0) } == 0 {
+        assert!(Instant::now() < deadline, "PTY process survived host death");
+        std::thread::sleep(Duration::from_millis(25));
+    }
+    h.child = fixture_command(&h.root)
+        .stdout(Stdio::null())
+        .stderr(Stdio::inherit())
+        .spawn()
+        .unwrap();
+    let deadline = Instant::now() + Duration::from_secs(5);
+    loop {
+        if let Ok(Reply::Workspace(w)) = h.call(Request::Workspace) {
+            assert_eq!(w.terminals[0].state, ProcessState::Interrupted);
+            assert!(h.call(Request::Stop { id: "dies".into() }).is_err());
+            break;
+        }
+        assert!(Instant::now() < deadline);
+        std::thread::sleep(Duration::from_millis(25));
+    }
+}
