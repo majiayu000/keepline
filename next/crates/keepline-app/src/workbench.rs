@@ -681,6 +681,8 @@ impl Workbench {
         .detach();
     }
     fn show_form(&mut self, kind: FormKind, window: &mut Window, cx: &mut Context<Self>) {
+        self.overview = false;
+        self.sync_panes(cx);
         let fields = match kind {
             FormKind::Space => vec![
                 cx.new(|cx| Field::new("空间名称", "", cx)),
@@ -762,7 +764,7 @@ impl Workbench {
                 session.runtime.resume_command(&session.cli_session_id),
                 session.cwd.clone(),
             ));
-            self.overview = false;
+            // Keep the overview until Launch/PutTab returns and sync_panes creates entities.
             self.launch(false, None, cx);
             return;
         };
@@ -1025,7 +1027,10 @@ impl Workbench {
             .gap(px(T::S20))
             .px(px(T::OVERVIEW_X))
             .py(px(T::S20))
-            .child(header);
+            .child(header)
+            .when_some(self.error.clone(), |d, error| {
+                d.child(div().text_color(Group::Error.colors().1).child(error))
+            });
         let available = f32::from(window.viewport_size().width) - T::OVERVIEW_X * 2.;
         let columns = ((available + T::S10) / (T::CARD_MIN + T::S10))
             .floor()
