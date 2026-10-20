@@ -1,0 +1,21 @@
+{
+  "checks": [
+    "external body opens Here without Launch",
+    "popup dismiss does not reopen",
+    "more menu does not bubble to card",
+    "save from menu stays in overview",
+    "managed body enters existing pane",
+    "hidden list expands and shows four unattended maps, two SDK, one temp, one exec and two subagents"
+  ],
+  "tasks": [
+    {
+      "id": "5678-1792515898931485000-0",
+      "space_id": "s",
+      "title": "我希望你帮我看看我这台Mac上面的Claude Code的聊天记录，我曾经做了几个MV，比如说take me free three am这种…",
+      "description": "我希望你帮我看看我这台Mac上面的Claude Code的聊天记录，我曾经做了几个MV，比如说take me free three am这种，然后我希望你能帮我把这些东西整合到这个目录下，你看看怎么做。\n\n（历史仅覆盖索引尾段及之后的增量；此前要求未知。）",
+      "runtime": "Claude"
+    }
+  ],
+  "terminal_count": 2,
+  "final_review_primary_terminal_count": 2
+}
