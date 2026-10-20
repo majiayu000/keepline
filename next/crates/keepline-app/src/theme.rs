@@ -11,14 +11,16 @@ pub enum Group {
     Review,
     Paused,
     Running,
+    Stale,
 }
 impl Group {
-    pub const ALL: [Self; 5] = [
+    pub const ALL: [Self; 6] = [
         Self::Waiting,
         Self::Error,
         Self::Review,
         Self::Paused,
         Self::Running,
+        Self::Stale,
     ];
     pub fn label(self) -> &'static str {
         match self {
@@ -27,6 +29,7 @@ impl Group {
             Self::Review => "待核对",
             Self::Paused => "做一半停了",
             Self::Running => "进行中",
+            Self::Stale => "很久没动",
         }
     }
     pub fn colors(self) -> (Hsla, Hsla, Hsla) {
@@ -36,6 +39,7 @@ impl Group {
             Self::Review => (0x8f93ff, 0xd6d8ff, 0x2a2c5c),
             Self::Paused => (0xd9a441, 0xf3dca8, 0x3a2e12),
             Self::Running => (0x4cc38a, 0xb9ecd2, 0x173a2a),
+            Self::Stale => (Theme::MUTED, Theme::SECONDARY, Theme::RAISED),
         };
         (hsla(dot), hsla(ink), hsla(bg))
     }
@@ -107,6 +111,8 @@ impl Theme {
     pub const OVERVIEW_X: f32 = 28.;
     pub const SEARCH_HEIGHT: f32 = 260.;
     pub const MENU_WIDTH: f32 = 230.;
+    pub const HERE_WIDTH: f32 = 340.;
+    pub const HERE_HEIGHT: f32 = 600.;
     pub const FORM_WIDTH: f32 = 640.;
     pub const FIELD_HEIGHT: f32 = 40.;
     pub const WINDOW_WIDTH: f32 = 1440.;
