@@ -38,13 +38,14 @@ try:
  until=time.monotonic()+15
  while not (root/'workbench.sock').exists():
   assert time.monotonic()<until;time.sleep(.1)
- if os.environ.get('KL_SEED_STALE'):
+ if os.environ.get('KL_SEED_STALE') or os.environ.get('KL_SEED_NAV'):
   for i in range(3):
-   at=int(time.time())-4*86400
-   rows=[{'type':'session_meta','payload':{'id':f'stale-{i}','cwd':'/fixture-project','source':'cli','thread_source':'user','originator':'codex-tui'}},{'timestamp':at,'type':'event_msg','payload':{'type':'task_started','turn_id':f'old-{i}'}},{'timestamp':at,'type':'event_msg','payload':{'type':'user_message','message':f'核对第 {i+1} 个暂停项目的测试结果。'}},{'timestamp':at,'type':'event_msg','payload':{'type':'task_complete','last_agent_message':'还需要核对测试环境。'}}]
+   at=int(time.time())-(4*86400 if i==2 or not os.environ.get('KL_SEED_NAV') else 60)
+   rows=[{'type':'session_meta','payload':{'id':f'stale-{i}','cwd':str(BASE) if os.environ.get('KL_SEED_NAV') else '/fixture-project','source':'cli','thread_source':'user','originator':'codex-tui'}},{'timestamp':at,'type':'event_msg','payload':{'type':'task_started','turn_id':f'old-{i}'}},{'timestamp':at,'type':'event_msg','payload':{'type':'user_message','message':f'核对第 {i+1} 个暂停项目的测试结果。'}},{'timestamp':at,'type':'event_msg','payload':{'type':'task_complete','last_agent_message':'还需要核对测试环境。'}}]
    (root/'logs'/f'stale-{i}.jsonl').write_text(''.join(json.dumps(v,ensure_ascii=False)+'\n' for v in rows))
+ if os.environ.get('KL_SEED_NAV'): rpc({'ClientLeft':{'at':int(time.time())-3600}})
  w=rpc('Workspace')['Workspace']
- rpc({'Edit':{'revision':w['revision'],'edit':{'AddSpace':{'id':'m1','name':'M1 隔离项目','cwd':str(root)}}}})
+ rpc({'Edit':{'revision':w['revision'],'edit':{'AddSpace':{'id':'m1','name':'M1 隔离项目','cwd':str(BASE) if os.environ.get('KL_SEED_NAV') else str(root)}}}})
  bundle=root/'Keepline Milestone Test.app';mac=bundle/'Contents/MacOS';mac.mkdir(parents=True)
  shutil.copy2(BASE/'next/target/debug/keepline-app',mac/'keepline-app')
  (bundle/'Contents/Info.plist').write_bytes(plistlib.dumps({'CFBundleName':'Keepline Milestone Test','CFBundleExecutable':'keepline-app','CFBundleIdentifier':'local.keepline.milestones','CFBundlePackageType':'APPL','CFBundleVersion':'1'}))

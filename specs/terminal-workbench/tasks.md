@@ -178,7 +178,7 @@ flowchart LR
   证据：[M0](evidence/m0-20261021/README.md)。原生回归另计，不把日志比对当真实 CLI 操作。
 - [x] M1 待办完整流程与对象归属：原生表单/预填/重复开始/分屏/模拟 CLI 自动关联；core 与 SQLite 回归。证据：[M1](evidence/m1-20261021/README.md)，真实付费 CLI 链路另计 M6。
 - [x] M2 结局、到期与逐个清理；原生清理及确定时间/增量集成验证。证据：[M2](evidence/m2-20261021/README.md)。
-- [ ] M3 鸟瞰、导航、搜索与继续。
+- [x] M3 鸟瞰、导航、搜索与继续；确定时间、缓存搜索和原生外部预填验证。证据：[M3](evidence/m3-20261021/README.md)，等待角标/通知入口在 M4 联验。
 - [ ] M4 菜单栏、系统通知与设置。
 - [ ] M5 Claude 关联与 Codex daemon 模式研究。
 - [ ] M6 A01–A19、Ghostty 对照、两小时趋势与本地 App 打包。
