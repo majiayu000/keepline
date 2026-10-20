@@ -12,6 +12,12 @@ use std::{
 };
 
 pub struct Workbench {
+    since: u64,
+    away: Option<u64>,
+    filter_space: Option<String>,
+    changed_only: bool,
+    search_open: bool,
+    search: Entity<Field>,
     socket: PathBuf,
     workspace: Workspace,
     space: String,
@@ -87,6 +93,46 @@ fn now() -> u64 {
         .duration_since(UNIX_EPOCH)
         .unwrap_or_default()
         .as_secs()
+}
+fn session_space<'a>(w: &'a Workspace, s: &AgentSession) -> Option<&'a str> {
+    s.task
+        .as_ref()
+        .and_then(|id| w.tasks.iter().find(|t| &t.id == id))
+        .map(|t| t.space.as_str())
+        .or_else(|| {
+            s.terminal
+                .as_ref()
+                .and_then(|id| w.terminals.iter().find(|t| &t.id == id))
+                .map(|t| t.space.as_str())
+        })
+        .or_else(|| {
+            w.spaces
+                .iter()
+                .filter(|p| std::path::Path::new(&s.cwd).starts_with(&p.cwd))
+                .max_by_key(|p| p.cwd.len())
+                .map(|p| p.id.as_str())
+        })
+}
+fn live_terminal<'a>(w: &'a Workspace, s: &AgentSession) -> Option<&'a Terminal> {
+    if !s.current {
+        return None;
+    }
+    s.terminal.as_ref().and_then(|id| {
+        w.terminals
+            .iter()
+            .find(|t| &t.id == id && t.state == ProcessState::Running)
+    })
+}
+fn changed_since(w: &Workspace, s: &AgentSession, since: u64) -> bool {
+    since > 0 && w.content.get(&s.id).map_or(s.updated, |c| c.updated) > since
+}
+fn show_on_return(left: u64, at: u64) -> bool {
+    left > 0 && at.saturating_sub(left) > 30 * 60
+}
+fn record_left(socket: &std::path::Path, at: u64) {
+    if let Err(e) = rpc(socket, &Request::ClientLeft { at }) {
+        eprintln!("记录离开时间失败: {e}");
+    }
 }
 fn interrupted(workspace: &Workspace, id: &str) -> bool {
     workspace
@@ -338,7 +384,7 @@ impl Workbench {
     pub fn new(
         socket: PathBuf,
         workspace: Workspace,
-        _: &mut Window,
+        window: &mut Window,
         cx: &mut Context<Self>,
     ) -> Self {
         let space = workspace
@@ -373,7 +419,40 @@ impl Workbench {
             }
         })
         .detach();
+        let since = workspace.last_left;
+        let overview = show_on_return(since, now());
+        let search = cx.new(|cx| Field::new("搜索会话、待办或原话", "", cx));
+        cx.observe(&search, |_, _, cx| cx.notify()).detach();
+        cx.observe_window_activation(window, |this, window, cx| {
+            if window.is_window_active() {
+                if let Some(left) = this.away.take() {
+                    if show_on_return(left, now()) {
+                        this.since = left;
+                        this.overview = true;
+                        this.sync_panes(cx);
+                    }
+                    cx.notify();
+                }
+            } else if this.away.is_none() {
+                let at = now();
+                this.away = Some(at);
+                let socket = this.socket.clone();
+                cx.background_spawn(async move {
+                    record_left(&socket, at);
+                })
+                .detach();
+            }
+        })
+        .detach();
+        cx.on_release(|this, _| record_left(&this.socket, this.away.unwrap_or_else(now)))
+            .detach();
         let mut this = Self {
+            since,
+            away: None,
+            filter_space: None,
+            changed_only: false,
+            search_open: false,
+            search,
             socket,
             workspace,
             space,
@@ -397,7 +476,7 @@ impl Workbench {
             card_menu: None,
             drag: None,
             split_bounds: HashMap::new(),
-            overview: false,
+            overview,
             busy: false,
             error: None,
             form: None,
@@ -408,7 +487,7 @@ impl Workbench {
             _recognition_connection: recognition_connection,
         };
         this.sync_panes(cx);
-        if this.workspace.terminals.is_empty() {
+        if this.workspace.terminals.is_empty() && !this.overview {
             this.launch(false, None, cx);
         }
         this
@@ -611,6 +690,7 @@ impl Workbench {
         };
         let agent = self.prefill_agent.take();
         let resume = self.resume.take();
+        let resuming = resume.is_some();
         let prefill = resume.as_ref().map(|r| r.0.clone()).or_else(|| {
             task_id
                 .as_ref()
@@ -692,7 +772,7 @@ impl Workbench {
                     .iter()
                     .find(|t| &t.id == id && t.state == ProcessState::Running)
             })
-            .filter(|_| task_id.is_none())
+            .filter(|_| task_id.is_none() && !resuming)
             .map(|t| t.id.clone());
         let mut request = Request::Launch {
             id: terminal.clone(),
@@ -1228,20 +1308,24 @@ impl Workbench {
         window: &mut Window,
         cx: &mut Context<Self>,
     ) {
-        let Some(terminal) = session
-            .terminal
-            .as_ref()
-            .and_then(|id| self.workspace.terminals.iter().find(|t| &t.id == id))
-        else {
+        self.search_open = false;
+        self.task_detail = None;
+        self.here = None;
+        self.zoomed = None;
+        let Some(terminal) = live_terminal(&self.workspace, session) else {
+            if let Some(space) = session_space(&self.workspace, session) {
+                self.space = space.into();
+            }
             self.resume = Some((
                 session.runtime.resume_command(&session.cli_session_id),
                 session.cwd.clone(),
             ));
-            // Keep the overview until Launch/PutTab returns and sync_panes creates entities.
-            self.launch(false, None, cx);
+            self.launch(false, session.task.clone(), cx);
             return;
         };
         let terminal_id = terminal.id.clone();
+        self.focused = Some(terminal_id.clone());
+        self.pending_focus = true;
         if let Some(tab) = self.workspace.terminal_tab(&terminal.id) {
             self.space = tab.space.clone();
             self.tab = Some(tab.id.clone());
@@ -1440,6 +1524,28 @@ impl Workbench {
                     .child("仅覆盖已索引的历史尾段与之后的增量；没有证据不等于没做。"),
             );
         }
+        let resume = session.clone();
+        let command = session.runtime.resume_command(&session.cli_session_id);
+        panel = panel.child(
+            div()
+                .flex()
+                .gap(px(T::S6))
+                .child(
+                    button("here-continue", "继续")
+                        .bg(T::color(T::ACCENT))
+                        .text_color(T::color(T::WHITE))
+                        .on_click(cx.listener(move |this, _, window, cx| {
+                            this.open_session(&resume, window, cx)
+                        })),
+                )
+                .child(
+                    button("here-copy", "复制命令")
+                        .text_color(T::color(T::POPOVER_TEXT))
+                        .on_click(move |_, _, cx| {
+                            cx.write_to_clipboard(gpui::ClipboardItem::new_string(command.clone()))
+                        }),
+                ),
+        );
         panel = panel.child(
             button("save-here-task", "存为待办")
                 .text_color(T::color(T::POPOVER_TEXT))
@@ -1509,7 +1615,11 @@ impl Workbench {
     }
     fn enter_card(&mut self, s: &AgentSession, window: &mut Window, cx: &mut Context<Self>) {
         self.card_menu = None;
-        if s.terminal.is_some() {
+        self.filter_space = None;
+        self.changed_only = false;
+        self.show_stale = self.group(s) == Group::Stale || self.show_stale;
+        self.show_running = self.group(s) == Group::Running || self.show_running;
+        if live_terminal(&self.workspace, s).is_some() {
             self.open_session(s, window, cx);
         } else {
             self.overview = true;
@@ -1577,12 +1687,217 @@ impl Workbench {
         }
         menu
     }
+    fn matches_filter(&self, s: &AgentSession) -> bool {
+        self.filter_space
+            .as_deref()
+            .is_none_or(|space| session_space(&self.workspace, s) == Some(space))
+            && (!self.changed_only || changed_since(&self.workspace, s, self.since))
+    }
+    fn search_button(&self, cx: &Context<Self>) -> gpui::Stateful<gpui::Div> {
+        button("global-search", "搜索会话 / 待办 / 原话").on_click(cx.listener(
+            |this, _, window, cx| {
+                this.search_open = true;
+                window.focus(&this.search.focus_handle(cx), cx);
+                cx.notify();
+            },
+        ))
+    }
+    fn navigation_filters(&self, cx: &Context<Self>) -> gpui::Div {
+        let mut row = div().flex().flex_wrap().gap(px(T::S8)).child(
+            button(
+                "all-spaces",
+                if self.filter_space.is_none() {
+                    "● 全部空间"
+                } else {
+                    "全部空间"
+                },
+            )
+            .on_click(cx.listener(|this, _, _, cx| {
+                this.filter_space = None;
+                cx.notify();
+            })),
+        );
+        for space in &self.workspace.spaces {
+            let id = space.id.clone();
+            row = row.child(
+                button(
+                    gpui::SharedString::from(format!("filter-{id}")),
+                    format!(
+                        "{}{}",
+                        if self.filter_space.as_ref() == Some(&id) {
+                            "● "
+                        } else {
+                            ""
+                        },
+                        space.name
+                    ),
+                )
+                .on_click(cx.listener(move |this, _, _, cx| {
+                    this.filter_space = Some(id.clone());
+                    cx.notify();
+                })),
+            );
+        }
+        row.child(
+            button(
+                "only-changed",
+                if self.changed_only {
+                    "✓ 只看有变化"
+                } else {
+                    "只看有变化"
+                },
+            )
+            .on_click(cx.listener(|this, _, _, cx| {
+                this.changed_only = !this.changed_only;
+                cx.notify();
+            })),
+        )
+    }
+    fn search_view(&self, cx: &Context<Self>) -> gpui::Stateful<gpui::Div> {
+        let query = self.search.read(cx).text.trim().to_lowercase();
+        let mut view = div()
+            .id("search-results")
+            .size_full()
+            .overflow_y_scroll()
+            .p(px(T::S20))
+            .flex()
+            .flex_col()
+            .gap(px(T::S12))
+            .child(
+                div()
+                    .flex()
+                    .gap(px(T::S12))
+                    .child(div().flex_1().child(self.search.clone()))
+                    .child(button("close-search", "关闭搜索").on_click(cx.listener(
+                        |this, _, _, cx| {
+                            this.search_open = false;
+                            cx.notify();
+                        },
+                    ))),
+            );
+        if query.is_empty() {
+            return view.child(label(
+                "按标题、项目或用户原话查找；搜索只使用本地已索引内容。",
+            ));
+        }
+        let mut count = 0;
+        for task in &self.workspace.tasks {
+            if !format!("{} {}", task.title, task.description)
+                .to_lowercase()
+                .contains(&query)
+            {
+                continue;
+            }
+            let id = task.id.clone();
+            let space = task.space.clone();
+            count += 1;
+            view = view.child(
+                button(
+                    gpui::SharedString::from(format!("search-task-{id}")),
+                    format!("待办 · {}", task.title),
+                )
+                .justify_start()
+                .on_click(cx.listener(move |this, _, _, cx| {
+                    this.search_open = false;
+                    this.overview = false;
+                    this.space = space.clone();
+                    this.task_detail = Some(id.clone());
+                    cx.notify();
+                })),
+            );
+        }
+        for session in &self.workspace.agent_sessions {
+            if self.session_hidden(session).is_some() {
+                continue;
+            }
+            let quote = self
+                .workspace
+                .content
+                .get(&session.id)
+                .and_then(|c| {
+                    c.asks
+                        .iter()
+                        .find(|q| q.text.to_lowercase().contains(&query))
+                })
+                .map(|q| q.text.clone());
+            if quote.is_none()
+                && !format!(
+                    "{} {} {}",
+                    self.session_title(session),
+                    session.cli_session_id,
+                    session.cwd
+                )
+                .to_lowercase()
+                .contains(&query)
+            {
+                continue;
+            }
+            let open = session.clone();
+            count += 1;
+            let snippet = quote
+                .map(|q| q.chars().take(160).collect::<String>())
+                .unwrap_or_else(|| session.cwd.clone());
+            view = view.child(
+                div()
+                    .flex()
+                    .flex_col()
+                    .gap(px(T::S4))
+                    .child(
+                        button(
+                            gpui::SharedString::from(format!("search-session-{}", session.id)),
+                            format!("会话 · {}", self.session_title(session)),
+                        )
+                        .justify_start()
+                        .on_click(cx.listener(
+                            move |this, _, window, cx| {
+                                this.search_open = false;
+                                this.enter_card(&open, window, cx);
+                            },
+                        )),
+                    )
+                    .child(label(snippet)),
+            );
+        }
+        view.child(label(format!(
+            "共 {count} 项；未索引历史不会出现在搜索中。"
+        )))
+    }
+    fn next_waiting(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        let needs: Vec<_> = self
+            .workspace
+            .agent_sessions
+            .iter()
+            .filter(|s| {
+                s.outcome.needs_review(now())
+                    && self.session_hidden(s).is_none()
+                    && matches!(self.group(s), Group::Waiting | Group::Error)
+            })
+            .collect();
+        let current = self
+            .focused
+            .as_ref()
+            .and_then(|id| self.workspace.current_agent(id))
+            .map(|s| s.id.as_str())
+            .or(self.here.as_deref());
+        if !needs.is_empty() {
+            let index = needs
+                .iter()
+                .position(|s| Some(s.id.as_str()) == current)
+                .map_or(0, |i| (i + 1) % needs.len());
+            let session = needs[index].clone();
+            self.enter_card(&session, window, cx);
+        }
+    }
     fn overview_view(&self, window: &Window, cx: &Context<Self>) -> gpui::Stateful<gpui::Div> {
         let open: Vec<_> = self
             .workspace
             .agent_sessions
             .iter()
-            .filter(|s| s.outcome.needs_review(now()) && self.session_hidden(s).is_none())
+            .filter(|s| {
+                s.outcome.needs_review(now())
+                    && self.session_hidden(s).is_none()
+                    && self.matches_filter(s)
+            })
             .collect();
         let header = div()
             .flex()
@@ -1602,6 +1917,7 @@ impl Workbench {
                         open.len()
                     ))),
             )
+            .child(self.search_button(cx))
             .child(
                 button("overview-refresh", "刷新")
                     .on_click(cx.listener(|this, _, _, cx| this.request(Request::Workspace, cx))),
@@ -1625,6 +1941,7 @@ impl Workbench {
             .px(px(T::OVERVIEW_X))
             .py(px(T::S20))
             .child(header)
+            .child(self.navigation_filters(cx))
             .when_some(self.error.clone(), |d, error| {
                 d.child(div().text_color(Group::Error.colors().1).child(error))
             });
@@ -1643,6 +1960,8 @@ impl Workbench {
                     .get(&t.id)
                     .unwrap_or(&Outcome::Open)
                     .needs_review(now())
+                    && self.filter_space.as_ref().is_none_or(|id| id == &t.space)
+                    && !self.changed_only
                     && !self
                         .workspace
                         .agent_sessions
@@ -1798,7 +2117,7 @@ impl Workbench {
                 let primary = session.clone();
                 let menu_id = session.id.clone();
                 let meta = format!(
-                    "{} · {} · {}{}",
+                    "{} · {} · {}{}{}",
                     if session.terminal.is_none() {
                         "外部·只读"
                     } else {
@@ -1815,6 +2134,11 @@ impl Workbench {
                         .is_some_and(|h| h.reason == "暂存到期")
                     {
                         " · 到期"
+                    } else {
+                        ""
+                    },
+                    if changed_since(&self.workspace, &session, self.since) {
+                        " · 新"
                     } else {
                         ""
                     }
@@ -2675,6 +2999,9 @@ impl Render for Workbench {
             .text_size(px(T::BODY_SIZE))
             .line_height(gpui::relative(T::LINE_HEIGHT))
             .font_family(T::UI_FONT);
+        if self.search_open {
+            return root.child(self.search_view(cx));
+        }
         if !self.cleanup.is_empty() && self.form.is_none() {
             return root.child(self.cleanup_view(cx));
         }
@@ -2722,6 +3049,7 @@ impl Render for Workbench {
                             })),
                     )
                     .child(div().flex_1())
+                    .child(self.search_button(cx))
                     .child(button("add-task", "＋ 新待办").on_click(cx.listener(
                         |this, _, window, cx| this.show_form(FormKind::Task, window, cx),
                     )))
@@ -2747,11 +3075,23 @@ impl Render for Workbench {
         for space in &self.workspace.spaces {
             let id = space.id.clone();
             let active = self.space == id;
-            let count = self
+            let sessions: Vec<_> = self
                 .workspace
-                .terminals
+                .agent_sessions
                 .iter()
-                .filter(|t| t.space == id)
+                .filter(|s| {
+                    self.session_hidden(s).is_none()
+                        && session_space(&self.workspace, s) == Some(id.as_str())
+                })
+                .collect();
+            let count = sessions.len();
+            let waiting = sessions
+                .iter()
+                .filter(|s| s.outcome.needs_review(now()) && self.group(s) == Group::Waiting)
+                .count();
+            let errors = sessions
+                .iter()
+                .filter(|s| s.outcome.needs_review(now()) && self.group(s) == Group::Error)
                 .count();
             sidebar = sidebar.child(
                 button(
@@ -2763,7 +3103,7 @@ impl Render for Workbench {
                 .border_0()
                 .when(active, |s| s.bg(T::color(T::RAISED)))
                 .child(div().flex_1())
-                .child(label(count.to_string()))
+                .child(label(format!("等你 {waiting} / 错 {errors} · {count}")))
                 .on_click(cx.listener(move |this, _, _, cx| {
                     this.space = id.clone();
                     this.tab = this
@@ -2805,7 +3145,16 @@ impl Render for Workbench {
                 .child(
                     button(
                         gpui::SharedString::from(format!("task-{id}")),
-                        task.title.clone(),
+                        format!(
+                            "{} · {}",
+                            task.title,
+                            outcome_label(
+                                self.workspace
+                                    .task_outcomes
+                                    .get(&task.id)
+                                    .unwrap_or(&Outcome::Open)
+                            )
+                        ),
                     )
                     .border_0()
                     .justify_start()
@@ -2844,36 +3193,44 @@ impl Render for Workbench {
                 .px(px(T::S8))
                 .mb(px(T::S4)),
         );
-        for session in needs {
+        for session in needs.into_iter().take(6) {
             let open = session.clone();
             let g = self.group(session);
-            sidebar =
-                sidebar.child(
-                    div()
-                        .id(gpui::SharedString::from(format!("need-{}", session.id)))
-                        .h(px(T::ROW))
-                        .px(px(T::S8))
-                        .flex()
-                        .items_center()
-                        .gap(px(T::S8))
-                        .rounded(px(T::CONTROL_RADIUS))
-                        .cursor_pointer()
-                        .hover(|s| s.bg(T::color(T::RAISED)))
-                        .child(dot(g))
-                        .child(div().truncate().child(self.session_title(session)))
-                        .on_click(cx.listener(move |this, _, window, cx| {
-                            this.open_session(&open, window, cx)
-                        })),
-                );
+            sidebar = sidebar.child(
+                div()
+                    .id(gpui::SharedString::from(format!("need-{}", session.id)))
+                    .h(px(T::ROW))
+                    .px(px(T::S8))
+                    .flex()
+                    .items_center()
+                    .gap(px(T::S8))
+                    .rounded(px(T::CONTROL_RADIUS))
+                    .cursor_pointer()
+                    .hover(|s| s.bg(T::color(T::RAISED)))
+                    .child(dot(g))
+                    .child(div().truncate().child(self.session_title(session)))
+                    .on_click(
+                        cx.listener(move |this, _, window, cx| this.enter_card(&open, window, cx)),
+                    ),
+            );
         }
-        sidebar = sidebar.child(div().flex_1()).child(
-            label(format!(
-                "{} 个会话 · 终端宿主已连接",
-                self.workspace.agent_sessions.len()
-            ))
-            .px(px(T::S8))
-            .pt(px(T::S20)),
-        );
+        sidebar = sidebar
+            .child(div().flex_1())
+            .child(
+                button("sidebar-overview", "▦ 鸟瞰全部").on_click(cx.listener(|this, _, _, cx| {
+                    this.overview = true;
+                    this.sync_panes(cx);
+                    cx.notify();
+                })),
+            )
+            .child(
+                label(format!(
+                    "{} 个会话 · 终端宿主已连接",
+                    self.workspace.agent_sessions.len()
+                ))
+                .px(px(T::S8))
+                .pt(px(T::S20)),
+            );
         let current = self
             .workspace
             .tabs
@@ -2905,7 +3262,25 @@ impl Render for Workbench {
                         } else {
                             ""
                         },
-                        self.workspace.tab_title(tab)
+                        format!("{}{}", self.workspace.tab_title(tab), {
+                            let ids = self.workspace.tab_terminals(&tab.id);
+                            let count = self
+                                .workspace
+                                .agent_sessions
+                                .iter()
+                                .filter(|s| {
+                                    s.current
+                                        && s.terminal.as_ref().is_some_and(|t| ids.contains(t))
+                                        && s.outcome.needs_review(now())
+                                        && matches!(self.group(s), Group::Waiting | Group::Error)
+                                })
+                                .count();
+                            if count > 0 {
+                                format!(" · 需要你 {count}")
+                            } else {
+                                String::new()
+                            }
+                        })
                     ),
                 )
                 .h(px(T::TABS))
@@ -3137,6 +3512,14 @@ impl Render for Workbench {
                         "本标签 {count} 个画面 · 共 {} 个会话",
                         self.workspace.agent_sessions.len()
                     )))
+                    .child(div().flex_1())
+                    .child(
+                        button("next-waiting", "跳到下一个等你的 →")
+                            .h(px(T::FOOTER))
+                            .on_click(
+                                cx.listener(|this, _, window, cx| this.next_waiting(window, cx)),
+                            ),
+                    )
                     .child(label(if self.busy {
                         "正在更新…"
                     } else {
@@ -3216,6 +3599,48 @@ mod tests {
             transcript: "".into(),
         });
         w
+    }
+
+    #[test]
+    fn navigation_uses_live_identity_and_path_boundaries() {
+        let mut w = fixture();
+        let mut s = w.agent_sessions[0].clone();
+        s.current = true;
+        assert!(live_terminal(&w, &s).is_none());
+        s.terminal = Some("t0".into());
+        assert_eq!(live_terminal(&w, &s).unwrap().id, "t0");
+        s.current = false;
+        assert!(live_terminal(&w, &s).is_none());
+        s.terminal = None;
+        s.cwd = "/tmp/project".into();
+        assert_eq!(session_space(&w, &s), Some("space"));
+        s.cwd = "/tmp-other/project".into();
+        assert_eq!(session_space(&w, &s), None);
+        w.spaces.push(Space {
+            id: "nested".into(),
+            name: "Nested".into(),
+            cwd: "/tmp/project".into(),
+        });
+        s.cwd = "/tmp/project/sub".into();
+        assert_eq!(session_space(&w, &s), Some("nested"));
+        s.updated = 100;
+        assert!(!changed_since(&w, &s, 100));
+        assert!(changed_since(&w, &s, 99));
+        assert!(!changed_since(&w, &s, 0));
+        w.content.insert(
+            s.id.clone(),
+            keepline_core::content::Content {
+                updated: 90,
+                ..Default::default()
+            },
+        );
+        assert!(
+            !changed_since(&w, &s, 99),
+            "index mtime cannot mark an old conversation new"
+        );
+        assert!(!show_on_return(100, 1900));
+        assert!(show_on_return(100, 1901));
+        assert!(!show_on_return(0, 1901));
     }
 
     #[test]

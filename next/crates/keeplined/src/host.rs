@@ -961,6 +961,13 @@ fn dispatch(shared: &Shared, request: Request) -> io::Result<Reply> {
             }
             Ok(Reply::Workspace(host.snapshot()))
         }
+        Request::ClientLeft { at } => {
+            let mut host = lock(shared)?;
+            let mut next = host.workspace.clone();
+            next.last_left = at;
+            host.commit(next)?;
+            Ok(Reply::Ok)
+        }
         Request::Workspace => Ok(Reply::Workspace(lock(shared)?.snapshot())),
         Request::Edit { revision, mut edit } => {
             let mut host = lock(shared)?;

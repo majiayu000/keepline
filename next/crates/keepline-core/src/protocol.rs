@@ -19,6 +19,9 @@ pub enum Request {
         major: u32,
     },
     Workspace,
+    ClientLeft {
+        at: u64,
+    },
     RefreshAgents,
     RecognitionStatus,
     WatchRecognition,

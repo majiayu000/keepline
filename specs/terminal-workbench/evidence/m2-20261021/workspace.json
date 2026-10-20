@@ -1,73 +1,39 @@
 {
   "Workspace": {
-    "revision": 10,
-    "outcome_history": [
-      {
-        "session": "8560024a-4209-4e90-9f91-1aabd683c7e4",
-        "before": "Open",
-        "after": "Completed",
-        "at": 1792517719,
-        "reason": "用户操作"
-      },
-      {
-        "session": "58c8720b-94fb-4c36-a5e7-cc9e0850dc7e",
-        "before": "Open",
-        "after": {
-          "Deferred": {
-            "reason": "等待隔离验收结果",
-            "until": 1792604281
-          }
-        },
-        "at": 1792517881,
-        "reason": "用户操作"
-      },
-      {
-        "session": "3781013d-6dbe-4e5c-8ea3-288cf444c58f",
-        "before": "Open",
-        "after": "Abandoned",
-        "at": 1792517910,
-        "reason": "用户操作"
-      },
-      {
-        "session": "8560024a-4209-4e90-9f91-1aabd683c7e4",
-        "before": "Completed",
-        "after": "Open",
-        "at": 1792517953,
-        "reason": "用户操作"
-      }
-    ],
+    "revision": 6,
+    "outcome_history": [],
     "task_outcomes": {},
     "pending_tasks": {},
     "spaces": [
       {
         "id": "m1",
         "name": "M1 隔离项目",
-        "cwd": "/tmp/kl-m1-ii46u_sp"
+        "cwd": "/tmp/kl-m1-c960530x"
       }
     ],
     "tasks": [],
     "tabs": [
       {
-        "id": "25292-1792517676225561000-0",
+        "id": "27683-1792517988756943000-0",
         "space": "m1",
         "default_task": null,
         "title": "",
         "closed": false,
         "layout": {
-          "Leaf": "25292-1792517676225563000-1"
+          "Leaf": "27683-1792517988756946000-1"
         }
       }
     ],
     "terminals": [
       {
-        "id": "25292-1792517676225563000-1",
+        "id": "27683-1792517988756946000-1",
         "space": "m1",
         "argv": [
           "/bin/zsh",
           "-l"
         ],
-        "cwd": "/tmp/kl-m1-ii46u_sp",
-        "pid": 25293,
+        "cwd": "/tmp/kl-m1-c960530x",
+        "pid": 27684,
         "state": "Running",
         "exit_code": null,
         "error": null
@@ -75,78 +41,44 @@
     ],
     "agent_sessions": [
       {
-        "id": "8560024a-4209-4e90-9f91-1aabd683c7e4",
+        "id": "d2c3a325-aab1-45ae-a0a4-4502cfeb7261",
+        "runtime": "Codex",
+        "cli_session_id": "stale-0",
+        "terminal": null,
+        "current": false,
+        "task": null,
+        "outcome": "Open",
+        "updated": 1792517987,
+        "cwd": "/fixture-project",
+        "transcript": "/private/tmp/kl-m1-c960530x/logs/stale-0.jsonl"
+      },
+      {
+        "id": "fddac012-1da9-42a3-af4f-b094612b68fe",
         "runtime": "Codex",
         "cli_session_id": "stale-1",
         "terminal": null,
         "current": false,
         "task": null,
         "outcome": "Open",
-        "updated": 1792517675,
+        "updated": 1792517987,
         "cwd": "/fixture-project",
-        "transcript": "/private/tmp/kl-m1-ii46u_sp/logs/stale-1.jsonl"
+        "transcript": "/private/tmp/kl-m1-c960530x/logs/stale-1.jsonl"
       },
       {
-        "id": "58c8720b-94fb-4c36-a5e7-cc9e0850dc7e",
-        "runtime": "Codex",
-        "cli_session_id": "stale-0",
-        "terminal": null,
-        "current": false,
-        "task": null,
-        "outcome": {
-          "Deferred": {
-            "reason": "等待隔离验收结果",
-            "until": 1792604281
-          }
-        },
-        "updated": 1792517675,
-        "cwd": "/fixture-project",
-        "transcript": "/private/tmp/kl-m1-ii46u_sp/logs/stale-0.jsonl"
-      },
-      {
-        "id": "3781013d-6dbe-4e5c-8ea3-288cf444c58f",
+        "id": "a2bee2c6-9213-4dd7-9376-f8bfff96a4d0",
         "runtime": "Codex",
         "cli_session_id": "stale-2",
         "terminal": null,
         "current": false,
         "task": null,
-        "outcome": "Abandoned",
-        "updated": 1792517675,
+        "outcome": "Open",
+        "updated": 1792517987,
         "cwd": "/fixture-project",
-        "transcript": "/private/tmp/kl-m1-ii46u_sp/logs/stale-2.jsonl"
+        "transcript": "/private/tmp/kl-m1-c960530x/logs/stale-2.jsonl"
       }
     ],
     "content": {
-      "8560024a-4209-4e90-9f91-1aabd683c7e4": {
-        "interactive": true,
-        "hidden_reason": "",
-        "first_ask_known": true,
-        "title": "核对第 2 个暂停项目的测试结果。",
-        "asks": [
-          {
-            "text": "核对第 2 个暂停项目的测试结果。",
-            "at": 1792172075,
-            "source": {
-              "path": "/private/tmp/kl-m1-ii46u_sp/logs/stale-1.jsonl",
-              "inode": 379440944,
-              "offset": 255
-            }
-          }
-        ],
-        "evidence": [],
-        "last_reply": "还需要核对测试环境。",
-        "turn": "Completed",
-        "turn_started": 1792172075,
-        "turn_key": "old-1",
-        "updated": 1792172075,
-        "completed_claim": false,
-        "waiting": "",
-        "error": "",
-        "partial_history": false,
-        "from_offset": 0,
-        "unknown_records": 0
-      },
-      "58c8720b-94fb-4c36-a5e7-cc9e0850dc7e": {
+      "d2c3a325-aab1-45ae-a0a4-4502cfeb7261": {
         "interactive": true,
         "hidden_reason": "",
         "first_ask_known": true,
@@ -154,10 +86,10 @@
         "asks": [
           {
             "text": "核对第 1 个暂停项目的测试结果。",
-            "at": 1792172075,
+            "at": 1792172387,
             "source": {
-              "path": "/private/tmp/kl-m1-ii46u_sp/logs/stale-0.jsonl",
-              "inode": 379440943,
+              "path": "/private/tmp/kl-m1-c960530x/logs/stale-0.jsonl",
+              "inode": 379449211,
               "offset": 255
             }
           }
@@ -165,9 +97,9 @@
         "evidence": [],
         "last_reply": "还需要核对测试环境。",
         "turn": "Completed",
-        "turn_started": 1792172075,
+        "turn_started": 1792172387,
         "turn_key": "old-0",
-        "updated": 1792172075,
+        "updated": 1792172387,
         "completed_claim": false,
         "waiting": "",
         "error": "",
@@ -175,7 +107,7 @@
         "from_offset": 0,
         "unknown_records": 0
       },
-      "3781013d-6dbe-4e5c-8ea3-288cf444c58f": {
+      "a2bee2c6-9213-4dd7-9376-f8bfff96a4d0": {
         "interactive": true,
         "hidden_reason": "",
         "first_ask_known": true,
@@ -183,10 +115,10 @@
         "asks": [
           {
             "text": "核对第 3 个暂停项目的测试结果。",
-            "at": 1792172075,
+            "at": 1792172387,
             "source": {
-              "path": "/private/tmp/kl-m1-ii46u_sp/logs/stale-2.jsonl",
-              "inode": 379440945,
+              "path": "/private/tmp/kl-m1-c960530x/logs/stale-2.jsonl",
+              "inode": 379449213,
               "offset": 255
             }
           }
@@ -194,9 +126,38 @@
         "evidence": [],
         "last_reply": "还需要核对测试环境。",
         "turn": "Completed",
-        "turn_started": 1792172075,
+        "turn_started": 1792172387,
         "turn_key": "old-2",
-        "updated": 1792172075,
+        "updated": 1792172387,
+        "completed_claim": false,
+        "waiting": "",
+        "error": "",
+        "partial_history": false,
+        "from_offset": 0,
+        "unknown_records": 0
+      },
+      "fddac012-1da9-42a3-af4f-b094612b68fe": {
+        "interactive": true,
+        "hidden_reason": "",
+        "first_ask_known": true,
+        "title": "核对第 2 个暂停项目的测试结果。",
+        "asks": [
+          {
+            "text": "核对第 2 个暂停项目的测试结果。",
+            "at": 1792172387,
+            "source": {
+              "path": "/private/tmp/kl-m1-c960530x/logs/stale-1.jsonl",
+              "inode": 379449212,
+              "offset": 255
+            }
+          }
+        ],
+        "evidence": [],
+        "last_reply": "还需要核对测试环境。",
+        "turn": "Completed",
+        "turn_started": 1792172387,
+        "turn_key": "old-1",
+        "updated": 1792172387,
         "completed_claim": false,
         "waiting": "",
         "error": "",

@@ -1,0 +1,171 @@
+{
+  "Workspace": {
+    "revision": 8,
+    "last_left": 1792518378,
+    "outcome_history": [],
+    "task_outcomes": {},
+    "pending_tasks": {},
+    "spaces": [
+      {
+        "id": "m1",
+        "name": "M1 隔离项目",
+        "cwd": "/Users/lifcc/Desktop/code/AI/tools/keepline-agent-workbench"
+      }
+    ],
+    "tasks": [],
+    "tabs": [
+      {
+        "id": "32027-1792518420037056000-0",
+        "space": "m1",
+        "default_task": null,
+        "title": "",
+        "closed": false,
+        "layout": {
+          "Leaf": "32027-1792518420037059000-1"
+        }
+      }
+    ],
+    "terminals": [
+      {
+        "id": "32027-1792518420037059000-1",
+        "space": "m1",
+        "argv": [
+          "/bin/zsh",
+          "-l"
+        ],
+        "cwd": "/Users/lifcc/Desktop/code/AI/tools/keepline-agent-workbench",
+        "pid": 32218,
+        "state": "Running",
+        "exit_code": null,
+        "error": null
+      }
+    ],
+    "agent_sessions": [
+      {
+        "id": "b048c3b0-65ef-4779-9383-c50f2f6a7a94",
+        "runtime": "Codex",
+        "cli_session_id": "stale-0",
+        "terminal": null,
+        "current": false,
+        "task": null,
+        "outcome": "Open",
+        "updated": 1792518375,
+        "cwd": "/Users/lifcc/Desktop/code/AI/tools/keepline-agent-workbench",
+        "transcript": "/private/tmp/kl-m1-dcdwlq6n/logs/stale-0.jsonl"
+      },
+      {
+        "id": "2b3fddda-4f95-46ba-b459-2a55936559e1",
+        "runtime": "Codex",
+        "cli_session_id": "stale-1",
+        "terminal": null,
+        "current": false,
+        "task": null,
+        "outcome": "Open",
+        "updated": 1792518375,
+        "cwd": "/Users/lifcc/Desktop/code/AI/tools/keepline-agent-workbench",
+        "transcript": "/private/tmp/kl-m1-dcdwlq6n/logs/stale-1.jsonl"
+      },
+      {
+        "id": "cc76a8ba-a59a-457d-9781-06b09bd6692a",
+        "runtime": "Codex",
+        "cli_session_id": "stale-2",
+        "terminal": null,
+        "current": false,
+        "task": null,
+        "outcome": "Open",
+        "updated": 1792518375,
+        "cwd": "/Users/lifcc/Desktop/code/AI/tools/keepline-agent-workbench",
+        "transcript": "/private/tmp/kl-m1-dcdwlq6n/logs/stale-2.jsonl"
+      }
+    ],
+    "content": {
+      "2b3fddda-4f95-46ba-b459-2a55936559e1": {
+        "interactive": true,
+        "hidden_reason": "",
+        "first_ask_known": true,
+        "title": "核对第 2 个暂停项目的测试结果。",
+        "asks": [
+          {
+            "text": "核对第 2 个暂停项目的测试结果。",
+            "at": 1792518315,
+            "source": {
+              "path": "/private/tmp/kl-m1-dcdwlq6n/logs/stale-1.jsonl",
+              "inode": 379462275,
+              "offset": 298
+            }
+          }
+        ],
+        "evidence": [],
+        "last_reply": "还需要核对测试环境。",
+        "turn": "Completed",
+        "turn_started": 1792518315,
+        "turn_key": "old-1",
+        "updated": 1792518315,
+        "completed_claim": false,
+        "waiting": "",
+        "error": "",
+        "partial_history": false,
+        "from_offset": 0,
+        "unknown_records": 0
+      },
+      "cc76a8ba-a59a-457d-9781-06b09bd6692a": {
+        "interactive": true,
+        "hidden_reason": "",
+        "first_ask_known": true,
+        "title": "核对第 3 个暂停项目的测试结果。",
+        "asks": [
+          {
+            "text": "核对第 3 个暂停项目的测试结果。",
+            "at": 1792172775,
+            "source": {
+              "path": "/private/tmp/kl-m1-dcdwlq6n/logs/stale-2.jsonl",
+              "inode": 379462276,
+              "offset": 298
+            }
+          }
+        ],
+        "evidence": [],
+        "last_reply": "还需要核对测试环境。",
+        "turn": "Completed",
+        "turn_started": 1792172775,
+        "turn_key": "old-2",
+        "updated": 1792172775,
+        "completed_claim": false,
+        "waiting": "",
+        "error": "",
+        "partial_history": false,
+        "from_offset": 0,
+        "unknown_records": 0
+      },
+      "b048c3b0-65ef-4779-9383-c50f2f6a7a94": {
+        "interactive": true,
+        "hidden_reason": "",
+        "first_ask_known": true,
+        "title": "核对第 1 个暂停项目的测试结果。",
+        "asks": [
+          {
+            "text": "核对第 1 个暂停项目的测试结果。",
+            "at": 1792518315,
+            "source": {
+              "path": "/private/tmp/kl-m1-dcdwlq6n/logs/stale-0.jsonl",
+              "inode": 379462274,
+              "offset": 298
+            }
+          }
+        ],
+        "evidence": [],
+        "last_reply": "还需要核对测试环境。",
+        "turn": "Completed",
+        "turn_started": 1792518315,
+        "turn_key": "old-0",
+        "updated": 1792518315,
+        "completed_claim": false,
+        "waiting": "",
+        "error": "",
+        "partial_history": false,
+        "from_offset": 0,
+        "unknown_records": 0
+      }
+    }
+  }
+}

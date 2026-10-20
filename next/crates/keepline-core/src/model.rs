@@ -5,6 +5,8 @@ use serde::{Deserialize, Serialize};
 pub struct Workspace {
     pub revision: u64,
     #[serde(default)]
+    pub last_left: u64,
+    #[serde(default)]
     pub outcome_history: Vec<OutcomeChange>,
     #[serde(default)]
     pub task_outcomes: std::collections::HashMap<String, Outcome>,

@@ -48,6 +48,8 @@ impl Store {
         db.execute_batch("PRAGMA foreign_keys=ON; PRAGMA journal_mode=WAL; PRAGMA synchronous=FULL;
             CREATE TABLE IF NOT EXISTS meta (id INTEGER PRIMARY KEY CHECK(id=1), revision INTEGER NOT NULL);
             INSERT OR IGNORE INTO meta VALUES(1,0);
+            CREATE TABLE IF NOT EXISTS client_state (id INTEGER PRIMARY KEY CHECK(id=1), last_left INTEGER NOT NULL);
+            INSERT OR IGNORE INTO client_state VALUES(1,0);
             CREATE TABLE IF NOT EXISTS spaces (id TEXT PRIMARY KEY, name TEXT NOT NULL, cwd TEXT NOT NULL);
             CREATE TABLE IF NOT EXISTS tasks (id TEXT PRIMARY KEY, space_id TEXT NOT NULL REFERENCES spaces(id), title TEXT NOT NULL, description TEXT NOT NULL, runtime TEXT NOT NULL);
             CREATE TABLE IF NOT EXISTS outcome_history (sequence INTEGER PRIMARY KEY, session_id TEXT NOT NULL, before_json TEXT NOT NULL, after_json TEXT NOT NULL, at INTEGER NOT NULL, reason TEXT NOT NULL);
@@ -109,6 +111,14 @@ impl Store {
             .map_err(db_error)?,
             ..Workspace::default()
         };
+        w.last_left = u64::try_from(
+            self.0
+                .query_row("SELECT last_left FROM client_state WHERE id=1", [], |r| {
+                    r.get::<_, i64>(0)
+                })
+                .map_err(db_error)?,
+        )
+        .map_err(db_error)?;
         for row in self.0.prepare("SELECT session_id,before_json,after_json,at,reason FROM outcome_history ORDER BY sequence").map_err(db_error)?.query_map([], |r| Ok((r.get::<_,String>(0)?,r.get::<_,String>(1)?,r.get::<_,String>(2)?,r.get::<_,i64>(3)?,r.get::<_,String>(4)?))).map_err(db_error)? {
             let (session,before,after,at,reason)=row.map_err(db_error)?;
             w.outcome_history.push(OutcomeChange {session,before:serde_json::from_str(&before).map_err(db_error)?,after:serde_json::from_str(&after).map_err(db_error)?,at:u64::try_from(at).map_err(db_error)?,reason});
@@ -251,6 +261,14 @@ impl Store {
     }
     pub fn save(&mut self, before: &Workspace, w: &Workspace) -> io::Result<()> {
         let tx = self.0.transaction().map_err(db_error)?;
+        if before.last_left != w.last_left {
+            tx.execute(
+                "UPDATE client_state SET last_left=?1 WHERE id=1",
+                [i64::try_from(w.last_left).map_err(db_error)?],
+            )
+            .map_err(db_error)?;
+        }
+
         for s in changed(&before.spaces, &w.spaces, |s| &s.id) {
             tx.execute("INSERT INTO spaces VALUES(?1,?2,?3) ON CONFLICT(id) DO UPDATE SET name=excluded.name,cwd=excluded.cwd",params![s.id,s.name,s.cwd]).map_err(db_error)?;
         }
@@ -410,6 +428,20 @@ fn save_layout(db: &Connection, tab: &str, path: &str, tree: &Layout) -> io::Res
 mod milestone_tests {
     use super::*;
     #[test]
+    fn client_departure_survives_reopen_without_changing_sessions() {
+        let dir = std::env::temp_dir().join(format!("kl-visit-{}", uuid::Uuid::new_v4()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let (mut db, before) = Store::open(&dir).unwrap();
+        let mut after = before.clone();
+        after.last_left = 12345;
+        db.save(&before, &after).unwrap();
+        drop(db);
+        let (_, loaded) = Store::open(&dir).unwrap();
+        assert_eq!(loaded.last_left, 12345);
+        assert!(loaded.agent_sessions.is_empty());
+        std::fs::remove_dir_all(dir).unwrap();
+    }
+    #[test]
     fn task_outcome_and_pending_override_survive_reopen() {
         let root = std::env::temp_dir().join(format!("kl-task-store-{}", std::process::id()));
         std::fs::create_dir_all(&root).unwrap();
@@ -455,8 +487,20 @@ mod milestone_tests {
             },
         })
         .unwrap();
-        w.agent_sessions.push(AgentSession {id:"s1".into(),runtime:Agent::Codex,cli_session_id:"s1".into(),terminal:None,current:false,task:None,outcome:Outcome::Open,updated:1,cwd:"/tmp".into(),transcript:"/fixture".into()});
-        w.change_outcome("s1",Outcome::Completed,2,"用户操作").unwrap();
+        w.agent_sessions.push(AgentSession {
+            id: "s1".into(),
+            runtime: Agent::Codex,
+            cli_session_id: "s1".into(),
+            terminal: None,
+            current: false,
+            task: None,
+            outcome: Outcome::Open,
+            updated: 1,
+            cwd: "/tmp".into(),
+            transcript: "/fixture".into(),
+        });
+        w.change_outcome("s1", Outcome::Completed, 2, "用户操作")
+            .unwrap();
         store.save(&before, &w).unwrap();
         drop(store);
         let (store, read) = Store::open(&root).unwrap();
