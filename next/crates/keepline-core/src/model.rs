@@ -9,6 +9,7 @@ pub struct Workspace {
     pub tabs: Vec<Tab>,
     pub terminals: Vec<Terminal>,
     pub agent_sessions: Vec<AgentSession>,
+    pub content: std::collections::HashMap<String, crate::content::Content>,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
@@ -157,6 +158,7 @@ pub enum Edit {
     CloseTab { id: String },
     SetOutcome { id: String, outcome: Outcome },
     AssignTask { id: String, task: Option<String> },
+    SaveSessionTask { session: String, task: Task },
 }
 
 impl Workspace {
@@ -233,6 +235,18 @@ impl Workspace {
     }
     pub fn edit(&mut self, edit: Edit) -> Result<(), String> {
         match edit {
+            Edit::SaveSessionTask { session, task } => {
+                if !self.agent_sessions.iter().any(|s| s.id == session) {
+                    return Err("会话不存在".into());
+                }
+                let task_id = task.id.clone();
+                self.edit(Edit::AddTask(task))?;
+                self.agent_sessions
+                    .iter_mut()
+                    .find(|s| s.id == session)
+                    .unwrap()
+                    .task = Some(task_id);
+            }
             Edit::AddSpace(space) => {
                 if self.spaces.iter().any(|s| s.id == space.id) {
                     return Err("空间 ID 已存在".into());

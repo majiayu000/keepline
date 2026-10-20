@@ -8,9 +8,9 @@ use std::os::unix::fs::{DirBuilderExt, FileTypeExt, MetadataExt, OpenOptionsExt,
 use std::os::unix::net::{UnixListener, UnixStream};
 use std::path::Path;
 use std::sync::{
-    atomic::{AtomicBool, Ordering},
-    mpsc::{sync_channel, SyncSender},
     Arc, Mutex, MutexGuard,
+    atomic::{AtomicBool, Ordering},
+    mpsc::{SyncSender, sync_channel},
 };
 use std::thread;
 use std::time::Duration;
@@ -59,6 +59,14 @@ fn geometry(cols: u16, rows: u16) -> io::Result<()> {
     Ok(())
 }
 impl Host {
+    fn snapshot(&self) -> Workspace {
+        let mut w = self.workspace.clone();
+        w.agent_sessions
+            .retain(|s| s.terminal.is_some() || self.index.recent(s.updated));
+        w.content
+            .retain(|id, _| w.agent_sessions.iter().any(|s| &s.id == id));
+        w
+    }
     fn publish_status(&mut self) -> io::Result<()> {
         self.recognition.workspace_revision = self.workspace.revision;
         let payload = Arc::new(
@@ -233,6 +241,13 @@ pub fn serve(root: &Path) -> io::Result<()> {
 }
 /// Explicit roots keep fixture execution independent of the user's CLI history.
 pub fn serve_with_roots(root: &Path, roots: Vec<(Agent, std::path::PathBuf)>) -> io::Result<()> {
+    serve_with_options(root, roots, 7)
+}
+pub fn serve_with_options(
+    root: &Path,
+    roots: Vec<(Agent, std::path::PathBuf)>,
+    recent_days: u64,
+) -> io::Result<()> {
     match fs::DirBuilder::new().mode(0o700).create(root) {
         Ok(()) => (),
         Err(e) if e.kind() == io::ErrorKind::AlreadyExists => (),
@@ -267,15 +282,21 @@ pub fn serve_with_roots(root: &Path, roots: Vec<(Agent, std::path::PathBuf)>) ->
         Ok(_) => {
             return Err(io::Error::other(
                 "refusing to replace a non-socket runtime entry",
-            ))
+            ));
         }
         Err(e) if e.kind() == io::ErrorKind::NotFound => (),
         Err(e) => return Err(e),
     }
     let listener = UnixListener::bind(&socket)?;
     fs::set_permissions(&socket, fs::Permissions::from_mode(0o600))?;
-    let (store, workspace) = Store::open(root)?;
-    let index = crate::log_index::Index::open(root, roots)?;
+    let (store, mut workspace) = Store::open(root)?;
+    let mut index = crate::log_index::Index::open(root, roots)?;
+    index.recent_days = recent_days;
+    for s in &workspace.agent_sessions {
+        if let Some(card) = index.card(&s.transcript)? {
+            workspace.content.insert(s.id.clone(), card);
+        }
+    }
     let host = Arc::new(Mutex::new(Host {
         store,
         index: index.fork(root)?,
@@ -461,8 +482,37 @@ impl Association {
         {
             let mut host = lock(shared)?;
             let mut next = host.workspace.clone();
+            for t in transcripts {
+                let known = next
+                    .agent_sessions
+                    .iter()
+                    .any(|s| s.runtime == t.runtime && s.cli_session_id == t.cli_id);
+                if !known && index.recent(t.updated) {
+                    next.observe_agent(crate::recognition::observation(t, None))
+                        .map_err(io::Error::other)?;
+                }
+            }
             crate::recognition::reconcile(&mut next, transcripts, &[], &HashMap::new())?;
-            if next.agent_sessions != host.workspace.agent_sessions {
+            for t in transcripts {
+                if let Some(s) = next
+                    .agent_sessions
+                    .iter_mut()
+                    .find(|s| s.runtime == t.runtime && s.cli_session_id == t.cli_id)
+                {
+                    if let Some(card) = index.card(&t.path)? {
+                        if next.content.get(&s.id).is_some_and(|old| {
+                            !card.turn_key.is_empty() && card.turn_key != old.turn_key
+                        }) {
+                            s.outcome = keepline_core::model::Outcome::Open;
+                        }
+                        s.updated = s.updated.max(card.updated);
+                        next.content.insert(s.id.clone(), card);
+                    }
+                }
+            }
+            if next.agent_sessions != host.workspace.agent_sessions
+                || next.content != host.workspace.content
+            {
                 host.commit(next)?;
             }
         }
@@ -567,11 +617,22 @@ fn start_subscription(shared: Shared, mut index: crate::log_index::Index) {
             index.bootstrap()?;
             publish_recognition(&shared, &index, RecognitionPhase::Healthy, "识别正常", &[])?;
             let mut association = Association::default();
+            association.apply(&shared, &index, &index.cached()?)?;
             loop {
                 let mut batch = watch.rx.recv().map_err(io::Error::other)?;
-                // Coalesce already queued notifications only; no timer or delayed polling.
-                for next in watch.rx.try_iter().take(63) {
-                    batch.events.extend(next.events);
+                // A single bounded burst window starts ONLY after a native event arrives.
+                // This matches FSEvents' 200 ms latency for eager vnode writes too. It never
+                // wakes an idle subscriber, and continuous writers cannot extend the deadline.
+                let deadline = std::time::Instant::now() + Duration::from_millis(200);
+                for _ in 0..63 {
+                    match watch
+                        .rx
+                        .recv_timeout(deadline.saturating_duration_since(std::time::Instant::now()))
+                    {
+                        Ok(next) => batch.events.extend(next.events),
+                        Err(std::sync::mpsc::RecvTimeoutError::Timeout) => break,
+                        Err(e) => return Err(io::Error::other(e)),
+                    }
                 }
                 let mut scopes = watch.take_overflow();
                 let overflowed = !scopes.is_empty();
@@ -614,14 +675,7 @@ fn start_subscription(shared: Shared, mut index: crate::log_index::Index) {
                         paths.insert(event.path);
                     }
                 }
-                let mut transcripts = vec![];
-                for path in paths {
-                    if let Some(runtime) = index.runtime(&path) {
-                        if let Some(t) = index.update(runtime, &path, true)? {
-                            transcripts.push(t);
-                        }
-                    }
-                }
+                let transcripts = index.update_many(paths, event_id)?;
                 if let Err(error) = association.apply(&shared, &index, &transcripts) {
                     eprintln!("Agent association deferred: {error}");
                 }
@@ -658,7 +712,7 @@ fn start_subscription(shared: Shared, mut index: crate::log_index::Index) {
                     }
                 }
                 if event_id > checkpoint {
-                    index.checkpoint(event_id)?;
+                    // Checkpoint is atomic with this batch of content/cursor writes.
                     checkpoint = event_id;
                 }
                 let status = lock(&shared)?.recognition.clone();
@@ -716,7 +770,7 @@ fn serve_client(mut stream: UnixStream, host: Shared, connection: u64) -> io::Re
             send(
                 &mut stream,
                 CONTROL,
-                &Reply::Error("protocol major 2 required".into()),
+                &Reply::Error(format!("protocol major {MAJOR} required")),
             )?;
             return Ok(());
         }
@@ -757,7 +811,7 @@ fn dispatch(shared: &Shared, request: Request) -> io::Result<Reply> {
             };
             refresh_agents(shared, &transcripts)?;
             let host = lock(shared)?;
-            Ok(Reply::Workspace(host.workspace.clone()))
+            Ok(Reply::Workspace(host.snapshot()))
         }
         Request::Hook {
             runtime,
@@ -765,6 +819,7 @@ fn dispatch(shared: &Shared, request: Request) -> io::Result<Reply> {
             cli_session_id,
             transcript,
             ended,
+            event,
         } => {
             let (workspace, mut index, cached) = {
                 let host = lock(shared)?;
@@ -809,6 +864,18 @@ fn dispatch(shared: &Shared, request: Request) -> io::Result<Reply> {
                 &processes,
                 ended,
             )?;
+            if let Some(event) = event {
+                index.hook(&observed.path, &event)?;
+            }
+            if let Some(s) = next
+                .agent_sessions
+                .iter()
+                .find(|s| s.runtime == runtime && s.cli_session_id == cli_session_id)
+            {
+                if let Some(card) = index.card(&observed.path)? {
+                    next.content.insert(s.id.clone(), card);
+                }
+            }
             host.commit(next)?;
             let mut ancestor = pid;
             let mut hook_files = HashMap::new();
@@ -826,18 +893,39 @@ fn dispatch(shared: &Shared, request: Request) -> io::Result<Reply> {
             if let Some(events) = &host.log_events {
                 events.file(path);
             }
-            Ok(Reply::Workspace(host.workspace.clone()))
+            Ok(Reply::Workspace(host.snapshot()))
         }
-        Request::Workspace => Ok(Reply::Workspace(lock(shared)?.workspace.clone())),
-        Request::Edit { revision, edit } => {
+        Request::Workspace => Ok(Reply::Workspace(lock(shared)?.snapshot())),
+        Request::Edit { revision, mut edit } => {
             let mut host = lock(shared)?;
             if host.workspace.revision != revision {
                 return Err(io::Error::other("工作台已变化，请刷新后重试"));
             }
+            if let Edit::SaveSessionTask { session, task } = &mut edit {
+                let s = host
+                    .workspace
+                    .agent_sessions
+                    .iter()
+                    .find(|s| &s.id == session)
+                    .ok_or_else(|| io::Error::other("会话不存在"))?;
+                task.description = host.index.original_words(&s.transcript)?;
+                if task.description.is_empty() {
+                    return Err(io::Error::other("已索引内容没有用户原话，不能建立待办"));
+                }
+                if host
+                    .workspace
+                    .content
+                    .get(session)
+                    .is_some_and(|c| c.partial_history)
+                {
+                    task.description
+                        .push_str("\n\n（历史仅覆盖索引尾段及之后的增量；此前要求未知。）");
+                }
+            }
             let mut next = host.workspace.clone();
             next.edit(edit).map_err(io::Error::other)?;
             host.commit(next)?;
-            Ok(Reply::Workspace(host.workspace.clone()))
+            Ok(Reply::Workspace(host.snapshot()))
         }
         Request::Launch {
             id,
@@ -855,7 +943,7 @@ fn dispatch(shared: &Shared, request: Request) -> io::Result<Reply> {
                         "launch ID was already used with different arguments",
                     ));
                 }
-                return Ok(Reply::Workspace(host.workspace.clone()));
+                return Ok(Reply::Workspace(host.snapshot()));
             }
             if id.is_empty()
                 || argv.is_empty()
@@ -959,7 +1047,7 @@ fn dispatch(shared: &Shared, request: Request) -> io::Result<Reply> {
                 }
                 Err(error) => eprintln!("wait terminal {id}: {error}"),
             });
-            Ok(Reply::Workspace(host.workspace.clone()))
+            Ok(Reply::Workspace(host.snapshot()))
         }
         Request::TerminalCwd { id } => {
             let host = lock(shared)?;
@@ -1117,7 +1205,7 @@ fn pump(mut reader: File, terminal: &LiveTerminal, replies: Arc<Mutex<Vec<u8>>>)
                     io::ErrorKind::Interrupted | io::ErrorKind::WouldBlock
                 ) =>
             {
-                continue
+                continue;
             }
             Err(e) if e.raw_os_error() == Some(libc::EIO) => return Ok(()),
             Err(e) => return Err(e),
@@ -1271,7 +1359,7 @@ fn attach(
                 _ => {
                     return Err(io::Error::other(
                         "attached connection accepts input and resize only",
-                    ))
+                    ));
                 }
             }
             Ok(())
@@ -1350,7 +1438,7 @@ mod recognition_tests {
                 .collect::<Vec<_>>(),
             ["a"]
         );
-        let phases: Vec<_> = rx
+        let mut phases: Vec<_> = rx
             .try_iter()
             .map(
                 |(_, bytes)| match serde_json::from_slice::<Reply>(&bytes).unwrap() {
@@ -1359,6 +1447,8 @@ mod recognition_tests {
                 },
             )
             .collect();
+        // Content imports publish a revision while recovery remains in progress.
+        phases.dedup();
         assert_eq!(
             phases,
             [
