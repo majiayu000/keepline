@@ -4,6 +4,12 @@ fn main() -> std::io::Result<()> {
     std::fs::create_dir_all(root.join("logs"))?;
     keeplined::serve_with_roots(
         &root,
-        vec![(keepline_core::model::Agent::Codex, root.join("logs"))],
+        vec![
+            (keepline_core::model::Agent::Codex, root.join("logs")),
+            (
+                keepline_core::model::Agent::Claude,
+                root.join("claude-logs"),
+            ),
+        ],
     )
 }

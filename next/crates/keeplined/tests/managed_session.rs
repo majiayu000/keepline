@@ -1235,3 +1235,87 @@ fn external_content_updates_without_probes_saves_full_quotes_and_reopens_on_new_
     let stats = recognition(&h);
     assert_eq!((stats.metrics.ps_spawns, stats.metrics.lsof_spawns), (0, 0));
 }
+
+#[test]
+fn claude_open_files_bind_same_cwd_without_hooks_and_append_without_probes() {
+    use std::io::Write;
+    let h = Host::start();
+    h.setup();
+    let logs = h.root.join("logs/claude");
+    fs::create_dir_all(&logs).unwrap();
+    let cli = h.root.join("claude");
+    std::os::unix::fs::symlink("/bin/sh", &cli).unwrap();
+    for i in 0..2 {
+        let path = logs.join(format!("claude-{i}.jsonl"));
+        let seed = h.root.join(format!("seed-{i}"));
+        let row = serde_json::json!({"type":"user","sessionId":format!("claude-{i}"),"uuid":format!("u-{i}"),"cwd":"/project","entrypoint":"cli","userType":"external","timestamp":keepline_core::content::now(),"message":{"content":format!("修复第 {i} 个项目，不调用模型")}});
+        fs::write(&seed, format!("{row}\n")).unwrap();
+        let script = format!(
+            "exec 3>{}; cat {} >&3; read -r line",
+            shell_quote(&path.to_string_lossy()),
+            shell_quote(&seed.to_string_lossy())
+        );
+        h.call(h.launch(
+            &format!("claude-pty-{i}"),
+            &format!(
+                "exec {} -c {}",
+                shell_quote(&cli.to_string_lossy()),
+                shell_quote(&script)
+            ),
+        ))
+        .unwrap();
+    }
+    let deadline = Instant::now() + Duration::from_secs(10);
+    loop {
+        let w = h.workspace();
+        if (0..2).all(|i| {
+            w.current_agent(&format!("claude-pty-{i}"))
+                .is_some_and(|s| s.cli_session_id == format!("claude-{i}"))
+        }) {
+            break;
+        }
+        assert!(
+            Instant::now() < deadline,
+            "Claude automatic open-file binding timed out"
+        );
+        std::thread::sleep(Duration::from_millis(50));
+    }
+    // Drain setup events before comparing append-only counters.
+    std::thread::sleep(Duration::from_millis(500));
+    let before = recognition(&h).metrics;
+    let path = logs.join("claude-0.jsonl");
+    let mut file = fs::OpenOptions::new().append(true).open(&path).unwrap();
+    for row in [
+        serde_json::json!({"type":"assistant","sessionId":"claude-0","message":{"content":[{"type":"tool_use","id":"edit","name":"Edit","input":{"file_path":"src/main.rs"}}]}}),
+        serde_json::json!({"type":"user","sessionId":"claude-0","message":{"content":[{"type":"tool_result","tool_use_id":"edit","content":"Successfully updated"}]}}),
+        serde_json::json!({"type":"assistant","sessionId":"claude-0","message":{"content":[{"type":"tool_use","id":"ask","name":"AskUserQuestion","input":{"questions":[{"question":"选择验证方式？","options":[{"label":"本地测试"},{"label":"人工复核"}]}]}}]}}),
+    ] {
+        writeln!(file, "{row}").unwrap();
+    }
+    let deadline = Instant::now() + Duration::from_secs(10);
+    loop {
+        let w = h.workspace();
+        let agent = w.current_agent("claude-pty-0").unwrap();
+        if w.content
+            .get(&agent.id)
+            .is_some_and(|c| c.turn == keepline_core::content::Turn::Waiting)
+        {
+            let c = &w.content[&agent.id];
+            assert!(c.interactive);
+            assert_eq!(c.asks[0].text, "修复第 0 个项目，不调用模型");
+            assert!(c.here().done.contains("src/main.rs"));
+            assert!(c.here().stopped.contains("选择验证方式"));
+            assert!(c.here().stopped.contains("本地测试"));
+            let other = w.current_agent("claude-pty-1").unwrap();
+            assert!(!w.content[&other.id].here().done.contains("src/main.rs"));
+            break;
+        }
+        assert!(Instant::now() < deadline);
+        std::thread::sleep(Duration::from_millis(50));
+    }
+    let after = recognition(&h).metrics;
+    assert_eq!(
+        (before.ps_spawns, before.lsof_spawns),
+        (after.ps_spawns, after.lsof_spawns)
+    );
+}
