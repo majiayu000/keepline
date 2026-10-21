@@ -93,6 +93,9 @@ fn main() {
         let metrics = probe
             .update(cx, |_, window, _| measure(&font, window))
             .unwrap();
+        probe
+            .update(cx, |_, w, a| screen::verify_native_geometry(w, a))
+            .unwrap();
         probe.update(cx, |_, w, _| w.remove_window()).unwrap();
         let grid = size(metrics.width * cols as f32, metrics.height * rows as f32);
         eprintln!(
@@ -123,14 +126,20 @@ fn main() {
                         )
                     })
                     .unwrap();
-                cx.background_executor().timer(Duration::from_millis(500)).await;
+                cx.background_executor()
+                    .timer(Duration::from_millis(500))
+                    .await;
                 let name = path.file_stem().unwrap().to_string_lossy().into_owned();
                 let file = out.join(format!("{name}.png"));
                 cx.update_window(handle.into(), |_, window, app| {
                     window.refresh();
                     window.draw(app).clear(app);
                     window.render_to_image().unwrap().save(&file).unwrap();
-                    eprintln!("keepline {name}: scale={} -> {}", window.scale_factor(), file.display());
+                    eprintln!(
+                        "keepline {name}: scale={} -> {}",
+                        window.scale_factor(),
+                        file.display()
+                    );
                     window.remove_window();
                 })
                 .unwrap();
@@ -158,12 +167,19 @@ fn register_symbols() {
     }
     #[link(name = "CoreText", kind = "framework")]
     unsafe extern "C" {
-        fn CTFontManagerRegisterGraphicsFont(font: *const c_void, error: *mut *const c_void) -> bool;
+        fn CTFontManagerRegisterGraphicsFont(
+            font: *const c_void,
+            error: *mut *const c_void,
+        ) -> bool;
     }
     let bytes = include_bytes!("../assets/SymbolsNerdFontMono-Regular.ttf");
     unsafe {
-        let provider =
-            CGDataProviderCreateWithData(std::ptr::null_mut(), bytes.as_ptr().cast(), bytes.len(), None);
+        let provider = CGDataProviderCreateWithData(
+            std::ptr::null_mut(),
+            bytes.as_ptr().cast(),
+            bytes.len(),
+            None,
+        );
         let font = CGFontCreateWithDataProvider(provider);
         CGDataProviderRelease(provider);
         assert!(

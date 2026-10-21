@@ -80,6 +80,9 @@ impl Vt {
         terminal
             .set_continuation_max_bytes(1024 * 1024)
             .map_err(io::Error::other)?;
+        terminal
+            .set_mode(libghostty_vt::terminal::Mode::GRAPHEME_CLUSTER, true)
+            .map_err(io::Error::other)?;
         Ok(Self(terminal))
     }
     pub fn snapshot(&mut self) -> io::Result<Vec<u8>> {
@@ -106,6 +109,25 @@ impl Vt {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn emoji_clusters_use_two_cells_and_survive_snapshot_boundaries() {
+        for text in ["👨‍👩‍👧‍👦", "🇨🇳", "👍🏽", "1️⃣", "🏳️‍🌈", "🧑‍💻"]
+        {
+            let mut vt = Vt::new(40, 3).unwrap();
+            for ch in text.chars() {
+                vt.feed(ch.to_string().as_bytes());
+                vt = Vt::restore(&vt.snapshot().unwrap()).unwrap();
+            }
+            assert_eq!(vt.terminal().cursor_x().unwrap(), 2, "{text}");
+            assert!(
+                vt.terminal()
+                    .mode(libghostty_vt::terminal::Mode::GRAPHEME_CLUSTER)
+                    .unwrap()
+            );
+            vt.feed(b"X");
+            assert!(vt.search(&format!("{text}X")).unwrap().len() == 1);
+        }
+    }
     #[test]
     fn snapshot_preserves_incomplete_utf8_and_escape_sequence() {
         for (prefix, tail) in [

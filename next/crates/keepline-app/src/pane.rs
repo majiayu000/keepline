@@ -10,7 +10,7 @@ use gpui::{
 };
 use keepline_core::{
     protocol::Request,
-    terminal::libghostty_vt::{key::Mods, terminal::Mode},
+    terminal::libghostty_vt::{key::Mods, mouse, terminal::Mode},
 };
 use std::{ops::Range, path::Path, sync::atomic::Ordering};
 
@@ -29,6 +29,12 @@ pub struct Pane {
     pub staged_command: bool,
     text_selection: Option<((u16, u16), (u16, u16))>,
     selecting: bool,
+    mouse: Option<crate::terminal_input::MouseEncoder>,
+    pressed_button: Option<gpui::MouseButton>,
+    scroll_lines: f32,
+    hover_link: Option<(u16, u16)>,
+    focus_observers: bool,
+    last_focus: bool,
     search: Option<gpui::Entity<crate::field::Field>>,
     matches: Vec<(usize, String)>,
 }
@@ -127,9 +133,274 @@ impl Pane {
             staged_command: false,
             text_selection: None,
             selecting: false,
+            mouse: None,
+            pressed_button: None,
+            scroll_lines: 0.,
+            hover_link: None,
+            focus_observers: false,
+            last_focus: false,
             search: None,
             matches: vec![],
         }
+    }
+    fn sync_focus(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        let focused = window.is_window_active() && self.focus.is_focused(window);
+        if self.last_focus == focused {
+            return;
+        }
+        self.last_focus = focused;
+        let bytes = {
+            let state = self.connection.state.lock().unwrap();
+            state
+                .vt
+                .as_ref()
+                .filter(|_| state.writable)
+                .map(|v| crate::terminal_input::focus_bytes(v, focused))
+        };
+        match bytes {
+            Some(Ok(b)) if !b.is_empty() => self.input(b, cx),
+            Some(Err(e)) => {
+                self.local_error = Some(e.to_string());
+                cx.notify();
+            }
+            _ => (),
+        }
+    }
+    fn report_mouse(
+        &mut self,
+        action: mouse::Action,
+        button: Option<mouse::Button>,
+        position: Point<Pixels>,
+        modifiers: gpui::Modifiers,
+        scale: f32,
+        cx: &mut Context<Self>,
+    ) -> bool {
+        if modifiers.shift {
+            return false;
+        }
+        let (Some(bounds), Some(metrics)) = (self.bounds, self.metrics) else {
+            return false;
+        };
+        if !bounds.contains(&position) && action != mouse::Action::Release {
+            return false;
+        }
+        let result = (|| {
+            let state = self.connection.state.lock().unwrap();
+            let Some(v) = state.vt.as_ref().filter(|_| state.writable) else {
+                return Ok(None);
+            };
+            if !v.terminal().is_mouse_tracking()? {
+                return Ok(None);
+            }
+            if self.mouse.is_none() {
+                self.mouse = Some(crate::terminal_input::MouseEncoder::new()?);
+            }
+            let mut mods = Mods::empty();
+            if modifiers.control {
+                mods |= Mods::CTRL;
+            }
+            if modifiers.alt {
+                mods |= Mods::ALT;
+            }
+            if modifiers.platform {
+                mods |= Mods::SUPER;
+            }
+            let pos = mouse::Position {
+                x: f32::from(position.x - bounds.left()).max(0.) * scale,
+                y: f32::from(position.y - bounds.top()).max(0.) * scale,
+            };
+            let size = mouse::EncoderSize {
+                screen_width: (f32::from(bounds.size.width) * scale).round() as u32,
+                screen_height: (f32::from(bounds.size.height) * scale).round() as u32,
+                cell_width: (f32::from(metrics.width) * scale).round().max(1.) as u32,
+                cell_height: (f32::from(metrics.height) * scale).round().max(1.) as u32,
+                padding_top: 0,
+                padding_bottom: 0,
+                padding_left: 0,
+                padding_right: 0,
+            };
+            crate::terminal_input::mouse_bytes(
+                self.mouse.as_mut().unwrap(),
+                v,
+                action,
+                button,
+                mods,
+                pos,
+                size,
+            )
+            .map(Some)
+        })();
+        match result {
+            Ok(Some(bytes)) => {
+                if !bytes.is_empty() {
+                    self.input(bytes, cx);
+                }
+                cx.stop_propagation();
+                true
+            }
+            Ok(None) => false,
+            Err(e) => {
+                self.local_error = Some(e.to_string());
+                cx.notify();
+                true
+            }
+        }
+    }
+    fn mouse_down(
+        &mut self,
+        event: &gpui::MouseDownEvent,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        window.focus(&self.focus, cx);
+        if event.modifiers.platform && event.button == gpui::MouseButton::Left {
+            if let Some((y, x)) = self.cell_at(event.position) {
+                if let Some(link) = self.screen.link_at(y, x) {
+                    cx.open_url(&link.uri);
+                    cx.stop_propagation();
+                    return;
+                }
+            }
+        }
+        let button = match event.button {
+            gpui::MouseButton::Left => mouse::Button::Left,
+            gpui::MouseButton::Middle => mouse::Button::Middle,
+            _ => mouse::Button::Right,
+        };
+        self.pressed_button = Some(event.button);
+        if self.report_mouse(
+            mouse::Action::Press,
+            Some(button),
+            event.position,
+            event.modifiers,
+            window.scale_factor(),
+            cx,
+        ) {
+            return;
+        }
+        if event.button == gpui::MouseButton::Left {
+            self.text_selection = self.cell_at(event.position).map(|p| (p, p));
+            self.selecting = true;
+            cx.notify();
+        }
+    }
+    fn mouse_up(
+        &mut self,
+        event: &gpui::MouseUpEvent,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        // The outside handler sees releases over tabs and other panes too.
+        // Only capture a release for a gesture that started in this pane.
+        if self.pressed_button != Some(event.button) {
+            return;
+        }
+        self.pressed_button = None;
+        let button = match event.button {
+            gpui::MouseButton::Left => mouse::Button::Left,
+            gpui::MouseButton::Middle => mouse::Button::Middle,
+            _ => mouse::Button::Right,
+        };
+        self.report_mouse(
+            mouse::Action::Release,
+            Some(button),
+            event.position,
+            event.modifiers,
+            window.scale_factor(),
+            cx,
+        );
+        self.selecting = false;
+    }
+    fn mouse_move(
+        &mut self,
+        event: &gpui::MouseMoveEvent,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        let hover = self
+            .cell_at(event.position)
+            .filter(|(y, x)| self.screen.link_at(*y, *x).is_some());
+        if hover != self.hover_link {
+            self.hover_link = hover;
+            cx.notify();
+        }
+        let button = event.pressed_button.map(|b| match b {
+            gpui::MouseButton::Left => mouse::Button::Left,
+            gpui::MouseButton::Middle => mouse::Button::Middle,
+            _ => mouse::Button::Right,
+        });
+        if self.report_mouse(
+            mouse::Action::Motion,
+            button,
+            event.position,
+            event.modifiers,
+            window.scale_factor(),
+            cx,
+        ) {
+            return;
+        }
+        if self.selecting {
+            if let (Some((start, _)), Some(end)) =
+                (self.text_selection, self.cell_at(event.position))
+            {
+                self.text_selection = Some((start, end));
+                cx.notify();
+            }
+        }
+    }
+    fn scroll_wheel(
+        &mut self,
+        event: &gpui::ScrollWheelEvent,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        let Some(m) = self.metrics else {
+            return;
+        };
+        self.scroll_lines += event.delta.pixel_delta(m.height).y / m.height;
+        let lines = self.scroll_lines.trunc().clamp(-100., 100.) as i32;
+        self.scroll_lines -= lines as f32;
+        if lines == 0 {
+            return;
+        }
+        for _ in 0..lines.unsigned_abs() {
+            if self.report_mouse(
+                mouse::Action::Press,
+                Some(if lines > 0 {
+                    mouse::Button::Four
+                } else {
+                    mouse::Button::Five
+                }),
+                event.position,
+                event.modifiers,
+                window.scale_factor(),
+                cx,
+            ) {
+                continue;
+            }
+            let result = {
+                let mut state = self.connection.state.lock().unwrap();
+                if let Some(v) = &mut state.vt {
+                    match crate::terminal_input::alternate_scroll(v, lines > 0) {
+                        Ok(Some(bytes)) if !event.modifiers.shift => Ok(Some(bytes)),
+                        Ok(_) => {
+                            v.scroll(keepline_core::terminal::libghostty_vt::terminal::ScrollViewport::Delta(if lines>0 {-1}else{1}));
+                            Ok(None)
+                        }
+                        Err(e) => Err(e),
+                    }
+                } else {
+                    Ok(None)
+                }
+            };
+            match result {
+                Ok(Some(b)) => self.input(b, cx),
+                Err(e) => self.local_error = Some(e),
+                _ => (),
+            }
+        }
+        cx.stop_propagation();
+        cx.notify();
     }
     pub fn connection_label(&self) -> &'static str {
         let Ok(s) = self.connection.state.lock() else {
@@ -348,7 +619,15 @@ impl Pane {
     }
 }
 impl Render for Pane {
-    fn render(&mut self, _: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+    fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+        if !self.focus_observers {
+            self.focus_observers = true;
+            cx.on_focus(&self.focus, window, Self::sync_focus).detach();
+            cx.on_blur(&self.focus, window, Self::sync_focus).detach();
+            cx.observe_window_activation(window, Self::sync_focus)
+                .detach();
+        }
+        self.sync_focus(window, cx);
         self.connection.dirty.store(false, Ordering::Release);
         let state = self.connection.state.lock().unwrap();
         if let Some(vt) = &state.vt {
@@ -396,6 +675,23 @@ impl Render for Pane {
                         window,
                         cx,
                     );
+                    if let Some((y, x)) = pane.hover_link {
+                        if let Some(hover) = pane.screen.link_at(y, x) {
+                            for l in pane.screen.links.iter().filter(|l| l.uri == hover.uri) {
+                                window.paint_quad(gpui::fill(
+                                    Bounds::new(
+                                        gpui::point(
+                                            bounds.left() + metrics.width * l.col as f32,
+                                            bounds.top() + metrics.height * (l.row + 1) as f32
+                                                - metrics.stroke,
+                                        ),
+                                        gpui::size(metrics.width * l.cols as f32, metrics.stroke),
+                                    ),
+                                    screen::hsla(screen::DEFAULT_FG),
+                                ));
+                            }
+                        }
+                    }
                     if let Some((a, b)) = pane.text_selection {
                         let (start, end) = (a.min(b), a.max(b));
                         if start != end {
@@ -462,16 +758,17 @@ impl Render for Pane {
             .overflow_hidden()
             .bg(T::color(T::PANE))
             .track_focus(&self.focus)
-            .on_mouse_down(
-                gpui::MouseButton::Left,
-                cx.listener(|this,event:&gpui::MouseDownEvent,window,cx|{window.focus(&this.focus,cx);this.text_selection=this.cell_at(event.position).map(|p|(p,p));this.selecting=true;cx.notify();}),
-            )
-            .on_mouse_move(cx.listener(|this,event:&gpui::MouseMoveEvent,_,cx|{if this.selecting {if let (Some((start,_)),Some(end))=(this.text_selection,this.cell_at(event.position)){this.text_selection=Some((start,end));cx.notify();}}}))
-            .on_mouse_up(gpui::MouseButton::Left,cx.listener(|this,_,_,_|this.selecting=false))
-            .on_mouse_up_out(gpui::MouseButton::Left,cx.listener(|this,_,_,_|this.selecting=false))
-            .on_scroll_wheel(cx.listener(|this,event:&gpui::ScrollWheelEvent,_,cx|{
-                if let Ok(mut state)=this.connection.state.lock(){if let Some(vt)=&mut state.vt {vt.scroll(keepline_core::terminal::libghostty_vt::terminal::ScrollViewport::Delta(-(event.delta.pixel_delta(px(T::MONO_SIZE*T::TERMINAL_LINE_HEIGHT)).y/px(T::MONO_SIZE*T::TERMINAL_LINE_HEIGHT)).round() as isize));}}cx.notify();
-            }))
+            .on_mouse_down(gpui::MouseButton::Left,cx.listener(Self::mouse_down))
+            .on_mouse_down(gpui::MouseButton::Middle,cx.listener(Self::mouse_down))
+            .on_mouse_down(gpui::MouseButton::Right,cx.listener(Self::mouse_down))
+            .on_mouse_move(cx.listener(Self::mouse_move))
+            .on_mouse_up(gpui::MouseButton::Left,cx.listener(Self::mouse_up))
+            .on_mouse_up(gpui::MouseButton::Middle,cx.listener(Self::mouse_up))
+            .on_mouse_up(gpui::MouseButton::Right,cx.listener(Self::mouse_up))
+            .on_mouse_up_out(gpui::MouseButton::Left,cx.listener(Self::mouse_up))
+            .on_mouse_up_out(gpui::MouseButton::Middle,cx.listener(Self::mouse_up))
+            .on_mouse_up_out(gpui::MouseButton::Right,cx.listener(Self::mouse_up))
+            .on_scroll_wheel(cx.listener(Self::scroll_wheel))
             .on_key_down(cx.listener(Self::key))
             .when(status != "终端已连接", |d| {
                 d.child(
