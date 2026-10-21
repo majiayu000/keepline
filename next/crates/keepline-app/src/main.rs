@@ -344,7 +344,9 @@ fn run() -> io::Result<()> {
                         window.resize(size(px(theme::Theme::WINDOW_WIDTH),px(theme::Theme::WINDOW_HEIGHT)));
                         window.bounds_changed(cx);view.visual_page(name,window,cx);
                     }).unwrap();
-                    cx.background_executor().timer(Duration::from_secs(1)).await;
+                    // Starting an Agent and placing the task text takes a few quiet checks.
+                    let settle = if name == "TodoStart" { 4 } else { 1 };
+                    cx.background_executor().timer(Duration::from_secs(settle)).await;
                     cx.update_window(handle.into(), |_,window,app| {
                         assert_eq!(window.viewport_size(), size(px(theme::Theme::WINDOW_WIDTH),px(theme::Theme::WINDOW_HEIGHT)));
                         window.refresh(); window.draw(app).clear(app);
