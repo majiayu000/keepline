@@ -1,0 +1,5 @@
+{
+  "original_runtime": "/tmp/kl8-res-cu14f42c/runtime",
+  "backup": "/Users/lifcc/Library/Caches/KeeplineAcceptance/a14-retained-20261021-m50p4z1a/workbench.sqlite",
+  "purpose": "Preserve additional task metadata outside temporary runtime; live client, daemon and user-created terminal remain running. Database backup does not preserve process execution."
+}

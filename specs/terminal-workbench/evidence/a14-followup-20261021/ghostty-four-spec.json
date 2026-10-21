@@ -1,0 +1,21 @@
+{
+  "pids": {
+    "client": 22431,
+    "producer1": 22442,
+    "producer2": 22680,
+    "producer3": 22782,
+    "producer4": 22882
+  },
+  "producers": [
+    22442,
+    22680,
+    22782,
+    22882
+  ],
+  "excluded_login_wrappers": [
+    22440,
+    22679,
+    22781,
+    22881
+  ]
+}

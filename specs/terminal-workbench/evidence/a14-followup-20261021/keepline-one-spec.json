@@ -1,0 +1,10 @@
+{
+  "pids": {
+    "client": 30803,
+    "daemon": 30753,
+    "producer1": 30799
+  },
+  "producers": [
+    30799
+  ]
+}

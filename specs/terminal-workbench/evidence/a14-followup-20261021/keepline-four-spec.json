@@ -1,0 +1,16 @@
+{
+  "pids": {
+    "client": 22256,
+    "daemon": 22248,
+    "producer1": 22251,
+    "producer2": 22252,
+    "producer3": 22253,
+    "producer4": 22254
+  },
+  "producers": [
+    22251,
+    22252,
+    22253,
+    22254
+  ]
+}
