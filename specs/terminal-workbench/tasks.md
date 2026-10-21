@@ -230,3 +230,6 @@ flowchart LR
 - [ ] R9 / A15：真实回复“完成。”分组仍为做一半停了，需后续修复。
 
 - [x] R10：复现 ConnectionRefused 并原子发布就绪 socket；同期空闲 CPU 对照，2% 门槛不变；8 yes 下默认并行连续三轮各 90 项通过（evidence/r10-20261021）。
+
+- [x] R11：有界 ASCII glyph 缓存、24 项测试、原生字形与 13 fixture 回归、失焦自动作废重采；各三次均无效，A14 达标不勾选（evidence/r11-20261021）。
+- [x] R13：统一固定 Rust 工具链与各 crate edition；workspace fmt/clippy -D warnings/91 项测试通过；远程 CI 未运行（evidence/r13-20261021）。

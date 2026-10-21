@@ -241,14 +241,14 @@ impl Pane {
         cx: &mut Context<Self>,
     ) {
         window.focus(&self.focus, cx);
-        if event.modifiers.platform && event.button == gpui::MouseButton::Left {
-            if let Some((y, x)) = self.cell_at(event.position) {
-                if let Some(link) = self.screen.link_at(y, x) {
-                    cx.open_url(&link.uri);
-                    cx.stop_propagation();
-                    return;
-                }
-            }
+        if event.modifiers.platform
+            && event.button == gpui::MouseButton::Left
+            && let Some((y, x)) = self.cell_at(event.position)
+            && let Some(link) = self.screen.link_at(y, x)
+        {
+            cx.open_url(&link.uri);
+            cx.stop_propagation();
+            return;
         }
         let button = match event.button {
             gpui::MouseButton::Left => mouse::Button::Left,
@@ -327,13 +327,12 @@ impl Pane {
         ) {
             return;
         }
-        if self.selecting {
-            if let (Some((start, _)), Some(end)) =
+        if self.selecting
+            && let (Some((start, _)), Some(end)) =
                 (self.text_selection, self.cell_at(event.position))
-            {
-                self.text_selection = Some((start, end));
-                cx.notify();
-            }
+        {
+            self.text_selection = Some((start, end));
+            cx.notify();
         }
     }
     fn scroll_wheel(
@@ -642,7 +641,9 @@ impl Render for Pane {
         let state = self.connection.state.lock().unwrap();
         if let Some(vt) = &state.vt {
             let result = (|| {
-                if self.capture.is_none() { self.capture = Some(screen::Capture::new()?); }
+                if self.capture.is_none() {
+                    self.capture = Some(screen::Capture::new()?);
+                }
                 self.capture.as_mut().unwrap().update(vt, &mut self.screen)
             })();
             match result {
@@ -693,21 +694,21 @@ impl Render for Pane {
                         window,
                         cx,
                     );
-                    if let Some((y, x)) = pane.hover_link {
-                        if let Some(hover) = pane.screen.link_at(y, x) {
-                            for l in pane.screen.links.iter().filter(|l| l.uri == hover.uri) {
-                                window.paint_quad(gpui::fill(
-                                    Bounds::new(
-                                        gpui::point(
-                                            bounds.left() + metrics.width * l.col as f32,
-                                            bounds.top() + metrics.height * (l.row + 1) as f32
-                                                - metrics.stroke,
-                                        ),
-                                        gpui::size(metrics.width * l.cols as f32, metrics.stroke),
+                    if let Some((y, x)) = pane.hover_link
+                        && let Some(hover) = pane.screen.link_at(y, x)
+                    {
+                        for l in pane.screen.links.iter().filter(|l| l.uri == hover.uri) {
+                            window.paint_quad(gpui::fill(
+                                Bounds::new(
+                                    gpui::point(
+                                        bounds.left() + metrics.width * l.col as f32,
+                                        bounds.top() + metrics.height * (l.row + 1) as f32
+                                            - metrics.stroke,
                                     ),
-                                    screen::hsla(screen::DEFAULT_FG),
-                                ));
-                            }
+                                    gpui::size(metrics.width * l.cols as f32, metrics.stroke),
+                                ),
+                                screen::hsla(screen::DEFAULT_FG),
+                            ));
                         }
                     }
                     if let Some((a, b)) = pane.text_selection {
@@ -805,7 +806,7 @@ impl Render for Pane {
                         .child(div().id("close-find").cursor_pointer().child("关闭搜索").on_click(cx.listener(|this,_,window,cx|{this.search=None;this.matches.clear();window.focus(&this.focus,cx);cx.notify();}))))
                     .child(format!("{} 条匹配（显示前 20 条）",self.matches.len()));
                 for (row,line) in self.matches.iter().take(20){let row=*row;panel=panel.child(div().id(gpui::SharedString::from(format!("match-{row}"))).truncate().cursor_pointer().child(line.clone())
-                    .on_click(cx.listener(move|this,_,_,cx|{if let Ok(mut s)=this.connection.state.lock(){if let Some(vt)=&mut s.vt{vt.scroll(keepline_core::terminal::libghostty_vt::terminal::ScrollViewport::Row(row));}}this.search=None;cx.notify();})));}
+                    .on_click(cx.listener(move|this,_,_,cx|{if let Ok(mut s)=this.connection.state.lock()&& let Some(vt)=&mut s.vt{vt.scroll(keepline_core::terminal::libghostty_vt::terminal::ScrollViewport::Row(row));}this.search=None;cx.notify();})));}
                 d.child(panel.id("search-results").max_h(px(T::SEARCH_HEIGHT)).overflow_y_scroll())
             })
             .child(div().flex_1().min_h_0().child(content));

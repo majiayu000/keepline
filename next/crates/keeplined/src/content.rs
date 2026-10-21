@@ -1,12 +1,12 @@
 //! Record-local normalization, sourced receipts and durable pending tool correlation.
 use keepline_core::{
-    content::{Content, Evidence, Quote, Source, Turn, short},
+    content::{short, Content, Evidence, Quote, Source, Turn},
     model::Agent,
 };
 use regex::Regex;
-use rusqlite::{Connection, OptionalExtension, params};
+use rusqlite::{params, Connection, OptionalExtension};
 use serde::{Deserialize, Serialize};
-use serde_json::{Value, json};
+use serde_json::{json, Value};
 use std::{collections::BTreeMap, io, sync::LazyLock};
 fn re(s: &str) -> Regex {
     Regex::new(s).unwrap()
@@ -890,10 +890,7 @@ impl Parser {
                         | "token_usage_record"
                         | "world_state"
                         | "inter_agent_communication_metadata"
-                ) =>
-                {
-                    ()
-                }
+                ) => {}
                 _ => self.card.unknown_records += 1,
             }
         } else {
@@ -995,24 +992,24 @@ fn verification(command: &str) -> bool {
         .iter()
         .map(|s| s.rsplit('/').next().unwrap_or(s))
         .collect();
-    match w.as_slice() {
+    matches!(
+        w.as_slice(),
         ["cargo", "test" | "check", ..]
-        | ["go", "test", ..]
-        | ["pytest", ..]
-        | ["python" | "python3", "-m", "pytest", ..] => true,
-        [
-            "bun" | "npm" | "pnpm" | "yarn",
-            "test" | "typecheck" | "check",
-            ..,
-        ] => true,
-        [
-            "bun" | "npm" | "pnpm" | "yarn",
-            "run",
-            "test" | "typecheck" | "check",
-            ..,
-        ] => true,
-        _ => false,
-    }
+            | ["go", "test", ..]
+            | ["pytest", ..]
+            | ["python" | "python3", "-m", "pytest", ..]
+            | [
+                "bun" | "npm" | "pnpm" | "yarn",
+                "test" | "typecheck" | "check",
+                ..,
+            ]
+            | [
+                "bun" | "npm" | "pnpm" | "yarn",
+                "run",
+                "test" | "typecheck" | "check",
+                ..,
+            ]
+    )
 }
 fn git_commit(command: &str) -> bool {
     let w = words(command);
@@ -1245,12 +1242,10 @@ mod tests {
             ),
             "你看看这个是什么？"
         );
-        assert!(
-            user_text(
-                "Background (from the session that started this one):\nContext\nTask: inherited"
-            )
-            .is_empty()
-        );
+        assert!(user_text(
+            "Background (from the session that started this one):\nContext\nTask: inherited"
+        )
+        .is_empty());
         assert_eq!(
             user_text(
                 "请读下面材料\n> quoted author words\n<skill>generated instruction body</skill>\n然后给我建议"

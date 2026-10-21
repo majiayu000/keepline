@@ -1,5 +1,5 @@
 use keepline_core::model::*;
-use rusqlite::{Connection, params};
+use rusqlite::{params, Connection};
 use std::{io, path::Path};
 
 pub struct Store(Connection);

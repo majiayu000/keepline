@@ -586,27 +586,27 @@ impl Workbench {
         );
     }
     fn launch(&mut self, split: bool, task_id: Option<String>, cx: &mut Context<Self>) {
-        if !split && self.resume.is_none() {
-            if let Some(task) = task_id.as_deref() {
-                if let Some(terminal) = self.workspace.task_terminal(task) {
-                    let id = terminal.id.clone();
-                    if let Some(mut tab) = self.workspace.terminal_tab(&id).cloned() {
-                        self.space = tab.space.clone();
-                        self.tab = Some(tab.id.clone());
-                        self.focused = Some(id);
-                        self.pending_focus = true;
-                        self.overview = false;
-                        self.task_detail = None;
-                        if tab.closed {
-                            tab.closed = false;
-                            self.edit(Edit::PutTab { tab }, cx);
-                        } else {
-                            self.sync_panes(cx);
-                            cx.notify();
-                        }
-                        return;
-                    }
+        if !split
+            && self.resume.is_none()
+            && let Some(task) = task_id.as_deref()
+            && let Some(terminal) = self.workspace.task_terminal(task)
+        {
+            let id = terminal.id.clone();
+            if let Some(mut tab) = self.workspace.terminal_tab(&id).cloned() {
+                self.space = tab.space.clone();
+                self.tab = Some(tab.id.clone());
+                self.focused = Some(id);
+                self.pending_focus = true;
+                self.overview = false;
+                self.task_detail = None;
+                if tab.closed {
+                    tab.closed = false;
+                    self.edit(Edit::PutTab { tab }, cx);
+                } else {
+                    self.sync_panes(cx);
+                    cx.notify();
                 }
+                return;
             }
         }
         if let Some(task) = task_id
@@ -648,16 +648,16 @@ impl Workbench {
         {
             return;
         }
-        if !split && let Some(task_id) = &task_id {
-            if let Some(tab) = self
+        if !split
+            && let Some(task_id) = &task_id
+            && let Some(tab) = self
                 .workspace
                 .tabs
                 .iter()
                 .find(|t| t.default_task.as_ref() == Some(task_id))
-            {
-                self.tab = Some(tab.id.clone());
-                split = true;
-            }
+        {
+            self.tab = Some(tab.id.clone());
+            split = true;
         }
         let source = self.split_target.take().or_else(|| {
             if !split {
@@ -2369,7 +2369,7 @@ impl Workbench {
                 .border_t(px(T::BORDER_WIDTH))
                 .border_color(T::color(T::BORDER))
                 .pt(px(T::S16))
-                .child(button("closed-toggle",format!("暂存 {deferred} · 已结束：完成 {completed} / 放弃 {abandoned} · 展开/收起")).on_click(cx.listener(|this, _, _, cx| {this.show_closed=!this.show_closed;cx.notify();}))),
+                .child(button("closed-toggle",format!("暂存 {deferred} · 已结束：完成 {completed} / 放弃 {abandoned} · 展开/收起")).on_click(cx.listener(|this, _, _, cx| {this.show_closed = !this.show_closed;cx.notify();}))),
         );
         if self.show_closed {
             for s in self
@@ -2680,7 +2680,10 @@ impl Workbench {
                         },
                     )
                     .child(pane.clone().cached(gpui::StyleRefinement {
-                        size: gpui::SizeRefinement { width: Some(gpui::relative(1.).into()), height: Some(gpui::relative(1.).into()) },
+                        size: gpui::SizeRefinement {
+                            width: Some(gpui::relative(1.).into()),
+                            height: Some(gpui::relative(1.).into()),
+                        },
                         ..Default::default()
                     })),
             )
@@ -3334,7 +3337,7 @@ impl Render for Workbench {
                         } else {
                             ""
                         },
-                        format!("{}{}", self.workspace.tab_title(tab), {
+                        format_args!("{}{}", self.workspace.tab_title(tab), {
                             let ids = self.workspace.tab_terminals(&tab.id);
                             let count = self
                                 .workspace

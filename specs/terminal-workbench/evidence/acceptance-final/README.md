@@ -97,3 +97,7 @@ R8 / R9 后默认并行 workspace **89 项通过**（另 1 ignored daemon_fixtur
 ## R11 排版缓存与自动前台重采
 
 新增 ASCII glyph 缓存，24 项客户端测试与原生字形/13 个 fixture 回归通过。1/4 画面各三轮均失焦，自动作废，未生成新倍率；A14 仍不通过。见 [R11](../r11-20261021/README.md)。
+
+## R13 合并前 Rust 检查
+
+固定 CI/本地 Rust 1.95.0，按各 crate edition 格式化，补齐 Zig/固定依赖准备，将 CI 检查扩大到整个 workspace。fmt、clippy --all-targets -D warnings、91 项测试通过；仅 fixture 子进程入口 ignored。远程 CI 尚未运行，详见 [R13](../r13-20261021/README.md)。

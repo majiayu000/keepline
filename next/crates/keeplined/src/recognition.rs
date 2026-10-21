@@ -489,10 +489,10 @@ mod tests {
             });
         }
         reconcile(&mut w, &transcripts, &processes, &HashMap::new()).unwrap();
-        for i in 0..2 {
+        for (i, transcript) in transcripts.iter().take(2).enumerate() {
             assert_eq!(
                 w.current_agent(&format!("pty-{i}")).unwrap().cli_session_id,
-                transcripts[i].cli_id
+                transcript.cli_id
             );
         }
         assert!(w.current_agent("pty-2").is_none());
@@ -559,23 +559,19 @@ mod tests {
             },
         ];
         reconcile(&mut workspace, &transcripts, &processes, &HashMap::new()).unwrap();
-        assert!(
-            workspace
-                .agent_sessions
-                .iter()
-                .all(|s| s.terminal.is_none())
-        );
+        assert!(workspace
+            .agent_sessions
+            .iter()
+            .all(|s| s.terminal.is_none()));
         let files = HashMap::from([(
             101,
             vec!["/logs/one.jsonl".into(), "/logs/two.jsonl".into()],
         )]);
         reconcile(&mut workspace, &transcripts, &processes, &files).unwrap();
-        assert!(
-            workspace
-                .agent_sessions
-                .iter()
-                .all(|s| s.terminal.is_none())
-        );
+        assert!(workspace
+            .agent_sessions
+            .iter()
+            .all(|s| s.terminal.is_none()));
         let files = HashMap::from([(101, vec!["/logs/two.jsonl".into()])]);
         reconcile(&mut workspace, &transcripts, &processes, &files).unwrap();
         assert_eq!(

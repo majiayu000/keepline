@@ -133,7 +133,7 @@ fn geometry(c: char, w: f32, h: f32, t: f32) -> Option<Vec<Shape>> {
                 if dashes != 0 {
                     let horizontal = arms[0] != 0;
                     let len = if horizontal { w } else { h };
-                    let thick = t * if arms.iter().any(|x| *x == 2) { 2. } else { 1. };
+                    let thick = t * if arms.contains(&2) { 2. } else { 1. };
                     for i in 0..dashes {
                         let start = len * i as f32 / dashes as f32;
                         let end = start + len / dashes as f32 * 0.7;
@@ -271,38 +271,6 @@ pub fn paint(
     }
     true
 }
-#[cfg(test)]
-mod tests {
-    use super::*;
-    #[test]
-    fn blocks_fill_cell_and_braille_bits_are_not_font_spaced() {
-        assert!(matches!(
-            &geometry('█', 8., 16., 1.).unwrap()[0],
-            Shape::Rect(0., 0., 8., 16.)
-        ));
-        assert_eq!(geometry('⣿', 8., 16., 1.).unwrap().len(), 8);
-        assert_eq!(geometry('⠀', 8., 16., 1.).unwrap().len(), 0);
-        assert_eq!(geometry('▚', 8., 16., 1.).unwrap().len(), 2);
-    }
-    #[test]
-    fn all_box_and_powerline_shapes_are_defined_and_touch_edges() {
-        for cp in (0x2500..=0x257f).chain(0xe0b0..=0xe0bf) {
-            assert!(
-                !geometry(char::from_u32(cp).unwrap(), 8., 16., 1.)
-                    .unwrap()
-                    .is_empty(),
-                "{cp:x}"
-            );
-        }
-        assert!(matches!(
-            &geometry('│', 8., 16., 1.).unwrap()[0],
-            Shape::Rect(_, 0., _, _)
-        ));
-        assert!(
-            matches!(&geometry('',8.,16.,1.).unwrap()[0],Shape::Path(p,None) if p.contains(&(0.,16.)) && p.contains(&(8.,8.)))
-        );
-    }
-}
 
 // Unicode U+2500..U+257F arms: left, right, up, down; 1 light, 2 heavy, 3 double.
 const BOX_ARMS: [[u8; 4]; 128] = [
@@ -435,3 +403,35 @@ const BOX_ARMS: [[u8; 4]; 128] = [
     [2, 1, 0, 0], // ╾ HEAVY LEFT AND LIGHT RIGHT
     [0, 0, 2, 1], // ╿ HEAVY UP AND LIGHT DOWN
 ];
+#[cfg(test)]
+mod tests {
+    use super::*;
+    #[test]
+    fn blocks_fill_cell_and_braille_bits_are_not_font_spaced() {
+        assert!(matches!(
+            &geometry('█', 8., 16., 1.).unwrap()[0],
+            Shape::Rect(0., 0., 8., 16.)
+        ));
+        assert_eq!(geometry('⣿', 8., 16., 1.).unwrap().len(), 8);
+        assert_eq!(geometry('⠀', 8., 16., 1.).unwrap().len(), 0);
+        assert_eq!(geometry('▚', 8., 16., 1.).unwrap().len(), 2);
+    }
+    #[test]
+    fn all_box_and_powerline_shapes_are_defined_and_touch_edges() {
+        for cp in (0x2500..=0x257f).chain(0xe0b0..=0xe0bf) {
+            assert!(
+                !geometry(char::from_u32(cp).unwrap(), 8., 16., 1.)
+                    .unwrap()
+                    .is_empty(),
+                "{cp:x}"
+            );
+        }
+        assert!(matches!(
+            &geometry('│', 8., 16., 1.).unwrap()[0],
+            Shape::Rect(_, 0., _, _)
+        ));
+        assert!(
+            matches!(&geometry('',8.,16.,1.).unwrap()[0],Shape::Path(p,None) if p.contains(&(0.,16.)) && p.contains(&(8.,8.)))
+        );
+    }
+}

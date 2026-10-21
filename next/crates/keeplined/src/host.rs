@@ -8,9 +8,9 @@ use std::os::unix::fs::{DirBuilderExt, FileTypeExt, MetadataExt, OpenOptionsExt,
 use std::os::unix::net::{UnixListener, UnixStream};
 use std::path::Path;
 use std::sync::{
-    Arc, Mutex, MutexGuard,
     atomic::{AtomicBool, Ordering},
-    mpsc::{SyncSender, sync_channel},
+    mpsc::{sync_channel, SyncSender},
+    Arc, Mutex, MutexGuard,
 };
 use std::thread;
 use std::time::Duration;
@@ -125,8 +125,8 @@ impl Host {
             {
                 if process.cli_session_id.as_deref() != Some(&session.cli_session_id)
                     && !files
-                    .get(&process.pid)
-                    .is_some_and(|paths| paths.contains(&session.transcript))
+                        .get(&process.pid)
+                        .is_some_and(|paths| paths.contains(&session.transcript))
                 {
                     continue;
                 }
@@ -383,7 +383,11 @@ pub fn serve_with_options(
         Ok(meta) if meta.file_type().is_socket() && meta.uid() == unsafe { libc::geteuid() } => {
             fs::remove_file(&pending_socket)?;
         }
-        Ok(_) => return Err(io::Error::other("refusing to replace pending non-socket entry")),
+        Ok(_) => {
+            return Err(io::Error::other(
+                "refusing to replace pending non-socket entry",
+            ))
+        }
         Err(e) if e.kind() == io::ErrorKind::NotFound => (),
         Err(e) => return Err(e),
     }
@@ -568,18 +572,17 @@ impl Association {
                     if let Some(card) = index.card(&t.path)? {
                         if next.content.get(&s.id).is_some_and(|old| {
                             !card.turn_key.is_empty() && card.turn_key != old.turn_key
-                        }) {
-                            if s.outcome != keepline_core::model::Outcome::Open {
-                                next.outcome_history
-                                    .push(keepline_core::model::OutcomeChange {
-                                        session: s.id.clone(),
-                                        before: s.outcome.clone(),
-                                        after: keepline_core::model::Outcome::Open,
-                                        at: card.turn_started,
-                                        reason: "新回合".into(),
-                                    });
-                                s.outcome = keepline_core::model::Outcome::Open;
-                            }
+                        }) && s.outcome != keepline_core::model::Outcome::Open
+                        {
+                            next.outcome_history
+                                .push(keepline_core::model::OutcomeChange {
+                                    session: s.id.clone(),
+                                    before: s.outcome.clone(),
+                                    after: keepline_core::model::Outcome::Open,
+                                    at: card.turn_started,
+                                    reason: "新回合".into(),
+                                });
+                            s.outcome = keepline_core::model::Outcome::Open;
                         }
                         s.updated = s.updated.max(card.updated);
                         next.content.insert(s.id.clone(), card);

@@ -25,10 +25,10 @@ pub struct Connection {
 }
 impl Drop for Connection {
     fn drop(&mut self) {
-        if let Ok(s) = self.state.lock() {
-            if let Some(socket) = &s.socket {
-                let _ = socket.shutdown(std::net::Shutdown::Both);
-            }
+        if let Ok(s) = self.state.lock()
+            && let Some(socket) = &s.socket
+        {
+            let _ = socket.shutdown(std::net::Shutdown::Both);
         }
     }
 }
