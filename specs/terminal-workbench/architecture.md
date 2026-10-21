@@ -375,3 +375,7 @@ R1 根因补充：延长 deadline 后仍复现 Claude 追加停滞；首次索�
 ### R5 前台资源决定
 
 新建无历史会话 runtime，与独立 Ghostty 官方副本使用相同 10 Hz 输出。1/4 画面累计 CPU 为 2.39×/2.72×，footprint 为 1.03×/0.89×；判 CPU 不通过，保留 1.2× 门槛。系统 login 包装权限受限及 WindowServer/GPU 未归因，原始值与边界见 R5 evidence。先对可见绘制热路径 profiling，不以锁屏两小时结果放行。
+
+### R7 签名决定
+
+打包仅增加显式 identity 和独立输出路径；Developer ID 时启用 hardened runtime/时间戳，逐层签名，无 JIT/库验证豁免。签名验证通过不等于 Gatekeeper 或公证通过：spctl 为 Unnotarized Developer ID。没有发现可用既有 notary profile，停止公证，不创建或索要凭据。见 R7 evidence。

@@ -1,0 +1,27 @@
+[
+  {
+    "command": [
+      "security",
+      "find-generic-password",
+      "-s",
+      "com.apple.gke.notary.tool"
+    ],
+    "exit": 44,
+    "stdout": "",
+    "stderr": "security: SecKeychainSearchCopyNext: The specified item could not be found in the keychain.\n"
+  },
+  {
+    "command": [
+      "xcrun",
+      "notarytool",
+      "history",
+      "--keychain-profile",
+      "notarytool",
+      "--output-format",
+      "json"
+    ],
+    "exit": 69,
+    "stdout": "",
+    "stderr": "Error: No Keychain password item found for profile: notarytool\n\nRun 'notarytool store-credentials' to create another credential profile.\n"
+  }
+]
