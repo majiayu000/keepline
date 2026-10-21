@@ -198,3 +198,8 @@ flowchart LR
 - [ ] Ghostty 聚焦光标像素对照与 R5 四画面完整 IME/性能门槛。
 
 - [x] R3 安装版实测 notify 覆盖、rollout 字段与 OSC 标题；有界模型预算内记录否定/待验证结论，保留 --no-daemon（见 R3 evidence）。
+
+### R4 真实 CLI 补验（2026-10-21）
+- [x] Codex 新对话关联、真实选择题、Ctrl-C 退出、继续预填和实际续接（R4 证据）。
+- [x] Claude Code + 用户指定 GLM provider：真实 Write 审批、四字段机械证据、同 ID 续接。
+- [ ] Claude 托管精确关联与等待状态：真实日志不持续打开，当前检测未关联；不得用模拟通过代替。
