@@ -498,16 +498,62 @@ pub fn hsla(c: u32) -> Hsla {
     }
     .into()
 }
+// Printable ASCII has no shaping context when terminal ligatures are disabled.
+// Shape this bounded alphabet once per face/style, then reuse the exact native
+// glyph IDs. Non-ASCII and fonts whose advances aren't one cell retain shaping.
+struct AsciiGlyphs {
+    glyphs: [(gpui::FontId, gpui::GlyphId); 95],
+    baseline: Pixels,
+}
+impl AsciiGlyphs {
+    fn new(font: Font, metrics: CellMetrics, window: &Window) -> Option<Self> {
+        if !["liga", "calt"].iter().all(|tag| font.features.tag_value_list().iter()
+            .any(|(name, value)| name == tag && *value == 0)) {
+            return None;
+        }
+        let text: String = (' '..='~').collect();
+        let line = window.text_system().shape_line(text.into(), px(FONT_SIZE),
+            &[TextRun { len: 95, font, color: hsla(DEFAULT_FG), background_color: None,
+                underline: None, strikethrough: None }], None);
+        let mut glyphs = [None; 95];
+        for run in &line.runs {
+            for glyph in &run.glyphs {
+                if glyph.index >= 95 || glyphs[glyph.index].is_some() || glyph.is_emoji
+                    || f32::from(glyph.position.x - metrics.width * glyph.index as f32).abs() > 0.02
+                    || glyph.position.y != px(0.) { return None; }
+                glyphs[glyph.index] = Some((run.font_id, glyph.id));
+            }
+        }
+        if glyphs.iter().any(Option::is_none)
+            || f32::from(line.width() - metrics.width * 95.).abs() > 0.02 { return None; }
+        Some(Self { glyphs: glyphs.map(Option::unwrap),
+            baseline: (metrics.height - line.ascent - line.descent) / 2. + line.ascent })
+    }
+    fn paint(&self, text: &str, origin: gpui::Point<Pixels>, metrics: CellMetrics,
+        color: Hsla, window: &mut Window) {
+        for (col, byte) in text.bytes().enumerate() {
+            if byte == b' ' { continue; }
+            let (font, glyph) = self.glyphs[(byte - b' ') as usize];
+            let _ = window.paint_glyph(point(origin.x + metrics.width * col as f32,
+                origin.y + self.baseline), font, glyph, px(FONT_SIZE), color);
+        }
+    }
+}
+fn printable_cells(run: &Run) -> bool {
+    run.text.len() == run.cols as usize && run.text.bytes().all(|b| (b' '..=b'~').contains(&b))
+}
 /// Current viewport only: no history of strings from a long-running terminal.
 #[derive(Default)]
 pub struct LayoutCache {
     key: Option<(Font, CellMetrics)>,
     rows: Vec<Vec<(Run, ShapedLine, Pixels)>>,
+    ascii: [Option<Option<AsciiGlyphs>>; 4],
 }
 impl LayoutCache {
     fn prepare(&mut self, font: &Font, metrics: CellMetrics, rows: usize) {
         if self.key.as_ref() != Some(&(font.clone(), metrics)) {
             self.rows.clear();
+            self.ascii = Default::default();
             self.key = Some((font.clone(), metrics));
         }
         self.rows.resize_with(rows, Vec::new);
@@ -552,6 +598,19 @@ pub fn paint_cached(
                 continue;
             }
             paint_decorations(run, point(ox, oy), metrics, window);
+            if printable_cells(run) {
+                let style = usize::from(run.attrs.bold) | (usize::from(run.attrs.italic) << 1);
+                let glyphs = cache.ascii[style].get_or_insert_with(|| {
+                    let mut font = f.clone();
+                    if run.attrs.bold { font.weight = FontWeight::BOLD; }
+                    if run.attrs.italic { font.style = FontStyle::Italic; }
+                    AsciiGlyphs::new(font, metrics, window)
+                });
+                if let Some(glyphs) = glyphs {
+                    glyphs.paint(&run.text, point(ox, oy), metrics, text_color(run), window);
+                    continue;
+                }
+            }
             if run.text.trim().is_empty() {
                 continue;
             }
@@ -941,6 +1000,14 @@ mod tests {
     }
 
     #[test]
+    fn ascii_cache_never_treats_wide_or_combining_text_as_independent_cells() {
+        for (text, cols, expected) in [("hello 123",9,true),("你",2,false),("e\u{301}",1,false),("\t",1,false),("ab",1,false)] {
+            let run = Run { col:0, cols, text:text.into(), fg:DEFAULT_FG, bg:None, attrs:Attrs::default() };
+            assert_eq!(printable_cells(&run), expected);
+        }
+    }
+
+    #[test]
     fn ime_offsets_are_utf16_not_utf8_and_never_split_surrogates() {
         let text = "n你😀hao";
         assert_eq!(utf16_byte_offset(text, 1), 1);
@@ -957,6 +1024,22 @@ mod tests {
 pub fn verify_native_geometry(window: &Window, cx: &App) {
     let font = crate::theme::Theme::mono(cx);
     let metrics = CellMetrics::measure(&font, window).expect("native font measurement");
+    for (bold, italic) in [(false,false),(true,false),(false,true),(true,true)] {
+        let mut face = font.clone();
+        if bold { face.weight = FontWeight::BOLD; }
+        if italic { face.style = FontStyle::Italic; }
+        let cached = AsciiGlyphs::new(face.clone(), metrics, window).expect("native mono ASCII cache");
+        for text in ["0123456789 row 01", "!=>->==fiWWW_[]{}~", "ASCII with spaces"] {
+            let run = Run { col: 0, cols: text.len() as u16, text: text.into(),
+                fg: DEFAULT_FG, bg: None, attrs: Attrs::default() };
+            let (line, _) = shape_cell(&run, face.clone(), metrics, window);
+            assert_eq!(cached.baseline, (metrics.height-line.ascent-line.descent)/2.+line.ascent);
+            for shaped in &line.runs { for g in &shaped.glyphs {
+                assert_eq!(cached.glyphs[(text.as_bytes()[g.index]-b' ') as usize], (shaped.font_id,g.id));
+                assert!(f32::from(g.position.x-metrics.width*g.index as f32).abs()<0.02);
+            }}
+        }
+    }
     for ch in [
         '\u{e0b0}', '\u{e0b2}', '\u{e0a0}', '\u{f120}', '\u{f07b}', '\u{f013}',
     ] {

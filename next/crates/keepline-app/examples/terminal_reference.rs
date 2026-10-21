@@ -50,7 +50,9 @@ fn pick_font(cx: &App) -> Font {
     match std::env::var("KL_REF_FONT") {
         Ok(family) => {
             let mut f = font(family);
-            f.fallbacks = theme::Theme::mono(cx).fallbacks;
+            let terminal = theme::Theme::mono(cx);
+            f.fallbacks = terminal.fallbacks;
+            f.features = terminal.features;
             f
         }
         Err(_) => theme::Theme::mono(cx),

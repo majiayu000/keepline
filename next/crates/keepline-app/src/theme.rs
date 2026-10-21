@@ -139,6 +139,11 @@ impl Theme {
             })
             .clone(),
         );
+        // Terminal cells are independently addressable; match Ghostty's reference
+        // configuration rather than letting contextual ligatures cross cell edits.
+        face.features = gpui::FontFeatures(std::sync::Arc::new(vec![
+            ("liga".into(), 0), ("calt".into(), 0),
+        ]));
         face.fallbacks = Some(gpui::FontFallbacks::from_fonts(vec![
             "Symbols Nerd Font Mono".into(),
         ]));
