@@ -16,18 +16,18 @@
 | OS delivered list 与 usernoted 投递 | 通过（仅系统层） | system-events.json 中 delivered_list、Delivering、Presenting |
 | 用户实际可见 | 未通过原始尝试；重发待确认 | 用户报告没找到；不能把 Presenting 当可见 |
 | 重复事实去重 | 通过 | 等待/错误各追加同一事件三次，每类仍仅一个 request_completed；receipts.json |
-| 真实 didReceive + 直达画面 | 未验证，等待用户点击 | 未模拟回调；before-click.png 仅点击前状态 |
+| 真实 didReceive + 直达画面 | 未验证，用户无需操作 | 未模拟回调；before-click.png 仅点击前状态 |
 
 ## 找到的原因与设置
 
 - 系统设置中测试应用允许通知=on、桌面/通知中心/锁屏=1，提醒样式起初为临时，检查期间外部操作改为持续；工具未更改开关。见 notification-settings.txt。
 - 全局「当镜像或共享屏幕时」显示「关闭通知」。
 - donotdisturbd 对两条通知均明确记录 `outcome: suppressed; reason: display shared; activeModeUUID: (null)`。所以是屏幕共享策略抑制，不是普通命名专注模式，也不是未授权；见 suppression-events.json。14:14:51 后同一事件重新计算为 allowed/disabled。
-- 14:17:05 已重发唯一编号 1792563425，等待用户可见/点击确认。若仍被抑制，请用户在「系统设置 → 通知 → 当镜像或共享屏幕时」自行选择允许通知；无需重复改应用允许通知。
+- 14:17:05 已重发唯一编号 1792563425，尚无用户可见/点击确认，不再要求用户操作。若仍被抑制，请用户在「系统设置 → 通知 → 当镜像或共享屏幕时」自行选择允许通知；无需重复改应用允许通知。
 - 读取 DoNotDisturb Assertions.json 被系统拒绝，未绕过权限；随后使用用户要求的系统日志与原生设置只读检查。
 
 查询：`log show --start ... --style json --predicate 'subsystem == "local.keepline.desktop" OR ((subsystem == "com.apple.UserNotifications" OR process == "usernoted") AND eventMessage CONTAINS[c] "local.keepline.notification-test")'`；补查 donotdisturbd 的 suppressed/display shared/activeModeUUID。仅保存目标 bundle 的精简事件，不提交其他应用日志。
 
 ## 检查
 
-release 客户端构建与正式签名 verify 通过；fmt、workspace clippy -D warnings、客户端 24 项测试通过。系统可见性/点击是独立验收，未由单测代替。测试窗口保留等待用户点击，不操作用户 Keepline。
+release 客户端构建与正式签名 verify 通过；fmt、workspace clippy -D warnings、客户端 24 项测试通过。系统可见性/点击是独立验收，未由单测代替。点击验收保留未验证，不要求用户操作，不操作用户 Keepline。
