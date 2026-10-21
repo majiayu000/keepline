@@ -6,6 +6,7 @@ mod lifecycle;
 mod pane;
 mod screen;
 mod theme;
+mod terminal_input;
 mod workbench;
 
 use gpui::{App, AppContext, Bounds, WindowBounds, WindowOptions, px, size};

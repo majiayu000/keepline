@@ -187,3 +187,12 @@ flowchart LR
 - [x] M6 两小时后台驻留趋势：7200 秒、121 个样本，累计 CPU 0.122 秒、业务 I/O/探测增量 0、内存未增长；锁屏，不作为可见画面性能证据。
 - [ ] M6 Ghostty 1/4 可见画面 ≤1.2x、Finder/Dock、四画面 IME、40 会话完整可见导航：锁屏未验证。
 - [ ] 全量放行：真实模型/权限和通知未授权，不能称为 A01–A19 全部通过。
+
+## R2 渲染补验（2026-10-21）
+
+- [x] SGR/光标第一批审查与独立提交（a5fd977）。
+- [x] Emoji 2027 与后台快照一致；原生 marked text 范围几何自动测试。
+- [x] libghostty 鼠标/备用屏滚轮、?1004；真实 Vim/lazygit/htop 操作（R2 证据）。
+- [x] box/block/braille/Powerline 按格自绘、CJK ic_width；13 fixture 前后差异表。
+- [x] OSC 8 安全协议过滤、双宽命中、悬停、Cmd 点击 Finder 原生证据。
+- [ ] Ghostty 聚焦光标像素对照与 R5 四画面完整 IME/性能门槛。

@@ -1,3 +1,5 @@
+#[path = "sprites.rs"]
+mod sprites;
 #[derive(Clone, Debug, PartialEq)]
 pub struct Run {
     pub col: u16,
@@ -50,8 +52,33 @@ pub struct Screen {
     pub cursor_visible: bool,
     pub cursor_shape: CursorShape,
     pub background: u32,
+    pub links: Vec<Link>,
 }
 
+#[derive(Debug, Clone)]
+pub struct Link {
+    pub row: u16,
+    pub col: u16,
+    pub cols: u16,
+    pub uri: String,
+}
+impl Screen {
+    pub fn link_at(&self, row: u16, col: u16) -> Option<&Link> {
+        self.links
+            .iter()
+            .find(|l| l.row == row && col >= l.col && col < l.col + l.cols)
+    }
+}
+/// Only explicitly clicked OSC 8 links reach the OS. No OSC callback opens URLs.
+pub fn allowed_link(uri: &str) -> bool {
+    if uri.len() > 8192 || uri.chars().any(|c| c.is_control() || c.is_whitespace()) {
+        return false;
+    }
+    uri.strip_prefix("https://")
+        .or_else(|| uri.strip_prefix("http://"))
+        .is_some_and(|s| !s.is_empty() && !s.starts_with('/'))
+        || uri.strip_prefix("file:///").is_some_and(|s| !s.is_empty())
+}
 pub fn rgb(r: u8, g: u8, b: u8) -> u32 {
     (r as u32) << 16 | (g as u32) << 8 | b as u32
 }
@@ -107,8 +134,8 @@ use keepline_core::terminal::{
     Vt,
     libghostty_vt::{
         self,
-        render::{CellIterator, RenderState, RowIterator},
         render::CursorVisualStyle,
+        render::{CellIterator, RenderState, RowIterator},
         screen::CellWide,
         style::{StyleColor, Underline as SgrUnderline},
     },
@@ -188,6 +215,26 @@ pub fn capture(vt: &Vt) -> Result<Screen, libghostty_vt::Error> {
                 };
             }
             let width = if matches!(wide, CellWide::Wide) { 2 } else { 1 };
+            if cell.raw_cell()?.has_hyperlink()? {
+                let grid = vt
+                    .terminal()
+                    .grid_ref(libghostty_vt::terminal::Point::Viewport(
+                        libghostty_vt::terminal::PointCoordinate { x, y: y as u32 },
+                    ))?;
+                let mut uri = vec![0; 8192];
+                if let Ok(n) = grid.hyperlink_uri(&mut uri) {
+                    if let Ok(uri) = std::str::from_utf8(&uri[..n]) {
+                        if allowed_link(uri) {
+                            out.links.push(Link {
+                                row: y as u16,
+                                col: x,
+                                cols: width,
+                                uri: uri.into(),
+                            });
+                        }
+                    }
+                }
+            }
             b.push(x, width, &text, fg, bg, attrs);
             x += 1;
         }
@@ -228,6 +275,7 @@ pub struct CellMetrics {
     pub x_height: Pixels,
     /// Decoration and bar-cursor thickness.
     pub stroke: Pixels,
+    pub ic_width: Pixels,
 }
 impl CellMetrics {
     pub fn measure(font: &Font, window: &Window) -> Option<Self> {
@@ -235,12 +283,29 @@ impl CellMetrics {
         let id = ts.resolve_font(font);
         let width = ts.advance(id, px(FONT_SIZE), 'm').ok()?.width;
         let height = px(FONT_SIZE * crate::theme::Theme::TERMINAL_LINE_HEIGHT);
+        let ic_width = ts
+            .advance(id, px(FONT_SIZE), '水')
+            .ok()
+            .filter(|s| s.width > px(0.))
+            .map(|s| s.width)
+            .unwrap_or_else(|| {
+                let mut top = px(0.);
+                let mut bottom = px(0.);
+                for ch in ' '..='~' {
+                    if let Ok(b) = ts.typographic_bounds(id, px(FONT_SIZE), ch) {
+                        top = top.min(b.top());
+                        bottom = bottom.max(b.bottom());
+                    }
+                }
+                (bottom - top).min(width * 2.)
+            });
         (width > px(0.)).then_some(Self {
             width,
             height,
             baseline: ts.baseline_offset(id, px(FONT_SIZE), height),
             x_height: ts.x_height(id, px(FONT_SIZE)),
             stroke: px((FONT_SIZE / 14.).max(1.)),
+            ic_width,
         })
     }
     pub fn cursor_bounds(self, bounds: Bounds<Pixels>, cursor: (u16, u16)) -> Bounds<Pixels> {
@@ -361,12 +426,20 @@ fn shape_cell(
                 .chars()
                 .any(|c| matches!(c as u32, 0xe000..=0xf8ff | 0xf0000..=0xffffd)))
     {
-        // Ghostty scales fallback faces by ideograph metrics (Collection.scaleFactor,
-        // default_fallback_adjustment=ic_width) then centers them on the cell grid.
-        // GPUI picks the fallback face during shaping. Match this wide cell's shaped
-        // advance to two columns, keeping the aspect ratio and fitting the row height.
         let target = metrics.width * run.cols as f32;
-        let scale = (target / line.width()).min(metrics.height / px(FONT_SIZE));
+        let cjk = run.text.chars().any(|c| matches!(c as u32, 0x2e80..=0xa4cf | 0xac00..=0xd7ff | 0xf900..=0xfaff | 0xff01..=0xff60 | 0x20000..=0x323af));
+        let scale = if cjk {
+            let ic = metrics.ic_width;
+            let fallback_ic = line
+                .runs
+                .first()
+                .and_then(|r| ts.advance(r.font_id, px(FONT_SIZE), '水').ok())
+                .map(|s| s.width)
+                .unwrap_or(line.width());
+            (ic / fallback_ic).min(metrics.height / px(FONT_SIZE))
+        } else {
+            (target / line.width()).min(metrics.height / px(FONT_SIZE))
+        };
         line = ts.shape_line(
             SharedString::from(run.text.clone()),
             px(FONT_SIZE) * scale,
@@ -418,6 +491,19 @@ pub fn paint_pane(
             if run.text.trim().is_empty() {
                 continue;
             }
+            if run.text.chars().count() == 1
+                && sprites::paint(
+                    run.text.chars().next().unwrap(),
+                    point(ox, oy),
+                    cw * run.cols as f32,
+                    lh,
+                    metrics.stroke,
+                    text_color(run),
+                    window,
+                )
+            {
+                continue;
+            }
             let mut font = f.clone();
             if run.attrs.bold {
                 font.weight = FontWeight::BOLD;
@@ -451,17 +537,15 @@ pub fn paint_pane(
         let t = metrics.stroke * 2.;
         match sc.cursor_shape {
             CursorShape::Block => window.paint_quad(fill(cell, color)),
-            CursorShape::Bar => window.paint_quad(fill(
-                Bounds::new(cell.origin, size(t, lh)),
-                color,
-            )),
+            CursorShape::Bar => {
+                window.paint_quad(fill(Bounds::new(cell.origin, size(t, lh)), color))
+            }
             CursorShape::Underline => window.paint_quad(fill(
                 Bounds::new(point(cell.left(), cell.bottom() - t), size(cw, t)),
                 color,
             )),
             CursorShape::BlockHollow => window.paint_quad(
-                gpui::outline(cell, color, gpui::BorderStyle::Solid)
-                    .border_widths(metrics.stroke),
+                gpui::outline(cell, color, gpui::BorderStyle::Solid).border_widths(metrics.stroke),
             ),
         }
     }
@@ -536,6 +620,35 @@ mod tests {
     use super::*;
 
     #[test]
+    fn osc_links_keep_cell_bounds_and_reject_executable_schemes() {
+        let mut vt = Vt::new(40, 3).unwrap();
+        vt.feed("\x1b]8;;https://example.com\x1b\\中文\x1b]8;;\x1b\\ \x1b]8;;javascript:alert(1)\x1b\\bad".as_bytes());
+        let s = capture(&vt).unwrap();
+        assert_eq!(s.link_at(0, 3).unwrap().uri, "https://example.com");
+        assert!(s.link_at(0, 4).is_none());
+        assert!(s.link_at(0, 5).is_none());
+        for uri in [
+            "javascript:alert(1)",
+            "data:text/plain,a",
+            "https://",
+            "https://a\n--arg",
+            "file:///",
+        ] {
+            assert!(!allowed_link(uri));
+        }
+        assert!(allowed_link("file:///tmp/test"));
+    }
+    #[test]
+    fn emoji_cluster_capture_is_one_two_column_run() {
+        let mut vt = Vt::new(40, 3).unwrap();
+        vt.feed("👨‍👩‍👧‍👦🇨🇳X".as_bytes());
+        let s = capture(&vt).unwrap();
+        assert_eq!(s.rows[0][0].text, "👨‍👩‍👧‍👦");
+        assert_eq!(s.rows[0][0].cols, 2);
+        assert_eq!(s.rows[0][1].col, 2);
+        assert_eq!(s.cursor, Some((5, 0)));
+    }
+    #[test]
     fn hidden_cursor_keeps_ime_anchor_and_missing_position_keeps_last_known() {
         let mut vt = Vt::new(80, 24).unwrap();
         vt.feed(b"\x1b[6;12H\x1b[?25l");
@@ -601,8 +714,10 @@ mod tests {
         );
         let i16_at = |o| be16(d, o) as i16 as f32;
         // Ghostty face/coretext.zig: typo metrics if USE_TYPO_METRICS, else hhea, else typo, else win.
-        let (hhea_asc, hhea_desc, hhea_gap) = (i16_at(hhea + 4), i16_at(hhea + 6), i16_at(hhea + 8));
-        let (typo_asc, typo_desc, typo_gap) = (i16_at(os2 + 68), i16_at(os2 + 70), i16_at(os2 + 72));
+        let (hhea_asc, hhea_desc, hhea_gap) =
+            (i16_at(hhea + 4), i16_at(hhea + 6), i16_at(hhea + 8));
+        let (typo_asc, typo_desc, typo_gap) =
+            (i16_at(os2 + 68), i16_at(os2 + 70), i16_at(os2 + 72));
         let line_height = if be16(d, os2 + 62) & 0x80 != 0 {
             typo_asc - typo_desc + typo_gap
         } else if hhea_asc != 0. || hhea_desc != 0. {
@@ -668,7 +783,11 @@ mod tests {
         let ghostty_h = (face.line_height / face.units_per_em * backing).round();
         if path.ends_with("Menlo.ttc") {
             // Anchors the parser to the Ghostty 1.3.1 capture (eval/terminal-reference).
-            assert_eq!((ghostty_w, ghostty_h), (15., 29.), "Ghostty Menlo 12.5pt @2x cell");
+            assert_eq!(
+                (ghostty_w, ghostty_h),
+                (15., 29.),
+                "Ghostty Menlo 12.5pt @2x cell"
+            );
         }
         let ghostty = ghostty_h / ghostty_w;
         let keepline = |line_height: f32| {
@@ -767,7 +886,7 @@ pub fn verify_native_geometry(window: &Window, cx: &App) {
             pane.top() + metrics.height * 5.
         )
     );
-    for text in ["nihao", "n你😀hao", "e\u{301}"] {
+    for text in ["nihao", "n你😀hao", "e\u{301}", "👨‍👩‍👧‍👦🇨🇳👍🏽"] {
         let marked = MarkedText::new(text, font.clone(), anchor, window);
         assert_eq!(marked.bounds.origin, anchor.origin);
         let whole = marked.range_bounds(0..text.encode_utf16().count());

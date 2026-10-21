@@ -60,3 +60,27 @@
 3. 修完上表任一项后，把对应 fixture 的 changed px 记进这份清单，作为下一轮的基线。
 
 2026-10-21 R2 接手：第一批审查与全量三轮测试通过，重新执行 13 个 fixture，见 [接手记录](evidence/r2-20261021/batch1-review.md)。Ghostty 光标失焦警告仍保留，不能以差异百分比替代焦点验收。
+
+### R2 第二批（2026-10-21）
+
+采用：#2 默认开启 mode 2027，后台/客户端快照共用 VT；#5 libghostty 鼠标编码及备用屏方向键滚轮；#6–9 按格自绘块、制表线、盲文和 Powerline；#12 OSC 8 白名单链接；#13 ic_width 的 CJK 字体缩放；#15 按窗口和画面焦点发送 ?1004。
+
+| fixture | 接手基线 | 本轮修复后 |
+|---|---:|---:|
+| box-blocks | 6.8% | 3.2% |
+| codex-logo | 3.5% | 1.5% |
+| codex-start | 1.2% | 1.2% |
+| cursor-bar | 0.2% | 0.2% |
+| cursor-block | 0.2% | 0.2% |
+| cursor-underline | 0.2% | 0.2% |
+| hyperlinks | 0.6% | 0.6% |
+| lazygit-status | 5.1% | 3.8% |
+| sgr-colors | 2.2% | 1.7% |
+| text-unicode | 4.8% | 4.0% |
+| vim-back-normal | 0.5% | 0.5% |
+| vim-insert | 0.6% | 0.6% |
+| vim-normal | 1.0% | 0.9% |
+
+13 个 fixture 已重新执行 run.sh。Menlo 行高差仍为 +3.0%；背景色、抗锯齿和部分制表线接缝形状仍有差异。Ghostty 失焦光标警告保留，不宣称光标像素完全一致。裸 URL 自动识别不在本轮 OSC 8 实现范围。
+
+原生鼠标验证发现画面外松开事件会吞掉标签点击；修为仅释放从本画面开始的手势。修后真实 Vim 滚轮、lazygit 分支面板点击、htop 进程行选择、OSC 8 Cmd 点击打开 Finder 测试目录通过，见 [R2 证据](evidence/r2-20261021/README.md)。

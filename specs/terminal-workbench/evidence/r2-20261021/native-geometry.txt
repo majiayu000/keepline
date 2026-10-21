@@ -1,0 +1,15 @@
+    Finished `dev` profile [unoptimized] target(s) in 4.57s
+     Running `next/target/debug/examples/terminal_reference --out /tmp/kl-r2-geometry next/eval/terminal-reference/fixtures/text-unicode.vt`
+native bundled symbol font: six Nerd/Powerline glyphs present and cell-aligned
+wide-cell 实: advance=13.177491px, two-columns=15.05127px, inset=0.9368892px
+wide-cell 现: advance=13.177491px, two-columns=15.05127px, inset=0.9368892px
+wide-cell 反: advance=13.177491px, two-columns=15.05127px, inset=0.9368892px
+wide-cell 馈: advance=13.177491px, two-columns=15.05127px, inset=0.9368892px
+wide-cell 日: advance=13.177491px, two-columns=15.05127px, inset=0.9368892px
+wide-cell 語: advance=13.177491px, two-columns=15.05127px, inset=0.9368892px
+wide-cell 한: advance=12.975001px, two-columns=15.05127px, inset=1.0381341px
+wide-cell 글: advance=12.975001px, two-columns=15.05127px, inset=1.0381341px
+wide-cell 😀: advance=15px, two-columns=15.05127px, inset=0.025634766px
+native IME geometry: overlay/ranges/UTF16 agree; measured cell=CellMetrics { width: 7.525635px, height: 15.000001px, baseline: 14.775391px, x_height: 6.8359375px, stroke: 1px, ic_width: 13.17749px }
+keepline font=Menlo size=12.5 cell=7.525635pxx15.000001px ratio(h/w)=1.9932 grid=Size { 752.5635px × 450.00003px }
+keepline text-unicode: scale=2 -> /tmp/kl-r2-geometry/text-unicode.png
