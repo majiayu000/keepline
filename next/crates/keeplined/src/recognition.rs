@@ -22,6 +22,7 @@ pub struct Process {
     pub pid: u32,
     pub parent: u32,
     pub runtime: Option<Agent>,
+    pub cli_session_id: Option<String>,
 }
 #[derive(Clone, Debug)]
 pub struct Transcript {
@@ -65,6 +66,83 @@ fn runtime_from_command(command: &str) -> Option<Agent> {
         }
         _ => None,
     }
+}
+/// Read argv boundaries from the kernel, never parse a prompt out of `ps command`.
+/// KERN_PROCARGS2 also returns an environment tail; stop after argc and never retain it.
+fn process_argv(pid: u32) -> io::Result<Vec<String>> {
+    let mut mib = [libc::CTL_KERN, libc::KERN_PROCARGS2, pid as i32];
+    let mut len = 0;
+    if unsafe {
+        libc::sysctl(
+            mib.as_mut_ptr(),
+            3,
+            std::ptr::null_mut(),
+            &mut len,
+            std::ptr::null_mut(),
+            0,
+        )
+    } != 0
+    {
+        return Err(io::Error::last_os_error());
+    }
+    let mut bytes = vec![0u8; len];
+    if unsafe {
+        libc::sysctl(
+            mib.as_mut_ptr(),
+            3,
+            bytes.as_mut_ptr().cast(),
+            &mut len,
+            std::ptr::null_mut(),
+            0,
+        )
+    } != 0
+    {
+        return Err(io::Error::last_os_error());
+    }
+    bytes.truncate(len);
+    if bytes.len() < 4 {
+        return Ok(vec![]);
+    }
+    let argc = i32::from_ne_bytes(bytes[..4].try_into().unwrap()).max(0) as usize;
+    let Some(end) = bytes[4..].iter().position(|b| *b == 0) else {
+        return Ok(vec![]);
+    };
+    let mut pos = 4 + end;
+    while bytes.get(pos) == Some(&0) {
+        pos += 1;
+    }
+    let mut args = Vec::new();
+    for _ in 0..argc {
+        let Some(end) = bytes[pos..].iter().position(|b| *b == 0) else {
+            break;
+        };
+        args.push(String::from_utf8_lossy(&bytes[pos..pos + end]).into_owned());
+        pos += end + 1;
+    }
+    Ok(args)
+}
+fn claude_session_id(args: &[String]) -> Option<String> {
+    let mut found = None;
+    let mut args = args.iter().skip(1);
+    while let Some(arg) = args.next() {
+        if arg == "--" {
+            break;
+        }
+        let value = match arg.as_str() {
+            "--session-id" | "--resume" | "-r" => args.next().map(String::as_str),
+            _ => arg
+                .strip_prefix("--session-id=")
+                .or_else(|| arg.strip_prefix("--resume=")),
+        };
+        if let Some(value) = value {
+            let id = uuid::Uuid::parse_str(value).ok()?.to_string();
+            if found.is_some() {
+                return None;
+            } // Conflicting selectors aren't evidence.
+            found = Some(id);
+        }
+    }
+    found
 }
 /// Enumerate only the trees rooted at live PTYs. No global ps or process-name scan.
 pub fn processes(workspace: &Workspace) -> io::Result<Vec<Process>> {
@@ -143,10 +221,18 @@ pub fn processes(workspace: &Workspace) -> io::Result<Vec<Process>> {
             continue;
         };
         let runtime = runtime_from_command(fields.next().unwrap_or("").trim_start());
+        let cli_session_id = if runtime == Some(Agent::Claude) {
+            process_argv(pid)
+                .ok()
+                .and_then(|args| claude_session_id(&args))
+        } else {
+            None
+        };
         processes.push(Process {
             pid,
             parent,
             runtime,
+            cli_session_id,
         });
     }
     Ok(processes)
@@ -258,9 +344,12 @@ pub fn reconcile(
             .iter()
             .filter(|t| {
                 Some(t.runtime) == process.runtime
-                    && open_files
-                        .get(&process.pid)
-                        .is_some_and(|paths| paths.contains(&t.path))
+                    && match &process.cli_session_id {
+                        Some(id) if process.runtime == Some(Agent::Claude) => id == &t.cli_id,
+                        _ => open_files
+                            .get(&process.pid)
+                            .is_some_and(|paths| paths.contains(&t.path)),
+                    }
             })
             .collect();
         if matching.len() == 1 {
@@ -268,7 +357,13 @@ pub fn reconcile(
         }
     }
     for (terminal, transcript) in &bindings {
-        if bindings.iter().filter(|(id, _)| id == terminal).count() != 1 {
+        if bindings.iter().filter(|(id, _)| id == terminal).count() != 1
+            || bindings
+                .iter()
+                .filter(|(_, t)| t.runtime == transcript.runtime && t.cli_id == transcript.cli_id)
+                .count()
+                != 1
+        {
             continue;
         }
         workspace
@@ -284,7 +379,10 @@ pub fn open_transcripts(
     let pids = processes
         .iter()
         .filter(|p| {
-            p.runtime.is_some() && terminal_for_process(p.pid, processes, workspace).is_some()
+            p.runtime.is_some()
+                && p.cli_session_id.is_none()
+                && terminal_for_process(p.pid, processes, workspace)
+                    .is_some_and(|id| workspace.current_agent(&id).is_none())
         })
         .map(|p| p.pid.to_string())
         .collect::<Vec<_>>()
@@ -324,6 +422,95 @@ mod tests {
     use super::*;
     use keepline_core::model::{Space, Terminal};
     #[test]
+    fn explicit_claude_id_uses_argv_boundaries_and_kernel_arguments() {
+        let id = uuid::Uuid::new_v4().to_string();
+        for flag in ["--session-id", "--resume", "-r"] {
+            let args = vec!["claude".into(), flag.into(), id.clone(), "say ok".into()];
+            assert_eq!(claude_session_id(&args), Some(id.clone()));
+        }
+        assert_eq!(
+            claude_session_id(&["claude".into(), format!("--session-id={id}")]),
+            Some(id.clone())
+        );
+        for args in [
+            vec!["claude".into(), format!("please explain --session-id {id}")],
+            vec![
+                "claude".into(),
+                "--".into(),
+                "--session-id".into(),
+                id.clone(),
+            ],
+            vec!["claude".into(), "--session-id".into(), "invalid".into()],
+            vec![
+                "claude".into(),
+                "--session-id".into(),
+                id.clone(),
+                "--resume".into(),
+                id,
+            ],
+        ] {
+            assert_eq!(claude_session_id(&args), None);
+        }
+        assert_eq!(
+            process_argv(std::process::id()).unwrap(),
+            std::env::args().collect::<Vec<_>>()
+        );
+    }
+
+    #[test]
+    fn explicit_ids_disambiguate_same_cwd_without_open_files() {
+        let mut w = Workspace::default();
+        let mut processes = vec![];
+        let mut transcripts = vec![];
+        for i in 0..3 {
+            let id = uuid::Uuid::new_v4().to_string();
+            w.terminals.push(Terminal {
+                id: format!("pty-{i}"),
+                space: "s".into(),
+                argv: vec!["claude".into()],
+                cwd: "/same".into(),
+                pid: Some(100 + i),
+                state: ProcessState::Running,
+                exit_code: None,
+                error: None,
+            });
+            processes.push(Process {
+                pid: 100 + i,
+                parent: 1,
+                runtime: Some(Agent::Claude),
+                cli_session_id: (i < 2).then(|| id.clone()),
+            });
+            transcripts.push(Transcript {
+                runtime: Agent::Claude,
+                cli_id: id,
+                path: format!("/same/{i}.jsonl"),
+                cwd: "/same".into(),
+                updated: 1,
+            });
+        }
+        reconcile(&mut w, &transcripts, &processes, &HashMap::new()).unwrap();
+        for i in 0..2 {
+            assert_eq!(
+                w.current_agent(&format!("pty-{i}")).unwrap().cli_session_id,
+                transcripts[i].cli_id
+            );
+        }
+        assert!(w.current_agent("pty-2").is_none());
+        // A managed process with a mismatched ID cannot claim another transcript even if it opens it.
+        let mut mismatch = w.clone();
+        mismatch.agent_sessions.clear();
+        processes[0].cli_session_id = Some(uuid::Uuid::new_v4().to_string());
+        reconcile(
+            &mut mismatch,
+            &transcripts,
+            &processes,
+            &HashMap::from([(100, vec![transcripts[0].path.clone()])]),
+        )
+        .unwrap();
+        assert!(mismatch.current_agent("pty-0").is_none());
+    }
+
+    #[test]
     fn log_identity_alone_does_not_bind_by_directory_and_ambiguity_stays_unbound() {
         let mut workspace = Workspace::default();
         workspace.spaces.push(Space {
@@ -362,11 +549,13 @@ mod tests {
                 pid: 100,
                 parent: 1,
                 runtime: None,
+                cli_session_id: None,
             },
             Process {
                 pid: 101,
                 parent: 100,
                 runtime: Some(Agent::Codex),
+                cli_session_id: None,
             },
         ];
         reconcile(&mut workspace, &transcripts, &processes, &HashMap::new()).unwrap();

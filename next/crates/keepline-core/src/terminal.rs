@@ -110,6 +110,18 @@ impl Vt {
 mod tests {
     use super::*;
     #[test]
+    fn snapshot_preserves_shell_bracketed_paste_readiness() {
+        let mut vt = Vt::new(80, 24).unwrap();
+        vt.feed(b"\x1b[?2004hprompt> ");
+        let restored = Vt::restore(&vt.snapshot().unwrap()).unwrap();
+        assert!(
+            restored
+                .terminal()
+                .mode(libghostty_vt::terminal::Mode::BRACKETED_PASTE)
+                .unwrap()
+        );
+    }
+    #[test]
     fn emoji_clusters_use_two_cells_and_survive_snapshot_boundaries() {
         for text in ["👨‍👩‍👧‍👦", "🇨🇳", "👍🏽", "1️⃣", "🏳️‍🌈", "🧑‍💻"]
         {

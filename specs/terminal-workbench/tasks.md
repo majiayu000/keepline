@@ -202,7 +202,8 @@ flowchart LR
 ### R4 真实 CLI 补验（2026-10-21）
 - [x] Codex 新对话关联、真实选择题、Ctrl-C 退出、继续预填和实际续接（R4 证据）。
 - [x] Claude Code + 用户指定 GLM provider：真实 Write 审批、四字段机械证据、同 ID 续接。
-- [ ] Claude 托管精确关联与等待状态：真实日志不持续打开，当前检测未关联；不得用模拟通过代替。
+- [x] Claude 托管精确关联：R9 UUID argv ↔ JSONL 确定映射，真实 GLM 新建与续接通过。
+- [ ] Claude 审批等待状态：R9 已托管但 JSONL 未发 PermissionRequest，仍未识别；不得用 CLI 作答通过代替。
 
 ### R5 解锁后原生补验
 - [x] Finder 私有 App 双击自动起后台、40 会话跨空间计数及继续导航（R5 evidence）。
@@ -222,3 +223,8 @@ flowchart LR
 
 - [x] R8：Time Profiler 前后火焰图、当前视口增量快照/排版/子视图缓存、客户端 23 项回归和同负载前台复测完成，见 [证据](evidence/r8-20261021/README.md)。
 - [ ] R8 / A14：CPU 仍为 Ghostty 1.60× / 1.24×，未达 ≤1.2×；继续保持不通过。
+
+- [x] R9：Claude UUID 预填、精确托管/同 ID resume、无 ID 外部保守处理与追加零探测；真实 GLM 两轮/原生截图；默认并行 89 项通过，见 [证据](evidence/r9-20261021/README.md)。
+- [x] 多行预填就绪竞态修复：新画面立即预填，不自动执行；原生证据与模式快照回归通过。
+- [ ] R9 / A04：无 Hook 审批等待未识别。
+- [ ] R9 / A15：真实回复“完成。”分组仍为做一半停了，需后续修复。

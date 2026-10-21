@@ -1,0 +1,30 @@
+[
+  {
+    "runtime": "/tmp/kl8-res-h9yt3mzr/runtime",
+    "stopped_test_terminals": [
+      "load1",
+      "four0",
+      "four1",
+      "four2",
+      "four3"
+    ],
+    "client": 14941,
+    "host": 99637
+  },
+  {
+    "runtime": "/Users/lifcc/Library/Caches/KeeplineAcceptance/r9-s9ff7qt3/runtime",
+    "stopped_test_terminals": [
+      "16477-1792559255928348000-1",
+      "16477-1792559369688499000-3",
+      "18675-1792559596280386000-0",
+      "18675-1792559906263022000-1",
+      "21457-1792560199971175000-0"
+    ],
+    "client": 21457,
+    "host": 14949
+  },
+  {
+    "dedicated_ghostty_terminated": 14947,
+    "user_keepline_pid_80936_alive": true
+  }
+]
