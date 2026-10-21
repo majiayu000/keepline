@@ -126,12 +126,19 @@ fn panel(w: &Workspace) -> String {
             _ => (),
         };
         if matches!(group, Inbox::Waiting | Inbox::Error) {
-            rows.push((group==Inbox::Error,json!({"id":s.id,"title":format!("{} · {}",group.label(),short(&c.title,30)),"summary":short(if group==Inbox::Waiting {&c.waiting}else{&c.error},55)})));
+            let minutes = now().saturating_sub(c.updated) / 60;
+            rows.push((group == Inbox::Error, json!({
+                "id":s.id,"title":short(&c.title,24),
+                "summary":short(if group==Inbox::Waiting {&c.waiting}else{&c.error},40),
+                "age":if minutes<60 {format!("{minutes} 分钟")}else{format!("{} 小时",minutes/60)},
+                "dot":if group==Inbox::Waiting {T::MENU_WAIT_DOT}else{T::MENU_ERROR_DOT},
+                "ink":if group==Inbox::Waiting {T::MENU_WAIT_TEXT}else{T::MENU_ERROR_TEXT}
+            })));
         }
     }
     rows.sort_by_key(|r| r.0);
     let total = rows.len();
-    json!({"badge":if total==0 {"K".into()}else{format!("K {total}")},"heading":format!("{waiting} 个在等你 · {errors} 个出错"),"summary":format!("{review} 个待核对 · {running} 个运行中 · {stale} 个很久没动{}",if total>5 {format!("\n另有 {} 项，请打开工作台",total-5)}else{String::new()}),"rows":rows.into_iter().take(5).map(|r|r.1).collect::<Vec<_>>(),"tokens":{"width":T::MENUBAR_WIDTH,"height":T::MENUBAR_HEIGHT,"padding":T::S16,"gap":T::S12,"row":T::MENUBAR_ROW,"font":T::BODY_SIZE,"title":T::CARD_TITLE,"background":T::WHITE,"text":T::POPOVER_TEXT,"secondary":T::POPOVER_SECONDARY}}).to_string()
+    json!({"badge":if total==0 {"K".into()}else{format!("K {total}")},"heading":format!("{waiting} 个在等你 · {errors} 个出错"),"summary":format!("另有 {review} 个待核对 · {running} 个运行中"),"footer":format!("很久没动 · {stale} 个{}",if total>5 {format!("\n还有 {} 项需要你，请打开工作台",total-5)}else{String::new()}),"rows":rows.into_iter().take(5).map(|r|r.1).collect::<Vec<_>>(),"tokens":{"width":T::MENUBAR_WIDTH,"height":T::MENUBAR_HEIGHT,"padding":T::S16,"gap":T::S12,"row":T::MENUBAR_ROW,"font":T::BODY_SIZE,"title":T::MENU_TITLE,"small":T::SMALL,"meta":T::META,"inset":T::S12,"button":T::MENU_BUTTON,"radius":T::CARD_RADIUS,"selected":T::MENU_WAIT_BG,"accent":T::ACCENT,"white":T::WHITE,"background":T::WHITE,"text":T::POPOVER_TEXT,"secondary":T::POPOVER_SECONDARY}}).to_string()
 }
 pub fn show() {
     unsafe {
@@ -260,4 +267,15 @@ mod tests {
         let value: serde_json::Value = serde_json::from_str(&panel(&previous)).unwrap();
         assert_eq!(value["rows"].as_array().unwrap().len(), 1);
     }
+}
+
+#[cfg(feature = "visual-test")]
+pub fn snapshot(path: &Path) {
+    unsafe extern "C" {
+        fn kl_desktop_snapshot(path: *const c_char) -> bool;
+    }
+    assert!(
+        unsafe { kl_desktop_snapshot(cstring(&path.to_string_lossy()).as_ptr()) },
+        "native menu panel export"
+    );
 }

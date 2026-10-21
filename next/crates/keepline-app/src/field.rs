@@ -11,6 +11,7 @@ pub struct Field {
     selection: Range<usize>,
     marked: Option<Range<usize>>,
     label: String,
+    compact: bool,
 }
 impl Focusable for Field {
     fn focus_handle(&self, _: &App) -> FocusHandle {
@@ -25,7 +26,12 @@ impl Field {
             selection: initial.len()..initial.len(),
             marked: None,
             label: label.into(),
+            compact: false,
         }
+    }
+    pub fn compact(mut self) -> Self {
+        self.compact = true;
+        self
     }
     pub fn set_text(&mut self, text: &str) {
         self.text = text.into();
@@ -56,25 +62,43 @@ impl Field {
     }
 }
 impl Render for Field {
-    fn render(&mut self, _: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+    fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         let entity = cx.entity();
         div()
             .flex()
             .flex_col()
             .gap(px(T::S4))
-            .child(
-                div()
-                    .text_size(px(T::META))
-                    .text_color(T::color(T::SECONDARY))
-                    .child(self.label.clone()),
-            )
+            .when(!self.compact, |d| {
+                d.child(
+                    div()
+                        .text_size(px(T::META))
+                        .text_color(T::color(T::SECONDARY))
+                        .child(self.label.clone()),
+                )
+            })
             .child(
                 div()
                     .id("field")
-                    .min_h(px(T::FIELD_HEIGHT))
+                    .relative()
+                    .min_h(px(if self.compact {
+                        T::ROW
+                    } else {
+                        T::FIELD_HEIGHT
+                    }))
+                    .role(gpui::accesskit::Role::TextInput)
+                    .aria_label(self.label.clone())
                     .px(px(T::S12))
-                    .py(px(T::S8))
-                    .bg(T::color(T::RAISED))
+                    .py(px(if self.compact { T::S4 } else { T::S8 }))
+                    .bg(T::color(T::PANEL))
+                    .border(px(T::BORDER_WIDTH))
+                    .border_color(T::color(T::CONTROL))
+                    .when(self.focus.is_focused(window), |d| {
+                        d.border_color(T::color(T::ACCENT))
+                    })
+                    .when(self.compact && self.text.is_empty(), |d| {
+                        d.text_color(T::color(T::SECONDARY))
+                    })
+                    .when(self.compact, |d| d.h(px(T::ROW)).overflow_hidden())
                     .rounded(px(T::CONTROL_RADIUS))
                     .track_focus(&self.focus)
                     .on_mouse_down(
@@ -105,7 +129,7 @@ impl Render for Field {
                                 }
                                 this.replace(None, "");
                             }
-                            "enter" => {
+                            "enter" if !this.compact => {
                                 this.replace(None, "\n");
                             }
                             _ => return,
@@ -114,7 +138,11 @@ impl Render for Field {
                         cx.notify();
                     }))
                     .child(if self.text.is_empty() {
-                        " ".to_owned()
+                        if self.compact {
+                            self.label.clone()
+                        } else {
+                            " ".to_owned()
+                        }
                     } else {
                         self.text.clone()
                     })

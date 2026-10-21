@@ -41,20 +41,32 @@ static NSColor *color(NSNumber *value) {
     [NSLayoutConstraint activateConstraints:@[[stack.leadingAnchor constraintEqualToAnchor:vc.view.leadingAnchor constant:pad],[stack.trailingAnchor constraintEqualToAnchor:vc.view.trailingAnchor constant:-pad],[stack.topAnchor constraintEqualToAnchor:vc.view.topAnchor constant:pad]]];
     NSTextField *heading=[NSTextField labelWithString:self.data[@"heading"]?:@"Keepline"];
     heading.font=[NSFont boldSystemFontOfSize:[t[@"title"] doubleValue]];heading.textColor=color(t[@"text"]);[stack addArrangedSubview:heading];
+    NSTextField *summary=[NSTextField labelWithString:self.data[@"summary"]?:@""];
+    summary.textColor=color(t[@"secondary"]);summary.font=[NSFont systemFontOfSize:[t[@"small"] doubleValue]];[stack addArrangedSubview:summary];
     NSArray *rows=self.data[@"rows"]?:@[];
     for(NSDictionary *row in rows) {
-        NSString *title=[NSString stringWithFormat:@"%@\n%@",row[@"title"],row[@"summary"]];
+        NSString *title=[NSString stringWithFormat:@"●  %@    %@\n    %@",row[@"title"],row[@"age"],row[@"summary"]];
         NSButton *button=[NSButton buttonWithTitle:title target:self action:@selector(choose:)];
         button.identifier=row[@"id"];button.bordered=NO;button.alignment=NSTextAlignmentLeft;
-        button.font=[NSFont systemFontOfSize:[t[@"font"] doubleValue]];
-        button.contentTintColor=color(t[@"text"]);button.cell.wraps=YES;button.cell.lineBreakMode=NSLineBreakByTruncatingTail;
+        NSMutableParagraphStyle *paragraph=[NSMutableParagraphStyle new];paragraph.lineBreakMode=NSLineBreakByTruncatingTail;
+        NSMutableAttributedString *text=[[NSMutableAttributedString alloc]initWithString:title attributes:@{NSFontAttributeName:[NSFont systemFontOfSize:[t[@"font"] doubleValue]],NSForegroundColorAttributeName:color(t[@"text"]),NSParagraphStyleAttributeName:paragraph}];
+        NSRange newline=[title rangeOfString:@"\n"];
+        [text addAttribute:NSForegroundColorAttributeName value:color(row[@"dot"]) range:NSMakeRange(0,1)];
+        NSRange age=[title rangeOfString:row[@"age"]];
+        [text addAttributes:@{NSForegroundColorAttributeName:color(t[@"secondary"]),NSFontAttributeName:[NSFont systemFontOfSize:[t[@"meta"] doubleValue]]} range:age];
+        [text addAttributes:@{NSForegroundColorAttributeName:color(row[@"ink"]),NSFontAttributeName:[NSFont systemFontOfSize:[t[@"small"] doubleValue]]} range:NSMakeRange(newline.location+1,title.length-newline.location-1)];
+        button.attributedTitle=text;button.cell.wraps=YES;
         button.toolTip=title;[button setAccessibilityLabel:title];[stack addArrangedSubview:button];
         [button.widthAnchor constraintEqualToAnchor:stack.widthAnchor].active=YES;
         [button.heightAnchor constraintEqualToConstant:[t[@"row"] doubleValue]].active=YES;
+        if(row==rows.firstObject) {button.wantsLayer=YES;button.layer.backgroundColor=color(t[@"selected"]).CGColor;button.layer.cornerRadius=[t[@"radius"] doubleValue];}
     }
-    NSTextField *summary=[NSTextField wrappingLabelWithString:self.data[@"summary"]?:@""];
-    summary.textColor=color(t[@"secondary"]);summary.font=[NSFont systemFontOfSize:[t[@"font"] doubleValue]];[stack addArrangedSubview:summary];
-    NSButton *open=[NSButton buttonWithTitle:@"打开工作台" target:self action:@selector(choose:)];open.identifier=@"";open.bezelStyle=NSBezelStyleRounded;[stack addArrangedSubview:open];
+    NSTextField *footer=[NSTextField wrappingLabelWithString:self.data[@"footer"]?:@""];
+    footer.textColor=color(t[@"secondary"]);footer.font=[NSFont systemFontOfSize:[t[@"small"] doubleValue]];[stack addArrangedSubview:footer];
+    NSButton *open=[NSButton buttonWithTitle:@"打开工作台" target:self action:@selector(choose:)];open.identifier=@"";open.bordered=NO;
+    open.wantsLayer=YES;open.layer.backgroundColor=color(t[@"accent"]).CGColor;open.layer.cornerRadius=[t[@"radius"] doubleValue];
+    open.attributedTitle=[[NSAttributedString alloc]initWithString:open.title attributes:@{NSForegroundColorAttributeName:color(t[@"white"]),NSFontAttributeName:[NSFont boldSystemFontOfSize:[t[@"font"] doubleValue]]}];
+    [stack addArrangedSubview:open];[open.widthAnchor constraintEqualToAnchor:stack.widthAnchor].active=YES;[open.heightAnchor constraintEqualToConstant:[t[@"button"] doubleValue]].active=YES;
     self.popover.contentViewController=vc;self.popover.contentSize=NSMakeSize(width,height);
 }
 - (void)userNotificationCenter:(UNUserNotificationCenter *)center willPresentNotification:(UNNotification *)notification withCompletionHandler:(void (^)(UNNotificationPresentationOptions))completion {
@@ -108,3 +120,14 @@ void kl_desktop_notify(const char *session,const char *title,const char *body) {
 }
 
 void kl_desktop_show(void) { [desktop show:nil]; }
+
+// Called only by the visual-test feature: draw the actual AppKit panel, not an HTML copy.
+bool kl_desktop_snapshot(const char *path) {
+    [desktop rebuild];
+    NSView *view=desktop.popover.contentViewController.view;
+    [view layoutSubtreeIfNeeded];
+    NSBitmapImageRep *bitmap=[view bitmapImageRepForCachingDisplayInRect:view.bounds];
+    [view cacheDisplayInRect:view.bounds toBitmapImageRep:bitmap];
+    NSData *data=[bitmap representationUsingType:NSBitmapImageFileTypePNG properties:@{}];
+    return [data writeToFile:[NSString stringWithUTF8String:path] atomically:YES];
+}

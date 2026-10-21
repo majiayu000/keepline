@@ -147,6 +147,42 @@ fn attachable_ids(workspace: &Workspace, ids: Vec<String>) -> Vec<String> {
         .filter(|id| !interrupted(workspace, id))
         .collect()
 }
+fn age(at: u64) -> String {
+    let minutes = now().saturating_sub(at) / 60;
+    if minutes == 0 {
+        "刚刚".into()
+    } else if minutes < 60 {
+        format!("{minutes} 分钟")
+    } else if minutes < 1440 {
+        format!("{} 小时", minutes / 60)
+    } else {
+        format!("{} 天", minutes / 1440)
+    }
+}
+fn badge(group: Group, count: usize) -> gpui::Div {
+    let (_, ink, bg) = group.colors();
+    div()
+        .px(px(T::S4))
+        .rounded(px(T::CHIP_RADIUS))
+        .text_size(px(T::CHIP_SIZE))
+        .text_color(ink)
+        .bg(bg)
+        .child(count.to_string())
+}
+fn task_icon() -> gpui::Div {
+    div()
+        .size(px(T::CHIP_SIZE))
+        .flex_shrink_0()
+        .flex()
+        .items_center()
+        .justify_center()
+        .rounded(px(T::S2))
+        .border(px(T::BORDER_WIDTH))
+        .border_color(T::color(T::LINK))
+        .text_color(T::color(T::LINK))
+        .text_size(px(T::CHIP_SIZE))
+        .child("✓")
+}
 fn button(
     id: impl Into<gpui::ElementId>,
     text: impl Into<gpui::SharedString>,
@@ -167,7 +203,7 @@ fn button(
         .text_size(px(T::SMALL))
         .text_color(T::color(T::BODY))
         .cursor_pointer()
-        .hover(|s| s.bg(T::color(T::RAISED)))
+        .hover(|s| s.border_color(T::color(T::ACCENT)))
         .child(text)
 }
 fn outcome_label(outcome: &Outcome) -> String {
@@ -383,6 +419,79 @@ impl Workbench {
         cx.notify();
         window.refresh();
     }
+    #[cfg(feature = "visual-test")]
+    pub fn visual_page(&mut self, name: &str, window: &mut Window, cx: &mut Context<Self>) {
+        self.form = None;
+        self.task_detail = None;
+        self.cleanup.clear();
+        self.here = None;
+        self.search_open = false;
+        self.overview = name == "Overview";
+        self.zoomed = None;
+        self.space = "s0".into();
+        self.tab = Some(
+            if name == "TodoStart" {
+                "start"
+            } else {
+                "feedback"
+            }
+            .into(),
+        );
+        self.show_running = false;
+        self.sync_panes(cx);
+        match name {
+            "Main" => self.here = self.workspace.current_agent("p0").map(|s| s.id.clone()),
+            "TodoNew" => {
+                self.show_form(FormKind::Task, window, cx);
+                let task = self
+                    .workspace
+                    .tasks
+                    .iter()
+                    .find(|t| t.id == "task1")
+                    .unwrap();
+                for (field, text) in self.form.as_ref().unwrap().fields.iter().zip([
+                    task.title.clone(),
+                    task.description.clone(),
+                    task.acceptance
+                        .iter()
+                        .map(|a| a.description.clone())
+                        .collect::<Vec<_>>()
+                        .join("\n"),
+                ]) {
+                    field.update(cx, |field, cx| {
+                        field.set_text(&text);
+                        cx.notify();
+                    });
+                }
+            }
+            "TodoDetail" => self.task_detail = Some("task0".into()),
+            "TodoStart" => {
+                let command = self
+                    .workspace
+                    .tasks
+                    .iter()
+                    .find(|t| t.id == "task1")
+                    .unwrap()
+                    .command();
+                self.panes["pstart"].update(cx, |pane, cx| pane.queue_prefill(&command, cx));
+            }
+            "Cleanup" => {
+                self.cleanup = self
+                    .workspace
+                    .agent_sessions
+                    .iter()
+                    .filter(|s| self.group(s) == Group::Stale)
+                    .map(|s| s.id.clone())
+                    .collect();
+                self.cleanup_index = 0;
+                assert!(!self.cleanup.is_empty());
+            }
+            "Overview" | "Menubar" => (),
+            _ => panic!("unknown visual page"),
+        }
+        cx.notify();
+        window.refresh();
+    }
     pub fn new(
         socket: PathBuf,
         workspace: Workspace,
@@ -425,7 +534,7 @@ impl Workbench {
             .detach();
         let since = workspace.last_left;
         let overview = show_on_return(since, now(), workspace.settings.away_minutes);
-        let search = cx.new(|cx| Field::new("搜索会话、待办或原话", "", cx));
+        let search = cx.new(|cx| Field::new("跳到会话、待办或原话", "", cx).compact());
         cx.observe(&search, |_, _, cx| cx.notify()).detach();
         cx.observe_window_activation(window, |this, window, cx| {
             if window.is_window_active() {
@@ -850,21 +959,48 @@ impl Workbench {
             .flex()
             .flex_col()
             .gap(px(T::S16))
-            .child(div().text_size(px(T::TITLE)).child(format!(
-                "清理很久没动的会话 · {} / {}",
-                (self.cleanup_index + 1).min(self.cleanup.len()),
-                self.cleanup.len()
-            )))
             .child(
-                div().flex().child(
-                    button("cleanup-exit", "← 返回鸟瞰")
-                        .text_color(T::color(T::ACCENT))
-                        .on_click(cx.listener(|this, _, _, cx| {
-                            this.cleanup.clear();
-                            this.overview = true;
-                            cx.notify();
-                        })),
-                ),
+                div()
+                    .flex()
+                    .items_center()
+                    .gap(px(T::S12))
+                    .child(
+                        button("cleanup-exit", "← 返回鸟瞰")
+                            .border_0()
+                            .text_color(T::color(T::ACCENT))
+                            .on_click(cx.listener(|this, _, _, cx| {
+                                this.cleanup.clear();
+                                this.overview = true;
+                                cx.notify();
+                            })),
+                    )
+                    .child(
+                        div()
+                            .text_size(px(T::FORM_TITLE))
+                            .font_weight(gpui::FontWeight::SEMIBOLD)
+                            .child("清理很久没动的会话"),
+                    )
+                    .child(div().flex_1())
+                    .child(
+                        label(format!(
+                            "第 {} / {} 个",
+                            (self.cleanup_index + 1).min(self.cleanup.len()),
+                            self.cleanup.len()
+                        ))
+                        .text_color(T::color(T::POPOVER_SECONDARY)),
+                    ),
+            )
+            .child(
+                div()
+                    .h(px(T::S4))
+                    .w_full()
+                    .rounded_full()
+                    .bg(T::color(T::POPOVER_BORDER))
+                    .child(div().h_full().rounded_full().bg(T::color(T::ACCENT)).w(
+                        gpui::relative(
+                            self.cleanup_index as f32 / self.cleanup.len().max(1) as f32,
+                        ),
+                    )),
             );
         if let Some(s) = self
             .cleanup
@@ -872,12 +1008,6 @@ impl Workbench {
             .and_then(|id| self.workspace.agent_sessions.iter().find(|s| &s.id == id))
         {
             let h = self.workspace.content.get(&s.id).map(|c| c.here());
-            page = page
-                .child(div().text_size(px(T::TITLE)).child(self.session_title(s)))
-                .child(
-                    label(format!("{} · {}", s.runtime.executable(), s.cwd))
-                        .text_color(T::color(T::POPOVER_SECONDARY)),
-                );
             if let Some(h) = h {
                 let mut card = div()
                     .p(px(T::S20))
@@ -885,7 +1015,26 @@ impl Workbench {
                     .bg(T::color(T::WHITE))
                     .flex()
                     .flex_col()
-                    .gap(px(T::S16));
+                    .gap(px(T::S16))
+                    .child(
+                        div()
+                            .text_size(px(T::TITLE))
+                            .font_weight(gpui::FontWeight::SEMIBOLD)
+                            .child(self.session_title(s)),
+                    )
+                    .child(
+                        label(format!(
+                            "{} · {} · {}",
+                            s.runtime.executable(),
+                            age(self
+                                .workspace
+                                .content
+                                .get(&s.id)
+                                .map_or(s.updated, |c| c.updated)),
+                            s.cwd
+                        ))
+                        .text_color(T::color(T::POPOVER_SECONDARY)),
+                    );
                 for (name, text) in [
                     ("你要它", h.ask),
                     ("做成了", h.done),
@@ -894,11 +1043,19 @@ impl Workbench {
                 ] {
                     card = card.child(
                         div()
-                            .p(px(T::S16))
-                            .rounded(px(T::CARD_RADIUS))
-                            .bg(T::color(T::WHITE))
-                            .child(label(name).text_color(T::color(T::POPOVER_SECONDARY)))
-                            .child(text),
+                            .flex()
+                            .gap(px(T::S16))
+                            .py(px(T::S8))
+                            .when(name == "下一步·推断", |d| {
+                                d.bg(T::color(T::INFERENCE))
+                            })
+                            .child(
+                                label(name)
+                                    .w(px(T::HERE_LABEL))
+                                    .flex_shrink_0()
+                                    .text_color(T::color(T::POPOVER_SECONDARY)),
+                            )
+                            .child(div().flex_1().child(text)),
                     );
                 }
                 page = page.child(card);
@@ -917,8 +1074,8 @@ impl Workbench {
                         this.open_session(&resume, window, cx);
                     })),
             );
-            for (name, outcome) in [("完成", Outcome::Completed), ("放弃", Outcome::Abandoned)]
             {
+                let (name, outcome) = ("完成", Outcome::Completed);
                 let sid = s.id.clone();
                 actions = actions.child(
                     button(name, name)
@@ -948,6 +1105,25 @@ impl Workbench {
                     .on_click(cx.listener(move |this, _, window, cx| {
                         this.here = Some(sid.clone());
                         this.show_form(FormKind::Defer, window, cx);
+                    })),
+            );
+            let sid = s.id.clone();
+            actions = actions.child(
+                button("cleanup-abandon", "放弃")
+                    .h(px(T::CLEANUP_ACTION_HEIGHT))
+                    .flex_1()
+                    .justify_center()
+                    .bg(T::color(T::WHITE))
+                    .border_color(T::color(T::POPOVER_BORDER))
+                    .text_color(T::color(T::POPOVER_TEXT))
+                    .on_click(cx.listener(move |this, _, _, cx| {
+                        this.edit(
+                            Edit::SetOutcome {
+                                id: sid.clone(),
+                                outcome: Outcome::Abandoned,
+                            },
+                            cx,
+                        )
                     })),
             );
             page = page.child(actions);
@@ -991,7 +1167,13 @@ impl Workbench {
         let tid = task.id.clone();
         let mut view = div()
             .id("task-detail")
-            .flex_1()
+            .w(px(T::DETAIL_WIDTH))
+            .max_w_full()
+            .m(px(T::S20))
+            .bg(T::color(T::HEADER))
+            .border(px(T::BORDER_WIDTH))
+            .border_color(T::color(T::CONTROL))
+            .rounded(px(T::POPOVER_RADIUS))
             .overflow_y_scroll()
             .p(px(T::S20))
             .flex()
@@ -1013,18 +1195,41 @@ impl Workbench {
                     Outcome::Abandoned => "已放弃",
                 }
             )))
+            .child(
+                label(
+                    self.workspace
+                        .spaces
+                        .iter()
+                        .find(|s| s.id == task.space)
+                        .map_or(String::new(), |s| format!("{} · {}", s.name, s.cwd)),
+                )
+                .truncate(),
+            )
+            .child(label("说明").mt(px(T::S8)))
             .child(task.description.clone());
+        view = view.child(
+            label(format!(
+                "验收标准 · {} / {} 项有机械证据",
+                task.acceptance
+                    .iter()
+                    .filter(|c| c.evidence.is_some())
+                    .count(),
+                task.acceptance.len()
+            ))
+            .mt(px(T::S12)),
+        );
         for criterion in &task.acceptance {
             view = view.child(
                 div()
                     .p(px(T::S8))
-                    .bg(T::color(T::TODO))
+                    .border_b(px(T::BORDER_WIDTH))
+                    .border_color(T::color(T::BORDER))
                     .child(format!(
                         "{}  {}",
                         if criterion.evidence.is_some() {
-                            "有机械证据"
+                            "☑"
                         } else {
-                            "无机械证据"
+                            "□"
                         },
                         criterion.description
                     ))
@@ -1033,7 +1238,7 @@ impl Workbench {
                     }),
             );
         }
-        view = view.child(label("关联会话（归属不随画面摆放改变）"));
+        view = view.child(label("关联会话").mt(px(T::S12)));
         for session in self
             .workspace
             .agent_sessions
@@ -1044,8 +1249,26 @@ impl Workbench {
             view = view.child(
                 button(
                     gpui::SharedString::from(format!("task-session-{}", session.id)),
-                    self.session_title(&session),
+                    "",
                 )
+                .h(px(T::TASK_ROW))
+                .justify_start()
+                .gap(px(T::S8))
+                .child(dot(self.group(&session)))
+                .child(
+                    div()
+                        .flex_1()
+                        .min_w_0()
+                        .flex()
+                        .flex_col()
+                        .child(div().truncate().child(self.session_title(&session)))
+                        .child(label(format!(
+                            "{} · {}",
+                            session.runtime.executable(),
+                            self.group(&session).label()
+                        ))),
+                )
+                .child(label("打开 →").text_color(T::color(T::LINK)))
                 .on_click(cx.listener(move |this, _, window, cx| {
                     this.task_detail = None;
                     this.enter_card(&session, window, cx);
@@ -1100,22 +1323,27 @@ impl Workbench {
                     }
                 })
             }))
-            .child(button("task-another", "再开一个会话").on_click({
-                let tid = tid.clone();
-                cx.listener(move |this, _, _, cx| {
-                    if let Some(tab) = this
-                        .workspace
-                        .tabs
-                        .iter()
-                        .find(|t| t.default_task.as_ref() == Some(&tid))
-                    {
-                        this.tab = Some(tab.id.clone());
-                        this.launch(true, Some(tid.clone()), cx);
-                    } else {
-                        this.launch(false, Some(tid.clone()), cx);
-                    }
-                })
-            }))
+            .child(
+                button("task-another", "再开一个会话")
+                    .bg(T::color(T::ACCENT))
+                    .text_color(T::color(T::WHITE))
+                    .on_click({
+                        let tid = tid.clone();
+                        cx.listener(move |this, _, _, cx| {
+                            if let Some(tab) = this
+                                .workspace
+                                .tabs
+                                .iter()
+                                .find(|t| t.default_task.as_ref() == Some(&tid))
+                            {
+                                this.tab = Some(tab.id.clone());
+                                this.launch(true, Some(tid.clone()), cx);
+                            } else {
+                                this.launch(false, Some(tid.clone()), cx);
+                            }
+                        })
+                    }),
+            )
             .child(
                 button("task-close", "返回画面").on_click(cx.listener(|this, _, _, cx| {
                     this.task_detail = None;
@@ -1762,9 +1990,13 @@ impl Workbench {
         }
     }
     fn settings_button(&self, cx: &Context<Self>) -> gpui::Stateful<gpui::Div> {
-        button("settings", "设置").on_click(
-            cx.listener(|this, _, window, cx| this.show_form(FormKind::Settings, window, cx)),
-        )
+        button("settings", "⚙")
+            .aria_label("设置")
+            .w(px(T::ROW))
+            .px(px(T::S4))
+            .on_click(
+                cx.listener(|this, _, window, cx| this.show_form(FormKind::Settings, window, cx)),
+            )
     }
     fn matches_filter(&self, s: &AgentSession) -> bool {
         self.filter_space
@@ -1773,13 +2005,19 @@ impl Workbench {
             && (!self.changed_only || changed_since(&self.workspace, s, self.since))
     }
     fn search_button(&self, cx: &Context<Self>) -> gpui::Stateful<gpui::Div> {
-        button("global-search", "搜索会话 / 待办 / 原话").on_click(cx.listener(
-            |this, _, window, cx| {
-                this.search_open = true;
-                window.focus(&this.search.focus_handle(cx), cx);
-                cx.notify();
-            },
-        ))
+        div()
+            .id("global-search")
+            .w(px(T::SEARCH_WIDTH))
+            .min_w(px(T::SEARCH_MIN))
+            .child(self.search.clone())
+            .on_mouse_down(
+                gpui::MouseButton::Left,
+                cx.listener(|this, _, window, cx| {
+                    this.search_open = true;
+                    window.focus(&this.search.focus_handle(cx), cx);
+                    cx.notify();
+                }),
+            )
     }
     fn navigation_filters(&self, cx: &Context<Self>) -> gpui::Div {
         let mut row = div().flex().flex_wrap().gap(px(T::S8)).child(
@@ -2029,7 +2267,7 @@ impl Workbench {
         let columns = ((available + T::S10) / (T::CARD_MIN + T::S10))
             .floor()
             .max(1.);
-        let card_width = (available - T::S10 * (columns - 1.)) / columns;
+        let card_width = ((available - T::S10 * (columns - 1.)) / columns).floor();
         let unstarted: Vec<_> = self
             .workspace
             .tasks
@@ -2204,7 +2442,9 @@ impl Workbench {
                         "托管"
                     },
                     session.runtime.executable(),
-                    session.cwd,
+                    session_space(&self.workspace, &session)
+                        .and_then(|id| self.workspace.spaces.iter().find(|s| s.id == id))
+                        .map_or("外部", |s| s.name.as_str()),
                     if self
                         .workspace
                         .outcome_history
@@ -2542,6 +2782,7 @@ impl Workbench {
         let menu_id = id.to_owned();
         let more_id = id.to_owned();
         let close_id = id.to_owned();
+        let split_id = id.to_owned();
         let other_owner = pane.read(cx).has_other_owner();
         div()
             .id(gpui::SharedString::from(format!("pane-{id}")))
@@ -2602,7 +2843,19 @@ impl Workbench {
                     )
                     .when(hint.is_none(), |d| {
                         d.child(label(
-                            session.map(|s| s.runtime.executable()).unwrap_or("Shell"),
+                            session
+                                .map(|s| {
+                                    format!(
+                                        "{} · {}",
+                                        s.runtime.executable(),
+                                        age(self
+                                            .workspace
+                                            .content
+                                            .get(&s.id)
+                                            .map_or(s.updated, |c| c.updated))
+                                    )
+                                })
+                                .unwrap_or_else(|| "Shell".into()),
                         ))
                     })
                     .when(other_owner, |d| {
@@ -2646,7 +2899,23 @@ impl Workbench {
                         )
                     })
                     .child(
+                        button(gpui::SharedString::from(format!("split-pane-{id}")), "◫")
+                            .aria_label("分屏")
+                            .w(px(T::ICON_WIDTH))
+                            .h(px(T::ICON_HEIGHT))
+                            .px(px(T::S2))
+                            .on_click(cx.listener(move |this, event: &gpui::ClickEvent, _, cx| {
+                                this.menu = Some(PaneMenu {
+                                    terminal: split_id.clone(),
+                                    position: event.position(),
+                                    page: MenuPage::Main,
+                                });
+                                cx.notify();
+                            })),
+                    )
+                    .child(
                         button(gpui::SharedString::from(format!("menu-{id}")), "⋯")
+                            .aria_label("画面菜单")
                             .h(px(T::ICON_HEIGHT))
                             .px(px(T::S6))
                             .on_click(cx.listener(move |this, event: &gpui::ClickEvent, _, cx| {
@@ -2658,9 +2927,9 @@ impl Workbench {
                                 cx.notify();
                             })),
                     )
-                    .child(label(pane.read(cx).connection_label()))
                     .child(
                         button(gpui::SharedString::from(format!("close-pane-{id}")), "×")
+                            .aria_label("关闭画面")
                             .h(px(T::ICON_HEIGHT))
                             .px(px(T::S6))
                             .on_click(
@@ -3101,49 +3370,54 @@ impl Render for Workbench {
             .find(|s| s.id == self.space)
             .map(|s| s.name.as_str())
             .unwrap_or("工作空间");
-        root =
-            root.child(
-                div()
-                    .h(px(T::TOP))
-                    .flex_shrink_0()
-                    .px(px(T::S14))
-                    .flex()
-                    .items_center()
-                    .gap(px(T::S16))
-                    .bg(T::color(T::PANEL))
-                    .border_b(px(T::BORDER_WIDTH))
-                    .border_color(T::color(T::BORDER))
-                    .child(
-                        div()
-                            .size(px(T::LOGO))
-                            .rounded(px(T::CHIP_RADIUS))
-                            .bg(T::color(T::ACCENT)),
-                    )
-                    .child(
-                        div()
-                            .font_weight(gpui::FontWeight::SEMIBOLD)
-                            .child("Keepline"),
-                    )
-                    .child(label(format!("/ {space_name}")))
-                    .child(
-                        button("overview", "▦ 鸟瞰全部")
-                            .bg(T::color(T::RAISED))
-                            .on_click(cx.listener(|this, _, _, cx| {
-                                this.overview = true;
-                                this.sync_panes(cx);
-                                this.request(Request::Workspace, cx);
-                            })),
-                    )
-                    .child(div().flex_1())
-                    .child(self.settings_button(cx))
-                    .child(self.search_button(cx))
-                    .child(button("add-task", "＋ 新待办").on_click(cx.listener(
-                        |this, _, window, cx| this.show_form(FormKind::Task, window, cx),
-                    )))
-                    .child(button("refresh", "刷新").on_click(
-                        cx.listener(|this, _, _, cx| this.request(Request::Workspace, cx)),
-                    )),
-            );
+        root = root.child(
+            div()
+                .h(px(T::TOP))
+                .flex_shrink_0()
+                .px(px(T::S14))
+                .flex()
+                .items_center()
+                .gap(px(T::S16))
+                .bg(T::color(T::PANEL))
+                .border_b(px(T::BORDER_WIDTH))
+                .border_color(T::color(T::BORDER))
+                .child(
+                    div()
+                        .size(px(T::LOGO))
+                        .rounded(px(T::CHIP_RADIUS))
+                        .bg(T::color(T::ACCENT)),
+                )
+                .child(
+                    div()
+                        .font_weight(gpui::FontWeight::SEMIBOLD)
+                        .child("Keepline"),
+                )
+                .child(label(format!("/ {space_name}")))
+                .child(
+                    button("overview", "▦ 鸟瞰全部")
+                        .bg(T::color(T::RAISED))
+                        .on_click(cx.listener(|this, _, _, cx| {
+                            this.overview = true;
+                            this.sync_panes(cx);
+                            this.request(Request::Workspace, cx);
+                        })),
+                )
+                .child(self.search_button(cx))
+                .child(div().flex_1())
+                .child(button("add-task", "＋ 新待办").on_click(
+                    cx.listener(|this, _, window, cx| this.show_form(FormKind::Task, window, cx)),
+                ))
+                .child(self.settings_button(cx))
+                .child(
+                    button("refresh", "↻")
+                        .aria_label("刷新")
+                        .w(px(T::ROW))
+                        .px(px(T::S4))
+                        .on_click(
+                            cx.listener(|this, _, _, cx| this.request(Request::Workspace, cx)),
+                        ),
+                ),
+        );
         let mut sidebar = div()
             .id("sidebar")
             .w(px(T::SIDEBAR))
@@ -3181,27 +3455,39 @@ impl Render for Workbench {
                 .filter(|s| s.outcome.needs_review(now()) && self.group(s) == Group::Error)
                 .count();
             sidebar = sidebar.child(
-                button(
-                    gpui::SharedString::from(format!("space-{id}")),
-                    space.name.clone(),
-                )
-                .justify_start()
-                .px(px(T::S8))
-                .border_0()
-                .when(active, |s| s.bg(T::color(T::RAISED)))
-                .child(div().flex_1())
-                .child(label(format!("等你 {waiting} / 错 {errors} · {count}")))
-                .on_click(cx.listener(move |this, _, _, cx| {
-                    this.space = id.clone();
-                    this.tab = this
-                        .workspace
-                        .tabs
-                        .iter()
-                        .find(|t| t.space == id && !t.closed)
-                        .map(|t| t.id.clone());
-                    this.sync_panes(cx);
-                    cx.notify();
-                })),
+                button(gpui::SharedString::from(format!("space-{id}")), "")
+                    .aria_label(space.name.clone())
+                    .gap(px(T::S8))
+                    .child(dot(if errors > 0 {
+                        Group::Error
+                    } else if waiting > 0 {
+                        Group::Waiting
+                    } else {
+                        sessions
+                            .iter()
+                            .find(|s| s.outcome.needs_review(now()))
+                            .map_or(Group::Stale, |s| self.group(s))
+                    }))
+                    .child(div().min_w_0().truncate().child(space.name.clone()))
+                    .justify_start()
+                    .px(px(T::S8))
+                    .border_0()
+                    .when(active, |s| s.bg(T::color(T::RAISED)))
+                    .child(div().flex_1())
+                    .when(waiting > 0, |d| d.child(badge(Group::Waiting, waiting)))
+                    .when(errors > 0, |d| d.child(badge(Group::Error, errors)))
+                    .child(label(count.to_string()).text_size(px(T::CHIP_SIZE)))
+                    .on_click(cx.listener(move |this, _, _, cx| {
+                        this.space = id.clone();
+                        this.tab = this
+                            .workspace
+                            .tabs
+                            .iter()
+                            .find(|t| t.space == id && !t.closed)
+                            .map(|t| t.id.clone());
+                        this.sync_panes(cx);
+                        cx.notify();
+                    })),
             );
         }
         sidebar = sidebar
@@ -3227,41 +3513,81 @@ impl Render for Workbench {
             .iter()
             .filter(|t| t.space == self.space)
         {
-            let id = task.id.clone();
-            sidebar = sidebar
-                .child(
-                    button(
-                        gpui::SharedString::from(format!("task-{id}")),
-                        format!(
-                            "{} · {}",
-                            task.title,
-                            outcome_label(
-                                self.workspace
-                                    .task_outcomes
-                                    .get(&task.id)
-                                    .unwrap_or(&Outcome::Open)
-                            )
-                        ),
-                    )
-                    .border_0()
-                    .justify_start()
+            let tid = task.id.clone();
+            let start = tid.clone();
+            let count = self
+                .workspace
+                .agent_sessions
+                .iter()
+                .filter(|s| s.task.as_ref() == Some(&tid))
+                .count();
+            let outcome = self
+                .workspace
+                .task_outcomes
+                .get(&tid)
+                .unwrap_or(&Outcome::Open);
+            let state = if *outcome == Outcome::Open {
+                if count == 0 {
+                    "未开始".into()
+                } else {
+                    format!("未完成 · {count} 个会话")
+                }
+            } else {
+                outcome_label(outcome)
+            };
+            sidebar = sidebar.child(
+                div()
+                    .id(gpui::SharedString::from(format!("task-{tid}")))
+                    .h(px(T::TASK_ROW))
                     .px(px(T::S8))
-                    .overflow_hidden()
+                    .flex()
+                    .items_center()
+                    .gap(px(T::S8))
+                    .rounded(px(T::CONTROL_RADIUS))
+                    .cursor_pointer()
+                    .hover(|s| s.bg(T::color(T::RAISED)))
+                    .child(
+                        div()
+                            .size(px(T::S8))
+                            .flex_shrink_0()
+                            .rounded_full()
+                            .border(px(T::BORDER_WIDTH))
+                            .border_color(T::color(T::LINK))
+                            .when(count > 0, |d| d.bg(T::color(T::ACCENT))),
+                    )
+                    .child(
+                        div()
+                            .flex_1()
+                            .min_w_0()
+                            .flex()
+                            .flex_col()
+                            .child(
+                                div()
+                                    .truncate()
+                                    .text_size(px(T::MONO_SIZE))
+                                    .child(task.title.clone()),
+                            )
+                            .child(label(state).text_size(px(T::CHIP_SIZE))),
+                    )
+                    .child(
+                        button(
+                            gpui::SharedString::from(format!("start-task-{tid}")),
+                            "开始",
+                        )
+                        .h(px(T::ICON_HEIGHT))
+                        .px(px(T::S6))
+                        .text_size(px(T::META))
+                        .text_color(T::color(T::LINK))
+                        .on_click(cx.listener(move |this, _, _, cx| {
+                            cx.stop_propagation();
+                            this.launch(false, Some(start.clone()), cx);
+                        })),
+                    )
                     .on_click(cx.listener(move |this, _, _, cx| {
-                        this.task_detail = Some(id.clone());
+                        this.task_detail = Some(tid.clone());
                         cx.notify();
                     })),
-                )
-                .child(
-                    button(
-                        gpui::SharedString::from(format!("start-task-{}", task.id)),
-                        "开始 →",
-                    )
-                    .on_click({
-                        let tid = task.id.clone();
-                        cx.listener(move |this, _, _, cx| this.launch(false, Some(tid.clone()), cx))
-                    }),
-                );
+            );
         }
         let needs: Vec<_> = self
             .workspace
@@ -3295,7 +3621,25 @@ impl Render for Workbench {
                     .cursor_pointer()
                     .hover(|s| s.bg(T::color(T::RAISED)))
                     .child(dot(g))
-                    .child(div().truncate().child(self.session_title(session)))
+                    .child(
+                        div()
+                            .flex_1()
+                            .min_w_0()
+                            .truncate()
+                            .text_size(px(T::MONO_SIZE))
+                            .child(self.session_title(session)),
+                    )
+                    .child(
+                        label(
+                            session_space(&self.workspace, session)
+                                .and_then(|id| self.workspace.spaces.iter().find(|p| p.id == id))
+                                .map(|p| p.name.clone())
+                                .unwrap_or_else(|| "外部".into()),
+                        )
+                        .text_size(px(T::CHIP_SIZE))
+                        .max_w(px(T::SIDEBAR / T::S4))
+                        .truncate(),
+                    )
                     .on_click(
                         cx.listener(move |this, _, window, cx| this.enter_card(&open, window, cx)),
                     ),
@@ -3339,52 +3683,41 @@ impl Render for Workbench {
         {
             let id = tab.id.clone();
             let active = Some(&id) == self.tab.as_ref();
+            let ids = self.workspace.tab_terminals(&id);
+            let needs: Vec<_> = self
+                .workspace
+                .agent_sessions
+                .iter()
+                .filter(|s| {
+                    s.current
+                        && s.terminal.as_ref().is_some_and(|id| ids.contains(id))
+                        && s.outcome.needs_review(now())
+                        && matches!(self.group(s), Group::Waiting | Group::Error)
+                })
+                .collect();
+            let group = needs.first().map(|s| self.group(s));
             tabs = tabs.child(
-                button(
-                    gpui::SharedString::from(format!("tab-{id}")),
-                    format!(
-                        "{}{}",
-                        if tab.default_task.is_some() {
-                            "☑ "
-                        } else {
-                            ""
-                        },
-                        format_args!("{}{}", self.workspace.tab_title(tab), {
-                            let ids = self.workspace.tab_terminals(&tab.id);
-                            let count = self
-                                .workspace
-                                .agent_sessions
-                                .iter()
-                                .filter(|s| {
-                                    s.current
-                                        && s.terminal.as_ref().is_some_and(|t| ids.contains(t))
-                                        && s.outcome.needs_review(now())
-                                        && matches!(self.group(s), Group::Waiting | Group::Error)
-                                })
-                                .count();
-                            if count > 0 {
-                                format!(" · 需要你 {count}")
-                            } else {
-                                String::new()
-                            }
-                        })
-                    ),
-                )
-                .h(px(T::TABS))
-                .border_0()
-                .rounded_none()
-                .font_family(T::mono(cx).family)
-                .text_size(px(T::MONO_SIZE))
-                .text_color(T::color(if active { T::PRIMARY } else { T::SECONDARY }))
-                .when(active, |s| s.bg(T::color(T::RAISED)))
-                .on_click(cx.listener(move |this, _, window, cx| {
-                    this.tab = Some(id.clone());
-                    this.sync_panes(cx);
-                    if let Some(pane) = this.panes.values().next() {
-                        window.focus(&pane.focus_handle(cx), cx);
-                    }
-                    cx.notify();
-                })),
+                button(gpui::SharedString::from(format!("tab-{id}")), "")
+                    .aria_label(self.workspace.tab_title(tab))
+                    .h(px(T::TABS))
+                    .gap(px(T::S6))
+                    .border_0()
+                    .rounded_none()
+                    .font_family(T::mono(cx).family)
+                    .text_size(px(T::MONO_SIZE))
+                    .text_color(T::color(if active { T::PRIMARY } else { T::SECONDARY }))
+                    .when(active, |d| d.bg(T::color(T::RAISED)))
+                    .when(tab.default_task.is_some(), |d| d.child(task_icon()))
+                    .child(self.workspace.tab_title(tab))
+                    .when_some(group, |d, g| d.child(dot(g)).child(badge(g, needs.len())))
+                    .on_click(cx.listener(move |this, _, window, cx| {
+                        this.tab = Some(id.clone());
+                        this.sync_panes(cx);
+                        if let Some(p) = this.focused.as_ref().and_then(|id| this.panes.get(id)) {
+                            window.focus(&p.focus_handle(cx), cx);
+                        }
+                        cx.notify();
+                    })),
             );
         }
         tabs = tabs
@@ -3441,53 +3774,83 @@ impl Render for Workbench {
         }
         if let Some(form) = &self.form {
             let mut panel = div()
+                .id("editor-form")
                 .m(px(T::S20))
                 .p(px(T::S20))
-                .max_w(px(T::FORM_WIDTH))
+                .w(px(T::FORM_WIDTH))
+                .max_w_full()
+                .overflow_y_scroll()
+                .border(px(T::BORDER_WIDTH))
+                .border_color(T::color(T::CONTROL))
                 .rounded(px(T::POPOVER_RADIUS))
                 .bg(T::color(T::HEADER))
                 .flex()
                 .flex_col()
-                .gap(px(T::S16));
-            for field in &form.fields {
+                .gap(px(T::S16))
+                .child(div().text_size(px(T::FORM_TITLE)).child(match form.kind {
+                    FormKind::Task if self.editing_task.is_some() => "编辑待办",
+                    FormKind::Task => "新建待办",
+                    FormKind::Settings => "设置",
+                    FormKind::Space => "新建空间",
+                    _ => "暂存",
+                }));
+            for (index, field) in form.fields.iter().enumerate() {
                 panel = panel.child(field.clone());
-            }
-            if matches!(form.kind, FormKind::Task) {
-                for space in &self.workspace.spaces {
-                    let sid = space.id.clone();
+                if matches!(form.kind, FormKind::Task) && index == 0 {
+                    let mut projects = div().flex().flex_wrap().gap(px(T::S6));
+                    for space in &self.workspace.spaces {
+                        let sid = space.id.clone();
+                        projects = projects.child(
+                            button(
+                                gpui::SharedString::from(format!("project-{sid}")),
+                                space.name.clone(),
+                            )
+                            .when(form.space == sid, |d| {
+                                d.bg(T::color(T::CHIP)).text_color(T::color(T::LINK))
+                            })
+                            .on_click(cx.listener(
+                                move |this, _, _, cx| {
+                                    if let Some(f) = &mut this.form {
+                                        f.space = sid.clone();
+                                    }
+                                    cx.notify();
+                                },
+                            )),
+                        );
+                    }
                     panel = panel.child(
-                        button(
-                            gpui::SharedString::from(format!("project-{sid}")),
-                            format!(
-                                "{} {}",
-                                if form.space == sid { "●" } else { "○" },
-                                space.name
-                            ),
-                        )
-                        .on_click(cx.listener(move |this, _, _, cx| {
-                            if let Some(f) = &mut this.form {
-                                f.space = sid.clone();
-                            }
-                            cx.notify();
-                        })),
+                        div()
+                            .flex()
+                            .flex_col()
+                            .gap(px(T::S6))
+                            .child(label("项目"))
+                            .child(projects),
                     );
                 }
             }
             if matches!(form.kind, FormKind::Task | FormKind::Settings) {
+                let mut agents = div().flex().gap(px(T::S8));
+                for agent in [Agent::Codex, Agent::Claude] {
+                    agents = agents.child(
+                        button(agent.executable(), agent.executable())
+                            .when(form.agent == agent, |d| {
+                                d.bg(T::color(T::CHIP)).text_color(T::color(T::LINK))
+                            })
+                            .on_click(cx.listener(move |this, _, _, cx| {
+                                if let Some(f) = &mut this.form {
+                                    f.agent = agent;
+                                }
+                                cx.notify();
+                            })),
+                    );
+                }
                 panel = panel.child(
-                    button(
-                        "agent",
-                        format!("Agent：{}（点击切换）", form.agent.executable()),
-                    )
-                    .on_click(cx.listener(|this, _, _, cx| {
-                        if let Some(form) = &mut this.form {
-                            form.agent = match form.agent {
-                                Agent::Codex => Agent::Claude,
-                                Agent::Claude => Agent::Codex,
-                            };
-                        }
-                        cx.notify();
-                    })),
+                    div()
+                        .flex()
+                        .flex_col()
+                        .gap(px(T::S6))
+                        .child(label("默认 Agent"))
+                        .child(agents),
                 );
             }
             if matches!(form.kind, FormKind::Settings) {
@@ -3515,37 +3878,40 @@ impl Render for Workbench {
                     panel = panel.child(label(status.0.clone()));
                 }
             }
-            main =
-                main.child(
-                    panel.child(
-                        div()
-                            .flex()
-                            .gap(px(T::S8))
-                            .child(
-                                button(
-                                    "save",
-                                    if matches!(form.kind, FormKind::Task) {
-                                        "保存为待办"
-                                    } else {
-                                        "保存"
-                                    },
-                                )
-                                .bg(T::color(T::ACCENT))
-                                .on_click(cx.listener(|this, _, _, cx| this.save_form(false, cx))),
-                            )
-                            .when(matches!(form.kind, FormKind::Task), |d| {
-                                d.child(button("save-start", "保存并开始").on_click(
-                                    cx.listener(|this, _, _, cx| this.save_form(true, cx)),
-                                ))
-                            })
-                            .child(button("cancel", "取消").on_click(cx.listener(
-                                |this, _, _, cx| {
-                                    this.form = None;
-                                    cx.notify();
+            main = main.child(
+                panel.child(
+                    div()
+                        .flex()
+                        .gap(px(T::S8))
+                        .child(
+                            button(
+                                "save",
+                                if matches!(form.kind, FormKind::Task) {
+                                    "保存为待办"
+                                } else {
+                                    "保存"
                                 },
-                            ))),
-                    ),
-                );
+                            )
+                            .on_click(cx.listener(|this, _, _, cx| this.save_form(false, cx))),
+                        )
+                        .when(matches!(form.kind, FormKind::Task), |d| {
+                            d.child(
+                                button("save-start", "保存并开始")
+                                    .bg(T::color(T::ACCENT))
+                                    .text_color(T::color(T::WHITE))
+                                    .on_click(
+                                        cx.listener(|this, _, _, cx| this.save_form(true, cx)),
+                                    ),
+                            )
+                        })
+                        .child(
+                            button("cancel", "取消").on_click(cx.listener(|this, _, _, cx| {
+                                this.form = None;
+                                cx.notify();
+                            })),
+                        ),
+                ),
+            );
         } else if let Some(task) = self
             .task_detail
             .as_ref()

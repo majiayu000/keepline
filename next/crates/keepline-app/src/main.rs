@@ -327,7 +327,37 @@ fn run() -> io::Result<()> {
         }
         #[cfg(feature = "visual-test")]
         if let (Ok(handle), Some(directory)) = (&result, evidence.clone())
-            && std::env::var_os("KEEPLINE_SPLIT_EVIDENCE").is_none() {
+            && std::env::var_os("KEEPLINE_PAGE_EVIDENCE").is_some()
+        {
+            let handle = *handle;
+            cx.spawn(async move |cx| {
+                cx.background_executor().timer(Duration::from_secs(2)).await;
+                handle.update(cx, |_,window,_| {
+                    if window.viewport_size().height < px(theme::Theme::WINDOW_HEIGHT) {window.toggle_simple_fullscreen();}
+                }).unwrap();
+                cx.background_executor().timer(Duration::from_secs(1)).await;
+                std::fs::create_dir_all(&directory).unwrap();
+                for name in ["Main","Overview","TodoNew","TodoDetail","TodoStart","Cleanup","Menubar"] {
+                    handle.update(cx, |view,window,cx| {
+                        window.resize(size(px(theme::Theme::WINDOW_WIDTH),px(theme::Theme::WINDOW_HEIGHT)));
+                        window.bounds_changed(cx);view.visual_page(name,window,cx);
+                    }).unwrap();
+                    cx.background_executor().timer(Duration::from_secs(1)).await;
+                    cx.update_window(handle.into(), |_,window,app| {
+                        assert_eq!(window.viewport_size(), size(px(theme::Theme::WINDOW_WIDTH),px(theme::Theme::WINDOW_HEIGHT)));
+                        window.refresh(); window.draw(app).clear(app);
+                        let path = directory.join(format!("{}-native.png",name.to_lowercase()));
+                        if name == "Menubar" {desktop::snapshot(&path);} else {window.render_to_image().unwrap().save(path).unwrap();}
+                        eprintln!("{name}: native viewport {:?}, scale {}",window.viewport_size(),window.scale_factor());
+                    }).unwrap();
+                }
+                cx.update(|cx|cx.quit());
+            }).detach();
+        }
+        #[cfg(feature = "visual-test")]
+        if let (Ok(handle), Some(directory)) = (&result, evidence.clone())
+            && std::env::var_os("KEEPLINE_SPLIT_EVIDENCE").is_none()
+            && std::env::var_os("KEEPLINE_PAGE_EVIDENCE").is_none() {
             let handle = *handle;
             cx.spawn(async move |cx| {
                 // Test-only single shots: native renderer output, no desktop capture permission.
