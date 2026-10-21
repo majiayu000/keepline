@@ -1,0 +1,15 @@
+{
+  "root": "/private/tmp/kl-r14-cq3gc9te",
+  "scenarios": {
+    "new": {
+      "old": "01a15d46-d770-7fd0-a007-8015a9897e75",
+      "new": "01a15d47-8d6a-7501-86fc-c20af0afd952",
+      "old_correct": true,
+      "took_over": true,
+      "correct": true,
+      "old_not_current": true,
+      "idle_panes_unbound": true
+    }
+  },
+  "user_prompts": 2
+}
