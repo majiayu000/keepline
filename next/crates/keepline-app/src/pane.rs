@@ -389,22 +389,6 @@ impl Pane {
         cx.stop_propagation();
         cx.notify();
     }
-    pub fn connection_label(&self) -> &'static str {
-        let Ok(s) = self.connection.state.lock() else {
-            return "连接错误";
-        };
-        if s.error.is_some() {
-            "连接错误"
-        } else if s.ended {
-            "已退出"
-        } else if s.vt.is_none() {
-            "正在连接"
-        } else if s.writable {
-            "已连接"
-        } else {
-            "只读"
-        }
-    }
     pub fn has_other_owner(&self) -> bool {
         self.connection
             .state

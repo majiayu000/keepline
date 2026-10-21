@@ -1,0 +1,24 @@
+R14 · 2026-10-21
+Rust 1.95.0 / rustfmt 1.9.0-stable / Zig 0.16.0 / LIBGHOSTTY_VT_SYS_OPTIMIZE=ReleaseFast
+
+cargo fmt --all --check: exit 0
+cargo clippy --workspace --all-targets -- -D warnings: exit 0
+
+cargo test --workspace (after interaction/form fixes, before final style-only refinements):
+test result: ok. 24 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.01s
+test result: ok. 20 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.01s
+test result: ok. 26 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.40s
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+test result: ok. 21 passed; 0 failed; 1 ignored; 0 measured; 0 filtered out; finished in 43.20s
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+Final style/activity-time refinements: cargo test -p keepline-app: 24 passed; 0 failed
+Final cargo build -p keepline-app --features visual-test: exit 0
+
+Upstream GPUI deprecated Cocoa warnings remain dependency-only. visual-test binary warns unused screen::capture (used by terminal_reference example); normal workspace strict clippy passes. No new allow added.
+
+Artifact verification: 14 native PNG dimensions validated; 7 reference files unchanged.
+Index browser check: all images decode, 7 groups, before/after switching passed.
+Fixture script and both CJS scripts syntax checks passed; git diff --check passed.
+Cleanup: own visual-test client and final fixture daemon/PTYs stopped; no user runtime touched.
