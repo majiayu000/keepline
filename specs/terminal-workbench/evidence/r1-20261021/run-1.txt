@@ -1,0 +1,100 @@
+    Finished `test` profile [unoptimized] target(s) in 4.06s
+     Running unittests src/main.rs (next/target/debug/deps/keepline_app-fad7ba0087da7b67)
+running 15 tests
+test screen::tests::ime_offsets_are_utf16_not_utf8_and_never_split_surrogates ... ok
+test keyboard::tests::kitty_uses_terminal_negotiated_mode ... ok
+test workbench::tests::interrupted_terminals_never_enter_the_connection_creation_list ... ok
+test workbench::tests::closing_interrupted_pane_only_removes_its_placement ... ok
+test workbench::tests::navigation_uses_live_identity_and_path_boundaries ... ok
+test screen::tests::cell_aspect_ratio_stays_within_five_percent_of_ghostty_for_the_resolved_font ... ok
+test keyboard::tests::legacy_control_and_alt_keys ... ok
+test desktop::tests::notifications_only_follow_new_attention_facts_and_opt_in ... ok
+test workbench::tests::reopening_full_tab_replaces_exact_slot_and_preserves_history ... ok
+test lifecycle::tests::duplicate_forwards_and_lock_is_reusable ... ok
+test lifecycle::tests::old_hosts_are_reported_by_one_handshake_without_mutation ... ok
+test screen::tests::sgr_decorations_and_faint_survive_capture ... ok
+test screen::tests::hidden_cursor_keeps_ime_anchor_and_missing_position_keeps_last_known ... ok
+test screen::tests::captured_cjk_occupies_two_columns_and_combining_text_stays_separate ... ok
+test screen::tests::decscusr_shape_reaches_the_painter ... ok
+test result: ok. 15 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.01s
+     Running unittests src/lib.rs (next/target/debug/deps/keepline_core-d301364b9ffddad7)
+running 18 tests
+test model::identity_tests::one_cli_identity_cannot_be_current_in_two_terminals ... ok
+test content::tests::self_report_never_becomes_done ... ok
+test content::grouping_tests::grouping_priority_and_deferred_expiry ... ok
+test model::tests::cross_space_placement_does_not_reassign_work_and_close_preserves_layout ... ok
+test layout::tests::nested_split_close_preserves_sibling_ratio_and_replace_keeps_geometry ... ok
+test model::tests::codex_prefill_and_resume_use_no_daemon_and_preserve_shell_quoting ... ok
+test model::tests::log_refresh_never_reopens_or_reassigns_an_existing_conversation ... ok
+test layout::tests::eight_and_more_panes_have_no_fixed_cap ... ok
+test model::tests::task_prompt_and_per_criterion_evidence_are_independent ... ok
+test model::tests::task_start_reuses_running_shell_and_unlink_is_consumed_once ... ok
+test model::tests::outcomes_expire_once_preserve_history_and_leave_processes_alone ... ok
+test model::tests::sequential_conversations_keep_independent_tasks_and_outcomes ... ok
+test model::tests::settings_reject_invalid_intervals_and_drive_stale_boundary ... ok
+test model::tests::task_edit_preserves_individual_criteria_and_tab_title_tracks_ownership ... ok
+test terminal::tests::truncated_snapshot_is_not_a_ready_terminal ... ok
+test terminal::tests::search_finds_scrollback_and_wide_graphemes_without_spacer_gaps ... ok
+test terminal::tests::snapshot_preserves_incomplete_utf8_and_escape_sequence ... ok
+test terminal::tests::untrusted_osc_and_malformed_bytes_remain_terminal_data ... ok
+test result: ok. 18 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+     Running unittests src/lib.rs (next/target/debug/deps/keeplined-54c7b738c4246e8b)
+running 24 tests
+test content::tests::error_cards_use_message_text_not_event_json ... ok
+test content::tests::codex_interactive_entrypoint_is_not_a_brand_whitelist ... ok
+test file_events::tests::overflow_keeps_only_affected_subtree_and_does_not_latch ... ok
+test content::tests::questions_show_text_and_choices_instead_of_json ... ok
+test content::tests::tail_only_user_is_an_addition_not_a_fabricated_first_request ... ok
+test recognition::tests::log_identity_alone_does_not_bind_by_directory_and_ambiguity_stays_unbound ... ok
+test content::tests::genuine_words_survive_wrappers_pastes_and_duplicate_injection ... ok
+test content::tests::interactive_metadata_and_automation_override_are_not_title_blacklists ... ok
+test content::tests::user_dedup_additions_and_claims_are_not_receipts ... ok
+test content::tests::injected_messages_and_quoted_completion_are_not_user_intent_or_claims ... ok
+test content::tests::claude_edit_permission_and_stop ... ok
+test content::tests::real_exit_receipts_and_async_correlation_survive_restart ... ok
+test content::tests::patch_commit_and_failed_test_are_sourced ... ok
+test content::tests::source_rows_are_idempotent ... ok
+test log_index::tests::changed_content_rules_reseed_once_without_a_directory_walk ... ok
+test log_index::tests::original_request_beyond_16k_is_read_once_within_bounded_prefix ... ok
+test log_index::tests::initial_index_skips_large_bodies_and_never_rewalks_completed_directories ... ok
+test log_index::tests::cursors_survive_restart_partial_lines_truncation_and_inode_replacement ... ok
+test log_index::tests::bounded_tail_and_atomic_cursor_content_survive_restart ... ok
+test store::milestone_tests::client_departure_survives_reopen_without_changing_sessions ... ok
+test store::milestone_tests::task_outcome_and_pending_override_survive_reopen ... ok
+test store::milestone_tests::settings_and_notification_receipts_survive_restart ... ok
+test host::recognition_tests::must_scan_repairs_only_event_subtree_and_publishes_status_then_continues ... ok
+test log_index::tests::fsevents_delivers_new_files_and_replays_changes_after_restart ... ok
+test result: ok. 24 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.38s
+     Running unittests src/main.rs (next/target/debug/deps/keeplined-0b1e1287720b7a7c)
+running 0 tests
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+     Running tests/managed_session.rs (next/target/debug/deps/managed_session-2650d5e37913ae4c)
+running 19 tests
+test daemon_fixture ... ignored, subprocess daemon entry for integration fixtures
+test a_second_daemon_cannot_replace_the_live_socket ... ok
+test claude_open_files_bind_same_cwd_without_hooks_and_append_without_probes ... ok
+test external_content_updates_without_probes_saves_full_quotes_and_reopens_on_new_turn ... ok
+40 idle PTYs: CPU 0.0000%, disk read 0 B, write 0 B, Unix syscalls 0
+test forty_idle_terminals_have_no_periodic_background_io ... ok
+4 agents / 30s: daemon CPU 0.4857s (1.566%), ps spawns 0, lsof spawns 0, incremental bytes 87932
+test four_agents_write_for_thirty_seconds_without_repeated_process_probes ... ok
+test stop_agent_refuses_an_unidentified_shell ... ok
+test input_control_follows_live_connections_without_takeover_or_polling ... ok
+test reconnect_input_resize_and_takeover_are_real_pty_operations ... ok
+test launch_is_durable_and_deduplicated_and_tab_close_is_not_stop ... ok
+test process_exit_does_not_complete_user_work ... ok
+test split_directory_comes_from_the_live_shell_after_cd ... ok
+test nested_split_tree_and_ratios_survive_store_reopen ... ok
+test host_death_interrupts_pty_and_restart_preserves_no_fake_running_process ... ok
+test large_unicode_input_survives_ack_disconnect_without_replay ... ok
+test stop_agent_clears_current_without_stopping_shell_or_changing_outcome ... ok
+test manually_entered_unbound_codex_gets_a_hint_and_exit_clears_it ... ok
+test two_cli_conversations_in_one_real_pty_keep_separate_ownership_after_restart ... ok
+test recognition_status_stream_recovers_after_log_root_is_rebuilt ... ok
+test result: ok. 18 passed; 0 failed; 1 ignored; 0 measured; 0 filtered out; finished in 44.61s
+   Doc-tests keepline_core
+running 0 tests
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+   Doc-tests keeplined
+running 0 tests
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s

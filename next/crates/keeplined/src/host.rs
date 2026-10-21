@@ -669,6 +669,32 @@ fn event_scopes(
     }
     restart
 }
+// Bootstrap can establish ownership without any queued FSEvents batch. Install
+// vnode listeners before the first blocking receive, too: open writers need not
+// close their files to deliver FSEvents. Register then read closes the append race.
+fn follow_associated(
+    shared: &Shared,
+    index: &mut crate::log_index::Index,
+    association: &mut Association,
+    watch: &crate::file_events::Watch,
+) -> io::Result<()> {
+    let associated = lock(shared)?
+        .workspace
+        .agent_sessions
+        .iter()
+        .filter(|s| s.current)
+        .map(|s| std::path::PathBuf::from(&s.transcript))
+        .collect::<Vec<_>>();
+    // Register first, then close the read/register race using the existing cursor.
+    for path in watch.follow(&associated)? {
+        if let Some(runtime) = index.runtime(&path) {
+            if let Some(t) = index.update(runtime, &path, true)? {
+                association.apply(shared, index, &[t])?;
+            }
+        }
+    }
+    Ok(())
+}
 fn start_subscription(shared: Shared, mut index: crate::log_index::Index) {
     thread::spawn(move || {
         let result = (|| -> io::Result<()> {
@@ -684,6 +710,7 @@ fn start_subscription(shared: Shared, mut index: crate::log_index::Index) {
             publish_recognition(&shared, &index, RecognitionPhase::Healthy, "识别正常", &[])?;
             let mut association = Association::default();
             association.apply(&shared, &index, &index.cached()?)?;
+            follow_associated(&shared, &mut index, &mut association, &watch)?;
             loop {
                 let mut batch = watch.rx.recv().map_err(io::Error::other)?;
                 // A single bounded burst window starts ONLY after a native event arrives.
@@ -745,21 +772,7 @@ fn start_subscription(shared: Shared, mut index: crate::log_index::Index) {
                 if let Err(error) = association.apply(&shared, &index, &transcripts) {
                     eprintln!("Agent association deferred: {error}");
                 }
-                let associated = lock(&shared)?
-                    .workspace
-                    .agent_sessions
-                    .iter()
-                    .filter(|s| s.current)
-                    .map(|s| std::path::PathBuf::from(&s.transcript))
-                    .collect::<Vec<_>>();
-                // Register first, then close the read/register race using the existing cursor.
-                for path in watch.follow(&associated)? {
-                    if let Some(runtime) = index.runtime(&path) {
-                        if let Some(t) = index.update(runtime, &path, true)? {
-                            association.apply(&shared, &index, &[t])?;
-                        }
-                    }
-                }
+                follow_associated(&shared, &mut index, &mut association, &watch)?;
                 // Only a real event drives retries of an earlier incomplete subtree.
                 let pending = index.recovery_scopes()?;
                 if !pending.is_empty() {

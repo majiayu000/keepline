@@ -4,22 +4,51 @@ use std::{
     os::unix::net::UnixStream,
     path::PathBuf,
     process::{Child, Command, Stdio},
+    sync::{RwLock, RwLockReadGuard, RwLockWriteGuard},
     time::{Duration, Instant},
 };
 
+// Functional fixtures still run in parallel. Resource measurements exclusively
+// own the fixture lane so 40-PTY setup, SQLite fsync and FSEvents recovery from
+// sibling tests cannot contaminate their CPU/I/O window. This is test-only:
+// the measured PID remains the isolated daemon, never the harness or host CPU.
+static FIXTURES: RwLock<()> = RwLock::new(());
+enum FixtureLease {
+    Shared {
+        _guard: RwLockReadGuard<'static, ()>,
+    },
+    Measured {
+        _guard: RwLockWriteGuard<'static, ()>,
+    },
+}
 struct Host {
     child: Child,
     root: PathBuf,
+    _lease: FixtureLease,
 }
 impl Host {
     fn start() -> Self {
+        Self::with_lease(FixtureLease::Shared {
+            _guard: FIXTURES.read().unwrap_or_else(|e| e.into_inner()),
+        })
+    }
+    fn measured() -> Self {
+        Self::with_lease(FixtureLease::Measured {
+            _guard: FIXTURES.write().unwrap_or_else(|e| e.into_inner()),
+        })
+    }
+    fn with_lease(lease: FixtureLease) -> Self {
         let root = std::env::temp_dir().join(format!("kl-{}", uuid::Uuid::new_v4().simple()));
         let child = fixture_command(&root)
             .stdout(Stdio::null())
             .stderr(Stdio::inherit())
             .spawn()
             .unwrap();
-        let h = Self { child, root };
+        let h = Self {
+            child,
+            root,
+            _lease: lease,
+        };
         let until = Instant::now() + Duration::from_secs(10);
         while !h.socket().exists() {
             assert!(Instant::now() < until);
@@ -497,7 +526,7 @@ fn daemon_fixture() {
 
 #[test]
 fn forty_idle_terminals_have_no_periodic_background_io() {
-    let h = Host::start();
+    let h = Host::measured();
     h.setup();
     let logs = h.root.join("logs/codex");
     fs::create_dir_all(&logs).unwrap();
@@ -653,7 +682,7 @@ fn usage(pid: u32) -> libc::rusage_info_v2 {
 }
 #[test]
 fn four_agents_write_for_thirty_seconds_without_repeated_process_probes() {
-    let h = Host::start();
+    let h = Host::measured();
     h.setup();
     let logs = h.root.join("logs/codex");
     fs::create_dir_all(&logs).unwrap();
@@ -1265,7 +1294,9 @@ fn claude_open_files_bind_same_cwd_without_hooks_and_append_without_probes() {
         ))
         .unwrap();
     }
-    let deadline = Instant::now() + Duration::from_secs(10);
+    // Wall-clock delivery may wait behind concurrent fixture startup and native
+    // FSEvents dispatch. Keep a finite 30s bound; do not relax identity/content checks.
+    let deadline = Instant::now() + Duration::from_secs(30);
     loop {
         let w = h.workspace();
         if (0..2).all(|i| {
@@ -1292,7 +1323,7 @@ fn claude_open_files_bind_same_cwd_without_hooks_and_append_without_probes() {
     ] {
         writeln!(file, "{row}").unwrap();
     }
-    let deadline = Instant::now() + Duration::from_secs(10);
+    let deadline = Instant::now() + Duration::from_secs(30);
     loop {
         let w = h.workspace();
         let agent = w.current_agent("claude-pty-0").unwrap();
@@ -1310,7 +1341,13 @@ fn claude_open_files_bind_same_cwd_without_hooks_and_append_without_probes() {
             assert!(!w.content[&other.id].here().done.contains("src/main.rs"));
             break;
         }
-        assert!(Instant::now() < deadline);
+        assert!(
+            Instant::now() < deadline,
+            "Claude append timed out: recognition={:?}, content={:?}, file_bytes={}",
+            recognition(&h),
+            w.content.get(&agent.id),
+            fs::metadata(&path).unwrap().len()
+        );
         std::thread::sleep(Duration::from_millis(50));
     }
     let after = recognition(&h).metrics;
