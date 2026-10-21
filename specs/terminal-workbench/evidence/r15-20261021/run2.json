@@ -1,0 +1,39 @@
+{
+  "root": "/private/tmp/kl-r14-iuhiz3e5",
+  "scenarios": {
+    "same_cwd": {
+      "bound": true,
+      "p0": "01a15d43-4f6d-7812-b796-8d55e8f158c7",
+      "p1": "01a15d43-5516-7922-b350-dc94e68ffe01",
+      "correct": true
+    },
+    "same_moment": {
+      "bound": true,
+      "correct": true
+    },
+    "new": {
+      "took_over": false,
+      "correct": false,
+      "old_not_current": false
+    },
+    "identical": {
+      "unbound_while_identical": true,
+      "hints_while_identical": {
+        "p5": "仅显示状态：空闲；看对话内容请用 codex --no-daemon",
+        "p4": "仅显示状态：空闲；看对话内容请用 codex --no-daemon"
+      },
+      "bound_after_follow_up": true,
+      "correct": true
+    }
+  },
+  "exit_clears_current": true,
+  "user_prompts": 9,
+  "metrics": {
+    "ps_spawns": 17,
+    "lsof_spawns": 17,
+    "directories": 5,
+    "log_opens": 23,
+    "log_bytes": 518656,
+    "index_writes": 46
+  }
+}

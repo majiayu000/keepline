@@ -294,6 +294,18 @@ impl Index {
             .map_err(err)?
             .join("\n\n追加要求："))
     }
+    /// The newest user message only; screen association compares it, never stores it.
+    pub fn latest_user_text(&self, path: &str) -> io::Result<Option<String>> {
+        let mut q = self
+            .db
+            .prepare_cached("SELECT text FROM session_records WHERE path=?1 AND kind='user' ORDER BY at DESC,offset DESC,ordinal DESC LIMIT 1")
+            .map_err(err)?;
+        let mut rows = q.query([path]).map_err(err)?;
+        Ok(match rows.next().map_err(err)? {
+            Some(row) => Some(row.get(0).map_err(err)?),
+            None => None,
+        })
+    }
     pub fn card(&self, path: &str) -> io::Result<Option<keepline_core::content::Content>> {
         crate::content::card(&self.db, path)
     }
