@@ -403,3 +403,11 @@ R11 采用每字体/样式的有界 ASCII glyph 缓存（95×4），关闭终端
 ## R13 CI 一致性决定（2026-10-21）
 
 采用 Rust 1.95.0（rustfmt 1.9.0-stable）与 Zig 0.16.0 固定工具链，保留 core/app edition 2024、daemon edition 2021。CI 从 next 目录运行 cargo fmt，避免统一 --edition 覆盖 crate 配置；先 bootstrap 固定依赖，再对整个 workspace clippy -D warnings 与测试，防止默认成员漏掉客户端。只做等价 lint 修正与格式化，不引入全局 allow 或降级预算。成功门槛是这些本地 CI 命令全部 exit 0；远程 CI 未运行不能据本地通过推断。
+
+## R14 共享守护进程 Codex 关联决定（2026-10-21）
+
+用户确认修改第 373 行“不按标题猜关联”的旧决定。手动输入、未加 `--no-daemon` 的 Codex 改为三层关联，每层都只在结果唯一时绑定：
+1. `codex [选项] resume <UUID>` 参数精确绑定（node 包装进程和原生子进程只算一次）；`--last`、按名称恢复和 `fork` 都不算身份证据。
+2. 线程最近一条用户原话（去空白后至少 12 字，取前 160 字）必须完整出现在本终端屏幕的末尾 200 行，且线程与终端一一对应；进程 cwd 与日志 cwd 规范化后须一致。`/new` 只允许较新的线程接管，且新原话要和当前线程的原话不同。每条原话最多重看 5 次。
+3. 前两层都不唯一时不关联，只按 Codex 标题显示状态（Action Required → 需要你处理，盲文转圈符 → 工作中，其他 → 空闲），提示看对话内容请用 `--no-daemon`。带 `--no-daemon` 的进程不再提示。
+上游 openai/codex#44902 提供客户端身份后，删除第 2 层。调研见 [daemon-association-research](evidence/daemon-association-research-20261021.md)。
