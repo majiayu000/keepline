@@ -1,0 +1,3 @@
+[H[2J[38;5;244mDECSCUSR 6 (steady bar); cursor parked after the arrow ->[0m
+
+prompt> echo cursor-shape [3;27H[6 q

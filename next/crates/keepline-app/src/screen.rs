@@ -5,8 +5,42 @@ pub struct Run {
     pub text: String,
     pub fg: u32,
     pub bg: Option<u32>,
+    pub attrs: Attrs,
+}
+
+/// SGR attributes other than colors; a run breaks when any of them changes.
+#[derive(Clone, Copy, Debug, Default, PartialEq)]
+pub struct Attrs {
     pub bold: bool,
     pub italic: bool,
+    pub faint: bool,
+    pub invisible: bool,
+    pub strikethrough: bool,
+    pub overline: bool,
+    pub underline: Underline,
+    /// SGR 58; `None` draws the underline in the text color.
+    pub underline_color: Option<u32>,
+}
+
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub enum Underline {
+    #[default]
+    None,
+    Single,
+    Double,
+    Curly,
+    Dotted,
+    Dashed,
+}
+
+/// DECSCUSR shape as resolved by Ghostty (hollow when the terminal is unfocused).
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub enum CursorShape {
+    #[default]
+    Block,
+    BlockHollow,
+    Bar,
+    Underline,
 }
 
 #[derive(Default)]
@@ -14,6 +48,7 @@ pub struct Screen {
     pub rows: Vec<Vec<Run>>,
     pub cursor: Option<(u16, u16)>,
     pub cursor_visible: bool,
+    pub cursor_shape: CursorShape,
     pub background: u32,
 }
 
@@ -38,14 +73,12 @@ impl<'a> RowBuilder<'a> {
         text: &str,
         fg: u32,
         bg: Option<u32>,
-        bold: bool,
-        italic: bool,
+        attrs: Attrs,
     ) {
         if let Some(last) = self.row.last_mut()
             && last.fg == fg
             && last.bg == bg
-            && last.bold == bold
-            && last.italic == italic
+            && last.attrs == attrs
             && last.col + last.cols == col
             && width == 1
             && text.is_ascii()
@@ -62,8 +95,7 @@ impl<'a> RowBuilder<'a> {
             text: text.to_owned(),
             fg,
             bg,
-            bold,
-            italic,
+            attrs,
         });
     }
 }
@@ -76,7 +108,9 @@ use keepline_core::terminal::{
     libghostty_vt::{
         self,
         render::{CellIterator, RenderState, RowIterator},
+        render::CursorVisualStyle,
         screen::CellWide,
+        style::{StyleColor, Underline as SgrUnderline},
     },
 };
 pub fn capture(vt: &Vt) -> Result<Screen, libghostty_vt::Error> {
@@ -91,6 +125,7 @@ pub fn capture(vt: &Vt) -> Result<Screen, libghostty_vt::Error> {
         .fg_color()?
         .map(|c| rgb(c.r, c.g, c.b))
         .unwrap_or(DEFAULT_FG);
+    let palette = snap.colors()?.palette;
     let mut rows = row_it.update(&snap)?;
     let mut y = 0usize;
     let mut text = String::new();
@@ -119,7 +154,7 @@ pub fn capture(vt: &Vt) -> Result<Screen, libghostty_vt::Error> {
                 .map(|c| rgb(c.r, c.g, c.b))
                 .unwrap_or(def_fg);
             let mut bg = cell.bg_color()?.map(|c| rgb(c.r, c.g, c.b));
-            let (mut bold, mut italic) = (false, false);
+            let mut attrs = Attrs::default();
             if cell.has_styling()? {
                 let st = cell.style()?;
                 if st.inverse {
@@ -127,11 +162,33 @@ pub fn capture(vt: &Vt) -> Result<Screen, libghostty_vt::Error> {
                     fg = bg.unwrap_or(DEFAULT_BG);
                     bg = Some(old);
                 }
-                bold = st.bold;
-                italic = st.italic;
+                attrs = Attrs {
+                    bold: st.bold,
+                    italic: st.italic,
+                    faint: st.faint,
+                    invisible: st.invisible,
+                    strikethrough: st.strikethrough,
+                    overline: st.overline,
+                    underline: match st.underline {
+                        SgrUnderline::Single => Underline::Single,
+                        SgrUnderline::Double => Underline::Double,
+                        SgrUnderline::Curly => Underline::Curly,
+                        SgrUnderline::Dotted => Underline::Dotted,
+                        SgrUnderline::Dashed => Underline::Dashed,
+                        _ => Underline::None,
+                    },
+                    underline_color: match st.underline_color {
+                        StyleColor::None => None,
+                        StyleColor::Palette(i) => {
+                            let c = palette[i.0 as usize];
+                            Some(rgb(c.r, c.g, c.b))
+                        }
+                        StyleColor::Rgb(c) => Some(rgb(c.r, c.g, c.b)),
+                    },
+                };
             }
             let width = if matches!(wide, CellWide::Wide) { 2 } else { 1 };
-            b.push(x, width, &text, fg, bg, bold, italic);
+            b.push(x, width, &text, fg, bg, attrs);
             x += 1;
         }
         y += 1;
@@ -140,6 +197,12 @@ pub fn capture(vt: &Vt) -> Result<Screen, libghostty_vt::Error> {
     let cur = snap.cursor()?;
     out.cursor = cur.viewport.map(|v| (v.x, v.y));
     out.cursor_visible = cur.visible;
+    out.cursor_shape = match cur.visual_style {
+        CursorVisualStyle::Bar => CursorShape::Bar,
+        CursorVisualStyle::Underline => CursorShape::Underline,
+        CursorVisualStyle::BlockHollow => CursorShape::BlockHollow,
+        _ => CursorShape::Block,
+    };
     out.background = vt
         .terminal()
         .bg_color()?
@@ -160,17 +223,24 @@ pub const FONT_SIZE: f32 = crate::theme::Theme::MONO_SIZE;
 pub struct CellMetrics {
     pub width: Pixels,
     pub height: Pixels,
+    /// Offsets from the cell top, matching where `ShapedLine::paint` puts the baseline.
+    pub baseline: Pixels,
+    pub x_height: Pixels,
+    /// Decoration and bar-cursor thickness.
+    pub stroke: Pixels,
 }
 impl CellMetrics {
     pub fn measure(font: &Font, window: &Window) -> Option<Self> {
         let ts = window.text_system();
-        let width = ts
-            .advance(ts.resolve_font(font), px(FONT_SIZE), 'm')
-            .ok()?
-            .width;
+        let id = ts.resolve_font(font);
+        let width = ts.advance(id, px(FONT_SIZE), 'm').ok()?.width;
+        let height = px(FONT_SIZE * crate::theme::Theme::TERMINAL_LINE_HEIGHT);
         (width > px(0.)).then_some(Self {
             width,
-            height: px(FONT_SIZE * crate::theme::Theme::TERMINAL_LINE_HEIGHT),
+            height,
+            baseline: ts.baseline_offset(id, px(FONT_SIZE), height),
+            x_height: ts.x_height(id, px(FONT_SIZE)),
+            stroke: px((FONT_SIZE / 14.).max(1.)),
         })
     }
     pub fn cursor_bounds(self, bounds: Bounds<Pixels>, cursor: (u16, u16)) -> Bounds<Pixels> {
@@ -270,7 +340,7 @@ fn shape_cell(
     let tr = TextRun {
         len: run.text.len(),
         font,
-        color: hsla(run.fg),
+        color: text_color(run),
         background_color: None,
         underline: None,
         strikethrough: None,
@@ -341,14 +411,18 @@ pub fn paint_pane(
                     hsla(bg),
                 ));
             }
+            if run.attrs.invisible {
+                continue;
+            }
+            paint_decorations(run, point(ox, oy), metrics, window);
             if run.text.trim().is_empty() {
                 continue;
             }
             let mut font = f.clone();
-            if run.bold {
+            if run.attrs.bold {
                 font.weight = FontWeight::BOLD;
             }
-            if run.italic {
+            if run.attrs.italic {
                 font.style = FontStyle::Italic;
             }
             let (line, offset) = shape_cell(run, font, metrics, window);
@@ -366,16 +440,94 @@ pub fn paint_pane(
         && sc.cursor_visible
         && let Some((x, y)) = sc.cursor
     {
-        window.paint_quad(fill(
-            Bounds::new(
-                point(
-                    bounds.origin.x + cw * x as f32,
-                    bounds.origin.y + lh * y as f32,
-                ),
-                size(cw, lh),
+        let cell = Bounds::new(
+            point(
+                bounds.origin.x + cw * x as f32,
+                bounds.origin.y + lh * y as f32,
             ),
-            hsla(DEFAULT_FG).opacity(0.6),
+            size(cw, lh),
+        );
+        let color = hsla(DEFAULT_FG).opacity(0.6);
+        let t = metrics.stroke * 2.;
+        match sc.cursor_shape {
+            CursorShape::Block => window.paint_quad(fill(cell, color)),
+            CursorShape::Bar => window.paint_quad(fill(
+                Bounds::new(cell.origin, size(t, lh)),
+                color,
+            )),
+            CursorShape::Underline => window.paint_quad(fill(
+                Bounds::new(point(cell.left(), cell.bottom() - t), size(cw, t)),
+                color,
+            )),
+            CursorShape::BlockHollow => window.paint_quad(
+                gpui::outline(cell, color, gpui::BorderStyle::Solid)
+                    .border_widths(metrics.stroke),
+            ),
+        }
+    }
+}
+
+fn text_color(run: &Run) -> Hsla {
+    // Ghostty's faint-opacity default.
+    hsla(run.fg).opacity(if run.attrs.faint { 0.5 } else { 1. })
+}
+
+/// Underline, strikethrough and overline drawn on the cell grid, like Ghostty's sprites,
+/// so adjacent runs join and every SGR 4 variant has its own shape.
+fn paint_decorations(run: &Run, origin: gpui::Point<Pixels>, m: CellMetrics, window: &mut Window) {
+    let a = run.attrs;
+    let w = m.width * run.cols as f32;
+    let t = m.stroke;
+    let color = text_color(run);
+    let mut line = |y: Pixels, x: Pixels, len: Pixels, color: Hsla| {
+        window.paint_quad(fill(
+            Bounds::new(point(origin.x + x, origin.y + y), size(len, t)),
+            color,
         ));
+    };
+    if a.underline != Underline::None {
+        let color = a
+            .underline_color
+            .map(|c| hsla(c).opacity(color.a))
+            .unwrap_or(color);
+        // Halfway between the baseline and the cell bottom, clear of descenders.
+        let y = (m.baseline + (m.height - m.baseline) / 2. - t / 2.).min(m.height - t);
+        match a.underline {
+            Underline::Single => line(y, px(0.), w, color),
+            Underline::Double => {
+                let y = (y - t).max(m.baseline);
+                line(y, px(0.), w, color);
+                line(y + t * 2., px(0.), w, color);
+            }
+            Underline::Dotted | Underline::Dashed => {
+                let (on, period) = if a.underline == Underline::Dotted {
+                    (t, t * 2.)
+                } else {
+                    (m.width / 2., m.width)
+                };
+                let mut x = px(0.);
+                while x < w {
+                    line(y, x, on.min(w - x), color);
+                    x += period;
+                }
+            }
+            Underline::Curly => {
+                let amp = (m.height - y - t).max(t) / 2.;
+                let steps = (f32::from(w) / f32::from(t)).ceil() as usize;
+                for i in 0..steps {
+                    let x = t * i as f32;
+                    let phase = f32::from(x) / f32::from(m.width) * std::f32::consts::TAU;
+                    line(y + amp * phase.sin(), x, t.min(w - x), color);
+                }
+            }
+            Underline::None => {}
+        }
+    }
+    if a.strikethrough {
+        line(m.baseline - m.x_height / 2. - t / 2., px(0.), w, color);
+    }
+    if a.overline {
+        line(px(0.), px(0.), w, color);
     }
 }
 
@@ -417,6 +569,151 @@ mod tests {
         assert!(runs.iter().any(|r| r.text == "e\u{301}" && r.cols == 1));
     }
 
+    /// Per-face metrics read straight from the font file (no GPUI window in unit tests).
+    struct FaceMetrics {
+        units_per_em: f32,
+        line_height: f32,
+        advance_m: f32,
+    }
+    fn be16(d: &[u8], o: usize) -> u16 {
+        u16::from_be_bytes([d[o], d[o + 1]])
+    }
+    fn face_metrics(d: &[u8]) -> FaceMetrics {
+        // First face of a collection (Menlo.ttc face 0 is Regular).
+        let face = if &d[..4] == b"ttcf" {
+            u32::from_be_bytes(d[12..16].try_into().unwrap()) as usize
+        } else {
+            0
+        };
+        let table = |tag: &[u8; 4]| {
+            (0..be16(d, face + 4) as usize)
+                .map(|i| face + 12 + 16 * i)
+                .find(|&r| &d[r..r + 4] == tag)
+                .map(|r| u32::from_be_bytes(d[r + 8..r + 12].try_into().unwrap()) as usize)
+                .expect("font table")
+        };
+        let (head, hhea, os2, cmap, hmtx) = (
+            table(b"head"),
+            table(b"hhea"),
+            table(b"OS/2"),
+            table(b"cmap"),
+            table(b"hmtx"),
+        );
+        let i16_at = |o| be16(d, o) as i16 as f32;
+        // Ghostty face/coretext.zig: typo metrics if USE_TYPO_METRICS, else hhea, else typo, else win.
+        let (hhea_asc, hhea_desc, hhea_gap) = (i16_at(hhea + 4), i16_at(hhea + 6), i16_at(hhea + 8));
+        let (typo_asc, typo_desc, typo_gap) = (i16_at(os2 + 68), i16_at(os2 + 70), i16_at(os2 + 72));
+        let line_height = if be16(d, os2 + 62) & 0x80 != 0 {
+            typo_asc - typo_desc + typo_gap
+        } else if hhea_asc != 0. || hhea_desc != 0. {
+            hhea_asc - hhea_desc + hhea_gap
+        } else if typo_asc != 0. || typo_desc != 0. {
+            typo_asc - typo_desc + typo_gap
+        } else {
+            be16(d, os2 + 74) as f32 + be16(d, os2 + 76) as f32
+        };
+        // cmap format 4 lookup of 'm', then its hmtx advance (what CellMetrics::measure reads).
+        let sub = (0..be16(d, cmap + 2) as usize)
+            .map(|i| cmap + 4 + 8 * i)
+            // Unicode platform (Menlo ships only 0/3) or Windows Unicode BMP.
+            .filter(|&r| matches!((be16(d, r), be16(d, r + 2)), (0, _) | (3, 1)))
+            .map(|r| cmap + u32::from_be_bytes(d[r + 4..r + 8].try_into().unwrap()) as usize)
+            .find(|&s| be16(d, s) == 4)
+            .expect("cmap format 4");
+        let segs = be16(d, sub + 6) as usize;
+        let ch = 'm' as u16;
+        let seg = (0..segs / 2)
+            .find(|&i| be16(d, sub + 14 + 2 * i) >= ch)
+            .unwrap();
+        let start = be16(d, sub + 16 + segs + 2 * seg);
+        assert!(start <= ch, "'m' mapped");
+        let delta = be16(d, sub + 16 + 2 * segs + 2 * seg);
+        let range_at = sub + 16 + 3 * segs + 2 * seg;
+        let range = be16(d, range_at) as usize;
+        let glyph = if range == 0 {
+            ch.wrapping_add(delta)
+        } else {
+            be16(d, range_at + range + 2 * (ch - start) as usize).wrapping_add(delta)
+        } as usize;
+        let metrics = be16(d, hhea + 34) as usize;
+        FaceMetrics {
+            units_per_em: be16(d, head + 18) as f32,
+            line_height,
+            advance_m: be16(d, hmtx + 4 * glyph.min(metrics - 1)) as f32,
+        }
+    }
+
+    /// Ghostty sizes the cell from the face (font/Metrics.zig): height = round(ascent - descent
+    /// + line_gap), width = round(advance), in backing pixels. Keepline multiplies the font size
+    /// by TERMINAL_LINE_HEIGHT instead, so the gap depends on the font. 1.6 stretched the Codex
+    /// logo ~37% while every older check (internal consistency only) still passed.
+    #[test]
+    fn cell_aspect_ratio_stays_within_five_percent_of_ghostty_for_the_resolved_font() {
+        // Mirror Theme::mono: JetBrains Mono when installed, else Menlo. SF Mono is a hidden
+        // system face that GPUI does not list, so stock macOS resolves Menlo (measured by
+        // examples/terminal_reference).
+        let home = std::env::var("HOME").unwrap_or_default();
+        let candidates = [
+            format!("{home}/Library/Fonts/JetBrainsMono-Regular.ttf"),
+            "/Library/Fonts/JetBrainsMono-Regular.ttf".into(),
+            "/System/Library/Fonts/Menlo.ttc".into(),
+        ];
+        let Some(path) = candidates.iter().find(|p| std::path::Path::new(p).exists()) else {
+            eprintln!("no candidate monospace font on this system; skipped");
+            return;
+        };
+        let face = face_metrics(&std::fs::read(path).unwrap());
+        let backing = FONT_SIZE * 2.; // Retina: Ghostty rasterizes at points * scale.
+        let ghostty_w = (face.advance_m / face.units_per_em * backing).round();
+        let ghostty_h = (face.line_height / face.units_per_em * backing).round();
+        if path.ends_with("Menlo.ttc") {
+            // Anchors the parser to the Ghostty 1.3.1 capture (eval/terminal-reference).
+            assert_eq!((ghostty_w, ghostty_h), (15., 29.), "Ghostty Menlo 12.5pt @2x cell");
+        }
+        let ghostty = ghostty_h / ghostty_w;
+        let keepline = |line_height: f32| {
+            (FONT_SIZE * line_height) / (face.advance_m / face.units_per_em * FONT_SIZE)
+        };
+        let delta = keepline(crate::theme::Theme::TERMINAL_LINE_HEIGHT) / ghostty - 1.;
+        assert!(
+            delta.abs() <= 0.05,
+            "{path}: Keepline cell h/w {:.3} vs Ghostty {ghostty:.3} ({:+.1}%)",
+            keepline(crate::theme::Theme::TERMINAL_LINE_HEIGHT),
+            delta * 100.
+        );
+        assert!(
+            keepline(1.6) / ghostty - 1. > 0.05,
+            "the check must catch the 1.6 regression"
+        );
+    }
+
+    #[test]
+    fn sgr_decorations_and_faint_survive_capture() {
+        let mut vt = Vt::new(80, 24).unwrap();
+        vt.feed(b"\x1b[2ma\x1b[0m\x1b[4:3;58;5;1mb\x1b[0m\x1b[9;53mc\x1b[0m\x1b[8md\x1b[21me");
+        let screen = capture(&vt).unwrap();
+        let attrs: Vec<Attrs> = screen.rows[0].iter().take(5).map(|r| r.attrs).collect();
+        assert!(attrs[0].faint);
+        assert_eq!(attrs[1].underline, Underline::Curly);
+        assert!(attrs[1].underline_color.is_some());
+        assert!(attrs[2].strikethrough && attrs[2].overline);
+        assert!(attrs[3].invisible);
+        assert_eq!(attrs[4].underline, Underline::Double);
+    }
+
+    #[test]
+    fn decscusr_shape_reaches_the_painter() {
+        let mut vt = Vt::new(80, 24).unwrap();
+        for (seq, shape) in [
+            (&b"\x1b[6 q"[..], CursorShape::Bar),
+            (b"\x1b[4 q", CursorShape::Underline),
+            (b"\x1b[2 q", CursorShape::Block),
+        ] {
+            vt.feed(seq);
+            assert_eq!(capture(&vt).unwrap().cursor_shape, shape);
+        }
+    }
+
     #[test]
     fn ime_offsets_are_utf16_not_utf8_and_never_split_surrogates() {
         let text = "n你😀hao";
@@ -443,8 +740,7 @@ pub fn verify_native_geometry(window: &Window, cx: &App) {
             text: ch.to_string(),
             fg: DEFAULT_FG,
             bg: None,
-            bold: false,
-            italic: false,
+            attrs: Attrs::default(),
         };
         let (line, offset) = shape_cell(&run, font.clone(), metrics, window);
         assert!(
@@ -499,8 +795,7 @@ pub fn verify_native_geometry(window: &Window, cx: &App) {
             text: text.into(),
             fg: DEFAULT_FG,
             bg: None,
-            bold: false,
-            italic: false,
+            attrs: Attrs::default(),
         };
         let (line, offset) = shape_cell(&run, font.clone(), metrics, window);
         let target = metrics.width * run.cols as f32;

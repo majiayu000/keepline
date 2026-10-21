@@ -15,3 +15,7 @@ libc.workspace = true
 
 [features]
 visual-test = ["gpui/test-support", "gpui_platform/test-support"]
+
+[[example]]
+name = "terminal_reference"
+required-features = ["visual-test"]
