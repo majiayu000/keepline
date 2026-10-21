@@ -175,16 +175,21 @@ pub fn receive<T: for<'de> Deserialize<'de>>(r: &mut impl Read) -> io::Result<T>
 }
 
 pub fn rpc(socket: &std::path::Path, request: &Request) -> io::Result<Reply> {
-    let mut stream = std::os::unix::net::UnixStream::connect(socket)?;
+    // Preserve the error kind and failing stage. Never replay an RPC: a timed-out
+    // mutation may already have committed even if its reply was not received.
+    let stage = |name, e: io::Error| io::Error::new(e.kind(), format!("RPC {name}: {e}"));
+    let mut stream =
+        std::os::unix::net::UnixStream::connect(socket).map_err(|e| stage("connect", e))?;
     stream.set_read_timeout(Some(std::time::Duration::from_secs(10)))?;
     stream.set_write_timeout(Some(std::time::Duration::from_secs(10)))?;
-    send(&mut stream, CONTROL, &Request::Hello { major: MAJOR })?;
-    match receive::<Reply>(&mut stream)? {
+    send(&mut stream, CONTROL, &Request::Hello { major: MAJOR })
+        .map_err(|e| stage("send hello", e))?;
+    match receive::<Reply>(&mut stream).map_err(|e| stage("receive hello", e))? {
         Reply::Hello { major: MAJOR, .. } => (),
         reply => return Err(io::Error::other(format!("handshake: {reply:?}"))),
     }
-    send(&mut stream, CONTROL, request)?;
-    match receive::<Reply>(&mut stream)? {
+    send(&mut stream, CONTROL, request).map_err(|e| stage("send request", e))?;
+    match receive::<Reply>(&mut stream).map_err(|e| stage("receive reply", e))? {
         Reply::Error(message) => Err(io::Error::other(message)),
         reply => Ok(reply),
     }

@@ -342,8 +342,6 @@ pub fn serve_with_options(
         Err(e) if e.kind() == io::ErrorKind::NotFound => (),
         Err(e) => return Err(e),
     }
-    let listener = UnixListener::bind(&socket)?;
-    fs::set_permissions(&socket, fs::Permissions::from_mode(0o600))?;
     let (store, mut workspace) = Store::open(root)?;
     let mut index = crate::log_index::Index::open(root, roots)?;
     index.recent_days = recent_days;
@@ -377,6 +375,21 @@ pub fn serve_with_options(
     })?);
     start_deadlines(&host)?;
     start_subscription(Arc::clone(&host), index);
+    // bind(2) creates the pathname before listen(2) makes it connectable. Under
+    // scheduler pressure a client seeing that pathname can get ECONNREFUSED.
+    // Publish only an initialized, listening socket, while holding host.lock.
+    let pending_socket = root.join(".sock-start");
+    match fs::symlink_metadata(&pending_socket) {
+        Ok(meta) if meta.file_type().is_socket() && meta.uid() == unsafe { libc::geteuid() } => {
+            fs::remove_file(&pending_socket)?;
+        }
+        Ok(_) => return Err(io::Error::other("refusing to replace pending non-socket entry")),
+        Err(e) if e.kind() == io::ErrorKind::NotFound => (),
+        Err(e) => return Err(e),
+    }
+    let listener = UnixListener::bind(&pending_socket)?;
+    fs::set_permissions(&pending_socket, fs::Permissions::from_mode(0o600))?;
+    fs::rename(&pending_socket, &socket)?;
     eprintln!("keeplined listening on {}", socket.display());
     for (index, stream) in listener.incoming().enumerate() {
         let stream = stream?;
