@@ -371,3 +371,7 @@ R1 根因补充：延长 deadline 后仍复现 Claude 追加停滞；首次索�
 ### R3 Codex 共享后台身份决定
 
 2026-10-21：保留 --no-daemon。安装版 0.163.0 的普通 -c 覆盖强制 embedded；notify 同 token 会被自动标题线程继承；session_meta/turn_context 未记录 token；thread-id OSC 被截断。显式 --remote + 覆盖能启动但完成回调/恢复与首轮审批前关联未证明。两条用户提示加两次 CLI 自动标题完成已达保守 4 回合预算，停止追加。详见 [R3 实测](evidence/r3-20261021/README.md)。不按 cwd、标题或 UUID 前缀猜关联。
+
+### R5 前台资源决定
+
+新建无历史会话 runtime，与独立 Ghostty 官方副本使用相同 10 Hz 输出。1/4 画面累计 CPU 为 2.39×/2.72×，footprint 为 1.03×/0.89×；判 CPU 不通过，保留 1.2× 门槛。系统 login 包装权限受限及 WindowServer/GPU 未归因，原始值与边界见 R5 evidence。先对可见绘制热路径 profiling，不以锁屏两小时结果放行。

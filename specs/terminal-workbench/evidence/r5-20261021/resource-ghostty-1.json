@@ -1,0 +1,149 @@
+{
+  "pids": {
+    "client": 41633,
+    "producer1": 41643
+  },
+  "producers": [
+    41643
+  ],
+  "excluded": {
+    "login1": {
+      "pid": 41642,
+      "reason": "proc_pid_rusage permission denied for system login wrapper"
+    }
+  },
+  "seconds": 30.005022458033636,
+  "samples": [
+    {
+      "elapsed": 2.862501423805952e-05,
+      "processes": {
+        "client": {
+          "cpu_seconds": 0.7414103333333334,
+          "footprint": 339395712,
+          "read": 749568,
+          "write": 4096
+        },
+        "producer1": {
+          "cpu_seconds": 0.041614041666666664,
+          "footprint": 5456136,
+          "read": 856064,
+          "write": 0
+        }
+      }
+    },
+    {
+      "elapsed": 5.001648791017942,
+      "processes": {
+        "client": {
+          "cpu_seconds": 0.855637125,
+          "footprint": 340051072,
+          "read": 749568,
+          "write": 4096
+        },
+        "producer1": {
+          "cpu_seconds": 0.04758,
+          "footprint": 5456136,
+          "read": 856064,
+          "write": 0
+        }
+      }
+    },
+    {
+      "elapsed": 10.005026666098274,
+      "processes": {
+        "client": {
+          "cpu_seconds": 0.973349875,
+          "footprint": 340231296,
+          "read": 749568,
+          "write": 4096
+        },
+        "producer1": {
+          "cpu_seconds": 0.053574625,
+          "footprint": 5456136,
+          "read": 856064,
+          "write": 0
+        }
+      }
+    },
+    {
+      "elapsed": 15.005029666004702,
+      "processes": {
+        "client": {
+          "cpu_seconds": 1.0874421666666667,
+          "footprint": 340280448,
+          "read": 749568,
+          "write": 4096
+        },
+        "producer1": {
+          "cpu_seconds": 0.059784416666666666,
+          "footprint": 5456136,
+          "read": 856064,
+          "write": 0
+        }
+      }
+    },
+    {
+      "elapsed": 20.00476104102563,
+      "processes": {
+        "client": {
+          "cpu_seconds": 1.2530795416666667,
+          "footprint": 340591744,
+          "read": 749568,
+          "write": 4096
+        },
+        "producer1": {
+          "cpu_seconds": 0.065547625,
+          "footprint": 5456136,
+          "read": 856064,
+          "write": 0
+        }
+      }
+    },
+    {
+      "elapsed": 25.00167766609229,
+      "processes": {
+        "client": {
+          "cpu_seconds": 1.39304675,
+          "footprint": 340575360,
+          "read": 749568,
+          "write": 4096
+        },
+        "producer1": {
+          "cpu_seconds": 0.071414875,
+          "footprint": 5456136,
+          "read": 856064,
+          "write": 0
+        }
+      }
+    },
+    {
+      "elapsed": 30.005022458033636,
+      "processes": {
+        "client": {
+          "cpu_seconds": 1.5057362916666668,
+          "footprint": 343377024,
+          "read": 749568,
+          "write": 4096
+        },
+        "producer1": {
+          "cpu_seconds": 0.0774655,
+          "footprint": 5456136,
+          "read": 856064,
+          "write": 0
+        }
+      }
+    }
+  ],
+  "results": {
+    "client": {
+      "cpu_seconds": 0.7643259583333334,
+      "peak_MiB": 327.4698486328125
+    },
+    "producer1": {
+      "cpu_seconds": 0.03585145833333334,
+      "peak_MiB": 5.203376770019531
+    }
+  },
+  "total_cpu_seconds": 0.8001774166666668,
+  "total_peak_MiB": 332.67322540283203
+}
