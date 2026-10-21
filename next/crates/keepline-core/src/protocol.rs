@@ -70,7 +70,14 @@ pub enum Request {
     Resize {
         cols: u16,
         rows: u16,
+        /// One cell in device pixels, for size reports and the pty's pixel size; 0 if unknown.
+        #[serde(default)]
+        cell_width: u32,
+        #[serde(default)]
+        cell_height: u32,
     },
+    /// Cmd+K: drop scrollback and the rows above the cursor (no-op in the alternate screen).
+    ClearHistory,
     TerminalCwd {
         id: String,
     },

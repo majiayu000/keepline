@@ -35,6 +35,7 @@ unsafe extern "C" {
     fn kl_desktop_update(json: *const c_char);
     fn kl_notifications_enable();
     fn kl_desktop_show();
+    fn kl_request_attention();
     fn kl_desktop_notify(session: *const c_char, title: *const c_char, body: *const c_char);
 }
 pub fn route_applied(session: &str, terminal: &str, tab: &str) {
@@ -168,6 +169,11 @@ fn panel(w: &Workspace) -> String {
 pub fn show() {
     unsafe {
         kl_desktop_show();
+    }
+}
+pub fn request_attention() {
+    unsafe {
+        kl_request_attention();
     }
 }
 pub fn start(socket: &Path, initial: Workspace, cx: &mut App) -> UnboundedReceiver<String> {

@@ -95,6 +95,22 @@ pub fn alternate_scroll(terminal: &Vt, up: bool) -> Result<Option<Vec<u8>>, Stri
     };
     crate::keyboard::encode(terminal, key, if up { "up" } else { "down" }, Mods::empty()).map(Some)
 }
+/// Dropped files as text for the program: each path with shell metacharacters escaped
+/// by a backslash (Ghostty's set), joined by spaces, plus a trailing space like Terminal.app.
+pub fn dropped_paths(paths: &[std::path::PathBuf]) -> String {
+    let mut out = String::new();
+    for path in paths {
+        for c in path.to_string_lossy().chars() {
+            if "\\ ()[]{}<>\"'`!#$&;|*?\t".contains(c) {
+                out.push('\\');
+            }
+            out.push(c);
+        }
+        out.push(' ');
+    }
+    out
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -162,5 +178,18 @@ mod tests {
         v.feed(b"\x1b[?1007l\x1b[?1004l");
         assert!(alternate_scroll(&v, true).unwrap().is_none());
         assert!(focus_bytes(&v, false).unwrap().is_empty());
+    }
+    #[test]
+    fn dropped_paths_are_shell_escaped() {
+        use std::path::PathBuf;
+        assert_eq!(
+            dropped_paths(&[
+                PathBuf::from("/tmp/My File (1).png"),
+                PathBuf::from("/tmp/a'b&c$d"),
+                PathBuf::from("/tmp/截图.png"),
+            ]),
+            "/tmp/My\\ File\\ \\(1\\).png /tmp/a\\'b\\&c\\$d /tmp/截图.png "
+        );
+        assert_eq!(dropped_paths(&[]), "");
     }
 }

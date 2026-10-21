@@ -53,9 +53,12 @@ impl Workbench {
                 .max_by_key(|s| s.updated)
         });
         let group = session.map(|s| self.group(s));
+        // An Agent's conversation names the pane; otherwise the title the program set.
         let title = session
             .map(|s| self.session_line(s))
+            .or_else(|| pane.read(cx).program_title())
             .unwrap_or_else(|| "空终端".into());
+        let rang = pane.read(cx).bell;
         let hint = self.recognition.terminal_hints.get(id).cloned();
         let takeover = id.to_owned();
         let focus = pane.focus_handle(cx);
@@ -114,6 +117,7 @@ impl Workbench {
                     .border_b(px(T::BORDER_WIDTH))
                     .border_color(T::color(T::BORDER))
                     .when_some(group, |d, g| d.child(chip(g)))
+                    .when(rang, |d| d.child(label("🔔")))
                     .child(
                         div()
                             .flex_1()
