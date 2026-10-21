@@ -699,6 +699,7 @@ fn four_agents_write_for_thirty_seconds_without_repeated_process_probes() {
     fs::create_dir_all(&logs).unwrap();
     let cli = h.root.join("codex");
     std::os::unix::fs::symlink("/bin/sh", &cli).unwrap();
+    // Relative sleeps lose samples under load; keep a fixed workload on absolute deadlines.
     for i in 0..4 {
         let id = format!("load-{i}");
         let script = h.root.join(format!("{id}.sh"));
@@ -710,15 +711,15 @@ printf '%s\n' '{{"type":"session_meta","payload":{{"id":"{id}","cwd":"/tmp"}}}}'
 read -r start
 LOAD_LOG='{}' HOLD_OPEN='{}' /usr/bin/python3 - <<'PY'
 import os,time
-end=time.monotonic()+{window}
-while time.monotonic()<end:
+start=time.monotonic()
+for sample in range({window}*10):
     data=b'{{"type":"event_msg","payload":{{"type":"agent_message","message":"working"}}}}\n'
     if os.environ['HOLD_OPEN']=='yes':
         os.write(3,data)
     else:
         with open(os.environ['LOAD_LOG'],'ab') as log:
             log.write(data)
-    time.sleep(0.1)
+    time.sleep(max(0,start+(sample+1)/10-time.monotonic()))
 PY
 printf done >'{}'
 read -r finish
@@ -784,6 +785,11 @@ read -r finish
     }
     for i in 0..4 {
         assert!(h.root.join(format!("load-{i}.done")).exists());
+        let lines = fs::read_to_string(logs.join(format!("load-{i}.jsonl")))
+            .unwrap()
+            .lines()
+            .count();
+        assert_eq!(lines as u64, 1 + window * 10, "writer {i} workload");
     }
     let after = usage(h.child.id());
     let control_after = usage(control.child.id());
