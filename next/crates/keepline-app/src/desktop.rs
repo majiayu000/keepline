@@ -88,7 +88,7 @@ fn entered(
     after
         .agent_sessions
         .iter()
-        .filter(|s| watching.is_none() || s.terminal.as_deref() != watching)
+        .filter(|s| s.managed() && (watching.is_none() || s.terminal.as_deref() != watching))
         .filter_map(|s| {
             let (key, body) = fact(after, s)?;
             let old = before
@@ -133,6 +133,9 @@ fn panel(w: &Workspace) -> String {
             continue;
         }
         let group = c.group(s, w, now());
+        if !s.managed() && matches!(group, Inbox::Waiting | Inbox::Error) {
+            continue;
+        }
         match group {
             Inbox::Review => review += 1,
             Inbox::Running => running += 1,
@@ -289,6 +292,15 @@ mod tests {
         assert!(entered(&previous, &w, None).is_empty());
         let value: serde_json::Value = serde_json::from_str(&panel(&previous)).unwrap();
         assert_eq!(value["rows"].as_array().unwrap().len(), 1);
+        let mut scanned = previous.clone();
+        scanned.agent_sessions[0].terminal = None;
+        assert!(
+            entered(&before, &scanned, None).is_empty(),
+            "a session Keepline did not start never asks for attention"
+        );
+        let value: serde_json::Value = serde_json::from_str(&panel(&scanned)).unwrap();
+        assert!(value["rows"].as_array().unwrap().is_empty());
+        assert_eq!(value["badge"], "K");
     }
 }
 
