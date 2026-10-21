@@ -1,0 +1,293 @@
+{
+  "pids": {
+    "client": 14947,
+    "producer0": 16050,
+    "producer1": 15994,
+    "producer2": 15842,
+    "producer3": 14954
+  },
+  "producers": [
+    16050,
+    15994,
+    15842,
+    14954
+  ],
+  "excluded_login_wrappers": [
+    16049,
+    15993,
+    15841,
+    14953
+  ],
+  "seconds": 30.006546292,
+  "samples": [
+    {
+      "elapsed": 1.0624999999819806e-05,
+      "processes": {
+        "client": {
+          "cpu_seconds": 1.5708072083333333,
+          "footprint": 411911464,
+          "read": 745472,
+          "write": 4096
+        },
+        "producer0": {
+          "cpu_seconds": 0.03128095833333333,
+          "footprint": 5800224,
+          "read": 0,
+          "write": 0
+        },
+        "producer1": {
+          "cpu_seconds": 0.029039083333333333,
+          "footprint": 5816584,
+          "read": 0,
+          "write": 0
+        },
+        "producer2": {
+          "cpu_seconds": 0.030779208333333332,
+          "footprint": 5816608,
+          "read": 0,
+          "write": 0
+        },
+        "producer3": {
+          "cpu_seconds": 0.0287385,
+          "footprint": 5865736,
+          "read": 12288,
+          "write": 0
+        }
+      }
+    },
+    {
+      "elapsed": 5.000948500000001,
+      "processes": {
+        "client": {
+          "cpu_seconds": 2.001509083333333,
+          "footprint": 412550440,
+          "read": 745472,
+          "write": 4096
+        },
+        "producer0": {
+          "cpu_seconds": 0.037347625,
+          "footprint": 5800224,
+          "read": 0,
+          "write": 0
+        },
+        "producer1": {
+          "cpu_seconds": 0.03579275,
+          "footprint": 5816584,
+          "read": 0,
+          "write": 0
+        },
+        "producer2": {
+          "cpu_seconds": 0.03654654166666666,
+          "footprint": 5816608,
+          "read": 0,
+          "write": 0
+        },
+        "producer3": {
+          "cpu_seconds": 0.034879291666666666,
+          "footprint": 5865736,
+          "read": 12288,
+          "write": 0
+        }
+      }
+    },
+    {
+      "elapsed": 10.004482917,
+      "processes": {
+        "client": {
+          "cpu_seconds": 2.4277028333333335,
+          "footprint": 416302376,
+          "read": 745472,
+          "write": 4096
+        },
+        "producer0": {
+          "cpu_seconds": 0.043663,
+          "footprint": 5800224,
+          "read": 0,
+          "write": 0
+        },
+        "producer1": {
+          "cpu_seconds": 0.04234583333333333,
+          "footprint": 5816584,
+          "read": 0,
+          "write": 0
+        },
+        "producer2": {
+          "cpu_seconds": 0.042882875,
+          "footprint": 5816608,
+          "read": 0,
+          "write": 0
+        },
+        "producer3": {
+          "cpu_seconds": 0.04122325,
+          "footprint": 5865736,
+          "read": 12288,
+          "write": 0
+        }
+      }
+    },
+    {
+      "elapsed": 15.004524292,
+      "processes": {
+        "client": {
+          "cpu_seconds": 2.8566815,
+          "footprint": 414205224,
+          "read": 745472,
+          "write": 4096
+        },
+        "producer0": {
+          "cpu_seconds": 0.05011533333333334,
+          "footprint": 5800224,
+          "read": 0,
+          "write": 0
+        },
+        "producer1": {
+          "cpu_seconds": 0.04837533333333333,
+          "footprint": 5816584,
+          "read": 0,
+          "write": 0
+        },
+        "producer2": {
+          "cpu_seconds": 0.049889666666666665,
+          "footprint": 5816608,
+          "read": 0,
+          "write": 0
+        },
+        "producer3": {
+          "cpu_seconds": 0.047842416666666665,
+          "footprint": 5865736,
+          "read": 12288,
+          "write": 0
+        }
+      }
+    },
+    {
+      "elapsed": 20.005427458,
+      "processes": {
+        "client": {
+          "cpu_seconds": 3.27826975,
+          "footprint": 415810856,
+          "read": 745472,
+          "write": 4096
+        },
+        "producer0": {
+          "cpu_seconds": 0.05662604166666666,
+          "footprint": 5800224,
+          "read": 0,
+          "write": 0
+        },
+        "producer1": {
+          "cpu_seconds": 0.05469966666666667,
+          "footprint": 5816584,
+          "read": 0,
+          "write": 0
+        },
+        "producer2": {
+          "cpu_seconds": 0.05605829166666666,
+          "footprint": 5816608,
+          "read": 0,
+          "write": 0
+        },
+        "producer3": {
+          "cpu_seconds": 0.05437079166666666,
+          "footprint": 5865736,
+          "read": 12288,
+          "write": 0
+        }
+      }
+    },
+    {
+      "elapsed": 25.004976833,
+      "processes": {
+        "client": {
+          "cpu_seconds": 3.7090457083333335,
+          "footprint": 411944232,
+          "read": 745472,
+          "write": 4096
+        },
+        "producer0": {
+          "cpu_seconds": 0.06338354166666667,
+          "footprint": 5800224,
+          "read": 0,
+          "write": 0
+        },
+        "producer1": {
+          "cpu_seconds": 0.06090670833333334,
+          "footprint": 5816584,
+          "read": 0,
+          "write": 0
+        },
+        "producer2": {
+          "cpu_seconds": 0.062619125,
+          "footprint": 5816608,
+          "read": 0,
+          "write": 0
+        },
+        "producer3": {
+          "cpu_seconds": 0.0610775,
+          "footprint": 5865736,
+          "read": 12288,
+          "write": 0
+        }
+      }
+    },
+    {
+      "elapsed": 30.006546292,
+      "processes": {
+        "client": {
+          "cpu_seconds": 4.147594083333334,
+          "footprint": 414287144,
+          "read": 745472,
+          "write": 4096
+        },
+        "producer0": {
+          "cpu_seconds": 0.07011479166666668,
+          "footprint": 5800224,
+          "read": 0,
+          "write": 0
+        },
+        "producer1": {
+          "cpu_seconds": 0.06749166666666667,
+          "footprint": 5816584,
+          "read": 0,
+          "write": 0
+        },
+        "producer2": {
+          "cpu_seconds": 0.06926320833333333,
+          "footprint": 5816608,
+          "read": 0,
+          "write": 0
+        },
+        "producer3": {
+          "cpu_seconds": 0.06745733333333333,
+          "footprint": 5865736,
+          "read": 12288,
+          "write": 0
+        }
+      }
+    }
+  ],
+  "results": {
+    "client": {
+      "cpu_seconds": 2.5767868750000007,
+      "peak_MiB": 397.01688385009766
+    },
+    "producer0": {
+      "cpu_seconds": 0.038833833333333345,
+      "peak_MiB": 5.531524658203125
+    },
+    "producer1": {
+      "cpu_seconds": 0.03845258333333334,
+      "peak_MiB": 5.547126770019531
+    },
+    "producer2": {
+      "cpu_seconds": 0.03848399999999999,
+      "peak_MiB": 5.547149658203125
+    },
+    "producer3": {
+      "cpu_seconds": 0.03871883333333333,
+      "peak_MiB": 5.594001770019531
+    }
+  },
+  "total_cpu_seconds": 2.7312761250000004,
+  "total_peak_MiB": 419.23668670654297
+}

@@ -1,0 +1,146 @@
+{
+  "pids": {
+    "client": 4159,
+    "producer": 4169
+  },
+  "producers": [
+    4169
+  ],
+  "excluded_login_wrappers": [
+    4168
+  ],
+  "seconds": 30.003457374987192,
+  "samples": [
+    {
+      "elapsed": 4.832982085645199e-06,
+      "processes": {
+        "client": {
+          "cpu_seconds": 2.1613430416666666,
+          "footprint": 108004528,
+          "read": 2883584,
+          "write": 1318912
+        },
+        "producer": {
+          "cpu_seconds": 0.10814775,
+          "footprint": 5751096,
+          "read": 770048,
+          "write": 0
+        }
+      }
+    },
+    {
+      "elapsed": 5.005028416984715,
+      "processes": {
+        "client": {
+          "cpu_seconds": 2.2332756666666667,
+          "footprint": 108020912,
+          "read": 2883584,
+          "write": 1318912
+        },
+        "producer": {
+          "cpu_seconds": 0.11525016666666667,
+          "footprint": 5751096,
+          "read": 770048,
+          "write": 0
+        }
+      }
+    },
+    {
+      "elapsed": 10.004739707917906,
+      "processes": {
+        "client": {
+          "cpu_seconds": 2.298914625,
+          "footprint": 108037296,
+          "read": 2883584,
+          "write": 1318912
+        },
+        "producer": {
+          "cpu_seconds": 0.12174429166666667,
+          "footprint": 5751096,
+          "read": 770048,
+          "write": 0
+        }
+      }
+    },
+    {
+      "elapsed": 15.003587124985643,
+      "processes": {
+        "client": {
+          "cpu_seconds": 2.3658892083333334,
+          "footprint": 108037296,
+          "read": 2883584,
+          "write": 1318912
+        },
+        "producer": {
+          "cpu_seconds": 0.12821754166666668,
+          "footprint": 5751096,
+          "read": 770048,
+          "write": 0
+        }
+      }
+    },
+    {
+      "elapsed": 20.000026457943022,
+      "processes": {
+        "client": {
+          "cpu_seconds": 2.432776375,
+          "footprint": 108037296,
+          "read": 2883584,
+          "write": 1318912
+        },
+        "producer": {
+          "cpu_seconds": 0.13599841666666665,
+          "footprint": 5751096,
+          "read": 770048,
+          "write": 0
+        }
+      }
+    },
+    {
+      "elapsed": 25.00502391695045,
+      "processes": {
+        "client": {
+          "cpu_seconds": 2.5020844583333335,
+          "footprint": 108037296,
+          "read": 2883584,
+          "write": 1318912
+        },
+        "producer": {
+          "cpu_seconds": 0.14300808333333334,
+          "footprint": 5751096,
+          "read": 770048,
+          "write": 0
+        }
+      }
+    },
+    {
+      "elapsed": 30.003457374987192,
+      "processes": {
+        "client": {
+          "cpu_seconds": 2.5715012916666664,
+          "footprint": 108037296,
+          "read": 2883584,
+          "write": 1318912
+        },
+        "producer": {
+          "cpu_seconds": 0.14942445833333334,
+          "footprint": 5751096,
+          "read": 770048,
+          "write": 0
+        }
+      }
+    }
+  ],
+  "results": {
+    "client": {
+      "cpu_seconds": 0.41015824999999984,
+      "peak_MiB": 103.03239440917969
+    },
+    "producer": {
+      "cpu_seconds": 0.04127670833333334,
+      "peak_MiB": 5.484672546386719
+    }
+  },
+  "total_cpu_seconds": 0.4514349583333332,
+  "total_peak_MiB": 108.5170669555664
+}

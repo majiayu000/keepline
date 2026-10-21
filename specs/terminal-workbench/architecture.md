@@ -379,3 +379,11 @@ R1 根因补充：延长 deadline 后仍复现 Claude 追加停滞；首次索�
 ### R7 签名决定
 
 打包仅增加显式 identity 和独立输出路径；Developer ID 时启用 hardened runtime/时间戳，逐层签名，无 JIT/库验证豁免。签名验证通过不等于 Gatekeeper 或公证通过：spctl 为 Unnotarized Developer ID。没有发现可用既有 notary profile，停止公证，不创建或索要凭据。见 R7 evidence。
+
+## R8 / R9 修复决定（2026-10-21）
+
+R8 先用 Time Profiler 记录客户端输出负载调用栈与可查看火焰图，再按占比修正现有绘制路径。测量仍用 R5 measure.py、相同 10 Hz 输出、3 秒预热和 30 秒采样、相同进程归属；1/4 画面累计 CPU 与 phys_footprint 均以 Ghostty 1.2× 为目标。缓存只保留可见终端的当前排版结果，失效覆盖文本/样式/字体/尺寸；通知合并依托显示帧，不引入空闲轮询。若仍超预算，保留失败并分别报告客户端、后台、CPU 提交与不可归因 GPU 时间，不改变负载或口径。
+
+R9 新建 Claude 命令显式生成 --session-id UUID，恢复使用 --resume 原 ID；后台仅使用托管进程 argv 的确定 ID 或该 PID 打开 JSONL 的证据。新文件事件只对尚未关联的托管 Claude PID 作有界探测；cwd 只能缩小候选事件，不能作为身份关联依据。测试覆盖同目录并发、错误 ID/日志不匹配、无参数手敲保持外部；真实 GLM 使用授权 provider 运行时只读注入，独立 HOME/CLAUDE_CONFIG_DIR，不读官方凭据、不改配置。指标是 Claude A02/A04/A12 真实链路与机械证据正确，无法证明身份时不关联。
+
+R8 结果：采用 Pane 级持久 RenderState、dirty 行更新、当前视口排版缓存与 GPUI cached 子视图；默认色/调色板/尺寸/字体失效，焦点变化通知子视图。现有 16 ms 事件合并保留。CPU 1/4 画面为 Ghostty 1.60×/1.24×，A14 仍不通过；客户端占约 94%，后台约 2%，Metal 提交 CPU 为客户端子集，真实 GPU 时长未知。证据见 evidence/r8-20261021。

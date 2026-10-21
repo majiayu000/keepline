@@ -18,6 +18,9 @@ pub struct Pane {
     connection: Connection,
     focus: FocusHandle,
     screen: Screen,
+    capture: Option<screen::Capture>,
+    layout_cache: screen::LayoutCache,
+    metrics_font: Option<gpui::Font>,
     marked: String,
     selection: Range<usize>,
     bounds: Option<Bounds<Pixels>>,
@@ -122,6 +125,9 @@ impl Pane {
             connection,
             focus,
             screen: Screen::default(),
+            capture: None,
+            layout_cache: screen::LayoutCache::default(),
+            metrics_font: None,
             marked: String::new(),
             selection: 0..0,
             bounds: None,
@@ -165,6 +171,7 @@ impl Pane {
             }
             _ => (),
         }
+        cx.notify(); // Invalidate the cached subtree when focus/activation changes.
     }
     fn report_mouse(
         &mut self,
@@ -631,10 +638,13 @@ impl Render for Pane {
         self.connection.dirty.store(false, Ordering::Release);
         let state = self.connection.state.lock().unwrap();
         if let Some(vt) = &state.vt {
-            match screen::capture(vt) {
-                Ok(screen) => {
-                    self.cursor_anchor.observe(screen.cursor);
-                    self.screen = screen;
+            let result = (|| {
+                if self.capture.is_none() { self.capture = Some(screen::Capture::new()?); }
+                self.capture.as_mut().unwrap().update(vt, &mut self.screen)
+            })();
+            match result {
+                Ok(_) => {
+                    self.cursor_anchor.observe(self.screen.cursor);
                 }
                 Err(e) => self.local_error = Some(e.to_string()),
             }
@@ -664,14 +674,19 @@ impl Render for Pane {
                         cx,
                     );
                     let font = T::mono(cx);
-                    pane.metrics = screen::CellMetrics::measure(&font, window).or(pane.metrics);
+                    // Font metrics are logical pixels, independent of backing scale.
+                    if pane.metrics_font.as_ref() != Some(&font) || pane.metrics.is_none() {
+                        pane.metrics = screen::CellMetrics::measure(&font, window);
+                        pane.metrics_font = Some(font.clone());
+                    }
                     let Some(metrics) = pane.metrics else { return };
-                    screen::paint_pane(
+                    screen::paint_cached(
                         &pane.screen,
                         &font,
                         bounds,
                         metrics,
                         pane.marked.is_empty(),
+                        &mut pane.layout_cache,
                         window,
                         cx,
                     );
