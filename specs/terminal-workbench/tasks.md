@@ -196,3 +196,5 @@ flowchart LR
 - [x] box/block/braille/Powerline 按格自绘、CJK ic_width；13 fixture 前后差异表。
 - [x] OSC 8 安全协议过滤、双宽命中、悬停、Cmd 点击 Finder 原生证据。
 - [ ] Ghostty 聚焦光标像素对照与 R5 四画面完整 IME/性能门槛。
+
+- [x] R3 安装版实测 notify 覆盖、rollout 字段与 OSC 标题；有界模型预算内记录否定/待验证结论，保留 --no-daemon（见 R3 evidence）。

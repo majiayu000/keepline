@@ -367,3 +367,7 @@ R1 根因补充：延长 deadline 后仍复现 Claude 追加停滞；首次索�
 按格 sprite 仅覆盖产品明确要求的 box/block/braille/Powerline；CJK 使用主字体估计 ic_width 与 fallback 水字 advance 的比例。OSC 8 链接保留单元格范围，过滤到 http/https/file；只有 Cmd 点击调用系统打开，日志输出不会自动打开链接。
 
 指标：13 fixture changed px 无上升，block 6.8%→3.2%、logo 3.5%→1.5%；交互以真实 Vim/lazygit/htop 与 Finder 回执验证。保留：Menlo 行高差 +3.0%、Ghostty 聚焦光标像素对照未验证；不因本轮通过而放宽 R5 性能/输入法门槛。
+
+### R3 Codex 共享后台身份决定
+
+2026-10-21：保留 --no-daemon。安装版 0.163.0 的普通 -c 覆盖强制 embedded；notify 同 token 会被自动标题线程继承；session_meta/turn_context 未记录 token；thread-id OSC 被截断。显式 --remote + 覆盖能启动但完成回调/恢复与首轮审批前关联未证明。两条用户提示加两次 CLI 自动标题完成已达保守 4 回合预算，停止追加。详见 [R3 实测](evidence/r3-20261021/README.md)。不按 cwd、标题或 UUID 前缀猜关联。
