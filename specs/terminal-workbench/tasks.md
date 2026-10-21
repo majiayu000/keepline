@@ -209,3 +209,11 @@ flowchart LR
 - [x] 四画面真实拼音分项、Ctrl-C 四 cat、四路备用屏切换和放大/还原。
 - [ ] Dock 原生点击（CUA Dock 接口超时）；A18 全清单仍缺候选浮窗和逐画面中英切换。
 - [ ] Ghostty 1/4 可见资源预算：实测 CPU 2.39×/2.72×，不通过；内存 1.03×/0.89×。
+
+### R7 签名与公证
+- [x] package-macos.py 增加 --sign-identity / --output；指定 Developer ID + hardened runtime，codesign 深度严格校验通过。
+- [ ] 公证与 Gatekeeper 放行：未发现可用已有 profile，spctl 返回 Unnotarized Developer ID；不创建凭据、不发布（R7 evidence）。
+
+### R6 通知原生链路
+- [x] 原生请求/拒绝回执、系统设置应用登记、Developer ID 测试包重签与启动；用户已确认手动允许。
+- [ ] 实际系统展示/点击/去重：随后重新锁屏，等待解锁继续；后台 receipt 不当作系统投递证据（R6 evidence）。

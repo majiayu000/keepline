@@ -1,10 +1,14 @@
 # M6 完整验收台账（2026-10-21）
 
-**结论：已完成实现与可执行的本轮验收，尚不满足“首版全部通过”的放行条件。** 不推送、不合并、不发布。2026-10-21 10:15 已授权少量真实回合、原生补验和正式签名；通知弹窗由用户确认，公证仅使用现成凭据。历史锁屏记录保留，R1–R7 新证据逐项追加。任何模拟、历史人工证据都在下表注明来源。
+**结论：尚不满足“首版全部通过”的放行条件。Claude 精确关联与前台 CPU 预算不通过，通知/输入法全清单仍有未验证项。** 不推送、不合并、不发布。2026-10-21 10:15 已授权少量真实回合、原生补验和正式签名；通知弹窗由用户确认，公证仅使用现成凭据。历史锁屏记录保留，R1–R7 新证据逐项追加；R6 用户允许通知后再次锁屏，原生点击尚未完成，R7 公证缺可用 profile。任何模拟、历史人工证据都在下表注明来源。
 
-本轮代码：大段输入按 16 KiB 有序分包，保留后台单包 64 KiB 边界，不重试未知结果；Finder 入口在创建线程前启用事件驱动闲置策略；增加本地 ad-hoc 打包脚本。未修改或提交并行终端渲染文件。
+历史 M6 代码：大段输入按 16 KiB 有序分包，保留后台单包 64 KiB 边界，不重试未知结果；Finder 入口在创建线程前启用事件驱动闲置策略；增加本地 ad-hoc 打包脚本。当时未修改或提交并行终端渲染文件；R2 已正式接手并在 a5fd977 / 681dc15 中独立提交。
 
-## 可复现范围
+## 当前补验与历史构建
+
+R1 默认并行 workspace 全套连续三次各 75 项通过；R2 增补后 82 项通过（另 1 个 ignored daemon fixture 由集成测试启动）。R3/R4/R5 为受限真实 CLI/原生验收；R7 Python 语法、真实签名与 codesign 检查通过，spctl 未放行。未把后续文档提交误称为重新跑过 Rust 全套。
+
+### 历史 M6 可复现范围
 
 从 M5 提交 `f31295f` 导出干净源码，加本轮 main.rs、connection.rs、protocol.rs 改动及新增测试；依赖沿用已固定 revision 的 .deps。**没有把并行 screen.rs、Cargo.toml、examples、next/eval 的未提交改动混入最终包。** [环境](environment.json)、[测试](tests.txt)、[包校验](build.txt)、[包摘要](package-receipt.json)。工作树早先全套测试与此干净快照分别记录，最终结论取干净快照。
 
@@ -16,7 +20,7 @@
 
 ## A01–A19 逐项结论
 
-“通过”只覆盖所列证据范围；官方 Codex/Claude 完整真实回合的共同放行门槛仍未验证。锁屏后不继续索取输入法权限、截取虚假原生图或修改系统权限。
+“通过”只覆盖所列证据范围；官方 Codex/Claude 的共同放行门槛仍未满足。R4 已揭示 Claude 托管关联缺陷；R5 已揭示前台 CPU 超预算。历史模拟与本轮真实证据分别标明。
 
 | ID | 结论 | 证据、已验证范围与缺口 |
 |---|---|---|
@@ -25,10 +29,10 @@
 | A03 IME、多行、大段粘贴 | **部分通过** | 大段 UTF-8/多行 PTY 字节测试通过；R5 四画面真拼音、选词/回车/退格与聚焦通过。cat 未启用 bracketed paste 时多行粘贴被拒绝，完整原生清单未通过。见 [R5](../r5-20261021/README.md) |
 | A04 真实审批/选择 | **部分通过** | R4 Codex request_user_input 原生选择 Blue、状态栏等你回答通过；Claude + GLM Write 原生单次审批及文件写入通过，但工作台托管/等待识别未通过。见 [R4](../r4-20261021/README.md) |
 | A05 切换、4 路输出、备用屏 | **通过**（分段原生证据） | R2 Vim/lazygit/htop 鼠标、备用屏滚轮、焦点；R5 四路 10 Hz 真实 PTY 输出，切标签返回、放大/还原及焦点输入。见 [R5](../r5-20261021/README.md) |
-| A06 关闭标签/窗口/App 再打开 | **通过**（现有生命周期） | [原生历史](../keyboard-lifecycle-20261020/README.md)与本轮包 RPC 回执：原 ID/PID 保持、可继续输入。直接点 Dock 独立路径仍未验证 |
+| A06 关闭标签/窗口/App 再打开 | **部分通过**（缺 Dock 点击） | [原生历史](../keyboard-lifecycle-20261020/README.md)与本轮包 RPC 回执：原 ID/PID 保持、可继续输入。直接点 Dock 独立路径仍未验证 |
 | A07 断线、快照、丢确认 | **通过**（自动 + 历史原生） | reconnect_input_resize、分段 UTF-8/escape 快照、拒绝截断快照、大输入不重放；历史真实客户端重开有截图。曾有一次 CUA 首字符遗漏未定位，见 IME 原记录，不能宣称已修复 |
 | A08 待办开始/重复开始 | **通过**（原生 UI + 模拟 CLI） | [M1](../m1-20261021/README.md)：原生表单、无回车预填、重复开始保持终端数、模拟 CLI 按回车后自动归属；官方真实模型回合未验证 |
-| A09 系统通知点击 | **未验证，等待用户授权** | 用户不改系统权限。菜单面板点击已原生验证，不能代替系统通知；去重/设置单测通过。见 [M4](../m4-20261021/README.md) |
+| A09 系统通知点击 | **未验证**（原生链路） | R6 真实请求返回拒绝，系统设置已登记测试应用；用户后续确认已开启。随后屏幕重新锁定，真实展示/点击仍待补。去重单测不代替原生证据。见 [R6](../r6-20261021/README.md) |
 | A10 退出、停止、宿主死亡 | **通过**（真实 PTY 自动测试） | process_exit、stop_agent、host_death；正常 exit_code、结局不变、未识别 shell 拒绝 StopAgent、宿主死亡后 Interrupted |
 | A11 单写入者/接管 | **通过**（真实 PTY 自动测试） | 两连接拒绝无权限输入/resize；明确接管；owner 断开自动归还；签名包重开无其他 owner 自动可写 |
 | A12 真实 CLI resume | **部分通过** | R4 Codex 继续预填、手动执行、原 ID 续接与重新关联通过；Claude + GLM 外部卡片预填后仅替换 provider 注入 launcher，同 ID 恢复并答 ok，托管关联仍失败。见 [R4](../r4-20261021/README.md) |
@@ -48,20 +52,21 @@
 
 [汇总](soak-summary.json)、[完整结果](soak-result.json)、[每分钟原始样本](soak-trend.jsonl)。只记录锁屏后台驻留，不扩大为前台/GPU/功耗或 Ghostty 相对预算通过。测试结束只清理了本轮隔离客户端、PTY 与后台。
 
-Ghostty 1.3.1 已确认安装及 ReleaseFast 构建。没有在锁屏下制造“可见同负载”比值；1/4 分屏前台 phys_footprint 与累计 CPU ≤1.2x **未验证**。已有八画面短测仅作历史参考：[分屏资源](../split-tree-20261020/README.md)。
+历史 M6 时 Ghostty 可见对照未执行；R5 已在解锁状态补测，CPU 2.39×/2.72× 不通过，内存 1.03×/0.89×，详见上表与 R5 原始值。已有八画面短测仅作历史参考：[分屏资源](../split-tree-20261020/README.md)。
 
-## 本地 App
+## 历史 M6 本地 App
 
 产物：`next/target/bundle/Keepline.app`（target 已忽略，不将二进制提交）。构建脚本 `next/package-macos.py --release-dir next/target/acceptance-clean/release`；包内客户端与 keeplined 相邻，Symbols 字体嵌入二进制并携带许可；codesign --verify --deep --strict 通过，链接依赖均为系统 framework/library。
 
-没有安装到 /Applications，没有正式签名、公证、发布或推送。默认启动仍会连接用户原有后台；如果版本过旧，应显示明确警告而不重启它。真实 major 1 提示已有 [原生证据](../keyboard-lifecycle-20261020/old-backend-final.png)。用户自己处理旧后台切换后再进行实际使用。
+该历史产物没有安装到 /Applications，当时没有正式签名、公证、发布或推送。R7 另行签名的独立产物见下节。默认启动仍会连接用户原有后台；如果版本过旧，应显示明确警告而不重启它。真实 major 1 提示已有 [原生证据](../keyboard-lifecycle-20261020/old-backend-final.png)。用户自己处理旧后台切换后再进行实际使用。
 
-## 待用户醒来决定 / 操作
+## 当前剩余缺口
 
-1. 系统通知：**未验证，等待用户授权**，本轮未改 macOS 通知权限。
-2. 官方 Codex/Claude 模型回合、权限请求、实际 resume：**未验证，等待用户授权**，本轮未消耗额度。
-3. 解锁后的原生验收：Finder 双击、Dock 重开、4 画面输入法、40 会话导航完整链及 Ghostty 可见 1/4 分屏对照。不会自动解锁。
-4. 并行渲染差距尚未收敛（emoji、格子/图形字形、鼠标/焦点等已有报告）；本轮按指令未编辑或带入并行文件，也未将其修复计入交付。
+- Claude + GLM 真实回合可运行，但精确托管关联失败；A02 不通过，A04/A12 部分通过。官方 Claude OAuth 失败停止，凭据审计在 R4。
+- 可见 1/4 画面 CPU 超过 Ghostty 1.2× 预算；A14 不通过。
+- A18 仍缺候选浮窗与每画面完整组合，中英切换未逐一验证；Dock 点击未验证，大量历史+Finder 首屏未合为一次测试。
+- 系统通知用户已确认开启，后续系统再次锁屏；A09 点击/展示仍待解锁补测。
+- R7 Developer ID + hardened runtime 签名验证通过；spctl 拒绝未公证包。没有发现可用既有 notary profile，未提交公证或发布。见 [R7](../r7-20261021/README.md)。
 
 此前真实截图：[鸟瞰](../m3-20261021/return-overview.png)、[工作视图预填](../m3-20261021/resume-prefill.png)、[卡片弹窗](../m4-20261021/menubar-route.png)、[嵌套四分屏](../split-tree-20261020/nested-native.png)。这些是原记录，**不是锁屏后重新截图**。
 
@@ -72,3 +77,7 @@ Ghostty 1.3.1 已确认安装及 ReleaseFast 构建。没有在锁屏下制造�
 ## R4 真实回合更新
 
 [真实 CLI 验收](../r4-20261021/README.md) 已完成 Codex 与授权 GLM 上的 Claude Code 最小回合，不能再用“未获额度授权”解释缺口。官方 Claude 认证失败后已停；[凭据操作事实](../r4-20261021/claude-credential-audit.md) 明确无法确认内部刷新请求。Claude 精确关联仍不通过。
+
+## R7 当前签名产物
+
+`next/target/signed-acceptance/Keepline.app` 使用 Ma JiaYu (C5UWZ934C2)，不覆盖用户运行的 `target/bundle`。codesign --verify --deep --strict 通过，hardened runtime/时间戳存在，无运行时例外 entitlement；spctl 为 Unnotarized Developer ID。签名、公证、分发分别记录，见 [R7](../r7-20261021/README.md)。
