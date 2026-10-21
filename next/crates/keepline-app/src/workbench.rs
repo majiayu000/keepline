@@ -2679,7 +2679,10 @@ impl Workbench {
                             }
                         },
                     )
-                    .child(pane.clone()),
+                    .child(pane.clone().cached(gpui::StyleRefinement {
+                        size: gpui::SizeRefinement { width: Some(gpui::relative(1.).into()), height: Some(gpui::relative(1.).into()) },
+                        ..Default::default()
+                    })),
             )
             .when_some(
                 session.filter(|s| self.here.as_ref() == Some(&s.id)),

@@ -55,7 +55,7 @@ pub struct Screen {
     pub links: Vec<Link>,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct Link {
     pub row: u16,
     pub col: u16,
@@ -86,12 +86,13 @@ pub fn rgb(r: u8, g: u8, b: u8) -> u32 {
 /// Builds runs cell by cell; a run breaks when the style changes.
 pub struct RowBuilder<'a> {
     row: &'a mut Vec<Run>,
+    ascii: bool,
 }
 
 impl<'a> RowBuilder<'a> {
     pub fn new(row: &'a mut Vec<Run>) -> Self {
         row.clear();
-        Self { row }
+        Self { row, ascii: false }
     }
     pub fn push(
         &mut self,
@@ -109,13 +110,14 @@ impl<'a> RowBuilder<'a> {
             && last.col + last.cols == col
             && width == 1
             && text.is_ascii()
-            && last.text.chars().all(|c| c.is_ascii())
+            && self.ascii
         {
             last.text.push_str(text);
             last.cols += width;
             return;
         }
         // Wide / non-ASCII cells get their own run so each is placed on the cell grid.
+        self.ascii = text.is_ascii();
         self.row.push(Run {
             col,
             cols: width,
@@ -140,28 +142,55 @@ use keepline_core::terminal::{
         style::{StyleColor, Underline as SgrUnderline},
     },
 };
-pub fn capture(vt: &Vt) -> Result<Screen, libghostty_vt::Error> {
-    let mut state = RenderState::new()?;
-    let mut row_it = RowIterator::new()?;
-    let mut cell_it = CellIterator::new()?;
-    let mut out = Screen::default();
-    let snap = state.update(vt.terminal())?;
+/// Retain Ghostty's dirty-row state and only rebuild changed viewport rows.
+/// One instance belongs to one Pane/VT connection, never shared between terminals.
+pub struct Capture {
+    state: RenderState<'static>,
+    rows: RowIterator<'static>,
+    cells: CellIterator<'static>,
+    dimensions: (u16, u16),
+    colors: Option<libghostty_vt::render::Colors>,
+    defaults: Option<(u32, u32)>,
+}
+impl Capture {
+    pub fn new() -> Result<Self, libghostty_vt::Error> {
+        Ok(Self { state: RenderState::new()?, rows: RowIterator::new()?,
+            cells: CellIterator::new()?, dimensions: (0, 0), colors: None, defaults: None })
+    }
+    pub fn update(&mut self, vt: &Vt, out: &mut Screen) -> Result<usize, libghostty_vt::Error> {
+    let snap = self.state.update(vt.terminal())?;
+    let dimensions = (snap.cols()?, snap.rows()?);
+    let colors = snap.colors()?;
+    let mut full = self.colors.as_ref() != Some(&colors) || self.dimensions != dimensions
+        || snap.dirty()? == libghostty_vt::render::Dirty::Full;
+    self.dimensions = dimensions;
+    let mut changed = 0;
     // Only the unset defaults come from the UI theme; OSC and explicit ANSI colors survive.
     let def_fg = vt
         .terminal()
         .fg_color()?
         .map(|c| rgb(c.r, c.g, c.b))
         .unwrap_or(DEFAULT_FG);
-    let palette = snap.colors()?.palette;
-    let mut rows = row_it.update(&snap)?;
+    let def_bg = vt.terminal().bg_color()?.map(|c| rgb(c.r, c.g, c.b)).unwrap_or(DEFAULT_BG);
+    full |= self.defaults != Some((def_fg, def_bg));
+    self.defaults = Some((def_fg, def_bg));
+    self.colors = Some(colors.clone());
+    let palette = colors.palette;
+    let mut rows = self.rows.update(&snap)?;
     let mut y = 0usize;
     let mut text = String::new();
     while let Some(row) = rows.next() {
         if out.rows.len() <= y {
             out.rows.push(Vec::new());
         }
+        if !full && !row.dirty()? {
+            y += 1;
+            continue;
+        }
+        changed += 1;
+        out.links.retain(|link| link.row != y as u16);
         let mut b = RowBuilder::new(&mut out.rows[y]);
-        let mut cells = cell_it.update(row)?;
+        let mut cells = self.cells.update(row)?;
         let mut x = 0u16;
         while let Some(cell) = cells.next() {
             let raw = cell.raw_cell()?;
@@ -186,7 +215,7 @@ pub fn capture(vt: &Vt) -> Result<Screen, libghostty_vt::Error> {
                 let st = cell.style()?;
                 if st.inverse {
                     let old = fg;
-                    fg = bg.unwrap_or(DEFAULT_BG);
+                    fg = bg.unwrap_or(def_bg);
                     bg = Some(old);
                 }
                 attrs = Attrs {
@@ -215,7 +244,7 @@ pub fn capture(vt: &Vt) -> Result<Screen, libghostty_vt::Error> {
                 };
             }
             let width = if matches!(wide, CellWide::Wide) { 2 } else { 1 };
-            if cell.raw_cell()?.has_hyperlink()? {
+            if raw.has_hyperlink()? {
                 let grid = vt
                     .terminal()
                     .grid_ref(libghostty_vt::terminal::Point::Viewport(
@@ -241,6 +270,7 @@ pub fn capture(vt: &Vt) -> Result<Screen, libghostty_vt::Error> {
         y += 1;
     }
     out.rows.truncate(y);
+    out.links.retain(|link| (link.row as usize) < y);
     let cur = snap.cursor()?;
     out.cursor = cur.viewport.map(|v| (v.x, v.y));
     out.cursor_visible = cur.visible;
@@ -256,6 +286,13 @@ pub fn capture(vt: &Vt) -> Result<Screen, libghostty_vt::Error> {
         .map(|c| rgb(c.r, c.g, c.b))
         .unwrap_or(DEFAULT_BG);
     snap.clean()?;
+    Ok(changed)
+    }
+}
+/// Standalone captures for fixtures; production keeps a Capture per Pane.
+pub fn capture(vt: &Vt) -> Result<Screen, libghostty_vt::Error> {
+    let mut out = Screen::default();
+    Capture::new()?.update(vt, &mut out)?;
     Ok(out)
 }
 
@@ -266,7 +303,7 @@ use gpui::{
 pub const FONT_SIZE: f32 = crate::theme::Theme::MONO_SIZE;
 
 /// One measurement shared by terminal paint, resize, preedit and IME geometry.
-#[derive(Clone, Copy, Debug)]
+#[derive(Clone, Copy, Debug, PartialEq)]
 pub struct CellMetrics {
     pub width: Pixels,
     pub height: Pixels,
@@ -402,8 +439,10 @@ fn shape_cell(
     metrics: CellMetrics,
     window: &Window,
 ) -> (ShapedLine, Pixels) {
+    // Cell backgrounds/decorations retain full width; trailing ASCII blanks have no ink.
+    let text = run.text.trim_end_matches(' ');
     let tr = TextRun {
-        len: run.text.len(),
+        len: text.len(),
         font,
         color: text_color(run),
         background_color: None,
@@ -412,7 +451,7 @@ fn shape_cell(
     };
     let ts = window.text_system();
     let mut line = ts.shape_line(
-        SharedString::from(run.text.clone()),
+        SharedString::from(text.to_owned()),
         px(FONT_SIZE),
         &[tr.clone()],
         None,
@@ -441,7 +480,7 @@ fn shape_cell(
             (target / line.width()).min(metrics.height / px(FONT_SIZE))
         };
         line = ts.shape_line(
-            SharedString::from(run.text.clone()),
+            SharedString::from(text.to_owned()),
             px(FONT_SIZE) * scale,
             &[tr],
             None,
@@ -459,23 +498,48 @@ pub fn hsla(c: u32) -> Hsla {
     }
     .into()
 }
+/// Current viewport only: no history of strings from a long-running terminal.
+#[derive(Default)]
+pub struct LayoutCache {
+    key: Option<(Font, CellMetrics)>,
+    rows: Vec<Vec<(Run, ShapedLine, Pixels)>>,
+}
+impl LayoutCache {
+    fn prepare(&mut self, font: &Font, metrics: CellMetrics, rows: usize) {
+        if self.key.as_ref() != Some(&(font.clone(), metrics)) {
+            self.rows.clear();
+            self.key = Some((font.clone(), metrics));
+        }
+        self.rows.resize_with(rows, Vec::new);
+    }
+}
 pub fn paint_pane(
+    sc: &Screen, f: &Font, bounds: Bounds<Pixels>, metrics: CellMetrics,
+    show_cursor: bool, window: &mut Window, cx: &mut App,
+) {
+    paint_cached(sc, f, bounds, metrics, show_cursor, &mut LayoutCache::default(), window, cx);
+}
+pub fn paint_cached(
     sc: &Screen,
     f: &Font,
     bounds: Bounds<Pixels>,
     metrics: CellMetrics,
     show_cursor: bool,
+    cache: &mut LayoutCache,
     window: &mut Window,
     cx: &mut App,
 ) {
     window.paint_quad(fill(bounds, hsla(sc.background)));
     let cw = metrics.width;
     let lh = metrics.height;
+    cache.prepare(f, metrics, sc.rows.len());
     for (y, row) in sc.rows.iter().enumerate() {
         let oy = bounds.origin.y + lh * y as f32;
         if oy > bounds.origin.y + bounds.size.height {
             break;
         }
+        let cached = &mut cache.rows[y];
+        let mut index = 0;
         for run in row {
             let ox = bounds.origin.x + cw * run.col as f32;
             if let Some(bg) = run.bg {
@@ -504,16 +568,18 @@ pub fn paint_pane(
             {
                 continue;
             }
-            let mut font = f.clone();
-            if run.attrs.bold {
-                font.weight = FontWeight::BOLD;
+            if cached.get(index).is_none_or(|(old, _, _)| old != run) {
+                let mut font = f.clone();
+                if run.attrs.bold { font.weight = FontWeight::BOLD; }
+                if run.attrs.italic { font.style = FontStyle::Italic; }
+                let (line, offset) = shape_cell(run, font, metrics, window);
+                let entry = (run.clone(), line, offset);
+                if index < cached.len() { cached[index] = entry; } else { cached.push(entry); }
             }
-            if run.attrs.italic {
-                font.style = FontStyle::Italic;
-            }
-            let (line, offset) = shape_cell(run, font, metrics, window);
+            let (_, line, offset) = &cached[index];
+            index += 1;
             let _ = line.paint(
-                point(ox + offset, oy),
+                point(ox + *offset, oy),
                 lh,
                 TextAlign::Left,
                 None,
@@ -521,6 +587,7 @@ pub fn paint_pane(
                 cx,
             );
         }
+        cached.truncate(index);
     }
     if show_cursor
         && sc.cursor_visible
@@ -618,6 +685,46 @@ fn paint_decorations(run: &Run, origin: gpui::Point<Pixels>, m: CellMetrics, win
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn retained_capture_rebuilds_only_dirty_rows_and_clears_old_links() {
+        let mut vt = Vt::new(40, 10).unwrap();
+        vt.feed(b"\x1b[3;1H");
+        let mut capture = Capture::new().unwrap();
+        let mut screen = Screen::default();
+        assert_eq!(capture.update(&vt, &mut screen).unwrap(), 10);
+        assert_eq!(capture.update(&vt, &mut screen).unwrap(), 0);
+        vt.feed(b"\x1b[3;1H\x1b]8;;https://example.com\x1b\\link\x1b]8;;\x1b\\");
+        assert_eq!(capture.update(&vt, &mut screen).unwrap(), 1);
+        assert!(screen.link_at(2, 0).is_some());
+        let unchanged = screen.rows[0].as_ptr();
+        vt.feed(b"\x1b[3;1H\x1b[2Kplain");
+        assert_eq!(capture.update(&vt, &mut screen).unwrap(), 1);
+        assert!(screen.links.is_empty());
+        assert_eq!(screen.rows[0].as_ptr(), unchanged);
+        assert_eq!(capture.update(&vt, &mut screen).unwrap(), 0);
+    }
+
+    #[test]
+    fn retained_capture_matches_full_capture_after_resize_scroll_palette_and_alternate_screen() {
+        let mut vt = Vt::new(40, 5).unwrap();
+        let mut reader = Capture::new().unwrap();
+        let mut screen = Screen::default();
+        for bytes in [b"one\r\ntwo\r\nthree".as_slice(), b"\x1b[?1049hALT", b"\x1b[?1049l", b"\x1b]10;#123456\x07", b"\x1b[31mred\x1b]4;1;#abcdef\x07", b"\r\n4\r\n5\r\n6\r\n7"] {
+            vt.feed(bytes);
+            reader.update(&vt, &mut screen).unwrap();
+            let full = capture(&vt).unwrap();
+            assert_eq!(screen.rows, full.rows);
+            assert_eq!(screen.cursor, full.cursor);
+            assert_eq!(screen.links, full.links);
+        }
+        vt.resize(20, 3).unwrap();
+        reader.update(&vt, &mut screen).unwrap();
+        assert_eq!(screen.rows, capture(&vt).unwrap().rows);
+        vt.scroll(libghostty_vt::terminal::ScrollViewport::Top);
+        reader.update(&vt, &mut screen).unwrap();
+        assert_eq!(screen.rows, capture(&vt).unwrap().rows);
+    }
 
     #[test]
     fn osc_links_keep_cell_bounds_and_reject_executable_schemes() {
