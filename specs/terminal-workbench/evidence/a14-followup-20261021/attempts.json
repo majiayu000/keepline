@@ -1,0 +1,16 @@
+[
+  {
+    "case": "keepline-one",
+    "attempt": 1,
+    "valid": false,
+    "exit": 2,
+    "prefix": "keepline-one-batch-1"
+  },
+  {
+    "case": "ghostty-one",
+    "attempt": 1,
+    "valid": false,
+    "exit": 2,
+    "prefix": "ghostty-one-batch-1"
+  }
+]

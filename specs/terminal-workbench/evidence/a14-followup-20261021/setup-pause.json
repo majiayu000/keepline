@@ -1,0 +1,6 @@
+{
+  "reason": "Prepare both four-pane fixtures before quiet sampling; no workload sample started",
+  "time": 1792568658.6287239,
+  "driver": 15434,
+  "idle_guard": 15458
+}
