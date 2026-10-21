@@ -71,10 +71,10 @@ pub enum Agent {
 }
 impl Agent {
     /// Temporary until daemon-backed Codex can prove a TUI-to-session association.
-    pub fn command(self) -> &'static str {
+    pub fn command(self) -> String {
         match self {
-            Self::Codex => "codex --no-daemon",
-            Self::Claude => "claude",
+            Self::Codex => "codex --no-daemon".into(),
+            Self::Claude => format!("claude --session-id {}", uuid::Uuid::new_v4()),
         }
     }
     pub fn resume_command(self, cli_id: &str) -> String {
@@ -779,6 +779,10 @@ mod tests {
     }
     #[test]
     fn codex_prefill_and_resume_use_no_daemon_and_preserve_shell_quoting() {
+        let first = Agent::Claude.command();
+        let second = Agent::Claude.command();
+        assert_ne!(first, second);
+        assert!(uuid::Uuid::parse_str(first.strip_prefix("claude --session-id ").unwrap()).is_ok());
         assert_eq!(Agent::Codex.command(), "codex --no-daemon");
         assert_eq!(
             Agent::Codex.resume_command("a'b"),

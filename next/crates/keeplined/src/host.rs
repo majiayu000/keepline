@@ -123,7 +123,8 @@ impl Host {
                 .current_agent(&terminal)
                 .filter(|s| Some(s.runtime) == process.runtime)
             {
-                if !files
+                if process.cli_session_id.as_deref() != Some(&session.cli_session_id)
+                    && !files
                     .get(&process.pid)
                     .is_some_and(|paths| paths.contains(&session.transcript))
                 {
@@ -477,27 +478,22 @@ fn watch_recognition(mut stream: UnixStream, shared: Shared, connection: u64) ->
 fn refresh_agents(
     shared: &Shared,
     transcripts: &[crate::recognition::Transcript],
-) -> io::Result<bool> {
+) -> io::Result<()> {
     let workspace = lock(shared)?.workspace.clone();
     let processes = crate::recognition::processes(&workspace)?;
     let files = crate::recognition::open_transcripts(&workspace, &processes)?;
     let mut host = lock(shared)?;
     let mut next = host.workspace.clone();
     crate::recognition::reconcile(&mut next, transcripts, &processes, &files)?;
-    let pending = processes.iter().filter(|p| p.runtime.is_some()).any(|p| {
-        crate::recognition::terminal_for_process(p.pid, &processes, &next)
-            .is_some_and(|t| next.current_agent(&t).is_none())
-    });
     if next.agent_sessions != host.workspace.agent_sessions {
         host.commit(next)?;
     }
     host.observe_processes(&processes, &files)?;
-    Ok(pending)
+    Ok(())
 }
 #[derive(Default)]
 struct Association {
     attempted: std::collections::HashSet<(String, String)>,
-    pending_agents: bool,
     inventory: Vec<u32>,
 }
 impl Association {
@@ -528,10 +524,11 @@ impl Association {
                 })
             })
             .collect();
+        // A new identity/file (or a changed managed tree) gets one probe. An
+        // unresolved manual Claude appending the same file is not a polling clock.
         let needs_probe = !running.is_empty()
             && unbound.iter().any(|t| {
-                self.pending_agents
-                    || running != self.inventory
+                running != self.inventory
                     || !self.attempted.contains(&(t.path.clone(), t.cli_id.clone()))
             });
         // Known files only advance metadata. Never enumerate processes or query the whole index here.
@@ -587,7 +584,7 @@ impl Association {
             for t in unbound {
                 self.attempted.insert((t.path.clone(), t.cli_id.clone()));
             }
-            self.pending_agents = refresh_agents(shared, &index.cached()?)?;
+            refresh_agents(shared, &index.cached()?)?;
         }
         Ok(())
     }

@@ -576,6 +576,7 @@ fn forty_idle_terminals_have_no_periodic_background_io() {
                 pid: external.0.id(),
                 parent: std::process::id(),
                 runtime: Some(Agent::Codex),
+                cli_session_id: None,
             });
             assert!(
                 !keeplined::recognition::open_transcripts(&workspace, &processes)
@@ -1423,4 +1424,141 @@ fn host_death_interrupts_pty_and_restart_preserves_no_fake_running_process() {
         assert!(Instant::now() < deadline);
         std::thread::sleep(Duration::from_millis(25));
     }
+}
+
+#[test]
+fn claude_explicit_id_binds_closed_log_and_tracks_exit_without_hooks() {
+    let h = Host::start();
+    h.setup();
+    let logs = h.root.join("logs/claude");
+    fs::create_dir_all(&logs).unwrap();
+    let cli = h.root.join("claude");
+    std::os::unix::fs::symlink("/bin/sh", &cli).unwrap();
+    let ids: Vec<_> = (0..2).map(|_| uuid::Uuid::new_v4().to_string()).collect();
+    for (i, id) in ids.iter().enumerate() {
+        let path = logs.join(format!("{id}.jsonl"));
+        let seed = h.root.join(format!("seed-{i}"));
+        let row = serde_json::json!({"type":"user","sessionId":id,"uuid":format!("u{i}"),"cwd":"/project","entrypoint":"cli","userType":"external","timestamp":keepline_core::content::now(),"message":{"content":"Explicit identity test"}});
+        fs::write(&seed, format!("{row}\n")).unwrap();
+        // Close the log before FSEvents delivery: lsof cannot supply this association.
+        let script = format!(
+            "cat {} > {}; read -r line",
+            shell_quote(&seed.to_string_lossy()),
+            shell_quote(&path.to_string_lossy())
+        );
+        h.call(h.launch(
+            &format!("id-{i}"),
+            &format!(
+                "exec {} -c {} fixture --session-id {}",
+                shell_quote(&cli.to_string_lossy()),
+                shell_quote(&script),
+                id
+            ),
+        ))
+        .unwrap();
+    }
+    let until = Instant::now() + Duration::from_secs(30);
+    loop {
+        let w = h.workspace();
+        if ids.iter().enumerate().all(|(i, id)| {
+            w.current_agent(&format!("id-{i}"))
+                .is_some_and(|s| &s.cli_session_id == id)
+        }) {
+            break;
+        }
+        assert!(
+            Instant::now() < until,
+            "closed logs must bind via explicit argv IDs"
+        );
+        std::thread::sleep(Duration::from_millis(50));
+    }
+    assert_eq!(recognition(&h).metrics.lsof_spawns, 0);
+    h.call(Request::Stop { id: "id-0".into() }).unwrap();
+    let until = Instant::now() + Duration::from_secs(10);
+    while h.workspace().current_agent("id-0").is_some() {
+        assert!(
+            Instant::now() < until,
+            "exited Claude cannot remain current"
+        );
+        std::thread::sleep(Duration::from_millis(50));
+    }
+    assert!(h.workspace().current_agent("id-1").is_some());
+}
+
+#[test]
+fn manual_claude_closed_log_stays_external_and_append_does_not_repeat_probes() {
+    use std::io::Write;
+    let h = Host::start();
+    h.setup();
+    let logs = h.root.join("logs/claude");
+    fs::create_dir_all(&logs).unwrap();
+    let path = logs.join("manual.jsonl");
+    let cli = h.root.join("claude");
+    std::os::unix::fs::symlink("/bin/sh", &cli).unwrap();
+    let seed = h.root.join("seed");
+    let id = uuid::Uuid::new_v4().to_string();
+    let row = serde_json::json!({"type":"user","sessionId":id,"uuid":"u1","cwd":"/project","entrypoint":"cli","userType":"external","timestamp":keepline_core::content::now(),"message":{"content":"Manual identity needs open-file proof"}});
+    fs::write(&seed, format!("{row}\n")).unwrap();
+    let script = format!(
+        "cat {} > {}; read -r line",
+        shell_quote(&seed.to_string_lossy()),
+        shell_quote(&path.to_string_lossy())
+    );
+    h.call(h.launch(
+        "manual",
+        &format!(
+            "exec {} -c {}",
+            shell_quote(&cli.to_string_lossy()),
+            shell_quote(&script)
+        ),
+    ))
+    .unwrap();
+    let until = Instant::now() + Duration::from_secs(30);
+    loop {
+        if h.workspace()
+            .agent_sessions
+            .iter()
+            .any(|s| s.cli_session_id == id)
+            && recognition(&h).metrics.lsof_spawns > 0
+        {
+            break;
+        }
+        assert!(Instant::now() < until);
+        std::thread::sleep(Duration::from_millis(50));
+    }
+    std::thread::sleep(Duration::from_millis(500));
+    let before = recognition(&h).metrics;
+    for i in 0..5 {
+        let row = serde_json::json!({"type":"assistant","sessionId":id,"uuid":format!("a{i}"),"message":{"content":[{"type":"text","text":format!("manual append {i}")}]}});
+        // Match Claude's brief-open writes; an unbound file has no vnode watch.
+        {
+            let mut file = fs::OpenOptions::new().append(true).open(&path).unwrap();
+            writeln!(file, "{row}").unwrap();
+        }
+        std::thread::sleep(Duration::from_millis(250));
+    }
+    let until = Instant::now() + Duration::from_secs(10);
+    loop {
+        let after = recognition(&h).metrics;
+        if after.log_bytes > before.log_bytes {
+            break;
+        }
+        assert!(Instant::now() < until);
+        std::thread::sleep(Duration::from_millis(50));
+    }
+    let after = recognition(&h).metrics;
+    assert_eq!(
+        (after.ps_spawns, after.lsof_spawns),
+        (before.ps_spawns, before.lsof_spawns)
+    );
+    let w = h.workspace();
+    assert!(w.current_agent("manual").is_none());
+    assert!(
+        w.agent_sessions
+            .iter()
+            .find(|s| s.cli_session_id == id)
+            .unwrap()
+            .terminal
+            .is_none()
+    );
 }

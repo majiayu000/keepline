@@ -387,3 +387,5 @@ R8 先用 Time Profiler 记录客户端输出负载调用栈与可查看火焰�
 R9 新建 Claude 命令显式生成 --session-id UUID，恢复使用 --resume 原 ID；后台仅使用托管进程 argv 的确定 ID 或该 PID 打开 JSONL 的证据。新文件事件只对尚未关联的托管 Claude PID 作有界探测；cwd 只能缩小候选事件，不能作为身份关联依据。测试覆盖同目录并发、错误 ID/日志不匹配、无参数手敲保持外部；真实 GLM 使用授权 provider 运行时只读注入，独立 HOME/CLAUDE_CONFIG_DIR，不读官方凭据、不改配置。指标是 Claude A02/A04/A12 真实链路与机械证据正确，无法证明身份时不关联。
 
 R8 结果：采用 Pane 级持久 RenderState、dirty 行更新、当前视口排版缓存与 GPUI cached 子视图；默认色/调色板/尺寸/字体失效，焦点变化通知子视图。现有 16 ms 事件合并保留。CPU 1/4 画面为 Ghostty 1.60×/1.24×，A14 仍不通过；客户端占约 94%，后台约 2%，Metal 提交 CPU 为客户端子集，真实 GPU 时长未知。证据见 evidence/r8-20261021。
+
+R9 结果：采用托管 Claude 进程 argv 中显式 UUID 与 JSONL ID 精确对应；KERN_PROCARGS2 只解析 argc 个参数，不保存环境尾部。新日志身份一次探测，无 ID 且 FD 关闭时保持外部、追加不重复探测。真实 GLM 两轮验证新建/续接/退出与四字段，A02/A12 通过；A04 CLI 审批可作答但日志无等待事件，保持部分通过。A15 新发现完成自述漏判保留为缺口。多行预填就绪检查移到 dirty 清除之后，防止合并唤醒至绘制之间的输出丢失就绪检查；不引入轮询或自动执行。默认并行 89 项通过，见 evidence/r9-20261021。

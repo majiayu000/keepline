@@ -91,26 +91,7 @@ impl Pane {
                     .await;
                 while rx.try_recv().is_ok() {}
                 if this
-                    .update(cx, |this, cx| {
-                        let ready = this.connection.state.lock().is_ok_and(|s| {
-                            s.writable
-                                && s.vt.as_ref().is_some_and(|vt| {
-                                    let multiline = this
-                                        .pending_prefill
-                                        .as_ref()
-                                        .is_some_and(|c| c.contains('\n') || c.contains('\r'));
-                                    !multiline
-                                        || vt
-                                            .terminal()
-                                            .mode(Mode::BRACKETED_PASTE)
-                                            .unwrap_or(false)
-                                })
-                        });
-                        if ready {
-                            if let Some(command) = this.pending_prefill.take() {
-                                this.prefill(&command, cx);
-                            }
-                        }
+                    .update(cx, |_, cx| {
                         cx.notify();
                     })
                     .is_err()
@@ -518,9 +499,26 @@ impl Pane {
             cx.notify();
         }
     }
+    fn flush_prefill(&mut self, cx: &mut Context<Self>) {
+        let Some(command) = self.pending_prefill.as_ref() else {
+            return;
+        };
+        let multiline = command.contains('\n') || command.contains('\r');
+        let ready = self.connection.state.lock().is_ok_and(|s| {
+            s.writable
+                && s.vt.as_ref().is_some_and(|vt| {
+                    !multiline || vt.terminal().mode(Mode::BRACKETED_PASTE).unwrap_or(false)
+                })
+        });
+        if ready && let Some(command) = self.pending_prefill.take() {
+            self.prefill(&command, cx);
+        }
+    }
     pub fn queue_prefill(&mut self, command: &str, cx: &mut Context<Self>) {
         self.staged_command = true;
         self.pending_prefill = Some(command.into());
+        // The shell may already be ready and silent before this request arrives.
+        self.flush_prefill(cx);
         cx.notify();
     }
     pub fn replace_staged(&mut self, command: Option<&str>, cx: &mut Context<Self>) -> bool {
@@ -636,6 +634,11 @@ impl Render for Pane {
         }
         self.sync_focus(window, cx);
         self.connection.dirty.store(false, Ordering::Release);
+        // Clear the wake flag before checking readiness. If ?2004h arrives between
+        // the coalesced wake and this render, it must not be consumed by paint
+        // without also releasing the pending multiline paste. Later output queues
+        // another wake because dirty is already false.
+        self.flush_prefill(cx);
         let state = self.connection.state.lock().unwrap();
         if let Some(vt) = &state.vt {
             let result = (|| {
