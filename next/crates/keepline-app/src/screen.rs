@@ -623,6 +623,53 @@ pub fn paint_cached(
     window: &mut Window,
     cx: &mut App,
 ) {
+    // One layer for the grid: its thousands of glyphs and cell backgrounds share a
+    // draw order instead of each being inserted into GPUI's per-primitive bounds tree.
+    // Inside the layer quads draw under sprites, as Ghostty's background/text passes do.
+    window.paint_layer(bounds, |window| {
+        paint_grid(sc, f, bounds, metrics, cache, window, cx)
+    });
+    // Cursor and later overlays stay outside the layer so they still draw over glyphs.
+    let cw = metrics.width;
+    let lh = metrics.height;
+    if show_cursor
+        && sc.cursor_visible
+        && let Some((x, y)) = sc.cursor
+    {
+        let cell = Bounds::new(
+            point(
+                bounds.origin.x + cw * x as f32,
+                bounds.origin.y + lh * y as f32,
+            ),
+            size(cw, lh),
+        );
+        let color = hsla(DEFAULT_FG).opacity(0.6);
+        let t = metrics.stroke * 2.;
+        match sc.cursor_shape {
+            CursorShape::Block => window.paint_quad(fill(cell, color)),
+            CursorShape::Bar => {
+                window.paint_quad(fill(Bounds::new(cell.origin, size(t, lh)), color))
+            }
+            CursorShape::Underline => window.paint_quad(fill(
+                Bounds::new(point(cell.left(), cell.bottom() - t), size(cw, t)),
+                color,
+            )),
+            CursorShape::BlockHollow => window.paint_quad(
+                gpui::outline(cell, color, gpui::BorderStyle::Solid).border_widths(metrics.stroke),
+            ),
+        }
+    }
+}
+
+fn paint_grid(
+    sc: &Screen,
+    f: &Font,
+    bounds: Bounds<Pixels>,
+    metrics: CellMetrics,
+    cache: &mut LayoutCache,
+    window: &mut Window,
+    cx: &mut App,
+) {
     window.paint_quad(fill(bounds, hsla(sc.background)));
     let cw = metrics.width;
     let lh = metrics.height;
@@ -707,33 +754,6 @@ pub fn paint_cached(
             );
         }
         cached.truncate(index);
-    }
-    if show_cursor
-        && sc.cursor_visible
-        && let Some((x, y)) = sc.cursor
-    {
-        let cell = Bounds::new(
-            point(
-                bounds.origin.x + cw * x as f32,
-                bounds.origin.y + lh * y as f32,
-            ),
-            size(cw, lh),
-        );
-        let color = hsla(DEFAULT_FG).opacity(0.6);
-        let t = metrics.stroke * 2.;
-        match sc.cursor_shape {
-            CursorShape::Block => window.paint_quad(fill(cell, color)),
-            CursorShape::Bar => {
-                window.paint_quad(fill(Bounds::new(cell.origin, size(t, lh)), color))
-            }
-            CursorShape::Underline => window.paint_quad(fill(
-                Bounds::new(point(cell.left(), cell.bottom() - t), size(cw, t)),
-                color,
-            )),
-            CursorShape::BlockHollow => window.paint_quad(
-                gpui::outline(cell, color, gpui::BorderStyle::Solid).border_widths(metrics.stroke),
-            ),
-        }
     }
 }
 
