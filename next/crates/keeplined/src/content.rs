@@ -25,7 +25,7 @@ static PATCH: LazyLock<Regex> =
     LazyLock::new(|| re(r"(?m)^\*\*\* (?:Update|Add|Delete) File: (.+)$"));
 static CLAIM: LazyLock<Regex> = LazyLock::new(|| {
     re(
-        r"(?i)(?:已(?:完成|修复|实现|提交)|修复完成|全部.{0,12}通过|完成了|implemented|fixed|completed|all tests pass|\bdone\b)",
+        r"(?i)(?:^\s*完成[。.!！]?\s*$|已(?:完成|修复|实现|提交)|修复完成|全部.{0,12}通过|完成了|implemented|fixed|completed|all tests pass|\bdone\b)",
     )
 });
 fn claims_done(s: &str) -> bool {
@@ -1044,7 +1044,7 @@ pub fn card(db: &Connection, path: &str) -> io::Result<Option<Content>> {
 }
 pub fn save(db: &Connection, path: &str, parser: &Parser) -> io::Result<()> {
     let mut encoded = serde_json::to_value(parser).map_err(db_err)?;
-    encoded["_rules"] = json!(4);
+    encoded["_rules"] = json!(5);
     db.prepare_cached("INSERT INTO session_content VALUES(?1,?2,?3,?4,?5,?6) ON CONFLICT(path) DO UPDATE SET title=excluded.title,turn=excluded.turn,updated=excluded.updated,projection=excluded.projection,parser=excluded.parser").map_err(db_err)?.execute(params![path,parser.card.title,format!("{:?}",parser.card.turn),i64::try_from(parser.card.updated).map_err(db_err)?,serde_json::to_string(&parser.card).map_err(db_err)?,serde_json::to_string(&encoded).map_err(db_err)?]).map_err(db_err)?;
     let mut ordinals = BTreeMap::new();
     for r in &parser.records {
@@ -1317,6 +1317,30 @@ mod tests {
         assert_eq!(p.card.asks.len(), 2);
         assert!(p.card.completed_claim);
         assert!(p.card.here().done.contains("尚无"));
+    }
+    #[test]
+    fn claude_short_completion_is_a_review_claim_not_evidence() {
+        for reply in ["完成", "完成。", "完成!", "完成！"] {
+            let mut p = Parser::default();
+            p.add(
+                Agent::Claude,
+                &serde_json::to_vec(&json!({"type":"assistant","message":{"model":"claude","stop_reason":"end_turn","content":[{"type":"text","text":reply}]}})).unwrap(),
+                Source::default(),
+            );
+            assert_eq!(p.card.turn, Turn::Completed);
+            assert!(p.card.completed_claim, "{reply}");
+            assert!(p.card.evidence.is_empty());
+            assert!(p.card.here().done.contains("尚无"));
+        }
+        for text in [
+            "完成后请运行测试",
+            "完成吗？",
+            "尚未完成。",
+            "> 完成。",
+            "```\n完成。\n```",
+        ] {
+            assert!(!claims_done(text), "{text}");
+        }
     }
     #[test]
     fn real_exit_receipts_and_async_correlation_survive_restart() {
