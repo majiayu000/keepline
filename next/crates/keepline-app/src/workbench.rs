@@ -1744,6 +1744,18 @@ impl Workbench {
             .cloned()
         {
             self.enter_card(&session, window, cx);
+            // Report actual selected layout and focused pane, not a queued route intent.
+            if !self.overview
+                && let Some(terminal) = live_terminal(&self.workspace, &session)
+                && self.focused.as_deref() == Some(terminal.id.as_str())
+                && let Some(tab) = self.workspace.terminal_tab(&terminal.id)
+                && !tab.closed
+                && self.tab.as_deref() == Some(tab.id.as_str())
+                && let Some(pane) = self.panes.get(&terminal.id)
+                && pane.focus_handle(cx).is_focused(window)
+            {
+                crate::desktop::route_applied(id, &terminal.id, &tab.id);
+            }
         } else {
             self.error = Some("会话尚未载入，请刷新工作台".into());
             self.request(Request::Workspace, cx);

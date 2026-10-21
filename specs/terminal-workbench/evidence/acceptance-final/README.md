@@ -32,7 +32,7 @@ R1 默认并行 workspace 全套连续三次各 75 项通过；R2 增补后 82 �
 | A06 关闭标签/窗口/App 再打开 | **部分通过**（缺 Dock 点击） | [原生历史](../keyboard-lifecycle-20261020/README.md)与本轮包 RPC 回执：原 ID/PID 保持、可继续输入。直接点 Dock 独立路径仍未验证 |
 | A07 断线、快照、丢确认 | **通过**（自动 + 历史原生） | reconnect_input_resize、分段 UTF-8/escape 快照、拒绝截断快照、大输入不重放；历史真实客户端重开有截图。曾有一次 CUA 首字符遗漏未定位，见 IME 原记录，不能宣称已修复 |
 | A08 待办开始/重复开始 | **通过**（原生 UI + 模拟及真实 CLI） | M1 重复开始保持终端数；R9 真实 Claude UUID 预填、按回车自动归属；补修 shell 就绪与合并唤醒竞态，新画面多行命令立即预填且不执行。见 [R9](../r9-20261021/README.md) |
-| A09 系统通知点击 | **未验证**（原生链路） | R6 真实请求返回拒绝，系统设置已登记测试应用；用户后续确认已开启。本轮已解锁并触发 Error，Computer Use 仅能读到日历小组件、系统入口超时，真实展示/点击仍待补。去重单测不代替原生证据。见 [R6](../r6-20261021/README.md) |
+| A09 系统通知点击 | **未验证（点击）/ 原始可见性未通过** | R12 系统接受、投递、去重已证实，但 donotdisturbd 明确因 display shared 抑制，用户没找到通知；重发后等待真实 didReceive 与画面状态。见 [R12](../r12-20261021/README.md) |
 | A10 退出、停止、宿主死亡 | **通过**（真实 PTY 自动测试） | process_exit、stop_agent、host_death；正常 exit_code、结局不变、未识别 shell 拒绝 StopAgent、宿主死亡后 Interrupted |
 | A11 单写入者/接管 | **通过**（真实 PTY 自动测试） | 两连接拒绝无权限输入/resize；明确接管；owner 断开自动归还；签名包重开无其他 owner 自动可写 |
 | A12 真实 CLI resume | **通过**（分段真实回合） | R4 Codex 原 ID 续接/重新关联；R9 Claude + GLM 从继续按钮预填 --resume 原 ID，新画面手动执行后恢复历史并完成第二轮，AgentSession 不重复且转移到新 PTY，退出 current=false。见 [R9](../r9-20261021/README.md) |
@@ -101,3 +101,7 @@ R8 / R9 后默认并行 workspace **89 项通过**（另 1 ignored daemon_fixtur
 ## R13 合并前 Rust 检查
 
 固定 CI/本地 Rust 1.95.0，按各 crate edition 格式化，补齐 Zig/固定依赖准备，将 CI 检查扩大到整个 workspace。fmt、clippy --all-targets -D warnings、91 项测试通过；仅 fixture 子进程入口 ignored。远程 CI 尚未运行，详见 [R13](../r13-20261021/README.md)。
+
+## R12 通知证据边界
+
+原生系统日志能证明请求接受和 OS 投递，不能证明用户看到；本轮查明 display shared 抑制。重发通知等待用户点击，A09 不勾选。

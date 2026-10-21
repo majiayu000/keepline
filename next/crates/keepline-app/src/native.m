@@ -1,5 +1,6 @@
 #import <AppKit/AppKit.h>
 #import <UserNotifications/UserNotifications.h>
+#import <os/log.h>
 
 typedef void (*KLCallback)(const char *);
 @interface KLDesktop : NSObject <UNUserNotificationCenterDelegate>
@@ -9,6 +10,15 @@ typedef void (*KLCallback)(const char *);
 @property KLCallback callback;
 @end
 static KLDesktop *desktop;
+// Audit only routing identifiers, never notification text or conversation content.
+static os_log_t notification_log(void) {
+    static os_log_t log; static dispatch_once_t once;
+    dispatch_once(&once, ^{log=os_log_create("local.keepline.desktop", "notifications");});
+    return log;
+}
+void kl_desktop_route_applied(const char *session,const char *terminal,const char *tab) {
+    os_log(notification_log(), "route_applied bundle=%{public}@ session=%{public}s terminal=%{public}s tab=%{public}s", NSBundle.mainBundle.bundleIdentifier,session,terminal,tab);
+}
 static NSColor *color(NSNumber *value) {
     unsigned n=value.unsignedIntValue;
     return [NSColor colorWithRed:((n>>16)&255)/255.0 green:((n>>8)&255)/255.0 blue:(n&255)/255.0 alpha:1];
@@ -48,10 +58,12 @@ static NSColor *color(NSNumber *value) {
     self.popover.contentViewController=vc;self.popover.contentSize=NSMakeSize(width,height);
 }
 - (void)userNotificationCenter:(UNUserNotificationCenter *)center willPresentNotification:(UNNotification *)notification withCompletionHandler:(void (^)(UNNotificationPresentationOptions))completion {
+    os_log(notification_log(), "will_present bundle=%{public}@ request=%{public}@", NSBundle.mainBundle.bundleIdentifier,notification.request.identifier);
     completion(UNNotificationPresentationOptionBanner|UNNotificationPresentationOptionSound);
 }
 - (void)userNotificationCenter:(UNUserNotificationCenter *)center didReceiveNotificationResponse:(UNNotificationResponse *)response withCompletionHandler:(void (^)(void))completion {
     NSString *sid=response.notification.request.content.userInfo[@"session"];
+    os_log(notification_log(), "did_receive bundle=%{public}@ request=%{public}@ action=%{public}@", NSBundle.mainBundle.bundleIdentifier,response.notification.request.identifier,response.actionIdentifier);
     if(sid) dispatch_async(dispatch_get_main_queue(), ^{[self route:sid];});
     completion();
 }
@@ -84,7 +96,15 @@ void kl_desktop_notify(const char *session,const char *title,const char *body) {
     NSString *sid=[NSString stringWithUTF8String:session];
     UNMutableNotificationContent *content=[UNMutableNotificationContent new];content.title=[NSString stringWithUTF8String:title];content.body=[NSString stringWithUTF8String:body];content.userInfo=@{@"session":sid};
     UNNotificationRequest *request=[UNNotificationRequest requestWithIdentifier:sid content:content trigger:nil];
-    [[UNUserNotificationCenter currentNotificationCenter]addNotificationRequest:request withCompletionHandler:^(NSError *error){if(error)dispatch_async(dispatch_get_main_queue(),^{[desktop route:[@"error:" stringByAppendingString:error.localizedDescription]];});}];
+    [[UNUserNotificationCenter currentNotificationCenter]addNotificationRequest:request withCompletionHandler:^(NSError *error){
+        os_log(notification_log(), "request_completed bundle=%{public}@ request=%{public}@ accepted=%{public}d error_domain=%{public}@ error_code=%{public}ld", NSBundle.mainBundle.bundleIdentifier,sid,error==nil,error.domain?:@"",(long)error.code);
+        if(error) dispatch_async(dispatch_get_main_queue(),^{[desktop route:[@"error:" stringByAppendingString:error.localizedDescription]];});
+        // Acceptance is not proof of delivery. Record only entries returned by the OS.
+        [[UNUserNotificationCenter currentNotificationCenter]getDeliveredNotificationsWithCompletionHandler:^(NSArray<UNNotification *> *notifications){
+            for(UNNotification *notification in notifications) if([notification.request.identifier isEqualToString:sid])
+                os_log(notification_log(), "delivered_list bundle=%{public}@ request=%{public}@ delivered_at=%{public}@", NSBundle.mainBundle.bundleIdentifier,sid,notification.date);
+        }];
+    }];
 }
 
 void kl_desktop_show(void) { [desktop show:nil]; }

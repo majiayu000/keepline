@@ -22,11 +22,25 @@ pub struct Status(pub String);
 impl Global for Status {}
 static EVENTS: OnceLock<UnboundedSender<String>> = OnceLock::new();
 unsafe extern "C" {
+    fn kl_desktop_route_applied(
+        session: *const c_char,
+        terminal: *const c_char,
+        tab: *const c_char,
+    );
     fn kl_desktop_install(callback: extern "C" fn(*const c_char));
     fn kl_desktop_update(json: *const c_char);
     fn kl_notifications_enable();
     fn kl_desktop_show();
     fn kl_desktop_notify(session: *const c_char, title: *const c_char, body: *const c_char);
+}
+pub fn route_applied(session: &str, terminal: &str, tab: &str) {
+    unsafe {
+        kl_desktop_route_applied(
+            cstring(session).as_ptr(),
+            cstring(terminal).as_ptr(),
+            cstring(tab).as_ptr(),
+        );
+    }
 }
 extern "C" fn event(value: *const c_char) {
     if value.is_null() {

@@ -233,3 +233,6 @@ flowchart LR
 
 - [x] R11：有界 ASCII glyph 缓存、24 项测试、原生字形与 13 fixture 回归、失焦自动作废重采；各三次均无效，A14 达标不勾选（evidence/r11-20261021）。
 - [x] R13：统一固定 Rust 工具链与各 crate edition；workspace fmt/clippy -D warnings/91 项测试通过；远程 CI 未运行（evidence/r13-20261021）。
+
+- [x] R12：原生通知审计、系统投递与重复事实去重；查明 display shared 抑制（evidence/r12-20261021）。
+- [ ] R12 / A09：重发后用户可见与真实点击直达仍待确认，不以系统 Presenting 日志代替。
