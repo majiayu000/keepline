@@ -186,9 +186,29 @@ fn reconnect_input_resize_and_takeover_are_real_pty_operations() {
     assert!(matches!(ack(&mut second), Reply::Error(_)));
     let (mut third, _, writable) = h.attach("one", true);
     assert!(writable);
-    send(&mut first, CONTROL, &Request::Resize { cols: 90, rows: 30 }).unwrap();
+    send(
+        &mut first,
+        CONTROL,
+        &Request::Resize {
+            cols: 90,
+            rows: 30,
+            cell_width: 9,
+            cell_height: 18,
+        },
+    )
+    .unwrap();
     assert!(matches!(ack(&mut first), Reply::Error(_)));
-    send(&mut third, CONTROL, &Request::Resize { cols: 90, rows: 30 }).unwrap();
+    send(
+        &mut third,
+        CONTROL,
+        &Request::Resize {
+            cols: 90,
+            rows: 30,
+            cell_width: 9,
+            cell_height: 18,
+        },
+    )
+    .unwrap();
     assert!(matches!(ack(&mut third), Reply::Ok));
     drop(first);
     drop(second);
@@ -206,6 +226,238 @@ fn reconnect_input_resize_and_takeover_are_real_pty_operations() {
     .unwrap();
     assert!(matches!(ack(&mut again), Reply::Ok));
     assert_eq!(h.workspace().terminals[0].state, ProcessState::Running);
+}
+#[test]
+fn programs_get_answers_to_terminal_queries_and_pixel_size() {
+    // A real program in the PTY: waits for "go", asks like Codex/TUIs do, prints what came back.
+    const PROBE: &str = r#"exec python3 -c '
+import os, select, tty, fcntl, struct, termios, time
+input()
+tty.setraw(0)
+os.write(1, b"\x1b]11;?\x07\x1b]10;?\x07\x1b[c\x1b[>q\x1b[18t\x1b[14t\x1b[?996n")
+got = b""
+while select.select([0], [], [], 1.0)[0]:
+    got += os.read(0, 4096)
+win = struct.unpack("HHHH", fcntl.ioctl(1, termios.TIOCGWINSZ, b"\0" * 8))
+os.write(1, b"\r\nGOT " + got.hex().encode() + b" WIN %d %d %d %d END\r\n" % win)
+time.sleep(60)
+'"#;
+    let h = Host::start();
+    h.setup();
+    h.call(h.launch("probe", PROBE)).unwrap();
+    let (mut owner, _, writable) = h.attach("probe", false);
+    assert!(writable);
+    send(
+        &mut owner,
+        CONTROL,
+        &Request::Resize {
+            cols: 100,
+            rows: 30,
+            cell_width: 16,
+            cell_height: 34,
+        },
+    )
+    .unwrap();
+    assert!(matches!(ack(&mut owner), Reply::Ok));
+    send(
+        &mut owner,
+        CONTROL,
+        &Request::Input {
+            bytes: b"go\n".to_vec(),
+        },
+    )
+    .unwrap();
+    assert!(matches!(ack(&mut owner), Reply::Ok));
+    let until = Instant::now() + Duration::from_secs(15);
+    let line = loop {
+        let (_, vt, _) = h.attach("probe", false);
+        // The hex wraps across full rows; joined rows give the line back.
+        let text = vt.tail_text(30).unwrap().replace('\n', "");
+        if let Some(line) = text
+            .split("GOT ")
+            .nth(1)
+            .and_then(|rest| rest.split(" END").next().filter(|_| rest.contains(" END")))
+        {
+            break format!("GOT {line}");
+        }
+        assert!(Instant::now() < until, "probe printed nothing");
+        std::thread::sleep(Duration::from_millis(100));
+    };
+    let mut parts = line.split_whitespace().skip(1);
+    let hex = parts.next().unwrap();
+    let got: Vec<u8> = (0..hex.len())
+        .step_by(2)
+        .map(|i| u8::from_str_radix(&hex[i..i + 2], 16).unwrap())
+        .collect();
+    let got = String::from_utf8(got).unwrap();
+    for reply in [
+        "\x1b]11;rgb:1c1c/1c1c/1e1e\x07",
+        "\x1b]10;rgb:e4e4/e2e2/dfdf\x07",
+        "\x1b[?62;22c",
+        "\x1bP>|keepline ",
+        "\x1b[8;30;100t",
+        "\x1b[4;1020;1600t",
+        "\x1b[?997;1n",
+    ] {
+        assert!(got.contains(reply), "missing {reply:?} in {got:?}");
+    }
+    // The pty's own pixel size follows the cell size too (rows cols xpixel ypixel).
+    assert_eq!(
+        parts.collect::<Vec<_>>(),
+        ["WIN", "30", "100", "1600", "1020"]
+    );
+}
+/// Real Codex: it reads the terminal background (OSC 11) and paints its input box a
+/// shade off it. Needs the `codex` CLI; start-up only, no prompt is sent.
+/// `KL_CODEX=/path/to/codex KL_CODEX_CWD=<trusted dir> cargo test -- --ignored real_codex`
+#[test]
+#[ignore = "needs a local Codex CLI"]
+fn real_codex_tints_its_input_box_from_the_terminal_background() {
+    use keepline_core::terminal::libghostty_vt::{
+        screen::CellContentTag,
+        style::StyleColor,
+        terminal::{Point, PointCoordinate},
+    };
+    let codex = std::env::var("KL_CODEX").unwrap_or_else(|_| "codex".into());
+    let cwd = std::env::var("KL_CODEX_CWD").unwrap_or_else(|_| "/tmp".into());
+    let h = Host::start();
+    h.setup();
+    let mut launch = h.launch("codex", &format!("cd '{cwd}' && exec '{codex}'"));
+    if let Request::Launch { cols, rows, .. } = &mut launch {
+        (*cols, *rows) = (100, 30);
+    }
+    h.call(launch).unwrap();
+    let until = Instant::now() + Duration::from_secs(30);
+    let (vt, row) = loop {
+        let (_, vt, _) = h.attach("codex", false);
+        if let Some((y, _)) = vt.search("Ask Codex").unwrap().into_iter().last() {
+            break (vt, y);
+        }
+        assert!(Instant::now() < until, "{}", vt.tail_text(30).unwrap());
+        std::thread::sleep(Duration::from_millis(200));
+    };
+    let t = vt.terminal();
+    let mut backgrounds = std::collections::BTreeSet::new();
+    for x in 0..t.cols().unwrap() {
+        let cell = t
+            .grid_ref(Point::Screen(PointCoordinate { x, y: row as u32 }))
+            .unwrap();
+        let bg = match cell.style().map(|s| s.bg_color) {
+            Ok(StyleColor::Rgb(c)) => Some((c.r, c.g, c.b)),
+            // A blank cell may carry only a background; text cells keep it in the style.
+            _ => cell
+                .cell()
+                .ok()
+                .filter(|c| c.content_tag().ok() == Some(CellContentTag::BgColorRgb))
+                .and_then(|c| c.bg_color_rgb().ok())
+                .map(|c| (c.r, c.g, c.b)),
+        };
+        backgrounds.insert(bg);
+    }
+    eprintln!("input row {row}: backgrounds {backgrounds:?}");
+    // Codex lightens our dark default for its input box; unanswered, it paints none.
+    assert!(
+        backgrounds
+            .iter()
+            .flatten()
+            .any(|&(r, g, b)| (r, g, b) != (0x10, 0x12, 0x17) && r > 0x10),
+        "input box has no tint: {backgrounds:?}\n{}",
+        vt.tail_text(30).unwrap()
+    );
+}
+/// Real Codex: a file dropped on the pane arrives in Codex's input box as one bracketed
+/// paste of its escaped path (`terminal_input::dropped_paths`), as Ghostty sends it.
+/// (Codex 0.163 here kept image paths as text in every form tried: escaped, plain, quoted.)
+#[test]
+#[ignore = "needs a local Codex CLI"]
+fn real_codex_receives_a_dropped_path_as_one_paste() {
+    // 1x1 PNG; the name needs escaping.
+    const PNG: &[u8] = b"\x89\x50\x4e\x47\x0d\x0a\x1a\x0a\x00\x00\x00\x0d\x49\x48\x44\x52\x00\x00\x00\x01\x00\x00\x00\x01\x08\x06\x00\x00\x00\x1f\x15\xc4\x89\x00\x00\x00\x0d\x49\x44\x41\x54\x78\x9c\x63\xf8\xcf\xc0\xf0\x1f\x00\x05\x00\x01\xff\x89\x99\x3d\x1d\x00\x00\x00\x00\x49\x45\x4e\x44\xae\x42\x60\x82";
+    let dir = std::env::temp_dir().join(format!("kl-drop-{}", uuid::Uuid::new_v4().simple()));
+    fs::create_dir_all(&dir).unwrap();
+    let image = dir.join("drop test (1).png");
+    fs::write(&image, PNG).unwrap();
+    let codex = std::env::var("KL_CODEX").unwrap_or_else(|_| "codex".into());
+    let cwd = std::env::var("KL_CODEX_CWD").unwrap_or_else(|_| "/tmp".into());
+    let h = Host::start();
+    h.setup();
+    h.call(h.launch("codex", &format!("cd '{cwd}' && exec '{codex}'")))
+        .unwrap();
+    let wait = |text: &str| {
+        let until = Instant::now() + Duration::from_secs(30);
+        loop {
+            let (_, vt, _) = h.attach("codex", false);
+            if !vt.search(text).unwrap().is_empty() {
+                return vt;
+            }
+            assert!(
+                Instant::now() < until,
+                "{text}: {}",
+                vt.tail_text(30).unwrap()
+            );
+            std::thread::sleep(Duration::from_millis(200));
+        }
+    };
+    wait("Ask Codex");
+    let (mut owner, _, writable) = h.attach("codex", true);
+    assert!(writable);
+    // What the pane sends for a drop: the escaped path inside a bracketed paste.
+    let escaped = image
+        .to_string_lossy()
+        .replace(' ', "\\ ")
+        .replace('(', "\\(")
+        .replace(')', "\\)");
+    let pasted = format!("{escaped} ");
+    send(
+        &mut owner,
+        CONTROL,
+        &Request::Input {
+            bytes: format!("\x1b[200~{pasted}\x1b[201~").into_bytes(),
+        },
+    )
+    .unwrap();
+    assert!(matches!(ack(&mut owner), Reply::Ok));
+    // The composer wraps the long path; its file name lands whole on one row.
+    let vt = wait("drop\\ test\\ \\(1\\).png");
+    eprintln!("{}", vt.tail_text(8).unwrap());
+    // Leave the prompt unsent and the session empty.
+    send(&mut owner, CONTROL, &Request::Input { bytes: vec![3, 3] }).unwrap();
+    let _ = fs::remove_dir_all(&dir);
+}
+#[test]
+fn clear_history_reaches_the_daemon_and_every_display() {
+    let h = Host::start();
+    h.setup();
+    h.call(h.launch("c", "seq 1 100; printf 'PROMPT$ '; exec cat"))
+        .unwrap();
+    let until = Instant::now() + Duration::from_secs(10);
+    while h.attach("c", false).1.search("PROMPT$").unwrap().is_empty() {
+        assert!(Instant::now() < until);
+        std::thread::sleep(Duration::from_millis(50));
+    }
+    let (mut owner, mut display, writable) = h.attach("c", true);
+    assert!(writable);
+    assert!(display.terminal().scrollback_rows().unwrap() > 0);
+    send(&mut owner, CONTROL, &Request::ClearHistory).unwrap();
+    // The owner's own stream carries the clear as output, before the ack.
+    loop {
+        let (kind, chunk) = read_frame(&mut owner).unwrap();
+        if kind == OUTPUT {
+            display.feed(&chunk);
+        } else if kind == ACK {
+            assert!(matches!(
+                serde_json::from_slice::<Reply>(&chunk).unwrap(),
+                Reply::Ok
+            ));
+            break;
+        }
+    }
+    let (_, fresh, _) = h.attach("c", false);
+    for vt in [&display, &fresh] {
+        assert_eq!(vt.terminal().scrollback_rows().unwrap(), 0);
+        assert!(vt.tail_text(24).unwrap().starts_with("PROMPT$"));
+        assert!(vt.search("100").unwrap().is_empty());
+    }
 }
 #[test]
 fn launch_is_durable_and_deduplicated_and_tab_close_is_not_stop() {

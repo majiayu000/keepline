@@ -1,5 +1,9 @@
 use crate::{pty, store::Store};
-use keepline_core::{model::*, protocol::*, terminal::Vt};
+use keepline_core::{
+    model::*,
+    protocol::*,
+    terminal::{CellPixels, Vt},
+};
 use std::collections::HashMap;
 use std::fs::{self, File, OpenOptions};
 use std::io::{self, Read};
@@ -34,6 +38,7 @@ struct Live {
     drained: bool,
     exit_code: Option<i32>,
     title: String,
+    cell: CellPixels,
     /// Last keystrokes sent here; a menu the user just opened is not the agent asking.
     input_at: Option<std::time::Instant>,
 }
@@ -1414,6 +1419,8 @@ fn dispatch(shared: &Shared, request: Request) -> io::Result<Reply> {
                     out.extend_from_slice(bytes);
                 }
             })?;
+            let cell = CellPixels::default();
+            vt.answer_queries(cell.clone())?;
             let mut next = host.workspace.clone();
             next.terminals.push(Terminal {
                 id: id.clone(),
@@ -1467,6 +1474,7 @@ fn dispatch(shared: &Shared, request: Request) -> io::Result<Reply> {
                 drained: false,
                 exit_code: None,
                 title: String::new(),
+                cell,
                 input_at: None,
             }));
             host.terminals.insert(id.clone(), Arc::clone(&terminal));
@@ -1993,9 +2001,23 @@ fn attach(
                     pty::write(&mut live.master, &bytes)?;
                     live.input_at = Some(Instant::now());
                 }
-                Request::Resize { cols, rows } => {
+                Request::ClearHistory => {
+                    let clear = keepline_core::terminal::clear_history(live.vt.terminal())?;
+                    if !clear.is_empty() {
+                        // Same bytes into the daemon's terminal and every display, in output order.
+                        live.vt.feed(&clear);
+                        live.broadcast(OUTPUT, clear);
+                    }
+                }
+                Request::Resize {
+                    cols,
+                    rows,
+                    cell_width,
+                    cell_height,
+                } => {
                     geometry(cols, rows)?;
-                    pty::resize(&live.master, cols, rows)?;
+                    live.cell.set(cell_width, cell_height);
+                    pty::resize(&live.master, cols, rows, (cell_width, cell_height))?;
                     live.vt.resize(cols, rows)?;
                     live.cols = cols;
                     live.rows = rows;

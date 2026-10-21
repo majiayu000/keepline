@@ -129,8 +129,14 @@ impl<'a> RowBuilder<'a> {
     }
 }
 
-pub const DEFAULT_FG: u32 = crate::theme::Theme::TERMINAL_FG;
-pub const DEFAULT_BG: u32 = crate::theme::Theme::TERMINAL_BG;
+// The daemon's terminals carry the same defaults, so programs that ask see these.
+pub const DEFAULT_FG: u32 = keepline_core::terminal::DEFAULT_FG;
+pub const DEFAULT_BG: u32 = keepline_core::terminal::DEFAULT_BG;
+const _: () = assert!(
+    DEFAULT_FG == crate::theme::Theme::TERMINAL_FG
+        && DEFAULT_BG == crate::theme::Theme::TERMINAL_BG,
+    "terminal defaults must match the theme the chrome is derived from"
+);
 
 use keepline_core::terminal::{
     Vt,
@@ -311,7 +317,23 @@ use gpui::{
     App, Bounds, Font, FontStyle, FontWeight, Hsla, Pixels, Rgba, ShapedLine, SharedString,
     TextAlign, TextRun, UnderlineStyle, Window, fill, point, px, size,
 };
-pub const FONT_SIZE: f32 = crate::theme::Theme::MONO_SIZE;
+static FONT_SIZE: std::sync::atomic::AtomicU32 =
+    std::sync::atomic::AtomicU32::new(crate::theme::Theme::MONO_SIZE.to_bits());
+/// Terminal text size in points; Cmd+= / Cmd+- / Cmd+0 change it for every pane.
+pub fn font_size() -> f32 {
+    f32::from_bits(FONT_SIZE.load(std::sync::atomic::Ordering::Relaxed))
+}
+/// One point per step, like Terminal.app; `None` restores the default size.
+pub fn zoom(step: Option<i8>) -> f32 {
+    let size = zoomed(font_size(), step);
+    FONT_SIZE.store(size.to_bits(), std::sync::atomic::Ordering::Relaxed);
+    size
+}
+fn zoomed(size: f32, step: Option<i8>) -> f32 {
+    step.map_or(crate::theme::Theme::MONO_SIZE, |s| {
+        (size + f32::from(s)).clamp(8., 36.)
+    })
+}
 
 /// One measurement shared by terminal paint, resize, preedit and IME geometry.
 #[derive(Clone, Copy, Debug, PartialEq)]
@@ -329,10 +351,10 @@ impl CellMetrics {
     pub fn measure(font: &Font, window: &Window) -> Option<Self> {
         let ts = window.text_system();
         let id = ts.resolve_font(font);
-        let width = ts.advance(id, px(FONT_SIZE), 'm').ok()?.width;
-        let height = px(FONT_SIZE * crate::theme::Theme::TERMINAL_LINE_HEIGHT);
+        let width = ts.advance(id, px(font_size()), 'm').ok()?.width;
+        let height = px(font_size() * crate::theme::Theme::TERMINAL_LINE_HEIGHT);
         let ic_width = ts
-            .advance(id, px(FONT_SIZE), '水')
+            .advance(id, px(font_size()), '水')
             .ok()
             .filter(|s| s.width > px(0.))
             .map(|s| s.width)
@@ -340,7 +362,7 @@ impl CellMetrics {
                 let mut top = px(0.);
                 let mut bottom = px(0.);
                 for ch in ' '..='~' {
-                    if let Ok(b) = ts.typographic_bounds(id, px(FONT_SIZE), ch) {
+                    if let Ok(b) = ts.typographic_bounds(id, px(font_size()), ch) {
                         top = top.min(b.top());
                         bottom = bottom.max(b.bottom());
                     }
@@ -350,9 +372,9 @@ impl CellMetrics {
         (width > px(0.)).then_some(Self {
             width,
             height,
-            baseline: ts.baseline_offset(id, px(FONT_SIZE), height),
-            x_height: ts.x_height(id, px(FONT_SIZE)),
-            stroke: px((FONT_SIZE / 14.).max(1.)),
+            baseline: ts.baseline_offset(id, px(font_size()), height),
+            x_height: ts.x_height(id, px(font_size())),
+            stroke: px((font_size() / 14.).max(1.)),
             ic_width,
         })
     }
@@ -365,6 +387,40 @@ impl CellMetrics {
             size(self.width, self.height),
         )
     }
+}
+
+/// First and last column of the word under `col` (double click). A separator or blank
+/// selects just itself. Separators follow Ghostty's default `selection-word-chars`;
+/// wide text such as CJK counts as word cells.
+pub fn word_around(row: &[Run], col: u16) -> (u16, u16) {
+    let mut cells: Vec<(u16, u16, bool)> = Vec::new(); // first col, last col, word
+    for run in row {
+        if run.text.is_ascii() {
+            for (i, c) in run.text.chars().enumerate() {
+                let at = run.col + i as u16;
+                cells.push((at, at, !" \t'\"│`|:;,()[]{}<>$".contains(c)));
+            }
+        } else {
+            let word = !run.text.chars().all(char::is_whitespace);
+            cells.push((run.col, run.col + run.cols.max(1) - 1, word));
+        }
+    }
+    let Some(i) = cells.iter().position(|c| c.0 <= col && col <= c.1) else {
+        return (col, col);
+    };
+    if !cells[i].2 {
+        return (cells[i].0, cells[i].1);
+    }
+    let joined = |a: &(u16, u16, bool), b: &(u16, u16, bool)| a.1 + 1 == b.0 && a.2 && b.2;
+    let mut start = i;
+    while start > 0 && joined(&cells[start - 1], &cells[start]) {
+        start -= 1;
+    }
+    let mut end = i;
+    while end + 1 < cells.len() && joined(&cells[end], &cells[end + 1]) {
+        end += 1;
+    }
+    (cells[start].0, cells[end].1)
 }
 
 #[derive(Default)]
@@ -388,7 +444,7 @@ impl MarkedText {
     pub fn new(text: &str, font: Font, anchor: Bounds<Pixels>, window: &Window) -> Self {
         let line = window.text_system().shape_line(
             SharedString::from(text.to_owned()),
-            px(FONT_SIZE),
+            px(font_size()),
             &[TextRun {
                 len: text.len(),
                 font,
@@ -463,7 +519,7 @@ fn shape_cell(
     let ts = window.text_system();
     let mut line = ts.shape_line(
         SharedString::from(text.to_owned()),
-        px(FONT_SIZE),
+        px(font_size()),
         std::slice::from_ref(&tr),
         None,
     );
@@ -483,16 +539,16 @@ fn shape_cell(
             let fallback_ic = line
                 .runs
                 .first()
-                .and_then(|r| ts.advance(r.font_id, px(FONT_SIZE), '水').ok())
+                .and_then(|r| ts.advance(r.font_id, px(font_size()), '水').ok())
                 .map(|s| s.width)
                 .unwrap_or(line.width());
-            (ic / fallback_ic).min(metrics.height / px(FONT_SIZE))
+            (ic / fallback_ic).min(metrics.height / px(font_size()))
         } else {
-            (target / line.width()).min(metrics.height / px(FONT_SIZE))
+            (target / line.width()).min(metrics.height / px(font_size()))
         };
         line = ts.shape_line(
             SharedString::from(text.to_owned()),
-            px(FONT_SIZE) * scale,
+            px(font_size()) * scale,
             &[tr],
             None,
         );
@@ -529,7 +585,7 @@ impl AsciiGlyphs {
         let text: String = (' '..='~').collect();
         let line = window.text_system().shape_line(
             text.into(),
-            px(FONT_SIZE),
+            px(font_size()),
             &[TextRun {
                 len: 95,
                 font,
@@ -584,7 +640,7 @@ impl AsciiGlyphs {
                 ),
                 font,
                 glyph,
-                px(FONT_SIZE),
+                px(font_size()),
                 color,
             );
         }
@@ -826,6 +882,31 @@ mod tests {
     use super::*;
 
     #[test]
+    fn double_click_word_follows_terminal_word_rules() {
+        let mut vt = Vt::new(60, 3).unwrap();
+        vt.feed("git log --oneline src/main.rs (实现反馈) \x1b[31mred\x1b[0mgreen".as_bytes());
+        let mut screen = Screen::default();
+        Capture::new().unwrap().update(&vt, &mut screen).unwrap();
+        let row = &screen.rows[0];
+        assert_eq!(word_around(row, 1), (0, 2)); // git
+        assert_eq!(word_around(row, 9), (8, 16)); // --oneline
+        assert_eq!(word_around(row, 20), (18, 28)); // src/main.rs: '/' and '.' join
+        assert_eq!(word_around(row, 30), (30, 30)); // '(' alone
+        assert_eq!(word_around(row, 33), (31, 38)); // 实现反馈, two cells each
+        assert_eq!(word_around(row, 7), (7, 7)); // a blank selects itself
+        assert_eq!(word_around(row, 42), (41, 48)); // color change is not a word break
+        assert_eq!(word_around(row, 55), (55, 55)); // past the text
+    }
+    #[test]
+    fn zoom_steps_by_one_point_and_resets() {
+        let base = crate::theme::Theme::MONO_SIZE;
+        assert_eq!(zoomed(base, Some(1)), base + 1.);
+        assert_eq!(zoomed(base + 1., Some(-1)), base);
+        assert_eq!(zoomed(30., None), base);
+        assert_eq!(zoomed(36., Some(1)), 36.);
+        assert_eq!(zoomed(8., Some(-1)), 8.);
+    }
+    #[test]
     fn retained_capture_rebuilds_only_dirty_rows_and_clears_old_links() {
         let mut vt = Vt::new(40, 10).unwrap();
         vt.feed(b"\x1b[3;1H");
@@ -1031,7 +1112,7 @@ mod tests {
             return;
         };
         let face = face_metrics(&std::fs::read(path).unwrap());
-        let backing = FONT_SIZE * 2.; // Retina: Ghostty rasterizes at points * scale.
+        let backing = font_size() * 2.; // Retina: Ghostty rasterizes at points * scale.
         let ghostty_w = (face.advance_m / face.units_per_em * backing).round();
         let ghostty_h = (face.line_height / face.units_per_em * backing).round();
         if path.ends_with("Menlo.ttc") {
@@ -1044,7 +1125,7 @@ mod tests {
         }
         let ghostty = ghostty_h / ghostty_w;
         let keepline = |line_height: f32| {
-            (FONT_SIZE * line_height) / (face.advance_m / face.units_per_em * FONT_SIZE)
+            (font_size() * line_height) / (face.advance_m / face.units_per_em * font_size())
         };
         let delta = keepline(crate::theme::Theme::TERMINAL_LINE_HEIGHT) / ghostty - 1.;
         assert!(
