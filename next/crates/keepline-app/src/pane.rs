@@ -12,7 +12,7 @@ use keepline_core::{
     protocol::Request,
     terminal::libghostty_vt::{key::Mods, mouse, terminal::Mode},
 };
-use std::{ops::Range, path::Path, sync::atomic::Ordering};
+use std::{ops::Range, path::Path, sync::atomic::Ordering, time::Instant};
 
 pub struct Pane {
     terminal: String,
@@ -29,8 +29,7 @@ pub struct Pane {
     cursor_anchor: screen::CursorAnchor,
     requested_size: (u16, u16),
     local_error: Option<String>,
-    pending_prefill: Option<String>,
-    pub staged_command: bool,
+    handoff: Option<Handoff>,
     text_selection: Option<((u16, u16), (u16, u16))>,
     selecting: bool,
     mouse: Option<crate::terminal_input::MouseEncoder>,
@@ -118,8 +117,7 @@ impl Pane {
             cursor_anchor: screen::CursorAnchor::default(),
             requested_size: (0, 0),
             local_error: None,
-            pending_prefill: None,
-            staged_command: false,
+            handoff: None,
             text_selection: None,
             selecting: false,
             mouse: None,
@@ -493,41 +491,155 @@ impl Pane {
             cx.notify();
         }
     }
-    fn flush_prefill(&mut self, cx: &mut Context<Self>) {
-        let Some(command) = self.pending_prefill.as_ref() else {
+    /// Launch an Agent in this shell, then place `text` in the Agent's own input box
+    /// without submitting it. Nothing is ever typed into the shell but the command.
+    pub fn start_agent(&mut self, command: &str, text: Option<String>, cx: &mut Context<Self>) {
+        self.handoff = Some(Handoff {
+            command: Some(command.into()),
+            text,
+            stage: Stage::Shell,
+            started: Instant::now(),
+            released: false,
+            tail: String::new(),
+            still: 0,
+        });
+        self.watch_handoff(cx);
+    }
+    /// The Agent was started by hand; only the text still needs to reach its input box.
+    pub fn place_text(&mut self, text: String, cx: &mut Context<Self>) {
+        self.handoff = Some(Handoff {
+            command: None,
+            text: Some(text),
+            stage: Stage::Agent,
+            started: Instant::now(),
+            released: true,
+            tail: String::new(),
+            still: 0,
+        });
+        self.watch_handoff(cx);
+    }
+    pub fn retry_handoff(&mut self, cx: &mut Context<Self>) {
+        if let Some(h) = &mut self.handoff
+            && h.stage == Stage::NotReady
+        {
+            h.stage = Stage::Agent;
+            h.started = Instant::now();
+            h.released = true;
+            h.still = 0;
+            self.watch_handoff(cx);
+        }
+    }
+    pub fn dismiss_handoff(&mut self, cx: &mut Context<Self>) {
+        self.handoff = None;
+        cx.notify();
+    }
+    /// What the bar above this pane says, or None when there is nothing to report.
+    pub fn handoff_state(&self) -> Option<HandoffState> {
+        let h = self.handoff.as_ref()?;
+        Some(match h.stage {
+            Stage::Shell | Stage::Agent => HandoffState::Waiting,
+            Stage::Placed => HandoffState::Placed,
+            Stage::NotReady => HandoffState::NotReady,
+        })
+    }
+    // A short-lived 250 ms check that ends with the handoff; idle panes keep no timer.
+    fn watch_handoff(&mut self, cx: &mut Context<Self>) {
+        cx.spawn(async move |this, cx| {
+            loop {
+                cx.background_executor()
+                    .timer(std::time::Duration::from_millis(250))
+                    .await;
+                let busy = this
+                    .update(cx, |pane, cx| {
+                        pane.step_handoff(cx);
+                        pane.handoff
+                            .as_ref()
+                            .is_some_and(|h| matches!(h.stage, Stage::Shell | Stage::Agent))
+                    })
+                    .unwrap_or(false);
+                if !busy {
+                    break;
+                }
+            }
+        })
+        .detach();
+        cx.notify();
+    }
+    fn step_handoff(&mut self, cx: &mut Context<Self>) {
+        let Some(h) = self.handoff.as_mut() else {
             return;
         };
-        let multiline = command.contains('\n') || command.contains('\r');
-        let ready = self.connection.state.lock().is_ok_and(|s| {
-            s.writable
-                && s.vt.as_ref().is_some_and(|vt| {
-                    !multiline || vt.terminal().mode(Mode::BRACKETED_PASTE).unwrap_or(false)
-                })
-        });
-        if ready && let Some(command) = self.pending_prefill.take() {
-            self.prefill(&command, cx);
+        if !matches!(h.stage, Stage::Shell | Stage::Agent) {
+            return;
         }
-    }
-    pub fn queue_prefill(&mut self, command: &str, cx: &mut Context<Self>) {
-        self.staged_command = true;
-        self.pending_prefill = Some(command.into());
-        // The shell may already be ready and silent before this request arrives.
-        self.flush_prefill(cx);
+        let (bracketed, tail) = {
+            let Ok(state) = self.connection.state.lock() else {
+                return;
+            };
+            if !state.writable || state.ended {
+                return;
+            }
+            let Some(vt) = state.vt.as_ref() else {
+                return;
+            };
+            (
+                vt.terminal().mode(Mode::BRACKETED_PASTE).unwrap_or(false),
+                vt.tail_text(40).unwrap_or_default(),
+            )
+        };
+        if tail == h.tail {
+            h.still = h.still.saturating_add(1);
+        } else {
+            h.tail = tail;
+            h.still = 0;
+        }
+        let elapsed = h.started.elapsed();
+        match h.stage {
+            Stage::Shell => {
+                // A line editor that offers bracketed paste is ready; plain shells get 2 s.
+                let ready = bracketed || (h.still >= 2 && elapsed.as_secs() >= 2);
+                if ready {
+                    let command = h.command.clone().unwrap_or_default();
+                    h.stage = if h.text.is_some() {
+                        Stage::Agent
+                    } else {
+                        Stage::Placed
+                    };
+                    h.started = Instant::now();
+                    h.still = 0;
+                    let mut bytes = command.into_bytes();
+                    bytes.push(b'\r');
+                    self.input(bytes, cx);
+                    if self
+                        .handoff
+                        .as_ref()
+                        .is_some_and(|h| h.stage == Stage::Placed)
+                    {
+                        // A resume has no text to place; the bar has nothing more to say.
+                        self.handoff = None;
+                    }
+                } else if elapsed.as_secs() >= HANDOFF_LIMIT {
+                    h.stage = Stage::NotReady;
+                }
+            }
+            Stage::Agent => {
+                // The shell drops bracketed paste when it runs the command; the Agent turns
+                // it back on once its input box exists. A visible menu (folder trust, login,
+                // an approval) means the box is not the thing waiting.
+                if !bracketed {
+                    h.released = true;
+                }
+                if h.released && bracketed && h.still >= 2 && !choice_menu(&h.tail) {
+                    let text = h.text.clone().unwrap_or_default();
+                    h.stage = Stage::Placed;
+                    self.prefill(&text, cx);
+                } else if elapsed.as_secs() >= HANDOFF_LIMIT {
+                    h.stage = Stage::NotReady;
+                }
+            }
+            Stage::Placed | Stage::NotReady => (),
+        }
         cx.notify();
-    }
-    pub fn replace_staged(&mut self, command: Option<&str>, cx: &mut Context<Self>) -> bool {
-        if !self.staged_command {
-            return false;
-        }
-        self.pending_prefill = None;
-        // Only a client-staged, unsubmitted shell line can be cancelled here.
-        self.input(vec![3], cx);
-        self.staged_command = command.is_some();
-        if let Some(command) = command {
-            self.queue_prefill(command, cx);
-        }
-        cx.notify();
-        true
     }
     pub fn prefill(&mut self, command: &str, cx: &mut Context<Self>) {
         let bracketed = self
@@ -573,9 +685,6 @@ impl Pane {
         }
         if !self.marked.is_empty() {
             return;
-        }
-        if k.key == "enter" || (k.modifiers.control && k.key == "c") {
-            self.staged_command = false;
         }
         let Some(key) = crate::keyboard::physical_key(&k.key) else {
             return;
@@ -628,11 +737,6 @@ impl Render for Pane {
         }
         self.sync_focus(window, cx);
         self.connection.dirty.store(false, Ordering::Release);
-        // Clear the wake flag before checking readiness. If ?2004h arrives between
-        // the coalesced wake and this render, it must not be consumed by paint
-        // without also releasing the pending multiline paste. Later output queues
-        // another wake because dirty is already false.
-        self.flush_prefill(cx);
         let state = self.connection.state.lock().unwrap();
         if let Some(vt) = &state.vt {
             let result = (|| {
@@ -651,8 +755,6 @@ impl Render for Pane {
         let error = self.local_error.clone().or(state.error.clone());
         let status = if state.ended {
             "进程已退出 · 待核对"
-        } else if self.pending_prefill.is_some() {
-            "等待 shell 就绪后预填命令（回车才执行）"
         } else if state.vt.is_none() {
             "正在恢复终端…"
         } else if state.writable {
@@ -901,5 +1003,52 @@ impl EntityInputHandler for Pane {
         _: &mut Context<Self>,
     ) -> Option<usize> {
         Some(0)
+    }
+}
+
+const HANDOFF_LIMIT: u64 = 60;
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum Stage {
+    Shell,
+    Agent,
+    Placed,
+    NotReady,
+}
+struct Handoff {
+    command: Option<String>,
+    text: Option<String>,
+    stage: Stage,
+    started: Instant,
+    released: bool,
+    tail: String,
+    still: u8,
+}
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub enum HandoffState {
+    Waiting,
+    Placed,
+    NotReady,
+}
+/// A numbered menu with a cursor on screen: the Agent is asking something else first.
+fn choice_menu(tail: &str) -> bool {
+    tail.lines().rev().take(20).any(|l| {
+        let l = l.trim_start_matches(['│', ' ']);
+        ["❯ 1.", "› 1.", "> 1."].iter().any(|m| l.starts_with(m))
+    })
+}
+#[cfg(test)]
+mod handoff_tests {
+    #[test]
+    fn menus_block_placement_but_the_input_box_does_not() {
+        assert!(super::choice_menu(
+            "Do you trust the files in this folder?\n\n❯ 1. Yes, proceed\n  2. No, exit\n"
+        ));
+        assert!(super::choice_menu(
+            "│ › 1. Yes, allow Codex to work in this folder\n"
+        ));
+        assert!(!super::choice_menu(
+            "› Ask Codex to do anything\n\n  ? for shortcuts\n"
+        ));
+        assert!(!super::choice_menu("> \n  1. plan written by the agent\n"));
     }
 }

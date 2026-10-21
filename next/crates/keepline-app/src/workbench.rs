@@ -28,8 +28,10 @@ pub struct Workbench {
     zoomed: Option<String>,
     menu: Option<PaneMenu>,
     split_target: Option<(String, Axis)>,
-    prefill_agent: Option<Agent>,
-    staged_agents: HashMap<String, Agent>,
+    chosen_agent: Option<Agent>,
+    /// The task whose 开始 is waiting for an Agent choice; true when it is "再开一个会话".
+    picking: Option<(String, bool)>,
+    last_agent: Option<Agent>,
     resume: Option<(String, String)>,
     here: Option<String>,
     show_stale: bool,
@@ -218,6 +220,12 @@ fn outcome_label(outcome: &Outcome) -> String {
             reason,
             until.saturating_sub(now()).div_ceil(3600)
         ),
+    }
+}
+fn agent_name(agent: Agent) -> &'static str {
+    match agent {
+        Agent::Codex => "Codex",
+        Agent::Claude => "Claude Code",
     }
 }
 fn label(text: impl Into<gpui::SharedString>) -> gpui::Div {
@@ -425,6 +433,7 @@ impl Workbench {
     pub fn visual_page(&mut self, name: &str, window: &mut Window, cx: &mut Context<Self>) {
         self.form = None;
         self.quick_task = None;
+        self.picking = None;
         self.task_detail = None;
         self.cleanup.clear();
         self.here = None;
@@ -469,14 +478,23 @@ impl Workbench {
             }
             "TodoDetail" => self.task_detail = Some("task0".into()),
             "TodoStart" => {
+                let text = self
+                    .workspace
+                    .tasks
+                    .iter()
+                    .find(|t| t.id == "task1")
+                    .unwrap()
+                    .prompt();
                 let command = self
                     .workspace
                     .tasks
                     .iter()
                     .find(|t| t.id == "task1")
                     .unwrap()
+                    .agent
                     .command();
-                self.panes["pstart"].update(cx, |pane, cx| pane.queue_prefill(&command, cx));
+                self.panes["pstart"]
+                    .update(cx, |pane, cx| pane.start_agent(&command, Some(text), cx));
             }
             "Cleanup" => {
                 self.cleanup = self
@@ -499,6 +517,7 @@ impl Workbench {
                 }
             }
             "ScreenWait" => self.here = self.workspace.current_agent("p1").map(|s| s.id.clone()),
+            "StartPick" => self.picking = Some(("task2".into(), false)),
             "Overview" | "Menubar" => (),
             _ => panic!("unknown visual page"),
         }
@@ -589,8 +608,9 @@ impl Workbench {
             zoomed: None,
             menu: None,
             split_target: None,
-            prefill_agent: None,
-            staged_agents: HashMap::new(),
+            chosen_agent: None,
+            picking: None,
+            last_agent: None,
             resume: None,
             here: None,
             show_stale: false,
@@ -815,21 +835,20 @@ impl Workbench {
         else {
             return;
         };
-        let agent = self.prefill_agent.take();
+        let agent = self.chosen_agent.take();
         let resume = self.resume.take();
         let resuming = resume.is_some();
-        let prefill = resume.as_ref().map(|r| r.0.clone()).or_else(|| {
-            task_id
-                .as_ref()
-                .and_then(|id| self.workspace.tasks.iter().find(|t| &t.id == id))
-                .map(|task| {
-                    let mut task = task.clone();
-                    if let Some(agent) = agent {
-                        task.agent = agent;
-                    }
-                    task.command()
-                })
-        });
+        // The command runs in the new shell; task text only ever reaches the Agent's input.
+        let start: Option<(String, Option<String>)> =
+            resume.as_ref().map(|r| (r.0.clone(), None)).or_else(|| {
+                task_id
+                    .as_ref()
+                    .and_then(|id| self.workspace.tasks.iter().find(|t| &t.id == id))
+                    .map(|task| {
+                        let agent = agent.unwrap_or(task.agent);
+                        (agent.command(), Some(task.prompt()))
+                    })
+            });
         let mut tab = if split {
             let Some(tab) = self
                 .workspace
@@ -951,8 +970,10 @@ impl Workbench {
                         this.pending_focus = true;
                         this.overview = false;
                         this.sync_panes(cx);
-                        if let (Some(command), Some(pane)) = (&prefill, this.panes.get(&terminal)) {
-                            pane.update(cx, |pane, cx| pane.queue_prefill(command, cx));
+                        if let (Some((command, text)), Some(pane)) =
+                            (&start, this.panes.get(&terminal))
+                        {
+                            pane.update(cx, |pane, cx| pane.start_agent(command, text.clone(), cx));
                         }
                         if this.recognition.workspace_revision > this.workspace.revision {
                             this.request(Request::Workspace, cx);
@@ -1322,19 +1343,7 @@ impl Workbench {
                     .text_color(T::color(T::WHITE))
                     .on_click({
                         let tid = tid.clone();
-                        cx.listener(move |this, _, _, cx| {
-                            if let Some(tab) = this
-                                .workspace
-                                .tabs
-                                .iter()
-                                .find(|t| t.default_task.as_ref() == Some(&tid))
-                            {
-                                this.tab = Some(tab.id.clone());
-                                this.launch(true, Some(tid.clone()), cx);
-                            } else {
-                                this.launch(false, Some(tid.clone()), cx);
-                            }
-                        })
+                        cx.listener(move |this, _, _, cx| this.ask_agent(tid.clone(), true, cx))
                     }),
             )
             .child(
@@ -1344,86 +1353,172 @@ impl Workbench {
                 })),
             );
         view.child(actions)
+            .children(self.agent_picker(&task.id, cx))
     }
-    fn staged_controls(&self, terminal: &str, task: &Task, cx: &Context<Self>) -> gpui::Div {
+    /// The line above a pane that Keepline is starting an Agent in for a task.
+    fn handoff_bar(
+        &self,
+        terminal: &str,
+        task: &Task,
+        state: crate::pane::HandoffState,
+        cx: &Context<Self>,
+    ) -> gpui::Div {
+        use crate::pane::HandoffState;
         let terminal = terminal.to_owned();
+        let agent = self
+            .workspace
+            .current_agent(&terminal)
+            .map(|s| s.runtime)
+            .unwrap_or(task.agent);
+        let message = match state {
+            HandoffState::Waiting => format!(
+                "为待办「{}」启动 {}，就绪后放入待办内容",
+                task.title,
+                agent_name(agent)
+            ),
+            HandoffState::Placed => "已放入待办内容，检查后在 Agent 里按回车发送".to_owned(),
+            HandoffState::NotReady => "Agent 还没准备好，内容没有放进去".to_owned(),
+        };
+        let text = task.prompt();
         div()
             .flex()
             .flex_wrap()
+            .items_center()
             .gap(px(T::S6))
             .p(px(T::S6))
             .bg(T::color(T::TODO))
-            .child(label(format!(
-                "为待办 {} 开的画面，按回车才会启动",
-                task.title
-            )))
+            .child(
+                label(message).text_color(if state == HandoffState::NotReady {
+                    Group::Waiting.colors().1
+                } else {
+                    T::color(T::SECONDARY)
+                }),
+            )
             .when(task.acceptance.is_empty(), |d| {
                 let task = task.clone();
                 d.child(label("还没写验收标准").text_color(Group::Waiting.colors().1))
-                    .child(button("staged-criteria", "补写").on_click(cx.listener(
+                    .child(button("handoff-criteria", "补写").on_click(cx.listener(
                         move |this, _, window, cx| this.edit_task_form(&task, window, cx),
                     )))
             })
-            .child(button("staged-agent", "改用另一个 Agent").on_click({
+            .when(state == HandoffState::NotReady, |d| {
+                let retry = terminal.clone();
+                d.child(button("handoff-retry", "再试一次").on_click(cx.listener(
+                    move |this, _, _, cx| {
+                        if let Some(p) = this.panes.get(&retry) {
+                            p.update(cx, |p, cx| p.retry_handoff(cx));
+                        }
+                    },
+                )))
+            })
+            .child(
+                button("handoff-copy", "复制内容").on_click(cx.listener(move |_, _, _, cx| {
+                    cx.write_to_clipboard(gpui::ClipboardItem::new_string(text.clone()))
+                })),
+            )
+            .child(button("handoff-dismiss", "收起").on_click({
                 let terminal = terminal.clone();
-                let task = task.clone();
                 cx.listener(move |this, _, _, cx| {
-                    if this.workspace.current_agent(&terminal).is_some() {
-                        return;
-                    }
-                    let mut task = task.clone();
-                    let old = this
-                        .staged_agents
-                        .get(&terminal)
-                        .copied()
-                        .unwrap_or(task.agent);
-                    task.agent = if old == Agent::Codex {
-                        Agent::Claude
-                    } else {
-                        Agent::Codex
-                    };
-                    this.staged_agents.insert(terminal.clone(), task.agent);
                     if let Some(p) = this.panes.get(&terminal) {
-                        p.update(cx, |p, cx| {
-                            p.replace_staged(Some(&task.command()), cx);
-                        });
+                        p.update(cx, |p, cx| p.dismiss_handoff(cx));
                     }
                 })
             }))
-            .child(button("staged-clear", "清空命令").on_click({
-                let terminal = terminal.clone();
-                cx.listener(move |this, _, _, cx| {
-                    if this.workspace.current_agent(&terminal).is_some() {
-                        return;
-                    }
-                    let cleared = this
-                        .panes
-                        .get(&terminal)
-                        .is_some_and(|p| p.update(cx, |p, cx| p.replace_staged(None, cx)));
-                    if cleared {
-                        this.edit(
-                            Edit::SetPendingTask {
-                                terminal: terminal.clone(),
-                                task: None,
-                            },
-                            cx,
-                        );
-                    }
+            .when(self.workspace.current_agent(&terminal).is_none(), |d| {
+                d.child(button("handoff-unlink", "不关联待办").on_click(cx.listener(
+                    move |this, _, _, cx| {
+                        if this.workspace.current_agent(&terminal).is_none() {
+                            this.edit(
+                                Edit::SetPendingTask {
+                                    terminal: terminal.clone(),
+                                    task: None,
+                                },
+                                cx,
+                            );
+                        }
+                    },
+                )))
+            })
+    }
+    /// 开始 asks which Agent first, unless the task already has a pane to return to.
+    fn ask_agent(&mut self, task: String, another: bool, cx: &mut Context<Self>) {
+        if !another && self.workspace.task_terminal(&task).is_some() {
+            self.launch(false, Some(task), cx);
+            return;
+        }
+        self.picking = Some((task, another));
+        cx.notify();
+    }
+    fn choose_agent(&mut self, agent: Agent, cx: &mut Context<Self>) {
+        let Some((task, another)) = self.picking.take() else {
+            return;
+        };
+        self.last_agent = Some(agent);
+        self.chosen_agent = Some(agent);
+        let tab = self
+            .workspace
+            .tabs
+            .iter()
+            .find(|t| t.default_task.as_ref() == Some(&task))
+            .map(|t| t.id.clone());
+        match tab.filter(|_| another) {
+            Some(tab) => {
+                self.tab = Some(tab);
+                self.launch(true, Some(task), cx);
+            }
+            None => self.launch(false, Some(task), cx),
+        }
+    }
+    fn agent_picker(&self, task: &str, cx: &Context<Self>) -> Option<gpui::Div> {
+        if self.picking.as_ref().map(|(t, _)| t.as_str()) != Some(task) {
+            return None;
+        }
+        let first = self
+            .last_agent
+            .unwrap_or(self.workspace.settings.default_agent);
+        let order = if first == Agent::Codex {
+            [Agent::Codex, Agent::Claude]
+        } else {
+            [Agent::Claude, Agent::Codex]
+        };
+        let mut row = div()
+            .flex()
+            .flex_wrap()
+            .items_center()
+            .gap(px(T::S4))
+            .px(px(T::S8))
+            .pb(px(T::S6))
+            .child(label("选 Agent").text_size(px(T::META)));
+        for agent in order {
+            row = row.child(
+                button(
+                    gpui::SharedString::from(format!("pick-{}-{task}", agent.executable())),
+                    agent_name(agent),
+                )
+                .h(px(T::ICON_HEIGHT))
+                .px(px(T::S6))
+                .text_size(px(T::META))
+                .when(agent == first, |b| {
+                    b.bg(T::color(T::ACCENT)).text_color(T::color(T::WHITE))
                 })
-            }))
-            .child(button("staged-unlink", "不关联待办").on_click(cx.listener(
-                move |this, _, _, cx| {
-                    if this.workspace.current_agent(&terminal).is_none() {
-                        this.edit(
-                            Edit::SetPendingTask {
-                                terminal: terminal.clone(),
-                                task: None,
-                            },
-                            cx,
-                        );
-                    }
-                },
-            )))
+                .on_click(cx.listener(move |this, _, _, cx| this.choose_agent(agent, cx))),
+            );
+        }
+        Some(
+            row.child(
+                button(
+                    gpui::SharedString::from(format!("pick-cancel-{task}")),
+                    "取消",
+                )
+                .h(px(T::ICON_HEIGHT))
+                .px(px(T::S6))
+                .text_size(px(T::META))
+                .on_click(cx.listener(|this, _, _, cx| {
+                    this.picking = None;
+                    cx.notify();
+                })),
+            ),
+        )
     }
     fn edit_task_form(&mut self, task: &Task, window: &mut Window, cx: &mut Context<Self>) {
         self.show_form(FormKind::Task, window, cx);
@@ -2452,9 +2547,10 @@ impl Workbench {
                             .bg(T::color(T::ACCENT))
                             .text_color(T::color(T::WHITE))
                             .on_click(cx.listener(move |this, _, _, cx| {
-                                this.launch(false, Some(id.clone()), cx)
+                                this.ask_agent(id.clone(), false, cx)
                             })),
-                    ),
+                    )
+                    .children(self.agent_picker(&task.id, cx)),
             );
         }
         view = view.child(
@@ -3012,6 +3108,34 @@ impl Workbench {
                             )),
                         )
                     })
+                    .when_some(
+                        session
+                            .filter(|_| pane.read(cx).handoff_state().is_none())
+                            .and_then(|_| self.workspace.terminal_tab(id))
+                            .and_then(|t| t.default_task.as_ref())
+                            .and_then(|tid| self.workspace.tasks.iter().find(|t| &t.id == tid))
+                            .map(|t| t.prompt()),
+                        |d, text| {
+                            let target = id.to_owned();
+                            d.child(
+                                button(
+                                    gpui::SharedString::from(format!("place-task-{id}")),
+                                    "放入待办内容",
+                                )
+                                .h(px(T::ICON_HEIGHT))
+                                .px(px(T::S6))
+                                .text_size(px(T::META))
+                                .text_color(T::color(T::LINK))
+                                .on_click(cx.listener(
+                                    move |this, _, _, cx| {
+                                        if let Some(p) = this.panes.get(&target) {
+                                            p.update(cx, |p, cx| p.place_text(text.clone(), cx));
+                                        }
+                                    },
+                                )),
+                            )
+                        },
+                    )
                     .when_some(session, |d, s| {
                         let show = s.id.clone();
                         d.child(
@@ -3075,22 +3199,19 @@ impl Workbench {
                     .min_h_0()
                     .px(px(T::S14))
                     .py(px(T::S10))
-                    .when(
-                        pane.read(cx).staged_command
-                            && self.workspace.current_agent(id).is_none()
-                            && self.workspace.pending_tasks.get(id) != Some(&None),
-                        |d| {
-                            if let Some(task) = self
-                                .workspace
-                                .terminal_tab(id)
-                                .and_then(|t| t.default_task.as_ref())
-                                .and_then(|tid| self.workspace.tasks.iter().find(|t| &t.id == tid))
-                            {
-                                d.child(self.staged_controls(id, task, cx))
-                            } else {
-                                d
-                            }
-                        },
+                    .when_some(
+                        pane.read(cx)
+                            .handoff_state()
+                            .filter(|_| self.workspace.pending_tasks.get(id) != Some(&None))
+                            .zip(
+                                self.workspace
+                                    .terminal_tab(id)
+                                    .and_then(|t| t.default_task.as_ref())
+                                    .and_then(|tid| {
+                                        self.workspace.tasks.iter().find(|t| &t.id == tid)
+                                    }),
+                            ),
+                        |d, (state, task)| d.child(self.handoff_bar(id, task, state, cx)),
                     )
                     .child(pane.clone().cached(gpui::StyleRefinement {
                         size: gpui::SizeRefinement {
@@ -3390,12 +3511,12 @@ impl Workbench {
                     entries.push(
                         button(
                             gpui::SharedString::from(format!("new-{}", agent.executable())),
-                            format!("{}（仅预填）", agent.executable()),
+                            agent_name(agent),
                         )
                         .w_full()
                         .on_click(cx.listener(move |this, _, _, cx| {
                             this.menu = None;
-                            this.prefill_agent = Some(agent);
+                            this.chosen_agent = Some(agent);
                             this.split_target = Some((terminal.clone(), Axis::Right));
                             this.launch(true, task.clone(), cx);
                         }))
@@ -3726,7 +3847,7 @@ impl Render for Workbench {
                         .text_color(T::color(T::LINK))
                         .on_click(cx.listener(move |this, _, _, cx| {
                             cx.stop_propagation();
-                            this.launch(false, Some(start.clone()), cx);
+                            this.ask_agent(start.clone(), false, cx);
                         })),
                     )
                     .on_click(cx.listener(move |this, _, _, cx| {
@@ -3734,6 +3855,9 @@ impl Render for Workbench {
                         cx.notify();
                     })),
             );
+            if let Some(picker) = self.agent_picker(&task.id, cx) {
+                sidebar = sidebar.child(picker);
+            }
         }
         let needs: Vec<_> = self
             .workspace

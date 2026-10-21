@@ -73,13 +73,13 @@ impl Agent {
     /// Temporary until daemon-backed Codex can prove a TUI-to-session association.
     pub fn command(self) -> String {
         match self {
-            Self::Codex => "codex --no-daemon".into(),
+            Self::Codex => "codex".into(),
             Self::Claude => format!("claude --session-id {}", uuid::Uuid::new_v4()),
         }
     }
     pub fn resume_command(self, cli_id: &str) -> String {
         match self {
-            Self::Codex => format!("codex --no-daemon resume {}", shell_quote(cli_id)),
+            Self::Codex => format!("codex resume {}", shell_quote(cli_id)),
             Self::Claude => format!("claude --resume {}", shell_quote(cli_id)),
         }
     }
@@ -91,18 +91,24 @@ impl Agent {
     }
 }
 impl Task {
-    pub fn command(&self) -> String {
-        let criteria = self
+    /// What goes into the Agent's own input box. Never a shell argument; blank parts
+    /// leave no empty headings behind.
+    pub fn prompt(&self) -> String {
+        let mut parts = vec![self.title.trim().to_owned()];
+        if !self.description.trim().is_empty() {
+            parts.push(self.description.trim().to_owned());
+        }
+        let criteria: Vec<_> = self
             .acceptance
             .iter()
-            .map(|c| format!("- {}", c.description))
-            .collect::<Vec<_>>()
-            .join("\n");
-        let prompt = format!(
-            "{}\n{}\n验收标准：\n{}",
-            self.title, self.description, criteria
-        );
-        format!("{} {}", self.agent.command(), shell_quote(&prompt))
+            .map(|c| c.description.trim())
+            .filter(|c| !c.is_empty())
+            .map(|c| format!("- {c}"))
+            .collect();
+        if !criteria.is_empty() {
+            parts.push(format!("验收标准：\n{}", criteria.join("\n")));
+        }
+        parts.join("\n\n")
     }
 }
 pub fn shell_quote(value: &str) -> String {
@@ -778,15 +784,15 @@ mod tests {
         );
     }
     #[test]
-    fn codex_prefill_and_resume_use_no_daemon_and_preserve_shell_quoting() {
+    fn agent_start_commands_need_no_daemon_flag_and_quote_resume_ids() {
         let first = Agent::Claude.command();
         let second = Agent::Claude.command();
         assert_ne!(first, second);
         assert!(uuid::Uuid::parse_str(first.strip_prefix("claude --session-id ").unwrap()).is_ok());
-        assert_eq!(Agent::Codex.command(), "codex --no-daemon");
+        assert_eq!(Agent::Codex.command(), "codex");
         assert_eq!(
             Agent::Codex.resume_command("a'b"),
-            format!("codex --no-daemon resume {}", shell_quote("a'b"))
+            format!("codex resume {}", shell_quote("a'b"))
         );
         assert_eq!(
             Agent::Claude.resume_command("safe"),
@@ -868,7 +874,19 @@ mod tests {
                 evidence: None,
             },
         ];
-        assert!(w.tasks[0].command().contains("- 测试通过\n- 原生输入正确"));
+        assert!(
+            w.tasks[0]
+                .prompt()
+                .ends_with("验收标准：\n- 测试通过\n- 原生输入正确")
+        );
+        let mut bare = w.tasks[0].clone();
+        bare.description = " ".into();
+        bare.acceptance.clear();
+        assert_eq!(
+            bare.prompt(),
+            bare.title.trim(),
+            "blank parts add no headings"
+        );
         assert_eq!(w.tasks[0].acceptance[1].evidence, None);
         assert_eq!(
             shell_quote("a'$(touch /tmp/no)\nb"),
