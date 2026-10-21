@@ -19,3 +19,9 @@
 待验证：等待提醒、错误提醒、点击直达对应托管画面、相同事实去重。`fixture.py` 已准备真实托管 PTY（模拟 Codex 名称、持续打开日志、无需模型），初始状态 Running；用户确认允许后已追加等待事件，后台 Waiting、正确托管关系和去重记录见 [waiting.json](waiting.json)。这只证明识别/去重，不证明系统展示或点击。锁屏阻塞解除后继续原生链路。
 
 当前结论：A09 **未验证**（等待解锁后完成系统展示、点击与去重原生检查）。已验证请求确实执行、拒绝回执、设置登记、Developer ID 签名包启动、用户明确开启授权与后台 Waiting/托管身份。保留测试客户端供续验，不清空通知或修改用户系统开关。
+
+## 本轮解锁补验
+
+用户确认屏幕解锁且许可开启后，向原有隔离 fixture 追加错误事件；后台 Error 与通知 receipt 的 fact_key 正确更新，见 [读回](unlocked-error-readback.json)。测试应用设置仍显示“系统通知已开启”。没有更改系统权限、用户配置或触碰用户后台。
+
+Computer Use 可连接 `com.apple.notificationcenterui`，但只返回“月”日历小组件，未取得通知列表/横幅；`com.apple.controlcenter` 与 `com.apple.systemuiserver` 均 timeoutReached。没有用其他 UI 技术绕过，也没有把数据库 receipt 当成系统已展示。A09 **仍未验证**展示、点击直达和系统级去重；阻塞已从锁屏变为通知界面不可访问。用户无需重复打开权限。

@@ -1,0 +1,190 @@
+{
+  "pids": {
+    "client": 23817,
+    "daemon": 23792,
+    "producer": 23793
+  },
+  "producers": [
+    23793
+  ],
+  "seconds": 30.001071541,
+  "samples": [
+    {
+      "elapsed": 9.833000000014636e-06,
+      "processes": {
+        "client": {
+          "cpu_seconds": 0.5377485,
+          "footprint": 345687072,
+          "read": 626688,
+          "write": 0
+        },
+        "daemon": {
+          "cpu_seconds": 0.029294,
+          "footprint": 3785136,
+          "read": 61440,
+          "write": 770048
+        },
+        "producer": {
+          "cpu_seconds": 0.08019025,
+          "footprint": 10666248,
+          "read": 266240,
+          "write": 368640
+        }
+      }
+    },
+    {
+      "elapsed": 5.004860291,
+      "processes": {
+        "client": {
+          "cpu_seconds": 0.7552968333333334,
+          "footprint": 345146400,
+          "read": 626688,
+          "write": 0
+        },
+        "daemon": {
+          "cpu_seconds": 0.03402475,
+          "footprint": 3785136,
+          "read": 61440,
+          "write": 770048
+        },
+        "producer": {
+          "cpu_seconds": 0.08640275,
+          "footprint": 10666248,
+          "read": 266240,
+          "write": 368640
+        }
+      }
+    },
+    {
+      "elapsed": 10.002644333000001,
+      "processes": {
+        "client": {
+          "cpu_seconds": 0.9767792916666667,
+          "footprint": 345146400,
+          "read": 626688,
+          "write": 0
+        },
+        "daemon": {
+          "cpu_seconds": 0.038386416666666666,
+          "footprint": 3785136,
+          "read": 61440,
+          "write": 770048
+        },
+        "producer": {
+          "cpu_seconds": 0.09250420833333332,
+          "footprint": 10666248,
+          "read": 266240,
+          "write": 368640
+        }
+      }
+    },
+    {
+      "elapsed": 15.004590958000001,
+      "processes": {
+        "client": {
+          "cpu_seconds": 1.1957620833333333,
+          "footprint": 345195552,
+          "read": 626688,
+          "write": 0
+        },
+        "daemon": {
+          "cpu_seconds": 0.04297245833333334,
+          "footprint": 3785136,
+          "read": 61440,
+          "write": 770048
+        },
+        "producer": {
+          "cpu_seconds": 0.09848670833333333,
+          "footprint": 10666248,
+          "read": 266240,
+          "write": 368640
+        }
+      }
+    },
+    {
+      "elapsed": 20.004192208,
+      "processes": {
+        "client": {
+          "cpu_seconds": 1.41552925,
+          "footprint": 345261088,
+          "read": 626688,
+          "write": 0
+        },
+        "daemon": {
+          "cpu_seconds": 0.05432075,
+          "footprint": 4555232,
+          "read": 61440,
+          "write": 983040
+        },
+        "producer": {
+          "cpu_seconds": 0.10529933333333333,
+          "footprint": 10666248,
+          "read": 266240,
+          "write": 368640
+        }
+      }
+    },
+    {
+      "elapsed": 25.005031291,
+      "processes": {
+        "client": {
+          "cpu_seconds": 1.640379,
+          "footprint": 345211936,
+          "read": 626688,
+          "write": 0
+        },
+        "daemon": {
+          "cpu_seconds": 0.05916729166666666,
+          "footprint": 4555232,
+          "read": 61440,
+          "write": 983040
+        },
+        "producer": {
+          "cpu_seconds": 0.11147195833333333,
+          "footprint": 10666248,
+          "read": 266240,
+          "write": 368640
+        }
+      }
+    },
+    {
+      "elapsed": 30.001071541,
+      "processes": {
+        "client": {
+          "cpu_seconds": 1.8762924166666668,
+          "footprint": 345326624,
+          "read": 626688,
+          "write": 0
+        },
+        "daemon": {
+          "cpu_seconds": 0.06336066666666666,
+          "footprint": 4555232,
+          "read": 61440,
+          "write": 983040
+        },
+        "producer": {
+          "cpu_seconds": 0.117114375,
+          "footprint": 10502408,
+          "read": 266240,
+          "write": 368640
+        }
+      }
+    }
+  ],
+  "results": {
+    "client": {
+      "cpu_seconds": 1.3385439166666668,
+      "peak_MiB": 329.6728820800781
+    },
+    "daemon": {
+      "cpu_seconds": 0.03406666666666666,
+      "peak_MiB": 4.344207763671875
+    },
+    "producer": {
+      "cpu_seconds": 0.036924125,
+      "peak_MiB": 10.172126770019531
+    }
+  },
+  "total_cpu_seconds": 1.4095347083333336,
+  "total_peak_MiB": 343.78296661376953
+}
