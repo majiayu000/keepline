@@ -1,0 +1,56 @@
+Window: "", App: Keepline Native Acceptance.
+0 standard window Secondary Actions: Raise
+	1 container
+		2 button 设置
+		3 button 搜索会话 / 待办 / 原话
+		4 button 刷新
+		5 button ← 回到工作区
+		6 button 全部空间
+		7 button 工作空间
+		8 button 验收空间 1
+		9 button ● 验收空间 2
+		10 button 验收空间 3
+		11 button 验收空间 4
+		12 button 只看有变化
+		13 button ＋ 新待办
+		14 button 会话：空间 2 会话 02：核对隔离导航计数。
+			15 button ⋯
+			16 button 继续 →
+		17 button 会话：空间 2 会话 01：核对隔离导航计数。
+			18 button ⋯
+			19 button 继续 →
+		20 button 会话：空间 2 会话 03：核对隔离导航计数。
+			21 button ⋯
+			22 button 继续 →
+		23 button 会话：空间 2 会话 06：核对隔离导航计数。
+			24 button ⋯
+			25 button 继续 →
+		26 button 会话：空间 2 会话 04：核对隔离导航计数。
+			27 button ⋯
+			28 button 继续 →
+		29 button 会话：空间 2 会话 05：核对隔离导航计数。
+			30 button ⋯
+			31 button 继续 →
+		32 button 会话：空间 2 会话 07：核对隔离导航计数。
+			33 button ⋯
+			34 button 继续 →
+		35 button 会话：空间 2 会话 09：核对隔离导航计数。
+			36 button ⋯
+			37 button 继续 →
+		38 button 会话：空间 2 会话 10：核对隔离导航计数。
+			39 button ⋯
+			40 button 继续 →
+		41 button 会话：空间 2 会话 08：核对隔离导航计数。
+			42 button ⋯
+			43 button 继续 →
+		44 button 进行中 0 · 展开
+		45 button 很久没动 0 · 展开核对
+		46 button 暂存 0 · 已结束：完成 0 / 放弃 0 · 展开/收起
+		47 button 已隐藏 0 个自动化会话 · 展开查看
+	48 close button
+	49 full screen button Help: this button also has an action to zoom the window, Secondary Actions: zoom the window
+	50 minimize button
+51 menu bar
+	52 Keepline Native Acceptance
+
+The focused UI element is 0 standard window Secondary Actions: Raise

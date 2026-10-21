@@ -1,0 +1,10 @@
+{
+  "input_source": "com.apple.inputmethod.SCIM.ITABC",
+  "bytes_from_real_cat": {
+    "ime-1": "nihao\n",
+    "ime-2": "你好\n",
+    "ime-3": "中文\n\n",
+    "ime-4": "你好\n"
+  },
+  "all_assertions_pass": true
+}
