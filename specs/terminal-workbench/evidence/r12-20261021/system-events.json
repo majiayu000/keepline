@@ -1,0 +1,50 @@
+[
+  {
+    "timestamp": "2026-10-21 14:08:36.810849+0800",
+    "processID": 93389,
+    "subsystem": "local.keepline.desktop",
+    "eventMessage": "request_completed bundle=local.keepline.notification-test request=a293511f-dbef-40eb-9dc7-9604c5ab012c accepted=1 error_domain= error_code=0"
+  },
+  {
+    "timestamp": "2026-10-21 14:08:36.811112+0800",
+    "processID": 658,
+    "subsystem": "com.apple.unc",
+    "eventMessage": "Delivering <NotificationRecord app:\"local.keepline.notification-test\" ident:\"F367-D6FB\" req:\"a293511f-dbef-40eb-9dc7-9604c5ab012c\" uuid:\"4DA59CC1\" source:\"5C1336EC\"> to [ .alert .lockScreen .notificationCenter ]: updatedExisting: false"
+  },
+  {
+    "timestamp": "2026-10-21 14:08:36.811216+0800",
+    "processID": 658,
+    "subsystem": "com.apple.unc",
+    "eventMessage": "Presenting <NotificationRecord app:\"local.keepline.notification-test\" ident:\"F367-D6FB\" req:\"a293511f-dbef-40eb-9dc7-9604c5ab012c\" uuid:\"4DA59CC1\" source:\"5C1336EC\"> as banner ([\"badge\", \"sound\", \"alert\"])"
+  },
+  {
+    "timestamp": "2026-10-21 14:08:36.811856+0800",
+    "processID": 93389,
+    "subsystem": "local.keepline.desktop",
+    "eventMessage": "delivered_list bundle=local.keepline.notification-test request=a293511f-dbef-40eb-9dc7-9604c5ab012c delivered_at=Wed Oct 21 14:08:36 2026"
+  },
+  {
+    "timestamp": "2026-10-21 14:14:04.608648+0800",
+    "processID": 93389,
+    "subsystem": "local.keepline.desktop",
+    "eventMessage": "request_completed bundle=local.keepline.notification-test request=e3166ffe-cdbb-4cfb-b84e-bc8534c7cc5d accepted=1 error_domain= error_code=0"
+  },
+  {
+    "timestamp": "2026-10-21 14:14:04.608966+0800",
+    "processID": 658,
+    "subsystem": "com.apple.unc",
+    "eventMessage": "Delivering <NotificationRecord app:\"local.keepline.notification-test\" ident:\"AC16-EE95\" req:\"e3166ffe-cdbb-4cfb-b84e-bc8534c7cc5d\" uuid:\"1043E358\" source:\"5C1336EC\"> to [ .alert .lockScreen .notificationCenter ]: updatedExisting: false"
+  },
+  {
+    "timestamp": "2026-10-21 14:14:04.609060+0800",
+    "processID": 658,
+    "subsystem": "com.apple.unc",
+    "eventMessage": "Presenting <NotificationRecord app:\"local.keepline.notification-test\" ident:\"AC16-EE95\" req:\"e3166ffe-cdbb-4cfb-b84e-bc8534c7cc5d\" uuid:\"1043E358\" source:\"5C1336EC\"> as banner ([\"badge\", \"sound\", \"alert\"])"
+  },
+  {
+    "timestamp": "2026-10-21 14:14:04.609914+0800",
+    "processID": 93389,
+    "subsystem": "local.keepline.desktop",
+    "eventMessage": "delivered_list bundle=local.keepline.notification-test request=e3166ffe-cdbb-4cfb-b84e-bc8534c7cc5d delivered_at=Wed Oct 21 14:14:04 2026"
+  }
+]

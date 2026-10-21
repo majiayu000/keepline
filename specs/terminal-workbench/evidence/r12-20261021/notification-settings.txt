@@ -1,0 +1,24 @@
+The following is a diff from the previous accessibility tree for Window: "Keepline Notification Test" with ~ and + representing changed and added elements, respectively. Removed elements are summarized by ID range.
+Removed element IDs: 56-64, 66-130
+~0 标准窗口 Keepline Notification Test, ID: main, Secondary Actions: Raise
+~		54 滚动区 Secondary Actions: Cancel
+~			55 转换 Keepline Notification Test, Value: on, ID: allow-notifications
++			56 container
++				57 复选框 Description: 桌面, Value: 1, ID: notification-presence-dektop
++				58 复选框 Description: 通知中心, Value: 1, ID: notification-presence-notificationCenter
++				59 复选框 Description: 锁定屏幕, Value: 1, ID: notification-presence-lockScreen
++				60 alert-style
++					61 文本 提醒样式
++						62 单选按钮 (selected) Description: 临时, Value: 1
++						63 单选按钮 Description: 持续, Value: 0
++			64 转换 播放通知的声音, Value: on, ID: play-sounds-toggle
+~			65 container
++				66 弹出式按钮 显示预览, Value: 默认, ID: show-previews
++				67 弹出式按钮 通知分组, Value: 自动, ID: notification-grouping
++			68 按钮 帮助
+~			43 菜单按钮 (disabled) Description: 前进, ID: go forward
+~	47 文本 Keepline Notification Test
+Selected:
+	5 row (selected)
+
+Note: Pay special attention to the content selected by the user. If the user asks a question or refers to the content they are looking at on-screen, they might be referring to the selected content (but they might be referring to something else that's visible, too).
