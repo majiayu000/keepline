@@ -3913,7 +3913,9 @@ impl Render for Workbench {
                     )
                     // Straight to its pane; an exited one resumes in a new pane.
                     .on_click(
-                        cx.listener(move |this, _, window, cx| this.open_session(&open, window, cx)),
+                        cx.listener(move |this, _, window, cx| {
+                            this.open_session(&open, window, cx)
+                        }),
                     ),
             );
         }
