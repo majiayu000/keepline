@@ -791,6 +791,27 @@ read -r finish
             .count();
         assert_eq!(lines as u64, 1 + window * 10, "writer {i} workload");
     }
+    // Writer completion precedes the asynchronous file event. Include its final
+    // consumption in the CPU sample, within the existing workload deadline.
+    let db = rusqlite::Connection::open(h.root.join("workbench.sqlite")).unwrap();
+    for i in 0..4 {
+        let path = logs.join(format!("load-{i}.jsonl")).canonicalize().unwrap();
+        let end = fs::metadata(&path).unwrap().len();
+        let offset = loop {
+            let offset: i64 = db
+                .query_row(
+                    "SELECT offset FROM log_files WHERE path=?1",
+                    [path.to_str().unwrap()],
+                    |r| r.get(0),
+                )
+                .unwrap();
+            if offset as u64 == end || Instant::now() >= done_deadline {
+                break offset;
+            }
+            std::thread::sleep(Duration::from_millis(50));
+        };
+        assert_eq!(offset as u64, end, "subscriber cursor for writer {i}");
+    }
     let after = usage(h.child.id());
     let control_after = usage(control.child.id());
     let stats = recognition(&h);
@@ -827,18 +848,6 @@ read -r finish
         stats.metrics.log_bytes - before.metrics.log_bytes > 80_000 * scale,
         "the subscriber must actually consume the workload"
     );
-    let db = rusqlite::Connection::open(h.root.join("workbench.sqlite")).unwrap();
-    for i in 0..4 {
-        let path = logs.join(format!("load-{i}.jsonl")).canonicalize().unwrap();
-        let offset: i64 = db
-            .query_row(
-                "SELECT offset FROM log_files WHERE path=?1",
-                [path.to_str().unwrap()],
-                |r| r.get(0),
-            )
-            .unwrap();
-        assert_eq!(offset as u64, fs::metadata(path).unwrap().len());
-    }
 }
 #[test]
 fn recognition_status_stream_recovers_after_log_root_is_rebuilt() {
