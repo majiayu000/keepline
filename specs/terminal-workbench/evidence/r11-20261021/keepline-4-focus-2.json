@@ -1,0 +1,2657 @@
+{
+  "activated" : true,
+  "attempt" : 2,
+  "continuous_frontmost" : false,
+  "exit" : 0,
+  "samples" : [
+    {
+      "bundle" : "local.keepline.profile-test",
+      "name" : "Keepline Profile Test",
+      "pid" : 77081,
+      "seconds" : 0.00015807151794433594,
+      "source" : "before",
+      "utc" : "2026-10-21T06:04:08Z"
+    },
+    {
+      "bundle" : "com.starlight.rekey",
+      "name" : "Rekey",
+      "pid" : 52496,
+      "seconds" : 0.089088082313537598,
+      "source" : "activation",
+      "utc" : "2026-10-21T06:04:08Z"
+    },
+    {
+      "bundle" : "com.starlight.rekey",
+      "name" : "Rekey",
+      "pid" : 52496,
+      "seconds" : 0.10202205181121826,
+      "source" : "poll",
+      "utc" : "2026-10-21T06:04:08Z"
+    },
+    {
+      "bundle" : "com.starlight.rekey",
+      "name" : "Rekey",
+      "pid" : 52496,
+      "seconds" : 0.20276403427124023,
+      "source" : "poll",
+      "utc" : "2026-10-21T06:04:08Z"
+    },
+    {
+      "bundle" : "com.starlight.rekey",
+      "name" : "Rekey",
+      "pid" : 52496,
+      "seconds" : 0.30382800102233887,
+      "source" : "poll",
+      "utc" : "2026-10-21T06:04:08Z"
+    },
+    {
+      "bundle" : "com.starlight.rekey",
+      "name" : "Rekey",
+      "pid" : 52496,
+      "seconds" : 0.40514302253723145,
+      "source" : "poll",
+      "utc" : "2026-10-21T06:04:08Z"
+    },
+    {
+      "bundle" : "com.starlight.rekey",
+      "name" : "Rekey",
+      "pid" : 52496,
+      "seconds" : 0.5060880184173584,
+      "source" : "poll",
+      "utc" : "2026-10-21T06:04:08Z"
+    },
+    {
+      "bundle" : "com.starlight.rekey",
+      "name" : "Rekey",
+      "pid" : 52496,
+      "seconds" : 0.60744404792785645,
+      "source" : "poll",
+      "utc" : "2026-10-21T06:04:09Z"
+    },
+    {
+      "bundle" : "com.starlight.rekey",
+      "name" : "Rekey",
+      "pid" : 52496,
+      "seconds" : 0.70887303352355957,
+      "source" : "poll",
+      "utc" : "2026-10-21T06:04:09Z"
+    },
+    {
+      "bundle" : "com.starlight.rekey",
+      "name" : "Rekey",
+      "pid" : 52496,
+      "seconds" : 0.81017303466796875,
+      "source" : "poll",
+      "utc" : "2026-10-21T06:04:09Z"
+    },
+    {
+      "bundle" : "com.starlight.rekey",
+      "name" : "Rekey",
+      "pid" : 52496,
+      "seconds" : 0.91142499446868896,
+      "source" : "poll",
+      "utc" : "2026-10-21T06:04:09Z"
+    },
+    {
+      "bundle" : "com.starlight.rekey",
+      "name" : "Rekey",
+      "pid" : 52496,
+      "seconds" : 1.0130410194396973,
+      "source" : "poll",
+      "utc" : "2026-10-21T06:04:09Z"
+    },
+    {
+      "bundle" : "com.starlight.rekey",
+      "name" : "Rekey",
+      "pid" : 52496,
+      "seconds" : 1.1148120164871216,
+      "source" : "poll",
+      "utc" : "2026-10-21T06:04:09Z"
+    },
+    {
+      "bundle" : "com.starlight.rekey",
+      "name" : "Rekey",
+      "pid" : 52496,
+      "seconds" : 1.2163400650024414,
+      "source" : "poll",
+      "utc" : "2026-10-21T06:04:09Z"
+    },
+    {
+      "bundle" : "com.starlight.rekey",
+      "name" : "Rekey",
+      "pid" : 52496,
+      "seconds" : 1.3177660703659058,
+      "source" : "poll",
+      "utc" : "2026-10-21T06:04:09Z"
+    },
+    {
+      "bundle" : "com.starlight.rekey",
+      "name" : "Rekey",
+      "pid" : 52496,
+      "seconds" : 1.4195981025695801,
+      "source" : "poll",
+      "utc" : "2026-10-21T06:04:09Z"
+    },
+    {
+      "bundle" : "com.starlight.rekey",
+      "name" : "Rekey",
+      "pid" : 52496,
+      "seconds" : 1.5213240385055542,
+      "source" : "poll",
+      "utc" : "2026-10-21T06:04:09Z"
+    },
+    {
+      "bundle" : "com.starlight.rekey",
+      "name" : "Rekey",
+      "pid" : 52496,
+      "seconds" : 1.6230840682983398,
+      "source" : "poll",
+      "utc" : "2026-10-21T06:04:10Z"
+    },
+    {
+      "bundle" : "com.starlight.rekey",
+      "name" : "Rekey",
+      "pid" : 52496,
+      "seconds" : 1.7246510982513428,
+      "source" : "poll",
+      "utc" : "2026-10-21T06:04:10Z"
+    },
+    {
+      "bundle" : "com.starlight.rekey",
+      "name" : "Rekey",
+      "pid" : 52496,
+      "seconds" : 1.8267580270767212,
+      "source" : "poll",
+      "utc" : "2026-10-21T06:04:10Z"
+    },
+    {
+      "bundle" : "com.starlight.rekey",
+      "name" : "Rekey",
+      "pid" : 52496,
+      "seconds" : 1.9288920164108276,
+      "source" : "poll",
+      "utc" : "2026-10-21T06:04:10Z"
+    },
+    {
+      "bundle" : "com.starlight.rekey",
+      "name" : "Rekey",
+      "pid" : 52496,
+      "seconds" : 2.0299290418624878,
+      "source" : "poll",
+      "utc" : "2026-10-21T06:04:10Z"
+    },
+    {
+      "bundle" : "com.starlight.rekey",
+      "name" : "Rekey",
+      "pid" : 52496,
+      "seconds" : 2.1304250955581665,
+      "source" : "poll",
+      "utc" : "2026-10-21T06:04:10Z"
+    },
+    {
+      "bundle" : "com.starlight.rekey",
+      "name" : "Rekey",
+      "pid" : 52496,
+      "seconds" : 2.2318950891494751,
+      "source" : "poll",
+      "utc" : "2026-10-21T06:04:10Z"
+    },
+    {
+      "bundle" : "com.starlight.rekey",
+      "name" : "Rekey",
+      "pid" : 52496,
+      "seconds" : 2.3329000473022461,
+      "source" : "poll",
+      "utc" : "2026-10-21T06:04:10Z"
+    },
+    {
+      "bundle" : "com.starlight.rekey",
+      "name" : "Rekey",
+      "pid" : 52496,
+      "seconds" : 2.433866024017334,
+      "source" : "poll",
+      "utc" : "2026-10-21T06:04:10Z"
+    },
+    {
+      "bundle" : "com.starlight.rekey",
+      "name" : "Rekey",
+      "pid" : 52496,
+      "seconds" : 2.5349950790405273,
+      "source" : "poll",
+      "utc" : "2026-10-21T06:04:10Z"
+    },
+    {
+      "bundle" : "com.starlight.rekey",
+      "name" : "Rekey",
+      "pid" : 52496,
+      "seconds" : 2.6368380784988403,
+      "source" : "poll",
+      "utc" : "2026-10-21T06:04:11Z"
+    },
+    {
+      "bundle" : "com.starlight.rekey",
+      "name" : "Rekey",
+      "pid" : 52496,
+      "seconds" : 2.7383930683135986,
+      "source" : "poll",
+      "utc" : "2026-10-21T06:04:11Z"
+    },
+    {
+      "bundle" : "com.starlight.rekey",
+      "name" : "Rekey",
+      "pid" : 52496,
+      "seconds" : 2.8397520780563354,
+      "source" : "poll",
+      "utc" : "2026-10-21T06:04:11Z"
+    },
+    {
+      "bundle" : "com.starlight.rekey",
+      "name" : "Rekey",
+      "pid" : 52496,
+      "seconds" : 2.9412750005722046,
+      "source" : "poll",
+      "utc" : "2026-10-21T06:04:11Z"
+    },
+    {
+      "bundle" : "com.starlight.rekey",
+      "name" : "Rekey",
+      "pid" : 52496,
+      "seconds" : 3.0431070327758789,
+      "source" : "poll",
+      "utc" : "2026-10-21T06:04:11Z"
+    },
+    {
+      "bundle" : "com.starlight.rekey",
+      "name" : "Rekey",
+      "pid" : 52496,
+      "seconds" : 3.1438140869140625,
+      "source" : "poll",
+      "utc" : "2026-10-21T06:04:11Z"
+    },
+    {
+      "bundle" : "com.anthropic.claudefordesktop",
+      "name" : "Claude",
+      "pid" : 82151,
+      "seconds" : 3.1519170999526978,
+      "source" : "activation",
+      "utc" : "2026-10-21T06:04:11Z"
+    },
+    {
+      "bundle" : "com.anthropic.claudefordesktop",
+      "name" : "Claude",
+      "pid" : 82151,
+      "seconds" : 3.2454180717468262,
+      "source" : "poll",
+      "utc" : "2026-10-21T06:04:11Z"
+    },
+    {
+      "bundle" : "com.anthropic.claudefordesktop",
+      "name" : "Claude",
+      "pid" : 82151,
+      "seconds" : 3.3465290069580078,
+      "source" : "poll",
+      "utc" : "2026-10-21T06:04:11Z"
+    },
+    {
+      "bundle" : "com.anthropic.claudefordesktop",
+      "name" : "Claude",
+      "pid" : 82151,
+      "seconds" : 3.4479340314865112,
+      "source" : "poll",
+      "utc" : "2026-10-21T06:04:11Z"
+    },
+    {
+      "bundle" : "com.anthropic.claudefordesktop",
+      "name" : "Claude",
+      "pid" : 82151,
+      "seconds" : 3.5493000745773315,
+      "source" : "poll",
+      "utc" : "2026-10-21T06:04:11Z"
+    },
+    {
+      "bundle" : "com.anthropic.claudefordesktop",
+      "name" : "Claude",
+      "pid" : 82151,
+      "seconds" : 3.6503580808639526,
+      "source" : "poll",
+      "utc" : "2026-10-21T06:04:12Z"
+    },
+    {
+      "bundle" : "com.anthropic.claudefordesktop",
+      "name" : "Claude",
+      "pid" : 82151,
+      "seconds" : 3.7514441013336182,
+      "source" : "poll",
+      "utc" : "2026-10-21T06:04:12Z"
+    },
+    {
+      "bundle" : "com.anthropic.claudefordesktop",
+      "name" : "Claude",
+      "pid" : 82151,
+      "seconds" : 3.8520410060882568,
+      "source" : "poll",
+      "utc" : "2026-10-21T06:04:12Z"
+    },
+    {
+      "bundle" : "com.anthropic.claudefordesktop",
+      "name" : "Claude",
+      "pid" : 82151,
+      "seconds" : 3.9533110857009888,
+      "source" : "poll",
+      "utc" : "2026-10-21T06:04:12Z"
+    },
+    {
+      "bundle" : "com.anthropic.claudefordesktop",
+      "name" : "Claude",
+      "pid" : 82151,
+      "seconds" : 4.0544940233230591,
+      "source" : "poll",
+      "utc" : "2026-10-21T06:04:12Z"
+    },
+    {
+      "bundle" : "com.anthropic.claudefordesktop",
+      "name" : "Claude",
+      "pid" : 82151,
+      "seconds" : 4.1560100317001343,
+      "source" : "poll",
+      "utc" : "2026-10-21T06:04:12Z"
+    },
+    {
+      "bundle" : "com.anthropic.claudefordesktop",
+      "name" : "Claude",
+      "pid" : 82151,
+      "seconds" : 4.2567009925842285,
+      "source" : "poll",
+      "utc" : "2026-10-21T06:04:12Z"
+    },
+    {
+      "bundle" : "com.anthropic.claudefordesktop",
+      "name" : "Claude",
+      "pid" : 82151,
+      "seconds" : 4.3579390048980713,
+      "source" : "poll",
+      "utc" : "2026-10-21T06:04:12Z"
+    },
+    {
+      "bundle" : "com.anthropic.claudefordesktop",
+      "name" : "Claude",
+      "pid" : 82151,
+      "seconds" : 4.4588570594787598,
+      "source" : "poll",
+      "utc" : "2026-10-21T06:04:12Z"
+    },
+    {
+      "bundle" : "com.anthropic.claudefordesktop",
+      "name" : "Claude",
+      "pid" : 82151,
+      "seconds" : 4.559785008430481,
+      "source" : "poll",
+      "utc" : "2026-10-21T06:04:13Z"
+    },
+    {
+      "bundle" : "com.anthropic.claudefordesktop",
+      "name" : "Claude",
+      "pid" : 82151,
+      "seconds" : 4.6603060960769653,
+      "source" : "poll",
+      "utc" : "2026-10-21T06:04:13Z"
+    },
+    {
+      "bundle" : "com.anthropic.claudefordesktop",
+      "name" : "Claude",
+      "pid" : 82151,
+      "seconds" : 4.7618370056152344,
+      "source" : "poll",
+      "utc" : "2026-10-21T06:04:13Z"
+    },
+    {
+      "bundle" : "com.anthropic.claudefordesktop",
+      "name" : "Claude",
+      "pid" : 82151,
+      "seconds" : 4.8631130456924438,
+      "source" : "poll",
+      "utc" : "2026-10-21T06:04:13Z"
+    },
+    {
+      "bundle" : "com.anthropic.claudefordesktop",
+      "name" : "Claude",
+      "pid" : 82151,
+      "seconds" : 4.9641250371932983,
+      "source" : "poll",
+      "utc" : "2026-10-21T06:04:13Z"
+    },
+    {
+      "bundle" : "com.anthropic.claudefordesktop",
+      "name" : "Claude",
+      "pid" : 82151,
+      "seconds" : 5.0650700330734253,
+      "source" : "poll",
+      "utc" : "2026-10-21T06:04:13Z"
+    },
+    {
+      "bundle" : "com.anthropic.claudefordesktop",
+      "name" : "Claude",
+      "pid" : 82151,
+      "seconds" : 5.1660850048065186,
+      "source" : "poll",
+      "utc" : "2026-10-21T06:04:13Z"
+    },
+    {
+      "bundle" : "com.anthropic.claudefordesktop",
+      "name" : "Claude",
+      "pid" : 82151,
+      "seconds" : 5.267551064491272,
+      "source" : "poll",
+      "utc" : "2026-10-21T06:04:13Z"
+    },
+    {
+      "bundle" : "com.anthropic.claudefordesktop",
+      "name" : "Claude",
+      "pid" : 82151,
+      "seconds" : 5.3682659864425659,
+      "source" : "poll",
+      "utc" : "2026-10-21T06:04:13Z"
+    },
+    {
+      "bundle" : "com.anthropic.claudefordesktop",
+      "name" : "Claude",
+      "pid" : 82151,
+      "seconds" : 5.4696390628814697,
+      "source" : "poll",
+      "utc" : "2026-10-21T06:04:13Z"
+    },
+    {
+      "bundle" : "com.anthropic.claudefordesktop",
+      "name" : "Claude",
+      "pid" : 82151,
+      "seconds" : 5.5705270767211914,
+      "source" : "poll",
+      "utc" : "2026-10-21T06:04:14Z"
+    },
+    {
+      "bundle" : "com.anthropic.claudefordesktop",
+      "name" : "Claude",
+      "pid" : 82151,
+      "seconds" : 5.6716270446777344,
+      "source" : "poll",
+      "utc" : "2026-10-21T06:04:14Z"
+    },
+    {
+      "bundle" : "com.anthropic.claudefordesktop",
+      "name" : "Claude",
+      "pid" : 82151,
+      "seconds" : 5.7731720209121704,
+      "source" : "poll",
+      "utc" : "2026-10-21T06:04:14Z"
+    },
+    {
+      "bundle" : "com.anthropic.claudefordesktop",
+      "name" : "Claude",
+      "pid" : 82151,
+      "seconds" : 5.8753330707550049,
+      "source" : "poll",
+      "utc" : "2026-10-21T06:04:14Z"
+    },
+    {
+      "bundle" : "com.anthropic.claudefordesktop",
+      "name" : "Claude",
+      "pid" : 82151,
+      "seconds" : 5.9764100313186646,
+      "source" : "poll",
+      "utc" : "2026-10-21T06:04:14Z"
+    },
+    {
+      "bundle" : "com.anthropic.claudefordesktop",
+      "name" : "Claude",
+      "pid" : 82151,
+      "seconds" : 6.0776540040969849,
+      "source" : "poll",
+      "utc" : "2026-10-21T06:04:14Z"
+    },
+    {
+      "bundle" : "com.anthropic.claudefordesktop",
+      "name" : "Claude",
+      "pid" : 82151,
+      "seconds" : 6.179792046546936,
+      "source" : "poll",
+      "utc" : "2026-10-21T06:04:14Z"
+    },
+    {
+      "bundle" : "com.anthropic.claudefordesktop",
+      "name" : "Claude",
+      "pid" : 82151,
+      "seconds" : 6.281825065612793,
+      "source" : "poll",
+      "utc" : "2026-10-21T06:04:14Z"
+    },
+    {
+      "bundle" : "com.anthropic.claudefordesktop",
+      "name" : "Claude",
+      "pid" : 82151,
+      "seconds" : 6.3827379941940308,
+      "source" : "poll",
+      "utc" : "2026-10-21T06:04:14Z"
+    },
+    {
+      "bundle" : "com.anthropic.claudefordesktop",
+      "name" : "Claude",
+      "pid" : 82151,
+      "seconds" : 6.4836670160293579,
+      "source" : "poll",
+      "utc" : "2026-10-21T06:04:14Z"
+    },
+    {
+      "bundle" : "com.anthropic.claudefordesktop",
+      "name" : "Claude",
+      "pid" : 82151,
+      "seconds" : 6.5860220193862915,
+      "source" : "poll",
+      "utc" : "2026-10-21T06:04:15Z"
+    },
+    {
+      "bundle" : "com.anthropic.claudefordesktop",
+      "name" : "Claude",
+      "pid" : 82151,
+      "seconds" : 6.6877580881118774,
+      "source" : "poll",
+      "utc" : "2026-10-21T06:04:15Z"
+    },
+    {
+      "bundle" : "com.anthropic.claudefordesktop",
+      "name" : "Claude",
+      "pid" : 82151,
+      "seconds" : 6.7891280651092529,
+      "source" : "poll",
+      "utc" : "2026-10-21T06:04:15Z"
+    },
+    {
+      "bundle" : "com.anthropic.claudefordesktop",
+      "name" : "Claude",
+      "pid" : 82151,
+      "seconds" : 6.8911690711975098,
+      "source" : "poll",
+      "utc" : "2026-10-21T06:04:15Z"
+    },
+    {
+      "bundle" : "com.anthropic.claudefordesktop",
+      "name" : "Claude",
+      "pid" : 82151,
+      "seconds" : 6.9929450750350952,
+      "source" : "poll",
+      "utc" : "2026-10-21T06:04:15Z"
+    },
+    {
+      "bundle" : "com.anthropic.claudefordesktop",
+      "name" : "Claude",
+      "pid" : 82151,
+      "seconds" : 7.0942630767822266,
+      "source" : "poll",
+      "utc" : "2026-10-21T06:04:15Z"
+    },
+    {
+      "bundle" : "com.anthropic.claudefordesktop",
+      "name" : "Claude",
+      "pid" : 82151,
+      "seconds" : 7.1954830884933472,
+      "source" : "poll",
+      "utc" : "2026-10-21T06:04:15Z"
+    },
+    {
+      "bundle" : "com.anthropic.claudefordesktop",
+      "name" : "Claude",
+      "pid" : 82151,
+      "seconds" : 7.2963440418243408,
+      "source" : "poll",
+      "utc" : "2026-10-21T06:04:15Z"
+    },
+    {
+      "bundle" : "com.anthropic.claudefordesktop",
+      "name" : "Claude",
+      "pid" : 82151,
+      "seconds" : 7.3972669839859009,
+      "source" : "poll",
+      "utc" : "2026-10-21T06:04:15Z"
+    },
+    {
+      "bundle" : "com.anthropic.claudefordesktop",
+      "name" : "Claude",
+      "pid" : 82151,
+      "seconds" : 7.4989250898361206,
+      "source" : "poll",
+      "utc" : "2026-10-21T06:04:15Z"
+    },
+    {
+      "bundle" : "com.anthropic.claudefordesktop",
+      "name" : "Claude",
+      "pid" : 82151,
+      "seconds" : 7.6002089977264404,
+      "source" : "poll",
+      "utc" : "2026-10-21T06:04:16Z"
+    },
+    {
+      "bundle" : "com.anthropic.claudefordesktop",
+      "name" : "Claude",
+      "pid" : 82151,
+      "seconds" : 7.7019240856170654,
+      "source" : "poll",
+      "utc" : "2026-10-21T06:04:16Z"
+    },
+    {
+      "bundle" : "com.anthropic.claudefordesktop",
+      "name" : "Claude",
+      "pid" : 82151,
+      "seconds" : 7.803502082824707,
+      "source" : "poll",
+      "utc" : "2026-10-21T06:04:16Z"
+    },
+    {
+      "bundle" : "com.anthropic.claudefordesktop",
+      "name" : "Claude",
+      "pid" : 82151,
+      "seconds" : 7.9046419858932495,
+      "source" : "poll",
+      "utc" : "2026-10-21T06:04:16Z"
+    },
+    {
+      "bundle" : "com.anthropic.claudefordesktop",
+      "name" : "Claude",
+      "pid" : 82151,
+      "seconds" : 8.0058490037918091,
+      "source" : "poll",
+      "utc" : "2026-10-21T06:04:16Z"
+    },
+    {
+      "bundle" : "com.anthropic.claudefordesktop",
+      "name" : "Claude",
+      "pid" : 82151,
+      "seconds" : 8.1076600551605225,
+      "source" : "poll",
+      "utc" : "2026-10-21T06:04:16Z"
+    },
+    {
+      "bundle" : "com.anthropic.claudefordesktop",
+      "name" : "Claude",
+      "pid" : 82151,
+      "seconds" : 8.2095960378646851,
+      "source" : "poll",
+      "utc" : "2026-10-21T06:04:16Z"
+    },
+    {
+      "bundle" : "com.anthropic.claudefordesktop",
+      "name" : "Claude",
+      "pid" : 82151,
+      "seconds" : 8.3114490509033203,
+      "source" : "poll",
+      "utc" : "2026-10-21T06:04:16Z"
+    },
+    {
+      "bundle" : "com.anthropic.claudefordesktop",
+      "name" : "Claude",
+      "pid" : 82151,
+      "seconds" : 8.4129780530929565,
+      "source" : "poll",
+      "utc" : "2026-10-21T06:04:16Z"
+    },
+    {
+      "bundle" : "com.anthropic.claudefordesktop",
+      "name" : "Claude",
+      "pid" : 82151,
+      "seconds" : 8.5146850347518921,
+      "source" : "poll",
+      "utc" : "2026-10-21T06:04:16Z"
+    },
+    {
+      "bundle" : "com.anthropic.claudefordesktop",
+      "name" : "Claude",
+      "pid" : 82151,
+      "seconds" : 8.6168680191040039,
+      "source" : "poll",
+      "utc" : "2026-10-21T06:04:17Z"
+    },
+    {
+      "bundle" : "com.anthropic.claudefordesktop",
+      "name" : "Claude",
+      "pid" : 82151,
+      "seconds" : 8.7177090644836426,
+      "source" : "poll",
+      "utc" : "2026-10-21T06:04:17Z"
+    },
+    {
+      "bundle" : "com.anthropic.claudefordesktop",
+      "name" : "Claude",
+      "pid" : 82151,
+      "seconds" : 8.819720983505249,
+      "source" : "poll",
+      "utc" : "2026-10-21T06:04:17Z"
+    },
+    {
+      "bundle" : "com.anthropic.claudefordesktop",
+      "name" : "Claude",
+      "pid" : 82151,
+      "seconds" : 8.9213560819625854,
+      "source" : "poll",
+      "utc" : "2026-10-21T06:04:17Z"
+    },
+    {
+      "bundle" : "com.anthropic.claudefordesktop",
+      "name" : "Claude",
+      "pid" : 82151,
+      "seconds" : 9.0221740007400513,
+      "source" : "poll",
+      "utc" : "2026-10-21T06:04:17Z"
+    },
+    {
+      "bundle" : "com.anthropic.claudefordesktop",
+      "name" : "Claude",
+      "pid" : 82151,
+      "seconds" : 9.1242940425872803,
+      "source" : "poll",
+      "utc" : "2026-10-21T06:04:17Z"
+    },
+    {
+      "bundle" : "com.anthropic.claudefordesktop",
+      "name" : "Claude",
+      "pid" : 82151,
+      "seconds" : 9.2266089916229248,
+      "source" : "poll",
+      "utc" : "2026-10-21T06:04:17Z"
+    },
+    {
+      "bundle" : "com.anthropic.claudefordesktop",
+      "name" : "Claude",
+      "pid" : 82151,
+      "seconds" : 9.3284590244293213,
+      "source" : "poll",
+      "utc" : "2026-10-21T06:04:17Z"
+    },
+    {
+      "bundle" : "com.anthropic.claudefordesktop",
+      "name" : "Claude",
+      "pid" : 82151,
+      "seconds" : 9.4302340745925903,
+      "source" : "poll",
+      "utc" : "2026-10-21T06:04:17Z"
+    },
+    {
+      "bundle" : "com.anthropic.claudefordesktop",
+      "name" : "Claude",
+      "pid" : 82151,
+      "seconds" : 9.5319210290908813,
+      "source" : "poll",
+      "utc" : "2026-10-21T06:04:17Z"
+    },
+    {
+      "bundle" : "com.anthropic.claudefordesktop",
+      "name" : "Claude",
+      "pid" : 82151,
+      "seconds" : 9.6335110664367676,
+      "source" : "poll",
+      "utc" : "2026-10-21T06:04:18Z"
+    },
+    {
+      "bundle" : "com.anthropic.claudefordesktop",
+      "name" : "Claude",
+      "pid" : 82151,
+      "seconds" : 9.734827995300293,
+      "source" : "poll",
+      "utc" : "2026-10-21T06:04:18Z"
+    },
+    {
+      "bundle" : "com.anthropic.claudefordesktop",
+      "name" : "Claude",
+      "pid" : 82151,
+      "seconds" : 9.8360199928283691,
+      "source" : "poll",
+      "utc" : "2026-10-21T06:04:18Z"
+    },
+    {
+      "bundle" : "com.anthropic.claudefordesktop",
+      "name" : "Claude",
+      "pid" : 82151,
+      "seconds" : 9.937620997428894,
+      "source" : "poll",
+      "utc" : "2026-10-21T06:04:18Z"
+    },
+    {
+      "bundle" : "com.anthropic.claudefordesktop",
+      "name" : "Claude",
+      "pid" : 82151,
+      "seconds" : 10.040603995323181,
+      "source" : "poll",
+      "utc" : "2026-10-21T06:04:18Z"
+    },
+    {
+      "bundle" : "com.anthropic.claudefordesktop",
+      "name" : "Claude",
+      "pid" : 82151,
+      "seconds" : 10.143213033676147,
+      "source" : "poll",
+      "utc" : "2026-10-21T06:04:18Z"
+    },
+    {
+      "bundle" : "com.anthropic.claudefordesktop",
+      "name" : "Claude",
+      "pid" : 82151,
+      "seconds" : 10.245292067527771,
+      "source" : "poll",
+      "utc" : "2026-10-21T06:04:18Z"
+    },
+    {
+      "bundle" : "com.anthropic.claudefordesktop",
+      "name" : "Claude",
+      "pid" : 82151,
+      "seconds" : 10.347459077835083,
+      "source" : "poll",
+      "utc" : "2026-10-21T06:04:18Z"
+    },
+    {
+      "bundle" : "com.anthropic.claudefordesktop",
+      "name" : "Claude",
+      "pid" : 82151,
+      "seconds" : 10.449207067489624,
+      "source" : "poll",
+      "utc" : "2026-10-21T06:04:18Z"
+    },
+    {
+      "bundle" : "com.anthropic.claudefordesktop",
+      "name" : "Claude",
+      "pid" : 82151,
+      "seconds" : 10.550752997398376,
+      "source" : "poll",
+      "utc" : "2026-10-21T06:04:18Z"
+    },
+    {
+      "bundle" : "com.anthropic.claudefordesktop",
+      "name" : "Claude",
+      "pid" : 82151,
+      "seconds" : 10.652150988578796,
+      "source" : "poll",
+      "utc" : "2026-10-21T06:04:19Z"
+    },
+    {
+      "bundle" : "com.anthropic.claudefordesktop",
+      "name" : "Claude",
+      "pid" : 82151,
+      "seconds" : 10.753951072692871,
+      "source" : "poll",
+      "utc" : "2026-10-21T06:04:19Z"
+    },
+    {
+      "bundle" : "com.anthropic.claudefordesktop",
+      "name" : "Claude",
+      "pid" : 82151,
+      "seconds" : 10.855975985527039,
+      "source" : "poll",
+      "utc" : "2026-10-21T06:04:19Z"
+    },
+    {
+      "bundle" : "com.anthropic.claudefordesktop",
+      "name" : "Claude",
+      "pid" : 82151,
+      "seconds" : 10.95759105682373,
+      "source" : "poll",
+      "utc" : "2026-10-21T06:04:19Z"
+    },
+    {
+      "bundle" : "com.anthropic.claudefordesktop",
+      "name" : "Claude",
+      "pid" : 82151,
+      "seconds" : 11.059684991836548,
+      "source" : "poll",
+      "utc" : "2026-10-21T06:04:19Z"
+    },
+    {
+      "bundle" : "com.anthropic.claudefordesktop",
+      "name" : "Claude",
+      "pid" : 82151,
+      "seconds" : 11.162627100944519,
+      "source" : "poll",
+      "utc" : "2026-10-21T06:04:19Z"
+    },
+    {
+      "bundle" : "com.anthropic.claudefordesktop",
+      "name" : "Claude",
+      "pid" : 82151,
+      "seconds" : 11.263594031333923,
+      "source" : "poll",
+      "utc" : "2026-10-21T06:04:19Z"
+    },
+    {
+      "bundle" : "com.anthropic.claudefordesktop",
+      "name" : "Claude",
+      "pid" : 82151,
+      "seconds" : 11.365193009376526,
+      "source" : "poll",
+      "utc" : "2026-10-21T06:04:19Z"
+    },
+    {
+      "bundle" : "com.anthropic.claudefordesktop",
+      "name" : "Claude",
+      "pid" : 82151,
+      "seconds" : 11.46671998500824,
+      "source" : "poll",
+      "utc" : "2026-10-21T06:04:19Z"
+    },
+    {
+      "bundle" : "com.anthropic.claudefordesktop",
+      "name" : "Claude",
+      "pid" : 82151,
+      "seconds" : 11.568538069725037,
+      "source" : "poll",
+      "utc" : "2026-10-21T06:04:20Z"
+    },
+    {
+      "bundle" : "com.anthropic.claudefordesktop",
+      "name" : "Claude",
+      "pid" : 82151,
+      "seconds" : 11.669972062110901,
+      "source" : "poll",
+      "utc" : "2026-10-21T06:04:20Z"
+    },
+    {
+      "bundle" : "com.anthropic.claudefordesktop",
+      "name" : "Claude",
+      "pid" : 82151,
+      "seconds" : 11.77141809463501,
+      "source" : "poll",
+      "utc" : "2026-10-21T06:04:20Z"
+    },
+    {
+      "bundle" : "com.anthropic.claudefordesktop",
+      "name" : "Claude",
+      "pid" : 82151,
+      "seconds" : 11.872684001922607,
+      "source" : "poll",
+      "utc" : "2026-10-21T06:04:20Z"
+    },
+    {
+      "bundle" : "com.anthropic.claudefordesktop",
+      "name" : "Claude",
+      "pid" : 82151,
+      "seconds" : 11.974126100540161,
+      "source" : "poll",
+      "utc" : "2026-10-21T06:04:20Z"
+    },
+    {
+      "bundle" : "com.anthropic.claudefordesktop",
+      "name" : "Claude",
+      "pid" : 82151,
+      "seconds" : 12.075002074241638,
+      "source" : "poll",
+      "utc" : "2026-10-21T06:04:20Z"
+    },
+    {
+      "bundle" : "com.anthropic.claudefordesktop",
+      "name" : "Claude",
+      "pid" : 82151,
+      "seconds" : 12.17651903629303,
+      "source" : "poll",
+      "utc" : "2026-10-21T06:04:20Z"
+    },
+    {
+      "bundle" : "com.anthropic.claudefordesktop",
+      "name" : "Claude",
+      "pid" : 82151,
+      "seconds" : 12.277761101722717,
+      "source" : "poll",
+      "utc" : "2026-10-21T06:04:20Z"
+    },
+    {
+      "bundle" : "com.anthropic.claudefordesktop",
+      "name" : "Claude",
+      "pid" : 82151,
+      "seconds" : 12.379443049430847,
+      "source" : "poll",
+      "utc" : "2026-10-21T06:04:20Z"
+    },
+    {
+      "bundle" : "com.anthropic.claudefordesktop",
+      "name" : "Claude",
+      "pid" : 82151,
+      "seconds" : 12.480728030204773,
+      "source" : "poll",
+      "utc" : "2026-10-21T06:04:20Z"
+    },
+    {
+      "bundle" : "com.anthropic.claudefordesktop",
+      "name" : "Claude",
+      "pid" : 82151,
+      "seconds" : 12.5816570520401,
+      "source" : "poll",
+      "utc" : "2026-10-21T06:04:21Z"
+    },
+    {
+      "bundle" : "com.anthropic.claudefordesktop",
+      "name" : "Claude",
+      "pid" : 82151,
+      "seconds" : 12.682391047477722,
+      "source" : "poll",
+      "utc" : "2026-10-21T06:04:21Z"
+    },
+    {
+      "bundle" : "com.anthropic.claudefordesktop",
+      "name" : "Claude",
+      "pid" : 82151,
+      "seconds" : 12.783339023590088,
+      "source" : "poll",
+      "utc" : "2026-10-21T06:04:21Z"
+    },
+    {
+      "bundle" : "com.anthropic.claudefordesktop",
+      "name" : "Claude",
+      "pid" : 82151,
+      "seconds" : 12.884942054748535,
+      "source" : "poll",
+      "utc" : "2026-10-21T06:04:21Z"
+    },
+    {
+      "bundle" : "com.anthropic.claudefordesktop",
+      "name" : "Claude",
+      "pid" : 82151,
+      "seconds" : 12.986057996749878,
+      "source" : "poll",
+      "utc" : "2026-10-21T06:04:21Z"
+    },
+    {
+      "bundle" : "com.anthropic.claudefordesktop",
+      "name" : "Claude",
+      "pid" : 82151,
+      "seconds" : 13.088006019592285,
+      "source" : "poll",
+      "utc" : "2026-10-21T06:04:21Z"
+    },
+    {
+      "bundle" : "com.anthropic.claudefordesktop",
+      "name" : "Claude",
+      "pid" : 82151,
+      "seconds" : 13.189098000526428,
+      "source" : "poll",
+      "utc" : "2026-10-21T06:04:21Z"
+    },
+    {
+      "bundle" : "com.anthropic.claudefordesktop",
+      "name" : "Claude",
+      "pid" : 82151,
+      "seconds" : 13.290755033493042,
+      "source" : "poll",
+      "utc" : "2026-10-21T06:04:21Z"
+    },
+    {
+      "bundle" : "com.anthropic.claudefordesktop",
+      "name" : "Claude",
+      "pid" : 82151,
+      "seconds" : 13.393243074417114,
+      "source" : "poll",
+      "utc" : "2026-10-21T06:04:21Z"
+    },
+    {
+      "bundle" : "com.anthropic.claudefordesktop",
+      "name" : "Claude",
+      "pid" : 82151,
+      "seconds" : 13.494867086410522,
+      "source" : "poll",
+      "utc" : "2026-10-21T06:04:21Z"
+    },
+    {
+      "bundle" : "com.anthropic.claudefordesktop",
+      "name" : "Claude",
+      "pid" : 82151,
+      "seconds" : 13.596243023872375,
+      "source" : "poll",
+      "utc" : "2026-10-21T06:04:22Z"
+    },
+    {
+      "bundle" : "com.anthropic.claudefordesktop",
+      "name" : "Claude",
+      "pid" : 82151,
+      "seconds" : 13.698040008544922,
+      "source" : "poll",
+      "utc" : "2026-10-21T06:04:22Z"
+    },
+    {
+      "bundle" : "com.anthropic.claudefordesktop",
+      "name" : "Claude",
+      "pid" : 82151,
+      "seconds" : 13.799015045166016,
+      "source" : "poll",
+      "utc" : "2026-10-21T06:04:22Z"
+    },
+    {
+      "bundle" : "com.anthropic.claudefordesktop",
+      "name" : "Claude",
+      "pid" : 82151,
+      "seconds" : 13.899960041046143,
+      "source" : "poll",
+      "utc" : "2026-10-21T06:04:22Z"
+    },
+    {
+      "bundle" : "com.anthropic.claudefordesktop",
+      "name" : "Claude",
+      "pid" : 82151,
+      "seconds" : 14.001239061355591,
+      "source" : "poll",
+      "utc" : "2026-10-21T06:04:22Z"
+    },
+    {
+      "bundle" : "com.anthropic.claudefordesktop",
+      "name" : "Claude",
+      "pid" : 82151,
+      "seconds" : 14.102552056312561,
+      "source" : "poll",
+      "utc" : "2026-10-21T06:04:22Z"
+    },
+    {
+      "bundle" : "com.anthropic.claudefordesktop",
+      "name" : "Claude",
+      "pid" : 82151,
+      "seconds" : 14.204094052314758,
+      "source" : "poll",
+      "utc" : "2026-10-21T06:04:22Z"
+    },
+    {
+      "bundle" : "com.anthropic.claudefordesktop",
+      "name" : "Claude",
+      "pid" : 82151,
+      "seconds" : 14.305454015731812,
+      "source" : "poll",
+      "utc" : "2026-10-21T06:04:22Z"
+    },
+    {
+      "bundle" : "com.anthropic.claudefordesktop",
+      "name" : "Claude",
+      "pid" : 82151,
+      "seconds" : 14.407248020172119,
+      "source" : "poll",
+      "utc" : "2026-10-21T06:04:22Z"
+    },
+    {
+      "bundle" : "com.anthropic.claudefordesktop",
+      "name" : "Claude",
+      "pid" : 82151,
+      "seconds" : 14.508251070976257,
+      "source" : "poll",
+      "utc" : "2026-10-21T06:04:22Z"
+    },
+    {
+      "bundle" : "com.anthropic.claudefordesktop",
+      "name" : "Claude",
+      "pid" : 82151,
+      "seconds" : 14.609475016593933,
+      "source" : "poll",
+      "utc" : "2026-10-21T06:04:23Z"
+    },
+    {
+      "bundle" : "com.anthropic.claudefordesktop",
+      "name" : "Claude",
+      "pid" : 82151,
+      "seconds" : 14.710925102233887,
+      "source" : "poll",
+      "utc" : "2026-10-21T06:04:23Z"
+    },
+    {
+      "bundle" : "com.anthropic.claudefordesktop",
+      "name" : "Claude",
+      "pid" : 82151,
+      "seconds" : 14.812702059745789,
+      "source" : "poll",
+      "utc" : "2026-10-21T06:04:23Z"
+    },
+    {
+      "bundle" : "com.anthropic.claudefordesktop",
+      "name" : "Claude",
+      "pid" : 82151,
+      "seconds" : 14.914336085319519,
+      "source" : "poll",
+      "utc" : "2026-10-21T06:04:23Z"
+    },
+    {
+      "bundle" : "com.anthropic.claudefordesktop",
+      "name" : "Claude",
+      "pid" : 82151,
+      "seconds" : 15.016581058502197,
+      "source" : "poll",
+      "utc" : "2026-10-21T06:04:23Z"
+    },
+    {
+      "bundle" : "com.anthropic.claudefordesktop",
+      "name" : "Claude",
+      "pid" : 82151,
+      "seconds" : 15.118849039077759,
+      "source" : "poll",
+      "utc" : "2026-10-21T06:04:23Z"
+    },
+    {
+      "bundle" : "com.anthropic.claudefordesktop",
+      "name" : "Claude",
+      "pid" : 82151,
+      "seconds" : 15.221087098121643,
+      "source" : "poll",
+      "utc" : "2026-10-21T06:04:23Z"
+    },
+    {
+      "bundle" : "com.anthropic.claudefordesktop",
+      "name" : "Claude",
+      "pid" : 82151,
+      "seconds" : 15.32328999042511,
+      "source" : "poll",
+      "utc" : "2026-10-21T06:04:23Z"
+    },
+    {
+      "bundle" : "com.anthropic.claudefordesktop",
+      "name" : "Claude",
+      "pid" : 82151,
+      "seconds" : 15.424880027770996,
+      "source" : "poll",
+      "utc" : "2026-10-21T06:04:23Z"
+    },
+    {
+      "bundle" : "com.anthropic.claudefordesktop",
+      "name" : "Claude",
+      "pid" : 82151,
+      "seconds" : 15.527179002761841,
+      "source" : "poll",
+      "utc" : "2026-10-21T06:04:23Z"
+    },
+    {
+      "bundle" : "com.anthropic.claudefordesktop",
+      "name" : "Claude",
+      "pid" : 82151,
+      "seconds" : 15.629301071166992,
+      "source" : "poll",
+      "utc" : "2026-10-21T06:04:24Z"
+    },
+    {
+      "bundle" : "com.anthropic.claudefordesktop",
+      "name" : "Claude",
+      "pid" : 82151,
+      "seconds" : 15.730871081352234,
+      "source" : "poll",
+      "utc" : "2026-10-21T06:04:24Z"
+    },
+    {
+      "bundle" : "com.anthropic.claudefordesktop",
+      "name" : "Claude",
+      "pid" : 82151,
+      "seconds" : 15.832599997520447,
+      "source" : "poll",
+      "utc" : "2026-10-21T06:04:24Z"
+    },
+    {
+      "bundle" : "com.anthropic.claudefordesktop",
+      "name" : "Claude",
+      "pid" : 82151,
+      "seconds" : 15.934476017951965,
+      "source" : "poll",
+      "utc" : "2026-10-21T06:04:24Z"
+    },
+    {
+      "bundle" : "com.anthropic.claudefordesktop",
+      "name" : "Claude",
+      "pid" : 82151,
+      "seconds" : 16.036576986312866,
+      "source" : "poll",
+      "utc" : "2026-10-21T06:04:24Z"
+    },
+    {
+      "bundle" : "com.anthropic.claudefordesktop",
+      "name" : "Claude",
+      "pid" : 82151,
+      "seconds" : 16.137986063957214,
+      "source" : "poll",
+      "utc" : "2026-10-21T06:04:24Z"
+    },
+    {
+      "bundle" : "com.anthropic.claudefordesktop",
+      "name" : "Claude",
+      "pid" : 82151,
+      "seconds" : 16.239143013954163,
+      "source" : "poll",
+      "utc" : "2026-10-21T06:04:24Z"
+    },
+    {
+      "bundle" : "com.anthropic.claudefordesktop",
+      "name" : "Claude",
+      "pid" : 82151,
+      "seconds" : 16.340620994567871,
+      "source" : "poll",
+      "utc" : "2026-10-21T06:04:24Z"
+    },
+    {
+      "bundle" : "com.anthropic.claudefordesktop",
+      "name" : "Claude",
+      "pid" : 82151,
+      "seconds" : 16.441838026046753,
+      "source" : "poll",
+      "utc" : "2026-10-21T06:04:24Z"
+    },
+    {
+      "bundle" : "com.anthropic.claudefordesktop",
+      "name" : "Claude",
+      "pid" : 82151,
+      "seconds" : 16.54259204864502,
+      "source" : "poll",
+      "utc" : "2026-10-21T06:04:24Z"
+    },
+    {
+      "bundle" : "com.anthropic.claudefordesktop",
+      "name" : "Claude",
+      "pid" : 82151,
+      "seconds" : 16.644322991371155,
+      "source" : "poll",
+      "utc" : "2026-10-21T06:04:25Z"
+    },
+    {
+      "bundle" : "com.anthropic.claudefordesktop",
+      "name" : "Claude",
+      "pid" : 82151,
+      "seconds" : 16.745871067047119,
+      "source" : "poll",
+      "utc" : "2026-10-21T06:04:25Z"
+    },
+    {
+      "bundle" : "com.anthropic.claudefordesktop",
+      "name" : "Claude",
+      "pid" : 82151,
+      "seconds" : 16.846962094306946,
+      "source" : "poll",
+      "utc" : "2026-10-21T06:04:25Z"
+    },
+    {
+      "bundle" : "com.anthropic.claudefordesktop",
+      "name" : "Claude",
+      "pid" : 82151,
+      "seconds" : 16.94862699508667,
+      "source" : "poll",
+      "utc" : "2026-10-21T06:04:25Z"
+    },
+    {
+      "bundle" : "com.anthropic.claudefordesktop",
+      "name" : "Claude",
+      "pid" : 82151,
+      "seconds" : 17.049813032150269,
+      "source" : "poll",
+      "utc" : "2026-10-21T06:04:25Z"
+    },
+    {
+      "bundle" : "com.anthropic.claudefordesktop",
+      "name" : "Claude",
+      "pid" : 82151,
+      "seconds" : 17.150848031044006,
+      "source" : "poll",
+      "utc" : "2026-10-21T06:04:25Z"
+    },
+    {
+      "bundle" : "com.anthropic.claudefordesktop",
+      "name" : "Claude",
+      "pid" : 82151,
+      "seconds" : 17.2519850730896,
+      "source" : "poll",
+      "utc" : "2026-10-21T06:04:25Z"
+    },
+    {
+      "bundle" : "com.anthropic.claudefordesktop",
+      "name" : "Claude",
+      "pid" : 82151,
+      "seconds" : 17.353545069694519,
+      "source" : "poll",
+      "utc" : "2026-10-21T06:04:25Z"
+    },
+    {
+      "bundle" : "com.anthropic.claudefordesktop",
+      "name" : "Claude",
+      "pid" : 82151,
+      "seconds" : 17.455224990844727,
+      "source" : "poll",
+      "utc" : "2026-10-21T06:04:25Z"
+    },
+    {
+      "bundle" : "com.anthropic.claudefordesktop",
+      "name" : "Claude",
+      "pid" : 82151,
+      "seconds" : 17.556505084037781,
+      "source" : "poll",
+      "utc" : "2026-10-21T06:04:26Z"
+    },
+    {
+      "bundle" : "com.anthropic.claudefordesktop",
+      "name" : "Claude",
+      "pid" : 82151,
+      "seconds" : 17.658123016357422,
+      "source" : "poll",
+      "utc" : "2026-10-21T06:04:26Z"
+    },
+    {
+      "bundle" : "com.anthropic.claudefordesktop",
+      "name" : "Claude",
+      "pid" : 82151,
+      "seconds" : 17.759361028671265,
+      "source" : "poll",
+      "utc" : "2026-10-21T06:04:26Z"
+    },
+    {
+      "bundle" : "com.anthropic.claudefordesktop",
+      "name" : "Claude",
+      "pid" : 82151,
+      "seconds" : 17.86027204990387,
+      "source" : "poll",
+      "utc" : "2026-10-21T06:04:26Z"
+    },
+    {
+      "bundle" : "com.anthropic.claudefordesktop",
+      "name" : "Claude",
+      "pid" : 82151,
+      "seconds" : 17.961268067359924,
+      "source" : "poll",
+      "utc" : "2026-10-21T06:04:26Z"
+    },
+    {
+      "bundle" : "com.anthropic.claudefordesktop",
+      "name" : "Claude",
+      "pid" : 82151,
+      "seconds" : 18.062690019607544,
+      "source" : "poll",
+      "utc" : "2026-10-21T06:04:26Z"
+    },
+    {
+      "bundle" : "com.anthropic.claudefordesktop",
+      "name" : "Claude",
+      "pid" : 82151,
+      "seconds" : 18.1631760597229,
+      "source" : "poll",
+      "utc" : "2026-10-21T06:04:26Z"
+    },
+    {
+      "bundle" : "com.anthropic.claudefordesktop",
+      "name" : "Claude",
+      "pid" : 82151,
+      "seconds" : 18.264297008514404,
+      "source" : "poll",
+      "utc" : "2026-10-21T06:04:26Z"
+    },
+    {
+      "bundle" : "com.anthropic.claudefordesktop",
+      "name" : "Claude",
+      "pid" : 82151,
+      "seconds" : 18.365482091903687,
+      "source" : "poll",
+      "utc" : "2026-10-21T06:04:26Z"
+    },
+    {
+      "bundle" : "com.anthropic.claudefordesktop",
+      "name" : "Claude",
+      "pid" : 82151,
+      "seconds" : 18.466386079788208,
+      "source" : "poll",
+      "utc" : "2026-10-21T06:04:26Z"
+    },
+    {
+      "bundle" : "com.anthropic.claudefordesktop",
+      "name" : "Claude",
+      "pid" : 82151,
+      "seconds" : 18.567792057991028,
+      "source" : "poll",
+      "utc" : "2026-10-21T06:04:27Z"
+    },
+    {
+      "bundle" : "com.anthropic.claudefordesktop",
+      "name" : "Claude",
+      "pid" : 82151,
+      "seconds" : 18.669555068016052,
+      "source" : "poll",
+      "utc" : "2026-10-21T06:04:27Z"
+    },
+    {
+      "bundle" : "com.anthropic.claudefordesktop",
+      "name" : "Claude",
+      "pid" : 82151,
+      "seconds" : 18.77117908000946,
+      "source" : "poll",
+      "utc" : "2026-10-21T06:04:27Z"
+    },
+    {
+      "bundle" : "com.anthropic.claudefordesktop",
+      "name" : "Claude",
+      "pid" : 82151,
+      "seconds" : 18.873002052307129,
+      "source" : "poll",
+      "utc" : "2026-10-21T06:04:27Z"
+    },
+    {
+      "bundle" : "com.anthropic.claudefordesktop",
+      "name" : "Claude",
+      "pid" : 82151,
+      "seconds" : 18.974723100662231,
+      "source" : "poll",
+      "utc" : "2026-10-21T06:04:27Z"
+    },
+    {
+      "bundle" : "com.anthropic.claudefordesktop",
+      "name" : "Claude",
+      "pid" : 82151,
+      "seconds" : 19.076188087463379,
+      "source" : "poll",
+      "utc" : "2026-10-21T06:04:27Z"
+    },
+    {
+      "bundle" : "com.anthropic.claudefordesktop",
+      "name" : "Claude",
+      "pid" : 82151,
+      "seconds" : 19.177458047866821,
+      "source" : "poll",
+      "utc" : "2026-10-21T06:04:27Z"
+    },
+    {
+      "bundle" : "com.anthropic.claudefordesktop",
+      "name" : "Claude",
+      "pid" : 82151,
+      "seconds" : 19.279071092605591,
+      "source" : "poll",
+      "utc" : "2026-10-21T06:04:27Z"
+    },
+    {
+      "bundle" : "com.anthropic.claudefordesktop",
+      "name" : "Claude",
+      "pid" : 82151,
+      "seconds" : 19.380892992019653,
+      "source" : "poll",
+      "utc" : "2026-10-21T06:04:27Z"
+    },
+    {
+      "bundle" : "com.anthropic.claudefordesktop",
+      "name" : "Claude",
+      "pid" : 82151,
+      "seconds" : 19.482111096382141,
+      "source" : "poll",
+      "utc" : "2026-10-21T06:04:27Z"
+    },
+    {
+      "bundle" : "com.anthropic.claudefordesktop",
+      "name" : "Claude",
+      "pid" : 82151,
+      "seconds" : 19.584205031394958,
+      "source" : "poll",
+      "utc" : "2026-10-21T06:04:28Z"
+    },
+    {
+      "bundle" : "com.anthropic.claudefordesktop",
+      "name" : "Claude",
+      "pid" : 82151,
+      "seconds" : 19.686596989631653,
+      "source" : "poll",
+      "utc" : "2026-10-21T06:04:28Z"
+    },
+    {
+      "bundle" : "com.anthropic.claudefordesktop",
+      "name" : "Claude",
+      "pid" : 82151,
+      "seconds" : 19.788782000541687,
+      "source" : "poll",
+      "utc" : "2026-10-21T06:04:28Z"
+    },
+    {
+      "bundle" : "com.anthropic.claudefordesktop",
+      "name" : "Claude",
+      "pid" : 82151,
+      "seconds" : 19.89136004447937,
+      "source" : "poll",
+      "utc" : "2026-10-21T06:04:28Z"
+    },
+    {
+      "bundle" : "com.anthropic.claudefordesktop",
+      "name" : "Claude",
+      "pid" : 82151,
+      "seconds" : 19.993421077728271,
+      "source" : "poll",
+      "utc" : "2026-10-21T06:04:28Z"
+    },
+    {
+      "bundle" : "com.anthropic.claudefordesktop",
+      "name" : "Claude",
+      "pid" : 82151,
+      "seconds" : 20.094518065452576,
+      "source" : "poll",
+      "utc" : "2026-10-21T06:04:28Z"
+    },
+    {
+      "bundle" : "com.anthropic.claudefordesktop",
+      "name" : "Claude",
+      "pid" : 82151,
+      "seconds" : 20.196079015731812,
+      "source" : "poll",
+      "utc" : "2026-10-21T06:04:28Z"
+    },
+    {
+      "bundle" : "com.anthropic.claudefordesktop",
+      "name" : "Claude",
+      "pid" : 82151,
+      "seconds" : 20.297621011734009,
+      "source" : "poll",
+      "utc" : "2026-10-21T06:04:28Z"
+    },
+    {
+      "bundle" : "com.anthropic.claudefordesktop",
+      "name" : "Claude",
+      "pid" : 82151,
+      "seconds" : 20.398745059967041,
+      "source" : "poll",
+      "utc" : "2026-10-21T06:04:28Z"
+    },
+    {
+      "bundle" : "com.anthropic.claudefordesktop",
+      "name" : "Claude",
+      "pid" : 82151,
+      "seconds" : 20.499689102172852,
+      "source" : "poll",
+      "utc" : "2026-10-21T06:04:28Z"
+    },
+    {
+      "bundle" : "com.anthropic.claudefordesktop",
+      "name" : "Claude",
+      "pid" : 82151,
+      "seconds" : 20.601497054100037,
+      "source" : "poll",
+      "utc" : "2026-10-21T06:04:29Z"
+    },
+    {
+      "bundle" : "com.anthropic.claudefordesktop",
+      "name" : "Claude",
+      "pid" : 82151,
+      "seconds" : 20.702961087226868,
+      "source" : "poll",
+      "utc" : "2026-10-21T06:04:29Z"
+    },
+    {
+      "bundle" : "com.anthropic.claudefordesktop",
+      "name" : "Claude",
+      "pid" : 82151,
+      "seconds" : 20.804130077362061,
+      "source" : "poll",
+      "utc" : "2026-10-21T06:04:29Z"
+    },
+    {
+      "bundle" : "com.anthropic.claudefordesktop",
+      "name" : "Claude",
+      "pid" : 82151,
+      "seconds" : 20.906275987625122,
+      "source" : "poll",
+      "utc" : "2026-10-21T06:04:29Z"
+    },
+    {
+      "bundle" : "com.anthropic.claudefordesktop",
+      "name" : "Claude",
+      "pid" : 82151,
+      "seconds" : 21.007965087890625,
+      "source" : "poll",
+      "utc" : "2026-10-21T06:04:29Z"
+    },
+    {
+      "bundle" : "com.anthropic.claudefordesktop",
+      "name" : "Claude",
+      "pid" : 82151,
+      "seconds" : 21.108890056610107,
+      "source" : "poll",
+      "utc" : "2026-10-21T06:04:29Z"
+    },
+    {
+      "bundle" : "com.anthropic.claudefordesktop",
+      "name" : "Claude",
+      "pid" : 82151,
+      "seconds" : 21.210666060447693,
+      "source" : "poll",
+      "utc" : "2026-10-21T06:04:29Z"
+    },
+    {
+      "bundle" : "com.anthropic.claudefordesktop",
+      "name" : "Claude",
+      "pid" : 82151,
+      "seconds" : 21.31241500377655,
+      "source" : "poll",
+      "utc" : "2026-10-21T06:04:29Z"
+    },
+    {
+      "bundle" : "com.anthropic.claudefordesktop",
+      "name" : "Claude",
+      "pid" : 82151,
+      "seconds" : 21.414324998855591,
+      "source" : "poll",
+      "utc" : "2026-10-21T06:04:29Z"
+    },
+    {
+      "bundle" : "com.anthropic.claudefordesktop",
+      "name" : "Claude",
+      "pid" : 82151,
+      "seconds" : 21.515343070030212,
+      "source" : "poll",
+      "utc" : "2026-10-21T06:04:29Z"
+    },
+    {
+      "bundle" : "com.anthropic.claudefordesktop",
+      "name" : "Claude",
+      "pid" : 82151,
+      "seconds" : 21.616294026374817,
+      "source" : "poll",
+      "utc" : "2026-10-21T06:04:30Z"
+    },
+    {
+      "bundle" : "com.anthropic.claudefordesktop",
+      "name" : "Claude",
+      "pid" : 82151,
+      "seconds" : 21.718073010444641,
+      "source" : "poll",
+      "utc" : "2026-10-21T06:04:30Z"
+    },
+    {
+      "bundle" : "com.anthropic.claudefordesktop",
+      "name" : "Claude",
+      "pid" : 82151,
+      "seconds" : 21.819995045661926,
+      "source" : "poll",
+      "utc" : "2026-10-21T06:04:30Z"
+    },
+    {
+      "bundle" : "com.anthropic.claudefordesktop",
+      "name" : "Claude",
+      "pid" : 82151,
+      "seconds" : 21.921832084655762,
+      "source" : "poll",
+      "utc" : "2026-10-21T06:04:30Z"
+    },
+    {
+      "bundle" : "com.anthropic.claudefordesktop",
+      "name" : "Claude",
+      "pid" : 82151,
+      "seconds" : 22.023019075393677,
+      "source" : "poll",
+      "utc" : "2026-10-21T06:04:30Z"
+    },
+    {
+      "bundle" : "com.anthropic.claudefordesktop",
+      "name" : "Claude",
+      "pid" : 82151,
+      "seconds" : 22.124724984169006,
+      "source" : "poll",
+      "utc" : "2026-10-21T06:04:30Z"
+    },
+    {
+      "bundle" : "com.anthropic.claudefordesktop",
+      "name" : "Claude",
+      "pid" : 82151,
+      "seconds" : 22.226135015487671,
+      "source" : "poll",
+      "utc" : "2026-10-21T06:04:30Z"
+    },
+    {
+      "bundle" : "com.anthropic.claudefordesktop",
+      "name" : "Claude",
+      "pid" : 82151,
+      "seconds" : 22.327475070953369,
+      "source" : "poll",
+      "utc" : "2026-10-21T06:04:30Z"
+    },
+    {
+      "bundle" : "com.anthropic.claudefordesktop",
+      "name" : "Claude",
+      "pid" : 82151,
+      "seconds" : 22.429226994514465,
+      "source" : "poll",
+      "utc" : "2026-10-21T06:04:30Z"
+    },
+    {
+      "bundle" : "com.anthropic.claudefordesktop",
+      "name" : "Claude",
+      "pid" : 82151,
+      "seconds" : 22.53105902671814,
+      "source" : "poll",
+      "utc" : "2026-10-21T06:04:30Z"
+    },
+    {
+      "bundle" : "com.anthropic.claudefordesktop",
+      "name" : "Claude",
+      "pid" : 82151,
+      "seconds" : 22.632918000221252,
+      "source" : "poll",
+      "utc" : "2026-10-21T06:04:31Z"
+    },
+    {
+      "bundle" : "com.anthropic.claudefordesktop",
+      "name" : "Claude",
+      "pid" : 82151,
+      "seconds" : 22.734760999679565,
+      "source" : "poll",
+      "utc" : "2026-10-21T06:04:31Z"
+    },
+    {
+      "bundle" : "com.anthropic.claudefordesktop",
+      "name" : "Claude",
+      "pid" : 82151,
+      "seconds" : 22.836091041564941,
+      "source" : "poll",
+      "utc" : "2026-10-21T06:04:31Z"
+    },
+    {
+      "bundle" : "com.anthropic.claudefordesktop",
+      "name" : "Claude",
+      "pid" : 82151,
+      "seconds" : 22.938567042350769,
+      "source" : "poll",
+      "utc" : "2026-10-21T06:04:31Z"
+    },
+    {
+      "bundle" : "com.anthropic.claudefordesktop",
+      "name" : "Claude",
+      "pid" : 82151,
+      "seconds" : 23.041155099868774,
+      "source" : "poll",
+      "utc" : "2026-10-21T06:04:31Z"
+    },
+    {
+      "bundle" : "com.anthropic.claudefordesktop",
+      "name" : "Claude",
+      "pid" : 82151,
+      "seconds" : 23.142262101173401,
+      "source" : "poll",
+      "utc" : "2026-10-21T06:04:31Z"
+    },
+    {
+      "bundle" : "com.anthropic.claudefordesktop",
+      "name" : "Claude",
+      "pid" : 82151,
+      "seconds" : 23.244153022766113,
+      "source" : "poll",
+      "utc" : "2026-10-21T06:04:31Z"
+    },
+    {
+      "bundle" : "com.anthropic.claudefordesktop",
+      "name" : "Claude",
+      "pid" : 82151,
+      "seconds" : 23.345839023590088,
+      "source" : "poll",
+      "utc" : "2026-10-21T06:04:31Z"
+    },
+    {
+      "bundle" : "com.anthropic.claudefordesktop",
+      "name" : "Claude",
+      "pid" : 82151,
+      "seconds" : 23.44760799407959,
+      "source" : "poll",
+      "utc" : "2026-10-21T06:04:31Z"
+    },
+    {
+      "bundle" : "com.anthropic.claudefordesktop",
+      "name" : "Claude",
+      "pid" : 82151,
+      "seconds" : 23.548575043678284,
+      "source" : "poll",
+      "utc" : "2026-10-21T06:04:31Z"
+    },
+    {
+      "bundle" : "com.anthropic.claudefordesktop",
+      "name" : "Claude",
+      "pid" : 82151,
+      "seconds" : 23.650671005249023,
+      "source" : "poll",
+      "utc" : "2026-10-21T06:04:32Z"
+    },
+    {
+      "bundle" : "com.anthropic.claudefordesktop",
+      "name" : "Claude",
+      "pid" : 82151,
+      "seconds" : 23.751673102378845,
+      "source" : "poll",
+      "utc" : "2026-10-21T06:04:32Z"
+    },
+    {
+      "bundle" : "com.anthropic.claudefordesktop",
+      "name" : "Claude",
+      "pid" : 82151,
+      "seconds" : 23.852771997451782,
+      "source" : "poll",
+      "utc" : "2026-10-21T06:04:32Z"
+    },
+    {
+      "bundle" : "com.anthropic.claudefordesktop",
+      "name" : "Claude",
+      "pid" : 82151,
+      "seconds" : 23.954963088035583,
+      "source" : "poll",
+      "utc" : "2026-10-21T06:04:32Z"
+    },
+    {
+      "bundle" : "com.anthropic.claudefordesktop",
+      "name" : "Claude",
+      "pid" : 82151,
+      "seconds" : 24.056297063827515,
+      "source" : "poll",
+      "utc" : "2026-10-21T06:04:32Z"
+    },
+    {
+      "bundle" : "com.anthropic.claudefordesktop",
+      "name" : "Claude",
+      "pid" : 82151,
+      "seconds" : 24.157999038696289,
+      "source" : "poll",
+      "utc" : "2026-10-21T06:04:32Z"
+    },
+    {
+      "bundle" : "com.anthropic.claudefordesktop",
+      "name" : "Claude",
+      "pid" : 82151,
+      "seconds" : 24.259905099868774,
+      "source" : "poll",
+      "utc" : "2026-10-21T06:04:32Z"
+    },
+    {
+      "bundle" : "com.anthropic.claudefordesktop",
+      "name" : "Claude",
+      "pid" : 82151,
+      "seconds" : 24.361356019973755,
+      "source" : "poll",
+      "utc" : "2026-10-21T06:04:32Z"
+    },
+    {
+      "bundle" : "com.anthropic.claudefordesktop",
+      "name" : "Claude",
+      "pid" : 82151,
+      "seconds" : 24.462486028671265,
+      "source" : "poll",
+      "utc" : "2026-10-21T06:04:32Z"
+    },
+    {
+      "bundle" : "com.anthropic.claudefordesktop",
+      "name" : "Claude",
+      "pid" : 82151,
+      "seconds" : 24.564327001571655,
+      "source" : "poll",
+      "utc" : "2026-10-21T06:04:33Z"
+    },
+    {
+      "bundle" : "com.anthropic.claudefordesktop",
+      "name" : "Claude",
+      "pid" : 82151,
+      "seconds" : 24.666145086288452,
+      "source" : "poll",
+      "utc" : "2026-10-21T06:04:33Z"
+    },
+    {
+      "bundle" : "com.anthropic.claudefordesktop",
+      "name" : "Claude",
+      "pid" : 82151,
+      "seconds" : 24.767353057861328,
+      "source" : "poll",
+      "utc" : "2026-10-21T06:04:33Z"
+    },
+    {
+      "bundle" : "com.anthropic.claudefordesktop",
+      "name" : "Claude",
+      "pid" : 82151,
+      "seconds" : 24.86879301071167,
+      "source" : "poll",
+      "utc" : "2026-10-21T06:04:33Z"
+    },
+    {
+      "bundle" : "com.anthropic.claudefordesktop",
+      "name" : "Claude",
+      "pid" : 82151,
+      "seconds" : 24.9704509973526,
+      "source" : "poll",
+      "utc" : "2026-10-21T06:04:33Z"
+    },
+    {
+      "bundle" : "com.anthropic.claudefordesktop",
+      "name" : "Claude",
+      "pid" : 82151,
+      "seconds" : 25.071520090103149,
+      "source" : "poll",
+      "utc" : "2026-10-21T06:04:33Z"
+    },
+    {
+      "bundle" : "com.anthropic.claudefordesktop",
+      "name" : "Claude",
+      "pid" : 82151,
+      "seconds" : 25.172417044639587,
+      "source" : "poll",
+      "utc" : "2026-10-21T06:04:33Z"
+    },
+    {
+      "bundle" : "com.anthropic.claudefordesktop",
+      "name" : "Claude",
+      "pid" : 82151,
+      "seconds" : 25.274424076080322,
+      "source" : "poll",
+      "utc" : "2026-10-21T06:04:33Z"
+    },
+    {
+      "bundle" : "com.anthropic.claudefordesktop",
+      "name" : "Claude",
+      "pid" : 82151,
+      "seconds" : 25.375578999519348,
+      "source" : "poll",
+      "utc" : "2026-10-21T06:04:33Z"
+    },
+    {
+      "bundle" : "com.anthropic.claudefordesktop",
+      "name" : "Claude",
+      "pid" : 82151,
+      "seconds" : 25.477434039115906,
+      "source" : "poll",
+      "utc" : "2026-10-21T06:04:33Z"
+    },
+    {
+      "bundle" : "com.anthropic.claudefordesktop",
+      "name" : "Claude",
+      "pid" : 82151,
+      "seconds" : 25.579086065292358,
+      "source" : "poll",
+      "utc" : "2026-10-21T06:04:34Z"
+    },
+    {
+      "bundle" : "com.anthropic.claudefordesktop",
+      "name" : "Claude",
+      "pid" : 82151,
+      "seconds" : 25.68108606338501,
+      "source" : "poll",
+      "utc" : "2026-10-21T06:04:34Z"
+    },
+    {
+      "bundle" : "com.anthropic.claudefordesktop",
+      "name" : "Claude",
+      "pid" : 82151,
+      "seconds" : 25.782801032066345,
+      "source" : "poll",
+      "utc" : "2026-10-21T06:04:34Z"
+    },
+    {
+      "bundle" : "com.anthropic.claudefordesktop",
+      "name" : "Claude",
+      "pid" : 82151,
+      "seconds" : 25.88450300693512,
+      "source" : "poll",
+      "utc" : "2026-10-21T06:04:34Z"
+    },
+    {
+      "bundle" : "com.anthropic.claudefordesktop",
+      "name" : "Claude",
+      "pid" : 82151,
+      "seconds" : 25.986573100090027,
+      "source" : "poll",
+      "utc" : "2026-10-21T06:04:34Z"
+    },
+    {
+      "bundle" : "com.anthropic.claudefordesktop",
+      "name" : "Claude",
+      "pid" : 82151,
+      "seconds" : 26.087513089179993,
+      "source" : "poll",
+      "utc" : "2026-10-21T06:04:34Z"
+    },
+    {
+      "bundle" : "com.anthropic.claudefordesktop",
+      "name" : "Claude",
+      "pid" : 82151,
+      "seconds" : 26.189105033874512,
+      "source" : "poll",
+      "utc" : "2026-10-21T06:04:34Z"
+    },
+    {
+      "bundle" : "com.anthropic.claudefordesktop",
+      "name" : "Claude",
+      "pid" : 82151,
+      "seconds" : 26.290295004844666,
+      "source" : "poll",
+      "utc" : "2026-10-21T06:04:34Z"
+    },
+    {
+      "bundle" : "com.anthropic.claudefordesktop",
+      "name" : "Claude",
+      "pid" : 82151,
+      "seconds" : 26.391880989074707,
+      "source" : "poll",
+      "utc" : "2026-10-21T06:04:34Z"
+    },
+    {
+      "bundle" : "com.anthropic.claudefordesktop",
+      "name" : "Claude",
+      "pid" : 82151,
+      "seconds" : 26.493705987930298,
+      "source" : "poll",
+      "utc" : "2026-10-21T06:04:34Z"
+    },
+    {
+      "bundle" : "com.anthropic.claudefordesktop",
+      "name" : "Claude",
+      "pid" : 82151,
+      "seconds" : 26.59539008140564,
+      "source" : "poll",
+      "utc" : "2026-10-21T06:04:35Z"
+    },
+    {
+      "bundle" : "com.anthropic.claudefordesktop",
+      "name" : "Claude",
+      "pid" : 82151,
+      "seconds" : 26.696645021438599,
+      "source" : "poll",
+      "utc" : "2026-10-21T06:04:35Z"
+    },
+    {
+      "bundle" : "com.anthropic.claudefordesktop",
+      "name" : "Claude",
+      "pid" : 82151,
+      "seconds" : 26.798364043235779,
+      "source" : "poll",
+      "utc" : "2026-10-21T06:04:35Z"
+    },
+    {
+      "bundle" : "com.anthropic.claudefordesktop",
+      "name" : "Claude",
+      "pid" : 82151,
+      "seconds" : 26.899371027946472,
+      "source" : "poll",
+      "utc" : "2026-10-21T06:04:35Z"
+    },
+    {
+      "bundle" : "com.anthropic.claudefordesktop",
+      "name" : "Claude",
+      "pid" : 82151,
+      "seconds" : 27.001224994659424,
+      "source" : "poll",
+      "utc" : "2026-10-21T06:04:35Z"
+    },
+    {
+      "bundle" : "com.anthropic.claudefordesktop",
+      "name" : "Claude",
+      "pid" : 82151,
+      "seconds" : 27.103571057319641,
+      "source" : "poll",
+      "utc" : "2026-10-21T06:04:35Z"
+    },
+    {
+      "bundle" : "com.anthropic.claudefordesktop",
+      "name" : "Claude",
+      "pid" : 82151,
+      "seconds" : 27.205564022064209,
+      "source" : "poll",
+      "utc" : "2026-10-21T06:04:35Z"
+    },
+    {
+      "bundle" : "com.anthropic.claudefordesktop",
+      "name" : "Claude",
+      "pid" : 82151,
+      "seconds" : 27.307700991630554,
+      "source" : "poll",
+      "utc" : "2026-10-21T06:04:35Z"
+    },
+    {
+      "bundle" : "com.anthropic.claudefordesktop",
+      "name" : "Claude",
+      "pid" : 82151,
+      "seconds" : 27.409584045410156,
+      "source" : "poll",
+      "utc" : "2026-10-21T06:04:35Z"
+    },
+    {
+      "bundle" : "com.anthropic.claudefordesktop",
+      "name" : "Claude",
+      "pid" : 82151,
+      "seconds" : 27.511262059211731,
+      "source" : "poll",
+      "utc" : "2026-10-21T06:04:35Z"
+    },
+    {
+      "bundle" : "com.anthropic.claudefordesktop",
+      "name" : "Claude",
+      "pid" : 82151,
+      "seconds" : 27.612640023231506,
+      "source" : "poll",
+      "utc" : "2026-10-21T06:04:36Z"
+    },
+    {
+      "bundle" : "com.anthropic.claudefordesktop",
+      "name" : "Claude",
+      "pid" : 82151,
+      "seconds" : 27.714017987251282,
+      "source" : "poll",
+      "utc" : "2026-10-21T06:04:36Z"
+    },
+    {
+      "bundle" : "com.anthropic.claudefordesktop",
+      "name" : "Claude",
+      "pid" : 82151,
+      "seconds" : 27.815015077590942,
+      "source" : "poll",
+      "utc" : "2026-10-21T06:04:36Z"
+    },
+    {
+      "bundle" : "com.anthropic.claudefordesktop",
+      "name" : "Claude",
+      "pid" : 82151,
+      "seconds" : 27.916315078735352,
+      "source" : "poll",
+      "utc" : "2026-10-21T06:04:36Z"
+    },
+    {
+      "bundle" : "com.anthropic.claudefordesktop",
+      "name" : "Claude",
+      "pid" : 82151,
+      "seconds" : 28.017826080322266,
+      "source" : "poll",
+      "utc" : "2026-10-21T06:04:36Z"
+    },
+    {
+      "bundle" : "com.anthropic.claudefordesktop",
+      "name" : "Claude",
+      "pid" : 82151,
+      "seconds" : 28.119378089904785,
+      "source" : "poll",
+      "utc" : "2026-10-21T06:04:36Z"
+    },
+    {
+      "bundle" : "com.anthropic.claudefordesktop",
+      "name" : "Claude",
+      "pid" : 82151,
+      "seconds" : 28.220286011695862,
+      "source" : "poll",
+      "utc" : "2026-10-21T06:04:36Z"
+    },
+    {
+      "bundle" : "com.anthropic.claudefordesktop",
+      "name" : "Claude",
+      "pid" : 82151,
+      "seconds" : 28.320827007293701,
+      "source" : "poll",
+      "utc" : "2026-10-21T06:04:36Z"
+    },
+    {
+      "bundle" : "com.anthropic.claudefordesktop",
+      "name" : "Claude",
+      "pid" : 82151,
+      "seconds" : 28.421985030174255,
+      "source" : "poll",
+      "utc" : "2026-10-21T06:04:36Z"
+    },
+    {
+      "bundle" : "com.anthropic.claudefordesktop",
+      "name" : "Claude",
+      "pid" : 82151,
+      "seconds" : 28.523339033126831,
+      "source" : "poll",
+      "utc" : "2026-10-21T06:04:36Z"
+    },
+    {
+      "bundle" : "com.anthropic.claudefordesktop",
+      "name" : "Claude",
+      "pid" : 82151,
+      "seconds" : 28.624391078948975,
+      "source" : "poll",
+      "utc" : "2026-10-21T06:04:37Z"
+    },
+    {
+      "bundle" : "com.anthropic.claudefordesktop",
+      "name" : "Claude",
+      "pid" : 82151,
+      "seconds" : 28.725663065910339,
+      "source" : "poll",
+      "utc" : "2026-10-21T06:04:37Z"
+    },
+    {
+      "bundle" : "com.anthropic.claudefordesktop",
+      "name" : "Claude",
+      "pid" : 82151,
+      "seconds" : 28.827118039131165,
+      "source" : "poll",
+      "utc" : "2026-10-21T06:04:37Z"
+    },
+    {
+      "bundle" : "com.anthropic.claudefordesktop",
+      "name" : "Claude",
+      "pid" : 82151,
+      "seconds" : 28.928853034973145,
+      "source" : "poll",
+      "utc" : "2026-10-21T06:04:37Z"
+    },
+    {
+      "bundle" : "com.anthropic.claudefordesktop",
+      "name" : "Claude",
+      "pid" : 82151,
+      "seconds" : 29.030554056167603,
+      "source" : "poll",
+      "utc" : "2026-10-21T06:04:37Z"
+    },
+    {
+      "bundle" : "com.anthropic.claudefordesktop",
+      "name" : "Claude",
+      "pid" : 82151,
+      "seconds" : 29.132634997367859,
+      "source" : "poll",
+      "utc" : "2026-10-21T06:04:37Z"
+    },
+    {
+      "bundle" : "com.anthropic.claudefordesktop",
+      "name" : "Claude",
+      "pid" : 82151,
+      "seconds" : 29.234399080276489,
+      "source" : "poll",
+      "utc" : "2026-10-21T06:04:37Z"
+    },
+    {
+      "bundle" : "com.anthropic.claudefordesktop",
+      "name" : "Claude",
+      "pid" : 82151,
+      "seconds" : 29.335546016693115,
+      "source" : "poll",
+      "utc" : "2026-10-21T06:04:37Z"
+    },
+    {
+      "bundle" : "com.anthropic.claudefordesktop",
+      "name" : "Claude",
+      "pid" : 82151,
+      "seconds" : 29.437234044075012,
+      "source" : "poll",
+      "utc" : "2026-10-21T06:04:37Z"
+    },
+    {
+      "bundle" : "com.anthropic.claudefordesktop",
+      "name" : "Claude",
+      "pid" : 82151,
+      "seconds" : 29.538384079933167,
+      "source" : "poll",
+      "utc" : "2026-10-21T06:04:37Z"
+    },
+    {
+      "bundle" : "com.anthropic.claudefordesktop",
+      "name" : "Claude",
+      "pid" : 82151,
+      "seconds" : 29.640040993690491,
+      "source" : "poll",
+      "utc" : "2026-10-21T06:04:38Z"
+    },
+    {
+      "bundle" : "com.anthropic.claudefordesktop",
+      "name" : "Claude",
+      "pid" : 82151,
+      "seconds" : 29.741627097129822,
+      "source" : "poll",
+      "utc" : "2026-10-21T06:04:38Z"
+    },
+    {
+      "bundle" : "com.anthropic.claudefordesktop",
+      "name" : "Claude",
+      "pid" : 82151,
+      "seconds" : 29.843080043792725,
+      "source" : "poll",
+      "utc" : "2026-10-21T06:04:38Z"
+    },
+    {
+      "bundle" : "com.anthropic.claudefordesktop",
+      "name" : "Claude",
+      "pid" : 82151,
+      "seconds" : 29.94480299949646,
+      "source" : "poll",
+      "utc" : "2026-10-21T06:04:38Z"
+    },
+    {
+      "bundle" : "com.anthropic.claudefordesktop",
+      "name" : "Claude",
+      "pid" : 82151,
+      "seconds" : 30.045952081680298,
+      "source" : "poll",
+      "utc" : "2026-10-21T06:04:38Z"
+    },
+    {
+      "bundle" : "com.anthropic.claudefordesktop",
+      "name" : "Claude",
+      "pid" : 82151,
+      "seconds" : 30.147387027740479,
+      "source" : "poll",
+      "utc" : "2026-10-21T06:04:38Z"
+    },
+    {
+      "bundle" : "com.anthropic.claudefordesktop",
+      "name" : "Claude",
+      "pid" : 82151,
+      "seconds" : 30.249240040779114,
+      "source" : "poll",
+      "utc" : "2026-10-21T06:04:38Z"
+    },
+    {
+      "bundle" : "com.anthropic.claudefordesktop",
+      "name" : "Claude",
+      "pid" : 82151,
+      "seconds" : 30.35044801235199,
+      "source" : "poll",
+      "utc" : "2026-10-21T06:04:38Z"
+    },
+    {
+      "bundle" : "com.anthropic.claudefordesktop",
+      "name" : "Claude",
+      "pid" : 82151,
+      "seconds" : 30.452587008476257,
+      "source" : "poll",
+      "utc" : "2026-10-21T06:04:38Z"
+    },
+    {
+      "bundle" : "com.anthropic.claudefordesktop",
+      "name" : "Claude",
+      "pid" : 82151,
+      "seconds" : 30.554244995117188,
+      "source" : "poll",
+      "utc" : "2026-10-21T06:04:39Z"
+    },
+    {
+      "bundle" : "com.anthropic.claudefordesktop",
+      "name" : "Claude",
+      "pid" : 82151,
+      "seconds" : 30.656026005744934,
+      "source" : "poll",
+      "utc" : "2026-10-21T06:04:39Z"
+    },
+    {
+      "bundle" : "com.anthropic.claudefordesktop",
+      "name" : "Claude",
+      "pid" : 82151,
+      "seconds" : 30.757604002952576,
+      "source" : "poll",
+      "utc" : "2026-10-21T06:04:39Z"
+    },
+    {
+      "bundle" : "com.anthropic.claudefordesktop",
+      "name" : "Claude",
+      "pid" : 82151,
+      "seconds" : 30.859169006347656,
+      "source" : "poll",
+      "utc" : "2026-10-21T06:04:39Z"
+    },
+    {
+      "bundle" : "com.anthropic.claudefordesktop",
+      "name" : "Claude",
+      "pid" : 82151,
+      "seconds" : 30.960579037666321,
+      "source" : "poll",
+      "utc" : "2026-10-21T06:04:39Z"
+    },
+    {
+      "bundle" : "com.anthropic.claudefordesktop",
+      "name" : "Claude",
+      "pid" : 82151,
+      "seconds" : 31.062385082244873,
+      "source" : "poll",
+      "utc" : "2026-10-21T06:04:39Z"
+    },
+    {
+      "bundle" : "com.anthropic.claudefordesktop",
+      "name" : "Claude",
+      "pid" : 82151,
+      "seconds" : 31.163905024528503,
+      "source" : "poll",
+      "utc" : "2026-10-21T06:04:39Z"
+    },
+    {
+      "bundle" : "com.anthropic.claudefordesktop",
+      "name" : "Claude",
+      "pid" : 82151,
+      "seconds" : 31.265879034996033,
+      "source" : "poll",
+      "utc" : "2026-10-21T06:04:39Z"
+    },
+    {
+      "bundle" : "com.starlight.quotabar",
+      "name" : "QuotaBar",
+      "pid" : 54401,
+      "seconds" : 31.310638070106506,
+      "source" : "activation",
+      "utc" : "2026-10-21T06:04:39Z"
+    },
+    {
+      "bundle" : "com.starlight.quotabar",
+      "name" : "QuotaBar",
+      "pid" : 54401,
+      "seconds" : 31.367677092552185,
+      "source" : "poll",
+      "utc" : "2026-10-21T06:04:39Z"
+    },
+    {
+      "bundle" : "com.starlight.quotabar",
+      "name" : "QuotaBar",
+      "pid" : 54401,
+      "seconds" : 31.468396067619324,
+      "source" : "poll",
+      "utc" : "2026-10-21T06:04:39Z"
+    },
+    {
+      "bundle" : "com.starlight.quotabar",
+      "name" : "QuotaBar",
+      "pid" : 54401,
+      "seconds" : 31.570134043693542,
+      "source" : "poll",
+      "utc" : "2026-10-21T06:04:40Z"
+    },
+    {
+      "bundle" : "com.starlight.quotabar",
+      "name" : "QuotaBar",
+      "pid" : 54401,
+      "seconds" : 31.671727061271667,
+      "source" : "poll",
+      "utc" : "2026-10-21T06:04:40Z"
+    },
+    {
+      "bundle" : "com.starlight.quotabar",
+      "name" : "QuotaBar",
+      "pid" : 54401,
+      "seconds" : 31.773144006729126,
+      "source" : "poll",
+      "utc" : "2026-10-21T06:04:40Z"
+    },
+    {
+      "bundle" : "com.starlight.quotabar",
+      "name" : "QuotaBar",
+      "pid" : 54401,
+      "seconds" : 31.874222040176392,
+      "source" : "poll",
+      "utc" : "2026-10-21T06:04:40Z"
+    },
+    {
+      "bundle" : "com.starlight.quotabar",
+      "name" : "QuotaBar",
+      "pid" : 54401,
+      "seconds" : 31.975839018821716,
+      "source" : "poll",
+      "utc" : "2026-10-21T06:04:40Z"
+    },
+    {
+      "bundle" : "com.starlight.quotabar",
+      "name" : "QuotaBar",
+      "pid" : 54401,
+      "seconds" : 32.076919078826904,
+      "source" : "poll",
+      "utc" : "2026-10-21T06:04:40Z"
+    },
+    {
+      "bundle" : "com.starlight.quotabar",
+      "name" : "QuotaBar",
+      "pid" : 54401,
+      "seconds" : 32.178562998771667,
+      "source" : "poll",
+      "utc" : "2026-10-21T06:04:40Z"
+    },
+    {
+      "bundle" : "com.starlight.quotabar",
+      "name" : "QuotaBar",
+      "pid" : 54401,
+      "seconds" : 32.281452059745789,
+      "source" : "poll",
+      "utc" : "2026-10-21T06:04:40Z"
+    },
+    {
+      "bundle" : "com.starlight.quotabar",
+      "name" : "QuotaBar",
+      "pid" : 54401,
+      "seconds" : 32.383709073066711,
+      "source" : "poll",
+      "utc" : "2026-10-21T06:04:40Z"
+    },
+    {
+      "bundle" : "com.starlight.quotabar",
+      "name" : "QuotaBar",
+      "pid" : 54401,
+      "seconds" : 32.484732031822205,
+      "source" : "poll",
+      "utc" : "2026-10-21T06:04:40Z"
+    },
+    {
+      "bundle" : "com.starlight.quotabar",
+      "name" : "QuotaBar",
+      "pid" : 54401,
+      "seconds" : 32.586628079414368,
+      "source" : "poll",
+      "utc" : "2026-10-21T06:04:41Z"
+    },
+    {
+      "bundle" : "com.starlight.quotabar",
+      "name" : "QuotaBar",
+      "pid" : 54401,
+      "seconds" : 32.687628030776978,
+      "source" : "poll",
+      "utc" : "2026-10-21T06:04:41Z"
+    },
+    {
+      "bundle" : "com.starlight.quotabar",
+      "name" : "QuotaBar",
+      "pid" : 54401,
+      "seconds" : 32.789777994155884,
+      "source" : "poll",
+      "utc" : "2026-10-21T06:04:41Z"
+    },
+    {
+      "bundle" : "com.starlight.quotabar",
+      "name" : "QuotaBar",
+      "pid" : 54401,
+      "seconds" : 32.890775084495544,
+      "source" : "poll",
+      "utc" : "2026-10-21T06:04:41Z"
+    },
+    {
+      "bundle" : "com.starlight.quotabar",
+      "name" : "QuotaBar",
+      "pid" : 54401,
+      "seconds" : 32.992377042770386,
+      "source" : "poll",
+      "utc" : "2026-10-21T06:04:41Z"
+    },
+    {
+      "bundle" : "com.starlight.quotabar",
+      "name" : "QuotaBar",
+      "pid" : 54401,
+      "seconds" : 33.093497037887573,
+      "source" : "poll",
+      "utc" : "2026-10-21T06:04:41Z"
+    },
+    {
+      "bundle" : "com.starlight.quotabar",
+      "name" : "QuotaBar",
+      "pid" : 54401,
+      "seconds" : 33.094218015670776,
+      "source" : "after",
+      "utc" : "2026-10-21T06:04:41Z"
+    }
+  ],
+  "target" : 77081
+}

@@ -93,3 +93,7 @@ R8 / R9 后默认并行 workspace **89 项通过**（另 1 ignored daemon_fixtur
 ## R10 负载稳定性
 
 八个 yes 下复现 workspace RPC ConnectionRefused；原子发布已初始化/监听的 socket 后，三轮默认并行各 **90 项通过**。资源测试使用同期空闲对照并在高负载延长采样，不放宽 2% CPU 上限；见 [R10](../r10-20261021/README.md)。不据此修改 A14 前台资源结论。
+
+## R11 排版缓存与自动前台重采
+
+新增 ASCII glyph 缓存，24 项客户端测试与原生字形/13 个 fixture 回归通过。1/4 画面各三轮均失焦，自动作废，未生成新倍率；A14 仍不通过。见 [R11](../r11-20261021/README.md)。
