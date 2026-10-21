@@ -1518,6 +1518,89 @@ fn claude_explicit_id_binds_closed_log_and_tracks_exit_without_hooks() {
 }
 
 #[test]
+fn quiet_agent_screen_with_an_approval_waits_on_the_user_until_they_answer() {
+    let h = Host::start();
+    h.setup();
+    let logs = h.root.join("logs/claude");
+    fs::create_dir_all(&logs).unwrap();
+    let cli = h.root.join("claude");
+    std::os::unix::fs::symlink("/bin/sh", &cli).unwrap();
+    let id = uuid::Uuid::new_v4().to_string();
+    let path = logs.join(format!("{id}.jsonl"));
+    let seed = h.root.join("seed");
+    let row = serde_json::json!({"type":"user","sessionId":id,"uuid":"u0","cwd":"/project","entrypoint":"cli","userType":"external","timestamp":keepline_core::content::now(),"message":{"content":"Screen approval test"}});
+    fs::write(&seed, format!("{row}\n")).unwrap();
+    // The log never records the pending permission; only the screen shows it.
+    let script = format!(
+        "cat {} > {}; read -r go; printf '%s\\n' 'Bash command' '  git push origin main' 'Do you want to proceed?' '> 1. Yes' '  2. No'; read -r answer; printf '\\033[2J\\033[Hpushed\\n'; read -r end",
+        shell_quote(&seed.to_string_lossy()),
+        shell_quote(&path.to_string_lossy())
+    );
+    h.call(h.launch(
+        "approval",
+        &format!(
+            "exec {} -c {} fixture --session-id {}",
+            shell_quote(&cli.to_string_lossy()),
+            shell_quote(&script),
+            id
+        ),
+    ))
+    .unwrap();
+    let waiting = |w: &Workspace| {
+        w.current_agent("approval")
+            .and_then(|s| w.content.get(&s.id))
+            .filter(|c| c.turn == keepline_core::content::Turn::Waiting)
+            .map(|c| c.waiting.clone())
+    };
+    let until = Instant::now() + Duration::from_secs(30);
+    while h.workspace().current_agent("approval").is_none() {
+        assert!(Instant::now() < until, "explicit ID must bind");
+        std::thread::sleep(Duration::from_millis(50));
+    }
+    let (mut stream, _vt, writable) = h.attach("approval", true);
+    assert!(writable);
+    send(
+        &mut stream,
+        CONTROL,
+        &Request::Input {
+            bytes: b"\n".to_vec(),
+        },
+    )
+    .unwrap();
+    assert!(matches!(ack(&mut stream), Reply::Ok));
+    // The prompt follows the user's own keystroke, so it is only attributed to the agent
+    // after the input settles, then once.
+    std::thread::sleep(Duration::from_millis(1500));
+    assert_eq!(waiting(&h.workspace()), None);
+    let until = Instant::now() + Duration::from_secs(10);
+    let question = loop {
+        if let Some(q) = waiting(&h.workspace()) {
+            break q;
+        }
+        assert!(
+            Instant::now() < until,
+            "quiet approval screen must wait on the user"
+        );
+        std::thread::sleep(Duration::from_millis(50));
+    };
+    assert_eq!(question, "Do you want to proceed?（画面上的提示）");
+    send(
+        &mut stream,
+        CONTROL,
+        &Request::Input {
+            bytes: b"1\n".to_vec(),
+        },
+    )
+    .unwrap();
+    assert!(matches!(ack(&mut stream), Reply::Ok));
+    assert_eq!(waiting(&h.workspace()), None, "answering clears it at once");
+    // The answered prompt is gone from the screen, so the next quiet check stays clear.
+    std::thread::sleep(Duration::from_millis(4500));
+    assert_eq!(waiting(&h.workspace()), None);
+    assert_eq!(recognition(&h).metrics.lsof_spawns, 0);
+}
+
+#[test]
 fn manual_claude_closed_log_stays_external_and_append_does_not_repeat_probes() {
     use std::io::Write;
     let h = Host::start();

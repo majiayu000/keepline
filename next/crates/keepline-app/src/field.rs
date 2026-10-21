@@ -5,6 +5,12 @@ use gpui::{
 };
 use std::ops::Range;
 
+/// Single-line fields report Enter / Esc so their owner can save or cancel.
+pub enum FieldEvent {
+    Submit,
+    Cancel,
+}
+impl gpui::EventEmitter<FieldEvent> for Field {}
 pub struct Field {
     pub text: String,
     focus: FocusHandle,
@@ -132,6 +138,8 @@ impl Render for Field {
                             "enter" if !this.compact => {
                                 this.replace(None, "\n");
                             }
+                            "enter" => cx.emit(FieldEvent::Submit),
+                            "escape" if this.compact => cx.emit(FieldEvent::Cancel),
                             _ => return,
                         }
                         cx.stop_propagation();

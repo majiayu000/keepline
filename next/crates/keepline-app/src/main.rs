@@ -337,7 +337,9 @@ fn run() -> io::Result<()> {
                 }).unwrap();
                 cx.background_executor().timer(Duration::from_secs(1)).await;
                 std::fs::create_dir_all(&directory).unwrap();
-                for name in ["Main","Overview","TodoNew","TodoDetail","TodoStart","Cleanup","Menubar"] {
+                let pages = std::env::var("KEEPLINE_PAGE_LIST").unwrap_or_else(|_| "Main,Overview,TodoNew,TodoDetail,TodoStart,Cleanup,Menubar".into());
+                for name in pages.split(',').map(str::to_owned).collect::<Vec<_>>() {
+                    let name = name.as_str();
                     handle.update(cx, |view,window,cx| {
                         window.resize(size(px(theme::Theme::WINDOW_WIDTH),px(theme::Theme::WINDOW_HEIGHT)));
                         window.bounds_changed(cx);view.visual_page(name,window,cx);

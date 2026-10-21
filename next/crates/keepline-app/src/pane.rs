@@ -15,6 +15,7 @@ use keepline_core::{
 use std::{ops::Range, path::Path, sync::atomic::Ordering};
 
 pub struct Pane {
+    terminal: String,
     connection: Connection,
     focus: FocusHandle,
     screen: Screen,
@@ -103,6 +104,7 @@ impl Pane {
         .detach();
         let focus = cx.focus_handle();
         Self {
+            terminal: id.into(),
             connection,
             focus,
             screen: Screen::default(),
@@ -136,6 +138,15 @@ impl Pane {
             return;
         }
         self.last_focus = focused;
+        // Notifications skip the terminal the user is already looking at.
+        let watching = cx
+            .try_global::<crate::desktop::Watching>()
+            .and_then(|w| w.0.clone());
+        if focused {
+            cx.set_global(crate::desktop::Watching(Some(self.terminal.clone())));
+        } else if watching.as_deref() == Some(self.terminal.as_str()) {
+            cx.set_global(crate::desktop::Watching(None));
+        }
         let bytes = {
             let state = self.connection.state.lock().unwrap();
             state

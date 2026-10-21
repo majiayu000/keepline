@@ -27,7 +27,7 @@ R1 默认并行 workspace 全套连续三次各 75 项通过；R2 增补后 82 �
 | A01 冷启动、大量历史 | **部分通过** | R5 Finder 双击隔离 App 自动启动后台并展示 40 会话；M0 112.42 MiB/3.207 秒、暖启动 0 B。未将完整大量历史+可见首屏合为一次测试。见 [R5](../r5-20261021/README.md) |
 | A02 两项目双 CLI | **通过**（分段真实回合） | R4 Codex 新对话正确挂载；R9 Claude Code 2.1.302 + 授权 GLM 以 --session-id UUID 精确关联 PTY/待办/JSONL，lsof 0。手敲无 ID 无打开文件证据仍保持外部。见 [R9](../r9-20261021/README.md) |
 | A03 IME、多行、大段粘贴 | **部分通过** | 大段 UTF-8/多行 PTY 字节测试通过；R5 四画面真拼音、选词/回车/退格与聚焦通过。cat 未启用 bracketed paste 时多行粘贴被拒绝，完整原生清单未通过。见 [R5](../r5-20261021/README.md) |
-| A04 真实审批/选择 | **部分通过** | R4 Codex 原生 Blue 选择与等你回答通过；R9 Claude + GLM Write 原生单次审批作答/写文件/托管关联通过，但审批时 JSONL 无 PermissionRequest、工作台仍显示进行中。见 [R9](../r9-20261021/README.md) |
+| A04 真实审批/选择 | **部分通过** | R4 Codex 原生 Blue 选择与等你回答通过；R9 Claude + GLM Write 原生单次审批作答/写文件/托管关联通过，审批时 JSONL 无 PermissionRequest；2026-10-21 加入已关联画面静止时的屏幕兜底，自动测试与隔离原生渲染能把屏幕上的审批判为等你回答（[证据](../waiting-capture-20261021/README.md)），真实 Claude 审批在用户工作台里的原生复验未做。见 [R9](../r9-20261021/README.md) |
 | A05 切换、4 路输出、备用屏 | **通过**（分段原生证据） | R2 Vim/lazygit/htop 鼠标、备用屏滚轮、焦点；R5 四路 10 Hz 真实 PTY 输出，切标签返回、放大/还原及焦点输入。见 [R5](../r5-20261021/README.md) |
 | A06 关闭标签/窗口/App 再打开 | **部分通过**（缺 Dock 点击） | [原生历史](../keyboard-lifecycle-20261020/README.md)与本轮包 RPC 回执：原 ID/PID 保持、可继续输入。直接点 Dock 独立路径仍未验证 |
 | A07 断线、快照、丢确认 | **通过**（自动 + 历史原生） | reconnect_input_resize、分段 UTF-8/escape 快照、拒绝截断快照、大输入不重放；历史真实客户端重开有截图。曾有一次 CUA 首字符遗漏未定位，见 IME 原记录，不能宣称已修复 |

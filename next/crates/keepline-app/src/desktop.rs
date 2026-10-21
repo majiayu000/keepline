@@ -20,6 +20,10 @@ use std::{
 #[derive(Default)]
 pub struct Status(pub String);
 impl Global for Status {}
+/// The terminal in the focused pane of the active window, if any.
+#[derive(Default)]
+pub struct Watching(pub Option<String>);
+impl Global for Watching {}
 static EVENTS: OnceLock<UnboundedSender<String>> = OnceLock::new();
 unsafe extern "C" {
     fn kl_desktop_route_applied(
@@ -73,13 +77,18 @@ fn fact(w: &Workspace, s: &AgentSession) -> Option<(String, String)> {
         format!("{} · {}", group.label(), short(&body, 180)),
     ))
 }
-fn entered(before: &Workspace, after: &Workspace) -> Vec<(String, String, String, String)> {
+fn entered(
+    before: &Workspace,
+    after: &Workspace,
+    watching: Option<&str>,
+) -> Vec<(String, String, String, String)> {
     if !after.settings.notifications {
         return vec![];
     }
     after
         .agent_sessions
         .iter()
+        .filter(|s| watching.is_none() || s.terminal.as_deref() != watching)
         .filter_map(|s| {
             let (key, body) = fact(after, s)?;
             let old = before
@@ -90,15 +99,22 @@ fn entered(before: &Workspace, after: &Workspace) -> Vec<(String, String, String
             if old.as_ref().is_some_and(|(old, _)| old == &key) {
                 return None;
             }
-            Some((
-                s.id.clone(),
-                key,
-                after
-                    .content
-                    .get(&s.id)
-                    .map_or_else(|| s.runtime.executable().into(), |c| short(&c.title, 72)),
-                body,
-            ))
+            let title = after
+                .content
+                .get(&s.id)
+                .map_or_else(|| s.runtime.executable().into(), |c| short(&c.title, 72));
+            // Name the project first: several panes often run the same kind of task.
+            let space = after
+                .terminals
+                .iter()
+                .find(|t| Some(&t.id) == s.terminal.as_ref())
+                .and_then(|t| after.spaces.iter().find(|p| p.id == t.space))
+                .map(|p| p.name.clone());
+            let title = match space {
+                Some(space) => format!("{space} · {title}"),
+                None => title,
+            };
+            Some((s.id.clone(), key, title, body))
         })
         .collect()
 }
@@ -186,7 +202,9 @@ pub fn start(socket: &Path, initial: Workspace, cx: &mut App) -> UnboundedReceiv
                 cx.update(|_| unsafe { kl_notifications_enable() });
             }
             if ready {
-                for (session, key, title, body) in entered(&before, &after) {
+                let watching =
+                    cx.update(|cx| cx.try_global::<Watching>().and_then(|w| w.0.clone()));
+                for (session, key, title, body) in entered(&before, &after, watching.as_deref()) {
                     let socket_claim = socket.clone();
                     let claim_session = session.clone();
                     match cx
@@ -234,7 +252,7 @@ mod tests {
             id: "s".into(),
             runtime: Agent::Codex,
             cli_session_id: "cli".into(),
-            terminal: None,
+            terminal: Some("pty".into()),
             current: false,
             task: None,
             outcome: Outcome::Open,
@@ -255,15 +273,20 @@ mod tests {
                 ..Default::default()
             },
         );
-        assert!(entered(&before, &w).is_empty());
+        assert!(entered(&before, &w, None).is_empty());
         w.settings.notifications = true;
-        assert_eq!(entered(&before, &w).len(), 1);
-        assert!(entered(&w, &w).is_empty());
+        assert_eq!(entered(&before, &w, None).len(), 1);
+        assert!(entered(&w, &w, None).is_empty());
         let previous = w.clone();
         w.content.get_mut("s").unwrap().waiting = "是否执行测试？".into();
-        assert_eq!(entered(&previous, &w).len(), 1);
+        assert_eq!(entered(&previous, &w, None).len(), 1);
+        assert!(
+            entered(&previous, &w, Some("pty")).is_empty(),
+            "no banner for the pane the user is looking at"
+        );
+        assert_eq!(entered(&previous, &w, Some("other")).len(), 1);
         w.agent_sessions[0].outcome = Outcome::Completed;
-        assert!(entered(&previous, &w).is_empty());
+        assert!(entered(&previous, &w, None).is_empty());
         let value: serde_json::Value = serde_json::from_str(&panel(&previous)).unwrap();
         assert_eq!(value["rows"].as_array().unwrap().len(), 1);
     }
