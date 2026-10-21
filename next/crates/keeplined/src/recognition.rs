@@ -462,6 +462,69 @@ pub fn screen_key(prompt: &str) -> Option<String> {
 pub fn screen_text(text: &str) -> String {
     text.chars().filter(|c| !c.is_whitespace()).collect()
 }
+/// The question an agent is visibly blocked on, read from the bottom of a quiet screen.
+/// Only two strict shapes count; anything else is no evidence, never a guess:
+/// - an approval: "Do you want to …?" (Claude Code) or "Would you like to …?" (Codex)
+///   followed by a numbered option list whose first choice is "Yes";
+/// - a choice question: a cursor-marked numbered option above a footer that offers
+///   both "Enter to select" and "Esc to cancel" (Claude Code AskUserQuestion).
+pub fn screen_wait(tail: &str) -> Option<String> {
+    const FRAME: &[char] = &[
+        '│', '┃', '║', '╭', '╮', '╰', '╯', '┌', '┐', '└', '┘', '─', '━', '═',
+    ];
+    let lines: Vec<&str> = tail
+        .lines()
+        .map(|l| l.trim().trim_matches(FRAME).trim())
+        .filter(|l| !l.is_empty() && !l.chars().all(|c| FRAME.contains(&c)))
+        .collect();
+    let bottom = lines.len().saturating_sub(16);
+    let lines = &lines[bottom..];
+    let option = |line: &str| -> Option<(bool, u32, String)> {
+        let rest = line.trim_start_matches(['❯', '›', '>', '▶', ' ']);
+        let cursor = rest.len() != line.len();
+        let (n, text) = rest.split_once(". ")?;
+        let n = n.parse::<u32>().ok().filter(|n| (1..=9).contains(n))?;
+        Some((cursor, n, text.trim().to_owned()))
+    };
+    let approval = lines.iter().rposition(|l| {
+        (l.starts_with("Do you want to ") || l.starts_with("Would you like to "))
+            && l.ends_with('?')
+    });
+    if let Some(i) = approval {
+        let first = lines[i + 1..]
+            .iter()
+            .take(4)
+            .find_map(|l| option(l).filter(|(_, n, _)| *n == 1));
+        // Output after the menu means it was already answered and scrolled up.
+        let last = lines.iter().rposition(|l| option(l).is_some());
+        if first.is_some_and(|(_, _, text)| text.starts_with("Yes"))
+            && last.is_some_and(|last| last > i && last + 3 >= lines.len())
+        {
+            return Some(lines[i].to_owned());
+        }
+    }
+    let footer = lines.iter().rposition(|l| {
+        let l = l.to_lowercase();
+        l.contains("enter to select") && l.contains("esc to cancel")
+    })?;
+    if footer + 3 < lines.len() {
+        return None;
+    }
+    let first = lines[..footer]
+        .iter()
+        .rposition(|l| option(l).is_some_and(|(_, n, _)| n == 1))?;
+    if !lines[first..footer]
+        .iter()
+        .any(|l| option(l).is_some_and(|(cursor, _, _)| cursor))
+    {
+        return None;
+    }
+    lines[..first]
+        .iter()
+        .rev()
+        .find(|l| option(l).is_none())
+        .map(|l| (*l).to_owned())
+}
 pub struct ScreenThread<'a> {
     pub transcript: &'a Transcript,
     pub key: String,
@@ -572,6 +635,36 @@ pub fn open_transcripts(
 mod tests {
     use super::*;
     use keepline_core::model::{Space, Terminal};
+    #[test]
+    fn screen_wait_reads_only_strict_approval_and_choice_shapes() {
+        let claude_approval = "⏺ Bash(git push origin feat/feedback)\n\n╭────────────────────────────╮\n│ Bash command               │\n│                            │\n│   git push origin feat/x   │\n│                            │\n│ Do you want to proceed?    │\n│ ❯ 1. Yes                   │\n│   2. Yes, and don't ask again for git push commands │\n│   3. No, and tell Claude what to do differently (esc) │\n╰────────────────────────────╯\n";
+        assert_eq!(
+            screen_wait(claude_approval).as_deref(),
+            Some("Do you want to proceed?")
+        );
+        let codex_approval = "• Running cargo test\n\n  Would you like to run the following command?\n\n  $ cargo test --workspace\n\n› 1. Yes, proceed (y)\n  2. Yes, and don't ask again for this command in this session (a)\n  3. No, and tell Codex what to do differently (esc)\n\n  Press enter to confirm or esc to cancel\n";
+        assert_eq!(
+            screen_wait(codex_approval).as_deref(),
+            Some("Would you like to run the following command?")
+        );
+        let choice = "☐ 部署\n\n要部署到哪个环境？\n\n❯ 1. staging\n     先在预发验证\n  2. production\n  3. Type something.\n\nEnter to select · ↑/↓ to navigate · Esc to cancel\n";
+        assert_eq!(screen_wait(choice).as_deref(), Some("要部署到哪个环境？"));
+
+        // A transcript that merely mentions the words, a plain numbered list in the
+        // agent's answer, a menu without a cursor, and a stale footer far above all stay
+        // unclassified.
+        for text in [
+            "Do you want to proceed? I think we should.\n1. Refactor\n2. Test\n",
+            "The plan:\n1. Yes we can split it\n2. Then test\n\n> ",
+            "Do you want to proceed?\n\n(answered)\n⏺ Running tests…\n",
+            "Do you want to proceed?\n❯ 1. Yes\n  2. No\n⏺ Bash(ls)\n  ⎿ a\n  ⎿ b\n  ⎿ c\n  ⎿ d\n",
+            "Pick one\n1. a\n2. b\nEnter to select · Esc to cancel\n",
+            "Pick one\n❯ 1. a\n2. b\nEnter to select · Esc to cancel\nline\nline\nline\nline\n",
+            "$ ls\nsrc  tests\n$ ",
+        ] {
+            assert_eq!(screen_wait(text), None, "{text}");
+        }
+    }
     #[test]
     fn explicit_claude_id_uses_argv_boundaries_and_kernel_arguments() {
         let id = uuid::Uuid::new_v4().to_string();

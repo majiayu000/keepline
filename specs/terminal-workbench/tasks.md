@@ -227,7 +227,8 @@ flowchart LR
 
 - [x] R9：Claude UUID 预填、精确托管/同 ID resume、无 ID 外部保守处理与追加零探测；真实 GLM 两轮/原生截图；默认并行 89 项通过，见 [证据](evidence/r9-20261021/README.md)。
 - [x] 多行预填就绪竞态修复：新画面立即预填，不自动执行；原生证据与模式快照回归通过。
-- [ ] R9 / A04：无 Hook 审批等待未识别。
+- [ ] R9 / A04：无 Hook 审批等待未识别。2026-10-21 已加屏幕兜底（[证据](evidence/waiting-capture-20261021/README.md)），真实 Claude 审批原生复验后再勾。
+- [x] 等你回答与新建待办按调研定案：不弹模态、不在终端外提交答案；屏幕兜底、通知降噪（正在看的画面不发、标题带空间）；「＋ 新待办」改为一行快速输入加展开；缺验收标准时在预填行提示补写。102 项测试与隔离原生渲染通过（[调研](research/waiting-and-capture-20261021.md)、[证据](evidence/waiting-capture-20261021/README.md)）。
 - [ ] R9 / A15：真实回复“完成。”分组仍为做一半停了，需后续修复。
 
 - [x] R10：复现 ConnectionRefused 并原子发布就绪 socket；同期空闲 CPU 对照，2% 门槛不变；8 yes 下默认并行连续三轮各 90 项通过（evidence/r10-20261021）。

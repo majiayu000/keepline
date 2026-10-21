@@ -13,7 +13,7 @@ use std::sync::{
     Arc, Mutex, MutexGuard,
 };
 use std::thread;
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
 type Shared = Arc<Mutex<Host>>;
 type LiveTerminal = Arc<Mutex<Live>>;
@@ -34,6 +34,8 @@ struct Live {
     drained: bool,
     exit_code: Option<i32>,
     title: String,
+    /// Last keystrokes sent here; a menu the user just opened is not the agent asking.
+    input_at: Option<std::time::Instant>,
 }
 struct Host {
     store: Store,
@@ -49,6 +51,9 @@ struct Host {
     unbound_pids: HashMap<u32, String>,
     input_probes: std::collections::HashSet<String>,
     deadlines: Option<SyncSender<()>>,
+    /// Terminal -> question seen on its quiet screen. Live fallback only: never stored,
+    /// cleared by the user's input or by a later quiet screen without the prompt.
+    screen_waits: HashMap<String, String>,
 }
 fn lock<T>(m: &Mutex<T>) -> io::Result<MutexGuard<'_, T>> {
     m.lock()
@@ -67,7 +72,32 @@ impl Host {
             .retain(|s| s.terminal.is_some() || self.index.recent(s.updated));
         w.content
             .retain(|id, _| w.agent_sessions.iter().any(|s| &s.id == id));
+        // A prompt visible on a live agent's screen outranks a log that has not caught up.
+        // The source stays marked so it is never mistaken for a transcript record.
+        for s in w.agent_sessions.iter().filter(|s| s.current) {
+            let Some(question) = s.terminal.as_ref().and_then(|t| self.screen_waits.get(t)) else {
+                continue;
+            };
+            if let Some(c) = w.content.get_mut(&s.id) {
+                if c.turn != keepline_core::content::Turn::Waiting {
+                    c.turn = keepline_core::content::Turn::Waiting;
+                    c.waiting = format!("{question}（画面上的提示）");
+                }
+            }
+        }
         w
+    }
+    fn set_screen_wait(&mut self, terminal: &str, question: Option<String>) -> io::Result<()> {
+        if self.screen_waits.get(terminal) == question.as_ref() {
+            return Ok(());
+        }
+        match question {
+            Some(q) => self.screen_waits.insert(terminal.into(), q),
+            None => self.screen_waits.remove(terminal),
+        };
+        // Nothing to store; a new revision makes clients fetch the overlaid snapshot.
+        let next = self.workspace.clone();
+        self.commit(next)
     }
     fn publish_status(&mut self) -> io::Result<()> {
         self.recognition.workspace_revision = self.workspace.revision;
@@ -385,6 +415,7 @@ pub fn serve_with_options(
         unbound_pids: HashMap::new(),
         input_probes: Default::default(),
         deadlines: None,
+        screen_waits: HashMap::new(),
         workspace,
         terminals: HashMap::new(),
         instance: uuid::Uuid::new_v4().to_string(),
@@ -1356,6 +1387,7 @@ fn dispatch(shared: &Shared, request: Request) -> io::Result<Reply> {
                 drained: false,
                 exit_code: None,
                 title: String::new(),
+                input_at: None,
             }));
             host.terminals.insert(id.clone(), Arc::clone(&terminal));
             let shared_read = Arc::clone(shared);
@@ -1527,18 +1559,29 @@ fn pump(
     id: &str,
 ) -> io::Result<()> {
     let mut bytes = vec![0; 64 * 1024];
+    // One screen check per output burst once the screen has been still; no timer otherwise.
+    let mut quiet_at: Option<Instant> = None;
     loop {
         let mut poll = libc::pollfd {
             fd: reader.as_raw_fd(),
             events: libc::POLLIN,
             revents: 0,
         };
-        if unsafe { libc::poll(&mut poll, 1, -1) } < 0 {
+        let timeout = quiet_at.map_or(-1, |at| {
+            i32::try_from(at.saturating_duration_since(Instant::now()).as_millis())
+                .unwrap_or(i32::MAX)
+        });
+        let ready = unsafe { libc::poll(&mut poll, 1, timeout) };
+        if ready < 0 {
             let error = io::Error::last_os_error();
             if error.kind() == io::ErrorKind::Interrupted {
                 continue;
             }
             return Err(error);
+        }
+        if ready == 0 {
+            quiet_at = check_screen_wait(terminal, shared, id)?;
+            continue;
         }
         let n = match reader.read(&mut bytes) {
             Ok(0) => return Ok(()),
@@ -1554,6 +1597,7 @@ fn pump(
             Err(e) if e.raw_os_error() == Some(libc::EIO) => return Ok(()),
             Err(e) => return Err(e),
         };
+        quiet_at = Some(Instant::now() + SCREEN_QUIET);
         let mut live = lock(terminal)?;
         live.vt.feed(&bytes[..n]);
         let response = std::mem::take(&mut *lock(&replies)?);
@@ -1576,6 +1620,40 @@ fn pump(
             lock(shared)?.title_changed(id, &title)?;
         }
     }
+}
+
+const SCREEN_QUIET: Duration = Duration::from_secs(1);
+/// Menus the user opens appear right after a keystroke; an agent's question does not.
+const INPUT_SETTLE: Duration = Duration::from_secs(3);
+
+/// Returns when to look again, if the user typed too recently to attribute the prompt.
+fn check_screen_wait(
+    terminal: &LiveTerminal,
+    shared: &Shared,
+    id: &str,
+) -> io::Result<Option<Instant>> {
+    {
+        let host = lock(shared)?;
+        if host.workspace.current_agent(id).is_none() && !host.screen_waits.contains_key(id) {
+            return Ok(None);
+        }
+    }
+    let (tail, input_at) = {
+        let live = lock(terminal)?;
+        if live.exited {
+            return Ok(None);
+        }
+        (live.vt.tail_text(usize::from(live.rows))?, live.input_at)
+    };
+    let question = crate::recognition::screen_wait(&tail);
+    let settle = input_at.map(|at| at + INPUT_SETTLE);
+    if let Some(settle) = settle.filter(|at| question.is_some() && *at > Instant::now()) {
+        return Ok(Some(settle));
+    }
+    let mut host = lock(shared)?;
+    let question = question.filter(|_| host.workspace.current_agent(id).is_some());
+    host.set_screen_wait(id, question)?;
+    Ok(None)
 }
 
 fn probe_after_submission(shared: &Shared, terminal: &str) -> io::Result<()> {
@@ -1688,6 +1766,7 @@ fn attach(
     loop {
         let request = receive::<Request>(&mut stream)?;
         let submitted = matches!(&request, Request::Input {bytes} if bytes.contains(&b'\r') || bytes.contains(&b'\n'));
+        let typed = matches!(&request, Request::Input { .. });
         let result = (|| -> io::Result<()> {
             let mut live = lock(&terminal)?;
             if !ready.load(Ordering::Acquire) {
@@ -1702,6 +1781,7 @@ fn attach(
                         return Err(io::Error::other("单次输入超过 64 KiB"));
                     }
                     pty::write(&mut live.master, &bytes)?;
+                    live.input_at = Some(Instant::now());
                 }
                 Request::Resize { cols, rows } => {
                     geometry(cols, rows)?;
@@ -1722,6 +1802,10 @@ fn attach(
             }
             Ok(())
         })();
+        if typed && result.is_ok() {
+            // The user is answering here; the prompt is no longer waiting on them.
+            lock(&host)?.set_screen_wait(&terminal_id, None)?;
+        }
         if submitted && result.is_ok() {
             probe_after_submission(&host, &terminal_id)?;
         }
@@ -1766,6 +1850,7 @@ mod recognition_tests {
             unbound_pids: HashMap::new(),
             input_probes: Default::default(),
             deadlines: None,
+            screen_waits: HashMap::new(),
         }));
         let (tx, rx) = sync_channel(16);
         let (socket, _peer) = UnixStream::pair().unwrap();

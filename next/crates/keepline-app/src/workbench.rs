@@ -45,6 +45,8 @@ pub struct Workbench {
     busy: bool,
     error: Option<String>,
     form: Option<Form>,
+    /// One-line capture in the sidebar; the full form is its "展开".
+    quick_task: Option<(Entity<Field>, gpui::Subscription)>,
     task_detail: Option<String>,
     editing_task: Option<String>,
     start_after_save: Option<String>,
@@ -422,6 +424,7 @@ impl Workbench {
     #[cfg(feature = "visual-test")]
     pub fn visual_page(&mut self, name: &str, window: &mut Window, cx: &mut Context<Self>) {
         self.form = None;
+        self.quick_task = None;
         self.task_detail = None;
         self.cleanup.clear();
         self.here = None;
@@ -486,6 +489,16 @@ impl Workbench {
                 self.cleanup_index = 0;
                 assert!(!self.cleanup.is_empty());
             }
+            "QuickTask" => {
+                self.show_quick_task(window, cx);
+                if let Some((field, _)) = &self.quick_task {
+                    field.update(cx, |f, cx| {
+                        f.set_text("给离线模式补一组断网回归测试");
+                        cx.notify();
+                    });
+                }
+            }
+            "ScreenWait" => self.here = self.workspace.current_agent("p1").map(|s| s.id.clone()),
             "Overview" | "Menubar" => (),
             _ => panic!("unknown visual page"),
         }
@@ -593,6 +606,7 @@ impl Workbench {
             busy: false,
             error: None,
             form: None,
+            quick_task: None,
             task_detail: None,
             editing_task: None,
             start_after_save: None,
@@ -1300,28 +1314,7 @@ impl Workbench {
             ))
             .child(button("task-edit", "编辑").on_click({
                 let task = task.clone();
-                cx.listener(move |this, _, window, cx| {
-                    this.show_form(FormKind::Task, window, cx);
-                    this.editing_task = Some(task.id.clone());
-                    if let Some(f) = &mut this.form {
-                        f.space = task.space.clone();
-                        f.agent = task.agent;
-                        for (field, value) in f.fields.iter().zip([
-                            task.title.clone(),
-                            task.description.clone(),
-                            task.acceptance
-                                .iter()
-                                .map(|c| c.description.clone())
-                                .collect::<Vec<_>>()
-                                .join("\n"),
-                        ]) {
-                            field.update(cx, |f, cx| {
-                                f.set_text(&value);
-                                cx.notify();
-                            });
-                        }
-                    }
-                })
+                cx.listener(move |this, _, window, cx| this.edit_task_form(&task, window, cx))
             }))
             .child(
                 button("task-another", "再开一个会话")
@@ -1364,6 +1357,13 @@ impl Workbench {
                 "为待办 {} 开的画面，按回车才会启动",
                 task.title
             )))
+            .when(task.acceptance.is_empty(), |d| {
+                let task = task.clone();
+                d.child(label("还没写验收标准").text_color(Group::Waiting.colors().1))
+                    .child(button("staged-criteria", "补写").on_click(cx.listener(
+                        move |this, _, window, cx| this.edit_task_form(&task, window, cx),
+                    )))
+            })
             .child(button("staged-agent", "改用另一个 Agent").on_click({
                 let terminal = terminal.clone();
                 let task = task.clone();
@@ -1424,6 +1424,140 @@ impl Workbench {
                     }
                 },
             )))
+    }
+    fn edit_task_form(&mut self, task: &Task, window: &mut Window, cx: &mut Context<Self>) {
+        self.show_form(FormKind::Task, window, cx);
+        self.editing_task = Some(task.id.clone());
+        if let Some(f) = &mut self.form {
+            f.space = task.space.clone();
+            f.agent = task.agent;
+            for (field, value) in f.fields.iter().zip([
+                task.title.clone(),
+                task.description.clone(),
+                task.acceptance
+                    .iter()
+                    .map(|c| c.description.clone())
+                    .collect::<Vec<_>>()
+                    .join("\n"),
+            ]) {
+                field.update(cx, |f, cx| {
+                    f.set_text(&value);
+                    cx.notify();
+                });
+            }
+        }
+    }
+    fn show_quick_task(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        self.overview = false;
+        self.form = None;
+        self.task_detail = None;
+        self.sync_panes(cx);
+        let field = cx.new(|cx| Field::new("要做什么（回车保存，Esc 取消）", "", cx).compact());
+        let subscription = cx.subscribe(&field, |this, _, event, cx| match event {
+            crate::field::FieldEvent::Submit => this.save_quick_task(false, cx),
+            crate::field::FieldEvent::Cancel => {
+                this.quick_task = None;
+                cx.notify();
+            }
+        });
+        window.focus(&field.focus_handle(cx), cx);
+        self.quick_task = Some((field, subscription));
+        cx.notify();
+    }
+    /// Only the title is needed to capture; the space and Agent come from where you are.
+    fn save_quick_task(&mut self, start: bool, cx: &mut Context<Self>) {
+        let Some((field, _)) = &self.quick_task else {
+            return;
+        };
+        let title = field.read(cx).text.trim().to_owned();
+        if title.is_empty() {
+            self.error = Some("先写要做什么".into());
+            cx.notify();
+            return;
+        }
+        let task = Task {
+            id: id(),
+            space: self.space.clone(),
+            title,
+            description: String::new(),
+            acceptance: vec![],
+            agent: self.workspace.settings.default_agent,
+        };
+        if start {
+            self.start_after_save = Some(task.id.clone());
+        }
+        self.quick_task = None;
+        self.edit(Edit::AddTask(task), cx);
+    }
+    fn expand_quick_task(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        let title = self
+            .quick_task
+            .take()
+            .map(|(f, _)| f.read(cx).text.clone())
+            .unwrap_or_default();
+        self.show_form(FormKind::Task, window, cx);
+        if let Some(field) = self.form.as_ref().and_then(|f| f.fields.first()) {
+            field.update(cx, |f, cx| {
+                f.set_text(&title);
+                cx.notify();
+            });
+        }
+    }
+    fn quick_task_row(&self, cx: &Context<Self>) -> Option<gpui::Div> {
+        let (field, _) = self.quick_task.as_ref()?;
+        Some(
+            div()
+                .flex()
+                .flex_col()
+                .gap(px(T::S6))
+                .px(px(T::S8))
+                .pb(px(T::S8))
+                .child(field.clone())
+                .child(
+                    div()
+                        .flex()
+                        .gap(px(T::S4))
+                        .child(
+                            button("quick-save-start", "保存并开始")
+                                .h(px(T::ICON_HEIGHT))
+                                .px(px(T::S6))
+                                .text_size(px(T::META))
+                                .bg(T::color(T::ACCENT))
+                                .text_color(T::color(T::WHITE))
+                                .on_click(
+                                    cx.listener(|this, _, _, cx| this.save_quick_task(true, cx)),
+                                ),
+                        )
+                        .child(
+                            button("quick-save", "保存")
+                                .h(px(T::ICON_HEIGHT))
+                                .px(px(T::S6))
+                                .text_size(px(T::META))
+                                .on_click(
+                                    cx.listener(|this, _, _, cx| this.save_quick_task(false, cx)),
+                                ),
+                        )
+                        .child(
+                            button("quick-expand", "展开")
+                                .h(px(T::ICON_HEIGHT))
+                                .px(px(T::S6))
+                                .text_size(px(T::META))
+                                .on_click(cx.listener(|this, _, window, cx| {
+                                    this.expand_quick_task(window, cx)
+                                })),
+                        )
+                        .child(
+                            button("quick-cancel", "取消")
+                                .h(px(T::ICON_HEIGHT))
+                                .px(px(T::S6))
+                                .text_size(px(T::META))
+                                .on_click(cx.listener(|this, _, _, cx| {
+                                    this.quick_task = None;
+                                    cx.notify();
+                                })),
+                        ),
+                ),
+        )
     }
     fn show_form(&mut self, kind: FormKind, window: &mut Window, cx: &mut Context<Self>) {
         self.overview = false;
@@ -2347,11 +2481,9 @@ impl Workbench {
                         .child(label(unstarted.len().to_string()))
                         .child(label("命令只预填，按回车才启动"))
                         .child(div().flex_1())
-                        .child(
-                            button("overview-new-task", "＋ 新待办").on_click(cx.listener(
-                                |this, _, window, cx| this.show_form(FormKind::Task, window, cx),
-                            )),
-                        ),
+                        .child(button("overview-new-task", "＋ 新待办").on_click(
+                            cx.listener(|this, _, window, cx| this.show_quick_task(window, cx)),
+                        )),
                 )
                 .child(todo_cards),
         );
@@ -3370,54 +3502,55 @@ impl Render for Workbench {
             .find(|s| s.id == self.space)
             .map(|s| s.name.as_str())
             .unwrap_or("工作空间");
-        root = root.child(
-            div()
-                .h(px(T::TOP))
-                .flex_shrink_0()
-                .px(px(T::S14))
-                .flex()
-                .items_center()
-                .gap(px(T::S16))
-                .bg(T::color(T::PANEL))
-                .border_b(px(T::BORDER_WIDTH))
-                .border_color(T::color(T::BORDER))
-                .child(
-                    div()
-                        .size(px(T::LOGO))
-                        .rounded(px(T::CHIP_RADIUS))
-                        .bg(T::color(T::ACCENT)),
-                )
-                .child(
-                    div()
-                        .font_weight(gpui::FontWeight::SEMIBOLD)
-                        .child("Keepline"),
-                )
-                .child(label(format!("/ {space_name}")))
-                .child(
-                    button("overview", "▦ 鸟瞰全部")
-                        .bg(T::color(T::RAISED))
-                        .on_click(cx.listener(|this, _, _, cx| {
-                            this.overview = true;
-                            this.sync_panes(cx);
-                            this.request(Request::Workspace, cx);
-                        })),
-                )
-                .child(self.search_button(cx))
-                .child(div().flex_1())
-                .child(button("add-task", "＋ 新待办").on_click(
-                    cx.listener(|this, _, window, cx| this.show_form(FormKind::Task, window, cx)),
-                ))
-                .child(self.settings_button(cx))
-                .child(
-                    button("refresh", "↻")
-                        .aria_label("刷新")
-                        .w(px(T::ROW))
-                        .px(px(T::S4))
-                        .on_click(
-                            cx.listener(|this, _, _, cx| this.request(Request::Workspace, cx)),
-                        ),
-                ),
-        );
+        root =
+            root.child(
+                div()
+                    .h(px(T::TOP))
+                    .flex_shrink_0()
+                    .px(px(T::S14))
+                    .flex()
+                    .items_center()
+                    .gap(px(T::S16))
+                    .bg(T::color(T::PANEL))
+                    .border_b(px(T::BORDER_WIDTH))
+                    .border_color(T::color(T::BORDER))
+                    .child(
+                        div()
+                            .size(px(T::LOGO))
+                            .rounded(px(T::CHIP_RADIUS))
+                            .bg(T::color(T::ACCENT)),
+                    )
+                    .child(
+                        div()
+                            .font_weight(gpui::FontWeight::SEMIBOLD)
+                            .child("Keepline"),
+                    )
+                    .child(label(format!("/ {space_name}")))
+                    .child(
+                        button("overview", "▦ 鸟瞰全部")
+                            .bg(T::color(T::RAISED))
+                            .on_click(cx.listener(|this, _, _, cx| {
+                                this.overview = true;
+                                this.sync_panes(cx);
+                                this.request(Request::Workspace, cx);
+                            })),
+                    )
+                    .child(self.search_button(cx))
+                    .child(div().flex_1())
+                    .child(button("add-task", "＋ 新待办").on_click(
+                        cx.listener(|this, _, window, cx| this.show_quick_task(window, cx)),
+                    ))
+                    .child(self.settings_button(cx))
+                    .child(
+                        button("refresh", "↻")
+                            .aria_label("刷新")
+                            .w(px(T::ROW))
+                            .px(px(T::S4))
+                            .on_click(
+                                cx.listener(|this, _, _, cx| this.request(Request::Workspace, cx)),
+                            ),
+                    ),
+            );
         let mut sidebar = div()
             .id("sidebar")
             .w(px(T::SIDEBAR))
@@ -3501,12 +3634,25 @@ impl Render for Workbench {
                     })),
             )
             .child(
-                label(format!("{space_name} 的待办"))
+                div()
                     .mt(px(T::S14))
                     .pt(px(T::S12))
                     .px(px(T::S8))
-                    .mb(px(T::S4)),
-            );
+                    .mb(px(T::S4))
+                    .flex()
+                    .items_center()
+                    .child(label(format!("{space_name} 的待办")).flex_1())
+                    .child(
+                        button("sidebar-new-task", "＋")
+                            .aria_label("新待办")
+                            .border_0()
+                            .text_color(T::color(T::LINK))
+                            .on_click(
+                                cx.listener(|this, _, window, cx| this.show_quick_task(window, cx)),
+                            ),
+                    ),
+            )
+            .children(self.quick_task_row(cx));
         for task in self
             .workspace
             .tasks
