@@ -2408,17 +2408,21 @@ impl Workbench {
             "共 {count} 项；未索引历史不会出现在搜索中。"
         )))
     }
-    fn next_waiting(&mut self, window: &mut Window, cx: &mut Context<Self>) {
-        let needs: Vec<_> = self
-            .workspace
+    /// Only Keepline's own terminals ask for attention; scanned-only sessions stay in the overview.
+    fn needs_you(&self) -> Vec<&AgentSession> {
+        self.workspace
             .agent_sessions
             .iter()
             .filter(|s| {
-                s.outcome.needs_review(now())
+                s.managed()
+                    && s.outcome.needs_review(now())
                     && self.session_hidden(s).is_none()
                     && matches!(self.group(s), Group::Waiting | Group::Error)
             })
-            .collect();
+            .collect()
+    }
+    fn next_waiting(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        let needs = self.needs_you();
         let current = self
             .focused
             .as_ref()
@@ -3702,11 +3706,15 @@ impl Render for Workbench {
             let count = sessions.len();
             let waiting = sessions
                 .iter()
-                .filter(|s| s.outcome.needs_review(now()) && self.group(s) == Group::Waiting)
+                .filter(|s| {
+                    s.managed() && s.outcome.needs_review(now()) && self.group(s) == Group::Waiting
+                })
                 .count();
             let errors = sessions
                 .iter()
-                .filter(|s| s.outcome.needs_review(now()) && self.group(s) == Group::Error)
+                .filter(|s| {
+                    s.managed() && s.outcome.needs_review(now()) && self.group(s) == Group::Error
+                })
                 .count();
             sidebar = sidebar.child(
                 button(gpui::SharedString::from(format!("space-{id}")), "")
@@ -3719,8 +3727,10 @@ impl Render for Workbench {
                     } else {
                         sessions
                             .iter()
-                            .find(|s| s.outcome.needs_review(now()))
-                            .map_or(Group::Stale, |s| self.group(s))
+                            .filter(|s| s.outcome.needs_review(now()))
+                            .map(|s| self.group(s))
+                            .find(|g| !matches!(g, Group::Waiting | Group::Error))
+                            .unwrap_or(Group::Stale)
                     }))
                     .child(div().min_w_0().truncate().child(space.name.clone()))
                     .justify_start()
@@ -3859,16 +3869,7 @@ impl Render for Workbench {
                 sidebar = sidebar.child(picker);
             }
         }
-        let needs: Vec<_> = self
-            .workspace
-            .agent_sessions
-            .iter()
-            .filter(|s| {
-                s.outcome.needs_review(now())
-                    && self.session_hidden(s).is_none()
-                    && matches!(self.group(s), Group::Waiting | Group::Error)
-            })
-            .collect();
+        let needs = self.needs_you();
         sidebar = sidebar.child(
             label(format!("需要你 · {}", needs.len()))
                 .mt(px(T::S14))
@@ -3904,14 +3905,15 @@ impl Render for Workbench {
                             session_space(&self.workspace, session)
                                 .and_then(|id| self.workspace.spaces.iter().find(|p| p.id == id))
                                 .map(|p| p.name.clone())
-                                .unwrap_or_else(|| "外部".into()),
+                                .unwrap_or_default(),
                         )
                         .text_size(px(T::CHIP_SIZE))
                         .max_w(px(T::SIDEBAR / T::S4))
                         .truncate(),
                     )
+                    // Straight to its pane; an exited one resumes in a new pane.
                     .on_click(
-                        cx.listener(move |this, _, window, cx| this.enter_card(&open, window, cx)),
+                        cx.listener(move |this, _, window, cx| this.open_session(&open, window, cx)),
                     ),
             );
         }

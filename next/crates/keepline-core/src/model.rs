@@ -156,6 +156,13 @@ pub struct AgentSession {
     pub cwd: String,
     pub transcript: String,
 }
+impl AgentSession {
+    /// Started in a Keepline terminal. Conversations found only by scanning CLI logs
+    /// never ask for attention; they stay visible in the overview.
+    pub fn managed(&self) -> bool {
+        self.terminal.is_some()
+    }
+}
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub enum ProcessState {
