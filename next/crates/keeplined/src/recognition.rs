@@ -647,6 +647,13 @@ mod tests {
             screen_wait(codex_approval).as_deref(),
             Some("Would you like to run the following command?")
         );
+        // Transcribed from the R9 real Claude Code 2.1.302 screen (evidence/r9-20261021/real-approval.png):
+        // the approval R9 could not see from the log alone.
+        let r9_claude_write = "● Write(approval-proof.txt)\n\n────────────────────────────────────────\n Create file\n approval-proof.txt\n╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌\n  1 ok\n╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌\n Do you want to create approval-proof.txt?\n ❯ 1. Yes\n   2. Yes, and switch to accept edits (auto-approve file edits and common\n      file commands) for this session (shift+tab)\n   3. No\n\n Esc to cancel · Tab to amend\n";
+        assert_eq!(
+            screen_wait(r9_claude_write).as_deref(),
+            Some("Do you want to create approval-proof.txt?")
+        );
         let choice = "☐ 部署\n\n要部署到哪个环境？\n\n❯ 1. staging\n     先在预发验证\n  2. production\n  3. Type something.\n\nEnter to select · ↑/↓ to navigate · Esc to cancel\n";
         assert_eq!(screen_wait(choice).as_deref(), Some("要部署到哪个环境？"));
 

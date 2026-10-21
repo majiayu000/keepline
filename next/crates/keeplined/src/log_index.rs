@@ -127,7 +127,7 @@ impl Index {
                 // Content is a newly introduced object. Seed only cached recent identities that
                 // have no projection, once, without another directory walk or replacing cursors.
                 let missing = {
-                    let mut q=self.db.prepare("SELECT runtime,path FROM log_files WHERE updated>=?1 AND NOT EXISTS(SELECT 1 FROM session_content WHERE session_content.path=log_files.path AND json_extract(parser,'$._rules')=5)").map_err(err)?;
+                    let mut q=self.db.prepare("SELECT runtime,path FROM log_files WHERE updated>=?1 AND NOT EXISTS(SELECT 1 FROM session_content WHERE session_content.path=log_files.path AND json_extract(parser,'$._rules')=6)").map_err(err)?;
                     let rows = q
                         .query_map(
                             [keepline_core::content::now()
@@ -417,7 +417,7 @@ impl Index {
             .as_secs();
         let seeded: bool = self
             .db
-            .prepare_cached("SELECT EXISTS(SELECT 1 FROM session_content WHERE path=?1 AND json_extract(parser,'$._rules')=5)")
+            .prepare_cached("SELECT EXISTS(SELECT 1 FROM session_content WHERE path=?1 AND json_extract(parser,'$._rules')=6)")
             .map_err(err)?
             .query_row([&key], |r| r.get(0))
             .map_err(err)?;
@@ -758,7 +758,7 @@ mod tests {
         i.initialize().unwrap();
         i.bootstrap().unwrap();
         i.db.execute(
-            "UPDATE session_content SET parser=json_set(parser,'$._rules',4)",
+            "UPDATE session_content SET parser=json_set(parser,'$._rules',5)",
             [],
         )
         .unwrap();
