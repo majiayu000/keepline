@@ -33,6 +33,7 @@ struct Live {
     exited: bool,
     drained: bool,
     exit_code: Option<i32>,
+    title: String,
 }
 struct Host {
     store: Store,
@@ -144,9 +145,16 @@ impl Host {
                     .iter()
                     .any(|p| p.parent == process.pid && p.runtime == process.runtime)
             {
-                self.recognition
-                    .terminal_hints
-                    .insert(terminal.clone(), "改用 codex --no-daemon 才能跟踪".into());
+                // `--no-daemon` opens its own log; before the first prompt there is nothing to say.
+                if !process.no_daemon {
+                    let title = match self.terminals.get(&terminal) {
+                        Some(live) => lock(live)?.title.clone(),
+                        None => String::new(),
+                    };
+                    self.recognition
+                        .terminal_hints
+                        .insert(terminal.clone(), codex_hint(&title));
+                }
                 if let std::collections::hash_map::Entry::Vacant(entry) =
                     self.unbound_pids.entry(process.pid)
                 {
@@ -160,6 +168,22 @@ impl Host {
             }
         }
         if old_hints != self.recognition.terminal_hints {
+            self.publish_status()?;
+        }
+        Ok(())
+    }
+    /// An unbound shared-daemon Codex still paints its state into the window title.
+    fn title_changed(&mut self, terminal: &str, title: &str) -> io::Result<()> {
+        if !self.unbound_pids.values().any(|t| t == terminal)
+            || !self.recognition.terminal_hints.contains_key(terminal)
+        {
+            return Ok(());
+        }
+        let hint = codex_hint(title);
+        if self.recognition.terminal_hints.get(terminal) != Some(&hint) {
+            self.recognition
+                .terminal_hints
+                .insert(terminal.into(), hint);
             self.publish_status()?;
         }
         Ok(())
@@ -414,6 +438,25 @@ pub fn serve_with_options(
     Ok(())
 }
 
+/// Codex's own title rules (the ones Herdr reads): "Action Required" while blocked,
+/// a braille spinner while working, anything else once idle. Status only, never identity.
+pub(crate) fn codex_state(title: &str) -> Option<&'static str> {
+    if title.trim().is_empty() {
+        None
+    } else if title.contains("Action Required") {
+        Some("需要你处理")
+    } else if title.chars().any(|c| "⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏".contains(c)) {
+        Some("工作中")
+    } else {
+        Some("空闲")
+    }
+}
+pub(crate) fn codex_hint(title: &str) -> String {
+    match codex_state(title) {
+        Some(state) => format!("仅显示状态：{state}；看对话内容请用 codex --no-daemon"),
+        None => "未关联：看对话内容请用 codex --no-daemon".into(),
+    }
+}
 fn recognition_status(host: &Host) -> RecognitionStatus {
     let mut status = host.recognition.clone();
     let (ps, lsof) = crate::recognition::probe_counts();
@@ -512,6 +555,9 @@ fn refresh_agents(
 struct Association {
     attempted: std::collections::HashSet<(String, String)>,
     inventory: Vec<u32>,
+    /// (log, newest prompt) → screen comparisons so far. The TUI may paint the prompt a
+    /// little after the log records it, so a few appends may retry; then it waits for a new prompt.
+    screened: HashMap<(String, String), u8>,
 }
 impl Association {
     fn apply(
@@ -602,7 +648,149 @@ impl Association {
             }
             refresh_agents(shared, &index.cached()?)?;
         }
+        if transcripts.iter().any(|t| t.runtime == Agent::Codex) {
+            self.associate_screens(shared, index, transcripts)?;
+        }
         Ok(())
+    }
+    /// Shared-daemon Codex runs its thread outside the PTY, so neither process nor open-file
+    /// evidence exists. Bind only when a thread's newest prompt is on exactly one managed
+    /// Codex screen and that screen shows no other candidate thread.
+    fn associate_screens(
+        &mut self,
+        shared: &Shared,
+        index: &crate::log_index::Index,
+        batch: &[crate::recognition::Transcript],
+    ) -> io::Result<()> {
+        let (panes, workspace) = {
+            let host = lock(shared)?;
+            let mut panes = vec![];
+            for (pid, terminal) in &host.unbound_pids {
+                if host.workspace.current_agent(terminal).is_none() {
+                    panes.push((*pid, terminal.clone(), None));
+                }
+            }
+            for (pid, id) in &host.agent_pids {
+                if let Some(s) = host.workspace.agent_sessions.iter().find(|s| {
+                    &s.id == id && s.current && s.runtime == Agent::Codex && s.terminal.is_some()
+                }) {
+                    panes.push((*pid, s.terminal.clone().unwrap(), Some(s.clone())));
+                }
+            }
+            panes.retain(|(_, t, _)| host.terminals.contains_key(t));
+            (
+                panes
+                    .into_iter()
+                    .map(|(pid, t, s)| (pid, host.terminals[&t].clone(), t, s))
+                    .collect::<Vec<_>>(),
+                host.workspace.clone(),
+            )
+        };
+        if panes.is_empty() {
+            return Ok(());
+        }
+        let window = keepline_core::content::now().saturating_sub(600);
+        let unbound = |t: &crate::recognition::Transcript| {
+            t.runtime == Agent::Codex
+                && t.updated >= window
+                && !workspace
+                    .agent_sessions
+                    .iter()
+                    .any(|s| s.current && s.runtime == t.runtime && s.cli_session_id == t.cli_id)
+        };
+        let key = |t: &crate::recognition::Transcript| -> io::Result<Option<String>> {
+            Ok(index
+                .latest_user_text(&t.path)?
+                .and_then(|p| crate::recognition::screen_key(&p)))
+        };
+        // Only a prompt with comparisons left justifies reading screens.
+        let mut fresh = false;
+        for t in batch.iter().filter(|t| unbound(t)) {
+            if let Some(k) = key(t)? {
+                let tries = self.screened.entry((t.path.clone(), k)).or_default();
+                if *tries < 5 {
+                    *tries += 1;
+                    fresh = true;
+                }
+            }
+        }
+        if !fresh {
+            return Ok(());
+        }
+        let cached = index.cached()?;
+        let mut threads = vec![];
+        for t in cached.iter().filter(|t| unbound(t)) {
+            if let Some(key) = key(t)? {
+                let cwd = fs::canonicalize(&t.cwd)
+                    .map(|p| p.to_string_lossy().into_owned())
+                    .unwrap_or_else(|_| t.cwd.clone());
+                threads.push(crate::recognition::ScreenThread {
+                    transcript: t,
+                    key,
+                    cwd,
+                });
+            }
+        }
+        let mut terminals = vec![];
+        for (pid, live, terminal, current) in &panes {
+            let screen = lock(live)?.vt.tail_text(200)?;
+            let current = match current {
+                Some(s) => Some((
+                    s.cli_session_id.clone(),
+                    s.updated,
+                    index
+                        .latest_user_text(&s.transcript)?
+                        .and_then(|p| crate::recognition::screen_key(&p)),
+                )),
+                None => None,
+            };
+            terminals.push(crate::recognition::ScreenTerminal {
+                terminal: terminal.clone(),
+                cwd: crate::recognition::process_cwd(*pid),
+                screen: crate::recognition::screen_text(&screen),
+                current,
+            });
+        }
+        let bindings = crate::recognition::screen_bindings(&threads, &terminals);
+        if bindings.is_empty() {
+            return Ok(());
+        }
+        let mut host = lock(shared)?;
+        let mut next = host.workspace.clone();
+        let mut bound = vec![];
+        for (terminal, t) in bindings {
+            if next
+                .observe_agent(crate::recognition::observation(t, Some(terminal.clone())))
+                .is_ok()
+            {
+                bound.push(terminal);
+            }
+        }
+        if next.agent_sessions == host.workspace.agent_sessions {
+            return Ok(());
+        }
+        host.commit(next)?;
+        // The TUI pid now stands for the bound session: its exit clears `current`.
+        for terminal in bound {
+            let Some(id) = host
+                .workspace
+                .current_agent(&terminal)
+                .map(|s| s.id.clone())
+            else {
+                continue;
+            };
+            let pids: Vec<_> = panes
+                .iter()
+                .filter(|(_, _, t, _)| t == &terminal)
+                .map(|(pid, ..)| *pid)
+                .collect();
+            for pid in pids {
+                host.unbound_pids.remove(&pid);
+                host.agent_pids.insert(pid, id.clone());
+            }
+            host.recognition.terminal_hints.remove(&terminal);
+        }
+        host.publish_status()
     }
 }
 fn recover_logs(
@@ -1132,13 +1320,14 @@ fn dispatch(shared: &Shared, request: Request) -> io::Result<Reply> {
                 exited: false,
                 drained: false,
                 exit_code: None,
+                title: String::new(),
             }));
             host.terminals.insert(id.clone(), Arc::clone(&terminal));
             let shared_read = Arc::clone(shared);
             let terminal_read = Arc::clone(&terminal);
             let id_read = id.clone();
             thread::spawn(move || {
-                if let Err(e) = pump(reader, &terminal_read, replies) {
+                if let Err(e) = pump(reader, &terminal_read, replies, &shared_read, &id_read) {
                     eprintln!("terminal {id_read}: {e}");
                 }
                 if let Ok(mut live) = lock(&terminal_read) {
@@ -1295,7 +1484,13 @@ fn record_exit(host: &Shared, terminal: &LiveTerminal, id: &str) -> io::Result<(
     Ok(())
 }
 
-fn pump(mut reader: File, terminal: &LiveTerminal, replies: Arc<Mutex<Vec<u8>>>) -> io::Result<()> {
+fn pump(
+    mut reader: File,
+    terminal: &LiveTerminal,
+    replies: Arc<Mutex<Vec<u8>>>,
+    shared: &Shared,
+    id: &str,
+) -> io::Result<()> {
     let mut bytes = vec![0; 64 * 1024];
     loop {
         let mut poll = libc::pollfd {
@@ -1331,6 +1526,20 @@ fn pump(mut reader: File, terminal: &LiveTerminal, replies: Arc<Mutex<Vec<u8>>>)
             pty::write(&mut live.master, &response)?;
         }
         live.broadcast(OUTPUT, bytes[..n].to_vec());
+        // Compare in place: output chunks are hot, title changes are rare.
+        let changed = live
+            .vt
+            .terminal()
+            .title()
+            .ok()
+            .filter(|t| *t != live.title)
+            .map(str::to_owned);
+        if let Some(title) = changed {
+            live.title = title.clone();
+            // Host before Live is the lock order; release this terminal first.
+            drop(live);
+            lock(shared)?.title_changed(id, &title)?;
+        }
     }
 }
 

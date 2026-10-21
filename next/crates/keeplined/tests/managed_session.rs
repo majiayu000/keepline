@@ -577,6 +577,7 @@ fn forty_idle_terminals_have_no_periodic_background_io() {
                 parent: std::process::id(),
                 runtime: Some(Agent::Codex),
                 cli_session_id: None,
+                no_daemon: false,
             });
             assert!(
                 !keeplined::recognition::open_transcripts(&workspace, &processes)
@@ -1034,7 +1035,7 @@ fn manually_entered_unbound_codex_gets_a_hint_and_exit_clears_it() {
         if recognition(&h)
             .terminal_hints
             .get("shell")
-            .is_some_and(|s| s == "改用 codex --no-daemon 才能跟踪")
+            .is_some_and(|s| s == "未关联：看对话内容请用 codex --no-daemon")
         {
             break;
         }
@@ -1636,4 +1637,267 @@ fn socket_publication_waits_for_initialization_then_first_rpc_succeeds() {
         h.call(Request::Workspace).unwrap(),
         Reply::Workspace(_)
     ));
+}
+
+// Shared-daemon Codex stand-in: the TUI paints prompts (and a title) on its own PTY while
+// each thread's log is written and closed elsewhere, as by the daemon: no argv ID, no open file.
+struct DaemonStep {
+    gate: Option<PathBuf>,
+    prompt: String,
+    thread: String,
+}
+fn daemon_codex(h: &Host, pane: &str, title: &str, steps: &[DaemonStep], extra: &str) {
+    let logs = h.root.join("logs/codex");
+    fs::create_dir_all(&logs).unwrap();
+    let cli = h.root.join("codex");
+    if !cli.exists() {
+        std::os::unix::fs::symlink("/bin/sh", &cli).unwrap();
+    }
+    let q = |p: &std::path::Path| shell_quote(&p.to_string_lossy());
+    let mut script = format!("printf '\\033]0;%s\\007' {}; ", shell_quote(title));
+    for (i, step) in steps.iter().enumerate() {
+        let at = keepline_core::content::now();
+        let log = logs.join(format!("{}.jsonl", step.thread));
+        let mut seed = String::new();
+        if !log.exists() && !steps[..i].iter().any(|s| s.thread == step.thread) {
+            seed.push_str(&format!(
+                "{}\n",
+                serde_json::json!({"type":"session_meta","payload":{"id":step.thread,"cwd":"/tmp"}})
+            ));
+        }
+        seed.push_str(&format!(
+            "{}\n{}\n",
+            serde_json::json!({"timestamp":at,"type":"event_msg","payload":{"type":"task_started","turn_id":format!("{pane}-{i}")}}),
+            serde_json::json!({"timestamp":at,"type":"event_msg","payload":{"type":"user_message","message":step.prompt}})
+        ));
+        let seed_path = h.root.join(format!("{pane}-seed-{i}"));
+        let prompt_path = h.root.join(format!("{pane}-prompt-{i}"));
+        fs::write(&seed_path, seed).unwrap();
+        fs::write(&prompt_path, &step.prompt).unwrap();
+        if let Some(gate) = &step.gate {
+            script.push_str(&format!(
+                "while [ ! -e {} ]; do sleep 0.02; done; ",
+                q(gate)
+            ));
+        }
+        script.push_str(&format!(
+            "printf '› '; cat {}; printf '\\n'; cat {} >> {}; ",
+            q(&prompt_path),
+            q(&seed_path),
+            q(&log)
+        ));
+    }
+    script.push_str("while read -r line; do :; done");
+    h.call(h.launch(
+        pane,
+        &format!("exec {} {} -c {}", q(&cli), extra, shell_quote(&script)),
+    ))
+    .unwrap();
+}
+fn step(prompt: &str, thread: &str, gate: Option<&PathBuf>) -> DaemonStep {
+    DaemonStep {
+        gate: gate.cloned(),
+        prompt: prompt.into(),
+        thread: thread.into(),
+    }
+}
+fn wait_for(h: &Host, what: &str, ok: impl Fn(&Workspace) -> bool) {
+    let until = Instant::now() + Duration::from_secs(20);
+    while !ok(&h.workspace()) {
+        assert!(Instant::now() < until, "{what}");
+        std::thread::sleep(Duration::from_millis(50));
+    }
+}
+fn current_is(w: &Workspace, pane: &str, thread: &str) -> bool {
+    w.current_agent(pane)
+        .is_some_and(|s| s.cli_session_id == thread)
+}
+fn ids<const N: usize>() -> [String; N] {
+    std::array::from_fn(|_| uuid::Uuid::new_v4().to_string())
+}
+
+#[test]
+fn daemon_codex_same_cwd_panes_bind_to_their_own_screen_and_exit_clears_current() {
+    let h = Host::start();
+    h.setup();
+    let [a, b] = ids();
+    daemon_codex(
+        &h,
+        "p0",
+        "proj",
+        &[step("请检查登录页跳转逻辑并修复回归问题", &a, None)],
+        "",
+    );
+    daemon_codex(
+        &h,
+        "p1",
+        "proj",
+        &[step("给设置页补上深色模式的截图测试用例", &b, None)],
+        "",
+    );
+    wait_for(
+        &h,
+        "each same-cwd thread binds to the pane showing its prompt",
+        |w| current_is(w, "p0", &a) && current_is(w, "p1", &b),
+    );
+    assert!(recognition(&h).terminal_hints.is_empty());
+    h.call(Request::Stop { id: "p0".into() }).unwrap();
+    wait_for(&h, "a screen-bound Codex exit clears current", |w| {
+        w.current_agent("p0").is_none() && current_is(w, "p1", &b)
+    });
+}
+
+#[test]
+fn daemon_codex_threads_started_in_the_same_millisecond_bind_correctly() {
+    let h = Host::start();
+    h.setup();
+    let gate = h.root.join("go");
+    let [a, b] = ids();
+    daemon_codex(
+        &h,
+        "p0",
+        "proj",
+        &[step(
+            "同一时刻启动的第一个线程：整理发布说明",
+            &a,
+            Some(&gate),
+        )],
+        "",
+    );
+    daemon_codex(
+        &h,
+        "p1",
+        "proj",
+        &[step(
+            "同一时刻启动的第二个线程：修复构建脚本",
+            &b,
+            Some(&gate),
+        )],
+        "",
+    );
+    wait_for(&h, "both panes running before the shared start", |w| {
+        w.terminals
+            .iter()
+            .filter(|t| t.state == ProcessState::Running)
+            .count()
+            == 2
+    });
+    fs::write(&gate, "").unwrap();
+    wait_for(&h, "simultaneous threads bind to their own panes", |w| {
+        current_is(w, "p0", &a) && current_is(w, "p1", &b)
+    });
+}
+
+#[test]
+fn daemon_codex_new_hands_the_pane_to_the_newer_thread_only() {
+    let h = Host::start();
+    h.setup();
+    let gate = h.root.join("new");
+    let [old, new] = ids();
+    daemon_codex(
+        &h,
+        "p0",
+        "proj",
+        &[
+            step("先排查通知点击后没有跳转的原因", &old, None),
+            step("新会话：把通知投递日志整理成证据表格", &new, Some(&gate)),
+        ],
+        "",
+    );
+    // An idle Codex in the same cwd never received a prompt and must not take the /new thread.
+    daemon_codex(&h, "idle", "proj", &[], "");
+    wait_for(&h, "first thread binds", |w| current_is(w, "p0", &old));
+    fs::write(&gate, "").unwrap();
+    wait_for(&h, "/new thread takes over its own pane", |w| {
+        current_is(w, "p0", &new)
+            && w.agent_sessions
+                .iter()
+                .any(|s| s.cli_session_id == old && !s.current)
+    });
+    assert!(h.workspace().current_agent("idle").is_none());
+}
+
+#[test]
+fn daemon_codex_identical_prompts_stay_unbound_until_a_distinct_follow_up() {
+    let h = Host::start();
+    h.setup();
+    let gate = h.root.join("follow");
+    let [a, b] = ids();
+    let same = "请对比两个模型对这段代码的重构建议";
+    daemon_codex(
+        &h,
+        "p0",
+        "proj",
+        &[
+            step(same, &a, None),
+            step("第一个窗格的追问：只保留性能相关建议", &a, Some(&gate)),
+        ],
+        "",
+    );
+    daemon_codex(
+        &h,
+        "p1",
+        "proj",
+        &[
+            step(same, &b, None),
+            step("第二个窗格的追问：只保留可读性相关建议", &b, Some(&gate)),
+        ],
+        "",
+    );
+    wait_for(&h, "both identical threads are indexed", |w| {
+        [&a, &b]
+            .iter()
+            .all(|id| w.agent_sessions.iter().any(|s| &s.cli_session_id == *id))
+    });
+    std::thread::sleep(Duration::from_secs(2));
+    let w = h.workspace();
+    assert!(
+        w.current_agent("p0").is_none() && w.current_agent("p1").is_none(),
+        "identical prompts must not bind"
+    );
+    fs::write(&gate, "").unwrap();
+    wait_for(
+        &h,
+        "distinct follow-ups bind each thread to its own pane",
+        |w| current_is(w, "p0", &a) && current_is(w, "p1", &b),
+    );
+}
+
+#[test]
+fn unbound_daemon_codex_shows_title_state_and_no_daemon_shows_nothing() {
+    let h = Host::start();
+    h.setup();
+    daemon_codex(&h, "busy", "⠋ proj", &[], "");
+    daemon_codex(&h, "plain", "⠋ proj", &[], "--no-daemon");
+    // Hints are computed after a submitted command; the fixture has none, so probe via input.
+    for pane in ["busy", "plain"] {
+        let (mut stream, _, _) = h.attach(pane, false);
+        send(
+            &mut stream,
+            CONTROL,
+            &Request::Input {
+                bytes: b"\n".to_vec(),
+            },
+        )
+        .unwrap();
+        assert!(matches!(ack(&mut stream), Reply::Ok));
+    }
+    let until = Instant::now() + Duration::from_secs(10);
+    loop {
+        if recognition(&h)
+            .terminal_hints
+            .get("busy")
+            .map(String::as_str)
+            == Some("仅显示状态：工作中；看对话内容请用 codex --no-daemon")
+        {
+            break;
+        }
+        assert!(
+            Instant::now() < until,
+            "{:?}",
+            recognition(&h).terminal_hints
+        );
+        std::thread::sleep(Duration::from_millis(25));
+    }
+    assert!(!recognition(&h).terminal_hints.contains_key("plain"));
 }

@@ -23,6 +23,8 @@ pub struct Process {
     pub parent: u32,
     pub runtime: Option<Agent>,
     pub cli_session_id: Option<String>,
+    /// Codex started with `--no-daemon`: its own process opens the log, so lsof will bind it.
+    pub no_daemon: bool,
 }
 #[derive(Clone, Debug)]
 pub struct Transcript {
@@ -144,6 +146,71 @@ fn claude_session_id(args: &[String]) -> Option<String> {
     }
     found
 }
+// Codex options that consume the next argv element; anything else positional ends option parsing.
+const CODEX_VALUE_FLAGS: &[&str] = &[
+    "-c",
+    "--config",
+    "-m",
+    "--model",
+    "-p",
+    "--profile",
+    "-s",
+    "--sandbox",
+    "-a",
+    "--ask-for-approval",
+    "-C",
+    "--cd",
+    "-i",
+    "--image",
+    "--add-dir",
+    "--enable",
+    "--disable",
+    "--remote",
+    "--remote-auth-token-env",
+    "--local-provider",
+];
+/// `codex [opts] resume <uuid>` names its thread exactly, with or without the shared daemon.
+/// `--last`, thread names, `fork` and prompts are not identity evidence.
+fn codex_args(args: &[String]) -> (Option<String>, bool) {
+    let no_daemon = args
+        .iter()
+        .skip(1)
+        .take_while(|a| *a != "--")
+        .any(|a| a == "--no-daemon");
+    let mut args = args.iter().skip(1);
+    while let Some(arg) = args.next() {
+        if arg == "--" {
+            break;
+        }
+        if CODEX_VALUE_FLAGS.contains(&arg.as_str()) {
+            args.next();
+            continue;
+        }
+        if arg.starts_with('-') {
+            continue;
+        }
+        if arg != "resume" {
+            break;
+        }
+        let mut found = None;
+        while let Some(arg) = args.next() {
+            if arg == "--last" {
+                return (None, no_daemon);
+            }
+            if CODEX_VALUE_FLAGS.contains(&arg.as_str()) {
+                args.next();
+            } else if arg == "--" || !arg.starts_with('-') {
+                let id = if arg == "--" { args.next() } else { Some(arg) };
+                found = id
+                    .and_then(|id| uuid::Uuid::parse_str(id).ok())
+                    .map(|id| id.to_string());
+                break;
+            }
+        }
+        return (found, no_daemon);
+    }
+    (None, no_daemon)
+}
 /// Enumerate only the trees rooted at live PTYs. No global ps or process-name scan.
 pub fn processes(workspace: &Workspace) -> io::Result<Vec<Process>> {
     let mut pending: Vec<_> = workspace
@@ -221,18 +288,22 @@ pub fn processes(workspace: &Workspace) -> io::Result<Vec<Process>> {
             continue;
         };
         let runtime = runtime_from_command(fields.next().unwrap_or("").trim_start());
-        let cli_session_id = if runtime == Some(Agent::Claude) {
-            process_argv(pid)
-                .ok()
-                .and_then(|args| claude_session_id(&args))
+        let args = if runtime.is_some() {
+            process_argv(pid).unwrap_or_default()
         } else {
-            None
+            vec![]
+        };
+        let (cli_session_id, no_daemon) = match runtime {
+            Some(Agent::Claude) => (claude_session_id(&args), false),
+            Some(Agent::Codex) => codex_args(&args),
+            None => (None, false),
         };
         processes.push(Process {
             pid,
             parent,
             runtime,
             cli_session_id,
+            no_daemon,
         });
     }
     Ok(processes)
@@ -345,14 +416,19 @@ pub fn reconcile(
             .filter(|t| {
                 Some(t.runtime) == process.runtime
                     && match &process.cli_session_id {
-                        Some(id) if process.runtime == Some(Agent::Claude) => id == &t.cli_id,
+                        Some(id) => id == &t.cli_id,
                         _ => open_files
                             .get(&process.pid)
                             .is_some_and(|paths| paths.contains(&t.path)),
                     }
             })
             .collect();
-        if matching.len() == 1 {
+        // A node wrapper and its native Codex child carry the same argv: one binding, not two.
+        if matching.len() == 1
+            && !bindings.iter().any(|(id, t): &(String, &Transcript)| {
+                id == &terminal && t.path == matching[0].path
+            })
+        {
             bindings.push((terminal, matching[0]));
         }
     }
@@ -371,6 +447,81 @@ pub fn reconcile(
             .map_err(io::Error::other)?;
     }
     Ok(())
+}
+/// Shared-daemon Codex has no process or file evidence. The only identity left is the
+/// thread's newest prompt shown verbatim on one managed screen. Short prompts are refused:
+/// "继续" or "ok" appear everywhere.
+pub fn screen_key(prompt: &str) -> Option<String> {
+    let key: String = prompt
+        .chars()
+        .filter(|c| !c.is_whitespace())
+        .take(160)
+        .collect();
+    (key.chars().count() >= 12).then_some(key)
+}
+pub fn screen_text(text: &str) -> String {
+    text.chars().filter(|c| !c.is_whitespace()).collect()
+}
+pub struct ScreenThread<'a> {
+    pub transcript: &'a Transcript,
+    pub key: String,
+    /// The log's cwd with symlinks resolved, comparable with the kernel's process cwd.
+    pub cwd: String,
+}
+pub struct ScreenTerminal {
+    pub terminal: String,
+    pub cwd: Option<String>,
+    /// Whitespace-free tail of this terminal's own screen.
+    pub screen: String,
+    /// The Codex thread this TUI showed before (`/new` hands the pane to a newer thread).
+    pub current: Option<(String, u64, Option<String>)>,
+}
+/// Pair threads with terminals one-to-one. A thread showing on two screens, or a screen
+/// showing two threads, binds nothing; the next distinct prompt can settle it.
+pub fn screen_bindings<'a>(
+    threads: &[ScreenThread<'a>],
+    terminals: &[ScreenTerminal],
+) -> Vec<(String, &'a Transcript)> {
+    let fits = |thread: &ScreenThread, terminal: &ScreenTerminal| {
+        terminal.cwd.as_ref().is_none_or(|cwd| cwd == &thread.cwd)
+            && terminal.screen.contains(&thread.key)
+            && terminal.current.as_ref().is_none_or(|(id, updated, key)| {
+                id != &thread.transcript.cli_id
+                    && thread.transcript.updated >= *updated
+                    && key.as_ref() != Some(&thread.key)
+            })
+    };
+    let mut out = vec![];
+    for thread in threads {
+        let mut matched = terminals.iter().filter(|t| fits(thread, t));
+        let (Some(terminal), None) = (matched.next(), matched.next()) else {
+            continue;
+        };
+        if threads.iter().filter(|other| fits(other, terminal)).count() == 1 {
+            out.push((terminal.terminal.clone(), thread.transcript));
+        }
+    }
+    out
+}
+pub fn process_cwd(pid: u32) -> Option<String> {
+    let mut info = std::mem::MaybeUninit::<libc::proc_vnodepathinfo>::zeroed();
+    let size = std::mem::size_of::<libc::proc_vnodepathinfo>() as i32;
+    // SAFETY: the kernel writes at most `size` bytes into the zeroed buffer.
+    let n = unsafe {
+        libc::proc_pidinfo(
+            pid as i32,
+            libc::PROC_PIDVNODEPATHINFO,
+            0,
+            info.as_mut_ptr().cast(),
+            size,
+        )
+    };
+    if n != size {
+        return None;
+    }
+    let info = unsafe { info.assume_init() };
+    let path = unsafe { std::ffi::CStr::from_ptr(info.pvi_cdir.vip_path.as_ptr().cast()) };
+    Some(path.to_string_lossy().into_owned()).filter(|p| !p.is_empty())
 }
 pub fn open_transcripts(
     workspace: &Workspace,
@@ -458,6 +609,163 @@ mod tests {
     }
 
     #[test]
+    fn codex_resume_uuid_is_exact_and_everything_else_is_not_identity() {
+        let id = uuid::Uuid::new_v4().to_string();
+        let v = |a: &[&str]| a.iter().map(|s| s.to_string()).collect::<Vec<_>>();
+        for args in [
+            v(&["codex", "resume", &id]),
+            v(&["codex", "--no-daemon", "resume", &id, "继续"]),
+            v(&["codex", "-m", "gpt", "resume", "-c", "a=1", &id]),
+            v(&[
+                "codex",
+                "--dangerously-bypass-approvals-and-sandbox",
+                "resume",
+                "--",
+                &id,
+            ]),
+        ] {
+            assert_eq!(codex_args(&args).0, Some(id.clone()), "{args:?}");
+        }
+        for args in [
+            v(&["codex"]),
+            v(&["codex", &format!("resume {id}")]),
+            v(&["codex", "fix", "resume", &id]),
+            v(&["codex", "fork", &id]),
+            v(&["codex", "resume", "--last"]),
+            v(&["codex", "resume", "my thread name"]),
+            v(&["codex", "-m", "resume", &id]),
+        ] {
+            assert_eq!(codex_args(&args).0, None, "{args:?}");
+        }
+        assert!(codex_args(&v(&["codex", "--no-daemon"])).1);
+        assert!(!codex_args(&v(&["codex", "--", "--no-daemon"])).1);
+    }
+
+    /// (current thread id, its last update, its newest prompt)
+    type Current<'a> = Option<(&'a str, u64, &'a str)>;
+    fn screen_case(prompts: &[(&str, u64)], screens: &[(&str, Current)]) -> Vec<(String, String)> {
+        let transcripts: Vec<_> = prompts
+            .iter()
+            .enumerate()
+            .map(|(i, (_, updated))| Transcript {
+                runtime: Agent::Codex,
+                cli_id: format!("t{i}"),
+                path: format!("/logs/t{i}.jsonl"),
+                cwd: "/same".into(),
+                updated: *updated,
+            })
+            .collect();
+        let threads: Vec<_> = transcripts
+            .iter()
+            .zip(prompts)
+            .filter_map(|(transcript, (prompt, _))| {
+                Some(ScreenThread {
+                    transcript,
+                    key: screen_key(prompt)?,
+                    cwd: "/same".into(),
+                })
+            })
+            .collect();
+        let terminals: Vec<_> = screens
+            .iter()
+            .enumerate()
+            .map(|(i, (screen, current))| ScreenTerminal {
+                terminal: format!("pty-{i}"),
+                cwd: Some("/same".into()),
+                screen: screen_text(screen),
+                current: current.map(|(id, at, prompt)| (id.into(), at, screen_key(prompt))),
+            })
+            .collect();
+        screen_bindings(&threads, &terminals)
+            .into_iter()
+            .map(|(terminal, t)| (terminal, t.cli_id.clone()))
+            .collect()
+    }
+
+    #[test]
+    fn screen_prompt_binds_one_to_one_and_refuses_everything_ambiguous() {
+        let a = "请检查登录页的跳转逻辑并修复回归";
+        let b = "给设置页补上深色模式的截图测试";
+        // Same cwd, wrapped differently on screen: each thread finds only its own pane.
+        assert_eq!(
+            screen_case(
+                &[(a, 1), (b, 1)],
+                &[
+                    ("› 请检查登录页的跳转逻辑\n  并修复回归\n", None),
+                    (format!("› {b}").as_str(), None)
+                ]
+            ),
+            vec![("pty-0".into(), "t0".into()), ("pty-1".into(), "t1".into())]
+        );
+        // Identical prompts on two panes bind neither.
+        assert!(screen_case(&[(a, 1), (a, 1)], &[(a, None), (a, None)]).is_empty());
+        // One thread visible on two panes, or a pane showing two threads: nothing.
+        assert!(screen_case(&[(a, 1)], &[(a, None), (a, None)]).is_empty());
+        assert!(screen_case(&[(a, 1), (b, 1)], &[(format!("{a}\n{b}").as_str(), None)]).is_empty());
+        // Short prompts are never evidence.
+        assert!(screen_case(&[("继续", 1)], &[("继续", None)]).is_empty());
+        // /new: a newer thread takes its pane; an older one never does.
+        assert_eq!(
+            screen_case(
+                &[(b, 5)],
+                &[(format!("{a}\n{b}").as_str(), Some(("old", 4, a)))]
+            ),
+            vec![("pty-0".into(), "t0".into())]
+        );
+        assert!(screen_case(&[(b, 3)], &[(b, Some(("old", 4, a)))]).is_empty());
+        // The pane's current thread already has this prompt: the screen cannot tell them apart.
+        assert!(screen_case(&[(a, 5)], &[(a, Some(("old", 4, a)))]).is_empty());
+    }
+
+    #[test]
+    fn process_cwd_reads_the_kernel_directory() {
+        assert_eq!(
+            process_cwd(std::process::id()).map(PathBuf::from),
+            std::env::current_dir().ok()
+        );
+    }
+
+    #[test]
+    fn codex_wrapper_and_native_child_with_one_resume_id_bind_once() {
+        let mut w = Workspace::default();
+        w.terminals.push(Terminal {
+            id: "pty".into(),
+            space: "s".into(),
+            argv: vec!["sh".into()],
+            cwd: "/same".into(),
+            pid: Some(100),
+            state: ProcessState::Running,
+            exit_code: None,
+            error: None,
+        });
+        let id = uuid::Uuid::new_v4().to_string();
+        let process = |pid, parent| Process {
+            pid,
+            parent,
+            runtime: Some(Agent::Codex),
+            cli_session_id: Some(id.clone()),
+            no_daemon: false,
+        };
+        let shell = Process {
+            pid: 100,
+            parent: 1,
+            runtime: None,
+            cli_session_id: None,
+            no_daemon: false,
+        };
+        let processes = vec![shell, process(101, 100), process(102, 101)];
+        let transcripts = vec![Transcript {
+            runtime: Agent::Codex,
+            cli_id: id.clone(),
+            path: "/logs/x.jsonl".into(),
+            cwd: "/same".into(),
+            updated: 1,
+        }];
+        reconcile(&mut w, &transcripts, &processes, &HashMap::new()).unwrap();
+        assert_eq!(w.current_agent("pty").unwrap().cli_session_id, id);
+    }
+
+    #[test]
     fn explicit_ids_disambiguate_same_cwd_without_open_files() {
         let mut w = Workspace::default();
         let mut processes = vec![];
@@ -479,6 +787,7 @@ mod tests {
                 parent: 1,
                 runtime: Some(Agent::Claude),
                 cli_session_id: (i < 2).then(|| id.clone()),
+                no_daemon: false,
             });
             transcripts.push(Transcript {
                 runtime: Agent::Claude,
@@ -550,12 +859,14 @@ mod tests {
                 parent: 1,
                 runtime: None,
                 cli_session_id: None,
+                no_daemon: false,
             },
             Process {
                 pid: 101,
                 parent: 100,
                 runtime: Some(Agent::Codex),
                 cli_session_id: None,
+                no_daemon: false,
             },
         ];
         reconcile(&mut workspace, &transcripts, &processes, &HashMap::new()).unwrap();

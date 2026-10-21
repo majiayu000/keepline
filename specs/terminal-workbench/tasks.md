@@ -236,3 +236,5 @@ flowchart LR
 
 - [x] R12：原生通知审计、系统投递与重复事实去重；查明 display shared 抑制（evidence/r12-20261021）。
 - [ ] R12 / A09：重发后用户可见与真实点击直达仍待确认，不以系统 Presenting 日志代替。
+- [x] R14：共享守护进程 Codex 三层关联（resume 参数 / 屏幕原话一一对应 / 标题状态兜底）；同目录、同毫秒、/new、相同提示四个场景模拟集成零误绑定，反向检查能抓到误绑定（evidence/daemon-association-research-20261021.md）。
+- [ ] R14 真实 CLI：官方 Codex 0.163 默认守护模式下手动输入的四个场景，未用模型额度前不勾选。
