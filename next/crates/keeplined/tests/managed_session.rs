@@ -1639,8 +1639,9 @@ fn socket_publication_waits_for_initialization_then_first_rpc_succeeds() {
     ));
 }
 
-// Shared-daemon Codex stand-in: the TUI paints prompts (and a title) on its own PTY while
-// each thread's log is written and closed elsewhere, as by the daemon: no argv ID, no open file.
+// Shared-daemon Codex stand-in: the TUI paints prompts (and a title) on its own PTY while a
+// separate process keeps each thread's log open for appends, as the real daemon does. No argv
+// ID and no open log in the Codex process itself.
 struct DaemonStep {
     gate: Option<PathBuf>,
     prompt: String,
@@ -1655,24 +1656,54 @@ fn daemon_codex(h: &Host, pane: &str, title: &str, steps: &[DaemonStep], extra: 
     }
     let q = |p: &std::path::Path| shell_quote(&p.to_string_lossy());
     let mut script = format!("printf '\\033]0;%s\\007' {}; ", shell_quote(title));
+    let mut threads: Vec<&str> = vec![];
+    for step in steps {
+        if !threads.contains(&step.thread.as_str()) {
+            threads.push(&step.thread);
+        }
+    }
+    // Like the real daemon: each thread's log is created at TUI start with only its header,
+    // held open by a separate non-Agent process, and prompts are appended later.
+    for (j, thread) in threads.iter().enumerate() {
+        let fifo = h.root.join(format!("{pane}-fifo-{j}"));
+        assert!(std::process::Command::new("/usr/bin/mkfifo")
+            .arg(&fifo)
+            .status()
+            .unwrap()
+            .success());
+        let meta = h.root.join(format!("{pane}-meta-{j}"));
+        fs::write(
+            &meta,
+            format!(
+                "{}\n",
+                serde_json::json!({"type":"session_meta","payload":{"id":thread,"cwd":"/tmp"}})
+            ),
+        )
+        .unwrap();
+        script.push_str(&format!(
+            "/bin/cat < {} >> {} & exec {}> {}; cat {} >&{}; ",
+            q(&fifo),
+            q(&logs.join(format!("{thread}.jsonl"))),
+            3 + j,
+            q(&fifo),
+            q(&meta),
+            3 + j
+        ));
+    }
+    script.push_str("sleep 1.5; ");
     for (i, step) in steps.iter().enumerate() {
         let at = keepline_core::content::now();
-        let log = logs.join(format!("{}.jsonl", step.thread));
-        let mut seed = String::new();
-        if !log.exists() && !steps[..i].iter().any(|s| s.thread == step.thread) {
-            seed.push_str(&format!(
-                "{}\n",
-                serde_json::json!({"type":"session_meta","payload":{"id":step.thread,"cwd":"/tmp"}})
-            ));
-        }
-        seed.push_str(&format!(
-            "{}\n{}\n",
-            serde_json::json!({"timestamp":at,"type":"event_msg","payload":{"type":"task_started","turn_id":format!("{pane}-{i}")}}),
-            serde_json::json!({"timestamp":at,"type":"event_msg","payload":{"type":"user_message","message":step.prompt}})
-        ));
         let seed_path = h.root.join(format!("{pane}-seed-{i}"));
         let prompt_path = h.root.join(format!("{pane}-prompt-{i}"));
-        fs::write(&seed_path, seed).unwrap();
+        fs::write(
+            &seed_path,
+            format!(
+                "{}\n{}\n",
+                serde_json::json!({"timestamp":at,"type":"event_msg","payload":{"type":"task_started","turn_id":format!("{pane}-{i}")}}),
+                serde_json::json!({"timestamp":at,"type":"event_msg","payload":{"type":"user_message","message":step.prompt}})
+            ),
+        )
+        .unwrap();
         fs::write(&prompt_path, &step.prompt).unwrap();
         if let Some(gate) = &step.gate {
             script.push_str(&format!(
@@ -1680,11 +1711,11 @@ fn daemon_codex(h: &Host, pane: &str, title: &str, steps: &[DaemonStep], extra: 
                 q(gate)
             ));
         }
+        let fd = 3 + threads.iter().position(|t| *t == step.thread).unwrap();
         script.push_str(&format!(
-            "printf '› '; cat {}; printf '\\n'; cat {} >> {}; ",
+            "printf '› '; cat {}; printf '\\n'; cat {} >&{fd}; ",
             q(&prompt_path),
-            q(&seed_path),
-            q(&log)
+            q(&seed_path)
         ));
     }
     script.push_str("while read -r line; do :; done");

@@ -879,13 +879,48 @@ fn follow_associated(
     association: &mut Association,
     watch: &crate::file_events::Watch,
 ) -> io::Result<()> {
-    let associated = lock(shared)?
-        .workspace
-        .agent_sessions
-        .iter()
-        .filter(|s| s.current)
-        .map(|s| std::path::PathBuf::from(&s.transcript))
-        .collect::<Vec<_>>();
+    let (mut associated, unbound) = {
+        let host = lock(shared)?;
+        let associated = host
+            .workspace
+            .agent_sessions
+            .iter()
+            .filter(|s| s.current)
+            .map(|s| std::path::PathBuf::from(&s.transcript))
+            .collect::<Vec<_>>();
+        (
+            associated,
+            host.unbound_pids.keys().copied().collect::<Vec<_>>(),
+        )
+    };
+    // The shared Codex daemon keeps an unbound thread's log open, so FSEvents would hold its
+    // prompt back until exit and screen association would never see it. While a managed
+    // Codex is unbound, also follow recent unassociated Codex logs from that pane's cwd.
+    if !unbound.is_empty() {
+        let cwds: Vec<_> = unbound
+            .iter()
+            .filter_map(|pid| crate::recognition::process_cwd(*pid))
+            .collect();
+        let window = keepline_core::content::now().saturating_sub(600);
+        let mut candidates: Vec<_> = index
+            .cached()?
+            .into_iter()
+            .filter(|t| {
+                t.runtime == Agent::Codex
+                    && t.updated >= window
+                    && !associated.iter().any(|p| p.as_os_str() == t.path.as_str())
+                    && fs::canonicalize(&t.cwd)
+                        .is_ok_and(|c| cwds.iter().any(|cwd| c.as_os_str() == cwd.as_str()))
+            })
+            .collect();
+        candidates.sort_by_key(|t| std::cmp::Reverse(t.updated));
+        associated.extend(
+            candidates
+                .into_iter()
+                .take(16)
+                .map(|t| std::path::PathBuf::from(t.path)),
+        );
+    }
     // Register first, then close the read/register race using the existing cursor.
     for path in watch.follow(&associated)? {
         if let Some(runtime) = index.runtime(&path) {
