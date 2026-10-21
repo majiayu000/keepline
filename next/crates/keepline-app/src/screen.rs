@@ -154,142 +154,153 @@ pub struct Capture {
 }
 impl Capture {
     pub fn new() -> Result<Self, libghostty_vt::Error> {
-        Ok(Self { state: RenderState::new()?, rows: RowIterator::new()?,
-            cells: CellIterator::new()?, dimensions: (0, 0), colors: None, defaults: None })
+        Ok(Self {
+            state: RenderState::new()?,
+            rows: RowIterator::new()?,
+            cells: CellIterator::new()?,
+            dimensions: (0, 0),
+            colors: None,
+            defaults: None,
+        })
     }
     pub fn update(&mut self, vt: &Vt, out: &mut Screen) -> Result<usize, libghostty_vt::Error> {
-    let snap = self.state.update(vt.terminal())?;
-    let dimensions = (snap.cols()?, snap.rows()?);
-    let colors = snap.colors()?;
-    let mut full = self.colors.as_ref() != Some(&colors) || self.dimensions != dimensions
-        || snap.dirty()? == libghostty_vt::render::Dirty::Full;
-    self.dimensions = dimensions;
-    let mut changed = 0;
-    // Only the unset defaults come from the UI theme; OSC and explicit ANSI colors survive.
-    let def_fg = vt
-        .terminal()
-        .fg_color()?
-        .map(|c| rgb(c.r, c.g, c.b))
-        .unwrap_or(DEFAULT_FG);
-    let def_bg = vt.terminal().bg_color()?.map(|c| rgb(c.r, c.g, c.b)).unwrap_or(DEFAULT_BG);
-    full |= self.defaults != Some((def_fg, def_bg));
-    self.defaults = Some((def_fg, def_bg));
-    self.colors = Some(colors.clone());
-    let palette = colors.palette;
-    let mut rows = self.rows.update(&snap)?;
-    let mut y = 0usize;
-    let mut text = String::new();
-    while let Some(row) = rows.next() {
-        if out.rows.len() <= y {
-            out.rows.push(Vec::new());
-        }
-        if !full && !row.dirty()? {
-            y += 1;
-            continue;
-        }
-        changed += 1;
-        out.links.retain(|link| link.row != y as u16);
-        let mut b = RowBuilder::new(&mut out.rows[y]);
-        let mut cells = self.cells.update(row)?;
-        let mut x = 0u16;
-        while let Some(cell) = cells.next() {
-            let raw = cell.raw_cell()?;
-            let wide = raw.wide()?;
-            if matches!(wide, CellWide::SpacerTail | CellWide::SpacerHead) {
-                x += 1;
+        let snap = self.state.update(vt.terminal())?;
+        let dimensions = (snap.cols()?, snap.rows()?);
+        let colors = snap.colors()?;
+        let mut full = self.colors.as_ref() != Some(&colors)
+            || self.dimensions != dimensions
+            || snap.dirty()? == libghostty_vt::render::Dirty::Full;
+        self.dimensions = dimensions;
+        let mut changed = 0;
+        // Only the unset defaults come from the UI theme; OSC and explicit ANSI colors survive.
+        let def_fg = vt
+            .terminal()
+            .fg_color()?
+            .map(|c| rgb(c.r, c.g, c.b))
+            .unwrap_or(DEFAULT_FG);
+        let def_bg = vt
+            .terminal()
+            .bg_color()?
+            .map(|c| rgb(c.r, c.g, c.b))
+            .unwrap_or(DEFAULT_BG);
+        full |= self.defaults != Some((def_fg, def_bg));
+        self.defaults = Some((def_fg, def_bg));
+        self.colors = Some(colors.clone());
+        let palette = colors.palette;
+        let mut rows = self.rows.update(&snap)?;
+        let mut y = 0usize;
+        let mut text = String::new();
+        while let Some(row) = rows.next() {
+            if out.rows.len() <= y {
+                out.rows.push(Vec::new());
+            }
+            if !full && !row.dirty()? {
+                y += 1;
                 continue;
             }
-            text.clear();
-            if cell.graphemes_len()? == 0 {
-                text.push(' ');
-            } else {
-                cell.graphemes_utf8(&mut text)?;
-            }
-            let mut fg = cell
-                .fg_color()?
-                .map(|c| rgb(c.r, c.g, c.b))
-                .unwrap_or(def_fg);
-            let mut bg = cell.bg_color()?.map(|c| rgb(c.r, c.g, c.b));
-            let mut attrs = Attrs::default();
-            if cell.has_styling()? {
-                let st = cell.style()?;
-                if st.inverse {
-                    let old = fg;
-                    fg = bg.unwrap_or(def_bg);
-                    bg = Some(old);
+            changed += 1;
+            out.links.retain(|link| link.row != y as u16);
+            let mut b = RowBuilder::new(&mut out.rows[y]);
+            let mut cells = self.cells.update(row)?;
+            let mut x = 0u16;
+            while let Some(cell) = cells.next() {
+                let raw = cell.raw_cell()?;
+                let wide = raw.wide()?;
+                if matches!(wide, CellWide::SpacerTail | CellWide::SpacerHead) {
+                    x += 1;
+                    continue;
                 }
-                attrs = Attrs {
-                    bold: st.bold,
-                    italic: st.italic,
-                    faint: st.faint,
-                    invisible: st.invisible,
-                    strikethrough: st.strikethrough,
-                    overline: st.overline,
-                    underline: match st.underline {
-                        SgrUnderline::Single => Underline::Single,
-                        SgrUnderline::Double => Underline::Double,
-                        SgrUnderline::Curly => Underline::Curly,
-                        SgrUnderline::Dotted => Underline::Dotted,
-                        SgrUnderline::Dashed => Underline::Dashed,
-                        _ => Underline::None,
-                    },
-                    underline_color: match st.underline_color {
-                        StyleColor::None => None,
-                        StyleColor::Palette(i) => {
-                            let c = palette[i.0 as usize];
-                            Some(rgb(c.r, c.g, c.b))
-                        }
-                        StyleColor::Rgb(c) => Some(rgb(c.r, c.g, c.b)),
-                    },
-                };
-            }
-            let width = if matches!(wide, CellWide::Wide) { 2 } else { 1 };
-            if raw.has_hyperlink()? {
-                let grid = vt
-                    .terminal()
-                    .grid_ref(libghostty_vt::terminal::Point::Viewport(
-                        libghostty_vt::terminal::PointCoordinate { x, y: y as u32 },
-                    ))?;
-                let mut uri = vec![0; 8192];
-                if let Ok(n) = grid.hyperlink_uri(&mut uri) {
-                    if let Ok(uri) = std::str::from_utf8(&uri[..n]) {
-                        if allowed_link(uri) {
-                            out.links.push(Link {
-                                row: y as u16,
-                                col: x,
-                                cols: width,
-                                uri: uri.into(),
-                            });
-                        }
+                text.clear();
+                if cell.graphemes_len()? == 0 {
+                    text.push(' ');
+                } else {
+                    cell.graphemes_utf8(&mut text)?;
+                }
+                let mut fg = cell
+                    .fg_color()?
+                    .map(|c| rgb(c.r, c.g, c.b))
+                    .unwrap_or(def_fg);
+                let mut bg = cell.bg_color()?.map(|c| rgb(c.r, c.g, c.b));
+                let mut attrs = Attrs::default();
+                if cell.has_styling()? {
+                    let st = cell.style()?;
+                    if st.inverse {
+                        let old = fg;
+                        fg = bg.unwrap_or(def_bg);
+                        bg = Some(old);
+                    }
+                    attrs = Attrs {
+                        bold: st.bold,
+                        italic: st.italic,
+                        faint: st.faint,
+                        invisible: st.invisible,
+                        strikethrough: st.strikethrough,
+                        overline: st.overline,
+                        underline: match st.underline {
+                            SgrUnderline::Single => Underline::Single,
+                            SgrUnderline::Double => Underline::Double,
+                            SgrUnderline::Curly => Underline::Curly,
+                            SgrUnderline::Dotted => Underline::Dotted,
+                            SgrUnderline::Dashed => Underline::Dashed,
+                            _ => Underline::None,
+                        },
+                        underline_color: match st.underline_color {
+                            StyleColor::None => None,
+                            StyleColor::Palette(i) => {
+                                let c = palette[i.0 as usize];
+                                Some(rgb(c.r, c.g, c.b))
+                            }
+                            StyleColor::Rgb(c) => Some(rgb(c.r, c.g, c.b)),
+                        },
+                    };
+                }
+                let width = if matches!(wide, CellWide::Wide) { 2 } else { 1 };
+                if raw.has_hyperlink()? {
+                    let grid = vt
+                        .terminal()
+                        .grid_ref(libghostty_vt::terminal::Point::Viewport(
+                            libghostty_vt::terminal::PointCoordinate { x, y: y as u32 },
+                        ))?;
+                    let mut uri = vec![0; 8192];
+                    if let Ok(n) = grid.hyperlink_uri(&mut uri)
+                        && let Ok(uri) = std::str::from_utf8(&uri[..n])
+                        && allowed_link(uri)
+                    {
+                        out.links.push(Link {
+                            row: y as u16,
+                            col: x,
+                            cols: width,
+                            uri: uri.into(),
+                        });
                     }
                 }
+                b.push(x, width, &text, fg, bg, attrs);
+                x += 1;
             }
-            b.push(x, width, &text, fg, bg, attrs);
-            x += 1;
+            y += 1;
         }
-        y += 1;
-    }
-    out.rows.truncate(y);
-    out.links.retain(|link| (link.row as usize) < y);
-    let cur = snap.cursor()?;
-    out.cursor = cur.viewport.map(|v| (v.x, v.y));
-    out.cursor_visible = cur.visible;
-    out.cursor_shape = match cur.visual_style {
-        CursorVisualStyle::Bar => CursorShape::Bar,
-        CursorVisualStyle::Underline => CursorShape::Underline,
-        CursorVisualStyle::BlockHollow => CursorShape::BlockHollow,
-        _ => CursorShape::Block,
-    };
-    out.background = vt
-        .terminal()
-        .bg_color()?
-        .map(|c| rgb(c.r, c.g, c.b))
-        .unwrap_or(DEFAULT_BG);
-    snap.clean()?;
-    Ok(changed)
+        out.rows.truncate(y);
+        out.links.retain(|link| (link.row as usize) < y);
+        let cur = snap.cursor()?;
+        out.cursor = cur.viewport.map(|v| (v.x, v.y));
+        out.cursor_visible = cur.visible;
+        out.cursor_shape = match cur.visual_style {
+            CursorVisualStyle::Bar => CursorShape::Bar,
+            CursorVisualStyle::Underline => CursorShape::Underline,
+            CursorVisualStyle::BlockHollow => CursorShape::BlockHollow,
+            _ => CursorShape::Block,
+        };
+        out.background = vt
+            .terminal()
+            .bg_color()?
+            .map(|c| rgb(c.r, c.g, c.b))
+            .unwrap_or(DEFAULT_BG);
+        snap.clean()?;
+        Ok(changed)
     }
 }
 /// Standalone captures for fixtures; production keeps a Capture per Pane.
+#[cfg(any(test, feature = "visual-test"))]
 pub fn capture(vt: &Vt) -> Result<Screen, libghostty_vt::Error> {
     let mut out = Screen::default();
     Capture::new()?.update(vt, &mut out)?;
@@ -453,7 +464,7 @@ fn shape_cell(
     let mut line = ts.shape_line(
         SharedString::from(text.to_owned()),
         px(FONT_SIZE),
-        &[tr.clone()],
+        std::slice::from_ref(&tr),
         None,
     );
     let mut offset = px(0.);
@@ -507,35 +518,75 @@ struct AsciiGlyphs {
 }
 impl AsciiGlyphs {
     fn new(font: Font, metrics: CellMetrics, window: &Window) -> Option<Self> {
-        if !["liga", "calt"].iter().all(|tag| font.features.tag_value_list().iter()
-            .any(|(name, value)| name == tag && *value == 0)) {
+        if !["liga", "calt"].iter().all(|tag| {
+            font.features
+                .tag_value_list()
+                .iter()
+                .any(|(name, value)| name == tag && *value == 0)
+        }) {
             return None;
         }
         let text: String = (' '..='~').collect();
-        let line = window.text_system().shape_line(text.into(), px(FONT_SIZE),
-            &[TextRun { len: 95, font, color: hsla(DEFAULT_FG), background_color: None,
-                underline: None, strikethrough: None }], None);
+        let line = window.text_system().shape_line(
+            text.into(),
+            px(FONT_SIZE),
+            &[TextRun {
+                len: 95,
+                font,
+                color: hsla(DEFAULT_FG),
+                background_color: None,
+                underline: None,
+                strikethrough: None,
+            }],
+            None,
+        );
         let mut glyphs = [None; 95];
         for run in &line.runs {
             for glyph in &run.glyphs {
-                if glyph.index >= 95 || glyphs[glyph.index].is_some() || glyph.is_emoji
+                if glyph.index >= 95
+                    || glyphs[glyph.index].is_some()
+                    || glyph.is_emoji
                     || f32::from(glyph.position.x - metrics.width * glyph.index as f32).abs() > 0.02
-                    || glyph.position.y != px(0.) { return None; }
+                    || glyph.position.y != px(0.)
+                {
+                    return None;
+                }
                 glyphs[glyph.index] = Some((run.font_id, glyph.id));
             }
         }
         if glyphs.iter().any(Option::is_none)
-            || f32::from(line.width() - metrics.width * 95.).abs() > 0.02 { return None; }
-        Some(Self { glyphs: glyphs.map(Option::unwrap),
-            baseline: (metrics.height - line.ascent - line.descent) / 2. + line.ascent })
+            || f32::from(line.width() - metrics.width * 95.).abs() > 0.02
+        {
+            return None;
+        }
+        Some(Self {
+            glyphs: glyphs.map(Option::unwrap),
+            baseline: (metrics.height - line.ascent - line.descent) / 2. + line.ascent,
+        })
     }
-    fn paint(&self, text: &str, origin: gpui::Point<Pixels>, metrics: CellMetrics,
-        color: Hsla, window: &mut Window) {
+    fn paint(
+        &self,
+        text: &str,
+        origin: gpui::Point<Pixels>,
+        metrics: CellMetrics,
+        color: Hsla,
+        window: &mut Window,
+    ) {
         for (col, byte) in text.bytes().enumerate() {
-            if byte == b' ' { continue; }
+            if byte == b' ' {
+                continue;
+            }
             let (font, glyph) = self.glyphs[(byte - b' ') as usize];
-            let _ = window.paint_glyph(point(origin.x + metrics.width * col as f32,
-                origin.y + self.baseline), font, glyph, px(FONT_SIZE), color);
+            let _ = window.paint_glyph(
+                point(
+                    origin.x + metrics.width * col as f32,
+                    origin.y + self.baseline,
+                ),
+                font,
+                glyph,
+                px(FONT_SIZE),
+                color,
+            );
         }
     }
 }
@@ -559,12 +610,9 @@ impl LayoutCache {
         self.rows.resize_with(rows, Vec::new);
     }
 }
-pub fn paint_pane(
-    sc: &Screen, f: &Font, bounds: Bounds<Pixels>, metrics: CellMetrics,
-    show_cursor: bool, window: &mut Window, cx: &mut App,
-) {
-    paint_cached(sc, f, bounds, metrics, show_cursor, &mut LayoutCache::default(), window, cx);
-}
+// Render inputs remain explicit alongside GPUI's required Window/App contexts.
+// A wrapper type solely to reduce argument count would hide their call-site ownership.
+#[allow(clippy::too_many_arguments)]
 pub fn paint_cached(
     sc: &Screen,
     f: &Font,
@@ -602,8 +650,12 @@ pub fn paint_cached(
                 let style = usize::from(run.attrs.bold) | (usize::from(run.attrs.italic) << 1);
                 let glyphs = cache.ascii[style].get_or_insert_with(|| {
                     let mut font = f.clone();
-                    if run.attrs.bold { font.weight = FontWeight::BOLD; }
-                    if run.attrs.italic { font.style = FontStyle::Italic; }
+                    if run.attrs.bold {
+                        font.weight = FontWeight::BOLD;
+                    }
+                    if run.attrs.italic {
+                        font.style = FontStyle::Italic;
+                    }
                     AsciiGlyphs::new(font, metrics, window)
                 });
                 if let Some(glyphs) = glyphs {
@@ -629,11 +681,19 @@ pub fn paint_cached(
             }
             if cached.get(index).is_none_or(|(old, _, _)| old != run) {
                 let mut font = f.clone();
-                if run.attrs.bold { font.weight = FontWeight::BOLD; }
-                if run.attrs.italic { font.style = FontStyle::Italic; }
+                if run.attrs.bold {
+                    font.weight = FontWeight::BOLD;
+                }
+                if run.attrs.italic {
+                    font.style = FontStyle::Italic;
+                }
                 let (line, offset) = shape_cell(run, font, metrics, window);
                 let entry = (run.clone(), line, offset);
-                if index < cached.len() { cached[index] = entry; } else { cached.push(entry); }
+                if index < cached.len() {
+                    cached[index] = entry;
+                } else {
+                    cached.push(entry);
+                }
             }
             let (_, line, offset) = &cached[index];
             index += 1;
@@ -769,7 +829,14 @@ mod tests {
         let mut vt = Vt::new(40, 5).unwrap();
         let mut reader = Capture::new().unwrap();
         let mut screen = Screen::default();
-        for bytes in [b"one\r\ntwo\r\nthree".as_slice(), b"\x1b[?1049hALT", b"\x1b[?1049l", b"\x1b]10;#123456\x07", b"\x1b[31mred\x1b]4;1;#abcdef\x07", b"\r\n4\r\n5\r\n6\r\n7"] {
+        for bytes in [
+            b"one\r\ntwo\r\nthree".as_slice(),
+            b"\x1b[?1049hALT",
+            b"\x1b[?1049l",
+            b"\x1b]10;#123456\x07",
+            b"\x1b[31mred\x1b]4;1;#abcdef\x07",
+            b"\r\n4\r\n5\r\n6\r\n7",
+        ] {
             vt.feed(bytes);
             reader.update(&vt, &mut screen).unwrap();
             let full = capture(&vt).unwrap();
@@ -926,8 +993,8 @@ mod tests {
 
     /// Ghostty sizes the cell from the face (font/Metrics.zig): height = round(ascent - descent
     /// + line_gap), width = round(advance), in backing pixels. Keepline multiplies the font size
-    /// by TERMINAL_LINE_HEIGHT instead, so the gap depends on the font. 1.6 stretched the Codex
-    /// logo ~37% while every older check (internal consistency only) still passed.
+    ///   by TERMINAL_LINE_HEIGHT instead, so the gap depends on the font. 1.6 stretched the Codex
+    ///   logo ~37% while every older check (internal consistency only) still passed.
     #[test]
     fn cell_aspect_ratio_stays_within_five_percent_of_ghostty_for_the_resolved_font() {
         // Mirror Theme::mono: JetBrains Mono when installed, else Menlo. SF Mono is a hidden
@@ -1001,8 +1068,21 @@ mod tests {
 
     #[test]
     fn ascii_cache_never_treats_wide_or_combining_text_as_independent_cells() {
-        for (text, cols, expected) in [("hello 123",9,true),("你",2,false),("e\u{301}",1,false),("\t",1,false),("ab",1,false)] {
-            let run = Run { col:0, cols, text:text.into(), fg:DEFAULT_FG, bg:None, attrs:Attrs::default() };
+        for (text, cols, expected) in [
+            ("hello 123", 9, true),
+            ("你", 2, false),
+            ("e\u{301}", 1, false),
+            ("\t", 1, false),
+            ("ab", 1, false),
+        ] {
+            let run = Run {
+                col: 0,
+                cols,
+                text: text.into(),
+                fg: DEFAULT_FG,
+                bg: None,
+                attrs: Attrs::default(),
+            };
             assert_eq!(printable_cells(&run), expected);
         }
     }
@@ -1024,20 +1104,43 @@ mod tests {
 pub fn verify_native_geometry(window: &Window, cx: &App) {
     let font = crate::theme::Theme::mono(cx);
     let metrics = CellMetrics::measure(&font, window).expect("native font measurement");
-    for (bold, italic) in [(false,false),(true,false),(false,true),(true,true)] {
+    for (bold, italic) in [(false, false), (true, false), (false, true), (true, true)] {
         let mut face = font.clone();
-        if bold { face.weight = FontWeight::BOLD; }
-        if italic { face.style = FontStyle::Italic; }
-        let cached = AsciiGlyphs::new(face.clone(), metrics, window).expect("native mono ASCII cache");
-        for text in ["0123456789 row 01", "!=>->==fiWWW_[]{}~", "ASCII with spaces"] {
-            let run = Run { col: 0, cols: text.len() as u16, text: text.into(),
-                fg: DEFAULT_FG, bg: None, attrs: Attrs::default() };
+        if bold {
+            face.weight = FontWeight::BOLD;
+        }
+        if italic {
+            face.style = FontStyle::Italic;
+        }
+        let cached =
+            AsciiGlyphs::new(face.clone(), metrics, window).expect("native mono ASCII cache");
+        for text in [
+            "0123456789 row 01",
+            "!=>->==fiWWW_[]{}~",
+            "ASCII with spaces",
+        ] {
+            let run = Run {
+                col: 0,
+                cols: text.len() as u16,
+                text: text.into(),
+                fg: DEFAULT_FG,
+                bg: None,
+                attrs: Attrs::default(),
+            };
             let (line, _) = shape_cell(&run, face.clone(), metrics, window);
-            assert_eq!(cached.baseline, (metrics.height-line.ascent-line.descent)/2.+line.ascent);
-            for shaped in &line.runs { for g in &shaped.glyphs {
-                assert_eq!(cached.glyphs[(text.as_bytes()[g.index]-b' ') as usize], (shaped.font_id,g.id));
-                assert!(f32::from(g.position.x-metrics.width*g.index as f32).abs()<0.02);
-            }}
+            assert_eq!(
+                cached.baseline,
+                (metrics.height - line.ascent - line.descent) / 2. + line.ascent
+            );
+            for shaped in &line.runs {
+                for g in &shaped.glyphs {
+                    assert_eq!(
+                        cached.glyphs[(text.as_bytes()[g.index] - b' ') as usize],
+                        (shaped.font_id, g.id)
+                    );
+                    assert!(f32::from(g.position.x - metrics.width * g.index as f32).abs() < 0.02);
+                }
+            }
         }
     }
     for ch in [

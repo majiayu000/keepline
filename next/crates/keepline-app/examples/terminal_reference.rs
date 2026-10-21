@@ -33,7 +33,16 @@ impl Render for Fixture {
                     let (sc, font) =
                         entity.update(cx, |f, _| (std::mem::take(&mut f.screen), f.font.clone()));
                     let metrics = measure(&font, window);
-                    screen::paint_pane(&sc, &font, bounds, metrics, true, window, cx);
+                    screen::paint_cached(
+                        &sc,
+                        &font,
+                        bounds,
+                        metrics,
+                        true,
+                        &mut screen::LayoutCache::default(),
+                        window,
+                        cx,
+                    );
                     entity.update(cx, |f, _| f.screen = sc);
                 },
             )

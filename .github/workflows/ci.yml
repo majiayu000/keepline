@@ -94,20 +94,33 @@ jobs:
 
   # peer_uid calls libc::getpeereid, which the Ubuntu app job cannot build.
   keeplined:
-    name: keeplined Rust checks
+    name: Workbench Rust checks
     runs-on: macos-latest
+    defaults:
+      run:
+        working-directory: next
+    env:
+      LIBGHOSTTY_VT_SYS_OPTIMIZE: ReleaseFast
     steps:
       - uses: actions/checkout@v4
 
-      - uses: dtolnay/rust-toolchain@stable
+      - uses: dtolnay/rust-toolchain@1.95.0
         with:
           components: rustfmt, clippy
 
+      # Local next/rust-toolchain.toml pins the same rustfmt/clippy version.
+      - uses: mlugg/setup-zig@d1434d08867e3ee9daa34448df10607b98908d29 # v2
+        with:
+          version: 0.16.0
+
+      - name: Prepare pinned native dependencies
+        run: sh bootstrap.sh
+
       - name: Cargo fmt
-        run: cargo fmt --check --manifest-path next/Cargo.toml
+        run: cargo fmt --check
 
       - name: Cargo clippy
-        run: cargo clippy --manifest-path next/Cargo.toml --all-targets -- -D warnings
+        run: cargo clippy --workspace --all-targets -- -D warnings
 
       - name: Cargo test
-        run: cargo test --manifest-path next/Cargo.toml
+        run: cargo test --workspace

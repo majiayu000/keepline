@@ -1,10 +1,10 @@
 //! Durable identity/content index. First import is bounded; subsequent reads share one cursor.
 use crate::{
-    file_events::{Watch, normalized},
+    file_events::{normalized, Watch},
     recognition::Transcript,
 };
 use keepline_core::model::Agent;
-use rusqlite::{Connection, OptionalExtension, params};
+use rusqlite::{params, Connection, OptionalExtension};
 use std::{
     fs::{self, File},
     io::{self, Read, Seek, SeekFrom},

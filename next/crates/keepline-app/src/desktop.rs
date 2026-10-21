@@ -149,20 +149,20 @@ pub fn start(socket: &Path, initial: Workspace, cx: &mut App) -> UnboundedReceiv
             let after = match result {
                 Ok(Reply::Workspace(w)) => w,
                 Err(e) => {
-                    let _ = cx.update(|cx| cx.set_global(Status(format!("菜单栏连接失败：{e}"))));
+                    cx.update(|cx| cx.set_global(Status(format!("菜单栏连接失败：{e}"))));
                     continue;
                 }
                 _ => continue,
             };
             let value = panel(&after);
             if previous_panel != value {
-                let _ = cx.update(|_| unsafe {
+                cx.update(|_| unsafe {
                     kl_desktop_update(cstring(&value).as_ptr());
                 });
                 previous_panel = value;
             }
             if !before.settings.notifications && after.settings.notifications {
-                let _ = cx.update(|_| unsafe { kl_notifications_enable() });
+                cx.update(|_| unsafe { kl_notifications_enable() });
             }
             if ready {
                 for (session, key, title, body) in entered(&before, &after) {
@@ -181,7 +181,7 @@ pub fn start(socket: &Path, initial: Workspace, cx: &mut App) -> UnboundedReceiv
                         .await
                     {
                         Ok(Reply::NotificationClaimed(true)) => {
-                            let _ = cx.update(|_| unsafe {
+                            cx.update(|_| unsafe {
                                 kl_desktop_notify(
                                     cstring(&session).as_ptr(),
                                     cstring(&title).as_ptr(),
@@ -190,9 +190,7 @@ pub fn start(socket: &Path, initial: Workspace, cx: &mut App) -> UnboundedReceiv
                             });
                         }
                         Err(e) => {
-                            let _ = cx.update(|cx| {
-                                cx.set_global(Status(format!("通知去重记录失败：{e}")))
-                            });
+                            cx.update(|cx| cx.set_global(Status(format!("通知去重记录失败：{e}"))));
                         }
                         _ => (),
                     }

@@ -399,3 +399,7 @@ R11 继续以现有火焰图中的客户端排版/逐 glyph scene 构建为目�
 R12 使用测试 bundle 的系统 UserNotifications/usernoted 日志、原生 didReceive 回调与工作台路由状态组成证据。系统接受请求、实际投递、用户点击、直达画面分别判定；日志隐私遮挡或缺少相关记录不得算通过。需要用户真实点击时给出明确应用名/通知内容并等待；不模拟 didReceive 代替点击，不修改系统授权或用户后台。
 
 R11 采用每字体/样式的有界 ASCII glyph 缓存（95×4），关闭终端 liga/calt，原生位置验证失败或非 ASCII 仍走完整排版；现有脏行、16 ms 合并保留。新 Time Profiler 中 shape_line 未采到，glyph scene 提交仍为热点。连续前台各三次均失败，A14 保留最后有效不通过结论；详见 evidence/r11-20261021。
+
+## R13 CI 一致性决定（2026-10-21）
+
+采用 Rust 1.95.0（rustfmt 1.9.0-stable）与 Zig 0.16.0 固定工具链，保留 core/app edition 2024、daemon edition 2021。CI 从 next 目录运行 cargo fmt，避免统一 --edition 覆盖 crate 配置；先 bootstrap 固定依赖，再对整个 workspace clippy -D warnings 与测试，防止默认成员漏掉客户端。只做等价 lint 修正与格式化，不引入全局 allow 或降级预算。成功门槛是这些本地 CI 命令全部 exit 0；远程 CI 未运行不能据本地通过推断。

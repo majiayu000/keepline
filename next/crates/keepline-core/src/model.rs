@@ -221,10 +221,10 @@ pub enum Edit {
 }
 
 fn validate_outcome(outcome: &Outcome) -> Result<(), String> {
-    if let Outcome::Deferred { reason, until } = outcome {
-        if reason.trim().is_empty() || *until == 0 {
-            return Err("暂存需要原因和再看时间".into());
-        }
+    if let Outcome::Deferred { reason, until } = outcome
+        && (reason.trim().is_empty() || *until == 0)
+    {
+        return Err("暂存需要原因和再看时间".into());
     }
     Ok(())
 }
@@ -344,21 +344,19 @@ impl Workspace {
             .iter()
             .filter(|s| s.current && s.terminal.as_ref().is_some_and(|id| ids.contains(id)))
             .collect();
-        if sessions.is_empty() {
-            if let Some(task) = tab
+        if sessions.is_empty()
+            && let Some(task) = tab
                 .default_task
                 .as_ref()
                 .and_then(|id| self.tasks.iter().find(|t| &t.id == id))
-            {
-                return task.title.clone();
-            }
+        {
+            return task.title.clone();
         }
-        if let Some(first) = sessions.first().and_then(|s| s.task.as_ref()) {
-            if sessions.iter().all(|s| s.task.as_ref() == Some(first)) {
-                if let Some(task) = self.tasks.iter().find(|t| &t.id == first) {
-                    return task.title.clone();
-                }
-            }
+        if let Some(first) = sessions.first().and_then(|s| s.task.as_ref())
+            && sessions.iter().all(|s| s.task.as_ref() == Some(first))
+            && let Some(task) = self.tasks.iter().find(|t| &t.id == first)
+        {
+            return task.title.clone();
         }
         if !tab.title.is_empty() {
             return tab.title.clone();
@@ -658,8 +656,10 @@ mod tests {
     #[test]
     fn settings_reject_invalid_intervals_and_drive_stale_boundary() {
         let mut w = Workspace::default();
-        let mut settings = Settings::default();
-        settings.stale_days = 0;
+        let settings = Settings {
+            stale_days: 0,
+            ..Default::default()
+        };
         assert!(w.edit(Edit::Settings(settings)).is_err());
         assert_eq!(w.settings, Settings::default());
         let settings = Settings {

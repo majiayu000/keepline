@@ -5,8 +5,8 @@ mod keyboard;
 mod lifecycle;
 mod pane;
 mod screen;
-mod theme;
 mod terminal_input;
+mod theme;
 mod workbench;
 
 use gpui::{App, AppContext, Bounds, WindowBounds, WindowOptions, px, size};
@@ -222,7 +222,7 @@ fn run() -> io::Result<()> {
         let wake_root=root.clone();
         cx.spawn(async move |cx| {
             while reopen.next().await.is_some() {
-                let _=cx.update(|cx|reopen_window(&wake_root,cx));
+                cx.update(|cx|reopen_window(&wake_root,cx));
             }
         }).detach();
         if let Err(error)=register_symbols() {
@@ -234,7 +234,7 @@ fn run() -> io::Result<()> {
         let desktop_root=root.clone();
         cx.spawn(async move |cx| {
             while let Some(route)=desktop_events.next().await {
-                let _=cx.update(|cx| {
+                cx.update(|cx| {
                     if let Some(message)=route.strip_prefix("error:").or_else(||route.strip_prefix("notice:")) {cx.set_global(desktop::Status(message.into()));return;}
                     reopen_window(&desktop_root,cx);
                     if !route.is_empty() {

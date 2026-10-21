@@ -564,13 +564,11 @@ fn forty_idle_terminals_have_no_periodic_background_io() {
             .count()
             == 40
         {
-            assert!(
-                workspace
-                    .agent_sessions
-                    .iter()
-                    .filter(|s| s.current)
-                    .all(|s| s.terminal.is_some() && s.cli_session_id != "external")
-            );
+            assert!(workspace
+                .agent_sessions
+                .iter()
+                .filter(|s| s.current)
+                .all(|s| s.terminal.is_some() && s.cli_session_id != "external"));
             let mut processes = keeplined::recognition::processes(&workspace).unwrap();
             assert!(!processes.iter().any(|p| p.pid == external.0.id()));
             // Even if passed an unrelated Agent PID, the lsof boundary filters it out.
@@ -1259,11 +1257,10 @@ fn external_content_updates_without_probes_saves_full_quotes_and_reopens_on_new_
         std::thread::sleep(Duration::from_millis(50));
     }
     let w = h.workspace();
-    assert!(
-        w.outcome_history
-            .iter()
-            .any(|e| e.reason == "新回合" && e.before == Outcome::Completed)
-    );
+    assert!(w
+        .outcome_history
+        .iter()
+        .any(|e| e.reason == "新回合" && e.before == Outcome::Completed));
     let due = keepline_core::content::now() + 2;
     h.call(Request::Edit {
         revision: w.revision,
@@ -1292,11 +1289,10 @@ fn external_content_updates_without_probes_saves_full_quotes_and_reopens_on_new_
     }
     let w = h.workspace();
     assert_eq!(w.agent_sessions[0].outcome, Outcome::Open);
-    assert!(
-        w.outcome_history
-            .iter()
-            .any(|e| e.reason == "暂存到期" && e.at == due)
-    );
+    assert!(w
+        .outcome_history
+        .iter()
+        .any(|e| e.reason == "暂存到期" && e.at == due));
     let stats = recognition(&h);
     assert_eq!((stats.metrics.ps_spawns, stats.metrics.lsof_spawns), (0, 0));
 }
@@ -1588,14 +1584,13 @@ fn manual_claude_closed_log_stays_external_and_append_does_not_repeat_probes() {
     );
     let w = h.workspace();
     assert!(w.current_agent("manual").is_none());
-    assert!(
-        w.agent_sessions
-            .iter()
-            .find(|s| s.cli_session_id == id)
-            .unwrap()
-            .terminal
-            .is_none()
-    );
+    assert!(w
+        .agent_sessions
+        .iter()
+        .find(|s| s.cli_session_id == id)
+        .unwrap()
+        .terminal
+        .is_none());
 }
 
 #[test]
