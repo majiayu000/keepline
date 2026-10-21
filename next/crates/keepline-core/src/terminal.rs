@@ -18,50 +18,64 @@ impl Vt {
     }
     /// Explicit user search only: reads the bounded VT history, never the transcript directory.
     pub fn search(&self, query: &str) -> io::Result<Vec<(usize, String)>> {
-        use libghostty_vt::{
-            screen::CellWide,
-            terminal::{Point, PointCoordinate},
-        };
         if query.is_empty() {
             return Ok(vec![]);
         }
         let mut matches = Vec::new();
-        let cols = self.0.cols().map_err(io::Error::other)?;
         for y in 0..self.0.total_rows().map_err(io::Error::other)? {
-            let mut line = String::new();
-            for x in 0..cols {
-                let cell = self
-                    .0
-                    .grid_ref(Point::Screen(PointCoordinate { x, y: y as u32 }))
-                    .map_err(io::Error::other)?;
-                if matches!(
-                    cell.cell()
-                        .and_then(|c| c.wide())
-                        .map_err(io::Error::other)?,
-                    CellWide::SpacerHead | CellWide::SpacerTail
-                ) {
-                    continue;
-                }
-                let mut chars = vec!['\0'; 32];
-                let len = match cell.graphemes(&mut chars) {
-                    Ok(n) => n,
-                    Err(libghostty_vt::Error::OutOfSpace { required }) => {
-                        chars.resize(required, '\0');
-                        cell.graphemes(&mut chars).map_err(io::Error::other)?
-                    }
-                    Err(e) => return Err(io::Error::other(e)),
-                };
-                if len == 0 {
-                    line.push(' ');
-                } else {
-                    line.extend(chars[..len].iter());
-                }
-            }
+            let line = self.row(y)?;
             if line.contains(query) {
                 matches.push((y, line.trim_end().to_owned()));
             }
         }
         Ok(matches)
+    }
+    /// The last `rows` rows of history plus screen, one line per row.
+    pub fn tail_text(&self, rows: usize) -> io::Result<String> {
+        let total = self.0.total_rows().map_err(io::Error::other)?;
+        let mut text = String::new();
+        for y in total.saturating_sub(rows)..total {
+            text.push_str(self.row(y)?.trim_end());
+            text.push('\n');
+        }
+        Ok(text)
+    }
+    fn row(&self, y: usize) -> io::Result<String> {
+        use libghostty_vt::{
+            screen::CellWide,
+            terminal::{Point, PointCoordinate},
+        };
+        let cols = self.0.cols().map_err(io::Error::other)?;
+        let mut line = String::new();
+        for x in 0..cols {
+            let cell = self
+                .0
+                .grid_ref(Point::Screen(PointCoordinate { x, y: y as u32 }))
+                .map_err(io::Error::other)?;
+            if matches!(
+                cell.cell()
+                    .and_then(|c| c.wide())
+                    .map_err(io::Error::other)?,
+                CellWide::SpacerHead | CellWide::SpacerTail
+            ) {
+                continue;
+            }
+            let mut chars = vec!['\0'; 32];
+            let len = match cell.graphemes(&mut chars) {
+                Ok(n) => n,
+                Err(libghostty_vt::Error::OutOfSpace { required }) => {
+                    chars.resize(required, '\0');
+                    cell.graphemes(&mut chars).map_err(io::Error::other)?
+                }
+                Err(e) => return Err(io::Error::other(e)),
+            };
+            if len == 0 {
+                line.push(' ');
+            } else {
+                line.extend(chars[..len].iter());
+            }
+        }
+        Ok(line)
     }
     pub fn on_reply(&mut self, mut callback: impl FnMut(&[u8]) + Send + 'static) -> io::Result<()> {
         self.0
