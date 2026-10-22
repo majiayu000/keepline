@@ -11,6 +11,7 @@ import { Command } from 'commander';
 import { registerCommands } from './cli/index.js';
 import { logger } from './lib/logger.js';
 import { config } from './lib/config.js';
+import { version, description } from '../package.json';
 
 // Configure logger based on config
 const cfg = config.get();
@@ -25,8 +26,8 @@ const program = new Command();
 
 program
   .name('keepline')
-  .version('1.0.0')
-  .description('The command center for local agent runtime sessions - Never lose your work again');
+  .version(version)
+  .description(description);
 
 // Register all commands
 registerCommands(program);
