@@ -1,8 +1,24 @@
 [
  {
   "case": "keepline-opt-one",
+  "attempt": 1,
+  "exit": 0,
+  "valid": true,
+  "root": "/tmp/kl14-keepline-opt-one-4ff5mee0",
+  "utc": "2026-10-22T03:05:10Z"
+ },
+ {
+  "case": "ghostty-one",
+  "attempt": 1,
+  "exit": 0,
+  "valid": false,
+  "root": "/tmp/kl14-ghostty-one-_i3xsybc",
+  "utc": "2026-10-22T03:05:35Z"
+ },
+ {
+  "case": "ghostty-one",
   "event": "deadline",
   "detail": "no unlocked, input-idle window before deadline",
-  "utc": "2026-10-22T02:48:25Z"
+  "utc": "2026-10-22T03:07:57Z"
  }
 ]
