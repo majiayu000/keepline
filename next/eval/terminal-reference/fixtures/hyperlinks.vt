@@ -1,0 +1,3 @@
+[H[2J[38;5;244mOSC 8 hyperlinks (Ghostty underlines on hover and opens with cmd-click)[0m
+plain ]8;;https://example.invalid/a\link-one]8;;\ plain ]8;;file:///tmp\文件链接]8;;\
+bare URL (auto-detect): https://ghostty.org/docs  path: /usr/local/bin

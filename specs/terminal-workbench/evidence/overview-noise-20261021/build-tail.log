@@ -1,0 +1,8 @@
+Final build excerpt; upstream GPUI deprecation warnings omitted above.
+    |                                                    ^^^^^^^^^^^
+
+warning: `gpui_macos` (lib) generated 695 warnings (1 duplicate)
+   Compiling libghostty-vt v0.2.1 (/Users/lifcc/Desktop/code/AI/tools/keepline-agent-workbench/next/.deps/libghostty-rs/crates/libghostty-vt)
+   Compiling keepline-core v0.1.0 (/Users/lifcc/Desktop/code/AI/tools/keepline-agent-workbench/next/crates/keepline-core)
+   Compiling keepline-app v0.1.0 (/Users/lifcc/Desktop/code/AI/tools/keepline-agent-workbench/next/crates/keepline-app)
+    Finished `dev` profile [unoptimized] target(s) in 3.99s

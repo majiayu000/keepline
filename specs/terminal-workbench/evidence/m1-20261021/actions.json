@@ -1,0 +1,55 @@
+{
+  "terminals": [
+    [
+      "21919-1792517042715553000-1",
+      "Running",
+      21926
+    ],
+    [
+      "21919-1792517115904988000-6",
+      "Running",
+      22179
+    ],
+    [
+      "21919-1792517190255692000-7",
+      "Running",
+      22432
+    ],
+    [
+      "21919-1792517228830876000-8",
+      "Running",
+      22591
+    ]
+  ],
+  "task_outcomes": [
+    [
+      "21919-1792517115900840000-2",
+      "\"Completed\""
+    ]
+  ],
+  "pending_tasks": [
+    [
+      "21919-1792517228830876000-8",
+      null
+    ]
+  ],
+  "sessions": [
+    [
+      "Codex",
+      "mock-22461",
+      "21919-1792517115900840000-2",
+      1
+    ]
+  ],
+  "invocations": {
+    "invoked-22461": "codex\n--no-daemon\nM1：验证待办全流程\n只验证参数，不调用模型。保留引号 \"测试\" 与 $HOME。\n验收标准：\n- 输入不自动执行\n- 重复开始不新增终端\n"
+  },
+  "before_return": {
+    "terminals": 2,
+    "invocations": 0
+  },
+  "repeated_start": {
+    "terminals": 2
+  },
+  "fixture_path_error": "Initial .zshenv overridden by /etc/zprofile path_helper: unauthenticated installed Codex login screen opened, exited with Ctrl-C. No login/model call. Fixed private .zprofile before second launch."
+}

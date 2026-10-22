@@ -1,0 +1,83 @@
+{
+  "seconds": 30.00304020801559,
+  "external": 40,
+  "managed": 8,
+  "metrics_before": {
+    "ps_spawns": 1,
+    "lsof_spawns": 1,
+    "directories": 1,
+    "log_opens": 8,
+    "log_bytes": 14960,
+    "index_writes": 9
+  },
+  "metrics_after": {
+    "ps_spawns": 1,
+    "lsof_spawns": 1,
+    "directories": 1,
+    "log_opens": 8,
+    "log_bytes": 14960,
+    "index_writes": 9
+  },
+  "processes": {
+    "client": {
+      "cpu_percent": 0.07810569585902372,
+      "footprint_MiB": 77.92285919189453,
+      "disk_read": 0,
+      "disk_write": 0
+    },
+    "daemon": {
+      "cpu_percent": 0.0,
+      "footprint_MiB": 7.109832763671875,
+      "disk_read": 0,
+      "disk_write": 0
+    },
+    "p0": {
+      "cpu_percent": 0.0,
+      "footprint_MiB": 1.3127975463867188,
+      "disk_read": 0,
+      "disk_write": 0
+    },
+    "p1": {
+      "cpu_percent": 0.0,
+      "footprint_MiB": 1.2971725463867188,
+      "disk_read": 0,
+      "disk_write": 0
+    },
+    "p2": {
+      "cpu_percent": 0.0,
+      "footprint_MiB": 1.2815475463867188,
+      "disk_read": 0,
+      "disk_write": 0
+    },
+    "p3": {
+      "cpu_percent": 0.0,
+      "footprint_MiB": 1.2815475463867188,
+      "disk_read": 0,
+      "disk_write": 0
+    },
+    "p4": {
+      "cpu_percent": 0.0,
+      "footprint_MiB": 1.2815475463867188,
+      "disk_read": 0,
+      "disk_write": 0
+    },
+    "p5": {
+      "cpu_percent": 0.0,
+      "footprint_MiB": 1.2815475463867188,
+      "disk_read": 0,
+      "disk_write": 0
+    },
+    "p6": {
+      "cpu_percent": 0.0,
+      "footprint_MiB": 1.2971725463867188,
+      "disk_read": 0,
+      "disk_write": 0
+    },
+    "p7": {
+      "cpu_percent": 0.0,
+      "footprint_MiB": 1.2971725463867188,
+      "disk_read": 0,
+      "disk_write": 0
+    }
+  }
+}

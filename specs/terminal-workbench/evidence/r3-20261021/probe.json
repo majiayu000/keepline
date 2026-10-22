@@ -1,0 +1,160 @@
+{
+  "cli": "codex-cli 0.163.0",
+  "isolated_codex_home": "/tmp/kl-r3-26rginoh/codex",
+  "user_config_changed": false,
+  "user_prompts": 2,
+  "automatic_title_completions": 2,
+  "budget_count_conservative": 4,
+  "cases": [
+    {
+      "case": "default daemon",
+      "titles": [
+        "project",
+        "⠋ project",
+        "⠙ project",
+        "⠙ | project",
+        "⠹ | project",
+        "Reply ok | project"
+      ],
+      "full_thread_uuid_in_title": false,
+      "osc7501": [
+        "state=idle:app=codex",
+        "state=working:app=codex"
+      ]
+    },
+    {
+      "case": "notify and title overrides",
+      "titles": [
+        "01a15c6a-59fa-76a0-b0f5-f1607...",
+        "01a15c6a-59fa-76a0-b0f5-f1607... ⠦",
+        "01a15c6a-59fa-76a0-b0f5-f1607... ⠧",
+        "01a15c6a-59fa-76a0-b0f5-f1607... ⠸",
+        "01a15c6a-59fa-76a0-b0f5-f1607... ⠼",
+        "01a15c6a-59fa-76a0-b0f5-f1607... ⠴"
+      ],
+      "full_thread_uuid_in_title": false,
+      "osc7501": [
+        "state=idle:app=codex",
+        "state=working:app=codex"
+      ]
+    },
+    {
+      "case": "explicit remote with overrides; no model turn",
+      "titles": [
+        "01a15c6b-46f2-7bc3-9e62-7dc1c...",
+        "01a15c6b-46f2-7bc3-9e62-7dc1c..."
+      ],
+      "full_thread_uuid_in_title": false,
+      "osc7501": [
+        "state=idle:app=codex",
+        "state=working:app=codex"
+      ]
+    }
+  ],
+  "rollouts": [
+    {
+      "id": "01a15c69-6b98-7a62-a35d-e12355313cef",
+      "source": "vscode",
+      "thread_source": "user",
+      "session_meta_keys": [
+        "creator_user_id",
+        "creator_account_id",
+        "session_id",
+        "id",
+        "timestamp",
+        "cwd",
+        "runtime_workspace_roots",
+        "originator",
+        "cli_version",
+        "source",
+        "thread_source",
+        "model_provider",
+        "base_instructions",
+        "history_mode",
+        "context_window"
+      ],
+      "turn_context_keys": [
+        "turn_id",
+        "root_turn_id",
+        "disabled_plugin_ids",
+        "cwd",
+        "approval_policy",
+        "approvals_reviewer",
+        "sandbox_policy",
+        "permission_profile",
+        "active_permission_profile",
+        "file_system_sandbox_policy",
+        "model",
+        "comp_hash",
+        "collaboration_mode",
+        "multi_agent_version",
+        "realtime_active",
+        "cyber_access_program",
+        "effort",
+        "summary"
+      ],
+      "contains_notify_token": false,
+      "assistant_texts": []
+    },
+    {
+      "id": "01a15c6a-59fa-76a0-b0f5-f1607df0352e",
+      "source": "cli",
+      "thread_source": "user",
+      "session_meta_keys": [
+        "creator_user_id",
+        "creator_account_id",
+        "session_id",
+        "id",
+        "timestamp",
+        "cwd",
+        "runtime_workspace_roots",
+        "originator",
+        "cli_version",
+        "source",
+        "thread_source",
+        "model_provider",
+        "base_instructions",
+        "history_mode",
+        "context_window"
+      ],
+      "turn_context_keys": [
+        "turn_id",
+        "root_turn_id",
+        "disabled_plugin_ids",
+        "cwd",
+        "approval_policy",
+        "approvals_reviewer",
+        "sandbox_policy",
+        "permission_profile",
+        "active_permission_profile",
+        "file_system_sandbox_policy",
+        "model",
+        "comp_hash",
+        "collaboration_mode",
+        "multi_agent_version",
+        "realtime_active",
+        "cyber_access_program",
+        "effort",
+        "summary"
+      ],
+      "contains_notify_token": false,
+      "assistant_texts": []
+    }
+  ],
+  "notify_callbacks": [
+    {
+      "token": "kl-r3-one-use-token",
+      "type": "agent-turn-complete",
+      "thread_id": "01a15c6a-59fa-76a0-b0f5-f1607df0352e",
+      "input_kind": "user",
+      "last_assistant_message": "ok"
+    },
+    {
+      "token": "kl-r3-one-use-token",
+      "type": "agent-turn-complete",
+      "thread_id": "01a15c6b-4eb0-79f2-bd83-c93a2a1e53ee",
+      "input_kind": "automatic title",
+      "last_assistant_message": "{\"title\":\"Acknowledge request\"}"
+    }
+  ]
+}

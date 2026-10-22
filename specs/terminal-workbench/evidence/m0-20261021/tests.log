@@ -1,0 +1,30 @@
+   Compiling libghostty-vt-sys v0.2.1 (/Users/lifcc/Desktop/code/AI/tools/keepline-agent-workbench/next/.deps/libghostty-rs/crates/libghostty-vt-sys)
+   Compiling libghostty-vt v0.2.1 (/Users/lifcc/Desktop/code/AI/tools/keepline-agent-workbench/next/.deps/libghostty-rs/crates/libghostty-vt)
+   Compiling keepline-core v0.1.0 (/Users/lifcc/Desktop/code/AI/tools/keepline-agent-workbench/next/crates/keepline-core)
+   Compiling keeplined v0.0.0 (/Users/lifcc/Desktop/code/AI/tools/keepline-agent-workbench/next/crates/keeplined)
+    Finished `test` profile [unoptimized] target(s) in 2.45s
+     Running unittests src/lib.rs (next/target/debug/deps/keeplined-6299dedb3c611afa)
+
+running 20 tests
+test content::tests::codex_interactive_entrypoint_is_not_a_brand_whitelist ... ok
+test content::tests::questions_show_text_and_choices_instead_of_json ... ok
+test file_events::tests::overflow_keeps_only_affected_subtree_and_does_not_latch ... ok
+test content::tests::genuine_words_survive_wrappers_pastes_and_duplicate_injection ... ok
+test content::tests::tail_only_user_is_an_addition_not_a_fabricated_first_request ... ok
+test content::tests::interactive_metadata_and_automation_override_are_not_title_blacklists ... ok
+test content::tests::claude_edit_permission_and_stop ... ok
+test recognition::tests::log_identity_alone_does_not_bind_by_directory_and_ambiguity_stays_unbound ... ok
+test content::tests::user_dedup_additions_and_claims_are_not_receipts ... ok
+test content::tests::injected_messages_and_quoted_completion_are_not_user_intent_or_claims ... ok
+test content::tests::real_exit_receipts_and_async_correlation_survive_restart ... ok
+test content::tests::patch_commit_and_failed_test_are_sourced ... ok
+test content::tests::source_rows_are_idempotent ... ok
+test log_index::tests::original_request_beyond_16k_is_read_once_within_bounded_prefix ... ok
+test log_index::tests::changed_content_rules_reseed_once_without_a_directory_walk ... ok
+test log_index::tests::initial_index_skips_large_bodies_and_never_rewalks_completed_directories ... ok
+test log_index::tests::bounded_tail_and_atomic_cursor_content_survive_restart ... ok
+test log_index::tests::cursors_survive_restart_partial_lines_truncation_and_inode_replacement ... ok
+test host::recognition_tests::must_scan_repairs_only_event_subtree_and_publishes_status_then_continues ... ok
+test log_index::tests::fsevents_delivers_new_files_and_replays_changes_after_restart ... ok
+
+test result: ok. 20 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.20s

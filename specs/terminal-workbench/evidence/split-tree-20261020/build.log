@@ -1,0 +1,5 @@
+warning: `gpui_macos` (lib) generated 695 warnings (1 duplicate)
+   Compiling keepline-core v0.1.0 (/Users/lifcc/Desktop/code/AI/tools/keepline-agent-workbench/next/crates/keepline-core)
+   Compiling keeplined v0.0.0 (/Users/lifcc/Desktop/code/AI/tools/keepline-agent-workbench/next/crates/keeplined)
+   Compiling keepline-app v0.1.0 (/Users/lifcc/Desktop/code/AI/tools/keepline-agent-workbench/next/crates/keepline-app)
+    Finished `dev` profile [unoptimized] target(s) in 3.03s

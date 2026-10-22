@@ -1,0 +1,14 @@
+{
+"box-blocks": {"pixels":1355400,"changed":1076,"changed_gt32":1061},
+"codex-logo": {"pixels":1355400,"changed":0,"changed_gt32":0},
+"codex-start": {"pixels":1355400,"changed":0,"changed_gt32":0},
+"cursor-bar": {"pixels":1355400,"changed":0,"changed_gt32":0},
+"cursor-block": {"pixels":1355400,"changed":0,"changed_gt32":0},
+"cursor-underline": {"pixels":1355400,"changed":0,"changed_gt32":0},
+"hyperlinks": {"pixels":1355400,"changed":0,"changed_gt32":0},
+"lazygit-status": {"pixels":1355400,"changed":2,"changed_gt32":0},
+"sgr-colors": {"pixels":1355400,"changed":0,"changed_gt32":0},
+"text-unicode": {"pixels":1355400,"changed":0,"changed_gt32":0},
+"vim-back-normal": {"pixels":1355400,"changed":0,"changed_gt32":0},
+"vim-insert": {"pixels":1355400,"changed":0,"changed_gt32":0},
+"vim-normal": {"pixels":1355400,"changed":0,"changed_gt32":0}}

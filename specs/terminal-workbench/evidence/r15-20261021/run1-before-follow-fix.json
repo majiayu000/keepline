@@ -1,0 +1,43 @@
+{
+  "root": "/private/tmp/kl-r14-dl38n3za",
+  "scenarios": {
+    "same_cwd": {
+      "bound": false,
+      "p0": null,
+      "p1": null,
+      "correct": false
+    },
+    "same_moment": {
+      "bound": false,
+      "correct": false
+    },
+    "new": {
+      "took_over": false,
+      "correct": false,
+      "old_not_current": false
+    },
+    "identical": {
+      "unbound_while_identical": true,
+      "hints_while_identical": {
+        "p4": "仅显示状态：空闲；看对话内容请用 codex --no-daemon",
+        "p5": "仅显示状态：空闲；看对话内容请用 codex --no-daemon",
+        "p2": "仅显示状态：空闲；看对话内容请用 codex --no-daemon",
+        "p1": "仅显示状态：空闲；看对话内容请用 codex --no-daemon",
+        "p3": "仅显示状态：空闲；看对话内容请用 codex --no-daemon",
+        "p0": "仅显示状态：空闲；看对话内容请用 codex --no-daemon"
+      },
+      "bound_after_follow_up": false,
+      "correct": false
+    }
+  },
+  "exit_clears_current": true,
+  "user_prompts": 9,
+  "metrics": {
+    "ps_spawns": 20,
+    "lsof_spawns": 20,
+    "directories": 5,
+    "log_opens": 7,
+    "log_bytes": 322266,
+    "index_writes": 15
+  }
+}

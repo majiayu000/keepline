@@ -1,0 +1,29 @@
+{
+  "session_id": "9d5d0a01-0092-42d9-acff-a634d3839202",
+  "bound": {
+    "turn": "Running",
+    "waiting": ""
+  },
+  "recognized": {
+    "turn": "Waiting",
+    "waiting": "Do you want to create approval-proof.txt?（画面上的提示）",
+    "seconds_after_screen": 1.13
+  },
+  "tabs": [
+    {
+      "id": "feedback",
+      "layout": {
+        "Leaf": "p1"
+      },
+      "closed": false
+    }
+  ],
+  "terminals": [
+    {
+      "id": "p1",
+      "space": "s0",
+      "state": "Running"
+    }
+  ],
+  "native_exit": 0
+}

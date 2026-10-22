@@ -1,0 +1,141 @@
+{
+  "runtime": "/tmp/kl-content-ui-s_920_gn",
+  "tasks": [
+    {
+      "id": "63560-1792514441266329000-2",
+      "space_id": "s",
+      "title": "请用中文简短介绍通过 Flatkey 网关调用多模态 API 的优势（3点以内，每点一行）",
+      "description": "请用中文简短介绍通过 Flatkey 网关调用多模态 API 的优势（3点以内，每点一行）\n\n（历史仅覆盖索引尾段及之后的增量；此前要求未知。）",
+      "runtime": "Claude"
+    },
+    {
+      "id": "63560-1792514497383970000-3",
+      "space_id": "s",
+      "title": "验证第 1 个托管画面的增量内容，不启动真实 Agent。",
+      "description": "验证第 1 个托管画面的增量内容，不启动真实 Agent。",
+      "runtime": "Codex"
+    }
+  ],
+  "linked_sessions": [
+    {
+      "id": "c8ce2c38-98da-4613-a18d-e220cc798c52",
+      "runtime": "Claude",
+      "cli_session_id": "b870ce40-8435-44b2-bad2-1513f575bb88",
+      "terminal_id": null,
+      "is_current": 0,
+      "task_id": "63560-1792514441266329000-2",
+      "outcome": "Open",
+      "deferred_reason": null,
+      "deferred_until": null,
+      "updated": 1792472487,
+      "cwd": "/Users/lifcc",
+      "transcript": "/Users/lifcc/.claude/projects/-Users-lifcc/b870ce40-8435-44b2-bad2-1513f575bb88.jsonl"
+    },
+    {
+      "id": "618a06e7-8f3a-4539-b105-36d796e51011",
+      "runtime": "Codex",
+      "cli_session_id": "fixture-0",
+      "terminal_id": "p0",
+      "is_current": 1,
+      "task_id": "63560-1792514497383970000-3",
+      "outcome": "Open",
+      "deferred_reason": null,
+      "deferred_until": null,
+      "updated": 1792514046,
+      "cwd": "/tmp/kl-content-ui-s_920_gn",
+      "transcript": "/private/tmp/kl-content-ui-s_920_gn/logs/managed-0.jsonl"
+    }
+  ],
+  "terminals": [
+    {
+      "id": "p0",
+      "space_id": "s",
+      "argv": "[\"/tmp/kl-content-ui-s_920_gn/codex\",\"-c\",\"exec 3>'/tmp/kl-content-ui-s_920_gn/logs/managed-0.jsonl'; /bin/cat '/tmp/kl-content-ui-s_920_gn/seed-0' >&3; printf '内容层验收 · 模拟 Agent 1\\\\n真实日志卡片在鸟瞰；本画面没有调用模型。\\\\n'; while IFS= read -r line; do printf '%s\\\\n' \\\"$line\\\"; done\"]",
+      "cwd": "/tmp/kl-content-ui-s_920_gn",
+      "pid": 63450,
+      "process_state": "Running",
+      "exit_code": null,
+      "error": null
+    },
+    {
+      "id": "p1",
+      "space_id": "s",
+      "argv": "[\"/tmp/kl-content-ui-s_920_gn/codex\",\"-c\",\"exec 3>'/tmp/kl-content-ui-s_920_gn/logs/managed-1.jsonl'; /bin/cat '/tmp/kl-content-ui-s_920_gn/seed-1' >&3; printf '内容层验收 · 模拟 Agent 2\\\\n真实日志卡片在鸟瞰；本画面没有调用模型。\\\\n'; while IFS= read -r line; do printf '%s\\\\n' \\\"$line\\\"; done\"]",
+      "cwd": "/tmp/kl-content-ui-s_920_gn",
+      "pid": 63452,
+      "process_state": "Running",
+      "exit_code": null,
+      "error": null
+    },
+    {
+      "id": "p2",
+      "space_id": "s",
+      "argv": "[\"/tmp/kl-content-ui-s_920_gn/codex\",\"-c\",\"exec 3>'/tmp/kl-content-ui-s_920_gn/logs/managed-2.jsonl'; /bin/cat '/tmp/kl-content-ui-s_920_gn/seed-2' >&3; printf '内容层验收 · 模拟 Agent 3\\\\n真实日志卡片在鸟瞰；本画面没有调用模型。\\\\n'; while IFS= read -r line; do printf '%s\\\\n' \\\"$line\\\"; done\"]",
+      "cwd": "/tmp/kl-content-ui-s_920_gn",
+      "pid": 63454,
+      "process_state": "Running",
+      "exit_code": null,
+      "error": null
+    },
+    {
+      "id": "p3",
+      "space_id": "s",
+      "argv": "[\"/tmp/kl-content-ui-s_920_gn/codex\",\"-c\",\"exec 3>'/tmp/kl-content-ui-s_920_gn/logs/managed-3.jsonl'; /bin/cat '/tmp/kl-content-ui-s_920_gn/seed-3' >&3; printf '内容层验收 · 模拟 Agent 4\\\\n真实日志卡片在鸟瞰；本画面没有调用模型。\\\\n'; while IFS= read -r line; do printf '%s\\\\n' \\\"$line\\\"; done\"]",
+      "cwd": "/tmp/kl-content-ui-s_920_gn",
+      "pid": 63456,
+      "process_state": "Running",
+      "exit_code": null,
+      "error": null
+    },
+    {
+      "id": "p4",
+      "space_id": "s",
+      "argv": "[\"/tmp/kl-content-ui-s_920_gn/codex\",\"-c\",\"exec 3>'/tmp/kl-content-ui-s_920_gn/logs/managed-4.jsonl'; /bin/cat '/tmp/kl-content-ui-s_920_gn/seed-4' >&3; printf '内容层验收 · 模拟 Agent 5\\\\n真实日志卡片在鸟瞰；本画面没有调用模型。\\\\n'; while IFS= read -r line; do printf '%s\\\\n' \\\"$line\\\"; done\"]",
+      "cwd": "/tmp/kl-content-ui-s_920_gn",
+      "pid": 63458,
+      "process_state": "Running",
+      "exit_code": null,
+      "error": null
+    },
+    {
+      "id": "p5",
+      "space_id": "s",
+      "argv": "[\"/tmp/kl-content-ui-s_920_gn/codex\",\"-c\",\"exec 3>'/tmp/kl-content-ui-s_920_gn/logs/managed-5.jsonl'; /bin/cat '/tmp/kl-content-ui-s_920_gn/seed-5' >&3; printf '内容层验收 · 模拟 Agent 6\\\\n真实日志卡片在鸟瞰；本画面没有调用模型。\\\\n'; while IFS= read -r line; do printf '%s\\\\n' \\\"$line\\\"; done\"]",
+      "cwd": "/tmp/kl-content-ui-s_920_gn",
+      "pid": 63460,
+      "process_state": "Running",
+      "exit_code": null,
+      "error": null
+    },
+    {
+      "id": "p6",
+      "space_id": "s",
+      "argv": "[\"/tmp/kl-content-ui-s_920_gn/codex\",\"-c\",\"exec 3>'/tmp/kl-content-ui-s_920_gn/logs/managed-6.jsonl'; /bin/cat '/tmp/kl-content-ui-s_920_gn/seed-6' >&3; printf '内容层验收 · 模拟 Agent 7\\\\n真实日志卡片在鸟瞰；本画面没有调用模型。\\\\n'; while IFS= read -r line; do printf '%s\\\\n' \\\"$line\\\"; done\"]",
+      "cwd": "/tmp/kl-content-ui-s_920_gn",
+      "pid": 63462,
+      "process_state": "Running",
+      "exit_code": null,
+      "error": null
+    },
+    {
+      "id": "p7",
+      "space_id": "s",
+      "argv": "[\"/tmp/kl-content-ui-s_920_gn/codex\",\"-c\",\"exec 3>'/tmp/kl-content-ui-s_920_gn/logs/managed-7.jsonl'; /bin/cat '/tmp/kl-content-ui-s_920_gn/seed-7' >&3; printf '内容层验收 · 模拟 Agent 8\\\\n真实日志卡片在鸟瞰；本画面没有调用模型。\\\\n'; while IFS= read -r line; do printf '%s\\\\n' \\\"$line\\\"; done\"]",
+      "cwd": "/tmp/kl-content-ui-s_920_gn",
+      "pid": 63464,
+      "process_state": "Running",
+      "exit_code": null,
+      "error": null
+    },
+    {
+      "id": "63560-1792514252390208000-1",
+      "space_id": "s",
+      "argv": "[\"/bin/sh\",\"-l\"]",
+      "cwd": "/Users/lifcc",
+      "pid": 68826,
+      "process_state": "Running",
+      "exit_code": null,
+      "error": null
+    }
+  ]
+}

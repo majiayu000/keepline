@@ -1,0 +1,4 @@
+Window: "", App: Keepline Keyboard Check.
+0 Keepline Keyboard Check, Secondary Actions: Cancel, Pick
+	1 menu Secondary Actions: Cancel
+		2 退出 Keepline, ID: handleGPUIMenuItem:

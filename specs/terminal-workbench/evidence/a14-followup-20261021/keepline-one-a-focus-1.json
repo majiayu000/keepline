@@ -1,0 +1,2673 @@
+{
+  "activated" : true,
+  "attempt" : 1,
+  "continuous_frontmost" : false,
+  "exit" : 0,
+  "samples" : [
+    {
+      "bundle" : "local.keepline.profile-test",
+      "name" : "Keepline Profile Test",
+      "pid" : 5118,
+      "seconds" : 0.00022900104522705078,
+      "source" : "before",
+      "utc" : "2026-10-21T07:34:52Z"
+    },
+    {
+      "bundle" : "local.keepline.profile-test",
+      "name" : "Keepline Profile Test",
+      "pid" : 5118,
+      "seconds" : 0.10297298431396484,
+      "source" : "poll",
+      "utc" : "2026-10-21T07:34:52Z"
+    },
+    {
+      "bundle" : "local.keepline.profile-test",
+      "name" : "Keepline Profile Test",
+      "pid" : 5118,
+      "seconds" : 0.20419800281524658,
+      "source" : "poll",
+      "utc" : "2026-10-21T07:34:52Z"
+    },
+    {
+      "bundle" : "local.keepline.profile-test",
+      "name" : "Keepline Profile Test",
+      "pid" : 5118,
+      "seconds" : 0.30542600154876709,
+      "source" : "poll",
+      "utc" : "2026-10-21T07:34:52Z"
+    },
+    {
+      "bundle" : "local.keepline.profile-test",
+      "name" : "Keepline Profile Test",
+      "pid" : 5118,
+      "seconds" : 0.40626192092895508,
+      "source" : "poll",
+      "utc" : "2026-10-21T07:34:53Z"
+    },
+    {
+      "bundle" : "com.google.Chrome",
+      "name" : "Google Chrome",
+      "pid" : 646,
+      "seconds" : 0.47755694389343262,
+      "source" : "activation",
+      "utc" : "2026-10-21T07:34:53Z"
+    },
+    {
+      "bundle" : "com.google.Chrome",
+      "name" : "Google Chrome",
+      "pid" : 646,
+      "seconds" : 0.50742697715759277,
+      "source" : "poll",
+      "utc" : "2026-10-21T07:34:53Z"
+    },
+    {
+      "bundle" : "com.google.Chrome",
+      "name" : "Google Chrome",
+      "pid" : 646,
+      "seconds" : 0.60886096954345703,
+      "source" : "poll",
+      "utc" : "2026-10-21T07:34:53Z"
+    },
+    {
+      "bundle" : "com.google.Chrome",
+      "name" : "Google Chrome",
+      "pid" : 646,
+      "seconds" : 0.71038901805877686,
+      "source" : "poll",
+      "utc" : "2026-10-21T07:34:53Z"
+    },
+    {
+      "bundle" : "com.google.Chrome",
+      "name" : "Google Chrome",
+      "pid" : 646,
+      "seconds" : 0.81189894676208496,
+      "source" : "poll",
+      "utc" : "2026-10-21T07:34:53Z"
+    },
+    {
+      "bundle" : "com.google.Chrome",
+      "name" : "Google Chrome",
+      "pid" : 646,
+      "seconds" : 0.91273796558380127,
+      "source" : "poll",
+      "utc" : "2026-10-21T07:34:53Z"
+    },
+    {
+      "bundle" : "com.google.Chrome",
+      "name" : "Google Chrome",
+      "pid" : 646,
+      "seconds" : 1.0140349864959717,
+      "source" : "poll",
+      "utc" : "2026-10-21T07:34:53Z"
+    },
+    {
+      "bundle" : "com.google.Chrome",
+      "name" : "Google Chrome",
+      "pid" : 646,
+      "seconds" : 1.1150679588317871,
+      "source" : "poll",
+      "utc" : "2026-10-21T07:34:53Z"
+    },
+    {
+      "bundle" : "com.google.Chrome",
+      "name" : "Google Chrome",
+      "pid" : 646,
+      "seconds" : 1.2167469263076782,
+      "source" : "poll",
+      "utc" : "2026-10-21T07:34:53Z"
+    },
+    {
+      "bundle" : "com.google.Chrome",
+      "name" : "Google Chrome",
+      "pid" : 646,
+      "seconds" : 1.3179919719696045,
+      "source" : "poll",
+      "utc" : "2026-10-21T07:34:53Z"
+    },
+    {
+      "bundle" : "com.google.Chrome",
+      "name" : "Google Chrome",
+      "pid" : 646,
+      "seconds" : 1.4196189641952515,
+      "source" : "poll",
+      "utc" : "2026-10-21T07:34:54Z"
+    },
+    {
+      "bundle" : "com.google.Chrome",
+      "name" : "Google Chrome",
+      "pid" : 646,
+      "seconds" : 1.5214530229568481,
+      "source" : "poll",
+      "utc" : "2026-10-21T07:34:54Z"
+    },
+    {
+      "bundle" : "com.google.Chrome",
+      "name" : "Google Chrome",
+      "pid" : 646,
+      "seconds" : 1.6229809522628784,
+      "source" : "poll",
+      "utc" : "2026-10-21T07:34:54Z"
+    },
+    {
+      "bundle" : "com.google.Chrome",
+      "name" : "Google Chrome",
+      "pid" : 646,
+      "seconds" : 1.7242529392242432,
+      "source" : "poll",
+      "utc" : "2026-10-21T07:34:54Z"
+    },
+    {
+      "bundle" : "com.google.Chrome",
+      "name" : "Google Chrome",
+      "pid" : 646,
+      "seconds" : 1.8255019187927246,
+      "source" : "poll",
+      "utc" : "2026-10-21T07:34:54Z"
+    },
+    {
+      "bundle" : "com.google.Chrome",
+      "name" : "Google Chrome",
+      "pid" : 646,
+      "seconds" : 1.9273179769515991,
+      "source" : "poll",
+      "utc" : "2026-10-21T07:34:54Z"
+    },
+    {
+      "bundle" : "com.google.Chrome",
+      "name" : "Google Chrome",
+      "pid" : 646,
+      "seconds" : 2.0288199186325073,
+      "source" : "poll",
+      "utc" : "2026-10-21T07:34:54Z"
+    },
+    {
+      "bundle" : "com.google.Chrome",
+      "name" : "Google Chrome",
+      "pid" : 646,
+      "seconds" : 2.1313250064849854,
+      "source" : "poll",
+      "utc" : "2026-10-21T07:34:54Z"
+    },
+    {
+      "bundle" : "com.google.Chrome",
+      "name" : "Google Chrome",
+      "pid" : 646,
+      "seconds" : 2.2334610223770142,
+      "source" : "poll",
+      "utc" : "2026-10-21T07:34:54Z"
+    },
+    {
+      "bundle" : "com.google.Chrome",
+      "name" : "Google Chrome",
+      "pid" : 646,
+      "seconds" : 2.3346430063247681,
+      "source" : "poll",
+      "utc" : "2026-10-21T07:34:54Z"
+    },
+    {
+      "bundle" : "com.google.Chrome",
+      "name" : "Google Chrome",
+      "pid" : 646,
+      "seconds" : 2.4361549615859985,
+      "source" : "poll",
+      "utc" : "2026-10-21T07:34:55Z"
+    },
+    {
+      "bundle" : "com.google.Chrome",
+      "name" : "Google Chrome",
+      "pid" : 646,
+      "seconds" : 2.5378929376602173,
+      "source" : "poll",
+      "utc" : "2026-10-21T07:34:55Z"
+    },
+    {
+      "bundle" : "com.google.Chrome",
+      "name" : "Google Chrome",
+      "pid" : 646,
+      "seconds" : 2.6387419700622559,
+      "source" : "poll",
+      "utc" : "2026-10-21T07:34:55Z"
+    },
+    {
+      "bundle" : "com.google.Chrome",
+      "name" : "Google Chrome",
+      "pid" : 646,
+      "seconds" : 2.7397279739379883,
+      "source" : "poll",
+      "utc" : "2026-10-21T07:34:55Z"
+    },
+    {
+      "bundle" : "com.google.Chrome",
+      "name" : "Google Chrome",
+      "pid" : 646,
+      "seconds" : 2.8407399654388428,
+      "source" : "poll",
+      "utc" : "2026-10-21T07:34:55Z"
+    },
+    {
+      "bundle" : "com.google.Chrome",
+      "name" : "Google Chrome",
+      "pid" : 646,
+      "seconds" : 2.9422699213027954,
+      "source" : "poll",
+      "utc" : "2026-10-21T07:34:55Z"
+    },
+    {
+      "bundle" : "com.google.Chrome",
+      "name" : "Google Chrome",
+      "pid" : 646,
+      "seconds" : 3.0439130067825317,
+      "source" : "poll",
+      "utc" : "2026-10-21T07:34:55Z"
+    },
+    {
+      "bundle" : "com.google.Chrome",
+      "name" : "Google Chrome",
+      "pid" : 646,
+      "seconds" : 3.1449079513549805,
+      "source" : "poll",
+      "utc" : "2026-10-21T07:34:55Z"
+    },
+    {
+      "bundle" : "com.google.Chrome",
+      "name" : "Google Chrome",
+      "pid" : 646,
+      "seconds" : 3.2478189468383789,
+      "source" : "poll",
+      "utc" : "2026-10-21T07:34:55Z"
+    },
+    {
+      "bundle" : "com.google.Chrome",
+      "name" : "Google Chrome",
+      "pid" : 646,
+      "seconds" : 3.3492100238800049,
+      "source" : "poll",
+      "utc" : "2026-10-21T07:34:55Z"
+    },
+    {
+      "bundle" : "com.google.Chrome",
+      "name" : "Google Chrome",
+      "pid" : 646,
+      "seconds" : 3.4505739212036133,
+      "source" : "poll",
+      "utc" : "2026-10-21T07:34:56Z"
+    },
+    {
+      "bundle" : "com.google.Chrome",
+      "name" : "Google Chrome",
+      "pid" : 646,
+      "seconds" : 3.551988959312439,
+      "source" : "poll",
+      "utc" : "2026-10-21T07:34:56Z"
+    },
+    {
+      "bundle" : "com.google.Chrome",
+      "name" : "Google Chrome",
+      "pid" : 646,
+      "seconds" : 3.6537690162658691,
+      "source" : "poll",
+      "utc" : "2026-10-21T07:34:56Z"
+    },
+    {
+      "bundle" : "com.google.Chrome",
+      "name" : "Google Chrome",
+      "pid" : 646,
+      "seconds" : 3.7550479173660278,
+      "source" : "poll",
+      "utc" : "2026-10-21T07:34:56Z"
+    },
+    {
+      "bundle" : "com.google.Chrome",
+      "name" : "Google Chrome",
+      "pid" : 646,
+      "seconds" : 3.8563909530639648,
+      "source" : "poll",
+      "utc" : "2026-10-21T07:34:56Z"
+    },
+    {
+      "bundle" : "com.google.Chrome",
+      "name" : "Google Chrome",
+      "pid" : 646,
+      "seconds" : 3.957306981086731,
+      "source" : "poll",
+      "utc" : "2026-10-21T07:34:56Z"
+    },
+    {
+      "bundle" : "com.google.Chrome",
+      "name" : "Google Chrome",
+      "pid" : 646,
+      "seconds" : 4.0588569641113281,
+      "source" : "poll",
+      "utc" : "2026-10-21T07:34:56Z"
+    },
+    {
+      "bundle" : "com.google.Chrome",
+      "name" : "Google Chrome",
+      "pid" : 646,
+      "seconds" : 4.1602920293807983,
+      "source" : "poll",
+      "utc" : "2026-10-21T07:34:56Z"
+    },
+    {
+      "bundle" : "com.google.Chrome",
+      "name" : "Google Chrome",
+      "pid" : 646,
+      "seconds" : 4.2612879276275635,
+      "source" : "poll",
+      "utc" : "2026-10-21T07:34:56Z"
+    },
+    {
+      "bundle" : "com.google.Chrome",
+      "name" : "Google Chrome",
+      "pid" : 646,
+      "seconds" : 4.3639769554138184,
+      "source" : "poll",
+      "utc" : "2026-10-21T07:34:56Z"
+    },
+    {
+      "bundle" : "com.google.Chrome",
+      "name" : "Google Chrome",
+      "pid" : 646,
+      "seconds" : 4.4656999111175537,
+      "source" : "poll",
+      "utc" : "2026-10-21T07:34:57Z"
+    },
+    {
+      "bundle" : "com.google.Chrome",
+      "name" : "Google Chrome",
+      "pid" : 646,
+      "seconds" : 4.566525936126709,
+      "source" : "poll",
+      "utc" : "2026-10-21T07:34:57Z"
+    },
+    {
+      "bundle" : "com.google.Chrome",
+      "name" : "Google Chrome",
+      "pid" : 646,
+      "seconds" : 4.6675299406051636,
+      "source" : "poll",
+      "utc" : "2026-10-21T07:34:57Z"
+    },
+    {
+      "bundle" : "com.google.Chrome",
+      "name" : "Google Chrome",
+      "pid" : 646,
+      "seconds" : 4.768657922744751,
+      "source" : "poll",
+      "utc" : "2026-10-21T07:34:57Z"
+    },
+    {
+      "bundle" : "com.google.Chrome",
+      "name" : "Google Chrome",
+      "pid" : 646,
+      "seconds" : 4.8695549964904785,
+      "source" : "poll",
+      "utc" : "2026-10-21T07:34:57Z"
+    },
+    {
+      "bundle" : "com.google.Chrome",
+      "name" : "Google Chrome",
+      "pid" : 646,
+      "seconds" : 4.9712939262390137,
+      "source" : "poll",
+      "utc" : "2026-10-21T07:34:57Z"
+    },
+    {
+      "bundle" : "com.google.Chrome",
+      "name" : "Google Chrome",
+      "pid" : 646,
+      "seconds" : 5.0727850198745728,
+      "source" : "poll",
+      "utc" : "2026-10-21T07:34:57Z"
+    },
+    {
+      "bundle" : "com.google.Chrome",
+      "name" : "Google Chrome",
+      "pid" : 646,
+      "seconds" : 5.1736609935760498,
+      "source" : "poll",
+      "utc" : "2026-10-21T07:34:57Z"
+    },
+    {
+      "bundle" : "com.google.Chrome",
+      "name" : "Google Chrome",
+      "pid" : 646,
+      "seconds" : 5.2748910188674927,
+      "source" : "poll",
+      "utc" : "2026-10-21T07:34:57Z"
+    },
+    {
+      "bundle" : "com.google.Chrome",
+      "name" : "Google Chrome",
+      "pid" : 646,
+      "seconds" : 5.3762630224227905,
+      "source" : "poll",
+      "utc" : "2026-10-21T07:34:57Z"
+    },
+    {
+      "bundle" : "com.google.Chrome",
+      "name" : "Google Chrome",
+      "pid" : 646,
+      "seconds" : 5.4778609275817871,
+      "source" : "poll",
+      "utc" : "2026-10-21T07:34:58Z"
+    },
+    {
+      "bundle" : "com.google.Chrome",
+      "name" : "Google Chrome",
+      "pid" : 646,
+      "seconds" : 5.5783969163894653,
+      "source" : "poll",
+      "utc" : "2026-10-21T07:34:58Z"
+    },
+    {
+      "bundle" : "com.google.Chrome",
+      "name" : "Google Chrome",
+      "pid" : 646,
+      "seconds" : 5.6795319318771362,
+      "source" : "poll",
+      "utc" : "2026-10-21T07:34:58Z"
+    },
+    {
+      "bundle" : "com.google.Chrome",
+      "name" : "Google Chrome",
+      "pid" : 646,
+      "seconds" : 5.781129002571106,
+      "source" : "poll",
+      "utc" : "2026-10-21T07:34:58Z"
+    },
+    {
+      "bundle" : "com.google.Chrome",
+      "name" : "Google Chrome",
+      "pid" : 646,
+      "seconds" : 5.8828510046005249,
+      "source" : "poll",
+      "utc" : "2026-10-21T07:34:58Z"
+    },
+    {
+      "bundle" : "com.google.Chrome",
+      "name" : "Google Chrome",
+      "pid" : 646,
+      "seconds" : 5.9843919277191162,
+      "source" : "poll",
+      "utc" : "2026-10-21T07:34:58Z"
+    },
+    {
+      "bundle" : "com.google.Chrome",
+      "name" : "Google Chrome",
+      "pid" : 646,
+      "seconds" : 6.0855919122695923,
+      "source" : "poll",
+      "utc" : "2026-10-21T07:34:58Z"
+    },
+    {
+      "bundle" : "com.google.Chrome",
+      "name" : "Google Chrome",
+      "pid" : 646,
+      "seconds" : 6.1873779296875,
+      "source" : "poll",
+      "utc" : "2026-10-21T07:34:58Z"
+    },
+    {
+      "bundle" : "com.google.Chrome",
+      "name" : "Google Chrome",
+      "pid" : 646,
+      "seconds" : 6.2894489765167236,
+      "source" : "poll",
+      "utc" : "2026-10-21T07:34:58Z"
+    },
+    {
+      "bundle" : "com.google.Chrome",
+      "name" : "Google Chrome",
+      "pid" : 646,
+      "seconds" : 6.3912509679794312,
+      "source" : "poll",
+      "utc" : "2026-10-21T07:34:59Z"
+    },
+    {
+      "bundle" : "com.google.Chrome",
+      "name" : "Google Chrome",
+      "pid" : 646,
+      "seconds" : 6.4929800033569336,
+      "source" : "poll",
+      "utc" : "2026-10-21T07:34:59Z"
+    },
+    {
+      "bundle" : "com.google.Chrome",
+      "name" : "Google Chrome",
+      "pid" : 646,
+      "seconds" : 6.5946749448776245,
+      "source" : "poll",
+      "utc" : "2026-10-21T07:34:59Z"
+    },
+    {
+      "bundle" : "com.google.Chrome",
+      "name" : "Google Chrome",
+      "pid" : 646,
+      "seconds" : 6.6962980031967163,
+      "source" : "poll",
+      "utc" : "2026-10-21T07:34:59Z"
+    },
+    {
+      "bundle" : "com.google.Chrome",
+      "name" : "Google Chrome",
+      "pid" : 646,
+      "seconds" : 6.7980209589004517,
+      "source" : "poll",
+      "utc" : "2026-10-21T07:34:59Z"
+    },
+    {
+      "bundle" : "com.google.Chrome",
+      "name" : "Google Chrome",
+      "pid" : 646,
+      "seconds" : 6.8994510173797607,
+      "source" : "poll",
+      "utc" : "2026-10-21T07:34:59Z"
+    },
+    {
+      "bundle" : "com.google.Chrome",
+      "name" : "Google Chrome",
+      "pid" : 646,
+      "seconds" : 7.0010809898376465,
+      "source" : "poll",
+      "utc" : "2026-10-21T07:34:59Z"
+    },
+    {
+      "bundle" : "com.google.Chrome",
+      "name" : "Google Chrome",
+      "pid" : 646,
+      "seconds" : 7.1019139289855957,
+      "source" : "poll",
+      "utc" : "2026-10-21T07:34:59Z"
+    },
+    {
+      "bundle" : "com.google.Chrome",
+      "name" : "Google Chrome",
+      "pid" : 646,
+      "seconds" : 7.2037129402160645,
+      "source" : "poll",
+      "utc" : "2026-10-21T07:34:59Z"
+    },
+    {
+      "bundle" : "com.google.Chrome",
+      "name" : "Google Chrome",
+      "pid" : 646,
+      "seconds" : 7.3055349588394165,
+      "source" : "poll",
+      "utc" : "2026-10-21T07:34:59Z"
+    },
+    {
+      "bundle" : "com.google.Chrome",
+      "name" : "Google Chrome",
+      "pid" : 646,
+      "seconds" : 7.4063789844512939,
+      "source" : "poll",
+      "utc" : "2026-10-21T07:35:00Z"
+    },
+    {
+      "bundle" : "com.google.Chrome",
+      "name" : "Google Chrome",
+      "pid" : 646,
+      "seconds" : 7.5077400207519531,
+      "source" : "poll",
+      "utc" : "2026-10-21T07:35:00Z"
+    },
+    {
+      "bundle" : "com.google.Chrome",
+      "name" : "Google Chrome",
+      "pid" : 646,
+      "seconds" : 7.609387993812561,
+      "source" : "poll",
+      "utc" : "2026-10-21T07:35:00Z"
+    },
+    {
+      "bundle" : "com.google.Chrome",
+      "name" : "Google Chrome",
+      "pid" : 646,
+      "seconds" : 7.7112100124359131,
+      "source" : "poll",
+      "utc" : "2026-10-21T07:35:00Z"
+    },
+    {
+      "bundle" : "com.google.Chrome",
+      "name" : "Google Chrome",
+      "pid" : 646,
+      "seconds" : 7.8128899335861206,
+      "source" : "poll",
+      "utc" : "2026-10-21T07:35:00Z"
+    },
+    {
+      "bundle" : "com.google.Chrome",
+      "name" : "Google Chrome",
+      "pid" : 646,
+      "seconds" : 7.9145560264587402,
+      "source" : "poll",
+      "utc" : "2026-10-21T07:35:00Z"
+    },
+    {
+      "bundle" : "com.google.Chrome",
+      "name" : "Google Chrome",
+      "pid" : 646,
+      "seconds" : 8.0152779817581177,
+      "source" : "poll",
+      "utc" : "2026-10-21T07:35:00Z"
+    },
+    {
+      "bundle" : "com.google.Chrome",
+      "name" : "Google Chrome",
+      "pid" : 646,
+      "seconds" : 8.1175209283828735,
+      "source" : "poll",
+      "utc" : "2026-10-21T07:35:00Z"
+    },
+    {
+      "bundle" : "com.google.Chrome",
+      "name" : "Google Chrome",
+      "pid" : 646,
+      "seconds" : 8.218567967414856,
+      "source" : "poll",
+      "utc" : "2026-10-21T07:35:00Z"
+    },
+    {
+      "bundle" : "com.google.Chrome",
+      "name" : "Google Chrome",
+      "pid" : 646,
+      "seconds" : 8.3197100162506104,
+      "source" : "poll",
+      "utc" : "2026-10-21T07:35:00Z"
+    },
+    {
+      "bundle" : "com.google.Chrome",
+      "name" : "Google Chrome",
+      "pid" : 646,
+      "seconds" : 8.4206069707870483,
+      "source" : "poll",
+      "utc" : "2026-10-21T07:35:01Z"
+    },
+    {
+      "bundle" : "com.google.Chrome",
+      "name" : "Google Chrome",
+      "pid" : 646,
+      "seconds" : 8.5215569734573364,
+      "source" : "poll",
+      "utc" : "2026-10-21T07:35:01Z"
+    },
+    {
+      "bundle" : "com.google.Chrome",
+      "name" : "Google Chrome",
+      "pid" : 646,
+      "seconds" : 8.6232519149780273,
+      "source" : "poll",
+      "utc" : "2026-10-21T07:35:01Z"
+    },
+    {
+      "bundle" : "com.google.Chrome",
+      "name" : "Google Chrome",
+      "pid" : 646,
+      "seconds" : 8.7247899770736694,
+      "source" : "poll",
+      "utc" : "2026-10-21T07:35:01Z"
+    },
+    {
+      "bundle" : "com.google.Chrome",
+      "name" : "Google Chrome",
+      "pid" : 646,
+      "seconds" : 8.8257319927215576,
+      "source" : "poll",
+      "utc" : "2026-10-21T07:35:01Z"
+    },
+    {
+      "bundle" : "com.google.Chrome",
+      "name" : "Google Chrome",
+      "pid" : 646,
+      "seconds" : 8.9274389743804932,
+      "source" : "poll",
+      "utc" : "2026-10-21T07:35:01Z"
+    },
+    {
+      "bundle" : "com.google.Chrome",
+      "name" : "Google Chrome",
+      "pid" : 646,
+      "seconds" : 9.0290689468383789,
+      "source" : "poll",
+      "utc" : "2026-10-21T07:35:01Z"
+    },
+    {
+      "bundle" : "com.google.Chrome",
+      "name" : "Google Chrome",
+      "pid" : 646,
+      "seconds" : 9.1308079957962036,
+      "source" : "poll",
+      "utc" : "2026-10-21T07:35:01Z"
+    },
+    {
+      "bundle" : "com.google.Chrome",
+      "name" : "Google Chrome",
+      "pid" : 646,
+      "seconds" : 9.2319200038909912,
+      "source" : "poll",
+      "utc" : "2026-10-21T07:35:01Z"
+    },
+    {
+      "bundle" : "com.google.Chrome",
+      "name" : "Google Chrome",
+      "pid" : 646,
+      "seconds" : 9.3330619335174561,
+      "source" : "poll",
+      "utc" : "2026-10-21T07:35:01Z"
+    },
+    {
+      "bundle" : "com.google.Chrome",
+      "name" : "Google Chrome",
+      "pid" : 646,
+      "seconds" : 9.4348089694976807,
+      "source" : "poll",
+      "utc" : "2026-10-21T07:35:02Z"
+    },
+    {
+      "bundle" : "com.google.Chrome",
+      "name" : "Google Chrome",
+      "pid" : 646,
+      "seconds" : 9.536281943321228,
+      "source" : "poll",
+      "utc" : "2026-10-21T07:35:02Z"
+    },
+    {
+      "bundle" : "com.google.Chrome",
+      "name" : "Google Chrome",
+      "pid" : 646,
+      "seconds" : 9.6377469301223755,
+      "source" : "poll",
+      "utc" : "2026-10-21T07:35:02Z"
+    },
+    {
+      "bundle" : "com.google.Chrome",
+      "name" : "Google Chrome",
+      "pid" : 646,
+      "seconds" : 9.7392460107803345,
+      "source" : "poll",
+      "utc" : "2026-10-21T07:35:02Z"
+    },
+    {
+      "bundle" : "com.google.Chrome",
+      "name" : "Google Chrome",
+      "pid" : 646,
+      "seconds" : 9.8398209810256958,
+      "source" : "poll",
+      "utc" : "2026-10-21T07:35:02Z"
+    },
+    {
+      "bundle" : "com.google.Chrome",
+      "name" : "Google Chrome",
+      "pid" : 646,
+      "seconds" : 9.9414910078048706,
+      "source" : "poll",
+      "utc" : "2026-10-21T07:35:02Z"
+    },
+    {
+      "bundle" : "com.google.Chrome",
+      "name" : "Google Chrome",
+      "pid" : 646,
+      "seconds" : 10.043720006942749,
+      "source" : "poll",
+      "utc" : "2026-10-21T07:35:02Z"
+    },
+    {
+      "bundle" : "com.google.Chrome",
+      "name" : "Google Chrome",
+      "pid" : 646,
+      "seconds" : 10.145656943321228,
+      "source" : "poll",
+      "utc" : "2026-10-21T07:35:02Z"
+    },
+    {
+      "bundle" : "com.google.Chrome",
+      "name" : "Google Chrome",
+      "pid" : 646,
+      "seconds" : 10.247418999671936,
+      "source" : "poll",
+      "utc" : "2026-10-21T07:35:02Z"
+    },
+    {
+      "bundle" : "com.google.Chrome",
+      "name" : "Google Chrome",
+      "pid" : 646,
+      "seconds" : 10.348978996276855,
+      "source" : "poll",
+      "utc" : "2026-10-21T07:35:02Z"
+    },
+    {
+      "bundle" : "com.google.Chrome",
+      "name" : "Google Chrome",
+      "pid" : 646,
+      "seconds" : 10.449694991111755,
+      "source" : "poll",
+      "utc" : "2026-10-21T07:35:03Z"
+    },
+    {
+      "bundle" : "com.google.Chrome",
+      "name" : "Google Chrome",
+      "pid" : 646,
+      "seconds" : 10.551275968551636,
+      "source" : "poll",
+      "utc" : "2026-10-21T07:35:03Z"
+    },
+    {
+      "bundle" : "com.google.Chrome",
+      "name" : "Google Chrome",
+      "pid" : 646,
+      "seconds" : 10.652343988418579,
+      "source" : "poll",
+      "utc" : "2026-10-21T07:35:03Z"
+    },
+    {
+      "bundle" : "com.google.Chrome",
+      "name" : "Google Chrome",
+      "pid" : 646,
+      "seconds" : 10.753973960876465,
+      "source" : "poll",
+      "utc" : "2026-10-21T07:35:03Z"
+    },
+    {
+      "bundle" : "com.google.Chrome",
+      "name" : "Google Chrome",
+      "pid" : 646,
+      "seconds" : 10.854758024215698,
+      "source" : "poll",
+      "utc" : "2026-10-21T07:35:03Z"
+    },
+    {
+      "bundle" : "com.google.Chrome",
+      "name" : "Google Chrome",
+      "pid" : 646,
+      "seconds" : 10.956501007080078,
+      "source" : "poll",
+      "utc" : "2026-10-21T07:35:03Z"
+    },
+    {
+      "bundle" : "com.google.Chrome",
+      "name" : "Google Chrome",
+      "pid" : 646,
+      "seconds" : 11.058239936828613,
+      "source" : "poll",
+      "utc" : "2026-10-21T07:35:03Z"
+    },
+    {
+      "bundle" : "com.google.Chrome",
+      "name" : "Google Chrome",
+      "pid" : 646,
+      "seconds" : 11.159886002540588,
+      "source" : "poll",
+      "utc" : "2026-10-21T07:35:03Z"
+    },
+    {
+      "bundle" : "com.google.Chrome",
+      "name" : "Google Chrome",
+      "pid" : 646,
+      "seconds" : 11.261269927024841,
+      "source" : "poll",
+      "utc" : "2026-10-21T07:35:03Z"
+    },
+    {
+      "bundle" : "com.google.Chrome",
+      "name" : "Google Chrome",
+      "pid" : 646,
+      "seconds" : 11.362727999687195,
+      "source" : "poll",
+      "utc" : "2026-10-21T07:35:03Z"
+    },
+    {
+      "bundle" : "com.google.Chrome",
+      "name" : "Google Chrome",
+      "pid" : 646,
+      "seconds" : 11.464257001876831,
+      "source" : "poll",
+      "utc" : "2026-10-21T07:35:04Z"
+    },
+    {
+      "bundle" : "com.google.Chrome",
+      "name" : "Google Chrome",
+      "pid" : 646,
+      "seconds" : 11.565338015556335,
+      "source" : "poll",
+      "utc" : "2026-10-21T07:35:04Z"
+    },
+    {
+      "bundle" : "com.google.Chrome",
+      "name" : "Google Chrome",
+      "pid" : 646,
+      "seconds" : 11.666399002075195,
+      "source" : "poll",
+      "utc" : "2026-10-21T07:35:04Z"
+    },
+    {
+      "bundle" : "com.google.Chrome",
+      "name" : "Google Chrome",
+      "pid" : 646,
+      "seconds" : 11.768123984336853,
+      "source" : "poll",
+      "utc" : "2026-10-21T07:35:04Z"
+    },
+    {
+      "bundle" : "com.google.Chrome",
+      "name" : "Google Chrome",
+      "pid" : 646,
+      "seconds" : 11.869580984115601,
+      "source" : "poll",
+      "utc" : "2026-10-21T07:35:04Z"
+    },
+    {
+      "bundle" : "com.google.Chrome",
+      "name" : "Google Chrome",
+      "pid" : 646,
+      "seconds" : 11.971050024032593,
+      "source" : "poll",
+      "utc" : "2026-10-21T07:35:04Z"
+    },
+    {
+      "bundle" : "com.google.Chrome",
+      "name" : "Google Chrome",
+      "pid" : 646,
+      "seconds" : 12.073205947875977,
+      "source" : "poll",
+      "utc" : "2026-10-21T07:35:04Z"
+    },
+    {
+      "bundle" : "com.google.Chrome",
+      "name" : "Google Chrome",
+      "pid" : 646,
+      "seconds" : 12.174718976020813,
+      "source" : "poll",
+      "utc" : "2026-10-21T07:35:04Z"
+    },
+    {
+      "bundle" : "com.google.Chrome",
+      "name" : "Google Chrome",
+      "pid" : 646,
+      "seconds" : 12.275964021682739,
+      "source" : "poll",
+      "utc" : "2026-10-21T07:35:04Z"
+    },
+    {
+      "bundle" : "com.google.Chrome",
+      "name" : "Google Chrome",
+      "pid" : 646,
+      "seconds" : 12.377954006195068,
+      "source" : "poll",
+      "utc" : "2026-10-21T07:35:04Z"
+    },
+    {
+      "bundle" : "com.google.Chrome",
+      "name" : "Google Chrome",
+      "pid" : 646,
+      "seconds" : 12.479947924613953,
+      "source" : "poll",
+      "utc" : "2026-10-21T07:35:05Z"
+    },
+    {
+      "bundle" : "com.google.Chrome",
+      "name" : "Google Chrome",
+      "pid" : 646,
+      "seconds" : 12.582065939903259,
+      "source" : "poll",
+      "utc" : "2026-10-21T07:35:05Z"
+    },
+    {
+      "bundle" : "com.google.Chrome",
+      "name" : "Google Chrome",
+      "pid" : 646,
+      "seconds" : 12.683055996894836,
+      "source" : "poll",
+      "utc" : "2026-10-21T07:35:05Z"
+    },
+    {
+      "bundle" : "com.google.Chrome",
+      "name" : "Google Chrome",
+      "pid" : 646,
+      "seconds" : 12.784510970115662,
+      "source" : "poll",
+      "utc" : "2026-10-21T07:35:05Z"
+    },
+    {
+      "bundle" : "com.google.Chrome",
+      "name" : "Google Chrome",
+      "pid" : 646,
+      "seconds" : 12.886220932006836,
+      "source" : "poll",
+      "utc" : "2026-10-21T07:35:05Z"
+    },
+    {
+      "bundle" : "com.google.Chrome",
+      "name" : "Google Chrome",
+      "pid" : 646,
+      "seconds" : 12.987228989601135,
+      "source" : "poll",
+      "utc" : "2026-10-21T07:35:05Z"
+    },
+    {
+      "bundle" : "com.google.Chrome",
+      "name" : "Google Chrome",
+      "pid" : 646,
+      "seconds" : 13.088963985443115,
+      "source" : "poll",
+      "utc" : "2026-10-21T07:35:05Z"
+    },
+    {
+      "bundle" : "com.google.Chrome",
+      "name" : "Google Chrome",
+      "pid" : 646,
+      "seconds" : 13.189903020858765,
+      "source" : "poll",
+      "utc" : "2026-10-21T07:35:05Z"
+    },
+    {
+      "bundle" : "com.google.Chrome",
+      "name" : "Google Chrome",
+      "pid" : 646,
+      "seconds" : 13.29135000705719,
+      "source" : "poll",
+      "utc" : "2026-10-21T07:35:05Z"
+    },
+    {
+      "bundle" : "com.google.Chrome",
+      "name" : "Google Chrome",
+      "pid" : 646,
+      "seconds" : 13.392409920692444,
+      "source" : "poll",
+      "utc" : "2026-10-21T07:35:06Z"
+    },
+    {
+      "bundle" : "com.google.Chrome",
+      "name" : "Google Chrome",
+      "pid" : 646,
+      "seconds" : 13.49324893951416,
+      "source" : "poll",
+      "utc" : "2026-10-21T07:35:06Z"
+    },
+    {
+      "bundle" : "com.google.Chrome",
+      "name" : "Google Chrome",
+      "pid" : 646,
+      "seconds" : 13.594864964485168,
+      "source" : "poll",
+      "utc" : "2026-10-21T07:35:06Z"
+    },
+    {
+      "bundle" : "com.google.Chrome",
+      "name" : "Google Chrome",
+      "pid" : 646,
+      "seconds" : 13.697129011154175,
+      "source" : "poll",
+      "utc" : "2026-10-21T07:35:06Z"
+    },
+    {
+      "bundle" : "com.google.Chrome",
+      "name" : "Google Chrome",
+      "pid" : 646,
+      "seconds" : 13.798723936080933,
+      "source" : "poll",
+      "utc" : "2026-10-21T07:35:06Z"
+    },
+    {
+      "bundle" : "com.google.Chrome",
+      "name" : "Google Chrome",
+      "pid" : 646,
+      "seconds" : 13.899675965309143,
+      "source" : "poll",
+      "utc" : "2026-10-21T07:35:06Z"
+    },
+    {
+      "bundle" : "com.google.Chrome",
+      "name" : "Google Chrome",
+      "pid" : 646,
+      "seconds" : 14.001096963882446,
+      "source" : "poll",
+      "utc" : "2026-10-21T07:35:06Z"
+    },
+    {
+      "bundle" : "com.google.Chrome",
+      "name" : "Google Chrome",
+      "pid" : 646,
+      "seconds" : 14.101946949958801,
+      "source" : "poll",
+      "utc" : "2026-10-21T07:35:06Z"
+    },
+    {
+      "bundle" : "com.google.Chrome",
+      "name" : "Google Chrome",
+      "pid" : 646,
+      "seconds" : 14.203894972801208,
+      "source" : "poll",
+      "utc" : "2026-10-21T07:35:06Z"
+    },
+    {
+      "bundle" : "com.google.Chrome",
+      "name" : "Google Chrome",
+      "pid" : 646,
+      "seconds" : 14.305418968200684,
+      "source" : "poll",
+      "utc" : "2026-10-21T07:35:06Z"
+    },
+    {
+      "bundle" : "com.google.Chrome",
+      "name" : "Google Chrome",
+      "pid" : 646,
+      "seconds" : 14.406593918800354,
+      "source" : "poll",
+      "utc" : "2026-10-21T07:35:07Z"
+    },
+    {
+      "bundle" : "com.google.Chrome",
+      "name" : "Google Chrome",
+      "pid" : 646,
+      "seconds" : 14.507964015007019,
+      "source" : "poll",
+      "utc" : "2026-10-21T07:35:07Z"
+    },
+    {
+      "bundle" : "com.google.Chrome",
+      "name" : "Google Chrome",
+      "pid" : 646,
+      "seconds" : 14.609177947044373,
+      "source" : "poll",
+      "utc" : "2026-10-21T07:35:07Z"
+    },
+    {
+      "bundle" : "com.google.Chrome",
+      "name" : "Google Chrome",
+      "pid" : 646,
+      "seconds" : 14.710824966430664,
+      "source" : "poll",
+      "utc" : "2026-10-21T07:35:07Z"
+    },
+    {
+      "bundle" : "com.google.Chrome",
+      "name" : "Google Chrome",
+      "pid" : 646,
+      "seconds" : 14.812755942344666,
+      "source" : "poll",
+      "utc" : "2026-10-21T07:35:07Z"
+    },
+    {
+      "bundle" : "com.google.Chrome",
+      "name" : "Google Chrome",
+      "pid" : 646,
+      "seconds" : 14.914350986480713,
+      "source" : "poll",
+      "utc" : "2026-10-21T07:35:07Z"
+    },
+    {
+      "bundle" : "com.google.Chrome",
+      "name" : "Google Chrome",
+      "pid" : 646,
+      "seconds" : 15.015429973602295,
+      "source" : "poll",
+      "utc" : "2026-10-21T07:35:07Z"
+    },
+    {
+      "bundle" : "com.google.Chrome",
+      "name" : "Google Chrome",
+      "pid" : 646,
+      "seconds" : 15.116268992424011,
+      "source" : "poll",
+      "utc" : "2026-10-21T07:35:07Z"
+    },
+    {
+      "bundle" : "com.google.Chrome",
+      "name" : "Google Chrome",
+      "pid" : 646,
+      "seconds" : 15.217351913452148,
+      "source" : "poll",
+      "utc" : "2026-10-21T07:35:07Z"
+    },
+    {
+      "bundle" : "com.google.Chrome",
+      "name" : "Google Chrome",
+      "pid" : 646,
+      "seconds" : 15.318192005157471,
+      "source" : "poll",
+      "utc" : "2026-10-21T07:35:07Z"
+    },
+    {
+      "bundle" : "com.google.Chrome",
+      "name" : "Google Chrome",
+      "pid" : 646,
+      "seconds" : 15.419618010520935,
+      "source" : "poll",
+      "utc" : "2026-10-21T07:35:08Z"
+    },
+    {
+      "bundle" : "com.google.Chrome",
+      "name" : "Google Chrome",
+      "pid" : 646,
+      "seconds" : 15.520604968070984,
+      "source" : "poll",
+      "utc" : "2026-10-21T07:35:08Z"
+    },
+    {
+      "bundle" : "com.google.Chrome",
+      "name" : "Google Chrome",
+      "pid" : 646,
+      "seconds" : 15.621863961219788,
+      "source" : "poll",
+      "utc" : "2026-10-21T07:35:08Z"
+    },
+    {
+      "bundle" : "com.google.Chrome",
+      "name" : "Google Chrome",
+      "pid" : 646,
+      "seconds" : 15.723278999328613,
+      "source" : "poll",
+      "utc" : "2026-10-21T07:35:08Z"
+    },
+    {
+      "bundle" : "com.google.Chrome",
+      "name" : "Google Chrome",
+      "pid" : 646,
+      "seconds" : 15.82464599609375,
+      "source" : "poll",
+      "utc" : "2026-10-21T07:35:08Z"
+    },
+    {
+      "bundle" : "com.google.Chrome",
+      "name" : "Google Chrome",
+      "pid" : 646,
+      "seconds" : 15.925544023513794,
+      "source" : "poll",
+      "utc" : "2026-10-21T07:35:08Z"
+    },
+    {
+      "bundle" : "com.google.Chrome",
+      "name" : "Google Chrome",
+      "pid" : 646,
+      "seconds" : 16.026468992233276,
+      "source" : "poll",
+      "utc" : "2026-10-21T07:35:08Z"
+    },
+    {
+      "bundle" : "com.google.Chrome",
+      "name" : "Google Chrome",
+      "pid" : 646,
+      "seconds" : 16.127296924591064,
+      "source" : "poll",
+      "utc" : "2026-10-21T07:35:08Z"
+    },
+    {
+      "bundle" : "com.google.Chrome",
+      "name" : "Google Chrome",
+      "pid" : 646,
+      "seconds" : 16.228896021842957,
+      "source" : "poll",
+      "utc" : "2026-10-21T07:35:08Z"
+    },
+    {
+      "bundle" : "com.google.Chrome",
+      "name" : "Google Chrome",
+      "pid" : 646,
+      "seconds" : 16.330673933029175,
+      "source" : "poll",
+      "utc" : "2026-10-21T07:35:08Z"
+    },
+    {
+      "bundle" : "com.google.Chrome",
+      "name" : "Google Chrome",
+      "pid" : 646,
+      "seconds" : 16.431675910949707,
+      "source" : "poll",
+      "utc" : "2026-10-21T07:35:09Z"
+    },
+    {
+      "bundle" : "com.google.Chrome",
+      "name" : "Google Chrome",
+      "pid" : 646,
+      "seconds" : 16.532907962799072,
+      "source" : "poll",
+      "utc" : "2026-10-21T07:35:09Z"
+    },
+    {
+      "bundle" : "com.google.Chrome",
+      "name" : "Google Chrome",
+      "pid" : 646,
+      "seconds" : 16.634779930114746,
+      "source" : "poll",
+      "utc" : "2026-10-21T07:35:09Z"
+    },
+    {
+      "bundle" : "com.google.Chrome",
+      "name" : "Google Chrome",
+      "pid" : 646,
+      "seconds" : 16.736297965049744,
+      "source" : "poll",
+      "utc" : "2026-10-21T07:35:09Z"
+    },
+    {
+      "bundle" : "com.google.Chrome",
+      "name" : "Google Chrome",
+      "pid" : 646,
+      "seconds" : 16.837559938430786,
+      "source" : "poll",
+      "utc" : "2026-10-21T07:35:09Z"
+    },
+    {
+      "bundle" : "com.google.Chrome",
+      "name" : "Google Chrome",
+      "pid" : 646,
+      "seconds" : 16.939311981201172,
+      "source" : "poll",
+      "utc" : "2026-10-21T07:35:09Z"
+    },
+    {
+      "bundle" : "com.google.Chrome",
+      "name" : "Google Chrome",
+      "pid" : 646,
+      "seconds" : 17.041021943092346,
+      "source" : "poll",
+      "utc" : "2026-10-21T07:35:09Z"
+    },
+    {
+      "bundle" : "com.google.Chrome",
+      "name" : "Google Chrome",
+      "pid" : 646,
+      "seconds" : 17.141991972923279,
+      "source" : "poll",
+      "utc" : "2026-10-21T07:35:09Z"
+    },
+    {
+      "bundle" : "com.google.Chrome",
+      "name" : "Google Chrome",
+      "pid" : 646,
+      "seconds" : 17.243919968605042,
+      "source" : "poll",
+      "utc" : "2026-10-21T07:35:09Z"
+    },
+    {
+      "bundle" : "com.google.Chrome",
+      "name" : "Google Chrome",
+      "pid" : 646,
+      "seconds" : 17.345360994338989,
+      "source" : "poll",
+      "utc" : "2026-10-21T07:35:09Z"
+    },
+    {
+      "bundle" : "com.google.Chrome",
+      "name" : "Google Chrome",
+      "pid" : 646,
+      "seconds" : 17.447152018547058,
+      "source" : "poll",
+      "utc" : "2026-10-21T07:35:10Z"
+    },
+    {
+      "bundle" : "com.google.Chrome",
+      "name" : "Google Chrome",
+      "pid" : 646,
+      "seconds" : 17.548864960670471,
+      "source" : "poll",
+      "utc" : "2026-10-21T07:35:10Z"
+    },
+    {
+      "bundle" : "com.google.Chrome",
+      "name" : "Google Chrome",
+      "pid" : 646,
+      "seconds" : 17.650560021400452,
+      "source" : "poll",
+      "utc" : "2026-10-21T07:35:10Z"
+    },
+    {
+      "bundle" : "com.google.Chrome",
+      "name" : "Google Chrome",
+      "pid" : 646,
+      "seconds" : 17.751518964767456,
+      "source" : "poll",
+      "utc" : "2026-10-21T07:35:10Z"
+    },
+    {
+      "bundle" : "com.google.Chrome",
+      "name" : "Google Chrome",
+      "pid" : 646,
+      "seconds" : 17.853151917457581,
+      "source" : "poll",
+      "utc" : "2026-10-21T07:35:10Z"
+    },
+    {
+      "bundle" : "com.google.Chrome",
+      "name" : "Google Chrome",
+      "pid" : 646,
+      "seconds" : 17.954836964607239,
+      "source" : "poll",
+      "utc" : "2026-10-21T07:35:10Z"
+    },
+    {
+      "bundle" : "com.google.Chrome",
+      "name" : "Google Chrome",
+      "pid" : 646,
+      "seconds" : 18.056684970855713,
+      "source" : "poll",
+      "utc" : "2026-10-21T07:35:10Z"
+    },
+    {
+      "bundle" : "com.google.Chrome",
+      "name" : "Google Chrome",
+      "pid" : 646,
+      "seconds" : 18.158349990844727,
+      "source" : "poll",
+      "utc" : "2026-10-21T07:35:10Z"
+    },
+    {
+      "bundle" : "com.google.Chrome",
+      "name" : "Google Chrome",
+      "pid" : 646,
+      "seconds" : 18.259871006011963,
+      "source" : "poll",
+      "utc" : "2026-10-21T07:35:10Z"
+    },
+    {
+      "bundle" : "com.google.Chrome",
+      "name" : "Google Chrome",
+      "pid" : 646,
+      "seconds" : 18.360741972923279,
+      "source" : "poll",
+      "utc" : "2026-10-21T07:35:10Z"
+    },
+    {
+      "bundle" : "com.google.Chrome",
+      "name" : "Google Chrome",
+      "pid" : 646,
+      "seconds" : 18.462494015693665,
+      "source" : "poll",
+      "utc" : "2026-10-21T07:35:11Z"
+    },
+    {
+      "bundle" : "com.google.Chrome",
+      "name" : "Google Chrome",
+      "pid" : 646,
+      "seconds" : 18.563996911048889,
+      "source" : "poll",
+      "utc" : "2026-10-21T07:35:11Z"
+    },
+    {
+      "bundle" : "com.google.Chrome",
+      "name" : "Google Chrome",
+      "pid" : 646,
+      "seconds" : 18.665557026863098,
+      "source" : "poll",
+      "utc" : "2026-10-21T07:35:11Z"
+    },
+    {
+      "bundle" : "com.google.Chrome",
+      "name" : "Google Chrome",
+      "pid" : 646,
+      "seconds" : 18.766543984413147,
+      "source" : "poll",
+      "utc" : "2026-10-21T07:35:11Z"
+    },
+    {
+      "bundle" : "com.google.Chrome",
+      "name" : "Google Chrome",
+      "pid" : 646,
+      "seconds" : 18.868145942687988,
+      "source" : "poll",
+      "utc" : "2026-10-21T07:35:11Z"
+    },
+    {
+      "bundle" : "com.google.Chrome",
+      "name" : "Google Chrome",
+      "pid" : 646,
+      "seconds" : 18.969830989837646,
+      "source" : "poll",
+      "utc" : "2026-10-21T07:35:11Z"
+    },
+    {
+      "bundle" : "com.google.Chrome",
+      "name" : "Google Chrome",
+      "pid" : 646,
+      "seconds" : 19.071574926376343,
+      "source" : "poll",
+      "utc" : "2026-10-21T07:35:11Z"
+    },
+    {
+      "bundle" : "com.google.Chrome",
+      "name" : "Google Chrome",
+      "pid" : 646,
+      "seconds" : 19.172963976860046,
+      "source" : "poll",
+      "utc" : "2026-10-21T07:35:11Z"
+    },
+    {
+      "bundle" : "com.google.Chrome",
+      "name" : "Google Chrome",
+      "pid" : 646,
+      "seconds" : 19.27448296546936,
+      "source" : "poll",
+      "utc" : "2026-10-21T07:35:11Z"
+    },
+    {
+      "bundle" : "com.google.Chrome",
+      "name" : "Google Chrome",
+      "pid" : 646,
+      "seconds" : 19.375725984573364,
+      "source" : "poll",
+      "utc" : "2026-10-21T07:35:11Z"
+    },
+    {
+      "bundle" : "com.google.Chrome",
+      "name" : "Google Chrome",
+      "pid" : 646,
+      "seconds" : 19.477515935897827,
+      "source" : "poll",
+      "utc" : "2026-10-21T07:35:12Z"
+    },
+    {
+      "bundle" : "com.google.Chrome",
+      "name" : "Google Chrome",
+      "pid" : 646,
+      "seconds" : 19.580091953277588,
+      "source" : "poll",
+      "utc" : "2026-10-21T07:35:12Z"
+    },
+    {
+      "bundle" : "com.google.Chrome",
+      "name" : "Google Chrome",
+      "pid" : 646,
+      "seconds" : 19.681733965873718,
+      "source" : "poll",
+      "utc" : "2026-10-21T07:35:12Z"
+    },
+    {
+      "bundle" : "com.google.Chrome",
+      "name" : "Google Chrome",
+      "pid" : 646,
+      "seconds" : 19.7828209400177,
+      "source" : "poll",
+      "utc" : "2026-10-21T07:35:12Z"
+    },
+    {
+      "bundle" : "com.google.Chrome",
+      "name" : "Google Chrome",
+      "pid" : 646,
+      "seconds" : 19.884521961212158,
+      "source" : "poll",
+      "utc" : "2026-10-21T07:35:12Z"
+    },
+    {
+      "bundle" : "com.google.Chrome",
+      "name" : "Google Chrome",
+      "pid" : 646,
+      "seconds" : 19.986217021942139,
+      "source" : "poll",
+      "utc" : "2026-10-21T07:35:12Z"
+    },
+    {
+      "bundle" : "com.google.Chrome",
+      "name" : "Google Chrome",
+      "pid" : 646,
+      "seconds" : 20.086988925933838,
+      "source" : "poll",
+      "utc" : "2026-10-21T07:35:12Z"
+    },
+    {
+      "bundle" : "com.google.Chrome",
+      "name" : "Google Chrome",
+      "pid" : 646,
+      "seconds" : 20.188814997673035,
+      "source" : "poll",
+      "utc" : "2026-10-21T07:35:12Z"
+    },
+    {
+      "bundle" : "com.google.Chrome",
+      "name" : "Google Chrome",
+      "pid" : 646,
+      "seconds" : 20.290676951408386,
+      "source" : "poll",
+      "utc" : "2026-10-21T07:35:12Z"
+    },
+    {
+      "bundle" : "com.google.Chrome",
+      "name" : "Google Chrome",
+      "pid" : 646,
+      "seconds" : 20.392427921295166,
+      "source" : "poll",
+      "utc" : "2026-10-21T07:35:13Z"
+    },
+    {
+      "bundle" : "com.google.Chrome",
+      "name" : "Google Chrome",
+      "pid" : 646,
+      "seconds" : 20.494427919387817,
+      "source" : "poll",
+      "utc" : "2026-10-21T07:35:13Z"
+    },
+    {
+      "bundle" : "com.google.Chrome",
+      "name" : "Google Chrome",
+      "pid" : 646,
+      "seconds" : 20.596325993537903,
+      "source" : "poll",
+      "utc" : "2026-10-21T07:35:13Z"
+    },
+    {
+      "bundle" : "com.google.Chrome",
+      "name" : "Google Chrome",
+      "pid" : 646,
+      "seconds" : 20.697970986366272,
+      "source" : "poll",
+      "utc" : "2026-10-21T07:35:13Z"
+    },
+    {
+      "bundle" : "com.google.Chrome",
+      "name" : "Google Chrome",
+      "pid" : 646,
+      "seconds" : 20.799453020095825,
+      "source" : "poll",
+      "utc" : "2026-10-21T07:35:13Z"
+    },
+    {
+      "bundle" : "com.google.Chrome",
+      "name" : "Google Chrome",
+      "pid" : 646,
+      "seconds" : 20.901238918304443,
+      "source" : "poll",
+      "utc" : "2026-10-21T07:35:13Z"
+    },
+    {
+      "bundle" : "com.google.Chrome",
+      "name" : "Google Chrome",
+      "pid" : 646,
+      "seconds" : 21.002445936203003,
+      "source" : "poll",
+      "utc" : "2026-10-21T07:35:13Z"
+    },
+    {
+      "bundle" : "com.google.Chrome",
+      "name" : "Google Chrome",
+      "pid" : 646,
+      "seconds" : 21.103623986244202,
+      "source" : "poll",
+      "utc" : "2026-10-21T07:35:13Z"
+    },
+    {
+      "bundle" : "com.google.Chrome",
+      "name" : "Google Chrome",
+      "pid" : 646,
+      "seconds" : 21.205420970916748,
+      "source" : "poll",
+      "utc" : "2026-10-21T07:35:13Z"
+    },
+    {
+      "bundle" : "com.google.Chrome",
+      "name" : "Google Chrome",
+      "pid" : 646,
+      "seconds" : 21.30676794052124,
+      "source" : "poll",
+      "utc" : "2026-10-21T07:35:13Z"
+    },
+    {
+      "bundle" : "com.google.Chrome",
+      "name" : "Google Chrome",
+      "pid" : 646,
+      "seconds" : 21.407796025276184,
+      "source" : "poll",
+      "utc" : "2026-10-21T07:35:14Z"
+    },
+    {
+      "bundle" : "com.google.Chrome",
+      "name" : "Google Chrome",
+      "pid" : 646,
+      "seconds" : 21.508973002433777,
+      "source" : "poll",
+      "utc" : "2026-10-21T07:35:14Z"
+    },
+    {
+      "bundle" : "com.tencent.xinWeChat",
+      "name" : "微信",
+      "pid" : 38330,
+      "seconds" : 21.522642970085144,
+      "source" : "activation",
+      "utc" : "2026-10-21T07:35:14Z"
+    },
+    {
+      "bundle" : "com.tencent.xinWeChat",
+      "name" : "微信",
+      "pid" : 38330,
+      "seconds" : 21.610428929328918,
+      "source" : "poll",
+      "utc" : "2026-10-21T07:35:14Z"
+    },
+    {
+      "bundle" : "com.tencent.xinWeChat",
+      "name" : "微信",
+      "pid" : 38330,
+      "seconds" : 21.711930990219116,
+      "source" : "poll",
+      "utc" : "2026-10-21T07:35:14Z"
+    },
+    {
+      "bundle" : "com.tencent.xinWeChat",
+      "name" : "微信",
+      "pid" : 38330,
+      "seconds" : 21.812883019447327,
+      "source" : "poll",
+      "utc" : "2026-10-21T07:35:14Z"
+    },
+    {
+      "bundle" : "com.tencent.xinWeChat",
+      "name" : "微信",
+      "pid" : 38330,
+      "seconds" : 21.913879990577698,
+      "source" : "poll",
+      "utc" : "2026-10-21T07:35:14Z"
+    },
+    {
+      "bundle" : "com.tencent.xinWeChat",
+      "name" : "微信",
+      "pid" : 38330,
+      "seconds" : 22.015663027763367,
+      "source" : "poll",
+      "utc" : "2026-10-21T07:35:14Z"
+    },
+    {
+      "bundle" : "com.tencent.xinWeChat",
+      "name" : "微信",
+      "pid" : 38330,
+      "seconds" : 22.117488026618958,
+      "source" : "poll",
+      "utc" : "2026-10-21T07:35:14Z"
+    },
+    {
+      "bundle" : "com.tencent.xinWeChat",
+      "name" : "微信",
+      "pid" : 38330,
+      "seconds" : 22.219367980957031,
+      "source" : "poll",
+      "utc" : "2026-10-21T07:35:14Z"
+    },
+    {
+      "bundle" : "com.tencent.xinWeChat",
+      "name" : "微信",
+      "pid" : 38330,
+      "seconds" : 22.320256948471069,
+      "source" : "poll",
+      "utc" : "2026-10-21T07:35:14Z"
+    },
+    {
+      "bundle" : "com.tencent.xinWeChat",
+      "name" : "微信",
+      "pid" : 38330,
+      "seconds" : 22.421340942382812,
+      "source" : "poll",
+      "utc" : "2026-10-21T07:35:15Z"
+    },
+    {
+      "bundle" : "com.tencent.xinWeChat",
+      "name" : "微信",
+      "pid" : 38330,
+      "seconds" : 22.523111939430237,
+      "source" : "poll",
+      "utc" : "2026-10-21T07:35:15Z"
+    },
+    {
+      "bundle" : "com.tencent.xinWeChat",
+      "name" : "微信",
+      "pid" : 38330,
+      "seconds" : 22.624390959739685,
+      "source" : "poll",
+      "utc" : "2026-10-21T07:35:15Z"
+    },
+    {
+      "bundle" : "com.tencent.xinWeChat",
+      "name" : "微信",
+      "pid" : 38330,
+      "seconds" : 22.726172924041748,
+      "source" : "poll",
+      "utc" : "2026-10-21T07:35:15Z"
+    },
+    {
+      "bundle" : "com.tencent.xinWeChat",
+      "name" : "微信",
+      "pid" : 38330,
+      "seconds" : 22.827230930328369,
+      "source" : "poll",
+      "utc" : "2026-10-21T07:35:15Z"
+    },
+    {
+      "bundle" : "com.tencent.xinWeChat",
+      "name" : "微信",
+      "pid" : 38330,
+      "seconds" : 22.928609013557434,
+      "source" : "poll",
+      "utc" : "2026-10-21T07:35:15Z"
+    },
+    {
+      "bundle" : "com.tencent.xinWeChat",
+      "name" : "微信",
+      "pid" : 38330,
+      "seconds" : 23.029659986495972,
+      "source" : "poll",
+      "utc" : "2026-10-21T07:35:15Z"
+    },
+    {
+      "bundle" : "com.tencent.xinWeChat",
+      "name" : "微信",
+      "pid" : 38330,
+      "seconds" : 23.130743980407715,
+      "source" : "poll",
+      "utc" : "2026-10-21T07:35:15Z"
+    },
+    {
+      "bundle" : "com.tencent.xinWeChat",
+      "name" : "微信",
+      "pid" : 38330,
+      "seconds" : 23.23286497592926,
+      "source" : "poll",
+      "utc" : "2026-10-21T07:35:15Z"
+    },
+    {
+      "bundle" : "com.tencent.xinWeChat",
+      "name" : "微信",
+      "pid" : 38330,
+      "seconds" : 23.334618926048279,
+      "source" : "poll",
+      "utc" : "2026-10-21T07:35:15Z"
+    },
+    {
+      "bundle" : "com.tencent.xinWeChat",
+      "name" : "微信",
+      "pid" : 38330,
+      "seconds" : 23.436105012893677,
+      "source" : "poll",
+      "utc" : "2026-10-21T07:35:16Z"
+    },
+    {
+      "bundle" : "com.tencent.xinWeChat",
+      "name" : "微信",
+      "pid" : 38330,
+      "seconds" : 23.53782594203949,
+      "source" : "poll",
+      "utc" : "2026-10-21T07:35:16Z"
+    },
+    {
+      "bundle" : "com.tencent.xinWeChat",
+      "name" : "微信",
+      "pid" : 38330,
+      "seconds" : 23.639262914657593,
+      "source" : "poll",
+      "utc" : "2026-10-21T07:35:16Z"
+    },
+    {
+      "bundle" : "com.tencent.xinWeChat",
+      "name" : "微信",
+      "pid" : 38330,
+      "seconds" : 23.740172982215881,
+      "source" : "poll",
+      "utc" : "2026-10-21T07:35:16Z"
+    },
+    {
+      "bundle" : "com.tencent.xinWeChat",
+      "name" : "微信",
+      "pid" : 38330,
+      "seconds" : 23.841724991798401,
+      "source" : "poll",
+      "utc" : "2026-10-21T07:35:16Z"
+    },
+    {
+      "bundle" : "com.tencent.xinWeChat",
+      "name" : "微信",
+      "pid" : 38330,
+      "seconds" : 23.942651987075806,
+      "source" : "poll",
+      "utc" : "2026-10-21T07:35:16Z"
+    },
+    {
+      "bundle" : "com.tencent.xinWeChat",
+      "name" : "微信",
+      "pid" : 38330,
+      "seconds" : 24.044201016426086,
+      "source" : "poll",
+      "utc" : "2026-10-21T07:35:16Z"
+    },
+    {
+      "bundle" : "com.tencent.xinWeChat",
+      "name" : "微信",
+      "pid" : 38330,
+      "seconds" : 24.146716952323914,
+      "source" : "poll",
+      "utc" : "2026-10-21T07:35:16Z"
+    },
+    {
+      "bundle" : "com.tencent.xinWeChat",
+      "name" : "微信",
+      "pid" : 38330,
+      "seconds" : 24.248570919036865,
+      "source" : "poll",
+      "utc" : "2026-10-21T07:35:16Z"
+    },
+    {
+      "bundle" : "com.tencent.xinWeChat",
+      "name" : "微信",
+      "pid" : 38330,
+      "seconds" : 24.350655913352966,
+      "source" : "poll",
+      "utc" : "2026-10-21T07:35:16Z"
+    },
+    {
+      "bundle" : "com.tencent.xinWeChat",
+      "name" : "微信",
+      "pid" : 38330,
+      "seconds" : 24.451733946800232,
+      "source" : "poll",
+      "utc" : "2026-10-21T07:35:17Z"
+    },
+    {
+      "bundle" : "com.tencent.xinWeChat",
+      "name" : "微信",
+      "pid" : 38330,
+      "seconds" : 24.553496956825256,
+      "source" : "poll",
+      "utc" : "2026-10-21T07:35:17Z"
+    },
+    {
+      "bundle" : "com.tencent.xinWeChat",
+      "name" : "微信",
+      "pid" : 38330,
+      "seconds" : 24.654629945755005,
+      "source" : "poll",
+      "utc" : "2026-10-21T07:35:17Z"
+    },
+    {
+      "bundle" : "com.tencent.xinWeChat",
+      "name" : "微信",
+      "pid" : 38330,
+      "seconds" : 24.756367921829224,
+      "source" : "poll",
+      "utc" : "2026-10-21T07:35:17Z"
+    },
+    {
+      "bundle" : "com.tencent.xinWeChat",
+      "name" : "微信",
+      "pid" : 38330,
+      "seconds" : 24.857972979545593,
+      "source" : "poll",
+      "utc" : "2026-10-21T07:35:17Z"
+    },
+    {
+      "bundle" : "com.tencent.xinWeChat",
+      "name" : "微信",
+      "pid" : 38330,
+      "seconds" : 24.9600989818573,
+      "source" : "poll",
+      "utc" : "2026-10-21T07:35:17Z"
+    },
+    {
+      "bundle" : "com.tencent.xinWeChat",
+      "name" : "微信",
+      "pid" : 38330,
+      "seconds" : 25.061864018440247,
+      "source" : "poll",
+      "utc" : "2026-10-21T07:35:17Z"
+    },
+    {
+      "bundle" : "com.tencent.xinWeChat",
+      "name" : "微信",
+      "pid" : 38330,
+      "seconds" : 25.163717985153198,
+      "source" : "poll",
+      "utc" : "2026-10-21T07:35:17Z"
+    },
+    {
+      "bundle" : "com.tencent.xinWeChat",
+      "name" : "微信",
+      "pid" : 38330,
+      "seconds" : 25.265769958496094,
+      "source" : "poll",
+      "utc" : "2026-10-21T07:35:17Z"
+    },
+    {
+      "bundle" : "com.tencent.xinWeChat",
+      "name" : "微信",
+      "pid" : 38330,
+      "seconds" : 25.367630004882812,
+      "source" : "poll",
+      "utc" : "2026-10-21T07:35:17Z"
+    },
+    {
+      "bundle" : "com.tencent.xinWeChat",
+      "name" : "微信",
+      "pid" : 38330,
+      "seconds" : 25.469128012657166,
+      "source" : "poll",
+      "utc" : "2026-10-21T07:35:18Z"
+    },
+    {
+      "bundle" : "com.tencent.xinWeChat",
+      "name" : "微信",
+      "pid" : 38330,
+      "seconds" : 25.570801019668579,
+      "source" : "poll",
+      "utc" : "2026-10-21T07:35:18Z"
+    },
+    {
+      "bundle" : "com.google.Chrome",
+      "name" : "Google Chrome",
+      "pid" : 646,
+      "seconds" : 25.609112977981567,
+      "source" : "activation",
+      "utc" : "2026-10-21T07:35:18Z"
+    },
+    {
+      "bundle" : "com.google.Chrome",
+      "name" : "Google Chrome",
+      "pid" : 646,
+      "seconds" : 25.672865986824036,
+      "source" : "poll",
+      "utc" : "2026-10-21T07:35:18Z"
+    },
+    {
+      "bundle" : "com.google.Chrome",
+      "name" : "Google Chrome",
+      "pid" : 646,
+      "seconds" : 25.774390935897827,
+      "source" : "poll",
+      "utc" : "2026-10-21T07:35:18Z"
+    },
+    {
+      "bundle" : "com.google.Chrome",
+      "name" : "Google Chrome",
+      "pid" : 646,
+      "seconds" : 25.875996947288513,
+      "source" : "poll",
+      "utc" : "2026-10-21T07:35:18Z"
+    },
+    {
+      "bundle" : "com.google.Chrome",
+      "name" : "Google Chrome",
+      "pid" : 646,
+      "seconds" : 25.976979970932007,
+      "source" : "poll",
+      "utc" : "2026-10-21T07:35:18Z"
+    },
+    {
+      "bundle" : "com.google.Chrome",
+      "name" : "Google Chrome",
+      "pid" : 646,
+      "seconds" : 26.080124020576477,
+      "source" : "poll",
+      "utc" : "2026-10-21T07:35:18Z"
+    },
+    {
+      "bundle" : "com.google.Chrome",
+      "name" : "Google Chrome",
+      "pid" : 646,
+      "seconds" : 26.181574940681458,
+      "source" : "poll",
+      "utc" : "2026-10-21T07:35:18Z"
+    },
+    {
+      "bundle" : "com.google.Chrome",
+      "name" : "Google Chrome",
+      "pid" : 646,
+      "seconds" : 26.282648921012878,
+      "source" : "poll",
+      "utc" : "2026-10-21T07:35:18Z"
+    },
+    {
+      "bundle" : "com.google.Chrome",
+      "name" : "Google Chrome",
+      "pid" : 646,
+      "seconds" : 26.385471940040588,
+      "source" : "poll",
+      "utc" : "2026-10-21T07:35:19Z"
+    },
+    {
+      "bundle" : "com.google.Chrome",
+      "name" : "Google Chrome",
+      "pid" : 646,
+      "seconds" : 26.48678994178772,
+      "source" : "poll",
+      "utc" : "2026-10-21T07:35:19Z"
+    },
+    {
+      "bundle" : "com.google.Chrome",
+      "name" : "Google Chrome",
+      "pid" : 646,
+      "seconds" : 26.588472962379456,
+      "source" : "poll",
+      "utc" : "2026-10-21T07:35:19Z"
+    },
+    {
+      "bundle" : "com.google.Chrome",
+      "name" : "Google Chrome",
+      "pid" : 646,
+      "seconds" : 26.689901947975159,
+      "source" : "poll",
+      "utc" : "2026-10-21T07:35:19Z"
+    },
+    {
+      "bundle" : "com.google.Chrome",
+      "name" : "Google Chrome",
+      "pid" : 646,
+      "seconds" : 26.790956020355225,
+      "source" : "poll",
+      "utc" : "2026-10-21T07:35:19Z"
+    },
+    {
+      "bundle" : "com.tdesktop.Telegram",
+      "name" : "Telegram",
+      "pid" : 57365,
+      "seconds" : 26.892411947250366,
+      "source" : "activation",
+      "utc" : "2026-10-21T07:35:19Z"
+    },
+    {
+      "bundle" : "com.tdesktop.Telegram",
+      "name" : "Telegram",
+      "pid" : 57365,
+      "seconds" : 26.892959952354431,
+      "source" : "poll",
+      "utc" : "2026-10-21T07:35:19Z"
+    },
+    {
+      "bundle" : "com.tdesktop.Telegram",
+      "name" : "Telegram",
+      "pid" : 57365,
+      "seconds" : 26.994036912918091,
+      "source" : "poll",
+      "utc" : "2026-10-21T07:35:19Z"
+    },
+    {
+      "bundle" : "com.tdesktop.Telegram",
+      "name" : "Telegram",
+      "pid" : 57365,
+      "seconds" : 27.095100998878479,
+      "source" : "poll",
+      "utc" : "2026-10-21T07:35:19Z"
+    },
+    {
+      "bundle" : "com.tdesktop.Telegram",
+      "name" : "Telegram",
+      "pid" : 57365,
+      "seconds" : 27.196563959121704,
+      "source" : "poll",
+      "utc" : "2026-10-21T07:35:19Z"
+    },
+    {
+      "bundle" : "com.tdesktop.Telegram",
+      "name" : "Telegram",
+      "pid" : 57365,
+      "seconds" : 27.298272013664246,
+      "source" : "poll",
+      "utc" : "2026-10-21T07:35:19Z"
+    },
+    {
+      "bundle" : "com.tdesktop.Telegram",
+      "name" : "Telegram",
+      "pid" : 57365,
+      "seconds" : 27.399260997772217,
+      "source" : "poll",
+      "utc" : "2026-10-21T07:35:20Z"
+    },
+    {
+      "bundle" : "com.tdesktop.Telegram",
+      "name" : "Telegram",
+      "pid" : 57365,
+      "seconds" : 27.500563979148865,
+      "source" : "poll",
+      "utc" : "2026-10-21T07:35:20Z"
+    },
+    {
+      "bundle" : "com.tdesktop.Telegram",
+      "name" : "Telegram",
+      "pid" : 57365,
+      "seconds" : 27.601719975471497,
+      "source" : "poll",
+      "utc" : "2026-10-21T07:35:20Z"
+    },
+    {
+      "bundle" : "com.tdesktop.Telegram",
+      "name" : "Telegram",
+      "pid" : 57365,
+      "seconds" : 27.703474998474121,
+      "source" : "poll",
+      "utc" : "2026-10-21T07:35:20Z"
+    },
+    {
+      "bundle" : "com.tdesktop.Telegram",
+      "name" : "Telegram",
+      "pid" : 57365,
+      "seconds" : 27.80521297454834,
+      "source" : "poll",
+      "utc" : "2026-10-21T07:35:20Z"
+    },
+    {
+      "bundle" : "com.tdesktop.Telegram",
+      "name" : "Telegram",
+      "pid" : 57365,
+      "seconds" : 27.9061199426651,
+      "source" : "poll",
+      "utc" : "2026-10-21T07:35:20Z"
+    },
+    {
+      "bundle" : "com.tdesktop.Telegram",
+      "name" : "Telegram",
+      "pid" : 57365,
+      "seconds" : 28.00756299495697,
+      "source" : "poll",
+      "utc" : "2026-10-21T07:35:20Z"
+    },
+    {
+      "bundle" : "com.tdesktop.Telegram",
+      "name" : "Telegram",
+      "pid" : 57365,
+      "seconds" : 28.108628988265991,
+      "source" : "poll",
+      "utc" : "2026-10-21T07:35:20Z"
+    },
+    {
+      "bundle" : "com.tdesktop.Telegram",
+      "name" : "Telegram",
+      "pid" : 57365,
+      "seconds" : 28.210400938987732,
+      "source" : "poll",
+      "utc" : "2026-10-21T07:35:20Z"
+    },
+    {
+      "bundle" : "com.tdesktop.Telegram",
+      "name" : "Telegram",
+      "pid" : 57365,
+      "seconds" : 28.312237024307251,
+      "source" : "poll",
+      "utc" : "2026-10-21T07:35:20Z"
+    },
+    {
+      "bundle" : "com.tdesktop.Telegram",
+      "name" : "Telegram",
+      "pid" : 57365,
+      "seconds" : 28.413962960243225,
+      "source" : "poll",
+      "utc" : "2026-10-21T07:35:21Z"
+    },
+    {
+      "bundle" : "com.tdesktop.Telegram",
+      "name" : "Telegram",
+      "pid" : 57365,
+      "seconds" : 28.515363931655884,
+      "source" : "poll",
+      "utc" : "2026-10-21T07:35:21Z"
+    },
+    {
+      "bundle" : "com.tdesktop.Telegram",
+      "name" : "Telegram",
+      "pid" : 57365,
+      "seconds" : 28.616289019584656,
+      "source" : "poll",
+      "utc" : "2026-10-21T07:35:21Z"
+    },
+    {
+      "bundle" : "com.tdesktop.Telegram",
+      "name" : "Telegram",
+      "pid" : 57365,
+      "seconds" : 28.717157006263733,
+      "source" : "poll",
+      "utc" : "2026-10-21T07:35:21Z"
+    },
+    {
+      "bundle" : "com.tdesktop.Telegram",
+      "name" : "Telegram",
+      "pid" : 57365,
+      "seconds" : 28.818645000457764,
+      "source" : "poll",
+      "utc" : "2026-10-21T07:35:21Z"
+    },
+    {
+      "bundle" : "com.tdesktop.Telegram",
+      "name" : "Telegram",
+      "pid" : 57365,
+      "seconds" : 28.920030951499939,
+      "source" : "poll",
+      "utc" : "2026-10-21T07:35:21Z"
+    },
+    {
+      "bundle" : "com.tdesktop.Telegram",
+      "name" : "Telegram",
+      "pid" : 57365,
+      "seconds" : 29.02164101600647,
+      "source" : "poll",
+      "utc" : "2026-10-21T07:35:21Z"
+    },
+    {
+      "bundle" : "com.tdesktop.Telegram",
+      "name" : "Telegram",
+      "pid" : 57365,
+      "seconds" : 29.123162984848022,
+      "source" : "poll",
+      "utc" : "2026-10-21T07:35:21Z"
+    },
+    {
+      "bundle" : "com.tdesktop.Telegram",
+      "name" : "Telegram",
+      "pid" : 57365,
+      "seconds" : 29.224193930625916,
+      "source" : "poll",
+      "utc" : "2026-10-21T07:35:21Z"
+    },
+    {
+      "bundle" : "com.tdesktop.Telegram",
+      "name" : "Telegram",
+      "pid" : 57365,
+      "seconds" : 29.325151920318604,
+      "source" : "poll",
+      "utc" : "2026-10-21T07:35:21Z"
+    },
+    {
+      "bundle" : "com.tdesktop.Telegram",
+      "name" : "Telegram",
+      "pid" : 57365,
+      "seconds" : 29.426874995231628,
+      "source" : "poll",
+      "utc" : "2026-10-21T07:35:22Z"
+    },
+    {
+      "bundle" : "com.tdesktop.Telegram",
+      "name" : "Telegram",
+      "pid" : 57365,
+      "seconds" : 29.529405951499939,
+      "source" : "poll",
+      "utc" : "2026-10-21T07:35:22Z"
+    },
+    {
+      "bundle" : "com.tdesktop.Telegram",
+      "name" : "Telegram",
+      "pid" : 57365,
+      "seconds" : 29.630582928657532,
+      "source" : "poll",
+      "utc" : "2026-10-21T07:35:22Z"
+    },
+    {
+      "bundle" : "com.tdesktop.Telegram",
+      "name" : "Telegram",
+      "pid" : 57365,
+      "seconds" : 29.732038974761963,
+      "source" : "poll",
+      "utc" : "2026-10-21T07:35:22Z"
+    },
+    {
+      "bundle" : "com.tdesktop.Telegram",
+      "name" : "Telegram",
+      "pid" : 57365,
+      "seconds" : 29.833784937858582,
+      "source" : "poll",
+      "utc" : "2026-10-21T07:35:22Z"
+    },
+    {
+      "bundle" : "com.tdesktop.Telegram",
+      "name" : "Telegram",
+      "pid" : 57365,
+      "seconds" : 29.935460925102234,
+      "source" : "poll",
+      "utc" : "2026-10-21T07:35:22Z"
+    },
+    {
+      "bundle" : "com.tdesktop.Telegram",
+      "name" : "Telegram",
+      "pid" : 57365,
+      "seconds" : 30.037210941314697,
+      "source" : "poll",
+      "utc" : "2026-10-21T07:35:22Z"
+    },
+    {
+      "bundle" : "com.tdesktop.Telegram",
+      "name" : "Telegram",
+      "pid" : 57365,
+      "seconds" : 30.138628959655762,
+      "source" : "poll",
+      "utc" : "2026-10-21T07:35:22Z"
+    },
+    {
+      "bundle" : "com.tdesktop.Telegram",
+      "name" : "Telegram",
+      "pid" : 57365,
+      "seconds" : 30.240324974060059,
+      "source" : "poll",
+      "utc" : "2026-10-21T07:35:22Z"
+    },
+    {
+      "bundle" : "com.tdesktop.Telegram",
+      "name" : "Telegram",
+      "pid" : 57365,
+      "seconds" : 30.341557025909424,
+      "source" : "poll",
+      "utc" : "2026-10-21T07:35:22Z"
+    },
+    {
+      "bundle" : "com.tdesktop.Telegram",
+      "name" : "Telegram",
+      "pid" : 57365,
+      "seconds" : 30.443267941474915,
+      "source" : "poll",
+      "utc" : "2026-10-21T07:35:23Z"
+    },
+    {
+      "bundle" : "com.tdesktop.Telegram",
+      "name" : "Telegram",
+      "pid" : 57365,
+      "seconds" : 30.545482993125916,
+      "source" : "poll",
+      "utc" : "2026-10-21T07:35:23Z"
+    },
+    {
+      "bundle" : "com.tdesktop.Telegram",
+      "name" : "Telegram",
+      "pid" : 57365,
+      "seconds" : 30.647293925285339,
+      "source" : "poll",
+      "utc" : "2026-10-21T07:35:23Z"
+    },
+    {
+      "bundle" : "com.tdesktop.Telegram",
+      "name" : "Telegram",
+      "pid" : 57365,
+      "seconds" : 30.74889600276947,
+      "source" : "poll",
+      "utc" : "2026-10-21T07:35:23Z"
+    },
+    {
+      "bundle" : "com.tencent.xinWeChat",
+      "name" : "微信",
+      "pid" : 38330,
+      "seconds" : 30.823519945144653,
+      "source" : "activation",
+      "utc" : "2026-10-21T07:35:23Z"
+    },
+    {
+      "bundle" : "com.tencent.xinWeChat",
+      "name" : "微信",
+      "pid" : 38330,
+      "seconds" : 30.850522994995117,
+      "source" : "poll",
+      "utc" : "2026-10-21T07:35:23Z"
+    },
+    {
+      "bundle" : "com.tencent.xinWeChat",
+      "name" : "微信",
+      "pid" : 38330,
+      "seconds" : 30.952345967292786,
+      "source" : "poll",
+      "utc" : "2026-10-21T07:35:23Z"
+    },
+    {
+      "bundle" : "com.tencent.xinWeChat",
+      "name" : "微信",
+      "pid" : 38330,
+      "seconds" : 31.05338191986084,
+      "source" : "poll",
+      "utc" : "2026-10-21T07:35:23Z"
+    },
+    {
+      "bundle" : "com.tencent.xinWeChat",
+      "name" : "微信",
+      "pid" : 38330,
+      "seconds" : 31.155176997184753,
+      "source" : "poll",
+      "utc" : "2026-10-21T07:35:23Z"
+    },
+    {
+      "bundle" : "com.tencent.xinWeChat",
+      "name" : "微信",
+      "pid" : 38330,
+      "seconds" : 31.256814956665039,
+      "source" : "poll",
+      "utc" : "2026-10-21T07:35:23Z"
+    },
+    {
+      "bundle" : "com.tencent.xinWeChat",
+      "name" : "微信",
+      "pid" : 38330,
+      "seconds" : 31.358834028244019,
+      "source" : "poll",
+      "utc" : "2026-10-21T07:35:23Z"
+    },
+    {
+      "bundle" : "com.tencent.xinWeChat",
+      "name" : "微信",
+      "pid" : 38330,
+      "seconds" : 31.460917949676514,
+      "source" : "poll",
+      "utc" : "2026-10-21T07:35:24Z"
+    },
+    {
+      "bundle" : "com.tencent.xinWeChat",
+      "name" : "微信",
+      "pid" : 38330,
+      "seconds" : 31.562863945960999,
+      "source" : "poll",
+      "utc" : "2026-10-21T07:35:24Z"
+    },
+    {
+      "bundle" : "com.tencent.xinWeChat",
+      "name" : "微信",
+      "pid" : 38330,
+      "seconds" : 31.664216995239258,
+      "source" : "poll",
+      "utc" : "2026-10-21T07:35:24Z"
+    },
+    {
+      "bundle" : "com.tencent.xinWeChat",
+      "name" : "微信",
+      "pid" : 38330,
+      "seconds" : 31.765806913375854,
+      "source" : "poll",
+      "utc" : "2026-10-21T07:35:24Z"
+    },
+    {
+      "bundle" : "com.tencent.xinWeChat",
+      "name" : "微信",
+      "pid" : 38330,
+      "seconds" : 31.867077946662903,
+      "source" : "poll",
+      "utc" : "2026-10-21T07:35:24Z"
+    },
+    {
+      "bundle" : "com.tencent.xinWeChat",
+      "name" : "微信",
+      "pid" : 38330,
+      "seconds" : 31.968792915344238,
+      "source" : "poll",
+      "utc" : "2026-10-21T07:35:24Z"
+    },
+    {
+      "bundle" : "com.tencent.xinWeChat",
+      "name" : "微信",
+      "pid" : 38330,
+      "seconds" : 32.070482015609741,
+      "source" : "poll",
+      "utc" : "2026-10-21T07:35:24Z"
+    },
+    {
+      "bundle" : "com.tencent.xinWeChat",
+      "name" : "微信",
+      "pid" : 38330,
+      "seconds" : 32.17183792591095,
+      "source" : "poll",
+      "utc" : "2026-10-21T07:35:24Z"
+    },
+    {
+      "bundle" : "com.tencent.xinWeChat",
+      "name" : "微信",
+      "pid" : 38330,
+      "seconds" : 32.272766947746277,
+      "source" : "poll",
+      "utc" : "2026-10-21T07:35:24Z"
+    },
+    {
+      "bundle" : "com.tencent.xinWeChat",
+      "name" : "微信",
+      "pid" : 38330,
+      "seconds" : 32.374117970466614,
+      "source" : "poll",
+      "utc" : "2026-10-21T07:35:24Z"
+    },
+    {
+      "bundle" : "com.tencent.xinWeChat",
+      "name" : "微信",
+      "pid" : 38330,
+      "seconds" : 32.475932955741882,
+      "source" : "poll",
+      "utc" : "2026-10-21T07:35:25Z"
+    },
+    {
+      "bundle" : "com.tencent.xinWeChat",
+      "name" : "微信",
+      "pid" : 38330,
+      "seconds" : 32.577234983444214,
+      "source" : "poll",
+      "utc" : "2026-10-21T07:35:25Z"
+    },
+    {
+      "bundle" : "com.tencent.xinWeChat",
+      "name" : "微信",
+      "pid" : 38330,
+      "seconds" : 32.67877197265625,
+      "source" : "poll",
+      "utc" : "2026-10-21T07:35:25Z"
+    },
+    {
+      "bundle" : "com.tencent.xinWeChat",
+      "name" : "微信",
+      "pid" : 38330,
+      "seconds" : 32.780180931091309,
+      "source" : "poll",
+      "utc" : "2026-10-21T07:35:25Z"
+    },
+    {
+      "bundle" : "com.tencent.xinWeChat",
+      "name" : "微信",
+      "pid" : 38330,
+      "seconds" : 32.881582975387573,
+      "source" : "poll",
+      "utc" : "2026-10-21T07:35:25Z"
+    },
+    {
+      "bundle" : "com.tencent.xinWeChat",
+      "name" : "微信",
+      "pid" : 38330,
+      "seconds" : 32.982711911201477,
+      "source" : "poll",
+      "utc" : "2026-10-21T07:35:25Z"
+    },
+    {
+      "bundle" : "com.tencent.xinWeChat",
+      "name" : "微信",
+      "pid" : 38330,
+      "seconds" : 33.084020018577576,
+      "source" : "poll",
+      "utc" : "2026-10-21T07:35:25Z"
+    },
+    {
+      "bundle" : "com.tencent.xinWeChat",
+      "name" : "微信",
+      "pid" : 38330,
+      "seconds" : 33.084667921066284,
+      "source" : "after",
+      "utc" : "2026-10-21T07:35:25Z"
+    }
+  ],
+  "target" : 5118
+}

@@ -1,0 +1,51 @@
+[
+  {
+    "command": [
+      "codesign",
+      "--verify",
+      "--deep",
+      "--strict",
+      "--verbose=2",
+      "/Users/lifcc/Desktop/code/AI/tools/keepline-agent-workbench/next/target/signed-acceptance/Keepline.app"
+    ],
+    "exit": 0,
+    "stdout": "",
+    "stderr": "--prepared:/Users/lifcc/Desktop/code/AI/tools/keepline-agent-workbench/next/target/signed-acceptance/Keepline.app/Contents/MacOS/keeplined\n--validated:/Users/lifcc/Desktop/code/AI/tools/keepline-agent-workbench/next/target/signed-acceptance/Keepline.app/Contents/MacOS/keeplined\n/Users/lifcc/Desktop/code/AI/tools/keepline-agent-workbench/next/target/signed-acceptance/Keepline.app: valid on disk\n/Users/lifcc/Desktop/code/AI/tools/keepline-agent-workbench/next/target/signed-acceptance/Keepline.app: satisfies its Designated Requirement\n"
+  },
+  {
+    "command": [
+      "codesign",
+      "-d",
+      "--verbose=4",
+      "/Users/lifcc/Desktop/code/AI/tools/keepline-agent-workbench/next/target/signed-acceptance/Keepline.app"
+    ],
+    "exit": 0,
+    "stdout": "",
+    "stderr": "Executable=/Users/lifcc/Desktop/code/AI/tools/keepline-agent-workbench/next/target/signed-acceptance/Keepline.app/Contents/MacOS/keepline-app\nIdentifier=local.keepline.workbench\nFormat=app bundle with Mach-O thin (arm64)\nCodeDirectory v=20500 size=31300 flags=0x10000(runtime) hashes=971+3 location=embedded\nVersionPlatform=1\nVersionMin=720896\nVersionSDK=1705216\nHash type=sha256 size=32\nCandidateCDHash sha256=f907e19250eac915f2a634fefe38fbb9f5aea65d\nCandidateCDHashFull sha256=f907e19250eac915f2a634fefe38fbb9f5aea65d3348c8c47f730a63984cd728\nHash choices=sha256\nCMSDigest=f907e19250eac915f2a634fefe38fbb9f5aea65d3348c8c47f730a63984cd728\nCMSDigestType=2\nExecutable Segment base=0\nExecutable Segment limit=12402688\nExecutable Segment flags=0x1\nPage size=16384\nCDHash=f907e19250eac915f2a634fefe38fbb9f5aea65d\nSignature size=9037\nAuthority=Developer ID Application: Ma JiaYu (C5UWZ934C2)\nAuthority=Developer ID Certification Authority\nAuthority=Apple Root CA\nTimestamp=Oct 21, 2026 at 11:58:43\nInfo.plist entries=9\nTeamIdentifier=C5UWZ934C2\nRuntime Version=26.5.0\nSealed Resources version=2 rules=13 files=2\nInternal requirements count=1 size=184\n"
+  },
+  {
+    "command": [
+      "codesign",
+      "-d",
+      "--entitlements",
+      ":-",
+      "/Users/lifcc/Desktop/code/AI/tools/keepline-agent-workbench/next/target/signed-acceptance/Keepline.app"
+    ],
+    "exit": 0,
+    "stdout": "",
+    "stderr": "Executable=/Users/lifcc/Desktop/code/AI/tools/keepline-agent-workbench/next/target/signed-acceptance/Keepline.app/Contents/MacOS/keepline-app\nwarning: Specifying ':' in the path is deprecated and will not work in a future release\n"
+  },
+  {
+    "command": [
+      "spctl",
+      "-a",
+      "-vv",
+      "--type",
+      "execute",
+      "/Users/lifcc/Desktop/code/AI/tools/keepline-agent-workbench/next/target/signed-acceptance/Keepline.app"
+    ],
+    "exit": 3,
+    "stdout": "",
+    "stderr": "/Users/lifcc/Desktop/code/AI/tools/keepline-agent-workbench/next/target/signed-acceptance/Keepline.app: rejected\nsource=Unnotarized Developer ID\norigin=Developer ID Application: Ma JiaYu (C5UWZ934C2)\n"
+  }
+]

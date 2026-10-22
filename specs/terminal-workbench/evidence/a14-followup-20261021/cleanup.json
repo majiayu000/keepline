@@ -1,0 +1,30 @@
+[
+  {
+    "runtime": "/tmp/kl8-res-e_xxqjcj/runtime",
+    "client": 30803,
+    "daemon": 30753,
+    "cleanup": "pure fixture stopped; files retained"
+  },
+  {
+    "runtime": "/tmp/kl8-res-q1j2_abp/runtime",
+    "client": 22256,
+    "daemon": 22248,
+    "cleanup": "pure fixture stopped; files retained"
+  },
+  {
+    "bundle": "/tmp/kl-a14-ghostty-0ocia76j/Ghostty A14 Test.app",
+    "client": 15078,
+    "cleanup": "dedicated Ghostty stopped"
+  },
+  {
+    "bundle": "/tmp/kl-a14-ghostty-j6_9grtp/Ghostty A14 Four Test.app",
+    "client": 22431,
+    "cleanup": "dedicated Ghostty stopped"
+  },
+  {
+    "runtime": "/tmp/kl8-res-cu14f42c/runtime",
+    "client": 5118,
+    "daemon": 5115,
+    "cleanup": "original idle load1 stopped; additional task and terminal detected, so client/daemon and new terminal retained"
+  }
+]

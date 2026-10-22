@@ -1,0 +1,2 @@
+com.bytedance.inputmethod.doubaoime.pinyin
+豆包输入法

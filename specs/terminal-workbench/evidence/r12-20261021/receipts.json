@@ -1,0 +1,12 @@
+[
+  {
+    "session_id": "a293511f-dbef-40eb-9dc7-9604c5ab012c",
+    "cli_session_id": "r6-native",
+    "fact_key": "Waiting:r12-notification-1792562916:1792562916:R12 通知点击验收：请点击这条通知进入通知验收画面。"
+  },
+  {
+    "session_id": "e3166ffe-cdbb-4cfb-b84e-bc8534c7cc5d",
+    "cli_session_id": "r12-error",
+    "fact_key": "Error:r12-error-round:1792563244:R12 隔离验收：模拟命令退出码 7。"
+  }
+]

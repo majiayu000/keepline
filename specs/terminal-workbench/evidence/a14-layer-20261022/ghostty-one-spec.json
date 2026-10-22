@@ -1,0 +1,14 @@
+{
+  "label": "ghostty-one",
+  "root": "/tmp/kl14-ghostty-one-_i3xsybc",
+  "pids": {
+    "client": 7625,
+    "producer1": 7720
+  },
+  "producers": [
+    7720
+  ],
+  "excluded_login_wrappers": [
+    7718
+  ]
+}

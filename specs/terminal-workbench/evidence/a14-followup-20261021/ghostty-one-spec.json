@@ -1,0 +1,12 @@
+{
+  "pids": {
+    "client": 15078,
+    "producer": 15102
+  },
+  "producers": [
+    15102
+  ],
+  "excluded_login_wrappers": [
+    15100
+  ]
+}

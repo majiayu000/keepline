@@ -1,0 +1,7 @@
+Command: cargo build --release -p keepline-app -p keeplined --manifest-path next/Cargo.toml
+Raw local log: /tmp/kl9-release-final.log
+SHA256: f33862574a1b2c007624406a191508a25ef55fcf16a1b33806940d9eca7b971f
+Dependency/compiler warning details omitted; warning summaries and complete test execution retained below.
+warning: `gpui_macos` (lib) generated 694 warnings
+warning: `keepline-app` (bin "keepline-app") generated 2 warnings
+    Finished `release` profile [optimized] target(s) in 10.61s

@@ -1,0 +1,46 @@
+native bundled symbol font: six Nerd/Powerline glyphs present and cell-aligned
+wide-cell 实: advance=15.051269px, two-columns=15.05127px, inset=0.00000047683716px
+wide-cell 现: advance=15.051269px, two-columns=15.05127px, inset=0.00000047683716px
+wide-cell 反: advance=15.051269px, two-columns=15.05127px, inset=0.00000047683716px
+wide-cell 馈: advance=15.051269px, two-columns=15.05127px, inset=0.00000047683716px
+wide-cell 日: advance=15.051269px, two-columns=15.05127px, inset=0.00000047683716px
+wide-cell 語: advance=15.051269px, two-columns=15.05127px, inset=0.00000047683716px
+wide-cell 한: advance=15.051269px, two-columns=15.05127px, inset=0.00000047683716px
+wide-cell 글: advance=15.051269px, two-columns=15.05127px, inset=0.00000047683716px
+wide-cell 😀: advance=15px, two-columns=15.05127px, inset=0.025634766px
+native IME geometry: overlay/ranges/UTF16 agree; measured cell=CellMetrics { width: 7.525635px, height: 20px }
+native bundled symbol font: six Nerd/Powerline glyphs present and cell-aligned
+wide-cell 实: advance=15.051269px, two-columns=15.05127px, inset=0.00000047683716px
+wide-cell 现: advance=15.051269px, two-columns=15.05127px, inset=0.00000047683716px
+wide-cell 反: advance=15.051269px, two-columns=15.05127px, inset=0.00000047683716px
+wide-cell 馈: advance=15.051269px, two-columns=15.05127px, inset=0.00000047683716px
+wide-cell 日: advance=15.051269px, two-columns=15.05127px, inset=0.00000047683716px
+wide-cell 語: advance=15.051269px, two-columns=15.05127px, inset=0.00000047683716px
+wide-cell 한: advance=15.051269px, two-columns=15.05127px, inset=0.00000047683716px
+wide-cell 글: advance=15.051269px, two-columns=15.05127px, inset=0.00000047683716px
+wide-cell 😀: advance=15px, two-columns=15.05127px, inset=0.025634766px
+native IME geometry: overlay/ranges/UTF16 agree; measured cell=CellMetrics { width: 7.525635px, height: 20px }
+native bundled symbol font: six Nerd/Powerline glyphs present and cell-aligned
+wide-cell 实: advance=15.051269px, two-columns=15.05127px, inset=0.00000047683716px
+wide-cell 现: advance=15.051269px, two-columns=15.05127px, inset=0.00000047683716px
+wide-cell 反: advance=15.051269px, two-columns=15.05127px, inset=0.00000047683716px
+wide-cell 馈: advance=15.051269px, two-columns=15.05127px, inset=0.00000047683716px
+wide-cell 日: advance=15.051269px, two-columns=15.05127px, inset=0.00000047683716px
+wide-cell 語: advance=15.051269px, two-columns=15.05127px, inset=0.00000047683716px
+wide-cell 한: advance=15.051269px, two-columns=15.05127px, inset=0.00000047683716px
+wide-cell 글: advance=15.051269px, two-columns=15.05127px, inset=0.00000047683716px
+wide-cell 😀: advance=15px, two-columns=15.05127px, inset=0.025634766px
+native IME geometry: overlay/ranges/UTF16 agree; measured cell=CellMetrics { width: 7.525635px, height: 20px }
+native events PASS: right menu, zoom 4->1->4, divider drag ratio persisted
+native bundled symbol font: six Nerd/Powerline glyphs present and cell-aligned
+wide-cell 实: advance=15.051269px, two-columns=15.05127px, inset=0.00000047683716px
+wide-cell 现: advance=15.051269px, two-columns=15.05127px, inset=0.00000047683716px
+wide-cell 反: advance=15.051269px, two-columns=15.05127px, inset=0.00000047683716px
+wide-cell 馈: advance=15.051269px, two-columns=15.05127px, inset=0.00000047683716px
+wide-cell 日: advance=15.051269px, two-columns=15.05127px, inset=0.00000047683716px
+wide-cell 語: advance=15.051269px, two-columns=15.05127px, inset=0.00000047683716px
+wide-cell 한: advance=15.051269px, two-columns=15.05127px, inset=0.00000047683716px
+wide-cell 글: advance=15.051269px, two-columns=15.05127px, inset=0.00000047683716px
+wide-cell 😀: advance=15px, two-columns=15.05127px, inset=0.025634766px
+native IME geometry: overlay/ranges/UTF16 agree; measured cell=CellMetrics { width: 7.525635px, height: 20px }
+native actions PASS: right/down launch 8->9->10, shell cwd and focus, close 10->9->8 keeps PTYs alive

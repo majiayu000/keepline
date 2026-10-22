@@ -1,0 +1,16 @@
+[
+ {
+  "case": "keepline-opt-one",
+  "attempt": 1,
+  "exit": 0,
+  "valid": false,
+  "root": "/tmp/kl14-keepline-opt-one-5w68b0ep",
+  "utc": "2026-10-22T02:40:47Z"
+ },
+ {
+  "case": "keepline-opt-one",
+  "event": "deadline",
+  "detail": "no unlocked, input-idle window before deadline",
+  "utc": "2026-10-22T02:48:58Z"
+ }
+]

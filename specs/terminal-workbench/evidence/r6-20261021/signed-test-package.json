@@ -1,0 +1,48 @@
+[
+  {
+    "command": [
+      "codesign",
+      "--force",
+      "--sign",
+      "Developer ID Application: Ma JiaYu (C5UWZ934C2)",
+      "--options",
+      "runtime",
+      "--timestamp",
+      "/Users/lifcc/Library/Caches/KeeplineAcceptance/r5-bio55vqi/Keepline Notification Test.app/Contents/MacOS/keepline-app"
+    ],
+    "exit": 0,
+    "stderr": "/Users/lifcc/Library/Caches/KeeplineAcceptance/r5-bio55vqi/Keepline Notification Test.app/Contents/MacOS/keepline-app: replacing existing signature\n"
+  },
+  {
+    "command": [
+      "codesign",
+      "--force",
+      "--sign",
+      "Developer ID Application: Ma JiaYu (C5UWZ934C2)",
+      "--options",
+      "runtime",
+      "--timestamp",
+      "/Users/lifcc/Library/Caches/KeeplineAcceptance/r5-bio55vqi/Keepline Notification Test.app/Contents/MacOS/keeplined"
+    ],
+    "exit": 0,
+    "stderr": "/Users/lifcc/Library/Caches/KeeplineAcceptance/r5-bio55vqi/Keepline Notification Test.app/Contents/MacOS/keeplined: replacing existing signature\n"
+  },
+  {
+    "command": [
+      "codesign",
+      "--force",
+      "--sign",
+      "Developer ID Application: Ma JiaYu (C5UWZ934C2)",
+      "--options",
+      "runtime",
+      "--timestamp",
+      "/Users/lifcc/Library/Caches/KeeplineAcceptance/r5-bio55vqi/Keepline Notification Test.app"
+    ],
+    "exit": 0,
+    "stderr": "/Users/lifcc/Library/Caches/KeeplineAcceptance/r5-bio55vqi/Keepline Notification Test.app: replacing existing signature\n"
+  },
+  {
+    "verify_exit": 0,
+    "stderr": ""
+  }
+]

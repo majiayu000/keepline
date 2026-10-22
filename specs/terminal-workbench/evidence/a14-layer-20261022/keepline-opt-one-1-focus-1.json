@@ -1,0 +1,2970 @@
+{
+  "activated" : true,
+  "attempt" : 1,
+  "continuous_frontmost" : true,
+  "exit" : 0,
+  "samples" : [
+    {
+      "bundle" : "local.keepline.a14.keepline-opt-one",
+      "input_idle_seconds" : 42.634639042000003,
+      "name" : "Keepline A14 keepline-opt-one",
+      "pid" : 97451,
+      "seconds" : 0.00020301342010498047,
+      "source" : "before",
+      "utc" : "2026-10-22T03:04:37Z"
+    },
+    {
+      "bundle" : "local.keepline.a14.keepline-opt-one",
+      "input_idle_seconds" : 42.736287750000002,
+      "name" : "Keepline A14 keepline-opt-one",
+      "pid" : 97451,
+      "seconds" : 0.10261893272399902,
+      "source" : "poll",
+      "utc" : "2026-10-22T03:04:37Z"
+    },
+    {
+      "bundle" : "local.keepline.a14.keepline-opt-one",
+      "input_idle_seconds" : 42.837780917000003,
+      "name" : "Keepline A14 keepline-opt-one",
+      "pid" : 97451,
+      "seconds" : 0.20414495468139648,
+      "source" : "poll",
+      "utc" : "2026-10-22T03:04:37Z"
+    },
+    {
+      "bundle" : "local.keepline.a14.keepline-opt-one",
+      "input_idle_seconds" : 42.938668417000002,
+      "name" : "Keepline A14 keepline-opt-one",
+      "pid" : 97451,
+      "seconds" : 0.30497002601623535,
+      "source" : "poll",
+      "utc" : "2026-10-22T03:04:37Z"
+    },
+    {
+      "bundle" : "local.keepline.a14.keepline-opt-one",
+      "input_idle_seconds" : 43.039672625000001,
+      "name" : "Keepline A14 keepline-opt-one",
+      "pid" : 97451,
+      "seconds" : 0.40599393844604492,
+      "source" : "poll",
+      "utc" : "2026-10-22T03:04:37Z"
+    },
+    {
+      "bundle" : "local.keepline.a14.keepline-opt-one",
+      "input_idle_seconds" : 43.141340958000001,
+      "name" : "Keepline A14 keepline-opt-one",
+      "pid" : 97451,
+      "seconds" : 0.50765299797058105,
+      "source" : "poll",
+      "utc" : "2026-10-22T03:04:37Z"
+    },
+    {
+      "bundle" : "local.keepline.a14.keepline-opt-one",
+      "input_idle_seconds" : 43.242727207999998,
+      "name" : "Keepline A14 keepline-opt-one",
+      "pid" : 97451,
+      "seconds" : 0.60906898975372314,
+      "source" : "poll",
+      "utc" : "2026-10-22T03:04:37Z"
+    },
+    {
+      "bundle" : "local.keepline.a14.keepline-opt-one",
+      "input_idle_seconds" : 43.344414374999999,
+      "name" : "Keepline A14 keepline-opt-one",
+      "pid" : 97451,
+      "seconds" : 0.71065199375152588,
+      "source" : "poll",
+      "utc" : "2026-10-22T03:04:38Z"
+    },
+    {
+      "bundle" : "local.keepline.a14.keepline-opt-one",
+      "input_idle_seconds" : 43.445073874999999,
+      "name" : "Keepline A14 keepline-opt-one",
+      "pid" : 97451,
+      "seconds" : 0.81149399280548096,
+      "source" : "poll",
+      "utc" : "2026-10-22T03:04:38Z"
+    },
+    {
+      "bundle" : "local.keepline.a14.keepline-opt-one",
+      "input_idle_seconds" : 43.546193832999997,
+      "name" : "Keepline A14 keepline-opt-one",
+      "pid" : 97451,
+      "seconds" : 0.91254794597625732,
+      "source" : "poll",
+      "utc" : "2026-10-22T03:04:38Z"
+    },
+    {
+      "bundle" : "local.keepline.a14.keepline-opt-one",
+      "input_idle_seconds" : 43.646878207999997,
+      "name" : "Keepline A14 keepline-opt-one",
+      "pid" : 97451,
+      "seconds" : 1.0131839513778687,
+      "source" : "poll",
+      "utc" : "2026-10-22T03:04:38Z"
+    },
+    {
+      "bundle" : "local.keepline.a14.keepline-opt-one",
+      "input_idle_seconds" : 43.747919457999998,
+      "name" : "Keepline A14 keepline-opt-one",
+      "pid" : 97451,
+      "seconds" : 1.1142849922180176,
+      "source" : "poll",
+      "utc" : "2026-10-22T03:04:38Z"
+    },
+    {
+      "bundle" : "local.keepline.a14.keepline-opt-one",
+      "input_idle_seconds" : 43.849171083000002,
+      "name" : "Keepline A14 keepline-opt-one",
+      "pid" : 97451,
+      "seconds" : 1.2154449224472046,
+      "source" : "poll",
+      "utc" : "2026-10-22T03:04:38Z"
+    },
+    {
+      "bundle" : "local.keepline.a14.keepline-opt-one",
+      "input_idle_seconds" : 43.950035667000002,
+      "name" : "Keepline A14 keepline-opt-one",
+      "pid" : 97451,
+      "seconds" : 1.316277027130127,
+      "source" : "poll",
+      "utc" : "2026-10-22T03:04:38Z"
+    },
+    {
+      "bundle" : "local.keepline.a14.keepline-opt-one",
+      "input_idle_seconds" : 44.051649042000001,
+      "name" : "Keepline A14 keepline-opt-one",
+      "pid" : 97451,
+      "seconds" : 1.4179959297180176,
+      "source" : "poll",
+      "utc" : "2026-10-22T03:04:38Z"
+    },
+    {
+      "bundle" : "local.keepline.a14.keepline-opt-one",
+      "input_idle_seconds" : 44.152863750000002,
+      "name" : "Keepline A14 keepline-opt-one",
+      "pid" : 97451,
+      "seconds" : 1.5192469358444214,
+      "source" : "poll",
+      "utc" : "2026-10-22T03:04:38Z"
+    },
+    {
+      "bundle" : "local.keepline.a14.keepline-opt-one",
+      "input_idle_seconds" : 44.254472667000002,
+      "name" : "Keepline A14 keepline-opt-one",
+      "pid" : 97451,
+      "seconds" : 1.6208209991455078,
+      "source" : "poll",
+      "utc" : "2026-10-22T03:04:38Z"
+    },
+    {
+      "bundle" : "local.keepline.a14.keepline-opt-one",
+      "input_idle_seconds" : 44.355653541999999,
+      "name" : "Keepline A14 keepline-opt-one",
+      "pid" : 97451,
+      "seconds" : 1.7220039367675781,
+      "source" : "poll",
+      "utc" : "2026-10-22T03:04:39Z"
+    },
+    {
+      "bundle" : "local.keepline.a14.keepline-opt-one",
+      "input_idle_seconds" : 44.456827375000003,
+      "name" : "Keepline A14 keepline-opt-one",
+      "pid" : 97451,
+      "seconds" : 1.8231059312820435,
+      "source" : "poll",
+      "utc" : "2026-10-22T03:04:39Z"
+    },
+    {
+      "bundle" : "local.keepline.a14.keepline-opt-one",
+      "input_idle_seconds" : 44.558289332999998,
+      "name" : "Keepline A14 keepline-opt-one",
+      "pid" : 97451,
+      "seconds" : 1.9245759248733521,
+      "source" : "poll",
+      "utc" : "2026-10-22T03:04:39Z"
+    },
+    {
+      "bundle" : "local.keepline.a14.keepline-opt-one",
+      "input_idle_seconds" : 44.658945457999998,
+      "name" : "Keepline A14 keepline-opt-one",
+      "pid" : 97451,
+      "seconds" : 2.025270938873291,
+      "source" : "poll",
+      "utc" : "2026-10-22T03:04:39Z"
+    },
+    {
+      "bundle" : "local.keepline.a14.keepline-opt-one",
+      "input_idle_seconds" : 44.760433208000002,
+      "name" : "Keepline A14 keepline-opt-one",
+      "pid" : 97451,
+      "seconds" : 2.1267440319061279,
+      "source" : "poll",
+      "utc" : "2026-10-22T03:04:39Z"
+    },
+    {
+      "bundle" : "local.keepline.a14.keepline-opt-one",
+      "input_idle_seconds" : 44.861173749999999,
+      "name" : "Keepline A14 keepline-opt-one",
+      "pid" : 97451,
+      "seconds" : 2.2275609970092773,
+      "source" : "poll",
+      "utc" : "2026-10-22T03:04:39Z"
+    },
+    {
+      "bundle" : "local.keepline.a14.keepline-opt-one",
+      "input_idle_seconds" : 44.962814250000001,
+      "name" : "Keepline A14 keepline-opt-one",
+      "pid" : 97451,
+      "seconds" : 2.3291239738464355,
+      "source" : "poll",
+      "utc" : "2026-10-22T03:04:39Z"
+    },
+    {
+      "bundle" : "local.keepline.a14.keepline-opt-one",
+      "input_idle_seconds" : 45.064469582999997,
+      "name" : "Keepline A14 keepline-opt-one",
+      "pid" : 97451,
+      "seconds" : 2.430757999420166,
+      "source" : "poll",
+      "utc" : "2026-10-22T03:04:39Z"
+    },
+    {
+      "bundle" : "local.keepline.a14.keepline-opt-one",
+      "input_idle_seconds" : 45.165776833000002,
+      "name" : "Keepline A14 keepline-opt-one",
+      "pid" : 97451,
+      "seconds" : 2.5321639776229858,
+      "source" : "poll",
+      "utc" : "2026-10-22T03:04:39Z"
+    },
+    {
+      "bundle" : "local.keepline.a14.keepline-opt-one",
+      "input_idle_seconds" : 45.266554249999999,
+      "name" : "Keepline A14 keepline-opt-one",
+      "pid" : 97451,
+      "seconds" : 2.6328849792480469,
+      "source" : "poll",
+      "utc" : "2026-10-22T03:04:39Z"
+    },
+    {
+      "bundle" : "local.keepline.a14.keepline-opt-one",
+      "input_idle_seconds" : 45.368223208000003,
+      "name" : "Keepline A14 keepline-opt-one",
+      "pid" : 97451,
+      "seconds" : 2.734495997428894,
+      "source" : "poll",
+      "utc" : "2026-10-22T03:04:40Z"
+    },
+    {
+      "bundle" : "local.keepline.a14.keepline-opt-one",
+      "input_idle_seconds" : 45.469518375,
+      "name" : "Keepline A14 keepline-opt-one",
+      "pid" : 97451,
+      "seconds" : 2.835873007774353,
+      "source" : "poll",
+      "utc" : "2026-10-22T03:04:40Z"
+    },
+    {
+      "bundle" : "local.keepline.a14.keepline-opt-one",
+      "input_idle_seconds" : 45.570364708,
+      "name" : "Keepline A14 keepline-opt-one",
+      "pid" : 97451,
+      "seconds" : 2.9366669654846191,
+      "source" : "poll",
+      "utc" : "2026-10-22T03:04:40Z"
+    },
+    {
+      "bundle" : "local.keepline.a14.keepline-opt-one",
+      "input_idle_seconds" : 45.671798750000001,
+      "name" : "Keepline A14 keepline-opt-one",
+      "pid" : 97451,
+      "seconds" : 3.0381100177764893,
+      "source" : "poll",
+      "utc" : "2026-10-22T03:04:40Z"
+    },
+    {
+      "bundle" : "local.keepline.a14.keepline-opt-one",
+      "input_idle_seconds" : 45.772969707999998,
+      "name" : "Keepline A14 keepline-opt-one",
+      "pid" : 97451,
+      "seconds" : 3.1392890214920044,
+      "source" : "poll",
+      "utc" : "2026-10-22T03:04:40Z"
+    },
+    {
+      "bundle" : "local.keepline.a14.keepline-opt-one",
+      "input_idle_seconds" : 45.874397041999998,
+      "name" : "Keepline A14 keepline-opt-one",
+      "pid" : 97451,
+      "seconds" : 3.2406439781188965,
+      "source" : "poll",
+      "utc" : "2026-10-22T03:04:40Z"
+    },
+    {
+      "bundle" : "local.keepline.a14.keepline-opt-one",
+      "input_idle_seconds" : 45.976143082999997,
+      "name" : "Keepline A14 keepline-opt-one",
+      "pid" : 97451,
+      "seconds" : 3.3423359394073486,
+      "source" : "poll",
+      "utc" : "2026-10-22T03:04:40Z"
+    },
+    {
+      "bundle" : "local.keepline.a14.keepline-opt-one",
+      "input_idle_seconds" : 46.077801999999998,
+      "name" : "Keepline A14 keepline-opt-one",
+      "pid" : 97451,
+      "seconds" : 3.4439009428024292,
+      "source" : "poll",
+      "utc" : "2026-10-22T03:04:40Z"
+    },
+    {
+      "bundle" : "local.keepline.a14.keepline-opt-one",
+      "input_idle_seconds" : 46.178923707999999,
+      "name" : "Keepline A14 keepline-opt-one",
+      "pid" : 97451,
+      "seconds" : 3.5449749231338501,
+      "source" : "poll",
+      "utc" : "2026-10-22T03:04:40Z"
+    },
+    {
+      "bundle" : "local.keepline.a14.keepline-opt-one",
+      "input_idle_seconds" : 46.280809249999997,
+      "name" : "Keepline A14 keepline-opt-one",
+      "pid" : 97451,
+      "seconds" : 3.6468939781188965,
+      "source" : "poll",
+      "utc" : "2026-10-22T03:04:40Z"
+    },
+    {
+      "bundle" : "local.keepline.a14.keepline-opt-one",
+      "input_idle_seconds" : 46.382257875000001,
+      "name" : "Keepline A14 keepline-opt-one",
+      "pid" : 97451,
+      "seconds" : 3.7484710216522217,
+      "source" : "poll",
+      "utc" : "2026-10-22T03:04:41Z"
+    },
+    {
+      "bundle" : "local.keepline.a14.keepline-opt-one",
+      "input_idle_seconds" : 46.483240166999998,
+      "name" : "Keepline A14 keepline-opt-one",
+      "pid" : 97451,
+      "seconds" : 3.8495270013809204,
+      "source" : "poll",
+      "utc" : "2026-10-22T03:04:41Z"
+    },
+    {
+      "bundle" : "local.keepline.a14.keepline-opt-one",
+      "input_idle_seconds" : 46.584520875000003,
+      "name" : "Keepline A14 keepline-opt-one",
+      "pid" : 97451,
+      "seconds" : 3.9507859945297241,
+      "source" : "poll",
+      "utc" : "2026-10-22T03:04:41Z"
+    },
+    {
+      "bundle" : "local.keepline.a14.keepline-opt-one",
+      "input_idle_seconds" : 46.685405125000003,
+      "name" : "Keepline A14 keepline-opt-one",
+      "pid" : 97451,
+      "seconds" : 4.0517139434814453,
+      "source" : "poll",
+      "utc" : "2026-10-22T03:04:41Z"
+    },
+    {
+      "bundle" : "local.keepline.a14.keepline-opt-one",
+      "input_idle_seconds" : 46.786191291999998,
+      "name" : "Keepline A14 keepline-opt-one",
+      "pid" : 97451,
+      "seconds" : 4.1525039672851562,
+      "source" : "poll",
+      "utc" : "2026-10-22T03:04:41Z"
+    },
+    {
+      "bundle" : "local.keepline.a14.keepline-opt-one",
+      "input_idle_seconds" : 46.887808708000001,
+      "name" : "Keepline A14 keepline-opt-one",
+      "pid" : 97451,
+      "seconds" : 4.2541199922561646,
+      "source" : "poll",
+      "utc" : "2026-10-22T03:04:41Z"
+    },
+    {
+      "bundle" : "local.keepline.a14.keepline-opt-one",
+      "input_idle_seconds" : 46.989328542000003,
+      "name" : "Keepline A14 keepline-opt-one",
+      "pid" : 97451,
+      "seconds" : 4.3556299209594727,
+      "source" : "poll",
+      "utc" : "2026-10-22T03:04:41Z"
+    },
+    {
+      "bundle" : "local.keepline.a14.keepline-opt-one",
+      "input_idle_seconds" : 47.090915832999997,
+      "name" : "Keepline A14 keepline-opt-one",
+      "pid" : 97451,
+      "seconds" : 4.4572619199752808,
+      "source" : "poll",
+      "utc" : "2026-10-22T03:04:41Z"
+    },
+    {
+      "bundle" : "local.keepline.a14.keepline-opt-one",
+      "input_idle_seconds" : 47.192619166999997,
+      "name" : "Keepline A14 keepline-opt-one",
+      "pid" : 97451,
+      "seconds" : 4.5588499307632446,
+      "source" : "poll",
+      "utc" : "2026-10-22T03:04:41Z"
+    },
+    {
+      "bundle" : "local.keepline.a14.keepline-opt-one",
+      "input_idle_seconds" : 47.294236916999999,
+      "name" : "Keepline A14 keepline-opt-one",
+      "pid" : 97451,
+      "seconds" : 4.6605449914932251,
+      "source" : "poll",
+      "utc" : "2026-10-22T03:04:41Z"
+    },
+    {
+      "bundle" : "local.keepline.a14.keepline-opt-one",
+      "input_idle_seconds" : 47.395924708000003,
+      "name" : "Keepline A14 keepline-opt-one",
+      "pid" : 97451,
+      "seconds" : 4.7621749639511108,
+      "source" : "poll",
+      "utc" : "2026-10-22T03:04:42Z"
+    },
+    {
+      "bundle" : "local.keepline.a14.keepline-opt-one",
+      "input_idle_seconds" : 47.497565291999997,
+      "name" : "Keepline A14 keepline-opt-one",
+      "pid" : 97451,
+      "seconds" : 4.8638489246368408,
+      "source" : "poll",
+      "utc" : "2026-10-22T03:04:42Z"
+    },
+    {
+      "bundle" : "local.keepline.a14.keepline-opt-one",
+      "input_idle_seconds" : 47.599029582999997,
+      "name" : "Keepline A14 keepline-opt-one",
+      "pid" : 97451,
+      "seconds" : 4.9652929306030273,
+      "source" : "poll",
+      "utc" : "2026-10-22T03:04:42Z"
+    },
+    {
+      "bundle" : "local.keepline.a14.keepline-opt-one",
+      "input_idle_seconds" : 47.699823833000004,
+      "name" : "Keepline A14 keepline-opt-one",
+      "pid" : 97451,
+      "seconds" : 5.0661540031433105,
+      "source" : "poll",
+      "utc" : "2026-10-22T03:04:42Z"
+    },
+    {
+      "bundle" : "local.keepline.a14.keepline-opt-one",
+      "input_idle_seconds" : 47.801417833000002,
+      "name" : "Keepline A14 keepline-opt-one",
+      "pid" : 97451,
+      "seconds" : 5.1677439212799072,
+      "source" : "poll",
+      "utc" : "2026-10-22T03:04:42Z"
+    },
+    {
+      "bundle" : "local.keepline.a14.keepline-opt-one",
+      "input_idle_seconds" : 47.902820042000002,
+      "name" : "Keepline A14 keepline-opt-one",
+      "pid" : 97451,
+      "seconds" : 5.2691439390182495,
+      "source" : "poll",
+      "utc" : "2026-10-22T03:04:42Z"
+    },
+    {
+      "bundle" : "local.keepline.a14.keepline-opt-one",
+      "input_idle_seconds" : 48.003739125000003,
+      "name" : "Keepline A14 keepline-opt-one",
+      "pid" : 97451,
+      "seconds" : 5.3700950145721436,
+      "source" : "poll",
+      "utc" : "2026-10-22T03:04:42Z"
+    },
+    {
+      "bundle" : "local.keepline.a14.keepline-opt-one",
+      "input_idle_seconds" : 48.105464832999999,
+      "name" : "Keepline A14 keepline-opt-one",
+      "pid" : 97451,
+      "seconds" : 5.4716609716415405,
+      "source" : "poll",
+      "utc" : "2026-10-22T03:04:42Z"
+    },
+    {
+      "bundle" : "local.keepline.a14.keepline-opt-one",
+      "input_idle_seconds" : 48.206235999999997,
+      "name" : "Keepline A14 keepline-opt-one",
+      "pid" : 97451,
+      "seconds" : 5.5725200176239014,
+      "source" : "poll",
+      "utc" : "2026-10-22T03:04:42Z"
+    },
+    {
+      "bundle" : "local.keepline.a14.keepline-opt-one",
+      "input_idle_seconds" : 48.307701332999997,
+      "name" : "Keepline A14 keepline-opt-one",
+      "pid" : 97451,
+      "seconds" : 5.6739699840545654,
+      "source" : "poll",
+      "utc" : "2026-10-22T03:04:42Z"
+    },
+    {
+      "bundle" : "local.keepline.a14.keepline-opt-one",
+      "input_idle_seconds" : 48.409351624999999,
+      "name" : "Keepline A14 keepline-opt-one",
+      "pid" : 97451,
+      "seconds" : 5.7756259441375732,
+      "source" : "poll",
+      "utc" : "2026-10-22T03:04:43Z"
+    },
+    {
+      "bundle" : "local.keepline.a14.keepline-opt-one",
+      "input_idle_seconds" : 48.510899166999998,
+      "name" : "Keepline A14 keepline-opt-one",
+      "pid" : 97451,
+      "seconds" : 5.8771820068359375,
+      "source" : "poll",
+      "utc" : "2026-10-22T03:04:43Z"
+    },
+    {
+      "bundle" : "local.keepline.a14.keepline-opt-one",
+      "input_idle_seconds" : 48.611663999999998,
+      "name" : "Keepline A14 keepline-opt-one",
+      "pid" : 97451,
+      "seconds" : 5.9779499769210815,
+      "source" : "poll",
+      "utc" : "2026-10-22T03:04:43Z"
+    },
+    {
+      "bundle" : "local.keepline.a14.keepline-opt-one",
+      "input_idle_seconds" : 48.713111791999999,
+      "name" : "Keepline A14 keepline-opt-one",
+      "pid" : 97451,
+      "seconds" : 6.0793700218200684,
+      "source" : "poll",
+      "utc" : "2026-10-22T03:04:43Z"
+    },
+    {
+      "bundle" : "local.keepline.a14.keepline-opt-one",
+      "input_idle_seconds" : 48.814612292,
+      "name" : "Keepline A14 keepline-opt-one",
+      "pid" : 97451,
+      "seconds" : 6.180840015411377,
+      "source" : "poll",
+      "utc" : "2026-10-22T03:04:43Z"
+    },
+    {
+      "bundle" : "local.keepline.a14.keepline-opt-one",
+      "input_idle_seconds" : 48.916259625000002,
+      "name" : "Keepline A14 keepline-opt-one",
+      "pid" : 97451,
+      "seconds" : 6.2825289964675903,
+      "source" : "poll",
+      "utc" : "2026-10-22T03:04:43Z"
+    },
+    {
+      "bundle" : "local.keepline.a14.keepline-opt-one",
+      "input_idle_seconds" : 49.017903750000002,
+      "name" : "Keepline A14 keepline-opt-one",
+      "pid" : 97451,
+      "seconds" : 6.3841739892959595,
+      "source" : "poll",
+      "utc" : "2026-10-22T03:04:43Z"
+    },
+    {
+      "bundle" : "local.keepline.a14.keepline-opt-one",
+      "input_idle_seconds" : 49.119525791999997,
+      "name" : "Keepline A14 keepline-opt-one",
+      "pid" : 97451,
+      "seconds" : 6.4857879877090454,
+      "source" : "poll",
+      "utc" : "2026-10-22T03:04:43Z"
+    },
+    {
+      "bundle" : "local.keepline.a14.keepline-opt-one",
+      "input_idle_seconds" : 49.220144458,
+      "name" : "Keepline A14 keepline-opt-one",
+      "pid" : 97451,
+      "seconds" : 6.5864819288253784,
+      "source" : "poll",
+      "utc" : "2026-10-22T03:04:43Z"
+    },
+    {
+      "bundle" : "local.keepline.a14.keepline-opt-one",
+      "input_idle_seconds" : 49.320801500000002,
+      "name" : "Keepline A14 keepline-opt-one",
+      "pid" : 97451,
+      "seconds" : 6.6871140003204346,
+      "source" : "poll",
+      "utc" : "2026-10-22T03:04:43Z"
+    },
+    {
+      "bundle" : "local.keepline.a14.keepline-opt-one",
+      "input_idle_seconds" : 49.422171624999997,
+      "name" : "Keepline A14 keepline-opt-one",
+      "pid" : 97451,
+      "seconds" : 6.7884269952774048,
+      "source" : "poll",
+      "utc" : "2026-10-22T03:04:44Z"
+    },
+    {
+      "bundle" : "local.keepline.a14.keepline-opt-one",
+      "input_idle_seconds" : 49.523518957999997,
+      "name" : "Keepline A14 keepline-opt-one",
+      "pid" : 97451,
+      "seconds" : 6.8898040056228638,
+      "source" : "poll",
+      "utc" : "2026-10-22T03:04:44Z"
+    },
+    {
+      "bundle" : "local.keepline.a14.keepline-opt-one",
+      "input_idle_seconds" : 49.624863875000003,
+      "name" : "Keepline A14 keepline-opt-one",
+      "pid" : 97451,
+      "seconds" : 6.9911129474639893,
+      "source" : "poll",
+      "utc" : "2026-10-22T03:04:44Z"
+    },
+    {
+      "bundle" : "local.keepline.a14.keepline-opt-one",
+      "input_idle_seconds" : 49.726378124999997,
+      "name" : "Keepline A14 keepline-opt-one",
+      "pid" : 97451,
+      "seconds" : 7.0926809310913086,
+      "source" : "poll",
+      "utc" : "2026-10-22T03:04:44Z"
+    },
+    {
+      "bundle" : "local.keepline.a14.keepline-opt-one",
+      "input_idle_seconds" : 49.827889708000001,
+      "name" : "Keepline A14 keepline-opt-one",
+      "pid" : 97451,
+      "seconds" : 7.194119930267334,
+      "source" : "poll",
+      "utc" : "2026-10-22T03:04:44Z"
+    },
+    {
+      "bundle" : "local.keepline.a14.keepline-opt-one",
+      "input_idle_seconds" : 49.929564499999998,
+      "name" : "Keepline A14 keepline-opt-one",
+      "pid" : 97451,
+      "seconds" : 7.2958049774169922,
+      "source" : "poll",
+      "utc" : "2026-10-22T03:04:44Z"
+    },
+    {
+      "bundle" : "local.keepline.a14.keepline-opt-one",
+      "input_idle_seconds" : 50.030974999999998,
+      "name" : "Keepline A14 keepline-opt-one",
+      "pid" : 97451,
+      "seconds" : 7.3972679376602173,
+      "source" : "poll",
+      "utc" : "2026-10-22T03:04:44Z"
+    },
+    {
+      "bundle" : "local.keepline.a14.keepline-opt-one",
+      "input_idle_seconds" : 50.132195416999998,
+      "name" : "Keepline A14 keepline-opt-one",
+      "pid" : 97451,
+      "seconds" : 7.4984430074691772,
+      "source" : "poll",
+      "utc" : "2026-10-22T03:04:44Z"
+    },
+    {
+      "bundle" : "local.keepline.a14.keepline-opt-one",
+      "input_idle_seconds" : 50.233228957999998,
+      "name" : "Keepline A14 keepline-opt-one",
+      "pid" : 97451,
+      "seconds" : 7.5995219945907593,
+      "source" : "poll",
+      "utc" : "2026-10-22T03:04:44Z"
+    },
+    {
+      "bundle" : "local.keepline.a14.keepline-opt-one",
+      "input_idle_seconds" : 50.334359958,
+      "name" : "Keepline A14 keepline-opt-one",
+      "pid" : 97451,
+      "seconds" : 7.700645923614502,
+      "source" : "poll",
+      "utc" : "2026-10-22T03:04:44Z"
+    },
+    {
+      "bundle" : "local.keepline.a14.keepline-opt-one",
+      "input_idle_seconds" : 50.435275375000003,
+      "name" : "Keepline A14 keepline-opt-one",
+      "pid" : 97451,
+      "seconds" : 7.8014569282531738,
+      "source" : "poll",
+      "utc" : "2026-10-22T03:04:45Z"
+    },
+    {
+      "bundle" : "local.keepline.a14.keepline-opt-one",
+      "input_idle_seconds" : 50.536199042,
+      "name" : "Keepline A14 keepline-opt-one",
+      "pid" : 97451,
+      "seconds" : 7.9024280309677124,
+      "source" : "poll",
+      "utc" : "2026-10-22T03:04:45Z"
+    },
+    {
+      "bundle" : "local.keepline.a14.keepline-opt-one",
+      "input_idle_seconds" : 50.637842458000001,
+      "name" : "Keepline A14 keepline-opt-one",
+      "pid" : 97451,
+      "seconds" : 8.0040949583053589,
+      "source" : "poll",
+      "utc" : "2026-10-22T03:04:45Z"
+    },
+    {
+      "bundle" : "local.keepline.a14.keepline-opt-one",
+      "input_idle_seconds" : 50.738831083000001,
+      "name" : "Keepline A14 keepline-opt-one",
+      "pid" : 97451,
+      "seconds" : 8.1051199436187744,
+      "source" : "poll",
+      "utc" : "2026-10-22T03:04:45Z"
+    },
+    {
+      "bundle" : "local.keepline.a14.keepline-opt-one",
+      "input_idle_seconds" : 50.840652333000001,
+      "name" : "Keepline A14 keepline-opt-one",
+      "pid" : 97451,
+      "seconds" : 8.2068890333175659,
+      "source" : "poll",
+      "utc" : "2026-10-22T03:04:45Z"
+    },
+    {
+      "bundle" : "local.keepline.a14.keepline-opt-one",
+      "input_idle_seconds" : 50.941503625000003,
+      "name" : "Keepline A14 keepline-opt-one",
+      "pid" : 97451,
+      "seconds" : 8.3077499866485596,
+      "source" : "poll",
+      "utc" : "2026-10-22T03:04:45Z"
+    },
+    {
+      "bundle" : "local.keepline.a14.keepline-opt-one",
+      "input_idle_seconds" : 51.042483500000003,
+      "name" : "Keepline A14 keepline-opt-one",
+      "pid" : 97451,
+      "seconds" : 8.4087480306625366,
+      "source" : "poll",
+      "utc" : "2026-10-22T03:04:45Z"
+    },
+    {
+      "bundle" : "local.keepline.a14.keepline-opt-one",
+      "input_idle_seconds" : 51.143662374999998,
+      "name" : "Keepline A14 keepline-opt-one",
+      "pid" : 97451,
+      "seconds" : 8.5099619626998901,
+      "source" : "poll",
+      "utc" : "2026-10-22T03:04:45Z"
+    },
+    {
+      "bundle" : "local.keepline.a14.keepline-opt-one",
+      "input_idle_seconds" : 51.244500207999998,
+      "name" : "Keepline A14 keepline-opt-one",
+      "pid" : 97451,
+      "seconds" : 8.6107479333877563,
+      "source" : "poll",
+      "utc" : "2026-10-22T03:04:45Z"
+    },
+    {
+      "bundle" : "local.keepline.a14.keepline-opt-one",
+      "input_idle_seconds" : 51.345681333000002,
+      "name" : "Keepline A14 keepline-opt-one",
+      "pid" : 97451,
+      "seconds" : 8.711967945098877,
+      "source" : "poll",
+      "utc" : "2026-10-22T03:04:46Z"
+    },
+    {
+      "bundle" : "local.keepline.a14.keepline-opt-one",
+      "input_idle_seconds" : 51.446375291999999,
+      "name" : "Keepline A14 keepline-opt-one",
+      "pid" : 97451,
+      "seconds" : 8.8126059770584106,
+      "source" : "poll",
+      "utc" : "2026-10-22T03:04:46Z"
+    },
+    {
+      "bundle" : "local.keepline.a14.keepline-opt-one",
+      "input_idle_seconds" : 51.547856250000002,
+      "name" : "Keepline A14 keepline-opt-one",
+      "pid" : 97451,
+      "seconds" : 8.9141219854354858,
+      "source" : "poll",
+      "utc" : "2026-10-22T03:04:46Z"
+    },
+    {
+      "bundle" : "local.keepline.a14.keepline-opt-one",
+      "input_idle_seconds" : 51.649337541999998,
+      "name" : "Keepline A14 keepline-opt-one",
+      "pid" : 97451,
+      "seconds" : 9.0156329870223999,
+      "source" : "poll",
+      "utc" : "2026-10-22T03:04:46Z"
+    },
+    {
+      "bundle" : "local.keepline.a14.keepline-opt-one",
+      "input_idle_seconds" : 51.749990457999999,
+      "name" : "Keepline A14 keepline-opt-one",
+      "pid" : 97451,
+      "seconds" : 9.1162419319152832,
+      "source" : "poll",
+      "utc" : "2026-10-22T03:04:46Z"
+    },
+    {
+      "bundle" : "local.keepline.a14.keepline-opt-one",
+      "input_idle_seconds" : 51.851030375000001,
+      "name" : "Keepline A14 keepline-opt-one",
+      "pid" : 97451,
+      "seconds" : 9.2172589302062988,
+      "source" : "poll",
+      "utc" : "2026-10-22T03:04:46Z"
+    },
+    {
+      "bundle" : "local.keepline.a14.keepline-opt-one",
+      "input_idle_seconds" : 51.952566458,
+      "name" : "Keepline A14 keepline-opt-one",
+      "pid" : 97451,
+      "seconds" : 9.3187949657440186,
+      "source" : "poll",
+      "utc" : "2026-10-22T03:04:46Z"
+    },
+    {
+      "bundle" : "local.keepline.a14.keepline-opt-one",
+      "input_idle_seconds" : 52.053206875000001,
+      "name" : "Keepline A14 keepline-opt-one",
+      "pid" : 97451,
+      "seconds" : 9.4195219278335571,
+      "source" : "poll",
+      "utc" : "2026-10-22T03:04:46Z"
+    },
+    {
+      "bundle" : "local.keepline.a14.keepline-opt-one",
+      "input_idle_seconds" : 52.154863292000002,
+      "name" : "Keepline A14 keepline-opt-one",
+      "pid" : 97451,
+      "seconds" : 9.5210999250411987,
+      "source" : "poll",
+      "utc" : "2026-10-22T03:04:46Z"
+    },
+    {
+      "bundle" : "local.keepline.a14.keepline-opt-one",
+      "input_idle_seconds" : 52.256478000000001,
+      "name" : "Keepline A14 keepline-opt-one",
+      "pid" : 97451,
+      "seconds" : 9.622749924659729,
+      "source" : "poll",
+      "utc" : "2026-10-22T03:04:46Z"
+    },
+    {
+      "bundle" : "local.keepline.a14.keepline-opt-one",
+      "input_idle_seconds" : 52.357966292,
+      "name" : "Keepline A14 keepline-opt-one",
+      "pid" : 97451,
+      "seconds" : 9.7241519689559937,
+      "source" : "poll",
+      "utc" : "2026-10-22T03:04:47Z"
+    },
+    {
+      "bundle" : "local.keepline.a14.keepline-opt-one",
+      "input_idle_seconds" : 52.459585916999998,
+      "name" : "Keepline A14 keepline-opt-one",
+      "pid" : 97451,
+      "seconds" : 9.825840950012207,
+      "source" : "poll",
+      "utc" : "2026-10-22T03:04:47Z"
+    },
+    {
+      "bundle" : "local.keepline.a14.keepline-opt-one",
+      "input_idle_seconds" : 52.5611405,
+      "name" : "Keepline A14 keepline-opt-one",
+      "pid" : 97451,
+      "seconds" : 9.9273760318756104,
+      "source" : "poll",
+      "utc" : "2026-10-22T03:04:47Z"
+    },
+    {
+      "bundle" : "local.keepline.a14.keepline-opt-one",
+      "input_idle_seconds" : 52.662766957999999,
+      "name" : "Keepline A14 keepline-opt-one",
+      "pid" : 97451,
+      "seconds" : 10.028985977172852,
+      "source" : "poll",
+      "utc" : "2026-10-22T03:04:47Z"
+    },
+    {
+      "bundle" : "local.keepline.a14.keepline-opt-one",
+      "input_idle_seconds" : 52.764207667000001,
+      "name" : "Keepline A14 keepline-opt-one",
+      "pid" : 97451,
+      "seconds" : 10.130422949790955,
+      "source" : "poll",
+      "utc" : "2026-10-22T03:04:47Z"
+    },
+    {
+      "bundle" : "local.keepline.a14.keepline-opt-one",
+      "input_idle_seconds" : 52.865440708000001,
+      "name" : "Keepline A14 keepline-opt-one",
+      "pid" : 97451,
+      "seconds" : 10.231619954109192,
+      "source" : "poll",
+      "utc" : "2026-10-22T03:04:47Z"
+    },
+    {
+      "bundle" : "local.keepline.a14.keepline-opt-one",
+      "input_idle_seconds" : 52.966735542000002,
+      "name" : "Keepline A14 keepline-opt-one",
+      "pid" : 97451,
+      "seconds" : 10.332960963249207,
+      "source" : "poll",
+      "utc" : "2026-10-22T03:04:47Z"
+    },
+    {
+      "bundle" : "local.keepline.a14.keepline-opt-one",
+      "input_idle_seconds" : 53.068330832999997,
+      "name" : "Keepline A14 keepline-opt-one",
+      "pid" : 97451,
+      "seconds" : 10.434543013572693,
+      "source" : "poll",
+      "utc" : "2026-10-22T03:04:47Z"
+    },
+    {
+      "bundle" : "local.keepline.a14.keepline-opt-one",
+      "input_idle_seconds" : 53.169463082999997,
+      "name" : "Keepline A14 keepline-opt-one",
+      "pid" : 97451,
+      "seconds" : 10.535699963569641,
+      "source" : "poll",
+      "utc" : "2026-10-22T03:04:47Z"
+    },
+    {
+      "bundle" : "local.keepline.a14.keepline-opt-one",
+      "input_idle_seconds" : 53.270962875000002,
+      "name" : "Keepline A14 keepline-opt-one",
+      "pid" : 97451,
+      "seconds" : 10.637225985527039,
+      "source" : "poll",
+      "utc" : "2026-10-22T03:04:47Z"
+    },
+    {
+      "bundle" : "local.keepline.a14.keepline-opt-one",
+      "input_idle_seconds" : 53.371700916999998,
+      "name" : "Keepline A14 keepline-opt-one",
+      "pid" : 97451,
+      "seconds" : 10.737949967384338,
+      "source" : "poll",
+      "utc" : "2026-10-22T03:04:48Z"
+    },
+    {
+      "bundle" : "local.keepline.a14.keepline-opt-one",
+      "input_idle_seconds" : 53.472864917000003,
+      "name" : "Keepline A14 keepline-opt-one",
+      "pid" : 97451,
+      "seconds" : 10.839080929756165,
+      "source" : "poll",
+      "utc" : "2026-10-22T03:04:48Z"
+    },
+    {
+      "bundle" : "local.keepline.a14.keepline-opt-one",
+      "input_idle_seconds" : 53.574140542000002,
+      "name" : "Keepline A14 keepline-opt-one",
+      "pid" : 97451,
+      "seconds" : 10.94024395942688,
+      "source" : "poll",
+      "utc" : "2026-10-22T03:04:48Z"
+    },
+    {
+      "bundle" : "local.keepline.a14.keepline-opt-one",
+      "input_idle_seconds" : 53.675372457999998,
+      "name" : "Keepline A14 keepline-opt-one",
+      "pid" : 97451,
+      "seconds" : 11.04156494140625,
+      "source" : "poll",
+      "utc" : "2026-10-22T03:04:48Z"
+    },
+    {
+      "bundle" : "local.keepline.a14.keepline-opt-one",
+      "input_idle_seconds" : 53.776955458000003,
+      "name" : "Keepline A14 keepline-opt-one",
+      "pid" : 97451,
+      "seconds" : 11.14323103427887,
+      "source" : "poll",
+      "utc" : "2026-10-22T03:04:48Z"
+    },
+    {
+      "bundle" : "local.keepline.a14.keepline-opt-one",
+      "input_idle_seconds" : 53.877760332999998,
+      "name" : "Keepline A14 keepline-opt-one",
+      "pid" : 97451,
+      "seconds" : 11.244002938270569,
+      "source" : "poll",
+      "utc" : "2026-10-22T03:04:48Z"
+    },
+    {
+      "bundle" : "local.keepline.a14.keepline-opt-one",
+      "input_idle_seconds" : 53.979416624999999,
+      "name" : "Keepline A14 keepline-opt-one",
+      "pid" : 97451,
+      "seconds" : 11.345633983612061,
+      "source" : "poll",
+      "utc" : "2026-10-22T03:04:48Z"
+    },
+    {
+      "bundle" : "local.keepline.a14.keepline-opt-one",
+      "input_idle_seconds" : 54.080341582999999,
+      "name" : "Keepline A14 keepline-opt-one",
+      "pid" : 97451,
+      "seconds" : 11.44658100605011,
+      "source" : "poll",
+      "utc" : "2026-10-22T03:04:48Z"
+    },
+    {
+      "bundle" : "local.keepline.a14.keepline-opt-one",
+      "input_idle_seconds" : 54.181373375,
+      "name" : "Keepline A14 keepline-opt-one",
+      "pid" : 97451,
+      "seconds" : 11.547582030296326,
+      "source" : "poll",
+      "utc" : "2026-10-22T03:04:48Z"
+    },
+    {
+      "bundle" : "local.keepline.a14.keepline-opt-one",
+      "input_idle_seconds" : 54.283055375000004,
+      "name" : "Keepline A14 keepline-opt-one",
+      "pid" : 97451,
+      "seconds" : 11.649250030517578,
+      "source" : "poll",
+      "utc" : "2026-10-22T03:04:48Z"
+    },
+    {
+      "bundle" : "local.keepline.a14.keepline-opt-one",
+      "input_idle_seconds" : 54.384589167000001,
+      "name" : "Keepline A14 keepline-opt-one",
+      "pid" : 97451,
+      "seconds" : 11.750838994979858,
+      "source" : "poll",
+      "utc" : "2026-10-22T03:04:49Z"
+    },
+    {
+      "bundle" : "local.keepline.a14.keepline-opt-one",
+      "input_idle_seconds" : 54.510304791999999,
+      "name" : "Keepline A14 keepline-opt-one",
+      "pid" : 97451,
+      "seconds" : 11.852340936660767,
+      "source" : "poll",
+      "utc" : "2026-10-22T03:04:49Z"
+    },
+    {
+      "bundle" : "local.keepline.a14.keepline-opt-one",
+      "input_idle_seconds" : 54.611996916999999,
+      "name" : "Keepline A14 keepline-opt-one",
+      "pid" : 97451,
+      "seconds" : 11.978187918663025,
+      "source" : "poll",
+      "utc" : "2026-10-22T03:04:49Z"
+    },
+    {
+      "bundle" : "local.keepline.a14.keepline-opt-one",
+      "input_idle_seconds" : 54.713658041999999,
+      "name" : "Keepline A14 keepline-opt-one",
+      "pid" : 97451,
+      "seconds" : 12.079869985580444,
+      "source" : "poll",
+      "utc" : "2026-10-22T03:04:49Z"
+    },
+    {
+      "bundle" : "local.keepline.a14.keepline-opt-one",
+      "input_idle_seconds" : 54.815070958,
+      "name" : "Keepline A14 keepline-opt-one",
+      "pid" : 97451,
+      "seconds" : 12.181250929832458,
+      "source" : "poll",
+      "utc" : "2026-10-22T03:04:49Z"
+    },
+    {
+      "bundle" : "local.keepline.a14.keepline-opt-one",
+      "input_idle_seconds" : 54.916373374999999,
+      "name" : "Keepline A14 keepline-opt-one",
+      "pid" : 97451,
+      "seconds" : 12.282598972320557,
+      "source" : "poll",
+      "utc" : "2026-10-22T03:04:49Z"
+    },
+    {
+      "bundle" : "local.keepline.a14.keepline-opt-one",
+      "input_idle_seconds" : 55.018030041999999,
+      "name" : "Keepline A14 keepline-opt-one",
+      "pid" : 97451,
+      "seconds" : 12.384230017662048,
+      "source" : "poll",
+      "utc" : "2026-10-22T03:04:49Z"
+    },
+    {
+      "bundle" : "local.keepline.a14.keepline-opt-one",
+      "input_idle_seconds" : 55.118750667,
+      "name" : "Keepline A14 keepline-opt-one",
+      "pid" : 97451,
+      "seconds" : 12.484921932220459,
+      "source" : "poll",
+      "utc" : "2026-10-22T03:04:49Z"
+    },
+    {
+      "bundle" : "local.keepline.a14.keepline-opt-one",
+      "input_idle_seconds" : 55.220061667000003,
+      "name" : "Keepline A14 keepline-opt-one",
+      "pid" : 97451,
+      "seconds" : 12.586300015449524,
+      "source" : "poll",
+      "utc" : "2026-10-22T03:04:49Z"
+    },
+    {
+      "bundle" : "local.keepline.a14.keepline-opt-one",
+      "input_idle_seconds" : 55.321191499999998,
+      "name" : "Keepline A14 keepline-opt-one",
+      "pid" : 97451,
+      "seconds" : 12.687397956848145,
+      "source" : "poll",
+      "utc" : "2026-10-22T03:04:49Z"
+    },
+    {
+      "bundle" : "local.keepline.a14.keepline-opt-one",
+      "input_idle_seconds" : 55.421855499999999,
+      "name" : "Keepline A14 keepline-opt-one",
+      "pid" : 97451,
+      "seconds" : 12.788111925125122,
+      "source" : "poll",
+      "utc" : "2026-10-22T03:04:50Z"
+    },
+    {
+      "bundle" : "local.keepline.a14.keepline-opt-one",
+      "input_idle_seconds" : 55.523399374999997,
+      "name" : "Keepline A14 keepline-opt-one",
+      "pid" : 97451,
+      "seconds" : 12.889624953269958,
+      "source" : "poll",
+      "utc" : "2026-10-22T03:04:50Z"
+    },
+    {
+      "bundle" : "local.keepline.a14.keepline-opt-one",
+      "input_idle_seconds" : 55.624873999999998,
+      "name" : "Keepline A14 keepline-opt-one",
+      "pid" : 97451,
+      "seconds" : 12.990960955619812,
+      "source" : "poll",
+      "utc" : "2026-10-22T03:04:50Z"
+    },
+    {
+      "bundle" : "local.keepline.a14.keepline-opt-one",
+      "input_idle_seconds" : 55.726366042000002,
+      "name" : "Keepline A14 keepline-opt-one",
+      "pid" : 97451,
+      "seconds" : 13.092563986778259,
+      "source" : "poll",
+      "utc" : "2026-10-22T03:04:50Z"
+    },
+    {
+      "bundle" : "local.keepline.a14.keepline-opt-one",
+      "input_idle_seconds" : 55.827983207999999,
+      "name" : "Keepline A14 keepline-opt-one",
+      "pid" : 97451,
+      "seconds" : 13.19421398639679,
+      "source" : "poll",
+      "utc" : "2026-10-22T03:04:50Z"
+    },
+    {
+      "bundle" : "local.keepline.a14.keepline-opt-one",
+      "input_idle_seconds" : 55.929309500000002,
+      "name" : "Keepline A14 keepline-opt-one",
+      "pid" : 97451,
+      "seconds" : 13.295534014701843,
+      "source" : "poll",
+      "utc" : "2026-10-22T03:04:50Z"
+    },
+    {
+      "bundle" : "local.keepline.a14.keepline-opt-one",
+      "input_idle_seconds" : 56.030976541999998,
+      "name" : "Keepline A14 keepline-opt-one",
+      "pid" : 97451,
+      "seconds" : 13.397161960601807,
+      "source" : "poll",
+      "utc" : "2026-10-22T03:04:50Z"
+    },
+    {
+      "bundle" : "local.keepline.a14.keepline-opt-one",
+      "input_idle_seconds" : 56.131682583,
+      "name" : "Keepline A14 keepline-opt-one",
+      "pid" : 97451,
+      "seconds" : 13.497879981994629,
+      "source" : "poll",
+      "utc" : "2026-10-22T03:04:50Z"
+    },
+    {
+      "bundle" : "local.keepline.a14.keepline-opt-one",
+      "input_idle_seconds" : 56.233211124999997,
+      "name" : "Keepline A14 keepline-opt-one",
+      "pid" : 97451,
+      "seconds" : 13.599437952041626,
+      "source" : "poll",
+      "utc" : "2026-10-22T03:04:50Z"
+    },
+    {
+      "bundle" : "local.keepline.a14.keepline-opt-one",
+      "input_idle_seconds" : 56.334657542000002,
+      "name" : "Keepline A14 keepline-opt-one",
+      "pid" : 97451,
+      "seconds" : 13.700865983963013,
+      "source" : "poll",
+      "utc" : "2026-10-22T03:04:50Z"
+    },
+    {
+      "bundle" : "local.keepline.a14.keepline-opt-one",
+      "input_idle_seconds" : 56.435440917000001,
+      "name" : "Keepline A14 keepline-opt-one",
+      "pid" : 97451,
+      "seconds" : 13.801566004753113,
+      "source" : "poll",
+      "utc" : "2026-10-22T03:04:51Z"
+    },
+    {
+      "bundle" : "local.keepline.a14.keepline-opt-one",
+      "input_idle_seconds" : 56.537089250000001,
+      "name" : "Keepline A14 keepline-opt-one",
+      "pid" : 97451,
+      "seconds" : 13.903282999992371,
+      "source" : "poll",
+      "utc" : "2026-10-22T03:04:51Z"
+    },
+    {
+      "bundle" : "local.keepline.a14.keepline-opt-one",
+      "input_idle_seconds" : 56.638547250000002,
+      "name" : "Keepline A14 keepline-opt-one",
+      "pid" : 97451,
+      "seconds" : 14.004730939865112,
+      "source" : "poll",
+      "utc" : "2026-10-22T03:04:51Z"
+    },
+    {
+      "bundle" : "local.keepline.a14.keepline-opt-one",
+      "input_idle_seconds" : 56.739965957999999,
+      "name" : "Keepline A14 keepline-opt-one",
+      "pid" : 97451,
+      "seconds" : 14.10619592666626,
+      "source" : "poll",
+      "utc" : "2026-10-22T03:04:51Z"
+    },
+    {
+      "bundle" : "local.keepline.a14.keepline-opt-one",
+      "input_idle_seconds" : 56.841479417000002,
+      "name" : "Keepline A14 keepline-opt-one",
+      "pid" : 97451,
+      "seconds" : 14.207677006721497,
+      "source" : "poll",
+      "utc" : "2026-10-22T03:04:51Z"
+    },
+    {
+      "bundle" : "local.keepline.a14.keepline-opt-one",
+      "input_idle_seconds" : 56.943012541999998,
+      "name" : "Keepline A14 keepline-opt-one",
+      "pid" : 97451,
+      "seconds" : 14.309188961982727,
+      "source" : "poll",
+      "utc" : "2026-10-22T03:04:51Z"
+    },
+    {
+      "bundle" : "local.keepline.a14.keepline-opt-one",
+      "input_idle_seconds" : 57.044777957999997,
+      "name" : "Keepline A14 keepline-opt-one",
+      "pid" : 97451,
+      "seconds" : 14.410854935646057,
+      "source" : "poll",
+      "utc" : "2026-10-22T03:04:51Z"
+    },
+    {
+      "bundle" : "local.keepline.a14.keepline-opt-one",
+      "input_idle_seconds" : 57.147807499999999,
+      "name" : "Keepline A14 keepline-opt-one",
+      "pid" : 97451,
+      "seconds" : 14.512226939201355,
+      "source" : "poll",
+      "utc" : "2026-10-22T03:04:51Z"
+    },
+    {
+      "bundle" : "local.keepline.a14.keepline-opt-one",
+      "input_idle_seconds" : 57.249391625000001,
+      "name" : "Keepline A14 keepline-opt-one",
+      "pid" : 97451,
+      "seconds" : 14.615615010261536,
+      "source" : "poll",
+      "utc" : "2026-10-22T03:04:51Z"
+    },
+    {
+      "bundle" : "local.keepline.a14.keepline-opt-one",
+      "input_idle_seconds" : 57.350376750000002,
+      "name" : "Keepline A14 keepline-opt-one",
+      "pid" : 97451,
+      "seconds" : 14.716481924057007,
+      "source" : "poll",
+      "utc" : "2026-10-22T03:04:52Z"
+    },
+    {
+      "bundle" : "local.keepline.a14.keepline-opt-one",
+      "input_idle_seconds" : 57.451313292000002,
+      "name" : "Keepline A14 keepline-opt-one",
+      "pid" : 97451,
+      "seconds" : 14.817521929740906,
+      "source" : "poll",
+      "utc" : "2026-10-22T03:04:52Z"
+    },
+    {
+      "bundle" : "local.keepline.a14.keepline-opt-one",
+      "input_idle_seconds" : 57.552570041999999,
+      "name" : "Keepline A14 keepline-opt-one",
+      "pid" : 97451,
+      "seconds" : 14.918794989585876,
+      "source" : "poll",
+      "utc" : "2026-10-22T03:04:52Z"
+    },
+    {
+      "bundle" : "local.keepline.a14.keepline-opt-one",
+      "input_idle_seconds" : 57.653736500000001,
+      "name" : "Keepline A14 keepline-opt-one",
+      "pid" : 97451,
+      "seconds" : 15.019894003868103,
+      "source" : "poll",
+      "utc" : "2026-10-22T03:04:52Z"
+    },
+    {
+      "bundle" : "local.keepline.a14.keepline-opt-one",
+      "input_idle_seconds" : 57.755849249999997,
+      "name" : "Keepline A14 keepline-opt-one",
+      "pid" : 97451,
+      "seconds" : 15.121474981307983,
+      "source" : "poll",
+      "utc" : "2026-10-22T03:04:52Z"
+    },
+    {
+      "bundle" : "local.keepline.a14.keepline-opt-one",
+      "input_idle_seconds" : 57.856687708000003,
+      "name" : "Keepline A14 keepline-opt-one",
+      "pid" : 97451,
+      "seconds" : 15.222850918769836,
+      "source" : "poll",
+      "utc" : "2026-10-22T03:04:52Z"
+    },
+    {
+      "bundle" : "local.keepline.a14.keepline-opt-one",
+      "input_idle_seconds" : 57.958253833000001,
+      "name" : "Keepline A14 keepline-opt-one",
+      "pid" : 97451,
+      "seconds" : 15.324394941329956,
+      "source" : "poll",
+      "utc" : "2026-10-22T03:04:52Z"
+    },
+    {
+      "bundle" : "local.keepline.a14.keepline-opt-one",
+      "input_idle_seconds" : 58.059621624999998,
+      "name" : "Keepline A14 keepline-opt-one",
+      "pid" : 97451,
+      "seconds" : 15.425818920135498,
+      "source" : "poll",
+      "utc" : "2026-10-22T03:04:52Z"
+    },
+    {
+      "bundle" : "local.keepline.a14.keepline-opt-one",
+      "input_idle_seconds" : 58.161230875000001,
+      "name" : "Keepline A14 keepline-opt-one",
+      "pid" : 97451,
+      "seconds" : 15.527444005012512,
+      "source" : "poll",
+      "utc" : "2026-10-22T03:04:52Z"
+    },
+    {
+      "bundle" : "local.keepline.a14.keepline-opt-one",
+      "input_idle_seconds" : 58.262260249999997,
+      "name" : "Keepline A14 keepline-opt-one",
+      "pid" : 97451,
+      "seconds" : 15.628414034843445,
+      "source" : "poll",
+      "utc" : "2026-10-22T03:04:52Z"
+    },
+    {
+      "bundle" : "local.keepline.a14.keepline-opt-one",
+      "input_idle_seconds" : 58.363925375000001,
+      "name" : "Keepline A14 keepline-opt-one",
+      "pid" : 97451,
+      "seconds" : 15.730082035064697,
+      "source" : "poll",
+      "utc" : "2026-10-22T03:04:53Z"
+    },
+    {
+      "bundle" : "local.keepline.a14.keepline-opt-one",
+      "input_idle_seconds" : 58.464962,
+      "name" : "Keepline A14 keepline-opt-one",
+      "pid" : 97451,
+      "seconds" : 15.831162929534912,
+      "source" : "poll",
+      "utc" : "2026-10-22T03:04:53Z"
+    },
+    {
+      "bundle" : "local.keepline.a14.keepline-opt-one",
+      "input_idle_seconds" : 58.566570667000001,
+      "name" : "Keepline A14 keepline-opt-one",
+      "pid" : 97451,
+      "seconds" : 15.932752966880798,
+      "source" : "poll",
+      "utc" : "2026-10-22T03:04:53Z"
+    },
+    {
+      "bundle" : "local.keepline.a14.keepline-opt-one",
+      "input_idle_seconds" : 58.668154874999999,
+      "name" : "Keepline A14 keepline-opt-one",
+      "pid" : 97451,
+      "seconds" : 16.034327030181885,
+      "source" : "poll",
+      "utc" : "2026-10-22T03:04:53Z"
+    },
+    {
+      "bundle" : "local.keepline.a14.keepline-opt-one",
+      "input_idle_seconds" : 58.769734417000002,
+      "name" : "Keepline A14 keepline-opt-one",
+      "pid" : 97451,
+      "seconds" : 16.135957956314087,
+      "source" : "poll",
+      "utc" : "2026-10-22T03:04:53Z"
+    },
+    {
+      "bundle" : "local.keepline.a14.keepline-opt-one",
+      "input_idle_seconds" : 58.870401999999999,
+      "name" : "Keepline A14 keepline-opt-one",
+      "pid" : 97451,
+      "seconds" : 16.236606001853943,
+      "source" : "poll",
+      "utc" : "2026-10-22T03:04:53Z"
+    },
+    {
+      "bundle" : "local.keepline.a14.keepline-opt-one",
+      "input_idle_seconds" : 58.971335166999999,
+      "name" : "Keepline A14 keepline-opt-one",
+      "pid" : 97451,
+      "seconds" : 16.33745801448822,
+      "source" : "poll",
+      "utc" : "2026-10-22T03:04:53Z"
+    },
+    {
+      "bundle" : "local.keepline.a14.keepline-opt-one",
+      "input_idle_seconds" : 59.072821124999997,
+      "name" : "Keepline A14 keepline-opt-one",
+      "pid" : 97451,
+      "seconds" : 16.439005970954895,
+      "source" : "poll",
+      "utc" : "2026-10-22T03:04:53Z"
+    },
+    {
+      "bundle" : "local.keepline.a14.keepline-opt-one",
+      "input_idle_seconds" : 59.17447825,
+      "name" : "Keepline A14 keepline-opt-one",
+      "pid" : 97451,
+      "seconds" : 16.54063093662262,
+      "source" : "poll",
+      "utc" : "2026-10-22T03:04:53Z"
+    },
+    {
+      "bundle" : "local.keepline.a14.keepline-opt-one",
+      "input_idle_seconds" : 59.276069792000001,
+      "name" : "Keepline A14 keepline-opt-one",
+      "pid" : 97451,
+      "seconds" : 16.642282009124756,
+      "source" : "poll",
+      "utc" : "2026-10-22T03:04:53Z"
+    },
+    {
+      "bundle" : "local.keepline.a14.keepline-opt-one",
+      "input_idle_seconds" : 59.377008332999999,
+      "name" : "Keepline A14 keepline-opt-one",
+      "pid" : 97451,
+      "seconds" : 16.743157982826233,
+      "source" : "poll",
+      "utc" : "2026-10-22T03:04:54Z"
+    },
+    {
+      "bundle" : "local.keepline.a14.keepline-opt-one",
+      "input_idle_seconds" : 59.478400874999998,
+      "name" : "Keepline A14 keepline-opt-one",
+      "pid" : 97451,
+      "seconds" : 16.844594955444336,
+      "source" : "poll",
+      "utc" : "2026-10-22T03:04:54Z"
+    },
+    {
+      "bundle" : "local.keepline.a14.keepline-opt-one",
+      "input_idle_seconds" : 59.579345832999998,
+      "name" : "Keepline A14 keepline-opt-one",
+      "pid" : 97451,
+      "seconds" : 16.945510983467102,
+      "source" : "poll",
+      "utc" : "2026-10-22T03:04:54Z"
+    },
+    {
+      "bundle" : "local.keepline.a14.keepline-opt-one",
+      "input_idle_seconds" : 59.680612666999998,
+      "name" : "Keepline A14 keepline-opt-one",
+      "pid" : 97451,
+      "seconds" : 17.04680597782135,
+      "source" : "poll",
+      "utc" : "2026-10-22T03:04:54Z"
+    },
+    {
+      "bundle" : "local.keepline.a14.keepline-opt-one",
+      "input_idle_seconds" : 59.78162975,
+      "name" : "Keepline A14 keepline-opt-one",
+      "pid" : 97451,
+      "seconds" : 17.147817015647888,
+      "source" : "poll",
+      "utc" : "2026-10-22T03:04:54Z"
+    },
+    {
+      "bundle" : "local.keepline.a14.keepline-opt-one",
+      "input_idle_seconds" : 59.882621041999997,
+      "name" : "Keepline A14 keepline-opt-one",
+      "pid" : 97451,
+      "seconds" : 17.248835921287537,
+      "source" : "poll",
+      "utc" : "2026-10-22T03:04:54Z"
+    },
+    {
+      "bundle" : "local.keepline.a14.keepline-opt-one",
+      "input_idle_seconds" : 59.983752791999997,
+      "name" : "Keepline A14 keepline-opt-one",
+      "pid" : 97451,
+      "seconds" : 17.349924921989441,
+      "source" : "poll",
+      "utc" : "2026-10-22T03:04:54Z"
+    },
+    {
+      "bundle" : "local.keepline.a14.keepline-opt-one",
+      "input_idle_seconds" : 60.084556374999998,
+      "name" : "Keepline A14 keepline-opt-one",
+      "pid" : 97451,
+      "seconds" : 17.450775980949402,
+      "source" : "poll",
+      "utc" : "2026-10-22T03:04:54Z"
+    },
+    {
+      "bundle" : "local.keepline.a14.keepline-opt-one",
+      "input_idle_seconds" : 60.186072332999998,
+      "name" : "Keepline A14 keepline-opt-one",
+      "pid" : 97451,
+      "seconds" : 17.552240967750549,
+      "source" : "poll",
+      "utc" : "2026-10-22T03:04:54Z"
+    },
+    {
+      "bundle" : "local.keepline.a14.keepline-opt-one",
+      "input_idle_seconds" : 60.287703667000002,
+      "name" : "Keepline A14 keepline-opt-one",
+      "pid" : 97451,
+      "seconds" : 17.653872966766357,
+      "source" : "poll",
+      "utc" : "2026-10-22T03:04:54Z"
+    },
+    {
+      "bundle" : "local.keepline.a14.keepline-opt-one",
+      "input_idle_seconds" : 60.388916082999998,
+      "name" : "Keepline A14 keepline-opt-one",
+      "pid" : 97451,
+      "seconds" : 17.75502598285675,
+      "source" : "poll",
+      "utc" : "2026-10-22T03:04:55Z"
+    },
+    {
+      "bundle" : "local.keepline.a14.keepline-opt-one",
+      "input_idle_seconds" : 60.490529791999997,
+      "name" : "Keepline A14 keepline-opt-one",
+      "pid" : 97451,
+      "seconds" : 17.856683015823364,
+      "source" : "poll",
+      "utc" : "2026-10-22T03:04:55Z"
+    },
+    {
+      "bundle" : "local.keepline.a14.keepline-opt-one",
+      "input_idle_seconds" : 60.591642125,
+      "name" : "Keepline A14 keepline-opt-one",
+      "pid" : 97451,
+      "seconds" : 17.957839012145996,
+      "source" : "poll",
+      "utc" : "2026-10-22T03:04:55Z"
+    },
+    {
+      "bundle" : "local.keepline.a14.keepline-opt-one",
+      "input_idle_seconds" : 60.692974499999998,
+      "name" : "Keepline A14 keepline-opt-one",
+      "pid" : 97451,
+      "seconds" : 18.059110999107361,
+      "source" : "poll",
+      "utc" : "2026-10-22T03:04:55Z"
+    },
+    {
+      "bundle" : "local.keepline.a14.keepline-opt-one",
+      "input_idle_seconds" : 60.793677291999998,
+      "name" : "Keepline A14 keepline-opt-one",
+      "pid" : 97451,
+      "seconds" : 18.159816980361938,
+      "source" : "poll",
+      "utc" : "2026-10-22T03:04:55Z"
+    },
+    {
+      "bundle" : "local.keepline.a14.keepline-opt-one",
+      "input_idle_seconds" : 60.894506749999998,
+      "name" : "Keepline A14 keepline-opt-one",
+      "pid" : 97451,
+      "seconds" : 18.26065993309021,
+      "source" : "poll",
+      "utc" : "2026-10-22T03:04:55Z"
+    },
+    {
+      "bundle" : "local.keepline.a14.keepline-opt-one",
+      "input_idle_seconds" : 60.996124041999998,
+      "name" : "Keepline A14 keepline-opt-one",
+      "pid" : 97451,
+      "seconds" : 18.362314939498901,
+      "source" : "poll",
+      "utc" : "2026-10-22T03:04:55Z"
+    },
+    {
+      "bundle" : "local.keepline.a14.keepline-opt-one",
+      "input_idle_seconds" : 61.097349708000003,
+      "name" : "Keepline A14 keepline-opt-one",
+      "pid" : 97451,
+      "seconds" : 18.463572025299072,
+      "source" : "poll",
+      "utc" : "2026-10-22T03:04:55Z"
+    },
+    {
+      "bundle" : "local.keepline.a14.keepline-opt-one",
+      "input_idle_seconds" : 61.198270333000004,
+      "name" : "Keepline A14 keepline-opt-one",
+      "pid" : 97451,
+      "seconds" : 18.564453959465027,
+      "source" : "poll",
+      "utc" : "2026-10-22T03:04:55Z"
+    },
+    {
+      "bundle" : "local.keepline.a14.keepline-opt-one",
+      "input_idle_seconds" : 61.299906542000002,
+      "name" : "Keepline A14 keepline-opt-one",
+      "pid" : 97451,
+      "seconds" : 18.666061997413635,
+      "source" : "poll",
+      "utc" : "2026-10-22T03:04:55Z"
+    },
+    {
+      "bundle" : "local.keepline.a14.keepline-opt-one",
+      "input_idle_seconds" : 61.401238417000002,
+      "name" : "Keepline A14 keepline-opt-one",
+      "pid" : 97451,
+      "seconds" : 18.767406940460205,
+      "source" : "poll",
+      "utc" : "2026-10-22T03:04:56Z"
+    },
+    {
+      "bundle" : "local.keepline.a14.keepline-opt-one",
+      "input_idle_seconds" : 61.501951583,
+      "name" : "Keepline A14 keepline-opt-one",
+      "pid" : 97451,
+      "seconds" : 18.868101954460144,
+      "source" : "poll",
+      "utc" : "2026-10-22T03:04:56Z"
+    },
+    {
+      "bundle" : "local.keepline.a14.keepline-opt-one",
+      "input_idle_seconds" : 61.603596332999999,
+      "name" : "Keepline A14 keepline-opt-one",
+      "pid" : 97451,
+      "seconds" : 18.969754934310913,
+      "source" : "poll",
+      "utc" : "2026-10-22T03:04:56Z"
+    },
+    {
+      "bundle" : "local.keepline.a14.keepline-opt-one",
+      "input_idle_seconds" : 61.704275666999997,
+      "name" : "Keepline A14 keepline-opt-one",
+      "pid" : 97451,
+      "seconds" : 19.070449948310852,
+      "source" : "poll",
+      "utc" : "2026-10-22T03:04:56Z"
+    },
+    {
+      "bundle" : "local.keepline.a14.keepline-opt-one",
+      "input_idle_seconds" : 61.805932249999998,
+      "name" : "Keepline A14 keepline-opt-one",
+      "pid" : 97451,
+      "seconds" : 19.172070026397705,
+      "source" : "poll",
+      "utc" : "2026-10-22T03:04:56Z"
+    },
+    {
+      "bundle" : "local.keepline.a14.keepline-opt-one",
+      "input_idle_seconds" : 61.906656542,
+      "name" : "Keepline A14 keepline-opt-one",
+      "pid" : 97451,
+      "seconds" : 19.272783994674683,
+      "source" : "poll",
+      "utc" : "2026-10-22T03:04:56Z"
+    },
+    {
+      "bundle" : "local.keepline.a14.keepline-opt-one",
+      "input_idle_seconds" : 62.008305374999999,
+      "name" : "Keepline A14 keepline-opt-one",
+      "pid" : 97451,
+      "seconds" : 19.374444961547852,
+      "source" : "poll",
+      "utc" : "2026-10-22T03:04:56Z"
+    },
+    {
+      "bundle" : "local.keepline.a14.keepline-opt-one",
+      "input_idle_seconds" : 62.109662624999999,
+      "name" : "Keepline A14 keepline-opt-one",
+      "pid" : 97451,
+      "seconds" : 19.475742936134338,
+      "source" : "poll",
+      "utc" : "2026-10-22T03:04:56Z"
+    },
+    {
+      "bundle" : "local.keepline.a14.keepline-opt-one",
+      "input_idle_seconds" : 62.211320999999998,
+      "name" : "Keepline A14 keepline-opt-one",
+      "pid" : 97451,
+      "seconds" : 19.57744300365448,
+      "source" : "poll",
+      "utc" : "2026-10-22T03:04:56Z"
+    },
+    {
+      "bundle" : "local.keepline.a14.keepline-opt-one",
+      "input_idle_seconds" : 62.313087332999999,
+      "name" : "Keepline A14 keepline-opt-one",
+      "pid" : 97451,
+      "seconds" : 19.679105997085571,
+      "source" : "poll",
+      "utc" : "2026-10-22T03:04:56Z"
+    },
+    {
+      "bundle" : "local.keepline.a14.keepline-opt-one",
+      "input_idle_seconds" : 62.414496417000002,
+      "name" : "Keepline A14 keepline-opt-one",
+      "pid" : 97451,
+      "seconds" : 19.780584931373596,
+      "source" : "poll",
+      "utc" : "2026-10-22T03:04:57Z"
+    },
+    {
+      "bundle" : "local.keepline.a14.keepline-opt-one",
+      "input_idle_seconds" : 62.515788207999996,
+      "name" : "Keepline A14 keepline-opt-one",
+      "pid" : 97451,
+      "seconds" : 19.881937980651855,
+      "source" : "poll",
+      "utc" : "2026-10-22T03:04:57Z"
+    },
+    {
+      "bundle" : "local.keepline.a14.keepline-opt-one",
+      "input_idle_seconds" : 62.617292542000001,
+      "name" : "Keepline A14 keepline-opt-one",
+      "pid" : 97451,
+      "seconds" : 19.983384013175964,
+      "source" : "poll",
+      "utc" : "2026-10-22T03:04:57Z"
+    },
+    {
+      "bundle" : "local.keepline.a14.keepline-opt-one",
+      "input_idle_seconds" : 62.718661292,
+      "name" : "Keepline A14 keepline-opt-one",
+      "pid" : 97451,
+      "seconds" : 20.08477795124054,
+      "source" : "poll",
+      "utc" : "2026-10-22T03:04:57Z"
+    },
+    {
+      "bundle" : "local.keepline.a14.keepline-opt-one",
+      "input_idle_seconds" : 62.819592958000001,
+      "name" : "Keepline A14 keepline-opt-one",
+      "pid" : 97451,
+      "seconds" : 20.185752987861633,
+      "source" : "poll",
+      "utc" : "2026-10-22T03:04:57Z"
+    },
+    {
+      "bundle" : "local.keepline.a14.keepline-opt-one",
+      "input_idle_seconds" : 62.921183167000002,
+      "name" : "Keepline A14 keepline-opt-one",
+      "pid" : 97451,
+      "seconds" : 20.287312984466553,
+      "source" : "poll",
+      "utc" : "2026-10-22T03:04:57Z"
+    },
+    {
+      "bundle" : "local.keepline.a14.keepline-opt-one",
+      "input_idle_seconds" : 63.022780791999999,
+      "name" : "Keepline A14 keepline-opt-one",
+      "pid" : 97451,
+      "seconds" : 20.388914942741394,
+      "source" : "poll",
+      "utc" : "2026-10-22T03:04:57Z"
+    },
+    {
+      "bundle" : "local.keepline.a14.keepline-opt-one",
+      "input_idle_seconds" : 63.123590999999998,
+      "name" : "Keepline A14 keepline-opt-one",
+      "pid" : 97451,
+      "seconds" : 20.489781975746155,
+      "source" : "poll",
+      "utc" : "2026-10-22T03:04:57Z"
+    },
+    {
+      "bundle" : "local.keepline.a14.keepline-opt-one",
+      "input_idle_seconds" : 63.225154582999998,
+      "name" : "Keepline A14 keepline-opt-one",
+      "pid" : 97451,
+      "seconds" : 20.591311931610107,
+      "source" : "poll",
+      "utc" : "2026-10-22T03:04:57Z"
+    },
+    {
+      "bundle" : "local.keepline.a14.keepline-opt-one",
+      "input_idle_seconds" : 63.326309166999998,
+      "name" : "Keepline A14 keepline-opt-one",
+      "pid" : 97451,
+      "seconds" : 20.692376971244812,
+      "source" : "poll",
+      "utc" : "2026-10-22T03:04:57Z"
+    },
+    {
+      "bundle" : "local.keepline.a14.keepline-opt-one",
+      "input_idle_seconds" : 63.427903458000003,
+      "name" : "Keepline A14 keepline-opt-one",
+      "pid" : 97451,
+      "seconds" : 20.794010996818542,
+      "source" : "poll",
+      "utc" : "2026-10-22T03:04:58Z"
+    },
+    {
+      "bundle" : "local.keepline.a14.keepline-opt-one",
+      "input_idle_seconds" : 63.528533707999998,
+      "name" : "Keepline A14 keepline-opt-one",
+      "pid" : 97451,
+      "seconds" : 20.894707918167114,
+      "source" : "poll",
+      "utc" : "2026-10-22T03:04:58Z"
+    },
+    {
+      "bundle" : "local.keepline.a14.keepline-opt-one",
+      "input_idle_seconds" : 63.629513416999998,
+      "name" : "Keepline A14 keepline-opt-one",
+      "pid" : 97451,
+      "seconds" : 20.995590925216675,
+      "source" : "poll",
+      "utc" : "2026-10-22T03:04:58Z"
+    },
+    {
+      "bundle" : "local.keepline.a14.keepline-opt-one",
+      "input_idle_seconds" : 63.731163707999997,
+      "name" : "Keepline A14 keepline-opt-one",
+      "pid" : 97451,
+      "seconds" : 21.097285032272339,
+      "source" : "poll",
+      "utc" : "2026-10-22T03:04:58Z"
+    },
+    {
+      "bundle" : "local.keepline.a14.keepline-opt-one",
+      "input_idle_seconds" : 63.831886292,
+      "name" : "Keepline A14 keepline-opt-one",
+      "pid" : 97451,
+      "seconds" : 21.197970032691956,
+      "source" : "poll",
+      "utc" : "2026-10-22T03:04:58Z"
+    },
+    {
+      "bundle" : "local.keepline.a14.keepline-opt-one",
+      "input_idle_seconds" : 63.933542916999997,
+      "name" : "Keepline A14 keepline-opt-one",
+      "pid" : 97451,
+      "seconds" : 21.299659013748169,
+      "source" : "poll",
+      "utc" : "2026-10-22T03:04:58Z"
+    },
+    {
+      "bundle" : "local.keepline.a14.keepline-opt-one",
+      "input_idle_seconds" : 64.034578124999996,
+      "name" : "Keepline A14 keepline-opt-one",
+      "pid" : 97451,
+      "seconds" : 21.400691032409668,
+      "source" : "poll",
+      "utc" : "2026-10-22T03:04:58Z"
+    },
+    {
+      "bundle" : "local.keepline.a14.keepline-opt-one",
+      "input_idle_seconds" : 64.135421625000006,
+      "name" : "Keepline A14 keepline-opt-one",
+      "pid" : 97451,
+      "seconds" : 21.501511931419373,
+      "source" : "poll",
+      "utc" : "2026-10-22T03:04:58Z"
+    },
+    {
+      "bundle" : "local.keepline.a14.keepline-opt-one",
+      "input_idle_seconds" : 64.237048625,
+      "name" : "Keepline A14 keepline-opt-one",
+      "pid" : 97451,
+      "seconds" : 21.603196978569031,
+      "source" : "poll",
+      "utc" : "2026-10-22T03:04:58Z"
+    },
+    {
+      "bundle" : "local.keepline.a14.keepline-opt-one",
+      "input_idle_seconds" : 64.338521999999998,
+      "name" : "Keepline A14 keepline-opt-one",
+      "pid" : 97451,
+      "seconds" : 21.704636931419373,
+      "source" : "poll",
+      "utc" : "2026-10-22T03:04:58Z"
+    },
+    {
+      "bundle" : "local.keepline.a14.keepline-opt-one",
+      "input_idle_seconds" : 64.439936833000004,
+      "name" : "Keepline A14 keepline-opt-one",
+      "pid" : 97451,
+      "seconds" : 21.806038975715637,
+      "source" : "poll",
+      "utc" : "2026-10-22T03:04:59Z"
+    },
+    {
+      "bundle" : "local.keepline.a14.keepline-opt-one",
+      "input_idle_seconds" : 64.541355542000005,
+      "name" : "Keepline A14 keepline-opt-one",
+      "pid" : 97451,
+      "seconds" : 21.907472968101501,
+      "source" : "poll",
+      "utc" : "2026-10-22T03:04:59Z"
+    },
+    {
+      "bundle" : "local.keepline.a14.keepline-opt-one",
+      "input_idle_seconds" : 64.643028874999999,
+      "name" : "Keepline A14 keepline-opt-one",
+      "pid" : 97451,
+      "seconds" : 22.00901997089386,
+      "source" : "poll",
+      "utc" : "2026-10-22T03:04:59Z"
+    },
+    {
+      "bundle" : "local.keepline.a14.keepline-opt-one",
+      "input_idle_seconds" : 64.744013374999994,
+      "name" : "Keepline A14 keepline-opt-one",
+      "pid" : 97451,
+      "seconds" : 22.110077023506165,
+      "source" : "poll",
+      "utc" : "2026-10-22T03:04:59Z"
+    },
+    {
+      "bundle" : "local.keepline.a14.keepline-opt-one",
+      "input_idle_seconds" : 64.845658874999998,
+      "name" : "Keepline A14 keepline-opt-one",
+      "pid" : 97451,
+      "seconds" : 22.211786031723022,
+      "source" : "poll",
+      "utc" : "2026-10-22T03:04:59Z"
+    },
+    {
+      "bundle" : "local.keepline.a14.keepline-opt-one",
+      "input_idle_seconds" : 64.947264333000007,
+      "name" : "Keepline A14 keepline-opt-one",
+      "pid" : 97451,
+      "seconds" : 22.313431024551392,
+      "source" : "poll",
+      "utc" : "2026-10-22T03:04:59Z"
+    },
+    {
+      "bundle" : "local.keepline.a14.keepline-opt-one",
+      "input_idle_seconds" : 65.048674417000001,
+      "name" : "Keepline A14 keepline-opt-one",
+      "pid" : 97451,
+      "seconds" : 22.414847016334534,
+      "source" : "poll",
+      "utc" : "2026-10-22T03:04:59Z"
+    },
+    {
+      "bundle" : "local.keepline.a14.keepline-opt-one",
+      "input_idle_seconds" : 65.150245291999994,
+      "name" : "Keepline A14 keepline-opt-one",
+      "pid" : 97451,
+      "seconds" : 22.516376972198486,
+      "source" : "poll",
+      "utc" : "2026-10-22T03:04:59Z"
+    },
+    {
+      "bundle" : "local.keepline.a14.keepline-opt-one",
+      "input_idle_seconds" : 65.251167832999997,
+      "name" : "Keepline A14 keepline-opt-one",
+      "pid" : 97451,
+      "seconds" : 22.617334008216858,
+      "source" : "poll",
+      "utc" : "2026-10-22T03:04:59Z"
+    },
+    {
+      "bundle" : "local.keepline.a14.keepline-opt-one",
+      "input_idle_seconds" : 65.351919582999997,
+      "name" : "Keepline A14 keepline-opt-one",
+      "pid" : 97451,
+      "seconds" : 22.718047022819519,
+      "source" : "poll",
+      "utc" : "2026-10-22T03:05:00Z"
+    },
+    {
+      "bundle" : "local.keepline.a14.keepline-opt-one",
+      "input_idle_seconds" : 65.452622375000004,
+      "name" : "Keepline A14 keepline-opt-one",
+      "pid" : 97451,
+      "seconds" : 22.818735003471375,
+      "source" : "poll",
+      "utc" : "2026-10-22T03:05:00Z"
+    },
+    {
+      "bundle" : "local.keepline.a14.keepline-opt-one",
+      "input_idle_seconds" : 65.553382958,
+      "name" : "Keepline A14 keepline-opt-one",
+      "pid" : 97451,
+      "seconds" : 22.91948401927948,
+      "source" : "poll",
+      "utc" : "2026-10-22T03:05:00Z"
+    },
+    {
+      "bundle" : "local.keepline.a14.keepline-opt-one",
+      "input_idle_seconds" : 65.654823042000004,
+      "name" : "Keepline A14 keepline-opt-one",
+      "pid" : 97451,
+      "seconds" : 23.020954012870789,
+      "source" : "poll",
+      "utc" : "2026-10-22T03:05:00Z"
+    },
+    {
+      "bundle" : "local.keepline.a14.keepline-opt-one",
+      "input_idle_seconds" : 65.756221042000007,
+      "name" : "Keepline A14 keepline-opt-one",
+      "pid" : 97451,
+      "seconds" : 23.122344970703125,
+      "source" : "poll",
+      "utc" : "2026-10-22T03:05:00Z"
+    },
+    {
+      "bundle" : "local.keepline.a14.keepline-opt-one",
+      "input_idle_seconds" : 65.857140999999999,
+      "name" : "Keepline A14 keepline-opt-one",
+      "pid" : 97451,
+      "seconds" : 23.223253965377808,
+      "source" : "poll",
+      "utc" : "2026-10-22T03:05:00Z"
+    },
+    {
+      "bundle" : "local.keepline.a14.keepline-opt-one",
+      "input_idle_seconds" : 65.958702666999997,
+      "name" : "Keepline A14 keepline-opt-one",
+      "pid" : 97451,
+      "seconds" : 23.324744939804077,
+      "source" : "poll",
+      "utc" : "2026-10-22T03:05:00Z"
+    },
+    {
+      "bundle" : "local.keepline.a14.keepline-opt-one",
+      "input_idle_seconds" : 66.059600583000005,
+      "name" : "Keepline A14 keepline-opt-one",
+      "pid" : 97451,
+      "seconds" : 23.425657033920288,
+      "source" : "poll",
+      "utc" : "2026-10-22T03:05:00Z"
+    },
+    {
+      "bundle" : "local.keepline.a14.keepline-opt-one",
+      "input_idle_seconds" : 66.161338291999996,
+      "name" : "Keepline A14 keepline-opt-one",
+      "pid" : 97451,
+      "seconds" : 23.527364015579224,
+      "source" : "poll",
+      "utc" : "2026-10-22T03:05:00Z"
+    },
+    {
+      "bundle" : "local.keepline.a14.keepline-opt-one",
+      "input_idle_seconds" : 66.262035667000006,
+      "name" : "Keepline A14 keepline-opt-one",
+      "pid" : 97451,
+      "seconds" : 23.628152012825012,
+      "source" : "poll",
+      "utc" : "2026-10-22T03:05:00Z"
+    },
+    {
+      "bundle" : "local.keepline.a14.keepline-opt-one",
+      "input_idle_seconds" : 66.363408917000001,
+      "name" : "Keepline A14 keepline-opt-one",
+      "pid" : 97451,
+      "seconds" : 23.729499936103821,
+      "source" : "poll",
+      "utc" : "2026-10-22T03:05:01Z"
+    },
+    {
+      "bundle" : "local.keepline.a14.keepline-opt-one",
+      "input_idle_seconds" : 66.464885749999993,
+      "name" : "Keepline A14 keepline-opt-one",
+      "pid" : 97451,
+      "seconds" : 23.831027030944824,
+      "source" : "poll",
+      "utc" : "2026-10-22T03:05:01Z"
+    },
+    {
+      "bundle" : "local.keepline.a14.keepline-opt-one",
+      "input_idle_seconds" : 66.566125999999997,
+      "name" : "Keepline A14 keepline-opt-one",
+      "pid" : 97451,
+      "seconds" : 23.932191014289856,
+      "source" : "poll",
+      "utc" : "2026-10-22T03:05:01Z"
+    },
+    {
+      "bundle" : "local.keepline.a14.keepline-opt-one",
+      "input_idle_seconds" : 66.667402624999994,
+      "name" : "Keepline A14 keepline-opt-one",
+      "pid" : 97451,
+      "seconds" : 24.033535957336426,
+      "source" : "poll",
+      "utc" : "2026-10-22T03:05:01Z"
+    },
+    {
+      "bundle" : "local.keepline.a14.keepline-opt-one",
+      "input_idle_seconds" : 66.769045375000005,
+      "name" : "Keepline A14 keepline-opt-one",
+      "pid" : 97451,
+      "seconds" : 24.135147929191589,
+      "source" : "poll",
+      "utc" : "2026-10-22T03:05:01Z"
+    },
+    {
+      "bundle" : "local.keepline.a14.keepline-opt-one",
+      "input_idle_seconds" : 66.870762916999993,
+      "name" : "Keepline A14 keepline-opt-one",
+      "pid" : 97451,
+      "seconds" : 24.236801981925964,
+      "source" : "poll",
+      "utc" : "2026-10-22T03:05:01Z"
+    },
+    {
+      "bundle" : "local.keepline.a14.keepline-opt-one",
+      "input_idle_seconds" : 66.971481667000006,
+      "name" : "Keepline A14 keepline-opt-one",
+      "pid" : 97451,
+      "seconds" : 24.337576985359192,
+      "source" : "poll",
+      "utc" : "2026-10-22T03:05:01Z"
+    },
+    {
+      "bundle" : "local.keepline.a14.keepline-opt-one",
+      "input_idle_seconds" : 67.072738999999999,
+      "name" : "Keepline A14 keepline-opt-one",
+      "pid" : 97451,
+      "seconds" : 24.43884003162384,
+      "source" : "poll",
+      "utc" : "2026-10-22T03:05:01Z"
+    },
+    {
+      "bundle" : "local.keepline.a14.keepline-opt-one",
+      "input_idle_seconds" : 67.173759292,
+      "name" : "Keepline A14 keepline-opt-one",
+      "pid" : 97451,
+      "seconds" : 24.5399090051651,
+      "source" : "poll",
+      "utc" : "2026-10-22T03:05:01Z"
+    },
+    {
+      "bundle" : "local.keepline.a14.keepline-opt-one",
+      "input_idle_seconds" : 67.275378333000006,
+      "name" : "Keepline A14 keepline-opt-one",
+      "pid" : 97451,
+      "seconds" : 24.641471028327942,
+      "source" : "poll",
+      "utc" : "2026-10-22T03:05:01Z"
+    },
+    {
+      "bundle" : "local.keepline.a14.keepline-opt-one",
+      "input_idle_seconds" : 67.376892874999996,
+      "name" : "Keepline A14 keepline-opt-one",
+      "pid" : 97451,
+      "seconds" : 24.743000984191895,
+      "source" : "poll",
+      "utc" : "2026-10-22T03:05:02Z"
+    },
+    {
+      "bundle" : "local.keepline.a14.keepline-opt-one",
+      "input_idle_seconds" : 67.477855792,
+      "name" : "Keepline A14 keepline-opt-one",
+      "pid" : 97451,
+      "seconds" : 24.843958973884583,
+      "source" : "poll",
+      "utc" : "2026-10-22T03:05:02Z"
+    },
+    {
+      "bundle" : "local.keepline.a14.keepline-opt-one",
+      "input_idle_seconds" : 67.579032708,
+      "name" : "Keepline A14 keepline-opt-one",
+      "pid" : 97451,
+      "seconds" : 24.945151925086975,
+      "source" : "poll",
+      "utc" : "2026-10-22T03:05:02Z"
+    },
+    {
+      "bundle" : "local.keepline.a14.keepline-opt-one",
+      "input_idle_seconds" : 67.680671500000003,
+      "name" : "Keepline A14 keepline-opt-one",
+      "pid" : 97451,
+      "seconds" : 25.046783924102783,
+      "source" : "poll",
+      "utc" : "2026-10-22T03:05:02Z"
+    },
+    {
+      "bundle" : "local.keepline.a14.keepline-opt-one",
+      "input_idle_seconds" : 67.781557832999994,
+      "name" : "Keepline A14 keepline-opt-one",
+      "pid" : 97451,
+      "seconds" : 25.14767599105835,
+      "source" : "poll",
+      "utc" : "2026-10-22T03:05:02Z"
+    },
+    {
+      "bundle" : "local.keepline.a14.keepline-opt-one",
+      "input_idle_seconds" : 67.883084832999998,
+      "name" : "Keepline A14 keepline-opt-one",
+      "pid" : 97451,
+      "seconds" : 25.249173998832703,
+      "source" : "poll",
+      "utc" : "2026-10-22T03:05:02Z"
+    },
+    {
+      "bundle" : "local.keepline.a14.keepline-opt-one",
+      "input_idle_seconds" : 67.984564000000006,
+      "name" : "Keepline A14 keepline-opt-one",
+      "pid" : 97451,
+      "seconds" : 25.350603938102722,
+      "source" : "poll",
+      "utc" : "2026-10-22T03:05:02Z"
+    },
+    {
+      "bundle" : "local.keepline.a14.keepline-opt-one",
+      "input_idle_seconds" : 68.085959541999998,
+      "name" : "Keepline A14 keepline-opt-one",
+      "pid" : 97451,
+      "seconds" : 25.452018022537231,
+      "source" : "poll",
+      "utc" : "2026-10-22T03:05:02Z"
+    },
+    {
+      "bundle" : "local.keepline.a14.keepline-opt-one",
+      "input_idle_seconds" : 68.187463957999995,
+      "name" : "Keepline A14 keepline-opt-one",
+      "pid" : 97451,
+      "seconds" : 25.553535938262939,
+      "source" : "poll",
+      "utc" : "2026-10-22T03:05:02Z"
+    },
+    {
+      "bundle" : "local.keepline.a14.keepline-opt-one",
+      "input_idle_seconds" : 68.288248167000006,
+      "name" : "Keepline A14 keepline-opt-one",
+      "pid" : 97451,
+      "seconds" : 25.654387950897217,
+      "source" : "poll",
+      "utc" : "2026-10-22T03:05:02Z"
+    },
+    {
+      "bundle" : "local.keepline.a14.keepline-opt-one",
+      "input_idle_seconds" : 68.389820833000002,
+      "name" : "Keepline A14 keepline-opt-one",
+      "pid" : 97451,
+      "seconds" : 25.755926966667175,
+      "source" : "poll",
+      "utc" : "2026-10-22T03:05:03Z"
+    },
+    {
+      "bundle" : "local.keepline.a14.keepline-opt-one",
+      "input_idle_seconds" : 68.491113874999996,
+      "name" : "Keepline A14 keepline-opt-one",
+      "pid" : 97451,
+      "seconds" : 25.857211947441101,
+      "source" : "poll",
+      "utc" : "2026-10-22T03:05:03Z"
+    },
+    {
+      "bundle" : "local.keepline.a14.keepline-opt-one",
+      "input_idle_seconds" : 68.592069167000005,
+      "name" : "Keepline A14 keepline-opt-one",
+      "pid" : 97451,
+      "seconds" : 25.958197951316833,
+      "source" : "poll",
+      "utc" : "2026-10-22T03:05:03Z"
+    },
+    {
+      "bundle" : "local.keepline.a14.keepline-opt-one",
+      "input_idle_seconds" : 68.692888499999995,
+      "name" : "Keepline A14 keepline-opt-one",
+      "pid" : 97451,
+      "seconds" : 26.058921933174133,
+      "source" : "poll",
+      "utc" : "2026-10-22T03:05:03Z"
+    },
+    {
+      "bundle" : "local.keepline.a14.keepline-opt-one",
+      "input_idle_seconds" : 68.793858624999999,
+      "name" : "Keepline A14 keepline-opt-one",
+      "pid" : 97451,
+      "seconds" : 26.159925937652588,
+      "source" : "poll",
+      "utc" : "2026-10-22T03:05:03Z"
+    },
+    {
+      "bundle" : "local.keepline.a14.keepline-opt-one",
+      "input_idle_seconds" : 68.895510333000004,
+      "name" : "Keepline A14 keepline-opt-one",
+      "pid" : 97451,
+      "seconds" : 26.261595010757446,
+      "source" : "poll",
+      "utc" : "2026-10-22T03:05:03Z"
+    },
+    {
+      "bundle" : "local.keepline.a14.keepline-opt-one",
+      "input_idle_seconds" : 68.996392708000002,
+      "name" : "Keepline A14 keepline-opt-one",
+      "pid" : 97451,
+      "seconds" : 26.362438917160034,
+      "source" : "poll",
+      "utc" : "2026-10-22T03:05:03Z"
+    },
+    {
+      "bundle" : "local.keepline.a14.keepline-opt-one",
+      "input_idle_seconds" : 69.097624042000007,
+      "name" : "Keepline A14 keepline-opt-one",
+      "pid" : 97451,
+      "seconds" : 26.463706970214844,
+      "source" : "poll",
+      "utc" : "2026-10-22T03:05:03Z"
+    },
+    {
+      "bundle" : "local.keepline.a14.keepline-opt-one",
+      "input_idle_seconds" : 69.199237249999996,
+      "name" : "Keepline A14 keepline-opt-one",
+      "pid" : 97451,
+      "seconds" : 26.565346002578735,
+      "source" : "poll",
+      "utc" : "2026-10-22T03:05:03Z"
+    },
+    {
+      "bundle" : "local.keepline.a14.keepline-opt-one",
+      "input_idle_seconds" : 69.300490957999997,
+      "name" : "Keepline A14 keepline-opt-one",
+      "pid" : 97451,
+      "seconds" : 26.666545033454895,
+      "source" : "poll",
+      "utc" : "2026-10-22T03:05:03Z"
+    },
+    {
+      "bundle" : "local.keepline.a14.keepline-opt-one",
+      "input_idle_seconds" : 69.401937458000006,
+      "name" : "Keepline A14 keepline-opt-one",
+      "pid" : 97451,
+      "seconds" : 26.767964959144592,
+      "source" : "poll",
+      "utc" : "2026-10-22T03:05:04Z"
+    },
+    {
+      "bundle" : "local.keepline.a14.keepline-opt-one",
+      "input_idle_seconds" : 69.503585791999996,
+      "name" : "Keepline A14 keepline-opt-one",
+      "pid" : 97451,
+      "seconds" : 26.86965799331665,
+      "source" : "poll",
+      "utc" : "2026-10-22T03:05:04Z"
+    },
+    {
+      "bundle" : "local.keepline.a14.keepline-opt-one",
+      "input_idle_seconds" : 69.605234707999998,
+      "name" : "Keepline A14 keepline-opt-one",
+      "pid" : 97451,
+      "seconds" : 26.971307992935181,
+      "source" : "poll",
+      "utc" : "2026-10-22T03:05:04Z"
+    },
+    {
+      "bundle" : "local.keepline.a14.keepline-opt-one",
+      "input_idle_seconds" : 69.706615958,
+      "name" : "Keepline A14 keepline-opt-one",
+      "pid" : 97451,
+      "seconds" : 27.072634935379028,
+      "source" : "poll",
+      "utc" : "2026-10-22T03:05:04Z"
+    },
+    {
+      "bundle" : "local.keepline.a14.keepline-opt-one",
+      "input_idle_seconds" : 69.807930666999994,
+      "name" : "Keepline A14 keepline-opt-one",
+      "pid" : 97451,
+      "seconds" : 27.173735022544861,
+      "source" : "poll",
+      "utc" : "2026-10-22T03:05:04Z"
+    },
+    {
+      "bundle" : "local.keepline.a14.keepline-opt-one",
+      "input_idle_seconds" : 69.909593624999999,
+      "name" : "Keepline A14 keepline-opt-one",
+      "pid" : 97451,
+      "seconds" : 27.275560021400452,
+      "source" : "poll",
+      "utc" : "2026-10-22T03:05:04Z"
+    },
+    {
+      "bundle" : "local.keepline.a14.keepline-opt-one",
+      "input_idle_seconds" : 70.011223874999999,
+      "name" : "Keepline A14 keepline-opt-one",
+      "pid" : 97451,
+      "seconds" : 27.377308011054993,
+      "source" : "poll",
+      "utc" : "2026-10-22T03:05:04Z"
+    },
+    {
+      "bundle" : "local.keepline.a14.keepline-opt-one",
+      "input_idle_seconds" : 70.112105874999997,
+      "name" : "Keepline A14 keepline-opt-one",
+      "pid" : 97451,
+      "seconds" : 27.478229999542236,
+      "source" : "poll",
+      "utc" : "2026-10-22T03:05:04Z"
+    },
+    {
+      "bundle" : "local.keepline.a14.keepline-opt-one",
+      "input_idle_seconds" : 70.213667541999996,
+      "name" : "Keepline A14 keepline-opt-one",
+      "pid" : 97451,
+      "seconds" : 27.579769015312195,
+      "source" : "poll",
+      "utc" : "2026-10-22T03:05:04Z"
+    },
+    {
+      "bundle" : "local.keepline.a14.keepline-opt-one",
+      "input_idle_seconds" : 70.314910792000006,
+      "name" : "Keepline A14 keepline-opt-one",
+      "pid" : 97451,
+      "seconds" : 27.680976986885071,
+      "source" : "poll",
+      "utc" : "2026-10-22T03:05:04Z"
+    },
+    {
+      "bundle" : "local.keepline.a14.keepline-opt-one",
+      "input_idle_seconds" : 70.416310249999995,
+      "name" : "Keepline A14 keepline-opt-one",
+      "pid" : 97451,
+      "seconds" : 27.782416939735413,
+      "source" : "poll",
+      "utc" : "2026-10-22T03:05:05Z"
+    },
+    {
+      "bundle" : "local.keepline.a14.keepline-opt-one",
+      "input_idle_seconds" : 70.517771124999996,
+      "name" : "Keepline A14 keepline-opt-one",
+      "pid" : 97451,
+      "seconds" : 27.883877992630005,
+      "source" : "poll",
+      "utc" : "2026-10-22T03:05:05Z"
+    },
+    {
+      "bundle" : "local.keepline.a14.keepline-opt-one",
+      "input_idle_seconds" : 70.618891125000005,
+      "name" : "Keepline A14 keepline-opt-one",
+      "pid" : 97451,
+      "seconds" : 27.985010027885437,
+      "source" : "poll",
+      "utc" : "2026-10-22T03:05:05Z"
+    },
+    {
+      "bundle" : "local.keepline.a14.keepline-opt-one",
+      "input_idle_seconds" : 70.719740250000001,
+      "name" : "Keepline A14 keepline-opt-one",
+      "pid" : 97451,
+      "seconds" : 28.085839033126831,
+      "source" : "poll",
+      "utc" : "2026-10-22T03:05:05Z"
+    },
+    {
+      "bundle" : "local.keepline.a14.keepline-opt-one",
+      "input_idle_seconds" : 70.821300042000004,
+      "name" : "Keepline A14 keepline-opt-one",
+      "pid" : 97451,
+      "seconds" : 28.187363028526306,
+      "source" : "poll",
+      "utc" : "2026-10-22T03:05:05Z"
+    },
+    {
+      "bundle" : "local.keepline.a14.keepline-opt-one",
+      "input_idle_seconds" : 70.922613666999993,
+      "name" : "Keepline A14 keepline-opt-one",
+      "pid" : 97451,
+      "seconds" : 28.288625001907349,
+      "source" : "poll",
+      "utc" : "2026-10-22T03:05:05Z"
+    },
+    {
+      "bundle" : "local.keepline.a14.keepline-opt-one",
+      "input_idle_seconds" : 71.023819458000006,
+      "name" : "Keepline A14 keepline-opt-one",
+      "pid" : 97451,
+      "seconds" : 28.38986599445343,
+      "source" : "poll",
+      "utc" : "2026-10-22T03:05:05Z"
+    },
+    {
+      "bundle" : "local.keepline.a14.keepline-opt-one",
+      "input_idle_seconds" : 71.124774875,
+      "name" : "Keepline A14 keepline-opt-one",
+      "pid" : 97451,
+      "seconds" : 28.490779995918274,
+      "source" : "poll",
+      "utc" : "2026-10-22T03:05:05Z"
+    },
+    {
+      "bundle" : "local.keepline.a14.keepline-opt-one",
+      "input_idle_seconds" : 71.226123041999998,
+      "name" : "Keepline A14 keepline-opt-one",
+      "pid" : 97451,
+      "seconds" : 28.592191934585571,
+      "source" : "poll",
+      "utc" : "2026-10-22T03:05:05Z"
+    },
+    {
+      "bundle" : "local.keepline.a14.keepline-opt-one",
+      "input_idle_seconds" : 71.327629916999996,
+      "name" : "Keepline A14 keepline-opt-one",
+      "pid" : 97451,
+      "seconds" : 28.69359302520752,
+      "source" : "poll",
+      "utc" : "2026-10-22T03:05:05Z"
+    },
+    {
+      "bundle" : "local.keepline.a14.keepline-opt-one",
+      "input_idle_seconds" : 71.428497917000001,
+      "name" : "Keepline A14 keepline-opt-one",
+      "pid" : 97451,
+      "seconds" : 28.79456102848053,
+      "source" : "poll",
+      "utc" : "2026-10-22T03:05:06Z"
+    },
+    {
+      "bundle" : "local.keepline.a14.keepline-opt-one",
+      "input_idle_seconds" : 71.530137624999995,
+      "name" : "Keepline A14 keepline-opt-one",
+      "pid" : 97451,
+      "seconds" : 28.896202921867371,
+      "source" : "poll",
+      "utc" : "2026-10-22T03:05:06Z"
+    },
+    {
+      "bundle" : "local.keepline.a14.keepline-opt-one",
+      "input_idle_seconds" : 71.631473333000002,
+      "name" : "Keepline A14 keepline-opt-one",
+      "pid" : 97451,
+      "seconds" : 28.997588992118835,
+      "source" : "poll",
+      "utc" : "2026-10-22T03:05:06Z"
+    },
+    {
+      "bundle" : "local.keepline.a14.keepline-opt-one",
+      "input_idle_seconds" : 71.733140875000004,
+      "name" : "Keepline A14 keepline-opt-one",
+      "pid" : 97451,
+      "seconds" : 29.099170923233032,
+      "source" : "poll",
+      "utc" : "2026-10-22T03:05:06Z"
+    },
+    {
+      "bundle" : "local.keepline.a14.keepline-opt-one",
+      "input_idle_seconds" : 71.834451708000003,
+      "name" : "Keepline A14 keepline-opt-one",
+      "pid" : 97451,
+      "seconds" : 29.200501918792725,
+      "source" : "poll",
+      "utc" : "2026-10-22T03:05:06Z"
+    },
+    {
+      "bundle" : "local.keepline.a14.keepline-opt-one",
+      "input_idle_seconds" : 71.935131208000001,
+      "name" : "Keepline A14 keepline-opt-one",
+      "pid" : 97451,
+      "seconds" : 29.301241993904114,
+      "source" : "poll",
+      "utc" : "2026-10-22T03:05:06Z"
+    },
+    {
+      "bundle" : "local.keepline.a14.keepline-opt-one",
+      "input_idle_seconds" : 72.036481457999997,
+      "name" : "Keepline A14 keepline-opt-one",
+      "pid" : 97451,
+      "seconds" : 29.402518033981323,
+      "source" : "poll",
+      "utc" : "2026-10-22T03:05:06Z"
+    },
+    {
+      "bundle" : "local.keepline.a14.keepline-opt-one",
+      "input_idle_seconds" : 72.137230416999998,
+      "name" : "Keepline A14 keepline-opt-one",
+      "pid" : 97451,
+      "seconds" : 29.503310918807983,
+      "source" : "poll",
+      "utc" : "2026-10-22T03:05:06Z"
+    },
+    {
+      "bundle" : "local.keepline.a14.keepline-opt-one",
+      "input_idle_seconds" : 72.237942666999999,
+      "name" : "Keepline A14 keepline-opt-one",
+      "pid" : 97451,
+      "seconds" : 29.603963971138,
+      "source" : "poll",
+      "utc" : "2026-10-22T03:05:06Z"
+    },
+    {
+      "bundle" : "local.keepline.a14.keepline-opt-one",
+      "input_idle_seconds" : 72.339411666999993,
+      "name" : "Keepline A14 keepline-opt-one",
+      "pid" : 97451,
+      "seconds" : 29.705425024032593,
+      "source" : "poll",
+      "utc" : "2026-10-22T03:05:06Z"
+    },
+    {
+      "bundle" : "local.keepline.a14.keepline-opt-one",
+      "input_idle_seconds" : 72.440522916999996,
+      "name" : "Keepline A14 keepline-opt-one",
+      "pid" : 97451,
+      "seconds" : 29.806559920310974,
+      "source" : "poll",
+      "utc" : "2026-10-22T03:05:07Z"
+    },
+    {
+      "bundle" : "local.keepline.a14.keepline-opt-one",
+      "input_idle_seconds" : 72.542284332999998,
+      "name" : "Keepline A14 keepline-opt-one",
+      "pid" : 97451,
+      "seconds" : 29.908306002616882,
+      "source" : "poll",
+      "utc" : "2026-10-22T03:05:07Z"
+    },
+    {
+      "bundle" : "local.keepline.a14.keepline-opt-one",
+      "input_idle_seconds" : 72.643907917000007,
+      "name" : "Keepline A14 keepline-opt-one",
+      "pid" : 97451,
+      "seconds" : 30.009979963302612,
+      "source" : "poll",
+      "utc" : "2026-10-22T03:05:07Z"
+    },
+    {
+      "bundle" : "local.keepline.a14.keepline-opt-one",
+      "input_idle_seconds" : 72.744572457999993,
+      "name" : "Keepline A14 keepline-opt-one",
+      "pid" : 97451,
+      "seconds" : 30.11060094833374,
+      "source" : "poll",
+      "utc" : "2026-10-22T03:05:07Z"
+    },
+    {
+      "bundle" : "local.keepline.a14.keepline-opt-one",
+      "input_idle_seconds" : 72.846394583000006,
+      "name" : "Keepline A14 keepline-opt-one",
+      "pid" : 97451,
+      "seconds" : 30.212273955345154,
+      "source" : "poll",
+      "utc" : "2026-10-22T03:05:07Z"
+    },
+    {
+      "bundle" : "local.keepline.a14.keepline-opt-one",
+      "input_idle_seconds" : 72.947867875,
+      "name" : "Keepline A14 keepline-opt-one",
+      "pid" : 97451,
+      "seconds" : 30.313961029052734,
+      "source" : "poll",
+      "utc" : "2026-10-22T03:05:07Z"
+    },
+    {
+      "bundle" : "local.keepline.a14.keepline-opt-one",
+      "input_idle_seconds" : 73.049515541999995,
+      "name" : "Keepline A14 keepline-opt-one",
+      "pid" : 97451,
+      "seconds" : 30.41555392742157,
+      "source" : "poll",
+      "utc" : "2026-10-22T03:05:07Z"
+    },
+    {
+      "bundle" : "local.keepline.a14.keepline-opt-one",
+      "input_idle_seconds" : 73.151097292000003,
+      "name" : "Keepline A14 keepline-opt-one",
+      "pid" : 97451,
+      "seconds" : 30.517143964767456,
+      "source" : "poll",
+      "utc" : "2026-10-22T03:05:07Z"
+    },
+    {
+      "bundle" : "local.keepline.a14.keepline-opt-one",
+      "input_idle_seconds" : 73.252171541999999,
+      "name" : "Keepline A14 keepline-opt-one",
+      "pid" : 97451,
+      "seconds" : 30.618180990219116,
+      "source" : "poll",
+      "utc" : "2026-10-22T03:05:07Z"
+    },
+    {
+      "bundle" : "local.keepline.a14.keepline-opt-one",
+      "input_idle_seconds" : 73.353454958,
+      "name" : "Keepline A14 keepline-opt-one",
+      "pid" : 97451,
+      "seconds" : 30.719504952430725,
+      "source" : "poll",
+      "utc" : "2026-10-22T03:05:08Z"
+    },
+    {
+      "bundle" : "local.keepline.a14.keepline-opt-one",
+      "input_idle_seconds" : 73.454729916999995,
+      "name" : "Keepline A14 keepline-opt-one",
+      "pid" : 97451,
+      "seconds" : 30.820755958557129,
+      "source" : "poll",
+      "utc" : "2026-10-22T03:05:08Z"
+    },
+    {
+      "bundle" : "local.keepline.a14.keepline-opt-one",
+      "input_idle_seconds" : 73.556013542000002,
+      "name" : "Keepline A14 keepline-opt-one",
+      "pid" : 97451,
+      "seconds" : 30.922055959701538,
+      "source" : "poll",
+      "utc" : "2026-10-22T03:05:08Z"
+    },
+    {
+      "bundle" : "local.keepline.a14.keepline-opt-one",
+      "input_idle_seconds" : 73.656905167000005,
+      "name" : "Keepline A14 keepline-opt-one",
+      "pid" : 97451,
+      "seconds" : 31.022964000701904,
+      "source" : "poll",
+      "utc" : "2026-10-22T03:05:08Z"
+    },
+    {
+      "bundle" : "local.keepline.a14.keepline-opt-one",
+      "input_idle_seconds" : 73.758561749999998,
+      "name" : "Keepline A14 keepline-opt-one",
+      "pid" : 97451,
+      "seconds" : 31.124608993530273,
+      "source" : "poll",
+      "utc" : "2026-10-22T03:05:08Z"
+    },
+    {
+      "bundle" : "local.keepline.a14.keepline-opt-one",
+      "input_idle_seconds" : 73.860165957999996,
+      "name" : "Keepline A14 keepline-opt-one",
+      "pid" : 97451,
+      "seconds" : 31.226212024688721,
+      "source" : "poll",
+      "utc" : "2026-10-22T03:05:08Z"
+    },
+    {
+      "bundle" : "local.keepline.a14.keepline-opt-one",
+      "input_idle_seconds" : 73.961118416999994,
+      "name" : "Keepline A14 keepline-opt-one",
+      "pid" : 97451,
+      "seconds" : 31.327173948287964,
+      "source" : "poll",
+      "utc" : "2026-10-22T03:05:08Z"
+    },
+    {
+      "bundle" : "local.keepline.a14.keepline-opt-one",
+      "input_idle_seconds" : 74.061924457999993,
+      "name" : "Keepline A14 keepline-opt-one",
+      "pid" : 97451,
+      "seconds" : 31.427992939949036,
+      "source" : "poll",
+      "utc" : "2026-10-22T03:05:08Z"
+    },
+    {
+      "bundle" : "local.keepline.a14.keepline-opt-one",
+      "input_idle_seconds" : 74.163595125000001,
+      "name" : "Keepline A14 keepline-opt-one",
+      "pid" : 97451,
+      "seconds" : 31.529605031013489,
+      "source" : "poll",
+      "utc" : "2026-10-22T03:05:08Z"
+    },
+    {
+      "bundle" : "local.keepline.a14.keepline-opt-one",
+      "input_idle_seconds" : 74.264728625000004,
+      "name" : "Keepline A14 keepline-opt-one",
+      "pid" : 97451,
+      "seconds" : 31.63077700138092,
+      "source" : "poll",
+      "utc" : "2026-10-22T03:05:08Z"
+    },
+    {
+      "bundle" : "local.keepline.a14.keepline-opt-one",
+      "input_idle_seconds" : 74.365862957999994,
+      "name" : "Keepline A14 keepline-opt-one",
+      "pid" : 97451,
+      "seconds" : 31.731907963752747,
+      "source" : "poll",
+      "utc" : "2026-10-22T03:05:09Z"
+    },
+    {
+      "bundle" : "local.keepline.a14.keepline-opt-one",
+      "input_idle_seconds" : 74.467408375000005,
+      "name" : "Keepline A14 keepline-opt-one",
+      "pid" : 97451,
+      "seconds" : 31.833438992500305,
+      "source" : "poll",
+      "utc" : "2026-10-22T03:05:09Z"
+    },
+    {
+      "bundle" : "local.keepline.a14.keepline-opt-one",
+      "input_idle_seconds" : 74.568881708000006,
+      "name" : "Keepline A14 keepline-opt-one",
+      "pid" : 97451,
+      "seconds" : 31.934937000274658,
+      "source" : "poll",
+      "utc" : "2026-10-22T03:05:09Z"
+    },
+    {
+      "bundle" : "local.keepline.a14.keepline-opt-one",
+      "input_idle_seconds" : 74.670541083000003,
+      "name" : "Keepline A14 keepline-opt-one",
+      "pid" : 97451,
+      "seconds" : 32.036580920219421,
+      "source" : "poll",
+      "utc" : "2026-10-22T03:05:09Z"
+    },
+    {
+      "bundle" : "local.keepline.a14.keepline-opt-one",
+      "input_idle_seconds" : 74.771879666999993,
+      "name" : "Keepline A14 keepline-opt-one",
+      "pid" : 97451,
+      "seconds" : 32.137931942939758,
+      "source" : "poll",
+      "utc" : "2026-10-22T03:05:09Z"
+    },
+    {
+      "bundle" : "local.keepline.a14.keepline-opt-one",
+      "input_idle_seconds" : 74.872907166999994,
+      "name" : "Keepline A14 keepline-opt-one",
+      "pid" : 97451,
+      "seconds" : 32.238965034484863,
+      "source" : "poll",
+      "utc" : "2026-10-22T03:05:09Z"
+    },
+    {
+      "bundle" : "local.keepline.a14.keepline-opt-one",
+      "input_idle_seconds" : 74.973585666999995,
+      "name" : "Keepline A14 keepline-opt-one",
+      "pid" : 97451,
+      "seconds" : 32.339625000953674,
+      "source" : "poll",
+      "utc" : "2026-10-22T03:05:09Z"
+    },
+    {
+      "bundle" : "local.keepline.a14.keepline-opt-one",
+      "input_idle_seconds" : 75.075162958000007,
+      "name" : "Keepline A14 keepline-opt-one",
+      "pid" : 97451,
+      "seconds" : 32.441174030303955,
+      "source" : "poll",
+      "utc" : "2026-10-22T03:05:09Z"
+    },
+    {
+      "bundle" : "local.keepline.a14.keepline-opt-one",
+      "input_idle_seconds" : 75.176769582999995,
+      "name" : "Keepline A14 keepline-opt-one",
+      "pid" : 97451,
+      "seconds" : 32.542832970619202,
+      "source" : "poll",
+      "utc" : "2026-10-22T03:05:09Z"
+    },
+    {
+      "bundle" : "local.keepline.a14.keepline-opt-one",
+      "input_idle_seconds" : 75.278337750000006,
+      "name" : "Keepline A14 keepline-opt-one",
+      "pid" : 97451,
+      "seconds" : 32.644372940063477,
+      "source" : "poll",
+      "utc" : "2026-10-22T03:05:09Z"
+    },
+    {
+      "bundle" : "local.keepline.a14.keepline-opt-one",
+      "input_idle_seconds" : 75.379961792000003,
+      "name" : "Keepline A14 keepline-opt-one",
+      "pid" : 97451,
+      "seconds" : 32.746006011962891,
+      "source" : "poll",
+      "utc" : "2026-10-22T03:05:10Z"
+    },
+    {
+      "bundle" : "local.keepline.a14.keepline-opt-one",
+      "input_idle_seconds" : 75.481000417000004,
+      "name" : "Keepline A14 keepline-opt-one",
+      "pid" : 97451,
+      "seconds" : 32.847034931182861,
+      "source" : "poll",
+      "utc" : "2026-10-22T03:05:10Z"
+    },
+    {
+      "bundle" : "local.keepline.a14.keepline-opt-one",
+      "input_idle_seconds" : 75.582404917000005,
+      "name" : "Keepline A14 keepline-opt-one",
+      "pid" : 97451,
+      "seconds" : 32.948480010032654,
+      "source" : "poll",
+      "utc" : "2026-10-22T03:05:10Z"
+    },
+    {
+      "bundle" : "local.keepline.a14.keepline-opt-one",
+      "input_idle_seconds" : 75.684081542000001,
+      "name" : "Keepline A14 keepline-opt-one",
+      "pid" : 97451,
+      "seconds" : 33.050063967704773,
+      "source" : "poll",
+      "utc" : "2026-10-22T03:05:10Z"
+    },
+    {
+      "bundle" : "local.keepline.a14.keepline-opt-one",
+      "input_idle_seconds" : 75.785575542000004,
+      "name" : "Keepline A14 keepline-opt-one",
+      "pid" : 97451,
+      "seconds" : 33.151592969894409,
+      "source" : "poll",
+      "utc" : "2026-10-22T03:05:10Z"
+    },
+    {
+      "bundle" : "local.keepline.a14.keepline-opt-one",
+      "input_idle_seconds" : 75.785701125000003,
+      "name" : "Keepline A14 keepline-opt-one",
+      "pid" : 97451,
+      "seconds" : 33.152145028114319,
+      "source" : "after",
+      "utc" : "2026-10-22T03:05:10Z"
+    }
+  ],
+  "target" : 97451
+}

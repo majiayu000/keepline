@@ -1,0 +1,2649 @@
+{
+  "activated" : true,
+  "attempt" : 3,
+  "continuous_frontmost" : false,
+  "exit" : 0,
+  "samples" : [
+    {
+      "bundle" : "com.anthropic.claudefordesktop",
+      "name" : "Claude",
+      "pid" : 82151,
+      "seconds" : 0.00012803077697753906,
+      "source" : "before",
+      "utc" : "2026-10-21T06:02:32Z"
+    },
+    {
+      "bundle" : "com.anthropic.claudefordesktop",
+      "name" : "Claude",
+      "pid" : 82151,
+      "seconds" : 0.10148406028747559,
+      "source" : "poll",
+      "utc" : "2026-10-21T06:02:32Z"
+    },
+    {
+      "bundle" : "com.anthropic.claudefordesktop",
+      "name" : "Claude",
+      "pid" : 82151,
+      "seconds" : 0.20265007019042969,
+      "source" : "poll",
+      "utc" : "2026-10-21T06:02:32Z"
+    },
+    {
+      "bundle" : "com.anthropic.claudefordesktop",
+      "name" : "Claude",
+      "pid" : 82151,
+      "seconds" : 0.30493903160095215,
+      "source" : "poll",
+      "utc" : "2026-10-21T06:02:32Z"
+    },
+    {
+      "bundle" : "com.anthropic.claudefordesktop",
+      "name" : "Claude",
+      "pid" : 82151,
+      "seconds" : 0.40669107437133789,
+      "source" : "poll",
+      "utc" : "2026-10-21T06:02:32Z"
+    },
+    {
+      "bundle" : "com.anthropic.claudefordesktop",
+      "name" : "Claude",
+      "pid" : 82151,
+      "seconds" : 0.50791406631469727,
+      "source" : "poll",
+      "utc" : "2026-10-21T06:02:32Z"
+    },
+    {
+      "bundle" : "com.anthropic.claudefordesktop",
+      "name" : "Claude",
+      "pid" : 82151,
+      "seconds" : 0.60925805568695068,
+      "source" : "poll",
+      "utc" : "2026-10-21T06:02:32Z"
+    },
+    {
+      "bundle" : "com.anthropic.claudefordesktop",
+      "name" : "Claude",
+      "pid" : 82151,
+      "seconds" : 0.71010303497314453,
+      "source" : "poll",
+      "utc" : "2026-10-21T06:02:32Z"
+    },
+    {
+      "bundle" : "com.anthropic.claudefordesktop",
+      "name" : "Claude",
+      "pid" : 82151,
+      "seconds" : 0.81122004985809326,
+      "source" : "poll",
+      "utc" : "2026-10-21T06:02:32Z"
+    },
+    {
+      "bundle" : "com.anthropic.claudefordesktop",
+      "name" : "Claude",
+      "pid" : 82151,
+      "seconds" : 0.91197109222412109,
+      "source" : "poll",
+      "utc" : "2026-10-21T06:02:32Z"
+    },
+    {
+      "bundle" : "com.anthropic.claudefordesktop",
+      "name" : "Claude",
+      "pid" : 82151,
+      "seconds" : 1.0131930112838745,
+      "source" : "poll",
+      "utc" : "2026-10-21T06:02:33Z"
+    },
+    {
+      "bundle" : "com.anthropic.claudefordesktop",
+      "name" : "Claude",
+      "pid" : 82151,
+      "seconds" : 1.1140050888061523,
+      "source" : "poll",
+      "utc" : "2026-10-21T06:02:33Z"
+    },
+    {
+      "bundle" : "com.anthropic.claudefordesktop",
+      "name" : "Claude",
+      "pid" : 82151,
+      "seconds" : 1.2156000137329102,
+      "source" : "poll",
+      "utc" : "2026-10-21T06:02:33Z"
+    },
+    {
+      "bundle" : "com.anthropic.claudefordesktop",
+      "name" : "Claude",
+      "pid" : 82151,
+      "seconds" : 1.3165780305862427,
+      "source" : "poll",
+      "utc" : "2026-10-21T06:02:33Z"
+    },
+    {
+      "bundle" : "com.anthropic.claudefordesktop",
+      "name" : "Claude",
+      "pid" : 82151,
+      "seconds" : 1.418126106262207,
+      "source" : "poll",
+      "utc" : "2026-10-21T06:02:33Z"
+    },
+    {
+      "bundle" : "com.anthropic.claudefordesktop",
+      "name" : "Claude",
+      "pid" : 82151,
+      "seconds" : 1.5192520618438721,
+      "source" : "poll",
+      "utc" : "2026-10-21T06:02:33Z"
+    },
+    {
+      "bundle" : "com.anthropic.claudefordesktop",
+      "name" : "Claude",
+      "pid" : 82151,
+      "seconds" : 1.6213170289993286,
+      "source" : "poll",
+      "utc" : "2026-10-21T06:02:33Z"
+    },
+    {
+      "bundle" : "com.anthropic.claudefordesktop",
+      "name" : "Claude",
+      "pid" : 82151,
+      "seconds" : 1.7227920293807983,
+      "source" : "poll",
+      "utc" : "2026-10-21T06:02:33Z"
+    },
+    {
+      "bundle" : "com.anthropic.claudefordesktop",
+      "name" : "Claude",
+      "pid" : 82151,
+      "seconds" : 1.8240940570831299,
+      "source" : "poll",
+      "utc" : "2026-10-21T06:02:33Z"
+    },
+    {
+      "bundle" : "com.anthropic.claudefordesktop",
+      "name" : "Claude",
+      "pid" : 82151,
+      "seconds" : 1.9253120422363281,
+      "source" : "poll",
+      "utc" : "2026-10-21T06:02:33Z"
+    },
+    {
+      "bundle" : "com.anthropic.claudefordesktop",
+      "name" : "Claude",
+      "pid" : 82151,
+      "seconds" : 2.0264490842819214,
+      "source" : "poll",
+      "utc" : "2026-10-21T06:02:34Z"
+    },
+    {
+      "bundle" : "com.anthropic.claudefordesktop",
+      "name" : "Claude",
+      "pid" : 82151,
+      "seconds" : 2.1274991035461426,
+      "source" : "poll",
+      "utc" : "2026-10-21T06:02:34Z"
+    },
+    {
+      "bundle" : "com.anthropic.claudefordesktop",
+      "name" : "Claude",
+      "pid" : 82151,
+      "seconds" : 2.2286421060562134,
+      "source" : "poll",
+      "utc" : "2026-10-21T06:02:34Z"
+    },
+    {
+      "bundle" : "com.anthropic.claudefordesktop",
+      "name" : "Claude",
+      "pid" : 82151,
+      "seconds" : 2.3302100896835327,
+      "source" : "poll",
+      "utc" : "2026-10-21T06:02:34Z"
+    },
+    {
+      "bundle" : "com.anthropic.claudefordesktop",
+      "name" : "Claude",
+      "pid" : 82151,
+      "seconds" : 2.4315741062164307,
+      "source" : "poll",
+      "utc" : "2026-10-21T06:02:34Z"
+    },
+    {
+      "bundle" : "com.anthropic.claudefordesktop",
+      "name" : "Claude",
+      "pid" : 82151,
+      "seconds" : 2.5330550670623779,
+      "source" : "poll",
+      "utc" : "2026-10-21T06:02:34Z"
+    },
+    {
+      "bundle" : "com.anthropic.claudefordesktop",
+      "name" : "Claude",
+      "pid" : 82151,
+      "seconds" : 2.634181022644043,
+      "source" : "poll",
+      "utc" : "2026-10-21T06:02:34Z"
+    },
+    {
+      "bundle" : "com.anthropic.claudefordesktop",
+      "name" : "Claude",
+      "pid" : 82151,
+      "seconds" : 2.7347420454025269,
+      "source" : "poll",
+      "utc" : "2026-10-21T06:02:34Z"
+    },
+    {
+      "bundle" : "com.anthropic.claudefordesktop",
+      "name" : "Claude",
+      "pid" : 82151,
+      "seconds" : 2.8357690572738647,
+      "source" : "poll",
+      "utc" : "2026-10-21T06:02:34Z"
+    },
+    {
+      "bundle" : "com.anthropic.claudefordesktop",
+      "name" : "Claude",
+      "pid" : 82151,
+      "seconds" : 2.9375460147857666,
+      "source" : "poll",
+      "utc" : "2026-10-21T06:02:34Z"
+    },
+    {
+      "bundle" : "com.anthropic.claudefordesktop",
+      "name" : "Claude",
+      "pid" : 82151,
+      "seconds" : 3.0390250682830811,
+      "source" : "poll",
+      "utc" : "2026-10-21T06:02:35Z"
+    },
+    {
+      "bundle" : "com.anthropic.claudefordesktop",
+      "name" : "Claude",
+      "pid" : 82151,
+      "seconds" : 3.1406270265579224,
+      "source" : "poll",
+      "utc" : "2026-10-21T06:02:35Z"
+    },
+    {
+      "bundle" : "com.anthropic.claudefordesktop",
+      "name" : "Claude",
+      "pid" : 82151,
+      "seconds" : 3.2420990467071533,
+      "source" : "poll",
+      "utc" : "2026-10-21T06:02:35Z"
+    },
+    {
+      "bundle" : "com.anthropic.claudefordesktop",
+      "name" : "Claude",
+      "pid" : 82151,
+      "seconds" : 3.3430780172348022,
+      "source" : "poll",
+      "utc" : "2026-10-21T06:02:35Z"
+    },
+    {
+      "bundle" : "com.anthropic.claudefordesktop",
+      "name" : "Claude",
+      "pid" : 82151,
+      "seconds" : 3.4446170330047607,
+      "source" : "poll",
+      "utc" : "2026-10-21T06:02:35Z"
+    },
+    {
+      "bundle" : "com.anthropic.claudefordesktop",
+      "name" : "Claude",
+      "pid" : 82151,
+      "seconds" : 3.5463370084762573,
+      "source" : "poll",
+      "utc" : "2026-10-21T06:02:35Z"
+    },
+    {
+      "bundle" : "com.anthropic.claudefordesktop",
+      "name" : "Claude",
+      "pid" : 82151,
+      "seconds" : 3.647678017616272,
+      "source" : "poll",
+      "utc" : "2026-10-21T06:02:35Z"
+    },
+    {
+      "bundle" : "com.anthropic.claudefordesktop",
+      "name" : "Claude",
+      "pid" : 82151,
+      "seconds" : 3.7492130994796753,
+      "source" : "poll",
+      "utc" : "2026-10-21T06:02:35Z"
+    },
+    {
+      "bundle" : "com.anthropic.claudefordesktop",
+      "name" : "Claude",
+      "pid" : 82151,
+      "seconds" : 3.8508590459823608,
+      "source" : "poll",
+      "utc" : "2026-10-21T06:02:35Z"
+    },
+    {
+      "bundle" : "com.anthropic.claudefordesktop",
+      "name" : "Claude",
+      "pid" : 82151,
+      "seconds" : 3.9516390562057495,
+      "source" : "poll",
+      "utc" : "2026-10-21T06:02:35Z"
+    },
+    {
+      "bundle" : "com.anthropic.claudefordesktop",
+      "name" : "Claude",
+      "pid" : 82151,
+      "seconds" : 4.0525720119476318,
+      "source" : "poll",
+      "utc" : "2026-10-21T06:02:36Z"
+    },
+    {
+      "bundle" : "com.anthropic.claudefordesktop",
+      "name" : "Claude",
+      "pid" : 82151,
+      "seconds" : 4.1534630060195923,
+      "source" : "poll",
+      "utc" : "2026-10-21T06:02:36Z"
+    },
+    {
+      "bundle" : "com.anthropic.claudefordesktop",
+      "name" : "Claude",
+      "pid" : 82151,
+      "seconds" : 4.2547720670700073,
+      "source" : "poll",
+      "utc" : "2026-10-21T06:02:36Z"
+    },
+    {
+      "bundle" : "com.anthropic.claudefordesktop",
+      "name" : "Claude",
+      "pid" : 82151,
+      "seconds" : 4.3559980392456055,
+      "source" : "poll",
+      "utc" : "2026-10-21T06:02:36Z"
+    },
+    {
+      "bundle" : "com.anthropic.claudefordesktop",
+      "name" : "Claude",
+      "pid" : 82151,
+      "seconds" : 4.4572920799255371,
+      "source" : "poll",
+      "utc" : "2026-10-21T06:02:36Z"
+    },
+    {
+      "bundle" : "com.anthropic.claudefordesktop",
+      "name" : "Claude",
+      "pid" : 82151,
+      "seconds" : 4.557900071144104,
+      "source" : "poll",
+      "utc" : "2026-10-21T06:02:36Z"
+    },
+    {
+      "bundle" : "com.anthropic.claudefordesktop",
+      "name" : "Claude",
+      "pid" : 82151,
+      "seconds" : 4.6593930721282959,
+      "source" : "poll",
+      "utc" : "2026-10-21T06:02:36Z"
+    },
+    {
+      "bundle" : "com.anthropic.claudefordesktop",
+      "name" : "Claude",
+      "pid" : 82151,
+      "seconds" : 4.7609150409698486,
+      "source" : "poll",
+      "utc" : "2026-10-21T06:02:36Z"
+    },
+    {
+      "bundle" : "com.anthropic.claudefordesktop",
+      "name" : "Claude",
+      "pid" : 82151,
+      "seconds" : 4.8618021011352539,
+      "source" : "poll",
+      "utc" : "2026-10-21T06:02:36Z"
+    },
+    {
+      "bundle" : "com.anthropic.claudefordesktop",
+      "name" : "Claude",
+      "pid" : 82151,
+      "seconds" : 4.9634490013122559,
+      "source" : "poll",
+      "utc" : "2026-10-21T06:02:37Z"
+    },
+    {
+      "bundle" : "com.anthropic.claudefordesktop",
+      "name" : "Claude",
+      "pid" : 82151,
+      "seconds" : 5.0647530555725098,
+      "source" : "poll",
+      "utc" : "2026-10-21T06:02:37Z"
+    },
+    {
+      "bundle" : "com.anthropic.claudefordesktop",
+      "name" : "Claude",
+      "pid" : 82151,
+      "seconds" : 5.1661660671234131,
+      "source" : "poll",
+      "utc" : "2026-10-21T06:02:37Z"
+    },
+    {
+      "bundle" : "com.anthropic.claudefordesktop",
+      "name" : "Claude",
+      "pid" : 82151,
+      "seconds" : 5.267240047454834,
+      "source" : "poll",
+      "utc" : "2026-10-21T06:02:37Z"
+    },
+    {
+      "bundle" : "com.anthropic.claudefordesktop",
+      "name" : "Claude",
+      "pid" : 82151,
+      "seconds" : 5.3690640926361084,
+      "source" : "poll",
+      "utc" : "2026-10-21T06:02:37Z"
+    },
+    {
+      "bundle" : "com.anthropic.claudefordesktop",
+      "name" : "Claude",
+      "pid" : 82151,
+      "seconds" : 5.4701141119003296,
+      "source" : "poll",
+      "utc" : "2026-10-21T06:02:37Z"
+    },
+    {
+      "bundle" : "com.anthropic.claudefordesktop",
+      "name" : "Claude",
+      "pid" : 82151,
+      "seconds" : 5.5713310241699219,
+      "source" : "poll",
+      "utc" : "2026-10-21T06:02:37Z"
+    },
+    {
+      "bundle" : "com.anthropic.claudefordesktop",
+      "name" : "Claude",
+      "pid" : 82151,
+      "seconds" : 5.6726601123809814,
+      "source" : "poll",
+      "utc" : "2026-10-21T06:02:37Z"
+    },
+    {
+      "bundle" : "com.anthropic.claudefordesktop",
+      "name" : "Claude",
+      "pid" : 82151,
+      "seconds" : 5.7744671106338501,
+      "source" : "poll",
+      "utc" : "2026-10-21T06:02:37Z"
+    },
+    {
+      "bundle" : "com.anthropic.claudefordesktop",
+      "name" : "Claude",
+      "pid" : 82151,
+      "seconds" : 5.8762871026992798,
+      "source" : "poll",
+      "utc" : "2026-10-21T06:02:37Z"
+    },
+    {
+      "bundle" : "com.anthropic.claudefordesktop",
+      "name" : "Claude",
+      "pid" : 82151,
+      "seconds" : 5.9775800704956055,
+      "source" : "poll",
+      "utc" : "2026-10-21T06:02:38Z"
+    },
+    {
+      "bundle" : "com.anthropic.claudefordesktop",
+      "name" : "Claude",
+      "pid" : 82151,
+      "seconds" : 6.0784440040588379,
+      "source" : "poll",
+      "utc" : "2026-10-21T06:02:38Z"
+    },
+    {
+      "bundle" : "com.anthropic.claudefordesktop",
+      "name" : "Claude",
+      "pid" : 82151,
+      "seconds" : 6.1798920631408691,
+      "source" : "poll",
+      "utc" : "2026-10-21T06:02:38Z"
+    },
+    {
+      "bundle" : "com.anthropic.claudefordesktop",
+      "name" : "Claude",
+      "pid" : 82151,
+      "seconds" : 6.2814210653305054,
+      "source" : "poll",
+      "utc" : "2026-10-21T06:02:38Z"
+    },
+    {
+      "bundle" : "com.anthropic.claudefordesktop",
+      "name" : "Claude",
+      "pid" : 82151,
+      "seconds" : 6.3831430673599243,
+      "source" : "poll",
+      "utc" : "2026-10-21T06:02:38Z"
+    },
+    {
+      "bundle" : "com.anthropic.claudefordesktop",
+      "name" : "Claude",
+      "pid" : 82151,
+      "seconds" : 6.484605073928833,
+      "source" : "poll",
+      "utc" : "2026-10-21T06:02:38Z"
+    },
+    {
+      "bundle" : "com.anthropic.claudefordesktop",
+      "name" : "Claude",
+      "pid" : 82151,
+      "seconds" : 6.5860470533370972,
+      "source" : "poll",
+      "utc" : "2026-10-21T06:02:38Z"
+    },
+    {
+      "bundle" : "com.anthropic.claudefordesktop",
+      "name" : "Claude",
+      "pid" : 82151,
+      "seconds" : 6.6867231130599976,
+      "source" : "poll",
+      "utc" : "2026-10-21T06:02:38Z"
+    },
+    {
+      "bundle" : "com.anthropic.claudefordesktop",
+      "name" : "Claude",
+      "pid" : 82151,
+      "seconds" : 6.787851095199585,
+      "source" : "poll",
+      "utc" : "2026-10-21T06:02:38Z"
+    },
+    {
+      "bundle" : "com.anthropic.claudefordesktop",
+      "name" : "Claude",
+      "pid" : 82151,
+      "seconds" : 6.8892379999160767,
+      "source" : "poll",
+      "utc" : "2026-10-21T06:02:38Z"
+    },
+    {
+      "bundle" : "com.anthropic.claudefordesktop",
+      "name" : "Claude",
+      "pid" : 82151,
+      "seconds" : 6.9906560182571411,
+      "source" : "poll",
+      "utc" : "2026-10-21T06:02:39Z"
+    },
+    {
+      "bundle" : "com.anthropic.claudefordesktop",
+      "name" : "Claude",
+      "pid" : 82151,
+      "seconds" : 7.0924210548400879,
+      "source" : "poll",
+      "utc" : "2026-10-21T06:02:39Z"
+    },
+    {
+      "bundle" : "com.anthropic.claudefordesktop",
+      "name" : "Claude",
+      "pid" : 82151,
+      "seconds" : 7.1942590475082397,
+      "source" : "poll",
+      "utc" : "2026-10-21T06:02:39Z"
+    },
+    {
+      "bundle" : "com.anthropic.claudefordesktop",
+      "name" : "Claude",
+      "pid" : 82151,
+      "seconds" : 7.2951771020889282,
+      "source" : "poll",
+      "utc" : "2026-10-21T06:02:39Z"
+    },
+    {
+      "bundle" : "com.anthropic.claudefordesktop",
+      "name" : "Claude",
+      "pid" : 82151,
+      "seconds" : 7.3966560363769531,
+      "source" : "poll",
+      "utc" : "2026-10-21T06:02:39Z"
+    },
+    {
+      "bundle" : "com.anthropic.claudefordesktop",
+      "name" : "Claude",
+      "pid" : 82151,
+      "seconds" : 7.4980480670928955,
+      "source" : "poll",
+      "utc" : "2026-10-21T06:02:39Z"
+    },
+    {
+      "bundle" : "com.anthropic.claudefordesktop",
+      "name" : "Claude",
+      "pid" : 82151,
+      "seconds" : 7.5995610952377319,
+      "source" : "poll",
+      "utc" : "2026-10-21T06:02:39Z"
+    },
+    {
+      "bundle" : "com.anthropic.claudefordesktop",
+      "name" : "Claude",
+      "pid" : 82151,
+      "seconds" : 7.7011760473251343,
+      "source" : "poll",
+      "utc" : "2026-10-21T06:02:39Z"
+    },
+    {
+      "bundle" : "com.anthropic.claudefordesktop",
+      "name" : "Claude",
+      "pid" : 82151,
+      "seconds" : 7.8023910522460938,
+      "source" : "poll",
+      "utc" : "2026-10-21T06:02:39Z"
+    },
+    {
+      "bundle" : "com.anthropic.claudefordesktop",
+      "name" : "Claude",
+      "pid" : 82151,
+      "seconds" : 7.9032829999923706,
+      "source" : "poll",
+      "utc" : "2026-10-21T06:02:39Z"
+    },
+    {
+      "bundle" : "com.anthropic.claudefordesktop",
+      "name" : "Claude",
+      "pid" : 82151,
+      "seconds" : 8.0040280818939209,
+      "source" : "poll",
+      "utc" : "2026-10-21T06:02:40Z"
+    },
+    {
+      "bundle" : "com.anthropic.claudefordesktop",
+      "name" : "Claude",
+      "pid" : 82151,
+      "seconds" : 8.1053310632705688,
+      "source" : "poll",
+      "utc" : "2026-10-21T06:02:40Z"
+    },
+    {
+      "bundle" : "com.anthropic.claudefordesktop",
+      "name" : "Claude",
+      "pid" : 82151,
+      "seconds" : 8.2062751054763794,
+      "source" : "poll",
+      "utc" : "2026-10-21T06:02:40Z"
+    },
+    {
+      "bundle" : "com.anthropic.claudefordesktop",
+      "name" : "Claude",
+      "pid" : 82151,
+      "seconds" : 8.3067890405654907,
+      "source" : "poll",
+      "utc" : "2026-10-21T06:02:40Z"
+    },
+    {
+      "bundle" : "com.anthropic.claudefordesktop",
+      "name" : "Claude",
+      "pid" : 82151,
+      "seconds" : 8.4072920083999634,
+      "source" : "poll",
+      "utc" : "2026-10-21T06:02:40Z"
+    },
+    {
+      "bundle" : "com.anthropic.claudefordesktop",
+      "name" : "Claude",
+      "pid" : 82151,
+      "seconds" : 8.5092990398406982,
+      "source" : "poll",
+      "utc" : "2026-10-21T06:02:40Z"
+    },
+    {
+      "bundle" : "com.anthropic.claudefordesktop",
+      "name" : "Claude",
+      "pid" : 82151,
+      "seconds" : 8.6107550859451294,
+      "source" : "poll",
+      "utc" : "2026-10-21T06:02:40Z"
+    },
+    {
+      "bundle" : "com.anthropic.claudefordesktop",
+      "name" : "Claude",
+      "pid" : 82151,
+      "seconds" : 8.7115761041641235,
+      "source" : "poll",
+      "utc" : "2026-10-21T06:02:40Z"
+    },
+    {
+      "bundle" : "com.anthropic.claudefordesktop",
+      "name" : "Claude",
+      "pid" : 82151,
+      "seconds" : 8.812358021736145,
+      "source" : "poll",
+      "utc" : "2026-10-21T06:02:40Z"
+    },
+    {
+      "bundle" : "com.anthropic.claudefordesktop",
+      "name" : "Claude",
+      "pid" : 82151,
+      "seconds" : 8.9136130809783936,
+      "source" : "poll",
+      "utc" : "2026-10-21T06:02:40Z"
+    },
+    {
+      "bundle" : "com.anthropic.claudefordesktop",
+      "name" : "Claude",
+      "pid" : 82151,
+      "seconds" : 9.0145730972290039,
+      "source" : "poll",
+      "utc" : "2026-10-21T06:02:41Z"
+    },
+    {
+      "bundle" : "com.anthropic.claudefordesktop",
+      "name" : "Claude",
+      "pid" : 82151,
+      "seconds" : 9.1158370971679688,
+      "source" : "poll",
+      "utc" : "2026-10-21T06:02:41Z"
+    },
+    {
+      "bundle" : "com.anthropic.claudefordesktop",
+      "name" : "Claude",
+      "pid" : 82151,
+      "seconds" : 9.2171250581741333,
+      "source" : "poll",
+      "utc" : "2026-10-21T06:02:41Z"
+    },
+    {
+      "bundle" : "com.anthropic.claudefordesktop",
+      "name" : "Claude",
+      "pid" : 82151,
+      "seconds" : 9.3177840709686279,
+      "source" : "poll",
+      "utc" : "2026-10-21T06:02:41Z"
+    },
+    {
+      "bundle" : "com.anthropic.claudefordesktop",
+      "name" : "Claude",
+      "pid" : 82151,
+      "seconds" : 9.4183750152587891,
+      "source" : "poll",
+      "utc" : "2026-10-21T06:02:41Z"
+    },
+    {
+      "bundle" : "com.anthropic.claudefordesktop",
+      "name" : "Claude",
+      "pid" : 82151,
+      "seconds" : 9.5189040899276733,
+      "source" : "poll",
+      "utc" : "2026-10-21T06:02:41Z"
+    },
+    {
+      "bundle" : "com.anthropic.claudefordesktop",
+      "name" : "Claude",
+      "pid" : 82151,
+      "seconds" : 9.6198740005493164,
+      "source" : "poll",
+      "utc" : "2026-10-21T06:02:41Z"
+    },
+    {
+      "bundle" : "com.anthropic.claudefordesktop",
+      "name" : "Claude",
+      "pid" : 82151,
+      "seconds" : 9.7205420732498169,
+      "source" : "poll",
+      "utc" : "2026-10-21T06:02:41Z"
+    },
+    {
+      "bundle" : "com.anthropic.claudefordesktop",
+      "name" : "Claude",
+      "pid" : 82151,
+      "seconds" : 9.8219000101089478,
+      "source" : "poll",
+      "utc" : "2026-10-21T06:02:41Z"
+    },
+    {
+      "bundle" : "com.anthropic.claudefordesktop",
+      "name" : "Claude",
+      "pid" : 82151,
+      "seconds" : 9.9228730201721191,
+      "source" : "poll",
+      "utc" : "2026-10-21T06:02:41Z"
+    },
+    {
+      "bundle" : "com.anthropic.claudefordesktop",
+      "name" : "Claude",
+      "pid" : 82151,
+      "seconds" : 10.023490071296692,
+      "source" : "poll",
+      "utc" : "2026-10-21T06:02:42Z"
+    },
+    {
+      "bundle" : "com.anthropic.claudefordesktop",
+      "name" : "Claude",
+      "pid" : 82151,
+      "seconds" : 10.125278115272522,
+      "source" : "poll",
+      "utc" : "2026-10-21T06:02:42Z"
+    },
+    {
+      "bundle" : "com.anthropic.claudefordesktop",
+      "name" : "Claude",
+      "pid" : 82151,
+      "seconds" : 10.227502107620239,
+      "source" : "poll",
+      "utc" : "2026-10-21T06:02:42Z"
+    },
+    {
+      "bundle" : "com.anthropic.claudefordesktop",
+      "name" : "Claude",
+      "pid" : 82151,
+      "seconds" : 10.328696012496948,
+      "source" : "poll",
+      "utc" : "2026-10-21T06:02:42Z"
+    },
+    {
+      "bundle" : "com.anthropic.claudefordesktop",
+      "name" : "Claude",
+      "pid" : 82151,
+      "seconds" : 10.430287003517151,
+      "source" : "poll",
+      "utc" : "2026-10-21T06:02:42Z"
+    },
+    {
+      "bundle" : "com.anthropic.claudefordesktop",
+      "name" : "Claude",
+      "pid" : 82151,
+      "seconds" : 10.531928062438965,
+      "source" : "poll",
+      "utc" : "2026-10-21T06:02:42Z"
+    },
+    {
+      "bundle" : "com.anthropic.claudefordesktop",
+      "name" : "Claude",
+      "pid" : 82151,
+      "seconds" : 10.632947087287903,
+      "source" : "poll",
+      "utc" : "2026-10-21T06:02:42Z"
+    },
+    {
+      "bundle" : "com.anthropic.claudefordesktop",
+      "name" : "Claude",
+      "pid" : 82151,
+      "seconds" : 10.734451055526733,
+      "source" : "poll",
+      "utc" : "2026-10-21T06:02:42Z"
+    },
+    {
+      "bundle" : "com.anthropic.claudefordesktop",
+      "name" : "Claude",
+      "pid" : 82151,
+      "seconds" : 10.83665406703949,
+      "source" : "poll",
+      "utc" : "2026-10-21T06:02:42Z"
+    },
+    {
+      "bundle" : "com.anthropic.claudefordesktop",
+      "name" : "Claude",
+      "pid" : 82151,
+      "seconds" : 10.938560009002686,
+      "source" : "poll",
+      "utc" : "2026-10-21T06:02:42Z"
+    },
+    {
+      "bundle" : "com.anthropic.claudefordesktop",
+      "name" : "Claude",
+      "pid" : 82151,
+      "seconds" : 11.039559006690979,
+      "source" : "poll",
+      "utc" : "2026-10-21T06:02:43Z"
+    },
+    {
+      "bundle" : "com.anthropic.claudefordesktop",
+      "name" : "Claude",
+      "pid" : 82151,
+      "seconds" : 11.140871047973633,
+      "source" : "poll",
+      "utc" : "2026-10-21T06:02:43Z"
+    },
+    {
+      "bundle" : "com.anthropic.claudefordesktop",
+      "name" : "Claude",
+      "pid" : 82151,
+      "seconds" : 11.242789030075073,
+      "source" : "poll",
+      "utc" : "2026-10-21T06:02:43Z"
+    },
+    {
+      "bundle" : "com.anthropic.claudefordesktop",
+      "name" : "Claude",
+      "pid" : 82151,
+      "seconds" : 11.344871044158936,
+      "source" : "poll",
+      "utc" : "2026-10-21T06:02:43Z"
+    },
+    {
+      "bundle" : "com.anthropic.claudefordesktop",
+      "name" : "Claude",
+      "pid" : 82151,
+      "seconds" : 11.44600510597229,
+      "source" : "poll",
+      "utc" : "2026-10-21T06:02:43Z"
+    },
+    {
+      "bundle" : "com.anthropic.claudefordesktop",
+      "name" : "Claude",
+      "pid" : 82151,
+      "seconds" : 11.54778003692627,
+      "source" : "poll",
+      "utc" : "2026-10-21T06:02:43Z"
+    },
+    {
+      "bundle" : "com.anthropic.claudefordesktop",
+      "name" : "Claude",
+      "pid" : 82151,
+      "seconds" : 11.649097084999084,
+      "source" : "poll",
+      "utc" : "2026-10-21T06:02:43Z"
+    },
+    {
+      "bundle" : "com.anthropic.claudefordesktop",
+      "name" : "Claude",
+      "pid" : 82151,
+      "seconds" : 11.750791072845459,
+      "source" : "poll",
+      "utc" : "2026-10-21T06:02:43Z"
+    },
+    {
+      "bundle" : "com.anthropic.claudefordesktop",
+      "name" : "Claude",
+      "pid" : 82151,
+      "seconds" : 11.851799011230469,
+      "source" : "poll",
+      "utc" : "2026-10-21T06:02:43Z"
+    },
+    {
+      "bundle" : "com.anthropic.claudefordesktop",
+      "name" : "Claude",
+      "pid" : 82151,
+      "seconds" : 11.953108072280884,
+      "source" : "poll",
+      "utc" : "2026-10-21T06:02:43Z"
+    },
+    {
+      "bundle" : "local.keepline.profile-test",
+      "name" : "Keepline Profile Test",
+      "pid" : 77081,
+      "seconds" : 12.048769116401672,
+      "source" : "activation",
+      "utc" : "2026-10-21T06:02:44Z"
+    },
+    {
+      "bundle" : "local.keepline.profile-test",
+      "name" : "Keepline Profile Test",
+      "pid" : 77081,
+      "seconds" : 12.054326057434082,
+      "source" : "poll",
+      "utc" : "2026-10-21T06:02:44Z"
+    },
+    {
+      "bundle" : "local.keepline.profile-test",
+      "name" : "Keepline Profile Test",
+      "pid" : 77081,
+      "seconds" : 12.155623078346252,
+      "source" : "poll",
+      "utc" : "2026-10-21T06:02:44Z"
+    },
+    {
+      "bundle" : "local.keepline.profile-test",
+      "name" : "Keepline Profile Test",
+      "pid" : 77081,
+      "seconds" : 12.256962060928345,
+      "source" : "poll",
+      "utc" : "2026-10-21T06:02:44Z"
+    },
+    {
+      "bundle" : "local.keepline.profile-test",
+      "name" : "Keepline Profile Test",
+      "pid" : 77081,
+      "seconds" : 12.357427000999451,
+      "source" : "poll",
+      "utc" : "2026-10-21T06:02:44Z"
+    },
+    {
+      "bundle" : "local.keepline.profile-test",
+      "name" : "Keepline Profile Test",
+      "pid" : 77081,
+      "seconds" : 12.458546042442322,
+      "source" : "poll",
+      "utc" : "2026-10-21T06:02:44Z"
+    },
+    {
+      "bundle" : "local.keepline.profile-test",
+      "name" : "Keepline Profile Test",
+      "pid" : 77081,
+      "seconds" : 12.559771060943604,
+      "source" : "poll",
+      "utc" : "2026-10-21T06:02:44Z"
+    },
+    {
+      "bundle" : "local.keepline.profile-test",
+      "name" : "Keepline Profile Test",
+      "pid" : 77081,
+      "seconds" : 12.661389112472534,
+      "source" : "poll",
+      "utc" : "2026-10-21T06:02:44Z"
+    },
+    {
+      "bundle" : "local.keepline.profile-test",
+      "name" : "Keepline Profile Test",
+      "pid" : 77081,
+      "seconds" : 12.763144016265869,
+      "source" : "poll",
+      "utc" : "2026-10-21T06:02:44Z"
+    },
+    {
+      "bundle" : "local.keepline.profile-test",
+      "name" : "Keepline Profile Test",
+      "pid" : 77081,
+      "seconds" : 12.864756107330322,
+      "source" : "poll",
+      "utc" : "2026-10-21T06:02:44Z"
+    },
+    {
+      "bundle" : "local.keepline.profile-test",
+      "name" : "Keepline Profile Test",
+      "pid" : 77081,
+      "seconds" : 12.965923070907593,
+      "source" : "poll",
+      "utc" : "2026-10-21T06:02:45Z"
+    },
+    {
+      "bundle" : "local.keepline.profile-test",
+      "name" : "Keepline Profile Test",
+      "pid" : 77081,
+      "seconds" : 13.0675950050354,
+      "source" : "poll",
+      "utc" : "2026-10-21T06:02:45Z"
+    },
+    {
+      "bundle" : "local.keepline.profile-test",
+      "name" : "Keepline Profile Test",
+      "pid" : 77081,
+      "seconds" : 13.168602108955383,
+      "source" : "poll",
+      "utc" : "2026-10-21T06:02:45Z"
+    },
+    {
+      "bundle" : "local.keepline.profile-test",
+      "name" : "Keepline Profile Test",
+      "pid" : 77081,
+      "seconds" : 13.270194053649902,
+      "source" : "poll",
+      "utc" : "2026-10-21T06:02:45Z"
+    },
+    {
+      "bundle" : "local.keepline.profile-test",
+      "name" : "Keepline Profile Test",
+      "pid" : 77081,
+      "seconds" : 13.371766090393066,
+      "source" : "poll",
+      "utc" : "2026-10-21T06:02:45Z"
+    },
+    {
+      "bundle" : "local.keepline.profile-test",
+      "name" : "Keepline Profile Test",
+      "pid" : 77081,
+      "seconds" : 13.473373055458069,
+      "source" : "poll",
+      "utc" : "2026-10-21T06:02:45Z"
+    },
+    {
+      "bundle" : "local.keepline.profile-test",
+      "name" : "Keepline Profile Test",
+      "pid" : 77081,
+      "seconds" : 13.574212074279785,
+      "source" : "poll",
+      "utc" : "2026-10-21T06:02:45Z"
+    },
+    {
+      "bundle" : "com.larksuite.larkApp",
+      "name" : "Lark",
+      "pid" : 664,
+      "seconds" : 13.618962049484253,
+      "source" : "activation",
+      "utc" : "2026-10-21T06:02:45Z"
+    },
+    {
+      "bundle" : "com.larksuite.larkApp",
+      "name" : "Lark",
+      "pid" : 664,
+      "seconds" : 13.675884008407593,
+      "source" : "poll",
+      "utc" : "2026-10-21T06:02:45Z"
+    },
+    {
+      "bundle" : "com.larksuite.larkApp",
+      "name" : "Lark",
+      "pid" : 664,
+      "seconds" : 13.776825070381165,
+      "source" : "poll",
+      "utc" : "2026-10-21T06:02:45Z"
+    },
+    {
+      "bundle" : "com.larksuite.larkApp",
+      "name" : "Lark",
+      "pid" : 664,
+      "seconds" : 13.883503079414368,
+      "source" : "poll",
+      "utc" : "2026-10-21T06:02:45Z"
+    },
+    {
+      "bundle" : "com.larksuite.larkApp",
+      "name" : "Lark",
+      "pid" : 664,
+      "seconds" : 13.984300017356873,
+      "source" : "poll",
+      "utc" : "2026-10-21T06:02:46Z"
+    },
+    {
+      "bundle" : "com.larksuite.larkApp",
+      "name" : "Lark",
+      "pid" : 664,
+      "seconds" : 14.086270093917847,
+      "source" : "poll",
+      "utc" : "2026-10-21T06:02:46Z"
+    },
+    {
+      "bundle" : "com.larksuite.larkApp",
+      "name" : "Lark",
+      "pid" : 664,
+      "seconds" : 14.187575101852417,
+      "source" : "poll",
+      "utc" : "2026-10-21T06:02:46Z"
+    },
+    {
+      "bundle" : "com.larksuite.larkApp",
+      "name" : "Lark",
+      "pid" : 664,
+      "seconds" : 14.289359092712402,
+      "source" : "poll",
+      "utc" : "2026-10-21T06:02:46Z"
+    },
+    {
+      "bundle" : "com.larksuite.larkApp",
+      "name" : "Lark",
+      "pid" : 664,
+      "seconds" : 14.390821099281311,
+      "source" : "poll",
+      "utc" : "2026-10-21T06:02:46Z"
+    },
+    {
+      "bundle" : "com.larksuite.larkApp",
+      "name" : "Lark",
+      "pid" : 664,
+      "seconds" : 14.492554068565369,
+      "source" : "poll",
+      "utc" : "2026-10-21T06:02:46Z"
+    },
+    {
+      "bundle" : "com.larksuite.larkApp",
+      "name" : "Lark",
+      "pid" : 664,
+      "seconds" : 14.594216108322144,
+      "source" : "poll",
+      "utc" : "2026-10-21T06:02:46Z"
+    },
+    {
+      "bundle" : "com.larksuite.larkApp",
+      "name" : "Lark",
+      "pid" : 664,
+      "seconds" : 14.696020007133484,
+      "source" : "poll",
+      "utc" : "2026-10-21T06:02:46Z"
+    },
+    {
+      "bundle" : "com.larksuite.larkApp",
+      "name" : "Lark",
+      "pid" : 664,
+      "seconds" : 14.797636032104492,
+      "source" : "poll",
+      "utc" : "2026-10-21T06:02:46Z"
+    },
+    {
+      "bundle" : "com.larksuite.larkApp",
+      "name" : "Lark",
+      "pid" : 664,
+      "seconds" : 14.899153113365173,
+      "source" : "poll",
+      "utc" : "2026-10-21T06:02:46Z"
+    },
+    {
+      "bundle" : "com.larksuite.larkApp",
+      "name" : "Lark",
+      "pid" : 664,
+      "seconds" : 15.00093400478363,
+      "source" : "poll",
+      "utc" : "2026-10-21T06:02:47Z"
+    },
+    {
+      "bundle" : "com.larksuite.larkApp",
+      "name" : "Lark",
+      "pid" : 664,
+      "seconds" : 15.103146076202393,
+      "source" : "poll",
+      "utc" : "2026-10-21T06:02:47Z"
+    },
+    {
+      "bundle" : "com.larksuite.larkApp",
+      "name" : "Lark",
+      "pid" : 664,
+      "seconds" : 15.204870104789734,
+      "source" : "poll",
+      "utc" : "2026-10-21T06:02:47Z"
+    },
+    {
+      "bundle" : "com.larksuite.larkApp",
+      "name" : "Lark",
+      "pid" : 664,
+      "seconds" : 15.305943012237549,
+      "source" : "poll",
+      "utc" : "2026-10-21T06:02:47Z"
+    },
+    {
+      "bundle" : "com.larksuite.larkApp",
+      "name" : "Lark",
+      "pid" : 664,
+      "seconds" : 15.407524108886719,
+      "source" : "poll",
+      "utc" : "2026-10-21T06:02:47Z"
+    },
+    {
+      "bundle" : "com.larksuite.larkApp",
+      "name" : "Lark",
+      "pid" : 664,
+      "seconds" : 15.509192109107971,
+      "source" : "poll",
+      "utc" : "2026-10-21T06:02:47Z"
+    },
+    {
+      "bundle" : "com.larksuite.larkApp",
+      "name" : "Lark",
+      "pid" : 664,
+      "seconds" : 15.610949039459229,
+      "source" : "poll",
+      "utc" : "2026-10-21T06:02:47Z"
+    },
+    {
+      "bundle" : "com.larksuite.larkApp",
+      "name" : "Lark",
+      "pid" : 664,
+      "seconds" : 15.712508082389832,
+      "source" : "poll",
+      "utc" : "2026-10-21T06:02:47Z"
+    },
+    {
+      "bundle" : "com.larksuite.larkApp",
+      "name" : "Lark",
+      "pid" : 664,
+      "seconds" : 15.813953042030334,
+      "source" : "poll",
+      "utc" : "2026-10-21T06:02:47Z"
+    },
+    {
+      "bundle" : "com.larksuite.larkApp",
+      "name" : "Lark",
+      "pid" : 664,
+      "seconds" : 15.915285110473633,
+      "source" : "poll",
+      "utc" : "2026-10-21T06:02:47Z"
+    },
+    {
+      "bundle" : "com.larksuite.larkApp",
+      "name" : "Lark",
+      "pid" : 664,
+      "seconds" : 16.016312003135681,
+      "source" : "poll",
+      "utc" : "2026-10-21T06:02:48Z"
+    },
+    {
+      "bundle" : "com.larksuite.larkApp",
+      "name" : "Lark",
+      "pid" : 664,
+      "seconds" : 16.117455005645752,
+      "source" : "poll",
+      "utc" : "2026-10-21T06:02:48Z"
+    },
+    {
+      "bundle" : "com.larksuite.larkApp",
+      "name" : "Lark",
+      "pid" : 664,
+      "seconds" : 16.218284010887146,
+      "source" : "poll",
+      "utc" : "2026-10-21T06:02:48Z"
+    },
+    {
+      "bundle" : "com.larksuite.larkApp",
+      "name" : "Lark",
+      "pid" : 664,
+      "seconds" : 16.319559097290039,
+      "source" : "poll",
+      "utc" : "2026-10-21T06:02:48Z"
+    },
+    {
+      "bundle" : "com.larksuite.larkApp",
+      "name" : "Lark",
+      "pid" : 664,
+      "seconds" : 16.420921087265015,
+      "source" : "poll",
+      "utc" : "2026-10-21T06:02:48Z"
+    },
+    {
+      "bundle" : "com.larksuite.larkApp",
+      "name" : "Lark",
+      "pid" : 664,
+      "seconds" : 16.522164106369019,
+      "source" : "poll",
+      "utc" : "2026-10-21T06:02:48Z"
+    },
+    {
+      "bundle" : "com.larksuite.larkApp",
+      "name" : "Lark",
+      "pid" : 664,
+      "seconds" : 16.62418007850647,
+      "source" : "poll",
+      "utc" : "2026-10-21T06:02:48Z"
+    },
+    {
+      "bundle" : "com.larksuite.larkApp",
+      "name" : "Lark",
+      "pid" : 664,
+      "seconds" : 16.725836038589478,
+      "source" : "poll",
+      "utc" : "2026-10-21T06:02:48Z"
+    },
+    {
+      "bundle" : "com.larksuite.larkApp",
+      "name" : "Lark",
+      "pid" : 664,
+      "seconds" : 16.827701091766357,
+      "source" : "poll",
+      "utc" : "2026-10-21T06:02:48Z"
+    },
+    {
+      "bundle" : "com.larksuite.larkApp",
+      "name" : "Lark",
+      "pid" : 664,
+      "seconds" : 16.929309010505676,
+      "source" : "poll",
+      "utc" : "2026-10-21T06:02:48Z"
+    },
+    {
+      "bundle" : "com.larksuite.larkApp",
+      "name" : "Lark",
+      "pid" : 664,
+      "seconds" : 17.030919075012207,
+      "source" : "poll",
+      "utc" : "2026-10-21T06:02:49Z"
+    },
+    {
+      "bundle" : "com.larksuite.larkApp",
+      "name" : "Lark",
+      "pid" : 664,
+      "seconds" : 17.133073091506958,
+      "source" : "poll",
+      "utc" : "2026-10-21T06:02:49Z"
+    },
+    {
+      "bundle" : "com.larksuite.larkApp",
+      "name" : "Lark",
+      "pid" : 664,
+      "seconds" : 17.234096050262451,
+      "source" : "poll",
+      "utc" : "2026-10-21T06:02:49Z"
+    },
+    {
+      "bundle" : "com.larksuite.larkApp",
+      "name" : "Lark",
+      "pid" : 664,
+      "seconds" : 17.335124015808105,
+      "source" : "poll",
+      "utc" : "2026-10-21T06:02:49Z"
+    },
+    {
+      "bundle" : "com.larksuite.larkApp",
+      "name" : "Lark",
+      "pid" : 664,
+      "seconds" : 17.436245083808899,
+      "source" : "poll",
+      "utc" : "2026-10-21T06:02:49Z"
+    },
+    {
+      "bundle" : "com.larksuite.larkApp",
+      "name" : "Lark",
+      "pid" : 664,
+      "seconds" : 17.537282109260559,
+      "source" : "poll",
+      "utc" : "2026-10-21T06:02:49Z"
+    },
+    {
+      "bundle" : "com.larksuite.larkApp",
+      "name" : "Lark",
+      "pid" : 664,
+      "seconds" : 17.639208078384399,
+      "source" : "poll",
+      "utc" : "2026-10-21T06:02:49Z"
+    },
+    {
+      "bundle" : "com.larksuite.larkApp",
+      "name" : "Lark",
+      "pid" : 664,
+      "seconds" : 17.740873098373413,
+      "source" : "poll",
+      "utc" : "2026-10-21T06:02:49Z"
+    },
+    {
+      "bundle" : "com.larksuite.larkApp",
+      "name" : "Lark",
+      "pid" : 664,
+      "seconds" : 17.842456102371216,
+      "source" : "poll",
+      "utc" : "2026-10-21T06:02:49Z"
+    },
+    {
+      "bundle" : "com.larksuite.larkApp",
+      "name" : "Lark",
+      "pid" : 664,
+      "seconds" : 17.944611072540283,
+      "source" : "poll",
+      "utc" : "2026-10-21T06:02:49Z"
+    },
+    {
+      "bundle" : "com.larksuite.larkApp",
+      "name" : "Lark",
+      "pid" : 664,
+      "seconds" : 18.045490026473999,
+      "source" : "poll",
+      "utc" : "2026-10-21T06:02:50Z"
+    },
+    {
+      "bundle" : "com.larksuite.larkApp",
+      "name" : "Lark",
+      "pid" : 664,
+      "seconds" : 18.147051095962524,
+      "source" : "poll",
+      "utc" : "2026-10-21T06:02:50Z"
+    },
+    {
+      "bundle" : "com.larksuite.larkApp",
+      "name" : "Lark",
+      "pid" : 664,
+      "seconds" : 18.248432040214539,
+      "source" : "poll",
+      "utc" : "2026-10-21T06:02:50Z"
+    },
+    {
+      "bundle" : "com.larksuite.larkApp",
+      "name" : "Lark",
+      "pid" : 664,
+      "seconds" : 18.349743008613586,
+      "source" : "poll",
+      "utc" : "2026-10-21T06:02:50Z"
+    },
+    {
+      "bundle" : "com.larksuite.larkApp",
+      "name" : "Lark",
+      "pid" : 664,
+      "seconds" : 18.45078706741333,
+      "source" : "poll",
+      "utc" : "2026-10-21T06:02:50Z"
+    },
+    {
+      "bundle" : "com.larksuite.larkApp",
+      "name" : "Lark",
+      "pid" : 664,
+      "seconds" : 18.553129076957703,
+      "source" : "poll",
+      "utc" : "2026-10-21T06:02:50Z"
+    },
+    {
+      "bundle" : "com.larksuite.larkApp",
+      "name" : "Lark",
+      "pid" : 664,
+      "seconds" : 18.654889106750488,
+      "source" : "poll",
+      "utc" : "2026-10-21T06:02:50Z"
+    },
+    {
+      "bundle" : "com.larksuite.larkApp",
+      "name" : "Lark",
+      "pid" : 664,
+      "seconds" : 18.75623607635498,
+      "source" : "poll",
+      "utc" : "2026-10-21T06:02:50Z"
+    },
+    {
+      "bundle" : "com.larksuite.larkApp",
+      "name" : "Lark",
+      "pid" : 664,
+      "seconds" : 18.857617020606995,
+      "source" : "poll",
+      "utc" : "2026-10-21T06:02:50Z"
+    },
+    {
+      "bundle" : "com.larksuite.larkApp",
+      "name" : "Lark",
+      "pid" : 664,
+      "seconds" : 18.959037065505981,
+      "source" : "poll",
+      "utc" : "2026-10-21T06:02:51Z"
+    },
+    {
+      "bundle" : "com.larksuite.larkApp",
+      "name" : "Lark",
+      "pid" : 664,
+      "seconds" : 19.060250043869019,
+      "source" : "poll",
+      "utc" : "2026-10-21T06:02:51Z"
+    },
+    {
+      "bundle" : "com.larksuite.larkApp",
+      "name" : "Lark",
+      "pid" : 664,
+      "seconds" : 19.161187052726746,
+      "source" : "poll",
+      "utc" : "2026-10-21T06:02:51Z"
+    },
+    {
+      "bundle" : "com.larksuite.larkApp",
+      "name" : "Lark",
+      "pid" : 664,
+      "seconds" : 19.263192057609558,
+      "source" : "poll",
+      "utc" : "2026-10-21T06:02:51Z"
+    },
+    {
+      "bundle" : "com.larksuite.larkApp",
+      "name" : "Lark",
+      "pid" : 664,
+      "seconds" : 19.365269064903259,
+      "source" : "poll",
+      "utc" : "2026-10-21T06:02:51Z"
+    },
+    {
+      "bundle" : "com.larksuite.larkApp",
+      "name" : "Lark",
+      "pid" : 664,
+      "seconds" : 19.466470003128052,
+      "source" : "poll",
+      "utc" : "2026-10-21T06:02:51Z"
+    },
+    {
+      "bundle" : "com.larksuite.larkApp",
+      "name" : "Lark",
+      "pid" : 664,
+      "seconds" : 19.567362070083618,
+      "source" : "poll",
+      "utc" : "2026-10-21T06:02:51Z"
+    },
+    {
+      "bundle" : "com.larksuite.larkApp",
+      "name" : "Lark",
+      "pid" : 664,
+      "seconds" : 19.669627070426941,
+      "source" : "poll",
+      "utc" : "2026-10-21T06:02:51Z"
+    },
+    {
+      "bundle" : "com.larksuite.larkApp",
+      "name" : "Lark",
+      "pid" : 664,
+      "seconds" : 19.771521091461182,
+      "source" : "poll",
+      "utc" : "2026-10-21T06:02:51Z"
+    },
+    {
+      "bundle" : "com.larksuite.larkApp",
+      "name" : "Lark",
+      "pid" : 664,
+      "seconds" : 19.872461080551147,
+      "source" : "poll",
+      "utc" : "2026-10-21T06:02:51Z"
+    },
+    {
+      "bundle" : "com.larksuite.larkApp",
+      "name" : "Lark",
+      "pid" : 664,
+      "seconds" : 19.974293112754822,
+      "source" : "poll",
+      "utc" : "2026-10-21T06:02:52Z"
+    },
+    {
+      "bundle" : "com.larksuite.larkApp",
+      "name" : "Lark",
+      "pid" : 664,
+      "seconds" : 20.076050043106079,
+      "source" : "poll",
+      "utc" : "2026-10-21T06:02:52Z"
+    },
+    {
+      "bundle" : "com.larksuite.larkApp",
+      "name" : "Lark",
+      "pid" : 664,
+      "seconds" : 20.177771091461182,
+      "source" : "poll",
+      "utc" : "2026-10-21T06:02:52Z"
+    },
+    {
+      "bundle" : "com.larksuite.larkApp",
+      "name" : "Lark",
+      "pid" : 664,
+      "seconds" : 20.279816031455994,
+      "source" : "poll",
+      "utc" : "2026-10-21T06:02:52Z"
+    },
+    {
+      "bundle" : "com.larksuite.larkApp",
+      "name" : "Lark",
+      "pid" : 664,
+      "seconds" : 20.380731105804443,
+      "source" : "poll",
+      "utc" : "2026-10-21T06:02:52Z"
+    },
+    {
+      "bundle" : "com.larksuite.larkApp",
+      "name" : "Lark",
+      "pid" : 664,
+      "seconds" : 20.482218027114868,
+      "source" : "poll",
+      "utc" : "2026-10-21T06:02:52Z"
+    },
+    {
+      "bundle" : "com.larksuite.larkApp",
+      "name" : "Lark",
+      "pid" : 664,
+      "seconds" : 20.583980083465576,
+      "source" : "poll",
+      "utc" : "2026-10-21T06:02:52Z"
+    },
+    {
+      "bundle" : "com.larksuite.larkApp",
+      "name" : "Lark",
+      "pid" : 664,
+      "seconds" : 20.685663104057312,
+      "source" : "poll",
+      "utc" : "2026-10-21T06:02:52Z"
+    },
+    {
+      "bundle" : "com.larksuite.larkApp",
+      "name" : "Lark",
+      "pid" : 664,
+      "seconds" : 20.787463068962097,
+      "source" : "poll",
+      "utc" : "2026-10-21T06:02:52Z"
+    },
+    {
+      "bundle" : "com.larksuite.larkApp",
+      "name" : "Lark",
+      "pid" : 664,
+      "seconds" : 20.889045000076294,
+      "source" : "poll",
+      "utc" : "2026-10-21T06:02:52Z"
+    },
+    {
+      "bundle" : "com.larksuite.larkApp",
+      "name" : "Lark",
+      "pid" : 664,
+      "seconds" : 20.990803003311157,
+      "source" : "poll",
+      "utc" : "2026-10-21T06:02:53Z"
+    },
+    {
+      "bundle" : "com.larksuite.larkApp",
+      "name" : "Lark",
+      "pid" : 664,
+      "seconds" : 21.093824028968811,
+      "source" : "poll",
+      "utc" : "2026-10-21T06:02:53Z"
+    },
+    {
+      "bundle" : "com.larksuite.larkApp",
+      "name" : "Lark",
+      "pid" : 664,
+      "seconds" : 21.195443034172058,
+      "source" : "poll",
+      "utc" : "2026-10-21T06:02:53Z"
+    },
+    {
+      "bundle" : "com.larksuite.larkApp",
+      "name" : "Lark",
+      "pid" : 664,
+      "seconds" : 21.296433091163635,
+      "source" : "poll",
+      "utc" : "2026-10-21T06:02:53Z"
+    },
+    {
+      "bundle" : "com.larksuite.larkApp",
+      "name" : "Lark",
+      "pid" : 664,
+      "seconds" : 21.397332072257996,
+      "source" : "poll",
+      "utc" : "2026-10-21T06:02:53Z"
+    },
+    {
+      "bundle" : "com.larksuite.larkApp",
+      "name" : "Lark",
+      "pid" : 664,
+      "seconds" : 21.499312043190002,
+      "source" : "poll",
+      "utc" : "2026-10-21T06:02:53Z"
+    },
+    {
+      "bundle" : "com.larksuite.larkApp",
+      "name" : "Lark",
+      "pid" : 664,
+      "seconds" : 21.600589036941528,
+      "source" : "poll",
+      "utc" : "2026-10-21T06:02:53Z"
+    },
+    {
+      "bundle" : "com.larksuite.larkApp",
+      "name" : "Lark",
+      "pid" : 664,
+      "seconds" : 21.702724099159241,
+      "source" : "poll",
+      "utc" : "2026-10-21T06:02:53Z"
+    },
+    {
+      "bundle" : "com.larksuite.larkApp",
+      "name" : "Lark",
+      "pid" : 664,
+      "seconds" : 21.804034113883972,
+      "source" : "poll",
+      "utc" : "2026-10-21T06:02:53Z"
+    },
+    {
+      "bundle" : "com.larksuite.larkApp",
+      "name" : "Lark",
+      "pid" : 664,
+      "seconds" : 21.905642032623291,
+      "source" : "poll",
+      "utc" : "2026-10-21T06:02:53Z"
+    },
+    {
+      "bundle" : "com.larksuite.larkApp",
+      "name" : "Lark",
+      "pid" : 664,
+      "seconds" : 22.007300019264221,
+      "source" : "poll",
+      "utc" : "2026-10-21T06:02:54Z"
+    },
+    {
+      "bundle" : "com.larksuite.larkApp",
+      "name" : "Lark",
+      "pid" : 664,
+      "seconds" : 22.108912110328674,
+      "source" : "poll",
+      "utc" : "2026-10-21T06:02:54Z"
+    },
+    {
+      "bundle" : "com.larksuite.larkApp",
+      "name" : "Lark",
+      "pid" : 664,
+      "seconds" : 22.210884094238281,
+      "source" : "poll",
+      "utc" : "2026-10-21T06:02:54Z"
+    },
+    {
+      "bundle" : "com.larksuite.larkApp",
+      "name" : "Lark",
+      "pid" : 664,
+      "seconds" : 22.312445998191833,
+      "source" : "poll",
+      "utc" : "2026-10-21T06:02:54Z"
+    },
+    {
+      "bundle" : "com.larksuite.larkApp",
+      "name" : "Lark",
+      "pid" : 664,
+      "seconds" : 22.414047002792358,
+      "source" : "poll",
+      "utc" : "2026-10-21T06:02:54Z"
+    },
+    {
+      "bundle" : "com.larksuite.larkApp",
+      "name" : "Lark",
+      "pid" : 664,
+      "seconds" : 22.514990091323853,
+      "source" : "poll",
+      "utc" : "2026-10-21T06:02:54Z"
+    },
+    {
+      "bundle" : "com.larksuite.larkApp",
+      "name" : "Lark",
+      "pid" : 664,
+      "seconds" : 22.616490006446838,
+      "source" : "poll",
+      "utc" : "2026-10-21T06:02:54Z"
+    },
+    {
+      "bundle" : "com.larksuite.larkApp",
+      "name" : "Lark",
+      "pid" : 664,
+      "seconds" : 22.71843409538269,
+      "source" : "poll",
+      "utc" : "2026-10-21T06:02:54Z"
+    },
+    {
+      "bundle" : "com.larksuite.larkApp",
+      "name" : "Lark",
+      "pid" : 664,
+      "seconds" : 22.819404006004333,
+      "source" : "poll",
+      "utc" : "2026-10-21T06:02:54Z"
+    },
+    {
+      "bundle" : "com.larksuite.larkApp",
+      "name" : "Lark",
+      "pid" : 664,
+      "seconds" : 22.921357035636902,
+      "source" : "poll",
+      "utc" : "2026-10-21T06:02:54Z"
+    },
+    {
+      "bundle" : "com.larksuite.larkApp",
+      "name" : "Lark",
+      "pid" : 664,
+      "seconds" : 23.022258043289185,
+      "source" : "poll",
+      "utc" : "2026-10-21T06:02:55Z"
+    },
+    {
+      "bundle" : "com.larksuite.larkApp",
+      "name" : "Lark",
+      "pid" : 664,
+      "seconds" : 23.123394012451172,
+      "source" : "poll",
+      "utc" : "2026-10-21T06:02:55Z"
+    },
+    {
+      "bundle" : "com.larksuite.larkApp",
+      "name" : "Lark",
+      "pid" : 664,
+      "seconds" : 23.225192070007324,
+      "source" : "poll",
+      "utc" : "2026-10-21T06:02:55Z"
+    },
+    {
+      "bundle" : "com.larksuite.larkApp",
+      "name" : "Lark",
+      "pid" : 664,
+      "seconds" : 23.3265300989151,
+      "source" : "poll",
+      "utc" : "2026-10-21T06:02:55Z"
+    },
+    {
+      "bundle" : "com.larksuite.larkApp",
+      "name" : "Lark",
+      "pid" : 664,
+      "seconds" : 23.428190112113953,
+      "source" : "poll",
+      "utc" : "2026-10-21T06:02:55Z"
+    },
+    {
+      "bundle" : "com.larksuite.larkApp",
+      "name" : "Lark",
+      "pid" : 664,
+      "seconds" : 23.529966115951538,
+      "source" : "poll",
+      "utc" : "2026-10-21T06:02:55Z"
+    },
+    {
+      "bundle" : "com.larksuite.larkApp",
+      "name" : "Lark",
+      "pid" : 664,
+      "seconds" : 23.631575107574463,
+      "source" : "poll",
+      "utc" : "2026-10-21T06:02:55Z"
+    },
+    {
+      "bundle" : "com.larksuite.larkApp",
+      "name" : "Lark",
+      "pid" : 664,
+      "seconds" : 23.733123064041138,
+      "source" : "poll",
+      "utc" : "2026-10-21T06:02:55Z"
+    },
+    {
+      "bundle" : "com.larksuite.larkApp",
+      "name" : "Lark",
+      "pid" : 664,
+      "seconds" : 23.834810018539429,
+      "source" : "poll",
+      "utc" : "2026-10-21T06:02:55Z"
+    },
+    {
+      "bundle" : "com.larksuite.larkApp",
+      "name" : "Lark",
+      "pid" : 664,
+      "seconds" : 23.935927033424377,
+      "source" : "poll",
+      "utc" : "2026-10-21T06:02:55Z"
+    },
+    {
+      "bundle" : "com.larksuite.larkApp",
+      "name" : "Lark",
+      "pid" : 664,
+      "seconds" : 24.037239074707031,
+      "source" : "poll",
+      "utc" : "2026-10-21T06:02:56Z"
+    },
+    {
+      "bundle" : "com.larksuite.larkApp",
+      "name" : "Lark",
+      "pid" : 664,
+      "seconds" : 24.1389000415802,
+      "source" : "poll",
+      "utc" : "2026-10-21T06:02:56Z"
+    },
+    {
+      "bundle" : "com.larksuite.larkApp",
+      "name" : "Lark",
+      "pid" : 664,
+      "seconds" : 24.240465998649597,
+      "source" : "poll",
+      "utc" : "2026-10-21T06:02:56Z"
+    },
+    {
+      "bundle" : "com.larksuite.larkApp",
+      "name" : "Lark",
+      "pid" : 664,
+      "seconds" : 24.3422030210495,
+      "source" : "poll",
+      "utc" : "2026-10-21T06:02:56Z"
+    },
+    {
+      "bundle" : "com.larksuite.larkApp",
+      "name" : "Lark",
+      "pid" : 664,
+      "seconds" : 24.444163084030151,
+      "source" : "poll",
+      "utc" : "2026-10-21T06:02:56Z"
+    },
+    {
+      "bundle" : "com.larksuite.larkApp",
+      "name" : "Lark",
+      "pid" : 664,
+      "seconds" : 24.544971108436584,
+      "source" : "poll",
+      "utc" : "2026-10-21T06:02:56Z"
+    },
+    {
+      "bundle" : "com.larksuite.larkApp",
+      "name" : "Lark",
+      "pid" : 664,
+      "seconds" : 24.646795034408569,
+      "source" : "poll",
+      "utc" : "2026-10-21T06:02:56Z"
+    },
+    {
+      "bundle" : "com.larksuite.larkApp",
+      "name" : "Lark",
+      "pid" : 664,
+      "seconds" : 24.748590111732483,
+      "source" : "poll",
+      "utc" : "2026-10-21T06:02:56Z"
+    },
+    {
+      "bundle" : "com.larksuite.larkApp",
+      "name" : "Lark",
+      "pid" : 664,
+      "seconds" : 24.850484013557434,
+      "source" : "poll",
+      "utc" : "2026-10-21T06:02:56Z"
+    },
+    {
+      "bundle" : "com.larksuite.larkApp",
+      "name" : "Lark",
+      "pid" : 664,
+      "seconds" : 24.952548027038574,
+      "source" : "poll",
+      "utc" : "2026-10-21T06:02:56Z"
+    },
+    {
+      "bundle" : "com.larksuite.larkApp",
+      "name" : "Lark",
+      "pid" : 664,
+      "seconds" : 25.054579019546509,
+      "source" : "poll",
+      "utc" : "2026-10-21T06:02:57Z"
+    },
+    {
+      "bundle" : "com.larksuite.larkApp",
+      "name" : "Lark",
+      "pid" : 664,
+      "seconds" : 25.155502080917358,
+      "source" : "poll",
+      "utc" : "2026-10-21T06:02:57Z"
+    },
+    {
+      "bundle" : "com.larksuite.larkApp",
+      "name" : "Lark",
+      "pid" : 664,
+      "seconds" : 25.256516098976135,
+      "source" : "poll",
+      "utc" : "2026-10-21T06:02:57Z"
+    },
+    {
+      "bundle" : "com.larksuite.larkApp",
+      "name" : "Lark",
+      "pid" : 664,
+      "seconds" : 25.357646107673645,
+      "source" : "poll",
+      "utc" : "2026-10-21T06:02:57Z"
+    },
+    {
+      "bundle" : "com.larksuite.larkApp",
+      "name" : "Lark",
+      "pid" : 664,
+      "seconds" : 25.458765029907227,
+      "source" : "poll",
+      "utc" : "2026-10-21T06:02:57Z"
+    },
+    {
+      "bundle" : "com.larksuite.larkApp",
+      "name" : "Lark",
+      "pid" : 664,
+      "seconds" : 25.560830116271973,
+      "source" : "poll",
+      "utc" : "2026-10-21T06:02:57Z"
+    },
+    {
+      "bundle" : "com.larksuite.larkApp",
+      "name" : "Lark",
+      "pid" : 664,
+      "seconds" : 25.662076115608215,
+      "source" : "poll",
+      "utc" : "2026-10-21T06:02:57Z"
+    },
+    {
+      "bundle" : "com.larksuite.larkApp",
+      "name" : "Lark",
+      "pid" : 664,
+      "seconds" : 25.763832092285156,
+      "source" : "poll",
+      "utc" : "2026-10-21T06:02:57Z"
+    },
+    {
+      "bundle" : "com.larksuite.larkApp",
+      "name" : "Lark",
+      "pid" : 664,
+      "seconds" : 25.866048097610474,
+      "source" : "poll",
+      "utc" : "2026-10-21T06:02:57Z"
+    },
+    {
+      "bundle" : "com.larksuite.larkApp",
+      "name" : "Lark",
+      "pid" : 664,
+      "seconds" : 25.967688083648682,
+      "source" : "poll",
+      "utc" : "2026-10-21T06:02:58Z"
+    },
+    {
+      "bundle" : "com.larksuite.larkApp",
+      "name" : "Lark",
+      "pid" : 664,
+      "seconds" : 26.069118022918701,
+      "source" : "poll",
+      "utc" : "2026-10-21T06:02:58Z"
+    },
+    {
+      "bundle" : "com.larksuite.larkApp",
+      "name" : "Lark",
+      "pid" : 664,
+      "seconds" : 26.170242071151733,
+      "source" : "poll",
+      "utc" : "2026-10-21T06:02:58Z"
+    },
+    {
+      "bundle" : "com.larksuite.larkApp",
+      "name" : "Lark",
+      "pid" : 664,
+      "seconds" : 26.272140026092529,
+      "source" : "poll",
+      "utc" : "2026-10-21T06:02:58Z"
+    },
+    {
+      "bundle" : "com.larksuite.larkApp",
+      "name" : "Lark",
+      "pid" : 664,
+      "seconds" : 26.374206066131592,
+      "source" : "poll",
+      "utc" : "2026-10-21T06:02:58Z"
+    },
+    {
+      "bundle" : "com.larksuite.larkApp",
+      "name" : "Lark",
+      "pid" : 664,
+      "seconds" : 26.475354075431824,
+      "source" : "poll",
+      "utc" : "2026-10-21T06:02:58Z"
+    },
+    {
+      "bundle" : "com.larksuite.larkApp",
+      "name" : "Lark",
+      "pid" : 664,
+      "seconds" : 26.576372027397156,
+      "source" : "poll",
+      "utc" : "2026-10-21T06:02:58Z"
+    },
+    {
+      "bundle" : "com.larksuite.larkApp",
+      "name" : "Lark",
+      "pid" : 664,
+      "seconds" : 26.678091049194336,
+      "source" : "poll",
+      "utc" : "2026-10-21T06:02:58Z"
+    },
+    {
+      "bundle" : "com.larksuite.larkApp",
+      "name" : "Lark",
+      "pid" : 664,
+      "seconds" : 26.779645085334778,
+      "source" : "poll",
+      "utc" : "2026-10-21T06:02:58Z"
+    },
+    {
+      "bundle" : "com.larksuite.larkApp",
+      "name" : "Lark",
+      "pid" : 664,
+      "seconds" : 26.881709098815918,
+      "source" : "poll",
+      "utc" : "2026-10-21T06:02:58Z"
+    },
+    {
+      "bundle" : "com.larksuite.larkApp",
+      "name" : "Lark",
+      "pid" : 664,
+      "seconds" : 26.983183026313782,
+      "source" : "poll",
+      "utc" : "2026-10-21T06:02:59Z"
+    },
+    {
+      "bundle" : "com.larksuite.larkApp",
+      "name" : "Lark",
+      "pid" : 664,
+      "seconds" : 27.084943056106567,
+      "source" : "poll",
+      "utc" : "2026-10-21T06:02:59Z"
+    },
+    {
+      "bundle" : "com.larksuite.larkApp",
+      "name" : "Lark",
+      "pid" : 664,
+      "seconds" : 27.187652111053467,
+      "source" : "poll",
+      "utc" : "2026-10-21T06:02:59Z"
+    },
+    {
+      "bundle" : "com.larksuite.larkApp",
+      "name" : "Lark",
+      "pid" : 664,
+      "seconds" : 27.289894104003906,
+      "source" : "poll",
+      "utc" : "2026-10-21T06:02:59Z"
+    },
+    {
+      "bundle" : "com.larksuite.larkApp",
+      "name" : "Lark",
+      "pid" : 664,
+      "seconds" : 27.391066074371338,
+      "source" : "poll",
+      "utc" : "2026-10-21T06:02:59Z"
+    },
+    {
+      "bundle" : "com.larksuite.larkApp",
+      "name" : "Lark",
+      "pid" : 664,
+      "seconds" : 27.493995070457458,
+      "source" : "poll",
+      "utc" : "2026-10-21T06:02:59Z"
+    },
+    {
+      "bundle" : "com.larksuite.larkApp",
+      "name" : "Lark",
+      "pid" : 664,
+      "seconds" : 27.595943093299866,
+      "source" : "poll",
+      "utc" : "2026-10-21T06:02:59Z"
+    },
+    {
+      "bundle" : "com.larksuite.larkApp",
+      "name" : "Lark",
+      "pid" : 664,
+      "seconds" : 27.697036027908325,
+      "source" : "poll",
+      "utc" : "2026-10-21T06:02:59Z"
+    },
+    {
+      "bundle" : "com.larksuite.larkApp",
+      "name" : "Lark",
+      "pid" : 664,
+      "seconds" : 27.798989057540894,
+      "source" : "poll",
+      "utc" : "2026-10-21T06:02:59Z"
+    },
+    {
+      "bundle" : "com.larksuite.larkApp",
+      "name" : "Lark",
+      "pid" : 664,
+      "seconds" : 27.900305032730103,
+      "source" : "poll",
+      "utc" : "2026-10-21T06:02:59Z"
+    },
+    {
+      "bundle" : "com.larksuite.larkApp",
+      "name" : "Lark",
+      "pid" : 664,
+      "seconds" : 28.002326011657715,
+      "source" : "poll",
+      "utc" : "2026-10-21T06:03:00Z"
+    },
+    {
+      "bundle" : "com.larksuite.larkApp",
+      "name" : "Lark",
+      "pid" : 664,
+      "seconds" : 28.103705048561096,
+      "source" : "poll",
+      "utc" : "2026-10-21T06:03:00Z"
+    },
+    {
+      "bundle" : "com.larksuite.larkApp",
+      "name" : "Lark",
+      "pid" : 664,
+      "seconds" : 28.204962015151978,
+      "source" : "poll",
+      "utc" : "2026-10-21T06:03:00Z"
+    },
+    {
+      "bundle" : "com.larksuite.larkApp",
+      "name" : "Lark",
+      "pid" : 664,
+      "seconds" : 28.30682909488678,
+      "source" : "poll",
+      "utc" : "2026-10-21T06:03:00Z"
+    },
+    {
+      "bundle" : "com.larksuite.larkApp",
+      "name" : "Lark",
+      "pid" : 664,
+      "seconds" : 28.408734083175659,
+      "source" : "poll",
+      "utc" : "2026-10-21T06:03:00Z"
+    },
+    {
+      "bundle" : "com.larksuite.larkApp",
+      "name" : "Lark",
+      "pid" : 664,
+      "seconds" : 28.510688066482544,
+      "source" : "poll",
+      "utc" : "2026-10-21T06:03:00Z"
+    },
+    {
+      "bundle" : "com.larksuite.larkApp",
+      "name" : "Lark",
+      "pid" : 664,
+      "seconds" : 28.612114071846008,
+      "source" : "poll",
+      "utc" : "2026-10-21T06:03:00Z"
+    },
+    {
+      "bundle" : "com.larksuite.larkApp",
+      "name" : "Lark",
+      "pid" : 664,
+      "seconds" : 28.713933110237122,
+      "source" : "poll",
+      "utc" : "2026-10-21T06:03:00Z"
+    },
+    {
+      "bundle" : "com.larksuite.larkApp",
+      "name" : "Lark",
+      "pid" : 664,
+      "seconds" : 28.815666079521179,
+      "source" : "poll",
+      "utc" : "2026-10-21T06:03:00Z"
+    },
+    {
+      "bundle" : "com.larksuite.larkApp",
+      "name" : "Lark",
+      "pid" : 664,
+      "seconds" : 28.916930079460144,
+      "source" : "poll",
+      "utc" : "2026-10-21T06:03:00Z"
+    },
+    {
+      "bundle" : "com.larksuite.larkApp",
+      "name" : "Lark",
+      "pid" : 664,
+      "seconds" : 29.019009113311768,
+      "source" : "poll",
+      "utc" : "2026-10-21T06:03:01Z"
+    },
+    {
+      "bundle" : "com.larksuite.larkApp",
+      "name" : "Lark",
+      "pid" : 664,
+      "seconds" : 29.12108302116394,
+      "source" : "poll",
+      "utc" : "2026-10-21T06:03:01Z"
+    },
+    {
+      "bundle" : "com.larksuite.larkApp",
+      "name" : "Lark",
+      "pid" : 664,
+      "seconds" : 29.223045110702515,
+      "source" : "poll",
+      "utc" : "2026-10-21T06:03:01Z"
+    },
+    {
+      "bundle" : "com.larksuite.larkApp",
+      "name" : "Lark",
+      "pid" : 664,
+      "seconds" : 29.324633002281189,
+      "source" : "poll",
+      "utc" : "2026-10-21T06:03:01Z"
+    },
+    {
+      "bundle" : "com.larksuite.larkApp",
+      "name" : "Lark",
+      "pid" : 664,
+      "seconds" : 29.427237033843994,
+      "source" : "poll",
+      "utc" : "2026-10-21T06:03:01Z"
+    },
+    {
+      "bundle" : "com.larksuite.larkApp",
+      "name" : "Lark",
+      "pid" : 664,
+      "seconds" : 29.528199076652527,
+      "source" : "poll",
+      "utc" : "2026-10-21T06:03:01Z"
+    },
+    {
+      "bundle" : "com.larksuite.larkApp",
+      "name" : "Lark",
+      "pid" : 664,
+      "seconds" : 29.629611015319824,
+      "source" : "poll",
+      "utc" : "2026-10-21T06:03:01Z"
+    },
+    {
+      "bundle" : "com.larksuite.larkApp",
+      "name" : "Lark",
+      "pid" : 664,
+      "seconds" : 29.731392025947571,
+      "source" : "poll",
+      "utc" : "2026-10-21T06:03:01Z"
+    },
+    {
+      "bundle" : "com.larksuite.larkApp",
+      "name" : "Lark",
+      "pid" : 664,
+      "seconds" : 29.833576083183289,
+      "source" : "poll",
+      "utc" : "2026-10-21T06:03:01Z"
+    },
+    {
+      "bundle" : "com.larksuite.larkApp",
+      "name" : "Lark",
+      "pid" : 664,
+      "seconds" : 29.937059998512268,
+      "source" : "poll",
+      "utc" : "2026-10-21T06:03:01Z"
+    },
+    {
+      "bundle" : "com.larksuite.larkApp",
+      "name" : "Lark",
+      "pid" : 664,
+      "seconds" : 30.038974046707153,
+      "source" : "poll",
+      "utc" : "2026-10-21T06:03:02Z"
+    },
+    {
+      "bundle" : "com.larksuite.larkApp",
+      "name" : "Lark",
+      "pid" : 664,
+      "seconds" : 30.140283107757568,
+      "source" : "poll",
+      "utc" : "2026-10-21T06:03:02Z"
+    },
+    {
+      "bundle" : "com.larksuite.larkApp",
+      "name" : "Lark",
+      "pid" : 664,
+      "seconds" : 30.241855025291443,
+      "source" : "poll",
+      "utc" : "2026-10-21T06:03:02Z"
+    },
+    {
+      "bundle" : "com.larksuite.larkApp",
+      "name" : "Lark",
+      "pid" : 664,
+      "seconds" : 30.343208074569702,
+      "source" : "poll",
+      "utc" : "2026-10-21T06:03:02Z"
+    },
+    {
+      "bundle" : "com.larksuite.larkApp",
+      "name" : "Lark",
+      "pid" : 664,
+      "seconds" : 30.444778084754944,
+      "source" : "poll",
+      "utc" : "2026-10-21T06:03:02Z"
+    },
+    {
+      "bundle" : "com.larksuite.larkApp",
+      "name" : "Lark",
+      "pid" : 664,
+      "seconds" : 30.546882033348083,
+      "source" : "poll",
+      "utc" : "2026-10-21T06:03:02Z"
+    },
+    {
+      "bundle" : "com.larksuite.larkApp",
+      "name" : "Lark",
+      "pid" : 664,
+      "seconds" : 30.648645043373108,
+      "source" : "poll",
+      "utc" : "2026-10-21T06:03:02Z"
+    },
+    {
+      "bundle" : "com.larksuite.larkApp",
+      "name" : "Lark",
+      "pid" : 664,
+      "seconds" : 30.750163078308105,
+      "source" : "poll",
+      "utc" : "2026-10-21T06:03:02Z"
+    },
+    {
+      "bundle" : "com.larksuite.larkApp",
+      "name" : "Lark",
+      "pid" : 664,
+      "seconds" : 30.852205038070679,
+      "source" : "poll",
+      "utc" : "2026-10-21T06:03:02Z"
+    },
+    {
+      "bundle" : "com.larksuite.larkApp",
+      "name" : "Lark",
+      "pid" : 664,
+      "seconds" : 30.953604102134705,
+      "source" : "poll",
+      "utc" : "2026-10-21T06:03:02Z"
+    },
+    {
+      "bundle" : "com.larksuite.larkApp",
+      "name" : "Lark",
+      "pid" : 664,
+      "seconds" : 31.055199027061462,
+      "source" : "poll",
+      "utc" : "2026-10-21T06:03:03Z"
+    },
+    {
+      "bundle" : "com.larksuite.larkApp",
+      "name" : "Lark",
+      "pid" : 664,
+      "seconds" : 31.156417012214661,
+      "source" : "poll",
+      "utc" : "2026-10-21T06:03:03Z"
+    },
+    {
+      "bundle" : "com.larksuite.larkApp",
+      "name" : "Lark",
+      "pid" : 664,
+      "seconds" : 31.257732033729553,
+      "source" : "poll",
+      "utc" : "2026-10-21T06:03:03Z"
+    },
+    {
+      "bundle" : "com.larksuite.larkApp",
+      "name" : "Lark",
+      "pid" : 664,
+      "seconds" : 31.358445048332214,
+      "source" : "poll",
+      "utc" : "2026-10-21T06:03:03Z"
+    },
+    {
+      "bundle" : "com.larksuite.larkApp",
+      "name" : "Lark",
+      "pid" : 664,
+      "seconds" : 31.458891034126282,
+      "source" : "poll",
+      "utc" : "2026-10-21T06:03:03Z"
+    },
+    {
+      "bundle" : "com.larksuite.larkApp",
+      "name" : "Lark",
+      "pid" : 664,
+      "seconds" : 31.559999108314514,
+      "source" : "poll",
+      "utc" : "2026-10-21T06:03:03Z"
+    },
+    {
+      "bundle" : "com.larksuite.larkApp",
+      "name" : "Lark",
+      "pid" : 664,
+      "seconds" : 31.660460114479065,
+      "source" : "poll",
+      "utc" : "2026-10-21T06:03:03Z"
+    },
+    {
+      "bundle" : "com.larksuite.larkApp",
+      "name" : "Lark",
+      "pid" : 664,
+      "seconds" : 31.761861085891724,
+      "source" : "poll",
+      "utc" : "2026-10-21T06:03:03Z"
+    },
+    {
+      "bundle" : "com.larksuite.larkApp",
+      "name" : "Lark",
+      "pid" : 664,
+      "seconds" : 31.863476037979126,
+      "source" : "poll",
+      "utc" : "2026-10-21T06:03:03Z"
+    },
+    {
+      "bundle" : "com.larksuite.larkApp",
+      "name" : "Lark",
+      "pid" : 664,
+      "seconds" : 31.965189099311829,
+      "source" : "poll",
+      "utc" : "2026-10-21T06:03:04Z"
+    },
+    {
+      "bundle" : "com.larksuite.larkApp",
+      "name" : "Lark",
+      "pid" : 664,
+      "seconds" : 32.066916108131409,
+      "source" : "poll",
+      "utc" : "2026-10-21T06:03:04Z"
+    },
+    {
+      "bundle" : "com.larksuite.larkApp",
+      "name" : "Lark",
+      "pid" : 664,
+      "seconds" : 32.170497059822083,
+      "source" : "poll",
+      "utc" : "2026-10-21T06:03:04Z"
+    },
+    {
+      "bundle" : "com.larksuite.larkApp",
+      "name" : "Lark",
+      "pid" : 664,
+      "seconds" : 32.272348046302795,
+      "source" : "poll",
+      "utc" : "2026-10-21T06:03:04Z"
+    },
+    {
+      "bundle" : "com.larksuite.larkApp",
+      "name" : "Lark",
+      "pid" : 664,
+      "seconds" : 32.373309016227722,
+      "source" : "poll",
+      "utc" : "2026-10-21T06:03:04Z"
+    },
+    {
+      "bundle" : "com.larksuite.larkApp",
+      "name" : "Lark",
+      "pid" : 664,
+      "seconds" : 32.475122094154358,
+      "source" : "poll",
+      "utc" : "2026-10-21T06:03:04Z"
+    },
+    {
+      "bundle" : "com.larksuite.larkApp",
+      "name" : "Lark",
+      "pid" : 664,
+      "seconds" : 32.576992034912109,
+      "source" : "poll",
+      "utc" : "2026-10-21T06:03:04Z"
+    },
+    {
+      "bundle" : "com.larksuite.larkApp",
+      "name" : "Lark",
+      "pid" : 664,
+      "seconds" : 32.678869009017944,
+      "source" : "poll",
+      "utc" : "2026-10-21T06:03:04Z"
+    },
+    {
+      "bundle" : "com.larksuite.larkApp",
+      "name" : "Lark",
+      "pid" : 664,
+      "seconds" : 32.780132055282593,
+      "source" : "poll",
+      "utc" : "2026-10-21T06:03:04Z"
+    },
+    {
+      "bundle" : "com.larksuite.larkApp",
+      "name" : "Lark",
+      "pid" : 664,
+      "seconds" : 32.881681084632874,
+      "source" : "poll",
+      "utc" : "2026-10-21T06:03:04Z"
+    },
+    {
+      "bundle" : "com.larksuite.larkApp",
+      "name" : "Lark",
+      "pid" : 664,
+      "seconds" : 32.983472108840942,
+      "source" : "poll",
+      "utc" : "2026-10-21T06:03:05Z"
+    },
+    {
+      "bundle" : "com.larksuite.larkApp",
+      "name" : "Lark",
+      "pid" : 664,
+      "seconds" : 33.08541202545166,
+      "source" : "poll",
+      "utc" : "2026-10-21T06:03:05Z"
+    },
+    {
+      "bundle" : "com.larksuite.larkApp",
+      "name" : "Lark",
+      "pid" : 664,
+      "seconds" : 33.085813045501709,
+      "source" : "after",
+      "utc" : "2026-10-21T06:03:05Z"
+    }
+  ],
+  "target" : 77081
+}

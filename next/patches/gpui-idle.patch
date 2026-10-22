@@ -1,0 +1,89 @@
+diff --git a/crates/gpui_macos/src/window.rs b/crates/gpui_macos/src/window.rs
+index 55b69b09b0..f6938dec2b 100644
+--- a/crates/gpui_macos/src/window.rs
++++ b/crates/gpui_macos/src/window.rs
+@@ -665,6 +665,12 @@ struct MacWindowState {
+     cursor_style: CursorStyle,
+     cursor_visible: Arc<AtomicBool>,
+     frame_source: Option<WindowFrameSource>,
++    // keepline-eval patch: stop the display link while the window has nothing to draw.
++    pause_idle: bool,
++    frame_demand: bool,
++    idle_frames: u32,
++    idle_frames_limit: u32,
++    paused_for_idle: bool,
+     renderer: renderer::Renderer,
+     request_frame_callback: Option<Box<dyn FnMut(RequestFrameOptions)>>,
+     event_callback: Option<Box<dyn FnMut(PlatformInput) -> gpui::DispatchEventResult>>,
+@@ -1098,6 +1104,15 @@ impl MacWindow {
+                 cursor_style: CursorStyle::Arrow,
+                 cursor_visible,
+                 frame_source: None,
++                pause_idle: std::env::var_os("GPUI_PAUSE_IDLE_DISPLAY_LINK").is_some(),
++                frame_demand: true,
++                idle_frames: 0,
++                // vsyncs without new demand before pausing; default ~0.5 s at 120 Hz so bursty output keeps the link running
++                idle_frames_limit: std::env::var("GPUI_PAUSE_IDLE_FRAMES")
++                    .ok()
++                    .and_then(|v| v.parse().ok())
++                    .unwrap_or(60),
++                paused_for_idle: false,
+                 renderer: renderer::new_renderer(
+                     renderer_context,
+                     native_window as *mut _,
+@@ -1421,6 +1436,26 @@ fn if_window_not_closed(closed: Arc<AtomicBool>, f: impl FnOnce()) {
+ }
+ 
+ impl PlatformWindow for MacWindow {
++    /// keepline-eval patch: GPUI calls this when the window becomes dirty. While the display link
++    /// is paused for idleness, restart it so the pending frame is drawn on the next vsync.
++    fn frame_waker(&self) -> Option<std::rc::Rc<dyn Fn()>> {
++        if !self.0.lock().pause_idle {
++            return None;
++        }
++        let weak = Arc::downgrade(&self.0);
++        Some(std::rc::Rc::new(move || {
++            if let Some(state) = weak.upgrade() {
++                let mut lock = state.lock();
++                lock.frame_demand = true;
++                lock.idle_frames = 0;
++                if lock.paused_for_idle {
++                    lock.paused_for_idle = false;
++                    lock.start_display_link();
++                }
++            }
++        }))
++    }
++
+     fn bounds(&self) -> Bounds<Pixels> {
+         self.0.as_ref().lock().bounds()
+     }
+@@ -3327,13 +3362,27 @@ extern "C" fn step(view: *mut c_void) {
+                 (None, FrameRequestSource::NativeCallback),
+                 |(at, source)| (Some(at), source),
+             );
++        lock.frame_demand = false;
+         drop(lock);
+         callback(RequestFrameOptions {
+             signal_at,
+             signal_source,
+             ..Default::default()
+         });
+-        window_state.lock().request_frame_callback = Some(callback);
++        let mut lock = window_state.lock();
++        lock.request_frame_callback = Some(callback);
++        // keepline-eval patch: after a few vsyncs without new demand, pause the display link.
++        if lock.pause_idle {
++            if lock.frame_demand {
++                lock.idle_frames = 0;
++            } else {
++                lock.idle_frames += 1;
++                if lock.idle_frames >= lock.idle_frames_limit {
++                    lock.stop_display_link();
++                    lock.paused_for_idle = true;
++                }
++            }
++        }
+     }
+ }
+ 
