@@ -15,6 +15,8 @@
 
 [fixture.py](fixture.py) 启动器仅在 exec 前以 SQLite `mode=ro` 读取用户指定 provider 行的 env，注入私有 Claude 进程。密钥不打印、不落配置、不进证据。证据只包含用户测试原话、机械结果、会话标识及计数；没有复制原始日志或环境。两轮使用 Claude Code 2.1.302、GLM-5.3-Flash，MCP 空配置、Hook 关闭。第一轮 CLI 新默认 auto 模式，因此不把它算作审批验收；第二轮明确 `--permission-mode default`。
 
+**2026-10-22 补正：** 原启动器用全新环境 `execve`，丢掉了 keeplined 给 PTY 设的 `TERM` / `COLORTERM`，所以本轮及复用它的 real-start 截图里，Claude 进入 onboarding 之后的画面都是单色，不能当颜色证据。启动器现在透传这两个变量。[color_check.py](color_check.py) 是门槛：用一次性 provider 行（不可达地址，不发模型请求）让真实 Claude 越过 onboarding，带 TERM 必须出现颜色 SGR，不带 TERM 的对照组必须单色；`--live <root>` 检查运行中实例的 Claude 进程有没有这两个变量（只输出这两个值）。原模板 3/3 失败，修后 3/3 通过；live 模式用带/不带变量的两个伪进程分别验证过判定。real-start 夹具在启动 App 之前先跑这项检查。
+
 第二轮 CLI 显示自身 updater 提示；用户 CLI symlink 检查仍指向 2.1.302。复现脚本已显式禁用 updater，避免后续测试更新软件；不声称本次自动更新路径经过完整文件审计。R4 的旧 OAuth 操作事实仍见原审计，本轮没有重试官方登录。
 
 ## 真实 Computer Use 验收
