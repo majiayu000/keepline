@@ -1500,7 +1500,18 @@ impl Workbench {
             .gap(px(T::S4))
             .px(px(T::S8))
             .pb(px(T::S6))
-            .child(label("选 Agent").text_size(px(T::META)));
+            .child(
+                label(format!(
+                    "「{}」用哪个 Agent",
+                    self.workspace
+                        .tasks
+                        .iter()
+                        .find(|t| t.id == task)
+                        .map(|t| keepline_core::content::short(&t.title, 12))
+                        .unwrap_or_default()
+                ))
+                .text_size(px(T::META)),
+            );
         for agent in order {
             row = row.child(
                 button(
