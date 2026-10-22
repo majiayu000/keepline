@@ -16,7 +16,7 @@
 | N02 | 界面为 GPUI（Rust）原生客户端，可替换；窗口关闭即断开，后台不受影响 | D01（Tauri + React）；第 8 节桌面桥；第 9 节中 Tauri origin 相关条目 |
 | N03 | 终端状态用 libghostty-vt（锁 commit，构建引入 Zig）：后台持有全部会话的状态与快照；客户端只对可见画面（最多 4 个）用 libghostty-vt 解析，再由 GPUI 自绘 | D03（alacritty_terminal + xterm.js 显示镜像）；第 7 节中 xterm.js 相关条目 |
 | N04 | 客户端与后台走自写协议（kl-relay 演进）：attach 时先发 libghostty-vt 快照，再转发字节；输入走同一连接并保留控制权租约 | D04 中 React ↔ Tauri bridge ↔ socket 的路径；第 6 节协议沿用并扩展快照帧 |
-| N05 | 资源预算改为同机同负载相对 Ghostty ≤ 1.2 倍：内存用 phys_footprint，覆盖全部子进程与系统辅助进程；CPU 用累计 CPU 时间。窗口隐藏时不渲染、CPU 接近 0；空闲无轮询 | 第 10 节的绝对预算（500/800 MiB 等），测量方法仍沿用 |
+| N05 | （2026-10-22 用户决定：相对 Ghostty 倍率移出首版门槛，首版后再处理；隐藏不渲染、空闲无轮询仍是首版要求）资源预算改为同机同负载相对 Ghostty ≤ 1.2 倍：内存用 phys_footprint，覆盖全部子进程与系统辅助进程；CPU 用累计 CPU 时间。窗口隐藏时不渲染、CPU 接近 0；空闲无轮询 | 第 10 节的绝对预算（500/800 MiB 等），测量方法仍沿用 |
 | N06 | GPUI 需要补丁：窗口可见且无变化时暂停显示链接（实测空闲 CPU 从 0.8% 降到 0.07%）；维护 GPUI 补丁或分支，锁定 Zed rev 或 gpui-kit 之一 | 无 |
 
 首个实现必须验收、测评中未完成的项：中文输入法清单（硬门槛，参考 zed#59882、#53537）；补丁空闲阈值（0.5 s）下 4 画面断续输出的 CPU；4 画面的 Ghostty 基准；GPU、耗电与输入延迟；Claude Code 全屏重绘的真实负载。中文输入法不过关且短期修不好、空闲补丁无法维护或 4 画面超预算时，切换到备选 Swift + GhosttyKit（客户端改为 Swift，后台与协议不变）。
