@@ -67,6 +67,11 @@ static NSColor *color(NSNumber *value) {
     open.wantsLayer=YES;open.layer.backgroundColor=color(t[@"accent"]).CGColor;open.layer.cornerRadius=[t[@"radius"] doubleValue];
     open.attributedTitle=[[NSAttributedString alloc]initWithString:open.title attributes:@{NSForegroundColorAttributeName:color(t[@"white"]),NSFontAttributeName:[NSFont boldSystemFontOfSize:[t[@"font"] doubleValue]]}];
     [stack addArrangedSubview:open];[open.widthAnchor constraintEqualToAnchor:stack.widthAnchor].active=YES;[open.heightAnchor constraintEqualToConstant:[t[@"button"] doubleValue]].active=YES;
+    // Fit the content (up to the design height): two rows should not leave half the panel blank.
+    [stack.widthAnchor constraintEqualToConstant:width-2*pad].active=YES;
+    [vc.view layoutSubtreeIfNeeded];
+    height=MIN(height,ceil(stack.fittingSize.height+2*pad));
+    [vc.view setFrameSize:NSMakeSize(width,height)];
     self.popover.contentViewController=vc;self.popover.contentSize=NSMakeSize(width,height);
 }
 - (void)userNotificationCenter:(UNUserNotificationCenter *)center willPresentNotification:(UNNotification *)notification withCompletionHandler:(void (^)(UNNotificationPresentationOptions))completion {
