@@ -1,0 +1,8 @@
+[
+ {
+  "case": "keepline-opt-one",
+  "event": "deadline",
+  "detail": "no unlocked, input-idle window before deadline",
+  "utc": "2026-10-22T01:30:40Z"
+ }
+]
