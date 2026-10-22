@@ -25,3 +25,5 @@
 - `cargo test --workspace`：app 25、core 20、daemon 32 通过；集成测试 27 项里每轮有 1 项不稳定失败：
   - 第一轮：`forty_idle_terminals_have_no_periodic_background_io` 多出 1 次目录遍历和 1 次索引写入。之后单独跑两次都通过。
   - 第二轮：`manually_entered_unbound_codex_gets_a_hint_and_exit_clears_it` 在 5 秒内没等到提示。**换回 HEAD 未改动的源码，单独跑同样连续失败两次**，所以不是本次改动引起。当时本机 load average 为 133–319（其他会话在跑 ffmpeg、Python、Chromium）。负载降下来后需要复跑；这两项没有记为通过。
+
+2026-10-22 11:38 补充：load average 降到约 55 后，A03 提交前的全套测试 105 项全部通过（集成 27 项含上述两项），支持“负载导致偶发失败”的判断。
