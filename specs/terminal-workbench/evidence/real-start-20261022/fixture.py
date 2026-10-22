@@ -24,6 +24,8 @@ if __name__ == '__main__':
     assert isinstance(template,str) and 'settings_config' in template
     script=template.replace('DB',repr(str(pathlib.Path.home()/'.cc-switch/cc-switch.db'))).replace('CLI',repr(str(pathlib.Path.home()/'.local/bin/claude')))
     (root/'bin/claude').write_text(script); (root/'bin/claude').chmod(0o700)
+    # A wrapper that drops TERM/COLORTERM makes every Claude screenshot monochrome.
+    subprocess.run(['/usr/bin/python3', str(OUT.parent/'r9-20261021/color_check.py')], check=True)
     (root/'bin/codex').symlink_to('/opt/homebrew/bin/codex')
     env={'PATH':str(root/'bin')+':/opt/homebrew/bin:/usr/bin:/bin:/usr/sbin:/sbin','HOME':str(home),'CODEX_HOME':str(home/'.codex'),'CLAUDE_CONFIG_DIR':str(home/'.claude'),'LANG':'en_US.UTF-8','SHELL':'/bin/zsh'}
     b=root/'Keepline Start Acceptance.app'; mac=b/'Contents/MacOS'; mac.mkdir(parents=True)

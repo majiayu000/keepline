@@ -24,6 +24,8 @@
 | 真正输入框只填一次且不发送、首轮正确关联待办 | **未验证最终构建**：16:50 左右系统锁屏；CGSSessionScreenIsLocked=Yes，前台 loginwindow，CUA cgWindowNotFound | 隔离实例见 [runtimes](runtimes.json) |
 | 真实 Claude 审批与“完成。”归待核对 | **本轮未验证**：未发送付费请求；现有完成自述单测与模拟审批集成测试单列，不冒充真实回合 | 见测试记录 |
 
+本轮 Claude 截图在主题页之后都是单色：复用的 r9 启动器丢掉了 `TERM` / `COLORTERM`，不是 Keepline 渲染问题，也不能当颜色证据。启动器已经修复；夹具现在启动前先跑 [r9 color_check](../r9-20261021/color_check.py)，复验时再用 `--live <root>` 确认运行中的进程。
+
 主题、安全说明截图来自修复过程中的构建；无编号信任菜单是在其后发现并修复。最终构建没有完整原生通过证据，不把前两项扩展成整条通过。
 
 ## 自动检查
