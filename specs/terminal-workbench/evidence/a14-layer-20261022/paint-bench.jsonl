@@ -1,0 +1,12 @@
+{"variant":"base","round":1,"panes":1,"frames":2000,"main_thread_cpu_s":2.0158,"cpu_us_per_frame":1007.9,"wall_s":2.017}
+{"variant":"opt","round":1,"panes":1,"frames":2000,"main_thread_cpu_s":1.0221,"cpu_us_per_frame":511.0,"wall_s":1.022}
+{"variant":"base","round":1,"panes":4,"frames":2000,"main_thread_cpu_s":6.5561,"cpu_us_per_frame":3278.1,"wall_s":6.563}
+{"variant":"opt","round":1,"panes":4,"frames":2000,"main_thread_cpu_s":1.2093,"cpu_us_per_frame":604.7,"wall_s":1.209}
+{"variant":"base","round":2,"panes":1,"frames":2000,"main_thread_cpu_s":2.0333,"cpu_us_per_frame":1016.7,"wall_s":2.035}
+{"variant":"opt","round":2,"panes":1,"frames":2000,"main_thread_cpu_s":1.0468,"cpu_us_per_frame":523.4,"wall_s":1.047}
+{"variant":"base","round":2,"panes":4,"frames":2000,"main_thread_cpu_s":6.4218,"cpu_us_per_frame":3210.9,"wall_s":6.427}
+{"variant":"opt","round":2,"panes":4,"frames":2000,"main_thread_cpu_s":1.2182,"cpu_us_per_frame":609.1,"wall_s":1.222}
+{"variant":"base","round":3,"panes":1,"frames":2000,"main_thread_cpu_s":2.0282,"cpu_us_per_frame":1014.1,"wall_s":2.029}
+{"variant":"opt","round":3,"panes":1,"frames":2000,"main_thread_cpu_s":1.0253,"cpu_us_per_frame":512.7,"wall_s":1.027}
+{"variant":"base","round":3,"panes":4,"frames":2000,"main_thread_cpu_s":6.4403,"cpu_us_per_frame":3220.2,"wall_s":6.471}
+{"variant":"opt","round":3,"panes":4,"frames":2000,"main_thread_cpu_s":1.1932,"cpu_us_per_frame":596.6,"wall_s":1.196}
