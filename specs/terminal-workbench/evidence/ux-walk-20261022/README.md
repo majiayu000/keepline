@@ -1,6 +1,6 @@
 # 体验走查（2026-10-22，隔离 runtime）
 
-**决定：修掉 4 个高、中优先级问题（下表“已修”）；其余列为待办，不阻塞。** 背景：用户 2026-10-22 决定先做功能和体验，性能放到首版之后。
+**决定：13 个问题全部处理：第一轮修 4 个（2026-10-22 上午），第二轮修其余 9 个（下午，其中 #9 已被第一轮的修复顺带解决）。** 背景：用户 2026-10-22 决定先做功能和体验，性能放到首版之后。
 
 ## 方法与边界
 
@@ -17,16 +17,23 @@
 | 2 | 高 | 在 Keepline 画面里用 `--session-id` 启动的会话，只因工作目录在 /tmp 就被当成“临时目录会话”隐藏：不进“需要你”，没有角标和菜单栏条目，等审批也不提示。复验 A04 时发现。 | **已修** 510c77a：临时目录只隐藏非 Keepline 启动的会话；子代理、SDK、`-p` 照旧隐藏。 |
 | 3 | 中 | 用户 Cmd+V 多行文本到没开 bracketed paste 的程序（如 cat）时被直接拒绝（A03）。 | **已修** ac70752：先确认，再粘贴，与 Ghostty 的粘贴保护一致；Keepline 自己的预填仍然拒绝多行。 |
 | 4 | 中 | “你在这里”卡、卡片菜单和待办详情在没有结局时也显示“撤销结局”，结局已设定时还会重复提供同一个结局。 | **已修** 9c4e3fc。见 [after/main-native.png](after/main-native.png)。 |
-| 5 | 中 | 首次打开只有一个空 shell 和空的待办区，没有任何引导：用户不知道要在画面里运行 codex / claude，还是先建待办。 | 待办：空状态加一句引导和“新建待办”入口。 |
-| 6 | 中 | 待办“开始”的 Agent 选择器（选 Agent：Codex / Claude Code / 取消）出现在待办列表下方，看不出是为哪条待办选的。见 [native/startpick-native.png](native/startpick-native.png)。 | 待办：选择器放到对应待办行下，或带上待办标题。 |
-| 7 | 中 | 从 Finder 或 Dock 启动时，进程的 cwd 是 `/`，默认空间“工作空间”的目录可能就是 `/`，新画面也从 `/` 开始。 | 未验证：只看了代码（`load_workspace` 用 `current_dir()`），需要在 Finder 启动后确认。 |
-| 8 | 低 | “需要你”为 0 时，“跳到下一个等你的 →”仍然显示。 | 待办：没有可跳的会话时隐藏或置灰。 |
-| 9 | 低 | 待办详情有 7 个操作按钮，换行后“返回画面”单独占一行。 | 待办：次要操作收进菜单。 |
-| 10 | 低 | 标签标题用等宽字体（`CLI 问题反馈` 字距偏宽），与左栏、标题栏不一致。 | 待办。 |
-| 11 | 低 | 清理页的“你要它”与标题重复，信息量为零。 | 待办。 |
-| 12 | 低 | 菜单栏面板固定 360×480，内容只有两条时下半部分空白。 | 待办：高度跟随内容。 |
-| 13 | 低 | 菜单栏写“0 个出错”，鸟瞰却有 4 个“出错了”。两者差在外部会话（菜单栏按设计只计托管会话），但面板上没有说明。 | 待办：文案注明“托管”，或给外部会话单独计数。 |
+| 5 | 中 | 首次打开只有一个空 shell 和空的待办区，没有任何引导：用户不知道要在画面里运行 codex / claude，还是先建待办。 | **已修** 2453a9a：没有待办的空间在待办区显示一句引导（可直接在终端里运行 codex / claude，Keepline 自动跟踪）和“＋ 新建待办”。前 [first-open/main-native.png](first-open/main-native.png) → 后 [after/first-open-native.png](after/first-open-native.png)。 |
+| 6 | 中 | 待办“开始”的 Agent 选择器（选 Agent：Codex / Claude Code / 取消）出现在待办列表下方，看不出是为哪条待办选的。见 [native/startpick-native.png](native/startpick-native.png)。 | **已修** cdb2efc：选择器本来就插在对应待办行下面，问题是只写“选 Agent”。现在写“「待办标题」用哪个 Agent”。前 [native/startpick-native.png](native/startpick-native.png) → 后 [after/startpick-native.png](after/startpick-native.png)。 |
+| 7 | 中 | 从 Finder 或 Dock 启动时，进程的 cwd 是 `/`，默认空间“工作空间”的目录可能就是 `/`，新画面也从 `/` 开始。 | **已确认并修复** 6d3f108：隔离测试包经 `open -n`（与 Finder、Dock 一样走 LaunchServices）启动时，默认空间和第一个终端都在 `/`（[cwd-before.json](after/cwd-before.json)）。修复后都在家目录（[cwd-after.json](after/cwd-after.json)），复现脚本见 [cwd-probe.py](cwd-probe.py)。从 shell 启动时仍沿用当时的目录；已经建好的空间不改。 |
+| 8 | 低 | “需要你”为 0 时，“跳到下一个等你的 →”仍然显示。 | **已修** 2453a9a：只在有会话需要你时才显示。后 [after/first-open-native.png](after/first-open-native.png)。 |
+| 9 | 低 | 待办详情有 7 个操作按钮，换行后“返回画面”单独占一行。 | **已修** 9c4e3fc：去掉误显示的“撤销结局”后只剩 6 个按钮，一行放得下，不需要另改。前 [native/tododetail-native.png](native/tododetail-native.png) → 后 [after/tododetail-native.png](after/tododetail-native.png)。 |
+| 10 | 低 | 标签标题用等宽字体（`CLI 问题反馈` 字距偏宽），与左栏、标题栏不一致。 | **已修** 0331068：标签改用界面字体。Main 设计稿是界面字体，TodoStart 稿用的是等宽字体，两份稿子本身不一致，这里以 Main 为准。后 [after/main-native.png](after/main-native.png)。 |
+| 11 | 低 | 清理页的“你要它”与标题重复，信息量为零。 | **已修** ef0587d：“你要它”与标题相同时不再显示这一行。前 [native/cleanup-native.png](native/cleanup-native.png) → 后 [after/cleanup-native.png](after/cleanup-native.png)。 |
+| 12 | 低 | 菜单栏面板固定 360×480，内容只有两条时下半部分空白。 | **已修** 82875c6：面板高度跟随内容，最高到设计高度 480。前 [native/menubar-native.png](native/menubar-native.png) → 后 [after/menubar-native.png](after/menubar-native.png)。 |
+| 13 | 低 | 菜单栏写“0 个出错”，鸟瞰却有 4 个“出错了”。两者差在外部会话（菜单栏按设计只计托管会话），但面板上没有说明。 | **已修（只改文案）** 9adfa7b：页脚加一行“等你、出错只计 Keepline 里的画面；外部会话在鸟瞰里看”，计数口径不变。后 [after/menubar-native.png](after/menubar-native.png)。 |
 
 ## 检查
 
 每个修复提交前都跑了 `cargo fmt --check`、`cargo clippy --workspace --all-targets -D warnings` 和 `cargo test --workspace`。最后一次全套是 107 项通过加 1 个既有 ignored，连续两遍全绿。机器高负载（load average 100 以上）时，集成测试里有几项会偶发超时；单独跑或负载降下来后都能通过，换回 HEAD 的源码也能复现同样的失败，详见 [A15 记录](../a15-real-replies-20261022/README.md)。
+
+## 第二轮（#5–#13）
+
+- 修复前的截图沿用第一轮的 [native/](native/) 和 [first-open/](first-open/)，修复后的放在 [after/](after/)；截图都由同一个 40 会话夹具、或全新的空 runtime 原生渲染。
+- 每个主题单独提交；提交前都只把该主题的改动放回工作区，再跑 fmt、clippy -D warnings 和 `cargo test --workspace`。
+- 当时本机负载在 30–85 之间，集成测试每轮有一项偶发失败：`two_cli_conversations…`（等不到 hook 状态文件）、`fsevents_delivers…`、`forty_idle_terminals…`（失败特征与修改之前那次一样）。它们单独跑都通过（`two_cli_conversations…` 连续 3 次）。全部改动叠加后的最终版本全套 107 项通过（另 1 项 ignored），这也是截图所用的版本。
+- 仍需用户真实点一遍的：首次打开的“＋ 新建待办”、Agent 选择器的点选、菜单栏面板的弹出高度，以及从 Finder 真正双击启动后的默认目录。本轮的 `open -n` 与 Finder 走同一条 LaunchServices 路径，但不等于 Finder 双击本身。
