@@ -21,6 +21,8 @@ with sqlite3.connect("file:"+DB+"?mode=ro",uri=True) as db:
 base={"PATH":str(root/"bin")+":/usr/bin:/bin:/usr/sbin:/sbin","LANG":"en_US.UTF-8","HOME":str((root/"home").resolve()),"CLAUDE_CONFIG_DIR":str((root/"home").resolve()/".claude")}
 base.update({k:str(v) for k,v in env.items()})
 base.update({"HOME":str((root/"home").resolve()),"CLAUDE_CONFIG_DIR":str((root/"home").resolve()/".claude"),"DISABLE_AUTOUPDATER":"1"})
+# keeplined sets these on the PTY; without them Claude Code renders monochrome.
+base.update({k:os.environ[k] for k in ("TERM","COLORTERM") if k in os.environ})
 os.execve(CLI,[CLI,"--permission-mode","default","--strict-mcp-config","--mcp-config",str(root/"mcp.json"),*sys.argv[1:]],base)
 '''.replace('DB',repr(str(pathlib.Path.home()/'.cc-switch/cc-switch.db'))).replace('CLI',repr(str(pathlib.Path.home()/'.local/bin/claude')))
  launcher=bin/'claude';launcher.write_text(script);launcher.chmod(0o700)
