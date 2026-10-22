@@ -20,6 +20,7 @@ async function mockSessions(page: Page, statuses: readonly SessionStatus[]) {
     let data: unknown = {};
     if (path === '/api/auth/status') data = { setupComplete: true, authenticated: true };
     else if (path === '/api/ledger') data = [ledger];
+    else if (path === `/api/ledger/${ledger.sessionId}`) data = ledger;
     else if (path === '/api/ledger/outside-attention') data = [];
     else if (path === '/api/status/monitor') data = {
       scan: { running: false, failed: false, lastCompletedAt: now }, runtimes: [],
@@ -55,6 +56,10 @@ test(`jumping from overview shows and expands a ${status} session`, async ({ pag
   const sessions = await mockSessions(page, [status, 'running']);
   await page.goto('/?view=overview');
   await page.getByRole('button', { name: '查看待响应会话', exact: true }).click();
+  await expect(page).toHaveURL(/view=overview/);
+  const drawer = page.getByRole('dialog', { name: `会话详情：${row.title}` });
+  await expect(drawer).toBeVisible();
+  await drawer.getByRole('button', { name: '查看会话记录', exact: true }).click();
   await expect(page).toHaveURL(/view=sessions/);
   const card = page.getByRole('article', { name: sessions[0].title, exact: true });
   await expect(card).toBeVisible();

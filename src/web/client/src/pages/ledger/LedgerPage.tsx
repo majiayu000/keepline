@@ -209,20 +209,7 @@ export function LedgerPage({
       void c.perform(() => c.accept(row, "accepted_with_gaps", reason));
   };
   const primaryAction = (row: LedgerDetail) => {
-    if (row.state === "needs_input") {
-      onOpenSession(row.sessionId);
-      return;
-    }
-    if (row.state === "review" && row.progress.total === 0) { select(row.sessionId); return; }
-    if (row.offPlan.length) {
-      openFull(row.sessionId);
-      return;
-    }
-    if (row.state === "review") {
-      select(row.sessionId);
-      if (row.progress.done < row.progress.total) void c.perform(() => c.openPrompt(row));
-      else void c.perform(() => c.accept(row, "accepted"));
-    } else openFull(row.sessionId);
+    select(row.sessionId);
   };
   useEffect(() => {
     const key = (e: KeyboardEvent) => {

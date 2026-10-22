@@ -220,6 +220,8 @@ export function LedgerOverview({
               >
                 {visible.map((row) => {
                   const p = rowPresentation(row);
+                  const reply = row.activity?.lastMessage?.replace(/\s+/g, " ").trim();
+                  const replyPreview = reply && reply.length > 180 ? `${reply.slice(0, 180)}…` : reply;
                   const active = selectedId === row.sessionId;
                   const actions = [
                     "查看会话记录",
@@ -331,7 +333,7 @@ export function LedgerOverview({
                           <strong>{row.title}</strong>
                           {(row.isSubAgent || row.parentSessionId) && <SubtaskTag />}
                           {!!row.subagents?.length && <SubtaskTag count={row.subagents.length} />}
-                          <span>你说：“{p.ask}”</span>
+                          <span>{replyPreview ? `Agent：${replyPreview}` : `你说：“${p.ask}”`}</span>
                         </span>
                         <span className={styles.listActivity}>
                           {dot}
@@ -395,6 +397,9 @@ export function LedgerOverview({
                       <span className={styles.cardAsk} title={p.ask}>
                         你说：“<span>{p.ask}</span>”
                       </span>
+                      {replyPreview && <span className={styles.cardReply}>
+                        <span>Agent</span> {replyPreview}
+                      </span>}
                       {p.items.length > 0 && (
                         <span className={styles.cardProgress}>
                           <ProgressSegments items={p.items} stretch />
@@ -427,7 +432,7 @@ export function LedgerOverview({
                             onAction(row);
                           }}
                         >
-                          {p.action}
+                          {row.state === "review" ? "查看回复" : p.action}
                         </button>
                       )}
                       {!!row.subagents?.length && <SubtaskTag count={row.subagents.length} />}

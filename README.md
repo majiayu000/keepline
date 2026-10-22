@@ -4,58 +4,58 @@
 
 # Keepline
 
-### Never lose your local agent runtime work again.
+### Know what your agents did, what was checked, and what needs you.
 
-**A local CLI and dashboard for monitoring Codex and Claude Code sessions, recovering interrupted work where supported, and tracking available token and cost data.**
+**A local progress ledger for Codex and Claude Code. Compare your requests with execution evidence, review the gaps, and explicitly accept the result.**
 
 [![GitHub stars](https://img.shields.io/github/stars/majiayu000/keepline?style=flat-square&color=ffcc00)](https://github.com/majiayu000/keepline)
 [![License](https://img.shields.io/badge/license-MIT-blue.svg?style=flat-square)](LICENSE)
 
-[Quick Start](#quick-start) | [Features](#features) | [Screenshots](#web-dashboard) | [CLI reference](#cli-reference) | [中文](README_CN.md)
+[Quick Start](#quick-start) | [Features](#features) | [Dashboard](#web-dashboard) | [CLI reference](#cli-reference) | [中文](README_CN.md)
 
 <br />
 
-<img src="docs/assets/Sessions.png" alt="Keepline session dashboard" width="800" />
 
 </div>
 
 ---
 
-## The Problem
+## What Keepline helps you decide
 
-You're deep in a coding session with one or more local agent runtimes. Everything is going great. Then...
+Return after a break and see which agent needs an answer, what it changed, which
+checks ran, and whether the result meets your request. Open the original session
+to continue; completion requires your explicit acceptance.
 
-- **Terminal crashes** — hours of context, gone
-- **Multiple sessions** — which one was working on the auth bug?
-- **Cost anxiety** — "How much have I spent today?"
-- **Lost progress** — "What was I doing before lunch?"
+Keepline is moving to a native agent workbench: a Rust background process with a
+GPUI client, where each session is a real terminal inside the app. See the
+[product card](https://github.com/majiayu000/keepline/blob/feat/agent-workbench/specs/product-card.md) and [#147](https://github.com/majiayu000/keepline/pull/147). Until that work is merged, the Bun CLI,
+browser dashboard and Tauri menu-bar app in this branch remain available for
+session monitoring and recovery; the 1.2.0 menu-bar candidate is not planned for release.
 
-## The Solution
+## Progress ledger
 
-**Keepline** monitors local agent runtime sessions in real time, offers recovery actions for interrupted work where supported, tracks costs where supported, and preserves context across iterations. Codex and Claude Code are the first supported runtime adapters.
+- **Requests:** preserve your original words and the requirements to check.
+- **Evidence:** link recorded command results, test output, file operations and
+  commits to the work. An agent's own completion claim is not execution evidence.
+- **Acceptance:** show gaps and off-plan work; only you accept the result.
+- **Goals and todos:** link sessions to work items and roll progress up.
+- **Process and turn state:** keep them separate. Missing process observations
+  mean unknown, rather than proving the process exited or the task finished.
 
-For the implementation details behind the rename and Codex detection, see [Keepline Rebrand and Codex Detection Spec](docs/KEEPLINE_REBRAND_AND_CODEX_DETECTION_SPEC.md).
+Parsing local transcripts works without hooks. Optional hooks deliver live events;
+optional model analysis helps assess requirements and evidence. Neither is a
+prerequisite for viewing recorded activity, and model analysis cannot invent evidence.
+See the [product specification](specs/progress-ledger/product.md) and
+[technical design](specs/progress-ledger/tech.md).
 
-Build the Bun CLI and dashboard with the [source setup](#quick-start) below,
-then open `http://127.0.0.1:3377`.
+## Repository scope
 
----
-
-## Why Keepline?
-
-|  | Without Keepline | With Keepline |
-|--|-------------------|-----------------|
-| **Terminal crash** | Find the owning CLI's local session records | Aggregate lost sessions and available recovery methods |
-| **Multiple sessions** | Switch terminals, lose track | See all sessions in one dashboard |
-| **Cost tracking** | Check Anthropic console manually | Real-time costs with predictions |
-| **Session context** | Local transcripts usually remain; locate the right one | Persisted and searchable |
-| **Project overview** | Scattered across directories | Aggregated by project |
-
-## Repository Scope
-
-This repository now contains the Keepline core application and the in-repo `menubar-tauri` companion only.
-
-Experimental runner workspaces that used to live here have been moved out to the sibling directory `../Claude-Code-Monitor-extracted/` and are no longer part of this repository's build or test surface.
+- `src/`: Bun service, CLI, session adapters, progress ledger and React dashboard.
+- `menubar-tauri/`: macOS desktop app, embedded service, tray and notifications.
+- `sdk/swift/`: client for the stable local API.
+- `next/crates/keeplined/`: experimental Rust PTY daemon.
+- [`specs/terminal-workbench/`](https://github.com/majiayu000/keepline/tree/feat/agent-workbench/specs/terminal-workbench) (on the `feat/agent-workbench` branch): specification for the native
+  agent workbench, implemented on that branch and not yet merged.
 
 ---
 
@@ -88,7 +88,8 @@ If you also want the in-process rate limiter to identify real clients behind tha
 The desktop app now combines a compact menu-bar panel with a progress dashboard.
 It embeds the local Bun service; running the dashboard does not require a separate
 CLI installation. This checkout is a **candidate**, not evidence of a published
-1.2.0 release. Existing release downloads may still contain the older quota app.
+1.2.0 release, and it is not planned for release: the menu bar moves to the native
+workbench. Existing release downloads may still contain the older quota app.
 
 See [desktop build and first-run instructions](menubar-tauri/README.md).
 
@@ -164,54 +165,15 @@ recovery drills, see [chat-archive-rs](https://github.com/majiayu000/chat-archiv
 Session monitoring and runtime recovery serve a different purpose from archives.
 
 
-### Cost Analytics & Predictions
+### Usage, costs and cross-session memory
 
-Track spending in real-time. Know exactly where your tokens go.
+Usage and cost views use the token data available from each runtime, including
+cache reads and writes where recorded. Model rates come from the pricing table;
+costs are estimates and do not establish your provider's billed amount or quota.
+See [pricing](src/services/usage.pricing.ts).
 
-```
-┌─────────────────────────────────────────────────────────────────┐
-│ COST ANALYTICS                                                  │
-├─────────────────────────────────────────────────────────────────┤
-│ Today          $12.34  ▲ 23%                                    │
-│ This Week      $67.89                                           │
-│ This Month    $198.50  (Projected: $320)                        │
-│                                                                 │
-│ Cache Savings  $45.20  (38% of total)                           │
-│ Your hit rate: 72%                                              │
-└─────────────────────────────────────────────────────────────────┘
-```
-
-Features:
-- Per-session cost breakdown
-- Cache token tracking (creation 1.25x, read 0.1x)
-- Multi-model support (Opus, Sonnet, Haiku)
-- Daily/weekly/monthly trends
-
-### Cross-Session Memory
-
-Keepline implements the "relay race" pattern — your progress persists across sessions.
-
-```
-┌─────────────────────────────────────────────────────────────────┐
-│ SESSION MEMORY                               my-app             │
-├─────────────────────────────────────────────────────────────────┤
-│ Last Progress: Implemented OAuth2 login flow                    │
-│                                                                 │
-│ Completed:                                                      │
-│   ✓ Database schema design                                      │
-│   ✓ User model with bcrypt                                      │
-│   ✓ JWT token generation                                        │
-│                                                                 │
-│ Pending:                                                        │
-│   ○ Refresh token rotation                                      │
-│   ○ Password reset flow                                         │
-│                                                                 │
-│ Known Issues:                                                   │
-│   ! Token expiry not handled in middleware                      │
-└─────────────────────────────────────────────────────────────────┘
-```
-
-When you recover a session, this context is automatically injected.
+The memory commands preserve session notes and recovery context. These are
+separate from the progress ledger's execution evidence and user acceptance.
 
 ### Plans Tracking
 
@@ -229,22 +191,15 @@ Track progress on Claude's implementation plans. See phases, tasks, and completi
 └─────────────────────────────────────────────────────────────────┘
 ```
 
-### Web Dashboard
+### Web dashboard
 
-Beautiful, cyberpunk-themed dashboard with 5 color themes.
+The main interface is the progress ledger, with overview, todos, goals and review.
+Session records, plans, memory and usage views are available from the additional
+navigation menu. The desktop app serves this same dashboard.
 
-| Sessions | Analytics | Projects |
-|:--------:|:---------:|:--------:|
-| ![Sessions](docs/assets/Sessions.png) | ![Analytics](docs/assets/Analysis.png) | ![Projects](docs/assets/Projects.png) |
-
-**Keyboard shortcuts:**
-- `r` — Refresh sessions
-- `s` — Sync from Claude
-- `/` — Focus search
-- `t` — Cycle themes
-- `?` — Show help
-
-**Themes:** Cyberpunk, Matrix, Synthwave, Minimal, Tokyo
+`/` focuses search; `Cmd+,` (or `Ctrl+,`) opens settings. The screenshots under
+[`docs/assets/`](docs/assets/) show the earlier monitoring dashboard and are
+historical references rather than the current desktop design.
 
 ---
 
@@ -309,52 +264,21 @@ version in `src/infrastructure/session-summary-cache.ts`.
 
 ---
 
-## How It Works
+## How it works
 
-```
-┌─────────────────────────────────────────────────────────────────┐
-│                        Keepline                                │
-├─────────────┬─────────────┬─────────────┬─────────────┬─────────┤
-│   Web UI    │  Terminal   │   Daemon    │   Hooks     │   API   │
-│   (React)   │   (Ink)     │ (Background)│  (HTTP)     │  (REST) │
-├─────────────┴─────────────┴──────┬──────┴─────────────┴─────────┤
-│                                  │                               │
-│  ┌───────────────────────────────▼────────────────────────────┐ │
-│  │                    Session Service                          │ │
-│  │  • Aggregates process state + file state                   │ │
-│  │  • Detects running/waiting/idle/lost sessions              │ │
-│  │  • Calculates costs with cache token support               │ │
-│  └────────────────────────────────────────────────────────────┘ │
-│                                  │                               │
-├──────────────────────────────────┼───────────────────────────────┤
-│  Process Scanner    │  Claude Parser    │  Memory System         │
-│  (ps + /proc)       │  (~/.claude/)     │  (SQLite)              │
-└─────────────────────┴───────────────────┴────────────────────────┘
-```
+1. Process scanners discover Codex and Claude Code processes; adapters parse their
+   local session records.
+2. The session aggregator reconciles process observations with transcript activity.
+   Startup reconciliation completes before business routes become available.
+3. The ledger associates requests, requirements and recorded execution evidence;
+   SQLite stores the local state and explicit acceptance decisions.
+4. The Hono API and WebSocket feed the React dashboard and desktop app. Hooks can
+   provide additional live events.
 
-**Data flow:**
-1. **Process Scanner** — Finds all running `claude` processes
-2. **Claude Parser** — Reads JSONL session files from `~/.claude/`
-3. **Aggregator** — Merges process state with file state
-4. **Memory System** — Persists progress for recovery
-5. **Web/CLI** — Presents unified view
-
----
-
-## Comparison
-
-| Feature | Manual | claude-mem | **Keepline** |
-|---------|:------:|:----------:|:--------------:|
-| Multi-session monitoring | - | - | **Yes** |
-| Session recovery | Owning CLI resume commands | - | **3 methods, where supported** |
-| Cost tracking | - | - | **Yes + predictions** |
-| Cache token analysis | - | - | **Yes** |
-| Cross-session memory | - | Yes | **Yes** |
-| Web dashboard | - | Basic | **5 themes** |
-| Plans tracking | - | - | **Yes** |
-| Real-time hooks | - | Yes | **Yes** |
-| Background daemon | - | - | **Yes** |
-| Sub-agent tracking | - | - | **Yes** |
+[Architecture import tests](src/__tests__/architecture-imports.test.ts) enforce
+layer boundaries. `/api/v1` is the stable local
+API used by the Swift SDK; see the [recovery OpenAPI contract](docs/local-api-v1-recovery.openapi.yaml).
+`/api` also serves the web dashboard.
 
 ---
 
@@ -412,18 +336,24 @@ Contributions welcome! See [CONTRIBUTING.md](CONTRIBUTING.md).
 # Development
 bun run dev          # Watch mode
 bun run typecheck    # Type check
-bun test             # Run tests
+bun run test         # Run isolated backend tests
 ```
 
 ---
 
-## Roadmap
+## Next steps and release status
 
-- [ ] Cost alerts & budgets
-- [ ] Team dashboard
-- [ ] Cursor/Copilot support
-- [ ] Session replay/timeline
-- [ ] Plugin system
+The source package, CLI, local service and desktop candidate report **1.2.0**.
+This is a source version, not a claim that the candidate is signed, notarized,
+publicly released or accepted in native testing. Follow the
+[verification record](specs/progress-ledger/verification.md) and
+[desktop instructions](menubar-tauri/README.md) for those separate gates.
+The [2026-10-19 maintenance record](specs/progress-ledger/maintenance-20261019.md)
+records the current source sync, local checks and outstanding release gates.
+
+The next product step is the [native agent workbench](https://github.com/majiayu000/keepline/tree/feat/agent-workbench/specs/terminal-workbench): start and switch real
+agent CLIs inside the app, answer requests and continue work. It is being built on
+the `feat/agent-workbench` branch ([#147](https://github.com/majiayu000/keepline/pull/147)) and is not part of this branch.
 
 ---
 
@@ -449,7 +379,7 @@ MIT License
 
 This project is one layer of an open-source stack for running coding agents (Claude Code, Codex) as serious infrastructure. Every piece works standalone; together they close the loop:
 
-`keepline` is the **Keep** layer — the session command center on top of the stack: monitor, recover, and never lose agent work.
+`keepline` is the **Keep** layer: compare requests with recorded work, accept results, and return to the right session.
 
 | Layer | Project | What it does |
 |---|---|---|
