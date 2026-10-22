@@ -3802,6 +3802,31 @@ impl Render for Workbench {
                     ),
             )
             .children(self.quick_task_row(cx));
+        // First open: say what the empty pane is for before asking for a task.
+        if self.quick_task.is_none() && !self.workspace.tasks.iter().any(|t| t.space == self.space)
+        {
+            sidebar = sidebar.child(
+                div()
+                    .px(px(T::S8))
+                    .flex()
+                    .flex_col()
+                    .items_start()
+                    .gap(px(T::S6))
+                    .child(label(
+                        "还没有待办。可以直接在右边的终端里运行 codex 或 claude，Keepline 会自动跟踪；也可以先记一条待办。",
+                    ))
+                    .child(
+                        button("empty-new-task", "＋ 新建待办")
+                            .h(px(T::ICON_HEIGHT))
+                            .px(px(T::S6))
+                            .text_size(px(T::META))
+                            .text_color(T::color(T::LINK))
+                            .on_click(
+                                cx.listener(|this, _, window, cx| this.show_quick_task(window, cx)),
+                            ),
+                    ),
+            );
+        }
         for task in self
             .workspace
             .tasks
@@ -4279,35 +4304,38 @@ impl Render for Workbench {
                         .on_click(cx.listener(|this, _, _, cx| this.launch(true, None, cx))),
                 );
             }
-            main = main.child(grid).child(
-                div()
-                    .h(px(T::FOOTER))
-                    .flex_shrink_0()
-                    .px(px(T::S14))
-                    .flex()
-                    .items_center()
-                    .gap(px(T::S16))
-                    .bg(T::color(T::PANEL))
-                    .border_t(px(T::BORDER_WIDTH))
-                    .border_color(T::color(T::BORDER))
-                    .child(label(format!(
-                        "本标签 {count} 个画面 · 共 {} 个会话",
-                        self.workspace.agent_sessions.len()
-                    )))
-                    .child(div().flex_1())
-                    .child(
-                        button("next-waiting", "跳到下一个等你的 →")
-                            .h(px(T::FOOTER))
-                            .on_click(
-                                cx.listener(|this, _, window, cx| this.next_waiting(window, cx)),
-                            ),
-                    )
-                    .child(label(if self.busy {
-                        "正在更新…"
-                    } else {
-                        "终端宿主已连接"
-                    })),
-            );
+            main =
+                main.child(grid).child(
+                    div()
+                        .h(px(T::FOOTER))
+                        .flex_shrink_0()
+                        .px(px(T::S14))
+                        .flex()
+                        .items_center()
+                        .gap(px(T::S16))
+                        .bg(T::color(T::PANEL))
+                        .border_t(px(T::BORDER_WIDTH))
+                        .border_color(T::color(T::BORDER))
+                        .child(label(format!(
+                            "本标签 {count} 个画面 · 共 {} 个会话",
+                            self.workspace.agent_sessions.len()
+                        )))
+                        .child(div().flex_1())
+                        .when(!self.needs_you().is_empty(), |d| {
+                            d.child(
+                                button("next-waiting", "跳到下一个等你的 →")
+                                    .h(px(T::FOOTER))
+                                    .on_click(cx.listener(|this, _, window, cx| {
+                                        this.next_waiting(window, cx)
+                                    })),
+                            )
+                        })
+                        .child(label(if self.busy {
+                            "正在更新…"
+                        } else {
+                            "终端宿主已连接"
+                        })),
+                );
         }
         root = root
             .relative()
