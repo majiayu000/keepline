@@ -550,11 +550,17 @@ impl Pane {
     }
     pub fn retry_handoff(&mut self, cx: &mut Context<Self>) {
         if let Some(h) = &mut self.handoff
-            && h.stage == Stage::NotReady
+            && matches!(h.stage, Stage::NotReady | Stage::Missing)
         {
-            h.stage = Stage::Agent;
+            // After a missing command the user installs it, so run the command again.
+            if h.stage == Stage::Missing {
+                h.stage = Stage::Shell;
+                h.released = false;
+            } else {
+                h.stage = Stage::Agent;
+                h.released = true;
+            }
             h.started = Instant::now();
-            h.released = true;
             h.still = 0;
             self.watch_handoff(cx);
         }
@@ -570,6 +576,7 @@ impl Pane {
             Stage::Shell | Stage::Agent => HandoffState::Waiting,
             Stage::Placed => HandoffState::Placed,
             Stage::NotReady => HandoffState::NotReady,
+            Stage::Missing => HandoffState::Missing,
         })
     }
     // A short-lived 250 ms check that ends with the handoff; idle panes keep no timer.
@@ -614,7 +621,12 @@ impl Pane {
             };
             (
                 vt.terminal().mode(Mode::BRACKETED_PASTE).unwrap_or(false),
-                vt.tail_text(40).unwrap_or_default(),
+                // The whole viewport, minus blank rows under the content: a tall pane
+                // with a shell at the top would otherwise show only blank rows here.
+                vt.tail_text(usize::from(self.requested_size.1.max(40)))
+                    .unwrap_or_default()
+                    .trim_end()
+                    .to_owned(),
             )
         };
         if tail == h.tail {
@@ -659,7 +671,11 @@ impl Pane {
                 if !bracketed {
                     h.released = true;
                 }
-                if h.released && bracketed && h.still >= 2 && !choice_menu(&h.tail) {
+                // Back at the shell prompt, bracketed paste returns too: without this
+                // check the task text would land on the shell's command line.
+                if command_missing(&h.tail) {
+                    h.stage = Stage::Missing;
+                } else if h.released && bracketed && h.still >= 2 && !choice_menu(&h.tail) {
                     let text = h.text.clone().unwrap_or_default();
                     h.stage = Stage::Placed;
                     self.prefill(&text, cx);
@@ -667,7 +683,7 @@ impl Pane {
                     h.stage = Stage::NotReady;
                 }
             }
-            Stage::Placed | Stage::NotReady => (),
+            Stage::Placed | Stage::NotReady | Stage::Missing => (),
         }
         cx.notify();
     }
@@ -1042,6 +1058,8 @@ enum Stage {
     Agent,
     Placed,
     NotReady,
+    /// The shell could not find the Agent command; nothing was placed.
+    Missing,
 }
 struct Handoff {
     command: Option<String>,
@@ -1057,6 +1075,7 @@ pub enum HandoffState {
     Waiting,
     Placed,
     NotReady,
+    Missing,
 }
 /// A numbered menu with a cursor on screen: the Agent is asking something else first.
 fn choice_menu(tail: &str) -> bool {
@@ -1064,6 +1083,14 @@ fn choice_menu(tail: &str) -> bool {
         let l = l.trim_start_matches(['│', ' ']);
         ["❯ 1.", "› 1.", "> 1."].iter().any(|m| l.starts_with(m))
     })
+}
+/// zsh, bash and fish wording for a command that is not on PATH, near the prompt.
+fn command_missing(tail: &str) -> bool {
+    tail.lines()
+        .rev()
+        .filter(|l| !l.trim().is_empty())
+        .take(4)
+        .any(|l| l.contains("command not found") || l.contains("Unknown command"))
 }
 fn line_count(text: &str) -> usize {
     text.trim_end_matches(['\r', '\n']).lines().count()
@@ -1083,6 +1110,16 @@ mod paste_tests {
 }
 #[cfg(test)]
 mod handoff_tests {
+    #[test]
+    fn a_missing_agent_command_is_reported_not_waited_on() {
+        assert!(super::command_missing(
+            "Agent-OS% codex\nzsh: command not found: codex\nAgent-OS% "
+        ));
+        assert!(super::command_missing(
+            "$ claude\nbash: claude: command not found\n$ "
+        ));
+        assert!(!super::command_missing("› 写一个测试\n\n  ? for shortcuts"));
+    }
     #[test]
     fn menus_block_placement_but_the_input_box_does_not() {
         assert!(super::choice_menu(
