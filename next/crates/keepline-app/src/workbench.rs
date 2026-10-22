@@ -2128,7 +2128,7 @@ impl Workbench {
         self.workspace
             .content
             .get(&s.id)
-            .map_or(Some("缺少交互入口证据"), |c| c.hidden_reason())
+            .map_or(Some("缺少交互入口证据"), |c| c.hidden_for(s))
     }
     fn enter_card(&mut self, s: &AgentSession, window: &mut Window, cx: &mut Context<Self>) {
         self.card_menu = None;

@@ -63,7 +63,7 @@ fn cstring(value: &str) -> CString {
 }
 fn fact(w: &Workspace, s: &AgentSession) -> Option<(String, String)> {
     let c = w.content.get(&s.id)?;
-    if c.hidden_reason().is_some() {
+    if c.hidden_for(s).is_some() {
         return None;
     }
     let group = c.group(s, w, now());
@@ -129,7 +129,7 @@ fn panel(w: &Workspace) -> String {
         let Some(c) = w.content.get(&s.id) else {
             continue;
         };
-        if c.hidden_reason().is_some() {
+        if c.hidden_for(s).is_some() {
             continue;
         }
         let group = c.group(s, w, now());
