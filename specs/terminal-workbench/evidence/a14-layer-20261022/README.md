@@ -1,6 +1,6 @@
 # A14 前台 CPU：终端网格单层绘制（2026-10-22）
 
-**决定：采用单层绘制（commit c68e2da）；A14 新的前台倍率待验证，A14 维持不通过。** 本轮没有取得任何有效的前台资源样本：02:40 起本机一直锁屏，到 09:30 自动截止时仍锁定（用户已约 6.7 小时无输入）。最后一次有效倍率仍是 R8 的 1.60×（1 画面）/ 1.24×（4 画面），那是旧构建的数据，不代表本次改动后的结果。下面的绘制路径 A/B 只说明热点已经消除，**不是** A14 倍率，也不能据此推算 Ghostty 比值。
+**决定：采用单层绘制（commit c68e2da）；A14 新的前台倍率待验证，A14 维持不通过。** 本轮没有取得任何有效的前台资源样本：02:40–09:30 本机锁屏；10:36–10:48 用户留出的约 10 分钟窗口里只完成 1 次单画面尝试，22 秒时失焦作废，之后一直有键鼠输入。最后一次有效倍率仍是 R8 的 1.60×（1 画面）/ 1.24×（4 画面），那是旧构建的数据，不代表本次改动后的结果。下面的绘制路径 A/B 只说明热点已经消除，**不是** A14 倍率，也不能据此推算 Ghostty 比值。
 
 ## 支撑的决定与放弃条件
 
@@ -47,7 +47,11 @@ GPUI 的 `Scene::insert_primitive` 在 layer 栈非空时，直接使用 layer �
 - [ghostty-fixture.py](ghostty-fixture.py)：从 /Applications 复制 Ghostty 1.3.1，只改副本的 bundle ID，并做 ad-hoc 签名。四画面由第一个 surface 通过 AppleScript 让**副本自身**分屏。这条路径因为锁屏没有跑通，属于未验证；
 - [run.py](run.py)：等待“未锁屏且 20 秒没有键鼠输入”，再依次跑 opt-1、Ghostty-1、opt-4、Ghostty-4、base-1、base-4。每个用例用未修改的 R5 measure.py 和 [frontmost.swift](frontmost.swift) 审计前台，只在开始时激活一次，失焦即作废，最多 3 次。
 
-运行记录见 [run-log.json](run-log.json)：03:27 启动，09:30 截止，第一个用例都没有开始。run.py 每 15 秒检查一次，但只记录了截止事件；锁屏状态是在 02:40、03:26、09:30 手动抽查得到的（`CGSSessionScreenIsLocked=1`，见 [lock.swift](lock.swift)），09:30 时用户已约 24300 秒无输入。没有强抢焦点，没有拿锁屏或后台下的低值计算倍率。凌晨的一次 Ghostty 探针曾创建出无 surface 的窗口，已立即结束，不产生数据。用户的 Keepline（target/bundle）、Ghostty、后台和 /Applications 都没有动过。
+夜间运行见 [run-log-overnight.json](run-log-overnight.json)：03:27 启动，09:30 截止，第一个用例都没有开始。**更正**：夜间版 run.py 把“未锁屏”判断写成匹配 `locked=0`，而解锁时 lock.swift 实际输出的是 `locked=false`，所以即使屏幕解锁，夜间版也不会开始采样。10:36 发现后已改为“不含 `locked=1`”。夜间版只记录了截止事件；锁屏状态是在 02:40、03:26、09:30 手动抽查得到的（`CGSSessionScreenIsLocked=1`，见 [lock.swift](lock.swift)），09:30 时用户已约 24300 秒无输入。白天复测见 [run-log.json](run-log.json)：用户说明会离开约 10 分钟后，10:36 启动，截止时间设为 12 分钟。
+- keepline-opt-one 第 1 次：开始时输入已空闲 43 秒并成功激活测试窗口；22.3 秒时 Claude App 成为前台，同时检测到键鼠输入（空闲 0 秒），判为无效。见 [focus](keepline-opt-one-1-focus-1.json)。该次资源值（总 CPU 1.222 秒，其中客户端 1.171 秒）保留在 [keepline-opt-one-1.json](keepline-opt-one-1.json)，**不计入任何倍率**。它没有低于 R8 旧构建的 1.158 秒；因为样本无效，只能说明不能据此预期单画面已经达标，不能据此下结论。
+- 之后到 10:48 截止，一直没有出现连续 20 秒无输入的空档，Ghostty 和四画面用例都没有开始。测试客户端、后台、生产者都按 spec 里的 PID 结束；用户 Keepline（target/bundle）未受影响。
+
+没有强抢焦点，没有拿锁屏或后台下的低值计算倍率。凌晨的一次 Ghostty 探针曾创建出无 surface 的窗口，已立即结束，不产生数据。用户的 Keepline（target/bundle）、Ghostty、后台和 /Applications 都没有动过。
 
 ## 复跑方法
 

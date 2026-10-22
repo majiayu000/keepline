@@ -18,7 +18,8 @@ def idle():
     o = subprocess.run(['ioreg', '-c', 'IOHIDSystem'], capture_output=True, text=True).stdout
     return int(next(l for l in o.splitlines() if 'HIDIdleTime' in l).split()[-1]) / 1e9
 def ready():
-    return b'locked=0' in subprocess.run([lock], capture_output=True).stdout and idle() >= 20
+    # Unlocked sessions have no CGSSessionScreenIsLocked key, printed as locked=false.
+    return b'locked=1' not in subprocess.run([lock], capture_output=True).stdout and idle() >= 20
 def wait_ready():
     while not ready():
         if time.time() > deadline: return False
