@@ -1311,11 +1311,20 @@ impl Workbench {
             );
         }
         let mut actions = div().flex().flex_wrap().gap(px(T::S8));
+        // Offer only real changes: no 撤销结局 without an outcome, no repeat of the current one.
         for (name, outcome) in [
             ("标记完成", Outcome::Completed),
             ("放弃", Outcome::Abandoned),
             ("撤销结局", Outcome::Open),
-        ] {
+        ]
+        .into_iter()
+        .filter(|(_, o)| {
+            o != self
+                .workspace
+                .task_outcomes
+                .get(&task.id)
+                .unwrap_or(&Outcome::Open)
+        }) {
             let tid = tid.clone();
             actions = actions.child(button(name, name).on_click(cx.listener(
                 move |this, _, _, cx| {
@@ -2068,7 +2077,10 @@ impl Workbench {
             ("已验收", Outcome::Completed),
             ("放弃", Outcome::Abandoned),
             ("撤销结局", Outcome::Open),
-        ] {
+        ]
+        .into_iter()
+        .filter(|(_, o)| *o != session.outcome)
+        {
             let sid = session.id.clone();
             actions = actions.child(
                 button(gpui::SharedString::from(format!("here-{name}")), name)
@@ -2169,7 +2181,10 @@ impl Workbench {
             ("已验收", Outcome::Completed),
             ("放弃", Outcome::Abandoned),
             ("撤销结局", Outcome::Open),
-        ] {
+        ]
+        .into_iter()
+        .filter(|(_, o)| *o != session.outcome)
+        {
             let id = session.id.clone();
             menu = menu.child(
                 button(gpui::SharedString::from(format!("card-{label}")), label).on_click(
