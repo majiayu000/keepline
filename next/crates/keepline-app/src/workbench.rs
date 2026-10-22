@@ -4031,7 +4031,6 @@ impl Render for Workbench {
                     .gap(px(T::S6))
                     .border_0()
                     .rounded_none()
-                    .font_family(T::mono(cx).family)
                     .text_size(px(T::MONO_SIZE))
                     .text_color(T::color(if active { T::PRIMARY } else { T::SECONDARY }))
                     .when(active, |d| d.bg(T::color(T::RAISED)))
