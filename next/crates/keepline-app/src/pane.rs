@@ -666,8 +666,8 @@ impl Pane {
             }
             Stage::Agent => {
                 // The shell drops bracketed paste when it runs the command; the Agent turns
-                // it back on once its input box exists. A visible menu (folder trust, login,
-                // an approval) means the box is not the thing waiting.
+                // it back on even for onboarding pages. Require a visible input prompt too;
+                // a menu or a security notice is not ready to receive task text.
                 if !bracketed {
                     h.released = true;
                 }
@@ -675,7 +675,7 @@ impl Pane {
                 // check the task text would land on the shell's command line.
                 if command_missing(&h.tail) {
                     h.stage = Stage::Missing;
-                } else if h.released && bracketed && h.still >= 2 && !choice_menu(&h.tail) {
+                } else if h.released && bracketed && h.still >= 2 && agent_input_ready(&h.tail) {
                     let text = h.text.clone().unwrap_or_default();
                     h.stage = Stage::Placed;
                     self.prefill(&text, cx);
@@ -1077,12 +1077,36 @@ pub enum HandoffState {
     NotReady,
     Missing,
 }
-/// A numbered menu with a cursor on screen: the Agent is asking something else first.
-fn choice_menu(tail: &str) -> bool {
-    tail.lines().rev().take(20).any(|l| {
+/// Both supported CLIs mark their input with an arrow. Bracketed paste alone
+/// is not readiness: Claude also enables it on theme and security notice pages.
+/// Use the last marker so an old menu above a new input does not block placement.
+fn agent_input_ready(tail: &str) -> bool {
+    let mut menu_footer = false;
+    let selected = tail.lines().rev().find_map(|l| {
+        let lower = l.to_ascii_lowercase();
+        menu_footer |= lower.contains("enter to confirm")
+            || lower.contains("enter to select")
+            || lower.contains("enter to continue");
         let l = l.trim_start_matches(['│', ' ']);
-        ["❯ 1.", "› 1.", "> 1."].iter().any(|m| l.starts_with(m))
-    })
+        ["❯", "›", ">"].iter().find_map(|m| {
+            l.strip_prefix(m)
+                .filter(|s| s.is_empty() || s.starts_with(char::is_whitespace))
+                .map(str::trim_start)
+        })
+    });
+    // Claude 2.1.302 also uses unnumbered trust choices. Inspect only below
+    // the current marker so a previous menu cannot poison a later input box.
+    if menu_footer {
+        return false;
+    }
+    let Some(selected) = selected else {
+        return false;
+    };
+    if selected.is_empty() {
+        return true;
+    }
+    let digits = selected.bytes().take_while(u8::is_ascii_digit).count();
+    !(tail.contains("Choose the text style") || digits > 0 && selected[digits..].starts_with('.'))
 }
 /// zsh, bash and fish wording for a command that is not on PATH, near the prompt.
 fn command_missing(tail: &str) -> bool {
@@ -1111,6 +1135,52 @@ mod paste_tests {
 #[cfg(test)]
 mod handoff_tests {
     #[test]
+    fn onboarding_and_nonfirst_choices_do_not_receive_task_text() {
+        // Real Claude 2.1.302 onboarding has no numeric options, and its preview
+        // can put the selected row more than twenty lines above the bottom.
+        let theme = format!(
+            "Welcome to Claude Code\nChoose the text style that looks best with your terminal\n❯ ✔ Dark mode\n  Light mode\n{}",
+            "preview row\n".repeat(25)
+        );
+        assert!(!super::agent_input_ready(&theme));
+        assert!(!super::agent_input_ready(
+            "Choose the text style that looks best with your terminal\n  ✔ Dark mode\n❯ Light mode"
+        ));
+        assert!(!super::agent_input_ready(
+            "Sign in\n  1. With ChatGPT\n> 2. With Device Code\n  3. API key"
+        ));
+        assert!(!super::agent_input_ready(
+            "Allow this command?\n› 3. No, cancel"
+        ));
+        assert!(super::agent_input_ready("› 写一个测试\n? for shortcuts"));
+        assert!(super::agent_input_ready(&format!(
+            "{theme}\n❯ \n? for shortcuts"
+        )));
+        assert!(super::agent_input_ready(
+            "› 2. Cancel\n\n› Ask Codex to do anything"
+        ));
+    }
+    #[test]
+    fn bracketed_paste_pages_without_an_input_prompt_are_not_ready() {
+        assert!(!super::agent_input_ready(
+            "Security notes:\n1. Claude can make mistakes.\n2. Only use code you trust.\nPress Enter to continue…"
+        ));
+        assert!(!super::agent_input_ready(
+            "Welcome to Codex\n>_ OpenAI Codex\nLoading…"
+        ));
+        assert!(!super::agent_input_ready("project% "));
+        assert!(super::agent_input_ready("❯ \n? for shortcuts"));
+        assert!(!super::agent_input_ready(
+            "Accessing workspace:\n❯ No, exit\n  Yes, I trust this folder\nEnter to confirm · Esc to cancel"
+        ));
+        assert!(!super::agent_input_ready(
+            "Accessing workspace:\n  No, exit\n❯ Yes, I trust this folder\nEnter to confirm · Esc to cancel"
+        ));
+        assert!(super::agent_input_ready(
+            "❯ No, exit\nEnter to confirm · Esc to cancel\n❯ \n? for shortcuts"
+        ));
+    }
+    #[test]
     fn a_missing_agent_command_is_reported_not_waited_on() {
         assert!(super::command_missing(
             "Agent-OS% codex\nzsh: command not found: codex\nAgent-OS% "
@@ -1122,15 +1192,17 @@ mod handoff_tests {
     }
     #[test]
     fn menus_block_placement_but_the_input_box_does_not() {
-        assert!(super::choice_menu(
+        assert!(!super::agent_input_ready(
             "Do you trust the files in this folder?\n\n❯ 1. Yes, proceed\n  2. No, exit\n"
         ));
-        assert!(super::choice_menu(
+        assert!(!super::agent_input_ready(
             "│ › 1. Yes, allow Codex to work in this folder\n"
         ));
-        assert!(!super::choice_menu(
+        assert!(super::agent_input_ready(
             "› Ask Codex to do anything\n\n  ? for shortcuts\n"
         ));
-        assert!(!super::choice_menu("> \n  1. plan written by the agent\n"));
+        assert!(super::agent_input_ready(
+            "> \n  1. plan written by the agent\n"
+        ));
     }
 }
