@@ -1070,12 +1070,17 @@ impl Workbench {
                         ))
                         .text_color(T::color(T::POPOVER_SECONDARY)),
                     );
+                // The title already is the first ask when nothing better names the session.
+                let title = self.session_title(s);
                 for (name, text) in [
                     ("你要它", h.ask),
                     ("做成了", h.done),
                     ("停在", h.stopped),
                     ("下一步·推断", h.next),
-                ] {
+                ]
+                .into_iter()
+                .filter(|(name, text)| *name != "你要它" || text.trim() != title.trim())
+                {
                     card = card.child(
                         div()
                             .flex()
