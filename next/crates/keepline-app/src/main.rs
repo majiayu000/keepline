@@ -83,7 +83,7 @@ fn load_workspace(root: &Path) -> io::Result<Workspace> {
         _ => return Err(io::Error::other("workspace response missing")),
     };
     if workspace.spaces.is_empty() {
-        let cwd = std::env::current_dir()?.to_string_lossy().into_owned();
+        let cwd = default_space_dir()?.to_string_lossy().into_owned();
         if let Reply::Workspace(w) = rpc(
             &socket,
             &Request::Edit {
@@ -99,6 +99,15 @@ fn load_workspace(root: &Path) -> io::Result<Workspace> {
         }
     }
     Ok(workspace)
+}
+/// Finder and Dock start apps in "/", where nobody means to open a terminal: use the
+/// home directory then, and the launch directory otherwise (`run.sh`, a shell).
+fn default_space_dir() -> io::Result<PathBuf> {
+    let cwd = std::env::current_dir()?;
+    Ok(match std::env::var_os("HOME") {
+        Some(home) if cwd == Path::new("/") => PathBuf::from(home),
+        _ => cwd,
+    })
 }
 fn reopen_window(root: &Path, cx: &mut App) {
     if let Some(handle) = cx.windows().first().copied() {
