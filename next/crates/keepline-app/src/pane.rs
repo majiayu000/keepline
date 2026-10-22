@@ -40,6 +40,8 @@ pub struct Pane {
     last_focus: bool,
     search: Option<gpui::Entity<crate::field::Field>>,
     matches: Vec<(usize, String)>,
+    /// A multi-line paste waiting for the user's go-ahead (no bracketed paste).
+    paste_confirm: Option<String>,
 }
 impl Focusable for Pane {
     fn focus_handle(&self, _: &App) -> FocusHandle {
@@ -128,6 +130,7 @@ impl Pane {
             last_focus: false,
             search: None,
             matches: vec![],
+            paste_confirm: None,
         }
     }
     fn sync_focus(&mut self, window: &mut Window, cx: &mut Context<Self>) {
@@ -407,10 +410,37 @@ impl Pane {
     pub fn interrupt(&mut self, cx: &mut Context<Self>) {
         self.input(vec![3], cx);
     }
+    /// A user's own paste. Without bracketed paste each line would run as soon as it
+    /// arrives, so a multi-line paste asks first instead of being refused, as Ghostty's
+    /// paste protection does. Text Keepline places itself still goes through `prefill`.
     pub fn paste(&mut self, cx: &mut Context<Self>) {
-        if let Some(text) = cx.read_from_clipboard().and_then(|c| c.text()) {
+        let Some(text) = cx.read_from_clipboard().and_then(|c| c.text()) else {
+            return;
+        };
+        if !self.bracketed() && line_count(&text) > 1 && !text.contains('\x1b') {
+            self.paste_confirm = Some(text);
+            self.local_error = None;
+            cx.notify();
+        } else {
             self.prefill(&text, cx);
         }
+    }
+    fn confirm_paste(&mut self, cx: &mut Context<Self>) {
+        if let Some(text) = self.paste_confirm.take() {
+            self.input(plain_paste(&text), cx);
+        }
+        cx.notify();
+    }
+    fn bracketed(&self) -> bool {
+        self.connection
+            .state
+            .lock()
+            .ok()
+            .and_then(|s| {
+                s.vt.as_ref()
+                    .and_then(|v| v.terminal().mode(Mode::BRACKETED_PASTE).ok())
+            })
+            .unwrap_or(false)
     }
     pub fn copy(&self, cx: &mut Context<Self>) {
         let selected = self
@@ -642,16 +672,7 @@ impl Pane {
         cx.notify();
     }
     pub fn prefill(&mut self, command: &str, cx: &mut Context<Self>) {
-        let bracketed = self
-            .connection
-            .state
-            .lock()
-            .ok()
-            .and_then(|s| {
-                s.vt.as_ref()
-                    .and_then(|v| v.terminal().mode(Mode::BRACKETED_PASTE).ok())
-            })
-            .unwrap_or(false);
+        let bracketed = self.bracketed();
         if !bracketed && (command.contains('\n') || command.contains('\r')) {
             self.local_error = Some("终端尚未启用安全粘贴；请等待 shell 就绪后重试".into());
             cx.notify();
@@ -677,9 +698,7 @@ impl Pane {
             return;
         }
         if k.modifiers.platform && k.key == "v" {
-            if let Some(text) = cx.read_from_clipboard().and_then(|c| c.text()) {
-                self.prefill(&text, cx);
-            }
+            self.paste(cx);
             cx.stop_propagation();
             return;
         }
@@ -896,6 +915,16 @@ impl Render for Pane {
                         .child(status),
                 )
             })
+            .when_some(self.paste_confirm.as_deref().map(line_count),|d,lines| {
+                d.child(div().px(px(T::S12)).py(px(T::S8)).flex().items_center().gap(px(T::S12))
+                    .bg(T::color(T::PANEL)).text_size(px(T::META))
+                    .child(div().flex_1().text_color(T::color(T::SECONDARY))
+                        .child(format!("这个程序没有启用安全粘贴：要粘贴的 {lines} 行会逐行立即执行。")))
+                    .child(div().id("paste-anyway").cursor_pointer().text_color(T::color(T::LINK)).child(format!("仍然粘贴 {lines} 行"))
+                        .on_click(cx.listener(|this,_,_,cx|this.confirm_paste(cx))))
+                    .child(div().id("paste-cancel").cursor_pointer().child("取消")
+                        .on_click(cx.listener(|this,_,_,cx|{this.paste_confirm=None;cx.notify();}))))
+            })
             .when_some(self.search.clone(),|d,field| {
                 let mut panel=div().p(px(T::S8)).flex().flex_col().gap(px(T::S4)).child(field)
                     .child(div().flex().gap(px(T::S8))
@@ -1035,6 +1064,22 @@ fn choice_menu(tail: &str) -> bool {
         let l = l.trim_start_matches(['│', ' ']);
         ["❯ 1.", "› 1.", "> 1."].iter().any(|m| l.starts_with(m))
     })
+}
+fn line_count(text: &str) -> usize {
+    text.trim_end_matches(['\r', '\n']).lines().count()
+}
+/// What a terminal sends for a paste without bracketed paste: newlines become CR.
+fn plain_paste(text: &str) -> Vec<u8> {
+    text.replace("\r\n", "\r").replace('\n', "\r").into_bytes()
+}
+#[cfg(test)]
+mod paste_tests {
+    #[test]
+    fn plain_multiline_paste_counts_lines_and_sends_cr() {
+        assert_eq!(super::line_count("echo 一\necho 二\n"), 2);
+        assert_eq!(super::line_count("single line\n"), 1);
+        assert_eq!(super::plain_paste("a\r\nb\nc"), b"a\rb\rc");
+    }
 }
 #[cfg(test)]
 mod handoff_tests {
