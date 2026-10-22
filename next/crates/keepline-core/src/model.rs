@@ -304,7 +304,7 @@ impl Workspace {
                 times.push(until);
             }
             if let Some(c) = self.content.get(&session.id) {
-                if c.hidden_reason().is_some() || !session.outcome.needs_review(now) {
+                if c.hidden_for(session).is_some() || !session.outcome.needs_review(now) {
                     continue;
                 }
                 if c.turn == crate::content::Turn::Running && !session.current {
@@ -652,6 +652,21 @@ mod tests {
             cwd: "/tmp/a".into(),
             transcript: format!("/logs/{id}.jsonl"),
         }
+    }
+    #[test]
+    fn a_temporary_directory_hides_only_sessions_keepline_did_not_start() {
+        let mut c = crate::content::Content {
+            hidden_reason: crate::content::TEMPORARY_DIRECTORY.into(),
+            ..Default::default()
+        };
+        let mut s = observation("tmp");
+        assert_eq!(c.hidden_for(&s), None);
+        s.terminal = None;
+        assert!(c.hidden_for(&s).is_some());
+        // Real automation stays hidden even in a Keepline terminal.
+        s.terminal = Some("pty".into());
+        c.hidden_reason = "Claude 子代理 / sidechain".into();
+        assert!(c.hidden_for(&s).is_some());
     }
     fn tab(w: &mut Workspace, id: &str, space: &str, task: &str) {
         w.edit(Edit::PutTab {

@@ -94,7 +94,18 @@ pub fn short(text: &str, limit: usize) -> String {
     }
     s
 }
+/// Hidden reason for a session whose working directory is temporary.
+pub const TEMPORARY_DIRECTORY: &str = "临时目录会话";
 impl Content {
+    /// `hidden_reason` for this session: one Keepline started in its own terminal was
+    /// started by the user, so a temporary working directory alone does not hide it.
+    /// Sub-agents, SDK and print-mode runs stay hidden wherever they run.
+    pub fn hidden_for(&self, session: &AgentSession) -> Option<&str> {
+        if session.managed() && self.hidden_reason == TEMPORARY_DIRECTORY {
+            return None;
+        }
+        self.hidden_reason()
+    }
     pub fn hidden_reason(&self) -> Option<&str> {
         if !self.hidden_reason.is_empty() {
             Some(&self.hidden_reason)

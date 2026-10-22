@@ -413,7 +413,7 @@ impl Parser {
         .iter()
         .any(|root| cwd == *root || cwd.starts_with(&format!("{root}/")));
         let reason = if temporary {
-            Some("临时目录会话")
+            Some(keepline_core::content::TEMPORARY_DIRECTORY)
         } else if runtime == Agent::Claude {
             let entry = m["entrypoint"].as_str().unwrap_or("");
             let user_type = m["userType"].as_str().unwrap_or("");
