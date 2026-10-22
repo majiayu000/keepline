@@ -1202,6 +1202,27 @@
   font-size: 13px;
   line-height: 1.45;
 }
+.recap { display: grid; gap: 18px; margin: 18px 0; font-size: 13px; overflow-wrap: anywhere; }
+.recap h3 { margin: 0 0 8px; font-size: 13px; font-weight: 600; }
+.recap h3 > span { margin-left: 6px; color: #6b7280; font-weight: 400; }
+.recap p { margin: 6px 0; line-height: 1.6; }
+.recapQuestion { padding: 12px 14px; border: 1px solid #e3e6eb; border-radius: 10px; }
+.recapQuestion[data-pending] { background: #fffcf7; border-color: #f7c77d; }
+.recapQuestion small, .recapRange, .recapNote { color: #6b7280; font-size: 12px; }
+.recapRange { line-height: 1.6; }
+.recapRecord { border-top: 1px solid #eef0f4; padding: 9px 0; }
+.recapRecord > summary { display: flex; align-items: baseline; gap: 8px; cursor: pointer; line-height: 1.5; }
+.recapRecord > summary::before { content: "›"; color: #6b7280; flex: none; }
+.recapRecord[open] > summary::before { content: "⌄"; }
+.recapRecord > summary > span { flex: 1; min-width: 0; }
+.recapRecord strong { flex: none; color: #4f5bd5; font-size: 11px; font-weight: 500; }
+.recapRecord strong[data-failed] { color: #b45309; }
+.recapRecord > p { color: #6b7280; font-size: 12px; }
+.recapRecord pre { margin: 8px 0 0; padding: 8px; background: #f5f6f8; border-radius: 6px; white-space: pre-wrap; font-size: 12px; }
+.drawerOptional { margin-top: 16px; border-top: 1px solid #eef0f4; padding-top: 12px; font-size: 13px; }
+.drawerOptional > summary { color: #6b7280; cursor: pointer; }
+.cardReply { display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; overflow: hidden; overflow-wrap: anywhere; color: #4b5160; font-size: 12px; line-height: 1.5; }
+.cardReply > span { color: #7b8190; margin-right: 4px; }
 .subtaskRow {
   display: flex;
   align-items: center;

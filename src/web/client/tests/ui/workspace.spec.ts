@@ -435,6 +435,7 @@ test("用户消息最新在前，长粘贴保留末尾要求且能展开完整�
   await page.getByRole("button", { name: row.title, exact: true }).click();
   const drawer = page.getByRole("dialog");
   await expect(drawer.getByText("你发的消息 · 最新在前", { exact: true })).toBeVisible();
+  await drawer.getByText("你发的消息 · 最新在前", { exact: true }).click();
   await expect(drawer.locator('[class*="askRow"]').first()).toContainText(state.row.asks[1].text);
   await expect(drawer.getByText(tail, { exact: true })).toBeVisible();
   await expect(drawer.getByText(middle, { exact: true })).toHaveCount(0);
@@ -706,7 +707,11 @@ test("核对验收与带缺口验收沿用现有契约", async ({ page }) => {
   });
   state.row.progress.done = 3;
   await ready(page);
-  await page.getByRole("button", { name: "验收 (A)", exact: true }).click();
+  await page.getByRole("button", { name: "查看回复", exact: true }).click();
+  await expect(page.getByRole("dialog", { name: `会话详情：${row.title}` })).toBeVisible();
+  expect(calls.some(call => call.path.endsWith("/acceptances"))).toBe(false);
+  await page.getByRole("button", { name: `更多操作：${row.title}`, exact: true }).click();
+  await page.getByRole("menuitem", { name: "验收通过", exact: true }).click();
   await expect
     .poll(
       () =>
@@ -727,6 +732,94 @@ test("核对验收与带缺口验收沿用现有契约", async ({ page }) => {
       ),
     )
     .toBe(true);
+});
+
+for (const width of [1440, 390]) test(`轻量接手：无 Hooks 无清单也能核对事实，查看回复不会验收 · ${width}`, async ({ page }, info) => {
+  await page.setViewportSize({ width, height: 1000 });
+  const { state, calls } = await mockApi(page);
+  state.monitor.runtimes.forEach(runtime => { runtime.hookInstalled = false; runtime.receiverRunning = false; runtime.lastHookAt = undefined; });
+  state.row.state = "review";
+  state.row.items = [];
+  state.row.progress = { done: 0, total: 0 };
+  state.row.activity!.lastMessage = "CSV 导出已完成，检查全部通过。";
+  const at = now;
+  state.row.evidence = [
+    { id: "old-file", kind: "file", value: "old.ts", callId: "old", at: "2026-10-07T12:00:00+08:00", exitCode: 0 },
+    { id: "check-ok", kind: "command", value: "bun run typecheck", callId: "ok", at, exitCode: 0 },
+    { id: "check-failed", kind: "command", value: "bun test export", callId: "failed", at, exitCode: 1 },
+    { id: "test-failed", kind: "test", value: "11 pass · 1 fail", callId: "failed", at, exitCode: 1 },
+    { id: "new-file", kind: "file", value: "src/export.ts", callId: "edit", at, exitCode: 0 },
+  ];
+  state.row.trail = state.row.evidence.filter(e => e.kind !== "test").map(e => ({ callId: e.callId, name: "exec_command", summary: e.value, at: e.at, turnId: "turn-1", evidenceIds: [e.id], violations: [], acceptedOffPlan: false }));
+  state.row.changes = { since: "2026-10-07T12:30:00+08:00", files: state.row.evidence.filter(e => e.id === "new-file"), checks: state.row.evidence.filter(e => e.kind === "command" || e.kind === "test"), steps: state.row.trail.filter(s => s.callId !== "old") };
+  await ready(page);
+  await expect(page.getByRole("button", { name: row.title, exact: true })).toContainText(state.row.activity!.lastMessage!);
+  await page.getByRole("button", { name: "查看回复", exact: true }).click();
+  const drawer = page.getByRole("dialog", { name: `会话详情：${row.title}` });
+  await expect(drawer.getByText("最新回复", { exact: true })).toBeVisible();
+  await expect(drawer.getByText(state.row.activity!.lastMessage!, { exact: true })).toBeVisible();
+  await expect(drawer.getByText("暂无明确待回答的问题", { exact: true })).toBeVisible();
+  const checks = drawer.getByRole("region", { name: "最近检查记录" });
+  await expect(checks.getByRole("heading", { name: "执行与检查 2", exact: true })).toBeVisible();
+  await expect(checks.getByText("执行成功", { exact: true })).toBeVisible();
+  await expect(checks.getByText("执行失败 · exit 1", { exact: true })).toBeVisible();
+  await checks.locator("summary").filter({ hasText: "bun test export" }).click();
+  await expect(checks.getByText("11 pass · 1 fail", { exact: true })).toBeVisible();
+  await expect(checks.getByText(/调用 failed/)).toBeVisible();
+  const files = drawer.getByRole("region", { name: "最近文件变化" });
+  await expect(files.locator("summary").filter({ hasText: /^src\/export\.ts$/ })).toBeVisible();
+  await expect(files.getByText("old.ts", { exact: true })).toHaveCount(0);
+  await expect(drawer.locator("summary").filter({ hasText: "要求与验收" })).toHaveCount(0);
+  expect(calls.some(call => /\/(acceptances|follow-up|items)$/.test(call.path) || call.path.endsWith("/hooks/install"))).toBe(false);
+  expect(await page.evaluate(() => document.documentElement.scrollWidth > window.innerWidth)).toBe(false);
+  await page.screenshot({ path: info.outputPath(`轻量接手-${width}.png`) });
+  await drawer.getByRole("button", { name: "查看会话记录", exact: true }).click();
+  await expect(page).toHaveURL(/view=sessions/);
+  expect(new URL(page.url()).searchParams.get("sessionId")).toBe(row.sessionId);
+});
+
+test("轻量接手：首次查看展示已有事实，明确问题随新记录清除", async ({ page }) => {
+  const { state, calls } = await mockApi(page);
+  state.row.state = "needs_input";
+  state.row.inputRequest = { tool: "AskUserQuestion", question: "部署到哪个环境？", at: now };
+  state.row.observation = { source: "transcript", reason: "记录中有尚未回答的问题", at: now };
+  state.row.changes = { since: null, files: [], checks: [], steps: [] };
+  await ready(page);
+  await page.getByRole("button", { name: "查看待响应会话", exact: true }).click();
+  const drawer = page.getByRole("dialog");
+  await expect(drawer.locator("[data-pending]").getByText("部署到哪个环境？", { exact: true })).toBeVisible();
+  await expect(drawer.getByText(/首次查看，尚无上次查看的时间基准/)).toBeVisible();
+  await expect(drawer.getByRole("region", { name: "最近检查记录" }).getByText("执行成功", { exact: true })).toBeVisible();
+  await expect(drawer.locator("summary").filter({ hasText: "要求与验收" })).toBeVisible();
+  await expect(drawer.getByText("生成 API 文档", { exact: true })).not.toBeVisible();
+  await drawer.locator("summary").filter({ hasText: "要求与验收" }).click();
+  await expect(drawer.getByText("生成 API 文档", { exact: true })).toBeVisible();
+  state.row.state = "running";
+  state.row.inputRequest = undefined;
+  state.row.changes = { since: now, files: [], checks: [], steps: [] };
+  await page.clock.runFor(15000);
+  await expect(drawer.getByText("暂无明确待回答的问题", { exact: true })).toBeVisible();
+  await expect(drawer.getByText("这段时间没有新的执行结果记录。", { exact: true })).toBeVisible();
+  await expect(drawer.getByText("这段时间没有新的文件修改记录。", { exact: true })).toBeVisible();
+  expect(calls.some(call => call.path.endsWith("/acceptances") || call.path.endsWith("/follow-up"))).toBe(false);
+});
+
+test("轻量接手：长回复可展开原文，读取异常保留明确提示", async ({ page }) => {
+  const { state } = await mockApi(page);
+  const tail = "这条末尾说明必须完整保留。";
+  state.row.activity!.lastMessage = "处理说明。".repeat(150) + "\n\n" + tail;
+  state.row.available = false;
+  state.row.unavailableReason = "部分执行记录读取失败";
+  await ready(page);
+  await page.getByRole("button", { name: row.title, exact: true }).click();
+  const drawer = page.getByRole("dialog");
+  await expect(drawer.getByRole("status")).toContainText("部分执行记录读取失败");
+  await expect(drawer.getByText(tail, { exact: true })).not.toBeVisible();
+  await expect(drawer.getByRole("heading", { name: "需要你回答", exact: true })).toBeVisible();
+  await drawer.locator("summary").filter({ hasText: "展开完整回复" }).click();
+  await expect(drawer.getByText(tail, { exact: true })).toBeVisible();
+  await drawer.locator("summary").filter({ hasText: "展开完整回复" }).click();
+  await expect(drawer.getByText(tail, { exact: true })).not.toBeVisible();
 });
 test("没有验收清单的新回复进入需要你，查看不会发送验收", async ({ page }) => {
   const { state, calls } = await mockApi(page);
@@ -1251,8 +1344,8 @@ test("v3 风格回归、固定组件像素对照及功能变更差异记录", as
       action: "查看待响应会话",
     },
     { state: "running", refState: "running", offPlan: true, action: "看偏离" },
-    { state: "review", refState: "review", gap: true, action: "生成追问" },
-    { state: "review", refState: "review", complete: true, action: "验收 (A)" },
+    { state: "review", refState: "review", gap: true, action: "查看回复" },
+    { state: "review", refState: "review", complete: true, action: "查看回复" },
     { state: "accepted", refState: "ended", accepted: true },
     { state: "ended", refState: "ended" },
     { state: "stopped", refState: "running", stalled: true },
@@ -1766,7 +1859,7 @@ test("列表请求乱序不会倒退，正常心跳保持同一连接", async ({
   expect(connections).toBe(initialConnections);
 });
 
-test("交互修复：修饰键和未选中的会话不会触发验收", async ({ page }) => {
+test("交互修复：A 仅打开概览，修饰键和未选中的会话不会触发验收", async ({ page }) => {
   const { state, calls } = await mockApi(page);
   state.row.state = "review";
   state.row.progress = { done: 3, total: 3 };
@@ -1777,6 +1870,10 @@ test("交互修复：修饰键和未选中的会话不会触发验收", async ({
   expect(calls.filter(call => call.path.endsWith("/acceptances"))).toHaveLength(0);
   await page.getByRole("button", { name: row.title, exact: true }).focus();
   await page.keyboard.press("a");
+  await expect(page.getByRole("dialog", { name: `会话详情：${row.title}` })).toBeVisible();
+  expect(calls.filter(call => call.path.endsWith("/acceptances"))).toHaveLength(0);
+  await page.getByRole("button", { name: `更多操作：${row.title}`, exact: true }).click();
+  await page.getByRole("menuitem", { name: "验收通过", exact: true }).click();
   await expect.poll(() => calls.filter(call => call.path.endsWith("/acceptances")).length).toBe(1);
 });
 

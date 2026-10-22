@@ -2,6 +2,7 @@ import { Hono } from 'hono';
 import { LOCAL_API_RUNTIME_DESCRIPTORS } from '../../domain/runtime/descriptors.js';
 import { localServiceState } from '../service-state.js';
 import { isLifecycleHookInstalled } from '../../adapters/hook/installer.js';
+import { version } from '../../../package.json';
 
 const app = new Hono();
 
@@ -36,7 +37,7 @@ app.get('/meta', (c) => {
       isLifecycleHookInstalled(localServiceState.lifecycleHook.port, runtimeId);
   return c.json({ success: true, data: {
     apiVersion: '1.0',
-    serviceVersion: '1.0.0',
+    serviceVersion: version,
     instanceId: localServiceState.instanceId,
     mode: 'service',
     capabilities: [
