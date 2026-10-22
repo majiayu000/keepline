@@ -1,0 +1,5 @@
+{
+  "phase": "blocked",
+  "reason": "Two consecutive 180-second gates found no 20-second input idle period; cancel remaining cases instead of repeatedly activating test windows",
+  "time": 1792569319.480064
+}

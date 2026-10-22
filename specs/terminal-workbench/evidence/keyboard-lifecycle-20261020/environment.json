@@ -1,0 +1,17 @@
+{
+  "root": "/tmp/kl-key-live-ugpc9ze5",
+  "bundle": "/tmp/kl-key-b54in1gm/Keepline Keyboard Check.app",
+  "client": 23873,
+  "host": 23871,
+  "codex": "0.163.0",
+  "build": "ordinary; visual-test disabled",
+  "user_backend": 8926,
+  "user_shells": [
+    10304,
+    33651,
+    33764
+  ],
+  "test_shell": 23872,
+  "test_cat": 24993,
+  "build_sha256": "a9cca4b4f19579a711bbfa5ad5b5f241751919a333defb86bd00dc0a49ee80e3  /Users/lifcc/Desktop/code/AI/tools/keepline-agent-workbench/next/target/debug/keepline-app\n"
+}

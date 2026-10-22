@@ -1,0 +1,3 @@
+    Checking keepline-core v0.1.0 (/Users/lifcc/Desktop/code/AI/tools/keepline-agent-workbench/next/crates/keepline-core)
+    Checking keeplined v0.0.0 (/Users/lifcc/Desktop/code/AI/tools/keepline-agent-workbench/next/crates/keeplined)
+    Finished `dev` profile [unoptimized] target(s) in 4.54s

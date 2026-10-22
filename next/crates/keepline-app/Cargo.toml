@@ -1,0 +1,25 @@
+[package]
+name = "keepline-app"
+version = "0.1.0"
+edition = "2024"
+publish = false
+license = "MIT"
+
+[dependencies]
+keepline-core = { path = "../keepline-core" }
+gpui = { path = "../../.deps/zed/crates/gpui" }
+gpui_platform = { path = "../../.deps/zed/crates/gpui_platform", features = ["font-kit"] }
+futures = "0.3"
+serde_json.workspace = true
+libc.workspace = true
+
+[features]
+visual-test = ["gpui/test-support", "gpui_platform/test-support"]
+
+[[example]]
+name = "terminal_reference"
+required-features = ["visual-test"]
+
+[[example]]
+name = "paint_bench"
+required-features = ["visual-test"]

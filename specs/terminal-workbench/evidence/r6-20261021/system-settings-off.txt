@@ -1,0 +1,86 @@
+Window: "Keepline Notification Test", App: 系统设置.
+0 标准窗口 Keepline Notification Test, ID: main, Secondary Actions: Raise
+	1 分离组 main, SidebarNavigationSplitView
+		2 滚动区 Secondary Actions: Scroll Up, Scroll Down
+			3 列表 边栏
+				4 row (selectable)
+				5 row (selectable) Lif Cc, Apple账户
+				6 row (selectable)
+				7 row (selectable) Wi‑Fi
+				8 row (selectable) 蓝牙
+				9 row (selectable) 网络
+				10 row (selectable) VPN
+				11 row (selectable) 电池
+				12 row (selectable)
+				13 row (selectable) 通用
+				14 row (selectable) 菜单栏
+				15 row (selectable) 辅助功能
+				16 row (selectable) 聚焦
+				17 row (selectable) 墙纸
+				18 row (selectable) 外观
+				19 row (selectable) 显示器
+				20 row (selectable) 桌面与程序坞
+				21 row (selectable) Apple智能与Siri
+				22 row (selectable)
+				23 row (selected) 通知
+				24 row (selectable) 声音
+				25 row (selectable) 专注模式
+				26 row (selectable) 屏幕时间
+				27 row (selectable)
+				28 row (selectable) 锁定屏幕
+				29 row (selectable) 隐私与安全性
+				30 row (selectable) 触控ID与密码
+				31 row (selectable) 用户与群组
+				32 row (selectable)
+				33 row (selectable) 互联网账户
+				34 row (selectable) Game Center
+				35 row (selectable) iCloud
+				36 row (selectable) 钱包与Apple Pay
+				37 row (selectable)
+				38 row (selectable) 键盘
+				39 row (selectable) 鼠标
+				40 row (selectable) 触控板
+				41 row (selectable) 打印机与扫描仪
+			42 滚动条 (settable, float) 0
+				43 值指示器 (settable, float) 0
+				44 增箭头按钮
+				45 减箭头按钮
+				46 增页面按钮
+				47 减页面按钮
+		48 搜索文本栏 (settable) 搜索
+			49 按钮 搜索
+		50 分离器 (disabled, settable, float) 223
+		51 滚动区 Secondary Actions: Cancel
+			52 转换 Keepline Notification Test, Value: off, ID: allow-notifications
+			53 container
+				54 复选框 (disabled) Description: 桌面, Value: 1, ID: notification-presence-dektop
+				55 复选框 (disabled) Description: 通知中心, Value: 1, ID: notification-presence-notificationCenter
+				56 复选框 (disabled) Description: 锁定屏幕, Value: 1, ID: notification-presence-lockScreen
+				57 (disabled) alert-style
+					58 文本 提醒样式
+						59 单选按钮 (selected, disabled) Description: 临时, Value: 1
+						60 单选按钮 (disabled) Description: 持续, Value: 0
+			61 转换 (disabled) 播放通知的声音, Value: on, ID: play-sounds-toggle
+			62 container
+				63 弹出式按钮 (disabled) 显示预览, Value: 默认, ID: show-previews
+				64 弹出式按钮 (disabled) 通知分组, Value: 自动, ID: notification-grouping
+			65 按钮 帮助
+	66 工具栏
+		67 container
+			68 按钮 Description: 返回, ID: go back
+			69 菜单按钮 (disabled) Description: 前进, ID: go forward
+	70 关闭按钮
+	71 缩放按钮
+	72 最小化按钮
+	73 文本 Keepline Notification Test
+74 menu bar
+	75 系统设置
+	76 编辑
+	77 显示
+	78 窗口
+	79 帮助
+
+Selected:
+	23 row (selected)
+
+Note: Pay special attention to the content selected by the user. If the user asks a question or refers to the content they are looking at on-screen, they might be referring to the selected content (but they might be referring to something else that's visible, too).

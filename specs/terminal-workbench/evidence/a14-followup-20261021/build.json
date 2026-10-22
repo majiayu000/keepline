@@ -1,0 +1,8 @@
+{
+  "head_observed_at_close": "2f836d37159c7ed8ca5a11b80d540dd6333fb2fe",
+  "binary_sha256": {
+    "keepline-app": "33f066dd88a5eeec96aca1f78eca4d92f89cac3ca28d5dda81d6262a206a0813",
+    "keeplined": "5a49db6a1842a422c5c492f25adcc5e6c33dcd214e48c1e32619e9306d2fc128"
+  },
+  "note": "No product source changed in this follow-up; dirty product.md belongs to concurrent work and is excluded."
+}

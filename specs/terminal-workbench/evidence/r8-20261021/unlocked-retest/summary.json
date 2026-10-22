@@ -1,0 +1,49 @@
+{
+  "commit": "88bade0e775e33efbe1993d83d9334266ab30978",
+  "samples": [
+    {
+      "sample": "invalid-four-final-focus.json",
+      "continuous_frontmost": false,
+      "target": 23817,
+      "counts": {
+        "23817": 4,
+        "646": 33,
+        "38330": 31
+      },
+      "cpu_seconds_invalid_for_foreground_comparison": 3.448235208333333
+    },
+    {
+      "sample": "invalid-one-final-focus.json",
+      "continuous_frontmost": false,
+      "target": 23817,
+      "counts": {
+        "23817": 8,
+        "637": 38,
+        "646": 16,
+        "82151": 6
+      },
+      "cpu_seconds_invalid_for_foreground_comparison": 1.021510958333333
+    },
+    {
+      "sample": "invalid-one-focus.json",
+      "continuous_frontmost": false,
+      "target": 23817,
+      "counts": {
+        "23817": 5,
+        "82151": 63
+      },
+      "cpu_seconds_invalid_for_foreground_comparison": 1.4095347083333336
+    },
+    {
+      "sample": "invalid-one-retry-focus.json",
+      "continuous_frontmost": false,
+      "target": 23817,
+      "counts": {
+        "23817": 4,
+        "82151": 64
+      },
+      "cpu_seconds_invalid_for_foreground_comparison": 1.4933538333333332
+    }
+  ],
+  "measure_sha256": "04d4530f0f6ec95403be3cffad80b85d95eed50091cc236fd37f2d02abefbb6c"
+}

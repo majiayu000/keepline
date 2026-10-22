@@ -1,0 +1,8 @@
+  PID  PPID STARTED                      COMMAND
+ 8926     1 Tue Oct 20 20:59:19 2026     /Users/lifcc/Desktop/code/AI/tools/keepline-agent-workbench/next/target/debug/keeplined serve --runtime /Users/lifcc/.local/share/keepline-workbench
+23871 23866 Tue Oct 20 22:42:09 2026     /Users/lifcc/Desktop/code/AI/tools/keepline-agent-workbench/next/target/debug/deps/managed_session-aabb0a23860d30d6 --ignored --exact daemon_fixture --nocapture
+10304  8926 Tue Oct 20 21:00:34 2026     /bin/zsh -l
+33651  8926 Tue Oct 20 21:21:34 2026     /bin/zsh -l
+33764  8926 Tue Oct 20 21:21:37 2026     /bin/zsh -l
+23872 23871 Tue Oct 20 22:42:09 2026     /bin/zsh -f
+24993 23872 Tue Oct 20 22:43:02 2026     cat

@@ -1,0 +1,170 @@
+{
+  "Workspace": {
+    "revision": 6,
+    "outcome_history": [],
+    "task_outcomes": {},
+    "pending_tasks": {},
+    "spaces": [
+      {
+        "id": "m1",
+        "name": "M1 隔离项目",
+        "cwd": "/tmp/kl-m1-c960530x"
+      }
+    ],
+    "tasks": [],
+    "tabs": [
+      {
+        "id": "27683-1792517988756943000-0",
+        "space": "m1",
+        "default_task": null,
+        "title": "",
+        "closed": false,
+        "layout": {
+          "Leaf": "27683-1792517988756946000-1"
+        }
+      }
+    ],
+    "terminals": [
+      {
+        "id": "27683-1792517988756946000-1",
+        "space": "m1",
+        "argv": [
+          "/bin/zsh",
+          "-l"
+        ],
+        "cwd": "/tmp/kl-m1-c960530x",
+        "pid": 27684,
+        "state": "Running",
+        "exit_code": null,
+        "error": null
+      }
+    ],
+    "agent_sessions": [
+      {
+        "id": "d2c3a325-aab1-45ae-a0a4-4502cfeb7261",
+        "runtime": "Codex",
+        "cli_session_id": "stale-0",
+        "terminal": null,
+        "current": false,
+        "task": null,
+        "outcome": "Open",
+        "updated": 1792517987,
+        "cwd": "/fixture-project",
+        "transcript": "/private/tmp/kl-m1-c960530x/logs/stale-0.jsonl"
+      },
+      {
+        "id": "fddac012-1da9-42a3-af4f-b094612b68fe",
+        "runtime": "Codex",
+        "cli_session_id": "stale-1",
+        "terminal": null,
+        "current": false,
+        "task": null,
+        "outcome": "Open",
+        "updated": 1792517987,
+        "cwd": "/fixture-project",
+        "transcript": "/private/tmp/kl-m1-c960530x/logs/stale-1.jsonl"
+      },
+      {
+        "id": "a2bee2c6-9213-4dd7-9376-f8bfff96a4d0",
+        "runtime": "Codex",
+        "cli_session_id": "stale-2",
+        "terminal": null,
+        "current": false,
+        "task": null,
+        "outcome": "Open",
+        "updated": 1792517987,
+        "cwd": "/fixture-project",
+        "transcript": "/private/tmp/kl-m1-c960530x/logs/stale-2.jsonl"
+      }
+    ],
+    "content": {
+      "d2c3a325-aab1-45ae-a0a4-4502cfeb7261": {
+        "interactive": true,
+        "hidden_reason": "",
+        "first_ask_known": true,
+        "title": "核对第 1 个暂停项目的测试结果。",
+        "asks": [
+          {
+            "text": "核对第 1 个暂停项目的测试结果。",
+            "at": 1792172387,
+            "source": {
+              "path": "/private/tmp/kl-m1-c960530x/logs/stale-0.jsonl",
+              "inode": 379449211,
+              "offset": 255
+            }
+          }
+        ],
+        "evidence": [],
+        "last_reply": "还需要核对测试环境。",
+        "turn": "Completed",
+        "turn_started": 1792172387,
+        "turn_key": "old-0",
+        "updated": 1792172387,
+        "completed_claim": false,
+        "waiting": "",
+        "error": "",
+        "partial_history": false,
+        "from_offset": 0,
+        "unknown_records": 0
+      },
+      "a2bee2c6-9213-4dd7-9376-f8bfff96a4d0": {
+        "interactive": true,
+        "hidden_reason": "",
+        "first_ask_known": true,
+        "title": "核对第 3 个暂停项目的测试结果。",
+        "asks": [
+          {
+            "text": "核对第 3 个暂停项目的测试结果。",
+            "at": 1792172387,
+            "source": {
+              "path": "/private/tmp/kl-m1-c960530x/logs/stale-2.jsonl",
+              "inode": 379449213,
+              "offset": 255
+            }
+          }
+        ],
+        "evidence": [],
+        "last_reply": "还需要核对测试环境。",
+        "turn": "Completed",
+        "turn_started": 1792172387,
+        "turn_key": "old-2",
+        "updated": 1792172387,
+        "completed_claim": false,
+        "waiting": "",
+        "error": "",
+        "partial_history": false,
+        "from_offset": 0,
+        "unknown_records": 0
+      },
+      "fddac012-1da9-42a3-af4f-b094612b68fe": {
+        "interactive": true,
+        "hidden_reason": "",
+        "first_ask_known": true,
+        "title": "核对第 2 个暂停项目的测试结果。",
+        "asks": [
+          {
+            "text": "核对第 2 个暂停项目的测试结果。",
+            "at": 1792172387,
+            "source": {
+              "path": "/private/tmp/kl-m1-c960530x/logs/stale-1.jsonl",
+              "inode": 379449212,
+              "offset": 255
+            }
+          }
+        ],
+        "evidence": [],
+        "last_reply": "还需要核对测试环境。",
+        "turn": "Completed",
+        "turn_started": 1792172387,
+        "turn_key": "old-1",
+        "updated": 1792172387,
+        "completed_claim": false,
+        "waiting": "",
+        "error": "",
+        "partial_history": false,
+        "from_offset": 0,
+        "unknown_records": 0
+      }
+    }
+  }
+}

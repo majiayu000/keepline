@@ -1,0 +1,104 @@
+{
+  "kind": "8 visible idle PTYs; native macOS window; no Ghostty baseline",
+  "seconds": 30.005041250027716,
+  "timebase": {
+    "numer": 125,
+    "denom": 3
+  },
+  "pids": {
+    "client": 90590,
+    "daemon": 90573,
+    "p0": 90574,
+    "p1": 90575,
+    "p2": 90576,
+    "p3": 90579,
+    "p4": 90581,
+    "p5": 90583,
+    "p6": 90585,
+    "p7": 90587
+  },
+  "processes": {
+    "client": {
+      "cpu_seconds": 0.09344058333333337,
+      "cpu_percent": 0.31141628020007156,
+      "physical_mib": 79.45413208007812,
+      "resident_mib": 121.578125,
+      "disk_read_delta": 0,
+      "disk_write_delta": 0
+    },
+    "daemon": {
+      "cpu_seconds": 0.0,
+      "cpu_percent": 0.0,
+      "physical_mib": 4.828605651855469,
+      "resident_mib": 15.625,
+      "disk_read_delta": 0,
+      "disk_write_delta": 0
+    },
+    "p0": {
+      "cpu_seconds": 0.0,
+      "cpu_percent": 0.0,
+      "physical_mib": 1.0783309936523438,
+      "resident_mib": 1.34375,
+      "disk_read_delta": 0,
+      "disk_write_delta": 0
+    },
+    "p1": {
+      "cpu_seconds": 0.0,
+      "cpu_percent": 0.0,
+      "physical_mib": 1.0783309936523438,
+      "resident_mib": 1.34375,
+      "disk_read_delta": 0,
+      "disk_write_delta": 0
+    },
+    "p2": {
+      "cpu_seconds": 0.0,
+      "cpu_percent": 0.0,
+      "physical_mib": 1.0783309936523438,
+      "resident_mib": 1.34375,
+      "disk_read_delta": 0,
+      "disk_write_delta": 0
+    },
+    "p3": {
+      "cpu_seconds": 0.0,
+      "cpu_percent": 0.0,
+      "physical_mib": 1.0783309936523438,
+      "resident_mib": 1.34375,
+      "disk_read_delta": 0,
+      "disk_write_delta": 0
+    },
+    "p4": {
+      "cpu_seconds": 0.0,
+      "cpu_percent": 0.0,
+      "physical_mib": 1.0783309936523438,
+      "resident_mib": 1.34375,
+      "disk_read_delta": 0,
+      "disk_write_delta": 0
+    },
+    "p5": {
+      "cpu_seconds": 0.0,
+      "cpu_percent": 0.0,
+      "physical_mib": 1.0783309936523438,
+      "resident_mib": 1.34375,
+      "disk_read_delta": 0,
+      "disk_write_delta": 0
+    },
+    "p6": {
+      "cpu_seconds": 0.0,
+      "cpu_percent": 0.0,
+      "physical_mib": 1.0783309936523438,
+      "resident_mib": 1.34375,
+      "disk_read_delta": 0,
+      "disk_write_delta": 0
+    },
+    "p7": {
+      "cpu_seconds": 0.0,
+      "cpu_percent": 0.0,
+      "physical_mib": 1.0783309936523438,
+      "resident_mib": 1.34375,
+      "disk_read_delta": 0,
+      "disk_write_delta": 0
+    }
+  },
+  "total_cpu_percent": 0.31141628020007156,
+  "total_physical_mib": 92.90938568115234
+}

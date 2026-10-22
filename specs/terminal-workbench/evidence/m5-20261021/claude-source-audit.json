@@ -1,0 +1,184 @@
+{
+  "basis": "M0 real log projections; Claude parsing unchanged; sources re-read at recorded offsets in M5, no model invocation",
+  "sessions": [
+    {
+      "cli_id": "290034d6-1cbe-43d5-b47c-1bbe39baa510",
+      "source": "/Users/lifcc/.claude/projects/-Users-lifcc-Desktop-code-youtube/290034d6-1cbe-43d5-b47c-1bbe39baa510.jsonl",
+      "title": "我希望你帮我看看我这台Mac上面的Claude Code的聊天记录，我曾经做了几个MV，比如说take me free three am这种…",
+      "checks": [
+        {
+          "kind": "ask",
+          "offset": 2690,
+          "inode_matches": true,
+          "record_type": "user",
+          "source_matches": true,
+          "bytes_read": 814,
+          "sha256": "7a0dd58f1d9044341c4df12d914bc12a1fde1b5eaf9bb4047bd7d9649fcd6b1b"
+        },
+        {
+          "kind": "evidence",
+          "offset": 3969791,
+          "inode_matches": true,
+          "record_type": "user",
+          "source_matches": true,
+          "bytes_read": 1456,
+          "sha256": "98853abcdd5a06a8a628852af3e11ea4054b63dd521729d6cd1ec3b8f17b90ff"
+        },
+        {
+          "kind": "evidence",
+          "offset": 3980349,
+          "inode_matches": true,
+          "record_type": "user",
+          "source_matches": true,
+          "bytes_read": 1300,
+          "sha256": "e64d7eeaa10bb3aa9a313d7bbf2301ef0789328a55728060df682ef5d3998f7b"
+        },
+        {
+          "kind": "evidence",
+          "offset": 3986439,
+          "inode_matches": true,
+          "record_type": "user",
+          "source_matches": true,
+          "bytes_read": 2218,
+          "sha256": "e409303b30d2faac129f54a184544c2b3c83466e27fc5640e48c60835148537a"
+        }
+      ]
+    },
+    {
+      "cli_id": "92e4bd71-be82-46e6-8567-7511a6d5594d",
+      "source": "/Users/lifcc/.claude/projects/-Users-lifcc-Movies/92e4bd71-be82-46e6-8567-7511a6d5594d.jsonl",
+      "title": "你看看这个是什么？你能帮我做一个吗？",
+      "checks": [
+        {
+          "kind": "ask",
+          "offset": 7972,
+          "inode_matches": true,
+          "record_type": "user",
+          "source_matches": true,
+          "bytes_read": 6208,
+          "sha256": "4ef86b3e006c6365208279609e4dbb576740cab8003696edb3eacd125af98a70"
+        },
+        {
+          "kind": "evidence",
+          "offset": 15940320,
+          "inode_matches": true,
+          "record_type": "user",
+          "source_matches": true,
+          "bytes_read": 1813,
+          "sha256": "9ea6cb57f8b05b7f78b3419d2fdcc95081a0a028f04367021121aa697579b72c"
+        },
+        {
+          "kind": "evidence",
+          "offset": 16031590,
+          "inode_matches": true,
+          "record_type": "user",
+          "source_matches": true,
+          "bytes_read": 1249,
+          "sha256": "3a979acf06703305551d813f001919546ce5cb9c9118e287f451c4e9a533cf36"
+        }
+      ]
+    },
+    {
+      "cli_id": "13e2e038-6ac6-43b9-b2b1-4ba8b9487ea2",
+      "source": "/Users/lifcc/.claude/projects/-Users-lifcc-Desktop-code-AI-tools-keepline/13e2e038-6ac6-43b9-b2b1-4ba8b9487ea2.jsonl",
+      "title": "你帮我看看这个库是做什么的？给我一个完整的分析。",
+      "checks": [
+        {
+          "kind": "ask",
+          "offset": 16624,
+          "inode_matches": true,
+          "record_type": "user",
+          "source_matches": true,
+          "bytes_read": 667,
+          "sha256": "0f49b7a3683fff271c2b29da88542bc757108f66fab0b075e94e57fca6c8e3cd"
+        },
+        {
+          "kind": "evidence",
+          "offset": 15098616,
+          "inode_matches": true,
+          "record_type": "user",
+          "source_matches": true,
+          "bytes_read": 881,
+          "sha256": "4705dcbdae1e34ad5ab13a1649a27722b0b7638dd4623d49d4c73d22fcbb5bf1"
+        },
+        {
+          "kind": "evidence",
+          "offset": 15101474,
+          "inode_matches": true,
+          "record_type": "user",
+          "source_matches": true,
+          "bytes_read": 1157,
+          "sha256": "09df411f2996dd0e3d2d62c8fbf4ea3b3c63fe9cfc5e4b9292b9e06d80efb17e"
+        }
+      ]
+    },
+    {
+      "cli_id": "449f386e-ff12-42e9-8552-7984d3389626",
+      "source": "/Users/lifcc/.claude/projects/-Users-lifcc-Desktop-code-AI-tools-rekey/449f386e-ff12-42e9-8552-7984d3389626.jsonl",
+      "title": "你帮我看看这个裤 是不是最新的 现在开发的如何了呢",
+      "checks": [
+        {
+          "kind": "ask",
+          "offset": 8687,
+          "inode_matches": true,
+          "record_type": "user",
+          "source_matches": true,
+          "bytes_read": 663,
+          "sha256": "91d4d18948f4f41401f981632da921c0394a1c117689f775bed696c15419c552"
+        },
+        {
+          "kind": "evidence",
+          "offset": 3342255,
+          "inode_matches": true,
+          "record_type": "user",
+          "source_matches": true,
+          "bytes_read": 5901,
+          "sha256": "a6c88f2d6abb1033e064c3e3ace7e768c064a7cbdf0b447f1ab23dce2ab2874e"
+        },
+        {
+          "kind": "evidence",
+          "offset": 3366018,
+          "inode_matches": true,
+          "record_type": "user",
+          "source_matches": true,
+          "bytes_read": 7119,
+          "sha256": "303e1ce37594e1871e0b314d67da8f37a02f587b550cd09fbb64101ea3e6f59a"
+        },
+        {
+          "kind": "evidence",
+          "offset": 3366018,
+          "inode_matches": true,
+          "record_type": "user",
+          "source_matches": true,
+          "bytes_read": 7119,
+          "sha256": "303e1ce37594e1871e0b314d67da8f37a02f587b550cd09fbb64101ea3e6f59a"
+        }
+      ]
+    },
+    {
+      "cli_id": "bcdb4845-64ad-455c-b1bb-fc67a81e3678",
+      "source": "/Users/lifcc/.claude/projects/-Users-lifcc-Desktop-code-AI-tools-keepline/bcdb4845-64ad-455c-b1bb-fc67a81e3678.jsonl",
+      "title": "你帮我看看我这个。我这个Codex的标好像是扁了，为什么会这样呢？",
+      "checks": [
+        {
+          "kind": "ask",
+          "offset": 15645,
+          "inode_matches": true,
+          "record_type": "user",
+          "source_matches": true,
+          "bytes_read": 162680,
+          "sha256": "d63fcc6583c4af4ca85463d7f598864059f0da7c360d23df4ce98b5e9dcb4d74"
+        },
+        {
+          "kind": "evidence",
+          "offset": 4342247,
+          "inode_matches": true,
+          "record_type": "user",
+          "source_matches": true,
+          "bytes_read": 1204,
+          "sha256": "27d0a68c829dd7948a8fa7aa68042324cb9f7a29b6f5e11e12a22060d3ae70b1"
+        }
+      ]
+    }
+  ]
+}

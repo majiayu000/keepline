@@ -1,0 +1,54 @@
+running 6 tests
+test screen::tests::ime_offsets_are_utf16_not_utf8_and_never_split_surrogates ... ok
+test workbench::tests::interrupted_terminals_never_enter_the_connection_creation_list ... ok
+test workbench::tests::reopening_full_tab_replaces_exact_slot_and_preserves_history ... ok
+test workbench::tests::closing_interrupted_pane_only_removes_its_placement ... ok
+test screen::tests::hidden_cursor_keeps_ime_anchor_and_missing_position_keeps_last_known ... ok
+test screen::tests::captured_cjk_occupies_two_columns_and_combining_text_stays_separate ... ok
+test result: ok. 6 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+running 11 tests
+test model::tests::codex_prefill_and_resume_use_no_daemon_and_preserve_shell_quoting ... ok
+test model::identity_tests::one_cli_identity_cannot_be_current_in_two_terminals ... ok
+test layout::tests::nested_split_close_preserves_sibling_ratio_and_replace_keeps_geometry ... ok
+test model::tests::cross_space_placement_does_not_reassign_work_and_close_preserves_layout ... ok
+test model::tests::log_refresh_never_reopens_or_reassigns_an_existing_conversation ... ok
+test model::tests::sequential_conversations_keep_independent_tasks_and_outcomes ... ok
+test model::tests::task_prompt_and_per_criterion_evidence_are_independent ... ok
+test layout::tests::eight_and_more_panes_have_no_fixed_cap ... ok
+test terminal::tests::truncated_snapshot_is_not_a_ready_terminal ... ok
+test terminal::tests::search_finds_scrollback_and_wide_graphemes_without_spacer_gaps ... ok
+test terminal::tests::snapshot_preserves_incomplete_utf8_and_escape_sequence ... ok
+test result: ok. 11 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+running 6 tests
+test file_events::tests::overflow_keeps_only_affected_subtree_and_does_not_latch ... ok
+test recognition::tests::log_identity_alone_does_not_bind_by_directory_and_ambiguity_stays_unbound ... ok
+test log_index::tests::initial_index_skips_large_bodies_and_never_rewalks_completed_directories ... ok
+test log_index::tests::cursors_survive_restart_partial_lines_truncation_and_inode_replacement ... ok
+test host::recognition_tests::must_scan_repairs_only_event_subtree_and_publishes_status_then_continues ... ok
+test log_index::tests::fsevents_delivers_new_files_and_replays_changes_after_restart ... ok
+test result: ok. 6 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.37s
+running 0 tests
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+running 15 tests
+test daemon_fixture ... ignored, subprocess daemon entry for integration fixtures
+test a_second_daemon_cannot_replace_the_live_socket ... ok
+test input_control_follows_live_connections_without_takeover_or_polling ... ok
+test stop_agent_refuses_an_unidentified_shell ... ok
+test reconnect_input_resize_and_takeover_are_real_pty_operations ... ok
+test launch_is_durable_and_deduplicated_and_tab_close_is_not_stop ... ok
+test process_exit_does_not_complete_user_work ... ok
+test split_directory_comes_from_the_live_shell_after_cd ... ok
+test nested_split_tree_and_ratios_survive_store_reopen ... ok
+test stop_agent_clears_current_without_stopping_shell_or_changing_outcome ... ok
+test recognition_status_stream_recovers_after_log_root_is_rebuilt ... ok
+test two_cli_conversations_in_one_real_pty_keep_separate_ownership_after_restart ... ok
+test manually_entered_unbound_codex_gets_a_hint_and_exit_clears_it ... ok
+40 idle PTYs: CPU 0.0000%, disk read 0 B, write 0 B, Unix syscalls 0
+test forty_idle_terminals_have_no_periodic_background_io ... ok
+4 agents / 30s: daemon CPU 0.5358s (1.728%), ps spawns 0, lsof spawns 0, incremental bytes 87932
+test four_agents_write_for_thirty_seconds_without_repeated_process_probes ... ok
+test result: ok. 14 passed; 0 failed; 1 ignored; 0 measured; 0 filtered out; finished in 35.11s
+running 0 tests
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+running 0 tests
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s

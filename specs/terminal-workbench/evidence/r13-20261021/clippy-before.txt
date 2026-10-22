@@ -1,0 +1,107 @@
+   Compiling libghostty-vt-sys v0.2.1 (/Users/lifcc/Desktop/code/AI/tools/keepline-agent-workbench/next/.deps/libghostty-rs/crates/libghostty-vt-sys)
+    Checking libsqlite3-sys v0.36.0
+    Checking rusqlite v0.38.0
+    Checking libghostty-vt v0.2.1 (/Users/lifcc/Desktop/code/AI/tools/keepline-agent-workbench/next/.deps/libghostty-rs/crates/libghostty-vt)
+    Checking keepline-core v0.1.0 (/Users/lifcc/Desktop/code/AI/tools/keepline-agent-workbench/next/crates/keepline-core)
+error: this `if` statement can be collapsed
+   --> crates/keepline-core/src/model.rs:224:5
+    |
+224 | /     if let Outcome::Deferred { reason, until } = outcome {
+225 | |         if reason.trim().is_empty() || *until == 0 {
+226 | |             return Err("暂存需要原因和再看时间".into());
+227 | |         }
+228 | |     }
+    | |_____^
+    |
+    = help: for further information visit https://rust-lang.github.io/rust-clippy/rust-1.95.0/index.html#collapsible_if
+    = note: `-D clippy::collapsible-if` implied by `-D warnings`
+    = help: to override `-D warnings` add `#[allow(clippy::collapsible_if)]`
+help: collapse nested if block
+    |
+224 ~     if let Outcome::Deferred { reason, until } = outcome
+225 ~         && (reason.trim().is_empty() || *until == 0) {
+226 |             return Err("暂存需要原因和再看时间".into());
+227 ~         }
+    |
+
+error: this `if` statement can be collapsed
+   --> crates/keepline-core/src/model.rs:347:9
+    |
+347 | /         if sessions.is_empty() {
+348 | |             if let Some(task) = tab
+349 | |                 .default_task
+350 | |                 .as_ref()
+...   |
+355 | |         }
+    | |_________^
+    |
+    = help: for further information visit https://rust-lang.github.io/rust-clippy/rust-1.95.0/index.html#collapsible_if
+help: collapse nested if block
+    |
+347 ~         if sessions.is_empty()
+348 ~             && let Some(task) = tab
+349 |                 .default_task
+...
+353 |                 return task.title.clone();
+354 ~             }
+    |
+
+error: this `if` statement can be collapsed
+   --> crates/keepline-core/src/model.rs:356:9
+    |
+356 | /         if let Some(first) = sessions.first().and_then(|s| s.task.as_ref()) {
+357 | |             if sessions.iter().all(|s| s.task.as_ref() == Some(first)) {
+358 | |                 if let Some(task) = self.tasks.iter().find(|t| &t.id == first) {
+359 | |                     return task.title.clone();
+...   |
+362 | |         }
+    | |_________^
+    |
+    = help: for further information visit https://rust-lang.github.io/rust-clippy/rust-1.95.0/index.html#collapsible_if
+help: collapse nested if block
+    |
+356 ~         if let Some(first) = sessions.first().and_then(|s| s.task.as_ref())
+357 ~             && sessions.iter().all(|s| s.task.as_ref() == Some(first)) {
+358 |                 if let Some(task) = self.tasks.iter().find(|t| &t.id == first) {
+359 |                     return task.title.clone();
+360 |                 }
+361 ~             }
+    |
+
+error: this `if` statement can be collapsed
+   --> crates/keepline-core/src/model.rs:357:13
+    |
+357 | /             if sessions.iter().all(|s| s.task.as_ref() == Some(first)) {
+358 | |                 if let Some(task) = self.tasks.iter().find(|t| &t.id == first) {
+359 | |                     return task.title.clone();
+360 | |                 }
+361 | |             }
+    | |_____________^
+    |
+    = help: for further information visit https://rust-lang.github.io/rust-clippy/rust-1.95.0/index.html#collapsible_if
+help: collapse nested if block
+    |
+357 ~             if sessions.iter().all(|s| s.task.as_ref() == Some(first))
+358 ~                 && let Some(task) = self.tasks.iter().find(|t| &t.id == first) {
+359 |                     return task.title.clone();
+360 ~                 }
+    |
+
+error: field assignment outside of initializer for an instance created with Default::default()
+   --> crates/keepline-core/src/model.rs:662:9
+    |
+662 |         settings.stale_days = 0;
+    |         ^^^^^^^^^^^^^^^^^^^^^^^^
+    |
+note: consider initializing the variable with `model::Settings { stale_days: 0, ..Default::default() }` and removing relevant reassignments
+   --> crates/keepline-core/src/model.rs:661:9
+    |
+661 |         let mut settings = Settings::default();
+    |         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    = help: for further information visit https://rust-lang.github.io/rust-clippy/rust-1.95.0/index.html#field_reassign_with_default
+    = note: `-D clippy::field-reassign-with-default` implied by `-D warnings`
+    = help: to override `-D warnings` add `#[allow(clippy::field_reassign_with_default)]`
+
+error: could not compile `keepline-core` (lib) due to 4 previous errors
+warning: build failed, waiting for other jobs to finish...
+error: could not compile `keepline-core` (lib test) due to 5 previous errors

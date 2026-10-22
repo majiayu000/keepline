@@ -1,0 +1,13 @@
+thread 'claude_open_files_bind_same_cwd_without_hooks_and_append_without_probes' (41722743) panicked at crates/keeplined/tests/managed_session.rs:1344:9:
+Claude append timed out: recognition=RecognitionStatus { phase: Healthy, detail: "识别正常", scopes: [], metrics: RecognitionMetrics { ps_spawns: 1, lsof_spawns: 1, directories: 2, log_opens: 2, log_bytes: 788, index_writes: 5 }, terminal_hints: {}, workspace_revision: 8 }, content=Some(Content { interactive: true, hidden_reason: "", first_ask_known: true, title: "修复第 0 个项目，不调用模型", asks: [Quote { text: "修复第 0 个项目，不调用模型", at: 1792549422, source: Source { path: "/private/var/folders/3_/987z6jz91l9_t8mpvflf73xm0000gp/T/kl-07fa9601a7db44458a4e73eda266919b/logs/claude/claude-0.jsonl", inode: 379739599, offset: 0 } }], evidence: [], last_reply: "", turn: Running, turn_started: 1792549422, turn_key: "u-0", updated: 1792549422, completed_claim: false, waiting: "", error: "", partial_history: false, from_offset: 0, unknown_records: 0 }), file_bytes=734
+note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+test claude_open_files_bind_same_cwd_without_hooks_and_append_without_probes ... FAILED
+
+failures:
+
+failures:
+    claude_open_files_bind_same_cwd_without_hooks_and_append_without_probes
+
+test result: FAILED. 17 passed; 1 failed; 1 ignored; 0 measured; 0 filtered out; finished in 71.90s
+
+error: test failed, to rerun pass `-p keeplined --test managed_session`

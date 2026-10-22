@@ -1,0 +1,26 @@
+running 23 tests
+test screen::tests::ime_offsets_are_utf16_not_utf8_and_never_split_surrogates ... ok
+test screen::sprites::tests::blocks_fill_cell_and_braille_bits_are_not_font_spaced ... ok
+test screen::sprites::tests::all_box_and_powerline_shapes_are_defined_and_touch_edges ... ok
+test screen::tests::cell_aspect_ratio_stays_within_five_percent_of_ghostty_for_the_resolved_font ... ok
+test keyboard::tests::kitty_uses_terminal_negotiated_mode ... ok
+test terminal_input::tests::mouse_modes_press_release_motion_wheel_and_dedup ... ok
+test keyboard::tests::legacy_control_and_alt_keys ... ok
+test screen::tests::osc_links_keep_cell_bounds_and_reject_executable_schemes ... ok
+test terminal_input::tests::focus_and_alternate_wheel_follow_negotiated_modes ... ok
+test screen::tests::emoji_cluster_capture_is_one_two_column_run ... ok
+test workbench::tests::closing_interrupted_pane_only_removes_its_placement ... ok
+test workbench::tests::interrupted_terminals_never_enter_the_connection_creation_list ... ok
+test screen::tests::captured_cjk_occupies_two_columns_and_combining_text_stays_separate ... ok
+test workbench::tests::navigation_uses_live_identity_and_path_boundaries ... ok
+test screen::tests::hidden_cursor_keeps_ime_anchor_and_missing_position_keeps_last_known ... ok
+test desktop::tests::notifications_only_follow_new_attention_facts_and_opt_in ... ok
+test workbench::tests::reopening_full_tab_replaces_exact_slot_and_preserves_history ... ok
+test screen::tests::retained_capture_rebuilds_only_dirty_rows_and_clears_old_links ... ok
+test screen::tests::sgr_decorations_and_faint_survive_capture ... ok
+test lifecycle::tests::duplicate_forwards_and_lock_is_reusable ... ok
+test screen::tests::retained_capture_matches_full_capture_after_resize_scroll_palette_and_alternate_screen ... ok
+test lifecycle::tests::old_hosts_are_reported_by_one_handshake_without_mutation ... ok
+test screen::tests::decscusr_shape_reaches_the_painter ... ok
+
+test result: ok. 23 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s

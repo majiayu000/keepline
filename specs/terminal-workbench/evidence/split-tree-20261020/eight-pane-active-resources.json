@@ -1,0 +1,73 @@
+{
+  "kind": "8 visible PTYs, each writes 8 lines/sec, native renderer; no real Agents",
+  "seconds": 30.07530583301559,
+  "timebase": {
+    "numer": 125,
+    "denom": 3
+  },
+  "ticks": 234,
+  "processes": {
+    "client": {
+      "cpu_seconds": 5.648823125,
+      "cpu_percent": 18.78226328391622,
+      "physical_mib": 312.0478820800781,
+      "resident_mib": 126.78125
+    },
+    "daemon": {
+      "cpu_seconds": 0.08343504166666665,
+      "cpu_percent": 0.2774204263455059,
+      "physical_mib": 5.828605651855469,
+      "resident_mib": 16.625
+    },
+    "p0": {
+      "cpu_seconds": 0.0,
+      "cpu_percent": 0.0,
+      "physical_mib": 1.0783309936523438,
+      "resident_mib": 1.34375
+    },
+    "p1": {
+      "cpu_seconds": 0.0,
+      "cpu_percent": 0.0,
+      "physical_mib": 1.0783309936523438,
+      "resident_mib": 1.34375
+    },
+    "p2": {
+      "cpu_seconds": 0.0,
+      "cpu_percent": 0.0,
+      "physical_mib": 1.0783309936523438,
+      "resident_mib": 1.34375
+    },
+    "p3": {
+      "cpu_seconds": 0.0,
+      "cpu_percent": 0.0,
+      "physical_mib": 1.0783309936523438,
+      "resident_mib": 1.34375
+    },
+    "p4": {
+      "cpu_seconds": 0.0,
+      "cpu_percent": 0.0,
+      "physical_mib": 1.0783309936523438,
+      "resident_mib": 1.34375
+    },
+    "p5": {
+      "cpu_seconds": 0.0,
+      "cpu_percent": 0.0,
+      "physical_mib": 1.0783309936523438,
+      "resident_mib": 1.34375
+    },
+    "p6": {
+      "cpu_seconds": 0.0,
+      "cpu_percent": 0.0,
+      "physical_mib": 1.0783309936523438,
+      "resident_mib": 1.34375
+    },
+    "p7": {
+      "cpu_seconds": 0.0,
+      "cpu_percent": 0.0,
+      "physical_mib": 1.0783309936523438,
+      "resident_mib": 1.34375
+    }
+  },
+  "total_cpu_percent": 19.059683710261726,
+  "total_physical_mib": 326.50313568115234
+}

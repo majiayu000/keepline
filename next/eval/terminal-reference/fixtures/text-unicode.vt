@@ -1,0 +1,18 @@
+[H[2J[38;5;244mCJK (each glyph = 2 cells; the ruler below must stay aligned)[0m
+012345678901234567890123456789012345678901234567890123456789
+中文显示测试：终端渲染对照，宽字符必须占两格。日本語のテキスト。한국어 텍스트
+全角标点：，。！？（）【】「」 ｱｲｳ半角カナ ABCＡＢＣ
+|中|文|对|齐|  |ab|cd|ef|gh|
+[38;5;244memoji: single / VS16 / ZWJ / flags / skin tone / keycap[0m
+😀 🚀 ✅ ❌ ⚠️ ❤️ ☕ 👍🏽 👨‍👩‍👧‍👦 🏳️‍🌈 🇨🇳 🇺🇸 1️⃣ #️⃣ 🧑‍💻
+|😀|🚀|✅|❌|☕|
+[38;5;244mcombining marks: e+0301 a+0308 n+0303 o+031B+0323 stacked; Hangul jamo; Thai; Devanagari[0m
+é ä ñ ợ Z̵̷̸ x⃝ q̣̇ | 각 | กิ่ | क्ष
+café naïve résumé Ångström Øresund
+[38;5;244mligature candidates (should stay one glyph per cell): -> => != === <= >= ::[0m
+-> => != === <= >= :: ... www |> <|> /* */ fi fl
+[38;5;244mascii reference[0m
+The quick brown fox jumps over the lazy dog 0123456789 !@#$%^&*()_+-=[]{};':",./<>?
+[1mBold: The quick brown fox 0123456789[0m  [3mItalic: The quick brown fox[0m
+[38;5;244mwide char at line end must wrap, not split:[0m
+xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx汉后续

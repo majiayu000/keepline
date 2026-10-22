@@ -1,0 +1,113 @@
+{
+  "external": 40,
+  "managed": 8,
+  "seconds": 7200.008615874918,
+  "metrics_before": {
+    "ps_spawns": 1,
+    "lsof_spawns": 1,
+    "directories": 2,
+    "log_opens": 48,
+    "log_bytes": 49004,
+    "index_writes": 52
+  },
+  "metrics_after": {
+    "ps_spawns": 1,
+    "lsof_spawns": 1,
+    "directories": 2,
+    "log_opens": 48,
+    "log_bytes": 49004,
+    "index_writes": 52
+  },
+  "processes": {
+    "client": {
+      "cpu_seconds": 0.12199862499999997,
+      "cpu_percent": 0.0016944233195917524,
+      "footprint_start_MiB": 57.954132080078125,
+      "footprint_end_MiB": 57.094757080078125,
+      "footprint_peak_MiB": 57.954132080078125,
+      "disk_read": 0,
+      "disk_write": 0
+    },
+    "daemon": {
+      "cpu_seconds": 0.0,
+      "cpu_percent": 0.0,
+      "footprint_start_MiB": 6.812980651855469,
+      "footprint_end_MiB": 6.406730651855469,
+      "footprint_peak_MiB": 6.812980651855469,
+      "disk_read": 0,
+      "disk_write": 0
+    },
+    "p0": {
+      "cpu_seconds": 0.0,
+      "cpu_percent": 0.0,
+      "footprint_start_MiB": 1.2502975463867188,
+      "footprint_end_MiB": 1.2502975463867188,
+      "footprint_peak_MiB": 1.2502975463867188,
+      "disk_read": 0,
+      "disk_write": 0
+    },
+    "p1": {
+      "cpu_seconds": 0.0,
+      "cpu_percent": 0.0,
+      "footprint_start_MiB": 1.2502975463867188,
+      "footprint_end_MiB": 1.2502975463867188,
+      "footprint_peak_MiB": 1.2502975463867188,
+      "disk_read": 0,
+      "disk_write": 0
+    },
+    "p2": {
+      "cpu_seconds": 0.0,
+      "cpu_percent": 0.0,
+      "footprint_start_MiB": 1.2502975463867188,
+      "footprint_end_MiB": 1.2502975463867188,
+      "footprint_peak_MiB": 1.2502975463867188,
+      "disk_read": 0,
+      "disk_write": 0
+    },
+    "p3": {
+      "cpu_seconds": 0.0,
+      "cpu_percent": 0.0,
+      "footprint_start_MiB": 1.2502975463867188,
+      "footprint_end_MiB": 1.2502975463867188,
+      "footprint_peak_MiB": 1.2502975463867188,
+      "disk_read": 0,
+      "disk_write": 0
+    },
+    "p4": {
+      "cpu_seconds": 0.0,
+      "cpu_percent": 0.0,
+      "footprint_start_MiB": 1.2815475463867188,
+      "footprint_end_MiB": 1.2815475463867188,
+      "footprint_peak_MiB": 1.2815475463867188,
+      "disk_read": 0,
+      "disk_write": 0
+    },
+    "p5": {
+      "cpu_seconds": 0.0,
+      "cpu_percent": 0.0,
+      "footprint_start_MiB": 1.2815475463867188,
+      "footprint_end_MiB": 1.2815475463867188,
+      "footprint_peak_MiB": 1.2815475463867188,
+      "disk_read": 0,
+      "disk_write": 0
+    },
+    "p6": {
+      "cpu_seconds": 0.0,
+      "cpu_percent": 0.0,
+      "footprint_start_MiB": 1.2502975463867188,
+      "footprint_end_MiB": 1.2502975463867188,
+      "footprint_peak_MiB": 1.2502975463867188,
+      "disk_read": 0,
+      "disk_write": 0
+    },
+    "p7": {
+      "cpu_seconds": 0.0,
+      "cpu_percent": 0.0,
+      "footprint_start_MiB": 1.2502975463867188,
+      "footprint_end_MiB": 1.2502975463867188,
+      "footprint_peak_MiB": 1.2502975463867188,
+      "disk_read": 0,
+      "disk_write": 0
+    }
+  }
+}

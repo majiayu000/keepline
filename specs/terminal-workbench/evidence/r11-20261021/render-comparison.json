@@ -1,0 +1,184 @@
+[
+  {
+    "fixture": "box-blocks",
+    "before_size": [
+      1506,
+      900
+    ],
+    "after_size": [
+      1506,
+      900
+    ],
+    "changed_vs_before": 1.1066843736166446e-05,
+    "ghostty_before": 0.031831417624521074,
+    "ghostty_after": 0.03182681992337165
+  },
+  {
+    "fixture": "codex-logo",
+    "before_size": [
+      1506,
+      900
+    ],
+    "after_size": [
+      1506,
+      900
+    ],
+    "changed_vs_before": 0.0,
+    "ghostty_before": 0.014630651340996169,
+    "ghostty_after": 0.014630651340996169
+  },
+  {
+    "fixture": "codex-start",
+    "before_size": [
+      1506,
+      900
+    ],
+    "after_size": [
+      1506,
+      900
+    ],
+    "changed_vs_before": 0.0,
+    "ghostty_before": 0.011836015325670498,
+    "ghostty_after": 0.011836015325670498
+  },
+  {
+    "fixture": "cursor-bar",
+    "before_size": [
+      1506,
+      900
+    ],
+    "after_size": [
+      1506,
+      900
+    ],
+    "changed_vs_before": 0.0,
+    "ghostty_before": 0.0021302681992337166,
+    "ghostty_after": 0.0021302681992337166
+  },
+  {
+    "fixture": "cursor-block",
+    "before_size": [
+      1506,
+      900
+    ],
+    "after_size": [
+      1506,
+      900
+    ],
+    "changed_vs_before": 0.0,
+    "ghostty_before": 0.002374712643678161,
+    "ghostty_after": 0.002374712643678161
+  },
+  {
+    "fixture": "cursor-underline",
+    "before_size": [
+      1506,
+      900
+    ],
+    "after_size": [
+      1506,
+      900
+    ],
+    "changed_vs_before": 0.0,
+    "ghostty_before": 0.002196168582375479,
+    "ghostty_after": 0.002196168582375479
+  },
+  {
+    "fixture": "hyperlinks",
+    "before_size": [
+      1506,
+      900
+    ],
+    "after_size": [
+      1506,
+      900
+    ],
+    "changed_vs_before": 0.0,
+    "ghostty_before": 0.006272030651340996,
+    "ghostty_after": 0.006272030651340996
+  },
+  {
+    "fixture": "lazygit-status",
+    "before_size": [
+      1506,
+      900
+    ],
+    "after_size": [
+      1506,
+      900
+    ],
+    "changed_vs_before": 0.0,
+    "ghostty_before": 0.03798927203065134,
+    "ghostty_after": 0.03798927203065134
+  },
+  {
+    "fixture": "sgr-colors",
+    "before_size": [
+      1506,
+      900
+    ],
+    "after_size": [
+      1506,
+      900
+    ],
+    "changed_vs_before": 0.0,
+    "ghostty_before": 0.016616858237547893,
+    "ghostty_after": 0.016616858237547893
+  },
+  {
+    "fixture": "text-unicode",
+    "before_size": [
+      1506,
+      900
+    ],
+    "after_size": [
+      1506,
+      900
+    ],
+    "changed_vs_before": 0.0,
+    "ghostty_before": 0.040319540229885056,
+    "ghostty_after": 0.040319540229885056
+  },
+  {
+    "fixture": "vim-back-normal",
+    "before_size": [
+      1506,
+      900
+    ],
+    "after_size": [
+      1506,
+      900
+    ],
+    "changed_vs_before": 0.0,
+    "ghostty_before": 0.004811494252873564,
+    "ghostty_after": 0.004811494252873564
+  },
+  {
+    "fixture": "vim-insert",
+    "before_size": [
+      1506,
+      900
+    ],
+    "after_size": [
+      1506,
+      900
+    ],
+    "changed_vs_before": 0.0,
+    "ghostty_before": 0.005661302681992337,
+    "ghostty_after": 0.005661302681992337
+  },
+  {
+    "fixture": "vim-normal",
+    "before_size": [
+      1506,
+      900
+    ],
+    "after_size": [
+      1506,
+      900
+    ],
+    "changed_vs_before": 0.0,
+    "ghostty_before": 0.009399233716475096,
+    "ghostty_after": 0.009399233716475096
+  }
+]

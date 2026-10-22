@@ -1,0 +1,31 @@
+Build receipt: final 30 lines; upstream GPUI warnings omitted above this excerpt.
+
+warning: use of deprecated method `cocoa::foundation::NSString::UTF8String`: use the objc2-foundation crate instead
+  --> .deps/zed/crates/gpui_macos/src/window_appearance.rs:24:37
+   |
+24 |                 CStr::from_ptr(name.UTF8String())
+   |                                     ^^^^^^^^^^
+
+warning: use of deprecated method `cocoa::foundation::NSString::UTF8String`: use the objc2-foundation crate instead
+  --> .deps/zed/crates/gpui_macos/src/gpui_macos.rs:76:29
+   |
+76 |             let cstr = self.UTF8String();
+   |                             ^^^^^^^^^^
+
+warning: use of deprecated method `cocoa::foundation::NSString::init_str`: use the objc2-foundation crate instead
+   --> .deps/zed/crates/gpui_macos/src/gpui_macos.rs:139:35
+    |
+139 |     unsafe { NSString::alloc(nil).init_str(string).autorelease() }
+    |                                   ^^^^^^^^
+
+warning: use of deprecated method `cocoa::foundation::NSAutoreleasePool::autorelease`: use the objc2-foundation crate instead
+   --> .deps/zed/crates/gpui_macos/src/gpui_macos.rs:139:52
+    |
+139 |     unsafe { NSString::alloc(nil).init_str(string).autorelease() }
+    |                                                    ^^^^^^^^^^^
+
+warning: `gpui_macos` (lib) generated 695 warnings (1 duplicate)
+   Compiling libghostty-vt v0.2.1 (/Users/lifcc/Desktop/code/AI/tools/keepline-agent-workbench/next/.deps/libghostty-rs/crates/libghostty-vt)
+   Compiling keepline-core v0.1.0 (/Users/lifcc/Desktop/code/AI/tools/keepline-agent-workbench/next/crates/keepline-core)
+   Compiling keepline-app v0.1.0 (/Users/lifcc/Desktop/code/AI/tools/keepline-agent-workbench/next/crates/keepline-app)
+    Finished `dev` profile [unoptimized] target(s) in 5.57s

@@ -1,0 +1,53 @@
+{
+  "sessions": [
+    {
+      "id": "a293511f-dbef-40eb-9dc7-9604c5ab012c",
+      "runtime": "Codex",
+      "cli_session_id": "r6-native",
+      "terminal": "notify",
+      "current": true,
+      "task": null,
+      "outcome": "Open",
+      "updated": 1792555592,
+      "cwd": "/Users/lifcc/Library/Caches/KeeplineAcceptance/r5-bio55vqi/projects/space1",
+      "transcript": "/private/tmp/kl5-home-7inmceyy/.codex/sessions/r6-native.jsonl"
+    }
+  ],
+  "content": {
+    "a293511f-dbef-40eb-9dc7-9604c5ab012c": {
+      "interactive": true,
+      "hidden_reason": "",
+      "first_ask_known": true,
+      "title": "通知验收：核对等待和出错提醒。",
+      "asks": [
+        {
+          "text": "通知验收：核对等待和出错提醒。",
+          "at": 1792555425,
+          "source": {
+            "path": "/private/tmp/kl5-home-7inmceyy/.codex/sessions/r6-native.jsonl",
+            "inode": 380339183,
+            "offset": 236
+          }
+        }
+      ],
+      "evidence": [],
+      "last_reply": "",
+      "turn": "Waiting",
+      "turn_started": 1792555425,
+      "turn_key": "r6-round",
+      "updated": 1792555592,
+      "completed_claim": false,
+      "waiting": "R6 通知验收：继续还是暂停？",
+      "error": "",
+      "partial_history": false,
+      "from_offset": 0,
+      "unknown_records": 0
+    }
+  },
+  "receipts": [
+    {
+      "session_id": "a293511f-dbef-40eb-9dc7-9604c5ab012c",
+      "fact_key": "Waiting:r6-round:1792555425:R6 通知验收：继续还是暂停？"
+    }
+  ]
+}

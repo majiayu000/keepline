@@ -1,0 +1,17 @@
+{
+  "launched_via": "open -n (LaunchServices)",
+  "spaces": [
+    {
+      "id": "default",
+      "name": "工作空间",
+      "cwd": "<isolated HOME>"
+    }
+  ],
+  "terminals": [
+    {
+      "id": "93160-1792646446180433000-1",
+      "cwd": "<isolated HOME>"
+    }
+  ],
+  "home": "<isolated HOME>"
+}

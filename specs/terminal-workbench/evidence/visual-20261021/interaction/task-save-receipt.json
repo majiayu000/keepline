@@ -1,0 +1,24 @@
+{
+  "id": "task1",
+  "space": "s1",
+  "title": "给 CLI 加离线模式",
+  "description": "网络不可用时常用命令照常可用；上传结果先存本地，恢复联网后补传。",
+  "acceptance": [
+    {
+      "id": "t1-c0",
+      "description": "断网时返回缓存结果",
+      "evidence": null
+    },
+    {
+      "id": "t1-c1",
+      "description": "恢复联网后 30 秒内补传",
+      "evidence": null
+    },
+    {
+      "id": "t1-c2",
+      "description": "bun test 全部通过",
+      "evidence": null
+    }
+  ],
+  "agent": "Claude"
+}

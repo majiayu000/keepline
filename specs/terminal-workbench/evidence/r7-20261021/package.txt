@@ -1,0 +1,15 @@
+/Users/lifcc/Desktop/code/AI/tools/keepline-agent-workbench/next/target/signed-acceptance/Keepline.app/Contents/MacOS/keepline-app: replacing existing signature
+/Users/lifcc/Desktop/code/AI/tools/keepline-agent-workbench/next/target/signed-acceptance/Keepline.app/Contents/MacOS/keeplined: replacing existing signature
+/Users/lifcc/Desktop/code/AI/tools/keepline-agent-workbench/next/target/signed-acceptance/Keepline.app: replacing existing signature
+{
+  "bundle": "/Users/lifcc/Desktop/code/AI/tools/keepline-agent-workbench/next/target/signed-acceptance/Keepline.app",
+  "signature": "Developer ID Application: Ma JiaYu (C5UWZ934C2)",
+  "hardened_runtime": true,
+  "notarized": false,
+  "published": false,
+  "git_head": "13321405d3ee5f35f9f56b99c5741b6f675d5d69",
+  "binaries": {
+    "keepline-app": "a09b576a244e7dec162bb2594aff06062020880ce65ce81ad19a820af83a0bcd",
+    "keeplined": "8e28b5edcbbbb368500de0c8b391fc0aa1928c139677ce03e7b0911facc02d90"
+  }
+}

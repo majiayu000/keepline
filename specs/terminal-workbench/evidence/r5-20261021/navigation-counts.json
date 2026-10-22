@@ -1,0 +1,22 @@
+[
+  {
+    "space": 1,
+    "cards": 10,
+    "allInSpace": true
+  },
+  {
+    "space": 2,
+    "cards": 10,
+    "allInSpace": true
+  },
+  {
+    "space": 3,
+    "cards": 10,
+    "allInSpace": true
+  },
+  {
+    "space": 4,
+    "cards": 10,
+    "allInSpace": true
+  }
+]

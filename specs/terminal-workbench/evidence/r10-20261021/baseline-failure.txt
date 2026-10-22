@@ -1,0 +1,15 @@
+failures:
+
+---- split_directory_comes_from_the_live_shell_after_cd stdout ----
+
+thread 'split_directory_comes_from_the_live_shell_after_cd' (43303644) panicked at crates/keeplined/tests/managed_session.rs:66:45:
+called `Result::unwrap()` on an `Err` value: Os { code: 61, kind: ConnectionRefused, message: "Connection refused" }
+note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+
+
+failures:
+    split_directory_comes_from_the_live_shell_after_cd
+
+test result: FAILED. 19 passed; 1 failed; 1 ignored; 0 measured; 0 filtered out; finished in 47.95s
+
+error: test failed, to rerun pass `-p keeplined --test managed_session`

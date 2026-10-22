@@ -1,0 +1,24 @@
+{
+  "terminal": {
+    "id": "64408-1792495589375287000-1",
+    "space": "default",
+    "tab": "64408-1792495589375264000-0",
+    "position": 0,
+    "argv": [
+      "/bin/zsh",
+      "-l"
+    ],
+    "cwd": "/Users/lifcc/Desktop/code/AI/tools/keepline-agent-workbench/next",
+    "pid": 64423,
+    "state": "Interrupted",
+    "exit_code": null,
+    "error": "后台已重启，原 PTY 不可重新连接；可用原 CLI 恢复"
+  },
+  "tab": {
+    "id": "64408-1792495589375264000-0",
+    "space": "default",
+    "default_task": null,
+    "title": "终端",
+    "closed": true
+  }
+}

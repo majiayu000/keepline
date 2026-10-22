@@ -1,0 +1,13 @@
+{
+  "label": "keepline-opt-one",
+  "root": "/tmp/kl14-keepline-opt-one-5w68b0ep",
+  "binaries": "/private/tmp/claude-502/-Users-lifcc-Desktop-code-AI-tools-keepline--claude-worktrees-a14-foreground-cpu-a4e2e5/a756d450-976b-4676-b14b-9b0c7497fb1a/scratchpad/opt",
+  "pids": {
+    "client": 20127,
+    "daemon": 19994,
+    "producer1": 20085
+  },
+  "producers": [
+    20085
+  ]
+}

@@ -1,0 +1,79 @@
+Final validation 2026-10-20T21:20:27.813243+08:00
+Branch feat/agent-workbench; no commit/push.
+
+== App unit tests ==
+   Compiling keepline-core v0.1.0 (/Users/lifcc/Desktop/code/AI/tools/keepline-agent-workbench/next/crates/keepline-core)
+   Compiling keepline-app v0.1.0 (/Users/lifcc/Desktop/code/AI/tools/keepline-agent-workbench/next/crates/keepline-app)
+    Finished `test` profile [unoptimized] target(s) in 3.57s
+     Running unittests src/main.rs (next/target/debug/deps/keepline_app-a92d8a8418c703b6)
+
+running 6 tests
+test screen::tests::ime_offsets_are_utf16_not_utf8_and_never_split_surrogates ... ok
+test workbench::tests::interrupted_terminals_never_enter_the_connection_creation_list ... ok
+test workbench::tests::reopening_full_tab_replaces_exact_slot_and_preserves_history ... ok
+test workbench::tests::closing_interrupted_pane_only_removes_its_placement ... ok
+test screen::tests::captured_cjk_occupies_two_columns_and_combining_text_stays_separate ... ok
+test screen::tests::hidden_cursor_keeps_ime_anchor_and_missing_position_keeps_last_known ... ok
+
+test result: ok. 6 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+
+== Real PTY restart regression ==
+   Compiling keepline-core v0.1.0 (/Users/lifcc/Desktop/code/AI/tools/keepline-agent-workbench/next/crates/keepline-core)
+   Compiling keeplined v0.0.0 (/Users/lifcc/Desktop/code/AI/tools/keepline-agent-workbench/next/crates/keeplined)
+    Finished `test` profile [unoptimized] target(s) in 2.52s
+     Running tests/managed_session.rs (next/target/debug/deps/managed_session-2c56f01d9ec2fef8)
+
+running 1 test
+keeplined listening on /var/folders/3_/987z6jz91l9_t8mpvflf73xm0000gp/T/kl-b146b210ae664789b2a1af72009f6db1/workbench.sock
+keeplined listening on /var/folders/3_/987z6jz91l9_t8mpvflf73xm0000gp/T/kl-b146b210ae664789b2a1af72009f6db1/workbench.sock
+test two_cli_conversations_in_one_real_pty_keep_separate_ownership_after_restart ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 10 filtered out; finished in 1.19s
+
+
+== Native font / IME handler / rendered underline ==
+Main: viewport=Size { 1440px × 900px }, scale=2, mono=Menlo
+wide-cell 实: advance=15.051269px, two-columns=15.05127px, inset=0.00000047683716px
+wide-cell 现: advance=15.051269px, two-columns=15.05127px, inset=0.00000047683716px
+wide-cell 反: advance=15.051269px, two-columns=15.05127px, inset=0.00000047683716px
+wide-cell 馈: advance=15.051269px, two-columns=15.05127px, inset=0.00000047683716px
+wide-cell 日: advance=15.051269px, two-columns=15.05127px, inset=0.00000047683716px
+wide-cell 語: advance=15.051269px, two-columns=15.05127px, inset=0.00000047683716px
+wide-cell 한: advance=15.051269px, two-columns=15.05127px, inset=0.00000047683716px
+wide-cell 글: advance=15.051269px, two-columns=15.05127px, inset=0.00000047683716px
+wide-cell 😀: advance=15px, two-columns=15.05127px, inset=0.025634766px
+native IME geometry: overlay/ranges/UTF16 agree; measured cell=CellMetrics { width: 7.525635px, height: 20px }
+Pane IME handler: overlay=Bounds { origin: Point { x: 261px, y: 385px }, size: Size { 37.628178px × 20px } }, requested caret=Bounds { origin: Point { x: 276.05127px, y: 385px }, size: Size { 0px × 20px } }
+IME rendered underlines: [Underline { order: 6, pad: 0, bounds: Bounds { origin: Point { x: 522px (scaled), y: 802px (scaled) }, size: Size { 75px (scaled) × 2px (scaled) } }, content_mask: ContentMask { bounds: Bounds { origin: Point { x: 522px (scaled), y: 330px (scaled) }, size: Size { 1122px (scaled) × 1384px (scaled) } } }, color: Hsla { h: 0.6111111, s: 0.12676054, l: 0.8607843, a: 1.0 }, thickness: 2px (scaled), wavy: PaddedBool32(0) }]
+Overview: viewport=Size { 1440px × 900px }, scale=2, mono=Menlo
+
+== Restarted fixture native client ==
+Main: viewport=Size { 1440px × 900px }, scale=2, mono=Menlo
+wide-cell 实: advance=15.051269px, two-columns=15.05127px, inset=0.00000047683716px
+wide-cell 现: advance=15.051269px, two-columns=15.05127px, inset=0.00000047683716px
+wide-cell 反: advance=15.051269px, two-columns=15.05127px, inset=0.00000047683716px
+wide-cell 馈: advance=15.051269px, two-columns=15.05127px, inset=0.00000047683716px
+wide-cell 日: advance=15.051269px, two-columns=15.05127px, inset=0.00000047683716px
+wide-cell 語: advance=15.051269px, two-columns=15.05127px, inset=0.00000047683716px
+wide-cell 한: advance=15.051269px, two-columns=15.05127px, inset=0.00000047683716px
+wide-cell 글: advance=15.051269px, two-columns=15.05127px, inset=0.00000047683716px
+wide-cell 😀: advance=15px, two-columns=15.05127px, inset=0.025634766px
+native IME geometry: overlay/ranges/UTF16 agree; measured cell=CellMetrics { width: 7.525635px, height: 20px }
+Overview: viewport=Size { 1440px × 900px }, scale=2, mono=Menlo
+
+== Visual-test build ==
+
+warning: `gpui_macos` (lib) generated 695 warnings (1 duplicate)
+   Compiling libghostty-vt v0.2.1 (/Users/lifcc/Desktop/code/AI/tools/keepline-agent-workbench/next/.deps/libghostty-rs/crates/libghostty-vt)
+   Compiling keepline-core v0.1.0 (/Users/lifcc/Desktop/code/AI/tools/keepline-agent-workbench/next/crates/keepline-core)
+   Compiling keepline-app v0.1.0 (/Users/lifcc/Desktop/code/AI/tools/keepline-agent-workbench/next/crates/keepline-app)
+    Finished `dev` profile [unoptimized] target(s) in 4.33s
+
+== Final ordinary build (no visual-test feature) ==
+
+warning: `gpui_macos` (lib) generated 695 warnings (1 duplicate)
+   Compiling libghostty-vt v0.2.1 (/Users/lifcc/Desktop/code/AI/tools/keepline-agent-workbench/next/.deps/libghostty-rs/crates/libghostty-vt)
+   Compiling keepline-core v0.1.0 (/Users/lifcc/Desktop/code/AI/tools/keepline-agent-workbench/next/crates/keepline-core)
+   Compiling keepline-app v0.1.0 (/Users/lifcc/Desktop/code/AI/tools/keepline-agent-workbench/next/crates/keepline-app)
+    Finished `dev` profile [unoptimized] target(s) in 2.85s
