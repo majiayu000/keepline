@@ -48,22 +48,43 @@ fn claims_done(s: &str) -> bool {
         if fence.is_some() || trimmed.starts_with('>') {
             continue;
         }
-        if ![
-            "未完成",
-            "尚未",
-            "没有完成",
-            "还没",
-            "not completed",
-            "not done",
-        ]
-        .iter()
-        .any(|no| line.contains(no))
-            && CLAIM.is_match(line)
-        {
+        // A negation only cancels the claim in its own sentence: "完成。…（可选项尚未实现）"
+        // still claims the requested work is done. Commas do not end a sentence, so
+        // "完成，但尚未测试" stays unclaimed.
+        if CLAIM.find_iter(line).any(|m| {
+            !NEGATIONS
+                .iter()
+                .any(|no| sentence(line, m.start()).contains(no))
+        }) {
             return true;
         }
     }
     false
+}
+const NEGATIONS: [&str; 6] = [
+    "未完成",
+    "尚未",
+    "没有完成",
+    "还没",
+    "not completed",
+    "not done",
+];
+/// The sentence of `line` containing byte `at`.
+fn sentence(line: &str, at: usize) -> &str {
+    let ends = |i: usize, c: char| {
+        matches!(c, '。' | '！' | '？' | '；' | '!' | '?' | ';')
+            || (c == '.' && line[i + 1..].chars().next().is_none_or(char::is_whitespace))
+    };
+    let start = line[..at]
+        .char_indices()
+        .rev()
+        .find(|&(i, c)| ends(i, c))
+        .map_or(0, |(i, c)| i + c.len_utf8());
+    let end = line[at..]
+        .char_indices()
+        .find(|&(i, c)| ends(at + i, c))
+        .map_or(line.len(), |(i, c)| at + i + c.len_utf8());
+    &line[start..end]
 }
 // Strip bounded, explicit wrappers; do not infer the author of arbitrary unmarked prose.
 fn user_text(s: &str) -> String {
@@ -1044,7 +1065,7 @@ pub fn card(db: &Connection, path: &str) -> io::Result<Option<Content>> {
 }
 pub fn save(db: &Connection, path: &str, parser: &Parser) -> io::Result<()> {
     let mut encoded = serde_json::to_value(parser).map_err(db_err)?;
-    encoded["_rules"] = json!(6);
+    encoded["_rules"] = json!(7);
     db.prepare_cached("INSERT INTO session_content VALUES(?1,?2,?3,?4,?5,?6) ON CONFLICT(path) DO UPDATE SET title=excluded.title,turn=excluded.turn,updated=excluded.updated,projection=excluded.projection,parser=excluded.parser").map_err(db_err)?.execute(params![path,parser.card.title,format!("{:?}",parser.card.turn),i64::try_from(parser.card.updated).map_err(db_err)?,serde_json::to_string(&parser.card).map_err(db_err)?,serde_json::to_string(&encoded).map_err(db_err)?]).map_err(db_err)?;
     let mut ordinals = BTreeMap::new();
     for r in &parser.records {
@@ -1328,6 +1349,8 @@ mod tests {
             // R9 real Claude reply: the sentence goes on after the first full stop.
             "完成。approval-proof.txt 已写入相同字节：`ok`（0x6F 0x6B，无换行符）。",
             "说明如下：\n完成，两个文件都已写入。",
+            // Real Claude reply (2026-10 local logs): another item is "尚未实现" in a later sentence.
+            "完成。分支确认是 design/rewrite（Phase 5 可选项、尚未实现）。",
         ] {
             let mut p = Parser::default();
             p.add(
@@ -1348,6 +1371,9 @@ mod tests {
             "尚未完成。",
             "> 完成。",
             "```\n完成。\n```",
+            "完成，但尚未测试",
+            "Tests are not completed yet.",
+            "已完成一半，还没提交",
         ] {
             assert!(!claims_done(text), "{text}");
         }
