@@ -1,0 +1,315 @@
+{
+  "activated" : true,
+  "attempt" : 1,
+  "continuous_frontmost" : false,
+  "exit" : 1,
+  "samples" : [
+    {
+      "bundle" : "local.keepline.a14.ghostty-one",
+      "input_idle_seconds" : 97.819081041999993,
+      "name" : "Ghostty",
+      "pid" : 7625,
+      "seconds" : 0.00028300285339355469,
+      "source" : "before",
+      "utc" : "2026-10-22T03:05:32Z"
+    },
+    {
+      "bundle" : "local.keepline.a14.ghostty-one",
+      "input_idle_seconds" : 97.921442791999993,
+      "name" : "Ghostty",
+      "pid" : 7625,
+      "seconds" : 0.10358405113220215,
+      "source" : "poll",
+      "utc" : "2026-10-22T03:05:32Z"
+    },
+    {
+      "bundle" : "local.keepline.a14.ghostty-one",
+      "input_idle_seconds" : 98.022783082999993,
+      "name" : "Ghostty",
+      "pid" : 7625,
+      "seconds" : 0.2049400806427002,
+      "source" : "poll",
+      "utc" : "2026-10-22T03:05:32Z"
+    },
+    {
+      "bundle" : "com.larksuite.larkApp",
+      "input_idle_seconds" : 98.05360675,
+      "name" : "Lark",
+      "pid" : 664,
+      "seconds" : 0.23593103885650635,
+      "source" : "activation",
+      "utc" : "2026-10-22T03:05:32Z"
+    },
+    {
+      "bundle" : "com.larksuite.larkApp",
+      "input_idle_seconds" : 98.123965874999996,
+      "name" : "Lark",
+      "pid" : 664,
+      "seconds" : 0.30628609657287598,
+      "source" : "poll",
+      "utc" : "2026-10-22T03:05:32Z"
+    },
+    {
+      "bundle" : "com.larksuite.larkApp",
+      "input_idle_seconds" : 98.225530042000003,
+      "name" : "Lark",
+      "pid" : 664,
+      "seconds" : 0.40777206420898438,
+      "source" : "poll",
+      "utc" : "2026-10-22T03:05:32Z"
+    },
+    {
+      "bundle" : "com.larksuite.larkApp",
+      "input_idle_seconds" : 98.326946417000002,
+      "name" : "Lark",
+      "pid" : 664,
+      "seconds" : 0.50917303562164307,
+      "source" : "poll",
+      "utc" : "2026-10-22T03:05:32Z"
+    },
+    {
+      "bundle" : "com.larksuite.larkApp",
+      "input_idle_seconds" : 98.427985000000007,
+      "name" : "Lark",
+      "pid" : 664,
+      "seconds" : 0.61026310920715332,
+      "source" : "poll",
+      "utc" : "2026-10-22T03:05:33Z"
+    },
+    {
+      "bundle" : "com.larksuite.larkApp",
+      "input_idle_seconds" : 98.529131332999995,
+      "name" : "Lark",
+      "pid" : 664,
+      "seconds" : 0.711448073387146,
+      "source" : "poll",
+      "utc" : "2026-10-22T03:05:33Z"
+    },
+    {
+      "bundle" : "com.larksuite.larkApp",
+      "input_idle_seconds" : 98.630750707999994,
+      "name" : "Lark",
+      "pid" : 664,
+      "seconds" : 0.81294107437133789,
+      "source" : "poll",
+      "utc" : "2026-10-22T03:05:33Z"
+    },
+    {
+      "bundle" : "com.larksuite.larkApp",
+      "input_idle_seconds" : 98.732265333000001,
+      "name" : "Lark",
+      "pid" : 664,
+      "seconds" : 0.91454803943634033,
+      "source" : "poll",
+      "utc" : "2026-10-22T03:05:33Z"
+    },
+    {
+      "bundle" : "com.larksuite.larkApp",
+      "input_idle_seconds" : 98.833685416999998,
+      "name" : "Lark",
+      "pid" : 664,
+      "seconds" : 1.0159430503845215,
+      "source" : "poll",
+      "utc" : "2026-10-22T03:05:33Z"
+    },
+    {
+      "bundle" : "com.larksuite.larkApp",
+      "input_idle_seconds" : 98.935191250000003,
+      "name" : "Lark",
+      "pid" : 664,
+      "seconds" : 1.1173840761184692,
+      "source" : "poll",
+      "utc" : "2026-10-22T03:05:33Z"
+    },
+    {
+      "bundle" : "com.larksuite.larkApp",
+      "input_idle_seconds" : 99.036828,
+      "name" : "Lark",
+      "pid" : 664,
+      "seconds" : 1.2189950942993164,
+      "source" : "poll",
+      "utc" : "2026-10-22T03:05:33Z"
+    },
+    {
+      "bundle" : "com.larksuite.larkApp",
+      "input_idle_seconds" : 99.138078875000005,
+      "name" : "Lark",
+      "pid" : 664,
+      "seconds" : 1.3202641010284424,
+      "source" : "poll",
+      "utc" : "2026-10-22T03:05:33Z"
+    },
+    {
+      "bundle" : "com.larksuite.larkApp",
+      "input_idle_seconds" : 99.239411583000006,
+      "name" : "Lark",
+      "pid" : 664,
+      "seconds" : 1.4215641021728516,
+      "source" : "poll",
+      "utc" : "2026-10-22T03:05:33Z"
+    },
+    {
+      "bundle" : "com.larksuite.larkApp",
+      "input_idle_seconds" : 99.340401333000003,
+      "name" : "Lark",
+      "pid" : 664,
+      "seconds" : 1.5225870609283447,
+      "source" : "poll",
+      "utc" : "2026-10-22T03:05:33Z"
+    },
+    {
+      "bundle" : "com.larksuite.larkApp",
+      "input_idle_seconds" : 99.441433458000006,
+      "name" : "Lark",
+      "pid" : 664,
+      "seconds" : 1.6236530542373657,
+      "source" : "poll",
+      "utc" : "2026-10-22T03:05:34Z"
+    },
+    {
+      "bundle" : "com.larksuite.larkApp",
+      "input_idle_seconds" : 99.542447999999993,
+      "name" : "Lark",
+      "pid" : 664,
+      "seconds" : 1.7245720624923706,
+      "source" : "poll",
+      "utc" : "2026-10-22T03:05:34Z"
+    },
+    {
+      "bundle" : "com.larksuite.larkApp",
+      "input_idle_seconds" : 99.643803875000003,
+      "name" : "Lark",
+      "pid" : 664,
+      "seconds" : 1.8259100914001465,
+      "source" : "poll",
+      "utc" : "2026-10-22T03:05:34Z"
+    },
+    {
+      "bundle" : "com.larksuite.larkApp",
+      "input_idle_seconds" : 99.745469499999999,
+      "name" : "Lark",
+      "pid" : 664,
+      "seconds" : 1.9276100397109985,
+      "source" : "poll",
+      "utc" : "2026-10-22T03:05:34Z"
+    },
+    {
+      "bundle" : "com.larksuite.larkApp",
+      "input_idle_seconds" : 99.847060833,
+      "name" : "Lark",
+      "pid" : 664,
+      "seconds" : 2.0292700529098511,
+      "source" : "poll",
+      "utc" : "2026-10-22T03:05:34Z"
+    },
+    {
+      "bundle" : "com.larksuite.larkApp",
+      "input_idle_seconds" : 99.947910292000003,
+      "name" : "Lark",
+      "pid" : 664,
+      "seconds" : 2.1301190853118896,
+      "source" : "poll",
+      "utc" : "2026-10-22T03:05:34Z"
+    },
+    {
+      "bundle" : "com.larksuite.larkApp",
+      "input_idle_seconds" : 100.049488375,
+      "name" : "Lark",
+      "pid" : 664,
+      "seconds" : 2.2316620349884033,
+      "source" : "poll",
+      "utc" : "2026-10-22T03:05:34Z"
+    },
+    {
+      "bundle" : "com.larksuite.larkApp",
+      "input_idle_seconds" : 100.150852375,
+      "name" : "Lark",
+      "pid" : 664,
+      "seconds" : 2.3330080509185791,
+      "source" : "poll",
+      "utc" : "2026-10-22T03:05:34Z"
+    },
+    {
+      "bundle" : "com.larksuite.larkApp",
+      "input_idle_seconds" : 100.252468542,
+      "name" : "Lark",
+      "pid" : 664,
+      "seconds" : 2.4346390962600708,
+      "source" : "poll",
+      "utc" : "2026-10-22T03:05:34Z"
+    },
+    {
+      "bundle" : "com.larksuite.larkApp",
+      "input_idle_seconds" : 100.353886958,
+      "name" : "Lark",
+      "pid" : 664,
+      "seconds" : 2.5359930992126465,
+      "source" : "poll",
+      "utc" : "2026-10-22T03:05:35Z"
+    },
+    {
+      "bundle" : "com.larksuite.larkApp",
+      "input_idle_seconds" : 100.454917333,
+      "name" : "Lark",
+      "pid" : 664,
+      "seconds" : 2.6371281147003174,
+      "source" : "poll",
+      "utc" : "2026-10-22T03:05:35Z"
+    },
+    {
+      "bundle" : "com.larksuite.larkApp",
+      "input_idle_seconds" : 100.55607379200001,
+      "name" : "Lark",
+      "pid" : 664,
+      "seconds" : 2.7381950616836548,
+      "source" : "poll",
+      "utc" : "2026-10-22T03:05:35Z"
+    },
+    {
+      "bundle" : "com.larksuite.larkApp",
+      "input_idle_seconds" : 100.65706216700001,
+      "name" : "Lark",
+      "pid" : 664,
+      "seconds" : 2.8392370939254761,
+      "source" : "poll",
+      "utc" : "2026-10-22T03:05:35Z"
+    },
+    {
+      "bundle" : "com.larksuite.larkApp",
+      "input_idle_seconds" : 100.757894292,
+      "name" : "Lark",
+      "pid" : 664,
+      "seconds" : 2.9400200843811035,
+      "source" : "poll",
+      "utc" : "2026-10-22T03:05:35Z"
+    },
+    {
+      "bundle" : "com.larksuite.larkApp",
+      "input_idle_seconds" : 100.8590165,
+      "name" : "Lark",
+      "pid" : 664,
+      "seconds" : 3.0411810874938965,
+      "source" : "poll",
+      "utc" : "2026-10-22T03:05:35Z"
+    },
+    {
+      "bundle" : "com.larksuite.larkApp",
+      "input_idle_seconds" : 100.960369542,
+      "name" : "Lark",
+      "pid" : 664,
+      "seconds" : 3.1425970792770386,
+      "source" : "poll",
+      "utc" : "2026-10-22T03:05:35Z"
+    },
+    {
+      "bundle" : "com.larksuite.larkApp",
+      "input_idle_seconds" : 100.9604915,
+      "name" : "Lark",
+      "pid" : 664,
+      "seconds" : 3.1430720090866089,
+      "source" : "after",
+      "utc" : "2026-10-22T03:05:35Z"
+    }
+  ],
+  "target" : 7625
+}
