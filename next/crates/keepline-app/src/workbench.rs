@@ -1387,7 +1387,12 @@ impl Workbench {
             ),
             HandoffState::Placed => "已放入待办内容，检查后在 Agent 里按回车发送".to_owned(),
             HandoffState::NotReady => "Agent 还没准备好，内容没有放进去".to_owned(),
+            HandoffState::Missing => format!(
+                "找不到 {} 命令，内容没有放进去。先安装它或把它加进 PATH，再点「再试一次」",
+                agent_name(agent)
+            ),
         };
+        let stuck = matches!(state, HandoffState::NotReady | HandoffState::Missing);
         let text = task.prompt();
         div()
             .flex()
@@ -1396,13 +1401,11 @@ impl Workbench {
             .gap(px(T::S6))
             .p(px(T::S6))
             .bg(T::color(T::TODO))
-            .child(
-                label(message).text_color(if state == HandoffState::NotReady {
-                    Group::Waiting.colors().1
-                } else {
-                    T::color(T::SECONDARY)
-                }),
-            )
+            .child(label(message).text_color(if stuck {
+                Group::Waiting.colors().1
+            } else {
+                T::color(T::SECONDARY)
+            }))
             .when(task.acceptance.is_empty(), |d| {
                 let task = task.clone();
                 d.child(label("还没写验收标准").text_color(Group::Waiting.colors().1))
@@ -1410,7 +1413,7 @@ impl Workbench {
                         move |this, _, window, cx| this.edit_task_form(&task, window, cx),
                     )))
             })
-            .when(state == HandoffState::NotReady, |d| {
+            .when(stuck, |d| {
                 let retry = terminal.clone();
                 d.child(button("handoff-retry", "再试一次").on_click(cx.listener(
                     move |this, _, _, cx| {
