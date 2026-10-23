@@ -157,7 +157,7 @@ fn panel(w: &Workspace) -> String {
     }
     rows.sort_by_key(|r| r.0);
     let total = rows.len();
-    json!({"badge":if total==0 {"K".into()}else{format!("K {total}")},"heading":format!("{waiting} 个在等你 · {errors} 个出错"),"summary":format!("另有 {review} 个待核对 · {running} 个运行中"),"footer":format!("很久没动 · {stale} 个{}\n等你、出错只计 Keepline 里的画面；外部会话在鸟瞰里看",if total>5 {format!("\n还有 {} 项需要你，请打开工作台",total-5)}else{String::new()}),"rows":rows.into_iter().take(5).map(|r|r.1).collect::<Vec<_>>(),"tokens":{"width":T::MENUBAR_WIDTH,"height":T::MENUBAR_HEIGHT,"padding":T::S16,"gap":T::S12,"row":T::MENUBAR_ROW,"font":T::BODY_SIZE,"title":T::MENU_TITLE,"small":T::SMALL,"meta":T::META,"inset":T::S12,"button":T::MENU_BUTTON,"radius":T::CARD_RADIUS,"selected":T::MENU_WAIT_BG,"accent":T::ACCENT,"white":T::WHITE,"background":T::WHITE,"text":T::POPOVER_TEXT,"secondary":T::POPOVER_SECONDARY}}).to_string()
+    json!({"badge":if total==0 {"K".into()}else{format!("K {total}")},"heading":format!("{waiting} 个在等你 · {errors} 个出错"),"summary":format!("另有 {review} 个待核对 · {running} 个运行中"),"footer":format!("很久没动 · {stale} 个{}\n等你、出错只计 Keepline 里的画面；外部会话在鸟瞰里看",if total>5 {format!("\n还有 {} 项需要你，请打开工作台",total-5)}else{String::new()}),"rows":rows.into_iter().take(5).map(|r|r.1).collect::<Vec<_>>(),"tokens":{"width":T::MENUBAR_WIDTH,"height":T::MENUBAR_HEIGHT,"padding":T::S16,"gap":T::S12,"row":T::MENUBAR_ROW,"font":T::BODY_SIZE,"title":T::MENU_TITLE,"small":T::SMALL,"meta":T::META,"inset":T::S12,"button":T::MENU_BUTTON,"radius":T::CARD_RADIUS,"selected":T::MENU_WAIT_BG,"accent":T::ACCENT,"white":T::WHITE,"background":T::WHITE,"text":T::MENU_TEXT,"secondary":T::MENU_SECONDARY}}).to_string()
 }
 pub fn show() {
     unsafe {

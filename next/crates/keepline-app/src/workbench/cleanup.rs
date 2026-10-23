@@ -1,0 +1,221 @@
+//! 逐个清理: one stale session at a time.
+use super::*;
+
+impl Workbench {
+    pub(super) fn cleanup_view(&self, cx: &Context<Self>) -> gpui::Stateful<gpui::Div> {
+        let mut page = div()
+            .w_full()
+            .max_w(px(T::CLEANUP_WIDTH))
+            .flex()
+            .flex_col()
+            .gap(px(T::S16))
+            .child(
+                div()
+                    .flex()
+                    .items_center()
+                    .gap(px(T::S12))
+                    .child(
+                        button("cleanup-exit", "← 返回鸟瞰")
+                            .border_0()
+                            .text_color(T::color(T::LINK))
+                            .on_click(cx.listener(|this, _, _, cx| {
+                                this.cleanup.clear();
+                                this.overview = true;
+                                cx.notify();
+                            })),
+                    )
+                    .child(
+                        div()
+                            .text_size(px(T::FORM_TITLE))
+                            .font_weight(gpui::FontWeight::SEMIBOLD)
+                            .child("清理很久没动的会话"),
+                    )
+                    .child(div().flex_1())
+                    .child(
+                        label(format!(
+                            "第 {} / {} 个",
+                            (self.cleanup_index + 1).min(self.cleanup.len()),
+                            self.cleanup.len()
+                        ))
+                        .text_color(T::color(T::SECONDARY)),
+                    ),
+            )
+            .child(
+                div()
+                    .h(px(T::S4))
+                    .w_full()
+                    .rounded_full()
+                    .bg(T::color(T::CONTROL))
+                    .child(div().h_full().rounded_full().bg(T::color(T::ACCENT)).w(
+                        gpui::relative(
+                            self.cleanup_index as f32 / self.cleanup.len().max(1) as f32,
+                        ),
+                    )),
+            );
+        if let Some(s) = self
+            .cleanup
+            .get(self.cleanup_index)
+            .and_then(|id| self.workspace.agent_sessions.iter().find(|s| &s.id == id))
+        {
+            let h = self.workspace.content.get(&s.id).map(|c| c.here());
+            if let Some(h) = h {
+                let mut card = div()
+                    .p(px(T::S20))
+                    .rounded(px(T::CARD_RADIUS))
+                    .bg(T::color(T::POPOVER))
+                    .flex()
+                    .flex_col()
+                    .gap(px(T::S16))
+                    .child(
+                        div()
+                            .text_size(px(T::TITLE))
+                            .font_weight(gpui::FontWeight::SEMIBOLD)
+                            .child(self.session_title(s)),
+                    )
+                    .child(
+                        label(format!(
+                            "{} · {} · {}",
+                            s.runtime.executable(),
+                            age(self
+                                .workspace
+                                .content
+                                .get(&s.id)
+                                .map_or(s.updated, |c| c.updated)),
+                            s.cwd
+                        ))
+                        .text_color(T::color(T::SECONDARY)),
+                    );
+                // The title already is the first ask when nothing better names the session.
+                let title = self.session_title(s);
+                for (name, text) in [
+                    ("你要它", h.ask),
+                    ("做成了", h.done),
+                    ("停在", h.stopped),
+                    ("下一步·推断", h.next),
+                ]
+                .into_iter()
+                .filter(|(name, text)| *name != "你要它" || text.trim() != title.trim())
+                {
+                    card = card.child(
+                        div()
+                            .flex()
+                            .gap(px(T::S16))
+                            .py(px(T::S8))
+                            .when(name == "下一步·推断", |d| {
+                                d.bg(T::color(T::INFERENCE))
+                            })
+                            .child(
+                                label(name)
+                                    .w(px(T::HERE_LABEL))
+                                    .flex_shrink_0()
+                                    .text_color(T::color(T::SECONDARY)),
+                            )
+                            .child(div().flex_1().child(text)),
+                    );
+                }
+                page = page.child(card);
+            }
+            let mut actions = div().flex().gap(px(T::S8));
+            let resume = s.clone();
+            actions = actions.child(
+                button("cleanup-continue", "继续")
+                    .h(px(T::CLEANUP_ACTION_HEIGHT))
+                    .flex_1()
+                    .justify_center()
+                    .bg(T::color(T::ACCENT))
+                    .text_color(T::color(T::WHITE))
+                    .on_click(cx.listener(move |this, _, window, cx| {
+                        this.cleanup.clear();
+                        this.open_session(&resume, window, cx);
+                    })),
+            );
+            {
+                let (name, outcome) = ("完成", Outcome::Completed);
+                let sid = s.id.clone();
+                actions = actions.child(
+                    button(name, name)
+                        .h(px(T::CLEANUP_ACTION_HEIGHT))
+                        .flex_1()
+                        .justify_center()
+                        .bg(T::color(T::POPOVER))
+                        .text_color(T::color(T::PRIMARY))
+                        .on_click(cx.listener(move |this, _, _, cx| {
+                            this.edit(
+                                Edit::SetOutcome {
+                                    id: sid.clone(),
+                                    outcome: outcome.clone(),
+                                },
+                                cx,
+                            )
+                        })),
+                );
+            }
+            let sid = s.id.clone();
+            actions = actions.child(
+                button("cleanup-defer", "暂存…")
+                    .h(px(T::CLEANUP_ACTION_HEIGHT))
+                    .flex_1()
+                    .justify_center()
+                    .text_color(T::color(T::LINK))
+                    .on_click(cx.listener(move |this, _, window, cx| {
+                        this.here = Some(sid.clone());
+                        this.show_form(FormKind::Defer, window, cx);
+                    })),
+            );
+            let sid = s.id.clone();
+            actions = actions.child(
+                button("cleanup-abandon", "放弃")
+                    .h(px(T::CLEANUP_ACTION_HEIGHT))
+                    .flex_1()
+                    .justify_center()
+                    .bg(T::color(T::POPOVER))
+                    .border_color(T::color(T::CONTROL))
+                    .text_color(T::color(T::PRIMARY))
+                    .on_click(cx.listener(move |this, _, _, cx| {
+                        this.edit(
+                            Edit::SetOutcome {
+                                id: sid.clone(),
+                                outcome: Outcome::Abandoned,
+                            },
+                            cx,
+                        )
+                    })),
+            );
+            page = page.child(actions);
+        } else {
+            page = page.child("这一轮已处理完，可以返回鸟瞰。");
+        }
+        page = page.child(
+            div()
+                .flex()
+                .gap(px(T::S8))
+                .child(
+                    button("cleanup-previous", "上一个")
+                        .text_color(T::color(T::PRIMARY))
+                        .on_click(cx.listener(|this, _, _, cx| {
+                            this.cleanup_index = this.cleanup_index.saturating_sub(1);
+                            cx.notify();
+                        })),
+                )
+                .child(
+                    button("cleanup-skip", "跳过")
+                        .text_color(T::color(T::PRIMARY))
+                        .on_click(cx.listener(|this, _, _, cx| {
+                            this.cleanup_index = (this.cleanup_index + 1).min(this.cleanup.len());
+                            cx.notify();
+                        })),
+                ),
+        );
+        div()
+            .id("cleanup-page")
+            .size_full()
+            .bg(T::color(T::APP))
+            .text_color(T::color(T::PRIMARY))
+            .overflow_y_scroll()
+            .p(px(T::S20))
+            .flex()
+            .flex_col()
+            .items_center()
+            .child(page)
+    }
+}

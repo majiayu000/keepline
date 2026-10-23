@@ -1,0 +1,281 @@
+//! Fixture-driven layouts and pages for native visual evidence.
+use super::*;
+
+impl Workbench {
+    #[cfg(feature = "visual-test")]
+    pub fn visual_layout(&mut self, name: &str, window: &mut Window, cx: &mut Context<Self>) {
+        self.overview = false;
+        self.zoomed = None;
+        self.menu = None;
+        if name == "eight" {
+            let mut leaves = self
+                .workspace
+                .terminals
+                .iter()
+                .map(|t| Layout::Leaf(t.id.clone()))
+                .collect::<Vec<_>>();
+            while leaves.len() > 1 {
+                leaves = leaves
+                    .chunks(2)
+                    .map(|pair| {
+                        if pair.len() == 1 {
+                            pair[0].clone()
+                        } else {
+                            Layout::Split {
+                                axis: if pair[0].ids().len() == 1 {
+                                    Axis::Down
+                                } else {
+                                    Axis::Right
+                                },
+                                ratio: 5000,
+                                first: Box::new(pair[0].clone()),
+                                second: Box::new(pair[1].clone()),
+                            }
+                        }
+                    })
+                    .collect();
+            }
+            if let Some(mut tab) = self
+                .workspace
+                .tabs
+                .iter()
+                .find(|t| t.id == "eight")
+                .cloned()
+            {
+                tab.layout = leaves.pop();
+                if let Ok(Reply::Workspace(w)) = rpc(
+                    &self.socket,
+                    &Request::Edit {
+                        revision: self.workspace.revision,
+                        edit: Edit::PutTab { tab },
+                    },
+                ) {
+                    self.workspace = w;
+                }
+            }
+        }
+        self.tab = Some(if name == "menu" { "nested" } else { name }.into());
+        self.sync_panes(cx);
+        if let Some(id) = self
+            .tab
+            .as_ref()
+            .and_then(|id| self.workspace.tab_terminals(id).first().cloned())
+        {
+            if let Some(pane) = self.panes.get(&id) {
+                window.focus(&pane.focus_handle(cx), cx);
+            }
+        }
+        cx.notify();
+        window.refresh();
+    }
+    #[cfg(feature = "visual-test")]
+    pub fn visual_bounds(&self) -> gpui::Bounds<gpui::Pixels> {
+        *self
+            .split_bounds
+            .get(&Vec::new())
+            .expect("root splitter bounds")
+    }
+    #[cfg(feature = "visual-test")]
+    pub fn visual_menu_point(&self, index: usize) -> gpui::Point<gpui::Pixels> {
+        let menu = self.menu.as_ref().expect("right mouse opened pane menu");
+        menu.position + gpui::point(px(T::S20), px(T::S6 + T::ROW * (index as f32 + 0.5)))
+    }
+    #[cfg(feature = "visual-test")]
+    pub fn visual_check_panes(&self, count: usize) {
+        assert_eq!(self.panes.len(), count);
+    }
+    #[cfg(feature = "visual-test")]
+    pub fn visual_check_saved_ratio(&self) {
+        let Reply::Workspace(w) = rpc(&self.socket, &Request::Workspace).unwrap() else {
+            panic!("workspace")
+        };
+        let local = self
+            .workspace
+            .tabs
+            .iter()
+            .find(|t| t.id == "nested")
+            .unwrap();
+        assert_eq!(w.tabs.iter().find(|t| t.id == "nested").unwrap(), local);
+        assert!(
+            matches!(local.layout,Some(Layout::Split{ratio,..}) if (6600..6800).contains(&ratio))
+        );
+    }
+    #[cfg(feature = "visual-test")]
+    pub fn visual_split_down(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        let id = self.focused.clone().unwrap();
+        self.menu_action(&id, "向下分屏", window, cx);
+    }
+    #[cfg(feature = "visual-test")]
+    pub fn visual_close_focused(&mut self, cx: &mut Context<Self>) {
+        let id = self.focused.clone().unwrap();
+        self.close_pane(&id, cx);
+    }
+    #[cfg(feature = "visual-test")]
+    pub fn visual_assert_new_shell(&self, count: usize, window: &Window, cx: &gpui::App) {
+        self.visual_check_panes(count);
+        let id = self.focused.as_ref().unwrap();
+        assert!(
+            self.panes[id].focus_handle(cx).is_focused(window),
+            "new split must receive input focus"
+        );
+        let terminal = self
+            .workspace
+            .terminals
+            .iter()
+            .find(|t| &t.id == id)
+            .unwrap();
+        assert_eq!(terminal.argv, vec!["/bin/sh", "-l"]);
+        assert_eq!(
+            std::fs::canonicalize(&terminal.cwd).unwrap(),
+            std::fs::canonicalize(&self.workspace.terminals[0].cwd).unwrap()
+        );
+        assert!(self.workspace.agent_sessions.is_empty());
+    }
+    #[cfg(feature = "visual-test")]
+    pub fn visual_check_closed_processes(&self) {
+        let extras: Vec<_> = self
+            .workspace
+            .terminals
+            .iter()
+            .filter(|t| !t.id.starts_with('p'))
+            .collect();
+        assert_eq!(extras.len(), 2);
+        for t in extras {
+            assert_eq!(t.state, ProcessState::Running);
+            assert_eq!(unsafe { libc::kill(t.pid.unwrap() as i32, 0) }, 0);
+        }
+    }
+    #[cfg(feature = "visual-test")]
+    pub fn visual_marked_overlay(
+        &mut self,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) -> Option<gpui::Bounds<gpui::Pixels>> {
+        if let Some(pane) = self
+            .tab
+            .as_ref()
+            .and_then(|id| self.workspace.tab_terminals(id).first().cloned())
+            .and_then(|id| self.panes.get(&id))
+        {
+            return Some(pane.update(cx, |pane, cx| pane.verify_marked_overlay(window, cx)));
+        }
+        None
+    }
+    #[cfg(feature = "visual-test")]
+    pub fn visual_view(&mut self, overview: bool, window: &mut Window, cx: &mut Context<Self>) {
+        self.overview = overview;
+        self.sync_panes(cx);
+        if !overview {
+            if let Some(pane) = self
+                .tab
+                .as_ref()
+                .and_then(|id| self.workspace.tab_terminals(id).first().cloned())
+                .and_then(|id| self.panes.get(&id))
+            {
+                window.focus(&pane.focus_handle(cx), cx);
+            }
+        }
+        cx.notify();
+        window.refresh();
+    }
+    #[cfg(feature = "visual-test")]
+    pub fn visual_page(&mut self, name: &str, window: &mut Window, cx: &mut Context<Self>) {
+        self.form = None;
+        self.quick_task = None;
+        self.picking = None;
+        self.task_detail = None;
+        self.cleanup.clear();
+        self.here = None;
+        self.here_more = None;
+        self.search_open = false;
+        self.overview = name == "Overview";
+        self.zoomed = None;
+        self.space = "s0".into();
+        self.tab = Some(
+            if name == "TodoStart" {
+                "start"
+            } else {
+                "feedback"
+            }
+            .into(),
+        );
+        self.show_running = false;
+        self.sync_panes(cx);
+        match name {
+            "Main" => self.here = self.workspace.current_agent("p0").map(|s| s.id.clone()),
+            "HereMore" => {
+                self.here = self.workspace.current_agent("p0").map(|s| s.id.clone());
+                self.here_more = self.here.clone();
+            }
+            "TodoNew" => {
+                self.show_form(FormKind::Task, window, cx);
+                let task = self
+                    .workspace
+                    .tasks
+                    .iter()
+                    .find(|t| t.id == "task1")
+                    .unwrap();
+                for (field, text) in self.form.as_ref().unwrap().fields.iter().zip([
+                    task.title.clone(),
+                    task.description.clone(),
+                    task.acceptance
+                        .iter()
+                        .map(|a| a.description.clone())
+                        .collect::<Vec<_>>()
+                        .join("\n"),
+                ]) {
+                    field.update(cx, |field, cx| {
+                        field.set_text(&text);
+                        cx.notify();
+                    });
+                }
+            }
+            "TodoDetail" => self.task_detail = Some("task0".into()),
+            "TodoStart" => {
+                let text = self
+                    .workspace
+                    .tasks
+                    .iter()
+                    .find(|t| t.id == "task1")
+                    .unwrap()
+                    .prompt();
+                let command = self
+                    .workspace
+                    .tasks
+                    .iter()
+                    .find(|t| t.id == "task1")
+                    .unwrap()
+                    .agent
+                    .command();
+                self.panes["pstart"]
+                    .update(cx, |pane, cx| pane.start_agent(&command, Some(text), cx));
+            }
+            "Cleanup" => {
+                self.cleanup = self
+                    .workspace
+                    .agent_sessions
+                    .iter()
+                    .filter(|s| self.group(s) == Group::Stale)
+                    .map(|s| s.id.clone())
+                    .collect();
+                self.cleanup_index = 0;
+                assert!(!self.cleanup.is_empty());
+            }
+            "QuickTask" => {
+                self.show_quick_task(window, cx);
+                if let Some((field, _)) = &self.quick_task {
+                    field.update(cx, |f, cx| {
+                        f.set_text("给离线模式补一组断网回归测试");
+                        cx.notify();
+                    });
+                }
+            }
+            "ScreenWait" => self.here = self.workspace.current_agent("p1").map(|s| s.id.clone()),
+            "StartPick" => self.picking = Some(("task2".into(), false)),
+            "Overview" | "Menubar" => (),
+            _ => panic!("unknown visual page"),
+        }
+        cx.notify();
+        window.refresh();
+    }
+}
