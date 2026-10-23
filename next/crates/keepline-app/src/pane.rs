@@ -864,7 +864,7 @@ impl Render for Pane {
                                             metrics.height,
                                         ),
                                     ),
-                                    T::color(T::ACCENT).opacity(0.25),
+                                    T::color(T::FOCUS).opacity(0.25),
                                 ));
                             }
                         }

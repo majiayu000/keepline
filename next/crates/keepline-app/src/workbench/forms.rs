@@ -280,7 +280,7 @@ impl Workbench {
                     d.child(
                         button("save-start", "保存并开始")
                             .bg(T::color(T::ACCENT))
-                            .text_color(T::color(T::WHITE))
+                            .text_color(T::color(T::ON_ACCENT))
                             .on_click(cx.listener(|this, _, _, cx| this.save_form(true, cx))),
                     )
                 })

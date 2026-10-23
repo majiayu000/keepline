@@ -243,7 +243,7 @@ impl Workbench {
                 .child(
                     button("here-continue", "继续")
                         .bg(T::color(T::ACCENT))
-                        .text_color(T::color(T::WHITE))
+                        .text_color(T::color(T::ON_ACCENT))
                         .on_click(cx.listener(move |this, _, window, cx| {
                             this.open_session(&resume, window, cx)
                         })),

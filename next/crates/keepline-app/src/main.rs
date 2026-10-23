@@ -9,7 +9,7 @@ mod terminal_input;
 mod theme;
 mod workbench;
 
-use gpui::{App, AppContext, Bounds, WindowBounds, WindowOptions, px, size};
+use gpui::{App, AppContext, Bounds, TitlebarOptions, WindowBounds, WindowOptions, point, px, size};
 use keepline_core::{model::*, protocol::*};
 use std::os::unix::{fs::DirBuilderExt, process::CommandExt};
 use std::{
@@ -75,6 +75,21 @@ fn ensure_host(root: &Path) -> io::Result<()> {
 
 gpui::actions!(keepline, [Quit, ShowMenuPanel]);
 
+/// The top bar is the title bar: the traffic lights sit inside it, over the window's own gray.
+fn window_options(bounds: Bounds<gpui::Pixels>) -> WindowOptions {
+    WindowOptions {
+        window_bounds: Some(WindowBounds::Windowed(bounds)),
+        titlebar: Some(TitlebarOptions {
+            title: Some("Keepline".into()),
+            appears_transparent: true,
+            traffic_light_position: Some(point(
+                px(theme::Theme::TRAFFIC_LIGHT_X),
+                px(theme::Theme::TRAFFIC_LIGHT_Y),
+            )),
+        }),
+        ..Default::default()
+    }
+}
 fn load_workspace(root: &Path) -> io::Result<Workspace> {
     ensure_host(root)?;
     let socket = root.join("workbench.sock");
@@ -126,10 +141,7 @@ fn reopen_window(root: &Path, cx: &mut App) {
                 cx,
             );
             if let Err(e) = cx.open_window(
-                WindowOptions {
-                    window_bounds: Some(WindowBounds::Windowed(bounds)),
-                    ..Default::default()
-                },
+                window_options(bounds),
                 |window, cx| {
                     cx.new(|cx| {
                         workbench::Workbench::new(
@@ -266,10 +278,7 @@ fn run() -> io::Result<()> {
             cx,
         );
         let result = cx.open_window(
-            WindowOptions {
-                window_bounds: Some(WindowBounds::Windowed(bounds)),
-                ..Default::default()
-            },
+            window_options(bounds),
             |window, cx| cx.new(|cx| workbench::Workbench::new(socket, workspace, window, cx)),
         );
         #[cfg(feature = "visual-test")]

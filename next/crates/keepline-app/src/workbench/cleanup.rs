@@ -123,7 +123,7 @@ impl Workbench {
                     .flex_1()
                     .justify_center()
                     .bg(T::color(T::ACCENT))
-                    .text_color(T::color(T::WHITE))
+                    .text_color(T::color(T::ON_ACCENT))
                     .on_click(cx.listener(move |this, _, window, cx| {
                         this.cleanup.clear();
                         this.open_session(&resume, window, cx);
