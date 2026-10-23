@@ -46,7 +46,7 @@ describe('Session Repository Upsert', () => {
       statusReason: session.statusReason,
       status: resolveAggregatedStatus(session, undefined),
     }));
-    const expected = { statusReason: 'Codex turn idle', status: 'idle' };
+    const expected = { statusReason: 'Codex turn idle', status: 'idle' } as const;
     expect(snapshots).toEqual([expected, expected, expected]);
   });
 
