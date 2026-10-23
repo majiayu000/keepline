@@ -154,14 +154,6 @@ export function scanProjectsDirectory(options: ScanOptions = {}): ClaudeSessionF
       const projectName = projectEntry.name;
       const projectPath = join(root, projectName);
 
-      // Skip directories that haven't been modified recently (optimization)
-      if (maxAgeDays) {
-        const stat = statSync(projectPath);
-        if (stat.mtime.getTime() < cutoffTime) {
-          continue;
-        }
-      }
-
       const files = readdirSync(projectPath, { withFileTypes: true });
 
       for (const fileEntry of files) {
