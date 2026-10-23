@@ -4,6 +4,7 @@ import { closeDatabase } from '../infrastructure/database/sqlite.js';
 import { sessionRepository } from '../infrastructure/database/repositories/session.repository.js';
 import { workItemEvidenceRepository } from '../infrastructure/database/repositories/work-item-evidence.repository.js';
 import { workItemRepository } from '../infrastructure/database/repositories/work-item.repository.js';
+import { resolveAggregatedStatus } from '../services/session.aggregator.js';
 
 describe('Session Repository Upsert', () => {
   test('persists child identity in full and lightweight reads, and preserves omitted fields', () => {
@@ -23,6 +24,30 @@ describe('Session Repository Upsert', () => {
 
   afterEach(() => {
     closeDatabase();
+  });
+
+  test('preserves Codex turn provenance and aggregated status in lightweight reads', () => {
+    const sessionId = 'codex-turn-idle';
+    sessionRepository.upsert({
+      sessionId,
+      client: 'codex',
+      status: 'idle',
+      statusSource: 'scan',
+      statusReason: 'Codex turn idle',
+      lastActiveAt: new Date(),
+    });
+
+    const sessions = [
+      sessionRepository.findBySessionId(sessionId)!,
+      sessionRepository.findAllLightweight().find(session => session.sessionId === sessionId)!,
+      sessionRepository.findOperationalLightweight().find(session => session.sessionId === sessionId)!,
+    ];
+    const snapshots = sessions.map(session => ({
+      statusReason: session.statusReason,
+      status: resolveAggregatedStatus(session, undefined),
+    }));
+    const expected = { statusReason: 'Codex turn idle', status: 'idle' };
+    expect(snapshots).toEqual([expected, expected, expected]);
   });
 
   test('preserves pid and tty when omitted from an update', () => {
