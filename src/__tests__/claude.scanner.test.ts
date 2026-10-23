@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, test } from 'bun:test';
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'fs';
+import { appendFileSync, mkdirSync, mkdtempSync, rmSync, utimesSync, writeFileSync } from 'fs';
 import { join } from 'path';
 import { tmpdir } from 'os';
 
@@ -69,6 +69,33 @@ afterEach(() => {
 });
 
 describe('Claude Scanner', () => {
+  test('finds recently appended sessions in old project directories while excluding stale files', () => {
+    const homeDir = createTempHome();
+    const projectName = '-tmp-resumed-project';
+    const resumedFile = writeSessionFile(homeDir, projectName, 'resumed-session.jsonl', [
+      { type: 'user', sessionId: 'resumed-session', message: { role: 'user', content: 'Start work' } },
+    ]);
+    const staleFile = writeSessionFile(homeDir, projectName, 'stale-session.jsonl', [
+      { type: 'user', sessionId: 'stale-session', message: { role: 'user', content: 'Old work' } },
+    ]);
+    const oldTime = new Date(Date.now() - 8 * 24 * 60 * 60 * 1000);
+    utimesSync(resumedFile, oldTime, oldTime);
+    utimesSync(staleFile, oldTime, oldTime);
+    utimesSync(join(homeDir, '.claude', 'projects', projectName), oldTime, oldTime);
+    appendFileSync(resumedFile, JSON.stringify({
+      type: 'user', sessionId: 'resumed-session', message: { role: 'user', content: 'Continue work' },
+    }) + '\n');
+
+    const result = runScannerScript(homeDir, `
+      const { scanProjectsDirectory } = await import('./src/adapters/claude/scanner.ts');
+      console.log(JSON.stringify({
+        sessions: scanProjectsDirectory({ maxAgeDays: 7 }).map(file => file.sessionId),
+      }));
+    `);
+
+    expect(result.sessions).toEqual(['resumed-session']);
+  });
+
   test('returns valid sessions and keeps broken files excluded across repeated scans', () => {
     const homeDir = createTempHome();
 
