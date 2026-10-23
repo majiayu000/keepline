@@ -49,7 +49,7 @@ impl Group {
             group => (
                 group.hue(),
                 mix(group.hue(), Theme::WHITE, 620),
-                mix(Theme::TERMINAL_BG, group.hue(), 250),
+                mix(Theme::TERMINAL_BG, group.hue(), 220),
             ),
         };
         (hsla(dot), hsla(ink), hsla(bg))
@@ -71,36 +71,45 @@ pub const fn mix(from: u32, to: u32, share: u32) -> u32 {
 impl Theme {
     /// The terminal's default colors; every chrome surface and text tone is a mix of
     /// these two (and the accent), so the window reads as one surface with the terminal.
-    pub const TERMINAL_BG: u32 = 0x101217;
-    pub const TERMINAL_FG: u32 = 0xd7dae0;
-    pub const ACCENT: u32 = 0x4b4fd6;
+    pub const TERMINAL_BG: u32 = 0x1c1c1e;
+    pub const TERMINAL_FG: u32 = 0xe4e2df;
     pub const WHITE: u32 = 0xffffff;
     const BLACK: u32 = 0x000000;
     const BG: u32 = Self::TERMINAL_BG;
     const FG: u32 = Self::TERMINAL_FG;
-    pub const APP: u32 = mix(Self::BG, Self::BLACK, 310);
-    pub const PANEL: u32 = mix(Self::BG, Self::BLACK, 60);
+    /// One neutral surface: sidebar, top bar, panes and headers share the terminal's
+    /// gray and are told apart by hairlines, not by bands of different shades.
+    pub const APP: u32 = mix(Self::BG, Self::BLACK, 150);
+    pub const PANEL: u32 = Self::BG;
     pub const PANE: u32 = Self::BG;
-    pub const SLOT: u32 = mix(Self::BG, Self::BLACK, 120);
-    pub const HEADER: u32 = mix(Self::BG, Self::FG, 12);
-    pub const HEADER_FOCUSED: u32 = mix(Self::HEADER, Self::ACCENT, 60);
-    pub const RAISED: u32 = mix(Self::BG, Self::FG, 55);
-    pub const TODO: u32 = mix(Self::BG, Self::ACCENT, 70);
-    pub const BORDER: u32 = mix(Self::BG, Self::FG, 65);
-    pub const CARD_BORDER: u32 = mix(Self::BG, Self::FG, 80);
-    pub const CONTROL: u32 = mix(Self::BG, Self::FG, 130);
-    pub const TODO_BORDER: u32 = mix(Self::BORDER, Self::ACCENT, 120);
-    pub const SLOT_BORDER: u32 = mix(Self::CONTROL, Self::ACCENT, 150);
-    pub const PRIMARY: u32 = mix(Self::FG, Self::WHITE, 450);
+    pub const HEADER: u32 = Self::BG;
+    pub const HEADER_FOCUSED: u32 = mix(Self::BG, Self::FG, 35);
+    pub const SLOT: u32 = mix(Self::BG, Self::BLACK, 80);
+    pub const TODO: u32 = mix(Self::BG, Self::FG, 30);
+    pub const RAISED: u32 = mix(Self::BG, Self::FG, 70);
+    pub const BORDER: u32 = mix(Self::BG, Self::FG, 90);
+    pub const CARD_BORDER: u32 = mix(Self::BG, Self::FG, 100);
+    pub const CONTROL: u32 = mix(Self::BG, Self::FG, 150);
+    pub const TODO_BORDER: u32 = Self::BORDER;
+    pub const SLOT_BORDER: u32 = Self::CONTROL;
+    /// A quiet fill for ordinary buttons; they carry no outline.
+    pub const BUTTON: u32 = mix(Self::BG, Self::FG, 60);
+    pub const BUTTON_HOVER: u32 = mix(Self::BG, Self::FG, 120);
+    pub const PRIMARY: u32 = mix(Self::FG, Self::WHITE, 300);
     pub const BODY: u32 = Self::FG;
-    pub const SECONDARY: u32 = mix(Self::BG, Self::FG, 600);
-    pub const MUTED: u32 = mix(Self::BG, Self::FG, 450);
-    pub const LINK: u32 = mix(Self::ACCENT, Self::WHITE, 650);
-    pub const CHIP: u32 = mix(Self::BG, Self::ACCENT, 150);
-    /// In-window popovers (「你在这里」, cleanup) sit one step above the pane, not on white.
-    pub const POPOVER: u32 = mix(Self::BG, Self::FG, 40);
-    pub const INFERENCE: u32 = mix(Self::BG, Self::ACCENT, 90);
+    pub const SECONDARY: u32 = mix(Self::BG, Self::FG, 580);
+    pub const MUTED: u32 = mix(Self::BG, Self::FG, 420);
+    /// The one solid control per view is near-white with dark text; color is left to status.
+    pub const ACCENT: u32 = Self::PRIMARY;
+    pub const ON_ACCENT: u32 = Self::BG;
+    pub const FOCUS: u32 = mix(Self::BG, Self::FG, 380);
+    pub const LINK: u32 = mix(Self::BG, Self::FG, 860);
+    pub const CHIP: u32 = mix(Self::BG, Self::FG, 80);
+    /// In-window popovers (「你在这里」, cleanup) sit one step above the pane.
+    pub const POPOVER: u32 = mix(Self::BG, Self::FG, 55);
+    pub const INFERENCE: u32 = mix(Self::BG, Self::FG, 35);
     /// The menu bar panel is a separate light macOS popover, kept apart from the window.
+    pub const MENU_ACCENT: u32 = 0x4b4fd6;
     pub const MENU_TEXT: u32 = 0x17181c;
     pub const MENU_SECONDARY: u32 = 0x5d6270;
     pub const UI_FONT: &'static str = ".AppleSystemUIFont";
@@ -124,6 +133,10 @@ impl Theme {
     pub const S20: f32 = 20.;
     pub const SIDEBAR: f32 = 240.;
     pub const TOP: f32 = 46.;
+    /// macOS draws the traffic lights inside the top bar; its content starts after them.
+    pub const TRAFFIC_LIGHT_X: f32 = 16.;
+    pub const TRAFFIC_LIGHT_Y: f32 = 17.;
+    pub const TRAFFIC_LIGHT_INSET: f32 = 84.;
     pub const TABS: f32 = 34.;
     pub const TODO_HEIGHT: f32 = 36.;
     pub const PANE_HEADER: f32 = 32.;

@@ -96,7 +96,7 @@ impl Workbench {
             .overflow_hidden()
             .rounded(px(T::PANE_RADIUS))
             .border(px(if borders { T::BORDER_WIDTH } else { 0. }))
-            .border_color(T::color(if focused { T::ACCENT } else { T::BORDER }))
+            .border_color(T::color(if focused { T::FOCUS } else { T::BORDER }))
             .bg(T::color(T::PANE))
             .child(
                 div()
@@ -362,7 +362,7 @@ impl Workbench {
                                     .cursor(gpui::CursorStyle::ResizeLeftRight)
                             })
                             .bg(T::color(T::BORDER))
-                            .hover(|d| d.bg(T::color(T::ACCENT)))
+                            .hover(|d| d.bg(T::color(T::FOCUS)))
                             .on_mouse_down(
                                 gpui::MouseButton::Left,
                                 cx.listener(move |this, _, _, cx| {

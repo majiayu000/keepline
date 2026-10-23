@@ -36,6 +36,8 @@ pub struct Workbench {
     here: Option<String>,
     /// The session whose 「你在这里」 card shows its secondary actions.
     here_more: Option<String>,
+    /// A press on the top bar's empty space that has not moved the window yet.
+    title_drag: bool,
     show_stale: bool,
     show_closed: bool,
     cleanup: Vec<String>,
@@ -204,12 +206,10 @@ fn button(
         .items_center()
         .justify_center()
         .rounded(px(T::CONTROL_RADIUS))
-        .border(px(T::BORDER_WIDTH))
-        .border_color(T::color(T::CONTROL))
         .text_size(px(T::SMALL))
         .text_color(T::color(T::BODY))
         .cursor_pointer()
-        .hover(|s| s.border_color(T::color(T::ACCENT)))
+        .hover(|s| s.bg(T::color(T::BUTTON_HOVER)))
         .child(text)
 }
 fn outcome_label(outcome: &Outcome) -> String {
@@ -358,6 +358,7 @@ impl Workbench {
             resume: None,
             here: None,
             here_more: None,
+            title_drag: false,
             show_stale: false,
             show_closed: false,
             cleanup: vec![],
@@ -731,5 +732,31 @@ impl Workbench {
             });
         })
         .detach();
+    }
+    /// Empty title-bar space moves the window and zooms it on a double press, as the
+    /// system title bar did before the top bar replaced it.
+    fn title_drag_area(&self, cx: &Context<Self>) -> gpui::Stateful<gpui::Div> {
+        div()
+            .id("title-drag")
+            .flex_1()
+            .h_full()
+            .on_mouse_down(
+                gpui::MouseButton::Left,
+                cx.listener(|this, _, _, _| this.title_drag = true),
+            )
+            .on_mouse_up(
+                gpui::MouseButton::Left,
+                cx.listener(|this, _, _, _| this.title_drag = false),
+            )
+            .on_mouse_move(cx.listener(|this, _, window, _| {
+                if std::mem::take(&mut this.title_drag) {
+                    window.start_window_move();
+                }
+            }))
+            .on_click(|event, window, _| {
+                if event.click_count() == 2 {
+                    window.titlebar_double_click();
+                }
+            })
     }
 }

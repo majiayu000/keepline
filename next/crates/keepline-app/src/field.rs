@@ -99,7 +99,7 @@ impl Render for Field {
                     .border(px(T::BORDER_WIDTH))
                     .border_color(T::color(T::CONTROL))
                     .when(self.focus.is_focused(window), |d| {
-                        d.border_color(T::color(T::ACCENT))
+                        d.border_color(T::color(T::FOCUS))
                     })
                     .when(self.compact && self.text.is_empty(), |d| {
                         d.text_color(T::color(T::SECONDARY))

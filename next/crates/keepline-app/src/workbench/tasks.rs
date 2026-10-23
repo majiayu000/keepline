@@ -157,7 +157,7 @@ impl Workbench {
             .child(
                 button("task-another", "再开一个会话")
                     .bg(T::color(T::ACCENT))
-                    .text_color(T::color(T::WHITE))
+                    .text_color(T::color(T::ON_ACCENT))
                     .on_click({
                         let tid = tid.clone();
                         cx.listener(move |this, _, _, cx| this.ask_agent(tid.clone(), true, cx))
@@ -330,7 +330,7 @@ impl Workbench {
                 .px(px(T::S6))
                 .text_size(px(T::META))
                 .when(agent == first, |b| {
-                    b.bg(T::color(T::ACCENT)).text_color(T::color(T::WHITE))
+                    b.bg(T::color(T::ACCENT)).text_color(T::color(T::ON_ACCENT))
                 })
                 .on_click(cx.listener(move |this, _, _, cx| this.choose_agent(agent, cx))),
             );
@@ -454,7 +454,7 @@ impl Workbench {
                                 .px(px(T::S6))
                                 .text_size(px(T::META))
                                 .bg(T::color(T::ACCENT))
-                                .text_color(T::color(T::WHITE))
+                                .text_color(T::color(T::ON_ACCENT))
                                 .on_click(
                                     cx.listener(|this, _, _, cx| this.save_quick_task(true, cx)),
                                 ),

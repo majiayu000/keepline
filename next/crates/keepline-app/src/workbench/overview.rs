@@ -117,7 +117,7 @@ impl Workbench {
                     .child(
                         button(gpui::SharedString::from(format!("start-{id}")), "开始 →")
                             .bg(T::color(T::ACCENT))
-                            .text_color(T::color(T::WHITE))
+                            .text_color(T::color(T::ON_ACCENT))
                             .on_click(cx.listener(move |this, _, _, cx| {
                                 this.ask_agent(id.clone(), false, cx)
                             })),
