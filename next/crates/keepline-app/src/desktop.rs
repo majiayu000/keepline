@@ -72,8 +72,14 @@ fn fact(w: &Workspace, s: &AgentSession) -> Option<(String, String)> {
         Inbox::Error => c.error.clone(),
         _ => return None,
     };
+    // One dialog is one event however many signals report it or refine its text; an error
+    // is keyed by its text.
+    let event = match group {
+        Inbox::Waiting => format!("episode {}", c.waiting_episode),
+        _ => body.clone(),
+    };
     Some((
-        format!("{:?}:{}:{}:{}", group, c.turn_key, c.turn_started, body),
+        format!("{:?}:{}:{}:{}", group, c.turn_key, c.turn_started, event),
         format!("{} · {}", group.label(), short(&body, 180)),
     ))
 }
@@ -281,7 +287,14 @@ mod tests {
         assert_eq!(entered(&before, &w, None).len(), 1);
         assert!(entered(&w, &w, None).is_empty());
         let previous = w.clone();
-        w.content.get_mut("s").unwrap().waiting = "是否执行测试？".into();
+        w.content.get_mut("s").unwrap().waiting = "选哪一个？（Hook 补充的说明）".into();
+        assert!(
+            entered(&previous, &w, None).is_empty(),
+            "a second signal for the same dialog is not news"
+        );
+        let c = w.content.get_mut("s").unwrap();
+        c.waiting = "是否执行测试？".into();
+        c.waiting_episode += 1;
         assert_eq!(entered(&previous, &w, None).len(), 1);
         assert!(
             entered(&previous, &w, Some("pty")).is_empty(),

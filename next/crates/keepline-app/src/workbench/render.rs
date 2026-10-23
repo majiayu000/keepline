@@ -201,6 +201,14 @@ impl Render for Workbench {
                     .text_color(Group::Waiting.colors().1),
             );
         }
+        for notice in self.recognition.official.values() {
+            main = main.child(
+                label(notice.clone())
+                    .px(px(T::S14))
+                    .py(px(T::S6))
+                    .text_color(Group::Waiting.colors().1),
+            );
+        }
         if let Some(status) = cx
             .try_global::<crate::desktop::Status>()
             .filter(|s| !s.0.is_empty())

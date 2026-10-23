@@ -106,9 +106,19 @@ impl Workbench {
                         .flex_col()
                         .child(div().truncate().child(self.session_title(&session)))
                         .child(label(format!(
-                            "{} · {}",
+                            "{} · {}{}",
                             session.runtime.executable(),
-                            self.group(&session).label()
+                            self.group(&session).label(),
+                            if self
+                                .workspace
+                                .content
+                                .get(&session.id)
+                                .is_some_and(|c| c.waking())
+                            {
+                                " · 等待唤醒"
+                            } else {
+                                ""
+                            }
                         ))),
                 )
                 .child(label("打开 →").text_color(T::color(T::LINK)))
