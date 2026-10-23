@@ -375,6 +375,7 @@ fn two_cli_conversations_in_one_real_pty_keep_separate_ownership_after_restart()
         transcript: first.to_string_lossy().into_owned(),
         ended: false,
         event: None,
+        facts: Default::default(),
     };
     h.call(hook()).unwrap();
     h.call(hook()).unwrap();
@@ -396,6 +397,7 @@ fn two_cli_conversations_in_one_real_pty_keep_separate_ownership_after_restart()
         transcript: second.to_string_lossy().into_owned(),
         ended: false,
         event: None,
+        facts: Default::default(),
     })
     .unwrap_err();
     h.call(Request::Hook {
@@ -405,6 +407,7 @@ fn two_cli_conversations_in_one_real_pty_keep_separate_ownership_after_restart()
         transcript: second.to_string_lossy().into_owned(),
         ended: false,
         event: None,
+        facts: Default::default(),
     })
     .unwrap();
     let second_id = h
@@ -506,7 +509,10 @@ fn fixture_command(root: &std::path::Path) -> Command {
     let mut command = Command::new(std::env::current_exe().unwrap());
     command
         .args(["--ignored", "--exact", "daemon_fixture", "--nocapture"])
-        .env("KEEPLINE_FIXTURE_RUNTIME", root);
+        .env("KEEPLINE_FIXTURE_RUNTIME", root)
+        // Tests that need Claude Code's official status write this script; others have none.
+        .env("KEEPLINE_CLAUDE_AGENTS", root.join("claude-agents"))
+        .env("KEEPLINE_CODEX_CONTROL", root.join("codex-control.sock"));
     command
 }
 #[test]
@@ -977,6 +983,7 @@ fn stop_agent_clears_current_without_stopping_shell_or_changing_outcome() {
         transcript: log.to_string_lossy().into_owned(),
         ended: false,
         event: None,
+        facts: Default::default(),
     })
     .unwrap();
     let before = h.workspace().current_agent("shell").unwrap().clone();
@@ -1616,6 +1623,93 @@ fn quiet_agent_screen_with_an_approval_waits_on_the_user_until_they_answer() {
 }
 
 #[test]
+fn a_dialog_gone_from_the_screen_is_settled_by_claude_official_status() {
+    use std::os::unix::fs::PermissionsExt;
+    let h = Host::start();
+    h.setup();
+    let logs = h.root.join("logs/claude");
+    fs::create_dir_all(&logs).unwrap();
+    let cli = h.root.join("claude");
+    std::os::unix::fs::symlink("/bin/sh", &cli).unwrap();
+    let id = uuid::Uuid::new_v4().to_string();
+    let path = logs.join(format!("{id}.jsonl"));
+    let seed = h.root.join("seed");
+    let at = keepline_core::content::now();
+    let rows = [
+        serde_json::json!({"type":"user","sessionId":id,"uuid":"u0","cwd":"/project","entrypoint":"cli","userType":"external","timestamp":at,"message":{"content":"Official status test"}}),
+        serde_json::json!({"type":"assistant","sessionId":id,"timestamp":at,"message":{"content":[{"type":"tool_use","id":"ask","name":"AskUserQuestion","input":{"questions":[{"question":"选哪个环境？","options":[{"label":"预发"},{"label":"生产"}]}]}}]}}),
+    ];
+    fs::write(
+        &seed,
+        rows.iter().map(|r| format!("{r}\n")).collect::<String>(),
+    )
+    .unwrap();
+    // Claude Code says the session sits at its prompt: the dialog was closed with Esc.
+    let calls = h.root.join("agents-calls");
+    let agents = h.root.join("claude-agents");
+    fs::write(
+        &agents,
+        format!(
+            "#!/bin/sh\necho x >> {}\nprintf '%s' '[{{\"pid\":1,\"kind\":\"interactive\",\"sessionId\":\"{id}\",\"status\":\"idle\"}}]'\n",
+            shell_quote(&calls.to_string_lossy())
+        ),
+    )
+    .unwrap();
+    fs::set_permissions(&agents, fs::Permissions::from_mode(0o755)).unwrap();
+    // The screen never shows the question; one quiet screen is enough, the hold re-checks.
+    let script = format!(
+        "cat {} > {}; sleep 0.5; printf 'working\\n'; read -r end",
+        shell_quote(&seed.to_string_lossy()),
+        shell_quote(&path.to_string_lossy())
+    );
+    h.call(h.launch(
+        "official",
+        &format!(
+            "exec {} -c {} fixture --session-id {}",
+            shell_quote(&cli.to_string_lossy()),
+            shell_quote(&script),
+            id
+        ),
+    ))
+    .unwrap();
+    let turn = |w: &Workspace| {
+        w.current_agent("official")
+            .and_then(|s| w.content.get(&s.id))
+            .map(|c| (c.turn, c.signal.clone()))
+    };
+    let until = Instant::now() + Duration::from_secs(30);
+    while turn(&h.workspace()).map(|t| t.0) != Some(keepline_core::content::Turn::Waiting) {
+        assert!(
+            Instant::now() < until,
+            "the logged question must wait on the user"
+        );
+        std::thread::sleep(Duration::from_millis(50));
+    }
+    let until = Instant::now() + Duration::from_secs(20);
+    let settled = loop {
+        let t = turn(&h.workspace()).unwrap();
+        if t.0 != keepline_core::content::Turn::Waiting {
+            break t;
+        }
+        assert!(
+            Instant::now() < until,
+            "official idle must settle the closed dialog"
+        );
+        std::thread::sleep(Duration::from_millis(100));
+    };
+    assert_eq!(
+        settled,
+        (keepline_core::content::Turn::Interrupted, "官方状态".into())
+    );
+    std::thread::sleep(Duration::from_secs(3));
+    let runs = fs::read_to_string(&calls).unwrap().lines().count();
+    assert!(
+        (1..=2).contains(&runs),
+        "one run per trigger within the rate limit, got {runs}"
+    );
+}
+
+#[test]
 fn manual_claude_closed_log_stays_external_and_append_does_not_repeat_probes() {
     use std::io::Write;
     let h = Host::start();
@@ -1843,6 +1937,314 @@ fn current_is(w: &Workspace, pane: &str, thread: &str) -> bool {
 }
 fn ids<const N: usize>() -> [String; N] {
     std::array::from_fn(|_| uuid::Uuid::new_v4().to_string())
+}
+
+/// A fake Codex control socket: answers `thread/read` with `status` and records each
+/// method it was asked, so the test can prove nothing subscribed.
+fn fake_codex_control(
+    path: &std::path::Path,
+    status: serde_json::Value,
+) -> std::sync::Arc<std::sync::Mutex<Vec<String>>> {
+    use std::io::{Read, Write};
+    let listener = std::os::unix::net::UnixListener::bind(path).unwrap();
+    let methods = std::sync::Arc::new(std::sync::Mutex::new(Vec::new()));
+    let seen = methods.clone();
+    std::thread::spawn(move || {
+        for conn in listener.incoming() {
+            let Ok(mut s) = conn else { return };
+            let mut head = Vec::new();
+            while !head.ends_with(b"\r\n\r\n") {
+                let mut b = [0; 1];
+                if s.read_exact(&mut b).is_err() {
+                    break;
+                }
+                head.push(b[0]);
+            }
+            let _ = s.write_all(b"HTTP/1.1 101 Switching Protocols\r\n\r\n");
+            loop {
+                let mut h = [0; 2];
+                if s.read_exact(&mut h).is_err() {
+                    break;
+                }
+                let mut len = (h[1] & 0x7f) as usize;
+                if len == 126 {
+                    let mut n = [0; 2];
+                    s.read_exact(&mut n).unwrap();
+                    len = u16::from_be_bytes(n) as usize;
+                }
+                let mut mask = [0; 4];
+                s.read_exact(&mut mask).unwrap();
+                let mut d = vec![0; len];
+                s.read_exact(&mut d).unwrap();
+                d.iter_mut()
+                    .enumerate()
+                    .for_each(|(i, b)| *b ^= mask[i % 4]);
+                if h[0] & 0x0f != 1 {
+                    break;
+                }
+                let m: serde_json::Value = serde_json::from_slice(&d).unwrap();
+                seen.lock()
+                    .unwrap()
+                    .push(m["method"].as_str().unwrap_or("").to_owned());
+                let reply = match m["method"].as_str() {
+                    Some("initialize") => serde_json::json!({"id": m["id"], "result": {}}),
+                    Some("thread/read") => serde_json::json!({"id": m["id"], "result": {"thread": {
+                        "id": m["params"]["threadId"], "status": status}}}),
+                    _ => continue,
+                };
+                let body = reply.to_string();
+                let mut f = vec![0x81];
+                if body.len() < 126 {
+                    f.push(body.len() as u8);
+                } else {
+                    f.push(126);
+                    f.extend_from_slice(&(body.len() as u16).to_be_bytes());
+                }
+                f.extend_from_slice(body.as_bytes());
+                if s.write_all(&f).is_err() {
+                    break;
+                }
+            }
+        }
+    });
+    methods
+}
+
+#[test]
+fn daemon_codex_dialog_gone_from_screen_is_settled_by_a_read_only_thread_read() {
+    use std::io::Write;
+    let h = Host::start();
+    h.setup();
+    let methods = fake_codex_control(
+        &h.root.join("codex-control.sock"),
+        serde_json::json!({"type": "idle"}),
+    );
+    let [a] = ids();
+    daemon_codex(
+        &h,
+        "p0",
+        "proj",
+        &[step("请检查发布脚本里的回滚步骤是否完整", &a, None)],
+        "",
+    );
+    wait_for(&h, "the thread binds to its pane", |w| {
+        current_is(w, "p0", &a)
+    });
+    // The log asks the user; the TUI never draws the question.
+    {
+        let mut log = fs::OpenOptions::new()
+            .append(true)
+            .open(h.root.join(format!("logs/codex/{a}.jsonl")))
+            .unwrap();
+        let row = serde_json::json!({"timestamp": keepline_core::content::now(), "type": "event_msg",
+            "payload": {"type": "request_user_input", "questions": [{"question": "回滚到哪个版本？"}]}});
+        writeln!(log, "{row}").unwrap();
+    }
+    let turn = |w: &Workspace| {
+        w.current_agent("p0")
+            .and_then(|s| w.content.get(&s.id))
+            .map(|c| (c.turn, c.signal.clone()))
+    };
+    wait_for(&h, "the logged question waits on the user", |w| {
+        turn(w).is_some_and(|t| t.0 == keepline_core::content::Turn::Waiting)
+    });
+    // A keystroke echoes, so the screen settles again without the question on it.
+    let (mut stream, _vt, writable) = h.attach("p0", true);
+    assert!(writable);
+    send(
+        &mut stream,
+        CONTROL,
+        &Request::Input {
+            bytes: b"x".to_vec(),
+        },
+    )
+    .unwrap();
+    assert!(matches!(ack(&mut stream), Reply::Ok));
+    let until = Instant::now() + Duration::from_secs(20);
+    let settled = loop {
+        let t = turn(&h.workspace()).unwrap();
+        if t.0 != keepline_core::content::Turn::Waiting {
+            break t;
+        }
+        assert!(
+            Instant::now() < until,
+            "idle thread status must settle the dialog"
+        );
+        std::thread::sleep(Duration::from_millis(100));
+    };
+    assert_eq!(
+        settled,
+        (keepline_core::content::Turn::Interrupted, "官方状态".into())
+    );
+    let methods = methods.lock().unwrap().clone();
+    assert!(methods.contains(&"thread/read".to_owned()), "{methods:?}");
+    assert!(
+        methods
+            .iter()
+            .all(|m| matches!(m.as_str(), "initialize" | "initialized" | "thread/read")),
+        "read-only: never subscribes, got {methods:?}"
+    );
+    assert!(
+        recognition(&h).official.is_empty(),
+        "a working query leaves no notice"
+    );
+}
+
+#[test]
+fn an_unreachable_codex_daemon_is_a_visible_notice_not_a_silent_guess() {
+    use std::io::Write;
+    let h = Host::start();
+    h.setup();
+    // No control socket at all: the daemon is not running.
+    let [a] = ids();
+    daemon_codex(
+        &h,
+        "p0",
+        "proj",
+        &[step("检查一下回滚脚本是否覆盖了数据库迁移", &a, None)],
+        "",
+    );
+    wait_for(&h, "the thread binds to its pane", |w| {
+        current_is(w, "p0", &a)
+    });
+    {
+        let mut log = fs::OpenOptions::new()
+            .append(true)
+            .open(h.root.join(format!("logs/codex/{a}.jsonl")))
+            .unwrap();
+        let row = serde_json::json!({"timestamp": keepline_core::content::now(), "type": "event_msg",
+            "payload": {"type": "request_user_input", "questions": [{"question": "回滚到哪个版本？"}]}});
+        writeln!(log, "{row}").unwrap();
+    }
+    let (mut stream, _vt, _) = h.attach("p0", true);
+    send(
+        &mut stream,
+        CONTROL,
+        &Request::Input {
+            bytes: b"x".to_vec(),
+        },
+    )
+    .unwrap();
+    assert!(matches!(ack(&mut stream), Reply::Ok));
+    let until = Instant::now() + Duration::from_secs(20);
+    let notice = loop {
+        if let Some(n) = recognition(&h).official.get("Codex").cloned() {
+            break n;
+        }
+        assert!(Instant::now() < until, "the failed query must be reported");
+        std::thread::sleep(Duration::from_millis(100));
+    };
+    assert!(
+        notice.starts_with("Codex 官方状态查询不可用，已改为只看日志和画面"),
+        "{notice}"
+    );
+    let w = h.workspace();
+    let s = w.current_agent("p0").unwrap();
+    assert_eq!(
+        w.content[&s.id].turn,
+        keepline_core::content::Turn::Waiting,
+        "without the official answer the logged question stands"
+    );
+}
+
+#[test]
+fn codex_subagent_logs_keep_the_parent_working_and_carry_its_dialog() {
+    use std::io::Write;
+    let h = Host::start();
+    h.setup();
+    let [a] = ids();
+    daemon_codex(
+        &h,
+        "p0",
+        "proj",
+        &[step("把三个模块的迁移分给子 Agent 并行处理", &a, None)],
+        "",
+    );
+    wait_for(&h, "the thread binds to its pane", |w| {
+        current_is(w, "p0", &a)
+    });
+    let logs = h.root.join("logs/codex");
+    let row = |payload: serde_json::Value| {
+        format!(
+            "{}\n",
+            serde_json::json!({"timestamp": keepline_core::content::now(), "type": "event_msg", "payload": payload})
+        )
+    };
+    // The parent's turn ends with its subagent still running.
+    fs::OpenOptions::new()
+        .append(true)
+        .open(logs.join(format!("{a}.jsonl")))
+        .unwrap()
+        .write_all(
+            row(serde_json::json!({"type": "task_complete", "last_agent_message": "已派出子任务"}))
+                .as_bytes(),
+        )
+        .unwrap();
+    // Like the real daemon, the subagent's log stays open while it works.
+    let kid = uuid::Uuid::new_v4().to_string();
+    let mut child = fs::File::create(logs.join(format!("{kid}.jsonl"))).unwrap();
+    let header = serde_json::json!({"type": "session_meta", "payload": {"id": kid, "cwd": "/tmp",
+        "source": {"subagent": {"thread_spawn": {"parent_thread_id": a, "depth": 1, "agent_path": "/root/migrate"}}},
+        "agent_nickname": "Hypatia", "parent_thread_id": a}});
+    child.write_all(format!("{header}\n").as_bytes()).unwrap();
+    child
+        .write_all(row(serde_json::json!({"type": "task_started", "turn_id": "k1"})).as_bytes())
+        .unwrap();
+    let card = |w: &Workspace| {
+        w.current_agent("p0")
+            .and_then(|s| w.content.get(&s.id).map(|c| (s.clone(), c.clone())))
+    };
+    wait_for(
+        &h,
+        "a running subagent keeps the stopped parent working",
+        |w| {
+            card(w).is_some_and(|(s, c)| {
+                c.turn == keepline_core::content::Turn::Completed
+                    && c.group(&s, w, keepline_core::content::now())
+                        == keepline_core::content::Inbox::Running
+            })
+        },
+    );
+    let item = |payload: serde_json::Value| {
+        format!(
+            "{}\n",
+            serde_json::json!({"timestamp": keepline_core::content::now(), "type": "response_item", "payload": payload})
+        )
+    };
+    child
+        .write_all(
+            item(serde_json::json!({"type": "function_call", "name": "request_user_input", "call_id": "q1",
+                "arguments": serde_json::json!({"questions": [{"question": "是否运行迁移？"}]}).to_string()}))
+                .as_bytes(),
+        )
+        .unwrap();
+    wait_for(&h, "the subagent's question is the parent's", |w| {
+        card(w).is_some_and(|(_, c)| {
+            c.turn == keepline_core::content::Turn::Waiting
+                && c.waiting.starts_with("子 Agent Hypatia：")
+        })
+    });
+    // The user answers in the parent's TUI; the subagent records the answer and finishes.
+    child
+        .write_all(
+            item(serde_json::json!({"type": "function_call_output", "call_id": "q1", "output": "运行"}))
+                .as_bytes(),
+        )
+        .unwrap();
+    child
+        .write_all(
+            row(serde_json::json!({"type": "task_complete", "last_agent_message": "迁移完成"}))
+                .as_bytes(),
+        )
+        .unwrap();
+    wait_for(&h, "the finished subagent releases the parent", |w| {
+        card(w).is_some_and(|(s, c)| {
+            c.turn == keepline_core::content::Turn::Completed
+                && c.group(&s, w, keepline_core::content::now())
+                    != keepline_core::content::Inbox::Running
+        })
+    });
+    drop(child);
 }
 
 #[test]

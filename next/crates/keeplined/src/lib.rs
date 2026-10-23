@@ -1,6 +1,8 @@
+mod codex_status;
 mod file_events;
 mod host;
 pub mod log_index;
+mod official;
 mod process_exit;
 mod pty;
 pub mod recognition;

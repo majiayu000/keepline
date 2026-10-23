@@ -145,6 +145,7 @@ fn hook(mut args: impl Iterator<Item = String>) -> std::io::Result<()> {
         transcript,
         ended: value["hook_event_name"] == "SessionEnd",
         event: value["hook_event_name"].as_str().map(str::to_owned),
+        facts: keeplined::content::hook_facts(&value),
     };
     match rpc(
         &std::path::Path::new(&runtime).join("workbench.sock"),

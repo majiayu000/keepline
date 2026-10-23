@@ -54,6 +54,56 @@ pub struct Content {
     pub partial_history: bool,
     pub from_offset: u64,
     pub unknown_records: u64,
+    /// Work still in flight when the turn last stopped, from the Stop hook payload.
+    /// `None` means no payload reported it, which is unknown rather than "nothing runs".
+    #[serde(default)]
+    pub background: Option<Background>,
+    /// Counts entries into Waiting, so one dialog reported by several signals is one event.
+    #[serde(default)]
+    pub waiting_episode: u32,
+    /// Which signal set the current turn: 日志, Hook, 画面 or 官方状态.
+    #[serde(default)]
+    pub signal: String,
+    #[serde(default)]
+    pub signal_at: u64,
+    /// A Codex subagent's parent thread id and its name, from its own session header.
+    #[serde(default)]
+    pub parent: String,
+    #[serde(default)]
+    pub agent_name: String,
+}
+/// In-flight work by kind. Agents (subagents, workflows, teammates, cloud sessions, MCP
+/// tasks) keep a stopped turn working. A monitor or a scheduled wakeup will wake the session
+/// again, so it is not done either: it is waiting to wake, as Claude Code's agent view shows
+/// it. Shells alone are a mark on a finished turn.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub struct Background {
+    pub agents: u32,
+    pub shells: u32,
+    pub monitors: u32,
+    pub crons: u32,
+}
+impl Background {
+    pub fn keeps_working(&self) -> bool {
+        self.agents > 0
+    }
+    pub fn wakes(&self) -> bool {
+        self.monitors > 0 || self.crons > 0
+    }
+    /// "后台仍有子 Agent 1 个、shell 2 个", or `None` when nothing is in flight.
+    pub fn describe(&self) -> Option<String> {
+        let parts: Vec<String> = [
+            (self.agents, "子 Agent"),
+            (self.shells, "shell"),
+            (self.monitors, "监视任务"),
+            (self.crons, "已排定唤醒"),
+        ]
+        .into_iter()
+        .filter(|(n, _)| *n > 0)
+        .map(|(n, kind)| format!("{kind} {n} 个"))
+        .collect();
+        (!parts.is_empty()).then(|| format!("后台仍有{}", parts.join("、")))
+    }
 }
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub enum Inbox {
@@ -100,6 +150,13 @@ impl Content {
     /// `hidden_reason` for this session: one Keepline started in its own terminal was
     /// started by the user, so a temporary working directory alone does not hide it.
     /// Sub-agents, SDK and print-mode runs stay hidden wherever they run.
+    /// The turn ended and only a monitor or a scheduled wakeup will resume it.
+    pub fn waking(&self) -> bool {
+        self.turn == Turn::Completed
+            && self
+                .background
+                .is_some_and(|b| !b.keeps_working() && b.wakes())
+    }
     pub fn hidden_for(&self, session: &AgentSession) -> Option<&str> {
         if session.managed() && self.hidden_reason == TEMPORARY_DIRECTORY {
             return None;
@@ -148,8 +205,17 @@ impl Content {
                 matches!(t.state, ProcessState::Failed | ProcessState::Interrupted)
                     || t.exit_code.is_some_and(|c| c != 0)
             });
+        // A stopped turn whose subagents still run, or that a monitor or wakeup will resume,
+        // is not done yet.
+        let background = self.turn == Turn::Completed
+            && session.current
+            && self
+                .background
+                .is_some_and(|b| b.keeps_working() || b.wakes());
         if self.turn == Turn::Error || failed {
             Inbox::Error
+        } else if background {
+            Inbox::Running
         } else if self.turn == Turn::Completed && self.completed_claim {
             Inbox::Review
         } else if running {
@@ -200,7 +266,17 @@ impl Content {
             Turn::Error => format!("最后回合出错：{}", short(&self.error, 240)),
             Turn::Running => "日志最后记录：回合进行中；不代表此刻进程仍在线".into(),
             Turn::Interrupted => "回合已中断，尚未验收".into(),
-            Turn::Completed => format!("回合结束；Agent 自述：{}", short(&self.last_reply, 260)),
+            Turn::Completed => match self.background.and_then(|b| b.describe()) {
+                Some(work) if self.waking() => format!(
+                    "等待唤醒，{work}；Agent 自述：{}",
+                    short(&self.last_reply, 220)
+                ),
+                Some(work) => format!(
+                    "回合结束，{work}；Agent 自述：{}",
+                    short(&self.last_reply, 220)
+                ),
+                None => format!("回合结束；Agent 自述：{}", short(&self.last_reply, 260)),
+            },
             Turn::Unknown => {
                 if self.last_reply.is_empty() {
                     "尾段没有明确回合结束事件，当前状态未知".into()
@@ -213,6 +289,10 @@ impl Content {
             }
         };
         let next = match self.turn {
+            Turn::Completed if self.background.is_some_and(|b| b.keeps_working()) => {
+                "等后台子 Agent 结束后再核对结果"
+            }
+            Turn::Completed if self.waking() => "等它被监视任务或定时唤醒，回合结束后再核对",
             Turn::Waiting => "回应上面的审批或问题",
             Turn::Error => "检查失败证据后决定是否继续",
             Turn::Running => "等回合结束后核对结果",
@@ -300,5 +380,84 @@ mod grouping_tests {
         assert_eq!(c.group(&s, &w, now), Inbox::Paused);
         s.outcome = Outcome::Completed;
         assert_eq!(c.group(&s, &w, now), Inbox::Closed);
+    }
+    #[test]
+    fn running_subagents_keep_a_stopped_turn_working_but_shells_do_not() {
+        let now = 10 * 86400;
+        let s = AgentSession {
+            id: "s".into(),
+            runtime: Agent::Claude,
+            cli_session_id: "c".into(),
+            terminal: Some("t".into()),
+            current: true,
+            task: None,
+            outcome: Outcome::Open,
+            updated: now,
+            cwd: "/tmp".into(),
+            transcript: "f".into(),
+        };
+        let w = Workspace::default();
+        let mut c = Content {
+            updated: now,
+            turn: Turn::Completed,
+            completed_claim: true,
+            background: Some(Background {
+                agents: 1,
+                ..Default::default()
+            }),
+            ..Default::default()
+        };
+        assert_eq!(c.group(&s, &w, now), Inbox::Running);
+        c.background = Some(Background {
+            monitors: 1,
+            ..Default::default()
+        });
+        assert_eq!(
+            c.group(&s, &w, now),
+            Inbox::Running,
+            "a monitor will wake it"
+        );
+        assert!(c.waking());
+        assert!(
+            c.here()
+                .stopped
+                .starts_with("等待唤醒，后台仍有监视任务 1 个")
+        );
+        c.background = Some(Background {
+            crons: 1,
+            ..Default::default()
+        });
+        assert_eq!(
+            c.group(&s, &w, now),
+            Inbox::Running,
+            "so will a scheduled wakeup"
+        );
+        c.background = Some(Background {
+            shells: 2,
+            ..Default::default()
+        });
+        assert!(!c.waking());
+        assert_eq!(
+            c.group(&s, &w, now),
+            Inbox::Review,
+            "shells alone are a mark"
+        );
+        c.background = None;
+        assert_eq!(
+            c.group(&s, &w, now),
+            Inbox::Review,
+            "unknown is not working"
+        );
+        let mut gone = s.clone();
+        gone.current = false;
+        c.background = Some(Background {
+            agents: 1,
+            ..Default::default()
+        });
+        assert_eq!(
+            c.group(&gone, &w, now),
+            Inbox::Review,
+            "no live process, nothing runs"
+        );
     }
 }
