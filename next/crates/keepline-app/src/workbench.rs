@@ -1303,9 +1303,19 @@ impl Workbench {
                         .flex_col()
                         .child(div().truncate().child(self.session_title(&session)))
                         .child(label(format!(
-                            "{} · {}",
+                            "{} · {}{}",
                             session.runtime.executable(),
-                            self.group(&session).label()
+                            self.group(&session).label(),
+                            if self
+                                .workspace
+                                .content
+                                .get(&session.id)
+                                .is_some_and(|c| c.waking())
+                            {
+                                " · 等待唤醒"
+                            } else {
+                                ""
+                            }
                         ))),
                 )
                 .child(label("打开 →").text_color(T::color(T::LINK)))
@@ -4081,6 +4091,14 @@ impl Render for Workbench {
         if self.recognition.phase != RecognitionPhase::Healthy {
             main = main.child(
                 label(self.recognition.detail.clone())
+                    .px(px(T::S14))
+                    .py(px(T::S6))
+                    .text_color(Group::Waiting.colors().1),
+            );
+        }
+        for notice in self.recognition.official.values() {
+            main = main.child(
+                label(notice.clone())
                     .px(px(T::S14))
                     .py(px(T::S6))
                     .text_color(Group::Waiting.colors().1),
