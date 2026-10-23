@@ -32,46 +32,77 @@ impl Group {
             Self::Stale => "很久没动",
         }
     }
+    /// The group's base hue; its ink and wash derive from it and the terminal.
+    pub const fn hue(self) -> u32 {
+        match self {
+            Self::Waiting => 0xe8823a,
+            Self::Error => 0xe5534b,
+            Self::Review => 0x8f93ff,
+            Self::Paused => 0xd9a441,
+            Self::Running => 0x4cc38a,
+            Self::Stale => Theme::MUTED,
+        }
+    }
     pub fn colors(self) -> (Hsla, Hsla, Hsla) {
         let (dot, ink, bg) = match self {
-            Self::Waiting => (0xe8823a, 0xffd2b0, 0x4a2a12),
-            Self::Error => (0xe5534b, 0xffc4bd, 0x4a1c18),
-            Self::Review => (0x8f93ff, 0xd6d8ff, 0x2a2c5c),
-            Self::Paused => (0xd9a441, 0xf3dca8, 0x3a2e12),
-            Self::Running => (0x4cc38a, 0xb9ecd2, 0x173a2a),
             Self::Stale => (Theme::MUTED, Theme::SECONDARY, Theme::RAISED),
+            group => (
+                group.hue(),
+                mix(group.hue(), Theme::WHITE, 620),
+                mix(Theme::TERMINAL_BG, group.hue(), 250),
+            ),
         };
         (hsla(dot), hsla(ink), hsla(bg))
     }
 }
+/// `share` per mille of `to` blended into `from`, per channel; const so tokens stay constants.
+pub const fn mix(from: u32, to: u32, share: u32) -> u32 {
+    let mut out = 0;
+    let mut shift = 0;
+    while shift < 24 {
+        let a = (from >> shift) & 255;
+        let b = (to >> shift) & 255;
+        out |= ((a * (1000 - share) + b * share + 500) / 1000) << shift;
+        shift += 8;
+    }
+    out
+}
 #[allow(dead_code)] // The complete design palette also covers the deferred components.
 impl Theme {
-    pub const APP: u32 = 0x0b0c10;
-    pub const PANEL: u32 = 0x0f1116;
-    pub const PANE: u32 = 0x101217;
-    pub const HEADER: u32 = 0x12141a;
-    pub const HEADER_FOCUSED: u32 = 0x181a24;
-    pub const RAISED: u32 = 0x1b1e26;
-    pub const TODO: u32 = 0x121527;
-    pub const SLOT: u32 = 0x0e1015;
-    pub const BORDER: u32 = 0x1d2028;
-    pub const CONTROL: u32 = 0x2a2e38;
-    pub const TODO_BORDER: u32 = 0x262a3a;
-    pub const SLOT_BORDER: u32 = 0x2f3448;
-    pub const CARD_BORDER: u32 = 0x22252f;
-    pub const PRIMARY: u32 = 0xe9ebef;
-    pub const BODY: u32 = 0xd7dae0;
-    pub const SECONDARY: u32 = 0x8b919e;
-    pub const MUTED: u32 = 0x6b7080;
+    /// The terminal's default colors; every chrome surface and text tone is a mix of
+    /// these two (and the accent), so the window reads as one surface with the terminal.
+    pub const TERMINAL_BG: u32 = 0x101217;
+    pub const TERMINAL_FG: u32 = 0xd7dae0;
     pub const ACCENT: u32 = 0x4b4fd6;
-    pub const LINK: u32 = 0xc3c6ff;
-    pub const CHIP: u32 = 0x1e2140;
     pub const WHITE: u32 = 0xffffff;
-    pub const CLEANUP_BACKGROUND: u32 = 0xeef0f3;
-    pub const POPOVER_TEXT: u32 = 0x17181c;
-    pub const POPOVER_SECONDARY: u32 = 0x5d6270;
-    pub const POPOVER_BORDER: u32 = 0xd5d8de;
-    pub const INFERENCE: u32 = 0xf6f7fb;
+    const BLACK: u32 = 0x000000;
+    const BG: u32 = Self::TERMINAL_BG;
+    const FG: u32 = Self::TERMINAL_FG;
+    pub const APP: u32 = mix(Self::BG, Self::BLACK, 310);
+    pub const PANEL: u32 = mix(Self::BG, Self::BLACK, 60);
+    pub const PANE: u32 = Self::BG;
+    pub const SLOT: u32 = mix(Self::BG, Self::BLACK, 120);
+    pub const HEADER: u32 = mix(Self::BG, Self::FG, 12);
+    pub const HEADER_FOCUSED: u32 = mix(Self::HEADER, Self::ACCENT, 60);
+    pub const RAISED: u32 = mix(Self::BG, Self::FG, 55);
+    pub const TODO: u32 = mix(Self::BG, Self::ACCENT, 70);
+    pub const BORDER: u32 = mix(Self::BG, Self::FG, 65);
+    pub const CARD_BORDER: u32 = mix(Self::BG, Self::FG, 80);
+    pub const CONTROL: u32 = mix(Self::BG, Self::FG, 130);
+    pub const TODO_BORDER: u32 = mix(Self::BORDER, Self::ACCENT, 120);
+    pub const SLOT_BORDER: u32 = mix(Self::CONTROL, Self::ACCENT, 150);
+    pub const PRIMARY: u32 = mix(Self::FG, Self::WHITE, 450);
+    pub const BODY: u32 = Self::FG;
+    pub const SECONDARY: u32 = mix(Self::BG, Self::FG, 600);
+    pub const MUTED: u32 = mix(Self::BG, Self::FG, 450);
+    pub const LINK: u32 = mix(Self::ACCENT, Self::WHITE, 650);
+    pub const CHIP: u32 = mix(Self::BG, Self::ACCENT, 150);
+    /// In-window popovers (「你在这里」, cleanup) sit one step above the pane, not on white.
+    pub const POPOVER: u32 = mix(Self::BG, Self::FG, 40);
+    pub const INFERENCE: u32 = mix(Self::BG, Self::ACCENT, 90);
+    /// The menu bar panel is a separate light macOS popover, kept apart from the window.
+    pub const MENU_TEXT: u32 = 0x17181c;
+    pub const MENU_SECONDARY: u32 = 0x5d6270;
     pub const UI_FONT: &'static str = ".AppleSystemUIFont";
     pub const BODY_SIZE: f32 = 13.;
     pub const SMALL: f32 = 12.;
@@ -162,5 +193,63 @@ impl Theme {
             "Symbols Nerd Font Mono".into(),
         ]));
         face
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{Theme, mix};
+
+    #[test]
+    fn mix_blends_each_channel() {
+        assert_eq!(mix(0x000000, 0xffffff, 0), 0x000000);
+        assert_eq!(mix(0x000000, 0xffffff, 1000), 0xffffff);
+        assert_eq!(mix(0x102030, 0x304050, 500), 0x203040);
+        assert_eq!(Theme::PANE, Theme::TERMINAL_BG);
+    }
+
+    /// Colors and sizes come from `Theme`; a literal in a component drifts from the tokens.
+    /// The terminal renderer and the visual-test harness measure cells, not chrome.
+    #[test]
+    fn components_take_colors_and_sizes_from_tokens() {
+        let src = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("src");
+        let mut files: Vec<_> = ["pane.rs", "field.rs", "desktop.rs"]
+            .iter()
+            .map(|name| src.join(name))
+            .collect();
+        for entry in std::fs::read_dir(src.join("workbench")).unwrap() {
+            files.push(entry.unwrap().path());
+        }
+        let mut offenders = Vec::new();
+        for path in files {
+            let text = std::fs::read_to_string(&path).unwrap();
+            for (n, line) in text.lines().enumerate() {
+                if color_literal(line) || size_literal(line) {
+                    offenders.push(format!("{}:{}: {}", path.display(), n + 1, line.trim()));
+                }
+            }
+        }
+        assert!(
+            offenders.is_empty(),
+            "use Theme tokens:\n{}",
+            offenders.join("\n")
+        );
+    }
+
+    fn color_literal(line: &str) -> bool {
+        line.match_indices("0x").any(|(at, _)| {
+            let hex = line[at + 2..]
+                .chars()
+                .take_while(|c| c.is_ascii_hexdigit())
+                .count();
+            hex == 6
+        })
+    }
+
+    fn size_literal(line: &str) -> bool {
+        line.match_indices("px(").any(|(at, _)| {
+            let rest = &line[at + 3..];
+            rest.starts_with(|c: char| c.is_ascii_digit()) && !rest.starts_with("0.)")
+        })
     }
 }

@@ -129,8 +129,8 @@ impl<'a> RowBuilder<'a> {
     }
 }
 
-pub const DEFAULT_FG: u32 = crate::theme::Theme::BODY;
-pub const DEFAULT_BG: u32 = crate::theme::Theme::PANE;
+pub const DEFAULT_FG: u32 = crate::theme::Theme::TERMINAL_FG;
+pub const DEFAULT_BG: u32 = crate::theme::Theme::TERMINAL_BG;
 
 use keepline_core::terminal::{
     Vt,
