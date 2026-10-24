@@ -209,6 +209,10 @@ export function LedgerPage({
       void c.perform(() => c.accept(row, "accepted_with_gaps", reason));
   };
   const primaryAction = (row: LedgerDetail) => {
+    if (rowPresentation(row).action === "看偏离") {
+      openFull(row.sessionId);
+      return;
+    }
     select(row.sessionId);
   };
   useEffect(() => {

@@ -298,6 +298,8 @@ export async function ledgerOverview(hours = 24, omitTranscript = false, outside
   const sessions = all.filter(s => outsideAttention ? s.lastActiveAt.getTime() < cutoff : s.lastActiveAt.getTime() >= cutoff);
   const details = new Map<string,LedgerDetail>();
   const retain = (detail: LedgerDetail) => {
+    // Keep overview previews bounded without truncating the cached detail.
+    detail = { ...detail, activity: detail.activity && { ...detail.activity, lastMessage: detail.activity.lastMessage?.slice(0,600) } };
     // Reviews aggregate a retention window; keep evidence and progress, not every
     // transcript/tool input in memory. Full records remain available by session ID.
     if (omitTranscript) {
@@ -306,6 +308,7 @@ export async function ledgerOverview(hours = 24, omitTranscript = false, outside
       if (detail.activity) detail.activity = { ...detail.activity,lastMessage: undefined };
     }
     details.set(detail.sessionId,detail);
+    return detail;
   };
   for (const session of sessions) {
     if (outsideAttention) {
@@ -326,7 +329,7 @@ export async function ledgerOverview(hours = 24, omitTranscript = false, outside
       seen.add(root.parentSessionId);
       const parentId = root.parentSessionId;
       let parent = details.get(parentId);
-      if (!parent && byId.has(parentId)) { parent = await read(parentId) ?? undefined; if (parent) retain(parent); }
+      if (!parent && byId.has(parentId)) { parent = await read(parentId) ?? undefined; if (parent) parent = retain(parent); }
       if (!parent) break;
       root = parent;
     }
@@ -390,7 +393,7 @@ function latestActivity(facts: TranscriptFact[]): Omit<NonNullable<LedgerDetail[
   }
   const input = tool?.input && typeof tool.input === 'object' ? tool.input as Record<string,unknown> : {};
   return { action: tool ? `${tool.name} ${String(input.command ?? input.cmd ?? input.file_path ?? input.path ?? '').slice(0,300)}`.trim() : undefined,
-    at: tool?.at,callId: tool?.callId,turnId: tool?.turnId,completed: tool ? tool.completed === true || tool.exitCode !== undefined : undefined,exitCode: tool?.exitCode,lastMessage: message?.text.slice(0,600) };
+    at: tool?.at,callId: tool?.callId,turnId: tool?.turnId,completed: tool ? tool.completed === true || tool.exitCode !== undefined : undefined,exitCode: tool?.exitCode,lastMessage: message?.text };
 }
 export function followUpPrompt(detail: LedgerDetail, correctionRun?: string): string {
   if (correctionRun) {

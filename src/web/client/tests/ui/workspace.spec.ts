@@ -804,6 +804,47 @@ test("轻量接手：首次查看展示已有事实，明确问题随新记录�
   expect(calls.some(call => call.path.endsWith("/acceptances") || call.path.endsWith("/follow-up"))).toBe(false);
 });
 
+test("轻量接手：看偏离直接打开完整进度账而不验收", async ({ page }) => {
+  const { state, calls } = await mockApi(page);
+  state.row.state = "running";
+  state.row.offPlan = [{ id: "off-1", at: now, callIds: ["call-1"] }];
+  await ready(page);
+  await page.getByRole("button", { name: "看偏离", exact: true }).click();
+  await expect(page).toHaveURL(/detail=full/);
+  await expect(page.getByRole("heading", { name: "时间线", exact: true })).toBeVisible();
+  expect(calls.some(call => /\/(acceptances|follow-up|corrections)$/.test(call.path))).toBe(false);
+});
+
+for (const since of [null, "2026-10-07T12:30:00+08:00"]) test(`轻量接手：无分类证据的调用仍可见 · ${since ?? "首次查看"}`, async ({ page }) => {
+  const { state, calls } = await mockApi(page);
+  const oldStep = { callId: "old-operation", name: "mcp", summary: "旧的工具调用", at: "2026-10-07T12:00:00+08:00", turnId: "turn-1", evidenceIds: [], violations: [], acceptedOffPlan: false };
+  const step = { ...oldStep, callId: "operation", summary: "工具调用：更新工作区索引", at: now };
+  const checked = { ...step, callId: "checked", summary: "bun test", at: "2026-10-07T13:01:00+08:00", evidenceIds: ["command", "test"] };
+  const edited = { ...step, callId: "edited", summary: "src/changed.ts", evidenceIds: ["file"] };
+  const checkEvidence = [
+    { id: "command", kind: "command" as const, value: "bun test", callId: checked.callId, at: checked.at, exitCode: 0 },
+    { id: "test", kind: "test" as const, value: "3 pass", callId: checked.callId, at: checked.at, exitCode: 0 },
+  ];
+  const fileEvidence = { id: "file", kind: "file" as const, value: "src/changed.ts", callId: edited.callId, at: now };
+  state.row.evidence = [...checkEvidence, fileEvidence];
+  state.row.trail = [oldStep, checked, edited, step];
+  state.row.changes = { since, files: [fileEvidence], checks: checkEvidence, steps: [checked, edited, step] };
+  await ready(page);
+  await page.getByRole("button", { name: row.title, exact: true }).click();
+  const checks = page.getByRole("dialog").getByRole("region", { name: "最近检查记录" });
+  await expect(checks.getByRole("heading", { name: `执行与检查 ${since ? 2 : 3}`, exact: true })).toBeVisible();
+  await expect(checks.locator("summary").filter({ hasText: step.summary })).toBeVisible();
+  await expect(checks.getByText("未收到结果", { exact: true })).toHaveCount(since ? 1 : 2);
+  await expect(checks.getByText("执行成功", { exact: true })).toHaveCount(1);
+  await expect(checks.locator("summary").first()).toContainText(step.summary);
+  await expect(checks.locator("summary").filter({ hasText: "bun test" })).toHaveCount(1);
+  await expect(checks.locator("summary").filter({ hasText: "src/changed.ts" })).toHaveCount(0);
+  await expect(page.getByRole("dialog").getByRole("region", { name: "最近文件变化" }).locator("summary").filter({ hasText: "src/changed.ts" })).toHaveCount(1);
+  await expect(checks.locator("summary").filter({ hasText: oldStep.summary })).toHaveCount(since ? 0 : 1);
+  await expect(checks.getByText(/没有新的执行结果记录|尚无执行结果记录/)).toHaveCount(0);
+  expect(calls.some(call => /\/(acceptances|follow-up|items)$/.test(call.path))).toBe(false);
+});
+
 test("轻量接手：长回复可展开原文，读取异常保留明确提示", async ({ page }) => {
   const { state } = await mockApi(page);
   const tail = "这条末尾说明必须完整保留。";
