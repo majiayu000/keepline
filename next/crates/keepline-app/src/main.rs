@@ -9,7 +9,9 @@ mod terminal_input;
 mod theme;
 mod workbench;
 
-use gpui::{App, AppContext, Bounds, TitlebarOptions, WindowBounds, WindowOptions, point, px, size};
+use gpui::{
+    App, AppContext, Bounds, TitlebarOptions, WindowBounds, WindowOptions, point, px, size,
+};
 use keepline_core::{model::*, protocol::*};
 use std::os::unix::{fs::DirBuilderExt, process::CommandExt};
 use std::{
@@ -140,19 +142,11 @@ fn reopen_window(root: &Path, cx: &mut App) {
                 ),
                 cx,
             );
-            if let Err(e) = cx.open_window(
-                window_options(bounds),
-                |window, cx| {
-                    cx.new(|cx| {
-                        workbench::Workbench::new(
-                            root.join("workbench.sock"),
-                            workspace,
-                            window,
-                            cx,
-                        )
-                    })
-                },
-            ) {
+            if let Err(e) = cx.open_window(window_options(bounds), |window, cx| {
+                cx.new(|cx| {
+                    workbench::Workbench::new(root.join("workbench.sock"), workspace, window, cx)
+                })
+            }) {
                 eprintln!("reopen: {e}");
             }
             cx.activate(true);
