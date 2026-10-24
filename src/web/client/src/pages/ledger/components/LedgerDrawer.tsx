@@ -13,7 +13,7 @@ import {
 } from "../presentation";
 import { StatusTag, SubtaskTag, ActionButton } from "./LedgerPrimitives";
 import styles from "../Workspace.module.css";
-import { LedgerObservation } from "./LedgerObservation";
+import { LedgerRecap } from "./LedgerRecap";
 import { LedgerAskText } from "./LedgerAskText";
 
 const markdownComponents: Components = {
@@ -45,6 +45,13 @@ export function LedgerDrawer({
   onCopyRecovery: () => void;
 }) {
   const p = rowPresentation(row);
+  const message = row.activity?.lastMessage;
+  const report = <ReactMarkdown
+    className={`${styles.markdown} ${styles.drawerReport}`}
+    remarkPlugins={[remarkGfm]}
+    components={markdownComponents}
+    skipHtml
+  >{message ?? "尚无 Agent 回复记录"}</ReactMarkdown>;
   const ref = useRef<HTMLElement>(null);
   useEffect(() => {
     const previous = document.activeElement as HTMLElement | null;
@@ -83,6 +90,7 @@ export function LedgerDrawer({
         </button>
       </header>
       <div className={styles.drawerBody}>
+        {!row.available && <p role="status">{row.unavailableReason ?? "当前无法完整读取执行记录"}；以下仅展示已取得的记录。</p>}
         {row.parentSessionId && (
           <div className={styles.drawerSection}>
             <ActionButton onClick={() => onSelectSession(row.parentSessionId!)}>查看父会话</ActionButton>
@@ -106,38 +114,31 @@ export function LedgerDrawer({
           <span className={styles.drawerFactValue}>
             {p.now} · {p.lastAgo}
           </span>
-          <span className={styles.subtle}>最近证据</span>
-          <span>
-            <span className={styles.evidence}>{p.evidence}</span>
-          </span>
-          <span className={styles.subtle}>它说</span>
-          <ReactMarkdown
-            className={`${styles.markdown} ${styles.drawerReport}`}
-            remarkPlugins={[remarkGfm]}
-            components={markdownComponents}
-            skipHtml
-          >
-            {row.activity?.lastMessage ?? "暂无汇报"}
-          </ReactMarkdown>
+          <span className={styles.subtle}>最新回复</span>
+          {message && message.length > 360 ? <details className={`${styles.messageDisclosure} ${styles.drawerReport}`}>
+            <summary>{message.slice(0, 180)}… <span>展开完整回复</span></summary>
+            {report}
+          </details> : report}
           <span className={styles.subtle}>上下文</span>
           <span style={{ color: p.context?.fg ?? "#6B7280" }}>
             {p.context?.detail ?? "未知"}
           </span>
         </div>
-        <div className={styles.drawerSection}>
-          <div>你发的消息 · 最新在前</div>
+        <LedgerRecap row={row} />
+        <details className={styles.drawerOptional}>
+          <summary>你发的消息 · 最新在前</summary>
           {[...row.asks].reverse().map((ask) => (
             <div key={ask.id} className={styles.askRow}>
               <span className={styles.mono}>{time(ask.at)}</span>
               <LedgerAskText text={ask.text} />
             </div>
           ))}
-        </div>
-        <div className={styles.drawerSection}>
-          <div>
-            做到哪了 ·{" "}
+        </details>
+        {p.items.length > 0 && <details className={styles.drawerOptional}>
+          <summary>
+            要求与验收 ·{" "}
             <span>{`${row.progress.done} / ${row.progress.total}`}</span>
-          </div>
+          </summary>
           {p.items.map((item) => (
             <div key={item.id} className={styles.requirementRow}>
               <span
@@ -160,15 +161,10 @@ export function LedgerDrawer({
               </span>
             </div>
           ))}
-          {!p.items.length && (
-            <div className={styles.subtle}>
-              只有候选项，不判进度和偏离；见「执行观察」。
-            </div>
-          )}
-        </div>
+        </details>}
         {row.items.some((i) => i.constraints.length > 0) && (
-          <div className={styles.drawerSection}>
-            <div>约束 · 规则检查，不计入进度</div>
+          <details className={styles.drawerOptional}>
+            <summary>约束 · 规则检查，不计入进度</summary>
             {row.items
               .flatMap((i) => i.constraints)
               .map((cn, i) => (
@@ -191,7 +187,7 @@ export function LedgerDrawer({
                   <span className={styles.subtle}>见执行轨迹</span>
                 </div>
               ))}
-          </div>
+          </details>
         )}
         {recovery?.canRecover && recovery.command && (
           <div className={styles.drawerSection}>
@@ -202,7 +198,6 @@ export function LedgerDrawer({
             <ActionButton onClick={onCopyRecovery}>复制恢复命令</ActionButton>
           </div>
         )}
-        <LedgerObservation row={row} />
       </div>
       <div className={styles.drawerActions}>
         <ActionButton primary onClick={onOpenSession}>
