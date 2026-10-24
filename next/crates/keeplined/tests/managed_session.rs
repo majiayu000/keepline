@@ -356,11 +356,12 @@ fn real_codex_tints_its_input_box_from_the_terminal_background() {
     }
     eprintln!("input row {row}: backgrounds {backgrounds:?}");
     // Codex lightens our dark default for its input box; unanswered, it paints none.
+    let [_, base_r, base_g, base_b] = keepline_core::terminal::DEFAULT_BG.to_be_bytes();
     assert!(
         backgrounds
             .iter()
             .flatten()
-            .any(|&(r, g, b)| (r, g, b) != (0x10, 0x12, 0x17) && r > 0x10),
+            .any(|&(r, g, b)| (r, g, b) != (base_r, base_g, base_b) && r > base_r),
         "input box has no tint: {backgrounds:?}\n{}",
         vt.tail_text(30).unwrap()
     );
