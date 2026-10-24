@@ -392,7 +392,8 @@ mod tests {
         let mut vt = Vt::new(80, 24).unwrap();
         let restored = Vt::restore(&vt.snapshot().unwrap()).unwrap();
         let bg = restored.terminal().bg_color().unwrap().unwrap();
-        assert_eq!((bg.r, bg.g, bg.b), (0x10, 0x12, 0x17));
+        let [_, r, g, b] = DEFAULT_BG.to_be_bytes();
+        assert_eq!((bg.r, bg.g, bg.b), (r, g, b));
     }
     #[test]
     fn untrusted_osc_and_malformed_bytes_remain_terminal_data() {
