@@ -50,6 +50,30 @@ judgment is optional, rate-limited, and never allowed to invent evidence.
 
 ## Product Behavior
 
+### Lightweight handoff (2026-10-18)
+
+- The overview previews the latest recorded Agent reply. Selecting a session or
+  choosing "查看回复" opens its factual recap; it never accepts work or generates
+  a follow-up automatically, including sessions with a confirmed checklist.
+- The default detail drawer shows the latest reply, explicit unanswered question,
+  execution/check receipts and file changes. Replies remain the Agent's original
+  words, separate from execution results; no model summary is required.
+- Execution and file records use the end of the previous viewing visit as their
+  baseline. A first visit shows available history and states that no baseline
+  exists. An empty change window never falls back to older successful checks.
+- Commands and test summaries from the same call appear as one expandable
+  execution record, with its time and call reference. Success describes that
+  execution at that time, not current-version correctness or user acceptance.
+- User messages, confirmed requirements and constraints remain available through
+  collapsed sections and the full ledger. No checklist is required to inspect
+  activity, and fallback candidates are not presented as a mandatory setup step.
+- The existing "查看会话记录" action opens the matching session record; recovery
+  keeps its existing eligibility checks and copy-command flow. Embedded live
+  terminal interaction remains covered by the separate terminal-workbench Spec.
+- Hooks are an optional additional event source; this view works from supported
+  transcript records. Absence of an explicit input request is not proof that an
+  Agent has no pending approval. Unavailable records remain visibly unavailable.
+
 ### Overview time range
 
 - The overview defaults to sessions active in the last 24 hours. Users can enter

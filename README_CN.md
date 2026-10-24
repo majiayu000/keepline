@@ -6,58 +6,50 @@
 
 ### 看清 agent 做了什么，还有什么需要你处理
 
-**Agent CLI 重度用户的控制中心**
+**本地运行的 Codex / Claude Code 进度账本。对照你的要求与执行证据，由你明确验收结果。**
 
 [![GitHub stars](https://img.shields.io/github/stars/majiayu000/keepline?style=flat-square&color=ffcc00)](https://github.com/majiayu000/keepline)
 [![License](https://img.shields.io/badge/license-MIT-blue.svg?style=flat-square)](LICENSE)
 
 [English](README.md) | 中文
 
-[快速开始](#快速开始) | [功能特性](#功能特性) | [截图](#web-仪表板) | [CLI 命令](#cli-命令)
+[快速开始](#快速开始) | [功能特性](#功能特性) | [主界面](#web-仪表板) | [CLI 命令](#cli-命令)
 
 <br />
 
-<img src="docs/assets/Sessions.png" alt="Keepline 会话仪表板" width="800" />
 
 </div>
 
 ---
 
-## 痛点
+## Keepline 帮你判断什么
 
-你正在用 Codex 或 Claude Code 愉快地写代码，一切都很顺利。然后...
+离开一会儿再回来，先看哪个 Agent 需要回答、改了什么、跑过哪些检查，
+再核对它是否满足要求，回到原会话继续处理。工作完成由你明确验收。
 
-- **终端崩溃** — 几小时的上下文，没了
-- **多个会话** — 哪个在处理认证的 bug 来着？
-- **费用焦虑** — "今天花了多少钱？"
-- **进度丢失** — "午饭前我在做什么来着？"
+Keepline 正在转向原生 Agent 工作台：Rust 后台进程加 GPUI 客户端，每个会话是 App 内的真实终端，
+见[产品卡](https://github.com/majiayu000/keepline/blob/feat/agent-workbench/specs/product-card.md)和 [#147](https://github.com/majiayu000/keepline/pull/147)。合入之前，本分支的 Bun CLI、浏览器界面和 Tauri 菜单栏
+继续提供会话监控和恢复入口；1.2.0 菜单栏候选不计划发布。
 
-## 解决方案
+## 进度账本
 
-**Keepline** 实时监控 Codex 和 Claude Code 会话，提供中断会话的恢复入口，追踪可用的费用数据，并在会话间保持上下文。
+- **要求**：保留用户原话，列出可核对的要求条目。
+- **证据**：关联记录中的命令结果、测试输出、文件操作和提交。Agent 自述完成不算执行证据。
+- **验收**：展示缺口与计划外操作，仅用户能明确验收。
+- **目标与待办**：关联会话，逐级汇总进度。
+- **进程与回合状态**：分别判断。没有观察到进程时保留未知状态，不能据此断定退出或完成。
 
-改名和 Codex 检测的完整实现说明见 [Keepline Rebrand and Codex Detection Spec](docs/KEEPLINE_REBRAND_AND_CODEX_DETECTION_SPEC.md)。
-
-按下面的[源码安装步骤](#快速开始)构建 Bun CLI 和仪表板，再打开
-`http://127.0.0.1:3377`。
-
----
-
-## 为什么选择 Keepline？
-
-|  | 没有 Keepline | 有 Keepline |
-|--|-----------------|---------------|
-| **终端崩溃** | 需要查找 CLI 的本地会话记录 | 聚合丢失会话与可用恢复方式 |
-| **多个会话** | 切换终端，容易搞混 | 所有会话一个仪表板 |
-| **费用追踪** | 手动查 Anthropic 控制台 | 实时费用 + 预测 |
-| **会话上下文** | 本地 transcript 通常仍在，但需要定位 | 持久化，可搜索 |
-| **项目概览** | 散落在各个目录 | 按项目聚合 |
+默认读取本地会话记录，不装 Hook 也能工作。Hook 用于接收实时事件；
+模型分析另行配置，用于辅助核对要求和证据，不能编造证据。
+详见[产品规范](specs/progress-ledger/product.md)和[技术设计](specs/progress-ledger/tech.md)。
 
 ## 仓库范围
 
-当前这个仓库只保留 Keepline 主应用，以及仓库内的 `menubar-tauri` 配套目录。
-
-之前混在这里的实验 runner 工作区已经迁移到同级目录 `../Claude-Code-Monitor-extracted/`，不再属于这个仓库的构建和测试范围。
+- `src/`：Bun 服务、CLI、会话适配器、进度账本与 React 主界面。
+- `menubar-tauri/`：macOS 桌面应用、内嵌服务、托盘与通知。
+- `sdk/swift/`：稳定本地 API 的客户端。
+- `next/crates/keeplined/`：实验性 Rust PTY 守护进程。
+- [`specs/terminal-workbench/`](https://github.com/majiayu000/keepline/tree/feat/agent-workbench/specs/terminal-workbench)（位于 `feat/agent-workbench` 分支）：原生 Agent 工作台的规格，在该分支实现，尚未合入。
 
 ---
 
@@ -84,7 +76,7 @@ bun run start web
 ### Keepline 桌面候选（1.2.0）
 
 当前源码提供菜单栏面板和进度账，内置本地 Bun 服务，无需另外安装 CLI 才能打开面板。
-**当前是候选版本，不能据此认为 1.2.0 已公开发布。** Releases 中已有安装包可能仍是旧版额度应用。
+**当前是候选版本，不能据此认为 1.2.0 已公开发布；它也不计划发布，菜单栏将由原生工作台承担。** Releases 中已有安装包可能仍是旧版额度应用。
 构建命令见[桌面说明](menubar-tauri/README.md)。
 
 1. 打开 Keepline，等待首次本地扫描结束。
@@ -152,54 +144,12 @@ keepline recover <session-id> --method resume
 Keepline 的监控和运行时恢复不等于归档备份。
 
 
-### 费用分析与预测
+### 用量、费用与跨会话记忆
 
-实时追踪花费。精确知道 token 花在哪里。
+按各运行时实际提供的数据统计 token，记录中有缓存读写时计入对应费用。
+费用由模型价格表估算，不能据此确认供应商账单或套餐额度，见[计价实现](src/services/usage.pricing.ts)。
 
-```
-┌─────────────────────────────────────────────────────────────────┐
-│ 费用分析                                                        │
-├─────────────────────────────────────────────────────────────────┤
-│ 今日          $12.34  ▲ 23%                                     │
-│ 本周          $67.89                                            │
-│ 本月         $198.50  (预计: $320)                              │
-│                                                                 │
-│ 缓存节省      $45.20  (占总量 38%)                              │
-│ 命中率: 72%                                                     │
-└─────────────────────────────────────────────────────────────────┘
-```
-
-特性：
-- 按会话费用明细
-- 缓存 token 追踪（创建 1.25x，读取 0.1x）
-- 多模型支持（Opus、Sonnet、Haiku）
-- 日/周/月趋势
-
-### 跨会话记忆
-
-Keepline 实现了"接力赛"模式 — 你的进度在会话间持久保存。
-
-```
-┌─────────────────────────────────────────────────────────────────┐
-│ 会话记忆                                    my-app              │
-├─────────────────────────────────────────────────────────────────┤
-│ 最新进度: 实现了 OAuth2 登录流程                                │
-│                                                                 │
-│ 已完成:                                                         │
-│   ✓ 数据库 schema 设计                                          │
-│   ✓ User 模型 + bcrypt                                          │
-│   ✓ JWT token 生成                                              │
-│                                                                 │
-│ 待完成:                                                         │
-│   ○ Refresh token 轮换                                          │
-│   ○ 密码重置流程                                                │
-│                                                                 │
-│ 已知问题:                                                       │
-│   ! 中间件未处理 token 过期                                     │
-└─────────────────────────────────────────────────────────────────┘
-```
-
-恢复会话时，这些上下文会自动注入。
+记忆命令保留会话笔记与恢复上下文，独立于账本中的执行证据和用户验收。
 
 ### Plans 追踪
 
@@ -219,20 +169,11 @@ Keepline 实现了"接力赛"模式 — 你的进度在会话间持久保存。
 
 ### Web 仪表板
 
-漂亮的赛博朋克主题仪表板，5 种配色方案。
+主界面为进度账本，包含总览、待办、目标与回顾。
+会话记录、计划、记忆与用量统计从更多导航进入；桌面 App 使用同一套主界面。
 
-| 会话 | 分析 | 项目 |
-|:----:|:----:|:----:|
-| ![Sessions](docs/assets/Sessions.png) | ![Analytics](docs/assets/Analysis.png) | ![Projects](docs/assets/Projects.png) |
-
-**快捷键：**
-- `r` — 刷新会话
-- `s` — 从 Claude 同步
-- `/` — 聚焦搜索
-- `t` — 切换主题
-- `?` — 显示帮助
-
-**主题：** Cyberpunk、Matrix、Synthwave、Minimal、Tokyo
+`/` 聚焦搜索，`Cmd+,` 或 `Ctrl+,` 打开设置。
+[`docs/assets/`](docs/assets/) 中的旧截图保留作历史参考，展示的是早期监控面板。
 
 ---
 
@@ -266,20 +207,16 @@ hook receiver。`keepline hooks install` 只安装转发命令；用 `keepline s
 
 ---
 
-## 对比
+## 工作方式
 
-| 功能 | 手动 | claude-mem | **Keepline** |
-|------|:----:|:----------:|:--------------:|
-| 多会话监控 | - | - | **支持** |
-| 会话恢复 | 原 CLI 的 resume 命令 | - | **按会话提供可用方式** |
-| 费用追踪 | - | - | **支持 + 预测** |
-| 缓存 token 分析 | - | - | **支持** |
-| 跨会话记忆 | - | 支持 | **支持** |
-| Web 仪表板 | - | 基础 | **5 种主题** |
-| Plans 追踪 | - | - | **支持** |
-| 实时 hooks | - | 支持 | **支持** |
-| 后台守护进程 | - | - | **支持** |
-| Sub-agent 追踪 | - | - | **支持** |
+1. 扫描 Codex / Claude Code 进程，并解析本地会话记录。
+2. 聚合进程观察与回合活动；启动时完成对账后再开放业务路由。
+3. 账本关联要求与执行证据，SQLite 保存本地状态和用户验收。
+4. Hono API 与 WebSocket 向 React 界面和桌面 App 提供数据，Hook 可补充实时事件。
+
+[分层依赖测试](src/__tests__/architecture-imports.test.ts)约束模块边界。
+`/api/v1` 是 Swift SDK 使用的稳定本地接口，恢复部分有 [OpenAPI 契约](docs/local-api-v1-recovery.openapi.yaml)，
+`/api` 同时为 Web 界面提供接口。
 
 ---
 
@@ -316,18 +253,20 @@ Keepline 默认把数据存储在 `~/.keepline/`：
 ```bash
 bun run dev          # 开发模式
 bun run typecheck    # 类型检查
-bun test             # 运行测试
+bun run test         # 使用隔离数据目录运行后端测试
 ```
 
 ---
 
-## 路线图
+## 下一步与发布状态
 
-- [ ] 费用告警和预算
-- [ ] 团队仪表板
-- [ ] Cursor/Copilot 支持
-- [ ] 会话回放/时间线
-- [ ] 插件系统
+源码包、CLI、本地服务与桌面候选统一报告 **1.2.0**。
+该版本号仅表示源码版本。正式签名、公证、公开发布与原生人工验收各有独立证据，
+请查看[验收记录](specs/progress-ledger/verification.md)和[桌面构建说明](menubar-tauri/README.md)。
+[10-19 维护记录](specs/progress-ledger/maintenance-20261019.md)归档本轮源码同步、检查结果与未完成的发布门槛。
+
+下一步是[原生 Agent 工作台](https://github.com/majiayu000/keepline/tree/feat/agent-workbench/specs/terminal-workbench)：在 App 内启动、切换真实 Agent CLI，回答请求并继续工作。
+它在 `feat/agent-workbench` 分支（[#147](https://github.com/majiayu000/keepline/pull/147)）开发，不属于本分支。
 
 ---
 
