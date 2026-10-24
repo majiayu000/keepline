@@ -56,6 +56,38 @@ describe('default activity monitoring',() => {
     await evaluateLedgerAlerts(d,{ ...config.get().ledger,nativeNotifications: true },new Date(),async () => { calls++; });
     expect(calls).toBe(0); expect(getDatabase().query("SELECT COUNT(*) AS n FROM ledger_alerts WHERE kind IN ('off_plan','claimed_unverified') AND cleared_at IS NULL").get()).toMatchObject({ n: 0 });
   });
+  test('detail retains the full latest reply while overview previews stay bounded',async () => {
+    const text = 'A detailed explanation. '.repeat(80) + 'FINAL_REPLY_SENTINEL';
+    const facts = sampleFacts().map(f => f.kind === 'agent_message' ? { ...f,text } : f);
+    const d = await seededLedger(facts);
+    expect(d.activity?.lastMessage).toBe(text);
+    expect((await ledgerOverview())[0].activity?.lastMessage).toBe(text.slice(0,600));
+    expect((await ledgerDetail(d.sessionId))?.activity?.lastMessage).toBe(text);
+    expect((await ledgerOverview(24,true))[0].activity?.lastMessage).toBeUndefined();
+    expect((await ledgerDetail(d.sessionId))?.activity?.lastMessage).toBe(text);
+    expect((await ledgerOverview(24,false,false,true))[0].activity?.lastMessage).toBeUndefined();
+  });
+
+  test('an older parent retains both recent children and transcript omission',async () => {
+    const now = Date.now();
+    await seededLedger(sampleFacts(),'older-parent');
+    await seededLedger(sampleFacts(),'first-child');
+    await seededLedger(sampleFacts(),'second-child');
+    sessionRepository.upsert({ sessionId: 'older-parent',lastActiveAt: new Date(now - 26 * 3600000) });
+    sessionRepository.upsert({ sessionId: 'first-child',parentSessionId: 'older-parent',status: 'needs_input',statusSource: 'hook',processState: 'online',lastActiveAt: new Date(now) });
+    sessionRepository.upsert({ sessionId: 'second-child',parentSessionId: 'older-parent',lastActiveAt: new Date(now - 1000) });
+    const roots = await ledgerOverview(24,true);
+    expect(roots).toHaveLength(1);
+    expect(roots[0].sessionId).toBe('older-parent');
+    expect(roots[0].subagents?.map(child => child.sessionId).sort()).toEqual(['first-child','second-child']);
+    expect(roots[0].state).toBe('needs_input');
+    expect(roots[0].asks).toEqual([]);
+    expect(roots[0].trail).toEqual([]);
+    expect(roots[0].claims).toEqual([]);
+    expect(roots[0].activity?.lastMessage).toBeUndefined();
+    expect(roots[0].subagents?.every(child => child.activity?.lastMessage === undefined)).toBe(true);
+  });
+
   test('explicit confirmation enables evidence matching and review',async () => {
     const raw = await seededLedger(); const confirmed = (await replaceLedgerItems(raw.sessionId,raw.items))!;
     expect(confirmed.items[0].source).toBe('user'); expect(confirmed.progress).toEqual({ done: 1,total: 1 });

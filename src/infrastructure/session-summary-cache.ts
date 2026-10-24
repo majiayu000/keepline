@@ -12,7 +12,7 @@ import { ensureKeeplineDataHome } from '../lib/paths.js';
 // Increment when parser semantics change. This is derived data, never task/session truth.
 const CACHE_VERSION = 5;
 // Keep computed fingerprints and persistent cleanup on the same semantic version.
-export const LEDGER_COMPUTATION_VERSION = 36;
+export const LEDGER_COMPUTATION_VERSION = 37;
 let database: Database | undefined;
 let ledgerWindow: string | undefined;
 let computationWindow: string | undefined;

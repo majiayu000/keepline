@@ -7,6 +7,8 @@ export function LedgerRecap({ row }: { row: LedgerDetail }) {
   const p = rowPresentation(row);
   const since = row.changes?.since;
   const records = since ? [...row.changes!.checks, ...row.changes!.files] : row.evidence;
+  const steps = since ? row.changes!.steps : row.trail;
+  const stepsByCall = new Map(steps.map(step => [step.callId, step]));
   const checks = new Map<string, LedgerEvidence[]>();
   const files = new Map<string, LedgerEvidence>();
   for (const evidence of [...records].reverse()) {
@@ -16,7 +18,12 @@ export function LedgerRecap({ row }: { row: LedgerDetail }) {
       files.set(evidence.value, evidence);
     }
   }
-  const orderedChecks = [...checks.entries()].sort(([, a], [, b]) => Date.parse(b[0].at) - Date.parse(a[0].at));
+  // A recorded tool call is still activity when it has no classified evidence.
+  // Do not duplicate calls already represented by a command, test, or file.
+  const representedCalls = new Set(records.filter(e => e.kind === "command" || e.kind === "test" || e.kind === "file").map(e => e.callId));
+  for (const step of steps) if (!representedCalls.has(step.callId)) checks.set(step.callId, []);
+  const recordedAt = (callId: string, evidence: LedgerEvidence[]) => evidence[0]?.at ?? stepsByCall.get(callId)!.at;
+  const orderedChecks = [...checks.entries()].sort(([aId, a], [bId, b]) => Date.parse(recordedAt(bId, b)) - Date.parse(recordedAt(aId, a)));
   const orderedFiles = [...files.values()].sort((a, b) => Date.parse(b.at) - Date.parse(a.at));
   const hasRequest = row.state === "needs_input" && row.processState !== "exited";
   return (
@@ -37,13 +44,13 @@ export function LedgerRecap({ row }: { row: LedgerDetail }) {
           const command = evidence.find(e => e.kind === "command");
           const failed = evidence.find(e => e.exitCode !== undefined && e.exitCode !== 0);
           const code = failed?.exitCode ?? command?.exitCode ?? evidence.find(e => e.exitCode !== undefined)?.exitCode;
-          const step = row.trail.find(s => s.callId === callId);
+          const step = stepsByCall.get(callId) ?? row.trail.find(s => s.callId === callId);
           return <details className={styles.recapRecord} key={callId}>
             <summary>
-              <span>{command?.value ?? step?.summary ?? evidence[0].value}</span>
+              <span>{command?.value ?? step?.summary ?? evidence[0]?.value ?? callId}</span>
               <strong data-failed={code !== undefined && code !== 0 || undefined}>{code === undefined ? "未收到结果" : code === 0 ? "执行成功" : `执行失败 · exit ${code}`}</strong>
             </summary>
-            <p>记录于 {new Date(evidence[0].at).toLocaleString("zh-CN", { hour12: false })} · 调用 {callId}</p>
+            <p>记录于 {new Date(recordedAt(callId, evidence)).toLocaleString("zh-CN", { hour12: false })} · 调用 {callId}</p>
             {evidence.filter(e => e.kind === "test").map(e => <pre key={e.id}>{e.value}</pre>)}
             {step && <pre>{step.summary}</pre>}
           </details>;
