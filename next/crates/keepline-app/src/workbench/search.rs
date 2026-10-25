@@ -197,13 +197,14 @@ impl Workbench {
         self.workspace
             .agent_sessions
             .iter()
-            .filter(|s| {
-                s.managed()
-                    && s.outcome.needs_review(now())
-                    && self.session_hidden(s).is_none()
-                    && matches!(self.group(s), Group::Waiting | Group::Error)
-            })
+            .filter(|s| self.session_hidden(s).is_none() && self.needs_attention(s))
             .collect()
+    }
+    /// Waiting or failed in a Keepline terminal and not yet looked at.
+    pub(super) fn needs_attention(&self, s: &AgentSession) -> bool {
+        s.managed()
+            && s.outcome.needs_review(now())
+            && matches!(self.group(s), Group::Waiting | Group::Error)
     }
     pub(super) fn next_waiting(&mut self, window: &mut Window, cx: &mut Context<Self>) {
         let needs = self.needs_you();
