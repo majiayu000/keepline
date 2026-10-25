@@ -403,7 +403,8 @@ impl Pane {
             return;
         }
         if self.selecting
-            && let (Some(selection), Some(end)) = (self.text_selection, self.cell_at(event.position))
+            && let (Some(selection), Some(end)) =
+                (self.text_selection, self.cell_at(event.position))
         {
             self.text_selection = Some(selection.drag_to(end));
             cx.notify();
@@ -934,8 +935,7 @@ impl Render for Pane {
                             ));
                         }
                     }
-                    if let Some((start, end)) =
-                        pane.text_selection.and_then(TextSelection::bounds)
+                    if let Some((start, end)) = pane.text_selection.and_then(TextSelection::bounds)
                     {
                         for row in start.0..=end.0 {
                             let left = if row == start.0 { start.1 } else { 0 };

@@ -6,10 +6,7 @@ type Cell = (u16, u16);
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum TextSelection {
     Anchor(Cell),
-    Range {
-        anchor: Cell,
-        head: Cell,
-    },
+    Range { anchor: Cell, head: Cell },
 }
 
 impl TextSelection {
