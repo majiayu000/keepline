@@ -593,9 +593,9 @@ fn forty_idle_terminals_have_no_periodic_background_io() {
         );
         std::thread::sleep(Duration::from_millis(100));
     }
-    let metrics_before = recognition(&h).metrics;
     // Let startup FSEvents batches and PTY setup finish before the measurement window.
     std::thread::sleep(Duration::from_secs(2));
+    let metrics_before = recognition(&h).metrics;
     fn usage(pid: u32) -> libc::rusage_info_v2 {
         unsafe {
             let mut r: libc::rusage_info_v2 = std::mem::zeroed();
