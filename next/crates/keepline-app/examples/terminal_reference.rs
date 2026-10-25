@@ -112,7 +112,7 @@ fn main() {
         eprintln!(
             "keepline font={} size={} cell={:?}x{:?} ratio(h/w)={:.4} grid={grid:?}",
             font.family,
-            screen::FONT_SIZE,
+            screen::font_size(),
             metrics.width,
             metrics.height,
             f32::from(metrics.height) / f32::from(metrics.width)

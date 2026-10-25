@@ -1,0 +1,17 @@
+{
+  "runtime": "/tmp/kl-start22-6fjprb30",
+  "terminals_stopped": [
+    "71364-1792658997313139000-1"
+  ],
+  "auth_copies_removed": [
+    "/tmp/kl-start22-6fjprb30/home/.codex/auth.json"
+  ],
+  "own_processes_stopped": [
+    71364,
+    70506,
+    68872,
+    68883
+  ],
+  "paid_turns": 0,
+  "user_runtime_touched": false
+}

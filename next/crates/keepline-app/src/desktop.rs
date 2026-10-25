@@ -35,6 +35,7 @@ unsafe extern "C" {
     fn kl_desktop_update(json: *const c_char);
     fn kl_notifications_enable();
     fn kl_desktop_show();
+    fn kl_request_attention();
     fn kl_desktop_notify(session: *const c_char, title: *const c_char, body: *const c_char);
 }
 pub fn route_applied(session: &str, terminal: &str, tab: &str) {
@@ -72,8 +73,14 @@ fn fact(w: &Workspace, s: &AgentSession) -> Option<(String, String)> {
         Inbox::Error => c.error.clone(),
         _ => return None,
     };
+    // One dialog is one event however many signals report it or refine its text; an error
+    // is keyed by its text.
+    let event = match group {
+        Inbox::Waiting => format!("episode {}", c.waiting_episode),
+        _ => body.clone(),
+    };
     Some((
-        format!("{:?}:{}:{}:{}", group, c.turn_key, c.turn_started, body),
+        format!("{:?}:{}:{}:{}", group, c.turn_key, c.turn_started, event),
         format!("{} · {}", group.label(), short(&body, 180)),
     ))
 }
@@ -157,11 +164,16 @@ fn panel(w: &Workspace) -> String {
     }
     rows.sort_by_key(|r| r.0);
     let total = rows.len();
-    json!({"badge":if total==0 {"K".into()}else{format!("K {total}")},"heading":format!("{waiting} 个在等你 · {errors} 个出错"),"summary":format!("另有 {review} 个待核对 · {running} 个运行中"),"footer":format!("很久没动 · {stale} 个{}\n等你、出错只计 Keepline 里的画面；外部会话在鸟瞰里看",if total>5 {format!("\n还有 {} 项需要你，请打开工作台",total-5)}else{String::new()}),"rows":rows.into_iter().take(5).map(|r|r.1).collect::<Vec<_>>(),"tokens":{"width":T::MENUBAR_WIDTH,"height":T::MENUBAR_HEIGHT,"padding":T::S16,"gap":T::S12,"row":T::MENUBAR_ROW,"font":T::BODY_SIZE,"title":T::MENU_TITLE,"small":T::SMALL,"meta":T::META,"inset":T::S12,"button":T::MENU_BUTTON,"radius":T::CARD_RADIUS,"selected":T::MENU_WAIT_BG,"accent":T::ACCENT,"white":T::WHITE,"background":T::WHITE,"text":T::POPOVER_TEXT,"secondary":T::POPOVER_SECONDARY}}).to_string()
+    json!({"badge":if total==0 {"K".into()}else{format!("K {total}")},"heading":format!("{waiting} 个在等你 · {errors} 个出错"),"summary":format!("另有 {review} 个待核对 · {running} 个运行中"),"footer":format!("很久没动 · {stale} 个{}\n等你、出错只计 Keepline 里的画面；外部会话在鸟瞰里看",if total>5 {format!("\n还有 {} 项需要你，请打开工作台",total-5)}else{String::new()}),"rows":rows.into_iter().take(5).map(|r|r.1).collect::<Vec<_>>(),"tokens":{"width":T::MENUBAR_WIDTH,"height":T::MENUBAR_HEIGHT,"padding":T::S16,"gap":T::S12,"row":T::MENUBAR_ROW,"font":T::BODY_SIZE,"title":T::MENU_TITLE,"small":T::SMALL,"meta":T::META,"inset":T::S12,"button":T::MENU_BUTTON,"radius":T::CARD_RADIUS,"selected":T::MENU_WAIT_BG,"accent":T::MENU_ACCENT,"white":T::WHITE,"background":T::WHITE,"text":T::MENU_TEXT,"secondary":T::MENU_SECONDARY}}).to_string()
 }
 pub fn show() {
     unsafe {
         kl_desktop_show();
+    }
+}
+pub fn request_attention() {
+    unsafe {
+        kl_request_attention();
     }
 }
 pub fn start(socket: &Path, initial: Workspace, cx: &mut App) -> UnboundedReceiver<String> {
@@ -281,7 +293,14 @@ mod tests {
         assert_eq!(entered(&before, &w, None).len(), 1);
         assert!(entered(&w, &w, None).is_empty());
         let previous = w.clone();
-        w.content.get_mut("s").unwrap().waiting = "是否执行测试？".into();
+        w.content.get_mut("s").unwrap().waiting = "选哪一个？（Hook 补充的说明）".into();
+        assert!(
+            entered(&previous, &w, None).is_empty(),
+            "a second signal for the same dialog is not news"
+        );
+        let c = w.content.get_mut("s").unwrap();
+        c.waiting = "是否执行测试？".into();
+        c.waiting_episode += 1;
         assert_eq!(entered(&previous, &w, None).len(), 1);
         assert!(
             entered(&previous, &w, Some("pty")).is_empty(),

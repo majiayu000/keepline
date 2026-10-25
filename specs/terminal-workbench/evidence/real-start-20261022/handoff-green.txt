@@ -1,0 +1,6 @@
+running 3 tests
+test pane::handoff_tests::a_missing_agent_command_is_reported_not_waited_on ... ok
+test pane::handoff_tests::menus_block_placement_but_the_input_box_does_not ... ok
+test pane::handoff_tests::onboarding_and_nonfirst_choices_do_not_receive_task_text ... ok
+
+test result: ok. 3 passed; 0 failed; 0 ignored; 0 measured; 25 filtered out; finished in 0.00s

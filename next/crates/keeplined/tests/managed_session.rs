@@ -186,9 +186,29 @@ fn reconnect_input_resize_and_takeover_are_real_pty_operations() {
     assert!(matches!(ack(&mut second), Reply::Error(_)));
     let (mut third, _, writable) = h.attach("one", true);
     assert!(writable);
-    send(&mut first, CONTROL, &Request::Resize { cols: 90, rows: 30 }).unwrap();
+    send(
+        &mut first,
+        CONTROL,
+        &Request::Resize {
+            cols: 90,
+            rows: 30,
+            cell_width: 9,
+            cell_height: 18,
+        },
+    )
+    .unwrap();
     assert!(matches!(ack(&mut first), Reply::Error(_)));
-    send(&mut third, CONTROL, &Request::Resize { cols: 90, rows: 30 }).unwrap();
+    send(
+        &mut third,
+        CONTROL,
+        &Request::Resize {
+            cols: 90,
+            rows: 30,
+            cell_width: 9,
+            cell_height: 18,
+        },
+    )
+    .unwrap();
     assert!(matches!(ack(&mut third), Reply::Ok));
     drop(first);
     drop(second);
@@ -206,6 +226,239 @@ fn reconnect_input_resize_and_takeover_are_real_pty_operations() {
     .unwrap();
     assert!(matches!(ack(&mut again), Reply::Ok));
     assert_eq!(h.workspace().terminals[0].state, ProcessState::Running);
+}
+#[test]
+fn programs_get_answers_to_terminal_queries_and_pixel_size() {
+    // A real program in the PTY: waits for "go", asks like Codex/TUIs do, prints what came back.
+    const PROBE: &str = r#"exec python3 -c '
+import os, select, tty, fcntl, struct, termios, time
+input()
+tty.setraw(0)
+os.write(1, b"\x1b]11;?\x07\x1b]10;?\x07\x1b[c\x1b[>q\x1b[18t\x1b[14t\x1b[?996n")
+got = b""
+while select.select([0], [], [], 1.0)[0]:
+    got += os.read(0, 4096)
+win = struct.unpack("HHHH", fcntl.ioctl(1, termios.TIOCGWINSZ, b"\0" * 8))
+os.write(1, b"\r\nGOT " + got.hex().encode() + b" WIN %d %d %d %d END\r\n" % win)
+time.sleep(60)
+'"#;
+    let h = Host::start();
+    h.setup();
+    h.call(h.launch("probe", PROBE)).unwrap();
+    let (mut owner, _, writable) = h.attach("probe", false);
+    assert!(writable);
+    send(
+        &mut owner,
+        CONTROL,
+        &Request::Resize {
+            cols: 100,
+            rows: 30,
+            cell_width: 16,
+            cell_height: 34,
+        },
+    )
+    .unwrap();
+    assert!(matches!(ack(&mut owner), Reply::Ok));
+    send(
+        &mut owner,
+        CONTROL,
+        &Request::Input {
+            bytes: b"go\n".to_vec(),
+        },
+    )
+    .unwrap();
+    assert!(matches!(ack(&mut owner), Reply::Ok));
+    let until = Instant::now() + Duration::from_secs(15);
+    let line = loop {
+        let (_, vt, _) = h.attach("probe", false);
+        // The hex wraps across full rows; joined rows give the line back.
+        let text = vt.tail_text(30).unwrap().replace('\n', "");
+        if let Some(line) = text
+            .split("GOT ")
+            .nth(1)
+            .and_then(|rest| rest.split(" END").next().filter(|_| rest.contains(" END")))
+        {
+            break format!("GOT {line}");
+        }
+        assert!(Instant::now() < until, "probe printed nothing");
+        std::thread::sleep(Duration::from_millis(100));
+    };
+    let mut parts = line.split_whitespace().skip(1);
+    let hex = parts.next().unwrap();
+    let got: Vec<u8> = (0..hex.len())
+        .step_by(2)
+        .map(|i| u8::from_str_radix(&hex[i..i + 2], 16).unwrap())
+        .collect();
+    let got = String::from_utf8(got).unwrap();
+    for reply in [
+        "\x1b]11;rgb:1c1c/1c1c/1e1e\x07",
+        "\x1b]10;rgb:e4e4/e2e2/dfdf\x07",
+        "\x1b[?62;22c",
+        "\x1bP>|keepline ",
+        "\x1b[8;30;100t",
+        "\x1b[4;1020;1600t",
+        "\x1b[?997;1n",
+    ] {
+        assert!(got.contains(reply), "missing {reply:?} in {got:?}");
+    }
+    // The pty's own pixel size follows the cell size too (rows cols xpixel ypixel).
+    assert_eq!(
+        parts.collect::<Vec<_>>(),
+        ["WIN", "30", "100", "1600", "1020"]
+    );
+}
+/// Real Codex: it reads the terminal background (OSC 11) and paints its input box a
+/// shade off it. Needs the `codex` CLI; start-up only, no prompt is sent.
+/// `KL_CODEX=/path/to/codex KL_CODEX_CWD=<trusted dir> cargo test -- --ignored real_codex`
+#[test]
+#[ignore = "needs a local Codex CLI"]
+fn real_codex_tints_its_input_box_from_the_terminal_background() {
+    use keepline_core::terminal::libghostty_vt::{
+        screen::CellContentTag,
+        style::StyleColor,
+        terminal::{Point, PointCoordinate},
+    };
+    let codex = std::env::var("KL_CODEX").unwrap_or_else(|_| "codex".into());
+    let cwd = std::env::var("KL_CODEX_CWD").unwrap_or_else(|_| "/tmp".into());
+    let h = Host::start();
+    h.setup();
+    let mut launch = h.launch("codex", &format!("cd '{cwd}' && exec '{codex}'"));
+    if let Request::Launch { cols, rows, .. } = &mut launch {
+        (*cols, *rows) = (100, 30);
+    }
+    h.call(launch).unwrap();
+    let until = Instant::now() + Duration::from_secs(30);
+    let (vt, row) = loop {
+        let (_, vt, _) = h.attach("codex", false);
+        if let Some((y, _)) = vt.search("Ask Codex").unwrap().into_iter().last() {
+            break (vt, y);
+        }
+        assert!(Instant::now() < until, "{}", vt.tail_text(30).unwrap());
+        std::thread::sleep(Duration::from_millis(200));
+    };
+    let t = vt.terminal();
+    let mut backgrounds = std::collections::BTreeSet::new();
+    for x in 0..t.cols().unwrap() {
+        let cell = t
+            .grid_ref(Point::Screen(PointCoordinate { x, y: row as u32 }))
+            .unwrap();
+        let bg = match cell.style().map(|s| s.bg_color) {
+            Ok(StyleColor::Rgb(c)) => Some((c.r, c.g, c.b)),
+            // A blank cell may carry only a background; text cells keep it in the style.
+            _ => cell
+                .cell()
+                .ok()
+                .filter(|c| c.content_tag().ok() == Some(CellContentTag::BgColorRgb))
+                .and_then(|c| c.bg_color_rgb().ok())
+                .map(|c| (c.r, c.g, c.b)),
+        };
+        backgrounds.insert(bg);
+    }
+    eprintln!("input row {row}: backgrounds {backgrounds:?}");
+    // Codex lightens our dark default for its input box; unanswered, it paints none.
+    let [_, base_r, base_g, base_b] = keepline_core::terminal::DEFAULT_BG.to_be_bytes();
+    assert!(
+        backgrounds
+            .iter()
+            .flatten()
+            .any(|&(r, g, b)| (r, g, b) != (base_r, base_g, base_b) && r > base_r),
+        "input box has no tint: {backgrounds:?}\n{}",
+        vt.tail_text(30).unwrap()
+    );
+}
+/// Real Codex: a file dropped on the pane arrives in Codex's input box as one bracketed
+/// paste of its escaped path (`terminal_input::dropped_paths`), as Ghostty sends it.
+/// (Codex 0.163 here kept image paths as text in every form tried: escaped, plain, quoted.)
+#[test]
+#[ignore = "needs a local Codex CLI"]
+fn real_codex_receives_a_dropped_path_as_one_paste() {
+    // 1x1 PNG; the name needs escaping.
+    const PNG: &[u8] = b"\x89\x50\x4e\x47\x0d\x0a\x1a\x0a\x00\x00\x00\x0d\x49\x48\x44\x52\x00\x00\x00\x01\x00\x00\x00\x01\x08\x06\x00\x00\x00\x1f\x15\xc4\x89\x00\x00\x00\x0d\x49\x44\x41\x54\x78\x9c\x63\xf8\xcf\xc0\xf0\x1f\x00\x05\x00\x01\xff\x89\x99\x3d\x1d\x00\x00\x00\x00\x49\x45\x4e\x44\xae\x42\x60\x82";
+    let dir = std::env::temp_dir().join(format!("kl-drop-{}", uuid::Uuid::new_v4().simple()));
+    fs::create_dir_all(&dir).unwrap();
+    let image = dir.join("drop test (1).png");
+    fs::write(&image, PNG).unwrap();
+    let codex = std::env::var("KL_CODEX").unwrap_or_else(|_| "codex".into());
+    let cwd = std::env::var("KL_CODEX_CWD").unwrap_or_else(|_| "/tmp".into());
+    let h = Host::start();
+    h.setup();
+    h.call(h.launch("codex", &format!("cd '{cwd}' && exec '{codex}'")))
+        .unwrap();
+    let wait = |text: &str| {
+        let until = Instant::now() + Duration::from_secs(30);
+        loop {
+            let (_, vt, _) = h.attach("codex", false);
+            if !vt.search(text).unwrap().is_empty() {
+                return vt;
+            }
+            assert!(
+                Instant::now() < until,
+                "{text}: {}",
+                vt.tail_text(30).unwrap()
+            );
+            std::thread::sleep(Duration::from_millis(200));
+        }
+    };
+    wait("Ask Codex");
+    let (mut owner, _, writable) = h.attach("codex", true);
+    assert!(writable);
+    // What the pane sends for a drop: the escaped path inside a bracketed paste.
+    let escaped = image
+        .to_string_lossy()
+        .replace(' ', "\\ ")
+        .replace('(', "\\(")
+        .replace(')', "\\)");
+    let pasted = format!("{escaped} ");
+    send(
+        &mut owner,
+        CONTROL,
+        &Request::Input {
+            bytes: format!("\x1b[200~{pasted}\x1b[201~").into_bytes(),
+        },
+    )
+    .unwrap();
+    assert!(matches!(ack(&mut owner), Reply::Ok));
+    // The composer wraps the long path; its file name lands whole on one row.
+    let vt = wait("drop\\ test\\ \\(1\\).png");
+    eprintln!("{}", vt.tail_text(8).unwrap());
+    // Leave the prompt unsent and the session empty.
+    send(&mut owner, CONTROL, &Request::Input { bytes: vec![3, 3] }).unwrap();
+    let _ = fs::remove_dir_all(&dir);
+}
+#[test]
+fn clear_history_reaches_the_daemon_and_every_display() {
+    let h = Host::start();
+    h.setup();
+    h.call(h.launch("c", "seq 1 100; printf 'PROMPT$ '; exec cat"))
+        .unwrap();
+    let until = Instant::now() + Duration::from_secs(10);
+    while h.attach("c", false).1.search("PROMPT$").unwrap().is_empty() {
+        assert!(Instant::now() < until);
+        std::thread::sleep(Duration::from_millis(50));
+    }
+    let (mut owner, mut display, writable) = h.attach("c", true);
+    assert!(writable);
+    assert!(display.terminal().scrollback_rows().unwrap() > 0);
+    send(&mut owner, CONTROL, &Request::ClearHistory).unwrap();
+    // The owner's own stream carries the clear as output, before the ack.
+    loop {
+        let (kind, chunk) = read_frame(&mut owner).unwrap();
+        if kind == OUTPUT {
+            display.feed(&chunk);
+        } else if kind == ACK {
+            assert!(matches!(
+                serde_json::from_slice::<Reply>(&chunk).unwrap(),
+                Reply::Ok
+            ));
+            break;
+        }
+    }
+    let (_, fresh, _) = h.attach("c", false);
+    for vt in [&display, &fresh] {
+        assert_eq!(vt.terminal().scrollback_rows().unwrap(), 0);
+        assert!(vt.tail_text(24).unwrap().starts_with("PROMPT$"));
+        assert!(vt.search("100").unwrap().is_empty());
+    }
 }
 #[test]
 fn launch_is_durable_and_deduplicated_and_tab_close_is_not_stop() {
@@ -375,6 +628,7 @@ fn two_cli_conversations_in_one_real_pty_keep_separate_ownership_after_restart()
         transcript: first.to_string_lossy().into_owned(),
         ended: false,
         event: None,
+        facts: Default::default(),
     };
     h.call(hook()).unwrap();
     h.call(hook()).unwrap();
@@ -396,6 +650,7 @@ fn two_cli_conversations_in_one_real_pty_keep_separate_ownership_after_restart()
         transcript: second.to_string_lossy().into_owned(),
         ended: false,
         event: None,
+        facts: Default::default(),
     })
     .unwrap_err();
     h.call(Request::Hook {
@@ -405,6 +660,7 @@ fn two_cli_conversations_in_one_real_pty_keep_separate_ownership_after_restart()
         transcript: second.to_string_lossy().into_owned(),
         ended: false,
         event: None,
+        facts: Default::default(),
     })
     .unwrap();
     let second_id = h
@@ -506,7 +762,10 @@ fn fixture_command(root: &std::path::Path) -> Command {
     let mut command = Command::new(std::env::current_exe().unwrap());
     command
         .args(["--ignored", "--exact", "daemon_fixture", "--nocapture"])
-        .env("KEEPLINE_FIXTURE_RUNTIME", root);
+        .env("KEEPLINE_FIXTURE_RUNTIME", root)
+        // Tests that need Claude Code's official status write this script; others have none.
+        .env("KEEPLINE_CLAUDE_AGENTS", root.join("claude-agents"))
+        .env("KEEPLINE_CODEX_CONTROL", root.join("codex-control.sock"));
     command
 }
 #[test]
@@ -977,6 +1236,7 @@ fn stop_agent_clears_current_without_stopping_shell_or_changing_outcome() {
         transcript: log.to_string_lossy().into_owned(),
         ended: false,
         event: None,
+        facts: Default::default(),
     })
     .unwrap();
     let before = h.workspace().current_agent("shell").unwrap().clone();
@@ -1616,6 +1876,93 @@ fn quiet_agent_screen_with_an_approval_waits_on_the_user_until_they_answer() {
 }
 
 #[test]
+fn a_dialog_gone_from_the_screen_is_settled_by_claude_official_status() {
+    use std::os::unix::fs::PermissionsExt;
+    let h = Host::start();
+    h.setup();
+    let logs = h.root.join("logs/claude");
+    fs::create_dir_all(&logs).unwrap();
+    let cli = h.root.join("claude");
+    std::os::unix::fs::symlink("/bin/sh", &cli).unwrap();
+    let id = uuid::Uuid::new_v4().to_string();
+    let path = logs.join(format!("{id}.jsonl"));
+    let seed = h.root.join("seed");
+    let at = keepline_core::content::now();
+    let rows = [
+        serde_json::json!({"type":"user","sessionId":id,"uuid":"u0","cwd":"/project","entrypoint":"cli","userType":"external","timestamp":at,"message":{"content":"Official status test"}}),
+        serde_json::json!({"type":"assistant","sessionId":id,"timestamp":at,"message":{"content":[{"type":"tool_use","id":"ask","name":"AskUserQuestion","input":{"questions":[{"question":"选哪个环境？","options":[{"label":"预发"},{"label":"生产"}]}]}}]}}),
+    ];
+    fs::write(
+        &seed,
+        rows.iter().map(|r| format!("{r}\n")).collect::<String>(),
+    )
+    .unwrap();
+    // Claude Code says the session sits at its prompt: the dialog was closed with Esc.
+    let calls = h.root.join("agents-calls");
+    let agents = h.root.join("claude-agents");
+    fs::write(
+        &agents,
+        format!(
+            "#!/bin/sh\necho x >> {}\nprintf '%s' '[{{\"pid\":1,\"kind\":\"interactive\",\"sessionId\":\"{id}\",\"status\":\"idle\"}}]'\n",
+            shell_quote(&calls.to_string_lossy())
+        ),
+    )
+    .unwrap();
+    fs::set_permissions(&agents, fs::Permissions::from_mode(0o755)).unwrap();
+    // The screen never shows the question; one quiet screen is enough, the hold re-checks.
+    let script = format!(
+        "cat {} > {}; sleep 0.5; printf 'working\\n'; read -r end",
+        shell_quote(&seed.to_string_lossy()),
+        shell_quote(&path.to_string_lossy())
+    );
+    h.call(h.launch(
+        "official",
+        &format!(
+            "exec {} -c {} fixture --session-id {}",
+            shell_quote(&cli.to_string_lossy()),
+            shell_quote(&script),
+            id
+        ),
+    ))
+    .unwrap();
+    let turn = |w: &Workspace| {
+        w.current_agent("official")
+            .and_then(|s| w.content.get(&s.id))
+            .map(|c| (c.turn, c.signal.clone()))
+    };
+    let until = Instant::now() + Duration::from_secs(30);
+    while turn(&h.workspace()).map(|t| t.0) != Some(keepline_core::content::Turn::Waiting) {
+        assert!(
+            Instant::now() < until,
+            "the logged question must wait on the user"
+        );
+        std::thread::sleep(Duration::from_millis(50));
+    }
+    let until = Instant::now() + Duration::from_secs(20);
+    let settled = loop {
+        let t = turn(&h.workspace()).unwrap();
+        if t.0 != keepline_core::content::Turn::Waiting {
+            break t;
+        }
+        assert!(
+            Instant::now() < until,
+            "official idle must settle the closed dialog"
+        );
+        std::thread::sleep(Duration::from_millis(100));
+    };
+    assert_eq!(
+        settled,
+        (keepline_core::content::Turn::Interrupted, "官方状态".into())
+    );
+    std::thread::sleep(Duration::from_secs(3));
+    let runs = fs::read_to_string(&calls).unwrap().lines().count();
+    assert!(
+        (1..=2).contains(&runs),
+        "one run per trigger within the rate limit, got {runs}"
+    );
+}
+
+#[test]
 fn manual_claude_closed_log_stays_external_and_append_does_not_repeat_probes() {
     use std::io::Write;
     let h = Host::start();
@@ -1843,6 +2190,314 @@ fn current_is(w: &Workspace, pane: &str, thread: &str) -> bool {
 }
 fn ids<const N: usize>() -> [String; N] {
     std::array::from_fn(|_| uuid::Uuid::new_v4().to_string())
+}
+
+/// A fake Codex control socket: answers `thread/read` with `status` and records each
+/// method it was asked, so the test can prove nothing subscribed.
+fn fake_codex_control(
+    path: &std::path::Path,
+    status: serde_json::Value,
+) -> std::sync::Arc<std::sync::Mutex<Vec<String>>> {
+    use std::io::{Read, Write};
+    let listener = std::os::unix::net::UnixListener::bind(path).unwrap();
+    let methods = std::sync::Arc::new(std::sync::Mutex::new(Vec::new()));
+    let seen = methods.clone();
+    std::thread::spawn(move || {
+        for conn in listener.incoming() {
+            let Ok(mut s) = conn else { return };
+            let mut head = Vec::new();
+            while !head.ends_with(b"\r\n\r\n") {
+                let mut b = [0; 1];
+                if s.read_exact(&mut b).is_err() {
+                    break;
+                }
+                head.push(b[0]);
+            }
+            let _ = s.write_all(b"HTTP/1.1 101 Switching Protocols\r\n\r\n");
+            loop {
+                let mut h = [0; 2];
+                if s.read_exact(&mut h).is_err() {
+                    break;
+                }
+                let mut len = (h[1] & 0x7f) as usize;
+                if len == 126 {
+                    let mut n = [0; 2];
+                    s.read_exact(&mut n).unwrap();
+                    len = u16::from_be_bytes(n) as usize;
+                }
+                let mut mask = [0; 4];
+                s.read_exact(&mut mask).unwrap();
+                let mut d = vec![0; len];
+                s.read_exact(&mut d).unwrap();
+                d.iter_mut()
+                    .enumerate()
+                    .for_each(|(i, b)| *b ^= mask[i % 4]);
+                if h[0] & 0x0f != 1 {
+                    break;
+                }
+                let m: serde_json::Value = serde_json::from_slice(&d).unwrap();
+                seen.lock()
+                    .unwrap()
+                    .push(m["method"].as_str().unwrap_or("").to_owned());
+                let reply = match m["method"].as_str() {
+                    Some("initialize") => serde_json::json!({"id": m["id"], "result": {}}),
+                    Some("thread/read") => serde_json::json!({"id": m["id"], "result": {"thread": {
+                        "id": m["params"]["threadId"], "status": status}}}),
+                    _ => continue,
+                };
+                let body = reply.to_string();
+                let mut f = vec![0x81];
+                if body.len() < 126 {
+                    f.push(body.len() as u8);
+                } else {
+                    f.push(126);
+                    f.extend_from_slice(&(body.len() as u16).to_be_bytes());
+                }
+                f.extend_from_slice(body.as_bytes());
+                if s.write_all(&f).is_err() {
+                    break;
+                }
+            }
+        }
+    });
+    methods
+}
+
+#[test]
+fn daemon_codex_dialog_gone_from_screen_is_settled_by_a_read_only_thread_read() {
+    use std::io::Write;
+    let h = Host::start();
+    h.setup();
+    let methods = fake_codex_control(
+        &h.root.join("codex-control.sock"),
+        serde_json::json!({"type": "idle"}),
+    );
+    let [a] = ids();
+    daemon_codex(
+        &h,
+        "p0",
+        "proj",
+        &[step("请检查发布脚本里的回滚步骤是否完整", &a, None)],
+        "",
+    );
+    wait_for(&h, "the thread binds to its pane", |w| {
+        current_is(w, "p0", &a)
+    });
+    // The log asks the user; the TUI never draws the question.
+    {
+        let mut log = fs::OpenOptions::new()
+            .append(true)
+            .open(h.root.join(format!("logs/codex/{a}.jsonl")))
+            .unwrap();
+        let row = serde_json::json!({"timestamp": keepline_core::content::now(), "type": "event_msg",
+            "payload": {"type": "request_user_input", "questions": [{"question": "回滚到哪个版本？"}]}});
+        writeln!(log, "{row}").unwrap();
+    }
+    let turn = |w: &Workspace| {
+        w.current_agent("p0")
+            .and_then(|s| w.content.get(&s.id))
+            .map(|c| (c.turn, c.signal.clone()))
+    };
+    wait_for(&h, "the logged question waits on the user", |w| {
+        turn(w).is_some_and(|t| t.0 == keepline_core::content::Turn::Waiting)
+    });
+    // A keystroke echoes, so the screen settles again without the question on it.
+    let (mut stream, _vt, writable) = h.attach("p0", true);
+    assert!(writable);
+    send(
+        &mut stream,
+        CONTROL,
+        &Request::Input {
+            bytes: b"x".to_vec(),
+        },
+    )
+    .unwrap();
+    assert!(matches!(ack(&mut stream), Reply::Ok));
+    let until = Instant::now() + Duration::from_secs(20);
+    let settled = loop {
+        let t = turn(&h.workspace()).unwrap();
+        if t.0 != keepline_core::content::Turn::Waiting {
+            break t;
+        }
+        assert!(
+            Instant::now() < until,
+            "idle thread status must settle the dialog"
+        );
+        std::thread::sleep(Duration::from_millis(100));
+    };
+    assert_eq!(
+        settled,
+        (keepline_core::content::Turn::Interrupted, "官方状态".into())
+    );
+    let methods = methods.lock().unwrap().clone();
+    assert!(methods.contains(&"thread/read".to_owned()), "{methods:?}");
+    assert!(
+        methods
+            .iter()
+            .all(|m| matches!(m.as_str(), "initialize" | "initialized" | "thread/read")),
+        "read-only: never subscribes, got {methods:?}"
+    );
+    assert!(
+        recognition(&h).official.is_empty(),
+        "a working query leaves no notice"
+    );
+}
+
+#[test]
+fn an_unreachable_codex_daemon_is_a_visible_notice_not_a_silent_guess() {
+    use std::io::Write;
+    let h = Host::start();
+    h.setup();
+    // No control socket at all: the daemon is not running.
+    let [a] = ids();
+    daemon_codex(
+        &h,
+        "p0",
+        "proj",
+        &[step("检查一下回滚脚本是否覆盖了数据库迁移", &a, None)],
+        "",
+    );
+    wait_for(&h, "the thread binds to its pane", |w| {
+        current_is(w, "p0", &a)
+    });
+    {
+        let mut log = fs::OpenOptions::new()
+            .append(true)
+            .open(h.root.join(format!("logs/codex/{a}.jsonl")))
+            .unwrap();
+        let row = serde_json::json!({"timestamp": keepline_core::content::now(), "type": "event_msg",
+            "payload": {"type": "request_user_input", "questions": [{"question": "回滚到哪个版本？"}]}});
+        writeln!(log, "{row}").unwrap();
+    }
+    let (mut stream, _vt, _) = h.attach("p0", true);
+    send(
+        &mut stream,
+        CONTROL,
+        &Request::Input {
+            bytes: b"x".to_vec(),
+        },
+    )
+    .unwrap();
+    assert!(matches!(ack(&mut stream), Reply::Ok));
+    let until = Instant::now() + Duration::from_secs(20);
+    let notice = loop {
+        if let Some(n) = recognition(&h).official.get("Codex").cloned() {
+            break n;
+        }
+        assert!(Instant::now() < until, "the failed query must be reported");
+        std::thread::sleep(Duration::from_millis(100));
+    };
+    assert!(
+        notice.starts_with("Codex 官方状态查询不可用，已改为只看日志和画面"),
+        "{notice}"
+    );
+    let w = h.workspace();
+    let s = w.current_agent("p0").unwrap();
+    assert_eq!(
+        w.content[&s.id].turn,
+        keepline_core::content::Turn::Waiting,
+        "without the official answer the logged question stands"
+    );
+}
+
+#[test]
+fn codex_subagent_logs_keep_the_parent_working_and_carry_its_dialog() {
+    use std::io::Write;
+    let h = Host::start();
+    h.setup();
+    let [a] = ids();
+    daemon_codex(
+        &h,
+        "p0",
+        "proj",
+        &[step("把三个模块的迁移分给子 Agent 并行处理", &a, None)],
+        "",
+    );
+    wait_for(&h, "the thread binds to its pane", |w| {
+        current_is(w, "p0", &a)
+    });
+    let logs = h.root.join("logs/codex");
+    let row = |payload: serde_json::Value| {
+        format!(
+            "{}\n",
+            serde_json::json!({"timestamp": keepline_core::content::now(), "type": "event_msg", "payload": payload})
+        )
+    };
+    // The parent's turn ends with its subagent still running.
+    fs::OpenOptions::new()
+        .append(true)
+        .open(logs.join(format!("{a}.jsonl")))
+        .unwrap()
+        .write_all(
+            row(serde_json::json!({"type": "task_complete", "last_agent_message": "已派出子任务"}))
+                .as_bytes(),
+        )
+        .unwrap();
+    // Like the real daemon, the subagent's log stays open while it works.
+    let kid = uuid::Uuid::new_v4().to_string();
+    let mut child = fs::File::create(logs.join(format!("{kid}.jsonl"))).unwrap();
+    let header = serde_json::json!({"type": "session_meta", "payload": {"id": kid, "cwd": "/tmp",
+        "source": {"subagent": {"thread_spawn": {"parent_thread_id": a, "depth": 1, "agent_path": "/root/migrate"}}},
+        "agent_nickname": "Hypatia", "parent_thread_id": a}});
+    child.write_all(format!("{header}\n").as_bytes()).unwrap();
+    child
+        .write_all(row(serde_json::json!({"type": "task_started", "turn_id": "k1"})).as_bytes())
+        .unwrap();
+    let card = |w: &Workspace| {
+        w.current_agent("p0")
+            .and_then(|s| w.content.get(&s.id).map(|c| (s.clone(), c.clone())))
+    };
+    wait_for(
+        &h,
+        "a running subagent keeps the stopped parent working",
+        |w| {
+            card(w).is_some_and(|(s, c)| {
+                c.turn == keepline_core::content::Turn::Completed
+                    && c.group(&s, w, keepline_core::content::now())
+                        == keepline_core::content::Inbox::Running
+            })
+        },
+    );
+    let item = |payload: serde_json::Value| {
+        format!(
+            "{}\n",
+            serde_json::json!({"timestamp": keepline_core::content::now(), "type": "response_item", "payload": payload})
+        )
+    };
+    child
+        .write_all(
+            item(serde_json::json!({"type": "function_call", "name": "request_user_input", "call_id": "q1",
+                "arguments": serde_json::json!({"questions": [{"question": "是否运行迁移？"}]}).to_string()}))
+                .as_bytes(),
+        )
+        .unwrap();
+    wait_for(&h, "the subagent's question is the parent's", |w| {
+        card(w).is_some_and(|(_, c)| {
+            c.turn == keepline_core::content::Turn::Waiting
+                && c.waiting.starts_with("子 Agent Hypatia：")
+        })
+    });
+    // The user answers in the parent's TUI; the subagent records the answer and finishes.
+    child
+        .write_all(
+            item(serde_json::json!({"type": "function_call_output", "call_id": "q1", "output": "运行"}))
+                .as_bytes(),
+        )
+        .unwrap();
+    child
+        .write_all(
+            row(serde_json::json!({"type": "task_complete", "last_agent_message": "迁移完成"}))
+                .as_bytes(),
+        )
+        .unwrap();
+    wait_for(&h, "the finished subagent releases the parent", |w| {
+        card(w).is_some_and(|(s, c)| {
+            c.turn == keepline_core::content::Turn::Completed
+                && c.group(&s, w, keepline_core::content::now())
+                    != keepline_core::content::Inbox::Running
+        })
+    });
+    drop(child);
 }
 
 #[test]

@@ -125,6 +125,8 @@ void kl_desktop_notify(const char *session,const char *title,const char *body) {
 }
 
 void kl_desktop_show(void) { [desktop show:nil]; }
+// A terminal bell while Keepline is in the background: one Dock bounce, as in Terminal.app.
+void kl_request_attention(void) { [NSApp requestUserAttention:NSInformationalRequest]; }
 
 // Called only by the visual-test feature: draw the actual AppKit panel, not an HTML copy.
 bool kl_desktop_snapshot(const char *path) {

@@ -1,5 +1,9 @@
 use crate::{pty, store::Store};
-use keepline_core::{model::*, protocol::*, terminal::Vt};
+use keepline_core::{
+    model::*,
+    protocol::*,
+    terminal::{CellPixels, Vt},
+};
 use std::collections::HashMap;
 use std::fs::{self, File, OpenOptions};
 use std::io::{self, Read};
@@ -34,6 +38,7 @@ struct Live {
     drained: bool,
     exit_code: Option<i32>,
     title: String,
+    cell: CellPixels,
     /// Last keystrokes sent here; a menu the user just opened is not the agent asking.
     input_at: Option<std::time::Instant>,
 }
@@ -54,6 +59,8 @@ struct Host {
     /// Terminal -> question seen on its quiet screen. Live fallback only: never stored,
     /// cleared by the user's input or by a later quiet screen without the prompt.
     screen_waits: HashMap<String, String>,
+    /// Session -> last `claude agents --json` run for it, the per-session rate limit.
+    reconciled: HashMap<String, Instant>,
 }
 fn lock<T>(m: &Mutex<T>) -> io::Result<MutexGuard<'_, T>> {
     m.lock()
@@ -82,6 +89,9 @@ impl Host {
                 if c.turn != keepline_core::content::Turn::Waiting {
                     c.turn = keepline_core::content::Turn::Waiting;
                     c.waiting = format!("{question}（画面上的提示）");
+                    // The episode the log or a hook will record for this same dialog.
+                    c.waiting_episode += 1;
+                    c.signal = "画面".into();
                 }
             }
         }
@@ -98,6 +108,43 @@ impl Host {
         // Nothing to store; a new revision makes clients fetch the overlaid snapshot.
         let next = self.workspace.clone();
         self.commit(next)
+    }
+    /// Asks the CLIs off the lock (`claude agents --json`, Codex `thread/read`) and applies the
+    /// result. Returns when to look again for sessions held back by the rate limit.
+    fn reconcile(&mut self, shared: &Shared, sessions: Vec<AgentSession>) -> Option<Instant> {
+        let now = Instant::now();
+        let mut later = None;
+        let mut due = Vec::new();
+        for s in sessions {
+            match self.reconciled.get(&s.id) {
+                Some(at) if now < *at + RECONCILE_EVERY => {
+                    let next = *at + RECONCILE_EVERY;
+                    later = Some(later.map_or(next, |l: Instant| l.min(next)));
+                }
+                _ => {
+                    let pid = self
+                        .agent_pids
+                        .iter()
+                        .find(|(_, id)| **id == s.id)
+                        .map(|(pid, _)| *pid);
+                    self.reconciled.insert(s.id.clone(), now);
+                    due.push((s, pid));
+                }
+            }
+        }
+        if due.is_empty() {
+            return later;
+        }
+        let Ok(index) = self.index.fork_current() else {
+            return later;
+        };
+        let shared = shared.clone();
+        std::thread::spawn(move || {
+            if let Err(e) = apply_official(&shared, &index, &due) {
+                eprintln!("keeplined: official status unavailable: {e}");
+            }
+        });
+        later
     }
     fn publish_status(&mut self) -> io::Result<()> {
         self.recognition.workspace_revision = self.workspace.revision;
@@ -416,6 +463,7 @@ pub fn serve_with_options(
         input_probes: Default::default(),
         deadlines: None,
         screen_waits: HashMap::new(),
+        reconciled: HashMap::new(),
         workspace,
         terminals: HashMap::new(),
         instance: uuid::Uuid::new_v4().to_string(),
@@ -952,11 +1000,31 @@ fn follow_associated(
                 .map(|t| std::path::PathBuf::from(t.path)),
         );
     }
+    // The same holds for a bound Codex session's subagents: their logs stay open too.
+    let parents: Vec<String> = {
+        let host = lock(shared)?;
+        host.workspace
+            .agent_sessions
+            .iter()
+            .filter(|s| s.current && s.runtime == Agent::Codex)
+            .map(|s| s.cli_session_id.clone())
+            .collect()
+    };
+    if !parents.is_empty() {
+        associated.extend(
+            index
+                .child_logs(&parents, 32)?
+                .into_iter()
+                .map(std::path::PathBuf::from),
+        );
+    }
     // Register first, then close the read/register race using the existing cursor.
     for path in watch.follow(&associated)? {
         if let Some(runtime) = index.runtime(&path) {
             if let Some(t) = index.update(runtime, &path, true)? {
-                association.apply(shared, index, &[t])?;
+                let mut found = vec![t];
+                found.extend(index.take_touched());
+                association.apply(shared, index, &found)?;
             }
         }
     }
@@ -1156,7 +1224,23 @@ fn dispatch(shared: &Shared, request: Request) -> io::Result<Reply> {
                 host.store.transcripts()?
             };
             refresh_agents(shared, &transcripts)?;
-            let host = lock(shared)?;
+            let mut host = lock(shared)?;
+            let waiting: Vec<_> = host
+                .workspace
+                .agent_sessions
+                .iter()
+                .filter(|s| s.current)
+                .filter(|s| {
+                    host.workspace
+                        .content
+                        .get(&s.id)
+                        .is_some_and(|c| c.turn == keepline_core::content::Turn::Waiting)
+                })
+                .cloned()
+                .collect();
+            if !waiting.is_empty() {
+                host.reconcile(shared, waiting);
+            }
             Ok(Reply::Workspace(host.snapshot()))
         }
         Request::Hook {
@@ -1166,6 +1250,7 @@ fn dispatch(shared: &Shared, request: Request) -> io::Result<Reply> {
             transcript,
             ended,
             event,
+            facts,
         } => {
             let (workspace, mut index, cached) = {
                 let host = lock(shared)?;
@@ -1211,7 +1296,7 @@ fn dispatch(shared: &Shared, request: Request) -> io::Result<Reply> {
                 ended,
             )?;
             if let Some(event) = event {
-                index.hook(&observed.path, &event)?;
+                index.hook(&observed.path, &event, &facts)?;
             }
             if let Some(s) = next
                 .agent_sessions
@@ -1334,6 +1419,8 @@ fn dispatch(shared: &Shared, request: Request) -> io::Result<Reply> {
                     out.extend_from_slice(bytes);
                 }
             })?;
+            let cell = CellPixels::default();
+            vt.answer_queries(cell.clone())?;
             let mut next = host.workspace.clone();
             next.terminals.push(Terminal {
                 id: id.clone(),
@@ -1387,6 +1474,7 @@ fn dispatch(shared: &Shared, request: Request) -> io::Result<Reply> {
                 drained: false,
                 exit_code: None,
                 title: String::new(),
+                cell,
                 input_at: None,
             }));
             host.terminals.insert(id.clone(), Arc::clone(&terminal));
@@ -1623,6 +1711,10 @@ fn pump(
 }
 
 const SCREEN_QUIET: Duration = Duration::from_secs(1);
+/// A fresh hook-reported dialog is not vetoed by the screen yet: it may still be drawing.
+const RECONCILE_HOLD: Duration = Duration::from_secs(5);
+/// At most one `claude agents --json` per session in this window.
+const RECONCILE_EVERY: Duration = Duration::from_secs(5);
 /// Menus the user opens appear right after a keystroke; an agent's question does not.
 const INPUT_SETTLE: Duration = Duration::from_secs(3);
 
@@ -1652,8 +1744,134 @@ fn check_screen_wait(
     }
     let mut host = lock(shared)?;
     let question = question.filter(|_| host.workspace.current_agent(id).is_some());
+    let veto = question.is_none();
     host.set_screen_wait(id, question)?;
-    Ok(None)
+    if !veto {
+        return Ok(None);
+    }
+    // A dialog the hooks or the log reported but the screen no longer shows: ask the CLI.
+    let Some(session) = host.workspace.current_agent(id).cloned() else {
+        return Ok(None);
+    };
+    let waiting = host
+        .workspace
+        .content
+        .get(&session.id)
+        .filter(|c| c.turn == keepline_core::content::Turn::Waiting);
+    let Some(card) = waiting else {
+        return Ok(None);
+    };
+    let held = card.signal_at + RECONCILE_HOLD.as_secs();
+    let now = keepline_core::content::now();
+    if held > now {
+        return Ok(Some(Instant::now() + Duration::from_secs(held - now)));
+    }
+    Ok(host.reconcile(shared, vec![session]))
+}
+
+fn apply_official(
+    shared: &Shared,
+    index: &crate::log_index::Index,
+    due: &[(AgentSession, Option<u32>)],
+) -> io::Result<()> {
+    let (claude, codex): (Vec<_>, Vec<_>) =
+        due.iter().partition(|(s, _)| s.runtime == Agent::Claude);
+    let mut found: Vec<(&AgentSession, crate::content::Official)> = Vec::new();
+    let mut errors = Vec::new();
+    // Each CLI's last outcome, shown in the app's recognition notice until one succeeds.
+    let mut outcomes: Vec<(&str, Option<String>)> = Vec::new();
+    if !claude.is_empty() {
+        match claude_status(&claude) {
+            Ok(mut f) => {
+                found.append(&mut f);
+                outcomes.push(("Claude", None));
+            }
+            Err(e) => {
+                errors.push(format!("claude agents --json: {e}"));
+                outcomes.push(("Claude", Some(e.to_string())));
+            }
+        }
+    }
+    if !codex.is_empty() {
+        // A Codex thread id is its session id; `--no-daemon` threads are not loaded there.
+        let threads: Vec<String> = codex
+            .iter()
+            .map(|(s, _)| s.cli_session_id.clone())
+            .collect();
+        let result = crate::codex_status::socket()
+            .ok_or_else(|| io::Error::other("no HOME for the Codex control socket"))
+            .and_then(|socket| crate::codex_status::query(&socket, &threads));
+        match result {
+            Ok(statuses) => {
+                found.extend(statuses.into_iter().filter_map(|(thread, status)| {
+                    let (s, _) = codex.iter().find(|(s, _)| s.cli_session_id == thread)?;
+                    Some((s, status))
+                }));
+                outcomes.push(("Codex", None));
+            }
+            Err(e) => {
+                errors.push(format!("Codex app-server thread/read: {e}"));
+                outcomes.push(("Codex", Some(e.to_string())));
+            }
+        }
+    }
+    {
+        let mut host = lock(shared)?;
+        let before = host.recognition.official.clone();
+        for (cli, error) in outcomes {
+            match error {
+                Some(e) => host.recognition.official.insert(
+                    cli.into(),
+                    format!("{cli} 官方状态查询不可用，已改为只看日志和画面：{e}"),
+                ),
+                None => host.recognition.official.remove(cli),
+            };
+        }
+        if host.recognition.official != before {
+            host.publish_status()?;
+        }
+    }
+    let mut cards = Vec::new();
+    for (session, status) in found {
+        index.official(&session.transcript, &status)?;
+        if let Some(card) = index.card(&session.transcript)? {
+            cards.push((session.id.clone(), card));
+        }
+    }
+    if !cards.is_empty() {
+        let mut host = lock(shared)?;
+        let mut next = host.workspace.clone();
+        for (id, card) in cards {
+            next.content.insert(id, card);
+        }
+        host.commit(next)?;
+    }
+    match errors.is_empty() {
+        true => Ok(()),
+        false => Err(io::Error::other(errors.join("; "))),
+    }
+}
+
+fn claude_status<'a>(
+    due: &[&'a (AgentSession, Option<u32>)],
+) -> io::Result<Vec<(&'a AgentSession, crate::content::Official)>> {
+    let program = match std::env::var("KEEPLINE_CLAUDE_AGENTS") {
+        Ok(program) => program,
+        Err(_) => due
+            .iter()
+            .find_map(|(_, pid)| pid.and_then(|p| crate::official::executable(p).ok()))
+            .ok_or_else(|| io::Error::other("no live Claude process to ask"))?,
+    };
+    let entries = crate::official::query(&program)?;
+    Ok(due
+        .iter()
+        .filter_map(|(session, pid)| {
+            let entry = entries.iter().find(|e| {
+                e.session_id == session.cli_session_id || (pid.is_some() && e.pid == *pid)
+            })?;
+            Some((session, entry.status.clone()))
+        })
+        .collect())
 }
 
 fn probe_after_submission(shared: &Shared, terminal: &str) -> io::Result<()> {
@@ -1783,9 +2001,23 @@ fn attach(
                     pty::write(&mut live.master, &bytes)?;
                     live.input_at = Some(Instant::now());
                 }
-                Request::Resize { cols, rows } => {
+                Request::ClearHistory => {
+                    let clear = keepline_core::terminal::clear_history(live.vt.terminal())?;
+                    if !clear.is_empty() {
+                        // Same bytes into the daemon's terminal and every display, in output order.
+                        live.vt.feed(&clear);
+                        live.broadcast(OUTPUT, clear);
+                    }
+                }
+                Request::Resize {
+                    cols,
+                    rows,
+                    cell_width,
+                    cell_height,
+                } => {
                     geometry(cols, rows)?;
-                    pty::resize(&live.master, cols, rows)?;
+                    live.cell.set(cell_width, cell_height);
+                    pty::resize(&live.master, cols, rows, (cell_width, cell_height))?;
                     live.vt.resize(cols, rows)?;
                     live.cols = cols;
                     live.rows = rows;
@@ -1851,6 +2083,7 @@ mod recognition_tests {
             input_probes: Default::default(),
             deadlines: None,
             screen_waits: HashMap::new(),
+            reconciled: HashMap::new(),
         }));
         let (tx, rx) = sync_channel(16);
         let (socket, _peer) = UnixStream::pair().unwrap();

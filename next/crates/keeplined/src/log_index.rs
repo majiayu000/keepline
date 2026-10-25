@@ -38,6 +38,8 @@ pub struct Index {
     pub counts: IoCounts,
     pub recent_days: u64,
     gate: std::sync::Arc<std::sync::Mutex<()>>,
+    /// Parents whose card a subagent's log changed during the current batch.
+    touched: Vec<Transcript>,
 }
 impl Index {
     pub fn open(root: &Path, roots: Vec<(Agent, PathBuf)>) -> io::Result<Self> {
@@ -59,6 +61,7 @@ impl Index {
             recent_days: 7,
             counts: IoCounts::default(),
             gate: std::sync::Arc::new(std::sync::Mutex::new(())),
+            touched: Vec::new(),
         })
     }
     pub fn fork_current(&self) -> io::Result<Self> {
@@ -127,7 +130,7 @@ impl Index {
                 // Content is a newly introduced object. Seed only cached recent identities that
                 // have no projection, once, without another directory walk or replacing cursors.
                 let missing = {
-                    let mut q=self.db.prepare("SELECT runtime,path FROM log_files WHERE updated>=?1 AND NOT EXISTS(SELECT 1 FROM session_content WHERE session_content.path=log_files.path AND json_extract(parser,'$._rules')=7)").map_err(err)?;
+                    let mut q=self.db.prepare("SELECT runtime,path FROM log_files WHERE updated>=?1 AND NOT EXISTS(SELECT 1 FROM session_content WHERE session_content.path=log_files.path AND json_extract(parser,'$._rules')=8)").map_err(err)?;
                     let rows = q
                         .query_map(
                             [keepline_core::content::now()
@@ -306,6 +309,31 @@ impl Index {
             None => None,
         })
     }
+    /// Parents whose card a subagent's log changed since the last call.
+    pub fn take_touched(&mut self) -> Vec<Transcript> {
+        std::mem::take(&mut self.touched)
+    }
+    /// Logs of recent subagents of these Codex threads, newest first, at most `limit`.
+    pub fn child_logs(&self, parents: &[String], limit: usize) -> io::Result<Vec<String>> {
+        let since = keepline_core::content::now().saturating_sub(86400) as i64;
+        let mut q = self
+            .db
+            .prepare_cached(
+                "SELECT path FROM subagent_links WHERE parent=?1 AND updated>=?2 ORDER BY updated DESC",
+            )
+            .map_err(err)?;
+        let mut out = Vec::new();
+        for parent in parents {
+            let rows = q
+                .query_map(params![parent, since], |r| r.get::<_, String>(0))
+                .map_err(err)?;
+            for row in rows {
+                out.push(row.map_err(err)?);
+            }
+        }
+        out.truncate(limit);
+        Ok(out)
+    }
     pub fn card(&self, path: &str) -> io::Result<Option<keepline_core::content::Content>> {
         crate::content::card(&self.db, path)
     }
@@ -313,14 +341,34 @@ impl Index {
         updated
             >= keepline_core::content::now().saturating_sub(self.recent_days.saturating_mul(86400))
     }
-    pub fn hook(&self, path: &str, event: &str) -> io::Result<()> {
+    pub fn hook(
+        &self,
+        path: &str,
+        event: &str,
+        facts: &keepline_core::protocol::HookFacts,
+    ) -> io::Result<()> {
+        self.amend(path, |parser, at, source| {
+            parser.hook(event, facts, at, source)
+        })
+    }
+    pub fn official(&self, path: &str, status: &crate::content::Official) -> io::Result<()> {
+        self.amend(path, |parser, at, source| {
+            parser.official(status, at, source)
+        })
+    }
+    /// Applies a live signal that has no transcript offset; its source is the arrival time.
+    fn amend(
+        &self,
+        path: &str,
+        apply: impl FnOnce(&mut crate::content::Parser, u64, keepline_core::content::Source),
+    ) -> io::Result<()> {
         let _guard = self
             .gate
             .lock()
             .map_err(|_| io::Error::other("log cursor lock poisoned"))?;
         let mut parser = crate::content::load(&self.db, path)?;
-        parser.hook(
-            event,
+        apply(
+            &mut parser,
             keepline_core::content::now(),
             keepline_core::content::Source {
                 path: path.into(),
@@ -370,6 +418,12 @@ impl Index {
                 }
             }
             self.checkpoint(event)?;
+            // A subagent's log moved its parent's card; the parent is refreshed with it.
+            for t in std::mem::take(&mut self.touched) {
+                if !found.iter().any(|f: &Transcript| f.path == t.path) {
+                    found.push(t);
+                }
+            }
             Ok(found)
         })();
         match result {
@@ -417,7 +471,7 @@ impl Index {
             .as_secs();
         let seeded: bool = self
             .db
-            .prepare_cached("SELECT EXISTS(SELECT 1 FROM session_content WHERE path=?1 AND json_extract(parser,'$._rules')=7)")
+            .prepare_cached("SELECT EXISTS(SELECT 1 FROM session_content WHERE path=?1 AND json_extract(parser,'$._rules')=8)")
             .map_err(err)?
             .query_row([&key], |r| r.get(0))
             .map_err(err)?;
@@ -577,7 +631,47 @@ impl Index {
             tx.execute("DELETE FROM session_records WHERE path=?1", [&key])
                 .map_err(err)?;
         }
+        // Codex subagents: the child's own log is the evidence of what it is doing.
+        let now = keepline_core::content::now();
+        let live = |path: &str| keepline_core::content::Source {
+            path: path.into(),
+            offset: now,
+            ..Default::default()
+        };
+        let mut parent = None;
+        if runtime == Agent::Codex {
+            if !parser.card.parent.is_empty() {
+                crate::content::link_child(&tx, &key, &parser.card)?;
+                parent = Some(parser.card.parent.clone());
+            } else if let Some((id, _)) = &c.identity {
+                let kids = crate::content::children(&tx, id, now)?;
+                parser.children(&kids, now, live(&key));
+            }
+        }
         crate::content::save(&tx, &key, &parser)?;
+        if let Some(parent) = parent {
+            let row = tx
+                .prepare_cached("SELECT cli_id,path,cwd,updated FROM log_files WHERE runtime='codex' AND cli_id=?1 LIMIT 1")
+                .map_err(err)?
+                .query_row([&parent], |r| {
+                    Ok(Transcript {
+                        runtime: Agent::Codex,
+                        cli_id: r.get(0)?,
+                        path: r.get(1)?,
+                        cwd: r.get(2)?,
+                        updated: r.get::<_, i64>(3)? as u64,
+                    })
+                })
+                .optional()
+                .map_err(err)?;
+            if let Some(t) = row.filter(|t| t.path != key) {
+                let mut owner = crate::content::load(&tx, &t.path)?;
+                let kids = crate::content::children(&tx, &parent, now)?;
+                owner.children(&kids, now, live(&t.path));
+                crate::content::save(&tx, &t.path, &owner)?;
+                self.touched.push(t);
+            }
+        }
         tx.commit().map_err(err)?;
         self.counts.writes += 1;
         Ok(c.identity.map(|(cli_id, cwd)| Transcript {
