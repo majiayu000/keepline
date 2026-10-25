@@ -13,6 +13,15 @@ pub const STATUS: u8 = 6;
 pub const ACK: u8 = 7;
 pub const WRITABLE: u8 = 8;
 
+/// The few hook payload facts the status rules read. Prompt and reply text stay out.
+#[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub struct HookFacts {
+    /// From a Stop or SubagentStop payload that carried the task registry.
+    pub background: Option<crate::content::Background>,
+    pub notification: Option<String>,
+    /// The event came from inside a subagent (`agent_id` present), not the parent turn.
+    pub subagent: bool,
+}
 #[derive(Debug, Serialize, Deserialize)]
 pub enum Request {
     Hello {
@@ -36,6 +45,8 @@ pub enum Request {
         transcript: String,
         ended: bool,
         event: Option<String>,
+        #[serde(default)]
+        facts: HookFacts,
     },
     Edit {
         revision: u64,
@@ -59,7 +70,14 @@ pub enum Request {
     Resize {
         cols: u16,
         rows: u16,
+        /// One cell in device pixels, for size reports and the pty's pixel size; 0 if unknown.
+        #[serde(default)]
+        cell_width: u32,
+        #[serde(default)]
+        cell_height: u32,
     },
+    /// Cmd+K: drop scrollback and the rows above the cursor (no-op in the alternate screen).
+    ClearHistory,
     TerminalCwd {
         id: String,
     },
@@ -114,6 +132,10 @@ pub struct RecognitionStatus {
     pub metrics: RecognitionMetrics,
     pub terminal_hints: std::collections::HashMap<String, String>,
     pub workspace_revision: u64,
+    /// CLI -> why its official status query failed last; absent once one succeeds. The
+    /// status rules then fall back to logs, hooks and the screen.
+    #[serde(default)]
+    pub official: std::collections::BTreeMap<String, String>,
 }
 impl Default for RecognitionStatus {
     fn default() -> Self {
@@ -124,6 +146,7 @@ impl Default for RecognitionStatus {
             metrics: RecognitionMetrics::default(),
             terminal_hints: Default::default(),
             workspace_revision: 0,
+            official: Default::default(),
         }
     }
 }

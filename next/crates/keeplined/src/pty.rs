@@ -82,12 +82,12 @@ pub fn spawn(argv: &[String], cwd: &Path, cols: u16, rows: u16) -> io::Result<(C
     Ok((child, File::from(master)))
 }
 
-pub fn resize(master: &File, cols: u16, rows: u16) -> io::Result<()> {
+pub fn resize(master: &File, cols: u16, rows: u16, cell: (u32, u32)) -> io::Result<()> {
     let size = libc::winsize {
         ws_row: rows,
         ws_col: cols,
-        ws_xpixel: 0,
-        ws_ypixel: 0,
+        ws_xpixel: (u32::from(cols) * cell.0).min(u32::from(u16::MAX)) as u16,
+        ws_ypixel: (u32::from(rows) * cell.1).min(u32::from(u16::MAX)) as u16,
     };
     if unsafe { libc::ioctl(master.as_raw_fd(), libc::TIOCSWINSZ, &size) } < 0 {
         return Err(io::Error::last_os_error());

@@ -21,13 +21,15 @@ pub struct Pane {
     screen: Screen,
     capture: Option<screen::Capture>,
     layout_cache: screen::LayoutCache,
-    metrics_font: Option<gpui::Font>,
+    metrics_font: Option<(gpui::Font, f32)>,
     marked: String,
     selection: Range<usize>,
     bounds: Option<Bounds<Pixels>>,
     metrics: Option<screen::CellMetrics>,
     cursor_anchor: screen::CursorAnchor,
     requested_size: (u16, u16),
+    /// Device-pixel cell size last sent with the size, for the program's size reports.
+    requested_cell: (u32, u32),
     local_error: Option<String>,
     handoff: Option<Handoff>,
     text_selection: Option<((u16, u16), (u16, u16))>,
@@ -42,6 +44,11 @@ pub struct Pane {
     matches: Vec<(usize, String)>,
     /// A multi-line paste waiting for the user's go-ahead (no bracketed paste).
     paste_confirm: Option<String>,
+    bells_seen: u64,
+    /// The program rang while the user looked elsewhere; the header shows it until focus.
+    pub bell: bool,
+    /// A bell in the pane the user is looking at flashes its border once.
+    flash: bool,
 }
 impl Focusable for Pane {
     fn focus_handle(&self, _: &App) -> FocusHandle {
@@ -93,7 +100,8 @@ impl Pane {
                     .await;
                 while rx.try_recv().is_ok() {}
                 if this
-                    .update(cx, |_, cx| {
+                    .update(cx, |pane, cx| {
+                        pane.ring(cx);
                         cx.notify();
                     })
                     .is_err()
@@ -118,6 +126,7 @@ impl Pane {
             metrics: None,
             cursor_anchor: screen::CursorAnchor::default(),
             requested_size: (0, 0),
+            requested_cell: (0, 0),
             local_error: None,
             handoff: None,
             text_selection: None,
@@ -131,6 +140,44 @@ impl Pane {
             search: None,
             matches: vec![],
             paste_confirm: None,
+            bells_seen: 0,
+            bell: false,
+            flash: false,
+        }
+    }
+    fn ring(&mut self, cx: &mut Context<Self>) {
+        let rung = self.connection.bells.load(Ordering::Relaxed);
+        if rung == self.bells_seen {
+            return;
+        }
+        self.bells_seen = rung;
+        if self.last_focus {
+            self.flash = true;
+            cx.spawn(async move |this, cx| {
+                cx.background_executor()
+                    .timer(std::time::Duration::from_millis(150))
+                    .await;
+                let _ = this.update(cx, |pane, cx| {
+                    pane.flash = false;
+                    cx.notify();
+                });
+            })
+            .detach();
+        } else {
+            self.bell = true;
+            // Bounces the Dock icon once, only while Keepline is not the active app.
+            crate::desktop::request_attention();
+        }
+    }
+    /// The title the program set (OSC 0/2), e.g. a shell's "user@host: ~/dir" or vim's.
+    pub fn program_title(&self) -> Option<String> {
+        self.connection.state.lock().ok()?.vt.as_ref()?.title()
+    }
+    /// Dropped files arrive as their paths, escaped for a shell, like any terminal.
+    fn drop_paths(&mut self, paths: &gpui::ExternalPaths, cx: &mut Context<Self>) {
+        let text = crate::terminal_input::dropped_paths(paths.paths());
+        if !text.is_empty() {
+            self.prefill(&text, cx);
         }
     }
     fn sync_focus(&mut self, window: &mut Window, cx: &mut Context<Self>) {
@@ -144,6 +191,7 @@ impl Pane {
             .try_global::<crate::desktop::Watching>()
             .and_then(|w| w.0.clone());
         if focused {
+            self.bell = false;
             cx.set_global(crate::desktop::Watching(Some(self.terminal.clone())));
         } else if watching.as_deref() == Some(self.terminal.as_str()) {
             cx.set_global(crate::desktop::Watching(None));
@@ -279,8 +327,14 @@ impl Pane {
             return;
         }
         if event.button == gpui::MouseButton::Left {
-            self.text_selection = self.cell_at(event.position).map(|p| (p, p));
-            self.selecting = true;
+            let cell = self.cell_at(event.position);
+            // Double click selects a word, triple click the row, as in any terminal.
+            self.text_selection = match event.click_count {
+                2 => cell.map(|p| self.word_at(p)),
+                3.. => cell.map(|(row, _)| ((row, 0), (row, self.cols().saturating_sub(1)))),
+                _ => cell.map(|p| (p, p)),
+            };
+            self.selecting = event.click_count < 2;
             cx.notify();
         }
     }
@@ -482,6 +536,25 @@ impl Pane {
             ((point.x - bounds.left()) / metrics.width).floor().max(0.) as u16,
         ))
     }
+    fn cols(&self) -> u16 {
+        self.requested_size.0.max(1)
+    }
+    pub fn select_all(&mut self, cx: &mut Context<Self>) {
+        let rows = self.screen.rows.len() as u16;
+        if rows > 0 {
+            self.text_selection = Some(((0, 0), (rows - 1, self.cols() - 1)));
+            cx.notify();
+        }
+    }
+    fn word_at(&self, (row, col): (u16, u16)) -> ((u16, u16), (u16, u16)) {
+        let row_runs = self
+            .screen
+            .rows
+            .get(row as usize)
+            .map_or(&[][..], Vec::as_slice);
+        let (start, end) = screen::word_around(row_runs, col);
+        ((row, start), (row, end))
+    }
     pub fn open_search(&mut self, window: &mut Window, cx: &mut Context<Self>) {
         let field = cx.new(|cx| crate::field::Field::new("搜索滚动内容", "", cx));
         window.focus(&field.focus_handle(cx), cx);
@@ -666,8 +739,8 @@ impl Pane {
             }
             Stage::Agent => {
                 // The shell drops bracketed paste when it runs the command; the Agent turns
-                // it back on once its input box exists. A visible menu (folder trust, login,
-                // an approval) means the box is not the thing waiting.
+                // it back on even for onboarding pages. Require a visible input prompt too;
+                // a menu or a security notice is not ready to receive task text.
                 if !bracketed {
                     h.released = true;
                 }
@@ -675,7 +748,7 @@ impl Pane {
                 // check the task text would land on the shell's command line.
                 if command_missing(&h.tail) {
                     h.stage = Stage::Missing;
-                } else if h.released && bracketed && h.still >= 2 && !choice_menu(&h.tail) {
+                } else if h.released && bracketed && h.still >= 2 && agent_input_ready(&h.tail) {
                     let text = h.text.clone().unwrap_or_default();
                     h.stage = Stage::Placed;
                     self.prefill(&text, cx);
@@ -717,6 +790,38 @@ impl Pane {
             self.paste(cx);
             cx.stop_propagation();
             return;
+        }
+        // The usual terminal shortcuts; Cmd+other keys still go to the program.
+        if k.modifiers.platform && !k.modifiers.control && !k.modifiers.alt {
+            let zoom = match k.key.as_str() {
+                "=" | "+" => Some(Some(1)),
+                "-" => Some(Some(-1)),
+                "0" => Some(None),
+                _ => None,
+            };
+            let handled = if let Some(step) = zoom {
+                screen::zoom(step);
+                cx.refresh_windows();
+                true
+            } else {
+                match k.key.as_str() {
+                    "a" => self.select_all(cx),
+                    "f" => self.open_search(window, cx),
+                    "k" => {
+                        self.text_selection = None;
+                        if let Err(e) = self.connection.send(Request::ClearHistory) {
+                            self.local_error = Some(e.to_string());
+                        }
+                        cx.notify();
+                    }
+                    _ => (),
+                }
+                matches!(k.key.as_str(), "a" | "f" | "k")
+            };
+            if handled {
+                cx.stop_propagation();
+                return;
+            }
         }
         if !self.marked.is_empty() {
             return;
@@ -811,9 +916,10 @@ impl Render for Pane {
                     );
                     let font = T::mono(cx);
                     // Font metrics are logical pixels, independent of backing scale.
-                    if pane.metrics_font.as_ref() != Some(&font) || pane.metrics.is_none() {
+                    let key = (font.clone(), screen::font_size());
+                    if pane.metrics_font.as_ref() != Some(&key) || pane.metrics.is_none() {
                         pane.metrics = screen::CellMetrics::measure(&font, window);
-                        pane.metrics_font = Some(font.clone());
+                        pane.metrics_font = Some(key);
                     }
                     let Some(metrics) = pane.metrics else { return };
                     screen::paint_cached(
@@ -864,7 +970,7 @@ impl Render for Pane {
                                             metrics.height,
                                         ),
                                     ),
-                                    T::color(T::ACCENT).opacity(0.25),
+                                    T::color(T::FOCUS).opacity(0.25),
                                 ));
                             }
                         }
@@ -886,16 +992,24 @@ impl Render for Pane {
                             .floor()
                             .clamp(1., 200.) as u16,
                     );
-                    if pane.requested_size != dims
+                    let scale = window.scale_factor();
+                    let cell = (
+                        (f32::from(metrics.width) * scale).round().max(1.) as u32,
+                        (f32::from(metrics.height) * scale).round().max(1.) as u32,
+                    );
+                    if (pane.requested_size, pane.requested_cell) != (dims, cell)
                         && pane
                             .connection
                             .send(Request::Resize {
                                 cols: dims.0,
                                 rows: dims.1,
+                                cell_width: cell.0,
+                                cell_height: cell.1,
                             })
                             .is_ok()
                     {
                         pane.requested_size = dims;
+                        pane.requested_cell = cell;
                     }
                 });
             },
@@ -921,6 +1035,10 @@ impl Render for Pane {
             .on_mouse_up_out(gpui::MouseButton::Right,cx.listener(Self::mouse_up))
             .on_scroll_wheel(cx.listener(Self::scroll_wheel))
             .on_key_down(cx.listener(Self::key))
+            .on_drop(cx.listener(|this, paths: &gpui::ExternalPaths, window, cx| {
+                window.focus(&this.focus, cx);
+                this.drop_paths(paths, cx);
+            }))
             .when(status != "终端已连接", |d| {
                 d.child(
                     div()
@@ -951,7 +1069,16 @@ impl Render for Pane {
                     .on_click(cx.listener(move|this,_,_,cx|{if let Ok(mut s)=this.connection.state.lock()&& let Some(vt)=&mut s.vt{vt.scroll(keepline_core::terminal::libghostty_vt::terminal::ScrollViewport::Row(row));}this.search=None;cx.notify();})));}
                 d.child(panel.id("search-results").max_h(px(T::SEARCH_HEIGHT)).overflow_y_scroll())
             })
-            .child(div().flex_1().min_h_0().child(content));
+            .child(div().flex_1().min_h_0().child(content))
+            .when(self.flash, |d| {
+                d.relative().child(
+                    div()
+                        .absolute()
+                        .inset_0()
+                        .border(px(T::S2))
+                        .border_color(T::color(T::ACCENT)),
+                )
+            });
         if let Some(error) = error {
             view = view.child(
                 div()
@@ -1077,12 +1204,36 @@ pub enum HandoffState {
     NotReady,
     Missing,
 }
-/// A numbered menu with a cursor on screen: the Agent is asking something else first.
-fn choice_menu(tail: &str) -> bool {
-    tail.lines().rev().take(20).any(|l| {
+/// Both supported CLIs mark their input with an arrow. Bracketed paste alone
+/// is not readiness: Claude also enables it on theme and security notice pages.
+/// Use the last marker so an old menu above a new input does not block placement.
+fn agent_input_ready(tail: &str) -> bool {
+    let mut menu_footer = false;
+    let selected = tail.lines().rev().find_map(|l| {
+        let lower = l.to_ascii_lowercase();
+        menu_footer |= lower.contains("enter to confirm")
+            || lower.contains("enter to select")
+            || lower.contains("enter to continue");
         let l = l.trim_start_matches(['│', ' ']);
-        ["❯ 1.", "› 1.", "> 1."].iter().any(|m| l.starts_with(m))
-    })
+        ["❯", "›", ">"].iter().find_map(|m| {
+            l.strip_prefix(m)
+                .filter(|s| s.is_empty() || s.starts_with(char::is_whitespace))
+                .map(str::trim_start)
+        })
+    });
+    // Claude 2.1.302 also uses unnumbered trust choices. Inspect only below
+    // the current marker so a previous menu cannot poison a later input box.
+    if menu_footer {
+        return false;
+    }
+    let Some(selected) = selected else {
+        return false;
+    };
+    if selected.is_empty() {
+        return true;
+    }
+    let digits = selected.bytes().take_while(u8::is_ascii_digit).count();
+    !(tail.contains("Choose the text style") || digits > 0 && selected[digits..].starts_with('.'))
 }
 /// zsh, bash and fish wording for a command that is not on PATH, near the prompt.
 fn command_missing(tail: &str) -> bool {
@@ -1111,6 +1262,52 @@ mod paste_tests {
 #[cfg(test)]
 mod handoff_tests {
     #[test]
+    fn onboarding_and_nonfirst_choices_do_not_receive_task_text() {
+        // Real Claude 2.1.302 onboarding has no numeric options, and its preview
+        // can put the selected row more than twenty lines above the bottom.
+        let theme = format!(
+            "Welcome to Claude Code\nChoose the text style that looks best with your terminal\n❯ ✔ Dark mode\n  Light mode\n{}",
+            "preview row\n".repeat(25)
+        );
+        assert!(!super::agent_input_ready(&theme));
+        assert!(!super::agent_input_ready(
+            "Choose the text style that looks best with your terminal\n  ✔ Dark mode\n❯ Light mode"
+        ));
+        assert!(!super::agent_input_ready(
+            "Sign in\n  1. With ChatGPT\n> 2. With Device Code\n  3. API key"
+        ));
+        assert!(!super::agent_input_ready(
+            "Allow this command?\n› 3. No, cancel"
+        ));
+        assert!(super::agent_input_ready("› 写一个测试\n? for shortcuts"));
+        assert!(super::agent_input_ready(&format!(
+            "{theme}\n❯ \n? for shortcuts"
+        )));
+        assert!(super::agent_input_ready(
+            "› 2. Cancel\n\n› Ask Codex to do anything"
+        ));
+    }
+    #[test]
+    fn bracketed_paste_pages_without_an_input_prompt_are_not_ready() {
+        assert!(!super::agent_input_ready(
+            "Security notes:\n1. Claude can make mistakes.\n2. Only use code you trust.\nPress Enter to continue…"
+        ));
+        assert!(!super::agent_input_ready(
+            "Welcome to Codex\n>_ OpenAI Codex\nLoading…"
+        ));
+        assert!(!super::agent_input_ready("project% "));
+        assert!(super::agent_input_ready("❯ \n? for shortcuts"));
+        assert!(!super::agent_input_ready(
+            "Accessing workspace:\n❯ No, exit\n  Yes, I trust this folder\nEnter to confirm · Esc to cancel"
+        ));
+        assert!(!super::agent_input_ready(
+            "Accessing workspace:\n  No, exit\n❯ Yes, I trust this folder\nEnter to confirm · Esc to cancel"
+        ));
+        assert!(super::agent_input_ready(
+            "❯ No, exit\nEnter to confirm · Esc to cancel\n❯ \n? for shortcuts"
+        ));
+    }
+    #[test]
     fn a_missing_agent_command_is_reported_not_waited_on() {
         assert!(super::command_missing(
             "Agent-OS% codex\nzsh: command not found: codex\nAgent-OS% "
@@ -1122,15 +1319,17 @@ mod handoff_tests {
     }
     #[test]
     fn menus_block_placement_but_the_input_box_does_not() {
-        assert!(super::choice_menu(
+        assert!(!super::agent_input_ready(
             "Do you trust the files in this folder?\n\n❯ 1. Yes, proceed\n  2. No, exit\n"
         ));
-        assert!(super::choice_menu(
+        assert!(!super::agent_input_ready(
             "│ › 1. Yes, allow Codex to work in this folder\n"
         ));
-        assert!(!super::choice_menu(
+        assert!(super::agent_input_ready(
             "› Ask Codex to do anything\n\n  ? for shortcuts\n"
         ));
-        assert!(!super::choice_menu("> \n  1. plan written by the agent\n"));
+        assert!(super::agent_input_ready(
+            "> \n  1. plan written by the agent\n"
+        ));
     }
 }

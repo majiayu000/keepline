@@ -1,0 +1,37 @@
+{
+  "before": {
+    "root": "/tmp/kl-start22-zdin1ru6",
+    "home": "/tmp/kl-start22-zdin1ru6/home",
+    "bundle": "/tmp/kl-start22-zdin1ru6/Keepline Start Acceptance.app",
+    "host": 63840,
+    "project": "/tmp/kl-start22-zdin1ru6/project"
+  },
+  "after": {
+    "root": "/tmp/kl-start22-ph8_omcq",
+    "home": "/tmp/kl-start22-ph8_omcq/home",
+    "bundle": "/tmp/kl-start22-ph8_omcq/Keepline Start Acceptance.app",
+    "host": 9044,
+    "project": "/tmp/kl-start22-ph8_omcq/project"
+  },
+  "first-fix": {
+    "root": "/tmp/kl-start22-ph8_omcq",
+    "home": "/tmp/kl-start22-ph8_omcq/home",
+    "bundle": "/tmp/kl-start22-ph8_omcq/Keepline Start Acceptance.app",
+    "host": 9044,
+    "project": "/tmp/kl-start22-ph8_omcq/project"
+  },
+  "second-fix": {
+    "root": "/tmp/kl-start22-7ko_8nbw",
+    "home": "/tmp/kl-start22-7ko_8nbw/home",
+    "bundle": "/tmp/kl-start22-7ko_8nbw/Keepline Start Acceptance.app",
+    "host": 46692,
+    "project": "/tmp/kl-start22-7ko_8nbw/project"
+  },
+  "final": {
+    "root": "/tmp/kl-start22-6fjprb30",
+    "home": "/tmp/kl-start22-6fjprb30/home",
+    "bundle": "/tmp/kl-start22-6fjprb30/Keepline Start Acceptance.app",
+    "host": 70506,
+    "project": "/tmp/kl-start22-6fjprb30/project"
+  }
+}

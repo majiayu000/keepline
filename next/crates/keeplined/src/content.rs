@@ -2,6 +2,7 @@
 use keepline_core::{
     content::{short, Content, Evidence, Quote, Source, Turn},
     model::Agent,
+    protocol::HookFacts,
 };
 use regex::Regex;
 use rusqlite::{params, Connection, OptionalExtension};
@@ -377,8 +378,25 @@ pub struct Parser {
     calls: BTreeMap<String, Call>,
     executions: BTreeMap<String, String>,
     last_failed: String,
+    /// A turn end arrived while a dialog was still shown; settles the turn once the dialog
+    /// is known to be gone.
+    #[serde(default)]
+    completed_while_waiting: bool,
+    /// The turn a subagent's dialog interrupted, restored once that dialog is gone.
+    #[serde(default)]
+    child_wait_from: Option<Turn>,
     #[serde(skip)]
     pub records: Vec<Record>,
+    /// "Running→Waiting Hook" lines for the status trace, one per change of `card.turn`.
+    #[serde(skip)]
+    pub transitions: Vec<String>,
+}
+/// What `claude agents --json` says about a live session.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum Official {
+    Waiting(String),
+    Busy,
+    Idle,
 }
 #[derive(Clone, Debug)]
 pub struct Record {
@@ -401,6 +419,21 @@ impl Parser {
         } else {
             v
         };
+        // Whatever hides it, a Codex subagent still belongs to its parent.
+        if runtime == Agent::Codex && v["type"] == "session_meta" {
+            let spawn = &m["source"]["subagent"]["thread_spawn"];
+            if let Some(parent) = spawn["parent_thread_id"]
+                .as_str()
+                .or(m["parent_thread_id"].as_str())
+            {
+                self.card.parent = parent.to_owned();
+                self.card.agent_name = m["agent_nickname"]
+                    .as_str()
+                    .or(spawn["agent_path"].as_str())
+                    .unwrap_or("")
+                    .to_owned();
+            }
+        }
         let cwd = m["cwd"].as_str().unwrap_or("");
         let temporary = [
             "/tmp",
@@ -565,11 +598,15 @@ impl Parser {
             self.card.completed_claim = false;
             self.card.waiting.clear();
             self.card.error.clear();
+            self.card.background = None;
             self.last_failed.clear();
+            self.completed_while_waiting = false;
+            self.child_wait_from = None;
         }
         let still_waiting = self.card.turn == Turn::Waiting
             && !self.card.waiting.is_empty()
             && turn == Turn::Completed;
+        self.completed_while_waiting |= still_waiting;
         self.card.turn = if still_waiting { Turn::Waiting } else { turn };
         if turn == Turn::Completed && !self.last_failed.is_empty() {
             self.card.turn = Turn::Error;
@@ -802,6 +839,11 @@ impl Parser {
         self.card.updated = self.card.updated.max(at);
     }
     pub fn add(&mut self, runtime: Agent, line: &[u8], source: Source) {
+        let before = self.card.turn;
+        self.add_line(runtime, line, source);
+        self.settle(before, "日志", self.card.updated);
+    }
+    fn add_line(&mut self, runtime: Agent, line: &[u8], source: Source) {
         let Ok(v) = serde_json::from_slice::<Value>(line) else {
             self.card.unknown_records += 1;
             return;
@@ -970,18 +1012,229 @@ impl Parser {
             }
         }
     }
-    pub fn hook(&mut self, event: &str, at: u64, source: Source) {
-        match event {
-            "PermissionRequest" => {
-                self.card.waiting = "CLI 请求工具审批（Hook）".into();
-                self.phase(Turn::Waiting, "", at, &source);
+    pub fn hook(&mut self, event: &str, facts: &HookFacts, at: u64, source: Source) {
+        let before = self.card.turn;
+        self.hook_event(event, facts, at, &source);
+        self.settle(before, "Hook", at);
+    }
+    fn hook_event(&mut self, event: &str, facts: &HookFacts, at: u64, source: &Source) {
+        // SubagentStop lists the parent's tasks; other subagent events say nothing about
+        // the parent turn.
+        if event == "SubagentStop" {
+            if facts.background.is_some() {
+                self.card.background = facts.background;
             }
+            return;
+        }
+        if facts.subagent {
+            return;
+        }
+        // Work that will resume the session: a tool after the stop is that resumed turn.
+        let keeps_working = self
+            .card
+            .background
+            .is_some_and(|b| b.keeps_working() || b.wakes());
+        match event {
+            "PermissionRequest" => self.wait("CLI 请求工具审批（Hook）", at, source),
+            "Notification" => match facts.notification.as_deref() {
+                Some("permission_prompt") => self.wait("CLI 请求工具审批（Hook）", at, source),
+                Some("elicitation_dialog") => self.wait("MCP 表单等待填写（Hook）", at, source),
+                Some("elicitation_url_dialog") => {
+                    self.wait("MCP 请求在浏览器中完成（Hook）", at, source)
+                }
+                Some("agent_needs_input") => self.wait("Agent 等待你的输入（Hook）", at, source),
+                _ => (),
+            },
             "Stop" => {
+                // Absent arrays are unknown; an older turn's tasks never carry over.
+                self.card.background = facts.background;
                 self.card.completed_claim = claims_done(&self.card.last_reply);
-                self.phase(Turn::Completed, "", at, &source);
+                self.phase(Turn::Completed, "", at, source);
+            }
+            "StopFailure" => {
+                if self.card.error.is_empty() {
+                    self.card.error = "API 错误中止了回合（Hook）".into();
+                }
+                self.phase(Turn::Error, "", at, source);
+            }
+            // A tool finishing after a hook-reported dialog means the dialog was answered.
+            "PostToolUse" | "PostToolUseFailure"
+                if self.card.turn == Turn::Waiting && self.card.signal == "Hook" =>
+            {
+                self.card.turn = Turn::Running;
+                self.card.waiting.clear();
+            }
+            // Turns woken by background work send no prompt; a tool after a stop is the only
+            // sign of one. Without running work it is a straggler from the finished turn.
+            "PreToolUse" | "PostToolUse" | "PostToolUseFailure"
+                if self.card.turn == Turn::Completed && keeps_working =>
+            {
+                self.phase(Turn::Running, "", at, source);
             }
             _ => (),
         }
+    }
+    fn wait(&mut self, reason: &str, at: u64, source: &Source) {
+        // A dialog already known from the transcript or screen keeps its richer text.
+        if self.card.turn != Turn::Waiting {
+            self.card.waiting = reason.into();
+            self.phase(Turn::Waiting, "", at, source);
+        }
+    }
+    /// Applies `claude agents --json`. It only settles a dialog: it never starts or ends a
+    /// turn the transcript and hooks have not reported, because it can lag either of them.
+    pub fn official(&mut self, status: &Official, at: u64, source: Source) {
+        let before = self.card.turn;
+        match status {
+            Official::Waiting(reason) if self.card.turn != Turn::Waiting => {
+                self.card.waiting = format!("{reason}（Claude 官方状态）");
+                self.phase(Turn::Waiting, "", at, &source);
+            }
+            Official::Busy if self.card.turn == Turn::Waiting => {
+                self.card.turn = Turn::Running;
+                self.card.waiting.clear();
+            }
+            Official::Idle if self.card.turn == Turn::Waiting => {
+                self.card.waiting.clear();
+                let settled = if self.completed_while_waiting {
+                    Turn::Completed
+                } else {
+                    Turn::Interrupted
+                };
+                self.phase(settled, "", at, &source);
+            }
+            _ => (),
+        }
+        self.settle(before, "官方状态", at);
+    }
+    /// Applies the state of a Codex session's subagents, read from their own logs: running
+    /// ones keep a stopped turn working, and a subagent's dialog is the parent's dialog.
+    pub fn children(&mut self, kids: &Children, at: u64, source: Source) {
+        let before = self.card.turn;
+        if kids.running > 0 || self.card.background.is_some() {
+            let mut b = self.card.background.unwrap_or_default();
+            b.agents = kids.running;
+            self.card.background = Some(b);
+        }
+        match &kids.waiting {
+            Some(w) if self.card.turn != Turn::Waiting => {
+                self.child_wait_from = Some(self.card.turn);
+                self.card.waiting = w.clone();
+                self.phase(Turn::Waiting, "", at, &source);
+            }
+            None if self.card.turn == Turn::Waiting => {
+                if let Some(turn) = self.child_wait_from.take() {
+                    self.card.waiting.clear();
+                    self.card.turn = turn;
+                }
+            }
+            _ => (),
+        }
+        self.settle(before, "子 Agent", at);
+    }
+    fn settle(&mut self, before: Turn, signal: &str, at: u64) {
+        if self.card.turn == before {
+            return;
+        }
+        if self.card.turn == Turn::Waiting {
+            self.card.waiting_episode += 1;
+        } else {
+            self.completed_while_waiting = false;
+        }
+        self.card.signal = signal.into();
+        self.card.signal_at = at;
+        self.transitions
+            .push(format!("{before:?}→{:?} {signal}", self.card.turn));
+    }
+}
+/// What a parent's subagents are doing, from `subagent_links`.
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+pub struct Children {
+    pub running: u32,
+    pub waiting: Option<String>,
+}
+/// A subagent whose log has not moved for this long no longer counts as running: its
+/// process may have died mid-turn.
+const CHILD_FRESH: u64 = 900;
+pub fn link_child(db: &Connection, path: &str, card: &Content) -> io::Result<()> {
+    db.prepare_cached("INSERT INTO subagent_links VALUES(?1,?2,?3,?4,?5,?6) ON CONFLICT(path) DO UPDATE SET parent=excluded.parent,name=excluded.name,turn=excluded.turn,waiting=excluded.waiting,updated=excluded.updated")
+        .map_err(db_err)?
+        .execute(params![
+            path,
+            card.parent,
+            card.agent_name,
+            format!("{:?}", card.turn),
+            card.waiting,
+            i64::try_from(card.updated).map_err(db_err)?
+        ])
+        .map_err(db_err)?;
+    Ok(())
+}
+pub fn children(db: &Connection, parent: &str, now: u64) -> io::Result<Children> {
+    let mut q = db
+        .prepare_cached("SELECT name,turn,waiting FROM subagent_links WHERE parent=?1 AND updated>=?2 ORDER BY updated DESC")
+        .map_err(db_err)?;
+    let since = i64::try_from(now.saturating_sub(CHILD_FRESH)).map_err(db_err)?;
+    let mut rows = q.query(params![parent, since]).map_err(db_err)?;
+    let mut kids = Children::default();
+    while let Some(r) = rows.next().map_err(db_err)? {
+        let name: String = r.get(0).map_err(db_err)?;
+        let turn: String = r.get(1).map_err(db_err)?;
+        match turn.as_str() {
+            "Running" => kids.running += 1,
+            "Waiting" if kids.waiting.is_none() => {
+                let waiting: String = r.get(2).map_err(db_err)?;
+                let name = if name.is_empty() {
+                    "子 Agent".into()
+                } else {
+                    format!("子 Agent {name}")
+                };
+                kids.waiting = Some(format!("{name}：{}", short(&waiting, 500)));
+                kids.running += 1;
+            }
+            _ => (),
+        }
+    }
+    Ok(kids)
+}
+/// Reads the status facts from a hook payload. Stop and SubagentStop list the parent
+/// session's in-flight tasks; an entry counts unless its status says it has ended.
+pub fn hook_facts(v: &Value) -> HookFacts {
+    const ENDED: [&str; 9] = [
+        "completed",
+        "complete",
+        "done",
+        "failed",
+        "error",
+        "killed",
+        "stopped",
+        "cancelled",
+        "canceled",
+    ];
+    let tasks = v["background_tasks"].as_array();
+    let crons = v["session_crons"].as_array();
+    let background = (tasks.is_some() || crons.is_some()).then(|| {
+        let mut b = keepline_core::content::Background {
+            crons: crons.map_or(0, |c| c.len() as u32),
+            ..Default::default()
+        };
+        for task in tasks.into_iter().flatten() {
+            let status = task["status"].as_str().unwrap_or("").to_lowercase();
+            if ENDED.contains(&status.as_str()) {
+                continue;
+            }
+            match task["type"].as_str().unwrap_or("") {
+                "shell" => b.shells += 1,
+                "monitor" => b.monitors += 1,
+                _ => b.agents += 1,
+            }
+        }
+        b
+    });
+    HookFacts {
+        background,
+        notification: v["notification_type"].as_str().map(str::to_owned),
+        subagent: v["agent_id"].as_str().is_some_and(|id| !id.is_empty()),
     }
 }
 // Parse argv without executing it. Compound commands remain unknown: their combined exit
@@ -1039,7 +1292,7 @@ fn git_commit(command: &str) -> bool {
         && w.get(1).is_some_and(|s| s == "commit")
 }
 pub fn schema(db: &Connection) -> io::Result<()> {
-    db.execute_batch("CREATE TABLE IF NOT EXISTS session_content(path TEXT PRIMARY KEY,title TEXT NOT NULL,turn TEXT NOT NULL,updated INTEGER NOT NULL,projection TEXT NOT NULL,parser TEXT NOT NULL); CREATE TABLE IF NOT EXISTS session_records(path TEXT NOT NULL,inode INTEGER NOT NULL,offset INTEGER NOT NULL,ordinal INTEGER NOT NULL,at INTEGER NOT NULL,kind TEXT NOT NULL,text TEXT NOT NULL,call_id TEXT NOT NULL,exit_code INTEGER,PRIMARY KEY(path,inode,offset,ordinal));").map_err(db_err)
+    db.execute_batch("CREATE TABLE IF NOT EXISTS session_content(path TEXT PRIMARY KEY,title TEXT NOT NULL,turn TEXT NOT NULL,updated INTEGER NOT NULL,projection TEXT NOT NULL,parser TEXT NOT NULL); CREATE TABLE IF NOT EXISTS subagent_links(path TEXT PRIMARY KEY,parent TEXT NOT NULL,name TEXT NOT NULL,turn TEXT NOT NULL,waiting TEXT NOT NULL,updated INTEGER NOT NULL); CREATE INDEX IF NOT EXISTS subagent_parent ON subagent_links(parent); CREATE TABLE IF NOT EXISTS session_records(path TEXT NOT NULL,inode INTEGER NOT NULL,offset INTEGER NOT NULL,ordinal INTEGER NOT NULL,at INTEGER NOT NULL,kind TEXT NOT NULL,text TEXT NOT NULL,call_id TEXT NOT NULL,exit_code INTEGER,PRIMARY KEY(path,inode,offset,ordinal));").map_err(db_err)
 }
 pub fn load(db: &Connection, path: &str) -> io::Result<Parser> {
     let value: Option<String> = db
@@ -1063,9 +1316,30 @@ pub fn card(db: &Connection, path: &str) -> io::Result<Option<Content>> {
         .map(|s| serde_json::from_str(&s).map_err(db_err))
         .transpose()
 }
+/// With `KEEPLINE_STATUS_TRACE=<file>`, appends one line per turn change for regression
+/// checks against a transcript. Paths and states only; no prompt or reply text.
+fn trace(path: &str, parser: &Parser) {
+    let Some(file) = std::env::var_os("KEEPLINE_STATUS_TRACE") else {
+        return;
+    };
+    if parser.transitions.is_empty() {
+        return;
+    }
+    let lines: String = parser
+        .transitions
+        .iter()
+        .map(|t| format!("{} {path} {t}\n", keepline_core::content::now()))
+        .collect();
+    let _ = std::fs::OpenOptions::new()
+        .create(true)
+        .append(true)
+        .open(file)
+        .and_then(|mut f| std::io::Write::write_all(&mut f, lines.as_bytes()));
+}
 pub fn save(db: &Connection, path: &str, parser: &Parser) -> io::Result<()> {
+    trace(path, parser);
     let mut encoded = serde_json::to_value(parser).map_err(db_err)?;
-    encoded["_rules"] = json!(7);
+    encoded["_rules"] = json!(8);
     db.prepare_cached("INSERT INTO session_content VALUES(?1,?2,?3,?4,?5,?6) ON CONFLICT(path) DO UPDATE SET title=excluded.title,turn=excluded.turn,updated=excluded.updated,projection=excluded.projection,parser=excluded.parser").map_err(db_err)?.execute(params![path,parser.card.title,format!("{:?}",parser.card.turn),i64::try_from(parser.card.updated).map_err(db_err)?,serde_json::to_string(&parser.card).map_err(db_err)?,serde_json::to_string(&encoded).map_err(db_err)?]).map_err(db_err)?;
     let mut ordinals = BTreeMap::new();
     for r in &parser.records {
@@ -1470,17 +1744,312 @@ mod tests {
         }
         assert_eq!(p.card.asks.len(), 1);
         assert!(p.card.here().done.contains("a.rs"));
-        p.hook("PermissionRequest", 10, s.clone());
+        p.hook("PermissionRequest", &HookFacts::default(), 10, s.clone());
         assert_eq!(p.card.turn, Turn::Waiting);
-        p.hook("Stop", 11, s.clone());
+        p.hook("Stop", &HookFacts::default(), 11, s.clone());
         assert_eq!(p.card.turn, Turn::Waiting, "Stop is not an approval answer");
         p.add(
             Agent::Claude,
             r#"{"type":"user","uuid":"new","message":{"content":"批准，请继续"}}"#.as_bytes(),
             s.clone(),
         );
-        p.hook("Stop", 12, s);
+        p.hook("Stop", &HookFacts::default(), 12, s);
         assert_eq!(p.card.turn, Turn::Completed);
+    }
+    #[test]
+    fn hook_payload_facts_count_running_tasks_by_kind() {
+        let facts = hook_facts(&json!({
+            "hook_event_name": "Stop",
+            "background_tasks": [
+                {"id": "1", "type": "subagent", "status": "running"},
+                {"id": "2", "type": "shell", "status": "running", "command": "cargo test"},
+                {"id": "3", "type": "monitor"},
+                {"id": "4", "type": "subagent", "status": "completed"},
+                {"id": "5", "type": "workflow", "status": "pending"}
+            ],
+            "session_crons": [{"id": "c", "schedule": "*/5 * * * *"}],
+            "last_assistant_message": "never forwarded"
+        }));
+        assert_eq!(
+            facts.background,
+            Some(keepline_core::content::Background {
+                agents: 2,
+                shells: 1,
+                monitors: 1,
+                crons: 1
+            })
+        );
+        assert!(!facts.subagent);
+        let empty = hook_facts(&json!({"hook_event_name": "Stop"}));
+        assert_eq!(
+            empty.background, None,
+            "missing arrays are unknown, not idle"
+        );
+        let sub = hook_facts(&json!({"hook_event_name": "PreToolUse", "agent_id": "a1"}));
+        assert!(sub.subagent);
+        let n = hook_facts(&json!({"notification_type": "permission_prompt"}));
+        assert_eq!(n.notification.as_deref(), Some("permission_prompt"));
+    }
+    /// Recorded payload shapes (structure only, see eval/protocol-contract/hook_shapes.py):
+    /// every one parses, and the counts follow the task list it carried.
+    #[test]
+    fn recorded_hook_payload_shapes_parse_as_their_task_lists_say() {
+        let corpus = include_str!("../tests/fixtures/hook_shapes.jsonl");
+        let (mut claude_stop_with_agents, mut codex_stops) = (0, 0);
+        for line in corpus.lines() {
+            let shape: Value = serde_json::from_str(line).unwrap();
+            let mut payload = serde_json::Map::new();
+            for key in shape["keys"].as_array().unwrap() {
+                payload.insert(key.as_str().unwrap().into(), Value::Null);
+            }
+            payload.insert("hook_event_name".into(), shape["event"].clone());
+            let tasks: Vec<(String, String)> = shape["tasks"]
+                .as_array()
+                .map(|t| {
+                    t.iter()
+                        .map(|p| (p[0].as_str().unwrap().into(), p[1].as_str().unwrap().into()))
+                        .collect()
+                })
+                .unwrap_or_default();
+            if shape["tasks"].is_array() {
+                payload.insert(
+                    "background_tasks".into(),
+                    tasks
+                        .iter()
+                        .map(|(t, s)| json!({"type": t, "status": s}))
+                        .collect(),
+                );
+            }
+            if let Some(n) = shape["crons"].as_u64() {
+                payload.insert("session_crons".into(), (0..n).map(|_| json!({})).collect());
+            }
+            if let Some(n) = shape["notification"].as_str() {
+                payload.insert("notification_type".into(), json!(n));
+            }
+            if shape["agent_id"] == true {
+                payload.insert("agent_id".into(), json!("a"));
+            }
+            let facts = hook_facts(&Value::Object(payload));
+            assert_eq!(facts.subagent, shape["agent_id"] == true, "{line}");
+            assert_eq!(
+                facts.notification.as_deref(),
+                shape["notification"].as_str(),
+                "{line}"
+            );
+            let listed = shape["tasks"].is_array() || shape["crons"].is_u64();
+            assert_eq!(facts.background.is_some(), listed, "{line}");
+            if let Some(b) = facts.background {
+                let count = |kind: &str| tasks.iter().filter(|(t, _)| t == kind).count() as u32;
+                assert_eq!(b.shells, count("shell"), "{line}");
+                assert_eq!(b.monitors, count("monitor"), "{line}");
+                assert_eq!(
+                    b.agents,
+                    tasks.len() as u32 - count("shell") - count("monitor"),
+                    "{line}"
+                );
+                if shape["runtime"] == "claude" && shape["event"] == "Stop" && b.agents > 0 {
+                    claude_stop_with_agents += 1;
+                }
+            }
+            if shape["runtime"] == "codex" && shape["event"] == "Stop" {
+                codex_stops += 1;
+                assert_eq!(
+                    facts.background, None,
+                    "Codex 0.163 Stop lists no tasks: {line}"
+                );
+            }
+        }
+        assert!(
+            claude_stop_with_agents > 0 && codex_stops > 0,
+            "corpus lost its key shapes"
+        );
+    }
+    fn facts(agents: u32) -> HookFacts {
+        HookFacts {
+            background: Some(keepline_core::content::Background {
+                agents,
+                ..Default::default()
+            }),
+            ..Default::default()
+        }
+    }
+    /// Replays one hook sequence and checks every turn change it caused (status trace).
+    #[test]
+    fn hook_sequence_replays_to_the_expected_status_trace() {
+        let mut p = Parser::default();
+        let s = Source::default();
+        let none = HookFacts::default();
+        p.add(
+            Agent::Claude,
+            r#"{"type":"user","uuid":"u1","message":{"content":"跑完测试"}}"#.as_bytes(),
+            s.clone(),
+        );
+        // A stop with a running subagent: the turn is over but its work is not.
+        p.hook("Stop", &facts(1), 1, s.clone());
+        assert!(p.card.background.unwrap().keeps_working());
+        // A subagent's own events never move the parent turn.
+        let sub = HookFacts {
+            subagent: true,
+            ..Default::default()
+        };
+        p.hook("PermissionRequest", &sub, 2, s.clone());
+        assert_eq!(p.card.turn, Turn::Completed);
+        // The subagent woke the parent: a tool runs without a prompt.
+        p.hook("PreToolUse", &none, 3, s.clone());
+        assert_eq!(p.card.turn, Turn::Running);
+        assert_eq!(p.card.background, None, "a new turn forgets the old tasks");
+        // One dialog, reported by two hooks, is one waiting episode.
+        p.hook("PermissionRequest", &none, 4, s.clone());
+        p.hook(
+            "Notification",
+            &HookFacts {
+                notification: Some("permission_prompt".into()),
+                ..Default::default()
+            },
+            10,
+            s.clone(),
+        );
+        assert_eq!((p.card.turn, p.card.waiting_episode), (Turn::Waiting, 1));
+        p.hook("PostToolUse", &none, 11, s.clone());
+        assert_eq!(p.card.turn, Turn::Running, "the approved tool finished");
+        p.hook("Stop", &facts(0), 12, s.clone());
+        // Stragglers after a stop with nothing running change nothing.
+        p.hook("PostToolUse", &none, 13, s.clone());
+        p.hook(
+            "Notification",
+            &HookFacts {
+                notification: Some("idle_prompt".into()),
+                ..Default::default()
+            },
+            14,
+            s.clone(),
+        );
+        assert_eq!(p.card.turn, Turn::Completed);
+        p.hook("SubagentStop", &facts(2), 15, s.clone());
+        assert_eq!(
+            p.card.turn,
+            Turn::Completed,
+            "SubagentStop only updates the count"
+        );
+        assert_eq!(p.card.background.unwrap().agents, 2);
+        p.hook("StopFailure", &none, 16, s);
+        assert_eq!(p.card.error, "API 错误中止了回合（Hook）");
+        assert_eq!(
+            p.transitions,
+            [
+                "Unknown→Running 日志",
+                "Running→Completed Hook",
+                "Completed→Running Hook",
+                "Running→Waiting Hook",
+                "Waiting→Running Hook",
+                "Running→Completed Hook",
+                "Completed→Error Hook",
+            ]
+        );
+    }
+    #[test]
+    fn codex_subagent_header_names_its_parent_and_children_drive_the_parent() {
+        let s = Source::default();
+        let mut child = Parser::default();
+        child.add(
+            Agent::Codex,
+            br#"{"type":"session_meta","payload":{"id":"kid","cwd":"/p","source":{"subagent":{"thread_spawn":{"parent_thread_id":"dad","depth":1,"agent_path":"/root/fix","agent_nickname":"Hypatia"}}},"agent_nickname":"Hypatia","parent_thread_id":"dad"}}"#,
+            s.clone(),
+        );
+        assert_eq!(
+            (child.card.parent.as_str(), child.card.agent_name.as_str()),
+            ("dad", "Hypatia")
+        );
+        assert_eq!(child.card.hidden_reason, "Codex 子代理");
+        let mut p = Parser::default();
+        p.add(
+            Agent::Codex,
+            br#"{"timestamp":1,"type":"event_msg","payload":{"type":"task_started","turn_id":"t1"}}"#,
+            s.clone(),
+        );
+        p.add(
+            Agent::Codex,
+            r#"{"timestamp":2,"type":"event_msg","payload":{"type":"task_complete","last_agent_message":"已派出子任务"}}"#.as_bytes(),
+            s.clone(),
+        );
+        p.children(
+            &Children {
+                running: 1,
+                waiting: None,
+            },
+            3,
+            s.clone(),
+        );
+        assert_eq!(p.card.turn, Turn::Completed);
+        assert!(p.card.background.unwrap().keeps_working());
+        // The subagent's approval is the parent's; once answered the parent is as before.
+        let ask = Children {
+            running: 1,
+            waiting: Some("子 Agent Hypatia：是否运行迁移？".into()),
+        };
+        p.children(&ask, 4, s.clone());
+        assert_eq!(
+            (p.card.turn, p.card.signal.as_str()),
+            (Turn::Waiting, "子 Agent")
+        );
+        p.children(&ask, 5, s.clone());
+        assert_eq!(p.card.waiting_episode, 1, "the same dialog is one episode");
+        p.children(
+            &Children {
+                running: 0,
+                waiting: None,
+            },
+            6,
+            s.clone(),
+        );
+        assert_eq!(p.card.turn, Turn::Completed);
+        assert!(!p.card.background.unwrap().keeps_working());
+        // A parent without subagents is left alone: unknown stays unknown.
+        let mut lone = Parser::default();
+        lone.children(&Children::default(), 1, s);
+        assert_eq!(lone.card.background, None);
+    }
+    #[test]
+    fn official_status_only_settles_dialogs() {
+        let s = Source::default();
+        let none = HookFacts::default();
+        let mut p = Parser::default();
+        p.add(
+            Agent::Claude,
+            r#"{"type":"user","uuid":"u1","message":{"content":"部署"}}"#.as_bytes(),
+            s.clone(),
+        );
+        // Busy and idle never start or end a turn on their own: they can lag the log.
+        p.official(&Official::Idle, 1, s.clone());
+        assert_eq!(p.card.turn, Turn::Running);
+        p.hook("PermissionRequest", &none, 2, s.clone());
+        p.official(&Official::Busy, 3, s.clone());
+        assert_eq!(
+            (p.card.turn, p.card.signal.as_str()),
+            (Turn::Running, "官方状态")
+        );
+        assert!(p.card.waiting.is_empty());
+        // Esc closed the dialog: no hook says so, the official state is idle.
+        p.hook("PermissionRequest", &none, 4, s.clone());
+        p.official(&Official::Idle, 5, s.clone());
+        assert_eq!(p.card.turn, Turn::Interrupted);
+        // A turn end arrived while the dialog was shown; once it is gone the turn is done.
+        p.add(
+            Agent::Claude,
+            r#"{"type":"user","uuid":"u2","message":{"content":"再部署"}}"#.as_bytes(),
+            s.clone(),
+        );
+        p.hook("PermissionRequest", &none, 6, s.clone());
+        p.hook("Stop", &none, 7, s.clone());
+        assert_eq!(p.card.turn, Turn::Waiting);
+        p.official(&Official::Idle, 8, s.clone());
+        assert_eq!(p.card.turn, Turn::Completed);
+        // A dialog no hook reported.
+        let episode = p.card.waiting_episode;
+        p.official(&Official::Waiting("有对话框打开".into()), 9, s);
+        assert_eq!(p.card.turn, Turn::Waiting);
+        assert_eq!(p.card.waiting, "有对话框打开（Claude 官方状态）");
+        assert_eq!(p.card.waiting_episode, episode + 1);
     }
     #[test]
     fn injected_messages_and_quoted_completion_are_not_user_intent_or_claims() {
