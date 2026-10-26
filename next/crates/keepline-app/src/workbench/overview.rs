@@ -390,7 +390,7 @@ impl Workbench {
                             )
                         })
                         .when(self.overview.here.as_ref() == Some(&session.id), |d| {
-                            d.child(self.here_card(&session, cx))
+                            d.child(self.here_card(&session, false, cx))
                         }),
                 );
             }
@@ -471,7 +471,7 @@ impl Workbench {
                             )),
                         )
                         .when(self.overview.here.as_ref() == Some(&s.id), |d| {
-                            d.child(self.here_card(s, cx))
+                            d.child(self.here_card(s, false, cx))
                         }),
                 );
             }
@@ -533,7 +533,7 @@ impl Workbench {
                             s.cwd
                         )))
                         .when(self.overview.here.as_ref() == Some(&s.id), |d| {
-                            d.child(self.here_card(s, cx))
+                            d.child(self.here_card(s, false, cx))
                         }),
                 );
             }

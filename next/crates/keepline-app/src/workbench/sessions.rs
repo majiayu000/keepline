@@ -138,9 +138,11 @@ impl Workbench {
             cx,
         );
     }
+    /// `in_pane`: the card sits on the session's own pane, not in the overview.
     pub(super) fn here_card(
         &self,
         session: &AgentSession,
+        in_pane: bool,
         cx: &Context<Self>,
     ) -> gpui::Stateful<gpui::Div> {
         let card = self
@@ -218,6 +220,8 @@ impl Workbench {
         let resume = session.clone();
         let command = session.runtime.resume_command(&session.cli_session_id);
         // Two decisions stay in sight: go back to it, and settle it. The rest waits in 更多.
+        // On its own live pane there is nothing to go back to: you type in the terminal.
+        let typing_here = in_pane && live_terminal(&self.workspace, session).is_some();
         let (settle_name, settle) = if session.outcome == Outcome::Open {
             ("已验收", Outcome::Completed)
         } else {
@@ -230,14 +234,16 @@ impl Workbench {
             div()
                 .flex()
                 .gap(px(T::S6))
-                .child(
-                    button("here-continue", "继续")
-                        .bg(T::color(T::ACCENT))
-                        .text_color(T::color(T::ON_ACCENT))
-                        .on_click(cx.listener(move |this, _, window, cx| {
-                            this.open_session(&resume, window, cx)
-                        })),
-                )
+                .when(!typing_here, |d| {
+                    d.child(
+                        button("here-continue", "继续")
+                            .bg(T::color(T::ACCENT))
+                            .text_color(T::color(T::ON_ACCENT))
+                            .on_click(cx.listener(move |this, _, window, cx| {
+                                this.open_session(&resume, window, cx)
+                            })),
+                    )
+                })
                 .child(
                     button(
                         gpui::SharedString::from(format!("here-{settle_name}")),

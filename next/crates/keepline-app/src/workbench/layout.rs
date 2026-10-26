@@ -86,9 +86,21 @@ impl Workbench {
         let menu_id = id.to_owned();
         let close_id = id.to_owned();
         let other_owner = pane.read(cx).has_other_owner();
+        let card_id = session.map(|s| s.id.clone());
         div()
             .id(gpui::SharedString::from(format!("pane-{id}")))
             .relative()
+            // Typing into the terminal is how you carry on; its card steps out of the way.
+            // Captured on the way down, so the keystroke still reaches the terminal.
+            .capture_key_down(cx.listener(move |this, event: &gpui::KeyDownEvent, _, cx| {
+                if !event.keystroke.modifiers.platform
+                    && card_id.is_some()
+                    && this.overview.here == card_id
+                {
+                    this.overview.here = None;
+                    cx.notify();
+                }
+            }))
             .on_mouse_down(
                 gpui::MouseButton::Left,
                 cx.listener(move |this, _, window, cx| {
@@ -212,6 +224,35 @@ impl Workbench {
                             )
                         },
                     )
+                    .when_some(
+                        session.filter(|s| {
+                            s.outcome == Outcome::Open
+                                && session_group(&self.workspace, s) == Group::Review
+                        }),
+                        |d, s| {
+                            let accept = s.id.clone();
+                            d.child(
+                                button(
+                                    gpui::SharedString::from(format!("accept-pane-{id}")),
+                                    "已验收",
+                                )
+                                .h(px(T::ICON_HEIGHT))
+                                .px(px(T::S6))
+                                .text_color(T::color(T::LINK))
+                                .on_click(cx.listener(
+                                    move |this, _, _, cx| {
+                                        this.edit(
+                                            Edit::SetOutcome {
+                                                id: accept.clone(),
+                                                outcome: Outcome::Completed,
+                                            },
+                                            cx,
+                                        )
+                                    },
+                                )),
+                            )
+                        },
+                    )
                     .when_some(session, |d, s| {
                         let show = s.id.clone();
                         d.child(
@@ -282,7 +323,7 @@ impl Workbench {
                             .justify_end()
                             .items_start()
                             .overflow_hidden()
-                            .child(self.here_card(s, cx).max_h_full()),
+                            .child(self.here_card(s, true, cx).max_h_full()),
                     )
                 },
             )
