@@ -17,7 +17,7 @@ impl Workbench {
             return;
         };
         let current = self.tab_name(tab, cx);
-        let field = cx.new(|cx| Field::new("标签名（回车保存，Esc 取消）", &current, cx).compact());
+        let field = cx.new(|cx| Field::new("标签名", &current, cx).compact());
         field.update(cx, |f, _| f.select_all());
         let subscription = cx.subscribe(&field, |this, _, event, cx| match event {
             crate::ui::field::FieldEvent::Submit => this.save_tab_name(cx),
