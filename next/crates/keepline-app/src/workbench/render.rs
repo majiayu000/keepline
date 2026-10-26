@@ -546,7 +546,7 @@ impl Render for TabTip {
     }
 }
 
-/// The ink-ring app icon shown beside the traffic lights, decoded once.
+/// The mascot app icon shown beside the traffic lights, decoded once.
 fn app_icon() -> std::sync::Arc<gpui::Image> {
     static ICON: std::sync::LazyLock<std::sync::Arc<gpui::Image>> =
         std::sync::LazyLock::new(|| {
