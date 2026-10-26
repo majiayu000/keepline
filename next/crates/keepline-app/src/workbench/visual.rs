@@ -173,6 +173,20 @@ impl Workbench {
         let id = self.nav.focused.clone().unwrap();
         self.close_pane(&id, cx);
     }
+    /// Closes the shown tab, as its × does; the neighbour that takes over is returned.
+    #[cfg(feature = "visual-test")]
+    pub fn visual_close_tab(&mut self, cx: &mut Context<Self>) -> Option<String> {
+        let id = self.nav.tab.clone().unwrap();
+        self.close_tab(&id, cx);
+        let tab = self.nav.tab.clone()?;
+        for id in attachable_ids(&self.workspace, self.workspace.tab_terminals(&tab)) {
+            assert!(
+                self.layout.panes.contains_key(&id),
+                "the neighbour's panes attach as soon as it takes over"
+            );
+        }
+        Some(tab)
+    }
     #[cfg(feature = "visual-test")]
     pub fn visual_assert_new_shell(&self, count: usize, window: &Window, cx: &gpui::App) {
         self.visual_check_panes(count);
