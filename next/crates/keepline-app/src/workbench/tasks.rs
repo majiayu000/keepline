@@ -1,6 +1,20 @@
 //! Todos: detail, handoff bar, agent picker and the sidebar quick capture.
 use super::*;
 
+/// Todo editing: the open form, the sidebar quick capture and the Agent choice.
+pub(super) struct TaskUi {
+    pub(super) chosen_agent: Option<Agent>,
+    /// The task whose 开始 is waiting for an Agent choice; true when it is "再开一个会话".
+    pub(super) picking: Option<(String, bool)>,
+    pub(super) last_agent: Option<Agent>,
+    pub(super) form: Option<Form>,
+    /// One-line capture in the sidebar; the full form is its "展开".
+    pub(super) quick_task: Option<(Entity<Field>, gpui::Subscription)>,
+    /// The sidebar's todo list starts folded; sessions come first.
+    pub(super) todos_open: bool,
+    pub(super) editing_task: Option<String>,
+    pub(super) start_after_save: Option<String>,
+}
 impl Workbench {
     pub(super) fn task_detail_view(
         &self,
@@ -97,7 +111,7 @@ impl Workbench {
                 .h(px(T::TASK_ROW))
                 .justify_start()
                 .gap(px(T::S8))
-                .child(dot(self.group(&session)))
+                .child(dot(session_group(&self.workspace, &session)))
                 .child(
                     div()
                         .flex_1()
@@ -108,7 +122,7 @@ impl Workbench {
                         .child(label(format!(
                             "{} · {}{}",
                             session.runtime.executable(),
-                            self.group(&session).label(),
+                            session_group(&self.workspace, &session).label(),
                             if self
                                 .workspace
                                 .content
@@ -123,7 +137,7 @@ impl Workbench {
                 )
                 .child(label("打开 →").text_color(T::color(T::LINK)))
                 .on_click(cx.listener(move |this, _, window, cx| {
-                    this.task_detail = None;
+                    this.nav.task_detail = None;
                     this.enter_card(&session, window, cx);
                 })),
             );
@@ -175,7 +189,7 @@ impl Workbench {
             )
             .child(
                 button("task-close", "返回画面").on_click(cx.listener(|this, _, _, cx| {
-                    this.task_detail = None;
+                    this.nav.task_detail = None;
                     cx.notify();
                 })),
             );
@@ -187,10 +201,10 @@ impl Workbench {
         &self,
         terminal: &str,
         task: &Task,
-        state: crate::pane::HandoffState,
+        state: crate::terminal::pane::HandoffState,
         cx: &Context<Self>,
     ) -> gpui::Div {
-        use crate::pane::HandoffState;
+        use crate::terminal::pane::HandoffState;
         let terminal = terminal.to_owned();
         let agent = self
             .workspace
@@ -201,13 +215,13 @@ impl Workbench {
             HandoffState::Waiting => format!(
                 "为待办「{}」启动 {}，就绪后放入待办内容",
                 task.title,
-                agent_name(agent)
+                agent.name()
             ),
             HandoffState::Placed => "已放入待办内容，检查后在 Agent 里按回车发送".to_owned(),
             HandoffState::NotReady => "Agent 还没准备好，内容没有放进去".to_owned(),
             HandoffState::Missing => format!(
                 "找不到 {} 命令，内容没有放进去。先安装它或把它加进 PATH，再点「再试一次」",
-                agent_name(agent)
+                agent.name()
             ),
         };
         let stuck = matches!(state, HandoffState::NotReady | HandoffState::Missing);
@@ -235,7 +249,7 @@ impl Workbench {
                 let retry = terminal.clone();
                 d.child(button("handoff-retry", "再试一次").on_click(cx.listener(
                     move |this, _, _, cx| {
-                        if let Some(p) = this.panes.get(&retry) {
+                        if let Some(p) = this.layout.panes.get(&retry) {
                             p.update(cx, |p, cx| p.retry_handoff(cx));
                         }
                     },
@@ -249,7 +263,7 @@ impl Workbench {
             .child(button("handoff-dismiss", "收起").on_click({
                 let terminal = terminal.clone();
                 cx.listener(move |this, _, _, cx| {
-                    if let Some(p) = this.panes.get(&terminal) {
+                    if let Some(p) = this.layout.panes.get(&terminal) {
                         p.update(cx, |p, cx| p.dismiss_handoff(cx));
                     }
                 })
@@ -276,15 +290,15 @@ impl Workbench {
             self.launch(false, Some(task), cx);
             return;
         }
-        self.picking = Some((task, another));
+        self.tasks.picking = Some((task, another));
         cx.notify();
     }
     pub(super) fn choose_agent(&mut self, agent: Agent, cx: &mut Context<Self>) {
-        let Some((task, another)) = self.picking.take() else {
+        let Some((task, another)) = self.tasks.picking.take() else {
             return;
         };
-        self.last_agent = Some(agent);
-        self.chosen_agent = Some(agent);
+        self.tasks.last_agent = Some(agent);
+        self.tasks.chosen_agent = Some(agent);
         let tab = self
             .workspace
             .tabs
@@ -293,17 +307,19 @@ impl Workbench {
             .map(|t| t.id.clone());
         match tab.filter(|_| another) {
             Some(tab) => {
-                self.tab = Some(tab);
+                self.nav.tab = Some(tab);
+                self.sync_panes(cx);
                 self.launch(true, Some(task), cx);
             }
             None => self.launch(false, Some(task), cx),
         }
     }
     pub(super) fn agent_picker(&self, task: &str, cx: &Context<Self>) -> Option<gpui::Div> {
-        if self.picking.as_ref().map(|(t, _)| t.as_str()) != Some(task) {
+        if self.tasks.picking.as_ref().map(|(t, _)| t.as_str()) != Some(task) {
             return None;
         }
         let first = self
+            .tasks
             .last_agent
             .unwrap_or(self.workspace.settings.default_agent);
         let order = if first == Agent::Codex {
@@ -334,7 +350,7 @@ impl Workbench {
             row = row.child(
                 button(
                     gpui::SharedString::from(format!("pick-{}-{task}", agent.executable())),
-                    agent_name(agent),
+                    agent.name(),
                 )
                 .h(px(T::ICON_HEIGHT))
                 .px(px(T::S6))
@@ -355,59 +371,33 @@ impl Workbench {
                 .px(px(T::S6))
                 .text_size(px(T::META))
                 .on_click(cx.listener(|this, _, _, cx| {
-                    this.picking = None;
+                    this.tasks.picking = None;
                     cx.notify();
                 })),
             ),
         )
     }
-    pub(super) fn edit_task_form(
-        &mut self,
-        task: &Task,
-        window: &mut Window,
-        cx: &mut Context<Self>,
-    ) {
-        self.show_form(FormKind::Task, window, cx);
-        self.editing_task = Some(task.id.clone());
-        if let Some(f) = &mut self.form {
-            f.space = task.space.clone();
-            f.agent = task.agent;
-            for (field, value) in f.fields.iter().zip([
-                task.title.clone(),
-                task.description.clone(),
-                task.acceptance
-                    .iter()
-                    .map(|c| c.description.clone())
-                    .collect::<Vec<_>>()
-                    .join("\n"),
-            ]) {
-                field.update(cx, |f, cx| {
-                    f.set_text(&value);
-                    cx.notify();
-                });
-            }
-        }
-    }
     pub(super) fn show_quick_task(&mut self, window: &mut Window, cx: &mut Context<Self>) {
-        self.overview = false;
-        self.form = None;
-        self.task_detail = None;
+        self.nav.overview = false;
+        self.tasks.todos_open = true;
+        self.tasks.form = None;
+        self.nav.task_detail = None;
         self.sync_panes(cx);
         let field = cx.new(|cx| Field::new("要做什么（回车保存，Esc 取消）", "", cx).compact());
         let subscription = cx.subscribe(&field, |this, _, event, cx| match event {
-            crate::field::FieldEvent::Submit => this.save_quick_task(false, cx),
-            crate::field::FieldEvent::Cancel => {
-                this.quick_task = None;
+            crate::ui::field::FieldEvent::Submit => this.save_quick_task(false, cx),
+            crate::ui::field::FieldEvent::Cancel => {
+                this.tasks.quick_task = None;
                 cx.notify();
             }
         });
         window.focus(&field.focus_handle(cx), cx);
-        self.quick_task = Some((field, subscription));
+        self.tasks.quick_task = Some((field, subscription));
         cx.notify();
     }
     /// Only the title is needed to capture; the space and Agent come from where you are.
     pub(super) fn save_quick_task(&mut self, start: bool, cx: &mut Context<Self>) {
-        let Some((field, _)) = &self.quick_task else {
+        let Some((field, _)) = &self.tasks.quick_task else {
             return;
         };
         let title = field.read(cx).text.trim().to_owned();
@@ -418,26 +408,27 @@ impl Workbench {
         }
         let task = Task {
             id: id(),
-            space: self.space.clone(),
+            space: self.nav.space.clone(),
             title,
             description: String::new(),
             acceptance: vec![],
             agent: self.workspace.settings.default_agent,
         };
         if start {
-            self.start_after_save = Some(task.id.clone());
+            self.tasks.start_after_save = Some(task.id.clone());
         }
-        self.quick_task = None;
+        self.tasks.quick_task = None;
         self.edit(Edit::AddTask(task), cx);
     }
     pub(super) fn expand_quick_task(&mut self, window: &mut Window, cx: &mut Context<Self>) {
         let title = self
+            .tasks
             .quick_task
             .take()
             .map(|(f, _)| f.read(cx).text.clone())
             .unwrap_or_default();
         self.show_form(FormKind::Task, window, cx);
-        if let Some(field) = self.form.as_ref().and_then(|f| f.fields.first()) {
+        if let Some(field) = self.tasks.form.as_ref().and_then(|f| f.fields.first()) {
             field.update(cx, |f, cx| {
                 f.set_text(&title);
                 cx.notify();
@@ -445,7 +436,7 @@ impl Workbench {
         }
     }
     pub(super) fn quick_task_row(&self, cx: &Context<Self>) -> Option<gpui::Div> {
-        let (field, _) = self.quick_task.as_ref()?;
+        let (field, _) = self.tasks.quick_task.as_ref()?;
         Some(
             div()
                 .flex()
@@ -493,7 +484,7 @@ impl Workbench {
                                 .px(px(T::S6))
                                 .text_size(px(T::META))
                                 .on_click(cx.listener(|this, _, _, cx| {
-                                    this.quick_task = None;
+                                    this.tasks.quick_task = None;
                                     cx.notify();
                                 })),
                         ),

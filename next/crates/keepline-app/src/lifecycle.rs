@@ -89,6 +89,12 @@ impl Drop for Instance {
 pub const OLD_BACKEND: &str = "后台版本过旧，需要重启后台（会中断正在运行的终端）";
 pub const RESET_NOTICE: &str = "此版本不迁移旧库。切换到新库后，旧空间、待办、标签布局、终端记录、Agent 会话归属和结局不会保留。原始 CLI 日志文件不会删除。请先处理运行中的终端，再手动备份旧库并切换；本窗口不会重启后台或删除数据。";
 
+/// Why the running host is older than the code on disk; set when this app connected.
+static STALE_HOST: std::sync::OnceLock<String> = std::sync::OnceLock::new();
+pub fn stale_host() -> Option<&'static str> {
+    STALE_HOST.get().map(String::as_str)
+}
+
 pub fn connected_host(socket: &Path) -> io::Result<bool> {
     use keepline_core::protocol::*;
     let mut stream = match UnixStream::connect(socket) {
@@ -107,7 +113,21 @@ pub fn connected_host(socket: &Path) -> io::Result<bool> {
     stream.set_write_timeout(Some(Duration::from_secs(2)))?;
     send(&mut stream, CONTROL, &Request::Hello { major: MAJOR })?;
     match receive::<Reply>(&mut stream)? {
-        Reply::Hello { major: MAJOR, .. } => Ok(true),
+        Reply::Hello {
+            major: MAJOR,
+            build,
+            ..
+        } => {
+            // An already running host keeps serving the code it started with, however
+            // often its binary is rebuilt; fixes then look like they never landed.
+            let sibling = std::env::current_exe()?.with_file_name("keeplined");
+            if let Some(reason) = build.stale(&sibling) {
+                let _ = STALE_HOST.set(format!(
+                    "{reason}，新改动还没有生效。重启后台后生效（会中断正在运行的终端）。"
+                ));
+            }
+            Ok(true)
+        }
         Reply::Error(message) if message.starts_with("protocol major ") => {
             let major = message
                 .split_whitespace()

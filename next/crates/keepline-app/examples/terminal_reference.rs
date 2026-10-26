@@ -5,12 +5,23 @@
 //! cargo run -p keepline-app --features visual-test --example terminal_reference -- \
 //!     --cols 100 --rows 30 --out out/keepline fixtures/*.vt
 //! KL_REF_FONT=Menlo overrides Theme::mono when Ghostty cannot load the same family.
-#[path = "../src/screen.rs"]
+#[path = "../src/model/mod.rs"]
+#[allow(dead_code)]
+mod model;
+#[path = "../src/terminal/screen.rs"]
 #[allow(dead_code)]
 mod screen;
-#[path = "../src/theme.rs"]
+#[path = "../src/ui/theme.rs"]
 #[allow(dead_code)]
 mod theme;
+// The shared files name each other by their paths in the app crate.
+#[allow(unused_imports)]
+mod terminal {
+    pub(crate) use super::screen;
+}
+mod ui {
+    pub(crate) use super::theme;
+}
 
 use gpui::{
     App, Bounds, Context, Font, IntoElement, Render, Window, WindowBounds, WindowOptions, canvas,

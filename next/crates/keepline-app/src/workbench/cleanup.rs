@@ -19,8 +19,8 @@ impl Workbench {
                             .border_0()
                             .text_color(T::color(T::LINK))
                             .on_click(cx.listener(|this, _, _, cx| {
-                                this.cleanup.clear();
-                                this.overview = true;
+                                this.overview.cleanup.clear();
+                                this.nav.overview = true;
                                 cx.notify();
                             })),
                     )
@@ -34,8 +34,8 @@ impl Workbench {
                     .child(
                         label(format!(
                             "第 {} / {} 个",
-                            (self.cleanup_index + 1).min(self.cleanup.len()),
-                            self.cleanup.len()
+                            (self.overview.cleanup_index + 1).min(self.overview.cleanup.len()),
+                            self.overview.cleanup.len()
                         ))
                         .text_color(T::color(T::SECONDARY)),
                     ),
@@ -48,13 +48,15 @@ impl Workbench {
                     .bg(T::color(T::CONTROL))
                     .child(div().h_full().rounded_full().bg(T::color(T::ACCENT)).w(
                         gpui::relative(
-                            self.cleanup_index as f32 / self.cleanup.len().max(1) as f32,
+                            self.overview.cleanup_index as f32
+                                / self.overview.cleanup.len().max(1) as f32,
                         ),
                     )),
             );
         if let Some(s) = self
+            .overview
             .cleanup
-            .get(self.cleanup_index)
+            .get(self.overview.cleanup_index)
             .and_then(|id| self.workspace.agent_sessions.iter().find(|s| &s.id == id))
         {
             let h = self.workspace.content.get(&s.id).map(|c| c.here());
@@ -125,7 +127,7 @@ impl Workbench {
                     .bg(T::color(T::ACCENT))
                     .text_color(T::color(T::ON_ACCENT))
                     .on_click(cx.listener(move |this, _, window, cx| {
-                        this.cleanup.clear();
+                        this.overview.cleanup.clear();
                         this.open_session(&resume, window, cx);
                     })),
             );
@@ -158,7 +160,7 @@ impl Workbench {
                     .justify_center()
                     .text_color(T::color(T::LINK))
                     .on_click(cx.listener(move |this, _, window, cx| {
-                        this.here = Some(sid.clone());
+                        this.overview.here = Some(sid.clone());
                         this.show_form(FormKind::Defer, window, cx);
                     })),
             );
@@ -193,7 +195,8 @@ impl Workbench {
                     button("cleanup-previous", "上一个")
                         .text_color(T::color(T::PRIMARY))
                         .on_click(cx.listener(|this, _, _, cx| {
-                            this.cleanup_index = this.cleanup_index.saturating_sub(1);
+                            this.overview.cleanup_index =
+                                this.overview.cleanup_index.saturating_sub(1);
                             cx.notify();
                         })),
                 )
@@ -201,7 +204,8 @@ impl Workbench {
                     button("cleanup-skip", "跳过")
                         .text_color(T::color(T::PRIMARY))
                         .on_click(cx.listener(|this, _, _, cx| {
-                            this.cleanup_index = (this.cleanup_index + 1).min(this.cleanup.len());
+                            this.overview.cleanup_index =
+                                (this.overview.cleanup_index + 1).min(this.overview.cleanup.len());
                             cx.notify();
                         })),
                 ),

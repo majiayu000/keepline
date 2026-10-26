@@ -1,4 +1,4 @@
-//! The editor form: todo, space, defer and settings.
+//! The editor form: todo, space and defer.
 use super::*;
 
 impl Workbench {
@@ -8,26 +8,10 @@ impl Workbench {
         window: &mut Window,
         cx: &mut Context<Self>,
     ) {
-        self.overview = false;
-        self.editing_task = None;
+        self.nav.overview = false;
+        self.tasks.editing_task = None;
         self.sync_panes(cx);
         let fields = match kind {
-            FormKind::Settings => vec![
-                cx.new(|cx| {
-                    Field::new(
-                        "很久没动（天，1–365）",
-                        &self.workspace.settings.stale_days.to_string(),
-                        cx,
-                    )
-                }),
-                cx.new(|cx| {
-                    Field::new(
-                        "离开多久显示鸟瞰（分钟，1–1440）",
-                        &self.workspace.settings.away_minutes.to_string(),
-                        cx,
-                    )
-                }),
-            ],
             FormKind::Space => vec![
                 cx.new(|cx| Field::new("空间名称", "", cx)),
                 cx.new(|cx| Field::new("工作目录（绝对路径）", "", cx)),
@@ -43,17 +27,16 @@ impl Workbench {
             ],
         };
         window.focus(&fields[0].focus_handle(cx), cx);
-        self.form = Some(Form {
-            notifications: self.workspace.settings.notifications,
+        self.tasks.form = Some(Form {
             kind,
             fields,
             agent: self.workspace.settings.default_agent,
-            space: self.space.clone(),
+            space: self.nav.space.clone(),
         });
         cx.notify();
     }
     pub(super) fn save_form(&mut self, start: bool, cx: &mut Context<Self>) {
-        let Some(form) = self.form.take() else {
+        let Some(form) = self.tasks.form.take() else {
             return;
         };
         let values: Vec<String> = form
@@ -62,30 +45,6 @@ impl Workbench {
             .map(|f| f.read(cx).text.clone())
             .collect();
         let edit = match form.kind {
-            FormKind::Settings => {
-                let days = values[0]
-                    .trim()
-                    .parse::<u32>()
-                    .ok()
-                    .filter(|n| (1..=365).contains(n));
-                let minutes = values[1]
-                    .trim()
-                    .parse::<u32>()
-                    .ok()
-                    .filter(|n| (1..=1440).contains(n));
-                let (Some(stale_days), Some(away_minutes)) = (days, minutes) else {
-                    self.error = Some("请填写有效天数和分钟数".into());
-                    self.form = Some(form);
-                    return;
-                };
-                Edit::Settings(Settings {
-                    notifications: form.notifications,
-                    stale_days,
-                    away_minutes,
-                    default_agent: form.agent,
-                })
-            }
-
             FormKind::Defer | FormKind::TaskDefer => {
                 let hours = values[1]
                     .trim()
@@ -94,7 +53,7 @@ impl Workbench {
                     .filter(|h| *h > 0 && *h <= 24 * 365);
                 if values[0].trim().is_empty() || hours.is_none() {
                     self.error = Some("请填写暂存原因和 1–8760 小时的再看时间".into());
-                    self.form = Some(form);
+                    self.tasks.form = Some(form);
                     return;
                 }
                 let outcome = Outcome::Deferred {
@@ -102,12 +61,12 @@ impl Workbench {
                     until: now() + hours.unwrap() * 3600,
                 };
                 if matches!(form.kind, FormKind::TaskDefer) {
-                    let Some(id) = self.task_detail.clone() else {
+                    let Some(id) = self.nav.task_detail.clone() else {
                         return;
                     };
                     Edit::SetTaskOutcome { id, outcome }
                 } else {
-                    let Some(id) = self.here.clone() else {
+                    let Some(id) = self.overview.here.clone() else {
                         return;
                     };
                     Edit::SetOutcome { id, outcome }
@@ -119,9 +78,9 @@ impl Workbench {
                 cwd: values[1].clone(),
             }),
             FormKind::Task => {
-                let task_id = self.editing_task.clone().unwrap_or_else(id);
+                let task_id = self.tasks.editing_task.clone().unwrap_or_else(id);
                 if start {
-                    self.start_after_save = Some(task_id.clone());
+                    self.tasks.start_after_save = Some(task_id.clone());
                 }
                 let task = Task {
                     id: task_id,
@@ -132,7 +91,8 @@ impl Workbench {
                         .lines()
                         .filter(|line| !line.trim().is_empty())
                         .map(|line| {
-                            self.editing_task
+                            self.tasks
+                                .editing_task
                                 .as_ref()
                                 .and_then(|id| self.workspace.tasks.iter().find(|t| &t.id == id))
                                 .and_then(|t| {
@@ -148,7 +108,7 @@ impl Workbench {
                         .collect(),
                     agent: form.agent,
                 };
-                if self.editing_task.take().is_some() {
+                if self.tasks.editing_task.take().is_some() {
                     Edit::UpdateTask(task)
                 } else {
                     Edit::AddTask(task)
@@ -173,9 +133,8 @@ impl Workbench {
             .flex_col()
             .gap(px(T::S16))
             .child(div().text_size(px(T::FORM_TITLE)).child(match form.kind {
-                FormKind::Task if self.editing_task.is_some() => "编辑待办",
+                FormKind::Task if self.tasks.editing_task.is_some() => "编辑待办",
                 FormKind::Task => "新建待办",
-                FormKind::Settings => "设置",
                 FormKind::Space => "新建空间",
                 _ => "暂存",
             }));
@@ -194,7 +153,7 @@ impl Workbench {
                             d.bg(T::color(T::CHIP)).text_color(T::color(T::LINK))
                         })
                         .on_click(cx.listener(move |this, _, _, cx| {
-                            if let Some(f) = &mut this.form {
+                            if let Some(f) = &mut this.tasks.form {
                                 f.space = sid.clone();
                             }
                             cx.notify();
@@ -211,7 +170,7 @@ impl Workbench {
                 );
             }
         }
-        if matches!(form.kind, FormKind::Task | FormKind::Settings) {
+        if matches!(form.kind, FormKind::Task) {
             let mut agents = div().flex().gap(px(T::S8));
             for agent in [Agent::Codex, Agent::Claude] {
                 agents = agents.child(
@@ -220,7 +179,7 @@ impl Workbench {
                             d.bg(T::color(T::CHIP)).text_color(T::color(T::LINK))
                         })
                         .on_click(cx.listener(move |this, _, _, cx| {
-                            if let Some(f) = &mut this.form {
+                            if let Some(f) = &mut this.tasks.form {
                                 f.agent = agent;
                             }
                             cx.notify();
@@ -235,31 +194,6 @@ impl Workbench {
                     .child(label("默认 Agent"))
                     .child(agents),
             );
-        }
-        if matches!(form.kind, FormKind::Settings) {
-            panel = panel
-                .child(
-                    button(
-                        "notifications-toggle",
-                        if form.notifications {
-                            "✓ 系统通知已开启"
-                        } else {
-                            "系统通知关闭（点击开启）"
-                        },
-                    )
-                    .on_click(cx.listener(|this, _, _, cx| {
-                        if let Some(form) = &mut this.form {
-                            form.notifications = !form.notifications;
-                        }
-                        cx.notify();
-                    })),
-                )
-                .child(label(
-                    "保存开启后由 macOS 请求通知权限；默认关闭，退出 App 后不接收通知。",
-                ));
-            if let Some(status) = cx.try_global::<crate::desktop::Status>() {
-                panel = panel.child(label(status.0.clone()));
-            }
         }
         panel.child(
             div()
@@ -286,10 +220,37 @@ impl Workbench {
                 })
                 .child(
                     button("cancel", "取消").on_click(cx.listener(|this, _, _, cx| {
-                        this.form = None;
+                        this.tasks.form = None;
                         cx.notify();
                     })),
                 ),
         )
+    }
+    pub(super) fn edit_task_form(
+        &mut self,
+        task: &Task,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        self.show_form(FormKind::Task, window, cx);
+        self.tasks.editing_task = Some(task.id.clone());
+        if let Some(f) = &mut self.tasks.form {
+            f.space = task.space.clone();
+            f.agent = task.agent;
+            for (field, value) in f.fields.iter().zip([
+                task.title.clone(),
+                task.description.clone(),
+                task.acceptance
+                    .iter()
+                    .map(|c| c.description.clone())
+                    .collect::<Vec<_>>()
+                    .join("\n"),
+            ]) {
+                field.update(cx, |f, cx| {
+                    f.set_text(&value);
+                    cx.notify();
+                });
+            }
+        }
     }
 }

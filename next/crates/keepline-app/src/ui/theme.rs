@@ -1,18 +1,18 @@
 //! Design tokens from specs/terminal-workbench/design/README.md.
 //! UI dimensions live here; terminal cell colors remain owned by the VT.
-use crate::screen::hsla;
-use gpui::{App, Font, Hsla, font};
+pub use crate::model::session_state::Group;
+use gpui::{App, Font, Hsla, Rgba, font};
 
-pub struct Theme;
-#[derive(Clone, Copy, PartialEq, Eq)]
-pub enum Group {
-    Waiting,
-    Error,
-    Review,
-    Paused,
-    Running,
-    Stale,
+pub fn hsla(c: u32) -> Hsla {
+    Rgba {
+        r: ((c >> 16) & 255) as f32 / 255.,
+        g: ((c >> 8) & 255) as f32 / 255.,
+        b: (c & 255) as f32 / 255.,
+        a: 1.,
+    }
+    .into()
 }
+pub struct Theme;
 impl Group {
     pub const ALL: [Self; 6] = [
         Self::Waiting,
@@ -30,6 +30,9 @@ impl Group {
             Self::Paused => "做一半停了",
             Self::Running => "进行中",
             Self::Stale => "很久没动",
+            Self::Working => "在跑",
+            Self::Done => "刚做完",
+            Self::Ready => "等你下一步",
         }
     }
     /// The group's base hue; its ink and wash derive from it and the terminal.
@@ -39,8 +42,10 @@ impl Group {
             Self::Error => 0xe5534b,
             Self::Review => 0x8f93ff,
             Self::Paused => 0xd9a441,
-            Self::Running => 0x4cc38a,
+            Self::Running | Self::Done => 0x4cc38a,
             Self::Stale => Theme::MUTED,
+            Self::Working => 0xe8c547,
+            Self::Ready => 0x8a9bb0,
         }
     }
     pub fn colors(self) -> (Hsla, Hsla, Hsla) {
@@ -104,9 +109,16 @@ impl Theme {
     pub const ON_ACCENT: u32 = Self::BG;
     pub const FOCUS: u32 = mix(Self::BG, Self::FG, 380);
     pub const LINK: u32 = mix(Self::BG, Self::FG, 860);
+    /// Selected text in a field.
+    pub const SELECTION: u32 = mix(Self::BG, Self::FG, 260);
     pub const CHIP: u32 = mix(Self::BG, Self::FG, 80);
     /// In-window popovers (「你在这里」, cleanup) sit one step above the pane.
     pub const POPOVER: u32 = mix(Self::BG, Self::FG, 55);
+    pub const PALETTE_ROW: u32 = mix(Self::POPOVER, Self::FG, 75);
+    /// Matched text in search results: a quiet amber wash, the text keeps its own color.
+    pub const MATCH: u32 = mix(Self::POPOVER, 0xe8a33a, 280);
+    /// Dims the workbench behind the palette, as rgba.
+    pub const SCRIM: u32 = 0x0000_0099;
     pub const INFERENCE: u32 = mix(Self::BG, Self::FG, 35);
     /// The menu bar panel is a separate light macOS popover, kept apart from the window.
     pub const MENU_ACCENT: u32 = 0x4b4fd6;
@@ -138,11 +150,15 @@ impl Theme {
     pub const TRAFFIC_LIGHT_Y: f32 = 17.;
     pub const TRAFFIC_LIGHT_INSET: f32 = 84.;
     pub const TABS: f32 = 34.;
+    pub const TAB_RENAME_MIN: f32 = 64.;
+    pub const TAB_MAX_WIDTH: f32 = 200.;
+    pub const TAB_TIP_WIDTH: f32 = 420.;
     pub const TODO_HEIGHT: f32 = 36.;
     pub const PANE_HEADER: f32 = 32.;
     pub const FOOTER: f32 = 26.;
     pub const ROW: f32 = 30.;
     pub const BORDER_WIDTH: f32 = 1.;
+    pub const CARET_WIDTH: f32 = 1.5;
     pub const PANE_RADIUS: f32 = 8.;
     pub const CONTROL_RADIUS: f32 = 6.;
     pub const CHIP_RADIUS: f32 = 4.;
@@ -175,6 +191,14 @@ impl Theme {
     pub const FORM_TITLE: f32 = 16.;
     pub const TASK_ROW: f32 = 48.;
     pub const SEARCH_WIDTH: f32 = 360.;
+    /// The ⌘P palette: a floating panel over the workbench, list left, preview right.
+    pub const PALETTE_WIDTH: f32 = 680.;
+    pub const PALETTE_TOP: f32 = 72.;
+    pub const PALETTE_LIST: f32 = 440.;
+    pub const PALETTE_PREVIEW: f32 = 250.;
+    pub const PALETTE_RADIUS: f32 = 14.;
+    pub const SEARCH_FIELD: f32 = 48.;
+    pub const SEARCH_TEXT: f32 = 15.;
     pub const SEARCH_MIN: f32 = 180.;
     pub const HERE_LABEL: f32 = 96.;
     pub const FIELD_HEIGHT: f32 = 40.;
@@ -226,10 +250,15 @@ mod tests {
     #[test]
     fn components_take_colors_and_sizes_from_tokens() {
         let src = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("src");
-        let mut files: Vec<_> = ["pane.rs", "field.rs", "desktop.rs"]
-            .iter()
-            .map(|name| src.join(name))
-            .collect();
+        let mut files: Vec<_> = [
+            "terminal/pane.rs",
+            "ui/field.rs",
+            "ui/widgets.rs",
+            "desktop.rs",
+        ]
+        .iter()
+        .map(|name| src.join(name))
+        .collect();
         for entry in std::fs::read_dir(src.join("workbench")).unwrap() {
             files.push(entry.unwrap().path());
         }
