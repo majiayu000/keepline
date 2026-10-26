@@ -145,10 +145,12 @@ impl Render for Workbench {
             if let Some((_, field, _)) =
                 self.layout.renaming_tab.as_ref().filter(|(t, ..)| t == &id)
             {
+                // Sized by the name being typed, like the tab it replaces.
                 strip = strip.child(
                     div()
                         .flex_shrink_0()
-                        .w(px(T::TAB_RENAME_WIDTH))
+                        .min_w(px(T::TAB_RENAME_MIN))
+                        .max_w(px(T::TAB_MAX_WIDTH))
                         .child(field.clone()),
                 );
                 continue;
