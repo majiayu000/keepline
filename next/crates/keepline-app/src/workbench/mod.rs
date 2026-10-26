@@ -53,6 +53,8 @@ pub struct Workbench {
     form: Option<Form>,
     /// One-line capture in the sidebar; the full form is its "展开".
     quick_task: Option<(Entity<Field>, gpui::Subscription)>,
+    /// The sidebar's todo list starts folded; sessions come first.
+    todos_open: bool,
     task_detail: Option<String>,
     editing_task: Option<String>,
     start_after_save: Option<String>,
@@ -373,6 +375,7 @@ impl Workbench {
             error: None,
             form: None,
             quick_task: None,
+            todos_open: false,
             task_detail: None,
             editing_task: None,
             start_after_save: None,
