@@ -12,6 +12,8 @@ pub(super) struct LayoutState {
     pub(super) renaming_tab: Option<(String, Entity<Field>, gpui::Subscription)>,
     /// A tab's right-click menu: the tab and where it was opened.
     pub(super) tab_menu: Option<(String, gpui::Point<gpui::Pixels>)>,
+    /// The title-bar logo's menu for choosing the app icon, where it was opened.
+    pub(super) icon_menu: Option<gpui::Point<gpui::Pixels>>,
     /// A close that would stop a running Agent, waiting for the user to confirm it.
     pub(super) confirm_close: Option<Closing>,
 }
@@ -645,6 +647,51 @@ impl Workbench {
             this.layout.tab_menu = None
         })
     }
+    /// Ink ring or mascot: the title bar and the Dock tile change at once, and the
+    /// choice is remembered for the next launch.
+    pub(super) fn icon_menu_view(
+        &self,
+        position: gpui::Point<gpui::Pixels>,
+        window: &Window,
+        cx: &Context<Self>,
+    ) -> gpui::AnyElement {
+        let current = cx.global::<Chosen>().icon;
+        let entries = AppIcon::ALL
+            .into_iter()
+            .map(|icon| {
+                div()
+                    .id(gpui::SharedString::from(format!(
+                        "app-icon-{}",
+                        icon.label()
+                    )))
+                    .role(gpui::accesskit::Role::Button)
+                    .aria_label(icon.label())
+                    .h(px(T::ROW))
+                    .px(px(T::S8))
+                    .flex()
+                    .items_center()
+                    .gap(px(T::S8))
+                    .rounded(px(T::CONTROL_RADIUS))
+                    .text_size(px(T::SMALL))
+                    .cursor_pointer()
+                    .hover(|s| s.bg(T::color(T::BUTTON_HOVER)))
+                    .child(gpui::img(icon.title_image()).size(px(T::LOGO)))
+                    .child(div().flex_1().child(icon.label()))
+                    .when(icon == current, |d| {
+                        d.child(div().text_color(T::color(T::LINK)).child("✓"))
+                    })
+                    .on_click(cx.listener(move |this, _, _, cx| {
+                        this.layout.icon_menu = None;
+                        choose_icon(icon, cx);
+                        cx.notify();
+                    }))
+                    .into_any_element()
+            })
+            .collect();
+        self.popup(position, entries, window, cx, |this| {
+            this.layout.icon_menu = None
+        })
+    }
     /// Asks before a close stops running Agents; a click outside cancels.
     pub(super) fn confirm_close_view(
         &self,
@@ -759,4 +806,13 @@ impl Workbench {
             )
             .into_any_element()
     }
+}
+/// Applies `icon` to the title bar and the Dock, and remembers it.
+pub(super) fn choose_icon(icon: AppIcon, cx: &mut gpui::App) {
+    crate::desktop::set_dock_icon(icon.dock_png());
+    let file = cx.global::<Chosen>().file.clone();
+    if let Err(e) = icon.save(&file) {
+        eprintln!("记住图标选择失败: {e}");
+    }
+    cx.set_global(Chosen { icon, file });
 }

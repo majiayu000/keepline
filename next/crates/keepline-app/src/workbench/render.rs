@@ -68,7 +68,27 @@ impl Render for Workbench {
                 .bg(T::color(T::PANEL))
                 .border_b(px(T::BORDER_WIDTH))
                 .border_color(T::color(T::BORDER))
-                .child(gpui::img(app_icon()).size(px(T::LOGO)).flex_shrink_0())
+                .child(
+                    div()
+                        .id("app-icon")
+                        .role(gpui::accesskit::Role::Button)
+                        .aria_label("换图标")
+                        .flex_shrink_0()
+                        .cursor_pointer()
+                        .child(
+                            gpui::img(cx.global::<Chosen>().icon.title_image()).size(px(T::LOGO)),
+                        )
+                        .on_mouse_down(
+                            gpui::MouseButton::Left,
+                            cx.listener(|this, event: &gpui::MouseDownEvent, _, cx| {
+                                // Drops below the title bar so the logo stays in view.
+                                this.layout.icon_menu =
+                                    Some(gpui::point(event.position.x, px(T::TOP)));
+                                cx.stop_propagation();
+                                cx.notify();
+                            }),
+                        ),
+                )
                 .child(
                     div()
                         .font_weight(gpui::FontWeight::SEMIBOLD)
@@ -399,6 +419,9 @@ impl Render for Workbench {
         if let Some(menu) = &self.layout.menu {
             root = root.child(self.menu_view(menu, window, cx));
         }
+        if let Some(position) = self.layout.icon_menu {
+            root = root.child(self.icon_menu_view(position, window, cx));
+        }
         if let Some((id, position)) = &self.layout.tab_menu {
             root = root.child(self.tab_menu_view(id, *position, window, cx));
         }
@@ -544,16 +567,4 @@ impl Render for TabTip {
             })
             .when_some(self.cwd.clone(), |d, cwd| d.child(label(cwd)))
     }
-}
-
-/// The mascot app icon shown beside the traffic lights, decoded once.
-fn app_icon() -> std::sync::Arc<gpui::Image> {
-    static ICON: std::sync::LazyLock<std::sync::Arc<gpui::Image>> =
-        std::sync::LazyLock::new(|| {
-            std::sync::Arc::new(gpui::Image::from_bytes(
-                gpui::ImageFormat::Png,
-                include_bytes!("../../assets/keepline-icon.png").to_vec(),
-            ))
-        });
-    ICON.clone()
 }
