@@ -285,6 +285,25 @@ pub fn start(
                         view.visual_page(name, window, cx);
                     })
                     .unwrap();
+                if name == "HereTyped" {
+                    use gpui::InputEvent;
+                    // A plain keystroke into the terminal folds the card over it.
+                    cx.update_window(handle.into(), |_, w, a| {
+                        w.dispatch_event(
+                            gpui::KeyDownEvent {
+                                keystroke: gpui::Keystroke::parse("x").unwrap(),
+                                is_held: false,
+                                prefer_character_input: false,
+                            }
+                            .to_platform_input(),
+                            a,
+                        );
+                    })
+                    .unwrap();
+                    let open = handle.update(cx, |v, _, _| v.visual_here_open()).unwrap();
+                    assert!(!open, "typing into the pane folds its 你在这里 card");
+                    eprintln!("HereTyped: card folded after a keystroke");
+                }
                 // Starting an Agent and placing the task text takes a few quiet checks.
                 let settle = if name == "TodoStart" { 4 } else { 1 };
                 cx.background_executor()

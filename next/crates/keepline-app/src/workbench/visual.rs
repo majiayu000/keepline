@@ -263,6 +263,10 @@ impl Workbench {
         window.refresh();
     }
     #[cfg(feature = "visual-test")]
+    pub fn visual_here_open(&self) -> bool {
+        self.overview.here.is_some()
+    }
+    #[cfg(feature = "visual-test")]
     pub fn visual_page(&mut self, name: &str, window: &mut Window, cx: &mut Context<Self>) {
         self.tasks.form = None;
         self.tasks.quick_task = None;
@@ -287,6 +291,14 @@ impl Workbench {
         self.sync_panes(cx);
         match name {
             "Main" => self.overview.here = self.workspace.current_agent("p0").map(|s| s.id.clone()),
+            // The card open on the focused waiting pane; the harness then types a key.
+            "HereTyped" => {
+                self.overview.here = self.workspace.current_agent("p0").map(|s| s.id.clone());
+                self.nav.focused = Some("p0".into());
+                if let Some(pane) = self.layout.panes.get("p0") {
+                    window.focus(&pane.focus_handle(cx), cx);
+                }
+            }
             "HereMore" => {
                 self.overview.here = self.workspace.current_agent("p0").map(|s| s.id.clone());
                 self.overview.here_more = self.overview.here.clone();
