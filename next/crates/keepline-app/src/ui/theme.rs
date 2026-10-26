@@ -150,7 +150,7 @@ impl Theme {
     pub const TRAFFIC_LIGHT_Y: f32 = 17.;
     pub const TRAFFIC_LIGHT_INSET: f32 = 84.;
     pub const TABS: f32 = 34.;
-    pub const TAB_RENAME_WIDTH: f32 = 180.;
+    pub const TAB_RENAME_MIN: f32 = 64.;
     pub const TAB_MAX_WIDTH: f32 = 200.;
     pub const TAB_TIP_WIDTH: f32 = 420.;
     pub const TODO_HEIGHT: f32 = 36.;
