@@ -4,9 +4,9 @@ use super::*;
 impl Workbench {
     #[cfg(feature = "visual-test")]
     pub fn visual_layout(&mut self, name: &str, window: &mut Window, cx: &mut Context<Self>) {
-        self.overview = false;
-        self.zoomed = None;
-        self.menu = None;
+        self.nav.overview = false;
+        self.nav.zoomed = None;
+        self.layout.menu = None;
         if name == "eight" {
             let mut leaves = self
                 .workspace
@@ -44,7 +44,7 @@ impl Workbench {
             {
                 tab.layout = leaves.pop();
                 if let Ok(Reply::Workspace(w)) = rpc(
-                    &self.socket,
+                    self.store.socket(),
                     &Request::Edit {
                         revision: self.workspace.revision,
                         edit: Edit::PutTab { tab },
@@ -54,14 +54,15 @@ impl Workbench {
                 }
             }
         }
-        self.tab = Some(if name == "menu" { "nested" } else { name }.into());
+        self.nav.tab = Some(if name == "menu" { "nested" } else { name }.into());
         self.sync_panes(cx);
         if let Some(id) = self
+            .nav
             .tab
             .as_ref()
             .and_then(|id| self.workspace.tab_terminals(id).first().cloned())
         {
-            if let Some(pane) = self.panes.get(&id) {
+            if let Some(pane) = self.layout.panes.get(&id) {
                 window.focus(&pane.focus_handle(cx), cx);
             }
         }
@@ -71,22 +72,84 @@ impl Workbench {
     #[cfg(feature = "visual-test")]
     pub fn visual_bounds(&self) -> gpui::Bounds<gpui::Pixels> {
         *self
+            .layout
             .split_bounds
             .get(&Vec::new())
             .expect("root splitter bounds")
     }
     #[cfg(feature = "visual-test")]
     pub fn visual_menu_point(&self, index: usize) -> gpui::Point<gpui::Pixels> {
-        let menu = self.menu.as_ref().expect("right mouse opened pane menu");
+        let menu = self
+            .layout
+            .menu
+            .as_ref()
+            .expect("right mouse opened pane menu");
         menu.position + gpui::point(px(T::S20), px(T::S6 + T::ROW * (index as f32 + 0.5)))
     }
     #[cfg(feature = "visual-test")]
+    pub fn visual_tab_menu_point(&self, index: usize) -> gpui::Point<gpui::Pixels> {
+        let (_, position) = self
+            .layout
+            .tab_menu
+            .as_ref()
+            .expect("right mouse opened tab menu");
+        *position + gpui::point(px(T::S20), px(T::S6 + T::ROW * (index as f32 + 0.5)))
+    }
+    /// Whether the tab menu is open, and the rename field's text and focus if any.
+    #[cfg(feature = "visual-test")]
+    pub fn visual_tab_state(
+        &self,
+        window: &Window,
+        cx: &gpui::App,
+    ) -> (bool, Option<(String, bool)>) {
+        (
+            self.layout.tab_menu.is_some(),
+            self.layout.renaming_tab.as_ref().map(|(_, field, _)| {
+                (
+                    field.read(cx).text.clone(),
+                    field.focus_handle(cx).is_focused(window),
+                )
+            }),
+        )
+    }
+    #[cfg(feature = "visual-test")]
+    pub fn visual_new_tab(&mut self, cx: &mut Context<Self>) {
+        self.launch(false, None, cx);
+    }
+    /// Opens a conversation whose resume cannot take (unknown CLI id, no live terminal),
+    /// as clicking a 出错了 row does; returns the tab count and the current tab after.
+    #[cfg(feature = "visual-test")]
+    pub fn visual_open_failed_session(
+        &mut self,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) -> (usize, Option<String>) {
+        let session = AgentSession {
+            id: "visual-failed".into(),
+            runtime: Agent::Codex,
+            cli_session_id: "visual-missing".into(),
+            terminal: None,
+            current: false,
+            task: None,
+            outcome: Outcome::Open,
+            updated: 1,
+            cwd: std::env::temp_dir().display().to_string(),
+            transcript: String::new(),
+        };
+        self.open_session(&session, window, cx);
+        (self.workspace.tabs.len(), self.nav.tab.clone())
+    }
+    #[cfg(feature = "visual-test")]
+    pub fn visual_tabs(&self) -> (usize, Option<String>) {
+        (self.workspace.tabs.len(), self.nav.tab.clone())
+    }
+    #[cfg(feature = "visual-test")]
     pub fn visual_check_panes(&self, count: usize) {
-        assert_eq!(self.panes.len(), count);
+        assert_eq!(self.layout.panes.len(), count);
     }
     #[cfg(feature = "visual-test")]
     pub fn visual_check_saved_ratio(&self) {
-        let Reply::Workspace(w) = rpc(&self.socket, &Request::Workspace).unwrap() else {
+        let Reply::Workspace(w) = rpc(self.store.socket(), &Request::Workspace).unwrap() else {
             panic!("workspace")
         };
         let local = self
@@ -102,20 +165,20 @@ impl Workbench {
     }
     #[cfg(feature = "visual-test")]
     pub fn visual_split_down(&mut self, window: &mut Window, cx: &mut Context<Self>) {
-        let id = self.focused.clone().unwrap();
+        let id = self.nav.focused.clone().unwrap();
         self.menu_action(&id, "向下分屏", window, cx);
     }
     #[cfg(feature = "visual-test")]
     pub fn visual_close_focused(&mut self, cx: &mut Context<Self>) {
-        let id = self.focused.clone().unwrap();
+        let id = self.nav.focused.clone().unwrap();
         self.close_pane(&id, cx);
     }
     #[cfg(feature = "visual-test")]
     pub fn visual_assert_new_shell(&self, count: usize, window: &Window, cx: &gpui::App) {
         self.visual_check_panes(count);
-        let id = self.focused.as_ref().unwrap();
+        let id = self.nav.focused.as_ref().unwrap();
         assert!(
-            self.panes[id].focus_handle(cx).is_focused(window),
+            self.layout.panes[id].focus_handle(cx).is_focused(window),
             "new split must receive input focus"
         );
         let terminal = self
@@ -132,7 +195,8 @@ impl Workbench {
         assert!(self.workspace.agent_sessions.is_empty());
     }
     #[cfg(feature = "visual-test")]
-    pub fn visual_check_closed_processes(&self) {
+    /// Of the two shells this run opened, `closed` were closed and must have stopped.
+    pub fn visual_check_closed_processes(&self, closed: usize) {
         let extras: Vec<_> = self
             .workspace
             .terminals
@@ -140,10 +204,14 @@ impl Workbench {
             .filter(|t| !t.id.starts_with('p'))
             .collect();
         assert_eq!(extras.len(), 2);
-        for t in extras {
-            assert_eq!(t.state, ProcessState::Running);
-            assert_eq!(unsafe { libc::kill(t.pid.unwrap() as i32, 0) }, 0);
-        }
+        let stopped = extras
+            .iter()
+            .filter(|t| {
+                t.state != ProcessState::Running
+                    && unsafe { libc::kill(t.pid.unwrap() as i32, 0) } != 0
+            })
+            .count();
+        assert_eq!(stopped, closed, "closing a pane stops its terminal");
     }
     #[cfg(feature = "visual-test")]
     pub fn visual_marked_overlay(
@@ -152,10 +220,11 @@ impl Workbench {
         cx: &mut Context<Self>,
     ) -> Option<gpui::Bounds<gpui::Pixels>> {
         if let Some(pane) = self
+            .nav
             .tab
             .as_ref()
             .and_then(|id| self.workspace.tab_terminals(id).first().cloned())
-            .and_then(|id| self.panes.get(&id))
+            .and_then(|id| self.layout.panes.get(&id))
         {
             return Some(pane.update(cx, |pane, cx| pane.verify_marked_overlay(window, cx)));
         }
@@ -163,14 +232,15 @@ impl Workbench {
     }
     #[cfg(feature = "visual-test")]
     pub fn visual_view(&mut self, overview: bool, window: &mut Window, cx: &mut Context<Self>) {
-        self.overview = overview;
+        self.nav.overview = overview;
         self.sync_panes(cx);
         if !overview {
             if let Some(pane) = self
+                .nav
                 .tab
                 .as_ref()
                 .and_then(|id| self.workspace.tab_terminals(id).first().cloned())
-                .and_then(|id| self.panes.get(&id))
+                .and_then(|id| self.layout.panes.get(&id))
             {
                 window.focus(&pane.focus_handle(cx), cx);
             }
@@ -180,18 +250,18 @@ impl Workbench {
     }
     #[cfg(feature = "visual-test")]
     pub fn visual_page(&mut self, name: &str, window: &mut Window, cx: &mut Context<Self>) {
-        self.form = None;
-        self.quick_task = None;
-        self.picking = None;
-        self.task_detail = None;
-        self.cleanup.clear();
-        self.here = None;
-        self.here_more = None;
-        self.search_open = false;
-        self.overview = name == "Overview";
-        self.zoomed = None;
-        self.space = "s0".into();
-        self.tab = Some(
+        self.tasks.form = None;
+        self.tasks.quick_task = None;
+        self.tasks.picking = None;
+        self.nav.task_detail = None;
+        self.overview.cleanup.clear();
+        self.overview.here = None;
+        self.overview.here_more = None;
+        self.search.hide();
+        self.nav.overview = name == "Overview";
+        self.nav.zoomed = None;
+        self.nav.space = "s0".into();
+        self.nav.tab = Some(
             if name == "TodoStart" {
                 "start"
             } else {
@@ -199,13 +269,13 @@ impl Workbench {
             }
             .into(),
         );
-        self.show_running = false;
+        self.overview.show_running = false;
         self.sync_panes(cx);
         match name {
-            "Main" => self.here = self.workspace.current_agent("p0").map(|s| s.id.clone()),
+            "Main" => self.overview.here = self.workspace.current_agent("p0").map(|s| s.id.clone()),
             "HereMore" => {
-                self.here = self.workspace.current_agent("p0").map(|s| s.id.clone());
-                self.here_more = self.here.clone();
+                self.overview.here = self.workspace.current_agent("p0").map(|s| s.id.clone());
+                self.overview.here_more = self.overview.here.clone();
             }
             "TodoNew" => {
                 self.show_form(FormKind::Task, window, cx);
@@ -215,7 +285,7 @@ impl Workbench {
                     .iter()
                     .find(|t| t.id == "task1")
                     .unwrap();
-                for (field, text) in self.form.as_ref().unwrap().fields.iter().zip([
+                for (field, text) in self.tasks.form.as_ref().unwrap().fields.iter().zip([
                     task.title.clone(),
                     task.description.clone(),
                     task.acceptance
@@ -230,7 +300,7 @@ impl Workbench {
                     });
                 }
             }
-            "TodoDetail" => self.task_detail = Some("task0".into()),
+            "TodoDetail" => self.nav.task_detail = Some("task0".into()),
             "TodoStart" => {
                 let text = self
                     .workspace
@@ -247,31 +317,44 @@ impl Workbench {
                     .unwrap()
                     .agent
                     .command();
-                self.panes["pstart"]
+                self.layout.panes["pstart"]
                     .update(cx, |pane, cx| pane.start_agent(&command, Some(text), cx));
             }
             "Cleanup" => {
-                self.cleanup = self
+                self.overview.cleanup = self
                     .workspace
                     .agent_sessions
                     .iter()
-                    .filter(|s| self.group(s) == Group::Stale)
+                    .filter(|s| session_group(&self.workspace, s) == Group::Stale)
                     .map(|s| s.id.clone())
                     .collect();
-                self.cleanup_index = 0;
-                assert!(!self.cleanup.is_empty());
+                self.overview.cleanup_index = 0;
+                assert!(!self.overview.cleanup.is_empty());
             }
             "QuickTask" => {
                 self.show_quick_task(window, cx);
-                if let Some((field, _)) = &self.quick_task {
+                if let Some((field, _)) = &self.tasks.quick_task {
                     field.update(cx, |f, cx| {
                         f.set_text("给离线模式补一组断网回归测试");
                         cx.notify();
                     });
                 }
             }
-            "ScreenWait" => self.here = self.workspace.current_agent("p1").map(|s| s.id.clone()),
-            "StartPick" => self.picking = Some(("task2".into(), false)),
+            "ScreenWait" => {
+                self.overview.here = self.workspace.current_agent("p1").map(|s| s.id.clone())
+            }
+            "StartPick" => self.tasks.picking = Some(("task2".into(), false)),
+            "SearchEmpty" | "Search" => {
+                self.open_search(window, cx);
+                if name == "Search" {
+                    let query =
+                        std::env::var("KEEPLINE_SEARCH_QUERY").unwrap_or_else(|_| "反馈".into());
+                    self.search.field().update(cx, |f, cx| {
+                        f.set_text(&query);
+                        cx.notify();
+                    });
+                }
+            }
             "Overview" | "Menubar" => (),
             _ => panic!("unknown visual page"),
         }

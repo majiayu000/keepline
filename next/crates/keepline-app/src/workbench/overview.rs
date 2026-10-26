@@ -1,6 +1,22 @@
 //! 鸟瞰: every open session as grouped cards.
 use super::*;
 
+/// The overview's filters and folds, the 「你在这里」 card and 逐个清理's queue.
+pub(super) struct OverviewState {
+    pub(super) since: u64,
+    pub(super) filter_space: Option<String>,
+    pub(super) changed_only: bool,
+    pub(super) here: Option<String>,
+    /// The session whose 「你在这里」 card shows its secondary actions.
+    pub(super) here_more: Option<String>,
+    pub(super) show_stale: bool,
+    pub(super) show_closed: bool,
+    pub(super) cleanup: Vec<String>,
+    pub(super) cleanup_index: usize,
+    pub(super) show_running: bool,
+    pub(super) show_hidden: bool,
+    pub(super) card_menu: Option<String>,
+}
 impl Workbench {
     pub(super) fn overview_view(
         &self,
@@ -35,17 +51,12 @@ impl Workbench {
                         open.len()
                     ))),
             )
-            .child(self.settings_button(cx))
             .child(self.search_button(cx))
-            .child(
-                button("overview-refresh", "刷新")
-                    .on_click(cx.listener(|this, _, _, cx| this.request(Request::Workspace, cx))),
-            )
             .child(
                 button("back", "← 回到工作区")
                     .text_color(T::color(T::LINK))
                     .on_click(cx.listener(|this, _, _, cx| {
-                        this.overview = false;
+                        this.nav.overview = false;
                         this.sync_panes(cx);
                         cx.notify();
                     })),
@@ -79,8 +90,12 @@ impl Workbench {
                     .get(&t.id)
                     .unwrap_or(&Outcome::Open)
                     .needs_review(now())
-                    && self.filter_space.as_ref().is_none_or(|id| id == &t.space)
-                    && !self.changed_only
+                    && self
+                        .overview
+                        .filter_space
+                        .as_ref()
+                        .is_none_or(|id| id == &t.space)
+                    && !self.overview.changed_only
                     && !self
                         .workspace
                         .agent_sessions
@@ -159,14 +174,14 @@ impl Workbench {
             if group == Group::Running {
                 let count = open
                     .iter()
-                    .filter(|s| self.group(s) == Group::Running)
+                    .filter(|s| session_group(&self.workspace, s) == Group::Running)
                     .count();
                 view = view.child(
                     button(
                         "toggle-running",
                         format!(
                             "进行中 {count} · {}",
-                            if self.show_running {
+                            if self.overview.show_running {
                                 "收起"
                             } else {
                                 "展开"
@@ -174,25 +189,25 @@ impl Workbench {
                         ),
                     )
                     .on_click(cx.listener(|this, _, _, cx| {
-                        this.show_running = !this.show_running;
+                        this.overview.show_running = !this.overview.show_running;
                         cx.notify();
                     })),
                 );
-                if !self.show_running {
+                if !self.overview.show_running {
                     continue;
                 }
             }
             if group == Group::Stale {
                 let count = open
                     .iter()
-                    .filter(|s| self.group(s) == Group::Stale)
+                    .filter(|s| session_group(&self.workspace, s) == Group::Stale)
                     .count();
                 view = view.child(
                     button(
                         "toggle-stale",
                         format!(
                             "很久没动 {count} · {}",
-                            if self.show_stale {
+                            if self.overview.show_stale {
                                 "收起"
                             } else {
                                 "展开核对"
@@ -200,34 +215,37 @@ impl Workbench {
                         ),
                     )
                     .on_click(cx.listener(|this, _, _, cx| {
-                        this.show_stale = !this.show_stale;
+                        this.overview.show_stale = !this.overview.show_stale;
                         cx.notify();
                     })),
                 );
                 if count > 0 {
                     view = view.child(button("cleanup", "逐个清理 →").on_click(cx.listener(
                         |this, _, _, cx| {
-                            this.cleanup = this
+                            this.overview.cleanup = this
                                 .workspace
                                 .agent_sessions
                                 .iter()
                                 .filter(|s| {
                                     this.session_hidden(s).is_none()
-                                        && this.group(s) == Group::Stale
+                                        && session_group(&this.workspace, s) == Group::Stale
                                 })
                                 .map(|s| s.id.clone())
                                 .collect();
-                            this.cleanup_index = 0;
-                            this.here = None;
+                            this.overview.cleanup_index = 0;
+                            this.overview.here = None;
                             cx.notify();
                         },
                     )));
                 }
-                if !self.show_stale {
+                if !self.overview.show_stale {
                     continue;
                 }
             }
-            let sessions: Vec<_> = open.iter().filter(|s| self.group(s) == group).collect();
+            let sessions: Vec<_> = open
+                .iter()
+                .filter(|s| session_group(&self.workspace, s) == group)
+                .collect();
             let mut cards = div().flex().flex_wrap().gap(px(T::S10));
             for session in &sessions {
                 let session = (**session).clone();
@@ -257,7 +275,7 @@ impl Workbench {
                     } else {
                         ""
                     },
-                    if changed_since(&self.workspace, &session, self.since) {
+                    if changed_since(&self.workspace, &session, self.overview.since) {
                         " · 新"
                     } else {
                         ""
@@ -312,9 +330,11 @@ impl Workbench {
                                     .on_click(cx.listener(
                                         move |this, _, _, cx| {
                                             cx.stop_propagation();
-                                            this.here = None;
-                                            this.card_menu =
-                                                if this.card_menu.as_ref() == Some(&menu_id) {
+                                            this.overview.here = None;
+                                            this.overview.card_menu =
+                                                if this.overview.card_menu.as_ref()
+                                                    == Some(&menu_id)
+                                                {
                                                     None
                                                 } else {
                                                     Some(menu_id.clone())
@@ -346,18 +366,18 @@ impl Workbench {
                                 .on_click(cx.listener(
                                     move |this, _, window, cx| {
                                         cx.stop_propagation();
-                                        this.card_menu = None;
+                                        this.overview.card_menu = None;
                                         if primary_continue {
                                             this.open_session(&primary, window, cx);
                                         } else {
-                                            this.here = Some(primary.id.clone());
+                                            this.overview.here = Some(primary.id.clone());
                                             cx.notify();
                                         }
                                     },
                                 )),
                             ),
                         )
-                        .when(self.card_menu.as_ref() == Some(&session.id), |d| {
+                        .when(self.overview.card_menu.as_ref() == Some(&session.id), |d| {
                             d.child(
                                 gpui::deferred(
                                     self.session_actions(&session, cx)
@@ -369,7 +389,7 @@ impl Workbench {
                                 .priority(1),
                             )
                         })
-                        .when(self.here.as_ref() == Some(&session.id), |d| {
+                        .when(self.overview.here.as_ref() == Some(&session.id), |d| {
                             d.child(self.here_card(&session, cx))
                         }),
                 );
@@ -421,9 +441,9 @@ impl Workbench {
                 .border_t(px(T::BORDER_WIDTH))
                 .border_color(T::color(T::BORDER))
                 .pt(px(T::S16))
-                .child(button("closed-toggle",format!("暂存 {deferred} · 已结束：完成 {completed} / 放弃 {abandoned} · 展开/收起")).on_click(cx.listener(|this, _, _, cx| {this.show_closed = !this.show_closed;cx.notify();}))),
+                .child(button("closed-toggle",format!("暂存 {deferred} · 已结束：完成 {completed} / 放弃 {abandoned} · 展开/收起")).on_click(cx.listener(|this, _, _, cx| {this.overview.show_closed = !this.overview.show_closed;cx.notify();}))),
         );
-        if self.show_closed {
+        if self.overview.show_closed {
             for s in self
                 .workspace
                 .agent_sessions
@@ -445,12 +465,12 @@ impl Workbench {
                             )
                             .on_click(cx.listener(
                                 move |this, _, _, cx| {
-                                    this.here = Some(sid.clone());
+                                    this.overview.here = Some(sid.clone());
                                     cx.notify();
                                 },
                             )),
                         )
-                        .when(self.here.as_ref() == Some(&s.id), |d| {
+                        .when(self.overview.here.as_ref() == Some(&s.id), |d| {
                             d.child(self.here_card(s, cx))
                         }),
                 );
@@ -468,7 +488,7 @@ impl Workbench {
                 format!(
                     "已隐藏 {} 个自动化会话 · {}",
                     hidden.len(),
-                    if self.show_hidden {
+                    if self.overview.show_hidden {
                         "收起"
                     } else {
                         "展开查看"
@@ -479,11 +499,11 @@ impl Workbench {
             .justify_start()
             .text_color(T::color(T::SECONDARY))
             .on_click(cx.listener(|this, _, _, cx| {
-                this.show_hidden = !this.show_hidden;
+                this.overview.show_hidden = !this.overview.show_hidden;
                 cx.notify();
             })),
         );
-        if self.show_hidden {
+        if self.overview.show_hidden {
             for s in hidden {
                 let sid = s.id.clone();
                 view = view.child(
@@ -500,7 +520,7 @@ impl Workbench {
                             .justify_start()
                             .on_click(cx.listener(
                                 move |this, _, _, cx| {
-                                    this.here = Some(sid.clone());
+                                    this.overview.here = Some(sid.clone());
                                     cx.notify();
                                 },
                             )),
@@ -512,7 +532,7 @@ impl Workbench {
                             s.cli_session_id,
                             s.cwd
                         )))
-                        .when(self.here.as_ref() == Some(&s.id), |d| {
+                        .when(self.overview.here.as_ref() == Some(&s.id), |d| {
                             d.child(self.here_card(s, cx))
                         }),
                 );
