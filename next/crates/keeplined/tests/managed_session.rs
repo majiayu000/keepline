@@ -461,7 +461,51 @@ fn clear_history_reaches_the_daemon_and_every_display() {
     }
 }
 #[test]
-fn launch_is_durable_and_deduplicated_and_tab_close_is_not_stop() {
+fn tab_edits_ignore_stale_revision_but_task_edits_do_not() {
+    let h = Host::start();
+    h.setup();
+    h.call(h.launch("one", "sleep 30")).unwrap();
+    let stale = h.workspace().revision;
+    h.call(Request::Edit {
+        revision: stale,
+        edit: Edit::PutTab {
+            tab: Tab {
+                id: "t".into(),
+                space: "s".into(),
+                default_task: None,
+                title: "Test".into(),
+                layout: Some(Layout::Leaf("one".into())),
+            },
+        },
+    })
+    .unwrap();
+    assert!(h.workspace().revision > stale);
+    h.call(Request::Edit {
+        revision: stale,
+        edit: Edit::CloseTab { id: "t".into() },
+    })
+    .unwrap();
+    assert!(h.workspace().tabs.iter().all(|t| t.id != "t"));
+    let missing = h
+        .call(Request::Edit {
+            revision: stale,
+            edit: Edit::CloseTab { id: "gone".into() },
+        })
+        .unwrap_err();
+    assert!(missing.to_string().contains("标签不存在"), "{missing}");
+    let conflict = h
+        .call(Request::Edit {
+            revision: stale,
+            edit: Edit::SetTaskOutcome {
+                id: "gone".into(),
+                outcome: Outcome::Abandoned,
+            },
+        })
+        .unwrap_err();
+    assert!(conflict.to_string().contains("工作台已变化"), "{conflict}");
+}
+#[test]
+fn launch_is_durable_and_deduplicated_and_tab_close_stops_and_deletes() {
     let h = Host::start();
     h.setup();
     h.call(h.launch("one", "sleep 30")).unwrap();
@@ -478,7 +522,6 @@ fn launch_is_durable_and_deduplicated_and_tab_close_is_not_stop() {
                 space: "s".into(),
                 default_task: None,
                 title: "Test".into(),
-                closed: false,
                 layout: Some(Layout::Leaf("one".into())),
             },
         },
@@ -489,20 +532,18 @@ fn launch_is_durable_and_deduplicated_and_tab_close_is_not_stop() {
         edit: Edit::CloseTab { id: "t".into() },
     })
     .unwrap();
-    assert_eq!(h.workspace().terminals[0].state, ProcessState::Running);
+    wait_for(&h, "closed tab's terminal exits", |w| {
+        w.terminals[0].state == ProcessState::Exited
+    });
     let connection = rusqlite::Connection::open(h.root.join("workbench.sqlite")).unwrap();
-    let closed: bool = connection
-        .query_row("SELECT closed FROM tabs WHERE id='t'", [], |r| r.get(0))
-        .unwrap();
-    let tab: String = connection
+    let rows: i64 = connection
         .query_row(
-            "SELECT tab_id FROM tab_layout_nodes WHERE terminal_id='one'",
+            "SELECT (SELECT count(*) FROM tabs) + (SELECT count(*) FROM tab_layout_nodes)",
             [],
             |r| r.get(0),
         )
         .unwrap();
-    assert!(closed);
-    assert_eq!(tab, "t");
+    assert_eq!(rows, 0, "a closed tab leaves no rows behind");
     let count: i64 = connection
         .query_row("SELECT count(*) FROM agent_sessions", [], |r| r.get(0))
         .unwrap();
@@ -608,7 +649,6 @@ fn two_cli_conversations_in_one_real_pty_keep_separate_ownership_after_restart()
                 space: "s".into(),
                 default_task: Some("first-task".into()),
                 title: "test".into(),
-                closed: false,
                 layout: Some(Layout::Leaf("one".into())),
             },
         },
@@ -919,6 +959,27 @@ fn forty_idle_terminals_have_no_periodic_background_io() {
     );
     assert!(cpu_percent < 0.5, "idle CPU {cpu_percent}% exceeds 0.5%");
     assert_eq!(h.workspace().terminals.len(), 40);
+}
+
+#[test]
+fn unattached_terminal_publishes_its_program_title_without_spinner() {
+    let h = Host::start();
+    h.setup();
+    h.call(h.launch("shell", "printf '\\033]0;✳ 你好啊\\007'; read -r line"))
+        .unwrap();
+    let until = Instant::now() + Duration::from_secs(5);
+    while recognition(&h)
+        .terminal_titles
+        .get("shell")
+        .map(String::as_str)
+        != Some("你好啊")
+    {
+        assert!(
+            Instant::now() < until,
+            "missing program title for a tab in the back"
+        );
+        std::thread::sleep(Duration::from_millis(25));
+    }
 }
 
 fn recognition(h: &Host) -> RecognitionStatus {
@@ -1395,7 +1456,6 @@ fn nested_split_tree_and_ratios_survive_store_reopen() {
         space: "s".into(),
         default_task: None,
         title: "Nested".into(),
-        closed: false,
         layout: Some(layout.clone()),
     };
     h.call(Request::Edit {

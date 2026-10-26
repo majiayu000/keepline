@@ -133,8 +133,8 @@ impl<'a> RowBuilder<'a> {
 pub const DEFAULT_FG: u32 = keepline_core::terminal::DEFAULT_FG;
 pub const DEFAULT_BG: u32 = keepline_core::terminal::DEFAULT_BG;
 const _: () = assert!(
-    DEFAULT_FG == crate::theme::Theme::TERMINAL_FG
-        && DEFAULT_BG == crate::theme::Theme::TERMINAL_BG,
+    DEFAULT_FG == crate::ui::theme::Theme::TERMINAL_FG
+        && DEFAULT_BG == crate::ui::theme::Theme::TERMINAL_BG,
     "terminal defaults must match the theme the chrome is derived from"
 );
 
@@ -313,12 +313,13 @@ pub fn capture(vt: &Vt) -> Result<Screen, libghostty_vt::Error> {
     Ok(out)
 }
 
+use crate::ui::theme::hsla;
 use gpui::{
-    App, Bounds, Font, FontStyle, FontWeight, Hsla, Pixels, Rgba, ShapedLine, SharedString,
-    TextAlign, TextRun, UnderlineStyle, Window, fill, point, px, size,
+    App, Bounds, Font, FontStyle, FontWeight, Hsla, Pixels, ShapedLine, SharedString, TextAlign,
+    TextRun, UnderlineStyle, Window, fill, point, px, size,
 };
 static FONT_SIZE: std::sync::atomic::AtomicU32 =
-    std::sync::atomic::AtomicU32::new(crate::theme::Theme::MONO_SIZE.to_bits());
+    std::sync::atomic::AtomicU32::new(crate::ui::theme::Theme::MONO_SIZE.to_bits());
 /// Terminal text size in points; Cmd+= / Cmd+- / Cmd+0 change it for every pane.
 pub fn font_size() -> f32 {
     f32::from_bits(FONT_SIZE.load(std::sync::atomic::Ordering::Relaxed))
@@ -330,7 +331,7 @@ pub fn zoom(step: Option<i8>) -> f32 {
     size
 }
 fn zoomed(size: f32, step: Option<i8>) -> f32 {
-    step.map_or(crate::theme::Theme::MONO_SIZE, |s| {
+    step.map_or(crate::ui::theme::Theme::MONO_SIZE, |s| {
         (size + f32::from(s)).clamp(8., 36.)
     })
 }
@@ -352,7 +353,7 @@ impl CellMetrics {
         let ts = window.text_system();
         let id = ts.resolve_font(font);
         let width = ts.advance(id, px(font_size()), 'm').ok()?.width;
-        let height = px(font_size() * crate::theme::Theme::TERMINAL_LINE_HEIGHT);
+        let height = px(font_size() * crate::ui::theme::Theme::TERMINAL_LINE_HEIGHT);
         let ic_width = ts
             .advance(id, px(font_size()), '水')
             .ok()
@@ -452,7 +453,7 @@ impl MarkedText {
                 background_color: None,
                 underline: Some(UnderlineStyle {
                     color: Some(hsla(DEFAULT_FG)),
-                    thickness: px(crate::theme::Theme::BORDER_WIDTH),
+                    thickness: px(crate::ui::theme::Theme::BORDER_WIDTH),
                     wavy: false,
                 }),
                 strikethrough: None,
@@ -555,15 +556,6 @@ fn shape_cell(
         offset = ((target - line.width()) / 2.).max(px(0.));
     }
     (line, offset)
-}
-pub fn hsla(c: u32) -> Hsla {
-    Rgba {
-        r: ((c >> 16) & 255) as f32 / 255.,
-        g: ((c >> 8) & 255) as f32 / 255.,
-        b: (c & 255) as f32 / 255.,
-        a: 1.,
-    }
-    .into()
 }
 // Printable ASCII has no shaping context when terminal ligatures are disabled.
 // Shape this bounded alphabet once per face/style, then reuse the exact native
@@ -899,7 +891,7 @@ mod tests {
     }
     #[test]
     fn zoom_steps_by_one_point_and_resets() {
-        let base = crate::theme::Theme::MONO_SIZE;
+        let base = crate::ui::theme::Theme::MONO_SIZE;
         assert_eq!(zoomed(base, Some(1)), base + 1.);
         assert_eq!(zoomed(base + 1., Some(-1)), base);
         assert_eq!(zoomed(30., None), base);
@@ -1127,11 +1119,11 @@ mod tests {
         let keepline = |line_height: f32| {
             (font_size() * line_height) / (face.advance_m / face.units_per_em * font_size())
         };
-        let delta = keepline(crate::theme::Theme::TERMINAL_LINE_HEIGHT) / ghostty - 1.;
+        let delta = keepline(crate::ui::theme::Theme::TERMINAL_LINE_HEIGHT) / ghostty - 1.;
         assert!(
             delta.abs() <= 0.05,
             "{path}: Keepline cell h/w {:.3} vs Ghostty {ghostty:.3} ({:+.1}%)",
-            keepline(crate::theme::Theme::TERMINAL_LINE_HEIGHT),
+            keepline(crate::ui::theme::Theme::TERMINAL_LINE_HEIGHT),
             delta * 100.
         );
         assert!(
@@ -1203,7 +1195,7 @@ mod tests {
 /// mock text system. Both IME range geometry and the painted overlay use this layout.
 #[cfg(feature = "visual-test")]
 pub fn verify_native_geometry(window: &Window, cx: &App) {
-    let font = crate::theme::Theme::mono(cx);
+    let font = crate::ui::theme::Theme::mono(cx);
     let metrics = CellMetrics::measure(&font, window).expect("native font measurement");
     for (bold, italic) in [(false, false), (true, false), (false, true), (true, true)] {
         let mut face = font.clone();

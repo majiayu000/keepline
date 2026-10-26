@@ -21,6 +21,9 @@ use std::time::{Duration, Instant};
 
 type Shared = Arc<Mutex<Host>>;
 type LiveTerminal = Arc<Mutex<Live>>;
+/// Captured at startup: rebuilding the binary later must not hide that this host is old.
+static BUILD: std::sync::LazyLock<keepline_core::protocol::Build> =
+    std::sync::LazyLock::new(keepline_core::protocol::Build::current);
 type Frame = (u8, Arc<Vec<u8>>);
 struct Subscriber {
     tx: SyncSender<Frame>,
@@ -249,18 +252,30 @@ impl Host {
         }
         Ok(())
     }
-    /// An unbound shared-daemon Codex still paints its state into the window title.
+    /// Every tab names itself from its program's title, front or not. An unbound
+    /// shared-daemon Codex also paints its state into it.
     fn title_changed(&mut self, terminal: &str, title: &str) -> io::Result<()> {
-        if !self.unbound_pids.values().any(|t| t == terminal)
-            || !self.recognition.terminal_hints.contains_key(terminal)
+        let shown = keepline_core::terminal::shown_title(title);
+        let mut changed = self.recognition.terminal_titles.get(terminal) != shown.as_ref();
+        match shown {
+            Some(shown) => self
+                .recognition
+                .terminal_titles
+                .insert(terminal.into(), shown),
+            None => self.recognition.terminal_titles.remove(terminal),
+        };
+        if self.unbound_pids.values().any(|t| t == terminal)
+            && self.recognition.terminal_hints.contains_key(terminal)
         {
-            return Ok(());
+            let hint = codex_hint(title);
+            if self.recognition.terminal_hints.get(terminal) != Some(&hint) {
+                self.recognition
+                    .terminal_hints
+                    .insert(terminal.into(), hint);
+                changed = true;
+            }
         }
-        let hint = codex_hint(title);
-        if self.recognition.terminal_hints.get(terminal) != Some(&hint) {
-            self.recognition
-                .terminal_hints
-                .insert(terminal.into(), hint);
+        if changed {
             self.publish_status()?;
         }
         Ok(())
@@ -404,6 +419,7 @@ pub fn serve_with_options(
     roots: Vec<(Agent, std::path::PathBuf)>,
     recent_days: u64,
 ) -> io::Result<()> {
+    std::sync::LazyLock::force(&BUILD);
     match fs::DirBuilder::new().mode(0o700).create(root) {
         Ok(()) => (),
         Err(e) if e.kind() == io::ErrorKind::AlreadyExists => (),
@@ -1178,6 +1194,7 @@ fn serve_client(mut stream: UnixStream, host: Shared, connection: u64) -> io::Re
             &Reply::Hello {
                 major: MAJOR,
                 instance: lock(&host)?.instance.clone(),
+                build: BUILD.clone(),
             },
         )?,
         _ => {
@@ -1351,7 +1368,7 @@ fn dispatch(shared: &Shared, request: Request) -> io::Result<Reply> {
         Request::Workspace => Ok(Reply::Workspace(lock(shared)?.snapshot())),
         Request::Edit { revision, mut edit } => {
             let mut host = lock(shared)?;
-            if host.workspace.revision != revision {
+            if edit.checks_revision() && host.workspace.revision != revision {
                 return Err(io::Error::other("工作台已变化，请刷新后重试"));
             }
             if let Edit::SaveSessionTask { session, task } = &mut edit {
@@ -1375,9 +1392,20 @@ fn dispatch(shared: &Shared, request: Request) -> io::Result<Reply> {
                         .push_str("\n\n（历史仅覆盖索引尾段及之后的增量；此前要求未知。）");
                 }
             }
+            // Closing a tab or a pane ends what ran in it; placement alone never does.
+            let stopped = match &edit {
+                Edit::CloseTab { id } => host.workspace.tab_terminals(id),
+                Edit::ClosePane { terminal } => vec![terminal.clone()],
+                _ => Vec::new(),
+            };
             let mut next = host.workspace.clone();
             next.edit(edit).map_err(io::Error::other)?;
             host.commit(next)?;
+            for id in &stopped {
+                if let Some(Err(e)) = host.terminals.get(id).map(stop_terminal) {
+                    eprintln!("stop closed terminal {id}: {e}");
+                }
+            }
             Ok(Reply::Workspace(host.snapshot()))
         }
         Request::Launch {
@@ -1579,21 +1607,27 @@ fn dispatch(shared: &Shared, request: Request) -> io::Result<Reply> {
                 .get(&id)
                 .cloned()
                 .ok_or_else(|| io::Error::other("terminal not found"))?;
-            let live = lock(&terminal)?;
-            if live.exited && live.drained {
-                return Ok(Reply::Ok);
-            }
-            // Only this daemon's process group, never a name-based kill.
-            if unsafe { libc::kill(-(live.pid as i32), libc::SIGTERM) } < 0 {
-                let error = io::Error::last_os_error();
-                if error.raw_os_error() != Some(libc::ESRCH) {
-                    return Err(error);
-                }
-            }
+            stop_terminal(&terminal)?;
             Ok(Reply::Ok)
         }
         _ => Err(io::Error::other("operation requires an attached terminal")),
     }
+}
+
+/// SIGTERM one terminal's process group; a terminal that already ended is left alone.
+fn stop_terminal(terminal: &LiveTerminal) -> io::Result<()> {
+    let live = lock(terminal)?;
+    if live.exited && live.drained {
+        return Ok(());
+    }
+    // Only this daemon's process group, never a name-based kill.
+    if unsafe { libc::kill(-(live.pid as i32), libc::SIGTERM) } < 0 {
+        let error = io::Error::last_os_error();
+        if error.raw_os_error() != Some(libc::ESRCH) {
+            return Err(error);
+        }
+    }
+    Ok(())
 }
 
 fn record_exit(host: &Shared, terminal: &LiveTerminal, id: &str) -> io::Result<()> {

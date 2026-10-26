@@ -19,7 +19,6 @@ fn fixture() -> Workspace {
             l
         }),
         default_task: None,
-        closed: false,
     });
     for i in 0..4 {
         w.terminals.push(Terminal {
@@ -134,4 +133,132 @@ fn closing_interrupted_pane_only_removes_its_placement() {
     assert_eq!(w.tab_terminals("tab"), ["t0", "t2", "t3"]);
     assert_eq!(w.terminals.len(), 4);
     assert_eq!(w.agent_sessions, history);
+}
+
+#[test]
+fn live_phase_reads_only_running_keepline_terminals() {
+    use keepline_core::content::{Background, Content, Turn};
+    let mut w = fixture();
+    let mut s = w.agent_sessions[0].clone();
+    s.id = "live".into();
+    s.terminal = Some("t0".into());
+    s.current = true;
+    assert_eq!(live_phase(&w, &s), Some(Phase::Idle));
+    for (turn, background, phase) in [
+        (Turn::Running, None, Phase::Working),
+        (Turn::Waiting, None, Phase::Waiting),
+        (Turn::Completed, None, Phase::Idle),
+        (Turn::Error, None, Phase::Idle),
+        (
+            Turn::Completed,
+            Some(Background {
+                agents: 1,
+                ..Default::default()
+            }),
+            Phase::Working,
+        ),
+        (
+            Turn::Completed,
+            Some(Background {
+                monitors: 1,
+                ..Default::default()
+            }),
+            Phase::Idle,
+        ),
+    ] {
+        w.content.insert(
+            "live".into(),
+            Content {
+                turn,
+                background,
+                ..Default::default()
+            },
+        );
+        assert_eq!(live_phase(&w, &s), Some(phase), "{turn:?}");
+    }
+    // An exited terminal, a past conversation or a scanned log keep the inbox grouping.
+    s.terminal = Some("t1".into());
+    assert_eq!(live_phase(&w, &s), None);
+    s.terminal = Some("t0".into());
+    s.current = false;
+    assert_eq!(live_phase(&w, &s), None);
+    s.terminal = None;
+    assert_eq!(live_phase(&w, &s), None);
+}
+
+#[test]
+fn finished_turn_stays_unseen_until_its_pane_is_shown() {
+    let mut phases = HashMap::new();
+    let mut unseen = HashSet::new();
+    let step = |phases: &mut _, unseen: &mut _, phase, shown| {
+        track_unseen(phases, unseen, [("s".to_string(), phase, shown)]);
+    };
+    // Already idle when first seen (e.g. after a restart): nothing new to look at.
+    step(&mut phases, &mut unseen, Phase::Idle, false);
+    assert!(unseen.is_empty());
+    // Ends out of view: done, and stays done across later idle snapshots.
+    step(&mut phases, &mut unseen, Phase::Working, false);
+    step(&mut phases, &mut unseen, Phase::Idle, false);
+    step(&mut phases, &mut unseen, Phase::Idle, false);
+    assert!(unseen.contains("s"));
+    // Showing the pane marks it seen.
+    step(&mut phases, &mut unseen, Phase::Idle, true);
+    assert!(unseen.is_empty());
+    // Ends in view: seen at once.
+    step(&mut phases, &mut unseen, Phase::Working, true);
+    step(&mut phases, &mut unseen, Phase::Idle, true);
+    assert!(unseen.is_empty());
+    // A new turn clears done; a vanished session is forgotten.
+    step(&mut phases, &mut unseen, Phase::Waiting, false);
+    step(&mut phases, &mut unseen, Phase::Idle, false);
+    assert!(unseen.contains("s"));
+    step(&mut phases, &mut unseen, Phase::Working, false);
+    assert!(unseen.is_empty());
+    step(&mut phases, &mut unseen, Phase::Idle, false);
+    track_unseen(&mut phases, &mut unseen, []);
+    assert!(unseen.is_empty() && phases.is_empty());
+}
+
+#[test]
+fn sidebar_rows_rank_by_the_shown_state() {
+    let rank = sidebar::sidebar_rank;
+    // A finished turn you have not seen is colored, so it sits with the others that need you.
+    assert!(rank(Group::Done, true) < rank(Group::Working, false));
+    assert!(rank(Group::Waiting, true) < rank(Group::Done, true));
+    // Live work comes before sessions resting at their prompt.
+    assert!(rank(Group::Working, false) < rank(Group::Ready, false));
+    assert!(rank(Group::Ready, false) < rank(Group::Stale, false));
+}
+
+#[test]
+fn reopening_a_failed_resume_returns_to_its_terminal() {
+    let mut w = fixture();
+    let s = w.agent_sessions[0].clone();
+    let mut resumed = HashMap::new();
+    assert!(live_terminal(&w, &s).is_none());
+    assert!(resume_terminal(&w, &resumed, &s).is_none());
+    resumed.insert(s.id.clone(), "t2".into());
+    assert_eq!(resume_terminal(&w, &resumed, &s).unwrap().id, "t2");
+    // Closed or exited: the next click resumes afresh.
+    w.terminals[2].state = ProcessState::Interrupted;
+    assert!(resume_terminal(&w, &resumed, &s).is_none());
+    w.terminals[2].state = ProcessState::Running;
+    w.tabs.clear();
+    assert!(resume_terminal(&w, &resumed, &s).is_none());
+}
+
+#[test]
+fn only_revision_free_edits_wait_behind_a_busy_action() {
+    use crate::host::store::queueable;
+    let w = fixture();
+    let edit = |edit| Request::Edit { revision: 0, edit };
+    assert!(queueable(&edit(Edit::CloseTab { id: "tab".into() })));
+    assert!(queueable(&edit(Edit::PutTab {
+        tab: w.tabs[0].clone()
+    })));
+    assert!(!queueable(&edit(Edit::SetTaskOutcome {
+        id: "task".into(),
+        outcome: Outcome::Abandoned,
+    })));
+    assert!(!queueable(&Request::Workspace));
 }

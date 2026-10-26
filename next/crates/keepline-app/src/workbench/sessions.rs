@@ -1,6 +1,21 @@
-//! Session grouping, the 「你在这里」 card and navigation into a session.
+//! Session grouping, the 「你在这里」 card, the "needs you" queue and navigation into a session.
 use super::*;
 
+/// Which finished turns the user has not looked at yet.
+pub(super) struct Attention {
+    /// Last live phase of each session whose agent runs in a Keepline terminal.
+    pub(super) phases: HashMap<String, Phase>,
+    /// Sessions whose turn ended while their pane was out of view, until it is shown.
+    pub(super) unseen: HashSet<String>,
+}
+/// Conversations being resumed: the next launch's command, and the terminals opened for it.
+pub(super) struct Resuming {
+    /// The next launch resumes a conversation: its command, cwd and session id.
+    pub(super) resume: Option<(String, String, String)>,
+    /// Terminals opened to resume a session, so clicking it again returns there
+    /// instead of opening another tab while the resume has not taken.
+    pub(super) resumed: HashMap<String, String>,
+}
 impl Workbench {
     pub(super) fn open_session(
         &mut self,
@@ -8,72 +23,47 @@ impl Workbench {
         window: &mut Window,
         cx: &mut Context<Self>,
     ) {
-        self.search_open = false;
-        self.task_detail = None;
-        self.here = None;
-        self.zoomed = None;
-        let Some(terminal) = live_terminal(&self.workspace, session) else {
+        self.search.hide();
+        self.nav.task_detail = None;
+        self.overview.here = None;
+        self.nav.zoomed = None;
+        let Some(terminal) = live_terminal(&self.workspace, session)
+            .or_else(|| resume_terminal(&self.workspace, &self.resuming.resumed, session))
+        else {
             if let Some(space) = session_space(&self.workspace, session) {
-                self.space = space.into();
+                self.nav.space = space.into();
             }
-            self.resume = Some((
+            self.resuming.resume = Some((
                 session.runtime.resume_command(&session.cli_session_id),
                 session.cwd.clone(),
+                session.id.clone(),
             ));
             self.launch(false, session.task.clone(), cx);
             return;
         };
         let terminal_id = terminal.id.clone();
-        self.focused = Some(terminal_id.clone());
-        self.pending_focus = true;
+        self.nav.focused = Some(terminal_id.clone());
+        self.nav.pending_focus = true;
         if let Some(tab) = self.workspace.terminal_tab(&terminal.id) {
-            self.space = tab.space.clone();
-            self.tab = Some(tab.id.clone());
-            self.overview = false;
-            if tab.closed {
-                let mut tab = tab.clone();
-                tab.closed = false;
-                self.edit(Edit::PutTab { tab }, cx);
-            } else {
-                self.sync_panes(cx);
-                if let Some(pane) = self.panes.get(&terminal_id) {
-                    window.focus(&pane.focus_handle(cx), cx);
-                }
-                cx.notify();
+            self.nav.space = tab.space.clone();
+            self.nav.tab = Some(tab.id.clone());
+            self.nav.overview = false;
+            self.sync_panes(cx);
+            if let Some(pane) = self.layout.panes.get(&terminal_id) {
+                window.focus(&pane.focus_handle(cx), cx);
             }
+            cx.notify();
         } else {
             let tab = Tab {
                 id: id(),
-                space: self.space.clone(),
+                space: self.nav.space.clone(),
                 default_task: session.task.clone(),
-                title: "恢复视图".into(),
-                closed: false,
+                title: String::new(),
                 layout: Some(Layout::Leaf(terminal_id.clone())),
             };
-            self.tab = Some(tab.id.clone());
-            self.overview = false;
+            self.nav.tab = Some(tab.id.clone());
+            self.nav.overview = false;
             self.edit(Edit::PutTab { tab }, cx);
-        }
-    }
-    pub(super) fn group(&self, s: &AgentSession) -> Group {
-        use keepline_core::content::{Content, Inbox};
-        match self
-            .workspace
-            .content
-            .get(&s.id)
-            .cloned()
-            .unwrap_or_else(|| Content {
-                updated: s.updated,
-                ..Default::default()
-            })
-            .group(s, &self.workspace, now())
-        {
-            Inbox::Waiting => Group::Waiting,
-            Inbox::Error => Group::Error,
-            Inbox::Review => Group::Review,
-            Inbox::Running => Group::Running,
-            Inbox::Stale => Group::Stale,
-            _ => Group::Paused,
         }
     }
     pub(super) fn session_title(&self, s: &AgentSession) -> String {
@@ -129,7 +119,7 @@ impl Workbench {
         }
         let task = Task {
             id: id(),
-            space: self.space.clone(),
+            space: self.nav.space.clone(),
             title: self.session_title(session),
             description: c
                 .asks
@@ -194,7 +184,7 @@ impl Workbench {
                     )
                     .child(
                         button("dismiss-here", "×").on_click(cx.listener(|this, _, _, cx| {
-                            this.here = None;
+                            this.overview.here = None;
                             cx.notify();
                         })),
                     ),
@@ -234,7 +224,7 @@ impl Workbench {
             ("撤销结局", Outcome::Open)
         };
         let settle_id = session.id.clone();
-        let more = self.here_more.as_ref() == Some(&session.id);
+        let more = self.overview.here_more.as_ref() == Some(&session.id);
         let more_id = session.id.clone();
         panel = panel.child(
             div()
@@ -269,7 +259,7 @@ impl Workbench {
                         .border_0()
                         .text_color(T::color(T::LINK))
                         .on_click(cx.listener(move |this, _, _, cx| {
-                            this.here_more = (!more).then(|| more_id.clone());
+                            this.overview.here_more = (!more).then(|| more_id.clone());
                             cx.notify();
                         })),
                 ),
@@ -286,8 +276,8 @@ impl Workbench {
         let sid = session.id.clone();
         actions = actions.child(button("here-defer", "暂存…").on_click(cx.listener(
             move |this, _, window, cx| {
-                this.here = Some(sid.clone());
-                this.overview = false;
+                this.overview.here = Some(sid.clone());
+                this.nav.overview = false;
                 this.show_form(FormKind::Defer, window, cx);
             },
         )));
@@ -351,17 +341,19 @@ impl Workbench {
         window: &mut Window,
         cx: &mut Context<Self>,
     ) {
-        self.card_menu = None;
-        self.filter_space = None;
-        self.changed_only = false;
-        self.show_stale = self.group(s) == Group::Stale || self.show_stale;
-        self.show_running = self.group(s) == Group::Running || self.show_running;
+        self.overview.card_menu = None;
+        self.overview.filter_space = None;
+        self.overview.changed_only = false;
+        self.overview.show_stale =
+            session_group(&self.workspace, s) == Group::Stale || self.overview.show_stale;
+        self.overview.show_running =
+            session_group(&self.workspace, s) == Group::Running || self.overview.show_running;
         if live_terminal(&self.workspace, s).is_some() {
             self.open_session(s, window, cx);
         } else {
-            self.overview = true;
+            self.nav.overview = true;
             self.sync_panes(cx);
-            self.here = Some(s.id.clone());
+            self.overview.here = Some(s.id.clone());
             cx.notify();
         }
     }
@@ -388,15 +380,15 @@ impl Workbench {
             .child(
                 button("card-save", "存为待办").on_click(cx.listener(move |this, _, _, cx| {
                     cx.stop_propagation();
-                    this.card_menu = None;
+                    this.overview.card_menu = None;
                     this.save_session_task(&save, cx);
                 })),
             )
             .child(button("card-defer", "暂存").on_click(cx.listener(
                 move |this, _, window, cx| {
                     cx.stop_propagation();
-                    this.card_menu = None;
-                    this.here = Some(defer.clone());
+                    this.overview.card_menu = None;
+                    this.overview.here = Some(defer.clone());
                     this.show_form(FormKind::Defer, window, cx);
                 },
             )));
@@ -413,7 +405,7 @@ impl Workbench {
                 button(gpui::SharedString::from(format!("card-{label}")), label).on_click(
                     cx.listener(move |this, _, _, cx| {
                         cx.stop_propagation();
-                        this.card_menu = None;
+                        this.overview.card_menu = None;
                         this.edit(
                             Edit::SetOutcome {
                                 id: id.clone(),
@@ -428,9 +420,9 @@ impl Workbench {
         menu
     }
     pub fn navigate_to(&mut self, id: &str, window: &mut Window, cx: &mut Context<Self>) {
-        self.cleanup.clear();
-        self.form = None;
-        self.search_open = false;
+        self.overview.cleanup.clear();
+        self.tasks.form = None;
+        self.search.hide();
         if let Some(session) = self
             .workspace
             .agent_sessions
@@ -440,13 +432,12 @@ impl Workbench {
         {
             self.enter_card(&session, window, cx);
             // Report actual selected layout and focused pane, not a queued route intent.
-            if !self.overview
+            if !self.nav.overview
                 && let Some(terminal) = live_terminal(&self.workspace, &session)
-                && self.focused.as_deref() == Some(terminal.id.as_str())
+                && self.nav.focused.as_deref() == Some(terminal.id.as_str())
                 && let Some(tab) = self.workspace.terminal_tab(&terminal.id)
-                && !tab.closed
-                && self.tab.as_deref() == Some(tab.id.as_str())
-                && let Some(pane) = self.panes.get(&terminal.id)
+                && self.nav.tab.as_deref() == Some(tab.id.as_str())
+                && let Some(pane) = self.layout.panes.get(&terminal.id)
                 && pane.focus_handle(cx).is_focused(window)
             {
                 crate::desktop::route_applied(id, &terminal.id, &tab.id);
@@ -454,6 +445,32 @@ impl Workbench {
         } else {
             self.error = Some("会话尚未载入，请刷新工作台".into());
             self.request(Request::Workspace, cx);
+        }
+    }
+    /// Only Keepline's own terminals ask for attention; scanned-only sessions stay in the overview.
+    pub(super) fn needs_you(&self) -> Vec<&AgentSession> {
+        self.workspace
+            .agent_sessions
+            .iter()
+            .filter(|s| self.session_hidden(s).is_none() && needs_attention(&self.workspace, s))
+            .collect()
+    }
+    pub(super) fn next_waiting(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        let needs = self.needs_you();
+        let current = self
+            .nav
+            .focused
+            .as_ref()
+            .and_then(|id| self.workspace.current_agent(id))
+            .map(|s| s.id.as_str())
+            .or(self.overview.here.as_deref());
+        if !needs.is_empty() {
+            let index = needs
+                .iter()
+                .position(|s| Some(s.id.as_str()) == current)
+                .map_or(0, |i| (i + 1) % needs.len());
+            let session = needs[index].clone();
+            self.enter_card(&session, window, cx);
         }
     }
 }

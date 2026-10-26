@@ -247,6 +247,22 @@ impl Vt {
     }
 }
 
+/// A program's window title as a name: Claude Code and Codex lead theirs with a spinner
+/// or activity glyph that changes many times a second ("✳ fix login" -> "fix login").
+pub fn shown_title(raw: &str) -> Option<String> {
+    let title = raw.trim();
+    let mut chars = title.chars();
+    let first = chars.next()?;
+    let rest = chars.as_str();
+    let glyph = matches!(first, '\u{2800}'..='\u{28ff}') || "·✢✳✶✻✽◐◓◑◒".contains(first);
+    let title = if glyph && rest.chars().next().is_none_or(char::is_whitespace) {
+        rest.trim()
+    } else {
+        title
+    };
+    (!title.is_empty()).then(|| title.to_owned())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -415,7 +431,15 @@ mod tests {
         let restored = Vt::restore(&vt.snapshot().unwrap()).unwrap();
         assert_eq!(restored.search("RECOVERED").unwrap().len(), 1);
     }
-
+    #[test]
+    fn drops_leading_activity_glyphs_only() {
+        assert_eq!(shown_title("✳ 你好啊").as_deref(), Some("你好啊"));
+        assert_eq!(shown_title("⠋ fix login").as_deref(), Some("fix login"));
+        assert_eq!(shown_title("·x").as_deref(), Some("·x"));
+        assert_eq!(shown_title("~/code — zsh").as_deref(), Some("~/code — zsh"));
+        assert_eq!(shown_title(" ⠙ "), None);
+        assert_eq!(shown_title(""), None);
+    }
     #[test]
     fn truncated_snapshot_is_not_a_ready_terminal() {
         let mut source = Vt::new(80, 24).unwrap();
