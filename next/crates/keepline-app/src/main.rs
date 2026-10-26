@@ -1,13 +1,15 @@
 mod connection;
 mod desktop;
-mod field;
-mod keyboard;
+#[cfg(feature = "visual-test")]
+mod harness;
+mod host;
 mod lifecycle;
-mod pane;
-mod screen;
-mod terminal_input;
-mod theme;
+mod model;
+mod terminal;
+mod ui;
 mod workbench;
+
+use ui::theme;
 
 use gpui::{
     App, AppContext, Bounds, TitlebarOptions, WindowBounds, WindowOptions, point, px, size,
@@ -232,37 +234,58 @@ fn run() -> io::Result<()> {
         use futures::StreamExt;
         cx.on_action(|_: &Quit, cx| cx.quit());
         cx.on_action(|_: &ShowMenuPanel, _| desktop::show());
-        cx.bind_keys([gpui::KeyBinding::new("cmd-q",Quit,None)]);
-        cx.set_menus([gpui::Menu::new("Keepline").items([gpui::MenuItem::action("菜单栏面板",ShowMenuPanel),gpui::MenuItem::action("退出 Keepline",Quit)])]);
-        let wake_root=root.clone();
+        cx.bind_keys([gpui::KeyBinding::new("cmd-q", Quit, None)]);
+        cx.set_menus([gpui::Menu::new("Keepline").items([
+            gpui::MenuItem::action("菜单栏面板", ShowMenuPanel),
+            gpui::MenuItem::action("退出 Keepline", Quit),
+        ])]);
+        let wake_root = root.clone();
         cx.spawn(async move |cx| {
             while reopen.next().await.is_some() {
-                cx.update(|cx|reopen_window(&wake_root,cx));
+                cx.update(|cx| reopen_window(&wake_root, cx));
             }
-        }).detach();
-        if let Err(error)=register_symbols() {
-            eprintln!("bundled symbol font: {error}"); cx.quit(); return;
+        })
+        .detach();
+        if let Err(error) = register_symbols() {
+            eprintln!("bundled symbol font: {error}");
+            cx.quit();
+            return;
         }
-        let workspace=match initial {Ok(w)=>w,Err(e)=>{show_startup_error(e.to_string(),cx);return;}};
-        let socket=root.join("workbench.sock");
-        let mut desktop_events=desktop::start(&socket,workspace.clone(),cx);
-        let desktop_root=root.clone();
+        let workspace = match initial {
+            Ok(w) => w,
+            Err(e) => {
+                show_startup_error(e.to_string(), cx);
+                return;
+            }
+        };
+        let socket = root.join("workbench.sock");
+        let mut desktop_events = desktop::start(&socket, workspace.clone(), cx);
+        let desktop_root = root.clone();
         cx.spawn(async move |cx| {
-            while let Some(route)=desktop_events.next().await {
+            while let Some(route) = desktop_events.next().await {
                 cx.update(|cx| {
-                    if let Some(message)=route.strip_prefix("error:").or_else(||route.strip_prefix("notice:")) {cx.set_global(desktop::Status(message.into()));return;}
-                    reopen_window(&desktop_root,cx);
+                    if let Some(message) = route
+                        .strip_prefix("error:")
+                        .or_else(|| route.strip_prefix("notice:"))
+                    {
+                        cx.set_global(desktop::Status(message.into()));
+                        return;
+                    }
+                    reopen_window(&desktop_root, cx);
                     if !route.is_empty() {
                         for handle in cx.windows() {
-                            if let Some(handle)=handle.downcast::<workbench::Workbench>() {
-                                let _=handle.update(cx,|view,window,cx|view.navigate_to(&route,window,cx));
+                            if let Some(handle) = handle.downcast::<workbench::Workbench>() {
+                                let _ = handle.update(cx, |view, window, cx| {
+                                    view.navigate_to(&route, window, cx)
+                                });
                                 break;
                             }
                         }
                     }
                 });
             }
-        }).detach();
+        })
+        .detach();
         let bounds = Bounds::centered(
             None,
             size(
@@ -271,204 +294,11 @@ fn run() -> io::Result<()> {
             ),
             cx,
         );
-        let result = cx.open_window(
-            window_options(bounds),
-            |window, cx| cx.new(|cx| workbench::Workbench::new(socket, workspace, window, cx)),
-        );
+        let result = cx.open_window(window_options(bounds), |window, cx| {
+            cx.new(|cx| workbench::Workbench::new(socket, workspace, window, cx))
+        });
         #[cfg(feature = "visual-test")]
-        if let (Ok(handle), Some(directory)) = (&result, evidence.clone())
-            && std::env::var_os("KEEPLINE_SPLIT_EVIDENCE").is_some() {
-            let handle=*handle;
-            cx.spawn(async move |cx| {
-                cx.background_executor().timer(Duration::from_secs(2)).await;
-                for name in ["single","nested","menu","eight"] {
-                    handle.update(cx,|view,window,cx|{
-                        if window.viewport_size().height < px(theme::Theme::WINDOW_HEIGHT) {window.toggle_simple_fullscreen();}
-                        window.resize(size(px(theme::Theme::WINDOW_WIDTH),px(theme::Theme::WINDOW_HEIGHT)));window.bounds_changed(cx);
-                        view.visual_layout(name,window,cx);
-                    }).unwrap();
-                    cx.background_executor().timer(Duration::from_secs(2)).await;
-                    let root=if name=="menu"{Some(handle.update(cx,|v,_,_|v.visual_bounds()).unwrap())}else{None};
-                    cx.update_window(handle.into(),|_,window,app|{
-                        window.refresh();window.draw(app).clear(app);
-                        if let Some(bounds)=root {native_click(window,app,bounds.origin+gpui::point(px(40.),px(80.)),gpui::MouseButton::Right);}
-                        assert_eq!(window.viewport_size(),size(px(theme::Theme::WINDOW_WIDTH),px(theme::Theme::WINDOW_HEIGHT)));
-                        screen::verify_native_geometry(window,app);
-                        std::fs::create_dir_all(&directory).unwrap();
-                        window.render_to_image().unwrap().save(directory.join(format!("{name}-native.png"))).unwrap();
-                    }).unwrap();
-                    if let Some(bounds)=root {
-                        // Native event dispatch tests; simulated mouse, not human/CUA acceptance.
-                        for expected in [1,4] {
-                            let at=handle.update(cx,|v,_,_|v.visual_menu_point(2)).unwrap();
-                            cx.update_window(handle.into(),|_,window,app|native_click(window,app,at,gpui::MouseButton::Left)).unwrap();
-                            handle.update(cx,|v,_,_|v.visual_check_panes(expected)).unwrap();
-                            if expected==1 {cx.update_window(handle.into(),|_,window,app|native_click(window,app,bounds.origin+gpui::point(px(40.),px(80.)),gpui::MouseButton::Right)).unwrap();}
-                        }
-                        cx.update_window(handle.into(),|_,window,app|{
-                            use gpui::InputEvent;
-                            let from=gpui::point(bounds.left()+(bounds.size.width-px(theme::Theme::S6))*0.58+px(theme::Theme::S6/2.),bounds.top()+px(30.));
-                            let to=gpui::point(bounds.left()+bounds.size.width*0.67,from.y);
-                            window.dispatch_event(gpui::MouseDownEvent{button:gpui::MouseButton::Left,position:from,modifiers:Default::default(),click_count:1,first_mouse:false}.to_platform_input(),app);
-                            window.dispatch_event(gpui::MouseMoveEvent{position:to,pressed_button:Some(gpui::MouseButton::Left),modifiers:Default::default()}.to_platform_input(),app);
-                            window.dispatch_event(gpui::MouseUpEvent{button:gpui::MouseButton::Left,position:to,modifiers:Default::default(),click_count:1}.to_platform_input(),app);
-                            window.refresh();window.draw(app).clear(app);
-                        }).unwrap();
-                        cx.background_executor().timer(Duration::from_secs(1)).await;
-                        handle.update(cx,|v,_,_|v.visual_check_saved_ratio()).unwrap();
-                        eprintln!("native events PASS: right menu, zoom 4->1->4, divider drag ratio persisted");
-                    }
-                }
-                if std::env::var_os("KL_NATIVE_ONLY").is_some() {
-                    let bounds=handle.update(cx,|v,_,_|v.visual_bounds()).unwrap();
-                    cx.update_window(handle.into(),|_,w,a|native_click(w,a,bounds.origin+gpui::point(px(40.),px(80.)),gpui::MouseButton::Right)).unwrap();
-                    let at=handle.update(cx,|v,_,_|v.visual_menu_point(0)).unwrap();
-                    cx.update_window(handle.into(),|_,w,a|native_click(w,a,at,gpui::MouseButton::Left)).unwrap();
-                    cx.background_executor().timer(Duration::from_secs(1)).await;
-                    handle.update(cx,|v,w,a|{v.visual_assert_new_shell(9,w,a);v.visual_split_down(w,a);}).unwrap();
-                    cx.background_executor().timer(Duration::from_secs(1)).await;
-                    handle.update(cx,|v,w,a|{v.visual_assert_new_shell(10,w,a);v.visual_close_focused(a);}).unwrap();
-                    cx.background_executor().timer(Duration::from_secs(1)).await;
-                    handle.update(cx,|v,_,a|{v.visual_check_panes(9);v.visual_check_closed_processes();v.visual_close_focused(a);}).unwrap();
-                    cx.background_executor().timer(Duration::from_secs(1)).await;
-                    handle.update(cx,|v,_,_|{v.visual_check_panes(8);v.visual_check_closed_processes();}).unwrap();
-                    eprintln!("native actions PASS: right/down launch 8->9->10, shell cwd and focus, close 10->9->8 keeps PTYs alive");
-                }
-                cx.update(|cx|cx.quit());
-            }).detach();
-        }
-        #[cfg(feature = "visual-test")]
-        if let (Ok(handle), Some(directory)) = (&result, evidence.clone())
-            && std::env::var_os("KEEPLINE_PAGE_EVIDENCE").is_some()
-        {
-            let handle = *handle;
-            cx.spawn(async move |cx| {
-                cx.background_executor().timer(Duration::from_secs(2)).await;
-                handle.update(cx, |_,window,_| {
-                    if window.viewport_size().height < px(theme::Theme::WINDOW_HEIGHT) {window.toggle_simple_fullscreen();}
-                }).unwrap();
-                cx.background_executor().timer(Duration::from_secs(1)).await;
-                std::fs::create_dir_all(&directory).unwrap();
-                let pages = std::env::var("KEEPLINE_PAGE_LIST").unwrap_or_else(|_| "Main,Overview,TodoNew,TodoDetail,TodoStart,Cleanup,Menubar".into());
-                for name in pages.split(',').map(str::to_owned).collect::<Vec<_>>() {
-                    let name = name.as_str();
-                    handle.update(cx, |view,window,cx| {
-                        window.resize(size(px(theme::Theme::WINDOW_WIDTH),px(theme::Theme::WINDOW_HEIGHT)));
-                        window.bounds_changed(cx);view.visual_page(name,window,cx);
-                    }).unwrap();
-                    // Starting an Agent and placing the task text takes a few quiet checks.
-                    let settle = if name == "TodoStart" { 4 } else { 1 };
-                    cx.background_executor().timer(Duration::from_secs(settle)).await;
-                    cx.update_window(handle.into(), |_,window,app| {
-                        assert_eq!(window.viewport_size(), size(px(theme::Theme::WINDOW_WIDTH),px(theme::Theme::WINDOW_HEIGHT)));
-                        window.refresh(); window.draw(app).clear(app);
-                        let path = directory.join(format!("{}-native.png",name.to_lowercase()));
-                        if name == "Menubar" {desktop::snapshot(&path);} else {window.render_to_image().unwrap().save(path).unwrap();}
-                        eprintln!("{name}: native viewport {:?}, scale {}",window.viewport_size(),window.scale_factor());
-                    }).unwrap();
-                }
-                cx.update(|cx|cx.quit());
-            }).detach();
-        }
-        #[cfg(feature = "visual-test")]
-        if let (Ok(handle), Some(directory)) = (&result, evidence.clone())
-            && std::env::var_os("KEEPLINE_SPLIT_EVIDENCE").is_none()
-            && std::env::var_os("KEEPLINE_PAGE_EVIDENCE").is_none() {
-            let handle = *handle;
-            cx.spawn(async move |cx| {
-                // Test-only single shots: native renderer output, no desktop capture permission.
-                cx.background_executor().timer(Duration::from_secs(2)).await;
-                handle
-                    .update(cx, |_, window, _| {
-                        if window.viewport_size().height < px(theme::Theme::WINDOW_HEIGHT) {
-                            window.toggle_simple_fullscreen();
-                        }
-                    })
-                    .unwrap();
-                cx.background_executor().timer(Duration::from_secs(1)).await;
-                for overview in [false, true] {
-                    handle
-                        .update(cx, |view, window, cx| {
-                            window.resize(size(
-                                px(theme::Theme::WINDOW_WIDTH),
-                                px(theme::Theme::WINDOW_HEIGHT),
-                            ));
-                            window.bounds_changed(cx);
-                            view.visual_view(overview, window, cx);
-                        })
-                        .unwrap();
-                    cx.background_executor().timer(Duration::from_secs(1)).await;
-                    handle
-                        .update(cx, |_, window, app| {
-                            assert_eq!(
-                                window.viewport_size(),
-                                size(
-                                    px(theme::Theme::WINDOW_WIDTH),
-                                    px(theme::Theme::WINDOW_HEIGHT)
-                                ),
-                                "visual comparison viewport"
-                            );
-                            eprintln!(
-                                "{}: viewport={:?}, scale={}, mono={}",
-                                if overview { "Overview" } else { "Main" },
-                                window.viewport_size(),
-                                window.scale_factor(),
-                                theme::Theme::mono(app).family
-                            );
-                            if !overview {
-                                screen::verify_native_geometry(window, app);
-                            }
-                            std::fs::create_dir_all(&directory).unwrap();
-                            window
-                                .render_to_image()
-                                .unwrap()
-                                .save(directory.join(if overview {
-                                    "overview-native.png"
-                                } else {
-                                    "main-native.png"
-                                }))
-                                .unwrap();
-                        })
-                        .unwrap();
-                    if !overview {
-                        let marked = handle
-                            .update(cx, |view, window, cx| {
-                                view.visual_marked_overlay(window, cx)
-                            })
-                            .unwrap();
-                        // Render explicitly: an idle/occluded display link may not
-                        // have presented the notification yet. Do not hold the root
-                        // entity borrowed while draw renders it again.
-                        cx.update_window(handle.into(), |_, window, app| {
-                                window.refresh();
-                                window.draw(app).clear(app);
-                                window
-                                    .render_to_image()
-                                    .unwrap()
-                                    .save(directory.join("ime-native.png"))
-                                    .unwrap();
-                                if let Some(marked) = marked {
-                                    let scale = window.scale_factor();
-                                    eprintln!("IME rendered underlines: {:?}", window.painted_underlines());
-                                    assert!(
-                                        window.painted_underlines().iter().any(|line| {
-                                            let x = line.bounds.origin.x.0 / scale;
-                                            let y = line.bounds.origin.y.0 / scale;
-                                            (x - f32::from(marked.left())).abs() < 1.
-                                                && y >= f32::from(marked.top())
-                                                && y <= f32::from(marked.bottom())
-                                        }),
-                                        "marked underline must be painted at the IME range, not the pane bottom"
-                                    );
-                                }
-                            })
-                            .unwrap();
-                    }
-                }
-                cx.update(|cx| cx.quit());
-            })
-            .detach();
-        }
+        harness::start(result.as_ref().ok().copied(), evidence.clone(), cx);
         if let Err(e) = result {
             eprintln!("open workbench: {e}");
             cx.quit();
@@ -525,37 +355,4 @@ fn register_symbols() -> Result<(), &'static str> {
         }
     }
     Ok(())
-}
-
-#[cfg(feature = "visual-test")]
-fn native_click(
-    window: &mut gpui::Window,
-    app: &mut App,
-    position: gpui::Point<gpui::Pixels>,
-    button: gpui::MouseButton,
-) {
-    use gpui::InputEvent;
-    window.dispatch_event(
-        gpui::MouseDownEvent {
-            button,
-            position,
-            modifiers: Default::default(),
-            click_count: 1,
-            first_mouse: false,
-        }
-        .to_platform_input(),
-        app,
-    );
-    window.dispatch_event(
-        gpui::MouseUpEvent {
-            button,
-            position,
-            modifiers: Default::default(),
-            click_count: 1,
-        }
-        .to_platform_input(),
-        app,
-    );
-    window.refresh();
-    window.draw(app).clear(app);
 }

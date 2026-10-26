@@ -1,5 +1,5 @@
 //! Event-driven macOS status item and notification delivery; no timers or process probes.
-use crate::{connection::RecognitionConnection, theme::Theme as T};
+use crate::{connection::RecognitionConnection, ui::theme::Theme as T};
 use futures::{
     StreamExt,
     channel::mpsc::{UnboundedReceiver, UnboundedSender, unbounded},

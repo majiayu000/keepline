@@ -1,4 +1,4 @@
-use crate::screen::Run;
+use crate::terminal::screen::Run;
 
 type Cell = (u16, u16);
 
@@ -63,7 +63,7 @@ pub fn copied_text(rows: &[Vec<Run>], selection: Option<TextSelection>) -> Strin
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::screen::{Attrs, word_around};
+    use crate::terminal::screen::{Attrs, word_around};
 
     fn rows(text: &[&str]) -> Vec<Vec<Run>> {
         text.iter()
@@ -133,3 +133,4 @@ mod tests {
         assert_eq!(TextSelection::Anchor((0, 0)).bounds(), None);
     }
 }
+

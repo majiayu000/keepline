@@ -94,6 +94,9 @@ pub enum Reply {
     Hello {
         major: u32,
         instance: String,
+        /// Absent from hosts built before it existed, which are stale by definition.
+        #[serde(default)]
+        build: Build,
     },
     Workspace(Workspace),
     Cwd(String),
@@ -106,6 +109,50 @@ pub enum Reply {
     },
     Ok,
     Error(String),
+}
+
+/// The executable a host runs, as it was when the host started. A client compares it
+/// with the file on disk now: a rebuilt binary does not change a running host.
+#[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub struct Build {
+    pub binary: String,
+    /// Modification time of `binary` in seconds since the epoch; 0 if unknown.
+    pub modified: u64,
+}
+impl Build {
+    pub fn current() -> Self {
+        let binary = std::env::current_exe().unwrap_or_default();
+        Self {
+            modified: Self::modified(&binary),
+            binary: binary.to_string_lossy().into_owned(),
+        }
+    }
+    pub fn modified(path: &std::path::Path) -> u64 {
+        std::fs::metadata(path)
+            .and_then(|m| m.modified())
+            .ok()
+            .and_then(|t| t.duration_since(std::time::UNIX_EPOCH).ok())
+            .map_or(0, |d| d.as_secs())
+    }
+    /// Why this host runs older code than its own binary, or than `sibling` (the host
+    /// this client would start), when it does.
+    pub fn stale(&self, sibling: &std::path::Path) -> Option<String> {
+        if self.binary.is_empty() || self.modified == 0 {
+            return Some("后台进程是旧版本（不报告构建信息）".into());
+        }
+        let own = Self::modified(std::path::Path::new(&self.binary));
+        if own > self.modified {
+            return Some(format!("后台进程启动后 {} 已重新编译", self.binary));
+        }
+        if Self::modified(sibling) > self.modified {
+            return Some(format!(
+                "后台进程（{}）比本 App 自带的 {} 旧",
+                self.binary,
+                sibling.display()
+            ));
+        }
+        None
+    }
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
@@ -131,6 +178,9 @@ pub struct RecognitionStatus {
     pub scopes: Vec<String>,
     pub metrics: RecognitionMetrics,
     pub terminal_hints: std::collections::HashMap<String, String>,
+    /// Terminal -> the title its program set, spinner dropped. Live state, not stored.
+    #[serde(default)]
+    pub terminal_titles: std::collections::HashMap<String, String>,
     pub workspace_revision: u64,
     /// CLI -> why its official status query failed last; absent once one succeeds. The
     /// status rules then fall back to logs, hooks and the screen.
@@ -145,6 +195,7 @@ impl Default for RecognitionStatus {
             scopes: vec![],
             metrics: RecognitionMetrics::default(),
             terminal_hints: Default::default(),
+            terminal_titles: Default::default(),
             workspace_revision: 0,
             official: Default::default(),
         }
@@ -215,5 +266,42 @@ pub fn rpc(socket: &std::path::Path, request: &Request) -> io::Result<Reply> {
     match receive::<Reply>(&mut stream).map_err(|e| stage("receive reply", e))? {
         Reply::Error(message) => Err(io::Error::other(message)),
         reply => Ok(reply),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::Build;
+
+    #[test]
+    fn a_host_is_stale_when_its_binary_or_the_apps_was_rebuilt_after_it_started() {
+        let dir = std::env::temp_dir().join(format!("kl-build-{}", uuid::Uuid::new_v4()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let binary = dir.join("keeplined");
+        std::fs::write(&binary, "").unwrap();
+        let missing = dir.join("absent");
+        let started = Build {
+            binary: binary.to_string_lossy().into_owned(),
+            modified: Build::modified(&binary),
+        };
+        assert_eq!(started.stale(&missing), None);
+        assert_eq!(started.stale(&binary), None);
+        assert!(
+            Build::default().stale(&missing).is_some(),
+            "pre-build hosts"
+        );
+        let older = Build {
+            modified: started.modified - 60,
+            ..started.clone()
+        };
+        assert!(older.stale(&missing).unwrap().contains("重新编译"));
+        let sibling = dir.join("bundled");
+        std::fs::write(&sibling, "").unwrap();
+        let other = Build {
+            binary: missing.to_string_lossy().into_owned(),
+            modified: started.modified - 60,
+        };
+        assert!(other.stale(&sibling).unwrap().contains("自带"));
+        std::fs::remove_dir_all(dir).unwrap();
     }
 }

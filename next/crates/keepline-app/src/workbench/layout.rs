@@ -1,6 +1,20 @@
 //! Panes, their split layout, resizing and pane menus.
 use super::*;
 
+/// The visible panes and what is open over them: menus, drags and pending closes.
+pub(super) struct LayoutState {
+    pub(super) panes: HashMap<String, Entity<Pane>>,
+    pub(super) menu: Option<PaneMenu>,
+    pub(super) split_target: Option<(String, Axis)>,
+    pub(super) drag: Option<Vec<bool>>,
+    pub(super) split_bounds: HashMap<Vec<bool>, gpui::Bounds<gpui::Pixels>>,
+    /// A tab being renamed in place after a double-click.
+    pub(super) renaming_tab: Option<(String, Entity<Field>, gpui::Subscription)>,
+    /// A tab's right-click menu: the tab and where it was opened.
+    pub(super) tab_menu: Option<(String, gpui::Point<gpui::Pixels>)>,
+    /// A close that would stop a running Agent, waiting for the user to confirm it.
+    pub(super) confirm_close: Option<Closing>,
+}
 impl Workbench {
     pub(super) fn pane_view(
         &self,
@@ -43,7 +57,11 @@ impl Workbench {
                 )
                 .into_any_element();
         }
-        let pane = self.panes.get(id).unwrap();
+        // Panes attach in sync_panes; a leaf drawn before that (a tab switch whose
+        // reply has not arrived) stays blank for a frame instead of taking the app down.
+        let Some(pane) = self.layout.panes.get(id) else {
+            return div().size_full().into_any_element();
+        };
         let focused = pane.focus_handle(cx).is_focused(window);
         let session = self.workspace.current_agent(id).or_else(|| {
             self.workspace
@@ -52,21 +70,19 @@ impl Workbench {
                 .filter(|s| s.terminal.as_deref() == Some(id))
                 .max_by_key(|s| s.updated)
         });
-        let group = session.map(|s| self.group(s));
+        let group = session.map(|s| session_group(&self.workspace, s));
         // An Agent's conversation names the pane; otherwise the title the program set.
         let title = session
             .map(|s| self.session_line(s))
             .or_else(|| pane.read(cx).program_title())
             .unwrap_or_else(|| "空终端".into());
         let rang = pane.read(cx).bell;
-        let hint = self.recognition.terminal_hints.get(id).cloned();
+        let hint = self.store.recognition().terminal_hints.get(id).cloned();
         let takeover = id.to_owned();
         let focus = pane.focus_handle(cx);
         let focus_id = id.to_owned();
         let menu_id = id.to_owned();
-        let more_id = id.to_owned();
         let close_id = id.to_owned();
-        let split_id = id.to_owned();
         let other_owner = pane.read(cx).has_other_owner();
         div()
             .id(gpui::SharedString::from(format!("pane-{id}")))
@@ -74,7 +90,7 @@ impl Workbench {
             .on_mouse_down(
                 gpui::MouseButton::Left,
                 cx.listener(move |this, _, window, cx| {
-                    this.focused = Some(focus_id.clone());
+                    this.nav.focused = Some(focus_id.clone());
                     window.focus(&focus, cx);
                     cx.notify();
                 }),
@@ -82,7 +98,7 @@ impl Workbench {
             .on_mouse_down(
                 gpui::MouseButton::Right,
                 cx.listener(move |this, event: &gpui::MouseDownEvent, _, cx| {
-                    this.menu = Some(PaneMenu {
+                    this.layout.menu = Some(PaneMenu {
                         terminal: menu_id.clone(),
                         position: event.position,
                         page: MenuPage::Main,
@@ -155,11 +171,12 @@ impl Workbench {
                             .text_color(T::color(T::LINK))
                             .on_click(cx.listener(
                                 move |this, _, window, cx| {
-                                    let pane =
-                                        cx.new(|cx| Pane::new(&this.socket, &takeover, true, cx));
+                                    let pane = cx.new(|cx| {
+                                        Pane::new(this.store.socket(), &takeover, true, cx)
+                                    });
                                     window.focus(&pane.focus_handle(cx), cx);
                                     cx.observe(&pane, |_, _, cx| cx.notify()).detach();
-                                    this.panes.insert(takeover.clone(), pane);
+                                    this.layout.panes.insert(takeover.clone(), pane);
                                     cx.notify();
                                 },
                             )),
@@ -185,7 +202,7 @@ impl Workbench {
                                 .text_color(T::color(T::LINK))
                                 .on_click(cx.listener(
                                     move |this, _, _, cx| {
-                                        if let Some(p) = this.panes.get(&target) {
+                                        if let Some(p) = this.layout.panes.get(&target) {
                                             p.update(cx, |p, cx| p.place_text(text.clone(), cx));
                                         }
                                     },
@@ -205,41 +222,12 @@ impl Workbench {
                             .text_color(T::color(T::LINK))
                             .on_click(cx.listener(
                                 move |this, _, _, cx| {
-                                    this.here = Some(show.clone());
+                                    this.overview.here = Some(show.clone());
                                     cx.notify();
                                 },
                             )),
                         )
                     })
-                    .child(
-                        button(gpui::SharedString::from(format!("split-pane-{id}")), "◫")
-                            .aria_label("分屏")
-                            .w(px(T::ICON_WIDTH))
-                            .h(px(T::ICON_HEIGHT))
-                            .px(px(T::S2))
-                            .on_click(cx.listener(move |this, event: &gpui::ClickEvent, _, cx| {
-                                this.menu = Some(PaneMenu {
-                                    terminal: split_id.clone(),
-                                    position: event.position(),
-                                    page: MenuPage::Main,
-                                });
-                                cx.notify();
-                            })),
-                    )
-                    .child(
-                        button(gpui::SharedString::from(format!("menu-{id}")), "⋯")
-                            .aria_label("画面菜单")
-                            .h(px(T::ICON_HEIGHT))
-                            .px(px(T::S6))
-                            .on_click(cx.listener(move |this, event: &gpui::ClickEvent, _, cx| {
-                                this.menu = Some(PaneMenu {
-                                    terminal: more_id.clone(),
-                                    position: event.position(),
-                                    page: MenuPage::Main,
-                                });
-                                cx.notify();
-                            })),
-                    )
                     .child(
                         button(gpui::SharedString::from(format!("close-pane-{id}")), "×")
                             .aria_label("关闭画面")
@@ -279,7 +267,7 @@ impl Workbench {
                     })),
             )
             .when_some(
-                session.filter(|s| self.here.as_ref() == Some(&s.id)),
+                session.filter(|s| self.overview.here.as_ref() == Some(&s.id)),
                 |d, s| {
                     d.child(
                         div()
@@ -334,7 +322,7 @@ impl Workbench {
                             |_, _, _| (),
                             move |bounds, _, _, cx| {
                                 entity.update(cx, |this, _| {
-                                    this.split_bounds.insert(bounds_path.clone(), bounds);
+                                    this.layout.split_bounds.insert(bounds_path.clone(), bounds);
                                 });
                             },
                         )
@@ -370,9 +358,9 @@ impl Workbench {
                             .on_mouse_down(
                                 gpui::MouseButton::Left,
                                 cx.listener(move |this, _, _, cx| {
-                                    if !this.busy {
-                                        this.drag = Some(drag_path.clone());
-                                        this.menu = None;
+                                    if !this.store.busy() {
+                                        this.layout.drag = Some(drag_path.clone());
+                                        this.layout.menu = None;
                                     }
                                     cx.stop_propagation();
                                     cx.notify();
@@ -399,15 +387,17 @@ impl Workbench {
         _: &mut Window,
         cx: &mut Context<Self>,
     ) {
-        let Some(path) = &self.drag else { return };
-        let Some(bounds) = self.split_bounds.get(path) else {
+        let Some(path) = &self.layout.drag else {
+            return;
+        };
+        let Some(bounds) = self.layout.split_bounds.get(path) else {
             return;
         };
         let Some(Layout::Split { axis, ratio, .. }) = self
             .workspace
             .tabs
             .iter_mut()
-            .find(|t| Some(&t.id) == self.tab.as_ref())
+            .find(|t| Some(&t.id) == self.nav.tab.as_ref())
             .and_then(|t| t.layout.as_mut())
             .and_then(|l| l.at_mut(path))
         else {
@@ -422,14 +412,14 @@ impl Workbench {
         cx.notify();
     }
     pub(super) fn finish_drag(&mut self, cx: &mut Context<Self>) {
-        if self.drag.take().is_none() {
+        if self.layout.drag.take().is_none() {
             return;
         }
         if let Some(tab) = self
             .workspace
             .tabs
             .iter()
-            .find(|t| Some(&t.id) == self.tab.as_ref())
+            .find(|t| Some(&t.id) == self.nav.tab.as_ref())
             .cloned()
         {
             self.edit(Edit::PutTab { tab }, cx);
@@ -442,11 +432,11 @@ impl Workbench {
         window: &mut Window,
         cx: &mut Context<Self>,
     ) {
-        let menu = self.menu.take();
+        let menu = self.layout.menu.take();
         match action {
             "向右分屏" | "向下分屏" => {
-                self.zoomed = None;
-                self.split_target = Some((
+                self.nav.zoomed = None;
+                self.layout.split_target = Some((
                     id.into(),
                     if action == "向右分屏" {
                         Axis::Right
@@ -457,35 +447,35 @@ impl Workbench {
                 self.launch(true, None, cx);
             }
             "放大" | "还原" => {
-                self.zoomed = if self.zoomed.as_deref() == Some(id) {
+                self.nav.zoomed = if self.nav.zoomed.as_deref() == Some(id) {
                     None
                 } else {
                     Some(id.into())
                 };
                 self.sync_panes(cx);
-                if let Some(pane) = self.panes.get(id) {
+                if let Some(pane) = self.layout.panes.get(id) {
                     window.focus(&pane.focus_handle(cx), cx);
                 }
             }
             "关闭画面" => self.close_pane(id, cx),
             "复制" => {
-                if let Some(pane) = self.panes.get(id) {
+                if let Some(pane) = self.layout.panes.get(id) {
                     pane.update(cx, |p, cx| p.copy(cx));
                 }
             }
             "粘贴" => {
-                if let Some(pane) = self.panes.get(id) {
+                if let Some(pane) = self.layout.panes.get(id) {
                     pane.update(cx, |p, cx| p.paste(cx));
                     window.focus(&pane.focus_handle(cx), cx);
                 }
             }
             "搜索滚动内容" => {
-                if let Some(pane) = self.panes.get(id) {
+                if let Some(pane) = self.layout.panes.get(id) {
                     pane.update(cx, |p, cx| p.open_search(window, cx));
                 }
             }
             "中断（Ctrl-C）" => {
-                if let Some(pane) = self.panes.get(id) {
+                if let Some(pane) = self.layout.panes.get(id) {
                     pane.update(cx, |p, cx| p.interrupt(cx));
                 }
             }
@@ -508,7 +498,7 @@ impl Workbench {
                     } else {
                         MenuPage::Sessions
                     };
-                    self.menu = Some(menu);
+                    self.layout.menu = Some(menu);
                 }
             }
             _ => (),
@@ -532,7 +522,7 @@ impl Workbench {
                 for title in [
                     "向右分屏",
                     "向下分屏",
-                    if self.zoomed.as_deref() == Some(&menu.terminal) {
+                    if self.nav.zoomed.as_deref() == Some(&menu.terminal) {
                         "还原"
                     } else {
                         "放大"
@@ -577,13 +567,13 @@ impl Workbench {
                     entries.push(
                         button(
                             gpui::SharedString::from(format!("new-{}", agent.executable())),
-                            agent_name(agent),
+                            agent.name(),
                         )
                         .w_full()
                         .on_click(cx.listener(move |this, _, _, cx| {
-                            this.menu = None;
-                            this.chosen_agent = Some(agent);
-                            this.split_target = Some((terminal.clone(), Axis::Right));
+                            this.layout.menu = None;
+                            this.tasks.chosen_agent = Some(agent);
+                            this.layout.split_target = Some((terminal.clone(), Axis::Right));
                             this.launch(true, task.clone(), cx);
                         }))
                         .into_any_element(),
@@ -602,7 +592,7 @@ impl Workbench {
                             )
                             .w_full()
                             .on_click(cx.listener(move |this, _, _, cx| {
-                                this.menu = None;
+                                this.layout.menu = None;
                                 this.edit(
                                     Edit::AssignTask {
                                         id: sid.clone(),
@@ -617,6 +607,122 @@ impl Workbench {
                 }
             }
         }
+        let position = menu.position;
+        self.popup(position, entries, window, cx, |this| {
+            this.layout.menu = None
+        })
+    }
+    /// A tab's right-click menu.
+    pub(super) fn tab_menu_view(
+        &self,
+        id: &str,
+        position: gpui::Point<gpui::Pixels>,
+        window: &Window,
+        cx: &Context<Self>,
+    ) -> gpui::AnyElement {
+        let rename = id.to_owned();
+        let close = id.to_owned();
+        let entries = vec![
+            button("tab-menu-rename", "重命名")
+                .w_full()
+                .justify_start()
+                .border_0()
+                .on_click(cx.listener(move |this, _, window, cx| {
+                    this.layout.tab_menu = None;
+                    this.rename_tab(&rename, window, cx);
+                }))
+                .into_any_element(),
+            button("tab-menu-close", "关闭标签")
+                .w_full()
+                .justify_start()
+                .border_0()
+                .on_click(cx.listener(move |this, _, _, cx| {
+                    this.close_tab(&close, cx);
+                }))
+                .into_any_element(),
+        ];
+        self.popup(position, entries, window, cx, |this| {
+            this.layout.tab_menu = None
+        })
+    }
+    /// Asks before a close stops running Agents; a click outside cancels.
+    pub(super) fn confirm_close_view(
+        &self,
+        closing: &Closing,
+        cx: &Context<Self>,
+    ) -> gpui::AnyElement {
+        let agents = self.running_agents(closing);
+        let what = match closing {
+            Closing::Tab(_) => "关闭这个标签",
+            Closing::Pane(_) => "关闭这个画面",
+        };
+        let confirmed = closing.clone();
+        div()
+            .absolute()
+            .inset_0()
+            .occlude()
+            .flex()
+            .items_center()
+            .justify_center()
+            .on_mouse_down(
+                gpui::MouseButton::Left,
+                cx.listener(|this, _, _, cx| {
+                    this.layout.confirm_close = None;
+                    cx.notify();
+                }),
+            )
+            .child(
+                div()
+                    .id("confirm-close")
+                    .w(px(T::HERE_WIDTH))
+                    .p(px(T::S16))
+                    .flex()
+                    .flex_col()
+                    .gap(px(T::S12))
+                    .bg(T::color(T::RAISED))
+                    .border(px(T::BORDER_WIDTH))
+                    .border_color(T::color(T::CONTROL))
+                    .rounded(px(T::CARD_RADIUS))
+                    .shadow_lg()
+                    .on_mouse_down(gpui::MouseButton::Left, |_, _, cx| cx.stop_propagation())
+                    .child(
+                        div()
+                            .text_size(px(T::CARD_TITLE))
+                            .child(format!("{what}会停止 {} 个正在运行的 Agent", agents.len())),
+                    )
+                    .child(label(agents.join("\n")))
+                    .child(label("会话记录保留，之后可以从会话列表恢复。"))
+                    .child(
+                        div()
+                            .flex()
+                            .justify_end()
+                            .gap(px(T::S8))
+                            .child(button("confirm-close-cancel", "取消").on_click(cx.listener(
+                                |this, _, _, cx| {
+                                    this.layout.confirm_close = None;
+                                    cx.notify();
+                                },
+                            )))
+                            .child(
+                                button("confirm-close-stop", "停止并关闭")
+                                    .text_color(Group::Error.colors().1)
+                                    .on_click(cx.listener(move |this, _, _, cx| {
+                                        this.close_now(confirmed.clone(), cx);
+                                    })),
+                            ),
+                    ),
+            )
+            .into_any_element()
+    }
+    /// A floating menu at `position`; a click outside it runs `dismiss`.
+    fn popup(
+        &self,
+        position: gpui::Point<gpui::Pixels>,
+        entries: Vec<gpui::AnyElement>,
+        window: &Window,
+        cx: &Context<Self>,
+        dismiss: fn(&mut Self),
+    ) -> gpui::AnyElement {
         let height = px(T::ROW * entries.len() as f32 + T::S12);
         let viewport = window.viewport_size();
         div()
@@ -625,8 +731,8 @@ impl Workbench {
             .occlude()
             .on_mouse_down(
                 gpui::MouseButton::Left,
-                cx.listener(|this, _, _, cx| {
-                    this.menu = None;
+                cx.listener(move |this, _, _, cx| {
+                    dismiss(this);
                     cx.notify();
                 }),
             )
@@ -635,12 +741,12 @@ impl Workbench {
                     .id("pane-menu")
                     .absolute()
                     .left(
-                        menu.position
+                        position
                             .x
                             .min(viewport.width - px(T::MENU_WIDTH))
                             .max(px(0.)),
                     )
-                    .top(menu.position.y.min(viewport.height - height).max(px(0.)))
+                    .top(position.y.min(viewport.height - height).max(px(0.)))
                     .w(px(T::MENU_WIDTH))
                     .p(px(T::S6))
                     .bg(T::color(T::RAISED))

@@ -93,7 +93,8 @@ pub fn alternate_scroll(terminal: &Vt, up: bool) -> Result<Option<Vec<u8>>, Stri
     } else {
         vt::key::Key::ArrowDown
     };
-    crate::keyboard::encode(terminal, key, if up { "up" } else { "down" }, Mods::empty()).map(Some)
+    crate::terminal::keyboard::encode(terminal, key, if up { "up" } else { "down" }, Mods::empty())
+        .map(Some)
 }
 /// Dropped files as text for the program: each path with shell metacharacters escaped
 /// by a backslash (Ghostty's set), joined by spaces, plus a trailing space like Terminal.app.
