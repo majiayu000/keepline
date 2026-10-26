@@ -133,4 +133,3 @@ mod tests {
         assert_eq!(TextSelection::Anchor((0, 0)).bounds(), None);
     }
 }
-

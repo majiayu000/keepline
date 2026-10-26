@@ -1324,4 +1324,3 @@ mod handoff_tests {
         ));
     }
 }
-
