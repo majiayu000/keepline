@@ -198,6 +198,7 @@ impl Workbench {
                     self.nav.space = task.space.clone();
                     self.nav.overview = false;
                     self.nav.task_detail = Some(id);
+                    self.sync_panes(cx);
                 }
             }
         }

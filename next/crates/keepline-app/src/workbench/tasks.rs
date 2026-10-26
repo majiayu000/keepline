@@ -308,6 +308,7 @@ impl Workbench {
         match tab.filter(|_| another) {
             Some(tab) => {
                 self.nav.tab = Some(tab);
+                self.sync_panes(cx);
                 self.launch(true, Some(task), cx);
             }
             None => self.launch(false, Some(task), cx),
