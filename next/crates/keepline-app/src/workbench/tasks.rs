@@ -390,6 +390,7 @@ impl Workbench {
     }
     pub(super) fn show_quick_task(&mut self, window: &mut Window, cx: &mut Context<Self>) {
         self.overview = false;
+        self.todos_open = true;
         self.form = None;
         self.task_detail = None;
         self.sync_panes(cx);
