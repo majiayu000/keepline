@@ -57,7 +57,11 @@ impl Workbench {
                 )
                 .into_any_element();
         }
-        let pane = self.layout.panes.get(id).unwrap();
+        // Panes attach in sync_panes; a leaf drawn before that (a tab switch whose
+        // reply has not arrived) stays blank for a frame instead of taking the app down.
+        let Some(pane) = self.layout.panes.get(id) else {
+            return div().size_full().into_any_element();
+        };
         let focused = pane.focus_handle(cx).is_focused(window);
         let session = self.workspace.current_agent(id).or_else(|| {
             self.workspace

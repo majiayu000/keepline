@@ -242,6 +242,14 @@ pub fn start(
             );
             cx.update_window(handle.into(), |_, w, a| shot("6-failed-reclick", w, a))
                 .unwrap();
+            // Closing the shown tab hands the view to a neighbour with a live shell; that
+            // shell must be drawable at once, before the host confirms the close.
+            let neighbour = handle
+                .update(cx, |v, _, cx| v.visual_close_tab(cx))
+                .unwrap();
+            assert!(neighbour.is_some(), "a neighbouring tab takes over");
+            cx.update_window(handle.into(), |_, w, a| shot("7-closed-tab", w, a))
+                .unwrap();
             eprintln!("tab evidence PASS");
             cx.update(|cx| cx.quit());
         })
