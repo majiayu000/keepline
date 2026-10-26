@@ -221,6 +221,7 @@ fn run() -> io::Result<()> {
         lifecycle::Admission::Primary(guard, events) => (guard, events),
     };
     let initial = load_workspace(&root);
+    let icon_file = instance_dir.join("app-icon");
     #[cfg(feature = "visual-test")]
     let evidence = args
         .iter()
@@ -246,6 +247,12 @@ fn run() -> io::Result<()> {
             }
         })
         .detach();
+        let icon = ui::app_icon::AppIcon::load(&icon_file);
+        desktop::set_dock_icon(icon.dock_png());
+        cx.set_global(ui::app_icon::Chosen {
+            icon,
+            file: icon_file.clone(),
+        });
         if let Err(error) = register_symbols() {
             eprintln!("bundled symbol font: {error}");
             cx.quit();
