@@ -70,6 +70,12 @@ pub enum Agent {
     Claude,
 }
 impl Agent {
+    pub fn name(self) -> &'static str {
+        match self {
+            Self::Codex => "Codex",
+            Self::Claude => "Claude Code",
+        }
+    }
     /// Temporary until daemon-backed Codex can prove a TUI-to-session association.
     pub fn command(self) -> String {
         match self {
@@ -122,7 +128,6 @@ pub struct Tab {
     /// A creation default, never the ownership of existing agent sessions.
     pub default_task: Option<String>,
     pub title: String,
-    pub closed: bool,
     pub layout: Option<Layout>,
 }
 
@@ -216,8 +221,14 @@ pub enum Edit {
     PutTab {
         tab: Tab,
     },
+    /// Removes the tab; the host stops every terminal it held.
     CloseTab {
         id: String,
+    },
+    /// Takes one terminal out of its tab, closing the tab with its last pane; the host
+    /// stops that terminal.
+    ClosePane {
+        terminal: String,
     },
     SetOutcome {
         id: String,
@@ -231,6 +242,20 @@ pub enum Edit {
         session: String,
         task: Task,
     },
+}
+
+impl Edit {
+    /// Whether the edit must be based on the host's current revision. Tabs and layouts
+    /// are addressed by id and only ever changed by the user, so like herdr's tab
+    /// commands they apply to whatever is there now and fail only when a referenced
+    /// object is gone. Session output bumps the revision every second; requiring it
+    /// here made 「收起标签」 fail almost every time.
+    pub fn checks_revision(&self) -> bool {
+        !matches!(
+            self,
+            Self::PutTab { .. } | Self::CloseTab { .. } | Self::ClosePane { .. }
+        )
+    }
 }
 
 fn validate_outcome(outcome: &Outcome) -> Result<(), String> {
@@ -350,7 +375,45 @@ impl Workspace {
             })
     }
 
-    pub fn tab_title(&self, tab: &Tab) -> String {
+    /// Like Warp: the name you gave it, then what runs in it (todo, conversation,
+    /// the title the program set), then the program itself, numbered among same-named
+    /// tabs. The space's directory is not a tab name; every tab in one space shares it.
+    /// `titles` holds every terminal's program title, so a tab keeps its name while
+    /// another tab is in front; `focused` breaks ties between a tab's own panes.
+    pub fn tab_title(
+        &self,
+        tab: &Tab,
+        titles: &std::collections::HashMap<String, String>,
+        focused: Option<&str>,
+    ) -> String {
+        if let Some(title) = self.tab_given_title(tab, titles, focused) {
+            return title;
+        }
+        let name = self.tab_program(tab);
+        let same = self
+            .tabs
+            .iter()
+            .filter(|t| t.space == tab.space)
+            .take_while(|t| t.id != tab.id)
+            .filter(|t| {
+                self.tab_given_title(t, titles, None).is_none() && self.tab_program(t) == name
+            })
+            .count();
+        if same == 0 {
+            name
+        } else {
+            format!("{name} {}", same + 1)
+        }
+    }
+    fn tab_given_title(
+        &self,
+        tab: &Tab,
+        titles: &std::collections::HashMap<String, String>,
+        focused: Option<&str>,
+    ) -> Option<String> {
+        if !tab.title.trim().is_empty() {
+            return Some(tab.title.clone());
+        }
         let ids = self.tab_terminals(&tab.id);
         let sessions: Vec<_> = self
             .agent_sessions
@@ -363,23 +426,50 @@ impl Workspace {
                 .as_ref()
                 .and_then(|id| self.tasks.iter().find(|t| &t.id == id))
         {
-            return task.title.clone();
+            return Some(task.title.clone());
         }
         if let Some(first) = sessions.first().and_then(|s| s.task.as_ref())
             && sessions.iter().all(|s| s.task.as_ref() == Some(first))
             && let Some(task) = self.tasks.iter().find(|t| &t.id == first)
         {
-            return task.title.clone();
+            return Some(task.title.clone());
         }
-        if !tab.title.is_empty() {
-            return tab.title.clone();
-        }
-        self.spaces
+        if let Some(title) = sessions
             .iter()
-            .find(|s| s.id == tab.space)
-            .and_then(|s| std::path::Path::new(&s.cwd).file_name())
-            .map(|n| n.to_string_lossy().into_owned())
-            .unwrap_or_else(|| "终端".into())
+            .filter_map(|s| Some((s.updated, &self.content.get(&s.id)?.title)))
+            .filter(|(_, t)| !t.trim().is_empty())
+            .max_by_key(|(updated, _)| *updated)
+            .map(|(_, t)| t.clone())
+        {
+            return Some(title);
+        }
+        let mut ids = ids;
+        if let Some(i) = ids.iter().position(|id| Some(id.as_str()) == focused) {
+            ids.swap(0, i);
+        }
+        ids.iter()
+            .filter_map(|id| titles.get(id))
+            .find(|t| !t.trim().is_empty())
+            .cloned()
+    }
+    /// What runs in the tab's first pane: its agent, else its program ("zsh").
+    fn tab_program(&self, tab: &Tab) -> String {
+        let ids = self.tab_terminals(&tab.id);
+        let Some(id) = ids.first() else {
+            return "终端".into();
+        };
+        if let Some(session) = self.current_agent(id) {
+            return session.runtime.name().into();
+        }
+        self.terminals
+            .iter()
+            .find(|t| &t.id == id)
+            .and_then(|t| t.argv.first())
+            .and_then(|program| program.rsplit('/').next())
+            .map(|program| program.trim_start_matches('-'))
+            .filter(|program| !program.is_empty())
+            .unwrap_or("终端")
+            .into()
     }
     pub fn tab_terminals(&self, id: &str) -> Vec<String> {
         self.tabs
@@ -577,13 +667,24 @@ impl Workspace {
                 } else {
                     self.tabs.push(tab);
                 }
+                // A tab without panes has nothing to show; it closes with its last pane.
+                self.tabs.retain(|t| t.layout.is_some());
             }
             Edit::CloseTab { id } => {
-                self.tabs
+                let before = self.tabs.len();
+                self.tabs.retain(|t| t.id != id);
+                if self.tabs.len() == before {
+                    return Err("标签不存在".into());
+                }
+            }
+            Edit::ClosePane { terminal } => {
+                let tab = self
+                    .tabs
                     .iter_mut()
-                    .find(|t| t.id == id)
-                    .ok_or("标签不存在")?
-                    .closed = true;
+                    .find(|t| t.layout.as_ref().is_some_and(|l| l.contains(&terminal)))
+                    .ok_or("画面不存在")?;
+                tab.layout = tab.layout.take().and_then(|l| l.without(&terminal));
+                self.tabs.retain(|t| t.layout.is_some());
             }
             Edit::SetOutcome { id, outcome } => {
                 self.change_outcome(&id, outcome, crate::content::now(), "用户操作")?;
@@ -674,8 +775,7 @@ mod tests {
                 id: id.into(),
                 space: space.into(),
                 default_task: Some(task.into()),
-                title: id.into(),
-                closed: false,
+                title: String::new(),
                 layout: Some(Layout::Leaf("pty".into())),
             },
         })
@@ -747,12 +847,6 @@ mod tests {
         let mut w = workspace();
         tab(&mut w, "tab", "a", "a");
         assert_eq!(w.task_terminal("a").unwrap().id, "pty");
-        w.edit(Edit::CloseTab { id: "tab".into() }).unwrap();
-        assert_eq!(
-            w.task_terminal("a").unwrap().id,
-            "pty",
-            "closed view retains the launch target"
-        );
         w.edit(Edit::SetPendingTask {
             terminal: "pty".into(),
             task: None,
@@ -786,14 +880,17 @@ mod tests {
             evidence: Some("/log:42".into()),
         });
         w.edit(Edit::UpdateTask(task.clone())).unwrap();
-        assert_eq!(w.tab_title(&w.tabs[0]), "新的待办名");
+        assert_eq!(
+            w.tab_title(&w.tabs[0], &Default::default(), None),
+            "新的待办名"
+        );
         assert_eq!(w.tasks[0].acceptance, task.acceptance);
         w.edit(Edit::AssignTask {
             id: "one".into(),
             task: None,
         })
         .unwrap();
-        assert_eq!(w.tab_title(&w.tabs[0]), "tab");
+        assert_eq!(w.tab_title(&w.tabs[0], &Default::default(), None), "Codex");
         assert!(
             w.edit(Edit::SetTaskOutcome {
                 id: "a".into(),
@@ -804,6 +901,58 @@ mod tests {
             })
             .is_err()
         );
+    }
+    #[test]
+    fn tab_title_prefers_given_name_then_contents_then_program() {
+        let mut w = workspace();
+        for (tab, terminal) in [("first", "other"), ("second", "spare")] {
+            w.terminals.push(Terminal {
+                id: terminal.into(),
+                ..w.terminals[0].clone()
+            });
+            w.edit(Edit::PutTab {
+                tab: Tab {
+                    id: tab.into(),
+                    space: "a".into(),
+                    default_task: None,
+                    title: String::new(),
+                    layout: Some(Layout::Leaf(terminal.into())),
+                },
+            })
+            .unwrap();
+        }
+        tab(&mut w, "tab", "a", "a");
+        w.observe_agent(observation("one")).unwrap();
+        w.edit(Edit::AssignTask {
+            id: "one".into(),
+            task: None,
+        })
+        .unwrap();
+        let mut titles = std::collections::HashMap::new();
+        let title = |w: &Workspace,
+                     titles: &std::collections::HashMap<String, String>,
+                     i: usize| { w.tab_title(&w.tabs[i], titles, None) };
+        // Never a bare position: the program, numbered only among same-named tabs.
+        assert_eq!(title(&w, &titles, 0), "sh");
+        assert_eq!(title(&w, &titles, 1), "sh 2");
+        assert_eq!(title(&w, &titles, 2), "Codex");
+        titles.insert("pty".to_owned(), "~/code — zsh".to_owned());
+        assert_eq!(title(&w, &titles, 2), "~/code — zsh");
+        let session = w.agent_sessions[0].id.clone();
+        w.content.insert(
+            session,
+            crate::content::Content {
+                title: "评估接入 Kling v4 ESR".into(),
+                ..Default::default()
+            },
+        );
+        assert_eq!(title(&w, &titles, 2), "评估接入 Kling v4 ESR");
+        w.tabs[2].title = "kling".into();
+        assert_eq!(title(&w, &titles, 2), "kling");
+        titles.insert("spare".to_owned(), "vim".to_owned());
+        assert_eq!(title(&w, &titles, 1), "vim");
+        titles.insert("other".to_owned(), "htop".to_owned());
+        assert_eq!(title(&w, &titles, 0), "htop");
     }
     #[test]
     fn agent_start_commands_need_no_daemon_flag_and_quote_resume_ids() {
@@ -845,18 +994,55 @@ mod tests {
         assert_eq!(w.current_agent("pty").unwrap().task.as_deref(), Some("b"));
     }
     #[test]
-    fn cross_space_placement_does_not_reassign_work_and_close_preserves_layout() {
+    fn cross_space_placement_does_not_reassign_work_and_close_removes_the_tab() {
         let mut w = workspace();
         tab(&mut w, "old", "a", "a");
         w.observe_agent(observation("first")).unwrap();
         tab(&mut w, "new", "b", "b");
-        assert!(w.tab_terminals("old").is_empty());
+        assert!(
+            w.tabs.iter().all(|t| t.id != "old"),
+            "moving its only pane away closes the old tab"
+        );
         assert_eq!(w.tab_terminals("new"), ["pty"]);
         assert_eq!(w.agent_sessions[0].task.as_deref(), Some("a"));
         assert_eq!(w.terminals[0].space, "a");
         w.edit(Edit::CloseTab { id: "new".into() }).unwrap();
-        assert_eq!(w.terminals[0].state, ProcessState::Running);
-        assert_eq!(w.tab_terminals("new"), ["pty"]);
+        assert!(w.tabs.is_empty());
+        assert!(w.terminal_tab("pty").is_none());
+        assert!(w.edit(Edit::CloseTab { id: "new".into() }).is_err());
+    }
+    #[test]
+    fn closing_the_last_pane_closes_its_tab() {
+        let mut w = workspace();
+        w.terminals.push(Terminal {
+            id: "second".into(),
+            ..w.terminals[0].clone()
+        });
+        w.edit(Edit::PutTab {
+            tab: Tab {
+                id: "t".into(),
+                space: "a".into(),
+                default_task: None,
+                title: String::new(),
+                layout: Some(Layout::Split {
+                    axis: Axis::Right,
+                    ratio: 5000,
+                    first: Box::new(Layout::Leaf("pty".into())),
+                    second: Box::new(Layout::Leaf("second".into())),
+                }),
+            },
+        })
+        .unwrap();
+        w.edit(Edit::ClosePane {
+            terminal: "second".into(),
+        })
+        .unwrap();
+        assert_eq!(w.tab_terminals("t"), ["pty"]);
+        w.edit(Edit::ClosePane {
+            terminal: "pty".into(),
+        })
+        .unwrap();
+        assert!(w.tabs.is_empty());
     }
     #[test]
     fn log_refresh_never_reopens_or_reassigns_an_existing_conversation() {

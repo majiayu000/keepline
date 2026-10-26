@@ -199,9 +199,17 @@ impl Store {
                     evidence: r.get(3).map_err(db_error)?,
                 });
         }
+        // Tabs are deleted when closed. Rows an older build only marked closed, and tabs
+        // left without panes, are dropped here; their terminals died with that host.
+        self.0
+            .execute_batch(
+                "DELETE FROM tab_layout_nodes WHERE tab_id IN (SELECT id FROM tabs WHERE closed<>0);
+                 DELETE FROM tabs WHERE closed<>0 OR id NOT IN (SELECT tab_id FROM tab_layout_nodes);",
+            )
+            .map_err(db_error)?;
         let mut statement = self
             .0
-            .prepare("SELECT id,space_id,default_task_id,title,closed FROM tabs ORDER BY rowid")
+            .prepare("SELECT id,space_id,default_task_id,title FROM tabs ORDER BY rowid")
             .map_err(db_error)?;
         let rows = statement
             .query_map([], |r| {
@@ -210,7 +218,6 @@ impl Store {
                     space: r.get(1)?,
                     default_task: r.get(2)?,
                     title: r.get(3)?,
-                    closed: r.get(4)?,
                     layout: None,
                 })
             })
@@ -300,8 +307,14 @@ impl Store {
                 .map_err(db_error)?;
             }
         }
+        for t in removed(&before.tabs, &w.tabs, |t| &t.id) {
+            tx.execute("DELETE FROM tab_layout_nodes WHERE tab_id=?1", [&t.id])
+                .map_err(db_error)?;
+            tx.execute("DELETE FROM tabs WHERE id=?1", [&t.id])
+                .map_err(db_error)?;
+        }
         for t in changed(&before.tabs, &w.tabs, |t| &t.id) {
-            tx.execute("INSERT INTO tabs VALUES(?1,?2,?3,?4,?5) ON CONFLICT(id) DO UPDATE SET space_id=excluded.space_id,default_task_id=excluded.default_task_id,title=excluded.title,closed=excluded.closed",params![t.id,t.space,t.default_task,t.title,t.closed]).map_err(db_error)?;
+            tx.execute("INSERT INTO tabs VALUES(?1,?2,?3,?4,0) ON CONFLICT(id) DO UPDATE SET space_id=excluded.space_id,default_task_id=excluded.default_task_id,title=excluded.title",params![t.id,t.space,t.default_task,t.title]).map_err(db_error)?;
         }
         for t in changed(&before.terminals, &w.terminals, |t| &t.id) {
             tx.execute("INSERT INTO terminals VALUES(?1,?2,?3,?4,?5,?6,?7,?8) ON CONFLICT(id) DO UPDATE SET space_id=excluded.space_id,argv=excluded.argv,cwd=excluded.cwd,pid=excluded.pid,process_state=excluded.process_state,exit_code=excluded.exit_code,error=excluded.error",params![t.id,t.space,serde_json::to_string(&t.argv).map_err(db_error)?,t.cwd,t.pid,enum_name(&t.state)?,t.exit_code,t.error]).map_err(db_error)?;
@@ -376,6 +389,14 @@ fn changed<'a, T: PartialEq>(before: &[T], after: &'a [T], id: impl Fn(&T) -> &s
     after
         .iter()
         .filter(|item| old.get(id(item)).is_none_or(|previous| *previous != *item))
+        .collect()
+}
+
+fn removed<'a, T>(before: &'a [T], after: &[T], id: impl Fn(&T) -> &str) -> Vec<&'a T> {
+    let kept: std::collections::HashSet<_> = after.iter().map(&id).collect();
+    before
+        .iter()
+        .filter(|item| !kept.contains(id(item)))
         .collect()
 }
 
@@ -459,6 +480,65 @@ mod milestone_tests {
         assert!(!db.claim_notification("session", "turn1:waiting").unwrap());
         assert!(db.claim_notification("session", "turn2:waiting").unwrap());
         drop(db);
+        std::fs::remove_dir_all(dir).unwrap();
+    }
+    #[test]
+    fn reopen_drops_tabs_an_older_build_only_hid_and_tabs_without_panes() {
+        let dir = std::env::temp_dir().join(format!("kl-tabs-{}", uuid::Uuid::new_v4()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let (mut db, before) = Store::open(&dir).unwrap();
+        let mut after = before.clone();
+        after.spaces.push(Space {
+            id: "s".into(),
+            name: "s".into(),
+            cwd: "/tmp".into(),
+        });
+        for id in ["kept", "hidden"] {
+            after.terminals.push(Terminal {
+                id: id.into(),
+                space: "s".into(),
+                argv: vec!["/bin/sh".into()],
+                cwd: "/tmp".into(),
+                pid: None,
+                state: ProcessState::Exited,
+                exit_code: Some(0),
+                error: None,
+            });
+            after.tabs.push(Tab {
+                id: id.into(),
+                space: "s".into(),
+                default_task: None,
+                title: String::new(),
+                layout: Some(Layout::Leaf(id.into())),
+            });
+        }
+        db.save(&before, &after).unwrap();
+        db.0.execute_batch(
+            "UPDATE tabs SET closed=1 WHERE id='hidden';
+             INSERT INTO tabs VALUES('empty','s',NULL,'',0);",
+        )
+        .unwrap();
+        drop(db);
+        let (db, loaded) = Store::open(&dir).unwrap();
+        assert_eq!(
+            loaded
+                .tabs
+                .iter()
+                .map(|t| t.id.as_str())
+                .collect::<Vec<_>>(),
+            ["kept"]
+        );
+        let rows: i64 =
+            db.0.query_row("SELECT count(*) FROM tab_layout_nodes", [], |r| r.get(0))
+                .unwrap();
+        assert_eq!(rows, 1);
+        let mut closed = loaded.clone();
+        closed.edit(Edit::CloseTab { id: "kept".into() }).unwrap();
+        let mut db = db;
+        db.save(&loaded, &closed).unwrap();
+        drop(db);
+        let (_, loaded) = Store::open(&dir).unwrap();
+        assert!(loaded.tabs.is_empty());
         std::fs::remove_dir_all(dir).unwrap();
     }
     #[test]
