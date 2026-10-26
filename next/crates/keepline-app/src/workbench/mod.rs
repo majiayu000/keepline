@@ -517,6 +517,7 @@ impl Workbench {
                 .cloned();
             self.nav.focused = None;
             self.nav.pending_focus = true;
+            self.sync_panes(cx);
         }
         self.edit(edit, cx);
     }
@@ -550,6 +551,7 @@ impl Workbench {
                 .find(|t| t.default_task.as_ref() == Some(task_id))
         {
             self.nav.tab = Some(tab.id.clone());
+            self.sync_panes(cx);
             split = true;
         }
         let source = self.layout.split_target.take().or_else(|| {
