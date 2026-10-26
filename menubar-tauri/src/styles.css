@@ -436,15 +436,13 @@ html, body {
   transition: all 0.2s ease;
 }
 
-.quota-card:hover {
-  border-color: var(--border-hover);
-  box-shadow: var(--shadow-md);
-}
+/* Cards are not clickable, so they have no hover lift. */
 
 .quota-header {
   display: flex;
   justify-content: space-between;
   align-items: center;
+  gap: 8px;
   margin-bottom: 8px;
 }
 
@@ -452,12 +450,17 @@ html, body {
   font-size: 13px;
   font-weight: 500;
   color: var(--text-primary);
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .quota-status {
   display: flex;
   align-items: center;
   gap: 8px;
+  flex-shrink: 0;
 }
 
 .status-badge {
@@ -514,6 +517,14 @@ html, body {
   display: inline-flex;
   align-items: center;
   justify-content: center;
+  flex-shrink: 0;
+}
+
+.reset-text {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .reset-icon svg {
@@ -610,6 +621,19 @@ html, body {
   display: flex;
   flex-direction: column;
   gap: 12px;
+}
+
+/* One gap per level: 8 inside a section, 12 between sections, no trailing margins. */
+.quota-list > .section {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-bottom: 0;
+}
+
+.quota-list > .section > .section-title,
+.quota-list .quota-card {
+  margin-bottom: 0;
 }
 
 /* Toast */
