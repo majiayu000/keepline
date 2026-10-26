@@ -1,7 +1,7 @@
 use crate::{
     connection::Connection,
-    screen::{self, Screen},
-    theme::{Group, Theme as T},
+    terminal::screen::{self, Screen},
+    ui::theme::{Group, Theme as T},
 };
 use futures::{StreamExt, channel::mpsc::unbounded};
 use gpui::{
@@ -34,13 +34,13 @@ pub struct Pane {
     handoff: Option<Handoff>,
     text_selection: Option<((u16, u16), (u16, u16))>,
     selecting: bool,
-    mouse: Option<crate::terminal_input::MouseEncoder>,
+    mouse: Option<crate::terminal::terminal_input::MouseEncoder>,
     pressed_button: Option<gpui::MouseButton>,
     scroll_lines: f32,
     hover_link: Option<(u16, u16)>,
     focus_observers: bool,
     last_focus: bool,
-    search: Option<gpui::Entity<crate::field::Field>>,
+    search: Option<gpui::Entity<crate::ui::field::Field>>,
     matches: Vec<(usize, String)>,
     /// A multi-line paste waiting for the user's go-ahead (no bracketed paste).
     paste_confirm: Option<String>,
@@ -175,7 +175,7 @@ impl Pane {
     }
     /// Dropped files arrive as their paths, escaped for a shell, like any terminal.
     fn drop_paths(&mut self, paths: &gpui::ExternalPaths, cx: &mut Context<Self>) {
-        let text = crate::terminal_input::dropped_paths(paths.paths());
+        let text = crate::terminal::terminal_input::dropped_paths(paths.paths());
         if !text.is_empty() {
             self.prefill(&text, cx);
         }
@@ -202,7 +202,7 @@ impl Pane {
                 .vt
                 .as_ref()
                 .filter(|_| state.writable)
-                .map(|v| crate::terminal_input::focus_bytes(v, focused))
+                .map(|v| crate::terminal::terminal_input::focus_bytes(v, focused))
         };
         match bytes {
             Some(Ok(b)) if !b.is_empty() => self.input(b, cx),
@@ -241,7 +241,7 @@ impl Pane {
                 return Ok(None);
             }
             if self.mouse.is_none() {
-                self.mouse = Some(crate::terminal_input::MouseEncoder::new()?);
+                self.mouse = Some(crate::terminal::terminal_input::MouseEncoder::new()?);
             }
             let mut mods = Mods::empty();
             if modifiers.control {
@@ -267,7 +267,7 @@ impl Pane {
                 padding_left: 0,
                 padding_right: 0,
             };
-            crate::terminal_input::mouse_bytes(
+            crate::terminal::terminal_input::mouse_bytes(
                 self.mouse.as_mut().unwrap(),
                 v,
                 action,
@@ -434,7 +434,7 @@ impl Pane {
             let result = {
                 let mut state = self.connection.state.lock().unwrap();
                 if let Some(v) = &mut state.vt {
-                    match crate::terminal_input::alternate_scroll(v, lines > 0) {
+                    match crate::terminal::terminal_input::alternate_scroll(v, lines > 0) {
                         Ok(Some(bytes)) if !event.modifiers.shift => Ok(Some(bytes)),
                         Ok(_) => {
                             v.scroll(keepline_core::terminal::libghostty_vt::terminal::ScrollViewport::Delta(if lines>0 {-1}else{1}));
@@ -556,7 +556,7 @@ impl Pane {
         ((row, start), (row, end))
     }
     pub fn open_search(&mut self, window: &mut Window, cx: &mut Context<Self>) {
-        let field = cx.new(|cx| crate::field::Field::new("搜索滚动内容", "", cx));
+        let field = cx.new(|cx| crate::ui::field::Field::new("搜索滚动内容", "", cx));
         window.focus(&field.focus_handle(cx), cx);
         self.search = Some(field);
         self.matches.clear();
@@ -793,6 +793,10 @@ impl Pane {
         }
         // The usual terminal shortcuts; Cmd+other keys still go to the program.
         if k.modifiers.platform && !k.modifiers.control && !k.modifiers.alt {
+            // Cmd+W closes this pane; the workbench around it owns that.
+            if k.key == "w" && !k.modifiers.shift {
+                return;
+            }
             let zoom = match k.key.as_str() {
                 "=" | "+" => Some(Some(1)),
                 "-" => Some(Some(-1)),
@@ -826,11 +830,14 @@ impl Pane {
         if !self.marked.is_empty() {
             return;
         }
-        let Some(key) = crate::keyboard::physical_key(&k.key) else {
+        let Some(key) = crate::terminal::keyboard::physical_key(&k.key) else {
             return;
         };
         // Ordinary text belongs to the IME/text-input path, avoiding duplicate commits.
-        if !k.modifiers.control && !k.modifiers.alt && crate::keyboard::is_text_key(&k.key) {
+        if !k.modifiers.control
+            && !k.modifiers.alt
+            && crate::terminal::keyboard::is_text_key(&k.key)
+        {
             return;
         }
         let result = (|| -> Result<Vec<u8>, String> {
@@ -853,7 +860,7 @@ impl Pane {
             if k.modifiers.platform {
                 mods |= Mods::SUPER;
             }
-            crate::keyboard::encode(vt, key, &k.key, mods)
+            crate::terminal::keyboard::encode(vt, key, &k.key, mods)
         })();
         match result {
             Ok(bytes) => self.input(bytes, cx),
@@ -945,7 +952,7 @@ impl Render for Pane {
                                     ),
                                     gpui::size(metrics.width * l.cols as f32, metrics.stroke),
                                 ),
-                                screen::hsla(screen::DEFAULT_FG),
+                                crate::ui::theme::hsla(screen::DEFAULT_FG),
                             ));
                         }
                     }
