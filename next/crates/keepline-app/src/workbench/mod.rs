@@ -1,5 +1,6 @@
 use crate::host::store::{Store, record_left};
 use crate::model::{search::*, session_state::*, time::*};
+use crate::ui::app_icon::{AppIcon, Chosen};
 use crate::{
     terminal::pane::Pane,
     ui::{
@@ -230,6 +231,7 @@ impl Workbench {
                 split_target: None,
                 menu: None,
                 tab_menu: None,
+                icon_menu: None,
                 confirm_close: None,
                 renaming_tab: None,
             },
