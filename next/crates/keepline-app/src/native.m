@@ -127,6 +127,11 @@ void kl_desktop_notify(const char *session,const char *title,const char *body) {
 void kl_desktop_show(void) { [desktop show:nil]; }
 // A terminal bell while Keepline is in the background: one Dock bounce, as in Terminal.app.
 void kl_request_attention(void) { [NSApp requestUserAttention:NSInformationalRequest]; }
+// The running app's Dock tile; the bundle's .icns still shows while it is not running.
+void kl_set_dock_icon(const unsigned char *png, size_t length) {
+    NSImage *image=[[NSImage alloc]initWithData:[NSData dataWithBytes:png length:length]];
+    if(image) NSApp.applicationIconImage=image;
+}
 
 // Called only by the visual-test feature: draw the actual AppKit panel, not an HTML copy.
 bool kl_desktop_snapshot(const char *path) {

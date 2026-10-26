@@ -358,6 +358,14 @@ impl Workbench {
                 self.overview.here = self.workspace.current_agent("p1").map(|s| s.id.clone())
             }
             "StartPick" => self.tasks.picking = Some(("task2".into(), false)),
+            // The logo's menu, then the menu after choosing the mascot from it.
+            "IconMenu" => {
+                self.layout.icon_menu = Some(gpui::point(px(T::TRAFFIC_LIGHT_INSET), px(T::TOP)))
+            }
+            "IconMascot" => {
+                layout::choose_icon(AppIcon::Mascot, cx);
+                self.layout.icon_menu = Some(gpui::point(px(T::TRAFFIC_LIGHT_INSET), px(T::TOP)));
+            }
             "SearchEmpty" | "Search" => {
                 self.open_search(window, cx);
                 if name == "Search" {
