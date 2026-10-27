@@ -144,6 +144,65 @@ pub fn short(text: &str, limit: usize) -> String {
     }
     s
 }
+/// Agent prose as one readable line: Markdown emphasis, headings, quotes, list
+/// bullets and table rules go; table cells read as `a · b`.
+pub fn plain_line(text: &str) -> String {
+    text.lines()
+        .map(str::trim)
+        .filter(|l| !l.is_empty() && !l.chars().all(|c| "|-: ".contains(c)))
+        .map(|l| {
+            let l = l
+                .trim_start_matches('#')
+                .trim_start_matches('>')
+                .trim_start();
+            let l = ["- ", "* ", "+ "]
+                .iter()
+                .find_map(|b| l.strip_prefix(b))
+                .unwrap_or(l);
+            let l = l.replace("**", "").replace("__", "").replace('`', "");
+            l.trim_matches('|')
+                .split('|')
+                .map(str::trim)
+                .filter(|c| !c.is_empty())
+                .collect::<Vec<_>>()
+                .join(" · ")
+        })
+        .collect::<Vec<_>>()
+        .join(" ")
+        .split_whitespace()
+        .collect::<Vec<_>>()
+        .join(" ")
+}
+/// A first ask as a name: the polite lead-in most asks share ("你帮我看看") goes,
+/// so tabs and rows start with what differs.
+pub fn topic(title: &str) -> String {
+    const LEAD: [&str; 16] = [
+        "你",
+        "请",
+        "帮我",
+        "帮忙",
+        "麻烦",
+        "能不能",
+        "可以",
+        "看看",
+        "看下",
+        "看一下",
+        "查查",
+        "查一下",
+        "一下",
+        "，",
+        ",",
+        " ",
+    ];
+    let mut rest = title.trim();
+    while let Some(next) = LEAD.iter().find_map(|p| rest.strip_prefix(p)) {
+        if next.trim().chars().count() < 4 {
+            break;
+        }
+        rest = next;
+    }
+    rest.trim().to_owned()
+}
 /// Hidden reason for a session whose working directory is temporary.
 pub const TEMPORARY_DIRECTORY: &str = "临时目录会话";
 impl Content {
@@ -321,6 +380,22 @@ mod tests {
         };
         assert!(c.here().done.contains("尚无"));
         assert!(c.here().stopped.contains("自述"));
+    }
+    #[test]
+    fn topic_drops_shared_lead_in() {
+        assert_eq!(topic("你帮我看看 mirror 为什么挂了"), "mirror 为什么挂了");
+        assert_eq!(topic("你帮我看看我最近有什么…"), "我最近有什么…");
+        assert_eq!(topic("帮我看看"), "帮我看看");
+        assert_eq!(topic("修复登录"), "修复登录");
+    }
+    #[test]
+    fn plain_line_drops_markdown() {
+        assert_eq!(
+            plain_line(
+                "## 结论\n**建议都接收**，见 `a.rs`\n\n| 投稿 | 建议处理 |\n|---|:-:|\n- 第一条"
+            ),
+            "结论 建议都接收，见 a.rs 投稿 · 建议处理 第一条"
+        );
     }
 }
 

@@ -17,6 +17,16 @@ pub(super) struct LayoutState {
     /// A close that would stop a running Agent, waiting for the user to confirm it.
     pub(super) confirm_close: Option<Closing>,
 }
+/// The host's note on a Codex it sees but cannot read, in the user's words.
+fn unread_codex(hint: &str) -> String {
+    match hint
+        .strip_prefix("仅显示状态：")
+        .and_then(|rest| rest.split_once('；'))
+    {
+        Some((state, _)) => format!("codex · {state} · 看不到对话"),
+        None => "codex · 看不到对话".into(),
+    }
+}
 impl Workbench {
     pub(super) fn pane_view(
         &self,
@@ -154,8 +164,23 @@ impl Workbench {
                             .min_w_0()
                             .truncate()
                             .text_size(px(T::MONO_SIZE))
-                            .child(hint.clone().unwrap_or(title)),
+                            .child(title),
                     )
+                    .when_some(hint.as_deref().map(unread_codex), |d, note| {
+                        d.child(
+                            div()
+                                .id(gpui::SharedString::from(format!("unread-{id}")))
+                                .child(label(note))
+                                .tooltip(|_, cx| {
+                                    cx.new(|_| {
+                                        super::render::TextTip(
+                                            "这个 Codex 连着共用的后台，Keepline 只看得到它忙不忙，读不到对话。想在这里看到对话内容，下次用 codex --no-daemon 启动。",
+                                        )
+                                    })
+                                    .into()
+                                }),
+                        )
+                    })
                     .when(hint.is_none(), |d| {
                         d.child(label(
                             session
@@ -208,7 +233,7 @@ impl Workbench {
                             d.child(
                                 button(
                                     gpui::SharedString::from(format!("place-task-{id}")),
-                                    "放入待办内容",
+                                    "放入待办",
                                 )
                                 .h(px(T::ICON_HEIGHT))
                                 .px(px(T::S6))
@@ -258,7 +283,7 @@ impl Workbench {
                         d.child(
                             button(
                                 gpui::SharedString::from(format!("here-pane-{id}")),
-                                "你在这里",
+                                "看进度",
                             )
                             .h(px(T::ICON_HEIGHT))
                             .px(px(T::S6))
@@ -871,4 +896,18 @@ pub(super) fn choose_icon(icon: AppIcon, cx: &mut gpui::App) {
         eprintln!("记住图标选择失败: {e}");
     }
     cx.set_global(Chosen { icon, file });
+}
+#[cfg(test)]
+mod tests {
+    #[test]
+    fn unread_codex_speaks_plainly() {
+        assert_eq!(
+            super::unread_codex("仅显示状态：工作中；看对话内容请用 codex --no-daemon"),
+            "codex · 工作中 · 看不到对话"
+        );
+        assert_eq!(
+            super::unread_codex("未关联：看对话内容请用 codex --no-daemon"),
+            "codex · 看不到对话"
+        );
+    }
 }
