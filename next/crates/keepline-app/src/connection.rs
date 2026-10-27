@@ -17,6 +17,9 @@ pub struct State {
     pub rows: u16,
     pub socket: Option<UnixStream>,
     pub ended: bool,
+    /// A running terminal's stream broke after its screen arrived: the host drops a
+    /// viewer that falls behind a burst of output. Attaching again restores it.
+    pub dropped: bool,
 }
 pub struct Connection {
     pub state: Arc<Mutex<State>>,
@@ -44,6 +47,7 @@ impl Connection {
             rows: 24,
             socket: None,
             ended: false,
+            dropped: false,
         }));
         let dirty = Arc::new(AtomicBool::new(false));
         let bells = Arc::new(AtomicU64::new(0));
@@ -171,6 +175,7 @@ impl Connection {
             if let Err(error) = work {
                 let mut state = state.lock().unwrap();
                 state.error = Some(format!("连接已断开：{error}"));
+                state.dropped = state.vt.is_some() && !state.ended;
                 state.writable = false;
                 if let Some(socket) = &state.socket {
                     let _ = socket.shutdown(std::net::Shutdown::Both);
