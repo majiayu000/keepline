@@ -438,7 +438,9 @@ impl Workbench {
         }
         if closed_only {
             return view.when(open.is_empty(), |d| {
-                d.child(label("这里没有关掉的会话。关掉画面后，它的对话会留在这里，随时能接着聊。"))
+                d.child(label(
+                    "这里没有关掉的会话。关掉画面后，它的对话会留在这里，随时能接着聊。",
+                ))
             });
         }
         let completed = self
