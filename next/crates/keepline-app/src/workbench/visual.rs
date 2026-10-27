@@ -283,6 +283,10 @@ impl Workbench {
         self.overview.here.is_some()
     }
     #[cfg(feature = "visual-test")]
+    pub fn visual_restart_host(&mut self, cx: &mut Context<Self>) {
+        self.close_now(Closing::Host, cx);
+    }
+    #[cfg(feature = "visual-test")]
     pub fn visual_page(&mut self, name: &str, window: &mut Window, cx: &mut Context<Self>) {
         self.tasks.form = None;
         self.tasks.quick_task = None;
@@ -317,6 +321,11 @@ impl Workbench {
                 }
             }
             // The close dialog over a waiting Agent, and over one whose turn is under way.
+            // The top bar's entry for an older host, and its restart dialog.
+            "RestartHost" => {
+                crate::lifecycle::visual_stale_host();
+                self.layout.confirm_close = Some(Closing::Host);
+            }
             "CloseIdle" | "CloseWorking" => {
                 if name == "CloseWorking"
                     && let Some(s) = self.workspace.current_agent("p0").map(|s| s.id.clone())
