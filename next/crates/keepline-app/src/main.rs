@@ -25,7 +25,20 @@ use std::{
 
 fn ensure_host(root: &Path) -> io::Result<()> {
     if lifecycle::connected_host(&root.join("workbench.sock"))? {
-        return Ok(());
+        let Some(stale) = lifecycle::stale_build() else {
+            return Ok(());
+        };
+        // An older host with no terminal running is swapped for this app's own at once;
+        // one with terminals waits for the user, since a restart ends them.
+        let idle = matches!(
+            rpc(&root.join("workbench.sock"), &Request::Workspace),
+            Ok(Reply::Workspace(w)) if !w.terminals.iter().any(|t| t.state == ProcessState::Running)
+        );
+        if !idle {
+            return Ok(());
+        }
+        lifecycle::stop_host(root, &stale)?;
+        lifecycle::forget_stale_host();
     }
     if !root.exists() {
         std::fs::DirBuilder::new()
