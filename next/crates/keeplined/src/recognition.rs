@@ -527,7 +527,10 @@ pub fn screen_wait(tail: &str) -> Option<String> {
 }
 pub struct ScreenThread<'a> {
     pub transcript: &'a Transcript,
-    pub key: String,
+    /// The newest prompt as screen evidence; None when it is too short to tell apart.
+    pub key: Option<String>,
+    /// When that prompt was logged, seconds since the epoch.
+    pub at: Option<u64>,
     /// The log's cwd with symlinks resolved, comparable with the kernel's process cwd.
     pub cwd: String,
 }
@@ -538,20 +541,36 @@ pub struct ScreenTerminal {
     pub screen: String,
     /// The Codex thread this TUI showed before (`/new` hands the pane to a newer thread).
     pub current: Option<(String, u64, Option<String>)>,
+    /// When Enter was pressed here lately, seconds since the epoch.
+    pub submits: Vec<u64>,
 }
-/// Pair threads with terminals one-to-one. A thread showing on two screens, or a screen
-/// showing two threads, binds nothing; the next distinct prompt can settle it.
+/// How far apart Enter in a pane and the prompt's log time may be and still be one event.
+pub const SUBMIT_WINDOW: u64 = 3;
+/// Pair threads with terminals one-to-one. Evidence is the prompt shown verbatim on the
+/// screen, or Enter pressed in that pane when the prompt was logged (a short or pasted
+/// prompt never shows verbatim). A thread fitting two panes, or a pane fitting two
+/// threads, binds nothing; the next distinct prompt can settle it.
 pub fn screen_bindings<'a>(
     threads: &[ScreenThread<'a>],
     terminals: &[ScreenTerminal],
 ) -> Vec<(String, &'a Transcript)> {
     let fits = |thread: &ScreenThread, terminal: &ScreenTerminal| {
+        let shown = thread
+            .key
+            .as_ref()
+            .is_some_and(|key| terminal.screen.contains(key));
+        let submitted = thread.at.is_some_and(|at| {
+            terminal
+                .submits
+                .iter()
+                .any(|s| s.abs_diff(at) <= SUBMIT_WINDOW)
+        });
         terminal.cwd.as_ref().is_none_or(|cwd| cwd == &thread.cwd)
-            && terminal.screen.contains(&thread.key)
+            && (shown || submitted)
             && terminal.current.as_ref().is_none_or(|(id, updated, key)| {
                 id != &thread.transcript.cli_id
                     && thread.transcript.updated >= *updated
-                    && key.as_ref() != Some(&thread.key)
+                    && (thread.key.is_none() || key.as_ref() != thread.key.as_ref())
             })
     };
     let mut out = vec![];
@@ -761,7 +780,8 @@ mod tests {
             .filter_map(|(transcript, (prompt, _))| {
                 Some(ScreenThread {
                     transcript,
-                    key: screen_key(prompt)?,
+                    key: Some(screen_key(prompt)?),
+                    at: None,
                     cwd: "/same".into(),
                 })
             })
@@ -774,6 +794,7 @@ mod tests {
                 cwd: Some("/same".into()),
                 screen: screen_text(screen),
                 current: current.map(|(id, at, prompt)| (id.into(), at, screen_key(prompt))),
+                submits: vec![],
             })
             .collect();
         screen_bindings(&threads, &terminals)
@@ -815,6 +836,57 @@ mod tests {
         assert!(screen_case(&[(b, 3)], &[(b, Some(("old", 4, a)))]).is_empty());
         // The pane's current thread already has this prompt: the screen cannot tell them apart.
         assert!(screen_case(&[(a, 5)], &[(a, Some(("old", 4, a)))]).is_empty());
+    }
+
+    #[test]
+    fn enter_at_the_logged_moment_binds_short_and_pasted_prompts() {
+        let t = |i: usize| Transcript {
+            runtime: Agent::Codex,
+            cli_id: format!("t{i}"),
+            path: format!("/logs/t{i}.jsonl"),
+            cwd: "/same".into(),
+            updated: 100,
+        };
+        let (t0, t1) = (t(0), t(1));
+        let thread = |transcript, at| ScreenThread {
+            transcript,
+            key: screen_key("继续"),
+            at: Some(at),
+            cwd: "/same".into(),
+        };
+        let pane = |i: usize, submits: Vec<u64>| ScreenTerminal {
+            terminal: format!("pty-{i}"),
+            cwd: Some("/same".into()),
+            screen: screen_text("[Pasted Content 4096 chars]"),
+            current: None,
+            submits,
+        };
+        let bound = |threads: &[ScreenThread], panes: &[ScreenTerminal]| {
+            screen_bindings(threads, panes)
+                .into_iter()
+                .map(|(pane, t)| (pane, t.cli_id.clone()))
+                .collect::<Vec<_>>()
+        };
+        // Each pane pressed Enter when its own thread logged a prompt.
+        assert_eq!(
+            bound(
+                &[thread(&t0, 1000), thread(&t1, 1060)],
+                &[pane(0, vec![1001]), pane(1, vec![1059])]
+            ),
+            vec![("pty-0".into(), "t0".into()), ("pty-1".into(), "t1".into())]
+        );
+        // Enter too far from the logged time is no evidence.
+        assert!(bound(&[thread(&t0, 1000)], &[pane(0, vec![1010])]).is_empty());
+        // Two panes pressing Enter together in one directory: neither binds.
+        assert!(bound(
+            &[thread(&t0, 1000)],
+            &[pane(0, vec![1000]), pane(1, vec![1001])]
+        )
+        .is_empty());
+        // Another directory never binds.
+        let mut elsewhere = pane(0, vec![1000]);
+        elsewhere.cwd = Some("/other".into());
+        assert!(bound(&[thread(&t0, 1000)], &[elsewhere]).is_empty());
     }
 
     #[test]

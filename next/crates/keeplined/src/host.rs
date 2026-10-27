@@ -59,6 +59,9 @@ struct Host {
     exits: Option<crate::process_exit::ExitWatch>,
     agent_pids: HashMap<u32, String>,
     unbound_pids: HashMap<u32, String>,
+    /// Recent Enter presses per terminal, seconds since the epoch: evidence for which
+    /// pane a shared-daemon Codex prompt came from.
+    submits: HashMap<String, std::collections::VecDeque<u64>>,
     input_probes: std::collections::HashSet<String>,
     deadlines: Option<SyncSender<()>>,
     /// Terminal -> question seen on its quiet screen. Live fallback only: never stored,
@@ -478,6 +481,7 @@ pub fn serve_with_options(
         exits: None,
         agent_pids: HashMap::new(),
         unbound_pids: HashMap::new(),
+        submits: HashMap::new(),
         input_probes: Default::default(),
         deadlines: None,
         screen_waits: HashMap::new(),
@@ -795,16 +799,21 @@ impl Association {
                     .iter()
                     .any(|s| s.current && s.runtime == t.runtime && s.cli_session_id == t.cli_id)
         };
-        let key = |t: &crate::recognition::Transcript| -> io::Result<Option<String>> {
-            Ok(index
-                .latest_user_text(&t.path)?
-                .and_then(|p| crate::recognition::screen_key(&p)))
-        };
+        // The newest prompt: its text when long enough to be screen evidence, and its time.
+        let prompt =
+            |t: &crate::recognition::Transcript| -> io::Result<Option<(Option<String>, u64)>> {
+                Ok(index
+                    .latest_user(&t.path)?
+                    .map(|(text, at)| (crate::recognition::screen_key(&text), at)))
+            };
         // Only a prompt with comparisons left justifies reading screens.
         let mut fresh = false;
         for t in batch.iter().filter(|t| unbound(t)) {
-            if let Some(k) = key(t)? {
-                let tries = self.screened.entry((t.path.clone(), k)).or_default();
+            if let Some((key, at)) = prompt(t)? {
+                let tries = self
+                    .screened
+                    .entry((t.path.clone(), key.unwrap_or_else(|| at.to_string())))
+                    .or_default();
                 if *tries < 5 {
                     *tries += 1;
                     fresh = true;
@@ -817,17 +826,19 @@ impl Association {
         let cached = index.cached()?;
         let mut threads = vec![];
         for t in cached.iter().filter(|t| unbound(t)) {
-            if let Some(key) = key(t)? {
+            if let Some((key, at)) = prompt(t)? {
                 let cwd = fs::canonicalize(&t.cwd)
                     .map(|p| p.to_string_lossy().into_owned())
                     .unwrap_or_else(|_| t.cwd.clone());
                 threads.push(crate::recognition::ScreenThread {
                     transcript: t,
                     key,
+                    at: Some(at),
                     cwd,
                 });
             }
         }
+        let submits = lock(shared)?.submits.clone();
         let mut terminals = vec![];
         for (pid, live, terminal, current) in &panes {
             let screen = lock(live)?.vt.tail_text(200)?;
@@ -846,6 +857,10 @@ impl Association {
                 cwd: crate::recognition::process_cwd(*pid),
                 screen: crate::recognition::screen_text(&screen),
                 current,
+                submits: submits
+                    .get(terminal)
+                    .map(|s| s.iter().copied().collect())
+                    .unwrap_or_default(),
             });
         }
         let bindings = crate::recognition::screen_bindings(&threads, &terminals);
@@ -2082,6 +2097,14 @@ fn attach(
             lock(&host)?.set_screen_wait(&terminal_id, None)?;
         }
         if submitted && result.is_ok() {
+            {
+                let mut shared = lock(&host)?;
+                let submits = shared.submits.entry(terminal_id.clone()).or_default();
+                submits.push_back(keepline_core::content::now());
+                if submits.len() > 8 {
+                    submits.pop_front();
+                }
+            }
             probe_after_submission(&host, &terminal_id)?;
         }
         let reply = result
@@ -2123,6 +2146,7 @@ mod recognition_tests {
             exits: None,
             agent_pids: HashMap::new(),
             unbound_pids: HashMap::new(),
+            submits: HashMap::new(),
             input_probes: Default::default(),
             deadlines: None,
             screen_waits: HashMap::new(),
