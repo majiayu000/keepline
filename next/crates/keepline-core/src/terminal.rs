@@ -267,6 +267,25 @@ pub fn shown_title(raw: &str) -> Option<String> {
 mod tests {
     use super::*;
     #[test]
+    fn snapshot_preserves_mouse_reporting_modes() {
+        use libghostty_vt::terminal::Mode;
+        let modes = |vt: &Vt| {
+            [Mode::NORMAL_MOUSE, Mode::BUTTON_MOUSE, Mode::SGR_MOUSE]
+                .map(|m| vt.terminal().mode(m).unwrap())
+        };
+        let mut vt = Vt::new(80, 24).unwrap();
+        vt.feed(b"\x1b[?1049h\x1b[?1000h\x1b[?1002h\x1b[?1006h");
+        assert_eq!(
+            modes(&Vt::restore(&vt.snapshot().unwrap()).unwrap()),
+            [true; 3]
+        );
+        vt.feed(b"\x1b[?1006l\x1b[?1002l\x1b[?1000l\x1b[?1049l");
+        assert_eq!(
+            modes(&Vt::restore(&vt.snapshot().unwrap()).unwrap()),
+            [false; 3]
+        );
+    }
+    #[test]
     fn snapshot_preserves_shell_bracketed_paste_readiness() {
         let mut vt = Vt::new(80, 24).unwrap();
         vt.feed(b"\x1b[?2004hprompt> ");

@@ -25,7 +25,20 @@ use std::{
 
 fn ensure_host(root: &Path) -> io::Result<()> {
     if lifecycle::connected_host(&root.join("workbench.sock"))? {
-        return Ok(());
+        let Some(stale) = lifecycle::stale_build() else {
+            return Ok(());
+        };
+        // An older host with no terminal running is swapped for this app's own at once;
+        // one with terminals waits for the user, since a restart ends them.
+        let idle = matches!(
+            rpc(&root.join("workbench.sock"), &Request::Workspace),
+            Ok(Reply::Workspace(w)) if !w.terminals.iter().any(|t| t.state == ProcessState::Running)
+        );
+        if !idle {
+            return Ok(());
+        }
+        lifecycle::stop_host(root, &stale)?;
+        lifecycle::forget_stale_host();
     }
     if !root.exists() {
         std::fs::DirBuilder::new()
@@ -221,6 +234,7 @@ fn run() -> io::Result<()> {
         lifecycle::Admission::Primary(guard, events) => (guard, events),
     };
     let initial = load_workspace(&root);
+    let icon_file = instance_dir.join("app-icon");
     #[cfg(feature = "visual-test")]
     let evidence = args
         .iter()
@@ -246,6 +260,12 @@ fn run() -> io::Result<()> {
             }
         })
         .detach();
+        let icon = ui::app_icon::AppIcon::load(&icon_file);
+        desktop::set_dock_icon(icon.dock_png());
+        cx.set_global(ui::app_icon::Chosen {
+            icon,
+            file: icon_file.clone(),
+        });
         if let Err(error) = register_symbols() {
             eprintln!("bundled symbol font: {error}");
             cx.quit();

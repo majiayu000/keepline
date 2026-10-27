@@ -439,7 +439,7 @@ impl Workspace {
             .filter_map(|s| Some((s.updated, &self.content.get(&s.id)?.title)))
             .filter(|(_, t)| !t.trim().is_empty())
             .max_by_key(|(updated, _)| *updated)
-            .map(|(_, t)| t.clone())
+            .map(|(_, t)| crate::content::topic(t))
         {
             return Some(title);
         }

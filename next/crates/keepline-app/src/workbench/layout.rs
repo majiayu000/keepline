@@ -12,8 +12,20 @@ pub(super) struct LayoutState {
     pub(super) renaming_tab: Option<(String, Entity<Field>, gpui::Subscription)>,
     /// A tab's right-click menu: the tab and where it was opened.
     pub(super) tab_menu: Option<(String, gpui::Point<gpui::Pixels>)>,
+    /// The title-bar logo's menu for choosing the app icon, where it was opened.
+    pub(super) icon_menu: Option<gpui::Point<gpui::Pixels>>,
     /// A close that would stop a running Agent, waiting for the user to confirm it.
     pub(super) confirm_close: Option<Closing>,
+}
+/// The host's note on a Codex it sees but cannot read, in the user's words.
+fn unread_codex(hint: &str) -> String {
+    match hint
+        .strip_prefix("仅显示状态：")
+        .and_then(|rest| rest.split_once('；'))
+    {
+        Some((state, _)) => format!("codex · {state} · 看不到对话"),
+        None => "codex · 看不到对话".into(),
+    }
 }
 impl Workbench {
     pub(super) fn pane_view(
@@ -84,9 +96,21 @@ impl Workbench {
         let menu_id = id.to_owned();
         let close_id = id.to_owned();
         let other_owner = pane.read(cx).has_other_owner();
+        let card_id = session.map(|s| s.id.clone());
         div()
             .id(gpui::SharedString::from(format!("pane-{id}")))
             .relative()
+            // Typing into the terminal is how you carry on; its card steps out of the way.
+            // Captured on the way down, so the keystroke still reaches the terminal.
+            .capture_key_down(cx.listener(move |this, event: &gpui::KeyDownEvent, _, cx| {
+                if !event.keystroke.modifiers.platform
+                    && card_id.is_some()
+                    && this.overview.here == card_id
+                {
+                    this.overview.here = None;
+                    cx.notify();
+                }
+            }))
             .on_mouse_down(
                 gpui::MouseButton::Left,
                 cx.listener(move |this, _, window, cx| {
@@ -140,8 +164,23 @@ impl Workbench {
                             .min_w_0()
                             .truncate()
                             .text_size(px(T::MONO_SIZE))
-                            .child(hint.clone().unwrap_or(title)),
+                            .child(title),
                     )
+                    .when_some(hint.as_deref().map(unread_codex), |d, note| {
+                        d.child(
+                            div()
+                                .id(gpui::SharedString::from(format!("unread-{id}")))
+                                .child(label(note))
+                                .tooltip(|_, cx| {
+                                    cx.new(|_| {
+                                        super::render::TextTip(
+                                            "这个 Codex 连着共用的后台，Keepline 只看得到它忙不忙，读不到对话。想在这里看到对话内容，下次用 codex --no-daemon 启动。",
+                                        )
+                                    })
+                                    .into()
+                                }),
+                        )
+                    })
                     .when(hint.is_none(), |d| {
                         d.child(label(
                             session
@@ -194,7 +233,7 @@ impl Workbench {
                             d.child(
                                 button(
                                     gpui::SharedString::from(format!("place-task-{id}")),
-                                    "放入待办内容",
+                                    "放入待办",
                                 )
                                 .h(px(T::ICON_HEIGHT))
                                 .px(px(T::S6))
@@ -210,12 +249,41 @@ impl Workbench {
                             )
                         },
                     )
+                    .when_some(
+                        session.filter(|s| {
+                            s.outcome == Outcome::Open
+                                && session_group(&self.workspace, s) == Group::Review
+                        }),
+                        |d, s| {
+                            let accept = s.id.clone();
+                            d.child(
+                                button(
+                                    gpui::SharedString::from(format!("accept-pane-{id}")),
+                                    "已验收",
+                                )
+                                .h(px(T::ICON_HEIGHT))
+                                .px(px(T::S6))
+                                .text_color(T::color(T::LINK))
+                                .on_click(cx.listener(
+                                    move |this, _, _, cx| {
+                                        this.edit(
+                                            Edit::SetOutcome {
+                                                id: accept.clone(),
+                                                outcome: Outcome::Completed,
+                                            },
+                                            cx,
+                                        )
+                                    },
+                                )),
+                            )
+                        },
+                    )
                     .when_some(session, |d, s| {
                         let show = s.id.clone();
                         d.child(
                             button(
                                 gpui::SharedString::from(format!("here-pane-{id}")),
-                                "你在这里",
+                                "看进度",
                             )
                             .h(px(T::ICON_HEIGHT))
                             .px(px(T::S6))
@@ -280,7 +348,7 @@ impl Workbench {
                             .justify_end()
                             .items_start()
                             .overflow_hidden()
-                            .child(self.here_card(s, cx).max_h_full()),
+                            .child(self.here_card(s, true, cx).max_h_full()),
                     )
                 },
             )
@@ -645,6 +713,51 @@ impl Workbench {
             this.layout.tab_menu = None
         })
     }
+    /// Ink ring or mascot: the title bar and the Dock tile change at once, and the
+    /// choice is remembered for the next launch.
+    pub(super) fn icon_menu_view(
+        &self,
+        position: gpui::Point<gpui::Pixels>,
+        window: &Window,
+        cx: &Context<Self>,
+    ) -> gpui::AnyElement {
+        let current = cx.global::<Chosen>().icon;
+        let entries = AppIcon::ALL
+            .into_iter()
+            .map(|icon| {
+                div()
+                    .id(gpui::SharedString::from(format!(
+                        "app-icon-{}",
+                        icon.label()
+                    )))
+                    .role(gpui::accesskit::Role::Button)
+                    .aria_label(icon.label())
+                    .h(px(T::ROW))
+                    .px(px(T::S8))
+                    .flex()
+                    .items_center()
+                    .gap(px(T::S8))
+                    .rounded(px(T::CONTROL_RADIUS))
+                    .text_size(px(T::SMALL))
+                    .cursor_pointer()
+                    .hover(|s| s.bg(T::color(T::BUTTON_HOVER)))
+                    .child(gpui::img(icon.title_image()).size(px(T::LOGO)))
+                    .child(div().flex_1().child(icon.label()))
+                    .when(icon == current, |d| {
+                        d.child(div().text_color(T::color(T::LINK)).child("✓"))
+                    })
+                    .on_click(cx.listener(move |this, _, _, cx| {
+                        this.layout.icon_menu = None;
+                        choose_icon(icon, cx);
+                        cx.notify();
+                    }))
+                    .into_any_element()
+            })
+            .collect();
+        self.popup(position, entries, window, cx, |this| {
+            this.layout.icon_menu = None
+        })
+    }
     /// Asks before a close stops running Agents; a click outside cancels.
     pub(super) fn confirm_close_view(
         &self,
@@ -652,10 +765,35 @@ impl Workbench {
         cx: &Context<Self>,
     ) -> gpui::AnyElement {
         let agents = self.running_agents(closing);
+        let working = agents.iter().any(|(_, p)| *p == Some(Phase::Working));
+        let host = matches!(closing, Closing::Host);
         let what = match closing {
             Closing::Tab(_) => "关闭这个标签",
             Closing::Pane(_) => "关闭这个画面",
+            Closing::Host => "重启后台",
         };
+        let shells = if host {
+            self.running_terminals().len().saturating_sub(agents.len())
+        } else {
+            0
+        };
+        let lines = agents
+            .iter()
+            .map(|(title, phase)| match phase {
+                Some(Phase::Working) if host => format!("「{title}」还在工作，重启会打断这一轮。"),
+                Some(Phase::Working) => format!("「{title}」还在工作，关闭会打断这一轮。"),
+                Some(Phase::Waiting) => format!(
+                    "「{title}」在等你回答，{}后它会退出。",
+                    if host { "重启" } else { "关闭" }
+                ),
+                _ => format!(
+                    "「{title}」这一轮已经结束，{}后它会退出。",
+                    if host { "重启" } else { "关闭" }
+                ),
+            })
+            .chain((shells > 0).then(|| format!("另有 {shells} 个普通终端会停止。")))
+            .collect::<Vec<_>>()
+            .join("\n");
         let confirmed = closing.clone();
         div()
             .absolute()
@@ -688,10 +826,23 @@ impl Workbench {
                     .child(
                         div()
                             .text_size(px(T::CARD_TITLE))
-                            .child(format!("{what}会停止 {} 个正在运行的 Agent", agents.len())),
+                            .child(if host {
+                                "重启后台，换上新版本？".to_owned()
+                            } else {
+                                format!("{}{what}？", if working { "停止并" } else { "" })
+                            }),
                     )
-                    .child(label(agents.join("\n")))
-                    .child(label("会话记录保留，之后可以从会话列表恢复。"))
+                    .when(host, |d| {
+                        d.child(label(
+                            "后台还在跑旧版本，新改动要重启后台才生效。重启会停止所有终端，Keepline 会自动重新打开。",
+                        ))
+                    })
+                    .child(label(lines))
+                    .child(label(if host {
+                        "对话记录会保留，重启后可以原地重开终端，或从左栏「已关闭」里接着聊。"
+                    } else {
+                        "对话记录会保留，可以从左栏底部「已关闭」里接着聊。"
+                    }))
                     .child(
                         div()
                             .flex()
@@ -704,11 +855,22 @@ impl Workbench {
                                 },
                             )))
                             .child(
-                                button("confirm-close-stop", "停止并关闭")
-                                    .text_color(Group::Error.colors().1)
-                                    .on_click(cx.listener(move |this, _, _, cx| {
+                                button(
+                                    "confirm-close-stop",
+                                    if host {
+                                        "重启后台"
+                                    } else if working {
+                                        "停止并关闭"
+                                    } else {
+                                        "关闭"
+                                    },
+                                )
+                                .when(working || host, |b| b.text_color(Group::Error.colors().1))
+                                .on_click(cx.listener(
+                                    move |this, _, _, cx| {
                                         this.close_now(confirmed.clone(), cx);
-                                    })),
+                                    },
+                                )),
                             ),
                     ),
             )
@@ -758,5 +920,28 @@ impl Workbench {
                     .children(entries),
             )
             .into_any_element()
+    }
+}
+/// Applies `icon` to the title bar and the Dock, and remembers it.
+pub(super) fn choose_icon(icon: AppIcon, cx: &mut gpui::App) {
+    crate::desktop::set_dock_icon(icon.dock_png());
+    let file = cx.global::<Chosen>().file.clone();
+    if let Err(e) = icon.save(&file) {
+        eprintln!("记住图标选择失败: {e}");
+    }
+    cx.set_global(Chosen { icon, file });
+}
+#[cfg(test)]
+mod tests {
+    #[test]
+    fn unread_codex_speaks_plainly() {
+        assert_eq!(
+            super::unread_codex("仅显示状态：工作中；看对话内容请用 codex --no-daemon"),
+            "codex · 工作中 · 看不到对话"
+        );
+        assert_eq!(
+            super::unread_codex("未关联：看对话内容请用 codex --no-daemon"),
+            "codex · 看不到对话"
+        );
     }
 }

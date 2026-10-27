@@ -36,7 +36,11 @@ unsafe extern "C" {
     fn kl_notifications_enable();
     fn kl_desktop_show();
     fn kl_request_attention();
+    fn kl_set_dock_icon(png: *const u8, length: usize);
     fn kl_desktop_notify(session: *const c_char, title: *const c_char, body: *const c_char);
+}
+pub fn set_dock_icon(png: &[u8]) {
+    unsafe { kl_set_dock_icon(png.as_ptr(), png.len()) }
 }
 pub fn route_applied(session: &str, terminal: &str, tab: &str) {
     unsafe {

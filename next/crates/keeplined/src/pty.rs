@@ -1,7 +1,7 @@
 use std::fs::File;
 use std::io::{self, Write};
 use std::os::fd::{AsRawFd, FromRawFd, OwnedFd};
-use std::os::unix::process::CommandExt;
+use std::os::unix::{ffi::OsStrExt, fs::OpenOptionsExt, process::CommandExt};
 use std::path::Path;
 use std::process::{Child, Command, Stdio};
 
@@ -96,6 +96,44 @@ pub fn resize(master: &File, cols: u16, rows: u16, cell: (u32, u32)) -> io::Resu
 }
 
 /// Failed writes report the accepted prefix. Never replay a failed input.
+/// Bytes written to the program that it has not read yet, from its side of the
+/// terminal; None when that cannot be told.
+pub fn backlog(master: &File) -> Option<usize> {
+    #[cfg(target_os = "macos")]
+    {
+        let mut name = [0 as libc::c_char; 128];
+        // SAFETY: TIOCPTYGNAME writes a NUL-terminated path of at most 128 bytes.
+        if unsafe {
+            libc::ioctl(
+                master.as_raw_fd(),
+                libc::TIOCPTYGNAME as _,
+                name.as_mut_ptr(),
+            )
+        } < 0
+        {
+            return None;
+        }
+        // SAFETY: the buffer is NUL-terminated by the ioctl above.
+        let path = unsafe { std::ffi::CStr::from_ptr(name.as_ptr()) };
+        let path = std::path::Path::new(std::ffi::OsStr::from_bytes(path.to_bytes()));
+        let slave = std::fs::OpenOptions::new()
+            .read(true)
+            .custom_flags(libc::O_NOCTTY | libc::O_NONBLOCK)
+            .open(path)
+            .ok()?;
+        let mut pending: libc::c_int = 0;
+        // SAFETY: FIONREAD stores the input queue length into `pending`.
+        if unsafe { libc::ioctl(slave.as_raw_fd(), libc::FIONREAD, &mut pending) } < 0 {
+            return None;
+        }
+        usize::try_from(pending).ok()
+    }
+    #[cfg(not(target_os = "macos"))]
+    {
+        let _ = master;
+        None
+    }
+}
 pub fn write(master: &mut File, bytes: &[u8]) -> io::Result<()> {
     let mut accepted = 0;
     while accepted < bytes.len() {
