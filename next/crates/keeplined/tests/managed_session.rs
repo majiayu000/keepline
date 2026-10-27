@@ -158,6 +158,46 @@ fn cpu_seconds(ticks: u64) -> f64 {
 }
 
 #[test]
+fn a_viewer_that_falls_behind_a_burst_is_resynced_not_cut() {
+    let h = Host::start();
+    h.setup();
+    h.call(h.launch(
+        "burst",
+        "sleep 1; yes 0000000000000000000000000000000000000000000000000000000000000000000000000000 | head -n 200000; echo END-MARK; sleep 60",
+    ))
+    .unwrap();
+    let (mut stream, mut vt, writable) = h.attach("burst", false);
+    assert!(writable);
+    // Not reading while the burst runs: the host's queue for this viewer fills up.
+    std::thread::sleep(Duration::from_secs(6));
+    stream
+        .set_read_timeout(Some(Duration::from_secs(20)))
+        .unwrap();
+    let mut snapshot = Vec::new();
+    let mut resynced = false;
+    let until = Instant::now() + Duration::from_secs(30);
+    loop {
+        assert!(Instant::now() < until, "END-MARK never arrived");
+        // A cut connection fails here, as it did before resync existed.
+        let (kind, bytes) = read_frame(&mut stream).expect("the host kept the connection");
+        match kind {
+            SNAPSHOT => snapshot.extend(bytes),
+            READY => {
+                vt = Vt::restore(&snapshot).unwrap();
+                snapshot.clear();
+                resynced = true;
+            }
+            OUTPUT => vt.feed(&bytes),
+            _ => {}
+        }
+        if vt.tail_text(30).unwrap().contains("END-MARK") {
+            break;
+        }
+    }
+    assert!(resynced, "a lagging viewer gets a fresh snapshot");
+}
+
+#[test]
 fn mouse_reports_stop_before_a_stalled_program_fills_its_input() {
     let h = Host::start();
     h.setup();

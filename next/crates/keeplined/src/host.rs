@@ -30,6 +30,26 @@ const POINTER_BACKLOG: usize = 256;
 struct Subscriber {
     tx: SyncSender<Frame>,
     socket: UnixStream,
+    /// Frames were dropped because this viewer fell behind; its writer sends a fresh
+    /// snapshot once it catches up instead of the connection being cut.
+    lagged: Arc<AtomicBool>,
+}
+impl Subscriber {
+    /// Queues a frame. A full queue marks the viewer lagged and keeps it; only a viewer
+    /// that has gone away is dropped.
+    fn offer(&self, frame: Frame) -> bool {
+        match self.tx.try_send(frame) {
+            Ok(()) => true,
+            Err(std::sync::mpsc::TrySendError::Full(_)) => {
+                self.lagged.store(true, Ordering::Release);
+                true
+            }
+            Err(std::sync::mpsc::TrySendError::Disconnected(_)) => {
+                let _ = self.socket.shutdown(std::net::Shutdown::Both);
+                false
+            }
+        }
+    }
 }
 struct Live {
     vt: Vt,
@@ -41,6 +61,8 @@ struct Live {
     subscribers: HashMap<u64, Subscriber>,
     exited: bool,
     drained: bool,
+    /// The last STATUS sent, replayed to a viewer that missed it while lagging.
+    status: Option<Arc<Vec<u8>>>,
     exit_code: Option<i32>,
     title: String,
     cell: CellPixels,
@@ -322,22 +344,7 @@ impl Live {
             let owner = self.owner;
             self.subscribers.retain(|id, s| {
                 let writable = Some(*id) == owner && !self.exited;
-                if s.tx
-                    .try_send((
-                        WRITABLE,
-                        Arc::new(if writable {
-                            b"true".to_vec()
-                        } else {
-                            b"false".to_vec()
-                        }),
-                    ))
-                    .is_err()
-                {
-                    let _ = s.socket.shutdown(std::net::Shutdown::Both);
-                    false
-                } else {
-                    true
-                }
+                s.offer((WRITABLE, Arc::new(writable_frame(writable))))
             });
             if self
                 .owner
@@ -351,15 +358,45 @@ impl Live {
     }
     fn broadcast(&mut self, kind: u8, bytes: Vec<u8>) {
         let bytes = Arc::new(bytes);
-        self.subscribers.retain(|_, subscriber| {
-            if subscriber.tx.try_send((kind, Arc::clone(&bytes))).is_err() {
-                let _ = subscriber.socket.shutdown(std::net::Shutdown::Both);
-                false
-            } else {
-                true
-            }
-        });
+        if kind == STATUS {
+            self.status = Some(Arc::clone(&bytes));
+        }
+        self.subscribers
+            .retain(|_, subscriber| subscriber.offer((kind, Arc::clone(&bytes))));
     }
+}
+
+fn writable_frame(writable: bool) -> Vec<u8> {
+    if writable {
+        b"true".to_vec()
+    } else {
+        b"false".to_vec()
+    }
+}
+/// Everything a viewer that fell behind needs to be current again, taken under the
+/// terminal lock with its stale queue emptied: those frames are already in the snapshot.
+fn resync(
+    terminal: &LiveTerminal,
+    connection: u64,
+    rx: &std::sync::mpsc::Receiver<Frame>,
+) -> io::Result<Vec<Frame>> {
+    let mut live = lock(terminal)?;
+    while rx.try_recv().is_ok() {}
+    if let Some(s) = live.subscribers.get(&connection) {
+        s.lagged.store(false, Ordering::Release);
+    }
+    let snapshot = live.vt.snapshot()?;
+    let mut frames: Vec<Frame> = snapshot
+        .chunks(MAX_FRAME - 1)
+        .map(|c| (SNAPSHOT, Arc::new(c.to_vec())))
+        .collect();
+    frames.push((READY, Arc::new(vec![])));
+    let writable = live.owner == Some(connection) && !live.exited;
+    frames.push((WRITABLE, Arc::new(writable_frame(writable))));
+    if let Some(status) = &live.status {
+        frames.push((STATUS, Arc::clone(status)));
+    }
+    Ok(frames)
 }
 
 // One wait until an actual outcome/group deadline. No tick, no directory or process I/O.
@@ -617,6 +654,7 @@ fn watch_recognition(mut stream: UnixStream, shared: Shared, connection: u64) ->
             Subscriber {
                 tx,
                 socket: stream.try_clone()?,
+                lagged: Default::default(),
             },
         );
     }
@@ -1517,6 +1555,7 @@ fn dispatch(shared: &Shared, request: Request) -> io::Result<Reply> {
                 subscribers: HashMap::new(),
                 exited: false,
                 drained: false,
+                status: None,
                 exit_code: None,
                 title: String::new(),
                 cell,
@@ -1984,6 +2023,7 @@ fn attach(
         socket: stream.try_clone()?,
     };
     let (tx, rx) = sync_channel::<Frame>(128);
+    let lagged = Arc::new(AtomicBool::new(false));
     let (snapshot, writable, cols, rows) = {
         let mut live = lock(&terminal)?;
         let snapshot = live.vt.snapshot()?;
@@ -1997,6 +2037,7 @@ fn attach(
             Subscriber {
                 tx: tx.clone(),
                 socket: stream.try_clone()?,
+                lagged: Arc::clone(&lagged),
             },
         );
         live.reconcile_owner();
@@ -2015,6 +2056,8 @@ fn attach(
     let writer_ready = Arc::clone(&ready);
     let mut writer = stream.try_clone()?;
     let writer_guard = stream.try_clone()?;
+    let writer_terminal = Arc::clone(&terminal);
+    let writer_lagged = Arc::clone(&lagged);
     thread::spawn(move || {
         let result = (|| -> io::Result<()> {
             for chunk in snapshot.chunks(MAX_FRAME - 1) {
@@ -2022,7 +2065,15 @@ fn attach(
             }
             write_frame(&mut writer, READY, &[])?;
             writer_ready.store(true, Ordering::Release);
-            for (kind, data) in rx {
+            for (kind, data) in rx.iter() {
+                if writer_lagged.load(Ordering::Acquire) {
+                    // A burst outran this viewer: skip the stale backlog and send the
+                    // current screen instead of cutting the connection.
+                    for (kind, data) in resync(&writer_terminal, connection, &rx)? {
+                        write_frame(&mut writer, kind, &data)?;
+                    }
+                    continue;
+                }
                 write_frame(&mut writer, kind, &data)?;
             }
             Ok(())
@@ -2110,11 +2161,13 @@ fn attach(
         let reply = result
             .map(|_| Reply::Ok)
             .unwrap_or_else(|e| Reply::Error(e.to_string()));
-        tx.try_send((
+        // A lagging viewer misses this acknowledgement; its resync says where it stands.
+        if let Err(std::sync::mpsc::TrySendError::Full(_)) = tx.try_send((
             ACK,
             Arc::new(serde_json::to_vec(&reply).map_err(io::Error::other)?),
-        ))
-        .map_err(|_| io::Error::other("client is too slow; reconnect for a new snapshot"))?;
+        )) {
+            lagged.store(true, Ordering::Release);
+        }
         let _ = &guard;
     }
 }
@@ -2154,10 +2207,14 @@ mod recognition_tests {
         }));
         let (tx, rx) = sync_channel(16);
         let (socket, _peer) = UnixStream::pair().unwrap();
-        lock(&shared)
-            .unwrap()
-            .recognition_subscribers
-            .insert(1, Subscriber { tx, socket });
+        lock(&shared).unwrap().recognition_subscribers.insert(
+            1,
+            Subscriber {
+                tx,
+                socket,
+                lagged: Default::default(),
+            },
+        );
         for dir in ["a", "b"] {
             fs::write(root.join(format!("logs/{dir}/new.jsonl")),format!("{{\"type\":\"session_meta\",\"payload\":{{\"id\":\"{dir}\",\"cwd\":\"/tmp\"}}}}\n")).unwrap();
         }
