@@ -13,8 +13,13 @@ parser = argparse.ArgumentParser(description=__doc__)
 parser.add_argument('--release-dir', type=pathlib.Path, default=root / 'target/release')
 parser.add_argument('--output', type=pathlib.Path, default=root / 'target/bundle/Keepline.app',
                     help='Bundle path; use a separate path when an installed build is running')
-parser.add_argument('--sign-identity', default='-',
-                    help='codesign identity; default is local ad-hoc signing')
+parser.add_argument('--icon', type=pathlib.Path,
+                    default=root.parent / 'docs/assets/keepline-icon-final/Keepline.icns',
+                    help='App icon (.icns); defaults to the ink-ring icon')
+# A stable identity keeps macOS privacy grants (e.g. Desktop access) across rebuilds;
+# ad-hoc ('-') signatures change with every build, so macOS asks again each time.
+parser.add_argument('--sign-identity', default='Developer ID Application: Ma JiaYu (C5UWZ934C2)',
+                    help="codesign identity; pass '-' for ad-hoc signing")
 args = parser.parse_args()
 bundle = args.output.resolve()
 sign = ['codesign', '--force', '--sign', args.sign_identity]
@@ -29,10 +34,11 @@ for binary in ('keepline-app', 'keeplined'):
     shutil.copy2(args.release_dir / binary, mac / binary)
     subprocess.run([*sign, str(mac / binary)], check=True)
 shutil.copy2(root / 'crates/keepline-app/assets/NERD-FONTS-LICENSE', resources / 'NERD-FONTS-LICENSE')
+shutil.copy2(args.icon, resources / 'Keepline.icns')
 (bundle / 'Contents/Info.plist').write_bytes(plistlib.dumps({
     'CFBundleName': 'Keepline', 'CFBundleDisplayName': 'Keepline',
     'CFBundleIdentifier': 'local.keepline.workbench', 'CFBundleExecutable': 'keepline-app',
-    'CFBundlePackageType': 'APPL', 'CFBundleVersion': '1', 'CFBundleShortVersionString': '0.1.0',
+    'CFBundlePackageType': 'APPL', 'CFBundleIconFile': 'Keepline', 'CFBundleVersion': '1', 'CFBundleShortVersionString': '0.1.0',
     'NSHighResolutionCapable': True, 'LSMinimumSystemVersion': '14.0',
 }))
 subprocess.run([*sign, str(bundle)], check=True)

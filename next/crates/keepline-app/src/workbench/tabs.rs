@@ -13,21 +13,45 @@ impl Workbench {
     }
     /// Double-click names a tab; an empty name hands it back to its contents.
     pub(super) fn rename_tab(&mut self, id: &str, window: &mut Window, cx: &mut Context<Self>) {
+        self.save_tab_name(cx);
         let Some(tab) = self.workspace.tabs.iter().find(|t| t.id == id) else {
             return;
         };
-        let current = self.tab_name(tab, cx);
-        let field = cx.new(|cx| Field::new("标签名", &current, cx).compact());
+        // A tab never named starts empty: its automatic name, often a shortened
+        // first ask, is shown in grey instead of being handed over to edit.
+        let current = tab.title.clone();
+        let automatic = self.tab_name(
+            &Tab {
+                title: String::new(),
+                ..tab.clone()
+            },
+            cx,
+        );
+        let field = cx.new(|cx| {
+            Field::new("标签名", &current, cx)
+                .inline()
+                .placeholder(&automatic)
+        });
         field.update(cx, |f, _| f.select_all());
-        let subscription = cx.subscribe(&field, |this, _, event, cx| match event {
-            crate::ui::field::FieldEvent::Submit => this.save_tab_name(cx),
+        let events = cx.subscribe(&field, |this, _, event, cx| match event {
+            // Enter and Esc hand the keyboard back to the terminal; a click
+            // elsewhere leaves focus where it landed.
+            crate::ui::field::FieldEvent::Submit => {
+                this.save_tab_name(cx);
+                this.nav.pending_focus = true;
+            }
             crate::ui::field::FieldEvent::Cancel => {
                 this.layout.renaming_tab = None;
+                this.nav.pending_focus = true;
                 cx.notify();
             }
         });
+        // Clicking anywhere else keeps the name, as in Finder.
+        let blur = cx.on_blur(&field.focus_handle(cx), window, |this, _, cx| {
+            this.save_tab_name(cx)
+        });
         window.focus(&field.focus_handle(cx), cx);
-        self.layout.renaming_tab = Some((id.to_owned(), field, subscription));
+        self.layout.renaming_tab = Some((id.to_owned(), field, [events, blur]));
         cx.notify();
     }
     fn save_tab_name(&mut self, cx: &mut Context<Self>) {

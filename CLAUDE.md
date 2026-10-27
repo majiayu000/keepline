@@ -102,7 +102,7 @@ to that reviewed allowlist with a clear composition reason.
 3. **Cost Analytics** - Cache token support, multi-model pricing
 4. **Cross-session Memory** - "Relay race" pattern for context persistence
 5. **Plans Tracking** - Parse and display Claude implementation plans
-6. **Web Dashboard** - 5 cyberpunk themes, real-time WebSocket updates
+6. **Web Dashboard** - shared light theme, real-time WebSocket updates
 
 ## Session States
 

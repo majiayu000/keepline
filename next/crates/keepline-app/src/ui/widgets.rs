@@ -60,6 +60,21 @@ pub fn dot(group: Group) -> gpui::Div {
         .rounded_full()
         .bg(group.colors().0)
 }
+/// A row you have already looked at: its dot as `colors.json`'s `seen.dot` says.
+pub fn seen_dot(group: Group) -> gpui::Div {
+    use super::status_colors::{SeenDot, StatusColors};
+    let hue = group.colors().0;
+    match StatusColors::get().seen_dot {
+        SeenDot::Fill => dot(group),
+        SeenDot::Fade => dot(group).bg(hue.opacity(0.45)),
+        SeenDot::Ring => div()
+            .size(px(T::DOT))
+            .flex_shrink_0()
+            .rounded_full()
+            .border(px(T::CARET_WIDTH))
+            .border_color(hue),
+    }
+}
 pub fn chip(group: Group) -> gpui::Div {
     div()
         .px(px(T::S6))

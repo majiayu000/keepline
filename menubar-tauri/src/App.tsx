@@ -43,11 +43,12 @@ function getSavedTab(): TabName {
 function getSavedTheme(): ThemeName {
   try {
     const saved = localStorage.getItem(THEME_STORAGE_KEY);
-    if (saved && ['light', 'dark', 'claude', 'claude-dark', 'minimal', 'minimal-dark', 'ocean'].includes(saved)) {
-      return saved as ThemeName;
+    // Older builds offered seven themes; each one maps to its light or dark side.
+    if (saved) {
+      return saved === 'dark' || saved.endsWith('-dark') ? 'dark' : 'light';
     }
   } catch {}
-  return 'light';
+  return window.matchMedia?.('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
 }
 
 function getSavedDockHidden(): boolean {

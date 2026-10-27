@@ -2,10 +2,6 @@
 
 状态：设计建议，尚未实现；2026-10-20 架构修订见第 0 节，优先于本文其余部分。基线与产品范围见 [product.md](product.md)。实施顺序见 [tasks.md](tasks.md)。产品定位见 [产品卡](../product-card.md)。
 
-本地实现已开始。对象模型、SQLite 分表和 P1 身份识别顺序以
-[当前实现架构](architecture.md) 为准：Terminal 与 AgentSession 分开，
-不得沿用本文历史段落中将终端和对话合并的接口假设。
-
 ## 0. 2026-10-20 架构修订（优先于本文其余部分）
 
 依据开源库测评（分支 `claude/terminal-eval-04a203` 的 `eval/terminal/`）与 [产品卡第 3.1 节](../product-card.md#31-技术架构与资源预算2026-10-20-定案)。下列决定取代本文对应内容；与第 0 节冲突的段落一律以第 0 节为准。
@@ -16,7 +12,7 @@
 | N02 | 界面为 GPUI（Rust）原生客户端，可替换；窗口关闭即断开，后台不受影响 | D01（Tauri + React）；第 8 节桌面桥；第 9 节中 Tauri origin 相关条目 |
 | N03 | 终端状态用 libghostty-vt（锁 commit，构建引入 Zig）：后台持有全部会话的状态与快照；客户端只对可见画面（最多 4 个）用 libghostty-vt 解析，再由 GPUI 自绘 | D03（alacritty_terminal + xterm.js 显示镜像）；第 7 节中 xterm.js 相关条目 |
 | N04 | 客户端与后台走自写协议（kl-relay 演进）：attach 时先发 libghostty-vt 快照，再转发字节；输入走同一连接并保留控制权租约 | D04 中 React ↔ Tauri bridge ↔ socket 的路径；第 6 节协议沿用并扩展快照帧 |
-| N05 | （2026-10-22 用户决定：相对 Ghostty 倍率移出首版门槛，首版后再处理；隐藏不渲染、空闲无轮询仍是首版要求）资源预算改为同机同负载相对 Ghostty ≤ 1.2 倍：内存用 phys_footprint，覆盖全部子进程与系统辅助进程；CPU 用累计 CPU 时间。窗口隐藏时不渲染、CPU 接近 0；空闲无轮询 | 第 10 节的绝对预算（500/800 MiB 等），测量方法仍沿用 |
+| N05 | 资源预算改为同机同负载相对 Ghostty ≤ 1.2 倍：内存用 phys_footprint，覆盖全部子进程与系统辅助进程；CPU 用累计 CPU 时间。窗口隐藏时不渲染、CPU 接近 0；空闲无轮询 | 第 10 节的绝对预算（500/800 MiB 等），测量方法仍沿用 |
 | N06 | GPUI 需要补丁：窗口可见且无变化时暂停显示链接（实测空闲 CPU 从 0.8% 降到 0.07%）；维护 GPUI 补丁或分支，锁定 Zed rev 或 gpui-kit 之一 | 无 |
 
 首个实现必须验收、测评中未完成的项：中文输入法清单（硬门槛，参考 zed#59882、#53537）；补丁空闲阈值（0.5 s）下 4 画面断续输出的 CPU；4 画面的 Ghostty 基准；GPU、耗电与输入延迟；Claude Code 全屏重绘的真实负载。中文输入法不过关且短期修不好、空闲补丁无法维护或 4 画面超预算时，切换到备选 Swift + GhosttyKit（客户端改为 Swift，后台与协议不变）。
@@ -169,7 +165,7 @@ Agent 用直接 exec 的运行时进程作为 PTY 作业，不在每个终端前
 
 ### 回合状态判定（2026-10-23 待评审）
 
-状态：待评审。Claude Code 与 Codex 两部分都已在分支 `feat/turn-state` 实现（见本节末「实现记录」）；S06 已于 2026-10-23 定为只读对账。本节规定如何从各路信号推出 [product.md 收件箱分组](product.md#收件箱分组) 中的「进行中」「等你回答」「待核对」。进程生命周期（上图）和账本的完成判定不变。
+状态：待评审，未实现。本节规定如何从各路信号推出 [product.md 收件箱分组](product.md#收件箱分组) 中的「进行中」「等你回答」「待核对」。进程生命周期（上图）和账本的完成判定不变。
 
 依据：Claude Code 官方文档的 [hooks](https://code.claude.com/docs/en/hooks) 与 [agent view](https://code.claude.com/docs/en/agent-view)；本机 codex-cli 0.163 用 `codex app-server generate-json-schema` 导出的协议；同类工具 Harp、Warp、cmux、agent-deck、superset、parallel-code、claude-squad 的源码。文中引用的取值大多来自这些工具，Keepline 尚未实测。2026-10-22 版直接照搬了 Harp 的做法：另装 Hook 统计后台任务、Stop 后等 4 秒、读 Claude 内部会话文件。本版改用官方已经提供的信号，原因是 Harp 的这三条做法主要在弥补 Warp 插件丢掉的信息。
 
@@ -177,52 +173,33 @@ Agent 用直接 exec 的运行时进程作为 PTY 作业，不在每个终端前
 
 | 来源 | Claude Code | Codex | 作用 |
 |---|---|---|---|
-| 生命周期 Hook | UserPromptSubmit、PreToolUse / PostToolUse、PermissionRequest、Notification、Stop、StopFailure、SubagentStart / SubagentStop | 原生 `hooks.json`（未接入，见 S06） | 主信号，延迟最低 |
-| 回合结束载荷 | Stop 的 `background_tasks`、`session_crons`、`stop_hook_active` | 无（0.163 的 Stop 不带后台字段，见 S09） | 判断回合结束后是否还有工作在跑 |
-| 官方状态快照 | `claude agents --json` 的 `status`、`state`、`waitingFor` | 共享 app-server 后台的只读 `thread/read`，取 `status`（S06） | 对账，补上不触发 Hook 的等待 |
+| 生命周期 Hook | UserPromptSubmit、PreToolUse / PostToolUse、PermissionRequest、Notification、Stop、StopFailure、SubagentStart / SubagentStop | 原生 `hooks.json`：SessionStart、UserPromptSubmit、PreToolUse / PostToolUse、PermissionRequest、Stop（方案 B） | 主信号，延迟最低 |
+| 回合结束载荷 | Stop 的 `background_tasks`、`session_crons`、`stop_hook_active` | 待查 | 判断回合结束后是否还有工作在跑 |
+| 官方状态快照 | `claude agents --json` 的 `status`、`state`、`waitingFor` | app-server 的 `ThreadStatus` 推送（方案 A） | 对账，补上不触发 Hook 的等待 |
 | 屏幕 | 后台 libghostty-vt 持有的屏幕状态 | 同左 | 只用于否决和触发对账 |
-| 会话记录 | 按偏移增量读取（N01） | 同左；子 Agent 自己的会话记录头写明父线程（S09） | 提取「你在这里」卡的字段；Codex 子 Agent 的状态也从这里来 |
+| 会话记录 | 按偏移增量读取（N01） | 同左 | 提取「你在这里」卡的字段，不单独决定状态 |
 
 #### 规则
 
 | 编号 | 规则 | 理由与来源 |
 |---|---|---|
-| S01 Stop 载荷取后台任务 | 回合结束时直接读 Stop 载荷里的 `background_tasks`，只统计仍在运行的任务。`subagent`、`workflow`、`teammate`、`cloud session`、`MCP task` 仍在运行时，会话保持「进行中」。只剩 `shell` 时，回合算结束，状态栏另标「后台 shell N 个」。只剩 `monitor` 或 `session_crons` 时（2026-10-23 定，与 Claude Code agent view 一致），会话之后会被唤醒，归入「进行中」并显示「等待唤醒」，不进入「待核对」；长期挂着的监视任务由「很久没动」规则兜底。`stop_hook_active` 不影响判断。载荷里没有这两个数组时，按「未知」处理，不当作「没有后台任务」。不另装统计 Hook，Stop 后也不设等待窗口 | 官方文档说明 Stop 载荷就是用来区分「会话结束」和「暂停、等后台任务唤醒」。cmux 只统计 status 为 running 的项；Warp 插件只数数组长度，会把已结束的任务也算进去。Harp 的观测是，`/loop` 的 cron 会让会话一连几小时显示工作中 |
+| S01 Stop 载荷取后台任务 | 回合结束时直接读 Stop 载荷里的 `background_tasks`，只统计仍在运行的任务。`subagent`、`workflow`、`teammate`、`cloud session`、`MCP task` 仍在运行时，会话保持「进行中」。只剩 `shell` 时，回合算结束，状态栏另标「后台 shell N 个」。`session_crons` 不算进行中，状态栏另标「已排定唤醒」。`monitor` 如何归类待实测决定。`stop_hook_active` 不影响判断。载荷里没有这两个数组时，按「未知」处理，不当作「没有后台任务」。不另装统计 Hook，Stop 后也不设等待窗口 | 官方文档说明 Stop 载荷就是用来区分「会话结束」和「暂停、等后台任务唤醒」。cmux 只统计 status 为 running 的项；Warp 插件只数数组长度，会把已结束的任务也算进去。Harp 的观测是，`/loop` 的 cron 会让会话一连几小时显示工作中 |
 | S02 子 Agent 事件归属 | 带子 Agent 标识的事件和 SubagentStop 只更新父会话的后台计数，不改变父会话本身的状态。SubagentStop 里的两个数组属于父会话 | 官方文档；superset 的子 Agent 名册 |
 | S03 官方快照对账 | 下列时机按会话身份（`sessionId`，其次 `pid`）调用一次 `claude agents --json`：收到 Stop、Notification 或 StopFailure 后；屏幕否决触发时；重新连接宿主时；用户打开鸟瞰视图时。不定时轮询，同一会话 5 秒内最多调用一次。`status: waiting` 时进入「等你回答」，并用 `waitingFor` 作为原因；`busy` 进入「进行中」；`idle` 让 Hook 留下的过期「等你回答」失效。命令失败、超时或版本不支持时，退回只看 Hook 和屏幕，并在诊断中报告 | 官方文档说明这是稳定的机器可读接口，`~/.claude/jobs/*/state.json` 则不稳定。本机实测这个命令也会列出普通交互会话（57 个会话中有 1 个 `waiting / input needed`）。它目前仍是研究预览功能 |
 | S04 信号新鲜期与屏幕否决 | 每条状态都记下它来自哪路信号、何时观测，并带一个新鲜期。过了新鲜期还没有新信号，就交给对账（S03）决定。屏幕只能做两件事：一是否决，例如「等你回答」期间屏幕上已经没有对话框，而 Esc 关闭对话框不会触发 Hook；二是触发 S03 对账。屏幕不能单独把会话判为「待核对」。PermissionRequest 之后先固定显示「等你回答」一小段时间，再接受屏幕否决。屏幕特征按 CLI 版本维护成样本集 | agent-deck 的做法：Hook 走快路径，屏幕和会话记录负责否决，每路信号带新鲜期（Claude Hook 2 分钟，PermissionRequest 固定 5 秒）。Keepline 自己持有终端状态，不需要像 agent-deck 那样用 tmux 抓屏 |
 | S05 迟到的工具事件 | Ctrl-C 之后迟到的工具事件不改变状态。回合结束后又来了工具事件但没有新的 UserPromptSubmit：如果上一次 Stop 载荷显示仍有后台任务，就判为被唤醒的新回合，进入「进行中」；如果显示没有后台任务，就当作迟到事件丢弃 | Harp 和 cmux 的处理相反，起因都是拿不到后台信息。有了 S01 的载荷，可以按条件区分 |
-| S06 Codex 来源（2026-10-23 已定） | 线程与终端的关联沿用 R15 的三层办法（`resume <UUID>` 参数、屏幕原话一一对应、标题兜底），状态改为对共享 app-server 后台做只读对账：触发时机与 S03 相同，每次新建一条连接，先 `initialize`，再对每个已关联线程调用 `thread/read`（`includeTurns: false`），然后关闭连接。`active` 且 `activeFlags` 含 `waitingOnApproval` / `waitingOnUserInput` 时进入「等你回答」，`active` 不带标记算忙碌，`idle` 用来确认对话框已关闭，其他状态不使用。后台没有加载的线程（`--no-daemon` 会话、已退出的会话）返回错误，直接跳过。不订阅：不调用 `thread/start`、`thread/resume`，也不接收推送；不用 `notify` 配置，不改 `hooks.json` | 本机 codex 0.163 只读实测：控制 socket `~/.codex/app-server-control/app-server-control.sock` 走 WebSocket；63 个已加载线程中，`thread/read` 返回的线程 ID、会话 ID 和日志文件名 ID 一致，读 10 个约 0.43 秒；不订阅的连接 25 秒内只收到账号相关的通知，没有线程状态推送。订阅虽然能拿到推送，但官方文档没有写明多个订阅者时审批请求发给谁，可能抢走或卡住用户终端里的审批，所以否定。上游 openai/codex#44902 提供客户端身份前，未关联会话仍提示可以改用 `--no-daemon`。协议标为实验性，升级 Codex 后需要复验 |
-| S07 只在显示状态变化时提醒 | 通知范围以 [product.md 第 6 节通知降噪](product.md) 为准，只对「等你回答」和「出错了」发。同一个对话框被多路信号各报一次时，只提醒一次。回合结束但 S01 让会话保持「进行中」时不提醒；用户按 Ctrl-C 后结束的回合不提醒。需要立刻提醒的权限请求，以 PermissionRequest 为准 | Claude 的 `permission_prompt` 通知要等用户约 6 秒没打字才发出，见官方文档。Harp 和 superset 都按显示状态去重 |
-| S09 Codex 子 Agent（2026-10-23 已定） | 子 Agent 的会话记录头（`session_meta`）带 `source.subagent.thread_spawn.parent_thread_id` 和 `agent_nickname`，它自己的回合有 `task_started` / `task_complete`。Keepline 把它记进父线程名下：子 Agent 回合在进行中，父会话就算还有后台工作；子 Agent 在等审批或提问，父会话进入「等你回答」，并写明是哪个子 Agent；对话框消失后，恢复父会话原来的状态。15 分钟没有新记录的子 Agent 不再计数，避免进程死在回合中间时把父会话卡住。父会话关联期间，给它最近一天内的子 Agent 日志挂 vnode 监听（最多 32 个），因为 Codex 进程会一直开着这些文件 | 父会话记录里只有 `spawn_agent` 的调用和返回，看不出子 Agent 何时结束，正文也是加密的；`thread/list` 从状态库读，状态全是 `notLoaded`，也没有父线程。Codex 0.163 的 Stop 载荷不带后台字段，而且共享后台模式下 Hook 跑在后台进程里，`keeplined hook` 按进程父子链认终端，会拒收，所以不走 Hook。只读 `thread/read` 也能拿到父线程（本机 56 个线程 0.66 秒），留作对账补充，尚未接入 |
+| S06 Codex 来源（待决定） | 方案 A：终端连接共享的 app-server 后台，订阅 `ThreadStatus` 推送。状态有 `idle`、`systemError`、`notLoaded`，以及 `active` 附带的 `waitingOnApproval` / `waitingOnUserInput`；回合结果来自 `TurnStatus`（completed / interrupted / failed）。方案 B：保留 `--no-daemon`，用原生 `hooks.json`，丢弃子 Agent 线程和标题生成线程的事件。两个方案都不用 `notify` 配置，也都接受 S04 的屏幕否决 | 方案 A 是结构化推送，不用轮询，但和现在用 `--no-daemon` 识别会话身份的做法冲突，对应项目地图里「Codex 关联是否换掉临时 --no-daemon」这个决定。superset 和 cmux 都用方案 B，理由是 `notify` 分不清父会话和子 Agent。app-server 的协议目前标为实验性 |
+| S07 只在显示状态变化时提醒 | 只有两种变化发系统通知和声音：用户看到的分组从别的分组变为「等你回答」，或从「进行中」变为「待核对」/「出错了」。同一个对话框被多路信号各报一次时，只提醒一次。回合结束但 S01 让会话保持「进行中」时不提醒；用户按 Ctrl-C 后结束的回合不提醒。需要立刻提醒的权限请求，以 PermissionRequest 为准 | Claude 的 `permission_prompt` 通知要等用户约 6 秒没打字才发出，见官方文档。Harp 和 superset 都按显示状态去重 |
 | S08 状态轨迹与样本回归 | 诊断开关打开后，每次显示状态变化写一行状态轨迹，包含会话身份、旧状态、新状态、触发信号和来源、时间，不含提示词正文。另外维护两类回归样本：一是用真实会话记录和 Hook 序列回放出期望轨迹，与实际轨迹逐条比对；二是按 CLI 版本保存屏幕样本，验证 S04 的否决特征 | Harp 的 `WARPOSS_STATUS_TRACE`；agent-deck 有 118 份屏幕样本 |
 
 #### 评审待决定
 
-- ~~S06 选方案 A 还是 B~~：2026-10-23 已定，见 S06。
-- ~~`background_tasks` 中 `status` 的取值与 `monitor` 的归类~~：2026-10-23 已定。旧版 Keepline 记下的 74515 条真实 Hook 事件里，`status` 只出现过 `running`；`monitor` 按「等待唤醒」处理，见 S01。
+- S06 选方案 A 还是 B。这件事和「Codex 关联是否换掉临时 --no-daemon」是同一个决定。
+- `background_tasks` 中 `status` 的具体取值，以及 `monitor` 怎么归类：先在本机采集真实 Stop 载荷再定。官方文档没有列出 `status` 的取值。
 - S03 的 5 秒限频和 S04 的各个新鲜期：先用 agent-deck 的取值，再按本机采集的事件间隔调整。
-- ~~Codex 的 Stop 是否带后台任务信息~~：2026-10-23 已查，不带，改由 S09 的子 Agent 日志覆盖。
-- 协议升级后的复验：见 [next/eval/protocol-contract](../../next/eval/protocol-contract/README.md)。
+- Codex 的 Stop 是否带后台任务信息：要查导出的 `hooks.json` 载荷。
 
 放弃条件：S08 回放发现某条规则带来的误判多于修正，就删掉这条，不靠加参数修补。`claude agents --json` 如果在研究预览期间改了格式或被移除，S03 退回为只看 Hook 加屏幕否决，其他规则不受影响。
-
-#### 实现记录（2026-10-23，分支 `feat/turn-state`）
-
-| 规则 | 实现 | 与上文的差别 |
-|---|---|---|
-| S01 / S02 | `keeplined hook` 从载荷提取 `HookFacts`（后台任务按类型计数、通知类型、是否来自子 Agent），不转发提示词和回复正文；`Content.background` 记录上一次 Stop 的计数，新回合清空；`group()` 在进程仍在、回合已结束且有子 Agent 在跑，或者只剩监视任务 / 定时唤醒时归入「进行中」。后一种情况 `Content::waking()` 为真，「你在这里」卡与会话列表显示「等待唤醒」 | 无 |
-| S03 | `claude agents --json` 用会话自己进程的可执行文件运行（`proc_pidpath`），5 秒超时，同一会话 5 秒内最多一次。触发时机有两个：画面否决（S04），以及用户手动刷新（`RefreshAgents`）。它只用来确认对话框的去留：显示等待时进入「等你回答」；显示忙碌时清除等待；显示空闲时，若期间已收到回合结束就判为完成，否则判为中断。它不会单独开始或结束一个回合 | 收到 Stop / Notification、重新连接宿主、打开鸟瞰视图这几个时机尚未接入 |
-| S04 | 复用现有的严格画面识别（`recognition::screen_wait`）。画面停下且已经看不到对话框，而记录里的状态还是「等你回答」时，先等过 5 秒固定期，再触发 S03 | 没有另建屏幕样本集；也没有单独的 2 分钟过期，过期判断由画面停下时检查 |
-| S05 | Stop 时若有子 Agent 在跑，之后的 PreToolUse / PostToolUse 判为被唤醒的新回合；否则当作迟到事件丢弃。由 Hook 报出的等待，之后收到 PostToolUse 即视为已回答 | 无 |
-| S06 | `codex_status.rs`：手写最小 WebSocket 客户端（客户端帧加掩码，回应服务端 ping，单条消息不超过 4 MiB，5 秒超时）。画面否决和手动刷新时，按会话的 CLI ID 读线程状态，结果交给与 Claude 相同的 `Parser::official`。查询失败时，识别状态 `RecognitionStatus.official` 记下原因，界面现有的提示区显示「Codex / Claude 官方状态查询不可用，已改为只看日志和画面」，下一次查询成功后消失。socket 路径取 `$CODEX_HOME`，默认 `~/.codex`；测试可用 `KEEPLINE_CODEX_CONTROL` 覆盖。集成测试用假控制 socket 断言只出现过 `initialize` / `initialized` / `thread/read` 三种请求；另有一个默认跳过的测试，对本机真实后台读 3 个线程，用时 132 毫秒，未加载的线程被跳过 | 子 Agent 状态改由 S09 从日志获得 |
-| S07 | 通知键对「等你回答」改用等待轮次（`waiting_episode`），画面叠加的等待和随后的日志 / Hook 记录算同一轮；「出错了」仍按正文 | 无 |
-| S09 | 解析器从子 Agent 记录头读出父线程和名字（不论它因何被隐藏）；索引新表 `subagent_links` 记下子 Agent 的路径、父线程、回合、等待内容和更新时间。子 Agent 日志一变化，就在同一事务里重算父会话卡片（`Parser::children`），并把父会话交给关联刷新；父会话自己的日志更新时也会重算一次。内容规则版本升到 8，近期日志重新解析一次，以补上旧卡片缺少的父线程。集成测试：子 Agent 日志全程保持打开，先确认它在跑时父会话停在「进行中」，再确认它的提问显示在父会话上、回答并结束后父会话恢复；去掉 vnode 监听后这个测试失败 | 只读 `thread/read` 的子 Agent 补充未接入 |
-| 协议复验 | [next/eval/protocol-contract](../../next/eval/protocol-contract/README.md)：`check.py` 检查 Codex schema 中我们依赖的字段、子 Agent 记录头和 `claude agents --json` 的结构，加 `--live` 时再对正在运行的 Codex 后台做一次只读查询；`hook_shapes.py` 从真实 Hook 事件中抽取脱敏结构样本（94 种），单元测试逐条解析。2026-10-23 在 Codex 0.163.0、Claude Code 2.1.302 上 0 failed、0 warnings | 需要升级后手动运行，没有接入 CI |
-| S08 | 设置环境变量 `KEEPLINE_STATUS_TRACE=<文件>` 后，每次回合状态变化追加一行（时间、日志路径、旧→新、信号来源）；单元测试回放一段 Hook 序列，比对完整轨迹 | 屏幕样本回归未做 |
-
-前提：Keepline 不安装、也不修改 CLI 的 Hook 配置（见 [architecture.md](architecture.md)）。S01、S02、S05 只有在用户把 `keeplined hook --runtime <目录> --agent claude` 注册到 Stop、SubagentStop、Notification、PermissionRequest、PreToolUse、PostToolUse、StopFailure 之后才生效；没有注册时，状态只来自会话记录、画面和 S03。
-
 
 ## 6. 宿主协议 major 1
 
@@ -340,7 +317,7 @@ bridge 保存租约和宿主连接，绑定调用窗口及 subscription，不把
 - 自动剪贴板读取/写入请求不执行。产品复制/粘贴需要用户操作。
 - 用户输入、屏幕全文、凭证、完整环境不进入诊断日志、统计上报和模型判断；测试材料使用合成内容，真实 CLI 人工验收记录只留必要的脱敏结果。
 - 不更改 Agent 原生审批策略，不默认添加 bypass 权限参数，不自动读取 `.env` 来补充登录。
-- 关闭标签、clear screen、清理已结束显示缓存和删除工作项均不隐式停止 Agent。停止只发生在明确的停止操作。
+- 关闭画面或标签会停止对应终端（宿主向其进程组发 SIGTERM），有 Agent 运行时由 App 先确认。clear screen、清理已结束显示缓存和删除工作项均不停止 Agent。
 
 ## 10. 性能目标与测量方法
 

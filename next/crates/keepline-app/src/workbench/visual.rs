@@ -112,6 +112,26 @@ impl Workbench {
             }),
         )
     }
+    /// Types into the open rename field as an input method would, caret at the end.
+    #[cfg(feature = "visual-test")]
+    pub fn visual_rename_type(&mut self, text: &str, cx: &mut Context<Self>) {
+        if let Some((_, field, _)) = &self.layout.renaming_tab {
+            field.update(cx, |f, cx| {
+                f.set_text(text);
+                cx.notify();
+            });
+        }
+    }
+    /// The name the first tab of this space shows.
+    #[cfg(feature = "visual-test")]
+    pub fn visual_first_tab_name(&self, cx: &gpui::App) -> String {
+        self.workspace
+            .tabs
+            .iter()
+            .find(|t| t.space == self.nav.space)
+            .map(|t| self.tab_name(t, cx))
+            .unwrap_or_default()
+    }
     #[cfg(feature = "visual-test")]
     pub fn visual_new_tab(&mut self, cx: &mut Context<Self>) {
         self.launch(false, None, cx);

@@ -9,7 +9,7 @@ pub(super) struct LayoutState {
     pub(super) drag: Option<Vec<bool>>,
     pub(super) split_bounds: HashMap<Vec<bool>, gpui::Bounds<gpui::Pixels>>,
     /// A tab being renamed in place after a double-click.
-    pub(super) renaming_tab: Option<(String, Entity<Field>, gpui::Subscription)>,
+    pub(super) renaming_tab: Option<(String, Entity<Field>, [gpui::Subscription; 2])>,
     /// A tab's right-click menu: the tab and where it was opened.
     pub(super) tab_menu: Option<(String, gpui::Point<gpui::Pixels>)>,
     /// The title-bar logo's menu for choosing the app icon, where it was opened.
@@ -408,9 +408,15 @@ impl Workbench {
                             .child(self.layout_view(first, left, true, window, cx)),
                     )
                     .child(
+                        // Both panes draw their own border, so the gutter stays empty and
+                        // only shows a thin handle on hover or while dragging.
                         div()
                             .id(gpui::SharedString::from(format!("divider-{path:?}")))
+                            .group("divider")
                             .flex_shrink_0()
+                            .flex()
+                            .items_center()
+                            .justify_center()
                             .when(down, |d| {
                                 d.h(px(T::S6))
                                     .w_full()
@@ -421,8 +427,16 @@ impl Workbench {
                                     .h_full()
                                     .cursor(gpui::CursorStyle::ResizeLeftRight)
                             })
-                            .bg(T::color(T::BORDER))
-                            .hover(|d| d.bg(T::color(T::FOCUS)))
+                            .child(
+                                div()
+                                    .rounded_full()
+                                    .when(down, |d| d.h(px(T::S2)).w(px(T::S20 * 2.)))
+                                    .when(!down, |d| d.w(px(T::S2)).h(px(T::S20 * 2.)))
+                                    .when(self.layout.drag.as_ref() == Some(&path), |d| {
+                                        d.bg(T::color(T::FOCUS))
+                                    })
+                                    .group_hover("divider", |d| d.bg(T::color(T::FOCUS))),
+                            )
                             .on_mouse_down(
                                 gpui::MouseButton::Left,
                                 cx.listener(move |this, _, _, cx| {

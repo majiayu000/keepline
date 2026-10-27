@@ -196,13 +196,26 @@ impl Render for Workbench {
             if let Some((_, field, _)) =
                 self.layout.renaming_tab.as_ref().filter(|(t, ..)| t == &id)
             {
-                // Sized by the name being typed, like the tab it replaces.
+                // Edited in place: the tab keeps its height, padding and icon, and only
+                // its name turns editable, outlined so the edit is plain to see. A long
+                // name gets wider room while typed; the strip scrolls to make space.
                 strip = strip.child(
                     div()
                         .flex_shrink_0()
                         .min_w(px(T::TAB_RENAME_MIN))
-                        .max_w(px(T::TAB_MAX_WIDTH))
-                        .child(field.clone()),
+                        .max_w(px(T::TAB_RENAME_MAX))
+                        .h(px(T::TABS))
+                        .px(px(T::S12 - T::BORDER_WIDTH))
+                        .flex()
+                        .items_center()
+                        .gap(px(T::S6))
+                        .bg(T::color(T::RAISED))
+                        .border(px(T::BORDER_WIDTH))
+                        .border_color(T::color(T::FOCUS))
+                        .text_size(px(T::MONO_SIZE))
+                        .text_color(T::color(T::PRIMARY))
+                        .when(tab.default_task.is_some(), |d| d.child(task_icon()))
+                        .child(div().flex_1().min_w_0().h_full().child(field.clone())),
                 );
                 continue;
             }
