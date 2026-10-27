@@ -262,3 +262,13 @@ fn only_revision_free_edits_wait_behind_a_busy_action() {
     })));
     assert!(!queueable(&Request::Workspace));
 }
+#[test]
+fn a_removed_directory_falls_back_to_one_that_exists() {
+    let gone = "/nonexistent/keepline-idle-test/next".to_owned();
+    let tmp = std::env::temp_dir().to_string_lossy().into_owned();
+    assert_eq!(usable_cwd([gone.clone(), tmp.clone()]), tmp);
+    assert_eq!(
+        usable_cwd([gone.clone(), gone]),
+        std::env::var("HOME").unwrap()
+    );
+}

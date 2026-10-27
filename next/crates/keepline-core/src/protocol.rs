@@ -66,6 +66,10 @@ pub enum Request {
     },
     Input {
         bytes: Vec<u8>,
+        /// Mouse reports: dropped while the program is behind on reading, so a full
+        /// input queue never cuts one in half. Hosts before it write them all.
+        #[serde(default)]
+        lossy: bool,
     },
     Resize {
         cols: u16,
@@ -111,47 +115,40 @@ pub enum Reply {
     Error(String),
 }
 
-/// The executable a host runs, as it was when the host started. A client compares it
-/// with the file on disk now: a rebuilt binary does not change a running host.
+/// The program a host runs, fixed when it started: a rebuilt binary does not change a
+/// running host, so a client compares this with the host it would start itself.
 #[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Build {
     pub binary: String,
-    /// Modification time of `binary` in seconds since the epoch; 0 if unknown.
-    pub modified: u64,
+    /// Content digest of `binary` when the host started; empty from hosts before it.
+    #[serde(default)]
+    pub digest: String,
+    /// The host's process id, to stop it for a restart; 0 from hosts before it.
+    #[serde(default)]
+    pub pid: u32,
 }
 impl Build {
     pub fn current() -> Self {
         let binary = std::env::current_exe().unwrap_or_default();
         Self {
-            modified: Self::modified(&binary),
+            digest: Self::digest(&binary).unwrap_or_default(),
             binary: binary.to_string_lossy().into_owned(),
+            pid: std::process::id(),
         }
     }
-    pub fn modified(path: &std::path::Path) -> u64 {
-        std::fs::metadata(path)
-            .and_then(|m| m.modified())
-            .ok()
-            .and_then(|t| t.duration_since(std::time::UNIX_EPOCH).ok())
-            .map_or(0, |d| d.as_secs())
+    /// Identifies a file by its bytes (FNV-1a and length), so a re-signed or copied
+    /// binary with the same code is the same build whatever its timestamps say.
+    pub fn digest(path: &std::path::Path) -> Option<String> {
+        let bytes = std::fs::read(path).ok()?;
+        let hash = bytes.iter().fold(0xcbf2_9ce4_8422_2325_u64, |h, b| {
+            (h ^ u64::from(*b)).wrapping_mul(0x0100_0000_01b3)
+        });
+        Some(format!("{hash:016x}-{}", bytes.len()))
     }
-    /// Why this host runs older code than its own binary, or than `sibling` (the host
-    /// this client would start), when it does.
-    pub fn stale(&self, sibling: &std::path::Path) -> Option<String> {
-        if self.binary.is_empty() || self.modified == 0 {
-            return Some("后台进程是旧版本（不报告构建信息）".into());
-        }
-        let own = Self::modified(std::path::Path::new(&self.binary));
-        if own > self.modified {
-            return Some(format!("后台进程启动后 {} 已重新编译", self.binary));
-        }
-        if Self::modified(sibling) > self.modified {
-            return Some(format!(
-                "后台进程（{}）比本 App 自带的 {} 旧",
-                self.binary,
-                sibling.display()
-            ));
-        }
-        None
+    /// Whether this host runs other code than `sibling`, the host this client would
+    /// start. A host that reports no digest cannot show it is the same.
+    pub fn stale(&self, sibling: &std::path::Path) -> bool {
+        self.digest.is_empty() || Self::digest(sibling).is_some_and(|d| d != self.digest)
     }
 }
 
@@ -223,13 +220,14 @@ pub fn read_frame(r: &mut impl Read) -> io::Result<(u8, Vec<u8>)> {
 }
 /// Serialize one queued user input as ordered bounded packets. UTF-8 and bracketed
 /// paste delimiters may span packets: the PTY remains a byte stream. Never retry.
-pub fn send_input(w: &mut impl Write, bytes: &[u8]) -> io::Result<()> {
+pub fn send_input(w: &mut impl Write, bytes: &[u8], lossy: bool) -> io::Result<()> {
     for chunk in bytes.chunks(16 * 1024) {
         send(
             w,
             CONTROL,
             &Request::Input {
                 bytes: chunk.to_vec(),
+                lossy,
             },
         )?;
     }
@@ -274,34 +272,24 @@ mod tests {
     use super::Build;
 
     #[test]
-    fn a_host_is_stale_when_its_binary_or_the_apps_was_rebuilt_after_it_started() {
+    fn a_host_is_stale_only_when_the_code_differs() {
         let dir = std::env::temp_dir().join(format!("kl-build-{}", uuid::Uuid::new_v4()));
         std::fs::create_dir_all(&dir).unwrap();
         let binary = dir.join("keeplined");
-        std::fs::write(&binary, "").unwrap();
-        let missing = dir.join("absent");
+        std::fs::write(&binary, "v1").unwrap();
         let started = Build {
             binary: binary.to_string_lossy().into_owned(),
-            modified: Build::modified(&binary),
+            digest: Build::digest(&binary).unwrap(),
+            pid: 1,
         };
-        assert_eq!(started.stale(&missing), None);
-        assert_eq!(started.stale(&binary), None);
-        assert!(
-            Build::default().stale(&missing).is_some(),
-            "pre-build hosts"
-        );
-        let older = Build {
-            modified: started.modified - 60,
-            ..started.clone()
-        };
-        assert!(older.stale(&missing).unwrap().contains("重新编译"));
-        let sibling = dir.join("bundled");
-        std::fs::write(&sibling, "").unwrap();
-        let other = Build {
-            binary: missing.to_string_lossy().into_owned(),
-            modified: started.modified - 60,
-        };
-        assert!(other.stale(&sibling).unwrap().contains("自带"));
+        assert!(!started.stale(&dir.join("absent")));
+        // A copy with other timestamps (re-signed, touched) is the same build.
+        let copy = dir.join("bundled");
+        std::fs::write(&copy, "v1").unwrap();
+        assert!(!started.stale(&copy));
+        std::fs::write(&copy, "v2").unwrap();
+        assert!(started.stale(&copy));
+        assert!(Build::default().stale(&binary), "hosts before digests");
         std::fs::remove_dir_all(dir).unwrap();
     }
 }

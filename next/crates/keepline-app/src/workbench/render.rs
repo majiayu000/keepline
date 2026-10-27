@@ -68,7 +68,27 @@ impl Render for Workbench {
                 .bg(T::color(T::PANEL))
                 .border_b(px(T::BORDER_WIDTH))
                 .border_color(T::color(T::BORDER))
-                .child(gpui::img(app_icon()).size(px(T::LOGO)).flex_shrink_0())
+                .child(
+                    div()
+                        .id("app-icon")
+                        .role(gpui::accesskit::Role::Button)
+                        .aria_label("换图标")
+                        .flex_shrink_0()
+                        .cursor_pointer()
+                        .child(
+                            gpui::img(cx.global::<Chosen>().icon.title_image()).size(px(T::LOGO)),
+                        )
+                        .on_mouse_down(
+                            gpui::MouseButton::Left,
+                            cx.listener(|this, event: &gpui::MouseDownEvent, _, cx| {
+                                // Drops below the title bar so the logo stays in view.
+                                this.layout.icon_menu =
+                                    Some(gpui::point(event.position.x, px(T::TOP)));
+                                cx.stop_propagation();
+                                cx.notify();
+                            }),
+                        ),
+                )
                 .child(
                     div()
                         .font_weight(gpui::FontWeight::SEMIBOLD)
@@ -97,6 +117,25 @@ impl Render for Workbench {
                 .child(self.search_button(cx))
                 .child(self.title_drag_area(cx))
                 .when(self.store.slow(), |d| d.child(label("正在更新…")))
+                // The host runs older code than this app; restarting it ends every terminal.
+                .when(crate::lifecycle::stale_host(), |d| {
+                    d.child(
+                        button(
+                            "restart-host",
+                            if self.restarting {
+                                "正在重启后台…"
+                            } else {
+                                "后台有更新 · 重启"
+                            },
+                        )
+                        .text_color(T::color(T::SECONDARY))
+                        .on_click(cx.listener(|this, _, _, cx| {
+                            if !this.restarting {
+                                this.request_close(Closing::Host, cx);
+                            }
+                        })),
+                    )
+                })
                 .child(
                     button("add-task", "＋ 新待办").on_click(
                         cx.listener(|this, _, window, cx| this.show_quick_task(window, cx)),
@@ -251,18 +290,6 @@ impl Render for Workbench {
                     .border_0()
                     .text_color(T::color(T::LINK))
                     .on_click(cx.listener(|this, _, _, cx| this.launch(false, None, cx))),
-            )
-            .child(div().flex_1())
-            .child(
-                button("close-tab", "关闭标签")
-                    .flex_shrink_0()
-                    .border_0()
-                    .text_size(px(T::META))
-                    .on_click(cx.listener(|this, _, _, cx| {
-                        if let Some(id) = this.nav.tab.clone() {
-                            this.close_tab(&id, cx);
-                        }
-                    })),
             );
         let mut main = div()
             .flex_1()
@@ -282,14 +309,6 @@ impl Render for Workbench {
         for notice in self.store.recognition().official.values() {
             main = main.child(
                 label(notice.clone())
-                    .px(px(T::S14))
-                    .py(px(T::S6))
-                    .text_color(Group::Waiting.colors().1),
-            );
-        }
-        if let Some(stale) = crate::lifecycle::stale_host() {
-            main = main.child(
-                label(stale)
                     .px(px(T::S14))
                     .py(px(T::S6))
                     .text_color(Group::Waiting.colors().1),
@@ -399,6 +418,9 @@ impl Render for Workbench {
         if let Some(menu) = &self.layout.menu {
             root = root.child(self.menu_view(menu, window, cx));
         }
+        if let Some(position) = self.layout.icon_menu {
+            root = root.child(self.icon_menu_view(position, window, cx));
+        }
         if let Some((id, position)) = &self.layout.tab_menu {
             root = root.child(self.tab_menu_view(id, *position, window, cx));
         }
@@ -481,6 +503,23 @@ impl Workbench {
     }
 }
 
+/// A plain hover note.
+pub(super) struct TextTip(pub(super) &'static str);
+impl Render for TextTip {
+    fn render(&mut self, _: &mut Window, _: &mut Context<Self>) -> impl IntoElement {
+        div()
+            .max_w(px(T::TAB_TIP_WIDTH))
+            .p(px(T::S8))
+            .rounded(px(T::CONTROL_RADIUS))
+            .border(px(T::BORDER_WIDTH))
+            .border_color(T::color(T::CARD_BORDER))
+            .bg(T::color(T::RAISED))
+            .shadow_lg()
+            .text_size(px(T::SMALL))
+            .text_color(T::color(T::PRIMARY))
+            .child(self.0)
+    }
+}
 /// A tab's full name, what its agent is doing and where, shown on hover since the tab
 /// itself is capped and elided.
 #[derive(Clone)]
@@ -544,16 +583,4 @@ impl Render for TabTip {
             })
             .when_some(self.cwd.clone(), |d, cwd| d.child(label(cwd)))
     }
-}
-
-/// The ink-ring app icon shown beside the traffic lights, decoded once.
-fn app_icon() -> std::sync::Arc<gpui::Image> {
-    static ICON: std::sync::LazyLock<std::sync::Arc<gpui::Image>> =
-        std::sync::LazyLock::new(|| {
-            std::sync::Arc::new(gpui::Image::from_bytes(
-                gpui::ImageFormat::Png,
-                include_bytes!("../../assets/keepline-icon.png").to_vec(),
-            ))
-        });
-    ICON.clone()
 }

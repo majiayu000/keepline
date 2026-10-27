@@ -18,9 +18,17 @@ use std::{ops::Range, path::Path, sync::atomic::Ordering, time::Instant};
 mod selection;
 use selection::TextSelection;
 
+/// Wheel reports sent to a program for one scroll event.
+const WHEEL_REPORTS: usize = 10;
 pub struct Pane {
     terminal: String,
+    socket: std::path::PathBuf,
+    /// Wakes this pane on terminal output; every connection it opens shares it.
+    wake: futures::channel::mpsc::UnboundedSender<()>,
     connection: Connection,
+    /// A dropped stream is being reattached; the delay doubles while it keeps failing.
+    reconnecting: bool,
+    reconnect_delay: u64,
     focus: FocusHandle,
     screen: Screen,
     capture: Option<screen::Capture>,
@@ -53,6 +61,8 @@ pub struct Pane {
     pub bell: bool,
     /// A bell in the pane the user is looking at flashes its border once.
     flash: bool,
+    /// A drag went to a program that took the mouse; for a moment the pane says how to select.
+    select_hint: bool,
 }
 impl Focusable for Pane {
     fn focus_handle(&self, _: &App) -> FocusHandle {
@@ -60,6 +70,44 @@ impl Focusable for Pane {
     }
 }
 impl Pane {
+    #[cfg(feature = "visual-test")]
+    pub fn visual_type(&mut self, text: &str, cx: &mut Context<Self>) {
+        self.input(text.as_bytes().to_vec(), cx);
+    }
+    /// The visible screen as text, for checking what reached the program.
+    #[cfg(feature = "visual-test")]
+    pub fn visual_text(&self) -> String {
+        let state = self.connection.state.lock().unwrap();
+        state
+            .vt
+            .as_ref()
+            .and_then(|vt| {
+                vt.tail_text(usize::from(self.requested_size.1.max(40)))
+                    .ok()
+            })
+            .unwrap_or_default()
+    }
+    #[cfg(feature = "visual-test")]
+    pub fn visual_error(&self) -> Option<String> {
+        self.local_error
+            .clone()
+            .or_else(|| self.connection.state.lock().ok()?.error.clone())
+    }
+    #[cfg(feature = "visual-test")]
+    pub fn visual_select_hint(&mut self, cx: &mut Context<Self>) {
+        self.select_hint = true;
+        cx.notify();
+    }
+    /// Whether the program in this pane asked for mouse reports, and where to click it.
+    #[cfg(feature = "visual-test")]
+    pub fn visual_mouse_app(&self) -> (bool, Option<gpui::Point<Pixels>>) {
+        let state = self.connection.state.lock().unwrap();
+        let tracking = state
+            .vt
+            .as_ref()
+            .is_some_and(|v| v.terminal().is_mouse_tracking().unwrap_or(false));
+        (tracking, self.bounds.map(|b| b.center()))
+    }
     #[cfg(feature = "visual-test")]
     pub fn verify_marked_overlay(
         &mut self,
@@ -95,7 +143,7 @@ impl Pane {
     }
     pub fn new(socket: &Path, id: &str, takeover: bool, cx: &mut Context<Self>) -> Self {
         let (tx, mut rx) = unbounded();
-        let connection = Connection::new(socket, id, takeover, tx);
+        let connection = Connection::new(socket, id, takeover, tx.clone());
         cx.spawn(async move |this, cx| {
             while rx.next().await.is_some() {
                 // Coalesce bursts at 60 Hz; no timer exists when the terminal is idle.
@@ -106,6 +154,7 @@ impl Pane {
                 if this
                     .update(cx, |pane, cx| {
                         pane.ring(cx);
+                        pane.recover(cx);
                         cx.notify();
                     })
                     .is_err()
@@ -118,7 +167,11 @@ impl Pane {
         let focus = cx.focus_handle();
         Self {
             terminal: id.into(),
+            socket: socket.to_owned(),
+            wake: tx,
             connection,
+            reconnecting: false,
+            reconnect_delay: 0,
             focus,
             screen: Screen::default(),
             capture: None,
@@ -147,7 +200,50 @@ impl Pane {
             bells_seen: 0,
             bell: false,
             flash: false,
+            select_hint: false,
         }
+    }
+    /// Attaches again after the host dropped this pane's stream; the snapshot restores
+    /// the screen, and input works again once the pane owns the terminal.
+    fn recover(&mut self, cx: &mut Context<Self>) {
+        let (dropped, failed, live) =
+            self.connection
+                .state
+                .lock()
+                .map_or((false, false, false), |s| {
+                    (
+                        s.dropped,
+                        s.error.is_some() && !s.ended,
+                        s.vt.is_some() && s.error.is_none(),
+                    )
+                });
+        if live {
+            self.reconnect_delay = 0;
+        }
+        // Once dropped, every failed attempt retries until one restores the screen: an
+        // attempt made during the same burst is dropped again before its snapshot lands.
+        let dropped = dropped || (self.reconnect_delay > 0 && failed);
+        if !dropped || self.reconnecting {
+            return;
+        }
+        self.reconnecting = true;
+        let delay = self.reconnect_delay.max(100);
+        self.reconnect_delay = (delay * 2).min(5000);
+        cx.spawn(async move |this, cx| {
+            cx.background_executor()
+                .timer(std::time::Duration::from_millis(delay))
+                .await;
+            let _ = this.update(cx, |pane, cx| {
+                pane.connection =
+                    Connection::new(&pane.socket, &pane.terminal, false, pane.wake.clone());
+                pane.reconnecting = false;
+                pane.bells_seen = 0;
+                pane.requested_cell = (0, 0);
+                pane.local_error = None;
+                cx.notify();
+            });
+        })
+        .detach();
     }
     fn ring(&mut self, cx: &mut Context<Self>) {
         let rung = self.connection.bells.load(Ordering::Relaxed);
@@ -285,7 +381,7 @@ impl Pane {
         match result {
             Ok(Some(bytes)) => {
                 if !bytes.is_empty() {
-                    self.input(bytes, cx);
+                    self.pointer(bytes, cx);
                 }
                 cx.stop_propagation();
                 true
@@ -400,6 +496,20 @@ impl Pane {
             window.scale_factor(),
             cx,
         ) {
+            if button == Some(mouse::Button::Left) && !self.select_hint {
+                self.select_hint = true;
+                cx.notify();
+                cx.spawn(async move |this, cx| {
+                    cx.background_executor()
+                        .timer(std::time::Duration::from_secs(3))
+                        .await;
+                    let _ = this.update(cx, |pane, cx| {
+                        pane.select_hint = false;
+                        cx.notify();
+                    });
+                })
+                .detach();
+            }
             return;
         }
         if self.selecting
@@ -425,7 +535,13 @@ impl Pane {
         if lines == 0 {
             return;
         }
+        // A fling is up to 100 lines; a program that took the mouse gets a few reports,
+        // not a queue-filling burst.
+        let mut reported = 0;
         for _ in 0..lines.unsigned_abs() {
+            if reported == WHEEL_REPORTS {
+                break;
+            }
             if self.report_mouse(
                 mouse::Action::Press,
                 Some(if lines > 0 {
@@ -438,6 +554,7 @@ impl Pane {
                 window.scale_factor(),
                 cx,
             ) {
+                reported += 1;
                 continue;
             }
             let result = {
@@ -575,7 +692,14 @@ impl Pane {
         .detach();
     }
     fn input(&mut self, bytes: Vec<u8>, cx: &mut Context<Self>) {
-        if let Err(error) = self.connection.send(Request::Input { bytes }) {
+        self.send_input(bytes, false, cx);
+    }
+    /// Mouse reports may be dropped by the host while the program is behind on input.
+    fn pointer(&mut self, bytes: Vec<u8>, cx: &mut Context<Self>) {
+        self.send_input(bytes, true, cx);
+    }
+    fn send_input(&mut self, bytes: Vec<u8>, lossy: bool, cx: &mut Context<Self>) {
+        if let Err(error) = self.connection.send(Request::Input { bytes, lossy }) {
             self.local_error = Some(error);
             cx.notify();
         }
@@ -885,9 +1009,16 @@ impl Render for Pane {
                 Err(e) => self.local_error = Some(e.to_string()),
             }
         }
-        let error = self.local_error.clone().or(state.error.clone());
+        // While reattaching, the status line says so; the broken stream's error is noise.
+        let error = self
+            .local_error
+            .clone()
+            .or(state.error.clone())
+            .filter(|_| !state.dropped && self.reconnect_delay == 0);
         let status = if state.ended {
             "进程已退出 · 待核对"
+        } else if state.dropped || self.reconnect_delay > 0 {
+            "连接断开 · 正在重连…"
         } else if state.vt.is_none() {
             "正在恢复终端…"
         } else if state.writable {
@@ -1014,16 +1145,15 @@ impl Render for Pane {
             .overflow_hidden()
             .bg(T::color(T::PANE))
             .track_focus(&self.focus)
+            // Right-click is never reported to the program: it opens Keepline's pane
+            // menu even when a full-screen Agent has taken the mouse, as in Herdr.
             .on_mouse_down(gpui::MouseButton::Left,cx.listener(Self::mouse_down))
             .on_mouse_down(gpui::MouseButton::Middle,cx.listener(Self::mouse_down))
-            .on_mouse_down(gpui::MouseButton::Right,cx.listener(Self::mouse_down))
             .on_mouse_move(cx.listener(Self::mouse_move))
             .on_mouse_up(gpui::MouseButton::Left,cx.listener(Self::mouse_up))
             .on_mouse_up(gpui::MouseButton::Middle,cx.listener(Self::mouse_up))
-            .on_mouse_up(gpui::MouseButton::Right,cx.listener(Self::mouse_up))
             .on_mouse_up_out(gpui::MouseButton::Left,cx.listener(Self::mouse_up))
             .on_mouse_up_out(gpui::MouseButton::Middle,cx.listener(Self::mouse_up))
-            .on_mouse_up_out(gpui::MouseButton::Right,cx.listener(Self::mouse_up))
             .on_scroll_wheel(cx.listener(Self::scroll_wheel))
             .on_key_down(cx.listener(Self::key))
             .on_drop(cx.listener(|this, paths: &gpui::ExternalPaths, window, cx| {
@@ -1061,6 +1191,23 @@ impl Render for Pane {
                 d.child(panel.id("search-results").max_h(px(T::SEARCH_HEIGHT)).overflow_y_scroll())
             })
             .child(div().flex_1().min_h_0().child(content))
+            .when(self.select_hint, |d| {
+                d.relative().child(
+                    div()
+                        .absolute()
+                        .bottom(px(T::S8))
+                        .right(px(T::S8))
+                        .px(px(T::S8))
+                        .py(px(T::S4))
+                        .rounded(px(T::CONTROL_RADIUS))
+                        .bg(T::color(T::RAISED))
+                        .border(px(T::BORDER_WIDTH))
+                        .border_color(T::color(T::CARD_BORDER))
+                        .text_size(px(T::META))
+                        .text_color(T::color(T::SECONDARY))
+                        .child("这个程序接管了鼠标：按住 Shift 再拖动来选中文字"),
+                )
+            })
             .when(self.flash, |d| {
                 d.relative().child(
                     div()

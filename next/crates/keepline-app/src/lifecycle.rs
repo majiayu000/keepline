@@ -89,10 +89,80 @@ impl Drop for Instance {
 pub const OLD_BACKEND: &str = "后台版本过旧，需要重启后台（会中断正在运行的终端）";
 pub const RESET_NOTICE: &str = "此版本不迁移旧库。切换到新库后，旧空间、待办、标签布局、终端记录、Agent 会话归属和结局不会保留。原始 CLI 日志文件不会删除。请先处理运行中的终端，再手动备份旧库并切换；本窗口不会重启后台或删除数据。";
 
-/// Why the running host is older than the code on disk; set when this app connected.
-static STALE_HOST: std::sync::OnceLock<String> = std::sync::OnceLock::new();
-pub fn stale_host() -> Option<&'static str> {
-    STALE_HOST.get().map(String::as_str)
+/// The running host when it runs other code than this app's own; set on connect.
+static STALE_HOST: std::sync::Mutex<Option<keepline_core::protocol::Build>> =
+    std::sync::Mutex::new(None);
+pub fn stale_build() -> Option<keepline_core::protocol::Build> {
+    STALE_HOST.lock().ok()?.clone()
+}
+pub fn stale_host() -> bool {
+    stale_build().is_some()
+}
+fn set_stale_host(build: Option<keepline_core::protocol::Build>) {
+    if let Ok(mut stale) = STALE_HOST.lock() {
+        *stale = build;
+    }
+}
+pub fn forget_stale_host() {
+    set_stale_host(None);
+}
+#[cfg(feature = "visual-test")]
+pub fn visual_stale_host() {
+    set_stale_host(Some(Default::default()));
+}
+
+/// Stops the host serving `root` and waits until its socket stops answering; the
+/// next start runs this app's host. Its terminals end with it.
+pub fn stop_host(root: &Path, host: &keepline_core::protocol::Build) -> io::Result<()> {
+    let pid = if host.pid != 0 {
+        host.pid
+    } else {
+        // Hosts before `pid` are found by their exact command line.
+        let pattern = format!("{} serve --runtime {}", host.binary, root.display());
+        let out = std::process::Command::new("/usr/bin/pgrep")
+            .args(["-fx", &pattern])
+            .output()?;
+        String::from_utf8_lossy(&out.stdout)
+            .lines()
+            .next()
+            .and_then(|l| l.trim().parse().ok())
+            .ok_or_else(|| io::Error::other("找不到正在运行的后台进程"))?
+    };
+    let socket = root.join("workbench.sock");
+    // Gone already: its pid may belong to something else by now.
+    if UnixStream::connect(&socket).is_err() {
+        return Ok(());
+    }
+    for (signal, wait) in [(libc::SIGTERM, 50), (libc::SIGKILL, 20)] {
+        // SAFETY: kill only sends a signal to the host process found above.
+        unsafe { libc::kill(pid as libc::pid_t, signal) };
+        for _ in 0..wait {
+            if UnixStream::connect(&socket).is_err() {
+                return Ok(());
+            }
+            std::thread::sleep(Duration::from_millis(100));
+        }
+    }
+    Err(io::Error::other("后台没有在 7 秒内退出"))
+}
+/// Stops the stale host, then opens this app again once this process has quit; the
+/// new process starts the current host.
+pub fn restart_host(root: &Path) -> io::Result<()> {
+    let host = stale_build().ok_or_else(|| io::Error::other("后台已是最新"))?;
+    stop_host(root, &host)?;
+    let exe = std::env::current_exe()?;
+    std::process::Command::new("/bin/sh")
+        .arg("-c")
+        .arg(r#"while kill -0 "$1" 2>/dev/null; do sleep 0.1; done; shift; exec "$@""#)
+        .arg("sh")
+        .arg(std::process::id().to_string())
+        .arg(exe)
+        .args(std::env::args_os().skip(1))
+        .stdin(std::process::Stdio::null())
+        .stdout(std::process::Stdio::null())
+        .stderr(std::process::Stdio::null())
+        .spawn()?;
+    Ok(())
 }
 
 pub fn connected_host(socket: &Path) -> io::Result<bool> {
@@ -121,11 +191,7 @@ pub fn connected_host(socket: &Path) -> io::Result<bool> {
             // An already running host keeps serving the code it started with, however
             // often its binary is rebuilt; fixes then look like they never landed.
             let sibling = std::env::current_exe()?.with_file_name("keeplined");
-            if let Some(reason) = build.stale(&sibling) {
-                let _ = STALE_HOST.set(format!(
-                    "{reason}，新改动还没有生效。重启后台后生效（会中断正在运行的终端）。"
-                ));
-            }
+            set_stale_host(build.stale(&sibling).then_some(build));
             Ok(true)
         }
         Reply::Error(message) if message.starts_with("protocol major ") => {

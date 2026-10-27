@@ -55,6 +55,7 @@ impl Workbench {
                 .iter()
                 .filter(|s| {
                     self.session_hidden(s).is_none()
+                        && self.session_open(s)
                         && session_space(&self.workspace, s) == Some(id.as_str())
                 })
                 .collect();
@@ -125,7 +126,8 @@ impl Workbench {
         // Sorted by what each row shows. Within a state, newest started first: the
         // host keeps sessions in creation order, while `updated` ticks with every
         // output line and would move rows under the pointer.
-        let mut sessions: Vec<_> = self
+        // Only sessions open in a tab; closed ones live in the overview, ready to resume.
+        let in_space: Vec<_> = self
             .workspace
             .agent_sessions
             .iter()
@@ -134,6 +136,14 @@ impl Workbench {
                 self.session_hidden(s).is_none()
                     && session_space(&self.workspace, s) == Some(self.nav.space.as_str())
             })
+            .collect();
+        let closed = in_space
+            .iter()
+            .filter(|(_, s)| self.session_closed(s) && s.outcome.needs_review(now()))
+            .count();
+        let mut sessions: Vec<_> = in_space
+            .into_iter()
+            .filter(|(_, s)| self.session_open(s))
             .map(|(i, s)| {
                 let (g, attention) = sidebar_status(&self.workspace, &self.attention.unseen, s);
                 (s, g, attention, i)
@@ -157,6 +167,7 @@ impl Workbench {
             let row = sessions.remove(i);
             sessions.insert(SIDEBAR_SESSIONS - 1, row);
         }
+        sidebar = sidebar.child(self.todos_view(space_name, cx));
         sidebar = sidebar.child(
             label(format!("会话 · {}", sessions.len()))
                 .mt(px(T::S14))
@@ -166,8 +177,7 @@ impl Workbench {
         );
         if sessions.is_empty() {
             sidebar = sidebar.child(
-                label("还没有会话。在右边的终端里运行 codex 或 claude，Keepline 会自动跟踪。")
-                    .px(px(T::S8)),
+                label("没有打开的会话。在终端里运行 codex 或 claude 就会出现在这里").px(px(T::S8)),
             );
         }
         let more = sessions.len().saturating_sub(SIDEBAR_SESSIONS);
@@ -198,10 +208,18 @@ impl Workbench {
                                 .when(!attention, |d| d.text_color(T::color(T::SECONDARY)))
                                 .child(self.session_title(session)),
                         )
+                        // Rows that all wait for your next step tell apart by how long they have.
                         .child(
-                            label(g.label())
-                                .text_size(px(T::CHIP_SIZE))
-                                .when(attention, |d| d.text_color(g.colors().1)),
+                            label(if g == Group::Ready && !attention {
+                                match age(self.session_updated(session)) {
+                                    a if a == "刚刚" => "刚停下".to_owned(),
+                                    a => format!("停了 {a}"),
+                                }
+                            } else {
+                                g.label().to_owned()
+                            })
+                            .text_size(px(T::CHIP_SIZE))
+                            .when(attention, |d| d.text_color(g.colors().1)),
                         )
                         // Straight to its pane; an exited one resumes in a new pane.
                         .on_click(cx.listener(move |this, _, window, cx| {
@@ -226,6 +244,31 @@ impl Workbench {
                 })),
             );
         }
+        if closed > 0 {
+            sidebar = sidebar.child(
+                button(
+                    "sidebar-closed-sessions",
+                    format!("已关闭 {closed} 个 · 点开接着聊"),
+                )
+                .border_0()
+                .justify_start()
+                .text_size(px(T::META))
+                .text_color(T::color(T::MUTED))
+                .on_click(cx.listener(|this, _, _, cx| {
+                    this.overview.closed_only = true;
+                    this.overview.changed_only = false;
+                    this.overview.filter_space = Some(this.nav.space.clone());
+                    this.nav.overview = true;
+                    this.sync_panes(cx);
+                    this.request(Request::Workspace, cx);
+                })),
+            );
+        }
+        sidebar
+    }
+    /// The space's todos: what is still to be handed to an Agent, above what is running.
+    fn todos_view(&self, space_name: &str, cx: &Context<Self>) -> gpui::Div {
+        let mut sidebar = div().flex().flex_col();
         let todo_count = self
             .workspace
             .tasks

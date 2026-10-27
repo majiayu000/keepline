@@ -6,6 +6,8 @@ pub(super) struct OverviewState {
     pub(super) since: u64,
     pub(super) filter_space: Option<String>,
     pub(super) changed_only: bool,
+    /// Only this space's sessions whose terminal was closed, from the sidebar's 「已关闭」.
+    pub(super) closed_only: bool,
     pub(super) here: Option<String>,
     /// The session whose 「你在这里」 card shows its secondary actions.
     pub(super) here_more: Option<String>,
@@ -33,6 +35,7 @@ impl Workbench {
                     && self.matches_filter(s)
             })
             .collect();
+        let closed_only = self.overview.closed_only;
         let header = div()
             .flex()
             .items_center()
@@ -44,18 +47,27 @@ impl Workbench {
                         div()
                             .text_size(px(T::TITLE))
                             .font_weight(gpui::FontWeight::SEMIBOLD)
-                            .child("欢迎回来"),
+                            .child(if closed_only {
+                                "已关闭的会话"
+                            } else {
+                                "欢迎回来"
+                            }),
                     )
-                    .child(label(format!(
-                        "{} 个未闭环会话 · 按日志回合与机械证据分组",
-                        open.len()
-                    ))),
+                    .child(label(if closed_only {
+                        format!(
+                            "{} 个 · 终端已关，对话还在，点卡片在新画面里接着聊",
+                            open.len()
+                        )
+                    } else {
+                        format!("{} 个未闭环会话 · 按日志回合与机械证据分组", open.len())
+                    })),
             )
             .child(self.search_button(cx))
             .child(
                 button("back", "← 回到工作区")
                     .text_color(T::color(T::LINK))
                     .on_click(cx.listener(|this, _, _, cx| {
+                        this.overview.closed_only = false;
                         this.nav.overview = false;
                         this.sync_panes(cx);
                         cx.notify();
@@ -140,38 +152,41 @@ impl Workbench {
                     .children(self.agent_picker(&task.id, cx)),
             );
         }
-        view = view.child(
-            div()
-                .p(px(T::S16))
-                .rounded(px(T::POPOVER_RADIUS))
-                .border(px(T::BORDER_WIDTH))
-                .border_color(T::color(T::TODO_BORDER))
-                .bg(T::color(T::SLOT))
-                .flex()
-                .flex_col()
-                .gap(px(T::S10))
-                .child(
-                    div()
-                        .flex()
-                        .items_center()
-                        .gap(px(T::S10))
-                        .child(
-                            div()
-                                .text_color(T::color(T::LINK))
-                                .font_weight(gpui::FontWeight::SEMIBOLD)
-                                .child("☐ 待办 · 还没开始"),
-                        )
-                        .child(label(unstarted.len().to_string()))
-                        .child(label("命令只预填，按回车才启动"))
-                        .child(div().flex_1())
-                        .child(button("overview-new-task", "＋ 新待办").on_click(
-                            cx.listener(|this, _, window, cx| this.show_quick_task(window, cx)),
-                        )),
-                )
-                .child(todo_cards),
-        );
+        view = view.when(!closed_only, |d| {
+            d.child(
+                div()
+                    .p(px(T::S16))
+                    .rounded(px(T::POPOVER_RADIUS))
+                    .border(px(T::BORDER_WIDTH))
+                    .border_color(T::color(T::TODO_BORDER))
+                    .bg(T::color(T::SLOT))
+                    .flex()
+                    .flex_col()
+                    .gap(px(T::S10))
+                    .child(
+                        div()
+                            .flex()
+                            .items_center()
+                            .gap(px(T::S10))
+                            .child(
+                                div()
+                                    .text_color(T::color(T::LINK))
+                                    .font_weight(gpui::FontWeight::SEMIBOLD)
+                                    .child("☐ 待办 · 还没开始"),
+                            )
+                            .child(label(unstarted.len().to_string()))
+                            .child(label("命令只预填，按回车才启动"))
+                            .child(div().flex_1())
+                            .child(button("overview-new-task", "＋ 新待办").on_click(
+                                cx.listener(|this, _, window, cx| this.show_quick_task(window, cx)),
+                            )),
+                    )
+                    .child(todo_cards),
+            )
+        });
         for group in Group::ALL {
-            if group == Group::Running {
+            // Closed sessions are few and you came for them: nothing stays folded.
+            if group == Group::Running && !closed_only {
                 let count = open
                     .iter()
                     .filter(|s| session_group(&self.workspace, s) == Group::Running)
@@ -197,7 +212,7 @@ impl Workbench {
                     continue;
                 }
             }
-            if group == Group::Stale {
+            if group == Group::Stale && !closed_only {
                 let count = open
                     .iter()
                     .filter(|s| session_group(&self.workspace, s) == Group::Stale)
@@ -246,6 +261,9 @@ impl Workbench {
                 .iter()
                 .filter(|s| session_group(&self.workspace, s) == group)
                 .collect();
+            if closed_only && sessions.is_empty() {
+                continue;
+            }
             let mut cards = div().flex().flex_wrap().gap(px(T::S10));
             for session in &sessions {
                 let session = (**session).clone();
@@ -282,7 +300,7 @@ impl Workbench {
                     }
                 );
                 let primary_continue =
-                    matches!(group, Group::Waiting | Group::Error | Group::Paused);
+                    closed_only || matches!(group, Group::Waiting | Group::Error | Group::Paused);
                 cards = cards.child(
                     div()
                         .id(gpui::SharedString::from(format!("card-{}", session.id)))
@@ -356,10 +374,12 @@ impl Workbench {
                             div().flex().justify_end().child(
                                 button(
                                     gpui::SharedString::from(format!("primary-{}", session.id)),
-                                    if primary_continue {
+                                    if closed_only {
+                                        "接着聊 →"
+                                    } else if primary_continue {
                                         "继续 →"
                                     } else {
-                                        "你在这里"
+                                        "看进度"
                                     },
                                 )
                                 .text_color(T::color(T::LINK))
@@ -390,7 +410,7 @@ impl Workbench {
                             )
                         })
                         .when(self.overview.here.as_ref() == Some(&session.id), |d| {
-                            d.child(self.here_card(&session, cx))
+                            d.child(self.here_card(&session, false, cx))
                         }),
                 );
             }
@@ -415,6 +435,13 @@ impl Workbench {
                 )
                 .when(!sessions.is_empty(), |d| d.child(cards));
             view = view.child(section);
+        }
+        if closed_only {
+            return view.when(open.is_empty(), |d| {
+                d.child(label(
+                    "这里没有关掉的会话。关掉画面后，它的对话会留在这里，随时能接着聊。",
+                ))
+            });
         }
         let completed = self
             .workspace
@@ -471,7 +498,7 @@ impl Workbench {
                             )),
                         )
                         .when(self.overview.here.as_ref() == Some(&s.id), |d| {
-                            d.child(self.here_card(s, cx))
+                            d.child(self.here_card(s, false, cx))
                         }),
                 );
             }
@@ -533,7 +560,7 @@ impl Workbench {
                             s.cwd
                         )))
                         .when(self.overview.here.as_ref() == Some(&s.id), |d| {
-                            d.child(self.here_card(s, cx))
+                            d.child(self.here_card(s, false, cx))
                         }),
                 );
             }

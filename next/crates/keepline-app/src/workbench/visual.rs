@@ -262,6 +262,30 @@ impl Workbench {
         cx.notify();
         window.refresh();
     }
+    /// The first pane of the shown tab.
+    #[cfg(feature = "visual-test")]
+    pub fn visual_shown_pane(&self) -> Entity<Pane> {
+        let tab = self.nav.tab.as_ref().expect("a shown tab");
+        let id = self
+            .workspace
+            .tab_terminals(tab)
+            .first()
+            .cloned()
+            .expect("a pane");
+        self.layout.panes[&id].clone()
+    }
+    #[cfg(feature = "visual-test")]
+    pub fn visual_pane_menu_open(&self) -> bool {
+        self.layout.menu.is_some()
+    }
+    #[cfg(feature = "visual-test")]
+    pub fn visual_here_open(&self) -> bool {
+        self.overview.here.is_some()
+    }
+    #[cfg(feature = "visual-test")]
+    pub fn visual_restart_host(&mut self, cx: &mut Context<Self>) {
+        self.close_now(Closing::Host, cx);
+    }
     #[cfg(feature = "visual-test")]
     pub fn visual_page(&mut self, name: &str, window: &mut Window, cx: &mut Context<Self>) {
         self.tasks.form = None;
@@ -272,7 +296,8 @@ impl Workbench {
         self.overview.here = None;
         self.overview.here_more = None;
         self.search.hide();
-        self.nav.overview = name == "Overview";
+        self.nav.overview = matches!(name, "Overview" | "Closed");
+        self.overview.closed_only = name == "Closed";
         self.nav.zoomed = None;
         self.nav.space = "s0".into();
         self.nav.tab = Some(
@@ -287,6 +312,46 @@ impl Workbench {
         self.sync_panes(cx);
         match name {
             "Main" => self.overview.here = self.workspace.current_agent("p0").map(|s| s.id.clone()),
+            // The sidebar with the space's todos unfolded above its sessions.
+            "SidebarTodos" => self.tasks.todos_open = true,
+            // The card open on the focused waiting pane; the harness then types a key.
+            "HereTyped" => {
+                self.overview.here = self.workspace.current_agent("p0").map(|s| s.id.clone());
+                self.nav.focused = Some("p0".into());
+                if let Some(pane) = self.layout.panes.get("p0") {
+                    window.focus(&pane.focus_handle(cx), cx);
+                }
+            }
+            // The close dialog over a waiting Agent, and over one whose turn is under way.
+            // The top bar's entry for an older host, and its restart dialog.
+            "RestartHost" => {
+                crate::lifecycle::visual_stale_host();
+                self.layout.confirm_close = Some(Closing::Host);
+            }
+            "CloseIdle" | "CloseWorking" => {
+                if name == "CloseWorking"
+                    && let Some(s) = self.workspace.current_agent("p0").map(|s| s.id.clone())
+                    && let Some(c) = self.workspace.content.get_mut(&s)
+                {
+                    c.turn = keepline_core::content::Turn::Running;
+                }
+                self.layout.confirm_close = Some(Closing::Pane("p0".into()));
+            }
+            // An Agent reply in Markdown, as the pane header shows it.
+            "Markdown" => {
+                for c in self.workspace.content.values_mut() {
+                    if c.turn == keepline_core::content::Turn::Completed {
+                        c.last_reply =
+                            "**建议都接收**，见 `a.rs`\n\n| 投稿 | 建议处理 |\n|---|---|\n| 3 | 接收 |"
+                                .into();
+                    }
+                }
+            }
+            "SelectHint" => {
+                if let Some(pane) = self.layout.panes.get("p0") {
+                    pane.update(cx, |p, cx| p.visual_select_hint(cx));
+                }
+            }
             "HereMore" => {
                 self.overview.here = self.workspace.current_agent("p0").map(|s| s.id.clone());
                 self.overview.here_more = self.overview.here.clone();
@@ -358,6 +423,14 @@ impl Workbench {
                 self.overview.here = self.workspace.current_agent("p1").map(|s| s.id.clone())
             }
             "StartPick" => self.tasks.picking = Some(("task2".into(), false)),
+            // The logo's menu, then the menu after choosing the mascot from it.
+            "IconMenu" => {
+                self.layout.icon_menu = Some(gpui::point(px(T::TRAFFIC_LIGHT_INSET), px(T::TOP)))
+            }
+            "IconMascot" => {
+                layout::choose_icon(AppIcon::Mascot, cx);
+                self.layout.icon_menu = Some(gpui::point(px(T::TRAFFIC_LIGHT_INSET), px(T::TOP)));
+            }
             "SearchEmpty" | "Search" => {
                 self.open_search(window, cx);
                 if name == "Search" {
@@ -367,6 +440,12 @@ impl Workbench {
                         f.set_text(&query);
                         cx.notify();
                     });
+                }
+            }
+            // Two sessions whose terminal is gone, as after closing their panes.
+            "Closed" => {
+                for s in self.workspace.agent_sessions.iter_mut().take(2) {
+                    s.terminal = Some("closed-visual".into());
                 }
             }
             "Overview" | "Menubar" => (),

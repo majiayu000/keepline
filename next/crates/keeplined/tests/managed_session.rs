@@ -158,6 +158,49 @@ fn cpu_seconds(ticks: u64) -> f64 {
 }
 
 #[test]
+fn mouse_reports_stop_before_a_stalled_program_fills_its_input() {
+    let h = Host::start();
+    h.setup();
+    // Raw mode and nothing reading: input piles up as it would behind a busy Codex.
+    h.call(h.launch("stalled", "stty raw -echo; sleep 60"))
+        .unwrap();
+    let (mut stream, _, writable) = h.attach("stalled", false);
+    assert!(writable);
+    std::thread::sleep(Duration::from_millis(500));
+    let started = Instant::now();
+    // 300 reports are 3.6 KiB, more than the ~1 KiB input queue: written in full they
+    // would block, and the last one would be cut.
+    for _ in 0..300 {
+        send(
+            &mut stream,
+            CONTROL,
+            &Request::Input {
+                bytes: b"\x1b[<65;20;10M".to_vec(),
+                lossy: true,
+            },
+        )
+        .unwrap();
+        assert!(matches!(ack(&mut stream), Reply::Ok));
+    }
+    assert!(
+        started.elapsed() < Duration::from_secs(3),
+        "{:?}",
+        started.elapsed()
+    );
+    // Keystrokes are never dropped.
+    send(
+        &mut stream,
+        CONTROL,
+        &Request::Input {
+            bytes: b"x".to_vec(),
+            lossy: false,
+        },
+    )
+    .unwrap();
+    assert!(matches!(ack(&mut stream), Reply::Ok));
+}
+
+#[test]
 fn reconnect_input_resize_and_takeover_are_real_pty_operations() {
     let h = Host::start();
     h.setup();
@@ -169,6 +212,7 @@ fn reconnect_input_resize_and_takeover_are_real_pty_operations() {
         CONTROL,
         &Request::Input {
             bytes: b"before-detach\n".to_vec(),
+            lossy: false,
         },
     )
     .unwrap();
@@ -180,6 +224,7 @@ fn reconnect_input_resize_and_takeover_are_real_pty_operations() {
         CONTROL,
         &Request::Input {
             bytes: b"must-not-write\n".to_vec(),
+            lossy: false,
         },
     )
     .unwrap();
@@ -221,6 +266,7 @@ fn reconnect_input_resize_and_takeover_are_real_pty_operations() {
         CONTROL,
         &Request::Input {
             bytes: b"after-detach\n".to_vec(),
+            lossy: false,
         },
     )
     .unwrap();
@@ -264,6 +310,7 @@ time.sleep(60)
         CONTROL,
         &Request::Input {
             bytes: b"go\n".to_vec(),
+            lossy: false,
         },
     )
     .unwrap();
@@ -414,6 +461,7 @@ fn real_codex_receives_a_dropped_path_as_one_paste() {
         CONTROL,
         &Request::Input {
             bytes: format!("\x1b[200~{pasted}\x1b[201~").into_bytes(),
+            lossy: false,
         },
     )
     .unwrap();
@@ -422,7 +470,15 @@ fn real_codex_receives_a_dropped_path_as_one_paste() {
     let vt = wait("drop\\ test\\ \\(1\\).png");
     eprintln!("{}", vt.tail_text(8).unwrap());
     // Leave the prompt unsent and the session empty.
-    send(&mut owner, CONTROL, &Request::Input { bytes: vec![3, 3] }).unwrap();
+    send(
+        &mut owner,
+        CONTROL,
+        &Request::Input {
+            bytes: vec![3, 3],
+            lossy: false,
+        },
+    )
+    .unwrap();
     let _ = fs::remove_dir_all(&dir);
 }
 #[test]
@@ -1088,6 +1144,7 @@ read -r finish
             CONTROL,
             &Request::Input {
                 bytes: b"go\n".to_vec(),
+                lossy: false,
             },
         )
         .unwrap();
@@ -1361,6 +1418,7 @@ fn manually_entered_unbound_codex_gets_a_hint_and_exit_clears_it() {
                 shell_quote(&script)
             )
             .into_bytes(),
+            lossy: false,
         },
     )
     .unwrap();
@@ -1409,6 +1467,7 @@ fn input_control_follows_live_connections_without_takeover_or_polling() {
         CONTROL,
         &Request::Input {
             bytes: b"promoted\n".to_vec(),
+            lossy: false,
         },
     )
     .unwrap();
@@ -1428,6 +1487,7 @@ fn input_control_follows_live_connections_without_takeover_or_polling() {
         CONTROL,
         &Request::Input {
             bytes: b"reopened\n".to_vec(),
+            lossy: false,
         },
     )
     .unwrap();
@@ -1746,7 +1806,7 @@ fn large_unicode_input_survives_ack_disconnect_without_replay() {
     let bytes = "多行中文 日本語 한국어 e\u{301}\nsecond line\n"
         .repeat(2048)
         .into_bytes();
-    send_input(&mut first, &bytes).unwrap();
+    send_input(&mut first, &bytes, false).unwrap();
     // Observe delivery independently, but deliberately never consume ACKs.
     // Closing before delivery could legitimately leave an unknown partial input.
     let deadline = Instant::now() + Duration::from_secs(10);
@@ -1899,6 +1959,7 @@ fn quiet_agent_screen_with_an_approval_waits_on_the_user_until_they_answer() {
         CONTROL,
         &Request::Input {
             bytes: b"\n".to_vec(),
+            lossy: false,
         },
     )
     .unwrap();
@@ -1924,6 +1985,7 @@ fn quiet_agent_screen_with_an_approval_waits_on_the_user_until_they_answer() {
         CONTROL,
         &Request::Input {
             bytes: b"1\n".to_vec(),
+            lossy: false,
         },
     )
     .unwrap();
@@ -2369,6 +2431,7 @@ fn daemon_codex_dialog_gone_from_screen_is_settled_by_a_read_only_thread_read() 
         CONTROL,
         &Request::Input {
             bytes: b"x".to_vec(),
+            lossy: false,
         },
     )
     .unwrap();
@@ -2435,6 +2498,7 @@ fn an_unreachable_codex_daemon_is_a_visible_notice_not_a_silent_guess() {
         CONTROL,
         &Request::Input {
             bytes: b"x".to_vec(),
+            lossy: false,
         },
     )
     .unwrap();
@@ -2721,6 +2785,7 @@ fn unbound_daemon_codex_shows_title_state_and_no_daemon_shows_nothing() {
             CONTROL,
             &Request::Input {
                 bytes: b"\n".to_vec(),
+                lossy: false,
             },
         )
         .unwrap();

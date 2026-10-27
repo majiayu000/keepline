@@ -73,7 +73,7 @@ impl Workbench {
             .get(&s.id)
             .filter(|c| !c.title.is_empty())
         {
-            return c.title.clone();
+            return keepline_core::content::topic(&c.title);
         }
         if self
             .workspace
@@ -92,17 +92,20 @@ impl Workbench {
             .map(|t| t.title.clone())
             .unwrap_or_else(|| format!("{} · {}", s.runtime.executable(), s.cli_session_id))
     }
+    /// When its conversation last moved.
+    pub(super) fn session_updated(&self, s: &AgentSession) -> u64 {
+        self.workspace
+            .content
+            .get(&s.id)
+            .map_or(s.updated, |c| c.updated)
+    }
     pub(super) fn session_line(&self, s: &AgentSession) -> String {
         self.workspace
             .content
             .get(&s.id)
             .map(|c| {
                 keepline_core::content::short(
-                    &c.here()
-                        .stopped
-                        .split_whitespace()
-                        .collect::<Vec<_>>()
-                        .join(" "),
+                    &keepline_core::content::plain_line(&c.here().stopped),
                     100,
                 )
             })
@@ -138,9 +141,11 @@ impl Workbench {
             cx,
         );
     }
+    /// `in_pane`: the card sits on the session's own pane, not in the overview.
     pub(super) fn here_card(
         &self,
         session: &AgentSession,
+        in_pane: bool,
         cx: &Context<Self>,
     ) -> gpui::Stateful<gpui::Div> {
         let card = self
@@ -218,6 +223,8 @@ impl Workbench {
         let resume = session.clone();
         let command = session.runtime.resume_command(&session.cli_session_id);
         // Two decisions stay in sight: go back to it, and settle it. The rest waits in 更多.
+        // On its own live pane there is nothing to go back to: you type in the terminal.
+        let typing_here = in_pane && live_terminal(&self.workspace, session).is_some();
         let (settle_name, settle) = if session.outcome == Outcome::Open {
             ("已验收", Outcome::Completed)
         } else {
@@ -230,14 +237,16 @@ impl Workbench {
             div()
                 .flex()
                 .gap(px(T::S6))
-                .child(
-                    button("here-continue", "继续")
-                        .bg(T::color(T::ACCENT))
-                        .text_color(T::color(T::ON_ACCENT))
-                        .on_click(cx.listener(move |this, _, window, cx| {
-                            this.open_session(&resume, window, cx)
-                        })),
-                )
+                .when(!typing_here, |d| {
+                    d.child(
+                        button("here-continue", "继续")
+                            .bg(T::color(T::ACCENT))
+                            .text_color(T::color(T::ON_ACCENT))
+                            .on_click(cx.listener(move |this, _, window, cx| {
+                                this.open_session(&resume, window, cx)
+                            })),
+                    )
+                })
                 .child(
                     button(
                         gpui::SharedString::from(format!("here-{settle_name}")),
@@ -329,6 +338,16 @@ impl Workbench {
         }
         panel
     }
+    /// A Keepline terminal ran it and is closed now; it resumes in a new pane.
+    pub(super) fn session_closed(&self, s: &AgentSession) -> bool {
+        s.terminal.is_some() && !self.session_open(s)
+    }
+    /// Its terminal is running in a tab: the sidebar lists only these.
+    pub(super) fn session_open(&self, s: &AgentSession) -> bool {
+        live_terminal(&self.workspace, s)
+            .or_else(|| resume_terminal(&self.workspace, &self.resuming.resumed, s))
+            .is_some_and(|t| self.workspace.terminal_tab(&t.id).is_some())
+    }
     pub(super) fn session_hidden(&self, s: &AgentSession) -> Option<&str> {
         self.workspace
             .content
@@ -344,6 +363,7 @@ impl Workbench {
         self.overview.card_menu = None;
         self.overview.filter_space = None;
         self.overview.changed_only = false;
+        self.overview.closed_only = false;
         self.overview.show_stale =
             session_group(&self.workspace, s) == Group::Stale || self.overview.show_stale;
         self.overview.show_running =
@@ -452,7 +472,11 @@ impl Workbench {
         self.workspace
             .agent_sessions
             .iter()
-            .filter(|s| self.session_hidden(s).is_none() && needs_attention(&self.workspace, s))
+            .filter(|s| {
+                self.session_hidden(s).is_none()
+                    && !self.session_closed(s)
+                    && needs_attention(&self.workspace, s)
+            })
             .collect()
     }
     pub(super) fn next_waiting(&mut self, window: &mut Window, cx: &mut Context<Self>) {

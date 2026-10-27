@@ -250,8 +250,129 @@ pub fn start(
             assert!(neighbour.is_some(), "a neighbouring tab takes over");
             cx.update_window(handle.into(), |_, w, a| shot("7-closed-tab", w, a))
                 .unwrap();
+            // A full-screen Agent such as Codex asks for mouse reports; right-click must
+            // still open Keepline's pane menu instead of going to the program.
+            let pane = handle.update(cx, |v, _, _| v.visual_shown_pane()).unwrap();
+            pane.update(cx, |p, cx| {
+                p.visual_type("printf '\\033[?1000;1002;1006h'\r", cx)
+            });
+            wait(1500).await;
+            let (tracking, center) = pane.read_with(cx, |p, _| p.visual_mouse_app());
+            assert!(tracking, "the shell turned on mouse reports");
+            let center = center.expect("painted pane");
+            cx.update_window(handle.into(), |_, w, a| {
+                native_click(w, a, center, gpui::MouseButton::Right)
+            })
+            .unwrap();
+            let opened = handle
+                .update(cx, |v, _, _| v.visual_pane_menu_open())
+                .unwrap();
+            cx.update_window(handle.into(), |_, w, a| {
+                shot("8-right-click-mouse-app", w, a)
+            })
+            .unwrap();
+            eprintln!("right click over a mouse-reporting program: menu={opened}");
+            assert!(
+                opened,
+                "right-click opens the pane menu even when the program takes the mouse"
+            );
             eprintln!("tab evidence PASS");
             cx.update(|cx| cx.quit());
+        })
+        .detach();
+    }
+    // Runs a real Codex in the shown pane, then scrolls and moves the mouse over it the
+    // way a user does; reports whether any report reached Codex as typed text.
+    if let Some(handle) = &handle
+        && let Ok(command) = std::env::var("KEEPLINE_WHEEL_EVIDENCE")
+    {
+        let handle = *handle;
+        cx.spawn(async move |cx| {
+            let pane = handle.update(cx, |v, _, _| v.visual_shown_pane()).unwrap();
+            cx.background_executor().timer(Duration::from_secs(3)).await;
+            pane.update(cx, |p, cx| p.visual_type(&format!("{command}\r"), cx));
+            cx.background_executor()
+                .timer(Duration::from_secs(15))
+                .await;
+            let (tracking, center) = pane.read_with(cx, |p, _| p.visual_mouse_app());
+            let center = center.expect("pane laid out");
+            eprintln!("wheel evidence: tracking={tracking}");
+            let rounds: usize = std::env::var("KEEPLINE_WHEEL_ROUNDS")
+                .ok()
+                .and_then(|r| r.parse().ok())
+                .unwrap_or(40);
+            let gap: u64 = std::env::var("KEEPLINE_WHEEL_GAP_MS")
+                .ok()
+                .and_then(|r| r.parse().ok())
+                .unwrap_or(8);
+            for i in 0..rounds {
+                cx.update_window(handle.into(), |_, window, app| {
+                    use gpui::InputEvent;
+                    let at =
+                        center + gpui::point(px((i % 20) as f32 * 7.), px((i % 7) as f32 * 9.));
+                    window.dispatch_event(
+                        gpui::MouseMoveEvent {
+                            position: at,
+                            pressed_button: None,
+                            modifiers: Default::default(),
+                        }
+                        .to_platform_input(),
+                        app,
+                    );
+                    window.dispatch_event(
+                        gpui::ScrollWheelEvent {
+                            position: at,
+                            delta: gpui::ScrollDelta::Lines(gpui::point(
+                                0.,
+                                if i % 2 == 0 { -3. } else { 3. },
+                            )),
+                            modifiers: Default::default(),
+                            touch_phase: gpui::TouchPhase::Moved,
+                        }
+                        .to_platform_input(),
+                        app,
+                    );
+                })
+                .unwrap();
+                if gap > 0 {
+                    cx.background_executor()
+                        .timer(Duration::from_millis(gap))
+                        .await;
+                }
+            }
+            cx.background_executor().timer(Duration::from_secs(3)).await;
+            let text = pane.read_with(cx, |p, _| p.visual_text());
+            eprintln!(
+                "wheel evidence: pane error = {:?}",
+                pane.read_with(cx, |p, _| p.visual_error())
+            );
+            let prompt = text
+                .lines()
+                .rfind(|l| l.trim_start().starts_with('›'))
+                .unwrap_or("")
+                .to_owned();
+            eprintln!("wheel evidence: prompt line = {prompt:?}");
+            eprintln!(
+                "wheel evidence: stray report text = {}",
+                ["<35", "<64", "<65", "[<"].iter().any(|m| text.contains(m))
+            );
+            // Leave Codex without submitting anything.
+            pane.update(cx, |p, cx| p.visual_type("\x03\x03", cx));
+            cx.background_executor().timer(Duration::from_secs(2)).await;
+            cx.update(|cx| cx.quit());
+        })
+        .detach();
+    }
+    // Runs the top bar's 「重启后台」 for real, as confirming its dialog does.
+    if let Some(handle) = &handle
+        && std::env::var_os("KEEPLINE_RESTART_EVIDENCE").is_some()
+    {
+        let handle = *handle;
+        cx.spawn(async move |cx| {
+            cx.background_executor().timer(Duration::from_secs(3)).await;
+            handle
+                .update(cx, |view, _, cx| view.visual_restart_host(cx))
+                .unwrap();
         })
         .detach();
     }
@@ -285,6 +406,25 @@ pub fn start(
                         view.visual_page(name, window, cx);
                     })
                     .unwrap();
+                if name == "HereTyped" {
+                    use gpui::InputEvent;
+                    // A plain keystroke into the terminal folds the card over it.
+                    cx.update_window(handle.into(), |_, w, a| {
+                        w.dispatch_event(
+                            gpui::KeyDownEvent {
+                                keystroke: gpui::Keystroke::parse("x").unwrap(),
+                                is_held: false,
+                                prefer_character_input: false,
+                            }
+                            .to_platform_input(),
+                            a,
+                        );
+                    })
+                    .unwrap();
+                    let open = handle.update(cx, |v, _, _| v.visual_here_open()).unwrap();
+                    assert!(!open, "typing into the pane folds its 你在这里 card");
+                    eprintln!("HereTyped: card folded after a keystroke");
+                }
                 // Starting an Agent and placing the task text takes a few quiet checks.
                 let settle = if name == "TodoStart" { 4 } else { 1 };
                 cx.background_executor()
