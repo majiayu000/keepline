@@ -118,14 +118,27 @@ pub struct Build {
     pub binary: String,
     /// Modification time of `binary` in seconds since the epoch; 0 if unknown.
     pub modified: u64,
+    /// Content digest of `binary` when the host started; empty from hosts before it.
+    #[serde(default)]
+    pub digest: String,
 }
 impl Build {
     pub fn current() -> Self {
         let binary = std::env::current_exe().unwrap_or_default();
         Self {
             modified: Self::modified(&binary),
+            digest: Self::digest(&binary).unwrap_or_default(),
             binary: binary.to_string_lossy().into_owned(),
         }
+    }
+    /// Identifies a file by its bytes (FNV-1a and length), so a re-signed or copied
+    /// binary with the same code is the same build whatever its timestamps say.
+    pub fn digest(path: &std::path::Path) -> Option<String> {
+        let bytes = std::fs::read(path).ok()?;
+        let hash = bytes.iter().fold(0xcbf2_9ce4_8422_2325_u64, |h, b| {
+            (h ^ u64::from(*b)).wrapping_mul(0x0100_0000_01b3)
+        });
+        Some(format!("{hash:016x}-{}", bytes.len()))
     }
     pub fn modified(path: &std::path::Path) -> u64 {
         std::fs::metadata(path)
@@ -140,13 +153,25 @@ impl Build {
         if self.binary.is_empty() || self.modified == 0 {
             return Some("后台进程是旧版本（不报告构建信息）".into());
         }
-        let own = Self::modified(std::path::Path::new(&self.binary));
-        if own > self.modified {
+        let own = std::path::Path::new(&self.binary);
+        // The code the host runs: its digest from startup, or for a host before digests,
+        // its file as it is now when that file has not been touched since.
+        let running = if !self.digest.is_empty() {
+            Some(self.digest.clone())
+        } else if Self::modified(own) <= self.modified {
+            Self::digest(own)
+        } else {
+            None
+        };
+        let Some(running) = running else {
+            return Some(format!("后台进程启动后 {} 已重新编译", self.binary));
+        };
+        if Self::digest(own).is_some_and(|d| d != running) {
             return Some(format!("后台进程启动后 {} 已重新编译", self.binary));
         }
-        if Self::modified(sibling) > self.modified {
+        if Self::digest(sibling).is_some_and(|d| d != running) {
             return Some(format!(
-                "后台进程（{}）比本 App 自带的 {} 旧",
+                "后台进程（{}）和本 App 自带的 {} 不是同一版本",
                 self.binary,
                 sibling.display()
             ));
@@ -274,34 +299,50 @@ mod tests {
     use super::Build;
 
     #[test]
-    fn a_host_is_stale_when_its_binary_or_the_apps_was_rebuilt_after_it_started() {
+    fn a_host_is_stale_only_when_the_code_differs() {
         let dir = std::env::temp_dir().join(format!("kl-build-{}", uuid::Uuid::new_v4()));
         std::fs::create_dir_all(&dir).unwrap();
         let binary = dir.join("keeplined");
-        std::fs::write(&binary, "").unwrap();
-        let missing = dir.join("absent");
+        std::fs::write(&binary, "v1").unwrap();
+        let path = |p: &std::path::Path| p.to_string_lossy().into_owned();
         let started = Build {
-            binary: binary.to_string_lossy().into_owned(),
+            binary: path(&binary),
             modified: Build::modified(&binary),
+            digest: Build::digest(&binary).unwrap(),
         };
+        let missing = dir.join("absent");
         assert_eq!(started.stale(&missing), None);
-        assert_eq!(started.stale(&binary), None);
         assert!(
             Build::default().stale(&missing).is_some(),
             "pre-build hosts"
         );
-        let older = Build {
-            modified: started.modified - 60,
+        // A copy with other timestamps (re-signed, touched) is the same build.
+        let copy = dir.join("bundled");
+        std::fs::write(&copy, "v1").unwrap();
+        assert_eq!(started.stale(&copy), None);
+        let before_digests = Build {
+            digest: String::new(),
+            modified: started.modified + 60,
             ..started.clone()
         };
-        assert!(older.stale(&missing).unwrap().contains("重新编译"));
-        let sibling = dir.join("bundled");
-        std::fs::write(&sibling, "").unwrap();
-        let other = Build {
-            binary: missing.to_string_lossy().into_owned(),
-            modified: started.modified - 60,
+        assert_eq!(before_digests.stale(&copy), None);
+        // Other bytes next to the app, or in place of the running file, are a new build.
+        std::fs::write(&copy, "v2").unwrap();
+        assert!(started.stale(&copy).unwrap().contains("不是同一版本"));
+        assert!(
+            before_digests
+                .stale(&copy)
+                .unwrap()
+                .contains("不是同一版本")
+        );
+        std::fs::write(&binary, "v2").unwrap();
+        assert!(started.stale(&missing).unwrap().contains("重新编译"));
+        let touched = Build {
+            digest: String::new(),
+            modified: 1,
+            ..started.clone()
         };
-        assert!(other.stale(&sibling).unwrap().contains("自带"));
+        assert!(touched.stale(&missing).unwrap().contains("重新编译"));
         std::fs::remove_dir_all(dir).unwrap();
     }
 }
