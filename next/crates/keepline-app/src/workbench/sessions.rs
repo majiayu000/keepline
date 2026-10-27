@@ -73,7 +73,7 @@ impl Workbench {
             .get(&s.id)
             .filter(|c| !c.title.is_empty())
         {
-            return c.title.clone();
+            return keepline_core::content::topic(&c.title);
         }
         if self
             .workspace
@@ -92,17 +92,20 @@ impl Workbench {
             .map(|t| t.title.clone())
             .unwrap_or_else(|| format!("{} · {}", s.runtime.executable(), s.cli_session_id))
     }
+    /// When its conversation last moved.
+    pub(super) fn session_updated(&self, s: &AgentSession) -> u64 {
+        self.workspace
+            .content
+            .get(&s.id)
+            .map_or(s.updated, |c| c.updated)
+    }
     pub(super) fn session_line(&self, s: &AgentSession) -> String {
         self.workspace
             .content
             .get(&s.id)
             .map(|c| {
                 keepline_core::content::short(
-                    &c.here()
-                        .stopped
-                        .split_whitespace()
-                        .collect::<Vec<_>>()
-                        .join(" "),
+                    &keepline_core::content::plain_line(&c.here().stopped),
                     100,
                 )
             })
@@ -335,6 +338,10 @@ impl Workbench {
         }
         panel
     }
+    /// A Keepline terminal ran it and is closed now; it resumes in a new pane.
+    pub(super) fn session_closed(&self, s: &AgentSession) -> bool {
+        s.terminal.is_some() && !self.session_open(s)
+    }
     /// Its terminal is running in a tab: the sidebar lists only these.
     pub(super) fn session_open(&self, s: &AgentSession) -> bool {
         live_terminal(&self.workspace, s)
@@ -356,6 +363,7 @@ impl Workbench {
         self.overview.card_menu = None;
         self.overview.filter_space = None;
         self.overview.changed_only = false;
+        self.overview.closed_only = false;
         self.overview.show_stale =
             session_group(&self.workspace, s) == Group::Stale || self.overview.show_stale;
         self.overview.show_running =
@@ -464,7 +472,11 @@ impl Workbench {
         self.workspace
             .agent_sessions
             .iter()
-            .filter(|s| self.session_hidden(s).is_none() && needs_attention(&self.workspace, s))
+            .filter(|s| {
+                self.session_hidden(s).is_none()
+                    && !self.session_closed(s)
+                    && needs_attention(&self.workspace, s)
+            })
             .collect()
     }
     pub(super) fn next_waiting(&mut self, window: &mut Window, cx: &mut Context<Self>) {

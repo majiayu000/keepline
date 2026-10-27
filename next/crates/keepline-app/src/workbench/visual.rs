@@ -292,7 +292,8 @@ impl Workbench {
         self.overview.here = None;
         self.overview.here_more = None;
         self.search.hide();
-        self.nav.overview = name == "Overview";
+        self.nav.overview = matches!(name, "Overview" | "Closed");
+        self.overview.closed_only = name == "Closed";
         self.nav.zoomed = None;
         self.nav.space = "s0".into();
         self.nav.tab = Some(
@@ -324,6 +325,21 @@ impl Workbench {
                     c.turn = keepline_core::content::Turn::Running;
                 }
                 self.layout.confirm_close = Some(Closing::Pane("p0".into()));
+            }
+            // An Agent reply in Markdown, as the pane header shows it.
+            "Markdown" => {
+                for c in self.workspace.content.values_mut() {
+                    if c.turn == keepline_core::content::Turn::Completed {
+                        c.last_reply =
+                            "**建议都接收**，见 `a.rs`\n\n| 投稿 | 建议处理 |\n|---|---|\n| 3 | 接收 |"
+                                .into();
+                    }
+                }
+            }
+            "SelectHint" => {
+                if let Some(pane) = self.layout.panes.get("p0") {
+                    pane.update(cx, |p, cx| p.visual_select_hint(cx));
+                }
             }
             "HereMore" => {
                 self.overview.here = self.workspace.current_agent("p0").map(|s| s.id.clone());
@@ -413,6 +429,12 @@ impl Workbench {
                         f.set_text(&query);
                         cx.notify();
                     });
+                }
+            }
+            // Two sessions whose terminal is gone, as after closing their panes.
+            "Closed" => {
+                for s in self.workspace.agent_sessions.iter_mut().take(2) {
+                    s.terminal = Some("closed-visual".into());
                 }
             }
             "Overview" | "Menubar" => (),

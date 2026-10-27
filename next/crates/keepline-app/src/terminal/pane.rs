@@ -49,6 +49,8 @@ pub struct Pane {
     pub bell: bool,
     /// A bell in the pane the user is looking at flashes its border once.
     flash: bool,
+    /// A drag went to a program that took the mouse; for a moment the pane says how to select.
+    select_hint: bool,
 }
 impl Focusable for Pane {
     fn focus_handle(&self, _: &App) -> FocusHandle {
@@ -59,6 +61,11 @@ impl Pane {
     #[cfg(feature = "visual-test")]
     pub fn visual_type(&mut self, text: &str, cx: &mut Context<Self>) {
         self.input(text.as_bytes().to_vec(), cx);
+    }
+    #[cfg(feature = "visual-test")]
+    pub fn visual_select_hint(&mut self, cx: &mut Context<Self>) {
+        self.select_hint = true;
+        cx.notify();
     }
     /// Whether the program in this pane asked for mouse reports, and where to click it.
     #[cfg(feature = "visual-test")]
@@ -157,6 +164,7 @@ impl Pane {
             bells_seen: 0,
             bell: false,
             flash: false,
+            select_hint: false,
         }
     }
     fn ring(&mut self, cx: &mut Context<Self>) {
@@ -405,6 +413,20 @@ impl Pane {
             window.scale_factor(),
             cx,
         ) {
+            if button == Some(mouse::Button::Left) && !self.select_hint {
+                self.select_hint = true;
+                cx.notify();
+                cx.spawn(async move |this, cx| {
+                    cx.background_executor()
+                        .timer(std::time::Duration::from_secs(3))
+                        .await;
+                    let _ = this.update(cx, |pane, cx| {
+                        pane.select_hint = false;
+                        cx.notify();
+                    });
+                })
+                .detach();
+            }
             return;
         }
         if self.selecting
@@ -1090,6 +1112,23 @@ impl Render for Pane {
                 d.child(panel.id("search-results").max_h(px(T::SEARCH_HEIGHT)).overflow_y_scroll())
             })
             .child(div().flex_1().min_h_0().child(content))
+            .when(self.select_hint, |d| {
+                d.relative().child(
+                    div()
+                        .absolute()
+                        .bottom(px(T::S8))
+                        .right(px(T::S8))
+                        .px(px(T::S8))
+                        .py(px(T::S4))
+                        .rounded(px(T::CONTROL_RADIUS))
+                        .bg(T::color(T::RAISED))
+                        .border(px(T::BORDER_WIDTH))
+                        .border_color(T::color(T::CARD_BORDER))
+                        .text_size(px(T::META))
+                        .text_color(T::color(T::SECONDARY))
+                        .child("这个程序接管了鼠标：按住 Shift 再拖动来选中文字"),
+                )
+            })
             .when(self.flash, |d| {
                 d.relative().child(
                     div()

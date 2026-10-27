@@ -492,6 +492,23 @@ impl Workbench {
     }
 }
 
+/// A plain hover note.
+pub(super) struct TextTip(pub(super) &'static str);
+impl Render for TextTip {
+    fn render(&mut self, _: &mut Window, _: &mut Context<Self>) -> impl IntoElement {
+        div()
+            .max_w(px(T::TAB_TIP_WIDTH))
+            .p(px(T::S8))
+            .rounded(px(T::CONTROL_RADIUS))
+            .border(px(T::BORDER_WIDTH))
+            .border_color(T::color(T::CARD_BORDER))
+            .bg(T::color(T::RAISED))
+            .shadow_lg()
+            .text_size(px(T::SMALL))
+            .text_color(T::color(T::PRIMARY))
+            .child(self.0)
+    }
+}
 /// A tab's full name, what its agent is doing and where, shown on hover since the tab
 /// itself is capped and elided.
 #[derive(Clone)]
