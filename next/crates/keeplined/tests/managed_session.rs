@@ -2213,6 +2213,8 @@ struct DaemonStep {
     gate: Option<PathBuf>,
     prompt: String,
     thread: String,
+    /// When the log says the prompt arrived; now when unset.
+    at: Option<u64>,
 }
 fn daemon_codex(h: &Host, pane: &str, title: &str, steps: &[DaemonStep], extra: &str) {
     let logs = h.root.join("logs/codex");
@@ -2259,7 +2261,7 @@ fn daemon_codex(h: &Host, pane: &str, title: &str, steps: &[DaemonStep], extra: 
     }
     script.push_str("sleep 1.5; ");
     for (i, step) in steps.iter().enumerate() {
-        let at = keepline_core::content::now();
+        let at = step.at.unwrap_or_else(keepline_core::content::now);
         let seed_path = h.root.join(format!("{pane}-seed-{i}"));
         let prompt_path = h.root.join(format!("{pane}-prompt-{i}"));
         fs::write(
@@ -2297,6 +2299,7 @@ fn step(prompt: &str, thread: &str, gate: Option<&PathBuf>) -> DaemonStep {
         gate: gate.cloned(),
         prompt: prompt.into(),
         thread: thread.into(),
+        at: None,
     }
 }
 fn wait_for(h: &Host, what: &str, ok: impl Fn(&Workspace) -> bool) {
@@ -2653,6 +2656,46 @@ fn daemon_codex_same_cwd_panes_bind_to_their_own_screen_and_exit_clears_current(
     wait_for(&h, "a screen-bound Codex exit clears current", |w| {
         w.current_agent("p0").is_none() && current_is(w, "p1", &b)
     });
+}
+
+#[test]
+fn daemon_codex_short_prompts_bind_to_the_pane_where_enter_was_pressed() {
+    let h = Host::start();
+    h.setup();
+    let [a, b] = ids();
+    let gates = [h.root.join("gate-0"), h.root.join("gate-1")];
+    // Real Codex logs a prompt when Enter arrives; Enter goes in at +2 s and +6 s below.
+    let start = keepline_core::content::now();
+    let timed = |thread: &str, gate: &PathBuf, at: u64| DaemonStep {
+        at: Some(at),
+        ..step("继续", thread, Some(gate))
+    };
+    // "继续" is too short to be screen evidence; only the Enter press can tell the panes apart.
+    daemon_codex(&h, "p0", "proj", &[timed(&a, &gates[0], start + 2)], "");
+    daemon_codex(&h, "p1", "proj", &[timed(&b, &gates[1], start + 6)], "");
+    std::thread::sleep(Duration::from_secs(2));
+    for (pane, gate) in ["p0", "p1"].iter().zip(&gates) {
+        let (mut stream, _, writable) = h.attach(pane, false);
+        assert!(writable);
+        send(
+            &mut stream,
+            CONTROL,
+            &Request::Input {
+                bytes: b"\r".to_vec(),
+                lossy: false,
+            },
+        )
+        .unwrap();
+        assert!(matches!(ack(&mut stream), Reply::Ok));
+        fs::write(gate, "").unwrap();
+        // Far enough apart that each logged prompt meets only its own Enter.
+        std::thread::sleep(Duration::from_secs(4));
+    }
+    wait_for(
+        &h,
+        "each short prompt binds to the pane that submitted it",
+        |w| current_is(w, "p0", &a) && current_is(w, "p1", &b),
+    );
 }
 
 #[test]
