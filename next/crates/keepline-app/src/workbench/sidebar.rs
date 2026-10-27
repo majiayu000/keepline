@@ -55,6 +55,7 @@ impl Workbench {
                 .iter()
                 .filter(|s| {
                     self.session_hidden(s).is_none()
+                        && self.session_open(s)
                         && session_space(&self.workspace, s) == Some(id.as_str())
                 })
                 .collect();
@@ -125,7 +126,8 @@ impl Workbench {
         // Sorted by what each row shows. Within a state, newest started first: the
         // host keeps sessions in creation order, while `updated` ticks with every
         // output line and would move rows under the pointer.
-        let mut sessions: Vec<_> = self
+        // Only sessions open in a tab; closed ones live in the overview, ready to resume.
+        let in_space: Vec<_> = self
             .workspace
             .agent_sessions
             .iter()
@@ -134,6 +136,11 @@ impl Workbench {
                 self.session_hidden(s).is_none()
                     && session_space(&self.workspace, s) == Some(self.nav.space.as_str())
             })
+            .collect();
+        let closed = in_space.iter().filter(|(_, s)| !self.session_open(s)).count();
+        let mut sessions: Vec<_> = in_space
+            .into_iter()
+            .filter(|(_, s)| self.session_open(s))
             .map(|(i, s)| {
                 let (g, attention) = sidebar_status(&self.workspace, &self.attention.unseen, s);
                 (s, g, attention, i)
@@ -166,7 +173,7 @@ impl Workbench {
         );
         if sessions.is_empty() {
             sidebar = sidebar.child(
-                label("还没有会话。在右边的终端里运行 codex 或 claude，Keepline 会自动跟踪。")
+                label("没有打开的会话。在右边的终端里运行 codex 或 claude，Keepline 会自动跟踪。")
                     .px(px(T::S8)),
             );
         }
@@ -224,6 +231,20 @@ impl Workbench {
                     this.sync_panes(cx);
                     this.request(Request::Workspace, cx);
                 })),
+            );
+        }
+        if closed > 0 {
+            sidebar = sidebar.child(
+                button("sidebar-closed-sessions", format!("已关闭 {closed} 个 · 在鸟瞰里恢复"))
+                    .border_0()
+                    .justify_start()
+                    .text_size(px(T::META))
+                    .text_color(T::color(T::MUTED))
+                    .on_click(cx.listener(|this, _, _, cx| {
+                        this.nav.overview = true;
+                        this.sync_panes(cx);
+                        this.request(Request::Workspace, cx);
+                    })),
             );
         }
         let todo_count = self

@@ -335,6 +335,12 @@ impl Workbench {
         }
         panel
     }
+    /// Its terminal is running in a tab: the sidebar lists only these.
+    pub(super) fn session_open(&self, s: &AgentSession) -> bool {
+        live_terminal(&self.workspace, s)
+            .or_else(|| resume_terminal(&self.workspace, &self.resuming.resumed, s))
+            .is_some_and(|t| self.workspace.terminal_tab(&t.id).is_some())
+    }
     pub(super) fn session_hidden(&self, s: &AgentSession) -> Option<&str> {
         self.workspace
             .content
