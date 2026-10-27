@@ -9,6 +9,7 @@ impl Workbench {
             .is_none_or(|space| session_space(&self.workspace, s) == Some(space))
             && (!self.overview.changed_only
                 || changed_since(&self.workspace, s, self.overview.since))
+            && (!self.overview.closed_only || self.session_closed(s))
     }
     pub(super) fn navigation_filters(&self, cx: &Context<Self>) -> gpui::Div {
         let mut row = div().flex().flex_wrap().gap(px(T::S8)).child(
@@ -42,6 +43,14 @@ impl Workbench {
                 )
                 .on_click(cx.listener(move |this, _, _, cx| {
                     this.overview.filter_space = Some(id.clone());
+                    cx.notify();
+                })),
+            );
+        }
+        if self.overview.closed_only {
+            row = row.child(
+                button("only-closed", "✓ 只看已关闭的").on_click(cx.listener(|this, _, _, cx| {
+                    this.overview.closed_only = false;
                     cx.notify();
                 })),
             );

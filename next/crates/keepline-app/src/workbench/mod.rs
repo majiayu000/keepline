@@ -203,6 +203,7 @@ impl Workbench {
             overview: OverviewState {
                 filter_space: None,
                 changed_only: false,
+                closed_only: false,
                 since,
                 show_stale: false,
                 show_closed: false,
