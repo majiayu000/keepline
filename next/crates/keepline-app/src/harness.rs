@@ -168,6 +168,23 @@ pub fn start(
             eprintln!("after backspace: {:?}", state(cx).1);
             cx.update_window(handle.into(), |_, w, a| shot("3-rename-caret", w, a))
                 .unwrap();
+            // A name longer than the tab stays on one line and slides to keep the caret.
+            let long = "PR 1234 修复标签重命名时长名字换行被裁掉的问题";
+            handle
+                .update(cx, |v, _, cx| v.visual_rename_type(long, cx))
+                .unwrap();
+            wait(300).await;
+            cx.update_window(handle.into(), |_, w, a| shot("3b-rename-long", w, a))
+                .unwrap();
+            for k in ["cmd-left", "alt-right", "shift-alt-right"] {
+                cx.update_window(handle.into(), |_, w, a| {
+                    w.dispatch_event(key(k), a);
+                })
+                .unwrap();
+            }
+            wait(300).await;
+            cx.update_window(handle.into(), |_, w, a| shot("3c-rename-moved", w, a))
+                .unwrap();
             cx.update_window(handle.into(), |_, w, a| {
                 w.dispatch_event(key("escape"), a);
             })
@@ -210,11 +227,52 @@ pub fn start(
             );
             cx.update_window(handle.into(), |_, w, a| shot("4-double-click", w, a))
                 .unwrap();
+            // Clicking the terminal keeps the typed name. Focus events only reach an
+            // active window, as the user's is when they click in it.
+            cx.update_window(handle.into(), |_, w, _| w.activate_window())
+                .unwrap();
+            wait(500).await;
+            handle
+                .update(cx, |v, _, cx| v.visual_rename_type("部署 PR", cx))
+                .unwrap();
             cx.update_window(handle.into(), |_, w, a| {
-                w.dispatch_event(key("escape"), a);
+                let middle = w.viewport_size();
+                native_click(
+                    w,
+                    a,
+                    gpui::point(middle.width / 2., middle.height / 2.),
+                    gpui::MouseButton::Left,
+                );
+                // Focus listeners run once a frame is drawn, as the app does at once.
+                w.refresh();
+                w.draw(a).clear(a);
             })
             .unwrap();
             wait(300).await;
+            let name = handle
+                .update(cx, |v, _, cx| v.visual_first_tab_name(cx))
+                .unwrap();
+            let active = cx
+                .update_window(handle.into(), |_, w, _| w.is_window_active())
+                .unwrap();
+            eprintln!(
+                "after click away: active={active} field={:?} name={name}",
+                state(cx).1
+            );
+            // macOS will not hand focus to a window started from a background shell.
+            if active {
+                assert!(state(cx).1.is_none(), "a click elsewhere ends the rename");
+                assert_eq!(name, "部署 PR", "and keeps the typed name");
+                cx.update_window(handle.into(), |_, w, a| shot("4b-blur-saved", w, a))
+                    .unwrap();
+            } else {
+                eprintln!("click away not checked: the window is not active");
+                cx.update_window(handle.into(), |_, w, a| {
+                    w.dispatch_event(key("escape"), a);
+                })
+                .unwrap();
+                wait(300).await;
+            }
             // A 出错了 conversation whose resume fails: the second click returns to the
             // resume tab instead of opening another.
             let (before, _) = handle.update(cx, |v, _, _| v.visual_tabs()).unwrap();

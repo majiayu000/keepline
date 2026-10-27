@@ -174,8 +174,10 @@ pub fn plain_line(text: &str) -> String {
         .join(" ")
 }
 /// A first ask as a name: the polite lead-in most asks share ("你帮我看看") goes,
-/// so tabs and rows start with what differs.
+/// so tabs and rows start with what differs. Runs of spaces, as in a pasted table
+/// row, become one so the name is not mostly blank.
 pub fn topic(title: &str) -> String {
+    let title = title.split_whitespace().collect::<Vec<_>>().join(" ");
     const LEAD: [&str; 16] = [
         "你",
         "请",
@@ -406,6 +408,7 @@ mod tests {
         assert_eq!(topic("你帮我看看我最近有什么…"), "我最近有什么…");
         assert_eq!(topic("帮我看看"), "帮我看看");
         assert_eq!(topic("修复登录"), "修复登录");
+        assert_eq!(topic("PR        | 106 |  2026…"), "PR | 106 | 2026…");
     }
     #[test]
     fn headline_drops_the_labels_the_state_already_says() {

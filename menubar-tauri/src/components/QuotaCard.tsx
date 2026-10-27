@@ -24,7 +24,7 @@ export default function QuotaCard({ label, percentage, resetsIn }: QuotaCardProp
   return (
     <div className="quota-card">
       <div className="quota-header">
-        <span className="quota-label">{label}</span>
+        <span className="quota-label" title={label}>{label}</span>
         <div className="quota-status">
           <span className={`status-badge ${status}`}>{statusLabel}</span>
           <span className="quota-percentage">{percentage}%</span>
@@ -59,7 +59,7 @@ export default function QuotaCard({ label, percentage, resetsIn }: QuotaCardProp
             <path d="M21 3v6h-6" />
           </svg>
         </span>
-        <span className="reset-text">Resets in {resetsIn}</span>
+        <span className="reset-text" title={`Resets in ${resetsIn}`}>Resets in {resetsIn}</span>
       </div>
     </div>
   );

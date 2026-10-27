@@ -194,6 +194,7 @@ impl Workbench {
             );
         }
         let more = sessions.len().saturating_sub(SIDEBAR_SESSIONS);
+        let seen = crate::ui::status_colors::StatusColors::get();
         for (session, g, attention, _) in sessions.into_iter().take(SIDEBAR_SESSIONS) {
             let open = session.clone();
             sidebar =
@@ -211,14 +212,14 @@ impl Workbench {
                             d.bg(T::color(T::RAISED))
                         })
                         .hover(|s| s.bg(T::color(T::RAISED)))
-                        .child(dot(g))
+                        .child(if attention { dot(g) } else { seen_dot(g) })
                         .child(
                             div()
                                 .flex_1()
                                 .min_w_0()
                                 .truncate()
                                 .text_size(px(T::MONO_SIZE))
-                                .when(!attention, |d| d.text_color(T::color(T::SECONDARY)))
+                                .when(!attention, |d| d.text_color(T::color(seen.seen_title)))
                                 .child(self.session_title(session)),
                         )
                         // Rows that all wait for your next step tell apart by how long they have.
@@ -232,7 +233,11 @@ impl Workbench {
                                 g.label().to_owned()
                             })
                             .text_size(px(T::CHIP_SIZE))
-                            .when(attention, |d| d.text_color(g.colors().1)),
+                            .text_color(if attention {
+                                g.colors().1
+                            } else {
+                                T::color(seen.seen_status)
+                            }),
                         )
                         // Straight to its pane; an exited one resumes in a new pane.
                         .on_click(cx.listener(move |this, _, window, cx| {

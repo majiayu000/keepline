@@ -37,22 +37,14 @@ impl Group {
             Self::Ready => "做完了",
         }
     }
-    /// The group's base hue; its ink and wash derive from it and the terminal.
-    pub const fn hue(self) -> u32 {
-        match self {
-            Self::Waiting => 0xe8823a,
-            Self::Error => 0xe5534b,
-            Self::Review => 0x8f93ff,
-            Self::Paused => 0xd9a441,
-            Self::Running | Self::Done => 0x4cc38a,
-            Self::Stale => Theme::MUTED,
-            Self::Working => 0xe8c547,
-            Self::Ready => 0x8a9bb0,
-        }
+    /// The group's base hue, from `colors.json` or the default; its ink and wash derive
+    /// from it and the terminal.
+    pub fn hue(self) -> u32 {
+        super::status_colors::StatusColors::get().hue(self)
     }
     pub fn colors(self) -> (Hsla, Hsla, Hsla) {
         let (dot, ink, bg) = match self {
-            Self::Stale => (Theme::MUTED, Theme::SECONDARY, Theme::RAISED),
+            Self::Stale => (self.hue(), Theme::SECONDARY, Theme::RAISED),
             group => (
                 group.hue(),
                 mix(group.hue(), Theme::WHITE, 620),
@@ -153,6 +145,8 @@ impl Theme {
     pub const TRAFFIC_LIGHT_INSET: f32 = 84.;
     pub const TABS: f32 = 34.;
     pub const TAB_RENAME_MIN: f32 = 64.;
+    /// A name being edited gets more room than a tab shows, then shrinks back.
+    pub const TAB_RENAME_MAX: f32 = 360.;
     pub const TAB_MAX_WIDTH: f32 = 200.;
     pub const TAB_TIP_WIDTH: f32 = 420.;
     pub const TODO_HEIGHT: f32 = 36.;

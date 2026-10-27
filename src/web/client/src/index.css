@@ -35,8 +35,9 @@
   --transition-slow: 0.3s ease;
 }
 
-:root,
-[data-theme] {
+/* The light theme shared with the menu bar; see specs/terminal-workbench/design/README.md
+   「跨界面主题」. Dark is not wired here yet: page modules still hard-code light colors. */
+:root {
   --primary: #4f5bd5;
   --secondary: #4f5bd5;
   --accent: #f59e0b;
