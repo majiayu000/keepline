@@ -139,7 +139,7 @@ impl Workbench {
             .collect();
         let closed = in_space
             .iter()
-            .filter(|(_, s)| !self.session_open(s))
+            .filter(|(_, s)| self.session_closed(s) && s.outcome.needs_review(now()))
             .count();
         let mut sessions: Vec<_> = in_space
             .into_iter()
@@ -176,8 +176,7 @@ impl Workbench {
         );
         if sessions.is_empty() {
             sidebar = sidebar.child(
-                label("没有打开的会话。在右边的终端里运行 codex 或 claude，Keepline 会自动跟踪。")
-                    .px(px(T::S8)),
+                label("没有打开的会话。在终端里运行 codex 或 claude 就会出现在这里").px(px(T::S8)),
             );
         }
         let more = sessions.len().saturating_sub(SIDEBAR_SESSIONS);
@@ -208,10 +207,18 @@ impl Workbench {
                                 .when(!attention, |d| d.text_color(T::color(T::SECONDARY)))
                                 .child(self.session_title(session)),
                         )
+                        // Rows that all wait for your next step tell apart by how long they have.
                         .child(
-                            label(g.label())
-                                .text_size(px(T::CHIP_SIZE))
-                                .when(attention, |d| d.text_color(g.colors().1)),
+                            label(if g == Group::Ready && !attention {
+                                match age(self.session_updated(session)) {
+                                    a if a == "刚刚" => "刚停下".to_owned(),
+                                    a => format!("停了 {a}"),
+                                }
+                            } else {
+                                g.label().to_owned()
+                            })
+                            .text_size(px(T::CHIP_SIZE))
+                            .when(attention, |d| d.text_color(g.colors().1)),
                         )
                         // Straight to its pane; an exited one resumes in a new pane.
                         .on_click(cx.listener(move |this, _, window, cx| {
@@ -240,13 +247,16 @@ impl Workbench {
             sidebar = sidebar.child(
                 button(
                     "sidebar-closed-sessions",
-                    format!("已关闭 {closed} 个 · 在鸟瞰里恢复"),
+                    format!("已关闭 {closed} 个 · 点开接着聊"),
                 )
                 .border_0()
                 .justify_start()
                 .text_size(px(T::META))
                 .text_color(T::color(T::MUTED))
                 .on_click(cx.listener(|this, _, _, cx| {
+                    this.overview.closed_only = true;
+                    this.overview.changed_only = false;
+                    this.overview.filter_space = Some(this.nav.space.clone());
                     this.nav.overview = true;
                     this.sync_panes(cx);
                     this.request(Request::Workspace, cx);
