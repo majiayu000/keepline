@@ -253,7 +253,9 @@ pub fn start(
             // A full-screen Agent such as Codex asks for mouse reports; right-click must
             // still open Keepline's pane menu instead of going to the program.
             let pane = handle.update(cx, |v, _, _| v.visual_shown_pane()).unwrap();
-            pane.update(cx, |p, cx| p.visual_type("printf '\\033[?1000;1002;1006h'\r", cx));
+            pane.update(cx, |p, cx| {
+                p.visual_type("printf '\\033[?1000;1002;1006h'\r", cx)
+            });
             wait(1500).await;
             let (tracking, center) = pane.read_with(cx, |p, _| p.visual_mouse_app());
             assert!(tracking, "the shell turned on mouse reports");
@@ -262,11 +264,18 @@ pub fn start(
                 native_click(w, a, center, gpui::MouseButton::Right)
             })
             .unwrap();
-            let opened = handle.update(cx, |v, _, _| v.visual_pane_menu_open()).unwrap();
-            cx.update_window(handle.into(), |_, w, a| shot("8-right-click-mouse-app", w, a))
+            let opened = handle
+                .update(cx, |v, _, _| v.visual_pane_menu_open())
                 .unwrap();
+            cx.update_window(handle.into(), |_, w, a| {
+                shot("8-right-click-mouse-app", w, a)
+            })
+            .unwrap();
             eprintln!("right click over a mouse-reporting program: menu={opened}");
-            assert!(opened, "right-click opens the pane menu even when the program takes the mouse");
+            assert!(
+                opened,
+                "right-click opens the pane menu even when the program takes the mouse"
+            );
             eprintln!("tab evidence PASS");
             cx.update(|cx| cx.quit());
         })
