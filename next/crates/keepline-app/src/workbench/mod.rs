@@ -513,7 +513,11 @@ impl Workbench {
         self.layout.menu = None;
         self.layout.tab_menu = None;
         let quiet = match closing {
-            Closing::Host => self.running_terminals().is_empty(),
+            // A host that hands its terminals over ends none of them: nothing to confirm.
+            Closing::Host => {
+                self.running_terminals().is_empty()
+                    || crate::lifecycle::stale_build().is_some_and(|b| b.handoff)
+            }
             _ => self.running_agents(&closing).is_empty(),
         };
         if quiet {
