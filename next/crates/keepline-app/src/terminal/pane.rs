@@ -14,6 +14,8 @@ use keepline_core::{
 };
 use std::{ops::Range, path::Path, sync::atomic::Ordering, time::Instant};
 
+/// Wheel reports sent to a program for one scroll event.
+const WHEEL_REPORTS: usize = 10;
 pub struct Pane {
     terminal: String,
     socket: std::path::PathBuf,
@@ -67,6 +69,25 @@ impl Pane {
     #[cfg(feature = "visual-test")]
     pub fn visual_type(&mut self, text: &str, cx: &mut Context<Self>) {
         self.input(text.as_bytes().to_vec(), cx);
+    }
+    /// The visible screen as text, for checking what reached the program.
+    #[cfg(feature = "visual-test")]
+    pub fn visual_text(&self) -> String {
+        let state = self.connection.state.lock().unwrap();
+        state
+            .vt
+            .as_ref()
+            .and_then(|vt| {
+                vt.tail_text(usize::from(self.requested_size.1.max(40)))
+                    .ok()
+            })
+            .unwrap_or_default()
+    }
+    #[cfg(feature = "visual-test")]
+    pub fn visual_error(&self) -> Option<String> {
+        self.local_error
+            .clone()
+            .or_else(|| self.connection.state.lock().ok()?.error.clone())
     }
     #[cfg(feature = "visual-test")]
     pub fn visual_select_hint(&mut self, cx: &mut Context<Self>) {
@@ -356,7 +377,7 @@ impl Pane {
         match result {
             Ok(Some(bytes)) => {
                 if !bytes.is_empty() {
-                    self.input(bytes, cx);
+                    self.pointer(bytes, cx);
                 }
                 cx.stop_propagation();
                 true
@@ -505,7 +526,13 @@ impl Pane {
         if lines == 0 {
             return;
         }
+        // A fling is up to 100 lines; a program that took the mouse gets a few reports,
+        // not a queue-filling burst.
+        let mut reported = 0;
         for _ in 0..lines.unsigned_abs() {
+            if reported == WHEEL_REPORTS {
+                break;
+            }
             if self.report_mouse(
                 mouse::Action::Press,
                 Some(if lines > 0 {
@@ -518,6 +545,7 @@ impl Pane {
                 window.scale_factor(),
                 cx,
             ) {
+                reported += 1;
                 continue;
             }
             let result = {
@@ -678,7 +706,14 @@ impl Pane {
         .detach();
     }
     fn input(&mut self, bytes: Vec<u8>, cx: &mut Context<Self>) {
-        if let Err(error) = self.connection.send(Request::Input { bytes }) {
+        self.send_input(bytes, false, cx);
+    }
+    /// Mouse reports may be dropped by the host while the program is behind on input.
+    fn pointer(&mut self, bytes: Vec<u8>, cx: &mut Context<Self>) {
+        self.send_input(bytes, true, cx);
+    }
+    fn send_input(&mut self, bytes: Vec<u8>, lossy: bool, cx: &mut Context<Self>) {
+        if let Err(error) = self.connection.send(Request::Input { bytes, lossy }) {
             self.local_error = Some(error);
             cx.notify();
         }

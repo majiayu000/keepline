@@ -90,7 +90,9 @@ impl Connection {
                 std::thread::spawn(move || {
                     for request in receiver {
                         let sent = match &request {
-                            Request::Input { bytes } => send_input(&mut writer, bytes),
+                            Request::Input { bytes, lossy } => {
+                                send_input(&mut writer, bytes, *lossy)
+                            }
                             _ => send(&mut writer, CONTROL, &request),
                         };
                         if let Err(error) = sent {
