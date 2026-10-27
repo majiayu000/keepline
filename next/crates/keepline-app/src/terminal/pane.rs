@@ -57,6 +57,20 @@ impl Focusable for Pane {
 }
 impl Pane {
     #[cfg(feature = "visual-test")]
+    pub fn visual_type(&mut self, text: &str, cx: &mut Context<Self>) {
+        self.input(text.as_bytes().to_vec(), cx);
+    }
+    /// Whether the program in this pane asked for mouse reports, and where to click it.
+    #[cfg(feature = "visual-test")]
+    pub fn visual_mouse_app(&self) -> (bool, Option<gpui::Point<Pixels>>) {
+        let state = self.connection.state.lock().unwrap();
+        let tracking = state
+            .vt
+            .as_ref()
+            .is_some_and(|v| v.terminal().is_mouse_tracking().unwrap_or(false));
+        (tracking, self.bounds.map(|b| b.center()))
+    }
+    #[cfg(feature = "visual-test")]
     pub fn verify_marked_overlay(
         &mut self,
         window: &mut Window,
@@ -1030,16 +1044,15 @@ impl Render for Pane {
             .overflow_hidden()
             .bg(T::color(T::PANE))
             .track_focus(&self.focus)
+            // Right-click is never reported to the program: it opens Keepline's pane
+            // menu even when a full-screen Agent has taken the mouse, as in Herdr.
             .on_mouse_down(gpui::MouseButton::Left,cx.listener(Self::mouse_down))
             .on_mouse_down(gpui::MouseButton::Middle,cx.listener(Self::mouse_down))
-            .on_mouse_down(gpui::MouseButton::Right,cx.listener(Self::mouse_down))
             .on_mouse_move(cx.listener(Self::mouse_move))
             .on_mouse_up(gpui::MouseButton::Left,cx.listener(Self::mouse_up))
             .on_mouse_up(gpui::MouseButton::Middle,cx.listener(Self::mouse_up))
-            .on_mouse_up(gpui::MouseButton::Right,cx.listener(Self::mouse_up))
             .on_mouse_up_out(gpui::MouseButton::Left,cx.listener(Self::mouse_up))
             .on_mouse_up_out(gpui::MouseButton::Middle,cx.listener(Self::mouse_up))
-            .on_mouse_up_out(gpui::MouseButton::Right,cx.listener(Self::mouse_up))
             .on_scroll_wheel(cx.listener(Self::scroll_wheel))
             .on_key_down(cx.listener(Self::key))
             .on_drop(cx.listener(|this, paths: &gpui::ExternalPaths, window, cx| {
