@@ -766,17 +766,32 @@ impl Workbench {
     ) -> gpui::AnyElement {
         let agents = self.running_agents(closing);
         let working = agents.iter().any(|(_, p)| *p == Some(Phase::Working));
+        let host = matches!(closing, Closing::Host);
         let what = match closing {
             Closing::Tab(_) => "关闭这个标签",
             Closing::Pane(_) => "关闭这个画面",
+            Closing::Host => "重启后台",
+        };
+        let shells = if host {
+            self.running_terminals().len().saturating_sub(agents.len())
+        } else {
+            0
         };
         let lines = agents
             .iter()
             .map(|(title, phase)| match phase {
+                Some(Phase::Working) if host => format!("「{title}」还在工作，重启会打断这一轮。"),
                 Some(Phase::Working) => format!("「{title}」还在工作，关闭会打断这一轮。"),
-                Some(Phase::Waiting) => format!("「{title}」在等你回答，关闭后它会退出。"),
-                _ => format!("「{title}」这一轮已经结束，关闭后它会退出。"),
+                Some(Phase::Waiting) => format!(
+                    "「{title}」在等你回答，{}后它会退出。",
+                    if host { "重启" } else { "关闭" }
+                ),
+                _ => format!(
+                    "「{title}」这一轮已经结束，{}后它会退出。",
+                    if host { "重启" } else { "关闭" }
+                ),
             })
+            .chain((shells > 0).then(|| format!("另有 {shells} 个普通终端会停止。")))
             .collect::<Vec<_>>()
             .join("\n");
         let confirmed = closing.clone();
@@ -811,10 +826,23 @@ impl Workbench {
                     .child(
                         div()
                             .text_size(px(T::CARD_TITLE))
-                            .child(format!("{}{what}？", if working { "停止并" } else { "" })),
+                            .child(if host {
+                                "重启后台，换上新版本？".to_owned()
+                            } else {
+                                format!("{}{what}？", if working { "停止并" } else { "" })
+                            }),
                     )
+                    .when(host, |d| {
+                        d.child(label(
+                            "后台还在跑旧版本，新改动要重启后台才生效。重启会停止所有终端，Keepline 会自动重新打开。",
+                        ))
+                    })
                     .child(label(lines))
-                    .child(label("对话记录会保留，可以从左栏底部「已关闭」里接着聊。"))
+                    .child(label(if host {
+                        "对话记录会保留，重启后可以原地重开终端，或从左栏「已关闭」里接着聊。"
+                    } else {
+                        "对话记录会保留，可以从左栏底部「已关闭」里接着聊。"
+                    }))
                     .child(
                         div()
                             .flex()
@@ -829,9 +857,15 @@ impl Workbench {
                             .child(
                                 button(
                                     "confirm-close-stop",
-                                    if working { "停止并关闭" } else { "关闭" },
+                                    if host {
+                                        "重启后台"
+                                    } else if working {
+                                        "停止并关闭"
+                                    } else {
+                                        "关闭"
+                                    },
                                 )
-                                .when(working, |b| b.text_color(Group::Error.colors().1))
+                                .when(working || host, |b| b.text_color(Group::Error.colors().1))
                                 .on_click(cx.listener(
                                     move |this, _, _, cx| {
                                         this.close_now(confirmed.clone(), cx);

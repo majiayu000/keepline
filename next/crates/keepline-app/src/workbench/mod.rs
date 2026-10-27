@@ -13,7 +13,7 @@ use gpui::{Context, Entity, Focusable, Window, div, prelude::*, px};
 use keepline_core::{model::*, protocol::*};
 use std::{
     collections::{HashMap, HashSet},
-    path::PathBuf,
+    path::{Path, PathBuf},
     time::{Duration, SystemTime, UNIX_EPOCH},
 };
 
@@ -25,6 +25,8 @@ pub struct Workbench {
     /// A press on the top bar's empty space that has not moved the window yet.
     title_drag: bool,
     error: Option<String>,
+    /// The older host is being stopped; the app quits and reopens once it is gone.
+    restarting: bool,
     nav: Nav,
     overview: OverviewState,
     tasks: TaskUi,
@@ -43,6 +45,8 @@ struct PaneMenu {
 pub(super) enum Closing {
     Tab(String),
     Pane(String),
+    /// Restarting an older host: every terminal ends with it.
+    Host,
 }
 #[derive(Clone, Copy)]
 enum MenuPage {
@@ -191,6 +195,7 @@ impl Workbench {
             workspace,
             title_drag: false,
             error: None,
+            restarting: false,
             nav: Nav {
                 space,
                 tab,
@@ -463,6 +468,7 @@ impl Workbench {
         let ids = match closing {
             Closing::Tab(id) => self.workspace.tab_terminals(id),
             Closing::Pane(id) => vec![id.clone()],
+            Closing::Host => self.running_terminals(),
         };
         ids.into_iter()
             .filter(|id| {
@@ -484,20 +490,63 @@ impl Workbench {
             })
             .collect()
     }
-    fn request_close(&mut self, closing: Closing, cx: &mut Context<Self>) {
+    /// Terminals whose program is still running, Agent or not.
+    pub(super) fn running_terminals(&self) -> Vec<String> {
+        self.workspace
+            .terminals
+            .iter()
+            .filter(|t| t.state == ProcessState::Running)
+            .map(|t| t.id.clone())
+            .collect()
+    }
+    pub(super) fn request_close(&mut self, closing: Closing, cx: &mut Context<Self>) {
         self.layout.menu = None;
         self.layout.tab_menu = None;
-        if self.running_agents(&closing).is_empty() {
+        let quiet = match closing {
+            Closing::Host => self.running_terminals().is_empty(),
+            _ => self.running_agents(&closing).is_empty(),
+        };
+        if quiet {
             self.close_now(closing, cx);
         } else {
             self.layout.confirm_close = Some(closing);
             cx.notify();
         }
     }
+    /// Stops the older host off the UI thread, then quits; this app reopens itself and
+    /// starts its own host.
+    fn restart_host(&mut self, cx: &mut Context<Self>) {
+        let Some(root) = self.store.socket().parent().map(Path::to_path_buf) else {
+            return;
+        };
+        // Recorded while the old host still answers; the release hook runs after it is gone.
+        record_left(self.store.socket(), self.away.unwrap_or_else(now));
+        self.restarting = true;
+        cx.notify();
+        cx.spawn(async move |this, cx| {
+            let result = cx
+                .background_spawn(async move { crate::lifecycle::restart_host(&root) })
+                .await;
+            match result {
+                Ok(()) => {
+                    cx.update(|cx| cx.quit());
+                }
+                Err(e) => {
+                    let _ = this.update(cx, |this, cx| {
+                        this.restarting = false;
+                        this.error = Some(format!("重启后台失败：{e}"));
+                        cx.notify();
+                    });
+                }
+            }
+        })
+        .detach();
+    }
     pub(super) fn close_now(&mut self, closing: Closing, cx: &mut Context<Self>) {
         self.layout.confirm_close = None;
         self.nav.zoomed = None;
         let (tab, edit) = match closing {
+            Closing::Host => return self.restart_host(cx),
             Closing::Tab(id) => (Some(id.clone()), Edit::CloseTab { id }),
             Closing::Pane(terminal) => (
                 self.workspace

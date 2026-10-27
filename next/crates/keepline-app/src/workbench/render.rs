@@ -117,6 +117,25 @@ impl Render for Workbench {
                 .child(self.search_button(cx))
                 .child(self.title_drag_area(cx))
                 .when(self.store.slow(), |d| d.child(label("正在更新…")))
+                // The host runs older code than this app; restarting it ends every terminal.
+                .when(crate::lifecycle::stale_host(), |d| {
+                    d.child(
+                        button(
+                            "restart-host",
+                            if self.restarting {
+                                "正在重启后台…"
+                            } else {
+                                "后台有更新 · 重启"
+                            },
+                        )
+                        .text_color(T::color(T::SECONDARY))
+                        .on_click(cx.listener(|this, _, _, cx| {
+                            if !this.restarting {
+                                this.request_close(Closing::Host, cx);
+                            }
+                        })),
+                    )
+                })
                 .child(
                     button("add-task", "＋ 新待办").on_click(
                         cx.listener(|this, _, window, cx| this.show_quick_task(window, cx)),
@@ -290,14 +309,6 @@ impl Render for Workbench {
         for notice in self.store.recognition().official.values() {
             main = main.child(
                 label(notice.clone())
-                    .px(px(T::S14))
-                    .py(px(T::S6))
-                    .text_color(Group::Waiting.colors().1),
-            );
-        }
-        if let Some(stale) = crate::lifecycle::stale_host() {
-            main = main.child(
-                label(stale)
                     .px(px(T::S14))
                     .py(px(T::S6))
                     .text_color(Group::Waiting.colors().1),
