@@ -26,13 +26,15 @@ impl Group {
         match self {
             Self::Waiting => "等你回答",
             Self::Error => "出错了",
-            Self::Review => "待核对",
-            Self::Paused => "做一半停了",
-            Self::Running => "进行中",
+            // One word per state everywhere (2026-10-27): a turn that ended, whether it
+            // claims success or just stopped talking, is 做完了; an interrupted one 停下了.
+            Self::Review => "做完了",
+            Self::Paused => "停下了",
+            Self::Running => "在跑",
             Self::Stale => "很久没动",
             Self::Working => "在跑",
-            Self::Done => "刚做完",
-            Self::Ready => "等你下一步",
+            Self::Done => "做完了",
+            Self::Ready => "做完了",
         }
     }
     /// The group's base hue; its ink and wash derive from it and the terminal.
@@ -168,7 +170,7 @@ impl Theme {
     pub const LOGO: f32 = 18.;
     pub const ICON_WIDTH: f32 = 24.;
     pub const ICON_HEIGHT: f32 = 22.;
-    pub const CARD_MIN: f32 = 230.;
+    pub const CARD_MIN: f32 = 300.;
     pub const OVERVIEW_X: f32 = 28.;
     pub const SEARCH_HEIGHT: f32 = 260.;
     pub const MENU_WIDTH: f32 = 230.;
@@ -187,7 +189,7 @@ impl Theme {
     pub const MENU_ERROR_DOT: u32 = 0xc0392b;
     pub const MENU_ERROR_TEXT: u32 = 0x9b2318;
     pub const FORM_WIDTH: f32 = 520.;
-    pub const DETAIL_WIDTH: f32 = 480.;
+    pub const DETAIL_WIDTH: f32 = 640.;
     pub const FORM_TITLE: f32 = 16.;
     pub const TASK_ROW: f32 = 48.;
     pub const SEARCH_WIDTH: f32 = 360.;

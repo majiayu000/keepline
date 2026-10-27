@@ -94,6 +94,13 @@ impl Pane {
         self.select_hint = true;
         cx.notify();
     }
+    /// The program reads the mouse itself, so a plain drag goes to it, not to selection.
+    pub fn takes_mouse(&self) -> bool {
+        self.connection.state.lock().is_ok_and(|s| {
+            s.vt.as_ref()
+                .is_some_and(|v| v.terminal().is_mouse_tracking().unwrap_or(false))
+        })
+    }
     /// Whether the program in this pane asked for mouse reports, and where to click it.
     #[cfg(feature = "visual-test")]
     pub fn visual_mouse_app(&self) -> (bool, Option<gpui::Point<Pixels>>) {
@@ -1030,7 +1037,7 @@ impl Render for Pane {
             .or(state.error.clone())
             .filter(|_| !state.dropped && self.reconnect_delay == 0);
         let status = if state.ended {
-            "进程已退出 · 待核对"
+            "进程已退出"
         } else if state.dropped || self.reconnect_delay > 0 {
             "连接断开 · 正在重连…"
         } else if state.vt.is_none() {

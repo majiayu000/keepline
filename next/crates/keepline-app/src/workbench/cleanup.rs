@@ -89,23 +89,19 @@ impl Workbench {
                     );
                 // The title already is the first ask when nothing better names the session.
                 let title = self.session_title(s);
-                for (name, text) in [
-                    ("你要它", h.ask),
-                    ("做成了", h.done),
-                    ("停在", h.stopped),
-                    ("下一步·推断", h.next),
-                ]
-                .into_iter()
-                .filter(|(name, text)| *name != "你要它" || text.trim() != title.trim())
+                // As in the 你在这里 card: no empty evidence line, no template next step.
+                for (name, text) in [("你要它", h.ask), ("做成了", h.done), ("停在", h.stopped)]
+                    .into_iter()
+                    .filter(|(name, text)| {
+                        (*name != "你要它" || text.trim() != title.trim())
+                            && (*name != "做成了" || text != keepline_core::content::NO_DONE)
+                    })
                 {
                     card = card.child(
                         div()
                             .flex()
                             .gap(px(T::S16))
                             .py(px(T::S8))
-                            .when(name == "下一步·推断", |d| {
-                                d.bg(T::color(T::INFERENCE))
-                            })
                             .child(
                                 label(name)
                                     .w(px(T::HERE_LABEL))
@@ -154,11 +150,12 @@ impl Workbench {
             }
             let sid = s.id.clone();
             actions = actions.child(
-                button("cleanup-defer", "暂存…")
+                button("cleanup-defer", "稍后再看…")
                     .h(px(T::CLEANUP_ACTION_HEIGHT))
                     .flex_1()
                     .justify_center()
-                    .text_color(T::color(T::LINK))
+                    .bg(T::color(T::POPOVER))
+                    .text_color(T::color(T::PRIMARY))
                     .on_click(cx.listener(move |this, _, window, cx| {
                         this.overview.here = Some(sid.clone());
                         this.show_form(FormKind::Defer, window, cx);

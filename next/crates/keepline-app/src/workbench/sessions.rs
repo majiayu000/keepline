@@ -103,12 +103,7 @@ impl Workbench {
         self.workspace
             .content
             .get(&s.id)
-            .map(|c| {
-                keepline_core::content::short(
-                    &keepline_core::content::plain_line(&c.here().stopped),
-                    100,
-                )
-            })
+            .map(|c| keepline_core::content::short(&c.headline(), 100))
             .unwrap_or_else(|| "内容尚未索引".into())
     }
     pub(super) fn save_session_task(&mut self, session: &AgentSession, cx: &mut Context<Self>) {
@@ -194,20 +189,22 @@ impl Workbench {
                         })),
                     ),
             );
+        // Only fields that say something: no evidence yet is not news, and the guessed
+        // next step was the same few template lines for every session.
+        let done = (h.done != keepline_core::content::NO_DONE).then_some(h.done);
         for (name, value) in [
-            ("你要它", h.ask),
-            ("做成了", h.done),
-            ("停在", h.stopped),
-            ("下一步·推断", h.next),
-        ] {
+            ("你要它", Some(h.ask)),
+            ("做成了", done),
+            ("停在", Some(h.stopped)),
+        ]
+        .into_iter()
+        .filter_map(|(name, value)| Some((name, value?)))
+        {
             panel = panel.child(
                 div()
                     .flex()
                     .flex_col()
                     .gap(px(T::S4))
-                    .when(name == "下一步·推断", |d| {
-                        d.bg(T::color(T::INFERENCE)).p(px(T::S8))
-                    })
                     .child(div().font_weight(gpui::FontWeight::SEMIBOLD).child(name))
                     .child(div().text_size(px(T::SMALL)).child(value)),
             );
@@ -226,7 +223,7 @@ impl Workbench {
         // On its own live pane there is nothing to go back to: you type in the terminal.
         let typing_here = in_pane && live_terminal(&self.workspace, session).is_some();
         let (settle_name, settle) = if session.outcome == Outcome::Open {
-            ("已验收", Outcome::Completed)
+            ("标记完成", Outcome::Completed)
         } else {
             ("撤销结局", Outcome::Open)
         };
@@ -283,7 +280,7 @@ impl Workbench {
                     .on_click(cx.listener(move |this, _, _, cx| this.save_session_task(&save, cx))),
             );
         let sid = session.id.clone();
-        actions = actions.child(button("here-defer", "暂存…").on_click(cx.listener(
+        actions = actions.child(button("here-defer", "稍后再看…").on_click(cx.listener(
             move |this, _, window, cx| {
                 this.overview.here = Some(sid.clone());
                 this.nav.overview = false;
@@ -291,7 +288,7 @@ impl Workbench {
             },
         )));
         for (name, outcome) in [
-            ("已验收", Outcome::Completed),
+            ("标记完成", Outcome::Completed),
             ("放弃", Outcome::Abandoned),
             ("撤销结局", Outcome::Open),
         ]
@@ -404,7 +401,7 @@ impl Workbench {
                     this.save_session_task(&save, cx);
                 })),
             )
-            .child(button("card-defer", "暂存").on_click(cx.listener(
+            .child(button("card-defer", "稍后再看").on_click(cx.listener(
                 move |this, _, window, cx| {
                     cx.stop_propagation();
                     this.overview.card_menu = None;
@@ -413,7 +410,7 @@ impl Workbench {
                 },
             )));
         for (label, outcome) in [
-            ("已验收", Outcome::Completed),
+            ("标记完成", Outcome::Completed),
             ("放弃", Outcome::Abandoned),
             ("撤销结局", Outcome::Open),
         ]

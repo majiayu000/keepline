@@ -102,7 +102,7 @@ fn outcome_label(outcome: &Outcome) -> String {
         Outcome::Completed => "已完成".into(),
         Outcome::Abandoned => "已放弃".into(),
         Outcome::Deferred { reason, until } => format!(
-            "暂存：{} · {} 小时后再看",
+            "稍后再看：{} · {} 小时后",
             reason,
             until.saturating_sub(now()).div_ceil(3600)
         ),
@@ -232,6 +232,7 @@ impl Workbench {
             tasks: TaskUi {
                 form: None,
                 editing_task: None,
+                editing_space: None,
                 start_after_save: None,
                 quick_task: None,
                 todos_open: false,

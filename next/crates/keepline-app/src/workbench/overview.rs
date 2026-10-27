@@ -59,7 +59,7 @@ impl Workbench {
                             open.len()
                         )
                     } else {
-                        format!("{} 个未闭环会话 · 按日志回合与机械证据分组", open.len())
+                        format!("{} 个会话还没收尾，按要你做什么分好了组", open.len())
                     })),
             )
             .child(self.search_button(cx))
@@ -195,7 +195,7 @@ impl Workbench {
                     button(
                         "toggle-running",
                         format!(
-                            "进行中 {count} · {}",
+                            "在跑 {count} · {}",
                             if self.overview.show_running {
                                 "收起"
                             } else {
@@ -468,7 +468,23 @@ impl Workbench {
                 .border_t(px(T::BORDER_WIDTH))
                 .border_color(T::color(T::BORDER))
                 .pt(px(T::S16))
-                .child(button("closed-toggle",format!("暂存 {deferred} · 已结束：完成 {completed} / 放弃 {abandoned} · 展开/收起")).on_click(cx.listener(|this, _, _, cx| {this.overview.show_closed = !this.overview.show_closed;cx.notify();}))),
+                .child(
+                    button(
+                        "closed-toggle",
+                        format!(
+                            "稍后再看 {deferred} · 已完成 {completed} · 已放弃 {abandoned} · {}",
+                            if self.overview.show_closed {
+                                "收起"
+                            } else {
+                                "展开"
+                            }
+                        ),
+                    )
+                    .on_click(cx.listener(|this, _, _, cx| {
+                        this.overview.show_closed = !this.overview.show_closed;
+                        cx.notify();
+                    })),
+                ),
         );
         if self.overview.show_closed {
             for s in self

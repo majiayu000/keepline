@@ -8,7 +8,7 @@ pub struct Source {
     pub inode: u64,
     pub offset: u64,
 }
-#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Quote {
     pub text: String,
     pub at: u64,
@@ -121,12 +121,12 @@ impl Inbox {
         match self {
             Self::Waiting => "等你回答",
             Self::Error => "出错了",
-            Self::Review => "待核对",
-            Self::Paused => "做一半停了",
-            Self::Running => "进行中",
+            Self::Review => "做完了",
+            Self::Paused => "停下了",
+            Self::Running => "在跑",
             Self::Stale => "很久没动",
-            Self::Deferred => "暂存",
-            Self::Closed => "已结束",
+            Self::Deferred => "稍后再看",
+            Self::Closed => "已收尾",
         }
     }
 }
@@ -203,9 +203,28 @@ pub fn topic(title: &str) -> String {
     }
     rest.trim().to_owned()
 }
+/// `Here::done` when nothing confirmed has happened yet.
+pub const NO_DONE: &str = "尚无已确认的修改、提交或测试成功证据";
 /// Hidden reason for a session whose working directory is temporary.
 pub const TEMPORARY_DIRECTORY: &str = "临时目录会话";
 impl Content {
+    /// One readable line on where the session stands, without the labels its state chip
+    /// already says ("回合结束；Agent 自述：", "等待输入："): the question it waits on,
+    /// the error, what it was asked while it runs, or its last reply.
+    pub fn headline(&self) -> String {
+        let text = match self.turn {
+            Turn::Waiting if !self.waiting.is_empty() => self.waiting.as_str(),
+            Turn::Error if !self.error.is_empty() => self.error.as_str(),
+            Turn::Running => self.asks.last().map_or("", |q| q.text.as_str()),
+            _ => self.last_reply.as_str(),
+        };
+        let line = plain_line(text);
+        if line.is_empty() {
+            plain_line(&self.here().stopped)
+        } else {
+            line
+        }
+    }
     /// `hidden_reason` for this session: one Keepline started in its own terminal was
     /// started by the user, so a temporary working directory alone does not hide it.
     /// Sub-agents, SDK and print-mode runs stay hidden wherever they run.
@@ -316,7 +335,7 @@ impl Content {
             .map(|f| short(&f.summary, 180))
             .collect();
         let done = if facts.is_empty() {
-            "尚无已确认的修改、提交或测试成功证据".into()
+            NO_DONE.into()
         } else {
             facts.join("\n")
         };
@@ -387,6 +406,30 @@ mod tests {
         assert_eq!(topic("你帮我看看我最近有什么…"), "我最近有什么…");
         assert_eq!(topic("帮我看看"), "帮我看看");
         assert_eq!(topic("修复登录"), "修复登录");
+    }
+    #[test]
+    fn headline_drops_the_labels_the_state_already_says() {
+        let c = Content {
+            last_reply: "**建议都接收**".into(),
+            turn: Turn::Completed,
+            ..Default::default()
+        };
+        assert_eq!(c.headline(), "建议都接收");
+        let c = Content {
+            waiting: "是否允许推送分支？".into(),
+            turn: Turn::Waiting,
+            ..Default::default()
+        };
+        assert_eq!(c.headline(), "是否允许推送分支？");
+        let c = Content {
+            asks: vec![Quote {
+                text: "修复登录跳转".into(),
+                ..Default::default()
+            }],
+            turn: Turn::Running,
+            ..Default::default()
+        };
+        assert_eq!(c.headline(), "修复登录跳转");
     }
     #[test]
     fn plain_line_drops_markdown() {
