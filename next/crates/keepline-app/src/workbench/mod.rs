@@ -40,7 +40,16 @@ struct PaneMenu {
     position: gpui::Point<gpui::Pixels>,
     page: MenuPage,
 }
-/// What a close removes: a whole tab, or one pane by its terminal.
+/// The first of `candidates` that still exists, else the home directory: a directory
+/// removed since (a deleted worktree) must not stop a new terminal.
+pub(super) fn usable_cwd(candidates: impl IntoIterator<Item = String>) -> String {
+    candidates
+        .into_iter()
+        .find(|d| Path::new(d).is_dir())
+        .or_else(|| std::env::var("HOME").ok())
+        .unwrap_or_else(|| "/".into())
+}
+/// What a close removes: a whole tab, one pane by its terminal, or the whole host.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub(super) enum Closing {
     Tab(String),
@@ -715,8 +724,9 @@ impl Workbench {
                             .map(|t| t.cwd.clone())
                     })
                 })
-                .unwrap_or(space.cwd)
+                .unwrap_or_else(|| space.cwd.clone())
         });
+        let cwd = usable_cwd([cwd, space.cwd.clone()]);
         let cwd_source = source
             .as_ref()
             .and_then(|(id, _)| {
