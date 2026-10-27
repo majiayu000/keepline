@@ -15,8 +15,11 @@ fn run() -> std::io::Result<()> {
         Some("serve") => {
             let mut remaining = Vec::new();
             let mut days = 7;
+            let mut takeover = false;
             while let Some(arg) = args.next() {
-                if arg == "--recent-days" {
+                if arg == "--takeover" {
+                    takeover = true;
+                } else if arg == "--recent-days" {
                     days = args
                         .next()
                         .ok_or_else(|| std::io::Error::other("missing days"))?
@@ -27,7 +30,12 @@ fn run() -> std::io::Result<()> {
                 }
             }
             let runtime = runtime_dir(remaining.into_iter())?;
-            keeplined::serve_with_options(
+            let serve = if takeover {
+                keeplined::serve_taking_over
+            } else {
+                keeplined::serve_with_options
+            };
+            serve(
                 std::path::Path::new(&runtime),
                 keeplined::recognition::roots()?,
                 days,
