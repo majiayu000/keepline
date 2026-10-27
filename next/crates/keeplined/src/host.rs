@@ -25,6 +25,8 @@ type LiveTerminal = Arc<Mutex<Live>>;
 static BUILD: std::sync::LazyLock<keepline_core::protocol::Build> =
     std::sync::LazyLock::new(keepline_core::protocol::Build::current);
 type Frame = (u8, Arc<Vec<u8>>);
+/// Unread input above which mouse reports are dropped; the queue holds about 1 KiB.
+const POINTER_BACKLOG: usize = 256;
 struct Subscriber {
     tx: SyncSender<Frame>,
     socket: UnixStream,
@@ -2017,7 +2019,7 @@ fn attach(
     });
     loop {
         let request = receive::<Request>(&mut stream)?;
-        let submitted = matches!(&request, Request::Input {bytes} if bytes.contains(&b'\r') || bytes.contains(&b'\n'));
+        let submitted = matches!(&request, Request::Input {bytes, ..} if bytes.contains(&b'\r') || bytes.contains(&b'\n'));
         let typed = matches!(&request, Request::Input { .. });
         let result = (|| -> io::Result<()> {
             let mut live = lock(&terminal)?;
@@ -2028,12 +2030,19 @@ fn attach(
                 return Err(io::Error::other("只读或进程已退出；需明确接管"));
             }
             match request {
-                Request::Input { bytes } => {
+                // A mouse report is dropped once the program falls behind: written into
+                // a nearly full input queue it can be cut after its ESC, and the program
+                // then reads the rest as typed text ("[<65;20;10M" in Codex's input box).
+                Request::Input { lossy: true, .. }
+                    if pty::backlog(&live.master).is_some_and(|n| n > POINTER_BACKLOG) => {}
+                Request::Input { bytes, lossy } => {
                     if bytes.len() > 64 * 1024 {
                         return Err(io::Error::other("单次输入超过 64 KiB"));
                     }
                     pty::write(&mut live.master, &bytes)?;
-                    live.input_at = Some(Instant::now());
+                    if !lossy {
+                        live.input_at = Some(Instant::now());
+                    }
                 }
                 Request::ClearHistory => {
                     let clear = keepline_core::terminal::clear_history(live.vt.terminal())?;

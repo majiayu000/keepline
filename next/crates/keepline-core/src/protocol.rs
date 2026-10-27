@@ -66,6 +66,10 @@ pub enum Request {
     },
     Input {
         bytes: Vec<u8>,
+        /// Mouse reports: dropped while the program is behind on reading, so a full
+        /// input queue never cuts one in half. Hosts before it write them all.
+        #[serde(default)]
+        lossy: bool,
     },
     Resize {
         cols: u16,
@@ -216,13 +220,14 @@ pub fn read_frame(r: &mut impl Read) -> io::Result<(u8, Vec<u8>)> {
 }
 /// Serialize one queued user input as ordered bounded packets. UTF-8 and bracketed
 /// paste delimiters may span packets: the PTY remains a byte stream. Never retry.
-pub fn send_input(w: &mut impl Write, bytes: &[u8]) -> io::Result<()> {
+pub fn send_input(w: &mut impl Write, bytes: &[u8], lossy: bool) -> io::Result<()> {
     for chunk in bytes.chunks(16 * 1024) {
         send(
             w,
             CONTROL,
             &Request::Input {
                 bytes: chunk.to_vec(),
+                lossy,
             },
         )?;
     }
