@@ -262,6 +262,17 @@ impl Workbench {
         cx.notify();
         window.refresh();
     }
+    /// The first pane of the shown tab.
+    #[cfg(feature = "visual-test")]
+    pub fn visual_shown_pane(&self) -> Entity<Pane> {
+        let tab = self.nav.tab.as_ref().expect("a shown tab");
+        let id = self.workspace.tab_terminals(tab).first().cloned().expect("a pane");
+        self.layout.panes[&id].clone()
+    }
+    #[cfg(feature = "visual-test")]
+    pub fn visual_pane_menu_open(&self) -> bool {
+        self.layout.menu.is_some()
+    }
     #[cfg(feature = "visual-test")]
     pub fn visual_here_open(&self) -> bool {
         self.overview.here.is_some()
