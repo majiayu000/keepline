@@ -167,6 +167,7 @@ impl Workbench {
             let row = sessions.remove(i);
             sessions.insert(SIDEBAR_SESSIONS - 1, row);
         }
+        sidebar = sidebar.child(self.todos_view(space_name, cx));
         sidebar = sidebar.child(
             label(format!("会话 · {}", sessions.len()))
                 .mt(px(T::S14))
@@ -263,6 +264,11 @@ impl Workbench {
                 })),
             );
         }
+        sidebar
+    }
+    /// The space's todos: what is still to be handed to an Agent, above what is running.
+    fn todos_view(&self, space_name: &str, cx: &Context<Self>) -> gpui::Div {
+        let mut sidebar = div().flex().flex_col();
         let todo_count = self
             .workspace
             .tasks
