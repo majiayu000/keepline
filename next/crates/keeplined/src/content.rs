@@ -632,6 +632,7 @@ impl Parser {
             || name.ends_with("request_user_input_async")
         {
             self.card.turn = Turn::Waiting;
+            self.child_wait_from = None;
             self.card.waiting = question_summary(&args);
         }
         self.calls.insert(
@@ -750,6 +751,7 @@ impl Parser {
                 || output.contains("haven't granted")
                 || output.contains("waiting for approval"))
         {
+            self.child_wait_from = None;
             self.card.waiting = short(&output, 600);
             self.card.turn = Turn::Waiting;
             self.last_failed.clear();
@@ -871,6 +873,7 @@ impl Parser {
                     "user_message" => self.message(true, text(&p["message"]), at, &source, false),
                     "agent_message" => self.message(false, text(&p["message"]), at, &source, false),
                     "approval_request" | "permission_request" | "request_user_input" => {
+                        self.child_wait_from = None;
                         self.card.waiting = question_summary(p);
                         self.phase(Turn::Waiting, "", at, &source);
                     }
@@ -1083,7 +1086,11 @@ impl Parser {
     }
     /// Applies `claude agents --json`. It only settles a dialog: it never starts or ends a
     /// turn the transcript and hooks have not reported, because it can lag either of them.
+    /// A parent status cannot dismiss a dialog projected from a child's own log.
     pub fn official(&mut self, status: &Official, at: u64, source: Source) {
+        if self.card.turn == Turn::Waiting && self.child_wait_from.is_some() {
+            return;
+        }
         let before = self.card.turn;
         match status {
             Official::Waiting(reason) if self.card.turn != Turn::Waiting => {
@@ -1125,7 +1132,11 @@ impl Parser {
             None if self.card.turn == Turn::Waiting => {
                 if let Some(turn) = self.child_wait_from.take() {
                     self.card.waiting.clear();
-                    self.card.turn = turn;
+                    self.card.turn = if self.completed_while_waiting {
+                        Turn::Completed
+                    } else {
+                        turn
+                    };
                 }
             }
             _ => (),
@@ -1140,6 +1151,7 @@ impl Parser {
             self.card.waiting_episode += 1;
         } else {
             self.completed_while_waiting = false;
+            self.child_wait_from = None;
         }
         self.card.signal = signal.into();
         self.card.signal_at = at;
@@ -2008,6 +2020,144 @@ mod tests {
         let mut lone = Parser::default();
         lone.children(&Children::default(), 1, s);
         assert_eq!(lone.card.background, None);
+    }
+    #[test]
+    fn parent_official_status_cannot_dismiss_a_child_dialog() {
+        for status in [Official::Busy, Official::Idle] {
+            let mut p = Parser::default();
+            add(
+                &mut p,
+                json!({"type":"event_msg","payload":{"type":"task_started","turn_id":"t1"}}),
+            );
+            let kids = Children {
+                running: 1,
+                waiting: Some("子 Agent：批准运行测试？".into()),
+            };
+            p.children(&kids, 1, Source::default());
+            let waiting = p.card.clone();
+            p.official(&status, 2, Source::default());
+            assert_eq!(p.card, waiting, "{status:?} describes only the parent");
+            p.children(&kids, 3, Source::default());
+            assert_eq!(p.card.waiting_episode, 1);
+            p.children(&Children::default(), 4, Source::default());
+            assert_eq!(p.card.turn, Turn::Running);
+            assert!(p.card.waiting.is_empty());
+            assert_eq!(p.child_wait_from, None);
+        }
+    }
+    #[test]
+    fn child_dialog_restores_completion_received_while_waiting_after_reload() {
+        let mut p = Parser::default();
+        add(
+            &mut p,
+            json!({"type":"event_msg","payload":{"type":"task_started","turn_id":"t1"}}),
+        );
+        p.children(
+            &Children {
+                running: 1,
+                waiting: Some("子 Agent：批准运行测试？".into()),
+            },
+            1,
+            Source::default(),
+        );
+        add(
+            &mut p,
+            json!({"type":"event_msg","payload":{"type":"task_complete"}}),
+        );
+        assert_eq!(p.card.turn, Turn::Waiting);
+        assert!(p.completed_while_waiting);
+        // This state is durable; restarting the parser must not lose the completion.
+        let mut p: Parser = serde_json::from_slice(&serde_json::to_vec(&p).unwrap()).unwrap();
+        p.official(&Official::Idle, 2, Source::default());
+        assert_eq!(p.card.turn, Turn::Waiting);
+        p.children(&Children::default(), 3, Source::default());
+        assert_eq!(p.card.turn, Turn::Completed);
+        assert!(!p.completed_while_waiting);
+        assert_eq!(p.child_wait_from, None);
+        assert!(p.card.waiting.is_empty());
+        assert!(!p.card.background.unwrap().keeps_working());
+    }
+    #[test]
+    fn ended_child_wait_cannot_dismiss_a_later_parent_dialog() {
+        for event in ["error", "turn_aborted"] {
+            let mut p = Parser::default();
+            add(
+                &mut p,
+                json!({"type":"event_msg","payload":{"type":"task_started","turn_id":"t1"}}),
+            );
+            p.children(
+                &Children {
+                    running: 1,
+                    waiting: Some("子 Agent：批准运行测试？".into()),
+                },
+                1,
+                Source::default(),
+            );
+            add(
+                &mut p,
+                json!({"type":"event_msg","payload":{"type":event,"message":"failed"}}),
+            );
+            assert_eq!(p.child_wait_from, None, "{event} ends the child projection");
+            add(
+                &mut p,
+                json!({"type":"event_msg","payload":{"type":"approval_request","message":"parent approval"}}),
+            );
+            let waiting = p.card.waiting.clone();
+            p.children(&Children::default(), 2, Source::default());
+            assert_eq!(p.card.turn, Turn::Waiting);
+            assert_eq!(p.card.waiting, waiting);
+            p.official(&Official::Busy, 3, Source::default());
+            assert_eq!(p.card.turn, Turn::Running);
+            assert!(p.card.waiting.is_empty());
+        }
+    }
+    #[test]
+    fn explicit_parent_dialog_takes_ownership_from_a_child_projection() {
+        for input in ["event", "tool", "result"] {
+            let mut p = Parser::default();
+            add(
+                &mut p,
+                json!({"type":"event_msg","payload":{"type":"task_started","turn_id":"t1"}}),
+            );
+            p.children(
+                &Children {
+                    running: 1,
+                    waiting: Some("child approval".into()),
+                },
+                1,
+                Source::default(),
+            );
+            match input {
+                "event" => add(
+                    &mut p,
+                    json!({"type":"event_msg","payload":{"type":"approval_request","message":"parent approval"}}),
+                ),
+                "tool" => call(
+                    &mut p,
+                    "parent",
+                    "AskUserQuestion",
+                    json!({"question":"parent approval"}),
+                ),
+                _ => {
+                    call(&mut p, "parent", "exec_command", json!({"cmd":"test"}));
+                    result(
+                        &mut p,
+                        "parent",
+                        "Process exited with code 1: requires approval",
+                    );
+                }
+            }
+            assert_eq!(p.child_wait_from, None, "{input} owns the new dialog");
+            let waiting = p.card.waiting.clone();
+            assert!(!waiting.is_empty());
+            assert_ne!(waiting, "child approval");
+            p.children(&Children::default(), 2, Source::default());
+            assert_eq!(p.card.turn, Turn::Waiting);
+            assert_eq!(p.card.waiting, waiting);
+            p.official(&Official::Busy, 3, Source::default());
+            assert_eq!(p.card.turn, Turn::Running);
+            assert!(p.card.waiting.is_empty());
+        }
     }
     #[test]
     fn official_status_only_settles_dialogs() {
