@@ -117,6 +117,13 @@ impl Render for Workbench {
                 .child(self.search_button(cx))
                 .child(self.title_drag_area(cx))
                 .when(self.store.slow(), |d| d.child(label("正在更新…")))
+                .when(
+                    matches!(
+                        self.store.recognition().phase,
+                        RecognitionPhase::Starting | RecognitionPhase::Recovering
+                    ),
+                    |d| d.child(label("正在识别会话…")),
+                )
                 // The host runs older code than this app; restarting it ends every terminal.
                 .when(crate::lifecycle::stale_host(), |d| {
                     d.child(
@@ -298,20 +305,17 @@ impl Render for Workbench {
             .flex()
             .flex_col()
             .child(tabs);
-        if self.store.recognition().phase != RecognitionPhase::Healthy {
+        // Indexing in progress is a top-bar note; only a stopped recognition is worth a
+        // banner, in words the user can act on. A missing official status source is not:
+        // logs and screens still tell the state.
+        if self.store.recognition().phase == RecognitionPhase::Interrupted {
             main = main.child(
-                label(self.store.recognition().detail.clone())
-                    .px(px(T::S14))
-                    .py(px(T::S6))
-                    .text_color(Group::Waiting.colors().1),
-            );
-        }
-        for notice in self.store.recognition().official.values() {
-            main = main.child(
-                label(notice.clone())
-                    .px(px(T::S14))
-                    .py(px(T::S6))
-                    .text_color(Group::Waiting.colors().1),
+                label(
+                    "会话识别暂停了，左栏和鸟瞰里的状态可能不是最新的。重开 Keepline 通常能恢复。",
+                )
+                .px(px(T::S14))
+                .py(px(T::S6))
+                .text_color(Group::Waiting.colors().1),
             );
         }
         if let Some(status) = cx

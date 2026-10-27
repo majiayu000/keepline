@@ -13,6 +13,8 @@ pub(super) struct TaskUi {
     /// The sidebar's todo list starts folded; sessions come first.
     pub(super) todos_open: bool,
     pub(super) editing_task: Option<String>,
+    /// The space the 空间 form edits; None when it adds one.
+    pub(super) editing_space: Option<String>,
     pub(super) start_after_save: Option<String>,
 }
 impl Workbench {
@@ -26,7 +28,9 @@ impl Workbench {
             .id("task-detail")
             .w(px(T::DETAIL_WIDTH))
             .max_w_full()
-            .m(px(T::S20))
+            // Centered in the work area rather than pinned left beside an empty half.
+            .my(px(T::S20))
+            .mx_auto()
             .bg(T::color(T::HEADER))
             .border(px(T::BORDER_WIDTH))
             .border_color(T::color(T::CONTROL))
@@ -48,7 +52,7 @@ impl Workbench {
                 {
                     Outcome::Open => "未完成",
                     Outcome::Completed => "已完成",
-                    Outcome::Deferred { .. } => "暂存",
+                    Outcome::Deferred { .. } => "稍后再看",
                     Outcome::Abandoned => "已放弃",
                 }
             )))
@@ -171,7 +175,7 @@ impl Workbench {
             )));
         }
         actions = actions
-            .child(button("task-defer", "暂存").on_click(
+            .child(button("task-defer", "稍后再看").on_click(
                 cx.listener(|this, _, window, cx| this.show_form(FormKind::TaskDefer, window, cx)),
             ))
             .child(button("task-edit", "编辑").on_click({

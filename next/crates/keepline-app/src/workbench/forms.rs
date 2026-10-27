@@ -11,13 +11,22 @@ impl Workbench {
         self.nav.overview = false;
         self.tasks.editing_task = None;
         self.sync_panes(cx);
+        let editing = self
+            .tasks
+            .editing_space
+            .as_ref()
+            .and_then(|id| self.workspace.spaces.iter().find(|s| &s.id == id))
+            .cloned();
         let fields = match kind {
-            FormKind::Space => vec![
-                cx.new(|cx| Field::new("空间名称", "", cx)),
-                cx.new(|cx| Field::new("工作目录（绝对路径）", "", cx)),
-            ],
+            FormKind::Space => {
+                let (name, cwd) = editing.map_or_else(Default::default, |s| (s.name, s.cwd));
+                vec![
+                    cx.new(|cx| Field::new("空间名称", &name, cx)),
+                    cx.new(|cx| Field::new("工作目录（绝对路径）", &cwd, cx)),
+                ]
+            }
             FormKind::Defer | FormKind::TaskDefer => vec![
-                cx.new(|cx| Field::new("暂存原因（必填）", "", cx)),
+                cx.new(|cx| Field::new("为什么稍后再看（必填）", "", cx)),
                 cx.new(|cx| Field::new("多少小时后再看（必填）", "24", cx)),
             ],
             FormKind::Task => vec![
@@ -52,7 +61,7 @@ impl Workbench {
                     .ok()
                     .filter(|h| *h > 0 && *h <= 24 * 365);
                 if values[0].trim().is_empty() || hours.is_none() {
-                    self.error = Some("请填写暂存原因和 1–8760 小时的再看时间".into());
+                    self.error = Some("请写明为什么稍后再看，并填 1–8760 小时后再看".into());
                     self.tasks.form = Some(form);
                     return;
                 }
@@ -72,11 +81,23 @@ impl Workbench {
                     Edit::SetOutcome { id, outcome }
                 }
             }
-            FormKind::Space => Edit::AddSpace(Space {
-                id: id(),
-                name: values[0].clone(),
-                cwd: values[1].clone(),
-            }),
+            FormKind::Space => {
+                let space = Space {
+                    id: self.tasks.editing_space.clone().unwrap_or_else(id),
+                    name: values[0].trim().into(),
+                    cwd: values[1].trim().into(),
+                };
+                if !Path::new(&space.cwd).is_dir() {
+                    self.error = Some(format!("目录不存在：{}", space.cwd));
+                    self.tasks.form = Some(form);
+                    return;
+                }
+                if self.tasks.editing_space.take().is_some() {
+                    Edit::UpdateSpace(space)
+                } else {
+                    Edit::AddSpace(space)
+                }
+            }
             FormKind::Task => {
                 let task_id = self.tasks.editing_task.clone().unwrap_or_else(id);
                 if start {
@@ -135,8 +156,9 @@ impl Workbench {
             .child(div().text_size(px(T::FORM_TITLE)).child(match form.kind {
                 FormKind::Task if self.tasks.editing_task.is_some() => "编辑待办",
                 FormKind::Task => "新建待办",
+                FormKind::Space if self.tasks.editing_space.is_some() => "编辑空间",
                 FormKind::Space => "新建空间",
-                _ => "暂存",
+                _ => "稍后再看",
             }));
         for (index, field) in form.fields.iter().enumerate() {
             panel = panel.child(field.clone());
@@ -221,6 +243,7 @@ impl Workbench {
                 .child(
                     button("cancel", "取消").on_click(cx.listener(|this, _, _, cx| {
                         this.tasks.form = None;
+                        this.tasks.editing_space = None;
                         cx.notify();
                     })),
                 ),
