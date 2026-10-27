@@ -208,6 +208,8 @@ impl Outcome {
 pub enum Edit {
     Settings(Settings),
     AddSpace(Space),
+    /// Rename a space or point it at another directory.
+    UpdateSpace(Space),
     AddTask(Task),
     UpdateTask(Task),
     SetTaskOutcome {
@@ -262,7 +264,7 @@ fn validate_outcome(outcome: &Outcome) -> Result<(), String> {
     if let Outcome::Deferred { reason, until } = outcome
         && (reason.trim().is_empty() || *until == 0)
     {
-        return Err("暂存需要原因和再看时间".into());
+        return Err("稍后再看需要原因和时间".into());
     }
     Ok(())
 }
@@ -611,6 +613,15 @@ impl Workspace {
                 }
                 self.spaces.push(space);
             }
+            Edit::UpdateSpace(space) => {
+                if space.name.trim().is_empty() {
+                    return Err("空间名称不能为空".into());
+                }
+                let Some(existing) = self.spaces.iter_mut().find(|s| s.id == space.id) else {
+                    return Err("空间不存在".into());
+                };
+                *existing = space;
+            }
             Edit::AddTask(task) => {
                 if !self.spaces.iter().any(|s| s.id == task.space) {
                     return Err("空间不存在".into());
@@ -899,6 +910,37 @@ mod tests {
                     until: 1
                 }
             })
+            .is_err()
+        );
+    }
+    #[test]
+    fn update_space_renames_and_moves_only_an_existing_space() {
+        let mut w = workspace();
+        let id = w.spaces[0].id.clone();
+        w.edit(Edit::UpdateSpace(Space {
+            id: id.clone(),
+            name: "新名字".into(),
+            cwd: "/tmp".into(),
+        }))
+        .unwrap();
+        assert_eq!(
+            (w.spaces[0].name.as_str(), w.spaces[0].cwd.as_str()),
+            ("新名字", "/tmp")
+        );
+        assert!(
+            w.edit(Edit::UpdateSpace(Space {
+                id: "missing".into(),
+                name: "x".into(),
+                cwd: "/tmp".into(),
+            }))
+            .is_err()
+        );
+        assert!(
+            w.edit(Edit::UpdateSpace(Space {
+                id,
+                name: " ".into(),
+                cwd: "/tmp".into(),
+            }))
             .is_err()
         );
     }

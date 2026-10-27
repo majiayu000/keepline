@@ -93,6 +93,11 @@ impl Workbench {
                             .unwrap_or(Group::Stale)
                     }))
                     .child(div().min_w_0().truncate().child(space.name.clone()))
+                    // A deleted worktree leaves the space pointing nowhere; new terminals
+                    // fall back to home, and a double-click fixes the directory.
+                    .when(!Path::new(&space.cwd).is_dir(), |d| {
+                        d.child(label("目录不在了").text_size(px(T::CHIP_SIZE)))
+                    })
                     .justify_start()
                     .px(px(T::S8))
                     .border_0()
@@ -101,17 +106,24 @@ impl Workbench {
                     .when(waiting > 0, |d| d.child(badge(Group::Waiting, waiting)))
                     .when(errors > 0, |d| d.child(badge(Group::Error, errors)))
                     .child(label(format!("共 {count}")).text_size(px(T::CHIP_SIZE)))
-                    .on_click(cx.listener(move |this, _, _, cx| {
-                        this.nav.space = id.clone();
-                        this.nav.tab = this
-                            .workspace
-                            .tabs
-                            .iter()
-                            .find(|t| t.space == id)
-                            .map(|t| t.id.clone());
-                        this.sync_panes(cx);
-                        cx.notify();
-                    })),
+                    .on_click(
+                        cx.listener(move |this, event: &gpui::ClickEvent, window, cx| {
+                            if event.click_count() == 2 {
+                                this.tasks.editing_space = Some(id.clone());
+                                this.show_form(FormKind::Space, window, cx);
+                                return;
+                            }
+                            this.nav.space = id.clone();
+                            this.nav.tab = this
+                                .workspace
+                                .tabs
+                                .iter()
+                                .find(|t| t.space == id)
+                                .map(|t| t.id.clone());
+                            this.sync_panes(cx);
+                            cx.notify();
+                        }),
+                    ),
             );
         }
         sidebar = sidebar.child(
@@ -119,9 +131,10 @@ impl Workbench {
                 .border_0()
                 .justify_start()
                 .text_color(T::color(T::MUTED))
-                .on_click(
-                    cx.listener(|this, _, window, cx| this.show_form(FormKind::Space, window, cx)),
-                ),
+                .on_click(cx.listener(|this, _, window, cx| {
+                    this.tasks.editing_space = None;
+                    this.show_form(FormKind::Space, window, cx)
+                })),
         );
         // Sorted by what each row shows. Within a state, newest started first: the
         // host keeps sessions in creation order, while `updated` ticks with every
@@ -212,8 +225,8 @@ impl Workbench {
                         .child(
                             label(if g == Group::Ready && !attention {
                                 match age(self.session_updated(session)) {
-                                    a if a == "刚刚" => "刚停下".to_owned(),
-                                    a => format!("停了 {a}"),
+                                    a if a == "刚刚" => a,
+                                    a => format!("{a}前"),
                                 }
                             } else {
                                 g.label().to_owned()
