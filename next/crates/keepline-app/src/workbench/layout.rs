@@ -259,7 +259,7 @@ impl Workbench {
                             d.child(
                                 button(
                                     gpui::SharedString::from(format!("accept-pane-{id}")),
-                                    "已验收",
+                                    "标记完成",
                                 )
                                 .h(px(T::ICON_HEIGHT))
                                 .px(px(T::S6))
@@ -624,6 +624,22 @@ impl Workbench {
                                     this.menu_action(&terminal, &action, window, cx);
                                 }
                             }))
+                            .into_any_element(),
+                    );
+                }
+                // A program that took the mouse gets plain drags; say how to select instead.
+                if self
+                    .layout
+                    .panes
+                    .get(&menu.terminal)
+                    .is_some_and(|p| p.read(cx).takes_mouse())
+                {
+                    entries.push(
+                        label("选中文字：按住 Shift 再拖动")
+                            .h(px(T::ROW))
+                            .px(px(T::S10))
+                            .flex()
+                            .items_center()
                             .into_any_element(),
                     );
                 }
