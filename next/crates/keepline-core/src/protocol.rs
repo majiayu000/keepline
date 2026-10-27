@@ -27,6 +27,8 @@ pub enum Request {
     Hello {
         major: u32,
     },
+    /// From a newer host: hand over every running terminal, then exit.
+    Handoff,
     Workspace,
     ClientLeft {
         at: u64,
@@ -111,10 +113,25 @@ pub enum Reply {
         cols: u16,
         rows: u16,
     },
+    /// The terminals that follow, each as a snapshot (SNAPSHOT frames, then READY), and
+    /// then their PTY descriptors in this order in one SCM_RIGHTS message.
+    Handoff {
+        terminals: Vec<Handed>,
+    },
     Ok,
     Error(String),
 }
 
+/// A running terminal passed from one host to the next.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct Handed {
+    pub id: String,
+    pub pid: u32,
+    pub cols: u16,
+    pub rows: u16,
+    pub title: String,
+    pub cell: (u32, u32),
+}
 /// The program a host runs, fixed when it started: a rebuilt binary does not change a
 /// running host, so a client compares this with the host it would start itself.
 #[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
@@ -126,6 +143,9 @@ pub struct Build {
     /// The host's process id, to stop it for a restart; 0 from hosts before it.
     #[serde(default)]
     pub pid: u32,
+    /// The host can hand its running terminals to a newer one, so updating it ends none.
+    #[serde(default)]
+    pub handoff: bool,
 }
 impl Build {
     pub fn current() -> Self {
@@ -134,6 +154,7 @@ impl Build {
             digest: Self::digest(&binary).unwrap_or_default(),
             binary: binary.to_string_lossy().into_owned(),
             pid: std::process::id(),
+            handoff: true,
         }
     }
     /// Identifies a file by its bytes (FNV-1a and length), so a re-signed or copied
@@ -281,6 +302,7 @@ mod tests {
             binary: binary.to_string_lossy().into_owned(),
             digest: Build::digest(&binary).unwrap(),
             pid: 1,
+            handoff: true,
         };
         assert!(!started.stale(&dir.join("absent")));
         // A copy with other timestamps (re-signed, touched) is the same build.

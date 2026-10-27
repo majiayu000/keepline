@@ -461,6 +461,72 @@ pub fn serve_with_options(
     roots: Vec<(Agent, std::path::PathBuf)>,
     recent_days: u64,
 ) -> io::Result<()> {
+    serve_runtime(root, roots, recent_days, false)
+}
+/// Starts by taking every running terminal over from the host already serving `root`,
+/// which then exits; its shells and Agents keep running under this host.
+pub fn serve_taking_over(
+    root: &Path,
+    roots: Vec<(Agent, std::path::PathBuf)>,
+    recent_days: u64,
+) -> io::Result<()> {
+    serve_runtime(root, roots, recent_days, true)
+}
+/// A terminal received from the previous host.
+struct Taken {
+    handed: Handed,
+    snapshot: Vec<u8>,
+    master: File,
+}
+fn take_over(root: &Path) -> io::Result<Vec<Taken>> {
+    let mut stream = UnixStream::connect(root.join("workbench.sock"))?;
+    stream.set_read_timeout(Some(Duration::from_secs(15)))?;
+    send(&mut stream, CONTROL, &Request::Hello { major: MAJOR })?;
+    match receive::<Reply>(&mut stream)? {
+        Reply::Hello { major: MAJOR, .. } => (),
+        other => return Err(io::Error::other(format!("old host refused: {other:?}"))),
+    }
+    send(&mut stream, CONTROL, &Request::Handoff)?;
+    // A host from before handoffs drops the connection at the unknown request.
+    let terminals = match receive::<Reply>(&mut stream) {
+        Ok(Reply::Handoff { terminals }) => terminals,
+        other => {
+            return Err(io::Error::other(format!(
+                "the running host cannot hand its terminals over: {other:?}"
+            )))
+        }
+    };
+    let mut snapshots = vec![];
+    for _ in &terminals {
+        let mut snapshot = vec![];
+        loop {
+            match read_frame(&mut stream)? {
+                (SNAPSHOT, bytes) => snapshot.extend(bytes),
+                (READY, _) => break,
+                (kind, _) => return Err(io::Error::other(format!("unexpected frame {kind}"))),
+            }
+        }
+        snapshots.push(snapshot);
+    }
+    let fds = crate::handoff::recv_fds(&stream, terminals.len())?;
+    write_frame(&mut stream, ACK, HANDOFF_TAKEN)?;
+    Ok(terminals
+        .into_iter()
+        .zip(snapshots)
+        .zip(fds)
+        .map(|((handed, snapshot), fd)| Taken {
+            handed,
+            snapshot,
+            master: File::from(fd),
+        })
+        .collect())
+}
+fn serve_runtime(
+    root: &Path,
+    roots: Vec<(Agent, std::path::PathBuf)>,
+    recent_days: u64,
+    takeover: bool,
+) -> io::Result<()> {
     std::sync::LazyLock::force(&BUILD);
     match fs::DirBuilder::new().mode(0o700).create(root) {
         Ok(()) => (),
@@ -477,6 +543,7 @@ pub fn serve_with_options(
             "runtime must be an owned, non-symlink 0700 directory",
         ));
     }
+    let taken = if takeover { take_over(root)? } else { vec![] };
     let instance_lock = OpenOptions::new()
         .read(true)
         .write(true)
@@ -485,8 +552,13 @@ pub fn serve_with_options(
         .mode(0o600)
         .custom_flags(libc::O_NOFOLLOW | libc::O_CLOEXEC)
         .open(root.join("host.lock"))?;
-    if unsafe { libc::flock(instance_lock.as_raw_fd(), libc::LOCK_EX | libc::LOCK_NB) } < 0 {
-        return Err(io::Error::other("a daemon already owns this runtime"));
+    // After a handoff the old host exits on its own; wait for it to let go of the runtime.
+    let until = Instant::now() + Duration::from_secs(if takeover { 10 } else { 0 });
+    while unsafe { libc::flock(instance_lock.as_raw_fd(), libc::LOCK_EX | libc::LOCK_NB) } < 0 {
+        if Instant::now() >= until {
+            return Err(io::Error::other("a daemon already owns this runtime"));
+        }
+        thread::sleep(Duration::from_millis(20));
     }
     let socket = root.join("workbench.sock");
     match fs::symlink_metadata(&socket) {
@@ -501,7 +573,8 @@ pub fn serve_with_options(
         Err(e) if e.kind() == io::ErrorKind::NotFound => (),
         Err(e) => return Err(e),
     }
-    let (store, mut workspace) = Store::open(root)?;
+    let kept = taken.iter().map(|t| t.handed.id.clone()).collect();
+    let (store, mut workspace) = Store::open_keeping(root, &kept)?;
     let mut index = crate::log_index::Index::open(root, roots)?;
     index.recent_days = recent_days;
     for s in &workspace.agent_sessions {
@@ -535,6 +608,45 @@ pub fn serve_with_options(
             }
         }
     })?);
+    for t in taken {
+        let mut vt = Vt::restore(&t.snapshot)?;
+        let replies = Arc::new(Mutex::new(Vec::new()));
+        let out = Arc::clone(&replies);
+        vt.on_reply(move |bytes| {
+            if let Ok(mut out) = out.lock() {
+                out.extend_from_slice(bytes);
+            }
+        })?;
+        let cell = CellPixels::default();
+        cell.set(t.handed.cell.0, t.handed.cell.1);
+        vt.answer_queries(cell.clone())?;
+        let reader = t.master.try_clone()?;
+        let mut guard = lock(&host)?;
+        run_live(
+            &mut guard,
+            &host,
+            t.handed.id,
+            Live {
+                vt,
+                master: t.master,
+                cols: t.handed.cols,
+                rows: t.handed.rows,
+                pid: t.handed.pid,
+                owner: None,
+                subscribers: HashMap::new(),
+                exited: false,
+                drained: false,
+                status: None,
+                exit_code: None,
+                title: t.handed.title,
+                cell,
+                input_at: None,
+            },
+            reader,
+            replies,
+            Reaper::Pid(t.handed.pid),
+        );
+    }
     start_deadlines(&host)?;
     start_subscription(Arc::clone(&host), index);
     // bind(2) creates the pathname before listen(2) makes it connectable. Under
@@ -1266,6 +1378,9 @@ fn serve_client(mut stream: UnixStream, host: Shared, connection: u64) -> io::Re
         if matches!(request, Request::WatchRecognition) {
             return watch_recognition(stream, host, connection);
         }
+        if matches!(request, Request::Handoff) {
+            return hand_over(stream, &host);
+        }
         if let Request::Attach { id, takeover } = request {
             let terminal = lock(&host)?.terminals.get(&id).cloned();
             match terminal {
@@ -1283,6 +1398,59 @@ fn serve_client(mut stream: UnixStream, host: Shared, connection: u64) -> io::Re
         send(&mut stream, CONTROL, &reply)?;
     }
 }
+
+/// A newer host takes over: every running terminal goes to it as a snapshot plus its PTY
+/// descriptor, and this host exits without signalling the programs. Global and terminal
+/// locks stay held to the end, so no output is fed, no state is committed and no
+/// terminal is started after the snapshots are taken.
+fn hand_over(mut stream: UnixStream, shared: &Shared) -> io::Result<()> {
+    let host = lock(shared)?;
+    let mut held = vec![];
+    for (id, terminal) in &host.terminals {
+        let live = lock(terminal)?;
+        if !live.exited {
+            held.push((id.clone(), live));
+        }
+    }
+    let terminals: Vec<_> = held
+        .iter()
+        .map(|(id, live)| Handed {
+            id: id.clone(),
+            pid: live.pid,
+            cols: live.cols,
+            rows: live.rows,
+            title: live.title.clone(),
+            cell: live.cell.get(),
+        })
+        .collect();
+    stream.set_write_timeout(Some(Duration::from_secs(10)))?;
+    send(&mut stream, CONTROL, &Reply::Handoff { terminals })?;
+    for (_, live) in &mut held {
+        for chunk in live.vt.snapshot()?.chunks(MAX_FRAME - 1) {
+            write_frame(&mut stream, SNAPSHOT, chunk)?;
+        }
+        write_frame(&mut stream, READY, &[])?;
+    }
+    let fds: Vec<_> = held
+        .iter()
+        .map(|(_, live)| live.master.as_raw_fd())
+        .collect();
+    crate::handoff::send_fds(&stream, &fds)?;
+    // Only a confirmed takeover lets this host go: closing our copies before the new host
+    // holds its own would hang up every terminal. Anything else keeps serving.
+    stream.set_read_timeout(Some(Duration::from_secs(10)))?;
+    match read_frame(&mut stream) {
+        Ok((ACK, taken)) if taken == HANDOFF_TAKEN => {
+            eprintln!("handed {} terminals to a newer host; exiting", fds.len());
+            std::process::exit(0);
+        }
+        other => Err(io::Error::other(format!(
+            "handoff not confirmed, still serving: {other:?}"
+        ))),
+    }
+}
+/// What a new host answers once it holds every handed-over descriptor.
+const HANDOFF_TAKEN: &[u8] = b"taken";
 
 fn dispatch(shared: &Shared, request: Request) -> io::Result<Reply> {
     match request {
@@ -1545,50 +1713,30 @@ fn dispatch(shared: &Shared, request: Request) -> io::Result<Reply> {
                 let _ = child.wait();
                 return Err(e);
             }
-            let terminal = Arc::new(Mutex::new(Live {
-                vt,
-                master,
-                cols,
-                rows,
-                pid,
-                owner: None,
-                subscribers: HashMap::new(),
-                exited: false,
-                drained: false,
-                status: None,
-                exit_code: None,
-                title: String::new(),
-                cell,
-                input_at: None,
-            }));
-            host.terminals.insert(id.clone(), Arc::clone(&terminal));
-            let shared_read = Arc::clone(shared);
-            let terminal_read = Arc::clone(&terminal);
-            let id_read = id.clone();
-            thread::spawn(move || {
-                if let Err(e) = pump(reader, &terminal_read, replies, &shared_read, &id_read) {
-                    eprintln!("terminal {id_read}: {e}");
-                }
-                if let Ok(mut live) = lock(&terminal_read) {
-                    live.drained = true;
-                }
-                if let Err(e) = record_exit(&shared_read, &terminal_read, &id_read) {
-                    eprintln!("persist terminal {id_read}: {e}");
-                }
-            });
-            let shared_wait = Arc::clone(shared);
-            thread::spawn(move || match child.wait() {
-                Ok(status) => {
-                    if let Ok(mut live) = lock(&terminal) {
-                        live.exited = true;
-                        live.exit_code = status.code();
-                    }
-                    if let Err(e) = record_exit(&shared_wait, &terminal, &id) {
-                        eprintln!("persist exit {id}: {e}");
-                    }
-                }
-                Err(error) => eprintln!("wait terminal {id}: {error}"),
-            });
+            run_live(
+                &mut host,
+                shared,
+                id,
+                Live {
+                    vt,
+                    master,
+                    cols,
+                    rows,
+                    pid,
+                    owner: None,
+                    subscribers: HashMap::new(),
+                    exited: false,
+                    drained: false,
+                    status: None,
+                    exit_code: None,
+                    title: String::new(),
+                    cell,
+                    input_at: None,
+                },
+                reader,
+                replies,
+                Reaper::Child(child),
+            );
             Ok(Reply::Workspace(host.snapshot()))
         }
         Request::TerminalCwd { id } => {
@@ -1727,6 +1875,76 @@ fn record_exit(host: &Shared, terminal: &LiveTerminal, id: &str) -> io::Result<(
     }
     live.broadcast(STATUS, status);
     Ok(())
+}
+
+/// How a terminal's process end is seen: a child this host spawned, or, after a handoff,
+/// a process the previous host started, watched by pid (its exit code is then unknown).
+enum Reaper {
+    Child(std::process::Child),
+    Pid(u32),
+}
+/// Registers a running terminal and starts reading its output and waiting for its end.
+fn run_live(
+    host: &mut Host,
+    shared: &Shared,
+    id: String,
+    live: Live,
+    reader: File,
+    replies: Arc<Mutex<Vec<u8>>>,
+    reaper: Reaper,
+) {
+    let terminal = Arc::new(Mutex::new(live));
+    host.terminals.insert(id.clone(), Arc::clone(&terminal));
+    let shared_read = Arc::clone(shared);
+    let terminal_read = Arc::clone(&terminal);
+    let id_read = id.clone();
+    thread::spawn(move || {
+        if let Err(e) = pump(reader, &terminal_read, replies, &shared_read, &id_read) {
+            eprintln!("terminal {id_read}: {e}");
+        }
+        if let Ok(mut live) = lock(&terminal_read) {
+            live.drained = true;
+        }
+        if let Err(e) = record_exit(&shared_read, &terminal_read, &id_read) {
+            eprintln!("persist terminal {id_read}: {e}");
+        }
+    });
+    let shared_wait = Arc::clone(shared);
+    let ended = move |code: Option<i32>| {
+        if let Ok(mut live) = lock(&terminal) {
+            live.exited = true;
+            live.exit_code = code;
+        }
+        if let Err(e) = record_exit(&shared_wait, &terminal, &id) {
+            eprintln!("persist exit {id}: {e}");
+        }
+    };
+    match reaper {
+        Reaper::Child(mut child) => {
+            thread::spawn(move || match child.wait() {
+                Ok(status) => ended(status.code()),
+                Err(error) => eprintln!("wait terminal: {error}"),
+            });
+        }
+        Reaper::Pid(pid) => {
+            let ended = Arc::new(Mutex::new(Some(ended)));
+            let fire = Arc::clone(&ended);
+            let watch = crate::process_exit::ExitWatch::new(move |_| {
+                if let Some(ended) = fire.lock().ok().and_then(|mut e| e.take()) {
+                    ended(None);
+                }
+            });
+            match watch.and_then(|w| w.watch(pid)) {
+                Ok(true) => (),
+                // Gone before the watch began, or no watch at all: settle it now.
+                _ => {
+                    if let Some(ended) = ended.lock().ok().and_then(|mut e| e.take()) {
+                        ended(None);
+                    }
+                }
+            }
+        }
+    }
 }
 
 fn pump(
