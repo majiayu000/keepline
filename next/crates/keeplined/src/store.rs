@@ -18,6 +18,14 @@ fn enum_value<T: serde::de::DeserializeOwned>(name: String) -> io::Result<T> {
 
 impl Store {
     pub fn open(root: &Path) -> io::Result<(Self, Workspace)> {
+        Self::open_keeping(root, &Default::default())
+    }
+    /// Like `open`, except that terminals in `kept` were handed over alive by the previous
+    /// host: they stay running and keep their current Agent.
+    pub fn open_keeping(
+        root: &Path,
+        kept: &std::collections::HashSet<String>,
+    ) -> io::Result<(Self, Workspace)> {
         let db = Connection::open(root.join("workbench.sqlite")).map_err(db_error)?;
         db.busy_timeout(std::time::Duration::from_secs(5))
             .map_err(db_error)?;
@@ -73,16 +81,20 @@ impl Store {
         let mut workspace = store.load()?;
         let before = workspace.clone();
         for terminal in &mut workspace.terminals {
-            if matches!(
-                terminal.state,
-                ProcessState::Starting | ProcessState::Running | ProcessState::Draining
-            ) {
+            if !kept.contains(&terminal.id)
+                && matches!(
+                    terminal.state,
+                    ProcessState::Starting | ProcessState::Running | ProcessState::Draining
+                )
+            {
                 terminal.state = ProcessState::Interrupted;
                 terminal.error = Some("后台已重启，原 PTY 不可重新连接；可用原 CLI 恢复".into());
             }
         }
         for session in &mut workspace.agent_sessions {
-            session.current = false;
+            if !session.terminal.as_ref().is_some_and(|t| kept.contains(t)) {
+                session.current = false;
+            }
         }
         workspace.revision += 1;
         store.save(&before, &workspace)?;
