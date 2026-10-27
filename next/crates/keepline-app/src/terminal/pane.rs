@@ -16,7 +16,13 @@ use std::{ops::Range, path::Path, sync::atomic::Ordering, time::Instant};
 
 pub struct Pane {
     terminal: String,
+    socket: std::path::PathBuf,
+    /// Wakes this pane on terminal output; every connection it opens shares it.
+    wake: futures::channel::mpsc::UnboundedSender<()>,
     connection: Connection,
+    /// A dropped stream is being reattached; the delay doubles while it keeps failing.
+    reconnecting: bool,
+    reconnect_delay: u64,
     focus: FocusHandle,
     screen: Screen,
     capture: Option<screen::Capture>,
@@ -112,7 +118,7 @@ impl Pane {
     }
     pub fn new(socket: &Path, id: &str, takeover: bool, cx: &mut Context<Self>) -> Self {
         let (tx, mut rx) = unbounded();
-        let connection = Connection::new(socket, id, takeover, tx);
+        let connection = Connection::new(socket, id, takeover, tx.clone());
         cx.spawn(async move |this, cx| {
             while rx.next().await.is_some() {
                 // Coalesce bursts at 60 Hz; no timer exists when the terminal is idle.
@@ -123,6 +129,7 @@ impl Pane {
                 if this
                     .update(cx, |pane, cx| {
                         pane.ring(cx);
+                        pane.recover(cx);
                         cx.notify();
                     })
                     .is_err()
@@ -135,7 +142,11 @@ impl Pane {
         let focus = cx.focus_handle();
         Self {
             terminal: id.into(),
+            socket: socket.to_owned(),
+            wake: tx,
             connection,
+            reconnecting: false,
+            reconnect_delay: 0,
             focus,
             screen: Screen::default(),
             capture: None,
@@ -166,6 +177,48 @@ impl Pane {
             flash: false,
             select_hint: false,
         }
+    }
+    /// Attaches again after the host dropped this pane's stream; the snapshot restores
+    /// the screen, and input works again once the pane owns the terminal.
+    fn recover(&mut self, cx: &mut Context<Self>) {
+        let (dropped, failed, live) =
+            self.connection
+                .state
+                .lock()
+                .map_or((false, false, false), |s| {
+                    (
+                        s.dropped,
+                        s.error.is_some() && !s.ended,
+                        s.vt.is_some() && s.error.is_none(),
+                    )
+                });
+        if live {
+            self.reconnect_delay = 0;
+        }
+        // Once dropped, every failed attempt retries until one restores the screen: an
+        // attempt made during the same burst is dropped again before its snapshot lands.
+        let dropped = dropped || (self.reconnect_delay > 0 && failed);
+        if !dropped || self.reconnecting {
+            return;
+        }
+        self.reconnecting = true;
+        let delay = self.reconnect_delay.max(100);
+        self.reconnect_delay = (delay * 2).min(5000);
+        cx.spawn(async move |this, cx| {
+            cx.background_executor()
+                .timer(std::time::Duration::from_millis(delay))
+                .await;
+            let _ = this.update(cx, |pane, cx| {
+                pane.connection =
+                    Connection::new(&pane.socket, &pane.terminal, false, pane.wake.clone());
+                pane.reconnecting = false;
+                pane.bells_seen = 0;
+                pane.requested_cell = (0, 0);
+                pane.local_error = None;
+                cx.notify();
+            });
+        })
+        .detach();
     }
     fn ring(&mut self, cx: &mut Context<Self>) {
         let rung = self.connection.bells.load(Ordering::Relaxed);
@@ -935,9 +988,16 @@ impl Render for Pane {
                 Err(e) => self.local_error = Some(e.to_string()),
             }
         }
-        let error = self.local_error.clone().or(state.error.clone());
+        // While reattaching, the status line says so; the broken stream's error is noise.
+        let error = self
+            .local_error
+            .clone()
+            .or(state.error.clone())
+            .filter(|_| !state.dropped && self.reconnect_delay == 0);
         let status = if state.ended {
             "进程已退出 · 待核对"
+        } else if state.dropped || self.reconnect_delay > 0 {
+            "连接断开 · 正在重连…"
         } else if state.vt.is_none() {
             "正在恢复终端…"
         } else if state.writable {
