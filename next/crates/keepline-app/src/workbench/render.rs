@@ -124,15 +124,20 @@ impl Render for Workbench {
                     ),
                     |d| d.child(label("正在识别会话…")),
                 )
-                // The host runs older code than this app; restarting it ends every terminal.
+                // The host runs older code than this app. One that can hand over is updated
+                // in place; an older one must be restarted, which ends every terminal.
                 .when(crate::lifecycle::stale_host(), |d| {
                     d.child(
                         button(
                             "restart-host",
-                            if self.restarting {
-                                "正在重启后台…"
-                            } else {
-                                "后台有更新 · 重启"
+                            match (
+                                self.restarting,
+                                crate::lifecycle::stale_build().is_some_and(|b| b.handoff),
+                            ) {
+                                (true, _) => "正在更新后台…",
+                                // Updated in place: every terminal keeps running.
+                                (false, true) => "后台有更新 · 更新",
+                                (false, false) => "后台有更新 · 重启",
                             },
                         )
                         .text_color(T::color(T::SECONDARY))
