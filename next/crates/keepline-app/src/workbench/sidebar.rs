@@ -137,7 +137,10 @@ impl Workbench {
                     && session_space(&self.workspace, s) == Some(self.nav.space.as_str())
             })
             .collect();
-        let closed = in_space.iter().filter(|(_, s)| !self.session_open(s)).count();
+        let closed = in_space
+            .iter()
+            .filter(|(_, s)| !self.session_open(s))
+            .count();
         let mut sessions: Vec<_> = in_space
             .into_iter()
             .filter(|(_, s)| self.session_open(s))
@@ -235,16 +238,19 @@ impl Workbench {
         }
         if closed > 0 {
             sidebar = sidebar.child(
-                button("sidebar-closed-sessions", format!("已关闭 {closed} 个 · 在鸟瞰里恢复"))
-                    .border_0()
-                    .justify_start()
-                    .text_size(px(T::META))
-                    .text_color(T::color(T::MUTED))
-                    .on_click(cx.listener(|this, _, _, cx| {
-                        this.nav.overview = true;
-                        this.sync_panes(cx);
-                        this.request(Request::Workspace, cx);
-                    })),
+                button(
+                    "sidebar-closed-sessions",
+                    format!("已关闭 {closed} 个 · 在鸟瞰里恢复"),
+                )
+                .border_0()
+                .justify_start()
+                .text_size(px(T::META))
+                .text_color(T::color(T::MUTED))
+                .on_click(cx.listener(|this, _, _, cx| {
+                    this.nav.overview = true;
+                    this.sync_panes(cx);
+                    this.request(Request::Workspace, cx);
+                })),
             );
         }
         let todo_count = self

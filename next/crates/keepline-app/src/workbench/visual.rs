@@ -266,7 +266,12 @@ impl Workbench {
     #[cfg(feature = "visual-test")]
     pub fn visual_shown_pane(&self) -> Entity<Pane> {
         let tab = self.nav.tab.as_ref().expect("a shown tab");
-        let id = self.workspace.tab_terminals(tab).first().cloned().expect("a pane");
+        let id = self
+            .workspace
+            .tab_terminals(tab)
+            .first()
+            .cloned()
+            .expect("a pane");
         self.layout.panes[&id].clone()
     }
     #[cfg(feature = "visual-test")]
@@ -309,6 +314,16 @@ impl Workbench {
                 if let Some(pane) = self.layout.panes.get("p0") {
                     window.focus(&pane.focus_handle(cx), cx);
                 }
+            }
+            // The close dialog over a waiting Agent, and over one whose turn is under way.
+            "CloseIdle" | "CloseWorking" => {
+                if name == "CloseWorking"
+                    && let Some(s) = self.workspace.current_agent("p0").map(|s| s.id.clone())
+                    && let Some(c) = self.workspace.content.get_mut(&s)
+                {
+                    c.turn = keepline_core::content::Turn::Running;
+                }
+                self.layout.confirm_close = Some(Closing::Pane("p0".into()));
             }
             "HereMore" => {
                 self.overview.here = self.workspace.current_agent("p0").map(|s| s.id.clone());

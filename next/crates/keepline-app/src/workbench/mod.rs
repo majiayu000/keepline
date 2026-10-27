@@ -457,7 +457,8 @@ impl Workbench {
         }
     }
     /// Terminals of `closing` with an Agent still running in them.
-    pub(super) fn running_agents(&self, closing: &Closing) -> Vec<String> {
+    /// Each live Agent the close would stop: its title and what it is doing now.
+    pub(super) fn running_agents(&self, closing: &Closing) -> Vec<(String, Option<Phase>)> {
         let ids = match closing {
             Closing::Tab(id) => self.workspace.tab_terminals(id),
             Closing::Pane(id) => vec![id.clone()],
@@ -471,12 +472,14 @@ impl Workbench {
             })
             .filter_map(|id| self.workspace.current_agent(&id))
             .map(|s| {
-                self.workspace
+                let title = self
+                    .workspace
                     .content
                     .get(&s.id)
                     .map(|c| c.title.clone())
                     .filter(|t| !t.trim().is_empty())
-                    .unwrap_or_else(|| s.runtime.executable().to_owned())
+                    .unwrap_or_else(|| s.runtime.executable().to_owned());
+                (title, live_phase(&self.workspace, s))
             })
             .collect()
     }
