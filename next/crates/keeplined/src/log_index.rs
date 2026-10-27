@@ -298,6 +298,21 @@ impl Index {
             .join("\n\n追加要求："))
     }
     /// The newest user message only; screen association compares it, never stores it.
+    /// The newest prompt and when it was logged, seconds since the epoch.
+    pub fn latest_user(&self, path: &str) -> io::Result<Option<(String, u64)>> {
+        let mut q = self
+            .db
+            .prepare_cached("SELECT text,at FROM session_records WHERE path=?1 AND kind='user' ORDER BY at DESC,offset DESC,ordinal DESC LIMIT 1")
+            .map_err(err)?;
+        let mut rows = q.query([path]).map_err(err)?;
+        Ok(match rows.next().map_err(err)? {
+            Some(row) => Some((
+                row.get(0).map_err(err)?,
+                u64::try_from(row.get::<_, i64>(1).map_err(err)?).unwrap_or(0),
+            )),
+            None => None,
+        })
+    }
     pub fn latest_user_text(&self, path: &str) -> io::Result<Option<String>> {
         let mut q = self
             .db
