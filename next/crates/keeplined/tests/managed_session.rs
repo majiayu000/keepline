@@ -157,6 +157,91 @@ fn cpu_seconds(ticks: u64) -> f64 {
     ticks as f64 * base.numer as f64 / base.denom as f64 / 1e9
 }
 
+/// Reads a terminal stream until its screen shows `marker`.
+fn read_until(stream: &mut UnixStream, vt: &mut Vt, marker: &str) {
+    let until = Instant::now() + Duration::from_secs(10);
+    while !vt.tail_text(24).unwrap().contains(marker) {
+        assert!(Instant::now() < until, "{marker} never appeared");
+        let (kind, bytes) = read_frame(stream).unwrap();
+        if kind == OUTPUT {
+            vt.feed(&bytes);
+        }
+    }
+}
+#[test]
+fn a_newer_host_takes_running_terminals_over_without_ending_them() {
+    let mut h = Host::start();
+    h.setup();
+    h.call(h.launch("t", "stty -echo; cat")).unwrap();
+    let (mut first, mut vt, writable) = h.attach("t", false);
+    assert!(writable);
+    let input = |stream: &mut UnixStream, text: &str| {
+        send(
+            stream,
+            CONTROL,
+            &Request::Input {
+                bytes: text.as_bytes().to_vec(),
+                lossy: false,
+            },
+        )
+        .unwrap();
+    };
+    input(&mut first, "before-handoff\n");
+    read_until(&mut first, &mut vt, "before-handoff");
+    let pid = h
+        .workspace()
+        .terminals
+        .iter()
+        .find(|t| t.id == "t")
+        .and_then(|t| t.pid)
+        .unwrap();
+    let mut newer = fixture_command(&h.root)
+        .env("KEEPLINE_FIXTURE_TAKEOVER", "1")
+        .stdout(Stdio::null())
+        .stderr(Stdio::inherit())
+        .spawn()
+        .unwrap();
+    // The old host hands over and exits on its own.
+    let until = Instant::now() + Duration::from_secs(15);
+    let status = loop {
+        if let Some(status) = h.child.try_wait().unwrap() {
+            break status;
+        }
+        assert!(Instant::now() < until, "the old host never exited");
+        std::thread::sleep(Duration::from_millis(20));
+    };
+    assert!(status.success());
+    std::mem::swap(&mut h.child, &mut newer);
+    let until = Instant::now() + Duration::from_secs(15);
+    while h.call(Request::Workspace).is_err() {
+        assert!(Instant::now() < until, "the new host never answered");
+        std::thread::sleep(Duration::from_millis(20));
+    }
+    let w = h.workspace();
+    let t = w.terminals.iter().find(|t| t.id == "t").unwrap();
+    assert_eq!(t.state, ProcessState::Running);
+    assert_eq!(t.pid, Some(pid));
+    assert_eq!(
+        unsafe { libc::kill(pid as i32, 0) },
+        0,
+        "the shell survived"
+    );
+    // The screen came along, and the same program still answers.
+    let (mut second, mut vt, writable) = h.attach("t", false);
+    assert!(writable);
+    assert!(vt.tail_text(24).unwrap().contains("before-handoff"));
+    input(&mut second, "after-handoff\n");
+    read_until(&mut second, &mut vt, "after-handoff");
+    // Not this host's child any more: its end is still seen, by pid.
+    unsafe { libc::kill(pid as i32, libc::SIGKILL) };
+    wait_for(&h, "the handed-over terminal's exit is recorded", |w| {
+        w.terminals
+            .iter()
+            .any(|t| t.id == "t" && t.state == ProcessState::Exited)
+    });
+    drop(newer);
+}
+
 #[test]
 fn a_viewer_that_falls_behind_a_burst_is_resynced_not_cut() {
     let h = Host::start();
@@ -911,14 +996,15 @@ fn daemon_fixture() {
         std::env::var_os("KEEPLINE_FIXTURE_RUNTIME").expect("fixture subprocess only"),
     );
     // Roots do not need to exist; production must also handle an uninstalled CLI.
-    keeplined::serve_with_roots(
-        &root,
-        vec![
-            (Agent::Codex, root.join("logs/codex")),
-            (Agent::Claude, root.join("logs/claude")),
-        ],
-    )
-    .unwrap();
+    let roots = vec![
+        (Agent::Codex, root.join("logs/codex")),
+        (Agent::Claude, root.join("logs/claude")),
+    ];
+    if std::env::var_os("KEEPLINE_FIXTURE_TAKEOVER").is_some() {
+        keeplined::serve_taking_over(&root, roots, 7).unwrap();
+    } else {
+        keeplined::serve_with_roots(&root, roots).unwrap();
+    }
 }
 
 #[test]
