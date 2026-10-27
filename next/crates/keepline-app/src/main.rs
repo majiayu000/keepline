@@ -15,12 +15,9 @@ use gpui::{
     App, AppContext, Bounds, TitlebarOptions, WindowBounds, WindowOptions, point, px, size,
 };
 use keepline_core::{model::*, protocol::*};
-use std::os::unix::{fs::DirBuilderExt, process::CommandExt};
 use std::{
     io,
     path::{Path, PathBuf},
-    process::{Command, Stdio},
-    time::{Duration, Instant},
 };
 
 fn ensure_host(root: &Path) -> io::Result<()> {
@@ -28,6 +25,12 @@ fn ensure_host(root: &Path) -> io::Result<()> {
         let Some(stale) = lifecycle::stale_build() else {
             return Ok(());
         };
+        // A host that can hand its terminals over is updated at once, terminals and all.
+        if stale.handoff {
+            lifecycle::spawn_host(root, true)?;
+            lifecycle::forget_stale_host();
+            return Ok(());
+        }
         // An older host with no terminal running is swapped for this app's own at once;
         // one with terminals waits for the user, since a restart ends them.
         let idle = matches!(
@@ -40,54 +43,7 @@ fn ensure_host(root: &Path) -> io::Result<()> {
         lifecycle::stop_host(root, &stale)?;
         lifecycle::forget_stale_host();
     }
-    if !root.exists() {
-        std::fs::DirBuilder::new()
-            .recursive(true)
-            .mode(0o700)
-            .create(root)?;
-    }
-    let log = std::fs::OpenOptions::new()
-        .create(true)
-        .append(true)
-        .open(root.join("host.log"))?;
-    let daemon = std::env::current_exe()?.with_file_name("keeplined");
-    let mut command = Command::new(daemon);
-    command
-        .args(["serve", "--runtime"])
-        .arg(root)
-        .stdin(Stdio::null())
-        .stdout(Stdio::null())
-        .stderr(log);
-    // SAFETY: setsid is async-signal-safe and detaches the host from this UI process.
-    unsafe {
-        command.pre_exec(|| {
-            if libc::setsid() < 0 {
-                return Err(io::Error::last_os_error());
-            }
-            Ok(())
-        });
-    }
-    let mut child = command.spawn()?;
-    let until = Instant::now() + Duration::from_secs(5);
-    loop {
-        if rpc(&root.join("workbench.sock"), &Request::Workspace).is_ok() {
-            std::thread::spawn(move || {
-                if let Err(e) = child.wait() {
-                    eprintln!("host wait: {e}");
-                }
-            });
-            return Ok(());
-        }
-        if let Some(status) = child.try_wait()? {
-            return Err(io::Error::other(format!(
-                "host exited {status}; see host.log"
-            )));
-        }
-        if Instant::now() >= until {
-            return Err(io::Error::other("后台启动超时，请检查 host.log"));
-        }
-        std::thread::sleep(Duration::from_millis(50));
-    }
+    lifecycle::spawn_host(root, false)
 }
 
 gpui::actions!(keepline, [Quit, ShowMenuPanel]);

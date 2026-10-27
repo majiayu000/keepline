@@ -17,6 +17,7 @@ fn enum_value<T: serde::de::DeserializeOwned>(name: String) -> io::Result<T> {
 }
 
 impl Store {
+    #[cfg(test)]
     pub fn open(root: &Path) -> io::Result<(Self, Workspace)> {
         Self::open_keeping(root, &Default::default())
     }

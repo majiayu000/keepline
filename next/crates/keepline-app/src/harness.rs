@@ -3,6 +3,7 @@
 use super::*;
 use crate::terminal::screen;
 use gpui::WindowHandle;
+use std::time::Duration;
 
 /// Runs the evidence script the environment asks for against the opened workbench.
 pub fn start(

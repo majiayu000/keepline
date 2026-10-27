@@ -145,11 +145,92 @@ pub fn stop_host(root: &Path, host: &keepline_core::protocol::Build) -> io::Resu
     }
     Err(io::Error::other("后台没有在 7 秒内退出"))
 }
-/// Stops the stale host, then opens this app again once this process has quit; the
-/// new process starts the current host.
+/// Starts this app's own host for `root` and waits until it serves. With `takeover` it
+/// first takes the running terminals over from the host serving there now, which exits.
+pub fn spawn_host(root: &Path, takeover: bool) -> io::Result<()> {
+    use std::os::unix::{fs::DirBuilderExt, process::CommandExt};
+    if !root.exists() {
+        std::fs::DirBuilder::new()
+            .recursive(true)
+            .mode(0o700)
+            .create(root)?;
+    }
+    let log = std::fs::OpenOptions::new()
+        .create(true)
+        .append(true)
+        .open(root.join("host.log"))?;
+    let daemon = std::env::current_exe()?.with_file_name("keeplined");
+    let digest = keepline_core::protocol::Build::digest(&daemon);
+    let mut command = std::process::Command::new(daemon);
+    command
+        .args(["serve", "--runtime"])
+        .arg(root)
+        .args(takeover.then_some("--takeover"))
+        .stdin(std::process::Stdio::null())
+        .stdout(std::process::Stdio::null())
+        .stderr(log);
+    // SAFETY: setsid is async-signal-safe and detaches the host from this UI process.
+    unsafe {
+        command.pre_exec(|| {
+            if libc::setsid() < 0 {
+                return Err(io::Error::last_os_error());
+            }
+            Ok(())
+        });
+    }
+    let mut child = command.spawn()?;
+    let socket = root.join("workbench.sock");
+    let until = std::time::Instant::now() + Duration::from_secs(if takeover { 20 } else { 5 });
+    loop {
+        // During a takeover the old host still answers; wait for this build's.
+        let serving = if takeover {
+            hello_build(&socket).is_ok_and(|b| Some(&b.digest) == digest.as_ref())
+        } else {
+            keepline_core::protocol::rpc(&socket, &keepline_core::protocol::Request::Workspace)
+                .is_ok()
+        };
+        if serving {
+            std::thread::spawn(move || {
+                if let Err(e) = child.wait() {
+                    eprintln!("host wait: {e}");
+                }
+            });
+            return Ok(());
+        }
+        if let Some(status) = child.try_wait()? {
+            return Err(io::Error::other(if takeover {
+                format!("新后台没能接手终端（{status}），旧后台照常运行；详情见 host.log")
+            } else {
+                format!("host exited {status}; see host.log")
+            }));
+        }
+        if std::time::Instant::now() >= until {
+            return Err(io::Error::other("后台启动超时，请检查 host.log"));
+        }
+        std::thread::sleep(Duration::from_millis(50));
+    }
+}
+/// The build a host reports when greeted.
+fn hello_build(socket: &Path) -> io::Result<keepline_core::protocol::Build> {
+    use keepline_core::protocol::*;
+    let mut stream = UnixStream::connect(socket)?;
+    stream.set_read_timeout(Some(Duration::from_secs(2)))?;
+    send(&mut stream, CONTROL, &Request::Hello { major: MAJOR })?;
+    match receive::<Reply>(&mut stream)? {
+        Reply::Hello { build, .. } => Ok(build),
+        other => Err(io::Error::other(format!("{other:?}"))),
+    }
+}
+/// Replaces the stale host, then opens this app again once this process has quit; the
+/// new process connects to the current host. A host that can hand over keeps every
+/// terminal running; an older one is stopped and the new process starts a fresh host.
 pub fn restart_host(root: &Path) -> io::Result<()> {
     let host = stale_build().ok_or_else(|| io::Error::other("后台已是最新"))?;
-    stop_host(root, &host)?;
+    if host.handoff {
+        spawn_host(root, true)?;
+    } else {
+        stop_host(root, &host)?;
+    }
     let exe = std::env::current_exe()?;
     std::process::Command::new("/bin/sh")
         .arg("-c")
