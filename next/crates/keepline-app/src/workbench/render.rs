@@ -271,18 +271,6 @@ impl Render for Workbench {
                     .border_0()
                     .text_color(T::color(T::LINK))
                     .on_click(cx.listener(|this, _, _, cx| this.launch(false, None, cx))),
-            )
-            .child(div().flex_1())
-            .child(
-                button("close-tab", "关闭标签")
-                    .flex_shrink_0()
-                    .border_0()
-                    .text_size(px(T::META))
-                    .on_click(cx.listener(|this, _, _, cx| {
-                        if let Some(id) = this.nav.tab.clone() {
-                            this.close_tab(&id, cx);
-                        }
-                    })),
             );
         let mut main = div()
             .flex_1()
