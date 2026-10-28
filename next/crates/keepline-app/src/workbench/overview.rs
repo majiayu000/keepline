@@ -18,8 +18,64 @@ pub(super) struct OverviewState {
     pub(super) show_running: bool,
     pub(super) show_hidden: bool,
     pub(super) card_menu: Option<String>,
+    /// Opened by coming back after a while, not by the user: titled 「欢迎回来」.
+    pub(super) welcome: bool,
+    /// Holds keyboard focus while the overview shows, so Esc returns to the panes.
+    pub(super) focus: gpui::FocusHandle,
+    /// Where the top bar's toggle was drawn, for native click evidence.
+    #[cfg(feature = "visual-test")]
+    pub(super) toggle_at: Option<gpui::Bounds<gpui::Pixels>>,
 }
 impl Workbench {
+    /// Swaps the panes for the overview in the same window: top bar, sidebar and tabs stay.
+    pub(super) fn show_overview(&mut self, cx: &mut Context<Self>) {
+        self.overview.closed_only = false;
+        self.overview.welcome = false;
+        self.overview.cleanup.clear();
+        self.nav.overview = true;
+        self.nav.task_detail = None;
+        self.nav.pending_focus = true;
+        self.sync_panes(cx);
+        self.request(Request::Workspace, cx);
+    }
+    /// Notes where the toggle is drawn so native evidence can press the real button.
+    #[cfg(feature = "visual-test")]
+    pub(super) fn record_toggle(
+        &self,
+        button: gpui::Stateful<gpui::Div>,
+        cx: &Context<Self>,
+    ) -> gpui::Stateful<gpui::Div> {
+        let entity = cx.entity();
+        button.relative().child(
+            gpui::canvas(
+                |_, _, _| (),
+                move |bounds, _, _, cx| {
+                    entity.update(cx, |this, _| this.overview.toggle_at = Some(bounds));
+                },
+            )
+            .absolute()
+            .size_full(),
+        )
+    }
+    #[cfg(not(feature = "visual-test"))]
+    pub(super) fn record_toggle(
+        &self,
+        button: gpui::Stateful<gpui::Div>,
+        _: &Context<Self>,
+    ) -> gpui::Stateful<gpui::Div> {
+        button
+    }
+    /// Back to the tab that was in view, its focused pane taking the keyboard again.
+    pub(super) fn leave_overview(&mut self, cx: &mut Context<Self>) {
+        self.overview.closed_only = false;
+        self.overview.welcome = false;
+        self.overview.cleanup.clear();
+        self.overview.card_menu = None;
+        self.nav.overview = false;
+        self.nav.pending_focus = true;
+        self.sync_panes(cx);
+        cx.notify();
+    }
     pub(super) fn overview_view(
         &self,
         window: &Window,
@@ -36,43 +92,32 @@ impl Workbench {
             })
             .collect();
         let closed_only = self.overview.closed_only;
+        // Search sits in the top bar and the way back is the same 「鸟瞰全部」 toggle, the
+        // tab strip or Esc, so the header keeps only what this page is.
         let header = div()
-            .flex()
-            .items_center()
-            .gap(px(T::S16))
             .child(
                 div()
-                    .flex_1()
-                    .child(
-                        div()
-                            .text_size(px(T::TITLE))
-                            .font_weight(gpui::FontWeight::SEMIBOLD)
-                            .child(if closed_only {
-                                "已关闭的会话"
-                            } else {
-                                "欢迎回来"
-                            }),
-                    )
-                    .child(label(if closed_only {
-                        format!(
-                            "{} 个 · 终端已关，对话还在，点卡片在新画面里接着聊",
-                            open.len()
-                        )
+                    .text_size(px(T::TITLE))
+                    .font_weight(gpui::FontWeight::SEMIBOLD)
+                    .child(if closed_only {
+                        "已关闭的会话"
+                    } else if self.overview.welcome {
+                        "欢迎回来"
                     } else {
-                        format!("{} 个会话还没收尾，按要你做什么分好了组", open.len())
-                    })),
+                        "鸟瞰全部"
+                    }),
             )
-            .child(self.search_button(cx))
-            .child(
-                button("back", "← 回到工作区")
-                    .text_color(T::color(T::LINK))
-                    .on_click(cx.listener(|this, _, _, cx| {
-                        this.overview.closed_only = false;
-                        this.nav.overview = false;
-                        this.sync_panes(cx);
-                        cx.notify();
-                    })),
-            );
+            .child(label(if closed_only {
+                format!(
+                    "{} 个 · 终端已关，对话还在，点卡片在新画面里接着聊 · Esc 回到工作区",
+                    open.len()
+                )
+            } else {
+                format!(
+                    "{} 个会话还没收尾，按要你做什么分好了组 · Esc 回到工作区",
+                    open.len()
+                )
+            }));
         let mut view = div()
             .id("overview-scroll")
             .size_full()
@@ -87,7 +132,9 @@ impl Workbench {
             .when_some(self.error.clone(), |d, error| {
                 d.child(div().text_color(Group::Error.colors().1).child(error))
             });
-        let available = f32::from(window.viewport_size().width) - T::OVERVIEW_X * 2.;
+        // The sidebar stays beside the overview.
+        let available =
+            f32::from(window.viewport_size().width) - T::SIDEBAR - T::OVERVIEW_X * 2.;
         let columns = ((available + T::S10) / (T::CARD_MIN + T::S10))
             .floor()
             .max(1.);

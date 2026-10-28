@@ -474,4 +474,40 @@ impl Workbench {
         cx.notify();
         window.refresh();
     }
+    /// The overview toggle's centre, as last drawn.
+    #[cfg(feature = "visual-test")]
+    pub fn visual_toggle_point(&self) -> gpui::Point<gpui::Pixels> {
+        self.overview.toggle_at.expect("toggle drawn").center()
+    }
+    /// Overview shown, the tab in view, the space filter, and who holds the keyboard:
+    /// the overview itself or a pane of the shown tab.
+    #[cfg(feature = "visual-test")]
+    pub fn visual_overview_state(
+        &self,
+        window: &Window,
+        cx: &gpui::App,
+    ) -> (bool, Option<String>, Option<String>, &'static str) {
+        let focus = if self.overview.focus.is_focused(window) {
+            "overview"
+        } else if self
+            .layout
+            .panes
+            .values()
+            .any(|p| p.focus_handle(cx).contains_focused(window, cx))
+        {
+            "pane"
+        } else {
+            "none"
+        };
+        (
+            self.nav.overview,
+            self.nav.tab.clone(),
+            self.overview.filter_space.clone(),
+            focus,
+        )
+    }
+    #[cfg(feature = "visual-test")]
+    pub fn visual_spaces(&self) -> Vec<String> {
+        self.workspace.spaces.iter().map(|s| s.id.clone()).collect()
+    }
 }

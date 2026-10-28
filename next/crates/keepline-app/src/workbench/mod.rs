@@ -179,7 +179,10 @@ impl Workbench {
                 if let Some(left) = this.away.take() {
                     if show_on_return(left, now(), this.workspace.settings.away_minutes) {
                         this.overview.since = left;
+                        this.overview.cleanup.clear();
+                        this.overview.welcome = true;
                         this.nav.overview = true;
+                        this.nav.pending_focus = true;
                         this.sync_panes(cx);
                     }
                     cx.notify();
@@ -228,6 +231,10 @@ impl Workbench {
                 here_more: None,
                 cleanup: vec![],
                 cleanup_index: 0,
+                welcome: overview,
+                focus: cx.focus_handle(),
+                #[cfg(feature = "visual-test")]
+                toggle_at: None,
             },
             tasks: TaskUi {
                 form: None,
