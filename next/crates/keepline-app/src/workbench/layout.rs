@@ -16,6 +16,8 @@ pub(super) struct LayoutState {
     pub(super) icon_menu: Option<gpui::Point<gpui::Pixels>>,
     /// A close that would stop a running Agent, waiting for the user to confirm it.
     pub(super) confirm_close: Option<Closing>,
+    /// Interrupted terminals already reopened in place once; a failed try keeps the button.
+    pub(super) reopened: HashSet<String>,
 }
 /// The host's note on a Codex it sees but cannot read, in the user's words.
 fn unread_codex(hint: &str) -> String {

@@ -96,6 +96,17 @@ fn home_relative(path: &str) -> String {
         _ => path.to_owned(),
     }
 }
+/// The first shown pane whose terminal the host lost and that has not been tried yet.
+pub(super) fn reopen_candidate(
+    w: &Workspace,
+    shown: &[String],
+    tried: &HashSet<String>,
+) -> Option<String> {
+    shown
+        .iter()
+        .find(|id| interrupted(w, id) && !tried.contains(*id))
+        .cloned()
+}
 fn outcome_label(outcome: &Outcome) -> String {
     match outcome {
         Outcome::Open => "未结束".into(),
@@ -124,6 +135,7 @@ mod render;
 mod sessions;
 use sessions::{Attention, Resuming};
 mod sidebar;
+use sidebar::closed_recently;
 mod tabs;
 mod tasks;
 use tasks::TaskUi;
@@ -257,6 +269,7 @@ impl Workbench {
                 icon_menu: None,
                 confirm_close: None,
                 renaming_tab: None,
+                reopened: HashSet::new(),
             },
             attention: Attention {
                 phases: HashMap::new(),
@@ -292,6 +305,15 @@ impl Workbench {
         } else {
             ids
         };
+        // A shell the host lost on restart comes back in place as soon as its tab shows.
+        if !self.store.busy()
+            && self.resuming.resume.is_none()
+            && self.tasks.chosen_agent.is_none()
+            && let Some(id) = reopen_candidate(&self.workspace, &ids, &self.layout.reopened)
+        {
+            self.layout.reopened.insert(id.clone());
+            self.launch_in_slot(true, None, Some(id), cx);
+        }
         let ids = attachable_ids(&self.workspace, ids);
         if self.nav.focused.as_ref().is_none_or(|id| !ids.contains(id)) {
             self.nav.focused = ids.first().cloned();
