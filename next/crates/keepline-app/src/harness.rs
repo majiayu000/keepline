@@ -484,6 +484,29 @@ pub fn start(
                     assert!(!open, "typing into the pane folds its 你在这里 card");
                     eprintln!("HereTyped: card folded after a keystroke");
                 }
+                if name == "HereClickOut" {
+                    use gpui::InputEvent;
+                    // A press anywhere outside the card puts it away.
+                    cx.update_window(handle.into(), |_, w, a| {
+                        w.refresh();
+                        w.draw(a).clear(a);
+                        w.dispatch_event(
+                            gpui::MouseDownEvent {
+                                button: gpui::MouseButton::Left,
+                                position: gpui::point(px(8.), px(theme::Theme::WINDOW_HEIGHT - 8.)),
+                                modifiers: Default::default(),
+                                click_count: 1,
+                                first_mouse: false,
+                            }
+                            .to_platform_input(),
+                            a,
+                        );
+                    })
+                    .unwrap();
+                    let open = handle.update(cx, |v, _, _| v.visual_here_open()).unwrap();
+                    assert!(!open, "a click outside folds its 你在这里 card");
+                    eprintln!("HereClickOut: card folded after an outside click");
+                }
                 // Starting an Agent and placing the task text takes a few quiet checks.
                 let settle = if name == "TodoStart" { 4 } else { 1 };
                 cx.background_executor()

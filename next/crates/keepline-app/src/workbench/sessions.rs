@@ -151,44 +151,20 @@ impl Workbench {
             .unwrap_or_default();
         let h = card.here();
         let save = session.clone();
+        // Only the body scrolls: the title and × stay put.
         let mut panel = div()
             .id(gpui::SharedString::from(format!(
-                "here-card-{}",
+                "here-body-{}",
                 session.id
             )))
-            .w(px(T::HERE_WIDTH))
-            .max_w_full()
-            .max_h(px(T::HERE_HEIGHT))
+            .flex_1()
+            .min_h_0()
             .overflow_y_scroll()
-            .p(px(T::S16))
-            .rounded(px(T::POPOVER_RADIUS))
-            .bg(T::color(T::POPOVER))
-            .text_color(T::color(T::PRIMARY))
-            .border(px(T::BORDER_WIDTH))
-            .border_color(T::color(T::CONTROL))
-            .shadow_lg()
+            .px(px(T::S16))
+            .pb(px(T::S16))
             .flex()
             .flex_col()
-            .gap(px(T::S12))
-            .on_mouse_down(gpui::MouseButton::Left, |_, _, cx| cx.stop_propagation())
-            .on_click(|_, _, cx| cx.stop_propagation())
-            .child(
-                div()
-                    .flex()
-                    .justify_between()
-                    .items_center()
-                    .child(
-                        div()
-                            .font_weight(gpui::FontWeight::SEMIBOLD)
-                            .child("你在这里"),
-                    )
-                    .child(
-                        button("dismiss-here", "×").on_click(cx.listener(|this, _, _, cx| {
-                            this.overview.here = None;
-                            cx.notify();
-                        })),
-                    ),
-            );
+            .gap(px(T::S12));
         // Only fields that say something: no evidence yet is not news, and the guessed
         // next step was the same few template lines for every session.
         let done = (h.done != keepline_core::content::NO_DONE).then_some(h.done);
@@ -333,7 +309,54 @@ impl Workbench {
                 "结局已记录，Agent 仍在运行；若要停止，请在画面菜单选择停止 Agent。",
             ));
         }
-        panel
+        div()
+            .id(gpui::SharedString::from(format!(
+                "here-card-{}",
+                session.id
+            )))
+            .w(px(T::HERE_WIDTH))
+            .max_w_full()
+            .max_h(px(T::HERE_HEIGHT))
+            .overflow_hidden()
+            .rounded(px(T::POPOVER_RADIUS))
+            .bg(T::color(T::POPOVER))
+            .text_color(T::color(T::PRIMARY))
+            .border(px(T::BORDER_WIDTH))
+            .border_color(T::color(T::CONTROL))
+            .shadow_lg()
+            .flex()
+            .flex_col()
+            .gap(px(T::S12))
+            .on_mouse_down(gpui::MouseButton::Left, |_, _, cx| cx.stop_propagation())
+            .on_click(|_, _, cx| cx.stop_propagation())
+            // A click anywhere else puts it away; the defer form it opened still needs it.
+            .on_mouse_down_out(cx.listener(|this, _, _, cx| {
+                if this.overview.here.is_some() && this.tasks.form.is_none() {
+                    this.overview.here = None;
+                    cx.notify();
+                }
+            }))
+            .child(
+                div()
+                    .flex()
+                    .flex_none()
+                    .justify_between()
+                    .items_center()
+                    .px(px(T::S16))
+                    .pt(px(T::S16))
+                    .child(
+                        div()
+                            .font_weight(gpui::FontWeight::SEMIBOLD)
+                            .child("你在这里"),
+                    )
+                    .child(
+                        button("dismiss-here", "×").on_click(cx.listener(|this, _, _, cx| {
+                            this.overview.here = None;
+                            cx.notify();
+                        })),
+                    ),
+            )
+            .child(panel)
     }
     /// A Keepline terminal ran it and is closed now; it resumes in a new pane.
     pub(super) fn session_closed(&self, s: &AgentSession) -> bool {
