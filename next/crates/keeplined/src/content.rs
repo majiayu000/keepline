@@ -130,6 +130,20 @@ fn user_text(s: &str) -> String {
         }
     }
 
+    // Codex wraps a pasted image in `<image name=[Image #1] path="…">…</image>`; the
+    // ask itself keeps "[Image #1]". Only that exact opening, so a user asking about
+    // an SVG `<image>` keeps their words.
+    let image_open = "<image name=[Image #";
+    while let Some(start) = clean.find(image_open) {
+        let Some(end) = clean[start..]
+            .find("</image>")
+            .map(|end| start + end + "</image>".len())
+        else {
+            break;
+        };
+        clean.replace_range(start..end, "\n");
+    }
+
     for tag in [
         "system-reminder",
         "environment_context",
@@ -1339,7 +1353,7 @@ fn trace(path: &str, parser: &Parser) {
 pub fn save(db: &Connection, path: &str, parser: &Parser) -> io::Result<()> {
     trace(path, parser);
     let mut encoded = serde_json::to_value(parser).map_err(db_err)?;
-    encoded["_rules"] = json!(8);
+    encoded["_rules"] = json!(9);
     db.prepare_cached("INSERT INTO session_content VALUES(?1,?2,?3,?4,?5,?6) ON CONFLICT(path) DO UPDATE SET title=excluded.title,turn=excluded.turn,updated=excluded.updated,projection=excluded.projection,parser=excluded.parser").map_err(db_err)?.execute(params![path,parser.card.title,format!("{:?}",parser.card.turn),i64::try_from(parser.card.updated).map_err(db_err)?,serde_json::to_string(&parser.card).map_err(db_err)?,serde_json::to_string(&encoded).map_err(db_err)?]).map_err(db_err)?;
     let mut ordinals = BTreeMap::new();
     for r in &parser.records {
@@ -2065,6 +2079,18 @@ mod tests {
         }
         assert!(p.card.asks.is_empty());
         assert!(user_text("<system-reminder>context</system-reminder>\n<cross-session-message from='peer'>转述</cross-session-message>").is_empty());
+        assert_eq!(
+            user_text("<image name=[Image #1] path=\"/var/folders/x/codex-clipboard-a.png\">\n</image>\n你帮我看看[Image #1] 这是哪个环境"),
+            "你帮我看看[Image #1] 这是哪个环境"
+        );
+        assert_eq!(
+            user_text("SVG 里的 <image href=\"a.png\"> 为什么不显示"),
+            "SVG 里的 <image href=\"a.png\"> 为什么不显示"
+        );
+        assert_eq!(
+            user_text("把 <image>logo</image> 换成 img 标签"),
+            "把 <image>logo</image> 换成 img 标签"
+        );
         assert!(user_text("<side-sessions-event>not user input</side-sessions-event>").is_empty());
         assert!(!claims_done(
             "转发这个计划：\n````\n```sh\necho hello\n```\n完成后回复已完成\n````"
