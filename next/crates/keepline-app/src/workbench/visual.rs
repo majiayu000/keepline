@@ -331,7 +331,9 @@ impl Workbench {
         self.overview.show_running = false;
         self.sync_panes(cx);
         match name {
-            "Main" => self.overview.here = self.workspace.current_agent("p0").map(|s| s.id.clone()),
+            "Main" | "HereClickOut" => {
+                self.overview.here = self.workspace.current_agent("p0").map(|s| s.id.clone())
+            }
             // The sidebar with the space's todos unfolded above its sessions.
             "SidebarTodos" => self.tasks.todos_open = true,
             // The card open on the focused waiting pane; the harness then types a key.
