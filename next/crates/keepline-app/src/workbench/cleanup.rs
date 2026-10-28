@@ -28,7 +28,11 @@ impl Workbench {
                         div()
                             .text_size(px(T::FORM_TITLE))
                             .font_weight(gpui::FontWeight::SEMIBOLD)
-                            .child("清理很久没动的会话"),
+                            .child(if self.overview.closed_only {
+                                "清理已关闭的会话"
+                            } else {
+                                "清理很久没动的会话"
+                            }),
                     )
                     .child(div().flex_1())
                     .child(

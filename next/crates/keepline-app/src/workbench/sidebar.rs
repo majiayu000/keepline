@@ -24,6 +24,11 @@ pub(super) fn sidebar_rank(g: Group, attention: bool) -> (bool, usize) {
             .unwrap_or(SIDEBAR_ORDER.len()),
     )
 }
+/// A closed session the sidebar still counts: no outcome yet and not gone quiet past
+/// the stale days; older ones wait in the overview's 很久没动.
+pub(super) fn closed_recently(w: &Workspace, s: &AgentSession) -> bool {
+    s.outcome.needs_review(now()) && session_group(w, s) != Group::Stale
+}
 
 impl Workbench {
     pub(super) fn sidebar_view(
@@ -160,7 +165,7 @@ impl Workbench {
             .collect();
         let closed = in_space
             .iter()
-            .filter(|(_, s)| self.session_closed(s) && s.outcome.needs_review(now()))
+            .filter(|(_, s)| self.session_closed(s) && closed_recently(&self.workspace, s))
             .count();
         let mut sessions: Vec<_> = in_space
             .into_iter()

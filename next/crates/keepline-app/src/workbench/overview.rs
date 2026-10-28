@@ -38,6 +38,13 @@ impl Workbench {
         self.sync_panes(cx);
         self.request(Request::Workspace, cx);
     }
+    /// 逐个清理 over these sessions, in order.
+    pub(super) fn start_cleanup(&mut self, queue: Vec<String>, cx: &mut Context<Self>) {
+        self.overview.cleanup = queue;
+        self.overview.cleanup_index = 0;
+        self.overview.here = None;
+        cx.notify();
+    }
     /// Notes where the toggle is drawn so native evidence can press the real button.
     #[cfg(feature = "visual-test")]
     pub(super) fn record_toggle(
@@ -108,9 +115,18 @@ impl Workbench {
                     }),
             )
             .child(label(if closed_only {
+                let quiet = open
+                    .iter()
+                    .filter(|s| !closed_recently(&self.workspace, s))
+                    .count();
                 format!(
-                    "{} 个 · 终端已关，对话还在，点卡片在新画面里接着聊 · Esc 回到工作区",
-                    open.len()
+                    "{} 个 · 终端已关，对话还在，点卡片在新画面里接着聊{} · Esc 回到工作区",
+                    open.len(),
+                    if quiet > 0 {
+                        format!(" · 其中 {quiet} 个很久没动，左栏不再计数")
+                    } else {
+                        String::new()
+                    }
                 )
             } else {
                 format!(
@@ -129,6 +145,17 @@ impl Workbench {
             .py(px(T::S20))
             .child(header)
             .child(self.navigation_filters(cx))
+            // Closed ones pile up: walk them one at a time instead of card menus.
+            .when(closed_only && !open.is_empty(), |d| {
+                let queue: Vec<_> = open.iter().map(|s| s.id.clone()).collect();
+                d.child(
+                    div().flex().child(
+                        button("cleanup-closed", "逐个清理 →").on_click(cx.listener(
+                            move |this, _, _, cx| this.start_cleanup(queue.clone(), cx),
+                        )),
+                    ),
+                )
+            })
             .when_some(self.error.clone(), |d, error| {
                 d.child(div().text_color(Group::Error.colors().1).child(error))
             });
@@ -283,7 +310,7 @@ impl Workbench {
                 if count > 0 {
                     view = view.child(button("cleanup", "逐个清理 →").on_click(cx.listener(
                         |this, _, _, cx| {
-                            this.overview.cleanup = this
+                            let queue = this
                                 .workspace
                                 .agent_sessions
                                 .iter()
@@ -293,9 +320,7 @@ impl Workbench {
                                 })
                                 .map(|s| s.id.clone())
                                 .collect();
-                            this.overview.cleanup_index = 0;
-                            this.overview.here = None;
-                            cx.notify();
+                            this.start_cleanup(queue, cx);
                         },
                     )));
                 }

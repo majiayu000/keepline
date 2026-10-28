@@ -272,3 +272,30 @@ fn a_removed_directory_falls_back_to_one_that_exists() {
         std::env::var("HOME").unwrap()
     );
 }
+#[test]
+fn closed_sessions_past_the_stale_days_leave_the_sidebar_count() {
+    let mut w = fixture();
+    let s = &mut w.agent_sessions[0];
+    s.outcome = Outcome::Open;
+    s.updated = now();
+    assert!(closed_recently(&w, &w.agent_sessions[0]));
+    // Quiet longer than the stale days: still in the overview, no longer counted.
+    w.agent_sessions[0].updated = 1;
+    assert!(!closed_recently(&w, &w.agent_sessions[0]));
+    // Settled ones never count.
+    w.agent_sessions[0].updated = now();
+    w.agent_sessions[0].outcome = Outcome::Completed;
+    assert!(!closed_recently(&w, &w.agent_sessions[0]));
+}
+#[test]
+fn a_shown_interrupted_pane_reopens_once() {
+    let w = fixture();
+    let shown = w.tab_terminals("tab");
+    let mut tried = HashSet::new();
+    assert_eq!(reopen_candidate(&w, &shown, &tried).as_deref(), Some("t1"));
+    // Tried once: a failed launch leaves its reopen button instead of retrying forever.
+    tried.insert("t1".to_owned());
+    assert_eq!(reopen_candidate(&w, &shown, &tried), None);
+    // Only panes in view; another tab's lost shells wait until it shows.
+    assert_eq!(reopen_candidate(&w, &shown[2..], &HashSet::new()), None);
+}
