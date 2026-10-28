@@ -48,7 +48,12 @@ impl Workbench {
             .child(label("空间").px(px(T::S8)).mb(px(T::S4)));
         for space in &self.workspace.spaces {
             let id = space.id.clone();
-            let active = self.nav.space == id;
+            // Over the overview the sidebar's spaces are its space filter.
+            let active = if self.nav.overview {
+                self.overview.filter_space.as_ref() == Some(&id)
+            } else {
+                self.nav.space == id
+            };
             let sessions: Vec<_> = self
                 .workspace
                 .agent_sessions
@@ -112,6 +117,9 @@ impl Workbench {
                                 this.tasks.editing_space = Some(id.clone());
                                 this.show_form(FormKind::Space, window, cx);
                                 return;
+                            }
+                            if this.nav.overview {
+                                this.overview.filter_space = Some(id.clone());
                             }
                             this.nav.space = id.clone();
                             this.nav.tab = this
@@ -255,11 +263,7 @@ impl Workbench {
                 .justify_start()
                 .text_size(px(T::META))
                 .text_color(T::color(T::LINK))
-                .on_click(cx.listener(|this, _, _, cx| {
-                    this.nav.overview = true;
-                    this.sync_panes(cx);
-                    this.request(Request::Workspace, cx);
-                })),
+                .on_click(cx.listener(|this, _, _, cx| this.show_overview(cx))),
             );
         }
         if closed > 0 {
@@ -273,12 +277,10 @@ impl Workbench {
                 .text_size(px(T::META))
                 .text_color(T::color(T::MUTED))
                 .on_click(cx.listener(|this, _, _, cx| {
+                    this.show_overview(cx);
                     this.overview.closed_only = true;
                     this.overview.changed_only = false;
                     this.overview.filter_space = Some(this.nav.space.clone());
-                    this.nav.overview = true;
-                    this.sync_panes(cx);
-                    this.request(Request::Workspace, cx);
                 })),
             );
         }

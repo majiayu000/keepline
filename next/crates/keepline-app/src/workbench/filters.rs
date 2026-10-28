@@ -26,25 +26,20 @@ impl Workbench {
                 cx.notify();
             })),
         );
-        for space in &self.workspace.spaces {
-            let id = space.id.clone();
+        // The sidebar's spaces filter the overview; the row only names and clears that filter.
+        if let Some(space) = self
+            .overview
+            .filter_space
+            .as_ref()
+            .and_then(|id| self.workspace.spaces.iter().find(|s| &s.id == id))
+        {
             row = row.child(
-                button(
-                    gpui::SharedString::from(format!("filter-{id}")),
-                    format!(
-                        "{}{}",
-                        if self.overview.filter_space.as_ref() == Some(&id) {
-                            "● "
-                        } else {
-                            ""
-                        },
-                        space.name
-                    ),
-                )
-                .on_click(cx.listener(move |this, _, _, cx| {
-                    this.overview.filter_space = Some(id.clone());
-                    cx.notify();
-                })),
+                button("filter-space", format!("● {} ×", space.name))
+                    .aria_label(format!("取消只看 {}", space.name))
+                    .on_click(cx.listener(|this, _, _, cx| {
+                        this.overview.filter_space = None;
+                        cx.notify();
+                    })),
             );
         }
         if self.overview.closed_only {
