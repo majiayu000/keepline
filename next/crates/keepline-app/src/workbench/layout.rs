@@ -83,9 +83,11 @@ impl Workbench {
                 .max_by_key(|s| s.updated)
         });
         let group = session.map(|s| session_group(&self.workspace, s));
-        // An Agent's conversation names the pane; otherwise the title the program set.
+        // The conversation's title names the pane, like its tab; its latest reply is
+        // already on screen below, so that line only shows on hover. Without an Agent,
+        // the title the program set.
         let title = session
-            .map(|s| self.session_line(s))
+            .map(|s| self.session_title(s))
             .or_else(|| pane.read(cx).program_title())
             .unwrap_or_else(|| "空终端".into());
         let rang = pane.read(cx).bell;
@@ -160,11 +162,18 @@ impl Workbench {
                     .when(rang, |d| d.child(label("🔔")))
                     .child(
                         div()
+                            .id(gpui::SharedString::from(format!("pane-title-{id}")))
                             .flex_1()
                             .min_w_0()
                             .truncate()
                             .text_size(px(T::MONO_SIZE))
-                            .child(title),
+                            .child(title)
+                            .when_some(session.map(|s| self.session_line(s)), |d, line| {
+                                let line = gpui::SharedString::from(line);
+                                d.tooltip(move |_, cx| {
+                                    cx.new(|_| super::render::TextTip(line.clone())).into()
+                                })
+                            }),
                     )
                     .when_some(hint.as_deref().map(unread_codex), |d, note| {
                         d.child(
@@ -174,7 +183,8 @@ impl Workbench {
                                 .tooltip(|_, cx| {
                                     cx.new(|_| {
                                         super::render::TextTip(
-                                            "这个 Codex 连着共用的后台，Keepline 只看得到它忙不忙，读不到对话。想在这里看到对话内容，下次用 codex --no-daemon 启动。",
+                                            "这个 Codex 连着共用的后台，Keepline 只看得到它忙不忙，读不到对话。想在这里看到对话内容，下次用 codex --no-daemon 启动。"
+                                                .into(),
                                         )
                                     })
                                     .into()

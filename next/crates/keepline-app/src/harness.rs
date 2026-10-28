@@ -708,14 +708,18 @@ pub fn start(
             assert_eq!(start.3, "pane", "the new shell has the keyboard");
             cx.update_window(handle.into(), |_, w, a| shot("1-work", w, a))
                 .unwrap();
-            let toggle = handle.update(cx, |v, _, _| v.visual_toggle_point()).unwrap();
+            let toggle = handle
+                .update(cx, |v, _, _| v.visual_toggle_point())
+                .unwrap();
             let open = |cx: &mut gpui::AsyncApp| {
                 click(cx, toggle);
                 let s = state(cx);
                 assert!(s.0, "the toggle opens the overview");
                 assert_eq!(s.3, "overview", "the overview takes the keyboard");
                 // Drawn in place: the toggle has not moved, so it can close it again.
-                let again = handle.update(cx, |v, _, _| v.visual_toggle_point()).unwrap();
+                let again = handle
+                    .update(cx, |v, _, _| v.visual_toggle_point())
+                    .unwrap();
                 assert_eq!(again, toggle, "the toggle does not move");
                 s
             };
@@ -726,7 +730,9 @@ pub fn start(
             // The same spot closes it.
             click(cx, toggle);
             wait(800).await;
-            let back = handle.update(cx, |v, _, _| v.visual_toggle_point()).unwrap();
+            let back = handle
+                .update(cx, |v, _, _| v.visual_toggle_point())
+                .unwrap();
             assert_eq!(back, toggle, "the toggle does not move on the way back");
             let s = state(cx);
             assert!(!s.0, "the same toggle returns");

@@ -133,8 +133,7 @@ impl Workbench {
                 d.child(div().text_color(Group::Error.colors().1).child(error))
             });
         // The sidebar stays beside the overview.
-        let available =
-            f32::from(window.viewport_size().width) - T::SIDEBAR - T::OVERVIEW_X * 2.;
+        let available = f32::from(window.viewport_size().width) - T::SIDEBAR - T::OVERVIEW_X * 2.;
         let columns = ((available + T::S10) / (T::CARD_MIN + T::S10))
             .floor()
             .max(1.);

@@ -94,7 +94,11 @@ impl Render for Workbench {
                 .child({
                     let on = self.nav.overview || !self.overview.cleanup.is_empty();
                     let toggle = button("overview", "▦ 鸟瞰全部")
-                        .aria_label(if on { "回到工作区" } else { "鸟瞰全部" })
+                        .aria_label(if on {
+                            "回到工作区"
+                        } else {
+                            "鸟瞰全部"
+                        })
                         .bg(T::color(if on { T::SELECTION } else { T::RAISED }))
                         .when(on, |d| {
                             d.border_color(T::color(T::FOCUS))
@@ -568,7 +572,7 @@ impl Workbench {
 }
 
 /// A plain hover note.
-pub(super) struct TextTip(pub(super) &'static str);
+pub(super) struct TextTip(pub(super) gpui::SharedString);
 impl Render for TextTip {
     fn render(&mut self, _: &mut Window, _: &mut Context<Self>) -> impl IntoElement {
         div()
@@ -581,7 +585,7 @@ impl Render for TextTip {
             .shadow_lg()
             .text_size(px(T::SMALL))
             .text_color(T::color(T::PRIMARY))
-            .child(self.0)
+            .child(self.0.clone())
     }
 }
 /// A tab's full name, what its agent is doing and where, shown on hover since the tab
