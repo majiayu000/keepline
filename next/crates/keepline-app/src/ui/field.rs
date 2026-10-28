@@ -144,7 +144,10 @@ impl Field {
         self.text[..at].char_indices().last().map_or(0, |(i, _)| i)
     }
     fn next_char(&self, at: usize) -> usize {
-        self.text[at..].chars().next().map_or(at, |c| at + c.len_utf8())
+        self.text[at..]
+            .chars()
+            .next()
+            .map_or(at, |c| at + c.len_utf8())
     }
     /// The start of the word before `at`, skipping the spaces in between.
     fn prev_word(&self, at: usize) -> usize {
@@ -166,16 +169,26 @@ impl Field {
         self.text[..at].rfind('\n').map_or(0, |i| i + 1)
     }
     fn line_end(&self, at: usize) -> usize {
-        self.text[at..].find('\n').map_or(self.text.len(), |i| at + i)
+        self.text[at..]
+            .find('\n')
+            .map_or(self.text.len(), |i| at + i)
     }
     /// The word around `at`, as a double click selects it.
     fn word_at(&self, at: usize) -> Range<usize> {
-        let start = if self.text[..at].chars().last().is_some_and(char::is_alphanumeric) {
+        let start = if self.text[..at]
+            .chars()
+            .last()
+            .is_some_and(char::is_alphanumeric)
+        {
             self.prev_word(at)
         } else {
             at
         };
-        let end = if self.text[at..].chars().next().is_some_and(char::is_alphanumeric) {
+        let end = if self.text[at..]
+            .chars()
+            .next()
+            .is_some_and(char::is_alphanumeric)
+        {
             self.next_word(at)
         } else {
             self.next_char(at)
@@ -193,13 +206,20 @@ impl Field {
             Ok(i) | Err(i) => i.min(self.text.len()),
         };
         // Stay on a character boundary even if the layout rounds into one.
-        (0..=i).rev().find(|&i| self.text.is_char_boundary(i)).unwrap_or(0)
+        (0..=i)
+            .rev()
+            .find(|&i| self.text.is_char_boundary(i))
+            .unwrap_or(0)
     }
     /// Keeps the caret of a one-line field inside its box, and the text against
     /// its right edge once there is no more to the right.
     fn follow_caret(&mut self, layout: &gpui::TextLayout, visible: Pixels) -> bool {
         let origin = layout.bounds().origin.x;
-        let x = |i| layout.position_for_index(i).map_or(px(0.), |p| p.x - origin);
+        let x = |i| {
+            layout
+                .position_for_index(i)
+                .map_or(px(0.), |p| p.x - origin)
+        };
         let caret = x(self.head());
         let width = x(self.text.len());
         let visible = visible - px(T::CARET_WIDTH);
@@ -451,9 +471,7 @@ impl Render for Field {
                     // A one-line field slides its text left as the caret moves right.
                     .child(
                         div()
-                            .when(compact, |d| {
-                                d.flex_shrink_0().relative().left(-self.scroll)
-                            })
+                            .when(compact, |d| d.flex_shrink_0().relative().left(-self.scroll))
                             .child(text),
                     )
                     .child(

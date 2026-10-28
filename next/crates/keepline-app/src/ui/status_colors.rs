@@ -106,7 +106,9 @@ impl StatusColors {
                             Some("ring") => SeenDot::Ring,
                             Some("fill") => SeenDot::Fill,
                             Some("fade") => SeenDot::Fade,
-                            _ => return Err(format!("seen.dot must be ring, fill or fade: {value}")),
+                            _ => {
+                                return Err(format!("seen.dot must be ring, fill or fade: {value}"));
+                            }
                         }
                     }
                     _ => return Err(format!("unknown seen key \"{key}\"")),
