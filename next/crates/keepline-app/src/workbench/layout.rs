@@ -65,9 +65,7 @@ impl Workbench {
                         gpui::SharedString::from(format!("reopen-{id}")),
                         "在这里重新开一个终端",
                     )
-                    .on_click(cx.listener(move |this, _, _, cx| {
-                        this.launch_in_slot(true, None, Some(reopen.clone()), cx)
-                    })),
+                    .on_click(cx.listener(move |this, _, _, cx| this.reopen(reopen.clone(), cx))),
                 )
                 .child(
                     button(

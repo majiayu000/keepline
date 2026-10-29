@@ -312,7 +312,7 @@ impl Workbench {
             && let Some(id) = reopen_candidate(&self.workspace, &ids, &self.layout.reopened)
         {
             self.layout.reopened.insert(id.clone());
-            self.launch_in_slot(true, None, Some(id), cx);
+            self.reopen(id, cx);
         }
         let ids = attachable_ids(&self.workspace, ids);
         if self.nav.focused.as_ref().is_none_or(|id| !ids.contains(id)) {
@@ -618,6 +618,19 @@ impl Workbench {
             self.sync_panes(cx);
         }
         self.edit(edit, cx);
+    }
+    /// Reopens a lost terminal in place, resuming the conversation it was running.
+    pub(super) fn reopen(&mut self, id: String, cx: &mut Context<Self>) {
+        if let Some(s) = interrupted_session(&self.workspace, &id) {
+            self.resuming.resume = Some((
+                s.runtime.resume_command(&s.cli_session_id),
+                s.cwd.clone(),
+                s.id.clone(),
+            ));
+        }
+        self.launch_in_slot(true, None, Some(id), cx);
+        // Taken unless the launch bailed early; a leftover would hijack the next launch.
+        self.resuming.resume = None;
     }
     pub(super) fn launch_in_slot(
         &mut self,

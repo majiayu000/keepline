@@ -299,3 +299,29 @@ fn a_shown_interrupted_pane_reopens_once() {
     // Only panes in view; another tab's lost shells wait until it shows.
     assert_eq!(reopen_candidate(&w, &shown[2..], &HashSet::new()), None);
 }
+#[test]
+fn a_reopened_pane_resumes_its_latest_open_conversation() {
+    let mut w = fixture();
+    // Only a finished conversation ran there: reopen a plain shell.
+    assert!(interrupted_session(&w, "t1").is_none());
+    let mut open = w.agent_sessions[0].clone();
+    open.outcome = Outcome::Open;
+    let older = AgentSession {
+        id: "older".into(),
+        updated: 2,
+        ..open.clone()
+    };
+    let latest = AgentSession {
+        id: "latest".into(),
+        updated: 3,
+        ..open.clone()
+    };
+    let elsewhere = AgentSession {
+        id: "elsewhere".into(),
+        terminal: Some("t0".into()),
+        updated: 9,
+        ..open
+    };
+    w.agent_sessions.extend([older, latest, elsewhere]);
+    assert_eq!(interrupted_session(&w, "t1").unwrap().id, "latest");
+}

@@ -111,6 +111,15 @@ pub fn interrupted(workspace: &Workspace, id: &str) -> bool {
         .iter()
         .any(|t| t.id == id && t.state == ProcessState::Interrupted)
 }
+/// The conversation to pick up again in a terminal the host lost: the latest one it ran
+/// that has no outcome yet. The host clears `current` for every lost terminal, so this
+/// cannot tell an Agent killed mid-run from one that had already been quit there.
+pub fn interrupted_session<'a>(w: &'a Workspace, terminal: &str) -> Option<&'a AgentSession> {
+    w.agent_sessions
+        .iter()
+        .filter(|s| s.terminal.as_deref() == Some(terminal) && s.outcome == Outcome::Open)
+        .max_by_key(|s| s.updated)
+}
 pub fn attachable_ids(workspace: &Workspace, ids: Vec<String>) -> Vec<String> {
     ids.into_iter()
         .filter(|id| !interrupted(workspace, id))
