@@ -596,6 +596,10 @@ fn serve_runtime(
         Err(e) if e.kind() == io::ErrorKind::NotFound => (),
         Err(e) => return Err(e),
     }
+    // Without it shells still start; only their directory reports are missing.
+    if let Err(e) = pty::install_shell_integration(root) {
+        eprintln!("install shell integration: {e}");
+    }
     let kept = taken.iter().map(|t| t.handed.id.clone()).collect();
     let (store, mut workspace) = Store::open_keeping(root, &kept)?;
     let mut index = crate::log_index::Index::open(root, roots)?;
@@ -1773,6 +1777,11 @@ fn dispatch(shared: &Shared, request: Request) -> io::Result<Reply> {
             if live.exited {
                 return Err(io::Error::other("terminal has exited"));
             }
+            // What the shell reports (OSC 7) is the truth for it; the process directory
+            // is the fallback for a shell without the integration.
+            if let Some(path) = live.vt.pwd(&hostname()).filter(|p| Path::new(p).is_dir()) {
+                return Ok(Reply::Cwd(path));
+            }
             let pid = host
                 .workspace
                 .terminals
@@ -2040,6 +2049,17 @@ fn pump(
             lock(shared)?.title_changed(id, &title)?;
         }
     }
+}
+
+/// This machine's name, as the shell's $HOST spells it in OSC 7 reports.
+fn hostname() -> String {
+    let mut buf = [0u8; 256];
+    // SAFETY: the kernel writes at most `buf.len()` bytes, NUL-terminated when it fits.
+    if unsafe { libc::gethostname(buf.as_mut_ptr().cast(), buf.len()) } != 0 {
+        return String::new();
+    }
+    let end = buf.iter().position(|b| *b == 0).unwrap_or(buf.len());
+    String::from_utf8_lossy(&buf[..end]).into_owned()
 }
 
 const SCREEN_QUIET: Duration = Duration::from_secs(1);
