@@ -15,6 +15,10 @@ pub struct Workspace {
     /// One proven binding consumes this override; None cancels the tab default.
     #[serde(default)]
     pub pending_tasks: std::collections::HashMap<String, Option<String>>,
+    /// Terminals a restarted host lost, with the conversation each was running then
+    /// (None: only its shell). Terminals lost before this was kept have no entry.
+    #[serde(default)]
+    pub lost_agents: std::collections::HashMap<String, Option<String>>,
     pub spaces: Vec<Space>,
     pub tasks: Vec<Task>,
     pub tabs: Vec<Tab>,

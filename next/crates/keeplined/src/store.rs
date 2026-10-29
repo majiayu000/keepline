@@ -67,6 +67,7 @@ impl Store {
             CREATE TABLE IF NOT EXISTS outcome_history (sequence INTEGER PRIMARY KEY, session_id TEXT NOT NULL, before_json TEXT NOT NULL, after_json TEXT NOT NULL, at INTEGER NOT NULL, reason TEXT NOT NULL);
             CREATE TABLE IF NOT EXISTS task_outcomes (task_id TEXT PRIMARY KEY REFERENCES tasks(id), outcome TEXT NOT NULL);
             CREATE TABLE IF NOT EXISTS pending_tasks (terminal_id TEXT PRIMARY KEY REFERENCES terminals(id), task_id TEXT REFERENCES tasks(id));
+            CREATE TABLE IF NOT EXISTS lost_agents (terminal_id TEXT PRIMARY KEY REFERENCES terminals(id), session_id TEXT REFERENCES agent_sessions(id));
             CREATE TABLE IF NOT EXISTS task_criteria (task_id TEXT NOT NULL REFERENCES tasks(id), id TEXT NOT NULL, position INTEGER NOT NULL,
                 description TEXT NOT NULL, evidence TEXT, PRIMARY KEY(task_id,id), UNIQUE(task_id,position));
             CREATE TABLE IF NOT EXISTS tabs (id TEXT PRIMARY KEY, space_id TEXT NOT NULL REFERENCES spaces(id), default_task_id TEXT REFERENCES tasks(id), title TEXT NOT NULL, closed INTEGER NOT NULL);
@@ -88,6 +89,14 @@ impl Store {
                     ProcessState::Starting | ProcessState::Running | ProcessState::Draining
                 )
             {
+                // Recorded before `current` is cleared below: the conversation still
+                // running when the host went away is the one to resume in its place.
+                let agent = workspace
+                    .agent_sessions
+                    .iter()
+                    .find(|s| s.current && s.terminal.as_ref() == Some(&terminal.id))
+                    .map(|s| s.id.clone());
+                workspace.lost_agents.insert(terminal.id.clone(), agent);
                 terminal.state = ProcessState::Interrupted;
                 terminal.error = Some("后台已重启，原 PTY 不可重新连接；可用原 CLI 恢复".into());
             }
@@ -165,6 +174,18 @@ impl Store {
         {
             let (id, task) = row.map_err(db_error)?;
             w.pending_tasks.insert(id, task);
+        }
+        for row in self
+            .0
+            .prepare("SELECT terminal_id,session_id FROM lost_agents")
+            .map_err(db_error)?
+            .query_map([], |r| {
+                Ok((r.get::<_, String>(0)?, r.get::<_, Option<String>>(1)?))
+            })
+            .map_err(db_error)?
+        {
+            let (id, session) = row.map_err(db_error)?;
+            w.lost_agents.insert(id, session);
         }
         let mut statement = self
             .0
@@ -373,6 +394,11 @@ impl Store {
                 }
             }
         }
+        for (id, session) in &w.lost_agents {
+            if before.lost_agents.get(id) != Some(session) {
+                tx.execute("INSERT INTO lost_agents VALUES(?1,?2) ON CONFLICT(terminal_id) DO UPDATE SET session_id=excluded.session_id", params![id,session]).map_err(db_error)?;
+            }
+        }
         if before.pending_tasks != w.pending_tasks {
             for id in before
                 .pending_tasks
@@ -552,6 +578,67 @@ mod milestone_tests {
         drop(db);
         let (_, loaded) = Store::open(&dir).unwrap();
         assert!(loaded.tabs.is_empty());
+        std::fs::remove_dir_all(dir).unwrap();
+    }
+    #[test]
+    fn a_restart_records_which_conversation_each_lost_terminal_was_running() {
+        let dir = std::env::temp_dir().join(format!("kl-lost-{}", uuid::Uuid::new_v4()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let (mut db, before) = Store::open(&dir).unwrap();
+        let mut after = before.clone();
+        after.spaces.push(Space {
+            id: "s".into(),
+            name: "s".into(),
+            cwd: "/tmp".into(),
+        });
+        for id in ["agent", "shell", "handed"] {
+            after.terminals.push(Terminal {
+                id: id.into(),
+                space: "s".into(),
+                argv: vec!["/bin/sh".into()],
+                cwd: "/tmp".into(),
+                pid: Some(1),
+                state: ProcessState::Running,
+                exit_code: None,
+                error: None,
+            });
+        }
+        let session = |id: &str, terminal: &str, current| AgentSession {
+            id: id.into(),
+            runtime: Agent::Codex,
+            cli_session_id: id.into(),
+            terminal: Some(terminal.into()),
+            current,
+            task: None,
+            outcome: Outcome::Open,
+            updated: 1,
+            cwd: "/tmp".into(),
+            transcript: String::new(),
+        };
+        after.agent_sessions.extend([
+            session("running", "agent", true),
+            session("quit", "shell", false),
+            session("moved", "handed", true),
+        ]);
+        db.save(&before, &after).unwrap();
+        drop(db);
+        let kept = ["handed".to_owned()].into_iter().collect();
+        let (db, loaded) = Store::open_keeping(&dir, &kept).unwrap();
+        drop(db);
+        let expected: std::collections::HashMap<_, _> = [
+            ("agent".to_owned(), Some("running".to_owned())),
+            ("shell".to_owned(), None),
+        ]
+        .into_iter()
+        .collect();
+        assert_eq!(loaded.lost_agents, expected);
+        assert!(!loaded
+            .agent_sessions
+            .iter()
+            .any(|s| s.id == "running" && s.current));
+        // A second restart keeps the record; the terminals are no longer running.
+        let (_, again) = Store::open_keeping(&dir, &kept).unwrap();
+        assert_eq!(again.lost_agents, expected);
         std::fs::remove_dir_all(dir).unwrap();
     }
     #[test]
