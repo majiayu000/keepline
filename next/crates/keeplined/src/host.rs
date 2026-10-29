@@ -80,7 +80,8 @@ struct Host {
     recognition_subscribers: HashMap<u64, Subscriber>,
     exits: Option<crate::process_exit::ExitWatch>,
     agent_pids: HashMap<u32, String>,
-    unbound_pids: HashMap<u32, String>,
+    /// Agent processes no evidence has tied to a conversation yet: their terminal and CLI.
+    unbound_pids: HashMap<u32, (String, Agent)>,
     /// Claude processes that save no transcript, so their hint goes when they exit.
     unrecorded_pids: HashMap<u32, String>,
     /// Recent Enter presses per terminal, seconds since the epoch: evidence for which
@@ -198,6 +199,7 @@ impl Host {
         if let Some(terminal) = self
             .unbound_pids
             .remove(&pid)
+            .map(|(terminal, _)| terminal)
             .or_else(|| self.unrecorded_pids.remove(&pid))
         {
             self.recognition.terminal_hints.remove(&terminal);
@@ -270,13 +272,15 @@ impl Host {
                         }
                     }
                 }
-            } else if process.runtime == Some(Agent::Codex)
-                && !processes
+            } else if let Some(runtime) = process.runtime.filter(|_| {
+                !processes
                     .iter()
                     .any(|p| p.parent == process.pid && p.runtime == process.runtime)
-            {
-                // `--no-daemon` opens its own log; before the first prompt there is nothing to say.
-                if !process.no_daemon {
+            }) {
+                // Unbound, whatever the CLI: screen association and hooks get their chance.
+                // `--no-daemon` Codex opens its own log; before the first prompt there is
+                // nothing to say.
+                if runtime == Agent::Codex && !process.no_daemon {
                     let title = match self.terminals.get(&terminal) {
                         Some(live) => lock(live)?.title.clone(),
                         None => String::new(),
@@ -284,11 +288,20 @@ impl Host {
                     self.recognition
                         .terminal_hints
                         .insert(terminal.clone(), codex_hint(&title));
+                } else if runtime != Agent::Codex {
+                    self.recognition.terminal_hints.insert(
+                        terminal.clone(),
+                        format!(
+                            "{}{}",
+                            keepline_core::protocol::AGENT_UNBOUND_PREFIX,
+                            runtime.executable()
+                        ),
+                    );
                 }
                 if let std::collections::hash_map::Entry::Vacant(entry) =
                     self.unbound_pids.entry(process.pid)
                 {
-                    entry.insert(terminal);
+                    entry.insert((terminal, runtime));
                     if let Some(exits) = &self.exits {
                         if !exits.watch(process.pid)? {
                             self.agent_exited(process.pid)?;
@@ -314,8 +327,14 @@ impl Host {
                 .insert(terminal.into(), shown),
             None => self.recognition.terminal_titles.remove(terminal),
         };
-        if self.unbound_pids.values().any(|t| t == terminal)
-            && self.recognition.terminal_hints.contains_key(terminal)
+        if self.unbound_pids.values().any(|(t, _)| t == terminal)
+            && self
+                .recognition
+                .terminal_hints
+                .get(terminal)
+                .is_some_and(|hint| {
+                    !hint.starts_with(keepline_core::protocol::AGENT_UNBOUND_PREFIX)
+                })
         {
             let hint = codex_hint(title);
             if self.recognition.terminal_hints.get(terminal) != Some(&hint) {
@@ -595,6 +614,10 @@ fn serve_runtime(
         }
         Err(e) if e.kind() == io::ErrorKind::NotFound => (),
         Err(e) => return Err(e),
+    }
+    // Without it hooks fall back to the process tree alone.
+    if let Err(e) = pty::announce_host(root) {
+        eprintln!("announce host to terminals: {e}");
     }
     // Without it shells still start; only their directory reports are missing.
     if let Err(e) = pty::install_shell_integration(root) {
@@ -927,14 +950,13 @@ impl Association {
             }
             refresh_agents(shared, &index.cached()?)?;
         }
-        if transcripts.iter().any(|t| t.runtime == Agent::Codex) {
-            self.associate_screens(shared, index, transcripts)?;
-        }
+        self.associate_screens(shared, index, transcripts)?;
         Ok(())
     }
-    /// Shared-daemon Codex runs its thread outside the PTY, so neither process nor open-file
-    /// evidence exists. Bind only when a thread's newest prompt is on exactly one managed
-    /// Codex screen and that screen shows no other candidate thread.
+    /// The last resort for any CLI: shared-daemon Codex runs its thread outside the PTY, and a
+    /// hand-started Claude names no session and closes its transcript, so neither process nor
+    /// open-file evidence exists. Bind only when a thread's newest prompt is on exactly one
+    /// managed screen of an unbound Agent and that screen shows no other candidate thread.
     fn associate_screens(
         &mut self,
         shared: &Shared,
@@ -944,23 +966,33 @@ impl Association {
         let (panes, workspace) = {
             let host = lock(shared)?;
             let mut panes = vec![];
-            for (pid, terminal) in &host.unbound_pids {
+            for (pid, (terminal, runtime)) in &host.unbound_pids {
                 if host.workspace.current_agent(terminal).is_none() {
-                    panes.push((*pid, terminal.clone(), None));
+                    panes.push((*pid, terminal.clone(), *runtime, None));
                 }
             }
+            // A session only the screen tied to its pane can move to another thread in the
+            // same TUI; one its command line, hook or open file names cannot.
             for (pid, id) in &host.agent_pids {
                 if let Some(s) = host.workspace.agent_sessions.iter().find(|s| {
-                    &s.id == id && s.current && s.runtime == Agent::Codex && s.terminal.is_some()
+                    &s.id == id
+                        && s.current
+                        && s.terminal.is_some()
+                        && s.binding.is_none_or(|b| b == Binding::Screen)
                 }) {
-                    panes.push((*pid, s.terminal.clone().unwrap(), Some(s.clone())));
+                    panes.push((
+                        *pid,
+                        s.terminal.clone().unwrap(),
+                        s.runtime,
+                        Some(s.clone()),
+                    ));
                 }
             }
-            panes.retain(|(_, t, _)| host.terminals.contains_key(t));
+            panes.retain(|(_, t, ..)| host.terminals.contains_key(t));
             (
                 panes
                     .into_iter()
-                    .map(|(pid, t, s)| (pid, host.terminals[&t].clone(), t, s))
+                    .map(|(pid, t, runtime, s)| (pid, host.terminals[&t].clone(), t, runtime, s))
                     .collect::<Vec<_>>(),
                 host.workspace.clone(),
             )
@@ -970,8 +1002,7 @@ impl Association {
         }
         let window = keepline_core::content::now().saturating_sub(600);
         let unbound = |t: &crate::recognition::Transcript| {
-            t.runtime == Agent::Codex
-                && t.updated >= window
+            t.updated >= window
                 && !workspace
                     .agent_sessions
                     .iter()
@@ -1018,7 +1049,7 @@ impl Association {
         }
         let submits = lock(shared)?.submits.clone();
         let mut terminals = vec![];
-        for (pid, live, terminal, current) in &panes {
+        for (pid, live, terminal, runtime, current) in &panes {
             let screen = lock(live)?.vt.tail_text(200)?;
             let current = match current {
                 Some(s) => Some((
@@ -1032,6 +1063,7 @@ impl Association {
             };
             terminals.push(crate::recognition::ScreenTerminal {
                 terminal: terminal.clone(),
+                runtime: *runtime,
                 cwd: crate::recognition::process_cwd(*pid),
                 screen: crate::recognition::screen_text(&screen),
                 current,
@@ -1050,7 +1082,11 @@ impl Association {
         let mut bound = vec![];
         for (terminal, t) in bindings {
             if next
-                .observe_agent(crate::recognition::observation(t, Some(terminal.clone())))
+                .observe_agent(crate::recognition::bound(
+                    t,
+                    terminal.clone(),
+                    Binding::Screen,
+                ))
                 .is_ok()
             {
                 bound.push(terminal);
@@ -1071,7 +1107,7 @@ impl Association {
             };
             let pids: Vec<_> = panes
                 .iter()
-                .filter(|(_, _, t, _)| t == &terminal)
+                .filter(|(_, _, t, ..)| t == &terminal)
                 .map(|(pid, ..)| *pid)
                 .collect();
             for pid in pids {
@@ -1565,6 +1601,8 @@ fn dispatch(shared: &Shared, request: Request) -> io::Result<Reply> {
             ended,
             event,
             facts,
+            terminal,
+            cwd,
         } => {
             let (workspace, mut index, cached) = {
                 let host = lock(shared)?;
@@ -1575,8 +1613,17 @@ fn dispatch(shared: &Shared, request: Request) -> io::Result<Reply> {
                 )
             };
             let processes = crate::recognition::processes(&workspace)?;
-            // Reject unrelated callers before opening any supplied transcript.
-            if crate::recognition::terminal_for_process(pid, &processes, &workspace).is_none() {
+            // Reject unrelated callers before opening any supplied transcript. A hook whose
+            // caller already exited still names its terminal through the environment.
+            let named = terminal.as_deref().filter(|id| {
+                workspace
+                    .terminals
+                    .iter()
+                    .any(|t| &t.id == id && t.state == ProcessState::Running)
+            });
+            if crate::recognition::terminal_for_process(pid, &processes, &workspace).is_none()
+                && named.is_none()
+            {
                 return Err(io::Error::other(
                     "Hook process is not a descendant of a managed terminal",
                 ));
@@ -1595,21 +1642,37 @@ fn dispatch(shared: &Shared, request: Request) -> io::Result<Reply> {
             } else {
                 crate::file_events::normalized(Path::new(&transcript))?
             };
-            let observed = index
-                .update(runtime, &path, true)?
-                .ok_or_else(|| io::Error::other("transcript has no CLI identity"))?;
+            // A new Claude announces itself before its first prompt creates the transcript:
+            // the hook's own identity binds it now, and the index fills it in once written.
+            let written = path.exists();
+            let observed = if written {
+                index
+                    .update(runtime, &path, true)?
+                    .ok_or_else(|| io::Error::other("transcript has no CLI identity"))?
+            } else if !cwd.is_empty() && !transcript.is_empty() {
+                crate::recognition::Transcript {
+                    runtime,
+                    cli_id: cli_session_id.clone(),
+                    path: path.to_string_lossy().into_owned(),
+                    cwd: cwd.clone(),
+                    updated: keepline_core::content::now(),
+                }
+            } else {
+                return Err(io::Error::other("Hook transcript not written yet"));
+            };
             let mut host = lock(shared)?;
             let mut next = host.workspace.clone();
             crate::recognition::apply_hook(
                 &mut next,
                 runtime,
                 pid,
+                named,
                 &cli_session_id,
                 &observed,
                 &processes,
                 ended,
             )?;
-            if let Some(event) = event {
+            if let Some(event) = event.filter(|_| written) {
                 index.hook(&observed.path, &event, &facts)?;
             }
             if let Some(s) = next
@@ -1633,6 +1696,24 @@ fn dispatch(shared: &Shared, request: Request) -> io::Result<Reply> {
                     break;
                 }
                 ancestor = process.parent;
+            }
+            // A hook run in the background has left its CLI's process tree; the terminal
+            // it names then has to hold exactly one such CLI for its exit to be watched.
+            if hook_files.is_empty() && !ended {
+                let mut runs = processes.iter().filter(|p| {
+                    p.runtime == Some(runtime)
+                        && !processes
+                            .iter()
+                            .any(|c| c.parent == p.pid && c.runtime == p.runtime)
+                        && named.is_some_and(|named| {
+                            crate::recognition::terminal_for_process(p.pid, &processes, &workspace)
+                                .as_deref()
+                                == Some(named)
+                        })
+                });
+                if let (Some(only), None) = (runs.next(), runs.next()) {
+                    hook_files.insert(only.pid, vec![observed.path.clone()]);
+                }
             }
             host.observe_processes(&processes, &hook_files)?;
             if let Some(events) = &host.log_events {
@@ -1758,7 +1839,7 @@ fn dispatch(shared: &Shared, request: Request) -> io::Result<Reply> {
                 error: None,
             });
             host.commit(next)?;
-            let (mut child, master) = match pty::spawn(&argv, Path::new(&cwd), cols, rows) {
+            let (mut child, master) = match pty::spawn(&argv, Path::new(&cwd), cols, rows, &id) {
                 Ok(result) => result,
                 Err(error) => {
                     let mut next = host.workspace.clone();

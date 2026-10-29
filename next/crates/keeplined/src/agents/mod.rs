@@ -10,6 +10,7 @@ use std::path::{Path, PathBuf};
 pub(crate) mod claude;
 pub(crate) mod codex;
 mod grok;
+pub mod hooks;
 
 pub trait Adapter: Sync {
     /// The directory this CLI writes transcripts under, honouring its own home override.
@@ -50,6 +51,17 @@ pub trait Adapter: Sync {
     fn links_children(&self) -> bool {
         false
     }
+    /// Where this CLI reads command hooks from and which events report to the host. A CLI
+    /// whose processes or files already name their conversation needs none.
+    fn hooks(&self, _home: &Path) -> Option<Hooks> {
+        None
+    }
+}
+/// A CLI's hook settings: a JSON file with `hooks.<Event>[].hooks[]` command entries, the
+/// shape Claude Code reads.
+pub struct Hooks {
+    pub settings: PathBuf,
+    pub events: &'static [&'static str],
 }
 
 pub fn adapter(agent: Agent) -> &'static dyn Adapter {

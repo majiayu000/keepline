@@ -1,5 +1,5 @@
 //! Read-only CLI identity discovery. A shared cwd is never association evidence.
-use keepline_core::model::{Agent, AgentSession, Outcome, ProcessState, Workspace};
+use keepline_core::model::{Agent, AgentSession, Binding, Outcome, ProcessState, Workspace};
 use std::{
     collections::{HashMap, HashSet},
     io,
@@ -256,12 +256,24 @@ pub(crate) fn observation(t: &Transcript, terminal: Option<String>) -> AgentSess
         updated: t.updated,
         cwd: t.cwd.clone(),
         transcript: t.path.clone(),
+        binding: None,
     }
 }
+/// The conversation now running in `terminal`, and the evidence that says so.
+pub(crate) fn bound(t: &Transcript, terminal: String, binding: Binding) -> AgentSession {
+    AgentSession {
+        binding: Some(binding),
+        ..observation(t, Some(terminal))
+    }
+}
+/// `named` is the terminal the hook's environment says it runs in (`KEEPLINE_TERMINAL`).
+/// The process tree decides when it can be read; the name only stands in when the hook's
+/// caller already left it, and never when the two disagree.
 pub fn apply_hook(
     workspace: &mut Workspace,
     runtime: Agent,
     pid: u32,
+    named: Option<&str>,
     cli_id: &str,
     transcript: &Transcript,
     processes: &[Process],
@@ -269,22 +281,39 @@ pub fn apply_hook(
 ) -> io::Result<()> {
     let agent = ancestors(pid, processes)
         .into_iter()
-        .find(|p| p.runtime.is_some())
-        .ok_or_else(|| io::Error::other("Hook ancestry contains no recognized Agent process"))?;
-    if agent.runtime != Some(runtime) {
+        .find(|p| p.runtime.is_some());
+    if agent.is_some_and(|a| a.runtime != Some(runtime)) {
         return Err(io::Error::other(
             "Hook runtime disagrees with process identity",
         ));
     }
-    let terminal = terminal_for_process(agent.pid, processes, workspace).ok_or_else(|| {
-        io::Error::other("Hook process is not a descendant of a managed terminal")
-    })?;
+    let traced = agent.and_then(|a| terminal_for_process(a.pid, processes, workspace));
+    let named = named.filter(|id| {
+        workspace
+            .terminals
+            .iter()
+            .any(|t| &t.id == id && t.state == ProcessState::Running)
+    });
+    let terminal = match (traced, named) {
+        (Some(traced), Some(named)) if traced != named => {
+            return Err(io::Error::other(
+                "Hook terminal disagrees with process ancestry",
+            ));
+        }
+        (Some(traced), _) => traced,
+        (None, Some(named)) => named.to_owned(),
+        (None, None) => {
+            return Err(io::Error::other(
+                "Hook process is not a descendant of a managed terminal",
+            ));
+        }
+    };
     if transcript.cli_id != cli_id {
         return Err(io::Error::other(
             "Hook session ID disagrees with transcript",
         ));
     }
-    let mut observed = observation(transcript, Some(terminal));
+    let mut observed = bound(transcript, terminal, Binding::Hook);
     observed.current = !ended;
     workspace.observe_agent(observed).map_err(io::Error::other)
 }
@@ -330,32 +359,41 @@ pub fn reconcile(
             })
             .collect();
         // A node wrapper and its native Codex child carry the same argv: one binding, not two.
+        let binding = match process.cli_session_id {
+            Some(_) => Binding::Process,
+            None => Binding::OpenFile,
+        };
         if matching.len() == 1
-            && !bindings.iter().any(|(id, t): &(String, &Transcript)| {
-                id == &terminal && t.path == matching[0].path
-            })
+            && !bindings
+                .iter()
+                .any(|(id, t, _): &(String, &Transcript, Binding)| {
+                    id == &terminal && t.path == matching[0].path
+                })
         {
-            bindings.push((terminal, matching[0]));
+            bindings.push((terminal, matching[0], binding));
         }
     }
-    for (terminal, transcript) in &bindings {
-        if bindings.iter().filter(|(id, _)| id == terminal).count() != 1
+    for (terminal, transcript, binding) in &bindings {
+        if bindings.iter().filter(|(id, ..)| id == terminal).count() != 1
             || bindings
                 .iter()
-                .filter(|(_, t)| t.runtime == transcript.runtime && t.cli_id == transcript.cli_id)
+                .filter(|(_, t, _)| {
+                    t.runtime == transcript.runtime && t.cli_id == transcript.cli_id
+                })
                 .count()
                 != 1
         {
             continue;
         }
         workspace
-            .observe_agent(observation(transcript, Some(terminal.clone())))
+            .observe_agent(bound(transcript, terminal.clone(), *binding))
             .map_err(io::Error::other)?;
     }
     Ok(())
 }
-/// Shared-daemon Codex has no process or file evidence. The only identity left is the
-/// thread's newest prompt shown verbatim on one managed screen. Short prompts are refused:
+/// A CLI with no process, file or hook evidence (shared-daemon Codex, a hand-started
+/// Claude without hooks) is left with the thread's newest prompt shown verbatim on one
+/// managed screen. Short prompts are refused:
 /// "继续" or "ok" appear everywhere.
 pub fn screen_key(prompt: &str) -> Option<String> {
     let key: String = prompt
@@ -442,10 +480,12 @@ pub struct ScreenThread<'a> {
 }
 pub struct ScreenTerminal {
     pub terminal: String,
+    /// The CLI running there: only its own threads can bind to it.
+    pub runtime: Agent,
     pub cwd: Option<String>,
     /// Whitespace-free tail of this terminal's own screen.
     pub screen: String,
-    /// The Codex thread this TUI showed before (`/new` hands the pane to a newer thread).
+    /// The thread this TUI showed before (`/new` hands the pane to a newer thread).
     pub current: Option<(String, u64, Option<String>)>,
     /// When Enter was pressed here lately, seconds since the epoch.
     pub submits: Vec<u64>,
@@ -471,7 +511,8 @@ pub fn screen_bindings<'a>(
                 .iter()
                 .any(|s| s.abs_diff(at) <= SUBMIT_WINDOW)
         });
-        terminal.cwd.as_ref().is_none_or(|cwd| cwd == &thread.cwd)
+        terminal.runtime == thread.transcript.runtime
+            && terminal.cwd.as_ref().is_none_or(|cwd| cwd == &thread.cwd)
             && (shown || submitted)
             && terminal.current.as_ref().is_none_or(|(id, updated, key)| {
                 id != &thread.transcript.cli_id
@@ -724,6 +765,7 @@ mod tests {
             .enumerate()
             .map(|(i, (screen, current))| ScreenTerminal {
                 terminal: format!("pty-{i}"),
+                runtime: Agent::Codex,
                 cwd: Some("/same".into()),
                 screen: screen_text(screen),
                 current: current.map(|(id, at, prompt)| (id.into(), at, screen_key(prompt))),
@@ -734,6 +776,45 @@ mod tests {
             .into_iter()
             .map(|(terminal, t)| (terminal, t.cli_id.clone()))
             .collect()
+    }
+
+    #[test]
+    fn a_thread_binds_only_to_a_screen_of_its_own_cli() {
+        let prompt = "把左侧会话列表按最近活动排序";
+        let transcript = |runtime| Transcript {
+            runtime,
+            cli_id: "c".into(),
+            path: "/logs/c.jsonl".into(),
+            cwd: "/same".into(),
+            updated: 1,
+        };
+        let pane = |runtime| ScreenTerminal {
+            terminal: "pty".into(),
+            runtime,
+            cwd: Some("/same".into()),
+            screen: screen_text(prompt),
+            current: None,
+            submits: vec![],
+        };
+        for (thread, screen, binds) in [
+            (Agent::Claude, Agent::Claude, true),
+            (Agent::Grok, Agent::Grok, true),
+            (Agent::Claude, Agent::Codex, false),
+            (Agent::Codex, Agent::Claude, false),
+        ] {
+            let t = transcript(thread);
+            let threads = [ScreenThread {
+                transcript: &t,
+                key: screen_key(prompt),
+                at: None,
+                cwd: "/same".into(),
+            }];
+            assert_eq!(
+                screen_bindings(&threads, &[pane(screen)]).len(),
+                usize::from(binds),
+                "{thread:?} thread on a {screen:?} screen"
+            );
+        }
     }
 
     #[test]
@@ -789,6 +870,7 @@ mod tests {
         };
         let pane = |i: usize, submits: Vec<u64>| ScreenTerminal {
             terminal: format!("pty-{i}"),
+            runtime: Agent::Codex,
             cwd: Some("/same".into()),
             screen: screen_text("[Pasted Content 4096 chars]"),
             current: None,

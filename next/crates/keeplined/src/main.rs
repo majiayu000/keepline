@@ -43,6 +43,7 @@ fn run() -> std::io::Result<()> {
         }
         Some("scan") => scan(args),
         Some("hook") => hook(args),
+        Some("hooks") => hooks(args),
         Some("--version") => {
             println!(
                 "keeplined protocol {}.{} experimental",
@@ -111,6 +112,58 @@ fn scan(args: impl Iterator<Item = String>) -> std::io::Result<()> {
     }
     Ok(())
 }
+/// `hooks install|uninstall|status [--agent <cli>]`: every CLI that reads hooks when none
+/// is named. Prints one line per CLI: what changed and in which file.
+fn hooks(mut args: impl Iterator<Item = String>) -> std::io::Result<()> {
+    use keepline_core::model::Agent;
+    use keeplined::hooks;
+    let action = args.next().unwrap_or_default();
+    let mut agents = vec![];
+    while let Some(arg) = args.next() {
+        match (
+            arg.as_str(),
+            args.next().as_deref().and_then(Agent::from_executable),
+        ) {
+            ("--agent", Some(agent)) => agents.push(agent),
+            _ => {
+                return Err(std::io::Error::other(
+                    "usage: hooks install|uninstall|status [--agent <cli>]",
+                ))
+            }
+        }
+    }
+    let home = std::path::PathBuf::from(
+        std::env::var_os("HOME").ok_or_else(|| std::io::Error::other("HOME unavailable"))?,
+    );
+    let named = !agents.is_empty();
+    if !named {
+        agents = Agent::ALL.to_vec();
+    }
+    for agent in agents {
+        let target = match hooks::target(agent, &home) {
+            Ok(target) => target,
+            // Unnamed, a CLI that needs no hooks is simply not listed.
+            Err(_) if !named => continue,
+            Err(e) => return Err(e),
+        };
+        let path = target.settings.display();
+        let line = match action.as_str() {
+            "install" if hooks::install(agent, &target)? => format!("已安装：{path}"),
+            "install" => format!("已是最新：{path}"),
+            "uninstall" if hooks::uninstall(&target)? => format!("已移除：{path}"),
+            "uninstall" => format!("本来就没装：{path}"),
+            "status" if hooks::installed(agent, &target)? => format!("已安装：{path}"),
+            "status" => format!("未安装：{path}"),
+            _ => {
+                return Err(std::io::Error::other(
+                    "usage: hooks install|uninstall|status [--agent <cli>]",
+                ))
+            }
+        };
+        println!("{} · {line}", agent.name());
+    }
+    Ok(())
+}
 fn hook(mut args: impl Iterator<Item = String>) -> std::io::Result<()> {
     use keepline_core::{model::Agent, protocol::*};
     use std::io::Read;
@@ -127,7 +180,10 @@ fn hook(mut args: impl Iterator<Item = String>) -> std::io::Result<()> {
             }
         }
     }
-    let runtime = runtime.ok_or_else(|| std::io::Error::other("hook requires --runtime"))?;
+    // Installed hooks run for every session; outside a Keepline terminal there is no host.
+    let Some(runtime) = runtime.or_else(|| std::env::var(RUNTIME_ENV).ok()) else {
+        return Ok(());
+    };
     let agent = agent
         .as_deref()
         .and_then(Agent::from_executable)
@@ -153,6 +209,8 @@ fn hook(mut args: impl Iterator<Item = String>) -> std::io::Result<()> {
         ended: value["hook_event_name"] == "SessionEnd",
         event: value["hook_event_name"].as_str().map(str::to_owned),
         facts: keeplined::content::hook_facts(&value),
+        terminal: std::env::var(TERMINAL_ENV).ok(),
+        cwd: value["cwd"].as_str().unwrap_or("").to_owned(),
     };
     match rpc(
         &std::path::Path::new(&runtime).join("workbench.sock"),
