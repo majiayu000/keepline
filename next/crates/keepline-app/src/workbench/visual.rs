@@ -192,6 +192,16 @@ impl Workbench {
         );
     }
     #[cfg(feature = "visual-test")]
+    pub fn visual_confirming_close(&self) -> bool {
+        self.layout.confirm_close.is_some()
+    }
+    /// The dialog's 取消.
+    #[cfg(feature = "visual-test")]
+    pub fn visual_cancel_close(&mut self, cx: &mut Context<Self>) {
+        self.layout.confirm_close = None;
+        cx.notify();
+    }
+    #[cfg(feature = "visual-test")]
     pub fn visual_split_down(&mut self, window: &mut Window, cx: &mut Context<Self>) {
         let id = self.nav.focused.clone().unwrap();
         self.menu_action(&id, "向下分屏", window, cx);

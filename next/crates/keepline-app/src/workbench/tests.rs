@@ -285,6 +285,15 @@ fn close_confirms_only_work_in_progress_or_a_pending_question() {
     assert!(interrupts(&mixed));
 }
 #[test]
+fn closing_a_tab_of_several_splits_counts_them() {
+    let mut w = fixture();
+    assert_eq!(splits_closed(&w, &Closing::Tab("tab".into())), 4);
+    assert_eq!(splits_closed(&w, &Closing::Pane("t0".into())), 0);
+    assert_eq!(splits_closed(&w, &Closing::Host), 0);
+    w.tabs[0].layout = Some(Layout::Leaf("t0".into()));
+    assert_eq!(splits_closed(&w, &Closing::Tab("tab".into())), 0);
+}
+#[test]
 fn closed_sessions_past_the_stale_days_leave_the_sidebar_count() {
     let mut w = fixture();
     let s = &mut w.agent_sessions[0];

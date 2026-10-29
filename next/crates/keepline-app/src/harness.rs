@@ -368,6 +368,32 @@ pub fn start(
                 opened,
                 "right-click opens the pane menu even when the program takes the mouse"
             );
+            // A tab of several splits asks before its × takes them all down; a tab of one
+            // pane closes at once.
+            handle.update(cx, |v, w, a| v.visual_split_down(w, a)).unwrap();
+            wait(1000).await;
+            let (before, shown) = handle.update(cx, |v, _, _| v.visual_tabs()).unwrap();
+            handle.update(cx, |v, _, cx| v.visual_close_tab(cx)).unwrap();
+            wait(500).await;
+            cx.update_window(handle.into(), |_, w, a| shot("9-close-splits", w, a))
+                .unwrap();
+            let (asked, after) = handle
+                .update(cx, |v, _, _| (v.visual_confirming_close(), v.visual_tabs()))
+                .unwrap();
+            assert!(asked, "closing a tab of two splits asks first");
+            assert_eq!(after, (before, shown), "and keeps the tab until confirmed");
+            handle.update(cx, |v, _, cx| v.visual_cancel_close(cx)).unwrap();
+            handle.update(cx, |v, _, cx| v.visual_close_focused(cx)).unwrap();
+            wait(1000).await;
+            handle.update(cx, |v, _, cx| v.visual_close_tab(cx)).unwrap();
+            wait(500).await;
+            let (asked, (count, _)) = handle
+                .update(cx, |v, _, _| (v.visual_confirming_close(), v.visual_tabs()))
+                .unwrap();
+            assert!(!asked, "a tab of one shell closes without asking");
+            assert_eq!(count, before - 1, "and is gone");
+            cx.update_window(handle.into(), |_, w, a| shot("10-closed-single", w, a))
+                .unwrap();
             eprintln!("tab evidence PASS");
             cx.update(|cx| cx.quit());
         })
