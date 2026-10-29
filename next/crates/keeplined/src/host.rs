@@ -1241,7 +1241,53 @@ fn follow_associated(
     }
     Ok(())
 }
+/// A process found before its CLI registered it stays unidentified until something else
+/// changes; the registry changing is that moment. Event-driven, like the log watch.
+fn watch_registries(shared: &Shared, roots: &[(Agent, std::path::PathBuf)]) {
+    let paths: Vec<_> = roots
+        .iter()
+        .filter_map(|(agent, root)| crate::agents::adapter(*agent).registry(root))
+        .collect();
+    if paths.is_empty() {
+        return;
+    }
+    let shared = shared.clone();
+    thread::spawn(move || {
+        let result = (|| -> io::Result<()> {
+            let watch =
+                crate::file_events::Watch::start(&paths, crate::file_events::Watch::current_id())?;
+            loop {
+                watch.rx.recv().map_err(io::Error::other)?;
+                // One identification per burst; a continuous writer cannot extend it.
+                let deadline = std::time::Instant::now() + Duration::from_millis(200);
+                for _ in 0..63 {
+                    let left = deadline.saturating_duration_since(std::time::Instant::now());
+                    if watch.rx.recv_timeout(left).is_err() {
+                        break;
+                    }
+                }
+                let transcripts = {
+                    let host = lock(&shared)?;
+                    if host
+                        .workspace
+                        .terminals
+                        .iter()
+                        .all(|t| t.state != ProcessState::Running)
+                    {
+                        continue;
+                    }
+                    host.store.transcripts()?
+                };
+                refresh_agents(&shared, &transcripts)?;
+            }
+        })();
+        if let Err(error) = result {
+            eprintln!("Agent registry watch stopped: {error}");
+        }
+    });
+}
 fn start_subscription(shared: Shared, mut index: crate::log_index::Index) {
+    watch_registries(&shared, &index.roots);
     thread::spawn(move || {
         let result = (|| -> io::Result<()> {
             let mut checkpoint = index.initialize()?;

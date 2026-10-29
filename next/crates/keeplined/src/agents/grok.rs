@@ -157,6 +157,9 @@ impl Adapter for Grok {
         let registry = grok_home(Path::new(&home)).join("active_sessions.json");
         (registered(&registry, pid, started(pid)), false)
     }
+    fn registry(&self, root: &Path) -> Option<PathBuf> {
+        Some(root.parent()?.join("active_sessions.json"))
+    }
     fn is_transcript(&self, path: &Path) -> bool {
         path.file_name().is_some_and(|n| n == "updates.jsonl")
             && path

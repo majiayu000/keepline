@@ -1677,6 +1677,55 @@ fn a_grok_tui_is_bound_through_its_own_registry_and_its_stream_drives_the_card()
         );
         std::thread::sleep(Duration::from_millis(25));
     }
+    // `grok --resume` writes the transcript about a second before it registers itself.
+    let script = format!("echo $$ > {}; sleep 30", h.root.join("grok-pid2").display());
+    h.call(h.launch(
+        "g2",
+        &format!(
+            "{} -c {}",
+            shell_quote(&cli.to_string_lossy()),
+            shell_quote(&script)
+        ),
+    ))
+    .unwrap();
+    let pid: u32 = wait_file(&h.root.join("grok-pid2")).trim().parse().unwrap();
+    file.write_all(
+        record(
+            now + 3,
+            serde_json::json!({"sessionUpdate": "hook_execution", "event_name": "session_start"}),
+        )
+        .as_bytes(),
+    )
+    .unwrap();
+    std::thread::sleep(Duration::from_millis(1500));
+    assert!(
+        h.workspace().current_agent("g2").is_none(),
+        "unregistered process must not be identified"
+    );
+    fs::write(
+        home.join("active_sessions.json"),
+        serde_json::json!([{"session_id": "01a1-live", "pid": pid, "cwd": "/Users/me/repo"}])
+            .to_string(),
+    )
+    .unwrap();
+    let until = Instant::now() + Duration::from_secs(5);
+    loop {
+        let w = h.workspace();
+        if let Some(s) = w.current_agent("g2") {
+            assert_eq!(s.cli_session_id, "01a1-live");
+            assert_eq!(
+                w.agent_sessions.len(),
+                1,
+                "resumed, not a second conversation"
+            );
+            break;
+        }
+        assert!(
+            Instant::now() < until,
+            "registering the resumed process must identify it"
+        );
+        std::thread::sleep(Duration::from_millis(25));
+    }
 }
 
 #[test]
