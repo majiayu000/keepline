@@ -11,6 +11,9 @@ mod model;
 #[path = "../src/terminal/screen.rs"]
 #[allow(dead_code)]
 mod screen;
+#[path = "../src/ui/status_colors.rs"]
+#[allow(dead_code)]
+mod status_colors;
 #[path = "../src/ui/theme.rs"]
 #[allow(dead_code)]
 mod theme;
@@ -102,6 +105,9 @@ fn main() {
     std::fs::create_dir_all(&out).unwrap();
     register_symbols();
     gpui_platform::application().run(move |cx: &mut App| {
+        cx.text_system()
+            .add_fonts(theme::BUNDLED_MONO.map(Into::into).to_vec())
+            .expect("bundled terminal font");
         let font = pick_font(cx);
         // Size the window from the same metrics the painter uses, so the grid fills it exactly.
         let probe = cx
