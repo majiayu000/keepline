@@ -767,29 +767,29 @@ impl Workbench {
             .and_then(|id| self.workspace.tasks.iter().find(|t| &t.id == id))
             .and_then(|t| self.workspace.spaces.iter().find(|s| s.id == t.space))
             .map(|s| s.cwd.clone());
+        // A plain new tab follows the focused pane of the current tab, like a split does.
+        let inherit = source.as_ref().map(|(id, _)| id.clone()).or_else(|| {
+            let tab = self.nav.tab.as_ref().filter(|_| previous.is_none())?;
+            let panes = self.workspace.tab_terminals(tab);
+            self.nav
+                .focused
+                .clone()
+                .filter(|id| panes.contains(id))
+                .or_else(|| panes.first().cloned())
+        });
+        let inherited = inherit
+            .as_ref()
+            .and_then(|id| self.workspace.terminals.iter().find(|t| &t.id == id))
+            .filter(|t| t.space == space.id);
         let cwd = resume.map(|r| r.1).or(task_cwd).unwrap_or_else(|| {
             previous
                 .map(|t| t.cwd)
-                .or_else(|| {
-                    source.as_ref().and_then(|(id, _)| {
-                        self.workspace
-                            .terminals
-                            .iter()
-                            .find(|t| &t.id == id)
-                            .map(|t| t.cwd.clone())
-                    })
-                })
+                .or_else(|| inherited.map(|t| t.cwd.clone()))
                 .unwrap_or_else(|| space.cwd.clone())
         });
         let cwd = usable_cwd([cwd, space.cwd.clone()]);
-        let cwd_source = source
-            .as_ref()
-            .and_then(|(id, _)| {
-                self.workspace
-                    .terminals
-                    .iter()
-                    .find(|t| &t.id == id && t.state == ProcessState::Running)
-            })
+        let cwd_source = inherited
+            .filter(|t| t.state == ProcessState::Running)
             .filter(|_| task_id.is_none() && resuming.is_none())
             .map(|t| t.id.clone());
         let request = Request::Launch {

@@ -159,6 +159,14 @@ impl Workbench {
         self.open_session(&session, window, cx);
         (self.workspace.tabs.len(), self.nav.tab.clone())
     }
+    /// The recorded directory of the shown tab's first terminal.
+    #[cfg(feature = "visual-test")]
+    pub fn visual_shown_cwd(&self) -> String {
+        let tab = self.nav.tab.as_ref().expect("a shown tab");
+        let id = self.workspace.tab_terminals(tab)[0].clone();
+        let terminal = self.workspace.terminals.iter().find(|t| t.id == id).unwrap();
+        terminal.cwd.clone()
+    }
     #[cfg(feature = "visual-test")]
     pub fn visual_tabs(&self) -> (usize, Option<String>) {
         (self.workspace.tabs.len(), self.nav.tab.clone())

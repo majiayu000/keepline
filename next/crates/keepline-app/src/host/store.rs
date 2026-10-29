@@ -117,13 +117,13 @@ impl Store {
     ) -> impl Future<Output = io::Result<Reply>> + use<> {
         let socket = self.socket.clone();
         async move {
-            if let Some(id) = cwd_source {
-                let Reply::Cwd(current) = rpc(&socket, &Request::TerminalCwd { id })? else {
-                    return Err(std::io::Error::other("terminal cwd response missing"));
-                };
-                if let Request::Launch { cwd, .. } = &mut request {
-                    *cwd = current;
-                }
+            // A shell that ended or moved somewhere unreadable keeps the recorded directory.
+            if let Some(id) = cwd_source
+                && let Ok(Reply::Cwd(current)) = rpc(&socket, &Request::TerminalCwd { id })
+                && Path::new(&current).is_dir()
+                && let Request::Launch { cwd, .. } = &mut request
+            {
+                *cwd = current;
             }
             let Reply::Workspace(w) = rpc(&socket, &request)? else {
                 return Err(std::io::Error::other("launch response missing"));
