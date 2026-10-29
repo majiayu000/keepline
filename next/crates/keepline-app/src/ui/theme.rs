@@ -147,6 +147,8 @@ impl Theme {
     pub const TAB_RENAME_MIN: f32 = 64.;
     /// A name being edited gets more room than a tab shows, then shrinks back.
     pub const TAB_RENAME_MAX: f32 = 360.;
+    /// A short name still leaves its × at the far edge, clear of a click on the name.
+    pub const TAB_MIN_WIDTH: f32 = 96.;
     pub const TAB_MAX_WIDTH: f32 = 200.;
     pub const TAB_TIP_WIDTH: f32 = 420.;
     pub const TODO_HEIGHT: f32 = 36.;

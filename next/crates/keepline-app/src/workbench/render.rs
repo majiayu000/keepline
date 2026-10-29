@@ -256,6 +256,7 @@ impl Render for Workbench {
                     .group(group_name)
                     .aria_label(title.clone())
                     .flex_shrink_0()
+                    .min_w(px(T::TAB_MIN_WIDTH))
                     .max_w(px(T::TAB_MAX_WIDTH))
                     .h(px(T::TABS))
                     .gap(px(T::S6))
@@ -265,7 +266,7 @@ impl Render for Workbench {
                     .text_color(T::color(if active { T::PRIMARY } else { T::SECONDARY }))
                     .when(active, |d| d.bg(T::color(T::RAISED)))
                     .when(tab.default_task.is_some(), |d| d.child(task_icon()))
-                    .child(div().min_w_0().truncate().child(title))
+                    .child(div().flex_grow_1().min_w_0().truncate().child(title))
                     .when_some(group, |d, g| d.child(dot(g)).child(badge(g, needs.len())))
                     .child(close)
                     // The hover card would cover the right-click menu; dropping the

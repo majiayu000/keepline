@@ -799,7 +799,8 @@ impl Workbench {
             this.layout.icon_menu = None
         })
     }
-    /// Asks before a close stops running Agents; a click outside cancels.
+    /// Asks before a close stops running Agents or takes several splits with it; a click
+    /// outside cancels.
     pub(super) fn confirm_close_view(
         &self,
         closing: &Closing,
@@ -818,6 +819,7 @@ impl Workbench {
         } else {
             0
         };
+        let splits = splits_closed(&self.workspace, closing);
         let lines = agents
             .iter()
             .map(|(title, phase)| match phase {
@@ -832,7 +834,11 @@ impl Workbench {
                     if host { "重启" } else { "关闭" }
                 ),
             })
-            .chain((shells > 0).then(|| format!("另有 {shells} 个普通终端会停止。")))
+            .chain((shells > 0).then(|| format!("另有 {shells} 个普通终端会停止。")));
+        let lines = (splits > 0)
+            .then(|| format!("这个标签有 {splits} 个分屏，会一起关闭。"))
+            .into_iter()
+            .chain(lines)
             .collect::<Vec<_>>()
             .join("\n");
         let confirmed = closing.clone();
