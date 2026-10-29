@@ -26,8 +26,12 @@ sign = ['codesign', '--force', '--sign', args.sign_identity]
 if args.sign_identity != '-':
     # Rust/GPUI uses no JIT or unsigned plug-ins. No hardened-runtime exceptions needed.
     sign += ['--options', 'runtime', '--timestamp']
-mac = bundle / 'Contents/MacOS'
-resources = bundle / 'Contents/Resources'
+# Build and sign beside the target, then swap directories by rename. Writing into a
+# running bundle invalidates its signature and macOS kills the live app and daemon.
+stage = bundle.with_name(bundle.name + '.staging')
+shutil.rmtree(stage, ignore_errors=True)
+mac = stage / 'Contents/MacOS'
+resources = stage / 'Contents/Resources'
 mac.mkdir(parents=True, exist_ok=True)
 resources.mkdir(parents=True, exist_ok=True)
 for binary in ('keepline-app', 'keeplined'):
@@ -35,14 +39,22 @@ for binary in ('keepline-app', 'keeplined'):
     subprocess.run([*sign, str(mac / binary)], check=True)
 shutil.copy2(root / 'crates/keepline-app/assets/NERD-FONTS-LICENSE', resources / 'NERD-FONTS-LICENSE')
 shutil.copy2(args.icon, resources / 'Keepline.icns')
-(bundle / 'Contents/Info.plist').write_bytes(plistlib.dumps({
+(stage / 'Contents/Info.plist').write_bytes(plistlib.dumps({
     'CFBundleName': 'Keepline', 'CFBundleDisplayName': 'Keepline',
     'CFBundleIdentifier': 'local.keepline.workbench', 'CFBundleExecutable': 'keepline-app',
     'CFBundlePackageType': 'APPL', 'CFBundleIconFile': 'Keepline', 'CFBundleVersion': '1', 'CFBundleShortVersionString': '0.1.0',
     'NSHighResolutionCapable': True, 'LSMinimumSystemVersion': '14.0',
 }))
-subprocess.run([*sign, str(bundle)], check=True)
-subprocess.run(['codesign', '--verify', '--deep', '--strict', str(bundle)], check=True)
+subprocess.run([*sign, str(stage)], check=True)
+subprocess.run(['codesign', '--verify', '--deep', '--strict', str(stage)], check=True)
+# Running processes keep the old inodes alive after the rename and unlink.
+retired = bundle.with_name(bundle.name + '.retired')
+shutil.rmtree(retired, ignore_errors=True)
+if bundle.exists():
+    bundle.rename(retired)
+stage.rename(bundle)
+shutil.rmtree(retired, ignore_errors=True)
+mac = bundle / 'Contents/MacOS'
 receipt = {'bundle': str(bundle), 'signature': args.sign_identity,
            'hardened_runtime': args.sign_identity != '-', 'notarized': False, 'published': False,
            'git_head': subprocess.check_output(['git', 'rev-parse', 'HEAD'], cwd=root, text=True).strip(),
