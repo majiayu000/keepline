@@ -161,10 +161,14 @@ fn show_startup_error(message: String, cx: &mut App) {
     cx.activate(true);
 }
 // Finder launches do not inherit run.sh. Enable the same event-driven idle policy
-// before GPUI or any application thread is created.
+// before GPUI or any application thread is created. The retained back buffer redraws
+// only what changed between frames, so a spinner repaints a few cells, not the window.
 fn main() {
     // SAFETY: this is the first operation in main, before spawning threads.
-    unsafe { std::env::set_var("GPUI_PAUSE_IDLE_DISPLAY_LINK", "1") };
+    unsafe {
+        std::env::set_var("GPUI_PAUSE_IDLE_DISPLAY_LINK", "1");
+        std::env::set_var("GPUI_RETAINED_BACKBUFFER", "1");
+    }
     if let Err(error) = run() {
         eprintln!("Keepline: {error}");
         std::process::exit(1);
