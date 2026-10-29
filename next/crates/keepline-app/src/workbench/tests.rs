@@ -323,5 +323,11 @@ fn a_reopened_pane_resumes_its_latest_open_conversation() {
         ..open
     };
     w.agent_sessions.extend([older, latest, elsewhere]);
+    // Lost before the host kept a record: the latest open conversation there.
     assert_eq!(interrupted_session(&w, "t1").unwrap().id, "latest");
+    // The host's record wins, including that nothing but the shell was running.
+    w.lost_agents.insert("t1".into(), Some("older".into()));
+    assert_eq!(interrupted_session(&w, "t1").unwrap().id, "older");
+    w.lost_agents.insert("t1".into(), None);
+    assert!(interrupted_session(&w, "t1").is_none());
 }
