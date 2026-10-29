@@ -89,6 +89,8 @@ struct Host {
     submits: HashMap<String, std::collections::VecDeque<u64>>,
     input_probes: std::collections::HashSet<String>,
     deadlines: Option<SyncSender<()>>,
+    /// This host behind its lock, for work started from inside a commit.
+    myself: std::sync::Weak<Mutex<Host>>,
     /// Terminal -> question seen on its quiet screen. Live fallback only: never stored,
     /// cleared by the user's input or by a later quiet screen without the prompt.
     screen_waits: HashMap<String, String>,
@@ -376,7 +378,42 @@ impl Host {
     fn commit(&mut self, mut next: Workspace) -> io::Result<()> {
         next.revision = self.workspace.revision + 1;
         self.store.save(&self.workspace, &next)?;
+        // Terminals that just got their Agent conversation. The quiet-screen check after
+        // the last output skipped them while unbound; a dialog drawn before binding (an
+        // Agent that starts on an approval, or a slow identification under load) would
+        // otherwise never be seen, since the screen stays still.
+        let bound: Vec<String> = next
+            .agent_sessions
+            .iter()
+            .filter(|s| s.current)
+            .filter_map(|s| s.terminal.clone())
+            .filter(|t| {
+                self.workspace.current_agent(t).map(|s| &s.id)
+                    != next.current_agent(t).map(|s| &s.id)
+            })
+            .collect();
         self.workspace = next;
+        for id in bound {
+            let (Some(shared), Some(terminal)) =
+                (self.myself.upgrade(), self.terminals.get(&id).cloned())
+            else {
+                continue;
+            };
+            thread::spawn(move || {
+                let mut at = Instant::now() + SCREEN_QUIET;
+                loop {
+                    thread::sleep(at.saturating_duration_since(Instant::now()));
+                    match check_screen_wait(&terminal, &shared, &id) {
+                        Ok(Some(next)) => at = next,
+                        Ok(None) => break,
+                        Err(e) => {
+                            eprintln!("screen check after binding {id}: {e}");
+                            break;
+                        }
+                    }
+                }
+            });
+        }
         if let Some(tx) = &self.deadlines {
             let _ = tx.try_send(());
         }
@@ -669,12 +706,14 @@ fn serve_runtime(
         submits: HashMap::new(),
         input_probes: Default::default(),
         deadlines: None,
+        myself: std::sync::Weak::new(),
         screen_waits: HashMap::new(),
         reconciled: HashMap::new(),
         workspace,
         terminals: HashMap::new(),
         instance: uuid::Uuid::new_v4().to_string(),
     }));
+    lock(&host)?.myself = Arc::downgrade(&host);
     let weak = Arc::downgrade(&host);
     lock(&host)?.exits = Some(crate::process_exit::ExitWatch::new(move |pid| {
         if let Some(host) = weak.upgrade() {
@@ -2619,6 +2658,7 @@ mod recognition_tests {
             submits: HashMap::new(),
             input_probes: Default::default(),
             deadlines: None,
+            myself: std::sync::Weak::new(),
             screen_waits: HashMap::new(),
             reconciled: HashMap::new(),
         }));

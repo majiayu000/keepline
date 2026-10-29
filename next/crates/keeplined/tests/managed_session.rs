@@ -3632,3 +3632,50 @@ fn real_claude_hooks_bind_at_startup_before_any_prompt() {
         std::thread::sleep(Duration::from_millis(100));
     }
 }
+
+/// The Agent draws its approval before Keepline knows which conversation it is (here the
+/// log appears 3 s later, as when identification is slow under load). The screen stays
+/// still after that, so only binding the conversation can trigger the check.
+#[test]
+fn an_approval_drawn_before_the_conversation_is_bound_still_waits_on_the_user() {
+    let h = Host::start();
+    h.setup();
+    let logs = h.root.join("logs/claude");
+    fs::create_dir_all(&logs).unwrap();
+    let claude = h.root.join("claude");
+    std::os::unix::fs::symlink("/bin/sh", &claude).unwrap();
+    let id = uuid::Uuid::new_v4().to_string();
+    let seed = h.root.join("seed");
+    let row = serde_json::json!({"type":"user","sessionId":id,"uuid":"u0","cwd":"/project","entrypoint":"cli","userType":"external","timestamp":keepline_core::content::now(),"message":{"content":"Late binding test"}});
+    fs::write(&seed, format!("{row}\n")).unwrap();
+    let script = format!(
+        "printf '%s\\n' 'Bash command' '  rm -rf build' 'Do you want to proceed?' '> 1. Yes' '  2. No'; sleep 3; cat {} > {}; read -r answer",
+        shell_quote(&seed.to_string_lossy()),
+        shell_quote(&logs.join(format!("{id}.jsonl")).to_string_lossy())
+    );
+    h.call(h.launch(
+        "late",
+        &format!(
+            "exec {} -c {} fixture --session-id {}",
+            shell_quote(&claude.to_string_lossy()),
+            shell_quote(&script),
+            id
+        ),
+    ))
+    .unwrap();
+    let until = Instant::now() + Duration::from_secs(30);
+    while h.workspace().current_agent("late").is_none() {
+        assert!(Instant::now() < until, "explicit ID must bind");
+        std::thread::sleep(Duration::from_millis(50));
+    }
+    let until = Instant::now() + Duration::from_secs(10);
+    loop {
+        let w = h.workspace();
+        let turn = w.current_agent("late").and_then(|s| w.content.get(&s.id)).map(|c| c.turn);
+        if turn == Some(keepline_core::content::Turn::Waiting) {
+            break;
+        }
+        assert!(Instant::now() < until, "a dialog already on screen at binding is never seen: {turn:?}");
+        std::thread::sleep(Duration::from_millis(100));
+    }
+}
