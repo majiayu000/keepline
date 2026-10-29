@@ -391,7 +391,6 @@ pub struct Parser {
     last_user_turn: String,
     calls: BTreeMap<String, Call>,
     executions: BTreeMap<String, String>,
-    last_failed: String,
     /// A turn end arrived while a dialog was still shown; settles the turn once the dialog
     /// is known to be gone.
     #[serde(default)]
@@ -613,7 +612,6 @@ impl Parser {
             self.card.waiting.clear();
             self.card.error.clear();
             self.card.background = None;
-            self.last_failed.clear();
             self.completed_while_waiting = false;
             self.child_wait_from = None;
         }
@@ -622,10 +620,6 @@ impl Parser {
             && turn == Turn::Completed;
         self.completed_while_waiting |= still_waiting;
         self.card.turn = if still_waiting { Turn::Waiting } else { turn };
-        if turn == Turn::Completed && !self.last_failed.is_empty() {
-            self.card.turn = Turn::Error;
-            self.card.error = self.last_failed.clone();
-        }
         self.card.updated = self.card.updated.max(at);
         self.record("turn", format!("{turn:?}"), id, None, at, source);
     }
@@ -766,17 +760,16 @@ impl Parser {
         {
             self.card.waiting = short(&output, 600);
             self.card.turn = Turn::Waiting;
-            self.last_failed.clear();
             self.fact("approval", self.card.waiting.clone(), None, at, source);
             self.calls.remove(id);
             self.card.updated = self.card.updated.max(at);
             return;
         }
+        // A failed command is evidence, not a failed turn: agents routinely run commands
+        // that exit non-zero (no grep match, an interrupted call) and still answer.
         if code.is_some_and(|n| n != 0) {
-            self.last_failed = format!("{}: {}", call.name, short(&output, 240));
-            self.fact("error", self.last_failed.clone(), code, at, source);
-        } else if code == Some(0) {
-            self.last_failed.clear();
+            let failed = format!("{}: {}", call.name, short(&output, 240));
+            self.fact("error", failed, code, at, source);
         }
         if code == Some(0) && (patch || matches!(name, "Edit" | "Write")) {
             let mut paths = Vec::new();
@@ -1739,7 +1732,12 @@ mod tests {
             &mut p,
             json!({"type":"event_msg","payload":{"type":"task_complete"}}),
         );
-        assert_eq!(p.card.turn, Turn::Error);
+        assert_eq!(p.card.turn, Turn::Completed);
+        assert!(p
+            .card
+            .evidence
+            .iter()
+            .any(|e| e.kind == "error" && e.exit_code == Some(101)));
         assert!(p.card.here().done.contains("a.rs"));
         assert!(p.card.here().done.contains("abcdef1"));
         assert!(!p.card.here().done.contains("2 passed"));
