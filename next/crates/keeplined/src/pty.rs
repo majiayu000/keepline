@@ -1,9 +1,46 @@
+use std::ffi::OsString;
 use std::fs::File;
 use std::io::{self, Write};
 use std::os::fd::{AsRawFd, FromRawFd, OwnedFd};
 use std::os::unix::{ffi::OsStrExt, fs::OpenOptionsExt, process::CommandExt};
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use std::process::{Child, Command, Stdio};
+use std::sync::OnceLock;
+
+/// Where this host wrote the shell integration; unset when it is turned off.
+static INTEGRATION: OnceLock<PathBuf> = OnceLock::new();
+
+/// Writes the shell integration into the runtime, so the scripts always match this
+/// host. `KEEPLINE_NO_SHELL_INTEGRATION` in the host's environment turns it off.
+pub fn install_shell_integration(root: &Path) -> io::Result<()> {
+    if std::env::var_os("KEEPLINE_NO_SHELL_INTEGRATION").is_some() {
+        return Ok(());
+    }
+    let dir = root.join("shell-integration");
+    std::fs::create_dir_all(dir.join("zsh"))?;
+    std::fs::write(
+        dir.join("zsh/.zshenv"),
+        include_str!("../shell-integration/zsh/.zshenv"),
+    )?;
+    std::fs::write(
+        dir.join("zsh/keepline-integration"),
+        include_str!("../shell-integration/zsh/keepline-integration"),
+    )?;
+    let _ = INTEGRATION.set(dir);
+    Ok(())
+}
+
+/// zsh starts through the integration's ZDOTDIR, which restores the user's own before
+/// any of their startup files run. Other shells start untouched for now.
+fn integration_env(program: &str, dir: Option<&Path>) -> Vec<(OsString, OsString)> {
+    match dir {
+        Some(dir) if Path::new(program).file_name().is_some_and(|n| n == "zsh") => vec![
+            ("ZDOTDIR".into(), dir.join("zsh").into_os_string()),
+            ("KEEPLINE_SHELL_INTEGRATION_DIR".into(), dir.as_os_str().to_owned()),
+        ],
+        _ => Vec::new(),
+    }
+}
 
 pub fn spawn(argv: &[String], cwd: &Path, cols: u16, rows: u16) -> io::Result<(Child, File)> {
     let mut master = -1;
@@ -46,6 +83,7 @@ pub fn spawn(argv: &[String], cwd: &Path, cols: u16, rows: u16) -> io::Result<(C
         .current_dir(cwd)
         .env("TERM", "xterm-256color")
         .env("COLORTERM", "truecolor")
+        .envs(integration_env(&argv[0], INTEGRATION.get().map(PathBuf::as_path)))
         .env_remove("COLUMNS")
         .env_remove("LINES")
         .stdin(Stdio::from(slave.try_clone()?))
@@ -167,4 +205,17 @@ pub fn write(master: &mut File, bytes: &[u8]) -> io::Result<()> {
         }
     }
     Ok(())
+}
+
+#[cfg(test)]
+mod integration_tests {
+    #[test]
+    fn only_zsh_starts_through_the_integration() {
+        let dir = std::path::Path::new("/rt/shell-integration");
+        let env = super::integration_env("/bin/zsh", Some(dir));
+        assert_eq!(env[0], ("ZDOTDIR".into(), "/rt/shell-integration/zsh".into()));
+        assert_eq!(env[1].1, "/rt/shell-integration");
+        assert!(super::integration_env("/bin/bash", Some(dir)).is_empty());
+        assert!(super::integration_env("/bin/zsh", None).is_empty());
+    }
 }
