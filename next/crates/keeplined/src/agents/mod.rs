@@ -18,6 +18,11 @@ pub trait Adapter: Sync {
     fn runs(&self, executable: &str, script: Option<&str>) -> bool;
     /// The conversation a live process names, and whether it opens its own transcript.
     fn process_session(&self, pid: u32, args: &[String]) -> (Option<String>, bool);
+    /// A file the CLI rewrites when a process opens or closes a session. A process can
+    /// write its transcript before registering, so a change here identifies processes again.
+    fn registry(&self, _root: &Path) -> Option<PathBuf> {
+        None
+    }
     /// Whether a file under the root is a transcript.
     fn is_transcript(&self, path: &Path) -> bool {
         path.extension().is_some_and(|e| e == "jsonl")
