@@ -81,6 +81,8 @@ struct Host {
     exits: Option<crate::process_exit::ExitWatch>,
     agent_pids: HashMap<u32, String>,
     unbound_pids: HashMap<u32, String>,
+    /// Claude processes that save no transcript, so their hint goes when they exit.
+    unrecorded_pids: HashMap<u32, String>,
     /// Recent Enter presses per terminal, seconds since the epoch: evidence for which
     /// pane a shared-daemon Codex prompt came from.
     submits: HashMap<String, std::collections::VecDeque<u64>>,
@@ -193,7 +195,11 @@ impl Host {
         Ok(())
     }
     fn agent_exited(&mut self, pid: u32) -> io::Result<()> {
-        if let Some(terminal) = self.unbound_pids.remove(&pid) {
+        if let Some(terminal) = self
+            .unbound_pids
+            .remove(&pid)
+            .or_else(|| self.unrecorded_pids.remove(&pid))
+        {
             self.recognition.terminal_hints.remove(&terminal);
             self.publish_status()?;
         }
@@ -241,6 +247,23 @@ impl Host {
                 let id = session.id.clone();
                 if self.agent_pids.get(&process.pid) != Some(&id) {
                     self.agent_pids.insert(process.pid, id);
+                    if let Some(exits) = &self.exits {
+                        if !exits.watch(process.pid)? {
+                            self.agent_exited(process.pid)?;
+                        }
+                    }
+                }
+            } else if process.runtime == Some(Agent::Claude)
+                && crate::recognition::claude_transcript_off(process.pid)
+            {
+                self.recognition.terminal_hints.insert(
+                    terminal.clone(),
+                    keepline_core::protocol::CLAUDE_TRANSCRIPT_OFF.into(),
+                );
+                if let std::collections::hash_map::Entry::Vacant(entry) =
+                    self.unrecorded_pids.entry(process.pid)
+                {
+                    entry.insert(terminal);
                     if let Some(exits) = &self.exits {
                         if !exits.watch(process.pid)? {
                             self.agent_exited(process.pid)?;
@@ -591,6 +614,7 @@ fn serve_runtime(
         exits: None,
         agent_pids: HashMap::new(),
         unbound_pids: HashMap::new(),
+        unrecorded_pids: HashMap::new(),
         submits: HashMap::new(),
         input_probes: Default::default(),
         deadlines: None,
@@ -2417,6 +2441,7 @@ mod recognition_tests {
             exits: None,
             agent_pids: HashMap::new(),
             unbound_pids: HashMap::new(),
+            unrecorded_pids: HashMap::new(),
             submits: HashMap::new(),
             input_probes: Default::default(),
             deadlines: None,

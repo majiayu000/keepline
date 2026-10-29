@@ -72,6 +72,21 @@ fn runtime_from_command(command: &str) -> Option<Agent> {
 /// Read argv boundaries from the kernel, never parse a prompt out of `ps command`.
 /// KERN_PROCARGS2 also returns an environment tail; stop after argc and never retain it.
 fn process_argv(pid: u32) -> io::Result<Vec<String>> {
+    let bytes = procargs(pid)?;
+    let Some((argc, mut pos)) = argv_start(&bytes) else {
+        return Ok(vec![]);
+    };
+    let mut args = Vec::new();
+    for _ in 0..argc {
+        let Some(end) = bytes[pos..].iter().position(|b| *b == 0) else {
+            break;
+        };
+        args.push(String::from_utf8_lossy(&bytes[pos..pos + end]).into_owned());
+        pos += end + 1;
+    }
+    Ok(args)
+}
+fn procargs(pid: u32) -> io::Result<Vec<u8>> {
     let mut mib = [libc::CTL_KERN, libc::KERN_PROCARGS2, pid as i32];
     let mut len = 0;
     if unsafe {
@@ -102,26 +117,35 @@ fn process_argv(pid: u32) -> io::Result<Vec<String>> {
         return Err(io::Error::last_os_error());
     }
     bytes.truncate(len);
+    Ok(bytes)
+}
+/// argc and the offset of argv[0], past the executable path and its padding.
+fn argv_start(bytes: &[u8]) -> Option<(usize, usize)> {
     if bytes.len() < 4 {
-        return Ok(vec![]);
+        return None;
     }
     let argc = i32::from_ne_bytes(bytes[..4].try_into().unwrap()).max(0) as usize;
-    let Some(end) = bytes[4..].iter().position(|b| *b == 0) else {
-        return Ok(vec![]);
-    };
+    let end = bytes[4..].iter().position(|b| *b == 0)?;
     let mut pos = 4 + end;
     while bytes.get(pos) == Some(&0) {
         pos += 1;
     }
-    let mut args = Vec::new();
-    for _ in 0..argc {
-        let Some(end) = bytes[pos..].iter().position(|b| *b == 0) else {
-            break;
-        };
-        args.push(String::from_utf8_lossy(&bytes[pos..pos + end]).into_owned());
-        pos += end + 1;
-    }
-    Ok(args)
+    Some((argc, pos))
+}
+/// Claude Code writes no transcript when it believes it is a nested child session, so
+/// nothing can ever bind it. Only the variable's name is checked; no value is kept.
+pub fn claude_transcript_off(pid: u32) -> bool {
+    procargs(pid).is_ok_and(|bytes| env_has(&bytes, "CLAUDE_CODE_CHILD_SESSION"))
+}
+fn env_has(bytes: &[u8], key: &str) -> bool {
+    let Some((argc, pos)) = argv_start(bytes) else {
+        return false;
+    };
+    let mut entries = bytes[pos..].split(|b| *b == 0).skip(argc);
+    entries.any(|e| {
+        e.strip_prefix(key.as_bytes())
+            .is_some_and(|rest| rest.first() == Some(&b'='))
+    })
 }
 fn claude_session_id(args: &[String]) -> Option<String> {
     let mut found = None;
@@ -690,6 +714,32 @@ mod tests {
         ] {
             assert_eq!(screen_wait(text), None, "{text}");
         }
+    }
+    #[test]
+    fn transcript_off_reads_only_the_environment_tail() {
+        let procargs = |argv: &[&str], env: &[&str]| {
+            let mut b = (argv.len() as i32).to_ne_bytes().to_vec();
+            b.extend_from_slice(b"/usr/local/bin/claude\0\0\0");
+            for part in argv.iter().chain(env) {
+                b.extend_from_slice(part.as_bytes());
+                b.push(0);
+            }
+            b
+        };
+        let key = "CLAUDE_CODE_CHILD_SESSION";
+        assert!(env_has(
+            &procargs(&["claude"], &["HOME=/u", "CLAUDE_CODE_CHILD_SESSION=1"]),
+            key
+        ));
+        // A prompt that names the variable, a longer name, or no marker at all.
+        for (argv, env) in [
+            (&["claude", "CLAUDE_CODE_CHILD_SESSION=1"][..], &["HOME=/u"][..]),
+            (&["claude"], &["CLAUDE_CODE_CHILD_SESSION_X=1"]),
+            (&["claude"], &[]),
+        ] {
+            assert!(!env_has(&procargs(argv, env), key), "{argv:?} {env:?}");
+        }
+        assert!(!env_has(b"\0\0", key));
     }
     #[test]
     fn explicit_claude_id_uses_argv_boundaries_and_kernel_arguments() {

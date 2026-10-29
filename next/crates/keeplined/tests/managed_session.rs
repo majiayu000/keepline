@@ -2941,6 +2941,75 @@ fn daemon_codex_identical_prompts_stay_unbound_until_a_distinct_follow_up() {
 }
 
 #[test]
+fn claude_without_a_transcript_says_so_until_it_exits() {
+    let h = Host::start();
+    h.setup();
+    // macOS hides a platform binary's environment, so /bin/sh would always look clean;
+    // a re-signed copy reads like the real CLI.
+    let cli = h.root.join("claude");
+    fs::copy("/bin/bash", &cli).unwrap();
+    assert!(std::process::Command::new("/usr/bin/codesign")
+        .args(["-f", "-s", "-"])
+        .arg(&cli)
+        .output()
+        .unwrap()
+        .status
+        .success());
+    let cli = shell_quote(&cli.to_string_lossy());
+    // Two lines: the first is the Enter that prompts a scan, the second ends the CLI.
+    let script = shell_quote("read -r a; read -r b");
+    h.call(h.launch(
+        "nested",
+        &format!("exec /usr/bin/env CLAUDE_CODE_CHILD_SESSION=1 {cli} -c {script}"),
+    ))
+    .unwrap();
+    // Not left to the host: whatever runs the tests may itself carry the marker.
+    h.call(h.launch(
+        "plain",
+        &format!("exec /usr/bin/env -u CLAUDE_CODE_CHILD_SESSION {cli} -c {script}"),
+    ))
+    .unwrap();
+    let mut streams = vec![];
+    for pane in ["nested", "plain"] {
+        let (mut stream, _, _) = h.attach(pane, false);
+        send(
+            &mut stream,
+            CONTROL,
+            &Request::Input {
+                bytes: b"\n".to_vec(),
+                lossy: false,
+            },
+        )
+        .unwrap();
+        assert!(matches!(ack(&mut stream), Reply::Ok));
+        streams.push(stream);
+    }
+    let until = Instant::now() + Duration::from_secs(10);
+    while recognition(&h).terminal_hints.get("nested").map(String::as_str)
+        != Some(keepline_core::protocol::CLAUDE_TRANSCRIPT_OFF)
+    {
+        assert!(Instant::now() < until, "{:?}", recognition(&h).terminal_hints);
+        std::thread::sleep(Duration::from_millis(25));
+    }
+    assert!(!recognition(&h).terminal_hints.contains_key("plain"));
+    send(
+        &mut streams[0],
+        CONTROL,
+        &Request::Input {
+            bytes: b"\n".to_vec(),
+            lossy: false,
+        },
+    )
+    .unwrap();
+    assert!(matches!(ack(&mut streams[0]), Reply::Ok));
+    let until = Instant::now() + Duration::from_secs(10);
+    while recognition(&h).terminal_hints.contains_key("nested") {
+        assert!(Instant::now() < until, "the hint outlives the CLI");
+        std::thread::sleep(Duration::from_millis(25));
+    }
+}
+
+#[test]
 fn unbound_daemon_codex_shows_title_state_and_no_daemon_shows_nothing() {
     let h = Host::start();
     h.setup();
