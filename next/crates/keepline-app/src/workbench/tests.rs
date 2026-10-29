@@ -273,6 +273,18 @@ fn a_removed_directory_falls_back_to_one_that_exists() {
     );
 }
 #[test]
+fn close_confirms_only_work_in_progress_or_a_pending_question() {
+    let agent = |p| vec![("a".to_owned(), p)];
+    assert!(!interrupts(&[]));
+    assert!(!interrupts(&agent(Some(Phase::Idle))));
+    assert!(!interrupts(&agent(None)));
+    assert!(interrupts(&agent(Some(Phase::Working))));
+    assert!(interrupts(&agent(Some(Phase::Waiting))));
+    let mut mixed = agent(Some(Phase::Idle));
+    mixed.push(("b".to_owned(), Some(Phase::Working)));
+    assert!(interrupts(&mixed));
+}
+#[test]
 fn closed_sessions_past_the_stale_days_leave_the_sidebar_count() {
     let mut w = fixture();
     let s = &mut w.agent_sessions[0];
