@@ -77,7 +77,9 @@ impl Store {
                 terminal_id TEXT REFERENCES terminals(id), is_current INTEGER NOT NULL, task_id TEXT REFERENCES tasks(id),
                 outcome TEXT NOT NULL, deferred_reason TEXT, deferred_until INTEGER, updated INTEGER NOT NULL, cwd TEXT NOT NULL, transcript TEXT NOT NULL,
                 UNIQUE(runtime,cli_session_id));
-            CREATE UNIQUE INDEX IF NOT EXISTS one_current_agent_per_terminal ON agent_sessions(terminal_id) WHERE is_current=1;")
+            CREATE UNIQUE INDEX IF NOT EXISTS one_current_agent_per_terminal ON agent_sessions(terminal_id) WHERE is_current=1;
+            -- Beside agent_sessions, not in it: a host from before keeps writing its full rows.
+            CREATE TABLE IF NOT EXISTS agent_bindings (session_id TEXT PRIMARY KEY, evidence TEXT NOT NULL);")
             .map_err(db_error)?;
         let mut store = Self(db);
         let mut workspace = store.load()?;
@@ -277,7 +279,7 @@ impl Store {
         for tab in &mut w.tabs {
             tab.layout = load_layout(&self.0, &tab.id, "")?;
         }
-        let mut statement=self.0.prepare("SELECT id,runtime,cli_session_id,terminal_id,is_current,task_id,outcome,deferred_reason,deferred_until,updated,cwd,transcript FROM agent_sessions ORDER BY rowid").map_err(db_error)?;
+        let mut statement=self.0.prepare("SELECT a.id,a.runtime,a.cli_session_id,a.terminal_id,a.is_current,a.task_id,a.outcome,a.deferred_reason,a.deferred_until,a.updated,a.cwd,a.transcript,b.evidence FROM agent_sessions a LEFT JOIN agent_bindings b ON b.session_id=a.id ORDER BY a.rowid").map_err(db_error)?;
         let mut rows = statement.query([]).map_err(db_error)?;
         while let Some(r) = rows.next().map_err(db_error)? {
             let kind: String = r.get(6).map_err(db_error)?;
@@ -303,6 +305,11 @@ impl Store {
                 updated: u64::try_from(r.get::<_, i64>(9).map_err(db_error)?).map_err(db_error)?,
                 cwd: r.get(10).map_err(db_error)?,
                 transcript: r.get(11).map_err(db_error)?,
+                binding: r
+                    .get::<_, Option<String>>(12)
+                    .map_err(db_error)?
+                    .map(enum_value)
+                    .transpose()?,
             });
         }
         Ok(w)
@@ -383,6 +390,10 @@ impl Store {
                 ),
             };
             tx.execute("INSERT INTO agent_sessions VALUES(?1,?2,?3,?4,?5,?6,?7,?8,?9,?10,?11,?12) ON CONFLICT(id) DO UPDATE SET runtime=excluded.runtime,cli_session_id=excluded.cli_session_id,terminal_id=excluded.terminal_id,is_current=excluded.is_current,task_id=excluded.task_id,outcome=excluded.outcome,deferred_reason=excluded.deferred_reason,deferred_until=excluded.deferred_until,updated=excluded.updated,cwd=excluded.cwd,transcript=excluded.transcript",params![s.id,enum_name(&s.runtime)?,s.cli_session_id,s.terminal,s.current,s.task,kind,reason,until,i64::try_from(s.updated).map_err(db_error)?,s.cwd,s.transcript]).map_err(db_error)?;
+            match s.binding {
+                Some(b) => tx.execute("INSERT INTO agent_bindings VALUES(?1,?2) ON CONFLICT(session_id) DO UPDATE SET evidence=excluded.evidence",params![s.id,enum_name(&b)?]).map_err(db_error)?,
+                None => tx.execute("DELETE FROM agent_bindings WHERE session_id=?1",[&s.id]).map_err(db_error)?,
+            };
         }
         for h in w.outcome_history.iter().skip(before.outcome_history.len()) {
             tx.execute("INSERT INTO outcome_history(session_id,before_json,after_json,at,reason) VALUES(?1,?2,?3,?4,?5)",params![h.session,serde_json::to_string(&h.before).map_err(db_error)?,serde_json::to_string(&h.after).map_err(db_error)?,i64::try_from(h.at).map_err(db_error)?,h.reason]).map_err(db_error)?;
@@ -614,6 +625,7 @@ mod milestone_tests {
             updated: 1,
             cwd: "/tmp".into(),
             transcript: String::new(),
+            binding: None,
         };
         after.agent_sessions.extend([
             session("running", "agent", true),
@@ -712,6 +724,7 @@ mod milestone_tests {
             updated: 1,
             cwd: "/tmp".into(),
             transcript: "/fixture".into(),
+            binding: None,
         });
         w.change_outcome("s1", Outcome::Completed, 2, "用户操作")
             .unwrap();

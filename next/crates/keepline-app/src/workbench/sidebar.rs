@@ -193,15 +193,32 @@ impl Workbench {
             let row = sessions.remove(i);
             sessions.insert(SIDEBAR_SESSIONS - 1, row);
         }
+        // Agents running in a tab here that no evidence has tied to a conversation yet:
+        // listed rather than missing, so a CLI Keepline cannot read is never silent.
+        let mut unread: Vec<_> = self
+            .store
+            .recognition()
+            .terminal_hints
+            .iter()
+            .filter(|(terminal, _)| {
+                self.workspace.current_agent(terminal).is_none()
+                    && self
+                        .workspace
+                        .terminal_tab(terminal)
+                        .is_some_and(|tab| tab.space == self.nav.space)
+            })
+            .map(|(terminal, hint)| (terminal.clone(), super::layout::unread_agent(hint)))
+            .collect();
+        unread.sort_by(|a, b| a.0.cmp(&b.0));
         sidebar = sidebar.child(self.todos_view(space_name, cx));
         sidebar = sidebar.child(
-            label(format!("会话 · {}", sessions.len()))
+            label(format!("会话 · {}", sessions.len() + unread.len()))
                 .mt(px(T::S14))
                 .pt(px(T::S12))
                 .px(px(T::S8))
                 .mb(px(T::S4)),
         );
-        if sessions.is_empty() {
+        if sessions.is_empty() && unread.is_empty() {
             sidebar = sidebar.child(
                 label("没有打开的会话。在终端里运行 codex 或 claude 就会出现在这里").px(px(T::S8)),
             );
@@ -257,6 +274,39 @@ impl Workbench {
                             this.open_session(&open, window, cx)
                         })),
                 );
+        }
+        for (terminal, (note, why)) in unread {
+            let focused = self.nav.focused.as_deref() == Some(terminal.as_str());
+            sidebar = sidebar.child(
+                div()
+                    .id(gpui::SharedString::from(format!("unread-row-{terminal}")))
+                    .h(px(T::ROW))
+                    .px(px(T::S8))
+                    .flex()
+                    .items_center()
+                    .gap(px(T::S8))
+                    .rounded(px(T::CONTROL_RADIUS))
+                    .cursor_pointer()
+                    .when(focused, |d| d.bg(T::color(T::RAISED)))
+                    .hover(|s| s.bg(T::color(T::RAISED)))
+                    .child(seen_dot(Group::Stale))
+                    .child(
+                        div()
+                            .flex_1()
+                            .min_w_0()
+                            .truncate()
+                            .text_size(px(T::MONO_SIZE))
+                            .text_color(T::color(T::MUTED))
+                            .child(note),
+                    )
+                    .tooltip(move |_, cx| {
+                        cx.new(|_| super::render::TextTip(why.clone().into()))
+                            .into()
+                    })
+                    .on_click(cx.listener(move |this, _, window, cx| {
+                        this.focus_terminal(&terminal, window, cx);
+                    })),
+            );
         }
         if more > 0 {
             sidebar = sidebar.child(

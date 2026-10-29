@@ -494,6 +494,7 @@ mod grouping_tests {
             updated: now,
             cwd: "/tmp".into(),
             transcript: "f".into(),
+            binding: None,
         };
         let w = Workspace::default();
         let mut c = Content {
@@ -540,6 +541,7 @@ mod grouping_tests {
             updated: now,
             cwd: "/tmp".into(),
             transcript: "f".into(),
+            binding: None,
         };
         let w = Workspace::default();
         let mut c = Content {

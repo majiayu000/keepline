@@ -20,14 +20,22 @@ pub(super) struct LayoutState {
     pub(super) reopened: HashSet<String>,
 }
 /// The host's note on an Agent it sees but cannot read, in the user's words, and why.
-fn unread_agent(hint: &str) -> (String, &'static str) {
+pub(super) fn unread_agent(hint: &str) -> (String, String) {
     if hint == keepline_core::protocol::CLAUDE_TRANSCRIPT_OFF {
         return (
             "claude · 没有保存记录".into(),
-            "这个 Claude 继承了 CLAUDE_CODE_CHILD_SESSION，自认为是别的会话的子会话，不写对话记录，Keepline 读不到也统计不了。关掉这个终端重新打开，再运行 claude。",
+            "这个 Claude 继承了 CLAUDE_CODE_CHILD_SESSION，自认为是别的会话的子会话，不写对话记录，Keepline 读不到也统计不了。关掉这个终端重新打开，再运行 claude。".into(),
         );
     }
-    let why = "这个 Codex 连着共用的后台，Keepline 只看得到它忙不忙，读不到对话。想在这里看到对话内容，下次用 codex --no-daemon 启动。";
+    if let Some(cli) = hint.strip_prefix(keepline_core::protocol::AGENT_UNBOUND_PREFIX) {
+        return (
+            format!("{cli} · 发出第一句后对上对话"),
+            format!(
+                "Keepline 看到这个 {cli} 在跑，但它的命令行没写是哪段对话。发出第一句话后，按画面上的提示词对上；想启动就认出，运行一次 keeplined hooks install 装上 Hook。"
+            ),
+        );
+    }
+    let why = "这个 Codex 连着共用的后台，Keepline 只看得到它忙不忙，读不到对话。想在这里看到对话内容，下次用 codex --no-daemon 启动。".to_owned();
     match hint
         .strip_prefix("仅显示状态：")
         .and_then(|rest| rest.split_once('；'))
@@ -188,7 +196,8 @@ impl Workbench {
                                 .id(gpui::SharedString::from(format!("unread-{id}")))
                                 .child(label(note))
                                 .tooltip(move |_, cx| {
-                                    cx.new(|_| super::render::TextTip(why.into())).into()
+                                    cx.new(|_| super::render::TextTip(why.clone().into()))
+                                        .into()
                                 }),
                         )
                     })
@@ -994,6 +1003,13 @@ mod tests {
         assert_eq!(
             note(keepline_core::protocol::CLAUDE_TRANSCRIPT_OFF),
             "claude · 没有保存记录"
+        );
+        assert_eq!(
+            note(&format!(
+                "{}claude",
+                keepline_core::protocol::AGENT_UNBOUND_PREFIX
+            )),
+            "claude · 发出第一句后对上对话"
         );
     }
 }

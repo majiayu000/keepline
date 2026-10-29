@@ -9,6 +9,28 @@ use std::sync::OnceLock;
 
 /// Where this host wrote the shell integration; unset when it is turned off.
 static INTEGRATION: OnceLock<PathBuf> = OnceLock::new();
+/// This host's runtime directory and executable, handed to every terminal for hooks.
+static HOST: OnceLock<(PathBuf, PathBuf)> = OnceLock::new();
+
+/// Lets every later terminal tell its Agents' hooks where this host is.
+pub fn announce_host(root: &Path) -> io::Result<()> {
+    // As given, only made absolute: resolving links can push the socket past SUN_LEN.
+    let root = std::path::absolute(root)?;
+    let _ = HOST.set((root, std::env::current_exe()?));
+    Ok(())
+}
+
+/// What a terminal's programs learn about the host: which terminal they run in, the
+/// runtime to reach, and the executable whose `hook` subcommand reports to it.
+fn host_env(terminal: &str, host: Option<&(PathBuf, PathBuf)>) -> Vec<(OsString, OsString)> {
+    use keepline_core::protocol::{HOOK_ENV, RUNTIME_ENV, TERMINAL_ENV};
+    let mut env = vec![(TERMINAL_ENV.into(), terminal.into())];
+    if let Some((root, exe)) = host {
+        env.push((RUNTIME_ENV.into(), root.as_os_str().to_owned()));
+        env.push((HOOK_ENV.into(), exe.as_os_str().to_owned()));
+    }
+    env
+}
 
 /// Writes the shell integration into the runtime, so the scripts always match this
 /// host. `KEEPLINE_NO_SHELL_INTEGRATION` in the host's environment turns it off.
@@ -42,7 +64,13 @@ fn integration_env(program: &str, dir: Option<&Path>) -> Vec<(OsString, OsString
     }
 }
 
-pub fn spawn(argv: &[String], cwd: &Path, cols: u16, rows: u16) -> io::Result<(Child, File)> {
+pub fn spawn(
+    argv: &[String],
+    cwd: &Path,
+    cols: u16,
+    rows: u16,
+    terminal: &str,
+) -> io::Result<(Child, File)> {
     let mut master = -1;
     let mut slave = -1;
     let mut size = libc::winsize {
@@ -83,7 +111,11 @@ pub fn spawn(argv: &[String], cwd: &Path, cols: u16, rows: u16) -> io::Result<(C
         .current_dir(cwd)
         .env("TERM", "xterm-256color")
         .env("COLORTERM", "truecolor")
-        .envs(integration_env(&argv[0], INTEGRATION.get().map(PathBuf::as_path)))
+        .envs(integration_env(
+            &argv[0],
+            INTEGRATION.get().map(PathBuf::as_path),
+        ))
+        .envs(host_env(terminal, HOST.get()))
         .env_remove("COLUMNS")
         .env_remove("LINES")
         .stdin(Stdio::from(slave.try_clone()?))
@@ -217,5 +249,27 @@ mod integration_tests {
         assert_eq!(env[1].1, "/rt/shell-integration");
         assert!(super::integration_env("/bin/bash", Some(dir)).is_empty());
         assert!(super::integration_env("/bin/zsh", None).is_empty());
+    }
+}
+
+#[cfg(test)]
+mod host_env_tests {
+    #[test]
+    fn every_terminal_names_itself_and_the_host_once_announced() {
+        let names = |env: Vec<(std::ffi::OsString, std::ffi::OsString)>| {
+            env.into_iter()
+                .map(|(k, v)| format!("{}={}", k.to_string_lossy(), v.to_string_lossy()))
+                .collect::<Vec<_>>()
+        };
+        assert_eq!(names(super::host_env("t1", None)), ["KEEPLINE_TERMINAL=t1"]);
+        let host = ("/run/k".into(), "/app/keeplined".into());
+        assert_eq!(
+            names(super::host_env("t2", Some(&host))),
+            [
+                "KEEPLINE_TERMINAL=t2",
+                "KEEPLINE_RUNTIME=/run/k",
+                "KEEPLINE_HOOK=/app/keeplined"
+            ]
+        );
     }
 }

@@ -42,18 +42,7 @@ impl Workbench {
             return;
         };
         let terminal_id = terminal.id.clone();
-        self.nav.focused = Some(terminal_id.clone());
-        self.nav.pending_focus = true;
-        if let Some(tab) = self.workspace.terminal_tab(&terminal.id) {
-            self.nav.space = tab.space.clone();
-            self.nav.tab = Some(tab.id.clone());
-            self.nav.overview = false;
-            self.sync_panes(cx);
-            if let Some(pane) = self.layout.panes.get(&terminal_id) {
-                window.focus(&pane.focus_handle(cx), cx);
-            }
-            cx.notify();
-        } else {
+        if !self.focus_terminal(&terminal_id, window, cx) {
             let tab = Tab {
                 id: id(),
                 space: self.nav.space.clone(),
@@ -65,6 +54,28 @@ impl Workbench {
             self.nav.overview = false;
             self.edit(Edit::PutTab { tab }, cx);
         }
+    }
+    /// Shows the tab holding `terminal_id` and focuses its pane; false when no tab holds it.
+    pub(super) fn focus_terminal(
+        &mut self,
+        terminal_id: &str,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) -> bool {
+        self.nav.focused = Some(terminal_id.to_owned());
+        self.nav.pending_focus = true;
+        let Some(tab) = self.workspace.terminal_tab(terminal_id) else {
+            return false;
+        };
+        self.nav.space = tab.space.clone();
+        self.nav.tab = Some(tab.id.clone());
+        self.nav.overview = false;
+        self.sync_panes(cx);
+        if let Some(pane) = self.layout.panes.get(terminal_id) {
+            window.focus(&pane.focus_handle(cx), cx);
+        }
+        cx.notify();
+        true
     }
     pub(super) fn session_title(&self, s: &AgentSession) -> String {
         if let Some(c) = self
@@ -90,7 +101,10 @@ impl Workbench {
             .as_ref()
             .and_then(|id| self.workspace.tasks.iter().find(|t| &t.id == id))
             .map(|t| t.title.clone())
-            .unwrap_or_else(|| format!("{} · {}", s.runtime.executable(), s.cli_session_id))
+            .unwrap_or_else(|| match self.workspace.content.get(&s.id) {
+                None if s.current => format!("{} · 新会话", s.runtime.executable()),
+                _ => format!("{} · {}", s.runtime.executable(), s.cli_session_id),
+            })
     }
     /// When its conversation last moved.
     pub(super) fn session_updated(&self, s: &AgentSession) -> u64 {
@@ -191,6 +205,14 @@ impl Workbench {
                     .text_size(px(T::META))
                     .text_color(T::color(T::SECONDARY))
                     .child("仅覆盖已索引的历史尾段与之后的增量；没有证据不等于没做。"),
+            );
+        }
+        if let Some(binding) = session.binding.filter(|_| session.current) {
+            panel = panel.child(
+                div()
+                    .text_size(px(T::META))
+                    .text_color(T::color(T::SECONDARY))
+                    .child(format!("和这个终端对上靠的是：{}", binding.label())),
             );
         }
         let resume = session.clone();
@@ -369,10 +391,12 @@ impl Workbench {
             .is_some_and(|t| self.workspace.terminal_tab(&t.id).is_some())
     }
     pub(super) fn session_hidden(&self, s: &AgentSession) -> Option<&str> {
-        self.workspace
-            .content
-            .get(&s.id)
-            .map_or(Some("缺少交互入口证据"), |c| c.hidden_for(s))
+        match self.workspace.content.get(&s.id) {
+            Some(c) => c.hidden_for(s),
+            // A hook can bind a new conversation before its first prompt writes anything.
+            None if s.current && s.binding.is_some() => None,
+            None => Some("缺少交互入口证据"),
+        }
     }
     pub(super) fn enter_card(
         &mut self,

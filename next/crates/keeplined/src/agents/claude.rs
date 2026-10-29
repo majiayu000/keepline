@@ -17,6 +17,21 @@ impl Adapter for Claude {
     fn process_session(&self, _pid: u32, args: &[String]) -> (Option<String>, bool) {
         (claude_session_id(args), false)
     }
+    /// A hand-started Claude names no session and closes its transcript between writes;
+    /// its hooks are the only evidence before the first prompt reaches the screen.
+    fn hooks(&self, home: &Path) -> Option<super::Hooks> {
+        Some(super::Hooks {
+            settings: home_dir(home, "CLAUDE_CONFIG_DIR", ".claude").join("settings.json"),
+            events: &[
+                "SessionStart",
+                "UserPromptSubmit",
+                "Notification",
+                "PermissionRequest",
+                "Stop",
+                "SessionEnd",
+            ],
+        })
+    }
     fn identity(&self, _path: &Path, value: &Value) -> Option<(String, String)> {
         if value["isSidechain"] == true {
             return Some((

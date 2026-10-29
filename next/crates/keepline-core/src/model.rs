@@ -177,6 +177,33 @@ pub struct AgentSession {
     pub updated: u64,
     pub cwd: String,
     pub transcript: String,
+    /// The evidence that tied it to its terminal; `None` while it has never been bound.
+    #[serde(default)]
+    pub binding: Option<Binding>,
+}
+/// How a conversation was tied to the terminal running it, strongest first. Each CLI
+/// offers some of these; the host tries every one it offers and refuses ambiguity.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub enum Binding {
+    /// The process names its conversation: on its command line (`--session-id`, `resume`)
+    /// or in its CLI's own registry of live sessions.
+    Process,
+    /// The CLI's own hook reported its conversation from inside the terminal.
+    Hook,
+    /// The process holds the transcript open.
+    OpenFile,
+    /// The newest prompt shows on exactly one screen, or was submitted there.
+    Screen,
+}
+impl Binding {
+    pub fn label(self) -> &'static str {
+        match self {
+            Self::Process => "进程报出的会话 ID",
+            Self::Hook => "Agent 的 Hook 上报",
+            Self::OpenFile => "进程打开的对话文件",
+            Self::Screen => "画面上的提示词",
+        }
+    }
 }
 impl AgentSession {
     /// Started in a Keepline terminal. Conversations found only by scanning CLI logs
@@ -530,6 +557,7 @@ impl Workspace {
             if observed.terminal.is_none() {
                 observed.terminal = old.terminal.clone();
                 observed.current = old.current;
+                observed.binding = old.binding;
             }
         }
         if let Some(terminal_id) = &observed.terminal {
@@ -780,6 +808,7 @@ mod tests {
             updated: 1,
             cwd: "/tmp/a".into(),
             transcript: format!("/logs/{id}.jsonl"),
+            binding: None,
         }
     }
     #[test]
@@ -1197,6 +1226,7 @@ mod identity_tests {
             updated: 1,
             cwd: "/tmp".into(),
             transcript: "/log".into(),
+            binding: None,
         };
         w.observe_agent(session.clone()).unwrap();
         session.terminal = Some("two".into());
