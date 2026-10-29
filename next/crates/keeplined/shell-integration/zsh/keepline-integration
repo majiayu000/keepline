@@ -1,0 +1,21 @@
+# Keepline zsh integration for interactive shells: reports the working directory with
+# OSC 7 (file://host/path, percent-encoded) so new tabs and splits open where you are.
+'builtin' 'autoload' '-Uz' '--' 'add-zsh-hook'
+
+_keepline_report_pwd() {
+    'builtin' 'emulate' '-L' 'zsh'
+    # Byte by byte, so a path in any language encodes as its UTF-8 bytes.
+    'builtin' 'local' LC_ALL=C dir="$PWD" out='' c
+    'builtin' 'local' -i i
+    for (( i = 1; i <= ${#dir}; i++ )); do
+        c="${dir[i]}"
+        case "$c" in
+            [-/._~A-Za-z0-9]) out+="$c" ;;
+            *) out+="$('builtin' 'printf' '%%%02X' "'$c")" ;;
+        esac
+    done
+    'builtin' 'printf' '\e]7;file://%s%s\e\\' "${HOST}" "$out"
+}
+
+add-zsh-hook precmd _keepline_report_pwd
+add-zsh-hook chpwd _keepline_report_pwd

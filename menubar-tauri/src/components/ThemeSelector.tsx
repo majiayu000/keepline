@@ -1,4 +1,5 @@
-export type ThemeName = 'light' | 'dark' | 'claude' | 'claude-dark' | 'minimal' | 'minimal-dark' | 'ocean';
+// Same two themes as the workbench and the web dashboard.
+export type ThemeName = 'light' | 'dark';
 
 interface Theme {
   id: ThemeName;
@@ -8,11 +9,6 @@ interface Theme {
 const themes: Theme[] = [
   { id: 'light', name: 'Light' },
   { id: 'dark', name: 'Dark' },
-  { id: 'claude', name: 'Claude' },
-  { id: 'claude-dark', name: 'Claude Dark' },
-  { id: 'minimal', name: 'Minimal' },
-  { id: 'minimal-dark', name: 'Minimal Dark' },
-  { id: 'ocean', name: 'Ocean' },
 ];
 
 interface ThemeSelectorProps {

@@ -1,28 +1,15 @@
 import { useEffect, useCallback } from 'react'
-import type { Theme } from '@/contexts/ThemeContext'
 
 interface KeyboardShortcuts {
   onRefresh?: () => void
   onSync?: () => void
   onShowHelp?: () => void
-  onSetTheme?: (theme: Theme) => void
-  onCycleTheme?: () => void
-}
-
-const THEME_KEYS: Record<string, Theme> = {
-  '1': 'cyberpunk',
-  '2': 'matrix',
-  '3': 'synthwave',
-  '4': 'minimal',
-  '5': 'tokyo',
 }
 
 export function useKeyboardShortcuts({
   onRefresh,
   onSync,
   onShowHelp,
-  onSetTheme,
-  onCycleTheme,
 }: KeyboardShortcuts) {
   const handleKeyDown = useCallback((e: KeyboardEvent) => {
     // Ignore if typing in an input
@@ -62,20 +49,8 @@ export function useKeyboardShortcuts({
         e.preventDefault()
         onShowHelp?.()
         break
-      case 't':
-        onCycleTheme?.()
-        break
-      case '1':
-      case '2':
-      case '3':
-      case '4':
-      case '5':
-        if (THEME_KEYS[e.key]) {
-          onSetTheme?.(THEME_KEYS[e.key])
-        }
-        break
     }
-  }, [onRefresh, onSync, onShowHelp, onSetTheme, onCycleTheme])
+  }, [onRefresh, onSync, onShowHelp])
 
   useEffect(() => {
     document.addEventListener('keydown', handleKeyDown)

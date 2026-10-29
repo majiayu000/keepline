@@ -182,6 +182,11 @@ impl Vt {
             .filter(|t| !t.is_empty())
             .map(str::to_owned)
     }
+    /// The directory the shell last reported with OSC 7, when it is on `host` (this
+    /// machine); a shell over ssh reports the remote one, which no local tab can open.
+    pub fn pwd(&self, host: &str) -> Option<String> {
+        local_path(self.0.pwd().ok()?, host)
+    }
     /// Answer the queries programs send every terminal: device attributes, XTVERSION,
     /// window/cell size and the dark color scheme. Colors are answered from the
     /// defaults set in `new`. Only the daemon installs this; display copies stay silent.
@@ -263,8 +268,47 @@ pub fn shown_title(raw: &str) -> Option<String> {
     (!title.is_empty()).then(|| title.to_owned())
 }
 
+/// The path of an OSC 7 `file://host/path` report, percent-decoded, when `host` names
+/// this machine (empty, localhost, or `this` with or without its `.local` suffix).
+pub fn local_path(url: &str, this: &str) -> Option<String> {
+    let rest = url.strip_prefix("file://")?;
+    let at = rest.find('/')?;
+    let (host, path) = rest.split_at(at);
+    let bare = |h: &str| h.trim_end_matches(".local").to_ascii_lowercase();
+    if !(host.is_empty() || host.eq_ignore_ascii_case("localhost") || bare(host) == bare(this)) {
+        return None;
+    }
+    let mut bytes = Vec::with_capacity(path.len());
+    let mut raw = path.bytes();
+    while let Some(b) = raw.next() {
+        if b == b'%' {
+            let hex = [raw.next()?, raw.next()?];
+            bytes.push(u8::from_str_radix(std::str::from_utf8(&hex).ok()?, 16).ok()?);
+        } else {
+            bytes.push(b);
+        }
+    }
+    String::from_utf8(bytes).ok()
+}
+
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn osc7_reports_decode_only_for_this_machine() {
+        use super::local_path;
+        let url = "file://Agent-OS.local/tmp/kl%20osc7/%E4%B8%AD%E6%96%87%20dir%23%25";
+        assert_eq!(
+            local_path(url, "Agent-OS.local").as_deref(),
+            Some("/tmp/kl osc7/中文 dir#%")
+        );
+        assert_eq!(local_path(url, "agent-os").as_deref(), Some("/tmp/kl osc7/中文 dir#%"));
+        assert_eq!(local_path("file:///a", "x").as_deref(), Some("/a"));
+        assert_eq!(local_path("file://localhost/a", "x").as_deref(), Some("/a"));
+        assert_eq!(local_path("file://devbox/home/u", "Agent-OS.local"), None);
+        assert_eq!(local_path("file://x/a%2", "x"), None);
+        assert_eq!(local_path("kitty-shell-cwd://x/a", "x"), None);
+        assert_eq!(local_path("", "x"), None);
+    }
     use super::*;
     #[test]
     fn snapshot_preserves_mouse_reporting_modes() {

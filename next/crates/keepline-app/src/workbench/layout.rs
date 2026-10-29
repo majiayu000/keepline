@@ -9,22 +9,39 @@ pub(super) struct LayoutState {
     pub(super) drag: Option<Vec<bool>>,
     pub(super) split_bounds: HashMap<Vec<bool>, gpui::Bounds<gpui::Pixels>>,
     /// A tab being renamed in place after a double-click.
-    pub(super) renaming_tab: Option<(String, Entity<Field>, gpui::Subscription)>,
+    pub(super) renaming_tab: Option<(String, Entity<Field>, [gpui::Subscription; 2])>,
     /// A tab's right-click menu: the tab and where it was opened.
     pub(super) tab_menu: Option<(String, gpui::Point<gpui::Pixels>)>,
     /// The title-bar logo's menu for choosing the app icon, where it was opened.
     pub(super) icon_menu: Option<gpui::Point<gpui::Pixels>>,
     /// A close that would stop a running Agent, waiting for the user to confirm it.
     pub(super) confirm_close: Option<Closing>,
+    /// Interrupted terminals already reopened in place once; a failed try keeps the button.
+    pub(super) reopened: HashSet<String>,
 }
-/// The host's note on a Codex it sees but cannot read, in the user's words.
-fn unread_codex(hint: &str) -> String {
+/// The host's note on an Agent it sees but cannot read, in the user's words, and why.
+pub(super) fn unread_agent(hint: &str) -> (String, String) {
+    if hint == keepline_core::protocol::CLAUDE_TRANSCRIPT_OFF {
+        return (
+            "claude · 没有保存记录".into(),
+            "这个 Claude 继承了 CLAUDE_CODE_CHILD_SESSION，自认为是别的会话的子会话，不写对话记录，Keepline 读不到也统计不了。关掉这个终端重新打开，再运行 claude。".into(),
+        );
+    }
+    if let Some(cli) = hint.strip_prefix(keepline_core::protocol::AGENT_UNBOUND_PREFIX) {
+        return (
+            format!("{cli} · 发出第一句后对上对话"),
+            format!(
+                "Keepline 看到这个 {cli} 在跑，但它的命令行没写是哪段对话。发出第一句话后，按画面上的提示词对上；想启动就认出，运行一次 keeplined hooks install 装上 Hook。"
+            ),
+        );
+    }
+    let why = "这个 Codex 连着共用的后台，Keepline 只看得到它忙不忙，读不到对话。想在这里看到对话内容，下次用 codex --no-daemon 启动。".to_owned();
     match hint
         .strip_prefix("仅显示状态：")
         .and_then(|rest| rest.split_once('；'))
     {
-        Some((state, _)) => format!("codex · {state} · 看不到对话"),
-        None => "codex · 看不到对话".into(),
+        Some((state, _)) => (format!("codex · {state} · 看不到对话"), why),
+        None => ("codex · 看不到对话".into(), why),
     }
 }
 impl Workbench {
@@ -56,9 +73,7 @@ impl Workbench {
                         gpui::SharedString::from(format!("reopen-{id}")),
                         "在这里重新开一个终端",
                     )
-                    .on_click(cx.listener(move |this, _, _, cx| {
-                        this.launch_in_slot(true, None, Some(reopen.clone()), cx)
-                    })),
+                    .on_click(cx.listener(move |this, _, _, cx| this.reopen(reopen.clone(), cx))),
                 )
                 .child(
                     button(
@@ -83,9 +98,11 @@ impl Workbench {
                 .max_by_key(|s| s.updated)
         });
         let group = session.map(|s| session_group(&self.workspace, s));
-        // An Agent's conversation names the pane; otherwise the title the program set.
+        // The conversation's title names the pane, like its tab; its latest reply is
+        // already on screen below, so that line only shows on hover. Without an Agent,
+        // the title the program set.
         let title = session
-            .map(|s| self.session_line(s))
+            .map(|s| self.session_title(s))
             .or_else(|| pane.read(cx).program_title())
             .unwrap_or_else(|| "空终端".into());
         let rang = pane.read(cx).bell;
@@ -160,24 +177,27 @@ impl Workbench {
                     .when(rang, |d| d.child(label("🔔")))
                     .child(
                         div()
+                            .id(gpui::SharedString::from(format!("pane-title-{id}")))
                             .flex_1()
                             .min_w_0()
                             .truncate()
                             .text_size(px(T::MONO_SIZE))
-                            .child(title),
+                            .child(title)
+                            .when_some(session.map(|s| self.session_line(s)), |d, line| {
+                                let line = gpui::SharedString::from(line);
+                                d.tooltip(move |_, cx| {
+                                    cx.new(|_| super::render::TextTip(line.clone())).into()
+                                })
+                            }),
                     )
-                    .when_some(hint.as_deref().map(unread_codex), |d, note| {
+                    .when_some(hint.as_deref().map(unread_agent), |d, (note, why)| {
                         d.child(
                             div()
                                 .id(gpui::SharedString::from(format!("unread-{id}")))
                                 .child(label(note))
-                                .tooltip(|_, cx| {
-                                    cx.new(|_| {
-                                        super::render::TextTip(
-                                            "这个 Codex 连着共用的后台，Keepline 只看得到它忙不忙，读不到对话。想在这里看到对话内容，下次用 codex --no-daemon 启动。",
-                                        )
-                                    })
-                                    .into()
+                                .tooltip(move |_, cx| {
+                                    cx.new(|_| super::render::TextTip(why.clone().into()))
+                                        .into()
                                 }),
                         )
                     })
@@ -408,9 +428,15 @@ impl Workbench {
                             .child(self.layout_view(first, left, true, window, cx)),
                     )
                     .child(
+                        // Both panes draw their own border, so the gutter stays empty and
+                        // only shows a thin handle on hover or while dragging.
                         div()
                             .id(gpui::SharedString::from(format!("divider-{path:?}")))
+                            .group("divider")
                             .flex_shrink_0()
+                            .flex()
+                            .items_center()
+                            .justify_center()
                             .when(down, |d| {
                                 d.h(px(T::S6))
                                     .w_full()
@@ -421,8 +447,16 @@ impl Workbench {
                                     .h_full()
                                     .cursor(gpui::CursorStyle::ResizeLeftRight)
                             })
-                            .bg(T::color(T::BORDER))
-                            .hover(|d| d.bg(T::color(T::FOCUS)))
+                            .child(
+                                div()
+                                    .rounded_full()
+                                    .when(down, |d| d.h(px(T::S2)).w(px(T::S20 * 2.)))
+                                    .when(!down, |d| d.w(px(T::S2)).h(px(T::S20 * 2.)))
+                                    .when(self.layout.drag.as_ref() == Some(&path), |d| {
+                                        d.bg(T::color(T::FOCUS))
+                                    })
+                                    .group_hover("divider", |d| d.bg(T::color(T::FOCUS))),
+                            )
                             .on_mouse_down(
                                 gpui::MouseButton::Left,
                                 cx.listener(move |this, _, _, cx| {
@@ -645,7 +679,7 @@ impl Workbench {
                 }
             }
             MenuPage::Sessions => {
-                for agent in [Agent::Codex, Agent::Claude] {
+                for agent in Agent::ALL {
                     let terminal = menu.terminal.clone();
                     let task = task.clone();
                     entries.push(
@@ -774,7 +808,8 @@ impl Workbench {
             this.layout.icon_menu = None
         })
     }
-    /// Asks before a close stops running Agents; a click outside cancels.
+    /// Asks before a close stops running Agents or takes several splits with it; a click
+    /// outside cancels.
     pub(super) fn confirm_close_view(
         &self,
         closing: &Closing,
@@ -793,6 +828,7 @@ impl Workbench {
         } else {
             0
         };
+        let splits = splits_closed(&self.workspace, closing);
         let lines = agents
             .iter()
             .map(|(title, phase)| match phase {
@@ -807,7 +843,11 @@ impl Workbench {
                     if host { "重启" } else { "关闭" }
                 ),
             })
-            .chain((shells > 0).then(|| format!("另有 {shells} 个普通终端会停止。")))
+            .chain((shells > 0).then(|| format!("另有 {shells} 个普通终端会停止。")));
+        let lines = (splits > 0)
+            .then(|| format!("这个标签有 {splits} 个分屏，会一起关闭。"))
+            .into_iter()
+            .chain(lines)
             .collect::<Vec<_>>()
             .join("\n");
         let confirmed = closing.clone();
@@ -950,14 +990,26 @@ pub(super) fn choose_icon(icon: AppIcon, cx: &mut gpui::App) {
 #[cfg(test)]
 mod tests {
     #[test]
-    fn unread_codex_speaks_plainly() {
+    fn unread_agents_speak_plainly() {
+        let note = |hint: &str| super::unread_agent(hint).0;
         assert_eq!(
-            super::unread_codex("仅显示状态：工作中；看对话内容请用 codex --no-daemon"),
+            note("仅显示状态：工作中；看对话内容请用 codex --no-daemon"),
             "codex · 工作中 · 看不到对话"
         );
         assert_eq!(
-            super::unread_codex("未关联：看对话内容请用 codex --no-daemon"),
+            note("未关联：看对话内容请用 codex --no-daemon"),
             "codex · 看不到对话"
+        );
+        assert_eq!(
+            note(keepline_core::protocol::CLAUDE_TRANSCRIPT_OFF),
+            "claude · 没有保存记录"
+        );
+        assert_eq!(
+            note(&format!(
+                "{}claude",
+                keepline_core::protocol::AGENT_UNBOUND_PREFIX
+            )),
+            "claude · 发出第一句后对上对话"
         );
     }
 }

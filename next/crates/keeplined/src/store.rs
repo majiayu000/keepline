@@ -67,6 +67,7 @@ impl Store {
             CREATE TABLE IF NOT EXISTS outcome_history (sequence INTEGER PRIMARY KEY, session_id TEXT NOT NULL, before_json TEXT NOT NULL, after_json TEXT NOT NULL, at INTEGER NOT NULL, reason TEXT NOT NULL);
             CREATE TABLE IF NOT EXISTS task_outcomes (task_id TEXT PRIMARY KEY REFERENCES tasks(id), outcome TEXT NOT NULL);
             CREATE TABLE IF NOT EXISTS pending_tasks (terminal_id TEXT PRIMARY KEY REFERENCES terminals(id), task_id TEXT REFERENCES tasks(id));
+            CREATE TABLE IF NOT EXISTS lost_agents (terminal_id TEXT PRIMARY KEY REFERENCES terminals(id), session_id TEXT REFERENCES agent_sessions(id));
             CREATE TABLE IF NOT EXISTS task_criteria (task_id TEXT NOT NULL REFERENCES tasks(id), id TEXT NOT NULL, position INTEGER NOT NULL,
                 description TEXT NOT NULL, evidence TEXT, PRIMARY KEY(task_id,id), UNIQUE(task_id,position));
             CREATE TABLE IF NOT EXISTS tabs (id TEXT PRIMARY KEY, space_id TEXT NOT NULL REFERENCES spaces(id), default_task_id TEXT REFERENCES tasks(id), title TEXT NOT NULL, closed INTEGER NOT NULL);
@@ -76,7 +77,9 @@ impl Store {
                 terminal_id TEXT REFERENCES terminals(id), is_current INTEGER NOT NULL, task_id TEXT REFERENCES tasks(id),
                 outcome TEXT NOT NULL, deferred_reason TEXT, deferred_until INTEGER, updated INTEGER NOT NULL, cwd TEXT NOT NULL, transcript TEXT NOT NULL,
                 UNIQUE(runtime,cli_session_id));
-            CREATE UNIQUE INDEX IF NOT EXISTS one_current_agent_per_terminal ON agent_sessions(terminal_id) WHERE is_current=1;")
+            CREATE UNIQUE INDEX IF NOT EXISTS one_current_agent_per_terminal ON agent_sessions(terminal_id) WHERE is_current=1;
+            -- Beside agent_sessions, not in it: a host from before keeps writing its full rows.
+            CREATE TABLE IF NOT EXISTS agent_bindings (session_id TEXT PRIMARY KEY, evidence TEXT NOT NULL);")
             .map_err(db_error)?;
         let mut store = Self(db);
         let mut workspace = store.load()?;
@@ -88,6 +91,14 @@ impl Store {
                     ProcessState::Starting | ProcessState::Running | ProcessState::Draining
                 )
             {
+                // Recorded before `current` is cleared below: the conversation still
+                // running when the host went away is the one to resume in its place.
+                let agent = workspace
+                    .agent_sessions
+                    .iter()
+                    .find(|s| s.current && s.terminal.as_ref() == Some(&terminal.id))
+                    .map(|s| s.id.clone());
+                workspace.lost_agents.insert(terminal.id.clone(), agent);
                 terminal.state = ProcessState::Interrupted;
                 terminal.error = Some("后台已重启，原 PTY 不可重新连接；可用原 CLI 恢复".into());
             }
@@ -165,6 +176,18 @@ impl Store {
         {
             let (id, task) = row.map_err(db_error)?;
             w.pending_tasks.insert(id, task);
+        }
+        for row in self
+            .0
+            .prepare("SELECT terminal_id,session_id FROM lost_agents")
+            .map_err(db_error)?
+            .query_map([], |r| {
+                Ok((r.get::<_, String>(0)?, r.get::<_, Option<String>>(1)?))
+            })
+            .map_err(db_error)?
+        {
+            let (id, session) = row.map_err(db_error)?;
+            w.lost_agents.insert(id, session);
         }
         let mut statement = self
             .0
@@ -256,7 +279,7 @@ impl Store {
         for tab in &mut w.tabs {
             tab.layout = load_layout(&self.0, &tab.id, "")?;
         }
-        let mut statement=self.0.prepare("SELECT id,runtime,cli_session_id,terminal_id,is_current,task_id,outcome,deferred_reason,deferred_until,updated,cwd,transcript FROM agent_sessions ORDER BY rowid").map_err(db_error)?;
+        let mut statement=self.0.prepare("SELECT a.id,a.runtime,a.cli_session_id,a.terminal_id,a.is_current,a.task_id,a.outcome,a.deferred_reason,a.deferred_until,a.updated,a.cwd,a.transcript,b.evidence FROM agent_sessions a LEFT JOIN agent_bindings b ON b.session_id=a.id ORDER BY a.rowid").map_err(db_error)?;
         let mut rows = statement.query([]).map_err(db_error)?;
         while let Some(r) = rows.next().map_err(db_error)? {
             let kind: String = r.get(6).map_err(db_error)?;
@@ -282,6 +305,11 @@ impl Store {
                 updated: u64::try_from(r.get::<_, i64>(9).map_err(db_error)?).map_err(db_error)?,
                 cwd: r.get(10).map_err(db_error)?,
                 transcript: r.get(11).map_err(db_error)?,
+                binding: r
+                    .get::<_, Option<String>>(12)
+                    .map_err(db_error)?
+                    .map(enum_value)
+                    .transpose()?,
             });
         }
         Ok(w)
@@ -362,6 +390,10 @@ impl Store {
                 ),
             };
             tx.execute("INSERT INTO agent_sessions VALUES(?1,?2,?3,?4,?5,?6,?7,?8,?9,?10,?11,?12) ON CONFLICT(id) DO UPDATE SET runtime=excluded.runtime,cli_session_id=excluded.cli_session_id,terminal_id=excluded.terminal_id,is_current=excluded.is_current,task_id=excluded.task_id,outcome=excluded.outcome,deferred_reason=excluded.deferred_reason,deferred_until=excluded.deferred_until,updated=excluded.updated,cwd=excluded.cwd,transcript=excluded.transcript",params![s.id,enum_name(&s.runtime)?,s.cli_session_id,s.terminal,s.current,s.task,kind,reason,until,i64::try_from(s.updated).map_err(db_error)?,s.cwd,s.transcript]).map_err(db_error)?;
+            match s.binding {
+                Some(b) => tx.execute("INSERT INTO agent_bindings VALUES(?1,?2) ON CONFLICT(session_id) DO UPDATE SET evidence=excluded.evidence",params![s.id,enum_name(&b)?]).map_err(db_error)?,
+                None => tx.execute("DELETE FROM agent_bindings WHERE session_id=?1",[&s.id]).map_err(db_error)?,
+            };
         }
         for h in w.outcome_history.iter().skip(before.outcome_history.len()) {
             tx.execute("INSERT INTO outcome_history(session_id,before_json,after_json,at,reason) VALUES(?1,?2,?3,?4,?5)",params![h.session,serde_json::to_string(&h.before).map_err(db_error)?,serde_json::to_string(&h.after).map_err(db_error)?,i64::try_from(h.at).map_err(db_error)?,h.reason]).map_err(db_error)?;
@@ -371,6 +403,11 @@ impl Store {
                 if before.task_outcomes.get(id) != Some(outcome) {
                     tx.execute("INSERT INTO task_outcomes VALUES(?1,?2) ON CONFLICT(task_id) DO UPDATE SET outcome=excluded.outcome", params![id,serde_json::to_string(outcome).map_err(db_error)?]).map_err(db_error)?;
                 }
+            }
+        }
+        for (id, session) in &w.lost_agents {
+            if before.lost_agents.get(id) != Some(session) {
+                tx.execute("INSERT INTO lost_agents VALUES(?1,?2) ON CONFLICT(terminal_id) DO UPDATE SET session_id=excluded.session_id", params![id,session]).map_err(db_error)?;
             }
         }
         if before.pending_tasks != w.pending_tasks {
@@ -555,6 +592,68 @@ mod milestone_tests {
         std::fs::remove_dir_all(dir).unwrap();
     }
     #[test]
+    fn a_restart_records_which_conversation_each_lost_terminal_was_running() {
+        let dir = std::env::temp_dir().join(format!("kl-lost-{}", uuid::Uuid::new_v4()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let (mut db, before) = Store::open(&dir).unwrap();
+        let mut after = before.clone();
+        after.spaces.push(Space {
+            id: "s".into(),
+            name: "s".into(),
+            cwd: "/tmp".into(),
+        });
+        for id in ["agent", "shell", "handed"] {
+            after.terminals.push(Terminal {
+                id: id.into(),
+                space: "s".into(),
+                argv: vec!["/bin/sh".into()],
+                cwd: "/tmp".into(),
+                pid: Some(1),
+                state: ProcessState::Running,
+                exit_code: None,
+                error: None,
+            });
+        }
+        let session = |id: &str, terminal: &str, current| AgentSession {
+            id: id.into(),
+            runtime: Agent::Codex,
+            cli_session_id: id.into(),
+            terminal: Some(terminal.into()),
+            current,
+            task: None,
+            outcome: Outcome::Open,
+            updated: 1,
+            cwd: "/tmp".into(),
+            transcript: String::new(),
+            binding: None,
+        };
+        after.agent_sessions.extend([
+            session("running", "agent", true),
+            session("quit", "shell", false),
+            session("moved", "handed", true),
+        ]);
+        db.save(&before, &after).unwrap();
+        drop(db);
+        let kept = ["handed".to_owned()].into_iter().collect();
+        let (db, loaded) = Store::open_keeping(&dir, &kept).unwrap();
+        drop(db);
+        let expected: std::collections::HashMap<_, _> = [
+            ("agent".to_owned(), Some("running".to_owned())),
+            ("shell".to_owned(), None),
+        ]
+        .into_iter()
+        .collect();
+        assert_eq!(loaded.lost_agents, expected);
+        assert!(!loaded
+            .agent_sessions
+            .iter()
+            .any(|s| s.id == "running" && s.current));
+        // A second restart keeps the record; the terminals are no longer running.
+        let (_, again) = Store::open_keeping(&dir, &kept).unwrap();
+        assert_eq!(again.lost_agents, expected);
+        std::fs::remove_dir_all(dir).unwrap();
+    }
+    #[test]
     fn client_departure_survives_reopen_without_changing_sessions() {
         let dir = std::env::temp_dir().join(format!("kl-visit-{}", uuid::Uuid::new_v4()));
         std::fs::create_dir_all(&dir).unwrap();
@@ -625,6 +724,7 @@ mod milestone_tests {
             updated: 1,
             cwd: "/tmp".into(),
             transcript: "/fixture".into(),
+            binding: None,
         });
         w.change_outcome("s1", Outcome::Completed, 2, "用户操作")
             .unwrap();

@@ -16,10 +16,11 @@ checkout() {
 }
 checkout zed https://github.com/zed-industries/zed.git 2a857f5f2ec368745c1af5209d49836968fe75b8
 checkout libghostty-rs https://github.com/Uzaaft/libghostty-rs.git 0ef80413de1326685743378efbfa06d849e041a7
-patch_path="$(pwd)/patches/gpui-idle.patch"
-if ! git -C .deps/zed apply --reverse --check "$patch_path" 2>/dev/null; then
-  git -C .deps/zed apply --check "$patch_path"
-  git -C .deps/zed apply "$patch_path"
-fi
+for patch_path in "$(pwd)/patches/gpui-idle.patch" "$(pwd)/patches/gpui-glyph-dilation.patch"; do
+  if ! git -C .deps/zed apply --reverse --check "$patch_path" 2>/dev/null; then
+    git -C .deps/zed apply --check "$patch_path"
+    git -C .deps/zed apply "$patch_path"
+  fi
+done
 "${ZIG:-zig}" version
 printf '%s\n' 'Dependencies ready. Build with Xcode available and Zig 0.16.x.'

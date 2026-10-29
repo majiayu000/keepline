@@ -1,0 +1,47 @@
+diff --git a/crates/gpui/src/window.rs b/crates/gpui/src/window.rs
+index e892ea2..6e1f962 100644
+--- a/crates/gpui/src/window.rs
++++ b/crates/gpui/src/window.rs
+@@ -1236,6 +1236,7 @@ pub struct Window {
+     pub(crate) rendered_entity_stack: Vec<EntityId>,
+     pub(crate) element_offset_stack: Vec<Point<Pixels>>,
+     pub(crate) element_opacity: f32,
++    pub(crate) glyph_dilation_override: Option<u8>,
+     pub(crate) content_mask_stack: Vec<ContentMask<Pixels>>,
+     pub(crate) requested_autoscroll: Option<Bounds<Pixels>>,
+     /// The [`TextInputConfiguration`] most recently forwarded to the platform
+@@ -2132,6 +2133,7 @@ impl Window {
+             element_offset_stack: Vec::new(),
+             content_mask_stack: Vec::new(),
+             element_opacity: 1.0,
++            glyph_dilation_override: None,
+             requested_autoscroll: None,
+             last_text_input_configuration: None,
+             focused_text_input_active: false,
+@@ -4216,6 +4218,15 @@ impl Window {
+     /// Obtain the current element opacity. This method should only be called during the
+     /// prepaint phase of element drawing.
+     #[inline]
++    /// Paints glyphs inside `f` with a fixed stroke dilation instead of the
++    /// color-dependent default; `Some(0)` draws them without thickening.
++    pub fn with_glyph_dilation<R>(&mut self, dilation: Option<u8>, f: impl FnOnce(&mut Self) -> R) -> R {
++        let previous = std::mem::replace(&mut self.glyph_dilation_override, dilation);
++        let result = f(self);
++        self.glyph_dilation_override = previous;
++        result
++    }
++
+     pub(crate) fn element_opacity(&self) -> f32 {
+         self.invalidator.debug_assert_paint_or_prepaint();
+         self.element_opacity
+@@ -4758,7 +4769,9 @@ impl Window {
+         );
+         let integer_origin = quantized_origin.map(|c| ScaledPixels(c.trunc()));
+         let subpixel_rendering = self.should_use_subpixel_rendering(font_id, font_size);
+-        let dilation = self.text_system().glyph_dilation_for_color(color);
++        let dilation = self
++            .glyph_dilation_override
++            .unwrap_or_else(|| self.text_system().glyph_dilation_for_color(color));
+         let params = RenderGlyphParams {
+             font_id,
+             glyph_id,

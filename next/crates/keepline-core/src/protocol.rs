@@ -49,6 +49,12 @@ pub enum Request {
         event: Option<String>,
         #[serde(default)]
         facts: HookFacts,
+        /// The terminal the hook's environment names (`TERMINAL_ENV`); absent outside one.
+        #[serde(default)]
+        terminal: Option<String>,
+        /// The working directory the hook reports; stands in until the transcript exists.
+        #[serde(default)]
+        cwd: String,
     },
     Edit {
         revision: u64,
@@ -189,6 +195,18 @@ pub struct RecognitionMetrics {
     pub log_bytes: u64,
     pub index_writes: u64,
 }
+/// Set in every managed terminal's environment, so whatever an Agent runs there (its
+/// hooks above all) can say which terminal it is in and reach this host. A hook command
+/// installed once for good stays a no-op outside Keepline, where these are unset.
+pub const TERMINAL_ENV: &str = "KEEPLINE_TERMINAL";
+pub const RUNTIME_ENV: &str = "KEEPLINE_RUNTIME";
+/// The host executable: hooks run `"$KEEPLINE_HOOK" hook --agent <cli>`.
+pub const HOOK_ENV: &str = "KEEPLINE_HOOK";
+/// The terminal hint for an Agent the host sees running but cannot tie to a conversation yet.
+pub const AGENT_UNBOUND_PREFIX: &str = "未对上对话：";
+/// The terminal hint for a Claude Code that saves no transcript: it inherited the nested
+/// session marker, so Keepline can never read or count it.
+pub const CLAUDE_TRANSCRIPT_OFF: &str = "Claude 没有保存对话记录（继承了 CLAUDE_CODE_CHILD_SESSION），无法统计；关掉这个终端重开后再运行 claude";
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct RecognitionStatus {
     pub phase: RecognitionPhase,

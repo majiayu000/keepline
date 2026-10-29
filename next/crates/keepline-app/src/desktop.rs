@@ -278,6 +278,7 @@ mod tests {
             updated: now(),
             cwd: "/project".into(),
             transcript: "log".into(),
+            binding: None,
         };
         w.agent_sessions.push(s);
         let before = w.clone();

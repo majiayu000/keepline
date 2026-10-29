@@ -850,6 +850,8 @@ fn two_cli_conversations_in_one_real_pty_keep_separate_ownership_after_restart()
         ended: false,
         event: None,
         facts: Default::default(),
+        terminal: None,
+        cwd: String::new(),
     };
     h.call(hook()).unwrap();
     h.call(hook()).unwrap();
@@ -872,6 +874,8 @@ fn two_cli_conversations_in_one_real_pty_keep_separate_ownership_after_restart()
         ended: false,
         event: None,
         facts: Default::default(),
+        terminal: None,
+        cwd: String::new(),
     })
     .unwrap_err();
     h.call(Request::Hook {
@@ -882,6 +886,8 @@ fn two_cli_conversations_in_one_real_pty_keep_separate_ownership_after_restart()
         ended: false,
         event: None,
         facts: Default::default(),
+        terminal: None,
+        cwd: String::new(),
     })
     .unwrap();
     let second_id = h
@@ -986,7 +992,9 @@ fn fixture_command(root: &std::path::Path) -> Command {
         .env("KEEPLINE_FIXTURE_RUNTIME", root)
         // Tests that need Claude Code's official status write this script; others have none.
         .env("KEEPLINE_CLAUDE_AGENTS", root.join("claude-agents"))
-        .env("KEEPLINE_CODEX_CONTROL", root.join("codex-control.sock"));
+        .env("KEEPLINE_CODEX_CONTROL", root.join("codex-control.sock"))
+        // Grok's registry of live sessions is read from its home, not the fixture roots.
+        .env("GROK_HOME", root.join("grok-home"));
     command
 }
 #[test]
@@ -999,6 +1007,7 @@ fn daemon_fixture() {
     let roots = vec![
         (Agent::Codex, root.join("logs/codex")),
         (Agent::Claude, root.join("logs/claude")),
+        (Agent::Grok, root.join("grok-home/sessions")),
     ];
     if std::env::var_os("KEEPLINE_FIXTURE_TAKEOVER").is_some() {
         keeplined::serve_taking_over(&root, roots, 7).unwrap();
@@ -1481,6 +1490,8 @@ fn stop_agent_clears_current_without_stopping_shell_or_changing_outcome() {
         ended: false,
         event: None,
         facts: Default::default(),
+        terminal: None,
+        cwd: String::new(),
     })
     .unwrap();
     let before = h.workspace().current_agent("shell").unwrap().clone();
@@ -1567,6 +1578,160 @@ fn manually_entered_unbound_codex_gets_a_hint_and_exit_clears_it() {
     let until = Instant::now() + Duration::from_secs(3);
     while !recognition(&h).terminal_hints.is_empty() {
         assert!(Instant::now() < until, "stale hint after process exit");
+        std::thread::sleep(Duration::from_millis(25));
+    }
+}
+
+#[test]
+fn a_grok_tui_is_bound_through_its_own_registry_and_its_stream_drives_the_card() {
+    let h = Host::start();
+    h.setup();
+    let cli = h.root.join("grok");
+    std::os::unix::fs::symlink("/bin/sh", &cli).unwrap();
+    let script = format!("echo $$ > {}; sleep 30", h.root.join("grok-pid").display());
+    h.call(h.launch(
+        "g",
+        &format!(
+            "{} -c {}",
+            shell_quote(&cli.to_string_lossy()),
+            shell_quote(&script)
+        ),
+    ))
+    .unwrap();
+    let pid: u32 = wait_file(&h.root.join("grok-pid")).trim().parse().unwrap();
+    let home = h.root.join("grok-home");
+    let session = home.join("sessions/%2FUsers%2Fme%2Frepo/01a1-live");
+    fs::create_dir_all(&session).unwrap();
+    fs::write(
+        session.join("summary.json"),
+        r#"{"info":{"id":"01a1-live"}}"#,
+    )
+    .unwrap();
+    // A crashed process's entry with this pid but another start time is not this one.
+    fs::write(
+        home.join("active_sessions.json"),
+        serde_json::json!([
+            {"session_id": "01a0-stale", "pid": pid, "pid_start": 1, "cwd": "/old"},
+            {"session_id": "01a1-live", "pid": pid, "cwd": "/Users/me/repo"},
+        ])
+        .to_string(),
+    )
+    .unwrap();
+    let record = |at: u64, update: serde_json::Value| {
+        serde_json::json!({"timestamp": at, "method": "session/update",
+            "params": {"sessionId": "01a1-live", "update": update}})
+        .to_string()
+            + "\n"
+    };
+    let now = keepline_core::content::now();
+    let transcript = session.join("updates.jsonl");
+    fs::write(
+        &transcript,
+        record(
+            now,
+            serde_json::json!({"sessionUpdate": "user_message_chunk",
+                "content": {"type": "text", "text": "给 Keepline 接上 Grok"}}),
+        ),
+    )
+    .unwrap();
+    let card = |turn: keepline_core::content::Turn| {
+        let until = Instant::now() + Duration::from_secs(10);
+        loop {
+            let w = h.workspace();
+            if let Some(s) = w.current_agent("g") {
+                if w.content.get(&s.id).is_some_and(|c| c.turn == turn) {
+                    return (s.clone(), w.content[&s.id].clone());
+                }
+            }
+            assert!(
+                Instant::now() < until,
+                "no {turn:?} Grok card: {:?}",
+                w.agent_sessions
+            );
+            std::thread::sleep(Duration::from_millis(25));
+        }
+    };
+    let (s, c) = card(keepline_core::content::Turn::Running);
+    assert_eq!(s.runtime, Agent::Grok);
+    assert_eq!(s.cli_session_id, "01a1-live");
+    assert_eq!(s.cwd, "/Users/me/repo");
+    assert_eq!(c.title, "给 Keepline 接上 Grok");
+    assert_eq!(c.hidden_reason(), None);
+    let mut file = fs::OpenOptions::new()
+        .append(true)
+        .open(&transcript)
+        .unwrap();
+    use std::io::Write;
+    file.write_all(
+        (record(
+            now + 1,
+            serde_json::json!({"sessionUpdate": "agent_message_chunk",
+                "content": {"type": "text", "text": "已经接好了。"}}),
+        ) + &record(
+            now + 2,
+            serde_json::json!({"sessionUpdate": "turn_completed", "stop_reason": "end_turn"}),
+        ))
+            .as_bytes(),
+    )
+    .unwrap();
+    let (_, c) = card(keepline_core::content::Turn::Completed);
+    assert_eq!(c.last_reply, "已经接好了。");
+    assert_eq!(unsafe { libc::kill(pid as i32, libc::SIGTERM) }, 0);
+    let until = Instant::now() + Duration::from_secs(5);
+    while h.workspace().current_agent("g").is_some() {
+        assert!(
+            Instant::now() < until,
+            "Grok exit left the conversation current"
+        );
+        std::thread::sleep(Duration::from_millis(25));
+    }
+    // `grok --resume` writes the transcript about a second before it registers itself.
+    let script = format!("echo $$ > {}; sleep 30", h.root.join("grok-pid2").display());
+    h.call(h.launch(
+        "g2",
+        &format!(
+            "{} -c {}",
+            shell_quote(&cli.to_string_lossy()),
+            shell_quote(&script)
+        ),
+    ))
+    .unwrap();
+    let pid: u32 = wait_file(&h.root.join("grok-pid2")).trim().parse().unwrap();
+    file.write_all(
+        record(
+            now + 3,
+            serde_json::json!({"sessionUpdate": "hook_execution", "event_name": "session_start"}),
+        )
+        .as_bytes(),
+    )
+    .unwrap();
+    std::thread::sleep(Duration::from_millis(1500));
+    assert!(
+        h.workspace().current_agent("g2").is_none(),
+        "unregistered process must not be identified"
+    );
+    fs::write(
+        home.join("active_sessions.json"),
+        serde_json::json!([{"session_id": "01a1-live", "pid": pid, "cwd": "/Users/me/repo"}])
+            .to_string(),
+    )
+    .unwrap();
+    let until = Instant::now() + Duration::from_secs(5);
+    loop {
+        let w = h.workspace();
+        if let Some(s) = w.current_agent("g2") {
+            assert_eq!(s.cli_session_id, "01a1-live");
+            assert_eq!(
+                w.agent_sessions.len(),
+                1,
+                "resumed, not a second conversation"
+            );
+            break;
+        }
+        assert!(
+            Instant::now() < until,
+            "registering the resumed process must identify it"
+        );
         std::thread::sleep(Duration::from_millis(25));
     }
 }
@@ -2941,6 +3106,82 @@ fn daemon_codex_identical_prompts_stay_unbound_until_a_distinct_follow_up() {
 }
 
 #[test]
+fn claude_without_a_transcript_says_so_until_it_exits() {
+    let h = Host::start();
+    h.setup();
+    // macOS hides a platform binary's environment, so /bin/sh would always look clean;
+    // a re-signed copy reads like the real CLI.
+    let cli = h.root.join("claude");
+    fs::copy("/bin/bash", &cli).unwrap();
+    assert!(std::process::Command::new("/usr/bin/codesign")
+        .args(["-f", "-s", "-"])
+        .arg(&cli)
+        .output()
+        .unwrap()
+        .status
+        .success());
+    let cli = shell_quote(&cli.to_string_lossy());
+    // Two lines: the first is the Enter that prompts a scan, the second ends the CLI.
+    let script = shell_quote("read -r a; read -r b");
+    h.call(h.launch(
+        "nested",
+        &format!("exec /usr/bin/env CLAUDE_CODE_CHILD_SESSION=1 {cli} -c {script}"),
+    ))
+    .unwrap();
+    // Not left to the host: whatever runs the tests may itself carry the marker.
+    h.call(h.launch(
+        "plain",
+        &format!("exec /usr/bin/env -u CLAUDE_CODE_CHILD_SESSION {cli} -c {script}"),
+    ))
+    .unwrap();
+    let mut streams = vec![];
+    for pane in ["nested", "plain"] {
+        let (mut stream, _, _) = h.attach(pane, false);
+        send(
+            &mut stream,
+            CONTROL,
+            &Request::Input {
+                bytes: b"\n".to_vec(),
+                lossy: false,
+            },
+        )
+        .unwrap();
+        assert!(matches!(ack(&mut stream), Reply::Ok));
+        streams.push(stream);
+    }
+    let until = Instant::now() + Duration::from_secs(10);
+    while recognition(&h).terminal_hints.get("nested").map(String::as_str)
+        != Some(keepline_core::protocol::CLAUDE_TRANSCRIPT_OFF)
+    {
+        assert!(Instant::now() < until, "{:?}", recognition(&h).terminal_hints);
+        std::thread::sleep(Duration::from_millis(25));
+    }
+    // A plain Claude saves its transcript; until a prompt ties it to one it is only unbound.
+    assert_eq!(
+        recognition(&h)
+            .terminal_hints
+            .get("plain")
+            .map(String::as_str),
+        Some(format!("{}claude", keepline_core::protocol::AGENT_UNBOUND_PREFIX).as_str())
+    );
+    send(
+        &mut streams[0],
+        CONTROL,
+        &Request::Input {
+            bytes: b"\n".to_vec(),
+            lossy: false,
+        },
+    )
+    .unwrap();
+    assert!(matches!(ack(&mut streams[0]), Reply::Ok));
+    let until = Instant::now() + Duration::from_secs(10);
+    while recognition(&h).terminal_hints.contains_key("nested") {
+        assert!(Instant::now() < until, "the hint outlives the CLI");
+        std::thread::sleep(Duration::from_millis(25));
+    }
+}
+
+#[test]
 fn unbound_daemon_codex_shows_title_state_and_no_daemon_shows_nothing() {
     let h = Host::start();
     h.setup();
@@ -2978,4 +3219,263 @@ fn unbound_daemon_codex_shows_title_state_and_no_daemon_shows_nothing() {
         std::thread::sleep(Duration::from_millis(25));
     }
     assert!(!recognition(&h).terminal_hints.contains_key("plain"));
+}
+
+/// What `h.workspace()` says the pane runs: its CLI id and the evidence that bound it.
+fn bound_in(h: &Host, pane: &str) -> Option<(String, Option<keepline_core::model::Binding>)> {
+    h.workspace()
+        .current_agent(pane)
+        .map(|s| (s.cli_session_id.clone(), s.binding))
+}
+fn wait_bound(h: &Host, pane: &str, secs: u64) -> (String, Option<keepline_core::model::Binding>) {
+    let until = Instant::now() + Duration::from_secs(secs);
+    loop {
+        if let Some(bound) = bound_in(h, pane) {
+            return bound;
+        }
+        assert!(
+            Instant::now() < until,
+            "{pane} never bound; hints {:?}",
+            recognition(h).terminal_hints
+        );
+        std::thread::sleep(Duration::from_millis(50));
+    }
+}
+
+#[test]
+fn every_terminal_tells_its_programs_which_terminal_and_host_they_run_in() {
+    let h = Host::start();
+    h.setup();
+    let out = h.root.join("env-out");
+    h.call(h.launch(
+        "env",
+        &format!(
+            "printf '%s|%s|%s' \"$KEEPLINE_TERMINAL\" \"$KEEPLINE_RUNTIME\" \"${{KEEPLINE_HOOK:+set}}\" > {}; sleep 5",
+            shell_quote(&out.to_string_lossy())
+        ),
+    ))
+    .unwrap();
+    // The runtime as the host was given it: resolving links could overflow the socket path.
+    assert_eq!(wait_file(&out), format!("env|{}|set", h.root.display()));
+}
+
+#[test]
+fn a_hand_started_claude_binds_by_the_prompt_on_its_screen() {
+    let h = Host::start();
+    h.setup();
+    let logs = h.root.join("logs/claude");
+    fs::create_dir_all(&logs).unwrap();
+    let cli = h.root.join("claude");
+    std::os::unix::fs::symlink("/bin/sh", &cli).unwrap();
+    let id = uuid::Uuid::new_v4().to_string();
+    let prompt = "把左侧会话列表按最近活动排序";
+    let row = serde_json::json!({"type":"user","sessionId":id,"uuid":"u1","cwd":"/tmp","entrypoint":"cli","userType":"external","timestamp":keepline_core::content::now(),"message":{"content":prompt}});
+    let seed = h.root.join("seed");
+    fs::write(&seed, format!("{row}\n")).unwrap();
+    // Like `claude` typed by hand: no --session-id, and the transcript is written then closed.
+    let script = format!(
+        "read -r line; cat {} > {}; read -r end",
+        shell_quote(&seed.to_string_lossy()),
+        shell_quote(&logs.join(format!("{id}.jsonl")).to_string_lossy())
+    );
+    h.call(h.launch(
+        "hand",
+        &format!(
+            "exec {} -c {}",
+            shell_quote(&cli.to_string_lossy()),
+            shell_quote(&script)
+        ),
+    ))
+    .unwrap();
+    let (mut stream, _, _) = h.attach("hand", false);
+    std::thread::sleep(Duration::from_millis(300));
+    send(
+        &mut stream,
+        CONTROL,
+        &Request::Input {
+            bytes: format!("{prompt}\n").into_bytes(),
+            lossy: false,
+        },
+    )
+    .unwrap();
+    assert!(matches!(ack(&mut stream), Reply::Ok));
+    assert_eq!(
+        wait_bound(&h, "hand", 15),
+        (id, Some(keepline_core::model::Binding::Screen))
+    );
+    assert!(!recognition(&h).terminal_hints.contains_key("hand"));
+}
+
+#[test]
+fn the_installed_hook_binds_a_new_claude_before_its_transcript_exists() {
+    let h = Host::start();
+    h.setup();
+    let logs = h.root.join("logs/claude");
+    fs::create_dir_all(&logs).unwrap();
+    let cli = h.root.join("claude");
+    std::os::unix::fs::symlink("/bin/sh", &cli).unwrap();
+    let id = uuid::Uuid::new_v4().to_string();
+    let path = logs.join(format!("{id}.jsonl"));
+    let payload = h.root.join("payload.json");
+    fs::write(
+        &payload,
+        serde_json::json!({"session_id":id,"transcript_path":path,"cwd":"/tmp","hook_event_name":"SessionStart","source":"startup"}).to_string(),
+    )
+    .unwrap();
+    // The settings entry exactly as installed, run the way Claude runs a command hook. It
+    // is detached first, so the process tree no longer leads back to the terminal and only
+    // the terminal's environment can say where it runs.
+    let command = keeplined::hooks::command(Agent::Claude);
+    let status = h.root.join("hook-status");
+    let detached = format!(
+        "( sleep 0.3; KEEPLINE_HOOK={} /bin/sh -c {} < {}; echo $? > {} ) & exit 0",
+        shell_quote(env!("CARGO_BIN_EXE_keeplined")),
+        shell_quote(&command),
+        shell_quote(&payload.to_string_lossy()),
+        shell_quote(&status.to_string_lossy()),
+    );
+    let script = format!("/bin/sh -c {}; read -r end", shell_quote(&detached));
+    h.call(h.launch(
+        "hooked",
+        &format!(
+            "exec {} -c {}",
+            shell_quote(&cli.to_string_lossy()),
+            shell_quote(&script)
+        ),
+    ))
+    .unwrap();
+    assert_eq!(wait_file(&status).trim(), "0");
+    let (cli_id, binding) = wait_bound(&h, "hooked", 10);
+    assert_eq!(cli_id, id);
+    assert_eq!(binding, Some(keepline_core::model::Binding::Hook));
+    let session = h.workspace().current_agent("hooked").unwrap().clone();
+    assert_eq!(session.cwd, "/tmp");
+    assert_eq!(
+        session.transcript,
+        path.canonicalize()
+            .unwrap_or_else(|_| { logs.canonicalize().unwrap().join(format!("{id}.jsonl")) })
+            .to_string_lossy()
+    );
+    // The first prompt then writes the transcript; the same session fills in, still bound.
+    let row = serde_json::json!({"type":"user","sessionId":id,"uuid":"u1","cwd":"/tmp","entrypoint":"cli","userType":"external","timestamp":keepline_core::content::now(),"message":{"content":"hook 先到，对话随后写入"}});
+    fs::write(&path, format!("{row}\n")).unwrap();
+    let until = Instant::now() + Duration::from_secs(10);
+    loop {
+        let w = h.workspace();
+        let s = w.current_agent("hooked").unwrap();
+        if w.content
+            .get(&s.id)
+            .is_some_and(|c| c.title == "hook 先到，对话随后写入")
+        {
+            assert_eq!(s.id, session.id);
+            assert_eq!(s.binding, Some(keepline_core::model::Binding::Hook));
+            break;
+        }
+        assert!(
+            Instant::now() < until,
+            "the transcript never filled the hooked session"
+        );
+        std::thread::sleep(Duration::from_millis(50));
+    }
+    // Survives a host restart through its own table.
+    let stored = rusqlite_binding(&h.root, &session.id);
+    assert_eq!(stored.as_deref(), Some("Hook"));
+}
+
+fn rusqlite_binding(root: &std::path::Path, session: &str) -> Option<String> {
+    let out = Command::new("/usr/bin/sqlite3")
+        .arg("-readonly")
+        .arg(root.join("workbench.sqlite"))
+        .arg(format!(
+            "SELECT evidence FROM agent_bindings WHERE session_id='{session}'"
+        ))
+        .output()
+        .unwrap();
+    Some(String::from_utf8(out.stdout).unwrap().trim().to_owned()).filter(|s| !s.is_empty())
+}
+
+/// Real Claude Code, no model call: its SessionStart hook fires at startup, from a settings
+/// file passed on the command line so the user's own settings stay untouched. Run with
+/// `KEEPLINE_REAL_CLAUDE_CWD=<a directory Claude already trusts> cargo test -- --ignored real_claude`.
+#[test]
+#[ignore = "starts the real claude binary"]
+fn real_claude_hooks_bind_at_startup_before_any_prompt() {
+    let cwd = std::env::var("KEEPLINE_REAL_CLAUDE_CWD").expect("KEEPLINE_REAL_CLAUDE_CWD");
+    let h = Host::start();
+    h.call(Request::Edit {
+        revision: h.workspace().revision,
+        edit: Edit::AddSpace(Space {
+            id: "s".into(),
+            name: "Real".into(),
+            cwd: cwd.clone(),
+        }),
+    })
+    .unwrap();
+    let settings = h.root.join("hooks.json");
+    // The installed entry, with the host executable set first: this fixture's own
+    // `KEEPLINE_HOOK` is the test binary.
+    let command = format!(
+        "KEEPLINE_HOOK={}; {}",
+        shell_quote(env!("CARGO_BIN_EXE_keeplined")),
+        keeplined::hooks::command(Agent::Claude)
+    );
+    let entry =
+        serde_json::json!([{ "hooks": [{ "type": "command", "command": command, "timeout": 5 }] }]);
+    fs::write(
+        &settings,
+        serde_json::json!({ "hooks": { "SessionStart": entry, "SessionEnd": entry } }).to_string(),
+    )
+    .unwrap();
+    let claude = Command::new("/bin/zsh")
+        .args(["-lc", "whence -p claude"])
+        .output()
+        .unwrap();
+    let claude = String::from_utf8(claude.stdout).unwrap().trim().to_owned();
+    h.call(Request::Launch {
+        id: "real".into(),
+        space: "s".into(),
+        // Whatever runs this test may be a Claude Code session itself: none of its markers pass.
+        argv: ["/usr/bin/env".to_owned()]
+            .into_iter()
+            .chain(
+                std::env::vars()
+                    .map(|(k, _)| k)
+                    .filter(|k| k.starts_with("CLAUDE"))
+                    .flat_map(|k| ["-u".to_owned(), k]),
+            )
+            .chain([
+                claude,
+                "--settings".into(),
+                settings.to_string_lossy().into_owned(),
+            ])
+            .collect(),
+        cwd,
+        cols: 120,
+        rows: 40,
+    })
+    .unwrap();
+    let (cli_id, binding) = wait_bound(&h, "real", 30);
+    assert_eq!(binding, Some(Binding::Hook));
+    assert!(uuid::Uuid::parse_str(&cli_id).is_ok(), "{cli_id}");
+    eprintln!("bound real claude {cli_id} by hook");
+    // Ctrl+C twice quits without a word: `/exit` would leave a transcript behind.
+    let (mut stream, _, _) = h.attach("real", false);
+    for _ in 0..2 {
+        send(
+            &mut stream,
+            CONTROL,
+            &Request::Input {
+                bytes: b"\x03".to_vec(),
+                lossy: false,
+            },
+        )
+        .unwrap();
+        assert!(matches!(ack(&mut stream), Reply::Ok));
+        std::thread::sleep(Duration::from_millis(300));
+    }
+    let until = Instant::now() + Duration::from_secs(20);
+    while bound_in(&h, "real").is_some() {
+        assert!(Instant::now() < until, "SessionEnd or exit must clear it");
+        std::thread::sleep(Duration::from_millis(100));
+    }
 }
