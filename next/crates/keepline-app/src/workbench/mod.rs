@@ -107,6 +107,12 @@ pub(super) fn reopen_candidate(
         .find(|id| interrupted(w, id) && !tried.contains(*id))
         .cloned()
 }
+/// Whether closing these Agents would break into a turn or leave a question unanswered.
+pub(super) fn interrupts(agents: &[(String, Option<Phase>)]) -> bool {
+    agents
+        .iter()
+        .any(|(_, p)| matches!(p, Some(Phase::Working | Phase::Waiting)))
+}
 fn outcome_label(outcome: &Outcome) -> String {
     match outcome {
         Outcome::Open => "未结束".into(),
@@ -547,7 +553,9 @@ impl Workbench {
                 self.running_terminals().is_empty()
                     || crate::lifecycle::stale_build().is_some_and(|b| b.handoff)
             }
-            _ => self.running_agents(&closing).is_empty(),
+            // An Agent whose turn has ended loses nothing it can't resume: only work in
+            // progress or a question waiting for an answer is worth a confirmation.
+            _ => !interrupts(&self.running_agents(&closing)),
         };
         if quiet {
             self.close_now(closing, cx);
