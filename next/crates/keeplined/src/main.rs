@@ -128,11 +128,10 @@ fn hook(mut args: impl Iterator<Item = String>) -> std::io::Result<()> {
         }
     }
     let runtime = runtime.ok_or_else(|| std::io::Error::other("hook requires --runtime"))?;
-    let agent = match agent.as_deref() {
-        Some("codex") => Agent::Codex,
-        Some("claude") => Agent::Claude,
-        _ => return Err(std::io::Error::other("hook requires --agent codex|claude")),
-    };
+    let agent = agent
+        .as_deref()
+        .and_then(Agent::from_executable)
+        .ok_or_else(|| std::io::Error::other("hook requires --agent codex|claude|grok"))?;
     let mut bytes = Vec::new();
     std::io::stdin()
         .take(1024 * 1024 + 1)

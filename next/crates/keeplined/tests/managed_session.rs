@@ -986,7 +986,9 @@ fn fixture_command(root: &std::path::Path) -> Command {
         .env("KEEPLINE_FIXTURE_RUNTIME", root)
         // Tests that need Claude Code's official status write this script; others have none.
         .env("KEEPLINE_CLAUDE_AGENTS", root.join("claude-agents"))
-        .env("KEEPLINE_CODEX_CONTROL", root.join("codex-control.sock"));
+        .env("KEEPLINE_CODEX_CONTROL", root.join("codex-control.sock"))
+        // Grok's registry of live sessions is read from its home, not the fixture roots.
+        .env("GROK_HOME", root.join("grok-home"));
     command
 }
 #[test]
@@ -999,6 +1001,7 @@ fn daemon_fixture() {
     let roots = vec![
         (Agent::Codex, root.join("logs/codex")),
         (Agent::Claude, root.join("logs/claude")),
+        (Agent::Grok, root.join("grok-home/sessions")),
     ];
     if std::env::var_os("KEEPLINE_FIXTURE_TAKEOVER").is_some() {
         keeplined::serve_taking_over(&root, roots, 7).unwrap();
@@ -1567,6 +1570,111 @@ fn manually_entered_unbound_codex_gets_a_hint_and_exit_clears_it() {
     let until = Instant::now() + Duration::from_secs(3);
     while !recognition(&h).terminal_hints.is_empty() {
         assert!(Instant::now() < until, "stale hint after process exit");
+        std::thread::sleep(Duration::from_millis(25));
+    }
+}
+
+#[test]
+fn a_grok_tui_is_bound_through_its_own_registry_and_its_stream_drives_the_card() {
+    let h = Host::start();
+    h.setup();
+    let cli = h.root.join("grok");
+    std::os::unix::fs::symlink("/bin/sh", &cli).unwrap();
+    let script = format!("echo $$ > {}; sleep 30", h.root.join("grok-pid").display());
+    h.call(h.launch(
+        "g",
+        &format!(
+            "{} -c {}",
+            shell_quote(&cli.to_string_lossy()),
+            shell_quote(&script)
+        ),
+    ))
+    .unwrap();
+    let pid: u32 = wait_file(&h.root.join("grok-pid")).trim().parse().unwrap();
+    let home = h.root.join("grok-home");
+    let session = home.join("sessions/%2FUsers%2Fme%2Frepo/01a1-live");
+    fs::create_dir_all(&session).unwrap();
+    fs::write(
+        session.join("summary.json"),
+        r#"{"info":{"id":"01a1-live"}}"#,
+    )
+    .unwrap();
+    // A crashed process's entry with this pid but another start time is not this one.
+    fs::write(
+        home.join("active_sessions.json"),
+        serde_json::json!([
+            {"session_id": "01a0-stale", "pid": pid, "pid_start": 1, "cwd": "/old"},
+            {"session_id": "01a1-live", "pid": pid, "cwd": "/Users/me/repo"},
+        ])
+        .to_string(),
+    )
+    .unwrap();
+    let record = |at: u64, update: serde_json::Value| {
+        serde_json::json!({"timestamp": at, "method": "session/update",
+            "params": {"sessionId": "01a1-live", "update": update}})
+        .to_string()
+            + "\n"
+    };
+    let now = keepline_core::content::now();
+    let transcript = session.join("updates.jsonl");
+    fs::write(
+        &transcript,
+        record(
+            now,
+            serde_json::json!({"sessionUpdate": "user_message_chunk",
+                "content": {"type": "text", "text": "给 Keepline 接上 Grok"}}),
+        ),
+    )
+    .unwrap();
+    let card = |turn: keepline_core::content::Turn| {
+        let until = Instant::now() + Duration::from_secs(10);
+        loop {
+            let w = h.workspace();
+            if let Some(s) = w.current_agent("g") {
+                if w.content.get(&s.id).is_some_and(|c| c.turn == turn) {
+                    return (s.clone(), w.content[&s.id].clone());
+                }
+            }
+            assert!(
+                Instant::now() < until,
+                "no {turn:?} Grok card: {:?}",
+                w.agent_sessions
+            );
+            std::thread::sleep(Duration::from_millis(25));
+        }
+    };
+    let (s, c) = card(keepline_core::content::Turn::Running);
+    assert_eq!(s.runtime, Agent::Grok);
+    assert_eq!(s.cli_session_id, "01a1-live");
+    assert_eq!(s.cwd, "/Users/me/repo");
+    assert_eq!(c.title, "给 Keepline 接上 Grok");
+    assert_eq!(c.hidden_reason(), None);
+    let mut file = fs::OpenOptions::new()
+        .append(true)
+        .open(&transcript)
+        .unwrap();
+    use std::io::Write;
+    file.write_all(
+        (record(
+            now + 1,
+            serde_json::json!({"sessionUpdate": "agent_message_chunk",
+                "content": {"type": "text", "text": "已经接好了。"}}),
+        ) + &record(
+            now + 2,
+            serde_json::json!({"sessionUpdate": "turn_completed", "stop_reason": "end_turn"}),
+        ))
+            .as_bytes(),
+    )
+    .unwrap();
+    let (_, c) = card(keepline_core::content::Turn::Completed);
+    assert_eq!(c.last_reply, "已经接好了。");
+    assert_eq!(unsafe { libc::kill(pid as i32, libc::SIGTERM) }, 0);
+    let until = Instant::now() + Duration::from_secs(5);
+    while h.workspace().current_agent("g").is_some() {
+        assert!(
+            Instant::now() < until,
+            "Grok exit left the conversation current"
+        );
         std::thread::sleep(Duration::from_millis(25));
     }
 }

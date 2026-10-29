@@ -2126,8 +2126,15 @@ fn apply_official(
     index: &crate::log_index::Index,
     due: &[(AgentSession, Option<u32>)],
 ) -> io::Result<()> {
-    let (claude, codex): (Vec<_>, Vec<_>) =
-        due.iter().partition(|(s, _)| s.runtime == Agent::Claude);
+    // Only these CLIs have an official status to ask; the others rely on logs and screens.
+    let claude: Vec<_> = due
+        .iter()
+        .filter(|(s, _)| s.runtime == Agent::Claude)
+        .collect();
+    let codex: Vec<_> = due
+        .iter()
+        .filter(|(s, _)| s.runtime == Agent::Codex)
+        .collect();
     let mut found: Vec<(&AgentSession, crate::content::Official)> = Vec::new();
     let mut errors = Vec::new();
     // Each CLI's last outcome, shown in the app's recognition notice until one succeeds.

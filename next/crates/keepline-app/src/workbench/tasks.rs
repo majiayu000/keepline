@@ -326,11 +326,8 @@ impl Workbench {
             .tasks
             .last_agent
             .unwrap_or(self.workspace.settings.default_agent);
-        let order = if first == Agent::Codex {
-            [Agent::Codex, Agent::Claude]
-        } else {
-            [Agent::Claude, Agent::Codex]
-        };
+        let order =
+            std::iter::once(first).chain(Agent::ALL.into_iter().filter(move |a| *a != first));
         let mut row = div()
             .flex()
             .flex_wrap()

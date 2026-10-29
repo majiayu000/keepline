@@ -670,7 +670,7 @@ impl Workbench {
                 }
             }
             MenuPage::Sessions => {
-                for agent in [Agent::Codex, Agent::Claude] {
+                for agent in Agent::ALL {
                     let terminal = menu.terminal.clone();
                     let task = task.clone();
                     entries.push(

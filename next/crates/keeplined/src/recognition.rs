@@ -3,7 +3,7 @@ use keepline_core::model::{Agent, AgentSession, Outcome, ProcessState, Workspace
 use std::{
     collections::{HashMap, HashSet},
     io,
-    path::{Path, PathBuf},
+    path::PathBuf,
     process::Command,
 };
 
@@ -39,35 +39,7 @@ pub fn roots() -> io::Result<Vec<(Agent, PathBuf)>> {
     let home = PathBuf::from(
         std::env::var_os("HOME").ok_or_else(|| io::Error::other("HOME unavailable"))?,
     );
-    let codex = std::env::var_os("CODEX_HOME")
-        .map(PathBuf::from)
-        .unwrap_or_else(|| home.join(".codex"));
-    let claude = std::env::var_os("CLAUDE_CONFIG_DIR")
-        .map(PathBuf::from)
-        .unwrap_or_else(|| home.join(".claude"));
-    Ok(vec![
-        (Agent::Codex, codex.join("sessions")),
-        (Agent::Claude, claude.join("projects")),
-    ])
-}
-fn runtime_from_command(command: &str) -> Option<Agent> {
-    let mut args = command.split_whitespace();
-    let executable = Path::new(args.next()?).file_name()?.to_str()?;
-    match executable {
-        "codex" => Some(Agent::Codex),
-        "claude" => Some(Agent::Claude),
-        "node" | "bun" => {
-            let script = args.next()?;
-            if script.ends_with("/@anthropic-ai/claude-code/cli.js") {
-                Some(Agent::Claude)
-            } else if script.ends_with("/@openai/codex/bin/codex.js") {
-                Some(Agent::Codex)
-            } else {
-                None
-            }
-        }
-        _ => None,
-    }
+    Ok(crate::agents::roots(&home))
 }
 /// Read argv boundaries from the kernel, never parse a prompt out of `ps command`.
 /// KERN_PROCARGS2 also returns an environment tail; stop after argc and never retain it.
@@ -147,94 +119,6 @@ fn env_has(bytes: &[u8], key: &str) -> bool {
             .is_some_and(|rest| rest.first() == Some(&b'='))
     })
 }
-fn claude_session_id(args: &[String]) -> Option<String> {
-    let mut found = None;
-    let mut args = args.iter().skip(1);
-    while let Some(arg) = args.next() {
-        if arg == "--" {
-            break;
-        }
-        let value = match arg.as_str() {
-            "--session-id" | "--resume" | "-r" => args.next().map(String::as_str),
-            _ => arg
-                .strip_prefix("--session-id=")
-                .or_else(|| arg.strip_prefix("--resume=")),
-        };
-        if let Some(value) = value {
-            let id = uuid::Uuid::parse_str(value).ok()?.to_string();
-            if found.is_some() {
-                return None;
-            } // Conflicting selectors aren't evidence.
-            found = Some(id);
-        }
-    }
-    found
-}
-// Codex options that consume the next argv element; anything else positional ends option parsing.
-const CODEX_VALUE_FLAGS: &[&str] = &[
-    "-c",
-    "--config",
-    "-m",
-    "--model",
-    "-p",
-    "--profile",
-    "-s",
-    "--sandbox",
-    "-a",
-    "--ask-for-approval",
-    "-C",
-    "--cd",
-    "-i",
-    "--image",
-    "--add-dir",
-    "--enable",
-    "--disable",
-    "--remote",
-    "--remote-auth-token-env",
-    "--local-provider",
-];
-/// `codex [opts] resume <uuid>` names its thread exactly, with or without the shared daemon.
-/// `--last`, thread names, `fork` and prompts are not identity evidence.
-fn codex_args(args: &[String]) -> (Option<String>, bool) {
-    let no_daemon = args
-        .iter()
-        .skip(1)
-        .take_while(|a| *a != "--")
-        .any(|a| a == "--no-daemon");
-    let mut args = args.iter().skip(1);
-    while let Some(arg) = args.next() {
-        if arg == "--" {
-            break;
-        }
-        if CODEX_VALUE_FLAGS.contains(&arg.as_str()) {
-            args.next();
-            continue;
-        }
-        if arg.starts_with('-') {
-            continue;
-        }
-        if arg != "resume" {
-            break;
-        }
-        let mut found = None;
-        while let Some(arg) = args.next() {
-            if arg == "--last" {
-                return (None, no_daemon);
-            }
-            if CODEX_VALUE_FLAGS.contains(&arg.as_str()) {
-                args.next();
-            } else if arg == "--" || !arg.starts_with('-') {
-                let id = if arg == "--" { args.next() } else { Some(arg) };
-                found = id
-                    .and_then(|id| uuid::Uuid::parse_str(id).ok())
-                    .map(|id| id.to_string());
-                break;
-            }
-        }
-        return (found, no_daemon);
-    }
-    (None, no_daemon)
-}
 /// Enumerate only the trees rooted at live PTYs. No global ps or process-name scan.
 pub fn processes(workspace: &Workspace) -> io::Result<Vec<Process>> {
     let mut pending: Vec<_> = workspace
@@ -311,17 +195,15 @@ pub fn processes(workspace: &Workspace) -> io::Result<Vec<Process>> {
         let Some(parent) = fields.next().and_then(|s| s.parse().ok()) else {
             continue;
         };
-        let runtime = runtime_from_command(fields.next().unwrap_or("").trim_start());
+        let runtime = crate::agents::from_command(fields.next().unwrap_or("").trim_start());
         let args = if runtime.is_some() {
             process_argv(pid).unwrap_or_default()
         } else {
             vec![]
         };
-        let (cli_session_id, no_daemon) = match runtime {
-            Some(Agent::Claude) => (claude_session_id(&args), false),
-            Some(Agent::Codex) => codex_args(&args),
-            None => (None, false),
-        };
+        let (cli_session_id, no_daemon) = runtime
+            .map(|a| crate::agents::adapter(a).process_session(pid, &args))
+            .unwrap_or_default();
         processes.push(Process {
             pid,
             parent,
@@ -677,6 +559,7 @@ pub fn open_transcripts(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::agents::{claude::claude_session_id, codex::codex_args};
     use keepline_core::model::{Space, Terminal};
     #[test]
     fn screen_wait_reads_only_strict_approval_and_choice_shapes() {
