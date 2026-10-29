@@ -22,7 +22,7 @@ product.md 保留用户行为，tech.md 的旧 Tauri/Bun 协议不再作为实�
 `Tab.layout` 是摆放的唯一事实源，不在 Terminal 重复保存 tab/position。
 分支保存 Right / Down、万分比 ratio 与两个子树；关闭叶节点折叠父节点，将全部面积归还兄弟子树。
 不限叶节点数量；单叶无分屏边框；放大是客户端临时视图，原树与比例不变。
-`Workspace.tab_terminals()` 提供标签的终端引用。关闭标签保留位置；跨空间摆放只改位置。
+`Workspace.tab_terminals()` 提供标签的终端引用。关闭标签删除该标签及其布局；没有画面的标签不存在；跨空间摆放只改位置。
 `AgentSession.current` 表示最近一次已证实且尚未结束的对话关联，不代表正在工作或已完成。
 SessionEnd、已证明的 Agent PID 的 kqueue NOTE_EXIT、宿主失联和下一次对话关联会结束该关联；
 退出事件只修改 current，不改任务、结局，也不关闭仍活着的 shell。旧对话保留 terminal 作为历史来源。
@@ -64,7 +64,7 @@ daemon 保留一个全局业务状态锁，每个终端有独立状态锁。PTY 
    input 与 resize 检查同一个 owner。输入应答丢失不得自动重发。
    仅后台响应终端查询；显示副本不向 PTY 回答。
 4. **业务**：空间→待办→AgentSession 与 空间→标签→Terminal 分别存储。
-   关闭标签不调用 stop；进程退出不等于用户验收。
+   关闭画面或标签由宿主停止对应终端；进程退出不等于用户验收。
    SQLite 是业务事实源，记录 Agent 自述和机械证据时必须区分来源。
 
 ## SQLite 与识别边界
@@ -232,8 +232,8 @@ Interrupted 是已结束进程的持久状态，客户端不得尝试 attach。�
 
 决定：采用 Tab 分割树，取消固定网格、空位与数量上限。布局事务不修改 AgentSession 的待办和结局。
 向右/向下拆分启动空 shell；动作触发时用 proc_pidinfo 读取源托管 shell 的当前目录，包含 cd 后的变化，失败明确报错。
-画面菜单与状态栏 ⋯ 共用同一组动作。中断发送 Ctrl-C；停止 Agent 只向再次核对 runtime 与祖先链的 Agent PID 发 SIGTERM。
-关闭画面仅移除树叶，不停止 PTY。搜索仅在用户提交时读取有界 VT 滚动内容，复制选区/可见内容，粘贴走原输入队列。
+画面菜单只从画面内右键打开，状态栏只保留关闭按钮。中断发送 Ctrl-C；停止 Agent 只向再次核对 runtime 与祖先链的 Agent PID 发 SIGTERM。
+关闭画面移除树叶并停止该 PTY；移除最后一片树叶即关闭标签。搜索仅在用户提交时读取有界 VT 滚动内容，复制选区/可见内容，粘贴走原输入队列。
 
 终端字体以原等宽字体测量单元格，CoreText 进程级注册内嵌 Symbols Nerd Font Mono v3.4.0（MIT）。
 纯符号字体不含 m，不能用 GPUI 的主字体加载路径；通过 CoreText cascade 回退。不会安装或更改系统字体。

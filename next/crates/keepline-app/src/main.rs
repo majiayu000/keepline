@@ -227,6 +227,14 @@ fn run() -> io::Result<()> {
             cx.quit();
             return;
         }
+        // Ghostty's default face ships inside Ghostty; without a bundled copy, machines
+        // lacking an installed JetBrains Mono fall back to Menlo and look different.
+        if let Err(error) = cx
+            .text_system()
+            .add_fonts(ui::theme::BUNDLED_MONO.map(Into::into).to_vec())
+        {
+            eprintln!("bundled terminal font: {error}");
+        }
         let workspace = match initial {
             Ok(w) => w,
             Err(e) => {

@@ -174,8 +174,10 @@ pub fn plain_line(text: &str) -> String {
         .join(" ")
 }
 /// A first ask as a name: the polite lead-in most asks share ("你帮我看看") goes,
-/// so tabs and rows start with what differs.
+/// so tabs and rows start with what differs. Runs of spaces, as in a pasted table
+/// row, become one so the name is not mostly blank.
 pub fn topic(title: &str) -> String {
+    let title = title.split_whitespace().collect::<Vec<_>>().join(" ");
     const LEAD: [&str; 16] = [
         "你",
         "请",
@@ -195,11 +197,22 @@ pub fn topic(title: &str) -> String {
         " ",
     ];
     let mut rest = title.trim();
-    while let Some(next) = LEAD.iter().find_map(|p| rest.strip_prefix(p)) {
-        if next.trim().chars().count() < 4 {
-            break;
+    // A pasted image leaves "[Image #1]" where it was; it names nothing.
+    fn image(s: &str) -> Option<&str> {
+        let n = s.strip_prefix("[Image #")?;
+        let digits = n.len() - n.trim_start_matches(|c: char| c.is_ascii_digit()).len();
+        n[digits..].strip_prefix(']').filter(|_| digits > 0)
+    }
+    loop {
+        // An image placeholder goes whenever words follow it, however few.
+        if let Some(next) = image(rest).filter(|n| !n.trim().is_empty()) {
+            rest = next.trim_start();
+            continue;
         }
-        rest = next;
+        match LEAD.iter().find_map(|p| rest.strip_prefix(p)) {
+            Some(next) if next.trim().chars().count() >= 4 => rest = next,
+            _ => break,
+        }
     }
     rest.trim().to_owned()
 }
@@ -406,6 +419,20 @@ mod tests {
         assert_eq!(topic("你帮我看看我最近有什么…"), "我最近有什么…");
         assert_eq!(topic("帮我看看"), "帮我看看");
         assert_eq!(topic("修复登录"), "修复登录");
+        assert_eq!(
+            topic("你帮我看看[Image #1] 这是哪个模型啊？"),
+            "这是哪个模型啊？"
+        );
+        assert_eq!(topic("[Image #1][Image #2] 对比一下"), "对比一下");
+        assert_eq!(topic("[Image #1]"), "[Image #1]");
+        assert_eq!(topic("你帮我看看[Image #1]这是啥"), "这是啥");
+        assert_eq!(topic("🔥 线上 502 了快看看"), "🔥 线上 502 了快看看");
+        assert_eq!(
+            topic("你帮我看看 🤔 为什么构建这么慢"),
+            "🤔 为什么构建这么慢"
+        );
+        assert_eq!(topic("[Image #] 原样"), "[Image #] 原样");
+        assert_eq!(topic("PR        | 106 |  2026…"), "PR | 106 | 2026…");
     }
     #[test]
     fn headline_drops_the_labels_the_state_already_says() {
@@ -467,6 +494,7 @@ mod grouping_tests {
             updated: now,
             cwd: "/tmp".into(),
             transcript: "f".into(),
+            binding: None,
         };
         let w = Workspace::default();
         let mut c = Content {
@@ -513,6 +541,7 @@ mod grouping_tests {
             updated: now,
             cwd: "/tmp".into(),
             transcript: "f".into(),
+            binding: None,
         };
         let w = Workspace::default();
         let mut c = Content {

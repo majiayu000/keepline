@@ -96,6 +96,31 @@ fn home_relative(path: &str) -> String {
         _ => path.to_owned(),
     }
 }
+/// The first shown pane whose terminal the host lost and that has not been tried yet.
+pub(super) fn reopen_candidate(
+    w: &Workspace,
+    shown: &[String],
+    tried: &HashSet<String>,
+) -> Option<String> {
+    shown
+        .iter()
+        .find(|id| interrupted(w, id) && !tried.contains(*id))
+        .cloned()
+}
+/// Whether closing these Agents would break into a turn or leave a question unanswered.
+pub(super) fn interrupts(agents: &[(String, Option<Phase>)]) -> bool {
+    agents
+        .iter()
+        .any(|(_, p)| matches!(p, Some(Phase::Working | Phase::Waiting)))
+}
+/// How many split panes closing a tab takes down with it; one pane, or a pane or host
+/// close, counts none.
+pub(super) fn splits_closed(workspace: &Workspace, closing: &Closing) -> usize {
+    match closing {
+        Closing::Tab(id) => Some(workspace.tab_terminals(id).len()).filter(|n| *n > 1).unwrap_or(0),
+        _ => 0,
+    }
+}
 fn outcome_label(outcome: &Outcome) -> String {
     match outcome {
         Outcome::Open => "未结束".into(),
@@ -124,6 +149,7 @@ mod render;
 mod sessions;
 use sessions::{Attention, Resuming};
 mod sidebar;
+use sidebar::closed_recently;
 mod tabs;
 mod tasks;
 use tasks::TaskUi;
@@ -179,7 +205,10 @@ impl Workbench {
                 if let Some(left) = this.away.take() {
                     if show_on_return(left, now(), this.workspace.settings.away_minutes) {
                         this.overview.since = left;
+                        this.overview.cleanup.clear();
+                        this.overview.welcome = true;
                         this.nav.overview = true;
+                        this.nav.pending_focus = true;
                         this.sync_panes(cx);
                     }
                     cx.notify();
@@ -228,6 +257,10 @@ impl Workbench {
                 here_more: None,
                 cleanup: vec![],
                 cleanup_index: 0,
+                welcome: overview,
+                focus: cx.focus_handle(),
+                #[cfg(feature = "visual-test")]
+                toggle_at: None,
             },
             tasks: TaskUi {
                 form: None,
@@ -250,6 +283,7 @@ impl Workbench {
                 icon_menu: None,
                 confirm_close: None,
                 renaming_tab: None,
+                reopened: HashSet::new(),
             },
             attention: Attention {
                 phases: HashMap::new(),
@@ -285,6 +319,15 @@ impl Workbench {
         } else {
             ids
         };
+        // A shell the host lost on restart comes back in place as soon as its tab shows.
+        if !self.store.busy()
+            && self.resuming.resume.is_none()
+            && self.tasks.chosen_agent.is_none()
+            && let Some(id) = reopen_candidate(&self.workspace, &ids, &self.layout.reopened)
+        {
+            self.layout.reopened.insert(id.clone());
+            self.reopen(id, cx);
+        }
         let ids = attachable_ids(&self.workspace, ids);
         if self.nav.focused.as_ref().is_none_or(|id| !ids.contains(id)) {
             self.nav.focused = ids.first().cloned();
@@ -518,7 +561,13 @@ impl Workbench {
                 self.running_terminals().is_empty()
                     || crate::lifecycle::stale_build().is_some_and(|b| b.handoff)
             }
-            _ => self.running_agents(&closing).is_empty(),
+            // An Agent whose turn has ended loses nothing it can't resume: only work in
+            // progress or a question waiting for an answer is worth a confirmation, and
+            // so is a tab of several splits, which a stray click would undo at once.
+            _ => {
+                splits_closed(&self.workspace, &closing) == 0
+                    && !interrupts(&self.running_agents(&closing))
+            }
         };
         if quiet {
             self.close_now(closing, cx);
@@ -589,6 +638,19 @@ impl Workbench {
             self.sync_panes(cx);
         }
         self.edit(edit, cx);
+    }
+    /// Reopens a lost terminal in place, resuming the conversation it was running.
+    pub(super) fn reopen(&mut self, id: String, cx: &mut Context<Self>) {
+        if let Some(s) = interrupted_session(&self.workspace, &id) {
+            self.resuming.resume = Some((
+                s.runtime.resume_command(&s.cli_session_id),
+                s.cwd.clone(),
+                s.id.clone(),
+            ));
+        }
+        self.launch_in_slot(true, None, Some(id), cx);
+        // Taken unless the launch bailed early; a leftover would hijack the next launch.
+        self.resuming.resume = None;
     }
     pub(super) fn launch_in_slot(
         &mut self,
@@ -717,29 +779,29 @@ impl Workbench {
             .and_then(|id| self.workspace.tasks.iter().find(|t| &t.id == id))
             .and_then(|t| self.workspace.spaces.iter().find(|s| s.id == t.space))
             .map(|s| s.cwd.clone());
+        // A plain new tab follows the focused pane of the current tab, like a split does.
+        let inherit = source.as_ref().map(|(id, _)| id.clone()).or_else(|| {
+            let tab = self.nav.tab.as_ref().filter(|_| previous.is_none())?;
+            let panes = self.workspace.tab_terminals(tab);
+            self.nav
+                .focused
+                .clone()
+                .filter(|id| panes.contains(id))
+                .or_else(|| panes.first().cloned())
+        });
+        let inherited = inherit
+            .as_ref()
+            .and_then(|id| self.workspace.terminals.iter().find(|t| &t.id == id))
+            .filter(|t| t.space == space.id);
         let cwd = resume.map(|r| r.1).or(task_cwd).unwrap_or_else(|| {
             previous
                 .map(|t| t.cwd)
-                .or_else(|| {
-                    source.as_ref().and_then(|(id, _)| {
-                        self.workspace
-                            .terminals
-                            .iter()
-                            .find(|t| &t.id == id)
-                            .map(|t| t.cwd.clone())
-                    })
-                })
+                .or_else(|| inherited.map(|t| t.cwd.clone()))
                 .unwrap_or_else(|| space.cwd.clone())
         });
         let cwd = usable_cwd([cwd, space.cwd.clone()]);
-        let cwd_source = source
-            .as_ref()
-            .and_then(|(id, _)| {
-                self.workspace
-                    .terminals
-                    .iter()
-                    .find(|t| &t.id == id && t.state == ProcessState::Running)
-            })
+        let cwd_source = inherited
+            .filter(|t| t.state == ProcessState::Running)
             .filter(|_| task_id.is_none() && resuming.is_none())
             .map(|t| t.id.clone());
         let request = Request::Launch {

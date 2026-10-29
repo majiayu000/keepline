@@ -15,6 +15,10 @@ pub struct Workspace {
     /// One proven binding consumes this override; None cancels the tab default.
     #[serde(default)]
     pub pending_tasks: std::collections::HashMap<String, Option<String>>,
+    /// Terminals a restarted host lost, with the conversation each was running then
+    /// (None: only its shell). Terminals lost before this was kept have no entry.
+    #[serde(default)]
+    pub lost_agents: std::collections::HashMap<String, Option<String>>,
     pub spaces: Vec<Space>,
     pub tasks: Vec<Task>,
     pub tabs: Vec<Tab>,
@@ -68,31 +72,44 @@ pub struct AcceptanceCriterion {
 pub enum Agent {
     Codex,
     Claude,
+    Grok,
 }
+/// What Keepline knows about one CLI: how to start and resume it. What its transcripts
+/// look like lives in the daemon's `agents` module; adding a CLI touches both.
 impl Agent {
+    /// Every supported CLI, in the order the app offers them.
+    pub const ALL: [Agent; 3] = [Agent::Codex, Agent::Claude, Agent::Grok];
     pub fn name(self) -> &'static str {
         match self {
             Self::Codex => "Codex",
             Self::Claude => "Claude Code",
+            Self::Grok => "Grok Build",
         }
+    }
+    pub fn from_executable(name: &str) -> Option<Self> {
+        Self::ALL.into_iter().find(|a| a.executable() == name)
     }
     /// Temporary until daemon-backed Codex can prove a TUI-to-session association.
     pub fn command(self) -> String {
         match self {
             Self::Codex => "codex".into(),
             Self::Claude => format!("claude --session-id {}", uuid::Uuid::new_v4()),
+            // The TUI cannot be given an id; the daemon reads it from Grok's own registry.
+            Self::Grok => "grok".into(),
         }
     }
     pub fn resume_command(self, cli_id: &str) -> String {
         match self {
             Self::Codex => format!("codex resume {}", shell_quote(cli_id)),
             Self::Claude => format!("claude --resume {}", shell_quote(cli_id)),
+            Self::Grok => format!("grok --resume {}", shell_quote(cli_id)),
         }
     }
     pub fn executable(self) -> &'static str {
         match self {
             Self::Codex => "codex",
             Self::Claude => "claude",
+            Self::Grok => "grok",
         }
     }
 }
@@ -160,6 +177,33 @@ pub struct AgentSession {
     pub updated: u64,
     pub cwd: String,
     pub transcript: String,
+    /// The evidence that tied it to its terminal; `None` while it has never been bound.
+    #[serde(default)]
+    pub binding: Option<Binding>,
+}
+/// How a conversation was tied to the terminal running it, strongest first. Each CLI
+/// offers some of these; the host tries every one it offers and refuses ambiguity.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub enum Binding {
+    /// The process names its conversation: on its command line (`--session-id`, `resume`)
+    /// or in its CLI's own registry of live sessions.
+    Process,
+    /// The CLI's own hook reported its conversation from inside the terminal.
+    Hook,
+    /// The process holds the transcript open.
+    OpenFile,
+    /// The newest prompt shows on exactly one screen, or was submitted there.
+    Screen,
+}
+impl Binding {
+    pub fn label(self) -> &'static str {
+        match self {
+            Self::Process => "进程报出的会话 ID",
+            Self::Hook => "Agent 的 Hook 上报",
+            Self::OpenFile => "进程打开的对话文件",
+            Self::Screen => "画面上的提示词",
+        }
+    }
 }
 impl AgentSession {
     /// Started in a Keepline terminal. Conversations found only by scanning CLI logs
@@ -513,6 +557,7 @@ impl Workspace {
             if observed.terminal.is_none() {
                 observed.terminal = old.terminal.clone();
                 observed.current = old.current;
+                observed.binding = old.binding;
             }
         }
         if let Some(terminal_id) = &observed.terminal {
@@ -763,6 +808,7 @@ mod tests {
             updated: 1,
             cwd: "/tmp/a".into(),
             transcript: format!("/logs/{id}.jsonl"),
+            binding: None,
         }
     }
     #[test]
@@ -1011,6 +1057,12 @@ mod tests {
             Agent::Claude.resume_command("safe"),
             "claude --resume 'safe'"
         );
+        assert_eq!(Agent::Grok.command(), "grok");
+        assert_eq!(Agent::Grok.resume_command("id"), "grok --resume 'id'");
+        for agent in Agent::ALL {
+            assert_eq!(Agent::from_executable(agent.executable()), Some(agent));
+        }
+        assert_eq!(Agent::from_executable("node"), None);
     }
     #[test]
     fn sequential_conversations_keep_independent_tasks_and_outcomes() {
@@ -1174,6 +1226,7 @@ mod identity_tests {
             updated: 1,
             cwd: "/tmp".into(),
             transcript: "/log".into(),
+            binding: None,
         };
         w.observe_agent(session.clone()).unwrap();
         session.terminal = Some("two".into());

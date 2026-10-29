@@ -3,6 +3,21 @@ use super::*;
 
 impl Render for Workbench {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+        // The overview and 逐个清理 take the main area beside the sidebar; the top bar,
+        // sidebar and tab strip stay, so leaving is a click in the same place or Esc.
+        let page = if self.tasks.form.is_some() {
+            None
+        } else if !self.overview.cleanup.is_empty() {
+            Some(self.cleanup_view(cx))
+        } else if self.nav.overview {
+            Some(self.overview_view(window, cx))
+        } else {
+            None
+        };
+        if self.nav.pending_focus && page.is_some() && !self.search.is_open() {
+            window.focus(&self.overview.focus, cx);
+            self.nav.pending_focus = false;
+        }
         if self.nav.pending_focus
             && self.tasks.form.is_none()
             && self.layout.renaming_tab.is_none()
@@ -28,27 +43,6 @@ impl Render for Workbench {
             .text_size(px(T::BODY_SIZE))
             .line_height(gpui::relative(T::LINE_HEIGHT))
             .font_family(T::UI_FONT);
-        // Full pages keep a title-bar row of their own for the traffic lights and dragging.
-        let full_page = if !self.overview.cleanup.is_empty() && self.tasks.form.is_none() {
-            Some(self.cleanup_view(cx))
-        } else if self.nav.overview && self.tasks.form.is_none() {
-            Some(self.overview_view(window, cx))
-        } else {
-            None
-        };
-        if let Some(view) = full_page {
-            return self
-                .with_search(root.relative(), cx)
-                .child(
-                    div()
-                        .h(px(T::TOP))
-                        .flex_shrink_0()
-                        .flex()
-                        .child(self.title_drag_area(cx)),
-                )
-                .child(div().flex_1().min_h_0().flex().flex_col().child(view))
-                .when(self.search.is_open(), |d| d.child(self.search_palette(cx)));
-        }
         let space_name = self
             .workspace
             .spaces
@@ -95,15 +89,30 @@ impl Render for Workbench {
                         .child("Keepline"),
                 )
                 .child(label(format!("/ {space_name}")))
-                .child(
-                    button("overview", "▦ 鸟瞰全部")
-                        .bg(T::color(T::RAISED))
-                        .on_click(cx.listener(|this, _, _, cx| {
-                            this.nav.overview = true;
-                            this.sync_panes(cx);
-                            this.request(Request::Workspace, cx);
-                        })),
-                )
+                // A toggle: the same spot goes into the overview and back out of it. Its
+                // label and everything before it keep their width, so nothing shifts.
+                .child({
+                    let on = self.nav.overview || !self.overview.cleanup.is_empty();
+                    let toggle = button("overview", "▦ 鸟瞰全部")
+                        .aria_label(if on {
+                            "回到工作区"
+                        } else {
+                            "鸟瞰全部"
+                        })
+                        .bg(T::color(if on { T::SELECTION } else { T::RAISED }))
+                        .when(on, |d| {
+                            d.border_color(T::color(T::FOCUS))
+                                .text_color(T::color(T::PRIMARY))
+                        })
+                        .on_click(cx.listener(move |this, _, _, cx| {
+                            if on {
+                                this.leave_overview(cx);
+                            } else {
+                                this.show_overview(cx);
+                            }
+                        }));
+                    self.record_toggle(toggle, cx)
+                })
                 .when(!self.needs_you().is_empty(), |d| {
                     d.child(
                         button(
@@ -176,7 +185,8 @@ impl Render for Workbench {
             .filter(|t| t.space == self.nav.space)
         {
             let id = tab.id.clone();
-            let active = Some(&id) == self.nav.tab.as_ref();
+            // Over the overview no tab is shown; clicking one goes straight back to it.
+            let active = page.is_none() && Some(&id) == self.nav.tab.as_ref();
             let ids = self.workspace.tab_terminals(&id);
             let needs: Vec<_> = self
                 .workspace
@@ -196,13 +206,26 @@ impl Render for Workbench {
             if let Some((_, field, _)) =
                 self.layout.renaming_tab.as_ref().filter(|(t, ..)| t == &id)
             {
-                // Sized by the name being typed, like the tab it replaces.
+                // Edited in place: the tab keeps its height, padding and icon, and only
+                // its name turns editable, outlined so the edit is plain to see. A long
+                // name gets wider room while typed; the strip scrolls to make space.
                 strip = strip.child(
                     div()
                         .flex_shrink_0()
                         .min_w(px(T::TAB_RENAME_MIN))
-                        .max_w(px(T::TAB_MAX_WIDTH))
-                        .child(field.clone()),
+                        .max_w(px(T::TAB_RENAME_MAX))
+                        .h(px(T::TABS))
+                        .px(px(T::S12 - T::BORDER_WIDTH))
+                        .flex()
+                        .items_center()
+                        .gap(px(T::S6))
+                        .bg(T::color(T::RAISED))
+                        .border(px(T::BORDER_WIDTH))
+                        .border_color(T::color(T::FOCUS))
+                        .text_size(px(T::MONO_SIZE))
+                        .text_color(T::color(T::PRIMARY))
+                        .when(tab.default_task.is_some(), |d| d.child(task_icon()))
+                        .child(div().flex_1().min_w_0().h_full().child(field.clone())),
                 );
                 continue;
             }
@@ -233,6 +256,7 @@ impl Render for Workbench {
                     .group(group_name)
                     .aria_label(title.clone())
                     .flex_shrink_0()
+                    .min_w(px(T::TAB_MIN_WIDTH))
                     .max_w(px(T::TAB_MAX_WIDTH))
                     .h(px(T::TABS))
                     .gap(px(T::S6))
@@ -242,7 +266,7 @@ impl Render for Workbench {
                     .text_color(T::color(if active { T::PRIMARY } else { T::SECONDARY }))
                     .when(active, |d| d.bg(T::color(T::RAISED)))
                     .when(tab.default_task.is_some(), |d| d.child(task_icon()))
-                    .child(div().min_w_0().truncate().child(title))
+                    .child(div().flex_grow_1().min_w_0().truncate().child(title))
                     .when_some(group, |d, g| d.child(dot(g)).child(badge(g, needs.len())))
                     .child(close)
                     // The hover card would cover the right-click menu; dropping the
@@ -272,6 +296,9 @@ impl Render for Workbench {
                                 return;
                             }
                             this.nav.tab = Some(id.clone());
+                            if this.nav.overview || !this.overview.cleanup.is_empty() {
+                                this.leave_overview(cx);
+                            }
                             this.sync_panes(cx);
                             if let Some(p) = this
                                 .nav
@@ -343,6 +370,39 @@ impl Render for Workbench {
         }
         if let Some(form) = &self.tasks.form {
             main = main.child(self.form_panel(form, cx));
+        } else if let Some(page) = page {
+            main = main.child(
+                div()
+                    .flex_1()
+                    .min_h_0()
+                    .flex()
+                    .flex_col()
+                    .track_focus(&self.overview.focus)
+                    .on_mouse_down(
+                        gpui::MouseButton::Left,
+                        cx.listener(|this, _, window, cx| {
+                            if !this.search.is_open() {
+                                window.focus(&this.overview.focus, cx);
+                            }
+                        }),
+                    )
+                    .on_key_down(cx.listener(|this, event: &gpui::KeyDownEvent, _, cx| {
+                        let k = &event.keystroke;
+                        if k.key != "escape" || k.modifiers.modified() {
+                            return;
+                        }
+                        // A card's menu closes first; 逐个清理 steps back to the overview.
+                        if this.overview.card_menu.take().is_some() {
+                        } else if !this.overview.cleanup.is_empty() {
+                            this.overview.cleanup.clear();
+                        } else {
+                            this.leave_overview(cx);
+                        }
+                        cx.stop_propagation();
+                        cx.notify();
+                    }))
+                    .child(page),
+            );
         } else if let Some(task) = self
             .nav
             .task_detail
@@ -513,7 +573,7 @@ impl Workbench {
 }
 
 /// A plain hover note.
-pub(super) struct TextTip(pub(super) &'static str);
+pub(super) struct TextTip(pub(super) gpui::SharedString);
 impl Render for TextTip {
     fn render(&mut self, _: &mut Window, _: &mut Context<Self>) -> impl IntoElement {
         div()
@@ -526,7 +586,7 @@ impl Render for TextTip {
             .shadow_lg()
             .text_size(px(T::SMALL))
             .text_color(T::color(T::PRIMARY))
-            .child(self.0)
+            .child(self.0.clone())
     }
 }
 /// A tab's full name, what its agent is doing and where, shown on hover since the tab

@@ -73,6 +73,67 @@ pub fn start(
             cx.update(|cx|cx.quit());
         }).detach();
     }
+    // KEEPLINE_OSC7_EVIDENCE names a directory reached through a symlink: only the
+    // shell's OSC 7 report keeps that spelling, the process directory resolves it.
+    if let (Some(handle), Some(_), Some(dir)) = (
+        &handle,
+        evidence.clone(),
+        std::env::var("KEEPLINE_OSC7_EVIDENCE").ok(),
+    ) {
+        let handle = *handle;
+        cx.spawn(async move |cx| {
+            let executor = cx.background_executor().clone();
+            let wait = move |s: u64| executor.timer(Duration::from_millis(s));
+            wait(2000).await;
+            handle.update(cx, |v, _, cx| v.visual_new_tab(cx)).unwrap();
+            wait(4000).await;
+            let pane = handle.update(cx, |v, _, _| v.visual_shown_pane()).unwrap();
+            pane.update(cx, |pane, cx| pane.visual_type(&format!("cd '{dir}'\r"), cx));
+            wait(1500).await;
+            handle.update(cx, |v, _, cx| v.visual_new_tab(cx)).unwrap();
+            wait(2000).await;
+            let cwd = handle.update(cx, |v, _, _| v.visual_shown_cwd()).unwrap();
+            eprintln!("osc7: new tab cwd={cwd}, typed cd {dir}");
+            assert_eq!(cwd, dir, "a new tab opens where the shell says it is");
+            eprintln!("osc7 native PASS: new tab took the shell's OSC 7 directory, symlink spelling kept");
+            cx.update(|cx| cx.quit());
+        })
+        .detach();
+        return;
+    }
+    if let (Some(handle), Some(_)) = (&handle, evidence.clone())
+        && std::env::var_os("KEEPLINE_TAB_CWD_EVIDENCE").is_some()
+    {
+        let handle = *handle;
+        cx.spawn(async move |cx| {
+            let executor = cx.background_executor().clone();
+            let wait = move |s: u64| executor.timer(Duration::from_millis(s));
+            wait(2000).await;
+            handle.update(cx, |v, _, cx| v.visual_new_tab(cx)).unwrap();
+            wait(1500).await;
+            let pane = handle.update(cx, |v, _, _| v.visual_shown_pane()).unwrap();
+            pane.update(cx, |pane, cx| pane.visual_type("cd /tmp\r", cx));
+            wait(800).await;
+            let (before, _) = handle.update(cx, |v, _, _| v.visual_tabs()).unwrap();
+            handle.update(cx, |v, _, cx| v.visual_new_tab(cx)).unwrap();
+            wait(1500).await;
+            let (after, _) = handle.update(cx, |v, _, _| v.visual_tabs()).unwrap();
+            let cwd = handle.update(cx, |v, _, _| v.visual_shown_cwd()).unwrap();
+            eprintln!("tab cwd: tabs {before}->{after}, new tab cwd={cwd}");
+            assert_eq!(after, before + 1, "a new tab opened");
+            assert_eq!(
+                std::fs::canonicalize(&cwd).unwrap(),
+                std::fs::canonicalize("/tmp").unwrap(),
+                "a new tab follows the focused shell's live directory"
+            );
+            eprintln!("tab cwd native PASS: new tab opens in the directory the focused shell cd'd into");
+            cx.update(|cx| cx.quit());
+        })
+        .detach();
+        return;
+    }
+    // Two runs over one config directory: 1 rebinds 新建标签 in the settings panel,
+    // 2 is the restart that must still have it, then restores the defaults.
     if let (Some(handle), Some(directory)) = (&handle, evidence.clone())
         && std::env::var_os("KEEPLINE_TAB_EVIDENCE").is_some()
     {
@@ -168,6 +229,23 @@ pub fn start(
             eprintln!("after backspace: {:?}", state(cx).1);
             cx.update_window(handle.into(), |_, w, a| shot("3-rename-caret", w, a))
                 .unwrap();
+            // A name longer than the tab stays on one line and slides to keep the caret.
+            let long = "PR 1234 修复标签重命名时长名字换行被裁掉的问题";
+            handle
+                .update(cx, |v, _, cx| v.visual_rename_type(long, cx))
+                .unwrap();
+            wait(300).await;
+            cx.update_window(handle.into(), |_, w, a| shot("3b-rename-long", w, a))
+                .unwrap();
+            for k in ["cmd-left", "alt-right", "shift-alt-right"] {
+                cx.update_window(handle.into(), |_, w, a| {
+                    w.dispatch_event(key(k), a);
+                })
+                .unwrap();
+            }
+            wait(300).await;
+            cx.update_window(handle.into(), |_, w, a| shot("3c-rename-moved", w, a))
+                .unwrap();
             cx.update_window(handle.into(), |_, w, a| {
                 w.dispatch_event(key("escape"), a);
             })
@@ -210,11 +288,52 @@ pub fn start(
             );
             cx.update_window(handle.into(), |_, w, a| shot("4-double-click", w, a))
                 .unwrap();
+            // Clicking the terminal keeps the typed name. Focus events only reach an
+            // active window, as the user's is when they click in it.
+            cx.update_window(handle.into(), |_, w, _| w.activate_window())
+                .unwrap();
+            wait(500).await;
+            handle
+                .update(cx, |v, _, cx| v.visual_rename_type("部署 PR", cx))
+                .unwrap();
             cx.update_window(handle.into(), |_, w, a| {
-                w.dispatch_event(key("escape"), a);
+                let middle = w.viewport_size();
+                native_click(
+                    w,
+                    a,
+                    gpui::point(middle.width / 2., middle.height / 2.),
+                    gpui::MouseButton::Left,
+                );
+                // Focus listeners run once a frame is drawn, as the app does at once.
+                w.refresh();
+                w.draw(a).clear(a);
             })
             .unwrap();
             wait(300).await;
+            let name = handle
+                .update(cx, |v, _, cx| v.visual_first_tab_name(cx))
+                .unwrap();
+            let active = cx
+                .update_window(handle.into(), |_, w, _| w.is_window_active())
+                .unwrap();
+            eprintln!(
+                "after click away: active={active} field={:?} name={name}",
+                state(cx).1
+            );
+            // macOS will not hand focus to a window started from a background shell.
+            if active {
+                assert!(state(cx).1.is_none(), "a click elsewhere ends the rename");
+                assert_eq!(name, "部署 PR", "and keeps the typed name");
+                cx.update_window(handle.into(), |_, w, a| shot("4b-blur-saved", w, a))
+                    .unwrap();
+            } else {
+                eprintln!("click away not checked: the window is not active");
+                cx.update_window(handle.into(), |_, w, a| {
+                    w.dispatch_event(key("escape"), a);
+                })
+                .unwrap();
+                wait(300).await;
+            }
             // A 出错了 conversation whose resume fails: the second click returns to the
             // resume tab instead of opening another.
             let (before, _) = handle.update(cx, |v, _, _| v.visual_tabs()).unwrap();
@@ -277,6 +396,32 @@ pub fn start(
                 opened,
                 "right-click opens the pane menu even when the program takes the mouse"
             );
+            // A tab of several splits asks before its × takes them all down; a tab of one
+            // pane closes at once.
+            handle.update(cx, |v, w, a| v.visual_split_down(w, a)).unwrap();
+            wait(1000).await;
+            let (before, shown) = handle.update(cx, |v, _, _| v.visual_tabs()).unwrap();
+            handle.update(cx, |v, _, cx| v.visual_close_tab(cx)).unwrap();
+            wait(500).await;
+            cx.update_window(handle.into(), |_, w, a| shot("9-close-splits", w, a))
+                .unwrap();
+            let (asked, after) = handle
+                .update(cx, |v, _, _| (v.visual_confirming_close(), v.visual_tabs()))
+                .unwrap();
+            assert!(asked, "closing a tab of two splits asks first");
+            assert_eq!(after, (before, shown), "and keeps the tab until confirmed");
+            handle.update(cx, |v, _, cx| v.visual_cancel_close(cx)).unwrap();
+            handle.update(cx, |v, _, cx| v.visual_close_focused(cx)).unwrap();
+            wait(1000).await;
+            handle.update(cx, |v, _, cx| v.visual_close_tab(cx)).unwrap();
+            wait(500).await;
+            let (asked, (count, _)) = handle
+                .update(cx, |v, _, _| (v.visual_confirming_close(), v.visual_tabs()))
+                .unwrap();
+            assert!(!asked, "a tab of one shell closes without asking");
+            assert_eq!(count, before - 1, "and is gone");
+            cx.update_window(handle.into(), |_, w, a| shot("10-closed-single", w, a))
+                .unwrap();
             eprintln!("tab evidence PASS");
             cx.update(|cx| cx.quit());
         })
@@ -426,6 +571,29 @@ pub fn start(
                     assert!(!open, "typing into the pane folds its 你在这里 card");
                     eprintln!("HereTyped: card folded after a keystroke");
                 }
+                if name == "HereClickOut" {
+                    use gpui::InputEvent;
+                    // A press anywhere outside the card puts it away.
+                    cx.update_window(handle.into(), |_, w, a| {
+                        w.refresh();
+                        w.draw(a).clear(a);
+                        w.dispatch_event(
+                            gpui::MouseDownEvent {
+                                button: gpui::MouseButton::Left,
+                                position: gpui::point(px(8.), px(theme::Theme::WINDOW_HEIGHT - 8.)),
+                                modifiers: Default::default(),
+                                click_count: 1,
+                                first_mouse: false,
+                            }
+                            .to_platform_input(),
+                            a,
+                        );
+                    })
+                    .unwrap();
+                    let open = handle.update(cx, |v, _, _| v.visual_here_open()).unwrap();
+                    assert!(!open, "a click outside folds its 你在这里 card");
+                    eprintln!("HereClickOut: card folded after an outside click");
+                }
                 // Starting an Agent and placing the task text takes a few quiet checks.
                 let settle = if name == "TodoStart" { 4 } else { 1 };
                 cx.background_executor()
@@ -463,6 +631,7 @@ pub fn start(
         && std::env::var_os("KEEPLINE_SPLIT_EVIDENCE").is_none()
         && std::env::var_os("KEEPLINE_TAB_EVIDENCE").is_none()
         && std::env::var_os("KEEPLINE_PAGE_EVIDENCE").is_none()
+        && std::env::var_os("KEEPLINE_OVERVIEW_EVIDENCE").is_none()
     {
         let handle = *handle;
         cx.spawn(async move |cx| {
@@ -555,6 +724,152 @@ pub fn start(
                         .unwrap();
                 }
             }
+            cx.update(|cx| cx.quit());
+        })
+        .detach();
+    }
+    // The overview sits in the same window as the panes: one toggle in the top bar goes
+    // in and back out, Esc and the tab strip return, the sidebar's spaces filter it.
+    if let (Some(handle), Some(directory)) = (&handle, evidence.clone())
+        && std::env::var_os("KEEPLINE_OVERVIEW_EVIDENCE").is_some()
+    {
+        let handle = *handle;
+        cx.spawn(async move |cx| {
+            let executor = cx.background_executor().clone();
+            let wait = move |s: u64| executor.timer(Duration::from_millis(s));
+            wait(3000).await;
+            std::fs::create_dir_all(&directory).unwrap();
+            let shot = |name: &str, window: &mut gpui::Window, app: &mut App| {
+                window.refresh();
+                window.draw(app).clear(app);
+                window
+                    .render_to_image()
+                    .unwrap()
+                    .save(directory.join(format!("{name}.png")))
+                    .unwrap();
+            };
+            // Focus moves when a frame is drawn; idle frames are paused in this harness.
+            let state = |cx: &mut gpui::AsyncApp| {
+                cx.update_window(handle.into(), |_, w, a| {
+                    w.refresh();
+                    w.draw(a).clear(a);
+                })
+                .unwrap();
+                handle
+                    .update(cx, |v, w, a| v.visual_overview_state(w, a))
+                    .unwrap()
+            };
+            let click = |cx: &mut gpui::AsyncApp, at: gpui::Point<gpui::Pixels>| {
+                cx.update_window(handle.into(), |_, w, a| {
+                    native_click(w, a, at, gpui::MouseButton::Left)
+                })
+                .unwrap();
+            };
+            let escape = |cx: &mut gpui::AsyncApp| {
+                cx.update_window(handle.into(), |_, w, a| {
+                    use gpui::InputEvent;
+                    w.dispatch_event(
+                        gpui::KeyDownEvent {
+                            keystroke: gpui::Keystroke::parse("escape").unwrap(),
+                            is_held: false,
+                            prefer_character_input: false,
+                        }
+                        .to_platform_input(),
+                        a,
+                    );
+                    w.refresh();
+                    w.draw(a).clear(a);
+                })
+                .unwrap();
+            };
+            if state(cx).0 {
+                escape(cx);
+                wait(500).await;
+            }
+            // A live shell to come back to: the copied workspace's own terminals are gone.
+            handle.update(cx, |v, _, cx| v.visual_new_tab(cx)).unwrap();
+            wait(2000).await;
+            let start = state(cx);
+            eprintln!("work view: {start:?}");
+            assert!(!start.0, "starts on the panes");
+            assert_eq!(start.3, "pane", "the new shell has the keyboard");
+            cx.update_window(handle.into(), |_, w, a| shot("1-work", w, a))
+                .unwrap();
+            let toggle = handle
+                .update(cx, |v, _, _| v.visual_toggle_point())
+                .unwrap();
+            let open = |cx: &mut gpui::AsyncApp| {
+                click(cx, toggle);
+                let s = state(cx);
+                assert!(s.0, "the toggle opens the overview");
+                assert_eq!(s.3, "overview", "the overview takes the keyboard");
+                // Drawn in place: the toggle has not moved, so it can close it again.
+                let again = handle
+                    .update(cx, |v, _, _| v.visual_toggle_point())
+                    .unwrap();
+                assert_eq!(again, toggle, "the toggle does not move");
+                s
+            };
+            open(cx);
+            wait(1500).await;
+            cx.update_window(handle.into(), |_, w, a| shot("2-overview", w, a))
+                .unwrap();
+            // The same spot closes it.
+            click(cx, toggle);
+            wait(800).await;
+            let back = handle
+                .update(cx, |v, _, _| v.visual_toggle_point())
+                .unwrap();
+            assert_eq!(back, toggle, "the toggle does not move on the way back");
+            let s = state(cx);
+            assert!(!s.0, "the same toggle returns");
+            assert_eq!(s.1, start.1, "back on the tab that was shown");
+            cx.update_window(handle.into(), |_, w, a| shot("3-back-by-toggle", w, a))
+                .unwrap();
+            assert_eq!(state(cx).3, "pane", "the pane has the keyboard again");
+            // Esc returns.
+            open(cx);
+            escape(cx);
+            wait(800).await;
+            let s = state(cx);
+            assert!(!s.0, "Esc returns");
+            assert_eq!(s.3, "pane", "Esc hands the keyboard back to the pane");
+            // A tab in the strip returns to it.
+            open(cx);
+            click(
+                cx,
+                gpui::point(
+                    px(theme::Theme::SIDEBAR + 30.),
+                    px(theme::Theme::TOP + theme::Theme::TABS / 2.),
+                ),
+            );
+            wait(800).await;
+            let s = state(cx);
+            assert!(!s.0, "a tab returns");
+            assert!(s.1.is_some(), "a tab is shown");
+            // A space in the sidebar filters the overview and keeps it open.
+            open(cx);
+            let spaces = handle.update(cx, |v, _, _| v.visual_spaces()).unwrap();
+            let mut filtered = None;
+            for y in (0..12).map(|i| theme::Theme::TOP + 30. + i as f32 * 4.) {
+                click(cx, gpui::point(px(60.), px(y)));
+                let s = state(cx);
+                if s.2.is_some() {
+                    filtered = Some((y, s));
+                    break;
+                }
+            }
+            let (y, s) = filtered.expect("a sidebar space sets the filter");
+            eprintln!("sidebar space at y={y}: {s:?}");
+            assert!(s.0, "the overview stays open");
+            assert_eq!(s.2.as_ref(), spaces.first(), "the first space filters it");
+            wait(800).await;
+            cx.update_window(handle.into(), |_, w, a| shot("4-space-filter", w, a))
+                .unwrap();
+            escape(cx);
+            wait(500).await;
+            assert!(!state(cx).0);
+            eprintln!("overview evidence PASS");
             cx.update(|cx| cx.quit());
         })
         .detach();

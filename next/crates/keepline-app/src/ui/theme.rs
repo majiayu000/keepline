@@ -13,6 +13,15 @@ pub fn hsla(c: u32) -> Hsla {
     .into()
 }
 pub struct Theme;
+
+/// JetBrains Mono 2.304 (OFL, assets/JETBRAINS-MONO-LICENSE): the face Ghostty embeds
+/// as its default, registered in-process so `Theme::mono` never depends on an install.
+pub const BUNDLED_MONO: [&[u8]; 4] = [
+    include_bytes!("../../assets/JetBrainsMono-Regular.ttf"),
+    include_bytes!("../../assets/JetBrainsMono-Bold.ttf"),
+    include_bytes!("../../assets/JetBrainsMono-Italic.ttf"),
+    include_bytes!("../../assets/JetBrainsMono-BoldItalic.ttf"),
+];
 impl Group {
     pub const ALL: [Self; 6] = [
         Self::Waiting,
@@ -37,22 +46,14 @@ impl Group {
             Self::Ready => "做完了",
         }
     }
-    /// The group's base hue; its ink and wash derive from it and the terminal.
-    pub const fn hue(self) -> u32 {
-        match self {
-            Self::Waiting => 0xe8823a,
-            Self::Error => 0xe5534b,
-            Self::Review => 0x8f93ff,
-            Self::Paused => 0xd9a441,
-            Self::Running | Self::Done => 0x4cc38a,
-            Self::Stale => Theme::MUTED,
-            Self::Working => 0xe8c547,
-            Self::Ready => 0x8a9bb0,
-        }
+    /// The group's base hue, from `colors.json` or the default; its ink and wash derive
+    /// from it and the terminal.
+    pub fn hue(self) -> u32 {
+        super::status_colors::StatusColors::get().hue(self)
     }
     pub fn colors(self) -> (Hsla, Hsla, Hsla) {
         let (dot, ink, bg) = match self {
-            Self::Stale => (Theme::MUTED, Theme::SECONDARY, Theme::RAISED),
+            Self::Stale => (self.hue(), Theme::SECONDARY, Theme::RAISED),
             group => (
                 group.hue(),
                 mix(group.hue(), Theme::WHITE, 620),
@@ -132,10 +133,11 @@ impl Theme {
     pub const META: f32 = 11.5;
     pub const CHIP_SIZE: f32 = 11.;
     pub const MONO_SIZE: f32 = 12.5;
+    /// Ghostty's default font-size, so terminal text matches it cell for cell.
+    pub const TERMINAL_FONT_SIZE: f32 = 13.;
     pub const CARD_TITLE: f32 = 13.5;
     pub const TITLE: f32 = 20.;
     pub const LINE_HEIGHT: f32 = 1.4;
-    pub const TERMINAL_LINE_HEIGHT: f32 = 1.2;
     pub const S2: f32 = 2.;
     pub const S4: f32 = 4.;
     pub const S6: f32 = 6.;
@@ -153,6 +155,10 @@ impl Theme {
     pub const TRAFFIC_LIGHT_INSET: f32 = 84.;
     pub const TABS: f32 = 34.;
     pub const TAB_RENAME_MIN: f32 = 64.;
+    /// A name being edited gets more room than a tab shows, then shrinks back.
+    pub const TAB_RENAME_MAX: f32 = 360.;
+    /// A short name still leaves its × at the far edge, clear of a click on the name.
+    pub const TAB_MIN_WIDTH: f32 = 96.;
     pub const TAB_MAX_WIDTH: f32 = 200.;
     pub const TAB_TIP_WIDTH: f32 = 420.;
     pub const TODO_HEIGHT: f32 = 36.;

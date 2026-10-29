@@ -13,30 +13,48 @@ parser = argparse.ArgumentParser(description=__doc__)
 parser.add_argument('--release-dir', type=pathlib.Path, default=root / 'target/release')
 parser.add_argument('--output', type=pathlib.Path, default=root / 'target/bundle/Keepline.app',
                     help='Bundle path; use a separate path when an installed build is running')
-parser.add_argument('--sign-identity', default='-',
-                    help='codesign identity; default is local ad-hoc signing')
+parser.add_argument('--icon', type=pathlib.Path,
+                    default=root.parent / 'docs/assets/keepline-icon-final/Keepline.icns',
+                    help='App icon (.icns); defaults to the ink-ring icon')
+# A stable identity keeps macOS privacy grants (e.g. Desktop access) across rebuilds;
+# ad-hoc ('-') signatures change with every build, so macOS asks again each time.
+parser.add_argument('--sign-identity', default='Developer ID Application: Ma JiaYu (C5UWZ934C2)',
+                    help="codesign identity; pass '-' for ad-hoc signing")
 args = parser.parse_args()
 bundle = args.output.resolve()
 sign = ['codesign', '--force', '--sign', args.sign_identity]
 if args.sign_identity != '-':
     # Rust/GPUI uses no JIT or unsigned plug-ins. No hardened-runtime exceptions needed.
     sign += ['--options', 'runtime', '--timestamp']
-mac = bundle / 'Contents/MacOS'
-resources = bundle / 'Contents/Resources'
+# Build and sign beside the target, then swap directories by rename. Writing into a
+# running bundle invalidates its signature and macOS kills the live app and daemon.
+stage = bundle.with_name(bundle.name + '.staging')
+shutil.rmtree(stage, ignore_errors=True)
+mac = stage / 'Contents/MacOS'
+resources = stage / 'Contents/Resources'
 mac.mkdir(parents=True, exist_ok=True)
 resources.mkdir(parents=True, exist_ok=True)
 for binary in ('keepline-app', 'keeplined'):
     shutil.copy2(args.release_dir / binary, mac / binary)
     subprocess.run([*sign, str(mac / binary)], check=True)
 shutil.copy2(root / 'crates/keepline-app/assets/NERD-FONTS-LICENSE', resources / 'NERD-FONTS-LICENSE')
-(bundle / 'Contents/Info.plist').write_bytes(plistlib.dumps({
+shutil.copy2(args.icon, resources / 'Keepline.icns')
+(stage / 'Contents/Info.plist').write_bytes(plistlib.dumps({
     'CFBundleName': 'Keepline', 'CFBundleDisplayName': 'Keepline',
     'CFBundleIdentifier': 'local.keepline.workbench', 'CFBundleExecutable': 'keepline-app',
-    'CFBundlePackageType': 'APPL', 'CFBundleVersion': '1', 'CFBundleShortVersionString': '0.1.0',
+    'CFBundlePackageType': 'APPL', 'CFBundleIconFile': 'Keepline', 'CFBundleVersion': '1', 'CFBundleShortVersionString': '0.1.0',
     'NSHighResolutionCapable': True, 'LSMinimumSystemVersion': '14.0',
 }))
-subprocess.run([*sign, str(bundle)], check=True)
-subprocess.run(['codesign', '--verify', '--deep', '--strict', str(bundle)], check=True)
+subprocess.run([*sign, str(stage)], check=True)
+subprocess.run(['codesign', '--verify', '--deep', '--strict', str(stage)], check=True)
+# Running processes keep the old inodes alive after the rename and unlink.
+retired = bundle.with_name(bundle.name + '.retired')
+shutil.rmtree(retired, ignore_errors=True)
+if bundle.exists():
+    bundle.rename(retired)
+stage.rename(bundle)
+shutil.rmtree(retired, ignore_errors=True)
+mac = bundle / 'Contents/MacOS'
 receipt = {'bundle': str(bundle), 'signature': args.sign_identity,
            'hardened_runtime': args.sign_identity != '-', 'notarized': False, 'published': False,
            'git_head': subprocess.check_output(['git', 'rev-parse', 'HEAD'], cwd=root, text=True).strip(),

@@ -1,11 +1,76 @@
+use std::ffi::OsString;
 use std::fs::File;
 use std::io::{self, Write};
 use std::os::fd::{AsRawFd, FromRawFd, OwnedFd};
 use std::os::unix::{ffi::OsStrExt, fs::OpenOptionsExt, process::CommandExt};
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use std::process::{Child, Command, Stdio};
+use std::sync::OnceLock;
 
-pub fn spawn(argv: &[String], cwd: &Path, cols: u16, rows: u16) -> io::Result<(Child, File)> {
+/// Where this host wrote the shell integration; unset when it is turned off.
+static INTEGRATION: OnceLock<PathBuf> = OnceLock::new();
+/// This host's runtime directory and executable, handed to every terminal for hooks.
+static HOST: OnceLock<(PathBuf, PathBuf)> = OnceLock::new();
+
+/// Lets every later terminal tell its Agents' hooks where this host is.
+pub fn announce_host(root: &Path) -> io::Result<()> {
+    // As given, only made absolute: resolving links can push the socket past SUN_LEN.
+    let root = std::path::absolute(root)?;
+    let _ = HOST.set((root, std::env::current_exe()?));
+    Ok(())
+}
+
+/// What a terminal's programs learn about the host: which terminal they run in, the
+/// runtime to reach, and the executable whose `hook` subcommand reports to it.
+fn host_env(terminal: &str, host: Option<&(PathBuf, PathBuf)>) -> Vec<(OsString, OsString)> {
+    use keepline_core::protocol::{HOOK_ENV, RUNTIME_ENV, TERMINAL_ENV};
+    let mut env = vec![(TERMINAL_ENV.into(), terminal.into())];
+    if let Some((root, exe)) = host {
+        env.push((RUNTIME_ENV.into(), root.as_os_str().to_owned()));
+        env.push((HOOK_ENV.into(), exe.as_os_str().to_owned()));
+    }
+    env
+}
+
+/// Writes the shell integration into the runtime, so the scripts always match this
+/// host. `KEEPLINE_NO_SHELL_INTEGRATION` in the host's environment turns it off.
+pub fn install_shell_integration(root: &Path) -> io::Result<()> {
+    if std::env::var_os("KEEPLINE_NO_SHELL_INTEGRATION").is_some() {
+        return Ok(());
+    }
+    let dir = root.join("shell-integration");
+    std::fs::create_dir_all(dir.join("zsh"))?;
+    std::fs::write(
+        dir.join("zsh/.zshenv"),
+        include_str!("../shell-integration/zsh/.zshenv"),
+    )?;
+    std::fs::write(
+        dir.join("zsh/keepline-integration"),
+        include_str!("../shell-integration/zsh/keepline-integration"),
+    )?;
+    let _ = INTEGRATION.set(dir);
+    Ok(())
+}
+
+/// zsh starts through the integration's ZDOTDIR, which restores the user's own before
+/// any of their startup files run. Other shells start untouched for now.
+fn integration_env(program: &str, dir: Option<&Path>) -> Vec<(OsString, OsString)> {
+    match dir {
+        Some(dir) if Path::new(program).file_name().is_some_and(|n| n == "zsh") => vec![
+            ("ZDOTDIR".into(), dir.join("zsh").into_os_string()),
+            ("KEEPLINE_SHELL_INTEGRATION_DIR".into(), dir.as_os_str().to_owned()),
+        ],
+        _ => Vec::new(),
+    }
+}
+
+pub fn spawn(
+    argv: &[String],
+    cwd: &Path,
+    cols: u16,
+    rows: u16,
+    terminal: &str,
+) -> io::Result<(Child, File)> {
     let mut master = -1;
     let mut slave = -1;
     let mut size = libc::winsize {
@@ -46,6 +111,11 @@ pub fn spawn(argv: &[String], cwd: &Path, cols: u16, rows: u16) -> io::Result<(C
         .current_dir(cwd)
         .env("TERM", "xterm-256color")
         .env("COLORTERM", "truecolor")
+        .envs(integration_env(
+            &argv[0],
+            INTEGRATION.get().map(PathBuf::as_path),
+        ))
+        .envs(host_env(terminal, HOST.get()))
         .env_remove("COLUMNS")
         .env_remove("LINES")
         .stdin(Stdio::from(slave.try_clone()?))
@@ -167,4 +237,39 @@ pub fn write(master: &mut File, bytes: &[u8]) -> io::Result<()> {
         }
     }
     Ok(())
+}
+
+#[cfg(test)]
+mod integration_tests {
+    #[test]
+    fn only_zsh_starts_through_the_integration() {
+        let dir = std::path::Path::new("/rt/shell-integration");
+        let env = super::integration_env("/bin/zsh", Some(dir));
+        assert_eq!(env[0], ("ZDOTDIR".into(), "/rt/shell-integration/zsh".into()));
+        assert_eq!(env[1].1, "/rt/shell-integration");
+        assert!(super::integration_env("/bin/bash", Some(dir)).is_empty());
+        assert!(super::integration_env("/bin/zsh", None).is_empty());
+    }
+}
+
+#[cfg(test)]
+mod host_env_tests {
+    #[test]
+    fn every_terminal_names_itself_and_the_host_once_announced() {
+        let names = |env: Vec<(std::ffi::OsString, std::ffi::OsString)>| {
+            env.into_iter()
+                .map(|(k, v)| format!("{}={}", k.to_string_lossy(), v.to_string_lossy()))
+                .collect::<Vec<_>>()
+        };
+        assert_eq!(names(super::host_env("t1", None)), ["KEEPLINE_TERMINAL=t1"]);
+        let host = ("/run/k".into(), "/app/keeplined".into());
+        assert_eq!(
+            names(super::host_env("t2", Some(&host))),
+            [
+                "KEEPLINE_TERMINAL=t2",
+                "KEEPLINE_RUNTIME=/run/k",
+                "KEEPLINE_HOOK=/app/keeplined"
+            ]
+        );
+    }
 }

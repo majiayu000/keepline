@@ -49,7 +49,8 @@ impl Index {
             CREATE TABLE IF NOT EXISTS log_index (id INTEGER PRIMARY KEY CHECK(id=1), event_id INTEGER NOT NULL, error TEXT);
             CREATE TABLE IF NOT EXISTS log_scan_dirs(path TEXT PRIMARY KEY,runtime TEXT NOT NULL);
             CREATE TABLE IF NOT EXISTS log_files(path TEXT PRIMARY KEY,runtime TEXT NOT NULL,dev INTEGER NOT NULL,inode INTEGER NOT NULL,offset INTEGER NOT NULL,pending BLOB NOT NULL,discard INTEGER NOT NULL,cli_id TEXT,cwd TEXT,updated INTEGER NOT NULL);
-            CREATE INDEX IF NOT EXISTS log_identity ON log_files(runtime,cli_id);").map_err(err)?;
+            CREATE INDEX IF NOT EXISTS log_identity ON log_files(runtime,cli_id);
+            CREATE TABLE IF NOT EXISTS log_roots(runtime TEXT PRIMARY KEY);").map_err(err)?;
         crate::content::schema(&db)?;
         let roots = roots
             .into_iter()
@@ -97,6 +98,7 @@ impl Index {
                     .execute("UPDATE log_index SET error=NULL WHERE id=1", [])
                     .map_err(err)?;
             }
+            self.seed_new_roots()?;
             return Ok(event);
         }
         let event = Watch::current_id();
@@ -112,10 +114,50 @@ impl Index {
                 params![path.to_string_lossy(), agent.executable()],
             )
             .map_err(err)?;
+            tx.execute(
+                "INSERT OR IGNORE INTO log_roots VALUES(?1)",
+                [agent.executable()],
+            )
+            .map_err(err)?;
         }
         tx.commit().map_err(err)?;
         self.counts.writes += 1;
         Ok(event)
+    }
+    /// A CLI supported after this index was built gets its one directory walk. CLIs the
+    /// index already holds files or pending directories for count as walked.
+    fn seed_new_roots(&mut self) -> io::Result<()> {
+        let tx = self.db.transaction().map_err(err)?;
+        let mut seeded = false;
+        for (agent, path) in &self.roots {
+            let known: bool = tx
+                .query_row(
+                    "SELECT EXISTS(SELECT 1 FROM log_roots WHERE runtime=?1)
+                        OR EXISTS(SELECT 1 FROM log_files WHERE runtime=?1)
+                        OR EXISTS(SELECT 1 FROM log_scan_dirs WHERE runtime=?1)",
+                    [agent.executable()],
+                    |r| r.get(0),
+                )
+                .map_err(err)?;
+            if !known {
+                tx.execute(
+                    "INSERT OR IGNORE INTO log_scan_dirs VALUES(?1,?2)",
+                    params![path.to_string_lossy(), agent.executable()],
+                )
+                .map_err(err)?;
+                seeded = true;
+            }
+            tx.execute(
+                "INSERT OR IGNORE INTO log_roots VALUES(?1)",
+                [agent.executable()],
+            )
+            .map_err(err)?;
+        }
+        tx.commit().map_err(err)?;
+        if seeded {
+            self.counts.writes += 1;
+        }
+        Ok(())
     }
     pub fn bootstrap(&mut self) -> io::Result<()> {
         loop {
@@ -130,7 +172,7 @@ impl Index {
                 // Content is a newly introduced object. Seed only cached recent identities that
                 // have no projection, once, without another directory walk or replacing cursors.
                 let missing = {
-                    let mut q=self.db.prepare("SELECT runtime,path FROM log_files WHERE updated>=?1 AND NOT EXISTS(SELECT 1 FROM session_content WHERE session_content.path=log_files.path AND json_extract(parser,'$._rules')=8)").map_err(err)?;
+                    let mut q=self.db.prepare("SELECT runtime,path FROM log_files WHERE updated>=?1 AND NOT EXISTS(SELECT 1 FROM session_content WHERE session_content.path=log_files.path AND json_extract(parser,'$._rules')=9)").map_err(err)?;
                     let rows = q
                         .query_map(
                             [keepline_core::content::now()
@@ -155,8 +197,12 @@ impl Index {
                         let entry = entry?;
                         let kind = entry.file_type()?;
                         if kind.is_dir() {
-                            children.push(entry.path());
-                        } else if kind.is_file() && is_log(&entry.path()) {
+                            if crate::agents::adapter(agent).descend(&entry.path()) {
+                                children.push(entry.path());
+                            }
+                        } else if kind.is_file()
+                            && crate::agents::adapter(agent).is_transcript(&entry.path())
+                        {
                             self.update(agent, &entry.path(), true)?;
                         }
                     }
@@ -458,7 +504,8 @@ impl Index {
         path: &Path,
         historical: bool,
     ) -> io::Result<Option<Transcript>> {
-        if !is_log(path) {
+        let adapter = crate::agents::adapter(runtime);
+        if !adapter.is_transcript(path) {
             return Ok(None);
         }
         let key = path.to_string_lossy().into_owned();
@@ -486,7 +533,7 @@ impl Index {
             .as_secs();
         let seeded: bool = self
             .db
-            .prepare_cached("SELECT EXISTS(SELECT 1 FROM session_content WHERE path=?1 AND json_extract(parser,'$._rules')=8)")
+            .prepare_cached("SELECT EXISTS(SELECT 1 FROM session_content WHERE path=?1 AND json_extract(parser,'$._rules')=9)")
             .map_err(err)?
             .query_row([&key], |r| r.get(0))
             .map_err(err)?;
@@ -518,6 +565,9 @@ impl Index {
         } else {
             crate::content::load(&self.db, &key)?
         };
+        if !parser.card.interactive && parser.card.hidden_reason.is_empty() {
+            adapter.observe_file(&mut parser, path);
+        }
         let seed = (fresh && historical) || (!seeded && !fresh);
         if seed {
             // Identity requires only the header, even when old bodies are deliberately skipped.
@@ -539,21 +589,14 @@ impl Index {
                 for line in head[parsed..].split_inclusive(|b| *b == b'\n') {
                     parser.observe_header(runtime, line);
                     if c.identity.is_none() {
-                        c.identity = identity(runtime, line);
+                        c.identity = crate::agents::identity(runtime, path, line);
                     }
                     if line.last() != Some(&b'\n') {
                         break;
                     }
                     if recent && !parser.card.first_ask_known {
                         if let Ok(v) = serde_json::from_slice::<serde_json::Value>(line) {
-                            let user = if runtime == Agent::Codex {
-                                v["type"] == "event_msg" && v["payload"]["type"] == "user_message"
-                                    || v["type"] == "response_item"
-                                        && v["payload"]["role"] == "user"
-                            } else {
-                                v["type"] == "user"
-                            };
-                            if user {
+                            if adapter.is_user(&v) {
                                 parser.add(
                                     runtime,
                                     line,
@@ -608,7 +651,7 @@ impl Index {
                 if *byte == b'\n' {
                     if !c.discard {
                         if c.identity.is_none() {
-                            c.identity = identity(runtime, &c.pending);
+                            c.identity = crate::agents::identity(runtime, path, &c.pending);
                         }
                         parser.add(
                             runtime,
@@ -646,7 +689,7 @@ impl Index {
             tx.execute("DELETE FROM session_records WHERE path=?1", [&key])
                 .map_err(err)?;
         }
-        // Codex subagents: the child's own log is the evidence of what it is doing.
+        // Subagents with their own log: the child's log is the evidence of what it is doing.
         let now = keepline_core::content::now();
         let live = |path: &str| keepline_core::content::Source {
             path: path.into(),
@@ -654,7 +697,7 @@ impl Index {
             ..Default::default()
         };
         let mut parent = None;
-        if runtime == Agent::Codex {
+        if adapter.links_children() {
             if !parser.card.parent.is_empty() {
                 crate::content::link_child(&tx, &key, &parser.card)?;
                 parent = Some(parser.card.parent.clone());
@@ -666,11 +709,11 @@ impl Index {
         crate::content::save(&tx, &key, &parser)?;
         if let Some(parent) = parent {
             let row = tx
-                .prepare_cached("SELECT cli_id,path,cwd,updated FROM log_files WHERE runtime='codex' AND cli_id=?1 LIMIT 1")
+                .prepare_cached("SELECT cli_id,path,cwd,updated FROM log_files WHERE runtime=?2 AND cli_id=?1 LIMIT 1")
                 .map_err(err)?
-                .query_row([&parent], |r| {
+                .query_row([parent.as_str(), runtime.executable()], |r| {
                     Ok(Transcript {
-                        runtime: Agent::Codex,
+                        runtime,
                         cli_id: r.get(0)?,
                         path: r.get(1)?,
                         cwd: r.get(2)?,
@@ -716,39 +759,7 @@ pub fn cached(db: &Connection) -> io::Result<Vec<Transcript>> {
     Ok(out)
 }
 fn agent(s: &str) -> io::Result<Agent> {
-    match s {
-        "codex" => Ok(Agent::Codex),
-        "claude" => Ok(Agent::Claude),
-        _ => Err(io::Error::other("unknown indexed runtime")),
-    }
-}
-fn is_log(path: &Path) -> bool {
-    path.extension().is_some_and(|e| e == "jsonl")
-}
-
-fn identity(runtime: Agent, bytes: &[u8]) -> Option<(String, String)> {
-    let value = crate::content::header_value(runtime, bytes)?;
-    let (id, cwd) = match runtime {
-        Agent::Codex if value["type"] == "session_meta" => (
-            value["payload"]["id"].as_str()?,
-            value["payload"]["cwd"].as_str()?,
-        ),
-        Agent::Claude if value["isSidechain"] == true => {
-            return Some((
-                format!(
-                    "{}:sidechain:{}",
-                    value["sessionId"].as_str()?,
-                    value["agentId"]
-                        .as_str()
-                        .or_else(|| value["uuid"].as_str())?
-                ),
-                value["cwd"].as_str()?.into(),
-            ));
-        }
-        Agent::Claude => (value["sessionId"].as_str()?, value["cwd"].as_str()?),
-        _ => return None,
-    };
-    (!id.is_empty()).then(|| (id.into(), cwd.into()))
+    Agent::from_executable(s).ok_or_else(|| io::Error::other("unknown indexed runtime"))
 }
 
 /// Event-triggered subtree repair. Each step visits at most 128 entries or 20 ms;
@@ -793,9 +804,12 @@ impl Recovery {
                 Some(entry) => {
                     let entry = entry?;
                     let ty = entry.file_type()?;
+                    let adapter = crate::agents::adapter(*runtime);
                     if ty.is_dir() {
-                        self.queue.push_back((*runtime, entry.path()));
-                    } else if ty.is_file() && is_log(&entry.path()) {
+                        if adapter.descend(&entry.path()) {
+                            self.queue.push_back((*runtime, entry.path()));
+                        }
+                    } else if ty.is_file() && adapter.is_transcript(&entry.path()) {
                         if let Some(t) = index.update(*runtime, &entry.path(), true)? {
                             transcripts.push(t);
                         }
@@ -896,8 +910,9 @@ mod tests {
         assert_eq!(i.counts.bytes, 0);
         assert_eq!(i.counts.opens, 0);
         assert_eq!(
-            identity(
+            crate::agents::identity(
                 Agent::Claude,
+                Path::new("/logs/a.jsonl"),
                 br#"{"sessionId":"parent","cwd":"/repo","isSidechain":true,"agentId":"child"}"#
             )
             .unwrap()
@@ -1031,6 +1046,68 @@ mod tests {
             "warm start has no directory walk or file reads"
         );
         assert_eq!(i.cached().unwrap().len(), 1);
+    }
+    #[test]
+    fn a_cli_supported_later_is_walked_once_and_only_where_transcripts_live() {
+        let f = Fixture::new();
+        fs::write(f.0.join("logs/a.jsonl"), line("codex-a")).unwrap();
+        let mut i = f.index();
+        i.initialize().unwrap();
+        i.bootstrap().unwrap();
+        drop(i);
+        let session = f.0.join("grok/%2Frepo/01a1-grok");
+        fs::create_dir_all(session.join("images/deep")).unwrap();
+        fs::write(
+            session.join("summary.json"),
+            r#"{"info":{"id":"01a1-grok"}}"#,
+        )
+        .unwrap();
+        fs::write(session.join("chat_history.jsonl"), "{}\n").unwrap();
+        fs::write(
+            session.join("updates.jsonl"),
+            concat!(
+                r#"{"timestamp":1800000000,"method":"session/update","params":{"sessionId":"01a1-grok","update":{"sessionUpdate":"user_message_chunk","content":{"type":"text","text":"整理发布说明"}}}}"#,
+                "\n",
+                r#"{"timestamp":1800000001,"method":"_x.ai/session/update","params":{"sessionId":"01a1-grok","update":{"sessionUpdate":"turn_completed","stop_reason":"end_turn"}}}"#,
+                "\n"
+            ),
+        )
+        .unwrap();
+        let open = || {
+            Index::open(
+                &f.0,
+                vec![
+                    (Agent::Codex, f.0.join("logs")),
+                    (Agent::Grok, f.0.join("grok")),
+                ],
+            )
+            .unwrap()
+        };
+        let mut i = open();
+        i.initialize().unwrap();
+        i.bootstrap().unwrap();
+        // grok, its working directory and the session; not images/ or anything in logs/.
+        assert_eq!(i.counts.directories, 3);
+        let grok: Vec<_> = i
+            .cached()
+            .unwrap()
+            .into_iter()
+            .filter(|t| t.runtime == Agent::Grok)
+            .collect();
+        assert_eq!(grok.len(), 1);
+        assert_eq!(
+            (grok[0].cli_id.as_str(), grok[0].cwd.as_str()),
+            ("01a1-grok", "/repo")
+        );
+        let card = i.card(&grok[0].path).unwrap().unwrap();
+        assert_eq!(card.title, "整理发布说明");
+        assert!(card.interactive);
+        assert_eq!(card.hidden_reason(), None);
+        drop(i);
+        let mut i = open();
+        i.initialize().unwrap();
+        i.bootstrap().unwrap();
+        assert_eq!(i.counts, IoCounts::default(), "the new CLI is walked once");
     }
     #[test]
     fn fsevents_delivers_new_files_and_replays_changes_after_restart() {

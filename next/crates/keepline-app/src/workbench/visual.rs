@@ -112,6 +112,26 @@ impl Workbench {
             }),
         )
     }
+    /// Types into the open rename field as an input method would, caret at the end.
+    #[cfg(feature = "visual-test")]
+    pub fn visual_rename_type(&mut self, text: &str, cx: &mut Context<Self>) {
+        if let Some((_, field, _)) = &self.layout.renaming_tab {
+            field.update(cx, |f, cx| {
+                f.set_text(text);
+                cx.notify();
+            });
+        }
+    }
+    /// The name the first tab of this space shows.
+    #[cfg(feature = "visual-test")]
+    pub fn visual_first_tab_name(&self, cx: &gpui::App) -> String {
+        self.workspace
+            .tabs
+            .iter()
+            .find(|t| t.space == self.nav.space)
+            .map(|t| self.tab_name(t, cx))
+            .unwrap_or_default()
+    }
     #[cfg(feature = "visual-test")]
     pub fn visual_new_tab(&mut self, cx: &mut Context<Self>) {
         self.launch(false, None, cx);
@@ -135,9 +155,18 @@ impl Workbench {
             updated: 1,
             cwd: std::env::temp_dir().display().to_string(),
             transcript: String::new(),
+            binding: None,
         };
         self.open_session(&session, window, cx);
         (self.workspace.tabs.len(), self.nav.tab.clone())
+    }
+    /// The recorded directory of the shown tab's first terminal.
+    #[cfg(feature = "visual-test")]
+    pub fn visual_shown_cwd(&self) -> String {
+        let tab = self.nav.tab.as_ref().expect("a shown tab");
+        let id = self.workspace.tab_terminals(tab)[0].clone();
+        let terminal = self.workspace.terminals.iter().find(|t| t.id == id).unwrap();
+        terminal.cwd.clone()
     }
     #[cfg(feature = "visual-test")]
     pub fn visual_tabs(&self) -> (usize, Option<String>) {
@@ -162,6 +191,16 @@ impl Workbench {
         assert!(
             matches!(local.layout,Some(Layout::Split{ratio,..}) if (6600..6800).contains(&ratio))
         );
+    }
+    #[cfg(feature = "visual-test")]
+    pub fn visual_confirming_close(&self) -> bool {
+        self.layout.confirm_close.is_some()
+    }
+    /// The dialog's 取消.
+    #[cfg(feature = "visual-test")]
+    pub fn visual_cancel_close(&mut self, cx: &mut Context<Self>) {
+        self.layout.confirm_close = None;
+        cx.notify();
     }
     #[cfg(feature = "visual-test")]
     pub fn visual_split_down(&mut self, window: &mut Window, cx: &mut Context<Self>) {
@@ -311,7 +350,9 @@ impl Workbench {
         self.overview.show_running = false;
         self.sync_panes(cx);
         match name {
-            "Main" => self.overview.here = self.workspace.current_agent("p0").map(|s| s.id.clone()),
+            "Main" | "HereClickOut" => {
+                self.overview.here = self.workspace.current_agent("p0").map(|s| s.id.clone())
+            }
             // The sidebar with the space's todos unfolded above its sessions.
             "SidebarTodos" => self.tasks.todos_open = true,
             // The card open on the focused waiting pane; the harness then types a key.
@@ -453,5 +494,41 @@ impl Workbench {
         }
         cx.notify();
         window.refresh();
+    }
+    /// The overview toggle's centre, as last drawn.
+    #[cfg(feature = "visual-test")]
+    pub fn visual_toggle_point(&self) -> gpui::Point<gpui::Pixels> {
+        self.overview.toggle_at.expect("toggle drawn").center()
+    }
+    /// Overview shown, the tab in view, the space filter, and who holds the keyboard:
+    /// the overview itself or a pane of the shown tab.
+    #[cfg(feature = "visual-test")]
+    pub fn visual_overview_state(
+        &self,
+        window: &Window,
+        cx: &gpui::App,
+    ) -> (bool, Option<String>, Option<String>, &'static str) {
+        let focus = if self.overview.focus.is_focused(window) {
+            "overview"
+        } else if self
+            .layout
+            .panes
+            .values()
+            .any(|p| p.focus_handle(cx).contains_focused(window, cx))
+        {
+            "pane"
+        } else {
+            "none"
+        };
+        (
+            self.nav.overview,
+            self.nav.tab.clone(),
+            self.overview.filter_space.clone(),
+            focus,
+        )
+    }
+    #[cfg(feature = "visual-test")]
+    pub fn visual_spaces(&self) -> Vec<String> {
+        self.workspace.spaces.iter().map(|s| s.id.clone()).collect()
     }
 }

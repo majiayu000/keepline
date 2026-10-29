@@ -47,6 +47,7 @@ fn fixture() -> Workspace {
         updated: 1,
         cwd: "/tmp".into(),
         transcript: "".into(),
+        binding: None,
     });
     w
 }
@@ -271,4 +272,84 @@ fn a_removed_directory_falls_back_to_one_that_exists() {
         usable_cwd([gone.clone(), gone]),
         std::env::var("HOME").unwrap()
     );
+}
+#[test]
+fn close_confirms_only_work_in_progress_or_a_pending_question() {
+    let agent = |p| vec![("a".to_owned(), p)];
+    assert!(!interrupts(&[]));
+    assert!(!interrupts(&agent(Some(Phase::Idle))));
+    assert!(!interrupts(&agent(None)));
+    assert!(interrupts(&agent(Some(Phase::Working))));
+    assert!(interrupts(&agent(Some(Phase::Waiting))));
+    let mut mixed = agent(Some(Phase::Idle));
+    mixed.push(("b".to_owned(), Some(Phase::Working)));
+    assert!(interrupts(&mixed));
+}
+#[test]
+fn closing_a_tab_of_several_splits_counts_them() {
+    let mut w = fixture();
+    assert_eq!(splits_closed(&w, &Closing::Tab("tab".into())), 4);
+    assert_eq!(splits_closed(&w, &Closing::Pane("t0".into())), 0);
+    assert_eq!(splits_closed(&w, &Closing::Host), 0);
+    w.tabs[0].layout = Some(Layout::Leaf("t0".into()));
+    assert_eq!(splits_closed(&w, &Closing::Tab("tab".into())), 0);
+}
+#[test]
+fn closed_sessions_past_the_stale_days_leave_the_sidebar_count() {
+    let mut w = fixture();
+    let s = &mut w.agent_sessions[0];
+    s.outcome = Outcome::Open;
+    s.updated = now();
+    assert!(closed_recently(&w, &w.agent_sessions[0]));
+    // Quiet longer than the stale days: still in the overview, no longer counted.
+    w.agent_sessions[0].updated = 1;
+    assert!(!closed_recently(&w, &w.agent_sessions[0]));
+    // Settled ones never count.
+    w.agent_sessions[0].updated = now();
+    w.agent_sessions[0].outcome = Outcome::Completed;
+    assert!(!closed_recently(&w, &w.agent_sessions[0]));
+}
+#[test]
+fn a_shown_interrupted_pane_reopens_once() {
+    let w = fixture();
+    let shown = w.tab_terminals("tab");
+    let mut tried = HashSet::new();
+    assert_eq!(reopen_candidate(&w, &shown, &tried).as_deref(), Some("t1"));
+    // Tried once: a failed launch leaves its reopen button instead of retrying forever.
+    tried.insert("t1".to_owned());
+    assert_eq!(reopen_candidate(&w, &shown, &tried), None);
+    // Only panes in view; another tab's lost shells wait until it shows.
+    assert_eq!(reopen_candidate(&w, &shown[2..], &HashSet::new()), None);
+}
+#[test]
+fn a_reopened_pane_resumes_its_latest_open_conversation() {
+    let mut w = fixture();
+    // Only a finished conversation ran there: reopen a plain shell.
+    assert!(interrupted_session(&w, "t1").is_none());
+    let mut open = w.agent_sessions[0].clone();
+    open.outcome = Outcome::Open;
+    let older = AgentSession {
+        id: "older".into(),
+        updated: 2,
+        ..open.clone()
+    };
+    let latest = AgentSession {
+        id: "latest".into(),
+        updated: 3,
+        ..open.clone()
+    };
+    let elsewhere = AgentSession {
+        id: "elsewhere".into(),
+        terminal: Some("t0".into()),
+        updated: 9,
+        ..open
+    };
+    w.agent_sessions.extend([older, latest, elsewhere]);
+    // Lost before the host kept a record: the latest open conversation there.
+    assert_eq!(interrupted_session(&w, "t1").unwrap().id, "latest");
+    // The host's record wins, including that nothing but the shell was running.
+    w.lost_agents.insert("t1".into(), Some("older".into()));
+    assert_eq!(interrupted_session(&w, "t1").unwrap().id, "older");
+    w.lost_agents.insert("t1".into(), None);
+    assert!(interrupted_session(&w, "t1").is_none());
 }
