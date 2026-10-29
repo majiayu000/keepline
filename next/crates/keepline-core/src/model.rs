@@ -72,31 +72,44 @@ pub struct AcceptanceCriterion {
 pub enum Agent {
     Codex,
     Claude,
+    Grok,
 }
+/// What Keepline knows about one CLI: how to start and resume it. What its transcripts
+/// look like lives in the daemon's `agents` module; adding a CLI touches both.
 impl Agent {
+    /// Every supported CLI, in the order the app offers them.
+    pub const ALL: [Agent; 3] = [Agent::Codex, Agent::Claude, Agent::Grok];
     pub fn name(self) -> &'static str {
         match self {
             Self::Codex => "Codex",
             Self::Claude => "Claude Code",
+            Self::Grok => "Grok Build",
         }
+    }
+    pub fn from_executable(name: &str) -> Option<Self> {
+        Self::ALL.into_iter().find(|a| a.executable() == name)
     }
     /// Temporary until daemon-backed Codex can prove a TUI-to-session association.
     pub fn command(self) -> String {
         match self {
             Self::Codex => "codex".into(),
             Self::Claude => format!("claude --session-id {}", uuid::Uuid::new_v4()),
+            // The TUI cannot be given an id; the daemon reads it from Grok's own registry.
+            Self::Grok => "grok".into(),
         }
     }
     pub fn resume_command(self, cli_id: &str) -> String {
         match self {
             Self::Codex => format!("codex resume {}", shell_quote(cli_id)),
             Self::Claude => format!("claude --resume {}", shell_quote(cli_id)),
+            Self::Grok => format!("grok --resume {}", shell_quote(cli_id)),
         }
     }
     pub fn executable(self) -> &'static str {
         match self {
             Self::Codex => "codex",
             Self::Claude => "claude",
+            Self::Grok => "grok",
         }
     }
 }
@@ -1015,6 +1028,12 @@ mod tests {
             Agent::Claude.resume_command("safe"),
             "claude --resume 'safe'"
         );
+        assert_eq!(Agent::Grok.command(), "grok");
+        assert_eq!(Agent::Grok.resume_command("id"), "grok --resume 'id'");
+        for agent in Agent::ALL {
+            assert_eq!(Agent::from_executable(agent.executable()), Some(agent));
+        }
+        assert_eq!(Agent::from_executable("node"), None);
     }
     #[test]
     fn sequential_conversations_keep_independent_tasks_and_outcomes() {

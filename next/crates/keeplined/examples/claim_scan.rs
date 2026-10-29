@@ -1,17 +1,17 @@
 //! Read-only: run the real content parser over CLI logs and print, per file, the turn,
 //! whether the last reply counts as a completion claim, and the reply's first line.
-//! `cargo run -p keeplined --example claim_scan -- <claude|codex> FILE...`
+//! `cargo run -p keeplined --example claim_scan -- <claude|codex|grok> FILE...`
 use keepline_core::{content::Source, model::Agent};
 use keeplined::content::Parser;
 use std::io::BufRead;
 
 fn main() {
     let mut args = std::env::args().skip(1);
-    let agent = match args.next().as_deref() {
-        Some("claude") => Agent::Claude,
-        Some("codex") => Agent::Codex,
-        _ => panic!("first argument: claude or codex"),
-    };
+    let agent = args
+        .next()
+        .as_deref()
+        .and_then(Agent::from_executable)
+        .expect("first argument: claude, codex or grok");
     for path in args {
         let Ok(file) = std::fs::File::open(&path) else {
             continue;

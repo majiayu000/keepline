@@ -1,3 +1,4 @@
+mod agents;
 mod codex_status;
 mod file_events;
 mod handoff;

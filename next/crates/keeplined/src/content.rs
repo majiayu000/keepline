@@ -9,7 +9,7 @@ use rusqlite::{params, Connection, OptionalExtension};
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 use std::{collections::BTreeMap, io, sync::LazyLock};
-fn re(s: &str) -> Regex {
+pub(crate) fn re(s: &str) -> Regex {
     Regex::new(s).unwrap()
 }
 static EXIT: LazyLock<Regex> = LazyLock::new(|| {
@@ -29,7 +29,7 @@ static CLAIM: LazyLock<Regex> = LazyLock::new(|| {
         r"(?i)(?:^\s*完成(?:[。.!！，,:：]|\s*$)|已(?:完成|修复|实现|提交)|修复完成|全部.{0,12}通过|完成了|implemented|fixed|completed|all tests pass|\bdone\b)",
     )
 });
-fn claims_done(s: &str) -> bool {
+pub(crate) fn claims_done(s: &str) -> bool {
     let mut fence: Option<(char, usize)> = None;
     for line in s.lines() {
         let trimmed = line.trim_start();
@@ -88,7 +88,7 @@ fn sentence(line: &str, at: usize) -> &str {
     &line[start..end]
 }
 // Strip bounded, explicit wrappers; do not infer the author of arbitrary unmarked prose.
-fn user_text(s: &str) -> String {
+pub(crate) fn user_text(s: &str) -> String {
     let mut clean = s.to_owned();
     if clean
         .trim_start()
@@ -283,31 +283,9 @@ static CONTEXT: LazyLock<Regex> = LazyLock::new(|| {
 // A session_meta line may exceed the 16 KiB head budget because of base_instructions.
 // Decode only complete top-level metadata values in its prefix, never scan its body.
 pub fn header_value(runtime: Agent, bytes: &[u8]) -> Option<Value> {
-    if let Ok(v) = serde_json::from_slice(bytes) {
-        return Some(v);
-    }
-    if runtime != Agent::Codex {
-        return None;
-    }
-    let s = std::str::from_utf8(bytes).ok()?;
-    if !s.contains("\"session_meta\"") {
-        return None;
-    }
-    static KEYS: LazyLock<Regex> = LazyLock::new(|| {
-        re(
-            r#"(?:^|[,{])\s*"(id|cwd|originator|source|thread_source|parent_thread_id|is_exec)"\s*:\s*"#,
-        )
-    });
-    let mut p = serde_json::Map::new();
-    for m in KEYS.captures_iter(s) {
-        let mut d = serde_json::Deserializer::from_str(&s[m.get(0)?.end()..]);
-        if let Ok(v) = Value::deserialize(&mut d) {
-            p.entry(m[1].to_owned()).or_insert(v);
-        }
-    }
-    Some(json!({"type":"session_meta","payload":p}))
+    crate::agents::adapter(runtime).header_value(bytes)
 }
-fn text(v: &Value) -> String {
+pub(crate) fn text(v: &Value) -> String {
     match v {
         Value::String(s) => s.clone(),
         Value::Array(a) => a
@@ -319,12 +297,12 @@ fn text(v: &Value) -> String {
         _ => v.to_string(),
     }
 }
-fn input(v: &Value) -> Value {
+pub(crate) fn input(v: &Value) -> Value {
     v.as_str()
         .map(|s| serde_json::from_str(s).unwrap_or_else(|_| json!({"input":s})))
         .unwrap_or_else(|| v.clone())
 }
-fn question_summary(v: &Value) -> String {
+pub(crate) fn question_summary(v: &Value) -> String {
     let questions = v.get("questions").and_then(Value::as_array);
     if let Some(questions) = questions {
         return short(
@@ -377,7 +355,7 @@ fn db_err(e: impl std::error::Error + Send + Sync + 'static) -> io::Error {
     io::Error::other(e)
 }
 #[derive(Clone, Debug, Serialize, Deserialize)]
-struct Call {
+pub(crate) struct Call {
     name: String,
     input: Value,
     source: Source,
@@ -389,7 +367,10 @@ pub struct Parser {
     turn_id: String,
     last_user: String,
     last_user_turn: String,
-    calls: BTreeMap<String, Call>,
+    pub(crate) calls: BTreeMap<String, Call>,
+    /// Reply text a CLI streams in chunks, put on the card once its segment ends.
+    #[serde(default)]
+    pub(crate) reply: String,
     executions: BTreeMap<String, String>,
     /// A turn end arrived while a dialog was still shown; settles the turn once the dialog
     /// is known to be gone.
@@ -426,106 +407,17 @@ impl Parser {
             self.metadata(runtime, &v);
         }
     }
-    fn metadata(&mut self, runtime: Agent, v: &Value) {
-        let m = if runtime == Agent::Codex {
-            &v["payload"]
-        } else {
-            v
-        };
-        // Whatever hides it, a Codex subagent still belongs to its parent.
-        if runtime == Agent::Codex && v["type"] == "session_meta" {
-            let spawn = &m["source"]["subagent"]["thread_spawn"];
-            if let Some(parent) = spawn["parent_thread_id"]
-                .as_str()
-                .or(m["parent_thread_id"].as_str())
-            {
-                self.card.parent = parent.to_owned();
-                self.card.agent_name = m["agent_nickname"]
-                    .as_str()
-                    .or(spawn["agent_path"].as_str())
-                    .unwrap_or("")
-                    .to_owned();
-            }
+    pub(crate) fn metadata(&mut self, runtime: Agent, v: &Value) {
+        crate::agents::adapter(runtime).metadata(self, v);
+    }
+    /// The first reason a session is not the user's own conversation wins.
+    pub(crate) fn hide(&mut self, reason: &str) {
+        if self.card.hidden_reason.is_empty() {
+            self.card.hidden_reason = reason.into();
         }
-        let cwd = m["cwd"].as_str().unwrap_or("");
-        let temporary = [
-            "/tmp",
-            "/private/tmp",
-            "/var/tmp",
-            "/private/var/tmp",
-            "/var/folders",
-            "/private/var/folders",
-        ]
-        .iter()
-        .any(|root| cwd == *root || cwd.starts_with(&format!("{root}/")));
-        let reason = if temporary {
-            Some(keepline_core::content::TEMPORARY_DIRECTORY)
-        } else if runtime == Agent::Claude {
-            let entry = m["entrypoint"].as_str().unwrap_or("");
-            let user_type = m["userType"].as_str().unwrap_or("");
-            if m["isSidechain"] == true
-                || m.get("agentId")
-                    .and_then(Value::as_str)
-                    .is_some_and(|s| !s.is_empty())
-            {
-                Some("Claude 子代理 / sidechain")
-            } else if matches!(entry, "hook" | "sdk-cli")
-                || m["isInteractive"] == false
-                || m["argv"]
-                    .as_array()
-                    .is_some_and(|a| a.iter().any(|x| x == "-p" || x == "--print"))
-                || entry.contains("sdk")
-                || entry.contains("print")
-                || m["isNonInteractive"] == true
-                || m["print"] == true
-            {
-                Some("Claude 非交互 / SDK")
-            } else if !user_type.is_empty() && user_type != "external" {
-                Some("Claude 内部 / Hook 用户来源")
-            } else {
-                if matches!(entry, "cli" | "claude-desktop" | "vscode") && user_type == "external" {
-                    self.card.interactive = true;
-                }
-                None
-            }
-        } else if v["type"] == "session_meta" {
-            let source = m["source"].as_str().unwrap_or("");
-            let origin = m["originator"].as_str().unwrap_or("");
-            if m["source"].get("subagent").is_some()
-                || matches!(
-                    m["thread_source"].as_str(),
-                    Some("subagent" | "guardian_review")
-                )
-            {
-                Some("Codex 子代理")
-            } else if source == "exec" || origin.contains("exec") || m["is_exec"] == true {
-                Some("Codex exec 非交互")
-            } else if origin.contains("sdk") || matches!(source, "sdk" | "api") {
-                Some("Codex SDK 非交互")
-            } else {
-                if matches!(source, "cli" | "vscode")
-                    && matches!(m["thread_source"].as_str(), None | Some("user"))
-                {
-                    self.card.interactive = true;
-                }
-                None
-            }
-        } else {
-            None
-        };
-        if let Some(reason) = reason {
-            if self.card.hidden_reason.is_empty() {
-                self.card.hidden_reason = reason.into();
-            }
-        }
-        // Some launchers inherit the desktop entrypoint. Require an explicit machine task marker.
-        let prompt = if v["type"] == "queue-operation" {
-            text(&v["content"])
-        } else if runtime == Agent::Claude && v["type"] == "user" {
-            text(&v["message"]["content"])
-        } else {
-            String::new()
-        };
+    }
+    /// Some launchers inherit the desktop entrypoint. Require an explicit machine task marker.
+    pub(crate) fn machine_prompt(&mut self, prompt: &str) {
         if (prompt.starts_with("Use the you-are-here skill")
             && prompt.contains("This is an unattended background refresh:"))
             || prompt.starts_with("This is an unattended background refresh:")
@@ -554,7 +446,14 @@ impl Parser {
             code,
         });
     }
-    fn message(&mut self, user: bool, s: String, at: u64, source: &Source, final_answer: bool) {
+    pub(crate) fn message(
+        &mut self,
+        user: bool,
+        s: String,
+        at: u64,
+        source: &Source,
+        final_answer: bool,
+    ) {
         let s = if user { user_text(&s) } else { s };
         if s.is_empty() {
             return;
@@ -599,7 +498,7 @@ impl Parser {
         }
         self.card.updated = self.card.updated.max(at);
     }
-    fn phase(&mut self, turn: Turn, id: &str, at: u64, source: &Source) {
+    pub(crate) fn phase(&mut self, turn: Turn, id: &str, at: u64, source: &Source) {
         if turn == Turn::Running {
             self.turn_id = if id.is_empty() {
                 format!("{at}:{}", source.offset)
@@ -623,7 +522,7 @@ impl Parser {
         self.card.updated = self.card.updated.max(at);
         self.record("turn", format!("{turn:?}"), id, None, at, source);
     }
-    fn tool(&mut self, id: &str, name: &str, args: Value, at: u64, source: &Source) {
+    pub(crate) fn tool(&mut self, id: &str, name: &str, args: Value, at: u64, source: &Source) {
         if id.is_empty() || name.is_empty() {
             return;
         }
@@ -675,7 +574,7 @@ impl Parser {
             self.card.evidence.remove(0);
         }
     }
-    fn result(
+    pub(crate) fn result(
         &mut self,
         id: &str,
         value: &Value,
@@ -857,167 +756,7 @@ impl Parser {
         };
         self.metadata(runtime, &v);
         let at = seconds(&v["timestamp"]);
-        let ty = v["type"].as_str().unwrap_or("");
-        let p = &v["payload"];
-        if runtime == Agent::Codex {
-            if ty == "event_msg" && p["type"] != "item_completed" {
-                match p["type"].as_str().unwrap_or("") {
-                    "task_started" | "turn_started" => self.phase(
-                        Turn::Running,
-                        p["turn_id"].as_str().unwrap_or(""),
-                        at,
-                        &source,
-                    ),
-                    "task_complete" | "task_completed" | "turn_completed" => {
-                        if let Some(s) = p["last_agent_message"].as_str() {
-                            self.message(false, s.into(), at, &source, true);
-                        }
-                        self.phase(Turn::Completed, "", at, &source);
-                    }
-                    "turn_aborted" => self.phase(Turn::Interrupted, "", at, &source),
-                    "user_message" => self.message(true, text(&p["message"]), at, &source, false),
-                    "agent_message" => self.message(false, text(&p["message"]), at, &source, false),
-                    "approval_request" | "permission_request" | "request_user_input" => {
-                        self.card.waiting = question_summary(p);
-                        self.phase(Turn::Waiting, "", at, &source);
-                    }
-                    "error" | "turn_failed" => {
-                        self.card.error = short(
-                            &text(p.get("message").or_else(|| p.get("error")).unwrap_or(p)),
-                            600,
-                        );
-                        self.phase(Turn::Error, "", at, &source);
-                    }
-                    "token_count" | "agent_reasoning" | "context_compacted" => (),
-                    _ => self.card.unknown_records += 1,
-                }
-                return;
-            }
-            let item = if ty == "response_item" {
-                p
-            } else {
-                v.get("item").or_else(|| p.get("item")).unwrap_or(p)
-            };
-            match item["type"].as_str().unwrap_or("") {
-                "message" => match item["role"].as_str() {
-                    Some("user") => self.message(true, text(&item["content"]), at, &source, false),
-                    Some("assistant") => self.message(
-                        false,
-                        text(&item["content"]),
-                        at,
-                        &source,
-                        item["phase"] == "final_answer" || item["channel"] == "final",
-                    ),
-                    _ => (),
-                },
-                "function_call" | "custom_tool_call" => self.tool(
-                    item["call_id"]
-                        .as_str()
-                        .or_else(|| item["id"].as_str())
-                        .unwrap_or(""),
-                    item["name"].as_str().unwrap_or(""),
-                    input(item.get("arguments").unwrap_or(&item["input"])),
-                    at,
-                    &source,
-                ),
-                "function_call_output" | "custom_tool_call_output" => self.result(
-                    item["call_id"].as_str().unwrap_or(""),
-                    &item["output"],
-                    item["exit_code"].as_i64().map(|n| n as i32),
-                    false,
-                    at,
-                    &source,
-                ),
-                "command_execution" | "CommandExecution" => {
-                    let id = item["id"]
-                        .as_str()
-                        .or_else(|| item["call_id"].as_str())
-                        .unwrap_or("");
-                    if !self.calls.contains_key(id) {
-                        self.tool(
-                            id,
-                            "exec_command",
-                            json!({"cmd":item["command"]}),
-                            at,
-                            &source,
-                        );
-                    }
-                    self.result(
-                        id,
-                        item.get("output").unwrap_or(&item["aggregated_output"]),
-                        item["exit_code"].as_i64().map(|n| n as i32),
-                        false,
-                        at,
-                        &source,
-                    );
-                }
-                "reasoning" => (),
-                _ if matches!(
-                    ty,
-                    "session_meta"
-                        | "turn_context"
-                        | "compacted"
-                        | "token_usage_record"
-                        | "world_state"
-                        | "inter_agent_communication_metadata"
-                ) => {}
-                _ => self.card.unknown_records += 1,
-            }
-        } else {
-            if v["isSidechain"] == true {
-                return;
-            }
-            let msg = &v["message"];
-            let blocks = &msg["content"];
-            if ty == "user" && v["isMeta"] != true {
-                let s = user_text(&text(blocks));
-                if !s.is_empty() {
-                    self.phase(Turn::Running, v["uuid"].as_str().unwrap_or(""), at, &source);
-                    self.message(true, s, at, &source, false);
-                }
-            }
-            if let Some(blocks) = blocks.as_array() {
-                for b in blocks {
-                    match b["type"].as_str() {
-                        Some("tool_use") => self.tool(
-                            b["id"].as_str().unwrap_or(""),
-                            b["name"].as_str().unwrap_or(""),
-                            b["input"].clone(),
-                            at,
-                            &source,
-                        ),
-                        Some("tool_result") => self.result(
-                            b["tool_use_id"].as_str().unwrap_or(""),
-                            &b["content"],
-                            if b["is_error"] == true { Some(1) } else { None },
-                            v["toolUseResult"].get("backgroundTaskId").is_none(),
-                            at,
-                            &source,
-                        ),
-                        _ => (),
-                    }
-                }
-            }
-            if v["isApiErrorMessage"] == true {
-                self.card.error = short(&text(blocks), 600);
-                self.phase(Turn::Error, "", at, &source);
-                return;
-            }
-            if ty == "assistant" && msg["model"] != "<synthetic>" {
-                let final_answer = matches!(
-                    msg["stop_reason"].as_str(),
-                    Some("end_turn" | "stop_sequence")
-                );
-                self.message(false, text(blocks), at, &source, final_answer);
-                if final_answer {
-                    self.phase(Turn::Completed, "", at, &source);
-                }
-            }
-            if ty == "system" && matches!(v["subtype"].as_str(), Some("turn_duration" | "stop")) {
-                self.card.completed_claim = claims_done(&self.card.last_reply);
-                self.phase(Turn::Completed, "", at, &source);
-            }
-        }
+        crate::agents::adapter(runtime).add(self, &v, at, &source);
     }
     pub fn hook(&mut self, event: &str, facts: &HookFacts, at: u64, source: Source) {
         let before = self.card.turn;
