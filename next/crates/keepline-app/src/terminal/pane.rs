@@ -48,6 +48,8 @@ pub struct Pane {
     hover_link: Option<(u16, u16)>,
     focus_observers: bool,
     last_focus: bool,
+    /// When the user last sent input; its echo is drawn without waiting for the shared tick.
+    typed: Option<Instant>,
     search: Option<gpui::Entity<crate::ui::field::Field>>,
     matches: Vec<(usize, String)>,
     /// A multi-line paste waiting for the user's go-ahead (no bracketed paste).
@@ -150,8 +152,19 @@ impl Pane {
         cx.spawn(async move |this, cx| {
             while rx.next().await.is_some() {
                 // Coalesce bursts at 60 Hz; no timer exists when the terminal is idle.
+                // Output nobody is typing into waits for the shared tick instead, so
+                // several busy panes repaint in one frame rather than one frame each.
+                let echo = this
+                    .read_with(cx, |pane, _| {
+                        pane.typed.is_some_and(|t| t.elapsed() < std::time::Duration::from_millis(300))
+                    })
+                    .unwrap_or(false);
                 cx.background_executor()
-                    .timer(std::time::Duration::from_millis(16))
+                    .timer(if echo {
+                        std::time::Duration::from_millis(16)
+                    } else {
+                        until_shared_tick()
+                    })
                     .await;
                 while rx.try_recv().is_ok() {}
                 if this
@@ -197,6 +210,7 @@ impl Pane {
             hover_link: None,
             focus_observers: false,
             last_focus: false,
+            typed: None,
             search: None,
             matches: vec![],
             paste_confirm: None,
@@ -720,6 +734,7 @@ impl Pane {
         self.send_input(bytes, true, cx);
     }
     fn send_input(&mut self, bytes: Vec<u8>, lossy: bool, cx: &mut Context<Self>) {
+        self.typed = Some(Instant::now());
         if let Err(error) = self.connection.send(Request::Input { bytes, lossy }) {
             self.local_error = Some(error);
             cx.notify();
@@ -1493,4 +1508,12 @@ mod handoff_tests {
             "> \n  1. plan written by the agent\n"
         ));
     }
+}
+/// Time left until the next boundary of one process-wide 50 ms clock: background panes
+/// that wake at different moments all flush on the same boundary, in the same frame.
+fn until_shared_tick() -> std::time::Duration {
+    static START: std::sync::OnceLock<Instant> = std::sync::OnceLock::new();
+    const TICK: u128 = 50_000;
+    let micros = START.get_or_init(Instant::now).elapsed().as_micros();
+    std::time::Duration::from_micros((TICK - micros % TICK) as u64)
 }
