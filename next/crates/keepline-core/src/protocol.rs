@@ -189,6 +189,10 @@ pub struct RecognitionMetrics {
     pub log_bytes: u64,
     pub index_writes: u64,
 }
+/// The terminal hint for a Claude Code that saves no transcript: it inherited the nested
+/// session marker, so Keepline can never read or count it.
+pub const CLAUDE_TRANSCRIPT_OFF: &str =
+    "Claude 没有保存对话记录（继承了 CLAUDE_CODE_CHILD_SESSION），无法统计；关掉这个终端重开后再运行 claude";
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct RecognitionStatus {
     pub phase: RecognitionPhase,

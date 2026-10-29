@@ -19,14 +19,21 @@ pub(super) struct LayoutState {
     /// Interrupted terminals already reopened in place once; a failed try keeps the button.
     pub(super) reopened: HashSet<String>,
 }
-/// The host's note on a Codex it sees but cannot read, in the user's words.
-fn unread_codex(hint: &str) -> String {
+/// The host's note on an Agent it sees but cannot read, in the user's words, and why.
+fn unread_agent(hint: &str) -> (String, &'static str) {
+    if hint == keepline_core::protocol::CLAUDE_TRANSCRIPT_OFF {
+        return (
+            "claude · 没有保存记录".into(),
+            "这个 Claude 继承了 CLAUDE_CODE_CHILD_SESSION，自认为是别的会话的子会话，不写对话记录，Keepline 读不到也统计不了。关掉这个终端重新打开，再运行 claude。",
+        );
+    }
+    let why = "这个 Codex 连着共用的后台，Keepline 只看得到它忙不忙，读不到对话。想在这里看到对话内容，下次用 codex --no-daemon 启动。";
     match hint
         .strip_prefix("仅显示状态：")
         .and_then(|rest| rest.split_once('；'))
     {
-        Some((state, _)) => format!("codex · {state} · 看不到对话"),
-        None => "codex · 看不到对话".into(),
+        Some((state, _)) => (format!("codex · {state} · 看不到对话"), why),
+        None => ("codex · 看不到对话".into(), why),
     }
 }
 impl Workbench {
@@ -177,19 +184,13 @@ impl Workbench {
                                 })
                             }),
                     )
-                    .when_some(hint.as_deref().map(unread_codex), |d, note| {
+                    .when_some(hint.as_deref().map(unread_agent), |d, (note, why)| {
                         d.child(
                             div()
                                 .id(gpui::SharedString::from(format!("unread-{id}")))
                                 .child(label(note))
-                                .tooltip(|_, cx| {
-                                    cx.new(|_| {
-                                        super::render::TextTip(
-                                            "这个 Codex 连着共用的后台，Keepline 只看得到它忙不忙，读不到对话。想在这里看到对话内容，下次用 codex --no-daemon 启动。"
-                                                .into(),
-                                        )
-                                    })
-                                    .into()
+                                .tooltip(move |_, cx| {
+                                    cx.new(|_| super::render::TextTip(why.into())).into()
                                 }),
                         )
                     })
@@ -976,14 +977,19 @@ pub(super) fn choose_icon(icon: AppIcon, cx: &mut gpui::App) {
 #[cfg(test)]
 mod tests {
     #[test]
-    fn unread_codex_speaks_plainly() {
+    fn unread_agents_speak_plainly() {
+        let note = |hint: &str| super::unread_agent(hint).0;
         assert_eq!(
-            super::unread_codex("仅显示状态：工作中；看对话内容请用 codex --no-daemon"),
+            note("仅显示状态：工作中；看对话内容请用 codex --no-daemon"),
             "codex · 工作中 · 看不到对话"
         );
         assert_eq!(
-            super::unread_codex("未关联：看对话内容请用 codex --no-daemon"),
+            note("未关联：看对话内容请用 codex --no-daemon"),
             "codex · 看不到对话"
+        );
+        assert_eq!(
+            note(keepline_core::protocol::CLAUDE_TRANSCRIPT_OFF),
+            "claude · 没有保存记录"
         );
     }
 }
