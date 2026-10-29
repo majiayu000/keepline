@@ -1,0 +1,820 @@
+diff --git a/crates/gpui_apple/src/damage.rs b/crates/gpui_apple/src/damage.rs
+new file mode 100644
+index 0000000..9c26430
+--- /dev/null
++++ b/crates/gpui_apple/src/damage.rs
+@@ -0,0 +1,326 @@
++//! keepline patch: frame-to-frame damage for a retained back buffer.
++//!
++//! Each primitive is reduced to a content hash (its draw order excluded, so primitives
++//! that did not move keep their identity when others are inserted) and its visible
++//! device-pixel rectangle. Primitives present in only one of two consecutive frames,
++//! as a multiset, damage their rectangles; the union is the only area that needs redraw.
++use gpui::{Bounds, ContentMask, ScaledPixels, Scene, TransformationMatrix};
++use std::hash::{Hash, Hasher};
++
++#[derive(Clone, Copy, Debug, PartialEq, Eq)]
++pub struct Rect {
++    pub x0: i32,
++    pub y0: i32,
++    pub x1: i32,
++    pub y1: i32,
++}
++
++impl Rect {
++    fn union(self, o: Rect) -> Rect {
++        Rect {
++            x0: self.x0.min(o.x0),
++            y0: self.y0.min(o.y0),
++            x1: self.x1.max(o.x1),
++            y1: self.y1.max(o.y1),
++        }
++    }
++    fn is_empty(&self) -> bool {
++        self.x1 <= self.x0 || self.y1 <= self.y0
++    }
++    fn area(&self) -> i64 {
++        (self.x1 - self.x0) as i64 * (self.y1 - self.y0) as i64
++    }
++    pub fn clamp(self, w: i32, h: i32) -> Rect {
++        Rect {
++            x0: self.x0.clamp(0, w),
++            y0: self.y0.clamp(0, h),
++            x1: self.x1.clamp(0, w),
++            y1: self.y1.clamp(0, h),
++        }
++    }
++}
++
++/// What the next frame has to repaint.
++#[derive(Debug, PartialEq, Eq)]
++pub enum Damage {
++    /// Identical to the frame already shown.
++    None,
++    /// These device-pixel rectangles, disjoint after merging.
++    Rects(Vec<Rect>),
++    Full,
++}
++
++/// Visible rectangle of a primitive: its bounds within its content mask, widened by
++/// `outset` device pixels for antialiasing and blur, snapped outwards to whole pixels.
++fn visible(bounds: &Bounds<ScaledPixels>, mask: &ContentMask<ScaledPixels>, outset: f32) -> Option<Rect> {
++    let b = bounds.intersect(&mask.bounds);
++    let (x0, y0) = (b.origin.x.0 - outset, b.origin.y.0 - outset);
++    let (x1, y1) = (b.origin.x.0 + b.size.width.0 + outset, b.origin.y.0 + b.size.height.0 + outset);
++    let r = Rect {
++        x0: x0.floor() as i32,
++        y0: y0.floor() as i32,
++        x1: x1.ceil() as i32,
++        y1: y1.ceil() as i32,
++    };
++    (!r.is_empty() && b.size.width.0 > 0. && b.size.height.0 > 0.).then_some(r)
++}
++
++/// A rotated or scaled sprite (an animated icon) draws its bounds mapped through its
++/// matrix, as the sprite shader does; the mask is not trusted to contain it.
++fn transformed(
++    bounds: &Bounds<ScaledPixels>,
++    mask: &ContentMask<ScaledPixels>,
++    m: &TransformationMatrix,
++) -> Option<Rect> {
++    if *m == TransformationMatrix::unit() {
++        return visible(bounds, mask, 1.);
++    }
++    let (x, y, w, h) = (bounds.origin.x.0, bounds.origin.y.0, bounds.size.width.0, bounds.size.height.0);
++    let map = |px: f32, py: f32| {
++        let r = m.rotation_scale;
++        (r[0][0] * px + r[0][1] * py + m.translation[0], r[1][0] * px + r[1][1] * py + m.translation[1])
++    };
++    let corners = [map(x, y), map(x + w, y), map(x, y + h), map(x + w, y + h)];
++    let (mut x0, mut y0, mut x1, mut y1) = (f32::MAX, f32::MAX, f32::MIN, f32::MIN);
++    for (cx, cy) in corners {
++        x0 = x0.min(cx);
++        y0 = y0.min(cy);
++        x1 = x1.max(cx);
++        y1 = y1.max(cy);
++    }
++    let r = Rect {
++        x0: (x0 - 2.).floor() as i32,
++        y0: (y0 - 2.).floor() as i32,
++        x1: (x1 + 2.).ceil() as i32,
++        y1: (y1 + 2.).ceil() as i32,
++    };
++    (!r.is_empty()).then_some(r)
++}
++
++/// Hashes a padding-free `repr(C)` GPU primitive past its leading `order: DrawOrder` word.
++fn hash_pod<T: Copy>(tag: u8, value: &T) -> u64 {
++    hash_words(tag, value, 1)
++}
++
++fn hash_words<T: Copy>(tag: u8, value: &T, skip: usize) -> u64 {
++    const { assert!(std::mem::size_of::<T>() % 4 == 0 && std::mem::align_of::<T>() >= 4) };
++    // SAFETY: every primitive hashed here is `repr(C)` built only from 4-byte fields
++    // and explicit pad words, so its bytes are initialized words.
++    let words = unsafe {
++        std::slice::from_raw_parts(value as *const T as *const u32, std::mem::size_of::<T>() / 4)
++    };
++    let mut h = std::collections::hash_map::DefaultHasher::new();
++    tag.hash(&mut h);
++    words[skip..].hash(&mut h);
++    h.finish()
++}
++
++#[derive(Default)]
++pub struct Tracker {
++    previous: Vec<(u64, Rect)>,
++    size: (i32, i32),
++    valid: bool,
++}
++
++/// Above this share of the window, a partial redraw saves too little to bother.
++const FULL_SHARE: f64 = 0.6;
++const MAX_RECTS: usize = 4;
++
++impl Tracker {
++    pub fn invalidate(&mut self) {
++        self.valid = false;
++    }
++
++    pub fn update(&mut self, scene: &Scene, width: i32, height: i32) -> Damage {
++        let mut current = Vec::with_capacity(
++            scene.quads.len() + scene.monochrome_sprites.len() + scene.polychrome_sprites.len() + 16,
++        );
++        let mut surfaces = Vec::new();
++        for q in &scene.quads {
++            if let Some(r) = visible(&q.bounds, &q.content_mask, 1.) {
++                current.push((hash_pod(0, q), r));
++            }
++        }
++        for s in &scene.monochrome_sprites {
++            if let Some(r) = transformed(&s.bounds, &s.content_mask, &s.transformation) {
++                current.push((hash_pod(1, s), r));
++            }
++        }
++        for s in &scene.subpixel_sprites {
++            if let Some(r) = transformed(&s.bounds, &s.content_mask, &s.transformation) {
++                current.push((hash_pod(2, s), r));
++            }
++        }
++        for s in &scene.polychrome_sprites {
++            if let Some(r) = visible(&s.bounds, &s.content_mask, 1.) {
++                current.push((hash_pod(3, s), r));
++            }
++        }
++        for u in &scene.underlines {
++            if let Some(r) = visible(&u.bounds, &u.content_mask, 2.) {
++                current.push((hash_pod(4, u), r));
++            }
++        }
++        for s in &scene.shadows {
++            // The blur spreads beyond the bounds.
++            let outset = s.blur_radius.0 * 3. + 2.;
++            if let Some(r) = visible(&s.bounds, &s.content_mask, outset) {
++                current.push((hash_pod(5, s), r));
++            }
++        }
++        for p in &scene.paths {
++            if let Some(r) = visible(&p.bounds, &p.content_mask, 2.) {
++                let mut h = std::collections::hash_map::DefaultHasher::new();
++                6u8.hash(&mut h);
++                for v in &p.vertices {
++                    v.xy_position.x.0.to_bits().hash(&mut h);
++                    v.xy_position.y.0.to_bits().hash(&mut h);
++                    v.st_position.x.to_bits().hash(&mut h);
++                    v.st_position.y.to_bits().hash(&mut h);
++                }
++                hash_words(7, &p.color, 0).hash(&mut h);
++                current.push((h.finish(), r));
++            }
++        }
++        // Video frames change without their primitive changing.
++        for s in &scene.surfaces {
++            if let Some(r) = visible(&s.bounds, &s.content_mask, 1.) {
++                surfaces.push(r);
++            }
++        }
++        current.sort_unstable_by_key(|(h, r)| (*h, r.x0, r.y0, r.x1, r.y1));
++
++        let full = !self.valid || self.size != (width, height);
++        let previous = std::mem::replace(&mut self.previous, current);
++        self.size = (width, height);
++        self.valid = true;
++        if full {
++            return Damage::Full;
++        }
++
++        let mut rects = surfaces;
++        rects.extend(changed(&previous, &self.previous));
++        let rects: Vec<Rect> = rects
++            .into_iter()
++            .map(|r| r.clamp(width, height))
++            .filter(|r| !r.is_empty())
++            .collect();
++        if rects.is_empty() {
++            return Damage::None;
++        }
++        let merged = merge(rects);
++        let area: i64 = merged.iter().map(Rect::area).sum();
++        if merged.len() > MAX_RECTS || area as f64 > FULL_SHARE * (width as f64 * height as f64) {
++            return Damage::Full;
++        }
++        Damage::Rects(merged)
++    }
++}
++
++/// Rectangles of entries present in only one of two sorted lists, counted as multisets.
++fn changed(previous: &[(u64, Rect)], current: &[(u64, Rect)]) -> Vec<Rect> {
++    let key = |(h, r): &(u64, Rect)| (*h, r.x0, r.y0, r.x1, r.y1);
++    let mut rects = Vec::new();
++    let (mut i, mut j) = (0, 0);
++    while i < previous.len() || j < current.len() {
++        match (previous.get(i).map(key), current.get(j).map(key)) {
++            (Some(a), Some(b)) if a == b => {
++                i += 1;
++                j += 1;
++            }
++            (Some(a), Some(b)) if a < b => {
++                rects.push(previous[i].1);
++                i += 1;
++            }
++            (Some(_), None) => {
++                rects.push(previous[i].1);
++                i += 1;
++            }
++            _ => {
++                rects.push(current[j].1);
++                j += 1;
++            }
++        }
++    }
++    rects
++}
++
++/// Greedily unions rectangles that touch or whose union wastes little area, until the
++/// remaining ones are disjoint.
++fn merge(mut rects: Vec<Rect>) -> Vec<Rect> {
++    loop {
++        let mut changed = false;
++        let mut out: Vec<Rect> = Vec::with_capacity(rects.len());
++        for r in rects {
++            if let Some(o) = out.iter_mut().find(|o| {
++                let u = o.union(r);
++                let overlaps = o.x0 <= r.x1 && r.x0 <= o.x1 && o.y0 <= r.y1 && r.y0 <= o.y1;
++                overlaps || u.area() <= (o.area() + r.area()) * 2
++            }) {
++                *o = o.union(r);
++                changed = true;
++            } else {
++                out.push(r);
++            }
++        }
++        rects = out;
++        if !changed || rects.len() <= 1 {
++            return rects;
++        }
++    }
++}
++
++#[cfg(test)]
++mod tests {
++    use super::*;
++
++    fn r(x0: i32, y0: i32, x1: i32, y1: i32) -> Rect {
++        Rect { x0, y0, x1, y1 }
++    }
++
++    #[test]
++    fn unchanged_lists_damage_nothing() {
++        let a = vec![(1, r(0, 0, 10, 10)), (2, r(20, 0, 30, 10))];
++        assert!(changed(&a, &a).is_empty());
++    }
++
++    #[test]
++    fn a_moved_primitive_damages_where_it_was_and_where_it_is() {
++        let a = vec![(1, r(0, 0, 10, 10)), (2, r(50, 50, 60, 60))];
++        let mut b = vec![(1, r(0, 0, 10, 10)), (2, r(70, 50, 80, 60))];
++        b.sort_unstable_by_key(|(h, r)| (*h, r.x0, r.y0, r.x1, r.y1));
++        assert_eq!(changed(&a, &b), vec![r(50, 50, 60, 60), r(70, 50, 80, 60)]);
++    }
++
++    #[test]
++    fn duplicates_count_as_a_multiset() {
++        // Two identical glyphs drawn at the same place, one removed: still damage.
++        let a = vec![(7, r(0, 0, 8, 16)), (7, r(0, 0, 8, 16))];
++        let b = vec![(7, r(0, 0, 8, 16))];
++        assert_eq!(changed(&a, &b), vec![r(0, 0, 8, 16)]);
++    }
++
++    #[test]
++    fn changed_content_in_place_damages_once() {
++        let a = vec![(1, r(0, 0, 8, 16))];
++        let b = vec![(2, r(0, 0, 8, 16))];
++        assert_eq!(merge(changed(&a, &b)), vec![r(0, 0, 8, 16)]);
++    }
++
++    #[test]
++    fn far_apart_rects_stay_separate_and_near_ones_merge() {
++        let merged = merge(vec![r(0, 0, 10, 10), r(12, 0, 22, 10), r(500, 500, 510, 510)]);
++        assert_eq!(merged, vec![r(0, 0, 22, 10), r(500, 500, 510, 510)]);
++    }
++
++    #[test]
++    fn first_frame_and_resize_are_full() {
++        let scene = Scene::default();
++        let mut t = Tracker::default();
++        assert_eq!(t.update(&scene, 100, 100), Damage::Full);
++        assert_eq!(t.update(&scene, 100, 100), Damage::None);
++        assert_eq!(t.update(&scene, 120, 100), Damage::Full);
++        t.invalidate();
++        assert_eq!(t.update(&scene, 120, 100), Damage::Full);
++    }
++}
+diff --git a/crates/gpui_apple/src/gpui_apple.rs b/crates/gpui_apple/src/gpui_apple.rs
+index 63fb1b1..17adf5a 100644
+--- a/crates/gpui_apple/src/gpui_apple.rs
++++ b/crates/gpui_apple/src/gpui_apple.rs
+@@ -5,6 +5,7 @@
+ //! owns GPU resources and shaders while leaving application lifecycle,
+ //! windowing, and input to each platform backend.
+ 
++mod damage;
+ mod dispatcher;
+ mod metal_atlas;
+ pub mod metal_renderer;
+diff --git a/crates/gpui_apple/src/metal_renderer.rs b/crates/gpui_apple/src/metal_renderer.rs
+index a2a78ed..0a49bf8 100644
+--- a/crates/gpui_apple/src/metal_renderer.rs
++++ b/crates/gpui_apple/src/metal_renderer.rs
+@@ -131,6 +131,11 @@ pub struct MetalRenderer {
+     path_intermediate_texture: Option<metal::Texture>,
+     path_intermediate_msaa_texture: Option<metal::Texture>,
+     path_sample_count: u32,
++    /// keepline patch: with GPUI_RETAINED_BACKBUFFER, frames render into this persistent
++    /// texture only where the scene changed, then the whole texture is copied to the drawable.
++    retained: bool,
++    back_buffer: Option<metal::Texture>,
++    damage: crate::damage::Tracker,
+     /// Offscreen render target reused across `render_scene` calls when
+     /// rendering headlessly without reading pixels back.
+     #[cfg(any(test, feature = "bench-support", feature = "test-support"))]
+@@ -180,6 +185,10 @@ impl MetalRenderer {
+         // https://developer.apple.com/documentation/metal/managing-your-game-window-for-metal-in-macos
+         layer.set_opaque(!transparent);
+         layer.set_maximum_drawable_count(3);
++        // The retained back buffer is copied into the drawable by a blit.
++        if retained_enabled() {
++            layer.set_framebuffer_only(false);
++        }
+         // Allow texture reading for visual tests and UI automation screenshots
+         // (captures without ScreenCaptureKit). Only debug builds pay the
+         // presentation cost, even when `test-support` is compiled in.
+@@ -388,6 +397,9 @@ impl MetalRenderer {
+             path_intermediate_texture: None,
+             path_intermediate_msaa_texture: None,
+             path_sample_count: PATH_SAMPLE_COUNT,
++            retained: retained_enabled(),
++            back_buffer: None,
++            damage: Default::default(),
+             #[cfg(any(test, feature = "bench-support", feature = "test-support"))]
+             headless_render_target: None,
+         }
+@@ -486,6 +498,10 @@ impl MetalRenderer {
+             (viewport_size.width.ceil() as i32).into(),
+             (viewport_size.height.ceil() as i32).into(),
+         );
++        if self.retained && self.opaque {
++            self.draw_retained(&layer, scene, viewport_size);
++            return;
++        }
+         let drawable = if let Some(drawable) = layer.next_drawable() {
+             drawable
+         } else {
+@@ -496,7 +512,7 @@ impl MetalRenderer {
+             return;
+         };
+ 
+-        let command_buffer = match self.render_frame(scene, drawable.texture(), viewport_size) {
++        let command_buffer = match self.render_frame(scene, drawable.texture(), viewport_size, None) {
+             Ok(command_buffer) => command_buffer,
+             Err(error) => {
+                 log::error!("failed to render: {error:#}");
+@@ -514,11 +530,130 @@ impl MetalRenderer {
+         }
+     }
+ 
++    /// Repaints only the damaged part of the back buffer, then presents a copy of it.
++    fn draw_retained(
++        &mut self,
++        layer: &metal::MetalLayer,
++        scene: &Scene,
++        viewport_size: Size<DevicePixels>,
++    ) {
++        let (w, h) = (viewport_size.width.0, viewport_size.height.0);
++        if w <= 0 || h <= 0 {
++            return;
++        }
++        let stale = self
++            .back_buffer
++            .as_ref()
++            .is_none_or(|t| t.width() != w as u64 || t.height() != h as u64);
++        if stale {
++            let descriptor = metal::TextureDescriptor::new();
++            descriptor.set_width(w as u64);
++            descriptor.set_height(h as u64);
++            descriptor.set_pixel_format(MTLPixelFormat::BGRA8Unorm);
++            descriptor.set_storage_mode(metal::MTLStorageMode::Private);
++            descriptor.set_usage(metal::MTLTextureUsage::RenderTarget | metal::MTLTextureUsage::ShaderRead);
++            self.back_buffer = Some(self.device.new_texture(&descriptor));
++            self.damage.invalidate();
++        }
++        let damage = self.damage.update(scene, w, h);
++        let rects = match damage {
++            crate::damage::Damage::None => {
++                frame_stats::skipped();
++                return;
++            }
++            crate::damage::Damage::Full => None,
++            crate::damage::Damage::Rects(rects) => Some(rects),
++        };
++        frame_stats::damage(rects.as_deref(), w, h);
++        let Some(drawable) = layer.next_drawable() else {
++            log::error!("failed to retrieve next drawable, drawable size: {viewport_size:?}");
++            self.damage.invalidate();
++            return;
++        };
++        let back = self.back_buffer.clone().expect("back buffer just ensured");
++        let command_buffer = match self.render_frame(scene, &back, viewport_size, rects.as_deref()) {
++            Ok(command_buffer) => command_buffer,
++            Err(error) => {
++                log::error!("failed to render: {error:#}");
++                self.damage.invalidate();
++                return;
++            }
++        };
++        let blit = command_buffer.new_blit_command_encoder();
++        let size = metal::MTLSize { width: w as u64, height: h as u64, depth: 1 };
++        let origin = metal::MTLOrigin { x: 0, y: 0, z: 0 };
++        blit.copy_from_texture(&back, 0, 0, origin, size, drawable.texture(), 0, 0, origin);
++        blit.end_encoding();
++        if self.presents_with_transaction {
++            command_buffer.commit();
++            command_buffer.wait_until_scheduled();
++            drawable.present();
++        } else {
++            command_buffer.present_drawable(drawable);
++            command_buffer.commit();
++        }
++        if verify_enabled() && rects.is_some() {
++            command_buffer.wait_until_completed();
++            self.verify_retained(scene, &back, viewport_size);
++        }
++    }
++
++    /// GPUI_DAMAGE_VERIFY: renders the same scene in full and compares it with the
++    /// partially redrawn back buffer, reporting differing pixels to stderr.
++    fn verify_retained(
++        &mut self,
++        scene: &Scene,
++        back: &metal::TextureRef,
++        viewport_size: Size<DevicePixels>,
++    ) {
++        let (w, h) = (viewport_size.width.0 as u64, viewport_size.height.0 as u64);
++        let shared = |device: &metal::Device| {
++            let d = metal::TextureDescriptor::new();
++            d.set_width(w);
++            d.set_height(h);
++            d.set_pixel_format(MTLPixelFormat::BGRA8Unorm);
++            d.set_storage_mode(metal::MTLStorageMode::Shared);
++            d.set_usage(metal::MTLTextureUsage::RenderTarget | metal::MTLTextureUsage::ShaderRead);
++            device.new_texture(&d)
++        };
++        let got = shared(&self.device);
++        let want = shared(&self.device);
++        let size = metal::MTLSize { width: w, height: h, depth: 1 };
++        let origin = metal::MTLOrigin { x: 0, y: 0, z: 0 };
++        let partial = self.command_queue.new_command_buffer().to_owned();
++        let blit = partial.new_blit_command_encoder();
++        blit.copy_from_texture(back, 0, 0, origin, size, &got, 0, 0, origin);
++        blit.end_encoding();
++        let Ok(full) = self.render_frame(scene, &want, viewport_size, None) else {
++            return;
++        };
++        partial.commit();
++        full.commit();
++        partial.wait_until_completed();
++        full.wait_until_completed();
++        let read = |t: &metal::Texture| {
++            let mut bytes = vec![0u8; (w * h * 4) as usize];
++            t.get_bytes(bytes.as_mut_ptr() as *mut _, w * 4, metal::MTLRegion { origin, size }, 0);
++            bytes
++        };
++        let (a, b) = (read(&got), read(&want));
++        let mut bad = 0u64;
++        let mut first = None;
++        for (i, (p, q)) in a.chunks_exact(4).zip(b.chunks_exact(4)).enumerate() {
++            if p.iter().zip(q).any(|(x, y)| x.abs_diff(*y) > 2) {
++                bad += 1;
++                first.get_or_insert(((i as u64) % w, (i as u64) / w));
++            }
++        }
++        eprintln!("damage-verify bad_pixels={bad} first={first:?}");
++    }
++
+     fn render_frame(
+         &mut self,
+         scene: &Scene,
+         texture: &metal::TextureRef,
+         viewport_size: Size<DevicePixels>,
++        scissors: Option<&[crate::damage::Rect]>,
+     ) -> Result<metal::CommandBuffer> {
+         let mut writer = InstanceBufferWriter::new(
+             &self.device,
+@@ -537,20 +672,40 @@ impl MetalRenderer {
+                 scene.surfaces.len(),
+             )
+         })?;
+-        let command_buffer = self.draw_primitives_to_texture(
+-            scene,
+-            &instance_bindings,
+-            &mut writer,
+-            texture,
+-            viewport_size,
+-        )?;
++        let command_buffer = self.command_queue.new_command_buffer().to_owned();
++        match scissors {
++            None => self.draw_primitives_to_texture(
++                &command_buffer,
++                scene,
++                &instance_bindings,
++                &mut writer,
++                texture,
++                viewport_size,
++                None,
++            )?,
++            Some(rects) => {
++                for rect in rects {
++                    self.draw_primitives_to_texture(
++                        &command_buffer,
++                        scene,
++                        &instance_bindings,
++                        &mut writer,
++                        texture,
++                        viewport_size,
++                        Some(*rect),
++                    )?;
++                }
++            }
++        }
+ 
+         let instance_buffer_pool = self.instance_buffer_pool.clone();
+         let instance_buffer = Cell::new(Some(writer.finish()));
+-        let block = RcBlock::new(move |_: ptr::NonNull<AnyObject>| {
++        frame_stats::scene(scene);
++        let block = RcBlock::new(move |buffer: ptr::NonNull<AnyObject>| {
+             if let Some(instance_buffer) = instance_buffer.take() {
+                 instance_buffer_pool.lock().release(instance_buffer);
+             }
++            frame_stats::completed(buffer);
+         });
+         // SAFETY: Both pointee types are opaque views of the same Objective-C block pointer ABI.
+         unsafe {
+@@ -581,7 +736,7 @@ impl MetalRenderer {
+             .next_drawable()
+             .ok_or_else(|| anyhow::anyhow!("Failed to get drawable for render_to_image"))?;
+ 
+-        let command_buffer = self.render_frame(scene, drawable.texture(), viewport_size)?;
++        let command_buffer = self.render_frame(scene, drawable.texture(), viewport_size, None)?;
+ 
+         // Commit and wait for completion without presenting
+         command_buffer.commit();
+@@ -628,7 +783,7 @@ impl MetalRenderer {
+             });
+             let target_texture = self.device.new_texture(&texture_descriptor);
+ 
+-            let command_buffer = self.render_frame(scene, &target_texture, size)?;
++            let command_buffer = self.render_frame(scene, &target_texture, size, None)?;
+ 
+             // Managed textures require an explicit blit synchronize before the CPU
+             // can read back the rendered data. Without this, get_bytes returns
+@@ -682,7 +837,7 @@ impl MetalRenderer {
+                 .clone()
+                 .expect("just ensured the render target exists");
+ 
+-            let command_buffer = self.render_frame(scene, &target_texture, size)?;
++            let command_buffer = self.render_frame(scene, &target_texture, size, None)?;
+ 
+             // Commit without waiting, mirroring presentation to a real window where
+             // the CPU doesn't block on the GPU.
+@@ -691,24 +846,31 @@ impl MetalRenderer {
+         })
+     }
+ 
++    // A scissor draws the whole scene clipped to one damaged rect over the retained
++    // contents, after clearing just that rect.
++    #[allow(clippy::too_many_arguments)]
+     fn draw_primitives_to_texture(
+         &mut self,
++        command_buffer: &metal::CommandBufferRef,
+         scene: &Scene,
+         instance_bindings: &InstanceBindings,
+         writer: &mut InstanceBufferWriter,
+         texture: &metal::TextureRef,
+         viewport_size: Size<DevicePixels>,
+-    ) -> Result<metal::CommandBuffer> {
+-        let command_queue = self.command_queue.clone();
+-        let command_buffer = command_queue.new_command_buffer();
++        scissor: Option<crate::damage::Rect>,
++    ) -> Result<()> {
+         let alpha = if self.opaque { 1. } else { 0. };
+ 
+         let mut command_encoder = new_command_encoder_for_texture(
+             command_buffer,
+             texture,
+             viewport_size,
+-            Some(metal::MTLClearColor::new(0., 0., 0., alpha)),
++            scissor.is_none().then(|| metal::MTLClearColor::new(0., 0., 0., alpha)),
++            scissor,
+         );
++        if let Some(rect) = scissor {
++            self.clear_rect(rect, alpha as f32, writer, viewport_size, command_encoder)?;
++        }
+ 
+         for batch in scene.batches() {
+             match batch {
+@@ -734,6 +896,7 @@ impl MetalRenderer {
+                         texture,
+                         viewport_size,
+                         None,
++                        scissor,
+                     );
+ 
+                     if did_draw {
+@@ -779,8 +942,40 @@ impl MetalRenderer {
+         }
+ 
+         command_encoder.end_encoding();
++        Ok(())
++    }
+ 
+-        Ok(command_buffer.to_owned())
++    /// Paints the clear colour over one rect, the part of the retained frame being redrawn.
++    fn clear_rect(
++        &self,
++        rect: crate::damage::Rect,
++        alpha: f32,
++        writer: &mut InstanceBufferWriter,
++        viewport_size: Size<DevicePixels>,
++        command_encoder: &metal::RenderCommandEncoderRef,
++    ) -> Result<()> {
++        let bounds = gpui::Bounds::new(
++            gpui::point(ScaledPixels(rect.x0 as f32), ScaledPixels(rect.y0 as f32)),
++            gpui::size(ScaledPixels((rect.x1 - rect.x0) as f32), ScaledPixels((rect.y1 - rect.y0) as f32)),
++        );
++        let quad = gpui::Quad {
++            bounds,
++            content_mask: gpui::ContentMask { bounds },
++            background: gpui::hsla(0., 0., 0., alpha).into(),
++            ..Default::default()
++        };
++        let binding = writer.write(&[quad])?;
++        command_encoder.set_render_pipeline_state(&self.quads_pipeline_state);
++        command_encoder.set_vertex_buffer(QuadInputIndex::Vertices as u64, Some(&self.unit_vertices), 0);
++        command_encoder.set_vertex_buffer(QuadInputIndex::Quads as u64, Some(&binding.buffer), binding.offset as u64);
++        command_encoder.set_fragment_buffer(QuadInputIndex::Quads as u64, Some(&binding.buffer), binding.offset as u64);
++        command_encoder.set_vertex_bytes(
++            QuadInputIndex::ViewportSize as u64,
++            mem::size_of_val(&viewport_size) as u64,
++            &viewport_size as *const Size<DevicePixels> as *const _,
++        );
++        command_encoder.draw_primitives_instanced(metal::MTLPrimitiveType::Triangle, 0, 6, 1);
++        Ok(())
+     }
+ 
+     fn draw_paths_to_intermediate(
+@@ -1256,6 +1451,7 @@ fn new_command_encoder_for_texture<'a>(
+     texture: &'a metal::TextureRef,
+     viewport_size: Size<DevicePixels>,
+     clear_color: Option<metal::MTLClearColor>,
++    scissor: Option<crate::damage::Rect>,
+ ) -> &'a metal::RenderCommandEncoderRef {
+     let render_pass_descriptor = metal::RenderPassDescriptor::new();
+     let color_attachment = render_pass_descriptor
+@@ -1280,9 +1476,25 @@ fn new_command_encoder_for_texture<'a>(
+         znear: 0.0,
+         zfar: 1.0,
+     });
++    if let Some(r) = scissor {
++        command_encoder.set_scissor_rect(metal::MTLScissorRect {
++            x: r.x0 as u64,
++            y: r.y0 as u64,
++            width: (r.x1 - r.x0) as u64,
++            height: (r.y1 - r.y0) as u64,
++        });
++    }
+     command_encoder
+ }
+ 
++fn verify_enabled() -> bool {
++    std::env::var_os("GPUI_DAMAGE_VERIFY").is_some()
++}
++
++fn retained_enabled() -> bool {
++    std::env::var_os("GPUI_RETAINED_BACKBUFFER").is_some()
++}
++
+ #[cfg(any(test, feature = "bench-support", feature = "test-support"))]
+ fn read_texture_to_image(texture: &metal::TextureRef) -> Result<RgbaImage> {
+     let width = texture.width() as u32;
+@@ -1671,3 +1883,91 @@ impl gpui::PlatformHeadlessRenderer for MetalHeadlessRenderer {
+         self.renderer.sprite_atlas().clone()
+     }
+ }
++
++/// keepline-eval patch: KEEPLINE_FRAME_STATS=1 prints frames, GPU time per frame and
++/// scene composition every two seconds to stderr.
++mod frame_stats {
++    use gpui::Scene;
++    use objc2::{msg_send, runtime::AnyObject};
++    use std::sync::{Mutex, OnceLock};
++    #[derive(Default)]
++    struct Stats {
++        frames: u64,
++        gpu: f64,
++        max_gpu: f64,
++        quads: usize,
++        mono: usize,
++        poly: usize,
++        paths: usize,
++        shadows: usize,
++        batches: usize,
++        skipped: u64,
++        damage: f64,
++        damaged: u64,
++        start: Option<std::time::Instant>,
++    }
++    fn enabled() -> bool {
++        static ON: OnceLock<bool> = OnceLock::new();
++        *ON.get_or_init(|| std::env::var_os("KEEPLINE_FRAME_STATS").is_some())
++    }
++    static STATS: Mutex<Option<Stats>> = Mutex::new(None);
++    pub fn scene(scene: &Scene) {
++        if !enabled() {
++            return;
++        }
++        let mut lock = STATS.lock().unwrap();
++        let s = lock.get_or_insert_with(Default::default);
++        s.quads = scene.quads.len();
++        s.mono = scene.monochrome_sprites.len();
++        s.poly = scene.polychrome_sprites.len();
++        s.paths = scene.paths.len();
++        s.shadows = scene.shadows.len();
++        s.batches = scene.batches().count();
++    }
++    pub fn skipped() {
++        if !enabled() {
++            return;
++        }
++        STATS.lock().unwrap().get_or_insert_with(Default::default).skipped += 1;
++    }
++    pub fn damage(rects: Option<&[crate::damage::Rect]>, w: i32, h: i32) {
++        if !enabled() {
++            return;
++        }
++        let area: i64 = rects.map_or(w as i64 * h as i64, |r| {
++            r.iter().map(|r| (r.x1 - r.x0) as i64 * (r.y1 - r.y0) as i64).sum()
++        });
++        let mut lock = STATS.lock().unwrap();
++        let s = lock.get_or_insert_with(Default::default);
++        s.damage += area as f64 / (w as f64 * h as f64);
++        s.damaged += 1;
++    }
++    pub fn completed(buffer: std::ptr::NonNull<AnyObject>) {
++        if !enabled() {
++            return;
++        }
++        let buffer = unsafe { buffer.as_ref() };
++        let (a, b): (f64, f64) = unsafe { (msg_send![buffer, GPUStartTime], msg_send![buffer, GPUEndTime]) };
++        let mut lock = STATS.lock().unwrap();
++        let s = lock.get_or_insert_with(Default::default);
++        let now = std::time::Instant::now();
++        let start = *s.start.get_or_insert(now);
++        s.frames += 1;
++        s.gpu += b - a;
++        s.max_gpu = s.max_gpu.max(b - a);
++        let dt = now.duration_since(start).as_secs_f64();
++        if dt >= 2. {
++            eprintln!(
++                "frame-stats fps={:.1} gpu_ms_per_frame={:.3} max={:.3} gpu_ms_per_s={:.2} quads={} mono={} poly={} paths={} shadows={} batches={} skipped={} damage_share={:.3}",
++                s.frames as f64 / dt,
++                s.gpu * 1e3 / s.frames as f64,
++                s.max_gpu * 1e3,
++                s.gpu * 1e3 / dt,
++                s.quads, s.mono, s.poly, s.paths, s.shadows, s.batches,
++                s.skipped,
++                if s.damaged > 0 { s.damage / s.damaged as f64 } else { 1. }
++            );
++            *s = Stats { start: Some(now), ..Default::default() };
++        }
++    }
++}
