@@ -1,7 +1,8 @@
 #!/bin/sh
 # Show one raw VT fixture in a fresh, isolated Ghostty instance and capture its window.
 # Usage: ghostty_shot.sh <fixture.vt> <out.png>
-# Env: GHOSTTY (binary), REF_FONT (default Menlo), REF_SIZE (12.5), REF_COLS/REF_ROWS (100x30).
+# Env: GHOSTTY (binary), REF_FONT (default: Ghostty's built-in JetBrains Mono), REF_SIZE (13),
+#      REF_COLS/REF_ROWS (100x30).
 # Needs Screen Recording permission for the calling app (screencapture -l).
 set -eu
 here=$(cd "$(dirname "$0")" && pwd)
@@ -23,8 +24,8 @@ EOF
 chmod +x "$work/show.sh"
 # Colors mirror Keepline's pane defaults (theme.rs PANE / BODY) so diffs show rendering, not theme.
 cat >"$work/ghostty.conf" <<EOF
-font-family = ${REF_FONT:-Menlo}
-font-size = ${REF_SIZE:-12.5}
+${REF_FONT:+font-family = $REF_FONT}
+font-size = ${REF_SIZE:-13}
 font-thicken = false
 font-feature = -calt
 font-feature = -liga

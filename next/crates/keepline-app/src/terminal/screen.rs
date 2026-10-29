@@ -319,7 +319,7 @@ use gpui::{
     TextRun, UnderlineStyle, Window, fill, point, px, size,
 };
 static FONT_SIZE: std::sync::atomic::AtomicU32 =
-    std::sync::atomic::AtomicU32::new(crate::ui::theme::Theme::MONO_SIZE.to_bits());
+    std::sync::atomic::AtomicU32::new(crate::ui::theme::Theme::TERMINAL_FONT_SIZE.to_bits());
 /// Terminal text size in points; Cmd+= / Cmd+- / Cmd+0 change it for every pane.
 pub fn font_size() -> f32 {
     f32::from_bits(FONT_SIZE.load(std::sync::atomic::Ordering::Relaxed))
@@ -331,7 +331,7 @@ pub fn zoom(step: Option<i8>) -> f32 {
     size
 }
 fn zoomed(size: f32, step: Option<i8>) -> f32 {
-    step.map_or(crate::ui::theme::Theme::MONO_SIZE, |s| {
+    step.map_or(crate::ui::theme::Theme::TERMINAL_FONT_SIZE, |s| {
         (size + f32::from(s)).clamp(8., 36.)
     })
 }
@@ -352,8 +352,16 @@ impl CellMetrics {
     pub fn measure(font: &Font, window: &Window) -> Option<Self> {
         let ts = window.text_system();
         let id = ts.resolve_font(font);
+        // Width stays the shaped advance so glyph runs land on the grid (GPUI positions
+        // them at subpixel x). Height follows Ghostty font/Metrics.zig: the face's own
+        // ascent + descent, rounded to backing pixels so every row starts on a pixel edge.
         let width = ts.advance(id, px(font_size()), 'm').ok()?.width;
-        let height = px(font_size() * crate::ui::theme::Theme::TERMINAL_LINE_HEIGHT);
+        let scale = window.scale_factor();
+        // GPUI's TextSystem reports descent as a negative distance; ShapedLine::paint
+        // uses it positive, which TextSystem::baseline_offset gets wrong by one descent.
+        let ascent = ts.ascent(id, px(font_size()));
+        let descent = -ts.descent(id, px(font_size()));
+        let height = px((f32::from(ascent + descent) * scale).round() / scale);
         let ic_width = ts
             .advance(id, px(font_size()), '水')
             .ok()
@@ -373,7 +381,7 @@ impl CellMetrics {
         (width > px(0.)).then_some(Self {
             width,
             height,
-            baseline: ts.baseline_offset(id, px(font_size()), height),
+            baseline: (height - ascent - descent) / 2. + ascent,
             x_height: ts.x_height(id, px(font_size())),
             stroke: px((font_size() / 14.).max(1.)),
             ic_width,
@@ -480,14 +488,16 @@ impl MarkedText {
     }
     pub fn paint(&self, background: u32, window: &mut Window, cx: &mut App) {
         window.paint_quad(fill(self.bounds, hsla(background)));
-        let _ = self.line.paint(
-            self.bounds.origin,
-            self.bounds.size.height,
-            TextAlign::Left,
-            None,
-            window,
-            cx,
-        );
+        window.with_glyph_dilation(Some(0), |window| {
+            let _ = self.line.paint(
+                self.bounds.origin,
+                self.bounds.size.height,
+                TextAlign::Left,
+                None,
+                window,
+                cx,
+            );
+        });
     }
 }
 fn utf16_byte_offset(text: &str, offset: usize) -> usize {
@@ -550,9 +560,19 @@ fn shape_cell(
         line = ts.shape_line(
             SharedString::from(text.to_owned()),
             px(font_size()) * scale,
-            &[tr],
+            std::slice::from_ref(&tr),
             None,
         );
+        // Emoji advances snap to the bitmap strike, so one proportional pass can still
+        // leave the glyph a fraction of a pixel wider than its cells.
+        if line.width() > target {
+            line = ts.shape_line(
+                SharedString::from(text.to_owned()),
+                px(font_size()) * scale * (target / line.width()),
+                &[tr],
+                None,
+            );
+        }
         offset = ((target - line.width()) / 2.).max(px(0.));
     }
     (line, offset)
@@ -674,8 +694,12 @@ pub fn paint_cached(
     // One layer for the grid: its thousands of glyphs and cell backgrounds share a
     // draw order instead of each being inserted into GPUI's per-primitive bounds tree.
     // Inside the layer quads draw under sprites, as Ghostty's background/text passes do.
+    // Ghostty leaves glyph strokes as drawn (font-thicken = false); GPUI's default
+    // thickens light text by luminance, which blurs white-on-dark terminal output.
     window.paint_layer(bounds, |window| {
-        paint_grid(sc, f, bounds, metrics, cache, window, cx)
+        window.with_glyph_dilation(Some(0), |window| {
+            paint_grid(sc, f, bounds, metrics, cache, window, cx)
+        })
     });
     // Cursor and later overlays stay outside the layer so they still draw over glyphs.
     let cw = metrics.width;
@@ -891,7 +915,7 @@ mod tests {
     }
     #[test]
     fn zoom_steps_by_one_point_and_resets() {
-        let base = crate::ui::theme::Theme::MONO_SIZE;
+        let base = crate::ui::theme::Theme::TERMINAL_FONT_SIZE;
         assert_eq!(zoomed(base, Some(1)), base + 1.);
         assert_eq!(zoomed(base + 1., Some(-1)), base);
         assert_eq!(zoomed(30., None), base);
@@ -1085,16 +1109,21 @@ mod tests {
     }
 
     /// Ghostty sizes the cell from the face (font/Metrics.zig): height = round(ascent - descent
-    /// + line_gap), width = round(advance), in backing pixels. Keepline multiplies the font size
-    ///   by TERMINAL_LINE_HEIGHT instead, so the gap depends on the font. 1.6 stretched the Codex
-    ///   logo ~37% while every older check (internal consistency only) still passed.
+    /// + line_gap), width = round(advance), in backing pixels. Keepline uses the same face
+    ///   height; a fixed multiplier broke when the face changed (1.2 was -6% for JetBrains Mono,
+    ///   1.6 stretched the Codex logo ~37%) while internal-consistency checks still passed.
     #[test]
     fn cell_aspect_ratio_stays_within_five_percent_of_ghostty_for_the_resolved_font() {
-        // Mirror Theme::mono: JetBrains Mono when installed, else Menlo. SF Mono is a hidden
+        // Mirror Theme::mono: the bundled JetBrains Mono, else Menlo. SF Mono is a hidden
         // system face that GPUI does not list, so stock macOS resolves Menlo (measured by
         // examples/terminal_reference).
         let home = std::env::var("HOME").unwrap_or_default();
         let candidates = [
+            concat!(
+                env!("CARGO_MANIFEST_DIR"),
+                "/assets/JetBrainsMono-Regular.ttf"
+            )
+            .into(),
             format!("{home}/Library/Fonts/JetBrainsMono-Regular.ttf"),
             "/Library/Fonts/JetBrainsMono-Regular.ttf".into(),
             "/System/Library/Fonts/Menlo.ttc".into(),
@@ -1119,12 +1148,17 @@ mod tests {
         let keepline = |line_height: f32| {
             (font_size() * line_height) / (face.advance_m / face.units_per_em * font_size())
         };
-        let delta = keepline(crate::ui::theme::Theme::TERMINAL_LINE_HEIGHT) / ghostty - 1.;
+        let face_height = face.line_height / face.units_per_em;
+        let delta = keepline(face_height) / ghostty - 1.;
         assert!(
             delta.abs() <= 0.05,
             "{path}: Keepline cell h/w {:.3} vs Ghostty {ghostty:.3} ({:+.1}%)",
-            keepline(crate::ui::theme::Theme::TERMINAL_LINE_HEIGHT),
+            keepline(face_height),
             delta * 100.
+        );
+        assert!(
+            keepline(1.2) / ghostty - 1. < -0.05 || path.ends_with("Menlo.ttc"),
+            "a fixed 1.2 multiplier must stay detectable for JetBrains Mono"
         );
         assert!(
             keepline(1.6) / ghostty - 1. > 0.05,
@@ -1290,7 +1324,12 @@ pub fn verify_native_geometry(window: &Window, cx: &App) {
             assert_eq!(caret.size.width, px(0.));
             let suffix = marked.range_bounds(index..text.encode_utf16().count());
             assert_eq!(suffix.left(), caret.left());
-            assert_eq!(suffix.right(), marked.bounds.left() + marked.line.width());
+            // origin + width re-adds the caret offset; widths like 7.8 are not binary-exact.
+            let end = marked.bounds.left() + marked.line.width();
+            assert!(
+                f32::from(suffix.right() - end).abs() < 1e-3,
+                "{text}: {suffix:?}"
+            );
         }
     }
     for text in ["实", "现", "反", "馈", "日", "語", "한", "글", "😀"] {
@@ -1306,7 +1345,8 @@ pub fn verify_native_geometry(window: &Window, cx: &App) {
         let target = metrics.width * run.cols as f32;
         assert!(
             (f32::from(line.width() + offset * 2. - target)).abs() < 0.1,
-            "wide cell {text}"
+            "wide cell {text}: advance={:?} inset={offset:?} two-columns={target:?}",
+            line.width()
         );
         assert!(
             line.width() <= target + px(0.1),

@@ -13,6 +13,15 @@ pub fn hsla(c: u32) -> Hsla {
     .into()
 }
 pub struct Theme;
+
+/// JetBrains Mono 2.304 (OFL, assets/JETBRAINS-MONO-LICENSE): the face Ghostty embeds
+/// as its default, registered in-process so `Theme::mono` never depends on an install.
+pub const BUNDLED_MONO: [&[u8]; 4] = [
+    include_bytes!("../../assets/JetBrainsMono-Regular.ttf"),
+    include_bytes!("../../assets/JetBrainsMono-Bold.ttf"),
+    include_bytes!("../../assets/JetBrainsMono-Italic.ttf"),
+    include_bytes!("../../assets/JetBrainsMono-BoldItalic.ttf"),
+];
 impl Group {
     pub const ALL: [Self; 6] = [
         Self::Waiting,
@@ -124,10 +133,11 @@ impl Theme {
     pub const META: f32 = 11.5;
     pub const CHIP_SIZE: f32 = 11.;
     pub const MONO_SIZE: f32 = 12.5;
+    /// Ghostty's default font-size, so terminal text matches it cell for cell.
+    pub const TERMINAL_FONT_SIZE: f32 = 13.;
     pub const CARD_TITLE: f32 = 13.5;
     pub const TITLE: f32 = 20.;
     pub const LINE_HEIGHT: f32 = 1.4;
-    pub const TERMINAL_LINE_HEIGHT: f32 = 1.2;
     pub const S2: f32 = 2.;
     pub const S4: f32 = 4.;
     pub const S6: f32 = 6.;
