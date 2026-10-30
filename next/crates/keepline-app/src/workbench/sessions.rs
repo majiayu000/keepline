@@ -94,7 +94,7 @@ impl Workbench {
         {
             return format!(
                 "最初原话未覆盖 · {}",
-                &s.cli_session_id.chars().take(8).collect::<String>()
+                s.cli_session_id.chars().take(8).collect::<String>()
             );
         }
         s.task
