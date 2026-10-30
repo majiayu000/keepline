@@ -120,16 +120,6 @@ impl Render for Workbench {
                         }));
                     self.record_toggle(toggle, cx)
                 })
-                .when(!self.needs_you().is_empty(), |d| {
-                    d.child(
-                        button(
-                            "next-waiting",
-                            format!("下一个等你的 · {} →", self.needs_you().len()),
-                        )
-                        .text_color(Group::Waiting.colors().1)
-                        .on_click(cx.listener(|this, _, window, cx| this.next_waiting(window, cx))),
-                    )
-                })
                 .child(self.search_button(cx))
                 .child(self.title_drag_area(cx))
                 .when(self.store.slow(), |d| d.child(label("正在更新…")))
@@ -163,6 +153,10 @@ impl Render for Workbench {
                             }
                         })),
                     )
+                })
+                .child(self.status_pulse(cx))
+                .when(!self.needs_you().is_empty(), |d| {
+                    d.child(self.next_waiting_chip(cx))
                 })
                 .child(
                     button("add-task", "＋ 新待办").on_click(
@@ -210,6 +204,16 @@ impl Render for Workbench {
                 })
                 .collect();
             let group = needs.first().map(|s| session_group(&self.workspace, s));
+            // The tab's dot: the most urgent status among its panes; a tab of plain
+            // shells keeps a faint neutral dot so the names stay aligned.
+            let status = ids
+                .iter()
+                .filter_map(|id| self.pane_status(id))
+                .max_by_key(|(g, attention)| {
+                    (*attention, std::cmp::Reverse(super::layout::urgency(*g)))
+                })
+                .map(|(g, _)| g);
+            let panes = ids.len();
             if let Some((_, field, _)) =
                 self.layout.renaming_tab.as_ref().filter(|(t, ..)| t == &id)
             {
@@ -262,6 +266,7 @@ impl Render for Workbench {
                 button(gpui::SharedString::from(format!("tab-{id}")), "")
                     .group(group_name)
                     .aria_label(title.clone())
+                    .relative()
                     .flex_shrink_0()
                     .min_w(px(T::TAB_MIN_WIDTH))
                     .max_w(px(T::TAB_MAX_WIDTH))
@@ -271,11 +276,48 @@ impl Render for Workbench {
                     .rounded_none()
                     .text_size(px(T::MONO_SIZE))
                     .text_color(T::color(if active { T::primary() } else { T::secondary() }))
-                    .when(active, |d| d.bg(T::color(T::raised())))
                     .when(tab.default_task.is_some(), |d| d.child(task_icon()))
+                    .child(match status {
+                        Some(g) => dot(g),
+                        None => div()
+                            .size(px(T::DOT))
+                            .flex_shrink_0()
+                            .rounded_full()
+                            .bg(T::color(T::muted()))
+                            .opacity(T::FAINT_DOT_OPACITY),
+                    })
                     .child(div().flex_grow_1().min_w_0().truncate().child(title))
-                    .when_some(group, |d, g| d.child(dot(g)).child(badge(g, needs.len())))
+                    .when(panes > 1, |d| {
+                        d.child(
+                            div()
+                                .flex_shrink_0()
+                                .px(px(T::S4))
+                                .rounded(px(T::CHIP_RADIUS))
+                                .border(px(T::BORDER_WIDTH))
+                                .border_color(T::color(T::control()))
+                                .text_size(px(T::SPLIT_CHIP_SIZE))
+                                .text_color(T::color(T::muted()))
+                                .font_features(T::tabular())
+                                .child(format!("{panes} 格")),
+                        )
+                    })
+                    .when_some(group, |d, g| {
+                        d.child(badge(g, needs.len()).font_features(T::tabular()))
+                    })
                     .child(close)
+                    // The current tab is underlined rather than filled.
+                    .when(active, |d| {
+                        d.child(
+                            div()
+                                .absolute()
+                                .bottom_0()
+                                .left(px(T::TAB_LINE_INSET))
+                                .right(px(T::TAB_LINE_INSET))
+                                .h(px(T::TAB_LINE))
+                                .rounded(px(T::TAB_LINE / 2.))
+                                .bg(T::color(T::primary())),
+                        )
+                    })
                     // The hover card would cover the right-click menu; dropping the
                     // builder while a menu is open also dismisses a visible card.
                     .when(self.layout.tab_menu.is_none(), |d| {
@@ -439,10 +481,20 @@ impl Render for Workbench {
                                 .font_weight(gpui::FontWeight::SEMIBOLD)
                                 .child(task.title.clone()),
                         )
-                        .child(label(format!(
-                            "验收 {evidence} / {} 有证据",
-                            task.acceptance.len()
-                        )))
+                        .child(
+                            div()
+                                .flex()
+                                .items_center()
+                                .gap(px(T::S6))
+                                .font_features(T::tabular())
+                                .when(!task.acceptance.is_empty(), |d| {
+                                    d.child(evidence_cells(evidence, task.acceptance.len()))
+                                })
+                                .child(label(format!(
+                                    "验收 {evidence} / {} 有证据",
+                                    task.acceptance.len()
+                                ))),
+                        )
                         .child(div().flex_1())
                         .child(
                             button("prefill", "待办详情")
@@ -600,6 +652,10 @@ impl Workbench {
                 self.show_settings(window, cx);
                 return true;
             }
+            Action::NextWaiting => {
+                self.next_waiting(window, cx);
+                return true;
+            }
             Action::PrevPane | Action::NextPane => {
                 self.focus_neighbour(action == Action::NextPane, window, cx);
                 return true;
@@ -696,6 +752,90 @@ impl Workbench {
         }
         cx.notify();
     }
+    /// The top bar's count per status across every open session, grouped and hidden as
+    /// the overview does; one opens the overview with that group shown.
+    fn status_pulse(&self, cx: &Context<Self>) -> gpui::Div {
+        let mut counts = [0usize; 4];
+        const SHOWN: [(Group, &str); 4] = [
+            (Group::Waiting, "等你"),
+            (Group::Error, "出错"),
+            (Group::Running, "在跑"),
+            (Group::Review, "做完"),
+        ];
+        for s in &self.workspace.agent_sessions {
+            if !s.outcome.needs_review(now()) || self.session_hidden(s).is_some() {
+                continue;
+            }
+            let g = session_group(&self.workspace, s);
+            if let Some(i) = SHOWN.iter().position(|(shown, _)| *shown == g) {
+                counts[i] += 1;
+            }
+        }
+        let mut row = div().flex().items_center().gap(px(T::S2));
+        for ((group, name), count) in SHOWN.into_iter().zip(counts) {
+            row = row.child(
+                button(gpui::SharedString::from(format!("pulse-{name}")), "")
+                    .aria_label(format!("{} {count} 个，在鸟瞰里看", group.label()))
+                    .h(px(T::PULSE_BUTTON))
+                    .px(px(T::S8))
+                    .gap(px(T::PULSE_GAP))
+                    .text_color(T::color(T::secondary()))
+                    .when(count == 0, |d| d.opacity(T::ZERO_OPACITY))
+                    .child(dot(group))
+                    .child(name)
+                    .child(
+                        div()
+                            .font_weight(gpui::FontWeight::SEMIBOLD)
+                            .text_color(T::color(T::primary()))
+                            .font_features(T::tabular())
+                            .child(count.to_string()),
+                    )
+                    .on_click(cx.listener(move |this, _, _, cx| {
+                        // 在跑 is folded in the overview; asking for it unfolds it.
+                        if group == Group::Running {
+                            this.overview.show_running = true;
+                        }
+                        this.show_overview(cx);
+                    })),
+            );
+        }
+        row
+    }
+    /// 下一个等你的: washed in the waiting color, with its shortcut.
+    fn next_waiting_chip(&self, cx: &Context<Self>) -> gpui::Stateful<gpui::Div> {
+        let (dot_color, ink, wash) = Group::Waiting.colors();
+        let count = self.needs_you().len();
+        let key = crate::keymap::current(cx)
+            .chords(crate::keymap::Action::NextWaiting)
+            .first()
+            .map(|c| c.display());
+        button("next-waiting", "")
+            .aria_label(format!("下一个等你的，共 {count} 个"))
+            .h(px(T::NEXT_CHIP))
+            .pl(px(T::S8))
+            .pr(px(T::S10))
+            .gap(px(T::S6))
+            .bg(wash)
+            .text_color(ink)
+            .font_weight(gpui::FontWeight::SEMIBOLD)
+            .child(div().size(px(T::DOT)).rounded_full().bg(dot_color))
+            .child("下一个等你的")
+            .child(div().font_features(T::tabular()).child(count.to_string()))
+            .when_some(key, |d, key| {
+                d.child(
+                    div()
+                        .px(px(T::S4))
+                        .rounded(px(T::CHIP_RADIUS))
+                        .border(px(T::BORDER_WIDTH))
+                        .border_color(ink)
+                        .opacity(T::KBD_OPACITY)
+                        .text_size(px(T::KBD_SIZE))
+                        .font_weight(gpui::FontWeight::NORMAL)
+                        .child(key),
+                )
+            })
+            .on_click(cx.listener(|this, _, window, cx| this.next_waiting(window, cx)))
+    }
     /// Empty title-bar space moves the window and zooms it on a double press, as the
     /// system title bar did before the top bar replaced it.
     fn title_drag_area(&self, cx: &Context<Self>) -> gpui::Stateful<gpui::Div> {
@@ -724,6 +864,25 @@ impl Workbench {
     }
 }
 
+/// `total` small cells for the acceptance criteria, `filled` of them with evidence;
+/// neutral tones, since color is kept for session status.
+fn evidence_cells(filled: usize, total: usize) -> gpui::Div {
+    div()
+        .flex()
+        .items_center()
+        .gap(px(T::S2))
+        .children((0..total).map(|i| {
+            div()
+                .w(px(T::EVIDENCE_CELL_WIDTH))
+                .h(px(T::EVIDENCE_CELL_HEIGHT))
+                .rounded(px(T::EVIDENCE_CELL_RADIUS))
+                .bg(T::color(if i < filled {
+                    T::secondary()
+                } else {
+                    T::control()
+                }))
+        }))
+}
 /// A plain hover note.
 pub(super) struct TextTip(pub(super) gpui::SharedString);
 impl Render for TextTip {
