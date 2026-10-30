@@ -758,8 +758,10 @@ pub fn cached(db: &Connection) -> io::Result<Vec<Transcript>> {
     }
     Ok(out)
 }
+/// A row of a CLI no longer registered (its declaration was removed) reads back as an
+/// Agent with no adapter, so the index skips it rather than failing every query.
 fn agent(s: &str) -> io::Result<Agent> {
-    Agent::from_executable(s).ok_or_else(|| io::Error::other("unknown indexed runtime"))
+    Ok(Agent::from_executable(s).unwrap_or_else(|| Agent::from_key(s)))
 }
 
 /// Event-triggered subtree repair. Each step visits at most 128 entries or 20 ms;
@@ -844,6 +846,22 @@ mod tests {
     }
     fn line(id: &str) -> String {
         format!("{{\"type\":\"session_meta\",\"payload\":{{\"id\":\"{id}\",\"cwd\":\"/tmp\"}}}}\n")
+    }
+    #[test]
+    fn a_removed_declarations_rows_read_back_without_failing_the_index() {
+        let f = Fixture::new();
+        let index = f.index();
+        index
+            .db
+            .execute(
+                "INSERT INTO log_files VALUES('/gone.jsonl','gone-cli',0,0,0,x'',0,'g1','/tmp',1)",
+                [],
+            )
+            .unwrap();
+        let cached = index.cached().unwrap();
+        assert_eq!(cached.len(), 1);
+        assert_eq!(cached[0].runtime.key(), "gone-cli");
+        assert!(cached[0].runtime.spec().is_none());
     }
     #[test]
     fn original_request_beyond_16k_is_read_once_within_bounded_prefix() {

@@ -327,7 +327,7 @@ impl Workbench {
             .last_agent
             .unwrap_or(self.workspace.settings.default_agent);
         let order =
-            std::iter::once(first).chain(Agent::ALL.into_iter().filter(move |a| *a != first));
+            std::iter::once(first).chain(Agent::all().into_iter().filter(move |a| *a != first));
         let mut row = div()
             .flex()
             .flex_wrap()

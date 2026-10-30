@@ -1,7 +1,9 @@
 //! Claude Code: `~/.claude/projects` transcripts, every record naming its session.
-use super::{home_dir, temporary, Adapter};
+use super::{home_dir, temporary, Adapter, Hint, OfficialAnswer, Pending};
 use crate::content::{claims_done, text, user_text, Parser};
 use keepline_core::content::{short, Source, Turn};
+use keepline_core::model::AgentSession;
+use keepline_core::protocol::{TerminalNote, CLAUDE_TRANSCRIPT_OFF};
 use serde_json::Value;
 use std::path::{Path, PathBuf};
 
@@ -146,6 +148,50 @@ impl Adapter for Claude {
             parser.phase(Turn::Completed, "", at, source);
         }
     }
+    /// Claude Code writes no transcript when it believes it is a nested child session, so
+    /// nothing can ever bind it.
+    fn pending(
+        &self,
+        process: &crate::recognition::Process,
+        processes: &[crate::recognition::Process],
+    ) -> Pending {
+        if !crate::recognition::claude_transcript_off(process.pid) {
+            return super::unclaimed(process, processes);
+        }
+        Pending::Unrecorded(Hint {
+            text: CLAUDE_TRANSCRIPT_OFF.into(),
+            note: TerminalNote {
+                note: "claude · 没有保存记录".into(),
+                why: "这个 Claude 继承了 CLAUDE_CODE_CHILD_SESSION，自认为是别的会话的子会话，不写对话记录，Keepline 读不到也统计不了。关掉这个终端重新打开，再运行 claude。".into(),
+            },
+        })
+    }
+    fn official(&self, due: &[&(AgentSession, Option<u32>)]) -> Option<OfficialAnswer> {
+        Some(("claude agents --json", claude_status(due)))
+    }
+}
+
+fn claude_status(
+    due: &[&(AgentSession, Option<u32>)],
+) -> std::io::Result<Vec<(usize, crate::content::Official)>> {
+    let program = match std::env::var("KEEPLINE_CLAUDE_AGENTS") {
+        Ok(program) => program,
+        Err(_) => due
+            .iter()
+            .find_map(|(_, pid)| pid.and_then(|p| crate::official::executable(p).ok()))
+            .ok_or_else(|| std::io::Error::other("no live Claude process to ask"))?,
+    };
+    let entries = crate::official::query(&program)?;
+    Ok(due
+        .iter()
+        .enumerate()
+        .filter_map(|(i, (session, pid))| {
+            let entry = entries.iter().find(|e| {
+                e.session_id == session.cli_session_id || (pid.is_some() && e.pid == *pid)
+            })?;
+            Some((i, entry.status.clone()))
+        })
+        .collect())
 }
 
 pub(crate) fn claude_session_id(args: &[String]) -> Option<String> {

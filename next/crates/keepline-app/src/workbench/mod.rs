@@ -380,24 +380,16 @@ impl Workbench {
         track_unseen(&mut self.attention.phases, &mut self.attention.unseen, live);
         self.mark_pane_agents(cx);
     }
-    /// Which Agent each pane holds, for its tint. A Codex the host only sees through its
-    /// shared daemon, or a Claude that saves no transcript, still counts.
+    /// Which Agent each pane holds, for its tint. One the host sees but cannot read (a
+    /// shared-daemon Codex, a Claude that saves no transcript) still counts: the host says
+    /// which Agent is behind each terminal note.
     fn mark_pane_agents(&mut self, cx: &mut Context<Self>) {
-        use keepline_core::model::Agent;
         for (id, pane) in &self.layout.panes {
             let agent = self
                 .workspace
                 .current_agent(id)
                 .map(|s| s.runtime)
-                .or_else(|| {
-                    self.store.recognition().terminal_hints.get(id).map(|hint| {
-                        if hint == keepline_core::protocol::CLAUDE_TRANSCRIPT_OFF {
-                            Agent::Claude
-                        } else {
-                            Agent::Codex
-                        }
-                    })
-                });
+                .or_else(|| self.store.recognition().terminal_agents.get(id).copied());
             pane.update(cx, |p, _| p.agent = agent);
         }
     }

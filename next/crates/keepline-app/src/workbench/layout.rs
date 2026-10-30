@@ -19,31 +19,6 @@ pub(super) struct LayoutState {
     /// Interrupted terminals already reopened in place once; a failed try keeps the button.
     pub(super) reopened: HashSet<String>,
 }
-/// The host's note on an Agent it sees but cannot read, in the user's words, and why.
-pub(super) fn unread_agent(hint: &str) -> (String, String) {
-    if hint == keepline_core::protocol::CLAUDE_TRANSCRIPT_OFF {
-        return (
-            "claude · 没有保存记录".into(),
-            "这个 Claude 继承了 CLAUDE_CODE_CHILD_SESSION，自认为是别的会话的子会话，不写对话记录，Keepline 读不到也统计不了。关掉这个终端重新打开，再运行 claude。".into(),
-        );
-    }
-    if let Some(cli) = hint.strip_prefix(keepline_core::protocol::AGENT_UNBOUND_PREFIX) {
-        return (
-            format!("{cli} · 发出第一句后对上对话"),
-            format!(
-                "Keepline 看到这个 {cli} 在跑，但它的命令行没写是哪段对话。发出第一句话后，按画面上的提示词对上；想启动就认出，运行一次 keeplined hooks install 装上 Hook。"
-            ),
-        );
-    }
-    let why = "这个 Codex 连着共用的后台，Keepline 只看得到它忙不忙，读不到对话。想在这里看到对话内容，下次用 codex --no-daemon 启动。".to_owned();
-    match hint
-        .strip_prefix("仅显示状态：")
-        .and_then(|rest| rest.split_once('；'))
-    {
-        Some((state, _)) => (format!("codex · {state} · 看不到对话"), why),
-        None => ("codex · 看不到对话".into(), why),
-    }
-}
 impl Workbench {
     pub(super) fn pane_view(
         &self,
@@ -100,7 +75,8 @@ impl Workbench {
             .or_else(|| pane.read(cx).program_title())
             .unwrap_or_else(|| "空终端".into());
         let rang = pane.read(cx).bell;
-        let hint = self.store.recognition().terminal_hints.get(id).cloned();
+        // What the Agent's adapter says about one it sees here but cannot read.
+        let unread = self.store.recognition().terminal_notes.get(id).cloned();
         let takeover = id.to_owned();
         let focus = pane.focus_handle(cx);
         let focus_id = id.to_owned();
@@ -187,7 +163,7 @@ impl Workbench {
                                 })
                             }),
                     )
-                    .when_some(hint.as_deref().map(unread_agent), |d, (note, why)| {
+                    .when_some(unread.clone().map(|n| (n.note, n.why)), |d, (note, why)| {
                         d.child(
                             div()
                                 .id(gpui::SharedString::from(format!("unread-{id}")))
@@ -198,7 +174,7 @@ impl Workbench {
                                 }),
                         )
                     })
-                    .when(hint.is_none(), |d| d.child(self.pane_meta(session, cx)))
+                    .when(unread.is_none(), |d| d.child(self.pane_meta(session, cx)))
                     .when_some(
                         session
                             .filter(|_| pane.read(cx).handoff_state().is_none())
@@ -647,7 +623,7 @@ impl Workbench {
                 }
             }
             MenuPage::Sessions => {
-                for agent in Agent::ALL {
+                for agent in Agent::all() {
                     let terminal = menu.terminal.clone();
                     let task = task.clone();
                     entries.push(
@@ -1231,28 +1207,5 @@ mod tests {
         assert_eq!(super::read_branch(&linked).as_deref(), Some("0123456"));
         assert_eq!(super::read_branch(&root), None);
         std::fs::remove_dir_all(&root).unwrap();
-    }
-    #[test]
-    fn unread_agents_speak_plainly() {
-        let note = |hint: &str| super::unread_agent(hint).0;
-        assert_eq!(
-            note("仅显示状态：工作中；看对话内容请用 codex --no-daemon"),
-            "codex · 工作中 · 看不到对话"
-        );
-        assert_eq!(
-            note("未关联：看对话内容请用 codex --no-daemon"),
-            "codex · 看不到对话"
-        );
-        assert_eq!(
-            note(keepline_core::protocol::CLAUDE_TRANSCRIPT_OFF),
-            "claude · 没有保存记录"
-        );
-        assert_eq!(
-            note(&format!(
-                "{}claude",
-                keepline_core::protocol::AGENT_UNBOUND_PREFIX
-            )),
-            "claude · 发出第一句后对上对话"
-        );
     }
 }
