@@ -5,6 +5,7 @@ use keepline_core::content::{short, Source, Turn};
 use keepline_core::model::AgentSession;
 use keepline_core::protocol::TerminalNote;
 use regex::Regex;
+use rusqlite::{Connection, OpenFlags, OptionalExtension};
 use serde::Deserialize;
 use serde_json::{json, Value};
 use std::{
@@ -53,7 +54,8 @@ impl Adapter for Codex {
     /// A rollout is named `rollout-<time>-<thread id>.jsonl`.
     fn name(&self, root: &Path, transcript: &Path) -> Option<String> {
         let stem = transcript.file_stem()?.to_str()?;
-        thread_name(root, stem.get(stem.len().checked_sub(36)?..)?)
+        let id = stem.get(stem.len().checked_sub(36)?..)?;
+        state_name(root, id).or_else(|| thread_name(root, id))
     }
     fn identity(&self, _path: &Path, value: &Value) -> Option<(String, String)> {
         if value["type"] != "session_meta" {
@@ -295,6 +297,54 @@ fn codex_state(title: &str) -> Option<&'static str> {
         Some("空闲")
     }
 }
+/// The Codex app's own sidebar reads `threads.name` from `state_<n>.sqlite` beside
+/// `sessions/`, which also names threads `session_index.jsonl` never got. One read-only
+/// connection to the newest schema is kept; one that stops answering is dropped and found
+/// again, and a schema without the column leaves naming to the index.
+fn state_name(root: &Path, id: &str) -> Option<String> {
+    static STATE: Mutex<Option<(PathBuf, Connection)>> = Mutex::new(None);
+    let dir = root.parent()?;
+    let mut state = STATE.lock().ok()?;
+    if state.as_ref().is_none_or(|(d, _)| d != dir) {
+        let newest = std::fs::read_dir(dir)
+            .ok()?
+            .flatten()
+            .filter_map(|e| {
+                let name = e.file_name();
+                let n = name
+                    .to_str()?
+                    .strip_prefix("state_")?
+                    .strip_suffix(".sqlite")?;
+                Some((n.parse::<u32>().ok()?, e.path()))
+            })
+            .max()?
+            .1;
+        let db = Connection::open_with_flags(
+            newest,
+            OpenFlags::SQLITE_OPEN_READ_ONLY | OpenFlags::SQLITE_OPEN_NO_MUTEX,
+        )
+        .ok()?;
+        db.busy_timeout(std::time::Duration::from_millis(50)).ok()?;
+        *state = Some((dir.to_owned(), db));
+    }
+    let (_, db) = state.as_ref()?;
+    let found = db
+        .prepare_cached("SELECT name FROM threads WHERE id=?1")
+        .and_then(|mut q| {
+            q.query_row([id], |r| r.get::<_, Option<String>>(0))
+                .optional()
+        });
+    match found {
+        Ok(name) => name
+            .flatten()
+            .map(|n| n.trim().to_owned())
+            .filter(|n| !n.is_empty()),
+        Err(_) => {
+            *state = None;
+            None
+        }
+    }
+}
 /// Codex names each thread in `session_index.jsonl` beside `sessions/`, appending a line
 /// whenever it is named or renamed, so the last line for a thread wins. The file is read
 /// once, then only what was appended since.
@@ -474,6 +524,47 @@ mod tests {
             Some("排查 mirror 停止运行")
         );
         assert_eq!(Codex.name(&root, &root.join("rollout-x.jsonl")), None);
+        std::fs::remove_dir_all(home).unwrap();
+    }
+
+    #[test]
+    fn the_app_state_names_threads_the_index_missed_and_wins_over_it() {
+        let home =
+            std::env::temp_dir().join(format!("keepline-codex-state-{}", uuid::Uuid::new_v4()));
+        let root = home.join("sessions");
+        std::fs::create_dir_all(&root).unwrap();
+        let id = "01a18aad-c882-79a2-9d72-3ee5359f0add";
+        let other = "019de0c2-0000-7000-8000-000000000000";
+        let rollout = |id: &str| root.join(format!("rollout-2026-10-30T10-40-10-{id}.jsonl"));
+        std::fs::write(
+            home.join("session_index.jsonl"),
+            format!("{{\"id\":\"{id}\",\"thread_name\":\"旧名\"}}\n{{\"id\":\"{other}\",\"thread_name\":\"只在索引\"}}\n"),
+        )
+        .unwrap();
+        // An older schema without names, and the newest one with them.
+        Connection::open(home.join("state_4.sqlite"))
+            .unwrap()
+            .execute_batch("CREATE TABLE threads(id TEXT PRIMARY KEY)")
+            .unwrap();
+        let db = Connection::open(home.join("state_5.sqlite")).unwrap();
+        db.execute_batch(&format!(
+            "CREATE TABLE threads(id TEXT PRIMARY KEY, name TEXT);
+             INSERT INTO threads VALUES('{id}',' 查找 Codex 聊天中的网站 '),('{other}',NULL);"
+        ))
+        .unwrap();
+        assert_eq!(
+            Codex.name(&root, &rollout(id)).as_deref(),
+            Some("查找 Codex 聊天中的网站")
+        );
+        assert_eq!(
+            Codex.name(&root, &rollout(other)).as_deref(),
+            Some("只在索引")
+        );
+        // A schema that lost the column hands naming back to the index.
+        db.execute_batch("ALTER TABLE threads DROP COLUMN name")
+            .unwrap();
+        drop(db);
+        assert_eq!(Codex.name(&root, &rollout(id)).as_deref(), Some("旧名"));
         std::fs::remove_dir_all(home).unwrap();
     }
 }
