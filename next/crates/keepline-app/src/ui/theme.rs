@@ -463,9 +463,6 @@ impl Theme {
     pub const FAINT_DOT_OPACITY: f32 = 0.4;
     pub const KBD_OPACITY: f32 = 0.7;
     pub const KBD_SIZE: f32 = 10.5;
-    /// The current tab is marked by a line under it instead of a filled background.
-    pub const TAB_LINE: f32 = 2.;
-    pub const TAB_LINE_INSET: f32 = 10.;
     pub const SPLIT_CHIP_SIZE: f32 = 10.5;
     /// 验收 progress cells in the todo bar.
     pub const EVIDENCE_CELL_WIDTH: f32 = 10.;
