@@ -1,0 +1,185 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>偷看、置顶与侧栏答审批</title>
+<style>
+  :root {
+    --app: #141415; --panel: #1c1c1e; --raised: #262628; --border: #2e2d2c; --chip: #2a2a2b;
+    --body: #e4e2df; --secondary: #a9a7a3; --muted: #7c7a77; --term: #111112;
+    --ok: #4cc38a; --warn: #e8823a; --bad: #e5534b; --accent: #2f81f7; --popover: #2a2a2c;
+  }
+  :root[data-theme="light"] {
+    --app: #ececea; --panel: #fafaf9; --raised: #f0efed; --border: #e2e0dd; --chip: #efeeec;
+    --body: #1f1e1c; --secondary: #5d5a56; --muted: #8a8681; --term: #ffffff;
+    --ok: #1a7f37; --warn: #b85c12; --bad: #cf222e; --accent: #0969da; --popover: #ffffff;
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--app); color: var(--body);
+    font: 13px/1.45 -apple-system, BlinkMacSystemFont, "PingFang SC", sans-serif; }
+  main { max-width: 1240px; margin: 0 auto; padding: 28px 16px 64px; }
+  h1 { font-size: 20px; margin: 0 0 6px; }
+  h2 { font-size: 15px; margin: 0 0 4px; }
+  p { margin: 0 0 8px; color: var(--secondary); }
+  .top { display: flex; justify-content: space-between; gap: 16px; align-items: start; margin-bottom: 22px; }
+  .seg { display: flex; border: 1px solid var(--border); border-radius: 7px; overflow: hidden; flex-shrink: 0; }
+  .seg button { background: var(--panel); color: var(--secondary); border: 0; padding: 5px 12px; font: inherit; cursor: pointer; }
+  .seg button.on { background: var(--raised); color: var(--body); }
+  .dir { margin-bottom: 34px; display: flex; flex-direction: column; gap: 10px; }
+  .tag { display: inline-block; font-size: 11px; padding: 1px 7px; border-radius: 9px; background: var(--chip); color: var(--secondary); margin-left: 6px; vertical-align: 1px; }
+  .tag.rec { background: color-mix(in srgb, var(--accent) 22%, transparent); color: var(--body); }
+  ul.notes { margin: 0; padding-left: 18px; color: var(--secondary); }
+  ul.notes li { margin: 2px 0; }
+
+  .win { display: flex; height: 430px; border: 1px solid var(--border); border-radius: 9px; overflow: hidden; background: var(--term); position: relative; }
+  .sidebar { width: 240px; background: var(--panel); border-right: 1px solid var(--border); display: flex; flex-direction: column; flex-shrink: 0; }
+  .sb-list { flex: 1; padding: 6px 8px; display: flex; flex-direction: column; gap: 2px; overflow: hidden; }
+  .sec { font-size: 11px; color: var(--muted); padding: 8px 4px 2px; display: flex; justify-content: space-between; }
+  .row { display: flex; align-items: center; gap: 7px; padding: 5px 6px; border-radius: 6px; }
+  .row.sel { background: var(--raised); }
+  .dot { width: 7px; height: 7px; border-radius: 50%; flex-shrink: 0; }
+  .row .t { flex: 1; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+  .row .k { font-size: 11px; color: var(--muted); }
+  .pin { font-size: 11px; color: var(--muted); }
+  .row.hover .pin { color: var(--body); }
+  .ask { margin: 2px 0 4px 20px; padding: 7px 8px; border-radius: 7px; background: var(--raised); font-size: 11.5px; }
+  .ask code { font: 11px ui-monospace, Menlo, monospace; color: var(--body); display: block; margin: 3px 0 6px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .acts { display: flex; gap: 5px; }
+  .b { border: 1px solid var(--border); background: var(--panel); color: var(--body); border-radius: 5px; padding: 2px 8px; font: 11.5px inherit; cursor: pointer; }
+  .b.pri { background: color-mix(in srgb, var(--ok) 20%, var(--panel)); }
+  .b.ghost { border-color: transparent; background: none; color: var(--secondary); }
+
+  .pane { flex: 1; padding: 10px 14px; font: 12px/1.5 ui-monospace, Menlo, monospace; color: var(--secondary); overflow: hidden; }
+  .pane .hl { color: var(--body); }
+  .peek { position: absolute; left: 270px; right: 30px; top: 34px; bottom: 34px; background: var(--term);
+    border: 1px solid var(--border); border-radius: 9px; box-shadow: 0 12px 40px rgba(0,0,0,.4); display: flex; flex-direction: column; }
+  .peek-bar { display: flex; align-items: center; gap: 8px; padding: 6px 10px; border-bottom: 1px solid var(--border); background: var(--panel); border-radius: 9px 9px 0 0; font-size: 12px; }
+  .peek-bar .grow { flex: 1; color: var(--secondary); }
+  .peek .pane { padding: 10px 14px; }
+  .drawer { position: absolute; left: 241px; right: 0; bottom: 0; height: 52%; background: var(--term); border-top: 1px solid var(--border); box-shadow: 0 -10px 30px rgba(0,0,0,.3); display: flex; flex-direction: column; }
+  .queue { margin: 6px 8px 2px; border: 1px solid color-mix(in srgb, var(--warn) 45%, var(--border)); border-radius: 8px; padding: 6px 8px; background: color-mix(in srgb, var(--warn) 8%, var(--panel)); }
+  .queue .h { font-size: 11.5px; display: flex; justify-content: space-between; margin-bottom: 4px; }
+  .queue .h span { color: var(--muted); }
+  .queue code { font: 11px ui-monospace, Menlo, monospace; display: block; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; margin-bottom: 5px; }
+
+  .rules { margin-top: 10px; background: var(--panel); border: 1px solid var(--border); border-radius: 10px; padding: 16px 18px; }
+  .rules table { border-collapse: collapse; width: 100%; font-size: 12.5px; }
+  .rules td, .rules th { text-align: left; padding: 6px 8px; border-top: 1px solid var(--border); vertical-align: top; }
+  .rules th { color: var(--muted); font-weight: 500; border-top: 0; }
+  @media (max-width: 700px) { .win { flex-direction: column; height: auto; } .sidebar { width: 100%; } .peek, .drawer { position: static; height: 240px; margin: 8px; } }
+</style>
+</head>
+<body>
+<main>
+<div class="top">
+  <div>
+    <h1>偷看、置顶与侧栏答审批</h1>
+    <p>三件事都发生在左栏的同一行上：看一眼别的 Agent 在干嘛（Peek）、把盯着的几个钉在上面（置顶）、等你批准时不切过去就答（拓展 1b）。下面三个方向差别在「答审批时你看得到多少上下文」。</p>
+  </div>
+  <div class="seg"><button class="on" data-t="dark">深色</button><button data-t="light">浅色</button></div>
+</div>
+
+<section class="dir">
+  <h2>A · 行内展开<span class="tag">最轻</span></h2>
+  <div class="win">
+    <div class="sidebar"><div class="sb-list">
+      <div class="sec"><span>置顶</span></div>
+      <div class="row"><span class="dot" style="background:var(--ok)"></span><span class="t">keepline · 规则外置</span><span class="pin">●</span></div>
+      <div class="sec"><span>等你</span><span>1</span></div>
+      <div class="row sel"><span class="dot" style="background:var(--warn)"></span><span class="t">her · 发布前检查</span><span class="k">2 分</span></div>
+      <div class="ask">要运行命令<code>git push origin feat/release</code>
+        <div class="acts"><button class="b pri">允许一次</button><button class="b">拒绝</button><button class="b ghost">打开画面</button></div></div>
+      <div class="sec"><span>在跑</span><span>2</span></div>
+      <div class="row hover"><span class="dot" style="background:var(--accent)"></span><span class="t">codex-mall · 检查 SSH</span><span class="pin">○</span></div>
+      <div class="row"><span class="dot" style="background:var(--accent)"></span><span class="t">refine · 评估库设计</span></div>
+    </div></div>
+    <div class="pane"><div class="hl">~/keepline $</div>当前标签不动……</div>
+  </div>
+  <ul class="notes">
+    <li>等你的那一行自己展开出命令原文和三个按钮；置顶是行尾悬停出现的圆点。</li>
+    <li>没有 Peek：要看上下文只能「打开画面」切过去。</li>
+    <li>改动最小，只动左栏；但看不到 Agent 为什么要跑这条命令，批得心里没底。</li>
+  </ul>
+</section>
+
+<section class="dir">
+  <h2>B · 浮层 Peek，审批在浮层里答<span class="tag rec">推荐</span></h2>
+  <div class="win">
+    <div class="sidebar"><div class="sb-list">
+      <div class="sec"><span>置顶</span></div>
+      <div class="row"><span class="dot" style="background:var(--ok)"></span><span class="t">keepline · 规则外置</span><span class="pin">●</span></div>
+      <div class="sec"><span>等你</span><span>1</span></div>
+      <div class="row sel"><span class="dot" style="background:var(--warn)"></span><span class="t">her · 发布前检查</span><span class="k">2 分</span></div>
+      <div class="sec"><span>在跑</span><span>2</span></div>
+      <div class="row"><span class="dot" style="background:var(--accent)"></span><span class="t">codex-mall · 检查 SSH</span></div>
+      <div class="row"><span class="dot" style="background:var(--accent)"></span><span class="t">refine · 评估库设计</span></div>
+    </div></div>
+    <div class="pane"><div class="hl">~/keepline $ cargo test</div>当前标签在后面不动……</div>
+    <div class="peek">
+      <div class="peek-bar"><span class="dot" style="background:var(--warn)"></span><b>her · 发布前检查</b><span class="grow">等你批准 · 2 分钟</span>
+        <button class="b pri">允许一次</button><button class="b">拒绝</button><button class="b ghost">↗ 打开</button><button class="b ghost">✕</button></div>
+      <div class="pane">
+        ⏺ 测试都过了，准备推送到远端。<br>
+        ⏺ Bash(git push origin feat/release)<br><br>
+        <span class="hl">Do you want to proceed?</span><br>
+        <span class="hl">❯ 1. Yes</span><br>
+        &nbsp; 2. Yes, and don't ask again for git push<br>
+        &nbsp; 3. No, and tell Claude what to do differently
+      </div>
+    </div>
+  </div>
+  <ul class="notes">
+    <li>点左栏任意一行（或终端里提到的终端号）浮出它的实时画面，压在当前标签上面；Esc 或 ✕ 关掉，「↗ 打开」才真正切过去。</li>
+    <li>等你批准时，浮层标题栏直接给「允许一次 / 拒绝」——答之前看得到 Agent 的上下文。选项超过三个或识别不确定时只给「打开」。</li>
+    <li>浮层里也能直接打字，输入进被看的那个终端（Herdr App 的做法，粘贴同理）。</li>
+    <li>置顶：行尾悬停出现圆点，钉住后归到最上面的「置顶」组，会话结束自动取消。</li>
+  </ul>
+</section>
+
+<section class="dir">
+  <h2>C · 审批队列 + 底部抽屉<span class="tag">最显眼</span></h2>
+  <div class="win">
+    <div class="sidebar">
+      <div class="queue"><div class="h"><b>等你批准</b><span>1 / 2</span></div>
+        <code>her · git push origin feat/release</code>
+        <div class="acts"><button class="b pri">允许</button><button class="b">拒绝</button><button class="b ghost">下一条 →</button></div></div>
+      <div class="sb-list">
+        <div class="sec"><span>置顶</span></div>
+        <div class="row"><span class="dot" style="background:var(--ok)"></span><span class="t">keepline · 规则外置</span><span class="pin">●</span></div>
+        <div class="sec"><span>在跑</span><span>2</span></div>
+        <div class="row sel"><span class="dot" style="background:var(--accent)"></span><span class="t">codex-mall · 检查 SSH</span></div>
+        <div class="row"><span class="dot" style="background:var(--accent)"></span><span class="t">refine · 评估库设计</span></div>
+      </div>
+    </div>
+    <div class="pane"><div class="hl">~/keepline $ cargo test</div>上半屏是当前标签……</div>
+    <div class="drawer">
+      <div class="peek-bar"><span class="dot" style="background:var(--accent)"></span><b>codex-mall · 检查 SSH</b><span class="grow">在跑 · 偷看中</span><button class="b ghost">↗ 打开</button><button class="b ghost">✕</button></div>
+      <div class="pane">• Running ssh -o ConnectTimeout=5 vps-38 uptime<br>&nbsp; └ 10:42 up 23 days, load average: 0.21</div>
+    </div>
+  </div>
+  <ul class="notes">
+    <li>所有待批准的集中成左栏顶上一张卡片，逐条过；偷看从底部拉出半屏抽屉，当前标签只让出下半屏。</li>
+    <li>批量清审批最快；但卡片的醒目色和抽屉会常驻占地方，和「同一信息一屏只出现一次」有冲突（卡片和「等你」分组重复）。</li>
+  </ul>
+</section>
+
+<div class="rules">
+  <h2>三个方向共同的规则</h2>
+  <table>
+    <tr><th>项</th><th>规则</th></tr>
+    <tr><td>能答哪些</td><td>只答识别得出的审批框（规则 approval，见「为什么是这个状态」里的规则名）；按键只发给那个画面的终端，不改 Agent 自己的权限或信任设置。</td></tr>
+    <tr><td>防误发</td><td>点按钮的那一刻重读一次画面，审批框已经不在就不发，提示「已经答过了」。</td></tr>
+    <tr><td>性能</td><td>偷看复用该终端现有的画面数据，不另开订阅；浮层关掉即释放，不加定时器。</td></tr>
+    <tr><td>置顶</td><td>只存终端 id，会话结束自动取消；不改分组口径。</td></tr>
+  </table>
+</div>
+</main>
+<script>
+  document.querySelectorAll('.seg button').forEach(b => b.onclick = () => {
+    document.documentElement.dataset.theme = b.dataset.t;
+    document.querySelectorAll('.seg button').forEach(x => x.classList.toggle('on', x === b));
+  });
+</script>
+</body>
+</html>
