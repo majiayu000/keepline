@@ -372,3 +372,25 @@ fn a_resume_is_the_new_shells_first_command_not_typed_later() {
     assert!(out.status.success());
     assert_eq!(String::from_utf8_lossy(&out.stdout), "--resume|it's-1|");
 }
+#[test]
+fn the_pane_menu_says_which_signal_set_the_state() {
+    let mut w = fixture();
+    let lines = state_reasons(&w, "t0", Some("Claude 没保存对话记录"), 1000);
+    assert_eq!(lines.len(), 2);
+    assert!(lines[1].contains("Claude 没保存对话记录"));
+    w.agent_sessions[0].terminal = Some("t0".into());
+    w.agent_sessions[0].current = true;
+    let c = keepline_core::content::Content {
+        turn: keepline_core::content::Turn::Waiting,
+        signal: "画面".into(),
+        signal_at: 1000 - 120,
+        waiting: "Do you want to proceed?（画面上的提示）".into(),
+        ..Default::default()
+    };
+    w.content.insert("history".into(), c);
+    let lines = state_reasons(&w, "t0", None, 1000);
+    assert_eq!(lines[0], "Codex 对话 cli");
+    assert_eq!(lines[1], "现在：等你回答");
+    assert_eq!(lines[2], "依据：画面底部认出了提问框；对话记录里没有这一条（2 分钟前）");
+    assert!(lines[3].starts_with("在等：Do you want to proceed?"));
+}

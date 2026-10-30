@@ -131,6 +131,56 @@ pub fn attachable_ids(workspace: &Workspace, ids: Vec<String>) -> Vec<String> {
         .filter(|id| !interrupted(workspace, id))
         .collect()
 }
+/// Why a pane shows the state it does, line by line, for the pane menu's 「为什么是这个状态」:
+/// which signal set it and when, and what it is waiting on. `hint` is the recognition note
+/// for a terminal whose Agent was seen but not tied to a conversation.
+pub fn state_reasons(w: &Workspace, terminal: &str, hint: Option<&str>, now: u64) -> Vec<String> {
+    let Some(s) = w.current_agent(terminal) else {
+        let mut lines = vec!["这个画面里没有认出 Agent 对话，只按普通终端显示。".to_owned()];
+        if let Some(hint) = hint {
+            lines.push(format!("识别提示：{hint}"));
+        }
+        return lines;
+    };
+    let mut lines = vec![format!(
+        "{} 对话 {}",
+        s.runtime.name(),
+        &s.cli_session_id[..s.cli_session_id.len().min(8)]
+    )];
+    let Some(c) = w.content.get(&s.id) else {
+        lines.push("还没读到这段对话的记录，先按「做完了」显示。".into());
+        return lines;
+    };
+    let phase = match live_phase(w, s) {
+        Some(Phase::Working) => "在跑",
+        Some(Phase::Waiting) => "等你回答",
+        _ => "做完了 / 等你下一步",
+    };
+    lines.push(format!("现在：{phase}"));
+    let why = match c.signal.as_str() {
+        "日志" => "Agent 写进对话记录的最后一条",
+        "Hook" => "Agent 通过 hook 报来的事件",
+        "画面" => "画面底部认出了提问框；对话记录里没有这一条",
+        "官方状态" => "Agent 自己报告的运行状态",
+        _ => "对话记录",
+    };
+    let at = if c.signal_at > 0 {
+        c.signal_at
+    } else {
+        c.updated
+    };
+    lines.push(format!("依据：{why}（{}）", super::time::ago(at, now)));
+    if !c.waiting.is_empty() {
+        lines.push(format!("在等：{}", c.waiting));
+    }
+    if !c.error.is_empty() {
+        lines.push(format!("出错：{}", c.error));
+    }
+    if let Some(b) = c.background.and_then(|b| b.describe()) {
+        lines.push(b);
+    }
+    lines
+}
 pub fn session_group(w: &Workspace, s: &AgentSession) -> Group {
     use keepline_core::content::{Content, Inbox};
     match w

@@ -135,6 +135,17 @@ impl Workbench {
                     .gap(px(T::S8))
                     .child(dot(group))
                     .child(div().min_w_0().truncate().child(space.name.clone()))
+                    // The branch the space's directory is on, as herdr's sidebar shows it.
+                    .when_some(self.git_branch(&space.cwd, cx), |d, branch| {
+                        d.child(
+                            label(branch)
+                                .min_w_0()
+                                .max_w(px(T::SIDEBAR * 0.4))
+                                .truncate()
+                                .text_size(px(T::CHIP_SIZE))
+                                .text_color(T::color(T::muted())),
+                        )
+                    })
                     // A deleted worktree leaves the space pointing nowhere; new terminals
                     // fall back to home, and a click here picks the folder again.
                     .when(missing, |d| {

@@ -1452,6 +1452,62 @@ pub fn start(
         .detach();
         return;
     }
+    // The sidebar shows the space's branch; the pane menu explains the pane's state.
+    if let (Some(handle), Some(directory)) = (&handle, evidence.clone())
+        && std::env::var_os("KEEPLINE_WHY_EVIDENCE").is_some()
+    {
+        let handle = *handle;
+        cx.spawn(async move |cx| {
+            cx.background_executor().timer(Duration::from_secs(2)).await;
+            std::fs::create_dir_all(&directory).unwrap();
+            // Near the top of the shown pane so the menu opens where it was asked,
+            // not pushed up to fit.
+            let at = gpui::point(
+                px(theme::Theme::SIDEBAR + 120.),
+                px(theme::Theme::TOP + theme::Theme::TABS + theme::Theme::PANE_HEADER + 40.),
+            );
+            cx.update_window(handle.into(), |_, window, app| {
+                native_click(window, app, at, gpui::MouseButton::Right)
+            })
+            .unwrap();
+            cx.background_executor()
+                .timer(Duration::from_millis(300))
+                .await;
+            let item = handle.update(cx, |v, _, _| v.visual_menu_point(8)).unwrap();
+            cx.update_window(handle.into(), |_, window, app| {
+                window.refresh();
+                window.draw(app).clear(app);
+                window
+                    .render_to_image()
+                    .unwrap()
+                    .save(directory.join("1-menu.png"))
+                    .unwrap();
+                native_click(window, app, item, gpui::MouseButton::Left);
+            })
+            .unwrap();
+            cx.background_executor()
+                .timer(Duration::from_millis(300))
+                .await;
+            assert!(
+                handle.update(cx, |v, _, _| v.visual_menu_why()).unwrap(),
+                "为什么是这个状态 turns the menu into the explanation"
+            );
+            cx.update_window(handle.into(), |_, window, app| {
+                window.refresh();
+                window.draw(app).clear(app);
+                window
+                    .render_to_image()
+                    .unwrap()
+                    .save(directory.join("2-why.png"))
+                    .unwrap();
+            })
+            .unwrap();
+            eprintln!("why native PASS: the pane menu explains the state");
+            cx.update(|cx| cx.quit());
+        })
+        .detach();
+        return;
+    }
     // Runs the top bar's 「重启后台」 for real, as confirming its dialog does.
     if let Some(handle) = &handle
         && std::env::var_os("KEEPLINE_RESTART_EVIDENCE").is_some()

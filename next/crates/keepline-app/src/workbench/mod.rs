@@ -78,6 +78,7 @@ enum MenuPage {
     Sessions,
     Assign,
     Move,
+    Why,
 }
 struct Form {
     kind: FormKind,
