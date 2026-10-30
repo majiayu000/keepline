@@ -1,0 +1,279 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>主界面 · 三个方向</title>
+<style>
+* { box-sizing: border-box; }
+body { margin: 0; background: #c9ccd2; color: #1f2024; font: 13px/1.45 -apple-system, BlinkMacSystemFont, "PingFang SC", sans-serif; padding: 24px 16px 60px; display: flex; flex-direction: column; align-items: center; gap: 12px; }
+button { font: inherit; border: 0; background: none; color: inherit; cursor: pointer; padding: 0; }
+.mono { font-family: "JetBrains Mono", "SF Mono", Menlo, monospace; }
+.intro { max-width: 1280px; width: 100%; font-size: 13px; color: #2f3238; }
+.intro b { color: #111; }
+.dir { max-width: 1280px; width: 100%; margin-top: 26px; display: flex; flex-direction: column; gap: 6px; }
+.dir h2 { margin: 0; font-size: 18px; color: #111; }
+.dir .idea { color: #34373e; }
+.dir .idea span { color: #5b5e66; }
+.win { width: 1280px; max-width: 100%; height: 780px; border-radius: 12px; overflow: hidden; box-shadow: 0 20px 60px rgba(0,0,0,.28); display: flex; flex-direction: column; }
+.lights { display: inline-flex; gap: 8px; flex: none; }
+.lights i { width: 12px; height: 12px; border-radius: 50%; display: block; }
+.lights i:nth-child(1) { background: #ff5f57; } .lights i:nth-child(2) { background: #febc2e; } .lights i:nth-child(3) { background: #28c840; }
+.term { white-space: pre; overflow: hidden; font-size: 12.5px; line-height: 1.55; }
+
+/* ============ A · 终端原生 ============ */
+.A { background: #16161a; color: #d9d7d3; }
+.A .top { height: 38px; flex: none; display: flex; align-items: center; gap: 14px; padding: 0 14px; border-bottom: 1px solid #26262b; }
+.A .top .name { font-size: 12px; color: #8b8a88; letter-spacing: .02em; }
+.A .top .find { margin-left: auto; font-size: 11.5px; color: #6f6e6c; border: 1px solid #2c2c31; border-radius: 6px; padding: 3px 10px; }
+.A .body { flex: 1; min-height: 0; display: flex; }
+.A .side { width: 236px; flex: none; border-right: 1px solid #26262b; padding: 10px 0; font-size: 12px; overflow: hidden; }
+.A .rule { color: #5c5b59; padding: 10px 14px 4px; font-size: 11px; }
+.A .s { display: grid; grid-template-columns: 12px 1fr auto; gap: 8px; padding: 3px 14px; color: #c9c7c3; }
+.A .s .t { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.A .s .a { color: #6f6e6c; }
+.A .s.on { background: #222227; color: #f1efeb; }
+.A .g { font-weight: 700; }
+.A .grid { flex: 1; min-width: 0; padding: 10px 0 0 1px; display: grid; grid-template-columns: 1.15fr 1fr; grid-template-rows: 1fr 1fr; }
+.A .p { position: relative; min-width: 0; min-height: 0; border: 1px solid #2a2a2f; margin: -1px 0 0 -1px; padding: 16px 14px 10px; display: flex; }
+.A .p .term { flex: 1; min-height: 0; }
+.A .p.big { grid-row: span 2; }
+.A .p.focus { border-color: #7f7d79; z-index: 1; }
+.A .label { position: absolute; top: -1px; left: 12px; transform: translateY(-50%); background: #16161a; padding: 0 6px; font-size: 11.5px; color: #8b8a88; white-space: nowrap; }
+.A .p.focus .label { color: #f1efeb; }
+.A .bar { height: 24px; flex: none; display: flex; align-items: center; font-size: 11.5px; background: #1e1e23; border-top: 1px solid #26262b; }
+.A .bar .w { background: #d9d7d3; color: #16161a; padding: 0 10px; height: 100%; display: flex; align-items: center; font-weight: 700; }
+.A .bar .tab { padding: 0 10px; color: #8b8a88; }
+.A .bar .tab.on { color: #f1efeb; }
+.A .bar .r { margin-left: auto; display: flex; gap: 14px; padding: 0 12px; color: #8b8a88; }
+.A .d { color: #6f6e6c; } .A .k { color: #e8c547; } .A .ok { color: #4cc38a; } .A .er { color: #e5534b; } .A .wt { color: #e8823a; } .A .b { color: #f1efeb; font-weight: 700; } .A .bl { color: #6aa5ff; }
+
+/* ============ B · 叙事优先（接力棒） ============ */
+.B { background: #f6f5f3; color: #1f1e1c; }
+.B .top { height: 46px; flex: none; display: flex; align-items: center; gap: 14px; padding: 0 16px; border-bottom: 1px solid #e3e2df; background: #fafaf9; }
+.B .top .brand { font-weight: 600; }
+.B .top .crumb { color: #6c6b68; font-size: 12px; }
+.B .top .find { flex: 0 1 320px; height: 30px; border: 1px solid #d6d5d2; border-radius: 8px; padding: 0 10px; display: flex; align-items: center; color: #6c6b68; font-size: 12.5px; margin-left: 10px; }
+.B .top .next { margin-left: auto; height: 30px; padding: 0 12px; border-radius: 8px; background: #141312; color: #fafaf9; font-size: 12.5px; font-weight: 600; display: inline-flex; align-items: center; gap: 8px; }
+.B .top .next i { width: 7px; height: 7px; border-radius: 50%; background: #e5534b; display: inline-block; }
+.B .body { flex: 1; min-height: 0; display: flex; }
+.B .side { width: 270px; flex: none; border-right: 1px solid #e3e2df; background: #fafaf9; padding: 14px 10px; overflow: hidden; display: flex; flex-direction: column; gap: 4px; }
+.B .h { font-size: 11px; font-weight: 600; color: #6c6b68; padding: 8px 8px 4px; letter-spacing: .03em; }
+.B .s { padding: 7px 8px 8px; border-radius: 8px; display: flex; flex-direction: column; gap: 2px; border-left: 3px solid transparent; }
+.B .s.on { background: #ebeae8; }
+.B .s .t { font-weight: 500; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.B .s .w { font-size: 12px; color: #5a5956; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.B .main { flex: 1; min-width: 0; display: flex; flex-direction: column; }
+.B .tabs { height: 36px; flex: none; display: flex; align-items: stretch; padding: 0 8px; border-bottom: 1px solid #e3e2df; background: #f0efed; font-size: 12.5px; color: #5a5956; }
+.B .tabs span { display: flex; align-items: center; padding: 0 14px; }
+.B .tabs .on { background: #fafaf9; color: #0e0d0c; font-weight: 500; border-left: 1px solid #e3e2df; border-right: 1px solid #e3e2df; margin-bottom: -1px; }
+.B .grid { flex: 1; min-height: 0; display: grid; grid-template-columns: 1.15fr 1fr; grid-template-rows: 1fr 1fr; gap: 8px; padding: 8px; }
+.B .p { min-width: 0; display: flex; flex-direction: column; background: #fafaf9; border-radius: 10px; border: 1px solid #e3e2df; overflow: hidden; position: relative; }
+.B .p.big { grid-row: span 2; }
+.B .p.focus { border-color: #8e8d8a; }
+.B .rail { position: absolute; left: 0; top: 0; bottom: 0; width: 3px; }
+.B .baton { padding: 10px 14px 9px 16px; border-bottom: 1px solid #ebeae8; display: grid; grid-template-columns: 46px 1fr auto; gap: 3px 10px; font-size: 12.5px; }
+.B .baton .k { color: #6c6b68; }
+.B .baton .v { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.B .baton .meta { grid-row: span 2; align-self: start; text-align: right; font-size: 11.5px; color: #6c6b68; display: flex; flex-direction: column; gap: 4px; align-items: flex-end; }
+.B .baton .act { font-size: 12px; color: #1f1e1c; background: #e9e8e6; border-radius: 6px; padding: 3px 9px; }
+.B .baton.shell { grid-template-columns: 1fr auto; color: #6c6b68; }
+.B .tm { flex: 1; padding: 10px 16px; overflow: hidden; }
+.B .d { color: #8a8986; } .B .bl { color: #2a6fd6; } .B .ok { color: #2b8f60; } .B .er { color: #c53b33; }
+
+/* ============ C · 现在这版做减法 ============ */
+.C { background: #fafaf9; color: #1f1e1c; }
+.C .top { height: 46px; flex: none; display: flex; align-items: center; gap: 14px; padding: 0 16px; border-bottom: 1px solid #e3e2df; }
+.C .top .brand { font-weight: 600; }
+.C .top .crumb { color: #6c6b68; font-size: 12px; }
+.C .top .ov { height: 28px; padding: 0 10px; border-radius: 6px; background: #ebeae8; font-size: 12.5px; display: inline-flex; align-items: center; }
+.C .top .find { flex: 0 1 320px; height: 30px; border: 1px solid #d6d5d2; border-radius: 8px; padding: 0 10px; display: flex; align-items: center; color: #6c6b68; font-size: 12.5px; }
+.C .top .need { margin-left: auto; height: 28px; padding: 0 10px; border-radius: 6px; background: #f8e9e7; color: #c53b33; font-size: 12.5px; font-weight: 600; display: inline-flex; align-items: center; gap: 6px; }
+.C .top .need i { width: 7px; height: 7px; border-radius: 50%; background: currentColor; display: inline-block; }
+.C .body { flex: 1; min-height: 0; display: flex; }
+.C .side { width: 240px; flex: none; border-right: 1px solid #e3e2df; padding: 14px 10px; overflow: hidden; font-size: 13px; }
+.C .h { font-size: 11px; font-weight: 600; color: #6c6b68; padding: 10px 8px 4px; }
+.C .s { height: 30px; display: flex; align-items: center; gap: 8px; padding: 0 8px; border-radius: 6px; }
+.C .s.on { background: #ebeae8; }
+.C .s .t { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; }
+.C .s .n { margin-left: auto; color: #6c6b68; font-size: 11.5px; flex: none; }
+.C .dot { width: 7px; height: 7px; border-radius: 50%; flex: none; display: inline-block; }
+.C .main { flex: 1; min-width: 0; display: flex; flex-direction: column; }
+.C .tabs { height: 36px; flex: none; display: flex; align-items: stretch; padding: 0 8px; border-bottom: 1px solid #e3e2df; background: #f0efed; font-size: 12.5px; color: #5a5956; }
+.C .tabs span { display: flex; align-items: center; gap: 6px; padding: 0 14px; }
+.C .tabs .on { background: #fafaf9; color: #0e0d0c; font-weight: 500; border-left: 1px solid #e3e2df; border-right: 1px solid #e3e2df; margin-bottom: -1px; }
+.C .grid { flex: 1; min-height: 0; display: grid; grid-template-columns: 1.15fr 1fr; grid-template-rows: 1fr 1fr; gap: 6px; padding: 6px; background: #efeeec; }
+.C .p { min-width: 0; display: flex; flex-direction: column; background: #fafaf9; border-radius: 8px; border: 1px solid #e3e2df; overflow: hidden; }
+.C .p.big { grid-row: span 2; }
+.C .p.focus { border-color: #8e8d8a; }
+.C .ph { height: 30px; flex: none; display: flex; align-items: center; gap: 8px; padding: 0 10px; border-bottom: 1px solid #ebeae8; font-size: 12.5px; }
+.C .ph .t { font-weight: 500; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; }
+.C .ph .m { margin-left: auto; color: #6c6b68; font-size: 11.5px; flex: none; }
+.C .ph .a { color: #1f1e1c; font-size: 12px; flex: none; }
+.C .tm { flex: 1; padding: 10px 12px; overflow: hidden; }
+.C .d { color: #8a8986; } .C .bl { color: #2a6fd6; } .C .ok { color: #2b8f60; } .C .er { color: #c53b33; }
+
+.notes { max-width: 1280px; width: 100%; display: grid; grid-template-columns: repeat(3, minmax(0,1fr)); gap: 10px; font-size: 12.5px; color: #2f3238; }
+.notes div { background: #e6e8ec; border-radius: 8px; padding: 10px 12px; }
+.notes b { color: #111; }
+@media (max-width: 900px) { .notes { grid-template-columns: 1fr; } }
+</style>
+</head>
+<body>
+<div class="intro">
+  <b>主界面（终端视图）三个方向</b> · 同一屏内容：你 10-30 的真实标签、会话标题和三格分屏（左 Claude 在跑，右上 Codex 出错，右下空终端）。终端里的文字是示例。<br>
+  三个方向差在<b>Keepline 想让你第一眼看到什么</b>：A 终端本身，B 每个会话的来龙去脉，C 现在这版但去掉重复的数字。
+</div>
+
+<!-- ================= A ================= -->
+<section class="dir">
+  <h2>A · 终端原生</h2>
+  <div class="idea">像 Ghostty 加 tmux：界面几乎全是终端，外壳退成一圈细线。<span>标签挪到底部状态行，窗格标题嵌进边框，所有字用等宽字，状态只是一个彩色符号。没有按钮、没有卡片，深色是默认。</span></div>
+  <div class="win A mono">
+    <div class="top"><span class="lights"><i></i><i></i><i></i></span><span class="name">keepline — 工作空间</span><span class="find">⌘P 搜会话、待办、原话</span></div>
+    <div class="body">
+      <aside class="side">
+        <div class="rule">── 需要你 2 ─────────</div>
+        <div class="s"><span class="er g">✕</span><span class="t">这个终止 agent 中断取消…</span><span class="a">4m</span></div>
+        <div class="s"><span class="er g">✕</span><span class="t">这个目录的 grok 的聊天记…</span><span class="a">12m</span></div>
+        <div class="rule">── 在跑 1 ────────────</div>
+        <div class="s on"><span class="k g">◐</span><span class="t">标签命名依旧有问题</span><span class="a">3:12</span></div>
+        <div class="rule">── 做完了 3 ───────────</div>
+        <div class="s"><span class="bl g">✓</span><span class="t">这个诊断的 ui 感觉很丑啊</span><span class="a">1h</span></div>
+        <div class="s"><span class="bl g">✓</span><span class="t">左侧的会话 有什么好的命…</span><span class="a">2h</span></div>
+        <div class="s"><span class="bl g">✓</span><span class="t">cli 是否支持 workflow 呢</span><span class="a">1d</span></div>
+        <div class="rule">── 已关闭 21 · ⌘P 找回 ─</div>
+      </aside>
+      <div class="grid">
+        <div class="p big focus"><span class="label">claude · 标签命名依旧有问题 · ◐ 3:12</span><div class="term"><span class="d">&gt;</span> 标签命名依旧有问题，帮我查一下为什么新开的标签还是叫 zsh
+
+<span class="bl">●</span> 先看标签名是怎么来的。
+  <span class="d">⎿  Read next/crates/keepline-app/src/workbench/tabs.rs (74 lines)</span>
+
+<span class="bl">●</span> tab_name 只读 tab.title，空的时候退回进程名，
+  所以新开的标签都叫 zsh。启动 Agent 时没写回标题。
+  <span class="d">⎿  Search("fn tab_name", next/crates) · 3 results</span>
+
+<span class="bl">●</span> 改成：识别到 Agent 会话后，用它第一句话做标签名，
+  你手动改过的名字不覆盖。
+  <span class="d">⎿  Update tabs.rs (+18 −3)</span>
+
+<span class="k">✻</span> Running cargo test -p keepline-app… <span class="d">(3m 12s · ↓ 4.1k tokens)</span>
+</div></div>
+        <div class="p"><span class="label">codex · 这个终止 agent 中断取消… · <span class="er">✕ 出错</span></span><div class="term"><span class="d">›</span> 终止 agent 的时候能不能先中断再取消？
+
+<span class="ok">•</span> 先发 Ctrl-C，等 2 秒再发 SIGTERM。
+<span class="er">✗</span> cargo test managed_session … FAILED
+  <span class="d">a_dialog_gone_from_the_screen… timed out</span>
+
+<span class="d">  Worked for 4m 51s</span></div></div>
+        <div class="p"><span class="label">zsh · ~/Desktop/code/AI/tools/keepline</span><div class="term"><span class="ok">lifcc@Agent-OS</span> <span class="bl">keepline</span> <span class="d">(feat/sidebar-sessions)</span> % git status -s
+ M next/crates/keepline-app/src/workbench/tabs.rs
+<span class="ok">lifcc@Agent-OS</span> <span class="bl">keepline</span> % <span style="background:#d9d7d3"> </span></div></div>
+      </div>
+    </div>
+    <div class="bar"><span class="w">工作空间</span><span class="tab on">1:CLI workflow*</span><span class="tab">2:zsh</span><span class="tab">3:这个 keepline…</span><span class="tab">4:zsh 2</span><span class="tab">5:zsh 3</span><span class="r"><span><span class="er">✕ 2</span> <span class="k">◐ 1</span> <span class="bl">✓ 3</span></span><span>feat/sidebar-sessions</span><span>14:32</span></span></div>
+  </div>
+</section>
+
+<!-- ================= B ================= -->
+<section class="dir">
+  <h2>B · 叙事优先（接力棒）</h2>
+  <div class="idea">Keepline 的本意是「关掉终端也不丢活」，所以每个窗格顶上都写着这件事做到哪了。<span>窗格顶上两行写「你要它」和「停在」，状态用左边一条色边表示；左栏每个会话多一行「停在哪」；顶栏只留一个「下一个需要你的」按钮。整屏不出现计数。</span></div>
+  <div class="win B">
+    <div class="top"><span class="lights"><i></i><i></i><i></i></span><span class="brand">Keepline</span><span class="crumb">/ 工作空间</span><div class="find">⌕ 搜索会话、待办或原话 ⌘P</div><button class="next" type="button"><i></i>下一个需要你的 · 2</button></div>
+    <div class="body">
+      <aside class="side">
+        <div class="h">需要你</div>
+        <div class="s" style="border-left-color:#c53b33"><span class="t">这个终止 agent 中断取消</span><span class="w">停在：managed_session 测试超时</span></div>
+        <div class="s" style="border-left-color:#c53b33"><span class="t">这个目录的 grok 的聊天记录</span><span class="w">停在：找不到 grok 的会话目录</span></div>
+        <div class="h">在跑</div>
+        <div class="s on" style="border-left-color:#a88a12"><span class="t">标签命名依旧有问题</span><span class="w">正在跑 cargo test · 3 分钟</span></div>
+        <div class="h">做完了，等你核对</div>
+        <div class="s" style="border-left-color:#5e62d8"><span class="t">这个诊断的 ui 感觉很丑啊</span><span class="w">做成了：诊断面板改成图表</span></div>
+        <div class="s" style="border-left-color:#5e62d8"><span class="t">cli 是否支持 workflow 呢</span><span class="w">做成了：说明了 workflow 命令</span></div>
+      </aside>
+      <div class="main">
+        <div class="tabs"><span class="on">CLI workflow</span><span>zsh</span><span>这个 keepline…</span><span>zsh 2</span><span>zsh 3</span><span>＋</span></div>
+        <div class="grid">
+          <div class="p big focus"><span class="rail" style="background:#a88a12"></span>
+            <div class="baton"><span class="k">你要它</span><span class="v">查清为什么新开的标签还叫 zsh，并修好</span><span class="meta"><span>claude · 在跑 3:12</span></span><span class="k">停在</span><span class="v">改完 tabs.rs，正在跑 cargo test</span></div>
+            <div class="tm mono term"><span class="bl">●</span> tab_name 只读 tab.title，空的时候退回进程名，
+  所以新开的标签都叫 zsh。启动 Agent 时没写回标题。
+  <span class="d">⎿  Search("fn tab_name", next/crates) · 3 results</span>
+
+<span class="bl">●</span> 改成：识别到 Agent 会话后，用它第一句话做标签名，
+  你手动改过的名字不覆盖。
+  <span class="d">⎿  Update tabs.rs (+18 −3)</span>
+
+<span class="d">✻ Running cargo test -p keepline-app… (3m 12s)</span></div>
+          </div>
+          <div class="p"><span class="rail" style="background:#c53b33"></span>
+            <div class="baton"><span class="k">你要它</span><span class="v">终止 agent 时先中断再取消</span><span class="meta"><span class="er">codex · 出错</span><span class="act">继续</span></span><span class="k">停在</span><span class="v er">managed_session 测试超时</span></div>
+            <div class="tm mono term"><span class="ok">•</span> 先发 Ctrl-C，等 2 秒再发 SIGTERM。
+<span class="er">✗</span> cargo test managed_session … FAILED</div>
+          </div>
+          <div class="p">
+            <div class="baton shell"><span>zsh · ~/Desktop/code/AI/tools/keepline · feat/sidebar-sessions</span><span></span></div>
+            <div class="tm mono term"><span class="ok">lifcc@Agent-OS</span> keepline % git status -s
+ M next/crates/keepline-app/src/workbench/tabs.rs
+<span class="ok">lifcc@Agent-OS</span> keepline % </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ================= C ================= -->
+<section class="dir">
+  <h2>C · 现在这版做减法</h2>
+  <div class="idea">布局不动，只拿掉重复和装饰。<span>顶栏的四个计数合成一个「需要你 2」；标签只在需要你时带红点，「N 格」去掉；左栏不再画分布条；窗格标题只留标题、Agent·时间和一个必要操作；窗格底栏删掉，目录挪到鼠标悬停。</span></div>
+  <div class="win C">
+    <div class="top"><span class="lights"><i></i><i></i><i></i></span><span class="brand">Keepline</span><span class="crumb">/ 工作空间</span><span class="ov">▦ 鸟瞰全部</span><div class="find">⌕ 搜索会话、待办或原话 ⌘P</div><span class="need"><i></i>需要你 2 ⌘J</span></div>
+    <div class="body">
+      <aside class="side">
+        <div class="h">空间</div>
+        <div class="s on"><span class="dot" style="background:#5e62d8"></span><span class="t">工作空间</span><span class="n">13</span></div>
+        <div class="s"><span class="dot" style="background:#8a8986"></span><span class="t">新空间</span><span class="n">0</span></div>
+        <div class="h">会话</div>
+        <div class="s"><span class="dot" style="background:#c53b33"></span><span class="t">这个终止 agent 中断取消…</span><span class="n" style="color:#c53b33">出错</span></div>
+        <div class="s"><span class="dot" style="background:#c53b33"></span><span class="t">这个目录的 grok 的聊天…</span><span class="n" style="color:#c53b33">出错</span></div>
+        <div class="s on"><span class="dot" style="background:#a88a12"></span><span class="t">标签命名依旧有问题</span><span class="n">在跑</span></div>
+        <div class="s"><span class="dot" style="background:#5e62d8"></span><span class="t">这个诊断的 ui 感觉很丑啊</span><span class="n">1 小时</span></div>
+        <div class="s"><span class="dot" style="background:#5e62d8"></span><span class="t">cli 是否支持 workflow 呢</span><span class="n">1 天</span></div>
+        <div class="s" style="color:#6c6b68;font-size:12px">已关闭 21 个 · 点开接着聊</div>
+      </aside>
+      <div class="main">
+        <div class="tabs"><span class="on">CLI workflow</span><span>zsh</span><span><i class="dot" style="background:#c53b33"></i>这个 keepline…</span><span>zsh 2</span><span>zsh 3</span><span>＋</span></div>
+        <div class="grid">
+          <div class="p big focus"><div class="ph"><span class="t">标签命名依旧有问题</span><span class="m">claude · 在跑 3:12</span><span class="a">看进度</span></div>
+            <div class="tm mono term"><span class="bl">●</span> tab_name 只读 tab.title，空的时候退回进程名，
+  所以新开的标签都叫 zsh。启动 Agent 时没写回标题。
+  <span class="d">⎿  Search("fn tab_name", next/crates) · 3 results</span>
+
+<span class="bl">●</span> 改成：识别到 Agent 会话后，用它第一句话做标签名，
+  你手动改过的名字不覆盖。
+  <span class="d">⎿  Update tabs.rs (+18 −3)</span>
+
+<span class="d">✻ Running cargo test -p keepline-app… (3m 12s)</span></div></div>
+          <div class="p"><div class="ph"><span class="dot" style="background:#c53b33"></span><span class="t">这个终止 agent 中断取消</span><span class="m">codex · 4 分钟前</span><span class="a">继续</span></div>
+            <div class="tm mono term"><span class="ok">•</span> 先发 Ctrl-C，等 2 秒再发 SIGTERM。
+<span class="er">✗</span> cargo test managed_session … FAILED</div></div>
+          <div class="p"><div class="ph"><span class="t" style="color:#6c6b68;font-weight:400">zsh</span></div>
+            <div class="tm mono term"><span class="ok">lifcc@Agent-OS</span> keepline % git status -s
+ M next/crates/keepline-app/src/workbench/tabs.rs
+<span class="ok">lifcc@Agent-OS</span> keepline % </div></div>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<div class="notes">
+  <div><b>A 适合</b>：你大部分时间在终端里干活，Keepline 只要别挡路。<b>代价</b>：外壳改动最大（标签挪到底部、标题进边框），新用户第一眼不知道 Keepline 做了什么。</div>
+  <div><b>B 适合</b>：同时开很多会话，回来时要马上知道每个做到哪了。这是 Keepline 跟普通终端最不一样的地方。<b>代价</b>：每个窗格少两行终端高度；「停在」要靠后台摘要，摘要差时会误导。</div>
+  <div><b>C 适合</b>：喜欢现在的结构，只是嫌吵。<b>代价</b>：最稳，但也最不像「另一个东西」，个性提升有限。</div>
+</div>
+</body>
+</html>
