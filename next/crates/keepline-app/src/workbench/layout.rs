@@ -90,14 +90,8 @@ impl Workbench {
             return div().size_full().into_any_element();
         };
         let focused = pane.focus_handle(cx).is_focused(window);
-        let session = self.workspace.current_agent(id).or_else(|| {
-            self.workspace
-                .agent_sessions
-                .iter()
-                .filter(|s| s.terminal.as_deref() == Some(id))
-                .max_by_key(|s| s.updated)
-        });
-        let group = session.map(|s| session_group(&self.workspace, s));
+        let session = self.pane_session(id);
+        let status = self.pane_status(id).map(|(g, _)| g);
         // The conversation's title names the pane, like its tab; its latest reply is
         // already on screen below, so that line only shows on hover. Without an Agent,
         // the title the program set.
@@ -175,7 +169,7 @@ impl Workbench {
                     }))
                     .border_b(px(T::BORDER_WIDTH))
                     .border_color(T::color(T::border()))
-                    .when_some(group, |d, g| d.child(chip(g)))
+                    .when_some(status, |d, g| d.child(state_chip(g)))
                     .when(rang, |d| d.child(label("🔔")))
                     .child(
                         div()
@@ -184,6 +178,7 @@ impl Workbench {
                             .min_w_0()
                             .truncate()
                             .text_size(px(T::MONO_SIZE))
+                            .text_color(T::color(T::primary()))
                             .child(title)
                             .when_some(session.map(|s| self.session_line(s)), |d, line| {
                                 let line = gpui::SharedString::from(line);
@@ -203,46 +198,7 @@ impl Workbench {
                                 }),
                         )
                     })
-                    .when(hint.is_none(), |d| {
-                        d.child(label(
-                            session
-                                .map(|s| {
-                                    format!(
-                                        "{} · {}",
-                                        s.runtime.executable(),
-                                        age(self
-                                            .workspace
-                                            .content
-                                            .get(&s.id)
-                                            .map_or(s.updated, |c| c.updated))
-                                    )
-                                })
-                                .unwrap_or_else(|| "Shell".into()),
-                        ))
-                    })
-                    .when(other_owner, |d| {
-                        d.child(
-                            button(
-                                gpui::SharedString::from(format!("takeover-{id}")),
-                                "接管输入",
-                            )
-                            .h(px(T::ICON_HEIGHT))
-                            .px(px(T::S8))
-                            .text_size(px(T::META))
-                            .text_color(T::color(T::link()))
-                            .on_click(cx.listener(
-                                move |this, _, window, cx| {
-                                    let pane = cx.new(|cx| {
-                                        Pane::new(this.store.socket(), &takeover, true, cx)
-                                    });
-                                    window.focus(&pane.focus_handle(cx), cx);
-                                    cx.observe(&pane, |_, _, cx| cx.notify()).detach();
-                                    this.layout.panes.insert(takeover.clone(), pane);
-                                    cx.notify();
-                                },
-                            )),
-                        )
-                    })
+                    .when(hint.is_none(), |d| d.child(self.pane_meta(session, cx)))
                     .when_some(
                         session
                             .filter(|_| pane.read(cx).handoff_state().is_none())
@@ -257,10 +213,7 @@ impl Workbench {
                                     gpui::SharedString::from(format!("place-task-{id}")),
                                     "放入待办",
                                 )
-                                .h(px(T::ICON_HEIGHT))
-                                .px(px(T::S6))
-                                .text_size(px(T::META))
-                                .text_color(T::color(T::link()))
+                                .pane_action()
                                 .on_click(cx.listener(
                                     move |this, _, _, cx| {
                                         if let Some(p) = this.layout.panes.get(&target) {
@@ -283,9 +236,11 @@ impl Workbench {
                                     gpui::SharedString::from(format!("accept-pane-{id}")),
                                     "标记完成",
                                 )
-                                .h(px(T::ICON_HEIGHT))
-                                .px(px(T::S6))
-                                .text_color(T::color(T::link()))
+                                .pane_action()
+                                // The step this pane waits on you for; the rest stay text.
+                                .bg(T::color(T::button()))
+                                .text_color(T::color(T::primary()))
+                                .font_weight(gpui::FontWeight::SEMIBOLD)
                                 .on_click(cx.listener(
                                     move |this, _, _, cx| {
                                         this.edit(
@@ -307,9 +262,7 @@ impl Workbench {
                                 gpui::SharedString::from(format!("here-pane-{id}")),
                                 "看进度",
                             )
-                            .h(px(T::ICON_HEIGHT))
-                            .px(px(T::S6))
-                            .text_color(T::color(T::link()))
+                            .pane_action()
                             .on_click(cx.listener(
                                 move |this, _, _, cx| {
                                     this.overview.here = Some(show.clone());
@@ -321,8 +274,8 @@ impl Workbench {
                     .child(
                         button(gpui::SharedString::from(format!("close-pane-{id}")), "×")
                             .aria_label("关闭画面")
-                            .h(px(T::ICON_HEIGHT))
-                            .px(px(T::S6))
+                            .pane_action()
+                            .text_color(T::color(T::muted()))
                             .on_click(
                                 cx.listener(move |this, _, _, cx| this.close_pane(&close_id, cx)),
                             ),
@@ -356,6 +309,7 @@ impl Workbench {
                         ..Default::default()
                     })),
             )
+            .child(self.pane_footer(id, session, other_owner, takeover, cx))
             // Over the border rather than widening it: a wider border on focus would
             // shrink the grid and resize the program each time focus moves.
             .when(borders && focused, |d| {
@@ -993,6 +947,251 @@ impl Workbench {
     }
 }
 /// Applies `icon` to the title bar and the Dock, and remembers it.
+/// One look for the pane header's text actions: link-colored, filled only on hover.
+trait PaneAction {
+    fn pane_action(self) -> Self;
+}
+impl PaneAction for gpui::Stateful<gpui::Div> {
+    fn pane_action(self) -> Self {
+        self.h(px(T::PANE_ACTION))
+            .px(px(T::S6))
+            .rounded(px(T::PANE_ACTION_RADIUS))
+            .text_size(px(T::SMALL))
+            .text_color(T::color(T::link()))
+    }
+}
+/// The pane header's status: the group's wash, its ink and its dot.
+fn state_chip(group: Group) -> gpui::Div {
+    let (dot, ink, wash) = group.colors();
+    div()
+        .flex_shrink_0()
+        .h(px(T::STATE_CHIP))
+        .px(px(T::S6))
+        .flex()
+        .items_center()
+        .gap(px(T::PULSE_GAP))
+        .rounded(px(T::STATE_CHIP_RADIUS))
+        .bg(wash)
+        .text_color(ink)
+        .text_size(px(T::META))
+        .font_weight(gpui::FontWeight::SEMIBOLD)
+        .child(div().size(px(T::DOT)).rounded_full().bg(dot))
+        .child(group.label())
+}
+/// Lower is more urgent: what a tab's dot shows when its panes disagree.
+pub(super) fn urgency(group: Group) -> u8 {
+    match group {
+        Group::Waiting => 0,
+        Group::Error => 1,
+        Group::Done => 2,
+        Group::Review => 3,
+        Group::Working => 4,
+        Group::Running => 5,
+        Group::Paused => 6,
+        Group::Ready => 7,
+        Group::Stale => 8,
+    }
+}
+/// `3:12`, or `1:03:12` past an hour.
+fn turn_clock(seconds: u64) -> String {
+    let (h, m, s) = (seconds / 3600, seconds / 60 % 60, seconds % 60);
+    if h > 0 {
+        format!("{h}:{m:02}:{s:02}")
+    } else {
+        format!("{m}:{s:02}")
+    }
+}
+/// A running turn's clock is redrawn once a second while one is on screen, and not at all
+/// otherwise; one pending redraw serves every pane.
+static TURN_TICK: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
+const TURN_TICK_EVERY: Duration = Duration::from_secs(1);
+/// Branches by directory, read off the render path and reread at most this often.
+static BRANCHES: std::sync::LazyLock<
+    std::sync::Mutex<HashMap<String, (std::time::Instant, Option<String>)>>,
+> = std::sync::LazyLock::new(Default::default);
+const BRANCH_TTL: Duration = Duration::from_secs(10);
+/// The branch checked out where `dir` sits, from `.git/HEAD` (a linked worktree's `.git`
+/// file points at its own HEAD); a detached HEAD shows its short commit.
+fn read_branch(dir: &Path) -> Option<String> {
+    for d in dir.ancestors() {
+        let dot = d.join(".git");
+        let git_dir = if dot.is_dir() {
+            dot
+        } else if dot.is_file() {
+            let text = std::fs::read_to_string(&dot).ok()?;
+            d.join(text.trim().strip_prefix("gitdir:")?.trim())
+        } else {
+            continue;
+        };
+        let head = std::fs::read_to_string(git_dir.join("HEAD")).ok()?;
+        let head = head.trim();
+        return Some(match head.strip_prefix("ref: refs/heads/") {
+            Some(branch) => branch.to_owned(),
+            None => head.chars().take(7).collect(),
+        });
+    }
+    None
+}
+impl Workbench {
+    /// The conversation a pane shows: its current one, else the latest it ran.
+    pub(super) fn pane_session(&self, id: &str) -> Option<&AgentSession> {
+        self.workspace.current_agent(id).or_else(|| {
+            self.workspace
+                .agent_sessions
+                .iter()
+                .filter(|s| s.terminal.as_deref() == Some(id))
+                .max_by_key(|s| s.updated)
+        })
+    }
+    /// A pane's status as the sidebar shows it, and whether it asks for attention; a
+    /// conversation already closed out and no longer live shows none.
+    pub(super) fn pane_status(&self, id: &str) -> Option<(Group, bool)> {
+        let s = self.pane_session(id)?;
+        if live_terminal(&self.workspace, s).is_none() && !s.outcome.needs_review(now()) {
+            return None;
+        }
+        Some(sidebar_status(&self.workspace, &self.attention.unseen, s))
+    }
+    /// `claude · 5 分钟`, or `claude · 本轮 3:12` while a turn runs in a live terminal.
+    fn pane_meta(&self, session: Option<&AgentSession>, cx: &Context<Self>) -> gpui::Div {
+        let meta = div()
+            .flex_shrink_0()
+            .flex()
+            .items_center()
+            .gap(px(T::S6))
+            .text_size(px(T::META))
+            .text_color(T::color(T::muted()))
+            .font_features(T::tabular());
+        let Some(s) = session else {
+            return meta.child("Shell");
+        };
+        let content = self.workspace.content.get(&s.id);
+        let started = content
+            .filter(|c| c.turn == keepline_core::content::Turn::Running && c.turn_started > 0)
+            .filter(|_| live_terminal(&self.workspace, s).is_some())
+            .map(|c| c.turn_started);
+        let when = match started {
+            Some(at) => {
+                self.tick_turn(cx);
+                format!("本轮 {}", turn_clock(now().saturating_sub(at)))
+            }
+            None => age(content.map_or(s.updated, |c| c.updated)),
+        };
+        meta.child(s.runtime.executable().to_string())
+            .child(div().opacity(T::ZERO_OPACITY).child("·"))
+            .child(when)
+    }
+    fn tick_turn(&self, cx: &Context<Self>) {
+        use std::sync::atomic::Ordering;
+        if TURN_TICK.swap(true, Ordering::Relaxed) {
+            return;
+        }
+        cx.spawn(async move |this, cx| {
+            cx.background_executor().timer(TURN_TICK_EVERY).await;
+            TURN_TICK.store(false, Ordering::Relaxed);
+            let _ = this.update(cx, |_, cx| cx.notify());
+        })
+        .detach();
+    }
+    /// The cached branch for `dir`; a missing or old entry is read in the background and
+    /// redraws the window only if it changed.
+    fn git_branch(&self, dir: &str, cx: &Context<Self>) -> Option<String> {
+        let mut map = BRANCHES.lock().ok()?;
+        let old = match map.get(dir) {
+            Some((at, branch)) if at.elapsed() < BRANCH_TTL => return branch.clone(),
+            Some((_, branch)) => branch.clone(),
+            None => None,
+        };
+        // Marked as read now, so the redraws before the read lands do not read again.
+        map.insert(dir.to_owned(), (std::time::Instant::now(), old.clone()));
+        drop(map);
+        let dir = dir.to_owned();
+        cx.spawn(async move |this, cx| {
+            let at = PathBuf::from(&dir);
+            let branch = cx.background_spawn(async move { read_branch(&at) }).await;
+            let changed = BRANCHES.lock().is_ok_and(|mut map| {
+                let before = map.insert(dir, (std::time::Instant::now(), branch.clone()));
+                before.and_then(|(_, b)| b) != branch
+            });
+            if changed {
+                let _ = this.update(cx, |_, cx| cx.notify());
+            }
+        })
+        .detach();
+        old
+    }
+    /// Where the pane's program is and on which branch, and who types into it.
+    fn pane_footer(
+        &self,
+        id: &str,
+        session: Option<&AgentSession>,
+        other_owner: bool,
+        takeover: String,
+        cx: &Context<Self>,
+    ) -> gpui::Div {
+        let pane = self.layout.panes.get(id);
+        let cwd = pane
+            .and_then(|p| p.read(cx).cwd().map(|c| c.to_string_lossy().into_owned()))
+            .or_else(|| session.map(|s| s.cwd.clone()).filter(|c| !c.is_empty()))
+            .or_else(|| {
+                self.workspace
+                    .terminals
+                    .iter()
+                    .find(|t| t.id == id)
+                    .map(|t| t.cwd.clone())
+            })
+            .filter(|c| !c.is_empty());
+        let branch = cwd.as_deref().and_then(|c| self.git_branch(c, cx));
+        let place = cwd.map(|c| match branch {
+            Some(b) => format!("{} · {b}", home_relative(&c)),
+            None => home_relative(&c),
+        });
+        let owns = pane.is_some_and(|p| p.read(cx).owns_input());
+        div()
+            .h(px(T::FOOTER))
+            .flex_shrink_0()
+            .px(px(T::S10))
+            .flex()
+            .items_center()
+            .gap(px(T::S10))
+            .border_t(px(T::BORDER_WIDTH))
+            .border_color(T::color(T::border()))
+            .text_size(px(T::PANE_FOOTER_SIZE))
+            .text_color(T::color(T::muted()))
+            .child(
+                div()
+                    .flex_1()
+                    .min_w_0()
+                    .truncate()
+                    .font(T::mono(cx))
+                    .text_size(px(T::PANE_FOOTER_SIZE))
+                    .children(place),
+            )
+            .when(other_owner, |d| {
+                d.child(
+                    button(
+                        gpui::SharedString::from(format!("takeover-{id}")),
+                        "点击接管输入",
+                    )
+                    .flex_shrink_0()
+                    .h(px(T::ICON_HEIGHT))
+                    .px(px(T::S6))
+                    .text_size(px(T::PANE_FOOTER_SIZE))
+                    .text_color(T::color(T::link()))
+                    .on_click(cx.listener(move |this, _, window, cx| {
+                        let pane = cx.new(|cx| Pane::new(this.store.socket(), &takeover, true, cx));
+                        window.focus(&pane.focus_handle(cx), cx);
+                        cx.observe(&pane, |_, _, cx| cx.notify()).detach();
+                        this.layout.panes.insert(takeover.clone(), pane);
+                        cx.notify();
+                    })),
+                )
+            })
+            .when(!other_owner && owns, |d| {
+                d.child(div().flex_shrink_0().child("输入归你"))
+            })
+    }
+}
 pub(super) fn choose_icon(icon: AppIcon, cx: &mut gpui::App) {
     crate::desktop::set_dock_icon(icon.dock_png());
     let file = cx.global::<Chosen>().file.clone();
@@ -1003,6 +1202,35 @@ pub(super) fn choose_icon(icon: AppIcon, cx: &mut gpui::App) {
 }
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn turn_clock_reads_minutes_and_hours() {
+        assert_eq!(super::turn_clock(0), "0:00");
+        assert_eq!(super::turn_clock(192), "3:12");
+        assert_eq!(super::turn_clock(3792), "1:03:12");
+    }
+    #[test]
+    fn branch_comes_from_head_in_a_repo_or_a_linked_worktree() {
+        let root = std::env::temp_dir().join(format!("kl-branch-{}", std::process::id()));
+        let repo = root.join("repo");
+        let nested = repo.join("a/b");
+        std::fs::create_dir_all(repo.join(".git")).unwrap();
+        std::fs::create_dir_all(&nested).unwrap();
+        std::fs::write(repo.join(".git/HEAD"), "ref: refs/heads/feat/ui-main\n").unwrap();
+        assert_eq!(super::read_branch(&nested).as_deref(), Some("feat/ui-main"));
+        let linked = root.join("linked");
+        let gitdir = repo.join(".git/worktrees/linked");
+        std::fs::create_dir_all(&linked).unwrap();
+        std::fs::create_dir_all(&gitdir).unwrap();
+        std::fs::write(gitdir.join("HEAD"), "0123456789abcdef\n").unwrap();
+        std::fs::write(
+            linked.join(".git"),
+            format!("gitdir: {}\n", gitdir.display()),
+        )
+        .unwrap();
+        assert_eq!(super::read_branch(&linked).as_deref(), Some("0123456"));
+        assert_eq!(super::read_branch(&root), None);
+        std::fs::remove_dir_all(&root).unwrap();
+    }
     #[test]
     fn unread_agents_speak_plainly() {
         let note = |hint: &str| super::unread_agent(hint).0;
