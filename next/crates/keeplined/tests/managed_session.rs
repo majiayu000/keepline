@@ -3679,3 +3679,80 @@ fn an_approval_drawn_before_the_conversation_is_bound_still_waits_on_the_user() 
         std::thread::sleep(Duration::from_millis(100));
     }
 }
+
+/// The command line other Agents and scripts use, run as a separate process the way
+/// they would: list, send and read a shell, then a prompt refused at an approval.
+#[test]
+fn command_line_lists_reads_sends_and_refuses_to_type_into_an_approval() {
+    let h = Host::start();
+    h.setup();
+    let cli = |args: &[&str]| {
+        let out = Command::new(env!("CARGO_BIN_EXE_keeplined"))
+            .args(args)
+            .args(["--runtime", &h.root.to_string_lossy()])
+            .output()
+            .unwrap();
+        (
+            out.status.success(),
+            String::from_utf8_lossy(&out.stdout).into_owned(),
+            String::from_utf8_lossy(&out.stderr).into_owned(),
+        )
+    };
+    h.call(h.launch("shell-cli", "exec /bin/sh -i")).unwrap();
+    let (ok, _, err) = cli(&["send", "shell-c", "echo", "sent-$((40+2))", "--enter"]);
+    assert!(ok, "{err}");
+    let until = Instant::now() + Duration::from_secs(10);
+    loop {
+        let (ok, out, err) = cli(&["read", "shell-cli", "--lines", "5"]);
+        assert!(ok, "{err}");
+        if out.contains("sent-42") {
+            break;
+        }
+        assert!(Instant::now() < until, "echo output never appeared:\n{out}");
+        std::thread::sleep(Duration::from_millis(100));
+    }
+
+    let logs = h.root.join("logs/claude");
+    fs::create_dir_all(&logs).unwrap();
+    let claude = h.root.join("claude");
+    std::os::unix::fs::symlink("/bin/sh", &claude).unwrap();
+    let id = uuid::Uuid::new_v4().to_string();
+    let seed = h.root.join("seed");
+    let row = serde_json::json!({"type":"user","sessionId":id,"uuid":"u0","cwd":"/project","entrypoint":"cli","userType":"external","timestamp":keepline_core::content::now(),"message":{"content":"CLI approval test"}});
+    fs::write(&seed, format!("{row}\n")).unwrap();
+    let script = format!(
+        "cat {} > {}; printf '%s\\n' 'Bash command' '  git push origin main' 'Do you want to proceed?' '> 1. Yes' '  2. No'; read -r answer; echo \"answer=$answer\"; read -r end",
+        shell_quote(&seed.to_string_lossy()),
+        shell_quote(&logs.join(format!("{id}.jsonl")).to_string_lossy())
+    );
+    h.call(h.launch(
+        "agent-cli",
+        &format!(
+            "exec {} -c {} fixture --session-id {}",
+            shell_quote(&claude.to_string_lossy()),
+            shell_quote(&script),
+            id
+        ),
+    ))
+    .unwrap();
+    // Approval recognition reads the screen; under a loaded machine it can take a while.
+    let (ok, out, err) = cli(&["wait", "agent-cli", "--until", "waiting", "--timeout", "90"]);
+    assert!(ok && out.trim() == "waiting", "{out}{err}");
+    let (ok, out, _) = cli(&["list"]);
+    assert!(ok);
+    let line = out.lines().find(|l| l.starts_with("agent-cl")).unwrap_or_default();
+    assert!(line.contains("claude") && line.contains("waiting"), "{out}");
+    let (ok, _, err) = cli(&["prompt", "agent-cli", "yes", "please"]);
+    assert!(!ok && err.contains("等你回答"), "{err}");
+    // Nothing reached the approval.
+    std::thread::sleep(Duration::from_millis(500));
+    let (_, screen, _) = cli(&["read", "agent-cli"]);
+    assert!(!screen.contains("answer="), "{screen}");
+    let (ok, _, err) = cli(&["prompt", "agent-cli", "1", "--force"]);
+    assert!(ok, "{err}");
+    let until = Instant::now() + Duration::from_secs(10);
+    while !cli(&["read", "agent-cli"]).1.contains("answer=1") {
+        assert!(Instant::now() < until, "forced prompt never arrived");
+        std::thread::sleep(Duration::from_millis(100));
+    }
+}

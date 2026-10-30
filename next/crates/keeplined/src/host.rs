@@ -1995,6 +1995,19 @@ fn dispatch(shared: &Shared, request: Request) -> io::Result<Reply> {
             );
             Ok(Reply::Workspace(host.snapshot()))
         }
+        Request::ReadScreen { id, rows } => {
+            let host = lock(shared)?;
+            let terminal = host
+                .terminals
+                .get(&id)
+                .ok_or_else(|| io::Error::other("terminal not found"))?;
+            let text = lock(terminal)?.vt.tail_text(rows.clamp(1, 10_000))?;
+            Ok(Reply::Text(text))
+        }
+        Request::SendText { id, text, submit } => {
+            send_text(shared, &id, &text, submit)?;
+            Ok(Reply::Ok)
+        }
         Request::TerminalCwd { id } => {
             let host = lock(shared)?;
             let terminal = host
@@ -2431,6 +2444,65 @@ fn apply_official(
     }
 }
 
+/// A paste from outside the app, plus Enter as its own write: an Agent that sees the
+/// Enter inside the paste would take it as a newline in the prompt, not a submit.
+fn send_text(shared: &Shared, id: &str, text: &str, submit: bool) -> io::Result<()> {
+    if text.contains('\x1b') {
+        return Err(io::Error::other("文本包含终端控制字符"));
+    }
+    if text.len() > 64 * 1024 {
+        return Err(io::Error::other("单次输入超过 64 KiB"));
+    }
+    let terminal = lock(shared)?
+        .terminals
+        .get(id)
+        .cloned()
+        .ok_or_else(|| io::Error::other("terminal not found"))?;
+    {
+        let mut live = lock(&terminal)?;
+        if live.exited {
+            return Err(io::Error::other("terminal has exited"));
+        }
+        if !text.is_empty() {
+            let bracketed = live
+                .vt
+                .terminal()
+                .mode(keepline_core::terminal::libghostty_vt::terminal::Mode::BRACKETED_PASTE)
+                .unwrap_or(false);
+            let bytes = if bracketed {
+                format!("\x1b[200~{text}\x1b[201~")
+            } else if text.contains(['\n', '\r']) {
+                return Err(io::Error::other("程序未启用安全粘贴，不能发送多行文本"));
+            } else {
+                text.to_owned()
+            };
+            pty::write(&mut live.master, bytes.as_bytes())?;
+            live.input_at = Some(Instant::now());
+        }
+    }
+    // Same as typing in the app: the prompt on screen is no longer waiting on the user.
+    lock(shared)?.set_screen_wait(id, None)?;
+    if !submit {
+        return Ok(());
+    }
+    // Long enough for an Agent's paste handling to finish before Enter arrives.
+    thread::sleep(Duration::from_millis(150));
+    pty::write(&mut lock(&terminal)?.master, b"\r")?;
+    record_submission(shared, id)
+}
+/// An Enter reached this terminal: remember when (screen recognition pairs a new
+/// conversation with the latest ones) and look for the Agent it may have started.
+fn record_submission(shared: &Shared, terminal: &str) -> io::Result<()> {
+    {
+        let mut host = lock(shared)?;
+        let submits = host.submits.entry(terminal.to_owned()).or_default();
+        submits.push_back(keepline_core::content::now());
+        if submits.len() > 8 {
+            submits.pop_front();
+        }
+    }
+    probe_after_submission(shared, terminal)
+}
 fn probe_after_submission(shared: &Shared, terminal: &str) -> io::Result<()> {
     let mut host = lock(shared)?;
     if host.workspace.current_agent(terminal).is_some()
@@ -2616,15 +2688,7 @@ fn attach(
             lock(&host)?.set_screen_wait(&terminal_id, None)?;
         }
         if submitted && result.is_ok() {
-            {
-                let mut shared = lock(&host)?;
-                let submits = shared.submits.entry(terminal_id.clone()).or_default();
-                submits.push_back(keepline_core::content::now());
-                if submits.len() > 8 {
-                    submits.pop_front();
-                }
-            }
-            probe_after_submission(&host, &terminal_id)?;
+            record_submission(&host, &terminal_id)?;
         }
         let reply = result
             .map(|_| Reply::Ok)

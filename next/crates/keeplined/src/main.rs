@@ -1,3 +1,5 @@
+mod control;
+
 fn main() {
     let code = match run() {
         Ok(()) => 0,
@@ -73,6 +75,9 @@ fn run() -> std::io::Result<()> {
             )
         }
         Some("scan") => scan(args),
+        Some(command @ ("list" | "read" | "send" | "prompt" | "wait")) => {
+            control::run(command, args)
+        }
         Some("hook") => hook(args),
         Some("hooks") => hooks(args),
         Some("--version") => {
@@ -88,8 +93,9 @@ fn run() -> std::io::Result<()> {
             format!(
                 "experimental managed PTY daemon (protocol major {}). \
                  the keepline command does not start it. \
-                 usage: keeplined serve --runtime <dir>",
-                keeplined::PROTOCOL_MAJOR
+                 usage: keeplined serve --runtime <dir>\n{}",
+                keeplined::PROTOCOL_MAJOR,
+                control::USAGE
             ),
         )),
     }
