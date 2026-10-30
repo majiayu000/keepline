@@ -1,0 +1,336 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>工作台改版稿 · 鸟瞰、左栏、逐个清理</title>
+<style>
+/* Light scheme from theme.rs (bg #fafaf9, fg #1f1e1c); dark from #1c1c1e / #e4e2df. */
+:root {
+  --app: #f0efed; --pane: #fafaf9; --raised: #ebeae8; --popover: #fdfdfc; --chip: #ecebe9;
+  --border: #e3e2df; --card-border: #d6d5d2; --control: #c9c8c5;
+  --primary: #0e0d0c; --body: #1f1e1c; --secondary: #5a5956; --muted: #6c6b68;
+  --accent: #141312; --on-accent: #fafaf9; --button: #e9e8e6; --button-hover: #dddcd9; --link: #2a2927;
+  --track: #e6e5e2;
+  /* Status hues pushed to 3:1 on the light pane, as theme.rs `legible` does. */
+  --waiting: #c4651f; --error: #c53b33; --review: #5e62d8; --paused: #9a7316; --running: #2b8f60; --stale: #8a8986;
+  --error-wash: #f8e9e7;
+}
+:root[data-theme="dark"] {
+  --app: #18181a; --pane: #1c1c1e; --raised: #29292a; --popover: #262627; --chip: #2c2c2d;
+  --border: #2e2e2f; --card-border: #353536; --control: #3a3a3b;
+  --primary: #ecebe9; --body: #e4e2df; --secondary: #a3a2a0; --muted: #8a8988;
+  --accent: #ecebe9; --on-accent: #1c1c1e; --button: #2a2a2b; --button-hover: #343435; --link: #c8c6c4;
+  --track: #2c2c2d;
+  --waiting: #e8823a; --error: #e5534b; --review: #8f93ff; --paused: #d9a441; --running: #4cc38a; --stale: #8b8a88;
+  --error-wash: #3a2222;
+}
+* { box-sizing: border-box; }
+body {
+  margin: 0; background: #c9ccd2; color: var(--body);
+  font: 13px/1.4 -apple-system, BlinkMacSystemFont, "PingFang SC", "Helvetica Neue", sans-serif;
+  font-variant-numeric: tabular-nums;
+  padding: 20px 16px 40px; display: flex; flex-direction: column; align-items: center; gap: 14px;
+}
+button { font: inherit; cursor: pointer; border: 0; background: none; color: inherit; }
+.bar { display: flex; gap: 8px; align-items: center; font-size: 12px; color: #2f3238; flex-wrap: wrap; justify-content: center; max-width: 1440px; }
+.bar button { height: 26px; padding: 0 10px; border-radius: 6px; background: #e8e9ec; color: #1f2024; }
+.bar button[aria-pressed="true"] { background: #1f2024; color: #fff; }
+.frame-label { font-size: 11px; letter-spacing: .06em; color: #2f3238; text-transform: uppercase; align-self: flex-start; max-width: 1440px; width: 100%; margin: 10px auto 0; }
+
+.window { width: 1440px; max-width: 100%; height: 900px; background: var(--pane); border-radius: 12px; overflow: hidden; box-shadow: 0 20px 60px rgba(0,0,0,.25); display: flex; flex-direction: column; }
+.top { height: 46px; flex: none; display: flex; align-items: center; gap: 14px; padding: 0 20px 0 84px; border-bottom: 1px solid var(--border); background: var(--pane); }
+.brand { font-weight: 600; color: var(--primary); }
+.crumb { color: var(--secondary); font-size: 12px; }
+.toggle { height: 28px; padding: 0 10px; border-radius: 6px; background: var(--raised); font-size: 12.5px; color: var(--primary); display: inline-flex; align-items: center; gap: 6px; }
+.search { flex: 0 1 360px; height: 30px; border: 1px solid var(--control); border-radius: 8px; display: flex; align-items: center; gap: 8px; padding: 0 10px; color: var(--muted); font-size: 12.5px; }
+.search kbd { margin-left: auto; font: 11px inherit; border: 1px solid var(--control); border-radius: 4px; padding: 0 4px; color: var(--muted); }
+.top .spacer { flex: 1; }
+.ghost { height: 28px; padding: 0 10px; border-radius: 6px; font-size: 12.5px; color: var(--body); }
+.ghost:hover { background: var(--button-hover); }
+
+.main { flex: 1; min-height: 0; display: flex; }
+
+/* Sidebar */
+.side { width: 240px; flex: none; border-right: 1px solid var(--border); display: flex; flex-direction: column; background: var(--pane); }
+.side-scroll { flex: 1; overflow: auto; padding: 14px 10px; display: flex; flex-direction: column; gap: 18px; }
+.side h3 { margin: 0 0 4px; padding: 0 8px; font-size: 11px; font-weight: 600; letter-spacing: .04em; color: var(--muted); display: flex; justify-content: space-between; align-items: center; }
+.side h3 .count { font-weight: 400; }
+.row { height: 30px; display: flex; align-items: center; gap: 8px; padding: 0 8px; border-radius: 6px; color: var(--body); }
+.row:hover { background: var(--raised); }
+.row.on { background: var(--raised); color: var(--primary); font-weight: 500; }
+.row .name { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.row .n { margin-left: auto; color: var(--muted); font-size: 11.5px; flex: none; }
+.dot { width: 7px; height: 7px; border-radius: 50%; flex: none; }
+.ring { width: 7px; height: 7px; border-radius: 50%; flex: none; border: 1.5px solid currentColor; }
+.warn-tag { flex: none; font-size: 10.5px; padding: 0 5px; border-radius: 4px; background: var(--chip); color: var(--muted); }
+.mini { display: flex; height: 4px; gap: 1px; margin: 2px 8px 6px; border-radius: 2px; overflow: hidden; }
+.mini i { display: block; height: 100%; }
+.link-row { color: var(--secondary); font-size: 12px; }
+.side-foot { border-top: 1px solid var(--border); padding: 8px 10px; display: flex; justify-content: space-between; }
+
+/* Overview */
+.content { flex: 1; min-width: 0; overflow: auto; background: var(--pane); }
+.tabs { height: 34px; display: flex; align-items: center; gap: 2px; padding: 0 12px; border-bottom: 1px solid var(--border); color: var(--secondary); font-size: 12.5px; }
+.tabs span { padding: 0 14px; }
+.ov { padding: 24px 28px 40px; display: flex; flex-direction: column; gap: 22px; }
+.ov-head { display: flex; align-items: flex-end; gap: 16px; flex-wrap: wrap; }
+.ov-head h1 { margin: 0; font-size: 20px; font-weight: 600; color: var(--primary); }
+.ov-head .sub { color: var(--secondary); font-size: 12.5px; }
+.ov-head .seg { margin-left: auto; display: inline-flex; padding: 2px; border-radius: 7px; background: var(--raised); }
+.ov-head .seg button { height: 26px; padding: 0 10px; border-radius: 5px; font-size: 12px; color: var(--secondary); }
+.ov-head .seg button[aria-pressed="true"] { background: var(--popover); color: var(--primary); box-shadow: 0 1px 2px rgba(0,0,0,.08); }
+
+.dist { display: flex; flex-direction: column; gap: 10px; }
+.dist-bar { display: flex; gap: 2px; height: 12px; }
+.dist-bar button { height: 100%; min-width: 4px; padding: 0; }
+.dist-bar button:first-child { border-radius: 4px 0 0 4px; }
+.dist-bar button:last-child { border-radius: 0 4px 4px 0; }
+.dist-bar button:hover { filter: brightness(1.1); }
+.dist-bar button.stale { background: repeating-linear-gradient(135deg, var(--stale) 0 2px, transparent 2px 5px); box-shadow: inset 0 0 0 1px var(--stale); }
+.legend { display: flex; flex-wrap: wrap; gap: 6px; }
+.legend button { height: 28px; padding: 0 10px; border-radius: 14px; border: 1px solid var(--border); display: inline-flex; align-items: center; gap: 7px; font-size: 12.5px; color: var(--body); }
+.legend button b { font-weight: 600; color: var(--primary); }
+.legend button:hover { background: var(--raised); }
+.legend button.empty { color: var(--muted); border-style: dashed; }
+.legend button.empty b { color: var(--muted); font-weight: 400; }
+.legend .action { margin-left: auto; border: 0; background: var(--button); }
+
+.section-head { display: flex; align-items: center; gap: 8px; margin-bottom: 10px; }
+.section-head h2 { margin: 0; font-size: 13.5px; font-weight: 600; }
+.section-head .c { color: var(--muted); }
+.section-head .note { color: var(--muted); font-size: 12px; }
+.section-head .right { margin-left: auto; display: flex; gap: 6px; }
+
+.todos { display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 10px; }
+.todo { border: 1px solid var(--card-border); border-radius: 10px; padding: 12px 14px; display: flex; align-items: center; gap: 12px; background: var(--popover); }
+.todo .t { font-weight: 600; color: var(--primary); }
+.todo .m { font-size: 11.5px; color: var(--muted); }
+.todo .start { margin-left: auto; height: 28px; padding: 0 12px; border-radius: 6px; background: var(--button); font-size: 12.5px; color: var(--primary); flex: none; }
+.todo .start:hover { background: var(--button-hover); }
+
+.cards { display: grid; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); gap: 10px; }
+.card { border: 1px solid var(--card-border); border-radius: 10px; padding: 12px 14px 10px; background: var(--popover); display: flex; flex-direction: column; gap: 6px; min-height: 148px; }
+.card:hover { border-color: var(--control); }
+.card .t { display: flex; gap: 8px; align-items: flex-start; }
+.card .t span { flex: 1; min-width: 0; font-weight: 600; color: var(--primary); display: -webkit-box; -webkit-line-clamp: 1; -webkit-box-orient: vertical; overflow: hidden; }
+.card .t button { flex: none; width: 22px; height: 22px; border-radius: 5px; color: var(--muted); }
+.card .meta { display: flex; gap: 6px; align-items: center; font-size: 11.5px; color: var(--muted); }
+.card .meta .when { margin-left: auto; }
+.card .err { font-size: 12px; color: var(--body); display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden; }
+.card .err::before { content: "最后一句 "; color: var(--muted); }
+.card .foot { margin-top: auto; display: flex; align-items: center; gap: 8px; }
+.card .tag { font-size: 11px; padding: 1px 6px; border-radius: 4px; background: var(--error-wash); color: var(--error); font-weight: 600; }
+.card .go { margin-left: auto; height: 26px; padding: 0 8px; border-radius: 6px; font-size: 12.5px; color: var(--link); }
+.card .go:hover { background: var(--button-hover); }
+.more-row { margin-top: 8px; height: 30px; padding: 0 10px; border-radius: 6px; color: var(--link); font-size: 12.5px; }
+
+.folded { display: flex; align-items: center; gap: 10px; height: 40px; padding: 0 14px; border: 1px solid var(--border); border-radius: 10px; }
+.folded .ages { display: flex; gap: 2px; align-items: flex-end; height: 16px; }
+.folded .ages i { width: 6px; background: var(--stale); border-radius: 1px; opacity: .7; }
+.folded .h { color: var(--muted); font-size: 12px; }
+.folded .right { margin-left: auto; display: flex; gap: 6px; }
+.btn { height: 28px; padding: 0 12px; border-radius: 6px; background: var(--button); font-size: 12.5px; color: var(--primary); }
+.btn:hover { background: var(--button-hover); }
+.btn.solid { background: var(--accent); color: var(--on-accent); font-weight: 600; }
+
+/* Cleanup */
+.cleanup { flex: 1; overflow: auto; padding: 26px 28px; display: flex; justify-content: center; }
+.cl { width: 760px; max-width: 100%; display: flex; flex-direction: column; gap: 16px; }
+.cl-head { display: flex; align-items: center; gap: 12px; }
+.cl-head h1 { margin: 0; font-size: 16px; font-weight: 600; color: var(--primary); }
+.cl-head .pos { margin-left: auto; color: var(--secondary); font-size: 12.5px; }
+.steps { display: flex; gap: 2px; height: 6px; }
+.steps i { flex: 1; border-radius: 2px; background: var(--track); }
+.steps i.done { background: var(--secondary); }
+.steps i.later { background: var(--paused); }
+.steps i.drop { background: var(--muted); opacity: .5; }
+.steps i.now { background: var(--primary); }
+.tally { display: flex; gap: 14px; font-size: 12px; color: var(--secondary); }
+.tally span { display: inline-flex; align-items: center; gap: 6px; }
+.tally i { width: 10px; height: 6px; border-radius: 2px; display: inline-block; }
+.cl-card { border: 1px solid var(--card-border); border-radius: 12px; background: var(--popover); padding: 18px 20px; display: flex; flex-direction: column; gap: 12px; }
+.cl-card h2 { margin: 0; font-size: 20px; font-weight: 600; color: var(--primary); }
+.cl-card .meta { font-size: 12px; color: var(--secondary); display: flex; gap: 8px; flex-wrap: wrap; }
+.facts { display: grid; grid-template-columns: 72px 1fr; gap: 8px 14px; font-size: 13px; }
+.facts dt { color: var(--muted); }
+.facts dd { margin: 0; color: var(--body); }
+.age-line { display: flex; align-items: center; gap: 10px; font-size: 11.5px; color: var(--muted); }
+.age-line .track { flex: 1; position: relative; height: 4px; background: var(--track); border-radius: 2px; }
+.age-line .track i { position: absolute; top: -3px; width: 2px; height: 10px; background: var(--primary); border-radius: 1px; }
+.cl-actions { display: flex; gap: 8px; flex-wrap: wrap; }
+.cl-actions kbd { font: 11px inherit; opacity: .6; margin-left: 4px; }
+.cl-nav { display: flex; gap: 8px; color: var(--secondary); }
+</style>
+</head>
+<body>
+<div class="bar">
+  <span>工作台改版稿：用你 10-30 真实数据的标题和数字（291 个未收尾、出错 29、等你回答 0、已关闭 33、待办 3）；其余分组数量是示例</span>
+  <button type="button" data-theme-btn="light" aria-pressed="true">浅色</button>
+  <button type="button" data-theme-btn="dark" aria-pressed="false">深色</button>
+</div>
+
+<div class="frame-label">一 · 鸟瞰 + 左栏</div>
+<div class="window">
+  <div class="top">
+    <span class="brand">Keepline</span><span class="crumb">/ 工作空间</span>
+    <button type="button" class="toggle">▦ 鸟瞰全部</button>
+    <div class="search">⌕ 搜索会话、待办或原话 <kbd>⌘P</kbd></div>
+    <span class="spacer"></span>
+    <button type="button" class="ghost">＋ 新待办</button>
+  </div>
+  <div class="main">
+    <aside class="side">
+      <div class="side-scroll">
+        <div>
+          <h3>空间 <span class="count">2</span></h3>
+          <div class="row on"><span class="dot" style="background:var(--review)"></span><span class="name">工作空间</span><span class="warn-tag">目录不在了</span><span class="n">1</span></div>
+          <div class="mini" title="工作空间里会话的状态分布"><i style="flex:29;background:var(--error)"></i><i style="flex:148;background:var(--review)"></i><i style="flex:21;background:var(--paused)"></i><i style="flex:6;background:var(--running)"></i><i style="flex:87;background:var(--stale);opacity:.5"></i></div>
+          <div class="row"><span class="dot" style="background:var(--stale)"></span><span class="name">新空间</span><span class="warn-tag">目录不在了</span><span class="n">0</span></div>
+          <div class="row link-row">＋ 新空间</div>
+        </div>
+        <div>
+          <h3>待办 <span class="count">3</span></h3>
+          <div class="row"><span class="ring" style="color:var(--muted)"></span><span class="name">健身</span><span class="n">未开始</span></div>
+          <div class="row"><span class="ring" style="color:var(--muted)"></span><span class="name">标签命名依旧有问题</span><span class="n">未开始</span></div>
+          <div class="row"><span class="ring" style="color:var(--muted)"></span><span class="name">[第 3 个待办]</span><span class="n">未开始</span></div>
+        </div>
+        <div>
+          <h3>会话 <span class="count">1 个开着</span></h3>
+          <div class="row on"><span class="dot" style="background:var(--review)"></span><span class="name">cli 是否支持 workflow 呢?</span><span class="n">1 天</span></div>
+          <div class="row link-row">已关闭 33 个 · 点开接着聊 →</div>
+        </div>
+      </div>
+      <div class="side-foot"><button type="button" class="ghost">本机诊断</button><button type="button" class="ghost">设置</button></div>
+    </aside>
+
+    <section class="content">
+      <div class="tabs"><span>CLI workflow</span><span>zsh</span><span>zsh 2</span><span>zsh 3</span><span>zsh 4</span><span>＋</span></div>
+      <div class="ov">
+        <div class="ov-head">
+          <div>
+            <h1>鸟瞰全部</h1>
+            <div class="sub">291 个会话还没收尾 · 按要你做什么分好了组 · Esc 回到工作区</div>
+          </div>
+          <div class="seg" role="group" aria-label="范围">
+            <button type="button" aria-pressed="true">全部空间</button>
+            <button type="button" aria-pressed="false">只看有变化</button>
+          </div>
+        </div>
+
+        <div class="dist" aria-label="291 个会话按状态分布">
+          <div class="dist-bar" id="dist"></div>
+          <div class="legend" id="legend"></div>
+        </div>
+
+        <div>
+          <div class="section-head"><h2>待办 · 还没开始</h2><span class="c">2</span><span class="note">命令只预填，按回车才启动</span><span class="right"><button type="button" class="btn">＋ 新待办</button></span></div>
+          <div class="todos">
+            <div class="todo"><div><div class="t">健身</div><div class="m">codex · 0 条验收标准</div></div><button type="button" class="start">开始 →</button></div>
+            <div class="todo"><div><div class="t">标签命名依旧有问题</div><div class="m">codex · 0 条验收标准</div></div><button type="button" class="start">开始 →</button></div>
+          </div>
+        </div>
+
+        <div>
+          <div class="section-head"><span class="dot" style="background:var(--error)"></span><h2 style="color:var(--error)">出错了</h2><span class="c">29</span><span class="note">先看这些：Agent 停在了报错上</span><span class="right"><button type="button" class="btn">逐个处理 →</button></span></div>
+          <div class="cards" id="errors"></div>
+          <button type="button" class="more-row">再显示 23 个 ↓</button>
+        </div>
+
+        <div>
+          <div class="section-head"><span class="dot" style="background:var(--review)"></span><h2>做完了</h2><span class="c">148</span><span class="note">等你核对后标记完成</span></div>
+          <div class="folded"><span class="h">最近 24 小时 12 · 最近 7 天 61 · 更早 75</span><span class="right"><button type="button" class="btn">展开</button><button type="button" class="btn">逐个核对 →</button></span></div>
+        </div>
+
+        <div>
+          <div class="section-head"><span class="dot" style="background:var(--running)"></span><h2>在跑</h2><span class="c">6</span></div>
+          <div class="folded"><span class="h">不用管，跑完会挪到「做完了」</span><span class="right"><button type="button" class="btn">展开</button></span></div>
+        </div>
+
+        <div>
+          <div class="section-head"><span class="dot" style="background:var(--stale)"></span><h2>很久没动</h2><span class="c">87</span><span class="note">左栏不再计数</span></div>
+          <div class="folded">
+            <span class="ages" aria-label="按最后活动时间分布：每格一周"><i style="height:30%"></i><i style="height:55%"></i><i style="height:100%"></i><i style="height:80%"></i><i style="height:45%"></i><i style="height:20%"></i></span>
+            <span class="h">按最后活动：1 周前 ← → 6 周前</span>
+            <span class="right"><button type="button" class="btn">展开核对</button><button type="button" class="btn solid">逐个清理 →</button></span>
+          </div>
+        </div>
+      </div>
+    </section>
+  </div>
+</div>
+
+<div class="frame-label">二 · 逐个清理</div>
+<div class="window" style="height:720px">
+  <div class="top"><span class="brand">Keepline</span><span class="crumb">/ 工作空间</span><span class="spacer"></span></div>
+  <div class="cleanup">
+    <div class="cl">
+      <div class="cl-head">
+        <button type="button" class="ghost">← 返回鸟瞰</button>
+        <h1>清理很久没动的会话</h1>
+        <span class="pos">第 13 / 87 个 · 剩 75</span>
+      </div>
+      <div class="steps" id="steps" aria-label="清理进度：每格一个会话"></div>
+      <div class="tally">
+        <span><i style="background:var(--secondary)"></i>完成 7</span>
+        <span><i style="background:var(--paused)"></i>稍后再看 3</span>
+        <span><i style="background:var(--muted);opacity:.5"></i>放弃 2</span>
+        <span><i style="background:var(--track);box-shadow:inset 0 0 0 1px var(--control)"></i>还没处理 75</span>
+      </div>
+      <div class="cl-card">
+        <h2>codex的 gpt 6.1 sol今天的速度token速度</h2>
+        <div class="meta"><span>codex</span>·<span>托管</span>·<span>~/Desktop/code/AI/tools/bench</span></div>
+        <div class="age-line"><span>最后活动</span><div class="track"><i style="left:38%"></i></div><span>17 天前</span></div>
+        <dl class="facts">
+          <dt>做成了</dt><dd>按版本列了速度结果，speed.py 把版本作为分组字段保留了测试条件。</dd>
+          <dt>停在</dt><dd>目前没有证据说明速度和版本有关；上一条的表述容易让人以为是版本导致的。</dd>
+        </dl>
+      </div>
+      <div class="cl-actions">
+        <button type="button" class="btn solid">完成 <kbd>⏎</kbd></button>
+        <button type="button" class="btn">继续 <kbd>C</kbd></button>
+        <button type="button" class="btn">稍后再看… <kbd>L</kbd></button>
+        <button type="button" class="btn">放弃 <kbd>⌫</kbd></button>
+      </div>
+      <div class="cl-nav"><button type="button" class="ghost">← 上一个</button><button type="button" class="ghost">跳过 →</button></div>
+    </div>
+  </div>
+</div>
+
+<script>
+const GROUPS = [
+  ['waiting', '等你回答', 0], ['error', '出错了', 29], ['review', '做完了', 148],
+  ['paused', '停下了', 21], ['running', '在跑', 6], ['stale', '很久没动', 87],
+];
+document.getElementById('dist').innerHTML = GROUPS.filter((g) => g[2] > 0).map(([k, n, c]) =>
+  `<button type="button" class="${k === 'stale' ? 'stale' : ''}" style="flex:${c} 0 0;${k === 'stale' ? '' : `background:var(--${k})`}" title="${n} ${c}" aria-label="${n} ${c} 个"></button>`).join('');
+document.getElementById('legend').innerHTML = GROUPS.map(([k, n, c]) =>
+  `<button type="button" class="${c === 0 ? 'empty' : ''}"><span class="dot" style="background:var(--${k})"></span>${n} <b>${c}</b></button>`).join('') +
+  '<button type="button" class="action">逐个清理很久没动的 →</button>';
+const ERRORS = [
+  ['我这的《Write Me Down》最值得继续参考：贡献了', '外部 · 只读', 'claude', '新空间', '3 天', 'Failed to authenticate: OAuth token revoked. Please log in again or contact your administrator.'],
+  ['mirror为什么不运行了啊', '托管', 'codex', '工作空间', '5 小时', '这轮试跑在第 8 个分块遇到了限流；前 7 个分块已成功返回。由于该会话共有 53 个分块，整条会话尚未入库。'],
+  ['我要上线 kling v4 的 esr 我之前做过评估 你看看是..', '托管', 'codex', '工作空间', '1 天', '查实了：11 次失败全部是 Kling 上游风控拦截，发生在源视频生成阶段。'],
+  ['我最近有什么 issue 和 pr 需要处理吗', '托管', 'codex', '工作空间', '2 天', '本批 5 条 PR 已全部合并；没验：真实 Cursor、真机。'],
+  ['PR | dsh-desk | 106 | 2026...', '托管', 'codex', '工作空间', '2 天', 'dsh-desk #106–109：全部合并。registry …'],
+  ['codex的 gpt 6.1 sol今天的速度token速度', '托管', 'codex', '工作空间', '17 天', '目前没有证据说明速度和版本有关。'],
+];
+document.getElementById('errors').innerHTML = ERRORS.map(([t, kind, rt, space, when, last]) => `<article class="card">
+  <div class="t"><span>${t}</span><button type="button" aria-label="更多">⋯</button></div>
+  <div class="meta"><span>${kind}</span>·<span>${rt}</span>·<span>${space}</span><span class="when">${when}前</span></div>
+  <div class="err">${last}</div>
+  <div class="foot"><span class="tag">出错了</span><button type="button" class="go">继续 →</button></div>
+</article>`).join('');
+const steps = [];
+for (let i = 0; i < 87; i++) {
+  const cls = i < 12 ? (i % 5 === 2 ? 'later' : i % 6 === 4 ? 'drop' : 'done') : i === 12 ? 'now' : '';
+  steps.push(`<i class="${cls}"></i>`);
+}
+document.getElementById('steps').innerHTML = steps.join('');
+document.querySelectorAll('[data-theme-btn]').forEach((b) => b.addEventListener('click', () => {
+  document.documentElement.dataset.theme = b.dataset.themeBtn;
+  document.querySelectorAll('[data-theme-btn]').forEach((x) => x.setAttribute('aria-pressed', String(x === b)));
+}));
+</script>
+</body>
+</html>
