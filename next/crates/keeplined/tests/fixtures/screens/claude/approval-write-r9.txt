@@ -1,0 +1,15 @@
+● Write(approval-proof.txt)
+
+────────────────────────────────────────
+ Create file
+ approval-proof.txt
+╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌
+  1 ok
+╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌
+ Do you want to create approval-proof.txt?
+ ❯ 1. Yes
+   2. Yes, and switch to accept edits (auto-approve file edits and common
+      file commands) for this session (shift+tab)
+   3. No
+
+ Esc to cancel · Tab to amend

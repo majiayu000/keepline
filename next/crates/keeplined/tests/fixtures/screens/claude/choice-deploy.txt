@@ -1,0 +1,10 @@
+☐ 部署
+
+要部署到哪个环境？
+
+❯ 1. staging
+     先在预发验证
+  2. production
+  3. Type something.
+
+Enter to select · ↑/↓ to navigate · Esc to cancel

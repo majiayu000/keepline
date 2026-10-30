@@ -157,7 +157,15 @@ pub trait Adapter: Sync {
     fn hooks(&self, _home: &Path) -> Option<Hooks> {
         None
     }
+    /// The bundled rules (`screen/<cli>.json`) that read a blocked question off this CLI's
+    /// quiet screen. See `crate::screen_rules`.
+    fn screen_rules(&self) -> &'static str {
+        DEFAULT_SCREEN_RULES
+    }
 }
+/// A CLI without its own screen rules is read with Claude Code's shapes, as every CLI was
+/// before the rules became files.
+pub(crate) const DEFAULT_SCREEN_RULES: &str = include_str!("screen/claude.json");
 /// A CLI's hook settings: a JSON file with `hooks.<Event>[].hooks[]` command entries, the
 /// shape Claude Code reads.
 pub struct Hooks {

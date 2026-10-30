@@ -1,0 +1,8 @@
+  Would you like to run the following command?
+
+  $ rm -rf target
+
+› 1. No, cancel
+  2. Yes, proceed
+
+  Press enter to confirm or esc to cancel

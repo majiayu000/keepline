@@ -9,6 +9,9 @@ use std::path::{Path, PathBuf};
 
 pub struct Claude;
 impl Adapter for Claude {
+    fn screen_rules(&self) -> &'static str {
+        include_str!("screen/claude.json")
+    }
     fn root(&self, home: &Path) -> PathBuf {
         home_dir(home, "CLAUDE_CONFIG_DIR", ".claude").join("projects")
     }

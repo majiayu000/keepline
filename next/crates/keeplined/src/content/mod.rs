@@ -481,22 +481,35 @@ impl Parser {
     }
     pub fn add(&mut self, runtime: Agent, line: &[u8], source: Source) {
         let before = self.card.turn;
-        self.add_line(runtime, line, source);
-        self.settle(before, "日志", self.card.updated);
+        let from = self.records.len();
+        let record = self.add_line(runtime, line, source);
+        let detail = match record {
+            Some(v) if self.card.turn != before => {
+                log_detail(&v, self.records.get(from..).unwrap_or_default())
+            }
+            _ => String::new(),
+        };
+        self.settle(before, "日志", self.card.updated, detail);
     }
-    fn add_line(&mut self, runtime: Agent, line: &[u8], source: Source) {
+    fn add_line(&mut self, runtime: Agent, line: &[u8], source: Source) -> Option<Value> {
         let Ok(v) = serde_json::from_slice::<Value>(line) else {
             self.card.unknown_records += 1;
-            return;
+            return None;
         };
         self.metadata(runtime, &v);
         let at = seconds(&v["timestamp"]);
         crate::agents::adapter(runtime).add(self, &v, at, &source);
+        Some(v)
     }
     pub fn hook(&mut self, event: &str, facts: &HookFacts, at: u64, source: Source) {
         let before = self.card.turn;
         self.hook_event(event, facts, at, &source);
-        self.settle(before, "Hook", at);
+        let detail = match &facts.notification {
+            _ if self.card.turn == before => String::new(),
+            Some(n) if event == "Notification" => format!("事件：{event}（{n}）"),
+            _ => format!("事件：{event}"),
+        };
+        self.settle(before, "Hook", at, detail);
     }
     fn hook_event(&mut self, event: &str, facts: &HookFacts, at: u64, source: &Source) {
         // SubagentStop lists the parent's tasks; other subagent events say nothing about
@@ -586,7 +599,13 @@ impl Parser {
             }
             _ => (),
         }
-        self.settle(before, "官方状态", at);
+        let detail = match status {
+            _ if self.card.turn == before => String::new(),
+            Official::Waiting(reason) => format!("报告：在等（{reason}）"),
+            Official::Busy => "报告：在忙".into(),
+            Official::Idle => "报告：空闲".into(),
+        };
+        self.settle(before, "官方状态", at, detail);
     }
     /// Applies the state of a Codex session's subagents, read from their own logs: running
     /// ones keep a stopped turn working, and a subagent's dialog is the parent's dialog.
@@ -611,9 +630,10 @@ impl Parser {
             }
             _ => (),
         }
-        self.settle(before, "子 Agent", at);
+        self.settle(before, "子 Agent", at, String::new());
     }
-    fn settle(&mut self, before: Turn, signal: &str, at: u64) {
+    /// `detail` is the card's `signal_detail` when the turn changed, built only then.
+    fn settle(&mut self, before: Turn, signal: &str, at: u64, detail: String) {
         if self.card.turn == before {
             return;
         }
@@ -624,8 +644,29 @@ impl Parser {
         }
         self.card.signal = signal.into();
         self.card.signal_at = at;
+        self.card.signal_detail = detail;
         self.transitions
             .push(format!("{before:?}→{:?} {signal}", self.card.turn));
+    }
+}
+/// The log record that changed the turn: its type (with the payload type or subtype that
+/// refines it) and a snippet of what it said, from the newest record it produced.
+fn log_detail(v: &Value, records: &[Record]) -> String {
+    let ty = v["type"].as_str().unwrap_or("?");
+    let kind = match v["payload"]["type"].as_str().or(v["subtype"].as_str()) {
+        Some(sub) => format!("{ty}·{sub}"),
+        None => ty.to_owned(),
+    };
+    let said = records
+        .iter()
+        .rev()
+        .find(|r| r.kind != "turn" && !r.text.trim().is_empty());
+    match said {
+        Some(r) => format!(
+            "记录：{kind}「{}」",
+            short(&keepline_core::content::plain_line(&r.text), 60)
+        ),
+        None => format!("记录：{kind}"),
     }
 }
 /// Reads the status facts from a hook payload. Stop and SubagentStop list the parent
@@ -1091,6 +1132,54 @@ mod tests {
         );
         p.hook("Stop", &HookFacts::default(), 12, s);
         assert_eq!(p.card.turn, Turn::Completed);
+    }
+    #[test]
+    fn the_signal_keeps_the_record_or_event_that_changed_the_turn() {
+        let mut p = Parser::default();
+        let s = Source::default();
+        p.add(
+            Agent::Claude,
+            r#"{"type":"user","uuid":"u","message":{"content":"跑一下测试"}}"#.as_bytes(),
+            s.clone(),
+        );
+        assert_eq!(p.card.signal_detail, "记录：user「跑一下测试」");
+        let notification = HookFacts {
+            notification: Some("permission_prompt".into()),
+            ..Default::default()
+        };
+        p.hook("Notification", &notification, 10, s.clone());
+        assert_eq!(p.card.signal, "Hook");
+        assert_eq!(
+            p.card.signal_detail,
+            "事件：Notification（permission_prompt）"
+        );
+        // A record that changes nothing leaves the detail of the one that did.
+        p.add(
+            Agent::Claude,
+            r#"{"type":"assistant","message":{"content":[{"type":"text","text":"还在想"}]}}"#
+                .as_bytes(),
+            s.clone(),
+        );
+        assert_eq!(
+            p.card.signal_detail,
+            "事件：Notification（permission_prompt）"
+        );
+        p.hook("Stop", &HookFacts::default(), 11, s.clone());
+        p.add(
+            Agent::Claude,
+            r#"{"type":"user","uuid":"v","message":{"content":"继续"}}"#.as_bytes(),
+            s.clone(),
+        );
+        p.add(
+            Agent::Claude,
+            r#"{"type":"assistant","message":{"stop_reason":"end_turn","content":[{"type":"text","text":"**测试都过了**，已经提交。"}]}}"#.as_bytes(),
+            s,
+        );
+        assert_eq!(p.card.signal, "日志");
+        assert_eq!(
+            p.card.signal_detail,
+            "记录：assistant「测试都过了，已经提交。」"
+        );
     }
     #[test]
     fn hook_payload_facts_count_running_tasks_by_kind() {

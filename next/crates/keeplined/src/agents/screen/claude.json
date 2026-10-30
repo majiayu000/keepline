@@ -1,0 +1,26 @@
+{
+  "id": "claude",
+  "version": "2026.10.31.1",
+  "bottom_lines": 16,
+  "rules": [
+    {
+      "id": "approval",
+      "name": "审批",
+      "state": "waiting",
+      "note": "工具审批：问句下面四行内有以 Yes 开头的 1 号选项，最后一个选项就在画面底部。Codex 的问法也认，与改成规则前一样。",
+      "anchor": { "starts_with": ["Do you want to ", "Would you like to "], "ends_with": "?" },
+      "menu": { "side": "below", "first_within": 4, "first_starts_with": "Yes", "last_within": 3 },
+      "ask": "anchor"
+    },
+    {
+      "id": "choice",
+      "name": "选择题",
+      "state": "waiting",
+      "note": "AskUserQuestion：底部页脚同时写着 Enter to select 和 Esc to cancel，上面的编号选项里有一个带光标。",
+      "anchor": { "contains": ["enter to select", "esc to cancel"] },
+      "anchor_within": 3,
+      "menu": { "side": "above", "cursor": true },
+      "ask": "above_menu"
+    }
+  ]
+}

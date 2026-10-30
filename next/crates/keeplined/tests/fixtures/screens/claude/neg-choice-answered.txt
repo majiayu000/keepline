@@ -1,0 +1,10 @@
+☐ 部署
+
+要部署到哪个环境？
+
+❯ 1. staging
+  2. production
+
+⏺ User answered Claude's questions:
+  ⎿  · 要部署到哪个环境？ → staging
+⏺ 好的，先部署到 staging。

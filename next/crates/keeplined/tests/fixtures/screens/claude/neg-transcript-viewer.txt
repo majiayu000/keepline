@@ -1,0 +1,8 @@
+⏺ Bash(cargo test)
+  ⎿  Do you want to proceed?
+     ❯ 1. Yes
+       2. No
+⏺ Tests passed.
+⏺ Done. All 42 tests pass.
+
+  Showing detailed transcript · ctrl+o to toggle · ctrl+e to show all

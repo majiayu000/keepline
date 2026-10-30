@@ -18,6 +18,9 @@ use std::{
 
 pub struct Codex;
 impl Adapter for Codex {
+    fn screen_rules(&self) -> &'static str {
+        include_str!("screen/codex.json")
+    }
     fn root(&self, home: &Path) -> PathBuf {
         home_dir(home, "CODEX_HOME", ".codex").join("sessions")
     }
