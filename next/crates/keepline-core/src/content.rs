@@ -89,6 +89,33 @@ pub struct Content {
     /// The account's usage limits as this conversation's log last recorded them.
     #[serde(default)]
     pub quota: Option<crate::quota::Quota>,
+    /// Files this session changed, each with when it last did, newest last. Paths are as the
+    /// tool call named them: absolute, or relative to the session's cwd.
+    #[serde(default)]
+    pub files: Vec<Touch>,
+}
+#[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub struct Touch {
+    pub path: String,
+    pub at: u64,
+}
+/// Changed files a card keeps; the oldest goes first, so a long session keeps its latest.
+const TOUCHES: usize = 64;
+impl Content {
+    /// Records that `path` changed at `at`; a path already listed only moves to the end.
+    pub fn touch(&mut self, path: &str, at: u64) {
+        let at = match self.files.iter().position(|t| t.path == path) {
+            Some(i) => self.files.remove(i).at.max(at),
+            None => at,
+        };
+        self.files.push(Touch {
+            path: path.into(),
+            at,
+        });
+        if self.files.len() > TOUCHES {
+            self.files.remove(0);
+        }
+    }
 }
 /// In-flight work by kind. Agents (subagents, workflows, teammates, cloud sessions, MCP
 /// tasks) keep a stopped turn working. A monitor or a scheduled wakeup will wake the session
