@@ -53,6 +53,8 @@ pub struct Screen {
     pub cursor_shape: CursorShape,
     pub background: u32,
     pub links: Vec<Link>,
+    /// Per viewport row, the selected columns (inclusive) of the terminal's selection.
+    pub selection: Vec<Option<(u16, u16)>>,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -200,6 +202,9 @@ impl Capture {
             if out.rows.len() <= y {
                 out.rows.push(Vec::new());
             }
+            out.selection.resize(out.selection.len().max(y + 1), None);
+            // Selection changes leave rows clean, so it is read for every row.
+            out.selection[y] = row.selection()?.map(|s| (s.start_x, s.end_x));
             if !full && !row.dirty()? {
                 y += 1;
                 continue;
@@ -286,6 +291,7 @@ impl Capture {
             y += 1;
         }
         out.rows.truncate(y);
+        out.selection.truncate(y);
         out.links.retain(|link| (link.row as usize) < y);
         let cur = snap.cursor()?;
         out.cursor = cur.viewport.map(|v| (v.x, v.y));
@@ -396,40 +402,6 @@ impl CellMetrics {
             size(self.width, self.height),
         )
     }
-}
-
-/// First and last column of the word under `col` (double click). A separator or blank
-/// selects just itself. Separators follow Ghostty's default `selection-word-chars`;
-/// wide text such as CJK counts as word cells.
-pub fn word_around(row: &[Run], col: u16) -> (u16, u16) {
-    let mut cells: Vec<(u16, u16, bool)> = Vec::new(); // first col, last col, word
-    for run in row {
-        if run.text.is_ascii() {
-            for (i, c) in run.text.chars().enumerate() {
-                let at = run.col + i as u16;
-                cells.push((at, at, !" \t'\"│`|:;,()[]{}<>$".contains(c)));
-            }
-        } else {
-            let word = !run.text.chars().all(char::is_whitespace);
-            cells.push((run.col, run.col + run.cols.max(1) - 1, word));
-        }
-    }
-    let Some(i) = cells.iter().position(|c| c.0 <= col && col <= c.1) else {
-        return (col, col);
-    };
-    if !cells[i].2 {
-        return (cells[i].0, cells[i].1);
-    }
-    let joined = |a: &(u16, u16, bool), b: &(u16, u16, bool)| a.1 + 1 == b.0 && a.2 && b.2;
-    let mut start = i;
-    while start > 0 && joined(&cells[start - 1], &cells[start]) {
-        start -= 1;
-    }
-    let mut end = i;
-    while end + 1 < cells.len() && joined(&cells[end], &cells[end + 1]) {
-        end += 1;
-    }
-    (cells[start].0, cells[end].1)
 }
 
 #[derive(Default)]
@@ -898,22 +870,6 @@ mod tests {
     use super::*;
 
     #[test]
-    fn double_click_word_follows_terminal_word_rules() {
-        let mut vt = Vt::new(60, 3).unwrap();
-        vt.feed("git log --oneline src/main.rs (实现反馈) \x1b[31mred\x1b[0mgreen".as_bytes());
-        let mut screen = Screen::default();
-        Capture::new().unwrap().update(&vt, &mut screen).unwrap();
-        let row = &screen.rows[0];
-        assert_eq!(word_around(row, 1), (0, 2)); // git
-        assert_eq!(word_around(row, 9), (8, 16)); // --oneline
-        assert_eq!(word_around(row, 20), (18, 28)); // src/main.rs: '/' and '.' join
-        assert_eq!(word_around(row, 30), (30, 30)); // '(' alone
-        assert_eq!(word_around(row, 33), (31, 38)); // 实现反馈, two cells each
-        assert_eq!(word_around(row, 7), (7, 7)); // a blank selects itself
-        assert_eq!(word_around(row, 42), (41, 48)); // color change is not a word break
-        assert_eq!(word_around(row, 55), (55, 55)); // past the text
-    }
-    #[test]
     fn zoom_steps_by_one_point_and_resets() {
         let base = crate::ui::theme::Theme::TERMINAL_FONT_SIZE;
         assert_eq!(zoomed(base, Some(1)), base + 1.);
@@ -921,6 +877,39 @@ mod tests {
         assert_eq!(zoomed(30., None), base);
         assert_eq!(zoomed(36., Some(1)), 36.);
         assert_eq!(zoomed(8., Some(-1)), 8.);
+    }
+    #[test]
+    fn retained_capture_keeps_the_selection_on_its_text_through_scrolling() {
+        use keepline_core::terminal::libghostty_vt::{
+            selection::SelectLineOptions,
+            terminal::{Point, PointCoordinate, ScrollViewport},
+        };
+        let mut vt = Vt::new(20, 3).unwrap();
+        vt.feed(b"a\r\nb\r\nc\r\nd\r\ne");
+        let mut capture = Capture::new().unwrap();
+        let mut screen = Screen::default();
+        capture.update(&vt, &mut screen).unwrap();
+        // Select "d", on viewport row 1.
+        let t = vt.terminal();
+        let at = t
+            .grid_ref(Point::Viewport(PointCoordinate { x: 0, y: 1 }))
+            .unwrap();
+        let line = t.select_line(SelectLineOptions::new(at)).unwrap();
+        t.set_selection(line.as_ref()).unwrap();
+        capture.update(&vt, &mut screen).unwrap();
+        assert_eq!(screen.selection, [None, Some((0, 0)), None]);
+        // Scrolling the view up one row moves "d" and its highlight down one row.
+        vt.scroll(ScrollViewport::Delta(-1));
+        capture.update(&vt, &mut screen).unwrap();
+        assert_eq!(screen.selection, [None, None, Some((0, 0))]);
+        // New output pushes "d" up into history; the highlight goes with it.
+        vt.scroll(ScrollViewport::Bottom);
+        vt.feed(b"\r\nf");
+        capture.update(&vt, &mut screen).unwrap();
+        assert_eq!(screen.selection, [Some((0, 0)), None, None]);
+        vt.terminal().set_selection(None).unwrap();
+        capture.update(&vt, &mut screen).unwrap();
+        assert_eq!(screen.selection, [None, None, None]);
     }
     #[test]
     fn retained_capture_rebuilds_only_dirty_rows_and_clears_old_links() {
