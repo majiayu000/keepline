@@ -221,14 +221,22 @@ fn list(a: Args) -> io::Result<()> {
         );
         return Ok(());
     }
+    // Full ids: terminals opened by one app share a long prefix, so a cut-off id names none.
+    let id_width = rows.iter().map(|r| r.0.id.len()).max().unwrap_or(0);
+    let tab_width = rows
+        .iter()
+        .map(|r| r.3.chars().count().max(1))
+        .max()
+        .unwrap_or(1);
     for (t, s, phase, tab) in rows {
         let agent = s.map_or_else(|| "-".into(), |s| agent_label(s.runtime));
+        let tab = if tab.is_empty() { "-".to_owned() } else { tab };
+        let pad = " ".repeat(tab_width - tab.chars().count());
         println!(
-            "{:<8}  {:<6}  {:<7}  {}  {}",
-            &t.id[..t.id.len().min(8)],
+            "{:<id_width$}  {:<6}  {:<7}  {tab}{pad}  {}",
+            t.id,
             agent,
             phase.name(),
-            tab,
             t.cwd
         );
     }
