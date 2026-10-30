@@ -736,6 +736,21 @@ impl SettingsView {
                 Err(e) => self.row(&name, e, status(false, "没有加载".into())),
             });
         }
+        let actions = keepline_core::action::report();
+        if !actions.is_empty() {
+            page = page.child(div().mt(px(T::S16)).child(label("动作文件")));
+            for a in actions {
+                let file = a.file.display().to_string();
+                page = page.child(match &a.result {
+                    Ok(titles) => self.row(
+                        &file,
+                        &format!("加进右键菜单和 ⌘P：{titles}"),
+                        status(true, "生效".into()),
+                    ),
+                    Err(e) => self.row(&file, e, status(false, "没有生效".into())),
+                });
+            }
+        }
         let declared = agent::report();
         if !declared.is_empty() {
             page = page.child(div().mt(px(T::S16)).child(label("Agent 声明文件")));

@@ -138,6 +138,7 @@ fn outcome_label(outcome: &Outcome) -> String {
     }
 }
 
+mod actions;
 mod cleanup;
 mod diagnostics;
 mod filters;
@@ -293,6 +294,7 @@ impl Workbench {
                 drag: None,
                 split_bounds: HashMap::new(),
                 split_target: None,
+                pending_command: None,
                 menu: None,
                 tab_menu: None,
                 icon_menu: None,
@@ -788,6 +790,8 @@ impl Workbench {
         };
         let agent = self.tasks.chosen_agent.take();
         let resume = self.resuming.resume.take();
+        // A plugin action's command and the pane it ran for; it runs like a resume does.
+        let pending = self.layout.pending_command.take();
         let resuming = resume.as_ref().map(|r| r.2.clone());
         // The command runs in the new shell; task text only ever reaches the Agent's input.
         let start: Option<(String, Option<String>)> =
@@ -799,6 +803,7 @@ impl Workbench {
                         let agent = agent.unwrap_or(task.agent);
                         (agent.command(), Some(task.prompt()))
                     })
+                    .or_else(|| pending.as_ref().map(|(c, _)| (c.clone(), None)))
             });
         let mut tab = if split {
             let Some(tab) = self
@@ -859,12 +864,16 @@ impl Workbench {
             .as_ref()
             .and_then(|id| self.workspace.terminals.iter().find(|t| &t.id == id))
             .filter(|t| t.space == space.id);
-        let cwd = resume.map(|r| r.1).or(task_cwd).unwrap_or_else(|| {
-            previous
-                .map(|t| t.cwd)
-                .or_else(|| inherited.map(|t| t.cwd.clone()))
-                .unwrap_or_else(|| space.cwd.clone())
-        });
+        let cwd = resume
+            .map(|r| r.1)
+            .or(task_cwd)
+            .or(pending.map(|(_, cwd)| cwd))
+            .unwrap_or_else(|| {
+                previous
+                    .map(|t| t.cwd)
+                    .or_else(|| inherited.map(|t| t.cwd.clone()))
+                    .unwrap_or_else(|| space.cwd.clone())
+            });
         let cwd = usable_cwd([cwd, space.cwd.clone()]);
         let cwd_source = inherited
             .filter(|t| t.state == ProcessState::Running)

@@ -1,0 +1,10 @@
+{
+  "api": 1,
+  "actions": [
+    {"id": "git-status", "title": "查看 git 状态", "command": "git -C {cwd} status -sb", "run": "split"},
+    {"id": "git-diff", "title": "看这里的改动", "command": "git -C {cwd} diff --stat && git -C {cwd} diff", "run": "split"},
+    {"id": "open-finder", "title": "在 Finder 里打开目录", "command": "open {cwd}", "run": "paste"},
+    {"id": "resume-claude-tab", "title": "在新标签里接着这个 Claude 会话", "command": "claude --resume {session_id}", "run": "tab", "when": "agent"},
+    {"id": "transcript", "title": "打开对话记录文件", "command": "open -R {transcript}", "run": "paste", "when": "agent"}
+  ]
+}

@@ -565,7 +565,32 @@ impl Workbench {
                 layout::choose_icon(AppIcon::Mascot, cx);
                 self.layout.icon_menu = Some(gpui::point(px(T::TRAFFIC_LIGHT_INSET), px(T::TOP)));
             }
+            "PaneMenu" => {
+                self.nav.focused = Some("p0".into());
+                self.layout.menu = Some(PaneMenu {
+                    terminal: "p0".into(),
+                    position: gpui::point(px(T::WINDOW_WIDTH / 2.), px(T::TOP * 3.)),
+                    page: MenuPage::Main,
+                });
+            }
+            // Runs the first action a real pane offers, as a click in its menu would.
+            "ActionRun" => {
+                let target = self.workspace.tabs.iter().find_map(|tab| {
+                    let id = self.workspace.tab_terminals(&tab.id).first()?.clone();
+                    Some((tab.space.clone(), tab.id.clone(), id))
+                });
+                if let Some((space, tab, terminal)) = target {
+                    self.nav.space = space;
+                    self.nav.tab = Some(tab);
+                    self.nav.focused = Some(terminal.clone());
+                    self.sync_panes(cx);
+                    if let Some(action) = self.actions_for(&terminal).first().copied() {
+                        self.run_action(&terminal, action, cx);
+                    }
+                }
+            }
             "SearchEmpty" | "Search" => {
+                self.nav.focused = Some("p0".into());
                 self.open_search(window, cx);
                 if name == "Search" {
                     let query =

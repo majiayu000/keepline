@@ -282,6 +282,7 @@ fn local_time() -> String {
 fn run() -> io::Result<()> {
     // Declared CLIs first: menus, settings and commands all read the registry.
     keepline_core::agent::install();
+    keepline_core::action::install();
     let args: Vec<String> = std::env::args().collect();
     let root = if let Some(i) = args.iter().position(|a| a == "--runtime") {
         PathBuf::from(
