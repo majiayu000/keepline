@@ -37,6 +37,7 @@ fn run() -> std::io::Result<()> {
             } else {
                 keeplined::serve_with_options
             };
+            keeplined::start_mirrors();
             serve(
                 std::path::Path::new(&runtime),
                 keeplined::recognition::roots()?,

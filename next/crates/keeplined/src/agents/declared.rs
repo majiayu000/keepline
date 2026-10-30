@@ -43,7 +43,10 @@ impl Declared {
 }
 
 impl Adapter for Declared {
-    fn root(&self, _home: &Path) -> PathBuf {
+    fn root(&self, home: &Path) -> PathBuf {
+        if self.spec.source.is_some() {
+            return super::mirror::dir(home, self.agent);
+        }
         self.transcripts()
             .map(|t| t.root.clone())
             .unwrap_or_default()
@@ -297,7 +300,9 @@ pub(crate) fn apply_events(
                 .and_then(|p| record.pointer(p))
                 .and_then(Value::as_i64)
                 .map(|n| n as i32);
-            parser.result(&id, &output, code, false, at, source);
+            // A result record means the call finished: no exit code reads as success,
+            // as it does for the built-ins.
+            parser.result(&id, &output, code, true, at, source);
         }
         if let Some(turn) = rule.turn {
             let turn = match turn {

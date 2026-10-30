@@ -1,0 +1,8 @@
+{
+  "api": 1,
+  "id": "opencode",
+  "name": "OpenCode",
+  "version": "0.1.0",
+  "description": "从 OpenCode 的 SQLite 库读会话：回合状态、命令与测试证据、改过的文件",
+  "provides": ["agent"]
+}
