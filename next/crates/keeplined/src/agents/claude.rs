@@ -112,6 +112,7 @@ impl Adapter for Claude {
         if v["isSidechain"] == true {
             return;
         }
+        parser.inherited = inherited(v, source);
         let msg = &v["message"];
         let blocks = &msg["content"];
         if ty == "user" && v["isMeta"] != true {
@@ -254,4 +255,17 @@ pub(crate) fn claude_session_id(args: &[String]) -> Option<String> {
         }
     }
     found
+}
+
+/// A forked or branched conversation starts with the original's records copied in, each
+/// still naming the original `sessionId`; the transcript itself is named by its own id.
+fn inherited(v: &Value, source: &Source) -> bool {
+    let own = Path::new(&source.path)
+        .file_stem()
+        .and_then(|s| s.to_str())
+        .filter(|s| s.len() == 36 && s.matches('-').count() == 4);
+    match (own, v["sessionId"].as_str()) {
+        (Some(own), Some(id)) => own != id,
+        _ => false,
+    }
 }
