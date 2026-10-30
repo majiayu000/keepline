@@ -218,7 +218,7 @@ impl Workbench {
         let mut unread: Vec<_> = self
             .store
             .recognition()
-            .terminal_hints
+            .terminal_notes
             .iter()
             .filter(|(terminal, _)| {
                 self.workspace.current_agent(terminal).is_none()
@@ -227,7 +227,7 @@ impl Workbench {
                         .terminal_tab(terminal)
                         .is_some_and(|tab| tab.space == self.nav.space)
             })
-            .map(|(terminal, hint)| (terminal.clone(), super::layout::unread_agent(hint)))
+            .map(|(terminal, n)| (terminal.clone(), (n.note.clone(), n.why.clone())))
             .collect();
         unread.sort_by(|a, b| a.0.cmp(&b.0));
         sidebar = sidebar.child(self.todos_view(space_name, cx));

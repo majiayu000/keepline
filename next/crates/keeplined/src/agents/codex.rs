@@ -1,7 +1,9 @@
 //! Codex: `~/.codex/sessions` rollouts, one `session_meta` header per thread.
-use super::{home_dir, temporary, Adapter};
+use super::{home_dir, temporary, Adapter, Hint, OfficialAnswer, Pending};
 use crate::content::{input, question_summary, re, text, Parser};
 use keepline_core::content::{short, Source, Turn};
+use keepline_core::model::AgentSession;
+use keepline_core::protocol::TerminalNote;
 use regex::Regex;
 use serde::Deserialize;
 use serde_json::{json, Value};
@@ -211,6 +213,79 @@ impl Adapter for Codex {
     fn links_children(&self) -> bool {
         true
     }
+    /// The shared daemon runs the thread; the TUI process is a client of it. A node
+    /// wrapper whose own child is Codex is not the one to watch.
+    fn pending(
+        &self,
+        process: &crate::recognition::Process,
+        processes: &[crate::recognition::Process],
+    ) -> Pending {
+        if processes
+            .iter()
+            .any(|p| p.parent == process.pid && p.runtime == process.runtime)
+        {
+            return Pending::Wait;
+        }
+        // `--no-daemon` opens its own log; before the first prompt there is nothing to say.
+        if process.no_daemon {
+            Pending::Quiet
+        } else {
+            Pending::Unbound { title_status: true }
+        }
+    }
+    fn title_status(&self, title: &str) -> Option<Hint> {
+        let state = codex_state(title);
+        let why = "这个 Codex 连着共用的后台，Keepline 只看得到它忙不忙，读不到对话。想在这里看到对话内容，下次用 codex --no-daemon 启动。";
+        Some(Hint {
+            text: match state {
+                Some(state) => format!("仅显示状态：{state}；看对话内容请用 codex --no-daemon"),
+                None => "未关联：看对话内容请用 codex --no-daemon".into(),
+            },
+            note: TerminalNote {
+                note: match state {
+                    Some(state) => format!("codex · {state} · 看不到对话"),
+                    None => "codex · 看不到对话".into(),
+                },
+                why: why.into(),
+            },
+        })
+    }
+    fn outside_pty(&self) -> bool {
+        true
+    }
+    /// A Codex thread id is its session id; `--no-daemon` threads are not loaded there.
+    fn official(&self, due: &[&(AgentSession, Option<u32>)]) -> Option<OfficialAnswer> {
+        let threads: Vec<String> = due.iter().map(|(s, _)| s.cli_session_id.clone()).collect();
+        let result = crate::codex_status::socket()
+            .ok_or_else(|| std::io::Error::other("no HOME for the Codex control socket"))
+            .and_then(|socket| crate::codex_status::query(&socket, &threads))
+            .map(|statuses| {
+                statuses
+                    .into_iter()
+                    .filter_map(|(thread, status)| {
+                        Some((
+                            due.iter().position(|(s, _)| s.cli_session_id == thread)?,
+                            status,
+                        ))
+                    })
+                    .collect()
+            });
+        Some(("Codex app-server thread/read", result))
+    }
+}
+
+/// Codex's own title rules (the ones Herdr reads): "Action Required" while blocked,
+/// a braille spinner while working, anything else once idle. Status only, never identity.
+fn codex_state(title: &str) -> Option<&'static str> {
+    if title.trim().is_empty() {
+        None
+    } else if title.contains("Action Required") {
+        Some("需要你处理")
+    } else if title.chars().any(|c| "⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏".contains(c)) {
+        Some("工作中")
+    } else {
+        Some("空闲")
+    }
 }
 
 // Codex options that consume the next argv element; anything else positional ends option parsing.
@@ -277,4 +352,42 @@ pub(crate) fn codex_args(args: &[String]) -> (Option<String>, bool) {
         return (found, no_daemon);
     }
     (None, no_daemon)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn an_unbound_codex_says_its_state_plainly() {
+        let note = |title: &str| Codex.title_status(title).unwrap().note.note;
+        assert_eq!(note("⠋ fixing"), "codex · 工作中 · 看不到对话");
+        assert_eq!(note("Action Required"), "codex · 需要你处理 · 看不到对话");
+        assert_eq!(note(""), "codex · 看不到对话");
+        assert_eq!(
+            Codex.title_status("⠋").unwrap().text,
+            "仅显示状态：工作中；看对话内容请用 codex --no-daemon"
+        );
+    }
+
+    #[test]
+    fn only_the_innermost_codex_process_waits_for_a_screen() {
+        let process = |pid, parent, no_daemon| crate::recognition::Process {
+            pid,
+            parent,
+            runtime: Some(keepline_core::model::Agent::Codex),
+            cli_session_id: None,
+            no_daemon,
+        };
+        let wrapper = process(1, 0, false);
+        let native = process(2, 1, false);
+        let all = [wrapper.clone(), native.clone()];
+        assert_eq!(Codex.pending(&wrapper, &all), Pending::Wait);
+        assert_eq!(
+            Codex.pending(&native, &all),
+            Pending::Unbound { title_status: true }
+        );
+        // `--no-daemon`: unbound, but nothing to say until its first prompt.
+        assert_eq!(Codex.pending(&process(3, 0, true), &[]), Pending::Quiet);
+    }
 }

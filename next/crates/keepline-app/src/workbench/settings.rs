@@ -408,7 +408,7 @@ impl SettingsView {
             cx,
         ) {
             let mut choices = div().flex().gap(px(T::S6));
-            for agent in [Agent::Codex, Agent::Claude] {
+            for agent in Agent::all() {
                 choices = choices.child(
                     self.choice(
                         format!("agent-{}", agent.name()),

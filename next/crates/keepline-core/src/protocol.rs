@@ -215,6 +215,12 @@ pub const AGENT_UNBOUND_PREFIX: &str = "未对上对话：";
 /// The terminal hint for a Claude Code that saves no transcript: it inherited the nested
 /// session marker, so Keepline can never read or count it.
 pub const CLAUDE_TRANSCRIPT_OFF: &str = "Claude 没有保存对话记录（继承了 CLAUDE_CODE_CHILD_SESSION），无法统计；关掉这个终端重开后再运行 claude";
+/// A short note for a terminal's pane, and why, for an Agent seen there but not read.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct TerminalNote {
+    pub note: String,
+    pub why: String,
+}
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct RecognitionStatus {
     pub phase: RecognitionPhase,
@@ -222,6 +228,14 @@ pub struct RecognitionStatus {
     pub scopes: Vec<String>,
     pub metrics: RecognitionMetrics,
     pub terminal_hints: std::collections::HashMap<String, String>,
+    /// Terminal -> what its Agent's adapter says about it, in the user's words. Kept beside
+    /// `terminal_hints` so the app shows any CLI's note without knowing which CLI it is.
+    #[serde(default)]
+    pub terminal_notes: std::collections::HashMap<String, TerminalNote>,
+    /// Terminal -> the Agent behind its note, so the app knows what runs there without
+    /// reading the note's words.
+    #[serde(default)]
+    pub terminal_agents: std::collections::HashMap<String, crate::agent::Agent>,
     /// Terminal -> the title its program set, spinner dropped. Live state, not stored.
     #[serde(default)]
     pub terminal_titles: std::collections::HashMap<String, String>,
@@ -239,6 +253,8 @@ impl Default for RecognitionStatus {
             scopes: vec![],
             metrics: RecognitionMetrics::default(),
             terminal_hints: Default::default(),
+            terminal_notes: Default::default(),
+            terminal_agents: Default::default(),
             terminal_titles: Default::default(),
             workspace_revision: 0,
             official: Default::default(),

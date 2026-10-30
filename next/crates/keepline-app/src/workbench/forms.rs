@@ -194,7 +194,7 @@ impl Workbench {
         }
         if matches!(form.kind, FormKind::Task) {
             let mut agents = div().flex().gap(px(T::S8));
-            for agent in Agent::ALL {
+            for agent in Agent::all() {
                 agents = agents.child(
                     button(agent.executable(), agent.executable())
                         .when(form.agent == agent, |d| {

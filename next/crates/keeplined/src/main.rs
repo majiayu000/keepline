@@ -10,6 +10,8 @@ fn main() {
 }
 
 fn run() -> std::io::Result<()> {
+    // Declared CLIs first: every later lookup of an Agent reads the registry.
+    keepline_core::agent::install();
     let mut args = std::env::args().skip(1);
     match args.next().as_deref() {
         Some("serve") => {
@@ -137,7 +139,7 @@ fn hooks(mut args: impl Iterator<Item = String>) -> std::io::Result<()> {
     );
     let named = !agents.is_empty();
     if !named {
-        agents = Agent::ALL.to_vec();
+        agents = Agent::all();
     }
     for agent in agents {
         let target = match hooks::target(agent, &home) {

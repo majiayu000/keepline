@@ -82,7 +82,7 @@ struct Host {
     agent_pids: HashMap<u32, String>,
     /// Agent processes no evidence has tied to a conversation yet: their terminal and CLI.
     unbound_pids: HashMap<u32, (String, Agent)>,
-    /// Claude processes that save no transcript, so their hint goes when they exit.
+    /// Agent processes that save no transcript, so their hint goes when they exit.
     unrecorded_pids: HashMap<u32, String>,
     /// Recent Enter presses per terminal, seconds since the epoch: evidence for which
     /// pane a shared-daemon Codex prompt came from.
@@ -202,7 +202,7 @@ impl Host {
             .map(|(terminal, _)| terminal)
             .or_else(|| self.unrecorded_pids.remove(&pid))
         {
-            self.recognition.terminal_hints.remove(&terminal);
+            self.unhint(&terminal);
             self.publish_status()?;
         }
         if let Some(id) = self.agent_pids.remove(&pid) {
@@ -226,8 +226,13 @@ impl Host {
         processes: &[crate::recognition::Process],
         files: &HashMap<u32, Vec<String>>,
     ) -> io::Result<()> {
-        let old_hints = self.recognition.terminal_hints.clone();
+        let old_hints = (
+            self.recognition.terminal_hints.clone(),
+            self.recognition.terminal_notes.clone(),
+        );
         self.recognition.terminal_hints.clear();
+        self.recognition.terminal_notes.clear();
+        self.recognition.terminal_agents.clear();
         for process in processes.iter().filter(|p| p.runtime.is_some()) {
             let Some(terminal) =
                 crate::recognition::terminal_for_process(process.pid, processes, &self.workspace)
@@ -255,53 +260,52 @@ impl Host {
                         }
                     }
                 }
-            } else if process.runtime == Some(Agent::Claude)
-                && crate::recognition::claude_transcript_off(process.pid)
-            {
-                self.recognition.terminal_hints.insert(
-                    terminal.clone(),
-                    keepline_core::protocol::CLAUDE_TRANSCRIPT_OFF.into(),
-                );
-                if let std::collections::hash_map::Entry::Vacant(entry) =
-                    self.unrecorded_pids.entry(process.pid)
-                {
-                    entry.insert(terminal);
-                    if let Some(exits) = &self.exits {
-                        if !exits.watch(process.pid)? {
-                            self.agent_exited(process.pid)?;
+            } else if let Some(runtime) = process.runtime {
+                let adapter = crate::agents::adapter(runtime);
+                let watch = match adapter.pending(process, processes) {
+                    crate::agents::Pending::Wait => false,
+                    crate::agents::Pending::Unrecorded(hint) => {
+                        self.hint(&terminal, runtime, hint);
+                        if let std::collections::hash_map::Entry::Vacant(entry) =
+                            self.unrecorded_pids.entry(process.pid)
+                        {
+                            entry.insert(terminal);
+                            true
+                        } else {
+                            false
                         }
                     }
-                }
-            } else if let Some(runtime) = process.runtime.filter(|_| {
-                !processes
-                    .iter()
-                    .any(|p| p.parent == process.pid && p.runtime == process.runtime)
-            }) {
-                // Unbound, whatever the CLI: screen association and hooks get their chance.
-                // `--no-daemon` Codex opens its own log; before the first prompt there is
-                // nothing to say.
-                if runtime == Agent::Codex && !process.no_daemon {
-                    let title = match self.terminals.get(&terminal) {
-                        Some(live) => lock(live)?.title.clone(),
-                        None => String::new(),
-                    };
-                    self.recognition
-                        .terminal_hints
-                        .insert(terminal.clone(), codex_hint(&title));
-                } else if runtime != Agent::Codex {
-                    self.recognition.terminal_hints.insert(
-                        terminal.clone(),
-                        format!(
-                            "{}{}",
-                            keepline_core::protocol::AGENT_UNBOUND_PREFIX,
-                            runtime.executable()
-                        ),
-                    );
-                }
-                if let std::collections::hash_map::Entry::Vacant(entry) =
-                    self.unbound_pids.entry(process.pid)
-                {
-                    entry.insert((terminal, runtime));
+                    // Unbound, whatever the CLI: screen association and hooks get their
+                    // chance. The terminal says so unless the adapter reads a state from
+                    // the title instead, or has nothing to say yet.
+                    pending @ (crate::agents::Pending::Unbound { .. }
+                    | crate::agents::Pending::Quiet) => {
+                        if let crate::agents::Pending::Unbound { title_status: true } = pending {
+                            let title = match self.terminals.get(&terminal) {
+                                Some(live) => lock(live)?.title.clone(),
+                                None => String::new(),
+                            };
+                            if let Some(hint) = adapter.title_status(&title) {
+                                self.hint(&terminal, runtime, hint);
+                            }
+                        } else if pending
+                            == (crate::agents::Pending::Unbound {
+                                title_status: false,
+                            })
+                        {
+                            self.hint(&terminal, runtime, crate::agents::unbound_hint(runtime));
+                        }
+                        if let std::collections::hash_map::Entry::Vacant(entry) =
+                            self.unbound_pids.entry(process.pid)
+                        {
+                            entry.insert((terminal, runtime));
+                            true
+                        } else {
+                            false
+                        }
+                    }
+                };
+                if watch {
                     if let Some(exits) = &self.exits {
                         if !exits.watch(process.pid)? {
                             self.agent_exited(process.pid)?;
@@ -310,13 +314,18 @@ impl Host {
                 }
             }
         }
-        if old_hints != self.recognition.terminal_hints {
+        if old_hints
+            != (
+                self.recognition.terminal_hints.clone(),
+                self.recognition.terminal_notes.clone(),
+            )
+        {
             self.publish_status()?;
         }
         Ok(())
     }
-    /// Every tab names itself from its program's title, front or not. An unbound
-    /// shared-daemon Codex also paints its state into it.
+    /// Every tab names itself from its program's title, front or not. An unbound Agent
+    /// whose adapter reads state from the title also paints it into its note.
     fn title_changed(&mut self, terminal: &str, title: &str) -> io::Result<()> {
         let shown = keepline_core::terminal::shown_title(title);
         let mut changed = self.recognition.terminal_titles.get(terminal) != shown.as_ref();
@@ -327,27 +336,42 @@ impl Host {
                 .insert(terminal.into(), shown),
             None => self.recognition.terminal_titles.remove(terminal),
         };
-        if self.unbound_pids.values().any(|(t, _)| t == terminal)
-            && self
-                .recognition
-                .terminal_hints
-                .get(terminal)
-                .is_some_and(|hint| {
-                    !hint.starts_with(keepline_core::protocol::AGENT_UNBOUND_PREFIX)
-                })
+        let runtime = self
+            .unbound_pids
+            .values()
+            .find(|(t, _)| t == terminal)
+            .map(|(_, runtime)| *runtime);
+        if let Some(runtime) =
+            runtime.filter(|_| self.recognition.terminal_hints.contains_key(terminal))
         {
-            let hint = codex_hint(title);
-            if self.recognition.terminal_hints.get(terminal) != Some(&hint) {
-                self.recognition
-                    .terminal_hints
-                    .insert(terminal.into(), hint);
-                changed = true;
+            if let Some(hint) = crate::agents::adapter(runtime).title_status(title) {
+                changed |= self.hint(terminal, runtime, hint);
             }
         }
         if changed {
             self.publish_status()?;
         }
         Ok(())
+    }
+    /// Sets a terminal's hint and note together; whether either changed.
+    fn hint(&mut self, terminal: &str, agent: Agent, hint: crate::agents::Hint) -> bool {
+        self.recognition
+            .terminal_agents
+            .insert(terminal.into(), agent);
+        let changed = self.recognition.terminal_hints.get(terminal) != Some(&hint.text)
+            || self.recognition.terminal_notes.get(terminal) != Some(&hint.note);
+        self.recognition
+            .terminal_hints
+            .insert(terminal.into(), hint.text);
+        self.recognition
+            .terminal_notes
+            .insert(terminal.into(), hint.note);
+        changed
+    }
+    fn unhint(&mut self, terminal: &str) {
+        self.recognition.terminal_hints.remove(terminal);
+        self.recognition.terminal_notes.remove(terminal);
+        self.recognition.terminal_agents.remove(terminal);
     }
     fn commit(&mut self, mut next: Workspace) -> io::Result<()> {
         next.revision = self.workspace.revision + 1;
@@ -535,7 +559,7 @@ fn take_over(root: &Path) -> io::Result<Vec<Taken>> {
         other => {
             return Err(io::Error::other(format!(
                 "the running host cannot hand its terminals over: {other:?}"
-            )))
+            )));
         }
     };
     let mut snapshots = vec![];
@@ -711,7 +735,7 @@ fn serve_runtime(
         Ok(_) => {
             return Err(io::Error::other(
                 "refusing to replace pending non-socket entry",
-            ))
+            ));
         }
         Err(e) if e.kind() == io::ErrorKind::NotFound => (),
         Err(e) => return Err(e),
@@ -739,25 +763,6 @@ fn serve_runtime(
     Ok(())
 }
 
-/// Codex's own title rules (the ones Herdr reads): "Action Required" while blocked,
-/// a braille spinner while working, anything else once idle. Status only, never identity.
-pub(crate) fn codex_state(title: &str) -> Option<&'static str> {
-    if title.trim().is_empty() {
-        None
-    } else if title.contains("Action Required") {
-        Some("需要你处理")
-    } else if title.chars().any(|c| "⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏".contains(c)) {
-        Some("工作中")
-    } else {
-        Some("空闲")
-    }
-}
-pub(crate) fn codex_hint(title: &str) -> String {
-    match codex_state(title) {
-        Some(state) => format!("仅显示状态：{state}；看对话内容请用 codex --no-daemon"),
-        None => "未关联：看对话内容请用 codex --no-daemon".into(),
-    }
-}
 fn recognition_status(host: &Host) -> RecognitionStatus {
     let mut status = host.recognition.clone();
     let (ps, lsof) = crate::recognition::probe_counts();
@@ -1114,7 +1119,7 @@ impl Association {
                 host.unbound_pids.remove(&pid);
                 host.agent_pids.insert(pid, id.clone());
             }
-            host.recognition.terminal_hints.remove(&terminal);
+            host.unhint(&terminal);
         }
         host.publish_status()
     }
@@ -1219,9 +1224,9 @@ fn follow_associated(
             host.unbound_pids.keys().copied().collect::<Vec<_>>(),
         )
     };
-    // The shared Codex daemon keeps an unbound thread's log open, so FSEvents would hold its
-    // prompt back until exit and screen association would never see it. While a managed
-    // Codex is unbound, also follow recent unassociated Codex logs from that pane's cwd.
+    // A shared daemon (Codex's) keeps an unbound thread's log open, so FSEvents would hold
+    // its prompt back until exit and screen association would never see it. While a managed
+    // Agent is unbound, also follow recent unassociated logs of such Agents from its cwd.
     if !unbound.is_empty() {
         let cwds: Vec<_> = unbound
             .iter()
@@ -1232,7 +1237,7 @@ fn follow_associated(
             .cached()?
             .into_iter()
             .filter(|t| {
-                t.runtime == Agent::Codex
+                crate::agents::adapter(t.runtime).outside_pty()
                     && t.updated >= window
                     && !associated.iter().any(|p| p.as_os_str() == t.path.as_str())
                     && fs::canonicalize(&t.cwd)
@@ -1247,13 +1252,13 @@ fn follow_associated(
                 .map(|t| std::path::PathBuf::from(t.path)),
         );
     }
-    // The same holds for a bound Codex session's subagents: their logs stay open too.
+    // The same holds for a bound session's subagents: their logs stay open too.
     let parents: Vec<String> = {
         let host = lock(shared)?;
         host.workspace
             .agent_sessions
             .iter()
-            .filter(|s| s.current && s.runtime == Agent::Codex)
+            .filter(|s| s.current && crate::agents::adapter(s.runtime).links_children())
             .map(|s| s.cli_session_id.clone())
             .collect()
     };
@@ -2270,51 +2275,31 @@ fn apply_official(
     index: &crate::log_index::Index,
     due: &[(AgentSession, Option<u32>)],
 ) -> io::Result<()> {
-    // Only these CLIs have an official status to ask; the others rely on logs and screens.
-    let claude: Vec<_> = due
-        .iter()
-        .filter(|(s, _)| s.runtime == Agent::Claude)
-        .collect();
-    let codex: Vec<_> = due
-        .iter()
-        .filter(|(s, _)| s.runtime == Agent::Codex)
-        .collect();
+    // Only CLIs whose adapter has an official status ask; the others rely on logs and screens.
     let mut found: Vec<(&AgentSession, crate::content::Official)> = Vec::new();
     let mut errors = Vec::new();
     // Each CLI's last outcome, shown in the app's recognition notice until one succeeds.
     let mut outcomes: Vec<(&str, Option<String>)> = Vec::new();
-    if !claude.is_empty() {
-        match claude_status(&claude) {
-            Ok(mut f) => {
-                found.append(&mut f);
-                outcomes.push(("Claude", None));
-            }
-            Err(e) => {
-                errors.push(format!("claude agents --json: {e}"));
-                outcomes.push(("Claude", Some(e.to_string())));
-            }
+    for agent in Agent::all() {
+        let mine: Vec<_> = due.iter().filter(|(s, _)| s.runtime == agent).collect();
+        if mine.is_empty() {
+            continue;
         }
-    }
-    if !codex.is_empty() {
-        // A Codex thread id is its session id; `--no-daemon` threads are not loaded there.
-        let threads: Vec<String> = codex
-            .iter()
-            .map(|(s, _)| s.cli_session_id.clone())
-            .collect();
-        let result = crate::codex_status::socket()
-            .ok_or_else(|| io::Error::other("no HOME for the Codex control socket"))
-            .and_then(|socket| crate::codex_status::query(&socket, &threads));
+        let Some((asked, result)) = crate::agents::adapter(agent).official(&mine) else {
+            continue;
+        };
         match result {
             Ok(statuses) => {
-                found.extend(statuses.into_iter().filter_map(|(thread, status)| {
-                    let (s, _) = codex.iter().find(|(s, _)| s.cli_session_id == thread)?;
-                    Some((s, status))
-                }));
-                outcomes.push(("Codex", None));
+                found.extend(
+                    statuses
+                        .into_iter()
+                        .filter_map(|(i, status)| Some((&mine.get(i).copied()?.0, status))),
+                );
+                outcomes.push((agent.key(), None));
             }
             Err(e) => {
-                errors.push(format!("Codex app-server thread/read: {e}"));
-                outcomes.push(("Codex", Some(e.to_string())));
+                errors.push(format!("{asked}: {e}"));
+                outcomes.push((agent.key(), Some(e.to_string())));
             }
         }
     }
@@ -2353,28 +2338,6 @@ fn apply_official(
         true => Ok(()),
         false => Err(io::Error::other(errors.join("; "))),
     }
-}
-
-fn claude_status<'a>(
-    due: &[&'a (AgentSession, Option<u32>)],
-) -> io::Result<Vec<(&'a AgentSession, crate::content::Official)>> {
-    let program = match std::env::var("KEEPLINE_CLAUDE_AGENTS") {
-        Ok(program) => program,
-        Err(_) => due
-            .iter()
-            .find_map(|(_, pid)| pid.and_then(|p| crate::official::executable(p).ok()))
-            .ok_or_else(|| io::Error::other("no live Claude process to ask"))?,
-    };
-    let entries = crate::official::query(&program)?;
-    Ok(due
-        .iter()
-        .filter_map(|(session, pid)| {
-            let entry = entries.iter().find(|e| {
-                e.session_id == session.cli_session_id || (pid.is_some() && e.pid == *pid)
-            })?;
-            Some((session, entry.status.clone()))
-        })
-        .collect())
 }
 
 fn probe_after_submission(shared: &Shared, terminal: &str) -> io::Result<()> {
