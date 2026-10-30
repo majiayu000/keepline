@@ -52,6 +52,18 @@ pub(super) fn usable_cwd(candidates: impl IntoIterator<Item = String>) -> String
         .or_else(|| std::env::var("HOME").ok())
         .unwrap_or_else(|| "/".into())
 }
+/// The new terminal's command line. A resume is the shell's first command, so it cannot be
+/// lost when its pane is not on screen yet to type it; `-i` keeps the user's aliases, as
+/// typing it would, and the shell stays afterwards.
+pub(super) fn launch_argv(shell: String, resume: Option<&str>) -> Vec<String> {
+    match resume {
+        Some(command) => {
+            let then = format!("{command}; exec {} -l", shell_quote(&shell));
+            vec![shell, "-l".into(), "-i".into(), "-c".into(), then]
+        }
+        None => vec![shell, "-l".into()],
+    }
+}
 /// What a close removes: a whole tab, one pane by its terminal, or the whole host.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub(super) enum Closing {
@@ -796,18 +808,24 @@ impl Workbench {
         // A plugin action's command and the pane it ran for; it runs like a resume does.
         let pending = self.layout.pending_command.take();
         let resuming = resume.as_ref().map(|r| r.2.clone());
-        // The command runs in the new shell; task text only ever reaches the Agent's input.
-        let start: Option<(String, Option<String>)> =
-            resume.as_ref().map(|r| (r.0.clone(), None)).or_else(|| {
-                task_id
-                    .as_ref()
-                    .and_then(|id| self.workspace.tasks.iter().find(|t| &t.id == id))
-                    .map(|task| {
-                        let agent = agent.unwrap_or(task.agent);
-                        (agent.command(), Some(task.prompt()))
-                    })
-                    .or_else(|| pending.as_ref().map(|(c, _)| (c.clone(), None)))
-            });
+        // A resume is in the launch itself; other commands are typed into the new shell, and
+        // task text only ever reaches the Agent's input.
+        let start: Option<(String, Option<String>)> = if resume.is_some() {
+            None
+        } else {
+            task_id
+                .as_ref()
+                .and_then(|id| self.workspace.tasks.iter().find(|t| &t.id == id))
+                .map(|task| {
+                    let agent = agent.unwrap_or(task.agent);
+                    (agent.command(), Some(task.prompt()))
+                })
+                .or_else(|| pending.as_ref().map(|(c, _)| (c.clone(), None)))
+        };
+        let argv = launch_argv(
+            std::env::var("SHELL").unwrap_or_else(|_| "/bin/zsh".into()),
+            resume.as_ref().map(|r| r.0.as_str()),
+        );
         let mut tab = if split {
             let Some(tab) = self
                 .workspace
@@ -885,10 +903,7 @@ impl Workbench {
         let request = Request::Launch {
             id: terminal.clone(),
             space: space.id,
-            argv: vec![
-                std::env::var("SHELL").unwrap_or_else(|_| "/bin/zsh".into()),
-                "-l".into(),
-            ],
+            argv,
             cwd,
             cols: 100,
             rows: 30,

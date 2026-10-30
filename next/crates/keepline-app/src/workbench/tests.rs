@@ -354,3 +354,21 @@ fn a_reopened_pane_resumes_its_latest_open_conversation() {
     w.lost_agents.insert("t1".into(), None);
     assert!(interrupted_session(&w, "t1").is_none());
 }
+#[test]
+fn a_resume_is_the_new_shells_first_command_not_typed_later() {
+    assert_eq!(launch_argv("/bin/zsh".into(), None), ["/bin/zsh", "-l"]);
+    let command = Agent::Claude.resume_command("it's-1");
+    let argv = launch_argv("/bin/sh".into(), Some(&command));
+    assert_eq!(&argv[..4], ["/bin/sh", "-l", "-i", "-c"]);
+    // Run it for real with `claude` stubbed: the quoted id arrives intact, then the shell
+    // that takes over reads the empty stdin and ends.
+    let out = std::process::Command::new(&argv[0])
+        .args(&argv[1..3])
+        .arg("-c")
+        .arg(format!("claude() {{ printf '%s|' \"$@\"; }}; {}", argv[4]))
+        .stdin(std::process::Stdio::null())
+        .output()
+        .unwrap();
+    assert!(out.status.success());
+    assert_eq!(String::from_utf8_lossy(&out.stdout), "--resume|it's-1|");
+}
