@@ -7,7 +7,7 @@
   "resume": "opencode --session {id}",
   "source": {
     "sqlite": "~/.local/share/opencode/opencode.db",
-    "sessions": "SELECT id AS _session, directory AS _cwd, time_updated AS _t FROM session WHERE time_updated > ?1 AND parent_id IS NULL AND time_updated > (CAST(strftime('%s','now') AS INTEGER) - 30 * 86400) * 1000 ORDER BY time_updated",
+    "sessions": "SELECT id AS _session, directory AS _cwd, time_updated AS _t, CASE WHEN title LIKE 'New session - %' THEN NULL ELSE title END AS _title FROM session WHERE time_updated > ?1 AND parent_id IS NULL AND time_updated > (CAST(strftime('%s','now') AS INTEGER) - 30 * 86400) * 1000 ORDER BY time_updated",
     "records": "SELECT p.time_updated AS _t, p.id AS _id, json_extract(m.data, '$.role') AS role, json_extract(p.data, '$.type') AS type, substr(json_extract(p.data, '$.text'), 1, 4000) AS text, json_extract(p.data, '$.tool') AS tool, json_extract(p.data, '$.callID') AS call, json_extract(p.data, '$.state.status') AS status, json_extract(p.data, '$.state.input.command') AS command, json_extract(p.data, '$.state.input.filePath') AS file, json_extract(p.data, '$.state.metadata.exit') AS exit, substr(json_extract(p.data, '$.state.output'), 1, 2000) AS output, json_extract(p.data, '$.reason') AS reason, json_extract(p.data, '$.state.input.questions[0].question') AS question FROM part p JOIN message m ON m.id = p.message_id WHERE p.session_id = ?1 AND (p.time_updated, p.id) > (?2, ?3) AND (json_extract(p.data, '$.type') IN ('step-start', 'step-finish') OR (json_extract(p.data, '$.type') = 'text' AND (json_extract(m.data, '$.role') = 'user' OR json_extract(p.data, '$.time.end') IS NOT NULL)) OR (json_extract(p.data, '$.type') = 'tool' AND (json_extract(p.data, '$.state.status') IN ('completed', 'error') OR json_extract(p.data, '$.tool') = 'question'))) ORDER BY p.time_updated, p.id",
     "poll_ms": 1500
   },
@@ -16,6 +16,7 @@
     "cwd": "/_cwd",
     "role": "/role",
     "text": "/text",
+    "title": "/_title",
     "events": [
       {"when": {"/role": "user", "/type": "text"}, "turn": "running", "id": "/_id"},
       {"when": {"/type": "tool", "/tool": "bash"},

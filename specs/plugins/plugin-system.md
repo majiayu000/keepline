@@ -43,8 +43,8 @@ api 1 的声明能认出进程、启动和恢复、按 JSONL 绑定会话、卡�
 
 | 能力 | 声明 | 验收用的真实 CLI |
 |---|---|---|
-| 回合状态与证据 | `transcripts.events`：`when` 用 JSON 指针匹配记录（值写 `"*"` 表示字段存在），命中后映射成回合开始 / 结束 / 等你回答 / 出错、工具调用、执行结果（含退出码），交给后台已有的 `phase` / `tool` / `result` | Cursor |
-| 会话标题 | `title`：记录里的字段，或索引文件（JSONL，按会话 id 找），或 SQLite 按会话 id 查 | Cursor、OpenCode |
+| 回合状态与证据 | `transcripts.events`：`when` 用 JSON 指针匹配记录（值写 `"*"` 表示字段存在），命中后映射成回合开始 / 结束 / 等你回答 / 出错、工具调用、执行结果（含退出码），交给后台已有的 `phase` / `tool` / `result` | OpenCode |
+| 会话标题 | `transcripts.title`：记录里的字段；SQLite 来源由 `sessions` 查询带 `_title`。索引文件来源未做，暂无需要它的 CLI | OpenCode |
 | 对话来源：SQLite | `source: "sqlite"`：库路径、「哪些会话变了」的查询、「按会话增量读消息」的查询；只读打开、连接常驻、等锁很短、出错丢连接下次重开 | OpenCode |
 
 仍需要内置 Rust 适配器的：官方状态查询、子 Agent、共享后台的画面关联、Hook 安装。会话命名分支（`feat/session-naming-titles`）给三个内置 Agent 加的标题读法留在各自适配器里，经同一个 `title()` 入口。
@@ -124,7 +124,7 @@ Row = Session { id, glyph: status, title, trailing: time | timer | text,
 | 0 | 合入 agent 插件类型（注册表、声明式 Agent、适配器钩子、边界测试） | 完成（a1b8b60） |
 | 1 | 插件包、统一报告、设置页「插件」 | 完成 |
 | 2a | agent api 2：events（回合与证据）、SQLite 来源 | 完成。OpenCode 声明式插件（`next/plugins/opencode`）用本机真实库验收：近 30 天 403 个会话转写 2.4 MB、全部解析成卡片（377 做完了 / 26 在跑），证据 74 条（命令 53、改文件 18、出错 3） |
-| 2b | title：声明式标题来源，接到会话命名分支的 `name()` 入口；合入该分支（Cursor 已作为内置适配器做好） | 下一步 |
+| 2b | 合入会话命名分支（命名规则、Claude/Grok/Codex 标题、Cursor 内置适配器）；声明式 `transcripts.title`，SQLite 来源可带 `_title`，标题变了单独写一条 | 完成。OpenCode 实测 403 个会话中 283 个用上自己的标题，其余（占位名 New session）退回首句 |
 | 2 | actions：右键菜单与 ⌘P 共用的动作声明（命令模板可用 `{cwd}` `{session_id}` `{transcript}` `{task}`，按条件显示） | |
 | 3 | rules：验证命令规则，修掉 bun / vitest 项目被判成没跑验证 | |
 | 4 | sidebar：声明格式，经典 / 状态 / 目录三个内置预设，左栏顶部切换，⌘B 收起，按左栏减密稿 | |

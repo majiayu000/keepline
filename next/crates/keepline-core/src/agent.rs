@@ -150,6 +150,10 @@ pub struct Transcripts {
     pub assistant: String,
     /// The message text of a user or assistant record.
     pub text: Option<String>,
+    /// api 2: the conversation's name as the CLI keeps it; the latest non-empty value a
+    /// record holds names the card, unless the user named it in Keepline.
+    #[serde(default)]
+    pub title: Option<String>,
     /// api 2: records that mark a turn, a question for the user, a tool call or its
     /// result, so a declared CLI groups like a built-in one. Every matching rule applies.
     #[serde(default)]
@@ -162,7 +166,8 @@ pub struct Transcripts {
 /// the `transcripts` pointers and `events` apply to those rows.
 ///
 /// `sessions` is asked `?1` = the largest `_t` it returned before, and returns `_session`,
-/// `_cwd` and `_t` per changed session. `records` is asked `?1` = a session, `?2`/`?3` =
+/// `_cwd` and `_t` per changed session, and optionally `_title`: a changed title is
+/// written as a record of its own, so a rename shows without a new message. `records` is asked `?1` = a session, `?2`/`?3` =
 /// the `_t`/`_id` of the last row it returned for it, and returns rows after that, in
 /// order, each with `_t` and `_id`. A column holding JSON text is read as JSON.
 #[derive(Clone, Debug, PartialEq, Eq, Deserialize)]
@@ -513,6 +518,16 @@ fn declare(file: &Path, home: &Path, known: &[AgentSpec]) -> Result<AgentSpec, S
         if !t.events.is_empty() && d.api < 2 {
             return Err("transcripts.events 需要 api 2".into());
         }
+        if let Some(p) = &t.title {
+            if d.api < 2 {
+                return Err("transcripts.title 需要 api 2".into());
+            }
+            if !p.starts_with('/') {
+                return Err(format!(
+                    "transcripts.title \"{p}\" 要写成 / 开头的 JSON 指针"
+                ));
+            }
+        }
         for (i, e) in t.events.iter().enumerate() {
             let n = i + 1;
             if e.when.is_empty() {
@@ -692,7 +707,11 @@ mod tests {
             std::fs::write(d.join(name), body).unwrap();
         }
         let (specs, report) = load(&d, Path::new("/h"));
-        assert_eq!(specs.len(), builtin().len() + 1, "only the good one registers");
+        assert_eq!(
+            specs.len(),
+            builtin().len() + 1,
+            "only the good one registers"
+        );
         let refused = report.iter().filter(|r| r.result.is_err()).count();
         assert_eq!(refused, 8, "{report:#?}");
         assert!(report[1].result.as_ref().unwrap_err().contains("api 3"));

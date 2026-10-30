@@ -55,11 +55,18 @@ fn run(source: &RecordSource, dir: &Path) {
     }
 }
 
+/// A changed session: its id, working directory, change stamp and title if the query
+/// gives one.
+type Changed = (String, String, i64, Option<String>);
+
 /// How far each session has been written, so a restart neither repeats nor skips rows.
 #[derive(Default, Serialize, Deserialize)]
 struct Cursors {
     sessions: i64,
     rows: HashMap<String, (i64, String)>,
+    /// The title last written per session, so only a change writes another.
+    #[serde(default)]
+    titles: HashMap<String, String>,
 }
 
 pub struct Mirror {
@@ -97,24 +104,32 @@ impl Mirror {
             return Ok(());
         }
         std::fs::create_dir_all(&self.dir)?;
-        for (session, cwd, t) in changed {
+        for (session, cwd, t, title) in changed {
             self.write_session(conn, source, &session, &cwd)?;
+            if let Some(title) = title.filter(|t| self.cursors.titles.get(&session) != Some(t)) {
+                let record =
+                    serde_json::json!({"_t": t, "_session": session, "_cwd": cwd, "_title": title});
+                self.append(&session, format!("{record}\n").as_bytes())?;
+                self.cursors.titles.insert(session.clone(), title);
+            }
             self.cursors.sessions = self.cursors.sessions.max(t);
         }
         self.save()
     }
 
-    fn changed(
-        &self,
-        conn: &Connection,
-        source: &RecordSource,
-    ) -> rusqlite::Result<Vec<(String, String, i64)>> {
+    fn changed(&self, conn: &Connection, source: &RecordSource) -> rusqlite::Result<Vec<Changed>> {
         let mut stmt = conn.prepare_cached(&source.sessions)?;
+        let has_title = stmt.column_names().contains(&"_title");
         let rows = stmt.query_map([self.cursors.sessions], |r| {
             Ok((
                 r.get::<_, String>("_session")?,
                 r.get::<_, String>("_cwd")?,
                 r.get::<_, i64>("_t")?,
+                if has_title {
+                    r.get::<_, Option<String>>("_title")?
+                } else {
+                    None
+                },
             ))
         })?;
         rows.collect()
@@ -162,14 +177,18 @@ impl Mirror {
         if lines.is_empty() {
             return Ok(());
         }
-        let mut file = std::fs::OpenOptions::new()
-            .create(true)
-            .append(true)
-            .open(self.dir.join(format!("{}.jsonl", file_name(session))))?;
-        // One write per batch: the watcher never sees half a row.
-        file.write_all(&lines)?;
+        self.append(session, &lines)?;
         self.cursors.rows.insert(session.to_owned(), (t, id));
         Ok(())
+    }
+
+    /// One write per batch: the watcher never sees half a row.
+    fn append(&self, session: &str, lines: &[u8]) -> io::Result<()> {
+        std::fs::OpenOptions::new()
+            .create(true)
+            .append(true)
+            .open(self.dir.join(format!("{}.jsonl", file_name(session))))?
+            .write_all(lines)
     }
 
     fn save(&self) -> io::Result<()> {
@@ -285,6 +304,45 @@ mod tests {
         let all = lines(&file);
         assert_eq!(all.len(), 3);
         assert_eq!(all[2]["data"]["text"], "again");
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    #[test]
+    fn a_title_is_written_once_and_again_only_when_it_changes() {
+        let root = std::env::temp_dir().join(format!("kl-mirror-title-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&root);
+        std::fs::create_dir_all(&root).unwrap();
+        let (mut source, writer) = fixture(&root);
+        writer
+            .execute_batch(
+                "ALTER TABLE session ADD COLUMN title TEXT;
+                 INSERT INTO session VALUES('s','/w',1,'整理脚本');",
+            )
+            .unwrap();
+        source.sessions = "SELECT id AS _session, dir AS _cwd, updated AS _t, title AS _title FROM session WHERE updated > ?1".into();
+        let out = root.join("out");
+        let mut mirror = Mirror::open(&out);
+        let mut db = None;
+        mirror.poll(&source, &mut db).unwrap();
+        let titles = |file: &Path| -> Vec<String> {
+            lines(file)
+                .iter()
+                .filter_map(|l| l["_title"].as_str().map(str::to_owned))
+                .collect()
+        };
+        assert_eq!(titles(&out.join("s.jsonl")), ["整理脚本"]);
+        // Touched with the same title: nothing new.
+        writer
+            .execute_batch("UPDATE session SET updated = 2")
+            .unwrap();
+        mirror.poll(&source, &mut db).unwrap();
+        assert_eq!(titles(&out.join("s.jsonl")), ["整理脚本"]);
+        // Renamed without a new message: the rename alone is written.
+        writer
+            .execute_batch("UPDATE session SET updated = 3, title = '整理并提交脚本'")
+            .unwrap();
+        mirror.poll(&source, &mut db).unwrap();
+        assert_eq!(titles(&out.join("s.jsonl")), ["整理脚本", "整理并提交脚本"]);
         let _ = std::fs::remove_dir_all(&root);
     }
 

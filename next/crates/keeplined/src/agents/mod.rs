@@ -14,8 +14,8 @@ use std::sync::OnceLock;
 
 pub(crate) mod claude;
 pub(crate) mod codex;
-mod declared;
 mod cursor;
+mod declared;
 mod grok;
 pub mod hooks;
 pub mod mirror;
