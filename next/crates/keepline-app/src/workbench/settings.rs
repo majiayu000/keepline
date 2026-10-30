@@ -56,6 +56,14 @@ fn secondary(
         .bg(T::color(T::popover()))
         .text_color(T::color(T::primary()))
 }
+/// A path under the home folder written from `~`.
+fn tilde(path: &str) -> String {
+    let home = std::env::var("HOME").unwrap_or_default();
+    match path.strip_prefix(&home) {
+        Some(rest) if !home.is_empty() => format!("~{rest}"),
+        _ => path.to_owned(),
+    }
+}
 /// A card: rows separated by hairlines, as macOS groups its settings.
 fn card() -> gpui::Div {
     div()
@@ -267,7 +275,7 @@ impl Page {
     }
 }
 /// Every searchable setting: its page, its title and the words that find it.
-const ENTRIES: [(Page, &str, &str); 18] = [
+const ENTRIES: [(Page, &str, &str); 19] = [
     (
         Page::General,
         "默认 Agent",
@@ -311,6 +319,11 @@ const ENTRIES: [(Page, &str, &str); 18] = [
     (Page::About, "运行数据", "数据目录 数据库 runtime 后台 访达"),
     (
         Page::About,
+        "Agent Hook",
+        "hook hooks claude settings.json 过期 重新安装 对上对话",
+    ),
+    (
+        Page::About,
         "偏好文件",
         "配置 config colors.json 状态颜色 访达",
     ),
@@ -335,6 +348,10 @@ pub(super) struct SettingsView {
     pub(super) taken: Option<(Action, Chord, Action)>,
     /// Why the last recorded chord was refused, shown under its row.
     pub(super) refused: Option<(Action, &'static str)>,
+    /// The Agent CLIs' hook entries, read once when the panel opens; None while reading.
+    hooks: Option<Result<Vec<crate::agent_hooks::Hook>, String>>,
+    /// The CLI whose hooks are being installed after a click.
+    installing: Option<String>,
 }
 impl gpui::EventEmitter<SettingsAction> for SettingsView {}
 impl SettingsView {
@@ -356,6 +373,7 @@ impl SettingsView {
             }
         })
         .detach();
+        Self::check_hooks(None, cx);
         Self {
             focus: cx.focus_handle(),
             page: Page::General,
@@ -368,7 +386,29 @@ impl SettingsView {
             recording: None,
             taken: None,
             refused: None,
+            hooks: None,
+            installing: None,
         }
+    }
+    /// Installs `agent`'s hooks first when given (only ever from a click), then reads every
+    /// CLI's again. Both run in the background: they spawn `keeplined` and read small files.
+    fn check_hooks(agent: Option<String>, cx: &mut Context<Self>) {
+        cx.spawn(async move |this, cx| {
+            let result = cx
+                .background_spawn(async move {
+                    if let Some(agent) = agent {
+                        crate::agent_hooks::install(&agent)?;
+                    }
+                    crate::agent_hooks::check()
+                })
+                .await;
+            let _ = this.update(cx, |this, cx| {
+                this.hooks = Some(result.map_err(|e| e.to_string()));
+                this.installing = None;
+                cx.notify();
+            });
+        })
+        .detach();
     }
     pub(super) fn record(&mut self, action: Action, cx: &mut Context<Self>) {
         self.page = Page::Keys;
@@ -1606,15 +1646,7 @@ impl SettingsView {
     ) -> gpui::AnyElement {
         let shown = path
             .as_ref()
-            .map(|p| {
-                let home = std::env::var("HOME").unwrap_or_default();
-                let text = p.display().to_string();
-                match text.strip_prefix(&home) {
-                    Some(rest) if !home.is_empty() => format!("~{rest}"),
-                    _ => text,
-                }
-            })
-            .unwrap_or_else(|| "未知".into());
+            .map_or_else(|| "未知".into(), |p| tilde(&p.display().to_string()));
         let control = secondary(format!("reveal-{title}"), "在访达中显示")
             .when(path.is_none(), |b| b.opacity(0.5))
             .on_click(cx.listener(move |this, _, _, cx| {
@@ -1631,6 +1663,19 @@ impl SettingsView {
                     cx.notify();
                 }
             }));
+        self.file_row(first, title, shown, None, control, cx)
+    }
+    /// A file Keepline uses: its title, the path in mono below it, then an optional note,
+    /// in the error colour when `alarm`.
+    fn file_row(
+        &self,
+        first: bool,
+        title: impl Into<gpui::SharedString>,
+        shown: String,
+        note: Option<(String, bool)>,
+        control: impl IntoElement,
+        cx: &Context<Self>,
+    ) -> gpui::AnyElement {
         div()
             .px(px(T::S16))
             .py(px(T::S12))
@@ -1652,7 +1697,7 @@ impl SettingsView {
                         div()
                             .text_size(px(T::BODY_SIZE))
                             .text_color(T::color(T::primary()))
-                            .child(title),
+                            .child(title.into()),
                     )
                     .child(
                         div()
@@ -1661,10 +1706,81 @@ impl SettingsView {
                             .text_size(px(T::META))
                             .text_color(T::color(T::secondary()))
                             .child(shown),
-                    ),
+                    )
+                    .when_some(note, |d, (note, alarm)| {
+                        d.child(label(note).when(alarm, |l| l.text_color(Group::Error.colors().1)))
+                    }),
             )
             .child(control)
             .into_any_element()
+    }
+    /// One row per CLI whose hooks Keepline installs: their state as `keeplined hooks
+    /// status` read it when the panel opened, and a button that installs them anew.
+    fn hook_rows(&self, first: bool, cx: &Context<Self>) -> Vec<gpui::AnyElement> {
+        use crate::agent_hooks::State;
+        let hooks = match &self.hooks {
+            None => {
+                return vec![
+                    self.row(first, "Agent Hook", "正在检查…", div())
+                        .into_any_element(),
+                ];
+            }
+            Some(Err(e)) => {
+                let note = format!("没能检查：{e}");
+                return vec![
+                    self.row(first, "Agent Hook", &note, div())
+                        .into_any_element(),
+                ];
+            }
+            Some(Ok(hooks)) => hooks,
+        };
+        hooks
+            .iter()
+            .enumerate()
+            .map(|(i, hook)| {
+                let (state, action) = match hook.state {
+                    State::Current => ("已安装且是最新", None),
+                    State::Outdated => ("已安装但过期", Some("重新安装")),
+                    State::Missing => ("未安装", Some("安装")),
+                    State::Unreadable => ("读不了这个文件", None),
+                };
+                let mut note = state.to_owned();
+                if !hook.differences.is_empty() {
+                    note = format!("{note}：{}", hook.differences.join("；"));
+                }
+                let busy = self.installing.is_some();
+                let control = action.map(|text| {
+                    let agent = hook.agent.clone();
+                    let text = if self.installing.as_ref() == Some(&agent) {
+                        "正在安装…"
+                    } else {
+                        text
+                    };
+                    secondary(format!("hooks-{agent}"), text)
+                        .when(busy, |b| b.opacity(0.5))
+                        .on_click(cx.listener(move |this, _, _, cx| {
+                            if this.installing.is_some() {
+                                return;
+                            }
+                            // Writes the CLI's settings: only ever from this click.
+                            this.installing = Some(agent.clone());
+                            cx.notify();
+                            Self::check_hooks(Some(agent.clone()), cx);
+                        }))
+                });
+                self.file_row(
+                    first && i == 0,
+                    format!("{} Hook", hook.name),
+                    tilde(&hook.settings),
+                    Some((
+                        note,
+                        matches!(hook.state, State::Outdated | State::Unreadable),
+                    )),
+                    div().children(control),
+                    cx,
+                )
+            })
+            .collect()
     }
     fn about_page(&self, cx: &Context<Self>) -> gpui::Div {
         let mut page = div().flex().flex_col();
@@ -1712,6 +1828,9 @@ impl SettingsView {
             if colors.as_ref().is_some_and(|p| p.is_file()) {
                 data.push(self.path_row(false, "状态颜色 colors.json", colors, cx));
             }
+        }
+        if self.shows(Page::About, "Agent Hook", cx) {
+            data.extend(self.hook_rows(data.is_empty(), cx));
         }
         page.child(self.cards(vec![("数据与偏好", data)])).child(
             div().pt(px(T::S12)).px(px(T::S4)).child(label(

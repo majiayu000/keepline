@@ -3527,13 +3527,13 @@ fn every_terminal_tells_its_programs_which_terminal_and_host_they_run_in() {
     h.call(h.launch(
         "env",
         &format!(
-            "printf '%s|%s|%s' \"$KEEPLINE_TERMINAL\" \"$KEEPLINE_RUNTIME\" \"${{KEEPLINE_HOOK:+set}}\" > {}; sleep 5",
+            "printf '%s|%s|%s|%s' \"$KEEPLINE_ENV\" \"$KEEPLINE_TERMINAL\" \"$KEEPLINE_RUNTIME\" \"${{KEEPLINE_HOOK:+set}}\" > {}; sleep 5",
             shell_quote(&out.to_string_lossy())
         ),
     ))
     .unwrap();
     // The runtime as the host was given it: resolving links could overflow the socket path.
-    assert_eq!(wait_file(&out), format!("env|{}|set", h.root.display()));
+    assert_eq!(wait_file(&out), format!("1|env|{}|set", h.root.display()));
 }
 
 #[test]
