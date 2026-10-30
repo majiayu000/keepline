@@ -427,6 +427,33 @@ impl Theme {
     pub const FIELD_HEIGHT: f32 = 40.;
     pub const WINDOW_WIDTH: f32 = 1440.;
     pub const WINDOW_HEIGHT: f32 = 900.;
+    // workbench refresh: overview/sidebar/cleanup
+    /// The overview's status distribution bar and its legend pills.
+    pub const DIST_BAR: f32 = 12.;
+    pub const PILL_HEIGHT: f32 = 28.;
+    pub const PILL_RADIUS: f32 = 14.;
+    /// The scope switch: a raised track holding pressed and unpressed segments.
+    pub const SEGMENT_HEIGHT: f32 = 26.;
+    pub const SEGMENT_RADIUS: f32 = 5.;
+    pub const SEGMENT_TRACK_RADIUS: f32 = 7.;
+    /// Session cards keep their footer on one baseline across a row.
+    pub const CARD_MIN_HEIGHT: f32 = 148.;
+    pub const TODO_CARD_MIN: f32 = 280.;
+    /// A folded group: one bordered row instead of its cards.
+    pub const FOLDED_ROW: f32 = 40.;
+    /// 很久没动's weekly mini chart of last-activity ages.
+    pub const AGE_BAR_WIDTH: f32 = 6.;
+    pub const AGE_CHART_HEIGHT: f32 = 16.;
+    pub const AGE_CHART_WEEKS: usize = 12;
+    /// The sidebar's per-space distribution under the selected space.
+    pub const MINI_BAR: f32 = 4.;
+    /// 逐个清理: one step per queued session, the tally swatches and the age marker.
+    pub const CLEANUP_PAGE_WIDTH: f32 = 760.;
+    pub const CLEANUP_STEP: f32 = 6.;
+    /// Past this many steps the gaps would outgrow the row; segments then touch.
+    pub const CLEANUP_STEP_GAPS: usize = 150;
+    pub const AGE_MARKER: f32 = 10.;
+    pub const CLEANUP_LABEL: f32 = 72.;
     /// The chart color of the `i`th ranked app; past the palette, the shared "other".
     pub fn series(i: usize) -> u32 {
         Self::palette()
