@@ -1,0 +1,743 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>待办改版稿 · 新建待办、待办详情</title>
+<style>
+/* Same tokens as workbench-refresh.html / main-refresh.html. */
+:root {
+  --app: #efeeec; --pane: #fafaf9; --raised: #ebeae8; --popover: #fdfdfc; --chip: #ecebe9; --header-focus: #f0efed;
+  --border: #e3e2df; --card-border: #d6d5d2; --control: #c9c8c5; --focus: #8e8d8a;
+  --primary: #0e0d0c; --body: #1f1e1c; --secondary: #5a5956; --muted: #6c6b68;
+  --accent: #141312; --on-accent: #fafaf9; --button: #e9e8e6; --button-hover: #dddcd9; --link: #2a2927;
+  --track: #e6e5e2; --code: #f3f2f0;
+  --waiting: #c4651f; --error: #c53b33; --review: #5e62d8; --paused: #9a7316; --running: #2b8f60; --working: #a88a12; --stale: #8a8986;
+  --waiting-wash: #f7ebe1; --review-wash: #ecedfa; --working-wash: #f6f0dc; --error-wash: #f8e9e7; --paused-wash: #f5eedb;
+}
+:root[data-theme="dark"] {
+  --app: #161618; --pane: #1c1c1e; --raised: #29292a; --popover: #262627; --chip: #2c2c2d; --header-focus: #232325;
+  --border: #2e2e2f; --card-border: #353536; --control: #3a3a3b; --focus: #686767;
+  --primary: #ecebe9; --body: #e4e2df; --secondary: #a3a2a0; --muted: #8a8988;
+  --accent: #ecebe9; --on-accent: #1c1c1e; --button: #2a2a2b; --button-hover: #343435; --link: #c8c6c4;
+  --track: #2c2c2d; --code: #202022;
+  --waiting: #e8823a; --error: #e5534b; --review: #8f93ff; --paused: #d9a441; --running: #4cc38a; --working: #e8c547; --stale: #8b8a88;
+  --waiting-wash: #4a2a12; --review-wash: #2a2c5c; --working-wash: #3d3514; --error-wash: #4a1c18; --paused-wash: #3a2e12;
+}
+* { box-sizing: border-box; }
+body { margin: 0; background: #c9ccd2; color: var(--body); font: 13px/1.4 -apple-system, BlinkMacSystemFont, "PingFang SC", "Helvetica Neue", sans-serif; font-variant-numeric: tabular-nums; padding: 20px 16px 40px; display: flex; flex-direction: column; align-items: center; gap: 14px; }
+button { font: inherit; cursor: pointer; border: 0; background: none; color: inherit; }
+input, textarea { font: inherit; color: inherit; }
+.bar { display: flex; gap: 8px; align-items: center; font-size: 12px; color: #2f3238; flex-wrap: wrap; justify-content: center; max-width: 1440px; }
+.bar button { height: 26px; padding: 0 10px; border-radius: 6px; background: #e8e9ec; color: #1f2024; }
+.bar button[aria-pressed="true"] { background: #1f2024; color: #fff; }
+.frame-label { font-size: 11px; letter-spacing: .06em; color: #2f3238; max-width: 1440px; width: 100%; margin: 10px auto 0; display: flex; gap: 10px; align-items: baseline; flex-wrap: wrap; }
+.frame-label b { font-weight: 600; letter-spacing: .06em; }
+.frame-label span { letter-spacing: 0; color: #4a4d55; }
+.notes { max-width: 1440px; width: 100%; font-size: 12px; color: #2f3238; display: grid; grid-template-columns: repeat(auto-fit, minmax(320px, 1fr)); gap: 4px 24px; margin: -4px auto 0; }
+.notes p { margin: 0; }
+.notes .k { display: inline-block; font-size: 10.5px; padding: 0 5px; border-radius: 4px; margin-right: 6px; border: 1px solid #8b8f98; color: #2f3238; }
+.notes .k.new { background: #2f3238; color: #fff; border-color: #2f3238; }
+.mono { font-family: "JetBrains Mono", "SF Mono", Menlo, monospace; }
+
+.window { width: 1440px; max-width: 100%; min-height: 860px; background: var(--pane); border-radius: 12px; overflow: hidden; box-shadow: 0 20px 60px rgba(0,0,0,.25); display: flex; flex-direction: column; color: var(--body); }
+.window.short { min-height: 0; }
+
+/* Top bar */
+.top { height: 46px; flex: none; display: flex; align-items: center; gap: 12px; padding: 0 16px 0 84px; border-bottom: 1px solid var(--border); }
+.brand { font-weight: 600; color: var(--primary); }
+.crumb { color: var(--secondary); font-size: 12px; white-space: nowrap; }
+.toggle { height: 28px; padding: 0 10px; border-radius: 6px; background: var(--raised); font-size: 12.5px; color: var(--primary); white-space: nowrap; }
+.search { flex: 0 1 340px; min-width: 0; height: 30px; border: 1px solid var(--control); border-radius: 8px; display: flex; align-items: center; gap: 8px; padding: 0 10px; color: var(--muted); font-size: 12.5px; white-space: nowrap; overflow: hidden; }
+kbd { font: 11px inherit; border: 1px solid var(--control); border-radius: 4px; padding: 0 4px; color: var(--muted); }
+.search kbd { margin-left: auto; }
+.spacer { flex: 1; }
+.pulse { display: flex; align-items: center; gap: 2px; }
+.pulse button { height: 24px; padding: 0 8px; border-radius: 5px; display: inline-flex; align-items: center; gap: 5px; font-size: 12px; color: var(--secondary); white-space: nowrap; }
+.pulse button b { color: var(--primary); font-weight: 600; }
+.pulse .zero { opacity: .55; }
+.ghost { height: 28px; padding: 0 10px; border-radius: 6px; font-size: 12.5px; color: var(--body); white-space: nowrap; }
+.ghost:hover { background: var(--button-hover); }
+.dot { width: 7px; height: 7px; border-radius: 50%; flex: none; display: inline-block; }
+.ring { width: 8px; height: 8px; border-radius: 50%; flex: none; display: inline-block; border: 1.5px solid var(--muted); }
+.ring.half { position: relative; overflow: hidden; border-color: var(--secondary); }
+.ring.half::after { content: ""; position: absolute; left: 0; top: 0; bottom: 0; width: 50%; background: var(--secondary); }
+.ring.full { background: var(--secondary); border-color: var(--secondary); }
+
+.main { flex: 1; min-height: 0; display: flex; }
+
+/* Sidebar (same as workbench-refresh) */
+.side { width: 240px; flex: none; border-right: 1px solid var(--border); display: flex; flex-direction: column; }
+.side-scroll { flex: 1; padding: 14px 10px; display: flex; flex-direction: column; gap: 18px; }
+.side h3 { margin: 0 0 4px; padding: 0 8px; font-size: 11px; font-weight: 600; letter-spacing: .04em; color: var(--muted); display: flex; justify-content: space-between; }
+.side h3 span { font-weight: 400; }
+.row { height: 30px; display: flex; align-items: center; gap: 8px; padding: 0 8px; border-radius: 6px; }
+.row:hover { background: var(--raised); }
+.row.on { background: var(--raised); color: var(--primary); font-weight: 500; }
+.row .name { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.row .n { margin-left: auto; color: var(--muted); font-size: 11.5px; flex: none; display: inline-flex; align-items: center; gap: 6px; font-weight: 400; }
+.row.done .name { color: var(--muted); }
+.mini { display: flex; height: 4px; gap: 1px; margin: 2px 8px 6px; border-radius: 2px; overflow: hidden; }
+.mini i { display: block; height: 100%; }
+.tag { flex: none; font-size: 10.5px; padding: 0 5px; border-radius: 4px; background: var(--chip); color: var(--muted); }
+.link-row { color: var(--secondary); font-size: 12px; }
+.side-foot { border-top: 1px solid var(--border); padding: 8px 10px; display: flex; justify-content: space-between; }
+
+/* Work area */
+.work { flex: 1; min-width: 0; display: flex; flex-direction: column; background: var(--app); }
+.tabs { height: 36px; flex: none; display: flex; align-items: stretch; padding: 0 8px; gap: 2px; background: var(--pane); border-bottom: 1px solid var(--border); overflow: hidden; }
+.tab { position: relative; display: flex; align-items: center; gap: 7px; padding: 0 12px; min-width: 96px; max-width: 220px; font-size: 12.5px; color: var(--secondary); }
+.tab.on { color: var(--primary); font-weight: 500; }
+.tab.on::after { content: ""; position: absolute; left: 10px; right: 10px; bottom: 0; height: 2px; border-radius: 1px; background: var(--primary); }
+.tab .t { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.tab-add { padding: 0 12px; color: var(--muted); }
+.page { flex: 1; min-height: 0; padding: 22px 28px 32px; display: flex; justify-content: center; }
+
+/* Shared controls */
+.btn { height: 30px; padding: 0 12px; border-radius: 6px; background: var(--button); font-size: 12.5px; color: var(--primary); display: inline-flex; align-items: center; gap: 6px; white-space: nowrap; }
+.btn:hover { background: var(--button-hover); }
+.btn.solid { background: var(--accent); color: var(--on-accent); font-weight: 600; }
+.btn kbd { border-color: currentColor; color: inherit; opacity: .55; }
+.btn[disabled] { opacity: .45; cursor: not-allowed; }
+.lnk { color: var(--link); font-size: 12px; height: 24px; padding: 0 6px; border-radius: 5px; white-space: nowrap; }
+.lnk:hover { background: var(--button-hover); }
+.chip { font-size: 11px; padding: 1px 6px; border-radius: 4px; background: var(--chip); color: var(--secondary); white-space: nowrap; }
+.label { font-size: 12px; color: var(--secondary); display: flex; align-items: baseline; gap: 8px; }
+.label .opt { color: var(--muted); font-size: 11.5px; }
+.label .right { margin-left: auto; color: var(--muted); font-size: 11.5px; }
+.input { height: 34px; border: 1px solid var(--control); border-radius: 7px; background: var(--pane); padding: 0 10px; display: flex; align-items: center; gap: 8px; color: var(--primary); min-width: 0; }
+.input.focus { border-color: var(--focus); box-shadow: 0 0 0 1px var(--focus); }
+.input.bad { border-color: var(--error); box-shadow: 0 0 0 1px var(--error); }
+.input .ph { color: var(--muted); }
+.input .caret { width: 1px; height: 16px; background: var(--primary); display: inline-block; margin-left: -6px; }
+.area { border: 1px solid var(--control); border-radius: 7px; background: var(--pane); padding: 8px 10px; line-height: 1.55; color: var(--primary); min-height: 64px; }
+.hint { font-size: 11.5px; color: var(--muted); }
+.hint.bad { color: var(--error); }
+.hint.warn { color: var(--paused); }
+.seg { display: inline-flex; padding: 2px; border-radius: 8px; background: var(--raised); flex-wrap: wrap; }
+.seg button { height: 28px; padding: 0 12px; border-radius: 6px; font-size: 12.5px; color: var(--secondary); display: inline-flex; align-items: center; gap: 6px; }
+.seg button[aria-pressed="true"] { background: var(--popover); color: var(--primary); box-shadow: 0 1px 2px rgba(0,0,0,.08); font-weight: 500; }
+.seg button .tag { font-weight: 400; }
+.field { display: flex; flex-direction: column; gap: 6px; min-width: 0; }
+
+/* ── New todo form ───────────────────────────── */
+.form-wrap { width: 1080px; max-width: 100%; display: grid; grid-template-columns: minmax(0, 1fr) 400px; gap: 16px; align-items: start; }
+.card { border: 1px solid var(--card-border); border-radius: 12px; background: var(--popover); padding: 20px 22px; display: flex; flex-direction: column; gap: 18px; min-width: 0; }
+.card-head { display: flex; align-items: baseline; gap: 10px; }
+.card-head h1 { margin: 0; font-size: 16px; font-weight: 600; color: var(--primary); }
+.card-head .sub { color: var(--muted); font-size: 12px; }
+.card-head .x { margin-left: auto; color: var(--muted); width: 24px; height: 24px; border-radius: 5px; }
+.path { font-size: 11.5px; color: var(--muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+.checklist { border: 1px solid var(--control); border-radius: 8px; overflow: hidden; background: var(--pane); }
+.ck { display: grid; grid-template-columns: 14px 22px minmax(0, 1fr) auto 24px; align-items: center; gap: 8px; min-height: 38px; padding: 0 8px 0 6px; border-bottom: 1px solid var(--border); }
+.ck:last-child { border-bottom: 0; }
+.ck .grip { color: var(--muted); font-size: 11px; letter-spacing: -2px; opacity: .6; cursor: grab; user-select: none; }
+.ck .num { color: var(--muted); font-size: 12px; text-align: right; }
+.ck .txt { color: var(--primary); min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.tcaret { display: inline-block; width: 1px; height: 15px; background: var(--primary); vertical-align: -3px; margin-left: 1px; }
+.ck .txt.ph { color: var(--muted); }
+.ck .kind { font-size: 11px; color: var(--muted); }
+.ck .del { color: var(--muted); width: 22px; height: 22px; border-radius: 5px; }
+.ck .del:hover { background: var(--button-hover); }
+.ck.editing { background: var(--popover); box-shadow: inset 0 0 0 1px var(--focus); }
+.ck.dupe { box-shadow: inset 2px 0 0 var(--paused); }
+.form-foot { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; padding-top: 4px; border-top: 1px solid var(--border); padding-top: 16px; }
+.form-foot .note { color: var(--muted); font-size: 12px; margin-right: auto; }
+
+.preview { border: 1px solid var(--card-border); border-radius: 12px; background: var(--popover); display: flex; flex-direction: column; min-width: 0; overflow: hidden; }
+.preview h2 { margin: 0; font-size: 13px; font-weight: 600; color: var(--primary); }
+.pv-head { padding: 14px 16px 12px; display: flex; flex-direction: column; gap: 10px; border-bottom: 1px solid var(--border); }
+.steps { margin: 0; padding: 0; list-style: none; display: flex; flex-direction: column; gap: 8px; font-size: 12.5px; }
+.steps li { display: grid; grid-template-columns: 18px 1fr; gap: 8px; align-items: baseline; }
+.steps .n { width: 18px; height: 18px; border-radius: 50%; border: 1px solid var(--control); font-size: 11px; display: inline-flex; align-items: center; justify-content: center; color: var(--secondary); }
+.steps li.you .n { background: var(--accent); color: var(--on-accent); border-color: var(--accent); }
+.steps code { font-family: "JetBrains Mono", "SF Mono", Menlo, monospace; font-size: 12px; background: var(--code); border: 1px solid var(--border); border-radius: 4px; padding: 0 5px; color: var(--primary); }
+.pv-body { padding: 12px 16px 14px; display: flex; flex-direction: column; gap: 8px; }
+.pv-label { display: flex; align-items: center; gap: 8px; font-size: 12px; color: var(--secondary); }
+.pv-label .right { margin-left: auto; }
+.prompt { margin: 0; background: var(--code); border: 1px solid var(--border); border-radius: 8px; padding: 10px 12px; font: 12px/1.6 "JetBrains Mono", "SF Mono", Menlo, monospace; color: var(--body); white-space: pre-wrap; word-break: break-word; }
+.prompt .d { color: var(--muted); }
+.prompt .cur { display: inline-block; width: 7px; height: 14px; background: var(--primary); opacity: .35; vertical-align: -2px; }
+.pv-foot { padding: 10px 16px; border-top: 1px solid var(--border); font-size: 11.5px; color: var(--muted); display: flex; gap: 12px; flex-wrap: wrap; }
+
+.states { width: 100%; display: grid; grid-template-columns: repeat(auto-fill, minmax(250px, 1fr)); gap: 10px; padding: 18px 20px 20px; background: var(--app); }
+.state-card { border: 1px solid var(--card-border); border-radius: 10px; background: var(--popover); padding: 12px 14px; display: flex; flex-direction: column; gap: 8px; min-width: 0; }
+.state-card h4 { margin: 0; font-size: 11.5px; font-weight: 600; color: var(--muted); letter-spacing: .02em; }
+.state-card .acts { display: flex; gap: 6px; flex-wrap: wrap; }
+
+/* ── Todo detail ───────────────────────────── */
+.detail { width: 1120px; max-width: 100%; display: flex; flex-direction: column; gap: 16px; }
+.dt-nav { display: flex; align-items: center; gap: 8px; color: var(--secondary); font-size: 12px; }
+.dt-head { display: flex; align-items: flex-start; gap: 16px; flex-wrap: wrap; }
+.dt-title { flex: 1 1 420px; min-width: 0; display: flex; flex-direction: column; gap: 8px; }
+.dt-title h1 { margin: 0; font-size: 20px; font-weight: 600; color: var(--primary); }
+.meta { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; font-size: 12px; color: var(--secondary); }
+.meta .sep { opacity: .5; }
+.status { display: inline-flex; align-items: center; gap: 6px; height: 22px; padding: 0 8px; border-radius: 5px; background: var(--chip); color: var(--primary); font-size: 12px; font-weight: 600; }
+.outcome { display: inline-flex; align-items: center; gap: 4px; font-size: 12px; color: var(--secondary); }
+.outcome b { font-weight: 500; color: var(--primary); }
+.dt-actions { display: flex; gap: 6px; flex-wrap: wrap; align-items: center; }
+.dt-actions .div { width: 1px; height: 18px; background: var(--border); margin: 0 2px; }
+
+.progress { border: 1px solid var(--card-border); border-radius: 12px; background: var(--popover); padding: 14px 18px; display: grid; grid-template-columns: auto minmax(0, 1fr) auto; gap: 18px; align-items: center; }
+.big { display: flex; align-items: baseline; gap: 4px; color: var(--primary); }
+.big b { font-size: 28px; font-weight: 600; line-height: 1; }
+.big span { font-size: 16px; color: var(--muted); }
+.big small { font-size: 12px; color: var(--secondary); margin-left: 6px; }
+.cells { display: flex; gap: 4px; }
+.cells .c { flex: 1; display: flex; flex-direction: column; gap: 5px; min-width: 0; }
+.cells .c i { display: block; height: 10px; border-radius: 3px; background: var(--track); box-shadow: inset 0 0 0 1px var(--control); }
+.cells .c.ok i { background: var(--secondary); box-shadow: none; }
+.cells .c span { font-size: 11px; color: var(--muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.cells .c.ok span { color: var(--secondary); }
+.progress .side-note { font-size: 12px; color: var(--secondary); text-align: right; }
+
+.cols { display: grid; grid-template-columns: minmax(0, 1fr) 340px; gap: 16px; align-items: start; }
+.panel { border: 1px solid var(--card-border); border-radius: 12px; background: var(--popover); min-width: 0; overflow: hidden; }
+.panel-h { display: flex; align-items: center; gap: 8px; padding: 12px 16px; border-bottom: 1px solid var(--border); }
+.panel-h h2 { margin: 0; font-size: 13px; font-weight: 600; color: var(--primary); }
+.panel-h .c { color: var(--muted); font-size: 12px; }
+.panel-h .right { margin-left: auto; display: flex; gap: 4px; }
+.panel-b { padding: 12px 16px; }
+.desc { color: var(--body); line-height: 1.6; }
+
+.crit { border-bottom: 1px solid var(--border); padding: 12px 16px 12px 14px; display: grid; grid-template-columns: 22px minmax(0, 1fr); gap: 4px 10px; }
+.crit:last-child { border-bottom: 0; }
+.box { width: 16px; height: 16px; border-radius: 4px; border: 1.5px solid var(--control); margin-top: 1px; display: inline-flex; align-items: center; justify-content: center; font-size: 11px; line-height: 1; color: var(--on-accent); }
+.crit.ok .box { background: var(--secondary); border-color: var(--secondary); }
+.crit .ct { display: flex; align-items: baseline; gap: 8px; min-width: 0; }
+.crit .ct .num { color: var(--muted); font-size: 12px; flex: none; }
+.crit .ct .text { color: var(--primary); font-weight: 500; min-width: 0; }
+.crit .ct .cnt { margin-left: auto; color: var(--muted); font-size: 11.5px; flex: none; }
+.crit .body { grid-column: 2; display: flex; flex-direction: column; gap: 2px; margin-top: 4px; }
+.ev { display: grid; grid-template-columns: 38px minmax(0, 1fr) auto auto; gap: 10px; align-items: baseline; padding: 5px 8px; border-radius: 6px; font-size: 12px; }
+.ev:hover { background: var(--raised); }
+.ev .k { font-size: 11px; color: var(--muted); }
+.ev .s { font-family: "JetBrains Mono", "SF Mono", Menlo, monospace; font-size: 11.5px; color: var(--body); min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.ev .x { font-size: 11px; color: var(--secondary); white-space: nowrap; }
+.ev .x.fail { color: var(--error); font-weight: 600; }
+.ev .t { font-size: 11px; color: var(--muted); white-space: nowrap; }
+.ev .from { grid-column: 2 / -1; font-size: 11px; color: var(--muted); margin-top: -2px; }
+.ev.fail .s { color: var(--muted); text-decoration: line-through; text-decoration-color: var(--control); }
+.empty-ev { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; padding: 4px 8px; font-size: 12px; color: var(--muted); }
+.empty-ev .lnk { margin-left: auto; }
+.more { font-size: 11.5px; color: var(--link); padding: 2px 8px; align-self: flex-start; }
+
+.sess { display: grid; grid-template-columns: 8px minmax(0, 1fr) auto; gap: 4px 10px; align-items: center; padding: 10px 16px; border-bottom: 1px solid var(--border); }
+.sess:last-child { border-bottom: 0; }
+.sess:hover { background: var(--raised); }
+.sess .t { color: var(--primary); font-weight: 500; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.sess .m { grid-column: 2; font-size: 11.5px; color: var(--muted); display: flex; gap: 6px; flex-wrap: wrap; }
+.sess .m .g { font-weight: 600; }
+.sess .go { grid-row: 1 / span 2; grid-column: 3; }
+.sess-add { display: flex; align-items: center; gap: 6px; padding: 10px 16px; }
+
+.tl { padding: 12px 16px 14px; display: flex; flex-direction: column; gap: 8px; }
+.tl svg { width: 100%; height: 44px; display: block; overflow: visible; }
+.tl .lg svg { width: 10px; height: 10px; flex: none; display: inline-block; }
+.tl .axis { display: flex; justify-content: space-between; font-size: 11px; color: var(--muted); }
+.tl .lg { display: flex; gap: 12px; font-size: 11.5px; color: var(--secondary); flex-wrap: wrap; }
+.tl .lg span { display: inline-flex; align-items: center; gap: 5px; }
+
+.facts { display: grid; grid-template-columns: 56px minmax(0, 1fr); gap: 8px 12px; font-size: 12.5px; padding: 12px 16px; margin: 0; }
+.facts dt { color: var(--muted); }
+.facts dd { margin: 0; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.foot-note { font-size: 11.5px; color: var(--muted); }
+.ready { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; font-size: 12.5px; color: var(--primary); }
+.ready .muted { color: var(--secondary); }
+
+.compact { width: 760px; max-width: 100%; }
+.empty-block { padding: 14px 16px; color: var(--muted); font-size: 12.5px; display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.empty-block .lnk { margin-left: auto; }
+
+/* Narrow widths */
+@media (max-width: 1240px) {
+  .form-wrap { grid-template-columns: minmax(0, 1fr); }
+  .cols { grid-template-columns: minmax(0, 1fr); }
+}
+@media (max-width: 1000px) {
+  .side { display: none; }
+  .pulse, .search { display: none; }
+  .top { padding-left: 16px; }
+}
+@media (max-width: 640px) {
+  body { padding: 12px 8px 32px; }
+  .page { padding: 14px 12px 20px; }
+  .card { padding: 16px 14px; }
+  .progress { grid-template-columns: minmax(0, 1fr); gap: 10px; }
+  .progress .side-note { text-align: left; }
+  .ck { grid-template-columns: 22px minmax(0, 1fr) 24px; }
+  .ck .grip, .ck .kind { display: none; }
+  .ev { grid-template-columns: 34px minmax(0, 1fr) auto; }
+  .ev .t { display: none; }
+  .toggle { display: none; }
+  .tab { min-width: 0; }
+}
+</style>
+</head>
+<body>
+<div class="bar">
+  <span>待办改版稿：标题「健身」「标签命名依旧有问题」「睡觉」、空间和路径取自你 10-30 的真实数据（3 个待办都还没写说明和验收标准，也没有关联会话）；说明、验收标准、证据、会话与时间都是示例</span>
+  <button type="button" data-theme-btn="light" aria-pressed="true">浅色</button>
+  <button type="button" data-theme-btn="dark" aria-pressed="false">深色</button>
+</div>
+
+<!-- ════════════ 一 · 新建待办 ════════════ -->
+<div class="frame-label"><b>一 · 新建待办（已填写）</b><span>标题是你的真实待办，说明与 3 条验收标准为示例；右栏是「保存并开始」之后会发生什么</span></div>
+<div class="window">
+  <div class="top" data-top></div>
+  <div class="main">
+    <aside class="side" data-side="new"></aside>
+    <section class="work">
+      <div class="tabs"><button type="button" class="tab on"><span class="dot" style="background:var(--working)"></span><span class="t">CLI workflow</span></button><button type="button" class="tab"><span class="dot" style="background:var(--stale);opacity:.4"></span><span class="t">zsh</span></button><button type="button" class="tab-add" aria-label="新建终端标签">＋</button></div>
+      <div class="page">
+        <div class="form-wrap">
+          <div class="card">
+            <div class="card-head"><h1>新建待办</h1><span class="sub">保存后出现在左栏「待办」和鸟瞰顶部</span><button type="button" class="x" aria-label="关闭">×</button></div>
+
+            <div class="field">
+              <div class="label">要做什么</div>
+              <div class="input">标签命名依旧有问题</div>
+            </div>
+
+            <div class="field">
+              <div class="label">在哪个空间做<span class="right">开始时在这个目录开终端</span></div>
+              <div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap">
+                <div class="seg" role="group" aria-label="空间">
+                  <button type="button" aria-pressed="true">工作空间</button>
+                  <button type="button" aria-pressed="false">新空间</button>
+                  <button type="button" aria-pressed="false" style="color:var(--muted)">＋ 新空间</button>
+                </div>
+                <span class="path mono">~/Desktop/code/AI/tools/keepline-idle-test/next</span>
+              </div>
+            </div>
+
+            <div class="field">
+              <div class="label">说明 <span class="opt">可选 · 原样交给 Agent</span></div>
+              <div class="area">新开的终端标签还是叫 zsh。启动 Agent 时应该用待办标题命名标签；Agent 退出后保留这个名字，不要退回进程名。</div>
+            </div>
+
+            <div class="field">
+              <div class="label">验收标准 <span class="opt">可选 · 也会交给 Agent，完成时逐条核对</span><span class="right">3 条</span></div>
+              <div class="checklist" role="list">
+                <div class="ck" role="listitem"><span class="grip" aria-hidden="true">⋮⋮</span><span class="num">1</span><span class="txt">新开 Codex 标签显示待办标题，不是 zsh</span><span class="kind"></span><button type="button" class="del" aria-label="删除第 1 条">×</button></div>
+                <div class="ck" role="listitem"><span class="grip" aria-hidden="true">⋮⋮</span><span class="num">2</span><span class="txt">Agent 退出后标签名保留</span><span class="kind"></span><button type="button" class="del" aria-label="删除第 2 条">×</button></div>
+                <div class="ck editing" role="listitem"><span class="grip" aria-hidden="true">⋮⋮</span><span class="num">3</span><span class="txt">cargo test -p keepline-app 全部通过<span class="tcaret"></span></span><span class="kind">回车加下一条</span><button type="button" class="del" aria-label="删除第 3 条">×</button></div>
+                <div class="ck" role="listitem"><span class="grip" aria-hidden="true" style="opacity:0">⋮⋮</span><span class="num">＋</span><span class="txt ph">再加一条…</span><span class="kind"></span><span></span></div>
+              </div>
+              <div class="hint">每条最好能被一条命令、一次测试或一处文件改动证明；Keepline 会从关联会话里找这类记录当证据。</div>
+            </div>
+
+            <div class="field">
+              <div class="label">默认用哪个 Agent <span class="opt">开始时还能改</span></div>
+              <div class="seg" role="group" aria-label="Agent">
+                <button type="button" aria-pressed="true">Codex <span class="mono hint">codex</span></button>
+                <button type="button" aria-pressed="false">Claude Code <span class="mono hint">claude</span></button>
+                <button type="button" aria-pressed="false">Grok Build <span class="mono hint">grok</span></button>
+              </div>
+            </div>
+
+            <div class="form-foot">
+              <span class="note">都能再编辑；验收标准改字不会丢掉已挂的证据</span>
+              <button type="button" class="ghost">取消</button>
+              <button type="button" class="btn">保存为待办</button>
+              <button type="button" class="btn solid">保存并开始 <kbd>⌘⏎</kbd></button>
+            </div>
+          </div>
+
+          <aside class="preview" aria-label="保存并开始之后">
+            <div class="pv-head">
+              <h2>保存并开始之后</h2>
+              <ol class="steps">
+                <li><span class="n">1</span><span>在「工作空间」新开一个画面，标签就叫待办标题</span></li>
+                <li><span class="n">2</span><span>运行 <code>codex</code>，等它的输入框出现</span></li>
+                <li><span class="n">3</span><span>把下面这段放进 Codex 的输入框，<b>不发送</b></span></li>
+                <li class="you"><span class="n">4</span><span>你检查、可以改，按回车才发给 Agent</span></li>
+              </ol>
+            </div>
+            <div class="pv-body">
+              <div class="pv-label">放进输入框的内容 <span class="right"><button type="button" class="lnk">复制</button></span></div>
+<pre class="prompt"><span class="d">›</span> 标签命名依旧有问题
+
+新开的终端标签还是叫 zsh。启动 Agent 时应该用待办标题命名标签；Agent 退出后保留这个名字，不要退回进程名。
+
+验收标准：
+- 新开 Codex 标签显示待办标题，不是 zsh
+- Agent 退出后标签名保留
+- cargo test -p keepline-app 全部通过 <span class="cur"></span></pre>
+            </div>
+            <div class="pv-foot"><span>不是 shell 参数，引号和换行原样保留</span><span>同一待办再点「开始」会切回这个画面</span></div>
+          </aside>
+        </div>
+      </div>
+    </section>
+  </div>
+  <div class="states" aria-label="校验状态">
+    <div class="state-card">
+      <h4>标题为空 · 拦住保存</h4>
+      <div class="input bad"><span class="ph">要做什么</span></div>
+      <div class="hint bad">先写要做什么</div>
+      <div class="acts"><button type="button" class="btn" disabled>保存为待办</button><button type="button" class="btn solid" disabled>保存并开始</button></div>
+    </div>
+    <div class="state-card">
+      <h4>没写验收标准 · 可以保存，提醒一次</h4>
+      <div class="checklist"><div class="ck"><span class="grip" style="opacity:0">⋮⋮</span><span class="num">＋</span><span class="txt ph">写一条完成时怎么核对…</span><span></span><span></span></div></div>
+      <div class="hint warn">没有验收标准，完成时没有东西可核对；开始后待办信息条会一直提示「补写」</div>
+    </div>
+    <div class="state-card">
+      <h4>重复的验收标准 · 保存时合并</h4>
+      <div class="checklist">
+        <div class="ck"><span class="grip">⋮⋮</span><span class="num">2</span><span class="txt">Agent 退出后标签名保留</span><span></span><button type="button" class="del" aria-label="删除">×</button></div>
+        <div class="ck dupe"><span class="grip">⋮⋮</span><span class="num">4</span><span class="txt">Agent 退出后标签名保留</span><span class="kind" style="color:var(--paused)">和第 2 条相同</span><button type="button" class="del" aria-label="删除">×</button></div>
+      </div>
+    </div>
+    <div class="state-card">
+      <h4>空间目录不在了 · 拦住「保存并开始」</h4>
+      <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap"><div class="seg"><button type="button" aria-pressed="true">工作空间 <span class="tag">目录不在了</span></button></div></div>
+      <div class="hint bad mono" style="font-size:11px">~/Desktop/code/AI/tools/keepline-idle-test/next</div>
+      <div class="acts"><button type="button" class="btn">保存为待办</button><button type="button" class="btn solid" disabled>保存并开始</button><button type="button" class="lnk">改空间目录</button></div>
+    </div>
+    <div class="state-card">
+      <h4>选的 Agent 不在 PATH · 提前说</h4>
+      <div class="seg"><button type="button" aria-pressed="false">Codex</button><button type="button" aria-pressed="false">Claude Code</button><button type="button" aria-pressed="true">Grok Build</button></div>
+      <div class="hint bad">找不到 <span class="mono">grok</span> 命令：开始后会停在「找不到命令」。先安装或加进 PATH，或换一个 Agent</div>
+    </div>
+  </div>
+</div>
+<div class="notes">
+  <p><span class="k">已有</span>标题、说明、验收标准（字符串列表）、空间、默认 Agent；「保存为待办」「保存并开始」「取消」；开始后启动 Agent、就绪后放入 <span class="mono">Task::prompt()</span>、你按回车发送（handoff 条）。右栏的提示词与 prompt() 的拼法一致。</p>
+  <p><span class="k new">新</span>验收标准改成逐条编辑的清单（今天是「每行一条」的多行输入框）；右栏预览；⌘⏎；标题为空拦住保存（今天完整表单不拦，只有左栏快速记录拦）；重复合并、目录不在、命令不在 PATH 三种提前校验（今天只在开始后由 handoff 条报「找不到命令」）。</p>
+</div>
+
+<!-- ════════════ 二 · 待办详情：进行中，部分有证据 ════════════ -->
+<div class="frame-label"><b>二 · 待办详情 · 进行中，3 条里 1 条有证据</b><span>一条有通过的测试和文件改动；一条最近一次测试失败（失败不算证据，格子仍空）；一条还没有任何记录</span></div>
+<div class="window">
+  <div class="top" data-top></div>
+  <div class="main">
+    <aside class="side" data-side="partial"></aside>
+    <section class="work">
+      <div class="tabs"><button type="button" class="tab on"><span class="dot" style="background:var(--waiting)"></span><span class="t">标签命名依旧有问题</span></button><button type="button" class="tab"><span class="dot" style="background:var(--working)"></span><span class="t">CLI workflow</span></button><button type="button" class="tab-add" aria-label="新建终端标签">＋</button></div>
+      <div class="page">
+        <div class="detail">
+          <div class="dt-nav"><button type="button" class="ghost">← 返回画面</button><span class="sep">·</span><span>待办</span></div>
+          <div class="dt-head">
+            <div class="dt-title">
+              <h1>标签命名依旧有问题</h1>
+              <div class="meta">
+                <span class="status"><span class="ring half"></span>进行中</span>
+                <span class="outcome">结局 <b>未定</b></span>
+                <span class="sep">·</span><span>Codex</span>
+                <span class="sep">·</span><span>工作空间</span>
+                <span class="sep">·</span><span class="mono" style="font-size:11.5px">~/Desktop/code/AI/tools/keepline-idle-test/next</span>
+              </div>
+            </div>
+            <div class="dt-actions">
+              <button type="button" class="btn solid">回到画面 →</button>
+              <button type="button" class="btn">再开一个会话 ▾</button>
+              <span class="div"></span>
+              <button type="button" class="btn">标记完成</button>
+              <button type="button" class="ghost">稍后再看…</button>
+              <button type="button" class="ghost">放弃</button>
+              <button type="button" class="ghost">编辑</button>
+            </div>
+          </div>
+
+          <div class="progress" aria-label="验收进度：3 条里 1 条有证据">
+            <div class="big"><b>1</b><span>/ 3</span><small>有证据</small></div>
+            <div class="cells">
+              <div class="c ok"><i></i><span>1 · 标题不是 zsh</span></div>
+              <div class="c"><i></i><span>2 · 退出后保留</span></div>
+              <div class="c"><i></i><span>3 · cargo test 通过</span></div>
+            </div>
+            <div class="side-note">证据只认成功的测试、提交和文件改动<br>Agent 自己说「做完了」不算</div>
+          </div>
+
+          <div class="cols">
+            <div style="display:flex;flex-direction:column;gap:16px;min-width:0">
+              <div class="panel">
+                <div class="panel-h"><h2>说明</h2><span class="right"><button type="button" class="lnk">编辑</button></span></div>
+                <div class="panel-b desc">新开的终端标签还是叫 zsh。启动 Agent 时应该用待办标题命名标签；Agent 退出后保留这个名字，不要退回进程名。</div>
+              </div>
+              <div class="panel">
+                <div class="panel-h"><h2>验收标准</h2><span class="c">1 / 3 有证据</span></div>
+                <div class="crit ok">
+                  <span class="box">✓</span>
+                  <div class="ct"><span class="num">1</span><span class="text">新开 Codex 标签显示待办标题，不是 zsh</span><span class="cnt">2 条证据</span></div>
+                  <div class="body">
+                    <div class="ev"><span class="k">测试</span><span class="s">cargo test -p keepline-app tab_title：test result: ok. 4 passed; 0 failed</span><span class="x">exit 0</span><span class="t">15:42</span><span class="from">来自「修标签命名」· 看原文 ↗</span></div>
+                    <div class="ev"><span class="k">文件</span><span class="s">文件修改：next/crates/keepline-app/src/workbench/tabs.rs</span><span class="x">已写入</span><span class="t">15:38</span><span class="from">来自「修标签命名」· 看原文 ↗</span></div>
+                  </div>
+                </div>
+                <div class="crit">
+                  <span class="box"></span>
+                  <div class="ct"><span class="num">2</span><span class="text">Agent 退出后标签名保留</span><span class="cnt">0 条</span></div>
+                  <div class="body">
+                    <div class="empty-ev">还没有证据 · 关联会话里有 5 条记录可以挂<button type="button" class="lnk">挂一条证据 ▾</button></div>
+                  </div>
+                </div>
+                <div class="crit">
+                  <span class="box"></span>
+                  <div class="ct"><span class="num">3</span><span class="text">cargo test -p keepline-app 全部通过</span><span class="cnt">0 条</span></div>
+                  <div class="body">
+                    <div class="ev fail"><span class="k">测试</span><span class="s">cargo test -p keepline-app：test result: FAILED. 211 passed; 2 failed</span><span class="x fail">exit 101</span><span class="t">15:51</span><span class="from">来自「修标签命名」· 最近一次尝试，不算证据 · 看原文 ↗</span></div>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <div style="display:flex;flex-direction:column;gap:16px;min-width:0">
+              <div class="panel">
+                <div class="panel-h"><h2>关联会话</h2><span class="c">2</span></div>
+                <div class="sess">
+                  <span class="dot" style="background:var(--waiting)"></span>
+                  <span class="t">修标签命名</span>
+                  <button type="button" class="lnk go">打开 →</button>
+                  <span class="m"><span class="g" style="color:var(--waiting)">等你回答</span><span>Codex</span><span>3 分钟前</span></span>
+                </div>
+                <div class="sess">
+                  <span class="dot" style="background:var(--review)"></span>
+                  <span class="t">查 tab_name 从哪来</span>
+                  <button type="button" class="lnk go">打开 →</button>
+                  <span class="m"><span class="g" style="color:var(--review)">做完了</span><span>Claude Code</span><span>2 小时前</span></span>
+                </div>
+              </div>
+              <div class="panel">
+                <div class="panel-h"><h2>证据时间线</h2><span class="c">今天 13:40 – 15:55</span></div>
+                <div class="tl" data-tl="partial"></div>
+              </div>
+              <div class="foot-note">标记完成不会停掉关联会话；它们各自的结局仍在鸟瞰里处理。</div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+  </div>
+</div>
+<div class="notes">
+  <p><span class="k">已有</span>标题、说明、Agent、空间与路径、结局（未完成/已完成/稍后再看/已放弃）；验收「N / M 有证据」与 <span class="mono">evidence_cells</span> 格子（中性色）；关联会话的分组点、Agent、分组名、「打开 →」；标记完成 / 放弃 / 撤销结局 / 稍后再看 / 编辑 / 再开一个会话 / 返回画面。会话自己的证据（kind=file/command/test、summary、exit_code、at、source）在 <span class="mono">Content.evidence</span> 里已有。</p>
+  <p><span class="k new">新</span>把会话证据挂到某条验收标准：今天 <span class="mono">AcceptanceCriterion.evidence</span> 只是一个 <span class="mono">Option&lt;String&gt;</span>，应用里没有写入路径，需要改成证据引用列表 + 「挂一条证据」入口；「进行中」状态（由关联会话推出）；会话的相对时间（<span class="mono">updated</span> 已有，今天详情页没显示）；「回到画面」做主按钮（<span class="mono">task_terminal</span> 已有）；证据时间线。</p>
+</div>
+
+<!-- ════════════ 三 · 待办详情：全部有证据 ════════════ -->
+<div class="frame-label"><b>三 · 待办详情 · 3 条都有证据，等你标记完成</b><span>主按钮换成「标记完成」；每条只露最新一条证据，其余折叠</span></div>
+<div class="window">
+  <div class="top" data-top></div>
+  <div class="main">
+    <aside class="side" data-side="full"></aside>
+    <section class="work">
+      <div class="tabs"><button type="button" class="tab on"><span class="dot" style="background:var(--review)"></span><span class="t">标签命名依旧有问题</span></button><button type="button" class="tab"><span class="dot" style="background:var(--working)"></span><span class="t">CLI workflow</span></button><button type="button" class="tab-add" aria-label="新建终端标签">＋</button></div>
+      <div class="page">
+        <div class="detail">
+          <div class="dt-nav"><button type="button" class="ghost">← 返回画面</button><span class="sep">·</span><span>待办</span></div>
+          <div class="dt-head">
+            <div class="dt-title">
+              <h1>标签命名依旧有问题</h1>
+              <div class="meta">
+                <span class="status"><span class="ring full"></span>验收齐了</span>
+                <span class="outcome">结局 <b>未定</b></span>
+                <span class="sep">·</span><span>Codex</span>
+                <span class="sep">·</span><span>工作空间</span>
+                <span class="sep">·</span><span class="mono" style="font-size:11.5px">~/Desktop/code/AI/tools/keepline-idle-test/next</span>
+              </div>
+            </div>
+            <div class="dt-actions">
+              <button type="button" class="btn solid">标记完成</button>
+              <button type="button" class="btn">回到画面 →</button>
+              <button type="button" class="btn">再开一个会话 ▾</button>
+              <span class="div"></span>
+              <button type="button" class="ghost">稍后再看…</button>
+              <button type="button" class="ghost">放弃</button>
+              <button type="button" class="ghost">编辑</button>
+            </div>
+          </div>
+
+          <div class="progress" aria-label="验收进度：3 条都有证据">
+            <div class="big"><b>3</b><span>/ 3</span><small>有证据</small></div>
+            <div class="cells">
+              <div class="c ok"><i></i><span>1 · 标题不是 zsh</span></div>
+              <div class="c ok"><i></i><span>2 · 退出后保留</span></div>
+              <div class="c ok"><i></i><span>3 · cargo test 通过</span></div>
+            </div>
+            <div class="side-note">最后一条证据 16:24 · 2 个会话都做完了<br>核对后点「标记完成」</div>
+          </div>
+
+          <div class="cols">
+            <div class="panel">
+              <div class="panel-h"><h2>验收标准</h2><span class="c">3 / 3 有证据</span><span class="right"><button type="button" class="lnk">全部展开</button></span></div>
+              <div class="crit ok">
+                <span class="box">✓</span>
+                <div class="ct"><span class="num">1</span><span class="text">新开 Codex 标签显示待办标题，不是 zsh</span><span class="cnt">2 条证据</span></div>
+                <div class="body">
+                  <div class="ev"><span class="k">测试</span><span class="s">cargo test -p keepline-app tab_title：test result: ok. 4 passed; 0 failed</span><span class="x">exit 0</span><span class="t">15:42</span></div>
+                  <button type="button" class="more">另 1 条：文件改动 tabs.rs · 15:38</button>
+                </div>
+              </div>
+              <div class="crit ok">
+                <span class="box">✓</span>
+                <div class="ct"><span class="num">2</span><span class="text">Agent 退出后标签名保留</span><span class="cnt">2 条证据</span></div>
+                <div class="body">
+                  <div class="ev"><span class="k">测试</span><span class="s">cargo test -p keepline-app tab_title_survives_exit：test result: ok. 1 passed; 0 failed</span><span class="x">exit 0</span><span class="t">16:09</span></div>
+                  <button type="button" class="more">另 1 条：文件改动 model.rs · 16:02</button>
+                </div>
+              </div>
+              <div class="crit ok">
+                <span class="box">✓</span>
+                <div class="ct"><span class="num">3</span><span class="text">cargo test -p keepline-app 全部通过</span><span class="cnt">1 条证据 · 1 次失败</span></div>
+                <div class="body">
+                  <div class="ev"><span class="k">测试</span><span class="s">cargo test -p keepline-app：test result: ok. 213 passed; 0 failed</span><span class="x">exit 0</span><span class="t">16:24</span></div>
+                  <button type="button" class="more">更早 1 次失败：2 failed · exit 101 · 15:51</button>
+                </div>
+              </div>
+            </div>
+
+            <div style="display:flex;flex-direction:column;gap:16px;min-width:0">
+              <div class="panel">
+                <div class="panel-h"><h2>关联会话</h2><span class="c">2</span></div>
+                <div class="sess">
+                  <span class="dot" style="background:var(--review)"></span>
+                  <span class="t">修标签命名</span>
+                  <button type="button" class="lnk go">打开 →</button>
+                  <span class="m"><span class="g" style="color:var(--review)">做完了</span><span>Codex</span><span>6 分钟前</span></span>
+                </div>
+                <div class="sess">
+                  <span class="dot" style="background:var(--review)"></span>
+                  <span class="t">查 tab_name 从哪来</span>
+                  <button type="button" class="lnk go">打开 →</button>
+                  <span class="m"><span class="g" style="color:var(--review)">做完了</span><span>Claude Code</span><span>3 小时前</span></span>
+                </div>
+              </div>
+              <div class="panel">
+                <div class="panel-h"><h2>证据时间线</h2><span class="c">今天 13:40 – 16:30</span></div>
+                <div class="tl" data-tl="full"></div>
+              </div>
+              <div class="panel">
+                <dl class="facts">
+                  <dt>说明</dt><dd title="新开的终端标签还是叫 zsh。">新开的终端标签还是叫 zsh。启动 Agent 时…</dd>
+                  <dt>Agent</dt><dd>Codex</dd>
+                  <dt>结局</dt><dd>未定 · 标记完成后可撤销</dd>
+                </dl>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+  </div>
+</div>
+<div class="notes">
+  <p><span class="k">已有</span>同上；「撤销结局」在标记完成后出现（今天按钮列表只给真实变化）。</p>
+  <p><span class="k new">新</span>主按钮随状态换：有画面在跑 →「回到画面」，验收齐了 →「标记完成」，没有会话 →「开始」；「验收齐了」这个状态名；证据折叠与「更早失败」。</p>
+</div>
+
+<!-- ════════════ 四 · 已完成，没有验收标准（真实数据） ════════════ -->
+<div class="frame-label"><b>四 · 待办详情 · 已完成，没有验收标准</b><span>全部是你的真实数据：「睡觉」结局已完成，没有说明、验收标准和关联会话</span></div>
+<div class="window short compact">
+  <div class="page" style="background:var(--app)">
+    <div class="detail">
+      <div class="dt-nav"><button type="button" class="ghost">← 返回画面</button><span class="sep">·</span><span>待办</span></div>
+      <div class="dt-head">
+        <div class="dt-title">
+          <h1>睡觉</h1>
+          <div class="meta"><span class="status"><span class="ring full"></span>已完成</span><span class="sep">·</span><span>Codex</span><span class="sep">·</span><span>工作空间</span></div>
+        </div>
+        <div class="dt-actions"><button type="button" class="btn">撤销结局</button><button type="button" class="ghost">编辑</button></div>
+      </div>
+      <div class="panel">
+        <div class="panel-h"><h2>验收标准</h2><span class="c">0</span></div>
+        <div class="empty-block">没有写验收标准，这条待办靠你自己判断完成<button type="button" class="lnk">补写</button></div>
+      </div>
+      <div class="panel">
+        <div class="panel-h"><h2>关联会话</h2><span class="c">0</span></div>
+        <div class="empty-block">没有会话做过这条待办<button type="button" class="lnk">再开一个会话 ▾</button></div>
+      </div>
+    </div>
+  </div>
+</div>
+<div class="notes"><p><span class="k">已有</span>结局「已完成」、撤销结局、编辑。</p><p><span class="k new">新</span>两个空状态的文字和入口；已完成时不放实心按钮。</p></div>
+
+<script>
+const TOP = `<span class="brand">Keepline</span><span class="crumb">/ 工作空间</span>
+  <button type="button" class="toggle">▦ 鸟瞰全部</button>
+  <div class="search">⌕ 搜索会话、待办或原话 <kbd>⌘P</kbd></div>
+  <span class="spacer"></span>
+  <div class="pulse" aria-label="全部会话状态">
+    <button type="button" class="zero"><span class="dot" style="background:var(--waiting)"></span>等你 <b>0</b></button>
+    <button type="button"><span class="dot" style="background:var(--error)"></span>出错 <b>29</b></button>
+    <button type="button"><span class="dot" style="background:var(--working)"></span>在跑 <b>6</b></button>
+    <button type="button"><span class="dot" style="background:var(--review)"></span>做完 <b>148</b></button>
+  </div>
+  <button type="button" class="ghost">＋ 新待办</button>`;
+document.querySelectorAll('[data-top]').forEach((el) => { el.innerHTML = TOP; });
+
+const cells = (n, of) => `<span style="display:inline-flex;gap:2px">${Array.from({ length: of }, (_, i) =>
+  `<i style="width:6px;height:6px;border-radius:2px;display:inline-block;background:${i < n ? 'var(--secondary)' : 'var(--track)'};box-shadow:${i < n ? 'none' : 'inset 0 0 0 1px var(--control)'}"></i>`).join('')}</span>`;
+const SIDE = {
+  new: { todo: ['未开始', '未开始'], on: -1, sess: [['var(--working)', 'cli 是否支持 workflow 呢?', '在跑', true]] },
+  partial: { todo: ['未开始', cells(1, 3) + ' 1/3'], on: 1, sess: [['var(--waiting)', '修标签命名', '等你', true], ['var(--working)', 'cli 是否支持 workflow 呢?', '在跑', false]] },
+  full: { todo: ['未开始', cells(3, 3) + ' 3/3'], on: 1, sess: [['var(--review)', '修标签命名', '6 分钟', true], ['var(--working)', 'cli 是否支持 workflow 呢?', '在跑', false]] },
+};
+document.querySelectorAll('[data-side]').forEach((el) => {
+  const s = SIDE[el.dataset.side];
+  const ring = (i) => i === 1 && s.on === 1 ? `<span class="ring ${el.dataset.side === 'full' ? 'full' : 'half'}"></span>` : '<span class="ring"></span>';
+  el.innerHTML = `<div class="side-scroll">
+    <div>
+      <h3>空间 <span>2</span></h3>
+      <div class="row on"><span class="dot" style="background:var(--review)"></span><span class="name">工作空间</span><span class="tag">目录不在了</span><span class="n">${s.sess.length}</span></div>
+      <div class="mini"><i style="flex:29;background:var(--error)"></i><i style="flex:6;background:var(--working)"></i><i style="flex:148;background:var(--review)"></i><i style="flex:87;background:var(--stale);opacity:.45"></i></div>
+      <div class="row"><span class="dot" style="background:var(--stale)"></span><span class="name">新空间</span><span class="tag">目录不在了</span><span class="n">0</span></div>
+    </div>
+    <div>
+      <h3>待办 <span>3</span></h3>
+      <div class="row"><span class="ring"></span><span class="name">健身</span><span class="n">${s.todo[0]}</span></div>
+      <div class="row ${s.on === 1 ? 'on' : ''}">${ring(1)}<span class="name">标签命名依旧有问题</span><span class="n">${s.todo[1]}</span></div>
+      <div class="row done"><span class="ring full"></span><span class="name">睡觉</span><span class="n">已完成</span></div>
+      <div class="row link-row">＋ 新待办</div>
+    </div>
+    <div>
+      <h3>会话 <span>${s.sess.length} 个开着</span></h3>
+      ${s.sess.map(([c, t, n, on]) => `<div class="row ${on ? 'on' : ''}"><span class="dot" style="background:${c}"></span><span class="name">${t}</span><span class="n">${n}</span></div>`).join('')}
+      <div class="row link-row">已关闭 33 个 · 点开接着聊 →</div>
+    </div>
+  </div>
+  <div class="side-foot"><button type="button" class="ghost">本机诊断</button><button type="button" class="ghost">设置</button></div>`;
+});
+
+// Evidence timeline: one tick per evidence record from the linked sessions (minutes since 13:40).
+const TL = {
+  partial: { span: 135, axis: ['13:40', '14:25', '15:10', '15:55'], ev: [[12, 'cmd'], [20, 'cmd'], [31, 'file'], [44, 'cmd'], [98, 'file'], [102, 'test'], [111, 'test-fail']] },
+  full: { span: 170, axis: ['13:40', '14:37', '15:33', '16:30'], ev: [[12, 'cmd'], [20, 'cmd'], [31, 'file'], [44, 'cmd'], [98, 'file'], [102, 'test'], [111, 'test-fail'], [142, 'file'], [149, 'test'], [158, 'cmd'], [164, 'test']] },
+};
+document.querySelectorAll('[data-tl]').forEach((el) => {
+  const d = TL[el.dataset.tl];
+  const W = 300;
+  const x = (m) => 4 + (m / d.span) * (W - 8);
+  const marks = d.ev.map(([m, k]) => {
+    if (k === 'cmd') return `<line x1="${x(m)}" x2="${x(m)}" y1="26" y2="34" stroke="var(--control)" stroke-width="2" stroke-linecap="round"/>`;
+    if (k === 'file') return `<rect x="${x(m) - 3.5}" y="19" width="7" height="7" rx="1.5" fill="var(--secondary)"/>`;
+    if (k === 'test') return `<circle cx="${x(m)}" cy="12" r="4.5" fill="var(--primary)"/>`;
+    return `<circle cx="${x(m)}" cy="12" r="4" fill="none" stroke="var(--error)" stroke-width="1.6"/>`;
+  }).join('');
+  const sessions = `<rect x="${x(8)}" y="40" width="${x(60) - x(8)}" height="3" rx="1.5" fill="var(--review)" opacity=".55"/><rect x="${x(90)}" y="40" width="${x(d.span - 4) - x(90)}" height="3" rx="1.5" fill="var(--${el.dataset.tl === 'full' ? 'review' : 'waiting'})" opacity=".55"/>`;
+  const n = d.ev.length, tests = d.ev.filter((e) => e[1] === 'test').length, files = d.ev.filter((e) => e[1] === 'file').length, fails = d.ev.filter((e) => e[1] === 'test-fail').length;
+  el.innerHTML = `<svg viewBox="0 0 ${W} 44" preserveAspectRatio="none" role="img" aria-label="${n} 条记录：测试 ${tests}，文件 ${files}，失败 ${fails}">
+      <line x1="0" x2="${W}" y1="30" y2="30" stroke="var(--border)"/>${sessions}${marks}</svg>
+    <div class="axis">${d.axis.map((a) => `<span>${a}</span>`).join('')}</div>
+    <div class="lg">
+      <span><svg width="10" height="10"><circle cx="5" cy="5" r="4" fill="var(--primary)"/></svg>测试通过 ${tests}</span>
+      <span><svg width="10" height="10"><rect x="1.5" y="1.5" width="7" height="7" rx="1.5" fill="var(--secondary)"/></svg>文件 ${files}</span>
+      <span><svg width="10" height="10"><line x1="5" x2="5" y1="1" y2="9" stroke="var(--control)" stroke-width="2"/></svg>命令 ${n - tests - files - fails}</span>
+      ${fails ? `<span><svg width="10" height="10"><circle cx="5" cy="5" r="3.6" fill="none" stroke="var(--error)" stroke-width="1.6"/></svg>失败 ${fails}</span>` : ''}
+      <span style="color:var(--muted)">底下细条：两个会话各自的活动区间</span>
+    </div>`;
+});
+
+const setTheme = (t) => {
+  document.documentElement.dataset.theme = t;
+  document.querySelectorAll('[data-theme-btn]').forEach((x) => x.setAttribute('aria-pressed', String(x.dataset.themeBtn === t)));
+};
+document.querySelectorAll('[data-theme-btn]').forEach((b) => b.addEventListener('click', () => setTheme(b.dataset.themeBtn)));
+if (location.hash === '#dark') setTheme('dark');
+</script>
+</body>
+</html>

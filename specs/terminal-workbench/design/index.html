@@ -43,14 +43,13 @@ a.open { font-size: 13px; white-space: nowrap; }
   </section>
 
   <section>
-    <h2><span class="dot" style="background:var(--todo)"></span>还没改，可以接着做</h2>
+    <h2><span class="dot" style="background:var(--todo)"></span>新出稿，等你确认</h2>
     <div class="list">
-      <div class="item"><b>⌘P 命令面板</b><span class="what">搜索会话、待办和原话；列表加时间和状态，右侧预览更紧凑</span><span class="where">workbench/palette.rs</span></div>
-      <div class="item"><b>新建待办 · 待办详情</b><span class="what">表单和验收标准；验收进度和证据列表</span><span class="where">forms.rs · tasks.rs</span></div>
-      <div class="item"><b>设置页</b><span class="what">外观、快捷键表、Agent 设置；962 行，项目最多</span><span class="where">workbench/settings.rs</span></div>
-      <div class="item"><b>「你在这里」卡片</b><span class="what">已有新样式的稿；本轮时间线要后台先下发工具分段数据</span><span class="where">需改后台</span></div>
-      <div class="item"><b>App 内菜单栏弹窗</b><span class="what">原生菜单栏面板（不是 Tauri 那个）</span><span class="where">desktop.rs</span></div>
-      <div class="item"><b>Web 仪表盘</b><span class="what">只有浅色，大量写死的颜色要先换成变量</span><span class="where">src/web/client</span></div>
+      <div class="item"><b>⌘P 命令面板 · 你在这里</b><span class="what">状态计数行、类型图标与相对时间、命中高亮、同一会话不重复列；卡片加证据计数。本轮工具时间线一帧标了「需要后台数据」</span><a class="open" href="palette-here.html">设计稿 →</a></div>
+      <div class="item"><b>新建待办 · 待办详情</b><span class="what">验收标准逐条编辑、5 种校验状态；详情按条挂证据、进度格、关联会话。按条挂证据是新功能，要改数据模型</span><a class="open" href="todo-refresh.html">设计稿 →</a></div>
+      <div class="item"><b>设置页</b><span class="what">外观缩略图与字体卡、可过滤快捷键表（冲突 / 录制中 / 被拒）、通用与通知；虚线标「建议新增」的是提议</span><a class="open" href="settings-refresh.html">设计稿 →</a></div>
+      <div class="item"><b>App 菜单栏弹窗</b><span class="what">「3 项需要你」+ 四格计数、空状态、连不上后台；连接状态要新加字段</span><a class="open" href="menubar-panel.html">设计稿 →</a></div>
+      <div class="item"><b>Web 仪表盘</b><span class="what">会话页与总览、14 天费用细柱图、浅深两套颜色变量表（替换 377 处写死颜色）</span><a class="open" href="web-dashboard.html">设计稿 →</a></div>
     </div>
   </section>
 
