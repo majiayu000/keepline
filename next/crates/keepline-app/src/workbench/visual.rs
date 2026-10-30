@@ -580,6 +580,16 @@ impl Workbench {
                     self.sidebar.toggled.insert("status:rest".into());
                 }
             }
+            // The two looks, set in memory so the evidence run writes no choice.
+            "StyleStandard" | "StyleTerminal" => {
+                use crate::ui::style::Style;
+                cx.set_global(if name == "StyleTerminal" {
+                    Style::Terminal
+                } else {
+                    Style::Standard
+                });
+                self.nav.focused = Some("p0".into());
+            }
             "PaneMenu" => {
                 self.nav.focused = Some("p0".into());
                 self.layout.menu = Some(PaneMenu {

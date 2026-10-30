@@ -156,9 +156,6 @@ impl Workbench {
                         }),
                     ),
             );
-            if active {
-                sidebar = sidebar.children(self.space_distribution(&space.id));
-            }
         }
         sidebar = sidebar.child(
             button("add-space", "＋ 空间")
@@ -557,58 +554,5 @@ impl Workbench {
             }
         }
         sidebar
-    }
-    /// A thin bar under the selected space: its unfinished sessions by group.
-    fn space_distribution(&self, space: &str) -> Option<gpui::Stateful<gpui::Div>> {
-        let groups: Vec<(Group, usize)> = Group::ALL
-            .into_iter()
-            .map(|g| {
-                let n = self
-                    .workspace
-                    .agent_sessions
-                    .iter()
-                    .filter(|s| {
-                        s.outcome.needs_review(now())
-                            && self.session_hidden(s).is_none()
-                            && session_space(&self.workspace, s) == Some(space)
-                            && session_group(&self.workspace, s) == g
-                    })
-                    .count();
-                (g, n)
-            })
-            .filter(|(_, n)| *n > 0)
-            .collect();
-        if groups.is_empty() {
-            return None;
-        }
-        let mut lines = vec!["这个空间里会话的状态分布".to_owned()];
-        lines.extend(groups.iter().map(|(g, n)| format!("{} {n}", g.label())));
-        let last = groups.len() - 1;
-        let mut bar = div()
-            .id(gpui::SharedString::from(format!("space-dist-{space}")))
-            .flex()
-            .gap(px(T::BORDER_WIDTH))
-            .h(px(T::MINI_BAR))
-            .mx(px(T::S8))
-            .mt(px(T::S2))
-            .mb(px(T::S6))
-            .tooltip(super::diagnostics::tip(lines));
-        for (i, (g, n)) in groups.into_iter().enumerate() {
-            let mut segment = div()
-                .h_full()
-                .flex_grow(n as f32)
-                .flex_basis(gpui::relative(0.))
-                .min_w(px(T::S2))
-                .bg(g.colors().0)
-                .when(g == Group::Stale, |d| d.opacity(0.5));
-            if i == 0 {
-                segment = segment.rounded_l(px(T::S2));
-            }
-            if i == last {
-                segment = segment.rounded_r(px(T::S2));
-            }
-            bar = bar.child(segment);
-        }
-        Some(bar)
     }
 }

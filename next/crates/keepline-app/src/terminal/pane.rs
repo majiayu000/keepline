@@ -955,13 +955,6 @@ impl Pane {
     pub fn cwd(&self) -> Option<&std::path::Path> {
         self.cwd.as_deref()
     }
-    /// This window types into the terminal: attached, writable and still running.
-    pub fn owns_input(&self) -> bool {
-        self.connection
-            .state
-            .lock()
-            .is_ok_and(|s| s.vt.is_some() && s.writable && !s.ended && s.error.is_none())
-    }
     /// Asks the host where the program is now, for the footer; throttled, so a `cd` shows
     /// within a few seconds of the next output.
     fn refresh_cwd(&mut self, cx: &mut Context<Self>) {

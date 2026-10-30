@@ -88,6 +88,18 @@ impl Workbench {
         let close_id = id.to_owned();
         let other_owner = pane.read(cx).has_other_owner();
         let card_id = session.map(|s| s.id.clone());
+        let terminal_style = crate::ui::style::current(cx) == crate::ui::style::Style::Terminal;
+        // Where the program runs left the footer for the title's hover card.
+        let tip: Vec<String> = session
+            .map(|s| self.session_line(s))
+            .into_iter()
+            .chain(self.pane_place(id, session, cx))
+            .filter(|l| !l.is_empty())
+            .collect();
+        let story = session.zip(status).and_then(|(s, g)| self.pane_story(s, g));
+        let review = session.filter(|s| {
+            s.outcome == Outcome::Open && session_group(&self.workspace, s) == Group::Review
+        });
         div()
             .id(gpui::SharedString::from(format!("pane-{id}")))
             .relative()
@@ -142,14 +154,30 @@ impl Workbench {
                     .gap(px(T::S8))
                     // GPUI 只按矩形裁剪子元素，标题栏不跟着圆角会从外框圆角外露出方角
                     .rounded_t(px(T::PANE_RADIUS - T::BORDER_WIDTH))
-                    .bg(T::color(if focused {
+                    .bg(T::color(if terminal_style {
+                        T::pane()
+                    } else if focused {
                         T::header_focused()
                     } else {
                         T::header()
                     }))
-                    .border_b(px(T::BORDER_WIDTH))
-                    .border_color(T::color(T::border()))
-                    .when_some(status, |d, g| d.child(state_chip(g)))
+                    .when(!terminal_style, |d| {
+                        d.border_b(px(T::BORDER_WIDTH))
+                            .border_color(T::color(T::border()))
+                    })
+                    .when_some(status, |d, g| {
+                        d.child(if terminal_style {
+                            div()
+                                .flex()
+                                .gap(px(T::S4))
+                                .text_size(px(T::MONO_SIZE))
+                                .text_color(g.colors().1)
+                                .child(glyph(g))
+                                .child(g.label())
+                        } else {
+                            state_chip(g)
+                        })
+                    })
                     .when(rang, |d| d.child(label("🔔")))
                     .child(
                         div()
@@ -160,8 +188,8 @@ impl Workbench {
                             .text_size(px(T::MONO_SIZE))
                             .text_color(T::color(T::primary()))
                             .child(title)
-                            .when_some(session.map(|s| self.session_line(s)), |d, line| {
-                                let line = gpui::SharedString::from(line);
+                            .when(!tip.is_empty(), |d| {
+                                let line = gpui::SharedString::from(tip.join("\n"));
                                 d.tooltip(move |_, cx| {
                                     cx.new(|_| super::render::TextTip(line.clone())).into()
                                 })
@@ -204,38 +232,33 @@ impl Workbench {
                             )
                         },
                     )
-                    .when_some(
-                        session.filter(|s| {
-                            s.outcome == Outcome::Open
-                                && session_group(&self.workspace, s) == Group::Review
-                        }),
-                        |d, s| {
-                            let accept = s.id.clone();
-                            d.child(
-                                button(
-                                    gpui::SharedString::from(format!("accept-pane-{id}")),
-                                    "标记完成",
-                                )
-                                .pane_action()
-                                // The step this pane waits on you for; the rest stay text.
-                                .bg(T::color(T::button()))
-                                .text_color(T::color(T::primary()))
-                                .font_weight(gpui::FontWeight::SEMIBOLD)
-                                .on_click(cx.listener(
-                                    move |this, _, _, cx| {
-                                        this.edit(
-                                            Edit::SetOutcome {
-                                                id: accept.clone(),
-                                                outcome: Outcome::Completed,
-                                            },
-                                            cx,
-                                        )
-                                    },
-                                )),
+                    .when_some(review, |d, s| {
+                        let accept = s.id.clone();
+                        d.child(
+                            button(
+                                gpui::SharedString::from(format!("accept-pane-{id}")),
+                                "标记完成",
                             )
-                        },
-                    )
-                    .when_some(session, |d, s| {
+                            .pane_action()
+                            // The step this pane waits on you for; the rest stay text.
+                            .bg(T::color(T::button()))
+                            .text_color(T::color(T::primary()))
+                            .font_weight(gpui::FontWeight::SEMIBOLD)
+                            .on_click(cx.listener(
+                                move |this, _, _, cx| {
+                                    this.edit(
+                                        Edit::SetOutcome {
+                                            id: accept.clone(),
+                                            outcome: Outcome::Completed,
+                                        },
+                                        cx,
+                                    )
+                                },
+                            )),
+                        )
+                    })
+                    // One step per pane: 标记完成 when it is due, else 看进度.
+                    .when_some(session.filter(|_| review.is_none()), |d, s| {
                         let show = s.id.clone();
                         d.child(
                             button(
@@ -261,6 +284,23 @@ impl Workbench {
                             ),
                     ),
             )
+            // Where the conversation stopped and what it was asked: the reason to look.
+            .when_some(story, |d, story| {
+                d.child(
+                    div()
+                        .flex_shrink_0()
+                        .px(px(T::S10))
+                        .py(px(T::S2))
+                        .truncate()
+                        .text_size(px(T::META))
+                        .text_color(T::color(T::secondary()))
+                        .when(!terminal_style, |d| {
+                            d.border_b(px(T::BORDER_WIDTH))
+                                .border_color(T::color(T::border()))
+                        })
+                        .child(story),
+                )
+            })
             .child(
                 div()
                     .flex_1()
@@ -289,7 +329,7 @@ impl Workbench {
                         ..Default::default()
                     })),
             )
-            .child(self.pane_footer(id, session, other_owner, takeover, cx))
+            .when(other_owner, |d| d.child(self.pane_footer(id, takeover, cx)))
             // Over the border rather than widening it: a wider border on focus would
             // shrink the grid and resize the program each time focus moves.
             .when(borders && focused, |d| {
@@ -1131,17 +1171,17 @@ impl Workbench {
         .detach();
         old
     }
-    /// Where the pane's program is and on which branch, and who types into it.
-    fn pane_footer(
+    /// `~/code/app · main`: where the pane's program is and on which branch.
+    fn pane_place(
         &self,
         id: &str,
         session: Option<&AgentSession>,
-        other_owner: bool,
-        takeover: String,
         cx: &Context<Self>,
-    ) -> gpui::Div {
-        let pane = self.layout.panes.get(id);
-        let cwd = pane
+    ) -> Option<String> {
+        let cwd = self
+            .layout
+            .panes
+            .get(id)
             .and_then(|p| p.read(cx).cwd().map(|c| c.to_string_lossy().into_owned()))
             .or_else(|| session.map(|s| s.cwd.clone()).filter(|c| !c.is_empty()))
             .or_else(|| {
@@ -1151,56 +1191,67 @@ impl Workbench {
                     .find(|t| t.id == id)
                     .map(|t| t.cwd.clone())
             })
-            .filter(|c| !c.is_empty());
-        let branch = cwd.as_deref().and_then(|c| self.git_branch(c, cx));
-        let place = cwd.map(|c| match branch {
-            Some(b) => format!("{} · {b}", home_relative(&c)),
-            None => home_relative(&c),
+            .filter(|c| !c.is_empty())?;
+        Some(match self.git_branch(&cwd, cx) {
+            Some(b) => format!("{} · {b}", home_relative(&cwd)),
+            None => home_relative(&cwd),
+        })
+    }
+    /// `停在 测试超时 · 你要它 修好登录`: what the conversation is at and what it was asked.
+    fn pane_story(&self, s: &AgentSession, g: Group) -> Option<String> {
+        let at = self.row_detail(s, g).map(|d| {
+            if d.starts_with("停在") || d.starts_with("正在") {
+                d
+            } else {
+                format!("停在 {d}")
+            }
         });
-        let owns = pane.is_some_and(|p| p.read(cx).owns_input());
+        let ask = self
+            .workspace
+            .content
+            .get(&s.id)
+            .and_then(|c| c.asks.first())
+            // A title taken from the first ask already says it.
+            .filter(|q| {
+                let title = self.session_title(s);
+                let title = title.trim_end_matches('…').trim();
+                title.is_empty() || !q.text.trim().starts_with(title)
+            })
+            .map(|q| format!("你要它 {}", keepline_core::content::short(&q.text, 80)));
+        let parts: Vec<String> = at.into_iter().chain(ask).collect();
+        (!parts.is_empty()).then(|| parts.join(" · "))
+    }
+    /// Shown only while another window types into this pane: the way to take it back.
+    fn pane_footer(&self, id: &str, takeover: String, cx: &Context<Self>) -> gpui::Div {
         div()
             .h(px(T::FOOTER))
             .flex_shrink_0()
             .px(px(T::S10))
             .flex()
             .items_center()
-            .gap(px(T::S10))
             .border_t(px(T::BORDER_WIDTH))
             .border_color(T::color(T::border()))
             .text_size(px(T::PANE_FOOTER_SIZE))
             .text_color(T::color(T::muted()))
+            .child(div().flex_1().child("另一个窗口在输入"))
             .child(
-                div()
-                    .flex_1()
-                    .min_w_0()
-                    .truncate()
-                    .font(T::mono(cx))
-                    .text_size(px(T::PANE_FOOTER_SIZE))
-                    .children(place),
-            )
-            .when(other_owner, |d| {
-                d.child(
-                    button(
-                        gpui::SharedString::from(format!("takeover-{id}")),
-                        "点击接管输入",
-                    )
-                    .flex_shrink_0()
-                    .h(px(T::ICON_HEIGHT))
-                    .px(px(T::S6))
-                    .text_size(px(T::PANE_FOOTER_SIZE))
-                    .text_color(T::color(T::link()))
-                    .on_click(cx.listener(move |this, _, window, cx| {
-                        let pane = cx.new(|cx| Pane::new(this.store.socket(), &takeover, true, cx));
-                        window.focus(&pane.focus_handle(cx), cx);
-                        cx.observe(&pane, |_, _, cx| cx.notify()).detach();
-                        this.layout.panes.insert(takeover.clone(), pane);
-                        cx.notify();
-                    })),
+                button(
+                    gpui::SharedString::from(format!("takeover-{id}")),
+                    "点击接管输入",
                 )
-            })
-            .when(!other_owner && owns, |d| {
-                d.child(div().flex_shrink_0().child("输入归你"))
-            })
+                .flex_shrink_0()
+                .h(px(T::ICON_HEIGHT))
+                .px(px(T::S6))
+                .text_size(px(T::PANE_FOOTER_SIZE))
+                .text_color(T::color(T::link()))
+                .on_click(cx.listener(move |this, _, window, cx| {
+                    let pane = cx.new(|cx| Pane::new(this.store.socket(), &takeover, true, cx));
+                    window.focus(&pane.focus_handle(cx), cx);
+                    cx.observe(&pane, |_, _, cx| cx.notify()).detach();
+                    this.layout.panes.insert(takeover.clone(), pane);
+                    cx.notify();
+                })),
+            )
     }
 }
 pub(super) fn choose_icon(icon: AppIcon, cx: &mut gpui::App) {

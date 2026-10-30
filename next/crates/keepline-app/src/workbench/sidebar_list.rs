@@ -101,7 +101,7 @@ impl Workbench {
     }
     /// What a row's second line says: what it stopped at, what it is doing, or how its
     /// last turn ended. The first non-empty line, cut to fit.
-    fn row_detail(&self, s: &AgentSession, g: Group) -> Option<String> {
+    pub(super) fn row_detail(&self, s: &AgentSession, g: Group) -> Option<String> {
         let first = |t: &str| {
             t.lines()
                 .map(str::trim)

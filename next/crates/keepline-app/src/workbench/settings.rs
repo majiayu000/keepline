@@ -510,6 +510,25 @@ impl SettingsView {
             }
             page = page.child(self.row("主题", "窗口与终端一起切换；可跟随 macOS", choices));
         }
+        if self.matches(Page::Look, "界面样式", "样式 标准 终端原生 tmux 等宽 style", cx) {
+            use crate::ui::style::{self, Style};
+            let chosen = style::current(cx);
+            let mut choices = div().flex().gap(px(T::S6));
+            for (i, look) in Style::ALL.into_iter().enumerate() {
+                choices = choices.child(
+                    self.choice(format!("style-{i}"), look.label().into(), look == chosen)
+                        .on_click(cx.listener(move |this, _, _, cx| {
+                            this.text_error = style::choose(look, cx).err();
+                            cx.notify();
+                        })),
+                );
+            }
+            page = page.child(self.row(
+                "界面样式",
+                "标准：现在的布局去掉重复；终端原生：外壳退成细线，等宽字，标签在底部",
+                choices,
+            ));
+        }
         if self.matches(
             Page::Look,
             "终端字体",
