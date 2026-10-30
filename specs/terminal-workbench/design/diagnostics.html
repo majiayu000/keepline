@@ -8,14 +8,20 @@
 :root {
   --stage: #1c1c1e; --popover: #262627; --raised: #2a2a2b; --border: #323233; --control: #3e3e3f;
   --primary: #eceae7; --body: #d6d4d0; --secondary: #aeaca8; --muted: #989692;
-  --track: #343435; --bar: #8f8d89; --hot: #e3a857; --chip: #323233; --button: #323233;
+  --track: #2f2f30; --grid: #353536; --ref: #8a8885; --chip: #323233; --button: #323233;
   --link: #8ab4f8; --accent: #eceae7; --on-accent: #1c1c1e;
+  /* Categorical slots 1–5, validated adjacent on #262627 (dataviz validator, dark). */
+  --s1: #3987e5; --s2: #d95926; --s3: #199e70; --s4: #c98500; --s5: #d55181;
+  --other: #6f6e6b; --hatch: #4a4948; --dot: #3987e5;
 }
 :root[data-theme="light"] {
   --stage: #e9e8e5; --popover: #fefefd; --raised: #f4f3f1; --border: #e6e5e2; --control: #d2d0cd;
   --primary: #141312; --body: #2a2927; --secondary: #55534f; --muted: #6b6965;
-  --track: #ecebe8; --bar: #9b9893; --hot: #b06a10; --chip: #efeeeb; --button: #efeeeb;
+  --track: #f1f0ee; --grid: #e4e3e0; --ref: #8d8b87; --chip: #efeeeb; --button: #efeeeb;
   --link: #1a5fd0; --accent: #1c1b19; --on-accent: #fafaf9;
+  /* Light slots; three sit under 3:1, so every segment also has a legend row with its value. */
+  --s1: #2a78d6; --s2: #eb6834; --s3: #1baf7a; --s4: #eda100; --s5: #e87ba4;
+  --other: #b3b1ad; --hatch: #c9c7c3; --dot: #2a78d6;
 }
 * { box-sizing: border-box; }
 body {
@@ -31,71 +37,126 @@ button { font: inherit; cursor: pointer; border: 0; }
 .toolbar button[aria-pressed="true"] { background: var(--accent); color: var(--on-accent); }
 
 .panel {
-  width: 960px; max-width: 100%; height: 760px; display: flex; flex-direction: column; overflow: hidden;
+  width: 980px; max-width: 100%; height: 900px; display: flex; flex-direction: column; overflow: hidden;
   border-radius: 12px; background: var(--popover); border: 1px solid var(--control);
   box-shadow: 0 24px 60px rgba(0,0,0,.35);
 }
 header { display: flex; align-items: center; gap: 16px; padding: 18px 20px 14px; border-bottom: 1px solid var(--border); }
 header .titles { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 6px; }
-h1 { margin: 0; font-size: 18px; font-weight: 600; color: var(--primary); }
+h1 { margin: 0; font-size: 18px; font-weight: 600; color: var(--primary); display: inline; }
 .subtitle { font-size: 12px; color: var(--secondary); margin-left: 10px; }
 .status { display: flex; align-items: center; gap: 10px; font-size: 12px; color: var(--secondary); flex-wrap: wrap; }
 .live { display: inline-flex; align-items: center; gap: 6px; color: var(--primary); }
-.dot { width: 7px; height: 7px; border-radius: 50%; background: var(--hot); }
-.progress { width: 120px; height: 3px; border-radius: 2px; background: var(--track); overflow: hidden; }
-.progress span { display: block; height: 100%; background: var(--secondary); }
+.dot-live { width: 7px; height: 7px; border-radius: 50%; background: var(--primary); animation: pulse 1.6s ease-in-out infinite; }
+@keyframes pulse { 50% { opacity: .3; } }
+@media (prefers-reduced-motion: reduce) { .dot-live { animation: none; } }
+.steps { display: inline-flex; gap: 3px; }
+.steps span { width: 46px; height: 3px; border-radius: 2px; background: var(--track); overflow: hidden; }
+.steps span i { display: block; height: 100%; background: var(--secondary); }
 kbd { font-family: inherit; font-size: 11px; padding: 0 5px; border-radius: 4px; border: 1px solid var(--control); color: var(--muted); }
 .close { display: inline-flex; align-items: center; gap: 6px; height: 28px; padding: 0 10px; border-radius: 6px; background: var(--button); color: var(--secondary); font-size: 12px; }
 
+.body { flex: 1; min-height: 0; overflow-y: auto; }
+
 .metrics { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); border-bottom: 1px solid var(--border); }
-.metric { padding: 14px 20px; display: flex; flex-direction: column; gap: 6px; }
+.metric { padding: 14px 20px; display: flex; flex-direction: column; gap: 4px; }
 .metric + .metric { border-left: 1px solid var(--border); }
 .metric .label { font-size: 12px; color: var(--secondary); }
-.metric .figure { display: flex; align-items: baseline; gap: 8px; }
+.metric .figure { display: flex; align-items: baseline; gap: 6px; }
 .metric .big { font-size: 26px; font-weight: 600; color: var(--primary); letter-spacing: -.5px; }
+.metric .unit { font-size: 13px; color: var(--secondary); }
 .metric .hint { font-size: 12px; color: var(--muted); }
-.metric .hot { font-size: 12px; color: var(--hot); }
 
-.track { height: 4px; border-radius: 2px; background: var(--track); overflow: hidden; }
-.track span { display: block; height: 100%; border-radius: 2px; background: var(--bar); }
-.track span.hot { background: var(--hot); }
-
-.columns { flex: 1; min-height: 0; display: grid; grid-template-columns: minmax(0, 1.55fr) minmax(0, 1fr); }
-.column { min-height: 0; overflow-y: auto; padding: 14px 20px 8px; }
-.column + .column { border-left: 1px solid var(--border); }
-.column-head { display: flex; align-items: baseline; justify-content: space-between; margin-bottom: 6px; }
+/* 16-core stack */
+.cores { padding: 16px 20px 18px; border-bottom: 1px solid var(--border); }
+.section-head { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; margin-bottom: 10px; }
 h2 { margin: 0; font-size: 13px; font-weight: 600; color: var(--primary); }
-.column-head span, .footnote { font-size: 11.5px; color: var(--muted); }
-.footnote { margin: 12px 0 0; }
+.section-head .aside { font-size: 11.5px; color: var(--muted); }
+.stack { display: flex; gap: 2px; height: 22px; }
+.stack .seg { height: 100%; min-width: 3px; }
+.stack .seg:first-child { border-radius: 4px 0 0 4px; }
+.stack .seg:last-child { border-radius: 0 4px 4px 0; }
+.stack .seg.unattributed { background: repeating-linear-gradient(135deg, var(--hatch) 0 2px, transparent 2px 6px); box-shadow: inset 0 0 0 1px var(--hatch); }
+.stack .seg:hover { filter: brightness(1.15); }
+.scale { position: relative; height: 16px; margin-top: 4px; font-size: 11px; color: var(--muted); }
+.scale span { position: absolute; transform: translateX(-50%); white-space: nowrap; }
+.scale span:first-child { transform: none; }
+.scale span:last-child { transform: translateX(-100%); }
+.legend { margin-top: 10px; display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 6px 20px; font-size: 12px; }
+.legend div { display: flex; align-items: center; gap: 7px; min-width: 0; }
+.legend .sw { flex: none; width: 10px; height: 10px; border-radius: 3px; }
+.legend .sw.unattributed { background: repeating-linear-gradient(135deg, var(--hatch) 0 2px, transparent 2px 4px); box-shadow: inset 0 0 0 1px var(--hatch); }
+.legend .lname { color: var(--body); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.legend .lval { margin-left: auto; color: var(--secondary); }
+.finding { margin: 12px 0 0; padding: 9px 12px; border-radius: 8px; background: var(--raised); font-size: 12px; color: var(--secondary); display: flex; gap: 8px; }
+.finding b { color: var(--primary); font-weight: 600; }
+.tag { flex: none; font-size: 11px; padding: 0 6px; height: 18px; line-height: 18px; border-radius: 4px; border: 1px solid var(--control); color: var(--secondary); }
 
-.row { padding: 9px 0; border-bottom: 1px solid var(--border); display: flex; flex-direction: column; gap: 6px; }
-.line { display: flex; align-items: center; gap: 8px; }
-.name { font-weight: 500; color: var(--primary); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; }
-.chip { flex: none; font-size: 11px; padding: 0 6px; height: 18px; line-height: 18px; border-radius: 9px; background: var(--chip); color: var(--secondary); }
-.terms { flex: none; display: inline-flex; align-items: center; gap: 4px; height: 20px; padding: 0 7px; border: 1px solid var(--control); border-radius: 10px; background: transparent; color: var(--link); font-size: 11px; }
+.columns { display: grid; grid-template-columns: minmax(0, 1.4fr) minmax(0, 1fr); }
+.column { padding: 16px 20px 12px; min-width: 0; }
+.column + .column { border-left: 1px solid var(--border); }
+.footnote { margin: 10px 0 0; font-size: 11.5px; color: var(--muted); }
+
+/* Ranked bars with a shared axis */
+.axis { display: grid; grid-template-columns: var(--label-w) minmax(0, 1fr) 54px; gap: 10px; font-size: 11px; color: var(--muted); height: 16px; }
+.axis .ticks { position: relative; }
+.axis .ticks span { position: absolute; transform: translateX(-50%); }
+.axis .ticks span:first-child { transform: none; }
+.axis .ticks span.ref { color: var(--secondary); font-weight: 600; }
+.bars { --label-w: 168px; }
+.bar-row { display: grid; grid-template-columns: var(--label-w) minmax(0, 1fr) 54px; gap: 10px; align-items: center; min-height: 30px; border-bottom: 1px solid var(--border); }
+.bar-row:hover { background: var(--raised); }
+.bar-row .who { display: flex; align-items: center; gap: 6px; min-width: 0; }
+.bar-row .name { font-weight: 500; color: var(--primary); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; }
+.chip { flex: none; font-size: 10.5px; padding: 0 5px; height: 16px; line-height: 16px; border-radius: 8px; background: var(--chip); color: var(--secondary); }
+.plot { position: relative; height: 30px; }
+.plot .gl { position: absolute; top: 0; bottom: 0; width: 1px; background: var(--grid); }
+.plot .gl.ref { width: 0; border-left: 1px dashed var(--ref); background: none; }
+.plot .bar { position: absolute; left: 0; top: 10px; height: 10px; border-radius: 0 4px 4px 0; }
+.plot .peak { position: absolute; top: 7px; height: 16px; width: 2px; border-radius: 1px; background: var(--primary); }
+.bar-row .val { text-align: right; font-weight: 600; color: var(--primary); }
+.bar-row .sub { grid-column: 1 / -1; display: flex; flex-wrap: wrap; gap: 6px; padding: 0 0 8px; }
+.terms { flex: none; display: inline-flex; align-items: center; gap: 3px; height: 16px; padding: 0 5px; border: 1px solid var(--control); border-radius: 8px; background: transparent; color: var(--link); font-size: 10.5px; }
 .terms[aria-expanded="true"] .chev { transform: rotate(180deg); }
-.spacer { flex: 1; }
-.rss { flex: none; font-size: 11.5px; color: var(--muted); }
-.value { flex: none; width: 64px; text-align: right; font-weight: 600; color: var(--primary); }
-.value.hot { color: var(--hot); }
-.term-list { display: flex; flex-wrap: wrap; gap: 6px; padding-top: 2px; }
-.term-list button { display: inline-flex; align-items: center; gap: 4px; height: 24px; padding: 0 8px; border-radius: 6px; background: var(--button); color: var(--body); font-size: 11.5px; }
-.term-list button span { color: var(--muted); }
-.more { margin-top: 8px; height: 28px; padding: 0 10px; border-radius: 6px; background: transparent; color: var(--link); font-size: 12px; }
+.sub button.term { display: inline-flex; align-items: center; gap: 4px; height: 22px; padding: 0 8px; border-radius: 6px; background: var(--button); color: var(--body); font-size: 11.5px; }
+.sub button.term span { color: var(--muted); }
+.more { margin-top: 6px; height: 26px; padding: 0 8px; border-radius: 6px; background: transparent; color: var(--link); font-size: 12px; }
+
+/* Scatter */
+.scatter svg { display: block; width: 100%; height: auto; overflow: visible; }
+.scatter .gridline { stroke: var(--grid); stroke-width: 1; }
+.scatter .refline { stroke: var(--ref); stroke-width: 1; stroke-dasharray: 3 3; }
+.scatter .tick { fill: var(--muted); font-size: 10.5px; }
+.scatter .axis-title { fill: var(--secondary); font-size: 11px; }
+.scatter .pt { fill: var(--dot); stroke: var(--popover); stroke-width: 2; }
+.scatter .pt.hl { fill: var(--primary); }
+.scatter .hit { fill: transparent; cursor: default; }
+.scatter .plabel { fill: var(--body); font-size: 11px; }
+
+.gpu { margin-top: 18px; }
+.gpu .bars { --label-w: 150px; }
 
 .notes { margin: 0; padding: 10px 20px 10px 36px; border-top: 1px solid var(--border); background: var(--raised); font-size: 12px; color: var(--secondary); display: flex; flex-direction: column; gap: 4px; }
 .notes[hidden] { display: none; }
 footer { display: flex; align-items: center; gap: 10px; padding: 12px 20px; border-top: 1px solid var(--border); flex-wrap: wrap; }
 .ghost { display: inline-flex; align-items: center; gap: 6px; height: 30px; padding: 0 8px; border-radius: 6px; background: transparent; color: var(--secondary); font-size: 12px; }
 .local { font-size: 12px; color: var(--muted); }
+.spacer { flex: 1; }
 .secondary-btn { height: 30px; padding: 0 12px; border-radius: 6px; background: var(--button); color: var(--body); font-size: 12.5px; }
 .primary-btn { display: inline-flex; align-items: center; gap: 6px; height: 30px; padding: 0 14px; border-radius: 6px; background: var(--accent); color: var(--on-accent); font-size: 12.5px; font-weight: 600; }
 .primary-btn kbd { border: 0; color: inherit; opacity: .6; padding: 0; }
 
-@media (max-width: 720px) {
+.tooltip { position: fixed; z-index: 10; pointer-events: none; padding: 8px 10px; border-radius: 8px; background: var(--primary); color: var(--popover); font-size: 12px; line-height: 1.5; box-shadow: 0 8px 24px rgba(0,0,0,.3); max-width: 240px; }
+.tooltip[hidden] { display: none; }
+.tooltip b { font-weight: 600; }
+.tooltip .k { opacity: .7; }
+
+@media (max-width: 760px) {
   .panel { height: auto; }
   .metrics, .columns { grid-template-columns: minmax(0, 1fr); }
   .metric + .metric, .column + .column { border-left: 0; border-top: 1px solid var(--border); }
+  .legend { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .bars { --label-w: 120px; }
   .subtitle { display: block; margin: 4px 0 0; }
 }
 </style>
@@ -106,52 +167,83 @@ footer { display: flex; align-items: center; gap: 10px; padding: 12px 20px; bord
   <span>预览：</span>
   <button type="button" data-theme-btn="dark" aria-pressed="true">深色</button>
   <button type="button" data-theme-btn="light" aria-pressed="false">浅色</button>
-  <span>· 数据取自 2026-10-30 一次真实采样，终端标题是占位</span>
+  <span>· 数据取自 2026-10-30 一次真实采样（16 核机器），终端标题是占位</span>
 </div>
 
 <div class="panel" role="dialog" aria-labelledby="diag-title">
   <header>
     <div class="titles">
-      <div><h1 id="diag-title" style="display:inline">本机诊断</h1><span class="subtitle">看谁在占 CPU / GPU，再把证据交给 Agent</span></div>
+      <div><h1 id="diag-title">本机诊断</h1><span class="subtitle">看谁在占 CPU / GPU，再把证据交给 Agent</span></div>
       <div class="status">
-        <span class="live"><span class="dot"></span>采样中</span>
-        <span class="num">10.2 / 15 秒</span>
-        <span class="progress"><span style="width:68%"></span></span>
+        <span class="live"><span class="dot-live"></span>采样中</span>
+        <span class="steps" aria-label="两个 7.5 秒区间，第 1 个已完成"><span><i style="width:100%"></i></span><span><i style="width:36%"></i></span></span>
+        <span class="num">10.2 / 15 秒 · 区间 1 / 2</span>
         <span>· 开始于 13:04:00</span>
       </div>
     </div>
     <button type="button" class="close" aria-label="关闭诊断">关闭 <kbd>Esc</kbd></button>
   </header>
 
-  <section class="metrics">
-    <div class="metric">
-      <span class="label">整机 CPU · 采样平均</span>
-      <div class="figure"><span class="big num">100.0%</span><span class="hot">已满载</span></div>
-      <div class="track"><span class="hot" style="width:100%"></span></div>
-    </div>
-    <div class="metric">
-      <span class="label">GPU 设备 · 最新读数</span>
-      <div class="figure"><span class="big num">13.0%</span></div>
-      <div class="track"><span style="width:13%"></span></div>
-    </div>
-    <div class="metric">
-      <span class="label">排行前 15 项合计</span>
-      <div class="figure"><span class="big num">≈ 6.6 核</span></div>
-      <span class="hint">共 1,626 个进程 · 100% = 一个核心</span>
-    </div>
-  </section>
+  <div class="body">
+    <section class="metrics">
+      <div class="metric">
+        <span class="label">整机 CPU · 采样平均</span>
+        <div class="figure"><span class="big num">100.0</span><span class="unit">%</span></div>
+        <span class="hint num">16 / 16 核在忙 · 无空闲</span>
+      </div>
+      <div class="metric">
+        <span class="label">GPU 设备 · 最新读数</span>
+        <div class="figure"><span class="big num">13.0</span><span class="unit">%</span></div>
+        <span class="hint">设备活跃度，不是各应用份额之和</span>
+      </div>
+      <div class="metric">
+        <span class="label">排行能解释的 CPU</span>
+        <div class="figure"><span class="big num">6.6</span><span class="unit">/ 16 核</span></div>
+        <span class="hint num">前 15 项 · 共 1,626 个进程</span>
+      </div>
+    </section>
 
-  <div class="columns">
-    <section class="column">
-      <div class="column-head"><h2>CPU 占用</h2><span>平均 · 内存为当前 RSS</span></div>
-      <div id="cpu"></div>
-      <button type="button" class="more" id="more"></button>
+    <section class="cores" aria-labelledby="cores-title">
+      <div class="section-head">
+        <h2 id="cores-title">16 个核心都在忙什么</h2>
+        <span class="aside">宽度 = 平均占用的核心数 · 悬停看明细</span>
+      </div>
+      <div class="stack" id="stack" role="img" aria-label="16 核去向堆叠条"></div>
+      <div class="scale num" id="core-scale"></div>
+      <div class="legend" id="legend"></div>
+      <p class="finding"><span class="tag">推测</span><span><b>约 9.4 核没归到排行里的进程。</b>来源可能是排行之外的进程，或在两次采样之间出生又退出的短命进程（排行只统计前后都在的进程）。要确认，需要抓进程创建记录。</span></p>
     </section>
-    <section class="column">
-      <div class="column-head"><h2>GPU 活动份额</h2><span>不是设备利用率</span></div>
-      <div id="gpu"></div>
-      <p class="footnote">只统计驱动公开的计数增量；没有读数不代表占用为零。</p>
-    </section>
+
+    <div class="columns">
+      <section class="column" aria-labelledby="cpu-title">
+        <div class="section-head">
+          <h2 id="cpu-title">CPU 占用排行</h2>
+          <span class="aside">平均 · 虚线 = 1 个核心</span>
+        </div>
+        <div class="bars" id="cpu"></div>
+        <button type="button" class="more" id="more"></button>
+        <p class="footnote">只采到 1 个区间，峰值暂同平均，峰值刻度会在第 2 个区间后出现。</p>
+      </section>
+
+      <section class="column">
+        <div class="scatter" aria-labelledby="map-title">
+          <div class="section-head">
+            <h2 id="map-title">CPU × 内存</h2>
+            <span class="aside">纵轴为对数 · RSS 不等于物理内存</span>
+          </div>
+          <svg id="scatter" viewBox="0 0 360 250" role="img" aria-label="各应用 CPU 与内存散点图"></svg>
+        </div>
+
+        <div class="gpu" aria-labelledby="gpu-title">
+          <div class="section-head">
+            <h2 id="gpu-title">GPU 活动份额</h2>
+            <span class="aside">已观测计数的占比</span>
+          </div>
+          <div class="bars" id="gpu"></div>
+          <p class="footnote">只统计驱动公开的计数增量；没有读数不代表占用为零。</p>
+        </div>
+      </section>
+    </div>
   </div>
 
   <ul class="notes" id="notes" hidden>
@@ -175,14 +267,19 @@ footer { display: flex; align-items: center; gap: 10px; padding: 12px 20px; bord
   </footer>
 </div>
 
+<div class="tooltip" id="tip" hidden></div>
+
 <script>
+const CORES = 16;
+const MACHINE = 100.0; // whole-machine average, % of all cores
+// [name, avg %, peak %, RSS MiB, processes, linked terminals]
 const CPU = [
-  ['ffmpeg', 191.5, 1819, 1, 0], ['BTLEServer', 99.5, 9, 1, 0], ['sh', 97.2, 181, 85, 0],
-  ['chrome-headless-shell', 72.0, 5022, 5, 0], ['Antigravity', 53.3, 2032, 8, 0],
-  ['claude', 28.7, 13224, 36, 22], ['keeplined', 25.7, 831, 62, 0],
-  ['Google Chrome', 16.9, 51300, 195, 0], ['WindowServer', 15.8, 207, 1, 0],
-  ['ChatGPT', 13.5, 7514, 110, 0], ['mds', 10.7, 52, 1, 0], ['Clash Verge', 9.9, 259, 2, 0],
-  ['mdworker_shared', 9.2, 511, 27, 0], ['node', 9.1, 2541, 52, 7], ['remem', 8.5, 425, 24, 1],
+  ['ffmpeg', 191.5, 191.5, 1819, 1, 0], ['BTLEServer', 99.5, 99.5, 9, 1, 0], ['sh', 97.2, 97.2, 181, 85, 0],
+  ['chrome-headless-shell', 72.0, 72.0, 5022, 5, 0], ['Antigravity', 53.3, 53.3, 2032, 8, 0],
+  ['claude', 28.7, 28.7, 13224, 36, 22], ['keeplined', 25.7, 25.7, 831, 62, 0],
+  ['Google Chrome', 16.9, 16.9, 51300, 195, 0], ['WindowServer', 15.8, 15.8, 207, 1, 0],
+  ['ChatGPT', 13.5, 13.5, 7514, 110, 0], ['mds', 10.7, 10.7, 52, 1, 0], ['Clash Verge', 9.9, 9.9, 259, 2, 0],
+  ['mdworker_shared', 9.2, 9.2, 511, 27, 0], ['node', 9.1, 9.1, 2541, 52, 7], ['remem', 8.5, 8.5, 425, 24, 1],
 ];
 const GPU = [
   ['chrome-headless-shell', 29.1], ['Antigravity', 27.7], ['WindowServer', 19.5], ['Ghostty', 13.0],
@@ -190,54 +287,147 @@ const GPU = [
 ];
 // Placeholder titles: the app shows each terminal's tab title or home-relative cwd.
 const TITLES = ['keepline', 'remem', 'bench', 'knowledge-base', 'keepline · next', 'blog', 'loopscope', 'rnk'];
+const TOP = 5; // apps that get their own color; the same color everywhere they appear
 const DEFAULT_ROWS = 10;
 const state = { open: 'claude', all: false };
 
 const esc = (s) => String(s).replace(/[&<>"]/g, (ch) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[ch]));
 const mem = (mb) => (mb >= 1024 ? (mb / 1024).toFixed(1) + ' GB' : mb + ' MB');
-const width = (v, max) => Math.max(1.5, (v / max) * 100).toFixed(1);
+const cores = (pct) => (pct / 100).toFixed(pct < 100 ? 2 : 1);
+const colorOf = (i) => (i < TOP ? `var(--s${i + 1})` : 'var(--other)');
 const titles = (n) => Array.from({ length: n }, (_, i) =>
   TITLES[i % TITLES.length] + (i >= TITLES.length ? ' ' + (Math.floor(i / TITLES.length) + 1) : ''));
 
+/* Tooltip */
+const tip = document.getElementById('tip');
+function showTip(e, html) {
+  tip.innerHTML = html;
+  tip.hidden = false;
+  const r = tip.getBoundingClientRect();
+  let x = e.clientX + 14, y = e.clientY + 14;
+  if (x + r.width > innerWidth - 8) x = e.clientX - r.width - 14;
+  if (y + r.height > innerHeight - 8) y = e.clientY - r.height - 14;
+  tip.style.left = x + 'px';
+  tip.style.top = y + 'px';
+}
+const hideTip = () => { tip.hidden = true; };
+function bindTips(root, selector, html) {
+  root.querySelectorAll(selector).forEach((el) => {
+    el.addEventListener('mousemove', (e) => showTip(e, html(el)));
+    el.addEventListener('mouseleave', hideTip);
+  });
+}
+
+/* 16-core stack */
+function renderStack() {
+  const total = CORES * 100;
+  const busy = total * MACHINE / 100;
+  const listed = CPU.reduce((s, r) => s + r[1], 0);
+  const rest = CPU.slice(TOP).reduce((s, r) => s + r[1], 0);
+  const segs = [
+    ...CPU.slice(0, TOP).map((r, i) => ({ name: r[0], v: r[1], color: colorOf(i), note: `${r[4]} 个进程` })),
+    { name: `排行其余 ${CPU.length - TOP} 项`, v: rest, color: 'var(--other)', note: 'claude、keeplined、Chrome 等' },
+    { name: '未归属', v: Math.max(0, busy - listed), cls: 'unattributed', note: '排行之外或短命进程' },
+  ];
+  const idle = total - busy;
+  if (idle > 0.5) segs.push({ name: '空闲', v: idle, color: 'var(--track)', note: '' });
+  document.getElementById('stack').innerHTML = segs.map((s, i) =>
+    `<div class="seg ${s.cls || ''}" data-i="${i}" style="flex:${s.v} 0 0;${s.color ? 'background:' + s.color : ''}"></div>`).join('');
+  bindTips(document.getElementById('stack'), '.seg', (el) => {
+    const s = segs[el.dataset.i];
+    return `<b>${esc(s.name)}</b><br><span class="num">${cores(s.v)} 核 · ${(s.v / total * 100).toFixed(1)}% 整机</span>${s.note ? `<br><span class="k">${esc(s.note)}</span>` : ''}`;
+  });
+  document.getElementById('core-scale').innerHTML = [0, 4, 8, 12, 16]
+    .map((c) => `<span style="left:${c / CORES * 100}%">${c}${c === CORES ? ' 核' : ''}</span>`).join('');
+  document.getElementById('legend').innerHTML = segs.map((s) =>
+    `<div><span class="sw ${s.cls || ''}" style="${s.color ? 'background:' + s.color : ''}"></span><span class="lname">${esc(s.name)}</span><span class="lval num">${cores(s.v)} 核</span></div>`).join('');
+}
+
+/* Ranked bars on a shared axis */
+function axis(max, step, ref, refLabel, fmt) {
+  const ticks = [];
+  for (let v = 0; v <= max; v += step) ticks.push(v);
+  return `<div class="axis"><span></span><div class="ticks num">${ticks.map((v) =>
+    `<span class="${v === ref ? 'ref' : ''}" style="left:${v / max * 100}%">${v === ref ? refLabel : fmt(v)}</span>`).join('')}</div><span></span></div>`;
+}
+function grid(max, step, ref) {
+  let out = '';
+  for (let v = step; v < max; v += step) out += `<span class="gl ${v === ref ? 'ref' : ''}" style="left:${v / max * 100}%"></span>`;
+  if (ref === max) out += `<span class="gl ref" style="left:100%"></span>`;
+  return out;
+}
+
 function renderCpu() {
-  const max = CPU[0][1];
+  const MAX = 200, STEP = 50;
   const rows = state.all ? CPU : CPU.slice(0, DEFAULT_ROWS);
-  document.getElementById('cpu').innerHTML = rows.map(([name, v, rss, procs, terms]) => {
-    const hot = v >= 90 ? ' hot' : '';
+  const html = rows.map(([name, v, peak, rss, procs, terms], i) => {
     const open = state.open === name;
-    const termBtn = terms ? `
-      <button type="button" class="terms" data-toggle="${esc(name)}" aria-expanded="${open}">
-        <svg width="11" height="11" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" aria-hidden="true"><rect x="1.5" y="2.5" width="13" height="11" rx="2"/><path d="M4.5 6.5l2 1.5-2 1.5M8.5 10h3"/></svg>
-        ${terms} 个终端
-        <svg class="chev" width="9" height="9" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M4 6l4 4 4-4"/></svg>
-      </button>` : '';
+    const termBtn = terms ? `<button type="button" class="terms" data-toggle="${esc(name)}" aria-expanded="${open}">
+        ${terms} 终端<svg class="chev" width="8" height="8" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M4 6l4 4 4-4"/></svg></button>` : '';
+    const peakMark = peak > v + 0.05 ? `<span class="peak" style="left:calc(${Math.min(peak, MAX) / MAX * 100}% - 1px)"></span>` : '';
     const list = terms && open
-      ? `<div class="term-list">${titles(terms).map((t) => `<button type="button">${esc(t)}<span>→</span></button>`).join('')}</div>`
+      ? `<div class="sub">${titles(terms).map((t) => `<button type="button" class="term">${esc(t)}<span>→</span></button>`).join('')}</div>`
       : '';
-    return `<div class="row">
-      <div class="line">
-        <span class="name">${esc(name)}</span>
-        ${procs > 1 ? `<span class="chip num">${procs} 个进程</span>` : ''}
-        ${termBtn}
-        <span class="spacer"></span>
-        <span class="rss num">${mem(rss)}</span>
-        <span class="value num${hot}">${v.toFixed(1)}%</span>
-      </div>
-      <div class="track"><span class="${hot.trim()}" style="width:${width(v, max)}%"></span></div>
+    return `<div class="bar-row" data-i="${i}">
+      <div class="who"><span class="name" title="${esc(name)}">${esc(name)}</span>${procs > 1 ? `<span class="chip num">×${procs}</span>` : ''}${termBtn}</div>
+      <div class="plot">${grid(MAX, STEP, 100)}<span class="bar" style="width:${Math.min(v, MAX) / MAX * 100}%;background:${colorOf(i)}"></span>${peakMark}</div>
+      <span class="val num">${v.toFixed(1)}%</span>
       ${list}
     </div>`;
   }).join('');
+  const el = document.getElementById('cpu');
+  el.innerHTML = axis(MAX, STEP, 100, '1 核', (v) => v + '%') + html;
+  bindTips(el, '.plot', (p) => {
+    const [name, v, peak, rss, procs, terms] = CPU[p.parentElement.dataset.i];
+    return `<b>${esc(name)}</b><br><span class="num">平均 ${v.toFixed(1)}% ≈ ${cores(v)} 核<br><span class="k">区间峰值</span> ${peak.toFixed(1)}%<br><span class="k">RSS</span> ${mem(rss)} · ${procs} 个进程${terms ? ` · ${terms} 个终端` : ''}</span>`;
+  });
   const more = document.getElementById('more');
   more.hidden = CPU.length <= DEFAULT_ROWS;
   more.textContent = state.all ? '收起' : `再显示 ${CPU.length - DEFAULT_ROWS} 项`;
 }
 
 function renderGpu() {
-  const max = GPU[0][1];
-  document.getElementById('gpu').innerHTML = GPU.map(([name, v]) => `<div class="row">
-    <div class="line"><span class="name" style="flex:1">${esc(name)}</span><span class="value num" style="width:56px">${v.toFixed(1)}%</span></div>
-    <div class="track"><span style="width:${width(v, max)}%"></span></div>
-  </div>`).join('');
+  const MAX = 30, STEP = 10;
+  const el = document.getElementById('gpu');
+  el.innerHTML = axis(MAX, STEP, -1, '', (v) => v + '%') + GPU.map(([name, v], i) => `<div class="bar-row" data-i="${i}">
+      <div class="who"><span class="name" title="${esc(name)}">${esc(name)}</span></div>
+      <div class="plot">${grid(MAX, STEP, -1)}<span class="bar" style="width:${Math.max(0.6, v / MAX * 100)}%;background:var(--s1)"></span></div>
+      <span class="val num">${v.toFixed(1)}%</span>
+    </div>`).join('');
+  bindTips(el, '.plot', (p) => {
+    const [name, v] = GPU[p.parentElement.dataset.i];
+    return `<b>${esc(name)}</b><br><span class="num">已观测 GPU 活动的 ${v.toFixed(1)}%</span><br><span class="k">不是设备利用率</span>`;
+  });
+}
+
+/* CPU × memory scatter: x linear %, y log RSS */
+function renderScatter() {
+  const W = 360, H = 250, L = 46, R = 12, T = 10, B = 34;
+  const X = (v) => L + (v / 200) * (W - L - R);
+  const lo = Math.log10(4), hi = Math.log10(65536);
+  const Y = (mb) => T + (1 - (Math.log10(mb) - lo) / (hi - lo)) * (H - T - B);
+  const yTicks = [[8, '8 MB'], [128, '128 MB'], [1024, '1 GB'], [8192, '8 GB'], [65536, '64 GB']];
+  const xTicks = [0, 50, 100, 150, 200];
+  const labelled = { ffmpeg: [-8, -8, 'end'], 'Google Chrome': [8, 4, 'start'], claude: [8, 4, 'start'], 'chrome-headless-shell': [8, 10, 'start'], BTLEServer: [-8, 4, 'end'], sh: [8, 12, 'start'] };
+  let s = '';
+  yTicks.forEach(([mb, t]) => { s += `<line class="gridline" x1="${L}" x2="${W - R}" y1="${Y(mb)}" y2="${Y(mb)}"/><text class="tick num" x="${L - 6}" y="${Y(mb) + 3.5}" text-anchor="end">${t}</text>`; });
+  xTicks.forEach((v) => { s += `<line class="${v === 100 ? 'refline' : 'gridline'}" x1="${X(v)}" x2="${X(v)}" y1="${T}" y2="${H - B}"/><text class="tick num" x="${X(v)}" y="${H - B + 14}" text-anchor="middle">${v === 100 ? '1 核' : v + '%'}</text>`; });
+  s += `<text class="axis-title" x="${W - R}" y="${H - 4}" text-anchor="end">CPU 平均占用 →</text>`;
+  CPU.forEach(([name, v, , rss], i) => {
+    const hl = name in labelled;
+    s += `<circle class="pt ${hl ? 'hl' : ''}" cx="${X(v)}" cy="${Y(rss)}" r="4.5"/>`;
+    if (hl) {
+      const [dx, dy, anchor] = labelled[name];
+      s += `<text class="plabel" x="${X(v) + dx}" y="${Y(rss) + dy}" text-anchor="${anchor}">${esc(name)}</text>`;
+    }
+    s += `<circle class="hit" data-i="${i}" cx="${X(v)}" cy="${Y(rss)}" r="11"/>`;
+  });
+  const svg = document.getElementById('scatter');
+  svg.innerHTML = s;
+  bindTips(svg, '.hit', (c) => {
+    const [name, v, , rss, procs] = CPU[c.dataset.i];
+    return `<b>${esc(name)}</b><br><span class="num">CPU ${v.toFixed(1)}% · RSS ${mem(rss)}<br>${procs} 个进程</span>`;
+  });
 }
 
 document.getElementById('cpu').addEventListener('click', (e) => {
@@ -260,8 +450,10 @@ document.querySelectorAll('[data-theme-btn]').forEach((btn) => btn.addEventListe
   document.querySelectorAll('[data-theme-btn]').forEach((b) => b.setAttribute('aria-pressed', String(b === btn)));
 }));
 
+renderStack();
 renderCpu();
 renderGpu();
+renderScatter();
 </script>
 </body>
 </html>
