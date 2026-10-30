@@ -22,10 +22,10 @@ button { font: inherit; border: 0; background: none; color: inherit; cursor: poi
 .controls .grp { display: inline-flex; background: #e1e3e8; border-radius: 7px; padding: 2px; }
 .controls button { height: 26px; padding: 0 10px; border-radius: 5px; color: #1f2024; }
 .controls button[aria-pressed="true"] { background: #1f2024; color: #fff; }
-.explain { max-width: 1240px; width: 100%; font-size: 12.5px; color: #34373e; }
-.row { display: grid; grid-template-columns: repeat(4, 290px); gap: 18px; justify-content: center; max-width: 100%; }
-@media (max-width: 1260px) { .row { grid-template-columns: repeat(2, 290px); } }
-@media (max-width: 640px) { .row { grid-template-columns: 290px; } }
+.explain { max-width: 1420px; width: 100%; font-size: 12.5px; color: #34373e; }
+.row { display: grid; grid-template-columns: repeat(5, 270px); gap: 16px; justify-content: center; max-width: 100%; }
+@media (max-width: 1440px) { .row { grid-template-columns: repeat(3, 270px); } }
+@media (max-width: 900px) { .row { grid-template-columns: 270px; } }
 .col { display: flex; flex-direction: column; gap: 6px; }
 .col h3 { margin: 0; font-size: 13px; color: #111; display: flex; justify-content: space-between; }
 .col h3 span { font-weight: 400; color: #4a4d55; }
@@ -38,6 +38,29 @@ button { font: inherit; border: 0; background: none; color: inherit; cursor: poi
 .head .seg + .seg { margin-left: auto; }
 .list { flex: 1; overflow: hidden; }
 .foot { border-top: 1px solid var(--line-soft); padding: 8px 12px; display: flex; justify-content: space-between; color: var(--dim); font-size: 11.5px; }
+
+/* ---------- App 里现在（照 10-30 截图） ---------- */
+.real { background: #fafaf9; color: #1f1e1c; font-family: -apple-system, BlinkMacSystemFont, "PingFang SC", sans-serif; font-size: 13px; }
+.real .list { padding: 12px 8px; }
+.real .h { color: #5f5e5b; font-size: 12px; padding: 4px 8px 6px; display: flex; justify-content: space-between; }
+.real .sp { display: flex; align-items: center; gap: 8px; padding: 6px 8px; border-radius: 6px; }
+.real .sp.on { background: #ebeae8; }
+.real .sp .tag { font-size: 11.5px; color: #5f5e5b; background: #e9e8e6; border-radius: 4px; padding: 0 5px; }
+.real .sp .bad { margin-left: auto; font-size: 11.5px; color: #c53b33; background: #f8e9e7; border-radius: 4px; padding: 0 5px; }
+.real .sp .n { color: #5f5e5b; font-size: 12px; }
+.real .sp .bad + .n { margin-left: 6px; }
+.real .sp .tag + .n { margin-left: auto; }
+.real .dist { display: flex; height: 4px; margin: 2px 8px 6px; border-radius: 2px; overflow: hidden; gap: 1px; }
+.real .add { color: #5f5e5b; padding: 6px 8px; }
+.real .todo { color: #2a2927; padding: 14px 8px 10px; display: flex; justify-content: space-between; font-size: 12.5px; }
+.real .ss { display: flex; align-items: center; gap: 8px; padding: 6px 8px; }
+.real .ss .t { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; }
+.real .ss .lab { margin-left: auto; color: #c53b33; font-size: 12px; flex: none; }
+.real .ss .tm { margin-left: auto; color: #5f5e5b; font-size: 12px; flex: none; }
+.real .dot { width: 7px; height: 7px; border-radius: 50%; background: #c53b33; flex: none; }
+.real .ring { width: 7px; height: 7px; border-radius: 50%; border: 1.5px solid #5e62d8; flex: none; }
+.real .more { color: #5f5e5b; padding: 8px 8px 2px; font-size: 12.5px; }
+.real .foot { border-top: 1px solid #e3e2df; color: #2a2927; font-size: 12.5px; }
 
 /* ---------- 现在 ---------- */
 .old .rule { color: var(--faint); padding: 12px 12px 4px; font-size: 11px; white-space: nowrap; overflow: hidden; }
@@ -105,11 +128,40 @@ button { font: inherit; border: 0; background: none; color: inherit; cursor: poi
   <span class="grp"><button type="button" data-theme-btn="dark" aria-pressed="true">深色</button><button type="button" data-theme-btn="light" aria-pressed="false">浅色</button></span>
   <span>· 优化后的两栏可以试：悬停会话看「停在」，点摘要行展开做完了 / 停下了，悬停目录看路径</span>
 </div>
-<div class="explain">同一批会话（你 10-30 的标题），左边两栏是现在的稿，右边两栏是优化后。改动四条：① 只给需要你的和选中的会话第二行，其余悬停才露；② 做完了 / 停下了 / 很久没动合成一行摘要；③ 按目录时不重复列需要你的会话，目录名旁标「1 需要你」，路径悬停才显示，没活跃会话的目录折叠变淡；④ 分组标题改小字、去掉长横线，会话标题用系统字体，只有符号和时间用等宽。「详细 / 紧凑」开关因此可以去掉。</div>
+<div class="explain">第一栏是 App 里现在的左栏（照你 10-30 的截图，浅色），第二、四栏是上一版 A+ 稿，第三、五栏是优化后；会话标题都取自你的数据。改动四条：① 只给需要你的和选中的会话第二行，其余悬停才露；② 做完了 / 停下了 / 很久没动合成一行摘要；③ 按目录时不重复列需要你的会话，目录名旁标「1 需要你」，路径悬停才显示，没活跃会话的目录折叠变淡；④ 分组标题改小字、去掉长横线，会话标题用系统字体，只有符号和时间用等宽。「详细 / 紧凑」开关因此可以去掉。</div>
 
 <div class="row">
+  <!-- App 里现在 -->
+  <div class="col"><h3>App 里现在 <span>约 24 行</span></h3>
+  <div class="panel real">
+    <div class="list">
+      <div class="h"><span>空间</span><span>2</span></div>
+      <div class="sp on"><span class="dot" style="background:#c53b33"></span><span>工作空间</span><span class="tag">目录不在了</span><span class="bad">11</span><span class="n">13</span></div>
+      <div class="dist"><i style="flex:11;background:#c53b33"></i><i style="flex:1;background:#5e62d8"></i><i style="flex:2;background:#9a7316"></i><i style="flex:1;background:#b8b7b3"></i></div>
+      <div class="sp"><span class="dot" style="background:#5f5e5b"></span><span>新空间</span><span class="tag">目录不在了</span><span class="n">0</span></div>
+      <div class="add">＋ 空间</div>
+      <div class="todo"><span>▸ 工作空间 的待办 · 3</span><span>＋</span></div>
+      <div class="h" style="padding-top:10px"><span>会话 · 13</span></div>
+      <div class="ss"><span class="dot"></span><span class="t">这个终止agent 中断 取消…</span><span class="lab">出错了</span></div>
+      <div class="ss"><span class="dot"></span><span class="t">这个目录的grok的聊天记…</span><span class="lab">出错了</span></div>
+      <div class="ss"><span class="dot"></span><span class="t">这个诊断的 ui感觉很丑啊…</span><span class="lab">出错了</span></div>
+      <div class="ss"><span class="dot"></span><span class="t">左侧的会话 有什么好的命…</span><span class="lab">出错了</span></div>
+      <div class="ss"><span class="dot"></span><span class="t">这个codex的对话在做什么</span><span class="lab">出错了</span></div>
+      <div class="ss"><span class="dot"></span><span class="t">看这里 选中一个内容后…</span><span class="lab">出错了</span></div>
+      <div class="ss"><span class="dot"></span><span class="t">我准备 重启一下 mac ke…</span><span class="lab">出错了</span></div>
+      <div class="ss"><span class="dot"></span><span class="t">这个 keepline 的gpu占用…</span><span class="lab">出错了</span></div>
+      <div class="ss"><span class="dot"></span><span class="t">为什么这个keepline 还不…</span><span class="lab">出错了</span></div>
+      <div class="ss"><span class="dot"></span><span class="t">为什么有的会话 在keepl…</span><span class="lab">出错了</span></div>
+      <div class="ss"><span class="dot"></span><span class="t">这个库 有什么可以优化的…</span><span class="lab">出错了</span></div>
+      <div class="ss"><span class="ring"></span><span class="t">这个 keepline 现在设…</span><span class="tm">18 小时前</span></div>
+      <div class="more">另有 1 个 · 鸟瞰全部</div>
+      <div class="more">已关闭 21 个 · 点开接着聊</div>
+    </div>
+    <div class="foot"><span>本机诊断</span><span>设置</span></div>
+  </div></div>
+
   <!-- 现在 · 按状态 -->
-  <div class="col"><h3>现在 · 按状态 <span>28 行</span></h3>
+  <div class="col"><h3>上一版稿 · 按状态 <span>28 行</span></h3>
   <div class="panel old mono">
     <div class="head"><span class="seg"><i class="on">按状态</i><i>按目录</i></span><span class="seg"><i class="on">详细</i><i>紧凑</i></span></div>
     <div class="list">
@@ -168,7 +220,7 @@ button { font: inherit; border: 0; background: none; color: inherit; cursor: poi
   </div></div>
 
   <!-- 现在 · 按目录 -->
-  <div class="col"><h3>现在 · 按目录 <span>30 行</span></h3>
+  <div class="col"><h3>上一版稿 · 按目录 <span>30 行</span></h3>
   <div class="panel old mono">
     <div class="head"><span class="seg"><i>按状态</i><i class="on">按目录</i></span><span class="seg"><i class="on">详细</i><i>紧凑</i></span></div>
     <div class="list">
