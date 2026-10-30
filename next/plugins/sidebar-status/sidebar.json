@@ -1,0 +1,11 @@
+{
+  "api": 1,
+  "presets": [
+    {
+      "id": "wasm-status",
+      "name": "WASM",
+      "group": "wasm",
+      "wasm": "sidebar_status.wasm"
+    }
+  ]
+}

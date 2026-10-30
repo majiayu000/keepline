@@ -2730,6 +2730,7 @@ dependencies = [
  "gpui",
  "gpui_platform",
  "keepline-core",
+ "keepline-plugin-host",
  "libc",
  "serde",
  "serde_json",

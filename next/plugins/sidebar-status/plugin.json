@@ -1,0 +1,8 @@
+{
+  "api": 1,
+  "id": "sidebar-status",
+  "name": "状态左栏（WASM 示例）",
+  "version": "0.1.0",
+  "description": "用 WebAssembly 写的左栏排法：需要你的置顶，在跑的列出，其余合成一行；跑在沙盒里，读不到文件和网络",
+  "provides": ["sidebar"]
+}

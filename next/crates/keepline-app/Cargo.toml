@@ -7,6 +7,8 @@ license = "MIT"
 
 [dependencies]
 keepline-core = { path = "../keepline-core" }
+# Sandboxed WebAssembly for left-column plugins that need logic (`"group": "wasm"`).
+keepline-plugin-host = { path = "../keepline-plugin-host" }
 gpui = { path = "../../.deps/zed/crates/gpui" }
 gpui_platform = { path = "../../.deps/zed/crates/gpui_platform", features = ["font-kit"] }
 futures = "0.3"

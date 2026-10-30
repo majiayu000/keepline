@@ -145,7 +145,9 @@ pub fn enabled_next_start(id: &str) -> bool {
 }
 /// Turns a plugin on or off from the next start; the running app keeps what it loaded.
 pub fn set_enabled(id: &str, on: bool) -> std::io::Result<()> {
-    let plugins = dir(CONFIG.get().ok_or_else(|| std::io::Error::other("找不到配置目录"))?);
+    let plugins = dir(CONFIG
+        .get()
+        .ok_or_else(|| std::io::Error::other("找不到配置目录"))?);
     let mut off = disabled(&plugins);
     off.retain(|d| d != id);
     if !on {
@@ -329,11 +331,7 @@ mod tests {
         let found = discover(&root);
         assert!(found.len() >= 3);
         for f in &found {
-            let Ok(p) = &f.result else {
-                // The WASM guest is a build project, not a package yet.
-                assert!(f.dir.ends_with("sidebar-status"), "{f:?}");
-                continue;
-            };
+            let p = f.result.as_ref().unwrap_or_else(|e| panic!("{e}: {f:?}"));
             let (_, actions) = crate::action::load(p.files(Kind::Actions));
             let (_, rules) = crate::rule::load(p.files(Kind::Rules));
             let (_, sidebar) = crate::sidebar::load(p.files(Kind::Sidebar));

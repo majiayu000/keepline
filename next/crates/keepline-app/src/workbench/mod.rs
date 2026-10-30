@@ -172,6 +172,7 @@ use sessions::{Attention, Resuming};
 mod sidebar;
 use sidebar::closed_recently;
 mod sidebar_list;
+mod sidebar_wasm;
 mod tabs;
 mod tasks;
 use tasks::TaskUi;
