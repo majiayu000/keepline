@@ -263,12 +263,15 @@ impl Workbench {
                 show_stale: false,
                 show_closed: false,
                 show_running: false,
+                show_review: false,
                 show_hidden: false,
                 card_menu: None,
                 here: None,
                 here_more: None,
                 cleanup: vec![],
                 cleanup_index: 0,
+                cleanup_results: HashMap::new(),
+                scroll: gpui::ScrollHandle::new(),
                 welcome: overview,
                 focus: cx.focus_handle(),
                 #[cfg(feature = "visual-test")]
@@ -433,6 +436,12 @@ impl Workbench {
                 .zip(new)
                 .is_some_and(|(a, b)| a.outcome != b.outcome && b.outcome != Outcome::Open)
             {
+                // Remembered per queued session so the steps show what each one became.
+                if let Some(b) = new {
+                    self.overview
+                        .cleanup_results
+                        .insert(id.clone(), b.outcome.clone());
+                }
                 self.overview.cleanup_index += 1;
             }
         }
