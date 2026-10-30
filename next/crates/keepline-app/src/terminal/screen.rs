@@ -50,7 +50,11 @@ pub struct Screen {
     pub rows: Vec<Vec<Run>>,
     pub cursor: Option<(u16, u16)>,
     pub cursor_visible: bool,
+    /// The terminal's blink mode (DEC 12, DECSCUSR); the pane decides the phase.
+    pub cursor_blinking: bool,
     pub cursor_shape: CursorShape,
+    /// The scheme's cursor color, or one the program set (OSC 12).
+    pub cursor_color: u32,
     pub background: u32,
     pub links: Vec<Link>,
     /// Text that reads like a file path; only one that exists on disk becomes clickable.
@@ -442,12 +446,17 @@ impl Capture {
         let cur = snap.cursor()?;
         out.cursor = cur.viewport.map(|v| (v.x, v.y));
         out.cursor_visible = cur.visible;
+        out.cursor_blinking = cur.blinking;
         out.cursor_shape = match cur.visual_style {
             CursorVisualStyle::Bar => CursorShape::Bar,
             CursorVisualStyle::Underline => CursorShape::Underline,
             CursorVisualStyle::BlockHollow => CursorShape::BlockHollow,
             _ => CursorShape::Block,
         };
+        out.cursor_color = colors
+            .cursor
+            .map(|c| rgb(c.r, c.g, c.b))
+            .unwrap_or_else(|| crate::ui::theme::Theme::terminal_fg());
         out.background = vt
             .terminal()
             .bg_color()?
@@ -833,6 +842,15 @@ impl LayoutCache {
         self.rows.resize_with(rows, Vec::new);
     }
 }
+/// How the cursor is drawn this frame.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum CursorPaint {
+    Hidden,
+    /// In the shape the program asked for.
+    Shown,
+    /// An outline whatever the shape, for a split without focus.
+    Hollow,
+}
 // Render inputs remain explicit alongside GPUI's required Window/App contexts.
 // A wrapper type solely to reduce argument count would hide their call-site ownership.
 #[allow(clippy::too_many_arguments)]
@@ -841,7 +859,7 @@ pub fn paint_cached(
     f: &Font,
     bounds: Bounds<Pixels>,
     metrics: CellMetrics,
-    show_cursor: bool,
+    cursor: CursorPaint,
     cache: &mut LayoutCache,
     window: &mut Window,
     cx: &mut App,
@@ -859,7 +877,7 @@ pub fn paint_cached(
     // Cursor and later overlays stay outside the layer so they still draw over glyphs.
     let cw = metrics.width;
     let lh = metrics.height;
-    if show_cursor
+    if cursor != CursorPaint::Hidden
         && sc.cursor_visible
         && let Some((x, y)) = sc.cursor
     {
@@ -870,10 +888,37 @@ pub fn paint_cached(
             ),
             size(cw, lh),
         );
-        let color = hsla(crate::ui::theme::Theme::terminal_fg()).opacity(0.6);
+        let color = hsla(sc.cursor_color);
         let t = metrics.stroke * 2.;
-        match sc.cursor_shape {
-            CursorShape::Block => window.paint_quad(fill(cell, color)),
+        let shape = if cursor == CursorPaint::Hollow {
+            CursorShape::BlockHollow
+        } else {
+            sc.cursor_shape
+        };
+        match shape {
+            // A solid block with its letter redrawn in the background color, as Ghostty
+            // does; a letter it cannot redraw (wide, or a ligature font) shows through.
+            CursorShape::Block => {
+                let under = sc.rows.get(y as usize).and_then(|row| {
+                    row.iter()
+                        .find(|r| r.col <= x && x < r.col + r.cols)
+                        .filter(|r| printable_cells(r) && !r.attrs.invisible)
+                        .map(|r| (r, &r.text[usize::from(x - r.col)..][..1]))
+                });
+                let glyphs = under.and_then(|(run, _)| {
+                    let style =
+                        usize::from(run.attrs.bold) | (usize::from(run.attrs.italic) << 1);
+                    cache.ascii[style].as_ref().and_then(Option::as_ref)
+                });
+                match (under, glyphs) {
+                    (Some((_, letter)), Some(glyphs)) => {
+                        window.paint_quad(fill(cell, color));
+                        glyphs.paint(letter, cell.origin, metrics, hsla(sc.background), window);
+                    }
+                    (Some((_, " ")), None) | (None, _) => window.paint_quad(fill(cell, color)),
+                    _ => window.paint_quad(fill(cell, color.opacity(0.5))),
+                }
+            }
             CursorShape::Bar => {
                 window.paint_quad(fill(Bounds::new(cell.origin, size(t, lh)), color))
             }
@@ -1215,6 +1260,15 @@ mod tests {
         assert_eq!(s.rows[0][0].cols, 2);
         assert_eq!(s.rows[0][1].col, 2);
         assert_eq!(s.cursor, Some((5, 0)));
+    }
+    #[test]
+    fn the_cursor_blinks_until_a_program_asks_for_a_steady_one() {
+        let mut vt = Vt::new(80, 24).unwrap();
+        assert!(capture(&vt).unwrap().cursor_blinking);
+        vt.feed(b"\x1b[2 q");
+        assert!(!capture(&vt).unwrap().cursor_blinking);
+        vt.feed(b"\x1b[0 q");
+        assert!(capture(&vt).unwrap().cursor_blinking);
     }
     #[test]
     fn hidden_cursor_keeps_ime_anchor_and_missing_position_keeps_last_known() {

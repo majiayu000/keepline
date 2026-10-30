@@ -62,6 +62,13 @@ impl Scheme {
             Self::Light => LIGHT_BG,
         }
     }
+    /// GitHub's Ghostty themes: a blue that reads as the cursor on either background.
+    pub const fn cursor(self) -> u32 {
+        match self {
+            Self::Dark => 0x2f81f7,
+            Self::Light => 0x0969da,
+        }
+    }
 }
 /// Reported for XTVERSION (CSI > q), like "ghostty 1.2.3".
 pub const XTVERSION: &str = concat!("keepline ", env!("CARGO_PKG_VERSION"));
@@ -276,6 +283,12 @@ impl Vt {
         terminal
             .set_mode(libghostty_vt::terminal::Mode::GRAPHEME_CLUSTER, true)
             .map_err(io::Error::other)?;
+        // As Ghostty: the cursor blinks until a program asks for a steady one, and a
+        // DECSCUSR reset (CSI 0 q) returns to blinking.
+        terminal
+            .set_mode(libghostty_vt::terminal::Mode::CURSOR_BLINKING, true)
+            .and_then(|t| t.set_default_cursor_blink(Some(true)))
+            .map_err(io::Error::other)?;
         let mut vt = Self(terminal);
         vt.set_scheme(Scheme::Dark)?;
         Ok(vt)
@@ -287,7 +300,7 @@ impl Vt {
             .0
             .set_default_fg_color(Some(rgb(scheme.fg())))
             .and_then(|t| t.set_default_bg_color(Some(rgb(scheme.bg()))))
-            .and_then(|t| t.set_default_cursor_color(Some(rgb(scheme.fg()))))
+            .and_then(|t| t.set_default_cursor_color(Some(rgb(scheme.cursor()))))
             .and_then(|t| t.set_default_color_palette(None))
             .map_err(io::Error::other)?;
         if scheme == Scheme::Light {
@@ -473,7 +486,7 @@ mod tests {
         for (query, reply) in [
             (&b"\x1b]10;?\x1b\\"[..], "\x1b]10;rgb:e4e4/e2e2/dfdf\x1b\\"),
             (b"\x1b]11;?\x07", "\x1b]11;rgb:1c1c/1c1c/1e1e\x07"),
-            (b"\x1b]12;?\x07", "\x1b]12;rgb:e4e4/e2e2/dfdf\x07"),
+            (b"\x1b]12;?\x07", "\x1b]12;rgb:2f2f/8181/f7f7\x07"),
             (b"\x1b]4;1;?\x07", "\x1b]4;1;rgb:"),
             (b"\x1b[c", "\x1b[?62;22c"),
             (b"\x1b[>c", "\x1b[>1;10;0c"),

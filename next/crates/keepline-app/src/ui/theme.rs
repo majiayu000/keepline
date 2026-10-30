@@ -349,8 +349,6 @@ impl Theme {
     pub const BORDER_WIDTH: f32 = 1.;
     /// The focused split's ring, drawn over its 1px border so the grid keeps its size.
     pub const FOCUS_RING: f32 = 2.;
-    /// How much of a split without focus still shows, as Ghostty's default.
-    pub const UNFOCUSED_SPLIT_OPACITY: f32 = 0.7;
     pub const CARET_WIDTH: f32 = 1.5;
     pub const PANE_RADIUS: f32 = 8.;
     pub const CONTROL_RADIUS: f32 = 6.;

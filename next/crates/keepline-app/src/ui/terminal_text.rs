@@ -5,13 +5,30 @@ use std::{
     sync::{OnceLock, RwLock},
 };
 
+/// What a split without focus shows where its cursor is.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub enum UnfocusedCursor {
+    /// Only the focused pane has a cursor, as in tmux or herdr.
+    #[default]
+    Hidden,
+    /// An outline, as Ghostty draws it.
+    Hollow,
+}
+
+/// Fields added later fall back to their defaults in an older file.
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[serde(default)]
 pub struct TerminalText {
     /// Empty selects the bundled default face.
     pub family: String,
     pub size: f32,
     /// Multiplies the face's natural cell height, keeping the glyph centered.
     pub line_height: f32,
+    /// How much a split without focus fades toward its background, 0 for none.
+    pub unfocused_dim: f32,
+    pub unfocused_cursor: UnfocusedCursor,
+    /// The focused cursor blinks unless the program asked for a steady one.
+    pub cursor_blink: bool,
 }
 impl Default for TerminalText {
     fn default() -> Self {
@@ -19,6 +36,10 @@ impl Default for TerminalText {
             family: String::new(),
             size: super::theme::Theme::TERMINAL_FONT_SIZE,
             line_height: 1.,
+            // Off unless chosen: the focus ring and the lone cursor already mark the pane.
+            unfocused_dim: 0.,
+            unfocused_cursor: UnfocusedCursor::Hidden,
+            cursor_blink: true,
         }
     }
 }
@@ -27,6 +48,9 @@ impl TerminalText {
         let value: Self = serde_json::from_str(text).map_err(|e| e.to_string())?;
         if !(8. ..=36.).contains(&value.size) || !(1. ..=2.).contains(&value.line_height) {
             return Err("字号须为 8–36，行距须为 1–2 倍".into());
+        }
+        if !(0. ..=0.5).contains(&value.unfocused_dim) {
+            return Err("非当前分屏变暗须为 0–0.5".into());
         }
         Ok(value)
     }
@@ -89,6 +113,9 @@ mod tests {
             family: "Menlo".into(),
             size: 18.,
             line_height: 1.4,
+            unfocused_dim: 0.3,
+            unfocused_cursor: UnfocusedCursor::Hollow,
+            cursor_blink: false,
         };
         assert_eq!(
             TerminalText::parse(&serde_json::to_string(&value).unwrap()).unwrap(),
@@ -99,5 +126,14 @@ mod tests {
             assert!(TerminalText::parse(&text).is_err());
         }
         assert!(TerminalText::parse(r#"{"family":"","size":13,"line_height":0.8}"#).is_err());
+        assert!(TerminalText::parse(r#"{"unfocused_dim":0.6}"#).is_err());
+    }
+    #[test]
+    fn a_file_saved_before_the_split_options_keeps_its_typography() {
+        let value = TerminalText::parse(r#"{"family":"Menlo","size":15,"line_height":1.2}"#).unwrap();
+        assert_eq!((value.family.as_str(), value.size, value.line_height), ("Menlo", 15., 1.2));
+        assert_eq!(value.unfocused_dim, 0.);
+        assert_eq!(value.unfocused_cursor, UnfocusedCursor::Hidden);
+        assert!(value.cursor_blink);
     }
 }
