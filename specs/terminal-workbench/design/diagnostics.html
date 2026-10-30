@@ -1,0 +1,267 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>本机诊断 · 重做稿</title>
+<style>
+:root {
+  --stage: #1c1c1e; --popover: #262627; --raised: #2a2a2b; --border: #323233; --control: #3e3e3f;
+  --primary: #eceae7; --body: #d6d4d0; --secondary: #aeaca8; --muted: #989692;
+  --track: #343435; --bar: #8f8d89; --hot: #e3a857; --chip: #323233; --button: #323233;
+  --link: #8ab4f8; --accent: #eceae7; --on-accent: #1c1c1e;
+}
+:root[data-theme="light"] {
+  --stage: #e9e8e5; --popover: #fefefd; --raised: #f4f3f1; --border: #e6e5e2; --control: #d2d0cd;
+  --primary: #141312; --body: #2a2927; --secondary: #55534f; --muted: #6b6965;
+  --track: #ecebe8; --bar: #9b9893; --hot: #b06a10; --chip: #efeeeb; --button: #efeeeb;
+  --link: #1a5fd0; --accent: #1c1b19; --on-accent: #fafaf9;
+}
+* { box-sizing: border-box; }
+body {
+  margin: 0; min-height: 100vh; background: var(--stage); color: var(--body);
+  font: 13px/1.4 -apple-system, BlinkMacSystemFont, "PingFang SC", "Helvetica Neue", sans-serif;
+  display: flex; flex-direction: column; align-items: center; gap: 16px; padding: 24px 16px;
+}
+button { font: inherit; cursor: pointer; border: 0; }
+.num { font-variant-numeric: tabular-nums; }
+
+.toolbar { display: flex; gap: 8px; align-items: center; color: var(--secondary); font-size: 12px; flex-wrap: wrap; }
+.toolbar button { height: 26px; padding: 0 10px; border-radius: 6px; background: var(--button); color: var(--body); font-size: 12px; }
+.toolbar button[aria-pressed="true"] { background: var(--accent); color: var(--on-accent); }
+
+.panel {
+  width: 960px; max-width: 100%; height: 760px; display: flex; flex-direction: column; overflow: hidden;
+  border-radius: 12px; background: var(--popover); border: 1px solid var(--control);
+  box-shadow: 0 24px 60px rgba(0,0,0,.35);
+}
+header { display: flex; align-items: center; gap: 16px; padding: 18px 20px 14px; border-bottom: 1px solid var(--border); }
+header .titles { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 6px; }
+h1 { margin: 0; font-size: 18px; font-weight: 600; color: var(--primary); }
+.subtitle { font-size: 12px; color: var(--secondary); margin-left: 10px; }
+.status { display: flex; align-items: center; gap: 10px; font-size: 12px; color: var(--secondary); flex-wrap: wrap; }
+.live { display: inline-flex; align-items: center; gap: 6px; color: var(--primary); }
+.dot { width: 7px; height: 7px; border-radius: 50%; background: var(--hot); }
+.progress { width: 120px; height: 3px; border-radius: 2px; background: var(--track); overflow: hidden; }
+.progress span { display: block; height: 100%; background: var(--secondary); }
+kbd { font-family: inherit; font-size: 11px; padding: 0 5px; border-radius: 4px; border: 1px solid var(--control); color: var(--muted); }
+.close { display: inline-flex; align-items: center; gap: 6px; height: 28px; padding: 0 10px; border-radius: 6px; background: var(--button); color: var(--secondary); font-size: 12px; }
+
+.metrics { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); border-bottom: 1px solid var(--border); }
+.metric { padding: 14px 20px; display: flex; flex-direction: column; gap: 6px; }
+.metric + .metric { border-left: 1px solid var(--border); }
+.metric .label { font-size: 12px; color: var(--secondary); }
+.metric .figure { display: flex; align-items: baseline; gap: 8px; }
+.metric .big { font-size: 26px; font-weight: 600; color: var(--primary); letter-spacing: -.5px; }
+.metric .hint { font-size: 12px; color: var(--muted); }
+.metric .hot { font-size: 12px; color: var(--hot); }
+
+.track { height: 4px; border-radius: 2px; background: var(--track); overflow: hidden; }
+.track span { display: block; height: 100%; border-radius: 2px; background: var(--bar); }
+.track span.hot { background: var(--hot); }
+
+.columns { flex: 1; min-height: 0; display: grid; grid-template-columns: minmax(0, 1.55fr) minmax(0, 1fr); }
+.column { min-height: 0; overflow-y: auto; padding: 14px 20px 8px; }
+.column + .column { border-left: 1px solid var(--border); }
+.column-head { display: flex; align-items: baseline; justify-content: space-between; margin-bottom: 6px; }
+h2 { margin: 0; font-size: 13px; font-weight: 600; color: var(--primary); }
+.column-head span, .footnote { font-size: 11.5px; color: var(--muted); }
+.footnote { margin: 12px 0 0; }
+
+.row { padding: 9px 0; border-bottom: 1px solid var(--border); display: flex; flex-direction: column; gap: 6px; }
+.line { display: flex; align-items: center; gap: 8px; }
+.name { font-weight: 500; color: var(--primary); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; }
+.chip { flex: none; font-size: 11px; padding: 0 6px; height: 18px; line-height: 18px; border-radius: 9px; background: var(--chip); color: var(--secondary); }
+.terms { flex: none; display: inline-flex; align-items: center; gap: 4px; height: 20px; padding: 0 7px; border: 1px solid var(--control); border-radius: 10px; background: transparent; color: var(--link); font-size: 11px; }
+.terms[aria-expanded="true"] .chev { transform: rotate(180deg); }
+.spacer { flex: 1; }
+.rss { flex: none; font-size: 11.5px; color: var(--muted); }
+.value { flex: none; width: 64px; text-align: right; font-weight: 600; color: var(--primary); }
+.value.hot { color: var(--hot); }
+.term-list { display: flex; flex-wrap: wrap; gap: 6px; padding-top: 2px; }
+.term-list button { display: inline-flex; align-items: center; gap: 4px; height: 24px; padding: 0 8px; border-radius: 6px; background: var(--button); color: var(--body); font-size: 11.5px; }
+.term-list button span { color: var(--muted); }
+.more { margin-top: 8px; height: 28px; padding: 0 10px; border-radius: 6px; background: transparent; color: var(--link); font-size: 12px; }
+
+.notes { margin: 0; padding: 10px 20px 10px 36px; border-top: 1px solid var(--border); background: var(--raised); font-size: 12px; color: var(--secondary); display: flex; flex-direction: column; gap: 4px; }
+.notes[hidden] { display: none; }
+footer { display: flex; align-items: center; gap: 10px; padding: 12px 20px; border-top: 1px solid var(--border); flex-wrap: wrap; }
+.ghost { display: inline-flex; align-items: center; gap: 6px; height: 30px; padding: 0 8px; border-radius: 6px; background: transparent; color: var(--secondary); font-size: 12px; }
+.local { font-size: 12px; color: var(--muted); }
+.secondary-btn { height: 30px; padding: 0 12px; border-radius: 6px; background: var(--button); color: var(--body); font-size: 12.5px; }
+.primary-btn { display: inline-flex; align-items: center; gap: 6px; height: 30px; padding: 0 14px; border-radius: 6px; background: var(--accent); color: var(--on-accent); font-size: 12.5px; font-weight: 600; }
+.primary-btn kbd { border: 0; color: inherit; opacity: .6; padding: 0; }
+
+@media (max-width: 720px) {
+  .panel { height: auto; }
+  .metrics, .columns { grid-template-columns: minmax(0, 1fr); }
+  .metric + .metric, .column + .column { border-left: 0; border-top: 1px solid var(--border); }
+  .subtitle { display: block; margin: 4px 0 0; }
+}
+</style>
+</head>
+<body>
+
+<div class="toolbar" role="group" aria-label="预览设置">
+  <span>预览：</span>
+  <button type="button" data-theme-btn="dark" aria-pressed="true">深色</button>
+  <button type="button" data-theme-btn="light" aria-pressed="false">浅色</button>
+  <span>· 数据取自 2026-10-30 一次真实采样，终端标题是占位</span>
+</div>
+
+<div class="panel" role="dialog" aria-labelledby="diag-title">
+  <header>
+    <div class="titles">
+      <div><h1 id="diag-title" style="display:inline">本机诊断</h1><span class="subtitle">看谁在占 CPU / GPU，再把证据交给 Agent</span></div>
+      <div class="status">
+        <span class="live"><span class="dot"></span>采样中</span>
+        <span class="num">10.2 / 15 秒</span>
+        <span class="progress"><span style="width:68%"></span></span>
+        <span>· 开始于 13:04:00</span>
+      </div>
+    </div>
+    <button type="button" class="close" aria-label="关闭诊断">关闭 <kbd>Esc</kbd></button>
+  </header>
+
+  <section class="metrics">
+    <div class="metric">
+      <span class="label">整机 CPU · 采样平均</span>
+      <div class="figure"><span class="big num">100.0%</span><span class="hot">已满载</span></div>
+      <div class="track"><span class="hot" style="width:100%"></span></div>
+    </div>
+    <div class="metric">
+      <span class="label">GPU 设备 · 最新读数</span>
+      <div class="figure"><span class="big num">13.0%</span></div>
+      <div class="track"><span style="width:13%"></span></div>
+    </div>
+    <div class="metric">
+      <span class="label">排行前 15 项合计</span>
+      <div class="figure"><span class="big num">≈ 6.6 核</span></div>
+      <span class="hint">共 1,626 个进程 · 100% = 一个核心</span>
+    </div>
+  </section>
+
+  <div class="columns">
+    <section class="column">
+      <div class="column-head"><h2>CPU 占用</h2><span>平均 · 内存为当前 RSS</span></div>
+      <div id="cpu"></div>
+      <button type="button" class="more" id="more"></button>
+    </section>
+    <section class="column">
+      <div class="column-head"><h2>GPU 活动份额</h2><span>不是设备利用率</span></div>
+      <div id="gpu"></div>
+      <p class="footnote">只统计驱动公开的计数增量；没有读数不代表占用为零。</p>
+    </section>
+  </div>
+
+  <ul class="notes" id="notes" hidden>
+    <li>CPU 只统计前后两次采样都在、身份没变的进程；短命进程可能漏掉。</li>
+    <li>只采到一个区间时，峰值与平均相同，所以暂不显示峰值。</li>
+    <li>排行不能单独说明占用原因；共享的 Agent 后台不按会话猜着分摊。</li>
+  </ul>
+
+  <footer>
+    <button type="button" class="ghost" id="notes-btn" aria-expanded="false" aria-controls="notes">
+      <svg width="13" height="13" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true"><circle cx="8" cy="8" r="6.5"/><path d="M8 7.2v4M8 4.8v.1"/></svg>
+      读数说明 · 3 条
+    </button>
+    <span class="local">只在本机读取，结束后停止采样</span>
+    <span class="spacer"></span>
+    <button type="button" class="secondary-btn">停止采样</button>
+    <button type="button" class="primary-btn" id="copy">
+      <svg width="13" height="13" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" aria-hidden="true"><rect x="5" y="5" width="9" height="9" rx="1.5"/><path d="M11 5V3.5A1.5 1.5 0 0 0 9.5 2h-6A1.5 1.5 0 0 0 2 3.5v6A1.5 1.5 0 0 0 3.5 11H5"/></svg>
+      <span id="copy-label">复制摘要给 Agent</span> <kbd>⌘C</kbd>
+    </button>
+  </footer>
+</div>
+
+<script>
+const CPU = [
+  ['ffmpeg', 191.5, 1819, 1, 0], ['BTLEServer', 99.5, 9, 1, 0], ['sh', 97.2, 181, 85, 0],
+  ['chrome-headless-shell', 72.0, 5022, 5, 0], ['Antigravity', 53.3, 2032, 8, 0],
+  ['claude', 28.7, 13224, 36, 22], ['keeplined', 25.7, 831, 62, 0],
+  ['Google Chrome', 16.9, 51300, 195, 0], ['WindowServer', 15.8, 207, 1, 0],
+  ['ChatGPT', 13.5, 7514, 110, 0], ['mds', 10.7, 52, 1, 0], ['Clash Verge', 9.9, 259, 2, 0],
+  ['mdworker_shared', 9.2, 511, 27, 0], ['node', 9.1, 2541, 52, 7], ['remem', 8.5, 425, 24, 1],
+];
+const GPU = [
+  ['chrome-headless-shell', 29.1], ['Antigravity', 27.7], ['WindowServer', 19.5], ['Ghostty', 13.0],
+  ['ChatGPT', 5.9], ['Keepline', 2.9], ['com.apple.WebKit.GPU', 1.7], ['Google Chrome', 0.2],
+];
+// Placeholder titles: the app shows each terminal's tab title or home-relative cwd.
+const TITLES = ['keepline', 'remem', 'bench', 'knowledge-base', 'keepline · next', 'blog', 'loopscope', 'rnk'];
+const DEFAULT_ROWS = 10;
+const state = { open: 'claude', all: false };
+
+const esc = (s) => String(s).replace(/[&<>"]/g, (ch) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[ch]));
+const mem = (mb) => (mb >= 1024 ? (mb / 1024).toFixed(1) + ' GB' : mb + ' MB');
+const width = (v, max) => Math.max(1.5, (v / max) * 100).toFixed(1);
+const titles = (n) => Array.from({ length: n }, (_, i) =>
+  TITLES[i % TITLES.length] + (i >= TITLES.length ? ' ' + (Math.floor(i / TITLES.length) + 1) : ''));
+
+function renderCpu() {
+  const max = CPU[0][1];
+  const rows = state.all ? CPU : CPU.slice(0, DEFAULT_ROWS);
+  document.getElementById('cpu').innerHTML = rows.map(([name, v, rss, procs, terms]) => {
+    const hot = v >= 90 ? ' hot' : '';
+    const open = state.open === name;
+    const termBtn = terms ? `
+      <button type="button" class="terms" data-toggle="${esc(name)}" aria-expanded="${open}">
+        <svg width="11" height="11" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" aria-hidden="true"><rect x="1.5" y="2.5" width="13" height="11" rx="2"/><path d="M4.5 6.5l2 1.5-2 1.5M8.5 10h3"/></svg>
+        ${terms} 个终端
+        <svg class="chev" width="9" height="9" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M4 6l4 4 4-4"/></svg>
+      </button>` : '';
+    const list = terms && open
+      ? `<div class="term-list">${titles(terms).map((t) => `<button type="button">${esc(t)}<span>→</span></button>`).join('')}</div>`
+      : '';
+    return `<div class="row">
+      <div class="line">
+        <span class="name">${esc(name)}</span>
+        ${procs > 1 ? `<span class="chip num">${procs} 个进程</span>` : ''}
+        ${termBtn}
+        <span class="spacer"></span>
+        <span class="rss num">${mem(rss)}</span>
+        <span class="value num${hot}">${v.toFixed(1)}%</span>
+      </div>
+      <div class="track"><span class="${hot.trim()}" style="width:${width(v, max)}%"></span></div>
+      ${list}
+    </div>`;
+  }).join('');
+  const more = document.getElementById('more');
+  more.hidden = CPU.length <= DEFAULT_ROWS;
+  more.textContent = state.all ? '收起' : `再显示 ${CPU.length - DEFAULT_ROWS} 项`;
+}
+
+function renderGpu() {
+  const max = GPU[0][1];
+  document.getElementById('gpu').innerHTML = GPU.map(([name, v]) => `<div class="row">
+    <div class="line"><span class="name" style="flex:1">${esc(name)}</span><span class="value num" style="width:56px">${v.toFixed(1)}%</span></div>
+    <div class="track"><span style="width:${width(v, max)}%"></span></div>
+  </div>`).join('');
+}
+
+document.getElementById('cpu').addEventListener('click', (e) => {
+  const btn = e.target.closest('[data-toggle]');
+  if (!btn) return;
+  state.open = state.open === btn.dataset.toggle ? null : btn.dataset.toggle;
+  renderCpu();
+});
+document.getElementById('more').addEventListener('click', () => { state.all = !state.all; renderCpu(); });
+document.getElementById('notes-btn').addEventListener('click', (e) => {
+  const notes = document.getElementById('notes');
+  notes.hidden = !notes.hidden;
+  e.currentTarget.setAttribute('aria-expanded', String(!notes.hidden));
+});
+document.getElementById('copy').addEventListener('click', () => {
+  document.getElementById('copy-label').textContent = '已复制';
+});
+document.querySelectorAll('[data-theme-btn]').forEach((btn) => btn.addEventListener('click', () => {
+  document.documentElement.dataset.theme = btn.dataset.themeBtn;
+  document.querySelectorAll('[data-theme-btn]').forEach((b) => b.setAttribute('aria-pressed', String(b === btn)));
+}));
+
+renderCpu();
+renderGpu();
+</script>
+</body>
+</html>
