@@ -31,6 +31,10 @@ pub struct Workspace {
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Settings {
     pub notifications: bool,
+    /// A short sound when a session starts waiting on you or fails, with or without
+    /// the system notification. Off until chosen, so an upgrade stays quiet.
+    #[serde(default)]
+    pub sound: bool,
     pub stale_days: u32,
     pub away_minutes: u32,
     pub default_agent: Agent,
@@ -39,6 +43,7 @@ impl Default for Settings {
     fn default() -> Self {
         Self {
             notifications: false,
+            sound: false,
             stale_days: 3,
             away_minutes: 30,
             default_agent: Agent::default(),
@@ -278,6 +283,10 @@ impl Edit {
                 | Self::ClosePane { .. }
                 | Self::RenameSession { .. }
                 | Self::MoveTab { .. }
+                // Settings replace themselves whole and nothing else writes them; a space
+                // removal re-checks its tasks against the host's state when applied.
+                | Self::Settings(_)
+                | Self::RemoveSpace { .. }
         )
     }
 }

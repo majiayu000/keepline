@@ -1508,6 +1508,67 @@ pub fn start(
         .detach();
         return;
     }
+    // The sidebar's 「提醒」 opens settings on 通知, where 提示音 turns on and is saved.
+    if let (Some(handle), Some(directory)) = (&handle, evidence.clone())
+        && std::env::var_os("KEEPLINE_REMINDER_EVIDENCE").is_some()
+    {
+        let handle = *handle;
+        cx.spawn(async move |cx| {
+            let executor = cx.background_executor().clone();
+            let wait = move |ms: u64| executor.timer(Duration::from_millis(ms));
+            wait(2000).await;
+            std::fs::create_dir_all(&directory).unwrap();
+            let shot = |name: &str, cx: &mut gpui::AsyncApp| {
+                cx.update_window(handle.into(), |_, window, app| {
+                    window.refresh();
+                    window.draw(app).clear(app);
+                    window
+                        .render_to_image()
+                        .unwrap()
+                        .save(directory.join(format!("{name}.png")))
+                        .unwrap();
+                })
+                .unwrap();
+            };
+            // 「提醒」 sits in the sidebar footer, left of 设置.
+            let x = std::env::var("KL_REMINDER_X")
+                .ok()
+                .and_then(|v| v.parse().ok())
+                .unwrap_or(theme::Theme::SIDEBAR - 72.);
+            cx.update_window(handle.into(), |_, window, app| {
+                let at = gpui::point(
+                    px(x),
+                    window.viewport_size().height
+                        - px(theme::Theme::S8 + theme::Theme::ROW / 2.),
+                );
+                native_click(window, app, at, gpui::MouseButton::Left);
+            })
+            .unwrap();
+            wait(400).await;
+            assert_eq!(
+                handle
+                    .update(cx, |v, _, a| v.visual_settings_page_name(a))
+                    .unwrap(),
+                "通知",
+                "「提醒」 opens settings on 通知"
+            );
+            shot("1-reminders", cx);
+            assert!(!handle.update(cx, |v, _, _| v.visual_settings_values()).unwrap().sound);
+            handle
+                .update(cx, |v, _, cx| v.visual_settings_toggle_sound(cx))
+                .unwrap();
+            wait(1000).await;
+            assert!(
+                handle.update(cx, |v, _, _| v.visual_settings_values()).unwrap().sound,
+                "提示音 is saved by the host"
+            );
+            shot("2-sound-on", cx);
+            eprintln!("reminder native PASS: 提醒 opens 通知, 提示音 saved");
+            cx.update(|cx| cx.quit());
+        })
+        .detach();
+        return;
+    }
     // Runs the top bar's 「重启后台」 for real, as confirming its dialog does.
     if let Some(handle) = &handle
         && std::env::var_os("KEEPLINE_RESTART_EVIDENCE").is_some()

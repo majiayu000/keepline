@@ -37,7 +37,13 @@ unsafe extern "C" {
     fn kl_desktop_show();
     fn kl_request_attention();
     fn kl_set_dock_icon(png: *const u8, length: usize);
-    fn kl_desktop_notify(session: *const c_char, title: *const c_char, body: *const c_char);
+    fn kl_desktop_notify(
+        session: *const c_char,
+        title: *const c_char,
+        body: *const c_char,
+        sound: i32,
+    );
+    fn kl_play_sound();
 }
 pub fn set_dock_icon(png: &[u8]) {
     unsafe { kl_set_dock_icon(png.as_ptr(), png.len()) }
@@ -93,7 +99,7 @@ fn entered(
     after: &Workspace,
     watching: Option<&str>,
 ) -> Vec<(String, String, String, String)> {
-    if !after.settings.notifications {
+    if !after.settings.notifications && !after.settings.sound {
         return vec![];
     }
     after
@@ -239,12 +245,18 @@ pub fn start(socket: &Path, initial: Workspace, cx: &mut App) -> UnboundedReceiv
                         .await
                     {
                         Ok(Reply::NotificationClaimed(true)) => {
+                            let settings = &after.settings;
                             cx.update(|_| unsafe {
-                                kl_desktop_notify(
-                                    cstring(&session).as_ptr(),
-                                    cstring(&title).as_ptr(),
-                                    cstring(&body).as_ptr(),
-                                );
+                                if settings.notifications {
+                                    kl_desktop_notify(
+                                        cstring(&session).as_ptr(),
+                                        cstring(&title).as_ptr(),
+                                        cstring(&body).as_ptr(),
+                                        i32::from(settings.sound),
+                                    );
+                                } else {
+                                    kl_play_sound();
+                                }
                             });
                         }
                         Err(e) => {
@@ -295,6 +307,10 @@ mod tests {
             },
         );
         assert!(entered(&before, &w, None).is_empty());
+        // The sound alone is reason enough to report it.
+        w.settings.sound = true;
+        assert_eq!(entered(&before, &w, None).len(), 1);
+        w.settings.sound = false;
         w.settings.notifications = true;
         assert_eq!(entered(&before, &w, None).len(), 1);
         assert!(entered(&w, &w, None).is_empty());
