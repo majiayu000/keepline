@@ -598,6 +598,72 @@ impl SettingsView {
                 choices,
             ));
         }
+        if self.matches(Page::Look, "光标闪烁", "光标 闪烁 blink cursor", cx) {
+            let mut choices = div().flex().gap(px(T::S6));
+            for (blink, name) in [(true, "闪烁"), (false, "常亮")] {
+                choices = choices.child(
+                    self.choice(format!("blink-{blink}"), name.into(), text.cursor_blink == blink)
+                        .on_click(cx.listener(move |this, _, _, cx| {
+                            let mut text = terminal_text::current();
+                            text.cursor_blink = blink;
+                            this.set_text(text, cx);
+                        })),
+                );
+            }
+            page = page.child(self.row(
+                "光标闪烁",
+                "当前分屏的光标；程序要求常亮时照办，打字时保持亮着",
+                choices,
+            ));
+        }
+        if self.matches(Page::Look, "非当前分屏变暗", "分屏 变暗 焦点 dim split", cx) {
+            let mut choices = div().flex().gap(px(T::S6));
+            for (dim, name) in [(0., "不变暗"), (0.15, "轻"), (0.3, "明显")] {
+                choices = choices.child(
+                    self.choice(
+                        format!("dim-{dim}"),
+                        name.into(),
+                        (text.unfocused_dim - dim).abs() < 0.01,
+                    )
+                    .on_click(cx.listener(move |this, _, _, cx| {
+                        let mut text = terminal_text::current();
+                        text.unfocused_dim = dim;
+                        this.set_text(text, cx);
+                    })),
+                );
+            }
+            page = page.child(self.row(
+                "非当前分屏变暗",
+                "一个标签里有多个分屏时，没有焦点的分屏淡一些",
+                choices,
+            ));
+        }
+        if self.matches(Page::Look, "非当前分屏的光标", "分屏 光标 空心 焦点 cursor split", cx) {
+            use terminal_text::UnfocusedCursor;
+            let mut choices = div().flex().gap(px(T::S6));
+            for (shape, id, name) in [
+                (UnfocusedCursor::Hidden, "hidden", "隐藏"),
+                (UnfocusedCursor::Hollow, "hollow", "空心框"),
+            ] {
+                choices = choices.child(
+                    self.choice(
+                        format!("unfocused-cursor-{id}"),
+                        name.into(),
+                        text.unfocused_cursor == shape,
+                    )
+                    .on_click(cx.listener(move |this, _, _, cx| {
+                        let mut text = terminal_text::current();
+                        text.unfocused_cursor = shape;
+                        this.set_text(text, cx);
+                    })),
+                );
+            }
+            page = page.child(self.row(
+                "非当前分屏的光标",
+                "隐藏时整个窗口只有一个光标；空心框能看出各分屏输入到哪",
+                choices,
+            ));
+        }
         page.child(
             div()
                 .mt(px(T::S20))
@@ -645,7 +711,7 @@ impl SettingsView {
                                 &font,
                                 bounds,
                                 metrics,
-                                false,
+                                screen::CursorPaint::Hidden,
                                 &mut screen::LayoutCache::default(),
                                 window,
                                 cx,
@@ -659,7 +725,15 @@ impl SettingsView {
         .child(
             div().mt(px(T::S12)).flex().justify_end().child(
                 secondary("reset-text", "恢复终端文字默认值").on_click(
-                    cx.listener(|this, _, _, cx| this.set_text(TerminalText::default(), cx)),
+                    // Only the type: the cursor and split choices stay as they were.
+                    cx.listener(|this, _, _, cx| {
+                        let fresh = TerminalText::default();
+                        let mut text = terminal_text::current();
+                        text.family = fresh.family;
+                        text.size = fresh.size;
+                        text.line_height = fresh.line_height;
+                        this.set_text(text, cx);
+                    }),
                 ),
             ),
         )
@@ -808,6 +882,14 @@ impl SettingsView {
                     )
                     || self.matches(page, "字号", "文字大小 font size 缩放", cx)
                     || self.matches(page, "行距", "行高 line height 紧凑 舒适 宽松", cx)
+                    || self.matches(page, "光标闪烁", "光标 闪烁 blink cursor", cx)
+                    || self.matches(page, "非当前分屏变暗", "分屏 变暗 焦点 dim split", cx)
+                    || self.matches(
+                        page,
+                        "非当前分屏的光标",
+                        "分屏 光标 空心 焦点 cursor split",
+                        cx,
+                    )
             }
             Page::Keys => {
                 Keymap::actions().any(|a| self.matches(page, &a.label(), a.section().label(), cx))

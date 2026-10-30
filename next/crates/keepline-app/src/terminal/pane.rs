@@ -58,6 +58,10 @@ pub struct Pane {
     cwd_asked: Option<Instant>,
     focus_observers: bool,
     last_focus: bool,
+    /// The focused cursor's blink phase; a keystroke shows it and restarts the count.
+    blink_on: bool,
+    /// Bumped to retire the running blink timer.
+    blink_epoch: u64,
     /// When the user last sent input; its echo is drawn without waiting for the shared tick.
     typed: Option<Instant>,
     search: Option<gpui::Entity<crate::ui::field::Field>>,
@@ -280,6 +284,8 @@ impl Pane {
             cwd_asked: None,
             focus_observers: false,
             last_focus: false,
+            blink_on: true,
+            blink_epoch: 0,
             typed: None,
             search: None,
             matches: vec![],
@@ -377,6 +383,7 @@ impl Pane {
             return;
         }
         self.last_focus = focused;
+        self.restart_blink(cx);
         // Notifications skip the terminal the user is already looking at.
         let watching = cx
             .try_global::<crate::desktop::Watching>()
@@ -952,8 +959,44 @@ impl Pane {
     fn pointer(&mut self, bytes: Vec<u8>, cx: &mut Context<Self>) {
         self.send_input(bytes, true, cx);
     }
+    /// Ghostty's 600 ms phase. The timer runs only while this pane holds focus in the
+    /// active window, so idle panes keep no timer.
+    fn restart_blink(&mut self, cx: &mut Context<Self>) {
+        self.blink_epoch += 1;
+        if !self.blink_on {
+            self.blink_on = true;
+            cx.notify();
+        }
+        if !self.last_focus {
+            return;
+        }
+        let epoch = self.blink_epoch;
+        cx.spawn(async move |this, cx| loop {
+            cx.background_executor()
+                .timer(std::time::Duration::from_millis(600))
+                .await;
+            let running = this.update(cx, |pane, cx| {
+                if pane.blink_epoch != epoch {
+                    return false;
+                }
+                let blinks = crate::ui::terminal_text::current().cursor_blink
+                    && pane.screen.cursor_blinking;
+                let next = !blinks || !pane.blink_on;
+                if next != pane.blink_on {
+                    pane.blink_on = next;
+                    cx.notify();
+                }
+                true
+            });
+            if !matches!(running, Ok(true)) {
+                break;
+            }
+        })
+        .detach();
+    }
     fn send_input(&mut self, bytes: Vec<u8>, lossy: bool, cx: &mut Context<Self>) {
         self.typed = Some(Instant::now());
+        self.restart_blink(cx);
         if let Err(error) = self.connection.send(Request::Input { bytes, lossy }) {
             self.local_error = Some(error);
             cx.notify();
@@ -1338,12 +1381,31 @@ impl Render for Pane {
                     }
                     let Some(metrics) = pane.metrics else { return };
                     let focused = pane.focus.is_focused(window);
+                    let look = crate::ui::terminal_text::current();
+                    let cursor = if !pane.marked.is_empty() {
+                        screen::CursorPaint::Hidden
+                    } else if focused {
+                        if pane.blink_on {
+                            screen::CursorPaint::Shown
+                        } else {
+                            screen::CursorPaint::Hidden
+                        }
+                    } else {
+                        match look.unfocused_cursor {
+                            crate::ui::terminal_text::UnfocusedCursor::Hidden => {
+                                screen::CursorPaint::Hidden
+                            }
+                            crate::ui::terminal_text::UnfocusedCursor::Hollow => {
+                                screen::CursorPaint::Hollow
+                            }
+                        }
+                    };
                     screen::paint_cached(
                         &pane.screen,
                         &font,
                         bounds,
                         metrics,
-                        focused && pane.marked.is_empty(),
+                        cursor,
                         &mut pane.layout_cache,
                         window,
                         cx,
@@ -1403,11 +1465,11 @@ impl Render for Pane {
                     }
                     // Ghostty's unfocused-split-opacity: the program's own cursor (Claude
                     // and Codex draw one as reversed text) recedes with the rest.
-                    if pane.split && !focused {
+                    if pane.split && !focused && look.unfocused_dim > 0. {
                         window.paint_quad(gpui::fill(
                             bounds,
                             crate::ui::theme::hsla(pane.screen.background)
-                                .opacity(1. - T::UNFOCUSED_SPLIT_OPACITY),
+                                .opacity(look.unfocused_dim),
                         ));
                     }
                     if !pane.marked.is_empty()
