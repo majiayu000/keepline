@@ -759,6 +759,14 @@ impl Workbench {
             cx,
         );
     }
+    /// Whether the pane menu shows 「为什么是这个状态」.
+    #[cfg(feature = "visual-test")]
+    pub fn visual_menu_why(&self) -> bool {
+        self.layout
+            .menu
+            .as_ref()
+            .is_some_and(|m| matches!(m.page, MenuPage::Why))
+    }
     #[cfg(feature = "visual-test")]
     pub fn visual_spaces(&self) -> Vec<String> {
         self.workspace.spaces.iter().map(|s| s.id.clone()).collect()
@@ -766,11 +774,7 @@ impl Workbench {
     /// Whether the space menu is open, the rename field's text and focus if any, and
     /// each space's name and directory.
     #[cfg(feature = "visual-test")]
-    pub fn visual_space_state(
-        &self,
-        window: &Window,
-        cx: &gpui::App,
-    ) -> VisualSpaceState {
+    pub fn visual_space_state(&self, window: &Window, cx: &gpui::App) -> VisualSpaceState {
         (
             self.layout.space_menu.is_some(),
             self.layout.renaming_space.as_ref().map(|(_, field, _)| {

@@ -622,11 +622,12 @@ impl Workbench {
                     );
                 }
             }
-            "挂到待办…" | "为这个待办开一个会话" | "移到标签…" => {
+            "挂到待办…" | "为这个待办开一个会话" | "移到标签…" | "为什么是这个状态" => {
                 if let Some(mut menu) = menu {
                     menu.page = match action {
                         "挂到待办…" => MenuPage::Assign,
                         "移到标签…" => MenuPage::Move,
+                        "为什么是这个状态" => MenuPage::Why,
                         _ => MenuPage::Sessions,
                     };
                     self.layout.menu = Some(menu);
@@ -663,6 +664,7 @@ impl Workbench {
                     "粘贴",
                     "搜索滚动内容",
                     "移到标签…",
+                    "为什么是这个状态",
                     "挂到待办…",
                     "取消关联",
                     "中断（Ctrl-C）",
@@ -755,6 +757,34 @@ impl Workbench {
                             this.launch(true, task.clone(), cx);
                         }))
                         .into_any_element(),
+                    );
+                }
+            }
+            MenuPage::Why => {
+                let hints = &self.store.recognition().terminal_hints;
+                for (i, line) in state_reasons(
+                    &self.workspace,
+                    &menu.terminal,
+                    hints.get(&menu.terminal).map(String::as_str),
+                    now(),
+                )
+                .into_iter()
+                .enumerate()
+                {
+                    entries.push(
+                        div()
+                            .id(gpui::SharedString::from(format!("why-{i}")))
+                            .w_full()
+                            .px(px(T::S10))
+                            .py(px(T::S4))
+                            .text_size(px(if i == 0 { T::META } else { T::SMALL }))
+                            .text_color(T::color(if i == 0 {
+                                T::secondary()
+                            } else {
+                                T::primary()
+                            }))
+                            .child(line)
+                            .into_any_element(),
                     );
                 }
             }
@@ -1243,7 +1273,7 @@ impl Workbench {
     }
     /// The cached branch for `dir`; a missing or old entry is read in the background and
     /// redraws the window only if it changed.
-    fn git_branch(&self, dir: &str, cx: &Context<Self>) -> Option<String> {
+    pub(super) fn git_branch(&self, dir: &str, cx: &Context<Self>) -> Option<String> {
         let mut map = BRANCHES.lock().ok()?;
         let old = match map.get(dir) {
             Some((at, branch)) if at.elapsed() < BRANCH_TTL => return branch.clone(),
