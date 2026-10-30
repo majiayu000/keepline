@@ -58,6 +58,9 @@ pub struct Pane {
     mouse: Option<crate::terminal::terminal_input::MouseEncoder>,
     pressed_button: Option<gpui::MouseButton>,
     scroll_lines: f32,
+    scroll_cols: f32,
+    /// The viewport is in history; a chip offers the way back to the live screen.
+    scrolled_back: bool,
     hover_link: Option<(u16, u16)>,
     /// The path word under the pointer, and where it points when that exists on disk.
     hover_word: Option<screen::Link>,
@@ -120,6 +123,21 @@ impl Pane {
                     .ok()
             })
             .unwrap_or_default()
+    }
+    /// The rows the viewport shows now, scrolled back or not.
+    #[cfg(feature = "visual-test")]
+    pub fn visual_text_shown(&self) -> String {
+        let rows: Vec<String> = self
+            .screen
+            .rows
+            .iter()
+            .map(|row| row.iter().map(|r| r.text.as_str()).collect::<String>())
+            .collect();
+        rows.join("\n")
+    }
+    #[cfg(feature = "visual-test")]
+    pub fn visual_bounds(&self) -> Option<Bounds<Pixels>> {
+        self.bounds
     }
     /// The window point at the middle of cell (`row`, `col`).
     #[cfg(feature = "visual-test")]
@@ -322,6 +340,8 @@ impl Pane {
             mouse: None,
             pressed_button: None,
             scroll_lines: 0.,
+            scroll_cols: 0.,
+            scrolled_back: false,
             hover_link: None,
             hover_word: None,
             hover_path: None,
@@ -754,11 +774,39 @@ impl Pane {
         let Some(m) = self.metrics else {
             return;
         };
-        self.scroll_lines += event.delta.pixel_delta(m.height).y / m.height;
-        let lines = self.scroll_lines.trunc().clamp(-100., 100.) as i32;
+        if event.touch_phase == gpui::TouchPhase::Started {
+            (self.scroll_cols, self.scroll_lines) = (0., 0.);
+        }
+        // Trackpad pixels add up across events; a wheel notch moves three rows, like Ghostty.
+        let (dx, dy) = match event.delta {
+            gpui::ScrollDelta::Pixels(p) => (p.x / m.width, p.y / m.height),
+            gpui::ScrollDelta::Lines(l) => (l.x * 3., l.y * 3.),
+        };
+        // Sums of fractions drift just below whole rows (5 x 0.2 = 0.99999994).
+        let whole = |v: f32| (v + v.signum() * 1e-3).trunc().clamp(-100., 100.);
+        self.scroll_lines += dy;
+        self.scroll_cols += dx;
+        let lines = whole(self.scroll_lines) as i32;
+        let cols = whole(self.scroll_cols) as i32;
         self.scroll_lines -= lines as f32;
-        if lines == 0 {
+        self.scroll_cols -= cols as f32;
+        if lines == 0 && cols == 0 {
             return;
+        }
+        // Sideways scrolling only means something to a program that tracks the mouse.
+        for _ in 0..cols.unsigned_abs().min(WHEEL_REPORTS as u32) {
+            self.report_mouse(
+                mouse::Action::Press,
+                Some(if cols > 0 {
+                    mouse::Button::Six
+                } else {
+                    mouse::Button::Seven
+                }),
+                event.position,
+                event.modifiers,
+                window.scale_factor(),
+                cx,
+            );
         }
         // A fling is up to 100 lines; a program that took the mouse gets a few reports,
         // not a queue-filling burst.
@@ -798,12 +846,21 @@ impl Pane {
                 }
             };
             match result {
-                Ok(Some(b)) => self.input(b, cx),
+                // Arrow keys for a full-screen program: keep the selection.
+                Ok(Some(b)) => self.send_input(b, false, cx),
                 Err(e) => self.local_error = Some(e),
                 _ => (),
             }
         }
         cx.stop_propagation();
+        cx.notify();
+    }
+    fn scroll_to(&mut self, to: ScrollViewport, cx: &mut Context<Self>) {
+        if let Ok(mut state) = self.connection.state.lock()
+            && let Some(vt) = &mut state.vt
+        {
+            vt.scroll(to);
+        }
         cx.notify();
     }
     /// The program's working directory as the host last reported it.
@@ -1345,6 +1402,13 @@ impl Pane {
                 }
                 Action::SelectAll => self.select_all(cx),
                 Action::Find => self.open_search(window, cx),
+                Action::ScrollTop => self.scroll_to(ScrollViewport::Top, cx),
+                Action::ScrollBottom => self.scroll_to(ScrollViewport::Bottom, cx),
+                Action::PageUp | Action::PageDown => {
+                    let rows = self.screen.rows.len().max(1) as isize;
+                    let rows = if action == Action::PageUp { -rows } else { rows };
+                    self.scroll_to(ScrollViewport::Delta(rows), cx);
+                }
                 Action::Clear => {
                     self.clear_selection();
                     if let Err(e) = self.connection.send(Request::ClearHistory) {
@@ -1467,6 +1531,7 @@ impl Render for Pane {
                 }
                 self.capture.as_mut().unwrap().update(vt, &mut self.screen)
             })();
+            self.scrolled_back = !vt.terminal().viewport_active().unwrap_or(true);
             match result {
                 Ok(_) => {
                     self.cursor_anchor.observe(self.screen.cursor);
@@ -1498,7 +1563,19 @@ impl Render for Pane {
         } else {
             "只读 · 可明确接管"
         };
+        let writable = state.writable;
         drop(state);
+        // OSC 52: the program copied something. Only the writable client owns the clipboard.
+        if let Some(text) = self
+            .connection
+            .clipboard
+            .lock()
+            .ok()
+            .and_then(|mut c| c.take())
+            && writable
+        {
+            cx.write_to_clipboard(gpui::ClipboardItem::new_string(text));
+        }
         let entity = cx.entity();
         let content = canvas(
             |_, _, _| (),
@@ -1729,7 +1806,39 @@ impl Render for Pane {
                     .on_click(cx.listener(move|this,_,_,cx|{if let Ok(mut s)=this.connection.state.lock()&& let Some(vt)=&mut s.vt{vt.scroll(ScrollViewport::Row(row));}this.search=None;cx.notify();})));}
                 d.child(panel.id("search-results").max_h(px(T::SEARCH_HEIGHT)).overflow_y_scroll())
             })
-            .child(div().flex_1().min_h_0().child(content))
+            .child(
+                div()
+                    .flex_1()
+                    .min_h_0()
+                    .relative()
+                    .child(content)
+                    .when(self.scrolled_back, |d| {
+                        // Floats over the grid so it never resizes the terminal; clear of
+                        // the scrollbar along the right edge.
+                        d.child(
+                            div()
+                                .id("scroll-to-bottom")
+                                .absolute()
+                                .right(px(T::S20))
+                                .bottom(px(T::S8))
+                                .px(px(T::S8))
+                                .py(px(T::S4))
+                                .rounded(px(T::CHIP_RADIUS))
+                                .bg(T::color(T::accent()))
+                                .text_size(px(T::META))
+                                .text_color(T::color(T::on_accent()))
+                                .cursor_pointer()
+                                .child("回到底部 ↓")
+                                .on_mouse_down(gpui::MouseButton::Left, |_, _, cx| {
+                                    cx.stop_propagation()
+                                })
+                                .on_click(cx.listener(|this, _, window, cx| {
+                                    this.scroll_to(ScrollViewport::Bottom, cx);
+                                    window.focus(&this.focus, cx);
+                                })),
+                        )
+                    }),
+            )
             .when_some(self.toast, |d, toast| {
                 d.relative().child(
                     div()

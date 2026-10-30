@@ -221,6 +221,28 @@ impl Vt {
             .map_err(io::Error::other)?;
         Ok(())
     }
+    /// OSC 52 / 5522 clipboard writes from the program, as plain text. The display client
+    /// owns the clipboard, so only it installs this; an empty write clears the clipboard.
+    pub fn on_clipboard_text(
+        &mut self,
+        mut callback: impl FnMut(String) + Send + 'static,
+    ) -> io::Result<()> {
+        self.0
+            .on_clipboard_write(move |_, write| {
+                let text = write
+                    .contents()
+                    .find(|c| c.mime.starts_with("text/plain"))
+                    .map(|c| String::from_utf8_lossy(c.data).into_owned());
+                if let Some(text) =
+                    text.or_else(|| write.contents().next().is_none().then(String::new))
+                {
+                    callback(text);
+                    write.reply(Ok(()), false);
+                }
+            })
+            .map_err(io::Error::other)?;
+        Ok(())
+    }
     /// The active selection as copied text (Ghostty's selectionString: unwrapped, trimmed).
     /// The selection lives on the terminal, so it stays on its text as output scrolls.
     pub fn selection_text(&self) -> io::Result<Option<String>> {
@@ -409,6 +431,18 @@ mod tests {
         assert_eq!(local_path("", "x"), None);
     }
     use super::*;
+    #[test]
+    fn program_clipboard_writes_arrive_as_text() {
+        use std::sync::{Arc, Mutex};
+        let mut vt = Vt::new(80, 24).unwrap();
+        let got = Arc::new(Mutex::new(Vec::new()));
+        let sink = Arc::clone(&got);
+        vt.on_clipboard_text(move |t| sink.lock().unwrap().push(t))
+            .unwrap();
+        vt.feed(b"\x1b]52;c;aGVsbG8g5LiW55WM\x07");
+        vt.feed(b"\x1b]52;c;\x07");
+        assert_eq!(*got.lock().unwrap(), ["hello 世界", ""]);
+    }
     #[test]
     fn selection_text_unwraps_soft_wraps_and_is_none_without_selection() {
         let mut vt = Vt::new(10, 4).unwrap();

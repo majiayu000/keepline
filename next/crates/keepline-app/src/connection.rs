@@ -28,6 +28,9 @@ pub struct Connection {
     pub dirty: Arc<AtomicBool>,
     /// BELs the program rang since this pane connected; counted by the display copy.
     pub bells: Arc<AtomicU64>,
+    /// Latest OSC 52 clipboard write from the program; the UI thread applies it.
+    /// Separate from `state`: the callback runs while the reader holds that lock.
+    pub clipboard: Arc<Mutex<Option<String>>>,
     sender: SyncSender<Request>,
 }
 impl Drop for Connection {
@@ -54,11 +57,13 @@ impl Connection {
         }));
         let dirty = Arc::new(AtomicBool::new(false));
         let bells = Arc::new(AtomicU64::new(0));
+        let clipboard = Arc::new(Mutex::new(None));
         let (sender, receiver) = sync_channel(128);
         let result = Self {
             state: Arc::clone(&state),
             dirty: Arc::clone(&dirty),
             bells: Arc::clone(&bells),
+            clipboard: Arc::clone(&clipboard),
             sender,
         };
         let socket = socket.to_owned();
@@ -125,6 +130,12 @@ impl Connection {
                             let rung = Arc::clone(&bells);
                             vt.on_bell(move || {
                                 rung.fetch_add(1, Ordering::Relaxed);
+                            })?;
+                            let slot = Arc::clone(&clipboard);
+                            vt.on_clipboard_text(move |text| {
+                                if let Ok(mut slot) = slot.lock() {
+                                    *slot = Some(text);
+                                }
                             })?;
                             state.vt = Some(vt);
                             state.scheme = None;
