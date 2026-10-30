@@ -2520,6 +2520,66 @@ fn a_dialog_gone_from_the_screen_is_settled_by_claude_official_status() {
     );
 }
 
+/// A Claude run straight from the shell names no conversation on its command line and
+/// keeps its log closed; `claude agents --json` lists it by pid once it has logged.
+#[test]
+fn a_plain_claude_is_named_by_its_pid_from_the_official_session_list() {
+    use std::os::unix::fs::PermissionsExt;
+    let h = Host::start();
+    h.setup();
+    let logs = h.root.join("logs/claude");
+    fs::create_dir_all(&logs).unwrap();
+    let id = uuid::Uuid::new_v4().to_string();
+    let path = logs.join(format!("{id}.jsonl"));
+    let cli = h.root.join("claude");
+    std::os::unix::fs::symlink("/bin/sh", &cli).unwrap();
+    let seed = h.root.join("seed");
+    let row = serde_json::json!({"type":"user","sessionId":id,"uuid":"u1","cwd":"/project","entrypoint":"cli","userType":"external","timestamp":keepline_core::content::now(),"message":{"content":"Plain claude, no id on its command line"}});
+    fs::write(&seed, format!("{row}\n")).unwrap();
+    // Claude Code lists the live session with its pid, as `claude agents --json` does.
+    let pid_file = h.root.join("claude-pid");
+    let agents = h.root.join("claude-agents");
+    fs::write(
+        &agents,
+        format!(
+            "#!/bin/sh\nprintf '[{{\"pid\":%s,\"kind\":\"interactive\",\"sessionId\":\"{id}\",\"status\":\"idle\"}}]' \"$(cat {})\"\n",
+            shell_quote(&pid_file.to_string_lossy())
+        ),
+    )
+    .unwrap();
+    fs::set_permissions(&agents, fs::Permissions::from_mode(0o755)).unwrap();
+    // Closed log, no id in argv, prompt not on screen: only the pid can name it.
+    let script = format!(
+        "echo $$ > {}; cat {} > {}; read -r line",
+        shell_quote(&pid_file.to_string_lossy()),
+        shell_quote(&seed.to_string_lossy()),
+        shell_quote(&path.to_string_lossy())
+    );
+    h.call(h.launch(
+        "plain",
+        &format!(
+            "exec {} -c {}",
+            shell_quote(&cli.to_string_lossy()),
+            shell_quote(&script)
+        ),
+    ))
+    .unwrap();
+    let until = Instant::now() + Duration::from_secs(30);
+    while h
+        .workspace()
+        .current_agent("plain")
+        .is_none_or(|s| s.cli_session_id != id)
+    {
+        assert!(Instant::now() < until, "plain claude never named");
+        std::thread::sleep(Duration::from_millis(50));
+    }
+    let named = h.workspace();
+    assert_eq!(
+        named.current_agent("plain").and_then(|s| s.binding),
+        Some(Binding::Process)
+    );
+    assert!(!recognition(&h).terminal_hints.contains_key("plain"));
+}
 #[test]
 fn manual_claude_closed_log_stays_external_and_append_does_not_repeat_probes() {
     use std::io::Write;

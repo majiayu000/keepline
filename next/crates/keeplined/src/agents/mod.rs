@@ -146,6 +146,12 @@ pub trait Adapter: Sync {
     fn official(&self, _due: &[&(AgentSession, Option<u32>)]) -> Option<OfficialAnswer> {
         None
     }
+    /// For live processes whose command line names no conversation, the one the CLI's own
+    /// list of live sessions gives each pid, when exactly one. Empty when it keeps no such
+    /// list or could not be asked; the screen and hooks then get their chance.
+    fn sessions_by_pid(&self, _pids: &[u32]) -> Vec<(u32, String)> {
+        vec![]
+    }
     /// Where this CLI reads command hooks from and which events report to the host. A CLI
     /// whose processes or files already name their conversation needs none.
     fn hooks(&self, _home: &Path) -> Option<Hooks> {

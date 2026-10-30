@@ -181,6 +181,29 @@ impl Adapter for Claude {
     fn official(&self, due: &[&(AgentSession, Option<u32>)]) -> Option<OfficialAnswer> {
         Some(("claude agents --json", claude_status(due)))
     }
+    /// A Claude started without an id on its command line keeps no transcript open, so
+    /// neither argv nor lsof names it. `claude agents --json` lists each live session with
+    /// its pid: exact evidence. A failed query names nothing.
+    fn sessions_by_pid(&self, pids: &[u32]) -> Vec<(u32, String)> {
+        let Some(program) = std::env::var("KEEPLINE_CLAUDE_AGENTS").ok().or_else(|| {
+            pids.iter()
+                .find_map(|&p| crate::official::executable(p).ok())
+        }) else {
+            return vec![];
+        };
+        let Ok(entries) = crate::official::query(&program) else {
+            return vec![];
+        };
+        pids.iter()
+            .filter_map(|&pid| {
+                let mut named = entries.iter().filter(|e| e.pid == Some(pid));
+                match (named.next(), named.next()) {
+                    (Some(entry), None) => Some((pid, entry.session_id.clone())),
+                    _ => None,
+                }
+            })
+            .collect()
+    }
 }
 
 fn claude_status(
