@@ -14,6 +14,10 @@ use keepline_core::{
 };
 use std::{ops::Range, path::Path, sync::atomic::Ordering, time::Instant};
 
+#[path = "pane_selection.rs"]
+mod selection;
+use selection::TextSelection;
+
 /// Wheel reports sent to a program for one scroll event.
 const WHEEL_REPORTS: usize = 10;
 pub struct Pane {
@@ -40,7 +44,7 @@ pub struct Pane {
     requested_cell: (u32, u32),
     local_error: Option<String>,
     handoff: Option<Handoff>,
-    text_selection: Option<((u16, u16), (u16, u16))>,
+    text_selection: Option<TextSelection>,
     selecting: bool,
     mouse: Option<crate::terminal::terminal_input::MouseEncoder>,
     pressed_button: Option<gpui::MouseButton>,
@@ -433,9 +437,14 @@ impl Pane {
             let cell = self.cell_at(event.position);
             // Double click selects a word, triple click the row, as in any terminal.
             self.text_selection = match event.click_count {
-                2 => cell.map(|p| self.word_at(p)),
-                3.. => cell.map(|(row, _)| ((row, 0), (row, self.cols().saturating_sub(1)))),
-                _ => cell.map(|p| (p, p)),
+                2 => cell.map(|p| {
+                    let (start, end) = self.word_at(p);
+                    TextSelection::range(start, end)
+                }),
+                3.. => cell.map(|(row, _)| {
+                    TextSelection::range((row, 0), (row, self.cols().saturating_sub(1)))
+                }),
+                _ => cell.map(TextSelection::Anchor),
             };
             self.selecting = event.click_count < 2;
             cx.notify();
@@ -511,10 +520,10 @@ impl Pane {
             return;
         }
         if self.selecting
-            && let (Some((start, _)), Some(end)) =
+            && let (Some(selection), Some(end)) =
                 (self.text_selection, self.cell_at(event.position))
         {
-            self.text_selection = Some((start, end));
+            self.text_selection = Some(selection.drag_to(end));
             cx.notify();
         }
     }
@@ -621,33 +630,10 @@ impl Pane {
             .unwrap_or(false)
     }
     pub fn copy(&self, cx: &mut Context<Self>) {
-        let selected = self
-            .text_selection
-            .filter(|(a, b)| a != b)
-            .map(|(a, b)| (a.min(b), a.max(b)));
-        let mut lines = Vec::new();
-        for (y, row) in self.screen.rows.iter().enumerate() {
-            let mut text = String::new();
-            for run in row {
-                if run.text.is_ascii() {
-                    for (i, c) in run.text.chars().enumerate() {
-                        let pos = (y as u16, run.col + i as u16);
-                        if selected.is_none_or(|(a, b)| a <= pos && pos <= b) {
-                            text.push(c);
-                        }
-                    }
-                } else {
-                    let pos = (y as u16, run.col);
-                    if selected.is_none_or(|(a, b)| a <= pos && pos <= b) {
-                        text.push_str(&run.text);
-                    }
-                }
-            }
-            if selected.is_none_or(|(a, b)| a.0 <= y as u16 && y as u16 <= b.0) {
-                lines.push(text.trim_end().to_owned());
-            }
-        }
-        cx.write_to_clipboard(gpui::ClipboardItem::new_string(lines.join("\n")));
+        cx.write_to_clipboard(gpui::ClipboardItem::new_string(selection::copied_text(
+            &self.screen.rows,
+            self.text_selection,
+        )));
     }
     fn cell_at(&self, point: Point<Pixels>) -> Option<(u16, u16)> {
         let bounds = self.bounds?;
@@ -666,7 +652,7 @@ impl Pane {
     pub fn select_all(&mut self, cx: &mut Context<Self>) {
         let rows = self.screen.rows.len() as u16;
         if rows > 0 {
-            self.text_selection = Some(((0, 0), (rows - 1, self.cols() - 1)));
+            self.text_selection = Some(TextSelection::range((0, 0), (rows - 1, self.cols() - 1)));
             cx.notify();
         }
     }
@@ -1094,30 +1080,28 @@ impl Render for Pane {
                             ));
                         }
                     }
-                    if let Some((a, b)) = pane.text_selection {
-                        let (start, end) = (a.min(b), a.max(b));
-                        if start != end {
-                            for row in start.0..=end.0 {
-                                let left = if row == start.0 { start.1 } else { 0 };
-                                let right = if row == end.0 {
-                                    end.1 + 1
-                                } else {
-                                    pane.requested_size.0
-                                };
-                                window.paint_quad(gpui::fill(
-                                    Bounds::new(
-                                        gpui::point(
-                                            bounds.left() + metrics.width * left as f32,
-                                            bounds.top() + metrics.height * row as f32,
-                                        ),
-                                        gpui::size(
-                                            metrics.width * right.saturating_sub(left) as f32,
-                                            metrics.height,
-                                        ),
+                    if let Some((start, end)) = pane.text_selection.and_then(TextSelection::bounds)
+                    {
+                        for row in start.0..=end.0 {
+                            let left = if row == start.0 { start.1 } else { 0 };
+                            let right = if row == end.0 {
+                                end.1 + 1
+                            } else {
+                                pane.requested_size.0
+                            };
+                            window.paint_quad(gpui::fill(
+                                Bounds::new(
+                                    gpui::point(
+                                        bounds.left() + metrics.width * left as f32,
+                                        bounds.top() + metrics.height * row as f32,
                                     ),
-                                    T::color(T::FOCUS).opacity(0.25),
-                                ));
-                            }
+                                    gpui::size(
+                                        metrics.width * right.saturating_sub(left) as f32,
+                                        metrics.height,
+                                    ),
+                                ),
+                                T::color(T::FOCUS).opacity(0.25),
+                            ));
                         }
                     }
                     if !pane.marked.is_empty()
