@@ -271,6 +271,12 @@ pub fn backlog(master: &File) -> Option<usize> {
         None
     }
 }
+/// The process group the terminal's foreground job runs in, as a job-control shell
+/// sets it; the shell's own group otherwise.
+pub fn foreground_group(master: &File) -> Option<i32> {
+    let group = unsafe { libc::tcgetpgrp(master.as_raw_fd()) };
+    (group > 0).then_some(group)
+}
 pub fn write(master: &mut File, bytes: &[u8]) -> io::Result<()> {
     let mut accepted = 0;
     while accepted < bytes.len() {

@@ -128,17 +128,24 @@ pub(super) fn resync(
     Ok(frames)
 }
 
-/// SIGTERM one terminal's process group; a terminal that already ended is left alone.
+/// Hang up one terminal, as closing a terminal window does: SIGHUP to the shell's
+/// process group and to its foreground job's. An interactive zsh ignores SIGTERM and
+/// runs an Agent in a group of its own, so SIGTERM to the shell's group alone ended
+/// neither. A terminal that already ended is left alone.
 pub(super) fn stop_terminal(terminal: &LiveTerminal) -> io::Result<()> {
     let live = lock(terminal)?;
     if live.exited && live.drained {
         return Ok(());
     }
-    // Only this daemon's process group, never a name-based kill.
-    if unsafe { libc::kill(-(live.pid as i32), libc::SIGTERM) } < 0 {
-        let error = io::Error::last_os_error();
-        if error.raw_os_error() != Some(libc::ESRCH) {
-            return Err(error);
+    let shell = live.pid as i32;
+    let foreground = crate::pty::foreground_group(&live.master).filter(|&g| g != shell);
+    // Only this terminal's own process groups, never a name-based kill.
+    for group in std::iter::once(shell).chain(foreground) {
+        if unsafe { libc::kill(-group, libc::SIGHUP) } < 0 {
+            let error = io::Error::last_os_error();
+            if error.raw_os_error() != Some(libc::ESRCH) {
+                return Err(error);
+            }
         }
     }
     Ok(())
