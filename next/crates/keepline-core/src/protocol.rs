@@ -106,6 +106,18 @@ pub enum Request {
     Stop {
         id: String,
     },
+    /// Scripts and other Agents: the last `rows` rows of a terminal as plain text.
+    ReadScreen {
+        id: String,
+        rows: usize,
+    },
+    /// Scripts and other Agents: text placed in a terminal as a paste, then Enter when
+    /// `submit`. Goes in beside whoever is typing there, as herdr's `pane run` does.
+    SendText {
+        id: String,
+        text: String,
+        submit: bool,
+    },
 }
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -133,6 +145,7 @@ pub enum Reply {
         terminals: Vec<Handed>,
     },
     Ok,
+    Text(String),
     Error(String),
 }
 
