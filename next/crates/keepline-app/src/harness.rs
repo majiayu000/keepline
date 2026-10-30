@@ -1028,7 +1028,12 @@ pub fn start(
                     eprintln!("HereClickOut: card folded after an outside click");
                 }
                 // Starting an Agent and placing the task text takes a few quiet checks.
-                let settle = if name == "TodoStart" { 4 } else { 1 };
+                let settle = match name {
+                    "TodoStart" => 4,
+                    // A login shell with a rich prompt takes longer before the command goes in.
+                    "ActionRun" => 6,
+                    _ => 1,
+                };
                 cx.background_executor()
                     .timer(Duration::from_secs(settle))
                     .await;

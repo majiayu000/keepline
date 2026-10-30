@@ -1,0 +1,8 @@
+{
+  "api": 1,
+  "id": "common-actions",
+  "name": "常用命令",
+  "version": "0.1.0",
+  "description": "右键菜单与 ⌘P 里的几条常用命令，也是 actions.json 的写法示例",
+  "provides": ["actions"]
+}

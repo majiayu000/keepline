@@ -24,7 +24,7 @@ Keepline 的左栏、Agent 支持和窗格装饰，是否改成由插件提供�
 | 类型 | 文件 | 状态 |
 |---|---|---|
 | agent | `agent.json`、`agents/*.json` | 已完成（注册表、声明式 Agent、边界测试） |
-| actions | 右键菜单与 ⌘P 的命令声明 | 下一步 |
+| actions | `actions.json`：右键菜单与 ⌘P 的命令 | 已完成 |
 | rules | 哪些命令算跑过验证 | 计划 |
 | sidebar | 左栏怎么排（经典 / 状态 / 目录为内置预设） | 计划 |
 | hooks / notifier | 生命周期事件交给命令或 webhook，通知出口 | 计划 |
@@ -125,7 +125,7 @@ Row = Session { id, glyph: status, title, trailing: time | timer | text,
 | 1 | 插件包、统一报告、设置页「插件」 | 完成 |
 | 2a | agent api 2：events（回合与证据）、SQLite 来源 | 完成。OpenCode 声明式插件（`next/plugins/opencode`）用本机真实库验收：近 30 天 403 个会话转写 2.4 MB、全部解析成卡片（377 做完了 / 26 在跑），证据 74 条（命令 53、改文件 18、出错 3） |
 | 2b | 合入会话命名分支（命名规则、Claude/Grok/Codex 标题、Cursor 内置适配器）；声明式 `transcripts.title`，SQLite 来源可带 `_title`，标题变了单独写一条 | 完成。OpenCode 实测 403 个会话中 283 个用上自己的标题，其余（占位名 New session）退回首句 |
-| 2 | actions：右键菜单与 ⌘P 共用的动作声明（命令模板可用 `{cwd}` `{session_id}` `{transcript}` `{task}`，按条件显示） | |
+| 2 | actions：右键菜单与 ⌘P 共用的动作声明（`actions.json`：模板 `{cwd}` `{session_id}` `{transcript}` `{task}` `{agent}` 一律加引号；run = split / tab / paste；when = always / agent / shell / task） | 完成。实测：右键菜单「插件」分组、⌘P「动作」分组、缺变量时报错不执行；分屏命令在真实数据副本里执行并写出标记文件，目录正确。示例 `next/plugins/common-actions` |
 | 3 | rules：验证命令规则，修掉 bun / vitest 项目被判成没跑验证 | |
 | 4 | sidebar：声明格式，经典 / 状态 / 目录三个内置预设，左栏顶部切换，⌘B 收起，按左栏减密稿 | |
 | 5 | hooks / notifier：生命周期事件交给命令或 webhook，只读、带超时、失败不影响主流程 | |

@@ -6,6 +6,8 @@ pub(super) struct LayoutState {
     pub(super) panes: HashMap<String, Entity<Pane>>,
     pub(super) menu: Option<PaneMenu>,
     pub(super) split_target: Option<(String, Axis)>,
+    /// A plugin action waiting for its new pane: the command and the directory to run it in.
+    pub(super) pending_command: Option<(String, String)>,
     pub(super) drag: Option<Vec<bool>>,
     pub(super) split_bounds: HashMap<Vec<bool>, gpui::Bounds<gpui::Pixels>>,
     /// A tab being renamed in place after a double-click.
@@ -605,6 +607,36 @@ impl Workbench {
                                 }
                             }))
                             .into_any_element(),
+                    );
+                }
+                // Plugin actions this pane offers, after the built-ins.
+                let offered = self.actions_for(&menu.terminal);
+                if !offered.is_empty() {
+                    entries.push(
+                        label("插件")
+                            .h(px(T::ROW))
+                            .px(px(T::S10))
+                            .flex()
+                            .items_center()
+                            .border_t(px(T::BORDER_WIDTH))
+                            .border_color(T::color(T::border()))
+                            .into_any_element(),
+                    );
+                }
+                for action in offered {
+                    let terminal = menu.terminal.clone();
+                    entries.push(
+                        button(
+                            gpui::SharedString::from(format!("menu-action-{}", action.id)),
+                            action.title.clone(),
+                        )
+                        .w_full()
+                        .justify_start()
+                        .border_0()
+                        .on_click(cx.listener(move |this, _, _, cx| {
+                            this.run_action(&terminal, action, cx);
+                        }))
+                        .into_any_element(),
                     );
                 }
                 // A program that took the mouse gets plain drags; say how to select instead.

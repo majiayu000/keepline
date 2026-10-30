@@ -17,11 +17,14 @@ pub const API: u32 = 1;
 pub enum Kind {
     /// `agent.json`, and any `agents/*.json`: CLIs the registry learns (see `agent`).
     Agent,
+    /// `actions.json`: commands for the pane menu and ⌘P (see `action`).
+    Actions,
 }
 impl Kind {
     pub fn label(self) -> &'static str {
         match self {
             Self::Agent => "Agent",
+            Self::Actions => "动作",
         }
     }
     /// The files of this kind inside a plugin directory, in load order.
@@ -43,6 +46,10 @@ impl Kind {
                 }
                 files
             }
+            Self::Actions => [dir.join("actions.json")]
+                .into_iter()
+                .filter(|p| p.is_file())
+                .collect(),
         }
     }
 }
@@ -157,7 +164,7 @@ fn read(dir: &Path) -> Result<Plugin, String> {
         return Err("name 不能为空".into());
     }
     if m.provides.is_empty() {
-        return Err("provides 至少写一种：agent".into());
+        return Err("provides 至少写一种：agent、actions".into());
     }
     let plugin = Plugin {
         id: m.id,

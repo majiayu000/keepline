@@ -12,6 +12,9 @@ pub(super) enum Hit {
         quote: Option<String>,
     },
     Task(String),
+    /// A plugin action, by its index in `keepline_core::action::all()`, run for the
+    /// focused pane.
+    Action(usize),
 }
 pub(super) struct Section {
     pub title: Option<&'static str>,
@@ -137,8 +140,25 @@ impl Workbench {
             .filter(|t| contains(&format!("{} {}", t.title, t.description), query))
             .map(|t| Hit::Task(t.id.clone()))
             .collect();
-        for (title, hits) in [("会话", sessions), ("你说过的话", quotes), ("待办", tasks)]
-        {
+        let pane = self.nav.focused.clone();
+        let actions: Vec<Hit> = pane
+            .map(|p| self.actions_for(&p))
+            .unwrap_or_default()
+            .into_iter()
+            .filter(|a| contains(&format!("{} {}", a.title, a.command), query))
+            .filter_map(|a| {
+                keepline_core::action::all()
+                    .iter()
+                    .position(|b| std::ptr::eq(a, b))
+                    .map(Hit::Action)
+            })
+            .collect();
+        for (title, hits) in [
+            ("会话", sessions),
+            ("你说过的话", quotes),
+            ("待办", tasks),
+            ("动作", actions),
+        ] {
             if !hits.is_empty() {
                 sections.push(Section {
                     title: Some(title),
@@ -187,6 +207,14 @@ impl Workbench {
                 self.launch(false, None, cx);
             }
             Hit::NextWaiting => self.next_waiting(window, cx),
+            Hit::Action(i) => {
+                if let (Some(action), Some(pane)) = (
+                    keepline_core::action::all().get(i),
+                    self.nav.focused.clone(),
+                ) {
+                    self.run_action(&pane, action, cx);
+                }
+            }
             Hit::Session { id, .. } => {
                 if let Some(s) = self.workspace.agent_sessions.iter().find(|s| s.id == id) {
                     let s = s.clone();
@@ -340,6 +368,21 @@ impl Workbench {
                 "跳到下一个等你的会话".into(),
                 format!("{} 个", self.needs_you().len()),
             ),
+            Hit::Action(i) => {
+                let action = keepline_core::action::all().get(*i);
+                (
+                    glyph("›"),
+                    action.map(|a| a.title.clone()).unwrap_or_default(),
+                    action
+                        .map(|a| match a.run {
+                            keepline_core::action::Run::Split => "在旁边分屏执行",
+                            keepline_core::action::Run::Tab => "在新标签执行",
+                            keepline_core::action::Run::Paste => "放进输入行，你按回车",
+                        })
+                        .unwrap_or_default()
+                        .into(),
+                )
+            }
             Hit::Task(id) => {
                 let task = self.workspace.tasks.iter().find(|t| &t.id == id);
                 (
