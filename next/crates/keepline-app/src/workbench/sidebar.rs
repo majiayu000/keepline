@@ -46,7 +46,15 @@ impl Workbench {
             .flex()
             .flex_col()
             .gap(px(T::S2))
-            .child(label("空间").px(px(T::S8)).mb(px(T::S4)));
+            .font_features(super::diagnostics::tabular())
+            .child(
+                div()
+                    .flex()
+                    .px(px(T::S8))
+                    .mb(px(T::S4))
+                    .child(label("空间").flex_1())
+                    .child(label(self.workspace.spaces.len().to_string())),
+            );
         for space in &self.workspace.spaces {
             let id = space.id.clone();
             // Over the overview the sidebar's spaces are its space filter.
@@ -102,7 +110,15 @@ impl Workbench {
                     // A deleted worktree leaves the space pointing nowhere; new terminals
                     // fall back to home, and a double-click fixes the directory.
                     .when(!Path::new(&space.cwd).is_dir(), |d| {
-                        d.child(label("目录不在了").text_size(px(T::CHIP_SIZE)))
+                        d.child(
+                            label("目录不在了")
+                                .flex_shrink_0()
+                                .px(px(T::S4))
+                                .rounded(px(T::CHIP_RADIUS))
+                                .bg(T::color(T::chip()))
+                                .text_size(px(T::CHIP_SIZE))
+                                .text_color(T::color(T::muted())),
+                        )
                     })
                     .justify_start()
                     .px(px(T::S8))
@@ -111,7 +127,12 @@ impl Workbench {
                     .child(div().flex_1())
                     .when(waiting > 0, |d| d.child(badge(Group::Waiting, waiting)))
                     .when(errors > 0, |d| d.child(badge(Group::Error, errors)))
-                    .child(label(format!("共 {count}")).text_size(px(T::CHIP_SIZE)))
+                    .child(
+                        label(count.to_string())
+                            .flex_shrink_0()
+                            .text_size(px(T::CHIP_SIZE))
+                            .text_color(T::color(T::muted())),
+                    )
                     .on_click(
                         cx.listener(move |this, event: &gpui::ClickEvent, window, cx| {
                             if event.click_count() == 2 {
@@ -134,6 +155,9 @@ impl Workbench {
                         }),
                     ),
             );
+            if active {
+                sidebar = sidebar.children(self.space_distribution(&space.id));
+            }
         }
         sidebar = sidebar.child(
             button("add-space", "＋ 空间")
@@ -537,5 +561,58 @@ impl Workbench {
             }
         }
         sidebar
+    }
+    /// A thin bar under the selected space: its unfinished sessions by group.
+    fn space_distribution(&self, space: &str) -> Option<gpui::Stateful<gpui::Div>> {
+        let groups: Vec<(Group, usize)> = Group::ALL
+            .into_iter()
+            .map(|g| {
+                let n = self
+                    .workspace
+                    .agent_sessions
+                    .iter()
+                    .filter(|s| {
+                        s.outcome.needs_review(now())
+                            && self.session_hidden(s).is_none()
+                            && session_space(&self.workspace, s) == Some(space)
+                            && session_group(&self.workspace, s) == g
+                    })
+                    .count();
+                (g, n)
+            })
+            .filter(|(_, n)| *n > 0)
+            .collect();
+        if groups.is_empty() {
+            return None;
+        }
+        let mut lines = vec!["这个空间里会话的状态分布".to_owned()];
+        lines.extend(groups.iter().map(|(g, n)| format!("{} {n}", g.label())));
+        let last = groups.len() - 1;
+        let mut bar = div()
+            .id(gpui::SharedString::from(format!("space-dist-{space}")))
+            .flex()
+            .gap(px(T::BORDER_WIDTH))
+            .h(px(T::MINI_BAR))
+            .mx(px(T::S8))
+            .mt(px(T::S2))
+            .mb(px(T::S6))
+            .tooltip(super::diagnostics::tip(lines));
+        for (i, (g, n)) in groups.into_iter().enumerate() {
+            let mut segment = div()
+                .h_full()
+                .flex_grow(n as f32)
+                .flex_basis(gpui::relative(0.))
+                .min_w(px(T::S2))
+                .bg(g.colors().0)
+                .when(g == Group::Stale, |d| d.opacity(0.5));
+            if i == 0 {
+                segment = segment.rounded_l(px(T::S2));
+            }
+            if i == last {
+                segment = segment.rounded_r(px(T::S2));
+            }
+            bar = bar.child(segment);
+        }
+        Some(bar)
     }
 }

@@ -129,12 +129,14 @@ impl Render for Tip {
         card
     }
 }
-fn tip(lines: Vec<String>) -> impl Fn(&mut Window, &mut gpui::App) -> gpui::AnyView + 'static {
+pub(super) fn tip(
+    lines: Vec<String>,
+) -> impl Fn(&mut Window, &mut gpui::App) -> gpui::AnyView + 'static {
     let lines: Vec<gpui::SharedString> = lines.into_iter().map(Into::into).collect();
     move |_, cx| cx.new(|_| Tip(lines.clone())).into()
 }
 /// Digits of equal width, so columns of numbers line up.
-fn tabular() -> gpui::FontFeatures {
+pub(super) fn tabular() -> gpui::FontFeatures {
     gpui::FontFeatures(std::sync::Arc::new(vec![("tnum".into(), 1)]))
 }
 fn cores(percent: f64) -> String {

@@ -427,7 +427,7 @@ impl Workbench {
         self.overview.here = None;
         self.overview.here_more = None;
         self.search.hide();
-        self.nav.overview = matches!(name, "Overview" | "Closed");
+        self.nav.overview = matches!(name, "Overview" | "OverviewEnd" | "Closed");
         self.overview.closed_only = name == "Closed";
         self.nav.zoomed = None;
         self.nav.space = "s0".into();
@@ -581,6 +581,8 @@ impl Workbench {
                     s.terminal = Some("closed-visual".into());
                 }
             }
+            // The overview's foot: the folded groups below the cards.
+            "OverviewEnd" => self.overview.scroll.scroll_to_bottom(),
             "Overview" | "Menubar" => (),
             _ => panic!("unknown visual page"),
         }
