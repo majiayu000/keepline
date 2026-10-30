@@ -1,0 +1,294 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>额度放在左栏底部</title>
+<style>
+  :root {
+    --app: #141415; --panel: #1c1c1e; --raised: #262628; --border: #2e2d2c; --chip: #2a2a2b;
+    --body: #e4e2df; --secondary: #a9a7a3; --muted: #7c7a77;
+    --ok: #4cc38a; --warn: #e8823a; --bad: #e5534b; --track: #333230; --accent: #2f81f7;
+    --popover: #2a2a2c;
+  }
+  :root[data-theme="light"] {
+    --app: #ececea; --panel: #fafaf9; --raised: #f0efed; --border: #e2e0dd; --chip: #efeeec;
+    --body: #1f1e1c; --secondary: #5d5a56; --muted: #8a8681;
+    --ok: #1a7f37; --warn: #b85c12; --bad: #cf222e; --track: #e4e2df; --accent: #0969da;
+    --popover: #ffffff;
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--app); color: var(--body);
+    font: 13px/1.45 -apple-system, BlinkMacSystemFont, "PingFang SC", sans-serif; }
+  main { max-width: 1180px; margin: 0 auto; padding: 28px 16px 64px; }
+  h1 { font-size: 20px; margin: 0 0 6px; }
+  h2 { font-size: 15px; margin: 0 0 4px; }
+  p { margin: 0 0 8px; color: var(--secondary); }
+  .top { display: flex; justify-content: space-between; gap: 16px; align-items: start; margin-bottom: 22px; }
+  .seg { display: flex; border: 1px solid var(--border); border-radius: 7px; overflow: hidden; flex-shrink: 0; }
+  .seg button { background: var(--panel); color: var(--secondary); border: 0; padding: 5px 12px; font: inherit; cursor: pointer; }
+  .seg button.on { background: var(--raised); color: var(--body); }
+  .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(330px, 1fr)); gap: 22px; }
+  .dir { display: flex; flex-direction: column; gap: 10px; }
+  .tag { display: inline-block; font-size: 11px; padding: 1px 7px; border-radius: 9px; background: var(--chip); color: var(--secondary); margin-left: 6px; vertical-align: 1px; }
+  .tag.rec { background: color-mix(in srgb, var(--accent) 22%, transparent); color: var(--body); }
+  ul.notes { margin: 0; padding-left: 18px; color: var(--secondary); }
+  ul.notes li { margin: 2px 0; }
+
+  /* mock sidebar, 240px like T::SIDEBAR */
+  .stage { display: flex; gap: 14px; align-items: flex-end; }
+  .sidebar { width: 240px; height: 470px; background: var(--panel); border: 1px solid var(--border);
+    border-radius: 8px; display: flex; flex-direction: column; overflow: visible; position: relative; flex-shrink: 0; }
+  .sb-head { padding: 8px; display: flex; gap: 4px; }
+  .preset { flex: 1; background: var(--raised); border-radius: 6px; padding: 4px 8px; color: var(--secondary); }
+  .sb-list { flex: 1; padding: 4px 8px; display: flex; flex-direction: column; gap: 2px; overflow: hidden; }
+  .sec { font-size: 11px; color: var(--muted); padding: 8px 4px 2px; }
+  .row { display: flex; align-items: center; gap: 7px; padding: 5px 6px; border-radius: 6px; color: var(--body); }
+  .row.sel { background: var(--raised); }
+  .dot { width: 7px; height: 7px; border-radius: 50%; flex-shrink: 0; }
+  .row .t { flex: 1; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+  .row .k { font-size: 11px; color: var(--muted); }
+  .qbadge { font-size: 10.5px; padding: 0 5px; border-radius: 7px; color: var(--warn);
+    background: color-mix(in srgb, var(--warn) 16%, transparent); }
+  .foot { border-top: 1px solid var(--border); padding: 8px; display: flex; gap: 4px; }
+  .btn { background: none; border: 0; color: var(--secondary); font: inherit; padding: 3px 6px; border-radius: 5px; cursor: pointer; }
+  .btn:hover { background: var(--raised); color: var(--body); }
+  .btn.grow { flex: 1; text-align: left; }
+
+  /* A: two thin rows above the footer */
+  .qa { border-top: 1px solid var(--border); padding: 7px 10px 6px; display: flex; flex-direction: column; gap: 5px; cursor: default; }
+  .qa-row { display: grid; grid-template-columns: 46px 1fr 1fr; gap: 8px; align-items: center; font-size: 11px; }
+  .qa-name { color: var(--secondary); }
+  .meter { display: flex; flex-direction: column; gap: 2px; }
+  .meter .lbl { display: flex; justify-content: space-between; color: var(--muted); font-variant-numeric: tabular-nums; }
+  .meter .lbl b { font-weight: 500; color: var(--body); }
+  .bar { height: 3px; background: var(--track); border-radius: 2px; overflow: hidden; }
+  .bar i { display: block; height: 100%; background: var(--ok); border-radius: 2px; }
+  .warn .bar i { background: var(--warn); } .warn .lbl b { color: var(--warn); }
+  .bad .bar i { background: var(--bad); } .bad .lbl b { color: var(--bad); }
+  .stale { opacity: .55; }
+  .stale .bar i { background: var(--muted); }
+  .none { color: var(--muted); font-size: 11px; grid-column: 2 / 4; }
+
+  /* B: one capsule in the footer row, details pop upward */
+  .cap { display: flex; align-items: center; gap: 6px; padding: 3px 7px; border-radius: 6px; cursor: pointer;
+    background: none; border: 0; color: var(--secondary); font: 11px/1.4 inherit; font-variant-numeric: tabular-nums; }
+  .cap:hover, .cap.open { background: var(--raised); color: var(--body); }
+  .ring { width: 13px; height: 13px; border-radius: 50%; flex-shrink: 0;
+    background: conic-gradient(var(--c) calc(var(--p) * 1%), var(--track) 0);
+    -webkit-mask: radial-gradient(circle, transparent 3.5px, #000 4px); mask: radial-gradient(circle, transparent 3.5px, #000 4px); }
+  .pop { position: absolute; left: 8px; right: 8px; bottom: 44px; background: var(--popover);
+    border: 1px solid var(--border); border-radius: 9px; padding: 10px 12px; box-shadow: 0 8px 28px rgba(0,0,0,.28);
+    display: none; z-index: 2; }
+  .pop.show { display: block; }
+  .pop h3 { font-size: 12px; margin: 0 0 6px; display: flex; justify-content: space-between; }
+  .pop h3 span { color: var(--muted); font-weight: 400; }
+  .pop .acct + .acct { margin-top: 10px; padding-top: 10px; border-top: 1px solid var(--border); }
+  .pline { display: grid; grid-template-columns: 34px 1fr 38px; gap: 8px; align-items: center; font-size: 11.5px; margin: 4px 0; font-variant-numeric: tabular-nums; }
+  .pline .bar { height: 5px; }
+  .pline .r { color: var(--muted); font-size: 11px; grid-column: 2 / 4; margin-top: -3px; }
+  .src { font-size: 11px; color: var(--muted); margin-top: 6px; }
+
+  /* C: collapsible section like 待办 */
+  .qc { border-top: 1px solid var(--border); }
+  .qc-head { display: flex; align-items: center; gap: 6px; padding: 7px 10px; cursor: pointer; font-size: 11.5px; color: var(--secondary); }
+  .qc-head:hover { color: var(--body); }
+  .qc-head .chev { width: 10px; color: var(--muted); }
+  .qc-head .sum { margin-left: auto; font-variant-numeric: tabular-nums; }
+  .qc-body { padding: 0 10px 8px; display: none; }
+  .qc.open .qc-body { display: block; }
+
+  /* folded rail */
+  .rail { width: 44px; height: 470px; background: var(--panel); border: 1px solid var(--border); border-radius: 8px;
+    display: flex; flex-direction: column; align-items: center; gap: 10px; padding: 8px 0; flex-shrink: 0; }
+  .rail .grow { flex: 1; }
+  .rail .ring { width: 16px; height: 16px; -webkit-mask: radial-gradient(circle, transparent 4.5px, #000 5px); mask: radial-gradient(circle, transparent 4.5px, #000 5px); }
+  .cap-l { font-size: 10px; color: var(--muted); margin-top: -6px; }
+
+  .states { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+  .state { background: var(--panel); border: 1px solid var(--border); border-radius: 8px; overflow: hidden; }
+  .state .lab { font-size: 11px; color: var(--muted); padding: 6px 10px 0; }
+  .state .qa { border-top: 0; }
+  .rules { margin-top: 30px; background: var(--panel); border: 1px solid var(--border); border-radius: 10px; padding: 16px 18px; }
+  .rules table { border-collapse: collapse; width: 100%; font-size: 12.5px; }
+  .rules td, .rules th { text-align: left; padding: 6px 8px; border-top: 1px solid var(--border); vertical-align: top; }
+  .rules th { color: var(--muted); font-weight: 500; border-top: 0; }
+  @media (max-width: 600px) { .stage { flex-direction: column; align-items: stretch; } .sidebar { width: 100%; } .rail { display: none; } }
+</style>
+</head>
+<body>
+<main>
+  <div class="top">
+    <div>
+      <h1>额度放在左栏底部：三个方向</h1>
+      <p>均在 240px 左栏、现有「本机诊断 · 提醒 · 设置」一行附近。Codex 数字取自本机日志实测（5 小时 19%、本周 89%）；Claude 数字为示例。</p>
+    </div>
+    <div class="seg" id="theme">
+      <button data-t="dark" class="on">深色</button><button data-t="light">浅色</button>
+    </div>
+  </div>
+
+  <div class="grid">
+    <!-- A -->
+    <section class="dir">
+      <h2>A · 常驻两行细条<span class="tag rec">推荐</span></h2>
+      <p>底栏上方多两行，一家一行，5 小时和本周并排。不用点就能看到全部 4 个数字。</p>
+      <div class="stage">
+        <div class="sidebar">
+          <div class="sb-head"><div class="preset">keepline ▾</div><button class="btn">‹</button></div>
+          <div class="sb-list" data-list></div>
+          <div class="qa" title="Claude · 读数 3 分钟前 · 5 小时窗口 2:40 后重置 · 本周 周二 09:00 重置">
+            <div class="qa-row"><span class="qa-name">Claude</span>
+              <div class="meter"><div class="lbl"><span>5h</span><b>23%</b></div><div class="bar"><i style="width:23%"></i></div></div>
+              <div class="meter warn"><div class="lbl"><span>周</span><b>81%</b></div><div class="bar"><i style="width:81%"></i></div></div>
+            </div>
+            <div class="qa-row"><span class="qa-name">Codex</span>
+              <div class="meter"><div class="lbl"><span>5h</span><b>19%</b></div><div class="bar"><i style="width:19%"></i></div></div>
+              <div class="meter warn"><div class="lbl"><span>周</span><b>89%</b></div><div class="bar"><i style="width:89%"></i></div></div>
+            </div>
+          </div>
+          <div class="foot"><button class="btn grow">本机诊断</button><button class="btn">提醒</button><button class="btn">设置</button></div>
+        </div>
+      </div>
+      <ul class="notes">
+        <li>多占约 48px 高度，会话列表少一行半</li>
+        <li>悬停一行出详情：重置时间、读数时间、来源会话</li>
+        <li>点击打开设置里的「额度」页（以后放历史和预计用完）</li>
+      </ul>
+    </section>
+
+    <!-- B -->
+    <section class="dir">
+      <h2>B · 底栏里一个小圆环</h2>
+      <p>不加高度。只显示每家最紧的那个窗口，点开向上弹出详情。</p>
+      <div class="stage">
+        <div class="sidebar">
+          <div class="sb-head"><div class="preset">keepline ▾</div><button class="btn">‹</button></div>
+          <div class="sb-list" data-list></div>
+          <div class="pop show" id="popB">
+            <div class="acct">
+              <h3>Claude <span>Max · 3 分钟前</span></h3>
+              <div class="pline"><span>5 小时</span><div class="bar"><i style="width:23%;background:var(--ok)"></i></div><span>23%</span><span class="r">2 小时 40 分后重置</span></div>
+              <div class="pline"><span>本周</span><div class="bar"><i style="width:81%;background:var(--warn)"></i></div><span style="color:var(--warn)">81%</span><span class="r">周二 09:00 重置</span></div>
+            </div>
+            <div class="acct">
+              <h3>Codex <span>Plus · 刚刚</span></h3>
+              <div class="pline"><span>5 小时</span><div class="bar"><i style="width:19%;background:var(--ok)"></i></div><span>19%</span><span class="r">今天 22:37 重置</span></div>
+              <div class="pline"><span>本周</span><div class="bar"><i style="width:89%;background:var(--warn)"></i></div><span style="color:var(--warn)">89%</span><span class="r">周五 07:15 重置</span></div>
+            </div>
+            <div class="src">读数来自各 Agent 自己写的本地记录，不联网。</div>
+          </div>
+          <div class="foot">
+            <button class="cap open" id="capB">
+              <span class="ring" style="--p:81;--c:var(--warn)"></span>81%
+              <span class="ring" style="--p:89;--c:var(--warn)"></span>89%
+            </button>
+            <span style="flex:1"></span><button class="btn">提醒</button><button class="btn">设置</button>
+          </div>
+        </div>
+        <div class="rail">
+          <button class="btn">›</button>
+          <span class="grow"></span>
+          <span class="ring" style="--p:81;--c:var(--warn)"></span><span class="cap-l">C</span>
+          <span class="ring" style="--p:89;--c:var(--warn)"></span><span class="cap-l">X</span>
+          <button class="btn">⚙</button>
+        </div>
+      </div>
+      <ul class="notes">
+        <li>「本机诊断」挪进设置或弹层，腾出位置</li>
+        <li>收起左栏后，圆环留在窄栏底部（右侧小图）</li>
+        <li>看具体重置时间要多点一下</li>
+      </ul>
+    </section>
+
+    <!-- C -->
+    <section class="dir">
+      <h2>C · 可折叠的「额度」分区</h2>
+      <p>和「待办」一样的分区标题。收起时一行摘要，展开是完整详情，状态会记住。</p>
+      <div class="stage">
+        <div class="sidebar">
+          <div class="sb-head"><div class="preset">keepline ▾</div><button class="btn">‹</button></div>
+          <div class="sb-list" data-list></div>
+          <div class="qc open" id="qcC">
+            <div class="qc-head"><span class="chev">▾</span>额度<span class="sum" style="color:var(--warn)">最紧 89%</span></div>
+            <div class="qc-body">
+              <div class="pline"><span>C 5h</span><div class="bar"><i style="width:23%;background:var(--ok)"></i></div><span>23%</span></div>
+              <div class="pline"><span>C 周</span><div class="bar"><i style="width:81%;background:var(--warn)"></i></div><span style="color:var(--warn)">81%</span><span class="r">周二 09:00 重置</span></div>
+              <div class="pline"><span>X 5h</span><div class="bar"><i style="width:19%;background:var(--ok)"></i></div><span>19%</span></div>
+              <div class="pline"><span>X 周</span><div class="bar"><i style="width:89%;background:var(--warn)"></i></div><span style="color:var(--warn)">89%</span><span class="r">周五 07:15 重置</span></div>
+            </div>
+          </div>
+          <div class="foot"><button class="btn grow">本机诊断</button><button class="btn">提醒</button><button class="btn">设置</button></div>
+        </div>
+      </div>
+      <ul class="notes">
+        <li>收起只占一行（约 30px），展开约 100px</li>
+        <li>只显示快满的窗口的重置时间，其余省掉</li>
+        <li>点标题收起 / 展开</li>
+      </ul>
+    </section>
+  </div>
+
+  <section class="rules">
+    <h2>四种状态（以 A 为例，B、C 同样规则）</h2>
+    <p>读数可能过时（那家 Agent 一直没用），所以过时和没有来源必须看得出来，不能显示成 0%。</p>
+    <div class="states">
+      <div class="state"><div class="lab">正常</div>
+        <div class="qa"><div class="qa-row"><span class="qa-name">Codex</span>
+          <div class="meter"><div class="lbl"><span>5h</span><b>19%</b></div><div class="bar"><i style="width:19%"></i></div></div>
+          <div class="meter"><div class="lbl"><span>周</span><b>42%</b></div><div class="bar"><i style="width:42%"></i></div></div></div></div></div>
+      <div class="state"><div class="lab">快满（≥80% 橙，≥95% 红）</div>
+        <div class="qa"><div class="qa-row"><span class="qa-name">Codex</span>
+          <div class="meter bad"><div class="lbl"><span>5h</span><b>97%</b></div><div class="bar"><i style="width:97%"></i></div></div>
+          <div class="meter warn"><div class="lbl"><span>周</span><b>89%</b></div><div class="bar"><i style="width:89%"></i></div></div></div></div></div>
+      <div class="state"><div class="lab">读数过时（超过 30 分钟，或窗口已过重置时间）</div>
+        <div class="qa"><div class="qa-row stale"><span class="qa-name">Claude</span>
+          <div class="meter"><div class="lbl"><span>5h</span><b>已重置</b></div><div class="bar"><i style="width:0"></i></div></div>
+          <div class="meter"><div class="lbl"><span>周</span><b>81%</b></div><div class="bar"><i style="width:81%"></i></div></div></div>
+          <div style="font-size:10.5px;color:var(--muted);padding-left:54px">2 小时前 · 等这家下次用时更新</div></div></div>
+      <div class="state"><div class="lab">没有来源（未订阅 / 未接入）</div>
+        <div class="qa"><div class="qa-row"><span class="qa-name">Cursor</span><span class="none">没有可读的额度记录</span></div></div></div>
+    </div>
+    <table style="margin-top:16px">
+      <tr><th>规则</th><th>做法</th></tr>
+      <tr><td>显示哪几家</td><td>只显示最近 7 天用过的 Agent；一家都没有就整块不显示</td></tr>
+      <tr><td>多账号</td><td>~/.claude 和 ~/.claude-work 各算一个账号，名字后加账号短名，比如 Claude·work</td></tr>
+      <tr><td>会话上的标记</td><td>某家任一窗口 ≥90% 时，用这家额度的运行中会话在左栏行尾加 <span class="qbadge">额度 89%</span>（下方列表里能看到）</td></tr>
+      <tr><td>提醒</td><td>第 3 步再做：每个窗口过 90% 只提醒一次，走现有通知设置</td></tr>
+    </table>
+  </section>
+</main>
+<script>
+  const sessions = [
+    ["sec", "运行中"],
+    ["#4cc38a", "修 managed_session 超时", "Codex", true],
+    ["#4cc38a", "额度接进 keeplined", "Claude", false, "额度 81%"],
+    ["sec", "等你"],
+    ["#e8823a", "设置页分组卡片验收", "Claude"],
+    ["sec", "已完成"],
+    ["#8a9bb0", "搜索返回 SearchMatch", "Codex"],
+    ["#8a9bb0", "通知提示音开关", "Claude"],
+    ["#8a9bb0", "窗格标题嵌入边框", "Codex"],
+  ];
+  const html = sessions.map(s => s[0] === "sec"
+    ? `<div class="sec">${s[1]}</div>`
+    : `<div class="row${s[3] ? " sel" : ""}"><span class="dot" style="background:${s[0]}"></span><span class="t">${s[1]}</span>${s[4] ? `<span class="qbadge">${s[4]}</span>` : `<span class="k">${s[2]}</span>`}</div>`
+  ).join("");
+  document.querySelectorAll("[data-list]").forEach(el => el.innerHTML = html);
+
+  document.getElementById("capB").onclick = e => {
+    e.currentTarget.classList.toggle("open");
+    document.getElementById("popB").classList.toggle("show");
+  };
+  document.querySelector("#qcC .qc-head").onclick = () => {
+    const c = document.getElementById("qcC");
+    c.classList.toggle("open");
+    c.querySelector(".chev").textContent = c.classList.contains("open") ? "▾" : "▸";
+  };
+  document.querySelectorAll("#theme button").forEach(b => b.onclick = () => {
+    document.documentElement.dataset.theme = b.dataset.t;
+    document.querySelectorAll("#theme button").forEach(x => x.classList.toggle("on", x === b));
+  });
+</script>
+</body>
+</html>
