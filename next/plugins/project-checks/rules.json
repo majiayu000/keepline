@@ -1,0 +1,9 @@
+{
+  "api": 1,
+  "verify": [
+    ["just", "test"],
+    ["just", "check"],
+    ["./scripts/ci.sh"],
+    ["task", "test"]
+  ]
+}
