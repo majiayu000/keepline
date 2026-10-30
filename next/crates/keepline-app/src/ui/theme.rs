@@ -304,6 +304,8 @@ impl Theme {
         }
     }
     /// The menu bar panel is a separate light macOS popover, kept apart from the window.
+    /// Search matches drawn over terminal text, in either scheme: the hue of `matched`.
+    pub const SEARCH_HIT: u32 = 0xe8a33a;
     pub const MENU_ACCENT: u32 = 0x4b4fd6;
     pub const MENU_TEXT: u32 = 0x17181c;
     pub const MENU_SECONDARY: u32 = 0x5d6270;

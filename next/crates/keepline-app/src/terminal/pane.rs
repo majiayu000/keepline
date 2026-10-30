@@ -22,6 +22,9 @@ use keepline_core::{
 };
 use std::{ops::Range, path::Path, sync::atomic::Ordering, time::Instant};
 
+/// The strip along a pane's right edge that grabs the scrollbar, and the thumb's width.
+const SCROLLBAR_HIT: f32 = 10.;
+const SCROLLBAR_WIDTH: f32 = 6.;
 /// Wheel reports sent to a program for one scroll event.
 const WHEEL_REPORTS: usize = 10;
 /// How often output may re-ask the host for the program's directory.
@@ -61,6 +64,11 @@ pub struct Pane {
     scroll_cols: f32,
     /// The viewport is in history; a chip offers the way back to the live screen.
     scrolled_back: bool,
+    /// The viewport's first row, the scrollable rows and the shown rows, read each frame;
+    /// rows count from the top of history, as search matches do.
+    viewport: (usize, usize, usize),
+    /// The scrollbar thumb is being dragged.
+    dragging_scrollbar: bool,
     hover_link: Option<(u16, u16)>,
     /// The path word under the pointer, and where it points when that exists on disk.
     hover_word: Option<screen::Link>,
@@ -79,7 +87,12 @@ pub struct Pane {
     /// When the user last sent input; its echo is drawn without waiting for the shared tick.
     typed: Option<Instant>,
     search: Option<gpui::Entity<crate::ui::field::Field>>,
-    matches: Vec<(usize, String)>,
+    matches: Vec<keepline_core::terminal::SearchMatch>,
+    /// The query `matches` came from; Enter on an edited query searches again.
+    searched: Option<String>,
+    _search_events: Option<gpui::Subscription>,
+    /// The match the view moved to; ↑/↓ and Enter step through them.
+    current_match: Option<usize>,
     /// A multi-line paste waiting for the user's go-ahead (no bracketed paste).
     paste_confirm: Option<String>,
     bells_seen: u64,
@@ -138,6 +151,32 @@ impl Pane {
     #[cfg(feature = "visual-test")]
     pub fn visual_bounds(&self) -> Option<Bounds<Pixels>> {
         self.bounds
+    }
+    #[cfg(feature = "visual-test")]
+    pub fn visual_viewport(&self) -> (usize, usize, usize) {
+        self.viewport
+    }
+    /// Opens search with `query` and runs it, as typing it and pressing Enter does.
+    #[cfg(feature = "visual-test")]
+    pub fn visual_search(&mut self, query: &str, window: &mut Window, cx: &mut Context<Self>) {
+        self.open_search(window, cx);
+        let field = self.search.clone().unwrap();
+        field.update(cx, |f, cx| {
+            f.text = query.into();
+            cx.notify();
+        });
+        self.find_text(cx);
+    }
+    #[cfg(feature = "visual-test")]
+    pub fn visual_matches(&self) -> (Option<usize>, Vec<usize>) {
+        (
+            self.current_match,
+            self.matches.iter().map(|m| m.row).collect(),
+        )
+    }
+    #[cfg(feature = "visual-test")]
+    pub fn visual_step_match(&mut self, step: isize, cx: &mut Context<Self>) {
+        self.step_match(step, cx);
     }
     /// The window point at the middle of cell (`row`, `col`).
     #[cfg(feature = "visual-test")]
@@ -342,6 +381,8 @@ impl Pane {
             scroll_lines: 0.,
             scroll_cols: 0.,
             scrolled_back: false,
+            viewport: (0, 0, 0),
+            dragging_scrollbar: false,
             hover_link: None,
             hover_word: None,
             hover_path: None,
@@ -354,6 +395,9 @@ impl Pane {
             typed: None,
             search: None,
             matches: vec![],
+            searched: None,
+            _search_events: None,
+            current_match: None,
             paste_confirm: None,
             bells_seen: 0,
             bell: false,
@@ -593,6 +637,13 @@ impl Pane {
             _ => mouse::Button::Right,
         };
         self.pressed_button = Some(event.button);
+        // The thumb is Keepline's own, even over a program that took the mouse.
+        if event.button == gpui::MouseButton::Left && self.on_scrollbar(event.position) {
+            self.dragging_scrollbar = true;
+            self.scroll_to_pointer(event.position, cx);
+            cx.stop_propagation();
+            return;
+        }
         if self.report_mouse(
             mouse::Action::Press,
             Some(button),
@@ -631,6 +682,9 @@ impl Pane {
             return;
         }
         self.pressed_button = None;
+        if std::mem::take(&mut self.dragging_scrollbar) {
+            return;
+        }
         let button = match event.button {
             gpui::MouseButton::Left => mouse::Button::Left,
             gpui::MouseButton::Middle => mouse::Button::Middle,
@@ -702,6 +756,12 @@ impl Pane {
     }
     /// Window-wide, so a selection drag keeps extending after it leaves the pane.
     fn drag_selection(&mut self, event: &gpui::MouseMoveEvent, cx: &mut Context<Self>) {
+        if self.dragging_scrollbar {
+            if event.pressed_button == Some(gpui::MouseButton::Left) {
+                self.scroll_to_pointer(event.position, cx);
+            }
+            return;
+        }
         if event.pressed_button != Some(gpui::MouseButton::Left)
             || !self.selecting.as_ref().is_some_and(|s| s.active)
         {
@@ -853,6 +913,34 @@ impl Pane {
             }
         }
         cx.stop_propagation();
+        cx.notify();
+    }
+    /// The thumb shows while the view is up in history, along the pane's right edge.
+    fn scrollbar_shown(&self) -> bool {
+        let (top, total, len) = self.viewport;
+        total > len && top + len < total
+    }
+    fn on_scrollbar(&self, point: Point<Pixels>) -> bool {
+        self.scrollbar_shown()
+            && self
+                .bounds
+                .is_some_and(|b| b.contains(&point) && point.x >= b.right() - px(SCROLLBAR_HIT))
+    }
+    /// Centers the view on the history row under the pointer's height in the pane.
+    fn scroll_to_pointer(&mut self, point: Point<Pixels>, cx: &mut Context<Self>) {
+        let (Some(b), (_, total, len)) = (self.bounds, self.viewport) else {
+            return;
+        };
+        let at = ((point.y - b.top()) / b.size.height).clamp(0., 1.);
+        let row = (at * total as f32) as usize;
+        if let Ok(mut s) = self.connection.state.lock()
+            && let Some(vt) = &mut s.vt
+        {
+            vt.scroll(ScrollViewport::Row(row.saturating_sub(len / 2)));
+            if let Ok(v) = vt.viewport() {
+                self.viewport = v;
+            }
+        }
         cx.notify();
     }
     fn scroll_to(&mut self, to: ScrollViewport, cx: &mut Context<Self>) {
@@ -1082,13 +1170,70 @@ impl Pane {
     pub fn open_search(&mut self, window: &mut Window, cx: &mut Context<Self>) {
         let field = cx.new(|cx| crate::ui::field::Field::new("搜索滚动内容", "", cx));
         window.focus(&field.focus_handle(cx), cx);
+        // Enter finds, then steps to the next match; the panel's buttons do the same.
+        let events = cx.subscribe(&field, |this, _, event, cx| {
+            if let crate::ui::field::FieldEvent::Submit = event {
+                if this.matches.is_empty() || this.searched != this.search_query(cx) {
+                    this.find_text(cx);
+                } else {
+                    this.step_match(1, cx);
+                }
+            }
+        });
         self.search = Some(field);
+        self._search_events = Some(events);
         self.matches.clear();
+        self.current_match = None;
+        self.searched = None;
+        cx.notify();
+    }
+    fn close_search(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        self.search = None;
+        self._search_events = None;
+        self.matches.clear();
+        self.current_match = None;
+        self.searched = None;
+        window.focus(&self.focus, cx);
+        cx.notify();
+    }
+    fn search_query(&self, cx: &App) -> Option<String> {
+        self.search
+            .as_ref()
+            .map(|f| f.read(cx).text.trim().to_owned())
+    }
+    /// Moves to the next (1) or previous (-1) match, wrapping around, and centers it.
+    fn step_match(&mut self, step: isize, cx: &mut Context<Self>) {
+        if self.matches.is_empty() {
+            return;
+        }
+        let n = self.matches.len() as isize;
+        let next = match self.current_match {
+            Some(i) => (i as isize + step).rem_euclid(n),
+            // The first step from nothing lands on the nearest match above the bottom.
+            None if step < 0 => n - 1,
+            None => 0,
+        } as usize;
+        self.show_match(next, cx);
+    }
+    fn show_match(&mut self, i: usize, cx: &mut Context<Self>) {
+        let Some(m) = self.matches.get(i) else { return };
+        let row = m.row.saturating_sub(self.viewport.2 / 2);
+        if let Ok(mut s) = self.connection.state.lock()
+            && let Some(vt) = &mut s.vt
+        {
+            vt.scroll(ScrollViewport::Row(row));
+            if let Ok(v) = vt.viewport() {
+                self.viewport = v;
+            }
+        }
+        self.current_match = Some(i);
         cx.notify();
     }
     fn find_text(&mut self, cx: &mut Context<Self>) {
-        let Some(field) = &self.search else { return };
-        let query = field.read(cx).text.trim().to_owned();
+        let Some(query) = self.search_query(cx) else {
+            return;
+        };
+        self.searched = Some(query.clone());
         let state = self.connection.state.clone();
         let job = cx.background_spawn(async move {
             state
@@ -1104,7 +1249,12 @@ impl Pane {
             let result = job.await;
             let _ = this.update(cx, |this, cx| {
                 match result {
-                    Ok(lines) => this.matches = lines,
+                    Ok(found) => {
+                        this.matches = found;
+                        this.current_match = None;
+                        // Newest first, as the bottom of the screen is closest.
+                        this.step_match(-1, cx);
+                    }
                     Err(e) => this.local_error = Some(e),
                 }
                 cx.notify();
@@ -1112,8 +1262,6 @@ impl Pane {
         })
         .detach();
     }
-    /// Anything typed or pasted brings the view back to the input line, as Ghostty
-    /// and herdr do; reading scrollback must not hide what is being written.
     /// Like Ghostty, typing also drops the selection.
     fn input(&mut self, bytes: Vec<u8>, cx: &mut Context<Self>) {
         self.clear_selection();
@@ -1532,6 +1680,7 @@ impl Render for Pane {
                 self.capture.as_mut().unwrap().update(vt, &mut self.screen)
             })();
             self.scrolled_back = !vt.terminal().viewport_active().unwrap_or(true);
+            self.viewport = vt.viewport().unwrap_or(self.viewport);
             match result {
                 Ok(_) => {
                     self.cursor_anchor.observe(self.screen.cursor);
@@ -1662,6 +1811,50 @@ impl Render for Pane {
                             ),
                             crate::ui::theme::hsla(T::terminal_fg()),
                         ));
+                    }
+                    let (top, total, len) = pane.viewport;
+                    // Matches in view, the current one stronger; drawn over the text, so
+                    // translucent, the current one also outlined.
+                    // The amber T::matched() washes into the popover; over terminal text
+                    // the pure hue is needed to stay visible in both schemes.
+                    let matched = crate::ui::theme::hsla(T::SEARCH_HIT);
+                    for (i, m) in pane.matches.iter().enumerate() {
+                        if m.row < top || m.row >= top + len {
+                            continue;
+                        }
+                        let current = pane.current_match == Some(i);
+                        let at = Bounds::new(
+                            gpui::point(
+                                bounds.left() + metrics.width * m.col as f32,
+                                bounds.top() + metrics.height * (m.row - top) as f32,
+                            ),
+                            gpui::size(metrics.width * m.cols as f32, metrics.height),
+                        );
+                        window.paint_quad(gpui::fill(
+                            at,
+                            matched.opacity(if current { 0.55 } else { 0.25 }),
+                        ));
+                        if current {
+                            window.paint_quad(gpui::outline(at, matched, gpui::BorderStyle::Solid));
+                        }
+                    }
+                    if pane.scrollbar_shown() {
+                        let h = bounds.size.height;
+                        let thumb = (h * (len as f32 / total as f32)).max(px(T::S20));
+                        let y = (h - thumb) * (top as f32 / (total - len).max(1) as f32);
+                        window.paint_quad(
+                            gpui::fill(
+                                Bounds::new(
+                                    gpui::point(
+                                        bounds.right() - px(SCROLLBAR_WIDTH + T::S2),
+                                        bounds.top() + y,
+                                    ),
+                                    gpui::size(px(SCROLLBAR_WIDTH), thumb),
+                                ),
+                                T::color(T::secondary()).opacity(0.6),
+                            )
+                            .corner_radii(px(SCROLLBAR_WIDTH / 2.)),
+                        );
                     }
                     for (row, cols) in pane.screen.selection.iter().enumerate() {
                         let Some((left, right)) = *cols else { continue };
@@ -1796,14 +1989,53 @@ impl Render for Pane {
                         ),
                 )
             })
-            .when_some(self.search.clone(),|d,field| {
-                let mut panel=div().p(px(T::S8)).flex().flex_col().gap(px(T::S4)).child(field)
-                    .child(div().flex().gap(px(T::S8))
-                        .child(div().id("find").cursor_pointer().child("查找").on_click(cx.listener(|this,_,_,cx|this.find_text(cx))))
-                        .child(div().id("close-find").cursor_pointer().child("关闭搜索").on_click(cx.listener(|this,_,window,cx|{this.search=None;this.matches.clear();window.focus(&this.focus,cx);cx.notify();}))))
-                    .child(format!("{} 条匹配（显示前 20 条）",self.matches.len()));
-                for (row,line) in self.matches.iter().take(20){let row=*row;panel=panel.child(div().id(gpui::SharedString::from(format!("match-{row}"))).truncate().cursor_pointer().child(line.clone())
-                    .on_click(cx.listener(move|this,_,_,cx|{if let Ok(mut s)=this.connection.state.lock()&& let Some(vt)=&mut s.vt{vt.scroll(ScrollViewport::Row(row));}this.search=None;cx.notify();})));}
+            .when_some(self.search.clone(), |d, field| {
+                let count = self.matches.len();
+                let at = self.current_match.map_or(0, |i| i + 1);
+                let link = |id: &'static str, text: &'static str| {
+                    div().id(id).cursor_pointer().text_color(T::color(T::link())).child(text)
+                };
+                let mut panel = div()
+                    .p(px(T::S8))
+                    .flex()
+                    .flex_col()
+                    .gap(px(T::S4))
+                    .child(field)
+                    .child(
+                        div()
+                            .flex()
+                            .items_center()
+                            .gap(px(T::S12))
+                            .child(link("find", "查找").on_click(cx.listener(|this, _, _, cx| this.find_text(cx))))
+                            .when(count > 0, |d| {
+                                d.child(link("prev-match", "↑ 上一个").on_click(cx.listener(|this, _, _, cx| this.step_match(-1, cx))))
+                                    .child(link("next-match", "↓ 下一个").on_click(cx.listener(|this, _, _, cx| this.step_match(1, cx))))
+                            })
+                            .child(div().text_color(T::color(T::secondary())).child(if self.searched.is_none() {
+                                "按回车查找".to_owned()
+                            } else if count == 0 {
+                                "没有匹配".to_owned()
+                            } else {
+                                format!("第 {at} / {count} 处")
+                            }))
+                            .child(div().flex_1())
+                            .child(link("close-find", "关闭搜索").on_click(cx.listener(|this, _, window, cx| this.close_search(window, cx)))),
+                    );
+                // The newest 20 matches, newest first; clicking one goes to it.
+                for (i, m) in self.matches.iter().enumerate().rev().take(20) {
+                    let current = self.current_match == Some(i);
+                    panel = panel.child(
+                        div()
+                            .id(gpui::SharedString::from(format!("match-{i}")))
+                            .flex_shrink_0()
+                            .truncate()
+                            .cursor_pointer()
+                            .when(current, |d| d.text_color(T::color(T::primary())).font_weight(gpui::FontWeight::SEMIBOLD))
+                            .when(!current, |d| d.text_color(T::color(T::secondary())))
+                            .child(m.line.clone())
+                            .on_click(cx.listener(move |this, _, _, cx| this.show_match(i, cx))),
+                    );
+                }
                 d.child(panel.id("search-results").max_h(px(T::SEARCH_HEIGHT)).overflow_y_scroll())
             })
             .child(

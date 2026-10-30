@@ -133,6 +133,16 @@ impl CellPixels {
     }
 }
 
+/// One occurrence found by `Vt::search`.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct SearchMatch {
+    /// Row counted from the top of history, as `Vt::viewport` counts.
+    pub row: usize,
+    pub col: u16,
+    /// Width in cells; a wide character counts two.
+    pub cols: u16,
+    pub line: String,
+}
 /// A terminal may move between threads, but every access must be exclusive.
 /// Ghostty callbacks capture only Send values; no platform/UI handles live here.
 pub struct Vt(Terminal<'static, 'static>);
@@ -148,18 +158,48 @@ impl Vt {
         self.0.scroll_viewport(scroll);
     }
     /// Explicit user search only: reads the bounded VT history, never the transcript directory.
-    pub fn search(&self, query: &str) -> io::Result<Vec<(usize, String)>> {
+    /// Every occurrence, as its history row, first column and width in cells, plus the row.
+    pub fn search(&self, query: &str) -> io::Result<Vec<SearchMatch>> {
         if query.is_empty() {
             return Ok(vec![]);
         }
         let mut matches = Vec::new();
         for y in 0..self.0.total_rows().map_err(io::Error::other)? {
-            let line = self.row(y)?;
-            if line.contains(query) {
-                matches.push((y, line.trim_end().to_owned()));
+            let cells = self.row_cells(y)?;
+            let line: String = cells.iter().map(|(_, s)| s.as_str()).collect();
+            if !line.contains(query) {
+                continue;
+            }
+            // Byte offset of each cell's text, to turn a byte match back into columns.
+            let mut starts = Vec::with_capacity(cells.len());
+            let mut at = 0;
+            for (_, s) in &cells {
+                starts.push(at);
+                at += s.len();
+            }
+            for (byte, _) in line.match_indices(query) {
+                let first = starts.partition_point(|&b| b <= byte).saturating_sub(1);
+                let last = starts
+                    .partition_point(|&b| b < byte + query.len())
+                    .saturating_sub(1);
+                let col = cells[first].0;
+                // Spacer cells are left out, so a wide character ends where the next begins.
+                let end = cells.get(last + 1).map_or(cells[last].0 + 1, |c| c.0);
+                matches.push(SearchMatch {
+                    row: y,
+                    col,
+                    cols: end.saturating_sub(col),
+                    line: line.trim_end().to_owned(),
+                });
             }
         }
         Ok(matches)
+    }
+    /// Where the viewport sits in the scrollable rows: (first shown row, total rows, shown
+    /// rows). Rows count from the top of history, as `search` does.
+    pub fn viewport(&self) -> io::Result<(usize, usize, usize)> {
+        let s = self.0.scrollbar().map_err(io::Error::other)?;
+        Ok((s.offset as usize, s.total as usize, s.len as usize))
     }
     /// The last `rows` rows of history plus screen, one line per row.
     pub fn tail_text(&self, rows: usize) -> io::Result<String> {
@@ -172,12 +212,16 @@ impl Vt {
         Ok(text)
     }
     fn row(&self, y: usize) -> io::Result<String> {
+        Ok(self.row_cells(y)?.into_iter().map(|(_, s)| s).collect())
+    }
+    /// Each cell's column and text; a wide character's spacer cell is left out.
+    fn row_cells(&self, y: usize) -> io::Result<Vec<(u16, String)>> {
         use libghostty_vt::{
             screen::CellWide,
             terminal::{Point, PointCoordinate},
         };
         let cols = self.0.cols().map_err(io::Error::other)?;
-        let mut line = String::new();
+        let mut line = Vec::with_capacity(cols as usize);
         for x in 0..cols {
             let cell = self
                 .0
@@ -200,11 +244,14 @@ impl Vt {
                 }
                 Err(e) => return Err(io::Error::other(e)),
             };
-            if len == 0 {
-                line.push(' ');
-            } else {
-                line.extend(chars[..len].iter());
-            }
+            line.push((
+                x,
+                if len == 0 {
+                    " ".to_owned()
+                } else {
+                    chars[..len].iter().collect()
+                },
+            ));
         }
         Ok(line)
     }
@@ -525,9 +572,28 @@ mod tests {
         vt.feed("old 实现反馈 e\u{301}\r\nsecond\r\nthird\r\nfourth\r\nfifth".as_bytes());
         let found = vt.search("实现反馈").unwrap();
         assert_eq!(found.len(), 1);
-        assert!(found[0].1.contains("实现反馈 e\u{301}"));
+        assert!(found[0].line.contains("实现反馈 e\u{301}"));
+        // Four wide characters after "old ": columns 4..12, so a highlight covers them all.
+        assert_eq!((found[0].row, found[0].col, found[0].cols), (0, 4, 8));
+        assert_eq!(
+            vt.search("d")
+                .unwrap()
+                .iter()
+                .map(|m| (m.row, m.col))
+                .collect::<Vec<_>>(),
+            [(0, 2), (1, 5), (2, 4)]
+        );
         assert!(vt.search("absent").unwrap().is_empty());
         assert!(vt.search("").unwrap().is_empty());
+    }
+    #[test]
+    fn viewport_counts_rows_from_the_top_of_history() {
+        let mut vt = Vt::new(20, 3).unwrap();
+        vt.feed(b"line-1\r\nline-2\r\nline-3\r\nline-4\r\nline-5");
+        assert_eq!(vt.viewport().unwrap(), (2, 5, 3), "two rows scrolled into history");
+        vt.scroll(libghostty_vt::terminal::ScrollViewport::Top);
+        assert_eq!(vt.viewport().unwrap().0, 0);
+        assert_eq!(vt.search("line-1").unwrap()[0].row, 0);
     }
     fn replies_to(vt: &mut Vt, query: &[u8]) -> String {
         let got = std::sync::Arc::new(std::sync::Mutex::new(Vec::new()));
