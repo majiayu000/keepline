@@ -1,0 +1,67 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Keepline 界面改版</title>
+<style>
+:root { --bg: #fafaf9; --card: #fff; --border: #e3e2df; --primary: #141312; --body: #2a2927; --muted: #6b6965; --done: #2b8f60; --todo: #9a7316; --none: #8a8986; }
+@media (prefers-color-scheme: dark) { :root { --bg: #1c1c1e; --card: #232325; --border: #333335; --primary: #ecebe9; --body: #d6d4d0; --muted: #989692; --done: #4cc38a; --todo: #d9a441; --none: #8b8a88; } }
+* { box-sizing: border-box; }
+body { margin: 0; background: var(--bg); color: var(--body); font: 14px/1.5 -apple-system, BlinkMacSystemFont, "PingFang SC", sans-serif; padding: 32px 16px 48px; }
+main { max-width: 920px; margin: 0 auto; display: flex; flex-direction: column; gap: 28px; }
+h1 { margin: 0; font-size: 24px; color: var(--primary); }
+.sub { color: var(--muted); margin-top: 4px; }
+h2 { margin: 0 0 10px; font-size: 15px; color: var(--primary); display: flex; align-items: center; gap: 8px; }
+.dot { width: 8px; height: 8px; border-radius: 50%; display: inline-block; }
+.list { display: flex; flex-direction: column; border: 1px solid var(--border); border-radius: 10px; background: var(--card); overflow: hidden; }
+.item { display: grid; grid-template-columns: 180px 1fr auto; gap: 14px; align-items: baseline; padding: 12px 16px; }
+.item + .item { border-top: 1px solid var(--border); }
+.item b { color: var(--primary); font-weight: 600; }
+.item .what { color: var(--body); }
+.item .where { color: var(--muted); font-size: 12px; white-space: nowrap; }
+a { color: inherit; text-decoration: underline; text-underline-offset: 3px; }
+a.open { font-size: 13px; white-space: nowrap; }
+@media (max-width: 640px) { .item { grid-template-columns: 1fr; gap: 4px; } }
+</style>
+</head>
+<body>
+<main>
+  <div>
+    <h1>Keepline 界面改版</h1>
+    <div class="sub">2026-10-30 · 设计稿都是本地 HTML，点开就能看；「已进 App」的已合进 main</div>
+  </div>
+
+  <section>
+    <h2><span class="dot" style="background:var(--done)"></span>已改完并进 App</h2>
+    <div class="list">
+      <div class="item"><b>本机诊断</b><span class="what">全部核心去向、带刻度的排行、CPU × 内存散点</span><a class="open" href="diagnostics.html">设计稿 →</a></div>
+      <div class="item"><b>主界面</b><span class="what">顶栏状态计数、标签状态点、窗格标题栏与底栏、本轮计时</span><a class="open" href="main-refresh.html">设计稿 →</a></div>
+      <div class="item"><b>鸟瞰 · 左栏 · 逐个清理</b><span class="what">状态分布条、卡片降噪、空间分布条、分段清理进度和快捷键</span><a class="open" href="workbench-refresh.html">设计稿 →</a></div>
+      <div class="item"><b>菜单栏额度与费用</b><span class="what">Tauri 菜单栏：时间刻度、到期预测、token 构成</span><a class="open" href="menubar-usage.html">设计稿 →</a></div>
+    </div>
+  </section>
+
+  <section>
+    <h2><span class="dot" style="background:var(--todo)"></span>还没改，可以接着做</h2>
+    <div class="list">
+      <div class="item"><b>⌘P 命令面板</b><span class="what">搜索会话、待办和原话；列表加时间和状态，右侧预览更紧凑</span><span class="where">workbench/palette.rs</span></div>
+      <div class="item"><b>新建待办 · 待办详情</b><span class="what">表单和验收标准；验收进度和证据列表</span><span class="where">forms.rs · tasks.rs</span></div>
+      <div class="item"><b>设置页</b><span class="what">外观、快捷键表、Agent 设置；962 行，项目最多</span><span class="where">workbench/settings.rs</span></div>
+      <div class="item"><b>「你在这里」卡片</b><span class="what">已有新样式的稿；本轮时间线要后台先下发工具分段数据</span><span class="where">需改后台</span></div>
+      <div class="item"><b>App 内菜单栏弹窗</b><span class="what">原生菜单栏面板（不是 Tauri 那个）</span><span class="where">desktop.rs</span></div>
+      <div class="item"><b>Web 仪表盘</b><span class="what">只有浅色，大量写死的颜色要先换成变量</span><span class="where">src/web/client</span></div>
+    </div>
+  </section>
+
+  <section>
+    <h2><span class="dot" style="background:var(--none)"></span>旧稿（改版前的原始设计）</h2>
+    <div class="list">
+      <div class="item"><b>Main · Overview · Cleanup</b><span class="what">第一版工作台画布稿</span><a class="open" href="Main.dc.html">Main →</a></div>
+      <div class="item"><b>TodoNew · TodoDetail · TodoStart</b><span class="what">待办相关的原始稿</span><a class="open" href="TodoNew.dc.html">TodoNew →</a></div>
+      <div class="item"><b>规范</b><span class="what">颜色、字体、尺寸 token 和组件规则</span><a class="open" href="README.md">README →</a></div>
+    </div>
+  </section>
+</main>
+</body>
+</html>
