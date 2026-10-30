@@ -20,6 +20,8 @@ pub struct State {
     /// A running terminal's stream broke after its screen arrived: the host drops a
     /// viewer that falls behind a burst of output. Attaching again restores it.
     pub dropped: bool,
+    /// The scheme `vt` was last repainted with; a fresh screen from the host has none.
+    pub scheme: Option<keepline_core::terminal::Scheme>,
 }
 pub struct Connection {
     pub state: Arc<Mutex<State>>,
@@ -48,6 +50,7 @@ impl Connection {
             socket: None,
             ended: false,
             dropped: false,
+            scheme: None,
         }));
         let dirty = Arc::new(AtomicBool::new(false));
         let bells = Arc::new(AtomicU64::new(0));
@@ -124,6 +127,7 @@ impl Connection {
                                 rung.fetch_add(1, Ordering::Relaxed);
                             })?;
                             state.vt = Some(vt);
+                            state.scheme = None;
                             snapshot.clear();
                             snapshot.shrink_to_fit();
                         }

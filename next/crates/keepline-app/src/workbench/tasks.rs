@@ -31,9 +31,9 @@ impl Workbench {
             // Centered in the work area rather than pinned left beside an empty half.
             .my(px(T::S20))
             .mx_auto()
-            .bg(T::color(T::HEADER))
+            .bg(T::color(T::header()))
             .border(px(T::BORDER_WIDTH))
-            .border_color(T::color(T::CONTROL))
+            .border_color(T::color(T::control()))
             .rounded(px(T::POPOVER_RADIUS))
             .overflow_y_scroll()
             .p(px(T::S20))
@@ -84,7 +84,7 @@ impl Workbench {
                 div()
                     .p(px(T::S8))
                     .border_b(px(T::BORDER_WIDTH))
-                    .border_color(T::color(T::BORDER))
+                    .border_color(T::color(T::border()))
                     .child(format!(
                         "{}  {}",
                         if criterion.evidence.is_some() {
@@ -139,7 +139,7 @@ impl Workbench {
                             }
                         ))),
                 )
-                .child(label("打开 →").text_color(T::color(T::LINK)))
+                .child(label("打开 →").text_color(T::color(T::link())))
                 .on_click(cx.listener(move |this, _, window, cx| {
                     this.nav.task_detail = None;
                     this.enter_card(&session, window, cx);
@@ -184,8 +184,8 @@ impl Workbench {
             }))
             .child(
                 button("task-another", "再开一个会话")
-                    .bg(T::color(T::ACCENT))
-                    .text_color(T::color(T::ON_ACCENT))
+                    .bg(T::color(T::accent()))
+                    .text_color(T::color(T::on_accent()))
                     .on_click({
                         let tid = tid.clone();
                         cx.listener(move |this, _, _, cx| this.ask_agent(tid.clone(), true, cx))
@@ -236,11 +236,11 @@ impl Workbench {
             .items_center()
             .gap(px(T::S6))
             .p(px(T::S6))
-            .bg(T::color(T::TODO))
+            .bg(T::color(T::todo()))
             .child(label(message).text_color(if stuck {
                 Group::Waiting.colors().1
             } else {
-                T::color(T::SECONDARY)
+                T::color(T::secondary())
             }))
             .when(task.acceptance.is_empty(), |d| {
                 let task = task.clone();
@@ -357,7 +357,8 @@ impl Workbench {
                 .px(px(T::S6))
                 .text_size(px(T::META))
                 .when(agent == first, |b| {
-                    b.bg(T::color(T::ACCENT)).text_color(T::color(T::ON_ACCENT))
+                    b.bg(T::color(T::accent()))
+                        .text_color(T::color(T::on_accent()))
                 })
                 .on_click(cx.listener(move |this, _, _, cx| this.choose_agent(agent, cx))),
             );
@@ -455,8 +456,8 @@ impl Workbench {
                                 .h(px(T::ICON_HEIGHT))
                                 .px(px(T::S6))
                                 .text_size(px(T::META))
-                                .bg(T::color(T::ACCENT))
-                                .text_color(T::color(T::ON_ACCENT))
+                                .bg(T::color(T::accent()))
+                                .text_color(T::color(T::on_accent()))
                                 .on_click(
                                     cx.listener(|this, _, _, cx| this.save_quick_task(true, cx)),
                                 ),

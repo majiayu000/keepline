@@ -37,19 +37,15 @@ impl Workbench {
         cx: &Context<Self>,
     ) -> gpui::Stateful<gpui::Div> {
         let mut sidebar = div()
-            .id("sidebar")
-            .w(px(T::SIDEBAR))
-            .flex_shrink_0()
-            .h_full()
+            .id("sidebar-content")
+            .flex_1()
+            .min_h_0()
             .overflow_y_scroll()
             .px(px(T::S8))
             .py(px(T::S12))
             .flex()
             .flex_col()
             .gap(px(T::S2))
-            .bg(T::color(T::PANEL))
-            .border_r(px(T::BORDER_WIDTH))
-            .border_color(T::color(T::BORDER))
             .child(label("空间").px(px(T::S8)).mb(px(T::S4)));
         for space in &self.workspace.spaces {
             let id = space.id.clone();
@@ -111,7 +107,7 @@ impl Workbench {
                     .justify_start()
                     .px(px(T::S8))
                     .border_0()
-                    .when(active, |s| s.bg(T::color(T::RAISED)))
+                    .when(active, |s| s.bg(T::color(T::raised())))
                     .child(div().flex_1())
                     .when(waiting > 0, |d| d.child(badge(Group::Waiting, waiting)))
                     .when(errors > 0, |d| d.child(badge(Group::Error, errors)))
@@ -143,7 +139,7 @@ impl Workbench {
             button("add-space", "＋ 空间")
                 .border_0()
                 .justify_start()
-                .text_color(T::color(T::MUTED))
+                .text_color(T::color(T::muted()))
                 .on_click(cx.listener(|this, _, window, cx| {
                     this.tasks.editing_space = None;
                     this.show_form(FormKind::Space, window, cx)
@@ -239,9 +235,9 @@ impl Workbench {
                         .rounded(px(T::CONTROL_RADIUS))
                         .cursor_pointer()
                         .when(current.as_deref() == Some(session.id.as_str()), |d| {
-                            d.bg(T::color(T::RAISED))
+                            d.bg(T::color(T::raised()))
                         })
-                        .hover(|s| s.bg(T::color(T::RAISED)))
+                        .hover(|s| s.bg(T::color(T::raised())))
                         .child(if attention { dot(g) } else { seen_dot(g) })
                         .child(
                             div()
@@ -249,7 +245,7 @@ impl Workbench {
                                 .min_w_0()
                                 .truncate()
                                 .text_size(px(T::MONO_SIZE))
-                                .when(!attention, |d| d.text_color(T::color(seen.seen_title)))
+                                .when(!attention, |d| d.text_color(T::color(seen.seen_title())))
                                 .child(self.session_title(session)),
                         )
                         // Rows that all wait for your next step tell apart by how long they have.
@@ -266,7 +262,7 @@ impl Workbench {
                             .text_color(if attention {
                                 g.colors().1
                             } else {
-                                T::color(seen.seen_status)
+                                T::color(seen.seen_status())
                             }),
                         )
                         // Straight to its pane; an exited one resumes in a new pane.
@@ -287,8 +283,8 @@ impl Workbench {
                     .gap(px(T::S8))
                     .rounded(px(T::CONTROL_RADIUS))
                     .cursor_pointer()
-                    .when(focused, |d| d.bg(T::color(T::RAISED)))
-                    .hover(|s| s.bg(T::color(T::RAISED)))
+                    .when(focused, |d| d.bg(T::color(T::raised())))
+                    .hover(|s| s.bg(T::color(T::raised())))
                     .child(seen_dot(Group::Stale))
                     .child(
                         div()
@@ -296,7 +292,7 @@ impl Workbench {
                             .min_w_0()
                             .truncate()
                             .text_size(px(T::MONO_SIZE))
-                            .text_color(T::color(T::MUTED))
+                            .text_color(T::color(T::muted()))
                             .child(note),
                     )
                     .tooltip(move |_, cx| {
@@ -317,7 +313,7 @@ impl Workbench {
                 .border_0()
                 .justify_start()
                 .text_size(px(T::META))
-                .text_color(T::color(T::LINK))
+                .text_color(T::color(T::link()))
                 .on_click(cx.listener(|this, _, _, cx| this.show_overview(cx))),
             );
         }
@@ -330,7 +326,7 @@ impl Workbench {
                 .border_0()
                 .justify_start()
                 .text_size(px(T::META))
-                .text_color(T::color(T::MUTED))
+                .text_color(T::color(T::muted()))
                 .on_click(cx.listener(|this, _, _, cx| {
                     this.show_overview(cx);
                     this.overview.closed_only = true;
@@ -339,7 +335,43 @@ impl Workbench {
                 })),
             );
         }
-        sidebar
+        div()
+            .id("sidebar")
+            .w(px(T::SIDEBAR))
+            .h_full()
+            .min_h_0()
+            .flex_shrink_0()
+            .flex()
+            .flex_col()
+            .overflow_hidden()
+            .bg(T::color(T::panel()))
+            .border_r(px(T::BORDER_WIDTH))
+            .border_color(T::color(T::border()))
+            .child(sidebar)
+            .child(
+                div()
+                    .flex_shrink_0()
+                    .border_t(px(T::BORDER_WIDTH))
+                    .border_color(T::color(T::border()))
+                    .px(px(T::S8))
+                    .py(px(T::S8))
+                    .flex()
+                    .gap(px(T::S4))
+                    .child(
+                        button("diagnose-host", "本机诊断")
+                            .flex_1()
+                            .justify_start()
+                            .border_0()
+                            .on_click(
+                                cx.listener(|this, _, window, cx| {
+                                    this.show_diagnostics(window, cx)
+                                }),
+                            ),
+                    )
+                    .child(button("open-settings", "设置").border_0().on_click(
+                        cx.listener(|this, _, window, cx| this.show_settings(window, cx)),
+                    )),
+            )
     }
     /// The space's todos: what is still to be handed to an Agent, above what is running.
     fn todos_view(&self, space_name: &str, cx: &Context<Self>) -> gpui::Div {
@@ -377,7 +409,7 @@ impl Workbench {
                         button("sidebar-new-task", "＋")
                             .aria_label("新待办")
                             .border_0()
-                            .text_color(T::color(T::LINK))
+                            .text_color(T::color(T::link()))
                             .on_click(cx.listener(|this, _, window, cx| {
                                 // The header toggles on click; ＋ must only open it.
                                 cx.stop_propagation();
@@ -412,7 +444,7 @@ impl Workbench {
                             .h(px(T::ICON_HEIGHT))
                             .px(px(T::S6))
                             .text_size(px(T::META))
-                            .text_color(T::color(T::LINK))
+                            .text_color(T::color(T::link()))
                             .on_click(
                                 cx.listener(|this, _, window, cx| this.show_quick_task(window, cx)),
                             ),
@@ -457,15 +489,15 @@ impl Workbench {
                     .gap(px(T::S8))
                     .rounded(px(T::CONTROL_RADIUS))
                     .cursor_pointer()
-                    .hover(|s| s.bg(T::color(T::RAISED)))
+                    .hover(|s| s.bg(T::color(T::raised())))
                     .child(
                         div()
                             .size(px(T::S8))
                             .flex_shrink_0()
                             .rounded_full()
                             .border(px(T::BORDER_WIDTH))
-                            .border_color(T::color(T::LINK))
-                            .when(count > 0, |d| d.bg(T::color(T::ACCENT))),
+                            .border_color(T::color(T::link()))
+                            .when(count > 0, |d| d.bg(T::color(T::accent()))),
                     )
                     .child(
                         div()
@@ -489,7 +521,7 @@ impl Workbench {
                         .h(px(T::ICON_HEIGHT))
                         .px(px(T::S6))
                         .text_size(px(T::META))
-                        .text_color(T::color(T::LINK))
+                        .text_color(T::color(T::link()))
                         .on_click(cx.listener(move |this, _, _, cx| {
                             cx.stop_propagation();
                             this.ask_agent(start.clone(), false, cx);

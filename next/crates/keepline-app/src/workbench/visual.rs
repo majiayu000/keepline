@@ -165,8 +165,100 @@ impl Workbench {
     pub fn visual_shown_cwd(&self) -> String {
         let tab = self.nav.tab.as_ref().expect("a shown tab");
         let id = self.workspace.tab_terminals(tab)[0].clone();
-        let terminal = self.workspace.terminals.iter().find(|t| t.id == id).unwrap();
+        let terminal = self
+            .workspace
+            .terminals
+            .iter()
+            .find(|t| t.id == id)
+            .unwrap();
         terminal.cwd.clone()
+    }
+    /// The settings panel when open: (recording, a taken chord waiting, panel focused).
+    #[cfg(feature = "visual-test")]
+    pub fn visual_settings(&self, window: &Window, cx: &gpui::App) -> Option<(bool, bool, bool)> {
+        let view = self.settings.as_ref()?.read(cx);
+        Some((
+            view.recording.is_some(),
+            view.taken.is_some(),
+            view.focus.is_focused(window),
+        ))
+    }
+    /// Starts recording a chord for the action named as in keys.json, as its key button does.
+    #[cfg(feature = "visual-test")]
+    pub fn visual_settings_record(&mut self, name: &str, cx: &mut Context<Self>) {
+        let action = crate::keymap::Keymap::actions()
+            .find(|a| a.name() == name)
+            .unwrap();
+        let view = self.settings.clone().expect("settings open");
+        view.update(cx, |v, cx| v.record(action, cx));
+    }
+    /// 取消 under a taken chord, or 全部恢复默认.
+    #[cfg(feature = "visual-test")]
+    pub fn visual_settings_press(&mut self, button: &str, cx: &mut Context<Self>) {
+        let view = self.settings.clone().expect("settings open");
+        view.update(cx, |v, cx| match button {
+            "取消" => {
+                v.taken = None;
+                cx.notify();
+            }
+            "全部恢复默认" => v.reset(None, cx),
+            _ => panic!("no button {button}"),
+        });
+    }
+    /// Whether a terminal pane holds input focus.
+    #[cfg(feature = "visual-test")]
+    pub fn visual_pane_focused(&self, window: &Window, cx: &gpui::App) -> bool {
+        self.layout
+            .panes
+            .values()
+            .any(|p| p.focus_handle(cx).is_focused(window))
+    }
+    /// The shown tab's panes in layout order and the one whose handle really holds
+    /// input focus (not just the one the workbench remembers).
+    #[cfg(feature = "visual-test")]
+    pub fn visual_pane_focus(
+        &self,
+        window: &Window,
+        cx: &gpui::App,
+    ) -> (Vec<String>, Option<String>) {
+        let order = self
+            .nav
+            .tab
+            .as_ref()
+            .map(|t| self.workspace.tab_terminals(t))
+            .unwrap_or_default();
+        let focused = order
+            .iter()
+            .find(|id| {
+                self.layout
+                    .panes
+                    .get(*id)
+                    .is_some_and(|p| p.focus_handle(cx).is_focused(window))
+            })
+            .cloned();
+        assert_eq!(
+            focused.is_some(),
+            focused == self.nav.focused,
+            "the remembered pane is the focused one"
+        );
+        (order, focused)
+    }
+    /// The current space's tabs in strip order, the shown one, and its pane count.
+    #[cfg(feature = "visual-test")]
+    pub fn visual_tab_row(&self) -> (Vec<String>, Option<String>, usize) {
+        let row = self
+            .workspace
+            .tabs
+            .iter()
+            .filter(|t| t.space == self.nav.space)
+            .map(|t| t.id.clone())
+            .collect();
+        let panes = self
+            .nav
+            .tab
+            .as_ref()
+            .map_or(0, |t| self.workspace.tab_terminals(t).len());
+        (row, self.nav.tab.clone(), panes)
     }
     #[cfg(feature = "visual-test")]
     pub fn visual_tabs(&self) -> (usize, Option<String>) {

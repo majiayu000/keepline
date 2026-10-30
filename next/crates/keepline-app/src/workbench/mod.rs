@@ -33,6 +33,8 @@ pub struct Workbench {
     layout: LayoutState,
     attention: Attention,
     resuming: Resuming,
+    diagnostics: Option<Entity<diagnostics::DiagnosticView>>,
+    settings: Option<Entity<settings::SettingsView>>,
 }
 #[derive(Clone)]
 struct PaneMenu {
@@ -117,7 +119,9 @@ pub(super) fn interrupts(agents: &[(String, Option<Phase>)]) -> bool {
 /// close, counts none.
 pub(super) fn splits_closed(workspace: &Workspace, closing: &Closing) -> usize {
     match closing {
-        Closing::Tab(id) => Some(workspace.tab_terminals(id).len()).filter(|n| *n > 1).unwrap_or(0),
+        Closing::Tab(id) => Some(workspace.tab_terminals(id).len())
+            .filter(|n| *n > 1)
+            .unwrap_or(0),
         _ => 0,
     }
 }
@@ -135,6 +139,7 @@ fn outcome_label(outcome: &Outcome) -> String {
 }
 
 mod cleanup;
+mod diagnostics;
 mod filters;
 mod forms;
 mod layout;
@@ -147,6 +152,7 @@ mod palette;
 use palette::Search;
 mod render;
 mod sessions;
+mod settings;
 use sessions::{Attention, Resuming};
 mod sidebar;
 use sidebar::closed_recently;
@@ -186,6 +192,7 @@ impl Workbench {
                         if revision > this.workspace.revision {
                             this.sync(cx);
                         }
+                        this.mark_pane_agents(cx);
                         cx.notify();
                     })
                     .is_err()
@@ -200,6 +207,9 @@ impl Workbench {
         let since = workspace.last_left;
         let overview = show_on_return(since, now(), workspace.settings.away_minutes);
         let search = Search::new(window, cx);
+        // 跟随系统 switches with macOS; a fixed choice ignores it.
+        cx.observe_window_appearance(window, |_, _, cx| crate::ui::appearance::apply(cx))
+            .detach();
         cx.observe_window_activation(window, |this, window, cx| {
             if window.is_window_active() {
                 if let Some(left) = this.away.take() {
@@ -228,6 +238,8 @@ impl Workbench {
             .detach();
         let mut this = Self {
             away: None,
+            diagnostics: None,
+            settings: None,
             search,
             store,
             workspace,
@@ -334,12 +346,21 @@ impl Workbench {
             self.nav.pending_focus = true;
         }
         self.layout.panes.retain(|id, _| ids.contains(id));
+        let split = ids.len() > 1;
         for id in ids {
             if !self.layout.panes.contains_key(&id) {
                 let pane = cx.new(|cx| Pane::new(self.store.socket(), &id, false, cx));
                 cx.observe(&pane, |_, _, cx| cx.notify()).detach();
                 self.layout.panes.insert(id, pane);
             }
+        }
+        for pane in self.layout.panes.values() {
+            pane.update(cx, |p, cx| {
+                if p.split != split {
+                    p.split = split;
+                    cx.notify();
+                }
+            });
         }
         let live: Vec<_> = self
             .workspace
@@ -354,10 +375,35 @@ impl Workbench {
             })
             .collect();
         track_unseen(&mut self.attention.phases, &mut self.attention.unseen, live);
+        self.mark_pane_agents(cx);
+    }
+    /// Which Agent each pane holds, for its tint. A Codex the host only sees through its
+    /// shared daemon, or a Claude that saves no transcript, still counts.
+    fn mark_pane_agents(&mut self, cx: &mut Context<Self>) {
+        use keepline_core::model::Agent;
+        for (id, pane) in &self.layout.panes {
+            let agent = self
+                .workspace
+                .current_agent(id)
+                .map(|s| s.runtime)
+                .or_else(|| {
+                    self.store.recognition().terminal_hints.get(id).map(|hint| {
+                        if hint == keepline_core::protocol::CLAUDE_TRANSCRIPT_OFF {
+                            Agent::Claude
+                        } else {
+                            Agent::Codex
+                        }
+                    })
+                });
+            pane.update(cx, |p, _| p.agent = agent);
+        }
     }
     /// Marks a user action in flight; the label appears only if it outlasts 300ms.
     fn begin_busy(&mut self, cx: &mut Context<Self>) {
         let seq = self.store.begin_busy();
+        if let Some(view) = &self.settings {
+            view.update(cx, |v, cx| { v.busy = true; v.save_error = None; cx.notify(); });
+        }
         self.error = None;
         cx.notify();
         cx.spawn(async move |this, cx| {
@@ -391,6 +437,9 @@ impl Workbench {
             }
         }
         self.workspace = w;
+        if let Some(view) = &self.settings {
+            view.update(cx, |v, cx| { v.values = self.workspace.settings.clone(); cx.notify(); });
+        }
         self.sync_panes(cx);
     }
     /// Background refresh after the host publishes a newer revision. Runs beside user
@@ -441,6 +490,14 @@ impl Workbench {
                         this.tasks.start_after_save = None;
                         this.error = Some(e.to_string());
                     }
+                }
+                if let Some(view) = &this.settings {
+                    view.update(cx, |v, cx| {
+                        v.values = this.workspace.settings.clone();
+                        v.busy = this.store.busy();
+                        v.save_error = this.error.clone();
+                        cx.notify();
+                    });
                 }
                 if received_workspace && this.store.behind(this.workspace.revision) {
                     this.sync(cx);
@@ -814,6 +871,7 @@ impl Workbench {
             cwd,
             cols: 100,
             rows: 30,
+            scheme: crate::ui::theme::Theme::scheme(),
         };
         let tab_id = tab.id.clone();
         self.begin_busy(cx);

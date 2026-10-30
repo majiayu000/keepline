@@ -240,7 +240,7 @@ impl Workbench {
                 div()
                     .px(px(T::S16))
                     .py(px(T::S20))
-                    .text_color(T::color(T::SECONDARY))
+                    .text_color(T::color(T::secondary()))
                     .child(format!("没有找到“{query}”。未索引的历史不会出现在这里。")),
             );
         }
@@ -256,11 +256,11 @@ impl Workbench {
             .items_center()
             .gap(px(T::S10))
             .border_b(px(T::BORDER_WIDTH))
-            .border_color(T::color(T::BORDER))
+            .border_color(T::color(T::border()))
             .child(
                 div()
                     .text_size(px(T::SEARCH_TEXT))
-                    .text_color(T::color(T::SECONDARY))
+                    .text_color(T::color(T::secondary()))
                     .child("⌕"),
             )
             .child(div().flex_1().min_w_0().child(self.search.field.clone()))
@@ -272,9 +272,9 @@ impl Workbench {
             .flex()
             .gap(px(T::S14))
             .border_t(px(T::BORDER_WIDTH))
-            .border_color(T::color(T::BORDER))
+            .border_color(T::color(T::border()))
             .text_size(px(T::META))
-            .text_color(T::color(T::MUTED))
+            .text_color(T::color(T::muted()))
             .child("↑↓ 选择")
             .child("↵ 打开")
             .child("⇥ 切换分组")
@@ -287,9 +287,9 @@ impl Workbench {
             .flex()
             .flex_col()
             .overflow_hidden()
-            .bg(T::color(T::POPOVER))
+            .bg(T::color(T::popover()))
             .border(px(T::BORDER_WIDTH))
-            .border_color(T::color(T::CONTROL))
+            .border_color(T::color(T::control()))
             .rounded(px(T::PALETTE_RADIUS))
             .shadow_lg()
             .on_mouse_down(gpui::MouseButton::Left, |_, _, cx| cx.stop_propagation())
@@ -314,7 +314,7 @@ impl Workbench {
                 .items_start()
                 .pt(px(T::PALETTE_TOP))
                 .px(px(T::S16))
-                .bg(gpui::rgba(T::SCRIM))
+                .bg(gpui::rgba(T::scrim()))
                 .on_mouse_down(
                     gpui::MouseButton::Left,
                     cx.listener(|this, _, _, cx| this.close_search(cx)),
@@ -383,7 +383,7 @@ impl Workbench {
             .items_center()
             .rounded(px(T::CONTROL_RADIUS))
             .cursor_pointer()
-            .when(selected, |d| d.bg(T::color(T::PALETTE_ROW)))
+            .when(selected, |d| d.bg(T::color(T::palette_row())))
             .on_hover(cx.listener(move |this, hovered: &bool, _, cx| {
                 if *hovered && this.search.index != row {
                     this.search.index = row;
@@ -412,7 +412,7 @@ impl Workbench {
                     .truncate()
                     .child(highlighted(&title, query)),
             )
-            .child(label(meta).text_color(T::color(T::MUTED)).flex_shrink_0())
+            .child(label(meta).text_color(T::color(T::muted())).flex_shrink_0())
         };
         div()
             .flex()
@@ -424,7 +424,7 @@ impl Workbench {
                         .pt(px(T::S10))
                         .pb(px(T::S4))
                         .text_size(px(T::META))
-                        .text_color(T::color(T::MUTED))
+                        .text_color(T::color(T::muted()))
                         .child(heading),
                 )
             })
@@ -442,7 +442,7 @@ impl Workbench {
                 .child(
                     div()
                         .text_size(px(T::META))
-                        .text_color(T::color(T::MUTED))
+                        .text_color(T::color(T::muted()))
                         .child(name),
                 )
                 .child(value)
@@ -450,7 +450,7 @@ impl Workbench {
         let body = |text: String| {
             div()
                 .text_size(px(T::SMALL))
-                .text_color(T::color(T::BODY))
+                .text_color(T::color(T::body()))
                 .child(text)
                 .into_any_element()
         };
@@ -462,7 +462,7 @@ impl Workbench {
             .flex_col()
             .gap(px(T::S12))
             .border_l(px(T::BORDER_WIDTH))
-            .border_color(T::color(T::BORDER))
+            .border_color(T::color(T::border()))
             .child(
                 div()
                     .text_size(px(T::CARD_TITLE))
@@ -481,8 +481,8 @@ impl Workbench {
                             .py(px(T::BORDER_WIDTH))
                             .rounded(px(T::CHIP_RADIUS))
                             .text_size(px(T::CHIP_SIZE))
-                            .text_color(T::color(T::SECONDARY))
-                            .bg(T::color(T::CHIP))
+                            .text_color(T::color(T::secondary()))
+                            .bg(T::color(T::chip()))
                             .child(s.runtime.executable()),
                     ),
             );
@@ -491,7 +491,7 @@ impl Workbench {
                 "命中",
                 div()
                     .text_size(px(T::SMALL))
-                    .text_color(T::color(T::BODY))
+                    .text_color(T::color(T::body()))
                     .child(highlighted(
                         &format!("“{}”", excerpt(q, query, EXCERPT * 2)),
                         query,
@@ -505,7 +505,7 @@ impl Workbench {
                     "目录",
                     div()
                         .text_size(px(T::SMALL))
-                        .text_color(T::color(T::BODY))
+                        .text_color(T::color(T::body()))
                         .font_family("Menlo")
                         .child(home_relative(&s.cwd))
                         .into_any_element(),
@@ -535,12 +535,12 @@ impl Workbench {
             .items_center()
             .gap(px(T::S8))
             .cursor_pointer()
-            .bg(T::color(T::PANEL))
+            .bg(T::color(T::panel()))
             .border(px(T::BORDER_WIDTH))
-            .border_color(T::color(T::CONTROL))
+            .border_color(T::color(T::control()))
             .rounded(px(T::CONTROL_RADIUS))
-            .text_color(T::color(T::SECONDARY))
-            .hover(|d| d.border_color(T::color(T::FOCUS)))
+            .text_color(T::color(T::secondary()))
+            .hover(|d| d.border_color(T::color(T::focus())))
             .child("⌕")
             .child(div().flex_1().truncate().child("搜索会话、待办或原话"))
             .child(kbd("⌘P"))
@@ -565,7 +565,7 @@ impl Workbench {
 
 fn glyph(text: &'static str) -> gpui::AnyElement {
     div()
-        .text_color(T::color(T::SECONDARY))
+        .text_color(T::color(T::secondary()))
         .child(text)
         .into_any_element()
 }
@@ -574,15 +574,15 @@ pub(super) fn kbd(text: &'static str) -> gpui::Div {
         .flex_shrink_0()
         .px(px(T::S6))
         .border(px(T::BORDER_WIDTH))
-        .border_color(T::color(T::CONTROL))
+        .border_color(T::color(T::control()))
         .rounded(px(T::CHIP_RADIUS))
         .text_size(px(T::CHIP_SIZE))
-        .text_color(T::color(T::SECONDARY))
+        .text_color(T::color(T::secondary()))
         .child(text)
 }
 fn highlighted(text: &str, query: &str) -> gpui::StyledText {
     let style = gpui::HighlightStyle {
-        background_color: Some(T::color(T::MATCH)),
+        background_color: Some(T::color(T::matched())),
         ..Default::default()
     };
     gpui::StyledText::new(text.to_owned())

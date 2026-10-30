@@ -1,0 +1,8 @@
+{
+  "observed": "2026-10-29",
+  "warp_package_version": "0.2026.10.07.08.29.00",
+  "schema_sha256": "ef5b2d5fee7e8227e6357b6eb1cfdea38188b9561041919d4711dfbe760989c9",
+  "keepline_head": "4bc2afb8de5c35fa7ab92405394e42ecf9fec9d5",
+  "keepline_dirty_baseline": true,
+  "scope": "settings only"
+}

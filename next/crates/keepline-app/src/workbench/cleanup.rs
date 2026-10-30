@@ -17,7 +17,7 @@ impl Workbench {
                     .child(
                         button("cleanup-exit", "← 返回鸟瞰")
                             .border_0()
-                            .text_color(T::color(T::LINK))
+                            .text_color(T::color(T::link()))
                             .on_click(cx.listener(|this, _, _, cx| {
                                 this.overview.cleanup.clear();
                                 this.nav.overview = true;
@@ -41,7 +41,7 @@ impl Workbench {
                             (self.overview.cleanup_index + 1).min(self.overview.cleanup.len()),
                             self.overview.cleanup.len()
                         ))
-                        .text_color(T::color(T::SECONDARY)),
+                        .text_color(T::color(T::secondary())),
                     ),
             )
             .child(
@@ -49,8 +49,8 @@ impl Workbench {
                     .h(px(T::S4))
                     .w_full()
                     .rounded_full()
-                    .bg(T::color(T::CONTROL))
-                    .child(div().h_full().rounded_full().bg(T::color(T::ACCENT)).w(
+                    .bg(T::color(T::control()))
+                    .child(div().h_full().rounded_full().bg(T::color(T::accent())).w(
                         gpui::relative(
                             self.overview.cleanup_index as f32
                                 / self.overview.cleanup.len().max(1) as f32,
@@ -68,7 +68,7 @@ impl Workbench {
                 let mut card = div()
                     .p(px(T::S20))
                     .rounded(px(T::CARD_RADIUS))
-                    .bg(T::color(T::POPOVER))
+                    .bg(T::color(T::popover()))
                     .flex()
                     .flex_col()
                     .gap(px(T::S16))
@@ -89,7 +89,7 @@ impl Workbench {
                                 .map_or(s.updated, |c| c.updated)),
                             s.cwd
                         ))
-                        .text_color(T::color(T::SECONDARY)),
+                        .text_color(T::color(T::secondary())),
                     );
                 // The title already is the first ask when nothing better names the session.
                 let title = self.session_title(s);
@@ -110,7 +110,7 @@ impl Workbench {
                                 label(name)
                                     .w(px(T::HERE_LABEL))
                                     .flex_shrink_0()
-                                    .text_color(T::color(T::SECONDARY)),
+                                    .text_color(T::color(T::secondary())),
                             )
                             .child(div().flex_1().child(text)),
                     );
@@ -124,8 +124,8 @@ impl Workbench {
                     .h(px(T::CLEANUP_ACTION_HEIGHT))
                     .flex_1()
                     .justify_center()
-                    .bg(T::color(T::ACCENT))
-                    .text_color(T::color(T::ON_ACCENT))
+                    .bg(T::color(T::accent()))
+                    .text_color(T::color(T::on_accent()))
                     .on_click(cx.listener(move |this, _, window, cx| {
                         this.overview.cleanup.clear();
                         this.open_session(&resume, window, cx);
@@ -139,8 +139,8 @@ impl Workbench {
                         .h(px(T::CLEANUP_ACTION_HEIGHT))
                         .flex_1()
                         .justify_center()
-                        .bg(T::color(T::POPOVER))
-                        .text_color(T::color(T::PRIMARY))
+                        .bg(T::color(T::popover()))
+                        .text_color(T::color(T::primary()))
                         .on_click(cx.listener(move |this, _, _, cx| {
                             this.edit(
                                 Edit::SetOutcome {
@@ -158,8 +158,8 @@ impl Workbench {
                     .h(px(T::CLEANUP_ACTION_HEIGHT))
                     .flex_1()
                     .justify_center()
-                    .bg(T::color(T::POPOVER))
-                    .text_color(T::color(T::PRIMARY))
+                    .bg(T::color(T::popover()))
+                    .text_color(T::color(T::primary()))
                     .on_click(cx.listener(move |this, _, window, cx| {
                         this.overview.here = Some(sid.clone());
                         this.show_form(FormKind::Defer, window, cx);
@@ -171,9 +171,9 @@ impl Workbench {
                     .h(px(T::CLEANUP_ACTION_HEIGHT))
                     .flex_1()
                     .justify_center()
-                    .bg(T::color(T::POPOVER))
-                    .border_color(T::color(T::CONTROL))
-                    .text_color(T::color(T::PRIMARY))
+                    .bg(T::color(T::popover()))
+                    .border_color(T::color(T::control()))
+                    .text_color(T::color(T::primary()))
                     .on_click(cx.listener(move |this, _, _, cx| {
                         this.edit(
                             Edit::SetOutcome {
@@ -194,7 +194,7 @@ impl Workbench {
                 .gap(px(T::S8))
                 .child(
                     button("cleanup-previous", "上一个")
-                        .text_color(T::color(T::PRIMARY))
+                        .text_color(T::color(T::primary()))
                         .on_click(cx.listener(|this, _, _, cx| {
                             this.overview.cleanup_index =
                                 this.overview.cleanup_index.saturating_sub(1);
@@ -203,7 +203,7 @@ impl Workbench {
                 )
                 .child(
                     button("cleanup-skip", "跳过")
-                        .text_color(T::color(T::PRIMARY))
+                        .text_color(T::color(T::primary()))
                         .on_click(cx.listener(|this, _, _, cx| {
                             this.overview.cleanup_index =
                                 (this.overview.cleanup_index + 1).min(this.overview.cleanup.len());
@@ -214,8 +214,8 @@ impl Workbench {
         div()
             .id("cleanup-page")
             .size_full()
-            .bg(T::color(T::APP))
-            .text_color(T::color(T::PRIMARY))
+            .bg(T::color(T::app()))
+            .text_color(T::color(T::primary()))
             .overflow_y_scroll()
             .p(px(T::S20))
             .flex()

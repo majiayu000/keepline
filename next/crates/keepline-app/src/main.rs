@@ -3,6 +3,7 @@ mod desktop;
 #[cfg(feature = "visual-test")]
 mod harness;
 mod host;
+mod keymap;
 mod lifecycle;
 mod model;
 mod terminal;
@@ -46,7 +47,27 @@ fn ensure_host(root: &Path) -> io::Result<()> {
     lifecycle::spawn_host(root, false)
 }
 
-gpui::actions!(keepline, [Quit, ShowMenuPanel]);
+gpui::actions!(keepline, [Quit, ShowMenuPanel, ShowSettings]);
+/// Keepline → 外观: one item per choice, the current one checked.
+#[derive(Clone, PartialEq, gpui::Action)]
+#[action(namespace = keepline, no_json)]
+pub(crate) struct ChooseAppearance(pub usize);
+pub(crate) fn set_menus(cx: &mut App) {
+    use ui::appearance::Appearance;
+    let chosen = cx.try_global::<Appearance>().copied().unwrap_or_default();
+    let looks = Appearance::ALL
+        .iter()
+        .enumerate()
+        .map(|(i, a)| gpui::MenuItem::action(a.label(), ChooseAppearance(i)).checked(*a == chosen))
+        .collect::<Vec<_>>();
+    cx.set_menus([gpui::Menu::new("Keepline").items([
+        gpui::MenuItem::action("设置…", ShowSettings),
+        gpui::MenuItem::action("菜单栏面板", ShowMenuPanel),
+        gpui::MenuItem::submenu(gpui::Menu::new("外观").items(looks)),
+        gpui::MenuItem::separator(),
+        gpui::MenuItem::action("退出 Keepline", Quit),
+    ])]);
+}
 
 /// The top bar is the title bar: the traffic lights sit inside it, over the window's own gray.
 fn window_options(bounds: Bounds<gpui::Pixels>) -> WindowOptions {
@@ -140,8 +161,8 @@ impl gpui::Render for StartupError {
         gpui::div()
             .size_full()
             .p(px(T::S16))
-            .bg(T::color(T::APP))
-            .text_color(T::color(T::PRIMARY))
+            .bg(T::color(T::app()))
+            .text_color(T::color(T::primary()))
             .text_size(px(T::BODY_SIZE))
             .track_focus(&self.focus)
             .child(self.message.clone())
@@ -169,10 +190,60 @@ fn main() {
         std::env::set_var("GPUI_PAUSE_IDLE_DISPLAY_LINK", "1");
         std::env::set_var("GPUI_RETAINED_BACKBUFFER", "1");
     }
+    record_panics();
     if let Err(error) = run() {
         eprintln!("Keepline: {error}");
         std::process::exit(1);
     }
+}
+/// macOS crash reports keep only the stack, so every panic's message and place is also
+/// appended to ~/Library/Logs/Keepline/crash.log. A failed visual-evidence check exits
+/// with 101 instead of aborting, so a scripted run raises no "quit unexpectedly" dialog.
+fn record_panics() {
+    let log = std::env::var_os("HOME")
+        .map(|home| PathBuf::from(home).join("Library/Logs/Keepline/crash.log"));
+    let scripted = std::env::args().any(|arg| arg == "--visual-evidence");
+    let default = std::panic::take_hook();
+    std::panic::set_hook(Box::new(move |info| {
+        default(info);
+        if let Some(log) = &log {
+            use std::io::Write;
+            let thread = std::thread::current();
+            let entry = format!(
+                "[{}] {} pid {} thread {}{}\n{info}\n{}\n\n",
+                local_time(),
+                std::env::args().collect::<Vec<_>>().join(" "),
+                std::process::id(),
+                thread.name().unwrap_or("unnamed"),
+                if scripted { " (visual evidence)" } else { "" },
+                std::backtrace::Backtrace::force_capture(),
+            );
+            let _ = std::fs::create_dir_all(log.parent().unwrap_or(Path::new("/")));
+            if let Ok(mut file) = std::fs::OpenOptions::new()
+                .create(true)
+                .append(true)
+                .open(log)
+            {
+                let _ = file.write_all(entry.as_bytes());
+            }
+        }
+        if scripted {
+            let _ = io::Write::flush(&mut io::stderr());
+            // SAFETY: ends the process at once, as the abort that follows a panic would.
+            unsafe { libc::_exit(101) };
+        }
+    }));
+}
+fn local_time() -> String {
+    let mut buf = [0u8; 32];
+    // SAFETY: localtime_r and strftime write only into the locals handed to them.
+    let len = unsafe {
+        let now = libc::time(std::ptr::null_mut());
+        let mut tm = std::mem::zeroed::<libc::tm>();
+        libc::localtime_r(&now, &mut tm);
+        libc::strftime(buf.as_mut_ptr().cast(), buf.len(), c"%F %T".as_ptr(), &tm)
+    };
+    String::from_utf8_lossy(&buf[..len]).into_owned()
 }
 fn run() -> io::Result<()> {
     let args: Vec<String> = std::env::args().collect();
@@ -189,6 +260,14 @@ fn run() -> io::Result<()> {
         std::env::var_os("HOME").ok_or_else(|| io::Error::other("HOME unavailable"))?,
     )
     .join(".local/share/keepline-client");
+    // Visual evidence uses its explicitly isolated runtime without forwarding to or
+    // replacing the user's running workbench.
+    #[cfg(feature = "visual-test")]
+    let instance_dir = if args.iter().any(|arg| arg == "--visual-evidence") {
+        root.join("visual-client")
+    } else {
+        instance_dir
+    };
     let (_instance, mut reopen) = match lifecycle::Instance::acquire(&instance_dir)? {
         lifecycle::Admission::Forwarded => return Ok(()),
         lifecycle::Admission::Primary(guard, events) => (guard, events),
@@ -209,10 +288,30 @@ fn run() -> io::Result<()> {
         cx.on_action(|_: &Quit, cx| cx.quit());
         cx.on_action(|_: &ShowMenuPanel, _| desktop::show());
         cx.bind_keys([gpui::KeyBinding::new("cmd-q", Quit, None)]);
-        cx.set_menus([gpui::Menu::new("Keepline").items([
-            gpui::MenuItem::action("菜单栏面板", ShowMenuPanel),
-            gpui::MenuItem::action("退出 Keepline", Quit),
-        ])]);
+        cx.on_action(|choice: &ChooseAppearance, cx| {
+            let Some(&appearance) = ui::appearance::Appearance::ALL.get(choice.0) else {
+                return;
+            };
+            if let Err(error) = ui::appearance::choose(appearance, cx) {
+                cx.set_global(desktop::Status(error));
+            }
+            set_menus(cx);
+        });
+        cx.on_action(|_: &ShowSettings, cx| {
+            for handle in cx.windows() {
+                if let Some(handle) = handle.downcast::<workbench::Workbench>() {
+                    let _ = handle.update(cx, |view, window, cx| {
+                        window.activate_window();
+                        view.show_settings(window, cx);
+                    });
+                    break;
+                }
+            }
+        });
+        cx.set_global(ui::appearance::Appearance::load());
+        cx.set_global(keymap::Keymap::load());
+        ui::appearance::apply(cx);
+        set_menus(cx);
         let wake_root = root.clone();
         cx.spawn(async move |cx| {
             while reopen.next().await.is_some() {
