@@ -1,0 +1,273 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>主界面改版稿 · 分屏工作视图</title>
+<style>
+:root {
+  --app: #efeeec; --pane: #fafaf9; --raised: #ebeae8; --popover: #fdfdfc; --chip: #ecebe9; --header-focus: #f0efed;
+  --border: #e3e2df; --card-border: #d6d5d2; --control: #c9c8c5; --focus: #8e8d8a;
+  --primary: #0e0d0c; --body: #1f1e1c; --secondary: #5a5956; --muted: #6c6b68;
+  --accent: #141312; --on-accent: #fafaf9; --button: #e9e8e6; --button-hover: #dddcd9; --link: #2a2927;
+  --waiting: #c4651f; --error: #c53b33; --review: #5e62d8; --paused: #9a7316; --running: #2b8f60; --working: #a88a12; --stale: #8a8986;
+  --waiting-wash: #f7ebe1; --review-wash: #ecedfa; --working-wash: #f6f0dc; --error-wash: #f8e9e7;
+  --term-dim: #8a8986; --term-accent: #2a6fd6;
+}
+:root[data-theme="dark"] {
+  --app: #161618; --pane: #1c1c1e; --raised: #29292a; --popover: #262627; --chip: #2c2c2d; --header-focus: #232325;
+  --border: #2e2e2f; --card-border: #353536; --control: #3a3a3b; --focus: #686767;
+  --primary: #ecebe9; --body: #e4e2df; --secondary: #a3a2a0; --muted: #8a8988;
+  --accent: #ecebe9; --on-accent: #1c1c1e; --button: #2a2a2b; --button-hover: #343435; --link: #c8c6c4;
+  --waiting: #e8823a; --error: #e5534b; --review: #8f93ff; --paused: #d9a441; --running: #4cc38a; --working: #e8c547; --stale: #8b8a88;
+  --waiting-wash: #4a2a12; --review-wash: #2a2c5c; --working-wash: #3d3514; --error-wash: #4a1c18;
+  --term-dim: #7d7c7a; --term-accent: #6aa5ff;
+}
+* { box-sizing: border-box; }
+body { margin: 0; background: #c9ccd2; color: var(--body); font: 13px/1.4 -apple-system, BlinkMacSystemFont, "PingFang SC", sans-serif; font-variant-numeric: tabular-nums; padding: 20px 16px 40px; display: flex; flex-direction: column; align-items: center; gap: 14px; }
+button { font: inherit; cursor: pointer; border: 0; background: none; color: inherit; }
+.bar { display: flex; gap: 8px; align-items: center; font-size: 12px; color: #2f3238; flex-wrap: wrap; justify-content: center; max-width: 1440px; }
+.bar button { height: 26px; padding: 0 10px; border-radius: 6px; background: #e8e9ec; color: #1f2024; }
+.bar button[aria-pressed="true"] { background: #1f2024; color: #fff; }
+.mono { font-family: "JetBrains Mono", "SF Mono", Menlo, monospace; font-size: 12.5px; line-height: 1.55; }
+
+.window { width: 1440px; max-width: 100%; height: 900px; background: var(--pane); border-radius: 12px; overflow: hidden; box-shadow: 0 20px 60px rgba(0,0,0,.25); display: flex; flex-direction: column; }
+
+/* Top bar */
+.top { height: 46px; flex: none; display: flex; align-items: center; gap: 12px; padding: 0 16px 0 84px; border-bottom: 1px solid var(--border); }
+.brand { font-weight: 600; color: var(--primary); }
+.crumb { color: var(--secondary); font-size: 12px; }
+.toggle { height: 28px; padding: 0 10px; border-radius: 6px; background: var(--raised); font-size: 12.5px; color: var(--primary); }
+.search { flex: 0 1 340px; height: 30px; border: 1px solid var(--control); border-radius: 8px; display: flex; align-items: center; gap: 8px; padding: 0 10px; color: var(--muted); font-size: 12.5px; }
+.search kbd, kbd { font: 11px inherit; border: 1px solid var(--control); border-radius: 4px; padding: 0 4px; color: var(--muted); }
+.search kbd { margin-left: auto; }
+.spacer { flex: 1; }
+.pulse { display: flex; align-items: center; gap: 2px; height: 28px; padding: 0 4px; border-radius: 7px; }
+.pulse button { height: 24px; padding: 0 8px; border-radius: 5px; display: inline-flex; align-items: center; gap: 5px; font-size: 12px; color: var(--secondary); }
+.pulse button:hover { background: var(--raised); }
+.pulse button b { color: var(--primary); font-weight: 600; }
+.pulse .zero { opacity: .55; }
+.next { height: 28px; padding: 0 10px 0 8px; border-radius: 7px; background: var(--waiting-wash); color: var(--waiting); font-size: 12.5px; font-weight: 600; display: inline-flex; align-items: center; gap: 6px; }
+.next kbd { border-color: currentColor; color: inherit; opacity: .7; }
+.ghost { height: 28px; padding: 0 10px; border-radius: 6px; font-size: 12.5px; color: var(--body); }
+.ghost:hover { background: var(--button-hover); }
+.dot { width: 7px; height: 7px; border-radius: 50%; flex: none; display: inline-block; }
+
+.main { flex: 1; min-height: 0; display: flex; }
+
+/* Sidebar (same as workbench-refresh) */
+.side { width: 240px; flex: none; border-right: 1px solid var(--border); display: flex; flex-direction: column; }
+.side-scroll { flex: 1; overflow: auto; padding: 14px 10px; display: flex; flex-direction: column; gap: 18px; }
+.side h3 { margin: 0 0 4px; padding: 0 8px; font-size: 11px; font-weight: 600; letter-spacing: .04em; color: var(--muted); display: flex; justify-content: space-between; }
+.side h3 span { font-weight: 400; }
+.row { height: 30px; display: flex; align-items: center; gap: 8px; padding: 0 8px; border-radius: 6px; }
+.row:hover { background: var(--raised); }
+.row.on { background: var(--raised); color: var(--primary); font-weight: 500; }
+.row .name { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.row .n { margin-left: auto; color: var(--muted); font-size: 11.5px; flex: none; }
+.row .why { font-size: 11px; color: var(--muted); }
+.mini { display: flex; height: 4px; gap: 1px; margin: 2px 8px 6px; border-radius: 2px; overflow: hidden; }
+.mini i { display: block; height: 100%; }
+.tag { flex: none; font-size: 10.5px; padding: 0 5px; border-radius: 4px; background: var(--chip); color: var(--muted); }
+.link-row { color: var(--secondary); font-size: 12px; }
+.side-foot { border-top: 1px solid var(--border); padding: 8px 10px; display: flex; justify-content: space-between; }
+
+/* Work area */
+.work { flex: 1; min-width: 0; display: flex; flex-direction: column; background: var(--app); }
+.tabs { height: 36px; flex: none; display: flex; align-items: stretch; padding: 0 8px; gap: 2px; background: var(--pane); border-bottom: 1px solid var(--border); }
+.tab { position: relative; display: flex; align-items: center; gap: 7px; padding: 0 12px; min-width: 96px; max-width: 220px; font-size: 12.5px; color: var(--secondary); }
+.tab:hover { color: var(--primary); }
+.tab.on { color: var(--primary); font-weight: 500; }
+.tab.on::after { content: ""; position: absolute; left: 10px; right: 10px; bottom: 0; height: 2px; border-radius: 1px; background: var(--primary); }
+.tab .t { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.tab .split { font-size: 10.5px; color: var(--muted); border: 1px solid var(--control); border-radius: 3px; padding: 0 3px; }
+.tab .badge { font-size: 10.5px; font-weight: 600; padding: 0 5px; border-radius: 8px; }
+.tab .x { margin-left: auto; color: var(--muted); opacity: 0; }
+.tab:hover .x, .tab.on .x { opacity: 1; }
+.tab-add { padding: 0 12px; color: var(--muted); }
+
+.todo-bar { height: 34px; flex: none; display: flex; align-items: center; gap: 10px; padding: 0 14px; background: var(--pane); border-bottom: 1px solid var(--border); font-size: 12.5px; }
+.todo-bar .chip { font-size: 11px; padding: 1px 6px; border-radius: 4px; background: var(--chip); color: var(--secondary); }
+.todo-bar .t { color: var(--primary); font-weight: 600; }
+.todo-bar .ev { display: inline-flex; align-items: center; gap: 6px; color: var(--secondary); font-size: 12px; }
+.todo-bar .ev i { width: 10px; height: 6px; border-radius: 2px; background: var(--button); display: inline-block; }
+.todo-bar .ev i.ok { background: var(--running); }
+
+.grid { flex: 1; min-height: 0; display: grid; grid-template-columns: 1fr 1fr; gap: 6px; padding: 6px; }
+.pane { min-width: 0; display: flex; flex-direction: column; border-radius: 8px; border: 1px solid var(--border); background: var(--pane); overflow: hidden; }
+.pane.focus { border-color: var(--focus); box-shadow: 0 0 0 1px var(--focus); }
+.ph { height: 34px; flex: none; display: flex; align-items: center; gap: 8px; padding: 0 8px 0 10px; border-bottom: 1px solid var(--border); font-size: 12.5px; }
+.pane.focus .ph { background: var(--header-focus); }
+.state { flex: none; display: inline-flex; align-items: center; gap: 5px; height: 20px; padding: 0 7px; border-radius: 5px; font-size: 11.5px; font-weight: 600; }
+.ph .t { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--primary); font-weight: 500; }
+.ph .meta { flex: none; display: flex; align-items: center; gap: 6px; color: var(--muted); font-size: 11.5px; }
+.ph .meta .sep { opacity: .5; }
+.ph .acts { flex: none; display: flex; align-items: center; gap: 2px; margin-left: 4px; }
+.ph .acts button { height: 24px; padding: 0 7px; border-radius: 5px; font-size: 12px; color: var(--link); }
+.ph .acts button:hover { background: var(--button-hover); }
+.ph .acts button.do { background: var(--button); color: var(--primary); font-weight: 600; }
+.ph .acts .x { color: var(--muted); }
+.ph .grow { flex: 1; }
+.timer { display: inline-flex; align-items: center; gap: 4px; }
+.timer i { width: 34px; height: 3px; border-radius: 2px; background: var(--button); overflow: hidden; display: inline-block; position: relative; }
+.timer i::after { content: ""; position: absolute; left: 0; top: 0; bottom: 0; width: 40%; background: var(--working); border-radius: 2px; animation: slide 1.8s ease-in-out infinite; }
+@keyframes slide { 0% { transform: translateX(-100%); } 100% { transform: translateX(250%); } }
+@media (prefers-reduced-motion: reduce) { .timer i::after { animation: none; width: 100%; opacity: .5; } }
+.term { flex: 1; min-height: 0; overflow: hidden; padding: 12px 14px; color: var(--body); white-space: pre-wrap; }
+.term .d { color: var(--term-dim); }
+.term .a { color: var(--term-accent); }
+.term .ok { color: var(--running); }
+.term .box { border: 1px solid var(--control); border-radius: 6px; padding: 6px 10px; margin-top: 8px; display: block; }
+.term .caret { display: inline-block; width: 7px; height: 15px; background: var(--primary); vertical-align: -3px; }
+.pf { height: 26px; flex: none; display: flex; align-items: center; gap: 10px; padding: 0 10px; border-top: 1px solid var(--border); font-size: 11px; color: var(--muted); }
+.pf .path { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.pf .grow { flex: 1; }
+
+/* 你在这里 card */
+.here { position: absolute; right: 22px; top: 44px; width: 340px; background: var(--popover); border: 1px solid var(--control); border-radius: 12px; box-shadow: 0 16px 40px rgba(0,0,0,.18); padding: 14px 16px; display: flex; flex-direction: column; gap: 10px; z-index: 2; }
+.here h4 { margin: 0; font-size: 13.5px; color: var(--primary); }
+.here dl { margin: 0; display: grid; grid-template-columns: 52px 1fr; gap: 6px 10px; font-size: 12.5px; }
+.here dt { color: var(--muted); }
+.here dd { margin: 0; }
+.here .timeline { display: flex; gap: 2px; height: 6px; }
+.here .timeline i { flex: 1; border-radius: 2px; }
+.here .tl-legend { display: flex; justify-content: space-between; font-size: 11px; color: var(--muted); }
+.here .foot { display: flex; gap: 6px; }
+.here .foot .solid { background: var(--accent); color: var(--on-accent); font-weight: 600; height: 28px; padding: 0 12px; border-radius: 6px; }
+.here .foot .plain { background: var(--button); height: 28px; padding: 0 12px; border-radius: 6px; }
+</style>
+</head>
+<body>
+<div class="bar">
+  <span>主界面改版稿：两个分屏（左 Claude 在跑，右 Codex 做完了）· 标题、空间、待办取自你的真实数据，终端内容与计时是示例</span>
+  <button type="button" data-theme-btn="light" aria-pressed="true">浅色</button>
+  <button type="button" data-theme-btn="dark" aria-pressed="false">深色</button>
+</div>
+
+<div class="window">
+  <div class="top">
+    <span class="brand">Keepline</span><span class="crumb">/ 工作空间</span>
+    <button type="button" class="toggle">▦ 鸟瞰全部</button>
+    <div class="search">⌕ 搜索会话、待办或原话 <kbd>⌘P</kbd></div>
+    <span class="spacer"></span>
+    <div class="pulse" aria-label="全部会话状态，点开在鸟瞰里看这一组">
+      <button type="button"><span class="dot" style="background:var(--waiting)"></span>等你 <b>1</b></button>
+      <button type="button"><span class="dot" style="background:var(--error)"></span>出错 <b>29</b></button>
+      <button type="button"><span class="dot" style="background:var(--working)"></span>在跑 <b>6</b></button>
+      <button type="button"><span class="dot" style="background:var(--review)"></span>做完 <b>148</b></button>
+    </div>
+    <button type="button" class="next"><span class="dot" style="background:currentColor"></span>下一个等你的 <kbd>⌘J</kbd></button>
+    <button type="button" class="ghost">＋ 新待办</button>
+  </div>
+
+  <div class="main">
+    <aside class="side">
+      <div class="side-scroll">
+        <div>
+          <h3>空间 <span>2</span></h3>
+          <div class="row on"><span class="dot" style="background:var(--review)"></span><span class="name">工作空间</span><span class="tag">目录不在了</span><span class="n">2</span></div>
+          <div class="mini"><i style="flex:1;background:var(--waiting)"></i><i style="flex:29;background:var(--error)"></i><i style="flex:6;background:var(--working)"></i><i style="flex:148;background:var(--review)"></i><i style="flex:87;background:var(--stale);opacity:.45"></i></div>
+          <div class="row"><span class="dot" style="background:var(--stale)"></span><span class="name">新空间</span><span class="tag">目录不在了</span><span class="n">0</span></div>
+        </div>
+        <div>
+          <h3>待办 <span>3</span></h3>
+          <div class="row"><span class="dot" style="background:transparent;border:1.5px solid var(--muted)"></span><span class="name">健身</span><span class="n">未开始</span></div>
+          <div class="row"><span class="dot" style="background:transparent;border:1.5px solid var(--muted)"></span><span class="name">标签命名依旧有问题</span><span class="n">进行中</span></div>
+        </div>
+        <div>
+          <h3>会话 <span>2 个开着</span></h3>
+          <div class="row on"><span class="dot" style="background:var(--working)"></span><span class="name">标签命名依旧有问题</span><span class="n">在跑</span></div>
+          <div class="row"><span class="dot" style="background:var(--review)"></span><span class="name">cli 是否支持 workflow 呢?</span><span class="n">1 天</span></div>
+          <div class="row link-row">已关闭 33 个 · 点开接着聊 →</div>
+        </div>
+      </div>
+      <div class="side-foot"><button type="button" class="ghost">本机诊断</button><button type="button" class="ghost">设置</button></div>
+    </aside>
+
+    <section class="work">
+      <div class="tabs" role="tablist">
+        <button type="button" class="tab on" role="tab"><span class="dot" style="background:var(--working)"></span><span class="t">CLI workflow</span><span class="split">2 格</span><span class="x">×</span></button>
+        <button type="button" class="tab" role="tab"><span class="dot" style="background:var(--waiting)"></span><span class="t">mirror</span><span class="badge" style="background:var(--waiting-wash);color:var(--waiting)">等你</span><span class="x">×</span></button>
+        <button type="button" class="tab" role="tab"><span class="dot" style="background:var(--stale);opacity:.4"></span><span class="t">zsh</span><span class="x">×</span></button>
+        <button type="button" class="tab" role="tab"><span class="dot" style="background:var(--stale);opacity:.4"></span><span class="t">zsh 2</span><span class="x">×</span></button>
+        <button type="button" class="tab-add" aria-label="新建终端标签">＋</button>
+      </div>
+
+      <div class="todo-bar">
+        <span class="chip">待办</span><span class="t">标签命名依旧有问题</span>
+        <span class="ev"><i class="ok"></i><i class="ok"></i><i></i> 验收 2 / 3 有证据</span>
+        <span class="spacer"></span>
+        <button type="button" class="ghost">待办详情</button>
+      </div>
+
+      <div class="grid" style="position:relative">
+        <div class="pane focus">
+          <div class="ph">
+            <span class="state" style="background:var(--working-wash);color:var(--working)"><span class="dot" style="background:currentColor"></span>在跑</span>
+            <span class="t">标签命名依旧有问题</span>
+            <span class="grow"></span>
+            <span class="meta"><span>claude</span><span class="sep">·</span><span class="timer">本轮 3:12 <i></i></span></span>
+            <span class="acts"><button type="button">看进度</button><button type="button" class="x" aria-label="关闭窗格">×</button></span>
+          </div>
+          <div class="term mono"><span class="d">&gt; </span>标签命名依旧有问题，帮我查一下为什么新开的标签还是叫 zsh
+
+<span class="a">●</span> 先看标签名是怎么来的。
+  <span class="d">⎿  Read next/crates/keepline-app/src/workbench/tabs.rs (74 lines)</span>
+
+<span class="a">●</span> tab_name 只读 tab.title，空的时候退回到进程名，所以是 zsh。
+  <span class="d">⎿  Search(pattern: "fn tab_name", path: "next/crates") · 3 results</span>
+
+<span class="a">✻</span> Thinking… <span class="d">(3m 12s · ↓ 4.1k tokens · esc to interrupt)</span>
+<span class="box"><span class="d">&gt; </span><span class="caret"></span></span></div>
+          <div class="pf mono"><span class="path">~/Desktop/code/AI/tools/keepline · feat/workbench-refresh</span><span class="grow"></span><span>输入归你</span></div>
+        </div>
+
+        <div class="pane">
+          <div class="ph">
+            <span class="state" style="background:var(--review-wash);color:var(--review)"><span class="dot" style="background:currentColor"></span>做完了</span>
+            <span class="t">cli 是否支持 workflow 呢?</span>
+            <span class="grow"></span>
+            <span class="meta"><span>codex</span><span class="sep">·</span><span>1 天前</span></span>
+            <span class="acts"><button type="button" class="do">标记完成</button><button type="button">看进度</button><button type="button" class="x" aria-label="关闭窗格">×</button></span>
+          </div>
+          <div class="term mono"><span class="d">›</span> cli 是否支持 workflow 呢?
+
+<span class="ok">•</span> 支持。workflow 命令在 src/cli/workflow.ts，
+  用 keepline workflow run &lt;name&gt; 启动，
+  定义放在 .keepline/workflows/*.yaml。
+
+<span class="d">  Worked for 1m 08s</span>
+
+<span class="box"><span class="d">›</span> <span class="caret" style="opacity:.35"></span></span></div>
+          <div class="pf mono"><span class="path">~/Desktop/code/AI/tools/keepline · main</span><span class="grow"></span><span>点击接管输入</span></div>
+        </div>
+      </div>
+    </section>
+  </div>
+</div>
+
+<div class="bar" style="margin-top:8px"><span>点开「看进度」后的「你在这里」卡片（加了本轮时间线）</span></div>
+<div class="window" style="height:auto;width:760px;position:relative;padding:20px;background:var(--app)">
+  <div class="here" style="position:static;width:auto">
+    <h4>标签命名依旧有问题</h4>
+    <dl>
+      <dt>你要它</dt><dd>查清为什么新开的标签还是叫 zsh，并修好</dd>
+      <dt>做成了</dt><dd>定位到 tab_name 在标题为空时退回进程名</dd>
+      <dt>停在</dt><dd>正在想怎么在启动 Agent 时写入标题</dd>
+    </dl>
+    <div>
+      <div class="timeline" aria-label="本轮 3 分 12 秒：读文件、搜索、思考"><i style="flex:40;background:var(--secondary)"></i><i style="flex:30;background:var(--muted);opacity:.6"></i><i style="flex:122;background:var(--control)"></i></div>
+      <div class="tl-legend"><span>读文件 0:40</span><span>搜索 0:30</span><span>思考 2:02</span><span>本轮 3:12</span></div>
+    </div>
+    <div class="foot"><button type="button" class="solid">回到这个画面</button><button type="button" class="plain">更多 ⋯</button></div>
+  </div>
+</div>
+
+<script>
+document.querySelectorAll('[data-theme-btn]').forEach((b) => b.addEventListener('click', () => {
+  document.documentElement.dataset.theme = b.dataset.themeBtn;
+  document.querySelectorAll('[data-theme-btn]').forEach((x) => x.setAttribute('aria-pressed', String(x === b)));
+}));
+</script>
+</body>
+</html>
