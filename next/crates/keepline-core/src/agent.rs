@@ -22,6 +22,7 @@ impl Agent {
     pub const Codex: Agent = Agent("Codex");
     pub const Claude: Agent = Agent("Claude");
     pub const Grok: Agent = Agent("Grok");
+    pub const Cursor: Agent = Agent("Cursor");
 
     /// Every registered CLI, built-in first, in the order the app offers them.
     pub fn all() -> Vec<Agent> {
@@ -329,6 +330,14 @@ fn builtin() -> Vec<AgentSpec> {
         ),
         // The TUI cannot be given an id; the daemon reads it from Grok's own registry.
         spec("Grok", "Grok Build", "grok", "grok", "grok --resume {id}"),
+        // Cursor names a new chat itself; the daemon reads it from the transcript folder.
+        spec(
+            "Cursor",
+            "Cursor Agent",
+            "cursor-agent",
+            "cursor-agent",
+            "cursor-agent --resume {id}",
+        ),
     ]
 }
 
@@ -626,9 +635,9 @@ mod tests {
         let (specs, report) = load(&d, Path::new("/home/u"));
         assert_eq!(
             specs.iter().map(|s| s.key).collect::<Vec<_>>(),
-            ["Codex", "Claude", "Grok", "aider"]
+            ["Codex", "Claude", "Grok", "Cursor", "aider"]
         );
-        let aider = &specs[3];
+        let aider = &specs[builtin().len()];
         assert_eq!(
             aider.transcripts.as_ref().unwrap().root,
             Path::new("/home/u/.aider/s")
@@ -647,8 +656,8 @@ mod tests {
         )
         .unwrap();
         let (specs, report) = load(&d, Path::new("/h"));
-        assert_eq!(specs.len(), 4);
-        assert_eq!(specs[3].name, "Aider (mine)");
+        assert_eq!(specs.len(), builtin().len() + 1);
+        assert_eq!(specs[builtin().len()].name, "Aider (mine)");
         assert!(report[0].result.as_ref().unwrap_err().contains("b.json"));
         assert_eq!(report[1].result, Ok("aider".into()));
     }
@@ -683,7 +692,7 @@ mod tests {
             std::fs::write(d.join(name), body).unwrap();
         }
         let (specs, report) = load(&d, Path::new("/h"));
-        assert_eq!(specs.len(), 4, "only the good one registers");
+        assert_eq!(specs.len(), builtin().len() + 1, "only the good one registers");
         let refused = report.iter().filter(|r| r.result.is_err()).count();
         assert_eq!(refused, 8, "{report:#?}");
         assert!(report[1].result.as_ref().unwrap_err().contains("api 3"));
@@ -701,7 +710,7 @@ mod tests {
         let d = dir("events");
         let base = |api: u32, events: &str| {
             format!(
-                r#"{{"api":{api},"id":"cursor","name":"Cursor","executable":"cursor-agent","start":"cursor-agent","resume":"cursor-agent --resume {{id}}",
+                r#"{{"api":{api},"id":"gemini","name":"Gemini","executable":"gemini","start":"gemini","resume":"gemini --resume {{id}}",
                 "transcripts":{{"root":"/tmp/c","session":"/s","cwd":"/c","events":{events}}}}}"#
             )
         };
@@ -744,7 +753,7 @@ mod tests {
     #[test]
     fn no_directory_means_built_ins_only() {
         let (specs, report) = load(Path::new("/nonexistent/keepline/agents"), Path::new("/h"));
-        assert_eq!(specs.len(), 3);
+        assert_eq!(specs.len(), builtin().len());
         assert!(report.is_empty());
     }
 }

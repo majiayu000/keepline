@@ -15,6 +15,7 @@ use std::sync::OnceLock;
 pub(crate) mod claude;
 pub(crate) mod codex;
 mod declared;
+mod cursor;
 mod grok;
 pub mod hooks;
 pub mod mirror;
@@ -162,6 +163,7 @@ pub fn adapter(agent: Agent) -> &'static dyn Adapter {
         Agent::Codex => &codex::Codex,
         Agent::Claude => &claude::Claude,
         Agent::Grok => &grok::Grok,
+        Agent::Cursor => &cursor::Cursor,
         _ => declared()
             .iter()
             .find(|d| d.agent() == agent)
