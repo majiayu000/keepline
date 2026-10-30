@@ -1,6 +1,9 @@
 //! Fixture-driven layouts and pages for native visual evidence.
 use super::*;
 
+/// The space menu's state, the rename field's text and focus, each space's name and cwd.
+#[cfg(feature = "visual-test")]
+pub type VisualSpaceState = (bool, Option<(String, bool)>, Vec<(String, String)>);
 impl Workbench {
     #[cfg(feature = "visual-test")]
     pub fn visual_layout(&mut self, name: &str, window: &mut Window, cx: &mut Context<Self>) {
@@ -716,14 +719,11 @@ impl Workbench {
             .map_or(0, |t| self.workspace.tab_terminals(&t.id).len())
     }
     #[cfg(feature = "visual-test")]
-    pub fn visual_edit_space(&mut self, id: &str, window: &mut Window, cx: &mut Context<Self>) {
-        self.tasks.editing_space = Some(id.into());
-        self.show_form(FormKind::Space, window, cx);
-        self.tasks.editing_space = Some(id.into());
-    }
-    #[cfg(feature = "visual-test")]
-    pub fn visual_remove_space(&mut self, id: &str, cx: &mut Context<Self>) {
-        self.remove_space(id, cx);
+    pub fn visual_open_space_menu(&mut self, id: &str, cx: &mut Context<Self>) {
+        self.layout.space_menu =
+            Some((id.into(), gpui::point(px(T::S20), px(T::TOP + 4. * T::ROW))));
+        self.layout.space_removing = false;
+        cx.notify();
     }
     /// Names this space's tabs in strip order, for scripts that address them by name.
     #[cfg(feature = "visual-test")]
@@ -762,5 +762,66 @@ impl Workbench {
     #[cfg(feature = "visual-test")]
     pub fn visual_spaces(&self) -> Vec<String> {
         self.workspace.spaces.iter().map(|s| s.id.clone()).collect()
+    }
+    /// Whether the space menu is open, the rename field's text and focus if any, and
+    /// each space's name and directory.
+    #[cfg(feature = "visual-test")]
+    pub fn visual_space_state(
+        &self,
+        window: &Window,
+        cx: &gpui::App,
+    ) -> VisualSpaceState {
+        (
+            self.layout.space_menu.is_some(),
+            self.layout.renaming_space.as_ref().map(|(_, field, _)| {
+                (
+                    field.read(cx).text.clone(),
+                    field.focus_handle(cx).is_focused(window),
+                )
+            }),
+            self.workspace
+                .spaces
+                .iter()
+                .map(|s| (s.name.clone(), s.cwd.clone()))
+                .collect(),
+        )
+    }
+    #[cfg(feature = "visual-test")]
+    pub fn visual_space_menu_point(&self, index: usize) -> gpui::Point<gpui::Pixels> {
+        let (_, position) = self
+            .layout
+            .space_menu
+            .as_ref()
+            .expect("right mouse opened space menu");
+        *position + gpui::point(px(T::S20), px(T::S6 + T::ROW * (index as f32 + 0.5)))
+    }
+    #[cfg(feature = "visual-test")]
+    pub fn visual_space_rename_type(&mut self, text: &str, cx: &mut Context<Self>) {
+        if let Some((_, field, _)) = &self.layout.renaming_space {
+            field.update(cx, |f, cx| {
+                f.set_text(text);
+                cx.notify();
+            });
+        }
+    }
+    #[cfg(feature = "visual-test")]
+    pub fn visual_rename_first_space(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        if let Some(id) = self.workspace.spaces.first().map(|s| s.id.clone()) {
+            self.rename_space(&id, window, cx);
+        }
+    }
+    /// Points the first space at a folder that is gone, as a deleted worktree does.
+    #[cfg(feature = "visual-test")]
+    pub fn visual_lose_space_dir(&mut self, cx: &mut Context<Self>) {
+        if let Some(space) = self.workspace.spaces.first() {
+            let cwd = "/nonexistent/keepline-space-evidence".into();
+            self.edit(
+                Edit::UpdateSpace(Space {
+                    cwd,
+                    ..space.clone()
+                }),
+                cx,
+            );
+        }
     }
 }

@@ -1,4 +1,4 @@
-//! The editor form: todo, space and defer.
+//! The editor form: todo and defer.
 use super::*;
 
 impl Workbench {
@@ -11,20 +11,7 @@ impl Workbench {
         self.nav.overview = false;
         self.tasks.editing_task = None;
         self.sync_panes(cx);
-        let editing = self
-            .tasks
-            .editing_space
-            .as_ref()
-            .and_then(|id| self.workspace.spaces.iter().find(|s| &s.id == id))
-            .cloned();
         let fields = match kind {
-            FormKind::Space => {
-                let (name, cwd) = editing.map_or_else(Default::default, |s| (s.name, s.cwd));
-                vec![
-                    cx.new(|cx| Field::new("空间名称", &name, cx)),
-                    cx.new(|cx| Field::new("工作目录（绝对路径）", &cwd, cx)),
-                ]
-            }
             FormKind::Defer | FormKind::TaskDefer => vec![
                 cx.new(|cx| Field::new("为什么稍后再看（必填）", "", cx)),
                 cx.new(|cx| Field::new("多少小时后再看（必填）", "24", cx)),
@@ -79,23 +66,6 @@ impl Workbench {
                         return;
                     };
                     Edit::SetOutcome { id, outcome }
-                }
-            }
-            FormKind::Space => {
-                let space = Space {
-                    id: self.tasks.editing_space.clone().unwrap_or_else(id),
-                    name: values[0].trim().into(),
-                    cwd: values[1].trim().into(),
-                };
-                if !Path::new(&space.cwd).is_dir() {
-                    self.error = Some(format!("目录不存在：{}", space.cwd));
-                    self.tasks.form = Some(form);
-                    return;
-                }
-                if self.tasks.editing_space.take().is_some() {
-                    Edit::UpdateSpace(space)
-                } else {
-                    Edit::AddSpace(space)
                 }
             }
             FormKind::Task => {
@@ -156,8 +126,6 @@ impl Workbench {
             .child(div().text_size(px(T::FORM_TITLE)).child(match form.kind {
                 FormKind::Task if self.tasks.editing_task.is_some() => "编辑待办",
                 FormKind::Task => "新建待办",
-                FormKind::Space if self.tasks.editing_space.is_some() => "编辑空间",
-                FormKind::Space => "新建空间",
                 _ => "稍后再看",
             }));
         for (index, field) in form.fields.iter().enumerate() {
@@ -243,60 +211,10 @@ impl Workbench {
                 .child(
                     button("cancel", "取消").on_click(cx.listener(|this, _, _, cx| {
                         this.tasks.form = None;
-                        this.tasks.editing_space = None;
-                        this.tasks.removing_space = false;
                         cx.notify();
                     })),
-                )
-                .when_some(
-                    self.tasks
-                        .editing_space
-                        .clone()
-                        .filter(|_| matches!(form.kind, FormKind::Space)),
-                    |d, space| {
-                        let tabs = self
-                            .workspace
-                            .tabs
-                            .iter()
-                            .filter(|t| t.space == space)
-                            .count();
-                        let confirm = self.tasks.removing_space;
-                        d.child(div().flex_1()).child(
-                            button(
-                                "remove-space",
-                                if !confirm {
-                                    "删除空间".to_owned()
-                                } else if tabs > 0 {
-                                    format!("确认删除，并关掉 {tabs} 个标签里的终端")
-                                } else {
-                                    "确认删除".to_owned()
-                                },
-                            )
-                            .text_color(Group::Error.colors().1)
-                            .on_click(
-                                cx.listener(move |this, _, _, cx| this.remove_space(&space, cx)),
-                            ),
-                        )
-                    },
                 ),
         )
-    }
-    pub(super) fn remove_space(&mut self, space: &str, cx: &mut Context<Self>) {
-        if !self.tasks.removing_space {
-            self.tasks.removing_space = true;
-            cx.notify();
-            return;
-        }
-        self.tasks.removing_space = false;
-        self.tasks.form = None;
-        self.tasks.editing_space = None;
-        if self.nav.space == space
-            && let Some(other) = self.workspace.spaces.iter().find(|s| s.id != space)
-        {
-            self.nav.space = other.id.clone();
-            self.nav.tab = None;
-        }
-        self.edit(Edit::RemoveSpace { id: space.into() }, cx);
     }
     pub(super) fn edit_task_form(
         &mut self,

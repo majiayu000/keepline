@@ -87,7 +87,6 @@ struct Form {
 }
 #[derive(Clone, Copy)]
 enum FormKind {
-    Space,
     Task,
     Defer,
     TaskDefer,
@@ -297,8 +296,6 @@ impl Workbench {
             tasks: TaskUi {
                 form: None,
                 editing_task: None,
-                editing_space: None,
-                removing_space: false,
                 start_after_save: None,
                 quick_task: None,
                 todos_open: false,
@@ -314,6 +311,9 @@ impl Workbench {
                 pending_command: None,
                 menu: None,
                 tab_menu: None,
+                space_menu: None,
+                space_removing: false,
+                renaming_space: None,
                 icon_menu: None,
                 confirm_close: None,
                 renaming_tab: None,
@@ -640,6 +640,7 @@ impl Workbench {
     pub(super) fn request_close(&mut self, closing: Closing, cx: &mut Context<Self>) {
         self.layout.menu = None;
         self.layout.tab_menu = None;
+        self.layout.space_menu = None;
         let quiet = match closing {
             // A host that hands its terminals over ends none of them: nothing to confirm.
             Closing::Host => {

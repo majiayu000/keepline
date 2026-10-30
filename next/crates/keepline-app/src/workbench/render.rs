@@ -29,6 +29,7 @@ impl Render for Workbench {
             && self.tasks.form.is_none()
             && self.layout.renaming_tab.is_none()
             && self.layout.renaming_session.is_none()
+            && self.layout.renaming_space.is_none()
             && !self.nav.overview
         {
             if let Some(pane) = self
@@ -584,6 +585,9 @@ impl Render for Workbench {
         }
         if let Some((id, position)) = &self.layout.tab_menu {
             root = root.child(self.tab_menu_view(id, *position, window, cx));
+        }
+        if let Some((id, position)) = &self.layout.space_menu {
+            root = root.child(self.space_menu_view(id, *position, window, cx));
         }
         if let Some(closing) = &self.layout.confirm_close {
             root = root.child(self.confirm_close_view(closing, cx));

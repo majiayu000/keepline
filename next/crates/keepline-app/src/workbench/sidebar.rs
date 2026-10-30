@@ -91,34 +91,77 @@ impl Workbench {
                         && session_group(&self.workspace, s) == Group::Error
                 })
                 .count();
+            let group = if errors > 0 {
+                Group::Error
+            } else if waiting > 0 {
+                Group::Waiting
+            } else {
+                sessions
+                    .iter()
+                    .filter(|s| s.outcome.needs_review(now()))
+                    .map(|s| session_group(&self.workspace, s))
+                    .find(|g| !matches!(g, Group::Waiting | Group::Error))
+                    .unwrap_or(Group::Stale)
+            };
+            if let Some((_, field, _)) = self
+                .layout
+                .renaming_space
+                .as_ref()
+                .filter(|(s, ..)| s.id == id)
+            {
+                // Named in place, like a tab: the row keeps its height and dot, and only
+                // the name turns editable, outlined so the edit is plain to see.
+                sidebar = sidebar.child(
+                    div()
+                        .h(px(T::ROW))
+                        .px(px(T::S8 - T::BORDER_WIDTH))
+                        .flex()
+                        .items_center()
+                        .gap(px(T::S8))
+                        .rounded(px(T::CONTROL_RADIUS))
+                        .bg(T::color(T::raised()))
+                        .border(px(T::BORDER_WIDTH))
+                        .border_color(T::color(T::focus()))
+                        .text_size(px(T::SMALL))
+                        .child(dot(group))
+                        .child(div().flex_1().min_w_0().h_full().child(field.clone())),
+                );
+                continue;
+            }
+            let missing = !Path::new(&space.cwd).is_dir();
             sidebar = sidebar.child(
                 button(gpui::SharedString::from(format!("space-{id}")), "")
                     .aria_label(space.name.clone())
                     .gap(px(T::S8))
-                    .child(dot(if errors > 0 {
-                        Group::Error
-                    } else if waiting > 0 {
-                        Group::Waiting
-                    } else {
-                        sessions
-                            .iter()
-                            .filter(|s| s.outcome.needs_review(now()))
-                            .map(|s| session_group(&self.workspace, s))
-                            .find(|g| !matches!(g, Group::Waiting | Group::Error))
-                            .unwrap_or(Group::Stale)
-                    }))
+                    .child(dot(group))
                     .child(div().min_w_0().truncate().child(space.name.clone()))
                     // A deleted worktree leaves the space pointing nowhere; new terminals
-                    // fall back to home, and a double-click fixes the directory.
-                    .when(!Path::new(&space.cwd).is_dir(), |d| {
+                    // fall back to home, and a click here picks the folder again.
+                    .when(missing, |d| {
+                        let id = id.clone();
                         d.child(
-                            label("目录不在了")
-                                .flex_shrink_0()
-                                .px(px(T::S4))
-                                .rounded(px(T::CHIP_RADIUS))
-                                .bg(T::color(T::chip()))
-                                .text_size(px(T::CHIP_SIZE))
-                                .text_color(T::color(T::muted())),
+                            button(
+                                gpui::SharedString::from(format!("space-missing-{id}")),
+                                "目录不在了",
+                            )
+                            .aria_label(format!("重新选择 {} 的目录", space.name))
+                            .flex_shrink_0()
+                            .h(px(T::ICON_HEIGHT))
+                            .px(px(T::S4))
+                            .border_0()
+                            .rounded(px(T::CHIP_RADIUS))
+                            .bg(T::color(T::chip()))
+                            .text_size(px(T::CHIP_SIZE))
+                            .text_color(T::color(T::secondary()))
+                            .on_mouse_down(gpui::MouseButton::Left, |_, _, cx| {
+                                cx.stop_propagation()
+                            })
+                            .on_click(cx.listener(
+                                move |this, _, window, cx| {
+                                    cx.stop_propagation();
+                                    this.choose_space_dir(Some(id.clone()), window, cx);
+                                },
+                            )),
                         )
                     })
                     .justify_start()
@@ -134,11 +177,19 @@ impl Workbench {
                             .text_size(px(T::CHIP_SIZE))
                             .text_color(T::color(T::muted())),
                     )
+                    .on_mouse_down(gpui::MouseButton::Right, {
+                        let id = id.clone();
+                        cx.listener(move |this, event: &gpui::MouseDownEvent, _, cx| {
+                            this.layout.space_menu = Some((id.clone(), event.position));
+                            this.layout.space_removing = false;
+                            cx.stop_propagation();
+                            cx.notify();
+                        })
+                    })
                     .on_click(
                         cx.listener(move |this, event: &gpui::ClickEvent, window, cx| {
                             if event.click_count() == 2 {
-                                this.tasks.editing_space = Some(id.clone());
-                                this.show_form(FormKind::Space, window, cx);
+                                this.rename_space(&id, window, cx);
                                 return;
                             }
                             if this.nav.overview {
@@ -162,10 +213,9 @@ impl Workbench {
                 .border_0()
                 .justify_start()
                 .text_color(T::color(T::muted()))
-                .on_click(cx.listener(|this, _, window, cx| {
-                    this.tasks.editing_space = None;
-                    this.show_form(FormKind::Space, window, cx)
-                })),
+                .on_click(
+                    cx.listener(|this, _, window, cx| this.choose_space_dir(None, window, cx)),
+                ),
         );
         // Sorted by what each row shows. Within a state, newest started first: the
         // host keeps sessions in creation order, while `updated` ticks with every
@@ -554,5 +604,184 @@ impl Workbench {
             }
         }
         sidebar
+    }
+}
+impl Workbench {
+    /// Turns the space's name in the sidebar into a field: Enter or a click elsewhere
+    /// keeps it, Esc puts the old name back.
+    pub(super) fn rename_space(&mut self, id: &str, window: &mut Window, cx: &mut Context<Self>) {
+        let Some(space) = self.workspace.spaces.iter().find(|s| s.id == id).cloned() else {
+            return;
+        };
+        self.start_space_rename(space, window, cx);
+    }
+    fn start_space_rename(&mut self, space: Space, window: &mut Window, cx: &mut Context<Self>) {
+        self.save_space_name(cx);
+        let field = cx.new(|cx| Field::new("空间名称", &space.name, cx).inline());
+        field.update(cx, |f, _| f.select_all());
+        let events = cx.subscribe(&field, |this, _, event, cx| match event {
+            crate::ui::field::FieldEvent::Submit => {
+                this.save_space_name(cx);
+                this.nav.pending_focus = true;
+            }
+            crate::ui::field::FieldEvent::Cancel => {
+                this.layout.renaming_space = None;
+                this.nav.pending_focus = true;
+                cx.notify();
+            }
+        });
+        let blur = cx.on_blur(&field.focus_handle(cx), window, |this, _, cx| {
+            this.save_space_name(cx)
+        });
+        window.focus(&field.focus_handle(cx), cx);
+        self.layout.renaming_space = Some((space, field, [events, blur]));
+        cx.notify();
+    }
+    fn save_space_name(&mut self, cx: &mut Context<Self>) {
+        let Some((mut space, field, _)) = self.layout.renaming_space.take() else {
+            return;
+        };
+        let name = field.read(cx).text.trim().to_owned();
+        // An empty or unchanged name leaves the space as it was.
+        if !name.is_empty() && name != space.name {
+            space.name = name;
+            self.edit(Edit::UpdateSpace(space), cx);
+        }
+        cx.notify();
+    }
+    /// Asks macOS for a folder: for `target` it becomes that space's directory; with no
+    /// target it starts a new space named after the folder, its name ready to edit.
+    pub(super) fn choose_space_dir(
+        &mut self,
+        target: Option<String>,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        self.layout.space_menu = None;
+        let picked = cx.prompt_for_paths(gpui::PathPromptOptions {
+            files: false,
+            directories: true,
+            multiple: false,
+            prompt: Some("选择".into()),
+        });
+        cx.spawn_in(window, async move |this, cx| {
+            let Ok(Ok(Some(paths))) = picked.await else {
+                return;
+            };
+            let Some(dir) = paths.into_iter().next() else {
+                return;
+            };
+            let _ = this.update_in(cx, |this, window, cx| {
+                let cwd = dir.to_string_lossy().into_owned();
+                if let Some(target) = target {
+                    if let Some(space) = this.workspace.spaces.iter().find(|s| s.id == target) {
+                        this.edit(
+                            Edit::UpdateSpace(Space {
+                                cwd,
+                                ..space.clone()
+                            }),
+                            cx,
+                        );
+                    }
+                    return;
+                }
+                let space = Space {
+                    id: id(),
+                    name: dir
+                        .file_name()
+                        .map_or_else(|| cwd.clone(), |n| n.to_string_lossy().into_owned()),
+                    cwd,
+                };
+                this.edit(Edit::AddSpace(space.clone()), cx);
+                this.nav.space = space.id.clone();
+                this.nav.tab = None;
+                this.sync_panes(cx);
+                this.start_space_rename(space, window, cx);
+            });
+        })
+        .detach();
+    }
+    /// From the space menu: the first press asks, the second removes the space and
+    /// closes its tabs; the host refuses while it still has unsettled todos.
+    pub(super) fn remove_space(&mut self, space: &str, cx: &mut Context<Self>) {
+        if !self.layout.space_removing {
+            self.layout.space_removing = true;
+            cx.notify();
+            return;
+        }
+        self.layout.space_removing = false;
+        self.layout.space_menu = None;
+        if self.nav.space == space
+            && let Some(other) = self.workspace.spaces.iter().find(|s| s.id != space)
+        {
+            self.nav.space = other.id.clone();
+            self.nav.tab = self
+                .workspace
+                .tabs
+                .iter()
+                .find(|t| t.space == other.id)
+                .map(|t| t.id.clone());
+            self.sync_panes(cx);
+        }
+        self.edit(Edit::RemoveSpace { id: space.into() }, cx);
+        cx.notify();
+    }
+    /// A space's right-click menu.
+    pub(super) fn space_menu_view(
+        &self,
+        id: &str,
+        position: gpui::Point<gpui::Pixels>,
+        window: &Window,
+        cx: &Context<Self>,
+    ) -> gpui::AnyElement {
+        let rename = id.to_owned();
+        let folder = id.to_owned();
+        let remove = id.to_owned();
+        let tabs = self.workspace.tabs.iter().filter(|t| t.space == id).count();
+        let last = self.workspace.spaces.len() <= 1;
+        let entries = vec![
+            button("space-menu-rename", "重命名")
+                .w_full()
+                .justify_start()
+                .border_0()
+                .on_click(cx.listener(move |this, _, window, cx| {
+                    this.layout.space_menu = None;
+                    this.rename_space(&rename, window, cx);
+                }))
+                .into_any_element(),
+            button("space-menu-folder", "更换目录…")
+                .w_full()
+                .justify_start()
+                .border_0()
+                .on_click(cx.listener(move |this, _, window, cx| {
+                    this.choose_space_dir(Some(folder.clone()), window, cx);
+                }))
+                .into_any_element(),
+            // Two presses: the first says what goes with it, the second removes it.
+            button(
+                "space-menu-remove",
+                if !self.layout.space_removing {
+                    "删除空间".to_owned()
+                } else if tabs > 0 {
+                    format!("确认删除，并关掉 {tabs} 个标签")
+                } else {
+                    "确认删除".to_owned()
+                },
+            )
+            .w_full()
+            .justify_start()
+            .border_0()
+            .text_color(Group::Error.colors().1)
+            .when(last, |d| d.opacity(0.4))
+            .on_click(cx.listener(move |this, _, _, cx| {
+                if !last {
+                    this.remove_space(&remove, cx);
+                }
+            }))
+            .into_any_element(),
+        ];
+        self.popup(position, entries, window, cx, |this| {
+            this.layout.space_menu = None
+        })
     }
 }
