@@ -221,6 +221,20 @@ impl Vt {
             .map_err(io::Error::other)?;
         Ok(())
     }
+    /// The active selection as copied text (Ghostty's selectionString: unwrapped, trimmed).
+    /// The selection lives on the terminal, so it stays on its text as output scrolls.
+    pub fn selection_text(&self) -> io::Result<Option<String>> {
+        use libghostty_vt::{fmt::Format, selection::FormatOptions};
+        let options = FormatOptions::new()
+            .with_emit_format(Format::Plain)
+            .with_unwrap(true)
+            .with_trim(true);
+        Ok(self
+            .0
+            .format_selection_alloc(None, options)
+            .map_err(io::Error::other)?
+            .map(|bytes| String::from_utf8_lossy(&bytes).into_owned()))
+    }
     /// The title the program set with OSC 0/2, if any.
     pub fn title(&self) -> Option<String> {
         self.0
@@ -395,6 +409,18 @@ mod tests {
         assert_eq!(local_path("", "x"), None);
     }
     use super::*;
+    #[test]
+    fn selection_text_unwraps_soft_wraps_and_is_none_without_selection() {
+        let mut vt = Vt::new(10, 4).unwrap();
+        vt.feed(b"0123456789abcdef\r\nnext   ");
+        assert_eq!(vt.selection_text().unwrap(), None);
+        let t = vt.terminal();
+        t.set_selection(t.select_all().unwrap().as_ref()).unwrap();
+        assert_eq!(
+            vt.selection_text().unwrap().as_deref(),
+            Some("0123456789abcdef\nnext")
+        );
+    }
     #[test]
     fn snapshot_preserves_mouse_reporting_modes() {
         use libghostty_vt::terminal::Mode;
