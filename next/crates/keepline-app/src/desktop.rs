@@ -20,6 +20,7 @@ use std::{
 #[derive(Default)]
 pub struct Status(pub String);
 impl Global for Status {}
+const MENUBAR_FAILED: &str = "菜单栏连接失败：";
 /// The terminal in the focused pane of the active window, if any.
 #[derive(Default)]
 pub struct Watching(pub Option<String>);
@@ -209,9 +210,17 @@ pub fn start(socket: &Path, initial: Workspace, cx: &mut App) -> UnboundedReceiv
                 .background_spawn(async move { rpc(&socket_read, &Request::Workspace) })
                 .await;
             let after = match result {
-                Ok(Reply::Workspace(w)) => w,
+                Ok(Reply::Workspace(w)) => {
+                    // A host restart breaks one refresh; clear its note once the next one works.
+                    cx.update(|cx| {
+                        if cx.global::<Status>().0.starts_with(MENUBAR_FAILED) {
+                            cx.set_global(Status::default());
+                        }
+                    });
+                    w
+                }
                 Err(e) => {
-                    cx.update(|cx| cx.set_global(Status(format!("菜单栏连接失败：{e}"))));
+                    cx.update(|cx| cx.set_global(Status(format!("{MENUBAR_FAILED}{e}"))));
                     continue;
                 }
                 _ => continue,

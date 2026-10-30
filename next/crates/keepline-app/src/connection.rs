@@ -229,42 +229,67 @@ impl RecognitionConnection {
         };
         let path = path.to_owned();
         std::thread::spawn(move || {
-            let work = (|| -> io::Result<()> {
-                let mut stream = UnixStream::connect(path)?;
-                {
-                    let mut slot = socket.lock().unwrap();
-                    if closed.load(Ordering::Acquire) {
-                        return Ok(());
-                    }
-                    *slot = Some(stream.try_clone()?);
-                }
-                stream.set_write_timeout(Some(std::time::Duration::from_secs(5)))?;
-                send(&mut stream, CONTROL, &Request::Hello { major: MAJOR })?;
-                if !matches!(
-                    receive::<Reply>(&mut stream)?,
-                    Reply::Hello { major: MAJOR, .. }
-                ) {
-                    return Err(io::Error::other("识别状态协议不匹配"));
-                }
-                send(&mut stream, CONTROL, &Request::WatchRecognition)?;
-                loop {
-                    match receive::<Reply>(&mut stream)? {
-                        Reply::Recognition(status) => {
-                            if wake.unbounded_send(status).is_err() {
-                                return Ok(());
-                            }
+            // The host can be replaced (a newer build takes over) or restart; keep
+            // subscribing so one dropped connection does not freeze the status for good.
+            let mut delay = std::time::Duration::from_millis(250);
+            let mut reported = false;
+            loop {
+                let mut subscribed = false;
+                let work = (|| -> io::Result<()> {
+                    let mut stream = UnixStream::connect(&path)?;
+                    {
+                        let mut slot = socket.lock().unwrap();
+                        if closed.load(Ordering::Acquire) {
+                            return Ok(());
                         }
-                        _ => return Err(io::Error::other("识别状态响应无效")),
+                        *slot = Some(stream.try_clone()?);
+                    }
+                    stream.set_write_timeout(Some(std::time::Duration::from_secs(5)))?;
+                    send(&mut stream, CONTROL, &Request::Hello { major: MAJOR })?;
+                    if !matches!(
+                        receive::<Reply>(&mut stream)?,
+                        Reply::Hello { major: MAJOR, .. }
+                    ) {
+                        return Err(io::Error::other("识别状态协议不匹配"));
+                    }
+                    send(&mut stream, CONTROL, &Request::WatchRecognition)?;
+                    loop {
+                        match receive::<Reply>(&mut stream)? {
+                            Reply::Recognition(status) => {
+                                subscribed = true;
+                                if wake.unbounded_send(status).is_err() {
+                                    return Ok(());
+                                }
+                            }
+                            _ => return Err(io::Error::other("识别状态响应无效")),
+                        }
+                    }
+                })();
+                if closed.load(Ordering::Acquire) || wake.is_closed() {
+                    return;
+                }
+                let error = match work {
+                    Ok(()) => return,
+                    Err(error) => error,
+                };
+                if subscribed {
+                    reported = false;
+                    delay = std::time::Duration::from_millis(250);
+                }
+                if !reported {
+                    reported = true;
+                    let interrupted = RecognitionStatus {
+                        phase: RecognitionPhase::Interrupted,
+                        detail: format!("识别状态连接中断：{error}"),
+                        scopes: vec![],
+                        ..RecognitionStatus::default()
+                    };
+                    if wake.unbounded_send(interrupted).is_err() {
+                        return;
                     }
                 }
-            })();
-            if let Err(error) = work {
-                let _ = wake.unbounded_send(RecognitionStatus {
-                    phase: RecognitionPhase::Interrupted,
-                    detail: format!("识别状态连接中断：{error}"),
-                    scopes: vec![],
-                    ..RecognitionStatus::default()
-                });
+                std::thread::sleep(delay);
+                delay = (delay * 2).min(std::time::Duration::from_secs(5));
             }
         });
         result
@@ -277,5 +302,51 @@ impl Drop for RecognitionConnection {
         if let Some(socket) = &*socket {
             let _ = socket.shutdown(std::net::Shutdown::Both);
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use futures::StreamExt;
+    use std::os::unix::net::UnixListener;
+
+    /// Plays one host lifetime: greets a single subscriber, reports `phase`, then exits.
+    fn host_once(path: &Path, phase: RecognitionPhase) -> std::thread::JoinHandle<()> {
+        let _ = std::fs::remove_file(path);
+        let listener = UnixListener::bind(path).unwrap();
+        std::thread::spawn(move || {
+            let (mut stream, _) = listener.accept().unwrap();
+            let _: Request = receive(&mut stream).unwrap();
+            let hello = Reply::Hello {
+                major: MAJOR,
+                instance: "test".into(),
+                build: Build::default(),
+            };
+            send(&mut stream, CONTROL, &hello).unwrap();
+            let _: Request = receive(&mut stream).unwrap();
+            let status = RecognitionStatus {
+                phase,
+                ..RecognitionStatus::default()
+            };
+            send(&mut stream, CONTROL, &Reply::Recognition(status)).unwrap();
+        })
+    }
+
+    #[test]
+    fn recognition_resubscribes_after_the_host_is_replaced() {
+        let dir = std::env::temp_dir().join(format!("kl-recog-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let path = dir.join("host.sock");
+        let (tx, mut rx) = futures::channel::mpsc::unbounded();
+        let first = host_once(&path, RecognitionPhase::Starting);
+        let _connection = RecognitionConnection::new(&path, tx);
+        let mut next = || futures::executor::block_on(rx.next()).unwrap().phase;
+        assert_eq!(next(), RecognitionPhase::Starting);
+        first.join().unwrap();
+        assert_eq!(next(), RecognitionPhase::Interrupted);
+        host_once(&path, RecognitionPhase::Healthy).join().unwrap();
+        assert_eq!(next(), RecognitionPhase::Healthy);
+        let _ = std::fs::remove_dir_all(dir);
     }
 }
