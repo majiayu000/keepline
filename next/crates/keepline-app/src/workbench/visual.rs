@@ -568,10 +568,12 @@ impl Workbench {
             }
             // The left column's presets, set in memory so the evidence run writes no choice.
             "SidebarClassic" | "SidebarStatus" | "SidebarStatusOpen" | "SidebarDirectory"
-            | "SidebarRail" => {
+            | "SidebarRail" | "SidebarWasm" => {
                 self.sidebar.preset = match name {
                     "SidebarStatus" | "SidebarStatusOpen" => "status",
                     "SidebarDirectory" => "directory",
+                    // The example WebAssembly plugin, installed into the scratch config.
+                    "SidebarWasm" => "wasm-status",
                     _ => "classic",
                 }
                 .into();

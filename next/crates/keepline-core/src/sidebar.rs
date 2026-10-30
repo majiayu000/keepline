@@ -23,6 +23,8 @@ pub enum Grouping {
     Status,
     /// 需要你 pinned on top, then one folder per working directory.
     Directory,
+    /// Sections computed by the plugin's sandboxed WebAssembly module (`wasm`).
+    Wasm,
 }
 
 /// Coarse states a preset can name. The host maps its finer states onto these.
@@ -84,6 +86,9 @@ pub struct Preset {
     /// Session rows before the rest hand off to 鸟瞰.
     #[serde(default = "default_limit")]
     pub limit: usize,
+    /// With `"group": "wasm"`: the module beside `sidebar.json` that arranges the list.
+    #[serde(default)]
+    pub wasm: Option<String>,
     #[serde(skip)]
     pub file: PathBuf,
 }
@@ -91,6 +96,11 @@ fn default_limit() -> usize {
     12
 }
 impl Preset {
+    /// The module's full path, for a `wasm` preset.
+    pub fn wasm_path(&self) -> Option<PathBuf> {
+        let name = self.wasm.as_ref()?;
+        Some(self.file.parent()?.join(name))
+    }
     pub fn folds(&self, b: Bucket) -> bool {
         self.fold.contains(&b)
     }
@@ -112,6 +122,7 @@ pub fn builtin() -> Vec<Preset> {
         fold: fold.to_vec(),
         detail,
         limit: default_limit(),
+        wasm: None,
         file: PathBuf::new(),
     };
     vec![
@@ -163,6 +174,31 @@ fn read(file: &Path, taken: &[Preset]) -> Result<Vec<Preset>, String> {
         }
         if !(1..=100).contains(&p.limit) {
             return Err(format!("左栏 {} 的 limit 要在 1 到 100 之间", p.id));
+        }
+        match (p.group, p.wasm.as_deref()) {
+            (Grouping::Wasm, Some(name)) => {
+                // Only a file inside the plugin's own directory.
+                let plain = Path::new(name)
+                    .components()
+                    .all(|c| matches!(c, std::path::Component::Normal(_)));
+                if !plain || !name.ends_with(".wasm") {
+                    return Err(format!(
+                        "左栏 {} 的 wasm 要写插件目录里的 .wasm 文件名",
+                        p.id
+                    ));
+                }
+                let module = file.parent().map(|d| d.join(name));
+                if !module.is_some_and(|m| m.is_file()) {
+                    return Err(format!("左栏 {} 的 {name} 不在插件目录里", p.id));
+                }
+            }
+            (Grouping::Wasm, None) => {
+                return Err(format!("左栏 {} 用 wasm 排法，要写 wasm 文件名", p.id));
+            }
+            (_, Some(_)) => {
+                return Err(format!("左栏 {} 写了 wasm，group 要写 \"wasm\"", p.id));
+            }
+            _ => {}
         }
         p.file = file.to_owned();
     }
@@ -259,6 +295,56 @@ mod tests {
         assert!(report[1].result.as_ref().unwrap_err().contains("重名"));
         assert!(report[2].result.as_ref().unwrap_err().contains("需要你"));
         assert!(report[3].result.as_ref().unwrap_err().contains("格式不对"));
+        let _ = std::fs::remove_dir_all(&d);
+    }
+
+    #[test]
+    fn a_wasm_preset_names_a_module_inside_its_plugin() {
+        let d = std::env::temp_dir().join(format!("kl-sidebar-wasm-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&d);
+        std::fs::create_dir_all(&d).unwrap();
+        std::fs::write(d.join("view.wasm"), b"\0asm").unwrap();
+        let write = |name: &str, body: &str| {
+            let p = d.join(name);
+            std::fs::write(&p, body).unwrap();
+            p
+        };
+        let good = write(
+            "a.json",
+            r#"{"api":1,"presets":[{"id":"mine","name":"我的","group":"wasm","wasm":"view.wasm"}]}"#,
+        );
+        let outside = write(
+            "b.json",
+            r#"{"api":1,"presets":[{"id":"x","name":"x","group":"wasm","wasm":"../view.wasm"}]}"#,
+        );
+        let missing = write(
+            "c.json",
+            r#"{"api":1,"presets":[{"id":"y","name":"y","group":"wasm","wasm":"gone.wasm"}]}"#,
+        );
+        let stray = write(
+            "d.json",
+            r#"{"api":1,"presets":[{"id":"z","name":"z","group":"flat","wasm":"view.wasm"}]}"#,
+        );
+        let (presets, report) = load(vec![good, outside, missing, stray]);
+        assert_eq!(
+            presets.last().unwrap().wasm_path(),
+            Some(d.join("view.wasm"))
+        );
+        assert!(
+            report[1]
+                .result
+                .as_ref()
+                .unwrap_err()
+                .contains(".wasm 文件名")
+        );
+        assert!(
+            report[2]
+                .result
+                .as_ref()
+                .unwrap_err()
+                .contains("不在插件目录里")
+        );
+        assert!(report[3].result.as_ref().unwrap_err().contains("group"));
         let _ = std::fs::remove_dir_all(&d);
     }
 

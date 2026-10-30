@@ -35,6 +35,8 @@ pub(super) struct SidebarPrefs {
     pub preset: String,
     pub collapsed: bool,
     pub toggled: HashSet<String>,
+    /// WASM presets loaded so far, with their last answers.
+    pub wasm: super::sidebar_wasm::Views,
 }
 impl SidebarPrefs {
     fn path() -> Option<PathBuf> {
@@ -49,6 +51,7 @@ impl SidebarPrefs {
             preset: lines.next().unwrap_or_default().to_owned(),
             collapsed: lines.any(|l| l == "collapsed"),
             toggled: HashSet::new(),
+            wasm: Default::default(),
         }
     }
     /// Best effort: a choice that cannot be written still holds until quit.
@@ -209,7 +212,7 @@ impl Workbench {
             )
             .into_any_element()
     }
-    fn section_title(title: String, count: usize) -> gpui::Div {
+    pub(super) fn section_title(title: String, count: usize) -> gpui::Div {
         div()
             .flex()
             .px(px(T::S8))
@@ -328,6 +331,9 @@ impl Workbench {
                         push(&mut out, *l, detail(l));
                     }
                 }
+            }
+            Grouping::Wasm => {
+                self.wasm_rows(preset, sessions, current, &mut push, &mut out, cx);
             }
             Grouping::Directory => {
                 let pinned: Vec<_> = sessions

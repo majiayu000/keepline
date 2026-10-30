@@ -5,7 +5,7 @@
 //! the returned pointer is a 4-byte little-endian length followed by JSON.
 use std::time::Duration;
 use wasmtime::error::{Context, Result, bail, format_err};
-use wasmtime::{Config, Engine, Instance, Memory, Module, Store, TypedFunc};
+use wasmtime::{Config, Instance, Memory, Store, TypedFunc};
 
 /// How long one call may run before it is interrupted, in epoch ticks of `TICK`.
 pub const TICK: Duration = Duration::from_millis(10);
@@ -17,6 +17,13 @@ pub fn engine() -> Result<Engine> {
     let mut config = Config::new();
     config.epoch_interruption(true);
     Engine::new(&config)
+}
+
+pub use wasmtime::{Engine, Module};
+
+/// Compiles a module from its `.wasm` bytes for `Plugin::new`.
+pub fn module(engine: &Engine, wasm: &[u8]) -> Result<Module> {
+    Module::new(engine, wasm)
 }
 
 /// Compiles once; the bytes can be cached on disk and loaded with `Plugin::from_precompiled`.
