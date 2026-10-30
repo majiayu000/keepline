@@ -196,6 +196,31 @@ fn main() {
         std::process::exit(1);
     }
 }
+/// The isolated runtime of a visual-evidence run, so every way out can stop its host.
+#[cfg(feature = "visual-test")]
+static EVIDENCE_RUNTIME: std::sync::OnceLock<PathBuf> = std::sync::OnceLock::new();
+/// A visual-evidence run owns the host it started: the host outlives the app by design
+/// (terminals survive a restart), so left alone it keeps the run's shells, and any load
+/// a script typed into them, running with nobody attached. Ending the host closes its
+/// PTYs and the shells with them.
+#[cfg(feature = "visual-test")]
+fn stop_evidence_host() {
+    let Some(root) = EVIDENCE_RUNTIME.get() else {
+        return;
+    };
+    let escaped: String = root
+        .display()
+        .to_string()
+        .chars()
+        .flat_map(|c| {
+            let special = ".^$*+?()[]{}|\\".contains(c);
+            special.then_some('\\').into_iter().chain(std::iter::once(c))
+        })
+        .collect();
+    let _ = std::process::Command::new("/usr/bin/pkill")
+        .args(["-TERM", "-f", &format!("keeplined serve --runtime {escaped}( |$)")])
+        .status();
+}
 /// macOS crash reports keep only the stack, so every panic's message and place is also
 /// appended to ~/Library/Logs/Keepline/crash.log. A failed visual-evidence check exits
 /// with 101 instead of aborting, so a scripted run raises no "quit unexpectedly" dialog.
@@ -228,6 +253,8 @@ fn record_panics() {
             }
         }
         if scripted {
+            #[cfg(feature = "visual-test")]
+            stop_evidence_host();
             let _ = io::Write::flush(&mut io::stderr());
             // SAFETY: ends the process at once, as the abort that follows a panic would.
             unsafe { libc::_exit(101) };
@@ -280,12 +307,18 @@ fn run() -> io::Result<()> {
         .position(|a| a == "--visual-evidence")
         .and_then(|i| args.get(i + 1))
         .map(PathBuf::from);
+    #[cfg(feature = "visual-test")]
+    if evidence.is_some() {
+        let _ = EVIDENCE_RUNTIME.set(root.clone());
+    }
     let app = gpui_platform::application();
     let reopen_root = root.clone();
     app.on_reopen(move |cx| reopen_window(&reopen_root, cx));
     app.run(move |cx: &mut App| {
         use futures::StreamExt;
         cx.on_action(|_: &Quit, cx| cx.quit());
+        #[cfg(feature = "visual-test")]
+        cx.on_app_quit(|_| async { stop_evidence_host() }).detach();
         cx.on_action(|_: &ShowMenuPanel, _| desktop::show());
         cx.bind_keys([gpui::KeyBinding::new("cmd-q", Quit, None)]);
         cx.on_action(|choice: &ChooseAppearance, cx| {
