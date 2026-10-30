@@ -169,6 +169,26 @@ impl Binding {
         }
     }
 }
+/// Where a conversation's name comes from.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum NameSource {
+    User,
+    Task,
+    /// The CLI's own: Codex's generated thread name, Claude's `/rename`, desktop or
+    /// generated title, Grok's summary.
+    Agent,
+    FirstAsk,
+}
+impl NameSource {
+    pub fn label(self, agent: Agent) -> String {
+        match self {
+            Self::User => "你起的名".into(),
+            Self::Task => "待办标题".into(),
+            Self::Agent => format!("{} 起的名", agent.name()),
+            Self::FirstAsk => "第一句话".into(),
+        }
+    }
+}
 impl AgentSession {
     /// Started in a Keepline terminal. Conversations found only by scanning CLI logs
     /// never ask for attention; they stay visible in the overview.
@@ -516,24 +536,58 @@ impl Workspace {
             .iter()
             .find(|t| t.layout.as_ref().is_some_and(|l| l.contains(id)))
     }
-    /// What a conversation is called, best first: the name the user gave it, the one its
-    /// CLI keeps, its first ask. `None` when none of those is known.
-    pub fn session_name(&self, s: &AgentSession) -> Option<String> {
+    /// What a conversation is called and where that name comes from, best first: the
+    /// name the user gave it, the task it was started for or given, the one its CLI
+    /// keeps, its first ask. `None` when none of those is known. Like Claude Desktop's
+    /// title sources, a name the user or a task chose is never replaced by a generated one.
+    pub fn session_naming(&self, s: &AgentSession) -> Option<(String, NameSource)> {
         let named = s.name.trim();
         if !named.is_empty() {
-            return Some(named.to_owned());
+            return Some((named.to_owned(), NameSource::User));
+        }
+        if let Some(task) = s
+            .task
+            .as_ref()
+            .and_then(|id| self.tasks.iter().find(|t| &t.id == id))
+            .map(|t| t.title.trim())
+            .filter(|t| !t.is_empty())
+        {
+            return Some((task.to_owned(), NameSource::Task));
         }
         let c = self.content.get(&s.id)?;
         let named = crate::content::topic(&c.name);
         if !named.is_empty() {
-            return Some(crate::content::short(&named, 70));
+            return Some((crate::content::short(&named, 70), NameSource::Agent));
         }
         // The first ask keeps its lines, so pasted chrome above the words can go.
         let first = match c.asks.first() {
             Some(q) if c.first_ask_known => q.text.as_str(),
             _ => c.title.as_str(),
         };
-        Some(crate::content::short(&crate::content::topic(first), 70)).filter(|t| !t.is_empty())
+        Some(crate::content::short(&crate::content::topic(first), 70))
+            .filter(|t| !t.is_empty())
+            .map(|t| (t, NameSource::FirstAsk))
+    }
+    pub fn session_name(&self, s: &AgentSession) -> Option<String> {
+        self.session_naming(s).map(|(name, _)| name)
+    }
+    /// The name every surface shows: `session_name`, else the latest ask of a
+    /// conversation read only from its tail, else its CLI and directory.
+    pub fn session_title(&self, s: &AgentSession) -> String {
+        if let Some(name) = self.session_name(s) {
+            return name;
+        }
+        self.content
+            .get(&s.id)
+            .and_then(|c| c.asks.last())
+            .map(|q| crate::content::short(&crate::content::topic(&q.text), 70))
+            .filter(|t| !t.is_empty())
+            .unwrap_or_else(|| {
+                let dir = std::path::Path::new(&s.cwd)
+                    .file_name()
+                    .map_or(s.cwd.clone(), |n| n.to_string_lossy().into_owned());
+                format!("{} · {dir}", s.runtime.executable())
+            })
     }
     pub fn current_agent(&self, terminal: &str) -> Option<&AgentSession> {
         self.agent_sessions
@@ -1256,7 +1310,7 @@ mod tests {
         );
     }
     #[test]
-    fn session_names_prefer_the_user_then_the_cli_then_the_first_ask() {
+    fn session_names_prefer_the_user_then_the_task_then_the_cli_then_the_first_ask() {
         let mut w = Workspace::default();
         w.observe_agent(AgentSession {
             terminal: None,
@@ -1267,6 +1321,7 @@ mod tests {
         let id = w.agent_sessions[0].id.clone();
         let session = |w: &Workspace| w.agent_sessions[0].clone();
         assert_eq!(w.session_name(&session(&w)), None);
+        assert_eq!(w.session_title(&session(&w)), "codex · a");
         w.content.insert(
             id.clone(),
             crate::content::Content {
@@ -1284,7 +1339,24 @@ mod tests {
             Some("这个页面讲了什么")
         );
         w.content.get_mut(&id).unwrap().name = "总结页面".into();
-        assert_eq!(w.session_name(&session(&w)).as_deref(), Some("总结页面"));
+        assert_eq!(
+            w.session_naming(&session(&w)),
+            Some(("总结页面".into(), NameSource::Agent))
+        );
+        // A task it was started for or given outranks what the CLI generated.
+        w.tasks.push(Task {
+            id: "t".into(),
+            space: "s".into(),
+            title: "修复登录跳转".into(),
+            description: String::new(),
+            acceptance: vec![],
+            agent: Agent::Codex,
+        });
+        w.agent_sessions[0].task = Some("t".into());
+        assert_eq!(
+            w.session_naming(&session(&w)),
+            Some(("修复登录跳转".into(), NameSource::Task))
+        );
         w.edit(Edit::RenameSession {
             id: id.clone(),
             name: "我的名字".into(),
@@ -1297,7 +1369,11 @@ mod tests {
             ..observation("one")
         })
         .unwrap();
-        assert_eq!(w.session_name(&session(&w)).as_deref(), Some("我的名字"));
+        assert_eq!(
+            w.session_naming(&session(&w)),
+            Some(("我的名字".into(), NameSource::User))
+        );
+        assert_eq!(w.session_title(&session(&w)), "我的名字");
         assert!(
             w.edit(Edit::RenameSession {
                 id: "missing".into(),
