@@ -84,8 +84,14 @@ impl Adapter for Claude {
             }
         }
         // `/rename` and the desktop app write the conversation's title; the last one wins.
+        // The CLI's own generated title only names a conversation nobody titled.
         if m["type"] == "custom-title" {
             if let Some(name) = m["customTitle"].as_str() {
+                parser.card.name = name.trim().to_owned();
+                parser.custom_name = true;
+            }
+        } else if m["type"] == "ai-title" && !parser.custom_name {
+            if let Some(name) = m["aiTitle"].as_str() {
                 parser.card.name = name.trim().to_owned();
             }
         }

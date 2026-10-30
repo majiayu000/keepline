@@ -379,6 +379,10 @@ pub struct Parser {
     /// The turn a subagent's dialog interrupted, restored once that dialog is gone.
     #[serde(default)]
     child_wait_from: Option<Turn>,
+    /// The card's name came from a title the user or the desktop app set, which a
+    /// generated title does not replace.
+    #[serde(default)]
+    pub(crate) custom_name: bool,
     #[serde(skip)]
     pub records: Vec<Record>,
     /// "Running→Waiting Hook" lines for the status trace, one per change of `card.turn`.
@@ -1085,7 +1089,7 @@ fn trace(path: &str, parser: &Parser) {
 pub fn save(db: &Connection, path: &str, parser: &Parser) -> io::Result<()> {
     trace(path, parser);
     let mut encoded = serde_json::to_value(parser).map_err(db_err)?;
-    encoded["_rules"] = json!(10);
+    encoded["_rules"] = json!(11);
     db.prepare_cached("INSERT INTO session_content VALUES(?1,?2,?3,?4,?5,?6) ON CONFLICT(path) DO UPDATE SET title=excluded.title,turn=excluded.turn,updated=excluded.updated,projection=excluded.projection,parser=excluded.parser").map_err(db_err)?.execute(params![path,parser.card.title,format!("{:?}",parser.card.turn),i64::try_from(parser.card.updated).map_err(db_err)?,serde_json::to_string(&parser.card).map_err(db_err)?,serde_json::to_string(&encoded).map_err(db_err)?]).map_err(db_err)?;
     let mut ordinals = BTreeMap::new();
     for r in &parser.records {
@@ -1351,6 +1355,21 @@ mod tests {
         }
         assert_eq!(p.card.name, "MCP CLI 系统设计");
         assert!(p.card.title.is_empty());
+    }
+    #[test]
+    fn claude_generated_title_names_the_card_until_one_is_set() {
+        let mut p = Parser::default();
+        let mut add_title = |record: serde_json::Value| {
+            p.add(
+                Agent::Claude,
+                &serde_json::to_vec(&record).unwrap(),
+                Source::default(),
+            );
+        };
+        add_title(json!({"type":"ai-title","aiTitle":" 架构清理 ","sessionId":"s"}));
+        add_title(json!({"type":"custom-title","customTitle":"我起的名","sessionId":"s"}));
+        add_title(json!({"type":"ai-title","aiTitle":"后来生成的","sessionId":"s"}));
+        assert_eq!(p.card.name, "我起的名");
     }
     #[test]
     fn user_dedup_additions_and_claims_are_not_receipts() {
