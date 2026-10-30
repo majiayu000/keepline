@@ -19,12 +19,15 @@ pub enum Kind {
     Agent,
     /// `actions.json`: commands for the pane menu and ⌘P (see `action`).
     Actions,
+    /// `rules.json`: which commands count as verification (see `rule`).
+    Rules,
 }
 impl Kind {
     pub fn label(self) -> &'static str {
         match self {
             Self::Agent => "Agent",
             Self::Actions => "动作",
+            Self::Rules => "验证规则",
         }
     }
     /// The files of this kind inside a plugin directory, in load order.
@@ -47,6 +50,10 @@ impl Kind {
                 files
             }
             Self::Actions => [dir.join("actions.json")]
+                .into_iter()
+                .filter(|p| p.is_file())
+                .collect(),
+            Self::Rules => [dir.join("rules.json")]
                 .into_iter()
                 .filter(|p| p.is_file())
                 .collect(),
@@ -164,7 +171,7 @@ fn read(dir: &Path) -> Result<Plugin, String> {
         return Err("name 不能为空".into());
     }
     if m.provides.is_empty() {
-        return Err("provides 至少写一种：agent、actions".into());
+        return Err("provides 至少写一种：agent、actions、rules".into());
     }
     let plugin = Plugin {
         id: m.id,
@@ -263,6 +270,25 @@ mod tests {
         assert_eq!(files.len(), 2);
         assert!(files[0].ends_with("agent.json"), "agent.json loads first");
         let _ = std::fs::remove_dir_all(&root);
+    }
+
+    #[test]
+    fn shipped_example_plugins_load() {
+        let root = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../plugins");
+        let found = discover(&root);
+        assert!(found.len() >= 3);
+        for f in &found {
+            let Ok(p) = &f.result else {
+                // The WASM guest is a build project, not a package yet.
+                assert!(f.dir.ends_with("sidebar-status"), "{f:?}");
+                continue;
+            };
+            let (_, actions) = crate::action::load(p.files(Kind::Actions));
+            let (_, rules) = crate::rule::load(p.files(Kind::Rules));
+            for loaded in actions.iter().chain(&rules) {
+                assert!(loaded.result.is_ok(), "{loaded:?}");
+            }
+        }
     }
 
     #[test]

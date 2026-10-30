@@ -751,6 +751,21 @@ impl SettingsView {
                 });
             }
         }
+        let rules = keepline_core::rule::report();
+        if !rules.is_empty() {
+            page = page.child(div().mt(px(T::S16)).child(label("验证规则文件")));
+            for r in rules {
+                let file = r.file.display().to_string();
+                page = page.child(match &r.result {
+                    Ok(list) => self.row(
+                        &file,
+                        &format!("这些命令算跑过验证：{list}"),
+                        status(true, "生效".into()),
+                    ),
+                    Err(e) => self.row(&file, e, status(false, "没有生效".into())),
+                });
+            }
+        }
         let declared = agent::report();
         if !declared.is_empty() {
             page = page.child(div().mt(px(T::S16)).child(label("Agent 声明文件")));

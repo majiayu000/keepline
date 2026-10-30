@@ -1005,35 +1005,94 @@ fn words(command: &str) -> Vec<String> {
         .skip_while(|s| s.contains('=') && !s.starts_with('-'))
         .collect()
 }
+/// Whether a command an Agent ran checks the work: a test, type check or lint run. A
+/// chain counts when one of its parts does and that part's failure reaches the exit code:
+/// every link after it is `&&` (after a `;` only the last part speaks). Pipes, background
+/// jobs and substitutions hide the exit code, so they never count.
 fn verification(command: &str) -> bool {
-    let w = words(command);
-    if w.iter()
+    if command.contains('\n') || command.contains('`') || command.contains("$(") {
+        return false;
+    }
+    let Some(words) = shlex::split(command) else {
+        return false;
+    };
+    let mut parts: Vec<Vec<String>> = vec![vec![]];
+    let mut links: Vec<&str> = vec![];
+    for word in words {
+        match word.as_str() {
+            "&&" => {
+                parts.push(vec![]);
+                links.push("&&");
+            }
+            ";" => {
+                parts.push(vec![]);
+                links.push(";");
+            }
+            // `2>&1` only moves output; it keeps the exit code.
+            w if redirect(w) => {}
+            w if w.contains(['|', '&']) => return false,
+            w if w.ends_with(';') => {
+                parts
+                    .last_mut()
+                    .unwrap()
+                    .push(w.trim_end_matches(';').to_owned());
+                parts.push(vec![]);
+                links.push(";");
+            }
+            _ => parts.last_mut().unwrap().push(word),
+        }
+    }
+    parts
+        .iter()
+        .enumerate()
+        .any(|(i, part)| links[i..].iter().all(|l| *l == "&&") && verifies(part))
+}
+fn redirect(w: &str) -> bool {
+    let w = w.trim_start_matches(|c: char| c.is_ascii_digit());
+    w.strip_prefix(">&")
+        .is_some_and(|n| !n.is_empty() && n.chars().all(|c| c.is_ascii_digit()))
+}
+/// One simple command: built-in test and check runners, then the plugins' rules.
+fn verifies(part: &[String]) -> bool {
+    if part
+        .iter()
         .any(|w| matches!(w.as_str(), "--help" | "-h" | "--version"))
     {
         return false;
     }
-    let w: Vec<_> = w
+    // `FOO=1 env time cargo test` is `cargo test`.
+    let w: Vec<&str> = part
         .iter()
+        .skip_while(|w| w.contains('=') && !w.starts_with('-'))
         .map(|s| s.rsplit('/').next().unwrap_or(s))
+        .skip_while(|w| matches!(*w, "env" | "time" | "nice" | "caffeinate"))
         .collect();
-    matches!(
-        w.as_slice(),
-        ["cargo", "test" | "check", ..]
-            | ["go", "test", ..]
-            | ["pytest", ..]
-            | ["python" | "python3", "-m", "pytest", ..]
-            | [
-                "bun" | "npm" | "pnpm" | "yarn",
-                "test" | "typecheck" | "check",
-                ..,
-            ]
-            | [
-                "bun" | "npm" | "pnpm" | "yarn",
-                "run",
-                "test" | "typecheck" | "check",
-                ..,
-            ]
-    )
+    let script = |s: &str| {
+        s.starts_with("test") || matches!(s, "typecheck" | "check" | "lint" | "verify" | "ci")
+    };
+    let built_in = match w.as_slice() {
+        ["cargo", "test" | "check" | "clippy" | "nextest", ..]
+        | ["go", "test" | "vet", ..]
+        | ["pytest" | "vitest" | "jest" | "tsc" | "mypy" | "ruff", ..]
+        | ["python" | "python3", "-m", "pytest" | "mypy", ..]
+        | ["uv" | "poetry" | "pdm", "run", "pytest" | "mypy" | "ruff", ..]
+        | ["npx" | "bunx" | "pnpx", "vitest" | "jest" | "tsc" | "playwright", ..]
+        | ["deno" | "swift", "test", ..]
+        | ["xcodebuild", .., "test"]
+        | ["mvn" | "gradle" | "gradlew", "test" | "verify" | "check", ..]
+        | ["make" | "just", "test" | "check" | "lint" | "ci", ..] => true,
+        ["bun" | "npm" | "pnpm" | "yarn", s, ..] if script(s) => true,
+        ["bun" | "npm" | "pnpm" | "yarn", "run" | "exec", s, ..]
+            if script(s) || matches!(*s, "vitest" | "jest" | "tsc") =>
+        {
+            true
+        }
+        _ => false,
+    };
+    built_in
+        || keepline_core::rule::verify()
+            .iter()
+            .any(|r| keepline_core::rule::matches(r, &w))
 }
 fn git_commit(command: &str) -> bool {
     let w = words(command);
@@ -1089,7 +1148,7 @@ fn trace(path: &str, parser: &Parser) {
 pub fn save(db: &Connection, path: &str, parser: &Parser) -> io::Result<()> {
     trace(path, parser);
     let mut encoded = serde_json::to_value(parser).map_err(db_err)?;
-    encoded["_rules"] = json!(11);
+    encoded["_rules"] = json!(12);
     db.prepare_cached("INSERT INTO session_content VALUES(?1,?2,?3,?4,?5,?6) ON CONFLICT(path) DO UPDATE SET title=excluded.title,turn=excluded.turn,updated=excluded.updated,projection=excluded.projection,parser=excluded.parser").map_err(db_err)?.execute(params![path,parser.card.title,format!("{:?}",parser.card.turn),i64::try_from(parser.card.updated).map_err(db_err)?,serde_json::to_string(&parser.card).map_err(db_err)?,serde_json::to_string(&encoded).map_err(db_err)?]).map_err(db_err)?;
     let mut ordinals = BTreeMap::new();
     for r in &parser.records {
@@ -1873,6 +1932,45 @@ mod tests {
         assert!(!claims_done("尚未完成"));
         assert!(!verification("cargo test --lib; echo ok"));
         assert!(!verification("cargo test --help"));
+    }
+    #[test]
+    fn verification_reads_chains_runners_and_scripts() {
+        for yes in [
+            "cargo test --lib",
+            "RUST_LOG=1 cargo nextest run",
+            "cd next && cargo test -p keeplined",
+            "cargo fmt && cargo clippy -- -D warnings && echo done",
+            "cargo build; cargo test",
+            "cargo test 2>&1",
+            "npx vitest run",
+            "bunx jest src",
+            "pnpm run test:unit",
+            "npm test",
+            "bun run typecheck",
+            "make check",
+            "uv run pytest -q",
+            "python3 -m pytest tests",
+            "./node_modules/.bin/vitest",
+            "deno test",
+            "swift test",
+            "go vet ./...",
+        ] {
+            assert!(verification(yes), "{yes}");
+        }
+        for no in [
+            "cargo build",
+            "cargo test | tail -5",
+            "cargo test 2>&1 | tail",
+            "cargo test &",
+            "cargo test; echo ok",
+            "echo $(cargo test)",
+            "npm run build",
+            "make",
+            "cargo test --version",
+            "git commit -m test",
+        ] {
+            assert!(!verification(no), "{no}");
+        }
     }
     #[test]
     fn source_rows_are_idempotent() {

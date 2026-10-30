@@ -1,0 +1,8 @@
+{
+  "api": 1,
+  "id": "project-checks",
+  "name": "项目自带的检查脚本",
+  "version": "0.1.0",
+  "description": "把 just test、scripts/ci.sh 这类项目自己的检查命令也算作跑过验证",
+  "provides": ["rules"]
+}
