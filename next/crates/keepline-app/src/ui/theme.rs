@@ -441,10 +441,9 @@ impl Theme {
     pub const TODO_CARD_MIN: f32 = 280.;
     /// A folded group: one bordered row instead of its cards.
     pub const FOLDED_ROW: f32 = 40.;
-    /// 很久没动's weekly mini chart of last-activity ages.
+    /// 很久没动's mini chart of last-activity ages.
     pub const AGE_BAR_WIDTH: f32 = 6.;
     pub const AGE_CHART_HEIGHT: f32 = 16.;
-    pub const AGE_CHART_WEEKS: usize = 12;
     /// The sidebar's per-space distribution under the selected space.
     pub const MINI_BAR: f32 = 4.;
     /// 逐个清理: one step per queued session, the tally swatches and the age marker.
