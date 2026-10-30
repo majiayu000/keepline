@@ -305,18 +305,16 @@ impl Render for Workbench {
                         d.child(badge(g, needs.len()).font_features(T::tabular()))
                     })
                     .child(close)
-                    // The current tab is underlined rather than filled.
+                    // The current tab takes the pane's surface and opens into it: side
+                    // hairlines, and it covers the strip's bottom edge.
                     .when(active, |d| {
-                        d.child(
-                            div()
-                                .absolute()
-                                .bottom_0()
-                                .left(px(T::TAB_LINE_INSET))
-                                .right(px(T::TAB_LINE_INSET))
-                                .h(px(T::TAB_LINE))
-                                .rounded(px(T::TAB_LINE / 2.))
-                                .bg(T::color(T::primary())),
-                        )
+                        d.bg(T::color(T::pane()))
+                            .border_l(px(T::BORDER_WIDTH))
+                            .border_r(px(T::BORDER_WIDTH))
+                            .border_color(T::color(T::border()))
+                            .self_end()
+                            .mb(px(-T::BORDER_WIDTH))
+                            .h(px(T::TABS))
                     })
                     // The hover card would cover the right-click menu; dropping the
                     // builder while a menu is open also dismisses a visible card.
