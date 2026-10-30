@@ -563,8 +563,8 @@ fn real_codex_tints_its_input_box_from_the_terminal_background() {
     let until = Instant::now() + Duration::from_secs(30);
     let (vt, row) = loop {
         let (_, vt, _) = h.attach("codex", false);
-        if let Some((y, _)) = vt.search("Ask Codex").unwrap().into_iter().last() {
-            break (vt, y);
+        if let Some(m) = vt.search("Ask Codex").unwrap().into_iter().last() {
+            break (vt, m.row);
         }
         assert!(Instant::now() < until, "{}", vt.tail_text(30).unwrap());
         std::thread::sleep(Duration::from_millis(200));

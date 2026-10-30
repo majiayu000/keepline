@@ -76,7 +76,7 @@ impl Render for Pane {
                         &p.font,
                         bounds,
                         metrics,
-                        true,
+                        screen::CursorPaint::Shown,
                         &mut p.cache,
                         window,
                         cx,

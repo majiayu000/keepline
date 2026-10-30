@@ -64,10 +64,9 @@ impl Workbench {
             .tab
             .as_ref()
             .and_then(|id| self.workspace.tab_terminals(id).first().cloned())
+            && let Some(pane) = self.layout.panes.get(&id)
         {
-            if let Some(pane) = self.layout.panes.get(&id) {
-                window.focus(&pane.focus_handle(cx), cx);
-            }
+            window.focus(&pane.focus_handle(cx), cx);
         }
         cx.notify();
         window.refresh();
@@ -383,16 +382,15 @@ impl Workbench {
     pub fn visual_view(&mut self, overview: bool, window: &mut Window, cx: &mut Context<Self>) {
         self.nav.overview = overview;
         self.sync_panes(cx);
-        if !overview {
-            if let Some(pane) = self
+        if !overview
+            && let Some(pane) = self
                 .nav
                 .tab
                 .as_ref()
                 .and_then(|id| self.workspace.tab_terminals(id).first().cloned())
                 .and_then(|id| self.layout.panes.get(&id))
-            {
-                window.focus(&pane.focus_handle(cx), cx);
-            }
+        {
+            window.focus(&pane.focus_handle(cx), cx);
         }
         cx.notify();
         window.refresh();

@@ -472,8 +472,10 @@ impl Capture {
         Ok(changed)
     }
 }
-/// Standalone captures for fixtures; production keeps a Capture per Pane.
+/// Standalone captures for tests and the reference examples; production keeps a Capture
+/// per Pane, so the app binary itself never calls it.
 #[cfg(any(test, feature = "visual-test"))]
+#[cfg_attr(not(test), allow(dead_code))]
 pub fn capture(vt: &Vt) -> Result<Screen, libghostty_vt::Error> {
     let mut out = Screen::default();
     Capture::new()?.update(vt, &mut out)?;

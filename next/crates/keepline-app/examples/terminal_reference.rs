@@ -56,7 +56,7 @@ impl Render for Fixture {
                         &font,
                         bounds,
                         metrics,
-                        true,
+                        screen::CursorPaint::Shown,
                         &mut screen::LayoutCache::default(),
                         window,
                         cx,
