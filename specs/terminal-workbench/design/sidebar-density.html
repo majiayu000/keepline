@@ -1,0 +1,246 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>左栏减密 · 对比</title>
+<style>
+:root {
+  --win: #16161a; --side: #131317; --line: #2a2a2f; --line-soft: #222227; --hover: #1f1f24; --sel: #25252b;
+  --text: #d9d7d3; --strong: #f1efeb; --dim: #8b8a88; --faint: #64635f; --ghost: #4a4946;
+  --error: #e5534b; --working: #e8c547; --review: #8f93ff; --waiting: #e8823a;
+}
+:root[data-theme="light"] {
+  --win: #fafaf9; --side: #f4f3f1; --line: #dcdbd8; --line-soft: #e6e5e2; --hover: #ecebe9; --sel: #e4e3e0;
+  --text: #2a2927; --strong: #0e0d0c; --dim: #5f5e5b; --faint: #7a7976; --ghost: #a8a7a3;
+  --error: #c53b33; --working: #9a7c0c; --review: #5e62d8; --waiting: #c4651f;
+}
+* { box-sizing: border-box; }
+body { margin: 0; background: #c9ccd2; color: #1f2024; font: 13px/1.45 -apple-system, BlinkMacSystemFont, "PingFang SC", sans-serif; padding: 20px 16px 48px; display: flex; flex-direction: column; align-items: center; gap: 14px; }
+button { font: inherit; border: 0; background: none; color: inherit; cursor: pointer; padding: 0; text-align: left; }
+.controls { display: flex; gap: 8px; align-items: center; font-size: 12px; color: #2f3238; flex-wrap: wrap; justify-content: center; }
+.controls .grp { display: inline-flex; background: #e1e3e8; border-radius: 7px; padding: 2px; }
+.controls button { height: 26px; padding: 0 10px; border-radius: 5px; color: #1f2024; }
+.controls button[aria-pressed="true"] { background: #1f2024; color: #fff; }
+.explain { max-width: 1240px; width: 100%; font-size: 12.5px; color: #34373e; }
+.row { display: grid; grid-template-columns: repeat(4, 290px); gap: 18px; justify-content: center; max-width: 100%; }
+@media (max-width: 1260px) { .row { grid-template-columns: repeat(2, 290px); } }
+@media (max-width: 640px) { .row { grid-template-columns: 290px; } }
+.col { display: flex; flex-direction: column; gap: 6px; }
+.col h3 { margin: 0; font-size: 13px; color: #111; display: flex; justify-content: space-between; }
+.col h3 span { font-weight: 400; color: #4a4d55; }
+.panel { height: 760px; border-radius: 10px; overflow: hidden; box-shadow: 0 12px 36px rgba(0,0,0,.25); background: var(--side); color: var(--text); display: flex; flex-direction: column; font-size: 12.5px; }
+.mono { font-family: "JetBrains Mono", "SF Mono", Menlo, monospace; }
+.head { display: flex; gap: 6px; padding: 10px 12px 6px; border-bottom: 1px solid var(--line-soft); font-size: 11px; color: var(--dim); }
+.head .seg { display: inline-flex; border: 1px solid var(--line); border-radius: 6px; overflow: hidden; }
+.head .seg i { font-style: normal; padding: 1px 7px; }
+.head .seg i.on { background: var(--sel); color: var(--strong); }
+.head .seg + .seg { margin-left: auto; }
+.list { flex: 1; overflow: hidden; }
+.foot { border-top: 1px solid var(--line-soft); padding: 8px 12px; display: flex; justify-content: space-between; color: var(--dim); font-size: 11.5px; }
+
+/* ---------- 现在 ---------- */
+.old .rule { color: var(--faint); padding: 12px 12px 4px; font-size: 11px; white-space: nowrap; overflow: hidden; }
+.old .s { display: grid; grid-template-columns: 14px 1fr auto; column-gap: 6px; padding: 4px 12px; }
+.old .s.on { background: var(--sel); }
+.old .s .g { font-weight: 700; }
+.old .s .t { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.old .s .a { color: var(--faint); font-size: 11.5px; }
+.old .s .w { grid-column: 2 / 4; color: var(--dim); font-size: 11.5px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.old .pin { border-bottom: 1px solid var(--line-soft); padding-bottom: 6px; }
+.old .dir { display: grid; grid-template-columns: 14px auto 1fr auto; column-gap: 6px; padding: 8px 12px 3px; align-items: baseline; }
+.old .dir .dn { color: var(--strong); font-weight: 700; }
+.old .dir .dp { color: var(--faint); font-size: 11px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; }
+.old .dir .dc, .old .dir .c { color: var(--faint); font-size: 11px; }
+.old .s.in { padding-left: 24px; }
+
+/* ---------- 优化后 ---------- */
+.new { font-family: -apple-system, BlinkMacSystemFont, "PingFang SC", sans-serif; }
+.new .grp { padding: 6px 0 4px; }
+.new .grp + .grp { margin-top: 10px; }
+.new .gh { display: flex; align-items: baseline; gap: 6px; padding: 4px 14px 4px; font-size: 11px; color: var(--faint); letter-spacing: .03em; }
+.new .gh b { font-weight: 600; color: var(--dim); }
+.new .gh .n { font-family: "JetBrains Mono", "SF Mono", Menlo, monospace; }
+.new .s { display: grid; grid-template-columns: 14px 1fr auto; column-gap: 8px; align-items: baseline; padding: 4px 14px; border-radius: 6px; margin: 0 6px; }
+.new .s:hover { background: var(--hover); }
+.new .s.on { background: var(--sel); }
+.new .s .g { font-family: "JetBrains Mono", "SF Mono", Menlo, monospace; font-weight: 700; font-size: 12px; }
+.new .s .t { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--text); }
+.new .s.on .t { color: var(--strong); }
+.new .s .a { font-family: "JetBrains Mono", "SF Mono", Menlo, monospace; color: var(--ghost); font-size: 11px; }
+.new .s .w { grid-column: 2 / 4; color: var(--dim); font-size: 11.5px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; display: none; padding-top: 1px; }
+.new .s.need .w, .new .s.on .w, .new .s:hover .w { display: block; }
+.new .sum { display: flex; flex-wrap: wrap; gap: 4px 12px; padding: 6px 14px; margin: 0 6px; border-radius: 6px; color: var(--dim); font-size: 12px; }
+.new .sum:hover { background: var(--hover); }
+.new .sum span { white-space: nowrap; }
+.new .sum .n { font-family: "JetBrains Mono", "SF Mono", Menlo, monospace; color: var(--text); }
+.new .sum .chev { margin-left: auto; color: var(--faint); }
+.new .open-list { display: none; }
+.new .expanded .open-list { display: block; }
+.new .expanded .sum .chev { transform: rotate(90deg); display: inline-block; }
+.new .dir { display: flex; align-items: baseline; gap: 6px; padding: 5px 14px; margin: 0 6px; border-radius: 6px; }
+.new .dir:hover { background: var(--hover); }
+.new .dir .caret { color: var(--faint); font-size: 10px; width: 10px; }
+.new .dir .dn { color: var(--strong); font-weight: 600; }
+.new .dir .dp { display: none; color: var(--faint); font-size: 11px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; }
+.new .dir:hover .dp { display: inline; }
+.new .dir .flag { margin-left: auto; font-size: 11px; color: var(--error); font-weight: 600; white-space: nowrap; }
+.new .dir .cnt { margin-left: auto; font-family: "JetBrains Mono", "SF Mono", Menlo, monospace; color: var(--ghost); font-size: 11px; }
+.new .dir .flag + .cnt { margin-left: 6px; }
+.new .dir.quiet .dn { color: var(--dim); font-weight: 400; }
+.new .s.in { margin-left: 22px; }
+.new .rest { color: var(--faint); font-size: 11.5px; padding: 8px 20px; }
+
+.er { color: var(--error); } .k { color: var(--working); } .rv { color: var(--review); } .wt { color: var(--waiting); }
+
+.counts { max-width: 1240px; width: 100%; display: grid; grid-template-columns: repeat(4, minmax(0,1fr)); gap: 12px; font-size: 12.5px; color: #2f3238; }
+.counts div { background: #e6e8ec; border-radius: 8px; padding: 10px 12px; }
+.counts b { color: #111; }
+@media (max-width: 900px) { .counts { grid-template-columns: 1fr 1fr; } }
+</style>
+</head>
+<body>
+<div class="controls">
+  <span>主题</span>
+  <span class="grp"><button type="button" data-theme-btn="dark" aria-pressed="true">深色</button><button type="button" data-theme-btn="light" aria-pressed="false">浅色</button></span>
+  <span>· 优化后的两栏可以试：悬停会话看「停在」，点摘要行展开做完了 / 停下了，悬停目录看路径</span>
+</div>
+<div class="explain">同一批会话（你 10-30 的标题），左边两栏是现在的稿，右边两栏是优化后。改动四条：① 只给需要你的和选中的会话第二行，其余悬停才露；② 做完了 / 停下了 / 很久没动合成一行摘要；③ 按目录时不重复列需要你的会话，目录名旁标「1 需要你」，路径悬停才显示，没活跃会话的目录折叠变淡；④ 分组标题改小字、去掉长横线，会话标题用系统字体，只有符号和时间用等宽。「详细 / 紧凑」开关因此可以去掉。</div>
+
+<div class="row">
+  <!-- 现在 · 按状态 -->
+  <div class="col"><h3>现在 · 按状态 <span>28 行</span></h3>
+  <div class="panel old mono">
+    <div class="head"><span class="seg"><i class="on">按状态</i><i>按目录</i></span><span class="seg"><i class="on">详细</i><i>紧凑</i></span></div>
+    <div class="list">
+      <div class="rule">── 需要你 2 ──────────────</div>
+      <div class="s"><span class="g er">✕</span><span class="t">这个终止 agent 中断取消</span><span class="a">4m</span><span class="w">停在：managed_session 测试超时</span></div>
+      <div class="s"><span class="g er">✕</span><span class="t">这个目录的 grok 的聊天记录</span><span class="a">12m</span><span class="w">停在：找不到 grok 的会话目录</span></div>
+      <div class="rule">── 在跑 2 ────────────────</div>
+      <div class="s on"><span class="g k">◐</span><span class="t">这个诊断的 ui 感觉很丑啊</span><span class="a">41:07</span><span class="w">正在写主界面 A / C 两种样式</span></div>
+      <div class="s"><span class="g k">◐</span><span class="t">标签命名依旧有问题</span><span class="a">3:12</span><span class="w">正在编译 keepline-app</span></div>
+      <div class="rule">── 做完了，等你核对 4 ────</div>
+      <div class="s"><span class="g rv">✓</span><span class="t">左侧的会话 有什么好的命名</span><span class="a">2h</span><span class="w">做成了：标签用第一句话命名</span></div>
+      <div class="s"><span class="g rv">✓</span><span class="t">这个 keepline 的 gpu 占用</span><span class="a">3h</span><span class="w">做成了：只重画变化的区域</span></div>
+      <div class="s"><span class="g rv">✓</span><span class="t">为什么有的会话 在 keepline 里</span><span class="a">5h</span><span class="w">做成了：外部会话标为只读</span></div>
+      <div class="s"><span class="g rv">✓</span><span class="t">cli 是否支持 workflow 呢</span><span class="a">1d</span><span class="w">做成了：说明了 workflow 命令</span></div>
+      <div class="rule">── 停下了 3 ───────────────</div>
+      <div class="s"><span class="g wt">‖</span><span class="t">我准备 重启一下 mac keepline</span><span class="a">2h</span><span class="w">停在：等你确认是否重启</span></div>
+      <div class="s"><span class="g wt">‖</span><span class="t">这个库 有什么可以优化的</span><span class="a">6h</span><span class="w">停在：列了 12 条，没开始改</span></div>
+      <div class="s"><span class="g wt">‖</span><span class="t">看这里 选中一个内容后</span><span class="a">1d</span><span class="w">停在：复现了选区跳动</span></div>
+      <div class="rule">── 很久没动 165 · 鸟瞰里清理</div>
+      <div class="rule">── 已关闭 21 · ⌘P 找回 ────</div>
+    </div>
+    <div class="foot"><span>▦ 鸟瞰</span><span>本机诊断</span><span>设置</span></div>
+  </div></div>
+
+  <!-- 优化 · 按状态 -->
+  <div class="col"><h3>优化后 · 按状态 <span>11 行</span></h3>
+  <div class="panel new">
+    <div class="head"><span class="seg"><i class="on">状态</i><i>目录</i></span></div>
+    <div class="list">
+      <div class="grp">
+        <div class="gh"><b>需要你</b><span class="n">2</span></div>
+        <div class="s need"><span class="g er">✕</span><span class="t">这个终止 agent 中断取消</span><span class="a">4m</span><span class="w">停在 managed_session 测试超时</span></div>
+        <div class="s need"><span class="g er">✕</span><span class="t">这个目录的 grok 的聊天记录</span><span class="a">12m</span><span class="w">停在 找不到 grok 的会话目录</span></div>
+      </div>
+      <div class="grp">
+        <div class="gh"><b>在跑</b><span class="n">2</span></div>
+        <div class="s on"><span class="g k">◐</span><span class="t">这个诊断的 ui 感觉很丑啊</span><span class="a">41:07</span><span class="w">正在写主界面 A / C 两种样式</span></div>
+        <div class="s"><span class="g k">◐</span><span class="t">标签命名依旧有问题</span><span class="a">3:12</span><span class="w">正在编译 keepline-app</span></div>
+      </div>
+      <div class="grp fold">
+        <button type="button" class="sum" aria-expanded="false"><span><span class="rv">✓</span> 做完了 <span class="n">4</span></span><span><span class="wt">‖</span> 停下了 <span class="n">3</span></span><span>很久没动 <span class="n">165</span></span><span class="chev">›</span></button>
+        <div class="open-list">
+          <div class="s"><span class="g rv">✓</span><span class="t">左侧的会话 有什么好的命名</span><span class="a">2h</span><span class="w">做成了 标签用第一句话命名</span></div>
+          <div class="s"><span class="g rv">✓</span><span class="t">这个 keepline 的 gpu 占用</span><span class="a">3h</span><span class="w">做成了 只重画变化的区域</span></div>
+          <div class="s"><span class="g rv">✓</span><span class="t">为什么有的会话 在 keepline 里</span><span class="a">5h</span><span class="w">做成了 外部会话标为只读</span></div>
+          <div class="s"><span class="g rv">✓</span><span class="t">cli 是否支持 workflow 呢</span><span class="a">1d</span><span class="w">做成了 说明了 workflow 命令</span></div>
+          <div class="s"><span class="g wt">‖</span><span class="t">我准备 重启一下 mac keepline</span><span class="a">2h</span><span class="w">停在 等你确认是否重启</span></div>
+          <div class="s"><span class="g wt">‖</span><span class="t">这个库 有什么可以优化的</span><span class="a">6h</span><span class="w">停在 列了 12 条，没开始改</span></div>
+          <div class="s"><span class="g wt">‖</span><span class="t">看这里 选中一个内容后</span><span class="a">1d</span><span class="w">停在 复现了选区跳动</span></div>
+          <div class="rest">很久没动的在鸟瞰里逐个清理 →</div>
+        </div>
+      </div>
+      <div class="rest">已关闭 21 · ⌘P 找回</div>
+    </div>
+    <div class="foot"><span>▦ 鸟瞰</span><span>本机诊断</span><span>设置</span></div>
+  </div></div>
+
+  <!-- 现在 · 按目录 -->
+  <div class="col"><h3>现在 · 按目录 <span>30 行</span></h3>
+  <div class="panel old mono">
+    <div class="head"><span class="seg"><i>按状态</i><i class="on">按目录</i></span><span class="seg"><i class="on">详细</i><i>紧凑</i></span></div>
+    <div class="list">
+      <div class="pin">
+        <div class="rule">── 需要你 2 ──────────────</div>
+        <div class="s"><span class="g er">✕</span><span class="t">这个终止 agent 中断取消</span><span class="a">4m</span><span class="w">停在：managed_session 测试超时</span></div>
+        <div class="s"><span class="g er">✕</span><span class="t">这个目录的 grok 的聊天记录</span><span class="a">12m</span><span class="w">停在：找不到 grok 的会话目录</span></div>
+      </div>
+      <div class="dir"><span class="c">▾</span><span class="dn">keepline</span><span class="dp">~/Desktop/code/AI/tools/keepline</span><span class="dc">6</span></div>
+      <div class="s in on"><span class="g k">◐</span><span class="t">这个诊断的 ui 感觉很丑啊</span><span class="a">41:07</span><span class="w">正在写主界面 A / C 两种样式</span></div>
+      <div class="s in"><span class="g k">◐</span><span class="t">标签命名依旧有问题</span><span class="a">3:12</span><span class="w">正在编译 keepline-app</span></div>
+      <div class="s in"><span class="g er">✕</span><span class="t">这个终止 agent 中断取消</span><span class="a">4m</span><span class="w">停在：managed_session 测试超时</span></div>
+      <div class="s in"><span class="g rv">✓</span><span class="t">左侧的会话 有什么好的命名</span><span class="a">2h</span><span class="w">做成了：标签用第一句话命名</span></div>
+      <div class="s in"><span class="g rv">✓</span><span class="t">这个 keepline 的 gpu 占用</span><span class="a">3h</span><span class="w">做成了：只重画变化的区域</span></div>
+      <div class="s in"><span class="g wt">‖</span><span class="t">我准备 重启一下 mac keepline</span><span class="a">2h</span><span class="w">停在：等你确认是否重启</span></div>
+      <div class="dir"><span class="c">▾</span><span class="dn">cli</span><span class="dp">~/Desktop/code/AI/tools/cli</span><span class="dc">2</span></div>
+      <div class="s in"><span class="g rv">✓</span><span class="t">cli 是否支持 workflow 呢</span><span class="a">1d</span><span class="w">做成了：说明了 workflow 命令</span></div>
+      <div class="s in"><span class="g wt">‖</span><span class="t">这个库 有什么可以优化的</span><span class="a">6h</span><span class="w">停在：列了 12 条，没开始改</span></div>
+      <div class="dir"><span class="c">▾</span><span class="dn">grok-build</span><span class="dp">~/Desktop/code/AI/grok-build</span><span class="dc">1</span></div>
+      <div class="s in"><span class="g er">✕</span><span class="t">这个目录的 grok 的聊天记录</span><span class="a">12m</span><span class="w">停在：找不到 grok 的会话目录</span></div>
+      <div class="dir"><span class="c">▸</span><span class="dn">bench</span><span class="dp">~/Desktop/code/AI/tools/bench</span><span class="dc">3</span></div>
+      <div class="dir"><span class="c">▸</span><span class="dn">knowledge-base</span><span class="dp">~/Documents/knowledge-base</span><span class="dc">4</span></div>
+    </div>
+    <div class="foot"><span>▦ 鸟瞰</span><span>本机诊断</span><span>设置</span></div>
+  </div></div>
+
+  <!-- 优化 · 按目录 -->
+  <div class="col"><h3>优化后 · 按目录 <span>13 行</span></h3>
+  <div class="panel new">
+    <div class="head"><span class="seg"><i>状态</i><i class="on">目录</i></span></div>
+    <div class="list">
+      <div class="grp">
+        <div class="gh"><b>需要你</b><span class="n">2</span></div>
+        <div class="s need"><span class="g er">✕</span><span class="t">这个终止 agent 中断取消</span><span class="a">4m</span><span class="w">keepline · 停在 managed_session 测试超时</span></div>
+        <div class="s need"><span class="g er">✕</span><span class="t">这个目录的 grok 的聊天记录</span><span class="a">12m</span><span class="w">grok-build · 停在 找不到 grok 的会话目录</span></div>
+      </div>
+      <div class="grp">
+        <div class="gh"><b>目录</b></div>
+        <div class="dir"><span class="caret">▾</span><span class="dn">keepline</span><span class="dp">~/Desktop/code/AI/tools/keepline</span><span class="flag">1 需要你</span><span class="cnt">6</span></div>
+        <div class="s in on"><span class="g k">◐</span><span class="t">这个诊断的 ui 感觉很丑啊</span><span class="a">41:07</span><span class="w">正在写主界面 A / C 两种样式</span></div>
+        <div class="s in"><span class="g k">◐</span><span class="t">标签命名依旧有问题</span><span class="a">3:12</span><span class="w">正在编译 keepline-app</span></div>
+        <div class="s in" style="color:var(--dim)"><span class="g" style="color:var(--faint)">·</span><span class="t" style="color:var(--dim)">另有 做完了 2 · 停下了 1</span><span class="a">›</span></div>
+        <div class="dir"><span class="caret">▸</span><span class="dn">grok-build</span><span class="dp">~/Desktop/code/AI/grok-build</span><span class="flag">1 需要你</span><span class="cnt">1</span></div>
+        <div class="dir quiet"><span class="caret">▸</span><span class="dn">cli</span><span class="dp">~/Desktop/code/AI/tools/cli</span><span class="cnt">2</span></div>
+        <div class="dir quiet"><span class="caret">▸</span><span class="dn">bench</span><span class="dp">~/Desktop/code/AI/tools/bench</span><span class="cnt">3</span></div>
+        <div class="dir quiet"><span class="caret">▸</span><span class="dn">knowledge-base</span><span class="dp">~/Documents/knowledge-base</span><span class="cnt">4</span></div>
+      </div>
+      <div class="rest">已关闭 21 · ⌘P 找回</div>
+    </div>
+    <div class="foot"><span>▦ 鸟瞰</span><span>本机诊断</span><span>设置</span></div>
+  </div></div>
+</div>
+
+<div class="counts">
+  <div><b>只给要看的第二行</b>：需要你的和选中的会话常显「停在」，其余悬停才露。省掉最多的行，「详细 / 紧凑」开关不再需要。</div>
+  <div><b>不急的合成一行</b>：做完了 / 停下了 / 很久没动成了一行摘要，点开才列；在跑通常只有一两个，保持展开。</div>
+  <div><b>按目录不重复</b>：需要你的只在顶部出现一次，目录名旁标「1 需要你」；目录里只列在跑的，其余收成「另有…」一行；没活跃会话的目录折叠变淡。</div>
+  <div><b>层级拉开</b>：分组标题小字、无长横线；组间留白大、组内紧；会话标题用系统字体，状态符号和时间仍用等宽，A 样式的味道保留在细节里。</div>
+</div>
+
+<script>
+document.querySelectorAll('.fold .sum').forEach((b) => b.addEventListener('click', () => {
+  const g = b.closest('.fold');
+  g.classList.toggle('expanded');
+  b.setAttribute('aria-expanded', String(g.classList.contains('expanded')));
+}));
+document.querySelectorAll('[data-theme-btn]').forEach((b) => b.addEventListener('click', () => {
+  document.documentElement.dataset.theme = b.dataset.themeBtn;
+  document.querySelectorAll('[data-theme-btn]').forEach((x) => x.setAttribute('aria-pressed', String(x === b)));
+}));
+const q = new URLSearchParams(location.search);
+if (q.get('theme')) document.querySelector(`[data-theme-btn="${q.get('theme')}"]`)?.click();
+</script>
+</body>
+</html>
