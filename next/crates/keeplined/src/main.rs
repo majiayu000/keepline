@@ -1,4 +1,5 @@
 mod control;
+mod hooks_cmd;
 
 fn main() {
     let code = match run() {
@@ -79,7 +80,11 @@ fn run() -> std::io::Result<()> {
             control::run(command, args)
         }
         Some("hook") => hook(args),
-        Some("hooks") => hooks(args),
+        Some("hooks") => hooks_cmd::run(args),
+        Some("--skill") => {
+            print!("{}", control::SKILL);
+            Ok(())
+        }
         Some("--version") => {
             println!(
                 "keeplined protocol {}.{} experimental",
@@ -146,58 +151,6 @@ fn scan(args: impl Iterator<Item = String>) -> std::io::Result<()> {
                 "unexpected scan response: {other:?}"
             )));
         }
-    }
-    Ok(())
-}
-/// `hooks install|uninstall|status [--agent <cli>]`: every CLI that reads hooks when none
-/// is named. Prints one line per CLI: what changed and in which file.
-fn hooks(mut args: impl Iterator<Item = String>) -> std::io::Result<()> {
-    use keepline_core::model::Agent;
-    use keeplined::hooks;
-    let action = args.next().unwrap_or_default();
-    let mut agents = vec![];
-    while let Some(arg) = args.next() {
-        match (
-            arg.as_str(),
-            args.next().as_deref().and_then(Agent::from_executable),
-        ) {
-            ("--agent", Some(agent)) => agents.push(agent),
-            _ => {
-                return Err(std::io::Error::other(
-                    "usage: hooks install|uninstall|status [--agent <cli>]",
-                ))
-            }
-        }
-    }
-    let home = std::path::PathBuf::from(
-        std::env::var_os("HOME").ok_or_else(|| std::io::Error::other("HOME unavailable"))?,
-    );
-    let named = !agents.is_empty();
-    if !named {
-        agents = Agent::all();
-    }
-    for agent in agents {
-        let target = match hooks::target(agent, &home) {
-            Ok(target) => target,
-            // Unnamed, a CLI that needs no hooks is simply not listed.
-            Err(_) if !named => continue,
-            Err(e) => return Err(e),
-        };
-        let path = target.settings.display();
-        let line = match action.as_str() {
-            "install" if hooks::install(agent, &target)? => format!("已安装：{path}"),
-            "install" => format!("已是最新：{path}"),
-            "uninstall" if hooks::uninstall(&target)? => format!("已移除：{path}"),
-            "uninstall" => format!("本来就没装：{path}"),
-            "status" if hooks::installed(agent, &target)? => format!("已安装：{path}"),
-            "status" => format!("未安装：{path}"),
-            _ => {
-                return Err(std::io::Error::other(
-                    "usage: hooks install|uninstall|status [--agent <cli>]",
-                ))
-            }
-        };
-        println!("{} · {line}", agent.name());
     }
     Ok(())
 }

@@ -15,7 +15,10 @@ keeplined wait <终端> [--until idle|waiting|working] [--timeout 秒]
                                              等 Agent 进入某个状态（默认 idle：这一轮做完）
 keeplined explain --file <画面.txt> --agent <claude|codex> [--json]
 keeplined explain <终端> [--json]            画面规则怎么读这块屏：状态、命中的规则、规则版本和来源、看到的行
+keeplined --skill                            给 Coding Agent 看的用法说明（Markdown）
 <终端> 可以是编号的前几位或标签名；全部命令都接受 --runtime <目录>。";
+/// `keeplined --skill`: how a coding Agent drives these commands, and when it must not.
+pub const SKILL: &str = include_str!("skill.md");
 
 /// What the Agent in a terminal is doing, read like the workbench's pane states.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -515,6 +518,19 @@ mod tests {
         assert_eq!(resolve(&w, "review").unwrap(), "aaaa2222");
         assert!(resolve(&w, "aaaa").is_err(), "ambiguous");
         assert!(resolve(&w, "bbbb").is_err(), "exited");
+    }
+    #[test]
+    fn the_skill_names_the_marker_and_every_command() {
+        assert!(SKILL.contains("KEEPLINE_ENV"));
+        for command in ["list", "read", "send", "prompt", "wait", "explain"] {
+            assert!(
+                SKILL.contains(&format!("keeplined {command} ")),
+                "{command}"
+            );
+        }
+        for flag in ["--force", "--wait", "--until", "--enter", "--lines"] {
+            assert!(SKILL.contains(flag), "{flag}");
+        }
     }
     #[test]
     fn phase_follows_the_current_conversation() {

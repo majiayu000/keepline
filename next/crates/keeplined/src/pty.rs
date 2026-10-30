@@ -20,11 +20,14 @@ pub fn announce_host(root: &Path) -> io::Result<()> {
     Ok(())
 }
 
-/// What a terminal's programs learn about the host: which terminal they run in, the
-/// runtime to reach, and the executable whose `hook` subcommand reports to it.
+/// What a terminal's programs learn about the host: that they run in Keepline, in which
+/// terminal, the runtime to reach, and the executable whose `hook` subcommand reports to it.
 fn host_env(terminal: &str, host: Option<&(PathBuf, PathBuf)>) -> Vec<(OsString, OsString)> {
-    use keepline_core::protocol::{HOOK_ENV, RUNTIME_ENV, TERMINAL_ENV};
-    let mut env = vec![(TERMINAL_ENV.into(), terminal.into())];
+    use keepline_core::protocol::{HOOK_ENV, MARKER_ENV, RUNTIME_ENV, TERMINAL_ENV};
+    let mut env = vec![
+        (MARKER_ENV.into(), "1".into()),
+        (TERMINAL_ENV.into(), terminal.into()),
+    ];
     if let Some((root, exe)) = host {
         env.push((RUNTIME_ENV.into(), root.as_os_str().to_owned()));
         env.push((HOOK_ENV.into(), exe.as_os_str().to_owned()));
@@ -543,11 +546,15 @@ mod host_env_tests {
                 .map(|(k, v)| format!("{}={}", k.to_string_lossy(), v.to_string_lossy()))
                 .collect::<Vec<_>>()
         };
-        assert_eq!(names(super::host_env("t1", None)), ["KEEPLINE_TERMINAL=t1"]);
+        assert_eq!(
+            names(super::host_env("t1", None)),
+            ["KEEPLINE_ENV=1", "KEEPLINE_TERMINAL=t1"]
+        );
         let host = ("/run/k".into(), "/app/keeplined".into());
         assert_eq!(
             names(super::host_env("t2", Some(&host))),
             [
+                "KEEPLINE_ENV=1",
                 "KEEPLINE_TERMINAL=t2",
                 "KEEPLINE_RUNTIME=/run/k",
                 "KEEPLINE_HOOK=/app/keeplined"

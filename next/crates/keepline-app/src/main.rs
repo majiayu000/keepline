@@ -1,3 +1,4 @@
+mod agent_hooks;
 mod connection;
 mod desktop;
 #[cfg(feature = "visual-test")]

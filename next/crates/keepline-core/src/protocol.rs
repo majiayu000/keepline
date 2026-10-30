@@ -223,6 +223,8 @@ pub const TERMINAL_ENV: &str = "KEEPLINE_TERMINAL";
 pub const RUNTIME_ENV: &str = "KEEPLINE_RUNTIME";
 /// The host executable: hooks run `"$KEEPLINE_HOOK" hook --agent <cli>`.
 pub const HOOK_ENV: &str = "KEEPLINE_HOOK";
+/// `1` in every managed terminal: what `keeplined --skill` tells an Agent to check first.
+pub const MARKER_ENV: &str = "KEEPLINE_ENV";
 /// The terminal hint for an Agent the host sees running but cannot tie to a conversation yet.
 pub const AGENT_UNBOUND_PREFIX: &str = "未对上对话：";
 /// The terminal hint for a Claude Code that saves no transcript: it inherited the nested
