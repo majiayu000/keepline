@@ -97,11 +97,13 @@ pub struct Plugin {
     pub description: Option<String>,
     pub dir: PathBuf,
     pub provides: Vec<Kind>,
+    /// Turned off in settings: listed, but none of its files load.
+    pub enabled: bool,
 }
 impl Plugin {
-    /// Its files of `kind`; none when it does not provide that kind.
+    /// Its files of `kind`; none when it does not provide that kind or is turned off.
     pub fn files(&self, kind: Kind) -> Vec<PathBuf> {
-        if self.provides.contains(&kind) {
+        if self.enabled && self.provides.contains(&kind) {
             kind.files(&self.dir)
         } else {
             vec![]
@@ -117,10 +119,40 @@ pub struct Found {
 }
 
 static INSTALLED: std::sync::OnceLock<Vec<Found>> = std::sync::OnceLock::new();
+static CONFIG: std::sync::OnceLock<PathBuf> = std::sync::OnceLock::new();
 
 /// Discovers the plugins under `<config>/plugins` once; later calls return the same list.
 pub fn install(config: &Path) -> &'static [Found] {
+    let _ = CONFIG.set(config.to_owned());
     INSTALLED.get_or_init(|| discover(&dir(config)))
+}
+
+/// `plugins/disabled.json`: the ids turned off in settings, as a JSON list.
+fn switches(plugins: &Path) -> PathBuf {
+    plugins.join("disabled.json")
+}
+fn disabled(plugins: &Path) -> Vec<String> {
+    std::fs::read(switches(plugins))
+        .ok()
+        .and_then(|b| serde_json::from_slice(&b).ok())
+        .unwrap_or_default()
+}
+/// Whether the plugin will load at the next start: what settings show its switch as.
+pub fn enabled_next_start(id: &str) -> bool {
+    CONFIG
+        .get()
+        .is_none_or(|c| !disabled(&dir(c)).iter().any(|d| d == id))
+}
+/// Turns a plugin on or off from the next start; the running app keeps what it loaded.
+pub fn set_enabled(id: &str, on: bool) -> std::io::Result<()> {
+    let plugins = dir(CONFIG.get().ok_or_else(|| std::io::Error::other("找不到配置目录"))?);
+    let mut off = disabled(&plugins);
+    off.retain(|d| d != id);
+    if !on {
+        off.push(id.to_owned());
+    }
+    std::fs::create_dir_all(&plugins)?;
+    std::fs::write(switches(&plugins), serde_json::to_vec_pretty(&off)?)
 }
 
 /// Every plugin directory's outcome since `install`; empty before it.
@@ -152,9 +184,13 @@ pub fn discover(plugins: &Path) -> Vec<Found> {
         Err(_) => return vec![],
     };
     dirs.sort();
+    let off = disabled(plugins);
     let mut found: Vec<Found> = Vec::new();
     for dir in dirs {
-        let mut result = read(&dir);
+        let mut result = read(&dir).map(|mut p| {
+            p.enabled = !off.contains(&p.id);
+            p
+        });
         if let Ok(plugin) = &result
             && found
                 .iter()
@@ -194,6 +230,7 @@ fn read(dir: &Path) -> Result<Plugin, String> {
         description: m.description,
         dir: dir.to_owned(),
         provides: m.provides,
+        enabled: true,
     };
     for kind in &plugin.provides {
         if kind.files(dir).is_empty() {
@@ -305,6 +342,26 @@ mod tests {
                 assert!(loaded.result.is_ok(), "{loaded:?}");
             }
         }
+    }
+
+    #[test]
+    fn a_turned_off_plugin_is_listed_but_loads_nothing() {
+        let root = tmp("switch");
+        plugin(
+            &root,
+            "a-aider",
+            r#"{"api":1,"id":"aider","name":"Aider","provides":["agent"]}"#,
+            &[("agent.json", "{}")],
+        );
+        std::fs::write(root.join("disabled.json"), r#"["aider"]"#).unwrap();
+        let found = discover(&root);
+        assert_eq!(found.len(), 1, "the switch file is not a plugin");
+        let p = found[0].result.as_ref().unwrap();
+        assert!(!p.enabled);
+        assert!(p.files(Kind::Agent).is_empty());
+        std::fs::write(root.join("disabled.json"), "not json").unwrap();
+        assert!(discover(&root)[0].result.as_ref().unwrap().enabled);
+        let _ = std::fs::remove_dir_all(&root);
     }
 
     #[test]
