@@ -1,0 +1,42 @@
+{
+  "commit": "56522392d27d975924af77dd3595026e4a0cc981",
+  "title": "终端多开后，不再因文件描述符不足一起黑屏",
+  "goal_source": "本地提交说明，未恢复为用户原话",
+  "timestamp": "2026-10-30T10:25:03.648365+00:00",
+  "diff": "diff --git a/next/crates/keeplined/src/main.rs b/next/crates/keeplined/src/main.rs\nindex 411a5ad..092f1d3 100644\n--- a/next/crates/keeplined/src/main.rs\n+++ b/next/crates/keeplined/src/main.rs\n@@ -9,10 +9,36 @@ fn main() {\n     std::process::exit(code);\n }\n \n+/// Apps opened from Finder inherit launchd's soft limit of 256 descriptors. Each terminal\n+/// holds a PTY plus its stream sockets, so about fifty terminals exhausted it and the host\n+/// exited with EMFILE, leaving every pane black. Raise the soft limit as far as allowed.\n+fn raise_open_file_limit() {\n+    let mut limit = libc::rlimit { rlim_cur: 0, rlim_max: 0 };\n+    // SAFETY: getrlimit/setrlimit only read and write the struct passed by pointer.\n+    unsafe {\n+        if libc::getrlimit(libc::RLIMIT_NOFILE, &mut limit) != 0 {\n+            eprintln!(\"keeplined: getrlimit: {}\", std::io::Error::last_os_error());\n+            return;\n+        }\n+        // macOS rejects RLIM_INFINITY for the soft limit; use a finite cap below kern.maxfilesperproc.\n+        let wanted = limit.rlim_max.min(65_536);\n+        if wanted <= limit.rlim_cur {\n+            return;\n+        }\n+        limit.rlim_cur = wanted;\n+        if libc::setrlimit(libc::RLIMIT_NOFILE, &limit) != 0 {\n+            eprintln!(\"keeplined: setrlimit: {}\", std::io::Error::last_os_error());\n+        } else {\n+            eprintln!(\"keeplined: open file limit raised to {wanted}\");\n+        }\n+    }\n+}\n+\n fn run() -> std::io::Result<()> {\n     let mut args = std::env::args().skip(1);\n     match args.next().as_deref() {\n         Some(\"serve\") => {\n+            raise_open_file_limit();\n             let mut remaining = Vec::new();\n             let mut days = 7;\n             let mut takeover = false;\n",
+  "probe": {
+    "source_commit": "56522392d27d975924af77dd3595026e4a0cc981",
+    "source_path": "next/crates/keeplined/src/main.rs",
+    "function_sha256": "f4ac9bccef09a7334a2cbfc1a9aa1ce8be91c8ed5b2ce26f597f68e2638b1808",
+    "probe_scope": "仅执行该提交中逐字提取的函数；在独立子进程设置 soft=256，不启动 keeplined 或改变运行中 App",
+    "compile": {
+      "command": [
+        "rustc",
+        "--edition",
+        "2021",
+        "./fd-limit-probe.rs",
+        "--extern",
+        "libc=<keepline>/next/target/debug/deps/liblibc-757003d1cc5024cf.rlib",
+        "-L",
+        "dependency=<keepline>/next/target/debug/deps",
+        "-o",
+        "./fd-limit-probe"
+      ],
+      "exit_code": 0,
+      "stdout": "",
+      "stderr": ""
+    },
+    "run": {
+      "exit_code": 0,
+      "stdout": "before_soft=256 after_soft=65536 expected=65536 hard=9223372036854775807\nsecond_call_soft=65536 (unchanged)\n",
+      "stderr": "keeplined: open file limit raised to 65536\n"
+    },
+    "archive_note": "编译命令中的本机绝对路径已缩短；源码摘要与执行输出保持原样。"
+  },
+  "limits": [
+    "没有启动真实 keeplined 或 50 个以上终端",
+    "没有验 Finder 启动、后台升级或现有任务存活",
+    "没有读取该提交的 GitHub CI，不能声称 CI 通过"
+  ],
+  "scope": "单个真实提交的交互原型；不是 Keepline 已实现功能"
+}

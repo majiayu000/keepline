@@ -1,0 +1,33 @@
+{
+  "selected_samples": 31,
+  "distinct_platform_accounts": 31,
+  "platform_counts": {
+    "GitHub": 15,
+    "HN": 16
+  },
+  "tag_counts": {
+    "attention": 5,
+    "navigation": 1,
+    "recovery": 2,
+    "handoff": 2,
+    "review": 3,
+    "usage": 1,
+    "performance": 4,
+    "environment": 3,
+    "performance-migration": 1,
+    "counterexample": 3,
+    "environment-positive": 1,
+    "trust": 1,
+    "mobile": 1,
+    "terminal-input": 1,
+    "remote-positive": 1,
+    "handoff-positive": 1
+  },
+  "github_searches_succeeded": 5,
+  "github_searches_attempted": 8,
+  "github_result_rows": 100,
+  "github_unique_urls": 76,
+  "hn_threads": 3,
+  "sampling": "purposeful, bounded discovery plus previous-round refresh; not representative; D1 only",
+  "fetched_on": "2026-10-30"
+}
