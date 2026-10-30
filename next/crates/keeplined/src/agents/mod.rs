@@ -17,6 +17,7 @@ pub(crate) mod codex;
 mod declared;
 mod grok;
 pub mod hooks;
+pub mod mirror;
 
 /// What the host says on a terminal about an Agent it sees but cannot read: `text` is the
 /// recognition hint, `note` the pane's words for the user.

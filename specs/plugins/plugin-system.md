@@ -123,7 +123,8 @@ Row = Session { id, glyph: status, title, trailing: time | timer | text,
 |---|---|---|
 | 0 | 合入 agent 插件类型（注册表、声明式 Agent、适配器钩子、边界测试） | 完成（a1b8b60） |
 | 1 | 插件包、统一报告、设置页「插件」 | 完成 |
-| 2a | agent api 2：events（回合与证据）、title、SQLite 来源；用 Cursor（JSONL）和 OpenCode（SQLite）各写一个声明式插件验收 | 进行中 |
+| 2a | agent api 2：events（回合与证据）、SQLite 来源 | 完成。OpenCode 声明式插件（`next/plugins/opencode`）用本机真实库验收：近 30 天 403 个会话转写 2.4 MB、全部解析成卡片（377 做完了 / 26 在跑），证据 74 条（命令 53、改文件 18、出错 3） |
+| 2b | title：声明式标题来源，接到会话命名分支的 `name()` 入口；合入该分支（Cursor 已作为内置适配器做好） | 下一步 |
 | 2 | actions：右键菜单与 ⌘P 共用的动作声明（命令模板可用 `{cwd}` `{session_id}` `{transcript}` `{task}`，按条件显示） | |
 | 3 | rules：验证命令规则，修掉 bun / vitest 项目被判成没跑验证 | |
 | 4 | sidebar：声明格式，经典 / 状态 / 目录三个内置预设，左栏顶部切换，⌘B 收起，按左栏减密稿 | |

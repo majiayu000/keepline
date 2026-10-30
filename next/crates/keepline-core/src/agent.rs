@@ -123,6 +123,8 @@ pub struct AgentSpec {
     pub resume: String,
     /// Built-ins read their own transcripts in code; a declaration says where they are.
     pub transcripts: Option<Transcripts>,
+    /// api 2: where the conversation lives when the CLI keeps no transcript files.
+    pub source: Option<RecordSource>,
     /// The declaration it came from; `None` for a built-in.
     pub file: Option<PathBuf>,
 }
@@ -132,7 +134,8 @@ pub struct AgentSpec {
 #[derive(Clone, Debug, PartialEq, Eq, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct Transcripts {
-    /// Absolute, or under the home with `~/`.
+    /// Absolute, or under the home with `~/`. Left out when a `source` writes them.
+    #[serde(default)]
     pub root: PathBuf,
     #[serde(default = "jsonl")]
     pub extension: String,
@@ -150,6 +153,28 @@ pub struct Transcripts {
     /// result, so a declared CLI groups like a built-in one. Every matching rule applies.
     #[serde(default)]
     pub events: Vec<EventRule>,
+}
+
+/// A conversation kept in a SQLite database instead of transcript files. The daemon polls
+/// it read-only and writes each session's new rows as JSON lines into a directory of its
+/// own, which then flows through the same watching, parsing and binding as any transcript:
+/// the `transcripts` pointers and `events` apply to those rows.
+///
+/// `sessions` is asked `?1` = the largest `_t` it returned before, and returns `_session`,
+/// `_cwd` and `_t` per changed session. `records` is asked `?1` = a session, `?2`/`?3` =
+/// the `_t`/`_id` of the last row it returned for it, and returns rows after that, in
+/// order, each with `_t` and `_id`. A column holding JSON text is read as JSON.
+#[derive(Clone, Debug, PartialEq, Eq, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct RecordSource {
+    pub sqlite: PathBuf,
+    pub sessions: String,
+    pub records: String,
+    #[serde(default = "poll_ms")]
+    pub poll_ms: u64,
+}
+fn poll_ms() -> u64 {
+    1500
 }
 
 /// One kind of record and what it means. `when` maps JSON pointers to the value each
@@ -249,6 +274,8 @@ struct Declaration {
     start: String,
     resume: String,
     transcripts: Option<Transcripts>,
+    #[serde(default)]
+    source: Option<RecordSource>,
 }
 
 /// One declaration file's outcome, for settings and diagnostics.
@@ -287,6 +314,7 @@ fn builtin() -> Vec<AgentSpec> {
         start: start.into(),
         resume: resume.into(),
         transcripts: None,
+        source: None,
         file: None,
     };
     vec![
@@ -426,12 +454,41 @@ fn declare(file: &Path, home: &Path, known: &[AgentSpec]) -> Result<AgentSpec, S
         return Err("start 和 resume 都要写命令".into());
     }
     let mut transcripts = d.transcripts;
-    if let Some(t) = transcripts.as_mut() {
-        if let Ok(rest) = t.root.strip_prefix("~") {
-            t.root = home.join(rest);
+    let mut source = d.source;
+    if let Some(s) = source.as_mut() {
+        if d.api < 2 {
+            return Err("source 需要 api 2".into());
         }
-        if !t.root.is_absolute() {
-            return Err("transcripts.root 要写绝对路径或 ~/ 开头".into());
+        if let Ok(rest) = s.sqlite.strip_prefix("~") {
+            s.sqlite = home.join(rest);
+        }
+        if !s.sqlite.is_absolute() {
+            return Err("source.sqlite 要写绝对路径或 ~/ 开头".into());
+        }
+        for (name, q) in [("sessions", &s.sessions), ("records", &s.records)] {
+            if !q.trim_start().to_ascii_lowercase().starts_with("select") {
+                return Err(format!("source.{name} 要写一条 SELECT 查询"));
+            }
+        }
+        if !(200..=60_000).contains(&s.poll_ms) {
+            return Err("source.poll_ms 要在 200 到 60000 之间".into());
+        }
+        match transcripts.as_ref() {
+            None => return Err("写了 source 也要写 transcripts，说明每行记录里的字段".into()),
+            Some(t) if !t.root.as_os_str().is_empty() => {
+                return Err("用 source 时不写 transcripts.root，记录由 Keepline 自己存放".into());
+            }
+            _ => {}
+        }
+    }
+    if let Some(t) = transcripts.as_mut() {
+        if source.is_none() {
+            if let Ok(rest) = t.root.strip_prefix("~") {
+                t.root = home.join(rest);
+            }
+            if !t.root.is_absolute() {
+                return Err("transcripts.root 要写绝对路径或 ~/ 开头".into());
+            }
         }
         let pointers = [
             Some(&t.session),
@@ -513,6 +570,7 @@ fn declare(file: &Path, home: &Path, known: &[AgentSpec]) -> Result<AgentSpec, S
         start: d.start,
         resume: d.resume,
         transcripts,
+        source,
         file: Some(file.to_owned()),
     })
 }
