@@ -1430,7 +1430,10 @@ pub fn start(
             let remove = handle
                 .update(cx, |v, _, _| v.visual_space_menu_point(2))
                 .unwrap();
+            // Clicks hit what was last drawn: paint the menu before pressing it.
             cx.update_window(handle.into(), |_, window, app| {
+                window.refresh();
+                window.draw(app).clear(app);
                 native_click(window, app, remove, gpui::MouseButton::Left)
             })
             .unwrap();
@@ -1461,12 +1464,15 @@ pub fn start(
             cx.background_executor().timer(Duration::from_secs(2)).await;
             std::fs::create_dir_all(&directory).unwrap();
             // Near the top of the shown pane so the menu opens where it was asked,
-            // not pushed up to fit.
+            // not pushed up to fit; clicks hit what was last drawn.
+            // Below the pane header and the 「停在 …」 line under it, inside the screen.
             let at = gpui::point(
                 px(theme::Theme::SIDEBAR + 120.),
-                px(theme::Theme::TOP + theme::Theme::TABS + theme::Theme::PANE_HEADER + 40.),
+                px(theme::Theme::TOP + theme::Theme::TABS + theme::Theme::PANE_HEADER + 120.),
             );
             cx.update_window(handle.into(), |_, window, app| {
+                window.refresh();
+                window.draw(app).clear(app);
                 native_click(window, app, at, gpui::MouseButton::Right)
             })
             .unwrap();
