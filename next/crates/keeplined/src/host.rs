@@ -96,6 +96,8 @@ struct Host {
     screen_waits: HashMap<String, String>,
     /// Session -> last `claude agents --json` run for it, the per-session rate limit.
     reconciled: HashMap<String, Instant>,
+    /// What the plugins' hooks last heard, so each state change reaches them once.
+    hooks: crate::plugin_hooks::Hooks,
 }
 fn lock<T>(m: &Mutex<T>) -> io::Result<MutexGuard<'_, T>> {
     m.lock()
@@ -392,7 +394,17 @@ impl Host {
                     != next.current_agent(t).map(|s| &s.id)
             })
             .collect();
+        let hooked = !keepline_core::hook::all().is_empty();
+        if hooked && !self.hooks.seeded() {
+            // The state before the first change is where hooks start listening.
+            let before = self.snapshot();
+            self.hooks.changes(&before);
+        }
         self.workspace = next;
+        if hooked {
+            let after = self.snapshot();
+            self.hooks.observe(&after);
+        }
         for id in bound {
             let (Some(shared), Some(terminal)) =
                 (self.myself.upgrade(), self.terminals.get(&id).cloned())
@@ -708,6 +720,7 @@ fn serve_runtime(
         deadlines: None,
         myself: std::sync::Weak::new(),
         screen_waits: HashMap::new(),
+        hooks: Default::default(),
         reconciled: HashMap::new(),
         workspace,
         terminals: HashMap::new(),
@@ -2660,6 +2673,7 @@ mod recognition_tests {
             deadlines: None,
             myself: std::sync::Weak::new(),
             screen_waits: HashMap::new(),
+            hooks: Default::default(),
             reconciled: HashMap::new(),
         }));
         let (tx, rx) = sync_channel(16);

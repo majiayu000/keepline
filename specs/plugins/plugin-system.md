@@ -27,7 +27,7 @@ Keepline 的左栏、Agent 支持和窗格装饰，是否改成由插件提供�
 | actions | `actions.json`：右键菜单与 ⌘P 的命令 | 已完成 |
 | rules | `rules.json`：追加哪些命令算跑过验证 | 已完成 |
 | sidebar | `sidebar.json`：左栏预设（经典 / 状态 / 目录为内置） | 已完成（声明式） |
-| hooks / notifier | 生命周期事件交给命令或 webhook，通知出口 | 计划 |
+| hooks | `hooks.json`：会话状态变化交给命令或 webhook | 已完成 |
 
 **写法**（用什么写）：
 
@@ -128,7 +128,7 @@ Row = Session { id, glyph: status, title, trailing: time | timer | text,
 | 2 | actions：右键菜单与 ⌘P 共用的动作声明（`actions.json`：模板 `{cwd}` `{session_id}` `{transcript}` `{task}` `{agent}` 一律加引号；run = split / tab / paste；when = always / agent / shell / task） | 完成。实测：右键菜单「插件」分组、⌘P「动作」分组、缺变量时报错不执行；分屏命令在真实数据副本里执行并写出标记文件，目录正确。示例 `next/plugins/common-actions` |
 | 3 | rules：验证命令规则，修掉 bun / vitest 项目被判成没跑验证 | 完成。内置补上 vitest/jest/nextest/uv/deno/swift/make 等和 `test:*` 脚本；`&&` 链任一段算、`;` 只认最后一段、`2>&1` 不影响、管道和后台不算；插件 `rules.json` 只能追加（`{"api":1,"verify":[["just","test"],["make","*"]]}`，按词前缀、比较路径末段，`*` 不能开头）。解析版本升到 12，近期会话重算一次。插件规则改了不触发重算，下次有新记录才按新规则判断 |
 | 4 | sidebar：声明格式，经典 / 状态 / 目录三个内置预设，左栏顶部切换，⌘B 收起，按左栏减密稿 | 完成（声明式）。`{"api":1,"presets":[{"id","name","group":"flat|status|directory","fold":["running|done|stopped|stale"],"detail":"never|attention|always","limit"}]}`；需要你不能折叠，插件只能追加不能覆盖内置。状态：需要你、在跑摊开，其余合成一行；目录：需要你置顶不重复，目录名旁标「n 需要你」，没在跑的目录默认折叠，路径悬停显示。选择存 `~/.config/keepline/sidebar`。收起后留一条窄栏和需要你的数字。示例插件 `plugins/focus-sidebar`。截图核过四种状态（隔离 fixture）。WASM 排法与主界面 A/C 样式未做 |
-| 5 | hooks / notifier：生命周期事件交给命令或 webhook，只读、带超时、失败不影响主流程 | |
+| 5 | hooks / notifier：生命周期事件交给命令或 webhook，只读、带超时、失败不影响主流程 | 完成。在后台 daemon 里跑（App 没开也触发，多窗口不重复）。事件 started / waiting / error / done，每回合一次、每个提问一次；daemon 重启不重放。`{"api":1,"hooks":[{"id","on":[...],"command"|"webhook","timeout_ms"}]}`，command 用 `sh -c`，事件 JSON 走 stdin 并带 `KEEPLINE_*` 环境变量；webhook 用系统 curl POST。只给卡片字段（标题、目录、空间、一行说明），不给原话全文。超时 100 ms–30 s 后强停，最多同时 8 个，多了丢弃并记日志；结果写后台日志。没装 hooks 时零开销。端到端：`specs/plugins/evidence/hooks-e2e.py`（隔离 HOME，4 个事件各收到一次，慢 hook 300 ms 被停）。示例插件 `plugins/notify-macos` |
 | 6 | 有需求再做：功能开关、bash / fish 的 shell 集成、WASM 左栏接入 | |
 
 每一步的验收：已有测试全过，真实数据副本截图对照原来的界面和性能不退步。
