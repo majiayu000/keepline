@@ -456,7 +456,7 @@ impl Capture {
         out.cursor_color = colors
             .cursor
             .map(|c| rgb(c.r, c.g, c.b))
-            .unwrap_or_else(|| crate::ui::theme::Theme::terminal_fg());
+            .unwrap_or_else(crate::ui::theme::Theme::terminal_fg);
         out.background = vt
             .terminal()
             .bg_color()?
