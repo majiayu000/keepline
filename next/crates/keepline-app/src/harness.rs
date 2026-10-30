@@ -13,7 +13,9 @@ pub fn start(
     evidence: Option<PathBuf>,
     cx: &mut App,
 ) {
-    if settings_evidence::start(handle, evidence.clone(), cx) { return; }
+    if settings_evidence::start(handle, evidence.clone(), cx) {
+        return;
+    }
     if let (Some(handle), Some(directory)) = (&handle, evidence.clone())
         && std::env::var_os("KEEPLINE_DIAGNOSTIC_EVIDENCE").is_some()
     {

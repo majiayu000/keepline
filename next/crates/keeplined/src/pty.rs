@@ -58,7 +58,10 @@ fn integration_env(program: &str, dir: Option<&Path>) -> Vec<(OsString, OsString
     match dir {
         Some(dir) if Path::new(program).file_name().is_some_and(|n| n == "zsh") => vec![
             ("ZDOTDIR".into(), dir.join("zsh").into_os_string()),
-            ("KEEPLINE_SHELL_INTEGRATION_DIR".into(), dir.as_os_str().to_owned()),
+            (
+                "KEEPLINE_SHELL_INTEGRATION_DIR".into(),
+                dir.as_os_str().to_owned(),
+            ),
         ],
         _ => Vec::new(),
     }
@@ -297,7 +300,10 @@ mod env_tests {
         .map(|(k, v)| (k.into(), v.into()));
         let env = super::baseline_env(launcher.into_iter());
         let keys: Vec<_> = env.iter().map(|(k, _)| k.to_str().unwrap()).collect();
-        assert_eq!(keys, ["HOME", "USER", "LANG", "LC_CTYPE", "GROK_HOME", "PATH"]);
+        assert_eq!(
+            keys,
+            ["HOME", "USER", "LANG", "LC_CTYPE", "GROK_HOME", "PATH"]
+        );
         assert_eq!(env.last().unwrap().1, "/usr/bin:/bin:/usr/sbin:/sbin");
     }
     #[test]
@@ -306,8 +312,15 @@ mod env_tests {
         std::env::set_var("CLAUDE_CODE_CHILD_SESSION", "1");
         let argv = ["/usr/bin/env".to_owned()];
         let scheme = keepline_core::terminal::Scheme::default();
-        let (mut child, mut out) =
-            super::spawn(&argv, std::path::Path::new("/"), 80, 24, "scheme-test", scheme).unwrap();
+        let (mut child, mut out) = super::spawn(
+            &argv,
+            std::path::Path::new("/"),
+            80,
+            24,
+            "scheme-test",
+            scheme,
+        )
+        .unwrap();
         // Read while it runs: macOS holds a closing terminal open until its output is read.
         let mut text = String::new();
         let mut buf = [0u8; 4096];
@@ -341,7 +354,10 @@ mod integration_tests {
     fn only_zsh_starts_through_the_integration() {
         let dir = std::path::Path::new("/rt/shell-integration");
         let env = super::integration_env("/bin/zsh", Some(dir));
-        assert_eq!(env[0], ("ZDOTDIR".into(), "/rt/shell-integration/zsh".into()));
+        assert_eq!(
+            env[0],
+            ("ZDOTDIR".into(), "/rt/shell-integration/zsh".into())
+        );
         assert_eq!(env[1].1, "/rt/shell-integration");
         assert!(super::integration_env("/bin/bash", Some(dir)).is_empty());
         assert!(super::integration_env("/bin/zsh", None).is_empty());

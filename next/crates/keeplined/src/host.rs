@@ -1489,8 +1489,13 @@ fn serve_client(mut stream: UnixStream, host: Shared, connection: u64) -> io::Re
             return watch_recognition(stream, host, connection);
         }
         if matches!(request, Request::Diagnose) {
-            let terminals = lock(&host)?.workspace.terminals.iter()
-                .filter(|t| t.state == ProcessState::Running).cloned().collect::<Vec<_>>();
+            let terminals = lock(&host)?
+                .workspace
+                .terminals
+                .iter()
+                .filter(|t| t.state == ProcessState::Running)
+                .cloned()
+                .collect::<Vec<_>>();
             // No workspace/terminal lock is held during process enumeration or waiting.
             if let Err(error) = crate::diagnostics::serve(&mut stream, &terminals) {
                 send(&mut stream, CONTROL, &Reply::Error(error.to_string()))?;
@@ -1852,16 +1857,16 @@ fn dispatch(shared: &Shared, request: Request) -> io::Result<Reply> {
             host.commit(next)?;
             let (mut child, master) =
                 match pty::spawn(&argv, Path::new(&cwd), cols, rows, &id, scheme) {
-                Ok(result) => result,
-                Err(error) => {
-                    let mut next = host.workspace.clone();
-                    let session = next.terminals.last_mut().unwrap();
-                    session.state = ProcessState::Failed;
-                    session.error = Some(error.to_string());
-                    host.commit(next)?;
-                    return Err(error);
-                }
-            };
+                    Ok(result) => result,
+                    Err(error) => {
+                        let mut next = host.workspace.clone();
+                        let session = next.terminals.last_mut().unwrap();
+                        session.state = ProcessState::Failed;
+                        session.error = Some(error.to_string());
+                        host.commit(next)?;
+                        return Err(error);
+                    }
+                };
             let reader = match master.try_clone() {
                 Ok(reader) => reader,
                 Err(e) => {

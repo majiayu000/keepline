@@ -3,6 +3,6 @@ pub mod app_icon;
 pub mod appearance;
 pub mod field;
 pub mod status_colors;
-pub mod theme;
 pub mod terminal_text;
+pub mod theme;
 pub mod widgets;

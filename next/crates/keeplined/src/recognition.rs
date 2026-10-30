@@ -659,7 +659,10 @@ mod tests {
         ));
         // A prompt that names the variable, a longer name, or no marker at all.
         for (argv, env) in [
-            (&["claude", "CLAUDE_CODE_CHILD_SESSION=1"][..], &["HOME=/u"][..]),
+            (
+                &["claude", "CLAUDE_CODE_CHILD_SESSION=1"][..],
+                &["HOME=/u"][..],
+            ),
             (&["claude"], &["CLAUDE_CODE_CHILD_SESSION_X=1"]),
             (&["claude"], &[]),
         ] {

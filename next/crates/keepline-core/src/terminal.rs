@@ -370,7 +370,10 @@ mod tests {
             local_path(url, "Agent-OS.local").as_deref(),
             Some("/tmp/kl osc7/中文 dir#%")
         );
-        assert_eq!(local_path(url, "agent-os").as_deref(), Some("/tmp/kl osc7/中文 dir#%"));
+        assert_eq!(
+            local_path(url, "agent-os").as_deref(),
+            Some("/tmp/kl osc7/中文 dir#%")
+        );
         assert_eq!(local_path("file:///a", "x").as_deref(), Some("/a"));
         assert_eq!(local_path("file://localhost/a", "x").as_deref(), Some("/a"));
         assert_eq!(local_path("file://devbox/home/u", "Agent-OS.local"), None);
