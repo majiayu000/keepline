@@ -1,0 +1,495 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>⌘P 面板与「你在这里」改版稿</title>
+<style>
+/* Tokens copied from main-refresh.html / workbench-refresh.html (theme.rs light + dark). */
+:root {
+  --app: #efeeec; --pane: #fafaf9; --raised: #ebeae8; --popover: #fdfdfc; --chip: #ecebe9; --header-focus: #f0efed;
+  --border: #e3e2df; --card-border: #d6d5d2; --control: #c9c8c5; --focus: #8e8d8a;
+  --primary: #0e0d0c; --body: #1f1e1c; --secondary: #5a5956; --muted: #6c6b68;
+  --accent: #141312; --on-accent: #fafaf9; --button: #e9e8e6; --button-hover: #dddcd9; --link: #2a2927;
+  --track: #e6e5e2;
+  --waiting: #c4651f; --error: #c53b33; --review: #5e62d8; --paused: #9a7316; --running: #2b8f60; --working: #a88a12; --stale: #8a8986;
+  --waiting-wash: #f7ebe1; --review-wash: #ecedfa; --working-wash: #f6f0dc; --error-wash: #f8e9e7; --running-wash: #e3f2ea;
+  /* theme.rs: palette_row = popover mix fg 11%, matched = popover mix #e8a33a 35%, scrim 0x00000040. */
+  --palette-row: #e6e5e3; --matched: #f6deb8; --scrim: rgba(0,0,0,.25);
+  --term-dim: #8a8986; --term-accent: #2a6fd6;
+}
+:root[data-theme="dark"] {
+  --app: #161618; --pane: #1c1c1e; --raised: #29292a; --popover: #262627; --chip: #2c2c2d; --header-focus: #232325;
+  --border: #2e2e2f; --card-border: #353536; --control: #3a3a3b; --focus: #686767;
+  --primary: #ecebe9; --body: #e4e2df; --secondary: #a3a2a0; --muted: #8a8988;
+  --accent: #ecebe9; --on-accent: #1c1c1e; --button: #2a2a2b; --button-hover: #343435; --link: #c8c6c4;
+  --track: #2c2c2d;
+  --waiting: #e8823a; --error: #e5534b; --review: #8f93ff; --paused: #d9a441; --running: #4cc38a; --working: #e8c547; --stale: #8b8a88;
+  --waiting-wash: #4a2a12; --review-wash: #2a2c5c; --working-wash: #3d3514; --error-wash: #4a1c18; --running-wash: #173a2a;
+  --palette-row: #333332; --matched: #5c492c; --scrim: rgba(0,0,0,.6);
+  --term-dim: #7d7c7a; --term-accent: #6aa5ff;
+}
+* { box-sizing: border-box; }
+body { margin: 0; background: #c9ccd2; color: var(--body); font: 13px/1.4 -apple-system, BlinkMacSystemFont, "PingFang SC", "Helvetica Neue", sans-serif; font-variant-numeric: tabular-nums; padding: 20px 16px 40px; display: flex; flex-direction: column; align-items: center; gap: 14px; }
+button { font: inherit; cursor: pointer; border: 0; background: none; color: inherit; }
+.bar { display: flex; gap: 8px; align-items: center; font-size: 12px; color: #2f3238; flex-wrap: wrap; justify-content: center; max-width: 1440px; }
+.bar button { height: 26px; padding: 0 10px; border-radius: 6px; background: #e8e9ec; color: #1f2024; }
+.bar button[aria-pressed="true"] { background: #1f2024; color: #fff; }
+.bar .ex { padding: 1px 6px; border-radius: 4px; background: #e8e9ec; color: #1f2024; }
+.frame-label { font-size: 11px; letter-spacing: .06em; color: #2f3238; max-width: 1440px; width: 100%; margin: 10px auto 0; display: flex; gap: 10px; align-items: baseline; flex-wrap: wrap; }
+.frame-label b { font-weight: 600; }
+.frame-label .need { font-size: 11px; padding: 1px 6px; border-radius: 4px; border: 1px dashed #5b5f68; color: #2f3238; }
+.mono { font-family: "JetBrains Mono", "SF Mono", Menlo, monospace; }
+kbd { font: 11px/1.5 -apple-system, BlinkMacSystemFont, sans-serif; border: 1px solid var(--control); border-radius: 4px; padding: 0 4px; color: var(--secondary); white-space: nowrap; }
+.dot { width: 7px; height: 7px; border-radius: 50%; flex: none; display: inline-block; }
+.btn { height: 28px; padding: 0 12px; border-radius: 6px; background: var(--button); font-size: 12.5px; color: var(--primary); display: inline-flex; align-items: center; gap: 6px; white-space: nowrap; }
+.btn:hover { background: var(--button-hover); }
+.btn.solid { background: var(--accent); color: var(--on-accent); font-weight: 600; }
+.btn.solid kbd { border-color: currentColor; color: inherit; opacity: .6; }
+.btn.text { background: none; color: var(--link); padding: 0 8px; }
+.btn.text:hover { background: var(--button-hover); }
+
+/* ---------- Palette frames ---------- */
+.row3 { width: 1440px; max-width: 100%; display: grid; grid-template-columns: 1fr; gap: 14px; }
+.stage { position: relative; background: var(--pane); border-radius: 12px; overflow: hidden; box-shadow: 0 20px 60px rgba(0,0,0,.25); }
+.stage .top { height: 46px; display: flex; align-items: center; gap: 12px; padding: 0 16px 0 84px; border-bottom: 1px solid var(--border); color: var(--secondary); font-size: 12px; }
+.stage .top b { color: var(--primary); font-size: 13px; }
+.stage .ghost-body { height: 100%; display: flex; }
+.stage .ghost-side { width: 240px; border-right: 1px solid var(--border); }
+.stage .ghost-work { flex: 1; background: var(--app); }
+.stage .scrim { position: absolute; inset: 0; background: var(--scrim); display: flex; justify-content: center; align-items: flex-start; padding: 72px 16px 24px; }
+
+.pal { width: 760px; max-width: 100%; background: var(--popover); border: 1px solid var(--control); border-radius: 14px; box-shadow: 0 24px 60px rgba(0,0,0,.22); display: flex; flex-direction: column; overflow: hidden; }
+.pal-field { height: 52px; flex: none; display: flex; align-items: center; gap: 10px; padding: 0 16px; border-bottom: 1px solid var(--border); }
+.pal-field .glass { color: var(--secondary); font-size: 15px; }
+.pal-field .q { flex: 1; min-width: 0; font-size: 15px; color: var(--primary); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.pal-field .q.placeholder { color: var(--muted); }
+.caret { display: inline-block; width: 1.5px; height: 17px; background: var(--primary); vertical-align: -3px; margin-left: 1px; }
+.pal-field .count { font-size: 12px; color: var(--secondary); white-space: nowrap; }
+.filters { display: flex; gap: 6px; padding: 8px 16px; border-bottom: 1px solid var(--border); flex-wrap: wrap; }
+.filters button { height: 24px; padding: 0 9px; border-radius: 12px; border: 1px solid var(--border); display: inline-flex; align-items: center; gap: 6px; font-size: 12px; color: var(--body); }
+.filters button b { font-weight: 600; color: var(--primary); }
+.filters button.zero { color: var(--muted); border-style: dashed; }
+.filters button.zero b { color: var(--muted); font-weight: 400; }
+.filters .hint { margin-left: auto; font-size: 11.5px; color: var(--muted); align-self: center; }
+
+.pal-body { display: flex; min-height: 0; height: 420px; }
+.list { flex: 1; min-width: 0; overflow: auto; padding: 6px 0 8px; }
+.sec { display: flex; align-items: baseline; gap: 6px; padding: 10px 16px 4px; font-size: 11.5px; color: var(--muted); }
+.sec b { font-weight: 600; color: var(--secondary); }
+.sec .n { margin-left: auto; }
+.hit { margin: 0 6px; padding: 0 10px; min-height: 32px; display: grid; grid-template-columns: 18px minmax(0,1fr) auto 62px; align-items: center; column-gap: 10px; border-radius: 6px; color: var(--body); }
+.hit.two { min-height: 44px; padding: 5px 10px; }
+.hit.on { background: var(--palette-row); }
+.hit .ico { width: 18px; height: 18px; display: grid; place-items: center; color: var(--secondary); }
+.hit .ico svg { width: 14px; height: 14px; }
+.hit .txt { min-width: 0; }
+.hit .t { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; color: var(--primary); }
+.hit .sub { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; font-size: 11.5px; color: var(--muted); }
+.hit .st { display: inline-flex; align-items: center; gap: 5px; font-size: 11.5px; color: var(--secondary); white-space: nowrap; }
+.hit .when { text-align: right; font-size: 11.5px; color: var(--muted); white-space: nowrap; }
+.hit .quote .t { color: var(--body); }
+mark { background: var(--matched); color: inherit; border-radius: 2px; padding: 0 1px; }
+.more { margin: 2px 6px 0; height: 28px; padding: 0 10px 0 38px; display: flex; align-items: center; font-size: 12px; color: var(--link); border-radius: 6px; }
+
+.prev { width: 268px; flex: none; border-left: 1px solid var(--border); padding: 14px 16px; display: flex; flex-direction: column; gap: 10px; overflow: auto; }
+.prev h4 { margin: 0; font-size: 13.5px; font-weight: 600; color: var(--primary); display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+.prev .meta { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 6px; font-size: 11.5px; color: var(--muted); }
+.chip { display: inline-flex; align-items: center; gap: 5px; height: 20px; padding: 0 7px; border-radius: 5px; font-size: 11.5px; font-weight: 600; white-space: nowrap; }
+.prev .path { font-size: 11.5px; color: var(--secondary); word-break: break-all; }
+.facts { margin: 0; display: grid; grid-template-columns: 44px minmax(0,1fr); gap: 6px 10px; font-size: 12px; }
+.facts dt { color: var(--muted); }
+.facts dd { margin: 0; color: var(--body); display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden; }
+.facts dd .add { color: var(--muted); }
+.asks { display: flex; flex-direction: column; gap: 4px; }
+.asks .track { position: relative; height: 10px; }
+.asks .track::before { content: ""; position: absolute; left: 0; right: 0; top: 4px; height: 2px; border-radius: 1px; background: var(--track); }
+.asks .track i { position: absolute; top: 1px; width: 2px; height: 8px; border-radius: 1px; background: var(--secondary); }
+.asks .lg { display: flex; justify-content: space-between; font-size: 11px; color: var(--muted); }
+.prev .acts { margin-top: auto; display: flex; gap: 6px; flex-wrap: wrap; }
+.prev .acts .btn { height: 28px; }
+
+.pal-foot { flex: none; display: flex; align-items: center; gap: 14px; padding: 8px 16px; border-top: 1px solid var(--border); font-size: 11.5px; color: var(--muted); flex-wrap: wrap; }
+.pal-foot span { display: inline-flex; gap: 5px; align-items: center; }
+.pal-foot .grow { flex: 1; }
+
+.empty { flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 12px; padding: 24px; text-align: center; }
+.empty .big { font-size: 14px; color: var(--primary); font-weight: 600; }
+.empty .sm { font-size: 12px; color: var(--secondary); max-width: 420px; }
+.empty .scope { display: flex; gap: 14px; font-size: 11.5px; color: var(--muted); flex-wrap: wrap; justify-content: center; }
+.empty .tries { display: flex; gap: 6px; flex-wrap: wrap; justify-content: center; }
+.empty .tries button { height: 24px; padding: 0 9px; border-radius: 12px; border: 1px solid var(--border); font-size: 12px; color: var(--body); }
+
+/* ---------- Notes ---------- */
+.notes { width: 1440px; max-width: 100%; display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 10px; }
+.note { background: #f4f5f7; border-radius: 10px; padding: 12px 14px; font-size: 12px; color: #2f3238; line-height: 1.55; }
+.note h5 { margin: 0 0 6px; font-size: 12px; font-weight: 600; }
+.note ul { margin: 0; padding-left: 16px; }
+.note .tag { font-size: 10.5px; padding: 0 5px; border-radius: 4px; margin-right: 4px; }
+.note .have { background: #dfe9e3; color: #1f5f40; }
+.note .new { background: #f3e4cf; color: #7a4b0e; }
+.note .chg { background: #e3e4f4; color: #3c3f9a; }
+
+/* ---------- Here card frames ---------- */
+.pair { width: 1440px; max-width: 100%; display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 600px), 1fr)); gap: 14px; }
+.pane { position: relative; height: 760px; border-radius: 12px; border: 1px solid var(--border); background: var(--pane); overflow: hidden; box-shadow: 0 20px 60px rgba(0,0,0,.25); display: flex; flex-direction: column; }
+.ph { height: 34px; flex: none; display: flex; align-items: center; gap: 8px; padding: 0 8px 0 10px; border-bottom: 1px solid var(--border); background: var(--header-focus); font-size: 12.5px; }
+.ph .t { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--primary); font-weight: 500; flex: 1; }
+.ph .meta { flex: none; color: var(--muted); font-size: 11.5px; }
+.ph .here-btn { height: 24px; padding: 0 8px; border-radius: 5px; border: 1px solid var(--control); font-size: 12px; color: var(--link); background: var(--button-hover); }
+.term { flex: 1; min-height: 0; padding: 12px 14px; font-size: 12.5px; line-height: 1.6; color: var(--body); white-space: pre-wrap; overflow: hidden; }
+.term .d { color: var(--term-dim); }
+.term .a { color: var(--term-accent); }
+
+.here { position: absolute; right: 10px; top: 44px; width: 340px; max-width: calc(100% - 20px); max-height: calc(100% - 54px); background: var(--popover); border: 1px solid var(--control); border-radius: 12px; box-shadow: 0 16px 40px rgba(0,0,0,.2); display: flex; flex-direction: column; }
+.here-head { flex: none; padding: 14px 16px 0; display: flex; flex-direction: column; gap: 8px; }
+.here-head .l1 { display: flex; align-items: center; gap: 8px; }
+.here-head .l1 .k { font-size: 11.5px; color: var(--muted); font-weight: 600; letter-spacing: .02em; }
+.here-head .l1 .x { margin-left: auto; width: 24px; height: 24px; border-radius: 5px; color: var(--muted); }
+.here-head .l1 .x:hover { background: var(--button-hover); }
+.here-head h4 { margin: 0; font-size: 14px; font-weight: 600; color: var(--primary); line-height: 1.35; }
+.here-head .meta { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 6px; font-size: 11.5px; color: var(--muted); }
+.here-body { flex: 1; min-height: 0; overflow: auto; padding: 12px 16px 12px; display: flex; flex-direction: column; gap: 12px; }
+.hfacts { margin: 0; display: grid; grid-template-columns: 48px minmax(0,1fr); gap: 8px 10px; font-size: 12.5px; }
+.hfacts dt { color: var(--muted); }
+.hfacts dd { margin: 0; color: var(--body); }
+.hfacts dd .add { display: block; color: var(--secondary); margin-top: 2px; }
+.hfacts dd .add::before { content: "追加 "; color: var(--muted); }
+.hfacts dd .file { font-size: 11.5px; color: var(--primary); overflow-wrap: anywhere; }
+.hfacts dd .x2 { font-size: 11px; color: var(--muted); margin-left: 4px; }
+.clamp4 { display: -webkit-box; -webkit-line-clamp: 4; -webkit-box-orient: vertical; overflow: hidden; }
+.sub-h { display: flex; align-items: baseline; gap: 8px; font-size: 11.5px; color: var(--muted); }
+.sub-h b { color: var(--secondary); font-weight: 600; }
+.sub-h .r { margin-left: auto; }
+.ev-bar { display: flex; gap: 2px; height: 8px; }
+.ev-bar i { display: block; height: 100%; border-radius: 2px; }
+.ev-legend { display: flex; gap: 12px; flex-wrap: wrap; font-size: 11.5px; color: var(--secondary); }
+.ev-legend span { display: inline-flex; align-items: center; gap: 5px; }
+.ev-legend i { width: 10px; height: 6px; border-radius: 2px; display: inline-block; }
+.ev-legend b { color: var(--primary); font-weight: 600; }
+.small-note { font-size: 11.5px; color: var(--muted); }
+.hist { font-size: 11.5px; color: var(--muted); display: flex; gap: 6px; align-items: center; }
+.hist .arrow { color: var(--secondary); }
+
+.tl { display: flex; flex-direction: column; gap: 4px; }
+.tl .cols { display: flex; align-items: flex-end; gap: 2px; height: 40px; border-bottom: 1px solid var(--border); }
+.tl .cols div { flex: 1; display: flex; flex-direction: column-reverse; gap: 1px; height: 100%; }
+.tl .cols i { display: block; border-radius: 1px; }
+.tl .cols div.idle { background: repeating-linear-gradient(0deg, transparent 0 3px, var(--track) 3px 4px); }
+.tl .axis { display: flex; justify-content: space-between; font-size: 11px; color: var(--muted); }
+.tl .ask { position: relative; height: 10px; }
+.tl .ask i { position: absolute; top: 0; width: 2px; height: 10px; background: var(--primary); border-radius: 1px; }
+.tl .ask span { position: absolute; top: -1px; font-size: 10.5px; color: var(--muted); }
+.need-box { border: 1px dashed var(--control); border-radius: 8px; padding: 10px 10px 8px; display: flex; flex-direction: column; gap: 8px; }
+.need-tag { font-size: 10.5px; padding: 0 5px; border-radius: 4px; border: 1px dashed var(--muted); color: var(--muted); }
+
+.here-foot { flex: none; position: relative; border-top: 1px solid var(--border); padding: 10px 16px 12px; display: flex; gap: 6px; align-items: center; }
+.here-foot .grow { flex: 1; }
+.menu { position: absolute; right: 12px; bottom: 46px; width: 236px; background: var(--raised); border: 1px solid var(--control); border-radius: 8px; box-shadow: 0 12px 30px rgba(0,0,0,.2); padding: 5px; display: flex; flex-direction: column; gap: 1px; z-index: 3; }
+.menu button { height: 30px; padding: 0 9px; border-radius: 5px; display: flex; align-items: center; gap: 8px; text-align: left; font-size: 12.5px; color: var(--body); }
+.menu button:hover, .menu button.on { background: var(--button-hover); }
+.menu button .h { margin-left: auto; font-size: 11px; color: var(--muted); max-width: 120px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.menu hr { border: 0; border-top: 1px solid var(--control); margin: 4px 2px; }
+.menu .danger { color: var(--error); }
+
+@media (max-width: 760px) {
+  .prev { display: none; }
+  .hit { grid-template-columns: 18px minmax(0,1fr) 56px; }
+  .hit .st { display: none; }
+  .stage .ghost-side { display: none; }
+  .stage .scrim { padding-top: 56px; }
+  .stage .top { padding-left: 16px; }
+  .filters .hint { display: none; }
+  .pal-foot .scope { display: none; }
+}
+</style>
+</head>
+<body>
+<div class="bar">
+  <span>⌘P 面板与「你在这里」改版稿：标题、原话、数字取自 10-30 本机数据库副本；<span class="ex">示例</span> 标出的为编造或推算</span>
+  <button type="button" data-theme-btn="light" aria-pressed="true">浅色</button>
+  <button type="button" data-theme-btn="dark" aria-pressed="false">深色</button>
+</div>
+
+<svg width="0" height="0" style="position:absolute" aria-hidden="true">
+  <defs>
+    <symbol id="i-session" viewBox="0 0 14 14"><rect x="1.5" y="2.5" width="11" height="9" rx="2" fill="none" stroke="currentColor" stroke-width="1.2"/><path d="M4 6l1.8 1.5L4 9M7.5 9H10" fill="none" stroke="currentColor" stroke-width="1.2" stroke-linecap="round" stroke-linejoin="round"/></symbol>
+    <symbol id="i-task" viewBox="0 0 14 14"><rect x="2" y="2" width="10" height="10" rx="2.5" fill="none" stroke="currentColor" stroke-width="1.2"/></symbol>
+    <symbol id="i-quote" viewBox="0 0 14 14"><path d="M3 9.5V7.2C3 5.2 4 4 5.8 3.6M8 9.5V7.2C8 5.2 9 4 10.8 3.6" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linecap="round"/><circle cx="4.2" cy="9.6" r="1.3" fill="currentColor"/><circle cx="9.2" cy="9.6" r="1.3" fill="currentColor"/></symbol>
+    <symbol id="i-plus" viewBox="0 0 14 14"><path d="M7 3v8M3 7h8" stroke="currentColor" stroke-width="1.3" stroke-linecap="round"/></symbol>
+  </defs>
+</svg>
+
+<!-- ============ 一 · 空查询 ============ -->
+<div class="frame-label"><b>一 · ⌘P 空查询：最近的会话按时间分组，待办单列</b><span>预览右栏、状态计数行、待办分组为新增；数据都已在 App 里</span></div>
+<div class="row3">
+<div class="stage" style="height:640px">
+  <div class="top"><b>Keepline</b><span>/ 工作空间</span></div>
+  <div class="ghost-body"><div class="ghost-side"></div><div class="ghost-work"></div></div>
+  <div class="scrim">
+    <div class="pal" role="dialog" aria-label="搜索">
+      <div class="pal-field"><span class="glass">⌕</span><span class="q placeholder"><span class="caret"></span>搜索会话、待办或你说过的话</span><kbd>esc</kbd></div>
+      <div class="filters" aria-label="按状态筛选">
+        <button type="button" class="zero"><span class="dot" style="background:var(--waiting)"></span>等你 <b>0</b></button>
+        <button type="button"><span class="dot" style="background:var(--error)"></span>出错 <b>29</b></button>
+        <button type="button"><span class="dot" style="background:var(--running)"></span>在跑 <b>2</b></button>
+        <button type="button"><span class="dot" style="background:var(--review)"></span>做完 <b>12</b></button>
+        <span class="hint">与顶栏计数相同，点一下只看这一组</span>
+      </div>
+      <div class="pal-body">
+        <div class="list">
+          <div class="hit"><span class="ico"><svg><use href="#i-plus"/></svg></span><span class="t">在当前空间新建会话</span><span class="st"></span><span class="when"><kbd>⌘N</kbd></span></div>
+          <div class="sec"><b>最近 24 小时</b><span class="n">12</span></div>
+          <div class="hit on"><span class="ico"><svg><use href="#i-session"/></svg></span><span class="t">Enhancer 加 Opus 5.5 是后台已经默认换了吗？我在工作台和 prompt_enhance 参数里都找不到</span><span class="st"><span class="dot" style="background:var(--running)"></span>在跑</span><span class="when">刚刚</span></div>
+          <div class="hit"><span class="ico"><svg><use href="#i-session"/></svg></span><span class="t">codex 的聊天记录 你觉得他说对的还是错的呢</span><span class="st"><span class="dot" style="background:var(--running)"></span>在跑</span><span class="when">刚刚</span></div>
+          <div class="hit"><span class="ico"><svg><use href="#i-session"/></svg></span><span class="t">这个 claudecode 的聊天记录 做的怎么样了呢</span><span class="st"><span class="dot" style="background:var(--paused)"></span>停下了</span><span class="when">1 分钟前</span></div>
+          <div class="hit"><span class="ico"><svg><use href="#i-session"/></svg></span><span class="t">这个诊断的 ui 感觉很丑啊 没设计好吗 是怎么回事呢</span><span class="st"><span class="dot" style="background:var(--error)"></span>出错了</span><span class="when">1 分钟前</span></div>
+          <div class="hit"><span class="ico"><svg><use href="#i-session"/></svg></span><span class="t">我的 claudecode 的聊天记录 我昨天在做 mv 相关的内容 的 都有哪几个</span><span class="st"><span class="dot" style="background:var(--paused)"></span>停下了</span><span class="when">1 分钟前</span></div>
+          <div class="hit"><span class="ico"><svg><use href="#i-session"/></svg></span><span class="t">这个目录的 grok 的聊天记录 你看你看他的结论对吗</span><span class="st"><span class="dot" style="background:var(--error)"></span>出错了</span><span class="when">6 分钟前</span></div>
+          <div class="more">再显示 6 个 ↓</div>
+          <div class="sec"><b>待办</b><span class="n">3 · 都还没开始</span></div>
+          <div class="hit"><span class="ico"><svg><use href="#i-task"/></svg></span><span class="t">标签命名依旧有问题</span><span class="st">codex · 0 条验收</span><span class="when">工作空间</span></div>
+          <div class="hit"><span class="ico"><svg><use href="#i-task"/></svg></span><span class="t">健身</span><span class="st">codex · 0 条验收</span><span class="when">工作空间</span></div>
+          <div class="hit"><span class="ico"><svg><use href="#i-task"/></svg></span><span class="t">睡觉</span><span class="st">codex · 0 条验收</span><span class="when">工作空间</span></div>
+        </div>
+        <aside class="prev" aria-label="预览">
+          <h4>Enhancer 加 Opus 5.5 是后台已经默认换了吗？我在工作台和 prompt_enhance 参数里都找不到选模型的地方</h4>
+          <div class="meta"><span class="chip" style="background:var(--running-wash);color:var(--running)"><span class="dot" style="background:var(--running)"></span>在跑</span><span>claude · 新空间 · 刚刚</span></div>
+          <div class="path mono">~/Desktop/code/work/infra/her</div>
+          <dl class="facts">
+            <dt>你要它</dt><dd>Enhancer 加 Opus 5.5 是后台已经默认换了吗？我在工作台和 prompt_enhance 参数里都找不到选模型的地方。</dd>
+            <dt>停在</dt><dd>日志最后记录：回合进行中；不代表此刻进程仍在线</dd>
+          </dl>
+          <div class="small-note">正在做：照着「只加载我的 Skill」的路径，给测试快照加一个 enhancer_model。</div>
+          <div class="acts"><button type="button" class="btn solid">打开 <kbd>↵</kbd></button><button type="button" class="btn">复制恢复命令</button></div>
+        </aside>
+      </div>
+      <div class="pal-foot"><span><kbd>↑</kbd><kbd>↓</kbd> 选择</span><span><kbd>↵</kbd> 打开</span><span><kbd>⇥</kbd> 切换分组</span><span class="grow"></span><span class="scope">只搜索本地已索引的内容 · 1,328 个会话</span></div>
+    </div>
+  </div>
+</div>
+</div>
+
+<!-- ============ 二 · 输入中 ============ -->
+<div class="frame-label"><b>二 · ⌘P 输入「终端」：会话、原话分组，命中字高亮</b><span>同一会话的原话折进会话行，不再重复列两次</span></div>
+<div class="row3">
+<div class="stage" style="height:640px">
+  <div class="top"><b>Keepline</b><span>/ 工作空间</span></div>
+  <div class="ghost-body"><div class="ghost-side"></div><div class="ghost-work"></div></div>
+  <div class="scrim">
+    <div class="pal" role="dialog" aria-label="搜索">
+      <div class="pal-field"><span class="glass">⌕</span><span class="q">终端<span class="caret"></span></span><span class="count">会话 4 · 原话 8 · 待办 0</span><kbd>esc</kbd></div>
+      <div class="pal-body">
+        <div class="list">
+          <div class="sec"><b>会话</b><span class="n">4</span></div>
+          <div class="hit two on"><span class="ico"><svg><use href="#i-session"/></svg></span><span class="txt"><div class="t">我准备 重启一下 mac keepline 会保持我的<mark>终端</mark>的状态吗 如果我重启</div><div class="sub">工作空间 · claude · 你说过 8 句，1 句含「终端」</div></span><span class="st"><span class="dot" style="background:var(--error)"></span>出错了</span><span class="when">2 小时前</span></div>
+          <div class="hit two"><span class="ico"><svg><use href="#i-session"/></svg></span><span class="txt"><div class="t">你看这里 选中一个内容后 滚动<mark>终端</mark> 为啥内容不会跟着动啊</div><div class="sub">工作空间 · claude · 你说过 2 句，1 句含「终端」</div></span><span class="st"><span class="dot" style="background:var(--error)"></span>出错了</span><span class="when">3 小时前</span></div>
+          <div class="hit two"><span class="ico"><svg><use href="#i-session"/></svg></span><span class="txt"><div class="t">这个需要你 应该跳到哪里 <mark>终端</mark>还是？</div><div class="sub">新空间 · claude</div></span><span class="st"><span class="dot" style="background:var(--stale)"></span>很久没动</span><span class="when">3 天前</span></div>
+          <div class="hit two"><span class="ico"><svg><use href="#i-session"/></svg></span><span class="txt"><div class="t">调整一下整体的 ui 设计 这里应该是默认只开一个<mark>终端</mark> 的 可以躲…</div><div class="sub">新空间 · claude</div></span><span class="st"><span class="dot" style="background:var(--stale)"></span>很久没动</span><span class="when">3 天前</span></div>
+          <div class="sec"><b>原话</b><span class="n">8 · 来自其他会话</span></div>
+          <div class="hit two"><span class="ico"><svg><use href="#i-quote"/></svg></span><span class="txt quote"><div class="t">“…RSS 10068 MiB，37 个进程，关联<mark>终端</mark> 57894-17933297348…”</div><div class="sub">本机资源诊断 · Unix 时间 1793338886 · 采样 18.5 秒</div></span><span class="st"><span class="dot" style="background:var(--review)"></span>做完了</span><span class="when">1 小时前</span></div>
+          <div class="hit two"><span class="ico"><svg><use href="#i-quote"/></svg></span><span class="txt quote"><div class="t">“…标签名应该跟着<mark>终端</mark>里跑的 Agent 走，不要一直叫 zsh”</div><div class="sub">你帮我看看 左侧的会话 有什么好的命名方式吗</div></span><span class="st"><span class="dot" style="background:var(--review)"></span>做完了</span><span class="when">2 小时前</span></div>
+          <div class="hit two"><span class="ico"><svg><use href="#i-quote"/></svg></span><span class="txt quote"><div class="t">“…keepline 的 gpu 占用 比 ghostty 高这么多吗，开了三个<mark>终端</mark>…”</div><div class="sub">你看看这个 keepline 的 gpu 占用 比 ghostty 高这么多吗</div></span><span class="st"><span class="dot" style="background:var(--review)"></span>做完了</span><span class="when">4 小时前</span></div>
+          <div class="more">再显示 5 条 ↓</div>
+        </div>
+        <aside class="prev" aria-label="预览">
+          <h4>我准备 重启一下 mac keepline 会保持我的终端的状态吗 如果我重启</h4>
+          <div class="meta"><span class="chip" style="background:var(--error-wash);color:var(--error)"><span class="dot" style="background:var(--error)"></span>出错了</span><span>claude · 工作空间 · 2 小时前</span></div>
+          <div class="path mono">~/Desktop/code/AI/tools/keepline</div>
+          <dl class="facts">
+            <dt>命中</dt><dd>“我准备 重启一下 mac keepline 会保持我的<mark>终端</mark>的状态吗 如果我重启”</dd>
+            <dt>你要它</dt><dd>重启后能不能保住终端 <span class="add">· 追加 7 句，最后：claudecode 呢</span></dd>
+            <dt>停在</dt><dd>回合结束；Agent 自述：Claude Code 没有共用后台的问题。Herdr 那套 hook 方案对它是成立的，Keepline 在 main 上也已经这样做了。</dd>
+          </dl>
+          <div class="asks" aria-label="你说过的 8 句在会话里的时间分布">
+            <div class="sub-h"><b>你说过 8 句</b><span class="r">共 86 分钟</span></div>
+            <div class="track"><i style="left:0%"></i><i style="left:6.6%"></i><i style="left:12.2%"></i><i style="left:16.9%"></i><i style="left:45.4%"></i><i style="left:96.5%"></i><i style="left:97.9%"></i><i style="left:99.2%"></i></div>
+            <div class="lg"><span>10:32</span><span>11:58</span></div>
+          </div>
+          <div class="acts"><button type="button" class="btn solid">打开 <kbd>↵</kbd></button><button type="button" class="btn">复制恢复命令</button></div>
+        </aside>
+      </div>
+      <div class="pal-foot"><span><kbd>↑</kbd><kbd>↓</kbd> 选择</span><span><kbd>↵</kbd> 打开</span><span><kbd>⇥</kbd> 切换分组</span><span class="grow"></span><span class="scope">只搜索本地已索引的内容</span></div>
+    </div>
+  </div>
+</div>
+</div>
+
+<!-- ============ 三 · 没有结果 ============ -->
+<div class="frame-label"><b>三 · ⌘P 没有结果</b><span>说清搜了哪些范围，给一个能做的动作</span></div>
+<div class="row3">
+<div class="stage" style="height:460px">
+  <div class="top"><b>Keepline</b><span>/ 工作空间</span></div>
+  <div class="ghost-body"><div class="ghost-side"></div><div class="ghost-work"></div></div>
+  <div class="scrim">
+    <div class="pal" role="dialog" aria-label="搜索">
+      <div class="pal-field"><span class="glass">⌕</span><span class="q">发票报销<span class="caret"></span></span><span class="count">0 项</span><kbd>esc</kbd></div>
+      <div class="pal-body" style="height:260px">
+        <div class="empty">
+          <div class="big">没有找到「发票报销」</div>
+          <div class="sm">标题、会话 ID、目录、你说过的话和待办里都没有这几个字。没被索引的旧历史不会出现在这里。</div>
+          <div class="scope"><span>会话标题 1,328</span><span>原话 1,087 句</span><span>待办 3</span></div>
+          <div class="tries"><button type="button">只搜「发票」</button><button type="button">只搜「报销」</button></div>
+          <button type="button" class="btn solid">在当前空间新建会话 <kbd>↵</kbd></button>
+        </div>
+      </div>
+      <div class="pal-foot"><span><kbd>⌫</kbd> 改关键词</span><span><kbd>↵</kbd> 新建会话</span><span class="grow"></span><span class="scope">只搜索本地已索引的内容</span></div>
+    </div>
+  </div>
+</div>
+</div>
+
+<div class="notes">
+  <div class="note"><h5>⌘P 用到的数据</h5><ul>
+    <li><span class="tag have">现有</span>标题、分组与状态色（sidebar_status）、空间名或目录、更新时间（ago）、Agent 类型、目录、原话 asks[].text 与 asks[].at、here() 的你要它 / 停在、恢复命令 resume_command。</li>
+    <li><span class="tag have">现有</span>顶栏的四个状态计数；会话总数、原话条数、待办数（本机：1,328 / 1,087 / 3）。</li>
+    <li><span class="tag chg">改动</span>空查询也显示预览；待办单列一组；同一会话既命中标题又命中原话时只列会话行，副行写「1 句含…」；行尾时间固定宽度右对齐。</li>
+    <li><span class="tag chg">改动</span>状态计数行可点筛选、「只搜某个词」建议、⌘N 提示为新交互，数据已有。</li>
+  </ul></div>
+  <div class="note"><h5>行的结构（左到右）</h5><ul>
+    <li>类型图标：终端框 = 会话，方框 = 待办，引号 = 原话；状态只用右侧的点和字，不再占左侧图标位。</li>
+    <li>标题一行截断；输入时会话行加副行（空间 · Agent · 原话命中数），原话行副行是所属会话标题。</li>
+    <li>状态点 + 分组名，再是 62px 固定宽的相对时间，等宽数字，右对齐。</li>
+    <li>选中行底色 palette_row，命中字底色 matched（theme.rs 现值）。窄于 760px 时隐藏预览和状态列。</li>
+  </ul></div>
+  <div class="note"><h5>示例与推算</h5><ul>
+    <li>帧一、二里的会话标题、状态、时间与 10-30 运行中的 App 截图一致；预览里的原话、停在、目录、8 句原话的时间点都取自数据库副本。</li>
+    <li><span class="tag new">示例</span>帧二第 2、3 条原话的文字是编造的；「再显示 5 条」是推算，App 当时显示 14 项。</li>
+    <li>App 当时把「我准备重启一下 mac」列为「出错了」，但它的日志回合状态是 Completed。稿子按 App 原样画，这个分组判定值得另查。</li>
+  </ul></div>
+</div>
+
+<!-- ============ 四 · 你在这里 ============ -->
+<div class="frame-label"><b>四 · 「你在这里」卡片：左边现在就能做，右边要 daemon 多送数据</b></div>
+<div class="pair">
+  <!-- A: buildable now -->
+  <div>
+    <div class="frame-label" style="margin:0 0 8px"><b>A · 现在能做</b><span>在鸟瞰里打开（所以有「继续」），「更多 ⋯」已展开</span></div>
+    <div class="pane">
+      <div class="ph"><span class="chip" style="background:var(--review-wash);color:var(--review)"><span class="dot" style="background:var(--review)"></span>做完了</span><span class="t">你帮我看看这个库 有什么可以优化的吗 是否做好解耦了呢</span><span class="meta">claude · 18 小时前</span><button type="button" class="here-btn">你在这里</button></div>
+      <div class="term mono"><span class="d">⏺</span> 我在 worktree <span class="a">../keepline-arch-decouple</span>（分支 refactor/arch-decouple）里做完了诊断、拆解和测试，共 5 个提交，没有 push。
+
+<span class="d">## 诊断</span>
+完整报告在 docs/architecture/NEXT_ARCHITECTURE_DIAGNOSIS.md。
+- 三个 crate 之间的依赖是干净的
+- 问题在 crate 内部：host.rs（2545 行）什么都管
+- content.rs（2127 行）把解析、文本规则和读写混在一起
+<span class="d">…</span></div>
+      <div class="here" role="dialog" aria-label="你在这里">
+        <div class="here-head">
+          <div class="l1"><span class="k">你在这里</span><button type="button" class="x" aria-label="关闭">×</button></div>
+          <h4>你帮我看看这个库 有什么可以优化的吗 是否做好解耦了呢</h4>
+          <div class="meta"><span class="chip" style="background:var(--review-wash);color:var(--review)"><span class="dot" style="background:var(--review)"></span>做完了 · 待核对</span><span>claude · 本轮 21 分 07 秒 · 18 小时前</span></div>
+        </div>
+        <div class="here-body">
+          <dl class="hfacts">
+            <dt>你要它</dt><dd>你帮我看看这个库 有什么可以优化的吗 是否做好解耦了呢<span class="add">帮我做一个完整的架构诊断 然后拆解 然后测试 开始 开 worktree</span></dd>
+            <dt>做成了</dt><dd><span class="file mono">docs/architecture/NEXT_ARCHITECTURE_DIAGNOSIS.md</span><span class="x2">改了 2 次</span></dd>
+            <dt>停在</dt><dd class="clamp4">回合结束；Agent 自述：我在 worktree ../keepline-arch-decouple（分支 refactor/arch-decouple）里做完了诊断、拆解和测试，共 5 个提交，没有 push。几处改动都只是搬代码和集中逻辑，协议、数据库结构和测试断言都没改。</dd>
+          </dl>
+          <div style="display:flex;flex-direction:column;gap:6px">
+            <div class="sub-h"><b>留下的证据</b><span class="r">最近 16 条</span></div>
+            <div class="ev-bar" aria-label="命令成功 14、改文件 2、失败 0"><i style="flex:14;background:var(--secondary)"></i><i style="flex:2;background:var(--primary)"></i></div>
+            <div class="ev-legend"><span><i style="background:var(--secondary)"></i>命令成功 <b>14</b></span><span><i style="background:var(--primary)"></i>改文件 <b>2</b></span><span><i style="background:var(--error)"></i>失败 <b>0</b></span></div>
+          </div>
+          <div class="small-note">仅覆盖已索引的历史尾段与之后的增量；没有证据不等于没做。</div>
+          <div class="hist"><span>新回合</span><span class="arrow">已完成 → 未定</span><span>· 最近一次结局变化</span></div>
+        </div>
+        <div class="here-foot">
+          <button type="button" class="btn solid">继续</button>
+          <button type="button" class="btn">标记完成</button>
+          <span class="grow"></span>
+          <button type="button" class="btn text" aria-expanded="true">更多 ⋯</button>
+          <div class="menu" role="menu">
+            <button type="button" role="menuitem" class="on">复制命令<span class="h mono">claude --resume 7815d99d…</span></button>
+            <button type="button" role="menuitem">存为待办</button>
+            <button type="button" role="menuitem">稍后再看…</button>
+            <hr>
+            <button type="button" role="menuitem" class="danger">放弃</button>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- B: needs daemon data -->
+  <div>
+    <div class="frame-label" style="margin:0 0 8px"><b>B · 加上本轮过程</b><span class="need">需要 daemon 数据 · 现在做不了</span><span>开在会话自己的画面上、终端在跑，所以没有「继续」</span></div>
+    <div class="pane">
+      <div class="ph"><span class="chip" style="background:var(--review-wash);color:var(--review)"><span class="dot" style="background:var(--review)"></span>做完了</span><span class="t">你帮我看看这个库 有什么可以优化的吗 是否做好解耦了呢</span><span class="meta">claude · 18 小时前</span><button type="button" class="here-btn">你在这里</button></div>
+      <div class="term mono"><span class="d">⏺</span> 我在 worktree <span class="a">../keepline-arch-decouple</span>（分支 refactor/arch-decouple）里做完了诊断、拆解和测试，共 5 个提交，没有 push。
+
+<span class="d">## 诊断</span>
+完整报告在 docs/architecture/NEXT_ARCHITECTURE_DIAGNOSIS.md。
+<span class="d">…</span>
+
+<span class="d">❯</span> <span style="display:inline-block;width:7px;height:15px;background:var(--primary);vertical-align:-3px"></span></div>
+      <div class="here" role="dialog" aria-label="你在这里">
+        <div class="here-head">
+          <div class="l1"><span class="k">你在这里</span><button type="button" class="x" aria-label="关闭">×</button></div>
+          <h4>你帮我看看这个库 有什么可以优化的吗 是否做好解耦了呢</h4>
+          <div class="meta"><span class="chip" style="background:var(--review-wash);color:var(--review)"><span class="dot" style="background:var(--review)"></span>做完了 · 待核对</span><span>claude · 本轮 21 分 07 秒 · 18 小时前</span></div>
+        </div>
+        <div class="here-body">
+          <dl class="hfacts">
+            <dt>你要它</dt><dd>你帮我看看这个库 有什么可以优化的吗 是否做好解耦了呢<span class="add">帮我做一个完整的架构诊断 然后拆解 然后测试 开始 开 worktree</span></dd>
+            <dt>做成了</dt><dd><span class="file mono">docs/architecture/NEXT_ARCHITECTURE_DIAGNOSIS.md</span><span class="x2">改了 2 次</span></dd>
+            <dt>停在</dt><dd class="clamp4">回合结束；Agent 自述：我在 worktree ../keepline-arch-decouple 里做完了诊断、拆解和测试，共 5 个提交，没有 push。</dd>
+          </dl>
+          <div class="need-box">
+            <div class="sub-h"><b>本轮过程</b><span class="need-tag">需要 daemon 数据</span><span class="r">每格 1 分钟</span></div>
+            <div class="tl" aria-label="本轮 21 分钟，每分钟的工具调用数">
+              <div class="cols" id="tl"></div>
+              <div class="axis"><span>19:26</span><span>19:36</span><span>19:47</span></div>
+            </div>
+            <div class="ev-legend"><span><i style="background:var(--secondary)"></i>跑命令 <b>79</b></span><span><i style="background:var(--primary)"></i>改文件 <b>3</b></span><span><i style="background:var(--review)"></i>写新文件 <b>1</b></span><span><i style="background:var(--track);box-shadow:inset 0 0 0 1px var(--control)"></i>没有调用</span></div>
+            <div class="small-note">最长的空档 2 分钟（19:29–19:31），出错的命令 2 次。</div>
+          </div>
+          <div style="display:flex;flex-direction:column;gap:6px">
+            <div class="sub-h"><b>留下的证据</b><span class="r">最近 16 条</span></div>
+            <div class="ev-bar"><i style="flex:14;background:var(--secondary)"></i><i style="flex:2;background:var(--primary)"></i></div>
+          </div>
+        </div>
+        <div class="here-foot">
+          <button type="button" class="btn solid">标记完成</button>
+          <span class="grow"></span>
+          <button type="button" class="btn text" aria-expanded="false">更多 ⋯</button>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="notes">
+  <div class="note"><h5>A 用到的数据（都已送到 App）</h5><ul>
+    <li><span class="tag have">现有</span>你要它 / 做成了 / 停在：Content::here()。追加的原话单独一行，不再用「\n追加：」拼在一起。</li>
+    <li><span class="tag have">现有</span>状态条：sidebar_status 的分组；「本轮 21 分 07 秒」= updated − turn_started。</li>
+    <li><span class="tag have">现有</span>证据条：evidence[] 按 kind 和 exit_code 计数（命令 14、文件 2）。evidence 只留最近 16 条，其中 10 条的 at 是 0，所以只画计数，不按时间排。</li>
+    <li><span class="tag have">现有</span>outcome_history 最近一条、partial_history 提示、恢复命令。</li>
+    <li><span class="tag chg">改动</span>标题和状态移进卡片头部；「做成了」只显示仓库内相对路径并合并同一路径；「更多 ⋯」从内联换行改成浮层菜单，「放弃」单独放在分隔线下。</li>
+  </ul></div>
+  <div class="note"><h5>B 还缺什么</h5><ul>
+    <li><span class="tag new">新数据</span>本轮的工具调用时间线。daemon 的 session_records 里已经有 tool_call 行（at + 工具名，这一轮共 83 条：Bash 79、Edit 3、Write 1），但协议只把 Content 投影送给 App，App 拿不到。</li>
+    <li>建议给 Content 加一个精简字段，例如 turn_tools: Vec&lt;(u64 at, 种类)&gt;，或者直接送按分钟分好的计数，种类先只分跑命令 / 改文件 / 写新文件。</li>
+    <li>柱高是这轮每分钟的真实调用数；「出错 2 次」取自 tool_result 的 exit_code。</li>
+    <li>开在自己的画面上、终端在跑时没有「继续」（与现有规则一致），所以「标记完成」变成这张卡里唯一的实心按钮。</li>
+  </ul></div>
+</div>
+
+<script>
+// Tool calls per minute for the turn 1793273202..1793274469, from session_records.
+const TL = [[11,0,0],[5,0,1],[8,0,0],[0,0,0],[0,0,0],[2,0,0],[4,2,0],[5,0,0],[4,0,0],[2,0,0],[0,0,0],[2,0,0],[6,0,0],[6,0,0],[6,0,0],[7,0,0],[3,0,0],[0,0,0],[1,0,0],[3,0,0],[4,1,0],[0,0,0]];
+const max = 12;
+document.getElementById('tl').innerHTML = TL.map(([b, e, w]) => {
+  if (b + e + w === 0) return '<div class="idle" title="没有调用"></div>';
+  const seg = (n, c) => n ? `<i style="height:${n / max * 100}%;background:${c}"></i>` : '';
+  return `<div title="跑命令 ${b}，改文件 ${e}，写新文件 ${w}">${seg(b, 'var(--secondary)')}${seg(e, 'var(--primary)')}${seg(w, 'var(--review)')}</div>`;
+}).join('');
+document.querySelectorAll('[data-theme-btn]').forEach((b) => b.addEventListener('click', () => {
+  document.documentElement.dataset.theme = b.dataset.themeBtn;
+  document.querySelectorAll('[data-theme-btn]').forEach((x) => x.setAttribute('aria-pressed', String(x === b)));
+}));
+if (location.hash === '#dark') document.querySelector('[data-theme-btn="dark"]').click();
+</script>
+</body>
+</html>

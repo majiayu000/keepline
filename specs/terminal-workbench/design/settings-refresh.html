@@ -1,0 +1,613 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>设置页改版稿 · 外观、快捷键、通用、通知</title>
+<style>
+/* Same tokens as workbench-refresh.html / main-refresh.html (theme.rs light #fafaf9/#1f1e1c, dark #1c1c1e/#e4e2df). */
+:root {
+  --app: #efeeec; --pane: #fafaf9; --raised: #ebeae8; --popover: #fdfdfc; --chip: #ecebe9; --header-focus: #f0efed;
+  --border: #e3e2df; --card-border: #d6d5d2; --control: #c9c8c5; --focus: #8e8d8a;
+  --primary: #0e0d0c; --body: #1f1e1c; --secondary: #5a5956; --muted: #6c6b68;
+  --accent: #141312; --on-accent: #fafaf9; --button: #e9e8e6; --button-hover: #dddcd9; --link: #2a2927;
+  --waiting: #c4651f; --error: #c53b33; --review: #5e62d8; --paused: #9a7316; --running: #2b8f60; --stale: #8a8986;
+  --waiting-wash: #f7ebe1; --error-wash: #f8e9e7;
+  --term-bg: #fafaf9; --term-fg: #1f1e1c; --term-dim: #8a8986; --term-accent: #2a6fd6;
+  --scrim: rgba(20,19,18,.28);
+}
+:root[data-theme="dark"] {
+  --app: #161618; --pane: #1c1c1e; --raised: #29292a; --popover: #262627; --chip: #2c2c2d; --header-focus: #232325;
+  --border: #2e2e2f; --card-border: #353536; --control: #3a3a3b; --focus: #686767;
+  --primary: #ecebe9; --body: #e4e2df; --secondary: #a3a2a0; --muted: #8a8988;
+  --accent: #ecebe9; --on-accent: #1c1c1e; --button: #2a2a2b; --button-hover: #343435; --link: #c8c6c4;
+  --waiting: #e8823a; --error: #e5534b; --review: #8f93ff; --paused: #d9a441; --running: #4cc38a; --stale: #8b8a88;
+  --waiting-wash: #4a2a12; --error-wash: #4a1c18;
+  --term-bg: #1c1c1e; --term-fg: #e4e2df; --term-dim: #7d7c7a; --term-accent: #6aa5ff;
+  --scrim: rgba(0,0,0,.45);
+}
+* { box-sizing: border-box; }
+body {
+  margin: 0; background: #c9ccd2; color: var(--body);
+  font: 13px/1.4 -apple-system, BlinkMacSystemFont, "PingFang SC", "Helvetica Neue", sans-serif;
+  font-variant-numeric: tabular-nums;
+  padding: 20px 16px 40px; display: flex; flex-direction: column; align-items: center; gap: 14px;
+}
+:root[data-theme="dark"] body { background: #0f0f10; }
+button { font: inherit; cursor: pointer; border: 0; background: none; color: inherit; }
+.bar { display: flex; gap: 8px; align-items: center; font-size: 12px; color: #2f3238; flex-wrap: wrap; justify-content: center; max-width: 1440px; }
+:root[data-theme="dark"] .bar, :root[data-theme="dark"] .frame-label, :root[data-theme="dark"] .notes { color: #b8b9bd; }
+.bar button { height: 26px; padding: 0 10px; border-radius: 6px; background: #e8e9ec; color: #1f2024; }
+.bar button[aria-pressed="true"] { background: #1f2024; color: #fff; }
+:root[data-theme="dark"] .bar button[aria-pressed="true"] { background: #ecebe9; color: #1c1c1e; }
+.frame-label { font-size: 11px; letter-spacing: .06em; color: #2f3238; align-self: flex-start; max-width: 1440px; width: 100%; margin: 10px auto 0; }
+.notes { max-width: 1440px; width: 100%; font-size: 12px; color: #2f3238; line-height: 1.6; margin: 0 auto; padding: 0 2px; }
+.notes b { font-weight: 600; }
+
+/* Window with the workbench dimmed behind the floating panel. */
+.window { width: 1440px; max-width: 100%; height: 900px; background: var(--pane); border-radius: 12px; overflow: hidden; box-shadow: 0 20px 60px rgba(0,0,0,.25); display: flex; flex-direction: column; position: relative; }
+.top { height: 46px; flex: none; display: flex; align-items: center; gap: 14px; padding: 0 20px 0 84px; border-bottom: 1px solid var(--border); }
+.brand { font-weight: 600; color: var(--primary); }
+.crumb { color: var(--secondary); font-size: 12px; }
+.ghost-block { height: 10px; border-radius: 3px; background: var(--raised); }
+.behind { flex: 1; display: flex; min-height: 0; }
+.behind .side { width: 240px; border-right: 1px solid var(--border); padding: 18px 18px; display: flex; flex-direction: column; gap: 14px; }
+.behind .work { flex: 1; background: var(--app); }
+.scrim { position: absolute; inset: 0; background: var(--scrim); display: flex; align-items: center; justify-content: center; padding: 20px; }
+
+/* Panel: 940 wide (T::SETTINGS_WIDTH); proposed to grow from the fixed 664 to the window height minus 80, capped at 820. */
+.panel { width: 940px; max-width: 100%; height: 820px; max-height: 100%; background: var(--popover); border: 1px solid var(--control); border-radius: 12px; box-shadow: 0 24px 60px rgba(0,0,0,.22); display: flex; flex-direction: column; overflow: hidden; color: var(--body); }
+.p-head { height: 56px; flex: none; display: flex; align-items: center; gap: 12px; padding: 0 16px 0 20px; border-bottom: 1px solid var(--border); }
+.p-head h1 { margin: 0; font-size: 16px; font-weight: 600; color: var(--primary); width: 144px; flex: none; }
+.find { flex: 1; max-width: 420px; height: 30px; border: 1px solid var(--control); border-radius: 8px; display: flex; align-items: center; gap: 8px; padding: 0 10px; color: var(--muted); font-size: 12.5px; background: var(--pane); }
+.find.typing { border-color: var(--focus); color: var(--primary); }
+.find input { all: unset; flex: 1; min-width: 0; color: var(--primary); }
+.find input::placeholder { color: var(--muted); }
+.close { margin-left: auto; height: 28px; padding: 0 10px; border-radius: 6px; font-size: 12.5px; color: var(--secondary); display: inline-flex; gap: 6px; align-items: center; }
+.close:hover { background: var(--button-hover); }
+kbd { font: 11px/16px -apple-system, BlinkMacSystemFont, sans-serif; border: 1px solid var(--control); border-radius: 4px; padding: 0 4px; color: var(--muted); }
+
+.p-body { flex: 1; min-height: 0; display: flex; }
+.nav { width: 164px; flex: none; border-right: 1px solid var(--border); padding: 12px 10px; display: flex; flex-direction: column; gap: 2px; overflow: auto; }
+.nav .item { height: 30px; display: flex; align-items: center; gap: 8px; padding: 0 10px; border-radius: 6px; color: var(--body); text-align: left; width: 100%; }
+.nav .item:hover { background: var(--raised); }
+.nav .item.on { background: var(--raised); color: var(--primary); font-weight: 600; }
+.nav .item .n { margin-left: auto; font-size: 11.5px; color: var(--muted); font-weight: 400; }
+.nav .sub { display: flex; flex-direction: column; margin: 2px 0 6px 10px; padding-left: 10px; border-left: 1px solid var(--border); }
+.nav .sub a { height: 26px; display: flex; align-items: center; font-size: 12px; color: var(--secondary); text-decoration: none; }
+.nav .sub a:hover { color: var(--primary); }
+
+.content { flex: 1; min-width: 0; overflow: auto; padding: 18px 24px 24px; display: flex; flex-direction: column; gap: 20px; }
+.page-head h2 { margin: 0; font-size: 16px; font-weight: 600; color: var(--primary); }
+.page-head p { margin: 4px 0 0; color: var(--secondary); font-size: 12.5px; }
+.group > h3 { margin: 0 0 6px; padding: 0 2px; font-size: 11px; font-weight: 600; letter-spacing: .04em; color: var(--muted); display: flex; align-items: center; gap: 8px; }
+.group > h3 .r { margin-left: auto; font-weight: 400; letter-spacing: 0; }
+.rows { border: 1px solid var(--card-border); border-radius: 10px; background: var(--pane); }
+.srow { display: flex; align-items: center; gap: 16px; padding: 12px 14px; min-height: 56px; }
+.srow + .srow, .srow + .extra, .extra + .srow { border-top: 1px solid var(--border); }
+.srow .lab { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
+.srow .lab b { font-weight: 400; color: var(--primary); font-size: 13px; }
+.srow .lab span { font-size: 11.5px; color: var(--secondary); }
+.srow .ctl { flex: none; display: flex; align-items: center; gap: 8px; }
+.extra { padding: 12px 14px 14px; }
+
+/* Segmented control: the selected option is raised, never solid. */
+.seg { display: inline-flex; padding: 2px; border-radius: 7px; background: var(--raised); }
+.seg button { height: 26px; padding: 0 10px; border-radius: 5px; font-size: 12.5px; color: var(--secondary); white-space: nowrap; }
+.seg button:hover { color: var(--primary); }
+.seg button[aria-pressed="true"] { background: var(--popover); color: var(--primary); box-shadow: 0 1px 2px rgba(0,0,0,.1), 0 0 0 1px var(--border); }
+.btn { height: 28px; padding: 0 12px; border-radius: 6px; background: var(--button); font-size: 12.5px; color: var(--primary); white-space: nowrap; }
+.btn:hover { background: var(--button-hover); }
+.btn.solid { background: var(--accent); color: var(--on-accent); font-weight: 600; }
+.btn.quiet { background: none; color: var(--link); }
+.btn.quiet:hover { background: var(--button-hover); }
+.stepper { display: inline-flex; align-items: center; border: 1px solid var(--control); border-radius: 7px; height: 30px; overflow: hidden; }
+.stepper button { width: 30px; height: 100%; color: var(--primary); font-size: 15px; }
+.stepper button:hover { background: var(--button-hover); }
+.stepper output { min-width: 64px; text-align: center; border-left: 1px solid var(--border); border-right: 1px solid var(--border); height: 100%; line-height: 28px; color: var(--primary); }
+.range { font-size: 11.5px; color: var(--muted); }
+.switch { width: 34px; height: 20px; border-radius: 10px; background: var(--control); position: relative; flex: none; }
+.switch::after { content: ""; position: absolute; top: 2px; left: 2px; width: 16px; height: 16px; border-radius: 50%; background: var(--popover); box-shadow: 0 1px 2px rgba(0,0,0,.2); }
+.switch[aria-checked="true"] { background: var(--primary); }
+.switch[aria-checked="true"]::after { left: 16px; }
+.state { font-size: 12px; color: var(--secondary); min-width: 40px; text-align: right; }
+.propose { display: inline-flex; align-items: center; height: 18px; padding: 0 6px; border-radius: 4px; border: 1px dashed var(--focus); color: var(--secondary); font-size: 10.5px; font-weight: 400; letter-spacing: 0; white-space: nowrap; }
+.mono { font-family: "JetBrains Mono", "SF Mono", Menlo, monospace; font-size: 12px; }
+
+/* Theme swatches: each paints its own scheme regardless of the page theme. */
+.swatches { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px; }
+.sw { border: 1px solid var(--card-border); border-radius: 10px; padding: 8px; display: flex; flex-direction: column; gap: 8px; text-align: left; background: var(--popover); }
+.sw[aria-pressed="true"] { border-color: var(--primary); box-shadow: 0 0 0 1px var(--primary); }
+.sw .cap { display: flex; align-items: center; gap: 6px; font-size: 12px; color: var(--primary); padding: 0 2px; }
+.sw .cap span { margin-left: auto; color: var(--muted); font-size: 11px; }
+.thumb { height: 76px; border-radius: 6px; overflow: hidden; display: flex; border: 1px solid rgba(127,127,127,.25); }
+.thumb.light { --t-pane: #fafaf9; --t-side: #fafaf9; --t-line: #e3e2df; --t-raised: #ebeae8; --t-fg: #1f1e1c; --t-dim: #8a8986; }
+.thumb.dark { --t-pane: #1c1c1e; --t-side: #1c1c1e; --t-line: #2e2e2f; --t-raised: #29292a; --t-fg: #e4e2df; --t-dim: #7d7c7a; }
+.thumb .ts { width: 30%; background: var(--t-side); border-right: 1px solid var(--t-line); padding: 8px 6px; display: flex; flex-direction: column; gap: 5px; }
+.thumb .ts i { display: block; height: 5px; border-radius: 2px; background: var(--t-raised); }
+.thumb .ts i.on { background: var(--t-dim); opacity: .5; }
+.thumb .tt { flex: 1; background: var(--t-pane); padding: 8px; font: 8.5px/1.5 "JetBrains Mono", Menlo, monospace; color: var(--t-fg); white-space: nowrap; overflow: hidden; }
+.thumb .tt em { font-style: normal; color: var(--t-dim); }
+.thumb.split { position: relative; }
+.thumb.split .half { position: absolute; inset: 0; display: flex; }
+.thumb.split .half.r { clip-path: polygon(100% 0, 100% 100%, 0 100%); }
+
+/* Font choices render their own face. */
+.fonts { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 8px; }
+.font { border: 1px solid var(--card-border); border-radius: 8px; padding: 8px 10px; text-align: left; display: flex; flex-direction: column; gap: 4px; background: var(--popover); }
+.font[aria-pressed="true"] { border-color: var(--primary); box-shadow: 0 0 0 1px var(--primary); }
+.font .sample { font-size: 15px; color: var(--primary); white-space: nowrap; overflow: hidden; }
+.font .name { font-size: 11.5px; color: var(--secondary); display: flex; gap: 6px; }
+.font .name span { margin-left: auto; color: var(--muted); }
+.term { border-radius: 8px; border: 1px solid var(--control); background: var(--term-bg); color: var(--term-fg); padding: 12px 14px; }
+.term .cap { display: flex; font-size: 11.5px; color: var(--muted); margin-bottom: 8px; font-family: -apple-system, BlinkMacSystemFont, sans-serif; }
+.term .cap span { margin-left: auto; }
+.term pre { margin: 0; font: 13px/1.4 "JetBrains Mono", "SF Mono", Menlo, monospace; white-space: pre; overflow: hidden; }
+.term .dim { color: var(--term-dim); }
+.term .acc { color: var(--term-accent); }
+.foot-actions { display: flex; justify-content: flex-end; }
+
+/* Shortcut table */
+.ktools { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.ktools .find { max-width: none; flex: 1 1 240px; }
+.ktable { width: 100%; border-collapse: separate; border-spacing: 0; border: 1px solid var(--card-border); border-radius: 10px; background: var(--pane); overflow: hidden; }
+.ktable th { text-align: left; font-size: 11px; font-weight: 600; letter-spacing: .04em; color: var(--muted); padding: 8px 14px; background: var(--header-focus); border-bottom: 1px solid var(--border); }
+.ktable th.sec { background: none; padding-top: 14px; border-bottom: 1px solid var(--border); }
+.ktable tr.sec:first-child th { padding-top: 8px; }
+.ktable th .r { float: right; font-weight: 400; letter-spacing: 0; }
+.ktable td { padding: 0 14px; height: 40px; border-bottom: 1px solid var(--border); vertical-align: middle; }
+.ktable tr:last-child td { border-bottom: 0; }
+.ktable td.act { color: var(--primary); }
+.ktable td.act small { display: block; font-size: 11px; color: var(--muted); margin-top: 1px; }
+.ktable td.key { width: 200px; }
+.ktable td.rst { width: 92px; text-align: right; }
+.chord { height: 28px; min-width: 132px; display: inline-flex; align-items: center; gap: 3px; padding: 0 8px; border: 1px solid var(--control); border-radius: 6px; background: var(--popover); }
+.chord:hover { border-color: var(--focus); }
+.chord .sep { color: var(--muted); font-size: 11px; margin: 0 3px; }
+.cap-k { min-width: 20px; height: 20px; padding: 0 5px; display: inline-flex; align-items: center; justify-content: center; border-radius: 4px; background: var(--raised); border-bottom: 1px solid var(--control); color: var(--primary); font-size: 12px; line-height: 1; }
+.chord.fixed { border-style: dashed; background: none; cursor: default; }
+.chord.fixed .cap-k { background: none; border: 0; color: var(--secondary); }
+.chord.empty { color: var(--muted); font-size: 12px; }
+tr.rec td { background: var(--header-focus); }
+tr.rec td.act { box-shadow: inset 2px 0 0 var(--focus); }
+.chord.rec { border-color: var(--focus); box-shadow: 0 0 0 3px color-mix(in srgb, var(--focus) 25%, transparent); color: var(--secondary); font-size: 12px; }
+.chord.rec .caret { width: 1px; height: 14px; background: var(--primary); margin-left: 2px; animation: blink 1s steps(1) infinite; }
+@keyframes blink { 50% { opacity: 0; } }
+tr.note td { height: auto; padding: 0 14px 10px; border-bottom: 1px solid var(--border); }
+tr.has-note td { border-bottom: 0; }
+.knote { display: flex; align-items: center; gap: 8px; font-size: 11.5px; color: var(--secondary); flex-wrap: wrap; }
+.knote .t { flex: 1; min-width: 200px; }
+.knote.conflict .t { color: var(--waiting); }
+.knote.refused .t { color: var(--error); }
+tr.conflict td { background: color-mix(in srgb, var(--waiting) 8%, var(--pane)); }
+tr.conflict td.act { box-shadow: inset 2px 0 0 var(--waiting); }
+tr.conflict .chord { border-color: var(--waiting); }
+.mark { display: inline-flex; align-items: center; gap: 5px; font-size: 11px; color: var(--waiting); margin-left: 8px; font-weight: 400; }
+.mark i { width: 6px; height: 6px; border-radius: 50%; background: var(--waiting); }
+.changed { display: inline-block; width: 5px; height: 5px; border-radius: 50%; background: var(--secondary); margin-left: 6px; vertical-align: middle; }
+
+.p-foot { height: 48px; flex: none; border-top: 1px solid var(--border); display: flex; align-items: center; gap: 12px; padding: 0 16px 0 20px; font-size: 12px; color: var(--secondary); }
+.p-foot .saved { display: inline-flex; align-items: center; gap: 6px; }
+.p-foot .r { margin-left: auto; display: flex; gap: 8px; align-items: center; }
+
+/* Agent rows */
+.agents .srow { align-items: flex-start; }
+.agent-id { width: 120px; flex: none; display: flex; flex-direction: column; gap: 2px; }
+.agent-id b { font-weight: 600; color: var(--primary); }
+.agent-id span { font-size: 11.5px; color: var(--muted); }
+.agent-facts { flex: 1; min-width: 0; display: grid; grid-template-columns: 64px minmax(0,1fr); gap: 4px 10px; font-size: 12px; }
+.agent-facts dt { color: var(--muted); }
+.agent-facts dd { margin: 0; color: var(--body); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.agent-facts dd.found { color: var(--primary); }
+.agent-facts dd .sample { color: var(--muted); font-size: 11px; margin-left: 6px; }
+.det { display: inline-flex; align-items: center; gap: 6px; font-size: 12px; color: var(--secondary); white-space: nowrap; }
+.det i { width: 7px; height: 7px; border-radius: 50%; }
+.empty-state { padding: 40px 0; text-align: center; color: var(--secondary); }
+.empty-state b { display: block; color: var(--primary); font-weight: 400; margin-bottom: 4px; }
+.hint { font-size: 12px; color: var(--secondary); line-height: 1.6; padding: 0 2px; }
+mark { background: color-mix(in srgb, var(--primary) 14%, transparent); color: inherit; border-radius: 2px; padding: 0 1px; }
+.hl-page { font-size: 11px; color: var(--muted); font-weight: 600; letter-spacing: .04em; margin-bottom: 6px; }
+
+/* Narrow: nav turns into a row, controls wrap under their labels. */
+@media (max-width: 820px) {
+  body { padding: 16px 16px 32px; align-items: stretch; }
+  .bar, .notes, .frame-label { overflow-wrap: anywhere; }
+  .window { height: auto; width: 100%; min-width: 0; }
+  .agent-facts dd { white-space: normal; overflow-wrap: anywhere; }
+  .agents .srow { flex-wrap: wrap; }
+  .ktable td { padding: 0 10px; }
+  .ktable th { padding: 8px 10px; }
+  .knote .t { min-width: 0; flex-basis: 100%; }
+  .behind { display: none; }
+  .scrim { position: static; padding: 0; background: none; }
+  .panel { height: auto; border-radius: 0; border: 0; box-shadow: none; }
+  .p-head { flex-wrap: wrap; height: auto; padding: 12px 16px; }
+  .p-head h1 { width: auto; }
+  .find { order: 3; flex-basis: 100%; max-width: none; }
+  .p-body { flex-direction: column; }
+  .nav { width: auto; flex-direction: row; border-right: 0; border-bottom: 1px solid var(--border); overflow-x: auto; padding: 8px 12px; }
+  .nav .item { width: auto; flex: none; }
+  .nav .sub { display: none; }
+  .content { padding: 16px; }
+  .srow { flex-wrap: wrap; }
+  .srow .ctl { flex-basis: 100%; flex-wrap: wrap; }
+  .swatches, .fonts { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .ktable td.key { width: auto; }
+  .ktable td.rst { width: 1%; white-space: nowrap; padding-left: 0; }
+  .ktable td.act { min-width: 6em; }
+  .ktable td.rst .btn { padding: 0 4px; font-size: 12px; }
+  .chord { padding: 0 5px; gap: 2px; }
+  .cap-k { min-width: 18px; padding: 0 3px; }
+  .ktable td.key { width: 1%; white-space: nowrap; }
+  .chord { min-width: 0; }
+  .agent-id { width: 100%; }
+}
+</style>
+</head>
+<body>
+<div class="bar">
+  <span>设置页改版稿：四个真实分类（通用 / 外观与终端 / 快捷键 / 通知），每个现有设置都在；虚线小标「建议新增」是提议，代码里还没有</span>
+  <button type="button" data-theme-btn="light" aria-pressed="true">浅色</button>
+  <button type="button" data-theme-btn="dark" aria-pressed="false">深色</button>
+</div>
+
+<!-- ========================= 一 · 外观与终端 ========================= -->
+<div class="frame-label">一 · 外观与终端：主题缩略图实时预览，字体卡片用各自字形渲染</div>
+<div class="window">
+  <div class="top"><span class="brand">Keepline</span><span class="crumb">/ 工作空间</span></div>
+  <div class="behind"><div class="side"><div class="ghost-block" style="width:60%"></div><div class="ghost-block"></div><div class="ghost-block" style="width:80%"></div></div><div class="work"></div></div>
+  <div class="scrim">
+    <section class="panel" aria-label="设置">
+      <header class="p-head">
+        <h1>设置</h1>
+        <label class="find">⌕ <input placeholder="搜索设置…" aria-label="搜索设置"></label>
+        <button type="button" class="close">关闭 <kbd>Esc</kbd></button>
+      </header>
+      <div class="p-body">
+        <nav class="nav">
+          <button type="button" class="item">通用</button>
+          <button type="button" class="item on">外观与终端</button>
+          <div class="sub"><a href="#">主题</a><a href="#">终端文字</a></div>
+          <button type="button" class="item">快捷键 <span class="n">改 1</span></button>
+          <button type="button" class="item">通知 <span class="n">关</span></button>
+        </nav>
+        <div class="content">
+          <div class="page-head"><h2>外观与终端</h2><p>调整明暗和终端文字，修改后立即预览。</p></div>
+
+          <div class="group">
+            <h3>主题 <span class="r">窗口与终端一起切换；可跟随 macOS</span></h3>
+            <div class="rows">
+              <div class="extra">
+                <div class="swatches" role="radiogroup" aria-label="主题">
+                  <button type="button" class="sw" aria-pressed="true">
+                    <div class="thumb split">
+                      <div class="half"><div class="thumb light" style="flex:1;border:0;border-radius:0"><div class="ts"><i class="on"></i><i></i><i></i></div><div class="tt">$ keepline<br><em>~/workspace</em></div></div></div>
+                      <div class="half r"><div class="thumb dark" style="flex:1;border:0;border-radius:0"><div class="ts"><i class="on"></i><i></i><i></i></div><div class="tt">$ keepline<br><em>~/workspace</em></div></div></div>
+                    </div>
+                    <div class="cap">跟随系统 <span id="sys-now">现在：浅色</span></div>
+                  </button>
+                  <button type="button" class="sw" aria-pressed="false">
+                    <div class="thumb light"><div class="ts"><i class="on"></i><i></i><i></i></div><div class="tt">$ keepline<br><em>~/workspace  main</em></div></div>
+                    <div class="cap">亮色</div>
+                  </button>
+                  <button type="button" class="sw" aria-pressed="false">
+                    <div class="thumb dark"><div class="ts"><i class="on"></i><i></i><i></i></div><div class="tt">$ keepline<br><em>~/workspace  main</em></div></div>
+                    <div class="cap">暗色</div>
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <div class="group">
+            <h3>终端文字 <span class="r">存于 ~/.config/keepline</span></h3>
+            <div class="rows">
+              <div class="srow" style="flex-wrap:wrap">
+                <div class="lab"><b>终端字体</b><span>选择等宽字体，中文和符号继续使用字形回退；只列出本机已安装的</span></div>
+                <div class="fonts" style="flex-basis:100%">
+                  <button type="button" class="font" aria-pressed="true"><span class="sample" style="font-family:'JetBrains Mono',monospace">Aa 中文 0123</span><span class="name">JetBrains Mono <span>内置</span></span></button>
+                  <button type="button" class="font" aria-pressed="false"><span class="sample" style="font-family:Menlo,monospace">Aa 中文 0123</span><span class="name">Menlo</span></button>
+                  <button type="button" class="font" aria-pressed="false"><span class="sample" style="font-family:Monaco,monospace">Aa 中文 0123</span><span class="name">Monaco</span></button>
+                  <button type="button" class="font" aria-pressed="false"><span class="sample" style="font-family:'SF Mono',monospace">Aa 中文 0123</span><span class="name">SF Mono</span></button>
+                </div>
+              </div>
+              <div class="srow">
+                <div class="lab"><b>字号</b><span>与终端缩放快捷键 ⌘= / ⌘- / ⌘0 共用，重开应用后仍保留</span></div>
+                <div class="ctl"><span class="range">8–36</span><div class="stepper"><button type="button" aria-label="缩小">−</button><output>13 pt</output><button type="button" aria-label="放大">+</button></div></div>
+              </div>
+              <div class="srow">
+                <div class="lab"><b>行距</b><span>相对于字体自然行高，文字始终在单元格内居中</span></div>
+                <div class="ctl"><div class="seg"><button type="button" aria-pressed="true">1×</button><button type="button" aria-pressed="false">1.2×</button><button type="button" aria-pressed="false">1.4×</button><button type="button" aria-pressed="false">1.6×</button></div></div>
+              </div>
+              <div class="extra">
+                <div class="term">
+                  <div class="cap">终端预览 <span>JetBrains Mono · 13 pt · 1×</span></div>
+<pre><span class="dim">~/workspace</span>  <span class="acc">main</span>
+$ keepline
+准备继续你的工作  0123456789
+<span class="dim">→ ⌘ ⌥ ⇧ ← ↑ ✓ ✗  │ ─ ┼</span></pre>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+      <footer class="p-foot"><span class="saved">更改自动保存 · 立即生效</span><div class="r"><button type="button" class="btn">恢复终端文字默认值</button></div></footer>
+    </section>
+  </div>
+</div>
+<p class="notes"><b>对应代码</b>：主题 = <code>Appearance::ALL</code>（跟随系统 / 亮色 / 暗色）；字体 = <code>["", "Menlo", "Monaco", "SF Mono"]</code> 中已安装的；字号 − / + 范围 8–36；行距 1 / 1.2 / 1.4 / 1.6；终端预览 + 「恢复终端文字默认值」。保存失败时，底栏左侧的文字换成出错色的原因（如「无法保存 …」），设置不生效。</p>
+
+<!-- ========================= 二 · 快捷键 ========================= -->
+<div class="frame-label">二 · 快捷键：可搜索的两列表，键帽、冲突、录制中、恢复默认</div>
+<div class="window">
+  <div class="top"><span class="brand">Keepline</span><span class="crumb">/ 工作空间</span></div>
+  <div class="behind"><div class="side"><div class="ghost-block" style="width:60%"></div><div class="ghost-block"></div><div class="ghost-block" style="width:80%"></div></div><div class="work"></div></div>
+  <div class="scrim">
+    <section class="panel" aria-label="设置">
+      <header class="p-head">
+        <h1>设置</h1>
+        <label class="find">⌕ <input placeholder="搜索设置…" aria-label="搜索设置"></label>
+        <button type="button" class="close">关闭 <kbd>Esc</kbd></button>
+      </header>
+      <div class="p-body">
+        <nav class="nav">
+          <button type="button" class="item">通用</button>
+          <button type="button" class="item">外观与终端</button>
+          <button type="button" class="item on">快捷键 <span class="n">改 1</span></button>
+          <div class="sub"><a href="#">标签与分屏</a><a href="#">终端</a><a href="#">工作台</a></div>
+          <button type="button" class="item">通知 <span class="n">关</span></button>
+        </nav>
+        <div class="content">
+          <div class="page-head"><h2>快捷键</h2><p>点击组合键重新录制，按 Esc 取消。都需要包含 ⌘；不带 ⌘ 的组合键留给终端里的程序。</p></div>
+          <div class="ktools">
+            <label class="find">⌕ <input id="kfilter" placeholder="按动作或按键过滤，如「分屏」或 ⌘D" aria-label="过滤快捷键"></label>
+            <div class="seg" aria-label="范围"><button type="button" aria-pressed="true">全部 22</button><button type="button" aria-pressed="false">已修改 1</button></div>
+            <span class="propose">建议新增 · 已修改筛选</span>
+          </div>
+          <table class="ktable" id="ktable">
+            <thead><tr><th>动作</th><th>组合键</th><th style="text-align:right">恢复</th></tr></thead>
+            <tbody id="kbody"></tbody>
+          </table>
+        </div>
+      </div>
+      <footer class="p-foot"><span class="saved">更改自动保存 · 立即生效 · 存于 keys.json</span><div class="r"><button type="button" class="btn">全部恢复默认</button></div></footer>
+    </section>
+  </div>
+</div>
+<p class="notes"><b>状态说明</b>：同一时刻代码里只会有一行处于「录制中」「冲突待确认」或「被拒绝」之一，这里为了展示把三种并排。冲突用「等你回答」橙（代码用 <code>Group::Waiting</code>），被拒绝用出错红（<code>Group::Error</code>），录制中只用聚焦灰描边；「仍然使用」是这一屏唯一的实心按钮。「恢复默认」位置固定，只在该行和默认不同时出现，组合键按钮不随它移动。⌘1–⌘9 固定，合成一行只读。</p>
+
+<!-- ========================= 三 · 通用（Agent） ========================= -->
+<div class="frame-label">三 · 通用：Agent 与会话（每个 Agent 一行；路径和版本检测为建议新增）</div>
+<div class="window">
+  <div class="top"><span class="brand">Keepline</span><span class="crumb">/ 工作空间</span></div>
+  <div class="behind"><div class="side"><div class="ghost-block" style="width:60%"></div><div class="ghost-block"></div><div class="ghost-block" style="width:80%"></div></div><div class="work"></div></div>
+  <div class="scrim">
+    <section class="panel" aria-label="设置">
+      <header class="p-head">
+        <h1>设置</h1>
+        <label class="find">⌕ <input placeholder="搜索设置…" aria-label="搜索设置"></label>
+        <button type="button" class="close">关闭 <kbd>Esc</kbd></button>
+      </header>
+      <div class="p-body">
+        <nav class="nav">
+          <button type="button" class="item on">通用</button>
+          <div class="sub"><a href="#">Agent</a><a href="#">会话</a></div>
+          <button type="button" class="item">外观与终端</button>
+          <button type="button" class="item">快捷键 <span class="n">改 1</span></button>
+          <button type="button" class="item">通知 <span class="n">关</span></button>
+        </nav>
+        <div class="content">
+          <div class="page-head"><h2>通用</h2><p>按你的习惯启动工作，整理会话。</p></div>
+
+          <div class="group">
+            <h3>Agent</h3>
+            <div class="rows">
+              <div class="srow">
+                <div class="lab"><b>默认 Agent</b><span>新建待办和未指定 Agent 的会话使用此选项</span></div>
+                <div class="ctl"><div class="seg"><button type="button" aria-pressed="true">Codex</button><button type="button" aria-pressed="false">Claude Code</button><button type="button" aria-pressed="false" title="建议新增" style="opacity:.7">Grok Build</button></div></div>
+              </div>
+              <div class="extra">
+                <div class="hint">Grok Build 已在 <code>Agent::ALL</code> 里、能被识别和恢复，但设置页目前只提供 Codex 和 Claude Code 两个选项。<span class="propose">建议新增 · 把 Grok Build 列为可选默认</span></div>
+              </div>
+            </div>
+          </div>
+
+          <div class="group agents">
+            <h3>已支持的 Agent <span class="propose">建议新增 · 只读检测</span><span class="r">启动命令与恢复命令来自代码；路径和版本为示例</span></h3>
+            <div class="rows">
+              <div class="srow">
+                <div class="agent-id"><b>Codex</b><span>默认</span></div>
+                <dl class="agent-facts">
+                  <dt>启动</dt><dd class="mono">codex</dd>
+                  <dt>恢复</dt><dd class="mono">codex resume &lt;会话 id&gt;</dd>
+                  <dt>路径</dt><dd class="mono found">/opt/homebrew/bin/codex<span class="sample">示例</span></dd>
+                </dl>
+                <span class="det"><i style="background:var(--running)"></i>已找到</span>
+              </div>
+              <div class="srow">
+                <div class="agent-id"><b>Claude Code</b><span>&nbsp;</span></div>
+                <dl class="agent-facts">
+                  <dt>启动</dt><dd class="mono">claude --session-id &lt;新 uuid&gt;</dd>
+                  <dt>恢复</dt><dd class="mono">claude --resume &lt;会话 id&gt;</dd>
+                  <dt>路径</dt><dd class="mono found">~/.local/bin/claude<span class="sample">示例</span></dd>
+                </dl>
+                <span class="det"><i style="background:var(--running)"></i>已找到</span>
+              </div>
+              <div class="srow">
+                <div class="agent-id"><b>Grok Build</b><span>&nbsp;</span></div>
+                <dl class="agent-facts">
+                  <dt>启动</dt><dd class="mono">grok</dd>
+                  <dt>恢复</dt><dd class="mono">grok --resume &lt;会话 id&gt;</dd>
+                  <dt>路径</dt><dd class="mono">PATH 里没有 grok<span class="sample">示例</span></dd>
+                </dl>
+                <span class="det"><i style="background:var(--stale)"></i>未找到</span>
+              </div>
+            </div>
+          </div>
+
+          <div class="group">
+            <h3>会话</h3>
+            <div class="rows">
+              <div class="srow">
+                <div class="lab"><b>回来时显示总览</b><span>离开窗口达到这段时间后，返回时先看工作进展</span></div>
+                <div class="ctl"><div class="seg"><button type="button" aria-pressed="false">5 分钟</button><button type="button" aria-pressed="false">15 分钟</button><button type="button" aria-pressed="true">30 分钟</button><button type="button" aria-pressed="false">60 分钟</button></div></div>
+              </div>
+              <div class="srow">
+                <div class="lab"><b>旧会话收起时间</b><span>已关闭的会话超过这段时间后从侧栏收起，历史仍保留</span></div>
+                <div class="ctl"><div class="seg"><button type="button" aria-pressed="false">1 天</button><button type="button" aria-pressed="true">3 天</button><button type="button" aria-pressed="false">7 天</button><button type="button" aria-pressed="false">14 天</button></div></div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+      <footer class="p-foot"><span class="saved">更改自动保存 · 立即生效</span></footer>
+    </section>
+  </div>
+</div>
+<p class="notes"><b>对应代码</b>：默认 Agent（<code>Settings.default_agent</code>，选项 Codex / Claude Code）、回来时显示总览（<code>away_minutes</code>：5/15/30/60，存了非预设值时追加一个按钮）、旧会话收起时间（<code>stale_days</code>：1/3/7/14）。保存中（<code>busy</code>）时这些按钮不响应，底栏显示「正在保存…」。「已支持的 Agent」整组是提议：启动 / 恢复命令直接取自 <code>Agent::command / resume_command</code>，路径和版本检测代码里没有。</p>
+
+<!-- ========================= 四 · 通知 + 搜索 ========================= -->
+<div class="frame-label">四 · 通知，以及跨分类搜索「字」</div>
+<div class="window" style="height:auto">
+  <div style="display:flex;gap:20px;padding:24px;background:var(--app);flex-wrap:wrap;justify-content:center">
+    <section class="panel" aria-label="设置 · 通知" style="width:620px;height:420px">
+      <header class="p-head"><h1>设置</h1><label class="find">⌕ <input placeholder="搜索设置…" aria-label="搜索设置"></label><button type="button" class="close">关闭 <kbd>Esc</kbd></button></header>
+      <div class="p-body">
+        <nav class="nav" style="width:132px">
+          <button type="button" class="item">通用</button>
+          <button type="button" class="item">外观与终端</button>
+          <button type="button" class="item">快捷键</button>
+          <button type="button" class="item on">通知</button>
+        </nav>
+        <div class="content">
+          <div class="page-head"><h2>通知</h2><p>在 Agent 需要你时接收提醒。</p></div>
+          <div class="group">
+            <div class="rows">
+              <div class="srow">
+                <div class="lab"><b>桌面通知</b><span>Agent 等待输入或出现错误时提醒你</span></div>
+                <div class="ctl"><span class="state">已关闭</span><button type="button" class="switch" role="switch" aria-checked="false" aria-label="桌面通知"></button></div>
+              </div>
+            </div>
+          </div>
+          <p class="hint">首次开启时，macOS 会询问通知权限。若已拒绝，可到 系统设置 → 通知 → Keepline 重新允许。</p>
+        </div>
+      </div>
+      <footer class="p-foot"><span class="saved">更改自动保存 · 立即生效</span></footer>
+    </section>
+
+    <section class="panel" aria-label="设置 · 搜索" style="width:620px;height:420px">
+      <header class="p-head"><h1>设置</h1><label class="find typing">⌕ <input value="字" aria-label="搜索设置"></label><button type="button" class="close">关闭 <kbd>Esc</kbd></button></header>
+      <div class="p-body">
+        <nav class="nav" style="width:132px">
+          <button type="button" class="item">通用</button>
+          <button type="button" class="item on">外观与终端 <span class="n">2</span></button>
+          <button type="button" class="item">快捷键 <span class="n">3</span></button>
+          <button type="button" class="item">通知</button>
+        </nav>
+        <div class="content" style="gap:14px">
+          <div class="group">
+            <div class="hl-page">外观与终端</div>
+            <div class="rows">
+              <div class="srow"><div class="lab"><b>终端<mark>字</mark>体</b><span>选择等宽<mark>字</mark>体，中文和符号继续使用<mark>字</mark>形回退</span></div><div class="ctl"><span class="range">JetBrains Mono</span></div></div>
+              <div class="srow"><div class="lab"><b><mark>字</mark>号</b><span>与终端缩放快捷键共用</span></div><div class="ctl"><span class="range">13 pt</span></div></div>
+            </div>
+          </div>
+          <div class="group">
+            <div class="hl-page">快捷键</div>
+            <div class="rows">
+              <div class="srow" style="min-height:40px;padding:6px 14px"><div class="lab"><b>放大<mark>字</mark>号</b></div><div class="ctl"><span class="chord"><span class="cap-k">⌘</span><span class="cap-k">=</span></span></div></div>
+              <div class="srow" style="min-height:40px;padding:6px 14px"><div class="lab"><b>缩小<mark>字</mark>号</b></div><div class="ctl"><span class="chord"><span class="cap-k">⌘</span><span class="cap-k">-</span></span></div></div>
+              <div class="srow" style="min-height:40px;padding:6px 14px"><div class="lab"><b>还原<mark>字</mark>号</b></div><div class="ctl"><span class="chord"><span class="cap-k">⌘</span><span class="cap-k">0</span></span></div></div>
+            </div>
+          </div>
+        </div>
+      </div>
+      <footer class="p-foot"><span class="saved">搜索覆盖全部分类 · Esc 关闭</span></footer>
+    </section>
+  </div>
+</div>
+<p class="notes"><b>对应代码</b>：桌面通知（<code>Settings.notifications</code>）原为「已开启 / 已关闭」切换按钮，这里换成开关并保留状态文字；权限提示原样保留。搜索：代码已经会跨分类显示所有命中的页面、隐藏页说明；改版给左栏加命中计数、给命中字加底色（建议新增的仅是高亮和计数）。无结果时显示「没有找到相关设置 · 试试「字体」「通知」或「快捷键」」。</p>
+
+<script>
+const KEYS = [
+  ['标签与分屏', [
+    ['新建标签', ['⌥⌘T'], { changed: '⌘T' }],
+    ['关闭画面', ['⌘W']],
+    ['向右分屏', ['⌘D'], { conflict: ['⇧⌘D', '向下分屏'] }],
+    ['向下分屏', ['⇧⌘D']],
+    ['上一个标签', ['⇧⌘['], { rec: true }],
+    ['下一个标签', ['⇧⌘]']],
+    ['上一个画面', ['⌘[']],
+    ['下一个画面', ['⌘]'], { refused: '⌘C、⌘V、⌘Q 保留给复制、粘贴和退出' }],
+    ['左边的画面', ['⌥⌘←']],
+    ['右边的画面', ['⌥⌘→']],
+    ['上面的画面', ['⌥⌘↑']],
+    ['下面的画面', ['⌥⌘↓']],
+    ['切换到第几个标签', ['⌘1 – ⌘9'], { fixed: '⌘9 为最后一个；固定，不可修改' }],
+  ]],
+  ['终端', [
+    ['在终端里查找', ['⌘F']],
+    ['清屏', ['⌘K']],
+    ['全选', ['⌘A']],
+    ['放大字号', ['⌘=', '⇧⌘=']],
+    ['缩小字号', ['⌘-']],
+    ['还原字号', ['⌘0']],
+  ]],
+  ['工作台', [
+    ['搜索', ['⌘P']],
+    ['设置', ['⌘,']],
+    ['下一个等你的', ['⌘J']],
+  ]],
+];
+const caps = (c) => c.startsWith('⌘1') ? `<span class="cap-k">⌘1</span><span class="sep">–</span><span class="cap-k">⌘9</span>` :
+  [...c].map((ch) => `<span class="cap-k">${ch}</span>`).join('');
+function renderKeys(q = '') {
+  q = q.trim().toLowerCase();
+  let html = '';
+  for (const [sec, rows] of KEYS) {
+    const hit = rows.filter(([n, cs]) => !q || n.includes(q) || sec.includes(q) || cs.join(' ').toLowerCase().includes(q));
+    if (!hit.length) continue;
+    html += `<tr class="sec"><th colspan="3" class="sec">${sec}<span class="r">${hit.length} 项</span></th></tr>`;
+    for (const [name, chords, s = {}] of hit) {
+      const note = s.conflict || s.rec || s.refused;
+      let cls = s.conflict ? 'conflict' : s.rec ? 'rec' : '';
+      if (note) cls += ' has-note';
+      let chord;
+      if (s.rec) chord = `<button type="button" class="chord rec">按下组合键…<span class="caret"></span></button>`;
+      else if (s.fixed) chord = `<span class="chord fixed">${caps(chords[0])}</span>`;
+      else if (s.conflict) chord = `<button type="button" class="chord">${caps(s.conflict[0])}</button>`;
+      else chord = `<button type="button" class="chord">${chords.map(caps).join('<span class="sep">/</span>')}</button>`;
+      const act = `${name}${s.changed ? `<span class="changed" title="已修改"></span><small>默认 ${s.changed}</small>` : ''}${s.conflict ? `<span class="mark"><i></i>冲突</span>` : ''}${s.fixed ? `<small>${s.fixed}</small>` : ''}`;
+      const rst = s.changed ? `<button type="button" class="btn quiet">恢复默认</button>` : '';
+      html += `<tr class="${cls}"><td class="act">${act}</td><td class="key">${chord}</td><td class="rst">${rst}</td></tr>`;
+      if (s.conflict) html += `<tr class="note conflict"><td colspan="3"><div class="knote conflict"><span class="t">${s.conflict[0]} 已被「${s.conflict[1]}」使用。仍然使用会把它从「${s.conflict[1]}」移走，「${s.conflict[1]}」将没有快捷键。</span><button type="button" class="btn solid">仍然使用</button><button type="button" class="btn">取消</button></div></td></tr>`;
+      if (s.rec) html += `<tr class="note rec"><td colspan="3"><div class="knote"><span class="t">按下新的组合键，需包含 ⌘；Esc 取消 · 原来是 ${chords[0]}</span></div></td></tr>`;
+      if (s.refused) html += `<tr class="note"><td colspan="3"><div class="knote refused"><span class="t">刚才按的 ⌘C 不能用：${s.refused}</span></div></td></tr>`;
+    }
+  }
+  document.getElementById('kbody').innerHTML = html || `<tr><td colspan="3"><div class="empty-state"><b>没有匹配的快捷键</b>试试「分屏」「字号」或直接输入 ⌘</div></td></tr>`;
+}
+renderKeys();
+document.getElementById('kfilter').addEventListener('input', (e) => renderKeys(e.target.value));
+function setTheme(t) {
+  document.documentElement.dataset.theme = t;
+  document.getElementById('sys-now').textContent = t === 'dark' ? '现在：暗色' : '现在：浅色';
+  document.querySelectorAll('[data-theme-btn]').forEach((x) => x.setAttribute('aria-pressed', String(x.dataset.themeBtn === t)));
+}
+document.querySelectorAll('[data-theme-btn]').forEach((b) => b.addEventListener('click', () => setTheme(b.dataset.themeBtn)));
+const qs = new URLSearchParams(location.search).get('theme');
+if (qs === 'dark' || qs === 'light') setTheme(qs);
+// ?frame=N keeps only that frame (for screenshots).
+const only = Number(new URLSearchParams(location.search).get('frame'));
+if (only) {
+  const labels = [...document.querySelectorAll('.frame-label')];
+  labels.forEach((l, i) => {
+    if (i + 1 === only) return;
+    let el = l; const stop = labels[i + 1];
+    while (el && el !== stop && el.tagName !== 'SCRIPT') { const next = el.nextElementSibling; el.style.display = 'none'; el = next; }
+  });
+}
+</script>
+</body>
+</html>

@@ -1,0 +1,258 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>菜单栏面板 · 改版稿</title>
+<style>
+/* Light = MENU_* in theme.rs (white, #17181c / #5d6270, indigo #4b4fd6).
+   Dark = the cross-surface dark row in README「跨界面主题」(workbench neutral grey). */
+:root {
+  --stage: #c9ccd2; --bar: rgba(246,246,248,.86); --bar-text: #1d1d1f;
+  --bg: #ffffff; --sunken: #f7f8fa; --hover: #eceef2; --row-hover: #f4f5f8;
+  --primary: #17181c; --secondary: #5d6270; --muted: #767b87;
+  --border: #e3e5ea; --border2: #d5d8de;
+  --accent: #4b4fd6; --on-accent: #ffffff; --focus: #4b4fd6;
+  --wait: #c2570c; --wait-ink: #9a3f06;
+  --err: #c0392b; --err-ink: #9b2318; --err-wash: #fbeae8;
+  --review: #5e62d8; --run: #1f8a5b; --stale: #8b909c;
+  --shadow: 0 14px 40px rgba(23,24,28,.18);
+}
+:root[data-theme="dark"] {
+  --stage: #0f0f10; --bar: rgba(40,40,42,.9); --bar-text: #ecebe9;
+  --bg: #1c1c1e; --sunken: #18181a; --hover: #2a2a2c; --row-hover: #242426;
+  --primary: #ecebe9; --secondary: #a3a2a0; --muted: #8a8988;
+  --border: #2e2e2f; --border2: #3a3a3b;
+  --accent: #ecebe9; --on-accent: #1c1c1e; --focus: #8a8988;
+  --wait: #e8823a; --wait-ink: #f3b386;
+  --err: #e5534b; --err-ink: #f2a59f; --err-wash: #3a2222;
+  --review: #8f93ff; --run: #4cc38a; --stale: #8b8a88;
+  --shadow: 0 14px 40px rgba(0,0,0,.55);
+}
+* { box-sizing: border-box; }
+body {
+  margin: 0; background: var(--stage); color: var(--primary);
+  font: 13px/1.4 -apple-system, BlinkMacSystemFont, "PingFang SC", "Helvetica Neue", sans-serif;
+  font-variant-numeric: tabular-nums;
+  padding: 20px 16px 40px; display: flex; flex-direction: column; align-items: center; gap: 16px;
+}
+button { font: inherit; cursor: pointer; border: 0; background: none; color: inherit; padding: 0; }
+button:focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; }
+
+.toggle-bar { display: flex; gap: 8px; align-items: center; font-size: 12px; color: #2f3238; flex-wrap: wrap; justify-content: center; max-width: 1180px; text-align: center; }
+:root[data-theme="dark"] .toggle-bar, :root[data-theme="dark"] .frame-label, :root[data-theme="dark"] .notes { color: #b9b8b5; }
+.toggle-bar button { height: 26px; padding: 0 10px; border-radius: 6px; background: #e8e9ec; color: #1f2024; }
+.toggle-bar button[aria-pressed="true"] { background: #1f2024; color: #fff; }
+:root[data-theme="dark"] .toggle-bar button { background: #2a2a2c; color: #ecebe9; }
+:root[data-theme="dark"] .toggle-bar button[aria-pressed="true"] { background: #ecebe9; color: #1c1c1e; }
+
+.stage { display: flex; gap: 28px; flex-wrap: wrap; justify-content: center; align-items: flex-start; max-width: 1240px; }
+.frame { width: 360px; max-width: 100%; display: flex; flex-direction: column; gap: 8px; }
+.frame-label { font-size: 11px; letter-spacing: .04em; color: #2f3238; }
+.frame-label b { font-weight: 600; }
+
+/* A slice of the macOS menu bar so the badge has context. */
+.menubar { height: 24px; border-radius: 6px; background: var(--bar); color: var(--bar-text); display: flex; align-items: center; justify-content: flex-end; gap: 14px; padding: 0 10px; font-size: 12.5px; }
+.menubar .item { opacity: .55; }
+.badge { height: 18px; padding: 0 6px; border-radius: 4px; display: inline-flex; align-items: center; gap: 4px; font-weight: 600; }
+.badge.open { background: rgba(127,127,127,.22); }
+.badge .slash { width: 7px; height: 7px; border-radius: 50%; border: 1.5px solid currentColor; opacity: .8; }
+
+.pop {
+  width: 100%; background: var(--bg); color: var(--primary);
+  border: 1px solid var(--border); border-radius: 12px; box-shadow: var(--shadow);
+  padding: 14px 12px 12px; display: flex; flex-direction: column; gap: 12px;
+}
+.head { display: flex; align-items: baseline; gap: 8px; padding: 0 4px; }
+.head h2 { margin: 0; font-size: 15px; font-weight: 600; letter-spacing: -.1px; }
+.head .when { margin-left: auto; font-size: 11.5px; color: var(--muted); }
+
+/* Status counts: four equal cells; colour lives only on the dot. */
+.counts { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); border: 1px solid var(--border); border-radius: 8px; background: var(--sunken); }
+.cell { padding: 7px 10px 8px; display: flex; flex-direction: column; gap: 1px; min-width: 0; text-align: left; }
+.cell + .cell { border-left: 1px solid var(--border); }
+.cell .l { display: flex; align-items: center; gap: 5px; font-size: 11px; color: var(--secondary); white-space: nowrap; }
+.cell .v { font-size: 18px; font-weight: 600; letter-spacing: -.3px; color: var(--primary); }
+.cell.zero .v { color: var(--muted); font-weight: 400; }
+.dot { width: 7px; height: 7px; border-radius: 50%; flex: none; }
+.dot.wait { background: var(--wait); } .dot.err { background: var(--err); } .dot.review { background: var(--review); }
+.dot.run { background: var(--run); } .dot.stale { background: var(--stale); }
+
+.section-title { display: flex; justify-content: space-between; align-items: baseline; padding: 0 4px; font-size: 11px; font-weight: 600; letter-spacing: .04em; color: var(--muted); }
+.section-title span { font-weight: 400; letter-spacing: 0; }
+.rows { display: flex; flex-direction: column; margin-top: -6px; }
+.row { display: grid; grid-template-columns: 7px minmax(0, 1fr) auto; column-gap: 9px; row-gap: 2px; align-items: center; padding: 8px 8px 9px; border-radius: 8px; text-align: left; width: 100%; }
+.row + .row { box-shadow: 0 -1px 0 var(--border); }
+.row:hover, .row.kbd { background: var(--row-hover); box-shadow: none; }
+.row:hover + .row, .row.kbd + .row { box-shadow: none; }
+.row .t { font-size: 13px; font-weight: 600; color: var(--primary); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.row .age { font-size: 11.5px; color: var(--muted); }
+.row .s { grid-column: 2 / 4; font-size: 12px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.row .s.wait { color: var(--wait-ink); } .row .s.err { color: var(--err-ink); }
+.row .m { grid-column: 2 / 4; font-size: 11px; color: var(--muted); display: flex; gap: 6px; }
+.row .m i { font-style: normal; padding: 0 4px; border-radius: 3px; border: 1px dashed var(--border2); }
+.more-link { align-self: flex-start; margin: -4px 0 0 4px; font-size: 12px; color: var(--secondary); }
+.more-link:hover { color: var(--primary); }
+
+.empty { padding: 18px 12px; border: 1px dashed var(--border2); border-radius: 8px; display: flex; flex-direction: column; gap: 4px; align-items: flex-start; }
+.empty b { font-size: 13px; font-weight: 600; }
+.empty span { font-size: 12px; color: var(--secondary); }
+
+.foot { display: flex; align-items: center; gap: 6px; padding: 10px 4px 0; border-top: 1px solid var(--border); font-size: 12px; color: var(--secondary); }
+.foot .r { margin-left: auto; color: var(--muted); font-size: 11.5px; }
+.actions { display: flex; gap: 8px; }
+.btn { height: 34px; padding: 0 12px; border-radius: 8px; font-size: 13px; display: inline-flex; align-items: center; justify-content: center; gap: 6px; background: var(--hover); color: var(--primary); }
+.btn.solid { flex: 1; background: var(--accent); color: var(--on-accent); font-weight: 600; }
+.btn kbd { font: 11px inherit; opacity: .7; }
+
+/* Offline */
+.alert { display: grid; grid-template-columns: 16px minmax(0, 1fr); gap: 4px 8px; padding: 9px 10px; border-radius: 8px; background: var(--err-wash); }
+.alert svg { margin-top: 1px; color: var(--err); }
+.alert b { font-size: 12.5px; font-weight: 600; color: var(--primary); }
+.alert .d { grid-column: 2; font-size: 11.5px; color: var(--secondary); font-family: ui-monospace, "SF Mono", Menlo, monospace; overflow-wrap: anywhere; }
+.alert .r { grid-column: 2; display: flex; gap: 12px; font-size: 12px; margin-top: 2px; }
+.alert .r button { color: var(--primary); text-decoration: underline; text-underline-offset: 2px; text-decoration-color: var(--border2); }
+.stale-data { opacity: .55; }
+.stale-data .cell .v { color: var(--secondary); }
+
+.notes { max-width: 1180px; width: 100%; font-size: 12px; color: #2f3238; line-height: 1.6; }
+.notes h3 { margin: 18px 0 6px; font-size: 13px; }
+.notes table { border-collapse: collapse; width: 100%; background: var(--bg); color: var(--primary); border-radius: 8px; overflow: hidden; }
+.notes th, .notes td { text-align: left; padding: 6px 10px; border-bottom: 1px solid var(--border); vertical-align: top; }
+.notes th { font-weight: 600; font-size: 11.5px; color: var(--secondary); background: var(--sunken); }
+.tag-new { display: inline-block; font-size: 10.5px; padding: 0 5px; border-radius: 3px; border: 1px dashed currentColor; color: var(--secondary); white-space: nowrap; }
+.wrap { overflow-x: auto; }
+</style>
+</head>
+<body>
+<div class="toggle-bar">
+  <span>App 原生菜单栏面板（desktop.rs + native.m）改版稿 · 宽 360 · 标题、原话、数量均为<b>示例</b></span>
+  <button type="button" data-theme-btn="light" aria-pressed="true">浅色</button>
+  <button type="button" data-theme-btn="dark" aria-pressed="false">深色</button>
+</div>
+
+<div class="stage">
+  <!-- 1 · normal -->
+  <section class="frame" aria-label="有需要你的会话">
+    <div class="frame-label"><b>一 · 有 3 项需要你</b>（示例）</div>
+    <div class="menubar"><span class="item">100%</span><span class="item">周四 14:32</span><span class="badge open">K 3</span></div>
+    <div class="pop">
+      <div class="head"><h2>3 项需要你</h2><span class="when">刚刚更新</span></div>
+      <div class="counts" role="list">
+        <div class="cell" role="listitem"><span class="l"><span class="dot wait"></span>等你回答</span><span class="v">2</span></div>
+        <div class="cell" role="listitem"><span class="l"><span class="dot err"></span>出错</span><span class="v">1</span></div>
+        <div class="cell" role="listitem"><span class="l"><span class="dot review"></span>待核对</span><span class="v">5</span></div>
+        <div class="cell" role="listitem"><span class="l"><span class="dot run"></span>在跑</span><span class="v">2</span></div>
+      </div>
+      <div class="section-title">需要你 <span>等你在前，按时间</span></div>
+      <div class="rows">
+        <button type="button" class="row">
+          <span class="dot wait"></span><span class="t">添加 CLI 问题反馈接口</span><span class="age">2 分钟</span>
+          <span class="s wait">是否允许推送分支并创建 PR？改动已经完成</span>
+          <span class="m">工作空间 · claude <i>建议新增</i></span>
+        </button>
+        <button type="button" class="row">
+          <span class="dot wait"></span><span class="t">评估 Film Studio 实现方案</span><span class="age">48 分钟</span>
+          <span class="s wait">问你：队列还是直接调用？</span>
+          <span class="m">工作空间 · codex</span>
+        </button>
+        <button type="button" class="row">
+          <span class="dot err"></span><span class="t">诊断 SSH 执行异常</span><span class="age">2 小时</span>
+          <span class="s err">exit 255 · Permission denied (publickey)</span>
+          <span class="m">新空间 · claude</span>
+        </button>
+      </div>
+      <div class="foot"><span class="dot stale"></span>很久没动 <b class="num">38</b><span class="r">外部会话在鸟瞰里看</span></div>
+      <div class="actions"><button type="button" class="btn solid">打开工作台</button></div>
+    </div>
+  </section>
+
+  <!-- 2 · nothing needs you -->
+  <section class="frame" aria-label="没有需要你的">
+    <div class="frame-label"><b>二 · 没有需要你的</b>（示例）</div>
+    <div class="menubar"><span class="item">100%</span><span class="item">周四 14:32</span><span class="badge open">K</span></div>
+    <div class="pop">
+      <div class="head"><h2>没有需要你的</h2><span class="when">刚刚更新</span></div>
+      <div class="counts" role="list">
+        <div class="cell zero" role="listitem"><span class="l"><span class="dot wait"></span>等你回答</span><span class="v">0</span></div>
+        <div class="cell zero" role="listitem"><span class="l"><span class="dot err"></span>出错</span><span class="v">0</span></div>
+        <div class="cell" role="listitem"><span class="l"><span class="dot review"></span>待核对</span><span class="v">5</span></div>
+        <div class="cell" role="listitem"><span class="l"><span class="dot run"></span>在跑</span><span class="v">2</span></div>
+      </div>
+      <div class="empty">
+        <b>在跑的 2 个停下来要你时，会发系统通知</b>
+        <span>通知已开 · 你正看着的画面不会再弹</span>
+      </div>
+      <div class="foot"><span class="dot stale"></span>很久没动 <b class="num">38</b><span class="r">外部会话在鸟瞰里看</span></div>
+      <div class="actions"><button type="button" class="btn solid">打开工作台</button></div>
+    </div>
+  </section>
+
+  <!-- 3 · offline -->
+  <section class="frame" aria-label="连不上后台">
+    <div class="frame-label"><b>三 · 连不上后台（keeplined）</b>（示例）</div>
+    <div class="menubar"><span class="item">100%</span><span class="item">周四 14:32</span><span class="badge open"><span class="slash" aria-hidden="true"></span>K</span></div>
+    <div class="pop">
+      <div class="head"><h2>连不上后台</h2><span class="when">数据停在 14:05</span></div>
+      <div class="alert" role="alert">
+        <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><circle cx="8" cy="8" r="6.2"/><path d="M8 4.8v3.8M8 11v.1"/></svg>
+        <b>正在重连，第 3 次</b>
+        <span class="d">Connection refused (os error 61)</span>
+        <span class="r"><button type="button">复制错误</button><button type="button">查看诊断</button></span>
+      </div>
+      <div class="stale-data">
+        <div class="counts" role="list">
+          <div class="cell" role="listitem"><span class="l"><span class="dot wait"></span>等你回答</span><span class="v">2</span></div>
+          <div class="cell" role="listitem"><span class="l"><span class="dot err"></span>出错</span><span class="v">1</span></div>
+          <div class="cell" role="listitem"><span class="l"><span class="dot review"></span>待核对</span><span class="v">5</span></div>
+          <div class="cell" role="listitem"><span class="l"><span class="dot run"></span>在跑</span><span class="v">2</span></div>
+        </div>
+      </div>
+      <div class="section-title">14:05 时需要你 <span>可能已经变了</span></div>
+      <div class="rows stale-data">
+        <button type="button" class="row"><span class="dot wait"></span><span class="t">添加 CLI 问题反馈接口</span><span class="age">29 分钟</span><span class="s wait">是否允许推送分支并创建 PR？</span></button>
+        <button type="button" class="row"><span class="dot wait"></span><span class="t">评估 Film Studio 实现方案</span><span class="age">1 小时</span><span class="s wait">问你：队列还是直接调用？</span></button>
+      </div>
+      <div class="foot">终端仍在运行；重连后自动刷新<span class="r">通知暂停</span></div>
+      <div class="actions"><button type="button" class="btn solid">打开工作台</button></div>
+    </div>
+  </section>
+</div>
+
+<div class="notes">
+  <h3>改了什么（对照 2026-10-22 实拍 menubar-native.png）</h3>
+  <ul>
+    <li>标题从「2 个在等你 · 0 个出错」改为一个数「3 项需要你」，四格计数（等你回答 / 出错 / 待核对 / 在跑）取代灰色的「另有 … 」一行；0 用弱色，不显示状态色。</li>
+    <li>行不再给第一项常驻橙底：行之间用细线，悬停或键盘焦点才铺浅底。状态色只在点和第二行原话上。年龄列右对齐、等宽数字。</li>
+    <li>页脚两行说明压成一行：「很久没动 38」+ 右侧「外部会话在鸟瞰里看」。超过 5 项时在列表下加「还有 N 项」文字链接（现有 footer 文案已有这个数）。</li>
+    <li>每个视图只有一个实心按钮「打开工作台」；离线时也保持它，重连是自动的，所以只给「复制错误」「查看诊断」两个文字按钮。</li>
+    <li>深色：macOS 深色模式下现在仍是白底面板。深色版取 README 跨界面主题的深色一行，强调色换成近白。</li>
+  </ul>
+
+  <h3>数据依据</h3>
+  <div class="wrap">
+  <table>
+    <tr><th>界面元素</th><th>来源</th><th>状态</th></tr>
+    <tr><td>需要你总数、徽标 K N</td><td><code>panel()</code> 的 <code>rows.len()</code>，<code>badge</code></td><td>现有</td></tr>
+    <tr><td>等你回答 / 出错 / 待核对 / 在跑 / 很久没动</td><td><code>panel()</code> 里的 waiting、errors、review、running、stale 计数（Inbox 分组）</td><td>现有（目前只拼进 heading / summary 字符串，需改成数字字段）</td></tr>
+    <tr><td>行：标题、原话、年龄、点色</td><td><code>rows[]</code> 的 title(24)、summary(40)、age、dot、ink</td><td>现有</td></tr>
+    <tr><td>行第三行「空间 · Agent」</td><td>Workspace 里已有：<code>terminals[].space → spaces[].name</code>（<code>entered()</code> 发通知时已经在拼）、<code>AgentSession.runtime</code></td><td><span class="tag-new">建议新增</span> 加进 rows JSON</td></tr>
+    <tr><td>「刚刚更新」「数据停在 14:05」</td><td>菜单栏每次成功拿到 <code>Reply::Workspace</code> 的时间</td><td><span class="tag-new">建议新增</span> 记一个时间戳传给面板</td></tr>
+    <tr><td>离线提示、错误文字</td><td><code>start()</code> 里 <code>rpc()</code> 的 <code>Err(e)</code>（现在只写进工作台的 Status，面板不知道）；<code>RecognitionPhase::Interrupted / Recovering</code></td><td><span class="tag-new">建议新增</span> 面板 JSON 加 <code>connection: {phase, error, since}</code></td></tr>
+    <tr><td>「第 3 次」重连次数</td><td>RecognitionConnection 内部的重试</td><td><span class="tag-new">建议新增</span> 需要暴露重试计数；做不到就只写「正在重连」</td></tr>
+    <tr><td>空状态里「通知已开」</td><td><code>settings.notifications</code></td><td>现有</td></tr>
+    <tr><td>徽标离线样式（空心圈 + K）</td><td>同上 connection</td><td><span class="tag-new">建议新增</span></td></tr>
+  </table>
+  </div>
+  <p>没放图表：面板拿到的只有当前计数和最多 5 行，没有时间序列；计数差距大（很久没动常常是几十），比例条会被它占满，所以只用数字。</p>
+</div>
+
+<script>
+document.querySelectorAll('[data-theme-btn]').forEach((b) => b.addEventListener('click', () => {
+  document.documentElement.dataset.theme = b.dataset.themeBtn;
+  document.querySelectorAll('[data-theme-btn]').forEach((x) => x.setAttribute('aria-pressed', String(x === b)));
+}));
+if (location.hash === '#dark') document.querySelector('[data-theme-btn="dark"]').click();
+</script>
+</body>
+</html>

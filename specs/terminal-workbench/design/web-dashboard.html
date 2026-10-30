@@ -1,0 +1,561 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Web 仪表盘 · 改版稿</title>
+<style>
+/* Proposed token set for src/web/client/src/index.css. Light follows the menubar light
+   theme (README「跨界面主题」), dark follows the workbench neutral grey. */
+:root {
+  --bg: #ffffff; --bg-sunken: #f7f8fa; --surface: #ffffff; --surface-hover: #f2f3f6; --accent-weak: #eceef2;
+  --text: #17181c; --text-2: #5d6270; --text-3: #767b87;
+  --border: #e3e5ea; --border-strong: #d5d8de;
+  --accent: #4b4fd6; --on-accent: #ffffff; --focus: #4b4fd6;
+  --st-need: #c4651f; --st-error: #c0392b; --st-review: #5e62d8; --st-run: #1f8a5b; --st-paused: #a86b0c; --st-idle: #8b909c;
+  --wash-need: #fdf1e7; --wash-error: #fbeae8;
+  --track: #eceef2; --grid: #eceef2; --chart-1: #2a78d6;
+  --t1: #184f95; --t2: #2a78d6; --t3: #6da7ec; --t4: #b7d3f6;
+  --shadow: 0 18px 50px rgba(23,24,28,.14);
+  --stage: #c9ccd2; --stage-text: #2f3238;
+}
+:root[data-theme="dark"] {
+  --bg: #1c1c1e; --bg-sunken: #18181a; --surface: #222224; --surface-hover: #2a2a2c; --accent-weak: #2c2c2d;
+  --text: #ecebe9; --text-2: #a3a2a0; --text-3: #8a8988;
+  --border: #2e2e2f; --border-strong: #3a3a3b;
+  --accent: #ecebe9; --on-accent: #1c1c1e; --focus: #8a8988;
+  --st-need: #e8823a; --st-error: #e5534b; --st-review: #8f93ff; --st-run: #4cc38a; --st-paused: #d9a441; --st-idle: #8b8a88;
+  --wash-need: #3a2a1c; --wash-error: #3a2222;
+  --track: #2e2e2f; --grid: #2c2c2d; --chart-1: #3987e5;
+  --t1: #86b6ef; --t2: #3987e5; --t3: #256abf; --t4: #184f95;
+  --shadow: 0 18px 50px rgba(0,0,0,.5);
+  --stage: #0f0f10; --stage-text: #b9b8b5;
+}
+* { box-sizing: border-box; }
+body {
+  margin: 0; background: var(--stage); color: var(--text);
+  font: 13px/1.45 -apple-system, BlinkMacSystemFont, "PingFang SC", "Helvetica Neue", sans-serif;
+  font-variant-numeric: tabular-nums;
+  padding: 20px 16px 48px; display: flex; flex-direction: column; align-items: center; gap: 14px;
+}
+button, input { font: inherit; color: inherit; }
+button { cursor: pointer; border: 0; background: none; padding: 0; }
+button:focus-visible, input:focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; }
+.mono { font-family: ui-monospace, "SF Mono", Menlo, monospace; font-size: 12px; }
+
+.toggle-bar { display: flex; gap: 8px; align-items: center; font-size: 12px; color: var(--stage-text); flex-wrap: wrap; justify-content: center; max-width: 1280px; text-align: center; }
+.toggle-bar button { height: 26px; padding: 0 10px; border-radius: 6px; background: #e8e9ec; color: #1f2024; }
+.toggle-bar button[aria-pressed="true"] { background: #1f2024; color: #fff; }
+:root[data-theme="dark"] .toggle-bar button { background: #2a2a2c; color: #ecebe9; }
+:root[data-theme="dark"] .toggle-bar button[aria-pressed="true"] { background: #ecebe9; color: #1c1c1e; }
+.frame-label { width: 100%; max-width: 1280px; margin-top: 10px; font-size: 11px; letter-spacing: .04em; color: var(--stage-text); }
+.frame-label b { font-weight: 600; }
+
+/* Window */
+.window { width: 1280px; max-width: 100%; background: var(--bg); border: 1px solid var(--border); border-radius: 12px; overflow: hidden; box-shadow: var(--shadow); display: grid; grid-template-columns: 216px minmax(0, 1fr); }
+.side { background: var(--bg-sunken); border-right: 1px solid var(--border); padding: 14px 10px; display: flex; flex-direction: column; gap: 16px; min-width: 0; }
+.brand { display: flex; align-items: baseline; gap: 8px; padding: 2px 8px 4px; }
+.brand b { font-size: 14px; font-weight: 600; }
+.brand small { font-size: 11px; color: var(--text-3); }
+.nav { display: flex; flex-direction: column; gap: 1px; }
+.nav h4 { margin: 0 0 4px; padding: 0 8px; font-size: 11px; font-weight: 600; letter-spacing: .04em; color: var(--text-3); display: flex; justify-content: space-between; }
+.nav h4 span { font-weight: 400; }
+.nav button { height: 30px; padding: 0 8px; border-radius: 6px; display: flex; align-items: center; gap: 8px; color: var(--text-2); text-align: left; min-width: 0; }
+.nav button:hover { background: var(--surface-hover); }
+.nav button[aria-current="page"] { background: var(--accent-weak); color: var(--text); font-weight: 500; }
+.nav .name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.nav .n { font-size: 11.5px; color: var(--text-3); }
+.nav .need { display: inline-flex; align-items: center; gap: 4px; font-size: 11.5px; color: var(--text); }
+.ico { width: 14px; height: 14px; flex: none; color: var(--text-3); }
+.side .bottom { margin-top: auto; border-top: 1px solid var(--border); padding-top: 10px; }
+.switch { width: 26px; height: 14px; border-radius: 7px; background: var(--border-strong); position: relative; flex: none; }
+.switch i { position: absolute; left: 2px; top: 2px; width: 10px; height: 10px; border-radius: 50%; background: var(--bg); }
+
+.main { min-width: 0; display: flex; flex-direction: column; }
+.top { display: flex; align-items: center; gap: 12px; padding: 16px 24px 14px; border-bottom: 1px solid var(--border); flex-wrap: wrap; }
+.top .titles { flex: 1; min-width: 240px; display: flex; flex-direction: column; gap: 3px; }
+.top h1 { margin: 0; font-size: 18px; font-weight: 600; letter-spacing: -.2px; }
+.top .sub { font-size: 12px; color: var(--text-2); }
+.search { width: 260px; max-width: 100%; height: 30px; border: 1px solid var(--border-strong); border-radius: 7px; display: flex; align-items: center; gap: 6px; padding: 0 9px; color: var(--text-3); font-size: 12.5px; background: var(--bg); }
+.search kbd { margin-left: auto; font: 11px inherit; border: 1px solid var(--border-strong); border-radius: 4px; padding: 0 4px; }
+.btn { height: 30px; padding: 0 12px; border-radius: 7px; font-size: 12.5px; display: inline-flex; align-items: center; gap: 6px; background: var(--accent-weak); color: var(--text); white-space: nowrap; }
+.btn:hover { background: var(--surface-hover); }
+.btn.solid { background: var(--accent); color: var(--on-accent); font-weight: 600; }
+.btn.ghost { background: transparent; border: 1px solid var(--border-strong); }
+.btn.sm { height: 26px; padding: 0 10px; font-size: 12px; }
+.live { display: inline-flex; align-items: center; gap: 6px; }
+.live i { width: 6px; height: 6px; border-radius: 50%; background: var(--st-run); }
+
+.content { padding: 18px 24px 26px; display: flex; flex-direction: column; gap: 18px; min-width: 0; }
+.dot { width: 7px; height: 7px; border-radius: 50%; flex: none; display: inline-block; }
+.need { --c: var(--st-need); } .error { --c: var(--st-error); } .review { --c: var(--st-review); }
+.run { --c: var(--st-run); } .paused { --c: var(--st-paused); } .idle { --c: var(--st-idle); }
+.dot.need, .dot.error, .dot.review, .dot.run, .dot.paused, .dot.idle { background: var(--c); }
+
+/* Status counts: number first, dot only for colour; zero cells go quiet. */
+.counts { display: grid; grid-template-columns: repeat(var(--cols), minmax(0, 1fr)); border: 1px solid var(--border); border-radius: 10px; overflow: hidden; }
+.cnt { padding: 10px 14px 11px; display: flex; flex-direction: column; gap: 2px; min-width: 0; text-align: left; border-left: 1px solid var(--border); }
+.cnt:first-child { border-left: 0; }
+.cnt:hover { background: var(--surface-hover); }
+.cnt[aria-pressed="true"] { background: var(--bg-sunken); box-shadow: inset 0 -2px 0 var(--text); }
+.cnt .l { display: flex; align-items: center; gap: 6px; font-size: 11.5px; color: var(--text-2); white-space: nowrap; }
+.cnt .v { font-size: 22px; font-weight: 600; letter-spacing: -.4px; }
+.cnt .h { font-size: 11px; color: var(--text-3); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.cnt.zero .v { color: var(--text-3); font-weight: 400; }
+.cnt.total { background: var(--bg-sunken); }
+.dist { display: flex; gap: 2px; height: 6px; margin-top: 8px; }
+.dist i { display: block; height: 100%; min-width: 3px; }
+.dist i:first-child { border-radius: 3px 0 0 3px; } .dist i:last-child { border-radius: 0 3px 3px 0; }
+.dist-scale { display: flex; justify-content: space-between; font-size: 11px; color: var(--text-3); margin-top: 3px; }
+
+.toolbar { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; font-size: 12px; color: var(--text-2); }
+.seg { display: inline-flex; padding: 2px; border-radius: 7px; background: var(--accent-weak); }
+.seg button { height: 24px; padding: 0 9px; border-radius: 5px; font-size: 12px; color: var(--text-2); }
+.seg button[aria-pressed="true"] { background: var(--bg); color: var(--text); box-shadow: 0 1px 2px rgba(0,0,0,.1); }
+.seg button b { font-weight: 400; color: var(--text-3); margin-left: 3px; }
+.toolbar .lbl { color: var(--text-3); }
+.toolbar .right { margin-left: auto; }
+.hours { display: inline-flex; align-items: center; gap: 6px; }
+.hours input { width: 46px; height: 26px; border: 1px solid var(--border-strong); border-radius: 6px; background: var(--bg); padding: 0 6px; text-align: right; }
+
+.split { display: grid; grid-template-columns: minmax(0, 1fr) 280px; gap: 18px; align-items: start; }
+.panel { border: 1px solid var(--border); border-radius: 10px; background: var(--surface); min-width: 0; }
+.panel-head { display: flex; align-items: baseline; justify-content: space-between; gap: 8px; padding: 12px 14px 0; }
+.panel-head h2 { margin: 0; font-size: 13px; font-weight: 600; }
+.panel-head .aside { font-size: 11.5px; color: var(--text-3); }
+.panel-body { padding: 10px 14px 14px; }
+
+/* Session table */
+.table { width: 100%; border-collapse: collapse; table-layout: fixed; }
+.table col.c-st { width: 92px; } .table col.c-ag { width: 104px; } .table col.c-tm { width: 78px; } .table col.c-tok { width: 58px; } .table col.c-cost { width: 64px; } .table col.c-ago { width: 74px; }
+.table th { font-size: 11px; font-weight: 600; color: var(--text-3); text-align: left; padding: 8px 10px; border-bottom: 1px solid var(--border); white-space: nowrap; letter-spacing: .02em; }
+.table td { padding: 9px 10px; border-bottom: 1px solid var(--border); vertical-align: top; }
+.table tr:last-child td { border-bottom: 0; }
+.table tbody tr:hover td { background: var(--surface-hover); }
+.table .r { text-align: right; white-space: nowrap; }
+.st { display: inline-flex; align-items: center; gap: 6px; white-space: nowrap; font-size: 12px; color: var(--text); }
+.ttl { font-weight: 600; color: var(--text); display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.path { font-size: 11.5px; color: var(--text-3); display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.reason { font-size: 11.5px; color: var(--text-2); display: block; max-width: 380px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.chip { display: inline-block; font-size: 11px; padding: 0 6px; height: 18px; line-height: 18px; border-radius: 4px; background: var(--accent-weak); color: var(--text-2); white-space: nowrap; }
+.muted { color: var(--text-3); }
+.table-foot { display: flex; justify-content: space-between; align-items: center; padding: 8px 10px; font-size: 12px; color: var(--text-3); border-top: 1px solid var(--border); }
+
+/* Charts */
+.chart { position: relative; }
+.plot { position: relative; height: 112px; margin-left: 30px; }
+.plot .gl { position: absolute; left: 0; right: 0; height: 1px; background: var(--grid); }
+.plot .gl span { position: absolute; right: 100%; margin-right: 6px; transform: translateY(-50%); font-size: 10.5px; color: var(--text-3); white-space: nowrap; }
+.plot .bars { position: absolute; inset: 0; display: flex; align-items: flex-end; gap: 4px; }
+.plot .bars i { flex: 1; background: var(--chart-1); border-radius: 2px 2px 0 0; min-height: 1px; position: relative; opacity: .55; }
+.plot .bars i.hl { opacity: 1; }
+.plot .bars i em { position: absolute; bottom: 100%; right: 0; margin-bottom: 3px; font-style: normal; font-size: 11px; font-weight: 600; color: var(--text); white-space: nowrap; }
+.plot .avg { position: absolute; left: 0; right: 0; border-top: 1px dashed var(--text-3); }
+.chart-key { display: flex; align-items: center; gap: 6px; margin-top: 6px; font-size: 11px; color: var(--text-2); }
+.chart-key i { width: 14px; border-top: 1px dashed var(--text-3); }
+.plot .avg span { position: absolute; right: 0; bottom: 2px; font-size: 10.5px; color: var(--text-2); background: var(--surface); padding-left: 4px; }
+.xticks { position: relative; height: 14px; margin: 4px 0 0 30px; font-size: 10.5px; color: var(--text-3); }
+.xticks span { position: absolute; transform: translateX(-50%); white-space: nowrap; }
+.kv { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; margin-top: 12px; padding-top: 10px; border-top: 1px solid var(--border); }
+.kv div { display: flex; flex-direction: column; gap: 1px; }
+.kv span { font-size: 11px; color: var(--text-3); }
+.kv b { font-size: 14px; font-weight: 600; }
+.stack { display: flex; gap: 2px; height: 8px; }
+.stack i { display: block; height: 100%; min-width: 2px; }
+.stack i:first-child { border-radius: 3px 0 0 3px; } .stack i:last-child { border-radius: 0 3px 3px 0; }
+.legend { display: grid; grid-template-columns: minmax(0, 1fr) auto 38px; gap: 4px 10px; margin-top: 10px; font-size: 12px; align-items: center; }
+.legend .k { display: flex; align-items: center; gap: 6px; color: var(--text-2); }
+.legend .sw { width: 8px; height: 8px; border-radius: 2px; }
+.legend .v { text-align: right; }
+.legend .p { text-align: right; color: var(--text-3); }
+.src { margin-top: 10px; font-size: 11px; color: var(--text-3); }
+.rank { display: flex; flex-direction: column; }
+.rank div { display: grid; grid-template-columns: minmax(0, 1fr) 70px 28px; gap: 8px; align-items: center; padding: 5px 0; border-top: 1px solid var(--border); font-size: 12px; }
+.rank div:first-child { border-top: 0; }
+.rank .nm { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.rank .bar { height: 4px; border-radius: 2px; background: var(--track); overflow: hidden; }
+.rank .bar i { display: block; height: 100%; background: var(--text-3); }
+.rank .c { text-align: right; }
+
+/* Ledger overview */
+.monitor { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; font-size: 12px; color: var(--text-2); }
+.monitor .sep { color: var(--border-strong); }
+.overview-top { display: grid; grid-template-columns: minmax(0, 1fr) 360px; gap: 18px; align-items: stretch; }
+.hourly .plot { height: 64px; margin-left: 22px; }
+.hourly .plot .bars { gap: 2px; }
+.hourly .plot .bars i { opacity: .8; }
+.hourly .plot .bars i.now { opacity: 1; background: var(--text); }
+.hourly .xticks { margin-left: 22px; }
+.group { display: flex; flex-direction: column; gap: 10px; }
+.group-head { display: flex; align-items: center; gap: 8px; }
+.group-head h2 { margin: 0; font-size: 13.5px; font-weight: 600; white-space: nowrap; }
+.card .hd > span { white-space: nowrap; }
+.group-head .c { color: var(--text-3); }
+.group-head .hint { color: var(--text-3); font-size: 12px; }
+.group-head .right { margin-left: auto; display: flex; align-items: center; gap: 8px; }
+.cards { display: grid; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); gap: 10px; }
+.card { border: 1px solid var(--border); border-radius: 10px; background: var(--surface); padding: 12px 14px 12px; display: flex; flex-direction: column; gap: 7px; min-width: 0; }
+.card:hover { border-color: var(--border-strong); }
+.card .hd { display: flex; align-items: center; gap: 8px; font-size: 11.5px; color: var(--text-3); }
+.tag { display: inline-flex; align-items: center; gap: 6px; font-size: 11.5px; font-weight: 600; color: var(--text); white-space: nowrap; }
+.tag .age { font-weight: 400; color: var(--text-2); }
+.card .hd .when { margin-left: auto; }
+.card .menu { width: 22px; height: 22px; border-radius: 5px; color: var(--text-3); display: inline-flex; align-items: center; justify-content: center; }
+.card .t { font-size: 13.5px; font-weight: 600; color: var(--text); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.card .ask { font-size: 12px; color: var(--text-2); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.card .ask q { color: var(--text); quotes: "“" "”"; }
+.card .reply { font-size: 12px; color: var(--text-2); display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+.card .reply b { font-weight: 600; color: var(--text-3); margin-right: 4px; }
+.card .now { font-size: 12px; color: var(--text); padding: 6px 8px; border-radius: 6px; background: var(--bg-sunken); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.card.is-need .now { background: var(--wash-need); }
+.card .meta { display: flex; align-items: center; flex-wrap: wrap; row-gap: 6px; gap: 12px; white-space: nowrap; font-size: 11.5px; color: var(--text-3); }
+.prog { display: flex; align-items: center; gap: 6px; }
+.prog .segs { display: flex; gap: 2px; }
+.prog .segs i { width: 10px; height: 4px; border-radius: 1px; background: var(--track); }
+.prog .segs i.done { background: var(--text-2); }
+.prog .segs i.doing { background: var(--text-3); opacity: .6; }
+.prog .segs i.unv { background: var(--st-paused); }
+.ctx { display: flex; align-items: center; gap: 6px; }
+.ctx .bar { width: 44px; height: 4px; border-radius: 2px; background: var(--track); overflow: hidden; }
+.ctx .bar i { display: block; height: 100%; background: var(--text-3); }
+.ctx.hi .bar i { background: var(--st-paused); }
+.ctx.hi { color: var(--st-paused); }
+.card .meta .act { margin-left: auto; }
+.folded { display: flex; align-items: center; gap: 10px; height: 40px; padding: 0 14px; border: 1px solid var(--border); border-radius: 10px; color: var(--text-2); font-size: 12.5px; }
+.folded .right { margin-left: auto; }
+.new-tag { display: inline-block; font-size: 10.5px; font-weight: 400; padding: 0 5px; border-radius: 3px; border: 1px dashed var(--border-strong); color: var(--text-3); white-space: nowrap; vertical-align: 1px; }
+
+/* Notes + token table */
+.notes { width: 100%; max-width: 1280px; color: var(--stage-text); font-size: 12px; line-height: 1.6; }
+.notes h3 { margin: 22px 0 8px; font-size: 13px; }
+.notes ul { margin: 0; padding-left: 18px; }
+.sheet { width: 100%; border-collapse: collapse; background: var(--bg); color: var(--text); border-radius: 10px; overflow: hidden; font-size: 12px; }
+.sheet th, .sheet td { text-align: left; padding: 6px 10px; border-bottom: 1px solid var(--border); vertical-align: top; }
+.sheet th { font-size: 11px; color: var(--text-2); background: var(--bg-sunken); font-weight: 600; white-space: nowrap; }
+.sheet td code { font-family: ui-monospace, "SF Mono", Menlo, monospace; font-size: 11.5px; }
+.sheet td.c { font-family: ui-monospace, "SF Mono", Menlo, monospace; font-size: 11.5px; white-space: nowrap; }
+.sw2 { display: inline-block; width: 12px; height: 12px; border-radius: 3px; vertical-align: -2px; margin-right: 6px; border: 1px solid rgba(127,127,127,.35); }
+.wrap { overflow-x: auto; border-radius: 10px; }
+
+@media (max-width: 1100px) {
+  .split, .overview-top { grid-template-columns: minmax(0, 1fr); }
+}
+@media (max-width: 820px) {
+  .window { grid-template-columns: minmax(0, 1fr); }
+  .side { border-right: 0; border-bottom: 1px solid var(--border); flex-direction: row; flex-wrap: wrap; gap: 8px 16px; }
+  .side .projects, .side .bottom { display: none; }
+  .nav { flex-direction: row; flex-wrap: wrap; }
+  .nav h4 { display: none; }
+  .counts { --cols: 3 !important; }
+  .cnt:nth-child(3n+1) { border-left: 0; }
+  .cnt:nth-child(n+4) { border-top: 1px solid var(--border); }
+  .table .opt { display: none; }
+  .table col.c-st { width: 72px; } .table col.c-ago { width: 74px; } .table td, .table th { padding-left: 8px; padding-right: 8px; } .table col.c-cost { width: 58px; }
+  .counts { grid-template-columns: repeat(3, minmax(0, 1fr)) !important; }
+  .content, .top { padding-left: 16px; padding-right: 16px; }
+  .group-head { flex-wrap: wrap; } .group-head .right .hint, .group-head > .hint { display: none; }
+  .card .hd { flex-wrap: wrap; row-gap: 2px; }
+}
+</style>
+</head>
+<body>
+<div class="toggle-bar">
+  <span>Web 仪表盘（src/web/client）改版稿 · 会话页 + 总览页 · 会话标题、项目名、数字、费用均为<b>示例</b> · 底部是建议的 CSS 变量表</span>
+  <button type="button" data-theme-btn="light" aria-pressed="true">浅色</button>
+  <button type="button" data-theme-btn="dark" aria-pressed="false">深色</button>
+</div>
+
+<!-- ============ Frame 1: sessions dashboard ============ -->
+<div class="frame-label"><b>一 · 会话（DashboardPage，?view=sessions）</b>：StatsBar 改成计数格 + 分布条，SessionCard 改成表格行，右栏放 Claude 每日费用</div>
+<div class="window" id="w1">
+  <nav class="side" aria-label="主导航" data-side="sessions"></nav>
+  <div class="main">
+    <div class="top">
+      <div class="titles">
+        <h1>会话记录</h1>
+        <span class="sub"><span class="live"><i></i>实时连接</span> · 本地会话记录 · 上次同步 14:31</span>
+      </div>
+      <div class="search">搜索标题、目录、原话 <kbd>/</kbd></div>
+      <button type="button" class="btn solid">同步</button>
+    </div>
+    <div class="content">
+      <div>
+        <div class="counts" style="--cols:8" id="sess-counts"></div>
+        <div class="dist" id="sess-dist" aria-hidden="true"></div>
+        <div class="dist-scale"><span>未结束 18 个的分布</span><span>完成的不计入条</span></div>
+      </div>
+      <div class="toolbar">
+        <span class="lbl">Agent</span>
+        <div class="seg"><button aria-pressed="true">全部<b>130</b></button><button aria-pressed="false">Claude Code<b>98</b></button><button aria-pressed="false">Codex<b>32</b></button></div>
+        <span class="lbl">排序</span>
+        <div class="seg"><button aria-pressed="true">需要你优先</button><button aria-pressed="false">最近活动</button></div>
+        <span class="right">显示 18 / 130 · 隐藏已完成</span>
+      </div>
+      <div class="split">
+        <div class="panel" style="overflow:hidden">
+          <table class="table">
+            <colgroup><col class="c-st"><col><col class="c-ag opt"><col class="c-tm opt"><col class="c-tok opt"><col class="c-cost"><col class="c-ago"></colgroup>
+            <thead><tr><th>状态</th><th>会话</th><th class="opt">Agent</th><th class="r opt">工具 / 消息</th><th class="r opt">Token</th><th class="r">费用</th><th class="r">最后活动</th></tr></thead>
+            <tbody id="sess-rows"></tbody>
+          </table>
+          <div class="table-foot"><span>还有 10 个未结束 · 112 个已完成</span><button type="button" class="btn sm ghost">加载更多</button></div>
+        </div>
+        <div style="display:flex;flex-direction:column;gap:14px;min-width:0">
+          <div class="panel">
+            <div class="panel-head"><h2>Claude 每日费用</h2><span class="aside">近 14 天 · USD</span></div>
+            <div class="panel-body">
+              <div class="chart" id="cost-chart"></div>
+              <div class="kv">
+                <div><span>今天</span><b>$18.42</b></div>
+                <div><span>14 天合计</span><b>$186.30</b></div>
+                <div><span>本月</span><b>$412.37</b></div>
+              </div>
+            </div>
+          </div>
+          <div class="panel">
+            <div class="panel-head"><h2>今天的 token 构成</h2><span class="aside">48.2M</span></div>
+            <div class="panel-body">
+              <div class="stack" id="tok-stack" aria-hidden="true"></div>
+              <div class="legend" id="tok-legend"></div>
+              <div class="src">来自 /api/usage?type=daily（ccusage，只含 Claude）</div>
+            </div>
+          </div>
+          <div class="panel">
+            <div class="panel-head"><h2>未结束会话 · 按目录</h2><span class="aside">前 4</span></div>
+            <div class="panel-body"><div class="rank" id="dir-rank"></div></div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ============ Frame 2: ledger overview ============ -->
+<div class="frame-label"><b>二 · 总览（LedgerPage，?view=overview，按紧急度分组）</b>：副标题那串数字拆成计数格，监测状态从折叠块提到标题下一行</div>
+<div class="window" id="w2">
+  <nav class="side" aria-label="主导航" data-side="overview"></nav>
+  <div class="main">
+    <div class="top">
+      <div class="titles">
+        <h1>总览</h1>
+        <span class="monitor"><span class="live"><i></i>最近扫描 刚刚</span><span class="sep">·</span>Claude Code 实时事件 2 分钟前<span class="sep">·</span>Codex 仅日志监测，未安装实时通知</span>
+      </div>
+      <div class="search">搜索会话、原话、项目 <kbd>/</kbd></div>
+      <button type="button" class="btn ghost">刷新</button>
+    </div>
+    <div class="content">
+      <div class="overview-top">
+        <div>
+          <div class="counts" style="--cols:5;grid-template-columns:1.6fr repeat(4, minmax(0, 1fr))" id="led-counts"></div>
+          <div class="dist-scale" style="margin-top:6px"><span>最近 24 小时 · 21 条会话记录 · 6 个在线，14 个已退出，1 个在线状态待确认</span></div>
+        </div>
+        <div class="panel hourly">
+          <div class="panel-head"><h2>每小时回合数</h2><span class="aside">近 24 小时 · 共 86 <span class="new-tag">前端汇总</span></span></div>
+          <div class="panel-body" style="padding-top:8px"><div class="chart" id="hour-chart"></div></div>
+        </div>
+      </div>
+      <div class="toolbar">
+        <span class="lbl">布局</span><div class="seg"><button aria-pressed="true">网格</button><button aria-pressed="false">看板</button><button aria-pressed="false">列表</button></div>
+        <span class="lbl">密度</span><div class="seg"><button aria-pressed="true">紧凑</button><button aria-pressed="false">详细</button></div>
+        <span class="lbl">分组</span><div class="seg"><button aria-pressed="false">最新活动</button><button aria-pressed="true">按紧急度</button><button aria-pressed="false">按项目</button><button aria-pressed="false">按目标</button></div>
+        <form class="hours right" onsubmit="return false"><label for="h">最近</label><input id="h" value="24" inputmode="numeric"><span>小时</span><button class="btn sm" type="submit">应用</button></form>
+      </div>
+
+      <section class="group">
+        <div class="group-head"><span class="dot need"></span><h2>需要你</h2><span class="c">6</span><span class="hint">等你回答在前，再按最新活动</span>
+          <span class="right"><span class="hint">J / K 上下 · Enter 详情 · A 验收</span><button type="button" class="btn sm solid">逐个处理</button><span class="new-tag">建议新增</span></span></div>
+        <div class="cards" id="need-cards"></div>
+      </section>
+      <section class="group">
+        <div class="group-head"><span class="dot run"></span><h2>运行中</h2><span class="c">4</span><span class="hint">按最后动作排序</span></div>
+        <div class="cards" id="run-cards"></div>
+      </section>
+      <div class="folded"><span class="dot paused"></span>停下了 <b>1</b><span class="muted">·</span><span class="dot idle"></span>历史会话 <b>14</b><span class="muted">·</span>在线状态待确认 <b>1</b><button class="btn sm right" type="button">展开</button></div>
+    </div>
+  </div>
+</div>
+
+<!-- ============ Notes ============ -->
+<div class="notes">
+  <h3>数据依据</h3>
+  <div class="wrap">
+  <table class="sheet">
+    <tr><th>界面元素</th><th>接口 / 字段</th><th>状态</th></tr>
+    <tr><td>会话页计数格（需要输入、卡住、中断、运行、等待、空闲、完成、合计）</td><td><code>GET /api/sessions</code> → <code>stats: SessionStats</code>（needs_input、stalled、interrupted+lost、running、waiting、idle、completed、total）</td><td>现有（StatsBar 已在用）</td></tr>
+    <tr><td>Agent 分段的数量</td><td><code>runtimeScan</code> / 按 <code>runtimeId</code> 过滤后的 <code>pagination.total</code></td><td>现有字段；每段的数字需要前端多算一次</td></tr>
+    <tr><td>会话行：状态、标题、目录、原因、Agent、工具/消息、Token、费用、最后活动</td><td><code>Session</code>：status、statusReason、title、directory、runtimeId、toolCount、messageCount、usageStats.totalTokens / totalCost、lastActiveAt</td><td>现有（usageStats 可能缺，缺时显示 —）</td></tr>
+    <tr><td>Claude 每日费用、今天 token 构成、本月</td><td><code>GET /api/usage?type=daily</code> → <code>DailyUsage</code>（totalCost、input / output / cacheCreation / cacheReadTokens）；<code>type=monthly</code></td><td>现有（UsagePanel 在用；靠 npx ccusage，只有 Claude，首次较慢）</td></tr>
+    <tr><td>按目录排行</td><td><code>Session.directory</code> 计数（Layout 已在给侧栏这样算）</td><td>现有</td></tr>
+    <tr><td>总览计数格（需要你 / 运行中 / 停下了 / 历史 / 待确认）及「需要你」的四类拆分</td><td><code>/api/ledger</code> 行 → <code>groupRows()</code>、<code>ledgerAttentionKind()</code>（input / reply / acceptance / deviation）</td><td>现有（今天拼在副标题字符串里）</td></tr>
+    <tr><td>监测状态一行</td><td><code>GET /api/status/monitor</code> → <code>LedgerMonitorStatus</code>，<code>monitorPresentation()</code></td><td>现有（今天收在折叠块里）</td></tr>
+    <tr><td>每小时回合数</td><td>每行的 <code>turns[].at</code>，前端按小时分桶</td><td><span class="new-tag">前端汇总</span> 数据现有，图是新的；只覆盖当前时间范围内加载的行</td></tr>
+    <tr><td>卡片：状态标签、Agent、原话、Agent 回复、进度段、当前动作、上下文占用、操作</td><td><code>rowPresentation()</code>：tag、agent、ask、activity.lastMessage、items / progress、now、contextUsage、action</td><td>现有</td></tr>
+    <tr><td>「逐个处理」</td><td>选中第一条需要你的会话，复用 J / K 和抽屉</td><td><span class="new-tag">建议新增</span> 只是入口，不需要新数据</td></tr>
+  </table>
+  </div>
+
+  <h3>改了什么</h3>
+  <ul>
+    <li>状态色只用在点和细条上：今天 <code>--success</code> 是靛蓝、<code>--danger</code> 是琥珀，出错和需要输入长得一样；改成需要你（橙）、出错（红）、待核对（紫蓝）、运行（绿）、停下（黄褐）、空闲/结束（灰）六种。</li>
+    <li>卡片去掉左侧彩色竖边和常驻高亮底，靠细边框分隔；需要你的卡片只在「当前动作」那一行铺浅橙底。</li>
+    <li>每个页面一个实心按钮：会话页是「同步」，总览页是「逐个处理」；其余按钮为浅底或描边。</li>
+    <li>侧栏今天是深色 <code>#111318</code>（浅色模式下也是），改成和主区同一套变量的次底色，深浅切换时一起变。品牌方块的渐变去掉。</li>
+    <li>图只放在数据撑得住的地方：费用有每天的值（14 根细柱 + 日均虚线 + 直接标今天）；回合数有时间戳。会话计数之间差距大（完成 112），分布条只画未结束的。</li>
+  </ul>
+
+  <h3>建议的 CSS 变量（替换 index.css 里的 :root，深色挂在 :root[data-theme="dark"]）</h3>
+  <div class="wrap">
+  <table class="sheet" id="tokens"></table>
+  </div>
+  <p>迁移面：<code>src/web/client/src</code> 下 15 个文件里写死了 377 处十六进制颜色，最多的是 <code>#6B7280</code>（70 处 → <code>--text-2</code>）、<code>#FFF</code>（52 → <code>--surface</code> / <code>--on-accent</code>）、<code>#4F5BD5</code>（38 → <code>--accent</code> 或 <code>--st-run</code>，按用途分）、<code>#15171C</code>（30 → <code>--text</code>）、<code>#B45309</code>（15 → <code>--st-need</code>）。<code>presentation.ts</code> 里的 tagBg / tagFg / itemColors 和 LedgerOverview 里活动点的内联色要改成返回变量名。旧变量名（<code>--primary</code>、<code>--bg-base</code>、<code>--text-dim</code> 等）可以先指向新变量，逐个模块替换后再删。</p>
+</div>
+
+<script>
+const esc = (s) => String(s).replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+const ICON = {
+  overview: '<path d="M2.5 2.5h4.5v4.5H2.5zM9 2.5h4.5v4.5H9zM2.5 9h4.5v4.5H2.5zM9 9h4.5v4.5H9z"/>',
+  todos: '<rect x="2.5" y="2.5" width="11" height="11" rx="2"/><path d="m5.3 8.2 1.9 1.9 3.6-3.8"/>',
+  goals: '<circle cx="8" cy="8" r="5.5"/><circle cx="8" cy="8" r="2.2"/>',
+  review: '<path d="M12.8 9.6A5.5 5.5 0 1 1 6.4 3.2a4.3 4.3 0 0 0 6.4 6.4z"/>',
+  sessions: '<path d="M2.5 4h11M2.5 8h11M2.5 12h7"/>',
+  timer: '<circle cx="8" cy="9" r="5"/><path d="M8 6.5V9l1.6 1.2M6.5 2.5h3"/>',
+  more: '<circle cx="4" cy="8" r=".9"/><circle cx="8" cy="8" r=".9"/><circle cx="12" cy="8" r=".9"/>',
+};
+const icon = (k) => `<svg class="ico" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${ICON[k]}</svg>`;
+
+function side(active) {
+  const nav = [['overview', '总览', 6], ['todos', '待办', 2], ['goals', '目标', 0], ['review', '回顾', 0]];
+  const projects = [['全部项目', 6, 6], ['keepline', 3, 2], ['atlas-cli', 1, 1], ['film-studio', 1, 0], ['blog', 1, 0]];
+  return `<div class="brand"><b>Keepline</b><small>v0.9.2</small></div>
+    <div class="nav">${nav.map(([id, l, n]) => `<button type="button" ${id === active ? 'aria-current="page"' : ''}>${icon(id)}<span class="name">${l}</span>${n ? (id === 'overview' ? `<span class="need"><span class="dot need"></span>${n}</span>` : `<span class="n">${n}</span>`) : ''}</button>`).join('')}
+      <button type="button" ${active === 'sessions' ? 'aria-current="page"' : ''}>${icon('sessions')}<span class="name">会话记录</span></button></div>
+    <div class="nav projects"><h4>项目 <span>在线 · 需要你</span></h4>${projects.map(([n, c, need], i) => `<button type="button" ${i === 0 ? 'aria-current="page"' : ''}><span class="name">${n}</span>${need ? `<span class="need"><span class="dot need"></span>${need}</span>` : ''}<span class="n">${c}</span></button>`).join('')}</div>
+    <div class="nav bottom"><button type="button">${icon('timer')}<span class="name">专注 30 分钟</span><span class="switch"><i></i></span></button><button type="button">${icon('more')}<span class="name">更多</span></button></div>`;
+}
+document.querySelectorAll('[data-side]').forEach((el) => { el.innerHTML = side(el.dataset.side); });
+
+// Frame 1 — SessionStats (示例数字)
+const SESS = [['need', '需要输入', 2, '等你回答或审批'], ['error', '卡住', 1, '超过阈值无进展'], ['error', '中断', 2, 'lost + interrupted'], ['run', '运行', 4, ''], ['need', '等待', 3, ''], ['idle', '空闲', 6, ''], ['idle', '完成', 112, '不计入分布条']];
+document.getElementById('sess-counts').innerHTML = SESS.map(([k, l, v, h]) =>
+  `<button type="button" class="cnt ${v === 0 ? 'zero' : ''}" aria-pressed="false"><span class="l"><span class="dot ${k}"></span>${l}</span><span class="v">${v}</span><span class="h">${h || '&nbsp;'}</span></button>`).join('') +
+  `<div class="cnt total"><span class="l">合计</span><span class="v">130</span><span class="h">18 个未结束</span></div>`;
+document.getElementById('sess-dist').innerHTML = SESS.slice(0, 6).map(([k, , v]) => `<i class="${k}" style="flex:${v} 0 0;background:var(--c)"></i>`).join('');
+
+const ROWS = [
+  ['need', '需要输入', '添加 CLI 问题反馈接口', '~/code/keepline', '等你批准 git push', 'Claude Code', '42 / 18', '3.1M', '$4.82', '2 分钟前'],
+  ['need', '需要输入', '评估 Film Studio 实现方案', '~/code/film-studio', '问你：队列还是直接调用', 'Codex', '17 / 9', '1.4M', '$1.06', '48 分钟前'],
+  ['error', '卡住', '诊断 SSH 执行异常', '~/code/atlas-cli', '15 分钟无新输出', 'Claude Code', '63 / 24', '5.8M', '$7.40', '16 分钟前'],
+  ['error', '中断', '迁移 ledger 存储到 v3', '~/code/keepline', '进程已退出，可恢复', 'Claude Code', '88 / 31', '9.2M', '$11.93', '3 小时前'],
+  ['run', '运行', '重做菜单栏额度面板', '~/code/keepline', 'Edit · menubar-usage.html', 'Claude Code', '24 / 12', '2.2M', '$2.71', '刚刚'],
+  ['run', '运行', '博客：前世今生 · 素材整理', '~/code/blog', 'Bash · rg "timeline"', 'Codex', '31 / 14', '0.9M', '—', '1 分钟前'],
+  ['need', '等待', '补齐 hooks 安装说明', '~/code/keepline', '', 'Claude Code', '9 / 6', '0.4M', '$0.38', '12 分钟前'],
+  ['idle', '空闲', '整理 ccusage 对账脚本', '~/code/scripts', '', 'Codex', '12 / 8', '0.6M', '—', '1 小时前'],
+];
+document.getElementById('sess-rows').innerHTML = ROWS.map(([k, s, t, p, r, a, tm, tok, cost, ago]) => `<tr>
+  <td><span class="st"><span class="dot ${k}"></span>${s}</span></td>
+  <td><span class="ttl">${esc(t)}</span><span class="path">${esc(p)}${r ? ` · <span style="color:var(--text-2)">${esc(r)}</span>` : ''}</span></td>
+  <td class="opt"><span class="chip">${a}</span></td>
+  <td class="r opt muted">${tm}</td><td class="r opt">${tok}</td><td class="r">${cost === '—' ? '<span class="muted">—</span>' : cost}</td><td class="r muted">${ago}</td></tr>`).join('');
+
+// Daily cost (示例) — 14 bars, gridlines at 0/10/20/30, average dashed, today labelled.
+const COST = [9.8, 14.2, 6.1, 3.4, 12.7, 16.9, 11.2, 21.6, 15.3, 4.2, 2.8, 13.5, 16.1, 18.42];
+const DATES = ['10-17', '', '', '10-20', '', '', '10-23', '', '', '10-26', '', '', '', '今天'];
+function costChart() {
+  const max = 30, avg = COST.reduce((a, b) => a + b, 0) / COST.length;
+  const grid = [0, 10, 20, 30].map((v) => `<div class="gl" style="bottom:${v / max * 100}%"><span>$${v}</span></div>`).join('');
+  const bars = COST.map((v, i) => `<i class="${i === COST.length - 1 ? 'hl' : ''}" style="height:${v / max * 100}%" title="${DATES[i] || ''} $${v.toFixed(2)}">${i === COST.length - 1 ? `<em>$${v.toFixed(2)}</em>` : ''}</i>`).join('');
+  const ticks = DATES.map((d, i) => d ? `<span style="left:${(i + .5) / COST.length * 100}%">${d}</span>` : '').join('');
+  document.getElementById('cost-chart').innerHTML = `<div class="plot">${grid}<div class="avg" style="bottom:${avg / max * 100}%"></div><div class="bars">${bars}</div></div><div class="xticks">${ticks}</div><div class="chart-key"><i></i>虚线 = 14 天日均 $${avg.toFixed(2)}</div>`;
+}
+costChart();
+const TOK = [['缓存读取', 43.6, 'var(--t4)'], ['缓存写入', 3.1, 'var(--t3)'], ['输入', 0.92, 'var(--t2)'], ['输出', 0.61, 'var(--t1)']];
+const tokTotal = TOK.reduce((s, x) => s + x[1], 0);
+document.getElementById('tok-stack').innerHTML = TOK.map(([, v, c]) => `<i style="flex:${v} 0 0;background:${c}"></i>`).join('');
+document.getElementById('tok-legend').innerHTML = TOK.map(([l, v, c]) => `<span class="k"><span class="sw" style="background:${c}"></span>${l}</span><span class="v">${v}M</span><span class="p">${(v / tokTotal * 100).toFixed(v / tokTotal < .1 ? 1 : 0)}%</span>`).join('');
+const DIRS = [['~/code/keepline', 8], ['~/code/atlas-cli', 4], ['~/code/film-studio', 3], ['~/code/blog', 2]];
+document.getElementById('dir-rank').innerHTML = DIRS.map(([d, n]) => `<div><span class="nm">${d}</span><span class="bar"><i style="width:${n / 8 * 100}%"></i></span><span class="c">${n}</span></div>`).join('');
+
+// Frame 2 — ledger counts (示例)
+const LED = [['need', '需要你', 6, '回答 2 · 回复 3 · 验收 1'], ['run', '运行中', 4, '含 0 个偏离'], ['paused', '停下了', 1, '本轮中断'], ['idle', '历史会话', 14, '进程已退出'], ['idle', '在线待确认', 1, '不计入在线']];
+document.getElementById('led-counts').innerHTML = LED.map(([k, l, v, h], i) =>
+  `<button type="button" class="cnt ${v === 0 ? 'zero' : ''}" aria-pressed="${i === 0}"><span class="l"><span class="dot ${k}"></span>${l}</span><span class="v">${v}</span><span class="h" title="${h}">${h}</span></button>`).join('');
+
+const HOURS = [2, 0, 0, 0, 0, 0, 0, 1, 3, 6, 8, 5, 4, 7, 9, 6, 3, 2, 4, 5, 3, 2, 4, 2];
+(function hourChart() {
+  const max = 10;
+  const grid = [0, 5, 10].map((v) => `<div class="gl" style="bottom:${v / max * 100}%"><span>${v}</span></div>`).join('');
+  const bars = HOURS.map((v, i) => `<i class="${i === HOURS.length - 1 ? 'now' : ''}" style="height:${v / max * 100}%" title="${v} 回合"></i>`).join('');
+  const labels = ['15:00', '21:00', '03:00', '09:00', '现在'];
+  const ticks = [0, 6, 12, 18, 23].map((h, i) => `<span style="left:${(h + .5) / 24 * 100}%">${labels[i]}</span>`).join('');
+  document.getElementById('hour-chart').innerHTML = `<div class="plot">${grid}<div class="bars">${bars}</div></div><div class="xticks">${ticks}</div>`;
+})();
+
+function card(c) {
+  const segs = c.items ? c.items.map((s) => `<i class="${s}"></i>`).join('') : '';
+  return `<article class="card ${c.need ? 'is-need' : ''}" tabindex="0" aria-label="${esc(c.title)}">
+    <div class="hd"><span class="tag"><span class="dot ${c.k}"></span>${c.tag}${c.age ? ` <span class="age">· ${c.age}</span>` : ''}</span><span>${c.agent}</span><span class="when">${c.when}</span>
+      <button type="button" class="menu" aria-label="更多操作：${esc(c.title)}"><svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true"><circle cx="3.5" cy="8" r="1.2"/><circle cx="8" cy="8" r="1.2"/><circle cx="12.5" cy="8" r="1.2"/></svg></button></div>
+    <div class="t">${esc(c.title)}</div>
+    <div class="ask">你说：<q>${esc(c.ask)}</q></div>
+    ${c.reply ? `<div class="reply"><b>Agent</b>${esc(c.reply)}</div>` : ''}
+    <div class="now">${esc(c.now)}</div>
+    <div class="meta">
+      ${c.items ? `<span class="prog"><span class="segs">${segs}</span>${c.items.filter((s) => s === 'done').length} / ${c.items.length}</span>` : '<span>无验收清单</span>'}
+      <span class="ctx ${c.ctx >= 90 ? 'hi' : ''}"><span class="bar"><i style="width:${c.ctx}%"></i></span>上下文 ${c.ctx}%</span>
+      ${c.act ? `<button type="button" class="btn sm act">${c.act}</button>` : ''}
+    </div>
+  </article>`;
+}
+const NEED = [
+  { k: 'need', need: true, tag: '等你处理', age: '12 分钟', agent: 'Claude Code', when: '12 分钟前', title: '添加 CLI 问题反馈接口', ask: '加一个 keepline feedback 命令，把诊断打包上传', reply: '改动已完成，测试 41 个全过。需要推送分支并开 PR。', now: 'Bash 审批：git push -u origin feat/feedback', items: ['done', 'done', 'done', 'todo'], ctx: 63, act: '查看待响应会话' },
+  { k: 'need', need: true, tag: '等你处理', age: '48 分钟', agent: 'Codex', when: '48 分钟前', title: '评估 Film Studio 实现方案', ask: '比较队列和直接调用两种方案，给出建议', reply: '两种都能做，差别在失败重试。你更在意哪一个？', now: '问你：队列还是直接调用？', items: null, ctx: 41, act: '查看待响应会话' },
+  { k: 'review', tag: '待核对 · 有缺口', agent: 'Claude Code', when: '5 分钟前', title: '迁移 ledger 存储到 v3', ask: '把旧表迁到 v3，保留历史，不丢验收记录', reply: '迁移完成，3 张表已转换；回滚脚本还没写。', now: '上次动作：bun test ledger · exit 0', items: ['done', 'done', 'unv', 'todo'], ctx: 92, act: '生成追问' },
+  { k: 'review', tag: '新回复', agent: 'Codex', when: '21 分钟前', title: '博客：前世今生 · 时间线核对', ask: '核对时间线里的年份和出处', reply: '找到 2 处年份错误，已列出原始出处。', now: '这一轮已回复，等你查看', items: null, ctx: 28, act: '查看回复' },
+];
+const RUN = [
+  { k: 'run', tag: '运行中', agent: 'Claude Code', when: '刚刚', title: '重做菜单栏额度面板', ask: '按新稿重做额度条和费用分段', now: '上次动作：Edit menubar-tauri/src/App.tsx', items: ['done', 'doing', 'todo', 'todo'], ctx: 37 },
+  { k: 'run', tag: '运行中', agent: 'Codex', when: '1 分钟前', title: '整理 ccusage 对账脚本', ask: '把每月账单和 ccusage 结果对一下', now: '工具已发起，尚未观察到结果：Bash · 2 分钟', items: null, ctx: 18 },
+];
+document.getElementById('need-cards').innerHTML = NEED.map(card).join('');
+document.getElementById('run-cards').innerHTML = RUN.map(card).join('');
+
+// Token table
+const TOKENS = [
+  ['--bg', '#ffffff', '#1c1c1e', '页面主区底色', '--bg-surface、#fff'],
+  ['--bg-sunken', '#f7f8fa', '#18181a', '侧栏、表头、计数格选中、卡片里「当前动作」底', '--bg-base、侧栏 #111318'],
+  ['--surface', '#ffffff', '#222224', '卡片、面板', '--bg-card、--bg-secondary'],
+  ['--surface-hover', '#f2f3f6', '#2a2a2c', '行和卡片悬停', '--bg-hover、#F2F3F6'],
+  ['--accent-weak', '#eceef2', '#2c2c2d', '选中的导航、分段控件底、浅底按钮', '--bg-elevated、#EEF0F3'],
+  ['--text', '#17181c', '#ecebe9', '标题、正文、数字', '--text、--text-bright、#15171C'],
+  ['--text-2', '#5d6270', '#a3a2a0', '次要文字、说明', '--text-dim、#6B7280、#4B5160'],
+  ['--text-3', '#767b87', '#8a8988', '提示、刻度、时间、0 值', '#8B919E、#69717E'],
+  ['--border', '#e3e5ea', '#2e2e2f', '分隔线、卡片边框', '--border（rgba）、#E3E6EB'],
+  ['--border-strong', '#d5d8de', '#3a3a3b', '输入框、描边按钮', '#E6E8EC'],
+  ['--accent', '#4b4fd6', '#ecebe9', '每个视图唯一的实心按钮', '--primary #4f5bd5'],
+  ['--on-accent', '#ffffff', '#1c1c1e', '实心按钮上的字', '#fff'],
+  ['--focus', '#4b4fd6', '#8a8988', ':focus-visible 描边', '--primary'],
+  ['--st-need', '#c4651f', '#e8823a', '需要输入、等待、等你回答', '--warning #b45309、#F59E0B'],
+  ['--st-error', '#c0392b', '#e5534b', '卡住、中断、出错', '--danger（现为琥珀）'],
+  ['--st-review', '#5e62d8', '#8f93ff', '待核对、新回复', '#4F5BD5（与按钮混用）'],
+  ['--st-run', '#1f8a5b', '#4cc38a', '运行中、在线', '--success（现为靛蓝）'],
+  ['--st-paused', '#a86b0c', '#d9a441', '停下了、偏离、未验证项、上下文 ≥ 90%', '#B45309、#FBBF24'],
+  ['--st-idle', '#8b909c', '#8b8a88', '空闲、已结束、历史', '#C9CDD6'],
+  ['--wash-need', '#fdf1e7', '#3a2a1c', '需要你的卡片「当前动作」行底', '#FFF1DB、#FFF4E5'],
+  ['--wash-error', '#fbeae8', '#3a2222', '错误横幅底', '错误框写死色'],
+  ['--track', '#eceef2', '#2e2e2f', '进度、上下文、排行条的轨道', '#E6E8EC（todo 段）'],
+  ['--grid', '#eceef2', '#2c2c2d', '图表网格线', '—'],
+  ['--chart-1', '#2a78d6', '#3987e5', '单序列柱（费用、回合）', '—'],
+  ['--t1 … --t4', '#184f95 / #2a78d6 / #6da7ec / #b7d3f6', '#86b6ef / #3987e5 / #256abf / #184f95', 'token 构成四段（输出 / 输入 / 缓存写 / 缓存读），与菜单栏额度稿同一套', 'UsagePanel 写死色'],
+];
+const swatch = (v) => v.split(' / ').map((c) => `<div style="white-space:nowrap"><span class="sw2" style="background:${c}"></span>${c}</div>`).join('');
+document.getElementById('tokens').innerHTML = '<tr><th>变量</th><th>浅色</th><th>深色</th><th>用于</th><th>替换的旧值</th></tr>' +
+  TOKENS.map(([n, l, d, u, old]) => `<tr><td class="c">${n}</td><td class="c">${swatch(l)}</td><td class="c">${swatch(d)}</td><td>${u}</td><td class="c" style="white-space:normal">${old}</td></tr>`).join('');
+
+document.querySelectorAll('[data-theme-btn]').forEach((b) => b.addEventListener('click', () => {
+  document.documentElement.dataset.theme = b.dataset.themeBtn;
+  document.querySelectorAll('[data-theme-btn]').forEach((x) => x.setAttribute('aria-pressed', String(x === b)));
+}));
+if (location.hash === '#dark') document.querySelector('[data-theme-btn="dark"]').click();
+</script>
+</body>
+</html>
