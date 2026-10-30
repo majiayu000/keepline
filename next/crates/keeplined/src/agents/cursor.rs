@@ -3,11 +3,11 @@
 //! directory and tools leave no results. The chat's own folder,
 //! `~/.cursor/chats/<hash>/<id>/`, keeps its directory (`meta.json`), its title (`store.db`)
 //! and, once someone typed into it, `prompt_history.json`.
-use super::{Adapter, temporary};
-use crate::content::{Parser, text};
-use keepline_core::content::{Source, Turn, short};
+use super::{temporary, Adapter};
+use crate::content::{text, Parser};
+use keepline_core::content::{short, Source, Turn};
 use rusqlite::{Connection, OpenFlags, OptionalExtension};
-use serde_json::{Value, json};
+use serde_json::{json, Value};
 use std::{
     collections::HashMap,
     path::{Path, PathBuf},
@@ -360,11 +360,10 @@ mod tests {
         assert_eq!(p.card.turn_started, 1_787_628_060);
         assert_eq!(p.card.turn, Turn::Completed);
         assert_eq!(p.card.last_reply, "已修好。");
-        assert!(
-            p.records
-                .iter()
-                .any(|r| r.kind == "tool_call" && r.text.starts_with("Bash "))
-        );
+        assert!(p
+            .records
+            .iter()
+            .any(|r| r.kind == "tool_call" && r.text.starts_with("Bash ")));
         let _ = std::fs::remove_dir_all(home);
     }
 

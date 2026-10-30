@@ -284,7 +284,7 @@ fn link(word: &str) -> String {
         return word.to_owned();
     };
     let host = host.strip_prefix("www.").unwrap_or(host);
-    match parts.last() {
+    match parts.next_back() {
         Some(last) => format!("{lead} {host}/{last}"),
         None => format!("{lead} {host}"),
     }

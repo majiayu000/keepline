@@ -100,6 +100,18 @@ impl Adapter for Declared {
             _ => {}
         }
         apply_events(&t.events, parser, record, at, source);
+        if let Some(name) = t
+            .title
+            .as_deref()
+            .and_then(|p| record.pointer(p))
+            .and_then(Value::as_str)
+            .map(str::trim)
+            .filter(|n| !n.is_empty())
+        {
+            if !parser.custom_name {
+                parser.card.name = name.to_owned();
+            }
+        }
     }
     fn pending(
         &self,
