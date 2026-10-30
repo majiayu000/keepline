@@ -251,8 +251,10 @@ pub fn write(master: &mut File, bytes: &[u8]) -> io::Result<()> {
 /// `CLAUDE_CODE_CHILD_SESSION` reached every shell; Claude launched there believed it
 /// was a nested child and stopped saving its transcript, so Keepline lost track of it.
 /// A launcher's `PATH` is its own state too, so it falls back to the system default.
+/// Agent home overrides pass: this host reads transcripts where they point, so the
+/// Agents it starts must write there too.
 fn baseline_env(vars: impl Iterator<Item = (OsString, OsString)>) -> Vec<(OsString, OsString)> {
-    const PASS: [&str; 8] = [
+    const PASS: [&str; 11] = [
         "HOME",
         "USER",
         "LOGNAME",
@@ -261,6 +263,9 @@ fn baseline_env(vars: impl Iterator<Item = (OsString, OsString)>) -> Vec<(OsStri
         "LANG",
         "SSH_AUTH_SOCK",
         "__CF_USER_TEXT_ENCODING",
+        "CLAUDE_CONFIG_DIR",
+        "CODEX_HOME",
+        "GROK_HOME",
     ];
     let mut env: Vec<_> = vars
         .filter(|(k, _)| {
@@ -287,11 +292,12 @@ mod env_tests {
             ("CODEX_SANDBOX", "seatbelt"),
             ("SOME_FUTURE_AGENT_MARKER", "1"),
             ("COLUMNS", "80"),
+            ("GROK_HOME", "/tmp/grok"),
         ]
         .map(|(k, v)| (k.into(), v.into()));
         let env = super::baseline_env(launcher.into_iter());
         let keys: Vec<_> = env.iter().map(|(k, _)| k.to_str().unwrap()).collect();
-        assert_eq!(keys, ["HOME", "USER", "LANG", "LC_CTYPE", "PATH"]);
+        assert_eq!(keys, ["HOME", "USER", "LANG", "LC_CTYPE", "GROK_HOME", "PATH"]);
         assert_eq!(env.last().unwrap().1, "/usr/bin:/bin:/usr/sbin:/sbin");
     }
     #[test]
