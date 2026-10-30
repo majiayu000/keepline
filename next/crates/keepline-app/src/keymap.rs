@@ -24,6 +24,8 @@ pub enum Action {
     LastTab,
     Search,
     Settings,
+    /// The next session that waits on you, as the top bar's chip.
+    NextWaiting,
     Find,
     Clear,
     SelectAll,
@@ -48,7 +50,7 @@ impl Section {
     }
 }
 impl Action {
-    pub const ALL: [Self; 29] = [
+    pub const ALL: [Self; 30] = [
         Self::NewTab,
         Self::Close,
         Self::SplitRight,
@@ -78,6 +80,7 @@ impl Action {
         Self::ZoomReset,
         Self::Search,
         Self::Settings,
+        Self::NextWaiting,
     ];
     pub fn name(self) -> String {
         match self {
@@ -97,6 +100,7 @@ impl Action {
             Self::LastTab => "last_tab".into(),
             Self::Search => "search".into(),
             Self::Settings => "settings".into(),
+            Self::NextWaiting => "next_waiting".into(),
             Self::Find => "find".into(),
             Self::Clear => "clear".into(),
             Self::SelectAll => "select_all".into(),
@@ -123,6 +127,7 @@ impl Action {
             Self::LastTab => "最后一个标签".into(),
             Self::Search => "搜索".into(),
             Self::Settings => "设置".into(),
+            Self::NextWaiting => "下一个等你的".into(),
             Self::Find => "在终端里查找".into(),
             Self::Clear => "清屏".into(),
             Self::SelectAll => "全选".into(),
@@ -135,7 +140,7 @@ impl Action {
         match self {
             Self::Find | Self::Clear | Self::SelectAll => Section::Terminal,
             Self::ZoomIn | Self::ZoomOut | Self::ZoomReset => Section::Terminal,
-            Self::Search | Self::Settings => Section::Workbench,
+            Self::Search | Self::Settings | Self::NextWaiting => Section::Workbench,
             _ => Section::Tabs,
         }
     }
@@ -172,6 +177,7 @@ impl Action {
             Self::LastTab => &["cmd-9"],
             Self::Search => &["cmd-p"],
             Self::Settings => &["cmd-,"],
+            Self::NextWaiting => &["cmd-j"],
             Self::Find => &["cmd-f"],
             Self::Clear => &["cmd-k"],
             Self::SelectAll => &["cmd-a"],
@@ -587,6 +593,7 @@ mod tests {
             ("cmd-9", Action::LastTab),
             ("cmd-p", Action::Search),
             ("cmd-,", Action::Settings),
+            ("cmd-j", Action::NextWaiting),
             ("cmd-f", Action::Find),
             ("cmd-k", Action::Clear),
             ("cmd-=", Action::ZoomIn),

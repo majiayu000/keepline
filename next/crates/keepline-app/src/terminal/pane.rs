@@ -16,6 +16,8 @@ use std::{ops::Range, path::Path, sync::atomic::Ordering, time::Instant};
 
 /// Wheel reports sent to a program for one scroll event.
 const WHEEL_REPORTS: usize = 10;
+/// How often output may re-ask the host for the program's directory.
+const CWD_REFRESH_SECS: u64 = 5;
 pub struct Pane {
     terminal: String,
     socket: std::path::PathBuf,
@@ -51,6 +53,9 @@ pub struct Pane {
     hover_path: Option<std::path::PathBuf>,
     /// The program's working directory, asked from the host when a relative path is hovered.
     cwd: Option<std::path::PathBuf>,
+    /// When the footer last asked the host for that directory; output re-asks at most
+    /// every few seconds, and an idle pane asks nothing.
+    cwd_asked: Option<Instant>,
     focus_observers: bool,
     last_focus: bool,
     /// When the user last sent input; its echo is drawn without waiting for the shared tick.
@@ -271,6 +276,7 @@ impl Pane {
             hover_word: None,
             hover_path: None,
             cwd: None,
+            cwd_asked: None,
             focus_observers: false,
             last_focus: false,
             typed: None,
@@ -674,6 +680,46 @@ impl Pane {
         }
         cx.stop_propagation();
         cx.notify();
+    }
+    /// The program's working directory as the host last reported it.
+    pub fn cwd(&self) -> Option<&std::path::Path> {
+        self.cwd.as_deref()
+    }
+    /// This window types into the terminal: attached, writable and still running.
+    pub fn owns_input(&self) -> bool {
+        self.connection
+            .state
+            .lock()
+            .is_ok_and(|s| s.vt.is_some() && s.writable && !s.ended && s.error.is_none())
+    }
+    /// Asks the host where the program is now, for the footer; throttled, so a `cd` shows
+    /// within a few seconds of the next output.
+    fn refresh_cwd(&mut self, cx: &mut Context<Self>) {
+        if self
+            .cwd_asked
+            .is_some_and(|at| at.elapsed() < std::time::Duration::from_secs(CWD_REFRESH_SECS))
+        {
+            return;
+        }
+        self.cwd_asked = Some(Instant::now());
+        let socket = self.socket.clone();
+        let id = self.terminal.clone();
+        cx.spawn(async move |this, cx| {
+            let reply = cx
+                .background_spawn(async move { rpc(&socket, &Request::TerminalCwd { id }) })
+                .await;
+            if let Ok(Reply::Cwd(cwd)) = reply {
+                this.update(cx, |pane, cx| {
+                    let cwd = std::path::PathBuf::from(cwd);
+                    if pane.cwd.as_ref() != Some(&cwd) {
+                        pane.cwd = Some(cwd);
+                        cx.notify();
+                    }
+                })
+                .ok();
+            }
+        })
+        .detach();
     }
     pub fn has_other_owner(&self) -> bool {
         self.connection
@@ -1224,6 +1270,7 @@ impl Render for Pane {
                 .detach();
         }
         self.sync_focus(window, cx);
+        self.refresh_cwd(cx);
         self.connection.dirty.store(false, Ordering::Release);
         self.sync_scheme();
         let state = self.connection.state.lock().unwrap();
