@@ -19,6 +19,7 @@ mod declared;
 mod grok;
 pub mod hooks;
 pub mod mirror;
+mod qoder;
 
 /// What the host says on a terminal about an Agent it sees but cannot read: `text` is the
 /// recognition hint, `note` the pane's words for the user.
@@ -164,6 +165,7 @@ pub fn adapter(agent: Agent) -> &'static dyn Adapter {
         Agent::Claude => &claude::Claude,
         Agent::Grok => &grok::Grok,
         Agent::Cursor => &cursor::Cursor,
+        Agent::Qoder => &qoder::Qoder,
         _ => declared()
             .iter()
             .find(|d| d.agent() == agent)
