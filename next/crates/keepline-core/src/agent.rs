@@ -235,14 +235,19 @@ pub fn config_dir() -> Option<PathBuf> {
         .map(|base| base.join("keepline"))
 }
 
-/// Registers the declarations in `<config_dir>/agents`. Call once, before any agent is
-/// looked up; a process that never calls it knows the built-ins only. Returns false
-/// when the registry was already in use.
+/// Registers the declarations in `<config_dir>/agents` and in every plugin that provides
+/// agents (`plugins/<id>/agent.json`, `plugins/<id>/agents/*.json`). Call once, before
+/// any agent is looked up; a process that never calls it knows the built-ins only.
+/// Returns false when the registry was already in use.
 pub fn install() -> bool {
     let (Some(dir), Some(home)) = (config_dir(), std::env::var_os("HOME")) else {
         return false;
     };
-    install_from(&dir.join("agents"), Path::new(&home))
+    crate::plugin::install(&dir);
+    let mut files = json_files(&dir.join("agents"));
+    files.extend(crate::plugin::files(crate::plugin::Kind::Agent));
+    let (specs, report) = load_files(files, Path::new(&home));
+    REGISTRY.set(Registry { specs, report }).is_ok()
 }
 
 pub fn install_from(dir: &Path, home: &Path) -> bool {
@@ -250,11 +255,8 @@ pub fn install_from(dir: &Path, home: &Path) -> bool {
     REGISTRY.set(Registry { specs, report }).is_ok()
 }
 
-/// Built-ins, then each `*.json` in `dir` by file name. A later file with an id already
-/// declared replaces it, as a later patch row does; a built-in is never replaced.
-pub fn load(dir: &Path, home: &Path) -> (Vec<AgentSpec>, Vec<Loaded>) {
-    let mut specs = builtin();
-    let mut report = Vec::new();
+/// Each `*.json` in `dir`, by file name.
+fn json_files(dir: &Path) -> Vec<PathBuf> {
     let mut files: Vec<PathBuf> = match std::fs::read_dir(dir) {
         Ok(entries) => entries
             .filter_map(|e| e.ok().map(|e| e.path()))
@@ -263,6 +265,19 @@ pub fn load(dir: &Path, home: &Path) -> (Vec<AgentSpec>, Vec<Loaded>) {
         Err(_) => vec![],
     };
     files.sort();
+    files
+}
+
+/// Built-ins, then each `*.json` in `dir` by file name.
+pub fn load(dir: &Path, home: &Path) -> (Vec<AgentSpec>, Vec<Loaded>) {
+    load_files(json_files(dir), home)
+}
+
+/// Built-ins, then `files` in order. A later file with an id already declared replaces
+/// it, as a later patch row does; a built-in is never replaced.
+pub fn load_files(files: Vec<PathBuf>, home: &Path) -> (Vec<AgentSpec>, Vec<Loaded>) {
+    let mut specs = builtin();
+    let mut report = Vec::new();
     for file in files {
         let result = declare(&file, home, &specs);
         report.push(Loaded {

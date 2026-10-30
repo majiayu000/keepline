@@ -1,6 +1,6 @@
 # Keepline 插件系统规格
 
-状态：草案（2026-10-30），原型待验证。只针对 `next/` 原生 App。
+状态：进行中（2026-10-30）。只针对 `next/` 原生 App。本文是总规格；agent 这一类插件的详细设计见 `docs/architecture/PLUGIN_SYSTEM.md`。
 
 ## 要支撑的决定
 
@@ -16,6 +16,39 @@ Keepline 的左栏、Agent 支持和窗格装饰，是否改成由插件提供�
 | 插件出错 | App 不崩，退回内置视图 | 故意写死循环、越界、返回乱数据的插件 |
 
 **放弃条件**：任一门槛超标且没有明显的压缩办法时，改用「配置文件定制左栏」方案（`sidebar.toml` 写分组、折叠、字段、排序），不引入插件运行时。
+
+## 两个维度：插件扩展什么、用什么写
+
+**类型**（扩展什么），每个插件可以同时提供几种：
+
+| 类型 | 文件 | 状态 |
+|---|---|---|
+| agent | `agent.json`、`agents/*.json` | 已完成（注册表、声明式 Agent、边界测试） |
+| actions | 右键菜单与 ⌘P 的命令声明 | 下一步 |
+| rules | 哪些命令算跑过验证 | 计划 |
+| sidebar | 左栏怎么排（经典 / 状态 / 目录为内置预设） | 计划 |
+| hooks / notifier | 生命周期事件交给命令或 webhook，通知出口 | 计划 |
+
+**写法**（用什么写）：
+
+| 写法 | 适合 | 例子 |
+|---|---|---|
+| 声明式（JSON） | 默认，最安全，不执行第三方代码 | 第三方 Agent、动作、规则、左栏预设 |
+| WASM（沙盒） | 声明式表达不了的逻辑 | 自定义左栏排法、复杂对话记录解析 |
+| 内置 Rust | 需要深度集成 | Claude / Codex / Grok 适配器（官方状态、子 Agent、共享后台） |
+
+## 插件包与统一报告
+
+```
+~/.config/keepline/plugins/<id>/       # 遵循 XDG_CONFIG_HOME
+  plugin.json   # {"api":1,"id","name","version?","description?","provides":["agent", …]}
+  agent.json / agents/*.json   # provides 里每种类型对应的文件
+```
+
+- 实现：`keepline-core/src/plugin.rs`（发现、校验、报告），`agent::install()` 启动时调用。
+- 规则：`api` 不符、`plugin.json` 缺失或格式不对、id 不合法或重名、声明了类型却没有文件，都只拒绝这一个插件并写明原因，其余照常加载。
+- 旧位置 `~/.config/keepline/agents/*.json` 继续有效，和插件里的 Agent 声明进同一个注册表。
+- 设置页「插件」一页列出每个插件和每个声明文件：已加载 / 没有加载、生效 / 没有生效及原因。
 
 ## 分层：哪些能插，哪些不能
 
@@ -35,6 +68,7 @@ Keepline 的左栏、Agent 支持和窗格装饰，是否改成由插件提供�
 - **宿主位置**：
   - UI 类插件（左栏、窗格装饰）由 `keepline-app` 加载。
   - Agent 适配器、事件钩子由 `keeplined` 加载，因为数据在后台。
+- **WASM 只在需要逻辑时用**：声明式能说清的（含经典 / 状态 / 目录三种左栏）一律用声明式；WASM 运行时（`crates/keepline-plugin-host`）保留为逃生口。
 - **插件不画界面**：插件返回一份声明式描述，宿主用 Keepline 的主题画。A / C 样式、深浅色、无障碍标签都由宿主统一处理。
 - **调用时机**：只在相关状态变化时调用，100 ms 内的多次变化合成一次；每秒变化的东西（如「在跑 3:12」计时）由插件声明，宿主自己刷新，插件不参与。
 
@@ -71,27 +105,19 @@ Row = Session { id, glyph: status, title, trailing: time | timer | text,
 
 **权限**：原话全文、证据详情不在默认输入里；插件要用需在 `plugin.toml` 声明 `permissions = ["transcript"]`，用户首次启用时确认。
 
-## 插件包
-
-```
-~/.keepline/plugins/<name>/
-  plugin.toml   # name, version, kind = "sidebar", api = 1, permissions
-  plugin.wasm
-```
-
-- 内置的「经典 / 状态 / 目录」三个视图也写成插件，打包时预编译进 App，用来检验接口。
-- 文件变化时热重载；加载或运行出错，退回「经典」并提示插件名和错误。
-- 提供 Rust 插件模板和 `keepline plugin new`；其他语言之后再说。
-
 ## 步骤
 
-1. 本规格。
-2. **原型**：独立 crate `keepline-plugin-host` 接入 wasmtime，一个最小左栏插件，按上表量体积、启动、300 会话更新耗时和出错退回。对照门槛做决定，结果写回本文。
-3. 用 WIT 定义 `keepline:sidebar` 接口（原型阶段先用 JSON 跨边界，量的是最坏情况）。
-4. 左栏抽出接口，把经典 / 状态 / 目录依次改成插件，逐个用真实数据副本截图核对。
-5. 左栏顶部切换、设置项、插件目录、热重载、出错退回。
-6. 模板、`keepline plugin new`、写插件说明。
-7. 之后：Agent 适配器插件化（后台）、事件钩子、窗格装饰。
+| # | 内容 | 状态 |
+|---|---|---|
+| 0 | 合入 agent 插件类型（注册表、声明式 Agent、适配器钩子、边界测试） | 完成（a1b8b60） |
+| 1 | 插件包、统一报告、设置页「插件」 | 完成 |
+| 2 | actions：右键菜单与 ⌘P 共用的动作声明（命令模板可用 `{cwd}` `{session_id}` `{transcript}` `{task}`，按条件显示） | 下一步 |
+| 3 | rules：验证命令规则，修掉 bun / vitest 项目被判成没跑验证 | |
+| 4 | sidebar：声明格式，经典 / 状态 / 目录三个内置预设，左栏顶部切换，⌘B 收起，按左栏减密稿 | |
+| 5 | hooks / notifier：生命周期事件交给命令或 webhook，只读、带超时、失败不影响主流程 | |
+| 6 | 有需求再做：功能开关、bash / fish 的 shell 集成、WASM 左栏接入 | |
+
+每一步的验收：已有测试全过，真实数据副本截图对照原来的界面和性能不退步。
 
 ## 原型结果（2026-10-30）
 

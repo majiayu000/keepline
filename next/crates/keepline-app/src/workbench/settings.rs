@@ -32,15 +32,23 @@ pub(super) enum Page {
     Look,
     Keys,
     Notifications,
+    Plugins,
 }
 impl Page {
-    const ALL: [Self; 4] = [Self::General, Self::Look, Self::Keys, Self::Notifications];
+    const ALL: [Self; 5] = [
+        Self::General,
+        Self::Look,
+        Self::Keys,
+        Self::Notifications,
+        Self::Plugins,
+    ];
     fn label(self) -> &'static str {
         match self {
             Self::General => "通用",
             Self::Look => "外观与终端",
             Self::Keys => "快捷键",
             Self::Notifications => "通知",
+            Self::Plugins => "插件",
         }
     }
     fn description(self) -> &'static str {
@@ -49,6 +57,9 @@ impl Page {
             Self::Look => "调整明暗和终端文字，修改后立即预览。",
             Self::Keys => "点击组合键重新录制，按 Esc 取消。",
             Self::Notifications => "在 Agent 需要你时接收提醒。",
+            Self::Plugins => {
+                "哪些插件和声明文件生效了，哪些没有、为什么。改动后重开 Keepline 生效。"
+            }
         }
     }
 }
@@ -669,6 +680,77 @@ impl SettingsView {
         }
         page
     }
+    /// Every plugin directory and declaration file the app read at start, with its outcome.
+    fn plugins_page(&self) -> gpui::Div {
+        use keepline_core::{agent, plugin};
+        let status = |ok: bool, text: String| {
+            div()
+                .flex_shrink_0()
+                .text_size(px(T::SMALL))
+                .text_color(if ok {
+                    T::color(T::secondary())
+                } else {
+                    Group::Error.colors().1
+                })
+                .child(text)
+        };
+        let where_ = agent::config_dir().map_or_else(
+            || "~/.config/keepline".to_owned(),
+            |d| d.display().to_string(),
+        );
+        let mut page = div().flex().flex_col().child(label(format!(
+            "放在 {where_}/plugins/<id>/plugin.json；Agent 声明也可以直接放在 {where_}/agents/*.json。"
+        )));
+        let found = plugin::report();
+        if found.is_empty() {
+            page = page.child(self.row(
+                "还没有插件",
+                "按上面的位置放一个插件目录，重开 Keepline 后会显示在这里。",
+                div(),
+            ));
+        }
+        for f in found {
+            let name = f
+                .dir
+                .file_name()
+                .map_or_else(String::new, |n| n.to_string_lossy().into_owned());
+            page = page.child(match &f.result {
+                Ok(p) => self.row(
+                    &format!("{} · {}", p.name, p.id),
+                    &format!(
+                        "提供 {}{}{}",
+                        p.provides
+                            .iter()
+                            .map(|k| k.label())
+                            .collect::<Vec<_>>()
+                            .join("、"),
+                        p.version
+                            .as_deref()
+                            .map_or_else(String::new, |v| format!(" · v{v}")),
+                        p.description
+                            .as_deref()
+                            .map_or_else(String::new, |d| format!(" · {d}")),
+                    ),
+                    status(true, "已加载".into()),
+                ),
+                Err(e) => self.row(&name, e, status(false, "没有加载".into())),
+            });
+        }
+        let declared = agent::report();
+        if !declared.is_empty() {
+            page = page.child(div().mt(px(T::S16)).child(label("Agent 声明文件")));
+            for d in declared {
+                let file = d.file.display().to_string();
+                page = page.child(match &d.result {
+                    Ok(key) => {
+                        self.row(&file, &format!("注册为 {key}"), status(true, "生效".into()))
+                    }
+                    Err(e) => self.row(&file, e, status(false, "没有生效".into())),
+                });
+            }
+        }
+        page
+    }
     fn page_matches(&self, page: Page, cx: &gpui::App) -> bool {
         match page {
             Page::General => {
@@ -704,6 +786,7 @@ impl SettingsView {
             Page::Notifications => {
                 self.matches(page, "桌面通知", "Agent 等待输入 错误 完成 macOS 提醒", cx)
             }
+            Page::Plugins => self.matches(page, "插件", "plugin 扩展 声明 agent json", cx),
         }
     }
     fn body(&self, cx: &Context<Self>) -> gpui::Div {
@@ -720,6 +803,7 @@ impl SettingsView {
                 Page::Look => self.look_page(cx),
                 Page::Keys => self.keys_page(cx),
                 Page::Notifications => self.notifications_page(cx),
+                Page::Plugins => self.plugins_page(),
             };
             body = body.child(
                 div()
