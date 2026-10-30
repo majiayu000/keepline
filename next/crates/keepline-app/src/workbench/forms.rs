@@ -244,10 +244,59 @@ impl Workbench {
                     button("cancel", "取消").on_click(cx.listener(|this, _, _, cx| {
                         this.tasks.form = None;
                         this.tasks.editing_space = None;
+                        this.tasks.removing_space = false;
                         cx.notify();
                     })),
+                )
+                .when_some(
+                    self.tasks
+                        .editing_space
+                        .clone()
+                        .filter(|_| matches!(form.kind, FormKind::Space)),
+                    |d, space| {
+                        let tabs = self
+                            .workspace
+                            .tabs
+                            .iter()
+                            .filter(|t| t.space == space)
+                            .count();
+                        let confirm = self.tasks.removing_space;
+                        d.child(div().flex_1()).child(
+                            button(
+                                "remove-space",
+                                if !confirm {
+                                    "删除空间".to_owned()
+                                } else if tabs > 0 {
+                                    format!("确认删除，并关掉 {tabs} 个标签里的终端")
+                                } else {
+                                    "确认删除".to_owned()
+                                },
+                            )
+                            .text_color(Group::Error.colors().1)
+                            .on_click(
+                                cx.listener(move |this, _, _, cx| this.remove_space(&space, cx)),
+                            ),
+                        )
+                    },
                 ),
         )
+    }
+    pub(super) fn remove_space(&mut self, space: &str, cx: &mut Context<Self>) {
+        if !self.tasks.removing_space {
+            self.tasks.removing_space = true;
+            cx.notify();
+            return;
+        }
+        self.tasks.removing_space = false;
+        self.tasks.form = None;
+        self.tasks.editing_space = None;
+        if self.nav.space == space
+            && let Some(other) = self.workspace.spaces.iter().find(|s| s.id != space)
+        {
+            self.nav.space = other.id.clone();
+            self.nav.tab = None;
+        }
+        self.edit(Edit::RemoveSpace { id: space.into() }, cx);
     }
     pub(super) fn edit_task_form(
         &mut self,

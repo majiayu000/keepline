@@ -244,6 +244,11 @@ impl Render for Workbench {
             }
             let title = self.tab_name(tab, cx);
             let tip = self.tab_tip(&title, &ids);
+            let dragged = super::tabs::DraggedTab {
+                id: id.clone(),
+                title: title.clone(),
+            };
+            let drop_before = id.clone();
             let group_name = gpui::SharedString::from(format!("tab-group-{id}"));
             // Shown on the current tab, and on the others while hovered, like a browser.
             let close = button(gpui::SharedString::from(format!("tab-close-{id}")), "×")
@@ -323,6 +328,25 @@ impl Render for Workbench {
                             this.close_tab(&id, cx);
                         })
                     })
+                    // Dragging a tab onto another puts it right before that one.
+                    .on_drag(dragged, |tab, _, _, cx| cx.new(|_| tab.clone()))
+                    .drag_over::<super::tabs::DraggedTab>(|s, _, _, _| {
+                        s.border_l(px(T::BORDER_WIDTH * 2.))
+                            .border_color(T::color(T::accent()))
+                    })
+                    .on_drop(
+                        cx.listener(move |this, tab: &super::tabs::DraggedTab, _, cx| {
+                            if tab.id != drop_before {
+                                this.edit(
+                                    Edit::MoveTab {
+                                        id: tab.id.clone(),
+                                        before: Some(drop_before.clone()),
+                                    },
+                                    cx,
+                                );
+                            }
+                        }),
+                    )
                     .on_mouse_down(gpui::MouseButton::Right, {
                         let id = id.clone();
                         cx.listener(move |this, event: &gpui::MouseDownEvent, _, cx| {

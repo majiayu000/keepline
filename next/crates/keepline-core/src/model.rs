@@ -252,6 +252,16 @@ pub enum Edit {
         id: String,
         name: String,
     },
+    /// Puts a tab before another one, or last; the strip shows tabs in this order.
+    MoveTab {
+        id: String,
+        before: Option<String>,
+    },
+    /// Removes a space and closes its tabs; the host stops the terminals they held.
+    /// Refused while it is the only space or still has unsettled tasks.
+    RemoveSpace {
+        id: String,
+    },
 }
 
 impl Edit {
@@ -267,6 +277,7 @@ impl Edit {
                 | Self::CloseTab { .. }
                 | Self::ClosePane { .. }
                 | Self::RenameSession { .. }
+                | Self::MoveTab { .. }
         )
     }
 }
@@ -711,6 +722,52 @@ impl Workspace {
                 }
                 // A tab without panes has nothing to show; it closes with its last pane.
                 self.tabs.retain(|t| t.layout.is_some());
+            }
+            Edit::MoveTab { id, before } => {
+                let from = self
+                    .tabs
+                    .iter()
+                    .position(|t| t.id == id)
+                    .ok_or("标签不存在")?;
+                if before.as_ref() == Some(&id) {
+                    return Ok(());
+                }
+                let tab = self.tabs.remove(from);
+                let to = match &before {
+                    Some(other) => self
+                        .tabs
+                        .iter()
+                        .position(|t| &t.id == other)
+                        .ok_or("目标标签不存在")?,
+                    None => self.tabs.len(),
+                };
+                self.tabs.insert(to, tab);
+            }
+            Edit::RemoveSpace { id } => {
+                if !self.spaces.iter().any(|s| s.id == id) {
+                    return Err("空间不存在".into());
+                }
+                if self.spaces.len() == 1 {
+                    return Err("至少要留一个空间".into());
+                }
+                let open = self
+                    .tasks
+                    .iter()
+                    .filter(|t| t.space == id)
+                    .filter(|t| {
+                        !matches!(
+                            self.task_outcomes.get(&t.id),
+                            Some(Outcome::Completed | Outcome::Abandoned)
+                        )
+                    })
+                    .count();
+                if open > 0 {
+                    return Err(format!(
+                        "空间里还有 {open} 个没收尾的待办，先完成或放弃它们"
+                    ));
+                }
+                self.tabs.retain(|t| t.space != id);
+                self.spaces.retain(|s| s.id != id);
             }
             Edit::CloseTab { id } => {
                 let before = self.tabs.len();

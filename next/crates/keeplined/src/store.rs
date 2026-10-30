@@ -68,6 +68,9 @@ impl Store {
             CREATE TABLE IF NOT EXISTS task_outcomes (task_id TEXT PRIMARY KEY REFERENCES tasks(id), outcome TEXT NOT NULL);
             CREATE TABLE IF NOT EXISTS pending_tasks (terminal_id TEXT PRIMARY KEY REFERENCES terminals(id), task_id TEXT REFERENCES tasks(id));
             CREATE TABLE IF NOT EXISTS lost_agents (terminal_id TEXT PRIMARY KEY REFERENCES terminals(id), session_id TEXT REFERENCES agent_sessions(id));
+            -- A removed space keeps its row: its terminals and settled tasks still point at it.
+            CREATE TABLE IF NOT EXISTS removed_spaces (space_id TEXT PRIMARY KEY REFERENCES spaces(id));
+            CREATE TABLE IF NOT EXISTS tab_order (tab_id TEXT PRIMARY KEY REFERENCES tabs(id), position INTEGER NOT NULL);
             CREATE TABLE IF NOT EXISTS task_criteria (task_id TEXT NOT NULL REFERENCES tasks(id), id TEXT NOT NULL, position INTEGER NOT NULL,
                 description TEXT NOT NULL, evidence TEXT, PRIMARY KEY(task_id,id), UNIQUE(task_id,position));
             CREATE TABLE IF NOT EXISTS tabs (id TEXT PRIMARY KEY, space_id TEXT NOT NULL REFERENCES spaces(id), default_task_id TEXT REFERENCES tasks(id), title TEXT NOT NULL, closed INTEGER NOT NULL);
@@ -192,7 +195,7 @@ impl Store {
         }
         let mut statement = self
             .0
-            .prepare("SELECT id,name,cwd FROM spaces ORDER BY rowid")
+            .prepare("SELECT id,name,cwd FROM spaces WHERE id NOT IN (SELECT space_id FROM removed_spaces) ORDER BY rowid")
             .map_err(db_error)?;
         let rows = statement
             .query_map([], |r| {
@@ -240,13 +243,14 @@ impl Store {
         // left without panes, are dropped here; their terminals died with that host.
         self.0
             .execute_batch(
-                "DELETE FROM tab_layout_nodes WHERE tab_id IN (SELECT id FROM tabs WHERE closed<>0);
+                "DELETE FROM tab_order WHERE tab_id IN (SELECT id FROM tabs WHERE closed<>0 OR id NOT IN (SELECT tab_id FROM tab_layout_nodes));
+                 DELETE FROM tab_layout_nodes WHERE tab_id IN (SELECT id FROM tabs WHERE closed<>0);
                  DELETE FROM tabs WHERE closed<>0 OR id NOT IN (SELECT tab_id FROM tab_layout_nodes);",
             )
             .map_err(db_error)?;
         let mut statement = self
             .0
-            .prepare("SELECT id,space_id,default_task_id,title FROM tabs ORDER BY rowid")
+            .prepare("SELECT id,space_id,default_task_id,title FROM tabs LEFT JOIN tab_order ON tab_order.tab_id=tabs.id ORDER BY COALESCE(tab_order.position, tabs.rowid), tabs.rowid")
             .map_err(db_error)?;
         let rows = statement
             .query_map([], |r| {
@@ -362,7 +366,13 @@ impl Store {
                 .map_err(db_error)?;
             }
         }
+        for s in removed(&before.spaces, &w.spaces, |s| &s.id) {
+            tx.execute("INSERT OR IGNORE INTO removed_spaces VALUES(?1)", [&s.id])
+                .map_err(db_error)?;
+        }
         for t in removed(&before.tabs, &w.tabs, |t| &t.id) {
+            tx.execute("DELETE FROM tab_order WHERE tab_id=?1", [&t.id])
+                .map_err(db_error)?;
             tx.execute("DELETE FROM tab_layout_nodes WHERE tab_id=?1", [&t.id])
                 .map_err(db_error)?;
             tx.execute("DELETE FROM tabs WHERE id=?1", [&t.id])
@@ -373,6 +383,16 @@ impl Store {
         }
         for t in changed(&before.terminals, &w.terminals, |t| &t.id) {
             tx.execute("INSERT INTO terminals VALUES(?1,?2,?3,?4,?5,?6,?7,?8) ON CONFLICT(id) DO UPDATE SET space_id=excluded.space_id,argv=excluded.argv,cwd=excluded.cwd,pid=excluded.pid,process_state=excluded.process_state,exit_code=excluded.exit_code,error=excluded.error",params![t.id,t.space,serde_json::to_string(&t.argv).map_err(db_error)?,t.cwd,t.pid,enum_name(&t.state)?,t.exit_code,t.error]).map_err(db_error)?;
+        }
+        let order = |w: &Workspace| w.tabs.iter().map(|t| t.id.clone()).collect::<Vec<_>>();
+        if order(before) != order(w) {
+            for (position, tab) in w.tabs.iter().enumerate() {
+                tx.execute(
+                    "INSERT INTO tab_order VALUES(?1,?2) ON CONFLICT(tab_id) DO UPDATE SET position=excluded.position",
+                    params![tab.id, position as i64],
+                )
+                .map_err(db_error)?;
+            }
         }
         let tabs = changed(&before.tabs, &w.tabs, |t| &t.id);
         for tab in &tabs {
@@ -676,6 +696,44 @@ mod milestone_tests {
         // A second restart keeps the record; the terminals are no longer running.
         let (_, again) = Store::open_keeping(&dir, &kept).unwrap();
         assert_eq!(again.lost_agents, expected);
+        std::fs::remove_dir_all(dir).unwrap();
+    }
+    #[test]
+    fn tab_order_and_removed_spaces_survive_reopen() {
+        let dir = std::env::temp_dir().join(format!("kl-order-{}", uuid::Uuid::new_v4()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let (mut store, mut w) = Store::open(&dir).unwrap();
+        let before = w.clone();
+        for id in ["keep", "gone"] {
+            w.spaces.push(Space { id: id.into(), name: id.into(), cwd: "/tmp".into() });
+        }
+        for (i, space) in ["keep", "keep", "keep", "gone"].iter().enumerate() {
+            w.terminals.push(Terminal {
+                id: format!("p{i}"), space: (*space).into(), argv: vec!["/bin/sh".into()], cwd: "/tmp".into(),
+                pid: None, state: ProcessState::Running, exit_code: None, error: None,
+            });
+            w.tabs.push(Tab {
+                id: format!("t{i}"), space: (*space).into(), default_task: None, title: String::new(),
+                layout: Some(Layout::Leaf(format!("p{i}"))),
+            });
+        }
+        w.tasks.push(Task {
+            id: "task".into(), space: "gone".into(), title: "unfinished".into(),
+            description: String::new(), agent: Agent::Codex, acceptance: vec![],
+        });
+        store.save(&before, &w).unwrap();
+        let before = w.clone();
+        w.edit(Edit::MoveTab { id: "t2".into(), before: Some("t0".into()) }).unwrap();
+        let err = w.clone().edit(Edit::RemoveSpace { id: "gone".into() }).unwrap_err();
+        assert!(err.contains("1 个没收尾的待办"), "{err}");
+        w.edit(Edit::SetTaskOutcome { id: "task".into(), outcome: Outcome::Abandoned }).unwrap();
+        w.edit(Edit::RemoveSpace { id: "gone".into() }).unwrap();
+        assert!(w.clone().edit(Edit::RemoveSpace { id: "keep".into() }).is_err(), "last space stays");
+        store.save(&before, &w).unwrap();
+        drop(store);
+        let (_, w) = Store::open(&dir).unwrap();
+        assert_eq!(w.tabs.iter().map(|t| t.id.as_str()).collect::<Vec<_>>(), ["t2", "t0", "t1"]);
+        assert_eq!(w.spaces.iter().map(|s| s.id.as_str()).collect::<Vec<_>>(), ["keep"]);
         std::fs::remove_dir_all(dir).unwrap();
     }
     #[test]

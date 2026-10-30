@@ -515,6 +515,40 @@ impl Workbench {
             self.edit(Edit::PutTab { tab }, cx);
         }
     }
+    /// Moves a pane, process and all, beside the panes of another tab or into a tab of
+    /// its own, and follows it there. Its old tab closes with its last pane.
+    pub(super) fn move_pane(&mut self, terminal: &str, to: Option<&str>, cx: &mut Context<Self>) {
+        let tab = match to {
+            Some(to) => {
+                let Some(mut tab) = self.workspace.tabs.iter().find(|t| t.id == to).cloned() else {
+                    return;
+                };
+                let Some(last) = tab.layout.as_ref().and_then(|l| l.ids().last().cloned()) else {
+                    return;
+                };
+                if !tab
+                    .layout
+                    .as_mut()
+                    .is_some_and(|l| l.split(&last, terminal.to_owned(), Axis::Right))
+                {
+                    return;
+                }
+                tab
+            }
+            None => Tab {
+                id: super::id(),
+                space: self.nav.space.clone(),
+                default_task: None,
+                title: String::new(),
+                layout: Some(Layout::Leaf(terminal.to_owned())),
+            },
+        };
+        self.nav.zoomed = None;
+        self.nav.tab = Some(tab.id.clone());
+        self.nav.focused = Some(terminal.to_owned());
+        self.nav.pending_focus = true;
+        self.edit(Edit::PutTab { tab }, cx);
+    }
     pub(super) fn menu_action(
         &mut self,
         id: &str,
@@ -581,12 +615,12 @@ impl Workbench {
                     );
                 }
             }
-            "挂到待办…" | "为这个待办开一个会话" => {
+            "挂到待办…" | "为这个待办开一个会话" | "移到标签…" => {
                 if let Some(mut menu) = menu {
-                    menu.page = if action == "挂到待办…" {
-                        MenuPage::Assign
-                    } else {
-                        MenuPage::Sessions
+                    menu.page = match action {
+                        "挂到待办…" => MenuPage::Assign,
+                        "移到标签…" => MenuPage::Move,
+                        _ => MenuPage::Sessions,
                     };
                     self.layout.menu = Some(menu);
                 }
@@ -621,6 +655,7 @@ impl Workbench {
                     "复制",
                     "粘贴",
                     "搜索滚动内容",
+                    "移到标签…",
                     "挂到待办…",
                     "取消关联",
                     "中断（Ctrl-C）",
@@ -716,6 +751,40 @@ impl Workbench {
                     );
                 }
             }
+            MenuPage::Move => {
+                let own = self
+                    .workspace
+                    .terminal_tab(&menu.terminal)
+                    .map(|t| t.id.clone());
+                let targets: Vec<_> = self
+                    .workspace
+                    .tabs
+                    .iter()
+                    .filter(|t| t.space == self.nav.space && Some(&t.id) != own.as_ref())
+                    .map(|t| (Some(t.id.clone()), self.tab_name(t, cx)))
+                    .chain([(None, "新标签".to_owned())])
+                    .collect();
+                for (tab, name) in targets {
+                    let terminal = menu.terminal.clone();
+                    entries.push(
+                        button(
+                            gpui::SharedString::from(format!(
+                                "move-to-{}",
+                                tab.as_deref().unwrap_or("new")
+                            )),
+                            name,
+                        )
+                        .w_full()
+                        .justify_start()
+                        .border_0()
+                        .on_click(cx.listener(move |this, _, _, cx| {
+                            this.layout.menu = None;
+                            this.move_pane(&terminal, tab.as_deref(), cx);
+                        }))
+                        .into_any_element(),
+                    );
+                }
+            }
             MenuPage::Assign => {
                 if let Some(session) = session {
                     for task in &self.workspace.tasks {
@@ -758,7 +827,28 @@ impl Workbench {
     ) -> gpui::AnyElement {
         let rename = id.to_owned();
         let close = id.to_owned();
-        let entries = vec![
+        let tabs = self.sibling_tabs(id);
+        let at = tabs.iter().position(|t| t == id).unwrap_or(0);
+        let mut entries: Vec<gpui::AnyElement> =
+            [("向左移", -1, at > 0), ("向右移", 1, at + 1 < tabs.len())]
+                .into_iter()
+                .map(|(name, step, enabled)| {
+                    let id = id.to_owned();
+                    button(gpui::SharedString::from(format!("tab-menu-{name}")), name)
+                        .w_full()
+                        .justify_start()
+                        .border_0()
+                        .when(!enabled, |d| d.opacity(0.4))
+                        .on_click(cx.listener(move |this, _, _, cx| {
+                            if enabled {
+                                this.layout.tab_menu = None;
+                                this.step_tab(&id, step, cx);
+                            }
+                        }))
+                        .into_any_element()
+                })
+                .collect();
+        entries.extend([
             button("tab-menu-rename", "重命名")
                 .w_full()
                 .justify_start()
@@ -776,7 +866,7 @@ impl Workbench {
                     this.close_tab(&close, cx);
                 }))
                 .into_any_element(),
-        ];
+        ]);
         self.popup(position, entries, window, cx, |this| {
             this.layout.tab_menu = None
         })
