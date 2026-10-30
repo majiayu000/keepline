@@ -48,7 +48,7 @@ pub(super) fn start(
         }
         shot("general", cx);
         if phase == "1" {
-            click(875., 213., cx); wait(1000).await;
+            click(790., 213., cx); wait(1000).await;
             assert_eq!(values(cx).default_agent, keepline_core::model::Agent::Claude);
             click(760., 280., cx); wait(1000).await;
             assert_eq!(values(cx).away_minutes, 15);
@@ -82,8 +82,11 @@ pub(super) fn start(
         click(70., 200., cx); wait(200).await;
         assert_eq!(handle.update(cx, |v, _, a| v.visual_settings_page_name(a)).unwrap(), "通知");
         shot("notifications", cx);
+        click(70., 236., cx); wait(200).await;
+        assert_eq!(handle.update(cx, |v, _, a| v.visual_settings_page_name(a)).unwrap(), "插件");
+        shot("plugins", cx);
         if phase == "inspect" {
-            eprintln!("settings native inspection: four category clicks and screenshots");
+            eprintln!("settings native inspection: five category clicks and screenshots");
             cx.update(|a| a.quit());
             return;
         }
