@@ -1,0 +1,11 @@
+[package]
+name = "keepline-plugin-host"
+version = "0.1.0"
+edition = "2024"
+publish = false
+
+[dependencies]
+# Runtime and Cranelift only: no WASI, no component model, no debugging. A plugin gets
+# nothing but the memory it is given.
+wasmtime = { version = "50", default-features = false, features = ["cranelift", "runtime", "std", "parallel-compilation"] }
+serde_json.workspace = true
