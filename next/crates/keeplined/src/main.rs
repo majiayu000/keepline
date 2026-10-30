@@ -9,10 +9,36 @@ fn main() {
     std::process::exit(code);
 }
 
+/// Apps opened from Finder inherit launchd's soft limit of 256 descriptors. Each terminal
+/// holds a PTY plus its stream sockets, so about fifty terminals exhausted it and the host
+/// exited with EMFILE, leaving every pane black. Raise the soft limit as far as allowed.
+fn raise_open_file_limit() {
+    let mut limit = libc::rlimit { rlim_cur: 0, rlim_max: 0 };
+    // SAFETY: getrlimit/setrlimit only read and write the struct passed by pointer.
+    unsafe {
+        if libc::getrlimit(libc::RLIMIT_NOFILE, &mut limit) != 0 {
+            eprintln!("keeplined: getrlimit: {}", std::io::Error::last_os_error());
+            return;
+        }
+        // macOS rejects RLIM_INFINITY for the soft limit; use a finite cap below kern.maxfilesperproc.
+        let wanted = limit.rlim_max.min(65_536);
+        if wanted <= limit.rlim_cur {
+            return;
+        }
+        limit.rlim_cur = wanted;
+        if libc::setrlimit(libc::RLIMIT_NOFILE, &limit) != 0 {
+            eprintln!("keeplined: setrlimit: {}", std::io::Error::last_os_error());
+        } else {
+            eprintln!("keeplined: open file limit raised to {wanted}");
+        }
+    }
+}
+
 fn run() -> std::io::Result<()> {
     let mut args = std::env::args().skip(1);
     match args.next().as_deref() {
         Some("serve") => {
+            raise_open_file_limit();
             let mut remaining = Vec::new();
             let mut days = 7;
             let mut takeover = false;
