@@ -1,0 +1,5 @@
+• 已完成。
+
+› 解释一下 Would you like to run the following command? 是怎么来的
+
+  ⏎ send   ⇧⏎ newline   ⌃T transcript   ⌃C quit

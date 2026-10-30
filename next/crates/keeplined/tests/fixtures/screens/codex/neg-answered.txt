@@ -1,0 +1,17 @@
+  Would you like to run the following command?
+
+  $ cargo test
+
+› 1. Yes, proceed (y)
+  2. No (esc)
+
+✔ You approved codex to run cargo test this time
+
+• Ran cargo test
+  └ test result: ok. 12 passed
+
+• All tests pass.
+
+› Implement {feature}
+
+  100% context left

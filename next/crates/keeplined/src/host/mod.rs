@@ -54,9 +54,10 @@ struct Host {
     deadlines: Option<SyncSender<()>>,
     /// This host behind its lock, for work started from inside a commit.
     myself: std::sync::Weak<Mutex<Host>>,
-    /// Terminal -> question seen on its quiet screen. Live fallback only: never stored,
-    /// cleared by the user's input or by a later quiet screen without the prompt.
-    screen_waits: HashMap<String, String>,
+    /// Terminal -> what its last quiet screen showed: the question and the rule that read
+    /// it, or why none did. Live fallback only: never stored, cleared by the user's input;
+    /// only a question appearing or going away is a new revision.
+    screen_waits: HashMap<String, crate::screen_rules::Explained>,
     /// Session -> last `claude agents --json` run for it, the per-session rate limit.
     reconciled: HashMap<String, Instant>,
     /// What the plugins' hooks last heard, so each state change reaches them once.
@@ -82,29 +83,42 @@ impl Host {
         // A prompt visible on a live agent's screen outranks a log that has not caught up.
         // The source stays marked so it is never mistaken for a transcript record.
         for s in w.agent_sessions.iter().filter(|s| s.current) {
-            let Some(question) = s.terminal.as_ref().and_then(|t| self.screen_waits.get(t)) else {
+            let Some(seen) = s.terminal.as_ref().and_then(|t| self.screen_waits.get(t)) else {
                 continue;
             };
-            if let Some(c) = w.content.get_mut(&s.id) {
-                if c.turn != keepline_core::content::Turn::Waiting {
+            let Some(c) = w.content.get_mut(&s.id) else {
+                continue;
+            };
+            match seen.question() {
+                Some(question) if c.turn != keepline_core::content::Turn::Waiting => {
                     c.turn = keepline_core::content::Turn::Waiting;
                     c.waiting = format!("{question}（画面上的提示）");
                     // The episode the log or a hook will record for this same dialog.
                     c.waiting_episode += 1;
                     c.signal = "画面".into();
+                    c.signal_detail = seen.detail();
                 }
+                Some(_) => (),
+                None => c.screen_check = seen.fallback(),
             }
         }
         w
     }
-    fn set_screen_wait(&mut self, terminal: &str, question: Option<String>) -> io::Result<()> {
-        if self.screen_waits.get(terminal) == question.as_ref() {
-            return Ok(());
-        }
-        match question {
-            Some(q) => self.screen_waits.insert(terminal.into(), q),
+    fn set_screen_wait(
+        &mut self,
+        terminal: &str,
+        seen: Option<crate::screen_rules::Explained>,
+    ) -> io::Result<()> {
+        let before = self.screen_waits.get(terminal).and_then(|e| e.question());
+        let changed = before != seen.as_ref().and_then(|e| e.question());
+        match seen {
+            Some(e) => self.screen_waits.insert(terminal.into(), e),
             None => self.screen_waits.remove(terminal),
         };
+        // Why nothing matched rides along with the next revision; it is no change itself.
+        if !changed {
+            return Ok(());
+        }
         // Nothing to store; a new revision makes clients fetch the overlaid snapshot.
         let next = self.workspace.clone();
         self.commit(next)

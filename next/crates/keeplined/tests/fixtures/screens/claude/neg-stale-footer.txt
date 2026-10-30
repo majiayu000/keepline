@@ -1,0 +1,8 @@
+Pick one
+❯ 1. a
+2. b
+Enter to select · Esc to cancel
+line
+line
+line
+line

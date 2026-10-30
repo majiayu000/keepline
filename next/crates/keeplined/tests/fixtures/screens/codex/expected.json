@@ -1,0 +1,30 @@
+{
+  "approval-cargo-test.txt": {
+    "state": "waiting",
+    "rule": "approval",
+    "question": "Would you like to run the following command?",
+    "note": "recognition.rs 单测里的 Codex 命令审批"
+  },
+  "approval-edits.txt": {
+    "state": "waiting",
+    "rule": "approval",
+    "question": "Would you like to make the following edits?",
+    "note": "按 Codex 审批的形状合成，不是真实画面转录"
+  },
+  "neg-answered.txt": {
+    "state": "idle",
+    "note": "审批已经通过，后面跑完了命令"
+  },
+  "neg-composer-mentions.txt": {
+    "state": "idle",
+    "note": "输入框里的提示词含有审批问句"
+  },
+  "neg-first-option-no.txt": {
+    "state": "idle",
+    "note": "1 号选项不是 Yes（合成）"
+  },
+  "neg-working.txt": {
+    "state": "idle",
+    "note": "Codex 正在跑，画面上没有提问"
+  }
+}

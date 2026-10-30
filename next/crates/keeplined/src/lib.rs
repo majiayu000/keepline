@@ -10,6 +10,7 @@ mod plugin_hooks;
 mod process_exit;
 mod pty;
 pub mod recognition;
+pub mod screen_rules;
 mod store;
 pub use agents::hooks;
 pub use host::{serve, serve_taking_over, serve_with_options, serve_with_roots};

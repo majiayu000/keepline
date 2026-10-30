@@ -436,68 +436,12 @@ pub fn screen_key(prompt: &str) -> Option<String> {
 pub fn screen_text(text: &str) -> String {
     text.chars().filter(|c| !c.is_whitespace()).collect()
 }
-/// The question an agent is visibly blocked on, read from the bottom of a quiet screen.
-/// Only two strict shapes count; anything else is no evidence, never a guess:
-/// - an approval: "Do you want to …?" (Claude Code) or "Would you like to …?" (Codex)
-///   followed by a numbered option list whose first choice is "Yes";
-/// - a choice question: a cursor-marked numbered option above a footer that offers
-///   both "Enter to select" and "Esc to cancel" (Claude Code AskUserQuestion).
+/// The question an agent is visibly blocked on, read from the bottom of a quiet screen
+/// with the bundled default rules: a strict approval or choice shape, anything else is no
+/// evidence, never a guess. The host reads each CLI with its own rules through
+/// `screen_rules::explain`, which also says which rule decided and why.
 pub fn screen_wait(tail: &str) -> Option<String> {
-    const FRAME: &[char] = &[
-        '│', '┃', '║', '╭', '╮', '╰', '╯', '┌', '┐', '└', '┘', '─', '━', '═',
-    ];
-    let lines: Vec<&str> = tail
-        .lines()
-        .map(|l| l.trim().trim_matches(FRAME).trim())
-        .filter(|l| !l.is_empty() && !l.chars().all(|c| FRAME.contains(&c)))
-        .collect();
-    let bottom = lines.len().saturating_sub(16);
-    let lines = &lines[bottom..];
-    let option = |line: &str| -> Option<(bool, u32, String)> {
-        let rest = line.trim_start_matches(['❯', '›', '>', '▶', ' ']);
-        let cursor = rest.len() != line.len();
-        let (n, text) = rest.split_once(". ")?;
-        let n = n.parse::<u32>().ok().filter(|n| (1..=9).contains(n))?;
-        Some((cursor, n, text.trim().to_owned()))
-    };
-    let approval = lines.iter().rposition(|l| {
-        (l.starts_with("Do you want to ") || l.starts_with("Would you like to "))
-            && l.ends_with('?')
-    });
-    if let Some(i) = approval {
-        let first = lines[i + 1..]
-            .iter()
-            .take(4)
-            .find_map(|l| option(l).filter(|(_, n, _)| *n == 1));
-        // Output after the menu means it was already answered and scrolled up.
-        let last = lines.iter().rposition(|l| option(l).is_some());
-        if first.is_some_and(|(_, _, text)| text.starts_with("Yes"))
-            && last.is_some_and(|last| last > i && last + 3 >= lines.len())
-        {
-            return Some(lines[i].to_owned());
-        }
-    }
-    let footer = lines.iter().rposition(|l| {
-        let l = l.to_lowercase();
-        l.contains("enter to select") && l.contains("esc to cancel")
-    })?;
-    if footer + 3 < lines.len() {
-        return None;
-    }
-    let first = lines[..footer]
-        .iter()
-        .rposition(|l| option(l).is_some_and(|(_, n, _)| n == 1))?;
-    if !lines[first..footer]
-        .iter()
-        .any(|l| option(l).is_some_and(|(cursor, _, _)| cursor))
-    {
-        return None;
-    }
-    lines[..first]
-        .iter()
-        .rev()
-        .find(|l| option(l).is_none())
-        .map(|l| (*l).to_owned())
+    crate::screen_rules::explain(crate::screen_rules::default_rules(), tail).into_question()
 }
 pub struct ScreenThread<'a> {
     pub transcript: &'a Transcript,

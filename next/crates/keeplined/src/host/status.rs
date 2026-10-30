@@ -179,12 +179,19 @@ pub(super) fn check_screen_wait(
     shared: &Shared,
     id: &str,
 ) -> io::Result<Option<Instant>> {
-    {
+    // Each CLI's own screen rules; one with no Agent yet is read with the default ones.
+    let agent = {
         let host = lock(shared)?;
-        if host.workspace.current_agent(id).is_none() && !host.screen_waits.contains_key(id) {
+        let agent = host.workspace.current_agent(id).map(|s| s.runtime);
+        if agent.is_none() && !host.screen_waits.get(id).is_some_and(|e| e.waiting()) {
             return Ok(None);
         }
-    }
+        agent
+    };
+    let rules = agent.map_or_else(
+        crate::screen_rules::default_rules,
+        crate::screen_rules::rules,
+    );
     let (tail, input_at) = {
         let live = lock(terminal)?;
         if live.exited {
@@ -192,15 +199,15 @@ pub(super) fn check_screen_wait(
         }
         (live.vt.tail_text(usize::from(live.rows))?, live.input_at)
     };
-    let question = crate::recognition::screen_wait(&tail);
+    let seen = crate::screen_rules::explain(rules, &tail);
     let settle = input_at.map(|at| at + INPUT_SETTLE);
-    if let Some(settle) = settle.filter(|at| question.is_some() && *at > Instant::now()) {
+    if let Some(settle) = settle.filter(|at| seen.waiting() && *at > Instant::now()) {
         return Ok(Some(settle));
     }
     let mut host = lock(shared)?;
-    let question = question.filter(|_| host.workspace.current_agent(id).is_some());
-    let veto = question.is_none();
-    host.set_screen_wait(id, question)?;
+    let seen = host.workspace.current_agent(id).is_some().then_some(seen);
+    let veto = !seen.as_ref().is_some_and(|e| e.waiting());
+    host.set_screen_wait(id, seen)?;
     if !veto {
         return Ok(None);
     }

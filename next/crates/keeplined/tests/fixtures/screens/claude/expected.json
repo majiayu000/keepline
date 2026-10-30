@@ -1,0 +1,76 @@
+{
+  "approval-bash.txt": {
+    "state": "waiting",
+    "rule": "approval",
+    "question": "Do you want to proceed?",
+    "note": "recognition.rs 单测里的 Claude Code Bash 审批框"
+  },
+  "approval-managed-push.txt": {
+    "state": "waiting",
+    "rule": "approval",
+    "question": "Do you want to proceed?",
+    "note": "managed_session.rs 假 Agent 用 printf 画的审批"
+  },
+  "approval-managed-rm.txt": {
+    "state": "waiting",
+    "rule": "approval",
+    "question": "Do you want to proceed?",
+    "note": "managed_session.rs 假 Agent 用 printf 画的审批"
+  },
+  "approval-write-r9.txt": {
+    "state": "waiting",
+    "rule": "approval",
+    "question": "Do you want to create approval-proof.txt?",
+    "note": "R9 真实 Claude Code 2.1.302 画面转录（evidence/r9-20261021/real-approval.png）"
+  },
+  "choice-deploy.txt": {
+    "state": "waiting",
+    "rule": "choice",
+    "question": "要部署到哪个环境？",
+    "note": "recognition.rs 单测里的 AskUserQuestion 选择题"
+  },
+  "neg-answered-no-menu.txt": {
+    "state": "idle",
+    "note": "问句还在，菜单已经没了"
+  },
+  "neg-choice-answered.txt": {
+    "state": "idle",
+    "note": "选择题已经答完，页脚消失"
+  },
+  "neg-interrupted-approval.txt": {
+    "state": "idle",
+    "note": "审批被 Esc 打断，菜单还留在画面上，下面已经回到输入框"
+  },
+  "neg-mention-in-prose.txt": {
+    "state": "idle",
+    "note": "回答里提到这句话，后面是普通编号列表"
+  },
+  "neg-menu-without-cursor.txt": {
+    "state": "idle",
+    "note": "有页脚但选项上没有光标"
+  },
+  "neg-output-after-menu.txt": {
+    "state": "idle",
+    "note": "菜单下面还有输出：已经答过、滚上去了"
+  },
+  "neg-plain-numbered-list.txt": {
+    "state": "idle",
+    "note": "回答里的编号列表，第一项碰巧以 Yes 开头"
+  },
+  "neg-shell.txt": {
+    "state": "idle",
+    "note": "普通 shell"
+  },
+  "neg-stale-footer.txt": {
+    "state": "idle",
+    "note": "页脚在上面，下面又有了输出"
+  },
+  "neg-transcript-viewer.txt": {
+    "state": "idle",
+    "note": "ctrl+o 记录视图里出现过去的审批"
+  },
+  "neg-typed-in-input-box.txt": {
+    "state": "idle",
+    "note": "用户在输入框里打的提示词含有 Do you want to proceed?"
+  }
+}

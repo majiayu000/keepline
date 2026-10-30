@@ -393,4 +393,39 @@ fn the_pane_menu_says_which_signal_set_the_state() {
     assert_eq!(lines[1], "现在：等你回答");
     assert_eq!(lines[2], "依据：画面底部认出了提问框；对话记录里没有这一条（2 分钟前）");
     assert!(lines[3].starts_with("在等：Do you want to proceed?"));
+
+    // The rule and the lines it saw, as the daemon wrote them.
+    let detail = "规则：approval 审批（codex 内置 2026.10.31.1）\n看到：Do you want to proceed? / ❯ 1. Yes / 2. No";
+    w.content.get_mut("history").unwrap().signal_detail = detail.into();
+    let lines = state_reasons(&w, "t0", None, 1000);
+    assert_eq!(lines[3], "规则：approval 审批（codex 内置 2026.10.31.1）");
+    assert_eq!(lines[4], "看到：Do you want to proceed? / ❯ 1. Yes / 2. No");
+    assert!(lines[5].starts_with("在等："));
+
+    // A finished turn from the log, and a quiet screen no rule took.
+    let c = keepline_core::content::Content {
+        turn: keepline_core::content::Turn::Completed,
+        signal: "日志".into(),
+        signal_at: 1000 - 30,
+        signal_detail: "记录：assistant「测试都过了，已经提交。」".into(),
+        screen_check: "没认出提问框（底部没有审批或选择题的提示；规则 codex 内置 2026.10.31.1）"
+            .into(),
+        ..Default::default()
+    };
+    w.content.insert("history".into(), c);
+    let lines = state_reasons(&w, "t0", None, 1000);
+    assert_eq!(lines[1], "现在：做完了 / 等你下一步");
+    assert_eq!(lines[3], "记录：assistant「测试都过了，已经提交。」");
+    assert_eq!(
+        lines[4],
+        "画面：没认出提问框（底部没有审批或选择题的提示；规则 codex 内置 2026.10.31.1），所以按「做完了 / 等你下一步」显示。"
+    );
+    for line in &lines {
+        println!("{line}");
+    }
+
+    // While it runs, a screen with no prompt is not news.
+    w.content.get_mut("history").unwrap().turn = keepline_core::content::Turn::Running;
+    let lines = state_reasons(&w, "t0", None, 1000);
+    assert!(!lines.iter().any(|l| l.starts_with("画面：")), "{lines:?}");
 }

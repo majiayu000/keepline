@@ -2454,6 +2454,22 @@ fn quiet_agent_screen_with_an_approval_waits_on_the_user_until_they_answer() {
         std::thread::sleep(Duration::from_millis(50));
     };
     assert_eq!(question, "Do you want to proceed?（画面上的提示）");
+    // The card says which rule read it and the lines it saw.
+    let card = |w: &Workspace| {
+        w.current_agent("approval")
+            .and_then(|s| w.content.get(&s.id))
+            .cloned()
+            .unwrap()
+    };
+    let detail = card(&h.workspace()).signal_detail;
+    assert!(
+        detail.starts_with("规则：approval 审批（claude 内置 "),
+        "{detail}"
+    );
+    assert!(
+        detail.contains("看到：Do you want to proceed? / > 1. Yes / 2. No"),
+        "{detail}"
+    );
     send(
         &mut stream,
         CONTROL,
@@ -2465,9 +2481,15 @@ fn quiet_agent_screen_with_an_approval_waits_on_the_user_until_they_answer() {
     .unwrap();
     assert!(matches!(ack(&mut stream), Reply::Ok));
     assert_eq!(waiting(&h.workspace()), None, "answering clears it at once");
-    // The answered prompt is gone from the screen, so the next quiet check stays clear.
+    // The answered prompt is gone from the screen, so the next quiet check stays clear
+    // and says it found no prompt.
     std::thread::sleep(Duration::from_millis(4500));
     assert_eq!(waiting(&h.workspace()), None);
+    let check = card(&h.workspace()).screen_check;
+    assert!(
+        check.starts_with("没认出提问框（底部没有审批或选择题的提示"),
+        "{check}"
+    );
     assert_eq!(recognition(&h).metrics.lsof_spawns, 0);
 }
 

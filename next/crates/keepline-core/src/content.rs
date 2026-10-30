@@ -70,6 +70,13 @@ pub struct Content {
     pub signal: String,
     #[serde(default)]
     pub signal_at: u64,
+    /// What that signal carried, one "label：text" line each: the log record, the hook
+    /// event, or the screen rule and the lines it saw.
+    #[serde(default)]
+    pub signal_detail: String,
+    /// The last quiet-screen check that found no prompt and why. Live only, never stored.
+    #[serde(default)]
+    pub screen_check: String,
     /// A Codex subagent's parent thread id and its name, from its own session header.
     #[serde(default)]
     pub parent: String,
