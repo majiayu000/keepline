@@ -791,6 +791,49 @@ fn launch_is_durable_and_deduplicated_and_tab_close_stops_and_deletes() {
         .unwrap();
     assert_eq!(count, 0, "a shell is not an Agent conversation");
 }
+/// What an interactive zsh does with an Agent: the shell ignores SIGTERM and runs the
+/// program as its own foreground job, so a signal to the shell's group misses it.
+#[test]
+fn stopping_a_job_control_shell_ends_it_and_its_foreground_job() {
+    let h = Host::start();
+    h.setup();
+    h.call(h.launch("job", "trap '' TERM; set -m; sleep 300; :"))
+        .unwrap();
+    let shell = h.workspace().terminals[0].pid.unwrap();
+    let job = (0..100)
+        .find_map(|_| {
+            let out = std::process::Command::new("pgrep")
+                .args(["-P", &shell.to_string()])
+                .output()
+                .unwrap();
+            let pid = String::from_utf8_lossy(&out.stdout)
+                .trim()
+                .parse::<i32>()
+                .ok();
+            if pid.is_none() {
+                std::thread::sleep(Duration::from_millis(50));
+            }
+            pid
+        })
+        .expect("foreground job started");
+    assert_ne!(
+        unsafe { libc::getpgid(job) },
+        shell as i32,
+        "the job runs in its own process group"
+    );
+    h.call(Request::Stop { id: "job".into() }).unwrap();
+    wait_for(&h, "stopped shell exits", |w| {
+        w.terminals[0].state == ProcessState::Exited
+    });
+    let until = Instant::now() + Duration::from_secs(5);
+    while unsafe { libc::kill(job, 0) } == 0 {
+        assert!(
+            Instant::now() < until,
+            "the foreground job outlived its terminal"
+        );
+        std::thread::sleep(Duration::from_millis(50));
+    }
+}
 #[test]
 fn process_exit_does_not_complete_user_work() {
     let h = Host::start();
