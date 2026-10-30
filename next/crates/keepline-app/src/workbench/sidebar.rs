@@ -404,6 +404,19 @@ impl Workbench {
                                 }),
                             ),
                     )
+                    // Notifications, sound and the overview's time limits live in settings;
+                    // this opens them on the 通知 page.
+                    .child(
+                        button("open-reminders", "提醒")
+                            .border_0()
+                            .on_click(cx.listener(|this, _, window, cx| {
+                                this.show_settings_page(
+                                    super::settings::Page::Notifications,
+                                    window,
+                                    cx,
+                                )
+                            })),
+                    )
                     .child(button("open-settings", "设置").border_0().on_click(
                         cx.listener(|this, _, window, cx| this.show_settings(window, cx)),
                     )),

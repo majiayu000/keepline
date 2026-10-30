@@ -59,6 +59,7 @@ impl Store {
             INSERT OR IGNORE INTO meta VALUES(1,0);
             CREATE TABLE IF NOT EXISTS app_settings (id INTEGER PRIMARY KEY CHECK(id=1), notifications INTEGER NOT NULL, stale_days INTEGER NOT NULL, away_minutes INTEGER NOT NULL, default_agent TEXT NOT NULL);
             INSERT OR IGNORE INTO app_settings VALUES(1,0,3,30,'Codex');
+            CREATE TABLE IF NOT EXISTS app_sound (id INTEGER PRIMARY KEY CHECK(id=1), sound INTEGER NOT NULL);
             CREATE TABLE IF NOT EXISTS notification_receipts (session_id TEXT PRIMARY KEY, fact_key TEXT NOT NULL);
             CREATE TABLE IF NOT EXISTS client_state (id INTEGER PRIMARY KEY CHECK(id=1), last_left INTEGER NOT NULL);
             INSERT OR IGNORE INTO client_state VALUES(1,0);
@@ -145,7 +146,16 @@ impl Store {
             .map_err(db_error)?,
             ..Workspace::default()
         };
-        w.settings=self.0.query_row("SELECT notifications,stale_days,away_minutes,default_agent FROM app_settings WHERE id=1",[],|r| Ok((r.get::<_,bool>(0)?,r.get::<_,u32>(1)?,r.get::<_,u32>(2)?,r.get::<_,String>(3)?))).map_err(db_error).and_then(|(notifications,stale_days,away_minutes,agent)|Ok(Settings {notifications,stale_days,away_minutes,default_agent:enum_value(agent)?}))?;
+        w.settings=self.0.query_row("SELECT notifications,stale_days,away_minutes,default_agent FROM app_settings WHERE id=1",[],|r| Ok((r.get::<_,bool>(0)?,r.get::<_,u32>(1)?,r.get::<_,u32>(2)?,r.get::<_,String>(3)?))).map_err(db_error).and_then(|(notifications,stale_days,away_minutes,agent)|Ok(Settings {notifications,sound:false,stale_days,away_minutes,default_agent:enum_value(agent)?}))?;
+        {
+            use rusqlite::OptionalExtension;
+            w.settings.sound = self
+                .0
+                .query_row("SELECT sound FROM app_sound WHERE id=1", [], |r| r.get::<_, bool>(0))
+                .optional()
+                .map_err(db_error)?
+                .unwrap_or(false);
+        }
         w.last_left = u64::try_from(
             self.0
                 .query_row("SELECT last_left FROM client_state WHERE id=1", [], |r| {
@@ -336,6 +346,11 @@ impl Store {
         let tx = self.0.transaction().map_err(db_error)?;
         if before.settings != w.settings {
             tx.execute("UPDATE app_settings SET notifications=?1,stale_days=?2,away_minutes=?3,default_agent=?4 WHERE id=1",params![w.settings.notifications,w.settings.stale_days,w.settings.away_minutes,enum_name(&w.settings.default_agent)?]).map_err(db_error)?;
+            tx.execute(
+                "INSERT INTO app_sound VALUES(1,?1) ON CONFLICT(id) DO UPDATE SET sound=excluded.sound",
+                [w.settings.sound],
+            )
+            .map_err(db_error)?;
         }
         if before.last_left != w.last_left {
             tx.execute(
@@ -561,6 +576,7 @@ mod milestone_tests {
         let mut after = before.clone();
         after.settings = Settings {
             notifications: true,
+            sound: true,
             stale_days: 7,
             away_minutes: 45,
             default_agent: Agent::Claude,

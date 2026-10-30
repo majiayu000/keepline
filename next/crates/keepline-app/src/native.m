@@ -108,10 +108,15 @@ void kl_notifications_enable(void) {
         dispatch_async(dispatch_get_main_queue(),^{[desktop route:message];});
     }];
 }
-void kl_desktop_notify(const char *session,const char *title,const char *body) {
+/// The alert sound alone, for 提示音 without system notifications.
+void kl_play_sound(void) {
+    [[NSSound soundNamed:@"Glass"] play];
+}
+void kl_desktop_notify(const char *session,const char *title,const char *body,int sound) {
     if(!NSBundle.mainBundle.bundleIdentifier) {[desktop route:@"error:系统通知需要从 Keepline.app 启动"];return;}
     NSString *sid=[NSString stringWithUTF8String:session];
     UNMutableNotificationContent *content=[UNMutableNotificationContent new];content.title=[NSString stringWithUTF8String:title];content.body=[NSString stringWithUTF8String:body];content.userInfo=@{@"session":sid};
+    if(sound) content.sound=[UNNotificationSound defaultSound];
     UNNotificationRequest *request=[UNNotificationRequest requestWithIdentifier:sid content:content trigger:nil];
     [[UNUserNotificationCenter currentNotificationCenter]addNotificationRequest:request withCompletionHandler:^(NSError *error){
         os_log(notification_log(), "request_completed bundle=%{public}@ request=%{public}@ accepted=%{public}d error_domain=%{public}@ error_code=%{public}ld", NSBundle.mainBundle.bundleIdentifier,sid,error==nil,error.domain?:@"",(long)error.code);

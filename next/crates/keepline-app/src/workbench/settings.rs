@@ -771,6 +771,36 @@ impl SettingsView {
                 })))))
                 .child(div().mt(px(T::S16)).child(label("首次开启时，macOS 会询问通知权限。若已拒绝，可到系统设置 → 通知 → Keepline 重新允许。")));
         }
+        // Off until chosen, so an upgrade stays quiet; it sounds without notifications too.
+        if self.matches(
+            Page::Notifications,
+            "提示音",
+            "Agent 等待输入 错误 声音 不开通知也会响",
+            cx,
+        ) {
+            page = page.child(
+                self.row(
+                    "提示音",
+                    "Agent 等你或出错时响一声；不开桌面通知也会响",
+                    self.choice(
+                        "sound-toggle".into(),
+                        if self.values.sound {
+                            "已开启".into()
+                        } else {
+                            "已关闭".into()
+                        },
+                        self.values.sound,
+                    )
+                    .when(!self.busy, |b| {
+                        b.on_click(cx.listener(|this, _, _, cx| {
+                            let mut values = this.values.clone();
+                            values.sound = !values.sound;
+                            cx.emit(SettingsAction::Change(values));
+                        }))
+                    }),
+                ),
+            );
+        }
         page
     }
     /// Every plugin directory and declaration file the app read at start, with its outcome.
@@ -1165,6 +1195,21 @@ impl Workbench {
         self.settings = Some(view);
         cx.notify();
     }
+    /// Opens settings on one page, as the sidebar's 「提醒」 does for notifications.
+    pub(super) fn show_settings_page(
+        &mut self,
+        page: Page,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        self.show_settings(window, cx);
+        if let Some(view) = &self.settings {
+            view.update(cx, |v, cx| {
+                v.page = page;
+                cx.notify();
+            });
+        }
+    }
     pub(super) fn settings_overlay(
         &self,
         view: Entity<SettingsView>,
@@ -1199,6 +1244,14 @@ impl Workbench {
 impl Workbench {
     pub(crate) fn visual_settings_page_name(&self, cx: &gpui::App) -> &'static str {
         self.settings.as_ref().unwrap().read(cx).page.label()
+    }
+    pub(crate) fn visual_settings_toggle_sound(&mut self, cx: &mut Context<Self>) {
+        let view = self.settings.clone().expect("settings open");
+        view.update(cx, |v, cx| {
+            let mut values = v.values.clone();
+            values.sound = !values.sound;
+            cx.emit(SettingsAction::Change(values));
+        });
     }
     pub(crate) fn visual_settings_values(&self) -> Settings {
         self.workspace.settings.clone()
