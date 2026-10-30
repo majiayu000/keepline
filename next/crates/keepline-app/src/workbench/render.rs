@@ -41,6 +41,7 @@ impl Render for Workbench {
             }
             self.nav.pending_focus = false;
         }
+        let terminal_style = crate::ui::style::current(cx) == crate::ui::style::Style::Terminal;
         let mut root = div()
             .size_full()
             .flex()
@@ -50,7 +51,8 @@ impl Render for Workbench {
             .text_color(T::color(T::primary()))
             .text_size(px(T::BODY_SIZE))
             .line_height(gpui::relative(T::LINE_HEIGHT))
-            .font_family(T::UI_FONT);
+            .font_family(T::UI_FONT)
+            .when(terminal_style, |d| d.font(T::mono(cx)));
         let space_name = self
             .workspace
             .spaces
@@ -155,7 +157,6 @@ impl Render for Workbench {
                         })),
                     )
                 })
-                .child(self.status_pulse(cx))
                 .when(!self.needs_you().is_empty(), |d| {
                     d.child(self.next_waiting_chip(cx))
                 })
@@ -180,11 +181,12 @@ impl Render for Workbench {
             .flex()
             .items_center()
             .overflow_x_scroll();
-        for tab in self
+        for (n, tab) in self
             .workspace
             .tabs
             .iter()
             .filter(|t| t.space == self.nav.space)
+            .enumerate()
         {
             let id = tab.id.clone();
             // Over the overview no tab is shown; clicking one goes straight back to it.
@@ -214,7 +216,6 @@ impl Render for Workbench {
                     (*attention, std::cmp::Reverse(super::layout::urgency(*g)))
                 })
                 .map(|(g, _)| g);
-            let panes = ids.len();
             if let Some((_, field, _)) =
                 self.layout.renaming_tab.as_ref().filter(|(t, ..)| t == &id)
             {
@@ -269,46 +270,39 @@ impl Render for Workbench {
                     .aria_label(title.clone())
                     .relative()
                     .flex_shrink_0()
-                    .min_w(px(T::TAB_MIN_WIDTH))
+                    .min_w(px(if terminal_style { 0. } else { T::TAB_MIN_WIDTH }))
                     .max_w(px(T::TAB_MAX_WIDTH))
-                    .h(px(T::TABS))
+                    .h(px(if terminal_style { T::FOOTER } else { T::TABS }))
                     .gap(px(T::S6))
                     .border_0()
                     .rounded_none()
                     .text_size(px(T::MONO_SIZE))
                     .text_color(T::color(if active { T::primary() } else { T::secondary() }))
                     .when(tab.default_task.is_some(), |d| d.child(task_icon()))
-                    .child(match status {
-                        Some(g) => dot(g),
-                        None => div()
-                            .size(px(T::DOT))
-                            .flex_shrink_0()
-                            .rounded_full()
-                            .bg(T::color(T::muted()))
-                            .opacity(T::FAINT_DOT_OPACITY),
+                    // Terminal style: `2:标题*` with the state as a symbol, like tmux.
+                    .when(terminal_style, |d| {
+                        d.when_some(status, |d, g| d.child(glyph(g)))
+                            .when(active, |d| d.font_weight(gpui::FontWeight::SEMIBOLD))
                     })
-                    .child(div().flex_grow_1().min_w_0().truncate().child(title))
-                    .when(panes > 1, |d| {
-                        d.child(
-                            div()
-                                .flex_shrink_0()
-                                .px(px(T::S4))
-                                .rounded(px(T::CHIP_RADIUS))
-                                .border(px(T::BORDER_WIDTH))
-                                .border_color(T::color(T::control()))
-                                .text_size(px(T::SPLIT_CHIP_SIZE))
-                                .text_color(T::color(T::muted()))
-                                .font_features(T::tabular())
-                                .child(format!("{panes} 格")),
-                        )
-                    })
-                    .when_some(group, |d, g| {
+                    .child(
+                        div()
+                            .flex_grow_1()
+                            .min_w_0()
+                            .truncate()
+                            .child(if terminal_style {
+                                format!("{}:{title}{}", n + 1, if active { "*" } else { "" })
+                            } else {
+                                title
+                            }),
+                    )
+                    // Standard: a tab only calls out when a pane in it needs you.
+                    .when_some(group.filter(|_| !terminal_style), |d, g| {
                         d.child(badge(g, needs.len()).font_features(T::tabular()))
                     })
                     .child(close)
                     // The current tab takes the pane's surface and opens into it: side
                     // hairlines, and it covers the strip's bottom edge.
-                    .when(active, |d| {
+                    .when(active && !terminal_style, |d| {
                         d.bg(T::color(T::pane()))
                             .border_l(px(T::BORDER_WIDTH))
                             .border_r(px(T::BORDER_WIDTH))
@@ -348,30 +342,54 @@ impl Render for Workbench {
                     ),
             );
         }
-        let tabs = div()
-            .h(px(T::TABS))
+        let new_tab = button("new", "＋")
+            .aria_label("新建终端标签")
             .flex_shrink_0()
-            .flex()
-            .items_center()
-            .px(px(T::S6))
-            .border_b(px(T::BORDER_WIDTH))
-            .border_color(T::color(T::border()))
-            .child(strip)
-            .child(
-                button("new", "＋")
-                    .aria_label("新建终端标签")
-                    .flex_shrink_0()
-                    .border_0()
-                    .text_color(T::color(T::link()))
-                    .on_click(cx.listener(|this, _, _, cx| this.launch(false, None, cx))),
-            );
+            .border_0()
+            .text_color(T::color(T::link()))
+            .on_click(cx.listener(|this, _, _, cx| this.launch(false, None, cx)));
+        // Terminal style puts the tabs in a status line under the panes, tmux-like:
+        // the space, the tabs, then what needs you on the right.
+        let tabs = if terminal_style {
+            div()
+                .h(px(T::FOOTER))
+                .flex_shrink_0()
+                .flex()
+                .items_center()
+                .gap(px(T::S8))
+                .px(px(T::S8))
+                .border_t(px(T::BORDER_WIDTH))
+                .border_color(T::color(T::border()))
+                .bg(T::color(T::panel()))
+                .text_size(px(T::MONO_SIZE))
+                .child(label(space_name.to_owned()).flex_shrink_0())
+                .child(strip.flex_1())
+                .child(new_tab)
+                .child(self.status_glyphs(cx))
+        } else {
+            div()
+                .h(px(T::TABS))
+                .flex_shrink_0()
+                .flex()
+                .items_center()
+                .px(px(T::S6))
+                .border_b(px(T::BORDER_WIDTH))
+                .border_color(T::color(T::border()))
+                .child(strip)
+                .child(new_tab)
+        };
+        let (top_tabs, bottom_tabs) = if terminal_style {
+            (None, Some(tabs))
+        } else {
+            (Some(tabs), None)
+        };
         let mut main = div()
             .flex_1()
             .min_w_0()
             .h_full()
             .flex()
             .flex_col()
-            .child(tabs);
+            .children(top_tabs);
         // Indexing in progress is a top-bar note; only a stopped recognition is worth a
         // banner, in words the user can act on. A missing official status source is not:
         // logs and screens still tell the state.
@@ -530,6 +548,7 @@ impl Render for Workbench {
             }
             main = main.child(grid);
         }
+        main = main.children(bottom_tabs);
         root = root
             .relative()
             .child(div().flex_1().min_h_0().flex().child(sidebar).child(main));
@@ -761,45 +780,42 @@ impl Workbench {
     }
     /// The top bar's count per status across every open session, grouped and hidden as
     /// the overview does; one opens the overview with that group shown.
-    fn status_pulse(&self, cx: &Context<Self>) -> gpui::Div {
-        let mut counts = [0usize; 4];
-        const SHOWN: [(Group, &str); 4] = [
-            (Group::Waiting, "等你"),
-            (Group::Error, "出错"),
-            (Group::Running, "在跑"),
-            (Group::Review, "做完"),
-        ];
+    /// The terminal style's right end of the status line: `✕ 2  ◐ 1  ✓ 3`, each a way
+    /// into 鸟瞰. Zero counts are left out.
+    fn status_glyphs(&self, cx: &Context<Self>) -> gpui::Div {
+        // The same sessions the top bar's 需要你 counts: those in Keepline's terminals.
+        let mut counts = [self.needs_you().len(), 0, 0];
+        const SHOWN: [Group; 3] = [Group::Error, Group::Working, Group::Done];
         for s in &self.workspace.agent_sessions {
-            if !s.outcome.needs_review(now()) || self.session_hidden(s).is_some() {
+            if !s.managed() || !s.outcome.needs_review(now()) || self.session_hidden(s).is_some() {
                 continue;
             }
-            let g = session_group(&self.workspace, s);
-            if let Some(i) = SHOWN.iter().position(|(shown, _)| *shown == g) {
-                counts[i] += 1;
+            match session_group(&self.workspace, s) {
+                Group::Working | Group::Running => counts[1] += 1,
+                Group::Done | Group::Review => counts[2] += 1,
+                _ => {}
             }
         }
-        let mut row = div().flex().items_center().gap(px(T::S2));
-        for ((group, name), count) in SHOWN.into_iter().zip(counts) {
+        let mut row = div()
+            .flex_shrink_0()
+            .flex()
+            .items_center()
+            .gap(px(T::S10))
+            .font_features(T::tabular());
+        for (group, count) in SHOWN.into_iter().zip(counts).filter(|(_, n)| *n > 0) {
             row = row.child(
-                button(gpui::SharedString::from(format!("pulse-{name}")), "")
-                    .aria_label(format!("{} {count} 个，在鸟瞰里看", group.label()))
-                    .h(px(T::PULSE_BUTTON))
-                    .px(px(T::S8))
-                    .gap(px(T::PULSE_GAP))
-                    .text_color(T::color(T::secondary()))
-                    .when(count == 0, |d| d.opacity(T::ZERO_OPACITY))
-                    .child(dot(group))
-                    .child(name)
-                    .child(
-                        div()
-                            .font_weight(gpui::FontWeight::SEMIBOLD)
-                            .text_color(T::color(T::primary()))
-                            .font_features(T::tabular())
-                            .child(count.to_string()),
-                    )
+                div()
+                    .id(gpui::SharedString::from(format!(
+                        "status-{}",
+                        group.label()
+                    )))
+                    .flex()
+                    .gap(px(T::S4))
+                    .cursor_pointer()
+                    .child(glyph(group))
+                    .child(count.to_string())
                     .on_click(cx.listener(move |this, _, _, cx| {
-                        // 在跑 is folded in the overview; asking for it unfolds it.
-                        if group == Group::Running {
+                        if group == Group::Working {
                             this.overview.show_running = true;
                         }
                         this.show_overview(cx);
@@ -816,11 +832,13 @@ impl Workbench {
         let waiting = needs
             .iter()
             .any(|s| session_group(&self.workspace, s) == Group::Waiting);
-        let (group, text) = if waiting {
-            (Group::Waiting, "下一个等你的")
+        // One count for everything that needs you; the color says which kind leads.
+        let group = if waiting {
+            Group::Waiting
         } else {
-            (Group::Error, "下一个出错的")
+            Group::Error
         };
+        let text = "需要你";
         let (dot_color, ink, wash) = group.colors();
         let key = crate::keymap::current(cx)
             .chords(crate::keymap::Action::NextWaiting)

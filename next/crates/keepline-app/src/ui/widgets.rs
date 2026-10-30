@@ -53,6 +53,22 @@ pub fn label(text: impl Into<gpui::SharedString>) -> gpui::Div {
         .text_color(T::color(T::secondary()))
         .child(text.into())
 }
+/// The terminal style's status: one symbol in the state's ink, as a multiplexer would.
+pub fn glyph(group: Group) -> gpui::Div {
+    let symbol = match group {
+        Group::Waiting => "◆",
+        Group::Error => "✕",
+        Group::Working | Group::Running => "◐",
+        Group::Done | Group::Review => "✓",
+        Group::Paused => "‖",
+        Group::Ready => "○",
+        Group::Stale => "·",
+    };
+    div()
+        .flex_shrink_0()
+        .text_color(group.colors().1)
+        .child(symbol)
+}
 pub fn dot(group: Group) -> gpui::Div {
     div()
         .size(px(T::DOT))
