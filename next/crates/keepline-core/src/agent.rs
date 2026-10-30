@@ -23,6 +23,7 @@ impl Agent {
     pub const Claude: Agent = Agent("Claude");
     pub const Grok: Agent = Agent("Grok");
     pub const Cursor: Agent = Agent("Cursor");
+    pub const Qoder: Agent = Agent("Qoder");
 
     /// Every registered CLI, built-in first, in the order the app offers them.
     pub fn all() -> Vec<Agent> {
@@ -343,6 +344,14 @@ fn builtin() -> Vec<AgentSpec> {
             "cursor-agent",
             "cursor-agent --resume {id}",
         ),
+        // No way to choose the id up front; the transcript names it.
+        spec(
+            "Qoder",
+            "Qoder CLI",
+            "qodercli",
+            "qodercli",
+            "qodercli --resume {id}",
+        ),
     ]
 }
 
@@ -650,7 +659,7 @@ mod tests {
         let (specs, report) = load(&d, Path::new("/home/u"));
         assert_eq!(
             specs.iter().map(|s| s.key).collect::<Vec<_>>(),
-            ["Codex", "Claude", "Grok", "Cursor", "aider"]
+            ["Codex", "Claude", "Grok", "Cursor", "Qoder", "aider"]
         );
         let aider = &specs[builtin().len()];
         assert_eq!(
