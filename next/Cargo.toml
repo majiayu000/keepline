@@ -1,8 +1,8 @@
 [workspace]
 resolver = "2"
-members = ["crates/keepline-core", "crates/keeplined", "crates/keepline-app"]
+members = ["crates/keepline-core", "crates/keeplined", "crates/keepline-app", "crates/keepline-plugin-host"]
 default-members = ["crates/keepline-core", "crates/keeplined"]
-exclude = [".deps/zed", ".deps/libghostty-rs"]
+exclude = [".deps/zed", ".deps/libghostty-rs", "plugins"]
 
 [workspace.dependencies]
 serde = { version = "1", features = ["derive"] }
