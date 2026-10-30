@@ -5,6 +5,19 @@ use super::*;
 #[cfg(feature = "visual-test")]
 pub type VisualSpaceState = (bool, Option<(String, bool)>, Vec<(String, String)>);
 impl Workbench {
+    /// The host's socket, whether its connection strip shows, and 「重新连接」 itself.
+    #[cfg(feature = "visual-test")]
+    pub fn visual_socket(&self) -> PathBuf {
+        self.store.socket().to_owned()
+    }
+    #[cfg(feature = "visual-test")]
+    pub fn visual_cut_off(&self) -> bool {
+        self.store.cut_off()
+    }
+    #[cfg(feature = "visual-test")]
+    pub fn visual_reconnect(&mut self, cx: &mut Context<Self>) {
+        self.reconnect(cx);
+    }
     #[cfg(feature = "visual-test")]
     pub fn visual_layout(&mut self, name: &str, window: &mut Window, cx: &mut Context<Self>) {
         self.nav.overview = false;
