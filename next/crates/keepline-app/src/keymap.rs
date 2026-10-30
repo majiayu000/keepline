@@ -245,10 +245,7 @@ impl Chord {
             key: String::new(),
         };
         let mut rest = text.trim();
-        loop {
-            let Some((head, tail)) = rest.split_once('-').filter(|(_, t)| !t.is_empty()) else {
-                break;
-            };
+        while let Some((head, tail)) = rest.split_once('-').filter(|(_, t)| !t.is_empty()) {
             match head {
                 "cmd" => chord.cmd = true,
                 "ctrl" => chord.ctrl = true,

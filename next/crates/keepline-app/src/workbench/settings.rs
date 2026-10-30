@@ -605,28 +605,30 @@ impl SettingsView {
                             let Some(metrics) = screen::CellMetrics::measure(&font, window) else {
                                 return;
                             };
-                            let mut preview = screen::Screen::default();
-                            preview.background = T::terminal_bg();
-                            preview.rows = [
-                                "~/workspace  main",
-                                "$ keepline",
-                                "准备继续你的工作  0123456789",
-                            ]
-                            .into_iter()
-                            .map(|text| {
-                                vec![Run {
-                                    col: 0,
-                                    cols: text
-                                        .chars()
-                                        .map(|c| if c.is_ascii() { 1 } else { 2 })
-                                        .sum(),
-                                    text: text.into(),
-                                    fg: T::terminal_fg(),
-                                    bg: None,
-                                    attrs: screen::Attrs::default(),
-                                }]
-                            })
-                            .collect();
+                            let preview = screen::Screen {
+                                background: T::terminal_bg(),
+                                rows: [
+                                    "~/workspace  main",
+                                    "$ keepline",
+                                    "准备继续你的工作  0123456789",
+                                ]
+                                .into_iter()
+                                .map(|text| {
+                                    vec![Run {
+                                        col: 0,
+                                        cols: text
+                                            .chars()
+                                            .map(|c| if c.is_ascii() { 1 } else { 2 })
+                                            .sum(),
+                                        text: text.into(),
+                                        fg: T::terminal_fg(),
+                                        bg: None,
+                                        attrs: screen::Attrs::default(),
+                                    }]
+                                })
+                                .collect(),
+                                ..Default::default()
+                            };
                             screen::paint_cached(
                                 &preview,
                                 &font,

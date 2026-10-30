@@ -269,6 +269,8 @@ pub(crate) fn bound(t: &Transcript, terminal: String, binding: Binding) -> Agent
 /// `named` is the terminal the hook's environment says it runs in (`KEEPLINE_TERMINAL`).
 /// The process tree decides when it can be read; the name only stands in when the hook's
 /// caller already left it, and never when the two disagree.
+// Each input is a separate piece of hook evidence; bundling them would hide which one decides.
+#[allow(clippy::too_many_arguments)]
 pub fn apply_hook(
     workspace: &mut Workspace,
     runtime: Agent,

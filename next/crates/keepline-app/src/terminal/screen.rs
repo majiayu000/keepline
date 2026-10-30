@@ -321,12 +321,12 @@ impl Capture {
             .terminal()
             .fg_color()?
             .map(|c| rgb(c.r, c.g, c.b))
-            .unwrap_or_else(|| crate::ui::theme::Theme::terminal_fg());
+            .unwrap_or_else(crate::ui::theme::Theme::terminal_fg);
         let def_bg = vt
             .terminal()
             .bg_color()?
             .map(|c| rgb(c.r, c.g, c.b))
-            .unwrap_or_else(|| crate::ui::theme::Theme::terminal_bg());
+            .unwrap_or_else(crate::ui::theme::Theme::terminal_bg);
         full |= self.defaults != Some((def_fg, def_bg));
         self.defaults = Some((def_fg, def_bg));
         self.colors = Some(colors.clone());
@@ -452,7 +452,7 @@ impl Capture {
             .terminal()
             .bg_color()?
             .map(|c| rgb(c.r, c.g, c.b))
-            .unwrap_or_else(|| crate::ui::theme::Theme::terminal_bg());
+            .unwrap_or_else(crate::ui::theme::Theme::terminal_bg);
         snap.clean()?;
         Ok(changed)
     }
