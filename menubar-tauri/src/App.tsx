@@ -1,7 +1,12 @@
 import { useEffect, useState, useCallback, useRef } from 'react';
 import { invoke } from '@tauri-apps/api/core';
 import { exit } from '@tauri-apps/plugin-process';
-import QuotaCard from './components/QuotaCard';
+import QuotaCard, {
+  QuotaLegend,
+  FIVE_HOURS_MS,
+  SEVEN_DAYS_MS,
+  toResetDate,
+} from './components/QuotaCard';
 import ActionButtons from './components/ActionButtons';
 import ThemeSelector, { ThemeName } from './components/ThemeSelector';
 import TabSwitcher, { TabName } from './components/TabSwitcher';
@@ -66,27 +71,6 @@ function getSavedDockHidden(): boolean {
   // Keep Dock visible by default so users still have an entry point
   // if tray rendering is unavailable on their machine.
   return false;
-}
-
-function formatResetTime(resetTime?: string): string {
-  if (!resetTime) return 'Unknown';
-  try {
-    const reset = new Date(resetTime);
-    const now = new Date();
-    const diff = reset.getTime() - now.getTime();
-    if (diff <= 0) return 'Soon';
-
-    const hours = Math.floor(diff / (1000 * 60 * 60));
-    const minutes = Math.floor((diff % (1000 * 60 * 60)) / (1000 * 60));
-
-    if (hours > 24) {
-      const days = Math.floor(hours / 24);
-      return `${days}d ${hours % 24}h`;
-    }
-    return `${hours}h ${minutes}m`;
-  } catch {
-    return 'Unknown';
-  }
 }
 
 export default function App() {
@@ -291,48 +275,48 @@ export default function App() {
 
             {!claudeError && quota && (
               <div className="quota-list">
-                <div className="section">
-                  <div className="section-title">CURRENT SESSION</div>
-                  {quota.session ? (
+                <div className="section quota-section">
+                  <div className="section-title">USAGE LIMITS</div>
+                  {quota.session && (
                     <QuotaCard
-                      label="5-Hour Usage"
-                      percentage={Math.round(quota.session.percentage)}
-                      resetsIn={formatResetTime(quota.session.resetTime)}
+                      name="Session"
+                      windowLabel="5-hour"
+                      percentage={quota.session.percentage}
+                      resetsAt={toResetDate(quota.session.resetTime)}
+                      windowMs={FIVE_HOURS_MS}
                     />
-                  ) : (
-                    <div className="no-data">No session data</div>
                   )}
-                </div>
-
-                <div className="section">
-                  <div className="section-title">WEEKLY LIMITS</div>
-
                   {quota.weeklyTotal && (
                     <QuotaCard
-                      label="7-Day Usage"
-                      percentage={Math.round(quota.weeklyTotal.percentage)}
-                      resetsIn={formatResetTime(quota.weeklyTotal.resetTime)}
+                      name="Weekly"
+                      windowLabel="7-day"
+                      percentage={quota.weeklyTotal.percentage}
+                      resetsAt={toResetDate(quota.weeklyTotal.resetTime)}
+                      windowMs={SEVEN_DAYS_MS}
                     />
                   )}
-
                   {quota.weeklyOpus && (
                     <QuotaCard
-                      label="Opus (7-Day)"
-                      percentage={Math.round(quota.weeklyOpus.percentage)}
-                      resetsIn={formatResetTime(quota.weeklyOpus.resetTime)}
+                      name="Opus"
+                      windowLabel="7-day"
+                      percentage={quota.weeklyOpus.percentage}
+                      resetsAt={toResetDate(quota.weeklyOpus.resetTime)}
+                      windowMs={SEVEN_DAYS_MS}
                     />
                   )}
-
                   {quota.weeklySonnet && (
                     <QuotaCard
-                      label="Sonnet (7-Day)"
-                      percentage={Math.round(quota.weeklySonnet.percentage)}
-                      resetsIn={formatResetTime(quota.weeklySonnet.resetTime)}
+                      name="Sonnet"
+                      windowLabel="7-day"
+                      percentage={quota.weeklySonnet.percentage}
+                      resetsAt={toResetDate(quota.weeklySonnet.resetTime)}
+                      windowMs={SEVEN_DAYS_MS}
                     />
                   )}
-
-                  {!quota.weeklyTotal && !quota.weeklyOpus && !quota.weeklySonnet && (
-                    <div className="no-data">No weekly data</div>
+                  {quota.session || quota.weeklyTotal || quota.weeklyOpus || quota.weeklySonnet ? (
+                    <QuotaLegend />
+                  ) : (
+                    <div className="no-data">No usage data</div>
                   )}
                 </div>
               </div>
