@@ -1,6 +1,7 @@
 import { useEffect, useState, useCallback } from 'react';
 import { invoke } from '@tauri-apps/api/core';
 import CostSummarySection from './CostSummarySection';
+import QuotaCard, { QuotaLegend, toResetDate } from './QuotaCard';
 
 interface CodexData {
   connected: boolean;
@@ -64,41 +65,25 @@ function formatSubscriptionDate(dateStr?: string): string {
   }
 }
 
-function formatWindowLabel(minutes?: number): string {
-  if (!minutes) return 'Limit';
-  if (minutes >= 1440) {
-    const days = Math.round(minutes / 1440);
-    return days === 7 ? 'Weekly' : `${days}d`;
-  }
-  if (minutes >= 60) {
-    const hours = Math.round(minutes / 60);
-    return `${hours}h`;
-  }
-  return `${minutes}m`;
+function formatWindowLabel(minutes?: number): string | undefined {
+  if (!minutes || minutes <= 0) return undefined;
+  if (minutes >= 1440 && minutes % 1440 === 0) return `${minutes / 1440}-day`;
+  if (minutes >= 60 && minutes % 60 === 0) return `${minutes / 60}-hour`;
+  if (minutes >= 1440) return `${Math.round(minutes / 1440)}-day`;
+  if (minutes >= 60) return `${Math.round(minutes / 60)}-hour`;
+  return `${minutes}-minute`;
 }
 
-function formatResetTime(resetAt?: number): string {
-  if (!resetAt) return '';
-  const date = new Date(resetAt * 1000);
-  const now = new Date();
-  const diffMs = date.getTime() - now.getTime();
-
-  if (diffMs <= 0) return 'now';
-
-  const diffMinutes = Math.round(diffMs / 60000);
-  if (diffMinutes < 60) return `${diffMinutes}m`;
-
-  const diffHours = Math.round(diffMinutes / 60);
-  if (diffHours < 24) return `${diffHours}h`;
-
-  const diffDays = Math.round(diffHours / 24);
-  return `${diffDays}d`;
-}
-
-function getProgressColor(usedPercent: number): string {
-  if (usedPercent >= 80) return '#ef4444';
-  if (usedPercent >= 50) return '#f59e0b';
-  return '#22c55e';
+function CodexQuotaCard({ name, limit }: { name: string; limit: CodexRateLimitWindow }) {
+  return (
+    <QuotaCard
+      name={name}
+      windowLabel={formatWindowLabel(limit.windowMinutes)}
+      percentage={limit.usedPercent}
+      resetsAt={toResetDate(limit.resetsAt)}
+      windowMs={limit.windowMinutes ? limit.windowMinutes * 60_000 : null}
+    />
+  );
 }
 
 export default function CodexPanel({
@@ -195,79 +180,21 @@ export default function CodexPanel({
         <div className="codex-content">
           {/* Rate Limits Section */}
           {hasRateLimits && (
-            <div className="section">
+            <div className="section quota-section">
               <div className="section-title">
-                USAGE
+                USAGE LIMITS
                 <span className="plan-tag">{formatPlanType(planType)}</span>
               </div>
 
               {rateLimits?.primary && (
-                <div className="quota-card">
-                  <div className="quota-header">
-                    <span className="quota-label">
-                      {formatWindowLabel(rateLimits.primary.windowMinutes)} limit
-                    </span>
-                    <span className="quota-value">
-                      {Math.round(rateLimits.primary.usedPercent)}% used
-                    </span>
-                  </div>
-                  <div
-                    className="progress-bar"
-                    role="progressbar"
-                    aria-label={`${formatWindowLabel(rateLimits.primary.windowMinutes)} usage`}
-                    aria-valuenow={Math.round(Math.max(0, Math.min(100, rateLimits.primary.usedPercent)))}
-                    aria-valuemin={0}
-                    aria-valuemax={100}
-                  >
-                    <div
-                      className="progress-fill"
-                      style={{
-                        width: `${Math.max(0, Math.min(100, rateLimits.primary.usedPercent))}%`,
-                        backgroundColor: getProgressColor(rateLimits.primary.usedPercent),
-                      }}
-                    />
-                  </div>
-                  {rateLimits.primary.resetsAt && (
-                    <div className="reset-time">
-                      Resets in {formatResetTime(rateLimits.primary.resetsAt)}
-                    </div>
-                  )}
-                </div>
+                <CodexQuotaCard name="Primary" limit={rateLimits.primary} />
               )}
 
               {rateLimits?.secondary && (
-                <div className="quota-card">
-                  <div className="quota-header">
-                    <span className="quota-label">
-                      {formatWindowLabel(rateLimits.secondary.windowMinutes)} limit
-                    </span>
-                    <span className="quota-value">
-                      {Math.round(rateLimits.secondary.usedPercent)}% used
-                    </span>
-                  </div>
-                  <div
-                    className="progress-bar"
-                    role="progressbar"
-                    aria-label={`${formatWindowLabel(rateLimits.secondary.windowMinutes)} usage`}
-                    aria-valuenow={Math.round(Math.max(0, Math.min(100, rateLimits.secondary.usedPercent)))}
-                    aria-valuemin={0}
-                    aria-valuemax={100}
-                  >
-                    <div
-                      className="progress-fill"
-                      style={{
-                        width: `${Math.max(0, Math.min(100, rateLimits.secondary.usedPercent))}%`,
-                        backgroundColor: getProgressColor(rateLimits.secondary.usedPercent),
-                      }}
-                    />
-                  </div>
-                  {rateLimits.secondary.resetsAt && (
-                    <div className="reset-time">
-                      Resets in {formatResetTime(rateLimits.secondary.resetsAt)}
-                    </div>
-                  )}
-                </div>
+                <CodexQuotaCard name="Secondary" limit={rateLimits.secondary} />
               )}
+
+              <QuotaLegend />
 
               {rateLimits?.credits?.hasCredits && (
                 <div className="quota-card credits-card">
