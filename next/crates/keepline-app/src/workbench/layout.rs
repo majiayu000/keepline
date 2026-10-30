@@ -14,6 +14,13 @@ pub(super) struct LayoutState {
     pub(super) renaming_tab: Option<(String, Entity<Field>, [gpui::Subscription; 2])>,
     /// A sidebar conversation being renamed in place after a double-click.
     pub(super) renaming_session: Option<(String, Entity<Field>, [gpui::Subscription; 2])>,
+    /// A space renamed in place in the sidebar; it carries the space so a just-added
+    /// one can be named before the host's reply lists it.
+    pub(super) renaming_space: Option<(Space, Entity<Field>, [gpui::Subscription; 2])>,
+    /// A space's right-click menu: the space and where it was opened.
+    pub(super) space_menu: Option<(String, gpui::Point<gpui::Pixels>)>,
+    /// 删除空间 was pressed once in the open space menu; the second press removes it.
+    pub(super) space_removing: bool,
     /// A tab's right-click menu: the tab and where it was opened.
     pub(super) tab_menu: Option<(String, gpui::Point<gpui::Pixels>)>,
     /// The title-bar logo's menu for choosing the app icon, where it was opened.
@@ -1041,7 +1048,7 @@ impl Workbench {
             .into_any_element()
     }
     /// A floating menu at `position`; a click outside it runs `dismiss`.
-    fn popup(
+    pub(super) fn popup(
         &self,
         position: gpui::Point<gpui::Pixels>,
         entries: Vec<gpui::AnyElement>,

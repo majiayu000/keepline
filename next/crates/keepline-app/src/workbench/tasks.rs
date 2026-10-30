@@ -13,10 +13,6 @@ pub(super) struct TaskUi {
     /// The sidebar's todo list starts folded; sessions come first.
     pub(super) todos_open: bool,
     pub(super) editing_task: Option<String>,
-    /// The space the 空间 form edits; None when it adds one.
-    pub(super) editing_space: Option<String>,
-    /// 删除空间 was pressed once; the second press removes it.
-    pub(super) removing_space: bool,
     pub(super) start_after_save: Option<String>,
 }
 impl Workbench {
