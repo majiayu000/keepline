@@ -1,0 +1,332 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>主界面 · A / C 两种样式</title>
+<style>
+:root {
+  --win: #16161a; --side: #131317; --line: #2a2a2f; --line-soft: #222227; --hover: #1f1f24; --sel: #25252b; --head: #1b1b20; --head-focus: #222228;
+  --text: #d9d7d3; --strong: #f1efeb; --dim: #8b8a88; --faint: #64635f;
+  --chip: #d9d7d3; --on-chip: #16161a; --bar: #1c1c21; --strip: #121216;
+  --waiting: #e8823a; --error: #e5534b; --working: #e8c547; --review: #8f93ff; --ok: #4cc38a; --blue: #6aa5ff; --mag: #d58fd8;
+  --err-wash: #3a1f1f; --focus: #8a8884;
+}
+:root[data-theme="light"] {
+  --win: #fafaf9; --side: #f4f3f1; --line: #dcdbd8; --line-soft: #e6e5e2; --hover: #ecebe9; --sel: #e4e3e0; --head: #f4f3f1; --head-focus: #ebeae7;
+  --text: #2a2927; --strong: #0e0d0c; --dim: #5f5e5b; --faint: #7a7976;
+  --chip: #1f1e1c; --on-chip: #fafaf9; --bar: #efeeec; --strip: #f0efed;
+  --waiting: #c4651f; --error: #c53b33; --working: #9a7c0c; --review: #5e62d8; --ok: #2b8f60; --blue: #2a6fd6; --mag: #9b3fa0;
+  --err-wash: #f8e9e7; --focus: #6d6c69;
+}
+* { box-sizing: border-box; }
+body { margin: 0; background: #c9ccd2; color: #1f2024; font: 13px/1.45 -apple-system, BlinkMacSystemFont, "PingFang SC", sans-serif; padding: 20px 16px 48px; display: flex; flex-direction: column; align-items: center; gap: 12px; }
+button { font: inherit; border: 0; background: none; color: inherit; cursor: pointer; padding: 0; }
+.controls { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; justify-content: center; font-size: 12px; color: #2f3238; max-width: 1400px; }
+.controls .grp { display: inline-flex; background: #e1e3e8; border-radius: 7px; padding: 2px; }
+.controls button { height: 26px; padding: 0 10px; border-radius: 5px; color: #1f2024; }
+.controls button[aria-pressed="true"] { background: #1f2024; color: #fff; }
+.explain { max-width: 1400px; width: 100%; font-size: 12.5px; color: #34373e; }
+
+.mono, .term, .A .chrome { font-family: "JetBrains Mono", "SF Mono", Menlo, monospace; }
+.win { width: 1400px; max-width: 100%; height: 860px; border-radius: 12px; overflow: hidden; box-shadow: 0 20px 60px rgba(0,0,0,.3); display: flex; flex-direction: column; background: var(--win); color: var(--text); font-size: 12.5px; }
+
+/* Title bar */
+.top { height: 40px; flex: none; display: flex; align-items: center; gap: 10px; padding: 0 12px; border-bottom: 1px solid var(--line-soft); }
+.lights { display: inline-flex; gap: 8px; }
+.lights i { width: 12px; height: 12px; border-radius: 50%; display: block; }
+.lights i:nth-child(1) { background: #ff5f57; } .lights i:nth-child(2) { background: #febc2e; } .lights i:nth-child(3) { background: #28c840; }
+.iconbtn { width: 26px; height: 24px; border-radius: 6px; display: inline-flex; align-items: center; justify-content: center; color: var(--dim); margin-left: 6px; }
+.iconbtn:hover { background: var(--hover); color: var(--strong); }
+.top .name { font-size: 12px; color: var(--dim); }
+.top .find { margin-left: auto; font-size: 11.5px; color: var(--faint); border: 1px solid var(--line); border-radius: 6px; padding: 3px 10px; }
+.top .need { display: none; font-size: 12px; font-weight: 600; color: var(--error); background: var(--err-wash); border-radius: 6px; padding: 3px 10px; }
+.C .top .need { display: inline-flex; gap: 6px; }
+
+.body { flex: 1; min-height: 0; display: flex; }
+
+/* Sidebar (both styles): detailed / compact / hidden, toggled like Claude Desktop. */
+.side { width: 272px; flex: none; background: var(--side); border-right: 1px solid var(--line-soft); display: flex; flex-direction: column; overflow: hidden; }
+.compact .side { width: 232px; }
+.hidden .side { width: 0; border-right: 0; }
+.side-head { display: flex; align-items: center; gap: 6px; padding: 10px 12px 4px; }
+.side-head .space { color: var(--strong); font-weight: 700; font-size: 12px; }
+.side-head .seg { margin-left: auto; display: inline-flex; border: 1px solid var(--line); border-radius: 6px; overflow: hidden; }
+.side-head .seg button { font-size: 11px; padding: 1px 7px; color: var(--dim); }
+.side-head .seg button[aria-pressed="true"] { background: var(--sel); color: var(--strong); }
+.list { flex: 1; overflow: hidden; padding: 4px 0 10px; }
+.rule { color: var(--faint); padding: 12px 12px 4px; font-size: 11px; white-space: nowrap; overflow: hidden; }
+.C .rule { font-weight: 600; letter-spacing: .02em; }
+.s { display: grid; grid-template-columns: 14px 1fr auto; column-gap: 6px; padding: 4px 12px; }
+.s:hover { background: var(--hover); }
+.s.on { background: var(--sel); }
+.s .g { font-weight: 700; }
+.s .t { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.s.on .t { color: var(--strong); }
+.s .a { color: var(--faint); font-size: 11.5px; }
+.s .w { grid-column: 2 / 4; color: var(--dim); font-size: 11.5px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.compact .s .w { display: none; }
+.side-foot { border-top: 1px solid var(--line-soft); padding: 8px 12px; display: flex; justify-content: space-between; color: var(--dim); font-size: 11.5px; }
+
+.work { flex: 1; min-width: 0; display: flex; flex-direction: column; }
+
+/* C: tab strip on top. A: tabs live in the bottom status line instead. */
+.tabs { height: 36px; flex: none; display: none; align-items: stretch; padding: 0 8px; background: var(--strip); border-bottom: 1px solid var(--line-soft); color: var(--dim); }
+.C .tabs { display: flex; }
+.tabs > span { display: flex; align-items: center; gap: 6px; padding: 0 14px; }
+.tabs .on { background: var(--win); color: var(--strong); font-weight: 500; border-left: 1px solid var(--line-soft); border-right: 1px solid var(--line-soft); margin-bottom: -1px; }
+
+.grid { flex: 1; min-height: 0; min-width: 0; display: grid; grid-template-columns: 1.2fr 1fr; grid-template-rows: 1fr 1fr; }
+.A .grid { padding: 12px 0 0 1px; }
+.C .grid { gap: 6px; padding: 6px; background: var(--strip); }
+
+.p { position: relative; min-width: 0; min-height: 0; display: flex; flex-direction: column; background: var(--win); }
+.p.big { grid-row: span 2; }
+.A .p { border: 1px solid var(--line); margin: -1px 0 0 -1px; padding: 14px 14px 8px; }
+.A .p.focus { border-color: var(--focus); z-index: 1; }
+.C .p { border: 1px solid var(--line-soft); border-radius: 8px; overflow: hidden; }
+.C .p.focus { border-color: var(--focus); }
+
+/* Pane title: in the border (A) or a header bar (C). Actions show on hover or when it needs you. */
+.label { display: flex; align-items: center; gap: 8px; }
+.A .label { position: absolute; top: -1px; left: 10px; right: 10px; transform: translateY(-50%); pointer-events: none; }
+.A .label > * { pointer-events: auto; background: var(--win); padding: 0 6px; }
+.C .label { height: 30px; flex: none; padding: 0 8px 0 10px; background: var(--head); border-bottom: 1px solid var(--line-soft); font-size: 12.5px; }
+.C .p.focus .label { background: var(--head-focus); }
+.label .name { color: var(--dim); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; }
+.p.focus .label .name { color: var(--strong); }
+.C .label .name { color: var(--strong); font-weight: 500; }
+.label .state { display: none; }
+.C .label .state { display: inline-flex; align-items: center; gap: 5px; font-size: 11.5px; font-weight: 600; padding: 1px 7px; border-radius: 5px; flex: none; }
+.label .meta { display: none; }
+.C .label .meta { display: inline; color: var(--dim); font-size: 11.5px; flex: none; margin-left: auto; }
+.label .acts { margin-left: auto; display: flex; gap: 2px; opacity: 0; transition: opacity .12s; flex: none; }
+.C .label .acts { margin-left: 6px; }
+.p:hover .label .acts, .p.focus .label .acts, .p.needs .label .acts { opacity: 1; }
+.label .acts button { font-size: 11.5px; padding: 1px 7px; border-radius: 4px; color: var(--dim); }
+.label .acts button:hover { background: var(--hover); color: var(--strong); }
+.label .acts button.do { background: var(--chip); color: var(--on-chip); font-weight: 700; }
+
+.baton { flex: none; color: var(--dim); font-size: 11.5px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.A .baton { padding-bottom: 7px; margin-bottom: 7px; border-bottom: 1px dashed var(--line-soft); }
+.C .baton { padding: 5px 12px; border-bottom: 1px solid var(--line-soft); }
+.baton b { color: var(--text); font-weight: 400; }
+.term { flex: 1; min-height: 0; white-space: pre; overflow: hidden; font-size: 12px; line-height: 1.5; }
+.C .term { padding: 8px 12px; }
+.d { color: var(--faint); } .k { color: var(--working); } .ok { color: var(--ok); } .er { color: var(--error); } .bl { color: var(--blue); } .rv { color: var(--review); } .wt { color: var(--waiting); } .mg { color: var(--mag); } .st { color: var(--strong); font-weight: 700; }
+.cur { background: var(--text); }
+
+/* A: bottom status line with tabs; C keeps a slim one for branch and clock only. */
+.bar { height: 26px; flex: none; display: flex; align-items: center; font-size: 11.5px; background: var(--bar); border-top: 1px solid var(--line-soft); font-family: "JetBrains Mono", "SF Mono", Menlo, monospace; }
+.bar .w { background: var(--chip); color: var(--on-chip); padding: 0 10px; height: 100%; display: flex; align-items: center; font-weight: 700; }
+.bar .tab { padding: 0 9px; color: var(--dim); display: inline-flex; gap: 5px; }
+.bar .tab.on { color: var(--strong); }
+.C .bar .w, .C .bar .tab { display: none; }
+.bar .r { margin-left: auto; display: flex; align-items: center; gap: 14px; padding: 0 10px; color: var(--dim); }
+.bar .need { color: var(--error); font-weight: 700; }
+.C .bar .need { display: none; }
+.bar kbd { font: inherit; font-weight: 400; opacity: .7; margin-left: 4px; }
+
+.legend { max-width: 1400px; width: 100%; display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px; font-size: 12.5px; color: #2f3238; }
+.legend div { background: #e6e8ec; border-radius: 8px; padding: 10px 12px; }
+.legend b { color: #111; }
+@media (max-width: 900px) { .legend { grid-template-columns: 1fr; } }
+</style>
+</head>
+<body>
+<div class="controls">
+  <span>样式</span>
+  <span class="grp" role="group" aria-label="样式"><button type="button" data-style="A" aria-pressed="true">A 终端原生</button><button type="button" data-style="C" aria-pressed="false">C 标准</button></span>
+  <span>侧边栏</span>
+  <span class="grp" role="group" aria-label="侧边栏"><button type="button" data-side="detail" aria-pressed="true">详细</button><button type="button" data-side="compact" aria-pressed="false">紧凑</button><button type="button" data-side="hidden" aria-pressed="false">收起 ⌘B</button></span>
+  <span>主题</span>
+  <span class="grp" role="group" aria-label="主题"><button type="button" data-theme-btn="dark" aria-pressed="true">深色</button><button type="button" data-theme-btn="light" aria-pressed="false">浅色</button></span>
+</div>
+<div class="explain">A 和 C 是设置里的两个样式，任选；两者都带 B 的「停在」和可收起的侧边栏（开关在红绿灯旁，⌘B）。终端内容照你现在实际用的样子铺满：左边是这次 Claude 会话，右上 Codex 在跑测试出错，右下在编译。会话标题和标签取自你 10-30 的数据，终端文字是仿写。</div>
+
+<div class="win A" id="win">
+  <div class="top chrome">
+    <span class="lights"><i></i><i></i><i></i></span>
+    <button type="button" class="iconbtn" id="sideToggle" aria-label="显示或隐藏侧边栏 ⌘B" title="侧边栏 ⌘B">
+      <svg width="16" height="14" viewBox="0 0 16 14" fill="none" stroke="currentColor" stroke-width="1.4" aria-hidden="true"><rect x="1" y="1" width="14" height="12" rx="2.5"/><path d="M6 1v12"/></svg>
+    </button>
+    <span class="name">keepline — 工作空间</span>
+    <span class="find">⌘P 搜会话、待办、原话</span>
+    <span class="need">● 需要你 2 <span style="opacity:.7;font-weight:400">⌘J</span></span>
+  </div>
+  <div class="body">
+    <aside class="side chrome" aria-label="会话">
+      <div class="side-head"><span class="space">工作空间</span><span class="d">13</span>
+        <span class="seg" role="group" aria-label="密度"><button type="button" data-side="detail" aria-pressed="true">详细</button><button type="button" data-side="compact" aria-pressed="false">紧凑</button></span>
+      </div>
+      <div class="list">
+        <div class="rule">── 需要你 2 ────────────────</div>
+        <div class="s"><span class="g er">✕</span><span class="t">这个终止 agent 中断取消</span><span class="a">4m</span><span class="w">停在：managed_session 测试超时</span></div>
+        <div class="s"><span class="g er">✕</span><span class="t">这个目录的 grok 的聊天记录</span><span class="a">12m</span><span class="w">停在：找不到 grok 的会话目录</span></div>
+        <div class="rule">── 在跑 2 ──────────────────</div>
+        <div class="s on"><span class="g k">◐</span><span class="t">这个诊断的 ui 感觉很丑啊</span><span class="a">41:07</span><span class="w">正在写主界面 A / C 两种样式</span></div>
+        <div class="s"><span class="g k">◐</span><span class="t">标签命名依旧有问题</span><span class="a">3:12</span><span class="w">正在编译 keepline-app</span></div>
+        <div class="rule">── 做完了，等你核对 4 ──────</div>
+        <div class="s"><span class="g rv">✓</span><span class="t">左侧的会话 有什么好的命名</span><span class="a">2h</span><span class="w">做成了：标签用第一句话命名</span></div>
+        <div class="s"><span class="g rv">✓</span><span class="t">这个 keepline 的 gpu 占用</span><span class="a">3h</span><span class="w">做成了：只重画变化的区域</span></div>
+        <div class="s"><span class="g rv">✓</span><span class="t">为什么有的会话 在 keepline 里</span><span class="a">5h</span><span class="w">做成了：外部会话标为只读</span></div>
+        <div class="s"><span class="g rv">✓</span><span class="t">cli 是否支持 workflow 呢</span><span class="a">1d</span><span class="w">做成了：说明了 workflow 命令</span></div>
+        <div class="rule">── 停下了 3 ─────────────────</div>
+        <div class="s"><span class="g wt">‖</span><span class="t">我准备 重启一下 mac keepline</span><span class="a">2h</span><span class="w">停在：等你确认是否重启</span></div>
+        <div class="s"><span class="g wt">‖</span><span class="t">这个库 有什么可以优化的</span><span class="a">6h</span><span class="w">停在：列了 12 条，没开始改</span></div>
+        <div class="s"><span class="g wt">‖</span><span class="t">看这里 选中一个内容后</span><span class="a">1d</span><span class="w">停在：复现了选区跳动</span></div>
+        <div class="rule">── 很久没动 165 · 鸟瞰里清理 ─</div>
+        <div class="rule">── 已关闭 21 · ⌘P 找回 ──────</div>
+      </div>
+      <div class="side-foot"><span>▦ 鸟瞰</span><span>本机诊断</span><span>设置</span></div>
+    </aside>
+
+    <section class="work">
+      <div class="tabs chrome"><span class="on"><span class="k">◐</span>这个诊断的 ui…</span><span><span class="k">◐</span>CLI workflow</span><span><span class="er">●</span>这个 keepline…</span><span>zsh 2</span><span>zsh 3</span><span>＋</span></div>
+      <div class="grid">
+        <div class="p big focus">
+          <div class="label chrome"><span class="state" style="background:var(--head);color:var(--working)">◐ 在跑</span><span class="name">claude · 这个诊断的 ui 感觉很丑啊<span class="a-only"> · <span class="k">◐ 41:07</span></span></span><span class="meta">claude · 41:07</span><span class="acts"><button type="button">看进度</button></span></div>
+          <div class="baton chrome">停在 <b>写主界面 A / C 两种样式的稿子</b> · 你要它 <b>把诊断面板和 App 的界面改好看</b></div>
+          <div class="term"><span class="d">&gt;</span> A是一个选项 C也是一个选项 然后你做的时候 尽量mock一下我当前页面的文本铺满这种
+
+<span class="bl">●</span> 收到，按你的意思改：A 和 C 做成两个可以切换的样式，
+  都保留 B 的「停在」和侧边栏收起功能。终端内容照你现在实际用的样子铺满。
+
+<span class="bl">●</span> <span class="st">Read</span>(specs/terminal-workbench/design/main-directions.html)
+  <span class="d">⎿  Read 312 lines</span>
+
+<span class="bl">●</span> <span class="st">Write</span>(specs/terminal-workbench/design/main-a-plus.html)
+  <span class="d">⎿  Wrote 268 lines to specs/terminal-workbench/design/main-a-plus.html</span>
+     <span class="d">1</span> <span class="mg">&lt;!doctype html&gt;</span>
+     <span class="d">2</span> <span class="mg">&lt;html</span> lang=<span class="ok">"zh-CN"</span><span class="mg">&gt;</span>
+     <span class="d">3</span> <span class="mg">&lt;head&gt;</span>
+     <span class="d">4</span> <span class="mg">&lt;meta</span> charset=<span class="ok">"utf-8"</span><span class="mg">&gt;</span>
+     <span class="d">…</span> <span class="d">+264 lines (ctrl+o to expand)</span>
+
+<span class="bl">●</span> <span class="st">Bash</span>(cargo test -q -p keepline-app -p keepline-core)
+  <span class="d">⎿  test result: ok. 69 passed; 0 failed; 0 ignored
+     test result: ok. 40 passed; 0 failed; 0 ignored</span>
+
+<span class="bl">●</span> <span class="st">Bash</span>(git push origin HEAD:main)
+  <span class="d">⎿     0d3a2dd..2d05544  HEAD -&gt; main</span>
+
+<span class="bl">●</span> 标签的修复已经推到 main（2d05544）。剩下 6 个界面的 HTML 稿分给
+  4 个子代理同时出：
+
+  <span class="d">│</span> 稿子                 <span class="d">│</span> 主要改了什么                       <span class="d">│</span>
+  <span class="d">├──────────────────────┼────────────────────────────────────┤</span>
+  <span class="d">│</span> ⌘P 命令面板          <span class="d">│</span> 状态计数、命中高亮、不重复列        <span class="d">│</span>
+  <span class="d">│</span> 新建待办 · 待办详情  <span class="d">│</span> 验收标准逐条编辑、按条挂证据        <span class="d">│</span>
+  <span class="d">│</span> 设置页               <span class="d">│</span> 外观缩略图、可过滤快捷键表          <span class="d">│</span>
+  <span class="d">│</span> App 菜单栏弹窗       <span class="d">│</span> 「3 项需要你」、连不上后台状态      <span class="d">│</span>
+
+<span class="k">✻</span> Writing main-a-plus.html… <span class="d">(41m 07s · ↓ 18.2k tokens · esc to interrupt)</span>
+
+<span class="d">╭────────────────────────────────────────────────────────────────────╮</span>
+<span class="d">│</span> &gt; <span class="cur"> </span>                                                                <span class="d">│</span>
+<span class="d">╰────────────────────────────────────────────────────────────────────╯</span>
+  <span class="d">⏵⏵ bypass permissions on (shift+tab to cycle)</span></div>
+        </div>
+
+        <div class="p needs">
+          <div class="label chrome"><span class="state" style="background:var(--err-wash);color:var(--error)">✕ 出错</span><span class="name">codex · 这个终止 agent 中断取消<span class="a-only"> · <span class="er">✕ 出错</span></span></span><span class="meta">codex · 4 分钟前</span><span class="acts"><button type="button" class="do">继续</button><button type="button">看进度</button></span></div>
+          <div class="baton chrome">停在 <b class="er">managed_session 测试超时</b></div>
+          <div class="term"><span class="d">›</span> 终止 agent 的时候能不能先中断再取消？
+
+<span class="ok">•</span> 先发 Ctrl-C，等 2 秒还活着再发 SIGTERM，
+  已经写好，跑一下集成测试确认。
+
+<span class="ok">•</span> <span class="st">Ran</span> cargo test -p keeplined --test managed_session
+  <span class="d">└</span> running 49 tests
+    test diagnostic_stream_measures_a_busy… ok
+    test stop_sends_interrupt_before_term … ok
+    test resume_keeps_the_session_identity … ok
+    test a_dialog_gone_from_the_screen_is_s… <span class="er">FAILED</span>
+
+    <span class="er">failures:</span>
+    ---- a_dialog_gone_from_the_screen ----
+    thread panicked at managed_session.rs:2401:9:
+    <span class="er">timed out waiting for Settled after 30s</span>
+
+    test result: <span class="er">FAILED</span>. 44 passed; 1 failed; 4 ignored
+
+<span class="ok">•</span> 这个失败和改动无关，单独跑两次都过，
+  像是高负载下的超时。要我加长等待吗？
+
+<span class="d">  Worked for 4m 51s</span></div>
+        </div>
+
+        <div class="p">
+          <div class="label chrome"><span class="state" style="background:var(--head);color:var(--working)">◐ 在跑</span><span class="name">claude · 标签命名依旧有问题<span class="a-only"> · <span class="k">◐ 3:12</span></span></span><span class="meta">claude · 3:12</span><span class="acts"><button type="button">看进度</button></span></div>
+          <div class="baton chrome">停在 <b>改完 tabs.rs，正在编译</b></div>
+          <div class="term"><span class="bl">●</span> <span class="st">Bash</span>(cargo build -p keepline-app)
+  <span class="d">⎿    Compiling keepline-core v0.4.0
+       Compiling keeplined v0.4.0
+       Compiling keepline-app v0.4.0
+    warning: function `capture` is never used
+       --&gt; crates/keepline-app/src/terminal/screen.rs:462
+        Finished `dev` profile in 41.38s</span>
+
+<span class="bl">●</span> 编译过了。新开 Codex 后标签会叫
+  「标签命名依旧有问题」，手动改过的不覆盖。
+
+<span class="k">✻</span> Running visual check… <span class="d">(3m 12s)</span></div>
+        </div>
+      </div>
+    </section>
+  </div>
+  <div class="bar">
+    <span class="w">工作空间</span>
+    <span class="tab on"><span class="k">◐</span>1:这个诊断的 ui…*</span>
+    <span class="tab"><span class="k">◐</span>2:CLI workflow</span>
+    <span class="tab"><span class="er">✕</span>3:这个 keepline…</span>
+    <span class="tab">4:zsh 2</span>
+    <span class="tab">5:zsh 3</span>
+    <span class="r"><span class="need">需要你 2<kbd>⌘J</kbd></span><span>feat/sidebar-sessions</span><span>14:32</span></span>
+  </div>
+</div>
+
+<div class="legend">
+  <div><b>A 终端原生</b>：标签在底部状态行，窗格标题嵌在边框上，界面字也用等宽，状态用 ✕ ◐ ✓ ‖ 符号。适合大部分时间在终端里的时候。</div>
+  <div><b>C 标准</b>：标签在顶部，窗格有标题栏和状态小标签，界面字用系统字体，「需要你 2」在右上角。适合要频繁切会话、点按钮的时候。</div>
+  <div><b>两种都有</b>：B 的「停在」（左栏详细模式 + 窗格标题下一行）；侧边栏详细 / 紧凑 / 收起（⌘B）；窗格操作平时隐藏，悬停或需要你时出现，只有要你动手的「继续」是实心。</div>
+</div>
+
+<script>
+const win = document.getElementById('win');
+const pressed = (attr, v) => document.querySelectorAll(`[${attr}]`).forEach((b) => b.setAttribute('aria-pressed', String(b.getAttribute(attr) === v)));
+function setSide(mode) {
+  win.classList.toggle('compact', mode === 'compact');
+  win.classList.toggle('hidden', mode === 'hidden');
+  win.dataset.side = mode;
+  pressed('data-side', mode);
+}
+function setStyle(s) {
+  win.classList.toggle('A', s === 'A');
+  win.classList.toggle('C', s === 'C');
+  document.querySelectorAll('.a-only').forEach((e) => { e.style.display = s === 'A' ? '' : 'none'; });
+  pressed('data-style', s);
+}
+function setTheme(t) { document.documentElement.dataset.theme = t; pressed('data-theme-btn', t); }
+let last = 'detail';
+document.querySelectorAll('[data-side]').forEach((b) => b.addEventListener('click', () => {
+  if (b.dataset.side !== 'hidden') last = b.dataset.side;
+  setSide(b.dataset.side);
+}));
+document.querySelectorAll('[data-style]').forEach((b) => b.addEventListener('click', () => {
+  setStyle(b.dataset.style);
+  setTheme(b.dataset.style === 'A' ? 'dark' : 'light');
+}));
+document.querySelectorAll('[data-theme-btn]').forEach((b) => b.addEventListener('click', () => setTheme(b.dataset.themeBtn)));
+document.getElementById('sideToggle').addEventListener('click', () => setSide(win.dataset.side === 'hidden' ? last : 'hidden'));
+document.addEventListener('keydown', (e) => {
+  if (e.metaKey && e.key.toLowerCase() === 'b') { e.preventDefault(); document.getElementById('sideToggle').click(); }
+});
+// ?style=C&side=compact&theme=light for screenshots
+const q = new URLSearchParams(location.search);
+setStyle(q.get('style') || 'A');
+setSide(q.get('side') || 'detail');
+setTheme(q.get('theme') || (q.get('style') === 'C' ? 'light' : 'dark'));
+</script>
+</body>
+</html>
