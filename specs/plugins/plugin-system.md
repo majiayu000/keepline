@@ -37,6 +37,18 @@ Keepline 的左栏、Agent 支持和窗格装饰，是否改成由插件提供�
 | WASM（沙盒） | 声明式表达不了的逻辑 | 自定义左栏排法、复杂对话记录解析 |
 | 内置 Rust | 需要深度集成 | Claude / Codex / Grok 适配器（官方状态、子 Agent、共享后台） |
 
+## agent 类型：一个 JSON 能做到什么
+
+api 1 的声明能认出进程、启动和恢复、按 JSONL 绑定会话、卡片显示对话；回合状态、证据、标题都做不到，鸟瞰和左栏里分不准组。api 2 补上三项（都向下兼容，api 1 文件照常加载）：
+
+| 能力 | 声明 | 验收用的真实 CLI |
+|---|---|---|
+| 回合状态与证据 | `transcripts.events`：`when` 用 JSON 指针匹配记录（值写 `"*"` 表示字段存在），命中后映射成回合开始 / 结束 / 等你回答 / 出错、工具调用、执行结果（含退出码），交给后台已有的 `phase` / `tool` / `result` | Cursor |
+| 会话标题 | `title`：记录里的字段，或索引文件（JSONL，按会话 id 找），或 SQLite 按会话 id 查 | Cursor、OpenCode |
+| 对话来源：SQLite | `source: "sqlite"`：库路径、「哪些会话变了」的查询、「按会话增量读消息」的查询；只读打开、连接常驻、等锁很短、出错丢连接下次重开 | OpenCode |
+
+仍需要内置 Rust 适配器的：官方状态查询、子 Agent、共享后台的画面关联、Hook 安装。会话命名分支（`feat/session-naming-titles`）给三个内置 Agent 加的标题读法留在各自适配器里，经同一个 `title()` 入口。
+
 ## 插件包与统一报告
 
 ```
@@ -111,7 +123,8 @@ Row = Session { id, glyph: status, title, trailing: time | timer | text,
 |---|---|---|
 | 0 | 合入 agent 插件类型（注册表、声明式 Agent、适配器钩子、边界测试） | 完成（a1b8b60） |
 | 1 | 插件包、统一报告、设置页「插件」 | 完成 |
-| 2 | actions：右键菜单与 ⌘P 共用的动作声明（命令模板可用 `{cwd}` `{session_id}` `{transcript}` `{task}`，按条件显示） | 下一步 |
+| 2a | agent api 2：events（回合与证据）、title、SQLite 来源；用 Cursor（JSONL）和 OpenCode（SQLite）各写一个声明式插件验收 | 进行中 |
+| 2 | actions：右键菜单与 ⌘P 共用的动作声明（命令模板可用 `{cwd}` `{session_id}` `{transcript}` `{task}`，按条件显示） | |
 | 3 | rules：验证命令规则，修掉 bun / vitest 项目被判成没跑验证 | |
 | 4 | sidebar：声明格式，经典 / 状态 / 目录三个内置预设，左栏顶部切换，⌘B 收起，按左栏减密稿 | |
 | 5 | hooks / notifier：生命周期事件交给命令或 webhook，只读、带超时、失败不影响主流程 | |

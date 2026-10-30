@@ -146,6 +146,83 @@ pub struct Transcripts {
     pub assistant: String,
     /// The message text of a user or assistant record.
     pub text: Option<String>,
+    /// api 2: records that mark a turn, a question for the user, a tool call or its
+    /// result, so a declared CLI groups like a built-in one. Every matching rule applies.
+    #[serde(default)]
+    pub events: Vec<EventRule>,
+}
+
+/// One kind of record and what it means. `when` maps JSON pointers to the value each
+/// must hold; `"*"` only asks that the field exist.
+#[derive(Clone, Debug, PartialEq, Eq, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct EventRule {
+    pub when: std::collections::BTreeMap<String, serde_json::Value>,
+    /// The turn's state from this record on.
+    #[serde(default)]
+    pub turn: Option<TurnEvent>,
+    /// Pointer to the turn's id, for a record that starts one.
+    #[serde(default)]
+    pub id: Option<String>,
+    /// Pointer to what the CLI is asking, for a `waiting` record.
+    #[serde(default)]
+    pub waiting: Option<String>,
+    #[serde(default)]
+    pub tool: Option<ToolEvent>,
+    #[serde(default)]
+    pub result: Option<ResultEvent>,
+}
+impl EventRule {
+    pub fn matches(&self, record: &serde_json::Value) -> bool {
+        self.when.iter().all(|(pointer, want)| {
+            record
+                .pointer(pointer)
+                .is_some_and(|got| want == "*" || got == want)
+        })
+    }
+}
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum TurnEvent {
+    Running,
+    Waiting,
+    Completed,
+    Interrupted,
+    Error,
+}
+/// A tool call: pointers to its id (pairs it with its result), name and arguments. With
+/// `kind`, the call counts as evidence the way a built-in CLI's does: `command` reads the
+/// command line at `command` (tests and commits are recognised from it), `edit` the file
+/// at `path`.
+#[derive(Clone, Debug, PartialEq, Eq, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct ToolEvent {
+    pub id: String,
+    pub name: String,
+    #[serde(default)]
+    pub args: Option<String>,
+    #[serde(default)]
+    pub kind: Option<ToolKind>,
+    #[serde(default)]
+    pub command: Option<String>,
+    #[serde(default)]
+    pub path: Option<String>,
+}
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum ToolKind {
+    Command,
+    Edit,
+}
+/// A tool result: pointers to the call it answers, its output and its exit code.
+#[derive(Clone, Debug, PartialEq, Eq, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct ResultEvent {
+    pub id: String,
+    #[serde(default)]
+    pub output: Option<String>,
+    #[serde(default)]
+    pub exit_code: Option<String>,
 }
 fn jsonl() -> String {
     "jsonl".into()
@@ -158,7 +235,7 @@ fn assistant() -> String {
 }
 
 /// The declaration format's major version; a file of another is refused, not guessed at.
-pub const API: u32 = 1;
+pub const API: u32 = 2;
 
 #[derive(Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -307,8 +384,11 @@ pub fn load_files(files: Vec<PathBuf>, home: &Path) -> (Vec<AgentSpec>, Vec<Load
 fn declare(file: &Path, home: &Path, known: &[AgentSpec]) -> Result<AgentSpec, String> {
     let bytes = std::fs::read(file).map_err(|e| format!("读不了：{e}"))?;
     let d: Declaration = serde_json::from_slice(&bytes).map_err(|e| format!("格式不对：{e}"))?;
-    if d.api != API {
-        return Err(format!("声明格式是 api {}，这个版本只认 api {API}", d.api));
+    if d.api == 0 || d.api > API {
+        return Err(format!(
+            "声明格式是 api {}，这个版本只认 api 1 到 {API}",
+            d.api
+        ));
     }
     let id_ok = !d.id.is_empty()
         && d.id.len() <= 40
@@ -363,6 +443,61 @@ fn declare(file: &Path, home: &Path, known: &[AgentSpec]) -> Result<AgentSpec, S
             return Err(format!(
                 "transcripts 里的 \"{p}\" 要写成 / 开头的 JSON 指针"
             ));
+        }
+        if !t.events.is_empty() && d.api < 2 {
+            return Err("transcripts.events 需要 api 2".into());
+        }
+        for (i, e) in t.events.iter().enumerate() {
+            let n = i + 1;
+            if e.when.is_empty() {
+                return Err(format!("events 第 {n} 条的 when 不能为空"));
+            }
+            if e.turn.is_none() && e.tool.is_none() && e.result.is_none() {
+                return Err(format!("events 第 {n} 条要写 turn、tool 或 result 之一"));
+            }
+            if let Some(t) = &e.tool {
+                match t.kind {
+                    Some(ToolKind::Command) if t.command.is_none() => {
+                        return Err(format!(
+                            "events 第 {n} 条的 tool 是 command，要写 command 指针"
+                        ));
+                    }
+                    Some(ToolKind::Edit) if t.path.is_none() => {
+                        return Err(format!("events 第 {n} 条的 tool 是 edit，要写 path 指针"));
+                    }
+                    _ => {}
+                }
+            }
+            let pointers = e
+                .when
+                .keys()
+                .chain(e.id.iter())
+                .chain(e.waiting.iter())
+                .chain(
+                    e.tool
+                        .iter()
+                        .flat_map(|t| {
+                            [
+                                Some(&t.id),
+                                Some(&t.name),
+                                t.args.as_ref(),
+                                t.command.as_ref(),
+                                t.path.as_ref(),
+                            ]
+                        })
+                        .flatten(),
+                )
+                .chain(
+                    e.result
+                        .iter()
+                        .flat_map(|r| [Some(&r.id), r.output.as_ref(), r.exit_code.as_ref()])
+                        .flatten(),
+                );
+            if let Some(p) = pointers.into_iter().find(|p| !p.starts_with('/')) {
+                return Err(format!(
+                    "events 第 {n} 条的 \"{p}\" 要写成 / 开头的 JSON 指针"
+                ));
+            }
         }
     }
     let name = if d.name.trim().is_empty() {
@@ -465,7 +600,7 @@ mod tests {
         let d = dir("bad");
         let cases = [
             ("1.json", "not json".to_owned()),
-            ("2.json", AIDER.replace("\"api\":1", "\"api\":2")),
+            ("2.json", AIDER.replace("\"api\":1", "\"api\":3")),
             (
                 "3.json",
                 AIDER.replace("\"id\":\"aider\"", "\"id\":\"claude\""),
@@ -493,7 +628,7 @@ mod tests {
         assert_eq!(specs.len(), 4, "only the good one registers");
         let refused = report.iter().filter(|r| r.result.is_err()).count();
         assert_eq!(refused, 8, "{report:#?}");
-        assert!(report[1].result.as_ref().unwrap_err().contains("api 2"));
+        assert!(report[1].result.as_ref().unwrap_err().contains("api 3"));
         assert!(
             report[2]
                 .result
@@ -501,6 +636,51 @@ mod tests {
                 .unwrap_err()
                 .contains("Claude Code")
         );
+    }
+
+    #[test]
+    fn api_2_events_load_and_are_checked() {
+        let d = dir("events");
+        let base = |api: u32, events: &str| {
+            format!(
+                r#"{{"api":{api},"id":"cursor","name":"Cursor","executable":"cursor-agent","start":"cursor-agent","resume":"cursor-agent --resume {{id}}",
+                "transcripts":{{"root":"/tmp/c","session":"/s","cwd":"/c","events":{events}}}}}"#
+            )
+        };
+        let ok = r#"[{"when":{"/type":"turn_end"},"turn":"completed"},
+            {"when":{"/type":"tool_call"},"tool":{"id":"/id","name":"/n","kind":"command","command":"/cmd"}}]"#;
+        std::fs::write(d.join("a.json"), base(2, ok)).unwrap();
+        let (specs, report) = load(&d, Path::new("/h"));
+        assert!(report[0].result.is_ok(), "{report:?}");
+        let events = &specs.last().unwrap().transcripts.as_ref().unwrap().events;
+        assert_eq!(events.len(), 2);
+        assert!(events[0].matches(&serde_json::json!({"type": "turn_end"})));
+        assert!(!events[0].matches(&serde_json::json!({"type": "turn_start"})));
+        for (body, why) in [
+            (base(1, ok), "需要 api 2"),
+            (base(3, ok), "只认 api 1 到 2"),
+            (
+                base(2, r#"[{"when":{},"turn":"completed"}]"#),
+                "when 不能为空",
+            ),
+            (base(2, r#"[{"when":{"/t":"x"}}]"#), "turn、tool 或 result"),
+            (
+                base(
+                    2,
+                    r#"[{"when":{"/t":"x"},"tool":{"id":"/i","name":"/n","kind":"command"}}]"#,
+                ),
+                "command 指针",
+            ),
+            (
+                base(2, r#"[{"when":{"t":"x"},"turn":"running"}]"#),
+                "JSON 指针",
+            ),
+        ] {
+            std::fs::write(d.join("a.json"), &body).unwrap();
+            let (_, report) = load(&d, Path::new("/h"));
+            let err = report[0].result.as_ref().unwrap_err();
+            assert!(err.contains(why), "{why}: {err}");
+        }
     }
 
     #[test]

@@ -4,8 +4,9 @@
 //! and shared-daemon screen association need a coded adapter.
 use super::{Adapter, Hint, Pending};
 use crate::content::{text, Parser};
-use keepline_core::agent::{AgentSpec, Transcripts};
+use keepline_core::agent::{AgentSpec, EventRule, ToolKind, Transcripts, TurnEvent};
 use keepline_core::content::Source;
+use keepline_core::content::Turn;
 use keepline_core::model::Agent;
 use keepline_core::protocol::TerminalNote;
 use serde_json::Value;
@@ -95,6 +96,7 @@ impl Adapter for Declared {
             }
             _ => {}
         }
+        apply_events(&t.events, parser, record, at, source);
     }
     fn pending(
         &self,
@@ -238,5 +240,181 @@ mod tests {
         assert_eq!(hint.note.note, "fake-cli · 没有对话记录");
         assert!(hint.note.why.contains("fake.json"));
         assert!(d.identity(Path::new("x"), &json!({"sid":"s"})).is_none());
+    }
+}
+
+/// api 2: what each matching rule says a record means, fed to the same parser calls the
+/// built-in adapters make, so turn state and evidence work the same for a declared CLI.
+pub(crate) fn apply_events(
+    rules: &[EventRule],
+    parser: &mut Parser,
+    record: &Value,
+    at: u64,
+    source: &Source,
+) {
+    let str_at = |p: &Option<String>| {
+        p.as_deref()
+            .and_then(|p| record.pointer(p))
+            .map(|v| v.as_str().map_or_else(|| v.to_string(), str::to_owned))
+            .unwrap_or_default()
+    };
+    for rule in rules.iter().filter(|r| r.matches(record)) {
+        if let Some(tool) = &rule.tool {
+            let id = str_at(&Some(tool.id.clone()));
+            // A declared kind speaks the built-ins' vocabulary, so the parser's evidence
+            // rules (commands, tests, commits, edited files) apply unchanged.
+            let (name, args) = match tool.kind {
+                Some(ToolKind::Command) => (
+                    "Bash".to_owned(),
+                    serde_json::json!({ "command": str_at(&tool.command) }),
+                ),
+                Some(ToolKind::Edit) => (
+                    "Edit".to_owned(),
+                    serde_json::json!({ "file_path": str_at(&tool.path) }),
+                ),
+                None => (
+                    str_at(&Some(tool.name.clone())),
+                    tool.args
+                        .as_deref()
+                        .and_then(|p| record.pointer(p))
+                        .cloned()
+                        .unwrap_or(Value::Null),
+                ),
+            };
+            parser.tool(&id, &name, args, at, source);
+        }
+        if let Some(result) = &rule.result {
+            let id = str_at(&Some(result.id.clone()));
+            let output = result
+                .output
+                .as_deref()
+                .and_then(|p| record.pointer(p))
+                .cloned()
+                .unwrap_or(Value::Null);
+            let code = result
+                .exit_code
+                .as_deref()
+                .and_then(|p| record.pointer(p))
+                .and_then(Value::as_i64)
+                .map(|n| n as i32);
+            parser.result(&id, &output, code, false, at, source);
+        }
+        if let Some(turn) = rule.turn {
+            let turn = match turn {
+                TurnEvent::Running => Turn::Running,
+                TurnEvent::Waiting => Turn::Waiting,
+                TurnEvent::Completed => Turn::Completed,
+                TurnEvent::Interrupted => Turn::Interrupted,
+                TurnEvent::Error => Turn::Error,
+            };
+            parser.phase(turn, &str_at(&rule.id), at, source);
+            if turn == Turn::Waiting {
+                let asked = str_at(&rule.waiting);
+                parser.card.waiting = if asked.is_empty() {
+                    "等你处理".into()
+                } else {
+                    asked
+                };
+            }
+        }
+    }
+}
+
+#[cfg(test)]
+mod event_tests {
+    use super::*;
+    use serde_json::json;
+
+    fn rules() -> Vec<EventRule> {
+        serde_json::from_value(json!([
+            {"when": {"/type": "turn_start"}, "turn": "running", "id": "/turn"},
+            {"when": {"/type": "turn_end"}, "turn": "completed"},
+            {"when": {"/type": "approval"}, "turn": "waiting", "waiting": "/message"},
+            {"when": {"/type": "tool_call", "/tool": "run_terminal_cmd"},
+             "tool": {"id": "/call", "name": "/tool", "kind": "command", "command": "/input/cmd"}},
+            {"when": {"/type": "tool_call", "/tool": "edit_file"},
+             "tool": {"id": "/call", "name": "/tool", "kind": "edit", "path": "/input/target"}},
+            {"when": {"/type": "tool_result"},
+             "result": {"id": "/call", "output": "/output", "exit_code": "/exit"}}
+        ]))
+        .unwrap()
+    }
+
+    fn feed(parser: &mut Parser, records: &[Value]) {
+        for (i, r) in records.iter().enumerate() {
+            let source = Source {
+                offset: i as u64,
+                ..Source::default()
+            };
+            apply_events(&rules(), parser, r, 100 + i as u64, &source);
+        }
+    }
+
+    #[test]
+    fn declared_events_give_turn_state_and_evidence_like_a_built_in() {
+        let mut parser = Parser::default();
+        feed(
+            &mut parser,
+            &[
+                json!({"type": "turn_start", "turn": "t1"}),
+                json!({"type": "tool_call", "tool": "run_terminal_cmd", "call": "c1",
+                       "input": {"cmd": "cargo test -q"}}),
+                json!({"type": "tool_result", "call": "c1", "exit": 0,
+                       "output": "test result: ok. 3 passed; 0 failed"}),
+                json!({"type": "tool_call", "tool": "edit_file", "call": "c2",
+                       "input": {"target": "src/lib.rs"}}),
+                json!({"type": "tool_result", "call": "c2", "exit": 0, "output": "ok"}),
+                json!({"type": "something_else"}),
+                json!({"type": "turn_end"}),
+            ],
+        );
+        assert_eq!(parser.card.turn, Turn::Completed);
+        let kinds: Vec<_> = parser
+            .card
+            .evidence
+            .iter()
+            .map(|e| e.kind.as_str())
+            .collect();
+        assert!(kinds.contains(&"command"), "{kinds:?}");
+        assert!(
+            kinds.contains(&"test"),
+            "a test run is verification: {kinds:?}"
+        );
+        assert!(kinds.contains(&"file"), "{kinds:?}");
+        assert_eq!(parser.card.turn_key, "t1");
+    }
+
+    #[test]
+    fn a_question_puts_the_turn_in_waiting_with_what_it_asks() {
+        let mut parser = Parser::default();
+        feed(
+            &mut parser,
+            &[
+                json!({"type": "turn_start", "turn": "t2"}),
+                json!({"type": "approval", "message": "允许运行 rm -rf build 吗？"}),
+            ],
+        );
+        assert_eq!(parser.card.turn, Turn::Waiting);
+        assert_eq!(parser.card.waiting, "允许运行 rm -rf build 吗？");
+    }
+
+    #[test]
+    fn a_failed_command_is_error_evidence_not_a_failed_turn() {
+        let mut parser = Parser::default();
+        feed(
+            &mut parser,
+            &[
+                json!({"type": "turn_start", "turn": "t3"}),
+                json!({"type": "tool_call", "tool": "run_terminal_cmd", "call": "c1",
+                       "input": {"cmd": "grep nothing ."}}),
+                json!({"type": "tool_result", "call": "c1", "exit": 1, "output": ""}),
+            ],
+        );
+        assert_eq!(parser.card.turn, Turn::Running);
+        assert!(parser
+            .card
+            .evidence
+            .iter()
+            .any(|e| e.kind == "error" && e.exit_code == Some(1)));
     }
 }
