@@ -37,6 +37,20 @@ pub(super) fn start(
             }).unwrap();
         };
         let values = |cx: &mut gpui::AsyncApp| handle.update(cx, |v, _, _| v.visual_settings_values()).unwrap();
+        // Every page in light and dark, for looking at the layout; changes nothing saved.
+        if phase == "tour" {
+            for (scheme, look) in [("light", crate::ui::appearance::Appearance::Light), ("dark", crate::ui::appearance::Appearance::Dark)] {
+                cx.update(|a| crate::ui::appearance::choose(look, a).unwrap());
+                for (i, page) in workbench::Workbench::visual_settings_pages().into_iter().enumerate() {
+                    handle.update(cx, |v, _, a| v.visual_settings_show(page, a)).unwrap();
+                    wait(300).await;
+                    shot(&format!("tour-{scheme}-{i}"), cx);
+                }
+            }
+            eprintln!("settings tour PASS");
+            cx.update(|a| a.quit());
+            return;
+        }
         if phase == "2" {
             let saved = values(cx);
             assert_eq!(saved.default_agent, keepline_core::model::Agent::Claude);
@@ -48,50 +62,56 @@ pub(super) fn start(
         }
         shot("general", cx);
         if phase == "1" {
-            click(790., 213., cx); wait(1000).await;
+            click(578., 148., cx); wait(1000).await;
             assert_eq!(values(cx).default_agent, keepline_core::model::Agent::Claude);
-            click(760., 280., cx); wait(1000).await;
+            click(723., 253., cx); wait(1000).await;
             assert_eq!(values(cx).away_minutes, 15);
-            click(850., 347., cx); wait(1000).await;
+            click(814., 315., cx); wait(1000).await;
             assert_eq!(values(cx).stale_days, 7);
             shot("general-saved", cx);
         }
-        click(70., 128., cx); wait(200).await;
-        assert_eq!(handle.update(cx, |v, _, a| v.visual_settings_page_name(a)).unwrap(), "外观与终端");
+        click(60., 153., cx); wait(200).await;
+        assert_eq!(handle.update(cx, |v, _, a| v.visual_settings_page_name(a)).unwrap(), "外观");
         shot("appearance", cx);
         if phase == "1" {
-            click(900., 213., cx); wait(200).await;
+            click(792., 176., cx); wait(200).await;
             assert_eq!(crate::ui::theme::Theme::scheme(), crate::ui::theme::Scheme::Dark);
-            click(822., 280., cx); wait(200).await;
+            click(60., 186., cx); wait(200).await;
+            assert_eq!(handle.update(cx, |v, _, a| v.visual_settings_page_name(a)).unwrap(), "终端");
+            click(300., 506., cx); wait(200).await;
             assert_eq!(crate::ui::terminal_text::current().family, "Menlo");
-            click(906., 347., cx); wait(200).await;
+            click(874., 314., cx); wait(200).await;
             assert_eq!(crate::ui::terminal_text::size(), 14.);
-            click(853., 413., cx); wait(200).await;
+            click(778., 380., cx); wait(200).await;
             assert_eq!(crate::ui::terminal_text::line_height(), 1.4);
             shot("appearance-dark-saved", cx);
             let blocked = crate::ui::terminal_text::path().unwrap().with_extension("json.tmp");
             std::fs::create_dir(&blocked).unwrap();
-            click(906., 347., cx); wait(200).await;
+            // The taller preview at 14 pt / 1.4× moves the size row down.
+            click(874., 344., cx); wait(200).await;
             assert_eq!(crate::ui::terminal_text::size(), 14., "failed save must not apply");
             shot("save-error", cx);
             std::fs::remove_dir(blocked).unwrap();
         }
-        click(70., 164., cx); wait(200).await;
+        click(67., 220., cx); wait(200).await;
         assert_eq!(handle.update(cx, |v, _, a| v.visual_settings_page_name(a)).unwrap(), "快捷键");
         shot("shortcuts", cx);
-        click(70., 200., cx); wait(200).await;
+        click(60., 255., cx); wait(200).await;
         assert_eq!(handle.update(cx, |v, _, a| v.visual_settings_page_name(a)).unwrap(), "通知");
         shot("notifications", cx);
-        click(70., 236., cx); wait(200).await;
+        click(60., 289., cx); wait(200).await;
         assert_eq!(handle.update(cx, |v, _, a| v.visual_settings_page_name(a)).unwrap(), "插件");
         shot("plugins", cx);
+        click(60., 323., cx); wait(200).await;
+        assert_eq!(handle.update(cx, |v, _, a| v.visual_settings_page_name(a)).unwrap(), "关于");
+        shot("about", cx);
         if phase == "inspect" {
-            eprintln!("settings native inspection: five category clicks and screenshots");
+            eprintln!("settings native inspection: seven category clicks and screenshots");
             cx.update(|a| a.quit());
             return;
         }
         // Native search input must receive characters without triggering workbench keys.
-        click(280., 98., cx);
+        click(106., 76., cx);
         cx.update_window(handle.into(), |_, w, a| {
             for key in ["f", "o", "n", "t"] { w.dispatch_keystroke(gpui::Keystroke::parse(key).unwrap(), a); }
         }).unwrap();
