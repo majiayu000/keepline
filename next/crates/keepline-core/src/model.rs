@@ -133,6 +133,9 @@ pub struct AgentSession {
     pub updated: u64,
     pub cwd: String,
     pub transcript: String,
+    /// What the user called it; empty leaves the name to the CLI and the first ask.
+    #[serde(default)]
+    pub name: String,
     /// The evidence that tied it to its terminal; `None` while it has never been bound.
     #[serde(default)]
     pub binding: Option<Binding>,
@@ -244,6 +247,11 @@ pub enum Edit {
         session: String,
         task: Task,
     },
+    /// Names a conversation; an empty name hands it back to the CLI and the first ask.
+    RenameSession {
+        id: String,
+        name: String,
+    },
 }
 
 impl Edit {
@@ -255,7 +263,10 @@ impl Edit {
     pub fn checks_revision(&self) -> bool {
         !matches!(
             self,
-            Self::PutTab { .. } | Self::CloseTab { .. } | Self::ClosePane { .. }
+            Self::PutTab { .. }
+                | Self::CloseTab { .. }
+                | Self::ClosePane { .. }
+                | Self::RenameSession { .. }
         )
     }
 }
@@ -438,10 +449,9 @@ impl Workspace {
         }
         if let Some(title) = sessions
             .iter()
-            .filter_map(|s| Some((s.updated, &self.content.get(&s.id)?.title)))
-            .filter(|(_, t)| !t.trim().is_empty())
+            .filter_map(|s| Some((s.updated, self.session_name(s)?)))
             .max_by_key(|(updated, _)| *updated)
-            .map(|(_, t)| crate::content::topic(t))
+            .map(|(_, t)| t)
         {
             return Some(title);
         }
@@ -486,6 +496,25 @@ impl Workspace {
             .iter()
             .find(|t| t.layout.as_ref().is_some_and(|l| l.contains(id)))
     }
+    /// What a conversation is called, best first: the name the user gave it, the one its
+    /// CLI keeps, its first ask. `None` when none of those is known.
+    pub fn session_name(&self, s: &AgentSession) -> Option<String> {
+        let named = s.name.trim();
+        if !named.is_empty() {
+            return Some(named.to_owned());
+        }
+        let c = self.content.get(&s.id)?;
+        let named = crate::content::topic(&c.name);
+        if !named.is_empty() {
+            return Some(crate::content::short(&named, 70));
+        }
+        // The first ask keeps its lines, so pasted chrome above the words can go.
+        let first = match c.asks.first() {
+            Some(q) if c.first_ask_known => q.text.as_str(),
+            _ => c.title.as_str(),
+        };
+        Some(crate::content::short(&crate::content::topic(first), 70)).filter(|t| !t.is_empty())
+    }
     pub fn current_agent(&self, terminal: &str) -> Option<&AgentSession> {
         self.agent_sessions
             .iter()
@@ -508,6 +537,7 @@ impl Workspace {
             }
             observed.id = old.id.clone();
             observed.task = old.task.clone();
+            observed.name = old.name.clone();
             observed.outcome = old.outcome.clone();
             observed.updated = old.updated.max(observed.updated);
             if observed.terminal.is_none() {
@@ -714,6 +744,13 @@ impl Workspace {
                     .ok_or("Agent 会话不存在")?
                     .task = task;
             }
+            Edit::RenameSession { id, name } => {
+                self.agent_sessions
+                    .iter_mut()
+                    .find(|s| s.id == id)
+                    .ok_or("Agent 会话不存在")?
+                    .name = name.split_whitespace().collect::<Vec<_>>().join(" ");
+            }
         }
         self.revision += 1;
         Ok(())
@@ -765,6 +802,7 @@ mod tests {
             cwd: "/tmp/a".into(),
             transcript: format!("/logs/{id}.jsonl"),
             binding: None,
+            name: String::new(),
         }
     }
     #[test]
@@ -1151,6 +1189,57 @@ mod tests {
             "'a'\\''$(touch /tmp/no)\nb'"
         );
     }
+    #[test]
+    fn session_names_prefer_the_user_then_the_cli_then_the_first_ask() {
+        let mut w = Workspace::default();
+        w.observe_agent(AgentSession {
+            terminal: None,
+            current: false,
+            ..observation("one")
+        })
+        .unwrap();
+        let id = w.agent_sessions[0].id.clone();
+        let session = |w: &Workspace| w.agent_sessions[0].clone();
+        assert_eq!(w.session_name(&session(&w)), None);
+        w.content.insert(
+            id.clone(),
+            crate::content::Content {
+                first_ask_known: true,
+                title: "跳至主要内容 你帮我看看 这个页面讲了什么".into(),
+                asks: vec![crate::content::Quote {
+                    text: "跳至主要内容\n你帮我看看 这个页面讲了什么".into(),
+                    ..Default::default()
+                }],
+                ..Default::default()
+            },
+        );
+        assert_eq!(
+            w.session_name(&session(&w)).as_deref(),
+            Some("这个页面讲了什么")
+        );
+        w.content.get_mut(&id).unwrap().name = "总结页面".into();
+        assert_eq!(w.session_name(&session(&w)).as_deref(), Some("总结页面"));
+        w.edit(Edit::RenameSession {
+            id: id.clone(),
+            name: "我的名字".into(),
+        })
+        .unwrap();
+        // Seeing the conversation again keeps what the user called it.
+        w.observe_agent(AgentSession {
+            terminal: None,
+            current: false,
+            ..observation("one")
+        })
+        .unwrap();
+        assert_eq!(w.session_name(&session(&w)).as_deref(), Some("我的名字"));
+        assert!(
+            w.edit(Edit::RenameSession {
+                id: "missing".into(),
+                name: "x".into(),
+            })
+            .is_err()
+        );
+    }
 }
 
 #[cfg(test)]
@@ -1183,6 +1272,7 @@ mod identity_tests {
             cwd: "/tmp".into(),
             transcript: "/log".into(),
             binding: None,
+            name: String::new(),
         };
         w.observe_agent(session.clone()).unwrap();
         session.terminal = Some("two".into());

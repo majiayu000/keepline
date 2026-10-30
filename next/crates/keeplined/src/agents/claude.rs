@@ -83,6 +83,12 @@ impl Adapter for Claude {
                 parser.card.interactive = true;
             }
         }
+        // `/rename` and the desktop app write the conversation's title; the last one wins.
+        if m["type"] == "custom-title" {
+            if let Some(name) = m["customTitle"].as_str() {
+                parser.card.name = name.trim().to_owned();
+            }
+        }
         if m["type"] == "queue-operation" {
             parser.machine_prompt(&text(&m["content"]));
         } else if m["type"] == "user" {

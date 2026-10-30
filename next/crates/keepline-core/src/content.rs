@@ -41,6 +41,10 @@ pub struct Content {
     #[serde(default)]
     pub first_ask_known: bool,
     pub title: String,
+    /// The name the CLI itself keeps for the conversation: Claude's `/rename` title,
+    /// Codex's generated thread name. Empty when it has none.
+    #[serde(default)]
+    pub name: String,
     pub asks: Vec<Quote>,
     pub evidence: Vec<Evidence>,
     pub last_reply: String,
@@ -175,10 +179,19 @@ pub fn plain_line(text: &str) -> String {
 }
 /// A first ask as a name: the polite lead-in most asks share ("你帮我看看") goes,
 /// so tabs and rows start with what differs. Runs of spaces, as in a pasted table
-/// row, become one so the name is not mostly blank.
+/// row, become one so the name is not mostly blank. Pasted page chrome, table rules
+/// and bare ids name nothing and go while words remain; a link reads as its site and
+/// last path segment, and a leading slash command gives way to its argument.
 pub fn topic(title: &str) -> String {
-    let title = title.split_whitespace().collect::<Vec<_>>().join(" ");
-    const LEAD: [&str; 16] = [
+    let lines: Vec<&str> = title.lines().filter(|l| !l.trim().is_empty()).collect();
+    let kept: Vec<&str> = lines.iter().copied().filter(|l| !noise(l)).collect();
+    let title = if kept.is_empty() { lines } else { kept }
+        .iter()
+        .flat_map(|l| l.split_whitespace())
+        .map(link)
+        .collect::<Vec<_>>()
+        .join(" ");
+    const LEAD: [&str; 20] = [
         "你",
         "请",
         "帮我",
@@ -192,21 +205,38 @@ pub fn topic(title: &str) -> String {
         "查查",
         "查一下",
         "一下",
+        "我想要",
+        "我想",
+        "我准备",
+        "我要",
         "，",
         ",",
         " ",
     ];
-    let mut rest = title.trim();
     // A pasted image leaves "[Image #1]" where it was; it names nothing.
-    fn image(s: &str) -> Option<&str> {
-        let n = s.strip_prefix("[Image #")?;
+    fn image(s: &str) -> Option<(usize, usize)> {
+        let at = s.find("[Image #")?;
+        let n = &s[at + "[Image #".len()..];
         let digits = n.len() - n.trim_start_matches(|c: char| c.is_ascii_digit()).len();
-        n[digits..].strip_prefix(']').filter(|_| digits > 0)
+        n[digits..].starts_with(']').then_some(())?;
+        (digits > 0).then_some((at, at + "[Image #".len() + digits + 1))
+    }
+    let mut rest = title.trim();
+    // "/goal 只要一张立绘" names what follows the command.
+    if let Some((command, argument)) = rest.split_once(' ')
+        && command.len() > 1
+        && command.starts_with('/')
+        && !command[1..].contains('/')
+        && argument.trim().chars().count() >= 4
+    {
+        rest = argument.trim_start();
     }
     loop {
         // An image placeholder goes whenever words follow it, however few.
-        if let Some(next) = image(rest).filter(|n| !n.trim().is_empty()) {
-            rest = next.trim_start();
+        if let Some((0, to)) = image(rest)
+            && !rest[to..].trim().is_empty()
+        {
+            rest = rest[to..].trim_start();
             continue;
         }
         match LEAD.iter().find_map(|p| rest.strip_prefix(p)) {
@@ -214,7 +244,52 @@ pub fn topic(title: &str) -> String {
             _ => break,
         }
     }
-    rest.trim().to_owned()
+    // Placeholders further in go too, as long as words remain.
+    let mut bare = rest.to_owned();
+    while let Some((from, to)) = image(&bare) {
+        bare.replace_range(from..to, " ");
+    }
+    if bare.trim().is_empty() {
+        return rest.trim().to_owned();
+    }
+    bare.split_whitespace().collect::<Vec<_>>().join(" ")
+}
+/// A pasted line that names nothing: a web page's skip link, a box-drawn table row,
+/// a lone markup tag, or one that starts with a bare hex id.
+fn noise(line: &str) -> bool {
+    let l = line.trim();
+    let first = l.split_whitespace().next().unwrap_or("");
+    matches!(
+        l,
+        "跳至主要内容" | "跳到主要内容" | "Skip to main content" | "Skip to content"
+    ) || l
+        .chars()
+        .filter(|c| ('\u{2500}'..='\u{257f}').contains(c))
+        .count()
+        >= 2
+        || (l.starts_with('<') && l.ends_with('>'))
+        || (first.len() >= 16 && first.chars().all(|c| c.is_ascii_hexdigit()))
+}
+/// `https://www.github.com/a/claude-skills?x=1` reads as `github.com/claude-skills`,
+/// also when words run straight into it ("报错了https://…").
+fn link(word: &str) -> String {
+    let Some(at) = word.find("https://").or_else(|| word.find("http://")) else {
+        return word.to_owned();
+    };
+    let (lead, url) = word.split_at(at);
+    let rest = url.split_once("://").map_or(url, |(_, r)| r);
+    let rest = rest.split(['?', '#']).next().unwrap_or(rest);
+    let mut parts = rest.split('/').filter(|p| !p.is_empty());
+    let Some(host) = parts.next() else {
+        return word.to_owned();
+    };
+    let host = host.strip_prefix("www.").unwrap_or(host);
+    match parts.last() {
+        Some(last) => format!("{lead} {host}/{last}"),
+        None => format!("{lead} {host}"),
+    }
+    .trim_start()
+    .to_owned()
 }
 /// `Here::done` when nothing confirmed has happened yet.
 pub const NO_DONE: &str = "尚无已确认的修改、提交或测试成功证据";
@@ -426,6 +501,31 @@ mod tests {
         assert_eq!(topic("[Image #1][Image #2] 对比一下"), "对比一下");
         assert_eq!(topic("[Image #1]"), "[Image #1]");
         assert_eq!(topic("你帮我看看[Image #1]这是啥"), "这是啥");
+        assert_eq!(topic("这是哪个模型啊？[Image #1]"), "这是哪个模型啊？");
+        assert_eq!(topic("我准备 重启一下 mac"), "重启一下 mac");
+        assert_eq!(topic("/goal 只要一张立绘"), "只要一张立绘");
+        assert_eq!(topic("/loop"), "/loop");
+        assert_eq!(
+            topic("https://www.github.com/majiayu000/claude-skills?tab=1 看看这个"),
+            "github.com/claude-skills 看看这个"
+        );
+        assert_eq!(topic("https://x.com"), "x.com");
+        assert_eq!(
+            topic("这里为什么报错了啊https://ultrastudio.dev/app/jobs/42"),
+            "这里为什么报错了啊 ultrastudio.dev/42"
+        );
+        assert_eq!(
+            topic("跳至主要内容\n⌘J 京东AI数字员工\n这是什么"),
+            "⌘J 京东AI数字员工 这是什么"
+        );
+        assert_eq!(
+            topic("0502c5f0b2a2480592451db00c9d4a86     480p\n帮我用dms排查一下"),
+            "用dms排查一下"
+        );
+        assert_eq!(
+            topic("PR │ dsh-desk │ 106\n这些 PR 还开着吗"),
+            "这些 PR 还开着吗"
+        );
         assert_eq!(topic("🔥 线上 502 了快看看"), "🔥 线上 502 了快看看");
         assert_eq!(
             topic("你帮我看看 🤔 为什么构建这么慢"),
@@ -495,6 +595,7 @@ mod grouping_tests {
             cwd: "/tmp".into(),
             transcript: "f".into(),
             binding: None,
+            name: String::new(),
         };
         let w = Workspace::default();
         let mut c = Content {
@@ -542,6 +643,7 @@ mod grouping_tests {
             cwd: "/tmp".into(),
             transcript: "f".into(),
             binding: None,
+            name: String::new(),
         };
         let w = Workspace::default();
         let mut c = Content {

@@ -247,53 +247,70 @@ impl Workbench {
         let seen = crate::ui::status_colors::StatusColors::get();
         for (session, g, attention, _) in sessions.into_iter().take(SIDEBAR_SESSIONS) {
             let open = session.clone();
-            sidebar =
-                sidebar.child(
-                    div()
-                        .id(gpui::SharedString::from(format!("session-{}", session.id)))
-                        .h(px(T::ROW))
-                        .px(px(T::S8))
-                        .flex()
-                        .items_center()
-                        .gap(px(T::S8))
-                        .rounded(px(T::CONTROL_RADIUS))
-                        .cursor_pointer()
-                        .when(current.as_deref() == Some(session.id.as_str()), |d| {
-                            d.bg(T::color(T::raised()))
-                        })
-                        .hover(|s| s.bg(T::color(T::raised())))
-                        .child(if attention { dot(g) } else { seen_dot(g) })
-                        .child(
-                            div()
+            sidebar = sidebar.child(
+                div()
+                    .id(gpui::SharedString::from(format!("session-{}", session.id)))
+                    .h(px(T::ROW))
+                    .px(px(T::S8))
+                    .flex()
+                    .items_center()
+                    .gap(px(T::S8))
+                    .rounded(px(T::CONTROL_RADIUS))
+                    .cursor_pointer()
+                    .when(current.as_deref() == Some(session.id.as_str()), |d| {
+                        d.bg(T::color(T::raised()))
+                    })
+                    .hover(|s| s.bg(T::color(T::raised())))
+                    .child(if attention { dot(g) } else { seen_dot(g) })
+                    .child(
+                        match self
+                            .layout
+                            .renaming_session
+                            .as_ref()
+                            .filter(|(id, ..)| id == &session.id)
+                        {
+                            Some((_, field, _)) => div()
+                                .flex_1()
+                                .min_w_0()
+                                .text_size(px(T::MONO_SIZE))
+                                .child(field.clone()),
+                            None => div()
                                 .flex_1()
                                 .min_w_0()
                                 .truncate()
                                 .text_size(px(T::MONO_SIZE))
                                 .when(!attention, |d| d.text_color(T::color(seen.seen_title())))
                                 .child(self.session_title(session)),
-                        )
-                        // Rows that all wait for your next step tell apart by how long they have.
-                        .child(
-                            label(if g == Group::Ready && !attention {
-                                match age(self.session_updated(session)) {
-                                    a if a == "刚刚" => a,
-                                    a => format!("{a}前"),
-                                }
-                            } else {
-                                g.label().to_owned()
-                            })
-                            .text_size(px(T::CHIP_SIZE))
-                            .text_color(if attention {
-                                g.colors().1
-                            } else {
-                                T::color(seen.seen_status())
-                            }),
-                        )
-                        // Straight to its pane; an exited one resumes in a new pane.
-                        .on_click(cx.listener(move |this, _, window, cx| {
+                        },
+                    )
+                    // Rows that all wait for your next step tell apart by how long they have.
+                    .child(
+                        label(if g == Group::Ready && !attention {
+                            match age(self.session_updated(session)) {
+                                a if a == "刚刚" => a,
+                                a => format!("{a}前"),
+                            }
+                        } else {
+                            g.label().to_owned()
+                        })
+                        .text_size(px(T::CHIP_SIZE))
+                        .text_color(if attention {
+                            g.colors().1
+                        } else {
+                            T::color(seen.seen_status())
+                        }),
+                    )
+                    // Straight to its pane; an exited one resumes in a new pane.
+                    .on_click(
+                        cx.listener(move |this, event: &gpui::ClickEvent, window, cx| {
+                            if event.click_count() == 2 {
+                                this.rename_session(&open.id, window, cx);
+                                return;
+                            }
                             this.open_session(&open, window, cx)
-                        })),
-                );
+                        }),
+                    ),
+            );
         }
         for (terminal, (note, why)) in unread {
             let focused = self.nav.focused.as_deref() == Some(terminal.as_str());

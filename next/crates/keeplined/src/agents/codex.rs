@@ -8,8 +8,11 @@ use regex::Regex;
 use serde::Deserialize;
 use serde_json::{json, Value};
 use std::{
+    collections::HashMap,
+    fs::File,
+    io::{Read, Seek, SeekFrom},
     path::{Path, PathBuf},
-    sync::LazyLock,
+    sync::{LazyLock, Mutex},
 };
 
 pub struct Codex;
@@ -46,6 +49,11 @@ impl Adapter for Codex {
             }
         }
         Some(json!({"type":"session_meta","payload":p}))
+    }
+    /// A rollout is named `rollout-<time>-<thread id>.jsonl`.
+    fn name(&self, root: &Path, transcript: &Path) -> Option<String> {
+        let stem = transcript.file_stem()?.to_str()?;
+        thread_name(root, stem.get(stem.len().checked_sub(36)?..)?)
     }
     fn identity(&self, _path: &Path, value: &Value) -> Option<(String, String)> {
         if value["type"] != "session_meta" {
@@ -287,6 +295,52 @@ fn codex_state(title: &str) -> Option<&'static str> {
         Some("空闲")
     }
 }
+/// Codex names each thread in `session_index.jsonl` beside `sessions/`, appending a line
+/// whenever it is named or renamed, so the last line for a thread wins. The file is read
+/// once, then only what was appended since.
+fn thread_name(root: &Path, id: &str) -> Option<String> {
+    struct Names {
+        path: PathBuf,
+        read: u64,
+        names: HashMap<String, String>,
+    }
+    static NAMES: Mutex<Option<Names>> = Mutex::new(None);
+    let path = root.parent()?.join("session_index.jsonl");
+    let len = std::fs::metadata(&path).ok()?.len();
+    let mut names = NAMES.lock().ok()?;
+    if names
+        .as_ref()
+        .is_none_or(|n| n.path != path || len < n.read)
+    {
+        *names = Some(Names {
+            path: path.clone(),
+            read: 0,
+            names: HashMap::new(),
+        });
+    }
+    let n = names.as_mut()?;
+    if len > n.read {
+        let mut file = File::open(&path).ok()?;
+        file.seek(SeekFrom::Start(n.read)).ok()?;
+        let mut appended = Vec::new();
+        file.take(len - n.read).read_to_end(&mut appended).ok()?;
+        // A line still being written waits for its newline.
+        let complete = appended
+            .iter()
+            .rposition(|b| *b == b'\n')
+            .map_or(0, |i| i + 1);
+        for line in appended[..complete].split(|b| *b == b'\n') {
+            let Ok(v) = serde_json::from_slice::<Value>(line) else {
+                continue;
+            };
+            if let (Some(id), Some(name)) = (v["id"].as_str(), v["thread_name"].as_str()) {
+                n.names.insert(id.to_owned(), name.trim().to_owned());
+            }
+        }
+        n.read += complete as u64;
+    }
+    n.names.get(id).filter(|s| !s.is_empty()).cloned()
+}
 
 // Codex options that consume the next argv element; anything else positional ends option parsing.
 const CODEX_VALUE_FLAGS: &[&str] = &[
@@ -389,5 +443,37 @@ mod tests {
         );
         // `--no-daemon`: unbound, but nothing to say until its first prompt.
         assert_eq!(Codex.pending(&process(3, 0, true), &[]), Pending::Quiet);
+    }
+    use std::io::Write;
+
+    #[test]
+    fn thread_names_follow_appended_renames_and_wait_for_whole_lines() {
+        let home =
+            std::env::temp_dir().join(format!("keepline-codex-names-{}", std::process::id()));
+        std::fs::create_dir_all(home.join("sessions")).unwrap();
+        let index = home.join("session_index.jsonl");
+        let id = "01a18aad-c882-79a2-9d72-3ee5359f0add";
+        let rollout = home.join(format!("sessions/rollout-2026-10-30T10-40-10-{id}.jsonl"));
+        std::fs::write(
+            &index,
+            format!("{{\"id\":\"{id}\",\"thread_name\":\"查找网站\"}}\n{{\"id\":\"other\",\"thread_name\":\"别的\"}}\n"),
+        )
+        .unwrap();
+        let root = home.join("sessions");
+        assert_eq!(Codex.name(&root, &rollout).as_deref(), Some("查找网站"));
+        let mut f = std::fs::OpenOptions::new()
+            .append(true)
+            .open(&index)
+            .unwrap();
+        // Half a line is not a rename yet.
+        write!(f, "{{\"id\":\"{id}\",\"thread_name\":\"排查").unwrap();
+        assert_eq!(Codex.name(&root, &rollout).as_deref(), Some("查找网站"));
+        writeln!(f, " mirror 停止运行\"}}").unwrap();
+        assert_eq!(
+            Codex.name(&root, &rollout).as_deref(),
+            Some("排查 mirror 停止运行")
+        );
+        assert_eq!(Codex.name(&root, &root.join("rollout-x.jsonl")), None);
+        std::fs::remove_dir_all(home).unwrap();
     }
 }

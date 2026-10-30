@@ -298,6 +298,7 @@ impl Workbench {
                 icon_menu: None,
                 confirm_close: None,
                 renaming_tab: None,
+                renaming_session: None,
                 reopened: HashSet::new(),
             },
             attention: Attention {

@@ -156,6 +156,7 @@ impl Workbench {
             cwd: std::env::temp_dir().display().to_string(),
             transcript: String::new(),
             binding: None,
+            name: String::new(),
         };
         self.open_session(&session, window, cx);
         (self.workspace.tabs.len(), self.nav.tab.clone())

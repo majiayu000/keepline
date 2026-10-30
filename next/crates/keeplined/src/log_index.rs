@@ -172,7 +172,7 @@ impl Index {
                 // Content is a newly introduced object. Seed only cached recent identities that
                 // have no projection, once, without another directory walk or replacing cursors.
                 let missing = {
-                    let mut q=self.db.prepare("SELECT runtime,path FROM log_files WHERE updated>=?1 AND NOT EXISTS(SELECT 1 FROM session_content WHERE session_content.path=log_files.path AND json_extract(parser,'$._rules')=9)").map_err(err)?;
+                    let mut q=self.db.prepare("SELECT runtime,path FROM log_files WHERE updated>=?1 AND NOT EXISTS(SELECT 1 FROM session_content WHERE session_content.path=log_files.path AND json_extract(parser,'$._rules')=10)").map_err(err)?;
                     let rows = q
                         .query_map(
                             [keepline_core::content::now()
@@ -396,7 +396,16 @@ impl Index {
         Ok(out)
     }
     pub fn card(&self, path: &str) -> io::Result<Option<keepline_core::content::Content>> {
-        crate::content::card(&self.db, path)
+        let mut card = crate::content::card(&self.db, path)?;
+        if let Some(c) = card.as_mut().filter(|c| c.name.is_empty()) {
+            let path = Path::new(path);
+            if let Some((agent, root)) = self.roots.iter().find(|(_, r)| path.starts_with(r)) {
+                c.name = crate::agents::adapter(*agent)
+                    .name(root, path)
+                    .unwrap_or_default();
+            }
+        }
+        Ok(card)
     }
     pub fn recent(&self, updated: u64) -> bool {
         updated
@@ -533,7 +542,7 @@ impl Index {
             .as_secs();
         let seeded: bool = self
             .db
-            .prepare_cached("SELECT EXISTS(SELECT 1 FROM session_content WHERE path=?1 AND json_extract(parser,'$._rules')=9)")
+            .prepare_cached("SELECT EXISTS(SELECT 1 FROM session_content WHERE path=?1 AND json_extract(parser,'$._rules')=10)")
             .map_err(err)?
             .query_row([&key], |r| r.get(0))
             .map_err(err)?;
