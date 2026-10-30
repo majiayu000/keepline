@@ -1,0 +1,57 @@
+{
+  "date": "2026-10-30T10:27:56.653Z",
+  "kind": "隔离 Chrome 对交互原型的代理走查，非原生 App 验收",
+  "checks": [
+    {
+      "name": "页面显示真实 probe 输出",
+      "observed": true
+    },
+    {
+      "name": "未将函数通过写成整个任务验收",
+      "observed": true
+    },
+    {
+      "name": "证据对话框能看见原始输出",
+      "observed": true
+    },
+    {
+      "name": "来源页明确未关联 Agent 会话",
+      "observed": true
+    },
+    {
+      "name": "缺口反馈生成且未发送",
+      "observed": true
+    },
+    {
+      "name": "复制反馈给出可用的复制结果或选中文字提示",
+      "observed": true
+    },
+    {
+      "name": "编辑过的草稿重新打开仍完整",
+      "observed": true
+    },
+    {
+      "name": "阅读勾选没有变成任务已验收",
+      "observed": true
+    },
+    {
+      "name": "桌面无横向溢出",
+      "observed": true
+    },
+    {
+      "name": "深色模式正文和背景使用深色配色",
+      "observed": true
+    },
+    {
+      "name": "窄屏无横向溢出",
+      "observed": true
+    },
+    {
+      "name": "浏览器未观察到脚本异常",
+      "observed": true
+    }
+  ],
+  "errors": [],
+  "clipboard_observed": "请按 ⌘C 或 Ctrl+C 复制选中的反馈",
+  "status": "observed"
+}
