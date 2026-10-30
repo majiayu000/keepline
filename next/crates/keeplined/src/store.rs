@@ -79,7 +79,8 @@ impl Store {
                 UNIQUE(runtime,cli_session_id));
             CREATE UNIQUE INDEX IF NOT EXISTS one_current_agent_per_terminal ON agent_sessions(terminal_id) WHERE is_current=1;
             -- Beside agent_sessions, not in it: a host from before keeps writing its full rows.
-            CREATE TABLE IF NOT EXISTS agent_bindings (session_id TEXT PRIMARY KEY, evidence TEXT NOT NULL);")
+            CREATE TABLE IF NOT EXISTS agent_bindings (session_id TEXT PRIMARY KEY, evidence TEXT NOT NULL);
+            CREATE TABLE IF NOT EXISTS session_names (session_id TEXT PRIMARY KEY REFERENCES agent_sessions(id), name TEXT NOT NULL);")
             .map_err(db_error)?;
         let mut store = Self(db);
         let mut workspace = store.load()?;
@@ -310,7 +311,20 @@ impl Store {
                     .map_err(db_error)?
                     .map(enum_value)
                     .transpose()?,
+                name: String::new(),
             });
+        }
+        // A table of its own, so a daemon from before naming still writes agent_sessions.
+        let mut statement = self
+            .0
+            .prepare("SELECT session_id,name FROM session_names")
+            .map_err(db_error)?;
+        let mut rows = statement.query([]).map_err(db_error)?;
+        while let Some(r) = rows.next().map_err(db_error)? {
+            let id: String = r.get(0).map_err(db_error)?;
+            if let Some(s) = w.agent_sessions.iter_mut().find(|s| s.id == id) {
+                s.name = r.get(1).map_err(db_error)?;
+            }
         }
         Ok(w)
     }
@@ -394,6 +408,16 @@ impl Store {
                 Some(b) => tx.execute("INSERT INTO agent_bindings VALUES(?1,?2) ON CONFLICT(session_id) DO UPDATE SET evidence=excluded.evidence",params![s.id,enum_name(&b)?]).map_err(db_error)?,
                 None => tx.execute("DELETE FROM agent_bindings WHERE session_id=?1",[&s.id]).map_err(db_error)?,
             };
+            if s.name.is_empty() {
+                tx.execute("DELETE FROM session_names WHERE session_id=?1", [&s.id])
+                    .map_err(db_error)?;
+            } else {
+                tx.execute(
+                    "INSERT INTO session_names VALUES(?1,?2) ON CONFLICT(session_id) DO UPDATE SET name=excluded.name",
+                    params![s.id, s.name],
+                )
+                .map_err(db_error)?;
+            }
         }
         for h in w.outcome_history.iter().skip(before.outcome_history.len()) {
             tx.execute("INSERT INTO outcome_history(session_id,before_json,after_json,at,reason) VALUES(?1,?2,?3,?4,?5)",params![h.session,serde_json::to_string(&h.before).map_err(db_error)?,serde_json::to_string(&h.after).map_err(db_error)?,i64::try_from(h.at).map_err(db_error)?,h.reason]).map_err(db_error)?;
@@ -626,6 +650,7 @@ mod milestone_tests {
             cwd: "/tmp".into(),
             transcript: String::new(),
             binding: None,
+            name: String::new(),
         };
         after.agent_sessions.extend([
             session("running", "agent", true),
@@ -725,12 +750,31 @@ mod milestone_tests {
             cwd: "/tmp".into(),
             transcript: "/fixture".into(),
             binding: None,
+            name: String::new(),
         });
         w.change_outcome("s1", Outcome::Completed, 2, "用户操作")
             .unwrap();
+        w.edit(Edit::RenameSession {
+            id: "s1".into(),
+            name: "  修复   登录  ".into(),
+        })
+        .unwrap();
         store.save(&before, &w).unwrap();
         drop(store);
+        let (mut store, read) = Store::open(&root).unwrap();
+        assert_eq!(read.agent_sessions[0].name, "修复 登录");
+        // Clearing the name gives it back to the CLI and the first ask.
+        let mut cleared = read.clone();
+        cleared
+            .edit(Edit::RenameSession {
+                id: "s1".into(),
+                name: String::new(),
+            })
+            .unwrap();
+        store.save(&read, &cleared).unwrap();
+        drop(store);
         let (store, read) = Store::open(&root).unwrap();
+        assert_eq!(read.agent_sessions[0].name, "");
         assert_eq!(read.tasks, w.tasks);
         assert_eq!(read.task_outcomes, w.task_outcomes);
         assert_eq!(read.outcome_history, w.outcome_history);

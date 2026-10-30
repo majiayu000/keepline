@@ -1085,7 +1085,7 @@ fn trace(path: &str, parser: &Parser) {
 pub fn save(db: &Connection, path: &str, parser: &Parser) -> io::Result<()> {
     trace(path, parser);
     let mut encoded = serde_json::to_value(parser).map_err(db_err)?;
-    encoded["_rules"] = json!(9);
+    encoded["_rules"] = json!(10);
     db.prepare_cached("INSERT INTO session_content VALUES(?1,?2,?3,?4,?5,?6) ON CONFLICT(path) DO UPDATE SET title=excluded.title,turn=excluded.turn,updated=excluded.updated,projection=excluded.projection,parser=excluded.parser").map_err(db_err)?.execute(params![path,parser.card.title,format!("{:?}",parser.card.turn),i64::try_from(parser.card.updated).map_err(db_err)?,serde_json::to_string(&parser.card).map_err(db_err)?,serde_json::to_string(&encoded).map_err(db_err)?]).map_err(db_err)?;
     let mut ordinals = BTreeMap::new();
     for r in &parser.records {
@@ -1335,6 +1335,22 @@ mod tests {
         );
         assert_eq!(p.card.title, "修复登录");
         assert_eq!(p.card.asks.len(), 1);
+    }
+    #[test]
+    fn claude_rename_names_the_card_and_the_last_one_wins() {
+        let mut p = Parser::default();
+        for title in ["亮色主题", " MCP CLI 系统设计 "] {
+            p.add(
+                Agent::Claude,
+                &serde_json::to_vec(
+                    &json!({"type":"custom-title","customTitle":title,"sessionId":"s"}),
+                )
+                .unwrap(),
+                Source::default(),
+            );
+        }
+        assert_eq!(p.card.name, "MCP CLI 系统设计");
+        assert!(p.card.title.is_empty());
     }
     #[test]
     fn user_dedup_additions_and_claims_are_not_receipts() {

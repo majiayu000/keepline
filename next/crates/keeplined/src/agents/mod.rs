@@ -107,6 +107,10 @@ pub trait Adapter: Sync {
     /// Facts kept beside the transcript rather than in it. Asked again until the session is
     /// known to be interactive or hidden.
     fn observe_file(&self, _parser: &mut Parser, _path: &Path) {}
+    /// The name the CLI keeps for a transcript's conversation outside the transcript.
+    fn name(&self, _root: &Path, _transcript: &Path) -> Option<String> {
+        None
+    }
     /// Session metadata a record carries: why it is hidden, whether it is interactive.
     fn metadata(&self, parser: &mut Parser, record: &Value);
     /// Whether a record is the user speaking; the bounded first-request search reads these.

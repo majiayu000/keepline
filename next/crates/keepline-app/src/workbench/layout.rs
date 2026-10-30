@@ -10,6 +10,8 @@ pub(super) struct LayoutState {
     pub(super) split_bounds: HashMap<Vec<bool>, gpui::Bounds<gpui::Pixels>>,
     /// A tab being renamed in place after a double-click.
     pub(super) renaming_tab: Option<(String, Entity<Field>, [gpui::Subscription; 2])>,
+    /// A sidebar conversation being renamed in place after a double-click.
+    pub(super) renaming_session: Option<(String, Entity<Field>, [gpui::Subscription; 2])>,
     /// A tab's right-click menu: the tab and where it was opened.
     pub(super) tab_menu: Option<(String, gpui::Point<gpui::Pixels>)>,
     /// The title-bar logo's menu for choosing the app icon, where it was opened.

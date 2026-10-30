@@ -28,6 +28,7 @@ impl Render for Workbench {
             && self.settings.is_none()
             && self.tasks.form.is_none()
             && self.layout.renaming_tab.is_none()
+            && self.layout.renaming_session.is_none()
             && !self.nav.overview
         {
             if let Some(pane) = self

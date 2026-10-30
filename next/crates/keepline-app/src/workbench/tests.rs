@@ -48,6 +48,7 @@ fn fixture() -> Workspace {
         cwd: "/tmp".into(),
         transcript: "".into(),
         binding: None,
+        name: String::new(),
     });
     w
 }

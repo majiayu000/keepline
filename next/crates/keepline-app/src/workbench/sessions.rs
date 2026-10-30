@@ -77,34 +77,84 @@ impl Workbench {
         cx.notify();
         true
     }
+    /// Its name (see `Workspace::session_name`), else its task. A conversation read
+    /// only from its tail goes by its latest ask, and one with no words yet by its CLI
+    /// and directory.
     pub(super) fn session_title(&self, s: &AgentSession) -> String {
-        if let Some(c) = self
-            .workspace
-            .content
-            .get(&s.id)
-            .filter(|c| !c.title.is_empty())
-        {
-            return keepline_core::content::topic(&c.title);
+        if let Some(name) = self.workspace.session_name(s) {
+            return name;
         }
-        if self
-            .workspace
-            .content
-            .get(&s.id)
-            .is_some_and(|c| !c.first_ask_known)
-        {
-            return format!(
-                "最初原话未覆盖 · {}",
-                s.cli_session_id.chars().take(8).collect::<String>()
-            );
-        }
-        s.task
+        if let Some(task) = s
+            .task
             .as_ref()
             .and_then(|id| self.workspace.tasks.iter().find(|t| &t.id == id))
-            .map(|t| t.title.clone())
-            .unwrap_or_else(|| match self.workspace.content.get(&s.id) {
-                None if s.current => format!("{} · 新会话", s.runtime.executable()),
-                _ => format!("{} · {}", s.runtime.executable(), s.cli_session_id),
+        {
+            return task.title.clone();
+        }
+        self.workspace
+            .content
+            .get(&s.id)
+            .and_then(|c| c.asks.last())
+            .map(|q| keepline_core::content::short(&keepline_core::content::topic(&q.text), 70))
+            .filter(|t| !t.is_empty())
+            .unwrap_or_else(|| {
+                let dir = std::path::Path::new(&s.cwd)
+                    .file_name()
+                    .map_or(s.cwd.clone(), |n| n.to_string_lossy().into_owned());
+                format!("{} · {dir}", s.runtime.executable())
             })
+    }
+    /// Double-click names a conversation; an empty name hands it back to its CLI and
+    /// first ask.
+    pub(super) fn rename_session(&mut self, id: &str, window: &mut Window, cx: &mut Context<Self>) {
+        self.save_session_name(cx);
+        let Some(session) = self.workspace.agent_sessions.iter().find(|s| s.id == id) else {
+            return;
+        };
+        let automatic = self.session_title(&AgentSession {
+            name: String::new(),
+            ..session.clone()
+        });
+        let current = session.name.clone();
+        let field = cx.new(|cx| {
+            Field::new("会话名", &current, cx)
+                .inline()
+                .placeholder(&automatic)
+        });
+        field.update(cx, |f, _| f.select_all());
+        let events = cx.subscribe(&field, |this, _, event, cx| match event {
+            crate::ui::field::FieldEvent::Submit => this.save_session_name(cx),
+            crate::ui::field::FieldEvent::Cancel => {
+                this.layout.renaming_session = None;
+                cx.notify();
+            }
+        });
+        // Clicking anywhere else keeps the name, as with tabs.
+        let blur = cx.on_blur(&field.focus_handle(cx), window, |this, _, cx| {
+            this.save_session_name(cx)
+        });
+        window.focus(&field.focus_handle(cx), cx);
+        self.layout.renaming_session = Some((id.to_owned(), field, [events, blur]));
+        cx.notify();
+    }
+    fn save_session_name(&mut self, cx: &mut Context<Self>) {
+        let Some((id, field, _)) = self.layout.renaming_session.take() else {
+            return;
+        };
+        let Some(session) = self.workspace.agent_sessions.iter().find(|s| s.id == id) else {
+            return;
+        };
+        let name = field.read(cx).text.trim().to_owned();
+        // Keeping the shown name unchanged must not pin today's automatic one.
+        let name = if session.name.is_empty() && name == self.session_title(session) {
+            String::new()
+        } else {
+            name
+        };
+        if name != session.name {
+            self.edit(Edit::RenameSession { id, name }, cx);
+        }
+        cx.notify();
     }
     /// When its conversation last moved.
     pub(super) fn session_updated(&self, s: &AgentSession) -> u64 {

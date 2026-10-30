@@ -257,6 +257,7 @@ pub(crate) fn observation(t: &Transcript, terminal: Option<String>) -> AgentSess
         cwd: t.cwd.clone(),
         transcript: t.path.clone(),
         binding: None,
+        name: String::new(),
     }
 }
 /// The conversation now running in `terminal`, and the evidence that says so.
