@@ -80,7 +80,7 @@ impl Workbench {
             .iter()
             .filter(|s| self.session_hidden(s).is_none())
             .collect();
-        visible.sort_by(|a, b| b.updated.cmp(&a.updated));
+        visible.sort_by_key(|s| std::cmp::Reverse(s.updated));
         let session = |s: &AgentSession, quote: Option<String>| Hit::Session {
             id: s.id.clone(),
             quote,

@@ -72,10 +72,10 @@ impl Sampling {
                     }
                 }
             };
-            if let Err(error) = read() {
-                if !cancelled.load(Ordering::Acquire) {
-                    let _ = tx.unbounded_send(Err(error));
-                }
+            if let Err(error) = read()
+                && !cancelled.load(Ordering::Acquire)
+            {
+                let _ = tx.unbounded_send(Err(error));
             }
         });
         result
@@ -1284,23 +1284,22 @@ impl Workbench {
         cx.subscribe(&view, |this, _, action, cx| {
             this.diagnostics = None;
             this.nav.pending_focus = true;
-            if let DiagnosticAction::Terminal(id) = action {
-                if let Some(tab) = this
+            if let DiagnosticAction::Terminal(id) = action
+                && let Some(tab) = this
                     .workspace
                     .tabs
                     .iter()
                     .find(|tab| tab.layout.as_ref().is_some_and(|l| l.contains(id)))
-                {
-                    this.nav.space = tab.space.clone();
-                    this.nav.tab = Some(tab.id.clone());
-                    this.nav.focused = Some(id.clone());
-                    this.nav.overview = false;
-                    this.nav.task_detail = None;
-                    this.nav.zoomed = None;
-                    this.tasks.form = None;
-                    this.overview.cleanup.clear();
-                    this.sync_panes(cx);
-                }
+            {
+                this.nav.space = tab.space.clone();
+                this.nav.tab = Some(tab.id.clone());
+                this.nav.focused = Some(id.clone());
+                this.nav.overview = false;
+                this.nav.task_detail = None;
+                this.nav.zoomed = None;
+                this.tasks.form = None;
+                this.overview.cleanup.clear();
+                this.sync_panes(cx);
             }
             cx.notify();
         })

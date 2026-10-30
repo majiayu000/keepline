@@ -135,7 +135,6 @@ pub struct Palette {
     /// Text field outlines: 3:1 against the pane so an empty field is still findable.
     pub field_edge: u32,
     pub todo_border: u32,
-    pub slot_border: u32,
     /// A quiet fill for ordinary buttons; they carry no outline.
     pub button: u32,
     pub button_hover: u32,
@@ -159,7 +158,6 @@ pub struct Palette {
     pub matched: u32,
     /// Dims the workbench behind the palette, as rgba.
     pub scrim: u32,
-    pub inference: u32,
     /// Data charts only (the diagnostics panel): app identity, never status. Validated as
     /// adjacent pairs for color-vision deficiency on the popover in each scheme.
     pub series: [u32; 5],
@@ -207,7 +205,6 @@ impl Palette {
             control,
             field_edge: mix(bg, fg, by(light, 490, 150)),
             todo_border: border,
-            slot_border: control,
             button: mix(bg, fg, by(light, 90, 60)),
             button_hover: mix(bg, fg, by(light, 180, 120)),
             primary,
@@ -224,7 +221,6 @@ impl Palette {
             palette_row: mix(popover, fg, by(light, 110, 75)),
             matched: mix(popover, 0xe8a33a, by(light, 350, 280)),
             scrim: if light { 0x0000_0040 } else { 0x0000_0099 },
-            inference: mix(bg, fg, by(light, 55, 35)),
             series: if light {
                 [0x2a78d6, 0xeb6834, 0x1baf7a, 0xeda100, 0xe87ba4]
             } else {
@@ -268,7 +264,6 @@ tokens!(
     control,
     field_edge,
     todo_border,
-    slot_border,
     button,
     button_hover,
     primary,
@@ -285,7 +280,6 @@ tokens!(
     palette_row,
     matched,
     scrim,
-    inference,
     series_other,
     hatch,
     chart_grid,
@@ -541,7 +535,7 @@ mod tests {
     fn light_scheme_swaps_every_surface() {
         use super::{DARK, LIGHT};
         assert_eq!(LIGHT.terminal_bg, Scheme::Light.bg());
-        assert!(LIGHT.app < LIGHT.pane && DARK.app < DARK.pane);
+        const { assert!(LIGHT.app < LIGHT.pane && DARK.app < DARK.pane) };
         // Text stays far from its background in both schemes.
         for p in [DARK, LIGHT] {
             let gap = |a: u32, b: u32| ((a & 255) as i32 - (b & 255) as i32).abs();
