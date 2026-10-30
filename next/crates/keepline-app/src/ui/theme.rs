@@ -454,6 +454,36 @@ impl Theme {
     pub const CLEANUP_STEP_GAPS: usize = 150;
     pub const AGE_MARKER: f32 = 10.;
     pub const CLEANUP_LABEL: f32 = 72.;
+    // workbench refresh: main view
+    /// The top bar's status counts and the 下一个等你的 chip.
+    pub const PULSE_BUTTON: f32 = 24.;
+    pub const PULSE_GAP: f32 = 5.;
+    pub const NEXT_CHIP: f32 = 28.;
+    /// A zero count, a plain shell's dot and a key hint stay in place but recede.
+    pub const ZERO_OPACITY: f32 = 0.55;
+    pub const FAINT_DOT_OPACITY: f32 = 0.4;
+    pub const KBD_OPACITY: f32 = 0.7;
+    pub const KBD_SIZE: f32 = 10.5;
+    /// The current tab is marked by a line under it instead of a filled background.
+    pub const TAB_LINE: f32 = 2.;
+    pub const TAB_LINE_INSET: f32 = 10.;
+    pub const SPLIT_CHIP_SIZE: f32 = 10.5;
+    /// 验收 progress cells in the todo bar.
+    pub const EVIDENCE_CELL_WIDTH: f32 = 10.;
+    pub const EVIDENCE_CELL_HEIGHT: f32 = 6.;
+    pub const EVIDENCE_CELL_RADIUS: f32 = 2.;
+    /// The pane header's washed status chip and its text actions.
+    pub const STATE_CHIP: f32 = 20.;
+    pub const STATE_CHIP_RADIUS: f32 = 5.;
+    pub const PANE_ACTION: f32 = 24.;
+    pub const PANE_ACTION_RADIUS: f32 = 5.;
+    /// The pane footer's text: cwd, branch and who owns input.
+    pub const PANE_FOOTER_SIZE: f32 = 11.;
+    /// Numbers that change in place keep their width.
+    pub fn tabular() -> gpui::FontFeatures {
+        gpui::FontFeatures(std::sync::Arc::new(vec![("tnum".into(), 1)]))
+    }
+    // end workbench refresh: main view
     /// The chart color of the `i`th ranked app; past the palette, the shared "other".
     pub fn series(i: usize) -> u32 {
         Self::palette()
