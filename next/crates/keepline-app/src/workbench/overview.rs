@@ -381,8 +381,17 @@ impl Workbench {
     }
 }
 
-/// Last-activity ages bucket by week in 很久没动's mini chart.
-const WEEK: u64 = 7 * 86_400;
+/// 很久没动's mini chart: last-activity ages, each bucket ending below its bound.
+const DAY_SECS: u64 = 86_400;
+const AGE_BUCKETS: [(u64, &str); 7] = [
+    (DAY_SECS, "1 天内"),
+    (3 * DAY_SECS, "1–3 天"),
+    (7 * DAY_SECS, "3–7 天"),
+    (14 * DAY_SECS, "1–2 周"),
+    (30 * DAY_SECS, "2–4 周"),
+    (90 * DAY_SECS, "1–3 月"),
+    (u64::MAX, "3 月以上"),
+];
 
 /// The one solid control of a view.
 pub(super) fn solid(b: gpui::Stateful<gpui::Div>) -> gpui::Stateful<gpui::Div> {
@@ -440,13 +449,6 @@ fn folded_row(content: Vec<gpui::AnyElement>, right: Vec<gpui::AnyElement>) -> g
         .children(content)
         .child(div().flex_1())
         .child(div().flex().gap(px(T::S6)).children(right))
-}
-fn weeks_label(weeks: u64) -> String {
-    if weeks == 0 {
-        "不到 1 周".into()
-    } else {
-        format!("{weeks} 周前")
-    }
 }
 
 impl Workbench {
@@ -777,37 +779,31 @@ impl Workbench {
         }
         section.child(cards)
     }
-    /// Weekly buckets of how long each stale session has been quiet, oldest at the right.
+    /// How long each stale session has been quiet, in widening buckets (a day, days, weeks,
+    /// months) so a fresh backlog and an old tail both show, oldest at the right.
     fn age_chart(&self, sessions: &[&AgentSession], now: u64) -> Vec<gpui::AnyElement> {
-        let weeks: Vec<u64> = sessions
-            .iter()
-            .map(|s| now.saturating_sub(self.session_updated(s)) / WEEK)
-            .collect();
-        let (Some(&lo), Some(&hi)) = (weeks.iter().min(), weeks.iter().max()) else {
+        if sessions.is_empty() {
             return vec![];
-        };
-        let span = ((hi - lo + 1) as usize).min(T::AGE_CHART_WEEKS);
-        let mut counts = vec![0usize; span];
-        for w in &weeks {
-            counts[((w - lo) as usize).min(span - 1)] += 1;
+        }
+        let mut counts = [0usize; AGE_BUCKETS.len()];
+        for s in sessions {
+            let age = now.saturating_sub(self.session_updated(s));
+            let i = AGE_BUCKETS
+                .iter()
+                .position(|(below, _)| age < *below)
+                .unwrap_or(AGE_BUCKETS.len() - 1);
+            counts[i] += 1;
         }
         let peak = counts.iter().copied().max().unwrap_or(1).max(1);
-        let capped = (hi - lo + 1) as usize > span;
         let mut chart = div()
             .id("stale-ages")
             .flex()
             .items_end()
             .gap(px(T::S2))
             .h(px(T::AGE_CHART_HEIGHT))
-            .aria_label("按最后活动时间分布：每格一周");
+            .aria_label("按最后活动时间分布：从 1 天内到 3 个月以上");
         let hue = Group::Stale.colors().0;
-        for (i, n) in counts.iter().enumerate() {
-            let week = lo + i as u64;
-            let when = if capped && i == span - 1 {
-                format!("{week} 周及更早")
-            } else {
-                weeks_label(week)
-            };
+        for (i, (n, (_, when))) in counts.iter().zip(AGE_BUCKETS).enumerate() {
             chart = chart.child(
                 div()
                     .id(gpui::SharedString::from(format!("stale-age-{i}")))
@@ -818,17 +814,19 @@ impl Workbench {
                     .rounded(px(T::BORDER_WIDTH))
                     .bg(hue)
                     .opacity(if *n == 0 { 0.25 } else { 0.7 })
-                    .tooltip(super::diagnostics::tip(vec![when, format!("{n} 个")])),
+                    .tooltip(super::diagnostics::tip(vec![when.to_string(), format!("{n} 个")])),
             );
         }
-        let right = if capped {
-            format!("{} 周以上", lo + span as u64 - 1)
-        } else {
-            weeks_label(hi)
-        };
+        let summary = counts
+            .iter()
+            .zip(AGE_BUCKETS)
+            .filter(|(n, _)| **n > 0)
+            .map(|(n, (_, when))| format!("{when} {n}"))
+            .collect::<Vec<_>>()
+            .join(" · ");
         vec![
             chart.into_any_element(),
-            label(format!("按最后活动：{} ← → {right}", weeks_label(lo)))
+            label(format!("按最后活动：{summary}"))
                 .text_size(px(T::SMALL))
                 .text_color(T::color(T::muted()))
                 .into_any_element(),

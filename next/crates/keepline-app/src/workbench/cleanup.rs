@@ -24,6 +24,48 @@ impl Step {
 }
 
 impl Workbench {
+    /// 逐个清理's keys, the same actions as its buttons: ⏎ 完成, C 继续, L 稍后再看,
+    /// ⌫ 放弃. Only while a session is shown; anything else falls through.
+    pub(super) fn cleanup_key(
+        &mut self,
+        key: &str,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) -> bool {
+        let Some(s) = self
+            .overview
+            .cleanup
+            .get(self.overview.cleanup_index)
+            .and_then(|id| self.workspace.agent_sessions.iter().find(|s| &s.id == id))
+            .cloned()
+        else {
+            return false;
+        };
+        match key {
+            "enter" | "backspace" => self.edit(
+                Edit::SetOutcome {
+                    id: s.id.clone(),
+                    outcome: if key == "enter" {
+                        Outcome::Completed
+                    } else {
+                        Outcome::Abandoned
+                    },
+                },
+                cx,
+            ),
+            "c" => {
+                self.overview.cleanup.clear();
+                self.open_session(&s, window, cx);
+            }
+            "l" => {
+                self.overview.here = Some(s.id.clone());
+                self.show_form(FormKind::Defer, window, cx);
+            }
+            _ => return false,
+        }
+        cx.notify();
+        true
+    }
     fn cleanup_step(&self, index: usize, id: &str) -> Step {
         if index == self.overview.cleanup_index {
             return Step::Current;
@@ -254,7 +296,7 @@ impl Workbench {
             page = page.child(card);
             let sid = s.id.clone();
             let mut actions = div().flex().flex_wrap().gap(px(T::S8)).child(
-                solid(button("完成", "完成")).on_click(cx.listener(move |this, _, _, cx| {
+                solid(button("完成", "完成 ⏎")).on_click(cx.listener(move |this, _, _, cx| {
                     this.edit(
                         Edit::SetOutcome {
                             id: sid.clone(),
@@ -265,21 +307,21 @@ impl Workbench {
                 })),
             );
             let resume = s.clone();
-            actions = actions.child(quiet(button("cleanup-continue", "继续")).on_click(
+            actions = actions.child(quiet(button("cleanup-continue", "继续 C")).on_click(
                 cx.listener(move |this, _, window, cx| {
                     this.overview.cleanup.clear();
                     this.open_session(&resume, window, cx);
                 }),
             ));
             let sid = s.id.clone();
-            actions = actions.child(quiet(button("cleanup-defer", "稍后再看…")).on_click(
+            actions = actions.child(quiet(button("cleanup-defer", "稍后再看… L")).on_click(
                 cx.listener(move |this, _, window, cx| {
                     this.overview.here = Some(sid.clone());
                     this.show_form(FormKind::Defer, window, cx);
                 }),
             ));
             let sid = s.id.clone();
-            actions = actions.child(quiet(button("cleanup-abandon", "放弃")).on_click(
+            actions = actions.child(quiet(button("cleanup-abandon", "放弃 ⌫")).on_click(
                 cx.listener(move |this, _, _, cx| {
                     this.edit(
                         Edit::SetOutcome {

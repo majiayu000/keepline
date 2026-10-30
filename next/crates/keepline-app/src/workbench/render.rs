@@ -422,8 +422,12 @@ impl Render for Workbench {
                             }
                         }),
                     )
-                    .on_key_down(cx.listener(|this, event: &gpui::KeyDownEvent, _, cx| {
+                    .on_key_down(cx.listener(|this, event: &gpui::KeyDownEvent, window, cx| {
                         let k = &event.keystroke;
+                        if !k.modifiers.modified() && this.cleanup_key(&k.key, window, cx) {
+                            cx.stop_propagation();
+                            return;
+                        }
                         if k.key != "escape" || k.modifiers.modified() {
                             return;
                         }
@@ -801,16 +805,26 @@ impl Workbench {
         }
         row
     }
-    /// 下一个等你的: washed in the waiting color, with its shortcut.
+    /// 下一个等你的: the sessions that need you are waiting ones and failed ones, so the
+    /// chip names and colors whichever it holds, keeping it consistent with the 等你 count.
     fn next_waiting_chip(&self, cx: &Context<Self>) -> gpui::Stateful<gpui::Div> {
-        let (dot_color, ink, wash) = Group::Waiting.colors();
-        let count = self.needs_you().len();
+        let needs = self.needs_you();
+        let count = needs.len();
+        let waiting = needs
+            .iter()
+            .any(|s| session_group(&self.workspace, s) == Group::Waiting);
+        let (group, text) = if waiting {
+            (Group::Waiting, "下一个等你的")
+        } else {
+            (Group::Error, "下一个出错的")
+        };
+        let (dot_color, ink, wash) = group.colors();
         let key = crate::keymap::current(cx)
             .chords(crate::keymap::Action::NextWaiting)
             .first()
             .map(|c| c.display());
         button("next-waiting", "")
-            .aria_label(format!("下一个等你的，共 {count} 个"))
+            .aria_label(format!("{text}，共 {count} 个"))
             .h(px(T::NEXT_CHIP))
             .pl(px(T::S8))
             .pr(px(T::S10))
@@ -819,7 +833,7 @@ impl Workbench {
             .text_color(ink)
             .font_weight(gpui::FontWeight::SEMIBOLD)
             .child(div().size(px(T::DOT)).rounded_full().bg(dot_color))
-            .child("下一个等你的")
+            .child(text)
             .child(div().font_features(T::tabular()).child(count.to_string()))
             .when_some(key, |d, key| {
                 d.child(
