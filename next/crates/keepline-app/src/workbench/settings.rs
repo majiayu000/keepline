@@ -1484,7 +1484,35 @@ impl SettingsView {
                                 .as_deref()
                                 .map_or_else(String::new, |d| format!(" · {d}")),
                         ),
-                        status(true, "已加载"),
+                        {
+                            // The switch takes effect at the next start; until then the row
+                            // says so rather than pretending it already changed.
+                            let next = plugin::enabled_next_start(&p.id);
+                            let id = p.id.clone();
+                            div()
+                                .flex()
+                                .items_center()
+                                .gap(px(T::S8))
+                                .child(match (p.enabled, next) {
+                                    (true, true) => status(true, "已加载"),
+                                    (false, false) => status(true, "已停用"),
+                                    _ => status(true, "重开后生效"),
+                                })
+                                .child(
+                                    secondary(
+                                        gpui::SharedString::from(format!("plugin-switch-{}", p.id)),
+                                        if next { "停用" } else { "启用" },
+                                    )
+                                    .on_click(cx.listener(
+                                        move |this, _, _, cx| {
+                                            this.text_error = plugin::set_enabled(&id, !next)
+                                                .err()
+                                                .map(|e| format!("没能保存插件开关：{e}"));
+                                            cx.notify();
+                                        },
+                                    )),
+                                )
+                        },
                     ),
                     Err(e) => self.row(first, &name, e, status(false, "没有加载")),
                 }
