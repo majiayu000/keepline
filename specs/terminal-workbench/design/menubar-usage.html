@@ -1,0 +1,316 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Menubar usage · redesign</title>
+<style>
+/* Tokens copied from menubar-tauri/src/styles.css; chart ramp from the dataviz reference blue. */
+.light {
+  --bg: #ffffff; --bg2: #f7f8fa; --card: #ffffff; --hover: #eceef2;
+  --primary: #17181c; --secondary: #5d6270; --muted: #767b87;
+  --border: #e3e5ea; --border2: #d5d8de; --accent: #4b4fd6; --accent-light: #eeeffc; --on-accent: #ffffff;
+  --good: #1f8a5b; --warn: #a86b0c; --warn-bg: #fbf1de; --crit: #c0392b; --crit-bg: #fbeae8;
+  --track: #eceef2; --fill: #4b4fd6; --tick: #17181c;
+  --t1: #184f95; --t2: #2a78d6; --t3: #6da7ec; --t4: #b7d3f6;
+  --shadow: 0 12px 40px rgba(23,24,28,.14);
+}
+.dark {
+  --bg: #1c1c1e; --bg2: #18181a; --card: #222224; --hover: #2a2a2c;
+  --primary: #ecebe9; --secondary: #a3a2a0; --muted: #8a8988;
+  --border: #2e2e2f; --border2: #3a3a3b; --accent: #ecebe9; --accent-light: #2c2c2d; --on-accent: #1c1c1e;
+  --good: #4cc38a; --warn: #d9a441; --warn-bg: #463a26; --crit: #e5534b; --crit-bg: #482828;
+  --track: #2e2e2f; --fill: #ecebe9; --tick: #ecebe9;
+  --t1: #86b6ef; --t2: #3987e5; --t3: #256abf; --t4: #184f95;
+  --shadow: 0 12px 40px rgba(0,0,0,.5);
+}
+* { box-sizing: border-box; }
+body {
+  margin: 0; min-height: 100vh; background: #c9ccd2;
+  font: 13px/1.4 -apple-system, BlinkMacSystemFont, "SF Pro Text", "PingFang SC", sans-serif;
+  display: flex; flex-direction: column; align-items: center; gap: 18px; padding: 24px 16px;
+}
+.note { font-size: 12px; color: #3d4048; text-align: center; max-width: 820px; }
+.stage { display: flex; gap: 28px; flex-wrap: wrap; justify-content: center; align-items: flex-start; }
+.frame { display: flex; flex-direction: column; gap: 8px; align-items: center; }
+.frame-label { font-size: 11px; color: #3d4048; letter-spacing: .04em; text-transform: uppercase; }
+button { font: inherit; cursor: pointer; border: 0; background: none; color: inherit; }
+.num { font-variant-numeric: tabular-nums; }
+
+.pop {
+  width: 390px; max-width: 100%; background: var(--bg); color: var(--primary);
+  border-radius: 12px; box-shadow: var(--shadow); border: 1px solid var(--border);
+  padding: 12px; display: flex; flex-direction: column; gap: 14px;
+}
+
+/* Tabs */
+.tabs { display: grid; grid-template-columns: 1fr 1fr; gap: 2px; padding: 2px; border-radius: 8px; background: var(--bg2); border: 1px solid var(--border); }
+.tab { height: 28px; border-radius: 6px; display: inline-flex; align-items: center; justify-content: center; gap: 6px; font-size: 12.5px; color: var(--secondary); }
+.tab[aria-selected="true"] { background: var(--card); color: var(--primary); font-weight: 600; box-shadow: 0 1px 2px rgba(0,0,0,.08); }
+.conn { width: 6px; height: 6px; border-radius: 50%; background: var(--good); }
+
+.section { display: flex; flex-direction: column; gap: 8px; }
+.section-title { display: flex; align-items: center; justify-content: space-between; font-size: 11px; font-weight: 600; letter-spacing: .06em; color: var(--muted); text-transform: uppercase; }
+.section-title .aside { font-weight: 400; letter-spacing: 0; text-transform: none; }
+.plan { font-size: 10.5px; font-weight: 600; letter-spacing: .02em; padding: 1px 6px; border-radius: 4px; background: var(--accent-light); color: var(--secondary); text-transform: none; }
+
+/* Quota */
+.quota { padding: 10px 12px 11px; border-radius: 10px; background: var(--card); border: 1px solid var(--border); display: flex; flex-direction: column; gap: 7px; }
+.q-head { display: flex; align-items: baseline; gap: 8px; }
+.q-name { font-weight: 600; font-size: 13px; }
+.q-window { font-size: 11.5px; color: var(--muted); }
+.q-val { margin-left: auto; display: flex; align-items: baseline; gap: 3px; }
+.q-val b { font-size: 20px; font-weight: 600; letter-spacing: -.3px; }
+.q-val span { font-size: 11.5px; color: var(--secondary); }
+.meter { position: relative; height: 18px; }
+.meter .track { position: absolute; left: 0; right: 0; top: 6px; height: 6px; border-radius: 3px; background: var(--track); overflow: hidden; }
+.meter .used { position: absolute; left: 0; top: 0; bottom: 0; border-radius: 3px; background: var(--fill); }
+.meter .proj { position: absolute; top: 0; bottom: 0; background: repeating-linear-gradient(135deg, var(--fill) 0 1.5px, transparent 1.5px 4px); opacity: .45; }
+.meter .now { position: absolute; top: 1px; bottom: 1px; width: 2px; margin-left: -1px; border-radius: 1px; background: var(--tick); }
+.meter .cap { position: absolute; right: 0; top: 2px; bottom: 2px; width: 1px; background: var(--border2); }
+.warn .meter .used, .warn .meter .proj { background-color: var(--warn); }
+.warn .meter .proj { background: repeating-linear-gradient(135deg, var(--warn) 0 1.5px, transparent 1.5px 4px); }
+.crit .meter .used { background: var(--crit); }
+.crit .meter .proj { background: repeating-linear-gradient(135deg, var(--crit) 0 1.5px, transparent 1.5px 4px); }
+.q-foot { display: flex; align-items: center; gap: 8px; font-size: 11.5px; color: var(--secondary); }
+.q-foot .sep { color: var(--border2); }
+.pace { margin-left: auto; display: inline-flex; align-items: center; gap: 4px; padding: 1px 6px; border-radius: 4px; font-size: 11px; font-weight: 600; }
+.pace.ok { color: var(--secondary); padding: 0; font-weight: 400; }
+.pace.warn { color: var(--warn); background: var(--warn-bg); }
+.pace.crit { color: var(--crit); background: var(--crit-bg); }
+.legend-key { display: flex; gap: 12px; font-size: 11px; color: var(--muted); padding: 0 2px; }
+.legend-key i { display: inline-block; vertical-align: -1px; margin-right: 4px; }
+.k-now { width: 2px; height: 10px; background: var(--tick); border-radius: 1px; }
+.k-proj { width: 12px; height: 6px; border-radius: 2px; background: repeating-linear-gradient(135deg, var(--fill) 0 1.5px, transparent 1.5px 4px); opacity: .7; }
+
+/* Cost */
+.cost { border-radius: 10px; background: var(--card); border: 1px solid var(--border); overflow: hidden; }
+.ranges { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); border-bottom: 1px solid var(--border); }
+.range { padding: 9px 12px 10px; text-align: left; display: flex; flex-direction: column; gap: 1px; position: relative; }
+.range + .range { border-left: 1px solid var(--border); }
+.range .rl { font-size: 11px; color: var(--muted); }
+.range .rv { font-size: 17px; font-weight: 600; letter-spacing: -.2px; color: var(--secondary); }
+.range .rd { font-size: 10.5px; color: var(--muted); }
+.range[aria-pressed="true"] { background: var(--bg2); }
+.range[aria-pressed="true"] .rv { color: var(--primary); }
+.range[aria-pressed="true"]::after { content: ""; position: absolute; left: 12px; right: 12px; bottom: 0; height: 2px; border-radius: 1px; background: var(--accent); }
+.cost-body { padding: 11px 12px 12px; display: flex; flex-direction: column; gap: 12px; }
+.sub-head { display: flex; align-items: baseline; justify-content: space-between; font-size: 11.5px; color: var(--secondary); }
+.sub-head b { color: var(--primary); font-weight: 600; font-size: 12.5px; }
+.stack { display: flex; gap: 2px; height: 10px; margin-top: 6px; }
+.stack span { min-width: 2px; height: 100%; }
+.stack span:first-child { border-radius: 3px 0 0 3px; }
+.stack span:last-child { border-radius: 0 3px 3px 0; }
+.tok-legend { margin-top: 8px; display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 4px 14px; font-size: 11.5px; }
+.tok-legend div { display: flex; align-items: center; gap: 6px; }
+.tok-legend .sw { width: 8px; height: 8px; border-radius: 2px; flex: none; }
+.tok-legend .n { color: var(--secondary); }
+.tok-legend .v { margin-left: auto; color: var(--primary); }
+.tok-legend .p { width: 34px; text-align: right; color: var(--muted); }
+.models { display: flex; flex-direction: column; }
+.model { display: grid; grid-template-columns: minmax(0, 1fr) 52px 62px; gap: 8px; align-items: center; padding: 5px 0; border-top: 1px solid var(--border); font-size: 12px; }
+.model:first-child { border-top: 0; }
+.model .mn { display: flex; flex-direction: column; gap: 4px; min-width: 0; }
+.model .mn span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.model .mbar { height: 3px; border-radius: 2px; background: var(--track); overflow: hidden; }
+.model .mbar i { display: block; height: 100%; background: var(--t2); border-radius: 2px; }
+.model .mt { text-align: right; color: var(--muted); font-size: 11.5px; }
+.model .mc { text-align: right; font-weight: 600; }
+.cost-foot { display: flex; justify-content: space-between; font-size: 11px; color: var(--muted); }
+
+/* Actions */
+.actions { display: flex; gap: 6px; padding-top: 2px; border-top: 1px solid var(--border); padding-top: 12px; }
+.btn { height: 30px; padding: 0 12px; border-radius: 7px; font-size: 12.5px; background: var(--hover); color: var(--primary); display: inline-flex; align-items: center; gap: 6px; }
+.btn.primary { background: var(--accent); color: var(--on-accent); font-weight: 600; margin-left: auto; }
+.btn svg { flex: none; }
+
+.tip { position: fixed; z-index: 9; pointer-events: none; padding: 7px 9px; border-radius: 7px; background: #17181c; color: #f4f4f5; font-size: 11.5px; line-height: 1.5; box-shadow: 0 6px 18px rgba(0,0,0,.25); max-width: 230px; }
+.tip[hidden] { display: none; }
+.tip .k { opacity: .65; }
+</style>
+</head>
+<body>
+<p class="note">Menubar popover redesign · 390 px, light and dark side by side · <b>sample data</b> (not read from this machine) · hover bars for detail, click tabs and Today / Week / Month</p>
+<div class="stage">
+  <div class="frame"><span class="frame-label">Light</span><div class="pop light" data-pop></div></div>
+  <div class="frame"><span class="frame-label">Dark</span><div class="pop dark" data-pop></div></div>
+</div>
+<div class="tip" id="tip" hidden></div>
+
+<script>
+// Sample data in the shapes the app already receives (quota percentage + resetTime, cost ranges).
+const NOW = new Date('2026-10-30T13:30:00');
+const H = 3600e3;
+const DATA = {
+  claude: {
+    plan: 'Max',
+    quotas: [
+      { name: 'Session', window: '5-hour', windowH: 5, used: 42, resetsAt: new Date(+NOW + 2.17 * H) },
+      { name: 'Weekly', window: '7-day', windowH: 168, used: 68, resetsAt: new Date(+NOW + 53 * H) },
+      { name: 'Opus', window: '7-day', windowH: 168, used: 81, resetsAt: new Date(+NOW + 53 * H) },
+      { name: 'Sonnet', window: '7-day', windowH: 168, used: 23, resetsAt: new Date(+NOW + 53 * H) },
+    ],
+    cost: {
+      today: { label: 'Today', days: 1, cost: 18.42, entries: 1284, tokens: { input: 0.92e6, cacheWrite: 3.1e6, cacheRead: 43.6e6, output: 0.61e6 },
+        models: [['opus', 14.87, 31.2e6], ['sonnet', 3.21, 15.9e6], ['haiku', 0.34, 1.1e6]] },
+      week: { label: 'This Week', days: 4, cost: 96.10, entries: 6630, tokens: { input: 4.8e6, cacheWrite: 15.2e6, cacheRead: 221e6, output: 3.2e6 },
+        models: [['opus', 77.40, 160e6], ['sonnet', 17.05, 80e6], ['haiku', 1.65, 4.2e6]] },
+      month: { label: 'This Month', days: 30, cost: 412.37, entries: 27410, tokens: { input: 21e6, cacheWrite: 66e6, cacheRead: 951e6, output: 13.7e6 },
+        models: [['opus', 318.90, 690e6], ['sonnet', 86.22, 344e6], ['haiku', 7.25, 18e6]] },
+    },
+  },
+  codex: {
+    plan: 'Pro',
+    quotas: [
+      { name: 'Primary', window: '5-hour', windowH: 5, used: 61, resetsAt: new Date(+NOW + 1.67 * H) },
+      { name: 'Secondary', window: '7-day', windowH: 168, used: 37, resetsAt: new Date(+NOW + 96 * H) },
+    ],
+    cost: {
+      today: { label: 'Today', days: 1, cost: 6.08, entries: 412, tokens: { input: 2.4e6, cacheWrite: 0, cacheRead: 11.8e6, output: 0.5e6, reasoning: 0.9e6 },
+        models: [['gpt-5-codex', 5.71, 14.9e6], ['gpt-5-mini', 0.37, 0.7e6]] },
+      week: { label: 'This Week', days: 4, cost: 29.44, entries: 1980, tokens: { input: 11e6, cacheWrite: 0, cacheRead: 58e6, output: 2.2e6, reasoning: 4.1e6 },
+        models: [['gpt-5-codex', 27.80, 72e6], ['gpt-5-mini', 1.64, 3.3e6]] },
+      month: { label: 'This Month', days: 30, cost: 133.90, entries: 8710, tokens: { input: 49e6, cacheWrite: 0, cacheRead: 260e6, output: 9.8e6, reasoning: 18e6 },
+        models: [['gpt-5-codex', 126.10, 324e6], ['gpt-5-mini', 7.80, 13e6]] },
+    },
+  },
+};
+const TOKEN_KINDS = [
+  ['cacheRead', 'Cache read', 'var(--t4)'], ['cacheWrite', 'Cache write', 'var(--t3)'],
+  ['input', 'Input', 'var(--t2)'], ['output', 'Output', 'var(--t1)'], ['reasoning', 'Reasoning', 'var(--t1)'],
+];
+const state = { tab: 'claude', range: 'today' };
+
+const esc = (s) => String(s).replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+const money = (v) => '$' + v.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+const compact = (v) => new Intl.NumberFormat('en-US', { notation: 'compact', maximumFractionDigits: 1 }).format(v);
+const dur = (h) => (h >= 24 ? `${Math.floor(h / 24)}d ${Math.round(h % 24)}h` : h >= 1 ? `${Math.floor(h)}h ${Math.round((h % 1) * 60)}m` : `${Math.round(h * 60)}m`);
+const clock = (d) => d.toLocaleString('en-US', { weekday: d - NOW > 20 * H ? 'short' : undefined, hour: 'numeric', minute: '2-digit' });
+
+// Pace: share of the window already elapsed, and where a straight-line rate lands at reset.
+function pace(q) {
+  const leftH = (q.resetsAt - NOW) / H;
+  const elapsed = Math.min(1, Math.max(0.02, 1 - leftH / q.windowH));
+  const projected = q.used / elapsed;
+  const fullInH = q.used > 0 ? (100 - q.used) / (q.used / (elapsed * q.windowH)) : Infinity;
+  const level = projected >= 100 ? 'crit' : projected >= 90 ? 'warn' : 'ok';
+  return { leftH, elapsed, projected, fullInH, level };
+}
+
+const tip = document.getElementById('tip');
+function bindTip(root, sel, html) {
+  root.querySelectorAll(sel).forEach((el) => {
+    el.addEventListener('mousemove', (e) => {
+      tip.innerHTML = html(el); tip.hidden = false;
+      const r = tip.getBoundingClientRect();
+      let x = e.clientX + 12, y = e.clientY + 14;
+      if (x + r.width > innerWidth - 8) x = e.clientX - r.width - 12;
+      if (y + r.height > innerHeight - 8) y = e.clientY - r.height - 14;
+      tip.style.left = x + 'px'; tip.style.top = y + 'px';
+    });
+    el.addEventListener('mouseleave', () => { tip.hidden = true; });
+  });
+}
+
+function quotaCard(q, i) {
+  const p = pace(q);
+  const usedW = Math.min(100, q.used);
+  const projW = Math.min(100, p.projected) - usedW;
+  const paceLabel = p.level === 'crit'
+    ? `<svg width="11" height="11" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M8 2.5 14.5 13.5h-13z"/><path d="M8 7v2.6M8 11.6v.1"/></svg>Full in ~${dur(p.fullInH)}`
+    : p.level === 'warn'
+      ? `<svg width="11" height="11" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><circle cx="8" cy="8" r="6"/><path d="M8 5v3.5M8 10.8v.1"/></svg>Near limit at reset`
+      : `On pace for ~${Math.round(p.projected)}%`;
+  return `<div class="quota ${p.level}" data-q="${i}">
+    <div class="q-head">
+      <span class="q-name">${esc(q.name)}</span><span class="q-window">${esc(q.window)}</span>
+      <span class="q-val num"><b>${q.used}</b><span>% used</span></span>
+    </div>
+    <div class="meter" role="meter" aria-valuemin="0" aria-valuemax="100" aria-valuenow="${q.used}" aria-label="${esc(q.name)} ${q.used}% used, ${Math.round(p.elapsed * 100)}% of window elapsed">
+      <div class="track">
+        <span class="used" style="width:${usedW}%"></span>
+        ${projW > 0.5 ? `<span class="proj" style="left:${usedW}%;width:${projW}%"></span>` : ''}
+      </div>
+      <span class="cap"></span>
+      <span class="now" style="left:${(p.elapsed * 100).toFixed(1)}%"></span>
+    </div>
+    <div class="q-foot num">
+      <span>Resets in ${dur(p.leftH)}</span><span class="sep">·</span><span>${clock(q.resetsAt)}</span>
+      <span class="pace ${p.level}">${paceLabel}</span>
+    </div>
+  </div>`;
+}
+
+function costCard(src) {
+  const ranges = ['today', 'week', 'month'];
+  const r = src.cost[state.range];
+  const kinds = TOKEN_KINDS.filter(([k]) => (r.tokens[k] || 0) > 0);
+  const total = kinds.reduce((s, [k]) => s + r.tokens[k], 0);
+  const promptSide = (r.tokens.input || 0) + (r.tokens.cacheWrite || 0) + (r.tokens.cacheRead || 0);
+  const hit = promptSide ? r.tokens.cacheRead / promptSide : 0;
+  const topCost = r.models[0][1];
+  return `<div class="cost">
+    <div class="ranges" role="group" aria-label="Cost range">
+      ${ranges.map((k) => {
+        const x = src.cost[k];
+        return `<button type="button" class="range" data-range="${k}" aria-pressed="${k === state.range}">
+          <span class="rl">${x.label}</span><span class="rv num">${money(x.cost)}</span>
+          <span class="rd num">${x.days > 1 ? money(x.cost / x.days) + '/day' : compact(x.tokens.cacheRead + x.tokens.input + x.tokens.output + (x.tokens.cacheWrite || 0) + (x.tokens.reasoning || 0)) + ' tokens'}</span>
+        </button>`;
+      }).join('')}
+    </div>
+    <div class="cost-body">
+      <div>
+        <div class="sub-head"><span><b class="num">${compact(total)}</b> tokens · ${r.entries.toLocaleString('en-US')} entries</span><span class="num">Cache hit ${(hit * 100).toFixed(0)}%</span></div>
+        <div class="stack" aria-hidden="true">${kinds.map(([k, , c]) => `<span data-k="${k}" style="flex:${r.tokens[k]} 0 0;background:${c}"></span>`).join('')}</div>
+        <div class="tok-legend">${kinds.map(([k, label, c]) => `<div><span class="sw" style="background:${c}"></span><span class="n">${label}</span><span class="v num">${compact(r.tokens[k])}</span><span class="p num">${(r.tokens[k] / total * 100).toFixed(r.tokens[k] / total < 0.1 ? 1 : 0)}%</span></div>`).join('')}</div>
+      </div>
+      <div class="models">
+        ${r.models.map(([name, cost, tokens]) => `<div class="model" data-m="${esc(name)}">
+          <div class="mn"><span>${esc(name)}</span><div class="mbar"><i style="width:${(cost / topCost * 100).toFixed(1)}%"></i></div></div>
+          <span class="mt num">${compact(tokens)}</span><span class="mc num">${money(cost)}</span>
+        </div>`).join('')}
+      </div>
+      <div class="cost-foot num"><span>${(r.models[0][1] / r.cost * 100).toFixed(0)}% of spend on ${esc(r.models[0][0])}</span><span>Updated 13:30</span></div>
+    </div>
+  </div>`;
+}
+
+function render(pop) {
+  const src = DATA[state.tab];
+  pop.innerHTML = `
+    <div class="tabs" role="tablist">
+      ${['claude', 'codex'].map((t) => `<button type="button" class="tab" role="tab" data-tab="${t}" aria-selected="${t === state.tab}"><span class="conn" aria-hidden="true"></span>${t === 'claude' ? 'Claude' : 'Codex'}</button>`).join('')}
+    </div>
+    <div class="section">
+      <div class="section-title">Usage limits <span class="plan">${src.plan}</span></div>
+      ${src.quotas.map(quotaCard).join('')}
+      <div class="legend-key"><span><i class="k-now"></i>Time elapsed in window</span><span><i class="k-proj"></i>Projected at reset</span></div>
+    </div>
+    <div class="section">
+      <div class="section-title">Local cost <span class="aside">USD · estimated from local logs</span></div>
+      ${costCard(src)}
+    </div>
+    <div class="actions">
+      <button type="button" class="btn"><svg width="13" height="13" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" aria-hidden="true"><path d="M13.5 8a5.5 5.5 0 1 1-1.6-3.9M13.5 2.5v3h-3"/></svg>Refresh</button>
+      <button type="button" class="btn">Quit</button>
+      <button type="button" class="btn primary">Open Keepline</button>
+    </div>`;
+  pop.querySelectorAll('[data-tab]').forEach((b) => b.addEventListener('click', () => { state.tab = b.dataset.tab; renderAll(); }));
+  pop.querySelectorAll('[data-range]').forEach((b) => b.addEventListener('click', () => { state.range = b.dataset.range; renderAll(); }));
+  bindTip(pop, '.meter', (el) => {
+    const q = src.quotas[el.closest('[data-q]').dataset.q];
+    const p = pace(q);
+    return `<b>${esc(q.name)} · ${esc(q.window)}</b><br><span class="num">${q.used}% used · ${Math.round(p.elapsed * 100)}% of window elapsed<br><span class="k">Straight-line estimate at reset</span> ${Math.round(p.projected)}%${p.fullInH < p.leftH ? `<br><span class="k">Hits 100% in</span> ~${dur(p.fullInH)}` : ''}</span>`;
+  });
+  bindTip(pop, '.stack span', (el) => {
+    const r = src.cost[state.range];
+    const [, label] = TOKEN_KINDS.find(([k]) => k === el.dataset.k);
+    return `<b>${label}</b><br><span class="num">${compact(r.tokens[el.dataset.k])} tokens</span>`;
+  });
+}
+function renderAll() { document.querySelectorAll('[data-pop]').forEach(render); }
+renderAll();
+</script>
+</body>
+</html>
