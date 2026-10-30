@@ -48,22 +48,84 @@ pub fn install_shell_integration(root: &Path) -> io::Result<()> {
         dir.join("zsh/keepline-integration"),
         include_str!("../shell-integration/zsh/keepline-integration"),
     )?;
+    std::fs::create_dir_all(dir.join("bash"))?;
+    std::fs::write(
+        dir.join("bash/keepline.bash"),
+        include_str!("../shell-integration/bash/keepline.bash"),
+    )?;
+    std::fs::create_dir_all(dir.join("fish"))?;
+    std::fs::write(
+        dir.join("fish/keepline.fish"),
+        include_str!("../shell-integration/fish/keepline.fish"),
+    )?;
     let _ = INTEGRATION.set(dir);
     Ok(())
 }
 
-/// zsh starts through the integration's ZDOTDIR, which restores the user's own before
-/// any of their startup files run. Other shells start untouched for now.
-fn integration_env(program: &str, dir: Option<&Path>) -> Vec<(OsString, OsString)> {
-    match dir {
-        Some(dir) if Path::new(program).file_name().is_some_and(|n| n == "zsh") => vec![
-            ("ZDOTDIR".into(), dir.join("zsh").into_os_string()),
+/// How an interactive shell starts with the integration: its argv and environment.
+/// zsh goes through the integration's ZDOTDIR, which restores the user's own before any
+/// of their startup files run; bash reads the integration as its init file, which loads
+/// the user's files itself; fish sources it after the user's config. A shell given
+/// anything beyond `-l` / `-i` (a command, a script) starts untouched.
+fn integration(argv: &[String], dir: Option<&Path>) -> (Vec<String>, Vec<(OsString, OsString)>) {
+    let untouched = (argv.to_vec(), Vec::new());
+    let Some(dir) = dir else {
+        return untouched;
+    };
+    let Some(name) = argv
+        .first()
+        .and_then(|p| Path::new(p).file_name())
+        .and_then(|n| n.to_str())
+    else {
+        return untouched;
+    };
+    let flags = &argv[1..];
+    let interactive = flags
+        .iter()
+        .all(|f| matches!(f.as_str(), "-l" | "--login" | "-i"));
+    let login = flags.iter().any(|f| f == "-l" || f == "--login");
+    let shared = (
+        OsString::from("KEEPLINE_SHELL_INTEGRATION_DIR"),
+        dir.as_os_str().to_owned(),
+    );
+    match name {
+        "zsh" => (
+            argv.to_vec(),
+            vec![("ZDOTDIR".into(), dir.join("zsh").into_os_string()), shared],
+        ),
+        // bash ignores --init-file in a login shell, so the file plays the login part.
+        "bash" if interactive => {
+            let mut env = vec![shared];
+            if login {
+                env.push(("KEEPLINE_BASH_LOGIN".into(), "1".into()));
+            }
             (
-                "KEEPLINE_SHELL_INTEGRATION_DIR".into(),
-                dir.as_os_str().to_owned(),
-            ),
-        ],
-        _ => Vec::new(),
+                vec![
+                    argv[0].clone(),
+                    "--init-file".into(),
+                    dir.join("bash/keepline.bash")
+                        .to_string_lossy()
+                        .into_owned(),
+                    "-i".into(),
+                ],
+                env,
+            )
+        }
+        "fish" if interactive => {
+            let script = dir
+                .join("fish/keepline.fish")
+                .to_string_lossy()
+                .into_owned();
+            let mut argv = argv.to_vec();
+            argv.push("--init-command".into());
+            // fish's single quotes only treat \\ and \' specially.
+            argv.push(format!(
+                "source '{}'",
+                script.replace('\\', "\\\\").replace('\'', "\\'")
+            ));
+            (argv, vec![shared])
+        }
+        _ => untouched,
     }
 }
 
@@ -109,6 +171,7 @@ pub fn spawn(
     {
         return Err(io::Error::last_os_error());
     }
+    let (argv, shell_env) = integration(argv, INTEGRATION.get().map(PathBuf::as_path));
     let mut command = Command::new(&argv[0]);
     command
         .args(&argv[1..])
@@ -118,10 +181,7 @@ pub fn spawn(
         .env("TERM", "xterm-256color")
         .env("COLORTERM", "truecolor")
         .env("COLORFGBG", scheme.colorfgbg())
-        .envs(integration_env(
-            &argv[0],
-            INTEGRATION.get().map(PathBuf::as_path),
-        ))
+        .envs(shell_env)
         .envs(host_env(terminal, HOST.get()))
         .env_remove("COLUMNS")
         .env_remove("LINES")
@@ -232,7 +292,7 @@ pub fn write(master: &mut File, bytes: &[u8]) -> io::Result<()> {
             Ok(0) => {
                 return Err(io::Error::other(format!(
                     "PTY 已关闭，已接受 {accepted} 字节"
-                )))
+                )));
             }
             Ok(n) => accepted += n,
             Err(e)
@@ -350,17 +410,121 @@ mod env_tests {
 
 #[cfg(test)]
 mod integration_tests {
+    use std::path::Path;
+
+    fn argv(a: &[&str]) -> Vec<String> {
+        a.iter().map(|s| s.to_string()).collect()
+    }
+
     #[test]
-    fn only_zsh_starts_through_the_integration() {
-        let dir = std::path::Path::new("/rt/shell-integration");
-        let env = super::integration_env("/bin/zsh", Some(dir));
+    fn interactive_shells_start_through_the_integration_and_commands_do_not() {
+        let dir = Path::new("/rt/shell-integration");
+        let (zsh, env) = super::integration(&argv(&["/bin/zsh", "-l"]), Some(dir));
+        assert_eq!(zsh, ["/bin/zsh", "-l"]);
         assert_eq!(
             env[0],
             ("ZDOTDIR".into(), "/rt/shell-integration/zsh".into())
         );
         assert_eq!(env[1].1, "/rt/shell-integration");
-        assert!(super::integration_env("/bin/bash", Some(dir)).is_empty());
-        assert!(super::integration_env("/bin/zsh", None).is_empty());
+
+        let (bash, env) = super::integration(&argv(&["/opt/homebrew/bin/bash", "-l"]), Some(dir));
+        assert_eq!(
+            bash,
+            [
+                "/opt/homebrew/bin/bash",
+                "--init-file",
+                "/rt/shell-integration/bash/keepline.bash",
+                "-i"
+            ]
+        );
+        assert!(env.contains(&("KEEPLINE_BASH_LOGIN".into(), "1".into())));
+        let (_, env) = super::integration(&argv(&["/bin/bash"]), Some(dir));
+        assert!(!env.iter().any(|(k, _)| k == "KEEPLINE_BASH_LOGIN"));
+
+        let odd = Path::new("/rt/it's here");
+        let (fish, _) = super::integration(&argv(&["/opt/homebrew/bin/fish", "-l"]), Some(odd));
+        assert_eq!(
+            fish[1..],
+            [
+                "-l",
+                "--init-command",
+                "source '/rt/it\\'s here/fish/keepline.fish'"
+            ]
+        );
+
+        for untouched in [
+            argv(&["/bin/bash", "-l", "-i", "-c", "codex"]),
+            argv(&["/opt/homebrew/bin/fish", "-c", "ls"]),
+            argv(&["/bin/sh", "-l"]),
+        ] {
+            assert_eq!(
+                super::integration(&untouched, Some(dir)),
+                (untouched, vec![])
+            );
+        }
+        assert!(super::integration(&argv(&["/bin/zsh"]), None).1.is_empty());
+    }
+
+    /// Runs a real shell through its integration with `cwd` as the start, and returns
+    /// the directory its first OSC 7 reports, or None when the shell is not installed.
+    fn reported(shell: &str, cwd: &Path, home: &Path) -> Option<String> {
+        if !Path::new(shell).exists() {
+            return None;
+        }
+        let root = std::env::temp_dir().join(format!("kl-shint-{}", std::process::id()));
+        super::install_shell_integration(&root).unwrap();
+        let (argv, env) =
+            super::integration(&argv(&[shell, "-l"]), Some(&root.join("shell-integration")));
+        let out = std::process::Command::new(&argv[0])
+            .args(&argv[1..])
+            .current_dir(cwd)
+            .env_clear()
+            .env("HOME", home)
+            .env("PATH", "/usr/bin:/bin")
+            .envs(env)
+            .stdin(std::process::Stdio::piped())
+            .stdout(std::process::Stdio::piped())
+            .stderr(std::process::Stdio::null())
+            .spawn()
+            .and_then(|mut c| {
+                use std::io::Write;
+                c.stdin.take().unwrap().write_all(b"cd .\nexit\n")?;
+                c.wait_with_output()
+            })
+            .unwrap();
+        let text = String::from_utf8_lossy(&out.stdout).into_owned();
+        let start = text.find("\x1b]7;file://")? + "\x1b]7;file://".len();
+        let rest = &text[start..];
+        let rest = &rest[rest.find('/')?..];
+        Some(rest[..rest.find('\x1b')?].to_owned())
+    }
+
+    #[test]
+    fn bash_and_fish_report_their_directory_and_still_load_the_users_files() {
+        let base = std::env::temp_dir().join(format!("kl-shint-home-{}", std::process::id()));
+        let home = base.join("home");
+        let cwd = base.join("目录 a");
+        std::fs::create_dir_all(&home).unwrap();
+        std::fs::create_dir_all(&cwd).unwrap();
+        let cwd = cwd.canonicalize().unwrap();
+        // A login bash reads the profile; keepline must not skip it.
+        std::fs::write(home.join(".bash_profile"), "echo PROFILE_LOADED\n").unwrap();
+        let encoded = cwd
+            .to_str()
+            .unwrap()
+            .replace("目录", "%E7%9B%AE%E5%BD%95")
+            .replace(' ', "%20");
+        for shell in [
+            "/bin/bash",
+            "/opt/homebrew/bin/bash",
+            "/opt/homebrew/bin/fish",
+        ] {
+            if Path::new(shell).exists() {
+                let dir = reported(shell, &cwd, &home);
+                assert_eq!(dir.as_deref(), Some(encoded.as_str()), "{shell}");
+            }
+        }
+        let _ = std::fs::remove_dir_all(&base);
     }
 }
 
