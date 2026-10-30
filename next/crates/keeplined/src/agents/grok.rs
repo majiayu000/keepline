@@ -143,6 +143,15 @@ fn outcome(update: &Value) -> (Value, Option<i32>) {
     (Value::Object(value), code)
 }
 
+/// `summary.json` beside a transcript; a file grown past a megabyte is not one.
+fn summary(transcript: &Path) -> Option<Value> {
+    let summary = transcript.with_file_name("summary.json");
+    if std::fs::metadata(&summary).ok()?.len() > 1024 * 1024 {
+        return None;
+    }
+    serde_json::from_slice(&std::fs::read(&summary).ok()?).ok()
+}
+
 impl Adapter for Grok {
     fn root(&self, home: &Path) -> PathBuf {
         grok_home(home).join("sessions")
@@ -179,6 +188,12 @@ impl Adapter for Grok {
         };
         named(Some(dir)) || named(dir.parent())
     }
+    /// Grok keeps the title it generates for a session in `summary.json`.
+    fn name(&self, _root: &Path, transcript: &Path) -> Option<String> {
+        let summary = summary(transcript)?;
+        let name = summary["session_summary"].as_str()?.trim();
+        (!name.is_empty() && !name.contains('\n')).then(|| name.to_owned())
+    }
     fn identity(&self, path: &Path, record: &Value) -> Option<(String, String)> {
         Some((
             record["params"]["sessionId"].as_str()?.into(),
@@ -190,14 +205,7 @@ impl Adapter for Grok {
             parser.hide(keepline_core::content::TEMPORARY_DIRECTORY);
             return;
         }
-        let summary = path.with_file_name("summary.json");
-        if std::fs::metadata(&summary).map_or(true, |m| m.len() > 1024 * 1024) {
-            return;
-        }
-        let Some(summary) = std::fs::read(&summary)
-            .ok()
-            .and_then(|b| serde_json::from_slice::<Value>(&b).ok())
-        else {
+        let Some(summary) = summary(path) else {
             return;
         };
         match summary["session_kind"].as_str() {
@@ -548,6 +556,28 @@ mod tests {
             p.card.hidden_reason,
             keepline_core::content::TEMPORARY_DIRECTORY
         );
+        let _ = std::fs::remove_dir_all(dir);
+    }
+
+    #[test]
+    fn the_summary_beside_the_stream_names_the_session() {
+        let dir = std::env::temp_dir().join(format!("kl-grok-{}", uuid::Uuid::new_v4()));
+        let session = dir.join("%2FUsers%2Fme%2Frepo").join("01a1");
+        std::fs::create_dir_all(&session).unwrap();
+        let path = session.join("updates.jsonl");
+        assert_eq!(Grok.name(&dir, &path), None);
+        for (summary, name) in [
+            (
+                json!({"session_summary": " 修好登录页的测试 "}),
+                Some("修好登录页的测试"),
+            ),
+            (json!({"session_summary": ""}), None),
+            (json!({"session_summary": "第一行\n第二行"}), None),
+            (json!({"info": {"id": "01a1"}}), None),
+        ] {
+            std::fs::write(session.join("summary.json"), summary.to_string()).unwrap();
+            assert_eq!(Grok.name(&dir, &path).as_deref(), name);
+        }
         let _ = std::fs::remove_dir_all(dir);
     }
 }
