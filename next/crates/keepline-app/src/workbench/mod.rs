@@ -1,4 +1,4 @@
-use crate::host::store::{Store, record_left};
+use crate::host::store::{CUT_OFF_NOTICE, Store, record_left};
 use crate::model::{search::*, session_state::*, time::*};
 use crate::ui::app_icon::{AppIcon, Chosen};
 use crate::{
@@ -27,6 +27,8 @@ pub struct Workbench {
     error: Option<String>,
     /// The older host is being stopped; the app quits and reopens once it is gone.
     restarting: bool,
+    /// 「重新连接」 is checking for the host and starting one if it is gone.
+    reconnecting: bool,
     nav: Nav,
     overview: OverviewState,
     tasks: TaskUi,
@@ -205,7 +207,16 @@ impl Workbench {
                 if this
                     .update(cx, |this, cx| {
                         let revision = status.workspace_revision;
+                        let interrupted = status.phase == RecognitionPhase::Interrupted;
                         this.store.set_recognition(status);
+                        if interrupted {
+                            // Repaint once the outage is long enough to show its strip.
+                            cx.spawn(async move |this, cx| {
+                                cx.background_executor().timer(CUT_OFF_NOTICE).await;
+                                let _ = this.update(cx, |_, cx| cx.notify());
+                            })
+                            .detach();
+                        }
                         if revision > this.workspace.revision {
                             this.sync(cx);
                         }
@@ -264,6 +275,7 @@ impl Workbench {
             title_drag: false,
             error: None,
             restarting: false,
+            reconnecting: false,
             nav: Nav {
                 space,
                 tab,

@@ -415,28 +415,25 @@ impl Render for Workbench {
             .flex()
             .flex_col()
             .children(top_tabs);
-        // Indexing in progress is a top-bar note; only a stopped recognition is worth a
-        // banner, in words the user can act on. A missing official status source is not:
-        // logs and screens still tell the state.
-        if self.store.recognition().phase == RecognitionPhase::Interrupted {
-            main = main.child(
-                label(
-                    "会话识别暂停了，左栏和鸟瞰里的状态可能不是最新的。重开 Keepline 通常能恢复。",
-                )
-                .px(px(T::S14))
-                .py(px(T::S6))
-                .text_color(Group::Waiting.colors().1),
-            );
-        }
-        if let Some(status) = cx
+        // Indexing in progress is a top-bar note; only a lost link to the host is worth a
+        // strip, in words the user can act on. A missing official status source is not:
+        // logs and screens still tell the state. The menubar's failed refresh is the same
+        // outage, so while the link is down it only adds to the strip's details.
+        let status = cx
             .try_global::<crate::desktop::Status>()
-            .filter(|s| !s.0.is_empty())
-        {
-            main = main.child(
-                label(status.0.clone())
-                    .px(px(T::S14))
-                    .text_color(Group::Waiting.colors().1),
-            );
+            .map(|s| s.0.clone())
+            .filter(|s| !s.is_empty());
+        if self.store.cut_off() {
+            let mut details = vec![self.store.recognition().detail.clone()];
+            details.extend(status);
+            main = main.child(self.notice_strip("后台连接断开，正在重新连接…", details, true, cx));
+        } else if let Some(status) = status.filter(|_| {
+            // A failed refresh while the link is down for a moment is the same blip.
+            self.store.recognition().phase != RecognitionPhase::Interrupted
+        }) {
+            let (text, detail) = status.split_once('：').unwrap_or((&status, ""));
+            let details = vec![detail.to_string()];
+            main = main.child(self.notice_strip(text, details, false, cx));
         }
         if let Some(error) = &self.error {
             main = main.child(
@@ -1060,5 +1057,85 @@ impl Render for TabTip {
                 d.child(div().text_color(T::color(T::secondary())).child(reason))
             })
             .when_some(self.cwd.clone(), |d, cwd| d.child(label(cwd)))
+    }
+}
+
+impl Workbench {
+    /// One line under the tabs for a connection problem: a sentence the user can act on,
+    /// the raw errors on hover, and 「重新连接」 when the host itself is unreachable.
+    fn notice_strip(
+        &self,
+        text: &str,
+        details: Vec<String>,
+        reconnect: bool,
+        cx: &mut Context<Self>,
+    ) -> impl IntoElement {
+        let (_, ink, bg) = Group::Waiting.colors();
+        let details: Vec<String> = details.into_iter().filter(|d| !d.is_empty()).collect();
+        let message = div()
+            .id("connection-notice")
+            .min_w_0()
+            .flex()
+            .items_center()
+            .gap(px(T::S8))
+            .child(dot(Group::Waiting))
+            .child(div().truncate().child(text.to_string()))
+            .when(!details.is_empty(), |d| {
+                d.tooltip(diagnostics::tip(details))
+            });
+        div()
+            .flex()
+            .items_center()
+            .gap(px(T::S8))
+            .px(px(T::S14))
+            .py(px(T::S2))
+            .bg(bg)
+            .text_size(px(T::META))
+            .text_color(ink)
+            .child(message)
+            .child(div().flex_1())
+            .when(reconnect, |d| {
+                let text = if self.reconnecting {
+                    "连接中…"
+                } else {
+                    "重新连接"
+                };
+                d.child(
+                    button("reconnect-host", text)
+                        .flex_shrink_0()
+                        .text_color(ink)
+                        .on_click(cx.listener(|this, _, _, cx| this.reconnect(cx))),
+                )
+            })
+    }
+    /// Starts a host when none answers; the status link then resubscribes on its own.
+    pub(super) fn reconnect(&mut self, cx: &mut Context<Self>) {
+        if self.reconnecting {
+            return;
+        }
+        self.reconnecting = true;
+        cx.notify();
+        let socket = self.store.socket().to_owned();
+        cx.spawn(async move |this, cx| {
+            let result = cx
+                .background_spawn(async move {
+                    if crate::lifecycle::connected_host(&socket)? {
+                        return Ok(());
+                    }
+                    let root = socket
+                        .parent()
+                        .ok_or_else(|| std::io::Error::other("找不到运行目录"))?;
+                    crate::lifecycle::spawn_host(root, false)
+                })
+                .await;
+            let _ = this.update(cx, |this, cx| {
+                this.reconnecting = false;
+                if let Err(e) = result {
+                    this.error = Some(format!("没能启动后台：{e}"));
+                }
+                cx.notify();
+            });
+        })
+        .detach();
     }
 }
