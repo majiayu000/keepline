@@ -659,6 +659,10 @@ impl Workbench {
                 self.next_waiting(window, cx);
                 return true;
             }
+            Action::ToggleSidebar => {
+                self.toggle_sidebar(cx);
+                return true;
+            }
             Action::PrevPane | Action::NextPane => {
                 self.focus_neighbour(action == Action::NextPane, window, cx);
                 return true;
@@ -956,7 +960,7 @@ impl Workbench {
             cwd,
         }
     }
-    fn attention_reason(&self, s: &AgentSession, g: Group) -> Option<String> {
+    pub(super) fn attention_reason(&self, s: &AgentSession, g: Group) -> Option<String> {
         let content = self.workspace.content.get(&s.id);
         let text = match g {
             Group::Waiting => content.map(|c| c.waiting.clone()).unwrap_or_default(),

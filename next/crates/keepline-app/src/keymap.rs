@@ -26,6 +26,8 @@ pub enum Action {
     Settings,
     /// The next session that waits on you, as the top bar's chip.
     NextWaiting,
+    /// Fold the left column to a rail and back.
+    ToggleSidebar,
     Find,
     Clear,
     SelectAll,
@@ -50,7 +52,7 @@ impl Section {
     }
 }
 impl Action {
-    pub const ALL: [Self; 30] = [
+    pub const ALL: [Self; 31] = [
         Self::NewTab,
         Self::Close,
         Self::SplitRight,
@@ -81,6 +83,7 @@ impl Action {
         Self::Search,
         Self::Settings,
         Self::NextWaiting,
+        Self::ToggleSidebar,
     ];
     pub fn name(self) -> String {
         match self {
@@ -101,6 +104,7 @@ impl Action {
             Self::Search => "search".into(),
             Self::Settings => "settings".into(),
             Self::NextWaiting => "next_waiting".into(),
+            Self::ToggleSidebar => "toggle_sidebar".into(),
             Self::Find => "find".into(),
             Self::Clear => "clear".into(),
             Self::SelectAll => "select_all".into(),
@@ -128,6 +132,7 @@ impl Action {
             Self::Search => "搜索".into(),
             Self::Settings => "设置".into(),
             Self::NextWaiting => "下一个等你的".into(),
+            Self::ToggleSidebar => "收起 / 展开左栏".into(),
             Self::Find => "在终端里查找".into(),
             Self::Clear => "清屏".into(),
             Self::SelectAll => "全选".into(),
@@ -140,7 +145,9 @@ impl Action {
         match self {
             Self::Find | Self::Clear | Self::SelectAll => Section::Terminal,
             Self::ZoomIn | Self::ZoomOut | Self::ZoomReset => Section::Terminal,
-            Self::Search | Self::Settings | Self::NextWaiting => Section::Workbench,
+            Self::Search | Self::Settings | Self::NextWaiting | Self::ToggleSidebar => {
+                Section::Workbench
+            }
             _ => Section::Tabs,
         }
     }
@@ -178,6 +185,7 @@ impl Action {
             Self::Search => &["cmd-p"],
             Self::Settings => &["cmd-,"],
             Self::NextWaiting => &["cmd-j"],
+            Self::ToggleSidebar => &["cmd-b"],
             Self::Find => &["cmd-f"],
             Self::Clear => &["cmd-k"],
             Self::SelectAll => &["cmd-a"],
@@ -591,6 +599,7 @@ mod tests {
             ("cmd-p", Action::Search),
             ("cmd-,", Action::Settings),
             ("cmd-j", Action::NextWaiting),
+            ("cmd-b", Action::ToggleSidebar),
             ("cmd-f", Action::Find),
             ("cmd-k", Action::Clear),
             ("cmd-=", Action::ZoomIn),

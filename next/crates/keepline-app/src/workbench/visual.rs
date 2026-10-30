@@ -565,6 +565,21 @@ impl Workbench {
                 layout::choose_icon(AppIcon::Mascot, cx);
                 self.layout.icon_menu = Some(gpui::point(px(T::TRAFFIC_LIGHT_INSET), px(T::TOP)));
             }
+            // The left column's presets, set in memory so the evidence run writes no choice.
+            "SidebarClassic" | "SidebarStatus" | "SidebarStatusOpen" | "SidebarDirectory"
+            | "SidebarRail" => {
+                self.sidebar.preset = match name {
+                    "SidebarStatus" | "SidebarStatusOpen" => "status",
+                    "SidebarDirectory" => "directory",
+                    _ => "classic",
+                }
+                .into();
+                self.sidebar.collapsed = name == "SidebarRail";
+                self.sidebar.toggled.clear();
+                if name == "SidebarStatusOpen" {
+                    self.sidebar.toggled.insert("status:rest".into());
+                }
+            }
             "PaneMenu" => {
                 self.nav.focused = Some("p0".into());
                 self.layout.menu = Some(PaneMenu {

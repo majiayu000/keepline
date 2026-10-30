@@ -21,6 +21,8 @@ pub enum Kind {
     Actions,
     /// `rules.json`: which commands count as verification (see `rule`).
     Rules,
+    /// `sidebar.json`: ways to arrange the left column (see `sidebar`).
+    Sidebar,
 }
 impl Kind {
     pub fn label(self) -> &'static str {
@@ -28,6 +30,7 @@ impl Kind {
             Self::Agent => "Agent",
             Self::Actions => "动作",
             Self::Rules => "验证规则",
+            Self::Sidebar => "左栏",
         }
     }
     /// The files of this kind inside a plugin directory, in load order.
@@ -54,6 +57,10 @@ impl Kind {
                 .filter(|p| p.is_file())
                 .collect(),
             Self::Rules => [dir.join("rules.json")]
+                .into_iter()
+                .filter(|p| p.is_file())
+                .collect(),
+            Self::Sidebar => [dir.join("sidebar.json")]
                 .into_iter()
                 .filter(|p| p.is_file())
                 .collect(),
@@ -171,7 +178,7 @@ fn read(dir: &Path) -> Result<Plugin, String> {
         return Err("name 不能为空".into());
     }
     if m.provides.is_empty() {
-        return Err("provides 至少写一种：agent、actions、rules".into());
+        return Err("provides 至少写一种：agent、actions、rules、sidebar".into());
     }
     let plugin = Plugin {
         id: m.id,
@@ -285,7 +292,8 @@ mod tests {
             };
             let (_, actions) = crate::action::load(p.files(Kind::Actions));
             let (_, rules) = crate::rule::load(p.files(Kind::Rules));
-            for loaded in actions.iter().chain(&rules) {
+            let (_, sidebar) = crate::sidebar::load(p.files(Kind::Sidebar));
+            for loaded in actions.iter().chain(&rules).chain(&sidebar) {
                 assert!(loaded.result.is_ok(), "{loaded:?}");
             }
         }

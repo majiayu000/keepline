@@ -328,6 +328,8 @@ impl Theme {
     pub const S16: f32 = 16.;
     pub const S20: f32 = 20.;
     pub const SIDEBAR: f32 = 240.;
+    /// The folded left column (⌘B).
+    pub const SIDEBAR_RAIL: f32 = 36.;
     pub const TOP: f32 = 46.;
     /// macOS draws the traffic lights inside the top bar; its content starts after them.
     pub const TRAFFIC_LIGHT_X: f32 = 16.;

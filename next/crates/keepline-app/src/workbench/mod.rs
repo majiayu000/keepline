@@ -35,6 +35,7 @@ pub struct Workbench {
     resuming: Resuming,
     diagnostics: Option<Entity<diagnostics::DiagnosticView>>,
     settings: Option<Entity<settings::SettingsView>>,
+    sidebar: sidebar_list::SidebarPrefs,
 }
 #[derive(Clone)]
 struct PaneMenu {
@@ -157,6 +158,7 @@ mod settings;
 use sessions::{Attention, Resuming};
 mod sidebar;
 use sidebar::closed_recently;
+mod sidebar_list;
 mod tabs;
 mod tasks;
 use tasks::TaskUi;
@@ -241,6 +243,7 @@ impl Workbench {
             away: None,
             diagnostics: None,
             settings: None,
+            sidebar: sidebar_list::SidebarPrefs::load(),
             search,
             store,
             workspace,
