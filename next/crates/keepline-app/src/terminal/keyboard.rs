@@ -93,6 +93,19 @@ pub fn physical_key(name: &str) -> Option<Key> {
         "end" => Key::End,
         "pageup" => Key::PageUp,
         "pagedown" => Key::PageDown,
+        "insert" => Key::Insert,
+        "f1" => Key::F1,
+        "f2" => Key::F2,
+        "f3" => Key::F3,
+        "f4" => Key::F4,
+        "f5" => Key::F5,
+        "f6" => Key::F6,
+        "f7" => Key::F7,
+        "f8" => Key::F8,
+        "f9" => Key::F9,
+        "f10" => Key::F10,
+        "f11" => Key::F11,
+        "f12" => Key::F12,
         _ => return None,
     })
 }
@@ -159,6 +172,25 @@ mod tests {
             assert_eq!(
                 encode(&vt, physical_key(name).unwrap(), name, Mods::ALT).unwrap(),
                 format!("\x1b{name}").as_bytes()
+            );
+        }
+    }
+    #[test]
+    fn function_and_insert_keys_reach_the_program() {
+        let vt = Vt::new(80, 24).unwrap();
+        for (name, bytes) in [
+            ("f1", &b"\x1bOP"[..]),
+            ("f4", b"\x1bOS"),
+            ("f5", b"\x1b[15~"),
+            ("f12", b"\x1b[24~"),
+            ("insert", b"\x1b[2~"),
+        ] {
+            let key = physical_key(name).unwrap();
+            assert!(!is_text_key(name), "{name}");
+            assert_eq!(
+                encode(&vt, key, name, Mods::empty()).unwrap(),
+                bytes,
+                "{name}"
             );
         }
     }

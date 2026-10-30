@@ -34,6 +34,11 @@ pub enum Action {
     ZoomIn,
     ZoomOut,
     ZoomReset,
+    /// Scrollback, as Ghostty's scroll_to_top / scroll_to_bottom / scroll_page_*.
+    ScrollTop,
+    ScrollBottom,
+    PageUp,
+    PageDown,
 }
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Section {
@@ -52,7 +57,7 @@ impl Section {
     }
 }
 impl Action {
-    pub const ALL: [Self; 31] = [
+    pub const ALL: [Self; 35] = [
         Self::NewTab,
         Self::Close,
         Self::SplitRight,
@@ -80,6 +85,10 @@ impl Action {
         Self::ZoomIn,
         Self::ZoomOut,
         Self::ZoomReset,
+        Self::ScrollTop,
+        Self::ScrollBottom,
+        Self::PageUp,
+        Self::PageDown,
         Self::Search,
         Self::Settings,
         Self::NextWaiting,
@@ -111,6 +120,10 @@ impl Action {
             Self::ZoomIn => "zoom_in".into(),
             Self::ZoomOut => "zoom_out".into(),
             Self::ZoomReset => "zoom_reset".into(),
+            Self::ScrollTop => "scroll_to_top".into(),
+            Self::ScrollBottom => "scroll_to_bottom".into(),
+            Self::PageUp => "scroll_page_up".into(),
+            Self::PageDown => "scroll_page_down".into(),
         }
     }
     pub fn label(self) -> String {
@@ -139,12 +152,19 @@ impl Action {
             Self::ZoomIn => "放大字号".into(),
             Self::ZoomOut => "缩小字号".into(),
             Self::ZoomReset => "还原字号".into(),
+            Self::ScrollTop => "滚到最上面".into(),
+            Self::ScrollBottom => "回到底部".into(),
+            Self::PageUp => "向上翻一页".into(),
+            Self::PageDown => "向下翻一页".into(),
         }
     }
     pub fn section(self) -> Section {
         match self {
             Self::Find | Self::Clear | Self::SelectAll => Section::Terminal,
             Self::ZoomIn | Self::ZoomOut | Self::ZoomReset => Section::Terminal,
+            Self::ScrollTop | Self::ScrollBottom | Self::PageUp | Self::PageDown => {
+                Section::Terminal
+            }
             Self::Search | Self::Settings | Self::NextWaiting | Self::ToggleSidebar => {
                 Section::Workbench
             }
@@ -192,6 +212,10 @@ impl Action {
             Self::ZoomIn => &["cmd-=", "cmd-shift-="],
             Self::ZoomOut => &["cmd--"],
             Self::ZoomReset => &["cmd-0"],
+            Self::ScrollTop => &["cmd-home"],
+            Self::ScrollBottom => &["cmd-end"],
+            Self::PageUp => &["cmd-pageup"],
+            Self::PageDown => &["cmd-pagedown"],
         }
     }
     fn parse(name: &str) -> Option<Self> {
@@ -310,6 +334,10 @@ impl Chord {
             "right" => "→".into(),
             "up" => "↑".into(),
             "down" => "↓".into(),
+            "home" => "↖".into(),
+            "end" => "↘".into(),
+            "pageup" => "⇞".into(),
+            "pagedown" => "⇟".into(),
             key => key.to_uppercase(),
         };
         out + &key
@@ -606,6 +634,10 @@ mod tests {
             ("cmd-shift-=", Action::ZoomIn),
             ("cmd--", Action::ZoomOut),
             ("cmd-0", Action::ZoomReset),
+            ("cmd-home", Action::ScrollTop),
+            ("cmd-end", Action::ScrollBottom),
+            ("cmd-pageup", Action::PageUp),
+            ("cmd-pagedown", Action::PageDown),
         ] {
             assert_eq!(map.action_for(&press(keys)), Some(action), "{keys}");
         }
