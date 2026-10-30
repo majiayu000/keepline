@@ -1,8 +1,6 @@
 //! The left column: spaces, the current space's sessions and its (folded) todos.
 use super::*;
 
-/// Rows before the list hands off to the overview.
-const SIDEBAR_SESSIONS: usize = 12;
 /// Row order by the shown state: what needs you, then live work, then the rest.
 const SIDEBAR_ORDER: [Group; 9] = [
     Group::Waiting,
@@ -36,6 +34,9 @@ impl Workbench {
         space_name: &str,
         cx: &Context<Self>,
     ) -> gpui::Stateful<gpui::Div> {
+        if self.sidebar.collapsed {
+            return self.sidebar_rail(cx);
+        }
         let mut sidebar = div()
             .id("sidebar-content")
             .flex_1()
@@ -204,15 +205,6 @@ impl Workbench {
             .as_ref()
             .and_then(|id| self.workspace.current_agent(id))
             .map(|s| s.id.clone());
-        // The session you are in stays listed even when others outrank it.
-        if let Some(i) = sessions
-            .iter()
-            .position(|(s, ..)| current.as_deref() == Some(s.id.as_str()))
-            .filter(|i| *i >= SIDEBAR_SESSIONS)
-        {
-            let row = sessions.remove(i);
-            sessions.insert(SIDEBAR_SESSIONS - 1, row);
-        }
         // Agents running in a tab here that no evidence has tied to a conversation yet:
         // listed rather than missing, so a CLI Keepline cannot read is never silent.
         let mut unread: Vec<_> = self
@@ -231,87 +223,16 @@ impl Workbench {
             .collect();
         unread.sort_by(|a, b| a.0.cmp(&b.0));
         sidebar = sidebar.child(self.todos_view(space_name, cx));
-        sidebar = sidebar.child(
-            label(format!("会话 · {}", sessions.len() + unread.len()))
-                .mt(px(T::S14))
-                .pt(px(T::S12))
-                .px(px(T::S8))
-                .mb(px(T::S4)),
-        );
         if sessions.is_empty() && unread.is_empty() {
             sidebar = sidebar.child(
-                label("没有打开的会话。在终端里运行 codex 或 claude 就会出现在这里").px(px(T::S8)),
+                label("没有打开的会话。在终端里运行 codex 或 claude 就会出现在这里")
+                    .mt(px(T::S14))
+                    .px(px(T::S8)),
             );
         }
-        let more = sessions.len().saturating_sub(SIDEBAR_SESSIONS);
-        let seen = crate::ui::status_colors::StatusColors::get();
-        for (session, g, attention, _) in sessions.into_iter().take(SIDEBAR_SESSIONS) {
-            let open = session.clone();
-            sidebar = sidebar.child(
-                div()
-                    .id(gpui::SharedString::from(format!("session-{}", session.id)))
-                    .h(px(T::ROW))
-                    .px(px(T::S8))
-                    .flex()
-                    .items_center()
-                    .gap(px(T::S8))
-                    .rounded(px(T::CONTROL_RADIUS))
-                    .cursor_pointer()
-                    .when(current.as_deref() == Some(session.id.as_str()), |d| {
-                        d.bg(T::color(T::raised()))
-                    })
-                    .hover(|s| s.bg(T::color(T::raised())))
-                    .child(if attention { dot(g) } else { seen_dot(g) })
-                    .child(
-                        match self
-                            .layout
-                            .renaming_session
-                            .as_ref()
-                            .filter(|(id, ..)| id == &session.id)
-                        {
-                            Some((_, field, _)) => div()
-                                .flex_1()
-                                .min_w_0()
-                                .text_size(px(T::MONO_SIZE))
-                                .child(field.clone()),
-                            None => div()
-                                .flex_1()
-                                .min_w_0()
-                                .truncate()
-                                .text_size(px(T::MONO_SIZE))
-                                .when(!attention, |d| d.text_color(T::color(seen.seen_title())))
-                                .child(self.session_title(session)),
-                        },
-                    )
-                    // Rows that all wait for your next step tell apart by how long they have.
-                    .child(
-                        label(if g == Group::Ready && !attention {
-                            match age(self.session_updated(session)) {
-                                a if a == "刚刚" => a,
-                                a => format!("{a}前"),
-                            }
-                        } else {
-                            g.label().to_owned()
-                        })
-                        .text_size(px(T::CHIP_SIZE))
-                        .text_color(if attention {
-                            g.colors().1
-                        } else {
-                            T::color(seen.seen_status())
-                        }),
-                    )
-                    // Straight to its pane; an exited one resumes in a new pane.
-                    .on_click(
-                        cx.listener(move |this, event: &gpui::ClickEvent, window, cx| {
-                            if event.click_count() == 2 {
-                                this.rename_session(&open.id, window, cx);
-                                return;
-                            }
-                            this.open_session(&open, window, cx)
-                        }),
-                    ),
-            );
-        }
+        let listed = sessions.into_iter().map(|(s, g, a, _)| (s, g, a)).collect();
+        let (rows, more) = self.session_list(listed, current.as_deref(), cx);
+        sidebar = sidebar.children(rows);
         for (terminal, (note, why)) in unread {
             let focused = self.nav.focused.as_deref() == Some(terminal.as_str());
             sidebar = sidebar.child(
@@ -388,6 +309,22 @@ impl Workbench {
             .bg(T::color(T::panel()))
             .border_r(px(T::BORDER_WIDTH))
             .border_color(T::color(T::border()))
+            .child(
+                div()
+                    .flex_shrink_0()
+                    .px(px(T::S8))
+                    .pt(px(T::S8))
+                    .flex()
+                    .items_center()
+                    .gap(px(T::S4))
+                    .child(self.preset_switch(cx).flex_1())
+                    .child(
+                        button("sidebar-collapse", "‹")
+                            .border_0()
+                            .aria_label("收起左栏")
+                            .on_click(cx.listener(|this, _, _, cx| this.toggle_sidebar(cx))),
+                    ),
+            )
             .child(sidebar)
             .child(
                 div()
@@ -412,6 +349,48 @@ impl Workbench {
                     .child(button("open-settings", "设置").border_0().on_click(
                         cx.listener(|this, _, window, cx| this.show_settings(window, cx)),
                     )),
+            )
+    }
+    /// The folded column: a way back, and how many sessions in this space need you.
+    fn sidebar_rail(&self, cx: &Context<Self>) -> gpui::Stateful<gpui::Div> {
+        let needs = self
+            .workspace
+            .agent_sessions
+            .iter()
+            .filter(|s| {
+                self.session_hidden(s).is_none()
+                    && self.session_open(s)
+                    && session_space(&self.workspace, s) == Some(self.nav.space.as_str())
+            })
+            .map(|s| sidebar_status(&self.workspace, &self.attention.unseen, s))
+            .filter(|(g, attention)| *attention && matches!(g, Group::Waiting | Group::Error))
+            .count();
+        div()
+            .id("sidebar")
+            .w(px(T::SIDEBAR_RAIL))
+            .h_full()
+            .flex_shrink_0()
+            .flex()
+            .flex_col()
+            .items_center()
+            .gap(px(T::S8))
+            .py(px(T::S8))
+            .bg(T::color(T::panel()))
+            .border_r(px(T::BORDER_WIDTH))
+            .border_color(T::color(T::border()))
+            .child(
+                button("sidebar-expand", "›")
+                    .border_0()
+                    .aria_label("展开左栏")
+                    .on_click(cx.listener(|this, _, _, cx| this.toggle_sidebar(cx))),
+            )
+            .when(needs > 0, |d| d.child(badge(Group::Waiting, needs)))
+            .child(div().flex_1())
+            .child(
+                button("open-settings", "⚙")
+                    .border_0()
+                    .aria_label("设置")
+                    .on_click(cx.listener(|this, _, window, cx| this.show_settings(window, cx))),
             )
     }
     /// The space's todos: what is still to be handed to an Agent, above what is running.

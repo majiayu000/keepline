@@ -840,6 +840,21 @@ impl SettingsView {
                 });
             }
         }
+        let sidebars = keepline_core::sidebar::report();
+        if !sidebars.is_empty() {
+            page = page.child(div().mt(px(T::S16)).child(label("左栏文件")));
+            for r in sidebars {
+                let file = r.file.display().to_string();
+                page = page.child(match &r.result {
+                    Ok(list) => self.row(
+                        &file,
+                        &format!("左栏顶部多了：{list}"),
+                        status(true, "生效".into()),
+                    ),
+                    Err(e) => self.row(&file, e, status(false, "没有生效".into())),
+                });
+            }
+        }
         let declared = agent::report();
         if !declared.is_empty() {
             page = page.child(div().mt(px(T::S16)).child(label("Agent 声明文件")));

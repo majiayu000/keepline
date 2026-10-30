@@ -1,0 +1,13 @@
+{
+  "api": 1,
+  "presets": [
+    {
+      "id": "focus",
+      "name": "专注",
+      "group": "status",
+      "fold": ["running", "done", "stopped", "stale"],
+      "detail": "always",
+      "limit": 8
+    }
+  ]
+}

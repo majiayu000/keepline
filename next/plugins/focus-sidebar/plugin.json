@@ -1,0 +1,8 @@
+{
+  "api": 1,
+  "id": "focus-sidebar",
+  "name": "专注左栏",
+  "version": "0.1.0",
+  "description": "左栏只摊开需要你的会话，其余都收成一行，每行带第二行说明",
+  "provides": ["sidebar"]
+}

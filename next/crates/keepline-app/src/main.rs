@@ -284,6 +284,7 @@ fn run() -> io::Result<()> {
     keepline_core::agent::install();
     keepline_core::action::install();
     keepline_core::rule::install();
+    keepline_core::sidebar::install();
     let args: Vec<String> = std::env::args().collect();
     let root = if let Some(i) = args.iter().position(|a| a == "--runtime") {
         PathBuf::from(
