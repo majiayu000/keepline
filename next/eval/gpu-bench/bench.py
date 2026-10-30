@@ -88,6 +88,19 @@ class Fixture:
         self.edit({'PutTab': {'tab': {'id': id, 'space': 's', 'title': id, 'default_task': None, 'closed': False, 'layout': tree}}})
     def close(self):
         self.host.terminate(); self.host.wait(5)
+        # The app takes the terminals over into its own detached host, which outlives both
+        # the app and the fixture and keeps every workload loop running.
+        pattern = f'keeplined serve --runtime {self.root}( |$)'
+        for sig, wait in ((15, 50), (9, 20)):
+            pids = [int(p) for p in subprocess.run(['pgrep', '-f', pattern], capture_output=True, text=True).stdout.split()]
+            if not pids: return
+            for p in pids:
+                try: os.kill(p, sig)
+                except ProcessLookupError: pass
+            for _ in range(wait):
+                if not subprocess.run(['pgrep', '-f', pattern], capture_output=True).stdout: return
+                time.sleep(.1)
+        raise RuntimeError(f'host for {self.root} did not exit')
 
 def leaf(i): return {'Leaf': i}
 def split(a, b, axis='Right'): return {'Split': {'axis': axis, 'ratio': 5000, 'first': a, 'second': b}}
