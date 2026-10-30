@@ -221,7 +221,8 @@ impl Pane {
                 // several busy panes repaint in one frame rather than one frame each.
                 let echo = this
                     .read_with(cx, |pane, _| {
-                        pane.typed.is_some_and(|t| t.elapsed() < std::time::Duration::from_millis(300))
+                        pane.typed
+                            .is_some_and(|t| t.elapsed() < std::time::Duration::from_millis(300))
                     })
                     .unwrap_or(false);
                 cx.background_executor()
@@ -1326,7 +1327,11 @@ impl Render for Pane {
                     );
                     let font = T::terminal_mono(cx);
                     // Font metrics are logical pixels, independent of backing scale.
-                    let key = (font.clone(), screen::font_size(), crate::ui::terminal_text::line_height());
+                    let key = (
+                        font.clone(),
+                        screen::font_size(),
+                        crate::ui::terminal_text::line_height(),
+                    );
                     if pane.metrics_font.as_ref() != Some(&key) || pane.metrics.is_none() {
                         pane.metrics = screen::CellMetrics::measure(&font, window);
                         pane.metrics_font = Some(key);
@@ -1769,10 +1774,7 @@ mod paste_tests {
             super::paste_action(Some(&text)),
             PasteAction::Text("hi".into())
         );
-        assert_eq!(
-            super::paste_action(None),
-            PasteAction::Nothing
-        );
+        assert_eq!(super::paste_action(None), PasteAction::Nothing);
     }
     #[test]
     fn plain_multiline_paste_counts_lines_and_sends_cr() {

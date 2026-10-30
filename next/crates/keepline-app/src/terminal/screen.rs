@@ -512,7 +512,11 @@ impl CellMetrics {
         // uses it positive, which TextSystem::baseline_offset gets wrong by one descent.
         let ascent = ts.ascent(id, px(font_size()));
         let descent = -ts.descent(id, px(font_size()));
-        let height = px((f32::from(ascent + descent) * crate::ui::terminal_text::line_height() * scale).round() / scale);
+        let height = px((f32::from(ascent + descent)
+            * crate::ui::terminal_text::line_height()
+            * scale)
+            .round()
+            / scale);
         let ic_width = ts
             .advance(id, px(font_size()), '水')
             .ok()

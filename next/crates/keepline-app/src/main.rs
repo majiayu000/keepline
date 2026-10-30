@@ -214,11 +214,18 @@ fn stop_evidence_host() {
         .chars()
         .flat_map(|c| {
             let special = ".^$*+?()[]{}|\\".contains(c);
-            special.then_some('\\').into_iter().chain(std::iter::once(c))
+            special
+                .then_some('\\')
+                .into_iter()
+                .chain(std::iter::once(c))
         })
         .collect();
     let _ = std::process::Command::new("/usr/bin/pkill")
-        .args(["-TERM", "-f", &format!("keeplined serve --runtime {escaped}( |$)")])
+        .args([
+            "-TERM",
+            "-f",
+            &format!("keeplined serve --runtime {escaped}( |$)"),
+        ])
         .status();
 }
 /// macOS crash reports keep only the stack, so every panic's message and place is also

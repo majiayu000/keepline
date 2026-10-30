@@ -405,7 +405,11 @@ impl Workbench {
     fn begin_busy(&mut self, cx: &mut Context<Self>) {
         let seq = self.store.begin_busy();
         if let Some(view) = &self.settings {
-            view.update(cx, |v, cx| { v.busy = true; v.save_error = None; cx.notify(); });
+            view.update(cx, |v, cx| {
+                v.busy = true;
+                v.save_error = None;
+                cx.notify();
+            });
         }
         self.error = None;
         cx.notify();
@@ -447,7 +451,10 @@ impl Workbench {
         }
         self.workspace = w;
         if let Some(view) = &self.settings {
-            view.update(cx, |v, cx| { v.values = self.workspace.settings.clone(); cx.notify(); });
+            view.update(cx, |v, cx| {
+                v.values = self.workspace.settings.clone();
+                cx.notify();
+            });
         }
         self.sync_panes(cx);
     }

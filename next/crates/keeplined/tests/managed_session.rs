@@ -18,31 +18,60 @@ static FIXTURES: RwLock<()> = RwLock::new(());
 fn diagnostic_stream_measures_a_busy_managed_terminal_without_holding_workspace_lock() {
     let host = Host::measured();
     host.setup();
-    host.call(host.launch("diag-cpu", "while :; do :; done")).unwrap();
+    host.call(host.launch("diag-cpu", "while :; do :; done"))
+        .unwrap();
     let before = host.workspace().revision;
     let mut stream = UnixStream::connect(host.socket()).unwrap();
-    stream.set_read_timeout(Some(Duration::from_secs(20))).unwrap();
+    stream
+        .set_read_timeout(Some(Duration::from_secs(20)))
+        .unwrap();
     send(&mut stream, CONTROL, &Request::Hello { major: MAJOR }).unwrap();
-    assert!(matches!(receive::<Reply>(&mut stream).unwrap(), Reply::Hello { .. }));
+    assert!(matches!(
+        receive::<Reply>(&mut stream).unwrap(),
+        Reply::Hello { .. }
+    ));
     send(&mut stream, CONTROL, &Request::Diagnose).unwrap();
     let start = Instant::now();
     let workspace = host.workspace();
     assert_eq!(workspace.revision, before);
-    assert!(start.elapsed() < Duration::from_secs(2), "diagnosis blocked the workspace");
-    let Reply::Diagnostics(partial) = receive::<Reply>(&mut stream).unwrap() else { panic!("missing first sample"); };
+    assert!(
+        start.elapsed() < Duration::from_secs(2),
+        "diagnosis blocked the workspace"
+    );
+    let Reply::Diagnostics(partial) = receive::<Reply>(&mut stream).unwrap() else {
+        panic!("missing first sample");
+    };
     assert!(!partial.complete);
     assert!(partial.elapsed_secs >= 7.);
-    let Reply::Diagnostics(done) = receive::<Reply>(&mut stream).unwrap() else { panic!("missing final sample"); };
+    let Reply::Diagnostics(done) = receive::<Reply>(&mut stream).unwrap() else {
+        panic!("missing final sample");
+    };
     assert!(done.complete);
     assert!(done.elapsed_secs >= 14.5 && done.elapsed_secs < 25.);
     assert!(done.cpu_percent.is_some_and(|p| (0. ..=100.).contains(&p)));
-    let shell = done.apps.iter().find(|app| app.terminals.iter().any(|id| id == "diag-cpu")).expect("managed shell not attributed");
-    assert!(shell.cpu_percent > 5., "busy shell was not measured: {shell:?}");
+    let shell = done
+        .apps
+        .iter()
+        .find(|app| app.terminals.iter().any(|id| id == "diag-cpu"))
+        .expect("managed shell not attributed");
+    assert!(
+        shell.cpu_percent > 5.,
+        "busy shell was not measured: {shell:?}"
+    );
     let shares: f64 = done.apps.iter().filter_map(|a| a.gpu_share_percent).sum();
     assert!(shares == 0. || (shares - 100.).abs() < 0.001);
-    assert!(done.summary("", &Default::default()).contains("不是整颗 GPU 利用率"));
-    assert_eq!(host.workspace().revision, before, "diagnosis mutated workspace");
-    host.call(Request::Stop { id: "diag-cpu".into() }).unwrap();
+    assert!(done
+        .summary("", &Default::default())
+        .contains("不是整颗 GPU 利用率"));
+    assert_eq!(
+        host.workspace().revision,
+        before,
+        "diagnosis mutated workspace"
+    );
+    host.call(Request::Stop {
+        id: "diag-cpu".into(),
+    })
+    .unwrap();
 }
 enum FixtureLease {
     // Created only while a measured Host already holds the exclusive fixture lane.
@@ -3205,10 +3234,17 @@ fn claude_without_a_transcript_says_so_until_it_exits() {
         streams.push(stream);
     }
     let until = Instant::now() + Duration::from_secs(10);
-    while recognition(&h).terminal_hints.get("nested").map(String::as_str)
+    while recognition(&h)
+        .terminal_hints
+        .get("nested")
+        .map(String::as_str)
         != Some(keepline_core::protocol::CLAUDE_TRANSCRIPT_OFF)
     {
-        assert!(Instant::now() < until, "{:?}", recognition(&h).terminal_hints);
+        assert!(
+            Instant::now() < until,
+            "{:?}",
+            recognition(&h).terminal_hints
+        );
         std::thread::sleep(Duration::from_millis(25));
     }
     // A plain Claude saves its transcript; until a prompt ties it to one it is only unbound.

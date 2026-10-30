@@ -814,7 +814,10 @@ impl Workbench {
                     .rounded(px(T::BORDER_WIDTH))
                     .bg(hue)
                     .opacity(if *n == 0 { 0.25 } else { 0.7 })
-                    .tooltip(super::diagnostics::tip(vec![when.to_string(), format!("{n} 个")])),
+                    .tooltip(super::diagnostics::tip(vec![
+                        when.to_string(),
+                        format!("{n} 个"),
+                    ])),
             );
         }
         let summary = counts

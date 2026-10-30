@@ -1005,10 +1005,11 @@ fn turn_clock(seconds: u64) -> String {
 /// otherwise; one pending redraw serves every pane.
 static TURN_TICK: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
 const TURN_TICK_EVERY: Duration = Duration::from_secs(1);
+/// Each directory's branch with when it was read.
+type Branches = HashMap<String, (std::time::Instant, Option<String>)>;
 /// Branches by directory, read off the render path and reread at most this often.
-static BRANCHES: std::sync::LazyLock<
-    std::sync::Mutex<HashMap<String, (std::time::Instant, Option<String>)>>,
-> = std::sync::LazyLock::new(Default::default);
+static BRANCHES: std::sync::LazyLock<std::sync::Mutex<Branches>> =
+    std::sync::LazyLock::new(Default::default);
 const BRANCH_TTL: Duration = Duration::from_secs(10);
 /// The branch checked out where `dir` sits, from `.git/HEAD` (a linked worktree's `.git`
 /// file points at its own HEAD); a detached HEAD shows its short commit.

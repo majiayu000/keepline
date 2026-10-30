@@ -197,7 +197,10 @@ mod tests {
         assert_eq!(n("a", Direction::Up), None);
         assert_eq!(n("b", Direction::Up), None);
         assert_eq!(n("missing", Direction::Up), None);
-        assert_eq!(Layout::Leaf("a".into()).neighbour("a", Direction::Right), None);
+        assert_eq!(
+            Layout::Leaf("a".into()).neighbour("a", Direction::Right),
+            None
+        );
     }
     #[test]
     fn nested_split_close_preserves_sibling_ratio_and_replace_keeps_geometry() {
