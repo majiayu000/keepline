@@ -9,7 +9,8 @@
 //!
 //! `status` keys are the group names (waiting, error, review, paused, running, stale,
 //! working, done, ready); `seen` styles session rows you have already looked at, whose
-//! `dot` is "ring", "fill" or "fade". Anything missing or unreadable keeps the default.
+//! `dot` is "ring", "fill" or "fade". Running work always keeps its filled status color.
+//! Anything missing or unreadable keeps the default.
 use super::theme::{Group, Theme, mix};
 use std::sync::OnceLock;
 
@@ -23,9 +24,10 @@ pub enum SeenDot {
 }
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct StatusColors {
-    hues: [u32; 9],
-    pub seen_title: u32,
-    pub seen_status: u32,
+    /// `None` takes the theme's tone, so it follows a switch between light and dark.
+    hues: [Option<u32>; 9],
+    seen_title: Option<u32>,
+    seen_status: Option<u32>,
     pub seen_dot: SeenDot,
 }
 const NAMES: [&str; 9] = [
@@ -48,18 +50,18 @@ impl Default for StatusColors {
     fn default() -> Self {
         Self {
             hues: [
-                0xe8823a, // waiting
-                0xe5534b, // error
-                0x8f93ff, // review
-                0xd9a441, // paused
-                0x4cc38a, // running
-                Theme::MUTED,
-                0xe8c547, // working
-                0x4cc38a, // done
-                0x8a9bb0, // ready
+                Some(0xe8823a), // waiting
+                Some(0xe5534b), // error
+                Some(0x8f93ff), // review
+                Some(0xd9a441), // paused
+                Some(0x4cc38a), // running
+                None,           // stale: the muted text tone
+                Some(0xe8c547), // working
+                Some(0x4cc38a), // done
+                Some(0x8a9bb0), // ready
             ],
-            seen_title: mix(Theme::TERMINAL_BG, Theme::TERMINAL_FG, 760),
-            seen_status: Theme::MUTED,
+            seen_title: None,
+            seen_status: None,
             seen_dot: SeenDot::Ring,
         }
     }
@@ -81,7 +83,14 @@ impl StatusColors {
         })
     }
     pub fn hue(&self, group: Group) -> u32 {
-        self.hues[index(group)]
+        self.hues[index(group)].unwrap_or_else(Theme::muted)
+    }
+    pub fn seen_title(&self) -> u32 {
+        self.seen_title
+            .unwrap_or_else(|| mix(Theme::terminal_bg(), Theme::terminal_fg(), 760))
+    }
+    pub fn seen_status(&self) -> u32 {
+        self.seen_status.unwrap_or_else(Theme::muted)
     }
     /// Unknown keys are reported so a typo does not silently keep the default.
     pub fn parse(text: &str) -> Result<Self, String> {
@@ -93,21 +102,23 @@ impl StatusColors {
                     .iter()
                     .position(|n| n == key)
                     .ok_or_else(|| format!("unknown status \"{key}\""))?;
-                out.hues[at] = color(value)?;
+                out.hues[at] = Some(color(value)?);
             }
         }
         if let Some(seen) = root.get("seen").and_then(|v| v.as_object()) {
             for (key, value) in seen {
                 match key.as_str() {
-                    "title" => out.seen_title = color(value)?,
-                    "status" => out.seen_status = color(value)?,
+                    "title" => out.seen_title = Some(color(value)?),
+                    "status" => out.seen_status = Some(color(value)?),
                     "dot" => {
                         out.seen_dot = match value.as_str() {
                             Some("ring") => SeenDot::Ring,
                             Some("fill") => SeenDot::Fill,
                             Some("fade") => SeenDot::Fade,
                             _ => {
-                                return Err(format!("seen.dot must be ring, fill or fade: {value}"));
+                                return Err(format!(
+                                    "seen.dot must be ring, fill or fade: {value}"
+                                ));
                             }
                         }
                     }
@@ -119,10 +130,13 @@ impl StatusColors {
     }
 }
 fn path() -> Option<std::path::PathBuf> {
+    config_dir().map(|dir| dir.join("colors.json"))
+}
+pub fn config_dir() -> Option<std::path::PathBuf> {
     let base = std::env::var_os("XDG_CONFIG_HOME")
         .map(std::path::PathBuf::from)
         .or_else(|| std::env::var_os("HOME").map(|h| std::path::Path::new(&h).join(".config")))?;
-    Some(base.join("keepline/colors.json"))
+    Some(base.join("keepline"))
 }
 fn color(value: &serde_json::Value) -> Result<u32, String> {
     value
@@ -146,8 +160,8 @@ mod tests {
         let d = StatusColors::default();
         assert_eq!(c.hue(Group::Working), 0x112233);
         assert_eq!(c.hue(Group::Running), d.hue(Group::Running));
-        assert_eq!(c.seen_title, 0x445566);
-        assert_eq!(c.seen_status, d.seen_status);
+        assert_eq!(c.seen_title(), 0x445566);
+        assert_eq!(c.seen_status(), d.seen_status());
         assert_eq!(c.seen_dot, SeenDot::Fade);
     }
 

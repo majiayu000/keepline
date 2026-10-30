@@ -373,7 +373,7 @@ impl Render for Field {
             highlights.push((
                 self.selection.clone(),
                 gpui::HighlightStyle {
-                    background_color: Some(T::color(T::SELECTION)),
+                    background_color: Some(T::color(T::selection())),
                     ..Default::default()
                 },
             ));
@@ -407,7 +407,7 @@ impl Render for Field {
                 d.child(
                     div()
                         .text_size(px(T::META))
-                        .text_color(T::color(T::SECONDARY))
+                        .text_color(T::color(T::secondary()))
                         .child(self.label.clone()),
                 )
             })
@@ -424,14 +424,14 @@ impl Render for Field {
                     .aria_label(self.label.clone())
                     .px(px(pad))
                     .py(px(if self.compact { T::S4 } else { T::S8 }))
-                    .bg(T::color(T::PANEL))
+                    .bg(T::color(T::panel()))
                     .border(px(T::BORDER_WIDTH))
-                    .border_color(T::color(T::CONTROL))
+                    .border_color(T::color(T::field_edge()))
                     .when(self.focus.is_focused(window), |d| {
-                        d.border_color(T::color(T::FOCUS))
+                        d.border_color(T::color(T::focus()))
                     })
                     .when(self.compact && empty, |d| {
-                        d.text_color(T::color(T::SECONDARY))
+                        d.text_color(T::color(T::secondary()))
                     })
                     .when(self.compact, |d| {
                         d.h(px(T::ROW))
@@ -497,7 +497,7 @@ impl Render for Field {
                                             at,
                                             gpui::size(px(T::CARET_WIDTH), layout.line_height()),
                                         ),
-                                        T::color(T::PRIMARY),
+                                        T::color(T::primary()),
                                     ));
                                 }
                                 let focus = entity.read(cx).focus.clone();

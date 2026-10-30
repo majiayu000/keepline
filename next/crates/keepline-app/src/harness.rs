@@ -4,6 +4,8 @@ use super::*;
 use crate::terminal::screen;
 use gpui::WindowHandle;
 use std::time::Duration;
+#[path = "settings_evidence.rs"]
+mod settings_evidence;
 
 /// Runs the evidence script the environment asks for against the opened workbench.
 pub fn start(
@@ -11,6 +13,55 @@ pub fn start(
     evidence: Option<PathBuf>,
     cx: &mut App,
 ) {
+    if settings_evidence::start(handle, evidence.clone(), cx) { return; }
+    if let (Some(handle), Some(directory)) = (&handle, evidence.clone())
+        && std::env::var_os("KEEPLINE_DIAGNOSTIC_EVIDENCE").is_some()
+    {
+        let handle = *handle;
+        cx.spawn(async move |cx| {
+            use gpui::InputEvent;
+            cx.background_executor().timer(Duration::from_secs(2)).await;
+            std::fs::create_dir_all(&directory).unwrap();
+            let pane = handle.update(cx, |view, _, _| view.visual_shown_pane()).unwrap();
+            pane.update(cx, |pane, cx| pane.visual_type("/bin/sh -c 'while :; do :; done'\r", cx));
+            cx.background_executor().timer(Duration::from_secs(1)).await;
+            cx.update_window(handle.into(), |_, window, app| {
+                window.refresh(); window.draw(app).clear(app);
+                window.render_to_image().unwrap().save(directory.join("entry.png")).unwrap();
+                let at = gpui::point(px(theme::Theme::SIDEBAR / 2.), window.viewport_size().height - px(theme::Theme::S8 + theme::Theme::ROW / 2.));
+                native_click(window, app, at, gpui::MouseButton::Left);
+            }).unwrap();
+            cx.background_executor().timer(Duration::from_millis(500)).await;
+            cx.update_window(handle.into(), |_, window, app| {
+                window.refresh(); window.draw(app).clear(app);
+                window.render_to_image().unwrap().save(directory.join("loading.png")).unwrap();
+                window.dispatch_event(gpui::KeyDownEvent { keystroke: gpui::Keystroke::parse("escape").unwrap(), is_held: false, prefer_character_input: false }.to_platform_input(), app);
+            }).unwrap();
+            assert!(handle.update(cx, |view, _, _| view.visual_diagnostic_closed()).unwrap());
+            cx.background_executor().timer(Duration::from_millis(300)).await;
+            handle.update(cx, |view, window, cx| view.visual_open_diagnostics(window, cx)).unwrap();
+            cx.background_executor().timer(Duration::from_secs(18)).await;
+            let report = handle.update(cx, |view, _, cx| {
+                let report = view.visual_diagnostic_report(cx).expect("missing native diagnostic report");
+                assert!(report.complete && report.process_count > 0, "{report:?}");
+                assert!(report.apps.iter().any(|app| app.cpu_percent > 0.));
+                assert!(report.apps.iter().any(|app| !app.terminals.is_empty() && app.cpu_percent > 5.));
+                view.visual_copy_diagnostics(cx);
+                report
+            }).unwrap();
+            std::fs::write(directory.join("report.json"), serde_json::to_vec_pretty(&report).unwrap()).unwrap();
+            cx.update_window(handle.into(), |_, window, app| {
+                window.refresh(); window.draw(app).clear(app);
+                window.render_to_image().unwrap().save(directory.join("complete.png")).unwrap();
+            }).unwrap();
+            handle.update(cx, |view, _, cx| view.visual_open_diagnostic_terminal(cx)).unwrap();
+            assert!(handle.update(cx, |view, _, _| view.visual_diagnostic_closed()).unwrap());
+            pane.update(cx, |pane, cx| pane.visual_type("\x03", cx));
+            eprintln!("diagnostic native PASS: loading, Escape cancellation, restart, real complete report, clipboard readback, managed terminal navigation");
+            cx.update(|cx| cx.quit());
+        }).detach();
+        return;
+    }
     if let (Some(handle), Some(directory)) = (&handle, evidence.clone())
         && std::env::var_os("KEEPLINE_SPLIT_EVIDENCE").is_some()
     {
@@ -88,14 +139,18 @@ pub fn start(
             handle.update(cx, |v, _, cx| v.visual_new_tab(cx)).unwrap();
             wait(4000).await;
             let pane = handle.update(cx, |v, _, _| v.visual_shown_pane()).unwrap();
-            pane.update(cx, |pane, cx| pane.visual_type(&format!("cd '{dir}'\r"), cx));
+            pane.update(cx, |pane, cx| {
+                pane.visual_type(&format!("cd '{dir}'\r"), cx)
+            });
             wait(1500).await;
             handle.update(cx, |v, _, cx| v.visual_new_tab(cx)).unwrap();
             wait(2000).await;
             let cwd = handle.update(cx, |v, _, _| v.visual_shown_cwd()).unwrap();
             eprintln!("osc7: new tab cwd={cwd}, typed cd {dir}");
             assert_eq!(cwd, dir, "a new tab opens where the shell says it is");
-            eprintln!("osc7 native PASS: new tab took the shell's OSC 7 directory, symlink spelling kept");
+            eprintln!(
+                "osc7 native PASS: new tab took the shell's OSC 7 directory, symlink spelling kept"
+            );
             cx.update(|cx| cx.quit());
         })
         .detach();
@@ -126,7 +181,9 @@ pub fn start(
                 std::fs::canonicalize("/tmp").unwrap(),
                 "a new tab follows the focused shell's live directory"
             );
-            eprintln!("tab cwd native PASS: new tab opens in the directory the focused shell cd'd into");
+            eprintln!(
+                "tab cwd native PASS: new tab opens in the directory the focused shell cd'd into"
+            );
             cx.update(|cx| cx.quit());
         })
         .detach();
@@ -134,6 +191,233 @@ pub fn start(
     }
     // Two runs over one config directory: 1 rebinds 新建标签 in the settings panel,
     // 2 is the restart that must still have it, then restores the defaults.
+    if let (Some(handle), Some(directory)) = (&handle, evidence.clone())
+        && let Ok(phase) = std::env::var("KEEPLINE_KEYMAP_EVIDENCE")
+    {
+        let handle = *handle;
+        cx.spawn(async move |cx| {
+            use gpui::InputEvent;
+            let executor = cx.background_executor().clone();
+            let wait = move |s: u64| executor.timer(Duration::from_millis(s));
+            std::fs::create_dir_all(&directory).unwrap();
+            let file = crate::keymap::path().unwrap();
+            assert!(
+                std::env::var_os("XDG_CONFIG_HOME").is_some(),
+                "runs against a scratch config, never ~/.config"
+            );
+            let ready = |cx: &mut gpui::AsyncApp| handle.update(cx, |v, w, a| v.visual_pane_focused(w, a)).unwrap();
+            wait(2000).await;
+            handle.update(cx, |v, _, cx| v.visual_new_tab(cx)).unwrap();
+            // A launch under load can outlast any fixed wait: poll for the shell's focus.
+            for _ in 0..100 {
+                if ready(cx) {
+                    break;
+                }
+                wait(100).await;
+            }
+            let press = |keys: &str, cx: &mut gpui::AsyncApp| {
+                let keystroke = gpui::Keystroke::parse(keys).unwrap();
+                cx.update_window(handle.into(), |_, w, a| {
+                    w.dispatch_event(gpui::KeyDownEvent { keystroke, is_held: false, prefer_character_input: false }.to_platform_input(), a);
+                })
+                .unwrap();
+            };
+            let in_pane = |cx: &mut gpui::AsyncApp| handle.update(cx, |v, w, a| v.visual_pane_focused(w, a)).unwrap();
+            let tabs = |cx: &mut gpui::AsyncApp| handle.update(cx, |v, _, _| v.visual_tab_row().0.len()).unwrap();
+            let settings = |cx: &mut gpui::AsyncApp| handle.update(cx, |v, w, a| v.visual_settings(w, a)).unwrap();
+            let shot = |name: &str, cx: &mut gpui::AsyncApp| {
+                let path = directory.join(format!("{name}.png"));
+                cx.update_window(handle.into(), |_, w, a| {
+                    w.refresh();
+                    w.draw(a).clear(a);
+                    w.render_to_image().unwrap().save(path).unwrap();
+                })
+                .unwrap();
+            };
+            // A ⌘ chord typed into the terminal opens a tab, or provably does not.
+            let opens_tab = async |keys: &str, cx: &mut gpui::AsyncApp| {
+                assert!(in_pane(cx), "{keys} is pressed while typing in a terminal");
+                let before = tabs(cx);
+                press(keys, cx);
+                // Opened means the new tab's shell holds input; a chord that opens
+                // nothing is given the same 6s to prove it.
+                for _ in 0..60 {
+                    wait(100).await;
+                    if tabs(cx) == before + 1 && in_pane(cx) {
+                        return true;
+                    }
+                }
+                false
+            };
+            let open_settings = async |cx: &mut gpui::AsyncApp| {
+                press("cmd-,", cx);
+                wait(400).await;
+                let (recording, taken, focused) = settings(cx).expect("⌘, opens 设置");
+                assert!(!recording && !taken && focused, "the panel takes the keys");
+            };
+            let close_settings = async |cx: &mut gpui::AsyncApp| {
+                press("escape", cx);
+                wait(500).await;
+                assert!(settings(cx).is_none(), "Esc closes 设置");
+                assert!(in_pane(cx), "input goes back to the terminal");
+            };
+            if phase == "1" {
+                assert!(!file.exists(), "a fresh config starts on the defaults");
+                assert!(opens_tab("cmd-t", cx).await, "default ⌘T opens a tab");
+                open_settings(cx).await;
+                cx.update(|a| crate::ui::appearance::choose(crate::ui::appearance::Appearance::Dark, a).unwrap());
+                wait(300).await;
+                shot("settings-dark", cx);
+                cx.update(|a| crate::ui::appearance::choose(crate::ui::appearance::Appearance::Light, a).unwrap());
+                wait(300).await;
+                shot("settings-light", cx);
+                // A taken chord waits for 仍然使用 instead of moving silently.
+                handle.update(cx, |v, _, cx| v.visual_settings_record("split_down", cx)).unwrap();
+                press("cmd-d", cx);
+                wait(300).await;
+                assert_eq!(settings(cx), Some((false, true, true)), "⌘D is 向右分屏's");
+                shot("settings-conflict-light", cx);
+                handle.update(cx, |v, _, cx| v.visual_settings_press("取消", cx)).unwrap();
+                // A chord without ⌘ belongs to the program and is refused.
+                handle.update(cx, |v, _, cx| v.visual_settings_record("new_tab", cx)).unwrap();
+                press("ctrl-t", cx);
+                wait(300).await;
+                assert!(!file.exists(), "a refused chord changes nothing");
+                handle.update(cx, |v, _, cx| v.visual_settings_record("new_tab", cx)).unwrap();
+                wait(200).await;
+                shot("settings-recording-light", cx);
+                // A modifier alone does not end the recording; the full chord does.
+                press("cmd-shift", cx);
+                assert_eq!(settings(cx).map(|s| s.0), Some(true));
+                press("cmd-shift-t", cx);
+                wait(300).await;
+                let saved = std::fs::read_to_string(&file).expect("keys.json written");
+                eprintln!("keys.json after rebind: {}", saved.replace('\n', " "));
+                assert!(saved.contains("new_tab") && saved.contains("cmd-shift-t"));
+                cx.update(|a| crate::ui::appearance::choose(crate::ui::appearance::Appearance::Dark, a).unwrap());
+                wait(300).await;
+                shot("settings-rebound-dark", cx);
+                close_settings(cx).await;
+                assert!(!opens_tab("cmd-t", cx).await, "the old ⌘T no longer opens a tab");
+                assert!(opens_tab("cmd-shift-t", cx).await, "the new ⌘⇧T does");
+                eprintln!("keymap native PASS phase 1: default ⌘T, conflict held, ctrl refused, rebound to ⌘⇧T in 设置, old key off");
+            } else {
+                assert!(file.exists(), "phase 1 left keys.json");
+                assert!(opens_tab("cmd-shift-t", cx).await, "after a restart ⌘⇧T still opens a tab");
+                assert!(!opens_tab("cmd-t", cx).await, "and ⌘T still does not");
+                open_settings(cx).await;
+                handle.update(cx, |v, _, cx| v.visual_settings_press("全部恢复默认", cx)).unwrap();
+                wait(300).await;
+                assert!(!file.exists(), "全部恢复默认 removes keys.json");
+                close_settings(cx).await;
+                assert!(opens_tab("cmd-t", cx).await, "⌘T is back");
+                assert!(!opens_tab("cmd-shift-t", cx).await, "⌘⇧T is free again");
+                eprintln!("keymap native PASS phase 2: ⌘⇧T kept across restart, 全部恢复默认 restores ⌘T");
+            }
+            cx.update(|cx| cx.quit());
+        })
+        .detach();
+        return;
+    }
+    if let (Some(handle), Some(_)) = (&handle, evidence.clone())
+        && std::env::var_os("KEEPLINE_SHORTCUT_EVIDENCE").is_some()
+    {
+        let handle = *handle;
+        cx.spawn(async move |cx| {
+            use gpui::InputEvent;
+            let executor = cx.background_executor().clone();
+            let wait = move |s: u64| executor.timer(Duration::from_millis(s));
+            // A launch under load can outlast any fixed wait: poll for the state instead.
+            macro_rules! until {
+                ($cond:expr, $why:expr) => {{
+                    let mut met = false;
+                    for _ in 0..100 {
+                        if $cond {
+                            met = true;
+                            break;
+                        }
+                        wait(100).await;
+                    }
+                    assert!(met, "{} within 10s", $why);
+                }};
+            }
+            let focused = |cx: &mut gpui::AsyncApp| handle.update(cx, |v, w, a| v.visual_pane_focused(w, a)).unwrap();
+            wait(2000).await;
+            handle.update(cx, |v, _, cx| v.visual_new_tab(cx)).unwrap();
+            until!(focused(cx), "the first tab's shell takes focus");
+            let press = |keys: &str, cx: &mut gpui::AsyncApp| {
+                let keystroke = gpui::Keystroke::parse(keys).unwrap();
+                let focused = handle.update(cx, |v, w, a| v.visual_pane_focused(w, a)).unwrap();
+                assert!(focused, "{keys} is pressed while typing in a terminal");
+                cx.update_window(handle.into(), |_, w, a| {
+                    w.dispatch_event(gpui::KeyDownEvent { keystroke, is_held: false, prefer_character_input: false }.to_platform_input(), a);
+                })
+                .unwrap();
+            };
+            let row = |cx: &mut gpui::AsyncApp| handle.update(cx, |v, _, _| v.visual_tab_row()).unwrap();
+            let (start, _, _) = row(cx);
+            press("cmd-t", cx);
+            until!(row(cx).0.len() == start.len() + 1 && focused(cx), "⌘T's tab takes focus");
+            let (tabs, shown, panes) = row(cx);
+            assert_eq!(tabs.len(), start.len() + 1, "⌘T opens a tab");
+            assert_eq!(shown.as_ref(), tabs.last(), "the new tab shows");
+            assert_eq!(panes, 1);
+            press("cmd-d", cx);
+            until!(row(cx).2 == 2 && focused(cx), "⌘D's pane takes focus");
+            assert_eq!(row(cx).2, 2, "⌘D splits right");
+            press("cmd-shift-d", cx);
+            until!(row(cx).2 == 3 && focused(cx), "⌘⇧D's pane takes focus");
+            assert_eq!(row(cx).2, 3, "⌘⇧D splits down");
+            press("cmd-1", cx);
+            wait(300).await;
+            let (tabs, shown, _) = row(cx);
+            assert_eq!(shown.as_ref(), tabs.first(), "⌘1 shows the first tab");
+            press("cmd-shift-[", cx);
+            wait(300).await;
+            assert_eq!(row(cx).1.as_ref(), tabs.last(), "⌘⇧[ wraps to the last tab");
+            press("cmd-shift-]", cx);
+            wait(300).await;
+            assert_eq!(row(cx).1.as_ref(), tabs.first(), "⌘⇧] wraps to the first tab");
+            press("cmd-9", cx);
+            wait(300).await;
+            assert_eq!(row(cx).1.as_ref(), tabs.last(), "⌘9 shows the last tab");
+            // ⌘] / ⌘[ walk the three panes in layout order, wrapping, with real focus.
+            let focus = |cx: &mut gpui::AsyncApp| handle.update(cx, |v, w, a| v.visual_pane_focus(w, a)).unwrap();
+            let (order, first) = focus(cx);
+            assert_eq!(order.len(), 3);
+            let at = order.iter().position(|id| Some(id) == first.as_ref()).expect("a pane has focus");
+            for step in 1..=3 {
+                press("cmd-]", cx);
+                wait(300).await;
+                assert_eq!(focus(cx).1.as_ref(), Some(&order[(at + step) % 3]), "⌘] step {step}");
+            }
+            press("cmd-[", cx);
+            wait(300).await;
+            assert_eq!(focus(cx).1.as_ref(), Some(&order[(at + 2) % 3]), "⌘[ goes back, wrapping");
+            press("cmd-[", cx);
+            wait(300).await;
+            assert_eq!(focus(cx).1.as_ref(), Some(&order[(at + 1) % 3]), "⌘[ again");
+            // ⌘⌥ arrows go by where panes sit: order is a | (b over c).
+            let (a, b, c) = (&order[0], &order[1], &order[2]);
+            for (keys, want, why) in [
+                ("cmd-alt-left", a, "⌘⌥← reaches the left column"),
+                ("cmd-alt-left", a, "⌘⌥← at the left edge stays"),
+                ("cmd-alt-right", b, "⌘⌥→ takes the first of two equal neighbours"),
+                ("cmd-alt-down", c, "⌘⌥↓ goes below"),
+                ("cmd-alt-up", b, "⌘⌥↑ goes back up"),
+                ("cmd-alt-down", c, "⌘⌥↓ again"),
+                ("cmd-alt-left", a, "⌘⌥← from the lower right pane"),
+            ] {
+                press(keys, cx);
+                wait(300).await;
+                assert_eq!(focus(cx).1.as_ref(), Some(want), "{why}");
+            }
+            eprintln!("shortcut native PASS: tabs {}->{}, ⌘T ⌘D ⌘⇧D ⌘1 ⌘⇧[ ⌘⇧] ⌘9, ⌘] ⌘[ cycle 3 panes with focus, ⌘⌥ arrows by position", start.len(), tabs.len());
+            cx.update(|cx| cx.quit());
+        })
+        .detach();
+        return;
+    }
     if let (Some(handle), Some(directory)) = (&handle, evidence.clone())
         && std::env::var_os("KEEPLINE_TAB_EVIDENCE").is_some()
     {
@@ -398,10 +682,14 @@ pub fn start(
             );
             // A tab of several splits asks before its × takes them all down; a tab of one
             // pane closes at once.
-            handle.update(cx, |v, w, a| v.visual_split_down(w, a)).unwrap();
+            handle
+                .update(cx, |v, w, a| v.visual_split_down(w, a))
+                .unwrap();
             wait(1000).await;
             let (before, shown) = handle.update(cx, |v, _, _| v.visual_tabs()).unwrap();
-            handle.update(cx, |v, _, cx| v.visual_close_tab(cx)).unwrap();
+            handle
+                .update(cx, |v, _, cx| v.visual_close_tab(cx))
+                .unwrap();
             wait(500).await;
             cx.update_window(handle.into(), |_, w, a| shot("9-close-splits", w, a))
                 .unwrap();
@@ -410,10 +698,16 @@ pub fn start(
                 .unwrap();
             assert!(asked, "closing a tab of two splits asks first");
             assert_eq!(after, (before, shown), "and keeps the tab until confirmed");
-            handle.update(cx, |v, _, cx| v.visual_cancel_close(cx)).unwrap();
-            handle.update(cx, |v, _, cx| v.visual_close_focused(cx)).unwrap();
+            handle
+                .update(cx, |v, _, cx| v.visual_cancel_close(cx))
+                .unwrap();
+            handle
+                .update(cx, |v, _, cx| v.visual_close_focused(cx))
+                .unwrap();
             wait(1000).await;
-            handle.update(cx, |v, _, cx| v.visual_close_tab(cx)).unwrap();
+            handle
+                .update(cx, |v, _, cx| v.visual_close_tab(cx))
+                .unwrap();
             wait(500).await;
             let (asked, (count, _)) = handle
                 .update(cx, |v, _, _| (v.visual_confirming_close(), v.visual_tabs()))
@@ -508,6 +802,143 @@ pub fn start(
             cx.update(|cx| cx.quit());
         })
         .detach();
+    }
+    // Scrolls a full shell back with the wheel, then types: the view returns to the
+    // input line for a real key event and for committed text alike.
+    if let (Some(handle), Some(directory)) = (&handle, evidence.clone())
+        && std::env::var_os("KEEPLINE_FOLLOW_INPUT_EVIDENCE").is_some()
+    {
+        let handle = *handle;
+        cx.spawn(async move |cx| {
+            use gpui::InputEvent;
+            cx.background_executor().timer(Duration::from_secs(2)).await;
+            std::fs::create_dir_all(&directory).unwrap();
+            let pane = handle.update(cx, |view, _, _| view.visual_shown_pane()).unwrap();
+            pane.update(cx, |p, cx| p.visual_type("clear; seq 1 400\r", cx));
+            for _ in 0..30 {
+                cx.background_executor().timer(Duration::from_millis(300)).await;
+                if pane.update(cx, |p, _| p.visual_text()).contains("400") { break; }
+            }
+            let center = pane.read_with(cx, |p, _| p.visual_mouse_app().1).expect("pane laid out");
+            let scroll_up = |window: &mut gpui::Window, app: &mut App| {
+                window.dispatch_event(gpui::ScrollWheelEvent {
+                    position: center,
+                    delta: gpui::ScrollDelta::Lines(gpui::point(0., 60.)),
+                    modifiers: Default::default(),
+                    touch_phase: gpui::TouchPhase::Moved,
+                }.to_platform_input(), app);
+                window.refresh(); window.draw(app).clear(app);
+            };
+            for (name, key) in [("key", Some("left")), ("text", None)] {
+                cx.update_window(handle.into(), |_, window, app| {
+                    scroll_up(window, app);
+                    window.render_to_image().unwrap().save(directory.join(format!("{name}-scrolled.png"))).unwrap();
+                }).unwrap();
+                assert!(!pane.read_with(cx, |p, _| p.visual_at_bottom()), "{name}: wheel did not leave the bottom");
+                match key {
+                    Some(key) => cx.update_window(handle.into(), |_, window, app| {
+                        window.dispatch_event(gpui::KeyDownEvent { keystroke: gpui::Keystroke::parse(key).unwrap(), is_held: false, prefer_character_input: false }.to_platform_input(), app);
+                    }).unwrap(),
+                    None => pane.update(cx, |p, cx| p.visual_type("x", cx)),
+                }
+                cx.background_executor().timer(Duration::from_millis(300)).await;
+                assert!(pane.read_with(cx, |p, _| p.visual_at_bottom()), "{name}: input did not return to the bottom");
+                cx.update_window(handle.into(), |_, window, app| {
+                    window.refresh(); window.draw(app).clear(app);
+                    window.render_to_image().unwrap().save(directory.join(format!("{name}-typed.png"))).unwrap();
+                }).unwrap();
+            }
+            pane.update(cx, |p, cx| p.visual_type("\x15", cx));
+            eprintln!("follow input native PASS: wheel leaves the bottom; a key event and typed text both return to the input line");
+            cx.update(|cx| cx.quit());
+        }).detach();
+        return;
+    }
+    // Plain-text URLs in Agent prose: hovering one underlines it, as an OSC 8 link does.
+    if let (Some(handle), Some(directory)) = (&handle, evidence.clone())
+        && std::env::var_os("KEEPLINE_LINK_EVIDENCE").is_some()
+    {
+        let handle = *handle;
+        cx.spawn(async move |cx| {
+            use gpui::InputEvent;
+            cx.background_executor().timer(Duration::from_secs(2)).await;
+            std::fs::create_dir_all(&directory).unwrap();
+            let pane = handle.update(cx, |view, _, _| view.visual_shown_pane()).unwrap();
+            pane.update(cx, |pane, cx| {
+                pane.visual_type(
+                    "clear; printf '7. Hunter / AI 雷达\\n- 加了 Rust 标签页，已经上线到 3002 端口：http://100.113.31.23:3002/radar?s=rust\\n- 见 (https://en.wikipedia.org/wiki/Rust_(language))。\\n'\r",
+                    cx,
+                )
+            });
+            for _ in 0..30 {
+                cx.background_executor().timer(Duration::from_millis(500)).await;
+                if pane.update(cx, |p, _| p.visual_text()).contains("3002 端口：http") {
+                    break;
+                }
+            }
+            for (name, prefix, cols) in [
+                ("hover-radar.png", "http://100.113.31.23", 38),
+                ("hover-wiki.png", "https://en.wikipedia.org", 45),
+            ] {
+                let (at, found) = pane
+                    .update(cx, |pane, _| pane.visual_link(prefix))
+                    .unwrap_or_else(|| panic!("no link for {prefix} in\n{}", pane.update(cx, |p, _| p.visual_text())));
+                assert_eq!(found, cols, "{prefix}");
+                cx.update_window(handle.into(), |_, window, app| {
+                    window.dispatch_event(
+                        gpui::MouseMoveEvent { position: at, pressed_button: None, modifiers: Default::default() }
+                            .to_platform_input(),
+                        app,
+                    );
+                    window.refresh(); window.draw(app).clear(app);
+                    window.render_to_image().unwrap().save(directory.join(name)).unwrap();
+                }).unwrap();
+            }
+            pane.update(cx, |pane, cx| {
+                pane.visual_type(
+                    "clear; printf '8. 其他\\n- 把 3 个 Codex 的 skill 软链接到了 ~/.claude/skills。\\n- 改了 crates/keepline-app/Cargo.toml:3 和 full_v18.mp4\\n'\r",
+                    cx,
+                )
+            });
+            for _ in 0..30 {
+                cx.background_executor().timer(Duration::from_millis(500)).await;
+                if pane.update(cx, |p, _| p.visual_text()).contains("和 full_v18") {
+                    break;
+                }
+            }
+            let home = std::path::PathBuf::from(std::env::var_os("HOME").unwrap());
+            for (name, word, expect) in [
+                ("hover-home.png", "~/.claude/skills", Some(home.join(".claude/skills"))),
+                (
+                    "hover-relative.png",
+                    "crates/keepline-app/Cargo.toml:3",
+                    Some(std::env::current_dir().unwrap().join("crates/keepline-app/Cargo.toml")),
+                ),
+                ("hover-missing.png", "full_v18.mp4", None),
+            ] {
+                let (at, _) = pane
+                    .update(cx, |pane, _| pane.visual_path(word))
+                    .unwrap_or_else(|| panic!("no path word {word}"));
+                cx.update_window(handle.into(), |_, window, app| {
+                    window.dispatch_event(
+                        gpui::MouseMoveEvent { position: at, pressed_button: None, modifiers: Default::default() }
+                            .to_platform_input(),
+                        app,
+                    );
+                }).unwrap();
+                // A relative word waits for the host to say where the shell is.
+                cx.background_executor().timer(Duration::from_millis(500)).await;
+                let (_, hovered) = pane.update(cx, |pane, _| pane.visual_path(word)).unwrap();
+                assert_eq!(hovered, expect, "{word}");
+                cx.update_window(handle.into(), |_, window, app| {
+                    window.refresh(); window.draw(app).clear(app);
+                    window.render_to_image().unwrap().save(directory.join(name)).unwrap();
+                }).unwrap();
+            }
+            eprintln!("link native PASS: plain-text URLs and existing paths underlined on hover, a missing file is not");
+            cx.update(|cx| cx.quit());
+        }).detach();
+        return;
     }
     // Runs the top bar's 「重启后台」 for real, as confirming its dialog does.
     if let Some(handle) = &handle

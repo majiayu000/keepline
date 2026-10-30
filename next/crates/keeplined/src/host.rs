@@ -1488,6 +1488,15 @@ fn serve_client(mut stream: UnixStream, host: Shared, connection: u64) -> io::Re
         if matches!(request, Request::WatchRecognition) {
             return watch_recognition(stream, host, connection);
         }
+        if matches!(request, Request::Diagnose) {
+            let terminals = lock(&host)?.workspace.terminals.iter()
+                .filter(|t| t.state == ProcessState::Running).cloned().collect::<Vec<_>>();
+            // No workspace/terminal lock is held during process enumeration or waiting.
+            if let Err(error) = crate::diagnostics::serve(&mut stream, &terminals) {
+                send(&mut stream, CONTROL, &Reply::Error(error.to_string()))?;
+            }
+            return Ok(());
+        }
         if matches!(request, Request::Handoff) {
             return hand_over(stream, &host);
         }
@@ -1793,6 +1802,7 @@ fn dispatch(shared: &Shared, request: Request) -> io::Result<Reply> {
             cwd,
             cols,
             rows,
+            scheme,
         } => {
             geometry(cols, rows)?;
             let mut host = lock(shared)?;
@@ -1818,6 +1828,7 @@ fn dispatch(shared: &Shared, request: Request) -> io::Result<Reply> {
                 return Err(io::Error::other("space not found"));
             }
             let mut vt = Vt::new(cols, rows)?;
+            vt.set_scheme(scheme)?;
             let replies = Arc::new(Mutex::new(Vec::new()));
             let out = Arc::clone(&replies);
             vt.on_reply(move |bytes| {
@@ -1839,7 +1850,8 @@ fn dispatch(shared: &Shared, request: Request) -> io::Result<Reply> {
                 error: None,
             });
             host.commit(next)?;
-            let (mut child, master) = match pty::spawn(&argv, Path::new(&cwd), cols, rows, &id) {
+            let (mut child, master) =
+                match pty::spawn(&argv, Path::new(&cwd), cols, rows, &id, scheme) {
                 Ok(result) => result,
                 Err(error) => {
                     let mut next = host.workspace.clone();
@@ -2506,6 +2518,7 @@ fn attach(
                         live.input_at = Some(Instant::now());
                     }
                 }
+                Request::Scheme(scheme) => live.vt.set_scheme(scheme)?,
                 Request::ClearHistory => {
                     let clear = keepline_core::terminal::clear_history(live.vt.terminal())?;
                     if !clear.is_empty() {
@@ -2533,7 +2546,7 @@ fn attach(
                 }
                 _ => {
                     return Err(io::Error::other(
-                        "attached connection accepts input and resize only",
+                        "attached connection accepts input, resize and scheme only",
                     ));
                 }
             }

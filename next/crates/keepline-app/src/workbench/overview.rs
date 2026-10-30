@@ -149,11 +149,11 @@ impl Workbench {
             .when(closed_only && !open.is_empty(), |d| {
                 let queue: Vec<_> = open.iter().map(|s| s.id.clone()).collect();
                 d.child(
-                    div().flex().child(
-                        button("cleanup-closed", "逐个清理 →").on_click(cx.listener(
+                    div()
+                        .flex()
+                        .child(button("cleanup-closed", "逐个清理 →").on_click(cx.listener(
                             move |this, _, _, cx| this.start_cleanup(queue.clone(), cx),
-                        )),
-                    ),
+                        ))),
                 )
             })
             .when_some(self.error.clone(), |d, error| {
@@ -197,9 +197,9 @@ impl Workbench {
                     .min_w(px(T::CARD_MIN))
                     .p(px(T::S12))
                     .rounded(px(T::CARD_RADIUS))
-                    .bg(T::color(T::TODO))
+                    .bg(T::color(T::todo()))
                     .border(px(T::BORDER_WIDTH))
-                    .border_color(T::color(T::CARD_BORDER))
+                    .border_color(T::color(T::card_border()))
                     .flex()
                     .flex_col()
                     .gap(px(T::S8))
@@ -216,8 +216,8 @@ impl Workbench {
                     )))
                     .child(
                         button(gpui::SharedString::from(format!("start-{id}")), "开始 →")
-                            .bg(T::color(T::ACCENT))
-                            .text_color(T::color(T::ON_ACCENT))
+                            .bg(T::color(T::accent()))
+                            .text_color(T::color(T::on_accent()))
                             .on_click(cx.listener(move |this, _, _, cx| {
                                 this.ask_agent(id.clone(), false, cx)
                             })),
@@ -231,8 +231,8 @@ impl Workbench {
                     .p(px(T::S16))
                     .rounded(px(T::POPOVER_RADIUS))
                     .border(px(T::BORDER_WIDTH))
-                    .border_color(T::color(T::TODO_BORDER))
-                    .bg(T::color(T::SLOT))
+                    .border_color(T::color(T::todo_border()))
+                    .bg(T::color(T::slot()))
                     .flex()
                     .flex_col()
                     .gap(px(T::S10))
@@ -243,7 +243,7 @@ impl Workbench {
                             .gap(px(T::S10))
                             .child(
                                 div()
-                                    .text_color(T::color(T::LINK))
+                                    .text_color(T::color(T::link()))
                                     .font_weight(gpui::FontWeight::SEMIBOLD)
                                     .child("☐ 待办 · 还没开始"),
                             )
@@ -386,13 +386,13 @@ impl Workbench {
                         .p(px(T::S12))
                         .rounded(px(T::CARD_RADIUS))
                         .border(px(T::BORDER_WIDTH))
-                        .border_color(T::color(T::CARD_BORDER))
-                        .bg(T::color(T::HEADER))
+                        .border_color(T::color(T::card_border()))
+                        .bg(T::color(T::header()))
                         .flex()
                         .flex_col()
                         .gap(px(T::S6))
                         .cursor_pointer()
-                        .hover(|s| s.bg(T::color(T::RAISED)))
+                        .hover(|s| s.bg(T::color(T::raised())))
                         .on_click(cx.listener(move |this, _, window, cx| {
                             this.enter_card(&enter, window, cx)
                         }))
@@ -453,7 +453,7 @@ impl Workbench {
                                         "看进度"
                                     },
                                 )
-                                .text_color(T::color(T::LINK))
+                                .text_color(T::color(T::link()))
                                 .on_click(cx.listener(
                                     move |this, _, window, cx| {
                                         cx.stop_propagation();
@@ -537,7 +537,7 @@ impl Workbench {
         view = view.child(
             div()
                 .border_t(px(T::BORDER_WIDTH))
-                .border_color(T::color(T::BORDER))
+                .border_color(T::color(T::border()))
                 .pt(px(T::S16))
                 .child(
                     button(
@@ -611,7 +611,7 @@ impl Workbench {
             )
             .border_0()
             .justify_start()
-            .text_color(T::color(T::SECONDARY))
+            .text_color(T::color(T::secondary()))
             .on_click(cx.listener(|this, _, _, cx| {
                 this.overview.show_hidden = !this.overview.show_hidden;
                 cx.notify();
@@ -624,7 +624,7 @@ impl Workbench {
                     div()
                         .p(px(T::S8))
                         .border_b(px(T::BORDER_WIDTH))
-                        .border_color(T::color(T::BORDER))
+                        .border_color(T::color(T::border()))
                         .child(
                             button(
                                 gpui::SharedString::from(format!("hidden-{}", s.id)),

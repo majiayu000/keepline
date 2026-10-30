@@ -22,7 +22,11 @@ mod theme;
 mod terminal {
     pub(crate) use super::screen;
 }
+#[path = "../src/ui/terminal_text.rs"]
+#[allow(dead_code)]
+mod terminal_text;
 mod ui {
+    pub(crate) use super::terminal_text;
     pub(crate) use super::theme;
 }
 

@@ -203,7 +203,7 @@ impl Workbench {
             panel = panel.child(
                 div()
                     .text_size(px(T::META))
-                    .text_color(T::color(T::SECONDARY))
+                    .text_color(T::color(T::secondary()))
                     .child("仅覆盖已索引的历史尾段与之后的增量；没有证据不等于没做。"),
             );
         }
@@ -211,7 +211,7 @@ impl Workbench {
             panel = panel.child(
                 div()
                     .text_size(px(T::META))
-                    .text_color(T::color(T::SECONDARY))
+                    .text_color(T::color(T::secondary()))
                     .child(format!("和这个终端对上靠的是：{}", binding.label())),
             );
         }
@@ -235,8 +235,8 @@ impl Workbench {
                 .when(!typing_here, |d| {
                     d.child(
                         button("here-continue", "继续")
-                            .bg(T::color(T::ACCENT))
-                            .text_color(T::color(T::ON_ACCENT))
+                            .bg(T::color(T::accent()))
+                            .text_color(T::color(T::on_accent()))
                             .on_click(cx.listener(move |this, _, window, cx| {
                                 this.open_session(&resume, window, cx)
                             })),
@@ -261,7 +261,7 @@ impl Workbench {
                 .child(
                     button("here-more", if more { "收起" } else { "更多 ⋯" })
                         .border_0()
-                        .text_color(T::color(T::LINK))
+                        .text_color(T::color(T::link()))
                         .on_click(cx.listener(move |this, _, _, cx| {
                             this.overview.here_more = (!more).then(|| more_id.clone());
                             cx.notify();
@@ -341,10 +341,10 @@ impl Workbench {
             .max_h(px(T::HERE_HEIGHT))
             .overflow_hidden()
             .rounded(px(T::POPOVER_RADIUS))
-            .bg(T::color(T::POPOVER))
-            .text_color(T::color(T::PRIMARY))
+            .bg(T::color(T::popover()))
+            .text_color(T::color(T::primary()))
             .border(px(T::BORDER_WIDTH))
-            .border_color(T::color(T::CONTROL))
+            .border_color(T::color(T::control()))
             .shadow_lg()
             .flex()
             .flex_col()
@@ -432,9 +432,9 @@ impl Workbench {
             .id(gpui::SharedString::from(format!("actions-{}", session.id)))
             .w(px(T::MENU_WIDTH))
             .p(px(T::S6))
-            .bg(T::color(T::RAISED))
+            .bg(T::color(T::raised()))
             .border(px(T::BORDER_WIDTH))
-            .border_color(T::color(T::CONTROL))
+            .border_color(T::color(T::control()))
             .rounded(px(T::CONTROL_RADIUS))
             .shadow_lg()
             .flex()

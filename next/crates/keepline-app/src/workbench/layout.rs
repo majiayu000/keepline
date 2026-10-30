@@ -65,8 +65,8 @@ impl Workbench {
                 .p(px(T::S20))
                 .rounded(px(T::PANE_RADIUS))
                 .border(px(if borders { T::BORDER_WIDTH } else { 0. }))
-                .border_color(T::color(T::BORDER))
-                .bg(T::color(T::PANE))
+                .border_color(T::color(T::border()))
+                .bg(T::color(T::pane()))
                 .child(label("已中断（后台重启，原进程已结束）"))
                 .child(
                     button(
@@ -156,8 +156,8 @@ impl Workbench {
             .overflow_hidden()
             .rounded(px(T::PANE_RADIUS))
             .border(px(if borders { T::BORDER_WIDTH } else { 0. }))
-            .border_color(T::color(if focused { T::FOCUS } else { T::BORDER }))
-            .bg(T::color(T::PANE))
+            .border_color(T::color(if focused { T::focus() } else { T::border() }))
+            .bg(T::color(T::pane()))
             .child(
                 div()
                     .h(px(T::PANE_HEADER))
@@ -166,13 +166,15 @@ impl Workbench {
                     .flex()
                     .items_center()
                     .gap(px(T::S8))
+                    // GPUI 只按矩形裁剪子元素，标题栏不跟着圆角会从外框圆角外露出方角
+                    .rounded_t(px(T::PANE_RADIUS - T::BORDER_WIDTH))
                     .bg(T::color(if focused {
-                        T::HEADER_FOCUSED
+                        T::header_focused()
                     } else {
-                        T::HEADER
+                        T::header()
                     }))
                     .border_b(px(T::BORDER_WIDTH))
-                    .border_color(T::color(T::BORDER))
+                    .border_color(T::color(T::border()))
                     .when_some(group, |d, g| d.child(chip(g)))
                     .when(rang, |d| d.child(label("🔔")))
                     .child(
@@ -227,7 +229,7 @@ impl Workbench {
                             .h(px(T::ICON_HEIGHT))
                             .px(px(T::S8))
                             .text_size(px(T::META))
-                            .text_color(T::color(T::LINK))
+                            .text_color(T::color(T::link()))
                             .on_click(cx.listener(
                                 move |this, _, window, cx| {
                                     let pane = cx.new(|cx| {
@@ -258,7 +260,7 @@ impl Workbench {
                                 .h(px(T::ICON_HEIGHT))
                                 .px(px(T::S6))
                                 .text_size(px(T::META))
-                                .text_color(T::color(T::LINK))
+                                .text_color(T::color(T::link()))
                                 .on_click(cx.listener(
                                     move |this, _, _, cx| {
                                         if let Some(p) = this.layout.panes.get(&target) {
@@ -283,7 +285,7 @@ impl Workbench {
                                 )
                                 .h(px(T::ICON_HEIGHT))
                                 .px(px(T::S6))
-                                .text_color(T::color(T::LINK))
+                                .text_color(T::color(T::link()))
                                 .on_click(cx.listener(
                                     move |this, _, _, cx| {
                                         this.edit(
@@ -307,7 +309,7 @@ impl Workbench {
                             )
                             .h(px(T::ICON_HEIGHT))
                             .px(px(T::S6))
-                            .text_color(T::color(T::LINK))
+                            .text_color(T::color(T::link()))
                             .on_click(cx.listener(
                                 move |this, _, _, cx| {
                                     this.overview.here = Some(show.clone());
@@ -354,6 +356,18 @@ impl Workbench {
                         ..Default::default()
                     })),
             )
+            // Over the border rather than widening it: a wider border on focus would
+            // shrink the grid and resize the program each time focus moves.
+            .when(borders && focused, |d| {
+                d.child(
+                    div()
+                        .absolute()
+                        .inset_0()
+                        .rounded(px(T::PANE_RADIUS))
+                        .border(px(T::FOCUS_RING))
+                        .border_color(T::color(T::focus())),
+                )
+            })
             .when_some(
                 session.filter(|s| self.overview.here.as_ref() == Some(&s.id)),
                 |d, s| {
@@ -453,9 +467,9 @@ impl Workbench {
                                     .when(down, |d| d.h(px(T::S2)).w(px(T::S20 * 2.)))
                                     .when(!down, |d| d.w(px(T::S2)).h(px(T::S20 * 2.)))
                                     .when(self.layout.drag.as_ref() == Some(&path), |d| {
-                                        d.bg(T::color(T::FOCUS))
+                                        d.bg(T::color(T::focus()))
                                     })
-                                    .group_hover("divider", |d| d.bg(T::color(T::FOCUS))),
+                                    .group_hover("divider", |d| d.bg(T::color(T::focus()))),
                             )
                             .on_mouse_down(
                                 gpui::MouseButton::Left,
@@ -790,11 +804,11 @@ impl Workbench {
                     .rounded(px(T::CONTROL_RADIUS))
                     .text_size(px(T::SMALL))
                     .cursor_pointer()
-                    .hover(|s| s.bg(T::color(T::BUTTON_HOVER)))
+                    .hover(|s| s.bg(T::color(T::button_hover())))
                     .child(gpui::img(icon.title_image()).size(px(T::LOGO)))
                     .child(div().flex_1().child(icon.label()))
                     .when(icon == current, |d| {
-                        d.child(div().text_color(T::color(T::LINK)).child("✓"))
+                        d.child(div().text_color(T::color(T::link())).child("✓"))
                     })
                     .on_click(cx.listener(move |this, _, _, cx| {
                         this.layout.icon_menu = None;
@@ -873,9 +887,9 @@ impl Workbench {
                     .flex()
                     .flex_col()
                     .gap(px(T::S12))
-                    .bg(T::color(T::RAISED))
+                    .bg(T::color(T::raised()))
                     .border(px(T::BORDER_WIDTH))
-                    .border_color(T::color(T::CONTROL))
+                    .border_color(T::color(T::control()))
                     .rounded(px(T::CARD_RADIUS))
                     .shadow_lg()
                     .on_mouse_down(gpui::MouseButton::Left, |_, _, cx| cx.stop_propagation())
@@ -967,9 +981,9 @@ impl Workbench {
                     .top(position.y.min(viewport.height - height).max(px(0.)))
                     .w(px(T::MENU_WIDTH))
                     .p(px(T::S6))
-                    .bg(T::color(T::RAISED))
+                    .bg(T::color(T::raised()))
                     .border(px(T::BORDER_WIDTH))
-                    .border_color(T::color(T::CONTROL))
+                    .border_color(T::color(T::control()))
                     .rounded(px(T::CONTROL_RADIUS))
                     .shadow_lg()
                     .on_mouse_down(gpui::MouseButton::Left, |_, _, cx| cx.stop_propagation())

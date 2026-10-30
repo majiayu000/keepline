@@ -147,9 +147,9 @@ impl Workbench {
             .max_w_full()
             .overflow_y_scroll()
             .border(px(T::BORDER_WIDTH))
-            .border_color(T::color(T::CONTROL))
+            .border_color(T::color(T::control()))
             .rounded(px(T::POPOVER_RADIUS))
-            .bg(T::color(T::HEADER))
+            .bg(T::color(T::header()))
             .flex()
             .flex_col()
             .gap(px(T::S16))
@@ -172,7 +172,7 @@ impl Workbench {
                             space.name.clone(),
                         )
                         .when(form.space == sid, |d| {
-                            d.bg(T::color(T::CHIP)).text_color(T::color(T::LINK))
+                            d.bg(T::color(T::chip())).text_color(T::color(T::link()))
                         })
                         .on_click(cx.listener(move |this, _, _, cx| {
                             if let Some(f) = &mut this.tasks.form {
@@ -198,7 +198,7 @@ impl Workbench {
                 agents = agents.child(
                     button(agent.executable(), agent.executable())
                         .when(form.agent == agent, |d| {
-                            d.bg(T::color(T::CHIP)).text_color(T::color(T::LINK))
+                            d.bg(T::color(T::chip())).text_color(T::color(T::link()))
                         })
                         .on_click(cx.listener(move |this, _, _, cx| {
                             if let Some(f) = &mut this.tasks.form {
@@ -235,8 +235,8 @@ impl Workbench {
                 .when(matches!(form.kind, FormKind::Task), |d| {
                     d.child(
                         button("save-start", "保存并开始")
-                            .bg(T::color(T::ACCENT))
-                            .text_color(T::color(T::ON_ACCENT))
+                            .bg(T::color(T::accent()))
+                            .text_color(T::color(T::on_accent()))
                             .on_click(cx.listener(|this, _, _, cx| this.save_form(true, cx))),
                     )
                 })

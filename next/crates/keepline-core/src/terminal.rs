@@ -22,6 +22,47 @@ use std::{
 /// box from the background, so an unanswered query leaves it flat).
 pub const DEFAULT_FG: u32 = 0xe4e2df;
 pub const DEFAULT_BG: u32 = 0x1c1c1e;
+/// The light scheme's defaults, the window's light theme being derived from them.
+pub const LIGHT_FG: u32 = 0x1f1e1c;
+pub const LIGHT_BG: u32 = 0xfafaf9;
+/// ANSI 0-15 for the light scheme: Ghostty's built-in palette is tuned for a dark
+/// background, where its white and yellow would vanish on this one. The grays (0, 7,
+/// 8, 15) lean warm like the background so the chrome and terminal share one neutral.
+const LIGHT_ANSI: [u32; 16] = [
+    0x2a2825, 0xcf222e, 0x116329, 0x8a5a00, 0x0969da, 0x8250df, 0x1b7c83, 0x6f6a64, 0x57534e,
+    0xa40e26, 0x1a7f37, 0x9a6700, 0x218bff, 0xa475f9, 0x3192aa, 0x8c8680,
+];
+
+/// Which defaults a terminal paints with and reports through OSC 10/11/12 and
+/// CSI ? 996 n; programs such as Codex pick their own tints from them.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub enum Scheme {
+    #[default]
+    Dark,
+    Light,
+}
+impl Scheme {
+    /// `COLORFGBG` for a program started under this scheme ("fg;bg" in ANSI numbers),
+    /// which some read before they query the terminal.
+    pub const fn colorfgbg(self) -> &'static str {
+        match self {
+            Self::Dark => "15;0",
+            Self::Light => "0;15",
+        }
+    }
+    pub const fn fg(self) -> u32 {
+        match self {
+            Self::Dark => DEFAULT_FG,
+            Self::Light => LIGHT_FG,
+        }
+    }
+    pub const fn bg(self) -> u32 {
+        match self {
+            Self::Dark => DEFAULT_BG,
+            Self::Light => LIGHT_BG,
+        }
+    }
+}
 /// Reported for XTVERSION (CSI > q), like "ghostty 1.2.3".
 pub const XTVERSION: &str = concat!("keepline ", env!("CARGO_PKG_VERSION"));
 /// Matches the TERM the daemon gives programs; reported for XTGETTCAP TN.
@@ -188,13 +229,24 @@ impl Vt {
         local_path(self.0.pwd().ok()?, host)
     }
     /// Answer the queries programs send every terminal: device attributes, XTVERSION,
-    /// window/cell size and the dark color scheme. Colors are answered from the
+    /// window/cell size and the color scheme its background implies. Colors are answered from the
     /// defaults set in `new`. Only the daemon installs this; display copies stay silent.
     pub fn answer_queries(&mut self, cell: CellPixels) -> io::Result<()> {
         self.0
             .on_device_attributes(|_| Some(DEVICE_ATTRIBUTES))
             .and_then(|t| t.on_xtversion(|_| Some(XTVERSION)))
-            .and_then(|t| t.on_color_scheme(|_| Some(ColorScheme::Dark)))
+            .and_then(|t| {
+                t.on_color_scheme(|t| {
+                    let bg = t.bg_color().ok().flatten()?;
+                    // Rec. 601 luma: a light background reads as the light scheme.
+                    let luma = 299 * bg.r as u32 + 587 * bg.g as u32 + 114 * bg.b as u32;
+                    Some(if luma > 128_000 {
+                        ColorScheme::Light
+                    } else {
+                        ColorScheme::Dark
+                    })
+                })
+            })
             .and_then(|t| {
                 t.on_size(move |t| {
                     let (cell_width, cell_height) = cell.get();
@@ -224,12 +276,29 @@ impl Vt {
         terminal
             .set_mode(libghostty_vt::terminal::Mode::GRAPHEME_CLUSTER, true)
             .map_err(io::Error::other)?;
-        terminal
-            .set_default_fg_color(Some(rgb(DEFAULT_FG)))
-            .and_then(|t| t.set_default_bg_color(Some(rgb(DEFAULT_BG))))
-            .and_then(|t| t.set_default_cursor_color(Some(rgb(DEFAULT_FG))))
+        let mut vt = Self(terminal);
+        vt.set_scheme(Scheme::Dark)?;
+        Ok(vt)
+    }
+    /// Switch the defaults; colors a program set itself (OSC, explicit SGR) are kept.
+    pub fn set_scheme(&mut self, scheme: Scheme) -> io::Result<()> {
+        // Back to the built-in palette first, so the light one only replaces ANSI 0-15.
+        let t = self
+            .0
+            .set_default_fg_color(Some(rgb(scheme.fg())))
+            .and_then(|t| t.set_default_bg_color(Some(rgb(scheme.bg()))))
+            .and_then(|t| t.set_default_cursor_color(Some(rgb(scheme.fg()))))
+            .and_then(|t| t.set_default_color_palette(None))
             .map_err(io::Error::other)?;
-        Ok(Self(terminal))
+        if scheme == Scheme::Light {
+            let mut palette = t.default_color_palette().map_err(io::Error::other)?;
+            for (slot, color) in palette.0.iter_mut().zip(LIGHT_ANSI) {
+                *slot = rgb(color);
+            }
+            t.set_default_color_palette(Some(palette))
+                .map_err(io::Error::other)?;
+        }
+        Ok(())
     }
     pub fn snapshot(&mut self) -> io::Result<Vec<u8>> {
         let mut bytes = Vec::new();
@@ -465,6 +534,26 @@ mod tests {
         assert_eq!(restored.title().as_deref(), Some("~/code — zsh"));
         vt.feed(b"\x1b]2;\x1b\\");
         assert_eq!(vt.title(), None);
+    }
+    #[test]
+    fn light_scheme_repaints_defaults_and_answers_light() {
+        let mut vt = Vt::new(80, 24).unwrap();
+        let replies = Arc::new(std::sync::Mutex::new(Vec::new()));
+        let captured = replies.clone();
+        vt.on_reply(move |bytes| captured.lock().unwrap().extend_from_slice(bytes))
+            .unwrap();
+        vt.answer_queries(CellPixels::default()).unwrap();
+        vt.set_scheme(Scheme::Light).unwrap();
+        let bg = vt.terminal().bg_color().unwrap().unwrap();
+        assert_eq!(rgb(LIGHT_BG), bg);
+        let white = vt.terminal().color_palette().unwrap().0[7];
+        assert_eq!(rgb(LIGHT_ANSI[7]), white);
+        vt.feed(b"\x1b[?996n");
+        assert_eq!(replies.lock().unwrap().as_slice(), b"\x1b[?997;2n");
+        vt.set_scheme(Scheme::Dark).unwrap();
+        let restored = Vt::restore(&vt.snapshot().unwrap()).unwrap();
+        let bg = restored.terminal().bg_color().unwrap().unwrap();
+        assert_eq!(rgb(DEFAULT_BG), bg);
     }
     #[test]
     fn display_copies_keep_default_colors() {

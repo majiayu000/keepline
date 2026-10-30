@@ -40,6 +40,8 @@ pub enum Request {
     RefreshAgents,
     RecognitionStatus,
     WatchRecognition,
+    /// A fifteen-second measurement stream, cancelled by disconnecting this socket.
+    Diagnose,
     Hook {
         runtime: crate::model::Agent,
         pid: u32,
@@ -67,6 +69,9 @@ pub enum Request {
         cwd: String,
         cols: u16,
         rows: u16,
+        /// Hosts before it start every terminal dark.
+        #[serde(default)]
+        scheme: crate::terminal::Scheme,
     },
     Attach {
         id: String,
@@ -88,6 +93,8 @@ pub enum Request {
         #[serde(default)]
         cell_height: u32,
     },
+    /// The window switched between light and dark: repaint this terminal's defaults.
+    Scheme(crate::terminal::Scheme),
     /// Cmd+K: drop scrollback and the rows above the cursor (no-op in the alternate screen).
     ClearHistory,
     TerminalCwd {
@@ -114,6 +121,7 @@ pub enum Reply {
     Cwd(String),
     NotificationClaimed(bool),
     Recognition(RecognitionStatus),
+    Diagnostics(crate::diagnostics::Diagnostics),
     Attached {
         writable: bool,
         cols: u16,

@@ -14,11 +14,18 @@ impl Render for Workbench {
         } else {
             None
         };
-        if self.nav.pending_focus && page.is_some() && !self.search.is_open() {
+        if self.nav.pending_focus
+            && page.is_some()
+            && !self.search.is_open()
+            && self.diagnostics.is_none()
+            && self.settings.is_none()
+        {
             window.focus(&self.overview.focus, cx);
             self.nav.pending_focus = false;
         }
         if self.nav.pending_focus
+            && self.diagnostics.is_none()
+            && self.settings.is_none()
             && self.tasks.form.is_none()
             && self.layout.renaming_tab.is_none()
             && !self.nav.overview
@@ -38,8 +45,8 @@ impl Render for Workbench {
             .flex()
             .flex_col()
             .overflow_hidden()
-            .bg(T::color(T::APP))
-            .text_color(T::color(T::PRIMARY))
+            .bg(T::color(T::app()))
+            .text_color(T::color(T::primary()))
             .text_size(px(T::BODY_SIZE))
             .line_height(gpui::relative(T::LINE_HEIGHT))
             .font_family(T::UI_FONT);
@@ -59,9 +66,9 @@ impl Render for Workbench {
                 .flex()
                 .items_center()
                 .gap(px(T::S16))
-                .bg(T::color(T::PANEL))
+                .bg(T::color(T::panel()))
                 .border_b(px(T::BORDER_WIDTH))
-                .border_color(T::color(T::BORDER))
+                .border_color(T::color(T::border()))
                 .child(
                     div()
                         .id("app-icon")
@@ -99,10 +106,10 @@ impl Render for Workbench {
                         } else {
                             "鸟瞰全部"
                         })
-                        .bg(T::color(if on { T::SELECTION } else { T::RAISED }))
+                        .bg(T::color(if on { T::selection() } else { T::raised() }))
                         .when(on, |d| {
-                            d.border_color(T::color(T::FOCUS))
-                                .text_color(T::color(T::PRIMARY))
+                            d.border_color(T::color(T::focus()))
+                                .text_color(T::color(T::primary()))
                         })
                         .on_click(cx.listener(move |this, _, _, cx| {
                             if on {
@@ -149,7 +156,7 @@ impl Render for Workbench {
                                 (false, false) => "后台有更新 · 重启",
                             },
                         )
-                        .text_color(T::color(T::SECONDARY))
+                        .text_color(T::color(T::secondary()))
                         .on_click(cx.listener(|this, _, _, cx| {
                             if !this.restarting {
                                 this.request_close(Closing::Host, cx);
@@ -219,11 +226,11 @@ impl Render for Workbench {
                         .flex()
                         .items_center()
                         .gap(px(T::S6))
-                        .bg(T::color(T::RAISED))
+                        .bg(T::color(T::raised()))
                         .border(px(T::BORDER_WIDTH))
-                        .border_color(T::color(T::FOCUS))
+                        .border_color(T::color(T::focus()))
                         .text_size(px(T::MONO_SIZE))
-                        .text_color(T::color(T::PRIMARY))
+                        .text_color(T::color(T::primary()))
                         .when(tab.default_task.is_some(), |d| d.child(task_icon()))
                         .child(div().flex_1().min_w_0().h_full().child(field.clone())),
                 );
@@ -238,7 +245,7 @@ impl Render for Workbench {
                 .flex_shrink_0()
                 .h(px(T::ICON_HEIGHT))
                 .px(px(T::S4))
-                .text_color(T::color(T::SECONDARY))
+                .text_color(T::color(T::secondary()))
                 .when(!active, |d| {
                     d.opacity(0.)
                         .group_hover(group_name.clone(), |s| s.opacity(1.))
@@ -263,8 +270,8 @@ impl Render for Workbench {
                     .border_0()
                     .rounded_none()
                     .text_size(px(T::MONO_SIZE))
-                    .text_color(T::color(if active { T::PRIMARY } else { T::SECONDARY }))
-                    .when(active, |d| d.bg(T::color(T::RAISED)))
+                    .text_color(T::color(if active { T::primary() } else { T::secondary() }))
+                    .when(active, |d| d.bg(T::color(T::raised())))
                     .when(tab.default_task.is_some(), |d| d.child(task_icon()))
                     .child(div().flex_grow_1().min_w_0().truncate().child(title))
                     .when_some(group, |d, g| d.child(dot(g)).child(badge(g, needs.len())))
@@ -295,20 +302,7 @@ impl Render for Workbench {
                                 this.rename_tab(&id, window, cx);
                                 return;
                             }
-                            this.nav.tab = Some(id.clone());
-                            if this.nav.overview || !this.overview.cleanup.is_empty() {
-                                this.leave_overview(cx);
-                            }
-                            this.sync_panes(cx);
-                            if let Some(p) = this
-                                .nav
-                                .focused
-                                .as_ref()
-                                .and_then(|id| this.layout.panes.get(id))
-                            {
-                                window.focus(&p.focus_handle(cx), cx);
-                            }
-                            cx.notify();
+                            this.show_tab(&id, window, cx);
                         }),
                     ),
             );
@@ -320,14 +314,14 @@ impl Render for Workbench {
             .items_center()
             .px(px(T::S6))
             .border_b(px(T::BORDER_WIDTH))
-            .border_color(T::color(T::BORDER))
+            .border_color(T::color(T::border()))
             .child(strip)
             .child(
                 button("new", "＋")
                     .aria_label("新建终端标签")
                     .flex_shrink_0()
                     .border_0()
-                    .text_color(T::color(T::LINK))
+                    .text_color(T::color(T::link()))
                     .on_click(cx.listener(|this, _, _, cx| this.launch(false, None, cx))),
             );
         let mut main = div()
@@ -428,16 +422,16 @@ impl Render for Workbench {
                         .flex()
                         .items_center()
                         .gap(px(T::S14))
-                        .bg(T::color(T::TODO))
+                        .bg(T::color(T::todo()))
                         .border_b(px(T::BORDER_WIDTH))
-                        .border_color(T::color(T::TODO_BORDER))
+                        .border_color(T::color(T::todo_border()))
                         .child(
                             div()
                                 .px(px(T::S6))
                                 .rounded(px(T::CHIP_RADIUS))
                                 .text_size(px(T::CHIP_SIZE))
-                                .bg(T::color(T::CHIP))
-                                .text_color(T::color(T::LINK))
+                                .bg(T::color(T::chip()))
+                                .text_color(T::color(T::link()))
                                 .child("待办"),
                         )
                         .child(
@@ -453,7 +447,7 @@ impl Render for Workbench {
                         .child(
                             button("prefill", "待办详情")
                                 .h(px(T::FOOTER))
-                                .text_color(T::color(T::LINK))
+                                .text_color(T::color(T::link()))
                                 .on_click({
                                     let tid = task.id.clone();
                                     cx.listener(move |this, _, _, cx| {
@@ -499,50 +493,208 @@ impl Render for Workbench {
         if self.search.is_open() {
             root = root.child(self.search_palette(cx));
         }
-        self.with_search(root, cx)
-            .on_key_down(cx.listener(|this, event: &gpui::KeyDownEvent, _, cx| {
-                let k = &event.keystroke;
-                if k.key == "w"
-                    && k.modifiers.platform
-                    && !k.modifiers.shift
-                    && !k.modifiers.control
-                    && !k.modifiers.alt
-                {
-                    this.close_focused(cx);
-                    cx.stop_propagation();
-                }
-            }))
-            .on_mouse_move(cx.listener(Self::resize_drag))
-            .on_mouse_up(
-                gpui::MouseButton::Left,
-                cx.listener(|this, _, _, cx| this.finish_drag(cx)),
-            )
-            .on_mouse_up_out(
-                gpui::MouseButton::Left,
-                cx.listener(|this, _, _, cx| this.finish_drag(cx)),
-            )
+        if let Some(view) = &self.diagnostics {
+            root = root.child(self.diagnostic_overlay(view.clone(), cx));
+        }
+        if let Some(view) = &self.settings {
+            root = root.child(self.settings_overlay(view.clone(), cx));
+        }
+        root.on_key_down(cx.listener(|this, event: &gpui::KeyDownEvent, window, cx| {
+            if let Some(action) = crate::keymap::action(&event.keystroke, cx)
+                && this.shortcut(action, window, cx)
+            {
+                cx.stop_propagation();
+            }
+        }))
+        .on_mouse_move(cx.listener(Self::resize_drag))
+        .on_mouse_up(
+            gpui::MouseButton::Left,
+            cx.listener(|this, _, _, cx| this.finish_drag(cx)),
+        )
+        .on_mouse_up_out(
+            gpui::MouseButton::Left,
+            cx.listener(|this, _, _, cx| this.finish_drag(cx)),
+        )
     }
 }
 
 impl Workbench {
-    /// ⌘P opens the search palette from anywhere; ⌘K stays the terminal's clear.
-    fn with_search(&self, root: gpui::Div, cx: &Context<Self>) -> gpui::Div {
-        root.on_key_down(cx.listener(|this, event: &gpui::KeyDownEvent, window, cx| {
-            let k = &event.keystroke;
-            if k.key == "p"
-                && k.modifiers.platform
-                && !k.modifiers.shift
-                && !k.modifiers.control
-                && !k.modifiers.alt
-            {
-                if this.search.is_open() {
-                    this.close_search(cx);
-                } else {
-                    this.open_search(window, cx);
-                }
-                cx.stop_propagation();
+    /// Shows a tab of the current space and puts input in its focused pane.
+    pub(super) fn show_tab(&mut self, id: &str, window: &mut Window, cx: &mut Context<Self>) {
+        self.nav.tab = Some(id.to_owned());
+        if self.nav.overview || !self.overview.cleanup.is_empty() {
+            self.leave_overview(cx);
+        }
+        self.sync_panes(cx);
+        if let Some(p) = self
+            .nav
+            .focused
+            .as_ref()
+            .and_then(|id| self.layout.panes.get(id))
+        {
+            window.focus(&p.focus_handle(cx), cx);
+        }
+        cx.notify();
+    }
+    /// The workbench's keymap actions (crate::keymap); true when one ran. The focused
+    /// terminal runs its own (查找、清屏、字号) before this sees them.
+    pub(super) fn shortcut(
+        &mut self,
+        action: crate::keymap::Action,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) -> bool {
+        use crate::keymap::Action;
+        let row: Vec<_> = self
+            .workspace
+            .tabs
+            .iter()
+            .filter(|t| t.space == self.nav.space)
+            .map(|t| t.id.clone())
+            .collect();
+        let at = self
+            .nav
+            .tab
+            .as_ref()
+            .and_then(|t| row.iter().position(|r| r == t));
+        let target = match action {
+            Action::NewTab => {
+                self.launch(false, None, cx);
+                return true;
             }
-        }))
+            Action::Close => {
+                self.close_focused(cx);
+                return true;
+            }
+            Action::SplitRight | Action::SplitDown => {
+                let pane = self.nav.tab.as_ref().and_then(|tab| {
+                    let panes = self.workspace.tab_terminals(tab);
+                    self.nav
+                        .focused
+                        .clone()
+                        .filter(|id| panes.contains(id))
+                        .or_else(|| panes.first().cloned())
+                });
+                match pane {
+                    Some(id) => {
+                        let label = if action == Action::SplitDown {
+                            "向下分屏"
+                        } else {
+                            "向右分屏"
+                        };
+                        self.menu_action(&id, label, window, cx);
+                    }
+                    None => self.launch(false, None, cx),
+                }
+                return true;
+            }
+            Action::Search => {
+                if self.search.is_open() {
+                    self.close_search(cx);
+                } else {
+                    self.open_search(window, cx);
+                }
+                return true;
+            }
+            Action::Settings => {
+                self.show_settings(window, cx);
+                return true;
+            }
+            Action::PrevPane | Action::NextPane => {
+                self.focus_neighbour(action == Action::NextPane, window, cx);
+                return true;
+            }
+            Action::PaneLeft | Action::PaneRight | Action::PaneUp | Action::PaneDown => {
+                use keepline_core::layout::Direction;
+                let to = match action {
+                    Action::PaneLeft => Direction::Left,
+                    Action::PaneRight => Direction::Right,
+                    Action::PaneUp => Direction::Up,
+                    _ => Direction::Down,
+                };
+                self.focus_toward(to, window, cx);
+                return true;
+            }
+            Action::PrevTab => at.map(|i| (i + row.len() - 1) % row.len()),
+            Action::NextTab => at.map(|i| (i + 1) % row.len()),
+            Action::LastTab => row.len().checked_sub(1),
+            Action::Tab(n) => Some(usize::from(n) - 1).filter(|i| *i < row.len()),
+            _ => return false,
+        };
+        if let Some(id) = target.and_then(|i| row.get(i)).cloned() {
+            self.show_tab(&id, window, cx);
+        }
+        true
+    }
+    /// ⌘[ / ⌘]: input moves to the previous or next pane of the tab in layout order,
+    /// wrapping around, as Ghostty's goto_split does; a zoomed pane is restored first.
+    fn focus_neighbour(&mut self, next: bool, window: &mut Window, cx: &mut Context<Self>) {
+        let Some(tab) = self.nav.tab.clone() else {
+            return;
+        };
+        let panes: Vec<_> = self
+            .workspace
+            .tab_terminals(&tab)
+            .into_iter()
+            .filter(|id| self.layout.panes.contains_key(id))
+            .collect();
+        if panes.len() < 2 {
+            return;
+        }
+        let at = self
+            .nav
+            .focused
+            .as_ref()
+            .and_then(|id| panes.iter().position(|p| p == id))
+            .unwrap_or(0);
+        let to = if next {
+            (at + 1) % panes.len()
+        } else {
+            (at + panes.len() - 1) % panes.len()
+        };
+        self.focus_pane(panes[to].clone(), window, cx);
+    }
+    /// ⌘⌥ and an arrow: input moves to the pane on that side of the focused one, by
+    /// where the panes sit; nothing happens at the tab's edge.
+    fn focus_toward(
+        &mut self,
+        to: keepline_core::layout::Direction,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        let Some(tab) = self.nav.tab.clone() else {
+            return;
+        };
+        let Some(layout) = self
+            .workspace
+            .tabs
+            .iter()
+            .find(|t| t.id == tab)
+            .and_then(|t| t.layout.clone())
+        else {
+            return;
+        };
+        let from = self
+            .nav
+            .focused
+            .clone()
+            .filter(|id| layout.contains(id))
+            .or_else(|| layout.ids().first().cloned());
+        if let Some(id) = from
+            .and_then(|from| layout.neighbour(&from, to))
+            .filter(|id| self.layout.panes.contains_key(id))
+        {
+            self.focus_pane(id, window, cx);
+        }
+    }
+    fn focus_pane(&mut self, id: String, window: &mut Window, cx: &mut Context<Self>) {
+        self.nav.zoomed = None;
+        self.nav.focused = Some(id.clone());
+        self.sync_panes(cx);
+        if let Some(pane) = self.layout.panes.get(&id) {
+            window.focus(&pane.focus_handle(cx), cx);
+        }
+        cx.notify();
     }
     /// Empty title-bar space moves the window and zooms it on a double press, as the
     /// system title bar did before the top bar replaced it.
@@ -581,11 +733,11 @@ impl Render for TextTip {
             .p(px(T::S8))
             .rounded(px(T::CONTROL_RADIUS))
             .border(px(T::BORDER_WIDTH))
-            .border_color(T::color(T::CARD_BORDER))
-            .bg(T::color(T::RAISED))
+            .border_color(T::color(T::card_border()))
+            .bg(T::color(T::raised()))
             .shadow_lg()
             .text_size(px(T::SMALL))
-            .text_color(T::color(T::PRIMARY))
+            .text_color(T::color(T::primary()))
             .child(self.0.clone())
     }
 }
@@ -595,6 +747,8 @@ impl Render for TextTip {
 struct TabTip {
     title: String,
     status: Option<Group>,
+    /// Why the tab asks for you: the error or the question, so the dot is never a riddle.
+    reason: Option<String>,
     cwd: Option<String>,
 }
 impl Workbench {
@@ -605,11 +759,17 @@ impl Workbench {
             .iter()
             .filter(|s| s.current && s.terminal.as_ref().is_some_and(|id| ids.contains(id)))
             .collect();
-        let status = sessions
+        let (status, reason) = sessions
             .iter()
-            .map(|s| sidebar_status(&self.workspace, &self.attention.unseen, s))
-            .max_by_key(|(_, attention)| *attention)
-            .map(|(g, _)| g);
+            .map(|s| {
+                (
+                    s,
+                    sidebar_status(&self.workspace, &self.attention.unseen, s),
+                )
+            })
+            .max_by_key(|(_, (_, attention))| *attention)
+            .map(|(s, (g, _))| (Some(g), self.attention_reason(s, g)))
+            .unwrap_or_default();
         let first = ids
             .iter()
             .find(|id| Some(*id) == self.nav.focused.as_ref())
@@ -620,8 +780,32 @@ impl Workbench {
         TabTip {
             title: title.to_owned(),
             status,
+            reason,
             cwd,
         }
+    }
+    fn attention_reason(&self, s: &AgentSession, g: Group) -> Option<String> {
+        let content = self.workspace.content.get(&s.id);
+        let text = match g {
+            Group::Waiting => content.map(|c| c.waiting.clone()).unwrap_or_default(),
+            Group::Error => content
+                .map(|c| c.error.clone())
+                .filter(|e| !e.is_empty())
+                .or_else(|| {
+                    let t = self
+                        .workspace
+                        .terminals
+                        .iter()
+                        .find(|t| s.terminal.as_ref() == Some(&t.id))?;
+                    t.error
+                        .clone()
+                        .or_else(|| t.exit_code.map(|c| format!("终端退出码 {c}")))
+                })
+                .unwrap_or_default(),
+            _ => return None,
+        };
+        let line = text.lines().map(str::trim).find(|l| !l.is_empty())?;
+        Some(line.chars().take(T::TAB_TIP_REASON_CHARS).collect())
     }
 }
 impl Render for TabTip {
@@ -634,11 +818,11 @@ impl Render for TabTip {
             .gap(px(T::S4))
             .rounded(px(T::CONTROL_RADIUS))
             .border(px(T::BORDER_WIDTH))
-            .border_color(T::color(T::CARD_BORDER))
-            .bg(T::color(T::RAISED))
+            .border_color(T::color(T::card_border()))
+            .bg(T::color(T::raised()))
             .shadow_lg()
             .text_size(px(T::SMALL))
-            .text_color(T::color(T::PRIMARY))
+            .text_color(T::color(T::primary()))
             .child(self.title.clone())
             .when_some(self.status, |d, g| {
                 d.child(
@@ -649,6 +833,9 @@ impl Render for TabTip {
                         .child(dot(g))
                         .child(label(g.label())),
                 )
+            })
+            .when_some(self.reason.clone(), |d, reason| {
+                d.child(div().text_color(T::color(T::secondary())).child(reason))
             })
             .when_some(self.cwd.clone(), |d, cwd| d.child(label(cwd)))
     }

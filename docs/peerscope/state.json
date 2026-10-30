@@ -1,0 +1,36 @@
+{
+  "name": "Keepline设置",
+  "premise": {
+    "product": "Keepline 原生工作台设置",
+    "from_scratch": false,
+    "baseline": "feat/sidebar-sessions@4bc2afb8de5c35fa7ab92405394e42ecf9fec9d5，含用户已有本地改动",
+    "scope": "仅与 Warp 对照设置模块并实现",
+    "out_of_scope": "全产品排名、云同步、Agent 权限、系统通知权限实测、发布",
+    "intent": "借鉴设置设计并实现",
+    "known_peers": [
+      "Warp"
+    ],
+    "resources": "本机 Warp 安装包、官方文档、Keepline 原生渲染测试",
+    "confirmed": true,
+    "confirmed_by": "user"
+  },
+  "peers": [],
+  "rubric": {
+    "version": 1,
+    "dimensions": []
+  },
+  "rules": [
+    "用户明确只对照 Warp，不扩展竞品池。",
+    "用户要求直接实现，不停在调研。",
+    "保留已有本地改动，以开始时文件快照区分本轮变更。",
+    "遵守用户不使用子代理的约定，由主线程自查。"
+  ],
+  "available_skills": [],
+  "rounds": [
+    "20261029-s1"
+  ],
+  "stage": 1,
+  "tiers": {
+    "20261029-s1": "standard"
+  }
+}

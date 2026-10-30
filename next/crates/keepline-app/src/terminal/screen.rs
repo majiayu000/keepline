@@ -53,6 +53,8 @@ pub struct Screen {
     pub cursor_shape: CursorShape,
     pub background: u32,
     pub links: Vec<Link>,
+    /// Text that reads like a file path; only one that exists on disk becomes clickable.
+    pub paths: Vec<Link>,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -68,6 +70,11 @@ impl Screen {
             .iter()
             .find(|l| l.row == row && col >= l.col && col < l.col + l.cols)
     }
+    pub fn path_at(&self, row: u16, col: u16) -> Option<&Link> {
+        self.paths
+            .iter()
+            .find(|l| l.row == row && col >= l.col && col < l.col + l.cols)
+    }
 }
 /// Only explicitly clicked OSC 8 links reach the OS. No OSC callback opens URLs.
 pub fn allowed_link(uri: &str) -> bool {
@@ -78,6 +85,142 @@ pub fn allowed_link(uri: &str) -> bool {
         .or_else(|| uri.strip_prefix("http://"))
         .is_some_and(|s| !s.is_empty() && !s.starts_with('/'))
         || uri.strip_prefix("file:///").is_some_and(|s| !s.is_empty())
+}
+/// Plain-text http(s) URLs in one row, found by text as iTerm2 and Ghostty do when the
+/// program printed no OSC 8 link. `cells` holds each cell's column, width and first char.
+/// A URL ends at whitespace or any non-ASCII char, so `端口：http://a/b。` stops before `。`;
+/// trailing punctuation and unbalanced closing brackets belong to the prose around it.
+/// Words in one row that read like file paths: `~/x`, `/x`, `./x`, `a/b`, or `name.ext`,
+/// each with an optional `:line[:col]`. A word ends at whitespace, quotes, brackets and
+/// CJK punctuation, so `链接到了 ~/.claude/skills。` yields `~/.claude/skills`. Whether it
+/// exists is the pane's question, asked only on hover.
+fn text_paths(row: u16, cells: &[(u16, u16, char)]) -> Vec<Link> {
+    let separator = |c: char| {
+        c.is_whitespace()
+            || "\"'`()[]{}<>|,;*".contains(c)
+            || "。，、；：！？（）「」『』《》【】“”‘’…".contains(c)
+    };
+    let mut paths = Vec::new();
+    let mut i = 0;
+    while i < cells.len() {
+        if separator(cells[i].2) {
+            i += 1;
+            continue;
+        }
+        let mut end = i;
+        while end < cells.len() && !separator(cells[end].2) {
+            end += 1;
+        }
+        let next = end;
+        while end > i && matches!(cells[end - 1].2, '.' | ':' | '!' | '?') {
+            end -= 1;
+        }
+        let word: String = cells[i..end].iter().map(|c| c.2).collect();
+        if looks_like_path(&word) {
+            let last = cells[end - 1];
+            paths.push(Link {
+                row,
+                col: cells[i].0,
+                cols: last.0 + last.1 - cells[i].0,
+                uri: word,
+            });
+        }
+        i = next;
+    }
+    paths
+}
+fn looks_like_path(word: &str) -> bool {
+    let (file, _) = split_line(word);
+    if file.contains("://") || !file.chars().any(char::is_alphanumeric) {
+        return false;
+    }
+    if file.contains('/') {
+        return true;
+    }
+    // A bare file name needs a stem and an extension with a letter, so "5.5" and
+    // "v0.1.41" stay prose.
+    file.rsplit_once('.').is_some_and(|(stem, ext)| {
+        stem.chars().any(char::is_alphabetic)
+            && (1..=8).contains(&ext.len())
+            && ext.chars().all(|c| c.is_ascii_alphanumeric())
+            && ext.chars().any(|c| c.is_ascii_alphabetic())
+    })
+}
+/// `a.rs:42:7` is `a.rs` at line 42; anything else is all file.
+pub fn split_line(word: &str) -> (&str, Option<u32>) {
+    let mut parts = word.rsplitn(3, ':');
+    let last = parts.next().unwrap_or_default();
+    let mid = parts.next();
+    let digits = |s: &str| !s.is_empty() && s.bytes().all(|b| b.is_ascii_digit());
+    match (mid, parts.next()) {
+        (Some(line), Some(file)) if digits(line) && digits(last) && !file.is_empty() => {
+            (file, line.parse().ok())
+        }
+        (Some(file), _) if digits(last) && !file.is_empty() => {
+            let file = &word[..word.len() - last.len() - 1];
+            (file, last.parse().ok())
+        }
+        _ => (word, None),
+    }
+}
+/// Where a path word points: `~` is home, a relative path starts at `cwd`.
+pub fn resolve_path(word: &str, cwd: Option<&std::path::Path>) -> Option<std::path::PathBuf> {
+    let (file, _) = split_line(word);
+    if let Some(rest) = file.strip_prefix("~/") {
+        return Some(std::path::PathBuf::from(std::env::var_os("HOME")?).join(rest));
+    }
+    let path = std::path::Path::new(file);
+    if path.is_absolute() {
+        Some(path.to_owned())
+    } else {
+        Some(cwd?.join(path))
+    }
+}
+fn text_links(row: u16, cells: &[(u16, u16, char)]) -> Vec<Link> {
+    let starts_with = |i: usize, p: &str| {
+        cells.len() - i >= p.len() && p.chars().zip(&cells[i..]).all(|(a, c)| a == c.2)
+    };
+    let url_char = |c: char| {
+        c.is_ascii_graphic() && !matches!(c, '<' | '>' | '"' | '`' | '{' | '}' | '|' | '\\' | '^')
+    };
+    let mut links = Vec::new();
+    let mut i = 0;
+    while i < cells.len() {
+        let boundary = i == 0 || !cells[i - 1].2.is_ascii_alphanumeric();
+        if !(boundary && (starts_with(i, "https://") || starts_with(i, "http://"))) {
+            i += 1;
+            continue;
+        }
+        let mut end = i;
+        while end < cells.len() && url_char(cells[end].2) {
+            end += 1;
+        }
+        let mut uri: String = cells[i..end].iter().map(|c| c.2).collect();
+        while let Some(last) = uri.chars().last() {
+            let open = match last {
+                ')' => '(',
+                ']' => '[',
+                _ => '\0',
+            };
+            let unbalanced = open != '\0' && uri.matches(last).count() > uri.matches(open).count();
+            if !(matches!(last, '.' | ',' | ';' | ':' | '!' | '?' | '\'' | '*') || unbalanced) {
+                break;
+            }
+            uri.pop();
+            end -= 1;
+        }
+        if end > i && allowed_link(&uri) {
+            let last = cells[end - 1];
+            links.push(Link {
+                row,
+                col: cells[i].0,
+                cols: last.0 + last.1 - cells[i].0,
+                uri,
+            });
+        }
+        i = end.max(i + 1);
+    }
+    links
 }
 pub fn rgb(r: u8, g: u8, b: u8) -> u32 {
     (r as u32) << 16 | (g as u32) << 8 | b as u32
@@ -129,14 +272,9 @@ impl<'a> RowBuilder<'a> {
     }
 }
 
-// The daemon's terminals carry the same defaults, so programs that ask see these.
+// The dark scheme's defaults; a terminal without its own colors falls back to the theme's.
+#[cfg(any(test, feature = "visual-test"))]
 pub const DEFAULT_FG: u32 = keepline_core::terminal::DEFAULT_FG;
-pub const DEFAULT_BG: u32 = keepline_core::terminal::DEFAULT_BG;
-const _: () = assert!(
-    DEFAULT_FG == crate::ui::theme::Theme::TERMINAL_FG
-        && DEFAULT_BG == crate::ui::theme::Theme::TERMINAL_BG,
-    "terminal defaults must match the theme the chrome is derived from"
-);
 
 use keepline_core::terminal::{
     Vt,
@@ -183,12 +321,12 @@ impl Capture {
             .terminal()
             .fg_color()?
             .map(|c| rgb(c.r, c.g, c.b))
-            .unwrap_or(DEFAULT_FG);
+            .unwrap_or_else(|| crate::ui::theme::Theme::terminal_fg());
         let def_bg = vt
             .terminal()
             .bg_color()?
             .map(|c| rgb(c.r, c.g, c.b))
-            .unwrap_or(DEFAULT_BG);
+            .unwrap_or_else(|| crate::ui::theme::Theme::terminal_bg());
         full |= self.defaults != Some((def_fg, def_bg));
         self.defaults = Some((def_fg, def_bg));
         self.colors = Some(colors.clone());
@@ -196,6 +334,7 @@ impl Capture {
         let mut rows = self.rows.update(&snap)?;
         let mut y = 0usize;
         let mut text = String::new();
+        let mut line = Vec::new();
         while let Some(row) = rows.next() {
             if out.rows.len() <= y {
                 out.rows.push(Vec::new());
@@ -206,9 +345,11 @@ impl Capture {
             }
             changed += 1;
             out.links.retain(|link| link.row != y as u16);
+            out.paths.retain(|path| path.row != y as u16);
             let mut b = RowBuilder::new(&mut out.rows[y]);
             let mut cells = self.cells.update(row)?;
             let mut x = 0u16;
+            line.clear();
             while let Some(cell) = cells.next() {
                 let raw = cell.raw_cell()?;
                 let wide = raw.wide()?;
@@ -280,13 +421,24 @@ impl Capture {
                         });
                     }
                 }
+                line.push((x, width, text.chars().next().unwrap_or(' ')));
                 b.push(x, width, &text, fg, bg, attrs);
                 x += 1;
+            }
+            out.paths.extend(text_paths(y as u16, &line));
+            for link in text_links(y as u16, &line) {
+                let taken = |l: &Link| {
+                    l.row == link.row && l.col < link.col + link.cols && link.col < l.col + l.cols
+                };
+                if !out.links.iter().any(taken) {
+                    out.links.push(link);
+                }
             }
             y += 1;
         }
         out.rows.truncate(y);
         out.links.retain(|link| (link.row as usize) < y);
+        out.paths.retain(|path| (path.row as usize) < y);
         let cur = snap.cursor()?;
         out.cursor = cur.viewport.map(|v| (v.x, v.y));
         out.cursor_visible = cur.visible;
@@ -300,7 +452,7 @@ impl Capture {
             .terminal()
             .bg_color()?
             .map(|c| rgb(c.r, c.g, c.b))
-            .unwrap_or(DEFAULT_BG);
+            .unwrap_or_else(|| crate::ui::theme::Theme::terminal_bg());
         snap.clean()?;
         Ok(changed)
     }
@@ -318,17 +470,16 @@ use gpui::{
     App, Bounds, Font, FontStyle, FontWeight, Hsla, Pixels, ShapedLine, SharedString, TextAlign,
     TextRun, UnderlineStyle, Window, fill, point, px, size,
 };
-static FONT_SIZE: std::sync::atomic::AtomicU32 =
-    std::sync::atomic::AtomicU32::new(crate::ui::theme::Theme::TERMINAL_FONT_SIZE.to_bits());
-/// Terminal text size in points; Cmd+= / Cmd+- / Cmd+0 change it for every pane.
+/// Terminal text size in points; settings and zoom shortcuts share one saved value.
 pub fn font_size() -> f32 {
-    f32::from_bits(FONT_SIZE.load(std::sync::atomic::Ordering::Relaxed))
+    crate::ui::terminal_text::size()
 }
-/// One point per step, like Terminal.app; `None` restores the default size.
-pub fn zoom(step: Option<i8>) -> f32 {
-    let size = zoomed(font_size(), step);
-    FONT_SIZE.store(size.to_bits(), std::sync::atomic::Ordering::Relaxed);
-    size
+pub fn zoom(step: Option<i8>) -> Result<f32, String> {
+    let mut text = crate::ui::terminal_text::current();
+    text.size = zoomed(text.size, step);
+    let size = text.size;
+    crate::ui::terminal_text::update(text)?;
+    Ok(size)
 }
 fn zoomed(size: f32, step: Option<i8>) -> f32 {
     step.map_or(crate::ui::theme::Theme::TERMINAL_FONT_SIZE, |s| {
@@ -361,7 +512,7 @@ impl CellMetrics {
         // uses it positive, which TextSystem::baseline_offset gets wrong by one descent.
         let ascent = ts.ascent(id, px(font_size()));
         let descent = -ts.descent(id, px(font_size()));
-        let height = px((f32::from(ascent + descent) * scale).round() / scale);
+        let height = px((f32::from(ascent + descent) * crate::ui::terminal_text::line_height() * scale).round() / scale);
         let ic_width = ts
             .advance(id, px(font_size()), '水')
             .ok()
@@ -457,10 +608,10 @@ impl MarkedText {
             &[TextRun {
                 len: text.len(),
                 font,
-                color: hsla(DEFAULT_FG),
+                color: hsla(crate::ui::theme::Theme::terminal_fg()),
                 background_color: None,
                 underline: Some(UnderlineStyle {
-                    color: Some(hsla(DEFAULT_FG)),
+                    color: Some(hsla(crate::ui::theme::Theme::terminal_fg())),
                     thickness: px(crate::ui::theme::Theme::BORDER_WIDTH),
                     wavy: false,
                 }),
@@ -601,7 +752,7 @@ impl AsciiGlyphs {
             &[TextRun {
                 len: 95,
                 font,
-                color: hsla(DEFAULT_FG),
+                color: hsla(crate::ui::theme::Theme::terminal_fg()),
                 background_color: None,
                 underline: None,
                 strikethrough: None,
@@ -715,7 +866,7 @@ pub fn paint_cached(
             ),
             size(cw, lh),
         );
-        let color = hsla(DEFAULT_FG).opacity(0.6);
+        let color = hsla(crate::ui::theme::Theme::terminal_fg()).opacity(0.6);
         let t = metrics.stroke * 2.;
         match sc.cursor_shape {
             CursorShape::Block => window.paint_quad(fill(cell, color)),
@@ -987,6 +1138,69 @@ mod tests {
             assert!(!allowed_link(uri));
         }
         assert!(allowed_link("file:///tmp/test"));
+    }
+    #[test]
+    fn plain_text_urls_become_links_without_the_prose_around_them() {
+        let mut vt = Vt::new(80, 6).unwrap();
+        vt.feed(
+            "端口：http://100.113.31.23:3002/radar?s=rust。\r\n\
+             (see https://en.wikipedia.org/wiki/Rust_(language)).\r\n\
+             xhttps://no.example 和 **https://b.example/x**\r\n\
+             \x1b]8;;https://osc.example\x1b\\https://shown.example\x1b]8;;\x1b\\"
+                .as_bytes(),
+        );
+        let s = capture(&vt).unwrap();
+        let link = s.link_at(0, 6).unwrap();
+        assert_eq!(link.uri, "http://100.113.31.23:3002/radar?s=rust");
+        assert_eq!((link.col, link.cols), (6, 38));
+        assert!(s.link_at(0, 44).is_none());
+        assert_eq!(
+            s.link_at(1, 5).unwrap().uri,
+            "https://en.wikipedia.org/wiki/Rust_(language)"
+        );
+        assert!(s.link_at(2, 1).is_none());
+        assert_eq!(s.link_at(2, 25).unwrap().uri, "https://b.example/x");
+        // An OSC 8 link keeps its own target over the URL its text shows.
+        let osc: Vec<_> = s.links.iter().filter(|l| l.row == 3).collect();
+        assert!(osc.iter().all(|l| l.uri == "https://osc.example"));
+    }
+    #[test]
+    fn path_words_are_found_without_prose_or_versions() {
+        let mut vt = Vt::new(100, 4).unwrap();
+        vt.feed(
+            "- 把 3 个 Codex 的 skill 软链接到了 ~/.claude/skills。\r\n\
+             见 `terminal/screen.rs:72`, (a.rs:42:7) 和 /tmp/x.\r\n\
+             Opus 5.5、v0.1.41 和 full_v18.mp4 https://a.example/b 1/2"
+                .as_bytes(),
+        );
+        let s = capture(&vt).unwrap();
+        let words: Vec<_> = s.paths.iter().map(|p| (p.row, p.uri.as_str())).collect();
+        assert_eq!(
+            words,
+            [
+                (0, "~/.claude/skills"),
+                (1, "terminal/screen.rs:72"),
+                (1, "a.rs:42:7"),
+                (1, "/tmp/x"),
+                (2, "full_v18.mp4"),
+                (2, "1/2"),
+            ]
+        );
+        let skills = s.path_at(0, 44).unwrap();
+        assert_eq!((skills.col, skills.cols), (36, 16));
+        assert_eq!(split_line("a.rs:42:7"), ("a.rs", Some(42)));
+        assert_eq!(split_line("a.rs:42"), ("a.rs", Some(42)));
+        assert_eq!(split_line("C:x"), ("C:x", None));
+        let cwd = std::path::Path::new("/work");
+        assert_eq!(
+            resolve_path("src/a.rs:3", Some(cwd)).unwrap(),
+            cwd.join("src/a.rs")
+        );
+        assert_eq!(
+            resolve_path("/etc/hosts", None).unwrap(),
+            std::path::Path::new("/etc/hosts")
+        );
+        assert!(resolve_path("a.rs", None).is_none());
     }
     #[test]
     fn emoji_cluster_capture_is_one_two_column_run() {

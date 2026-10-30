@@ -70,6 +70,7 @@ pub fn spawn(
     cols: u16,
     rows: u16,
     terminal: &str,
+    scheme: keepline_core::terminal::Scheme,
 ) -> io::Result<(Child, File)> {
     let mut master = -1;
     let mut slave = -1;
@@ -109,8 +110,11 @@ pub fn spawn(
     command
         .args(&argv[1..])
         .current_dir(cwd)
+        .env_clear()
+        .envs(baseline_env(std::env::vars_os()))
         .env("TERM", "xterm-256color")
         .env("COLORTERM", "truecolor")
+        .env("COLORFGBG", scheme.colorfgbg())
         .envs(integration_env(
             &argv[0],
             INTEGRATION.get().map(PathBuf::as_path),
@@ -237,6 +241,92 @@ pub fn write(master: &mut File, bytes: &[u8]) -> io::Result<()> {
         }
     }
     Ok(())
+}
+
+/// A shell starts from the same environment however this host was started, the way a
+/// terminal opened from the Dock does: the login identity and locale pass, the rest is
+/// left to the login shell's profile. The host is long-lived and inherits whatever
+/// launched it, so passing its environment through would freeze a launcher's one-off
+/// state into every later shell. Started from inside Claude Code, for example,
+/// `CLAUDE_CODE_CHILD_SESSION` reached every shell; Claude launched there believed it
+/// was a nested child and stopped saving its transcript, so Keepline lost track of it.
+/// A launcher's `PATH` is its own state too, so it falls back to the system default.
+fn baseline_env(vars: impl Iterator<Item = (OsString, OsString)>) -> Vec<(OsString, OsString)> {
+    const PASS: [&str; 8] = [
+        "HOME",
+        "USER",
+        "LOGNAME",
+        "SHELL",
+        "TMPDIR",
+        "LANG",
+        "SSH_AUTH_SOCK",
+        "__CF_USER_TEXT_ENCODING",
+    ];
+    let mut env: Vec<_> = vars
+        .filter(|(k, _)| {
+            k.to_str()
+                .is_some_and(|k| PASS.contains(&k) || k.starts_with("LC_"))
+        })
+        .collect();
+    env.push(("PATH".into(), "/usr/bin:/bin:/usr/sbin:/sbin".into()));
+    env
+}
+
+#[cfg(test)]
+mod env_tests {
+    #[test]
+    fn only_the_login_baseline_passes_whatever_launched_the_host() {
+        let launcher = [
+            ("HOME", "/Users/u"),
+            ("USER", "u"),
+            ("LANG", "zh_CN.UTF-8"),
+            ("LC_CTYPE", "UTF-8"),
+            ("PATH", "/agent/bin:/usr/bin"),
+            ("CLAUDE_CODE_CHILD_SESSION", "1"),
+            ("CLAUDECODE", "1"),
+            ("CODEX_SANDBOX", "seatbelt"),
+            ("SOME_FUTURE_AGENT_MARKER", "1"),
+            ("COLUMNS", "80"),
+        ]
+        .map(|(k, v)| (k.into(), v.into()));
+        let env = super::baseline_env(launcher.into_iter());
+        let keys: Vec<_> = env.iter().map(|(k, _)| k.to_str().unwrap()).collect();
+        assert_eq!(keys, ["HOME", "USER", "LANG", "LC_CTYPE", "PATH"]);
+        assert_eq!(env.last().unwrap().1, "/usr/bin:/bin:/usr/sbin:/sbin");
+    }
+    #[test]
+    fn a_spawned_shell_does_not_see_the_hosts_launcher_state() {
+        use std::io::Read;
+        std::env::set_var("CLAUDE_CODE_CHILD_SESSION", "1");
+        let argv = ["/usr/bin/env".to_owned()];
+        let scheme = keepline_core::terminal::Scheme::default();
+        let (mut child, mut out) =
+            super::spawn(&argv, std::path::Path::new("/"), 80, 24, "scheme-test", scheme).unwrap();
+        // Read while it runs: macOS holds a closing terminal open until its output is read.
+        let mut text = String::new();
+        let mut buf = [0u8; 4096];
+        let deadline = std::time::Instant::now() + std::time::Duration::from_secs(10);
+        loop {
+            match out.read(&mut buf) {
+                Ok(0) => break,
+                Ok(n) => text.push_str(&String::from_utf8_lossy(&buf[..n])),
+                Err(e) if e.kind() == std::io::ErrorKind::WouldBlock => {
+                    if child.try_wait().unwrap().is_some() || std::time::Instant::now() > deadline {
+                        break;
+                    }
+                    std::thread::sleep(std::time::Duration::from_millis(10));
+                }
+                Err(_) => break,
+            }
+        }
+        let _ = child.kill();
+        assert!(text.contains("TERM=xterm-256color"), "{text}");
+        assert!(
+            text.contains("PATH=/usr/bin:/bin:/usr/sbin:/sbin"),
+            "{text}"
+        );
+        assert!(!text.contains("CLAUDE_CODE_CHILD_SESSION"), "{text}");
+    }
 }
 
 #[cfg(test)]

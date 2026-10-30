@@ -11,6 +11,7 @@ gpui = { path = "../../.deps/zed/crates/gpui" }
 gpui_platform = { path = "../../.deps/zed/crates/gpui_platform", features = ["font-kit"] }
 futures = "0.3"
 serde_json.workspace = true
+serde.workspace = true
 libc.workspace = true
 
 [features]

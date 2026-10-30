@@ -1,5 +1,6 @@
 mod agents;
 mod codex_status;
+mod diagnostics;
 mod file_events;
 mod handoff;
 mod host;

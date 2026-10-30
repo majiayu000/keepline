@@ -2525,6 +2525,7 @@ dependencies = [
  "gpui_platform",
  "keepline-core",
  "libc",
+ "serde",
  "serde_json",
 ]
 

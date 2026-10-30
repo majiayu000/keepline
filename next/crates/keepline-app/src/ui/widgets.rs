@@ -21,8 +21,8 @@ pub fn task_icon() -> gpui::Div {
         .justify_center()
         .rounded(px(T::S2))
         .border(px(T::BORDER_WIDTH))
-        .border_color(T::color(T::LINK))
-        .text_color(T::color(T::LINK))
+        .border_color(T::color(T::link()))
+        .text_color(T::color(T::link()))
         .text_size(px(T::CHIP_SIZE))
         .child("✓")
 }
@@ -42,15 +42,15 @@ pub fn button(
         .justify_center()
         .rounded(px(T::CONTROL_RADIUS))
         .text_size(px(T::SMALL))
-        .text_color(T::color(T::BODY))
+        .text_color(T::color(T::body()))
         .cursor_pointer()
-        .hover(|s| s.bg(T::color(T::BUTTON_HOVER)))
+        .hover(|s| s.bg(T::color(T::button_hover())))
         .child(text)
 }
 pub fn label(text: impl Into<gpui::SharedString>) -> gpui::Div {
     div()
         .text_size(px(T::META))
-        .text_color(T::color(T::SECONDARY))
+        .text_color(T::color(T::secondary()))
         .child(text.into())
 }
 pub fn dot(group: Group) -> gpui::Div {
@@ -60,9 +60,13 @@ pub fn dot(group: Group) -> gpui::Div {
         .rounded_full()
         .bg(group.colors().0)
 }
-/// A row you have already looked at: its dot as `colors.json`'s `seen.dot` says.
+/// Running work keeps its filled status color even after it has been viewed.
+/// Other seen rows follow `colors.json`'s `seen.dot` style.
 pub fn seen_dot(group: Group) -> gpui::Div {
     use super::status_colors::{SeenDot, StatusColors};
+    if matches!(group, Group::Working | Group::Running) {
+        return dot(group);
+    }
     let hue = group.colors().0;
     match StatusColors::get().seen_dot {
         SeenDot::Fill => dot(group),

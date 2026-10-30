@@ -1,0 +1,8 @@
+原生验收：独立临时 runtime 与 XDG_CONFIG_HOME，GPUI 原生事件和渲染截图。
+settings native PASS phase 1: category clicks, real saves/restart, failed write unchanged, search text and Escape
+settings native PASS phase 2: category clicks, real saves/restart, failed write unchanged, search text and Escape
+keymap native PASS phase 1: default ⌘T, conflict held, ctrl refused, rebound to ⌘⇧T in 设置, old key off
+keymap native PASS phase 2: ⌘⇧T kept across restart, 全部恢复默认 restores ⌘T
+    Finished `test` profile [unoptimized] target(s) in 6.21s
+test result: ok. 68 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.03s
+    Finished `dev` profile [unoptimized] target(s) in 7.89s

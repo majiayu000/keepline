@@ -2,6 +2,8 @@
 //! UI dimensions live here; terminal cell colors remain owned by the VT.
 pub use crate::model::session_state::Group;
 use gpui::{App, Font, Hsla, Rgba, font};
+pub use keepline_core::terminal::Scheme;
+use std::sync::atomic::{AtomicBool, Ordering};
 
 pub fn hsla(c: u32) -> Hsla {
     Rgba {
@@ -52,16 +54,47 @@ impl Group {
         super::status_colors::StatusColors::get().hue(self)
     }
     pub fn colors(self) -> (Hsla, Hsla, Hsla) {
-        let (dot, ink, bg) = match self {
-            Self::Stale => (self.hue(), Theme::SECONDARY, Theme::RAISED),
-            group => (
-                group.hue(),
-                mix(group.hue(), Theme::WHITE, 620),
-                mix(Theme::TERMINAL_BG, group.hue(), 220),
-            ),
-        };
+        let (dot, ink, bg) = self.colors_in(Theme::palette());
         (hsla(dot), hsla(ink), hsla(bg))
     }
+    /// Dot, ink and wash on one palette.
+    fn colors_in(self, p: &Palette) -> (u32, u32, u32) {
+        let (dot, ink, bg) = match self {
+            Self::Stale => (legible(self.hue(), p), p.secondary, p.raised),
+            // Ink moves the hue toward the text color, so it reads on either background.
+            group => (
+                legible(group.hue(), p),
+                mix(group.hue(), p.vivid, p.ink_share),
+                mix(p.terminal_bg, group.hue(), p.wash_share),
+            ),
+        };
+        (dot, ink, bg)
+    }
+}
+/// The hue pushed toward the text color until it reaches 3:1 on the terminal background,
+/// so a yellow or green dot still reads on white; a hue that already passes is untouched.
+fn legible(hue: u32, p: &Palette) -> u32 {
+    (0..=1000)
+        .step_by(50)
+        .map(|share| mix(hue, p.vivid, share))
+        .find(|&c| contrast(c, p.terminal_bg) >= 3.)
+        .unwrap_or(p.vivid)
+}
+/// WCAG contrast ratio between two colors.
+pub fn contrast(a: u32, b: u32) -> f32 {
+    let luminance = |c: u32| {
+        let channel = |shift: u32| {
+            let v = ((c >> shift) & 255) as f32 / 255.;
+            if v <= 0.03928 {
+                v / 12.92
+            } else {
+                ((v + 0.055) / 1.055).powf(2.4)
+            }
+        };
+        0.2126 * channel(16) + 0.7152 * channel(8) + 0.0722 * channel(0)
+    };
+    let (la, lb) = (luminance(a), luminance(b));
+    (la.max(lb) + 0.05) / (la.min(lb) + 0.05)
 }
 /// `share` per mille of `to` blended into `from`, per channel; const so tokens stay constants.
 pub const fn mix(from: u32, to: u32, share: u32) -> u32 {
@@ -75,54 +108,187 @@ pub const fn mix(from: u32, to: u32, share: u32) -> u32 {
     }
     out
 }
+/// Chrome colors for one terminal scheme. Every surface and text tone is a mix of the
+/// terminal's default colors (plus black or white), so the window reads as one surface
+/// with the terminal in either scheme.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct Palette {
+    pub terminal_bg: u32,
+    pub terminal_fg: u32,
+    /// White on dark, black on light: past the text, for ink and the one solid control.
+    vivid: u32,
+    ink_share: u32,
+    wash_share: u32,
+    /// One neutral surface: sidebar, top bar, panes and headers share the terminal's
+    /// background and are told apart by hairlines, not by bands of different shades.
+    pub app: u32,
+    pub panel: u32,
+    pub pane: u32,
+    pub header: u32,
+    pub header_focused: u32,
+    pub slot: u32,
+    pub todo: u32,
+    pub raised: u32,
+    pub border: u32,
+    pub card_border: u32,
+    pub control: u32,
+    /// Text field outlines: 3:1 against the pane so an empty field is still findable.
+    pub field_edge: u32,
+    pub todo_border: u32,
+    pub slot_border: u32,
+    /// A quiet fill for ordinary buttons; they carry no outline.
+    pub button: u32,
+    pub button_hover: u32,
+    pub primary: u32,
+    pub body: u32,
+    pub secondary: u32,
+    pub muted: u32,
+    /// The one solid control per view: near-white with dark text on dark, the reverse
+    /// on light; color is left to status.
+    pub accent: u32,
+    pub on_accent: u32,
+    pub focus: u32,
+    pub link: u32,
+    /// Selected text in a field.
+    pub selection: u32,
+    pub chip: u32,
+    /// In-window popovers (「你在这里」, cleanup) sit one step above the pane.
+    pub popover: u32,
+    pub palette_row: u32,
+    /// Matched text in search results: a quiet amber wash, the text keeps its own color.
+    pub matched: u32,
+    /// Dims the workbench behind the palette, as rgba.
+    pub scrim: u32,
+    pub inference: u32,
+}
+impl Palette {
+    /// Light shares are set against the contrast floors (text 4.5:1, focus and field edges
+    /// 3:1) and a surface ladder whose steps stay visible; dark keeps its tuned values.
+    const fn new(scheme: Scheme) -> Self {
+        let bg = scheme.bg();
+        let fg = scheme.fg();
+        let light = matches!(scheme, Scheme::Light);
+        let vivid = if light { Theme::BLACK } else { Theme::WHITE };
+        let primary = mix(fg, vivid, 300);
+        let border = mix(bg, fg, by(light, 170, 90));
+        let control = mix(bg, fg, by(light, 300, 150));
+        // Popovers sit one step above the pane: lighter on light, never pure white.
+        let popover = if light {
+            mix(bg, Theme::WHITE, 700)
+        } else {
+            mix(bg, fg, 55)
+        };
+        Self {
+            terminal_bg: bg,
+            terminal_fg: fg,
+            vivid,
+            ink_share: if light { 450 } else { 620 },
+            wash_share: if light { 150 } else { 220 },
+            app: mix(bg, Theme::BLACK, by(light, 70, 150)),
+            panel: bg,
+            pane: bg,
+            header: bg,
+            header_focused: mix(bg, fg, by(light, 120, 90)),
+            slot: mix(bg, Theme::BLACK, by(light, 40, 80)),
+            todo: mix(bg, fg, by(light, 45, 30)),
+            raised: mix(bg, fg, by(light, 105, 70)),
+            border,
+            card_border: mix(bg, fg, by(light, 260, 100)),
+            control,
+            field_edge: mix(bg, fg, by(light, 490, 150)),
+            todo_border: border,
+            slot_border: control,
+            button: mix(bg, fg, by(light, 90, 60)),
+            button_hover: mix(bg, fg, by(light, 180, 120)),
+            primary,
+            body: fg,
+            secondary: mix(bg, fg, by(light, 720, 580)),
+            muted: mix(bg, fg, by(light, 640, 420)),
+            accent: primary,
+            on_accent: bg,
+            focus: mix(bg, fg, by(light, 760, 380)),
+            link: mix(bg, fg, 860),
+            selection: mix(bg, fg, by(light, 180, 260)),
+            chip: mix(bg, fg, by(light, 120, 80)),
+            popover,
+            palette_row: mix(popover, fg, by(light, 110, 75)),
+            matched: mix(popover, 0xe8a33a, by(light, 350, 280)),
+            scrim: if light { 0x0000_0040 } else { 0x0000_0099 },
+            inference: mix(bg, fg, by(light, 55, 35)),
+        }
+    }
+}
+const fn by(light: bool, on_light: u32, on_dark: u32) -> u32 {
+    if light { on_light } else { on_dark }
+}
+const DARK: Palette = Palette::new(Scheme::Dark);
+const LIGHT: Palette = Palette::new(Scheme::Light);
+static LIGHT_ON: AtomicBool = AtomicBool::new(false);
+macro_rules! tokens {
+    ($($name:ident),* $(,)?) => {
+        impl Theme {
+            $(pub fn $name() -> u32 {
+                Self::palette().$name
+            })*
+        }
+    };
+}
+tokens!(
+    terminal_bg,
+    terminal_fg,
+    app,
+    panel,
+    pane,
+    header,
+    header_focused,
+    slot,
+    todo,
+    raised,
+    border,
+    card_border,
+    control,
+    field_edge,
+    todo_border,
+    slot_border,
+    button,
+    button_hover,
+    primary,
+    body,
+    secondary,
+    muted,
+    accent,
+    on_accent,
+    focus,
+    link,
+    selection,
+    chip,
+    popover,
+    palette_row,
+    matched,
+    scrim,
+    inference,
+);
 #[allow(dead_code)] // The complete design palette also covers the deferred components.
 impl Theme {
-    /// The terminal's default colors; every chrome surface and text tone is a mix of
-    /// these two (and the accent), so the window reads as one surface with the terminal.
-    pub const TERMINAL_BG: u32 = 0x1c1c1e;
-    pub const TERMINAL_FG: u32 = 0xe4e2df;
     pub const WHITE: u32 = 0xffffff;
     const BLACK: u32 = 0x000000;
-    const BG: u32 = Self::TERMINAL_BG;
-    const FG: u32 = Self::TERMINAL_FG;
-    /// One neutral surface: sidebar, top bar, panes and headers share the terminal's
-    /// gray and are told apart by hairlines, not by bands of different shades.
-    pub const APP: u32 = mix(Self::BG, Self::BLACK, 150);
-    pub const PANEL: u32 = Self::BG;
-    pub const PANE: u32 = Self::BG;
-    pub const HEADER: u32 = Self::BG;
-    pub const HEADER_FOCUSED: u32 = mix(Self::BG, Self::FG, 35);
-    pub const SLOT: u32 = mix(Self::BG, Self::BLACK, 80);
-    pub const TODO: u32 = mix(Self::BG, Self::FG, 30);
-    pub const RAISED: u32 = mix(Self::BG, Self::FG, 70);
-    pub const BORDER: u32 = mix(Self::BG, Self::FG, 90);
-    pub const CARD_BORDER: u32 = mix(Self::BG, Self::FG, 100);
-    pub const CONTROL: u32 = mix(Self::BG, Self::FG, 150);
-    pub const TODO_BORDER: u32 = Self::BORDER;
-    pub const SLOT_BORDER: u32 = Self::CONTROL;
-    /// A quiet fill for ordinary buttons; they carry no outline.
-    pub const BUTTON: u32 = mix(Self::BG, Self::FG, 60);
-    pub const BUTTON_HOVER: u32 = mix(Self::BG, Self::FG, 120);
-    pub const PRIMARY: u32 = mix(Self::FG, Self::WHITE, 300);
-    pub const BODY: u32 = Self::FG;
-    pub const SECONDARY: u32 = mix(Self::BG, Self::FG, 580);
-    pub const MUTED: u32 = mix(Self::BG, Self::FG, 420);
-    /// The one solid control per view is near-white with dark text; color is left to status.
-    pub const ACCENT: u32 = Self::PRIMARY;
-    pub const ON_ACCENT: u32 = Self::BG;
-    pub const FOCUS: u32 = mix(Self::BG, Self::FG, 380);
-    pub const LINK: u32 = mix(Self::BG, Self::FG, 860);
-    /// Selected text in a field.
-    pub const SELECTION: u32 = mix(Self::BG, Self::FG, 260);
-    pub const CHIP: u32 = mix(Self::BG, Self::FG, 80);
-    /// In-window popovers (「你在这里」, cleanup) sit one step above the pane.
-    pub const POPOVER: u32 = mix(Self::BG, Self::FG, 55);
-    pub const PALETTE_ROW: u32 = mix(Self::POPOVER, Self::FG, 75);
-    /// Matched text in search results: a quiet amber wash, the text keeps its own color.
-    pub const MATCH: u32 = mix(Self::POPOVER, 0xe8a33a, 280);
-    /// Dims the workbench behind the palette, as rgba.
-    pub const SCRIM: u32 = 0x0000_0099;
-    pub const INFERENCE: u32 = mix(Self::BG, Self::FG, 35);
+    /// The scheme the window and its terminals paint with; read on every render.
+    pub fn scheme() -> Scheme {
+        if LIGHT_ON.load(Ordering::Relaxed) {
+            Scheme::Light
+        } else {
+            Scheme::Dark
+        }
+    }
+    pub fn set_scheme(scheme: Scheme) {
+        LIGHT_ON.store(scheme == Scheme::Light, Ordering::Relaxed);
+    }
+    pub fn palette() -> &'static Palette {
+        match Self::scheme() {
+            Scheme::Dark => &DARK,
+            Scheme::Light => &LIGHT,
+        }
+    }
     /// The menu bar panel is a separate light macOS popover, kept apart from the window.
     pub const MENU_ACCENT: u32 = 0x4b4fd6;
     pub const MENU_TEXT: u32 = 0x17181c;
@@ -161,11 +327,16 @@ impl Theme {
     pub const TAB_MIN_WIDTH: f32 = 96.;
     pub const TAB_MAX_WIDTH: f32 = 200.;
     pub const TAB_TIP_WIDTH: f32 = 420.;
+    pub const TAB_TIP_REASON_CHARS: usize = 160;
     pub const TODO_HEIGHT: f32 = 36.;
     pub const PANE_HEADER: f32 = 32.;
     pub const FOOTER: f32 = 26.;
     pub const ROW: f32 = 30.;
     pub const BORDER_WIDTH: f32 = 1.;
+    /// The focused split's ring, drawn over its 1px border so the grid keeps its size.
+    pub const FOCUS_RING: f32 = 2.;
+    /// How much of a split without focus still shows, as Ghostty's default.
+    pub const UNFOCUSED_SPLIT_OPACITY: f32 = 0.7;
     pub const CARET_WIDTH: f32 = 1.5;
     pub const PANE_RADIUS: f32 = 8.;
     pub const CONTROL_RADIUS: f32 = 6.;
@@ -196,6 +367,8 @@ impl Theme {
     pub const MENU_ERROR_TEXT: u32 = 0x9b2318;
     pub const FORM_WIDTH: f32 = 520.;
     pub const DETAIL_WIDTH: f32 = 640.;
+    pub const SETTINGS_WIDTH: f32 = 940.;
+    pub const SETTINGS_NAV: f32 = 164.;
     pub const FORM_TITLE: f32 = 16.;
     pub const TASK_ROW: f32 = 48.;
     pub const SEARCH_WIDTH: f32 = 360.;
@@ -214,6 +387,14 @@ impl Theme {
     pub const WINDOW_HEIGHT: f32 = 900.;
     pub fn color(value: u32) -> Hsla {
         hsla(value)
+    }
+    pub fn terminal_mono(cx: &App) -> Font {
+        let mut face = Self::mono(cx);
+        let family = super::terminal_text::current().family;
+        if !family.is_empty() {
+            face.family = family.into();
+        }
+        face
     }
     pub fn mono(cx: &App) -> Font {
         static MONO: std::sync::OnceLock<String> = std::sync::OnceLock::new();
@@ -243,14 +424,57 @@ impl Theme {
 
 #[cfg(test)]
 mod tests {
-    use super::{Theme, mix};
+    use super::{Scheme, Theme, mix};
 
     #[test]
     fn mix_blends_each_channel() {
         assert_eq!(mix(0x000000, 0xffffff, 0), 0x000000);
         assert_eq!(mix(0x000000, 0xffffff, 1000), 0xffffff);
         assert_eq!(mix(0x102030, 0x304050, 500), 0x203040);
-        assert_eq!(Theme::PANE, Theme::TERMINAL_BG);
+        assert_eq!(Theme::pane(), Theme::terminal_bg());
+    }
+
+    #[test]
+    fn light_scheme_swaps_every_surface() {
+        use super::{DARK, LIGHT};
+        assert_eq!(LIGHT.terminal_bg, Scheme::Light.bg());
+        assert!(LIGHT.app < LIGHT.pane && DARK.app < DARK.pane);
+        // Text stays far from its background in both schemes.
+        for p in [DARK, LIGHT] {
+            let gap = |a: u32, b: u32| ((a & 255) as i32 - (b & 255) as i32).abs();
+            assert!(gap(p.body, p.pane) > 180);
+            assert!(gap(p.secondary, p.pane) > 100);
+            assert!(gap(p.on_accent, p.accent) > 180);
+        }
+    }
+
+    /// Light meets the contrast floors: text 4.5:1, focus and field edges 3:1, status
+    /// dots 3:1 even for the pale yellow and green hues; its surfaces step visibly.
+    #[test]
+    fn light_scheme_meets_contrast_floors() {
+        use super::{Group, LIGHT, Theme, contrast};
+        let p = LIGHT;
+        for (name, text) in [
+            ("body", p.body),
+            ("secondary", p.secondary),
+            ("muted", p.muted),
+        ] {
+            assert!(contrast(text, p.pane) >= 4.5, "{name}");
+        }
+        assert!(contrast(p.focus, p.pane) >= 3.);
+        assert!(contrast(p.field_edge, p.pane) >= 3.);
+        assert!(
+            contrast(p.focus, p.field_edge) >= 1.5,
+            "focus must differ from the edge"
+        );
+        assert!(contrast(p.app, p.pane) >= 1.15);
+        assert!(contrast(p.card_border, p.pane) >= 1.6);
+        assert_ne!(p.popover, Theme::WHITE);
+        for group in Group::ALL {
+            let (dot, ink, _) = group.colors_in(&p);
+            assert!(contrast(dot, p.pane) >= 3., "{} dot", group.label());
+            assert!(contrast(ink, p.pane) >= 4.5, "{} ink", group.label());
+        }
     }
 
     /// Colors and sizes come from `Theme`; a literal in a component drifts from the tokens.

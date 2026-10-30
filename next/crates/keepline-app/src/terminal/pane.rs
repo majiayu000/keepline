@@ -9,7 +9,7 @@ use gpui::{
     KeyDownEvent, Pixels, Point, UTF16Selection, Window, canvas, div, prelude::*, px,
 };
 use keepline_core::{
-    protocol::Request,
+    protocol::{Reply, Request, rpc},
     terminal::libghostty_vt::{key::Mods, mouse, terminal::Mode},
 };
 use std::{ops::Range, path::Path, sync::atomic::Ordering, time::Instant};
@@ -29,7 +29,7 @@ pub struct Pane {
     screen: Screen,
     capture: Option<screen::Capture>,
     layout_cache: screen::LayoutCache,
-    metrics_font: Option<(gpui::Font, f32)>,
+    metrics_font: Option<(gpui::Font, f32, f32)>,
     marked: String,
     selection: Range<usize>,
     bounds: Option<Bounds<Pixels>>,
@@ -46,6 +46,11 @@ pub struct Pane {
     pressed_button: Option<gpui::MouseButton>,
     scroll_lines: f32,
     hover_link: Option<(u16, u16)>,
+    /// The path word under the pointer, and where it points when that exists on disk.
+    hover_word: Option<screen::Link>,
+    hover_path: Option<std::path::PathBuf>,
+    /// The program's working directory, asked from the host when a relative path is hovered.
+    cwd: Option<std::path::PathBuf>,
     focus_observers: bool,
     last_focus: bool,
     /// When the user last sent input; its echo is drawn without waiting for the shared tick.
@@ -59,8 +64,19 @@ pub struct Pane {
     pub bell: bool,
     /// A bell in the pane the user is looking at flashes its border once.
     flash: bool,
-    /// A drag went to a program that took the mouse; for a moment the pane says how to select.
-    select_hint: bool,
+    /// A short note in the corner that clears itself, e.g. how to select when the
+    /// program took the mouse.
+    toast: Option<&'static str>,
+    /// The Agent running in this terminal, as the workbench last saw it.
+    pub agent: Option<keepline_core::model::Agent>,
+    /// Shares the tab with other panes: unless it holds focus, it fades and draws no
+    /// cursor, so only one cursor is in sight.
+    pub split: bool,
+    /// The scheme this pane first painted its live program with. Agents such as Codex
+    /// tint their own bands from the background they saw at start, which a later switch
+    /// cannot repaint, so the pane says so until dismissed.
+    started_under: Option<keepline_core::terminal::Scheme>,
+    tint_note_dismissed: bool,
 }
 impl Focusable for Pane {
     fn focus_handle(&self, _: &App) -> FocusHandle {
@@ -93,8 +109,52 @@ impl Pane {
     }
     #[cfg(feature = "visual-test")]
     pub fn visual_select_hint(&mut self, cx: &mut Context<Self>) {
-        self.select_hint = true;
-        cx.notify();
+        self.show_toast(SELECT_HINT, cx);
+    }
+    /// Where the link whose target starts with `prefix` is drawn, and its cell count.
+    #[cfg(feature = "visual-test")]
+    pub fn visual_link(&self, prefix: &str) -> Option<(gpui::Point<Pixels>, u16)> {
+        let (bounds, metrics) = (self.bounds?, self.metrics?);
+        let link = self
+            .screen
+            .links
+            .iter()
+            .find(|l| l.uri.starts_with(prefix))?;
+        Some((
+            gpui::point(
+                bounds.left() + metrics.width * (link.col as f32 + 0.5),
+                bounds.top() + metrics.height * (link.row as f32 + 0.5),
+            ),
+            link.cols,
+        ))
+    }
+    /// Whether the viewport shows the live screen rather than scrollback.
+    #[cfg(feature = "visual-test")]
+    pub fn visual_at_bottom(&self) -> bool {
+        let state = self.connection.state.lock().unwrap();
+        state
+            .vt
+            .as_ref()
+            .is_some_and(|v| v.terminal().viewport_active().unwrap_or(false))
+    }
+    /// Where the path word `word` is drawn, and the file it points to once hovered.
+    #[cfg(feature = "visual-test")]
+    pub fn visual_path(
+        &self,
+        word: &str,
+    ) -> Option<(gpui::Point<Pixels>, Option<std::path::PathBuf>)> {
+        let (bounds, metrics) = (self.bounds?, self.metrics?);
+        let link = self.screen.paths.iter().find(|l| l.uri == word)?;
+        let hovered = (self.hover_word.as_ref() == Some(link))
+            .then(|| self.shown_path().cloned())
+            .flatten();
+        Some((
+            gpui::point(
+                bounds.left() + metrics.width * (link.col as f32 + 0.5),
+                bounds.top() + metrics.height * (link.row as f32 + 0.5),
+            ),
+            hovered,
+        ))
     }
     /// The program reads the mouse itself, so a plain drag goes to it, not to selection.
     pub fn takes_mouse(&self) -> bool {
@@ -208,6 +268,9 @@ impl Pane {
             pressed_button: None,
             scroll_lines: 0.,
             hover_link: None,
+            hover_word: None,
+            hover_path: None,
+            cwd: None,
             focus_observers: false,
             last_focus: false,
             typed: None,
@@ -217,7 +280,11 @@ impl Pane {
             bells_seen: 0,
             bell: false,
             flash: false,
-            select_hint: false,
+            toast: None,
+            agent: None,
+            split: false,
+            started_under: None,
+            tint_note_dismissed: false,
         }
     }
     /// Attaches again after the host dropped this pane's stream; the snapshot restores
@@ -322,7 +389,8 @@ impl Pane {
                 .map(|v| crate::terminal::terminal_input::focus_bytes(v, focused))
         };
         match bytes {
-            Some(Ok(b)) if !b.is_empty() => self.input(b, cx),
+            // A focus report is not typing; it leaves the scrollback where it is.
+            Some(Ok(b)) if !b.is_empty() => self.send_input(b, false, cx),
             Some(Err(e)) => {
                 self.local_error = Some(e.to_string());
                 cx.notify();
@@ -427,6 +495,19 @@ impl Pane {
             cx.stop_propagation();
             return;
         }
+        // A folder opens in Finder; a file is shown selected there.
+        if event.modifiers.platform
+            && event.button == gpui::MouseButton::Left
+            && let Some(path) = self.shown_path()
+        {
+            if path.is_dir() {
+                cx.open_with_system(path);
+            } else {
+                cx.reveal_path(path);
+            }
+            cx.stop_propagation();
+            return;
+        }
         let button = match event.button {
             gpui::MouseButton::Left => mouse::Button::Left,
             gpui::MouseButton::Middle => mouse::Button::Middle,
@@ -472,7 +553,7 @@ impl Pane {
             gpui::MouseButton::Middle => mouse::Button::Middle,
             _ => mouse::Button::Right,
         };
-        self.report_mouse(
+        let reported = self.report_mouse(
             mouse::Action::Release,
             Some(button),
             event.position,
@@ -481,6 +562,13 @@ impl Pane {
             cx,
         );
         self.selecting = false;
+        // Copy on select, as iTerm2 and Ghostty do; a plain click leaves an empty selection.
+        if !reported
+            && event.button == gpui::MouseButton::Left
+            && self.text_selection.is_some_and(|(a, b)| a != b)
+        {
+            self.copy(cx);
+        }
     }
     fn mouse_move(
         &mut self,
@@ -495,6 +583,11 @@ impl Pane {
             self.hover_link = hover;
             cx.notify();
         }
+        let word = self
+            .cell_at(event.position)
+            .filter(|_| hover.is_none())
+            .and_then(|(y, x)| self.screen.path_at(y, x).cloned());
+        self.hover_word(word, cx);
         let button = event.pressed_button.map(|b| match b {
             gpui::MouseButton::Left => mouse::Button::Left,
             gpui::MouseButton::Middle => mouse::Button::Middle,
@@ -508,19 +601,8 @@ impl Pane {
             window.scale_factor(),
             cx,
         ) {
-            if button == Some(mouse::Button::Left) && !self.select_hint {
-                self.select_hint = true;
-                cx.notify();
-                cx.spawn(async move |this, cx| {
-                    cx.background_executor()
-                        .timer(std::time::Duration::from_secs(3))
-                        .await;
-                    let _ = this.update(cx, |pane, cx| {
-                        pane.select_hint = false;
-                        cx.notify();
-                    });
-                })
-                .detach();
+            if button == Some(mouse::Button::Left) && self.toast != Some(SELECT_HINT) {
+                self.show_toast(SELECT_HINT, cx);
             }
             return;
         }
@@ -606,8 +688,13 @@ impl Pane {
     /// arrives, so a multi-line paste asks first instead of being refused, as Ghostty's
     /// paste protection does. Text Keepline places itself still goes through `prefill`.
     pub fn paste(&mut self, cx: &mut Context<Self>) {
-        let Some(text) = cx.read_from_clipboard().and_then(|c| c.text()) else {
-            return;
+        let text = match paste_action(cx.read_from_clipboard().as_ref()) {
+            PasteAction::Text(text) => text,
+            // Claude Code and Codex read an image off the clipboard themselves on Ctrl+V.
+            // Sent whatever runs here, as libghostty-swift does: a pane is not always
+            // known to hold an Agent, and a shell only takes it as quoted-insert.
+            PasteAction::Image => return self.input(vec![0x16], cx),
+            PasteAction::Nothing => return,
         };
         if !self.bracketed() && line_count(&text) > 1 && !text.contains('\x1b') {
             self.paste_confirm = Some(text);
@@ -616,6 +703,22 @@ impl Pane {
         } else {
             self.prefill(&text, cx);
         }
+    }
+    fn show_toast(&mut self, text: &'static str, cx: &mut Context<Self>) {
+        self.toast = Some(text);
+        cx.notify();
+        cx.spawn(async move |this, cx| {
+            cx.background_executor()
+                .timer(std::time::Duration::from_secs(3))
+                .await;
+            let _ = this.update(cx, |pane, cx| {
+                if pane.toast == Some(text) {
+                    pane.toast = None;
+                    cx.notify();
+                }
+            });
+        })
+        .detach();
     }
     fn confirm_paste(&mut self, cx: &mut Context<Self>) {
         if let Some(text) = self.paste_confirm.take() {
@@ -662,6 +765,54 @@ impl Pane {
             }
         }
         cx.write_to_clipboard(gpui::ClipboardItem::new_string(lines.join("\n")));
+    }
+    /// Checks a hovered path word on disk. A relative one also asks the host where the
+    /// program is now, then checks again, so a `cd` since the last hover is followed.
+    fn hover_word(&mut self, word: Option<screen::Link>, cx: &mut Context<Self>) {
+        if word == self.hover_word {
+            return;
+        }
+        self.hover_word = word.clone();
+        self.check_hover_path(cx);
+        let Some(word) = word else { return };
+        if word.uri.starts_with('/') || word.uri.starts_with("~/") {
+            return;
+        }
+        let socket = self.socket.clone();
+        let id = self.terminal.clone();
+        cx.spawn(async move |this, cx| {
+            let reply = cx
+                .background_spawn(async move { rpc(&socket, &Request::TerminalCwd { id }) })
+                .await;
+            if let Ok(Reply::Cwd(cwd)) = reply {
+                this.update(cx, |pane, cx| {
+                    pane.cwd = Some(cwd.into());
+                    if pane.hover_word.as_ref() == Some(&word) {
+                        pane.check_hover_path(cx);
+                    }
+                })
+                .ok();
+            }
+        })
+        .detach();
+    }
+    fn check_hover_path(&mut self, cx: &mut Context<Self>) {
+        let path = self
+            .hover_word
+            .as_ref()
+            .and_then(|w| screen::resolve_path(&w.uri, self.cwd.as_deref()))
+            .filter(|p| p.exists());
+        if path != self.hover_path {
+            self.hover_path = path;
+            cx.notify();
+        }
+    }
+    /// The hovered path that exists, while its word is still on screen where it was.
+    fn shown_path(&self) -> Option<&std::path::PathBuf> {
+        let word = self.hover_word.as_ref()?;
+        (self.screen.path_at(word.row, word.col) == Some(word))
+            .then_some(self.hover_path.as_ref())
+            .flatten()
     }
     fn cell_at(&self, point: Point<Pixels>) -> Option<(u16, u16)> {
         let bounds = self.bounds?;
@@ -726,8 +877,29 @@ impl Pane {
         })
         .detach();
     }
+    /// Anything typed or pasted brings the view back to the input line, as Ghostty
+    /// and herdr do; reading scrollback must not hide what is being written.
     fn input(&mut self, bytes: Vec<u8>, cx: &mut Context<Self>) {
+        self.follow_input(cx);
         self.send_input(bytes, false, cx);
+    }
+    fn follow_input(&mut self, cx: &mut Context<Self>) {
+        self.scroll_lines = 0.;
+        let moved = self.connection.state.lock().is_ok_and(|mut state| {
+            state.vt.as_mut().is_some_and(|vt| {
+                let away = !vt.terminal().viewport_active().unwrap_or(true);
+                if away {
+                    vt.scroll(
+                        keepline_core::terminal::libghostty_vt::terminal::ScrollViewport::Bottom,
+                    );
+                }
+                away
+            })
+        });
+        // A key the program does not echo would otherwise leave the old frame drawn.
+        if moved {
+            cx.notify();
+        }
     }
     /// Mouse reports may be dropped by the host while the program is behind on input.
     fn pointer(&mut self, bytes: Vec<u8>, cx: &mut Context<Self>) {
@@ -937,41 +1109,37 @@ impl Pane {
             cx.stop_propagation();
             return;
         }
-        // The usual terminal shortcuts; Cmd+other keys still go to the program.
-        if k.modifiers.platform && !k.modifiers.control && !k.modifiers.alt {
-            // Cmd+W closes this pane; the workbench around it owns that.
-            if k.key == "w" && !k.modifiers.shift {
+        // Keymap shortcuts: the terminal's own run here, the workbench's pass up without
+        // reaching the program; any other Cmd key still goes to it.
+        if let Some(action) = crate::keymap::action(k, cx) {
+            if !action.in_terminal() {
                 return;
             }
-            let zoom = match k.key.as_str() {
-                "=" | "+" => Some(Some(1)),
-                "-" => Some(Some(-1)),
-                "0" => Some(None),
-                _ => None,
-            };
-            let handled = if let Some(step) = zoom {
-                screen::zoom(step);
-                cx.refresh_windows();
-                true
-            } else {
-                match k.key.as_str() {
-                    "a" => self.select_all(cx),
-                    "f" => self.open_search(window, cx),
-                    "k" => {
-                        self.text_selection = None;
-                        if let Err(e) = self.connection.send(Request::ClearHistory) {
-                            self.local_error = Some(e.to_string());
-                        }
-                        cx.notify();
+            use crate::keymap::Action;
+            match action {
+                Action::ZoomIn | Action::ZoomOut | Action::ZoomReset => {
+                    if let Err(error) = screen::zoom(match action {
+                        Action::ZoomIn => Some(1),
+                        Action::ZoomOut => Some(-1),
+                        _ => None,
+                    }) {
+                        self.local_error = Some(error);
                     }
-                    _ => (),
+                    cx.refresh_windows();
                 }
-                matches!(k.key.as_str(), "a" | "f" | "k")
-            };
-            if handled {
-                cx.stop_propagation();
-                return;
+                Action::SelectAll => self.select_all(cx),
+                Action::Find => self.open_search(window, cx),
+                Action::Clear => {
+                    self.text_selection = None;
+                    if let Err(e) = self.connection.send(Request::ClearHistory) {
+                        self.local_error = Some(e.to_string());
+                    }
+                    cx.notify();
+                }
+                _ => (),
             }
+            cx.stop_propagation();
+            return;
         }
         if !self.marked.is_empty() {
             return;
@@ -1019,6 +1187,33 @@ impl Pane {
         cx.stop_propagation();
     }
 }
+impl Pane {
+    /// Repaint this terminal's defaults after a theme switch. The display copy changes
+    /// here; the host's copy, which programs query, only from the writing pane.
+    fn sync_scheme(&mut self) {
+        let scheme = T::scheme();
+        let writable = {
+            let Ok(mut state) = self.connection.state.lock() else {
+                return;
+            };
+            if state.scheme == Some(scheme) {
+                return;
+            }
+            let Some(vt) = state.vt.as_mut() else {
+                return;
+            };
+            if let Err(e) = vt.set_scheme(scheme) {
+                self.local_error = Some(e.to_string());
+                return;
+            }
+            state.scheme = Some(scheme);
+            state.writable && !state.ended
+        };
+        if writable {
+            let _ = self.connection.send(Request::Scheme(scheme));
+        }
+    }
+}
 impl Render for Pane {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         if !self.focus_observers {
@@ -1030,6 +1225,7 @@ impl Render for Pane {
         }
         self.sync_focus(window, cx);
         self.connection.dirty.store(false, Ordering::Release);
+        self.sync_scheme();
         let state = self.connection.state.lock().unwrap();
         if let Some(vt) = &state.vt {
             let result = (|| {
@@ -1051,6 +1247,13 @@ impl Render for Pane {
             .clone()
             .or(state.error.clone())
             .filter(|_| !state.dropped && self.reconnect_delay == 0);
+        if self.started_under.is_none() && state.vt.is_some() && !state.ended {
+            self.started_under = Some(T::scheme());
+        }
+        let tint_stale = self.agent.is_some()
+            && !state.ended
+            && !self.tint_note_dismissed
+            && self.started_under.is_some_and(|s| s != T::scheme());
         let status = if state.ended {
             "进程已退出"
         } else if state.dropped || self.reconnect_delay > 0 {
@@ -1074,40 +1277,51 @@ impl Render for Pane {
                         ElementInputHandler::new(bounds, cx.entity()),
                         cx,
                     );
-                    let font = T::mono(cx);
+                    let font = T::terminal_mono(cx);
                     // Font metrics are logical pixels, independent of backing scale.
-                    let key = (font.clone(), screen::font_size());
+                    let key = (font.clone(), screen::font_size(), crate::ui::terminal_text::line_height());
                     if pane.metrics_font.as_ref() != Some(&key) || pane.metrics.is_none() {
                         pane.metrics = screen::CellMetrics::measure(&font, window);
                         pane.metrics_font = Some(key);
                     }
                     let Some(metrics) = pane.metrics else { return };
+                    let focused = pane.focus.is_focused(window);
                     screen::paint_cached(
                         &pane.screen,
                         &font,
                         bounds,
                         metrics,
-                        pane.marked.is_empty(),
+                        focused && pane.marked.is_empty(),
                         &mut pane.layout_cache,
                         window,
                         cx,
                     );
-                    if let Some((y, x)) = pane.hover_link
-                        && let Some(hover) = pane.screen.link_at(y, x)
-                    {
-                        for l in pane.screen.links.iter().filter(|l| l.uri == hover.uri) {
-                            window.paint_quad(gpui::fill(
-                                Bounds::new(
-                                    gpui::point(
-                                        bounds.left() + metrics.width * l.col as f32,
-                                        bounds.top() + metrics.height * (l.row + 1) as f32
-                                            - metrics.stroke,
-                                    ),
-                                    gpui::size(metrics.width * l.cols as f32, metrics.stroke),
+                    let hovered: Vec<&screen::Link> = match pane.hover_link {
+                        Some((y, x)) => pane.screen.link_at(y, x).map_or(Vec::new(), |hover| {
+                            pane.screen
+                                .links
+                                .iter()
+                                .filter(|l| l.uri == hover.uri)
+                                .collect()
+                        }),
+                        None => pane
+                            .shown_path()
+                            .and(pane.hover_word.as_ref())
+                            .into_iter()
+                            .collect(),
+                    };
+                    for l in hovered {
+                        window.paint_quad(gpui::fill(
+                            Bounds::new(
+                                gpui::point(
+                                    bounds.left() + metrics.width * l.col as f32,
+                                    bounds.top() + metrics.height * (l.row + 1) as f32
+                                        - metrics.stroke,
                                 ),
-                                crate::ui::theme::hsla(screen::DEFAULT_FG),
-                            ));
-                        }
+                                gpui::size(metrics.width * l.cols as f32, metrics.stroke),
+                            ),
+                            crate::ui::theme::hsla(T::terminal_fg()),
+                        ));
                     }
                     if let Some((a, b)) = pane.text_selection {
                         let (start, end) = (a.min(b), a.max(b));
@@ -1130,10 +1344,19 @@ impl Render for Pane {
                                             metrics.height,
                                         ),
                                     ),
-                                    T::color(T::FOCUS).opacity(0.25),
+                                    T::color(T::focus()).opacity(0.25),
                                 ));
                             }
                         }
+                    }
+                    // Ghostty's unfocused-split-opacity: the program's own cursor (Claude
+                    // and Codex draw one as reversed text) recedes with the rest.
+                    if pane.split && !focused {
+                        window.paint_quad(gpui::fill(
+                            bounds,
+                            crate::ui::theme::hsla(pane.screen.background)
+                                .opacity(1. - T::UNFOCUSED_SPLIT_OPACITY),
+                        ));
                     }
                     if !pane.marked.is_empty()
                         && let Some(cursor) = pane.cursor_anchor.get()
@@ -1181,7 +1404,7 @@ impl Render for Pane {
             .flex()
             .flex_col()
             .overflow_hidden()
-            .bg(T::color(T::PANE))
+            .bg(T::color(T::pane()))
             .track_focus(&self.focus)
             // Right-click is never reported to the program: it opens Keepline's pane
             // menu even when a full-screen Agent has taken the mouse, as in Herdr.
@@ -1204,19 +1427,44 @@ impl Render for Pane {
                         .px(px(T::S12))
                         .py(px(T::S4))
                         .text_size(px(T::META))
-                        .text_color(T::color(T::SECONDARY))
+                        .text_color(T::color(T::secondary()))
                         .child(status),
                 )
             })
             .when_some(self.paste_confirm.as_deref().map(line_count),|d,lines| {
                 d.child(div().px(px(T::S12)).py(px(T::S8)).flex().items_center().gap(px(T::S12))
-                    .bg(T::color(T::PANEL)).text_size(px(T::META))
-                    .child(div().flex_1().text_color(T::color(T::SECONDARY))
+                    .bg(T::color(T::panel())).text_size(px(T::META))
+                    .child(div().flex_1().text_color(T::color(T::secondary()))
                         .child(format!("这个程序没有启用安全粘贴：要粘贴的 {lines} 行会逐行立即执行。")))
-                    .child(div().id("paste-anyway").cursor_pointer().text_color(T::color(T::LINK)).child(format!("仍然粘贴 {lines} 行"))
+                    .child(div().id("paste-anyway").cursor_pointer().text_color(T::color(T::link())).child(format!("仍然粘贴 {lines} 行"))
                         .on_click(cx.listener(|this,_,_,cx|this.confirm_paste(cx))))
                     .child(div().id("paste-cancel").cursor_pointer().child("取消")
                         .on_click(cx.listener(|this,_,_,cx|{this.paste_confirm=None;cx.notify();}))))
+            })
+            .when(tint_stale, |d| {
+                d.child(
+                    div()
+                        .px(px(T::S12))
+                        .py(px(T::S4))
+                        .flex()
+                        .items_center()
+                        .gap(px(T::S12))
+                        .text_size(px(T::META))
+                        .child(div().flex_1().text_color(T::color(T::secondary())).child(
+                            "这个终端在切换外观前就开着，程序自己画的底色要退出重开（如 codex resume）才会跟上。",
+                        ))
+                        .child(
+                            div()
+                                .id("tint-note-dismiss")
+                                .cursor_pointer()
+                                .text_color(T::color(T::link()))
+                                .child("知道了")
+                                .on_click(cx.listener(|this, _, _, cx| {
+                                    this.tint_note_dismissed = true;
+                                    cx.notify();
+                                })),
+                        ),
+                )
             })
             .when_some(self.search.clone(),|d,field| {
                 let mut panel=div().p(px(T::S8)).flex().flex_col().gap(px(T::S4)).child(field)
@@ -1229,7 +1477,7 @@ impl Render for Pane {
                 d.child(panel.id("search-results").max_h(px(T::SEARCH_HEIGHT)).overflow_y_scroll())
             })
             .child(div().flex_1().min_h_0().child(content))
-            .when(self.select_hint, |d| {
+            .when_some(self.toast, |d, toast| {
                 d.relative().child(
                     div()
                         .absolute()
@@ -1238,12 +1486,12 @@ impl Render for Pane {
                         .px(px(T::S8))
                         .py(px(T::S4))
                         .rounded(px(T::CONTROL_RADIUS))
-                        .bg(T::color(T::RAISED))
+                        .bg(T::color(T::raised()))
                         .border(px(T::BORDER_WIDTH))
-                        .border_color(T::color(T::CARD_BORDER))
+                        .border_color(T::color(T::card_border()))
                         .text_size(px(T::META))
-                        .text_color(T::color(T::SECONDARY))
-                        .child("这个程序接管了鼠标：按住 Shift 再拖动来选中文字"),
+                        .text_color(T::color(T::secondary()))
+                        .child(toast),
                 )
             })
             .when(self.flash, |d| {
@@ -1252,7 +1500,7 @@ impl Render for Pane {
                         .absolute()
                         .inset_0()
                         .border(px(T::S2))
-                        .border_color(T::color(T::ACCENT)),
+                        .border_color(T::color(T::accent())),
                 )
             });
         if let Some(error) = error {
@@ -1323,6 +1571,10 @@ impl EntityInputHandler for Pane {
         window: &mut Window,
         cx: &mut Context<Self>,
     ) {
+        // Composition is drawn at the cursor, so it needs the input line in view too.
+        if !text.is_empty() {
+            self.follow_input(cx);
+        }
         self.marked = text.into();
         self.selection = selection.unwrap_or_else(|| {
             let n = text.encode_utf16().count();
@@ -1422,12 +1674,59 @@ fn command_missing(tail: &str) -> bool {
 fn line_count(text: &str) -> usize {
     text.trim_end_matches(['\r', '\n']).lines().count()
 }
+const SELECT_HINT: &str = "这个程序接管了鼠标：按住 Shift 再拖动来选中文字";
+
+#[derive(Debug, PartialEq)]
+enum PasteAction {
+    Text(String),
+    /// Only an image: the program fetches it from the clipboard on Ctrl+V.
+    Image,
+    Nothing,
+}
+fn paste_action(item: Option<&gpui::ClipboardItem>) -> PasteAction {
+    let Some(item) = item else {
+        return PasteAction::Nothing;
+    };
+    if let Some(text) = item.text() {
+        return PasteAction::Text(text);
+    }
+    let image = item
+        .entries()
+        .iter()
+        .any(|e| matches!(e, gpui::ClipboardEntry::Image(_)));
+    if image {
+        PasteAction::Image
+    } else {
+        PasteAction::Nothing
+    }
+}
+
 /// What a terminal sends for a paste without bracketed paste: newlines become CR.
 fn plain_paste(text: &str) -> Vec<u8> {
     text.replace("\r\n", "\r").replace('\n', "\r").into_bytes()
 }
 #[cfg(test)]
 mod paste_tests {
+    use super::PasteAction;
+    use gpui::{ClipboardItem, Image, ImageFormat};
+
+    #[test]
+    fn an_image_goes_to_the_program_as_ctrl_v() {
+        let image = ClipboardItem::new_image(&Image::from_bytes(ImageFormat::Png, vec![1]));
+        assert_eq!(super::paste_action(Some(&image)), PasteAction::Image);
+    }
+    #[test]
+    fn text_wins_over_an_image_and_an_empty_clipboard_does_nothing() {
+        let text = ClipboardItem::new_string("hi".into());
+        assert_eq!(
+            super::paste_action(Some(&text)),
+            PasteAction::Text("hi".into())
+        );
+        assert_eq!(
+            super::paste_action(None),
+            PasteAction::Nothing
+        );
+    }
     #[test]
     fn plain_multiline_paste_counts_lines_and_sends_cr() {
         assert_eq!(super::line_count("echo 一\necho 二\n"), 2);

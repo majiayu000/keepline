@@ -13,6 +13,37 @@ use std::{
 // sibling tests cannot contaminate their CPU/I/O window. This is test-only:
 // the measured PID remains the isolated daemon, never the harness or host CPU.
 static FIXTURES: RwLock<()> = RwLock::new(());
+
+#[test]
+fn diagnostic_stream_measures_a_busy_managed_terminal_without_holding_workspace_lock() {
+    let host = Host::measured();
+    host.setup();
+    host.call(host.launch("diag-cpu", "while :; do :; done")).unwrap();
+    let before = host.workspace().revision;
+    let mut stream = UnixStream::connect(host.socket()).unwrap();
+    stream.set_read_timeout(Some(Duration::from_secs(20))).unwrap();
+    send(&mut stream, CONTROL, &Request::Hello { major: MAJOR }).unwrap();
+    assert!(matches!(receive::<Reply>(&mut stream).unwrap(), Reply::Hello { .. }));
+    send(&mut stream, CONTROL, &Request::Diagnose).unwrap();
+    let start = Instant::now();
+    let workspace = host.workspace();
+    assert_eq!(workspace.revision, before);
+    assert!(start.elapsed() < Duration::from_secs(2), "diagnosis blocked the workspace");
+    let Reply::Diagnostics(partial) = receive::<Reply>(&mut stream).unwrap() else { panic!("missing first sample"); };
+    assert!(!partial.complete);
+    assert!(partial.elapsed_secs >= 7.);
+    let Reply::Diagnostics(done) = receive::<Reply>(&mut stream).unwrap() else { panic!("missing final sample"); };
+    assert!(done.complete);
+    assert!(done.elapsed_secs >= 14.5 && done.elapsed_secs < 25.);
+    assert!(done.cpu_percent.is_some_and(|p| (0. ..=100.).contains(&p)));
+    let shell = done.apps.iter().find(|app| app.terminals.iter().any(|id| id == "diag-cpu")).expect("managed shell not attributed");
+    assert!(shell.cpu_percent > 5., "busy shell was not measured: {shell:?}");
+    let shares: f64 = done.apps.iter().filter_map(|a| a.gpu_share_percent).sum();
+    assert!(shares == 0. || (shares - 100.).abs() < 0.001);
+    assert!(done.summary().contains("不是整颗 GPU 利用率"));
+    assert_eq!(host.workspace().revision, before, "diagnosis mutated workspace");
+    host.call(Request::Stop { id: "diag-cpu".into() }).unwrap();
+}
 enum FixtureLease {
     // Created only while a measured Host already holds the exclusive fixture lane.
     Companion,
@@ -89,6 +120,7 @@ impl Host {
             cwd: "/tmp".into(),
             cols: 80,
             rows: 24,
+            scheme: Default::default(),
         }
     }
     fn attach(&self, id: &str, takeover: bool) -> (UnixStream, Vt, bool) {
@@ -1991,8 +2023,17 @@ fn claude_open_files_bind_same_cwd_without_hooks_and_append_without_probes() {
     h.setup();
     let logs = h.root.join("logs/claude");
     fs::create_dir_all(&logs).unwrap();
+    // macOS hides a platform binary's environment, so /bin/sh would always look clean;
+    // a re-signed copy reads like the real CLI.
     let cli = h.root.join("claude");
-    std::os::unix::fs::symlink("/bin/sh", &cli).unwrap();
+    fs::copy("/bin/bash", &cli).unwrap();
+    assert!(std::process::Command::new("/usr/bin/codesign")
+        .args(["-f", "-s", "-"])
+        .arg(&cli)
+        .output()
+        .unwrap()
+        .status
+        .success());
     for i in 0..2 {
         let path = logs.join(format!("claude-{i}.jsonl"));
         let seed = h.root.join(format!("seed-{i}"));
@@ -3452,6 +3493,7 @@ fn real_claude_hooks_bind_at_startup_before_any_prompt() {
         cwd,
         cols: 120,
         rows: 40,
+        scheme: Default::default(),
     })
     .unwrap();
     let (cli_id, binding) = wait_bound(&h, "real", 30);
