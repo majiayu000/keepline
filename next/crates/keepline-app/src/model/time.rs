@@ -9,6 +9,23 @@ pub fn now() -> u64 {
         .unwrap_or_default()
         .as_secs()
 }
+/// Local wall-clock time of a Unix timestamp, as `13:04:00`.
+pub fn clock(at: u64) -> String {
+    let mut buf = [0u8; 16];
+    // SAFETY: localtime_r and strftime write only into the locals handed to them.
+    let len = unsafe {
+        let at = at as libc::time_t;
+        let mut tm = std::mem::zeroed::<libc::tm>();
+        libc::localtime_r(&at, &mut tm);
+        libc::strftime(
+            buf.as_mut_ptr().cast(),
+            buf.len(),
+            c"%H:%M:%S".as_ptr(),
+            &tm,
+        )
+    };
+    String::from_utf8_lossy(&buf[..len]).into_owned()
+}
 pub fn age(at: u64) -> String {
     let minutes = now().saturating_sub(at) / 60;
     if minutes == 0 {

@@ -266,6 +266,7 @@ fn terminal_for(
 pub fn serve(stream: &mut UnixStream, terminals: &[Terminal]) -> io::Result<()> {
     let mut report = Diagnostics {
         started_at: keepline_core::content::now(),
+        cpu_cores: std::thread::available_parallelism().ok().map(|n| n.get()),
         notes: vec![
             "CPU 只统计相邻采样均存在且身份不变的进程；短命进程可能遗漏。".into(),
             "GPU 仅覆盖驱动公开的计数；无数据不表示占用为零，活动份额不是设备利用率。".into(),

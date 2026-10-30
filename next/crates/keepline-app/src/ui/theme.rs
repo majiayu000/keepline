@@ -160,6 +160,16 @@ pub struct Palette {
     /// Dims the workbench behind the palette, as rgba.
     pub scrim: u32,
     pub inference: u32,
+    /// Data charts only (the diagnostics panel): app identity, never status. Validated as
+    /// adjacent pairs for color-vision deficiency on the popover in each scheme.
+    pub series: [u32; 5],
+    /// Everything ranked past the colored apps.
+    pub series_other: u32,
+    /// Busy time no app accounts for, drawn as a hatch.
+    pub hatch: u32,
+    pub chart_grid: u32,
+    /// A meaningful threshold on an axis, such as one full core.
+    pub chart_ref: u32,
 }
 impl Palette {
     /// Light shares are set against the contrast floors (text 4.5:1, focus and field edges
@@ -215,6 +225,15 @@ impl Palette {
             matched: mix(popover, 0xe8a33a, by(light, 350, 280)),
             scrim: if light { 0x0000_0040 } else { 0x0000_0099 },
             inference: mix(bg, fg, by(light, 55, 35)),
+            series: if light {
+                [0x2a78d6, 0xeb6834, 0x1baf7a, 0xeda100, 0xe87ba4]
+            } else {
+                [0x3987e5, 0xd95926, 0x199e70, 0xc98500, 0xd55181]
+            },
+            series_other: mix(bg, fg, by(light, 300, 380)),
+            hatch: mix(bg, fg, by(light, 260, 240)),
+            chart_grid: mix(popover, fg, by(light, 90, 70)),
+            chart_ref: mix(bg, fg, by(light, 450, 420)),
         }
     }
 }
@@ -267,6 +286,10 @@ tokens!(
     matched,
     scrim,
     inference,
+    series_other,
+    hatch,
+    chart_grid,
+    chart_ref,
 );
 #[allow(dead_code)] // The complete design palette also covers the deferred components.
 impl Theme {
@@ -354,6 +377,25 @@ impl Theme {
     pub const HERE_WIDTH: f32 = 340.;
     pub const HERE_HEIGHT: f32 = 600.;
     pub const CLEANUP_WIDTH: f32 = 960.;
+    /// The diagnostics panel and its charts.
+    pub const DIAGNOSTIC_WIDTH: f32 = 980.;
+    pub const DIAGNOSTIC_HEIGHT: f32 = 860.;
+    pub const BIG_NUMBER: f32 = 26.;
+    pub const STACK_HEIGHT: f32 = 22.;
+    pub const BAR: f32 = 10.;
+    pub const METER: f32 = 4.;
+    pub const STEP_WIDTH: f32 = 46.;
+    pub const STEP_HEIGHT: f32 = 3.;
+    pub const SWATCH: f32 = 10.;
+    pub const POINT: f32 = 9.;
+    pub const TICK_ROW: f32 = 16.;
+    pub const BAR_LABEL: f32 = 168.;
+    pub const BAR_VALUE: f32 = 54.;
+    pub const AXIS_GUTTER: f32 = 48.;
+    pub const SCATTER_HEIGHT: f32 = 220.;
+    pub const TIP_WIDTH: f32 = 240.;
+    /// Room for a centered axis label such as `150%`.
+    pub const TICK_LABEL: f32 = 48.;
     pub const CLEANUP_ACTION_HEIGHT: f32 = 64.;
     pub const MENUBAR_WIDTH: f32 = 360.;
     pub const MENUBAR_HEIGHT: f32 = 480.;
@@ -385,6 +427,14 @@ impl Theme {
     pub const FIELD_HEIGHT: f32 = 40.;
     pub const WINDOW_WIDTH: f32 = 1440.;
     pub const WINDOW_HEIGHT: f32 = 900.;
+    /// The chart color of the `i`th ranked app; past the palette, the shared "other".
+    pub fn series(i: usize) -> u32 {
+        Self::palette()
+            .series
+            .get(i)
+            .copied()
+            .unwrap_or(Self::palette().series_other)
+    }
     pub fn color(value: u32) -> Hsla {
         hsla(value)
     }

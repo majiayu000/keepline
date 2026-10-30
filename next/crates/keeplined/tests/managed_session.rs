@@ -40,7 +40,7 @@ fn diagnostic_stream_measures_a_busy_managed_terminal_without_holding_workspace_
     assert!(shell.cpu_percent > 5., "busy shell was not measured: {shell:?}");
     let shares: f64 = done.apps.iter().filter_map(|a| a.gpu_share_percent).sum();
     assert!(shares == 0. || (shares - 100.).abs() < 0.001);
-    assert!(done.summary().contains("不是整颗 GPU 利用率"));
+    assert!(done.summary("", &Default::default()).contains("不是整颗 GPU 利用率"));
     assert_eq!(host.workspace().revision, before, "diagnosis mutated workspace");
     host.call(Request::Stop { id: "diag-cpu".into() }).unwrap();
 }
