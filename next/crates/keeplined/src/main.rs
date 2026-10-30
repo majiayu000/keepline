@@ -38,6 +38,7 @@ fn run() -> std::io::Result<()> {
     // Declared CLIs first: every later lookup of an Agent reads the registry.
     keepline_core::agent::install();
     keepline_core::rule::install();
+    keepline_core::hook::install();
     let mut args = std::env::args().skip(1);
     match args.next().as_deref() {
         Some("serve") => {

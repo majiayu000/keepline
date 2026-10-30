@@ -1,0 +1,11 @@
+{
+  "api": 1,
+  "hooks": [
+    {
+      "id": "notify-macos",
+      "on": ["waiting", "error", "done"],
+      "command": "osascript -e 'on run argv' -e 'display notification (item 2 of argv) with title (item 1 of argv)' -e 'end run' \"$KEEPLINE_SPACE · $KEEPLINE_TITLE\" \"$KEEPLINE_EVENT · $KEEPLINE_DETAIL\"",
+      "timeout_ms": 5000
+    }
+  ]
+}

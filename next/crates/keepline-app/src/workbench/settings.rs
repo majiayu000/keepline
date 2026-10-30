@@ -840,6 +840,21 @@ impl SettingsView {
                 });
             }
         }
+        let hooks = keepline_core::hook::report();
+        if !hooks.is_empty() {
+            page = page.child(div().mt(px(T::S16)).child(label("Hooks 文件")));
+            for r in hooks {
+                let file = r.file.display().to_string();
+                page = page.child(match &r.result {
+                    Ok(list) => self.row(
+                        &file,
+                        &format!("会话状态变化时由后台调用：{list}；结果写在后台日志里"),
+                        status(true, "生效".into()),
+                    ),
+                    Err(e) => self.row(&file, e, status(false, "没有生效".into())),
+                });
+            }
+        }
         let sidebars = keepline_core::sidebar::report();
         if !sidebars.is_empty() {
             page = page.child(div().mt(px(T::S16)).child(label("左栏文件")));

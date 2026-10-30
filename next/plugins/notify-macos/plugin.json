@@ -1,0 +1,8 @@
+{
+  "api": 1,
+  "id": "notify-macos",
+  "name": "系统通知",
+  "version": "0.1.0",
+  "description": "会话等你回答、出错或做完时弹一条 macOS 通知；App 没开也会发",
+  "provides": ["hooks"]
+}

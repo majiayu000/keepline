@@ -1,5 +1,6 @@
 pub mod action;
 pub mod agent;
+pub mod hook;
 pub mod layout;
 pub mod model;
 pub mod plugin;

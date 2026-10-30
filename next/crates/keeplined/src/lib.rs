@@ -6,6 +6,7 @@ mod handoff;
 mod host;
 pub mod log_index;
 mod official;
+mod plugin_hooks;
 mod process_exit;
 mod pty;
 pub mod recognition;
