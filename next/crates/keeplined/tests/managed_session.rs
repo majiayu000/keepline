@@ -1527,6 +1527,67 @@ fn recognition_status_stream_recovers_after_log_root_is_rebuilt() {
 }
 
 #[test]
+fn log_subscription_restarts_itself_after_an_index_write_fails() {
+    let h = Host::start();
+    let root = h.root.join("logs/codex");
+    fs::create_dir_all(&root).unwrap();
+    let db = rusqlite::Connection::open(h.root.join("workbench.sqlite")).unwrap();
+    db.busy_timeout(Duration::from_secs(5)).unwrap();
+    let wait = |what: &str, done: &dyn Fn() -> bool| {
+        let deadline = Instant::now() + Duration::from_secs(20);
+        while !done() {
+            assert!(Instant::now() < deadline, "{what}");
+            std::thread::sleep(Duration::from_millis(50));
+        }
+    };
+    wait("subscription did not start", &|| {
+        recognition(&h).phase == RecognitionPhase::Healthy
+    });
+    // Indexing fails, and so does recording that failure: the error leaves the subscription.
+    db.execute_batch(
+        "CREATE TRIGGER fail_insert BEFORE INSERT ON log_files BEGIN SELECT RAISE(ABORT,'injected index failure'); END;
+         CREATE TRIGGER fail_update BEFORE UPDATE ON log_files BEGIN SELECT RAISE(ABORT,'injected index failure'); END;
+         CREATE TRIGGER fail_state BEFORE UPDATE ON log_index BEGIN SELECT RAISE(ABORT,'injected index failure'); END;",
+    )
+    .unwrap();
+    fs::write(
+        root.join("broken.jsonl"),
+        "{\"type\":\"session_meta\",\"payload\":{\"id\":\"broken\",\"cwd\":\"/tmp\"}}\n",
+    )
+    .unwrap();
+    wait(
+        "the injected failure never stopped the subscription",
+        &|| recognition(&h).detail.starts_with("识别中断"),
+    );
+    db.execute_batch(
+        "DROP TRIGGER fail_insert; DROP TRIGGER fail_update; DROP TRIGGER fail_state;",
+    )
+    .unwrap();
+    // No host restart: the subscription must come back on its own and index new writes.
+    let path = root.join("after.jsonl");
+    fs::write(
+        &path,
+        "{\"type\":\"session_meta\",\"payload\":{\"id\":\"after-failure\",\"cwd\":\"/tmp\"}}\n",
+    )
+    .unwrap();
+    wait(
+        "subscription stayed dead after the failure cleared",
+        &|| {
+            db.query_row(
+                "SELECT offset FROM log_files WHERE cli_id='after-failure'",
+                [],
+                |r| r.get::<_, i64>(0),
+            )
+            .is_ok_and(|offset| offset == fs::metadata(&path).unwrap().len() as i64)
+        },
+    );
+    assert!(
+        h.call(Request::RefreshAgents).is_ok(),
+        "refresh must not keep reporting the old subscription failure"
+    );
+}
+
+#[test]
 fn stop_agent_clears_current_without_stopping_shell_or_changing_outcome() {
     let h = Host::start();
     h.setup();

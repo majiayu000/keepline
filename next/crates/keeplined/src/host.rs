@@ -1294,154 +1294,179 @@ fn watch_registries(shared: &Shared, roots: &[(Agent, std::path::PathBuf)]) {
     }
     let shared = shared.clone();
     thread::spawn(move || {
-        let result = (|| -> io::Result<()> {
-            let watch =
-                crate::file_events::Watch::start(&paths, crate::file_events::Watch::current_id())?;
-            loop {
-                watch.rx.recv().map_err(io::Error::other)?;
-                // One identification per burst; a continuous writer cannot extend it.
-                let deadline = std::time::Instant::now() + Duration::from_millis(200);
-                for _ in 0..63 {
-                    let left = deadline.saturating_duration_since(std::time::Instant::now());
-                    if watch.rx.recv_timeout(left).is_err() {
-                        break;
+        let mut retry = SUBSCRIPTION_RETRY_MIN;
+        loop {
+            let started = Instant::now();
+            let result = (|| -> io::Result<()> {
+                let watch = crate::file_events::Watch::start(
+                    &paths,
+                    crate::file_events::Watch::current_id(),
+                )?;
+                loop {
+                    watch.rx.recv().map_err(io::Error::other)?;
+                    // One identification per burst; a continuous writer cannot extend it.
+                    let deadline = std::time::Instant::now() + Duration::from_millis(200);
+                    for _ in 0..63 {
+                        let left = deadline.saturating_duration_since(std::time::Instant::now());
+                        if watch.rx.recv_timeout(left).is_err() {
+                            break;
+                        }
+                    }
+                    // A failed identification waits for the next registry change; only a
+                    // broken watch restarts this thread's loop.
+                    if let Err(error) = refresh_registered(&shared) {
+                        eprintln!("Agent registry refresh failed: {error}");
                     }
                 }
-                let transcripts = {
-                    let host = lock(&shared)?;
-                    if host
-                        .workspace
-                        .terminals
-                        .iter()
-                        .all(|t| t.state != ProcessState::Running)
-                    {
-                        continue;
-                    }
-                    host.store.transcripts()?
-                };
-                refresh_agents(&shared, &transcripts)?;
+            })();
+            let Err(error) = result else { return };
+            if started.elapsed() > SUBSCRIPTION_RETRY_MAX {
+                retry = SUBSCRIPTION_RETRY_MIN;
             }
-        })();
-        if let Err(error) = result {
-            eprintln!("Agent registry watch stopped: {error}");
+            eprintln!("Agent registry watch stopped, retrying in {retry:?}: {error}");
+            thread::sleep(retry);
+            retry = (retry * 2).min(SUBSCRIPTION_RETRY_MAX);
         }
     });
+}
+fn refresh_registered(shared: &Shared) -> io::Result<()> {
+    let transcripts = {
+        let host = lock(shared)?;
+        if host
+            .workspace
+            .terminals
+            .iter()
+            .all(|t| t.state != ProcessState::Running)
+        {
+            return Ok(());
+        }
+        host.store.transcripts()?
+    };
+    refresh_agents(shared, &transcripts)
 }
 fn start_subscription(shared: Shared, mut index: crate::log_index::Index) {
     watch_registries(&shared, &index.roots);
     thread::spawn(move || {
-        let result = (|| -> io::Result<()> {
-            let mut checkpoint = index.initialize()?;
-            let roots = index
-                .roots
-                .iter()
-                .map(|(_, p)| p.clone())
-                .collect::<Vec<_>>();
-            let mut watch = crate::file_events::Watch::start(&roots, checkpoint)?;
-            lock(&shared)?.log_events = Some(watch.notifier());
-            index.bootstrap()?;
-            publish_recognition(&shared, &index, RecognitionPhase::Healthy, "识别正常", &[])?;
-            let mut association = Association::default();
-            association.apply(&shared, &index, &index.cached()?)?;
-            follow_associated(&shared, &mut index, &mut association, &watch)?;
-            loop {
-                let mut batch = watch.rx.recv().map_err(io::Error::other)?;
-                // A single bounded burst window starts ONLY after a native event arrives.
-                // This matches FSEvents' 200 ms latency for eager vnode writes too. It never
-                // wakes an idle subscriber, and continuous writers cannot extend the deadline.
-                let deadline = std::time::Instant::now() + Duration::from_millis(200);
-                for _ in 0..63 {
-                    match watch
-                        .rx
-                        .recv_timeout(deadline.saturating_duration_since(std::time::Instant::now()))
-                    {
-                        Ok(next) => batch.events.extend(next.events),
-                        Err(std::sync::mpsc::RecvTimeoutError::Timeout) => break,
-                        Err(e) => return Err(io::Error::other(e)),
-                    }
-                }
-                let mut scopes = watch.take_overflow();
-                let overflowed = !scopes.is_empty();
-                let restart = event_scopes(&batch, &roots, &mut scopes) || overflowed;
-                let wrapped = batch.events.iter().any(|e| e.flags & 0x8 != 0);
-                if restart {
-                    // Watch before repairing. Replay from the last committed checkpoint, not 'now',
-                    // so restarting one stream cannot discard queued events for the other CLI root.
-                    if wrapped {
-                        checkpoint = crate::file_events::Watch::current_id();
-                        index.reset_checkpoint(checkpoint)?;
-                    }
-                    watch = crate::file_events::Watch::start(&roots, checkpoint)?;
-                    lock(&shared)?.log_events = Some(watch.notifier());
-                }
-                if !scopes.is_empty() {
-                    if let Err(error) = recover_logs(&shared, &mut index, &mut association, &scopes)
-                    {
-                        index.fail(&error)?;
-                        publish_recognition(
-                            &shared,
-                            &index,
-                            RecognitionPhase::Interrupted,
-                            &format!("补扫未完成：{error}；等待后续文件事件重试"),
-                            &scopes,
-                        )?;
-                        // Leave the durable scope worklist. No busy retry or permanent error latch.
-                        continue;
-                    }
-                }
-                let mut paths = std::collections::BTreeSet::new();
-                let mut event_id = checkpoint;
-                for event in batch.events {
-                    if !wrapped {
-                        event_id = event_id.max(event.id);
-                    }
-                    if event.flags & 0x10 == 0
-                        && event.path.extension().is_some_and(|e| e == "jsonl")
-                    {
-                        paths.insert(event.path);
-                    }
-                }
-                let transcripts = index.update_many(paths, event_id)?;
-                if let Err(error) = association.apply(&shared, &index, &transcripts) {
-                    eprintln!("Agent association deferred: {error}");
-                }
+        // Any error restarts the subscription from the durable checkpoint, like a daemon
+        // restart would; `initialize` clears the stored error once it is running again.
+        let mut retry = SUBSCRIPTION_RETRY_MIN;
+        loop {
+            let started = Instant::now();
+            let result = (|| -> io::Result<()> {
+                let mut checkpoint = index.initialize()?;
+                let roots = index
+                    .roots
+                    .iter()
+                    .map(|(_, p)| p.clone())
+                    .collect::<Vec<_>>();
+                let mut watch = crate::file_events::Watch::start(&roots, checkpoint)?;
+                lock(&shared)?.log_events = Some(watch.notifier());
+                index.bootstrap()?;
+                publish_recognition(&shared, &index, RecognitionPhase::Healthy, "识别正常", &[])?;
+                let mut association = Association::default();
+                association.apply(&shared, &index, &index.cached()?)?;
                 follow_associated(&shared, &mut index, &mut association, &watch)?;
-                // Only a real event drives retries of an earlier incomplete subtree.
-                let pending = index.recovery_scopes()?;
-                if !pending.is_empty() {
-                    if let Err(error) =
-                        recover_logs(&shared, &mut index, &mut association, &pending)
-                    {
-                        index.fail(&error)?;
-                        publish_recognition(
-                            &shared,
-                            &index,
-                            RecognitionPhase::Interrupted,
-                            &format!("补扫未完成：{error}"),
-                            &pending,
-                        )?;
-                        continue;
+                loop {
+                    let mut batch = watch.rx.recv().map_err(io::Error::other)?;
+                    // A single bounded burst window starts ONLY after a native event arrives.
+                    // This matches FSEvents' 200 ms latency for eager vnode writes too. It never
+                    // wakes an idle subscriber, and continuous writers cannot extend the deadline.
+                    let deadline = std::time::Instant::now() + Duration::from_millis(200);
+                    for _ in 0..63 {
+                        match watch.rx.recv_timeout(
+                            deadline.saturating_duration_since(std::time::Instant::now()),
+                        ) {
+                            Ok(next) => batch.events.extend(next.events),
+                            Err(std::sync::mpsc::RecvTimeoutError::Timeout) => break,
+                            Err(e) => return Err(io::Error::other(e)),
+                        }
                     }
+                    let mut scopes = watch.take_overflow();
+                    let overflowed = !scopes.is_empty();
+                    let restart = event_scopes(&batch, &roots, &mut scopes) || overflowed;
+                    let wrapped = batch.events.iter().any(|e| e.flags & 0x8 != 0);
+                    if restart {
+                        // Watch before repairing. Replay from the last committed checkpoint, not 'now',
+                        // so restarting one stream cannot discard queued events for the other CLI root.
+                        if wrapped {
+                            checkpoint = crate::file_events::Watch::current_id();
+                            index.reset_checkpoint(checkpoint)?;
+                        }
+                        watch = crate::file_events::Watch::start(&roots, checkpoint)?;
+                        lock(&shared)?.log_events = Some(watch.notifier());
+                    }
+                    if !scopes.is_empty() {
+                        if let Err(error) =
+                            recover_logs(&shared, &mut index, &mut association, &scopes)
+                        {
+                            index.fail(&error)?;
+                            publish_recognition(
+                                &shared,
+                                &index,
+                                RecognitionPhase::Interrupted,
+                                &format!("补扫未完成：{error}；等待后续文件事件重试"),
+                                &scopes,
+                            )?;
+                            // Leave the durable scope worklist. No busy retry or permanent error latch.
+                            continue;
+                        }
+                    }
+                    let mut paths = std::collections::BTreeSet::new();
+                    let mut event_id = checkpoint;
+                    for event in batch.events {
+                        if !wrapped {
+                            event_id = event_id.max(event.id);
+                        }
+                        if event.flags & 0x10 == 0
+                            && event.path.extension().is_some_and(|e| e == "jsonl")
+                        {
+                            paths.insert(event.path);
+                        }
+                    }
+                    let transcripts = index.update_many(paths, event_id)?;
+                    if let Err(error) = association.apply(&shared, &index, &transcripts) {
+                        eprintln!("Agent association deferred: {error}");
+                    }
+                    follow_associated(&shared, &mut index, &mut association, &watch)?;
+                    // Only a real event drives retries of an earlier incomplete subtree.
+                    let pending = index.recovery_scopes()?;
+                    if !pending.is_empty() {
+                        if let Err(error) =
+                            recover_logs(&shared, &mut index, &mut association, &pending)
+                        {
+                            index.fail(&error)?;
+                            publish_recognition(
+                                &shared,
+                                &index,
+                                RecognitionPhase::Interrupted,
+                                &format!("补扫未完成：{error}"),
+                                &pending,
+                            )?;
+                            continue;
+                        }
+                    }
+                    if event_id > checkpoint {
+                        // Checkpoint is atomic with this batch of content/cursor writes.
+                        checkpoint = event_id;
+                    }
+                    let status = lock(&shared)?.recognition.clone();
+                    publish_recognition(
+                        &shared,
+                        &index,
+                        status.phase,
+                        &status.detail,
+                        &status
+                            .scopes
+                            .iter()
+                            .map(std::path::PathBuf::from)
+                            .collect::<Vec<_>>(),
+                    )?;
                 }
-                if event_id > checkpoint {
-                    // Checkpoint is atomic with this batch of content/cursor writes.
-                    checkpoint = event_id;
-                }
-                let status = lock(&shared)?.recognition.clone();
-                publish_recognition(
-                    &shared,
-                    &index,
-                    status.phase,
-                    &status.detail,
-                    &status
-                        .scopes
-                        .iter()
-                        .map(std::path::PathBuf::from)
-                        .collect::<Vec<_>>(),
-                )?;
+            })();
+            let Err(error) = result else { return };
+            if started.elapsed() > SUBSCRIPTION_RETRY_MAX {
+                retry = SUBSCRIPTION_RETRY_MIN;
             }
-        })();
-        if let Err(error) = result {
             if let Err(persist) = index.fail(&error) {
                 eprintln!("persist subscription failure: {persist}");
             }
@@ -1449,10 +1474,12 @@ fn start_subscription(shared: Shared, mut index: crate::log_index::Index) {
                 &shared,
                 &index,
                 RecognitionPhase::Interrupted,
-                &format!("识别中断：{error}"),
+                &format!("识别中断：{error}；{} 秒后自动重试", retry.as_secs()),
                 &[],
             );
-            eprintln!("log subscription failed: {error}");
+            eprintln!("log subscription failed, retrying in {retry:?}: {error}");
+            thread::sleep(retry);
+            retry = (retry * 2).min(SUBSCRIPTION_RETRY_MAX);
         }
     });
 }
@@ -2157,8 +2184,13 @@ fn pump(
             }
             return Err(error);
         }
+        // Only reading the PTY ends this loop. Screen checks, query replies and titles are
+        // side work: if they fail, the terminal must keep streaming instead of freezing.
         if ready == 0 {
-            quiet_at = check_screen_wait(terminal, shared, id)?;
+            quiet_at = check_screen_wait(terminal, shared, id).unwrap_or_else(|e| {
+                eprintln!("terminal {id}: screen check: {e}");
+                None
+            });
             continue;
         }
         let n = match reader.read(&mut bytes) {
@@ -2180,7 +2212,9 @@ fn pump(
         live.vt.feed(&bytes[..n]);
         let response = std::mem::take(&mut *lock(&replies)?);
         if !response.is_empty() {
-            pty::write(&mut live.master, &response)?;
+            if let Err(e) = pty::write(&mut live.master, &response) {
+                eprintln!("terminal {id}: query reply: {e}");
+            }
         }
         live.broadcast(OUTPUT, bytes[..n].to_vec());
         // Compare in place: output chunks are hot, title changes are rare.
@@ -2195,7 +2229,9 @@ fn pump(
             live.title = title.clone();
             // Host before Live is the lock order; release this terminal first.
             drop(live);
-            lock(shared)?.title_changed(id, &title)?;
+            if let Err(e) = lock(shared).and_then(|mut host| host.title_changed(id, &title)) {
+                eprintln!("terminal {id}: title: {e}");
+            }
         }
     }
 }
@@ -2211,6 +2247,9 @@ fn hostname() -> String {
     String::from_utf8_lossy(&buf[..end]).into_owned()
 }
 
+/// Backoff for restarting a failed log subscription or registry watch.
+const SUBSCRIPTION_RETRY_MIN: Duration = Duration::from_secs(1);
+const SUBSCRIPTION_RETRY_MAX: Duration = Duration::from_secs(60);
 const SCREEN_QUIET: Duration = Duration::from_secs(1);
 /// A fresh hook-reported dialog is not vetoed by the screen yet: it may still be drawing.
 const RECONCILE_HOLD: Duration = Duration::from_secs(5);
