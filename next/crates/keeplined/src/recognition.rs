@@ -244,6 +244,33 @@ pub fn terminal_for_process(
     }
     None
 }
+/// Names the Agent processes in an unbound pane whose command line names no conversation,
+/// from their CLI's own list of live sessions (`Adapter::sessions_by_pid`). Asked once per
+/// probe per CLI, and only while such a process runs in a managed pane.
+pub fn name_by_pid(workspace: &Workspace, processes: &mut [Process]) {
+    let mut unnamed: Vec<(Agent, Vec<u32>)> = vec![];
+    for p in processes.iter() {
+        let Some(runtime) = p.runtime.filter(|_| p.cli_session_id.is_none()) else {
+            continue;
+        };
+        if !terminal_for_process(p.pid, processes, workspace)
+            .is_some_and(|t| workspace.current_agent(&t).is_none())
+        {
+            continue;
+        }
+        match unnamed.iter_mut().find(|(a, _)| *a == runtime) {
+            Some((_, pids)) => pids.push(p.pid),
+            None => unnamed.push((runtime, vec![p.pid])),
+        }
+    }
+    for (runtime, pids) in unnamed {
+        for (pid, id) in crate::agents::adapter(runtime).sessions_by_pid(&pids) {
+            if let Some(p) = processes.iter_mut().find(|p| p.pid == pid) {
+                p.cli_session_id = Some(id);
+            }
+        }
+    }
+}
 pub(crate) fn observation(t: &Transcript, terminal: Option<String>) -> AgentSession {
     AgentSession {
         id: uuid::Uuid::new_v4().to_string(),
