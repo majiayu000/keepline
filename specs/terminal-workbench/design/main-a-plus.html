@@ -51,7 +51,8 @@ button { font: inherit; border: 0; background: none; color: inherit; cursor: poi
 .hidden .side { width: 0; border-right: 0; }
 .side-head { display: flex; align-items: center; gap: 6px; padding: 10px 12px 4px; }
 .side-head .space { color: var(--strong); font-weight: 700; font-size: 12px; }
-.side-head .seg { margin-left: auto; display: inline-flex; border: 1px solid var(--line); border-radius: 6px; overflow: hidden; }
+.side-head .seg + .seg { margin-left: auto; }
+.side-head .seg { display: inline-flex; border: 1px solid var(--line); border-radius: 6px; overflow: hidden; }
 .side-head .seg button { font-size: 11px; padding: 1px 7px; color: var(--dim); }
 .side-head .seg button[aria-pressed="true"] { background: var(--sel); color: var(--strong); }
 .list { flex: 1; overflow: hidden; padding: 4px 0 10px; }
@@ -66,6 +67,19 @@ button { font: inherit; border: 0; background: none; color: inherit; cursor: poi
 .s .a { color: var(--faint); font-size: 11.5px; }
 .s .w { grid-column: 2 / 4; color: var(--dim); font-size: 11.5px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .compact .s .w { display: none; }
+/* Grouping: by status (B) or by directory (C); 需要你 stays pinned on top in both. */
+.by-dir { display: none; }
+.dirmode .by-dir { display: block; }
+.dirmode .by-status { display: none; }
+.pin { border-bottom: 1px solid var(--line-soft); padding-bottom: 6px; }
+.dir { display: grid; grid-template-columns: 14px auto 1fr auto; align-items: baseline; column-gap: 6px; padding: 8px 12px 3px; }
+.dir .caret { color: var(--faint); font-size: 10px; }
+.dir .dn { color: var(--strong); font-weight: 700; }
+.dir .dp { color: var(--faint); font-size: 11px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; }
+.dir .dc { color: var(--faint); font-size: 11.5px; }
+.dir.gone .dn { color: var(--dim); font-weight: 400; }
+.compact .dir .dp { display: none; }
+.s.in { padding-left: 24px; }
 .side-foot { border-top: 1px solid var(--line-soft); padding: 8px 12px; display: flex; justify-content: space-between; color: var(--dim); font-size: 11.5px; }
 
 .work { flex: 1; min-width: 0; display: flex; flex-direction: column; }
@@ -139,10 +153,12 @@ button { font: inherit; border: 0; background: none; color: inherit; cursor: poi
   <span class="grp" role="group" aria-label="样式"><button type="button" data-style="A" aria-pressed="true">A 终端原生</button><button type="button" data-style="C" aria-pressed="false">C 标准</button></span>
   <span>侧边栏</span>
   <span class="grp" role="group" aria-label="侧边栏"><button type="button" data-side="detail" aria-pressed="true">详细</button><button type="button" data-side="compact" aria-pressed="false">紧凑</button><button type="button" data-side="hidden" aria-pressed="false">收起 ⌘B</button></span>
+  <span>左栏</span>
+  <span class="grp" role="group" aria-label="左栏分组"><button type="button" data-group="status" aria-pressed="true">按状态</button><button type="button" data-group="dir" aria-pressed="false">按目录</button></span>
   <span>主题</span>
   <span class="grp" role="group" aria-label="主题"><button type="button" data-theme-btn="dark" aria-pressed="true">深色</button><button type="button" data-theme-btn="light" aria-pressed="false">浅色</button></span>
 </div>
-<div class="explain">A 和 C 是设置里的两个样式，任选；两者都带 B 的「停在」和可收起的侧边栏（开关在红绿灯旁，⌘B）。终端内容照你现在实际用的样子铺满：左边是这次 Claude 会话，右上 Codex 在跑测试出错，右下在编译。会话标题和标签取自你 10-30 的数据，终端文字是仿写。</div>
+<div class="explain">左栏可按状态（B 的叙事）或按目录（C 的空间与会话）组织，两种都把「需要你」钉在最上面。A 和 C 是设置里的两个样式，任选；两者都带 B 的「停在」和可收起的侧边栏（开关在红绿灯旁，⌘B）。终端内容照你现在实际用的样子铺满：左边是这次 Claude 会话，右上 Codex 在跑测试出错，右下在编译。会话标题和标签取自你 10-30 的数据，终端文字是仿写。</div>
 
 <div class="win A" id="win">
   <div class="top chrome">
@@ -156,13 +172,35 @@ button { font: inherit; border: 0; background: none; color: inherit; cursor: poi
   </div>
   <div class="body">
     <aside class="side chrome" aria-label="会话">
-      <div class="side-head"><span class="space">工作空间</span><span class="d">13</span>
+      <div class="side-head">
+        <span class="seg" role="group" aria-label="分组"><button type="button" data-group="status" aria-pressed="true">按状态</button><button type="button" data-group="dir" aria-pressed="false">按目录</button></span>
         <span class="seg" role="group" aria-label="密度"><button type="button" data-side="detail" aria-pressed="true">详细</button><button type="button" data-side="compact" aria-pressed="false">紧凑</button></span>
       </div>
       <div class="list">
-        <div class="rule">── 需要你 2 ────────────────</div>
-        <div class="s"><span class="g er">✕</span><span class="t">这个终止 agent 中断取消</span><span class="a">4m</span><span class="w">停在：managed_session 测试超时</span></div>
-        <div class="s"><span class="g er">✕</span><span class="t">这个目录的 grok 的聊天记录</span><span class="a">12m</span><span class="w">停在：找不到 grok 的会话目录</span></div>
+        <div class="pin">
+          <div class="rule">── 需要你 2 ────────────────</div>
+          <div class="s"><span class="g er">✕</span><span class="t">这个终止 agent 中断取消</span><span class="a">4m</span><span class="w">停在：managed_session 测试超时</span></div>
+          <div class="s"><span class="g er">✕</span><span class="t">这个目录的 grok 的聊天记录</span><span class="a">12m</span><span class="w">停在：找不到 grok 的会话目录</span></div>
+        </div>
+        <div class="by-dir">
+          <div class="dir open"><span class="caret">▾</span><span class="dn">keepline</span><span class="dp">~/Desktop/code/AI/tools/keepline</span><span class="dc">6</span></div>
+          <div class="s in on"><span class="g k">◐</span><span class="t">这个诊断的 ui 感觉很丑啊</span><span class="a">41:07</span><span class="w">正在写主界面 A / C 两种样式</span></div>
+          <div class="s in"><span class="g k">◐</span><span class="t">标签命名依旧有问题</span><span class="a">3:12</span><span class="w">正在编译 keepline-app</span></div>
+          <div class="s in"><span class="g er">✕</span><span class="t">这个终止 agent 中断取消</span><span class="a">4m</span><span class="w">停在：managed_session 测试超时</span></div>
+          <div class="s in"><span class="g rv">✓</span><span class="t">左侧的会话 有什么好的命名</span><span class="a">2h</span><span class="w">做成了：标签用第一句话命名</span></div>
+          <div class="s in"><span class="g rv">✓</span><span class="t">这个 keepline 的 gpu 占用</span><span class="a">3h</span><span class="w">做成了：只重画变化的区域</span></div>
+          <div class="s in"><span class="g wt">‖</span><span class="t">我准备 重启一下 mac keepline</span><span class="a">2h</span><span class="w">停在：等你确认是否重启</span></div>
+          <div class="dir open"><span class="caret">▾</span><span class="dn">cli</span><span class="dp">~/Desktop/code/AI/tools/cli</span><span class="dc">2</span></div>
+          <div class="s in"><span class="g rv">✓</span><span class="t">cli 是否支持 workflow 呢</span><span class="a">1d</span><span class="w">做成了：说明了 workflow 命令</span></div>
+          <div class="s in"><span class="g wt">‖</span><span class="t">这个库 有什么可以优化的</span><span class="a">6h</span><span class="w">停在：列了 12 条，没开始改</span></div>
+          <div class="dir open"><span class="caret">▾</span><span class="dn">grok-build</span><span class="dp">~/Desktop/code/AI/grok-build</span><span class="dc">1</span></div>
+          <div class="s in"><span class="g er">✕</span><span class="t">这个目录的 grok 的聊天记录</span><span class="a">12m</span><span class="w">停在：找不到 grok 的会话目录</span></div>
+          <div class="dir"><span class="caret">▸</span><span class="dn">bench</span><span class="dp">~/Desktop/code/AI/tools/bench</span><span class="dc">3</span></div>
+          <div class="dir"><span class="caret">▸</span><span class="dn">knowledge-base</span><span class="dp">~/Documents/knowledge-base</span><span class="dc">4</span></div>
+          <div class="dir gone"><span class="caret">▸</span><span class="dn">新空间</span><span class="dp">目录不在了</span><span class="dc">0</span></div>
+          <div class="rule">── 已关闭 21 · ⌘P 找回 ──────</div>
+        </div>
+        <div class="by-status">
         <div class="rule">── 在跑 2 ──────────────────</div>
         <div class="s on"><span class="g k">◐</span><span class="t">这个诊断的 ui 感觉很丑啊</span><span class="a">41:07</span><span class="w">正在写主界面 A / C 两种样式</span></div>
         <div class="s"><span class="g k">◐</span><span class="t">标签命名依旧有问题</span><span class="a">3:12</span><span class="w">正在编译 keepline-app</span></div>
@@ -177,6 +215,7 @@ button { font: inherit; border: 0; background: none; color: inherit; cursor: poi
         <div class="s"><span class="g wt">‖</span><span class="t">看这里 选中一个内容后</span><span class="a">1d</span><span class="w">停在：复现了选区跳动</span></div>
         <div class="rule">── 很久没动 165 · 鸟瞰里清理 ─</div>
         <div class="rule">── 已关闭 21 · ⌘P 找回 ──────</div>
+        </div>
       </div>
       <div class="side-foot"><span>▦ 鸟瞰</span><span>本机诊断</span><span>设置</span></div>
     </aside>
@@ -307,6 +346,11 @@ function setStyle(s) {
   document.querySelectorAll('.a-only').forEach((e) => { e.style.display = s === 'A' ? '' : 'none'; });
   pressed('data-style', s);
 }
+function setGroup(g) {
+  win.classList.toggle('dirmode', g === 'dir');
+  pressed('data-group', g);
+}
+document.querySelectorAll('[data-group]').forEach((b) => b.addEventListener('click', () => setGroup(b.dataset.group)));
 function setTheme(t) { document.documentElement.dataset.theme = t; pressed('data-theme-btn', t); }
 let last = 'detail';
 document.querySelectorAll('[data-side]').forEach((b) => b.addEventListener('click', () => {
@@ -326,6 +370,7 @@ document.addEventListener('keydown', (e) => {
 const q = new URLSearchParams(location.search);
 setStyle(q.get('style') || 'A');
 setSide(q.get('side') || 'detail');
+setGroup(q.get('group') || 'status');
 setTheme(q.get('theme') || (q.get('style') === 'C' ? 'light' : 'dark'));
 </script>
 </body>
