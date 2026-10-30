@@ -3,4 +3,5 @@
 pub mod keyboard;
 pub mod pane;
 pub mod screen;
+pub mod selection;
 pub mod terminal_input;
