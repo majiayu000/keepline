@@ -672,6 +672,93 @@ impl Workbench {
             focus,
         )
     }
+    /// Tab titles in strip order for the shown space, and the spaces left.
+    #[cfg(feature = "visual-test")]
+    pub fn visual_tab_titles(&self) -> Vec<String> {
+        self.workspace
+            .tabs
+            .iter()
+            .filter(|t| t.space == self.nav.space)
+            .map(|t| t.title.clone())
+            .collect()
+    }
+    #[cfg(feature = "visual-test")]
+    pub fn visual_page_tab(&mut self, title: &str, _: &mut Window, cx: &mut Context<Self>) {
+        let tab = self
+            .workspace
+            .tabs
+            .iter()
+            .find(|t| t.title == title)
+            .expect("tab")
+            .id
+            .clone();
+        self.nav.tab = Some(tab);
+        self.nav.focused = None;
+        self.sync_panes(cx);
+    }
+    #[cfg(feature = "visual-test")]
+    pub fn visual_move_pane(&mut self, title: &str, cx: &mut Context<Self>) {
+        let pane = self.nav.focused.clone().expect("a focused pane");
+        let to = self
+            .workspace
+            .tabs
+            .iter()
+            .find(|t| t.title == title)
+            .map(|t| t.id.clone());
+        self.move_pane(&pane, to.as_deref(), cx);
+    }
+    #[cfg(feature = "visual-test")]
+    pub fn visual_tab_layout(&self, title: &str) -> usize {
+        self.workspace
+            .tabs
+            .iter()
+            .find(|t| t.title == title)
+            .map_or(0, |t| self.workspace.tab_terminals(&t.id).len())
+    }
+    #[cfg(feature = "visual-test")]
+    pub fn visual_edit_space(&mut self, id: &str, window: &mut Window, cx: &mut Context<Self>) {
+        self.tasks.editing_space = Some(id.into());
+        self.show_form(FormKind::Space, window, cx);
+        self.tasks.editing_space = Some(id.into());
+    }
+    #[cfg(feature = "visual-test")]
+    pub fn visual_remove_space(&mut self, id: &str, cx: &mut Context<Self>) {
+        self.remove_space(id, cx);
+    }
+    /// Names this space's tabs in strip order, for scripts that address them by name.
+    #[cfg(feature = "visual-test")]
+    pub fn visual_name_tabs(&mut self, names: &[&str], cx: &mut Context<Self>) {
+        let tabs: Vec<_> = self
+            .workspace
+            .tabs
+            .iter()
+            .filter(|t| t.space == self.nav.space)
+            .cloned()
+            .collect();
+        for (tab, name) in tabs.into_iter().zip(names) {
+            self.edit(
+                Edit::PutTab {
+                    tab: Tab {
+                        title: (*name).into(),
+                        ..tab
+                    },
+                },
+                cx,
+            );
+        }
+    }
+    /// Adds a space with a fixed id beside the current one.
+    #[cfg(feature = "visual-test")]
+    pub fn visual_add_space(&mut self, id: &str, cwd: &str, cx: &mut Context<Self>) {
+        self.edit(
+            Edit::AddSpace(Space {
+                id: id.into(),
+                name: id.into(),
+                cwd: cwd.into(),
+            }),
+            cx,
+        );
+    }
     #[cfg(feature = "visual-test")]
     pub fn visual_spaces(&self) -> Vec<String> {
         self.workspace.spaces.iter().map(|s| s.id.clone()).collect()

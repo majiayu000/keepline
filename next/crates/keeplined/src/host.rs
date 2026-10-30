@@ -1873,6 +1873,13 @@ fn dispatch(shared: &Shared, request: Request) -> io::Result<Reply> {
             let stopped = match &edit {
                 Edit::CloseTab { id } => host.workspace.tab_terminals(id),
                 Edit::ClosePane { terminal } => vec![terminal.clone()],
+                Edit::RemoveSpace { id } => host
+                    .workspace
+                    .tabs
+                    .iter()
+                    .filter(|t| &t.space == id)
+                    .flat_map(|t| host.workspace.tab_terminals(&t.id))
+                    .collect(),
                 _ => Vec::new(),
             };
             let mut next = host.workspace.clone();

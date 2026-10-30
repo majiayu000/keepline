@@ -77,6 +77,7 @@ enum MenuPage {
     Main,
     Sessions,
     Assign,
+    Move,
 }
 struct Form {
     kind: FormKind,
@@ -297,6 +298,7 @@ impl Workbench {
                 form: None,
                 editing_task: None,
                 editing_space: None,
+                removing_space: false,
                 start_after_save: None,
                 quick_task: None,
                 todos_open: false,
