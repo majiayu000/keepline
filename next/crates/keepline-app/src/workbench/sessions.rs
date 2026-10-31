@@ -34,7 +34,7 @@ impl Workbench {
                 self.nav.space = space.into();
             }
             self.resuming.resume = Some((
-                session.runtime.resume_command(&session.cli_session_id),
+                self.workspace.resume_command(session),
                 session.cwd.clone(),
                 session.id.clone(),
             ));
@@ -269,7 +269,7 @@ impl Workbench {
             );
         }
         let resume = session.clone();
-        let command = session.runtime.resume_command(&session.cli_session_id);
+        let command = self.workspace.resume_command(session);
         // Two decisions stay in sight: go back to it, and settle it. The rest waits in 更多.
         // On its own live pane there is nothing to go back to: you type in the terminal.
         let typing_here = in_pane && live_terminal(&self.workspace, session).is_some();

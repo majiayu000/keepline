@@ -97,7 +97,10 @@ pub(super) fn refresh_agents(
     let mut host = lock(shared)?;
     let mut next = host.workspace.clone();
     crate::recognition::reconcile(&mut next, transcripts, &processes, &files)?;
-    if next.agent_sessions != host.workspace.agent_sessions {
+    crate::recognition::record_launch(&mut next, &processes);
+    if next.agent_sessions != host.workspace.agent_sessions
+        || next.agent_launch != host.workspace.agent_launch
+    {
         host.commit(next)?;
     }
     host.observe_processes(&processes, &files)?;

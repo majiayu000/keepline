@@ -20,6 +20,10 @@ pub struct Workspace {
     /// (None: only its shell). Terminals lost before this was kept have no entry.
     #[serde(default)]
     pub lost_agents: std::collections::HashMap<String, Option<String>>,
+    /// How each conversation's Agent was last started in a Keepline terminal: the flags a
+    /// resume repeats (model, permissions, config), never a prompt or an old resume.
+    #[serde(default)]
+    pub agent_launch: std::collections::HashMap<String, Vec<String>>,
     pub spaces: Vec<Space>,
     pub tasks: Vec<Task>,
     pub tabs: Vec<Tab>,
@@ -594,6 +598,16 @@ impl Workspace {
             .iter()
             .find(|s| s.current && s.terminal.as_deref() == Some(terminal))
     }
+    /// The command that resumes a conversation with the flags its Agent was started with.
+    pub fn resume_command(&self, session: &AgentSession) -> String {
+        let launch = self
+            .agent_launch
+            .get(&session.id)
+            .map_or(&[][..], Vec::as_slice);
+        session
+            .runtime
+            .resume_command(&session.cli_session_id, launch)
+    }
     /// Called only after the host has proven the CLI identity and terminal link.
     /// Importing a log alone leaves terminal=None and never changes ownership.
     pub fn observe_agent(&mut self, mut observed: AgentSession) -> Result<(), String> {
@@ -1164,15 +1178,15 @@ mod tests {
         assert!(uuid::Uuid::parse_str(first.strip_prefix("claude --session-id ").unwrap()).is_ok());
         assert_eq!(Agent::Codex.command(), "codex");
         assert_eq!(
-            Agent::Codex.resume_command("a'b"),
+            Agent::Codex.resume_command("a'b", &[]),
             format!("codex resume {}", shell_quote("a'b"))
         );
         assert_eq!(
-            Agent::Claude.resume_command("safe"),
+            Agent::Claude.resume_command("safe", &[]),
             "claude --resume 'safe'"
         );
         assert_eq!(Agent::Grok.command(), "grok");
-        assert_eq!(Agent::Grok.resume_command("id"), "grok --resume 'id'");
+        assert_eq!(Agent::Grok.resume_command("id", &[]), "grok --resume 'id'");
         for agent in Agent::all() {
             assert_eq!(Agent::from_executable(agent.executable()), Some(agent));
         }

@@ -1172,6 +1172,7 @@ fn forty_idle_terminals_have_no_periodic_background_io() {
                 runtime: Some(Agent::Codex),
                 cli_session_id: None,
                 no_daemon: false,
+                launch: vec![],
             });
             assert!(
                 !keeplined::recognition::open_transcripts(&workspace, &processes)

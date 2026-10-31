@@ -747,7 +747,7 @@ impl Workbench {
     pub(super) fn reopen(&mut self, id: String, cx: &mut Context<Self>) {
         if let Some(s) = interrupted_session(&self.workspace, &id) {
             self.resuming.resume = Some((
-                s.runtime.resume_command(&s.cli_session_id),
+                self.workspace.resume_command(s),
                 s.cwd.clone(),
                 s.id.clone(),
             ));
