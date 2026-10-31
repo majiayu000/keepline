@@ -412,7 +412,12 @@ fn run() -> io::Result<()> {
                         for handle in cx.windows() {
                             if let Some(handle) = handle.downcast::<workbench::Workbench>() {
                                 let _ = handle.update(cx, |view, window, cx| {
-                                    view.navigate_to(&route, window, cx)
+                                    // The panel's 查看诊断 while the host cannot be reached.
+                                    if route == desktop::DIAGNOSTICS {
+                                        view.show_diagnostics(window, cx)
+                                    } else {
+                                        view.navigate_to(&route, window, cx)
+                                    }
                                 });
                                 break;
                             }
