@@ -1,5 +1,7 @@
 # Keepline zsh integration for interactive shells: reports the working directory with
-# OSC 7 (file://host/path, percent-encoded) so new tabs and splits open where you are.
+# OSC 7 (file://host/path, percent-encoded) so new tabs and splits open where you are, and
+# marks where each command starts and ends (OSC 133 C, and D with its exit status) so
+# plugins can hear about finished commands.
 'builtin' 'autoload' '-Uz' '--' 'add-zsh-hook'
 
 _keepline_report_pwd() {
@@ -17,5 +19,16 @@ _keepline_report_pwd() {
     'builtin' 'printf' '\e]7;file://%s%s\e\\' "${HOST}" "$out"
 }
 
+# Every precmd function sees the command's own status. A prompt with no command before it
+# also says D; Keepline only counts a D that follows a C.
+_keepline_command_end() {
+    'builtin' 'printf' '\e]133;D;%s\e\\' "$?"
+}
+_keepline_command_start() {
+    'builtin' 'printf' '\e]133;C\e\\'
+}
+
+add-zsh-hook precmd _keepline_command_end
+add-zsh-hook preexec _keepline_command_start
 add-zsh-hook precmd _keepline_report_pwd
 add-zsh-hook chpwd _keepline_report_pwd

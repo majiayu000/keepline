@@ -1,5 +1,5 @@
-//! What runs when a session changes state (`hooks.json`): a shell command or a webhook,
-//! handed the event as JSON. Hooks only hear about sessions; they cannot change one, and a
+//! What runs when a session changes state or a command in a terminal finishes
+//! (`hooks.json`): a shell command or a webhook, handed the event as JSON. Hooks only hear about sessions; they cannot change one, and a
 //! slow or failing hook never holds up the host: each runs off its thread under a timeout.
 use crate::agent::Loaded;
 use serde::{Deserialize, Serialize};
@@ -22,14 +22,25 @@ pub enum Event {
     Error,
     /// The turn finished and is yours to check.
     Done,
+    /// A command typed at a shell prompt exited 0, as the shell marked it (OSC 133).
+    #[serde(rename = "command_done")]
+    CommandDone,
+    /// A command typed at a shell prompt exited non-zero.
+    #[serde(rename = "command_failed")]
+    CommandFailed,
 }
 impl Event {
+    pub fn is_command(self) -> bool {
+        matches!(self, Self::CommandDone | Self::CommandFailed)
+    }
     pub fn name(self) -> &'static str {
         match self {
             Self::Started => "started",
             Self::Waiting => "waiting",
             Self::Error => "error",
             Self::Done => "done",
+            Self::CommandDone => "command_done",
+            Self::CommandFailed => "command_failed",
         }
     }
 }
@@ -47,6 +58,9 @@ pub struct Hook {
     pub webhook: Option<String>,
     #[serde(default = "default_timeout")]
     pub timeout_ms: u64,
+    /// Command events only: commands that took less than this are not reported.
+    #[serde(default)]
+    pub min_ms: u64,
     #[serde(skip)]
     pub file: PathBuf,
 }
@@ -54,7 +68,9 @@ fn default_timeout() -> u64 {
     5_000
 }
 
-/// What a hook is told. Only the session's card: never the transcript.
+/// What a hook is told. Only the session's card: never the transcript. A command event
+/// has no session, Agent or title (all empty) and tells the terminal, the exit code and how
+/// long the command ran instead; never the command line, which may carry a secret.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize)]
 pub struct Payload {
     pub event: Event,
@@ -66,6 +82,12 @@ pub struct Payload {
     /// The question, the error, or the last reply's first line.
     pub detail: String,
     pub at: u64,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub terminal: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub exit_code: Option<i32>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub duration_ms: Option<u64>,
 }
 impl Payload {
     /// The same facts as environment variables, for one-line shell hooks.
@@ -78,6 +100,18 @@ impl Payload {
             ("KEEPLINE_CWD", self.cwd.clone()),
             ("KEEPLINE_SPACE", self.space.clone().unwrap_or_default()),
             ("KEEPLINE_DETAIL", self.detail.clone()),
+            (
+                "KEEPLINE_TERMINAL",
+                self.terminal.clone().unwrap_or_default(),
+            ),
+            (
+                "KEEPLINE_EXIT_CODE",
+                self.exit_code.map(|c| c.to_string()).unwrap_or_default(),
+            ),
+            (
+                "KEEPLINE_DURATION_MS",
+                self.duration_ms.map(|d| d.to_string()).unwrap_or_default(),
+            ),
         ]
     }
 }
@@ -131,6 +165,12 @@ fn read(file: &Path, taken: &[Hook]) -> Result<Vec<Hook>, String> {
                 h.id
             ));
         }
+        if h.min_ms > 0 && !h.on.iter().any(|e| e.is_command()) {
+            return Err(format!(
+                "hook {} 的 min_ms 只对 command_done、command_failed 有用",
+                h.id
+            ));
+        }
         h.file = file.to_owned();
     }
     Ok(hooks)
@@ -173,6 +213,10 @@ pub fn install() {
 pub fn all() -> &'static [Hook] {
     HOOKS.get().map_or(&[], |(h, _)| h.as_slice())
 }
+/// Whether any hook listens for commands; without one the terminals' marks go unread.
+pub fn commands() -> bool {
+    all().iter().any(|h| h.on.iter().any(|e| e.is_command()))
+}
 pub fn report() -> &'static [Loaded] {
     HOOKS.get().map_or(&[], |(_, r)| r.as_slice())
 }
@@ -211,8 +255,22 @@ mod tests {
             "e.json",
             r#"{"api":1,"hooks":[{"id":"say","on":["done"],"command":"true"}]}"#,
         );
-        let (hooks, report) = load(vec![good, both, event, slow, dup]);
-        assert_eq!(hooks.len(), 2);
+        let long = write(
+            "f.json",
+            r#"{"api":1,"hooks":[{"id":"long","on":["command_done","command_failed"],"command":"true","min_ms":10000}]}"#,
+        );
+        let stray = write(
+            "g.json",
+            r#"{"api":1,"hooks":[{"id":"stray","on":["done"],"command":"true","min_ms":10}]}"#,
+        );
+        let (hooks, report) = load(vec![good, both, event, slow, dup, long, stray]);
+        assert_eq!(hooks.len(), 3);
+        assert_eq!(hooks[2].min_ms, 10_000);
+        assert_eq!(
+            report[5].result,
+            Ok("long（command_done/command_failed）".into())
+        );
+        assert!(report[6].result.as_ref().unwrap_err().contains("min_ms"));
         assert_eq!(hooks[0].timeout_ms, 5_000);
         assert_eq!(
             report[0].result,

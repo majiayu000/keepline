@@ -1,6 +1,7 @@
 //! Runs the plugins' hooks (`keepline_core::hook`) when a session in a Keepline terminal
-//! enters a state. The host calls `observe` after every commit; with no hook installed it
-//! returns at once. Each hook runs on its own thread under its timeout, so a slow or broken
+//! enters a state, or a command typed in one finishes. The host calls `observe` after every
+//! commit and `command` when a terminal's shell marks a command finished; with no hook
+//! installed both return at once. Each hook runs on its own thread under its timeout, so a slow or broken
 //! hook costs the host nothing; outcomes go to the host log.
 use keepline_core::content::{now, short, Inbox, Turn};
 use keepline_core::hook::{self, Event, Hook, Payload};
@@ -71,7 +72,7 @@ impl Hooks {
                 Event::Waiting => c.waiting.clone(),
                 Event::Error => c.error.clone(),
                 Event::Done => c.last_reply.clone(),
-                Event::Started => String::new(),
+                Event::Started | Event::CommandDone | Event::CommandFailed => String::new(),
             };
             let key = match e {
                 Event::Waiting => {
@@ -104,6 +105,9 @@ impl Hooks {
                         500,
                     ),
                     at,
+                    terminal: None,
+                    exit_code: None,
+                    duration_ms: None,
                 });
             }
             seen.insert(s.id.clone(), key);
@@ -111,6 +115,17 @@ impl Hooks {
         self.last = seen;
         self.seeded = true;
         fired
+    }
+}
+
+/// A command finished in a terminal: the hooks that listen for it and its duration.
+pub fn command(p: Payload) {
+    let took = p.duration_ms.unwrap_or(0);
+    for h in hook::all()
+        .iter()
+        .filter(|h| h.on.contains(&p.event) && took >= h.min_ms)
+    {
+        spawn(h, p.clone());
     }
 }
 
@@ -201,6 +216,7 @@ mod tests {
             command: Some(command.into()),
             webhook: None,
             timeout_ms,
+            min_ms: 0,
             file: PathBuf::new(),
         }
     }
@@ -214,6 +230,9 @@ mod tests {
             space: Some("lib".into()),
             detail: "是否允许推送？".into(),
             at: 1,
+            terminal: None,
+            exit_code: None,
+            duration_ms: None,
         }
     }
 

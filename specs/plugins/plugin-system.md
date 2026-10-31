@@ -27,7 +27,7 @@ Keepline 的左栏、Agent 支持和窗格装饰，是否改成由插件提供�
 | actions | `actions.json`：右键菜单与 ⌘P 的命令 | 已完成 |
 | rules | `rules.json`：追加哪些命令算跑过验证 | 已完成 |
 | sidebar | `sidebar.json`：左栏预设（经典 / 状态 / 目录为内置） | 已完成（声明式） |
-| hooks | `hooks.json`：会话状态变化交给命令或 webhook | 已完成 |
+| hooks | `hooks.json`：会话状态变化、终端里命令结束交给命令或 webhook | 已完成 |
 
 **写法**（用什么写）：
 
@@ -130,6 +130,7 @@ Row = Session { id, glyph: status, title, trailing: time | timer | text,
 | 4 | sidebar：声明格式，经典 / 状态 / 目录三个内置预设，左栏顶部切换，⌘B 收起，按左栏减密稿 | 完成（声明式）。`{"api":1,"presets":[{"id","name","group":"flat|status|directory","fold":["running|done|stopped|stale"],"detail":"never|attention|always","limit"}]}`；需要你不能折叠，插件只能追加不能覆盖内置。状态：需要你、在跑摊开，其余合成一行；目录：需要你置顶不重复，目录名旁标「n 需要你」，没在跑的目录默认折叠，路径悬停显示。选择存 `~/.config/keepline/sidebar`。收起后留一条窄栏和需要你的数字。示例插件 `plugins/focus-sidebar`。截图核过四种状态（隔离 fixture）。WASM 排法与主界面 A/C 样式未做 |
 | 5 | hooks / notifier：生命周期事件交给命令或 webhook，只读、带超时、失败不影响主流程 | 完成。在后台 daemon 里跑（App 没开也触发，多窗口不重复）。事件 started / waiting / error / done，每回合一次、每个提问一次；daemon 重启不重放。`{"api":1,"hooks":[{"id","on":[...],"command"|"webhook","timeout_ms"}]}`，command 用 `sh -c`，事件 JSON 走 stdin 并带 `KEEPLINE_*` 环境变量；webhook 用系统 curl POST。只给卡片字段（标题、目录、空间、一行说明），不给原话全文。超时 100 ms–30 s 后强停，最多同时 8 个，多了丢弃并记日志；结果写后台日志。没装 hooks 时零开销。端到端：`specs/plugins/evidence/hooks-e2e.py`（隔离 HOME，4 个事件各收到一次，慢 hook 300 ms 被停）。示例插件 `plugins/notify-macos` |
 | 6 | 功能开关、bash / fish 的 shell 集成、WASM 左栏接入 | 完成。开关：设置「插件」页逐个停用 / 启用，记在 `plugins/disabled.json`，下次启动生效，期间显示「重开后生效」。shell 集成：bash 走 `--init-file`（自己按 bash 规则加载用户的 profile / .bashrc）、fish 走 `--init-command`，都用 OSC 7 报目录；只改写纯交互启动；bash 3.2 / 5.3、fish 4.9 真跑测试。WASM 左栏：`sidebar.json` 写 `"group":"wasm","wasm":"x.wasm"`（只能是插件目录里的文件），App 选中时才在沙盒里加载，传会话卡片字段（不含原话），状态没变就复用上次回复；插件可回 Session / Note 两种行，Note 的动作只有 toggle / palette / overview；出错退回经典并在左栏写明原因。示例 `plugins/sidebar-status`（84 KB，`build.sh` 重编）。未做：Folder 行、插件自定的行尾（时间 / 计时仍由宿主画）、已关闭会话不传给插件 |
+| 7 | 终端事件钩子：shell 里敲的命令结束时交给 hooks | 完成（2026-10-31）。新增事件 `command_done`（退出码 0）和 `command_failed`（非 0），可选 `min_ms` 只听耗时够长的命令（只对这两个事件有效，写在别的事件上报错）。zsh 用 precmd / preexec、bash 用 `PROMPT_COMMAND` 最前一项和 `PS0`（4.4 起）发 OSC 133 的 C 和 `D;<退出码>`；fish 自己就发。bash 的入口函数把 `$?` 原样交还，用户提示符里显示的退出码不再被上报目录冲成 0。daemon 在读终端输出时配对 C…D（单独的 D 是没敲命令的提示符，不算），标记跨两次读取也能拼上；没有插件听命令事件时不扫。负载里 `session`、`agent`、`title` 留空，给 `terminal`、`space`、`cwd`（OSC 7 上报的目录）、`exit_code`、`duration_ms`，环境变量多 `KEEPLINE_TERMINAL / EXIT_CODE / DURATION_MS`。**不给命令行**：可能带密钥；fish 会把正在跑的命令设成终端标题，所以标题也不给。端到端：`shell_integration.rs` 里 zsh / bash 5.3 / fish 4.9 各跑成功、空行、失败、1.2 秒四种，插件依次收到 0、3、0（≥1000 ms）三条，`min_ms: 1000` 的只收到最后一条；bash 3.2 没有 PS0，一条不收。反向验证：去掉 zsh 的 preexec、去掉 bash 的 PS0、去掉 `min_ms` 判断、bash 不交还 `$?`，各自的用例都失败。缺口：bash 4.4 以前收不到命令事件；恢复对话窗格最后 `exec` 的 shell 不经过集成 |
 
 每一步的验收：已有测试全过，真实数据副本截图对照原来的界面和性能不退步。
 
