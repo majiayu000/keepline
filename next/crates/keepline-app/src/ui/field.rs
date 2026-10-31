@@ -311,6 +311,8 @@ impl Field {
                 }
                 self.replace(None, "");
             }
+            // ⌘⏎ belongs to the owner: a form saves with it.
+            "enter" if cmd => return,
             "enter" if !self.compact => {
                 self.replace(None, "\n");
             }

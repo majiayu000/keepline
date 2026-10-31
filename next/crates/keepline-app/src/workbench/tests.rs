@@ -1,6 +1,6 @@
 use super::*;
 
-fn fixture() -> Workspace {
+pub(super) fn fixture() -> Workspace {
     let mut w = Workspace::default();
     w.spaces.push(Space {
         id: "space".into(),

@@ -444,7 +444,7 @@ impl Render for Workbench {
             );
         }
         if let Some(form) = &self.tasks.form {
-            main = main.child(self.form_panel(form, cx));
+            main = main.child(self.form_panel(form, window, cx));
         } else if let Some(page) = page {
             main = main.child(
                 div()
@@ -494,11 +494,7 @@ impl Render for Workbench {
                 .and_then(|t| t.default_task.as_ref())
                 .and_then(|id| self.workspace.tasks.iter().find(|t| &t.id == id))
             {
-                let evidence = task
-                    .acceptance
-                    .iter()
-                    .filter(|a| a.evidence.is_some())
-                    .count();
+                let evidence = task.proven();
                 main = main.child(
                     div()
                         .h(px(T::TODO_HEIGHT))
@@ -929,7 +925,7 @@ impl Workbench {
 
 /// `total` small cells for the acceptance criteria, `filled` of them with evidence;
 /// neutral tones, since color is kept for session status.
-fn evidence_cells(filled: usize, total: usize) -> gpui::Div {
+pub(super) fn evidence_cells(filled: usize, total: usize) -> gpui::Div {
     div()
         .flex()
         .items_center()
