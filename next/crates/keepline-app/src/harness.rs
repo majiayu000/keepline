@@ -1706,6 +1706,32 @@ pub fn start(
             assert!(!saved.contains("pin "), "ended pin still saved: {saved:?}");
             shot("6-unpinned.png", cx);
             eprintln!("pin native PASS: hover dot, click pins and saves, ended terminal unpins");
+            // 在编辑器里看滚动内容: the pane menu opens the terminal's text with $EDITOR in a
+            // new tab; the stand-in editor (KEEPLINE_TEST_EDITOR) copies what it was given.
+            if let Some(edited) = std::env::var_os("KEEPLINE_EDITED") {
+                let edited = PathBuf::from(edited);
+                handle.update(cx, |v, _, a| v.visual_peek_show_tab("shell", a)).unwrap();
+                wait(500).await;
+                let at = gpui::point(px(theme::Theme::SIDEBAR + 200.), px(theme::Theme::TOP + theme::Theme::TABS + theme::Theme::PANE_HEADER + 120.));
+                cx.update_window(handle.into(), |_, w, a| { w.refresh(); w.draw(a).clear(a); native_click(w, a, at, gpui::MouseButton::Right) }).unwrap();
+                wait(300).await;
+                shot("7-menu.png", cx);
+                let item = handle.update(cx, |v, _, _| v.visual_menu_point(7)).unwrap();
+                cx.update_window(handle.into(), |_, w, a| native_click(w, a, item, gpui::MouseButton::Left)).unwrap();
+                let mut text = String::new();
+                for _ in 0..100 {
+                    wait(200).await;
+                    if let Ok(t) = std::fs::read_to_string(&edited) { text = t; break; }
+                }
+                if text.is_empty() { shot("8-editor-failed.png", cx); }
+                assert!(text.contains("~/keepline $ cargo test"), "editor got: {text:?}");
+                let saved = root.join("scrollback/shell.txt");
+                let mode = std::os::unix::fs::PermissionsExt::mode(&std::fs::metadata(&saved).unwrap().permissions()) & 0o777;
+                assert_eq!(mode, 0o600, "scrollback file readable by others");
+                wait(500).await;
+                shot("8-editor.png", cx);
+                eprintln!("scrollback native PASS: menu opens the terminal text with $EDITOR, file private");
+            }
             cx.update(|cx| cx.quit());
         })
         .detach();
@@ -1735,7 +1761,8 @@ pub fn start(
             cx.background_executor()
                 .timer(Duration::from_millis(300))
                 .await;
-            let item = handle.update(cx, |v, _, _| v.visual_menu_point(8)).unwrap();
+            // 为什么是这个状态, after 在编辑器里看滚动内容.
+            let item = handle.update(cx, |v, _, _| v.visual_menu_point(9)).unwrap();
             cx.update_window(handle.into(), |_, window, app| {
                 window.refresh();
                 window.draw(app).clear(app);

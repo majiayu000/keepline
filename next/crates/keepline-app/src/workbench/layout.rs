@@ -1,6 +1,9 @@
 //! Panes, their split layout, resizing and pane menus.
 use super::*;
 
+/// The most a terminal's text opened in an editor holds: the host's own read limit.
+const SCROLLBACK_ROWS: usize = 10_000;
+
 /// The visible panes and what is open over them: menus, drags and pending closes.
 pub(super) struct LayoutState {
     pub(super) panes: HashMap<String, Entity<Pane>>,
@@ -637,6 +640,65 @@ impl Workbench {
         self.nav.pending_focus = true;
         self.edit(Edit::PutTab { tab }, cx);
     }
+    /// The terminal's text, scrollback included, saved under the host's private runtime
+    /// directory and opened with `$EDITOR` in a new tab, as Herdr does. The host reads it,
+    /// so a pane's own screen is never locked for it; one file per terminal, replaced.
+    fn scrollback_in_editor(&mut self, id: &str, cx: &mut Context<Self>) {
+        let socket = self.store.socket().to_owned();
+        let terminal = id.to_owned();
+        let cwd = self
+            .workspace
+            .terminal_tab(id)
+            .and_then(|t| self.workspace.spaces.iter().find(|s| s.id == t.space))
+            .map(|s| s.cwd.clone())
+            .unwrap_or_default();
+        let task = cx.background_spawn(async move {
+            let Reply::Text(text) = rpc(
+                &socket,
+                &Request::ReadScreen {
+                    id: terminal.clone(),
+                    rows: SCROLLBACK_ROWS,
+                },
+            )?
+            else {
+                return Err(std::io::Error::other("后台没有返回文字"));
+            };
+            let dir = socket
+                .parent()
+                .ok_or_else(|| std::io::Error::other("运行目录未知"))?
+                .join("scrollback");
+            std::fs::create_dir_all(&dir)?;
+            let path = dir.join(format!("{terminal}.txt"));
+            use std::os::unix::fs::OpenOptionsExt;
+            let mut file = std::fs::OpenOptions::new()
+                .write(true)
+                .create(true)
+                .truncate(true)
+                .mode(0o600)
+                .open(&path)?;
+            std::io::Write::write_all(&mut file, text.trim_end().as_bytes())?;
+            Ok(path)
+        });
+        cx.spawn(async move |this, cx| {
+            let result = task.await;
+            this.update(cx, |this, cx| match result {
+                Ok(path) => {
+                    // Through sh so the user's $EDITOR applies whatever their shell is.
+                    let command = format!(
+                        "sh -c '${{EDITOR:-vi}} \"$1\"' sh {}",
+                        shell_quote(&path.to_string_lossy())
+                    );
+                    this.layout.pending_command = Some((command, cwd));
+                    this.launch(false, None, cx);
+                }
+                Err(e) => {
+                    this.error = Some(format!("在编辑器里看滚动内容失败：{e}"));
+                    cx.notify();
+                }
+            })
+        })
+        .detach();
+    }
     pub(super) fn menu_action(
         &mut self,
         id: &str,
@@ -681,6 +743,7 @@ impl Workbench {
                     window.focus(&pane.focus_handle(cx), cx);
                 }
             }
+            "在编辑器里看滚动内容" => self.scrollback_in_editor(id, cx),
             "搜索滚动内容" => {
                 if let Some(pane) = self.layout.panes.get(id) {
                     pane.update(cx, |p, cx| p.open_search(window, cx));
@@ -744,6 +807,7 @@ impl Workbench {
                     "复制",
                     "粘贴",
                     "搜索滚动内容",
+                    "在编辑器里看滚动内容",
                     "移到标签…",
                     "为什么是这个状态",
                     "挂到待办…",
