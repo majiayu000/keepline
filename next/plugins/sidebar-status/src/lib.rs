@@ -1,14 +1,20 @@
-//! The 状态 sidebar view as a plugin: pins what needs you, lists what is running, and
-//! folds everything finished or paused into one summary row.
+//! The 状态 sidebar view as a plugin: pins what needs you, lists what is running with its
+//! turn clock, folds everything finished or paused into one summary row (by folder when
+//! opened), and keeps the latest closed sessions one click away.
 //!
 //! ABI for the prototype: the host writes UTF-8 JSON into memory from `alloc`, calls
 //! `render(ptr, len)`, and reads the reply as a length-prefixed buffer at the returned
 //! pointer (4-byte little-endian length, then JSON).
 use serde::{Deserialize, Serialize};
 
+/// How many closed sessions the closed section lists before pointing at 鸟瞰.
+const CLOSED_LISTED: usize = 5;
+
 #[derive(Deserialize)]
 struct State {
     sessions: Vec<Session>,
+    #[serde(default)]
+    closed_total: usize,
     #[allow(dead_code)]
     now: u64,
 }
@@ -16,11 +22,9 @@ struct State {
 #[derive(Deserialize)]
 struct Session {
     id: String,
-    title: String,
     group: String,
+    cwd: String,
     updated: u64,
-    #[serde(default)]
-    running_since: Option<u64>,
     #[serde(default)]
     stopped: Option<String>,
     #[serde(default)]
@@ -41,7 +45,6 @@ struct Section {
     title: Option<&'static str>,
     count: Option<usize>,
     folded_default: bool,
-    pinned: bool,
     rows: Vec<Row>,
 }
 
@@ -50,11 +53,13 @@ struct Section {
 enum Row {
     Session {
         id: String,
-        glyph: String,
-        title: String,
         trailing: Trailing,
         detail: Option<String>,
         detail_mode: &'static str,
+    },
+    Folder {
+        cwd: String,
+        folded_default: bool,
     },
     Note {
         text: String,
@@ -62,22 +67,25 @@ enum Row {
     },
 }
 
+/// What a row ends with; Keepline draws it, so a running clock ticks on its own.
 #[derive(Serialize)]
-#[serde(tag = "kind", content = "value")]
+#[serde(rename_all = "lowercase")]
+#[allow(dead_code)]
 enum Trailing {
-    Time(u64),
-    Timer(u64),
+    State,
+    Age,
+    Elapsed,
+    None,
+    #[serde(untagged)]
+    Text {
+        text: String,
+    },
 }
 
-fn row(s: &Session, detail_mode: &'static str) -> Row {
+fn row(s: &Session, trailing: Trailing, detail_mode: &'static str) -> Row {
     Row::Session {
         id: s.id.clone(),
-        glyph: s.group.clone(),
-        title: s.title.clone(),
-        trailing: match s.running_since {
-            Some(t) => Trailing::Timer(t),
-            None => Trailing::Time(s.updated),
-        },
+        trailing,
         detail: s
             .stopped
             .clone()
@@ -98,57 +106,91 @@ fn build(state: &State) -> Sidebar {
         .collect();
     let count = |g: &str| open.iter().filter(|s| !s.needs_you && s.group == g).count();
     let (done, paused, stale) = (count("review"), count("paused"), count("stale"));
-    let closed = state.sessions.len() - open.len();
     let mut sections = vec![
         Section {
             id: "need",
             title: Some("需要你"),
             count: Some(need.len()),
             folded_default: false,
-            pinned: true,
-            rows: need.iter().map(|s| row(s, "always")).collect(),
+            rows: need
+                .iter()
+                .map(|s| row(s, Trailing::State, "always"))
+                .collect(),
         },
         Section {
             id: "running",
             title: Some("在跑"),
             count: Some(running.len()),
             folded_default: false,
-            pinned: false,
             rows: running
                 .iter()
-                .map(|s| row(s, if s.selected { "always" } else { "hover" }))
+                .map(|s| {
+                    row(
+                        s,
+                        Trailing::Elapsed,
+                        if s.selected { "always" } else { "hover" },
+                    )
+                })
                 .collect(),
         },
     ];
-    let rest: Vec<&Session> = open
+    // The rest, folded into one summary row and grouped by folder when opened.
+    let mut rows = vec![Row::Note {
+        text: format!("做完了 {done} · 停下了 {paused} · 很久没动 {stale}"),
+        action: Some("toggle"),
+    }];
+    let mut folders: Vec<(&str, Vec<&Session>)> = vec![];
+    for s in open
         .iter()
         .copied()
         .filter(|s| !s.needs_you && s.group != "running")
-        .collect();
+    {
+        match folders.iter_mut().find(|(cwd, _)| *cwd == s.cwd) {
+            Some((_, list)) => list.push(s),
+            None => folders.push((&s.cwd, vec![s])),
+        }
+    }
+    for (cwd, list) in folders {
+        rows.push(Row::Folder {
+            cwd: cwd.to_owned(),
+            folded_default: false,
+        });
+        rows.extend(list.iter().map(|s| row(s, Trailing::Age, "hover")));
+    }
     sections.push(Section {
         id: "rest",
         title: None,
         count: None,
         folded_default: true,
-        pinned: false,
-        rows: std::iter::once(Row::Note {
-            text: format!("做完了 {done} · 停下了 {paused} · 很久没动 {stale}"),
+        rows,
+    });
+    // Closed ones, newest first: a few to resume from here, the rest in 鸟瞰.
+    if state.closed_total > 0 {
+        let closed: Vec<&Session> = state.sessions.iter().filter(|s| s.closed).collect();
+        let mut rows = vec![Row::Note {
+            text: format!("已关闭 {}", state.closed_total),
             action: Some("toggle"),
-        })
-        .chain(rest.iter().map(|s| row(s, "hover")))
-        .collect(),
-    });
-    sections.push(Section {
-        id: "closed",
-        title: None,
-        count: None,
-        folded_default: false,
-        pinned: false,
-        rows: vec![Row::Note {
-            text: format!("已关闭 {closed} · ⌘P 找回"),
-            action: Some("palette"),
-        }],
-    });
+        }];
+        rows.extend(
+            closed
+                .iter()
+                .take(CLOSED_LISTED)
+                .map(|s| row(s, Trailing::Age, "never")),
+        );
+        if state.closed_total > CLOSED_LISTED {
+            rows.push(Row::Note {
+                text: format!("全部 {} 个 · 鸟瞰里接着聊", state.closed_total),
+                action: Some("closed"),
+            });
+        }
+        sections.push(Section {
+            id: "closed",
+            title: None,
+            count: None,
+            folded_default: true,
+            rows,
+        });
+    }
     Sidebar { sections }
 }
 
