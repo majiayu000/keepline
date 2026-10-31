@@ -89,6 +89,33 @@ pub struct Content {
     /// The account's usage limits as this conversation's log last recorded them.
     #[serde(default)]
     pub quota: Option<crate::quota::Quota>,
+    /// Files this session changed, each with when it last did, newest last. Paths are as the
+    /// tool call named them: absolute, or relative to the session's cwd.
+    #[serde(default)]
+    pub files: Vec<Touch>,
+}
+#[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub struct Touch {
+    pub path: String,
+    pub at: u64,
+}
+/// Changed files a card keeps; the oldest goes first, so a long session keeps its latest.
+const TOUCHES: usize = 64;
+impl Content {
+    /// Records that `path` changed at `at`; a path already listed only moves to the end.
+    pub fn touch(&mut self, path: &str, at: u64) {
+        let at = match self.files.iter().position(|t| t.path == path) {
+            Some(i) => self.files.remove(i).at.max(at),
+            None => at,
+        };
+        self.files.push(Touch {
+            path: path.into(),
+            at,
+        });
+        if self.files.len() > TOUCHES {
+            self.files.remove(0);
+        }
+    }
 }
 /// In-flight work by kind. Agents (subagents, workflows, teammates, cloud sessions, MCP
 /// tasks) keep a stopped turn working. A monitor or a scheduled wakeup will wake the session
@@ -298,12 +325,35 @@ fn link(word: &str) -> String {
         return word.to_owned();
     };
     let host = host.strip_prefix("www.").unwrap_or(host);
-    match parts.next_back() {
-        Some(last) => format!("{lead} {host}/{last}"),
-        None => format!("{lead} {host}"),
+    let parts: Vec<&str> = parts.collect();
+    // A trailing id names nothing: `x.com/a/status/2116…` reads as `x.com/a`. A short
+    // number is kept, as an issue or pull request number: `github.com/codex#425`.
+    let number = parts
+        .last()
+        .filter(|p| p.chars().all(|c| c.is_ascii_digit()));
+    let name = parts.iter().rev().find(|p| {
+        !p.chars().all(|c| c.is_ascii_digit())
+            && !matches!(
+                **p,
+                "status"
+                    | "issues"
+                    | "pull"
+                    | "pulls"
+                    | "discussions"
+                    | "commit"
+                    | "post"
+                    | "posts"
+            )
+    });
+    let mut short = match name {
+        Some(name) => format!("{host}/{name}"),
+        None => host.to_owned(),
+    };
+    if let Some(n) = number.filter(|n| n.len() <= 6) {
+        short.push('#');
+        short.push_str(n);
     }
-    .trim_start()
-    .to_owned()
+    format!("{lead} {short}").trim_start().to_owned()
 }
 /// `Here::done` when nothing confirmed has happened yet.
 pub const NO_DONE: &str = "尚无已确认的修改、提交或测试成功证据";
@@ -525,8 +575,16 @@ mod tests {
         );
         assert_eq!(topic("https://x.com"), "x.com");
         assert_eq!(
+            topic("这是什么啊 https://x.com/someone/status/2116090187122192847"),
+            "这是什么啊 x.com/someone"
+        );
+        assert_eq!(
+            topic("https://github.com/openai/codex/issues/425 讲了什么"),
+            "github.com/codex#425 讲了什么"
+        );
+        assert_eq!(
             topic("这里为什么报错了啊https://ultrastudio.dev/app/jobs/42"),
-            "这里为什么报错了啊 ultrastudio.dev/42"
+            "这里为什么报错了啊 ultrastudio.dev/jobs#42"
         );
         assert_eq!(
             topic("跳至主要内容\n⌘J 京东AI数字员工\n这是什么"),

@@ -281,6 +281,7 @@ impl Workbench {
                         .child(text),
                 )
             })
+            .tooltip(super::diagnostics::tip(self.session_tip(session)))
             // Straight to its pane; an exited one resumes in a new pane.
             .on_click(
                 cx.listener(move |this, event: &gpui::ClickEvent, window, cx| {

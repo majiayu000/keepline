@@ -639,14 +639,10 @@ impl Workbench {
             })
             .filter_map(|id| self.workspace.current_agent(&id))
             .map(|s| {
-                let title = self
-                    .workspace
-                    .content
-                    .get(&s.id)
-                    .map(|c| c.title.clone())
-                    .filter(|t| !t.trim().is_empty())
-                    .unwrap_or_else(|| s.runtime.executable().to_owned());
-                (title, live_phase(&self.workspace, s))
+                (
+                    self.workspace.session_title(s),
+                    live_phase(&self.workspace, s),
+                )
             })
             .collect()
     }
