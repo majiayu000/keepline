@@ -91,11 +91,10 @@ api 1 的声明能认出进程、启动和恢复、按 JSONL 绑定会话、卡�
 
 ```
 State {
-  sessions: [{ id, title, agent, group, cwd, space, updated, running_since?,
+  sessions: [{ id, title, agent, group, cwd, updated, running_since?,
                stopped?, done?, needs_you, closed, selected }],
-  spaces:   [{ id, name, path, missing }],
-  tasks:    [{ id, title, started, done }],
-  now
+  closed_total,   // 本空间已关闭会话总数；sessions 里只带最近 50 个
+  now             // 取整到分钟
 }
 ```
 
@@ -105,14 +104,15 @@ State {
 
 ```
 Sidebar {
-  sections: [{ id, title?, count?, folded_default, pinned,
-               rows: [Row], summary? }]
+  sections: [{ id, title?, count?, folded_default, rows: [Row] }]
 }
-Row = Session { id, glyph: status, title, trailing: time | timer | text,
-                detail?: text, detail_mode: always | hover | selected, indent }
-    | Folder  { id, name, path_on_hover, flag?, count, folded }
-    | Note    { text, action? }
+Row = Session { id, trailing?: state | age | elapsed | none | {text},
+                detail?: text, detail_mode?: always | selected }
+    | Folder  { cwd, folded_default }
+    | Note    { text, action?: toggle | palette | overview | closed }
 ```
+
+（实现后的格式，2026-10-31。标题、状态点、目录名、数字都由宿主按会话自己画，插件只决定放哪、显示什么说明和行尾。）
 
 `action` 只能是宿主定义的少数几种：打开会话、展开 / 折叠分组、打开鸟瞰、打开 ⌘P。插件不能执行任意动作。
 
@@ -130,7 +130,7 @@ Row = Session { id, glyph: status, title, trailing: time | timer | text,
 | 3 | rules：验证命令规则，修掉 bun / vitest 项目被判成没跑验证 | 完成。内置补上 vitest/jest/nextest/uv/deno/swift/make 等和 `test:*` 脚本；`&&` 链任一段算、`;` 只认最后一段、`2>&1` 不影响、管道和后台不算；插件 `rules.json` 只能追加（`{"api":1,"verify":[["just","test"],["make","*"]]}`，按词前缀、比较路径末段，`*` 不能开头）。解析版本升到 12，近期会话重算一次。插件规则改了不触发重算，下次有新记录才按新规则判断 |
 | 4 | sidebar：声明格式，经典 / 状态 / 目录三个内置预设，左栏顶部切换，⌘B 收起，按左栏减密稿 | 完成（声明式）。`{"api":1,"presets":[{"id","name","group":"flat|status|directory","fold":["running|done|stopped|stale"],"detail":"never|attention|always","limit"}]}`；需要你不能折叠，插件只能追加不能覆盖内置。状态：需要你、在跑摊开，其余合成一行；目录：需要你置顶不重复，目录名旁标「n 需要你」，没在跑的目录默认折叠，路径悬停显示。选择存 `~/.config/keepline/sidebar`。收起后留一条窄栏和需要你的数字。示例插件 `plugins/focus-sidebar`。截图核过四种状态（隔离 fixture）。WASM 排法与主界面 A/C 样式未做 |
 | 5 | hooks / notifier：生命周期事件交给命令或 webhook，只读、带超时、失败不影响主流程 | 完成。在后台 daemon 里跑（App 没开也触发，多窗口不重复）。事件 started / waiting / error / done，每回合一次、每个提问一次；daemon 重启不重放。`{"api":1,"hooks":[{"id","on":[...],"command"|"webhook","timeout_ms"}]}`，command 用 `sh -c`，事件 JSON 走 stdin 并带 `KEEPLINE_*` 环境变量；webhook 用系统 curl POST。只给卡片字段（标题、目录、空间、一行说明），不给原话全文。超时 100 ms–30 s 后强停，最多同时 8 个，多了丢弃并记日志；结果写后台日志。没装 hooks 时零开销。端到端：`specs/plugins/evidence/hooks-e2e.py`（隔离 HOME，4 个事件各收到一次，慢 hook 300 ms 被停）。示例插件 `plugins/notify-macos` |
-| 6 | 功能开关、bash / fish 的 shell 集成、WASM 左栏接入 | 完成。开关：设置「插件」页逐个停用 / 启用，记在 `plugins/disabled.json`，下次启动生效，期间显示「重开后生效」。shell 集成：bash 走 `--init-file`（自己按 bash 规则加载用户的 profile / .bashrc）、fish 走 `--init-command`，都用 OSC 7 报目录；只改写纯交互启动；bash 3.2 / 5.3、fish 4.9 真跑测试。WASM 左栏：`sidebar.json` 写 `"group":"wasm","wasm":"x.wasm"`（只能是插件目录里的文件），App 选中时才在沙盒里加载，传会话卡片字段（不含原话），状态没变就复用上次回复；插件可回 Session / Note 两种行，Note 的动作只有 toggle / palette / overview；出错退回经典并在左栏写明原因。示例 `plugins/sidebar-status`（84 KB，`build.sh` 重编）。未做：Folder 行、插件自定的行尾（时间 / 计时仍由宿主画）、已关闭会话不传给插件 |
+| 6 | 功能开关、bash / fish 的 shell 集成、WASM 左栏接入 | 完成。开关：设置「插件」页逐个停用 / 启用，记在 `plugins/disabled.json`，下次启动生效，期间显示「重开后生效」。shell 集成：bash 走 `--init-file`（自己按 bash 规则加载用户的 profile / .bashrc）、fish 走 `--init-command`，都用 OSC 7 报目录；只改写纯交互启动；bash 3.2 / 5.3、fish 4.9 真跑测试。WASM 左栏：`sidebar.json` 写 `"group":"wasm","wasm":"x.wasm"`（只能是插件目录里的文件），App 选中时才在沙盒里加载，传会话卡片字段（不含原话），状态没变就复用上次回复；插件可回三种行：Session（`trailing`：`state` 默认 / `age` / `elapsed` / `none` / `{"text":…}`，最多 12 字；宿主画，计时每秒走不用再问插件）、Folder（`{"kind":"Folder","cwd","folded_default"}`，折叠它后面到下一个 Folder / Note 为止的会话行，数字和「n 需要你」由宿主按这些行算）、Note（动作 toggle / palette / overview / closed）；还会传本空间最近关掉的 50 个会话（`closed: true`）和 `closed_total`，插件答得出来时左栏底部宿主自己的「已关闭 n 个」让位给插件。出错退回经典并在左栏写明原因。示例 `plugins/sidebar-status`（86 KB，`build.sh` 重编）：在跑的显示本轮计时，其余按目录分组、行尾显示多久前，已关闭的折叠成一节，列最近 5 个，多了指向鸟瞰 |
 | 7 | 终端事件钩子：shell 里敲的命令结束时交给 hooks | 完成（2026-10-31）。新增事件 `command_done`（退出码 0）和 `command_failed`（非 0），可选 `min_ms` 只听耗时够长的命令（只对这两个事件有效，写在别的事件上报错）。zsh 用 precmd / preexec、bash 用 `PROMPT_COMMAND` 最前一项和 `PS0`（4.4 起）发 OSC 133 的 C 和 `D;<退出码>`；fish 自己就发。bash 的入口函数把 `$?` 原样交还，用户提示符里显示的退出码不再被上报目录冲成 0。daemon 在读终端输出时配对 C…D（单独的 D 是没敲命令的提示符，不算），标记跨两次读取也能拼上；没有插件听命令事件时不扫。负载里 `session`、`agent`、`title` 留空，给 `terminal`、`space`、`cwd`（OSC 7 上报的目录）、`exit_code`、`duration_ms`，环境变量多 `KEEPLINE_TERMINAL / EXIT_CODE / DURATION_MS`。**不给命令行**：可能带密钥；fish 会把正在跑的命令设成终端标题，所以标题也不给。端到端：`shell_integration.rs` 里 zsh / bash 5.3 / fish 4.9 各跑成功、空行、失败、1.2 秒四种，插件依次收到 0、3、0（≥1000 ms）三条，`min_ms: 1000` 的只收到最后一条；bash 3.2 没有 PS0，一条不收。反向验证：去掉 zsh 的 preexec、去掉 bash 的 PS0、去掉 `min_ms` 判断、bash 不交还 `$?`，各自的用例都失败。缺口：bash 4.4 以前收不到命令事件；恢复对话窗格最后 `exec` 的 shell 不经过集成 |
 | 8 | 窗格装饰：插件往窗格上放一小段信息，像 tmux 状态栏片段 | 完成（2026-10-31）。要支撑的决定：插件能不能不改 App 代码就给每个窗格加信息（git 改动数、kube context、node 版本……）。放弃条件：画面要等命令才能画，或现有位置放不下实际用例。结果：采用。`{"api":1,"decorations":[{"id","command","place":"title"|"tip","when":"always"|"agent"|"shell","refresh_s":2–3600（默认 10）,"timeout_ms":100–5000（默认 1000）}]}`。命令在窗格当前目录（OSC 7 上报的实时目录）用 `sh -c` 跑，带 `KEEPLINE_CWD / AGENT / SESSION`；取第一行非空输出，去掉颜色、标题等控制序列，标题栏最多 40 字、悬停卡片最多 120 字；退出码非 0 或没输出就不显示，脚本靠这个自己决定哪里不适用。按「装饰 × 目录 × 会话」缓存，画界面只读缓存，到点在后台重跑、结果变了才重画；超时强停，输出最多读 64 KB。位置只有两个：标题栏右侧（在 Agent 和时间前面）和标题悬停卡片里的一行，不另开底栏（主界面改版已把底栏收进悬停卡片）。示例插件 `plugins/pane-facts`：标题栏显示 git 未提交的改动数，悬停看最近一次提交。验证：core 单测 3 个（取第一行、去控制序列、截断、非 0 不显示、慢命令和刷屏命令按时停、声明校验）；真实 App 取证 `specs/plugins/evidence/decorations-e2e.py`（隔离 HOME，装示例插件）：仓库里显示「改动 1」和「最近提交 …：初始提交」，`cd /tmp` 后两行都消失，回仓库加一个文件后到点变成「改动 2」，截图在 `decorations-20261031/`，连跑 3 次都通过。反向验证：缓存永不过期时「改动 2」那一步失败。缺口：悬停卡片里那一行只核对了数据，没截到悬停状态；终端样式（标题压在边框线上）共用同一组右侧元素，没单独截图；命令在 App 的环境里跑，App 用干净环境启动时 PATH 只有系统目录，`node -v` 这类要写全路径或自己设 PATH |
 

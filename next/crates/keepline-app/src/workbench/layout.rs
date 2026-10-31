@@ -1315,7 +1315,7 @@ pub(super) fn urgency(group: Group) -> u8 {
     }
 }
 /// `3:12`, or `1:03:12` past an hour.
-fn turn_clock(seconds: u64) -> String {
+pub(super) fn turn_clock(seconds: u64) -> String {
     let (h, m, s) = (seconds / 3600, seconds / 60 % 60, seconds % 60);
     if h > 0 {
         format!("{h}:{m:02}:{s:02}")
@@ -1404,7 +1404,7 @@ impl Workbench {
             .child(div().opacity(T::ZERO_OPACITY).child("·"))
             .child(when)
     }
-    fn tick_turn(&self, cx: &Context<Self>) {
+    pub(super) fn tick_turn(&self, cx: &Context<Self>) {
         use std::sync::atomic::Ordering;
         if TURN_TICK.swap(true, Ordering::Relaxed) {
             return;
