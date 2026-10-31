@@ -437,6 +437,7 @@ R14 否定：为截图增加假时间、模型完成证据、空位、专注按�
 采用：
 1. 后台识别出某个窗格当前对话的 Agent 进程时，从它的 argv 取出恢复要带的参数，按对话 id 存进 `agent_launch` 表。Codex：`-m`、`-c`、`-p`、`-s`、`-a`、`--add-dir`、`--yolo`、`--dangerously-bypass-approvals-and-sandbox` 等，**不含 `--no-daemon` / `--remote`**；Claude：`--model`、`--permission-mode`、`--dangerously-skip-permissions`、`--add-dir` 等。提示词、旧的 resume / session id、`-C` 和 cwd 不带。重新不带参数启动后记录随之清掉。
 2. 有记录的恢复命令写成 `command <cli> <参数> <原 resume 模板剩余部分>`，`command` 绕过用户同名的包装函数，因为这些参数已经经过它一次，Codex 遇到重复参数会报错。没有记录的仍是原来的 `codex resume <id>`。声明式 Agent 和 Grok / Cursor / Qoder 暂不取参数。
+3. 和 Herdr 的区别：Herdr 不记参数，恢复时只在窗格的默认 shell 里跑 `codex resume <id>`，靠用户的 shell 函数或 alias 补参数。Keepline 的恢复命令也走 `zsh -l -i -c`，所以没有记录时用户 `.zshrc` 里的 `codex()` 同样生效（2026-10-31 本机：App 接回的 Codex / Claude 都带着函数加的权限参数；没带的两个来自隔离环境的预览后台）。记参数多覆盖了手打的 `-m`、`-c` 和不经 shell 函数的启动；代价是用户改了函数后，已有记录的对话要不带参数重启一次才跟上新函数。
 
 已验：单元测试覆盖 node 包装和原生子进程两种 argv、Claude 列表参数、存库重开与清除、恢复命令拼接与引号。
 未验：真实 App 里重启后台后带参数接回的完整流程；`CLAUDE_CONFIG_DIR`、`CODEX_HOME` 这类环境变量不随恢复带回。
