@@ -327,7 +327,9 @@ pub(super) fn pump(
             }
         }
         live.broadcast(OUTPUT, bytes[..n].to_vec());
-        let finished = if keepline_core::hook::commands() {
+        let finished = if keepline_core::hook::commands()
+            || super::events::SUBSCRIBED.load(Ordering::Acquire)
+        {
             live.marks.scan(&bytes[..n], Instant::now())
         } else {
             Vec::new()

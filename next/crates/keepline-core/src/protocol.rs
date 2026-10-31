@@ -125,6 +125,9 @@ pub enum Request {
         question: String,
         allow: bool,
     },
+    /// Scripts, other Agents and other clients: the sessions' states now, then every
+    /// change as it happens, until this socket closes (`keeplined events`).
+    Subscribe,
 }
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -153,6 +156,8 @@ pub enum Reply {
     },
     Ok,
     Text(String),
+    /// A `Subscribe` stream's frames: first the state now, then each batch of changes.
+    Events(Vec<crate::hook::Notice>),
     Error(String),
 }
 

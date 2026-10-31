@@ -42,6 +42,9 @@ pub(super) fn serve_client(
         if matches!(request, Request::WatchRecognition) {
             return watch_recognition(stream, host, connection);
         }
+        if matches!(request, Request::Subscribe) {
+            return super::events::subscribe(stream, host, connection);
+        }
         if matches!(request, Request::Diagnose) {
             let terminals = lock(&host)?
                 .workspace
