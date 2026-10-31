@@ -50,6 +50,7 @@ pub fn current(cx: &App) -> Style {
 pub fn choose(style: Style, cx: &mut App) -> Result<(), String> {
     style.save()?;
     cx.set_global(style);
+    super::appearance::apply(cx);
     cx.refresh_windows();
     Ok(())
 }

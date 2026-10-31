@@ -1,5 +1,6 @@
 //! Light or dark: chosen from the Keepline menu and kept in
 //! `~/.config/keepline/appearance` as "system", "light" or "dark".
+use super::style::Style;
 use super::theme::{Scheme, Theme};
 use gpui::{App, Global, WindowAppearance};
 
@@ -44,10 +45,13 @@ impl Appearance {
             .and_then(|()| std::fs::write(&path, self.name()))
             .map_err(|e| format!("无法保存 {}：{e}", path.display()))
     }
-    fn scheme(self, system: WindowAppearance) -> Scheme {
+    /// The terminal-native style is dark unless light was picked outright
+    /// (specs/terminal-workbench/design/main-directions.html).
+    fn scheme(self, system: WindowAppearance, style: Style) -> Scheme {
         match (self, system) {
             (Self::Light, _) => Scheme::Light,
             (Self::Dark, _) => Scheme::Dark,
+            (Self::System, _) if style == Style::Terminal => Scheme::Dark,
             (Self::System, WindowAppearance::Light | WindowAppearance::VibrantLight) => {
                 Scheme::Light
             }
@@ -58,7 +62,7 @@ impl Appearance {
 /// Re-read the choice against the system appearance and repaint every window.
 pub fn apply(cx: &mut App) {
     let chosen = cx.try_global::<Appearance>().copied().unwrap_or_default();
-    let scheme = chosen.scheme(cx.window_appearance());
+    let scheme = chosen.scheme(cx.window_appearance(), super::style::current(cx));
     if scheme != Theme::scheme() {
         Theme::set_scheme(scheme);
         cx.refresh_windows();
@@ -86,11 +90,31 @@ mod tests {
         }
         assert_eq!(Appearance::parse("sepia"), None);
         let system = Appearance::System;
-        assert_eq!(system.scheme(WindowAppearance::VibrantLight), Scheme::Light);
-        assert_eq!(system.scheme(WindowAppearance::Dark), Scheme::Dark);
+        let standard = Style::Standard;
         assert_eq!(
-            Appearance::Dark.scheme(WindowAppearance::Light),
+            system.scheme(WindowAppearance::VibrantLight, standard),
+            Scheme::Light
+        );
+        assert_eq!(
+            system.scheme(WindowAppearance::Dark, standard),
             Scheme::Dark
+        );
+        assert_eq!(
+            Appearance::Dark.scheme(WindowAppearance::Light, standard),
+            Scheme::Dark
+        );
+    }
+
+    #[test]
+    fn terminal_style_is_dark_unless_light_was_picked() {
+        let terminal = Style::Terminal;
+        assert_eq!(
+            Appearance::System.scheme(WindowAppearance::Light, terminal),
+            Scheme::Dark
+        );
+        assert_eq!(
+            Appearance::Light.scheme(WindowAppearance::Dark, terminal),
+            Scheme::Light
         );
     }
 }
