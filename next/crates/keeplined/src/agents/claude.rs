@@ -22,6 +22,50 @@ impl Adapter for Claude {
     fn process_session(&self, _pid: u32, args: &[String]) -> (Option<String>, bool) {
         (claude_session_id(args), false)
     }
+    fn launch_flags(&self, args: &[String]) -> Vec<String> {
+        super::carried(
+            args,
+            "claude",
+            &[
+                "--dangerously-skip-permissions",
+                "--allow-dangerously-skip-permissions",
+                "--strict-mcp-config",
+                "--chrome",
+                "--no-chrome",
+                "--ide",
+                "--verbose",
+                "--bare",
+                "--safe-mode",
+                "--restricted",
+                "--disable-slash-commands",
+                "--brief",
+            ],
+            &[
+                "--model",
+                "--permission-mode",
+                "--effort",
+                "--fallback-model",
+                "--agent",
+                "--agents",
+                "--settings",
+                "--setting-sources",
+                "--append-system-prompt",
+                "--system-prompt",
+                "--plugin-dir",
+                "--autocompact",
+            ],
+            &[
+                "--add-dir",
+                "--mcp-config",
+                "--allowedTools",
+                "--allowed-tools",
+                "--disallowedTools",
+                "--disallowed-tools",
+                "--tools",
+                "--betas",
+            ],
+        )
+    }
     /// A hand-started Claude names no session and closes its transcript between writes;
     /// its hooks are the only evidence before the first prompt reaches the screen.
     fn hooks(&self, home: &Path) -> Option<super::Hooks> {

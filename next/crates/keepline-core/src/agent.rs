@@ -56,10 +56,27 @@ impl Agent {
     pub fn command(self) -> String {
         render(self.spec().map_or(self.0, |s| s.start.as_str()), None)
     }
-    pub fn resume_command(self, cli_id: &str) -> String {
-        match self.spec() {
-            Some(s) => render(&s.resume, Some(cli_id)),
-            None => self.command(),
+    /// With `launch` flags, they go right after the executable, and `command` skips a
+    /// shell function of the same name: such a wrapper usually adds the same flags, and
+    /// Codex rejects a flag given twice. A template not starting with the executable
+    /// resumes without them.
+    pub fn resume_command(self, cli_id: &str, launch: &[String]) -> String {
+        let Some(s) = self.spec() else {
+            return self.command();
+        };
+        let plain = render(&s.resume, Some(cli_id));
+        if launch.is_empty() {
+            return plain;
+        }
+        match plain
+            .strip_prefix(s.executable.as_str())
+            .filter(|rest| rest.is_empty() || rest.starts_with(' '))
+        {
+            Some(rest) => {
+                let flags: Vec<_> = launch.iter().map(|a| shell_word(a)).collect();
+                format!("command {} {}{rest}", s.executable, flags.join(" "))
+            }
+            None => plain,
         }
     }
 }
@@ -92,6 +109,19 @@ fn render(template: &str, id: Option<&str>) -> String {
         out = out.replace("{id}", &crate::model::shell_quote(id));
     }
     out
+}
+
+/// Quoted only when the shell would read it differently: flags stay legible.
+fn shell_word(value: &str) -> String {
+    let plain = !value.is_empty()
+        && value
+            .chars()
+            .all(|c| c.is_ascii_alphanumeric() || "-_=./:,@+".contains(c));
+    if plain {
+        value.to_owned()
+    } else {
+        crate::model::shell_quote(value)
+    }
 }
 
 /// Keys are few and live for the process, so an unknown one read back is leaked once.
@@ -639,7 +669,19 @@ mod tests {
         );
         assert_eq!(format!("{:?}", Agent::Codex), "Codex");
         assert_eq!(Agent::Codex.command(), "codex");
-        assert_eq!(Agent::Claude.resume_command("x"), "claude --resume 'x'");
+        assert_eq!(
+            Agent::Claude.resume_command("x", &[]),
+            "claude --resume 'x'"
+        );
+        let launch = ["-c", "model_reasoning_effort=\"high\"", "-m", "gpt-5"].map(String::from);
+        assert_eq!(
+            Agent::Codex.resume_command("id", &launch),
+            "command codex -c 'model_reasoning_effort=\"high\"' -m gpt-5 resume 'id'"
+        );
+        assert_eq!(
+            Agent::Claude.resume_command("id", &["--dangerously-skip-permissions".into()]),
+            "command claude --dangerously-skip-permissions --resume 'id'"
+        );
         assert!(Agent::Claude.command().starts_with("claude --session-id "));
     }
 

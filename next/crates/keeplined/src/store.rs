@@ -69,6 +69,7 @@ impl Store {
             CREATE TABLE IF NOT EXISTS task_outcomes (task_id TEXT PRIMARY KEY REFERENCES tasks(id), outcome TEXT NOT NULL);
             CREATE TABLE IF NOT EXISTS pending_tasks (terminal_id TEXT PRIMARY KEY REFERENCES terminals(id), task_id TEXT REFERENCES tasks(id));
             CREATE TABLE IF NOT EXISTS lost_agents (terminal_id TEXT PRIMARY KEY REFERENCES terminals(id), session_id TEXT REFERENCES agent_sessions(id));
+            CREATE TABLE IF NOT EXISTS agent_launch (session_id TEXT PRIMARY KEY REFERENCES agent_sessions(id), flags TEXT NOT NULL);
             -- A removed space keeps its row: its terminals and settled tasks still point at it.
             CREATE TABLE IF NOT EXISTS removed_spaces (space_id TEXT PRIMARY KEY REFERENCES spaces(id));
             CREATE TABLE IF NOT EXISTS tab_order (tab_id TEXT PRIMARY KEY REFERENCES tabs(id), position INTEGER NOT NULL);
@@ -202,6 +203,17 @@ impl Store {
         {
             let (id, session) = row.map_err(db_error)?;
             w.lost_agents.insert(id, session);
+        }
+        for row in self
+            .0
+            .prepare("SELECT session_id,flags FROM agent_launch")
+            .map_err(db_error)?
+            .query_map([], |r| Ok((r.get::<_, String>(0)?, r.get::<_, String>(1)?)))
+            .map_err(db_error)?
+        {
+            let (id, flags) = row.map_err(db_error)?;
+            w.agent_launch
+                .insert(id, serde_json::from_str(&flags).map_err(db_error)?);
         }
         let mut statement = self
             .0
@@ -469,6 +481,19 @@ impl Store {
                 tx.execute("INSERT INTO lost_agents VALUES(?1,?2) ON CONFLICT(terminal_id) DO UPDATE SET session_id=excluded.session_id", params![id,session]).map_err(db_error)?;
             }
         }
+        for id in before
+            .agent_launch
+            .keys()
+            .filter(|id| !w.agent_launch.contains_key(*id))
+        {
+            tx.execute("DELETE FROM agent_launch WHERE session_id=?1", [id])
+                .map_err(db_error)?;
+        }
+        for (id, flags) in &w.agent_launch {
+            if before.agent_launch.get(id) != Some(flags) {
+                tx.execute("INSERT INTO agent_launch VALUES(?1,?2) ON CONFLICT(session_id) DO UPDATE SET flags=excluded.flags", params![id,serde_json::to_string(flags).map_err(db_error)?]).map_err(db_error)?;
+            }
+        }
         if before.pending_tasks != w.pending_tasks {
             for id in before
                 .pending_tasks
@@ -567,6 +592,45 @@ fn save_layout(db: &Connection, tab: &str, path: &str, tree: &Layout) -> io::Res
 #[cfg(test)]
 mod milestone_tests {
     use super::*;
+    #[test]
+    fn launch_flags_survive_reopen_and_go_when_dropped() {
+        let dir = std::env::temp_dir().join(format!("kl-launch-{}", uuid::Uuid::new_v4()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let (mut db, before) = Store::open(&dir).unwrap();
+        let mut after = before.clone();
+        after.agent_sessions.push(AgentSession {
+            id: "a".into(),
+            runtime: Agent::Codex,
+            cli_session_id: "c".into(),
+            terminal: None,
+            current: false,
+            task: None,
+            outcome: Outcome::Open,
+            updated: 1,
+            cwd: "/tmp".into(),
+            transcript: String::new(),
+            binding: None,
+            name: String::new(),
+        });
+        let flags = vec![
+            "-m".to_owned(),
+            "gpt-5".into(),
+            "-c".into(),
+            "a=\"b c\"".into(),
+        ];
+        after.agent_launch.insert("a".into(), flags.clone());
+        db.save(&before, &after).unwrap();
+        drop(db);
+        let (mut db, loaded) = Store::open(&dir).unwrap();
+        assert_eq!(loaded.agent_launch.get("a"), Some(&flags));
+        let mut dropped = loaded.clone();
+        dropped.agent_launch.clear();
+        db.save(&loaded, &dropped).unwrap();
+        drop(db);
+        let (_, again) = Store::open(&dir).unwrap();
+        assert!(again.agent_launch.is_empty());
+        std::fs::remove_dir_all(dir).unwrap();
+    }
     #[test]
     fn settings_and_notification_receipts_survive_restart() {
         let dir = std::env::temp_dir().join(format!("kl-settings-{}", uuid::Uuid::new_v4()));

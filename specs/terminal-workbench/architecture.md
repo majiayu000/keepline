@@ -214,7 +214,7 @@ CPU/磁盘为零但 Unix syscall 增加 2 的失败。本轮不再沿用严格�
 
 - `Theme` 是 UI token 的唯一来源；默认终端底色/前景也使用 Theme，CLI 的 ANSI/OSC 颜色保留。字体选择只解析一次，不随每帧枚举字体。
 - 主视图对齐顶栏、左栏、标签、待办条、画面（当时为固定网格，本轮已替换为分割树）、底栏；鸟瞰对齐待办行和分组卡片。只订阅可见终端，空闲无重绘计时器。
-- Codex 预填暂用 `--no-daemon`，续接命令同样携带；用户原始输入不重写。未关联命令提交后有一次 500ms 启动宽限识别，识别到托管 Codex 后才显示指定提示；不是定时 ps/lsof。已关联日志只增量读取。退出监听使用单个阻塞式 kqueue，不对每个 Agent 建立轮询线程。
+- Codex 预填和续接都不加 `--no-daemon`（2026-10-31 定：不替用户选后台，也不装包装脚本改写 `codex`）；用户原始输入不重写。未关联命令提交后有一次 500ms 启动宽限识别，识别到托管 Codex 后才显示指定提示；不是定时 ps/lsof。已关联日志只增量读取。退出监听使用单个阻塞式 kqueue，不对每个 Agent 建立轮询线程。
 - 修订推送只携带状态与版本；客户端收到新版本后读取工作区，处理请求期间漏过的更新也会补取。没有新增后台轮询。
 - 对照图片使用真实 GPUI 原生渲染导出、隔离模拟 CLI 和真实 PTY，逻辑尺寸 1440×900。不是用户正式会话或真实 Agent 调用。原生应用的最终人工体验和输入法仍待手测。
 
@@ -425,3 +425,18 @@ R14 否定：为截图增加假时间、模型完成证据、空位、专注按�
 先验证当前 Task→Shell→Agent 输入框交接，再决定是否调整就绪判断。验收：登录/信任/审批菜单不接收待办文本、进入 Agent 输入框只粘贴一次且不自动发送；真实会话正确归属；Claude 审批屏幕兜底与「完成。」分组分别验证。只使用隔离 runtime 和已授权最小真实回合，不读 Claude 官方凭据，不改用户配置。认证失败或环境无法提供原生证据时明确记未验证，不以替身或日志重放替代。证据见 evidence/real-start-20261022。
 
 采用：保留原交接状态机与 60 秒超时，只收紧客户端输入就绪判断。真实 Claude 2.1.302 主题页、安全说明页、无编号信任页也启用 bracketed paste，所以须同时观察当前输入提示符并排除菜单确认提示；旧菜单不影响后续输入。拒绝仅凭模式/静止时间投递。无编号信任页最终原生复验因锁屏仍待验证，不能把单测当真实通过。
+
+## 恢复对话带回启动参数；不强制 `--no-daemon`（2026-10-31）
+
+决定的事：重启或断电后，窗格里的 Agent 接回同一段对话时，能不能保持原来的模型、权限和配置。放弃条件：恢复时报参数重复，或者绕过了用户本该生效的设置。
+
+不采用（2026-10-31 用户明确否决）：给 Keepline 窗格里的 `codex` 自动加 `--no-daemon`（旧分支 `feat/codex-exact-resume` 用 PATH 最前的包装脚本实现）。它改写用户输入，违背上面「用户原始输入不重写」。连共用后台的 Codex 继续靠 R15 的回车时刻关联和标题状态。
+
+留作依据的实测（2026-10-31，Codex 0.165 前端 + 0.166 共用后台）：两个终端分别带 `KL_TEST_PANE=A`、`B` 启动不带参数的 `codex`，各发一句话。四次 hook（两次 SessionStart、两次 UserPromptSubmit）的父进程都是共用后台，都读不到 `KL_TEST_PANE`，读到的 `HERDR_PANE_ID` 都是最先拉起共用后台的那个窗格。hook 输入只有 session_id、cwd、model、permission_mode、prompt，没有客户端标识。所以「SessionStart hook 读窗格环境变量」（Herdr 的做法）在共用后台下会把所有对话报到同一个窗格，不能用来认窗格。另外，带 `-c` 或 `--dangerously-bypass-hook-trust` 启动的 Codex 会改用自带后台，复现时必须用不带参数的 `codex`。
+
+采用：
+1. 后台识别出某个窗格当前对话的 Agent 进程时，从它的 argv 取出恢复要带的参数，按对话 id 存进 `agent_launch` 表。Codex：`-m`、`-c`、`-p`、`-s`、`-a`、`--add-dir`、`--yolo`、`--dangerously-bypass-approvals-and-sandbox` 等，**不含 `--no-daemon` / `--remote`**；Claude：`--model`、`--permission-mode`、`--dangerously-skip-permissions`、`--add-dir` 等。提示词、旧的 resume / session id、`-C` 和 cwd 不带。重新不带参数启动后记录随之清掉。
+2. 有记录的恢复命令写成 `command <cli> <参数> <原 resume 模板剩余部分>`，`command` 绕过用户同名的包装函数，因为这些参数已经经过它一次，Codex 遇到重复参数会报错。没有记录的仍是原来的 `codex resume <id>`。声明式 Agent 和 Grok / Cursor / Qoder 暂不取参数。
+
+已验：单元测试覆盖 node 包装和原生子进程两种 argv、Claude 列表参数、存库重开与清除、恢复命令拼接与引号。
+未验：真实 App 里重启后台后带参数接回的完整流程；`CLAUDE_CONFIG_DIR`、`CODEX_HOME` 这类环境变量不随恢复带回。

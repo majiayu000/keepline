@@ -31,6 +31,45 @@ impl Adapter for Codex {
     fn process_session(&self, _pid: u32, args: &[String]) -> (Option<String>, bool) {
         codex_args(args)
     }
+    /// Model, permissions and config. Never `--no-daemon` or `--remote`: a resume runs on
+    /// whichever server the user's own `codex` picks. An `app-server` child carries the
+    /// TUI's internal `-c` settings, not the user's, so it says nothing.
+    fn launch_flags(&self, args: &[String]) -> Vec<String> {
+        if args.iter().any(|a| a == "app-server") {
+            return Vec::new();
+        }
+        super::carried(
+            args,
+            "codex",
+            &[
+                "--dangerously-bypass-approvals-and-sandbox",
+                "--yolo",
+                "--approve-for-me",
+                "--dangerously-bypass-hook-trust",
+                "--search",
+                "--oss",
+                "--no-alt-screen",
+                "--strict-config",
+            ],
+            &[
+                "-c",
+                "--config",
+                "--enable",
+                "--disable",
+                "-m",
+                "--model",
+                "--local-provider",
+                "-p",
+                "--profile",
+                "-s",
+                "--sandbox",
+                "-a",
+                "--ask-for-approval",
+                "--add-dir",
+            ],
+            &[],
+        )
+    }
     // A session_meta line may exceed the 16 KiB head budget because of base_instructions.
     // Decode only complete top-level metadata values in its prefix, never scan its body.
     fn header_value(&self, bytes: &[u8]) -> Option<Value> {
@@ -517,6 +556,7 @@ mod tests {
             runtime: Some(keepline_core::model::Agent::Codex),
             cli_session_id: None,
             no_daemon,
+            launch: vec![],
         };
         let wrapper = process(1, 0, false);
         let native = process(2, 1, false);

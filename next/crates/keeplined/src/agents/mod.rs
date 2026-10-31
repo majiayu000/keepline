@@ -87,6 +87,10 @@ pub trait Adapter: Sync {
     fn runs(&self, executable: &str, script: Option<&str>) -> bool;
     /// The conversation a live process names, and whether it opens its own transcript.
     fn process_session(&self, pid: u32, args: &[String]) -> (Option<String>, bool);
+    /// The flags in a live process's argv that resuming its conversation should repeat.
+    fn launch_flags(&self, _args: &[String]) -> Vec<String> {
+        Vec::new()
+    }
     /// A file the CLI rewrites when a process opens or closes a session. A process can
     /// write its transcript before registering, so a change here identifies processes again.
     fn registry(&self, _root: &Path) -> Option<PathBuf> {
@@ -246,4 +250,46 @@ fn temporary(cwd: &str) -> bool {
     ]
     .iter()
     .any(|root| cwd == *root || cwd.starts_with(&format!("{root}/")))
+}
+
+/// The flags after `executable` in an argv that a resume repeats: `flags` stand alone,
+/// `values` take the next argument (or `=value`), `lists` every argument up to the next
+/// flag. Subcommands, prompts, ids and unlisted flags stay behind.
+pub(crate) fn carried(
+    args: &[String],
+    executable: &str,
+    flags: &[&str],
+    values: &[&str],
+    lists: &[&str],
+) -> Vec<String> {
+    let Some(start) = args
+        .iter()
+        .position(|a| Path::new(a).file_name().is_some_and(|n| n == executable))
+    else {
+        return Vec::new();
+    };
+    let mut out = Vec::new();
+    let mut rest = args[start + 1..].iter().peekable();
+    while let Some(arg) = rest.next() {
+        if arg == "--" {
+            break;
+        }
+        let name = arg.split_once('=').map_or(arg.as_str(), |(name, _)| name);
+        if flags.contains(&arg.as_str()) {
+            out.push(arg.clone());
+        } else if values.contains(&name) || lists.contains(&name) {
+            out.push(arg.clone());
+            if name.len() != arg.len() {
+                continue;
+            }
+            if lists.contains(&name) {
+                while let Some(value) = rest.next_if(|v| !v.starts_with('-')) {
+                    out.push(value.clone());
+                }
+            } else if let Some(value) = rest.next() {
+                out.push(value.clone());
+            }
+        }
+    }
+    out
 }

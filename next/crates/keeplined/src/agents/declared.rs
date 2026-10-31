@@ -248,6 +248,7 @@ mod tests {
             runtime: Some(d.agent()),
             cli_session_id: None,
             no_daemon: false,
+            launch: vec![],
         };
         let Pending::Unrecorded(hint) = d.pending(&process, &[]) else {
             panic!("expected a note");

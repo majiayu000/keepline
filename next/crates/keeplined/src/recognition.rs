@@ -25,6 +25,8 @@ pub struct Process {
     pub cli_session_id: Option<String>,
     /// Codex started with `--no-daemon`: its own process opens the log, so lsof will bind it.
     pub no_daemon: bool,
+    /// The flags a resume of its conversation repeats; empty for other processes.
+    pub launch: Vec<String>,
 }
 #[derive(Clone, Debug)]
 pub struct Transcript {
@@ -262,12 +264,16 @@ pub fn processes(workspace: &Workspace) -> io::Result<Vec<Process>> {
         let (cli_session_id, no_daemon) = runtime
             .map(|a| crate::agents::adapter(a).process_session(pid, &args))
             .unwrap_or_default();
+        let launch = runtime
+            .map(|a| crate::agents::adapter(a).launch_flags(&args))
+            .unwrap_or_default();
         processes.push(Process {
             pid,
             parent,
             runtime,
             cli_session_id,
             no_daemon,
+            launch,
         });
     }
     Ok(processes)
@@ -404,6 +410,35 @@ pub fn apply_hook(
     let mut observed = bound(transcript, terminal, Binding::Hook);
     observed.current = !ended;
     workspace.observe_agent(observed).map_err(io::Error::other)
+}
+/// Remember how each managed terminal's current conversation was started, while its
+/// process is still there to ask: a host back from a crash or reboot resumes with the same
+/// flags. A node wrapper and its native child carry the same ones; the first counts.
+pub fn record_launch(workspace: &mut Workspace, processes: &[Process]) {
+    let mut seen = HashMap::new();
+    for process in processes {
+        let Some(runtime) = process.runtime else {
+            continue;
+        };
+        let Some(terminal) = terminal_for_process(process.pid, processes, workspace) else {
+            continue;
+        };
+        if let Some(session) = workspace
+            .agent_sessions
+            .iter()
+            .find(|s| s.current && s.runtime == runtime && s.terminal.as_ref() == Some(&terminal))
+        {
+            seen.entry(session.id.clone())
+                .or_insert_with(|| process.launch.clone());
+        }
+    }
+    for (id, flags) in seen {
+        if flags.is_empty() {
+            workspace.agent_launch.remove(&id);
+        } else {
+            workspace.agent_launch.insert(id, flags);
+        }
+    }
 }
 /// Refresh existing conversations, then bind only a single matching open transcript per live Agent.
 /// Unassociated historical files stay in the SQLite index, outside the live workspace payload.
@@ -643,10 +678,26 @@ mod tests {
     }
     #[test]
     fn agent_hint_reads_only_its_own_variable_after_argv() {
-        let b = procargs_of(&["nono", "KEEPLINE_AGENT=codex"], &["HOME=/x", "KEEPLINE_AGENT=Claude"]);
-        assert_eq!(env_value(&b, "KEEPLINE_AGENT").as_deref(), Some("Claude"), "argv is not the environment");
-        assert_eq!(env_value(&procargs_of(&["nono"], &["HOME=/x"]), "KEEPLINE_AGENT"), None);
-        assert_eq!(env_value(&procargs_of(&["nono"], &["KEEPLINE_AGENTX=claude"]), "KEEPLINE_AGENT"), None);
+        let b = procargs_of(
+            &["nono", "KEEPLINE_AGENT=codex"],
+            &["HOME=/x", "KEEPLINE_AGENT=Claude"],
+        );
+        assert_eq!(
+            env_value(&b, "KEEPLINE_AGENT").as_deref(),
+            Some("Claude"),
+            "argv is not the environment"
+        );
+        assert_eq!(
+            env_value(&procargs_of(&["nono"], &["HOME=/x"]), "KEEPLINE_AGENT"),
+            None
+        );
+        assert_eq!(
+            env_value(
+                &procargs_of(&["nono"], &["KEEPLINE_AGENTX=claude"]),
+                "KEEPLINE_AGENT"
+            ),
+            None
+        );
         assert_eq!(agent_named("Claude"), Some(Agent::Claude));
         assert_eq!(agent_named(" codex "), Some(Agent::Codex));
         assert_eq!(agent_named("vim"), None);
@@ -655,7 +706,12 @@ mod tests {
     fn agent_hint_counts_the_outermost_wrapper_unless_the_cli_shows_below() {
         let c = Some(Agent::Claude);
         // shell 1 → wrapper 2 (hint) → child 3 (inherits hint) → tool 4 (inherits hint).
-        let wrapped = [(1, 0, None, None), (2, 1, None, c), (3, 2, None, c), (4, 3, None, c)];
+        let wrapped = [
+            (1, 0, None, None),
+            (2, 1, None, c),
+            (3, 2, None, c),
+            (4, 3, None, c),
+        ];
         assert_eq!(hinted_roots(&wrapped), HashMap::from([(2, Agent::Claude)]));
         // The real CLI is visible under the wrapper: it is counted by name, the hint is not.
         let visible = [(1, 0, None, None), (2, 1, None, c), (3, 2, c, None)];
@@ -998,6 +1054,7 @@ mod tests {
             runtime: Some(Agent::Codex),
             cli_session_id: Some(id.clone()),
             no_daemon: false,
+            launch: vec![],
         };
         let shell = Process {
             pid: 100,
@@ -1005,6 +1062,7 @@ mod tests {
             runtime: None,
             cli_session_id: None,
             no_daemon: false,
+            launch: vec![],
         };
         let processes = vec![shell, process(101, 100), process(102, 101)];
         let transcripts = vec![Transcript {
@@ -1016,6 +1074,123 @@ mod tests {
         }];
         reconcile(&mut w, &transcripts, &processes, &HashMap::new()).unwrap();
         assert_eq!(w.current_agent("pty").unwrap().cli_session_id, id);
+    }
+
+    #[test]
+    fn a_current_conversation_keeps_the_flags_its_agent_was_started_with() {
+        let argv = |a: &[&str]| a.iter().map(|s| s.to_string()).collect::<Vec<String>>();
+        let id = uuid::Uuid::new_v4().to_string();
+        let codex = crate::agents::adapter(Agent::Codex);
+        // Wrapper or native child: the same flags, without cwd, subcommand, id or prompt,
+        // and never `--no-daemon`: a resume uses whatever server the user's codex picks.
+        let flags = argv(&["--yolo", "-m", "gpt-5", "-c", "a=1"]);
+        for start in [&["node", "/opt/homebrew/bin/codex"][..], &["/v/bin/codex"]] {
+            let mut args = argv(start);
+            args.extend(argv(&[
+                "--yolo",
+                "--no-daemon",
+                "-m",
+                "gpt-5",
+                "-C",
+                "/x",
+                "-c",
+            ]));
+            args.extend(argv(&["a=1", "resume", &id, "继续"]));
+            assert_eq!(codex.launch_flags(&args), flags);
+        }
+        // The TUI's app-server child, as seen on this machine: its `-c` are not the user's.
+        assert!(codex
+            .launch_flags(&argv(&[
+                "/v/bin/codex",
+                "app-server",
+                "-c",
+                "features.shell_tool=false",
+            ]))
+            .is_empty());
+        // The shape of a real pane's Codex, read from `ps` on this machine.
+        assert_eq!(
+            codex.launch_flags(&argv(&[
+                "/opt/homebrew/lib/node_modules/@openai/codex/node_modules/@openai/codex-darwin-arm64/vendor/aarch64-apple-darwin/bin/codex",
+                "--dangerously-bypass-approvals-and-sandbox",
+                "resume",
+                &id,
+            ])),
+            argv(&["--dangerously-bypass-approvals-and-sandbox"])
+        );
+        // Claude lists run to the next flag; `=value` stays one argument.
+        let claude = argv(&[
+            "claude",
+            "--dangerously-skip-permissions",
+            "--add-dir",
+            "a",
+            "b",
+            "--model=opus",
+            "--session-id",
+            "u",
+            "hello",
+        ]);
+        assert_eq!(
+            crate::agents::adapter(Agent::Claude).launch_flags(&claude),
+            argv(&[
+                "--dangerously-skip-permissions",
+                "--add-dir",
+                "a",
+                "b",
+                "--model=opus"
+            ])
+        );
+
+        let mut w = Workspace::default();
+        w.terminals.push(Terminal {
+            id: "pty".into(),
+            space: "s".into(),
+            argv: vec!["sh".into()],
+            cwd: "/same".into(),
+            pid: Some(100),
+            state: ProcessState::Running,
+            exit_code: None,
+            error: None,
+        });
+        let process = |pid, parent, launch: &Vec<String>| Process {
+            pid,
+            parent,
+            runtime: Some(Agent::Codex),
+            cli_session_id: Some(id.clone()),
+            no_daemon: false,
+            launch: launch.clone(),
+        };
+        let shell = Process {
+            pid: 100,
+            parent: 1,
+            runtime: None,
+            cli_session_id: None,
+            no_daemon: false,
+            launch: vec![],
+        };
+        let transcripts = vec![Transcript {
+            runtime: Agent::Codex,
+            cli_id: id.clone(),
+            path: "/logs/x.jsonl".into(),
+            cwd: "/same".into(),
+            updated: 1,
+        }];
+        let processes = vec![
+            shell.clone(),
+            process(101, 100, &flags),
+            process(102, 101, &flags),
+        ];
+        reconcile(&mut w, &transcripts, &processes, &HashMap::new()).unwrap();
+        record_launch(&mut w, &processes);
+        let session = w.current_agent("pty").unwrap().clone();
+        assert_eq!(w.agent_launch.get(&session.id), Some(&flags));
+        assert_eq!(
+            w.resume_command(&session),
+            format!("command codex --yolo -m gpt-5 -c a=1 resume '{id}'")
+        );
+        // Started again without flags: nothing left to repeat.
+        record_launch(&mut w, &[shell, process(103, 100, &vec![])]);
+        assert!(!w.agent_launch.contains_key(&session.id));
+        assert_eq!(w.resume_command(&session), format!("codex resume '{id}'"));
     }
 
     #[test]
@@ -1041,6 +1216,7 @@ mod tests {
                 runtime: Some(Agent::Claude),
                 cli_session_id: (i < 2).then(|| id.clone()),
                 no_daemon: false,
+                launch: vec![],
             });
             transcripts.push(Transcript {
                 runtime: Agent::Claude,
@@ -1113,6 +1289,7 @@ mod tests {
                 runtime: None,
                 cli_session_id: None,
                 no_daemon: false,
+                launch: vec![],
             },
             Process {
                 pid: 101,
@@ -1120,6 +1297,7 @@ mod tests {
                 runtime: Some(Agent::Codex),
                 cli_session_id: None,
                 no_daemon: false,
+                launch: vec![],
             },
         ];
         reconcile(&mut workspace, &transcripts, &processes, &HashMap::new()).unwrap();
