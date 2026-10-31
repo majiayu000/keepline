@@ -146,6 +146,19 @@ impl Workbench {
                                 .text_color(T::color(T::muted())),
                         )
                     })
+                    .when_some(
+                        self.git_divergence(&space.cwd, cx)
+                            .and_then(super::divergence::divergence_label),
+                        |d, counts| {
+                            d.child(
+                                label(counts)
+                                    .flex_shrink_0()
+                                    .text_size(px(T::CHIP_SIZE))
+                                    .text_color(T::color(T::muted()))
+                                    .font_features(T::tabular()),
+                            )
+                        },
+                    )
                     // A deleted worktree leaves the space pointing nowhere; new terminals
                     // fall back to home, and a click here picks the folder again.
                     .when(missing, |d| {
