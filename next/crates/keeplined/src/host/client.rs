@@ -486,6 +486,14 @@ pub(super) fn dispatch(shared: &Shared, request: Request) -> io::Result<Reply> {
             send_text(shared, &id, &text, submit)?;
             Ok(Reply::Ok)
         }
+        Request::AnswerApproval {
+            id,
+            question,
+            allow,
+        } => {
+            answer_approval(shared, &id, &question, allow)?;
+            Ok(Reply::Ok)
+        }
         Request::TerminalCwd { id } => {
             let host = lock(shared)?;
             let terminal = host
@@ -615,4 +623,45 @@ pub(super) fn send_text(shared: &Shared, id: &str, text: &str, submit: bool) -> 
     thread::sleep(Duration::from_millis(150));
     pty::write(&mut lock(&terminal)?.master, b"\r")?;
     record_submission(shared, id)
+}
+/// Enter for 允许一次, Esc for 拒绝, sent only while the screen still shows `question`
+/// as an approval, read again under the same lock the key is written under: an approval
+/// answered in the pane meanwhile gets nothing typed into what replaced it.
+pub(super) fn answer_approval(
+    shared: &Shared,
+    id: &str,
+    question: &str,
+    allow: bool,
+) -> io::Result<()> {
+    let (terminal, rules) = {
+        let host = lock(shared)?;
+        let terminal = host
+            .terminals
+            .get(id)
+            .cloned()
+            .ok_or_else(|| io::Error::other("terminal not found"))?;
+        let rules = host.workspace.current_agent(id).map(|s| s.runtime).map_or_else(
+            crate::screen_rules::default_rules,
+            crate::screen_rules::rules,
+        );
+        (terminal, rules)
+    };
+    {
+        let mut live = lock(&terminal)?;
+        if live.exited {
+            return Err(io::Error::other("terminal has exited"));
+        }
+        let tail = live.vt.tail_text(usize::from(live.rows))?;
+        let seen = crate::screen_rules::explain(rules, &tail);
+        if seen.approval() != Some(question) {
+            return Err(io::Error::other("画面上已经没有这个审批了，可能已经答过"));
+        }
+        // Enter takes whichever option the cursor is on; only the first one is 允许一次.
+        if allow && !seen.cursor_on_first() {
+            return Err(io::Error::other("光标不在第一个选项上，请打开画面回答"));
+        }
+        pty::write(&mut live.master, if allow { b"\r" } else { b"\x1b" })?;
+        live.input_at = Some(Instant::now());
+    }
+    lock(shared)?.set_screen_wait(id, None)
 }

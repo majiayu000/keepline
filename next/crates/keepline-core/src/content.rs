@@ -77,6 +77,10 @@ pub struct Content {
     /// The last quiet-screen check that found no prompt and why. Live only, never stored.
     #[serde(default)]
     pub screen_check: String,
+    /// The approval question on screen now, when the screen rule `approval` takes it;
+    /// what 允许一次 / 拒绝 answer. Live only, never stored.
+    #[serde(default)]
+    pub approval: String,
     /// A Codex subagent's parent thread id and its name, from its own session header.
     #[serde(default)]
     pub parent: String,

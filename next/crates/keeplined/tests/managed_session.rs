@@ -3881,3 +3881,88 @@ fn command_line_lists_reads_sends_and_refuses_to_type_into_an_approval() {
         std::thread::sleep(Duration::from_millis(100));
     }
 }
+
+/// 允许一次 / 拒绝 from the workbench: the host answers only the approval still on
+/// screen, with the cursor on its first option, and never types into what replaced it.
+#[test]
+fn answering_an_approval_rereads_the_screen_and_never_types_into_what_replaced_it() {
+    let h = Host::start();
+    h.setup();
+    let logs = h.root.join("logs/claude");
+    fs::create_dir_all(&logs).unwrap();
+    let claude = h.root.join("claude");
+    std::os::unix::fs::symlink("/bin/sh", &claude).unwrap();
+    let id = uuid::Uuid::new_v4().to_string();
+    let seed = h.root.join("seed");
+    let row = serde_json::json!({"type":"user","sessionId":id,"uuid":"u0","cwd":"/project","entrypoint":"cli","userType":"external","timestamp":keepline_core::content::now(),"message":{"content":"answer test"}});
+    fs::write(&seed, format!("{row}\n")).unwrap();
+    // A second approval whose cursor sits on 「No」: Enter there would deny, so allow is refused.
+    let script = format!(
+        "cat {} > {}; printf '%s\\n' 'Bash command' '  git push origin main' 'Do you want to proceed?' '> 1. Yes' '  2. No'; read -r answer; printf '\\033[2J\\033[Hanswer=[%s]\\n' \"$answer\"; printf '%s\\n' 'Bash command' '  rm -rf build' 'Do you want to remove?' '  1. Yes' '> 2. No'; read -r end",
+        shell_quote(&seed.to_string_lossy()),
+        shell_quote(&logs.join(format!("{id}.jsonl")).to_string_lossy())
+    );
+    h.call(h.launch(
+        "approve",
+        &format!(
+            "exec {} -c {} fixture --session-id {}",
+            shell_quote(&claude.to_string_lossy()),
+            shell_quote(&script),
+            id
+        ),
+    ))
+    .unwrap();
+    let approval = |h: &Host| {
+        let w = h.workspace();
+        w.current_agent("approve")
+            .and_then(|s| w.content.get(&s.id))
+            .map(|c| c.approval.clone())
+            .unwrap_or_default()
+    };
+    let until = Instant::now() + Duration::from_secs(90);
+    while approval(&h) != "Do you want to proceed?" {
+        assert!(Instant::now() < until, "approval never showed: {:?}", approval(&h));
+        std::thread::sleep(Duration::from_millis(100));
+    }
+    let answer = |question: &str, allow: bool| {
+        h.call(Request::AnswerApproval {
+            id: "approve".into(),
+            question: question.into(),
+            allow,
+        })
+    };
+    let screen = |h: &Host| match h
+        .call(Request::ReadScreen {
+            id: "approve".into(),
+            rows: 24,
+        })
+        .unwrap()
+    {
+        Reply::Text(t) => t,
+        x => panic!("{x:?}"),
+    };
+    // Another question than the one on screen: nothing is typed.
+    let e = answer("Do you want to delete?", true).unwrap_err();
+    assert!(e.to_string().contains("已经没有这个审批"), "{e}");
+    std::thread::sleep(Duration::from_millis(300));
+    assert!(!screen(&h).contains("answer="), "{}", screen(&h));
+    assert!(matches!(answer("Do you want to proceed?", true), Ok(Reply::Ok)));
+    let until = Instant::now() + Duration::from_secs(10);
+    while !screen(&h).contains("answer=[]") {
+        assert!(Instant::now() < until, "Enter never arrived: {}", screen(&h));
+        std::thread::sleep(Duration::from_millis(50));
+    }
+    // A second press on the answered approval finds the next screen and types nothing.
+    let e = answer("Do you want to proceed?", true).unwrap_err();
+    assert!(e.to_string().contains("已经没有这个审批"), "{e}");
+    // The cursor is on 「No」: allowing is refused, denying sends Esc.
+    let until = Instant::now() + Duration::from_secs(30);
+    loop {
+        match answer("Do you want to remove?", true) {
+            Err(e) if e.to_string().contains("光标不在第一个选项") => break,
+            r => assert!(Instant::now() < until, "cursor check: {r:?}"),
+        }
+        std::thread::sleep(Duration::from_millis(100));
+    }
+    assert!(matches!(answer("Do you want to remove?", false), Ok(Reply::Ok)));
+}

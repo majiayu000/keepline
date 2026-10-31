@@ -1499,6 +1499,118 @@ pub fn start(
         .detach();
         return;
     }
+    // Peek: a session waiting at an approval in a hidden tab floats over the shown one,
+    // is answered from the peek's title bar, and its terminal keeps its own size.
+    if let (Some(handle), Some(directory)) = (&handle, evidence.clone())
+        && std::env::var_os("KEEPLINE_PEEK_EVIDENCE").is_some()
+    {
+        let handle = *handle;
+        cx.spawn(async move |cx| {
+            let executor = cx.background_executor().clone();
+            let wait = move |ms| executor.timer(Duration::from_millis(ms));
+            wait(1500).await;
+            std::fs::create_dir_all(&directory).unwrap();
+            let socket = handle.update(cx, |v, _, _| v.visual_socket()).unwrap();
+            let root = socket.parent().unwrap().to_owned();
+            let call = |r: Request| rpc(&socket, &r).unwrap();
+            let workspace = || match call(Request::Workspace) { Reply::Workspace(w) => w, x => panic!("{x:?}") };
+            let w = workspace();
+            let space = match w.spaces.first() {
+                Some(s) => s.id.clone(),
+                None => {
+                    call(Request::Edit { revision: w.revision, edit: Edit::AddSpace(Space { id: "s".into(), name: "Tests".into(), cwd: "/tmp".into() }) });
+                    "s".into()
+                }
+            };
+            // A Claude stand-in: its transcript names the session, then it asks.
+            let logs = PathBuf::from(std::env::var_os("CLAUDE_CONFIG_DIR").expect("scratch CLAUDE_CONFIG_DIR")).join("projects/-tmp");
+            std::fs::create_dir_all(&logs).unwrap();
+            let claude = root.join("claude");
+            let _ = std::os::unix::fs::symlink("/bin/sh", &claude);
+            let id = format!("{:08x}-0000-4000-8000-000000000001", std::process::id());
+            let seed = root.join("seed");
+            let row = serde_json::json!({"type":"user","sessionId":id,"uuid":"u0","cwd":"/tmp","entrypoint":"cli","userType":"external","timestamp":keepline_core::content::now(),"message":{"content":"发布前检查"}});
+            std::fs::write(&seed, format!("{row}\n")).unwrap();
+            let script = format!(
+                "cat '{}' > '{}'; printf '%s\\n' '⏺ 测试都过了，准备推送到远端。' '' '⏺ Bash(git push origin feat/release)' '' 'Bash command' '  git push origin feat/release' 'Do you want to proceed?' '❯ 1. Yes' \"  2. Yes, and don't ask again for git push\" '  3. No, and tell Claude what to do differently (esc)'; read -r answer; printf '\\033[2J\\033[Hanswer=[%s] size=%s\\n' \"$answer\" \"$(stty size)\"; read -r end; echo \"end=[$end]\"; sleep 600",
+                seed.display(), logs.join(format!("{id}.jsonl")).display()
+            );
+            let launch = |tid: &str, argv: Vec<String>| {
+                call(Request::Launch { id: tid.into(), space: space.clone(), argv, cwd: "/tmp".into(), cols: 100, rows: 30, scheme: Default::default() });
+                let w = workspace();
+                call(Request::Edit { revision: w.revision, edit: Edit::PutTab { tab: Tab { id: format!("tab-{tid}"), space: space.clone(), default_task: None, title: tid.into(), layout: Some(Layout::Leaf(tid.into())) } } });
+            };
+            launch("agent", vec!["/bin/sh".into(), "-c".into(), format!("exec '{}' -c \"$0\" fixture --session-id {id}", claude.display()), script]);
+            launch("shell", vec!["/bin/sh".into(), "-c".into(), "printf '~/keepline $ cargo test\\n'; sleep 600".into()]);
+            wait(500).await;
+            handle.update(cx, |v, _, a| v.visual_peek_show_tab("shell", a)).unwrap();
+            // The session binds and the screen rule sees the approval within a few seconds.
+            let mut seen = None;
+            for _ in 0..120 {
+                wait(500).await;
+                let opened = handle.update(cx, |v, w, a| v.visual_peek_row("agent", w, a)).unwrap();
+                seen = handle.update(cx, |v, _, _| v.visual_peek_state()).unwrap();
+                if opened && seen.as_ref().is_some_and(|(_, a, _)| a.is_some()) { break; }
+            }
+            let (terminal, approval, _) = seen.expect("peek never opened");
+            assert_eq!(terminal, "agent");
+            assert_eq!(approval.as_deref(), Some("Do you want to proceed?"), "approval not offered");
+            assert!(handle.update(cx, |v, w, a| v.visual_peek_focused(w, a)).unwrap(), "peek not focused");
+            let shot = |name: &str, cx: &mut gpui::AsyncApp| {
+                cx.update_window(handle.into(), |_, w, a| {
+                    w.refresh(); w.draw(a).clear(a);
+                    w.render_to_image().unwrap().save(directory.join(name)).unwrap();
+                }).unwrap();
+            };
+            wait(300).await;
+            shot("1-peek-light.png", cx);
+            cx.update(|a| crate::ui::appearance::choose(crate::ui::appearance::Appearance::Dark, a).unwrap());
+            wait(300).await;
+            shot("1-peek-dark.png", cx);
+            cx.update(|a| crate::ui::appearance::choose(crate::ui::appearance::Appearance::Light, a).unwrap());
+            let screen = || match call(Request::ReadScreen { id: "agent".into(), rows: 30 }) { Reply::Text(t) => t, x => panic!("{x:?}") };
+            handle.update(cx, |v, _, a| v.visual_peek_answer(true, a)).unwrap();
+            let mut answered = false;
+            for _ in 0..50 {
+                wait(100).await;
+                if screen().contains("answer=[]") { answered = true; break; }
+            }
+            assert!(answered, "允许一次 never reached the Agent: {}", screen());
+            // The peek never resized the terminal it looked at.
+            assert!(screen().contains("size=30 100"), "peek resized the terminal: {}", screen());
+            wait(500).await;
+            shot("2-answered.png", cx);
+            // The same answer again finds no approval and types nothing.
+            let w = workspace();
+            let stale = rpc(&socket, &Request::AnswerApproval { id: "agent".into(), question: "Do you want to proceed?".into(), allow: true });
+            assert!(stale.is_err(), "answered twice: {stale:?} rev {}", w.revision);
+            // Esc closes the peek and is not typed into the Agent.
+            cx.update_window(handle.into(), |_, w, a| {
+                w.dispatch_keystroke(gpui::Keystroke::parse("escape").unwrap(), a);
+            }).unwrap();
+            wait(300).await;
+            assert!(handle.update(cx, |v, _, _| v.visual_peek_state()).unwrap().is_none(), "Esc did not close the peek");
+            call(Request::SendText { id: "agent".into(), text: "done".into(), submit: true });
+            let mut ended = String::new();
+            for _ in 0..50 {
+                wait(100).await;
+                ended = screen();
+                if ended.contains("end=[") { break; }
+            }
+            assert!(ended.contains("end=[done]"), "Esc reached the Agent: {ended}");
+            // Opening the peeked terminal's own tab ends the peek, so the tab's pane owns it.
+            handle.update(cx, |v, w, a| v.visual_peek_row("agent", w, a)).unwrap();
+            assert!(handle.update(cx, |v, _, _| v.visual_peek_state()).unwrap().is_some());
+            handle.update(cx, |v, _, a| v.visual_peek_show_tab("agent", a)).unwrap();
+            assert!(handle.update(cx, |v, _, _| v.visual_peek_state()).unwrap().is_none(), "peek kept over its own tab");
+            wait(800).await;
+            shot("3-own-tab.png", cx);
+            eprintln!("peek native PASS: hidden approval peeked, answered once, size kept, Esc closes without reaching the Agent");
+            cx.update(|cx| cx.quit());
+        })
+        .detach();
+        return;
+    }
     // The sidebar shows the space's branch; the pane menu explains the pane's state.
     if let (Some(handle), Some(directory)) = (&handle, evidence.clone())
         && std::env::var_os("KEEPLINE_WHY_EVIDENCE").is_some()

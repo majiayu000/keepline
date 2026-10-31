@@ -108,6 +108,9 @@ pub struct Pane {
     /// Shares the tab with other panes: unless it holds focus, it fades and draws no
     /// cursor, so only one cursor is in sight.
     pub split: bool,
+    /// Shown in the peek overlay: never resizes the terminal (that would reflow the
+    /// Agent's screen for its own tab), and keeps the bottom rows in view when taller.
+    pub peek: bool,
     /// The scheme this pane first painted its live program with. Agents such as Codex
     /// tint their own bands from the background they saw at start, which a later switch
     /// cannot repaint, so the pane says so until dismissed.
@@ -405,6 +408,7 @@ impl Pane {
             toast: None,
             agent: None,
             split: false,
+            peek: false,
             started_under: None,
             tint_note_dismissed: false,
         }
@@ -1729,6 +1733,16 @@ impl Render for Pane {
                     }
                 });
                 entity.update(cx, |pane, cx| {
+                    // A peek draws at the terminal's own size; one taller than the overlay
+                    // slides up so the prompt at its bottom stays in view.
+                    let bounds = match (pane.peek, pane.metrics) {
+                        (true, Some(m)) => {
+                            let tall = m.height * pane.screen.rows.len() as f32;
+                            let over = (tall - bounds.size.height).max(px(0.));
+                            Bounds::new(bounds.origin - gpui::point(px(0.), over), bounds.size)
+                        }
+                        _ => bounds,
+                    };
                     pane.bounds = Some(bounds);
                     pane.scale = window.scale_factor();
                     window.handle_input(
@@ -1896,7 +1910,8 @@ impl Render for Pane {
                         (f32::from(metrics.width) * scale).round().max(1.) as u32,
                         (f32::from(metrics.height) * scale).round().max(1.) as u32,
                     );
-                    if (pane.requested_size, pane.requested_cell) != (dims, cell)
+                    if !pane.peek
+                        && (pane.requested_size, pane.requested_cell) != (dims, cell)
                         && pane
                             .connection
                             .send(Request::Resize {

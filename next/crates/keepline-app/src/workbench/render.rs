@@ -571,6 +571,9 @@ impl Render for Workbench {
             main = main.child(grid);
         }
         main = main.children(bottom_tabs);
+        if let Some(peek) = &self.peek {
+            main = main.relative().child(self.peek_view(peek, cx));
+        }
         root = root
             .relative()
             .child(div().flex_1().min_h_0().flex().child(sidebar).child(main));

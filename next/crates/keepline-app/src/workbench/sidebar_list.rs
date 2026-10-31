@@ -207,7 +207,7 @@ impl Workbench {
                         this.rename_session(&open.id, window, cx);
                         return;
                     }
-                    this.open_session(&open, window, cx)
+                    this.peek_or_open(&open, window, cx)
                 }),
             )
             .into_any_element()

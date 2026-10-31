@@ -89,6 +89,7 @@ impl Host {
             let Some(c) = w.content.get_mut(&s.id) else {
                 continue;
             };
+            c.approval = seen.approval().unwrap_or_default().to_owned();
             match seen.question() {
                 Some(question) if c.turn != keepline_core::content::Turn::Waiting => {
                     c.turn = keepline_core::content::Turn::Waiting;
