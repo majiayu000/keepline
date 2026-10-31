@@ -4,6 +4,7 @@ use crate::content::{input, question_summary, re, text, Parser};
 use keepline_core::content::{short, Source, Turn};
 use keepline_core::model::AgentSession;
 use keepline_core::protocol::TerminalNote;
+use keepline_core::quota::{Quota, Window};
 use regex::Regex;
 use rusqlite::{Connection, OpenFlags, OptionalExtension};
 use serde::Deserialize;
@@ -147,7 +148,14 @@ impl Adapter for Codex {
                     );
                     parser.phase(Turn::Error, "", at, source);
                 }
-                "token_count" | "agent_reasoning" | "context_compacted" => (),
+                "token_count" => {
+                    if let Some(q) = quota(&p["rate_limits"], at) {
+                        if parser.card.quota.as_ref().is_none_or(|old| q.at >= old.at) {
+                            parser.card.quota = Some(q);
+                        }
+                    }
+                }
+                "agent_reasoning" | "context_compacted" => (),
                 _ => parser.card.unknown_records += 1,
             }
             return;
@@ -289,6 +297,30 @@ impl Adapter for Codex {
 
 /// Codex's own title rules (the ones Herdr reads): "Action Required" while blocked,
 /// a braille spinner while working, anything else once idle. Status only, never identity.
+/// `token_count`'s `rate_limits`: the account's windows as Codex last heard them from the
+/// server. Null windows (and API-key sign-ins, which have none) leave no reading.
+fn quota(v: &Value, at: u64) -> Option<Quota> {
+    let mut windows: Vec<Window> = ["primary", "secondary"]
+        .iter()
+        .filter_map(|key| {
+            let w = &v[*key];
+            Some(Window {
+                minutes: u32::try_from(w["window_minutes"].as_u64()?).ok()?,
+                used: w["used_percent"].as_f64()?.round().clamp(0., 999.) as u16,
+                resets_at: w["resets_at"].as_u64().unwrap_or(0),
+            })
+        })
+        .collect();
+    if windows.is_empty() {
+        return None;
+    }
+    windows.sort_by_key(|w| w.minutes);
+    Some(Quota {
+        at,
+        plan: v["plan_type"].as_str().unwrap_or("").into(),
+        windows,
+    })
+}
 fn codex_state(title: &str) -> Option<&'static str> {
     if title.trim().is_empty() {
         None
@@ -496,6 +528,59 @@ mod tests {
         );
         // `--no-daemon`: unbound, but nothing to say until its first prompt.
         assert_eq!(Codex.pending(&process(3, 0, true), &[]), Pending::Quiet);
+    }
+    #[test]
+    fn token_counts_keep_the_newest_account_limits() {
+        let record = |limits: Value| json!({"type": "event_msg", "payload": {"type": "token_count", "rate_limits": limits}});
+        let mut parser = Parser::default();
+        let source = Source::default();
+        Codex.add(
+            &mut parser,
+            &record(json!({
+                "primary": {"used_percent": 19.0, "window_minutes": 300, "resets_at": 1793399825},
+                "secondary": {"used_percent": 88.6, "window_minutes": 10080, "resets_at": 1793774131},
+                "plan_type": "plus"
+            })),
+            200,
+            &source,
+        );
+        let q = parser.card.quota.clone().unwrap();
+        assert_eq!((q.at, q.plan.as_str()), (200, "plus"));
+        assert_eq!(
+            q.windows
+                .iter()
+                .map(|w| (w.label(), w.used))
+                .collect::<Vec<_>>(),
+            [("5h".to_string(), 19), ("周".to_string(), 89)]
+        );
+        // A weekly-only plan, then an older record replayed: the newer reading stays.
+        Codex.add(
+            &mut parser,
+            &record(json!({
+                "primary": {"used_percent": 3.0, "window_minutes": 10080, "resets_at": 1},
+                "secondary": null, "plan_type": "pro"
+            })),
+            300,
+            &source,
+        );
+        Codex.add(
+            &mut parser,
+            &record(json!({"primary": {"used_percent": 50.0, "window_minutes": 300}})),
+            100,
+            &source,
+        );
+        let q = parser.card.quota.clone().unwrap();
+        assert_eq!((q.at, q.plan.as_str(), q.windows.len()), (300, "pro", 1));
+        // No windows (an API-key sign-in) is no reading, not an empty one.
+        Codex.add(
+            &mut parser,
+            &record(json!({"primary": null, "secondary": null})),
+            400,
+            &source,
+        );
+        Codex.add(&mut parser, &record(Value::Null), 500, &source);
+        assert_eq!(parser.card.quota.unwrap().at, 300);
+        assert_eq!(parser.card.unknown_records, 0);
     }
     use std::io::Write;
 

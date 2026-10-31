@@ -26,6 +26,32 @@ pub fn clock(at: u64) -> String {
     };
     String::from_utf8_lossy(&buf[..len]).into_owned()
 }
+/// When a future moment falls, as a person would say it: `今天 22:37`, `明天 09:00`,
+/// `周五 07:15` within the week, `11月8日` beyond it.
+pub fn upcoming(at: u64, now: u64) -> String {
+    let local = |t: u64| {
+        // SAFETY: localtime_r writes only into the local handed to it.
+        unsafe {
+            let t = t as libc::time_t;
+            let mut tm = std::mem::zeroed::<libc::tm>();
+            libc::localtime_r(&t, &mut tm);
+            tm
+        }
+    };
+    let (then, today) = (local(at), local(now));
+    let hm = format!("{:02}:{:02}", then.tm_hour, then.tm_min);
+    // Day numbers since the epoch in local time, so midnight is the boundary.
+    let day = |t: u64, tm: &libc::tm| (t as i64 + tm.tm_gmtoff) / DAY as i64;
+    match day(at, &then) - day(now, &today) {
+        d if d <= 0 => format!("今天 {hm}"),
+        1 => format!("明天 {hm}"),
+        d if d < 7 => {
+            let names = ["周日", "周一", "周二", "周三", "周四", "周五", "周六"];
+            format!("{} {hm}", names[then.tm_wday.clamp(0, 6) as usize])
+        }
+        _ => format!("{}月{}日", then.tm_mon + 1, then.tm_mday),
+    }
+}
 pub fn age(at: u64) -> String {
     let minutes = now().saturating_sub(at) / 60;
     if minutes == 0 {
@@ -67,5 +93,12 @@ mod tests {
         assert_eq!(recency(0, 3600), "最近 24 小时");
         assert_eq!(recency(0, 3 * 86_400), "最近 7 天");
         assert_eq!(recency(0, 30 * 86_400), "更早");
+    }
+    #[test]
+    fn upcoming_labels_count_local_days() {
+        let now = 1_793_000_000;
+        assert!(upcoming(now + 60, now).ends_with(&clock(now + 60)[..5]));
+        assert!(upcoming(now + 2 * DAY, now).starts_with('周'));
+        assert!(upcoming(now + 30 * DAY, now).ends_with('日'));
     }
 }
