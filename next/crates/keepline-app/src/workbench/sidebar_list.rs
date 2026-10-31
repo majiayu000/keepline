@@ -6,6 +6,12 @@ use keepline_core::sidebar::{self as presets, Bucket, Detail, Grouping, Preset};
 
 /// A session the column lists: its shown state and whether it still asks for a look.
 pub(super) type Listed<'a> = (&'a AgentSession, Group, bool);
+/// What a session row ends with: its state (or age, once seen), a text, or nothing.
+pub(super) enum End {
+    State,
+    Text(String),
+    Nothing,
+}
 
 pub(super) fn bucket(g: Group) -> Bucket {
     match g {
@@ -167,6 +173,7 @@ impl Workbench {
         (session, g, attention): Listed,
         current: Option<&str>,
         detail: Option<String>,
+        end: End,
         cx: &Context<Self>,
     ) -> gpui::AnyElement {
         let open = session.clone();
@@ -191,13 +198,16 @@ impl Workbench {
                 .child(self.session_title(session)),
         };
         // Rows that all wait for your next step tell apart by how long they have.
-        let trailing = label(if g == Group::Ready && !attention {
-            match age(self.session_updated(session)) {
-                a if a == "刚刚" => a,
-                a => format!("{a}前"),
+        let trailing = label(match end {
+            End::Text(text) => text,
+            End::Nothing => String::new(),
+            End::State if g == Group::Ready && !attention => {
+                match age(self.session_updated(session)) {
+                    a if a == "刚刚" => a,
+                    a => format!("{a}前"),
+                }
             }
-        } else {
-            g.label().to_owned()
+            End::State => g.label().to_owned(),
         })
         .flex_shrink_0()
         .text_size(px(T::CHIP_SIZE))
@@ -331,13 +341,15 @@ impl Workbench {
             .into_any_element()
     }
     /// The session rows for the current space, arranged by the chosen preset; returns the
-    /// rows and how many sessions were left for 鸟瞰.
+    /// rows, how many sessions were left for 鸟瞰, and whether the closed ones were placed
+    /// by the preset (a WASM one) rather than left to the summary under the list.
     pub(super) fn session_list(
         &self,
         sessions: Vec<Listed>,
+        closed: &super::sidebar_wasm::Closed,
         current: Option<&str>,
         cx: &Context<Self>,
-    ) -> (Vec<gpui::AnyElement>, usize) {
+    ) -> (Vec<gpui::AnyElement>, usize, bool) {
         let preset = self.sidebar.preset();
         let detail = |l: &Listed| match preset.detail {
             Detail::Never => None,
@@ -371,18 +383,19 @@ impl Workbench {
             );
             for l in top {
                 let d = detail(&l);
-                out.push(self.session_row(l, current, d, cx));
+                out.push(self.session_row(l, current, d, End::State, cx));
             }
         }
         let mut budget = preset.limit;
         let mut more = 0;
-        let mut push = |out: &mut Vec<gpui::AnyElement>, l: Listed, d: Option<String>| {
+        let mut owns_closed = false;
+        let mut push = |out: &mut Vec<gpui::AnyElement>, l: Listed, d: Option<String>, e: End| {
             if budget == 0 && current != Some(l.0.id.as_str()) {
                 more += 1;
                 return;
             }
             budget = budget.saturating_sub(1);
-            out.push(self.session_row(l, current, d, cx));
+            out.push(self.session_row(l, current, d, e, cx));
         };
         match preset.group {
             Grouping::Flat if all_pinned => (),
@@ -394,7 +407,7 @@ impl Workbench {
                 );
                 for l in sessions {
                     let d = detail(&l);
-                    push(&mut out, l, d);
+                    push(&mut out, l, d, End::State);
                 }
             }
             Grouping::Status => {
@@ -412,7 +425,7 @@ impl Workbench {
                     }
                     out.push(Self::section_title(b.label().into(), rows.len()).into_any_element());
                     for l in rows {
-                        push(&mut out, *l, detail(l));
+                        push(&mut out, *l, detail(l), End::State);
                     }
                 }
                 if !folded.is_empty() {
@@ -426,12 +439,13 @@ impl Workbench {
                 for l in sessions.iter().filter(|l| preset.folds(bucket(l.1))) {
                     // The session you are in stays in sight while its group is folded.
                     if rest_open || current == Some(l.0.id.as_str()) {
-                        push(&mut out, *l, detail(l));
+                        push(&mut out, *l, detail(l), End::State);
                     }
                 }
             }
             Grouping::Wasm => {
-                self.wasm_rows(preset, sessions, current, &mut push, &mut out, cx);
+                owns_closed =
+                    self.wasm_rows(preset, sessions, closed, current, &mut push, &mut out, cx);
             }
             Grouping::Directory => {
                 let pinned: Vec<_> = sessions
@@ -442,7 +456,7 @@ impl Workbench {
                     out.push(Self::section_title("需要你".into(), pinned.len()).into_any_element());
                     for l in &pinned {
                         let d = detail(l).map(|d| format!("{} · {d}", folder_name(&l.0.cwd)));
-                        push(&mut out, **l, d);
+                        push(&mut out, **l, d, End::State);
                     }
                 }
                 // Folders in the order their first session sorts: busy ones first.
@@ -477,7 +491,7 @@ impl Workbench {
                                 None => folded.push((b, 1)),
                             }
                         } else {
-                            push(&mut out, *l, detail(l));
+                            push(&mut out, *l, detail(l), End::State);
                         }
                     }
                     if !folded.is_empty() {
@@ -493,17 +507,17 @@ impl Workbench {
                             for l in rows.iter().filter(|l| {
                                 bucket(l.1) != Bucket::Attention && preset.folds(bucket(l.1))
                             }) {
-                                push(&mut out, *l, detail(l));
+                                push(&mut out, *l, detail(l), End::State);
                             }
                         }
                     }
                 }
             }
         }
-        (out, more)
+        (out, more, owns_closed)
     }
     #[allow(clippy::too_many_arguments)]
-    fn folder_row(
+    pub(super) fn folder_row(
         &self,
         cwd: &str,
         key: &str,
