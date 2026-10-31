@@ -38,6 +38,8 @@ pub struct Workbench {
     diagnostics: Option<Entity<diagnostics::DiagnosticView>>,
     settings: Option<Entity<settings::SettingsView>>,
     sidebar: sidebar_list::SidebarPrefs,
+    /// A session's live screen floated over the current tab from the sidebar.
+    peek: Option<peek::Peek>,
 }
 #[derive(Clone)]
 struct PaneMenu {
@@ -167,6 +169,7 @@ mod overview;
 use overview::OverviewState;
 mod palette;
 use palette::Search;
+mod peek;
 mod render;
 mod sessions;
 mod settings;
@@ -269,6 +272,7 @@ impl Workbench {
             diagnostics: None,
             settings: None,
             sidebar: sidebar_list::SidebarPrefs::load(),
+            peek: None,
             search,
             store,
             workspace,
@@ -378,6 +382,7 @@ impl Workbench {
             self.reopen(id, cx);
         }
         let ids = attachable_ids(&self.workspace, ids);
+        self.drop_shown_peek(&ids);
         if self.nav.focused.as_ref().is_none_or(|id| !ids.contains(id)) {
             self.nav.focused = ids.first().cloned();
             self.nav.pending_focus = true;

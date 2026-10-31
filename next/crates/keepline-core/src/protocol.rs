@@ -118,6 +118,13 @@ pub enum Request {
         text: String,
         submit: bool,
     },
+    /// The workbench's 允许一次 / 拒绝 on an approval the screen shows. The host reads
+    /// the screen again and answers only while that same approval is still there.
+    AnswerApproval {
+        id: String,
+        question: String,
+        allow: bool,
+    },
 }
 
 #[derive(Debug, Serialize, Deserialize)]

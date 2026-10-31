@@ -308,6 +308,21 @@ impl Explained {
     pub fn into_question(self) -> Option<String> {
         self.found.ok().map(|h| h.question)
     }
+    /// The question, when the rule that took the screen is the approval one.
+    pub fn approval(&self) -> Option<&str> {
+        self.rule()
+            .filter(|r| r.id == "approval")
+            .and(self.question())
+    }
+    /// Whether the menu's cursor is on its first option, the one Enter would choose.
+    pub fn cursor_on_first(&self) -> bool {
+        self.found.as_ref().is_ok_and(|h| {
+            h.evidence
+                .iter()
+                .filter_map(|l| option(l))
+                .any(|(cursor, n, _)| cursor && n == 1)
+        })
+    }
     pub fn rule(&self) -> Option<&'static Rule> {
         let rules = self.rules;
         self.found.as_ref().ok().map(|h| &rules.rules[h.rule])
