@@ -114,6 +114,10 @@ pub struct Parser {
     /// generated title does not replace.
     #[serde(default)]
     pub(crate) custom_name: bool,
+    /// The record being read was copied from another conversation (a fork's history), so
+    /// the changes it shows were made by that one.
+    #[serde(skip)]
+    pub(crate) inherited: bool,
     #[serde(skip)]
     pub records: Vec<Record>,
     /// "Running→Waiting Hook" lines for the status trace, one per change of `card.turn`.
@@ -378,7 +382,10 @@ impl Parser {
         if implicit
             && code.is_none()
             && !background
-            && matches!(call.name.as_str(), "Bash" | "Edit" | "Write")
+            && matches!(
+                call.name.as_str(),
+                "Bash" | "Edit" | "MultiEdit" | "Write" | "NotebookEdit"
+            )
         {
             code = Some(0);
         }
@@ -405,9 +412,11 @@ impl Parser {
             let failed = format!("{}: {}", call.name, short(&output, 240));
             self.fact("error", failed, code, at, source);
         }
-        if code == Some(0) && (patch || matches!(name, "Edit" | "Write")) {
+        if code == Some(0)
+            && (patch || matches!(name, "Edit" | "MultiEdit" | "Write" | "NotebookEdit"))
+        {
             let mut paths = Vec::new();
-            for key in ["file_path", "path"] {
+            for key in ["file_path", "path", "notebook_path"] {
                 if let Some(s) = call.input[key].as_str() {
                     paths.push(s.to_owned());
                 }
@@ -418,6 +427,9 @@ impl Parser {
                 .unwrap_or("");
             paths.extend(PATCH.captures_iter(patch_text).map(|c| c[1].to_owned()));
             for path in paths {
+                if !self.inherited {
+                    self.card.touch(&path, at);
+                }
                 self.fact("file", format!("文件修改：{path}"), code, at, source);
             }
         }
@@ -1180,6 +1192,64 @@ mod tests {
             p.card.signal_detail,
             "记录：assistant「测试都过了，已经提交。」"
         );
+    }
+    #[test]
+    fn changed_files_are_listed_once_each_and_failed_edits_are_not() {
+        let mut p = Parser::default();
+        let s = Source::default();
+        for v in [
+            json!({"type":"assistant","message":{"content":[{"type":"tool_use","id":"e","name":"Edit","input":{"file_path":"/r/a.rs"}}]}}),
+            json!({"type":"user","message":{"content":[{"type":"tool_result","tool_use_id":"e","content":"Successfully updated"}]}}),
+            json!({"type":"assistant","message":{"content":[{"type":"tool_use","id":"m","name":"MultiEdit","input":{"file_path":"/r/b.rs"}}]}}),
+            json!({"type":"user","message":{"content":[{"type":"tool_result","tool_use_id":"m","content":"Applied 2 edits"}]}}),
+            json!({"type":"assistant","message":{"content":[{"type":"tool_use","id":"x","name":"Edit","input":{"file_path":"/r/c.rs"}}]}}),
+            json!({"type":"user","message":{"content":[{"type":"tool_result","tool_use_id":"x","content":"String not found","is_error":true}]}}),
+            json!({"type":"assistant","message":{"content":[{"type":"tool_use","id":"again","name":"Write","input":{"file_path":"/r/a.rs"}}]}}),
+            json!({"type":"user","message":{"content":[{"type":"tool_result","tool_use_id":"again","content":"File written"}]}}),
+        ] {
+            p.add(Agent::Claude, &serde_json::to_vec(&v).unwrap(), s.clone());
+        }
+        let paths: Vec<_> = p.card.files.iter().map(|t| t.path.as_str()).collect();
+        assert_eq!(paths, ["/r/b.rs", "/r/a.rs"]);
+
+        let mut p = Parser::default();
+        call(
+            &mut p,
+            "p",
+            "functions.apply_patch",
+            json!({"input":"*** Begin Patch\n*** Update File: src/a.rs\n*** Add File: src/new.rs\n*** End Patch"}),
+        );
+        result(
+            &mut p,
+            "p",
+            "Success. Updated the following files:\nM src/a.rs\nA src/new.rs",
+        );
+        let paths: Vec<_> = p.card.files.iter().map(|t| t.path.as_str()).collect();
+        assert_eq!(paths, ["src/a.rs", "src/new.rs"]);
+
+        // A fork's copied history names the original session; only its own edits count.
+        let mut p = Parser::default();
+        let s = Source {
+            path: "/p/229e2e95-cdaa-4b6b-be4b-4933f72cb5e8.jsonl".into(),
+            ..Default::default()
+        };
+        for (session, id, file) in [
+            (
+                "1fc5e267-bc3e-4c8b-b4f4-3ed3a2865c58",
+                "old",
+                "/r/copied.rs",
+            ),
+            ("229e2e95-cdaa-4b6b-be4b-4933f72cb5e8", "own", "/r/own.rs"),
+        ] {
+            for v in [
+                json!({"sessionId":session,"type":"assistant","message":{"content":[{"type":"tool_use","id":id,"name":"Edit","input":{"file_path":file}}]}}),
+                json!({"sessionId":session,"type":"user","message":{"content":[{"type":"tool_result","tool_use_id":id,"content":"ok"}]}}),
+            ] {
+                p.add(Agent::Claude, &serde_json::to_vec(&v).unwrap(), s.clone());
+            }
+        }
+        let paths: Vec<_> = p.card.files.iter().map(|t| t.path.as_str()).collect();
+        assert_eq!(paths, ["/r/own.rs"]);
     }
     #[test]
     fn hook_payload_facts_count_running_tasks_by_kind() {

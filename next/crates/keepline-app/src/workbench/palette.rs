@@ -114,8 +114,20 @@ impl Workbench {
         let sessions: Vec<Hit> = visible
             .iter()
             .filter(|s| {
+                // The first ask stays findable after the conversation is renamed.
+                let first = self
+                    .workspace
+                    .content
+                    .get(&s.id)
+                    .and_then(|c| c.asks.first().filter(|_| c.first_ask_known))
+                    .map_or("", |q| q.text.as_str());
                 contains(
-                    &format!("{} {} {}", self.session_title(s), s.cli_session_id, s.cwd),
+                    &format!(
+                        "{} {first} {} {}",
+                        self.session_title(s),
+                        s.cli_session_id,
+                        s.cwd
+                    ),
                     query,
                 )
             })

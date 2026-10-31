@@ -187,6 +187,38 @@ pub fn state_reasons(w: &Workspace, terminal: &str, hint: Option<&str>, now: u64
     if let Some(b) = c.background.and_then(|b| b.describe()) {
         lines.push(b);
     }
+    lines.extend(shared_files(w, s, now));
+    lines
+}
+/// 「和 X 都改了 a.rs」 for each file another live agent in this checkout also changed lately.
+fn shared_files(w: &Workspace, s: &AgentSession, now: u64) -> Vec<String> {
+    let Some(found) = super::collisions::collisions(w, now).remove(&s.id) else {
+        return Vec::new();
+    };
+    let name = |id: &String| {
+        w.agent_sessions
+            .iter()
+            .find(|o| &o.id == id)
+            .and_then(|o| w.session_name(o))
+            .map(|n| format!("「{n}」"))
+            .unwrap_or_else(|| "另一个 Agent".into())
+    };
+    let mut lines: Vec<String> = found
+        .iter()
+        .take(3)
+        .map(|c| {
+            let path = std::path::Path::new(&c.path);
+            let shown = path.strip_prefix(&s.cwd).unwrap_or(path).display();
+            let others: Vec<_> = c.others.iter().map(name).collect();
+            format!("和{}都改了 {shown}", others.join("、"))
+        })
+        .collect();
+    if found.len() > 3 {
+        lines.push(format!(
+            "另有 {} 个文件也被别的 Agent 改过",
+            found.len() - 3
+        ));
+    }
     lines
 }
 pub fn session_group(w: &Workspace, s: &AgentSession) -> Group {

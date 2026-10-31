@@ -117,10 +117,7 @@ fn entered(
             if old.as_ref().is_some_and(|(old, _)| old == &key) {
                 return None;
             }
-            let title = after
-                .content
-                .get(&s.id)
-                .map_or_else(|| s.runtime.executable().into(), |c| short(&c.title, 72));
+            let title = short(&after.session_title(s), 72);
             // Name the project first: several panes often run the same kind of task.
             let space = after
                 .terminals
@@ -165,7 +162,7 @@ fn panel(w: &Workspace) -> String {
         if matches!(group, Inbox::Waiting | Inbox::Error) {
             let minutes = now().saturating_sub(c.updated) / 60;
             rows.push((group == Inbox::Error, json!({
-                "id":s.id,"title":short(&c.title,24),
+                "id":s.id,"title":short(&w.session_title(s),24),
                 "summary":short(if group==Inbox::Waiting {&c.waiting}else{&c.error},40),
                 "age":if minutes<60 {format!("{minutes} 分钟")}else{format!("{} 小时",minutes/60)},
                 "dot":if group==Inbox::Waiting {T::MENU_WAIT_DOT}else{T::MENU_ERROR_DOT},
@@ -342,6 +339,16 @@ mod tests {
         assert!(entered(&previous, &w, None).is_empty());
         let value: serde_json::Value = serde_json::from_str(&panel(&previous)).unwrap();
         assert_eq!(value["rows"].as_array().unwrap().len(), 1);
+        // Banners and the menu panel use the name the sidebar shows, not the raw first ask.
+        let mut renamed = previous.clone();
+        renamed.agent_sessions[0].name = "发布前检查".into();
+        let value: serde_json::Value = serde_json::from_str(&panel(&renamed)).unwrap();
+        assert_eq!(value["rows"][0]["title"], "发布前检查");
+        let mut asked = renamed.clone();
+        let c = asked.content.get_mut("s").unwrap();
+        c.waiting = "要继续吗？".into();
+        c.waiting_episode += 1;
+        assert_eq!(entered(&renamed, &asked, None)[0].2, "发布前检查");
         let mut scanned = previous.clone();
         scanned.agent_sessions[0].terminal = None;
         assert!(
