@@ -3966,3 +3966,34 @@ fn answering_an_approval_rereads_the_screen_and_never_types_into_what_replaced_i
     }
     assert!(matches!(answer("Do you want to remove?", false), Ok(Reply::Ok)));
 }
+
+/// 在编辑器里看滚动内容 reads up to 10 000 rows under the terminal's lock; how long that
+/// holds output back on a full, wide scrollback.
+#[test]
+#[ignore = "measurement"]
+fn reading_ten_thousand_rows_of_scrollback_is_quick() {
+    let h = Host::start();
+    h.setup();
+    h.call(h.launch(
+        "long",
+        "i=0; while [ $i -lt 12000 ]; do printf '%05d %s\\n' $i 'xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx'; i=$((i+1)); done; echo DONE; sleep 60",
+    ))
+    .unwrap();
+    let read = |rows| match h.call(Request::ReadScreen { id: "long".into(), rows }).unwrap() {
+        Reply::Text(t) => t,
+        x => panic!("{x:?}"),
+    };
+    let until = Instant::now() + Duration::from_secs(60);
+    while !read(5).contains("DONE") {
+        assert!(Instant::now() < until);
+        std::thread::sleep(Duration::from_millis(100));
+    }
+    let mut times = vec![];
+    for _ in 0..5 {
+        let t = Instant::now();
+        let text = read(10_000);
+        times.push(t.elapsed());
+        assert!(text.contains("DONE") && text.lines().count() > 4_000, "{}", text.lines().count());
+    }
+    eprintln!("read 10000 rows: {times:?}");
+}
