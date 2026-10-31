@@ -89,6 +89,68 @@ pub struct Payload {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub duration_ms: Option<u64>,
 }
+/// One line of `keeplined events`: a hook's payload under the hook's event name, or one
+/// only subscribers see: `approval` / `approval_gone` (the question in `detail`),
+/// `terminal_started` / `terminal_exited`, and `lagged` (events were dropped; read the
+/// snapshot again). Card fields only, never the conversation's words.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct Notice {
+    pub event: String,
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub session: String,
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub agent: String,
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub title: String,
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub cwd: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub space: Option<String>,
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub detail: String,
+    #[serde(default)]
+    pub at: u64,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub terminal: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub exit_code: Option<i32>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub duration_ms: Option<u64>,
+}
+impl From<Payload> for Notice {
+    fn from(p: Payload) -> Self {
+        Self {
+            event: p.event.name().to_owned(),
+            session: p.session,
+            agent: p.agent,
+            title: p.title,
+            cwd: p.cwd,
+            space: p.space,
+            detail: p.detail,
+            at: p.at,
+            terminal: p.terminal,
+            exit_code: p.exit_code,
+            duration_ms: p.duration_ms,
+        }
+    }
+}
+impl Notice {
+    pub fn named(event: &str, at: u64) -> Self {
+        Self {
+            event: event.to_owned(),
+            session: String::new(),
+            agent: String::new(),
+            title: String::new(),
+            cwd: String::new(),
+            space: None,
+            detail: String::new(),
+            at,
+            terminal: None,
+            exit_code: None,
+            duration_ms: None,
+        }
+    }
+}
 impl Payload {
     /// The same facts as environment variables, for one-line shell hooks.
     pub fn env(&self) -> Vec<(&'static str, String)> {

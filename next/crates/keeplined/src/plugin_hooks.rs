@@ -37,6 +37,14 @@ fn event(group: Inbox, turn: Turn) -> Option<Event> {
 }
 
 impl Hooks {
+    /// Every session's hookable state now, as if each had just entered it.
+    pub fn current(w: &Workspace) -> Vec<Payload> {
+        Hooks {
+            last: HashMap::new(),
+            seeded: true,
+        }
+        .changes(w)
+    }
     pub fn seeded(&self) -> bool {
         self.seeded
     }

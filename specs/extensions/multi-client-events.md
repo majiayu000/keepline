@@ -66,3 +66,12 @@
 ## 收尾时写
 
 每一步结束在本文件末尾写：采用 / 否定 / 待验证，附测试与基准数字。
+
+## 第一步结果（2026-10-31）：采用
+
+- `Request::Subscribe` / `Reply::Events`，命令行 `keeplined events [--json]`，`--skill` 已写用法。状态事件直接复用插件钩子的判断（`Hooks::changes`），订阅者用自己的一份记录，和插件互不影响；审批框出现 / 消失看画面规则的 `approval`；终端开始 / 结束看终端列表；命令事件和插件钩子同一个出口，同一次读输出里结束的命令合成一帧。
+- 有订阅者时，终端会读 shell 的命令标记，即使没有插件听命令事件（全局开关 `SUBSCRIBED`，读输出的线程不碰后台锁）。
+- 端到端 `events_stream_every_change_once_in_order_and_a_stalled_reader_blocks_nobody`：终端开始 → 等你 → 审批 → 审批消失 → 做完 → 命令成功（时长 ≥ 150 ms）→ 命令失败（退出码 3）→ 终端结束，按顺序收到；真的 `keeplined events --json` 进程也收到这些。答审批到收到「审批消失」1.5–1.9 ms（门槛 200 ms），连跑 3 次。3000 条命令事件 37 ms 送达正常读取的订阅者；一个不读的订阅者在场时后台请求照常，它读回来时收到 `lagged`。
+- 10 个订阅者（`ten_event_subscribers_cost_the_host_almost_nothing`，release，4 个 spinner 终端各 20 s）：后台 CPU 0.10% → 0.10%。
+- 没验：App 的 GPU 基准没重跑（这一步只改后台和协议，App 没有新的行为）；10 分钟浸泡只跑了 20 秒的窗口；Codex 会话的事件只靠和 Claude 同一条状态判断，没单独测。
+- 放弃条件的计时从今天起：两周内没有实际使用者就停在这一步。

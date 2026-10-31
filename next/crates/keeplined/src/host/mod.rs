@@ -21,6 +21,7 @@ use std::time::{Duration, Instant};
 
 mod association;
 mod client;
+mod events;
 mod live;
 mod status;
 use association::*;
@@ -41,6 +42,9 @@ struct Host {
     recognition: RecognitionStatus,
     log_events: Option<crate::file_events::Notifier>,
     recognition_subscribers: HashMap<u64, Subscriber>,
+    /// `keeplined events` connections, and what they were last told.
+    event_subscribers: HashMap<u64, Subscriber>,
+    events: events::Tracker,
     exits: Option<crate::process_exit::ExitWatch>,
     agent_pids: HashMap<u32, String>,
     /// Agent processes no evidence has tied to a conversation yet: their terminal and CLI.
@@ -324,8 +328,10 @@ impl Host {
         let cwd = pwd
             .or_else(|| placed.map(|t| t.cwd.clone()))
             .unwrap_or_default();
+        // One frame per read of output, however many commands it finished.
+        let mut notices = vec![];
         for f in finished {
-            crate::plugin_hooks::command(Payload {
+            let payload = Payload {
                 event: match f.exit {
                     Some(code) if code != 0 => Event::CommandFailed,
                     _ => Event::CommandDone,
@@ -340,8 +346,13 @@ impl Host {
                 terminal: Some(terminal.into()),
                 exit_code: f.exit,
                 duration_ms: Some(u64::try_from(f.took.as_millis()).unwrap_or(u64::MAX)),
-            });
+            };
+            if !self.event_subscribers.is_empty() {
+                notices.push(payload.clone().into());
+            }
+            crate::plugin_hooks::command(payload);
         }
+        self.send_events(notices);
     }
     fn title_changed(&mut self, terminal: &str, title: &str) -> io::Result<()> {
         let shown = keepline_core::terminal::shown_title(title);
@@ -414,9 +425,15 @@ impl Host {
             self.hooks.changes(&before);
         }
         self.workspace = next;
-        if hooked {
+        if hooked || !self.event_subscribers.is_empty() {
             let after = self.snapshot();
-            self.hooks.observe(&after);
+            if hooked {
+                self.hooks.observe(&after);
+            }
+            if !self.event_subscribers.is_empty() {
+                let notices = self.events.changes(&after);
+                self.send_events(notices);
+            }
         }
         for id in bound {
             let (Some(shared), Some(terminal)) =
@@ -643,6 +660,8 @@ fn serve_runtime(
         recognition: RecognitionStatus::default(),
         log_events: None,
         recognition_subscribers: HashMap::new(),
+        event_subscribers: HashMap::new(),
+        events: Default::default(),
         exits: None,
         agent_pids: HashMap::new(),
         unbound_pids: HashMap::new(),
@@ -783,6 +802,8 @@ mod recognition_tests {
             recognition: RecognitionStatus::default(),
             log_events: None,
             recognition_subscribers: HashMap::new(),
+        event_subscribers: HashMap::new(),
+        events: Default::default(),
             exits: None,
             agent_pids: HashMap::new(),
             unbound_pids: HashMap::new(),

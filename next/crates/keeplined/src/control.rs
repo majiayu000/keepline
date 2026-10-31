@@ -15,6 +15,10 @@ keeplined wait <终端> [--until idle|waiting|working] [--timeout 秒]
                                              等 Agent 进入某个状态（默认 idle：这一轮做完）
 keeplined explain --file <画面.txt> --agent <claude|codex> [--json]
 keeplined explain <终端> [--json]            画面规则怎么读这块屏：状态、命中的规则、规则版本和来源、看到的行
+keeplined events [--json]                    先列出现在的状态，再每有变化输出一行，直到 Ctrl-C：
+                                             started / waiting / error / done、approval / approval_gone、
+                                             terminal_started / terminal_exited、command_done / command_failed；
+                                             lagged 表示跟不上丢了事件，应重新开一次取现状
 keeplined --skill                            给 Coding Agent 看的用法说明（Markdown）
 <终端> 可以是编号的前几位或标签名；全部命令都接受 --runtime <目录>。
 Agent 藏在包装器（沙盒、虚拟机、nono 等）后面认不出时，启动前设 KEEPLINE_AGENT=<claude|codex|…>。";
@@ -196,6 +200,7 @@ pub fn run(command: &str, args: impl Iterator<Item = String>) -> io::Result<()> 
         "prompt" => prompt(Args::parse(args, &["timeout"])?),
         "wait" => wait_cmd(Args::parse(args, &["until", "timeout"])?),
         "explain" => explain(Args::parse(args, &["file", "agent"])?),
+        "events" => events(Args::parse(args, &[])?),
         _ => Err(io::Error::other(USAGE)),
     }
 }
@@ -276,6 +281,39 @@ fn explain(a: Args) -> io::Result<()> {
         }
     }
     Ok(())
+}
+/// Herdr's event subscription: the state now, then one line per change until the host
+/// goes away or the reader stops reading.
+fn events(a: Args) -> io::Result<()> {
+    let mut stream = std::os::unix::net::UnixStream::connect(&a.socket)?;
+    keepline_core::protocol::send(&mut stream, CONTROL, &Request::Hello { major: MAJOR })?;
+    match receive::<Reply>(&mut stream)? {
+        Reply::Hello { major: MAJOR, .. } => (),
+        r => return Err(io::Error::other(format!("handshake: {r:?}"))),
+    }
+    keepline_core::protocol::send(&mut stream, CONTROL, &Request::Subscribe)?;
+    let json = a.has("json");
+    loop {
+        let notices = match receive::<Reply>(&mut stream)? {
+            Reply::Events(n) => n,
+            Reply::Error(e) => return Err(io::Error::other(e)),
+            other => return Err(io::Error::other(format!("unexpected reply: {other:?}"))),
+        };
+        for n in notices {
+            if json {
+                println!("{}", serde_json::to_string(&n).map_err(io::Error::other)?);
+                continue;
+            }
+            let terminal: String = n.terminal.as_deref().unwrap_or("").chars().take(8).collect();
+            let what = [n.title.as_str(), n.detail.as_str()]
+                .into_iter()
+                .filter(|s| !s.is_empty())
+                .collect::<Vec<_>>()
+                .join(" · ");
+            let code = n.exit_code.map(|c| format!(" 退出码 {c}")).unwrap_or_default();
+            println!("{:<16} {terminal:<8} {what}{code}", n.event);
+        }
+    }
 }
 fn list(a: Args) -> io::Result<()> {
     let w = workspace(&a.socket)?;

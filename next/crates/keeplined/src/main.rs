@@ -76,7 +76,7 @@ fn run() -> std::io::Result<()> {
             )
         }
         Some("scan") => scan(args),
-        Some(command @ ("list" | "read" | "send" | "prompt" | "wait" | "explain")) => {
+        Some(command @ ("list" | "read" | "send" | "prompt" | "wait" | "explain" | "events")) => {
             control::run(command, args)
         }
         Some("hook") => hook(args),
