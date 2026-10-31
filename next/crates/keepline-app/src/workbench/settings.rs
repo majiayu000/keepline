@@ -760,7 +760,11 @@ impl SettingsView {
                 div()
                     .px(px(T::S16))
                     .pb(px(T::S12))
-                    .child(label("窗口与终端一起切换；跟随系统时随 macOS 自动变换"))
+                    .child(label(if crate::ui::style::current(cx) == crate::ui::style::Style::Terminal {
+                        "窗口与终端一起切换；终端原生样式下跟随系统按暗色显示"
+                    } else {
+                        "窗口与终端一起切换；跟随系统时随 macOS 自动变换"
+                    }))
                     .into_any_element(),
             );
         }
