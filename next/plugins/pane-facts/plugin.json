@@ -1,0 +1,8 @@
+{
+  "api": 1,
+  "id": "pane-facts",
+  "name": "窗格信息",
+  "version": "0.1.0",
+  "description": "窗格标题栏显示 git 未提交的改动数，悬停标题看最近一次提交",
+  "provides": ["decorations"]
+}

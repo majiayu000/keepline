@@ -25,6 +25,8 @@ pub enum Kind {
     Sidebar,
     /// `hooks.json`: commands or webhooks told when sessions change state (see `hook`).
     Hooks,
+    /// `decorations.json`: short command output shown on each pane (see `decoration`).
+    Decorations,
 }
 impl Kind {
     pub fn label(self) -> &'static str {
@@ -34,6 +36,7 @@ impl Kind {
             Self::Rules => "验证规则",
             Self::Sidebar => "左栏",
             Self::Hooks => "Hooks",
+            Self::Decorations => "窗格装饰",
         }
     }
     /// The files of this kind inside a plugin directory, in load order.
@@ -64,6 +67,10 @@ impl Kind {
                 .filter(|p| p.is_file())
                 .collect(),
             Self::Hooks => [dir.join("hooks.json")]
+                .into_iter()
+                .filter(|p| p.is_file())
+                .collect(),
+            Self::Decorations => [dir.join("decorations.json")]
                 .into_iter()
                 .filter(|p| p.is_file())
                 .collect(),
@@ -336,7 +343,14 @@ mod tests {
             let (_, rules) = crate::rule::load(p.files(Kind::Rules));
             let (_, sidebar) = crate::sidebar::load(p.files(Kind::Sidebar));
             let (_, hooks) = crate::hook::load(p.files(Kind::Hooks));
-            for loaded in actions.iter().chain(&rules).chain(&sidebar).chain(&hooks) {
+            let (_, decorations) = crate::decoration::load(p.files(Kind::Decorations));
+            for loaded in actions
+                .iter()
+                .chain(&rules)
+                .chain(&sidebar)
+                .chain(&hooks)
+                .chain(&decorations)
+            {
                 assert!(loaded.result.is_ok(), "{loaded:?}");
             }
         }

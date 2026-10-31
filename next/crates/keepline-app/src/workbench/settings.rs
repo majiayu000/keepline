@@ -1616,6 +1616,18 @@ impl SettingsView {
                 })
                 .collect(),
         );
+        let decorations = files(
+            keepline_core::decoration::report()
+                .iter()
+                .map(|r| {
+                    let did = r
+                        .result
+                        .clone()
+                        .map(|list| format!("窗格标题栏或悬停卡片里显示：{list}"));
+                    (r.file.display().to_string(), did)
+                })
+                .collect(),
+        );
         let declared = files(
             agent::report()
                 .iter()
@@ -1631,6 +1643,7 @@ impl SettingsView {
             ("验证规则文件", rules),
             ("Hooks 文件", hooks),
             ("左栏文件", sidebars),
+            ("窗格装饰文件", decorations),
             ("Agent 声明文件", declared),
         ])
         .child(div().pt(px(T::S12)).px(px(T::S4)).child(label(format!(
