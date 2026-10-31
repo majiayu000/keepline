@@ -900,7 +900,7 @@ fn two_cli_conversations_in_one_real_pty_keep_separate_ownership_after_restart()
                 acceptance: vec![AcceptanceCriterion {
                     id: "criterion-1".into(),
                     description: "关联正确".into(),
-                    evidence: None,
+                    evidence: vec![],
                 }],
                 agent: Agent::Codex,
             }),

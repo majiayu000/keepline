@@ -74,8 +74,55 @@ pub struct Task {
 pub struct AcceptanceCriterion {
     pub id: String,
     pub description: String,
-    /// A source reference, not an agent's claim or an automatic acceptance flag.
-    pub evidence: Option<String>,
+    /// Session records attached to this criterion, oldest first. Never an Agent's claim
+    /// or an automatic acceptance flag; a failed test stays here as an attempt.
+    #[serde(default, deserialize_with = "criterion_evidence")]
+    pub evidence: Vec<CriterionEvidence>,
+}
+/// Older clients and scripts sent one source string or null here; both mean none.
+fn criterion_evidence<'de, D: serde::Deserializer<'de>>(
+    d: D,
+) -> Result<Vec<CriterionEvidence>, D::Error> {
+    match serde_json::Value::deserialize(d)? {
+        serde_json::Value::Array(items) => serde_json::from_value(serde_json::Value::Array(items))
+            .map_err(serde::de::Error::custom),
+        _ => Ok(vec![]),
+    }
+}
+/// A copy of one session record: a session keeps only its latest few, and the criterion
+/// must keep what proved it after the session moves on.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct CriterionEvidence {
+    pub session: String,
+    pub record: crate::content::Evidence,
+}
+impl AcceptanceCriterion {
+    /// Whether a successful test, commit or file change backs it.
+    pub fn proven(&self) -> bool {
+        self.evidence.iter().any(|e| e.record.proves())
+    }
+}
+/// Criteria with the same text as an earlier one fold into it, evidence included; empty
+/// ones are dropped. The order of first appearance stays.
+pub fn merge_criteria(criteria: Vec<AcceptanceCriterion>) -> Vec<AcceptanceCriterion> {
+    let mut merged: Vec<AcceptanceCriterion> = Vec::new();
+    for mut c in criteria {
+        c.description = c.description.trim().to_owned();
+        if c.description.is_empty() {
+            continue;
+        }
+        match merged.iter_mut().find(|m| m.description == c.description) {
+            Some(first) => {
+                for e in c.evidence {
+                    if !first.evidence.contains(&e) {
+                        first.evidence.push(e);
+                    }
+                }
+            }
+            None => merged.push(c),
+        }
+    }
+    merged
 }
 
 impl Task {
@@ -97,6 +144,10 @@ impl Task {
             parts.push(format!("验收标准：\n{}", criteria.join("\n")));
         }
         parts.join("\n\n")
+    }
+    /// How many criteria have evidence that proves them.
+    pub fn proven(&self) -> usize {
+        self.acceptance.iter().filter(|c| c.proven()).count()
     }
 }
 pub fn shell_quote(value: &str) -> String {
@@ -758,6 +809,9 @@ impl Workspace {
                     {
                         return Err("验收条目需要独立 ID 和非空说明".into());
                     }
+                    if !criterion.evidence.iter().all(|e| e.record.attachable()) {
+                        return Err("证据只认测试、提交和文件改动".into());
+                    }
                 }
                 self.tasks.push(task);
             }
@@ -1062,7 +1116,7 @@ mod tests {
         task.acceptance.push(AcceptanceCriterion {
             id: "criterion".into(),
             description: "退出码为零".into(),
-            evidence: Some("/log:42".into()),
+            evidence: vec![evidence("test", Some(0))],
         });
         w.edit(Edit::UpdateTask(task.clone())).unwrap();
         assert_eq!(
@@ -1289,6 +1343,59 @@ mod tests {
         assert_eq!(w.agent_sessions[0].task, None);
         assert_eq!(w.agent_sessions[0].outcome, Outcome::Abandoned);
     }
+    fn evidence(kind: &str, exit_code: Option<i32>) -> CriterionEvidence {
+        CriterionEvidence {
+            session: "s".into(),
+            record: crate::content::Evidence {
+                kind: kind.into(),
+                summary: format!("{kind} {exit_code:?}"),
+                exit_code,
+                at: 42,
+                source: Default::default(),
+            },
+        }
+    }
+    #[test]
+    fn criteria_from_older_clients_read_as_no_evidence() {
+        for old in [r#","evidence":null"#, r#","evidence":"test:42""#, ""] {
+            let text = format!(r#"{{"id":"c","description":"d"{old}}}"#);
+            let c: AcceptanceCriterion = serde_json::from_str(&text).unwrap();
+            assert!(c.evidence.is_empty());
+        }
+    }
+    #[test]
+    fn criteria_take_only_mechanical_evidence_and_merge_duplicates() {
+        let mut w = workspace();
+        let mut task = w.tasks[0].clone();
+        let criterion = |id: &str, text: &str, evidence| AcceptanceCriterion {
+            id: id.into(),
+            description: text.into(),
+            evidence,
+        };
+        // A plain command or an Agent's error line is not something a criterion can hold.
+        task.acceptance = vec![criterion("a", "跑通", vec![evidence("command", Some(0))])];
+        assert!(w.edit(Edit::UpdateTask(task.clone())).is_err());
+        let merged = merge_criteria(vec![
+            criterion("a", " 标签名保留 ", vec![evidence("file", Some(0))]),
+            criterion("b", "", vec![]),
+            criterion("c", "测试通过", vec![]),
+            criterion(
+                "d",
+                "标签名保留",
+                vec![evidence("commit", Some(0)), evidence("file", Some(0))],
+            ),
+        ]);
+        assert_eq!(
+            merged
+                .iter()
+                .map(|c| (c.id.as_str(), c.description.as_str(), c.evidence.len()))
+                .collect::<Vec<_>>(),
+            [("a", "标签名保留", 2), ("c", "测试通过", 0)]
+        );
+        task.acceptance = merged;
+        w.edit(Edit::UpdateTask(task)).unwrap();
+        assert_eq!(w.tasks[0].proven(), 1);
+    }
     #[test]
     fn task_prompt_and_per_criterion_evidence_are_independent() {
         let mut w = workspace();
@@ -1296,12 +1403,12 @@ mod tests {
             AcceptanceCriterion {
                 id: "one".into(),
                 description: "测试通过".into(),
-                evidence: Some("test:42".into()),
+                evidence: vec![evidence("test", Some(0))],
             },
             AcceptanceCriterion {
                 id: "two".into(),
                 description: "原生输入正确".into(),
-                evidence: None,
+                evidence: vec![evidence("test", Some(101))],
             },
         ];
         assert!(
@@ -1317,7 +1424,12 @@ mod tests {
             bare.title.trim(),
             "blank parts add no headings"
         );
-        assert_eq!(w.tasks[0].acceptance[1].evidence, None);
+        assert_eq!(
+            w.tasks[0].proven(),
+            1,
+            "a failed test is an attempt, not evidence"
+        );
+        assert!(w.tasks[0].acceptance[0].proven());
         assert_eq!(
             shell_quote("a'$(touch /tmp/no)\nb"),
             "'a'\\''$(touch /tmp/no)\nb'"

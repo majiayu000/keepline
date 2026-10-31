@@ -15,6 +15,11 @@ fn enum_name<T: serde::Serialize>(value: &T) -> io::Result<String> {
 fn enum_value<T: serde::de::DeserializeOwned>(name: String) -> io::Result<T> {
     serde_json::from_value(serde_json::Value::String(name)).map_err(db_error)
 }
+/// A criterion's evidence column: a JSON list of attached session records. Older rows hold
+/// NULL or a bare source reference no build ever wrote from the app; both read as none.
+fn criterion_evidence(column: Option<String>) -> Vec<CriterionEvidence> {
+    column.and_then(|text| serde_json::from_str(&text).ok()).unwrap_or_default()
+}
 
 impl Store {
     #[cfg(test)]
@@ -258,7 +263,7 @@ impl Store {
                 .push(AcceptanceCriterion {
                     id: r.get(1).map_err(db_error)?,
                     description: r.get(2).map_err(db_error)?,
-                    evidence: r.get(3).map_err(db_error)?,
+                    evidence: criterion_evidence(r.get(3).map_err(db_error)?),
                 });
         }
         // Tabs are deleted when closed. Rows an older build only marked closed, and tabs
@@ -387,7 +392,7 @@ impl Store {
                         c.id,
                         i64::try_from(position).map_err(db_error)?,
                         c.description,
-                        c.evidence
+                        (!c.evidence.is_empty()).then(|| serde_json::to_string(&c.evidence)).transpose().map_err(db_error)?
                     ],
                 )
                 .map_err(db_error)?;
@@ -850,7 +855,16 @@ mod milestone_tests {
             acceptance: vec![AcceptanceCriterion {
                 id: "c".into(),
                 description: "check".into(),
-                evidence: Some("source:42".into()),
+                evidence: vec![CriterionEvidence {
+                    session: "s1".into(),
+                    record: keepline_core::content::Evidence {
+                        kind: "test".into(),
+                        summary: "cargo test：test result: ok. 4 passed; 0 failed".into(),
+                        exit_code: Some(0),
+                        at: 42,
+                        source: keepline_core::content::Source { path: "/log".into(), inode: 7, offset: 42 },
+                    },
+                }],
             }],
         });
         w.terminals.push(Terminal {
@@ -914,6 +928,7 @@ mod milestone_tests {
         let (store, read) = Store::open(&root).unwrap();
         assert_eq!(read.agent_sessions[0].name, "");
         assert_eq!(read.tasks, w.tasks);
+        assert!(criterion_evidence(Some("source:42".into())).is_empty(), "an old bare reference reads as none");
         assert_eq!(read.task_outcomes, w.task_outcomes);
         assert_eq!(read.outcome_history, w.outcome_history);
         assert_eq!(read.pending_tasks, w.pending_tasks);

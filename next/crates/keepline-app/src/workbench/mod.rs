@@ -89,6 +89,12 @@ struct Form {
     fields: Vec<Entity<Field>>,
     agent: Agent,
     space: String,
+    /// A todo's acceptance criteria, one line each in order.
+    criteria: Vec<forms::CriterionRow>,
+    /// A save was pressed, so a missing title now shows as an error.
+    tried: bool,
+    /// Typing in any field redraws the form's checks and preview.
+    _watch: Vec<gpui::Subscription>,
 }
 #[derive(Clone, Copy)]
 enum FormKind {
@@ -181,6 +187,7 @@ use sidebar::closed_recently;
 mod sidebar_list;
 mod sidebar_wasm;
 mod tabs;
+mod task_detail;
 mod tasks;
 use tasks::TaskUi;
 #[cfg(test)]
@@ -322,6 +329,10 @@ impl Workbench {
                 picking: None,
                 last_agent: None,
                 chosen_agent: None,
+                found: None,
+                probing: false,
+                expanded: HashSet::new(),
+                attaching: None,
             },
             layout: LayoutState {
                 panes: HashMap::new(),

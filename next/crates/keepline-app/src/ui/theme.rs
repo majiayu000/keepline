@@ -466,6 +466,26 @@ impl Theme {
     };
     pub const FORM_WIDTH: f32 = 520.;
     pub const DETAIL_WIDTH: f32 = 640.;
+    /// The todo form with its 「保存并开始之后」 column, and that column.
+    pub const TODO_FORM_WIDTH: f32 = 1080.;
+    pub const TODO_PREVIEW_WIDTH: f32 = 400.;
+    /// The todo detail page and its right column (关联会话).
+    pub const TODO_DETAIL_WIDTH: f32 = 1120.;
+    pub const TODO_DETAIL_SIDE: f32 = 340.;
+    /// One acceptance criterion line in the form, its drag grip and number columns.
+    pub const CRITERION_ROW: f32 = 38.;
+    pub const CRITERION_GRIP: f32 = 14.;
+    pub const CRITERION_NUMBER: f32 = 22.;
+    /// The checkbox before a criterion in the detail, and an evidence row's kind column.
+    pub const CRITERION_BOX: f32 = 16.;
+    pub const EVIDENCE_KIND: f32 = 38.;
+    /// The numbered dots of the form's 「保存并开始之后」 steps.
+    pub const STEP_DOT: f32 = 18.;
+    /// The detail's big 「n / m 有证据」 number and its per-criterion cells.
+    pub const PROGRESS_NUMBER: f32 = 28.;
+    pub const PROGRESS_CELL: f32 = 10.;
+    pub const PROGRESS_CELL_RADIUS: f32 = 3.;
+    pub const DISABLED_OPACITY: f32 = 0.45;
     pub const SETTINGS_WIDTH: f32 = 940.;
     pub const SETTINGS_NAV: f32 = 164.;
     pub const FORM_TITLE: f32 = 16.;

@@ -445,6 +445,8 @@ impl Workbench {
         self.tasks.quick_task = None;
         self.tasks.picking = None;
         self.nav.task_detail = None;
+        self.tasks.attaching = None;
+        self.tasks.expanded.clear();
         self.overview.cleanup.clear();
         self.overview.here = None;
         self.overview.here_more = None;
@@ -511,30 +513,85 @@ impl Workbench {
                 self.overview.here = self.workspace.current_agent("p0").map(|s| s.id.clone());
                 self.overview.here_more = self.overview.here.clone();
             }
-            "TodoNew" => {
+            // The filled form, the line being written last; the login shell's answer is
+            // fixed so the run does not depend on what this machine has installed.
+            "TodoNew" | "TodoNewBare" | "TodoNewChecks" => {
+                let all: HashSet<String> = Agent::all()
+                    .into_iter()
+                    .map(|a| a.executable().to_owned())
+                    .collect();
+                self.tasks.found = Some(all.clone());
                 self.show_form(FormKind::Task, window, cx);
-                let task = self
+                let mut task = self
                     .workspace
                     .tasks
                     .iter()
-                    .find(|t| t.id == "task1")
+                    .find(|t| t.id == "task0")
+                    .cloned()
                     .unwrap();
-                for (field, text) in self.tasks.form.as_ref().unwrap().fields.iter().zip([
-                    task.title.clone(),
-                    task.description.clone(),
-                    task.acceptance
-                        .iter()
-                        .map(|a| a.description.clone())
-                        .collect::<Vec<_>>()
-                        .join("\n"),
-                ]) {
-                    field.update(cx, |field, cx| {
-                        field.set_text(&text);
-                        cx.notify();
-                    });
+                match name {
+                    "TodoNewBare" => task.acceptance.clear(),
+                    // Every check at once: no title after a save, a repeated line, a space
+                    // whose folder is gone and an Agent the shell cannot find.
+                    "TodoNewChecks" => {
+                        task.title.clear();
+                        let repeat = task.acceptance[1].description.clone();
+                        task.acceptance.push(AcceptanceCriterion {
+                            id: "repeat".into(),
+                            description: repeat,
+                            evidence: vec![],
+                        });
+                        if let Some(gone) = self
+                            .workspace
+                            .spaces
+                            .iter()
+                            .find(|s| !Path::new(&s.cwd).is_dir())
+                        {
+                            task.space = gone.id.clone();
+                        }
+                        if let Some(missing) = Agent::all().into_iter().last() {
+                            task.agent = missing;
+                            self.tasks.found = Some(
+                                all.into_iter()
+                                    .filter(|e| e != missing.executable())
+                                    .collect(),
+                            );
+                        }
+                    }
+                    _ => (),
+                }
+                self.fill_task_form(&task, window, cx);
+                if let Some(form) = &mut self.tasks.form {
+                    form.tried = name == "TodoNewChecks";
+                    if let Some(last) = form.criteria.last() {
+                        window.focus(&last.field.focus_handle(cx), cx);
+                    }
                 }
             }
-            "TodoDetail" => self.nav.task_detail = Some("task0".into()),
+            "TodoDetail" | "TodoDetailAttach" | "TodoDetailFull" => {
+                self.visual_attach_evidence(name == "TodoDetailFull", cx);
+                self.nav.task_detail = Some("task0".into());
+                if name == "TodoDetailAttach" {
+                    self.tasks.attaching = self
+                        .workspace
+                        .tasks
+                        .iter()
+                        .find(|t| t.id == "task0")
+                        .and_then(|t| t.acceptance.get(1))
+                        .map(|c| c.id.clone());
+                }
+            }
+            // A todo settled without criteria or sessions.
+            "TodoDetailDone" => {
+                self.edit(
+                    Edit::SetTaskOutcome {
+                        id: "task2".into(),
+                        outcome: Outcome::Completed,
+                    },
+                    cx,
+                );
+                self.nav.task_detail = Some("task2".into());
+            }
             "TodoStart" => {
                 let text = self
                     .workspace
@@ -685,6 +742,44 @@ impl Workbench {
         }
         cx.notify();
         window.refresh();
+    }
+    /// Attaches the fixture sessions' own records to task0's criteria through a real
+    /// edit: a passing test and a file change on the first, a failed test on the third;
+    /// with `full`, passing records on all three.
+    #[cfg(feature = "visual-test")]
+    fn visual_attach_evidence(&mut self, full: bool, cx: &mut Context<Self>) {
+        let Some(mut task) = self
+            .workspace
+            .tasks
+            .iter()
+            .find(|t| t.id == "task0")
+            .cloned()
+        else {
+            return;
+        };
+        let records = super::task_detail::attachable(&self.workspace, "task0", None);
+        let find = |needle: &str, ok: bool| {
+            records
+                .iter()
+                .find(|e| e.record.summary.contains(needle) && e.record.proves() == ok)
+                .cloned()
+        };
+        let mut sets: Vec<Vec<Option<CriterionEvidence>>> = vec![
+            vec![find("tab_title：", true), find("tabs.rs", true)],
+            vec![],
+            vec![find("-p keepline-app：", false)],
+        ];
+        if full {
+            sets[1] = vec![
+                find("tab_title_survives_exit", true),
+                find("model.rs", true),
+            ];
+            sets[2].push(find("213 passed", true));
+        }
+        for (c, set) in task.acceptance.iter_mut().zip(sets) {
+            c.evidence = set.into_iter().flatten().collect();
+        }
+        self.edit(Edit::UpdateTask(task), cx);
     }
     /// The overview toggle's centre, as last drawn.
     #[cfg(feature = "visual-test")]

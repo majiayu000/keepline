@@ -22,6 +22,17 @@ pub struct Evidence {
     pub at: u64,
     pub source: Source,
 }
+impl Evidence {
+    /// A record a criterion can hold: a test run, a commit or a file change. Plain commands,
+    /// errors and an Agent's own words are never evidence.
+    pub fn attachable(&self) -> bool {
+        matches!(self.kind.as_str(), "file" | "test" | "commit")
+    }
+    /// It proves something: attachable and it succeeded. A failed test is kept as an attempt.
+    pub fn proves(&self) -> bool {
+        self.attachable() && self.exit_code == Some(0)
+    }
+}
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
 pub enum Turn {
     #[default]
@@ -479,9 +490,7 @@ impl Content {
         let facts: Vec<_> = self
             .evidence
             .iter()
-            .filter(|f| {
-                f.exit_code == Some(0) && matches!(f.kind.as_str(), "file" | "test" | "commit")
-            })
+            .filter(|f| f.proves())
             .rev()
             .take(4)
             .map(|f| short(&f.summary, 180))
