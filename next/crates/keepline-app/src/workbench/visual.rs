@@ -651,12 +651,21 @@ impl Workbench {
                     }
                 }
             }
-            "SearchEmpty" | "Search" => {
+            // The palette empty, narrowed to 出错, with a query, and with one that finds
+            // nothing but whose halves do.
+            "SearchEmpty" | "SearchGroup" | "Search" | "SearchNone" => {
                 self.nav.focused = Some("p0".into());
                 self.open_search(window, cx);
-                if name == "Search" {
-                    let query =
-                        std::env::var("KEEPLINE_SEARCH_QUERY").unwrap_or_else(|_| "反馈".into());
+                if name == "SearchGroup" {
+                    self.search.pick_group(Some(Group::Error));
+                }
+                if name == "Search" || name == "SearchNone" {
+                    let query = match name {
+                        "SearchNone" => "反馈报销".into(),
+                        _ => {
+                            std::env::var("KEEPLINE_SEARCH_QUERY").unwrap_or_else(|_| "反馈".into())
+                        }
+                    };
                     self.search.field().update(cx, |f, cx| {
                         f.set_text(&query);
                         cx.notify();

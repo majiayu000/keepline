@@ -64,6 +64,15 @@ pub fn age(at: u64) -> String {
         format!("{} 天", minutes / 1440)
     }
 }
+/// A stretch of time, as `86 分钟` or `3 小时 5 分`.
+pub fn span_label(secs: u64) -> String {
+    match secs / 60 {
+        0 => format!("{secs} 秒"),
+        m if m < 120 => format!("{m} 分钟"),
+        m if m < 2 * 1440 => format!("{} 小时 {} 分", m / 60, m % 60),
+        m => format!("{} 天", m / 1440),
+    }
+}
 pub fn recency(updated: u64, now: u64) -> &'static str {
     match now.saturating_sub(updated) {
         age if age < DAY => "最近 24 小时",
@@ -91,6 +100,10 @@ mod tests {
         assert_eq!(ago(0, 720), "12 分钟前");
         assert_eq!(ago(0, 3 * 3600), "3 小时前");
         assert_eq!(recency(0, 3600), "最近 24 小时");
+        assert_eq!(span_label(5160), "86 分钟");
+        assert_eq!(span_label(3 * 3600 + 300), "3 小时 5 分");
+        assert_eq!(span_label(30), "30 秒");
+        assert_eq!(span_label(5 * 86_400), "5 天");
         assert_eq!(recency(0, 3 * 86_400), "最近 7 天");
         assert_eq!(recency(0, 30 * 86_400), "更早");
     }

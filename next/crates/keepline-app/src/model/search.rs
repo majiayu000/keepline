@@ -47,6 +47,26 @@ pub fn excerpt(text: &str, query: &str, width: usize) -> String {
     }
     out
 }
+/// Smaller searches to offer when `query` finds nothing: its words, or for one run of
+/// four or more CJK characters its two-character pieces; at most three, no repeats.
+pub fn split_terms(query: &str) -> Vec<String> {
+    let words: Vec<&str> = query.split_whitespace().collect();
+    let mut terms: Vec<String> = if words.len() > 1 {
+        words.into_iter().map(str::to_owned).collect()
+    } else {
+        let chars: Vec<char> = query.trim().chars().collect();
+        let cjk = |c: &char| ('\u{4e00}'..='\u{9fff}').contains(c);
+        if chars.len() >= 4 && chars.iter().all(cjk) {
+            chars.chunks(2).map(|c| c.iter().collect()).collect()
+        } else {
+            vec![]
+        }
+    };
+    let mut seen = std::collections::HashSet::new();
+    terms.retain(|t| seen.insert(t.clone()));
+    terms.truncate(3);
+    terms
+}
 pub fn step(index: usize, len: usize, delta: isize) -> usize {
     if len == 0 {
         return 0;
@@ -103,6 +123,15 @@ mod tests {
         let e = excerpt(&long, "关键字", 40);
         assert!(e.starts_with('…') && e.ends_with('…') && e.contains("关键字"));
         assert_eq!(excerpt("a  b\n c", "", 10), "a b c");
+    }
+
+    #[test]
+    fn search_offers_smaller_terms_when_nothing_matches() {
+        assert_eq!(split_terms("发票报销"), ["发票", "报销"]);
+        assert_eq!(split_terms("tab  rename"), ["tab", "rename"]);
+        assert_eq!(split_terms("a a b c d"), ["a", "b", "c"]);
+        assert!(split_terms("终端").is_empty());
+        assert!(split_terms("rename").is_empty());
     }
 
     #[test]

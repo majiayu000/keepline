@@ -429,3 +429,34 @@ fn the_pane_menu_says_which_signal_set_the_state() {
     let lines = state_reasons(&w, "t0", None, 1000);
     assert!(!lines.iter().any(|l| l.starts_with("画面：")), "{lines:?}");
 }
+
+#[test]
+fn here_card_counts_receipts_and_merges_changed_files() {
+    use keepline_core::content::{Evidence, Source};
+    let fact = |kind: &str, summary: &str, code: Option<i32>| Evidence {
+        kind: kind.into(),
+        summary: summary.into(),
+        exit_code: code,
+        at: 0,
+        source: Source::default(),
+    };
+    let evidence = vec![
+        fact("command", "cargo test", Some(0)),
+        fact("test", "cargo test：ok", Some(0)),
+        fact("file", "文件修改：/repo/src/a.rs", Some(0)),
+        fact("command", "rg x", Some(1)),
+        fact("error", "exec_command: no match", Some(1)),
+        fact("file", "文件修改：/repo/src/a.rs", Some(0)),
+        fact("file", "文件修改：/elsewhere/b.rs", Some(0)),
+        fact("approval", "等你允许", None),
+    ];
+    assert_eq!(sessions::evidence_tally(&evidence), (1, 3, 1));
+    assert_eq!(
+        sessions::done_items(&evidence, "/repo"),
+        vec![
+            ("/elsewhere/b.rs".to_owned(), 1, true),
+            ("src/a.rs".to_owned(), 2, true),
+            ("cargo test：ok".to_owned(), 1, false),
+        ]
+    );
+}
