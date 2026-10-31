@@ -16,7 +16,8 @@ keeplined wait <终端> [--until idle|waiting|working] [--timeout 秒]
 keeplined explain --file <画面.txt> --agent <claude|codex> [--json]
 keeplined explain <终端> [--json]            画面规则怎么读这块屏：状态、命中的规则、规则版本和来源、看到的行
 keeplined --skill                            给 Coding Agent 看的用法说明（Markdown）
-<终端> 可以是编号的前几位或标签名；全部命令都接受 --runtime <目录>。";
+<终端> 可以是编号的前几位或标签名；全部命令都接受 --runtime <目录>。
+Agent 藏在包装器（沙盒、虚拟机、nono 等）后面认不出时，启动前设 KEEPLINE_AGENT=<claude|codex|…>。";
 /// `keeplined --skill`: how a coding Agent drives these commands, and when it must not.
 pub const SKILL: &str = include_str!("skill.md");
 

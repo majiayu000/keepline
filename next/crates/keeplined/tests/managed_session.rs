@@ -3997,3 +3997,64 @@ fn reading_ten_thousand_rows_of_scrollback_is_quick() {
     }
     eprintln!("read 10000 rows: {times:?}");
 }
+
+/// An Agent behind a wrapper whose process name says nothing: `KEEPLINE_AGENT` names it,
+/// the outermost hinted process binds, and its inheriting children do not add a second.
+/// macOS hides the environment of its own platform binaries, as it would hide nothing of a
+/// real wrapper, so the wrapper here is a non-system Python when the machine has one.
+#[test]
+fn keepline_agent_names_an_agent_hidden_behind_a_wrapper() {
+    let Some(python) = ["/opt/homebrew/bin/python3", "/usr/local/bin/python3"]
+        .into_iter()
+        .map(PathBuf::from)
+        .find(|p| p.exists())
+    else {
+        eprintln!("skipped: no non-system python3 to stand in for a wrapper");
+        return;
+    };
+    let h = Host::start();
+    h.setup();
+    let logs = h.root.join("logs/claude");
+    fs::create_dir_all(&logs).unwrap();
+    let wrapper = h.root.join("nono");
+    std::os::unix::fs::symlink(&python, &wrapper).unwrap();
+    let id = uuid::Uuid::new_v4().to_string();
+    let seed = h.root.join("seed");
+    let row = serde_json::json!({"type":"user","sessionId":id,"uuid":"u0","cwd":"/project","entrypoint":"cli","userType":"external","timestamp":keepline_core::content::now(),"message":{"content":"wrapped"}});
+    fs::write(&seed, format!("{row}\n")).unwrap();
+    // The wrapper starts a child that inherits the variable, as every descendant would.
+    let script = format!(
+        "import shutil, subprocess, sys, time; shutil.copy({:?}, {:?}); subprocess.Popen([sys.executable, '-c', 'import time; time.sleep(60)']); time.sleep(60)",
+        seed.to_string_lossy(),
+        logs.join(format!("{id}.jsonl")).to_string_lossy()
+    );
+    h.call(h.launch(
+        "wrapped",
+        &format!(
+            "exec env KEEPLINE_AGENT=claude {} -c {} fixture --session-id {}",
+            shell_quote(&wrapper.to_string_lossy()),
+            shell_quote(&script),
+            id
+        ),
+    ))
+    .unwrap();
+    wait_for(&h, "the hinted wrapper never bound", |w| {
+        w.current_agent("wrapped")
+            .is_some_and(|s| s.cli_session_id == id && s.runtime == Agent::Claude)
+    });
+    let w = h.workspace();
+    let bound = w
+        .agent_sessions
+        .iter()
+        .filter(|s| s.current && s.terminal.as_deref() == Some("wrapped"))
+        .count();
+    assert_eq!(bound, 1, "the inheriting child counted as a second Agent");
+    // An unknown name is ignored.
+    h.call(h.launch(
+        "unknown",
+        &format!("exec env KEEPLINE_AGENT=vim {} -c 'import time; time.sleep(60)'", shell_quote(&python.to_string_lossy())),
+    ))
+    .unwrap();
+    std::thread::sleep(Duration::from_secs(2));
+    assert!(h.workspace().current_agent("unknown").is_none());
+}

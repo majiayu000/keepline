@@ -109,6 +109,49 @@ fn argv_start(bytes: &[u8]) -> Option<(usize, usize)> {
 pub fn claude_transcript_off(pid: u32) -> bool {
     procargs(pid).is_ok_and(|bytes| env_has(&bytes, "CLAUDE_CODE_CHILD_SESSION"))
 }
+/// The value of one environment variable from a KERN_PROCARGS2 buffer; nothing else of
+/// the environment is read past it or kept.
+fn env_value(bytes: &[u8], key: &str) -> Option<String> {
+    let (argc, pos) = argv_start(bytes)?;
+    bytes[pos..]
+        .split(|b| *b == 0)
+        .skip(argc)
+        .find_map(|e| e.strip_prefix(key.as_bytes())?.strip_prefix(b"="))
+        .map(|v| String::from_utf8_lossy(v).into_owned())
+}
+/// The Agent a `KEEPLINE_AGENT` value names, by key or executable, in any case.
+fn agent_named(value: &str) -> Option<Agent> {
+    let value = value.trim();
+    Agent::all()
+        .into_iter()
+        .find(|a| a.key().eq_ignore_ascii_case(value) || a.executable().eq_ignore_ascii_case(value))
+}
+/// Which hinted processes stand for an Agent: the outermost of each chain (children
+/// inherit the variable), and only where no process below is recognized by name, so a
+/// wrapper that leaves the real CLI visible is not counted twice.
+fn hinted_roots(raw: &[(u32, u32, Option<Agent>, Option<Agent>)]) -> HashMap<u32, Agent> {
+    let parent: HashMap<u32, u32> = raw.iter().map(|r| (r.0, r.1)).collect();
+    let hinted: HashMap<u32, Agent> = raw.iter().filter_map(|r| Some((r.0, r.3?))).collect();
+    let named: Vec<u32> = raw.iter().filter(|r| r.2.is_some()).map(|r| r.0).collect();
+    let below = |root: u32, pid: u32| {
+        let mut seen = HashSet::new();
+        let mut at = pid;
+        while seen.insert(at) {
+            match parent.get(&at) {
+                Some(p) if *p == root => return true,
+                Some(p) => at = *p,
+                None => return false,
+            }
+        }
+        false
+    };
+    hinted
+        .iter()
+        .filter(|(pid, _)| !parent.get(*pid).is_some_and(|p| hinted.contains_key(p)))
+        .filter(|(pid, _)| !named.iter().any(|n| below(**pid, *n)))
+        .map(|(pid, agent)| (*pid, *agent))
+        .collect()
+}
 fn env_has(bytes: &[u8], key: &str) -> bool {
     let Some((argc, pos)) = argv_start(bytes) else {
         return false;
@@ -184,7 +227,8 @@ pub fn processes(workspace: &Workspace) -> io::Result<Vec<Process>> {
     if !result.status.success() && result.stdout.is_empty() {
         return Ok(vec![]);
     }
-    let mut processes = vec![];
+    // pid, parent, the Agent its name shows, the Agent a KEEPLINE_AGENT hint names.
+    let mut raw = vec![];
     for line in String::from_utf8_lossy(&result.stdout).lines() {
         let mut fields = line.trim().splitn(2, char::is_whitespace);
         let Some(pid) = fields.next().and_then(|s| s.parse().ok()) else {
@@ -196,6 +240,20 @@ pub fn processes(workspace: &Workspace) -> io::Result<Vec<Process>> {
             continue;
         };
         let runtime = crate::agents::from_command(fields.next().unwrap_or("").trim_start());
+        let hint = if runtime.is_none() {
+            procargs(pid)
+                .ok()
+                .and_then(|b| env_value(&b, keepline_core::protocol::AGENT_ENV))
+                .and_then(|v| agent_named(&v))
+        } else {
+            None
+        };
+        raw.push((pid, parent, runtime, hint));
+    }
+    let hinted = hinted_roots(&raw);
+    let mut processes = vec![];
+    for (pid, parent, runtime, _) in raw {
+        let runtime = runtime.or_else(|| hinted.get(&pid).copied());
         let args = if runtime.is_some() {
             process_argv(pid).unwrap_or_default()
         } else {
@@ -573,6 +631,37 @@ pub fn open_transcripts(
 
 #[cfg(test)]
 mod tests {
+    fn procargs_of(argv: &[&str], env: &[&str]) -> Vec<u8> {
+        let mut b = (argv.len() as i32).to_ne_bytes().to_vec();
+        b.extend(b"/usr/bin/nono\0\0\0");
+        for a in argv.iter().chain(env) {
+            b.extend(a.as_bytes());
+            b.push(0);
+        }
+        b.extend(b"\0executable_path=/usr/bin/nono\0");
+        b
+    }
+    #[test]
+    fn agent_hint_reads_only_its_own_variable_after_argv() {
+        let b = procargs_of(&["nono", "KEEPLINE_AGENT=codex"], &["HOME=/x", "KEEPLINE_AGENT=Claude"]);
+        assert_eq!(env_value(&b, "KEEPLINE_AGENT").as_deref(), Some("Claude"), "argv is not the environment");
+        assert_eq!(env_value(&procargs_of(&["nono"], &["HOME=/x"]), "KEEPLINE_AGENT"), None);
+        assert_eq!(env_value(&procargs_of(&["nono"], &["KEEPLINE_AGENTX=claude"]), "KEEPLINE_AGENT"), None);
+        assert_eq!(agent_named("Claude"), Some(Agent::Claude));
+        assert_eq!(agent_named(" codex "), Some(Agent::Codex));
+        assert_eq!(agent_named("vim"), None);
+    }
+    #[test]
+    fn agent_hint_counts_the_outermost_wrapper_unless_the_cli_shows_below() {
+        let c = Some(Agent::Claude);
+        // shell 1 → wrapper 2 (hint) → child 3 (inherits hint) → tool 4 (inherits hint).
+        let wrapped = [(1, 0, None, None), (2, 1, None, c), (3, 2, None, c), (4, 3, None, c)];
+        assert_eq!(hinted_roots(&wrapped), HashMap::from([(2, Agent::Claude)]));
+        // The real CLI is visible under the wrapper: it is counted by name, the hint is not.
+        let visible = [(1, 0, None, None), (2, 1, None, c), (3, 2, c, None)];
+        assert!(hinted_roots(&visible).is_empty());
+    }
+
     use super::*;
     use crate::agents::{claude::claude_session_id, codex::codex_args};
     use keepline_core::model::{Space, Terminal};
