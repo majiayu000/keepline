@@ -28,6 +28,15 @@ pub(super) fn closed_recently(w: &Workspace, s: &AgentSession) -> bool {
     s.outcome.needs_review(now()) && session_group(w, s) != Group::Stale
 }
 
+/// A space's row figures: its open sessions, those waiting on you and those failed, and
+/// the state its dot shows.
+struct SpaceCounts {
+    count: usize,
+    waiting: usize,
+    errors: usize,
+    group: Group,
+}
+
 impl Workbench {
     /// 鸟瞰 narrowed to this space's closed sessions, ready to resume.
     pub(super) fn show_closed(&mut self, cx: &mut Context<Self>) {
@@ -44,18 +53,22 @@ impl Workbench {
         if self.sidebar.collapsed {
             return self.sidebar_rail(cx);
         }
+        let dense = self.sidebar.dense();
         let mut sidebar = div()
             .id("sidebar-content")
             .flex_1()
             .min_h_0()
             .overflow_y_scroll()
             .px(px(T::S8))
-            .py(px(T::S12))
+            .py(px(if dense { T::S8 } else { T::S12 }))
             .flex()
             .flex_col()
             .gap(px(T::S2))
-            .font_features(super::diagnostics::tabular())
-            .child(
+            .font_features(super::diagnostics::tabular());
+        if dense {
+            sidebar = sidebar.child(self.space_line(cx));
+        } else {
+            sidebar = sidebar.child(
                 div()
                     .flex()
                     .px(px(T::S8))
@@ -63,53 +76,16 @@ impl Workbench {
                     .child(label("空间").flex_1())
                     .child(label(self.workspace.spaces.len().to_string())),
             );
-        for space in &self.workspace.spaces {
+        }
+        for space in self.workspace.spaces.iter().filter(|_| !dense) {
             let id = space.id.clone();
-            // Over the overview the sidebar's spaces are its space filter.
-            let active = if self.nav.overview {
-                self.overview.filter_space.as_ref() == Some(&id)
-            } else {
-                self.nav.space == id
-            };
-            let sessions: Vec<_> = self
-                .workspace
-                .agent_sessions
-                .iter()
-                .filter(|s| {
-                    self.session_hidden(s).is_none()
-                        && self.session_open(s)
-                        && session_space(&self.workspace, s) == Some(id.as_str())
-                })
-                .collect();
-            let count = sessions.len();
-            let waiting = sessions
-                .iter()
-                .filter(|s| {
-                    s.managed()
-                        && s.outcome.needs_review(now())
-                        && session_group(&self.workspace, s) == Group::Waiting
-                })
-                .count();
-            let errors = sessions
-                .iter()
-                .filter(|s| {
-                    s.managed()
-                        && s.outcome.needs_review(now())
-                        && session_group(&self.workspace, s) == Group::Error
-                })
-                .count();
-            let group = if errors > 0 {
-                Group::Error
-            } else if waiting > 0 {
-                Group::Waiting
-            } else {
-                sessions
-                    .iter()
-                    .filter(|s| s.outcome.needs_review(now()))
-                    .map(|s| session_group(&self.workspace, s))
-                    .find(|g| !matches!(g, Group::Waiting | Group::Error))
-                    .unwrap_or(Group::Stale)
-            };
+            let active = self.space_active(&id);
+            let SpaceCounts {
+                count,
+                waiting,
+                errors,
+                group,
+            } = self.space_counts(&id);
             if let Some((_, field, _)) = self
                 .layout
                 .renaming_space
@@ -212,6 +188,7 @@ impl Workbench {
                         let id = id.clone();
                         cx.listener(move |this, event: &gpui::MouseDownEvent, _, cx| {
                             this.layout.space_menu = Some((id.clone(), event.position));
+                            this.layout.space_switch = false;
                             this.layout.space_removing = false;
                             cx.stop_propagation();
                             cx.notify();
@@ -223,31 +200,22 @@ impl Workbench {
                                 this.rename_space(&id, window, cx);
                                 return;
                             }
-                            if this.nav.overview {
-                                this.overview.filter_space = Some(id.clone());
-                            }
-                            this.nav.space = id.clone();
-                            this.nav.tab = this
-                                .workspace
-                                .tabs
-                                .iter()
-                                .find(|t| t.space == id)
-                                .map(|t| t.id.clone());
-                            this.sync_panes(cx);
-                            cx.notify();
+                            this.pick_space(&id, cx);
                         }),
                     ),
             );
         }
-        sidebar = sidebar.child(
-            button("add-space", "＋ 空间")
-                .border_0()
-                .justify_start()
-                .text_color(T::color(T::muted()))
-                .on_click(
-                    cx.listener(|this, _, window, cx| this.choose_space_dir(None, window, cx)),
-                ),
-        );
+        if !dense {
+            sidebar = sidebar.child(
+                button("add-space", "＋ 空间")
+                    .border_0()
+                    .justify_start()
+                    .text_color(T::color(T::muted()))
+                    .on_click(
+                        cx.listener(|this, _, window, cx| this.choose_space_dir(None, window, cx)),
+                    ),
+            );
+        }
         // Sorted by what each row shows. Within a state, newest started first: the
         // host keeps sessions in creation order, while `updated` ticks with every
         // output line and would move rows under the pointer.
@@ -317,7 +285,7 @@ impl Workbench {
             .map(|(terminal, n)| (terminal.clone(), (n.note.clone(), n.why.clone())))
             .collect();
         unread.sort_by(|a, b| a.0.cmp(&b.0));
-        sidebar = sidebar.child(self.todos_view(space_name, cx));
+        sidebar = sidebar.child(self.todos_view(space_name, dense, cx));
         if sessions.is_empty() && unread.is_empty() {
             sidebar = sidebar.child(
                 label("没有打开的会话。在终端里运行 codex 或 claude 就会出现在这里")
@@ -378,10 +346,17 @@ impl Workbench {
             sidebar = sidebar.child(
                 button(
                     "sidebar-closed-sessions",
-                    format!("已关闭 {closed} 个 · 点开接着聊"),
+                    if dense {
+                        format!("已关闭 {closed} · ⌘P 找回")
+                    } else {
+                        format!("已关闭 {closed} 个 · 点开接着聊")
+                    },
                 )
                 .border_0()
                 .justify_start()
+                .when(dense, |d| {
+                    d.mt(px(T::S8)).px(px(T::S8)).font_family(T::UI_FONT)
+                })
                 .text_size(px(T::META))
                 .text_color(T::color(T::muted()))
                 .on_click(cx.listener(|this, _, _, cx| this.show_closed(cx))),
@@ -517,6 +492,188 @@ impl Workbench {
         }
         Some(block)
     }
+    /// Whether a space is the one shown; over the overview the spaces are its filter.
+    fn space_active(&self, id: &str) -> bool {
+        if self.nav.overview {
+            self.overview.filter_space.as_deref() == Some(id)
+        } else {
+            self.nav.space == id
+        }
+    }
+    /// A space's open sessions, how many wait on you or failed, and the state its dot shows.
+    fn space_counts(&self, id: &str) -> SpaceCounts {
+        let sessions: Vec<_> = self
+            .workspace
+            .agent_sessions
+            .iter()
+            .filter(|s| {
+                self.session_hidden(s).is_none()
+                    && self.session_open(s)
+                    && session_space(&self.workspace, s) == Some(id)
+            })
+            .collect();
+        let needs = |g: Group| {
+            sessions
+                .iter()
+                .filter(|s| {
+                    s.managed()
+                        && s.outcome.needs_review(now())
+                        && session_group(&self.workspace, s) == g
+                })
+                .count()
+        };
+        let (waiting, errors) = (needs(Group::Waiting), needs(Group::Error));
+        let group = if errors > 0 {
+            Group::Error
+        } else if waiting > 0 {
+            Group::Waiting
+        } else {
+            sessions
+                .iter()
+                .filter(|s| s.outcome.needs_review(now()))
+                .map(|s| session_group(&self.workspace, s))
+                .find(|g| !matches!(g, Group::Waiting | Group::Error))
+                .unwrap_or(Group::Stale)
+        };
+        SpaceCounts {
+            count: sessions.len(),
+            waiting,
+            errors,
+            group,
+        }
+    }
+    /// Shows a space: its first tab, or over the overview, its sessions only.
+    fn pick_space(&mut self, id: &str, cx: &mut Context<Self>) {
+        if self.nav.overview {
+            self.overview.filter_space = Some(id.to_owned());
+        }
+        self.nav.space = id.to_owned();
+        self.nav.tab = self
+            .workspace
+            .tabs
+            .iter()
+            .find(|t| t.space == id)
+            .map(|t| t.id.clone());
+        self.sync_panes(cx);
+        cx.notify();
+    }
+    /// The dense presets' top line: the space shown, `▾` opening the space menu (switch,
+    /// add, rename, folder, remove), a badge when another space needs you, and the
+    /// space's todos as a small `待办 3` that unfolds them below.
+    fn space_line(&self, cx: &Context<Self>) -> gpui::Div {
+        let shown = if self.nav.overview {
+            self.overview.filter_space.clone()
+        } else {
+            Some(self.nav.space.clone())
+        };
+        let space = shown
+            .as_ref()
+            .and_then(|id| self.workspace.spaces.iter().find(|s| &s.id == id));
+        let line = div()
+            .flex()
+            .items_center()
+            .gap(px(T::S4))
+            .pb(px(T::S4))
+            .font_family(T::UI_FONT);
+        if let Some((_, field, _)) = &self.layout.renaming_space {
+            return line.child(
+                div()
+                    .flex_1()
+                    .h(px(T::ROW))
+                    .px(px(T::S8 - T::BORDER_WIDTH))
+                    .rounded(px(T::CONTROL_RADIUS))
+                    .bg(T::color(T::raised()))
+                    .border(px(T::BORDER_WIDTH))
+                    .border_color(T::color(T::focus()))
+                    .text_size(px(T::SMALL))
+                    .child(field.clone()),
+            );
+        }
+        let elsewhere = self
+            .workspace
+            .spaces
+            .iter()
+            .filter(|s| shown.as_deref() != Some(s.id.as_str()))
+            .map(|s| self.space_counts(&s.id))
+            .map(|c| c.waiting + c.errors)
+            .sum::<usize>();
+        let name = space.map_or_else(|| "全部空间".to_owned(), |s| s.name.clone());
+        let todos = self
+            .workspace
+            .tasks
+            .iter()
+            .filter(|t| t.space == self.nav.space)
+            .count();
+        let open = self.tasks.todos_open;
+        line.child(
+            button("space-switch", "")
+                .aria_label(format!("空间 {name}，点开切换或新建"))
+                .min_w_0()
+                .px(px(T::S8))
+                .gap(px(T::S6))
+                .justify_start()
+                .border_0()
+                .child(
+                    div()
+                        .min_w_0()
+                        .truncate()
+                        .font_weight(gpui::FontWeight::SEMIBOLD)
+                        .text_color(T::color(T::primary()))
+                        .child(name),
+                )
+                .child(
+                    div()
+                        .flex_shrink_0()
+                        .text_size(px(T::CHIP_SIZE))
+                        .text_color(T::color(T::muted()))
+                        .child("▾"),
+                )
+                .on_mouse_down(
+                    gpui::MouseButton::Left,
+                    cx.listener(|this, event: &gpui::MouseDownEvent, _, cx| {
+                        this.layout.space_menu = Some((this.nav.space.clone(), event.position));
+                        this.layout.space_switch = true;
+                        this.layout.space_removing = false;
+                        cx.stop_propagation();
+                        cx.notify();
+                    }),
+                ),
+        )
+        .when(elsewhere > 0, |d| {
+            d.child(
+                badge(Group::Error, elsewhere)
+                    .flex_shrink_0()
+                    .font_family(T::mono(cx).family),
+            )
+        })
+        .child(div().flex_1())
+        .child(
+            button("todos-toggle", format!("待办 {todos}"))
+                .aria_label(if open { "收起待办" } else { "展开待办" })
+                .flex_shrink_0()
+                .h(px(T::ICON_HEIGHT))
+                .px(px(T::S6))
+                .border_0()
+                .text_size(px(T::CHIP_SIZE))
+                .text_color(T::color(if open { T::primary() } else { T::secondary() }))
+                .when(open, |d| d.bg(T::color(T::raised())))
+                .on_click(cx.listener(|this, _, _, cx| {
+                    this.tasks.todos_open = !this.tasks.todos_open;
+                    cx.notify();
+                })),
+        )
+        .child(
+            button("sidebar-new-task", "＋")
+                .aria_label("新待办")
+                .flex_shrink_0()
+                .h(px(T::ICON_HEIGHT))
+                .px(px(T::S6))
+                .border_0()
+                .text_size(px(T::CHIP_SIZE))
+                .text_color(T::color(T::link()))
+                .on_click(cx.listener(|this, _, window, cx| this.show_quick_task(window, cx))),
+        )
+    }
     /// The folded column: a way back, and how many sessions in this space need you.
     fn sidebar_rail(&self, cx: &Context<Self>) -> gpui::Stateful<gpui::Div> {
         let needs = self
@@ -560,7 +717,9 @@ impl Workbench {
             )
     }
     /// The space's todos: what is still to be handed to an Agent, above what is running.
-    fn todos_view(&self, space_name: &str, cx: &Context<Self>) -> gpui::Div {
+    /// In the dense presets the header lives in the space line (`待办 3`), so only the
+    /// quick-add field and, once opened, the list come from here.
+    fn todos_view(&self, space_name: &str, dense: bool, cx: &Context<Self>) -> gpui::Div {
         let mut sidebar = div().flex().flex_col();
         let todo_count = self
             .workspace
@@ -569,41 +728,47 @@ impl Workbench {
             .filter(|t| t.space == self.nav.space)
             .count();
         let open = self.tasks.todos_open;
-        sidebar = sidebar
-            .child(
-                div()
-                    .id("todos-toggle")
-                    .mt(px(T::S14))
-                    .pt(px(T::S12))
-                    .px(px(T::S8))
-                    .mb(px(T::S4))
-                    .flex()
-                    .items_center()
-                    .cursor_pointer()
-                    .child(
-                        label(format!(
-                            "{} {space_name} 的待办 · {todo_count}",
-                            if open { "▾" } else { "▸" }
-                        ))
-                        .flex_1(),
-                    )
-                    .on_click(cx.listener(|this, _, _, cx| {
-                        this.tasks.todos_open = !this.tasks.todos_open;
-                        cx.notify();
-                    }))
-                    .child(
-                        button("sidebar-new-task", "＋")
-                            .aria_label("新待办")
-                            .border_0()
-                            .text_color(T::color(T::link()))
-                            .on_click(cx.listener(|this, _, window, cx| {
-                                // The header toggles on click; ＋ must only open it.
-                                cx.stop_propagation();
-                                this.show_quick_task(window, cx)
-                            })),
-                    ),
-            )
-            .children(self.quick_task_row(cx));
+        if dense {
+            sidebar = sidebar
+                .when(open || self.tasks.quick_task.is_some(), |d| d.pt(px(T::S6)))
+                .children(self.quick_task_row(cx));
+        } else {
+            sidebar = sidebar
+                .child(
+                    div()
+                        .id("todos-toggle")
+                        .mt(px(T::S14))
+                        .pt(px(T::S12))
+                        .px(px(T::S8))
+                        .mb(px(T::S4))
+                        .flex()
+                        .items_center()
+                        .cursor_pointer()
+                        .child(
+                            label(format!(
+                                "{} {space_name} 的待办 · {todo_count}",
+                                if open { "▾" } else { "▸" }
+                            ))
+                            .flex_1(),
+                        )
+                        .on_click(cx.listener(|this, _, _, cx| {
+                            this.tasks.todos_open = !this.tasks.todos_open;
+                            cx.notify();
+                        }))
+                        .child(
+                            button("sidebar-new-task", "＋")
+                                .aria_label("新待办")
+                                .border_0()
+                                .text_color(T::color(T::link()))
+                                .on_click(cx.listener(|this, _, window, cx| {
+                                    // The header toggles on click; ＋ must only open it.
+                                    cx.stop_propagation();
+                                    this.show_quick_task(window, cx)
+                                })),
+                        ),
+                )
+                .children(self.quick_task_row(cx));
+        }
         if !open {
             return sidebar;
         }
@@ -858,16 +1023,94 @@ impl Workbench {
         let remove = id.to_owned();
         let tabs = self.workspace.tabs.iter().filter(|t| t.space == id).count();
         let last = self.workspace.spaces.len() <= 1;
-        let entries = vec![
-            button("space-menu-rename", "重命名")
-                .w_full()
-                .justify_start()
-                .border_0()
-                .on_click(cx.listener(move |this, _, window, cx| {
-                    this.layout.space_menu = None;
-                    this.rename_space(&rename, window, cx);
-                }))
-                .into_any_element(),
+        // From the dense presets' space line: every space to switch to, and a new one.
+        let mut picks = vec![];
+        if self.layout.space_switch {
+            for space in &self.workspace.spaces {
+                let pick = space.id.clone();
+                let SpaceCounts {
+                    count,
+                    waiting,
+                    errors,
+                    group,
+                } = self.space_counts(&space.id);
+                picks.push(
+                    button(
+                        gpui::SharedString::from(format!("space-pick-{}", space.id)),
+                        "",
+                    )
+                    .aria_label(space.name.clone())
+                    .w_full()
+                    .px(px(T::S8))
+                    .gap(px(T::S8))
+                    .justify_start()
+                    .border_0()
+                    .when(self.space_active(&space.id), |d| {
+                        d.bg(T::color(T::button_hover()))
+                    })
+                    .child(dot(group))
+                    .child(div().min_w_0().truncate().child(space.name.clone()))
+                    .when(!Path::new(&space.cwd).is_dir(), |d| {
+                        d.child(
+                            label("目录不在了")
+                                .flex_shrink_0()
+                                .text_size(px(T::CHIP_SIZE))
+                                .text_color(T::color(T::muted())),
+                        )
+                    })
+                    .child(div().flex_1())
+                    .when(waiting > 0, |d| d.child(badge(Group::Waiting, waiting)))
+                    .when(errors > 0, |d| d.child(badge(Group::Error, errors)))
+                    .child(
+                        label(count.to_string())
+                            .flex_shrink_0()
+                            .text_size(px(T::CHIP_SIZE))
+                            .text_color(T::color(T::muted())),
+                    )
+                    .on_click(cx.listener(move |this, _, _, cx| {
+                        this.layout.space_menu = None;
+                        this.pick_space(&pick, cx);
+                    }))
+                    .into_any_element(),
+                );
+            }
+            picks.push(
+                button("space-menu-add", "＋ 新空间…")
+                    .w_full()
+                    .justify_start()
+                    .border_0()
+                    .text_color(T::color(T::link()))
+                    .on_click(
+                        cx.listener(|this, _, window, cx| this.choose_space_dir(None, window, cx)),
+                    )
+                    .into_any_element(),
+            );
+        }
+        let name = self
+            .workspace
+            .spaces
+            .iter()
+            .find(|s| s.id == id)
+            .map(|s| s.name.clone())
+            .unwrap_or_default();
+        let mut entries = picks;
+        entries.extend([
+            button(
+                "space-menu-rename",
+                if self.layout.space_switch {
+                    format!("重命名「{name}」")
+                } else {
+                    "重命名".to_owned()
+                },
+            )
+            .w_full()
+            .justify_start()
+            .border_0()
+            .on_click(cx.listener(move |this, _, window, cx| {
+                this.layout.space_menu = None;
+                this.rename_space(&rename, window, cx);
+            }))
+            .into_any_element(),
             button("space-menu-folder", "更换目录…")
                 .w_full()
                 .justify_start()
@@ -898,7 +1141,7 @@ impl Workbench {
                 }
             }))
             .into_any_element(),
-        ];
+        ]);
         self.popup(position, entries, window, cx, |this| {
             this.layout.space_menu = None
         })

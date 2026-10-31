@@ -546,10 +546,163 @@ impl Content {
             next,
         }
     }
+    /// What a running turn is doing, as a phrase to follow 正在: its latest record this
+    /// turn read as words (`改 tabs.rs`, `运行 cargo build -p app`), else what it was
+    /// asked (`做 修复登录`). `None` when neither says anything.
+    pub fn doing(&self) -> Option<String> {
+        let this_turn = |e: &&Evidence| self.turn_started == 0 || e.at >= self.turn_started;
+        let from_record =
+            self.evidence
+                .iter()
+                .rev()
+                .filter(this_turn)
+                .find_map(|e| match e.kind.as_str() {
+                    "file" => {
+                        let path = e.summary.split_once('：').map_or(&*e.summary, |(_, p)| p);
+                        let name = path.trim().rsplit('/').next().unwrap_or(path).trim();
+                        (!name.is_empty()).then(|| format!("改 {name}"))
+                    }
+                    "test" => {
+                        let command = e.summary.split(['：', '（']).next().unwrap_or_default();
+                        command_gist(command).map(|c| format!("跑测试 {c}"))
+                    }
+                    "commit" => Some(format!("提交 {}", short(e.summary.trim(), 12))),
+                    "command" => command_gist(&e.summary).map(|c| format!("运行 {c}")),
+                    _ => None,
+                });
+        from_record.or_else(|| {
+            let ask = plain_line(&self.asks.last()?.text);
+            (!ask.is_empty()).then(|| format!("做 {}", short(&ask, DOING_CHARS)))
+        })
+    }
+}
+/// How long a `doing` phrase's command or ask may run before it is cut.
+const DOING_CHARS: usize = 40;
+/// A shell command as a short readable phrase: its program and first few words, with
+/// the noise around it gone. `S=/tmp/x; cd "$S" && FOO=1 cargo build -p app 2>&1 | tail`
+/// reads `cargo build -p app`. Variable assignments, `cd`, `export`, `echo` and wrappers
+/// such as `env` or `time` name nothing; long paths read as their last segment.
+pub fn command_gist(command: &str) -> Option<String> {
+    const WRAPPERS: [&str; 7] = [
+        "env",
+        "time",
+        "nice",
+        "caffeinate",
+        "sudo",
+        "command",
+        "exec",
+    ];
+    const NOISE: [&str; 12] = [
+        "cd", "export", "set", "unset", "source", ".", "echo", "printf", "true", ":", "sleep",
+        "pushd",
+    ];
+    let assignment = |w: &str| {
+        w.split_once('=').is_some_and(|(name, _)| {
+            !name.is_empty()
+                && name.chars().all(|c| c.is_ascii_alphanumeric() || c == '_')
+                && !name.starts_with(|c: char| c.is_ascii_digit())
+        })
+    };
+    let clean = |w: &str| {
+        w.trim_matches(|c| matches!(c, '"' | '\'' | '(' | ')' | '{' | '}'))
+            .trim_end_matches('…')
+            .to_owned()
+    };
+    let segments = command
+        .split(['\n', ';', '|', '&'])
+        .map(str::trim)
+        .filter(|s| !s.is_empty());
+    for segment in segments {
+        let mut words = segment
+            .split_whitespace()
+            .map(clean)
+            .filter(|w| !w.is_empty())
+            .skip_while(|w| assignment(w) || WRAPPERS.contains(&w.rsplit('/').next().unwrap_or(w)))
+            .peekable();
+        let Some(program) = words.next() else {
+            continue;
+        };
+        let program = program.rsplit('/').next().unwrap_or(&program).to_owned();
+        if program.is_empty()
+            || NOISE.contains(&program.as_str())
+            || program.starts_with('$')
+            || program.chars().all(|c| c.is_ascii_digit())
+        {
+            continue;
+        }
+        let mut gist = vec![program];
+        // Redirections and heredoc markers end what the command says.
+        for w in words
+            .take_while(|w| !w.starts_with(['>', '<']) && !w.starts_with("2>"))
+            .take(3)
+        {
+            gist.push(match w.rsplit_once('/') {
+                Some((_, last)) if w.chars().count() > 24 && !last.is_empty() => last.to_owned(),
+                _ => w,
+            });
+        }
+        return Some(short(&gist.join(" "), DOING_CHARS));
+    }
+    None
 }
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn a_running_turn_reads_as_words_not_a_raw_command() {
+        assert_eq!(
+            command_gist("S=/private/tmp/claude-502/abc/x; cd \"$S\" && FOO=1 cargo build -p keepline-app 2>&1 | tail -20").as_deref(),
+            Some("cargo build -p keepline-app")
+        );
+        // Only assignments, and the cut a long command got when it was recorded.
+        assert_eq!(
+            command_gist("S=/private/tmp/claude-502/-Users-lifcc…"),
+            None
+        );
+        assert_eq!(
+            command_gist(
+                "/usr/bin/env python3 /Users/me/Library/Caches/scripts/render_all.py --out x"
+            ),
+            Some("python3 render_all.py --out x".into())
+        );
+        assert_eq!(
+            command_gist("echo ---; git status --short").as_deref(),
+            Some("git status --short")
+        );
+        let record = |kind: &str, summary: &str, at| Evidence {
+            kind: kind.into(),
+            summary: summary.into(),
+            exit_code: None,
+            at,
+            source: Source::default(),
+        };
+        let mut c = Content {
+            turn: Turn::Running,
+            turn_started: 100,
+            asks: vec![Quote {
+                text: "**写**主界面 A / C 两种样式".into(),
+                ..Default::default()
+            }],
+            evidence: vec![record("command", "cargo test -p keepline-core", 50)],
+            ..Default::default()
+        };
+        // A record from an earlier turn says nothing about this one: the ask does.
+        assert_eq!(c.doing().as_deref(), Some("做 写主界面 A / C 两种样式"));
+        c.evidence
+            .push(record("file", "文件修改：next/crates/app/src/tabs.rs", 120));
+        assert_eq!(c.doing().as_deref(), Some("改 tabs.rs"));
+        c.evidence.push(record("command", "S=/private/tmp/x", 130));
+        assert_eq!(c.doing().as_deref(), Some("改 tabs.rs"));
+        c.evidence.push(record(
+            "test",
+            "cargo test -p app：test result: ok. 4 passed",
+            140,
+        ));
+        assert_eq!(c.doing().as_deref(), Some("跑测试 cargo test -p app"));
+        c.asks.clear();
+        c.evidence.clear();
+        assert_eq!(c.doing(), None);
+    }
     #[test]
     fn self_report_never_becomes_done() {
         let c = Content {

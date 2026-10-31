@@ -87,6 +87,11 @@ impl SidebarPrefs {
     pub fn preset(&self) -> &'static Preset {
         presets::find(&self.preset)
     }
+    /// Every preset but a flat list (经典) uses the denser look of sidebar-density.html:
+    /// the spaces fold into one line, rows carry a state symbol and a time.
+    pub fn dense(&self) -> bool {
+        self.preset().group != Grouping::Flat
+    }
     /// Whether a group is open: its default, flipped once per click.
     pub fn open(&self, key: &str, default: bool) -> bool {
         default != self.toggled.contains(key)
@@ -149,23 +154,20 @@ impl Workbench {
         self.sidebar.save();
         cx.notify();
     }
-    /// What a row's second line says: what it stopped at, what it is doing, or how its
-    /// last turn ended. The first non-empty line, cut to fit.
+    /// What a row's second line says: what it stopped at (the question it asks you, or
+    /// the error), what it is doing in words (`正在改 tabs.rs`, never the raw command), or
+    /// how its last turn ended. One line, cut to fit. The pane header's 停在 line reads
+    /// the same.
     pub(super) fn row_detail(&self, s: &AgentSession, g: Group) -> Option<String> {
         let first = |t: &str| {
-            t.lines()
-                .map(str::trim)
-                .find(|l| !l.is_empty())
-                .map(|l| l.chars().take(T::TAB_TIP_REASON_CHARS).collect::<String>())
+            let line = keepline_core::content::plain_line(t);
+            (!line.is_empty()).then(|| line.chars().take(T::TAB_TIP_REASON_CHARS).collect())
         };
         let content = self.workspace.content.get(&s.id);
         match bucket(g) {
             Bucket::Attention => self.attention_reason(s, g).map(|r| format!("停在 {r}")),
-            Bucket::Running => content
-                .and_then(|c| c.evidence.last())
-                .and_then(|e| first(&e.summary))
-                .map(|e| format!("正在 {e}")),
-            _ => content.and_then(|c| first(&c.last_reply)),
+            Bucket::Running => content.and_then(|c| c.doing()).map(|d| format!("正在{d}")),
+            _ => content.and_then(|c| first(c.last_reply.lines().find(|l| !l.trim().is_empty())?)),
         }
     }
     fn session_row(
@@ -176,6 +178,9 @@ impl Workbench {
         end: End,
         cx: &Context<Self>,
     ) -> gpui::AnyElement {
+        if self.sidebar.dense() {
+            return self.dense_row((session, g, attention), current, detail, end, cx);
+        }
         let open = session.clone();
         let seen = crate::ui::status_colors::StatusColors::get();
         let title = match self
@@ -216,34 +221,8 @@ impl Workbench {
         } else {
             T::color(seen.seen_status())
         });
-        let pin_terminal = live_terminal(&self.workspace, session).map(|t| t.id.clone());
-        let pinned = pin_terminal
-            .as_ref()
-            .is_some_and(|t| self.sidebar.pinned.contains(t));
         let row_group = gpui::SharedString::from(format!("session-row-{}", session.id));
-        // Only a session with a live terminal can be pinned: the pin is that terminal.
-        let pin = pin_terminal.map(|terminal| {
-            div()
-                .id(gpui::SharedString::from(format!("pin-{}", session.id)))
-                .role(gpui::accesskit::Role::Button)
-                .aria_label(if pinned { "取消置顶" } else { "置顶" })
-                .flex_shrink_0()
-                .w(px(T::S12))
-                .flex()
-                .justify_center()
-                .cursor_pointer()
-                .text_size(px(T::CHIP_SIZE))
-                .text_color(T::color(if pinned { T::link() } else { T::muted() }))
-                .child(if pinned { "●" } else { "○" })
-                .when(!pinned, |d| {
-                    d.opacity(0.).group_hover(row_group.clone(), |s| s.opacity(1.))
-                })
-                .on_mouse_down(gpui::MouseButton::Left, |_, _, cx| cx.stop_propagation())
-                .on_click(cx.listener(move |this, _, _, cx| {
-                    cx.stop_propagation();
-                    this.toggle_pin(&terminal, cx);
-                }))
-        });
+        let pin = self.pin_control(session, &row_group, cx);
         div()
             .id(gpui::SharedString::from(format!("session-{}", session.id)))
             .group(row_group.clone())
@@ -294,6 +273,181 @@ impl Workbench {
             )
             .into_any_element()
     }
+    /// The row's pin: only a session with a live terminal can be pinned, the pin being
+    /// that terminal. Shown on hover, or always once pinned.
+    fn pin_control(
+        &self,
+        session: &AgentSession,
+        row_group: &gpui::SharedString,
+        cx: &Context<Self>,
+    ) -> Option<gpui::Stateful<gpui::Div>> {
+        let terminal = live_terminal(&self.workspace, session).map(|t| t.id.clone())?;
+        let pinned = self.sidebar.pinned.contains(&terminal);
+        let row_group = row_group.clone();
+        Some(
+            div()
+                .id(gpui::SharedString::from(format!("pin-{}", session.id)))
+                .role(gpui::accesskit::Role::Button)
+                .aria_label(if pinned { "取消置顶" } else { "置顶" })
+                .flex_shrink_0()
+                .w(px(T::S12))
+                .flex()
+                .justify_center()
+                .cursor_pointer()
+                .text_size(px(T::CHIP_SIZE))
+                .text_color(T::color(if pinned { T::link() } else { T::muted() }))
+                .child(if pinned { "●" } else { "○" })
+                .when(!pinned, |d| {
+                    d.opacity(0.).group_hover(row_group, |s| s.opacity(1.))
+                })
+                .on_mouse_down(gpui::MouseButton::Left, |_, _, cx| cx.stop_propagation())
+                .on_click(cx.listener(move |this, _, _, cx| {
+                    cx.stop_propagation();
+                    this.toggle_pin(&terminal, cx);
+                })),
+        )
+    }
+    /// A row in the 状态 / 目录 presets (and plugin presets beside them), after
+    /// sidebar-density.html: one state symbol, the title in the system font, and on the
+    /// right the running turn's clock or a short age (`4m`, `2h`); symbol and time are
+    /// monospace. The second line comes only for what needs you and the selected row.
+    fn dense_row(
+        &self,
+        (session, g, attention): Listed,
+        current: Option<&str>,
+        detail: Option<String>,
+        end: End,
+        cx: &Context<Self>,
+    ) -> gpui::AnyElement {
+        let open = session.clone();
+        let seen = crate::ui::status_colors::StatusColors::get();
+        let selected = current == Some(session.id.as_str());
+        let mono = T::mono(cx).family;
+        let title = match self
+            .layout
+            .renaming_session
+            .as_ref()
+            .filter(|(id, ..)| id == &session.id)
+        {
+            Some((_, field, _)) => div().flex_1().min_w_0().child(field.clone()),
+            None => div()
+                .flex_1()
+                .min_w_0()
+                .truncate()
+                .font_family(T::UI_FONT)
+                .text_size(px(T::SMALL))
+                .text_color(if attention || selected {
+                    T::color(T::primary())
+                } else {
+                    T::color(seen.seen_title())
+                })
+                .child(self.session_title(session)),
+        };
+        let time = match end {
+            End::Text(text) => text,
+            End::Nothing => String::new(),
+            End::State => match self.turn_started(session) {
+                Some(at) => {
+                    self.tick_turn(cx);
+                    super::layout::turn_clock(now().saturating_sub(at))
+                }
+                None => short_ago(self.session_updated(session), now()),
+            },
+        };
+        let row_group = gpui::SharedString::from(format!("session-row-{}", session.id));
+        let pin = self.pin_control(session, &row_group, cx);
+        div()
+            .id(gpui::SharedString::from(format!("session-{}", session.id)))
+            .group(row_group)
+            .px(px(T::S8))
+            .py(px(T::S4))
+            .flex()
+            .flex_col()
+            .rounded(px(T::CONTROL_RADIUS))
+            .cursor_pointer()
+            .when(selected, |d| d.bg(T::color(T::raised())))
+            .hover(|s| s.bg(T::color(T::raised())))
+            .child(
+                div()
+                    .flex()
+                    .items_center()
+                    .gap(px(T::S8))
+                    .child(
+                        // A finished turn you have seen keeps 做完了's ✓, in its quieter ink.
+                        glyph(if g == Group::Ready { Group::Done } else { g })
+                            .when(g == Group::Ready, |d| d.text_color(g.colors().1))
+                            .w(px(T::S12))
+                            .flex()
+                            .justify_center()
+                            .font_family(mono.clone())
+                            .font_weight(gpui::FontWeight::BOLD)
+                            .text_size(px(T::SMALL)),
+                    )
+                    .child(title)
+                    .child(
+                        div()
+                            .flex_shrink_0()
+                            .font_family(mono)
+                            .font_features(T::tabular())
+                            .text_size(px(T::CHIP_SIZE))
+                            .text_color(T::color(T::muted()))
+                            .child(time),
+                    )
+                    .children(pin),
+            )
+            .when_some(detail, |d, text| {
+                d.child(
+                    div()
+                        .pl(px(T::S12 + T::S8))
+                        .truncate()
+                        .font_family(T::UI_FONT)
+                        .text_size(px(T::CHIP_SIZE))
+                        .text_color(T::color(T::secondary()))
+                        .child(text),
+                )
+            })
+            .tooltip(super::diagnostics::tip(self.session_tip(session)))
+            .on_click(
+                cx.listener(move |this, event: &gpui::ClickEvent, window, cx| {
+                    if event.click_count() == 2 {
+                        this.rename_session(&open.id, window, cx);
+                        return;
+                    }
+                    this.peek_or_open(&open, window, cx)
+                }),
+            )
+            .into_any_element()
+    }
+    /// A group's heading in the 状态 / 目录 presets: small, its count in monospace, no rule.
+    pub(super) fn group_title(
+        title: String,
+        count: Option<usize>,
+        cx: &Context<Self>,
+    ) -> gpui::Div {
+        div()
+            .flex()
+            .items_baseline()
+            .gap(px(T::S6))
+            .px(px(T::S8))
+            .mt(px(T::S14))
+            .mb(px(T::S2))
+            .text_size(px(T::CHIP_SIZE))
+            .child(
+                div()
+                    .font_family(T::UI_FONT)
+                    .font_weight(gpui::FontWeight::SEMIBOLD)
+                    .text_color(T::color(T::secondary()))
+                    .child(title),
+            )
+            .when_some(count, |d, n| {
+                d.child(
+                    div()
+                        .font_family(T::mono(cx).family)
+                        .text_color(T::color(T::muted()))
+                        .child(n.to_string()),
+                )
+            })
+    }
     pub(super) fn section_title(title: String, count: usize) -> gpui::Div {
         div()
             .flex()
@@ -303,7 +457,17 @@ impl Workbench {
             .child(label(title).flex_1().text_size(px(T::CHIP_SIZE)))
             .child(label(count.to_string()).text_size(px(T::CHIP_SIZE)))
     }
-    /// One row standing for folded buckets, e.g. `做完了 4 · 停下了 3`; a click opens them.
+    /// A group's heading in the chosen preset's look.
+    pub(super) fn heading(&self, title: String, count: usize, cx: &Context<Self>) -> gpui::Div {
+        if self.sidebar.dense() {
+            Self::group_title(title, Some(count), cx)
+        } else {
+            Self::section_title(title, count)
+        }
+    }
+    /// One row standing for folded buckets; a click opens them. Under a heading it reads
+    /// `✓ 做完了 4  ‖ 停下了 3  很久没动 165`, each with its state's symbol; inside a folder
+    /// it is the quieter `另有 做完了 2 · 停下了 1`.
     fn fold_row(
         &self,
         id: String,
@@ -313,31 +477,65 @@ impl Workbench {
         cx: &Context<Self>,
     ) -> gpui::AnyElement {
         let key = id.clone();
-        let mut row = div()
+        let mono = T::mono(cx).family;
+        let row = div()
             .id(gpui::SharedString::from(format!("sidebar-fold-{id}")))
-            .h(px(T::ROW))
+            .min_h(px(T::ROW))
             .px(px(T::S8))
             .flex()
             .items_center()
-            .gap(px(T::S6))
+            .gap(px(T::S4))
             .rounded(px(T::CONTROL_RADIUS))
             .cursor_pointer()
             .hover(|s| s.bg(T::color(T::raised())))
-            .text_size(px(T::CHIP_SIZE))
-            .text_color(T::color(T::muted()));
+            .font_family(T::UI_FONT)
+            .text_size(px(if prefix.is_empty() {
+                T::META
+            } else {
+                T::CHIP_SIZE
+            }))
+            .text_color(T::color(if prefix.is_empty() {
+                T::secondary()
+            } else {
+                T::muted()
+            }));
+        // The parts give way before the chevron does in a narrow column.
+        let mut line = div()
+            .flex_1()
+            .min_w_0()
+            .overflow_hidden()
+            .flex()
+            .items_center()
+            .gap_x(px(if prefix.is_empty() { T::S10 } else { T::S6 }));
         if !prefix.is_empty() {
-            row = row.child(prefix.to_owned());
+            line = line.child(prefix.to_owned());
         }
         for (i, (b, n)) in parts.iter().enumerate() {
-            if i > 0 {
-                row = row.child("·");
+            let count = div()
+                .font_family(mono.clone())
+                .text_color(T::color(if prefix.is_empty() {
+                    T::primary()
+                } else {
+                    T::muted()
+                }))
+                .child(n.to_string());
+            let mut part = div().flex_shrink_0().flex().items_center().gap(px(T::S4));
+            if prefix.is_empty() {
+                if *b != Bucket::Stale {
+                    part = part.child(glyph(bucket_group(*b)).font_family(mono.clone()));
+                }
+            } else if i > 0 {
+                line = line.child("·");
             }
-            row = row
-                .child(seen_dot(bucket_group(*b)))
-                .child(format!("{} {n}", b.label()));
+            line = line.child(part.child(b.label()).child(count));
         }
-        row.child(div().flex_1())
-            .child(if open { "⌄" } else { "›" })
+        row.child(line)
+            .child(
+                div()
+                    .flex_shrink_0()
+                    .text_color(T::color(T::muted()))
+                    .child(if open { "⌄" } else { "›" }),
+            )
             .on_click(cx.listener(move |this, _, _, cx| this.toggle_sidebar_group(&key, cx)))
             .into_any_element()
     }
@@ -370,15 +568,16 @@ impl Workbench {
                 })
                 .cloned()
         };
-        let (mut top, sessions): (Vec<Listed>, Vec<Listed>) =
-            sessions.into_iter().partition(|l| pinned_terminal(l).is_some());
+        let (mut top, sessions): (Vec<Listed>, Vec<Listed>) = sessions
+            .into_iter()
+            .partition(|l| pinned_terminal(l).is_some());
         let all_pinned = !top.is_empty() && sessions.is_empty();
         if !top.is_empty() {
             top.sort_by_key(|l| {
                 pinned_terminal(l).and_then(|t| self.sidebar.pinned.iter().position(|p| *p == t))
             });
             out.push(
-                Self::section_title("置顶".into(), top.len())
+                self.heading("置顶".into(), top.len(), cx)
                     .mt(px(T::S14))
                     .into_any_element(),
             );
@@ -424,7 +623,10 @@ impl Workbench {
                     if rows.is_empty() {
                         continue;
                     }
-                    out.push(Self::section_title(b.label().into(), rows.len()).into_any_element());
+                    out.push(
+                        self.heading(b.label().into(), rows.len(), cx)
+                            .into_any_element(),
+                    );
                     for l in rows {
                         push(&mut out, *l, detail(l), End::State);
                     }
@@ -432,12 +634,18 @@ impl Workbench {
                 if !folded.is_empty() {
                     out.push(
                         div()
-                            .mt(px(T::S8))
+                            .mt(px(T::S12))
                             .child(self.fold_row("status:rest".into(), &folded, rest_open, "", cx))
                             .into_any_element(),
                     );
                 }
-                for l in sessions.iter().filter(|l| preset.folds(bucket(l.1))) {
+                // Opened, in the summary's order: done, stopped, then gone quiet.
+                let mut rest: Vec<_> = sessions
+                    .iter()
+                    .filter(|l| preset.folds(bucket(l.1)))
+                    .collect();
+                rest.sort_by_key(|l| Bucket::ALL.iter().position(|b| *b == bucket(l.1)));
+                for l in rest {
                     // The session you are in stays in sight while its group is folded.
                     if rest_open || current == Some(l.0.id.as_str()) {
                         push(&mut out, *l, detail(l), End::State);
@@ -449,12 +657,17 @@ impl Workbench {
                     self.wasm_rows(preset, sessions, closed, current, &mut push, &mut out, cx);
             }
             Grouping::Directory => {
+                // What needs you is listed once, on top, with its folder in its second
+                // line; the folders below only count it.
                 let pinned: Vec<_> = sessions
                     .iter()
                     .filter(|l| bucket(l.1) == Bucket::Attention)
                     .collect();
                 if !pinned.is_empty() {
-                    out.push(Self::section_title("需要你".into(), pinned.len()).into_any_element());
+                    out.push(
+                        self.heading("需要你".into(), pinned.len(), cx)
+                            .into_any_element(),
+                    );
                     for l in &pinned {
                         let d = detail(l).map(|d| format!("{} · {d}", folder_name(&l.0.cwd)));
                         push(&mut out, **l, d, End::State);
@@ -468,9 +681,23 @@ impl Workbench {
                         None => folders.push((l.0.cwd.as_str(), vec![*l])),
                     }
                 }
+                // Open folders (something running) first, then those holding what needs
+                // you, then the quiet ones; otherwise as their first session sorts.
+                folders.sort_by_key(|(_, rows)| {
+                    let has = |b: Bucket| rows.iter().any(|l| bucket(l.1) == b);
+                    (!has(Bucket::Running), !has(Bucket::Attention))
+                });
                 if !folders.is_empty() {
-                    out.push(Self::section_title("目录".into(), folders.len()).into_any_element());
+                    out.push(Self::group_title("目录".into(), None, cx).into_any_element());
                 }
+                // A folder's rows sit in from its name.
+                let indent = |out: &mut Vec<gpui::AnyElement>, from: usize| {
+                    let rows: Vec<_> = out.drain(from..).collect();
+                    out.extend(
+                        rows.into_iter()
+                            .map(|r| div().pl(px(T::S14)).child(r).into_any_element()),
+                    );
+                };
                 for (cwd, rows) in folders {
                     let needs = rows
                         .iter()
@@ -483,6 +710,7 @@ impl Workbench {
                     if !open {
                         continue;
                     }
+                    let from = out.len();
                     let mut folded: Vec<(Bucket, usize)> = vec![];
                     for l in rows.iter().filter(|l| bucket(l.1) != Bucket::Attention) {
                         let b = bucket(l.1);
@@ -495,15 +723,11 @@ impl Workbench {
                             push(&mut out, *l, detail(l), End::State);
                         }
                     }
+                    folded.sort_by_key(|(b, _)| Bucket::ALL.iter().position(|a| a == b));
                     if !folded.is_empty() {
                         let more_key = format!("dir-more:{cwd}");
                         let more_open = self.sidebar.open(&more_key, false);
-                        out.push(
-                            div()
-                                .pl(px(T::S12))
-                                .child(self.fold_row(more_key, &folded, more_open, "另有", cx))
-                                .into_any_element(),
-                        );
+                        out.push(self.fold_row(more_key, &folded, more_open, "另有", cx));
                         if more_open {
                             for l in rows.iter().filter(|l| {
                                 bucket(l.1) != Bucket::Attention && preset.folds(bucket(l.1))
@@ -512,11 +736,15 @@ impl Workbench {
                             }
                         }
                     }
+                    indent(&mut out, from);
                 }
             }
         }
         (out, more, owns_closed)
     }
+    /// A folder's heading: its name, `1 需要你` in the error ink when something in it
+    /// needs you, and its session count. A folder with nothing running or waiting is
+    /// folded and dimmed; its path shows only while the pointer is on it.
     #[allow(clippy::too_many_arguments)]
     pub(super) fn folder_row(
         &self,
@@ -529,9 +757,12 @@ impl Workbench {
         cx: &Context<Self>,
     ) -> gpui::AnyElement {
         let key = key.to_owned();
-        let path: gpui::SharedString = home_relative(cwd).into();
+        let quiet = !active && needs == 0;
+        let row_group = gpui::SharedString::from(format!("sidebar-{key}"));
+        let mono = T::mono(cx).family;
         div()
-            .id(gpui::SharedString::from(format!("sidebar-{key}")))
+            .id(row_group.clone())
+            .group(row_group.clone())
             .h(px(T::ROW))
             .px(px(T::S8))
             .flex()
@@ -540,33 +771,56 @@ impl Workbench {
             .rounded(px(T::CONTROL_RADIUS))
             .cursor_pointer()
             .hover(|s| s.bg(T::color(T::raised())))
-            .text_size(px(T::MONO_SIZE))
-            .text_color(T::color(if active || needs > 0 {
-                T::primary()
-            } else {
-                T::muted()
-            }))
+            .font_family(T::UI_FONT)
+            .text_size(px(T::SMALL))
             .child(
-                label(if open { "▾" } else { "▸" })
+                div()
+                    .w(px(T::S12))
                     .flex_shrink_0()
-                    .text_size(px(T::CHIP_SIZE)),
+                    .flex()
+                    .justify_center()
+                    .text_size(px(T::CHIP_SIZE))
+                    .text_color(T::color(T::muted()))
+                    .child(if open { "▾" } else { "▸" }),
             )
-            .child(div().min_w_0().truncate().child(folder_name(cwd)))
+            .child(
+                div()
+                    .flex_shrink_0()
+                    .max_w(px(T::SIDEBAR * 0.6))
+                    .truncate()
+                    .when(!quiet, |d| d.font_weight(gpui::FontWeight::SEMIBOLD))
+                    .text_color(T::color(if quiet { T::muted() } else { T::primary() }))
+                    .child(folder_name(cwd)),
+            )
+            .child(
+                div()
+                    .flex_1()
+                    .min_w_0()
+                    .truncate()
+                    .text_size(px(T::CHIP_SIZE))
+                    .text_color(T::color(T::muted()))
+                    .opacity(0.)
+                    .group_hover(row_group, |s| s.opacity(1.))
+                    .child(home_relative(cwd)),
+            )
             .when(needs > 0, |d| {
                 d.child(
-                    label(format!("{needs} 需要你"))
+                    div()
                         .flex_shrink_0()
                         .text_size(px(T::CHIP_SIZE))
-                        .text_color(Group::Waiting.colors().1),
+                        .font_weight(gpui::FontWeight::SEMIBOLD)
+                        .text_color(Group::Error.colors().1)
+                        .child(format!("{needs} 需要你")),
                 )
             })
-            .child(div().flex_1())
             .child(
-                label(count.to_string())
+                div()
                     .flex_shrink_0()
-                    .text_size(px(T::CHIP_SIZE)),
+                    .font_family(mono)
+                    .text_size(px(T::CHIP_SIZE))
+                    .text_color(T::color(T::muted()))
+                    .child(count.to_string()),
             )
-            .tooltip(move |_, cx| cx.new(|_| super::render::TextTip(path.clone())).into())
             .on_click(cx.listener(move |this, _, _, cx| this.toggle_sidebar_group(&key, cx)))
             .into_any_element()
     }
