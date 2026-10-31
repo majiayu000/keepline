@@ -22,6 +22,9 @@ pub(super) struct LayoutState {
     pub(super) renaming_space: Option<(Space, Entity<Field>, [gpui::Subscription; 2])>,
     /// A space's right-click menu: the space and where it was opened.
     pub(super) space_menu: Option<(String, gpui::Point<gpui::Pixels>)>,
+    /// The space menu was opened from the dense presets' space line: it lists the spaces
+    /// to switch to and a new one above the shown space's own entries.
+    pub(super) space_switch: bool,
     /// 删除空间 was pressed once in the open space menu; the second press removes it.
     pub(super) space_removing: bool,
     /// A tab's right-click menu: the tab and where it was opened.

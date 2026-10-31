@@ -64,6 +64,15 @@ pub fn age(at: u64) -> String {
         format!("{} 天", minutes / 1440)
     }
 }
+/// How long ago, in a sidebar row's few columns: `4m`, `2h`, `1d`, or 刚刚.
+pub fn short_ago(updated: u64, now: u64) -> String {
+    match now.saturating_sub(updated) {
+        age if age < 60 => "刚刚".into(),
+        age if age < 3600 => format!("{}m", age / 60),
+        age if age < DAY => format!("{}h", age / 3600),
+        age => format!("{}d", age / DAY),
+    }
+}
 /// A stretch of time, as `86 分钟` or `3 小时 5 分`.
 pub fn span_label(secs: u64) -> String {
     match secs / 60 {
@@ -99,6 +108,10 @@ mod tests {
         assert_eq!(ago(1000, 1030), "刚刚");
         assert_eq!(ago(0, 720), "12 分钟前");
         assert_eq!(ago(0, 3 * 3600), "3 小时前");
+        assert_eq!(short_ago(1000, 1030), "刚刚");
+        assert_eq!(short_ago(0, 720), "12m");
+        assert_eq!(short_ago(0, 3 * 3600 + 59), "3h");
+        assert_eq!(short_ago(0, 40 * 86_400), "40d");
         assert_eq!(recency(0, 3600), "最近 24 小时");
         assert_eq!(span_label(5160), "86 分钟");
         assert_eq!(span_label(3 * 3600 + 300), "3 小时 5 分");

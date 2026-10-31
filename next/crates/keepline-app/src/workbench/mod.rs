@@ -344,6 +344,7 @@ impl Workbench {
                 tab_menu: None,
                 space_menu: None,
                 space_removing: false,
+                space_switch: false,
                 renaming_space: None,
                 icon_menu: None,
                 confirm_close: None,

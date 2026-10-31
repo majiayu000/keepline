@@ -282,7 +282,8 @@ impl Workbench {
             }
             if let Some(title) = section.title.clone() {
                 out.push(
-                    Self::section_title(title, section.count.unwrap_or(named)).into_any_element(),
+                    self.heading(title, section.count.unwrap_or(named), cx)
+                        .into_any_element(),
                 );
             }
             // Whether the folder the next session rows sit under is open.
@@ -359,7 +360,7 @@ impl Workbench {
         true
     }
     /// When the running turn began, for a session whose turn is running.
-    fn turn_started(&self, s: &AgentSession) -> Option<u64> {
+    pub(super) fn turn_started(&self, s: &AgentSession) -> Option<u64> {
         self.workspace
             .content
             .get(&s.id)
