@@ -15,6 +15,28 @@ pub fn hsla(c: u32) -> Hsla {
     .into()
 }
 pub struct Theme;
+/// Colors of the native menu bar panel; status hues show only on dots and quoted text.
+#[derive(Clone, Copy, Debug, serde::Serialize)]
+pub struct MenuPalette {
+    pub background: u32,
+    pub sunken: u32,
+    pub hover: u32,
+    pub text: u32,
+    pub secondary: u32,
+    pub muted: u32,
+    pub border: u32,
+    pub border_strong: u32,
+    pub accent: u32,
+    pub on_accent: u32,
+    pub wait: u32,
+    pub wait_ink: u32,
+    pub error: u32,
+    pub error_ink: u32,
+    pub error_wash: u32,
+    pub review: u32,
+    pub running: u32,
+    pub stale: u32,
+}
 
 /// JetBrains Mono 2.304 (OFL, assets/JETBRAINS-MONO-LICENSE): the face Ghostty embeds
 /// as its default, registered in-process so `Theme::mono` never depends on an install.
@@ -303,12 +325,8 @@ impl Theme {
             Scheme::Light => &LIGHT,
         }
     }
-    /// The menu bar panel is a separate light macOS popover, kept apart from the window.
     /// Search matches drawn over terminal text, in either scheme: the hue of `matched`.
     pub const SEARCH_HIT: u32 = 0xe8a33a;
-    pub const MENU_ACCENT: u32 = 0x4b4fd6;
-    pub const MENU_TEXT: u32 = 0x17181c;
-    pub const MENU_SECONDARY: u32 = 0x5d6270;
     pub const UI_FONT: &'static str = ".AppleSystemUIFont";
     pub const BODY_SIZE: f32 = 13.;
     pub const SMALL: f32 = 12.;
@@ -394,15 +412,53 @@ impl Theme {
     pub const TICK_LABEL: f32 = 48.;
     pub const CLEANUP_ACTION_HEIGHT: f32 = 64.;
     pub const MENUBAR_WIDTH: f32 = 360.;
-    pub const MENUBAR_HEIGHT: f32 = 480.;
-    pub const MENUBAR_ROW: f32 = 52.;
+    /// The panel grows with its content up to this; five three-line rows fit.
+    pub const MENUBAR_HEIGHT: f32 = 600.;
     pub const MENU_TITLE: f32 = 15.;
-    pub const MENU_BUTTON: f32 = 36.;
-    pub const MENU_WAIT_DOT: u32 = 0xc2570c;
-    pub const MENU_WAIT_TEXT: u32 = 0x9a3f06;
-    pub const MENU_WAIT_BG: u32 = 0xfff6ee;
-    pub const MENU_ERROR_DOT: u32 = 0xc0392b;
-    pub const MENU_ERROR_TEXT: u32 = 0x9b2318;
+    pub const MENU_COUNT: f32 = 18.;
+    pub const MENU_BUTTON: f32 = 34.;
+    /// The menu bar panel is a separate macOS popover that follows the system's light or
+    /// dark mode, apart from the window: README「跨界面主题」, menubar-panel.html.
+    pub const MENU_LIGHT: MenuPalette = MenuPalette {
+        background: 0xffffff,
+        sunken: 0xf7f8fa,
+        hover: 0xf4f5f8,
+        text: 0x17181c,
+        secondary: 0x5d6270,
+        muted: 0x767b87,
+        border: 0xe3e5ea,
+        border_strong: 0xd5d8de,
+        accent: 0x4b4fd6,
+        on_accent: 0xffffff,
+        wait: 0xc2570c,
+        wait_ink: 0x9a3f06,
+        error: 0xc0392b,
+        error_ink: 0x9b2318,
+        error_wash: 0xfbeae8,
+        review: 0x5e62d8,
+        running: 0x1f8a5b,
+        stale: 0x8b909c,
+    };
+    pub const MENU_DARK: MenuPalette = MenuPalette {
+        background: 0x1c1c1e,
+        sunken: 0x18181a,
+        hover: 0x242426,
+        text: 0xecebe9,
+        secondary: 0xa3a2a0,
+        muted: 0x8a8988,
+        border: 0x2e2e2f,
+        border_strong: 0x3a3a3b,
+        accent: 0xecebe9,
+        on_accent: 0x1c1c1e,
+        wait: 0xe8823a,
+        wait_ink: 0xf3b386,
+        error: 0xe5534b,
+        error_ink: 0xf2a59f,
+        error_wash: 0x3a2222,
+        review: 0x8f93ff,
+        running: 0x4cc38a,
+        stale: 0x8b8a88,
+    };
     pub const FORM_WIDTH: f32 = 520.;
     pub const DETAIL_WIDTH: f32 = 640.;
     pub const SETTINGS_WIDTH: f32 = 940.;

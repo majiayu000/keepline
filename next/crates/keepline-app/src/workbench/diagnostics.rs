@@ -1262,7 +1262,7 @@ impl Workbench {
         assert_eq!(copied.as_deref(), Some(expected.as_str()));
     }
 
-    pub(super) fn show_diagnostics(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+    pub(crate) fn show_diagnostics(&mut self, window: &mut Window, cx: &mut Context<Self>) {
         self.search.hide();
         let terminals = self
             .workspace
