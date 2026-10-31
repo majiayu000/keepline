@@ -1677,6 +1677,35 @@ pub fn start(
             wait(800).await;
             shot("3-own-tab.png", cx);
             eprintln!("peek native PASS: hidden approval peeked, answered once, size kept, Esc closes without reaching the Agent");
+            // 置顶: the row's dot shows on hover, a real click pins the terminal, the pin is
+            // saved, and it comes off once the terminal ends.
+            let row = gpui::point(px(100.), px(292.));
+            let dot = gpui::point(px(theme::Theme::SIDEBAR - 22.), px(292.));
+            cx.update_window(handle.into(), |_, w, a| {
+                use gpui::InputEvent;
+                w.dispatch_event(gpui::MouseMoveEvent { position: row, pressed_button: None, modifiers: Default::default() }.to_platform_input(), a);
+                w.refresh(); w.draw(a).clear(a);
+            }).unwrap();
+            wait(200).await;
+            shot("4-hover.png", cx);
+            cx.update_window(handle.into(), |_, w, a| native_click(w, a, dot, gpui::MouseButton::Left)).unwrap();
+            wait(300).await;
+            assert_eq!(handle.update(cx, |v, _, _| v.visual_pins()).unwrap(), vec!["agent".to_owned()], "the dot did not pin");
+            assert!(handle.update(cx, |v, _, _| v.visual_peek_state()).unwrap().is_none(), "the dot's click also reached the row");
+            let saved = std::fs::read_to_string(crate::ui::status_colors::config_dir().unwrap().join("sidebar")).unwrap();
+            assert!(saved.lines().any(|l| l == "pin agent"), "pin not saved: {saved:?}");
+            shot("5-pinned.png", cx);
+            call(Request::Stop { id: "agent".into() });
+            let mut gone = false;
+            for _ in 0..50 {
+                wait(200).await;
+                if handle.update(cx, |v, _, _| v.visual_pins()).unwrap().is_empty() { gone = true; break; }
+            }
+            assert!(gone, "pin outlived its terminal");
+            let saved = std::fs::read_to_string(crate::ui::status_colors::config_dir().unwrap().join("sidebar")).unwrap();
+            assert!(!saved.contains("pin "), "ended pin still saved: {saved:?}");
+            shot("6-unpinned.png", cx);
+            eprintln!("pin native PASS: hover dot, click pins and saves, ended terminal unpins");
             cx.update(|cx| cx.quit());
         })
         .detach();
