@@ -390,6 +390,11 @@ impl Theme {
     pub const MENU_WIDTH: f32 = 230.;
     pub const HERE_WIDTH: f32 = 340.;
     pub const HERE_HEIGHT: f32 = 600.;
+    /// The card's 你要它 / 做成了 / 停在 labels, its evidence bar and the resume command
+    /// its menu previews.
+    pub const HERE_FACT: f32 = 48.;
+    pub const EVIDENCE_BAR: f32 = 8.;
+    pub const HERE_COMMAND_CHARS: usize = 24;
     pub const CLEANUP_WIDTH: f32 = 960.;
     /// The diagnostics panel and its charts.
     pub const DIAGNOSTIC_WIDTH: f32 = 980.;
@@ -467,11 +472,27 @@ impl Theme {
     pub const TASK_ROW: f32 = 48.;
     pub const SEARCH_WIDTH: f32 = 360.;
     /// The ⌘P palette: a floating panel over the workbench, list left, preview right.
-    pub const PALETTE_WIDTH: f32 = 680.;
+    pub const PALETTE_WIDTH: f32 = 760.;
     pub const PALETTE_TOP: f32 = 72.;
-    pub const PALETTE_LIST: f32 = 440.;
-    pub const PALETTE_PREVIEW: f32 = 250.;
+    /// The list and preview keep one height, so moving the selection never resizes it.
+    pub const PALETTE_LIST: f32 = 420.;
+    pub const PALETTE_PREVIEW: f32 = 268.;
     pub const PALETTE_RADIUS: f32 = 14.;
+    /// A result row, one or two lines; the type icon and the right-aligned time column.
+    pub const PALETTE_ROW: f32 = 32.;
+    pub const PALETTE_ROW_TWO: f32 = 44.;
+    pub const PALETTE_MORE: f32 = 28.;
+    pub const PALETTE_ICON: f32 = 18.;
+    pub const PALETTE_WHEN: f32 = 62.;
+    /// The preview's 你要它 / 停在 labels and the no-result page.
+    pub const PALETTE_FACT: f32 = 44.;
+    pub const PALETTE_EMPTY: f32 = 260.;
+    /// The status counts above an empty query and the 「只搜」 suggestions.
+    pub const FILTER_PILL: f32 = 24.;
+    pub const FILTER_PILL_RADIUS: f32 = 12.;
+    /// When the user spoke over a session: the track and its ticks.
+    pub const ASK_TRACK: f32 = 10.;
+    pub const ASK_TICK: f32 = 8.;
     pub const SEARCH_FIELD: f32 = 48.;
     pub const SEARCH_TEXT: f32 = 15.;
     pub const SEARCH_MIN: f32 = 180.;
