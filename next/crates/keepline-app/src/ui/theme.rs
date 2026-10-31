@@ -332,6 +332,9 @@ impl Theme {
     pub const SIDEBAR: f32 = 240.;
     /// The folded left column (⌘B).
     pub const SIDEBAR_RAIL: f32 = 36.;
+    /// The CLI's name column in the sidebar's quota rows.
+    pub const QUOTA_NAME: f32 = 46.;
+    pub const QUOTA_BAR: f32 = 3.;
     pub const TOP: f32 = 46.;
     /// macOS draws the traffic lights inside the top bar; its content starts after them.
     pub const TRAFFIC_LIGHT_X: f32 = 16.;

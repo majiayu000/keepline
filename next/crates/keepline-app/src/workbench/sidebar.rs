@@ -397,6 +397,7 @@ impl Workbench {
                     ),
             )
             .child(sidebar)
+            .when_some(self.quota_view(), |d, quota| d.child(quota))
             .child(
                 div()
                     .flex_shrink_0()
@@ -434,6 +435,68 @@ impl Workbench {
                         cx.listener(|this, _, window, cx| this.show_settings(window, cx)),
                     )),
             )
+    }
+    /// The accounts' usage limits above the footer, one row per CLI used this week, from
+    /// what its own logs last recorded. Hovering a row gives the plan, the reading's age and
+    /// when each window resets.
+    fn quota_view(&self) -> Option<gpui::Div> {
+        let now = now();
+        let readings = keepline_core::quota::latest(&self.workspace, now);
+        if readings.is_empty() {
+            return None;
+        }
+        let mut block = div()
+            .flex_shrink_0()
+            .border_t(px(T::BORDER_WIDTH))
+            .border_color(T::color(T::border()))
+            .px(px(T::S10))
+            .py(px(T::S6))
+            .flex()
+            .flex_col()
+            .gap(px(T::S6))
+            .text_size(px(T::CHIP_SIZE))
+            .font_features(T::tabular());
+        for (agent, quota) in readings {
+            let mut lines = vec![format!("{} 额度", agent.name())];
+            lines.push(match quota.plan.as_str() {
+                "" => format!("读数 {}", ago(quota.at, now)),
+                plan => format!("{plan} · 读数 {}", ago(quota.at, now)),
+            });
+            let mut row = div()
+                .id(gpui::SharedString::from(format!("quota-{}", agent.key())))
+                .flex()
+                .items_center()
+                .gap(px(T::S8))
+                .child(
+                    div()
+                        .w(px(T::QUOTA_NAME))
+                        .flex_shrink_0()
+                        .truncate()
+                        .text_color(T::color(T::secondary()))
+                        .child(agent.key()),
+                );
+            for window in quota.windows.iter().take(2) {
+                lines.push(if window.reset(now) {
+                    format!("{} 已重置，等这家下次使用时更新", window.label())
+                } else if window.resets_at == 0 {
+                    format!("{} 已用 {}%", window.label(), window.used)
+                } else {
+                    format!(
+                        "{} 已用 {}%，{} 重置",
+                        window.label(),
+                        window.used,
+                        upcoming(window.resets_at, now)
+                    )
+                });
+                row = row.child(quota_meter(window, now));
+            }
+            if quota.windows.len() == 1 {
+                row = row.child(div().flex_1());
+            }
+            lines.push("来自它自己的会话记录，Keepline 不联网查询".into());
+            block = block.child(row.tooltip(super::diagnostics::tip(lines)));
+        }
+        Some(block)
     }
     /// The folded column: a way back, and how many sessions in this space need you.
     fn sidebar_rail(&self, cx: &Context<Self>) -> gpui::Stateful<gpui::Div> {
@@ -821,4 +884,58 @@ impl Workbench {
             this.layout.space_menu = None
         })
     }
+}
+/// One window: its name and percentage over a thin bar, colored as it fills up. A window
+/// that rolled over since the reading says so instead of showing an old number.
+fn quota_meter(window: &keepline_core::quota::Window, now: u64) -> gpui::Div {
+    use keepline_core::quota::{NEAR, OVER};
+    let reset = window.reset(now);
+    let fill = match window.used {
+        _ if reset => T::color(T::muted()),
+        u if u >= OVER => Group::Error.colors().0,
+        u if u >= NEAR => Group::Waiting.colors().0,
+        _ => Group::Running.colors().0,
+    };
+    let (number, share) = if reset {
+        ("已重置".to_string(), 0.)
+    } else {
+        (
+            format!("{}%", window.used),
+            f32::from(window.used.min(100)) / 100.,
+        )
+    };
+    div()
+        .flex_1()
+        .min_w_0()
+        .flex()
+        .flex_col()
+        .gap(px(T::S2))
+        .child(
+            div()
+                .flex()
+                .justify_between()
+                .child(div().text_color(T::color(T::muted())).child(window.label()))
+                .child(
+                    div()
+                        .text_color(match window.used {
+                            _ if reset => T::color(T::muted()),
+                            u if u < NEAR => T::color(T::body()),
+                            _ => fill,
+                        })
+                        .child(number),
+                ),
+        )
+        .child(
+            div()
+                .h(px(T::QUOTA_BAR))
+                .rounded_full()
+                .bg(T::color(T::chip()))
+                .child(
+                    div()
+                        .h_full()
+                        .w(gpui::relative(share))
+                        .rounded_full()
+                        .bg(fill),
+                ),
+        )
 }

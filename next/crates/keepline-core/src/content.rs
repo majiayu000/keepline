@@ -86,6 +86,9 @@ pub struct Content {
     pub parent: String,
     #[serde(default)]
     pub agent_name: String,
+    /// The account's usage limits as this conversation's log last recorded them.
+    #[serde(default)]
+    pub quota: Option<crate::quota::Quota>,
 }
 /// In-flight work by kind. Agents (subagents, workflows, teammates, cloud sessions, MCP
 /// tasks) keep a stopped turn working. A monitor or a scheduled wakeup will wake the session
