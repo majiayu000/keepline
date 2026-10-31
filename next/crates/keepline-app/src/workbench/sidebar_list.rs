@@ -29,7 +29,8 @@ fn bucket_group(b: Bucket) -> Group {
 }
 
 /// The left column on this machine: the chosen preset, whether it is folded away, and
-/// the groups opened or closed against their default. Kept in `<config>/sidebar`.
+/// the groups opened or closed against their default, and the pinned terminals. Kept in
+/// `<config>/sidebar`.
 #[derive(Default)]
 pub(super) struct SidebarPrefs {
     pub preset: String,
@@ -37,6 +38,8 @@ pub(super) struct SidebarPrefs {
     pub toggled: HashSet<String>,
     /// WASM presets loaded so far, with their last answers.
     pub wasm: super::sidebar_wasm::Views,
+    /// Terminals whose session sits in 置顶, in the order pinned; dropped when it ends.
+    pub pinned: Vec<String>,
 }
 impl SidebarPrefs {
     fn path() -> Option<PathBuf> {
@@ -47,22 +50,31 @@ impl SidebarPrefs {
             .and_then(|p| std::fs::read_to_string(p).ok())
             .unwrap_or_default();
         let mut lines = text.lines().map(str::trim);
+        let preset = lines.next().unwrap_or_default().to_owned();
+        let rest: Vec<&str> = lines.collect();
         Self {
-            preset: lines.next().unwrap_or_default().to_owned(),
-            collapsed: lines.any(|l| l == "collapsed"),
+            preset,
+            collapsed: rest.contains(&"collapsed"),
             toggled: HashSet::new(),
             wasm: Default::default(),
+            pinned: rest
+                .iter()
+                .filter_map(|l| l.strip_prefix("pin "))
+                .map(str::to_owned)
+                .collect(),
         }
     }
     /// Best effort: a choice that cannot be written still holds until quit.
     pub fn save(&self) {
         if let Some(path) = Self::path() {
             let _ = path.parent().map(std::fs::create_dir_all);
-            let body = if self.collapsed {
-                format!("{}\ncollapsed\n", self.preset)
-            } else {
-                format!("{}\n", self.preset)
-            };
+            let mut body = format!("{}\n", self.preset);
+            if self.collapsed {
+                body.push_str("collapsed\n");
+            }
+            for terminal in &self.pinned {
+                body.push_str(&format!("pin {terminal}\n"));
+            }
             let _ = std::fs::write(path, body);
         }
     }
@@ -95,6 +107,35 @@ impl Workbench {
         self.sidebar.toggled.clear();
         self.sidebar.save();
         cx.notify();
+    }
+    /// The row's dot: pins its terminal to 置顶, or takes it off.
+    pub(super) fn toggle_pin(&mut self, terminal: &str, cx: &mut Context<Self>) {
+        let pins = &mut self.sidebar.pinned;
+        match pins.iter().position(|t| t == terminal) {
+            Some(i) => {
+                pins.remove(i);
+            }
+            None => pins.push(terminal.to_owned()),
+        }
+        self.sidebar.save();
+        cx.notify();
+    }
+    /// A pin lasts as long as its terminal runs: one that ended or was closed comes off.
+    /// Only against a workspace the host has sent, never the empty one before it.
+    pub(super) fn prune_pins(&mut self) {
+        if self.sidebar.pinned.is_empty() || self.workspace.revision == 0 || self.store.cut_off() {
+            return;
+        }
+        let before = self.sidebar.pinned.len();
+        let w = &self.workspace;
+        self.sidebar.pinned.retain(|id| {
+            w.terminals
+                .iter()
+                .any(|t| &t.id == id && t.state == ProcessState::Running)
+        });
+        if self.sidebar.pinned.len() != before {
+            self.sidebar.save();
+        }
     }
     /// ⌘B: the column folds to a rail and back, as Claude's desktop app does.
     pub(super) fn toggle_sidebar(&mut self, cx: &mut Context<Self>) {
@@ -165,8 +206,37 @@ impl Workbench {
         } else {
             T::color(seen.seen_status())
         });
+        let pin_terminal = live_terminal(&self.workspace, session).map(|t| t.id.clone());
+        let pinned = pin_terminal
+            .as_ref()
+            .is_some_and(|t| self.sidebar.pinned.contains(t));
+        let row_group = gpui::SharedString::from(format!("session-row-{}", session.id));
+        // Only a session with a live terminal can be pinned: the pin is that terminal.
+        let pin = pin_terminal.map(|terminal| {
+            div()
+                .id(gpui::SharedString::from(format!("pin-{}", session.id)))
+                .role(gpui::accesskit::Role::Button)
+                .aria_label(if pinned { "取消置顶" } else { "置顶" })
+                .flex_shrink_0()
+                .w(px(T::S12))
+                .flex()
+                .justify_center()
+                .cursor_pointer()
+                .text_size(px(T::CHIP_SIZE))
+                .text_color(T::color(if pinned { T::link() } else { T::muted() }))
+                .child(if pinned { "●" } else { "○" })
+                .when(!pinned, |d| {
+                    d.opacity(0.).group_hover(row_group.clone(), |s| s.opacity(1.))
+                })
+                .on_mouse_down(gpui::MouseButton::Left, |_, _, cx| cx.stop_propagation())
+                .on_click(cx.listener(move |this, _, _, cx| {
+                    cx.stop_propagation();
+                    this.toggle_pin(&terminal, cx);
+                }))
+        });
         div()
             .id(gpui::SharedString::from(format!("session-{}", session.id)))
+            .group(row_group.clone())
             .min_h(px(T::ROW))
             .px(px(T::S8))
             .flex()
@@ -186,7 +256,8 @@ impl Workbench {
                     .gap(px(T::S8))
                     .child(if attention { dot(g) } else { seen_dot(g) })
                     .child(title)
-                    .child(trailing),
+                    .child(trailing)
+                    .children(pin),
             )
             .when_some(detail, |d, text| {
                 d.child(
@@ -277,6 +348,32 @@ impl Workbench {
             .flatten(),
         };
         let mut out = vec![];
+        // 置顶 comes first in every preset; its rows leave their usual group.
+        let pinned_terminal = |l: &Listed| {
+            l.0.terminal
+                .as_ref()
+                .filter(|t| {
+                    self.sidebar.pinned.contains(t) && live_terminal(&self.workspace, l.0).is_some()
+                })
+                .cloned()
+        };
+        let (mut top, sessions): (Vec<Listed>, Vec<Listed>) =
+            sessions.into_iter().partition(|l| pinned_terminal(l).is_some());
+        let all_pinned = !top.is_empty() && sessions.is_empty();
+        if !top.is_empty() {
+            top.sort_by_key(|l| {
+                pinned_terminal(l).and_then(|t| self.sidebar.pinned.iter().position(|p| *p == t))
+            });
+            out.push(
+                Self::section_title("置顶".into(), top.len())
+                    .mt(px(T::S14))
+                    .into_any_element(),
+            );
+            for l in top {
+                let d = detail(&l);
+                out.push(self.session_row(l, current, d, cx));
+            }
+        }
         let mut budget = preset.limit;
         let mut more = 0;
         let mut push = |out: &mut Vec<gpui::AnyElement>, l: Listed, d: Option<String>| {
@@ -288,6 +385,7 @@ impl Workbench {
             out.push(self.session_row(l, current, d, cx));
         };
         match preset.group {
+            Grouping::Flat if all_pinned => (),
             Grouping::Flat => {
                 out.push(
                     Self::section_title("会话".into(), sessions.len())

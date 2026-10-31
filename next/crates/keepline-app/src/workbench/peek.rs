@@ -262,3 +262,10 @@ impl Workbench {
             .is_some_and(|p| p.pane.focus_handle(cx).is_focused(window))
     }
 }
+
+#[cfg(feature = "visual-test")]
+impl Workbench {
+    pub fn visual_pins(&self) -> Vec<String> {
+        self.sidebar.pinned.clone()
+    }
+}

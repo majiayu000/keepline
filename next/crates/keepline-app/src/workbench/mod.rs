@@ -389,6 +389,7 @@ impl Workbench {
             self.nav.pending_focus = true;
         }
         self.layout.panes.retain(|id, _| ids.contains(id));
+        self.prune_pins();
         let split = ids.len() > 1;
         for id in ids {
             if !self.layout.panes.contains_key(&id) {
