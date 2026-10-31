@@ -410,6 +410,13 @@ impl Workbench {
     }
     /// The first pane of the shown tab.
     #[cfg(feature = "visual-test")]
+    pub fn visual_decorations(&self, cx: &Context<Self>) -> (Vec<String>, Vec<String>) {
+        let tab = self.nav.tab.as_ref().expect("a shown tab");
+        let id = self.workspace.tab_terminals(tab)[0].clone();
+        let lines = self.pane_decorations(&id, cx);
+        (lines.title, lines.tip)
+    }
+    #[cfg(feature = "visual-test")]
     pub fn visual_shown_pane(&self) -> Entity<Pane> {
         let tab = self.nav.tab.as_ref().expect("a shown tab");
         let id = self

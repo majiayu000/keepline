@@ -1,0 +1,17 @@
+{
+  "api": 1,
+  "decorations": [
+    {
+      "id": "changes",
+      "command": "n=$(git status --porcelain 2>/dev/null | wc -l | tr -d ' '); [ \"$n\" -gt 0 ] && echo \"改动 $n\"",
+      "place": "title",
+      "refresh_s": 10
+    },
+    {
+      "id": "last-commit",
+      "command": "git log -1 --format='最近提交 %cr：%s' 2>/dev/null",
+      "place": "tip",
+      "refresh_s": 30
+    }
+  ]
+}

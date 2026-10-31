@@ -96,11 +96,13 @@ impl Workbench {
         let other_owner = pane.read(cx).has_other_owner();
         let card_id = session.map(|s| s.id.clone());
         let terminal_style = crate::ui::style::current(cx) == crate::ui::style::Style::Terminal;
+        let decorated = self.pane_decorations(id, cx);
         // Where the program runs left the footer for the title's hover card.
         let tip: Vec<String> = session
             .map(|s| self.session_line(s))
             .into_iter()
             .chain(self.pane_place(id, session, cx))
+            .chain(decorated.tip)
             .filter(|l| !l.is_empty())
             .collect();
         let story = session.zip(status).and_then(|(s, g)| self.pane_story(s, g));
@@ -161,6 +163,14 @@ impl Workbench {
                         }),
                 )
             })
+            // What the plugins put here, before the Agent and its time.
+            .children(decorated.title.into_iter().map(|line| {
+                div()
+                    .flex_shrink_0()
+                    .text_size(px(T::META))
+                    .text_color(T::color(T::muted()))
+                    .child(line)
+            }))
             .when(unread.is_none(), |d| d.child(self.pane_meta(session, cx)))
             .when_some(
                 session

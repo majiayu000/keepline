@@ -158,6 +158,7 @@ fn outcome_label(outcome: &Outcome) -> String {
 
 mod actions;
 mod cleanup;
+mod decorations;
 mod diagnostics;
 mod filters;
 mod forms;
