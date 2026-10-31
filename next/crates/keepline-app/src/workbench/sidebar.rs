@@ -29,6 +29,13 @@ pub(super) fn closed_recently(w: &Workspace, s: &AgentSession) -> bool {
 }
 
 impl Workbench {
+    /// 鸟瞰 narrowed to this space's closed sessions, ready to resume.
+    pub(super) fn show_closed(&mut self, cx: &mut Context<Self>) {
+        self.show_overview(cx);
+        self.overview.closed_only = true;
+        self.overview.changed_only = false;
+        self.overview.filter_space = Some(self.nav.space.clone());
+    }
     pub(super) fn sidebar_view(
         &self,
         space_name: &str,
@@ -246,6 +253,23 @@ impl Workbench {
             .iter()
             .filter(|(_, s)| self.session_closed(s) && closed_recently(&self.workspace, s))
             .count();
+        // A WASM preset is handed the newest closed sessions too, to place as it likes.
+        let mut ended: Vec<_> = in_space
+            .iter()
+            .filter(|(_, s)| self.session_closed(s))
+            .map(|(_, s)| {
+                let (g, attention) = sidebar_status(&self.workspace, &self.attention.unseen, s);
+                (*s, g, attention)
+            })
+            .collect();
+        ended.sort_by_key(|(s, ..)| std::cmp::Reverse(self.session_updated(s)));
+        let ended = super::sidebar_wasm::Closed {
+            total: ended.len(),
+            rows: ended
+                .into_iter()
+                .take(super::sidebar_wasm::CLOSED_SHOWN)
+                .collect(),
+        };
         let mut sessions: Vec<_> = in_space
             .into_iter()
             .filter(|(_, s)| self.session_open(s))
@@ -289,7 +313,7 @@ impl Workbench {
             );
         }
         let listed = sessions.into_iter().map(|(s, g, a, _)| (s, g, a)).collect();
-        let (rows, more) = self.session_list(listed, current.as_deref(), cx);
+        let (rows, more, owns_closed) = self.session_list(listed, &ended, current.as_deref(), cx);
         sidebar = sidebar.children(rows);
         for (terminal, (note, why)) in unread {
             let focused = self.nav.focused.as_deref() == Some(terminal.as_str());
@@ -337,7 +361,7 @@ impl Workbench {
                 .on_click(cx.listener(|this, _, _, cx| this.show_overview(cx))),
             );
         }
-        if closed > 0 {
+        if closed > 0 && !owns_closed {
             sidebar = sidebar.child(
                 button(
                     "sidebar-closed-sessions",
@@ -347,12 +371,7 @@ impl Workbench {
                 .justify_start()
                 .text_size(px(T::META))
                 .text_color(T::color(T::muted()))
-                .on_click(cx.listener(|this, _, _, cx| {
-                    this.show_overview(cx);
-                    this.overview.closed_only = true;
-                    this.overview.changed_only = false;
-                    this.overview.filter_space = Some(this.nav.space.clone());
-                })),
+                .on_click(cx.listener(|this, _, _, cx| this.show_closed(cx))),
             );
         }
         div()

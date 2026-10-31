@@ -581,12 +581,12 @@ impl Workbench {
             }
             // The left column's presets, set in memory so the evidence run writes no choice.
             "SidebarClassic" | "SidebarStatus" | "SidebarStatusOpen" | "SidebarDirectory"
-            | "SidebarRail" | "SidebarWasm" => {
+            | "SidebarRail" | "SidebarWasm" | "SidebarWasmOpen" | "SidebarWasmClosed" => {
                 self.sidebar.preset = match name {
                     "SidebarStatus" | "SidebarStatusOpen" => "status",
                     "SidebarDirectory" => "directory",
                     // The example WebAssembly plugin, installed into the scratch config.
-                    "SidebarWasm" => "wasm-status",
+                    "SidebarWasm" | "SidebarWasmOpen" | "SidebarWasmClosed" => "wasm-status",
                     _ => "classic",
                 }
                 .into();
@@ -594,6 +594,20 @@ impl Workbench {
                 self.sidebar.toggled.clear();
                 if name == "SidebarStatusOpen" {
                     self.sidebar.toggled.insert("status:rest".into());
+                }
+                if name == "SidebarWasmOpen" || name == "SidebarWasmClosed" {
+                    for section in ["rest", "closed"] {
+                        self.sidebar
+                            .toggled
+                            .insert(format!("wasm:wasm-status:{section}"));
+                    }
+                }
+                // Closes the tab's last pane, a finished Agent, so the plugin has a closed
+                // session to place. Run it last: the fixture keeps the pane closed.
+                if name == "SidebarWasmClosed"
+                    && let Some(last) = self.workspace.tab_terminals("feedback").pop()
+                {
+                    self.close_now(Closing::Pane(last), cx);
                 }
             }
             // The two looks, set in memory so the evidence run writes no choice.
