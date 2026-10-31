@@ -160,6 +160,7 @@ mod actions;
 mod cleanup;
 mod decorations;
 mod diagnostics;
+mod divergence;
 mod filters;
 mod forms;
 mod layout;
