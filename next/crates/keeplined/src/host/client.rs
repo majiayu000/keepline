@@ -465,6 +465,7 @@ pub(super) fn dispatch(shared: &Shared, request: Request) -> io::Result<Reply> {
                     title: String::new(),
                     cell,
                     input_at: None,
+                    marks: Default::default(),
                 },
                 reader,
                 replies,

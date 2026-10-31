@@ -307,6 +307,41 @@ impl Host {
     }
     /// Every tab names itself from its program's title, front or not. An unbound Agent
     /// whose adapter reads state from the title also paints it into its note.
+    /// Commands the shell in `terminal` marked finished, for the hooks that listen for them.
+    /// No title: shells title the terminal with the running command, which may hold a secret.
+    fn commands_finished(
+        &self,
+        terminal: &str,
+        pwd: Option<String>,
+        finished: Vec<crate::command_marks::Finished>,
+    ) {
+        use keepline_core::hook::{Event, Payload};
+        let placed = self.workspace.terminals.iter().find(|t| t.id == terminal);
+        let space = placed
+            .and_then(|t| self.workspace.spaces.iter().find(|p| p.id == t.space))
+            .map(|p| p.name.clone());
+        let cwd = pwd
+            .or_else(|| placed.map(|t| t.cwd.clone()))
+            .unwrap_or_default();
+        for f in finished {
+            crate::plugin_hooks::command(Payload {
+                event: match f.exit {
+                    Some(code) if code != 0 => Event::CommandFailed,
+                    _ => Event::CommandDone,
+                },
+                session: String::new(),
+                agent: String::new(),
+                title: String::new(),
+                cwd: cwd.clone(),
+                space: space.clone(),
+                detail: String::new(),
+                at: keepline_core::content::now(),
+                terminal: Some(terminal.into()),
+                exit_code: f.exit,
+                duration_ms: Some(u64::try_from(f.took.as_millis()).unwrap_or(u64::MAX)),
+            });
+        }
+    }
     fn title_changed(&mut self, terminal: &str, title: &str) -> io::Result<()> {
         let shown = keepline_core::terminal::shown_title(title);
         let mut changed = self.recognition.terminal_titles.get(terminal) != shown.as_ref();
@@ -664,6 +699,7 @@ fn serve_runtime(
                 title: t.handed.title,
                 cell,
                 input_at: None,
+                marks: Default::default(),
             },
             reader,
             replies,
