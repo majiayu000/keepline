@@ -133,7 +133,8 @@
       <button id="theme">切换深浅色</button>
     </div>
     <div class="note">
-      <p>分屏的尺寸按真实窗口算：每块标题栏右边是它现在的「列 × 行」。切开后任一边少于 <b>20 列</b>（左右切）或 <b>5 行</b>（上下切）就拒绝，什么都不启动。</p>
+      <p>新分屏只往右或往下开，你原来那块一直在左上角。</p>
+      <p>一个标签最多 <b>4 块</b>；满了、或切开后一边少于 <b>20 列 / 5 行</b>（标题栏右边是每块现在的「列 × 行」），就开到「Claude 的旁屏」标签，不切换你的画面。加 <code>--here</code> 改为拒绝，加 <code>--tab</code> 直接开到旁屏。</p>
       <p>不管开在哪，键盘焦点都留在你正在用的那块。点任意一块可以把焦点换过去，再跑场景试试。</p>
       <p>这是网页模拟，命令和输出是演示数据；规则和真实 <code>keeplined</code> 一致。</p>
     </div>
@@ -243,7 +244,31 @@
     if (cmd === "read") return read(pos[0], parseInt(flags.lines ?? "5", 10));
     throw "演示里支持：split、close、read、list";
   }
+  const MAX_PANES = 4, SIDE = "side~";
+  function roomFor(id, axis, share) { const t = state.terminals[id]; return splitRoom(t.size[0], t.size[1], axis, share); }
+  // The side tabs belong to a tab's top-left pane, where the user started.
+  function sideOwner(tab) { return tab.id.startsWith(SIDE) ? tab.id.slice(SIDE.length).split("~")[0] : ids(tab.layout)[0]; }
+  function sidePlacement(owner, asking) {
+    const who = [asking, owner].map((id) => state.terminals[id]).find((t) => t && t.agent);
+    const name = who ? "Claude" : "终端", gap = who ? " " : "";
+    for (let n = 1; ; n++) {
+      const id = n === 1 ? SIDE + owner : `${SIDE}${owner}~${n}`;
+      const tab = state.tabs.find((t) => t.id === id);
+      if (!tab) return { newTab: { id, title: `${name}${gap}的旁屏${n > 1 ? " " + n : ""}`, after: tabOf(owner) } };
+      const panes = ids(tab.layout), last = panes.at(-1);
+      if (panes.length >= MAX_PANES) continue;
+      for (const axis of ["right", "down"]) {
+        try { return { target: last, axis, share: 5000, size: roomFor(last, axis, 5000) }; } catch {}
+      }
+    }
+  }
+  function stageSize() {
+    const b = stage.getBoundingClientRect();
+    return [Math.floor((b.width - 28) / (cell || 7.2)), Math.floor((b.height - 52) / 18)];
+  }
   function split(pos, flags, command) {
+    if (flags.before) throw "--before 已去掉：新分屏只往右或往下开，原来那块保持在左上角";
+    if (flags.here && flags.tab) throw "--here 和 --tab 只能选一个";
     if (!pos[0]) throw "缺少终端";
     const target = resolve(pos[0]);
     let share = 5000;
@@ -253,18 +278,38 @@
       share = Math.min(9999, Math.max(1, Math.round(f * 10000)));
     }
     const axis = flags.down ? "down" : "right";
-    const t = state.terminals[target];
-    const size = splitRoom(t.size[0], t.size[1], axis, share);   // asked before anything starts
+    const tab = tabOf(target), count = ids(tab.layout).length;
+    let place = null, why = "";
+    if (flags.tab) why = "按 --tab";
+    else if (count >= MAX_PANES) {
+      why = `这个标签已经有 ${count} 块`;
+      if (flags.here) throw why + "，不再往里加；去掉 --here 会开在旁屏标签";
+    } else {
+      try { place = { target, axis, share, size: roomFor(target, axis, share) }; }   // asked before anything starts
+      catch (e) { if (flags.here) throw e; why = e; }
+    }
+    const overflow = !place;
+    if (!place) place = sidePlacement(sideOwner(tab), target);
     const id = "split-" + (++seq).toString(16).padStart(2, "0") + Math.random().toString(16).slice(2, 4);
-    const tab = tabOf(target);
-    state.terminals[id] = { id, label: command ? command.split(" ").slice(0, 2).join(" ").slice(0, 14) : "zsh", tab: tab.id, lines: [], size, by: true };
-    tab.layout = splitBeside(tab.layout, target, id, axis, !!flags.before, share);
+    const label = command ? command.split(" ").slice(0, 2).join(" ").slice(0, 14) : "zsh";
+    let home;
+    if (place.newTab) {
+      home = { id: place.newTab.id, title: place.newTab.title, layout: { leaf: id }, fresh: true };
+      state.tabs.splice(state.tabs.indexOf(place.newTab.after) + 1, 0, home);
+      state.terminals[id] = { id, label, tab: home.id, lines: [], size: stageSize(), by: true };
+    } else {
+      home = tabOf(place.target);
+      state.terminals[id] = { id, label, tab: home.id, lines: [], size: place.size, by: true };
+      home.layout = splitBeside(home.layout, place.target, id, place.axis, false, place.share);
+    }
     born.add(id);
     event("terminal_started", id);
-    if (tab.id !== state.shown) { tab.fresh = true; toast(`在没打开的「${tab.title}」标签里开了一块，你的画面没变`); }
+    let note = "";
+    if (overflow) note = `${why}，开在了「${home.title}」标签（不切换你的画面）`;
+    if (home.id !== state.shown) { home.fresh = true; toast(overflow ? note : `在没打开的「${home.title}」标签里开了一块，你的画面没变`); }
     startCommand(id, command);
     render();
-    return id;
+    return { out: id, note };
   }
   function close(needle) {
     if (!needle) throw "缺少终端";
@@ -317,9 +362,11 @@
     say("claude", [["acc", "⏺ Bash(" + line.replace(/^keeplined /, "keeplined ") + ")"]]); render();
     await sleep(380);
     try {
-      const out = run(line);
+      const r = run(line);
+      const out = typeof r === "object" ? r.out : r;
       say("claude", [["dim", "  ⎿  " + (out || "已关闭")]]);
-      render(); await sleep(500);
+      if (r && r.note) say("claude", [["warn", "     " + r.note]]);
+      render(); await sleep(r && r.note ? 900 : 500);
       return out;
     } catch (e) {
       say("claude", [["bad", "  ⎿  Error: " + e]]);
@@ -328,6 +375,16 @@
     }
   }
   const opened = () => Object.values(state.terminals).filter((t) => t.by && tabOf(t.id)).map((t) => t.id);
+  const ensure = async (n) => {
+    const shown = () => ids(state.tabs.find((t) => t.id === "main").layout).length;
+    const plan = [[`keeplined split $KEEPLINE_TERMINAL --down --size 0.35 -- "cargo test"`, "我在下面开一块跑测试，你能同时看到输出。"],
+      [() => `keeplined split ${opened()[0]} -- "npm run lint"`, "测试那块右边再开一块跑 lint。"],
+      [`keeplined split $KEEPLINE_TERMINAL -- "git diff --stat"`, "我右边再开一块看改了哪些文件。我这块一直在左上角。"]];
+    for (let i = shown() - 1; i < n - 1 && i < plan.length; i++) {
+      const [line, why] = plan[i];
+      await agent(typeof line === "function" ? line() : line, why);
+    }
+  };
   const scenes = [
     { t: "开一块跑测试", d: "在自己下面开 35%，跑 cargo test", go: async () => {
       const id = await agent(`keeplined split $KEEPLINE_TERMINAL --down --size 0.35 -- "cargo test"`, "我在下面开一块跑测试，你能同时看到输出。");
@@ -335,25 +392,24 @@
       await agent(`keeplined read ${id} --lines 1`);
       say("claude", [["", "⏺ 测试全过了：54 passed。"]]); render();
     } },
-    { t: "已分多块，接着分", d: "在测试那块右边开 lint，再在自己左边开 diff", go: async () => {
-      if (!opened().length) await agent(`keeplined split $KEEPLINE_TERMINAL --down --size 0.35 -- "cargo test"`);
-      const tests = opened()[0];
-      await agent(`keeplined split ${tests} -- "npm run lint"`, "测试那块旁边再开一块跑 lint。");
-      await agent(`keeplined split $KEEPLINE_TERMINAL --before -- "git diff --stat"`, "左边再开一块看改了哪些文件。");
+    { t: "接着分成四块", d: "只往右、往下开，Claude 这块一直在左上角", go: async () => { await ensure(4); } },
+    { t: "四分屏时再开", d: "当前标签已满 4 块，自动开到「Claude 的旁屏」", go: async () => {
+      await ensure(4);
+      await agent(`keeplined split $KEEPLINE_TERMINAL -- "tail -f logs/app.log"`, "再开一块盯日志。");
+      say("claude", [["", "⏺ 这边已经四块了，日志开在了「Claude 的旁屏」标签，你的画面没动。"]]); render();
     } },
-    { t: "一直切，直到被拒绝", d: "对同一块反复往右切，看它在哪停下", go: async () => {
-      let last = opened().at(-1) || "claude";
-      say("claude", [["", "⏺ 演示：对同一块一直往右切。"]]); render(); await sleep(400);
-      for (let i = 0; i < 8; i++) {
-        try { last = await agent(`keeplined split ${last}`); }
-        catch { say("claude", [["", "⏺ 空间不够了，被拒绝，没有启动任何东西。我换个地方开，不反复重试。"]]); render(); break; }
-      }
+    { t: "直接开到旁屏", d: "起服务这类不用一直盯的，加 --tab", go: async () => {
+      await agent(`keeplined split $KEEPLINE_TERMINAL --tab -- "npm run lint"`, "lint 不用一直盯，直接放到旁屏。");
+    } },
+    { t: "只在这里开", d: "加 --here：满了或太窄就拒绝，不去旁屏", go: async () => {
+      await ensure(4);
+      try { await agent(`keeplined split $KEEPLINE_TERMINAL --here`, "试试只在当前标签开。"); }
+      catch { say("claude", [["", "⏺ 当前标签满了，--here 不会挪去别处，所以被拒绝，什么都没启动。"]]); render(); }
     } },
     { t: "开在没打开的标签里", d: "给「server」标签里的终端旁边开一块看日志", go: async () => {
       await agent(`keeplined split server --down -- "tail -f logs/app.log"`, "在 dev server 那个标签里开一块盯日志，不打扰你现在的画面。");
-      say("claude", [["", "⏺ 开好了，切到「server」标签就能看到。"]]); render();
     } },
-    { t: "收掉自己开的", d: "只关 Claude 开的分屏，你的不动", go: async () => {
+    { t: "收掉自己开的", d: "只关 Claude 开的分屏，旁屏标签空了自动消失", go: async () => {
       const mine = opened();
       if (!mine.length) { say("claude", [["", "⏺ 我还没开过分屏。"]]); render(); return; }
       say("claude", [["", `⏺ 收掉我开的 ${mine.length} 块。`]]); render(); await sleep(300);
@@ -440,12 +496,12 @@
     };
     stepsEl.appendChild(b);
   });
-  const hints = ["keeplined list", `keeplined split claude --down -- "cargo test"`, `keeplined split claude --size 0.1`, `keeplined split server -- "git diff --stat"`];
+  const hints = ["keeplined list", `keeplined split claude --down -- "cargo test"`, `keeplined split claude --size 0.1 --here`, `keeplined split claude --tab -- "npm run dev"`, `keeplined split claude --before`];
   hints.forEach((h) => { const b = document.createElement("button"); b.textContent = h; b.onclick = () => { $("input").value = h; $("input").focus(); }; $("hints").appendChild(b); });
   $("form").onsubmit = (e) => {
     e.preventDefault();
     const line = $("input").value.trim(); if (!line) return;
-    try { const out = run(line); outEl.className = "out"; outEl.textContent = out === "" ? "已关闭" : out; }
+    try { const r = run(line); const out = typeof r === "object" ? r.out + (r.note ? "\n" + r.note : "") : r; outEl.className = "out"; outEl.textContent = out === "" ? "已关闭" : out; }
     catch (err) { outEl.className = "out bad"; outEl.textContent = "keeplined: " + err; }
     $("input").select();
   };
