@@ -586,7 +586,7 @@ impl Theme {
     pub const BRANCH_DOCS: u32 = 0x2dd4bf;
     pub const BRANCH_OPS: u32 = 0x60a5fa;
     pub const BRANCH_REFACTOR: u32 = 0xa3e635;
-    pub const BOARD_COLUMN_MIN: f32 = 236.;
+    pub const BOARD_COLUMN_MIN: f32 = 200.;
     pub const BOARD_CARD_SPACING: f32 = 8.;
     pub const BOARD_CARD_GAP: f32 = 7.;
     pub const BOARD_AVATAR: f32 = 20.;
@@ -594,6 +594,10 @@ impl Theme {
     pub const BOARD_CLOCK: f32 = 11.;
     pub const BOARD_HEAD_ICON: f32 = 14.;
     pub const BOARD_PILL: f32 = 20.;
+    /// The slot a column opens for a card about to land.
+    pub const BOARD_SLOT: f32 = 64.;
+    /// How much the drawer dims the board behind it.
+    pub const BOARD_SCRIM: f32 = 0.18;
     pub const BOARD_PILL_GAP: f32 = 5.;
     pub const BOARD_PILL_DOT: f32 = 6.;
     pub const BOARD_PILL_MAX: f32 = 110.;

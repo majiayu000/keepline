@@ -164,6 +164,7 @@ fn outcome_label(outcome: &Outcome) -> String {
 
 mod actions;
 mod board;
+mod board_drawer;
 mod cleanup;
 mod complete;
 mod decorations;
@@ -311,6 +312,10 @@ impl Workbench {
                 show_review: false,
                 show_hidden: false,
                 agent: None,
+                drawer: None,
+                drop_over: None,
+                toast: None,
+                toast_seq: 0,
                 card_menu: None,
                 here: None,
                 here_more: None,

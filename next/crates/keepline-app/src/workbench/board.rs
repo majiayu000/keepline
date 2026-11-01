@@ -178,7 +178,7 @@ const MARK: f32 = T::BOARD_MARK;
 const HEAD_ICON: f32 = T::BOARD_HEAD_ICON;
 
 /// The CLI's mark in the muted text color, or its initial when it has none.
-fn agent_mark(agent: Agent, color: Hsla) -> gpui::AnyElement {
+pub(super) fn agent_mark(agent: Agent, color: Hsla) -> gpui::AnyElement {
     match agent_icon(agent) {
         Some(path) => svg()
             .path(path)
@@ -232,7 +232,7 @@ fn wait_bars(waited: u64, hue: Hsla) -> gpui::Div {
         }))
 }
 
-fn column_icon(column: Column) -> gpui::AnyElement {
+pub(super) fn column_icon(column: Column) -> gpui::AnyElement {
     let icon =
         |path: &'static str, color: Hsla| svg().path(path).size(px(HEAD_ICON)).text_color(color);
     let frame = || div().relative().size(px(HEAD_ICON)).flex_shrink_0();
@@ -335,30 +335,33 @@ impl Workbench {
             })
             .collect()
     }
+    /// One column's sessions in board order.
+    pub(super) fn column_sessions(&self, c: Column, at: u64) -> Vec<&AgentSession> {
+        let mut list: Vec<_> = self
+            .board_sessions(at)
+            .into_iter()
+            .filter(|(col, _)| *col == c)
+            .map(|(_, s)| s)
+            .collect();
+        // An Agent holding a live terminal for you comes first, then what has waited
+        // longest; elsewhere the latest comes first.
+        if c == Column::Needs {
+            list.sort_by_key(|s| {
+                (
+                    !needs_attention(&self.workspace, s),
+                    self.session_updated(s),
+                )
+            });
+        } else {
+            list.sort_by_key(|s| std::cmp::Reverse(self.session_updated(s)));
+        }
+        list
+    }
     pub(super) fn board_view(&self, cx: &Context<Self>) -> gpui::Stateful<gpui::Div> {
         let at = now();
         let sessions = self.board_sessions(at);
         let todos = self.board_todos();
-        let in_column = |c: Column| -> Vec<&AgentSession> {
-            let mut list: Vec<_> = sessions
-                .iter()
-                .filter(|(col, _)| *col == c)
-                .map(|(_, s)| *s)
-                .collect();
-            // An Agent holding a live terminal for you comes first, then what has waited
-            // longest; elsewhere the latest comes first.
-            if c == Column::Needs {
-                list.sort_by_key(|s| {
-                    (
-                        !needs_attention(&self.workspace, s),
-                        self.session_updated(s),
-                    )
-                });
-            } else {
-                list.sort_by_key(|s| std::cmp::Reverse(self.session_updated(s)));
-            }
-            list
-        };
+        let in_column = |c: Column| self.column_sessions(c, at);
         let open = sessions.iter().filter(|(c, _)| *c != Column::Done).count();
         let stale = sessions.iter().filter(|(c, _)| *c == Column::Stale).count();
         let mut columns = vec![self.todo_column(&todos, cx).into_any_element()];
@@ -379,6 +382,7 @@ impl Workbench {
         }
         div()
             .id("overview-scroll")
+            .relative()
             .size_full()
             .flex()
             .flex_col()
@@ -405,6 +409,8 @@ impl Workbench {
                     .overflow_x_scroll()
                     .children(columns),
             )
+            .children(self.drawer_view(cx))
+            .children(self.toast_view(cx))
     }
     fn board_header(&self, open: usize, stale: usize, cx: &Context<Self>) -> gpui::Div {
         let mut agents: Vec<(Agent, usize)> = vec![];
@@ -518,10 +524,65 @@ impl Workbench {
         &self,
         column: Column,
         count: usize,
-        cards: Vec<gpui::AnyElement>,
+        mut cards: Vec<gpui::AnyElement>,
         cx: &Context<Self>,
-    ) -> gpui::Div {
+    ) -> gpui::Stateful<gpui::Div> {
+        use super::board_drawer::{DraggedCard, legal};
+        // While a card hangs over a column it may land in, a slot opens at the top.
+        if cx.has_active_drag()
+            && let Some((over, from)) = self.overview.drop_over
+            && over == column
+            && legal(from, column)
+        {
+            cards.insert(
+                0,
+                div()
+                    .flex_shrink_0()
+                    .rounded(px(T::CARD_RADIUS))
+                    .border(px(T::BORDER_WIDTH))
+                    .border_dashed()
+                    .border_color(T::color(T::control()))
+                    .bg(T::color(T::raised()))
+                    .with_animation(
+                        gpui::SharedString::from(format!("slot-{}", column.id())),
+                        Animation::new(Duration::from_millis(260))
+                            .with_easing(gpui::ease_out_quint()),
+                        |d, t| d.h(px(T::BOARD_SLOT * t)),
+                    )
+                    .into_any_element(),
+            );
+        }
         div()
+            .id(gpui::SharedString::from(format!("drop-{}", column.id())))
+            .rounded(px(T::CARD_RADIUS))
+            .drag_over::<DraggedCard>(move |s, card, _, _| {
+                if card.from == column {
+                    s
+                } else if legal(card.from, column) {
+                    s.bg(T::color(T::raised()))
+                } else {
+                    s.opacity(T::DISABLED_OPACITY)
+                }
+            })
+            .on_drag_move::<DraggedCard>(cx.listener(
+                move |this, e: &gpui::DragMoveEvent<DraggedCard>, _, cx| {
+                    let inside = e.bounds.contains(&e.event.position);
+                    let from = e.drag(cx).from;
+                    let now_over = this.overview.drop_over.map(|(c, _)| c);
+                    if inside && now_over != Some(column) {
+                        this.overview.drop_over = Some((column, from));
+                        cx.notify();
+                    } else if !inside && now_over == Some(column) {
+                        this.overview.drop_over = None;
+                        cx.notify();
+                    }
+                },
+            ))
+            .on_drop(
+                cx.listener(move |this, card: &DraggedCard, _, cx| {
+                    this.drop_card(card, column, cx)
+                }),
+            )
             .flex_1()
             .min_w(px(COLUMN_MIN))
             .min_h_0()
@@ -579,7 +640,7 @@ impl Workbench {
                     .children(cards),
             )
     }
-    fn todo_column(&self, todos: &[&Task], cx: &Context<Self>) -> gpui::Div {
+    fn todo_column(&self, todos: &[&Task], cx: &Context<Self>) -> gpui::Stateful<gpui::Div> {
         let cards: Vec<gpui::AnyElement> = todos
             .iter()
             .map(|task| {
@@ -591,6 +652,14 @@ impl Workbench {
                     .find(|s| s.id == task.space)
                     .map_or("外部", |s| s.name.as_str());
                 card_frame(gpui::SharedString::from(format!("board-todo-{id}")))
+                    .on_drag(
+                        super::board_drawer::DraggedCard {
+                            id: id.clone(),
+                            title: task.title.clone(),
+                            from: Column::Todo,
+                        },
+                        |card, _, _, cx| cx.new(|_| card.clone()),
+                    )
                     .child(
                         div()
                             .flex()
@@ -735,7 +804,19 @@ impl Workbench {
                 "会话：{}",
                 self.session_title(session)
             )))
-            .on_click(cx.listener(move |this, _, window, cx| this.enter_card(&enter, window, cx)))
+            .on_click(cx.listener(move |this, _, _, cx| {
+                this.overview.card_menu = None;
+                this.overview.drawer = Some(enter.id.clone());
+                cx.notify();
+            }))
+            .on_drag(
+                super::board_drawer::DraggedCard {
+                    id: session.id.clone(),
+                    title: title.clone(),
+                    from: column,
+                },
+                |card, _, _, cx| cx.new(|_| card.clone()),
+            )
             .child(
                 div()
                     .flex()
@@ -781,7 +862,7 @@ impl Workbench {
                             .tooltip(super::diagnostics::tip(vec![space_name.to_owned()])),
                     ),
             )
-            .child(card_title(title))
+            .child(card_title(title.clone()))
             .when_some(quote, |d, q| {
                 d.child(
                     div()

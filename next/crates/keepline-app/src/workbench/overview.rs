@@ -24,6 +24,12 @@ pub(super) struct OverviewState {
     pub(super) show_hidden: bool,
     /// The board shows only this CLI's sessions and todos.
     pub(super) agent: Option<keepline_core::model::Agent>,
+    /// The session whose detail drawer is open on the board.
+    pub(super) drawer: Option<String>,
+    /// The column a dragged card hangs over, and the column it came from.
+    pub(super) drop_over: Option<(super::board::Column, super::board::Column)>,
+    pub(super) toast: Option<super::board_drawer::Toast>,
+    pub(super) toast_seq: u64,
     pub(super) card_menu: Option<String>,
     /// Opened by coming back after a while, not by the user: titled 「欢迎回来」.
     pub(super) welcome: bool,

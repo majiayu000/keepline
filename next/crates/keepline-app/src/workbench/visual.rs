@@ -471,7 +471,12 @@ impl Workbench {
         self.overview.here = None;
         self.overview.here_more = None;
         self.search.hide();
-        self.nav.overview = matches!(name, "Overview" | "OverviewEnd" | "Closed");
+        self.nav.overview = matches!(
+            name,
+            "Overview" | "OverviewEnd" | "Closed" | "BoardDrawer" | "BoardAccept" | "BoardRefuse"
+        );
+        self.overview.drawer = None;
+        self.overview.toast = None;
         self.overview.closed_only = name == "Closed";
         self.nav.zoomed = None;
         self.nav.space = "s0".into();
@@ -491,6 +496,32 @@ impl Workbench {
             }
             // The sidebar with the space's todos unfolded above its sessions.
             "SidebarTodos" => self.tasks.todos_open = true,
+            // The board: a card's drawer, an accepted drop with 撤销, a refused one.
+            "BoardDrawer" => {
+                use super::board::Column;
+                self.overview.drawer = self
+                    .column_sessions(Column::Needs, now())
+                    .first()
+                    .map(|s| s.id.clone());
+            }
+            "BoardAccept" | "BoardRefuse" => {
+                use super::board::Column;
+                let from = if name == "BoardAccept" {
+                    Column::Review
+                } else {
+                    Column::Needs
+                };
+                let card = self.column_sessions(from, now()).first().map(|s| {
+                    super::board_drawer::DraggedCard {
+                        id: s.id.clone(),
+                        title: self.session_title(s),
+                        from,
+                    }
+                });
+                if let Some(card) = card {
+                    self.drop_card(&card, Column::Done, cx);
+                }
+            }
             // The card open on the focused waiting pane; the harness then types a key.
             "HereTyped" => {
                 self.overview.here = self.workspace.current_agent("p0").map(|s| s.id.clone());

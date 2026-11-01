@@ -467,11 +467,27 @@ impl Render for Workbench {
                             cx.stop_propagation();
                             return;
                         }
+                        // The board's drawer walks its column with j/k or the arrows.
+                        if this.overview.drawer.is_some() && !k.modifiers.modified() {
+                            let by = match k.key.as_str() {
+                                "j" | "down" => 1,
+                                "k" | "up" => -1,
+                                _ => 0,
+                            };
+                            if by != 0 {
+                                this.step_drawer(by, cx);
+                                cx.stop_propagation();
+                                return;
+                            }
+                        }
                         if k.key != "escape" || k.modifiers.modified() {
                             return;
                         }
-                        // A card's menu closes first; 逐个清理 steps back to the overview.
-                        if this.overview.card_menu.take().is_some() {
+                        // A card's menu closes first, then the drawer; 逐个清理 steps back
+                        // to the overview.
+                        if this.overview.card_menu.take().is_some()
+                            || this.overview.drawer.take().is_some()
+                        {
                         } else if !this.overview.cleanup.is_empty() {
                             this.overview.cleanup.clear();
                         } else {
