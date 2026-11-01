@@ -854,7 +854,7 @@ impl Workbench {
                     .justify_center()
                     .rounded(px(T::CONTROL_RADIUS))
                     .cursor_pointer()
-                    .opacity(if open { 1. } else { 0. })
+                    .opacity(if open { 1. } else { T::VIEW_IDLE_OPACITY })
                     .group_hover("sessions-header", |s| s.opacity(1.))
                     .when(open, |d| d.bg(T::color(T::button_hover())))
                     .hover(|s| s.bg(T::color(T::button_hover())))

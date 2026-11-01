@@ -562,6 +562,8 @@ impl Theme {
     /// A zero count, a plain shell's dot and a key hint stay in place but recede.
     pub const ZERO_OPACITY: f32 = 0.55;
     pub const FAINT_DOT_OPACITY: f32 = 0.4;
+    /// The ≑ beside 会话 at rest: faint but always there, so the views can be found.
+    pub const VIEW_IDLE_OPACITY: f32 = 0.45;
     pub const KBD_OPACITY: f32 = 0.7;
     pub const KBD_SIZE: f32 = 10.5;
     pub const SPLIT_CHIP_SIZE: f32 = 10.5;
