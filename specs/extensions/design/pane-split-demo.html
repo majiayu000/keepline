@@ -1,0 +1,462 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Agent 开分屏演示</title>
+<style>
+  :root {
+    --app: #ececea; --panel: #fafaf9; --raised: #f0efed; --border: #e2e0dd; --chip: #efeeec;
+    --body: #1f1e1c; --secondary: #5d5a56; --muted: #8a8681; --term: #ffffff;
+    --ok: #1a7f37; --warn: #b85c12; --bad: #cf222e; --accent: #0969da;
+    --focus: #3a3936; --born: #0969da;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --app: #141415; --panel: #1c1c1e; --raised: #262628; --border: #2e2d2c; --chip: #2a2a2b;
+      --body: #e4e2df; --secondary: #a9a7a3; --muted: #7c7a77; --term: #111112;
+      --ok: #4cc38a; --warn: #e8823a; --bad: #e5534b; --accent: #2f81f7;
+      --focus: #c9c6c1; --born: #2f81f7;
+    }
+  }
+  :root[data-theme="dark"] {
+    --app: #141415; --panel: #1c1c1e; --raised: #262628; --border: #2e2d2c; --chip: #2a2a2b;
+    --body: #e4e2df; --secondary: #a9a7a3; --muted: #7c7a77; --term: #111112;
+    --ok: #4cc38a; --warn: #e8823a; --bad: #e5534b; --accent: #2f81f7;
+    --focus: #c9c6c1; --born: #2f81f7;
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; }
+  body { background: var(--app); color: var(--body);
+    font: 13px/1.5 -apple-system, BlinkMacSystemFont, "PingFang SC", sans-serif; }
+  code, .mono { font-family: ui-monospace, "SF Mono", Menlo, monospace; }
+  button { font: inherit; color: inherit; cursor: pointer; }
+
+  .page { display: grid; grid-template-columns: 300px minmax(0, 1fr); gap: 20px;
+    padding: 20px; max-width: 1480px; margin: 0 auto; }
+  @media (max-width: 900px) { .page { grid-template-columns: 1fr; padding: 16px; } }
+
+  /* guide */
+  .guide h1 { font-size: 19px; margin: 2px 0 6px; }
+  .guide .lead { color: var(--secondary); margin: 0 0 16px; }
+  .steps { display: flex; flex-direction: column; gap: 8px; }
+  .step { text-align: left; background: var(--panel); border: 1px solid var(--border);
+    border-radius: 10px; padding: 10px 12px; display: grid; grid-template-columns: 22px 1fr; gap: 2px 8px; }
+  .step:hover { border-color: var(--muted); }
+  .step:disabled { opacity: .55; cursor: default; }
+  .step .n { grid-row: span 2; width: 20px; height: 20px; border-radius: 50%; background: var(--chip);
+    color: var(--secondary); font-size: 11px; display: grid; place-items: center; margin-top: 1px; }
+  .step.done .n { background: var(--ok); color: #fff; }
+  .step b { font-weight: 600; }
+  .step span { color: var(--secondary); font-size: 12px; }
+  .tools { display: flex; gap: 8px; margin-top: 12px; }
+  .tools button { background: transparent; border: 1px solid var(--border); border-radius: 7px; padding: 4px 10px; color: var(--secondary); }
+  .tools button:hover { color: var(--body); border-color: var(--muted); }
+  .note { margin-top: 18px; padding-top: 14px; border-top: 1px solid var(--border); color: var(--secondary); font-size: 12px; }
+  .note p { margin: 0 0 8px; }
+  .note code { font-size: 11.5px; background: var(--chip); padding: 0 4px; border-radius: 4px; color: var(--body); }
+
+  /* window */
+  .win { background: var(--panel); border: 1px solid var(--border); border-radius: 12px; overflow: hidden;
+    display: flex; flex-direction: column; min-width: 0; box-shadow: 0 10px 30px rgba(0,0,0,.06); }
+  .bar { height: 40px; display: flex; align-items: center; gap: 10px; padding: 0 14px; border-bottom: 1px solid var(--border); }
+  .dots { display: flex; gap: 6px; } .dots i { width: 11px; height: 11px; border-radius: 50%; background: var(--border); }
+  .bar .title { font-weight: 600; } .bar .crumb { color: var(--muted); }
+  .tabs { display: flex; align-items: stretch; height: 34px; background: var(--raised); border-bottom: 1px solid var(--border); }
+  .tab { border: 0; background: transparent; padding: 0 16px; min-width: 110px; text-align: left; color: var(--secondary);
+    border-right: 1px solid var(--border); display: flex; align-items: center; gap: 8px; }
+  .tab.on { background: var(--panel); color: var(--body); }
+  .tab .badge { width: 7px; height: 7px; border-radius: 50%; background: var(--born); display: none; }
+  .tab.fresh .badge { display: inline-block; }
+  .tab .count { font-size: 11px; color: var(--muted); margin-left: auto; }
+
+  .stage { position: relative; height: 560px; padding: 6px; background: var(--app); }
+  @media (max-width: 900px) { .stage { height: 460px; } }
+  .node { display: flex; width: 100%; height: 100%; gap: 6px; min-width: 0; min-height: 0; }
+  .node.down { flex-direction: column; }
+  .node > * { min-width: 0; min-height: 0; }
+  .pane { display: flex; flex-direction: column; width: 100%; height: 100%; background: var(--term);
+    border: 1.5px solid var(--border); border-radius: 8px; overflow: hidden; }
+  .pane.focused { border-color: var(--focus); }
+  .pane.born { animation: born 1.6s ease-out; }
+  @keyframes born { 0% { opacity: 0; transform: scale(.96); border-color: var(--born); }
+    25% { opacity: 1; transform: none; border-color: var(--born); } 100% { border-color: var(--border); } }
+  .pane.focused.born { animation: none; }
+  .phead { height: 30px; flex: none; display: flex; align-items: center; gap: 8px; padding: 0 8px 0 10px;
+    background: var(--raised); border-bottom: 1px solid var(--border); font-size: 12px; white-space: nowrap; overflow: hidden; }
+  .phead .lbl { font-weight: 600; flex: none; }
+  .phead .id { font-size: 11px; color: var(--muted); background: var(--chip); padding: 0 5px; border-radius: 4px;
+    min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+  .phead .by { font-size: 11px; color: var(--born); flex: none; }
+  .phead .size { margin-left: auto; font-size: 11px; color: var(--muted); flex: none; }
+  .phead .x { border: 0; background: transparent; color: var(--muted); padding: 0 4px; font-size: 14px; line-height: 1; }
+  .phead .x:hover { color: var(--body); }
+  .pbody { flex: 1; overflow: hidden; padding: 6px 8px; font: 12px/18px ui-monospace, "SF Mono", Menlo, monospace;
+    white-space: pre-wrap; word-break: break-all; display: flex; flex-direction: column; justify-content: flex-end; }
+  .pbody .l { min-height: 18px; flex: none; }
+  .ok { color: var(--ok); } .bad { color: var(--bad); } .warn { color: var(--warn); } .dim { color: var(--muted); }
+  .acc { color: var(--accent); }
+  .cursor::after { content: "▌"; color: var(--accent); }
+
+  .toast { position: absolute; left: 50%; bottom: 16px; transform: translate(-50%, 8px); opacity: 0;
+    background: var(--body); color: var(--panel); padding: 7px 14px; border-radius: 8px; font-size: 12.5px;
+    transition: .25s; pointer-events: none; max-width: calc(100% - 32px); }
+  .toast.show { opacity: 1; transform: translate(-50%, 0); }
+
+  .console { border-top: 1px solid var(--border); display: grid; grid-template-columns: minmax(0, 1fr) 300px; }
+  @media (max-width: 900px) { .console { grid-template-columns: 1fr; } }
+  .cmd { padding: 10px 14px; border-right: 1px solid var(--border); min-width: 0; }
+  .cmd label { font-size: 12px; color: var(--muted); display: block; margin-bottom: 6px; }
+  .cmd form { display: flex; align-items: center; gap: 6px; background: var(--term); border: 1px solid var(--border);
+    border-radius: 8px; padding: 6px 10px; }
+  .cmd form:focus-within { border-color: var(--accent); }
+  .cmd input { flex: 1; min-width: 0; border: 0; outline: 0; background: transparent; color: var(--body); font: 12.5px ui-monospace, Menlo, monospace; }
+  .cmd .out { margin-top: 6px; min-height: 18px; font: 12px/1.5 ui-monospace, Menlo, monospace; color: var(--secondary); white-space: pre-wrap; }
+  .hints { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 6px; }
+  .hints button { border: 1px solid var(--border); background: transparent; border-radius: 6px; padding: 1px 7px;
+    font: 11.5px ui-monospace, Menlo, monospace; color: var(--secondary); }
+  .hints button:hover { color: var(--body); border-color: var(--muted); }
+  .events { padding: 10px 14px; min-width: 0; }
+  .events h3 { margin: 0 0 6px; font-size: 12px; color: var(--muted); font-weight: 500; }
+  .events .log { height: 92px; overflow: auto; font: 11.5px/1.6 ui-monospace, Menlo, monospace; }
+  .events .log div { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+</style>
+</head>
+<body>
+<div class="page">
+  <aside class="guide">
+    <h1>Agent 自己开分屏</h1>
+    <p class="lead">左上那块是 Claude Code，也是你正在用的那块（深色边框）。点下面的场景，看它用 <code>keeplined split</code> 在旁边开分屏跑东西。</p>
+    <div class="steps" id="steps"></div>
+    <div class="tools">
+      <button id="reset">重来</button>
+      <button id="theme">切换深浅色</button>
+    </div>
+    <div class="note">
+      <p>分屏的尺寸按真实窗口算：每块标题栏右边是它现在的「列 × 行」。切开后任一边少于 <b>20 列</b>（左右切）或 <b>5 行</b>（上下切）就拒绝，什么都不启动。</p>
+      <p>不管开在哪，键盘焦点都留在你正在用的那块。点任意一块可以把焦点换过去，再跑场景试试。</p>
+      <p>这是网页模拟，命令和输出是演示数据；规则和真实 <code>keeplined</code> 一致。</p>
+    </div>
+  </aside>
+
+  <main class="win">
+    <div class="bar"><div class="dots"><i></i><i></i><i></i></div><span class="title">Keepline</span><span class="crumb">/ keepline</span></div>
+    <div class="tabs" id="tabs"></div>
+    <div class="stage" id="stage"><div class="toast" id="toast"></div></div>
+    <div class="console">
+      <div class="cmd">
+        <label>也可以自己敲（以 Claude 的身份）</label>
+        <form id="form"><span class="dim mono">$</span><input id="input" autocomplete="off" spellcheck="false" placeholder="keeplined split claude --down -- &quot;cargo test&quot;"></form>
+        <div class="hints" id="hints"></div>
+        <div class="out" id="out"></div>
+      </div>
+      <div class="events"><h3>keeplined events</h3><div class="log" id="log"></div></div>
+    </div>
+  </main>
+</div>
+
+<script>
+(() => {
+  const MIN = { right: 20, down: 5 };
+  const $ = (id) => document.getElementById(id);
+  const stage = $("stage"), tabsEl = $("tabs"), logEl = $("log"), outEl = $("out");
+  let state, seq, focusedTab, born = new Set(), busy = false;
+
+  // ---- model: the same tree and rules as keepline-core's Layout ----
+  function fresh() {
+    seq = 0;
+    state = {
+      terminals: {
+        claude: { id: "claude", label: "Claude Code", tab: "main", lines: [], size: [100, 30], agent: true },
+        server: { id: "server", label: "dev server", tab: "other", lines: [], size: [100, 30] },
+      },
+      tabs: [
+        { id: "main", title: "keepline", layout: { leaf: "claude" } },
+        { id: "other", title: "server", layout: { leaf: "server" }, fresh: false },
+      ],
+      focus: "claude",
+      shown: "main",
+    };
+    say("claude", [["dim", "╭─ Claude Code ─────────────"], ["", "> 改完了，跑一下测试吧"], ""]);
+    print("server", [["dim", "$ npm run dev"], ["ok", "  ➜  Local:   http://localhost:5173/"], ""]);
+  }
+  const contains = (n, id) => n.leaf ? n.leaf === id : contains(n.first, id) || contains(n.second, id);
+  const ids = (n) => n.leaf ? [n.leaf] : [...ids(n.first), ...ids(n.second)];
+  function splitBeside(n, target, id, axis, before, share) {
+    if (n.leaf) {
+      if (n.leaf !== target) return null;
+      const old = { leaf: n.leaf }, neu = { leaf: id };
+      return before ? { axis, ratio: share, first: neu, second: old }
+                    : { axis, ratio: 10000 - share, first: old, second: neu };
+    }
+    if (contains(n.first, target)) { const f = splitBeside(n.first, target, id, axis, before, share); return f && { ...n, first: f }; }
+    const s = splitBeside(n.second, target, id, axis, before, share); return s && { ...n, second: s };
+  }
+  function without(n, id) {
+    if (n.leaf) return n.leaf === id ? null : n;
+    const f = without(n.first, id), s = without(n.second, id);
+    if (!f) return s; if (!s) return f; return { ...n, first: f, second: s };
+  }
+  function splitRoom(cols, rows, axis, share) {
+    const total = axis === "right" ? cols : rows, min = MIN[axis], unit = axis === "right" ? "列" : "行";
+    const neu = Math.floor(total * share / 10000), old = total - neu;
+    if (neu < min || old < min)
+      throw `这块终端只有 ${total} ${unit}，切开后一边只剩 ${Math.min(neu, old)} ${unit}（至少要 ${min} ${unit}）；换个方向、调 --size，或在更大的终端旁边开`;
+    return axis === "right" ? [neu, rows] : [cols, neu];
+  }
+  const tabOf = (id) => state.tabs.find((t) => contains(t.layout, id));
+  function resolve(needle) {
+    const all = Object.values(state.terminals).filter((t) => tabOf(t.id));
+    const exact = all.find((t) => t.id === needle); if (exact) return exact.id;
+    const pre = all.filter((t) => t.id.startsWith(needle));
+    const hits = pre.length ? pre : all.filter((t) => t.label === needle || tabOf(t.id).title === needle && ids(tabOf(t.id).layout).length === 1);
+    if (hits.length === 1) return hits[0].id;
+    throw hits.length ? `${needle} 匹配到 ${hits.length} 个终端，请写更长的编号` : `没有正在运行的终端匹配 ${needle}`;
+  }
+
+  // ---- commands ----
+  function words(s) {
+    const out = []; let cur = null, q = null;
+    for (const ch of s) {
+      if (q) { if (ch === q) q = null; else cur += ch; continue; }
+      if (ch === '"' || ch === "'") { q = ch; cur = cur ?? ""; continue; }
+      if (/\s/.test(ch)) { if (cur !== null) out.push(cur), cur = null; continue; }
+      cur = (cur ?? "") + ch;
+    }
+    if (cur !== null) out.push(cur); return out;
+  }
+  function run(line) {
+    const w = words(line.replace(/\$KEEPLINE_TERMINAL/g, "claude"));
+    if (w[0] === "keeplined") w.shift();
+    const [cmd, ...rest] = w;
+    const dd = rest.indexOf("--");
+    const args = dd < 0 ? rest : rest.slice(0, dd), command = dd < 0 ? [] : rest.slice(dd + 1);
+    const pos = [], flags = {};
+    for (let i = 0; i < args.length; i++) {
+      const a = args[i];
+      if (a.startsWith("--")) { const k = a.slice(2); flags[k] = ["size", "cwd", "lines"].includes(k) ? args[++i] : true; }
+      else pos.push(a);
+    }
+    if (cmd === "split") return split(pos, flags, command.join(" "));
+    if (cmd === "close") return close(pos[0]);
+    if (cmd === "list") return list();
+    if (cmd === "read") return read(pos[0], parseInt(flags.lines ?? "5", 10));
+    throw "演示里支持：split、close、read、list";
+  }
+  function split(pos, flags, command) {
+    if (!pos[0]) throw "缺少终端";
+    const target = resolve(pos[0]);
+    let share = 5000;
+    if (flags.size !== undefined) {
+      const f = parseFloat(flags.size);
+      if (!(f > 0 && f < 1)) throw "--size 需要 0 到 1 之间的小数";
+      share = Math.min(9999, Math.max(1, Math.round(f * 10000)));
+    }
+    const axis = flags.down ? "down" : "right";
+    const t = state.terminals[target];
+    const size = splitRoom(t.size[0], t.size[1], axis, share);   // asked before anything starts
+    const id = "split-" + (++seq).toString(16).padStart(2, "0") + Math.random().toString(16).slice(2, 4);
+    const tab = tabOf(target);
+    state.terminals[id] = { id, label: command ? command.split(" ").slice(0, 2).join(" ").slice(0, 14) : "zsh", tab: tab.id, lines: [], size, by: true };
+    tab.layout = splitBeside(tab.layout, target, id, axis, !!flags.before, share);
+    born.add(id);
+    event("terminal_started", id);
+    if (tab.id !== state.shown) { tab.fresh = true; toast(`在没打开的「${tab.title}」标签里开了一块，你的画面没变`); }
+    startCommand(id, command);
+    render();
+    return id;
+  }
+  function close(needle) {
+    if (!needle) throw "缺少终端";
+    const id = resolve(needle);
+    const tab = tabOf(id);
+    tab.layout = without(tab.layout, id);
+    if (!tab.layout) state.tabs = state.tabs.filter((t) => t !== tab);
+    if (state.focus === id) state.focus = state.tabs.find((t) => t.id === state.shown) ? ids(state.tabs.find((t) => t.id === state.shown).layout)[0] : null;
+    if (!state.tabs.find((t) => t.id === state.shown)) state.shown = state.tabs[0].id;
+    event("terminal_exited", id);
+    render();
+    return "";
+  }
+  function read(needle, n) {
+    const t = state.terminals[resolve(needle)];
+    return t.lines.map((l) => l.length === 4 ? l[1] + l[2] : l[1]).filter((l) => l.trim() && !l.startsWith("Agent-OS")).slice(-n).join("\n");
+  }
+  function list() {
+    return Object.values(state.terminals).filter((t) => tabOf(t.id))
+      .map((t) => `${t.id.padEnd(11)} ${(t.agent ? "claude" : "-").padEnd(7)} ${tabOf(t.id).title}`).join("\n");
+  }
+
+  // ---- fake programs ----
+  const programs = {
+    "cargo test": [["dim", "   Compiling keeplined v0.1.0"], 500, ["", "running 54 tests"], 300,
+      ...Array.from({ length: 6 }, (_, i) => [["", `test managed_session::case_${i + 1} ... `, "ok", "ok"], 220]).flat(),
+      ["", ""], ["ok", "test result: ok. 54 passed; 0 failed"]],
+    "npm run lint": [["dim", "> eslint src"], 600, ["warn", "src/app.ts  12:7  warning  unused variable 'x'"], ["", "✖ 1 problem (0 errors, 1 warning)"]],
+    "tail -f logs/app.log": [["dim", "12:01:04 GET /api/sessions 200 4ms"], 700, ["dim", "12:01:05 GET /api/sessions 200 3ms"], 900, ["warn", "12:01:07 POST /api/hook 429 slow down"], 800, ["dim", "12:01:09 GET /api/sessions 200 5ms"]],
+    "git diff --stat": [["", " src/layout.rs  | 29 ++++-"], ["", " src/control.rs | 178 +++++++++++++"], ["dim", " 2 files changed, 196 insertions(+), 11 deletions(-)"]],
+  };
+  async function startCommand(id, command) {
+    const t = state.terminals[id];
+    if (!command) { print(id, [["dim", "Agent-OS:keepline lifcc$ "]]); return; }
+    print(id, [["dim", "$ " + command]]);
+    const steps = programs[command] || [["", command.startsWith("echo ") ? command.slice(5) : ""]];
+    for (const s of steps) {
+      if (typeof s === "number") { await sleep(s); continue; }
+      if (!state.terminals[id] || !tabOf(id)) return;
+      print(id, [s]); renderPane(id);
+    }
+    print(id, [["dim", "Agent-OS:keepline lifcc$ "]]); renderPane(id);
+  }
+  function print(id, lines) { const t = state.terminals[id]; for (const l of lines) t.lines.push(l); t.lines = t.lines.slice(-60); }
+  function say(id, lines) { print(id, lines.map((l) => typeof l === "string" ? ["", l] : l)); }
+
+  // ---- the Agent driving it ----
+  async function agent(line, why) {
+    if (why) { say("claude", [["", "⏺ " + why]]); render(); await sleep(450); }
+    say("claude", [["acc", "⏺ Bash(" + line.replace(/^keeplined /, "keeplined ") + ")"]]); render();
+    await sleep(380);
+    try {
+      const out = run(line);
+      say("claude", [["dim", "  ⎿  " + (out || "已关闭")]]);
+      render(); await sleep(500);
+      return out;
+    } catch (e) {
+      say("claude", [["bad", "  ⎿  Error: " + e]]);
+      render(); await sleep(600);
+      throw e;
+    }
+  }
+  const opened = () => Object.values(state.terminals).filter((t) => t.by && tabOf(t.id)).map((t) => t.id);
+  const scenes = [
+    { t: "开一块跑测试", d: "在自己下面开 35%，跑 cargo test", go: async () => {
+      const id = await agent(`keeplined split $KEEPLINE_TERMINAL --down --size 0.35 -- "cargo test"`, "我在下面开一块跑测试，你能同时看到输出。");
+      await sleep(3200);
+      await agent(`keeplined read ${id} --lines 1`);
+      say("claude", [["", "⏺ 测试全过了：54 passed。"]]); render();
+    } },
+    { t: "已分多块，接着分", d: "在测试那块右边开 lint，再在自己左边开 diff", go: async () => {
+      if (!opened().length) await agent(`keeplined split $KEEPLINE_TERMINAL --down --size 0.35 -- "cargo test"`);
+      const tests = opened()[0];
+      await agent(`keeplined split ${tests} -- "npm run lint"`, "测试那块旁边再开一块跑 lint。");
+      await agent(`keeplined split $KEEPLINE_TERMINAL --before -- "git diff --stat"`, "左边再开一块看改了哪些文件。");
+    } },
+    { t: "一直切，直到被拒绝", d: "对同一块反复往右切，看它在哪停下", go: async () => {
+      let last = opened().at(-1) || "claude";
+      say("claude", [["", "⏺ 演示：对同一块一直往右切。"]]); render(); await sleep(400);
+      for (let i = 0; i < 8; i++) {
+        try { last = await agent(`keeplined split ${last}`); }
+        catch { say("claude", [["", "⏺ 空间不够了，被拒绝，没有启动任何东西。我换个地方开，不反复重试。"]]); render(); break; }
+      }
+    } },
+    { t: "开在没打开的标签里", d: "给「server」标签里的终端旁边开一块看日志", go: async () => {
+      await agent(`keeplined split server --down -- "tail -f logs/app.log"`, "在 dev server 那个标签里开一块盯日志，不打扰你现在的画面。");
+      say("claude", [["", "⏺ 开好了，切到「server」标签就能看到。"]]); render();
+    } },
+    { t: "收掉自己开的", d: "只关 Claude 开的分屏，你的不动", go: async () => {
+      const mine = opened();
+      if (!mine.length) { say("claude", [["", "⏺ 我还没开过分屏。"]]); render(); return; }
+      say("claude", [["", `⏺ 收掉我开的 ${mine.length} 块。`]]); render(); await sleep(300);
+      for (const id of mine) await agent(`keeplined close ${id}`);
+    } },
+  ];
+
+  // ---- rendering ----
+  function render() {
+    tabsEl.innerHTML = "";
+    for (const t of state.tabs) {
+      const b = document.createElement("button");
+      b.className = "tab" + (t.id === state.shown ? " on" : "") + (t.fresh ? " fresh" : "");
+      const n = ids(t.layout).length;
+      b.innerHTML = `<span class="badge"></span>${esc(t.title)}<span class="count">${n > 1 ? n + " 块" : ""}</span>`;
+      b.onclick = () => { $("toast").classList.remove("show"); state.shown = t.id; t.fresh = false; if (!contains(t.layout, state.focus)) state.focus = ids(t.layout)[0]; render(); };
+      tabsEl.appendChild(b);
+    }
+    const tab = state.tabs.find((t) => t.id === state.shown);
+    [...stage.querySelectorAll(".node,.pane")].forEach((e) => e.remove());
+    stage.prepend(build(tab.layout));
+    requestAnimationFrame(measure);
+    setTimeout(() => born.clear(), 50);
+  }
+  function build(n) {
+    if (n.leaf) return pane(n.leaf);
+    const el = document.createElement("div");
+    el.className = "node " + n.axis;
+    const a = build(n.first), b = build(n.second);
+    a.style.flex = `${n.ratio} 1 0`; b.style.flex = `${10000 - n.ratio} 1 0`;
+    el.append(a, b); return el;
+  }
+  function pane(id) {
+    const t = state.terminals[id];
+    const el = document.createElement("div");
+    el.className = "pane" + (id === state.focus ? " focused" : "") + (born.has(id) ? " born" : "");
+    el.dataset.id = id;
+    el.innerHTML = `<div class="phead"><span class="lbl">${esc(t.label)}</span><span class="id mono">${id}</span>${t.by ? '<span class="by">Claude 开的</span>' : ""}<span class="size mono"></span><button class="x" title="关闭">×</button></div><div class="pbody"></div>`;
+    el.onmousedown = (e) => { if (e.target.closest(".x")) return; state.focus = id; stage.querySelectorAll(".pane").forEach((p) => p.classList.toggle("focused", p.dataset.id === id)); };
+    el.querySelector(".x").onclick = () => { event("terminal_exited", id); const tab = tabOf(id); tab.layout = without(tab.layout, id); if (!tab.layout) state.tabs = state.tabs.filter((x) => x !== tab); if (state.focus === id) state.focus = ids(state.tabs[0].layout)[0]; if (!state.tabs.find((x) => x.id === state.shown)) state.shown = state.tabs[0].id; render(); };
+    fill(el.querySelector(".pbody"), t);
+    return el;
+  }
+  function fill(body, t) {
+    body.innerHTML = t.lines.map((l, i) => {
+      const last = i === t.lines.length - 1 && t.agent ? " cursor" : "";
+      if (l.length === 4) return `<div class="l">${esc(l[1])}<span class="${l[3]}">${esc(l[2])}</span></div>`;
+      return `<div class="l ${l[0]}${last}">${esc(l[1]) || " "}</div>`;
+    }).join("");
+  }
+  function renderPane(id) { const el = stage.querySelector(`.pane[data-id="${id}"]`); if (el) fill(el.querySelector(".pbody"), state.terminals[id]); }
+  let cell = null;
+  function measure() {
+    if (!cell) { const s = document.createElement("span"); s.className = "mono"; s.style.cssText = "position:absolute;visibility:hidden;font:12px ui-monospace,'SF Mono',Menlo,monospace"; s.textContent = "M".repeat(50); document.body.appendChild(s); cell = s.getBoundingClientRect().width / 50; s.remove(); }
+    // What the app tells the host after it draws: each shown pane's real size.
+    stage.querySelectorAll(".pane").forEach((p) => {
+      const b = p.querySelector(".pbody").getBoundingClientRect();
+      const t = state.terminals[p.dataset.id];
+      t.size = [Math.max(2, Math.floor((b.width - 16) / cell)), Math.max(1, Math.floor((b.height - 12) / 18))];
+      p.querySelector(".size").textContent = `${t.size[0]} × ${t.size[1]}`;
+    });
+  }
+  function event(name, id) {
+    const d = document.createElement("div");
+    const at = new Date().toTimeString().slice(0, 8);
+    d.innerHTML = `<span class="dim">${at}</span> <span class="${name.endsWith("exited") ? "warn" : "ok"}">${name.padEnd(16)}</span> ${id}`;
+    logEl.appendChild(d); logEl.scrollTop = logEl.scrollHeight;
+  }
+  let toastTimer;
+  function toast(text) { const t = $("toast"); t.textContent = text; t.classList.add("show"); clearTimeout(toastTimer); toastTimer = setTimeout(() => t.classList.remove("show"), 2800); }
+  const esc = (s) => String(s ?? "").replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
+  const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+
+  // ---- controls ----
+  const stepsEl = $("steps");
+  scenes.forEach((s, i) => {
+    const b = document.createElement("button");
+    b.className = "step";
+    b.innerHTML = `<i class="n">${i + 1}</i><b>${s.t}</b><span>${s.d}</span>`;
+    b.onclick = async () => {
+      if (busy) return; busy = true; stepsEl.querySelectorAll(".step").forEach((x) => x.disabled = true);
+      try { await s.go(); } catch {}
+      b.classList.add("done"); busy = false; stepsEl.querySelectorAll(".step").forEach((x) => x.disabled = false);
+    };
+    stepsEl.appendChild(b);
+  });
+  const hints = ["keeplined list", `keeplined split claude --down -- "cargo test"`, `keeplined split claude --size 0.1`, `keeplined split server -- "git diff --stat"`];
+  hints.forEach((h) => { const b = document.createElement("button"); b.textContent = h; b.onclick = () => { $("input").value = h; $("input").focus(); }; $("hints").appendChild(b); });
+  $("form").onsubmit = (e) => {
+    e.preventDefault();
+    const line = $("input").value.trim(); if (!line) return;
+    try { const out = run(line); outEl.className = "out"; outEl.textContent = out === "" ? "已关闭" : out; }
+    catch (err) { outEl.className = "out bad"; outEl.textContent = "keeplined: " + err; }
+    $("input").select();
+  };
+  $("reset").onclick = () => { if (busy) return; logEl.innerHTML = ""; outEl.textContent = ""; stepsEl.querySelectorAll(".step").forEach((x) => x.classList.remove("done")); fresh(); render(); };
+  $("theme").onclick = () => {
+    const dark = document.documentElement.dataset.theme ? document.documentElement.dataset.theme === "dark" : matchMedia("(prefers-color-scheme: dark)").matches;
+    document.documentElement.dataset.theme = dark ? "light" : "dark";
+  };
+  window.addEventListener("resize", () => requestAnimationFrame(measure));
+  fresh(); render();
+})();
+</script>
+</body>
+</html>
