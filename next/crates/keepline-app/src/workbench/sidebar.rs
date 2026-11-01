@@ -262,12 +262,16 @@ impl Workbench {
         sessions.sort_by_key(|(_, g, attention, i)| {
             (sidebar_rank(*g, *attention), std::cmp::Reverse(*i))
         });
-        let current = self
-            .nav
-            .focused
-            .as_ref()
-            .and_then(|id| self.workspace.current_agent(id))
-            .map(|s| s.id.clone());
+        // A peek is what is in front: its row is the selected one until it closes.
+        let current = match &self.peek {
+            Some(peek) => Some(peek.session.clone()),
+            None => self
+                .nav
+                .focused
+                .as_ref()
+                .and_then(|id| self.workspace.current_agent(id))
+                .map(|s| s.id.clone()),
+        };
         // Agents running in a tab here that no evidence has tied to a conversation yet:
         // listed rather than missing, so a CLI Keepline cannot read is never silent.
         let mut unread: Vec<_> = self
