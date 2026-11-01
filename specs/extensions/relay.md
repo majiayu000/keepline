@@ -22,11 +22,14 @@ keeplined remote --relay URL ──主动连出 WSS /agent──▶ keepline-rel
 
 | 部分 | 位置 | 说明 |
 |---|---|---|
-| 中继 | `next/crates/keepline-relay`（二进制 `keepline-relay`，2.5 MB） | tokio 加 axum；只做 WebSocket 隧道，不做 HTTP 隧道、APNs 和 TURN |
-| 线协议 | `keepline_relay::wire` | 和 alma-relay 一致：`register`/`registered`、`wopen`/`wopened`/`werr`/`wmsg`/`wclose`、协议 2 的二进制帧 `[类型][id 长度][id][内容]`。中继只认 `sha256(令牌)` |
-| 加密 | `keepline_relay::secure` | 见下 |
-| 机器端 | `keeplined/src/relay.rs` | 主动连中继，断了就重连（1 秒起，翻倍，最多 30 秒）；每个手机开一个 `remote::serve` |
-| 参考客户端 | `keepline-relay/examples/phone.rs` | 一百来行的终端版「手机」：标准输入写请求，标准输出出回复。写 App 时照着它做 |
+| 共用库 | `next/crates/keepline-remote` | 纯逻辑：不用 tokio，不碰网络和文件。有五块：`protocol` 协议消息的类型、`role` 权限档、`link` 配对链接、`secure` 加密通道、`wire` 和中继之间的帧。电脑端、中继、以后的桌面工作台都用它 |
+| 测试向量 | `keepline-remote/vectors/v1.json` | 固定输入和它们必须得到的字节：令牌、令牌哈希、预共享密钥、两条握手消息、三条加密消息、一个中继帧、配对链接。别的语言实现完逐字节对照。字节一变，`tests/vectors.rs` 就失败 |
+| 中继 | `next/crates/keepline-relay`（二进制 `keepline-relay`，2.5 MB） | tokio 加 axum。只做 WebSocket 隧道，不做 HTTP 隧道、APNs 和 TURN |
+| 线协议 | `keepline_remote::wire` | 和 alma-relay 一致：`register`/`registered`、`wopen`/`wopened`/`werr`/`wmsg`/`wclose`，以及协议 2 的二进制帧 `[类型][id 长度][id][内容]`。中继只认 `sha256(令牌)` |
+| 机器端 | `keeplined/src/relay.rs`、`devices.rs` | 主动连中继，断了就重连（1 秒起，每次翻倍，最多 30 秒）。每个手机开一个 `remote::serve`。在这里检查权限、保存设备、记日志 |
+| 参考客户端 | `keepline-relay/examples/phone.rs` | 几十行的终端版「手机」：标准输入写请求，标准输出出回复。写 App 时照着它做 |
+
+权限只在电脑端检查。中继和手机都不可信，所以不放在这两处。
 
 ## 配对、权限和加密
 
@@ -44,6 +47,7 @@ keeplined remote --relay URL ──主动连出 WSS /agent──▶ keepline-rel
 |---|---|
 | `keeplined remote --pair --relay URL --name iPhone --role full` | 配对一台新手机，打印二维码和链接。权限三档：`view` 只看、`answer` 能答审批、`full` 完全控制（默认） |
 | `keeplined remote --devices` | 列出手机：编号、名字、权限、配对时间、最近一次连接 |
+| `keeplined remote --device <编号或名字> --role answer` | 改权限。它正连着的会话一秒内断开（4401），重连后按新权限 |
 | `keeplined remote --revoke <编号或名字>` | 取消配对。它正连着的会话一秒内断开（4401），之后再也连不上 |
 | `... --new-code` | 换掉机器码，并清空所有手机 |
 
@@ -61,6 +65,7 @@ keepline://pair?v=2&relay=<中继>&code=<机器码>&device=<设备编号>&key=<�
 - 记录连接（connected）、拒绝（refused）、离开（left）、因撤销或改权限断开（dropped）。
 - 每一次 send、keys、answer 都记一条：设备、名字、操作、终端，以及失败原因。
 - 不记打的内容。
+- 超过 4 MiB 时，整个文件挪到 `remote-log.1.jsonl`，覆盖掉更早的那份。`--devices` 两份都读。
 - 被拒绝的越权请求不算操作，不记。
 
 - 握手：`Noise_NNpsk0_25519_ChaChaPoly_BLAKE2s`，prologue 为 `keepline remote 1`，由手机先发。
@@ -106,7 +111,9 @@ keepline-relay --listen 127.0.0.1:8787 [--key 注册密钥]
 | 中继层面卡住的手机 | 不拖慢同一台机器的其他手机 | 中继测试：卡住的手机超过上限被断开（1013）；旁边手机往返最慢 1.2–2.5 ms |
 | 认证 | 不知道密钥的连接什么都拿不到 | 设备编号对、密钥错的，和没配对过的设备，都被 4401 关闭，一个字节都没收到；Noise 测试覆盖篡改、重放和跨连接重放 |
 | 权限 | 只看的设备打不了字 | 只看的设备 `keys` 被拒，终端没收到；`hello` 的 `ops` 里没有 keys；watch 照常能用 |
-| 撤销 | 正在连的会话 ≤ 3 秒断开 | `--revoke` 后 0.92–0.93 s 收到 4401（连跑 4 次）；再连被拒；`--devices` 里没有它了 |
+| 撤销、改权限 | 正在连的会话 ≤ 3 秒断开 | 连跑 5 次：改权限后 0.92–0.93 s、撤销后 0.99 s 收到 4401。改权限后重连拿到新权限；撤销后再连被拒，`--devices` 里也没有它了 |
+| 协议类型 | 实际发出的每一行都符合类型 | 端到端测试里，手机收到的每一行都解析成 `protocol::Incoming`；`hello` 和 `list` 解析成 `Hello` 和 `List` |
+| 测试向量 | 和另一种实现对得上 | 用 Python hashlib 独立重算：令牌、令牌哈希、预共享密钥、码的文本形式、中继帧，全部一致。Noise 那部分只有 snow 一种实现，没有交叉验证 |
 | 日志 | 每次操作都有记录 | 测试核对了 connected、refused、dropped，以及按键那条（设备名、终端、无错误）；越权被拒的请求没有记 |
 | 断线恢复 | 中继重启后自动回来 | 端到端测试：中继在同一端口重启后，机器自己重连，手机能再次 hello |
 | 空闲开销 | 没有手机时可以忽略 | release 版测 10 秒：机器端和中继 CPU 都是 0.00%，常驻内存 7.9 MB 和 3.4 MB |

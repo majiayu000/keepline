@@ -7,9 +7,8 @@
 //!   a machine that reads slowly slows phones down instead of filling the relay.
 //! - Machine → phone: a phone that falls more than `phone_buffer` behind is cut off; the
 //!   machine's socket keeps flowing for its other phones. Keepline machines keep
-//!   [`crate::secure::WINDOW`] per phone in flight, so only a phone that stops
+//!   [`keepline_remote::secure::WINDOW`] per phone in flight, so only a phone that stops
 //!   acknowledging gets there.
-use crate::wire::{self, bin, Frame};
 use axum::{
     extract::{
         ws::{CloseFrame, Message, WebSocket, WebSocketUpgrade},
@@ -21,6 +20,7 @@ use axum::{
     Json, Router,
 };
 use futures_util::{SinkExt, StreamExt};
+use keepline_remote::wire::{self, bin, Frame};
 use std::{
     collections::HashMap,
     io,

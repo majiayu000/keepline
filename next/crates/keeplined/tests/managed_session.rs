@@ -4918,7 +4918,7 @@ struct Phone {
     ws: tokio_tungstenite::WebSocketStream<
         tokio_tungstenite::MaybeTlsStream<tokio::net::TcpStream>,
     >,
-    channel: keepline_relay::secure::Channel,
+    channel: keepline_remote::secure::Channel,
     lines: Vec<u8>,
     ack: bool,
     /// DATA bytes received, acknowledged or not.
@@ -4932,15 +4932,15 @@ impl Phone {
             .unwrap()
     }
     /// Retries while the machine is not on the relay yet.
-    fn connect(base: &str, link: &Link) -> Self {
-        Self::try_connect(base, link).expect("handshake")
+    fn connect(link: &keepline_remote::link::Link) -> Self {
+        Self::try_connect(link).expect("handshake")
     }
     /// The handshake's answer, or the close code the machine answered with instead.
-    fn try_connect(base: &str, link: &Link) -> Result<Self, Option<u16>> {
+    fn try_connect(link: &keepline_remote::link::Link) -> Result<Self, Option<u16>> {
         use futures_util::{SinkExt, StreamExt};
         use tokio_tungstenite::tungstenite::Message;
         let rt = Self::rt();
-        let url = format!("{base}/c/{}/keepline?d={}", link.code.token(), link.device);
+        let url = link.url().unwrap();
         let until = Instant::now() + Duration::from_secs(20);
         let mut ws = loop {
             match rt.block_on(tokio_tungstenite::connect_async(&url)) {
@@ -4954,7 +4954,7 @@ impl Phone {
                 }
             }
         };
-        let (hs, first) = keepline_relay::secure::initiate(&link.key).unwrap();
+        let (hs, first) = keepline_remote::secure::initiate(&link.key).unwrap();
         let channel = rt.block_on(async {
             ws.send(Message::binary(first)).await.unwrap();
             loop {
@@ -4998,7 +4998,7 @@ impl Phone {
     fn say(&mut self, v: serde_json::Value) {
         use futures_util::SinkExt;
         let line = format!("{v}\n");
-        for chunk in line.as_bytes().chunks(keepline_relay::secure::CHUNK) {
+        for chunk in line.as_bytes().chunks(keepline_remote::secure::CHUNK) {
             let sealed = self.channel.data(chunk).unwrap();
             self.rt
                 .block_on(
@@ -5011,13 +5011,17 @@ impl Phone {
     /// The next line, or `None` after `wait` without one.
     fn line(&mut self, wait: Duration) -> Option<serde_json::Value> {
         use futures_util::{SinkExt, StreamExt};
-        use keepline_relay::secure::Message as Secure;
+        use keepline_remote::secure::Message as Secure;
         use tokio_tungstenite::tungstenite::Message;
         let until = Instant::now() + wait;
         loop {
             if let Some(end) = self.lines.iter().position(|&b| b == b'\n') {
                 let line: Vec<u8> = self.lines.drain(..=end).collect();
-                return Some(serde_json::from_slice(&line).unwrap());
+                let v: serde_json::Value = serde_json::from_slice(&line).unwrap();
+                // Every line the machine sends fits the protocol's types.
+                serde_json::from_value::<keepline_remote::protocol::Incoming>(v.clone())
+                    .unwrap_or_else(|e| panic!("{v} does not fit the protocol types: {e}"));
+                return Some(v);
             }
             let left = until.checked_duration_since(Instant::now())?;
             let ws = &mut self.ws;
@@ -5072,46 +5076,27 @@ impl Phone {
     }
 }
 
-/// What `keeplined remote --pair` printed for one phone.
-#[derive(Clone)]
-struct Link {
-    code: keepline_relay::secure::Code,
-    device: String,
-    key: keepline_relay::secure::Code,
-}
-impl Link {
-    fn pair(root: &str, base: &str, name: &str, role: &str) -> Self {
-        let out = Command::new(env!("CARGO_BIN_EXE_keeplined"))
-            .args([
-                "remote", "--pair", "--relay", base, "--name", name, "--role", role,
-            ])
-            .args(["--runtime", root])
-            .output()
-            .unwrap();
-        assert!(
-            out.status.success(),
-            "{}",
-            String::from_utf8_lossy(&out.stderr)
-        );
-        let printed = String::from_utf8(out.stdout).unwrap();
-        assert!(printed.contains('▀') || printed.contains('█'), "no QR code");
-        let link = printed
-            .lines()
-            .find(|l| l.starts_with("keepline://pair?v=2&"))
-            .expect("pairing link");
-        let field = |name: &str| {
-            link.split(['?', '&'])
-                .find_map(|kv| kv.strip_prefix(name)?.strip_prefix('='))
-                .unwrap()
-                .to_owned()
-        };
-        let code = keepline_relay::secure::Code::parse;
-        Self {
-            code: code(&field("code")).unwrap(),
-            device: field("device"),
-            key: code(&field("key")).unwrap(),
-        }
-    }
+/// Pairs one phone and reads back the link `keeplined remote --pair` printed.
+fn pair(root: &str, base: &str, name: &str, role: &str) -> keepline_remote::link::Link {
+    let out = Command::new(env!("CARGO_BIN_EXE_keeplined"))
+        .args([
+            "remote", "--pair", "--relay", base, "--name", name, "--role", role,
+        ])
+        .args(["--runtime", root])
+        .output()
+        .unwrap();
+    assert!(
+        out.status.success(),
+        "{}",
+        String::from_utf8_lossy(&out.stderr)
+    );
+    let printed = String::from_utf8(out.stdout).unwrap();
+    assert!(printed.contains('▀') || printed.contains('█'), "no QR code");
+    let line = printed
+        .lines()
+        .find(|l| l.starts_with("keepline://pair?"))
+        .expect("pairing link");
+    keepline_remote::link::Link::parse(line).unwrap()
 }
 
 /// A relay on a free local port, until the returned sender is dropped.
@@ -5165,8 +5150,8 @@ fn a_phone_on_a_relay_drives_a_terminal_through_a_channel_the_relay_cannot_read(
 
     let (base, stop, relay) = local_relay("127.0.0.1:0");
     let root = h.root.to_string_lossy().into_owned();
-    let full = Link::pair(&root, &base, "全权", "full");
-    let viewer = Link::pair(&root, &base, "只看的平板", "view");
+    let full = pair(&root, &base, "全权", "full");
+    let viewer = pair(&root, &base, "只看的平板", "view");
     assert_eq!(
         full.code, viewer.code,
         "one machine code, one key per phone"
@@ -5194,14 +5179,14 @@ fn a_phone_on_a_relay_drives_a_terminal_through_a_channel_the_relay_cannot_read(
 
     // A paired device with the wrong key, and a device never paired, get nowhere.
     let mut forged = full.clone();
-    forged.key = keepline_relay::secure::Code::generate().unwrap();
-    assert_eq!(Phone::try_connect(&base, &forged).err(), Some(Some(4401)));
+    forged.key = keepline_remote::secure::Code::generate().unwrap();
+    assert_eq!(Phone::try_connect(&forged).err(), Some(Some(4401)));
     let mut stranger = full.clone();
     stranger.device = "000000000000".into();
-    assert_eq!(Phone::try_connect(&base, &stranger).err(), Some(Some(4401)));
+    assert_eq!(Phone::try_connect(&stranger).err(), Some(Some(4401)));
 
     // A view-only device sees but cannot type, and is told so.
-    let mut view = Phone::connect(&base, &viewer);
+    let mut view = Phone::connect(&viewer);
     view.say(json!({ "id": 1, "op": "hello" }));
     let hello = view.next(|v| v["id"] == 1);
     assert_eq!(hello["ok"]["role"], "view");
@@ -5217,12 +5202,23 @@ fn a_phone_on_a_relay_drives_a_terminal_through_a_channel_the_relay_cannot_read(
     view.say(json!({ "id": 3, "op": "watch", "terminal": "rt" }));
     view.next(|v| v["stream"] == 3 && v["type"] == "screen");
 
-    let mut phone = Phone::connect(&base, &full);
+    let mut phone = Phone::connect(&full);
     phone.say(json!({ "id": 1, "op": "hello", "version": 1 }));
     let hello = phone.next(|v| v["id"] == 1);
-    assert_eq!(hello["ok"]["version"], 1);
+    let typed: keepline_remote::protocol::Hello =
+        serde_json::from_value(hello["ok"].clone()).expect("hello matches the protocol types");
+    assert_eq!(
+        (typed.version, typed.role),
+        (1, keepline_remote::role::Role::Full)
+    );
     phone.say(json!({ "id": 2, "op": "list" }));
     let list = phone.next(|v| v["id"] == 2);
+    let typed: keepline_remote::protocol::List =
+        serde_json::from_value(list["ok"].clone()).expect("list matches the protocol types");
+    assert!(typed
+        .terminals
+        .iter()
+        .any(|c| c.id == "rt" && c.phase == keepline_remote::protocol::Phase::Shell));
     assert!(list["ok"]["terminals"]
         .as_array()
         .unwrap()
@@ -5257,6 +5253,36 @@ fn a_phone_on_a_relay_drives_a_terminal_through_a_channel_the_relay_cannot_read(
     );
     assert!(p95 < Duration::from_millis(200), "{trips:?}");
 
+    // A new role drops the open session; back in, the device has the new role.
+    let changed = Instant::now();
+    let out = Command::new(env!("CARGO_BIN_EXE_keeplined"))
+        .args([
+            "remote",
+            "--device",
+            "只看的平板",
+            "--role",
+            "answer",
+            "--runtime",
+            &root,
+        ])
+        .output()
+        .unwrap();
+    assert!(
+        out.status.success(),
+        "{}",
+        String::from_utf8_lossy(&out.stderr)
+    );
+    assert_eq!(view.closed(Duration::from_secs(5)), Some(4401));
+    eprintln!("role changed → session dropped in {:?}", changed.elapsed());
+    let mut view = Phone::connect(&viewer);
+    view.say(json!({ "id": 1, "op": "hello" }));
+    assert_eq!(view.next(|v| v["id"] == 1)["ok"]["role"], "answer");
+    view.say(json!({ "id": 2, "op": "keys", "terminal": "rt", "keys": ["z"] }));
+    assert!(view.next(|v| v["id"] == 2)["error"]
+        .as_str()
+        .unwrap()
+        .contains("能答审批"));
+
     // Unpairing the viewer drops its open session within the recheck, and it cannot return.
     let revoked = Instant::now();
     let out = Command::new(env!("CARGO_BIN_EXE_keeplined"))
@@ -5268,7 +5294,7 @@ fn a_phone_on_a_relay_drives_a_terminal_through_a_channel_the_relay_cannot_read(
     let took = revoked.elapsed();
     eprintln!("unpaired → session dropped in {took:?}");
     assert!(took < Duration::from_secs(3), "{took:?}");
-    assert_eq!(Phone::try_connect(&base, &viewer).err(), Some(Some(4401)));
+    assert_eq!(Phone::try_connect(&viewer).err(), Some(Some(4401)));
     let listed = Command::new(env!("CARGO_BIN_EXE_keeplined"))
         .args(["remote", "--devices", "--runtime", &root])
         .output()
@@ -5306,7 +5332,7 @@ fn a_phone_on_a_relay_drives_a_terminal_through_a_channel_the_relay_cannot_read(
         "i=0; while [ $i -lt 400 ]; do yes 0123456789abcdefghij | head -n 2000; i=$((i+1)); done; echo flood-done; exec cat",
     ))
     .unwrap();
-    let mut stalled = Phone::connect(&base, &full);
+    let mut stalled = Phone::connect(&full);
     stalled.say(json!({ "id": 1, "op": "hello" }));
     stalled.next(|v| v["id"] == 1);
     stalled.ack = false;
@@ -5314,7 +5340,7 @@ fn a_phone_on_a_relay_drives_a_terminal_through_a_channel_the_relay_cannot_read(
     while stalled.line(Duration::from_millis(500)).is_some() {}
     let held = stalled.received;
     assert!(
-        held <= keepline_relay::secure::WINDOW + keepline_relay::secure::CHUNK as u64 * 2,
+        held <= keepline_remote::secure::WINDOW + keepline_remote::secure::CHUNK as u64 * 2,
         "a phone that stopped acknowledging got {held} bytes"
     );
     let mut beside = vec![];
@@ -5359,7 +5385,7 @@ fn a_phone_on_a_relay_drives_a_terminal_through_a_channel_the_relay_cannot_read(
     relay.join().unwrap();
     drop((phone, stalled));
     let (_base, _stop, _relay) = local_relay(&addr);
-    let mut phone = Phone::connect(&base, &full);
+    let mut phone = Phone::connect(&full);
     phone.say(json!({ "id": 1, "op": "hello" }));
     assert_eq!(phone.next(|v| v["id"] == 1)["ok"]["version"], 1);
 

@@ -11,40 +11,25 @@
 //! 3. Seal outgoing JSON lines as DATA; open incoming messages.
 //! 4. Acknowledge DATA it has taken in, or the machine stops after a window.
 use futures_util::{SinkExt, StreamExt};
-use keepline_relay::secure::{self, Code, Message as Secure};
+use keepline_remote::{
+    link::Link,
+    secure::{self, Message as Secure},
+};
 use tokio::io::{AsyncBufReadExt, AsyncWriteExt};
 use tokio_tungstenite::tungstenite::Message;
 
 #[tokio::main(flavor = "current_thread")]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
-    let link = std::env::args()
+    let text = std::env::args()
         .nth(1)
         .ok_or("usage: phone '<keepline://pair?…>'")?;
-    let field = |name: &str| {
-        link.split(['?', '&'])
-            .find_map(|kv| kv.strip_prefix(&format!("{name}=")))
-            .map(unescape)
-    };
-    let relay = field("relay").ok_or("the link has no relay")?;
-    let code = field("code")
-        .and_then(|c| Code::parse(&c))
-        .ok_or("the link has no code")?;
-    let device = field("device").ok_or("the link has no device")?;
-    let key = field("key")
-        .and_then(|k| Code::parse(&k))
-        .ok_or("the link has no key")?;
-    let base = relay
-        .replacen("https://", "wss://", 1)
-        .replacen("http://", "ws://", 1);
-    let url = format!(
-        "{}/c/{}/keepline?d={device}",
-        base.trim_end_matches('/'),
-        code.token()
-    );
+    let link = Link::parse(&text)?;
+    let (relay, key) = (&link.relay, &link.key);
+    let url = link.url()?;
     let (ws, _) = tokio_tungstenite::connect_async(&url).await?;
     let (mut sink, mut stream) = ws.split();
 
-    let (hs, first) = secure::initiate(&key)?;
+    let (hs, first) = secure::initiate(key)?;
     sink.send(Message::binary(first)).await?;
     let mut channel = loop {
         match stream.next().await.ok_or("relay closed")?? {
@@ -80,25 +65,4 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         }
     }
     Ok(())
-}
-
-fn unescape(s: &str) -> String {
-    let b = s.as_bytes();
-    let mut out = Vec::with_capacity(b.len());
-    let mut i = 0;
-    while i < b.len() {
-        match (b[i], b.get(i + 1..i + 3)) {
-            (b'%', Some(h))
-                if std::str::from_utf8(h).is_ok_and(|h| u8::from_str_radix(h, 16).is_ok()) =>
-            {
-                out.push(u8::from_str_radix(std::str::from_utf8(h).unwrap(), 16).unwrap());
-                i += 3;
-            }
-            (c, _) => {
-                out.push(c);
-                i += 1;
-            }
-        }
-    }
-    String::from_utf8_lossy(&out).into_owned()
 }

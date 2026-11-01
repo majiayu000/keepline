@@ -2984,13 +2984,22 @@ dependencies = [
  "axum",
  "base64",
  "futures-util",
+ "keepline-remote",
+ "serde_json",
+ "tokio",
+ "tokio-tungstenite",
+]
+
+[[package]]
+name = "keepline-remote"
+version = "0.1.0"
+dependencies = [
+ "base64",
  "getrandom 0.3.4",
  "serde",
  "serde_json",
  "sha2",
  "snow",
- "tokio",
- "tokio-tungstenite",
 ]
 
 [[package]]
@@ -3002,6 +3011,7 @@ dependencies = [
  "futures-util",
  "keepline-core",
  "keepline-relay",
+ "keepline-remote",
  "libc",
  "qrcode",
  "regex",

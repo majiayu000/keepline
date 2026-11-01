@@ -1,9 +1,7 @@
 //! The relay end to end over real sockets: a fake machine and fake phones.
 use futures_util::{SinkExt, StreamExt};
-use keepline_relay::{
-    server::{self, Config},
-    wire::{self, bin, Frame},
-};
+use keepline_relay::server::{self, Config};
+use keepline_remote::wire::{self, bin, Frame};
 use std::time::{Duration, Instant};
 use tokio::net::{TcpListener, TcpStream};
 use tokio_tungstenite::{connect_async, tungstenite::Message, MaybeTlsStream, WebSocketStream};

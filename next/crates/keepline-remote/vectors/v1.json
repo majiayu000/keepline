@@ -1,0 +1,54 @@
+{
+  "about": "keepline remote v1 / pairing link v2. Bytes are lowercase hex; codes are base64url without padding.",
+  "device_key": {
+    "bytes": "404142434445464748494a4b4c4d4e4f505152535455565758595a5b5c5d5e5f",
+    "psk": "7ca4eb360cddd7db1276e9542609d3df4f0387497969d710acd7e16534a52adb",
+    "text": "QEFCQ0RFRkdISUpLTE1OT1BRUlNUVVZXWFlaW1xdXl8"
+  },
+  "link": {
+    "text": "keepline://pair?v=2&relay=https%3A%2F%2Frelay.example.com&code=AAECAwQFBgcICQoLDA0ODxAREhMUFRYXGBkaGxwdHh8&device=a1b2c3d4e5f6&key=QEFCQ0RFRkdISUpLTE1OT1BRUlNUVVZXWFlaW1xdXl8&machine=2fd56880-55df-4677-86df-7c3496a1b2c3&name=Lin%20%E7%9A%84%20Mac",
+    "url": "wss://relay.example.com/c/imtF5qbX6jCshZsHlJa1V7caS4ulUILF8emWvSpW5no/keepline?d=a1b2c3d4e5f6"
+  },
+  "machine_code": {
+    "bytes": "000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f",
+    "text": "AAECAwQFBgcICQoLDA0ODxAREhMUFRYXGBkaGxwdHh8"
+  },
+  "messages": [
+    {
+      "from": "phone",
+      "kind": "data",
+      "plain": "{\"id\":1,\"op\":\"hello\"}\n",
+      "sealed": "e24d64b56289d48fa1b22e56ceb5616710b36ab84bc65165fffe89b51c46843e68392cdd4c1664"
+    },
+    {
+      "from": "machine",
+      "kind": "data",
+      "plain": "{\"id\":1,\"ok\":{}}\n",
+      "sealed": "13297cf5bccd2cf3e21845bd245f25f68335b1f7f33c007b3889b018e6781d912202"
+    },
+    {
+      "from": "phone",
+      "kind": "ack",
+      "n": 17,
+      "sealed": "6cac7b5c888c4926af3c2762263f1a5b24e25a25dd"
+    }
+  ],
+  "noise": {
+    "handshake_1_phone": "493e82fc74464a59268817623d2053c5eb8e2cc4a988b4fee179ec6b010d531db8abd55ebb8fa8c0d0de33db8afa72dc",
+    "handshake_2_machine": "dc2cca31e8e43bbd91dff7e475cca3347eb478107d5bd765aba4ae4a30c35d44ac86b897873bc6223d7532935e8d53f5",
+    "machine_ephemeral_private": "c0c1c2c3c4c5c6c7c8c9cacbcccdcecfd0d1d2d3d4d5d6d7d8d9dadbdcdddedf",
+    "pattern": "Noise_NNpsk0_25519_ChaChaPoly_BLAKE2s",
+    "phone_ephemeral_private": "808182838485868788898a8b8c8d8e8f909192939495969798999a9b9c9d9e9f",
+    "prologue": "keepline remote 1"
+  },
+  "relay_frames": [
+    {
+      "frame": "03027731e24d64b56289d48fa1b22e56ceb5616710b36ab84bc65165fffe89b51c46843e68392cdd4c1664",
+      "id": "w1",
+      "kind": 3,
+      "payload": "e24d64b56289d48fa1b22e56ceb5616710b36ab84bc65165fffe89b51c46843e68392cdd4c1664"
+    }
+  ],
+  "token": "imtF5qbX6jCshZsHlJa1V7caS4ulUILF8emWvSpW5no",
+  "token_hash": "30afd5b1ffae164eb938564de34b62d612ddfc4eb0bd53a4c281fa8574c4540a"
+}

@@ -15,7 +15,8 @@ use crate::control::Args;
 use crate::devices::{self, Device, Role};
 use crate::remote::{self, Access};
 use futures_util::{SinkExt, StreamExt};
-use keepline_relay::{
+use keepline_remote::{
+    link::Link,
     secure::{self, Channel, Code, Message as Secure},
     wire::{self, bin, Frame},
 };
@@ -47,6 +48,16 @@ pub fn run(a: &Args) -> io::Result<()> {
     if a.has("devices") {
         return list_devices(&a.socket);
     }
+    if let (Some(needle), Some(role)) = (a.value("device"), a.value("role")) {
+        let d = devices::set_role(&a.socket, needle, devices::parse_role(role)?)?;
+        println!(
+            "{}（{}）的权限改成「{}」，它正连着的会话一秒内断开，重连后按新权限",
+            d.name,
+            d.id,
+            d.role.label()
+        );
+        return Ok(());
+    }
     if let Some(needle) = a.value("revoke") {
         let gone = devices::remove(&a.socket, needle)?;
         println!(
@@ -58,14 +69,16 @@ pub fn run(a: &Args) -> io::Result<()> {
     let relay = a
         .value("relay")
         .ok_or_else(|| io::Error::other("--relay 需要中继地址，例如 https://relay.example.com"))?;
-    let base = ws_base(relay)?;
+    let base = Link::websocket_base(relay).map_err(io::Error::other)?;
     let new = a.has("new-code");
     let code = code(&a.socket, new)?;
     if new {
         devices::clear(&a.socket)?;
     }
     if a.has("pair") {
-        let role = a.value("role").map_or(Ok(Role::Full), Role::parse)?;
+        let role = a
+            .value("role")
+            .map_or(Ok(Role::Full), devices::parse_role)?;
         return pair(
             &a.socket,
             relay,
@@ -79,31 +92,11 @@ pub fn run(a: &Args) -> io::Result<()> {
         .map(str::to_owned)
         .or_else(|| std::env::var("KEEPLINE_RELAY_KEY").ok())
         .filter(|k| !k.is_empty());
-    let name = remote::machine(&a.socket)["name"]
-        .as_str()
-        .unwrap_or_default()
-        .to_owned();
+    let name = remote::machine(&a.socket).name;
     let runtime = tokio::runtime::Builder::new_current_thread()
         .enable_all()
         .build()?;
     runtime.block_on(stay_connected(&base, &code, key, name, &a.socket))
-}
-
-/// `https://host` → `wss://host`; a bare host is taken as https.
-fn ws_base(relay: &str) -> io::Result<String> {
-    let relay = relay.trim_end_matches('/');
-    let base = if let Some(rest) = relay.strip_prefix("https://") {
-        format!("wss://{rest}")
-    } else if let Some(rest) = relay.strip_prefix("http://") {
-        format!("ws://{rest}")
-    } else if relay.starts_with("wss://") || relay.starts_with("ws://") {
-        relay.to_owned()
-    } else if !relay.contains("://") && !relay.is_empty() {
-        format!("wss://{relay}")
-    } else {
-        return Err(io::Error::other(format!("看不懂的中继地址 {relay}")));
-    };
-    Ok(base)
 }
 
 /// The machine's pairing code, made on first use, readable only by this user.
@@ -133,15 +126,15 @@ fn code(socket: &Path, new: bool) -> io::Result<Code> {
 fn pair(socket: &Path, relay: &str, code: &Code, name: &str, role: Role) -> io::Result<()> {
     let machine = remote::machine(socket);
     let (device, key) = devices::add(socket, name, role)?;
-    let link = format!(
-        "keepline://pair?v=2&relay={}&code={}&device={}&key={}&machine={}&name={}",
-        escape(relay),
-        code.text(),
-        device.id,
-        key.text(),
-        escape(machine["id"].as_str().unwrap_or_default()),
-        escape(machine["name"].as_str().unwrap_or_default()),
-    );
+    let link = Link {
+        relay: relay.to_owned(),
+        code: code.clone(),
+        device: device.id.clone(),
+        key,
+        machine: machine.id,
+        name: machine.name,
+    }
+    .text();
     let qr = qrcode::QrCode::new(link.as_bytes())
         .map_err(|e| io::Error::other(e.to_string()))?
         .render::<qrcode::render::unicode::Dense1x2>()
@@ -155,7 +148,7 @@ fn pair(socket: &Path, relay: &str, code: &Code, name: &str, role: Role) -> io::
         out,
         "「{name}」（{}，权限：{}）：用手机 App 扫码配对，或者粘贴这一行：",
         device.id,
-        role.name()
+        role.label()
     )?;
     writeln!(out, "{link}")?;
     writeln!(
@@ -184,23 +177,12 @@ fn list_devices(socket: &Path) -> io::Result<()> {
             "{}  {}  {}  配对于 {}  最近连接 {}",
             d.id,
             d.name,
-            d.role.name(),
+            d.role.label(),
             ago(d.paired),
             last
         );
     }
     Ok(())
-}
-
-fn escape(s: &str) -> String {
-    s.bytes()
-        .map(|b| match b {
-            b'A'..=b'Z' | b'a'..=b'z' | b'0'..=b'9' | b'-' | b'_' | b'.' | b'~' => {
-                (b as char).to_string()
-            }
-            _ => format!("%{b:02X}"),
-        })
-        .collect()
 }
 
 enum Ended {
@@ -333,11 +315,12 @@ async fn connect(
                     })
                     .collect();
                 for id in gone {
+                    // Tell the phone why before the session ends and says only "done".
+                    close(&out, &id, 4401, "unpaired").await;
                     if let Some(Session::Open { device, .. }) = sessions.remove(&id) {
                         eprintln!("keeplined remote: 设备 {device} 已取消配对或改了权限，断开");
                         devices::log(&log, json!({ "event": "dropped", "device": device }));
                     }
-                    close(&out, &id, 4401, "unpaired").await;
                 }
                 continue;
             }
@@ -383,7 +366,7 @@ async fn connect(
                             eprintln!(
                                 "keeplined remote: 「{}」已连上（{}）",
                                 d.name,
-                                d.role.name()
+                                d.role.label()
                             );
                             devices::log(
                                 &log,
@@ -656,12 +639,13 @@ impl Bridge {
 }
 
 impl Drop for Bridge {
+    /// Ends the session; the pump sees it was ended here and says nothing more.
     fn drop(&mut self) {
-        let _ = self.ours.shutdown(std::net::Shutdown::Both);
         if let Ok(mut s) = self.credit.state.lock() {
             s.1 = true;
         }
         self.credit.changed.notify_all();
+        let _ = self.ours.shutdown(std::net::Shutdown::Both);
     }
 }
 
@@ -705,7 +689,10 @@ fn pump(
             return;
         }
     }
-    // The session ended on its own: let the phone know.
+    // The session ended on its own, not by a dropped bridge: let the phone know.
+    if credit.state.lock().map_or(true, |s| s.1) {
+        return;
+    }
     let frame = Frame::Wclose {
         id: id.into(),
         code: Some(1000),
@@ -717,22 +704,6 @@ fn pump(
 #[cfg(test)]
 mod tests {
     use super::*;
-
-    #[test]
-    fn relay_addresses_become_websocket_bases() {
-        assert_eq!(
-            ws_base("https://r.example.com/").unwrap(),
-            "wss://r.example.com"
-        );
-        assert_eq!(
-            ws_base("http://127.0.0.1:8787").unwrap(),
-            "ws://127.0.0.1:8787"
-        );
-        assert_eq!(ws_base("ws://h:1").unwrap(), "ws://h:1");
-        assert_eq!(ws_base("r.example.com").unwrap(), "wss://r.example.com");
-        assert!(ws_base("ftp://x").is_err());
-        assert_eq!(escape("https://a b/"), "https%3A%2F%2Fa%20b%2F");
-    }
 
     #[test]
     fn the_code_is_kept_private_and_only_replaced_on_request() {

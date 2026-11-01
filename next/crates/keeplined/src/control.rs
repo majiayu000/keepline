@@ -33,6 +33,8 @@ keeplined remote --pair --relay <中继地址> [--name 名字] [--role view|answ
                                              配对一台新手机，打印它的二维码和链接；权限分只看 / 能答审批 / 完全控制（默认）。
                                              加 --new-code 换掉机器码，已配对的手机全部失效
 keeplined remote --devices                   列出配对过的手机、权限和最近连接时间；操作记在运行目录的 remote-log.jsonl
+keeplined remote --device <设备> --role <view|answer|full>
+                                             改一台手机的权限；它正连着的会话一秒内断开，重连后按新权限
 keeplined remote --revoke <设备编号或名字>   取消一台手机的配对，它正连着的会话一秒内断开
 keeplined --skill                            给 Coding Agent 看的用法说明（Markdown）
 <终端> 可以是编号的前几位或标签名；全部命令都接受 --runtime <目录>。

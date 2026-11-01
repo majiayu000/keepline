@@ -22,7 +22,7 @@ libc = "0.2"
 base64 = "0.22"
 serde = { version = "1", features = ["derive"] }
 # `keeplined remote --relay`: this machine on a relay, for phones anywhere.
-keepline-relay = { path = "../keepline-relay", default-features = false }
+keepline-remote = { path = "../keepline-remote" }
 tokio = { version = "1", features = ["rt", "net", "time", "sync", "macros"] }
 tokio-tungstenite = { version = "0.29", features = ["rustls-tls-webpki-roots"] }
 rustls = { version = "0.23", default-features = false, features = ["ring", "std", "tls12"] }

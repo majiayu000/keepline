@@ -1,0 +1,17 @@
+[package]
+name = "keepline-remote"
+version = "0.1.0"
+edition = "2021"
+publish = false
+description = "Keepline's remote protocol: messages, pairing links, roles, the encrypted channel and the relay's frames"
+license = "MIT"
+
+# Pure logic: no async runtime, no sockets, no files. The machine, the relay, the
+# desktop workbench and the test vectors other languages check against all use it.
+[dependencies]
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+sha2 = "0.10"
+base64 = "0.22"
+snow = "0.10"
+getrandom = "0.3"

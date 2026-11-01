@@ -60,7 +60,8 @@ impl Code {
     pub fn token(&self) -> String {
         URL_SAFE_NO_PAD.encode(self.derive(b"keepline route 1"))
     }
-    fn psk(&self) -> [u8; 32] {
+    /// The Noise pre-shared key this code gives, when it is a device key.
+    pub fn psk(&self) -> [u8; 32] {
         self.derive(b"keepline psk 1")
     }
     fn derive(&self, label: &[u8]) -> [u8; 32] {
@@ -70,13 +71,27 @@ impl Code {
         h.update(self.0);
         h.finalize().into()
     }
-    fn handshake(&self, initiator: bool) -> io::Result<snow::HandshakeState> {
+    /// The 32 bytes behind the code.
+    pub fn bytes(&self) -> [u8; 32] {
+        self.0
+    }
+    pub fn from_bytes(bytes: [u8; 32]) -> Self {
+        Self(bytes)
+    }
+    fn handshake(
+        &self,
+        initiator: bool,
+        ephemeral: Option<&[u8; 32]>,
+    ) -> io::Result<snow::HandshakeState> {
         let psk = self.psk();
-        let b = snow::Builder::new(PATTERN.parse().map_err(noise)?)
+        let mut b = snow::Builder::new(PATTERN.parse().map_err(noise)?)
             .prologue(PROLOGUE)
             .map_err(noise)?
             .psk(0, &psk)
             .map_err(noise)?;
+        if let Some(e) = ephemeral {
+            b = b.fixed_ephemeral_key_for_testing_only(e);
+        }
         if initiator {
             b.build_initiator()
         } else {
@@ -91,7 +106,13 @@ pub struct Handshake(snow::HandshakeState);
 
 /// Starts a connection: send the returned bytes as the first WebSocket message.
 pub fn initiate(key: &Code) -> io::Result<(Handshake, Vec<u8>)> {
-    let mut hs = key.handshake(true)?;
+    initiate_with(key, None)
+}
+
+/// [`initiate`] with a chosen ephemeral key: only for the test vectors.
+#[doc(hidden)]
+pub fn initiate_with(key: &Code, ephemeral: Option<&[u8; 32]>) -> io::Result<(Handshake, Vec<u8>)> {
+    let mut hs = key.handshake(true, ephemeral)?;
     let mut first = vec![0; MAX_NOISE];
     let n = hs.write_message(&[], &mut first).map_err(noise)?;
     first.truncate(n);
@@ -110,7 +131,17 @@ impl Handshake {
 
 /// The machine's side: answers a phone's first message, failing unless it held `key`.
 pub fn respond(key: &Code, first: &[u8]) -> io::Result<(Channel, Vec<u8>)> {
-    let mut hs = key.handshake(false)?;
+    respond_with(key, first, None)
+}
+
+/// [`respond`] with a chosen ephemeral key: only for the test vectors.
+#[doc(hidden)]
+pub fn respond_with(
+    key: &Code,
+    first: &[u8],
+    ephemeral: Option<&[u8; 32]>,
+) -> io::Result<(Channel, Vec<u8>)> {
+    let mut hs = key.handshake(false, ephemeral)?;
     hs.read_message(first, &mut [0; MAX_NOISE]).map_err(noise)?;
     let mut answer = vec![0; MAX_NOISE];
     let n = hs.write_message(&[], &mut answer).map_err(noise)?;

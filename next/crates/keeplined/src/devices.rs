@@ -2,7 +2,7 @@
 //! Both files sit next to the socket, readable only by this user:
 //! - `remote-devices.json`: one entry per phone, its own key, its role.
 //! - `remote-log.jsonl`: connections, refusals, and every send, keys and answer.
-use keepline_relay::secure::Code;
+use keepline_remote::secure::Code;
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 use std::io::{self, Write};
@@ -10,47 +10,14 @@ use std::os::unix::fs::OpenOptionsExt;
 use std::path::{Path, PathBuf};
 use std::time::{SystemTime, UNIX_EPOCH};
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(rename_all = "lowercase")]
-pub(crate) enum Role {
-    /// Sees terminals, screens and events.
-    View,
-    /// Also answers approvals.
-    Answer,
-    /// Also types and presses keys.
-    Full,
-}
+pub(crate) use keepline_remote::role::{acts, Role};
 
-impl Role {
-    pub(crate) fn parse(s: &str) -> io::Result<Self> {
-        match s {
-            "view" => Ok(Self::View),
-            "answer" => Ok(Self::Answer),
-            "full" => Ok(Self::Full),
-            _ => Err(io::Error::other(format!(
-                "--role 只能是 view（只看）、answer（能答审批）或 full（完全控制），不是 {s}"
-            ))),
-        }
-    }
-    pub(crate) fn name(self) -> &'static str {
-        match self {
-            Self::View => "只看",
-            Self::Answer => "能答审批",
-            Self::Full => "完全控制",
-        }
-    }
-    pub(crate) fn allows(self, op: &str) -> bool {
-        match op {
-            "send" | "keys" => self == Self::Full,
-            "answer" => self != Self::View,
-            _ => true,
-        }
-    }
-}
-
-/// Ops that change something; each one is logged.
-pub(crate) fn acts(op: &str) -> bool {
-    matches!(op, "send" | "keys" | "answer")
+pub(crate) fn parse_role(s: &str) -> io::Result<Role> {
+    Role::parse(s).ok_or_else(|| {
+        io::Error::other(format!(
+            "--role 只能是 view（只看）、answer（能答审批）或 full（完全控制），不是 {s}"
+        ))
+    })
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -113,24 +80,36 @@ pub(crate) fn add(socket: &Path, name: &str, role: Role) -> io::Result<(Device, 
     Ok((device, key))
 }
 
-/// Unpairs the phone whose id starts with `needle`, or whose name is `needle`.
-pub(crate) fn remove(socket: &Path, needle: &str) -> io::Result<Device> {
-    let mut devices = load(socket);
+/// The one device whose id starts with `needle`, or whose name is `needle`.
+fn find(devices: &[Device], needle: &str) -> io::Result<usize> {
     let hits: Vec<usize> = (0..devices.len())
         .filter(|&i| devices[i].name == needle || devices[i].id.starts_with(needle))
         .collect();
     match hits[..] {
-        [i] => {
-            let gone = devices.remove(i);
-            save(socket, &devices)?;
-            Ok(gone)
-        }
+        [i] => Ok(i),
         [] => Err(io::Error::other(format!("没有配对过的设备叫 {needle}"))),
         _ => Err(io::Error::other(format!(
             "{needle} 匹配到 {} 台设备，请写编号",
             hits.len()
         ))),
     }
+}
+
+/// Unpairs a device.
+pub(crate) fn remove(socket: &Path, needle: &str) -> io::Result<Device> {
+    let mut devices = load(socket);
+    let gone = devices.remove(find(&devices, needle)?);
+    save(socket, &devices)?;
+    Ok(gone)
+}
+
+/// Gives a device another role; its open sessions end and it reconnects with the new one.
+pub(crate) fn set_role(socket: &Path, needle: &str, role: Role) -> io::Result<Device> {
+    let mut devices = load(socket);
+    let i = find(&devices, needle)?;
+    devices[i].role = role;
+    save(socket, &devices)?;
+    Ok(devices[i].clone())
 }
 
 pub(crate) fn clear(socket: &Path) -> io::Result<()> {
@@ -143,10 +122,20 @@ pub(crate) fn now() -> u64 {
         .map_or(0, |d| d.as_secs())
 }
 
+/// The log past which it is moved to `remote-log.1.jsonl`, replacing the older one.
+const LOG_LIMIT: u64 = 4 << 20;
+
+fn previous(path: &Path) -> PathBuf {
+    path.with_extension("1.jsonl")
+}
+
 /// Appends one entry, stamped with the time; a log that cannot be written is not fatal.
 pub(crate) fn log(path: &Path, mut entry: Value) {
     entry["at"] = json!(now());
     let line = format!("{entry}\n");
+    if std::fs::metadata(path).is_ok_and(|m| m.len() + line.len() as u64 > LOG_LIMIT) {
+        let _ = std::fs::rename(path, previous(path));
+    }
     let _ = std::fs::OpenOptions::new()
         .append(true)
         .create(true)
@@ -158,9 +147,11 @@ pub(crate) fn log(path: &Path, mut entry: Value) {
 /// When each device last connected, from the log.
 pub(crate) fn last_seen(socket: &Path) -> std::collections::HashMap<String, u64> {
     let mut seen = std::collections::HashMap::new();
-    let Ok(text) = std::fs::read_to_string(log_file(socket)) else {
-        return seen;
-    };
+    let path = log_file(socket);
+    let text: String = [previous(&path), path]
+        .iter()
+        .filter_map(|p| std::fs::read_to_string(p).ok())
+        .collect();
     for v in text
         .lines()
         .filter_map(|l| serde_json::from_str::<Value>(l).ok())
@@ -179,17 +170,6 @@ mod tests {
     use super::*;
 
     #[test]
-    fn roles_allow_only_what_they_name() {
-        for op in ["hello", "list", "read", "watch", "events", "close"] {
-            assert!(Role::View.allows(op));
-        }
-        assert!(!Role::View.allows("answer") && !Role::View.allows("send"));
-        assert!(Role::Answer.allows("answer") && !Role::Answer.allows("keys"));
-        assert!(Role::Full.allows("send") && Role::Full.allows("keys"));
-        assert!(Role::parse("admin").is_err());
-    }
-
-    #[test]
     fn devices_are_added_found_removed_and_kept_private() {
         let dir = std::env::temp_dir().join(format!("kl-dev-{}", uuid::Uuid::new_v4().simple()));
         std::fs::create_dir_all(&dir).unwrap();
@@ -204,15 +184,24 @@ mod tests {
             .mode();
         assert_eq!(mode & 0o777, 0o600);
         assert!(remove(&socket, "nope").is_err());
+        assert_eq!(
+            set_role(&socket, "iPad", Role::Answer).unwrap().role,
+            Role::Answer
+        );
+        assert_eq!(load(&socket)[1].role, Role::Answer);
         assert_eq!(remove(&socket, &b.id[..6]).unwrap().name, "iPad");
         assert_eq!(remove(&socket, "iPhone").unwrap().id, a.id);
         assert!(load(&socket).is_empty());
 
-        log(
-            &log_file(&socket),
-            json!({ "event": "connected", "device": a.id }),
-        );
+        let path = log_file(&socket);
+        log(&path, json!({ "event": "connected", "device": a.id }));
         assert!(last_seen(&socket).contains_key(&a.id));
+        // Past the limit the log moves aside once; what it said is still read.
+        std::fs::write(&path, vec![b'\n'; LOG_LIMIT as usize]).unwrap();
+        log(&path, json!({ "event": "connected", "device": b.id }));
+        assert!(std::fs::metadata(&path).unwrap().len() < 200);
+        assert!(previous(&path).exists());
+        assert!(last_seen(&socket).contains_key(&b.id));
         std::fs::remove_dir_all(dir).unwrap();
     }
 }
