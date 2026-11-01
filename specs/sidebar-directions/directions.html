@@ -1,0 +1,417 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>侧栏方向稿</title>
+<style>
+:root{
+  --page:#e4e3e0; --panel:#f1f0ee; --main:#e9e8e5; --card:#fff; --raised:#e6e5e2; --hover:#e9e8e5;
+  --line:#dcdbd8; --line2:#e6e5e2;
+  --text:#1d1d1f; --body:#3a3a3c; --sub:#5f5f63; --muted:#8c8c90; --faint:#a9a9ad;
+  --wait:#d9692b; --wait-bg:#fbeee5; --err:#d4443a; --err-bg:#fbe9e7; --done:#2f9e5a; --run:#2f9e8f; --pause:#b8862b; --stale:#a9a9ad;
+  --mono:"SF Mono",ui-monospace,Menlo,monospace;
+}
+*{box-sizing:border-box}
+html,body{margin:0}
+body{overflow-x:clip}
+@media (max-width:600px){.peek{display:none}}
+body{background:var(--page);color:var(--text);font:13px/1.45 -apple-system,"PingFang SC","Helvetica Neue",sans-serif;-webkit-font-smoothing:antialiased}
+button{font:inherit;color:inherit;background:none;border:0;padding:0;cursor:pointer}
+input{font:inherit;color:inherit}
+.mono{font-family:var(--mono);font-size:11px;letter-spacing:.02em}
+
+header{max-width:1360px;margin:0 auto;padding:28px 16px 8px}
+header h1{margin:0;font-size:20px;font-weight:600}
+header p{margin:6px 0 0;color:var(--sub);max-width:820px}
+.grid{max-width:1360px;margin:0 auto;padding:16px;display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:20px}
+@media (max-width:1180px){.grid{grid-template-columns:minmax(0,440px);justify-content:center}}
+.dir h2{margin:0;font-size:15px;font-weight:600;display:flex;align-items:center;gap:8px}
+.dir h2 .tag{font-size:11px;font-weight:600;color:#fff;background:var(--text);border-radius:5px;padding:1px 6px}
+.dir .lead{margin:4px 0 12px;color:var(--sub);min-height:40px}
+.notes{margin:12px 2px 0;padding:0;list-style:none;display:flex;flex-direction:column;gap:6px;color:var(--body)}
+.notes li{display:flex;gap:8px}
+.notes li::before{content:"";flex:none;width:5px;height:5px;border-radius:50%;background:var(--muted);margin-top:7px}
+.notes b{font-weight:600}
+
+/* 窗口 */
+.win{height:640px;display:flex;border-radius:10px;overflow:hidden;background:var(--main);border:1px solid #d2d1ce;box-shadow:0 8px 30px rgba(0,0,0,.08);position:relative}
+#winA{overflow:visible}
+#winA .side{border-radius:10px 0 0 10px}
+#winA .term{border-radius:0 10px 10px 0;overflow:hidden}
+.side{width:272px;flex:none;background:var(--panel);border-right:1px solid var(--line);display:flex;flex-direction:column;min-height:0;transition:width .35s cubic-bezier(.3,1.2,.5,1)}
+.term{flex:1;min-width:0;padding:12px;display:flex;flex-direction:column;gap:6px}
+.term i{display:block;height:7px;border-radius:4px;background:#d9d8d4}
+.term i:nth-child(3n){width:60%} .term i:nth-child(3n+1){width:85%} .term i:nth-child(3n+2){width:40%}
+.scroll{flex:1;min-height:0;overflow-y:auto;padding:6px 8px 10px}
+.scroll::-webkit-scrollbar{width:0}
+
+/* 通用小部件 */
+.dot{width:8px;height:8px;border-radius:50%;flex:none}
+.ring{width:8px;height:8px;border-radius:50%;flex:none;border:1.5px solid var(--faint)}
+.sec{display:flex;align-items:center;gap:6px;padding:12px 8px 6px;color:var(--muted);font-size:12px}
+.sec .n{margin-left:auto;font-variant-numeric:tabular-nums}
+.row{position:relative;display:flex;gap:8px;padding:7px 8px;border-radius:7px;cursor:pointer}
+.row:hover{background:var(--hover)}
+.row.sel{background:var(--raised)}
+.row .ic{height:18px;display:flex;align-items:center}
+.row .b{flex:1;min-width:0}
+.row .t{white-space:nowrap;overflow:hidden;text-overflow:ellipsis;color:var(--text)}
+.row .m{display:flex;align-items:center;gap:6px;color:var(--muted);font-size:11.5px;white-space:nowrap;overflow:hidden}
+.row .m .q{overflow:hidden;text-overflow:ellipsis;color:var(--sub)}
+.row .end{flex:none;color:var(--muted);font-size:11.5px;font-variant-numeric:tabular-nums;line-height:18px}
+.ag{flex:none;width:15px;height:15px;border-radius:4px;background:#dedcd8;color:#55555a;font:600 8.5px/15px var(--mono);text-align:center}
+.foot{flex:none;border-top:1px solid var(--line);padding:8px;display:flex;align-items:center;gap:6px;color:var(--sub)}
+.foot .q{flex:1;display:flex;align-items:center;gap:6px;font-size:11.5px;color:var(--muted)}
+.bar{flex:none;width:44px;height:4px;border-radius:2px;background:#dcdbd8;overflow:hidden}
+.bar i{display:block;height:100%;background:var(--sub)}
+.iconbtn{width:26px;height:26px;border-radius:6px;display:grid;place-items:center;color:var(--sub)}
+.iconbtn:hover{background:var(--hover)}
+.sweep{position:absolute;left:10px;right:10px;bottom:0;height:1.5px;overflow:hidden;border-radius:1px}
+.sweep::after{content:"";position:absolute;inset:0;width:35%;background:linear-gradient(90deg,transparent,var(--run),transparent);animation:sw 2.2s ease-in-out infinite}
+@keyframes sw{from{transform:translateX(-100%)}to{transform:translateX(290%)}}
+.spin{width:9px;height:9px;flex:none;border-radius:50%;border:1.6px solid rgba(47,158,143,.25);border-top-color:var(--run);animation:spin 1.2s linear infinite}
+@keyframes spin{to{transform:rotate(360deg)}}
+.toast{position:absolute;left:50%;bottom:14px;transform:translate(-50%,160%);opacity:0;background:#1d1d1f;color:#fff;font-size:12px;padding:7px 12px;border-radius:8px;white-space:nowrap;transition:transform .35s cubic-bezier(.3,1.3,.5,1),opacity .2s;z-index:5}
+.toast.on{transform:translate(-50%,0);opacity:1}
+.toast button{color:#9fd3ff;margin-left:10px}
+
+/* A：空间收成一行 + 活的会话行 + 悬停偷看 */
+.space{flex:none;margin:8px 8px 0;height:34px;border-radius:8px;display:flex;align-items:center;gap:8px;padding:0 10px;cursor:pointer}
+.space:hover{background:var(--hover)}
+.space .orb{width:16px;height:16px;border-radius:5px;background:linear-gradient(135deg,#7f8cff,#c77dff,#ff9ec4)}
+.space b{font-weight:600}
+.space .c{margin-left:auto;color:var(--muted);font-size:12px}
+.menu{position:absolute;left:8px;top:46px;width:256px;background:#fff;border:1px solid var(--line);border-radius:10px;box-shadow:0 12px 30px rgba(0,0,0,.14);padding:6px;z-index:6;display:none}
+.menu.on{display:block}
+.menu a{display:flex;align-items:center;gap:8px;height:30px;padding:0 8px;border-radius:6px;color:var(--text);text-decoration:none}
+.menu a:hover{background:var(--hover)}
+.menu a span:last-child{margin-left:auto;color:var(--muted);font-size:12px}
+.menu hr{border:0;border-top:1px solid var(--line2);margin:4px 0}
+.peek{position:absolute;left:262px;width:260px;background:#1c1c1e;color:#d7d7db;border-radius:9px;box-shadow:0 14px 34px rgba(0,0,0,.3);padding:10px 12px;font:11px/1.55 var(--mono);opacity:0;transform:translateX(-6px);pointer-events:none;transition:opacity .15s,transform .2s;z-index:6}
+.peek.on{opacity:1;transform:none}
+.peek .h{color:#8e8e93;margin-bottom:6px;font-family:-apple-system,"PingFang SC",sans-serif;font-size:11px}
+.peek .g{color:#7ee2a8} .peek .o{color:#ffb27a}
+.todoline{display:flex;align-items:center;gap:8px;margin:8px 0 0;padding:7px 8px;border-radius:7px;color:var(--sub);cursor:pointer}
+.todoline:hover{background:var(--hover)}
+.todoline .n{margin-left:auto;color:var(--muted)}
+
+/* B：任务线 */
+.task{margin-top:2px}
+.task>.row .t{font-weight:500}
+.kids{position:relative;margin-left:15px;padding-left:12px;overflow:hidden;transition:height .3s}
+.kids::before{content:"";position:absolute;left:0;top:2px;bottom:12px;width:1.5px;background:var(--line);border-radius:1px}
+.kids .row{padding-top:5px;padding-bottom:5px}
+.kids .row .t{color:var(--body);font-size:12.5px}
+.prog{width:14px;height:14px;flex:none}
+.caret{color:var(--faint);font-size:10px;width:10px;transition:transform .2s;display:inline-block}
+.task.closed .caret{transform:rotate(-90deg)}
+.task.closed .kids{height:0!important}
+.start{margin-left:auto;flex:none;height:22px;padding:0 8px;border-radius:6px;background:#fff;border:1px solid var(--line);font-size:11.5px;color:var(--body)}
+.start:hover{border-color:#c9c8c4}
+.when{padding:14px 8px 4px;color:var(--faint);font-size:11px;letter-spacing:.04em}
+
+/* C：行内回答 + 窄条 */
+.ask{margin:4px 2px 8px;background:#fff;border:1px solid #efd9cb;border-radius:10px;padding:10px 10px 10px 12px;position:relative;transition:opacity .3s,transform .3s,height .3s,margin .3s,padding .3s}
+.ask.err{border-color:#f0d0cc}
+.ask::before{content:"";position:absolute;left:-1px;top:10px;bottom:10px;width:3px;border-radius:0 3px 3px 0;background:var(--wait)}
+.ask.err::before{background:var(--err)}
+.ask .h{display:flex;align-items:center;gap:6px;font-size:11.5px;color:var(--muted)}
+.ask .h .w{margin-left:auto}
+.ask .t{margin:3px 0 2px;font-weight:500}
+.ask .say{color:var(--body);font-size:12.5px;line-height:1.5}
+.ask .acts{display:flex;gap:6px;margin-top:8px;align-items:center}
+.ask .acts button{height:26px;padding:0 10px;border-radius:7px;border:1px solid var(--line);background:#fff;font-size:12px}
+.ask .acts button.pri{background:var(--text);color:#fff;border-color:var(--text)}
+.ask .acts button:hover{filter:brightness(.97)}
+.ask .acts .lnk{border:0;padding:0 4px;color:var(--muted);margin-left:auto}
+.ask .reply{display:flex;gap:6px;margin-top:8px}
+.ask .reply input{flex:1;min-width:0;height:26px;border-radius:7px;border:1px solid var(--line);padding:0 8px;outline:none;font-size:12px;background:#fafaf9}
+.ask .reply input:focus{border-color:#bdbcb8;background:#fff}
+.ask.gone{opacity:0;transform:translateX(30px);height:0!important;margin:0;padding-top:0;padding-bottom:0;border-width:0;overflow:hidden}
+.kind{font-size:10.5px;padding:0 5px;border-radius:4px;background:var(--wait-bg);color:var(--wait)}
+.ask.err .kind{background:var(--err-bg);color:var(--err)}
+.rail .side{width:48px}
+.side .full{display:flex;flex-direction:column;min-height:0;flex:1}
+.rail .side .full{display:none}
+.side .railbox{display:none}
+.rail .side .railbox{display:flex;flex-direction:column;align-items:center;gap:10px;padding:14px 0;flex:1}
+.railbox .r{width:30px;height:30px;border-radius:8px;display:grid;place-items:center;position:relative;cursor:pointer}
+.railbox .r:hover{background:var(--hover)}
+.railbox .r .ag{width:18px;height:18px;line-height:18px;font-size:9px}
+.railbox .r .dot,.railbox .r .spin,.railbox .r .ring{position:absolute;right:1px;top:1px;box-shadow:0 0 0 2px var(--panel)}
+.railbox .r .ring{background:var(--panel)}
+.railbox hr{width:22px;border:0;border-top:1px solid var(--line);margin:2px 0}
+.halo{animation:halo 1.8s ease-out infinite}
+@keyframes halo{0%{box-shadow:0 0 0 0 rgba(217,105,43,.55),0 0 0 2px var(--panel)}100%{box-shadow:0 0 0 7px rgba(217,105,43,0),0 0 0 2px var(--panel)}}
+@media (prefers-reduced-motion:reduce){*{animation:none!important;transition:none!important}}
+</style>
+</head>
+<body>
+<header>
+  <h1>侧栏方向稿</h1>
+  <p>同一份数据，三种侧栏，并排比较。右边灰色条纹代表终端。每个都能点：A 悬停会话看「偷看」、点空间名切换；B 点任务展开收起；C 直接点「允许 / 拒绝」或打字回答，左上角能收成窄条。</p>
+</header>
+
+<div class="grid">
+  <!-- ================= A ================= -->
+  <section class="dir">
+    <h2><span class="tag">A</span>会话优先</h2>
+    <p class="lead">空间收成顶上一行，整条侧栏给会话。每行多一行小字，用来区分会话、说清它停在哪。</p>
+    <div class="win" id="winA">
+      <aside class="side">
+        <div class="space" id="spaceA"><span class="orb"></span><b>工作空间</b><span style="color:var(--muted)">▾</span><span class="c">6 个空间</span></div>
+        <div class="menu" id="menuA">
+          <a href="#"><span class="dot" style="background:linear-gradient(135deg,#7f8cff,#ff9ec4)"></span>工作空间<span>6 个会话</span></a>
+          <a href="#"><span class="dot" style="background:linear-gradient(135deg,#5ee7df,#4f7bff)"></span>模型上线 work<span>2</span></a>
+          <a href="#"><span class="dot" style="background:linear-gradient(135deg,#b7f06b,#2fbf71)"></span>codex-mall<span>1</span></a>
+          <a href="#"><span class="dot" style="background:linear-gradient(135deg,#ffd36b,#ff7b54)"></span>keepline<span>0</span></a>
+          <hr><a href="#" style="color:var(--sub)">＋ 新空间…</a>
+        </div>
+        <div class="scroll" id="listA"></div>
+        <div class="todoline" id="todoA"><span class="ring" style="border-style:dashed"></span>待办<span class="n">2 个没开始 ›</span></div>
+        <div class="foot"><span class="q">Codex 额度 <span class="bar"><i style="width:62%"></i></span>62%</span><button class="iconbtn" title="诊断 · 提醒 · 设置">⋯</button></div>
+      </aside>
+      <div class="term"><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i></div>
+      <div class="peek" id="peekA"></div>
+    </div>
+    <ul class="notes">
+      <li><span><b>上半屏让给会话</b>：空间平时只占一行，点开才是列表；数量为 0 的空间不常驻。</span></li>
+      <li><span><b>每行能区分</b>：第二行是 Agent 标记、短编号，再加它最后说的半句话或做完的结果（改了几个文件、测试过没）。</span></li>
+      <li><span><b>行尾只放时间</b>：在跑的显示本轮计时，其余显示多久前；状态只靠左边的圆点和第二行文字。</span></li>
+      <li><span><b>悬停半秒偷看</b>：不切过去也能看到终端最后几行。</span></li>
+      <li><span>空间行不再显示橙色计数，「需要你」只留在顶栏和行本身。</span></li>
+    </ul>
+  </section>
+
+  <!-- ================= B ================= -->
+  <section class="dir">
+    <h2><span class="tag">B</span>任务线</h2>
+    <p class="lead">待办和会话合成一条线：一件事一行，派给 Agent 后会话挂在它下面，按时间分「刚刚 / 今天 / 更早」。</p>
+    <div class="win" id="winB">
+      <aside class="side">
+        <div class="space" style="cursor:default"><span class="orb"></span><b>工作空间</b><span style="color:var(--muted)">▾</span><span class="c">3 件事在做</span></div>
+        <div class="scroll" id="listB"></div>
+        <div class="foot"><span class="q">Codex 额度 <span class="bar"><i style="width:62%"></i></span>62%</span><button class="iconbtn">⋯</button></div>
+      </aside>
+      <div class="term"><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i></div>
+    </div>
+    <ul class="notes">
+      <li><span><b>一件事一行</b>：左边的进度图标从虚线圈（没开始）到半圈（做着）到勾（做完），和看板列头一致。</span></li>
+      <li><span><b>会话挂在事情下面</b>：三个「标签命名」会话不再是三行同名的，而是同一件事的三次尝试。</span></li>
+      <li><span><b>没开始的事就在线上</b>：行尾一个「开始」，不用再去折叠的待办区找。</span></li>
+      <li><span>没归到任何待办的会话自己成一行，照样按时间排。</span></li>
+      <li><span>代价：结构改动最大，要先确认「一个会话属于哪件事」能认准。</span></li>
+    </ul>
+  </section>
+
+  <!-- ================= C ================= -->
+  <section class="dir">
+    <h2><span class="tag">C</span>在侧栏里回答</h2>
+    <p class="lead">等你的会话变成卡片，问什么就地回：是非题点按钮，开放题打一句话。其余会话压成紧凑的一行行。</p>
+    <div class="win" id="winC">
+      <aside class="side">
+        <div class="full">
+          <div class="space" style="cursor:default"><button class="iconbtn" id="railOn" title="收成窄条" style="margin-left:-6px">⇤</button><b>工作空间</b><span style="color:var(--muted)">▾</span><span class="c" id="askCount">3 个等你</span></div>
+          <div class="scroll" id="listC"></div>
+          <div class="foot"><span class="q">Codex 额度 <span class="bar"><i style="width:62%"></i></span>62%</span><button class="iconbtn">⋯</button></div>
+        </div>
+        <div class="railbox" id="railC"></div>
+      </aside>
+      <div class="term"><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i></div>
+      <div class="toast" id="toastC"></div>
+    </div>
+    <ul class="notes">
+      <li><span><b>大部分等待只差一下</b>：「要不要推送」「允许执行这条命令吗」点一下就回，不用切到终端。</span></li>
+      <li><span><b>开放题打一句话</b>：回车发给那个终端，等于你在终端里打字。</span></li>
+      <li><span><b>窄条模式</b>：点左上角「⇤」收成 48px 的竖条，终端全屏时也能看到谁在等你（橙点在闪）。</span></li>
+      <li><span>代价：要可靠地认出这是不是是非题；认不准的只给「打开终端」，不猜。</span></li>
+    </ul>
+  </section>
+</div>
+
+<script>
+/* ---------- 同一份数据 ---------- */
+const now = Date.now()/1000;
+const S = [
+  { id:'UAL0', ag:'CX', task:'tab', t:'标签命名依旧有问题', st:'wait', at:now-60,  q:'标签名在退出后要不要保留？我倾向保留，等你确认。', kind:'yn', yes:'保留', no:'不保留', br:'fix/tab-name' },
+  { id:'AL36', ag:'CC', task:'cache', t:'实现缓存结果补传', st:'run', at:now-252, q:'正在跑 cargo test -p keepline-app', br:'feat/cache-retry' },
+  { id:'UAL1', ag:'CX', task:'tab', t:'标签命名依旧有问题', st:'done', unseen:true, at:now-120, q:'找到 tab_name 的来源', ev:'改 1 个文件 · 测试过', br:'fix/tab-name' },
+  { id:'AL12', ag:'CC', task:'migrate', t:'迁移旧会话表', st:'err', at:now-720, q:'迁移第 2 步失败：列 outcome 不存在', br:'db/migrate-v7' },
+  { id:'UAL2', ag:'CX', task:'tab', t:'标签命名依旧有问题', st:'done', at:now-180, q:'核对完标签测试', ev:'31 个测试通过', br:'fix/tab-name' },
+  { id:'AL20', ag:'CC', task:null, t:'审查反馈接口改动', st:'pause', at:now-1500, q:'你按了 Esc，停在读 api/feedback.rs', br:'review/feedback' },
+  { id:'AL07', ag:'CC', task:null, t:'详情页缓存层', st:'wait', at:now-540, q:'缓存过期时间你想要多久？我先填了 5 分钟。', br:'perf/detail-cache' },
+  { id:'AL41', ag:'CX', task:'push', t:'推送分支前确认 PR 标题', st:'wait', at:now-300, q:'要推送 feat/peek-outline 并开 PR 吗？', kind:'yn', yes:'推送', no:'先别', br:'feat/peek-outline' },
+];
+const TODOS = [
+  { id:'offline', t:'给 CLI 加离线模式', at:now-3600*3 },
+  { id:'win', t:'Windows 路径兼容', at:now-3600*26 },
+];
+const TASKS = { tab:'标签命名依旧有问题', cache:'实现缓存结果补传', migrate:'迁移旧会话表', push:'推送分支前确认 PR 标题' };
+
+const ago = s => { s=Math.max(0,Date.now()/1000-s); if(s<60) return '刚刚'; if(s<3600) return Math.floor(s/60)+' 分钟前'; if(s<86400) return Math.floor(s/3600)+' 小时前'; return Math.floor(s/86400)+' 天前'; };
+const clock = s => { s=Math.max(0,Math.floor(Date.now()/1000-s)); return Math.floor(s/60)+':'+String(s%60).padStart(2,'0'); };
+const needs = s => s.st==='wait' || s.st==='err' || (s.st==='done' && s.unseen);
+function dotOf(s){
+  if (s.st==='run') return '<span class="spin"></span>';
+  if (s.st==='wait') return '<span class="dot" style="background:var(--wait)"></span>';
+  if (s.st==='err') return '<span class="dot" style="background:var(--err)"></span>';
+  if (s.st==='done' && s.unseen) return '<span class="dot" style="background:var(--done)"></span>';
+  if (s.st==='pause') return '<span class="ring" style="border-color:var(--pause)"></span>';
+  return '<span class="ring"></span>';
+}
+const STLINE = { wait:'等你回答', err:'出错了', run:'在跑', done:'做完了', pause:'停下了' };
+// 最新在上：要你的排最前，其余按时间
+const order = list => [...list].sort((a,b)=> (needs(b)-needs(a)) || (b.at-a.at));
+const seen = id => { const s=S.find(x=>x.id===id); if(s) s.unseen=false; };
+
+/* ---------- A ---------- */
+let selA = 'AL36';
+function rowA(s){
+  const second = s.st==='wait'||s.st==='err' ? s.q : s.st==='done' ? (s.ev||s.q) : s.q;
+  const end = s.st==='run' ? `<span class="tick" data-at="${s.at}">${clock(s.at)}</span>` : ago(s.at);
+  return `<div class="row ${selA===s.id?'sel':''}" data-id="${s.id}">
+    <span class="ic">${dotOf(s)}</span>
+    <div class="b"><div class="t">${s.t}</div>
+      <div class="m"><span class="ag">${s.ag}</span><span class="mono">${s.id}</span><span class="q" style="${s.st==='wait'?'color:var(--wait)':s.st==='err'?'color:var(--err)':''}">${second}</span></div></div>
+    <span class="end">${end}</span>
+    ${s.st==='run'?'<span class="sweep"></span>':''}
+  </div>`;
+}
+function renderA(){
+  const list = order(S);
+  const top = list.filter(needs), rest = list.filter(s=>!needs(s));
+  document.getElementById('listA').innerHTML =
+    (top.length?`<div class="sec">需要你<span class="n">${top.length}</span></div>`+top.map(rowA).join(''):'')+
+    `<div class="sec">其余<span class="n">${rest.length}</span></div>`+rest.map(rowA).join('');
+}
+renderA();
+const listA=document.getElementById('listA'), peekA=document.getElementById('peekA'), winA=document.getElementById('winA');
+let peekT;
+listA.addEventListener('click',e=>{const r=e.target.closest('.row'); if(!r) return; selA=r.dataset.id; seen(selA); renderA(); renderB(); renderC();});
+listA.addEventListener('mouseover',e=>{
+  const r=e.target.closest('.row'); clearTimeout(peekT); if(!r){peekA.classList.remove('on');return;}
+  peekT=setTimeout(()=>{
+    const s=S.find(x=>x.id===r.dataset.id);
+    const lines = s.st==='run' ? ['<span class="g">$</span> cargo test -p keepline-app','   Compiling keepline-app v0.4.0','test sidebar::rank ... ok','test board::column_of ... ok','<span class="g">▌</span>']
+      : s.st==='wait' ? ['• 已读 tabs.rs、title.rs','• 退出后标签会退回进程名','',`<span class="o">? ${s.q}</span>`,'  › 1. 保留   2. 不保留']
+      : s.st==='err' ? ['• 执行迁移 v7','<span class="o">error: no such column: outcome</span>','  at migrate.rs:212'] : ['• '+s.q,'• '+(s.ev||'回合结束'),'','<span class="g">›</span> '];
+    peekA.innerHTML=`<div class="h">偷看 · ${s.t}</div>${lines.join('<br>')}`;
+    const wr=winA.getBoundingClientRect(), rr=r.getBoundingClientRect();
+    peekA.style.top=Math.min(rr.top-wr.top, 640-150)+'px';
+    peekA.classList.add('on');
+  },450);
+});
+listA.addEventListener('mouseleave',()=>{clearTimeout(peekT);peekA.classList.remove('on');});
+document.getElementById('spaceA').onclick=e=>{e.stopPropagation();document.getElementById('menuA').classList.toggle('on');};
+document.addEventListener('click',()=>document.getElementById('menuA').classList.remove('on'));
+
+/* ---------- B ---------- */
+const closedB = new Set();
+function progIcon(state){
+  if(state==='todo') return '<svg class="prog" viewBox="0 0 16 16"><circle cx="8" cy="8" r="6" fill="none" stroke="#a9a9ad" stroke-width="1.6" stroke-dasharray="2.2 2.2"/></svg>';
+  if(state==='done') return '<svg class="prog" viewBox="0 0 16 16"><circle cx="8" cy="8" r="7" fill="#2f9e5a"/><path d="M5 8.2l2 2 4-4.2" fill="none" stroke="#fff" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>';
+  const c = state==='wait'?'#d9692b':state==='err'?'#d4443a':'#2f9e8f';
+  return `<svg class="prog" viewBox="0 0 16 16"><circle cx="8" cy="8" r="6" fill="none" stroke="${c}" stroke-width="1.6"/><path d="M8 4a4 4 0 0 1 0 8z" fill="${c}"/></svg>`;
+}
+function bucketOf(at){ const d=Date.now()/1000-at; return d<1800?'刚刚':d<86400?'今天':'更早'; }
+function renderB(){
+  // 一件事 = 一个待办（没开始）或一组会话；独立会话自成一件
+  const items = [];
+  const byTask = {};
+  S.forEach(s=>{ const k=s.task||('solo-'+s.id); (byTask[k]=byTask[k]||[]).push(s); });
+  Object.entries(byTask).forEach(([k,ss])=>{
+    ss = order(ss);
+    const st = ss.some(s=>s.st==='wait')?'wait':ss.some(s=>s.st==='err')?'err':ss.some(s=>s.st==='run')?'run':ss.every(s=>s.st==='done')?'done':'run';
+    items.push({ k, t: TASKS[k] || ss[0].t, ss, st, at: Math.max(...ss.map(s=>s.at)), needs: ss.some(needs) });
+  });
+  TODOS.forEach(t=>items.push({ k:t.id, t:t.t, ss:[], st:'todo', at:t.at }));
+  items.sort((a,b)=>(!!b.needs-!!a.needs)||(b.at-a.at));
+  let html='', last='';
+  items.forEach(it=>{
+    const w = it.needs ? '需要你' : bucketOf(it.at);
+    if(w!==last){ html+=`<div class="when">${w}</div>`; last=w; }
+    if(it.st==='todo'){
+      html+=`<div class="task"><div class="row"><span class="ic"><span class="caret" style="visibility:hidden">▾</span></span><span class="ic">${progIcon('todo')}</span><div class="b"><div class="t" style="color:var(--sub)">${it.t}</div><div class="m">没开始 · ${ago(it.at)}记下</div></div><button class="start">开始 →</button></div></div>`;
+      return;
+    }
+    const solo = it.ss.length===1 && it.k.startsWith('solo-');
+    const s0 = it.ss[0];
+    const sum = it.ss.length>1 ? `${it.ss.length} 个会话 · ${it.ss.filter(s=>s.st==='done').length} 个做完` : (STLINE[s0.st]);
+    const tone = it.st==='wait'?'var(--wait)':it.st==='err'?'var(--err)':'var(--muted)';
+    html+=`<div class="task ${closedB.has(it.k)?'closed':''}" data-k="${it.k}">
+      <div class="row tog"><span class="ic"><span class="caret" style="${solo?'visibility:hidden':''}">▾</span></span><span class="ic">${progIcon(it.st)}</span>
+        <div class="b"><div class="t">${it.t}</div><div class="m"><span style="color:${tone}">${sum}</span></div></div><span class="end">${s0.st==='run'?`<span class="tick" data-at="${s0.at}">${clock(s0.at)}</span>`:ago(it.at)}</span></div>
+      ${solo?'':`<div class="kids">${it.ss.map(s=>`<div class="row" data-id="${s.id}"><span class="ic">${dotOf(s)}</span><div class="b"><div class="t">${s.st==='wait'||s.st==='err'?s.q:(s.ev||s.q)}</div><div class="m"><span class="ag">${s.ag}</span><span class="mono">${s.id}</span>${STLINE[s.st]}</div></div><span class="end">${ago(s.at)}</span></div>`).join('')}</div>`}
+    </div>`;
+  });
+  document.getElementById('listB').innerHTML=html;
+  document.querySelectorAll('#listB .kids').forEach(k=>k.style.height=k.scrollHeight+'px');
+}
+renderB();
+document.getElementById('listB').addEventListener('click',e=>{
+  const tog=e.target.closest('.tog'); if(!tog) return; const k=tog.parentElement.dataset.k;
+  closedB.has(k)?closedB.delete(k):closedB.add(k); tog.parentElement.classList.toggle('closed');
+});
+
+/* ---------- C ---------- */
+let undoC=null, tt;
+function toastC(msg, undo){
+  const el=document.getElementById('toastC'); undoC=undo;
+  el.innerHTML=msg+(undo?'<button id="undoC">撤销</button>':''); el.classList.add('on');
+  if(undo) document.getElementById('undoC').onclick=()=>{undo(); el.classList.remove('on');};
+  clearTimeout(tt); tt=setTimeout(()=>el.classList.remove('on'),3200);
+}
+function askCard(s){
+  const h = `<div class="h"><span class="ag">${s.ag}</span><span class="mono">${s.id}</span><span class="kind">${s.st==='err'?'出错':s.kind==='yn'?'是非题':'等你回答'}</span><span class="w">${ago(s.at)}</span></div>
+    <div class="t">${s.t}</div><div class="say">${s.q}</div>`;
+  let acts;
+  if(s.st==='err') acts=`<div class="acts"><button class="pri" data-a="retry">让它重试</button><button data-a="open">打开终端</button></div>`;
+  else if(s.kind==='yn') acts=`<div class="acts"><button class="pri" data-a="yes">${s.yes}</button><button data-a="no">${s.no}</button><button class="lnk" data-a="open">打开终端 ›</button></div>`;
+  else acts=`<div class="reply"><input placeholder="回一句，回车发给它…"><button data-a="open" class="iconbtn" title="打开终端">›</button></div>`;
+  return `<div class="ask ${s.st==='err'?'err':''}" data-id="${s.id}">${h}${acts}</div>`;
+}
+function rowC(s){
+  return `<div class="row" data-id="${s.id}" style="padding:5px 8px"><span class="ic">${dotOf(s)}</span><div class="b"><div class="t">${s.t}</div></div><span class="end">${s.st==='run'?`<span class="tick" data-at="${s.at}">${clock(s.at)}</span>`:ago(s.at)}</span>${s.st==='run'?'<span class="sweep"></span>':''}</div>`;
+}
+function renderC(){
+  const list=order(S);
+  const asking=list.filter(s=>s.st==='wait'||s.st==='err'), rest=list.filter(s=>!(s.st==='wait'||s.st==='err'));
+  document.getElementById('askCount').textContent = asking.length ? `${asking.length} 个等你` : '没有等你的';
+  document.getElementById('listC').innerHTML =
+    (asking.length?`<div class="sec">等你<span class="n">${asking.length}</span></div>`+asking.map(askCard).join(''):'<div class="sec">等你<span class="n">0</span></div><div style="padding:6px 8px 4px;color:var(--muted);font-size:12px">都回完了 ✓</div>')+
+    `<div class="sec">其余 · 最新在上<span class="n">${rest.length}</span></div>`+rest.map(rowC).join('');
+  document.querySelectorAll('#listC .ask').forEach(a=>a.style.height=a.scrollHeight+'px');
+  // 窄条
+  document.getElementById('railC').innerHTML =
+    `<button class="iconbtn" id="railOff" title="展开">⇥</button><hr>`+
+    list.map(s=>`<div class="r" title="${s.t} · ${STLINE[s.st]}"><span class="ag">${s.ag}</span>${s.st==='wait'?'<span class="dot halo" style="background:var(--wait)"></span>':s.st==='err'?'<span class="dot" style="background:var(--err)"></span>':s.st==='run'?'<span class="spin"></span>':s.unseen?'<span class="dot" style="background:var(--done)"></span>':''}</div>`).join('');
+  document.getElementById('railOff').onclick=()=>document.getElementById('winC').classList.remove('rail');
+}
+renderC();
+function answer(id, how, text){
+  const s=S.find(x=>x.id===id); const prev={...s};
+  const card=document.querySelector(`#listC .ask[data-id="${id}"]`);
+  card.classList.add('gone');
+  setTimeout(()=>{
+    s.st='run'; s.at=Date.now()/1000; s.q = how==='retry'?'重试迁移第 2 步':`收到「${text}」，继续`;
+    renderC(); renderA(); renderB();
+  },300);
+  toastC(how==='retry'?`已让「${s.t}」重试`:`已回答「${text}」，它继续跑了`, ()=>{ Object.assign(s,prev); renderC(); renderA(); renderB(); });
+}
+document.getElementById('listC').addEventListener('click',e=>{
+  const b=e.target.closest('button[data-a]'); if(!b) return; const id=b.closest('.ask').dataset.id; const s=S.find(x=>x.id===id);
+  const a=b.dataset.a;
+  if(a==='open'){ toastC(`切到「${s.t}」的终端`); return; }
+  answer(id, a, a==='yes'?s.yes:a==='no'?s.no:'重试');
+});
+document.getElementById('listC').addEventListener('keydown',e=>{
+  if(e.key!=='Enter') return; const inp=e.target.closest('input'); if(!inp||!inp.value.trim()) return;
+  answer(inp.closest('.ask').dataset.id,'text',inp.value.trim());
+});
+document.getElementById('railOn').onclick=()=>document.getElementById('winC').classList.add('rail');
+
+setInterval(()=>document.querySelectorAll('.tick').forEach(e=>e.textContent=clock(+e.dataset.at)),1000);
+</script>
+</body>
+</html>
