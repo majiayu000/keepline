@@ -4,8 +4,8 @@ a shell there, checks the title and hover lines, leaves the repo and comes back 
 second file, saving what the renderer drew. No model, credentials or user data.
 
 Run after `cargo build -p keepline-app -p keeplined --features keepline-app/visual-test`:
-    python3 specs/plugins/evidence/decorations-e2e.py <repo root> <output dir>"""
-import pathlib, runpy, shutil, subprocess, sys, tempfile, time
+    [KL_SHELL=<shell>] python3 specs/plugins/evidence/decorations-e2e.py <repo root> <output dir>"""
+import os, pathlib, runpy, shutil, subprocess, sys, tempfile, time
 
 REPO = pathlib.Path(sys.argv[1]).resolve()
 OUT = pathlib.Path(sys.argv[2]).resolve()
@@ -20,7 +20,9 @@ git = lambda *a: subprocess.run(['git', '-C', str(project), *a], check=True, cap
 git('init', '-q'); git('-c', 'user.name=t', '-c', 'user.email=t@t', 'commit', '-q', '--allow-empty', '-m', '初始提交')
 (project / 'first.txt').write_text('')
 env = {'PATH': '/usr/bin:/bin:/usr/sbin:/sbin', 'HOME': str(home), 'CODEX_HOME': str(home / '.codex'),
-       'CLAUDE_CONFIG_DIR': str(home / '.claude'), 'LANG': 'en_US.UTF-8'}
+       'CLAUDE_CONFIG_DIR': str(home / '.claude'), 'LANG': 'en_US.UTF-8',
+       # The shell the panes run: KL_SHELL=/opt/homebrew/bin/fish for fish, and so on.
+       'SHELL': os.environ.get('KL_SHELL', '/bin/zsh')}
 host = subprocess.Popen([str(REPO / 'next/target/debug/keeplined'), 'serve', '--runtime', str(root / 'runtime')],
                         env=env, stdout=subprocess.DEVNULL, stderr=open(root / 'host.log', 'w'), start_new_session=True)
 try:

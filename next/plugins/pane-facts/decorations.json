@@ -6,7 +6,8 @@
       "command": "[ -n \"$KEEPLINE_LAST_EXIT\" ] && [ \"$KEEPLINE_LAST_EXIT\" != 0 ] && echo \"✗ 退出 $KEEPLINE_LAST_EXIT\"",
       "place": "title",
       "when": "shell",
-      "refresh_s": 300
+      "refresh_s": 300,
+      "tone": "error"
     },
     {
       "id": "changes",

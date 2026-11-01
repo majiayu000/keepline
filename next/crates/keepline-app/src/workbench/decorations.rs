@@ -3,7 +3,7 @@
 //! in the pane's title bar or its title's hover card. Drawing only reads what is cached;
 //! a line due again is shown as it was until the new run lands.
 use super::*;
-use keepline_core::decoration::{self, Decoration, Pane as DecoratedPane, Place};
+use keepline_core::decoration::{self, Decoration, Pane as DecoratedPane, Place, Tone};
 use std::sync::{LazyLock, Mutex};
 use std::time::Instant;
 
@@ -22,7 +22,7 @@ const KEEP: usize = 256;
 /// A pane's decoration lines, by where they go.
 #[derive(Default)]
 pub(super) struct Lines {
-    pub(super) title: Vec<String>,
+    pub(super) title: Vec<(String, Tone)>,
     pub(super) tip: Vec<String>,
 }
 
@@ -53,7 +53,7 @@ impl Workbench {
             }
             if let Some(line) = self.decoration_line(i, d, &pane, cx) {
                 match d.place {
-                    Place::Title => lines.title.push(line),
+                    Place::Title => lines.title.push((line, d.tone)),
                     Place::Tip => lines.tip.push(line),
                 }
             }

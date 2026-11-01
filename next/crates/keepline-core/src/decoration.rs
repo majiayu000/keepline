@@ -33,6 +33,22 @@ pub enum Place {
     Tip,
 }
 
+/// The color of a title-bar line: the status colors the app already uses, so it follows
+/// the user's `colors.json` and stays legible on either scheme.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum Tone {
+    /// The title bar's other facts; the default.
+    #[default]
+    Muted,
+    /// As a finished session.
+    Ok,
+    /// As a session waiting for the user.
+    Warn,
+    /// As a session that failed.
+    Error,
+}
+
 /// Which panes it is run for.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Deserialize)]
 #[serde(rename_all = "lowercase")]
@@ -57,6 +73,9 @@ pub struct Decoration {
     pub place: Place,
     #[serde(default)]
     pub when: When,
+    /// Its color in the title bar; a hover-card line is plain text.
+    #[serde(default)]
+    pub tone: Tone,
     /// How often it is run again while shown.
     #[serde(default = "default_refresh")]
     pub refresh_s: u64,
@@ -274,6 +293,7 @@ mod tests {
             command: command.into(),
             place,
             when: When::Always,
+            tone: Tone::Muted,
             refresh_s: 10,
             timeout_ms,
             file: PathBuf::new(),
@@ -372,7 +392,7 @@ mod tests {
         };
         let good = write(
             "a.json",
-            r#"{"api":1,"decorations":[{"id":"node","command":"node -v","when":"shell"},{"id":"ctx","command":"kubectl config current-context","place":"tip","refresh_s":60,"timeout_ms":3000}]}"#,
+            r#"{"api":1,"decorations":[{"id":"node","command":"node -v","when":"shell"},{"id":"ctx","command":"kubectl config current-context","place":"tip","tone":"warn","refresh_s":60,"timeout_ms":3000}]}"#,
         );
         let fast = write(
             "b.json",
@@ -380,7 +400,7 @@ mod tests {
         );
         let place = write(
             "c.json",
-            r#"{"api":1,"decorations":[{"id":"y","command":"true","place":"footer"}]}"#,
+            r#"{"api":1,"decorations":[{"id":"y","command":"true","place":"footer"},{"id":"z","command":"true","tone":"red"}]}"#,
         );
         let dup = write(
             "d.json",
@@ -389,10 +409,13 @@ mod tests {
         let (all, report) = load(vec![good, fast, place, dup]);
         assert_eq!(all.len(), 2);
         assert_eq!(
-            (all[0].place, all[0].when, all[0].refresh_s),
-            (Place::Title, When::Shell, 10)
+            (all[0].place, all[0].when, all[0].tone, all[0].refresh_s),
+            (Place::Title, When::Shell, Tone::Muted, 10)
         );
-        assert_eq!((all[1].place, all[1].timeout_ms), (Place::Tip, 3000));
+        assert_eq!(
+            (all[1].place, all[1].tone, all[1].timeout_ms),
+            (Place::Tip, Tone::Warn, 3000)
+        );
         assert_eq!(report[0].result, Ok("node、ctx".into()));
         assert!(report[1].result.as_ref().unwrap_err().contains("refresh_s"));
         assert!(report[2].result.as_ref().unwrap_err().contains("格式不对"));

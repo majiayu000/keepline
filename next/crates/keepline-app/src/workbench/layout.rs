@@ -175,11 +175,18 @@ impl Workbench {
                 )
             })
             // What the plugins put here, before the Agent and its time.
-            .children(decorated.title.into_iter().map(|line| {
+            .children(decorated.title.into_iter().map(|(line, tone)| {
+                use keepline_core::decoration::Tone;
+                let color = match tone {
+                    Tone::Muted => T::color(T::muted()),
+                    Tone::Ok => Group::Ready.colors().1,
+                    Tone::Warn => Group::Waiting.colors().1,
+                    Tone::Error => Group::Error.colors().1,
+                };
                 div()
                     .flex_shrink_0()
                     .text_size(px(T::META))
-                    .text_color(T::color(T::muted()))
+                    .text_color(color)
                     .child(line)
             }))
             .when(unread.is_none(), |d| d.child(self.pane_meta(session, cx)))

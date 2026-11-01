@@ -438,7 +438,7 @@ impl Workbench {
         let tab = self.nav.tab.as_ref().expect("a shown tab");
         let id = self.workspace.tab_terminals(tab)[0].clone();
         let lines = self.pane_decorations(&id, cx);
-        (lines.title, lines.tip)
+        (lines.title.into_iter().map(|(l, _)| l).collect(), lines.tip)
     }
     #[cfg(feature = "visual-test")]
     pub fn visual_shown_pane(&self) -> Entity<Pane> {

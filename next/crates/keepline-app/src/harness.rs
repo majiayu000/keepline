@@ -693,7 +693,11 @@ pub fn start(
                 })
                 .unwrap();
             };
+            // Each look draws a frame of what changed, as a shown window does on output; a
+            // background window with the idle display link paused draws none on its own.
             let lines = |cx: &mut gpui::AsyncApp| {
+                cx.update_window(handle.into(), |_, window, app| window.draw(app).clear(app))
+                    .unwrap();
                 handle.update(cx, |v, _, cx| v.visual_decorations(cx)).unwrap()
             };
             // Asks until the lines settle on `want`: the first look starts the run.
