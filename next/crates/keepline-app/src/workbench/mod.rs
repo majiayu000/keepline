@@ -165,6 +165,7 @@ fn outcome_label(outcome: &Outcome) -> String {
 mod actions;
 mod board;
 mod cleanup;
+mod complete;
 mod decorations;
 mod diagnostics;
 mod divergence;
@@ -353,6 +354,8 @@ impl Workbench {
                 renaming_tab: None,
                 renaming_session: None,
                 reopened: HashSet::new(),
+                completing: HashMap::new(),
+                completing_seq: 0,
             },
             attention: Attention {
                 phases: HashMap::new(),

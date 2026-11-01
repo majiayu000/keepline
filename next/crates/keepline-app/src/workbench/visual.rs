@@ -10,6 +10,26 @@ impl Workbench {
     pub fn visual_socket(&self) -> PathBuf {
         self.store.socket().to_owned()
     }
+    /// The pane's session, whether 标记完成 is offered on it, and whether the pane is shown.
+    #[cfg(feature = "visual-test")]
+    pub fn visual_completable(&self, terminal: &str) -> (Option<String>, bool, bool) {
+        let session = self.pane_session(terminal);
+        let review = session.is_some_and(|s| {
+            s.outcome == Outcome::Open && session_group(&self.workspace, s) == Group::Review
+        });
+        (session.map(|s| s.id.clone()), review, self.layout.panes.contains_key(terminal))
+    }
+    /// The 标记完成 button's click, and 「留着这个画面」 mid-run.
+    #[cfg(feature = "visual-test")]
+    pub fn visual_complete(&mut self, terminal: &str, cx: &mut Context<Self>) {
+        let session = self.pane_session(terminal).expect("no session").id.clone();
+        self.complete_pane(terminal.to_owned(), session, cx);
+    }
+    #[cfg(feature = "visual-test")]
+    pub fn visual_keep_completed(&mut self, terminal: &str, cx: &mut Context<Self>) {
+        self.layout.completing.remove(terminal);
+        cx.notify();
+    }
     #[cfg(feature = "visual-test")]
     pub fn visual_cut_off(&self) -> bool {
         self.store.cut_off()

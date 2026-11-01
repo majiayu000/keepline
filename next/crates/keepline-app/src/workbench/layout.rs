@@ -35,6 +35,10 @@ pub(super) struct LayoutState {
     pub(super) confirm_close: Option<Closing>,
     /// Interrupted terminals already reopened in place once; a failed try keeps the button.
     pub(super) reopened: HashSet<String>,
+    /// Panes playing their 标记完成 run, each with the run's number so a late timer
+    /// from an earlier, kept run does not close the pane.
+    pub(super) completing: HashMap<String, u64>,
+    pub(super) completing_seq: u64,
 }
 impl Workbench {
     pub(super) fn pane_view(
@@ -115,6 +119,7 @@ impl Workbench {
         let review = session.filter(|s| {
             s.outcome == Outcome::Open && session_group(&self.workspace, s) == Group::Review
         });
+        let completing = self.completing(id);
         let line = T::color(if focused { T::focus() } else { T::border() });
         // The status and title, then the meta and the actions: two groups so the terminal
         // style can set them into its frame line with the line showing between them.
@@ -145,7 +150,7 @@ impl Workbench {
                     .truncate()
                     .text_size(px(T::MONO_SIZE))
                     .text_color(T::color(T::primary()))
-                    .child(title)
+                    .child(title.clone())
                     .when(!tip.is_empty(), |d| {
                         let line = gpui::SharedString::from(tip.join("\n"));
                         d.tooltip(move |_, cx| {
@@ -201,8 +206,10 @@ impl Workbench {
                     )
                 },
             )
-            .when_some(review, |d, s| {
+            .when_some(completing, |d, seq| d.child(self.completing_button(id, seq)))
+            .when_some(review.filter(|_| completing.is_none()), |d, s| {
                 let accept = s.id.clone();
+                let terminal = id.to_owned();
                 d.child(
                     button(
                         gpui::SharedString::from(format!("accept-pane-{id}")),
@@ -214,18 +221,12 @@ impl Workbench {
                     .text_color(T::color(T::primary()))
                     .font_weight(gpui::FontWeight::SEMIBOLD)
                     .on_click(cx.listener(move |this, _, _, cx| {
-                        this.edit(
-                            Edit::SetOutcome {
-                                id: accept.clone(),
-                                outcome: Outcome::Completed,
-                            },
-                            cx,
-                        )
+                        this.complete_pane(terminal.clone(), accept.clone(), cx)
                     })),
                 )
             })
             // One step per pane: 标记完成 when it is due, else 看进度.
-            .when_some(session.filter(|_| review.is_none()), |d, s| {
+            .when_some(session.filter(|_| review.is_none() && completing.is_none()), |d, s| {
                 let show = s.id.clone();
                 d.child(
                     button(
@@ -435,7 +436,7 @@ impl Workbench {
                     )
                 });
         }
-        pane_box
+        let pane_box = pane_box
             .when_some(
                 session.filter(|s| self.overview.here.as_ref() == Some(&s.id)),
                 |d, s| {
@@ -454,7 +455,18 @@ impl Workbench {
                     )
                 },
             )
-            .into_any_element()
+            .when_some(completing, |d, seq| d.child(self.completing_veil(id, seq, &title, cx)));
+        match completing {
+            // The last slice of the run fades the whole pane out before it closes.
+            Some(seq) => gpui::AnimationExt::with_animation(
+                pane_box,
+                gpui::SharedString::from(format!("complete-pane-{id}-{seq}")),
+                gpui::Animation::new(complete::COMPLETE_HOLD),
+                |d, t| d.opacity(1. - ((t - 0.85) / 0.15).clamp(0., 1.)),
+            )
+            .into_any_element(),
+            None => pane_box.into_any_element(),
+        }
     }
     pub(super) fn layout_view(
         &self,
@@ -1273,7 +1285,7 @@ impl Workbench {
 }
 /// Applies `icon` to the title bar and the Dock, and remembers it.
 /// One look for the pane header's text actions: link-colored, filled only on hover.
-trait PaneAction {
+pub(super) trait PaneAction {
     fn pane_action(self) -> Self;
 }
 impl PaneAction for gpui::Stateful<gpui::Div> {
