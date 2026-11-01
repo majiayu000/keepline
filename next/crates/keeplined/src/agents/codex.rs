@@ -317,6 +317,12 @@ impl Adapter for Codex {
             _ => None,
         }
     }
+    fn screen_busy(&self, tail: &str) -> Option<bool> {
+        Some(super::bottom_lines(tail, 12).any(|l| {
+            (l.starts_with("• Working (") || l.starts_with("◦ Working ("))
+                && l.contains("esc to interrupt")
+        }))
+    }
     fn outside_pty(&self) -> bool {
         true
     }
@@ -543,6 +549,26 @@ pub(crate) fn codex_args(args: &[String]) -> (Option<String>, bool) {
 mod tests {
     use super::*;
 
+    #[test]
+    fn the_working_line_is_a_running_turn() {
+        let screen = |line: &str| {
+            format!("• Ran cargo test\n  └ ok\n\n{line}\n\n› Ask Codex to do anything\n\n  GPT-6.1-Sol high · ~/keepline\n")
+        };
+        assert_eq!(
+            Codex.screen_busy(&screen("• Working (10m 14s • esc to interrupt)")),
+            Some(true)
+        );
+        assert_eq!(
+            Codex.screen_busy(&screen(
+                "• Working (32m 57s • esc to interrupt) · 1 background terminal"
+            )),
+            Some(true)
+        );
+        assert_eq!(
+            Codex.screen_busy(&screen("─ Worked for 3m 2s ─")),
+            Some(false)
+        );
+    }
     #[test]
     fn a_spinner_in_the_title_is_a_running_turn() {
         assert_eq!(Codex.title_busy("⠋ fixing"), Some(true));

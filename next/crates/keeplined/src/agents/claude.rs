@@ -23,6 +23,19 @@ impl Adapter for Claude {
             _ => None,
         }
     }
+    /// Above the input box while a turn runs: "· Seasoning… (53s · ↓ 2.0k tokens)", its
+    /// glyph cycling. A finished turn leaves "✻ Worked for 16m 1s", with no ellipsis.
+    fn screen_busy(&self, tail: &str) -> Option<bool> {
+        Some(super::bottom_lines(tail, 12).any(|l| {
+            let mut chars = l.chars();
+            let spinner = chars.next().is_some_and(|c| "·✢✳✶✻✽*".contains(c))
+                && chars.next() == Some(' ')
+                && chars.as_str().split_once('…').is_some_and(|(verb, rest)| {
+                    !verb.is_empty() && rest.trim_start().starts_with('(')
+                });
+            spinner || l.contains("esc to interrupt")
+        }))
+    }
     fn screen_rules(&self) -> &'static str {
         include_str!("screen/claude.json")
     }
@@ -342,5 +355,29 @@ mod tests {
         assert_eq!(Claude.title_busy("◐修复"), None);
         assert_eq!(Claude.title_busy("vim main.rs"), None);
         assert_eq!(Claude.title_busy(""), None);
+    }
+    #[test]
+    fn the_ticking_line_above_the_input_box_is_a_running_turn() {
+        let screen = |line: &str| {
+            format!("● Bash(cargo test)\n  ⎿ ok\n\n{line}\n\n────\n❯ \n────\n  ⏵⏵ auto mode on\n")
+        };
+        for running in [
+            "· Seasoning… (53s · ↓ 2.0k tokens)",
+            "✻ Percolating… (19s · ↓ 1.3k tokens · thinking)",
+            "✳ Running PreCompact hooks… (running PreCompact hook · 1s)",
+        ] {
+            assert_eq!(
+                Claude.screen_busy(&screen(running)),
+                Some(true),
+                "{running}"
+            );
+        }
+        for done in [
+            "✻ Worked for 16m 1s · done 2:10 AM",
+            "❯ 这个是怎么回事… (看一下)",
+            "",
+        ] {
+            assert_eq!(Claude.screen_busy(&screen(done)), Some(false), "{done}");
+        }
     }
 }

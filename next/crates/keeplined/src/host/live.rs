@@ -287,6 +287,9 @@ pub(super) fn pump(
     let mut bytes = vec![0; 64 * 1024];
     // One screen check per output burst once the screen has been still; no timer otherwise.
     let mut quiet_at: Option<Instant> = None;
+    // A running turn ticks its working line every second, so its screen is never quiet:
+    // while output flows, the screen is also read for that line, at most this often.
+    let mut busy_read: Option<Instant> = None;
     loop {
         let mut poll = libc::pollfd {
             fd: reader.as_raw_fd(),
@@ -363,12 +366,25 @@ pub(super) fn pump(
             .ok()
             .filter(|t| *t != live.title)
             .map(str::to_owned);
-        if let Some(title) = changed {
+        if let Some(title) = &changed {
             live.title = title.clone();
-            // Host before Live is the lock order; release this terminal first.
-            drop(live);
+        }
+        let tail = if busy_read.is_none_or(|at| at.elapsed() >= SCREEN_BUSY_EVERY) {
+            busy_read = Some(Instant::now());
+            Some(live.vt.tail_text(usize::from(live.rows))?)
+        } else {
+            None
+        };
+        // Host before Live is the lock order; release this terminal first.
+        drop(live);
+        if let Some(title) = changed {
             if let Err(e) = lock(shared).and_then(|mut host| host.title_changed(id, &title)) {
                 eprintln!("terminal {id}: title: {e}");
+            }
+        }
+        if let Some(tail) = tail {
+            if let Err(e) = lock(shared).and_then(|mut host| host.screen_busy(id, &tail)) {
+                eprintln!("terminal {id}: working line: {e}");
             }
         }
     }

@@ -65,10 +65,24 @@ struct Host {
     /// Terminal -> the conversation whose title spins there and since when (seconds since
     /// the epoch). Live evidence only, like `screen_waits`: never stored.
     title_busy: HashMap<String, (String, u64)>,
+    /// The same read off the screen's ticking working line, for CLIs whose title is off.
+    screen_busy: HashMap<String, (String, u64)>,
     /// Session -> last `claude agents --json` run for it, the per-session rate limit.
     reconciled: HashMap<String, Instant>,
     /// What the plugins' hooks last heard, so each state change reaches them once.
     hooks: crate::plugin_hooks::Hooks,
+}
+/// Records which conversation a live cue says is running on `terminal`, since when;
+/// whether that changed. Only a turn starting or stopping is news.
+fn cue(cues: &mut HashMap<String, (String, u64)>, terminal: &str, busy: Option<String>) -> bool {
+    if cues.get(terminal).map(|(id, _)| id) == busy.as_ref() {
+        return false;
+    }
+    match busy {
+        Some(id) => cues.insert(terminal.into(), (id, keepline_core::content::now())),
+        None => cues.remove(terminal),
+    };
+    true
 }
 fn lock<T>(m: &Mutex<T>) -> io::Result<MutexGuard<'_, T>> {
     m.lock()
@@ -91,14 +105,21 @@ impl Host {
         // the tail of a long turn was read. Never the other way: a still title proves
         // nothing the log has not said.
         for s in w.agent_sessions.iter().filter(|s| s.current) {
-            let Some(since) = s
-                .terminal
-                .as_ref()
-                .and_then(|t| self.title_busy.get(t))
-                .filter(|(id, _)| *id == s.id)
-                .map(|(_, since)| *since)
-            else {
-                continue;
+            let busy = |cues: &HashMap<String, (String, u64)>| {
+                s.terminal
+                    .as_ref()
+                    .and_then(|t| cues.get(t))
+                    .filter(|(id, _)| *id == s.id)
+                    .map(|(_, since)| *since)
+            };
+            let (since, cue, detail) = match (busy(&self.title_busy), busy(&self.screen_busy)) {
+                (Some(since), _) => (since, "标题", "终端标题在转圈，日志里还没看到这一轮"),
+                (None, Some(since)) => (
+                    since,
+                    "画面在跑",
+                    "画面上有在跑的计时行，日志里还没看到这一轮",
+                ),
+                (None, None) => continue,
             };
             let Some(c) = w.content.get_mut(&s.id) else {
                 continue;
@@ -110,9 +131,9 @@ impl Host {
             if !working {
                 c.turn = keepline_core::content::Turn::Running;
                 c.turn_started = since;
-                c.signal = "标题".into();
+                c.signal = cue.into();
                 c.signal_at = since;
-                c.signal_detail = "终端标题在转圈，日志里还没看到这一轮".into();
+                c.signal_detail = detail.into();
             }
         }
         // A prompt visible on a live agent's screen outranks a log that has not caught up.
@@ -417,15 +438,22 @@ impl Host {
                 .filter(|busy| *busy)
                 .map(|_| s.id.clone())
         });
-        let was = self.title_busy.get(terminal).map(|(id, _)| id);
-        if was != busy.as_ref() {
-            match busy {
-                Some(id) => self
-                    .title_busy
-                    .insert(terminal.into(), (id, keepline_core::content::now())),
-                None => self.title_busy.remove(terminal),
-            };
+        if cue(&mut self.title_busy, terminal, busy) {
             // Nothing to store; a new revision makes clients fetch the overlaid snapshot.
+            let next = self.workspace.clone();
+            self.commit(next)?;
+        }
+        Ok(())
+    }
+    /// What the bottom of a bound terminal's screen says about its turn; see `title_changed`.
+    fn screen_busy(&mut self, terminal: &str, tail: &str) -> io::Result<()> {
+        let busy = self.workspace.current_agent(terminal).and_then(|s| {
+            crate::agents::adapter(s.runtime)
+                .screen_busy(tail)
+                .filter(|busy| *busy)
+                .map(|_| s.id.clone())
+        });
+        if cue(&mut self.screen_busy, terminal, busy) {
             let next = self.workspace.clone();
             self.commit(next)?;
         }
@@ -722,6 +750,7 @@ fn serve_runtime(
         myself: std::sync::Weak::new(),
         screen_waits: HashMap::new(),
         title_busy: HashMap::new(),
+        screen_busy: HashMap::new(),
         hooks: Default::default(),
         reconciled: HashMap::new(),
         workspace,
@@ -866,6 +895,7 @@ mod recognition_tests {
             myself: std::sync::Weak::new(),
             screen_waits: HashMap::new(),
             title_busy: HashMap::new(),
+            screen_busy: HashMap::new(),
             hooks: Default::default(),
             reconciled: HashMap::new(),
         }));

@@ -2850,9 +2850,10 @@ fn daemon_codex(h: &Host, pane: &str, title: &str, steps: &[DaemonStep], extra: 
             q(&seed_path)
         ));
     }
-    // A typed `title:<text>` line sets the title, as the TUI does when a turn starts or ends.
+    // A typed `title:<text>` line sets the title and `say:<text>` prints a line, as the TUI
+    // does when a turn starts or ends; `clear` wipes the screen.
     script.push_str(
-        "while read -r line; do case \"$line\" in title:*) printf '\\033]0;%s\\007' \"${line#title:}\";; esac; done",
+        "while read -r line; do case \"$line\" in title:*) printf '\\033]0;%s\\007' \"${line#title:}\";; say:*) printf '%s\\n' \"${line#say:}\";; clear) printf '\\033[2J\\033[H';; esac; done",
     );
     h.call(h.launch(
         pane,
@@ -3264,12 +3265,12 @@ fn a_spinning_title_shows_a_turn_the_log_has_not_and_stops_with_it() {
     });
     let (mut stream, _, writable) = h.attach("p0", false);
     assert!(writable);
-    let mut title = |text: &str| {
+    let mut typed = |line: &str| {
         send(
             &mut stream,
             CONTROL,
             &Request::Input {
-                bytes: format!("title:{text}\r").into_bytes(),
+                bytes: format!("{line}\r").into_bytes(),
                 lossy: false,
             },
         )
@@ -3277,15 +3278,26 @@ fn a_spinning_title_shows_a_turn_the_log_has_not_and_stops_with_it() {
         assert!(matches!(ack(&mut stream), Reply::Ok));
     };
     // A turn the log has not recorded yet, or whose start fell before the part it read.
-    title("⠋ proj");
+    typed("title:⠋ proj");
     wait_for(&h, "a spinning title shows the turn running", |w| {
         turn(w) == Some((Turn::Running, "标题".into()))
     });
     // The log never said this turn ran, so a still title leaves the log's word standing.
-    title("proj");
+    typed("title:proj");
     wait_for(&h, "a still title gives the log its say back", |w| {
         turn(w).is_some_and(|(t, _)| t == Turn::Completed)
     });
+    // With the title off, the working line the TUI ticks on screen says the same.
+    typed("say:• Working (3s • esc to interrupt)");
+    wait_for(&h, "a working line on screen shows the turn running", |w| {
+        turn(w) == Some((Turn::Running, "画面在跑".into()))
+    });
+    typed("clear");
+    wait_for(
+        &h,
+        "the working line gone gives the log its say back",
+        |w| turn(w).is_some_and(|(t, _)| t == Turn::Completed),
+    );
 }
 
 #[test]
