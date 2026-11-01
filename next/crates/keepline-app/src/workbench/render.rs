@@ -73,6 +73,20 @@ impl Render for Workbench {
                 .bg(T::color(T::panel()))
                 .border_b(px(T::BORDER_WIDTH))
                 .border_color(T::color(T::border()))
+                // Beside the traffic lights, like a Mac app's sidebar button: collapsed,
+                // the sidebar is gone entirely and this is the way back.
+                .child(
+                    icon_button(
+                        "sidebar-toggle",
+                        "icons/sidebar.svg",
+                        if self.sidebar.collapsed {
+                            "展开左栏"
+                        } else {
+                            "收起左栏"
+                        },
+                    )
+                    .on_click(cx.listener(|this, _, _, cx| this.toggle_sidebar(cx))),
+                )
                 .child(
                     div()
                         .id("app-icon")
@@ -586,9 +600,14 @@ impl Render for Workbench {
         if let Some(peek) = &self.peek {
             main = main.relative().child(self.peek_view(peek, cx));
         }
-        root = root
-            .relative()
-            .child(div().flex_1().min_h_0().flex().child(sidebar).child(main));
+        root = root.relative().child(
+            div()
+                .flex_1()
+                .min_h_0()
+                .flex()
+                .children(sidebar)
+                .child(main),
+        );
         if let Some(menu) = &self.layout.menu {
             root = root.child(self.menu_view(menu, window, cx));
         }

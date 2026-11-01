@@ -49,9 +49,10 @@ impl Workbench {
         &self,
         space_name: &str,
         cx: &Context<Self>,
-    ) -> gpui::Stateful<gpui::Div> {
+    ) -> Option<gpui::Stateful<gpui::Div>> {
+        // Collapsed means gone: the toggle lives in the top bar, so nothing is left here.
         if self.sidebar.collapsed {
-            return self.sidebar_rail(cx);
+            return None;
         }
         let dense = self.sidebar.dense();
         let mut sidebar = div()
@@ -366,71 +367,67 @@ impl Workbench {
                 .on_click(cx.listener(|this, _, _, cx| this.show_closed(cx))),
             );
         }
-        div()
-            .id("sidebar")
-            .w(px(T::SIDEBAR))
-            .h_full()
-            .min_h_0()
-            .flex_shrink_0()
-            .flex()
-            .flex_col()
-            .overflow_hidden()
-            .bg(T::color(T::panel()))
-            .border_r(px(T::BORDER_WIDTH))
-            .border_color(T::color(T::border()))
-            .child(
-                div()
-                    .flex_shrink_0()
-                    .px(px(T::S8))
-                    .pt(px(T::S8))
-                    .flex()
-                    .items_center()
-                    .gap(px(T::S4))
-                    .child(self.preset_switch(cx).flex_1())
-                    .child(
-                        icon_button("sidebar-collapse", "icons/sidebar.svg", "收起左栏")
-                            .on_click(cx.listener(|this, _, _, cx| this.toggle_sidebar(cx))),
-                    ),
-            )
-            .child(sidebar)
-            .when_some(self.quota_view(), |d, quota| d.child(quota))
-            .child(
-                div()
-                    .flex_shrink_0()
-                    .border_t(px(T::BORDER_WIDTH))
-                    .border_color(T::color(T::border()))
-                    .px(px(T::S8))
-                    .py(px(T::S8))
-                    .flex()
-                    .gap(px(T::S4))
-                    .child(
-                        button("diagnose-host", "本机诊断")
-                            .flex_1()
-                            .justify_start()
-                            .border_0()
-                            .on_click(
-                                cx.listener(|this, _, window, cx| {
+        Some(
+            div()
+                .id("sidebar")
+                .w(px(T::SIDEBAR))
+                .h_full()
+                .min_h_0()
+                .flex_shrink_0()
+                .flex()
+                .flex_col()
+                .overflow_hidden()
+                .bg(T::color(T::panel()))
+                .border_r(px(T::BORDER_WIDTH))
+                .border_color(T::color(T::border()))
+                .child(
+                    div()
+                        .flex_shrink_0()
+                        .px(px(T::S8))
+                        .pt(px(T::S8))
+                        .flex()
+                        .items_center()
+                        .gap(px(T::S4))
+                        .child(self.preset_switch(cx).flex_1()),
+                )
+                .child(sidebar)
+                .when_some(self.quota_view(), |d, quota| d.child(quota))
+                .child(
+                    div()
+                        .flex_shrink_0()
+                        .border_t(px(T::BORDER_WIDTH))
+                        .border_color(T::color(T::border()))
+                        .px(px(T::S8))
+                        .py(px(T::S8))
+                        .flex()
+                        .gap(px(T::S4))
+                        .child(
+                            button("diagnose-host", "本机诊断")
+                                .flex_1()
+                                .justify_start()
+                                .border_0()
+                                .on_click(cx.listener(|this, _, window, cx| {
                                     this.show_diagnostics(window, cx)
-                                }),
-                            ),
-                    )
-                    // Notifications, sound and the overview's time limits live in settings;
-                    // this opens them on the 通知 page.
-                    .child(
-                        button("open-reminders", "提醒")
-                            .border_0()
-                            .on_click(cx.listener(|this, _, window, cx| {
-                                this.show_settings_page(
-                                    super::settings::Page::Notifications,
-                                    window,
-                                    cx,
-                                )
-                            })),
-                    )
-                    .child(button("open-settings", "设置").border_0().on_click(
-                        cx.listener(|this, _, window, cx| this.show_settings(window, cx)),
-                    )),
-            )
+                                })),
+                        )
+                        // Notifications, sound and the overview's time limits live in settings;
+                        // this opens them on the 通知 page.
+                        .child(
+                            button("open-reminders", "提醒")
+                                .border_0()
+                                .on_click(cx.listener(|this, _, window, cx| {
+                                    this.show_settings_page(
+                                        super::settings::Page::Notifications,
+                                        window,
+                                        cx,
+                                    )
+                                })),
+                        )
+                        .child(button("open-settings", "设置").border_0().on_click(
+                            cx.listener(|this, _, window, cx| this.show_settings(window, cx)),
+                        )),
+                ),
+        )
     }
     /// The accounts' usage limits above the footer, one row per CLI used this week, from
     /// what its own logs last recorded. Hovering a row gives the plan, the reading's age and
@@ -677,45 +674,6 @@ impl Workbench {
         )
     }
     /// The folded column: a way back, and how many sessions in this space need you.
-    fn sidebar_rail(&self, cx: &Context<Self>) -> gpui::Stateful<gpui::Div> {
-        let needs = self
-            .workspace
-            .agent_sessions
-            .iter()
-            .filter(|s| {
-                self.session_hidden(s).is_none()
-                    && self.session_open(s)
-                    && session_space(&self.workspace, s) == Some(self.nav.space.as_str())
-            })
-            .map(|s| sidebar_status(&self.workspace, &self.attention.unseen, s))
-            .filter(|(g, attention)| *attention && matches!(g, Group::Waiting | Group::Error))
-            .count();
-        div()
-            .id("sidebar")
-            .w(px(T::SIDEBAR_RAIL))
-            .h_full()
-            .flex_shrink_0()
-            .flex()
-            .flex_col()
-            .items_center()
-            .gap(px(T::S8))
-            .py(px(T::S8))
-            .bg(T::color(T::panel()))
-            .border_r(px(T::BORDER_WIDTH))
-            .border_color(T::color(T::border()))
-            .child(
-                icon_button("sidebar-expand", "icons/sidebar.svg", "展开左栏")
-                    .on_click(cx.listener(|this, _, _, cx| this.toggle_sidebar(cx))),
-            )
-            .when(needs > 0, |d| d.child(badge(Group::Waiting, needs)))
-            .child(div().flex_1())
-            .child(
-                button("open-settings", "⚙")
-                    .border_0()
-                    .aria_label("设置")
-                    .on_click(cx.listener(|this, _, window, cx| this.show_settings(window, cx))),
-            )
-    }
     /// The space's todos: what is still to be handed to an Agent, above what is running.
     /// In the dense presets the header lives in the space line (`待办 3`), so only the
     /// quick-add field and, once opened, the list come from here.
