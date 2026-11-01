@@ -1194,6 +1194,21 @@ mod tests {
         );
     }
     #[test]
+    fn a_compaction_after_the_last_reply_leaves_the_turn_finished() {
+        let mut p = Parser::default();
+        let s = Source::default();
+        for v in [
+            json!({"type":"user","uuid":"u","message":{"content":"修一下"}}),
+            json!({"type":"assistant","message":{"model":"claude","stop_reason":"end_turn","content":[{"type":"text","text":"修好了"}]}}),
+            json!({"type":"system","subtype":"compact_boundary","content":"Conversation compacted"}),
+            json!({"type":"user","uuid":"c","isCompactSummary":true,"isVisibleInTranscriptOnly":true,"message":{"content":"<artifact-content-authored-by-others/>\nThis session is being continued from a previous conversation"}}),
+        ] {
+            p.add(Agent::Claude, &serde_json::to_vec(&v).unwrap(), s.clone());
+        }
+        assert_eq!(p.card.turn, Turn::Completed);
+        assert_eq!(p.card.asks.last().map(|q| q.text.as_str()), Some("修一下"));
+    }
+    #[test]
     fn changed_files_are_listed_once_each_and_failed_edits_are_not() {
         let mut p = Parser::default();
         let s = Source::default();

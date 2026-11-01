@@ -159,7 +159,9 @@ impl Adapter for Claude {
         parser.inherited = inherited(v, source);
         let msg = &v["message"];
         let blocks = &msg["content"];
-        if ty == "user" && v["isMeta"] != true {
+        // The summary a compaction writes is shaped like a prompt but asks nothing:
+        // a conversation compacted after its last reply has still finished.
+        if ty == "user" && v["isMeta"] != true && v["isCompactSummary"] != true {
             let s = user_text(&text(blocks));
             if !s.is_empty() {
                 parser.phase(Turn::Running, v["uuid"].as_str().unwrap_or(""), at, source);
