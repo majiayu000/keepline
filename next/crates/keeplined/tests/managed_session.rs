@@ -1099,7 +1099,9 @@ fn fixture_command(root: &std::path::Path) -> Command {
         .env("KEEPLINE_CLAUDE_AGENTS", root.join("claude-agents"))
         .env("KEEPLINE_CODEX_CONTROL", root.join("codex-control.sock"))
         // Grok's registry of live sessions is read from its home, not the fixture roots.
-        .env("GROK_HOME", root.join("grok-home"));
+        .env("GROK_HOME", root.join("grok-home"))
+        // The host starts `keeplined remote --relay`; here it runs inside the test binary.
+        .env("KEEPLINE_REMOTE_EXE", env!("CARGO_BIN_EXE_keeplined"));
     command
 }
 #[test]
@@ -5102,6 +5104,7 @@ fn pair(root: &str, base: &str, name: &str, role: &str) -> keepline_remote::link
 /// A relay on a free local port, until the returned sender is dropped.
 fn local_relay(
     addr: &str,
+    config: keepline_relay::server::Config,
 ) -> (
     String,
     std::sync::mpsc::Sender<()>,
@@ -5118,7 +5121,7 @@ fn local_relay(
         rt.block_on(async move {
             let listener = tokio::net::TcpListener::bind(&addr).await.unwrap();
             ready.send(listener.local_addr().unwrap()).unwrap();
-            let serve = keepline_relay::server::serve(listener, Default::default());
+            let serve = keepline_relay::server::serve(listener, config);
             let stop = tokio::task::spawn_blocking(move || {
                 let _ = stopped.recv();
             });
@@ -5148,7 +5151,7 @@ fn a_phone_on_a_relay_drives_a_terminal_through_a_channel_the_relay_cannot_read(
     let (mut app, _, _) = h.attach("rt", false);
     read_until(&mut app, &mut app_vt, "ready");
 
-    let (base, stop, relay) = local_relay("127.0.0.1:0");
+    let (base, stop, relay) = local_relay("127.0.0.1:0", Default::default());
     let root = h.root.to_string_lossy().into_owned();
     let full = pair(&root, &base, "全权", "full");
     let viewer = pair(&root, &base, "只看的平板", "view");
@@ -5384,7 +5387,7 @@ fn a_phone_on_a_relay_drives_a_terminal_through_a_channel_the_relay_cannot_read(
     drop(stop);
     relay.join().unwrap();
     drop((phone, stalled));
-    let (_base, _stop, _relay) = local_relay(&addr);
+    let (_base, _stop, _relay) = local_relay(&addr, Default::default());
     let mut phone = Phone::connect(&full);
     phone.say(json!({ "id": 1, "op": "hello" }));
     assert_eq!(phone.next(|v| v["id"] == 1)["ok"]["version"], 1);
@@ -5409,4 +5412,156 @@ fn a_phone_on_a_relay_drives_a_terminal_through_a_channel_the_relay_cannot_read(
     let _ = twin.kill();
     let _ = twin.wait();
     drop(app);
+}
+
+#[test]
+fn the_host_keeps_phones_on_a_relay_and_shows_the_app_who_is_on() {
+    use keepline_core::protocol::{RemoteChange, RemoteState, RemoteStatus};
+    use serde_json::json;
+    let h = Host::start();
+    h.setup();
+    h.call(h.launch("rt", "stty raw -echo; echo ready; exec cat"))
+        .unwrap();
+    let root = h.root.to_string_lossy().into_owned();
+    let cli = |args: &[&str]| {
+        let out = Command::new(env!("CARGO_BIN_EXE_keeplined"))
+            .arg("remote")
+            .args(args)
+            .args(["--runtime", &root])
+            .output()
+            .unwrap();
+        assert!(
+            out.status.success(),
+            "{}",
+            String::from_utf8_lossy(&out.stderr)
+        );
+    };
+    let until = |what: &str, ok: &dyn Fn(&RemoteStatus) -> bool| -> (RemoteStatus, Duration) {
+        let start = Instant::now();
+        loop {
+            let status = recognition(&h).remote;
+            if ok(&status) {
+                return (status, start.elapsed());
+            }
+            assert!(
+                start.elapsed() < Duration::from_secs(15),
+                "{what}: {status:?}"
+            );
+            std::thread::sleep(Duration::from_millis(20));
+        }
+    };
+    let running = |pattern: &str| -> Vec<i32> {
+        let out = Command::new("pgrep")
+            .args(["-f", pattern])
+            .output()
+            .unwrap();
+        String::from_utf8(out.stdout)
+            .unwrap()
+            .lines()
+            .filter_map(|l| l.trim().parse().ok())
+            .collect()
+    };
+    let (base, _stop, _relay) = local_relay(
+        "127.0.0.1:0",
+        keepline_relay::server::Config {
+            key: Some("right".into()),
+            ..Default::default()
+        },
+    );
+    let ours = format!("remote --relay {base} --report --runtime {root}");
+
+    // A refused machine stops trying and says why, until the setting changes.
+    assert_eq!(recognition(&h).remote.live.state, RemoteState::Off);
+    cli(&["--enable", "--relay", &base, "--relay-key", "wrong"]);
+    let (failed, _) = until("refused", &|s| s.live.state == RemoteState::Failed);
+    assert!(failed.live.detail.contains("拒绝"), "{failed:?}");
+    cli(&["--enable", "--relay", &base, "--relay-key", "right"]);
+    let (on, took) = until("connected", &|s| s.live.state == RemoteState::Connected);
+    eprintln!("enabled → connected in {took:?}");
+    assert!(on.enabled && on.relay == base);
+    use std::os::unix::fs::PermissionsExt;
+    let mode = fs::metadata(h.root.join("remote-relay.json"))
+        .unwrap()
+        .permissions()
+        .mode();
+    assert_eq!(mode & 0o777, 0o600);
+
+    // Pairing through the host, as the app does; the app sees the device at once.
+    let Reply::Text(text) = h
+        .call(Request::RemotePair {
+            name: "iPhone".into(),
+            role: "full".into(),
+        })
+        .unwrap()
+    else {
+        panic!()
+    };
+    let link = keepline_remote::link::Link::parse(&text).unwrap();
+    until("listed", &|s| {
+        s.devices
+            .iter()
+            .any(|d| d.name == "iPhone" && d.role == "full")
+    });
+
+    // Who is on, what it watches and what it last did reach the app.
+    let mut phone = Phone::connect(&link);
+    phone.say(json!({ "id": 1, "op": "hello" }));
+    phone.next(|v| v["id"] == 1);
+    phone.say(json!({ "id": 2, "op": "watch", "terminal": "rt" }));
+    phone.next(|v| v["stream"] == 2 && v["type"] == "screen");
+    let (_, took) = until("watching", &|s| {
+        s.live.online.len() == 1
+            && s.live.online[0].device == link.device
+            && s.live.online[0].watching == ["rt"]
+    });
+    eprintln!("watch → the app sees it in {took:?}");
+    phone.say(json!({ "id": 3, "op": "keys", "terminal": "rt", "keys": ["x"] }));
+    phone.next(|v| v["id"] == 3);
+    until("acted", &|s| {
+        s.live
+            .online
+            .first()
+            .and_then(|p| p.last.as_ref())
+            .is_some_and(|a| a.op == "keys" && a.terminal.as_deref() == Some("rt"))
+    });
+
+    // "Disconnect" ends its session; it stays paired and may come back.
+    h.call(Request::RemoteDevice {
+        device: link.device.clone(),
+        change: RemoteChange::Kick,
+    })
+    .unwrap();
+    assert_eq!(phone.closed(Duration::from_secs(5)), Some(4401));
+    until("gone", &|s| {
+        s.live.online.is_empty() && s.devices.len() == 1
+    });
+    let mut phone = Phone::connect(&link);
+    phone.say(json!({ "id": 1, "op": "hello" }));
+    phone.next(|v| v["id"] == 1);
+    until("back", &|s| s.live.online.len() == 1);
+
+    // The process on the relay dies: the host starts it again and the phone returns.
+    let pid = running(&ours)[0];
+    unsafe { libc::kill(pid, libc::SIGKILL) };
+    until("restarting", &|s| s.live.state != RemoteState::Connected);
+    let (_, took) = until("restarted", &|s| s.live.state == RemoteState::Connected);
+    eprintln!("killed → connected again in {took:?}");
+    drop(phone);
+    let mut phone = Phone::connect(&link);
+    phone.say(json!({ "id": 1, "op": "hello" }));
+    phone.next(|v| v["id"] == 1);
+
+    // Off: the host lets go of the relay; the pairing stays.
+    cli(&["--disable"]);
+    let (off, _) = until("off", &|s| s.live.state == RemoteState::Off);
+    assert!(!off.enabled && off.relay == base && off.devices.len() == 1);
+    let start = Instant::now();
+    while !running(&ours).is_empty() {
+        assert!(
+            start.elapsed() < Duration::from_secs(5),
+            "the relay process kept running"
+        );
+        std::thread::sleep(Duration::from_millis(20));
+    }
+    assert!(phone.closed(Duration::from_secs(5)).is_some());
 }

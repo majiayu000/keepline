@@ -12,18 +12,20 @@
 //! code; `--devices` lists them, `--revoke` unpairs one, and `--new-code` replaces the
 //! machine's code and unpairs every phone. Shapes are in `specs/extensions/relay.md`.
 use crate::control::Args;
-use crate::devices::{self, Device, Role};
-use crate::remote::{self, Access};
+use crate::remote::{self, Access, Activity, Observer};
 use futures_util::{SinkExt, StreamExt};
+use keepline_core::protocol::{
+    rpc, RemoteAct, RemoteChange, RemoteLive, RemotePhone, RemoteState, Reply, Request,
+};
 use keepline_remote::{
     link::Link,
     secure::{self, Channel, Code, Message as Secure},
     wire::{self, bin, Frame},
 };
+use keeplined::devices::{self, Device, Role};
 use serde_json::json;
-use std::collections::HashMap;
+use std::collections::{BTreeMap, HashMap};
 use std::io::{self, BufReader, Read, Write};
-use std::os::unix::fs::OpenOptionsExt;
 use std::os::unix::net::UnixStream;
 use std::path::{Path, PathBuf};
 use std::sync::{mpsc as std_mpsc, Arc, Condvar, Mutex};
@@ -48,8 +50,58 @@ pub fn run(a: &Args) -> io::Result<()> {
     if a.has("devices") {
         return list_devices(&a.socket);
     }
+    let root = a.socket.parent().unwrap_or(Path::new("."));
+    if a.has("enable") || a.has("disable") {
+        let kept = keeplined::remote_config(root);
+        let relay = a.value("relay").map_or(kept.relay, str::to_owned);
+        let key = a.value("relay-key").map(str::to_owned).or(kept.key);
+        let enabled = a.has("enable");
+        if enabled && relay.is_empty() {
+            return Err(io::Error::other("--enable 需要 --relay <中继地址>"));
+        }
+        host(
+            a,
+            Request::RemoteConfigure {
+                enabled,
+                relay: relay.clone(),
+                key,
+            },
+        )?;
+        println!(
+            "{}",
+            if enabled {
+                format!("已打开：后台会一直连着 {relay}，配对过的手机随时能连过来")
+            } else {
+                "已关闭：后台断开中继，配对还在".to_owned()
+            }
+        );
+        return Ok(());
+    }
+    if a.has("status") {
+        let Reply::Recognition(status) = host(a, Request::RecognitionStatus)? else {
+            return Err(io::Error::other("unexpected reply"));
+        };
+        println!(
+            "{}",
+            serde_json::to_string_pretty(&status.remote).map_err(io::Error::other)?
+        );
+        return Ok(());
+    }
+    if let Some(needle) = a.value("kick") {
+        host(
+            a,
+            Request::RemoteDevice {
+                device: needle.to_owned(),
+                change: RemoteChange::Kick,
+            },
+        )?;
+        println!("已断开 {needle} 正连着的会话；它还配对着，可以再连");
+        return Ok(());
+    }
     if let (Some(needle), Some(role)) = (a.value("device"), a.value("role")) {
-        let d = devices::set_role(&a.socket, needle, devices::parse_role(role)?)?;
+        let role = devices::parse_role(role)?;
+        let d = devices::set_role(&a.socket, needle, role)?;
+        refresh(a);
         println!(
             "{}（{}）的权限改成「{}」，它正连着的会话一秒内断开，重连后按新权限",
             d.name,
@@ -60,6 +112,7 @@ pub fn run(a: &Args) -> io::Result<()> {
     }
     if let Some(needle) = a.value("revoke") {
         let gone = devices::remove(&a.socket, needle)?;
+        refresh(a);
         println!(
             "已取消配对 {}（{}），它正连着的会话一秒内断开",
             gone.name, gone.id
@@ -71,7 +124,7 @@ pub fn run(a: &Args) -> io::Result<()> {
         .ok_or_else(|| io::Error::other("--relay 需要中继地址，例如 https://relay.example.com"))?;
     let base = Link::websocket_base(relay).map_err(io::Error::other)?;
     let new = a.has("new-code");
-    let code = code(&a.socket, new)?;
+    let code = devices::machine_code(&a.socket, new)?;
     if new {
         devices::clear(&a.socket)?;
     }
@@ -79,62 +132,157 @@ pub fn run(a: &Args) -> io::Result<()> {
         let role = a
             .value("role")
             .map_or(Ok(Role::Full), devices::parse_role)?;
-        return pair(
-            &a.socket,
-            relay,
-            &code,
-            a.value("name").unwrap_or("手机"),
-            role,
-        );
+        return pair(&a.socket, relay, a.value("name").unwrap_or("手机"), role);
     }
     let key = a
         .value("relay-key")
         .map(str::to_owned)
         .or_else(|| std::env::var("KEEPLINE_RELAY_KEY").ok())
         .filter(|k| !k.is_empty());
-    let name = remote::machine(&a.socket).name;
+    let name = devices::machine(&a.socket).name;
+    let live = Live::new(a.has("report").then(|| a.socket.clone()));
     let runtime = tokio::runtime::Builder::new_current_thread()
         .enable_all()
         .build()?;
-    runtime.block_on(stay_connected(&base, &code, key, name, &a.socket))
+    let ended = runtime.block_on(stay_connected(&base, &code, key, name, &a.socket, &live));
+    if let Err(e) = &ended {
+        live.state(RemoteState::Failed, e.to_string());
+        live.flush();
+    }
+    ended
 }
 
-/// The machine's pairing code, made on first use, readable only by this user.
-fn code(socket: &Path, new: bool) -> io::Result<Code> {
-    let file = socket.with_file_name("remote-code");
-    if !new {
-        if let Some(code) = std::fs::read_to_string(&file)
-            .ok()
-            .and_then(|t| Code::parse(&t))
-        {
-            return Ok(code);
+/// The connection's state, why it is not connected, and the phones on by session.
+type Now = (RemoteState, String, BTreeMap<String, RemotePhone>);
+
+/// Who is on now. With `--report` every change goes to the host, a burst at a time,
+/// and the host shows it in the app.
+#[derive(Clone)]
+struct Live {
+    inner: Arc<Mutex<Now>>,
+    report: Option<(PathBuf, std_mpsc::Sender<()>)>,
+}
+
+impl Live {
+    fn new(socket: Option<PathBuf>) -> Self {
+        let inner = Arc::new(Mutex::new((
+            RemoteState::Connecting,
+            String::new(),
+            BTreeMap::new(),
+        )));
+        let report = socket.map(|socket| {
+            let (wake, woken) = std_mpsc::channel::<()>();
+            let (inner, at) = (inner.clone(), socket.clone());
+            thread::spawn(move || {
+                while woken.recv().is_ok() {
+                    // Changes in the next moment go out together.
+                    thread::sleep(Duration::from_millis(100));
+                    while woken.try_recv().is_ok() {}
+                    let _ = rpc(&at, &Request::RemoteReport(snapshot(&inner)));
+                }
+            });
+            (socket, wake)
+        });
+        Self { inner, report }
+    }
+    fn change(&self, f: impl FnOnce(&mut Now)) {
+        if let Ok(mut i) = self.inner.lock() {
+            f(&mut i);
+        }
+        if let Some((_, wake)) = &self.report {
+            let _ = wake.send(());
         }
     }
-    let code = Code::generate()?;
-    let tmp = file.with_extension("tmp");
-    let _ = std::fs::remove_file(&tmp);
-    std::fs::OpenOptions::new()
-        .write(true)
-        .create_new(true)
-        .mode(0o600)
-        .open(&tmp)?
-        .write_all(code.text().as_bytes())?;
-    std::fs::rename(&tmp, &file)?;
-    Ok(code)
+    fn state(&self, state: RemoteState, detail: String) {
+        self.change(|i| {
+            i.0 = state;
+            i.1 = detail;
+            if state != RemoteState::Connected {
+                i.2.clear();
+            }
+        });
+    }
+    /// Sends the last state now, before the process ends.
+    fn flush(&self) {
+        if let Some((socket, _)) = &self.report {
+            let _ = rpc(socket, &Request::RemoteReport(snapshot(&self.inner)));
+        }
+    }
+    fn joined(&self, session: &str, device: &str) {
+        let phone = RemotePhone {
+            device: device.to_owned(),
+            since: devices::now_ms(),
+            watching: vec![],
+            last: None,
+        };
+        self.change(|i| {
+            i.2.insert(session.to_owned(), phone);
+        });
+    }
+    fn left(&self, session: &str) {
+        self.change(|i| {
+            i.2.remove(session);
+        });
+    }
+    fn observer(&self, session: &str) -> Observer {
+        let (live, session) = (self.clone(), session.to_owned());
+        Arc::new(move |activity| {
+            live.change(|i| {
+                let Some(p) = i.2.get_mut(&session) else {
+                    return;
+                };
+                match activity {
+                    Activity::Watching(t) => p.watching.push(t),
+                    Activity::Unwatched(t) => {
+                        if let Some(at) = p.watching.iter().position(|w| *w == t) {
+                            p.watching.remove(at);
+                        }
+                    }
+                    Activity::Acted { op, terminal } => {
+                        p.last = Some(RemoteAct {
+                            op,
+                            terminal,
+                            at: devices::now_ms(),
+                        })
+                    }
+                }
+            })
+        })
+    }
 }
 
-fn pair(socket: &Path, relay: &str, code: &Code, name: &str, role: Role) -> io::Result<()> {
-    let machine = remote::machine(socket);
-    let (device, key) = devices::add(socket, name, role)?;
-    let link = Link {
-        relay: relay.to_owned(),
-        code: code.clone(),
-        device: device.id.clone(),
-        key,
-        machine: machine.id,
-        name: machine.name,
+fn snapshot(inner: &Mutex<Now>) -> RemoteLive {
+    let i = inner.lock().unwrap_or_else(|e| e.into_inner());
+    let mut online: Vec<_> = i.2.values().cloned().collect();
+    online.sort_by_key(|p| p.since);
+    RemoteLive {
+        state: i.0,
+        detail: i.1.clone(),
+        online,
     }
-    .text();
+}
+
+/// Lets a running host show the app the devices as they are now; none running is fine.
+fn refresh(a: &Args) {
+    let _ = rpc(
+        &a.socket,
+        &Request::RemoteDevice {
+            device: String::new(),
+            change: RemoteChange::Refresh,
+        },
+    );
+}
+
+/// Asks the running host.
+fn host(a: &Args, request: Request) -> io::Result<Reply> {
+    match rpc(&a.socket, &request)? {
+        Reply::Error(e) => Err(io::Error::other(e)),
+        reply => Ok(reply),
+    }
+}
+
+fn pair(socket: &Path, relay: &str, name: &str, role: Role) -> io::Result<()> {
+    let (device, link) = devices::pair_link(socket, relay, name, role)?;
     let qr = qrcode::QrCode::new(link.as_bytes())
         .map_err(|e| io::Error::other(e.to_string()))?
         .render::<qrcode::render::unicode::Dense1x2>()
@@ -197,10 +345,11 @@ async fn stay_connected(
     key: Option<String>,
     name: String,
     socket: &Path,
+    live: &Live,
 ) -> io::Result<()> {
     let mut wait = Duration::from_secs(1);
     loop {
-        let (ended, was_up) = connect(base, code, key.as_deref(), &name, socket).await;
+        let (ended, was_up) = connect(base, code, key.as_deref(), &name, socket, live).await;
         match ended {
             Ended::Refused(why) => return Err(io::Error::other(why)),
             Ended::Lost(why) => {
@@ -210,6 +359,10 @@ async fn stay_connected(
                 eprintln!(
                     "keeplined remote: 和中继断开（{why}），{} 秒后重连",
                     wait.as_secs()
+                );
+                live.state(
+                    RemoteState::Connecting,
+                    format!("{why}，{} 秒后重连", wait.as_secs()),
                 );
                 tokio::time::sleep(wait).await;
                 wait = (wait * 2).min(Duration::from_secs(30));
@@ -225,6 +378,7 @@ async fn connect(
     key: Option<&str>,
     name: &str,
     socket: &Path,
+    live: &Live,
 ) -> (Ended, bool) {
     let hash = wire::token_hash(&code.token());
     let url = format!("{base}{}?th={hash}", wire::AGENT_PATH);
@@ -276,6 +430,7 @@ async fn connect(
         }
     };
     eprintln!("keeplined remote: 已连上中继 {base}");
+    live.state(RemoteState::Connected, String::new());
 
     let (out, mut outbox) = mpsc::channel::<Message>(64);
     let writer = tokio::spawn(async move {
@@ -307,9 +462,9 @@ async fn connect(
                 let gone: Vec<String> = sessions
                     .iter()
                     .filter_map(|(id, s)| match s {
-                        Session::Open { device, role, .. } => (!now
+                        Session::Open { device, role, since, .. } => (!now
                             .iter()
-                            .any(|d| &d.id == device && d.role == *role))
+                            .any(|d| &d.id == device && d.role == *role && d.kicked < *since))
                         .then(|| id.clone()),
                         Session::Pairing(_) => None,
                     })
@@ -318,7 +473,8 @@ async fn connect(
                     // Tell the phone why before the session ends and says only "done".
                     close(&out, &id, 4401, "unpaired").await;
                     if let Some(Session::Open { device, .. }) = sessions.remove(&id) {
-                        eprintln!("keeplined remote: 设备 {device} 已取消配对或改了权限，断开");
+                        live.left(&id);
+                        eprintln!("keeplined remote: 设备 {device} 被断开、取消配对或改了权限");
                         devices::log(&log, json!({ "event": "dropped", "device": device }));
                     }
                 }
@@ -372,12 +528,15 @@ async fn connect(
                                 &log,
                                 json!({ "event": "connected", "device": d.id, "name": d.name, "role": d.role }),
                             );
+                            live.joined(&id, &d.id);
                             let access = Access {
                                 role: d.role,
                                 device: Some((d.id.clone(), d.name.clone())),
                                 log: Some(log.clone()),
+                                observer: Some(live.observer(&id)),
                             };
                             Some(Session::Open {
+                                since: devices::now_ms(),
                                 bridge: Bridge::start(
                                     &id,
                                     channel,
@@ -402,14 +561,17 @@ async fn connect(
                     bridge,
                     device,
                     role,
+                    since,
                 }) => match bridge.receive(payload) {
                     Ok(()) => Some(Session::Open {
                         bridge,
                         device,
                         role,
+                        since,
                     }),
                     Err(e) => {
                         eprintln!("keeplined remote: 手机 {id} 断开：{e}");
+                        live.left(&id);
                         close(&out, &id, 4400, "bad message").await;
                         None
                     }
@@ -443,6 +605,7 @@ async fn connect(
                 }
                 Ok(Frame::Wclose { id, .. }) => {
                     if let Some(Session::Open { device, .. }) = sessions.remove(&id) {
+                        live.left(&id);
                         eprintln!("keeplined remote: 设备 {device} 已离开");
                         devices::log(&log, json!({ "event": "left", "device": device }));
                     }
@@ -516,6 +679,8 @@ enum Session {
         device: String,
         /// The role it connected with; a change drops the session.
         role: Role,
+        /// Unix milliseconds; a "disconnect now" after it drops the session.
+        since: u64,
     },
 }
 
@@ -699,28 +864,4 @@ fn pump(
         reason: None,
     };
     let _ = out.blocking_send(Message::text(frame.to_text()));
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn the_code_is_kept_private_and_only_replaced_on_request() {
-        let dir = std::env::temp_dir().join(format!("kl-code-{}", uuid::Uuid::new_v4().simple()));
-        std::fs::create_dir_all(&dir).unwrap();
-        let socket = dir.join("workbench.sock");
-        let a = code(&socket, false).unwrap();
-        assert_eq!(code(&socket, false).unwrap(), a);
-        use std::os::unix::fs::PermissionsExt;
-        let mode = std::fs::metadata(dir.join("remote-code"))
-            .unwrap()
-            .permissions()
-            .mode();
-        assert_eq!(mode & 0o777, 0o600);
-        let b = code(&socket, true).unwrap();
-        assert_ne!(a, b);
-        assert_eq!(code(&socket, false).unwrap(), b);
-        std::fs::remove_dir_all(dir).unwrap();
-    }
 }

@@ -148,6 +148,14 @@ pub(super) fn hand_over(mut stream: UnixStream, shared: &Shared) -> io::Result<(
 /// What a new host answers once it holds every handed-over descriptor.
 pub(super) const HANDOFF_TAKEN: &[u8] = b"taken";
 
+/// The host's relay supervisor, taken out of the lock: it calls back into the host.
+fn supervisor(shared: &Shared) -> io::Result<std::sync::Arc<super::remote::Supervisor>> {
+    lock(shared)?
+        .remote
+        .clone()
+        .ok_or_else(|| io::Error::other("远程还没准备好"))
+}
+
 pub(super) fn dispatch(shared: &Shared, request: Request) -> io::Result<Reply> {
     match request {
         Request::RecognitionStatus => Ok(Reply::Recognition(recognition_status(&*lock(shared)?))),
@@ -534,6 +542,56 @@ pub(super) fn dispatch(shared: &Shared, request: Request) -> io::Result<Reply> {
         }
         Request::SendKeys { id, keys } => {
             send_keys(shared, &id, &keys)?;
+            Ok(Reply::Ok)
+        }
+        Request::RemoteConfigure {
+            enabled,
+            relay,
+            key,
+        } => {
+            let relay = relay.trim().to_owned();
+            let key = key.filter(|k| !k.is_empty());
+            supervisor(shared)?.configure(super::remote::Config {
+                enabled,
+                relay,
+                key,
+            })?;
+            Ok(Reply::Ok)
+        }
+        Request::RemotePair { name, role } => {
+            let remote = supervisor(shared)?;
+            let relay = remote.relay();
+            if relay.is_empty() {
+                return Err(io::Error::other("先填中继地址"));
+            }
+            let role = crate::devices::parse_role(&role)?;
+            let name = Some(name.trim())
+                .filter(|n| !n.is_empty())
+                .unwrap_or("手机");
+            let (_, link) = crate::devices::pair_link(&remote.socket(), &relay, name, role)?;
+            remote.refresh();
+            Ok(Reply::Text(link))
+        }
+        Request::RemoteDevice { device, change } => {
+            let remote = supervisor(shared)?;
+            let socket = remote.socket();
+            match change {
+                RemoteChange::Role(role) => {
+                    crate::devices::set_role(&socket, &device, crate::devices::parse_role(&role)?)?;
+                }
+                RemoteChange::Kick => {
+                    crate::devices::kick(&socket, &device)?;
+                }
+                RemoteChange::Revoke => {
+                    crate::devices::remove(&socket, &device)?;
+                }
+                RemoteChange::Refresh => (),
+            }
+            remote.refresh();
+            Ok(Reply::Ok)
+        }
+        Request::RemoteReport(live) => {
+            supervisor(shared)?.report(live);
             Ok(Reply::Ok)
         }
         Request::TerminalCwd { id } => {
