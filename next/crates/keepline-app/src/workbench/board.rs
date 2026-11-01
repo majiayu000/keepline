@@ -1,6 +1,8 @@
-//! 鸟瞰 as a board (specs/overview-kanban/kanban.html): one column per thing you might do
-//! next, left to right in the order work moves. Each card carries one colored mark, its
-//! space's gradient; everything else stays neutral so the status colors read first.
+//! 鸟瞰 as a board (specs/overview-kanban/kanban-inbox.html): one column per stage, left to
+//! right in the order work moves. A session waiting on you or failed stays in its stage,
+//! marked and raised to the top, instead of jumping to a column of its own. Each card
+//! carries one colored mark, its space's gradient; everything else stays neutral so the
+//! status colors read first.
 use super::*;
 use crate::ui::icons::agent_icon;
 use gpui::{
@@ -14,7 +16,6 @@ use std::time::Duration;
 pub(super) enum Column {
     Todo,
     Running,
-    Needs,
     Review,
     Done,
     Stale,
@@ -51,7 +52,6 @@ impl Column {
         match self {
             Self::Todo => "待办",
             Self::Running => Group::Running.label(),
-            Self::Needs => "要你处理",
             Self::Review => Group::Review.label(),
             Self::Done => Group::Closed.label(),
             Self::Stale => Group::Stale.label(),
@@ -61,7 +61,6 @@ impl Column {
         match self {
             Self::Todo => "todo",
             Self::Running => "running",
-            Self::Needs => "needs",
             Self::Review => "review",
             Self::Done => "done",
             Self::Stale => "stale",
@@ -80,8 +79,9 @@ pub(super) fn column_of(w: &Workspace, s: &AgentSession, now: u64) -> Option<Col
         return None;
     }
     Some(match board_group(w, s) {
-        Group::Running | Group::Working => Column::Running,
-        Group::Waiting | Group::Error | Group::Paused => Column::Needs,
+        // Waiting on you or failed: still at the running stage, marked. A turn you stopped
+        // ended, so it waits for your next step with the finished ones.
+        Group::Running | Group::Working | Group::Waiting | Group::Error => Column::Running,
         Group::Stale => Column::Stale,
         _ => Column::Review,
     })
@@ -95,6 +95,11 @@ pub(super) fn board_group(w: &Workspace, s: &AgentSession) -> Group {
         Some(Phase::Idle) => Group::Review,
         None => session_group(w, s),
     }
+}
+/// The mark on a card whose Agent waits on you or failed: that group, or `None`.
+pub(super) fn asks_you(w: &Workspace, s: &AgentSession) -> Option<Group> {
+    let g = board_group(w, s);
+    matches!(g, Group::Waiting | Group::Error).then_some(g)
 }
 const DAY: u64 = 86_400;
 fn completed_within(w: &Workspace, id: &str, now: u64, window: u64) -> bool {
@@ -283,9 +288,6 @@ fn animated_column_icon(column: Column, animate: bool) -> gpui::AnyElement {
                     ))
                     .into_any_element();
             }
-            Column::Needs => {
-                return icon("icons/target.svg", Group::Waiting.colors().0).into_any_element();
-            }
             _ => (),
         }
     }
@@ -308,25 +310,6 @@ fn animated_column_icon(column: Column, animate: bool) -> gpui::AnyElement {
                         )
                         .into_any_element(),
                 ))
-                .into_any_element()
-        }
-        Column::Needs => {
-            let hue = Group::Waiting.colors().0;
-            frame()
-                .child(overlay(
-                    icon("icons/ring.svg", hue)
-                        .with_animation(
-                            "board-needs-halo",
-                            Animation::new(Duration::from_millis(2000)).repeat(),
-                            move |s, t| {
-                                let k = 0.7 + 0.8 * t;
-                                s.with_transformation(Transformation::scale(gpui::size(k, k)))
-                                    .text_color(hue.opacity(0.7 * (1. - t)))
-                            },
-                        )
-                        .into_any_element(),
-                ))
-                .child(icon("icons/target.svg", hue))
                 .into_any_element()
         }
         Column::Done => frame()
@@ -398,19 +381,16 @@ impl Workbench {
         self.sort_column(c, &mut list);
         list
     }
-    fn sort_column(&self, c: Column, list: &mut [&AgentSession]) {
-        // An Agent holding a live terminal for you comes first, then what has waited
-        // longest; elsewhere the latest comes first.
-        if c == Column::Needs {
-            list.sort_by_key(|s| {
-                (
-                    !needs_attention(&self.workspace, s),
-                    self.session_updated(s),
-                )
-            });
-        } else {
-            list.sort_by_key(|s| std::cmp::Reverse(self.session_updated(s)));
-        }
+    fn sort_column(&self, _c: Column, list: &mut [&AgentSession]) {
+        // Cards that wait on you come first: an Agent holding a live terminal for you, then
+        // what has waited longest. The rest follow, latest first.
+        list.sort_by_key(|s| {
+            let at = i128::from(self.session_updated(s));
+            match asks_you(&self.workspace, s) {
+                Some(_) => (false, !needs_attention(&self.workspace, s), at),
+                None => (true, false, -at),
+            }
+        });
     }
     pub(super) fn board_view(
         &self,
@@ -438,7 +418,7 @@ impl Workbench {
             )
             .into_any_element(),
         ];
-        let mut shown = vec![Column::Running, Column::Needs, Column::Review, Column::Done];
+        let mut shown = vec![Column::Running, Column::Review, Column::Done];
         if self.overview.show_stale {
             shown.push(Column::Stale);
         }
@@ -631,6 +611,14 @@ impl Workbench {
         cx: &Context<Self>,
     ) -> gpui::Stateful<gpui::Div> {
         use super::board_drawer::{DraggedCard, legal};
+        let asking = if column == Column::Running {
+            self.column_sessions(column, now())
+                .iter()
+                .filter(|s| asks_you(&self.workspace, s).is_some())
+                .count()
+        } else {
+            0
+        };
         // The slot stays above the virtual viewport, so it remains visible even
         // when the receiving column is scrolled away from its first item.
         let slot = (cx.has_active_drag()
@@ -722,6 +710,19 @@ impl Workbench {
                             .text_color(T::color(T::muted()))
                             .child(count.to_string()),
                     )
+                    .when(asking > 0, |d| {
+                        let hue = Group::Waiting.colors().0;
+                        d.child(
+                            div()
+                                .flex()
+                                .items_center()
+                                .gap(px(T::S4))
+                                .text_size(px(T::META))
+                                .text_color(hue)
+                                .child(div().size(px(T::S6)).rounded_full().bg(hue))
+                                .child(format!("{asking} 等你")),
+                        )
+                    })
                     .child(div().flex_1())
                     .when(column == Column::Stale && count > 0, |d| {
                         d.child(
@@ -849,6 +850,7 @@ impl Workbench {
                     id: id.clone(),
                     title: task.title.clone(),
                     from: Column::Todo,
+                    asks_you: false,
                 },
                 super::board_drawer::lift_card(cx.entity().downgrade()),
             )
@@ -910,7 +912,7 @@ impl Workbench {
     ) -> gpui::Stateful<gpui::Div> {
         let enter = session.clone();
         let menu_id = session.id.clone();
-        let group = board_group(&self.workspace, session);
+        let asks_you = asks_you(&self.workspace, session);
         let content = self.workspace.content.get(&session.id);
         let space_id = session_space(&self.workspace, session).unwrap_or("外部");
         let space_name = self
@@ -929,7 +931,7 @@ impl Workbench {
             .iter()
             .collect::<String>()
             .to_uppercase();
-        let running_since = (column == Column::Running)
+        let running_since = (column == Column::Running && asks_you.is_none())
             .then(|| self.turn_started(session))
             .flatten();
         let when = match running_since {
@@ -954,8 +956,8 @@ impl Workbench {
             )
         });
         let mut left: Vec<gpui::AnyElement> = vec![];
-        match column {
-            Column::Needs => {
+        match (column, asks_you) {
+            (_, Some(group)) => {
                 let (dot, _, _) = group.colors();
                 left.push(
                     wait_bars(now.saturating_sub(self.session_updated(session)), dot)
@@ -963,21 +965,39 @@ impl Workbench {
                 );
                 left.push(status_pill(group).into_any_element());
             }
-            Column::Running => {
+            (Column::Running, None) => {
                 let (dot, ink, _) = Group::Running.colors();
                 left.push(pill(when.clone(), dot.opacity(0.42), Some(dot), ink).into_any_element());
                 left.extend(branch_pill.map(|p| p.into_any_element()));
             }
-            Column::Stale => left.push(status_pill(Group::Stale).into_any_element()),
+            (Column::Stale, None) => left.push(status_pill(Group::Stale).into_any_element()),
+            (Column::Review, None) if board_group(&self.workspace, session) == Group::Paused => {
+                left.push(status_pill(Group::Paused).into_any_element());
+                left.extend(branch_pill.map(|p| p.into_any_element()));
+            }
             _ => left.extend(branch_pill.map(|p| p.into_any_element())),
         }
         let title = self.session_title(session);
         // What it asks, unless that only repeats the title (an interrupted turn says nothing).
-        let quote = (column == Column::Needs)
-            .then(|| self.session_line(session))
+        let quote = asks_you
+            .map(|_| self.session_line(session))
             .filter(|q| !q.trim().is_empty() && q.trim() != title.trim());
 
         card_frame(gpui::SharedString::from(format!("card-{}", session.id)))
+            .when_some(asks_you, |d, g| {
+                // Marked in place: the status hue on the border and a bar down the left.
+                let hue = g.colors().0;
+                d.border_color(hue.opacity(0.55)).child(
+                    div()
+                        .absolute()
+                        .left(px(-T::BORDER_WIDTH))
+                        .top(px(T::S10))
+                        .bottom(px(T::S10))
+                        .w(px(T::BOARD_FLAG))
+                        .rounded_r(px(T::BOARD_FLAG))
+                        .bg(hue),
+                )
+            })
             .group(hover_group.clone())
             .aria_label(gpui::SharedString::from(format!(
                 "会话：{}",
@@ -993,6 +1013,7 @@ impl Workbench {
                     id: session.id.clone(),
                     title: title.clone(),
                     from: column,
+                    asks_you: asks_you.is_some(),
                 },
                 super::board_drawer::lift_card(cx.entity().downgrade()),
             )
@@ -1084,7 +1105,9 @@ impl Workbench {
                         )
                     }),
             )
-            .when(column == Column::Running && animate, |d| d.child(sweep()))
+            .when(column == Column::Running && animate && asks_you.is_none(), |d| {
+                d.child(sweep())
+            })
             .when(self.overview.card_menu.as_ref() == Some(&session.id), |d| {
                 d.child(
                     gpui::deferred(

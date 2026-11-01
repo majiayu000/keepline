@@ -201,7 +201,6 @@ impl Workbench {
         let c = [
             Column::Todo,
             Column::Running,
-            Column::Needs,
             Column::Review,
             Column::Done,
         ]
@@ -663,11 +662,12 @@ impl Workbench {
             }
             // The sidebar with the space's todos unfolded above its sessions.
             "SidebarTodos" => self.tasks.todos_open = true,
-            // The board: a card's drawer, an accepted drop with 撤销, a refused one.
+            // The board: a card's drawer, an accepted drop with 撤销, a refused one. A card
+            // that waits on you sits first in 在跑, so the drawer and the refusal use it.
             "BoardDrawer" => {
                 use super::board::Column;
                 self.overview.drawer = self
-                    .column_sessions(Column::Needs, now())
+                    .column_sessions(Column::Running, now())
                     .first()
                     .map(|s| s.id.clone());
             }
@@ -676,13 +676,14 @@ impl Workbench {
                 let from = if name == "BoardAccept" {
                     Column::Review
                 } else {
-                    Column::Needs
+                    Column::Running
                 };
                 let card = self.column_sessions(from, now()).first().map(|s| {
                     super::board_drawer::DraggedCard {
                         id: s.id.clone(),
                         title: self.session_title(s),
                         from,
+                        asks_you: super::board::asks_you(&self.workspace, s).is_some(),
                     }
                 });
                 if let Some(card) = card {

@@ -2734,7 +2734,7 @@ pub fn start(
                     let (from, steps) = if name == "BoardDrag" {
                         ("review", 1.)
                     } else {
-                        ("needs", 2.)
+                        ("running", 2.)
                     };
                     let (start, step) = handle
                         .update(cx, |v, _, _| {
