@@ -86,7 +86,7 @@ pub fn glyph(group: Group) -> gpui::Div {
         Group::Working | Group::Running => "◐",
         Group::Done | Group::Review => "✓",
         Group::Paused => "‖",
-        Group::Ready => "○",
+        Group::Ready | Group::Fresh => "○",
         Group::Stale => "·",
     };
     div()

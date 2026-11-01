@@ -2,7 +2,7 @@
 use super::*;
 
 /// Row order by the shown state: what needs you, then live work, then the rest.
-const SIDEBAR_ORDER: [Group; 9] = [
+const SIDEBAR_ORDER: [Group; 10] = [
     Group::Waiting,
     Group::Error,
     Group::Done,
@@ -11,6 +11,7 @@ const SIDEBAR_ORDER: [Group; 9] = [
     Group::Review,
     Group::Paused,
     Group::Ready,
+    Group::Fresh,
     Group::Stale,
 ];
 pub(super) fn sidebar_rank(g: Group, attention: bool) -> (bool, usize) {

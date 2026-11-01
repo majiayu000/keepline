@@ -68,6 +68,7 @@ impl Group {
             Self::Working => "在跑",
             Self::Done => "做完了",
             Self::Ready => "做完了",
+            Self::Fresh => "新开的",
         }
     }
     /// The group's base hue, from `colors.json` or the default; its ink and wash derive

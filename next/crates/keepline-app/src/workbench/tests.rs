@@ -138,6 +138,39 @@ fn closing_interrupted_pane_only_removes_its_placement() {
 }
 
 #[test]
+fn an_empty_agent_reads_as_fresh_not_done() {
+    use keepline_core::content::{Content, Quote, Turn};
+    let mut w = fixture();
+    let mut s = w.agent_sessions[0].clone();
+    s.id = "live".into();
+    s.terminal = Some("t0".into());
+    s.current = true;
+    let unseen = HashSet::new();
+    // Just opened: no record yet, then a record with no ask and no turn.
+    assert!(sidebar_status(&w, &unseen, &s) == (Group::Fresh, false));
+    w.content.insert("live".into(), Content::default());
+    assert!(sidebar_status(&w, &unseen, &s) == (Group::Fresh, false));
+    assert_eq!(Group::Fresh.label(), "新开的");
+    // Once it has an ask or a finished turn, it is 做完了 again.
+    w.content.insert(
+        "live".into(),
+        Content {
+            turn: Turn::Completed,
+            ..Default::default()
+        },
+    );
+    assert!(sidebar_status(&w, &unseen, &s) == (Group::Ready, false));
+    w.content.insert(
+        "live".into(),
+        Content {
+            asks: vec![Quote::default()],
+            ..Default::default()
+        },
+    );
+    assert!(sidebar_status(&w, &unseen, &s) == (Group::Ready, false));
+}
+
+#[test]
 fn live_phase_reads_only_running_keepline_terminals() {
     use keepline_core::content::{Background, Content, Turn};
     let mut w = fixture();
