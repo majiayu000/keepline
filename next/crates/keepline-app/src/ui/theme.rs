@@ -384,6 +384,8 @@ impl Theme {
     pub const ICON_HEIGHT: f32 = 22.;
     /// The glyph inside an `icon_button`, e.g. the sidebar toggle.
     pub const ICON_GLYPH: f32 = 18.;
+    /// The ≑ beside 会话 that opens the view menu.
+    pub const VIEW_GLYPH: f32 = 14.;
     pub const CARD_MIN: f32 = 300.;
     pub const OVERVIEW_X: f32 = 28.;
     pub const SEARCH_HEIGHT: f32 = 260.;

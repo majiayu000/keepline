@@ -46,6 +46,8 @@ pub(super) struct SidebarPrefs {
     pub wasm: super::sidebar_wasm::Views,
     /// Terminals whose session sits in 置顶, in the order pinned; dropped when it ends.
     pub pinned: Vec<String>,
+    /// The view menu opened from the ≑ beside 会话, where it was opened. Not saved.
+    pub view_menu: Option<gpui::Point<gpui::Pixels>>,
 }
 impl SidebarPrefs {
     fn path() -> Option<PathBuf> {
@@ -68,6 +70,7 @@ impl SidebarPrefs {
                 .filter_map(|l| l.strip_prefix("pin "))
                 .map(str::to_owned)
                 .collect(),
+            view_menu: None,
         }
     }
     /// Best effort: a choice that cannot be written still holds until quit.
@@ -606,11 +609,6 @@ impl Workbench {
         match preset.group {
             Grouping::Flat if all_pinned => (),
             Grouping::Flat => {
-                out.push(
-                    Self::section_title("会话".into(), sessions.len())
-                        .mt(px(T::S14))
-                        .into_any_element(),
-                );
                 for l in sessions {
                     let d = detail(&l);
                     push(&mut out, l, d, End::State);
@@ -831,35 +829,96 @@ impl Workbench {
             .into_any_element()
     }
     /// The switch over the list: one segment per preset.
-    pub(super) fn preset_switch(&self, cx: &Context<Self>) -> gpui::Div {
-        let chosen = self.sidebar.preset().id.clone();
-        let mut row = div()
+    /// 会话 and its count, heading the list in every preset. The ≑ for choosing the
+    /// view shows while the pointer is over the row, or while its menu is open, like the
+    /// filter button in Claude's desktop sidebar; it sits on this one sidebar-wide row so
+    /// it never reads as belonging to a single group.
+    pub(super) fn sessions_header(&self, count: usize, cx: &Context<Self>) -> gpui::Div {
+        let open = self.sidebar.view_menu.is_some();
+        div()
+            .group("sessions-header")
             .flex()
-            .gap(px(T::S2))
-            .p(px(T::S2))
-            .rounded(px(T::CONTROL_RADIUS))
-            .bg(T::color(T::chip()));
-        for p in presets::all() {
-            let id = p.id.clone();
-            let on = p.id == chosen;
-            row = row.child(
+            .items_center()
+            .child(self.heading("会话".into(), count, cx).flex_1())
+            .child(
                 div()
-                    .id(gpui::SharedString::from(format!("sidebar-preset-{}", p.id)))
-                    .flex_1()
+                    .id("sidebar-view")
+                    .role(gpui::accesskit::Role::Button)
+                    .aria_label("选择视图")
+                    .mt(px(T::S14))
+                    .ml(px(T::S2))
+                    .size(px(T::ICON_HEIGHT))
+                    .flex_shrink_0()
                     .flex()
+                    .items_center()
                     .justify_center()
-                    .py(px(T::S2))
                     .rounded(px(T::CONTROL_RADIUS))
                     .cursor_pointer()
-                    .text_size(px(T::CHIP_SIZE))
-                    .text_color(T::color(if on { T::primary() } else { T::muted() }))
-                    .when(on, |d| d.bg(T::color(T::raised())))
-                    .child(p.name.clone())
-                    .on_click(
-                        cx.listener(move |this, _, _, cx| this.choose_sidebar_preset(&id, cx)),
+                    .opacity(if open { 1. } else { 0. })
+                    .group_hover("sessions-header", |s| s.opacity(1.))
+                    .when(open, |d| d.bg(T::color(T::button_hover())))
+                    .hover(|s| s.bg(T::color(T::button_hover())))
+                    .child(
+                        gpui::svg()
+                            .path("icons/sliders.svg")
+                            .size(px(T::VIEW_GLYPH))
+                            .text_color(T::color(T::secondary())),
+                    )
+                    .on_mouse_down(
+                        gpui::MouseButton::Left,
+                        cx.listener(|this, event: &gpui::MouseDownEvent, _, cx| {
+                            this.sidebar.view_menu = match this.sidebar.view_menu {
+                                Some(_) => None,
+                                None => Some(gpui::point(
+                                    event.position.x,
+                                    event.position.y + px(T::S12),
+                                )),
+                            };
+                            cx.stop_propagation();
+                            cx.notify();
+                        }),
                     ),
-            );
-        }
-        row
+            )
+    }
+    /// The views to pick from, the current one ticked; picking one closes the menu.
+    pub(super) fn view_menu_view(
+        &self,
+        position: gpui::Point<gpui::Pixels>,
+        window: &Window,
+        cx: &Context<Self>,
+    ) -> gpui::AnyElement {
+        let chosen = self.sidebar.preset().id.clone();
+        let entries = presets::all()
+            .into_iter()
+            .map(|p| {
+                let id = p.id.clone();
+                let on = p.id == chosen;
+                div()
+                    .id(gpui::SharedString::from(format!("sidebar-preset-{}", p.id)))
+                    .role(gpui::accesskit::Role::Button)
+                    .aria_label(p.name.clone())
+                    .h(px(T::ROW))
+                    .px(px(T::S8))
+                    .flex()
+                    .items_center()
+                    .gap(px(T::S8))
+                    .rounded(px(T::CONTROL_RADIUS))
+                    .text_size(px(T::SMALL))
+                    .cursor_pointer()
+                    .hover(|s| s.bg(T::color(T::button_hover())))
+                    .child(div().flex_1().child(p.name.clone()))
+                    .when(on, |d| {
+                        d.child(div().text_color(T::color(T::link())).child("✓"))
+                    })
+                    .on_click(cx.listener(move |this, _, _, cx| {
+                        this.sidebar.view_menu = None;
+                        this.choose_sidebar_preset(&id, cx);
+                    }))
+                    .into_any_element()
+            })
+            .collect();
+        self.popup(position, entries, window, cx, |this| {
+            this.sidebar.view_menu = None
+        })
     }
 }
