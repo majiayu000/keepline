@@ -700,7 +700,8 @@ impl Workbench {
             }
             // The left column's presets, set in memory so the evidence run writes no choice.
             "SidebarClassic" | "SidebarStatus" | "SidebarStatusOpen" | "SidebarDirectory"
-            | "SidebarRail" | "SidebarWasm" | "SidebarWasmOpen" | "SidebarWasmClosed" => {
+            | "SidebarRail" | "SidebarWasm" | "SidebarWasmOpen" | "SidebarWasmClosed"
+            | "SidebarViewMenu" => {
                 self.sidebar.preset = match name {
                     "SidebarStatus" | "SidebarStatusOpen" => "status",
                     "SidebarDirectory" => "directory",
@@ -711,6 +712,9 @@ impl Workbench {
                 .into();
                 self.sidebar.collapsed = name == "SidebarRail";
                 self.sidebar.toggled.clear();
+                // The ≑ beside 会话 with its menu open, as a click on it leaves it.
+                self.sidebar.view_menu = (name == "SidebarViewMenu")
+                    .then(|| gpui::point(px(T::SIDEBAR - 24.), px(T::TOP + 170.)));
                 if name == "SidebarStatusOpen" {
                     self.sidebar.toggled.insert("status:rest".into());
                 }

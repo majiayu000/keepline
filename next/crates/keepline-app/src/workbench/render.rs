@@ -611,6 +611,9 @@ impl Render for Workbench {
         if let Some(menu) = &self.layout.menu {
             root = root.child(self.menu_view(menu, window, cx));
         }
+        if let Some(position) = self.sidebar.view_menu {
+            root = root.child(self.view_menu_view(position, window, cx));
+        }
         if let Some(position) = self.layout.icon_menu {
             root = root.child(self.icon_menu_view(position, window, cx));
         }

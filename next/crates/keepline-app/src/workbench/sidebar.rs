@@ -291,6 +291,7 @@ impl Workbench {
             .collect();
         unread.sort_by(|a, b| a.0.cmp(&b.0));
         sidebar = sidebar.child(self.todos_view(space_name, dense, cx));
+        sidebar = sidebar.child(self.sessions_header(sessions.len() + unread.len(), cx));
         if sessions.is_empty() && unread.is_empty() {
             sidebar = sidebar.child(
                 label("没有打开的会话。在终端里运行 codex 或 claude 就会出现在这里")
@@ -380,16 +381,6 @@ impl Workbench {
                 .bg(T::color(T::panel()))
                 .border_r(px(T::BORDER_WIDTH))
                 .border_color(T::color(T::border()))
-                .child(
-                    div()
-                        .flex_shrink_0()
-                        .px(px(T::S8))
-                        .pt(px(T::S8))
-                        .flex()
-                        .items_center()
-                        .gap(px(T::S4))
-                        .child(self.preset_switch(cx).flex_1()),
-                )
                 .child(sidebar)
                 .when_some(self.quota_view(), |d, quota| d.child(quota))
                 .child(
