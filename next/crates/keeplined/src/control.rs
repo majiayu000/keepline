@@ -19,9 +19,10 @@ keeplined events [--json]                    先列出现在的状态，再每�
                                              started / waiting / error / done、approval / approval_gone、
                                              terminal_started / terminal_exited、command_done / command_failed；
                                              lagged 表示跟不上丢了事件，应重新开一次取现状
-keeplined split <终端> [--down] [--before] [--size 0.5] [--cwd 目录] [--json] [-- 命令…]
-                                             在这个终端旁边开一块新分屏（默认右边），打印新终端编号；
-                                             给了命令就在新分屏的 shell 里跑，跑完留在 shell
+keeplined split <终端> [--down] [--size 0.5] [--tab|--here] [--cwd 目录] [--json] [-- 命令…]
+                                             在这个终端右边（--down 下面）开一块新分屏，打印新终端编号；
+                                             标签已有 4 块或切开太窄时开到「旁屏」标签（--here 改为拒绝，
+                                             --tab 直接开到旁屏）；给了命令就在新 shell 里跑，跑完留在 shell
 keeplined close <终端>                       关掉这块分屏并结束里面的程序
 keeplined remote --stdio                     给另一台机器或手机 App 用：一行一个 JSON 请求和回复（看画面、打字、按键、
                                              答审批、事件），经 ssh 连过来：ssh 主机 keeplined remote --stdio
@@ -520,10 +521,119 @@ fn wait(
         std::thread::sleep(Duration::from_millis(500));
     }
 }
+/// A tab holds at most this many panes opened from outside the app; past it, or when a
+/// split would leave a half too small, the pane goes to a side tab instead.
+const MAX_PANES: usize = 4;
+/// Side tabs are named after the terminal they serve: `side~<terminal>`, then `~2`, `~3`.
+const SIDE: &str = "side~";
+
+/// Where a new pane goes: beside a pane, or into a side tab that does not exist yet.
+enum Placement {
+    Beside {
+        target: String,
+        axis: Axis,
+        share: u16,
+        cols: u16,
+        rows: u16,
+    },
+    NewTab {
+        id: String,
+        title: String,
+    },
+}
+fn split_room(socket: &Path, target: &str, axis: Axis, share: u16) -> io::Result<(u16, u16)> {
+    match rpc(
+        socket,
+        &Request::SplitRoom {
+            target: target.to_owned(),
+            axis,
+            share,
+        },
+    )? {
+        Reply::Size { cols, rows } => Ok((cols, rows)),
+        other => Err(io::Error::other(format!("unexpected reply: {other:?}"))),
+    }
+}
+/// The terminal a tab's side tabs belong to: its top-left pane, where the user started.
+/// A side pane split again fills the same side tabs rather than starting a chain.
+fn side_owner(w: &Workspace, tab: &Tab, terminal: &str) -> String {
+    if let Some(owner) = tab.id.strip_prefix(SIDE).and_then(|r| r.split('~').next()) {
+        return owner.to_owned();
+    }
+    w.tab_terminals(&tab.id)
+        .into_iter()
+        .next()
+        .unwrap_or_else(|| terminal.to_owned())
+}
+/// The first side tab of `owner` with room for one more pane, beside its last pane,
+/// right if that fits and down otherwise; or the next side tab to open.
+fn side_placement(
+    socket: &Path,
+    w: &Workspace,
+    owner: &str,
+    asking: &str,
+) -> io::Result<Placement> {
+    // Named for the Agent asking, or the one where the user started.
+    let name = [asking, owner]
+        .iter()
+        .find_map(|t| w.current_agent(t))
+        .map(|s| s.runtime.name().to_owned())
+        .unwrap_or_else(|| "终端".into());
+    // 「Claude 的旁屏」, 「终端的旁屏」.
+    let gap = if name.ends_with(|c: char| c.is_ascii()) {
+        " "
+    } else {
+        ""
+    };
+    for n in 1.. {
+        let id = if n == 1 {
+            format!("{SIDE}{owner}")
+        } else {
+            format!("{SIDE}{owner}~{n}")
+        };
+        let Some(tab) = w.tabs.iter().find(|t| t.id == id) else {
+            let title = if n == 1 {
+                format!("{name}{gap}的旁屏")
+            } else {
+                format!("{name}{gap}的旁屏 {n}")
+            };
+            return Ok(Placement::NewTab { id, title });
+        };
+        let panes = w.tab_terminals(&tab.id);
+        let Some(last) = panes.last().filter(|_| panes.len() < MAX_PANES) else {
+            continue;
+        };
+        for axis in [Axis::Right, Axis::Down] {
+            if let Ok((cols, rows)) = split_room(socket, last, axis, 5000) {
+                return Ok(Placement::Beside {
+                    target: last.clone(),
+                    axis,
+                    share: 5000,
+                    cols,
+                    rows,
+                });
+            }
+        }
+    }
+    unreachable!("there is always a next side tab")
+}
+
 /// 同类终端工具's `pane split` and Rex's `new_split`: a new shell beside a terminal, in its
-/// tab, in the directory that shell is in now. The workbench shows it as soon as it
-/// next reads the host; it does not take the keyboard from the pane the user is in.
+/// tab, in the directory that shell is in now. New panes only go right or down, so the
+/// pane the user started in keeps the top-left corner. A tab that already has four panes,
+/// or a split that would leave a half too small, sends the pane to a side tab named after
+/// that terminal instead (`--here` refuses then; `--tab` always goes there). The
+/// workbench shows it as soon as it next reads the host and never moves the keyboard or
+/// the shown tab for it.
 fn split(a: Args) -> io::Result<()> {
+    if a.has("before") {
+        return Err(io::Error::other(
+            "--before 已去掉：新分屏只往右或往下开，原来那块保持在左上角",
+        ));
+    }
+    if a.has("here") && a.has("tab") {
+        return Err(io::Error::other("--here 和 --tab 只能选一个"));
+    }
     let w = workspace(&a.socket)?;
     let target = resolve(&w, a.arg(0, "终端")?)?;
     let source = w
@@ -531,11 +641,9 @@ fn split(a: Args) -> io::Result<()> {
         .iter()
         .find(|t| t.id == target)
         .ok_or_else(|| io::Error::other("终端不存在"))?;
-    if w.terminal_tab(&target).is_none() {
-        return Err(io::Error::other(
-            "这个终端没有摆在任何画面里，不能在它旁边分屏",
-        ));
-    }
+    let tab = w
+        .terminal_tab(&target)
+        .ok_or_else(|| io::Error::other("这个终端没有摆在任何画面里，不能在它旁边分屏"))?;
     let share = match a.value("size") {
         None => 5000,
         Some(v) => {
@@ -553,18 +661,39 @@ fn split(a: Args) -> io::Result<()> {
     } else {
         Axis::Right
     };
-    // Asked first, so a split with no room starts nothing; the new pane starts at the
-    // size it will show at, so a split of it right after is judged by that size.
-    let (cols, rows) = match rpc(
-        &a.socket,
-        &Request::SplitRoom {
-            target: target.clone(),
-            axis,
-            share,
-        },
-    )? {
-        Reply::Size { cols, rows } => (cols, rows),
-        other => return Err(io::Error::other(format!("unexpected reply: {other:?}"))),
+    // Asked before anything starts, so a refused split leaves nothing behind; a pane
+    // beside another starts at the size it will show at.
+    let panes = w.tab_terminals(&tab.id).len();
+    let (placement, why) = if a.has("tab") {
+        (None, "按 --tab".to_owned())
+    } else if panes >= MAX_PANES {
+        let why = format!("这个标签已经有 {panes} 块");
+        if a.has("here") {
+            return Err(io::Error::other(format!(
+                "{why}，不再往里加；去掉 --here 会开在旁屏标签"
+            )));
+        }
+        (None, why)
+    } else {
+        match split_room(&a.socket, &target, axis, share) {
+            Ok((cols, rows)) => (
+                Some(Placement::Beside {
+                    target: target.clone(),
+                    axis,
+                    share,
+                    cols,
+                    rows,
+                }),
+                String::new(),
+            ),
+            Err(e) if a.has("here") => return Err(e),
+            Err(e) => (None, e.to_string()),
+        }
+    };
+    let overflow = placement.is_none();
+    let placement = match placement {
+        Some(p) => p,
+        None => side_placement(&a.socket, &w, &side_owner(&w, tab, &target), &target)?,
     };
     let cwd = match a.value("cwd") {
         Some(dir) => std::fs::canonicalize(dir)
@@ -589,6 +718,11 @@ fn split(a: Args) -> io::Result<()> {
             .duration_since(std::time::UNIX_EPOCH)
             .map_or(0, |d| d.as_nanos())
     );
+    // A new tab's pane is sized by the workbench once that tab is shown.
+    let (cols, rows) = match &placement {
+        Placement::Beside { cols, rows, .. } => (*cols, *rows),
+        Placement::NewTab { .. } => (100, 30),
+    };
     match rpc(
         &a.socket,
         &Request::Launch {
@@ -604,28 +738,60 @@ fn split(a: Args) -> io::Result<()> {
         Reply::Workspace(_) => (),
         other => return Err(io::Error::other(format!("unexpected reply: {other:?}"))),
     }
-    let edit = Edit::SplitPane {
-        target: target.clone(),
-        terminal: id.clone(),
-        axis,
-        before: a.has("before"),
-        share,
+    let (edit, beside) = match placement {
+        Placement::Beside {
+            target,
+            axis,
+            share,
+            ..
+        } => (
+            Edit::SplitPane {
+                target: target.clone(),
+                terminal: id.clone(),
+                axis,
+                before: false,
+                share,
+            },
+            Some(target),
+        ),
+        Placement::NewTab { id: tab, title } => (
+            Edit::PutTab {
+                tab: Tab {
+                    id: tab,
+                    space: source.space.clone(),
+                    default_task: None,
+                    title,
+                    layout: Some(Layout::Leaf(id.clone())),
+                },
+            },
+            None,
+        ),
     };
     if let Err(e) = rpc(&a.socket, &Request::Edit { revision: 0, edit }) {
         // Nothing shows it, so nothing would ever stop it.
         let _ = rpc(&a.socket, &Request::Stop { id });
         return Err(e);
     }
+    let after = workspace(&a.socket)?;
+    let placed = after.terminal_tab(&id);
+    let title = placed.map(|t| t.title.clone()).unwrap_or_default();
     if a.has("json") {
-        let tab = workspace(&a.socket)?
-            .terminal_tab(&id)
-            .map(|t| t.id.clone());
         println!(
             "{}",
-            serde_json::json!({ "id": id, "tab": tab, "beside": target })
+            serde_json::json!({
+                "id": id,
+                "tab": placed.map(|t| &t.id),
+                "tab_title": title,
+                "beside": beside,
+                "overflow": overflow.then_some(&why),
+            })
         );
     } else {
         println!("{id}");
+        if overflow {
+            // On stderr, so `id=$(keeplined split …)` still captures only the id.
+            eprintln!("{why}，开在了「{title}」标签（不切换用户的画面）");
+        }
     }
     Ok(())
 }
@@ -741,7 +907,9 @@ mod tests {
                 "{command}"
             );
         }
-        for flag in ["--force", "--wait", "--until", "--enter", "--lines"] {
+        for flag in [
+            "--force", "--wait", "--until", "--enter", "--lines", "--tab", "--here",
+        ] {
             assert!(SKILL.contains(flag), "{flag}");
         }
     }

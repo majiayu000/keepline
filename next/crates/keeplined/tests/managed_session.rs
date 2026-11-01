@@ -4433,21 +4433,76 @@ fn command_line_splits_a_pane_beside_a_terminal_and_closes_it() {
         "a refused split starts nothing"
     );
 
-    // 80 columns cannot give a fifth away: refused before anything starts.
-    let (ok, _, err) = cli(&["split", "base", "--size", "0.2"]);
+    // 80 columns cannot give a fifth away: `--here` refuses before anything starts…
+    let (ok, _, err) = cli(&["split", "base", "--size", "0.2", "--here"]);
     assert!(!ok && err.contains("只剩 16 列"), "{err}");
     assert_eq!(
         h.workspace().terminals.len(),
         before,
         "a split with no room starts nothing"
     );
-    // A split of a pane that is itself a split still lands beside it, in the same tab.
-    let (ok, out, err) = cli(&["split", &id, "--before"]);
-    assert!(ok, "{err}");
-    let third = out.trim().to_owned();
-    assert_eq!(h.workspace().tab_terminals("t"), ["base", &third, &id]);
-    assert!(cli(&["close", &third]).0);
+    // …and without it the pane goes to a side tab, saying so on stderr only.
+    let (ok, out, err) = cli(&["split", "base", "--size", "0.2"]);
+    assert!(ok && err.contains("开在了「终端的旁屏」"), "{err}");
+    let side = out.trim().to_owned();
+    assert!(!side.contains('\n'), "stdout is the id alone: {out}");
+    let w = h.workspace();
+    let side_tab = w.terminal_tab(&side).unwrap();
+    assert_eq!(
+        (side_tab.id.as_str(), side_tab.title.as_str()),
+        ("side~base", "终端的旁屏")
+    );
+    assert_eq!(
+        w.tab_terminals("t"),
+        ["base", &id],
+        "the shown tab is untouched"
+    );
+    let (ok, _, err) = cli(&["split", &id, "--before"]);
+    assert!(!ok && err.contains("--before 已去掉"), "{err}");
 
+    // Fill the tab to four panes; the first one stays first, at the top left.
+    let (ok, out, err) = cli(&["split", &id]);
+    assert!(ok && err.is_empty(), "{err}");
+    let third = out.trim().to_owned();
+    let (ok, out, err) = cli(&["split", "base"]);
+    assert!(ok && err.is_empty(), "{err}");
+    let fourth = out.trim().to_owned();
+    assert_eq!(
+        h.workspace().tab_terminals("t"),
+        ["base", &fourth, &id, &third]
+    );
+    // A fifth goes beside the side tab's last pane, in the same side tab.
+    let (ok, _, err) = cli(&["split", "base", "--here"]);
+    assert!(!ok && err.contains("已经有 4 块"), "{err}");
+    let (ok, out, err) = cli(&["split", "base"]);
+    assert!(ok && err.contains("已经有 4 块"), "{err}");
+    let fifth = out.trim().to_owned();
+    assert_eq!(
+        h.workspace().tab_terminals("side~base"),
+        [side.as_str(), &fifth]
+    );
+    // `--tab` skips the shown tab, and a side pane split again stays in the side tabs.
+    let (ok, out, err) = cli(&["split", &id, "--tab"]);
+    assert!(ok && err.contains("--tab"), "{err}");
+    let sixth = out.trim().to_owned();
+    let (ok, out, _) = cli(&["split", &sixth, "--tab"]);
+    assert!(ok);
+    let seventh = out.trim().to_owned();
+    assert_eq!(
+        h.workspace().tab_terminals("side~base"),
+        [side.as_str(), &fifth, &sixth, &seventh]
+    );
+    let (ok, out, err) = cli(&["split", &side, "--json"]);
+    assert!(ok, "{err}");
+    let json: serde_json::Value = serde_json::from_str(&out).unwrap();
+    assert_eq!(json["tab"], "side~base~2");
+    assert_eq!(json["tab_title"], "终端的旁屏 2");
+    assert_eq!(json["overflow"], "这个标签已经有 4 块");
+    assert_eq!(h.workspace().tab_terminals("t")[0], "base");
+
+    for pane in [&third, &fourth] {
+        assert!(cli(&["close", pane]).0);
+    }
     let (ok, _, err) = cli(&["close", &id]);
     assert!(ok, "{err}");
     assert_eq!(

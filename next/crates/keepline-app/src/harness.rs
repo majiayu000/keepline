@@ -211,28 +211,32 @@ pub fn start(
             shown_after(cx, 2).await;
             let b = ok(run(args(&["split", &a, "--down", "--", "echo pane-b"])).await);
             shown_after(cx, 3).await;
-            let c = ok(run(args(&["split", "base", "--down", "--before", "--", "echo pane-c"])).await);
+            let c = ok(run(args(&["split", "base", "--down", "--", "echo pane-c"])).await);
             let shown = shown_after(cx, 4).await;
-            assert_eq!(shown.0, vec![c.clone(), "base".into(), a.clone(), b.clone()], "four panes out of order");
+            assert_eq!(shown.0, vec!["base".to_owned(), c.clone(), a.clone(), b.clone()], "four panes out of order");
             assert_eq!(shown.1.as_deref(), Some("base"), "a split took the keyboard");
             shot("3-four-panes.png", cx);
-            // Splitting one pane again and again stops while both halves are still usable.
-            let mut last = b.clone();
-            let mut refusal = None;
-            let mut count = 4;
-            for _ in 0..8 {
-                let (done, out, err) = run(args(&["split", &last])).await;
-                if !done { refusal = Some(err); break; }
-                last = out;
-                count += 1;
-                assert_eq!(shown_after(cx, count).await.0.len(), count, "a split never showed");
-            }
-            let refusal = refusal.expect("splitting never stopped");
-            assert!(refusal.contains("只剩"), "{refusal}");
-            let full = handle.update(cx, |v, w, a| v.visual_pane_focus(w, a)).unwrap();
-            assert_eq!(full.1.as_deref(), Some("base"));
-            eprintln!("refused at {} panes: {}", full.0.len(), refusal.trim());
-            shot("4-full.png", cx);
+            // A fifth and sixth go to the side tab: the shown tab, its four panes and the
+            // keyboard stay as they are, and the user's pane keeps the top-left corner.
+            let (done, fifth, why) = run(args(&["split", &b, "--", "echo pane-side-1"])).await;
+            assert!(done && why.contains("已经有 4 块") && why.contains("终端的旁屏"), "{why}");
+            let (done, sixth, _) = run(args(&["split", "base", "--", "echo pane-side-2"])).await;
+            assert!(done);
+            wait(800).await;
+            let still = handle.update(cx, |v, w, a| v.visual_pane_focus(w, a)).unwrap();
+            assert_eq!(still.0.len(), 4, "the shown tab changed");
+            assert_eq!(still.0[0], "base", "the user's pane left the top left");
+            assert_eq!(still.1.as_deref(), Some("base"), "a side pane took the keyboard");
+            let titles = handle.update(cx, |v, _, _| v.visual_tab_titles()).unwrap();
+            assert!(titles.iter().any(|t| t == "终端的旁屏"), "no side tab: {titles:?}");
+            shot("4-side-tab-made.png", cx);
+            handle.update(cx, |v, _, a| v.visual_peek_show_tab("终端的旁屏", a)).unwrap();
+            let side = shown_after(cx, 2).await;
+            assert_eq!(side.0, vec![fifth.clone(), sixth.clone()], "the side tab's panes");
+            shot("4b-side-tab.png", cx);
+            handle.update(cx, |v, _, a| v.visual_peek_show_tab("base", a)).unwrap();
+            shown_after(cx, 4).await;
+            let full = (vec!["base".to_owned(), c, a, b], ());
             // A tab that is not shown gets its pane without the shown tab changing.
             call(Request::Launch { id: "hidden".into(), space: workspace().spaces[0].id.clone(), argv: vec!["/bin/sh".into(), "-i".into()], cwd: "/tmp".into(), cols: 100, rows: 30, scheme: Default::default() });
             call(Request::Edit { revision: 0, edit: Edit::PutTab { tab: Tab { id: "tab-other".into(), space: workspace().spaces[0].id.clone(), default_task: None, title: "other".into(), layout: Some(Layout::Leaf("hidden".into())) } } });
