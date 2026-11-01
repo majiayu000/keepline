@@ -72,7 +72,7 @@ svg{display:block}
 .card .r1{display:flex;align-items:center;gap:8px;color:var(--faint)}
 .card .r1 .when{display:flex;align-items:center;gap:4px}
 .card .r1 .orb{margin-left:auto;width:18px;height:18px}
-.card .more{position:absolute;right:36px;top:9px;opacity:0;color:var(--muted)}
+.card .more{position:absolute;right:38px;top:9px;opacity:0;color:var(--muted)}
 .card:hover .more{opacity:1}
 .card .t{font-size:13.5px;line-height:1.38;color:var(--text);display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
 .card .q{color:var(--muted);font-size:12px;line-height:1.45;display:-webkit-box;-webkit-line-clamp:1;-webkit-box-orient:vertical;overflow:hidden}
@@ -86,8 +86,9 @@ svg{display:block}
 .ring.full{color:var(--done)}
 .ai{width:18px;height:18px;border-radius:5px;display:grid;place-items:center;flex:none}
 .ai svg{width:12px;height:12px}
-.ai.cc{background:#2b1d16;box-shadow:inset 0 0 0 1px #3d2a20}.ai.cc svg{fill:#D97757}
-.ai.cx{background:#f2f2f4}.ai.cx svg{fill:#0c0c0e}
+.ai.cc,.ai.cx{background:#222227}.ai svg{fill:#c9c9d0}
+.av{margin-left:auto;width:20px;height:20px;border-radius:50%;display:grid;place-items:center;flex:none;box-shadow:inset 0 0 0 1px rgba(255,255,255,.12)}
+.av svg{width:11px;height:11px;fill:#fff;filter:drop-shadow(0 .5px .5px rgba(0,0,0,.35))}
 .ai.sm{width:14px;height:14px;border-radius:4px}.ai.sm svg{width:10px;height:10px}
 .fchip{height:26px;padding:0 9px 0 5px;border-radius:7px;border:1px solid #2a2a31;display:flex;align-items:center;gap:7px;color:var(--sub);transition:border-color .15s,background .15s,opacity .15s}
 .fchip:hover{border-color:#3a3a42}
@@ -193,11 +194,11 @@ svg{display:block}
 /* ---------- 数据 ---------- */
 const now = Date.now()/1000;
 const SPACES = {
-  'keepline':      ['#ff8a4c','#ff4f8b'],
-  '模型上线 work':  ['#5ee7df','#4f7bff'],
-  'codex-mall':    ['#b7f06b','#2fbf71'],
-  'sys':           ['#c39bff','#6a5cff'],
-  'lib':           ['#ffd36b','#ff7b54'],
+  'keepline':      ['#8b7bff','#c084fc'],
+  '模型上线 work':  ['#38bdf8','#6366f1'],
+  'codex-mall':    ['#5eead4','#0ea5e9'],
+  'sys':           ['#f0abfc','#818cf8'],
+  'lib':           ['#a3e635','#14b8a6'],
 };
 const grad = s => `linear-gradient(135deg,${SPACES[s][0]},${SPACES[s][1]})`;
 const COLS = [
@@ -253,6 +254,7 @@ const IC = {
 };
 const AG = { cc:{ name:'Claude Code', short:'Claude', d:'M20.998 10.949H24v3.102h-3v3.028h-1.487V20H18v-2.921h-1.487V20H15v-2.921H9V20H7.488v-2.921H6V20H4.487v-2.921H3V14.05H0V10.95h3V5h17.998v5.949zM6 10.949h1.488V8.102H6v2.847zm10.51 0H18V8.102h-1.49v2.847z' }, cx:{ name:'Codex', short:'Codex', d:'M9.064 3.344a4.578 4.578 0 012.285-.312c1 .115 1.891.54 2.673 1.275.01.01.024.017.037.021a.09.09 0 00.043 0 4.55 4.55 0 013.046.275l.047.022.116.057a4.581 4.581 0 012.188 2.399c.209.51.313 1.041.315 1.595a4.24 4.24 0 01-.134 1.223.123.123 0 00.03.115c.594.607.988 1.33 1.183 2.17.289 1.425-.007 2.71-.887 3.854l-.136.166a4.548 4.548 0 01-2.201 1.388.123.123 0 00-.081.076c-.191.551-.383 1.023-.74 1.494-.9 1.187-2.222 1.846-3.711 1.838-1.187-.006-2.239-.44-3.157-1.302a.107.107 0 00-.105-.024c-.388.125-.78.143-1.204.138a4.441 4.441 0 01-1.945-.466 4.544 4.544 0 01-1.61-1.335c-.152-.202-.303-.392-.414-.617a5.81 5.81 0 01-.37-.961 4.582 4.582 0 01-.014-2.298.124.124 0 00.006-.056.085.085 0 00-.027-.048 4.467 4.467 0 01-1.034-1.651 3.896 3.896 0 01-.251-1.192 5.189 5.189 0 01.141-1.6c.337-1.112.982-1.985 1.933-2.618.212-.141.413-.251.601-.33.215-.089.43-.164.646-.227a.098.098 0 00.065-.066 4.51 4.51 0 01.829-1.615 4.535 4.535 0 011.837-1.388zm3.482 10.565a.637.637 0 000 1.272h3.636a.637.637 0 100-1.272h-3.636zM8.462 9.23a.637.637 0 00-1.106.631l1.272 2.224-1.266 2.136a.636.636 0 101.095.649l1.454-2.455a.636.636 0 00.005-.64L8.462 9.23z' } };
 const agentIcon = (ag, sm) => `<span class="ai ${ag} ${sm?'sm':''}" title="${AG[ag].name}"><svg viewBox="0 0 24 24" aria-hidden="true"><path fill-rule="evenodd" clip-rule="evenodd" d="${AG[ag].d}"/></svg></span>`;
+const avatar = s => `<span class="av" style="background:${grad(s.sp)}" title="${AG[s.ag].name} · ${s.sp}"><svg viewBox="0 0 24 24" aria-hidden="true"><path fill-rule="evenodd" clip-rule="evenodd" d="${AG[s.ag].d}"/></svg></span>`;
 let only = null;
 function colIcon(id){
   const W = 'width="14" height="14" viewBox="0 0 16 16"';
@@ -286,7 +288,7 @@ function cardHTML(s){
     s.turns ? `<span class="ring">${IC.turn}${s.turns}</span>` : '',
   ].join('');
   return `<article class="card ${sel===s.id?'sel':''}" data-id="${s.id}">
-    <div class="r1">${agentIcon(s.ag)}<span class="mono">${s.id}</span><span class="when">${when}</span><span class="orb" style="background:${grad(s.sp)}" title="${s.sp}"></span></div>
+    <div class="r1"><span class="mono">${s.id}</span><span class="when">${when}</span>${avatar(s)}</div>
     <button class="more" aria-label="更多">${IC.more}</button>
     <div class="t">${s.t}</div>
     ${s.col==='need'||s.col==='run' ? `<div class="q">${s.q}</div>` : ''}
@@ -420,7 +422,7 @@ function openDrawer(id){
   const said = s.col==='todo' ? '还没交给 Agent。点「开始」会在新终端里预填命令，按回车才真正启动。' : s.q;
   drawer.innerHTML=`
     <div class="dmain">
-      <div class="dtop">${colIcon(s.col)}${agentIcon(s.ag)}<span class="mono" style="color:var(--sub)">${s.id}</span><span>${i+1} / ${list.length}</span>
+      <div class="dtop">${colIcon(s.col)}<span class="mono" style="color:var(--sub)">${s.id}</span><span>${i+1} / ${list.length}</span>
         <span class="nav2"><button data-j="-1" aria-label="上一个">↑</button><button data-j="1" aria-label="下一个">↓</button></span>
         <span style="flex:1"></span><button class="x" aria-label="关闭">✕</button></div>
       <div class="dtitle">${s.t}</div>
