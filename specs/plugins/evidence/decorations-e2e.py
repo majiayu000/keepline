@@ -36,7 +36,7 @@ try:
         stdout=subprocess.PIPE, stderr=subprocess.STDOUT, timeout=90)
     log = result.stdout.decode(errors='replace')
     (OUT / 'native-render.log').write_text(log)
-    print('\n'.join(l for l in log.splitlines() if 'repo' in l or '/tmp' in l or 'back' in l or 'command' in l or 'worked' in l or 'PASS' in l or 'panicked' in l))
+    print('\n'.join(l for l in log.splitlines() if 'repo' in l or '/tmp' in l or 'back' in l or 'command' in l or 'worked' in l or 'hop' in l or 'PASS' in l or 'panicked' in l))
     assert result.returncode == 0, log[-3000:]
 finally:
     try:

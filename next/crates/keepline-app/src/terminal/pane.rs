@@ -78,6 +78,8 @@ pub struct Pane {
     /// When the footer last asked the host for that directory; output re-asks at most
     /// every few seconds, and an idle pane asks nothing.
     cwd_asked: Option<Instant>,
+    /// An ask held back by the throttle is still to come.
+    cwd_due: bool,
     focus_observers: bool,
     last_focus: bool,
     /// The focused cursor's blink phase; a keystroke shows it and restarts the count.
@@ -393,6 +395,7 @@ impl Pane {
             hover_path: None,
             cwd: None,
             cwd_asked: None,
+            cwd_due: false,
             focus_observers: false,
             last_focus: false,
             blink_on: true,
@@ -965,10 +968,25 @@ impl Pane {
     /// Asks the host where the program is now, for the footer; throttled, so a `cd` shows
     /// within a few seconds of the next output.
     fn refresh_cwd(&mut self, cx: &mut Context<Self>) {
-        if self
-            .cwd_asked
-            .is_some_and(|at| at.elapsed() < std::time::Duration::from_secs(CWD_REFRESH_SECS))
+        let window = std::time::Duration::from_secs(CWD_REFRESH_SECS);
+        if let Some(at) = self.cwd_asked
+            && at.elapsed() < window
         {
+            // This output may be a `cd`'s last before the shell sits at its prompt: ask
+            // once the window ends instead of waiting for output that may never come.
+            if !self.cwd_due {
+                self.cwd_due = true;
+                let wait = window.saturating_sub(at.elapsed());
+                cx.spawn(async move |this, cx| {
+                    cx.background_executor().timer(wait).await;
+                    this.update(cx, |pane, cx| {
+                        pane.cwd_due = false;
+                        pane.refresh_cwd(cx);
+                    })
+                    .ok();
+                })
+                .detach();
+            }
             return;
         }
         self.cwd_asked = Some(Instant::now());

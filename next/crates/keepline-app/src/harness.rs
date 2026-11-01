@@ -737,7 +737,8 @@ pub fn start(
             pane.update(cx, |pane, cx| pane.visual_type(&format!("cd '{repo}'\r"), cx));
             // The cached 改动 1 shows at once and stays until the run due after 10 s.
             let seen = until(|l| l.0 == ["改动 2"], lines, &wait, 15, cx).await;
-            eprintln!("back, a file later: {seen:?}");
+            let cwd = pane.update(cx, |p, _| p.cwd().map(|c| c.display().to_string()));
+            eprintln!("back, a file later ({cwd:?}): {seen:?}");
             assert_eq!(seen.0, ["改动 2"]);
             shot("refreshed.png", cx);
             // The last command's line is due only every 300 s: a new command runs it at once.
@@ -752,6 +753,15 @@ pub fn start(
             eprintln!("then one that worked: {seen:?}");
             assert_eq!(seen.0, ["改动 2"]);
             shot("recovered.png", cx);
+            // Two cds a second apart: the second lands inside the directory ask's throttle,
+            // and the shell then prints nothing more that would ask again.
+            pane.update(cx, |pane, cx| pane.visual_type("cd /tmp\r", cx));
+            wait(1000).await;
+            pane.update(cx, |pane, cx| pane.visual_type(&format!("cd '{repo}'\r"), cx));
+            let seen = until(|l| l.0 == ["改动 2"], lines, &wait, 10, cx).await;
+            let cwd = pane.update(cx, |p, _| p.cwd().map(|c| c.display().to_string()));
+            eprintln!("then a quick hop out and back ({cwd:?}): {seen:?}");
+            assert_eq!(seen.0, ["改动 2"], "the pane follows a cd made inside the throttle");
             eprintln!(
                 "decoration native PASS: title and hover lines from the plugin, gone outside a repo, refreshed when due, the last command's failure shown and cleared"
             );
