@@ -1,26 +1,20 @@
 //! The left column: spaces, the current space's sessions and its (folded) todos.
 use super::*;
 
-/// Row order by the shown state: what needs you, then live work, then the rest.
-const SIDEBAR_ORDER: [Group; 9] = [
-    Group::Waiting,
-    Group::Error,
-    Group::Done,
-    Group::Working,
-    Group::Running,
-    Group::Review,
-    Group::Paused,
-    Group::Ready,
-    Group::Stale,
-];
-pub(super) fn sidebar_rank(g: Group, attention: bool) -> (bool, usize) {
-    (
-        !attention,
-        SIDEBAR_ORDER
-            .iter()
-            .position(|o| *o == g)
-            .unwrap_or(SIDEBAR_ORDER.len()),
-    )
+/// What needs you, in this order: waiting on you, failed, a finished turn not seen yet.
+const NEEDS_YOU: [Group; 3] = [Group::Waiting, Group::Error, Group::Done];
+/// Row tiers by the shown state: what needs you, then live work, then the rest, then
+/// what has gone quiet. Inside a tier the newest comes first (see `sidebar_time`).
+pub(super) fn sidebar_rank(g: Group, attention: bool) -> (u8, usize) {
+    if attention {
+        let at = NEEDS_YOU.iter().position(|o| *o == g);
+        return (0, at.unwrap_or(NEEDS_YOU.len()));
+    }
+    match g {
+        Group::Working | Group::Running => (1, 0),
+        Group::Stale => (3, 0),
+        _ => (2, 0),
+    }
 }
 /// A closed session the sidebar still counts: no outcome yet and not gone quiet past
 /// the stale days; older ones wait in the overview's 很久没动.
@@ -259,8 +253,20 @@ impl Workbench {
                 (s, g, attention, i)
             })
             .collect();
-        sessions.sort_by_key(|(_, g, attention, i)| {
-            (sidebar_rank(*g, *attention), std::cmp::Reverse(*i))
+        // Newest first inside a tier, by the time the row shows. Live work keys on when
+        // its turn began, which holds still while it prints, so two running rows never
+        // trade places under the pointer.
+        sessions.sort_by_key(|(s, g, attention, i)| {
+            let at = match g {
+                Group::Working | Group::Running => self.turn_started(s),
+                _ => None,
+            }
+            .unwrap_or_else(|| self.session_updated(s));
+            (
+                sidebar_rank(*g, *attention),
+                std::cmp::Reverse(at),
+                std::cmp::Reverse(*i),
+            )
         });
         // A peek is what is in front: its row is the selected one until it closes.
         let current = match &self.peek {

@@ -230,6 +230,9 @@ fn sidebar_rows_rank_by_the_shown_state() {
     // Live work comes before sessions resting at their prompt.
     assert!(rank(Group::Working, false) < rank(Group::Ready, false));
     assert!(rank(Group::Ready, false) < rank(Group::Stale, false));
+    // Resting rows share a tier, so the newest of them comes first whatever its state.
+    assert_eq!(rank(Group::Review, false), rank(Group::Ready, false));
+    assert_eq!(rank(Group::Paused, false), rank(Group::Ready, false));
 }
 
 #[test]
