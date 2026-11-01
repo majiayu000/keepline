@@ -34,6 +34,44 @@ impl Workbench {
         self.layout.completing.remove(terminal);
         cx.notify();
     }
+    /// A notification for `id` clicked before the session loaded, from a tab page: the
+    /// session is taken out of what this window holds, as before its first refresh.
+    /// `then_overview` is the user opening the overview before it loads.
+    #[cfg(feature = "visual-test")]
+    pub fn visual_route_before_load(
+        &mut self,
+        id: &str,
+        then_overview: bool,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) -> Option<String> {
+        self.nav.overview = false;
+        self.overview.here = None;
+        self.workspace.agent_sessions.retain(|s| s.id != id);
+        self.navigate_to(id, window, cx);
+        let said = self.error.clone();
+        if then_overview {
+            self.show_overview(cx);
+        }
+        said
+    }
+    #[cfg(feature = "visual-test")]
+    pub fn visual_session_ids(&self) -> Vec<String> {
+        self.workspace
+            .agent_sessions
+            .iter()
+            .map(|s| s.id.clone())
+            .collect()
+    }
+    /// The overview's open state, the session it centers on, and the error line.
+    #[cfg(feature = "visual-test")]
+    pub fn visual_route_state(&self) -> (bool, Option<String>, Option<String>) {
+        (
+            self.nav.overview,
+            self.overview.here.clone(),
+            self.error.clone(),
+        )
+    }
     #[cfg(feature = "visual-test")]
     pub fn visual_cut_off(&self) -> bool {
         self.store.cut_off()

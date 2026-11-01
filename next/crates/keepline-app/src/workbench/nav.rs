@@ -10,3 +10,16 @@ pub(super) struct Nav {
     pub(super) overview: bool,
     pub(super) task_detail: Option<String>,
 }
+/// Space, tab, overview, task detail: the page the user chose.
+pub(super) type Page = (String, Option<String>, bool, Option<String>);
+impl Nav {
+    /// The page the user chose: a change means they went somewhere themselves.
+    pub(super) fn page(&self) -> Page {
+        (
+            self.space.clone(),
+            self.tab.clone(),
+            self.overview,
+            self.task_detail.clone(),
+        )
+    }
+}

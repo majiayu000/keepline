@@ -2,6 +2,8 @@
 use super::overview::{quiet, solid};
 use super::*;
 
+const ROUTE_PENDING: &str = "会话还没载入，载入后自动打开";
+
 /// Which finished turns the user has not looked at yet.
 pub(super) struct Attention {
     /// Last live phase of each session whose agent runs in a Keepline terminal.
@@ -794,8 +796,28 @@ impl Workbench {
                 crate::desktop::route_applied(id, &terminal.id, &tab.id);
             }
         } else {
-            self.error = Some("会话尚未载入，请刷新工作台".into());
             self.request(Request::Workspace, cx);
+            // After the request: starting one clears the error line.
+            self.error = Some(ROUTE_PENDING.into());
+            self.pending_route = Some((id.to_owned(), self.nav.page()));
+        }
+    }
+    /// Opens the session a notification asked for once it has loaded; dropped if the
+    /// user went to another page meanwhile, as their own choice wins.
+    pub(super) fn open_pending_route(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        let Some((id, page)) = self.pending_route.take() else {
+            return;
+        };
+        let moved = page != self.nav.page();
+        if moved || self.workspace.agent_sessions.iter().any(|s| s.id == id) {
+            if self.error.as_deref() == Some(ROUTE_PENDING) {
+                self.error = None;
+            }
+            if !moved {
+                self.navigate_to(&id, window, cx);
+            }
+        } else {
+            self.pending_route = Some((id, page));
         }
     }
     /// Only Keepline's own terminals ask for attention; scanned-only sessions stay in the overview.
