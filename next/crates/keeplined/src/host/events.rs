@@ -7,10 +7,6 @@ use keepline_core::hook::Notice;
 use std::collections::HashSet;
 use std::sync::atomic::AtomicBool;
 
-/// Someone is subscribed: terminals read their shells' command marks even when no hook
-/// listens for commands. A reader holds its terminal's lock and cannot take the host's.
-pub(crate) static SUBSCRIBED: AtomicBool = AtomicBool::new(false);
-
 /// What subscribers were last told, to send only what changed.
 #[derive(Default)]
 pub(super) struct Tracker {
@@ -54,8 +50,14 @@ fn session_notice(event: &str, w: &Workspace, id: &str, detail: &str, at: u64) -
     n
 }
 fn space_of(w: &Workspace, terminal: Option<&str>) -> Option<String> {
-    let t = w.terminals.iter().find(|t| Some(t.id.as_str()) == terminal)?;
-    w.spaces.iter().find(|p| p.id == t.space).map(|p| p.name.clone())
+    let t = w
+        .terminals
+        .iter()
+        .find(|t| Some(t.id.as_str()) == terminal)?;
+    w.spaces
+        .iter()
+        .find(|p| p.id == t.space)
+        .map(|p| p.name.clone())
 }
 fn terminal_notice(event: &str, w: &Workspace, id: &str, at: u64) -> Notice {
     let mut n = Notice::named(event, at);
@@ -81,7 +83,9 @@ impl Tracker {
         let mut out: Vec<Notice> = {
             let mut ids: Vec<_> = running(w).into_iter().collect();
             ids.sort();
-            ids.iter().map(|id| terminal_notice("terminal_started", w, id, at)).collect()
+            ids.iter()
+                .map(|id| terminal_notice("terminal_started", w, id, at))
+                .collect()
         };
         out.extend(
             crate::plugin_hooks::Hooks::current(w)
@@ -90,7 +94,10 @@ impl Tracker {
         );
         let mut asks: Vec<_> = approvals(w).into_iter().collect();
         asks.sort();
-        out.extend(asks.iter().map(|(id, q)| session_notice("approval", w, id, q, at)));
+        out.extend(
+            asks.iter()
+                .map(|(id, q)| session_notice("approval", w, id, q, at)),
+        );
         out
     }
     pub(super) fn changes(&mut self, w: &Workspace) -> Vec<Notice> {
@@ -99,7 +106,11 @@ impl Tracker {
         let now_running = running(w);
         let mut started: Vec<_> = now_running.difference(&self.running).cloned().collect();
         started.sort();
-        out.extend(started.iter().map(|id| terminal_notice("terminal_started", w, id, at)));
+        out.extend(
+            started
+                .iter()
+                .map(|id| terminal_notice("terminal_started", w, id, at)),
+        );
         out.extend(self.states.changes(w).into_iter().map(Notice::from));
         let now_asking = approvals(w);
         let mut gone: Vec<_> = self
@@ -109,16 +120,27 @@ impl Tracker {
             .map(|(id, q)| (id.clone(), q.clone()))
             .collect();
         gone.sort();
-        out.extend(gone.iter().map(|(id, q)| session_notice("approval_gone", w, id, q, at)));
+        out.extend(
+            gone.iter()
+                .map(|(id, q)| session_notice("approval_gone", w, id, q, at)),
+        );
         let mut shown: Vec<_> = now_asking
             .iter()
             .filter(|(id, q)| self.approvals.get(*id) != Some(*q))
             .collect();
         shown.sort();
-        out.extend(shown.iter().map(|(id, q)| session_notice("approval", w, id, q, at)));
+        out.extend(
+            shown
+                .iter()
+                .map(|(id, q)| session_notice("approval", w, id, q, at)),
+        );
         let mut ended: Vec<_> = self.running.difference(&now_running).cloned().collect();
         ended.sort();
-        out.extend(ended.iter().map(|id| terminal_notice("terminal_exited", w, id, at)));
+        out.extend(
+            ended
+                .iter()
+                .map(|id| terminal_notice("terminal_exited", w, id, at)),
+        );
         self.approvals = now_asking;
         self.running = now_running;
         out
@@ -151,9 +173,10 @@ pub(super) fn subscribe(mut stream: UnixStream, shared: Shared, connection: u64)
         if host.event_subscribers.is_empty() {
             host.events.seed(&w);
         }
-        let first = serde_json::to_vec(&Reply::Events(Tracker::snapshot(&w)))
+        let first =
+            serde_json::to_vec(&Reply::Events(Tracker::snapshot(&w))).map_err(io::Error::other)?;
+        tx.send((CONTROL, Arc::new(first)))
             .map_err(io::Error::other)?;
-        tx.send((CONTROL, Arc::new(first))).map_err(io::Error::other)?;
         host.event_subscribers.insert(
             connection,
             Subscriber {
@@ -162,7 +185,6 @@ pub(super) fn subscribe(mut stream: UnixStream, shared: Shared, connection: u64)
                 lagged: Arc::clone(&lagged),
             },
         );
-        SUBSCRIBED.store(true, Ordering::Release);
     }
     let mut writer = stream.try_clone()?;
     thread::spawn(move || {
@@ -187,7 +209,6 @@ pub(super) fn subscribe(mut stream: UnixStream, shared: Shared, connection: u64)
     let result = read_frame(&mut stream);
     let mut host = lock(&shared)?;
     host.event_subscribers.remove(&connection);
-    SUBSCRIBED.store(!host.event_subscribers.is_empty(), Ordering::Release);
     drop(host);
     let _ = stream.shutdown(std::net::Shutdown::Both);
     result.map(|_| ())

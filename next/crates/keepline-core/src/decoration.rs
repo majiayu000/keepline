@@ -50,7 +50,8 @@ pub enum When {
 pub struct Decoration {
     pub id: String,
     /// Run with `sh -c` in the pane's directory; `KEEPLINE_CWD`, `KEEPLINE_AGENT` and
-    /// `KEEPLINE_SESSION` say which pane it is for.
+    /// `KEEPLINE_SESSION` say which pane it is for, `KEEPLINE_LAST_EXIT` and
+    /// `KEEPLINE_LAST_DURATION_MS` how its shell's last command ended (empty before one).
     pub command: String,
     #[serde(default)]
     pub place: Place,
@@ -78,6 +79,8 @@ pub struct Pane {
     /// The Agent's name, when the pane runs a bound session.
     pub agent: Option<String>,
     pub session: Option<String>,
+    /// The last command its shell marked finished; a new one runs the decoration again.
+    pub last: Option<crate::protocol::LastCommand>,
 }
 
 impl Decoration {
@@ -100,6 +103,17 @@ impl Decoration {
             .env("KEEPLINE_CWD", &pane.cwd)
             .env("KEEPLINE_AGENT", pane.agent.as_deref().unwrap_or(""))
             .env("KEEPLINE_SESSION", pane.session.as_deref().unwrap_or(""))
+            .env(
+                "KEEPLINE_LAST_EXIT",
+                pane.last
+                    .and_then(|l| l.exit)
+                    .map(|e| e.to_string())
+                    .unwrap_or_default(),
+            )
+            .env(
+                "KEEPLINE_LAST_DURATION_MS",
+                pane.last.map(|l| l.took_ms.to_string()).unwrap_or_default(),
+            )
             .stdin(Stdio::null())
             .stdout(Stdio::piped())
             .stderr(Stdio::null())
@@ -270,6 +284,7 @@ mod tests {
             cwd: cwd.display().to_string(),
             agent: Some("Codex".into()),
             session: Some("s1".into()),
+            last: None,
         }
     }
 
@@ -291,6 +306,29 @@ mod tests {
             )
             .as_deref(),
             Some("Codex|s1")
+        );
+        let failed = Pane {
+            last: Some(crate::protocol::LastCommand {
+                exit: Some(3),
+                took_ms: 1200,
+            }),
+            ..pane(&dir)
+        };
+        assert_eq!(
+            decoration(
+                "printf '%s|%s|' \"$KEEPLINE_LAST_EXIT\" \"$KEEPLINE_LAST_DURATION_MS\"",
+                Place::Title,
+                2_000
+            )
+            .run(&failed)
+            .unwrap()
+            .as_deref(),
+            Some("3|1200|")
+        );
+        assert_eq!(
+            shown("printf '[%s]' \"$KEEPLINE_LAST_EXIT\"", Place::Title).as_deref(),
+            Some("[]"),
+            "empty before the first command"
         );
         assert_eq!(
             shown(r"printf '\033[31m红\033[0m\a\033]0;x\a ok'", Place::Title).as_deref(),

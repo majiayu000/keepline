@@ -40,6 +40,12 @@ impl Workbench {
             cwd: ctx.cwd,
             agent: ctx.agent,
             session: ctx.session_id,
+            last: self
+                .store
+                .recognition()
+                .terminal_commands
+                .get(terminal)
+                .copied(),
         };
         for (i, d) in decoration::all().iter().enumerate() {
             if !d.shown(&pane) {

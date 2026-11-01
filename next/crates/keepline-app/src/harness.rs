@@ -720,16 +720,18 @@ pub fn start(
             wait(1500).await;
             let pane = handle.update(cx, |v, _, _| v.visual_shown_pane()).unwrap();
             pane.update(cx, |pane, cx| pane.visual_type(&format!("cd '{repo}'\r"), cx));
-            let seen = until(|l| !l.0.is_empty() && !l.1.is_empty(), lines, &wait, 5, cx).await;
+            let seen = until(|l| !l.0.is_empty() && l.1.len() == 2, lines, &wait, 5, cx).await;
             eprintln!("in the repo: {seen:?}");
-            assert_eq!(seen.0, ["改动 1"]);
+            assert_eq!(seen.0, ["改动 1"], "the cd succeeded: no failure shown");
             assert!(seen.1[0].starts_with("最近提交 ") && seen.1[0].ends_with("：初始提交"));
+            assert!(seen.1[1].starts_with("上一条命令用时 ") && seen.1[1].ends_with("退出码 0"));
             shot("decorated.png", cx);
             pane.update(cx, |pane, cx| pane.visual_type("cd /tmp\r", cx));
-            let seen = until(|l| l.0.is_empty() && l.1.is_empty(), lines, &wait, 10, cx).await;
+            let seen = until(|l| l.0.is_empty() && l.1.len() == 1, lines, &wait, 10, cx).await;
             let cwd = pane.update(cx, |p, _| p.cwd().map(|c| c.display().to_string()));
             eprintln!("in /tmp ({cwd:?}): {seen:?}");
-            assert!(seen.0.is_empty() && seen.1.is_empty(), "outside a repo nothing shows");
+            assert!(seen.0.is_empty(), "outside a repo no git line shows");
+            assert!(seen.1.len() == 1 && seen.1[0].starts_with("上一条命令用时 "));
             shot("outside.png", cx);
             std::fs::write(std::path::Path::new(&repo).join("second.txt"), "").unwrap();
             pane.update(cx, |pane, cx| pane.visual_type(&format!("cd '{repo}'\r"), cx));
@@ -738,8 +740,20 @@ pub fn start(
             eprintln!("back, a file later: {seen:?}");
             assert_eq!(seen.0, ["改动 2"]);
             shot("refreshed.png", cx);
+            // The last command's line is due only every 300 s: a new command runs it at once.
+            pane.update(cx, |pane, cx| pane.visual_type("sh -c 'exit 3'\r", cx));
+            let seen = until(|l| l.0.len() == 2, lines, &wait, 5, cx).await;
+            eprintln!("a failed command: {seen:?}");
+            assert_eq!(seen.0, ["✗ 退出 3", "改动 2"]);
+            assert!(seen.1[1].ends_with("退出码 3"));
+            shot("failed.png", cx);
+            pane.update(cx, |pane, cx| pane.visual_type("true\r", cx));
+            let seen = until(|l| l.0.len() == 1, lines, &wait, 5, cx).await;
+            eprintln!("then one that worked: {seen:?}");
+            assert_eq!(seen.0, ["改动 2"]);
+            shot("recovered.png", cx);
             eprintln!(
-                "decoration native PASS: title and hover lines from the plugin, gone outside a repo, refreshed when due"
+                "decoration native PASS: title and hover lines from the plugin, gone outside a repo, refreshed when due, the last command's failure shown and cleared"
             );
             cx.update(|cx| cx.quit());
         })

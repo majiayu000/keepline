@@ -48,7 +48,7 @@ pub(super) struct Live {
     pub(super) cell: CellPixels,
     /// Last keystrokes sent here; a menu the user just opened is not the agent asking.
     pub(super) input_at: Option<std::time::Instant>,
-    /// The shell's command marks, read only while a hook listens for commands.
+    /// The shell's command marks.
     pub(super) marks: crate::command_marks::Marks,
 }
 impl Live {
@@ -338,19 +338,13 @@ pub(super) fn pump(
             }
         }
         live.broadcast(OUTPUT, bytes[..n].to_vec());
-        let finished = if keepline_core::hook::commands()
-            || super::events::SUBSCRIBED.load(Ordering::Acquire)
-        {
-            live.marks.scan(&bytes[..n], Instant::now())
-        } else {
-            Vec::new()
-        };
+        let finished = live.marks.scan(&bytes[..n], Instant::now());
         if !finished.is_empty() {
             let pwd = live.vt.pwd(&super::hostname());
             // Host before Live is the lock order; release this terminal first.
             drop(live);
             match lock(shared) {
-                Ok(host) => host.commands_finished(id, pwd, finished),
+                Ok(mut host) => host.commands_finished(id, pwd, finished),
                 Err(e) => eprintln!("terminal {id}: command hooks: {e}"),
             }
             live = lock(terminal)?;

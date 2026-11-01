@@ -312,10 +312,11 @@ impl Host {
     }
     /// Every tab names itself from its program's title, front or not. An unbound Agent
     /// whose adapter reads state from the title also paints it into its note.
-    /// Commands the shell in `terminal` marked finished, for the hooks that listen for them.
+    /// Commands the shell in `terminal` marked finished: the last one goes to the app (for
+    /// pane decorations), each one to the hooks and event subscribers that listen for them.
     /// No title: shells title the terminal with the running command, which may hold a secret.
     fn commands_finished(
-        &self,
+        &mut self,
         terminal: &str,
         pwd: Option<String>,
         finished: Vec<crate::command_marks::Finished>,
@@ -328,6 +329,22 @@ impl Host {
         let cwd = pwd
             .or_else(|| placed.map(|t| t.cwd.clone()))
             .unwrap_or_default();
+        if let Some(f) = finished.last() {
+            let last = keepline_core::protocol::LastCommand {
+                exit: f.exit,
+                took_ms: u64::try_from(f.took.as_millis()).unwrap_or(u64::MAX),
+            };
+            if self
+                .recognition
+                .terminal_commands
+                .insert(terminal.into(), last)
+                != Some(last)
+            {
+                if let Err(e) = self.publish_status() {
+                    eprintln!("terminal {terminal}: last command: {e}");
+                }
+            }
+        }
         // One frame per read of output, however many commands it finished.
         let mut notices = vec![];
         for f in finished {

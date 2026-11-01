@@ -2,6 +2,13 @@
   "api": 1,
   "decorations": [
     {
+      "id": "last-failed",
+      "command": "[ -n \"$KEEPLINE_LAST_EXIT\" ] && [ \"$KEEPLINE_LAST_EXIT\" != 0 ] && echo \"✗ 退出 $KEEPLINE_LAST_EXIT\"",
+      "place": "title",
+      "when": "shell",
+      "refresh_s": 300
+    },
+    {
       "id": "changes",
       "command": "n=$(git status --porcelain 2>/dev/null | wc -l | tr -d ' '); [ \"$n\" -gt 0 ] && echo \"改动 $n\"",
       "place": "title",
@@ -12,6 +19,13 @@
       "command": "git log -1 --format='最近提交 %cr：%s' 2>/dev/null",
       "place": "tip",
       "refresh_s": 30
+    },
+    {
+      "id": "last-command",
+      "command": "[ -n \"$KEEPLINE_LAST_DURATION_MS\" ] && echo \"上一条命令用时 $((KEEPLINE_LAST_DURATION_MS / 1000)) 秒，退出码 ${KEEPLINE_LAST_EXIT:-未知}\"",
+      "place": "tip",
+      "when": "shell",
+      "refresh_s": 300
     }
   ]
 }

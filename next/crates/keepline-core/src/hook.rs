@@ -275,10 +275,6 @@ pub fn install() {
 pub fn all() -> &'static [Hook] {
     HOOKS.get().map_or(&[], |(h, _)| h.as_slice())
 }
-/// Whether any hook listens for commands; without one the terminals' marks go unread.
-pub fn commands() -> bool {
-    all().iter().any(|h| h.on.iter().any(|e| e.is_command()))
-}
 pub fn report() -> &'static [Loaded] {
     HOOKS.get().map_or(&[], |(_, r)| r.as_slice())
 }

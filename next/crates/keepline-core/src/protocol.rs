@@ -274,6 +274,13 @@ pub struct TerminalNote {
     pub note: String,
     pub why: String,
 }
+/// A command the shell marked finished (OSC 133 `C` then `D`).
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]
+pub struct LastCommand {
+    /// None when the shell did not say.
+    pub exit: Option<i32>,
+    pub took_ms: u64,
+}
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct RecognitionStatus {
     pub phase: RecognitionPhase,
@@ -292,6 +299,9 @@ pub struct RecognitionStatus {
     /// Terminal -> the title its program set, spinner dropped. Live state, not stored.
     #[serde(default)]
     pub terminal_titles: std::collections::HashMap<String, String>,
+    /// Terminal -> the last command its shell marked finished. Live state, not stored.
+    #[serde(default)]
+    pub terminal_commands: std::collections::HashMap<String, LastCommand>,
     pub workspace_revision: u64,
     /// CLI -> why its official status query failed last; absent once one succeeds. The
     /// status rules then fall back to logs, hooks and the screen.
@@ -309,6 +319,7 @@ impl Default for RecognitionStatus {
             terminal_notes: Default::default(),
             terminal_agents: Default::default(),
             terminal_titles: Default::default(),
+            terminal_commands: Default::default(),
             workspace_revision: 0,
             official: Default::default(),
         }
