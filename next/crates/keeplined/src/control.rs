@@ -19,6 +19,10 @@ keeplined events [--json]                    先列出现在的状态，再每�
                                              started / waiting / error / done、approval / approval_gone、
                                              terminal_started / terminal_exited、command_done / command_failed；
                                              lagged 表示跟不上丢了事件，应重新开一次取现状
+keeplined split <终端> [--down] [--before] [--size 0.5] [--cwd 目录] [--json] [-- 命令…]
+                                             在这个终端旁边开一块新分屏（默认右边），打印新终端编号；
+                                             给了命令就在新分屏的 shell 里跑，跑完留在 shell
+keeplined close <终端>                       关掉这块分屏并结束里面的程序
 keeplined --skill                            给 Coding Agent 看的用法说明（Markdown）
 <终端> 可以是编号的前几位或标签名；全部命令都接受 --runtime <目录>。
 Agent 藏在包装器（沙盒、虚拟机、nono 等）后面认不出时，启动前设 KEEPLINE_AGENT=<claude|codex|…>。";
@@ -103,15 +107,20 @@ struct Args {
     socket: PathBuf,
     positional: Vec<String>,
     flags: Vec<(String, Option<String>)>,
+    /// Everything after a bare `--`, untouched: a command and its own flags.
+    rest: Vec<String>,
 }
 impl Args {
     fn parse(args: impl Iterator<Item = String>, valued: &[&str]) -> io::Result<Self> {
         let mut runtime = std::env::var_os("KEEPLINE_RUNTIME").map(PathBuf::from);
         let mut positional = vec![];
         let mut flags = vec![];
+        let mut rest = vec![];
         let mut args = args.peekable();
         while let Some(arg) = args.next() {
-            if arg == "--runtime" {
+            if arg == "--" {
+                rest.extend(args.by_ref());
+            } else if arg == "--runtime" {
                 runtime = Some(
                     args.next()
                         .ok_or_else(|| io::Error::other("--runtime 需要目录"))?
@@ -143,6 +152,7 @@ impl Args {
             socket: runtime.join("workbench.sock"),
             positional,
             flags,
+            rest,
         })
     }
     fn has(&self, name: &str) -> bool {
@@ -201,6 +211,8 @@ pub fn run(command: &str, args: impl Iterator<Item = String>) -> io::Result<()> 
         "wait" => wait_cmd(Args::parse(args, &["until", "timeout"])?),
         "explain" => explain(Args::parse(args, &["file", "agent"])?),
         "events" => events(Args::parse(args, &[])?),
+        "split" => split(Args::parse(args, &["size", "cwd"])?),
+        "close" => close(Args::parse(args, &[])?),
         _ => Err(io::Error::other(USAGE)),
     }
 }
@@ -497,6 +509,142 @@ fn wait(
         std::thread::sleep(Duration::from_millis(500));
     }
 }
+/// 同类终端工具's `pane split` and Rex's `new_split`: a new shell beside a terminal, in its
+/// tab, in the directory that shell is in now. The workbench shows it as soon as it
+/// next reads the host; it does not take the keyboard from the pane the user is in.
+fn split(a: Args) -> io::Result<()> {
+    let w = workspace(&a.socket)?;
+    let target = resolve(&w, a.arg(0, "终端")?)?;
+    let source = w
+        .terminals
+        .iter()
+        .find(|t| t.id == target)
+        .ok_or_else(|| io::Error::other("终端不存在"))?;
+    if w.terminal_tab(&target).is_none() {
+        return Err(io::Error::other(
+            "这个终端没有摆在任何画面里，不能在它旁边分屏",
+        ));
+    }
+    let share = match a.value("size") {
+        None => 5000,
+        Some(v) => {
+            let f: f64 = v
+                .parse()
+                .map_err(|_| io::Error::other("--size 需要 0 到 1 之间的小数"))?;
+            if !(f > 0.0 && f < 1.0) {
+                return Err(io::Error::other("--size 需要 0 到 1 之间的小数"));
+            }
+            ((f * 10000.0).round() as u16).clamp(1, 9999)
+        }
+    };
+    let cwd = match a.value("cwd") {
+        Some(dir) => std::fs::canonicalize(dir)
+            .map_err(|e| io::Error::other(format!("--cwd {dir}：{e}")))?
+            .to_string_lossy()
+            .into_owned(),
+        // Where that shell is now, as the workbench's own split does.
+        None => match rpc(&a.socket, &Request::TerminalCwd { id: target.clone() }) {
+            Ok(Reply::Cwd(dir)) if Path::new(&dir).is_dir() => dir,
+            _ => source.cwd.clone(),
+        },
+    };
+    let shell = std::env::var("SHELL")
+        .ok()
+        .filter(|s| !s.is_empty())
+        .unwrap_or_else(|| "/bin/zsh".into());
+    let argv = split_argv(&shell, &a.rest);
+    let id = format!(
+        "split-{}-{}",
+        std::process::id(),
+        std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map_or(0, |d| d.as_nanos())
+    );
+    match rpc(
+        &a.socket,
+        &Request::Launch {
+            id: id.clone(),
+            space: source.space.clone(),
+            argv,
+            cwd,
+            // The workbench sizes it to the pane once it shows it.
+            cols: 100,
+            rows: 30,
+            scheme: Default::default(),
+        },
+    )? {
+        Reply::Workspace(_) => (),
+        other => return Err(io::Error::other(format!("unexpected reply: {other:?}"))),
+    }
+    let edit = Edit::SplitPane {
+        target: target.clone(),
+        terminal: id.clone(),
+        axis: if a.has("down") {
+            Axis::Down
+        } else {
+            Axis::Right
+        },
+        before: a.has("before"),
+        share,
+    };
+    if let Err(e) = rpc(&a.socket, &Request::Edit { revision: 0, edit }) {
+        // Nothing shows it, so nothing would ever stop it.
+        let _ = rpc(&a.socket, &Request::Stop { id });
+        return Err(e);
+    }
+    if a.has("json") {
+        let tab = workspace(&a.socket)?
+            .terminal_tab(&id)
+            .map(|t| t.id.clone());
+        println!(
+            "{}",
+            serde_json::json!({ "id": id, "tab": tab, "beside": target })
+        );
+    } else {
+        println!("{id}");
+    }
+    Ok(())
+}
+/// A login shell, or one that runs `command` first and stays open after it, the way a
+/// resumed conversation starts, so its output stays readable and the pane stays usable.
+fn split_argv(shell: &str, command: &[String]) -> Vec<String> {
+    let command = match command {
+        [] => return vec![shell.into(), "-l".into()],
+        // One argument is a command line already, `&&` and pipes included.
+        [line] => line.clone(),
+        words => words
+            .iter()
+            .map(|w| shell_quote(w))
+            .collect::<Vec<_>>()
+            .join(" "),
+    };
+    let then = format!("{command}; exec {} -l", shell_quote(shell));
+    vec![shell.into(), "-l".into(), "-i".into(), "-c".into(), then]
+}
+/// Closes a pane as its × does: the tab goes with its last pane, the program ends, and
+/// `events` reports `terminal_exited`.
+fn close(a: Args) -> io::Result<()> {
+    let w = workspace(&a.socket)?;
+    let needle = a.arg(0, "终端")?;
+    // An exited pane still shows; close it by its full id.
+    let id = match w.terminal_tab(needle) {
+        Some(_) => needle.to_owned(),
+        None => resolve(&w, needle)?,
+    };
+    if w.terminal_tab(&id).is_none() {
+        return Err(io::Error::other("这个终端没有摆在任何画面里"));
+    }
+    match rpc(
+        &a.socket,
+        &Request::Edit {
+            revision: 0,
+            edit: Edit::ClosePane { terminal: id },
+        },
+    )? {
+        Reply::Workspace(_) => Ok(()),
+        other => Err(io::Error::other(format!("unexpected reply: {other:?}"))),
+    }
+}
 /// `at` in whole seconds since the epoch, the unit content cards record `updated` in.
 fn epoch_secs(at: Instant) -> u64 {
     std::time::SystemTime::now()
@@ -561,7 +709,9 @@ mod tests {
     #[test]
     fn the_skill_names_the_marker_and_every_command() {
         assert!(SKILL.contains("KEEPLINE_ENV"));
-        for command in ["list", "read", "send", "prompt", "wait", "explain"] {
+        for command in [
+            "list", "read", "send", "prompt", "wait", "explain", "split", "close",
+        ] {
             assert!(
                 SKILL.contains(&format!("keeplined {command} ")),
                 "{command}"
@@ -570,6 +720,30 @@ mod tests {
         for flag in ["--force", "--wait", "--until", "--enter", "--lines"] {
             assert!(SKILL.contains(flag), "{flag}");
         }
+    }
+    #[test]
+    fn a_split_runs_its_command_in_a_shell_that_stays_open() {
+        assert_eq!(split_argv("/bin/zsh", &[]), ["/bin/zsh", "-l"]);
+        let one = split_argv("/bin/zsh", &["npm test && echo ok".into()]);
+        assert_eq!(one[4], "npm test && echo ok; exec '/bin/zsh' -l");
+        let words = split_argv("/bin/zsh", &["echo".into(), "a b".into()]);
+        assert_eq!(&words[..4], ["/bin/zsh", "-l", "-i", "-c"]);
+        assert_eq!(words[4], "'echo' 'a b'; exec '/bin/zsh' -l");
+    }
+    #[test]
+    fn everything_after_a_bare_double_dash_is_the_command() {
+        let a = Args::parse(
+            ["t", "--down", "--size", "0.3", "--", "ls", "--all"]
+                .into_iter()
+                .map(String::from),
+            &["size"],
+        )
+        .unwrap();
+        assert_eq!(a.positional, ["t"]);
+        assert!(a.has("down"));
+        assert_eq!(a.value("size"), Some("0.3"));
+        assert_eq!(a.rest, ["ls", "--all"]);
+        assert!(!a.has("all"));
     }
     #[test]
     fn phase_follows_the_current_conversation() {

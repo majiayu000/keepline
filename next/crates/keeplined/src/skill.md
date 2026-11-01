@@ -1,6 +1,6 @@
 # 驱动 Keepline 终端
 
-给 Coding Agent 看：怎样用 `keeplined` 读别的 Keepline 终端、给里面的 Agent 发话、等它做完。
+给 Coding Agent 看：怎样用 `keeplined` 读别的 Keepline 终端、给里面的 Agent 发话、等它做完，以及在自己旁边开一块分屏跑东西。
 
 ## 先确认在 Keepline 里
 
@@ -15,6 +15,7 @@
 - 只读、只发给用户明确要你看或要你驱动的终端。别的终端里是用户自己的工作，没被要求就别碰。
 - 拿不准是哪个，先 `list` 给用户看，问清楚再动。
 - 发出去的话等于用户在那个终端里打字，收不回来。
+- `split` 只在你自己（`$KEEPLINE_TERMINAL`）或用户点名的终端旁边开；`close` 只关你自己开的分屏，用户的分屏没被要求就别关。
 
 ## 命令
 
@@ -29,6 +30,8 @@
 | `keeplined wait <终端> [--until idle\|waiting\|working] [--timeout 秒]` | 等 Agent 进入某个状态，默认 `idle`；超时默认 1800 秒 |
 | `keeplined events [--json]` | 先列现在的状态，再每有变化输出一行（started / waiting / error / done、approval、terminal_*、command_*）；要盯多个终端时用它，不要反复轮询 `list` |
 | `keeplined explain <终端> [--json]` | 画面规则怎么读这块屏：状态、命中的规则、看到的行 |
+| `keeplined split <终端> [--down] [--before] [--size 0.5] [--cwd 目录] [--json] [-- 命令…]` | 在这个终端旁边开一块新分屏，默认在右边、对半分；`--down` 开在下面，`--before` 开在左边或上面，`--size` 是新分屏占的比例。目录默认跟那个 shell 现在所在的目录。打印新终端编号（`--json` 还有 `tab` `beside`）。给了命令就在新分屏的 shell 里跑，跑完留在 shell，输出一直看得到；一个参数当整行命令（可带 `&&`、管道），多个参数逐个转义；`--` 后面全算命令，选项都写在它前面 |
+| `keeplined close <终端>` | 关掉这块分屏并结束里面的程序，标签里只剩它时连标签一起关；`events` 会报 `terminal_exited` |
 
 状态（`phase`）：`working` 在干活，`waiting` 在等用户回答（审批或选择题），`idle` 这一轮做完了，`-` 不是可识别的 Agent 对话（shell 或别的程序）。
 
@@ -39,6 +42,7 @@
 - `prompt --wait` 发完一直等到 Agent 变成 `idle` 或 `waiting`，打印最后的状态。刚发出时状态可能还是上一轮的 `idle`，它会等到这一轮开始，最多 20 秒没动静才认 `idle`。
 - 等待超时以非零退出，打印当时的状态；终端退出也会报错。
 - 做完后 `read` 看结果，再向用户汇报，别只报状态。
+- 跑测试、起开发服务器、盯日志这类要一直看的输出，用 `split` 在自己旁边开一块，用户能同时看到；用 `read` 看结果，`close` 收掉。新分屏不会抢走用户的键盘焦点。
 
 ## 例子
 
@@ -48,4 +52,7 @@ keeplined read review --lines 80
 keeplined prompt review "跑一遍测试，把失败的列出来" --wait --timeout 600
 keeplined read review --lines 120
 printf '%s\n' "很长的说明……" | keeplined prompt 3f2a - --wait
+tests=$(keeplined split "$KEEPLINE_TERMINAL" --down --size 0.35 -- "cargo test 2>&1 | tail -40")
+keeplined read "$tests" --lines 40
+keeplined close "$tests"
 ```

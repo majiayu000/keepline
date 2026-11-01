@@ -315,6 +315,17 @@ pub enum Edit {
     ClosePane {
         terminal: String,
     },
+    /// Places a terminal no tab shows yet beside `target`, in `target`'s tab. Scripts and
+    /// other Agents open panes with it (`keeplined split`); applied to the host's state
+    /// as it is then, so it never undoes a layout change made meanwhile.
+    SplitPane {
+        target: String,
+        terminal: String,
+        axis: Axis,
+        before: bool,
+        /// The new pane's share of the space it splits, in basis points.
+        share: u16,
+    },
     SetOutcome {
         id: String,
         outcome: Outcome,
@@ -356,6 +367,7 @@ impl Edit {
             Self::PutTab { .. }
                 | Self::CloseTab { .. }
                 | Self::ClosePane { .. }
+                | Self::SplitPane { .. }
                 | Self::RenameSession { .. }
                 | Self::MoveTab { .. }
                 // Settings replace themselves whole and nothing else writes them; a space
@@ -916,6 +928,35 @@ impl Workspace {
                 tab.layout = tab.layout.take().and_then(|l| l.without(&terminal));
                 self.tabs.retain(|t| t.layout.is_some());
             }
+            Edit::SplitPane {
+                target,
+                terminal,
+                axis,
+                before,
+                share,
+            } => {
+                if !(1..10000).contains(&share) {
+                    return Err("分屏比例必须在 0 与 1 之间".into());
+                }
+                if !self.terminals.iter().any(|t| t.id == terminal) {
+                    return Err("终端不存在".into());
+                }
+                if self.terminal_tab(&terminal).is_some() {
+                    return Err("终端已经摆在别的画面里".into());
+                }
+                let tab = self
+                    .tabs
+                    .iter_mut()
+                    .find(|t| t.layout.as_ref().is_some_and(|l| l.contains(&target)))
+                    .ok_or("画面不存在")?;
+                let placed = tab
+                    .layout
+                    .as_mut()
+                    .is_some_and(|l| l.split_beside(&target, terminal, axis, before, share));
+                if !placed {
+                    return Err("画面不存在".into());
+                }
+            }
             Edit::SetOutcome { id, outcome } => {
                 self.change_outcome(&id, outcome, crate::content::now(), "用户操作")?;
             }
@@ -1319,6 +1360,76 @@ mod tests {
         })
         .unwrap();
         assert!(w.tabs.is_empty());
+    }
+    #[test]
+    fn a_split_lands_beside_its_target_on_the_side_and_share_asked() {
+        let mut w = workspace();
+        for id in ["second", "third"] {
+            w.terminals.push(Terminal {
+                id: id.into(),
+                ..w.terminals[0].clone()
+            });
+        }
+        w.edit(Edit::PutTab {
+            tab: Tab {
+                id: "t".into(),
+                space: "a".into(),
+                default_task: None,
+                title: String::new(),
+                layout: Some(Layout::Leaf("pty".into())),
+            },
+        })
+        .unwrap();
+        w.edit(Edit::SplitPane {
+            target: "pty".into(),
+            terminal: "second".into(),
+            axis: Axis::Right,
+            before: false,
+            share: 3000,
+        })
+        .unwrap();
+        w.edit(Edit::SplitPane {
+            target: "second".into(),
+            terminal: "third".into(),
+            axis: Axis::Down,
+            before: true,
+            share: 2500,
+        })
+        .unwrap();
+        let leaf = |id: &str| Box::new(Layout::Leaf(id.into()));
+        assert_eq!(
+            w.tabs[0].layout,
+            Some(Layout::Split {
+                axis: Axis::Right,
+                ratio: 7000,
+                first: leaf("pty"),
+                second: Box::new(Layout::Split {
+                    axis: Axis::Down,
+                    ratio: 2500,
+                    first: leaf("third"),
+                    second: leaf("second"),
+                }),
+            })
+        );
+        let again = Edit::SplitPane {
+            target: "pty".into(),
+            terminal: "third".into(),
+            axis: Axis::Right,
+            before: false,
+            share: 5000,
+        };
+        assert!(
+            w.edit(again).is_err(),
+            "a placed terminal is not placed twice"
+        );
+        let missing = Edit::SplitPane {
+            target: "gone".into(),
+            terminal: "pty".into(),
+            axis: Axis::Right,
+            before: false,
+            share: 5000,
+        };
+        assert!(w.edit(missing).is_err());
     }
     #[test]
     fn log_refresh_never_reopens_or_reassigns_an_existing_conversation() {

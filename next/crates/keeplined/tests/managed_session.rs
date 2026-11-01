@@ -4252,3 +4252,117 @@ fn ten_event_subscribers_cost_the_host_almost_nothing() {
     eprintln!("host CPU, 4 spinners: no subscriber {none:.2}%, ten subscribers {ten:.2}%");
     assert!(ten - none < 1., "{none:.2}% -> {ten:.2}%");
 }
+
+/// `keeplined split` and `close`, run as another Agent would: a pane opens beside a
+/// terminal in its tab, runs its command in a shell that stays, and closes again.
+#[test]
+fn command_line_splits_a_pane_beside_a_terminal_and_closes_it() {
+    let h = Host::start();
+    h.setup();
+    let cli = |args: &[&str]| {
+        // The runtime goes first: after `--` it would be part of the pane's command.
+        let mut command = Command::new(env!("CARGO_BIN_EXE_keeplined"));
+        command.args(&args[..1]);
+        command.args(["--runtime", &h.root.to_string_lossy()]);
+        let out = command
+            .args(&args[1..])
+            .env("SHELL", "/bin/sh")
+            .output()
+            .unwrap();
+        (
+            out.status.success(),
+            String::from_utf8_lossy(&out.stdout).into_owned(),
+            String::from_utf8_lossy(&out.stderr).into_owned(),
+        )
+    };
+    h.call(h.launch("base", "exec /bin/sh -i")).unwrap();
+    h.call(Request::Edit {
+        revision: 0,
+        edit: Edit::PutTab {
+            tab: Tab {
+                id: "t".into(),
+                space: "s".into(),
+                default_task: None,
+                title: String::new(),
+                layout: Some(Layout::Leaf("base".into())),
+            },
+        },
+    })
+    .unwrap();
+    let until = Instant::now() + Duration::from_secs(10);
+    while !h
+        .workspace()
+        .terminals
+        .iter()
+        .any(|t| t.id == "base" && t.state == ProcessState::Running)
+    {
+        assert!(Instant::now() < until, "the base shell never started");
+        std::thread::sleep(Duration::from_millis(50));
+    }
+    let (ok, out, err) = cli(&[
+        "split",
+        "base",
+        "--down",
+        "--size",
+        "0.3",
+        "--",
+        "echo split-$((6*7))",
+    ]);
+    assert!(ok, "{err}");
+    let id = out.trim().to_owned();
+    let w = h.workspace();
+    assert_eq!(
+        w.tabs[0].layout,
+        Some(Layout::Split {
+            axis: Axis::Down,
+            ratio: 7000,
+            first: Box::new(Layout::Leaf("base".into())),
+            second: Box::new(Layout::Leaf(id.clone())),
+        })
+    );
+    let until = Instant::now() + Duration::from_secs(10);
+    loop {
+        let (_, screen, _) = cli(&["read", &id, "--lines", "10"]);
+        if screen.contains("split-42") {
+            break;
+        }
+        assert!(Instant::now() < until, "the command never ran:\n{screen}");
+        std::thread::sleep(Duration::from_millis(100));
+    }
+    // The shell stays after the command, so the pane keeps running.
+    std::thread::sleep(Duration::from_millis(300));
+    assert!(
+        h.workspace()
+            .terminals
+            .iter()
+            .any(|t| t.id == id && t.state == ProcessState::Running)
+    );
+
+    let (ok, _, err) = cli(&["split", "nothing-like-it"]);
+    assert!(!ok && err.contains("没有正在运行的终端"), "{err}");
+    let before = h.workspace().terminals.len();
+    let (ok, _, err) = cli(&["split", "base", "--size", "1.5"]);
+    assert!(!ok && err.contains("--size"), "{err}");
+    assert_eq!(
+        h.workspace().terminals.len(),
+        before,
+        "a refused split starts nothing"
+    );
+
+    let (ok, _, err) = cli(&["close", &id]);
+    assert!(ok, "{err}");
+    assert_eq!(
+        h.workspace().tabs[0].layout,
+        Some(Layout::Leaf("base".into()))
+    );
+    let until = Instant::now() + Duration::from_secs(10);
+    while h
+        .workspace()
+        .terminals
+        .iter()
+        .any(|t| t.id == id && t.state == ProcessState::Running)
+    {
+        assert!(Instant::now() < until, "a closed pane's shell must end");
+        std::thread::sleep(Duration::from_millis(50));
+    }
+}

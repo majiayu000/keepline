@@ -33,21 +33,40 @@ impl Layout {
         }
     }
     pub fn split(&mut self, target: &str, new: String, axis: Axis) -> bool {
+        self.split_beside(target, new, axis, false, 5000)
+    }
+    /// Puts `new` next to `target`: after it (right or below) or `before` it, taking
+    /// `share` basis points of the space the two divide, as Rex's `new_split` anchors.
+    pub fn split_beside(
+        &mut self,
+        target: &str,
+        new: String,
+        axis: Axis,
+        before: bool,
+        share: u16,
+    ) -> bool {
         match self {
             Self::Leaf(id) if id == target => {
+                let old = Box::new(self.clone());
+                let new = Box::new(Self::Leaf(new));
+                let (first, second, ratio) = if before {
+                    (new, old, share)
+                } else {
+                    (old, new, 10000u16.saturating_sub(share))
+                };
                 *self = Self::Split {
                     axis,
-                    ratio: 5000,
-                    first: Box::new(self.clone()),
-                    second: Box::new(Self::Leaf(new)),
+                    ratio,
+                    first,
+                    second,
                 };
                 true
             }
             Self::Split { first, second, .. } => {
                 if first.contains(target) {
-                    first.split(target, new, axis)
+                    first.split_beside(target, new, axis, before, share)
                 } else {
-                    second.split(target, new, axis)
+                    second.split_beside(target, new, axis, before, share)
                 }
             }
             _ => false,
