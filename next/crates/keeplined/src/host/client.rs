@@ -315,6 +315,14 @@ pub(super) fn dispatch(shared: &Shared, request: Request) -> io::Result<Reply> {
             Ok(Reply::Ok)
         }
         Request::Workspace => Ok(Reply::Workspace(lock(shared)?.snapshot())),
+        Request::SplitRoom {
+            target,
+            axis,
+            share,
+        } => {
+            let (cols, rows) = split_room(&*lock(shared)?, &target, axis, share)?;
+            Ok(Reply::Size { cols, rows })
+        }
         Request::Edit { revision, mut edit } => {
             let mut host = lock(shared)?;
             if edit.checks_revision() && host.workspace.revision != revision {
@@ -340,6 +348,17 @@ pub(super) fn dispatch(shared: &Shared, request: Request) -> io::Result<Reply> {
                     task.description
                         .push_str("\n\n（历史仅覆盖索引尾段及之后的增量；此前要求未知。）");
                 }
+            }
+            // A pane split from outside the app must leave both halves usable, judged by
+            // the size the pane is shown at now. The app's own splits are the user's call.
+            if let Edit::SplitPane {
+                target,
+                axis,
+                share,
+                ..
+            } = &edit
+            {
+                split_room(&host, target, *axis, *share)?;
             }
             // Closing a tab or a pane ends what ran in it; placement alone never does.
             let stopped = match &edit {
@@ -667,4 +686,23 @@ pub(super) fn answer_approval(
         live.input_at = Some(Instant::now());
     }
     lock(shared)?.set_screen_wait(id, None)
+}
+
+/// Room for both halves of a split of `target`, at the size it is shown now, and the
+/// new pane's size, so it starts close to how it will show. A terminal this host does
+/// not run has no size to judge; the edit refuses it.
+fn split_room(
+    host: &Host,
+    target: &str,
+    axis: keepline_core::layout::Axis,
+    share: u16,
+) -> io::Result<(u16, u16)> {
+    let Some(terminal) = host.terminals.get(target) else {
+        return Err(io::Error::other("终端不存在"));
+    };
+    let (cols, rows) = {
+        let live = lock(terminal)?;
+        (live.cols, live.rows)
+    };
+    keepline_core::layout::Layout::split_room(cols, rows, axis, share).map_err(io::Error::other)
 }

@@ -128,6 +128,13 @@ pub enum Request {
     /// Scripts, other Agents and other clients: the sessions' states now, then every
     /// change as it happens, until this socket closes (`keeplined events`).
     Subscribe,
+    /// `keeplined split` asks before it starts anything: `Size`, the new pane's cells,
+    /// when the pane, at the size it is shown now, has room for both halves of that split.
+    SplitRoom {
+        target: String,
+        axis: crate::layout::Axis,
+        share: u16,
+    },
 }
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -156,6 +163,11 @@ pub enum Reply {
     },
     Ok,
     Text(String),
+    /// A terminal size in cells: what a split's new pane starts at (`SplitRoom`).
+    Size {
+        cols: u16,
+        rows: u16,
+    },
     /// A `Subscribe` stream's frames: first the state now, then each batch of changes.
     Events(Vec<crate::hook::Notice>),
     Error(String),

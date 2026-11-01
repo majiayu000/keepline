@@ -537,6 +537,24 @@ fn split(a: Args) -> io::Result<()> {
             ((f * 10000.0).round() as u16).clamp(1, 9999)
         }
     };
+    let axis = if a.has("down") {
+        Axis::Down
+    } else {
+        Axis::Right
+    };
+    // Asked first, so a split with no room starts nothing; the new pane starts at the
+    // size it will show at, so a split of it right after is judged by that size.
+    let (cols, rows) = match rpc(
+        &a.socket,
+        &Request::SplitRoom {
+            target: target.clone(),
+            axis,
+            share,
+        },
+    )? {
+        Reply::Size { cols, rows } => (cols, rows),
+        other => return Err(io::Error::other(format!("unexpected reply: {other:?}"))),
+    };
     let cwd = match a.value("cwd") {
         Some(dir) => std::fs::canonicalize(dir)
             .map_err(|e| io::Error::other(format!("--cwd {dir}：{e}")))?
@@ -567,9 +585,8 @@ fn split(a: Args) -> io::Result<()> {
             space: source.space.clone(),
             argv,
             cwd,
-            // The workbench sizes it to the pane once it shows it.
-            cols: 100,
-            rows: 30,
+            cols,
+            rows,
             scheme: Default::default(),
         },
     )? {
@@ -579,11 +596,7 @@ fn split(a: Args) -> io::Result<()> {
     let edit = Edit::SplitPane {
         target: target.clone(),
         terminal: id.clone(),
-        axis: if a.has("down") {
-            Axis::Down
-        } else {
-            Axis::Right
-        },
+        axis,
         before: a.has("before"),
         share,
     };

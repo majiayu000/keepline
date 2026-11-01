@@ -4349,6 +4349,21 @@ fn command_line_splits_a_pane_beside_a_terminal_and_closes_it() {
         "a refused split starts nothing"
     );
 
+    // 80 columns cannot give a fifth away: refused before anything starts.
+    let (ok, _, err) = cli(&["split", "base", "--size", "0.2"]);
+    assert!(!ok && err.contains("只剩 16 列"), "{err}");
+    assert_eq!(
+        h.workspace().terminals.len(),
+        before,
+        "a split with no room starts nothing"
+    );
+    // A split of a pane that is itself a split still lands beside it, in the same tab.
+    let (ok, out, err) = cli(&["split", &id, "--before"]);
+    assert!(ok, "{err}");
+    let third = out.trim().to_owned();
+    assert_eq!(h.workspace().tab_terminals("t"), ["base", &third, &id]);
+    assert!(cli(&["close", &third]).0);
+
     let (ok, _, err) = cli(&["close", &id]);
     assert!(ok, "{err}");
     assert_eq!(

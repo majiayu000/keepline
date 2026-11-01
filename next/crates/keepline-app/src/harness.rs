@@ -61,11 +61,12 @@ pub fn start(
                 let root = root.clone();
                 background.spawn(async move {
                     let out = std::process::Command::new(cli).arg(&args[0]).arg("--runtime").arg(root).args(&args[1..]).env("SHELL", "/bin/sh").output().unwrap();
-                    assert!(out.status.success(), "{args:?}: {}", String::from_utf8_lossy(&out.stderr));
-                    String::from_utf8_lossy(&out.stdout).trim().to_owned()
+                    (out.status.success(), String::from_utf8_lossy(&out.stdout).trim().to_owned(), String::from_utf8_lossy(&out.stderr).into_owned())
                 })
             };
-            let id = run(["split", "base", "--down", "--size", "0.35", "--", "echo split-from-cli-$((6*7))"].map(String::from).to_vec()).await;
+            let ok = |r: (bool, String, String)| { assert!(r.0, "{}", r.2); r.1 };
+            let args = |a: &[&str]| a.iter().map(|s| s.to_string()).collect::<Vec<_>>();
+            let id = ok(run(args(&["split", "base", "--down", "--size", "0.35", "--", "echo split-from-cli-$((6*7))"])).await);
             let mut shown = (vec![], None);
             for _ in 0..50 {
                 wait(100).await;
@@ -83,7 +84,7 @@ pub fn start(
             assert!(ran, "the command never ran: {}", screen());
             wait(500).await;
             shot("1-split.png", cx);
-            run(vec!["close".into(), id.clone()]).await;
+            ok(run(args(&["close", &id])).await);
             for _ in 0..50 {
                 wait(100).await;
                 shown = handle.update(cx, |v, w, a| v.visual_pane_focus(w, a)).unwrap();
@@ -92,6 +93,56 @@ pub fn start(
             assert_eq!(shown, (vec!["base".to_owned()], Some("base".to_owned())), "close left the pane");
             wait(300).await;
             shot("2-closed.png", cx);
+            // Splits of panes that are splits already, in both directions and on both sides.
+            let shown_after = async |cx: &mut gpui::AsyncApp, count: usize| {
+                let mut shown = (vec![], None);
+                for _ in 0..50 {
+                    wait(100).await;
+                    shown = handle.update(cx, |v, w, a| v.visual_pane_focus(w, a)).unwrap();
+                    if shown.0.len() == count { break; }
+                }
+                // Let the panes report their new sizes before the next split is judged.
+                wait(400).await;
+                shown
+            };
+            let a = ok(run(args(&["split", "base", "--", "echo pane-a"])).await);
+            shown_after(cx, 2).await;
+            let b = ok(run(args(&["split", &a, "--down", "--", "echo pane-b"])).await);
+            shown_after(cx, 3).await;
+            let c = ok(run(args(&["split", "base", "--down", "--before", "--", "echo pane-c"])).await);
+            let shown = shown_after(cx, 4).await;
+            assert_eq!(shown.0, vec![c.clone(), "base".into(), a.clone(), b.clone()], "four panes out of order");
+            assert_eq!(shown.1.as_deref(), Some("base"), "a split took the keyboard");
+            shot("3-four-panes.png", cx);
+            // Splitting one pane again and again stops while both halves are still usable.
+            let mut last = b.clone();
+            let mut refusal = None;
+            let mut count = 4;
+            for _ in 0..8 {
+                let (done, out, err) = run(args(&["split", &last])).await;
+                if !done { refusal = Some(err); break; }
+                last = out;
+                count += 1;
+                assert_eq!(shown_after(cx, count).await.0.len(), count, "a split never showed");
+            }
+            let refusal = refusal.expect("splitting never stopped");
+            assert!(refusal.contains("只剩"), "{refusal}");
+            let full = handle.update(cx, |v, w, a| v.visual_pane_focus(w, a)).unwrap();
+            assert_eq!(full.1.as_deref(), Some("base"));
+            eprintln!("refused at {} panes: {}", full.0.len(), refusal.trim());
+            shot("4-full.png", cx);
+            // A tab that is not shown gets its pane without the shown tab changing.
+            call(Request::Launch { id: "hidden".into(), space: workspace().spaces[0].id.clone(), argv: vec!["/bin/sh".into(), "-i".into()], cwd: "/tmp".into(), cols: 100, rows: 30, scheme: Default::default() });
+            call(Request::Edit { revision: 0, edit: Edit::PutTab { tab: Tab { id: "tab-other".into(), space: workspace().spaces[0].id.clone(), default_task: None, title: "other".into(), layout: Some(Layout::Leaf("hidden".into())) } } });
+            wait(500).await;
+            ok(run(args(&["split", "hidden", "--", "echo pane-hidden"])).await);
+            wait(800).await;
+            let row = handle.update(cx, |v, _, _| v.visual_tab_row()).unwrap();
+            assert_eq!((row.1.as_deref(), row.2), (Some("tab-base"), full.0.len()), "the shown tab changed");
+            handle.update(cx, |v, _, a| v.visual_peek_show_tab("other", a)).unwrap();
+            let other = shown_after(cx, 2).await;
+            assert_eq!(other.0.len(), 2, "the hidden tab's split is missing");
+            shot("5-other-tab.png", cx);
             eprintln!("split cli native PASS: an outside split shows in the open tab without taking focus, runs its command, and closes");
             cx.update(|cx| cx.quit());
         }).detach();

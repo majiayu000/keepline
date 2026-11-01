@@ -32,6 +32,30 @@ impl Layout {
             Self::Split { first, second, .. } => first.contains(id) || second.contains(id),
         }
     }
+    /// Whether a pane `cols` × `rows` cells can give `share` of itself to a new pane with
+    /// both halves still usable, and the new pane's size if so; the refusal says what
+    /// would be left.
+    pub fn split_room(cols: u16, rows: u16, axis: Axis, share: u16) -> Result<(u16, u16), String> {
+        const MIN_COLS: u32 = 20;
+        const MIN_ROWS: u32 = 5;
+        let (total, min, unit) = match axis {
+            Axis::Right => (u32::from(cols), MIN_COLS, "列"),
+            Axis::Down => (u32::from(rows), MIN_ROWS, "行"),
+        };
+        let new = total * u32::from(share) / 10000;
+        let old = total.saturating_sub(new);
+        if new < min || old < min {
+            return Err(format!(
+                "这块终端只有 {total} {unit}，切开后一边只剩 {} {unit}（至少要 {min} {unit}）；换个方向、调 --size，或在更大的终端旁边开",
+                new.min(old)
+            ));
+        }
+        let new = new as u16;
+        Ok(match axis {
+            Axis::Right => (new, rows),
+            Axis::Down => (cols, new),
+        })
+    }
     pub fn split(&mut self, target: &str, new: String, axis: Axis) -> bool {
         self.split_beside(target, new, axis, false, 5000)
     }
@@ -196,6 +220,21 @@ pub enum Direction {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn a_split_needs_room_for_both_halves() {
+        assert_eq!(Layout::split_room(100, 30, Axis::Right, 5000), Ok((50, 30)));
+        assert_eq!(Layout::split_room(100, 30, Axis::Down, 3000), Ok((100, 9)));
+        assert!(Layout::split_room(39, 30, Axis::Right, 5000).is_err());
+        assert!(
+            Layout::split_room(100, 30, Axis::Right, 1500).is_err(),
+            "15 cols"
+        );
+        assert!(Layout::split_room(100, 9, Axis::Down, 5000).is_err());
+        assert!(
+            Layout::split_room(30, 10, Axis::Down, 5000).is_ok(),
+            "narrow but tall enough"
+        );
+    }
     #[test]
     fn neighbour_follows_geometry_not_layout_order() {
         // a | (b over c), the right column split 30/70.
