@@ -163,6 +163,7 @@ fn outcome_label(outcome: &Outcome) -> String {
 }
 
 mod actions;
+mod board;
 mod cleanup;
 mod decorations;
 mod diagnostics;
@@ -308,6 +309,7 @@ impl Workbench {
                 show_running: false,
                 show_review: false,
                 show_hidden: false,
+                agent: None,
                 card_menu: None,
                 here: None,
                 here_more: None,

@@ -45,6 +45,15 @@ impl Agent {
     pub fn executable(self) -> &'static str {
         self.spec().map_or(self.0, |s| s.executable.as_str())
     }
+    /// The CLI's mark as a one-fill SVG the app tints with its text color
+    /// (`assets/agent-icons/LICENSE`). A declared CLI has none and shows its initial.
+    pub fn icon_svg(self) -> Option<&'static [u8]> {
+        match self.0 {
+            "Claude" => Some(include_bytes!("../assets/agent-icons/claude.svg")),
+            "Codex" => Some(include_bytes!("../assets/agent-icons/codex.svg")),
+            _ => None,
+        }
+    }
     pub fn from_executable(name: &str) -> Option<Self> {
         registry()
             .specs

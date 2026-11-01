@@ -326,7 +326,7 @@ fn run() -> io::Result<()> {
     if evidence.is_some() {
         let _ = EVIDENCE_RUNTIME.set(root.clone());
     }
-    let app = gpui_platform::application();
+    let app = gpui_platform::application().with_assets(ui::icons::Assets);
     let reopen_root = root.clone();
     app.on_reopen(move |cx| reopen_window(&reopen_root, cx));
     app.run(move |cx: &mut App| {

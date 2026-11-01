@@ -568,6 +568,43 @@ impl Theme {
     pub const PANE_ACTION_RADIUS: f32 = 5.;
     /// The pane footer's text: cwd, branch and who owns input.
     pub const PANE_FOOTER_SIZE: f32 = 11.;
+    // board (specs/overview-kanban/kanban.html)
+    /// Each space's avatar: three washes over a base, picked by the space id. No pure red
+    /// or orange as a base; those belong to 出错 and 等你回答.
+    pub const BOARD_MESHES: [[u32; 4]; 6] = [
+        [0xff7ad9, 0x7cf2c9, 0x7a8cff, 0xb58cff],
+        [0x6ee7ff, 0xa78bfa, 0xf9a8d4, 0x38bdf8],
+        [0xbef264, 0x2dd4bf, 0x60a5fa, 0x34d399],
+        [0xf0abfc, 0xfde68a, 0x818cf8, 0xc084fc],
+        [0xfcd34d, 0xf472b6, 0xa3e635, 0x93c5fd],
+        [0x93c5fd, 0xfda4af, 0x86efac, 0xa5b4fc],
+    ];
+    /// A branch label's hue by its prefix, like an issue label.
+    pub const BRANCH_FEAT: u32 = 0x9d8cff;
+    pub const BRANCH_FIX: u32 = 0xf472b6;
+    pub const BRANCH_PERF: u32 = 0xfacc15;
+    pub const BRANCH_DOCS: u32 = 0x2dd4bf;
+    pub const BRANCH_OPS: u32 = 0x60a5fa;
+    pub const BRANCH_REFACTOR: u32 = 0xa3e635;
+    pub const BOARD_COLUMN_MIN: f32 = 236.;
+    pub const BOARD_CARD_SPACING: f32 = 8.;
+    pub const BOARD_CARD_GAP: f32 = 7.;
+    pub const BOARD_AVATAR: f32 = 20.;
+    pub const BOARD_MARK: f32 = 12.;
+    pub const BOARD_CLOCK: f32 = 11.;
+    pub const BOARD_HEAD_ICON: f32 = 14.;
+    pub const BOARD_PILL: f32 = 20.;
+    pub const BOARD_PILL_GAP: f32 = 5.;
+    pub const BOARD_PILL_DOT: f32 = 6.;
+    pub const BOARD_PILL_MAX: f32 = 110.;
+    /// 等了多久: four rising bars in a framed square.
+    pub const BOARD_BAR_WIDTH: f32 = 2.;
+    pub const BOARD_BAR_BASE: f32 = 3.;
+    pub const BOARD_BAR_STEP: f32 = 2.;
+    pub const BOARD_BAR_GAP: f32 = 1.;
+    pub const BOARD_BAR_INSET: f32 = 5.;
+    pub const BOARD_BAR_FRAME_RADIUS: f32 = 5.;
+    pub const BOARD_BAR_RADIUS: f32 = 0.5;
     /// Numbers that change in place keep their width.
     pub fn tabular() -> gpui::FontFeatures {
         gpui::FontFeatures(std::sync::Arc::new(vec![("tnum".into(), 1)]))

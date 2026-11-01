@@ -22,6 +22,8 @@ pub(super) struct OverviewState {
     /// The overview's scroll, so a group's pill can bring that group into view.
     pub(super) scroll: gpui::ScrollHandle,
     pub(super) show_hidden: bool,
+    /// The board shows only this CLI's sessions and todos.
+    pub(super) agent: Option<keepline_core::model::Agent>,
     pub(super) card_menu: Option<String>,
     /// Opened by coming back after a while, not by the user: titled 「欢迎回来」.
     pub(super) welcome: bool,
@@ -94,6 +96,10 @@ impl Workbench {
         window: &Window,
         cx: &Context<Self>,
     ) -> gpui::Stateful<gpui::Div> {
+        // The board is 鸟瞰; the list stays for closed terminals and the ended or hidden.
+        if !self.overview.closed_only && !self.overview.show_closed && !self.overview.show_hidden {
+            return self.board_view(cx);
+        }
         let open: Vec<_> = self
             .workspace
             .agent_sessions
