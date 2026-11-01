@@ -84,7 +84,16 @@ svg{display:block}
 .plus{height:20px;padding:0 7px;border-radius:10px;border:1px solid #2c2c33;font-size:12px;color:var(--faint);display:inline-flex;align-items:center}
 .ring{display:flex;align-items:center;gap:4px;font-variant-numeric:tabular-nums}
 .ring.full{color:var(--done)}
-.glyph{width:16px;height:16px;border-radius:4px;display:grid;place-items:center;font:600 9.5px var(--mono);color:#cfcfd6;background:#24242a}
+.ai{width:18px;height:18px;border-radius:5px;display:grid;place-items:center;flex:none}
+.ai svg{width:12px;height:12px}
+.ai.cc{background:#2b1d16;box-shadow:inset 0 0 0 1px #3d2a20}.ai.cc svg{fill:#D97757}
+.ai.cx{background:#f2f2f4}.ai.cx svg{fill:#0c0c0e}
+.ai.sm{width:14px;height:14px;border-radius:4px}.ai.sm svg{width:10px;height:10px}
+.fchip{height:26px;padding:0 9px 0 5px;border-radius:7px;border:1px solid #2a2a31;display:flex;align-items:center;gap:7px;color:var(--sub);transition:border-color .15s,background .15s,opacity .15s}
+.fchip:hover{border-color:#3a3a42}
+.fchip.on{background:#1d1d22;border-color:#45454e;color:var(--text)}
+.fchip.off{opacity:.45}
+.fchip .n{color:var(--faint);font-variant-numeric:tabular-nums}
 .live{position:absolute;left:10px;right:10px;bottom:-1px;height:1px;overflow:hidden;border-radius:1px}
 .live::after{content:"";position:absolute;inset:0;width:40%;background:linear-gradient(90deg,transparent,var(--run),transparent);animation:sweep 2.4s ease-in-out infinite}
 @keyframes sweep{from{transform:translateX(-100%)}to{transform:translateX(250%)}}
@@ -166,7 +175,7 @@ svg{display:block}
     </div>
     <div class="sub">
       <div class="stack" id="stack"></div>
-      <span class="chip">＋ Agent</span>
+      <span id="agents" style="display:flex;gap:6px"></span>
       <span class="chip">＋ 分支</span>
       <span class="quiet">另有 <button>暂停 2</button> · <button>很久没动 10</button> 已收起</span>
       <div class="spacer"></div>
@@ -242,6 +251,9 @@ const IC = {
   plus:'<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 5v14M5 12h14"/></svg>',
   agent:'<svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="8" r="4"/><path d="M4 21a8 8 0 0 1 16 0"/></svg>',
 };
+const AG = { cc:{ name:'Claude Code', short:'Claude', d:'M20.998 10.949H24v3.102h-3v3.028h-1.487V20H18v-2.921h-1.487V20H15v-2.921H9V20H7.488v-2.921H6V20H4.487v-2.921H3V14.05H0V10.95h3V5h17.998v5.949zM6 10.949h1.488V8.102H6v2.847zm10.51 0H18V8.102h-1.49v2.847z' }, cx:{ name:'Codex', short:'Codex', d:'M9.064 3.344a4.578 4.578 0 012.285-.312c1 .115 1.891.54 2.673 1.275.01.01.024.017.037.021a.09.09 0 00.043 0 4.55 4.55 0 013.046.275l.047.022.116.057a4.581 4.581 0 012.188 2.399c.209.51.313 1.041.315 1.595a4.24 4.24 0 01-.134 1.223.123.123 0 00.03.115c.594.607.988 1.33 1.183 2.17.289 1.425-.007 2.71-.887 3.854l-.136.166a4.548 4.548 0 01-2.201 1.388.123.123 0 00-.081.076c-.191.551-.383 1.023-.74 1.494-.9 1.187-2.222 1.846-3.711 1.838-1.187-.006-2.239-.44-3.157-1.302a.107.107 0 00-.105-.024c-.388.125-.78.143-1.204.138a4.441 4.441 0 01-1.945-.466 4.544 4.544 0 01-1.61-1.335c-.152-.202-.303-.392-.414-.617a5.81 5.81 0 01-.37-.961 4.582 4.582 0 01-.014-2.298.124.124 0 00.006-.056.085.085 0 00-.027-.048 4.467 4.467 0 01-1.034-1.651 3.896 3.896 0 01-.251-1.192 5.189 5.189 0 01.141-1.6c.337-1.112.982-1.985 1.933-2.618.212-.141.413-.251.601-.33.215-.089.43-.164.646-.227a.098.098 0 00.065-.066 4.51 4.51 0 01.829-1.615 4.535 4.535 0 011.837-1.388zm3.482 10.565a.637.637 0 000 1.272h3.636a.637.637 0 100-1.272h-3.636zM8.462 9.23a.637.637 0 00-1.106.631l1.272 2.224-1.266 2.136a.636.636 0 101.095.649l1.454-2.455a.636.636 0 00.005-.64L8.462 9.23z' } };
+const agentIcon = (ag, sm) => `<span class="ai ${ag} ${sm?'sm':''}" title="${AG[ag].name}"><svg viewBox="0 0 24 24" aria-hidden="true"><path fill-rule="evenodd" clip-rule="evenodd" d="${AG[ag].d}"/></svg></span>`;
+let only = null;
 function colIcon(id){
   const W = 'width="14" height="14" viewBox="0 0 16 16"';
   if (id==='todo')   return `<svg ${W}><circle cx="8" cy="8" r="6" fill="none" stroke="#8e8e97" stroke-width="1.6" stroke-dasharray="2.2 2.2"/></svg>`;
@@ -263,7 +275,7 @@ function waitBars(s){
 const pill = s => {
   if (s.col==='need') return `<span class="pill"><i style="background:${s.kind==='err'?'var(--err)':'var(--wait)'}"></i>${s.kind==='err'?'出错':'等你回答'}</span>`;
   if (s.col==='run') return `<span class="pill"><i style="background:var(--run)"></i>本轮 <span class="tick" data-at="${s.at}">${clock(s.at)}</span></span>${s.sub?`<span class="plus">子 Agent ${s.sub}</span>`:''}`;
-  if (s.col==='todo') return `<span class="pill">${IC.agent}${s.ag==='cc'?'Claude':'Codex'}</span>`;
+  if (s.col==='todo') return `<span class="pill" style="padding-left:3px">${agentIcon(s.ag,1)}${AG[s.ag].short}</span>`;
   return `<span class="pill"><i style="background:#6f6f78"></i>${s.br}</span>`;
 };
 function cardHTML(s){
@@ -274,7 +286,7 @@ function cardHTML(s){
     s.turns ? `<span class="ring">${IC.turn}${s.turns}</span>` : '',
   ].join('');
   return `<article class="card ${sel===s.id?'sel':''}" data-id="${s.id}">
-    <div class="r1"><span class="glyph">${s.ag==='cc'?'CC':'CX'}</span><span class="mono">${s.id}</span><span class="when">${when}</span><span class="orb" style="background:${grad(s.sp)}" title="${s.sp}"></span></div>
+    <div class="r1">${agentIcon(s.ag)}<span class="mono">${s.id}</span><span class="when">${when}</span><span class="orb" style="background:${grad(s.sp)}" title="${s.sp}"></span></div>
     <button class="more" aria-label="更多">${IC.more}</button>
     <div class="t">${s.t}</div>
     ${s.col==='need'||s.col==='run' ? `<div class="q">${s.q}</div>` : ''}
@@ -288,7 +300,7 @@ let sel = null;
 const board = document.getElementById('board');
 function render(){
   board.innerHTML = COLS.map(c => {
-    const items = S.filter(s => s.col===c.id);
+    const items = S.filter(s => s.col===c.id && (!only || s.ag===only));
     return `<section class="col" data-col="${c.id}">
       <div class="col-h">${colIcon(c.id)}<strong style="font-weight:500">${c.name}</strong><span class="n">${items.length}</span>${c.id==='todo'?`<button class="add" aria-label="新待办">${IC.plus}</button>`:''}</div>
       <div class="list">${items.map(cardHTML).join('')}</div>
@@ -299,6 +311,9 @@ function render(){
   document.getElementById('allCount').textContent = S.filter(s=>s.col!=='done').length;
   const cnt = {}; S.filter(s=>s.col!=='done').forEach(s=>cnt[s.sp]=(cnt[s.sp]||0)+1);
   document.getElementById('spaces').innerHTML = Object.keys(SPACES).map(k=>`<a href="#"><span class="orb" style="background:${grad(k)}"></span>${k}<span class="c">${cnt[k]||0}</span></a>`).join('');
+  const ac = {cc:0,cx:0}; S.filter(s=>s.col!=='done').forEach(s=>ac[s.ag]++);
+  document.getElementById('agents').innerHTML = ['cc','cx'].map(a=>`<button class="fchip ${only===a?'on':only?'off':''}" data-ag="${a}">${agentIcon(a)}${AG[a].short}<span class="n">${ac[a]}</span></button>`).join('');
+  document.querySelectorAll('.fchip').forEach(b=>b.onclick=()=>{ only = only===b.dataset.ag ? null : b.dataset.ag; const r=rects(); render(); flipById(r); });
   document.getElementById('stack').innerHTML = Object.keys(SPACES).map(k=>`<span style="background:${grad(k)}" title="${k}"></span>`).join('');
 }
 render();
@@ -405,7 +420,7 @@ function openDrawer(id){
   const said = s.col==='todo' ? '还没交给 Agent。点「开始」会在新终端里预填命令，按回车才真正启动。' : s.q;
   drawer.innerHTML=`
     <div class="dmain">
-      <div class="dtop">${colIcon(s.col)}<span class="mono" style="color:var(--sub)">${s.id}</span><span>${i+1} / ${list.length}</span>
+      <div class="dtop">${colIcon(s.col)}${agentIcon(s.ag)}<span class="mono" style="color:var(--sub)">${s.id}</span><span>${i+1} / ${list.length}</span>
         <span class="nav2"><button data-j="-1" aria-label="上一个">↑</button><button data-j="1" aria-label="下一个">↓</button></span>
         <span style="flex:1"></span><button class="x" aria-label="关闭">✕</button></div>
       <div class="dtitle">${s.t}</div>
@@ -417,12 +432,12 @@ function openDrawer(id){
       ${checks.length?`<div class="dsec">验收标准<span style="margin-left:8px">${ring(s.chk[0],s.chk[1])}</span></div>${checks.map((t,k)=>`<div class="check ${k<s.chk[0]?'ok':''}"><span class="box">${k<s.chk[0]?'<svg width="9" height="9" viewBox="0 0 12 12"><path d="M2.5 6.2l2.2 2.2 4.8-5" fill="none" stroke="#0c0c0e" stroke-width="2" stroke-linecap="round"/></svg>':''}</span><span>${t}</span></div>`).join('')}`:''}
       ${s.col!=='todo'?`<div class="dsec">经过</div>
         <div class="act"><span class="d"><span class="orb" style="width:7px;height:7px;background:#6f6f78"></span></span><span><b>你</b> 在 ${s.sp} 开了这个会话</span><span class="tm">${ago(s.at+0)} 前</span></div>
-        <div class="act"><span class="d"><span class="orb" style="width:7px;height:7px;background:#6f6f78"></span></span><span><b>${s.ag==='cc'?'Claude':'Codex'}</b> 跑了 ${s.turns||1} 个回合</span><span class="tm">${s.turns||1} 回合</span></div>
+        <div class="act"><span class="d"><span class="orb" style="width:7px;height:7px;background:#6f6f78"></span></span><span><b>${AG[s.ag].short}</b> 跑了 ${s.turns||1} 个回合</span><span class="tm">${s.turns||1} 回合</span></div>
         <div class="act"><span class="d"><span class="orb" style="width:7px;height:7px;background:${c.color}"></span></span><span>变成 <b>${status}</b></span><span class="tm">${ago(s.at)} 前</span></div>`:''}
     </div>
     <div class="dside">
       <div class="prop"><span class="k">状态</span><span class="v">${colIcon(s.col)}<span>${status}</span></span></div>
-      <div class="prop"><span class="k">Agent</span><span class="v"><span class="glyph">${s.ag==='cc'?'CC':'CX'}</span><span>${s.ag==='cc'?'Claude Code':'Codex'}</span></span></div>
+      <div class="prop"><span class="k">Agent</span><span class="v">${agentIcon(s.ag)}<span>${AG[s.ag].name}</span></span></div>
       <div class="prop"><span class="k">空间</span><span class="v"><span class="orb" style="background:${grad(s.sp)}"></span><span>${s.sp}</span></span></div>
       ${s.br?`<div class="prop"><span class="k">分支</span><span class="v mono"><span>${s.br}</span></span></div>`:''}
       ${s.turns?`<div class="prop"><span class="k">回合</span><span class="v"><span>${s.turns}</span></span></div>`:''}
