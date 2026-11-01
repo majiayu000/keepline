@@ -175,6 +175,7 @@ impl Render for Workbench {
                 .when(!self.needs_you().is_empty(), |d| {
                     d.child(self.next_waiting_chip(cx))
                 })
+                .children(self.phones_button(cx))
                 .child(
                     button("add-task", "＋ 新待办").on_click(
                         cx.listener(|this, _, window, cx| this.show_quick_task(window, cx)),
@@ -613,6 +614,9 @@ impl Render for Workbench {
         }
         if let Some(position) = self.sidebar.view_menu {
             root = root.child(self.view_menu_view(position, window, cx));
+        }
+        if self.phones.open {
+            root = root.child(self.phones_panel(window, cx));
         }
         if let Some(position) = self.layout.icon_menu {
             root = root.child(self.icon_menu_view(position, window, cx));

@@ -2955,6 +2955,7 @@ dependencies = [
  "keepline-core",
  "keepline-plugin-host",
  "libc",
+ "qrcode",
  "serde",
  "serde_json",
 ]

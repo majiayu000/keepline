@@ -151,7 +151,7 @@ pub enum Request {
     RemoteConfigure {
         enabled: bool,
         relay: String,
-        /// The relay's registration key, when it asks for one.
+        /// The relay's registration key: None keeps the one saved, empty clears it.
         key: Option<String>,
     },
     /// Pairs one more phone; replies `Text`, its pairing link.
@@ -184,6 +184,9 @@ pub enum RemoteChange {
 pub struct RemoteStatus {
     pub enabled: bool,
     pub relay: String,
+    /// A registration key is saved; the key itself stays with the host.
+    #[serde(default)]
+    pub keyed: bool,
     #[serde(default)]
     pub devices: Vec<RemoteDevice>,
     #[serde(flatten)]

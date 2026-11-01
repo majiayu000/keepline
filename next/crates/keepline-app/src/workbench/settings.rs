@@ -225,16 +225,18 @@ pub(super) enum Page {
     Terminal,
     Keys,
     Notifications,
+    Phones,
     Plugins,
     About,
 }
 impl Page {
-    const ALL: [Self; 7] = [
+    const ALL: [Self; 8] = [
         Self::General,
         Self::Look,
         Self::Terminal,
         Self::Keys,
         Self::Notifications,
+        Self::Phones,
         Self::Plugins,
         Self::About,
     ];
@@ -245,6 +247,7 @@ impl Page {
             Self::Terminal => "终端",
             Self::Keys => "快捷键",
             Self::Notifications => "通知",
+            Self::Phones => "手机与远程",
             Self::Plugins => "插件",
             Self::About => "关于",
         }
@@ -256,6 +259,7 @@ impl Page {
             Self::Terminal => "›_",
             Self::Keys => "⌘",
             Self::Notifications => "◉",
+            Self::Phones => "▯",
             Self::Plugins => "⧉",
             Self::About => "i",
         }
@@ -267,6 +271,9 @@ impl Page {
             Self::Terminal => "终端文字、光标与分屏，上方实时预览。",
             Self::Keys => "点击组合键重新录制，Esc 取消。",
             Self::Notifications => "Agent 需要你的时候，用系统通知或提示音叫你回来。",
+            Self::Phones => {
+                "配对过的手机经中继连过来：看画面、答审批、打字。内容端到端加密，中继看不到。"
+            }
             Self::Plugins => {
                 "哪些插件和声明文件生效了，哪些没有、为什么。改动后重开 Keepline 生效。"
             }
@@ -275,7 +282,14 @@ impl Page {
     }
 }
 /// Every searchable setting: its page, its title and the words that find it.
-const ENTRIES: [(Page, &str, &str); 20] = [
+const ENTRIES: [(Page, &str, &str); 23] = [
+    (
+        Page::Phones,
+        "让手机连过来",
+        "手机 远程 中继 relay 配对 iphone 安卓",
+    ),
+    (Page::Phones, "中继地址", "relay 中继 服务器 地址 密钥 key"),
+    (Page::Phones, "操作记录", "日志 记录 log 手机 按键"),
     (
         Page::General,
         "默认 Agent",
@@ -336,6 +350,12 @@ const ENTRIES: [(Page, &str, &str); 20] = [
 pub(super) enum SettingsAction {
     Close,
     Change(Settings),
+    /// Phones on a relay: on or off, the relay, and its key (None keeps the saved one).
+    Remote {
+        enabled: bool,
+        relay: String,
+        key: Option<String>,
+    },
 }
 pub(super) struct SettingsView {
     pub(super) focus: gpui::FocusHandle,
@@ -357,6 +377,12 @@ pub(super) struct SettingsView {
     hooks: Option<Result<Vec<crate::agent_hooks::Hook>, String>>,
     /// The CLI whose hooks are being installed after a click.
     installing: Option<String>,
+    /// Phones on a relay as the host last said; kept current while the panel is open.
+    pub(super) remote: keepline_core::protocol::RemoteStatus,
+    relay: Entity<Field>,
+    relay_key: Entity<Field>,
+    /// Why the phones setting was not sent.
+    remote_error: Option<&'static str>,
 }
 impl gpui::EventEmitter<SettingsAction> for SettingsView {}
 impl SettingsView {
@@ -364,8 +390,21 @@ impl SettingsView {
         values: Settings,
         busy: bool,
         runtime: Option<PathBuf>,
+        remote: keepline_core::protocol::RemoteStatus,
         cx: &mut Context<Self>,
     ) -> Self {
+        let relay = cx.new(|cx| {
+            Field::new("中继地址", &remote.relay, cx)
+                .compact()
+                .placeholder("https://relay.example.com")
+        });
+        let relay_key = cx.new(|cx| {
+            Field::new("中继密钥", "", cx)
+                .compact()
+                .placeholder("可不填")
+        });
+        cx.observe(&relay, |_, _, cx| cx.notify()).detach();
+        cx.observe(&relay_key, |_, _, cx| cx.notify()).detach();
         let query = cx.new(|cx| {
             Field::new("搜索设置", "", cx)
                 .compact()
@@ -393,6 +432,10 @@ impl SettingsView {
             refused: None,
             hooks: None,
             installing: None,
+            remote,
+            relay,
+            relay_key,
+            remote_error: None,
         }
     }
     /// Installs `agent`'s hooks first when given (only ever from a click), then reads every
@@ -1823,6 +1866,122 @@ impl SettingsView {
             })
             .collect()
     }
+    /// The key as typed: None leaves the saved one.
+    fn typed_key(&self, cx: &gpui::App) -> Option<String> {
+        Some(self.relay_key.read(cx).text.trim().to_owned()).filter(|k| !k.is_empty())
+    }
+    fn send_remote(&mut self, enabled: bool, cx: &mut Context<Self>) {
+        let relay = self.relay.read(cx).text.trim().to_owned();
+        if enabled && relay.is_empty() {
+            self.remote_error = Some("先填中继地址");
+            cx.notify();
+            return;
+        }
+        self.remote_error = None;
+        let key = self.typed_key(cx);
+        self.relay_key.update(cx, |f, cx| {
+            f.set_text("");
+            cx.notify();
+        });
+        cx.emit(SettingsAction::Remote {
+            enabled,
+            relay,
+            key,
+        });
+    }
+    fn phones_page(&self, cx: &Context<Self>) -> gpui::Div {
+        let r = &self.remote;
+        let mut link = Vec::new();
+        if self.shows(Page::Phones, "让手机连过来", cx) {
+            link.push(
+                self.row(
+                    true,
+                    "让手机连过来",
+                    "这台 Mac 一直挂在中继上，配对过的手机在哪都能连过来；关掉后手机暂时连不上，配对还在。",
+                    switch("remote-on", r.enabled).on_click(cx.listener(|this, _, _, cx| {
+                        let on = !this.remote.enabled;
+                        this.send_remote(on, cx)
+                    })),
+                )
+                .into_any_element(),
+            );
+        }
+        if self.shows(Page::Phones, "中继地址", cx) {
+            let field = |f: &Entity<Field>| div().w(px(T::FORM_WIDTH * 0.6)).child(f.clone());
+            link.push(
+                self.row(
+                    link.is_empty(),
+                    "中继地址",
+                    "自己部署的 keepline-relay，或部署好的 alma-relay",
+                    field(&self.relay),
+                )
+                .into_any_element(),
+            );
+            link.push(
+                self.row(
+                    false,
+                    "中继密钥",
+                    if r.keyed {
+                        "已保存，不显示；要换就填新的"
+                    } else {
+                        "中继要求注册密钥时才填"
+                    },
+                    field(&self.relay_key),
+                )
+                .into_any_element(),
+            );
+            let typed = self.relay.read(cx).text.trim().to_owned();
+            if typed != r.relay || self.typed_key(cx).is_some() {
+                link.push(
+                    self.row(
+                        false,
+                        "改过的地址或密钥",
+                        "保存后后台按新的设置重新连接",
+                        secondary("remote-save", "保存").on_click(cx.listener(|this, _, _, cx| {
+                            let on = this.remote.enabled;
+                            this.send_remote(on, cx)
+                        })),
+                    )
+                    .into_any_element(),
+                );
+            }
+            let (dot, state) = super::phones::state_line(r);
+            link.push(
+                self.row(
+                    false,
+                    "状态",
+                    self.remote_error.unwrap_or(""),
+                    div()
+                        .flex()
+                        .items_center()
+                        .gap(px(T::S6))
+                        .max_w(px(T::FORM_WIDTH * 0.6))
+                        .child(div().size(px(T::DOT)).rounded_full().bg(dot))
+                        .child(label(state)),
+                )
+                .into_any_element(),
+            );
+        }
+        let mut phones = Vec::new();
+        if self.shows(Page::Phones, "操作记录", cx) {
+            phones.push(
+                self.row(
+                    true,
+                    "配对的手机",
+                    "在标题栏的手机按钮里配对、断开、改权限或取消配对",
+                    label(format!("{} 台", r.devices.len())),
+                )
+                .into_any_element(),
+            );
+            phones.push(self.path_row(
+                false,
+                "操作记录",
+                self.runtime.as_ref().map(|r| r.join("remote-log.jsonl")),
+                cx,
+            ));
+        }
+        self.cards(vec![("连接", link), ("手机", phones)])
+    }
     fn about_page(&self, cx: &Context<Self>) -> gpui::Div {
         let mut page = div().flex().flex_col();
         if self.shows(Page::About, "版本", cx) {
@@ -1886,6 +2045,7 @@ impl SettingsView {
             Page::Terminal => self.terminal_page(cx),
             Page::Keys => self.keys_page(cx),
             Page::Notifications => self.notifications_page(cx),
+            Page::Phones => self.phones_page(cx),
             Page::Plugins => self.plugins_page(cx),
             Page::About => self.about_page(cx),
         }
@@ -2116,7 +2276,8 @@ impl Workbench {
         let values = self.workspace.settings.clone();
         let busy = self.store.busy();
         let runtime = self.store.socket().parent().map(Path::to_path_buf);
-        let view = cx.new(|cx| SettingsView::new(values, busy, runtime, cx));
+        let remote = self.store.recognition().remote.clone();
+        let view = cx.new(|cx| SettingsView::new(values, busy, runtime, remote, cx));
         cx.subscribe(&view, |this, _, action, cx| match action {
             SettingsAction::Close => {
                 this.settings = None;
@@ -2128,6 +2289,18 @@ impl Workbench {
                     this.edit(Edit::Settings(values.clone()), cx);
                 }
             }
+            SettingsAction::Remote {
+                enabled,
+                relay,
+                key,
+            } => this.request(
+                Request::RemoteConfigure {
+                    enabled: *enabled,
+                    relay: relay.clone(),
+                    key: key.clone(),
+                },
+                cx,
+            ),
         })
         .detach();
         let focus = view.read(cx).focus.clone();

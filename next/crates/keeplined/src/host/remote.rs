@@ -139,6 +139,7 @@ impl Supervisor {
         RemoteStatus {
             enabled: inner.config.enabled,
             relay: inner.config.relay.clone(),
+            keyed: inner.config.key.is_some(),
             devices: crate::devices::load(&socket)
                 .into_iter()
                 .map(|d| keepline_core::protocol::RemoteDevice {
@@ -163,6 +164,10 @@ impl Supervisor {
     /// The paired devices changed: show the app.
     pub(crate) fn refresh(&self) {
         (self.on_change)();
+    }
+
+    pub(crate) fn key(&self) -> Option<String> {
+        self.lock().config.key.clone()
     }
 
     pub(crate) fn relay(&self) -> String {

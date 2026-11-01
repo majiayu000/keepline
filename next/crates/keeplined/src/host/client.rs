@@ -550,8 +550,12 @@ pub(super) fn dispatch(shared: &Shared, request: Request) -> io::Result<Reply> {
             key,
         } => {
             let relay = relay.trim().to_owned();
-            let key = key.filter(|k| !k.is_empty());
-            supervisor(shared)?.configure(super::remote::Config {
+            let remote = supervisor(shared)?;
+            let key = match key {
+                None => remote.key(),
+                Some(k) => Some(k.trim().to_owned()).filter(|k| !k.is_empty()),
+            };
+            remote.configure(super::remote::Config {
                 enabled,
                 relay,
                 key,
