@@ -1,0 +1,8 @@
+{
+  "api": 1,
+  "id": "session-first",
+  "name": "会话优先左栏",
+  "version": "0.1.0",
+  "description": "需要你的在上，其余按最新在上排成一列；每行第二行写短编号和它停在哪、做成了什么，行尾只放时间",
+  "provides": ["sidebar"]
+}

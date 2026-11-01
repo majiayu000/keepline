@@ -1,0 +1,11 @@
+{
+  "api": 1,
+  "presets": [
+    {
+      "id": "session-first",
+      "name": "最新",
+      "group": "wasm",
+      "wasm": "session_first.wasm"
+    }
+  ]
+}
