@@ -29,8 +29,11 @@ keeplined remote --stdio                     给另一台机器或手机 App 用
 keeplined remote --relay <中继地址> [--relay-key <密钥>]
                                              连上中继并一直挂着，配对过的手机在哪都能连过来；内容端到端加密，
                                              中继看不到。中继要密钥时也可以设 KEEPLINE_RELAY_KEY
-keeplined remote --pair --relay <中继地址> [--new-code]
-                                             打印配对二维码和链接；--new-code 换一个配对码，已配对的手机全部失效
+keeplined remote --pair --relay <中继地址> [--name 名字] [--role view|answer|full]
+                                             配对一台新手机，打印它的二维码和链接；权限分只看 / 能答审批 / 完全控制（默认）。
+                                             加 --new-code 换掉机器码，已配对的手机全部失效
+keeplined remote --devices                   列出配对过的手机、权限和最近连接时间；操作记在运行目录的 remote-log.jsonl
+keeplined remote --revoke <设备编号或名字>   取消一台手机的配对，它正连着的会话一秒内断开
 keeplined --skill                            给 Coding Agent 看的用法说明（Markdown）
 <终端> 可以是编号的前几位或标签名；全部命令都接受 --runtime <目录>。
 Agent 藏在包装器（沙盒、虚拟机、nono 等）后面认不出时，启动前设 KEEPLINE_AGENT=<claude|codex|…>。";

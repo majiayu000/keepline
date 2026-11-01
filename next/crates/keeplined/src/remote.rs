@@ -5,13 +5,14 @@
 //! order; `events` and `watch` are streams that run beside them until closed.
 //! The message shapes are in `specs/extensions/remote-protocol.md`.
 use crate::control::{self, Args, Phase};
+use crate::devices::{self, Role};
 use base64::Engine;
 use keepline_core::{model::*, protocol::*, terminal::Vt};
 use serde_json::{json, Value};
 use std::collections::HashMap;
 use std::io::{self, BufRead, Read, Write};
 use std::os::unix::net::UnixStream;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use std::sync::{mpsc, Arc, Mutex};
 use std::thread;
 
@@ -35,17 +36,57 @@ struct Registry {
     ended: bool,
 }
 
+/// Who is on the other end and what it may do. Over ssh it is this user, already trusted.
+#[derive(Clone)]
+pub(crate) struct Access {
+    pub(crate) role: Role,
+    /// `(id, name)` of a paired device.
+    pub(crate) device: Option<(String, String)>,
+    /// Where acting ops are logged.
+    pub(crate) log: Option<PathBuf>,
+}
+impl Access {
+    fn trusted() -> Self {
+        Self {
+            role: Role::Full,
+            device: None,
+            log: None,
+        }
+    }
+    fn record(&self, op: &str, request: &Value, result: &io::Result<Value>) {
+        let (Some(log), Some((id, name))) = (&self.log, &self.device) else {
+            return;
+        };
+        devices::log(
+            log,
+            json!({
+                "event": "op",
+                "device": id,
+                "name": name,
+                "op": op,
+                "terminal": request["terminal"],
+                "error": result.as_ref().err().map(|e| e.to_string()),
+            }),
+        );
+    }
+}
+
 pub fn run(args: impl Iterator<Item = String>) -> io::Result<()> {
-    let a = Args::parse(args, &["relay", "relay-key"])?;
-    if a.value("relay").is_some() {
+    let a = Args::parse(args, &["relay", "relay-key", "name", "role", "revoke"])?;
+    if a.value("relay").is_some() || a.has("devices") || a.value("revoke").is_some() {
         return crate::relay::run(&a);
     }
     if !a.has("stdio") {
         return Err(io::Error::other(
-            "usage: keeplined remote --stdio | --relay <中继地址> [--relay-key <密钥>] | --pair --relay <中继地址> [--new-code]",
+            "usage: keeplined remote --stdio | --relay <中继地址> [--relay-key <密钥>] | --pair --relay <中继地址> [--name <名字>] [--role view|answer|full] [--new-code] | --devices | --revoke <设备>",
         ));
     }
-    serve(io::stdin().lock(), io::stdout(), &a.socket)
+    serve(
+        io::stdin().lock(),
+        io::stdout(),
+        &a.socket,
+        Access::trusted(),
+    )
 }
 
 /// Serves `input` until it ends, replying on `output`.
@@ -53,6 +94,7 @@ pub fn serve(
     mut input: impl BufRead,
     mut output: impl Write + Send + 'static,
     socket: &Path,
+    access: Access,
 ) -> io::Result<()> {
     let (out, lines) = mpsc::sync_channel::<Value>(OUT_QUEUE);
     let writer = thread::spawn(move || {
@@ -68,10 +110,15 @@ pub fn serve(
     let (work, jobs) = mpsc::channel::<(u64, Value)>();
     let streams: Streams = Default::default();
     let worker = {
-        let (out, socket) = (out.clone(), socket.to_owned());
+        let (out, socket, access) = (out.clone(), socket.to_owned(), access.clone());
         thread::spawn(move || {
             for (id, request) in jobs {
-                let reply = match unary(&socket, &request) {
+                let result = unary(&socket, &request);
+                let op = request["op"].as_str().unwrap_or_default();
+                if devices::acts(op) {
+                    access.record(op, &request, &result);
+                }
+                let reply = match result {
                     Ok(ok) => json!({ "id": id, "ok": ok }),
                     Err(e) => json!({ "id": id, "error": e.to_string() }),
                 };
@@ -118,9 +165,13 @@ pub fn serve(
         match op {
             "hello" => {
                 greeted = true;
-                let _ = out.send(json!({ "id": id, "ok": hello(socket) }));
+                let _ = out.send(json!({ "id": id, "ok": hello(socket, access.role) }));
             }
             _ if !greeted => fail("先发 hello".into()),
+            _ if !access.role.allows(op) => fail(format!(
+                "这台设备的权限是「{}」，不能 {op}",
+                access.role.name()
+            )),
             "events" | "watch" => {
                 let (out, socket, streams) = (out.clone(), socket.to_owned(), streams.clone());
                 thread::spawn(move || stream(id, &request, &socket, &out, &streams));
@@ -186,8 +237,9 @@ pub(crate) fn machine(socket: &Path) -> Value {
     };
     json!({ "id": id, "name": name })
 }
-fn hello(socket: &Path) -> Value {
-    json!({ "version": VERSION, "machine": machine(socket), "ops": OPS })
+fn hello(socket: &Path, role: Role) -> Value {
+    let ops: Vec<_> = OPS.iter().filter(|op| role.allows(op)).collect();
+    json!({ "version": VERSION, "machine": machine(socket), "ops": ops, "role": role })
 }
 
 fn text<'a>(request: &'a Value, key: &str) -> io::Result<&'a str> {

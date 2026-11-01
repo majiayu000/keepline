@@ -1,10 +1,12 @@
 //! What a phone and a machine run inside the tunnel, so the relay sees only ciphertext.
 //!
-//! Pairing hands the phone a 256-bit code (in the QR). From it both sides derive:
-//! - the routing token in the phone's URL; the relay only ever holds its hash;
-//! - the pre-shared key of a `Noise_NNpsk0_25519_ChaChaPoly_BLAKE2s` handshake, which
-//!   the relay cannot derive from the token. Fresh ephemeral keys on every connection
-//!   give each one its own keys (forward secrecy).
+//! Pairing hands the phone two 256-bit [`Code`]s (in the QR):
+//! - the machine's code, shared by its phones: the routing token in the phone's URL is
+//!   derived from it ([`Code::token`]), and the relay only ever holds the token's hash;
+//! - the phone's own key: the pre-shared key of a `Noise_NNpsk0_25519_ChaChaPoly_BLAKE2s`
+//!   handshake ([`initiate`], [`respond`]). Nothing the relay sees reveals it, and each
+//!   phone can be unpaired alone. Fresh ephemeral keys on every connection give each one
+//!   its own keys (forward secrecy).
 //!
 //! The phone starts: its first WebSocket message is the handshake's first message, the
 //! machine answers with the second, and every later message is one [`Channel::seal`]ed
@@ -88,8 +90,8 @@ impl Code {
 pub struct Handshake(snow::HandshakeState);
 
 /// Starts a connection: send the returned bytes as the first WebSocket message.
-pub fn initiate(code: &Code) -> io::Result<(Handshake, Vec<u8>)> {
-    let mut hs = code.handshake(true)?;
+pub fn initiate(key: &Code) -> io::Result<(Handshake, Vec<u8>)> {
+    let mut hs = key.handshake(true)?;
     let mut first = vec![0; MAX_NOISE];
     let n = hs.write_message(&[], &mut first).map_err(noise)?;
     first.truncate(n);
@@ -106,9 +108,9 @@ impl Handshake {
     }
 }
 
-/// The machine's side: answers a phone's first message, failing unless it knew the code.
-pub fn respond(code: &Code, first: &[u8]) -> io::Result<(Channel, Vec<u8>)> {
-    let mut hs = code.handshake(false)?;
+/// The machine's side: answers a phone's first message, failing unless it held `key`.
+pub fn respond(key: &Code, first: &[u8]) -> io::Result<(Channel, Vec<u8>)> {
+    let mut hs = key.handshake(false)?;
     hs.read_message(first, &mut [0; MAX_NOISE]).map_err(noise)?;
     let mut answer = vec![0; MAX_NOISE];
     let n = hs.write_message(&[], &mut answer).map_err(noise)?;

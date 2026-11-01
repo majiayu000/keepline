@@ -4,8 +4,10 @@
 //! out on stdout, one per line.
 //!
 //! Every client does the same four things:
-//! 1. Open a WebSocket to `<relay>/c/<token>/keepline`, the token derived from the code.
-//! 2. Send the Noise handshake's first message; finish with the machine's answer.
+//! 1. Open a WebSocket to `<relay>/c/<token>/keepline?d=<device>`: the token derived from
+//!    the machine's code, the device id from the link.
+//! 2. Send the Noise handshake's first message, keyed by the device's key; finish with
+//!    the machine's answer.
 //! 3. Seal outgoing JSON lines as DATA; open incoming messages.
 //! 4. Acknowledge DATA it has taken in, or the machine stops after a window.
 use futures_util::{SinkExt, StreamExt};
@@ -27,14 +29,22 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let code = field("code")
         .and_then(|c| Code::parse(&c))
         .ok_or("the link has no code")?;
+    let device = field("device").ok_or("the link has no device")?;
+    let key = field("key")
+        .and_then(|k| Code::parse(&k))
+        .ok_or("the link has no key")?;
     let base = relay
         .replacen("https://", "wss://", 1)
         .replacen("http://", "ws://", 1);
-    let url = format!("{}/c/{}/keepline", base.trim_end_matches('/'), code.token());
+    let url = format!(
+        "{}/c/{}/keepline?d={device}",
+        base.trim_end_matches('/'),
+        code.token()
+    );
     let (ws, _) = tokio_tungstenite::connect_async(&url).await?;
     let (mut sink, mut stream) = ws.split();
 
-    let (hs, first) = secure::initiate(&code)?;
+    let (hs, first) = secure::initiate(&key)?;
     sink.send(Message::binary(first)).await?;
     let mut channel = loop {
         match stream.next().await.ok_or("relay closed")?? {

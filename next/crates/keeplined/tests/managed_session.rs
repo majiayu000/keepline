@@ -4932,11 +4932,15 @@ impl Phone {
             .unwrap()
     }
     /// Retries while the machine is not on the relay yet.
-    fn connect(base: &str, code: &keepline_relay::secure::Code) -> Self {
+    fn connect(base: &str, link: &Link) -> Self {
+        Self::try_connect(base, link).expect("handshake")
+    }
+    /// The handshake's answer, or the close code the machine answered with instead.
+    fn try_connect(base: &str, link: &Link) -> Result<Self, Option<u16>> {
         use futures_util::{SinkExt, StreamExt};
         use tokio_tungstenite::tungstenite::Message;
         let rt = Self::rt();
-        let url = format!("{base}/c/{}/keepline", code.token());
+        let url = format!("{base}/c/{}/keepline?d={}", link.code.token(), link.device);
         let until = Instant::now() + Duration::from_secs(20);
         let mut ws = loop {
             match rt.block_on(tokio_tungstenite::connect_async(&url)) {
@@ -4950,25 +4954,46 @@ impl Phone {
                 }
             }
         };
-        let (hs, first) = keepline_relay::secure::initiate(code).unwrap();
+        let (hs, first) = keepline_relay::secure::initiate(&link.key).unwrap();
         let channel = rt.block_on(async {
             ws.send(Message::binary(first)).await.unwrap();
             loop {
                 match tokio::time::timeout(Duration::from_secs(5), ws.next()).await {
-                    Ok(Some(Ok(Message::Binary(b)))) => return hs.finish(&b).unwrap(),
+                    Ok(Some(Ok(Message::Binary(b)))) => return Ok(hs.finish(&b).unwrap()),
+                    Ok(Some(Ok(Message::Close(f)))) => return Err(f.map(|f| u16::from(f.code))),
                     Ok(Some(Ok(Message::Ping(_) | Message::Pong(_)))) => continue,
                     other => panic!("no handshake answer: {other:?}"),
                 }
             }
-        });
-        Self {
+        })?;
+        Ok(Self {
             rt,
             ws,
             channel,
             lines: vec![],
             ack: true,
             received: 0,
-        }
+        })
+    }
+    /// Reads until the machine closes the socket; its close code.
+    fn closed(&mut self, wait: Duration) -> Option<u16> {
+        use futures_util::StreamExt;
+        use tokio_tungstenite::tungstenite::Message;
+        let ws = &mut self.ws;
+        self.rt.block_on(async move {
+            tokio::time::timeout(wait, async {
+                loop {
+                    match ws.next().await {
+                        Some(Ok(Message::Close(f))) => return f.map(|f| u16::from(f.code)),
+                        Some(Ok(_)) => continue,
+                        _ => return None,
+                    }
+                }
+            })
+            .await
+            .ok()
+            .flatten()
+        })
     }
     fn say(&mut self, v: serde_json::Value) {
         use futures_util::SinkExt;
@@ -5047,6 +5072,48 @@ impl Phone {
     }
 }
 
+/// What `keeplined remote --pair` printed for one phone.
+#[derive(Clone)]
+struct Link {
+    code: keepline_relay::secure::Code,
+    device: String,
+    key: keepline_relay::secure::Code,
+}
+impl Link {
+    fn pair(root: &str, base: &str, name: &str, role: &str) -> Self {
+        let out = Command::new(env!("CARGO_BIN_EXE_keeplined"))
+            .args([
+                "remote", "--pair", "--relay", base, "--name", name, "--role", role,
+            ])
+            .args(["--runtime", root])
+            .output()
+            .unwrap();
+        assert!(
+            out.status.success(),
+            "{}",
+            String::from_utf8_lossy(&out.stderr)
+        );
+        let printed = String::from_utf8(out.stdout).unwrap();
+        assert!(printed.contains('▀') || printed.contains('█'), "no QR code");
+        let link = printed
+            .lines()
+            .find(|l| l.starts_with("keepline://pair?v=2&"))
+            .expect("pairing link");
+        let field = |name: &str| {
+            link.split(['?', '&'])
+                .find_map(|kv| kv.strip_prefix(name)?.strip_prefix('='))
+                .unwrap()
+                .to_owned()
+        };
+        let code = keepline_relay::secure::Code::parse;
+        Self {
+            code: code(&field("code")).unwrap(),
+            device: field("device"),
+            key: code(&field("key")).unwrap(),
+        }
+    }
+}
+
 /// A relay on a free local port, until the returned sender is dropped.
 fn local_relay(
     addr: &str,
@@ -5098,19 +5165,13 @@ fn a_phone_on_a_relay_drives_a_terminal_through_a_channel_the_relay_cannot_read(
 
     let (base, stop, relay) = local_relay("127.0.0.1:0");
     let root = h.root.to_string_lossy().into_owned();
-    let pair = Command::new(env!("CARGO_BIN_EXE_keeplined"))
-        .args(["remote", "--pair", "--relay", &base, "--runtime", &root])
-        .output()
-        .unwrap();
-    assert!(pair.status.success());
-    let printed = String::from_utf8(pair.stdout).unwrap();
-    assert!(printed.contains('█') || printed.contains('▀'), "no QR code");
-    let code = printed
-        .split("&code=")
-        .nth(1)
-        .and_then(|rest| rest.split('&').next())
-        .and_then(keepline_relay::secure::Code::parse)
-        .expect("pairing link carries the code");
+    let full = Link::pair(&root, &base, "全权", "full");
+    let viewer = Link::pair(&root, &base, "只看的平板", "view");
+    assert_eq!(
+        full.code, viewer.code,
+        "one machine code, one key per phone"
+    );
+    assert_ne!(full.key, viewer.key);
     let machine = || {
         Command::new(env!("CARGO_BIN_EXE_keeplined"))
             .args(["remote", "--relay", &base, "--runtime", &root])
@@ -5131,42 +5192,32 @@ fn a_phone_on_a_relay_drives_a_terminal_through_a_channel_the_relay_cannot_read(
         rx
     };
 
-    // A phone with another code gets nowhere: the machine closes it unanswered.
-    {
-        use futures_util::{SinkExt, StreamExt};
-        let stranger = keepline_relay::secure::Code::generate().unwrap();
-        let rt = Phone::rt();
-        let url = format!("{base}/c/{}/keepline", code.token());
-        let until = Instant::now() + Duration::from_secs(20);
-        let mut ws = loop {
-            if let Ok((ws, _)) = rt.block_on(tokio_tungstenite::connect_async(&url)) {
-                break ws;
-            }
-            assert!(Instant::now() < until);
-            std::thread::sleep(Duration::from_millis(50));
-        };
-        let (_, first) = keepline_relay::secure::initiate(&stranger).unwrap();
-        let close = rt.block_on(async {
-            ws.send(tokio_tungstenite::tungstenite::Message::binary(first))
-                .await
-                .unwrap();
-            loop {
-                match ws.next().await {
-                    Some(Ok(tokio_tungstenite::tungstenite::Message::Close(f))) => {
-                        return f.map(|f| u16::from(f.code))
-                    }
-                    Some(Ok(tokio_tungstenite::tungstenite::Message::Binary(_))) => {
-                        panic!("answered a stranger")
-                    }
-                    Some(Ok(_)) => continue,
-                    other => panic!("{other:?}"),
-                }
-            }
-        });
-        assert_eq!(close, Some(4401));
-    }
+    // A paired device with the wrong key, and a device never paired, get nowhere.
+    let mut forged = full.clone();
+    forged.key = keepline_relay::secure::Code::generate().unwrap();
+    assert_eq!(Phone::try_connect(&base, &forged).err(), Some(Some(4401)));
+    let mut stranger = full.clone();
+    stranger.device = "000000000000".into();
+    assert_eq!(Phone::try_connect(&base, &stranger).err(), Some(Some(4401)));
 
-    let mut phone = Phone::connect(&base, &code);
+    // A view-only device sees but cannot type, and is told so.
+    let mut view = Phone::connect(&base, &viewer);
+    view.say(json!({ "id": 1, "op": "hello" }));
+    let hello = view.next(|v| v["id"] == 1);
+    assert_eq!(hello["ok"]["role"], "view");
+    assert!(!hello["ok"]["ops"]
+        .as_array()
+        .unwrap()
+        .contains(&json!("keys")));
+    view.say(json!({ "id": 2, "op": "keys", "terminal": "rt", "keys": ["z"] }));
+    assert!(view.next(|v| v["id"] == 2)["error"]
+        .as_str()
+        .unwrap()
+        .contains("只看"));
+    view.say(json!({ "id": 3, "op": "watch", "terminal": "rt" }));
+    view.next(|v| v["stream"] == 3 && v["type"] == "screen");
+
+    let mut phone = Phone::connect(&base, &full);
     phone.say(json!({ "id": 1, "op": "hello", "version": 1 }));
     let hello = phone.next(|v| v["id"] == 1);
     assert_eq!(hello["ok"]["version"], 1);
@@ -5206,6 +5257,48 @@ fn a_phone_on_a_relay_drives_a_terminal_through_a_channel_the_relay_cannot_read(
     );
     assert!(p95 < Duration::from_millis(200), "{trips:?}");
 
+    // Unpairing the viewer drops its open session within the recheck, and it cannot return.
+    let revoked = Instant::now();
+    let out = Command::new(env!("CARGO_BIN_EXE_keeplined"))
+        .args(["remote", "--revoke", "只看的平板", "--runtime", &root])
+        .output()
+        .unwrap();
+    assert!(out.status.success());
+    assert_eq!(view.closed(Duration::from_secs(5)), Some(4401));
+    let took = revoked.elapsed();
+    eprintln!("unpaired → session dropped in {took:?}");
+    assert!(took < Duration::from_secs(3), "{took:?}");
+    assert_eq!(Phone::try_connect(&base, &viewer).err(), Some(Some(4401)));
+    let listed = Command::new(env!("CARGO_BIN_EXE_keeplined"))
+        .args(["remote", "--devices", "--runtime", &root])
+        .output()
+        .unwrap();
+    let listed = String::from_utf8(listed.stdout).unwrap();
+    assert!(
+        listed.contains("全权") && listed.contains("完全控制") && listed.contains("刚才"),
+        "{listed}"
+    );
+    assert!(!listed.contains("只看的平板"), "{listed}");
+    let entries: Vec<serde_json::Value> = fs::read_to_string(h.root.join("remote-log.jsonl"))
+        .unwrap()
+        .lines()
+        .map(|l| serde_json::from_str(l).unwrap())
+        .collect();
+    let has = |event: &str, extra: &dyn Fn(&serde_json::Value) -> bool| {
+        entries.iter().any(|v| v["event"] == event && extra(v))
+    };
+    assert!(has("connected", &|v| v["name"] == "全权"));
+    assert!(has("refused", &|v| v["device"] == "000000000000"));
+    assert!(has("dropped", &|v| v["device"] == viewer.device.as_str()));
+    assert!(has("op", &|v| v["op"] == "keys"
+        && v["name"] == "全权"
+        && v["terminal"] == "rt"
+        && v["error"].is_null()));
+    assert!(
+        !has("op", &|v| v["name"] == "只看的平板"),
+        "a refused op is not an act"
+    );
+
     // A second phone stops reading in the middle of a flood: it gets at most a window,
     // the first phone keeps typing at full speed, and the reader gets the screen again.
     h.call(h.launch(
@@ -5213,7 +5306,7 @@ fn a_phone_on_a_relay_drives_a_terminal_through_a_channel_the_relay_cannot_read(
         "i=0; while [ $i -lt 400 ]; do yes 0123456789abcdefghij | head -n 2000; i=$((i+1)); done; echo flood-done; exec cat",
     ))
     .unwrap();
-    let mut stalled = Phone::connect(&base, &code);
+    let mut stalled = Phone::connect(&base, &full);
     stalled.say(json!({ "id": 1, "op": "hello" }));
     stalled.next(|v| v["id"] == 1);
     stalled.ack = false;
@@ -5266,7 +5359,7 @@ fn a_phone_on_a_relay_drives_a_terminal_through_a_channel_the_relay_cannot_read(
     relay.join().unwrap();
     drop((phone, stalled));
     let (_base, _stop, _relay) = local_relay(&addr);
-    let mut phone = Phone::connect(&base, &code);
+    let mut phone = Phone::connect(&base, &full);
     phone.say(json!({ "id": 1, "op": "hello" }));
     assert_eq!(phone.next(|v| v["id"] == 1)["ok"]["version"], 1);
 
@@ -5283,7 +5376,10 @@ fn a_phone_on_a_relay_drives_a_terminal_through_a_channel_the_relay_cannot_read(
     assert!(!status.success());
     let said: Vec<String> = log.try_iter().collect();
     assert!(said.iter().any(|l| l.contains("已连上中继")), "{said:?}");
-    assert!(said.iter().any(|l| l.contains("配对码不对")), "{said:?}");
+    assert!(
+        said.iter().any(|l| l.contains("没有配对或密钥不对")),
+        "{said:?}"
+    );
     let _ = twin.kill();
     let _ = twin.wait();
     drop(app);

@@ -3,17 +3,23 @@
 //! that opens `/c/<token>/keepline` is one remote-protocol session, the same as
 //! `remote --stdio`, run inside a Noise channel the relay cannot read.
 //!
-//! `keeplined remote --pair --relay <url>` prints the pairing link and its QR code. The
-//! code behind it lives in `remote-code` next to the socket; `--new-code` makes a new one,
-//! which unpairs every phone.
-//! Shapes are in `specs/extensions/relay.md`.
+//! Two secrets, both next to the socket and readable only by this user:
+//! - `remote-code`, the machine's: phones find it on the relay by a token derived from it.
+//! - one key per phone, in `remote-devices.json`: its handshake proves it holds it, and
+//!   the key decides what it may do. Unpairing a phone drops its open sessions too.
+//!
+//! `keeplined remote --pair --relay <url>` pairs one more phone and prints its link and QR
+//! code; `--devices` lists them, `--revoke` unpairs one, and `--new-code` replaces the
+//! machine's code and unpairs every phone. Shapes are in `specs/extensions/relay.md`.
 use crate::control::Args;
-use crate::remote;
+use crate::devices::{self, Device, Role};
+use crate::remote::{self, Access};
 use futures_util::{SinkExt, StreamExt};
 use keepline_relay::{
     secure::{self, Channel, Code, Message as Secure},
     wire::{self, bin, Frame},
 };
+use serde_json::json;
 use std::collections::HashMap;
 use std::io::{self, BufReader, Read, Write};
 use std::os::unix::fs::OpenOptionsExt;
@@ -33,14 +39,40 @@ const PING: Duration = Duration::from_secs(30);
 /// Phone input waiting for the session; a phone that floods past it is closed.
 const INPUT_QUEUE: usize = 256;
 
+/// How often open sessions are checked against the paired devices, so an unpaired
+/// phone is dropped within this long.
+const RECHECK: Duration = Duration::from_secs(1);
+
 pub fn run(a: &Args) -> io::Result<()> {
+    if a.has("devices") {
+        return list_devices(&a.socket);
+    }
+    if let Some(needle) = a.value("revoke") {
+        let gone = devices::remove(&a.socket, needle)?;
+        println!(
+            "已取消配对 {}（{}），它正连着的会话一秒内断开",
+            gone.name, gone.id
+        );
+        return Ok(());
+    }
     let relay = a
         .value("relay")
         .ok_or_else(|| io::Error::other("--relay 需要中继地址，例如 https://relay.example.com"))?;
     let base = ws_base(relay)?;
-    let code = code(&a.socket, a.has("new-code"))?;
+    let new = a.has("new-code");
+    let code = code(&a.socket, new)?;
+    if new {
+        devices::clear(&a.socket)?;
+    }
     if a.has("pair") {
-        return pair(&a.socket, relay, &code);
+        let role = a.value("role").map_or(Ok(Role::Full), Role::parse)?;
+        return pair(
+            &a.socket,
+            relay,
+            &code,
+            a.value("name").unwrap_or("手机"),
+            role,
+        );
     }
     let key = a
         .value("relay-key")
@@ -98,12 +130,15 @@ fn code(socket: &Path, new: bool) -> io::Result<Code> {
     Ok(code)
 }
 
-fn pair(socket: &Path, relay: &str, code: &Code) -> io::Result<()> {
+fn pair(socket: &Path, relay: &str, code: &Code, name: &str, role: Role) -> io::Result<()> {
     let machine = remote::machine(socket);
+    let (device, key) = devices::add(socket, name, role)?;
     let link = format!(
-        "keepline://pair?v=1&relay={}&code={}&machine={}&name={}",
+        "keepline://pair?v=2&relay={}&code={}&device={}&key={}&machine={}&name={}",
         escape(relay),
         code.text(),
+        device.id,
+        key.text(),
         escape(machine["id"].as_str().unwrap_or_default()),
         escape(machine["name"].as_str().unwrap_or_default()),
     );
@@ -116,12 +151,45 @@ fn pair(socket: &Path, relay: &str, code: &Code) -> io::Result<()> {
         .build();
     let mut out = io::stdout().lock();
     writeln!(out, "{qr}")?;
-    writeln!(out, "用手机 App 扫码配对，或者粘贴这一行：")?;
+    writeln!(
+        out,
+        "「{name}」（{}，权限：{}）：用手机 App 扫码配对，或者粘贴这一行：",
+        device.id,
+        role.name()
+    )?;
     writeln!(out, "{link}")?;
     writeln!(
         out,
-        "这一行等于这台机器的密码，别发给别人。要让已配对的手机全部失效：keeplined remote --pair --relay {relay} --new-code"
+        "这一行只给这一台手机用，别发给别人。取消它：keeplined remote --revoke {}",
+        device.id
     )
+}
+
+fn list_devices(socket: &Path) -> io::Result<()> {
+    let list = devices::load(socket);
+    if list.is_empty() {
+        println!("还没有配对的设备：keeplined remote --pair --relay <中继地址> --name <名字>");
+        return Ok(());
+    }
+    let seen = devices::last_seen(socket);
+    let ago = |at: u64| match devices::now().saturating_sub(at) {
+        s if s < 60 => "刚才".to_owned(),
+        s if s < 3600 => format!("{} 分钟前", s / 60),
+        s if s < 86400 => format!("{} 小时前", s / 3600),
+        s => format!("{} 天前", s / 86400),
+    };
+    for d in list {
+        let last = seen.get(&d.id).map_or("没连过".to_owned(), |&at| ago(at));
+        println!(
+            "{}  {}  {}  配对于 {}  最近连接 {}",
+            d.id,
+            d.name,
+            d.role.name(),
+            ago(d.paired),
+            last
+        );
+    }
+    Ok(())
 }
 
 fn escape(s: &str) -> String {
@@ -243,8 +311,38 @@ async fn connect(
     });
 
     let mut sessions: HashMap<String, Session> = HashMap::new();
+    let log = devices::log_file(socket);
+    let mut recheck = tokio::time::interval(RECHECK);
+    let mut paired = Paired::default();
     let ended = loop {
-        let m = match tokio::time::timeout(SILENCE, stream.next()).await {
+        let deadline = tokio::time::Instant::now() + SILENCE;
+        let open = sessions.values().any(|s| matches!(s, Session::Open { .. }));
+        let m = tokio::select! {
+            m = tokio::time::timeout_at(deadline, stream.next()) => m,
+            // Only while a phone is on: an unpaired one is dropped within RECHECK.
+            _ = recheck.tick(), if open => {
+                let now = paired.load(socket);
+                let gone: Vec<String> = sessions
+                    .iter()
+                    .filter_map(|(id, s)| match s {
+                        Session::Open { device, role, .. } => (!now
+                            .iter()
+                            .any(|d| &d.id == device && d.role == *role))
+                        .then(|| id.clone()),
+                        Session::Pairing(_) => None,
+                    })
+                    .collect();
+                for id in gone {
+                    if let Some(Session::Open { device, .. }) = sessions.remove(&id) {
+                        eprintln!("keeplined remote: 设备 {device} 已取消配对或改了权限，断开");
+                        devices::log(&log, json!({ "event": "dropped", "device": device }));
+                    }
+                    close(&out, &id, 4401, "unpaired").await;
+                }
+                continue;
+            }
+        };
+        let m = match m {
             Err(_) => break Ended::Lost("中继很久没有消息".into()),
             Ok(None) => break Ended::Lost("中继断开".into()),
             Ok(Some(Err(e))) => break Ended::Lost(e.to_string()),
@@ -271,28 +369,62 @@ async fn connect(
         if let Some((id, payload)) = phone {
             let payload = &payload[..];
             let next = match sessions.remove(&id) {
-                Some(Session::Pairing) => match secure::respond(code, payload) {
-                    Ok((channel, answer)) => {
-                        if out.send(to_phone(proto, &id, &answer)).await.is_err() {
-                            break Ended::Lost("写不进中继".into());
+                Some(Session::Pairing(device)) => {
+                    let known = paired.load(socket).iter().find(|d| d.id == device).cloned();
+                    let answered = known.as_ref().and_then(|d| {
+                        let key = d.key()?;
+                        secure::respond(&key, payload).ok().map(|r| (d, r))
+                    });
+                    match answered {
+                        Some((d, (channel, answer))) => {
+                            if out.send(to_phone(proto, &id, &answer)).await.is_err() {
+                                break Ended::Lost("写不进中继".into());
+                            }
+                            eprintln!(
+                                "keeplined remote: 「{}」已连上（{}）",
+                                d.name,
+                                d.role.name()
+                            );
+                            devices::log(
+                                &log,
+                                json!({ "event": "connected", "device": d.id, "name": d.name, "role": d.role }),
+                            );
+                            let access = Access {
+                                role: d.role,
+                                device: Some((d.id.clone(), d.name.clone())),
+                                log: Some(log.clone()),
+                            };
+                            Some(Session::Open {
+                                bridge: Bridge::start(
+                                    &id,
+                                    channel,
+                                    out.clone(),
+                                    socket,
+                                    proto,
+                                    access,
+                                ),
+                                device: d.id.clone(),
+                                role: d.role,
+                            })
                         }
-                        eprintln!("keeplined remote: 手机 {id} 已连上");
-                        Some(Session::Open(Bridge::start(
-                            &id,
-                            channel,
-                            out.clone(),
-                            socket,
-                            proto,
-                        )))
+                        None => {
+                            eprintln!("keeplined remote: 设备 {device} 没有配对或密钥不对，已拒绝");
+                            devices::log(&log, json!({ "event": "refused", "device": device }));
+                            close(&out, &id, 4401, "not paired").await;
+                            None
+                        }
                     }
-                    Err(_) => {
-                        eprintln!("keeplined remote: 手机 {id} 的配对码不对，已拒绝");
-                        close(&out, &id, 4401, "pairing code mismatch").await;
-                        None
-                    }
-                },
-                Some(Session::Open(bridge)) => match bridge.receive(payload) {
-                    Ok(()) => Some(Session::Open(bridge)),
+                }
+                Some(Session::Open {
+                    bridge,
+                    device,
+                    role,
+                }) => match bridge.receive(payload) {
+                    Ok(()) => Some(Session::Open {
+                        bridge,
+                        device,
+                        role,
+                    }),
                     Err(e) => {
                         eprintln!("keeplined remote: 手机 {id} 断开：{e}");
                         close(&out, &id, 4400, "bad message").await;
@@ -321,14 +453,15 @@ async fn connect(
                             message: "too many phones".into(),
                         }
                     } else {
-                        sessions.insert(id.clone(), Session::Pairing);
+                        sessions.insert(id.clone(), Session::Pairing(query(&path, "d")));
                         Frame::Wopened { id }
                     };
                     let _ = out.send(Message::text(reply.to_text())).await;
                 }
                 Ok(Frame::Wclose { id, .. }) => {
-                    if let Some(Session::Open(_)) = sessions.remove(&id) {
-                        eprintln!("keeplined remote: 手机 {id} 已离开");
+                    if let Some(Session::Open { device, .. }) = sessions.remove(&id) {
+                        eprintln!("keeplined remote: 设备 {device} 已离开");
+                        devices::log(&log, json!({ "event": "left", "device": device }));
                     }
                 }
                 // Text messages from a phone are not part of this protocol.
@@ -393,9 +526,44 @@ async fn close(out: &mpsc::Sender<Message>, id: &str, code: u16, reason: &str) {
 }
 
 enum Session {
-    /// Opened; its first message is the phone's half of the handshake.
-    Pairing,
-    Open(Bridge),
+    /// Opened by the device the path names; its first message is its half of the handshake.
+    Pairing(String),
+    Open {
+        bridge: Bridge,
+        device: String,
+        /// The role it connected with; a change drops the session.
+        role: Role,
+    },
+}
+
+/// The paired devices, read again only when their file changed.
+#[derive(Default)]
+struct Paired {
+    stamp: Option<(std::time::SystemTime, u64)>,
+    devices: Vec<Device>,
+}
+impl Paired {
+    fn load(&mut self, socket: &Path) -> &[Device] {
+        let stamp = std::fs::metadata(socket.with_file_name("remote-devices.json"))
+            .ok()
+            .and_then(|m| Some((m.modified().ok()?, m.len())));
+        if stamp.is_none() || stamp != self.stamp {
+            self.devices = devices::load(socket);
+            self.stamp = stamp;
+        }
+        &self.devices
+    }
+}
+
+/// `name`'s value in a path's query, or empty.
+fn query(path: &str, name: &str) -> String {
+    path.split_once('?')
+        .map(|(_, q)| q)
+        .unwrap_or_default()
+        .split('&')
+        .find_map(|kv| kv.strip_prefix(name)?.strip_prefix('='))
+        .unwrap_or_default()
+        .to_owned()
 }
 
 /// One phone's session: `remote::serve` on one end of a socket pair, the Noise channel
@@ -421,6 +589,7 @@ impl Bridge {
         out: mpsc::Sender<Message>,
         socket: &Path,
         proto: u32,
+        access: Access,
     ) -> Self {
         let (ours, theirs) = UnixStream::pair().expect("socket pair");
         let channel = Arc::new(Mutex::new(channel));
@@ -429,7 +598,7 @@ impl Bridge {
             let socket: PathBuf = socket.into();
             let reader = theirs.try_clone().expect("clone");
             thread::spawn(move || {
-                let _ = remote::serve(BufReader::new(reader), theirs, &socket);
+                let _ = remote::serve(BufReader::new(reader), theirs, &socket, access);
             });
         }
         let (input, inbox) = std_mpsc::sync_channel::<Vec<u8>>(INPUT_QUEUE);
