@@ -2,6 +2,7 @@
 pub mod app_icon;
 pub mod appearance;
 pub mod field;
+pub mod peek;
 pub mod status_colors;
 pub mod style;
 pub mod terminal_text;

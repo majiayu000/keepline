@@ -275,7 +275,7 @@ impl Page {
     }
 }
 /// Every searchable setting: its page, its title and the words that find it.
-const ENTRIES: [(Page, &str, &str); 19] = [
+const ENTRIES: [(Page, &str, &str); 20] = [
     (
         Page::General,
         "默认 Agent",
@@ -287,6 +287,11 @@ const ENTRIES: [(Page, &str, &str); 19] = [
         "离开 返回 工作进展 分钟 overview",
     ),
     (Page::General, "旧会话收起时间", "已关闭 侧栏 收起 历史 天"),
+    (
+        Page::General,
+        "偷看浮层",
+        "peek 浮层 预览 侧栏 点开 会话 审批",
+    ),
     (Page::Look, "主题", "跟随系统 亮色 暗色 明暗 dark light"),
     (Page::Look, "界面样式", "样式 标准 终端原生 tmux 等宽 style"),
     (Page::Look, "应用图标", "dock 图标 水墨 吉祥物 icon"),
@@ -682,7 +687,24 @@ impl SettingsView {
                     .into_any_element(),
             );
         }
-        self.cards(vec![("启动", start), ("会话整理", tidy)])
+        let mut sidebar = Vec::new();
+        if self.shows(Page::General, "偷看浮层", cx) {
+            let on = crate::ui::peek::enabled(cx);
+            let toggle = switch("peek-toggle", on).on_click(cx.listener(move |this, _, _, cx| {
+                this.text_error = crate::ui::peek::choose(!on, cx).err();
+                cx.notify();
+            }));
+            sidebar.push(
+                self.row(
+                    true,
+                    "偷看浮层",
+                    "左栏点开不在当前标签的会话时，先浮出它的实时画面；关掉则直接切过去",
+                    toggle,
+                )
+                .into_any_element(),
+            );
+        }
+        self.cards(vec![("启动", start), ("会话整理", tidy), ("侧栏", sidebar)])
     }
     /// A selectable tile: a picture above, its name below.
     fn tile(
@@ -760,11 +782,13 @@ impl SettingsView {
                 div()
                     .px(px(T::S16))
                     .pb(px(T::S12))
-                    .child(label(if crate::ui::style::current(cx) == crate::ui::style::Style::Terminal {
-                        "窗口与终端一起切换；终端原生样式下跟随系统按暗色显示"
-                    } else {
-                        "窗口与终端一起切换；跟随系统时随 macOS 自动变换"
-                    }))
+                    .child(label(
+                        if crate::ui::style::current(cx) == crate::ui::style::Style::Terminal {
+                            "窗口与终端一起切换；终端原生样式下跟随系统按暗色显示"
+                        } else {
+                            "窗口与终端一起切换；跟随系统时随 macOS 自动变换"
+                        },
+                    ))
                     .into_any_element(),
             );
         }

@@ -15,8 +15,9 @@ pub(super) struct Peek {
 }
 
 impl Workbench {
-    /// A sidebar row: a session running out of sight floats up for a look; one already
-    /// on screen, or with nothing live to look at, opens as before.
+    /// A sidebar row: a session running out of sight floats up for a look when peek is
+    /// turned on in settings; otherwise, or when it is already on screen or has nothing
+    /// live to look at, it opens as before.
     pub(super) fn peek_or_open(
         &mut self,
         session: &AgentSession,
@@ -25,7 +26,8 @@ impl Workbench {
     ) {
         let hidden = live_terminal(&self.workspace, session)
             .map(|t| t.id.clone())
-            .filter(|t| !self.layout.panes.contains_key(t));
+            .filter(|t| !self.layout.panes.contains_key(t))
+            .filter(|_| crate::ui::peek::enabled(cx));
         match hidden {
             Some(terminal) => self.open_peek(session, terminal, window, cx),
             None => {

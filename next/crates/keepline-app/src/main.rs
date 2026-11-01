@@ -358,6 +358,7 @@ fn run() -> io::Result<()> {
         });
         cx.set_global(ui::appearance::Appearance::load());
         cx.set_global(ui::style::Style::load());
+        cx.set_global(ui::peek::PeekChoice::load());
         cx.set_global(keymap::Keymap::load());
         ui::appearance::apply(cx);
         set_menus(cx);

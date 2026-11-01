@@ -1712,6 +1712,8 @@ pub fn start(
         cx.spawn(async move |cx| {
             let executor = cx.background_executor().clone();
             let wait = move |ms| executor.timer(Duration::from_millis(ms));
+            // Peek is off until chosen in settings; this run turns it on, then off again.
+            cx.update(|cx| cx.set_global(crate::ui::peek::PeekChoice(true)));
             wait(1500).await;
             std::fs::create_dir_all(&directory).unwrap();
             let socket = handle.update(cx, |v, _, _| v.visual_socket()).unwrap();
@@ -1827,7 +1829,15 @@ pub fn start(
             assert!(handle.update(cx, |v, _, _| v.visual_peek_state()).unwrap().is_none(), "peek kept over its own tab");
             wait(800).await;
             shot("4-own-tab.png", cx);
-            eprintln!("peek native PASS: hidden approval peeked, answered once, size kept until typed in, Esc closes without reaching the Agent");
+            // Turned off, the same sidebar click switches to the session instead.
+            cx.update(|cx| cx.set_global(crate::ui::peek::PeekChoice(false)));
+            handle.update(cx, |v, _, a| v.visual_peek_show_tab("shell", a)).unwrap();
+            wait(300).await;
+            handle.update(cx, |v, w, a| v.visual_peek_row("agent", w, a)).unwrap();
+            assert!(handle.update(cx, |v, _, _| v.visual_peek_state()).unwrap().is_none(), "peek opened while turned off");
+            wait(800).await;
+            shot("5-peek-off.png", cx);
+            eprintln!("peek native PASS: hidden approval peeked, answered once, size kept until typed in, Esc closes without reaching the Agent, off opens the session instead");
             // 置顶: the row's dot shows on hover, a real click pins the terminal, the pin is
             // saved, and it comes off once the terminal ends.
             let row = gpui::point(px(100.), px(292.));
