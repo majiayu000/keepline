@@ -24,3 +24,6 @@ for patch_path in "$(pwd)/patches/gpui-idle.patch" "$(pwd)/patches/gpui-glyph-di
 done
 "${ZIG:-zig}" version
 printf '%s\n' 'Dependencies ready. Build with Xcode available and Zig 0.16.x.'
+# libghostty-vt-sys clones Ghostty into the build directory on its first build (unless
+# GHOSTTY_SOURCE_DIR points at a checkout), so that build still needs the network.
+printf '%s\n' 'The first build also downloads the Ghostty source; keep the network up, or retry if it times out.'
