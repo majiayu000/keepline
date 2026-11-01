@@ -388,9 +388,7 @@ impl Workbench {
                     .gap(px(T::S4))
                     .child(self.preset_switch(cx).flex_1())
                     .child(
-                        button("sidebar-collapse", "‹")
-                            .border_0()
-                            .aria_label("收起左栏")
+                        icon_button("sidebar-collapse", "icons/sidebar.svg", "收起左栏")
                             .on_click(cx.listener(|this, _, _, cx| this.toggle_sidebar(cx))),
                     ),
             )
@@ -706,9 +704,7 @@ impl Workbench {
             .border_r(px(T::BORDER_WIDTH))
             .border_color(T::color(T::border()))
             .child(
-                button("sidebar-expand", "›")
-                    .border_0()
-                    .aria_label("展开左栏")
+                icon_button("sidebar-expand", "icons/sidebar.svg", "展开左栏")
                     .on_click(cx.listener(|this, _, _, cx| this.toggle_sidebar(cx))),
             )
             .when(needs > 0, |d| d.child(badge(Group::Waiting, needs)))

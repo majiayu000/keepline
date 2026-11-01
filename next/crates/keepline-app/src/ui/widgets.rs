@@ -47,6 +47,26 @@ pub fn button(
         .hover(|s| s.bg(T::color(T::button_hover())))
         .child(text)
 }
+/// A square button showing one of the app's SVG marks, tinted like button text.
+pub fn icon_button(
+    id: impl Into<gpui::ElementId>,
+    icon: &'static str,
+    label: impl Into<gpui::SharedString>,
+) -> gpui::Stateful<gpui::Div> {
+    div()
+        .id(id)
+        .role(gpui::accesskit::Role::Button)
+        .aria_label(label.into())
+        .size(px(T::ROW))
+        .flex_shrink_0()
+        .flex()
+        .items_center()
+        .justify_center()
+        .rounded(px(T::CONTROL_RADIUS))
+        .cursor_pointer()
+        .hover(|s| s.bg(T::color(T::button_hover())))
+        .child(gpui::svg().path(icon).size(px(T::ICON_GLYPH)).text_color(T::color(T::secondary())))
+}
 pub fn label(text: impl Into<gpui::SharedString>) -> gpui::Div {
     div()
         .text_size(px(T::META))
