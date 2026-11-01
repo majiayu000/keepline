@@ -889,7 +889,7 @@ impl Workbench {
     ) -> gpui::AnyElement {
         let chosen = self.sidebar.preset().id.clone();
         let entries = presets::all()
-            .into_iter()
+            .iter()
             .map(|p| {
                 let id = p.id.clone();
                 let on = p.id == chosen;
