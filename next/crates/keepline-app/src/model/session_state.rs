@@ -16,6 +16,8 @@ pub enum Group {
     Working,
     Done,
     Ready,
+    /// A live agent that has not started a turn yet: just opened, or `/clear`ed.
+    Fresh,
 }
 /// What a live agent in a Keepline terminal is doing right now, as 同类终端工具 shows panes.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -149,13 +151,14 @@ pub fn state_reasons(w: &Workspace, terminal: &str, hint: Option<&str>, now: u64
         &s.cli_session_id[..s.cli_session_id.len().min(8)]
     )];
     let Some(c) = w.content.get(&s.id) else {
-        lines.push("还没读到这段对话的记录，先按「做完了」显示。".into());
+        lines.push("还没读到这段对话的记录：还没开始第一轮，按「新开的」显示。".into());
         return lines;
     };
     let live = live_phase(w, s);
     let phase = match live {
         Some(Phase::Working) => "在跑",
         Some(Phase::Waiting) => "等你回答",
+        _ if fresh(w, s) => "新开的 / 还没开始第一轮",
         _ => "做完了 / 等你下一步",
     };
     lines.push(format!("现在：{phase}"));
@@ -250,9 +253,18 @@ pub fn sidebar_status(w: &Workspace, unseen: &HashSet<String>, s: &AgentSession)
         Some(Phase::Working) => (Group::Working, false),
         Some(Phase::Waiting) => (Group::Waiting, true),
         Some(Phase::Idle) if unseen.contains(&s.id) => (Group::Done, true),
+        Some(Phase::Idle) if fresh(w, s) => (Group::Fresh, false),
         Some(Phase::Idle) => (Group::Ready, false),
         None => (session_group(w, s), needs_attention(w, s)),
     }
+}
+/// No turn has started in this conversation: no record yet, or one with no ask and no
+/// turn state. An empty Claude reads as this, not as 做完了.
+pub fn fresh(w: &Workspace, s: &AgentSession) -> bool {
+    use keepline_core::content::Turn;
+    w.content
+        .get(&s.id)
+        .is_none_or(|c| c.asks.is_empty() && c.turn == Turn::Unknown)
 }
 /// Waiting or failed in a Keepline terminal and not yet looked at.
 pub fn needs_attention(w: &Workspace, s: &AgentSession) -> bool {

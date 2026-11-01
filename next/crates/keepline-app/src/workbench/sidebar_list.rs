@@ -18,7 +18,7 @@ pub(super) fn bucket(g: Group) -> Bucket {
         Group::Waiting | Group::Error => Bucket::Attention,
         Group::Working | Group::Running => Bucket::Running,
         // Ready is a finished turn you have already seen: still yours to check.
-        Group::Done | Group::Review | Group::Ready => Bucket::Done,
+        Group::Done | Group::Review | Group::Ready | Group::Fresh => Bucket::Done,
         Group::Paused => Bucket::Stopped,
         Group::Stale => Bucket::Stale,
     }
@@ -99,6 +99,11 @@ impl SidebarPrefs {
     pub fn open(&self, key: &str, default: bool) -> bool {
         default != self.toggled.contains(key)
     }
+}
+
+/// The room a row's pin takes at its right end, empty.
+pub(super) fn pin_slot() -> gpui::Div {
+    div().flex_shrink_0().w(px(T::S12))
 }
 
 /// The last path segment, as a folder is named.
@@ -252,7 +257,11 @@ impl Workbench {
                     .child(if attention { dot(g) } else { seen_dot(g) })
                     .child(title)
                     .child(trailing)
-                    .children(pin),
+                    // A row with nothing to pin keeps the pin's room, so every row's time
+                    // and the todos' 开始 end on one line.
+                    .child(
+                        pin.map_or_else(|| pin_slot().into_any_element(), |p| p.into_any_element()),
+                    ),
             )
             .when_some(detail, |d, text| {
                 d.child(
@@ -854,7 +863,7 @@ impl Workbench {
                     .justify_center()
                     .rounded(px(T::CONTROL_RADIUS))
                     .cursor_pointer()
-                    .opacity(if open { 1. } else { 0. })
+                    .opacity(if open { 1. } else { T::VIEW_IDLE_OPACITY })
                     .group_hover("sessions-header", |s| s.opacity(1.))
                     .when(open, |d| d.bg(T::color(T::button_hover())))
                     .hover(|s| s.bg(T::color(T::button_hover())))

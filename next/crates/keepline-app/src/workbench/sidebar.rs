@@ -2,7 +2,7 @@
 use super::*;
 
 /// Row order by the shown state: what needs you, then live work, then the rest.
-const SIDEBAR_ORDER: [Group; 9] = [
+const SIDEBAR_ORDER: [Group; 10] = [
     Group::Waiting,
     Group::Error,
     Group::Done,
@@ -11,6 +11,7 @@ const SIDEBAR_ORDER: [Group; 9] = [
     Group::Review,
     Group::Paused,
     Group::Ready,
+    Group::Fresh,
     Group::Stale,
 ];
 pub(super) fn sidebar_rank(g: Group, attention: bool) -> (bool, usize) {
@@ -820,6 +821,8 @@ impl Workbench {
                         )
                         .h(px(T::ICON_HEIGHT))
                         .px(px(T::S6))
+                        // Its text, not its padding, ends where the sessions' times do.
+                        .mr(-px(T::S6))
                         .text_size(px(T::META))
                         .text_color(T::color(T::link()))
                         .on_click(cx.listener(move |this, _, _, cx| {
@@ -827,6 +830,7 @@ impl Workbench {
                             this.ask_agent(start.clone(), false, cx);
                         })),
                     )
+                    .child(super::sidebar_list::pin_slot())
                     .on_click(cx.listener(move |this, _, _, cx| {
                         this.nav.task_detail = Some(tid.clone());
                         cx.notify();

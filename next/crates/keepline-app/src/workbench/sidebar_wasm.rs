@@ -150,7 +150,8 @@ fn group_name(g: Group) -> &'static str {
         Group::Waiting => "waiting",
         Group::Error => "error",
         Group::Working | Group::Running => "running",
-        Group::Done | Group::Review | Group::Ready => "review",
+        // Plugins know no 新开的 yet; it sorts with a finished turn you have seen.
+        Group::Done | Group::Review | Group::Ready | Group::Fresh => "review",
         Group::Paused => "paused",
         Group::Stale => "stale",
     }

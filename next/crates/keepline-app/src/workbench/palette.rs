@@ -3,6 +3,7 @@
 //! (specs/terminal-workbench/design/palette-here.html).
 use super::overview::{quiet, solid};
 use super::*;
+use keepline_core::sidebar as presets;
 
 #[derive(Clone, Debug, PartialEq)]
 pub(super) enum Hit {
@@ -22,6 +23,8 @@ pub(super) enum Hit {
     /// A plugin action, by its index in `keepline_core::action::all()`, run for the
     /// focused pane.
     Action(usize),
+    /// A left-column view (经典, 状态, a plugin's), by preset id: picking it switches.
+    View(String),
     /// 「再显示 N 个」: the rest of a folded group, `hidden` rows past what shows.
     More {
         section: &'static str,
@@ -287,11 +290,18 @@ impl Workbench {
                     .map(Hit::Action)
             })
             .collect();
+        // 「视图」 or 「左栏」 lists every view; a view's own name finds it too.
+        let views: Vec<Hit> = presets::all()
+            .iter()
+            .filter(|p| contains(&format!("左栏 侧栏 视图 {}", p.name), query))
+            .map(|p| Hit::View(p.id.clone()))
+            .collect();
         for (title, hits) in [
             ("会话", sessions),
             ("原话", quotes),
             ("待办", tasks),
             ("动作", actions),
+            ("左栏视图", views),
         ] {
             if !hits.is_empty() {
                 let note = match title {
@@ -357,6 +367,7 @@ impl Workbench {
                 self.launch(false, None, cx);
             }
             Hit::NextWaiting => self.next_waiting(window, cx),
+            Hit::View(id) => self.choose_sidebar_preset(&id, cx),
             Hit::Action(i) => {
                 if let (Some(action), Some(pane)) = (
                     keepline_core::action::all().get(i),
@@ -749,6 +760,21 @@ impl Workbench {
                     return self
                         .more_row(row, selected, (*hidden).min(MORE_STEP), unit, hit, cx)
                         .into_any_element();
+                }
+                Hit::View(id) => {
+                    let name = presets::find(id).name.clone();
+                    let on = self.sidebar.preset().id == *id;
+                    (
+                        glyph("▤"),
+                        format!("左栏视图：{name}"),
+                        String::new(),
+                        if on {
+                            "正在用".into()
+                        } else {
+                            String::new()
+                        },
+                        String::new(),
+                    )
                 }
                 Hit::Action(i) => {
                     let action = keepline_core::action::all().get(*i);

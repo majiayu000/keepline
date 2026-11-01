@@ -1,0 +1,24 @@
+[package]
+name = "keepline-relay"
+version = "0.1.0"
+edition = "2021"
+publish = false
+description = "Relay that lets a phone reach a Keepline machine from anywhere"
+license = "MIT"
+
+[[bin]]
+name = "keepline-relay"
+path = "src/main.rs"
+
+[dependencies]
+keepline-remote = { path = "../keepline-remote" }
+serde_json = "1"
+base64 = "0.22"
+tokio = { version = "1", features = ["rt-multi-thread", "net", "macros", "sync", "time", "signal"] }
+axum = { version = "0.8", default-features = false, features = ["http1", "tokio", "ws", "json", "original-uri"] }
+futures-util = { version = "0.3", default-features = false, features = ["sink"] }
+
+[dev-dependencies]
+tokio = { version = "1", features = ["rt-multi-thread", "net", "macros", "sync", "time", "io-std", "io-util"] }
+tokio-tungstenite = "0.29"
+futures-util = { version = "0.3", default-features = false, features = ["sink"] }

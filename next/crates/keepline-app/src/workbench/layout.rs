@@ -1341,6 +1341,7 @@ pub(super) fn urgency(group: Group) -> u8 {
         Group::Paused => 6,
         Group::Ready => 7,
         Group::Stale => 8,
+        Group::Fresh => 9,
     }
 }
 /// `3:12`, or `1:03:12` past an hour.

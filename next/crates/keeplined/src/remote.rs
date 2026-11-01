@@ -5,21 +5,20 @@
 //! order; `events` and `watch` are streams that run beside them until closed.
 //! The message shapes are in `specs/extensions/remote-protocol.md`.
 use crate::control::{self, Args, Phase};
+use crate::devices::{self, Role};
 use base64::Engine;
 use keepline_core::{model::*, protocol::*, terminal::Vt};
+use keepline_remote::protocol as rp;
 use serde_json::{json, Value};
 use std::collections::HashMap;
 use std::io::{self, BufRead, Read, Write};
 use std::os::unix::net::UnixStream;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use std::sync::{mpsc, Arc, Mutex};
 use std::thread;
 
-pub const VERSION: u32 = 1;
-const MAX_LINE: u64 = 1 << 20;
-const OPS: &[&str] = &[
-    "hello", "list", "read", "send", "keys", "answer", "events", "watch", "close",
-];
+const MAX_LINE: u64 = rp::MAX_LINE as u64;
+use rp::OPS;
 /// A client that stops reading holds up its own streams, never the host: the terminal
 /// marks a stalled viewer lagged and sends it the screen again once it reads.
 const OUT_QUEUE: usize = 256;
@@ -35,14 +34,64 @@ struct Registry {
     ended: bool,
 }
 
+/// Who is on the other end and what it may do. Over ssh it is this user, already trusted.
+#[derive(Clone)]
+pub(crate) struct Access {
+    pub(crate) role: Role,
+    /// `(id, name)` of a paired device.
+    pub(crate) device: Option<(String, String)>,
+    /// Where acting ops are logged.
+    pub(crate) log: Option<PathBuf>,
+}
+impl Access {
+    fn trusted() -> Self {
+        Self {
+            role: Role::Full,
+            device: None,
+            log: None,
+        }
+    }
+    fn record(&self, op: &str, request: &Value, result: &io::Result<Value>) {
+        let (Some(log), Some((id, name))) = (&self.log, &self.device) else {
+            return;
+        };
+        devices::log(
+            log,
+            json!({
+                "event": "op",
+                "device": id,
+                "name": name,
+                "op": op,
+                "terminal": request["terminal"],
+                "error": result.as_ref().err().map(|e| e.to_string()),
+            }),
+        );
+    }
+}
+
 pub fn run(args: impl Iterator<Item = String>) -> io::Result<()> {
-    let a = Args::parse(args, &[])?;
+    let a = Args::parse(
+        args,
+        &["relay", "relay-key", "name", "role", "revoke", "device"],
+    )?;
+    if a.value("relay").is_some()
+        || a.has("devices")
+        || a.value("revoke").is_some()
+        || a.value("device").is_some()
+    {
+        return crate::relay::run(&a);
+    }
     if !a.has("stdio") {
         return Err(io::Error::other(
-            "usage: keeplined remote --stdio [--runtime <目录>]",
+            "usage: keeplined remote --stdio | --relay <中继地址> [--relay-key <密钥>] | --pair --relay <中继地址> [--name <名字>] [--role view|answer|full] [--new-code] | --devices | --device <设备> --role <权限> | --revoke <设备>",
         ));
     }
-    serve(io::stdin().lock(), io::stdout(), &a.socket)
+    serve(
+        io::stdin().lock(),
+        io::stdout(),
+        &a.socket,
+        Access::trusted(),
+    )
 }
 
 /// Serves `input` until it ends, replying on `output`.
@@ -50,6 +99,7 @@ pub fn serve(
     mut input: impl BufRead,
     mut output: impl Write + Send + 'static,
     socket: &Path,
+    access: Access,
 ) -> io::Result<()> {
     let (out, lines) = mpsc::sync_channel::<Value>(OUT_QUEUE);
     let writer = thread::spawn(move || {
@@ -65,10 +115,15 @@ pub fn serve(
     let (work, jobs) = mpsc::channel::<(u64, Value)>();
     let streams: Streams = Default::default();
     let worker = {
-        let (out, socket) = (out.clone(), socket.to_owned());
+        let (out, socket, access) = (out.clone(), socket.to_owned(), access.clone());
         thread::spawn(move || {
             for (id, request) in jobs {
-                let reply = match unary(&socket, &request) {
+                let result = unary(&socket, &request);
+                let op = request["op"].as_str().unwrap_or_default();
+                if devices::acts(op) {
+                    access.record(op, &request, &result);
+                }
+                let reply = match result {
                     Ok(ok) => json!({ "id": id, "ok": ok }),
                     Err(e) => json!({ "id": id, "error": e.to_string() }),
                 };
@@ -115,9 +170,13 @@ pub fn serve(
         match op {
             "hello" => {
                 greeted = true;
-                let _ = out.send(json!({ "id": id, "ok": hello(socket) }));
+                let _ = out.send(json!({ "id": id, "ok": hello(socket, access.role) }));
             }
             _ if !greeted => fail("先发 hello".into()),
+            _ if !access.role.allows(op) => fail(format!(
+                "这台设备的权限是「{}」，不能 {op}",
+                access.role.label()
+            )),
             "events" | "watch" => {
                 let (out, socket, streams) = (out.clone(), socket.to_owned(), streams.clone());
                 thread::spawn(move || stream(id, &request, &socket, &out, &streams));
@@ -161,7 +220,7 @@ pub fn serve(
 
 /// This machine's id stays the same across restarts, so a client that knows several
 /// machines can tell their terminals apart.
-fn machine(socket: &Path) -> Value {
+pub(crate) fn machine(socket: &Path) -> rp::Machine {
     let file = socket.with_file_name("machine-id");
     let id = std::fs::read_to_string(&file)
         .ok()
@@ -181,10 +240,19 @@ fn machine(socket: &Path) -> Value {
     } else {
         String::new()
     };
-    json!({ "id": id, "name": name })
+    rp::Machine { id, name }
 }
-fn hello(socket: &Path) -> Value {
-    json!({ "version": VERSION, "machine": machine(socket), "ops": OPS })
+fn hello(socket: &Path, role: Role) -> Value {
+    json!(rp::Hello {
+        version: rp::VERSION,
+        machine: machine(socket),
+        ops: OPS
+            .iter()
+            .filter(|op| role.allows(op))
+            .map(|op| op.to_string())
+            .collect(),
+        role,
+    })
 }
 
 fn text<'a>(request: &'a Value, key: &str) -> io::Result<&'a str> {
@@ -270,29 +338,40 @@ fn list(w: &Workspace, socket: &Path) -> Value {
             let session = w.current_agent(&t.id);
             let content = session.and_then(|s| w.content.get(&s.id));
             let phase = match control::phase(w, &t.id) {
-                Phase::None => "shell",
-                p => p.name(),
+                Phase::Working => rp::Phase::Working,
+                Phase::Waiting => rp::Phase::Waiting,
+                Phase::Idle => rp::Phase::Idle,
+                Phase::None => rp::Phase::Shell,
             };
-            json!({
-                "id": t.id,
-                "space": t.space,
-                "tab": control::tab_title(w, &t.id),
-                "cwd": t.cwd,
-                "phase": phase,
-                "agent": session.map(|s| control::agent_label(s.runtime)),
-                "session": session.map(|s| &s.id),
-                "title": content.map(|c| if c.name.is_empty() { &c.title } else { &c.name }),
-                "approval": content.map(|c| &c.approval).filter(|a| !a.is_empty()),
-                "waiting": content.map(|c| &c.waiting).filter(|a| !a.is_empty()),
-            })
+            let said = |s: &String| Some(s.clone()).filter(|s| !s.is_empty());
+            rp::Card {
+                id: t.id.clone(),
+                space: t.space.clone(),
+                tab: control::tab_title(w, &t.id),
+                cwd: t.cwd.clone(),
+                phase,
+                agent: session.map(|s| control::agent_label(s.runtime).to_owned()),
+                session: session.map(|s| s.id.clone()),
+                title: content.map(|c| if c.name.is_empty() { &c.title } else { &c.name }.clone()),
+                approval: content.and_then(|c| said(&c.approval)),
+                waiting: content.and_then(|c| said(&c.waiting)),
+            }
         })
         .collect();
-    let spaces: Vec<_> = w
+    let spaces = w
         .spaces
         .iter()
-        .map(|s| json!({ "id": s.id, "name": s.name, "cwd": s.cwd }))
+        .map(|s| rp::Space {
+            id: s.id.clone(),
+            name: s.name.clone(),
+            cwd: s.cwd.clone(),
+        })
         .collect();
-    json!({ "machine": machine(socket), "spaces": spaces, "terminals": terminals })
+    json!(rp::List {
+        machine: machine(socket),
+        spaces,
+        terminals,
+    })
 }
 
 fn connect(socket: &Path, request: &Request) -> io::Result<UnixStream> {
