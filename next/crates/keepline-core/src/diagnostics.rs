@@ -15,6 +15,9 @@ pub struct Diagnostics {
     pub cpu_percent: Option<f64>,
     /// Latest device reading, not a sum of the per-app shares below.
     pub gpu_percent: Option<f64>,
+    /// Latest whole-machine memory reading.
+    #[serde(default)]
+    pub memory: Option<Memory>,
     pub apps: Vec<AppUsage>,
     pub notes: Vec<String>,
 }
@@ -30,6 +33,23 @@ pub struct AppUsage {
     /// Share of observed GPU counter growth; never a device utilization percentage.
     pub gpu_share_percent: Option<f64>,
     pub terminals: Vec<String>,
+}
+
+/// Physical memory as Activity Monitor counts it: used is app memory, wired and compressed.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub struct Memory {
+    pub total_bytes: u64,
+    pub used_bytes: u64,
+    pub compressed_bytes: u64,
+}
+impl Memory {
+    pub fn percent(&self) -> Option<f64> {
+        (self.total_bytes > 0).then(|| self.used_bytes as f64 / self.total_bytes as f64 * 100.)
+    }
+}
+/// Bytes in GB with one decimal, as Activity Monitor shows memory.
+pub fn gib(bytes: u64) -> String {
+    format!("{:.1} GB", bytes as f64 / 1024_f64.powi(3))
 }
 
 /// How many apps the ranking shows; the summary, the view and the core stack share it.
@@ -74,6 +94,16 @@ impl Diagnostics {
             percent(self.cpu_percent),
             percent(self.gpu_percent)
         );
+        if let Some(m) = self.memory {
+            let _ = writeln!(
+                text,
+                "内存：已用 {} / {}（{}，其中压缩 {}）",
+                gib(m.used_bytes),
+                gib(m.total_bytes),
+                percent(m.percent()),
+                gib(m.compressed_bytes)
+            );
+        }
         let listed: f64 = self.ranked().map(|a| a.cpu_percent).sum::<f64>() / 100.;
         if let (Some(cores), Some(rest)) = (self.cpu_cores, self.unattributed_cores()) {
             let _ = writeln!(
@@ -198,6 +228,25 @@ mod tests {
             report.unattributed_cores().map(|c| (c * 10.).round()),
             Some(138.)
         );
+    }
+
+    #[test]
+    fn summary_reports_memory_only_when_read() {
+        let gb = 1024_u64.pow(3);
+        let mut report = Diagnostics::default();
+        assert!(
+            !report
+                .summary("13:04:00", &HashMap::new())
+                .contains("内存：")
+        );
+        report.memory = Some(Memory {
+            total_bytes: 36 * gb,
+            used_bytes: 18 * gb,
+            compressed_bytes: gb / 2,
+        });
+        let text = report.summary("13:04:00", &HashMap::new());
+        assert!(text.contains("内存：已用 18.0 GB / 36.0 GB（50.0%，其中压缩 0.5 GB）"));
+        assert_eq!(Memory::default().percent(), None);
     }
 
     #[test]

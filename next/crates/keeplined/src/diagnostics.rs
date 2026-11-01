@@ -1,6 +1,6 @@
 //! On-demand sampling, independent of session recognition and workspace persistence.
 use keepline_core::{
-    diagnostics::{AppUsage, Diagnostics},
+    diagnostics::{AppUsage, Diagnostics, Memory},
     model::Terminal,
     protocol::*,
 };
@@ -213,6 +213,56 @@ fn cpu_ticks() -> io::Result<[u32; 4]> {
     }
     Ok(info.cpu_ticks)
 }
+/// Physical memory the way Activity Monitor adds it up: app memory (anonymous pages that
+/// cannot be purged), wired and compressed. None when the kernel does not answer.
+#[allow(deprecated)]
+fn memory() -> Option<Memory> {
+    extern "C" {
+        fn mach_port_deallocate(task: u32, name: u32) -> i32;
+    }
+    let mut total: u64 = 0;
+    let mut len = std::mem::size_of::<u64>();
+    let read = unsafe {
+        libc::sysctlbyname(
+            c"hw.memsize".as_ptr(),
+            (&mut total as *mut u64).cast(),
+            &mut len,
+            std::ptr::null_mut(),
+            0,
+        )
+    };
+    if read != 0 || total == 0 {
+        return None;
+    }
+    let mut info: libc::vm_statistics64 = unsafe { std::mem::zeroed() };
+    let mut count = libc::HOST_VM_INFO64_COUNT;
+    let result = unsafe {
+        let host = libc::mach_host_self();
+        let result = libc::host_statistics64(
+            host,
+            libc::HOST_VM_INFO64,
+            (&mut info as *mut libc::vm_statistics64).cast(),
+            &mut count,
+        );
+        mach_port_deallocate(libc::mach_task_self(), host);
+        result
+    };
+    let page = unsafe { libc::sysconf(libc::_SC_PAGESIZE) };
+    if result != 0 || page <= 0 {
+        return None;
+    }
+    let page = page as u64;
+    let app = u64::from(
+        info.internal_page_count
+            .saturating_sub(info.purgeable_count),
+    );
+    let compressed = u64::from(info.compressor_page_count) * page;
+    Some(Memory {
+        total_bytes: total,
+        used_bytes: ((app + u64::from(info.wire_count)) * page + compressed).min(total),
+        compressed_bytes: compressed,
+    })
+}
 fn snapshot(stream: &UnixStream, notes: &mut Vec<String>) -> io::Result<Snapshot> {
     let processes = parse_processes(&capture(
         Command::new("/bin/ps").args(["-axo", "pid=,ppid=,lstart=,time=,rss=,comm="]),
@@ -311,6 +361,7 @@ pub fn serve(stream: &mut UnixStream, terminals: &[Terminal]) -> io::Result<()> 
         report.complete = interval == 2;
         report.process_count = current.processes.len();
         report.gpu_percent = current.gpu.percent;
+        report.memory = memory();
         report.cpu_percent = first.ticks.zip(current.ticks).and_then(|(a, b)| {
             let ticks: Vec<u64> = a
                 .iter()
@@ -367,6 +418,14 @@ pub fn serve(stream: &mut UnixStream, terminals: &[Terminal]) -> io::Result<()> 
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn memory_reading_is_within_physical_memory() {
+        let m = memory().expect("macOS answers hw.memsize and HOST_VM_INFO64");
+        assert!(m.total_bytes >= 1 << 30);
+        assert!(m.used_bytes > 0 && m.used_bytes <= m.total_bytes);
+        assert!(m.compressed_bytes <= m.used_bytes);
+    }
+
     #[test]
     fn process_snapshot_keeps_bundle_spaces_start_identity_and_long_cpu_time() {
         let p = parse_processes("42 1 Wed Oct 28 10:30:00 2026 123:04.50 2048 /Applications/Google Chrome.app/Contents/MacOS/Google Chrome\n").unwrap();

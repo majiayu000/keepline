@@ -4,7 +4,7 @@ use futures::{
     StreamExt,
     channel::mpsc::{UnboundedSender, unbounded},
 };
-use keepline_core::diagnostics::{AppUsage, Diagnostics, mib};
+use keepline_core::diagnostics::{AppUsage, Diagnostics, gib, mib};
 use std::{
     io,
     os::unix::net::UnixStream,
@@ -170,36 +170,147 @@ fn heading(text: &'static str, aside: &'static str) -> gpui::Div {
                 .child(aside),
         )
 }
-fn metric(name: &'static str, value: String, unit: &'static str, hint: String) -> gpui::Div {
-    div()
+/// One of the three top panels: name and percent, three readings, a tick gauge, a hint.
+/// Only a nearly full gauge takes a state color; otherwise it stays neutral.
+fn panel(
+    name: &'static str,
+    percent: Option<f64>,
+    readings: [(&'static str, String); 3],
+    hint: String,
+    last: bool,
+) -> gpui::Div {
+    use keepline_core::quota::{NEAR, OVER};
+    let group = percent.and_then(|p| {
+        if p >= f64::from(OVER) {
+            Some(Group::Error)
+        } else if p >= f64::from(NEAR) {
+            Some(Group::Waiting)
+        } else {
+            None
+        }
+    });
+    let badge = div()
+        .px(px(T::S4))
+        .rounded(px(T::S2))
+        .text_size(px(T::SMALL))
+        .child(percent.map_or_else(|| "不可读".into(), |p| format!("{p:.0}%")));
+    let badge = match group {
+        Some(g) => {
+            let (_, ink, wash) = g.colors();
+            badge.text_color(ink).bg(wash)
+        }
+        None => badge.text_color(T::color(T::muted())),
+    };
+    let mut values = div().flex().gap(px(T::S12));
+    for (key, value) in readings {
+        values = values.child(
+            div()
+                .flex_1()
+                .min_w_0()
+                .flex()
+                .flex_col()
+                .gap(px(T::S2))
+                .child(
+                    div()
+                        .text_size(px(T::META))
+                        .text_color(T::color(T::muted()))
+                        .child(key),
+                )
+                .child(
+                    div()
+                        .truncate()
+                        .text_size(px(T::PANEL_VALUE))
+                        .font_weight(gpui::FontWeight::MEDIUM)
+                        .text_color(T::color(T::primary()))
+                        .child(value),
+                ),
+        );
+    }
+    let fill = group.map_or_else(|| T::color(T::secondary()), |g| g.colors().0);
+    let cell = div()
         .flex_1()
         .min_w_0()
-        .px(px(T::S20))
+        .px(px(T::S16))
         .py(px(T::S14))
         .flex()
         .flex_col()
-        .gap(px(T::S4))
-        .child(label(name))
+        .gap(px(T::S12))
         .child(
             div()
                 .flex()
-                .items_baseline()
-                .gap(px(T::S6))
-                .child(
-                    div()
-                        .text_size(px(T::BIG_NUMBER))
-                        .font_weight(gpui::FontWeight::SEMIBOLD)
-                        .text_color(T::color(T::primary()))
-                        .child(value),
-                )
-                .child(div().text_color(T::color(T::secondary())).child(unit)),
+                .items_center()
+                .justify_between()
+                .child(label(name))
+                .child(badge),
         )
+        .child(values)
+        .child(gauge(percent.unwrap_or(0.) / 100., fill))
         .child(
             div()
                 .text_size(px(T::SMALL))
                 .text_color(T::color(T::muted()))
+                .truncate()
                 .child(hint),
-        )
+        );
+    if last {
+        cell
+    } else {
+        cell.border_r(px(T::BORDER_WIDTH))
+            .border_color(T::color(T::border()))
+    }
+}
+/// A row of thin ticks; the used share is filled, whole ticks only, the rest stays grid.
+fn gauge(share: f64, fill: gpui::Hsla) -> gpui::Canvas<()> {
+    gpui::canvas(
+        |_, _, _| (),
+        move |bounds, (), window, _| {
+            let ticks = (f32::from(bounds.size.width) / T::GAUGE_PITCH).floor() as usize;
+            let filled = (ticks as f64 * share.clamp(0., 1.)).round() as usize;
+            let empty = T::color(T::chart_grid());
+            for i in 0..ticks {
+                let at = bounds.origin + gpui::point(px(i as f32 * T::GAUGE_PITCH), px(0.));
+                window.paint_quad(gpui::fill(
+                    gpui::Bounds::new(at, gpui::size(px(T::GAUGE_TICK), bounds.size.height)),
+                    if i < filled { fill } else { empty },
+                ));
+            }
+        },
+    )
+    .w_full()
+    .h(px(T::GAUGE_HEIGHT))
+}
+/// The small square brackets on the panels' outer corners, drawn over their border.
+fn corners() -> gpui::Canvas<()> {
+    gpui::canvas(
+        |_, _, _| (),
+        |bounds, (), window, _| {
+            let color = T::color(T::secondary());
+            let (w, h) = (bounds.size.width, bounds.size.height);
+            let (arm, line) = (px(T::CORNER), px(T::BORDER_WIDTH));
+            for (x, y) in [(px(0.), px(0.)), (w - arm, px(0.)), (px(0.), h - line)]
+                .into_iter()
+                .chain([(w - arm, h - line)])
+            {
+                window.paint_quad(gpui::fill(
+                    gpui::Bounds::new(bounds.origin + gpui::point(x, y), gpui::size(arm, line)),
+                    color,
+                ));
+            }
+            for (x, y) in [(px(0.), px(0.)), (w - line, px(0.)), (px(0.), h - arm)]
+                .into_iter()
+                .chain([(w - line, h - arm)])
+            {
+                window.paint_quad(gpui::fill(
+                    gpui::Bounds::new(bounds.origin + gpui::point(x, y), gpui::size(line, arm)),
+                    color,
+                ));
+            }
+        },
+    )
+    .absolute()
+    .top_0()
+    .left_0()
+    .size_full()
 }
 /// An axis label centered on its tick; the two ends align inward so they stay inside.
 fn tick(text: String, at: f32) -> gpui::Div {
@@ -986,44 +1097,78 @@ impl Render for DiagnosticView {
             status = status.child("约 8 秒后显示第一组结果…");
         }
         if let Some(report) = &self.report {
-            let percent = |v: Option<f64>| v.map_or_else(|| "不可读".into(), |p| format!("{p:.1}"));
             let listed: f64 = report.ranked().map(|a| a.cpu_percent).sum::<f64>() / 100.;
-            let busy_hint = match (report.cpu_cores, report.cpu_percent) {
-                (Some(c), Some(p)) => format!("约 {:.1} / {c} 核在忙", p / 100. * c as f64),
-                _ => "核心数不可读".into(),
-            };
+            let busy = report
+                .cpu_cores
+                .zip(report.cpu_percent)
+                .map(|(c, p)| p / 100. * c as f64);
+            let memory = report.memory;
+            let unread = || "不可读".to_string();
             body = body.child(
                 div()
-                    .flex()
+                    .px(px(T::S20))
+                    .py(px(T::S16))
                     .border_b(px(T::BORDER_WIDTH))
                     .border_color(T::color(T::border()))
-                    .child(metric(
-                        "整机 CPU · 采样平均",
-                        percent(report.cpu_percent),
-                        "%",
-                        busy_hint,
-                    ))
-                    .child(div().w(px(T::BORDER_WIDTH)).bg(T::color(T::border())))
-                    .child(metric(
-                        "GPU 设备 · 最新读数",
-                        percent(report.gpu_percent),
-                        "%",
-                        "设备活跃度，不是各应用份额之和".into(),
-                    ))
-                    .child(div().w(px(T::BORDER_WIDTH)).bg(T::color(T::border())))
-                    .child(metric(
-                        "排行能解释的 CPU",
-                        format!("{listed:.1}"),
-                        "核",
-                        format!(
-                            "前 {} 项{} · 共 {} 个进程",
-                            report.ranked().count(),
-                            report
-                                .cpu_cores
-                                .map_or_else(String::new, |c| format!("，整机 {c} 核")),
-                            report.process_count
-                        ),
-                    )),
+                    .child(
+                        div()
+                            .relative()
+                            .flex()
+                            .border(px(T::BORDER_WIDTH))
+                            .border_color(T::color(T::border()))
+                            .child(panel(
+                                "整机 CPU · 采样平均",
+                                report.cpu_percent,
+                                [
+                                    (
+                                        "核心",
+                                        report.cpu_cores.map_or_else(unread, |c| c.to_string()),
+                                    ),
+                                    (
+                                        "在忙",
+                                        busy.map_or_else(unread, |b| format!("约 {b:.1} 核")),
+                                    ),
+                                    ("排行能解释", format!("{listed:.1} 核")),
+                                ],
+                                format!(
+                                    "排行前 {} 项 · 共 {} 个进程",
+                                    report.ranked().count(),
+                                    report.process_count
+                                ),
+                                false,
+                            ))
+                            .child(panel(
+                                "内存 · 最新读数",
+                                memory.and_then(|m| m.percent()),
+                                [
+                                    ("总量", memory.map_or_else(unread, |m| gib(m.total_bytes))),
+                                    ("已用", memory.map_or_else(unread, |m| gib(m.used_bytes))),
+                                    (
+                                        "其中压缩",
+                                        memory.map_or_else(unread, |m| gib(m.compressed_bytes)),
+                                    ),
+                                ],
+                                "已用 = App 内存 + 联动 + 压缩，和活动监视器一致".into(),
+                                false,
+                            ))
+                            .child(panel(
+                                "GPU 设备 · 最新读数",
+                                report.gpu_percent,
+                                [
+                                    (
+                                        "活跃度",
+                                        report
+                                            .gpu_percent
+                                            .map_or_else(unread, |p| format!("{p:.1}%")),
+                                    ),
+                                    ("有计数的应用", format!("{} 个", report.gpu_ranked().len())),
+                                    ("区间", format!("{done} / 2")),
+                                ],
+                                "设备活跃度，不是各应用份额之和".into(),
+                                true,
+                            ))
+                            .child(corners()),
+                    ),
             );
             if let Some(stack) = self.core_stack(report) {
                 body = body.child(stack);

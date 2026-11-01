@@ -558,6 +558,7 @@ pub fn start(
             let report = handle.update(cx, |view, _, cx| {
                 let report = view.visual_diagnostic_report(cx).expect("missing native diagnostic report");
                 assert!(report.complete && report.process_count > 0, "{report:?}");
+                assert!(report.memory.is_some_and(|m| m.used_bytes > 0), "memory unread");
                 assert!(report.apps.iter().any(|app| app.cpu_percent > 0.));
                 assert!(report.apps.iter().any(|app| !app.terminals.is_empty() && app.cpu_percent > 5.));
                 view.visual_copy_diagnostics(cx);

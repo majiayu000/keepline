@@ -400,6 +400,12 @@ impl Theme {
     pub const DIAGNOSTIC_WIDTH: f32 = 980.;
     pub const DIAGNOSTIC_HEIGHT: f32 = 860.;
     pub const BIG_NUMBER: f32 = 26.;
+    /// The top panels: tick gauge, its ticks, the corner marks and the reading size.
+    pub const GAUGE_HEIGHT: f32 = 14.;
+    pub const GAUGE_TICK: f32 = 2.;
+    pub const GAUGE_PITCH: f32 = 3.;
+    pub const CORNER: f32 = 7.;
+    pub const PANEL_VALUE: f32 = 15.;
     pub const STACK_HEIGHT: f32 = 22.;
     pub const BAR: f32 = 10.;
     pub const METER: f32 = 4.;
