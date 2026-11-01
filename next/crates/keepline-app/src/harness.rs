@@ -1571,7 +1571,8 @@ pub fn start(
         return;
     }
     // Peek: a session waiting at an approval in a hidden tab floats over the shown one,
-    // is answered from the peek's title bar, and its terminal keeps its own size.
+    // is answered from the peek's title bar, and its terminal keeps its own size until
+    // the peek is typed in.
     if let (Some(handle), Some(directory)) = (&handle, evidence.clone())
         && std::env::var_os("KEEPLINE_PEEK_EVIDENCE").is_some()
     {
@@ -1603,7 +1604,7 @@ pub fn start(
             let row = serde_json::json!({"type":"user","sessionId":id,"uuid":"u0","cwd":"/tmp","entrypoint":"cli","userType":"external","timestamp":keepline_core::content::now(),"message":{"content":"发布前检查"}});
             std::fs::write(&seed, format!("{row}\n")).unwrap();
             let script = format!(
-                "cat '{}' > '{}'; printf '%s\\n' '⏺ 测试都过了，准备推送到远端。' '' '⏺ Bash(git push origin feat/release)' '' 'Bash command' '  git push origin feat/release' 'Do you want to proceed?' '❯ 1. Yes' \"  2. Yes, and don't ask again for git push\" '  3. No, and tell Claude what to do differently (esc)'; read -r answer; printf '\\033[2J\\033[Hanswer=[%s] size=%s\\n' \"$answer\" \"$(stty size)\"; read -r end; echo \"end=[$end]\"; sleep 600",
+                "cat '{}' > '{}'; printf '%s\\n' '⏺ 测试都过了，准备推送到远端。' '' '⏺ Bash(git push origin feat/release)' '' 'Bash command' '  git push origin feat/release' 'Do you want to proceed?' '❯ 1. Yes' \"  2. Yes, and don't ask again for git push\" '  3. No, and tell Claude what to do differently (esc)'; read -r answer; printf '\\033[2J\\033[Hanswer=[%s] size=%s\\n' \"$answer\" \"$(stty size)\"; read -r end; echo \"end=[$end]\"; read -r typed; echo \"typed=[$typed] size=$(stty size)\"; sleep 600",
                 seed.display(), logs.join(format!("{id}.jsonl")).display()
             );
             let launch = |tid: &str, argv: Vec<String>| {
@@ -1672,11 +1673,29 @@ pub fn start(
             // Opening the peeked terminal's own tab ends the peek, so the tab's pane owns it.
             handle.update(cx, |v, w, a| v.visual_peek_row("agent", w, a)).unwrap();
             assert!(handle.update(cx, |v, _, _| v.visual_peek_state()).unwrap().is_some());
+            // Typing in the peek makes it the terminal's user: the terminal takes its size.
+            wait(300).await;
+            cx.update_window(handle.into(), |_, w, a| {
+                for key in ["x", "enter"] {
+                    w.dispatch_keystroke(gpui::Keystroke::parse(key).unwrap(), a);
+                }
+            }).unwrap();
+            let mut typed = String::new();
+            for _ in 0..50 {
+                wait(100).await;
+                // The taller terminal's text may sit below the first 30 rows.
+                typed = match call(Request::ReadScreen { id: "agent".into(), rows: 200 }) { Reply::Text(t) => t, x => panic!("{x:?}") };
+                if typed.contains("typed=[") { break; }
+            }
+            assert!(typed.contains("typed=[x]"), "typing never reached the peeked Agent: {typed}");
+            assert!(!typed.contains("typed=[x] size=30 100"), "a used peek kept the old size: {typed}");
+            wait(300).await;
+            shot("3-peek-typed.png", cx);
             handle.update(cx, |v, _, a| v.visual_peek_show_tab("agent", a)).unwrap();
             assert!(handle.update(cx, |v, _, _| v.visual_peek_state()).unwrap().is_none(), "peek kept over its own tab");
             wait(800).await;
-            shot("3-own-tab.png", cx);
-            eprintln!("peek native PASS: hidden approval peeked, answered once, size kept, Esc closes without reaching the Agent");
+            shot("4-own-tab.png", cx);
+            eprintln!("peek native PASS: hidden approval peeked, answered once, size kept until typed in, Esc closes without reaching the Agent");
             // 置顶: the row's dot shows on hover, a real click pins the terminal, the pin is
             // saved, and it comes off once the terminal ends.
             let row = gpui::point(px(100.), px(292.));

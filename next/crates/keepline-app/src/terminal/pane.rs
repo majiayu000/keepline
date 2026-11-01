@@ -108,8 +108,10 @@ pub struct Pane {
     /// Shares the tab with other panes: unless it holds focus, it fades and draws no
     /// cursor, so only one cursor is in sight.
     pub split: bool,
-    /// Shown in the peek overlay: never resizes the terminal (that would reflow the
-    /// Agent's screen for its own tab), and keeps the bottom rows in view when taller.
+    /// Shown in the peek overlay and only looked at: it does not resize the terminal
+    /// (that would reflow the Agent's screen for its own tab) and keeps the bottom rows
+    /// in view when taller. The first key, paste or click in it clears this, so the
+    /// overlay takes the size, as 同类终端工具 sizes to the client last used.
     pub peek: bool,
     /// The scheme this pane first painted its live program with. Agents such as Codex
     /// tint their own bands from the background they saw at start, which a later switch
@@ -613,6 +615,7 @@ impl Pane {
         cx: &mut Context<Self>,
     ) {
         window.focus(&self.focus, cx);
+        self.take_size(cx);
         if event.modifiers.platform
             && event.button == gpui::MouseButton::Left
             && let Some((y, x)) = self.cell_at(event.position)
@@ -1322,7 +1325,15 @@ impl Pane {
         })
         .detach();
     }
+    /// A peek that is used, not just looked at, sizes the terminal to itself.
+    fn take_size(&mut self, cx: &mut Context<Self>) {
+        if self.peek {
+            self.peek = false;
+            cx.notify();
+        }
+    }
     fn send_input(&mut self, bytes: Vec<u8>, lossy: bool, cx: &mut Context<Self>) {
+        self.take_size(cx);
         self.typed = Some(Instant::now());
         self.restart_blink(cx);
         if let Err(error) = self.connection.send(Request::Input { bytes, lossy }) {
