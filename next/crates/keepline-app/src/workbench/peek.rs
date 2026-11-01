@@ -74,6 +74,17 @@ impl Workbench {
             self.peek = None;
         }
     }
+    /// While a peek covers it, the session of the pane underneath: its row keeps an
+    /// outline beside the peeked row's selection, so where Esc goes back to stays in view.
+    pub(super) fn peek_home(&self, session: &str) -> bool {
+        self.peek.is_some()
+            && self
+                .nav
+                .focused
+                .as_ref()
+                .and_then(|id| self.workspace.current_agent(id))
+                .is_some_and(|s| s.id == session)
+    }
     /// The approval question the peeked session's screen shows, if any.
     fn peek_approval(&self) -> Option<String> {
         let peek = self.peek.as_ref()?;
@@ -268,4 +279,14 @@ impl Workbench {
     pub fn visual_pins(&self) -> Vec<String> {
         self.sidebar.pinned.clone()
     }
+}
+
+/// The outline over the row a peek will go back to; drawn on top, so rows keep their size.
+pub(super) fn peek_home_outline() -> gpui::Div {
+    div()
+        .absolute()
+        .inset_0()
+        .rounded(px(T::CONTROL_RADIUS))
+        .border(px(T::BORDER_WIDTH))
+        .border_color(T::color(T::control()))
 }

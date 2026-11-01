@@ -738,7 +738,7 @@ impl Workbench {
             // The overview's foot: the folded groups below the cards.
             "OverviewEnd" => self.overview.scroll.scroll_to_bottom(),
             "Overview" | "Menubar" => (),
-            // `Dense-{status|directory|wasm}-{standard|terminal}-{light|dark}[-open|-menu|-bg]`:
+            // `Dense-{status|directory|wasm}-{standard|terminal}-{light|dark}[-open|-menu|-bg|-peek]`:
             // the denser presets over sessions shaped like sidebar-density.html's; `-bg`
             // stops the second running turn while a sub-agent of it still runs.
             dense if dense.starts_with("Dense-") => {
@@ -785,6 +785,21 @@ impl Workbench {
                     });
                 }
                 self.nav.focused = Some("dense-t2".into());
+                // `-peek`: the first session floats over the focused one.
+                self.peek = (parts.get(4) == Some(&"peek")).then(|| {
+                    let pane = cx.new(|cx| {
+                        let mut pane = Pane::new(self.store.socket(), "dense-t0", false, cx);
+                        pane.peek = true;
+                        pane
+                    });
+                    super::peek::Peek {
+                        terminal: "dense-t0".into(),
+                        session: "dense-s0".into(),
+                        pane,
+                        answering: false,
+                        note: None,
+                    }
+                });
                 self.layout.space_menu = (parts.get(4) == Some(&"menu"))
                     .then(|| ("s0".into(), gpui::point(px(T::S20), px(T::TOP * 2.))));
                 self.layout.space_switch = true;
