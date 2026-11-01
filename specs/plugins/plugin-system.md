@@ -91,8 +91,10 @@ api 1 的声明能认出进程、启动和恢复、按 JSONL 绑定会话、卡�
 
 ```
 State {
-  sessions: [{ id, title, agent, group, cwd, updated, running_since?,
-               stopped?, done?, needs_you, closed, selected }],
+  sessions: [{ id, title, agent, short, group, cwd, updated, running_since?,
+               line?, stopped?, done?, needs_you, closed, selected }],
+  // short：会话编号末四位（大写），和看板卡片上的一样，用来区分同名会话
+  // line：会话现在停在哪的一行字（提问、报错或最后的回复）
   closed_total,   // 本空间已关闭会话总数；sessions 里只带最近 50 个
   now             // 取整到分钟
 }

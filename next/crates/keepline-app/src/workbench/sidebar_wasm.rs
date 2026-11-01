@@ -34,10 +34,14 @@ struct StateSession<'a> {
     id: &'a str,
     title: String,
     agent: &'a str,
+    /// The id's last four letters or digits, upper-cased: what the board card shows.
+    short: String,
     group: &'static str,
     cwd: &'a str,
     updated: u64,
     running_since: Option<u64>,
+    /// What the session is at now, one line: the question, the error or the last reply.
+    line: Option<String>,
     stopped: Option<String>,
     done: Option<String>,
     needs_you: bool,
@@ -152,6 +156,18 @@ fn group_name(g: Group) -> &'static str {
     }
 }
 
+/// The id's tail: ids share prefixes (dates, `visual-`), their ends differ.
+pub(super) fn short_id(cli_session_id: &str) -> String {
+    let alnum: Vec<char> = cli_session_id
+        .chars()
+        .filter(|c| c.is_ascii_alphanumeric())
+        .collect();
+    alnum[alnum.len().saturating_sub(4)..]
+        .iter()
+        .collect::<String>()
+        .to_uppercase()
+}
+
 impl Workbench {
     fn wasm_state(&self, open: &[Listed], closed: &Closed, current: Option<&str>) -> Vec<u8> {
         let first = |t: &str| {
@@ -172,6 +188,7 @@ impl Workbench {
                         id: &s.id,
                         title: self.session_title(s),
                         agent: s.runtime.name(),
+                        short: short_id(&s.cli_session_id),
                         group: group_name(*g),
                         cwd: &s.cwd,
                         updated: self.session_updated(s),
@@ -179,6 +196,9 @@ impl Workbench {
                             .filter(|_| b == Bucket::Running)
                             .map(|c| c.turn_started)
                             .filter(|t| *t > 0),
+                        line: content
+                            .map(|c| keepline_core::content::short(&c.headline(), 100))
+                            .filter(|l| !l.trim().is_empty()),
                         stopped: match b {
                             Bucket::Attention => self.attention_reason(s, *g),
                             Bucket::Stopped => content.and_then(|c| first(&c.last_reply)),
@@ -446,16 +466,68 @@ mod tests {
             id,
             title: format!("会话 {id}"),
             agent: "codex",
+            short: "AB12".into(),
             group,
             cwd: "/project",
             updated: 10,
             running_since: (group == "running").then_some(5),
+            line: Some("在改 sidebar.rs".into()),
             stopped: (group == "waiting").then(|| "要不要推送".into()),
             done: (group == "review").then(|| "改好了".into()),
             needs_you: group == "waiting",
             closed: false,
             selected: false,
         }
+    }
+
+    #[test]
+    fn session_first_puts_the_newest_on_top_and_names_each_row() {
+        let dir = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../plugins/session-first");
+        let (presets, report) = keepline_core::sidebar::load(vec![dir.join("sidebar.json")]);
+        assert!(report[0].result.is_ok(), "{report:?}");
+        let mut plugin = load(presets.last().unwrap()).unwrap();
+        let at = |id, group, updated| {
+            let mut s = session(id, group);
+            s.updated = updated;
+            s
+        };
+        // A running turn keys on when it began, not on its latest output.
+        let mut running = at("run", "running", 99);
+        running.running_since = Some(20);
+        let state = State {
+            sessions: vec![
+                at("ask", "waiting", 10),
+                at("old", "review", 30),
+                running,
+                at("new", "paused", 50),
+                at("quiet", "stale", 60),
+            ],
+            closed_total: 0,
+            now: 100,
+        };
+        let bytes = plugin.render(&serde_json::to_vec(&state).unwrap()).unwrap();
+        let reply: Reply = serde_json::from_slice(&bytes).unwrap();
+        let rows = |id: &str| -> Vec<(String, Option<String>)> {
+            reply
+                .sections
+                .iter()
+                .find(|s| s.id == id)
+                .unwrap()
+                .rows
+                .iter()
+                .filter_map(|r| match r {
+                    Row::Session { id, detail, .. } => Some((id.clone(), detail.clone())),
+                    _ => None,
+                })
+                .collect()
+        };
+        let ids = |id: &str| rows(id).into_iter().map(|r| r.0).collect::<Vec<_>>();
+        assert_eq!(ids("need"), ["ask"]);
+        assert_eq!(ids("rest"), ["new", "old", "run"]);
+        assert_eq!(ids("stale"), ["quiet"]);
+        // The second line leads with the short id, then where it stopped.
+        assert_eq!(rows("need")[0].1.as_deref(), Some("AB12 · 要不要推送"));
+        assert_eq!(rows("rest")[1].1.as_deref(), Some("AB12 · 改好了"));
     }
 
     #[test]
