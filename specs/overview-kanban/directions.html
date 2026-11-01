@@ -1,0 +1,237 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>鸟瞰看板方向稿</title>
+<style>
+:root{
+  --bg:#0e0e10; --side:#121215; --col:#131316; --card:#1a1a1f; --line:#26262b; --line2:#1f1f24;
+  --text:#e8e8ea; --sub:#b4b4bb; --muted:#9a9aa2; --faint:#8a8a93; --chip:#222228;
+  --wait:#f0883e; --err:#f2555a; --review:#8b8cf8; --run:#3fb950; --pause:#9a9aa2; --stale:#5f5f69;
+  --accent:#4f46e5;
+}
+*{box-sizing:border-box}
+body{margin:0;background:#08080a;color:var(--text);font:13px/1.45 -apple-system,"PingFang SC","Helvetica Neue",sans-serif}
+button{font:inherit;color:inherit;cursor:pointer}
+.clip{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.two{display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
+.dot{width:8px;height:8px;border-radius:50%;flex:none;display:inline-block}
+
+/* 方向切换条（不属于设计稿本身） */
+.switch{position:sticky;top:0;z-index:10;display:flex;align-items:center;gap:8px;padding:10px 16px;background:#050506;border-bottom:1px solid #1c1c21}
+.switch .t{color:var(--muted);margin-right:8px}
+.switch button{height:30px;padding:0 14px;border-radius:6px;border:1px solid #2a2a31;background:transparent;color:#c9c9cf}
+.switch button[aria-pressed=true]{background:#e8e8ea;color:#0e0e10;border-color:#e8e8ea}
+.switch .note{margin-left:auto;color:var(--faint);max-width:560px;text-align:right}
+
+/* 窗口外壳 */
+.app{width:1440px;max-width:100%;margin:20px auto;border:1px solid #222227;border-radius:10px;overflow:hidden;background:var(--bg);display:flex;flex-direction:column;position:relative}
+.app.fixed{height:900px}
+.top{height:44px;flex:none;display:flex;align-items:center;gap:12px;padding:0 16px;border-bottom:1px solid #222227;background:var(--side)}
+.top .crumb{color:var(--muted)}
+.search{display:flex;align-items:center;gap:8px;width:320px;height:28px;padding:0 10px;border-radius:6px;background:#1a1a1f;border:1px solid var(--line);color:#7d7d86;margin-left:auto}
+.search input{flex:1;background:transparent;border:0;outline:none;color:var(--text);font:inherit}
+.btn{height:28px;padding:0 12px;border-radius:6px;border:0;background:#2a2a31}
+.btn.ghost{background:transparent;border:1px solid #2f2f36;color:#c9c9cf}
+.btn.primary{background:var(--accent);color:#fff}
+.body{flex:1;display:flex;min-height:0}
+.side{flex:0 0 270px;padding:16px 12px;border-right:1px solid #222227;background:var(--side);display:flex;flex-direction:column;gap:2px}
+.side .h{color:#7d7d86;font-size:12px;padding:4px 8px 8px}
+.side a{display:flex;align-items:center;gap:8px;height:32px;padding:0 8px;border-radius:6px;text-decoration:none;color:var(--text)}
+.side a.on{background:#22222a}
+.side a span:last-child{color:var(--muted);font-variant-numeric:tabular-nums}
+.main{flex:1;min-width:0;display:flex;flex-direction:column;min-height:0}
+.title{display:flex;align-items:baseline;gap:12px;padding:20px 24px 14px}
+.title h1{margin:0;font-size:20px;font-weight:600}
+.title span{color:var(--muted)}
+
+/* A 分段 */
+.a{padding:0 28px 28px;display:flex;flex-direction:column;gap:22px}
+.dist{display:flex;height:6px;border-radius:3px;overflow:hidden;gap:2px}
+.pills{display:flex;flex-wrap:wrap;gap:8px;margin-top:10px}
+.pill{display:flex;align-items:center;gap:6px;height:26px;padding:0 10px;border-radius:13px;border:1px solid #2a2a31;background:transparent;color:#c9c9cf}
+.pill b{font-weight:400;color:var(--muted)}
+.box{border:1px solid var(--line);border-radius:10px;padding:16px;display:flex;flex-direction:column;gap:12px}
+.sec-h{display:flex;align-items:center;gap:8px}
+.sec-h .n{color:var(--muted)}
+.grid3{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px}
+.cardA{background:#17171b;border:1px solid var(--line);border-radius:8px;padding:14px;display:flex;flex-direction:column;gap:6px}
+.cardA .meta{color:var(--muted)}
+.cardA .act{display:flex;justify-content:flex-end;margin-top:4px}
+
+/* B / C 看板 */
+.lanes{flex:1;min-height:0;overflow-x:auto;padding:0 24px 20px}
+.lanes-in{height:100%;display:grid;gap:12px}
+.lane{min-height:0;display:flex;flex-direction:column;background:var(--col);border:1px solid var(--line2);border-radius:10px}
+.lane-h{display:flex;align-items:center;gap:8px;padding:12px 12px 10px}
+.lane-h .n{color:var(--muted)}
+.lane-h .add{margin-left:auto;width:24px;height:24px;border-radius:6px;border:0;background:transparent;color:var(--muted);font-size:16px}
+.lane-b{flex:1;min-height:0;overflow-y:auto;padding:0 8px 8px;display:flex;flex-direction:column;gap:8px}
+.card{background:var(--card);border:1px solid var(--line);border-radius:8px;padding:10px 12px;display:flex;flex-direction:column;gap:6px;cursor:grab}
+.card.hot{border-color:#3a3a44}
+.card .tag{display:flex;align-items:center;gap:6px;font-size:12px;color:#c9c9cf}
+.card .q{color:var(--sub)}
+.card .f{display:flex;align-items:center;gap:8px;margin-top:2px}
+.chip{height:20px;padding:0 7px;border-radius:4px;background:var(--chip);color:#a6a6ae;font-size:12px;display:inline-flex;align-items:center}
+.age{margin-left:auto;color:var(--faint);font-size:12px;font-variant-numeric:tabular-nums}
+.card .btn.primary{height:28px}
+.fold{display:flex;flex-direction:column;gap:8px;padding:12px 10px}
+.fold button{display:flex;align-items:center;gap:8px;height:36px;padding:0 10px;border-radius:6px;border:0;background:var(--card);color:#d5d5da;text-align:left}
+.fold button span:nth-child(2){flex:1}
+.fold button span:last-child{color:var(--muted)}
+.fold .hint{color:var(--faint);font-size:12px;padding:4px 2px}
+.toast{position:absolute;left:50%;bottom:24px;transform:translateX(-50%);display:flex;align-items:center;gap:14px;height:38px;padding:0 8px 0 14px;border-radius:8px;background:#23232a;border:1px solid #33333b;box-shadow:0 8px 24px rgba(0,0,0,.4);white-space:nowrap}
+.toast .btn{height:26px;background:#33333b}
+
+/* C 专用 */
+.need{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px;align-content:start}
+.row{display:flex;align-items:center;gap:8px;height:34px;padding:0 10px;border-radius:6px;background:var(--card);border:1px solid transparent}
+.row:hover{border-color:#33333b}
+.row .clip{flex:1}
+.row .age{margin-left:0}
+.strip{display:flex;flex-direction:column;align-items:center;gap:14px;padding:14px 0;background:var(--col);border:1px solid var(--line2);border-radius:10px}
+.strip button{display:flex;flex-direction:column;align-items:center;gap:6px;border:0;background:transparent;color:#c9c9cf;padding:6px 0;width:100%}
+.strip .v{writing-mode:vertical-rl;letter-spacing:.1em}
+.strip b{font-weight:400;color:var(--muted)}
+</style>
+</head>
+<body>
+<div class="switch" role="toolbar" aria-label="方向">
+  <span class="t">鸟瞰方向稿</span>
+  <button data-v="A">A · 现状分段（对照）</button>
+  <button data-v="B">B · 五列等宽看板</button>
+  <button data-v="C">C · 要你处理宽列＋窄列</button>
+  <span class="note" id="note"></span>
+</div>
+<div id="stage"></div>
+
+<script>
+const C = { wait:'var(--wait)', err:'var(--err)', review:'var(--review)', run:'var(--run)', pause:'var(--pause)', stale:'var(--stale)' };
+const dot = c => `<span class="dot" style="background:${c}"></span>`;
+const SP = ['模型上线 work','codex-mall','sys','keepline','lib'];
+const AGES = ['3 分钟','12 分钟','25 分钟','1 小时','2 小时'];
+const meta = s => (s==='lib' ? '托管 · codex · ' : '外部 · 只读 · codex · ') + s;
+
+const todos = [
+  { title:'给 CLI 加离线模式', space:'codex', note:'3 条验收标准' },
+  { title:'清理旧的扫描轮询代码', space:'codex', note:'3 条验收标准' },
+];
+const waiting = SP.map((s,i)=>({ kind:'wait', title:'添加 CLI 问题反馈接口', space:s, age:AGES[i], quote:'是否允许推送分支并创建 PR？改动已经完成，等待你确认。' }));
+const errors  = SP.map((s,i)=>({ kind:'err',  title:'诊断 SSH 执行异常', space:s, age:AGES[i], quote:'SSH 命令退出码 255，连接中断。' }));
+const review  = SP.map((s,i)=>({ title:'核对反馈子命令的验收', space:s, age:AGES[i], quote:'Agent 自述：已完成，请核对命令行为与隐私要求。' }));
+const running = [
+  { title:'偷看浮层只看时不改终端尺寸', space:'keepline', age:'本轮 4:12', quote:'正在跑测试，第 3/5 步。' },
+  { title:'分屏打开与关闭命令', space:'keepline', age:'本轮 1:05', quote:'正在改 keeplined 的命令表。' },
+  { title:'模型路由灰度', space:'模型上线 work', age:'本轮 0:40', quote:'正在读路由配置。' },
+];
+const paused = [
+  { title:'同类终端工具 中继 Codex', space:'sys', quote:'你暂停的：等额度恢复再继续。' },
+  { title:'商品详情页缓存', space:'codex-mall', quote:'你暂停的：先等接口定稿。' },
+];
+const folded = [ ['暂停',2,C.pause], ['很久没动',10,C.stale], ['今天已完成',4,C.run] ];
+
+const shell = (inner, fixed, toast='') => `
+<div class="app ${fixed?'fixed':''}">
+  <div class="top">
+    <strong>Keepline</strong><span class="crumb">/</span><span class="crumb">鸟瞰</span>
+    <label class="search"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg><input aria-label="搜索" placeholder="跳到会话、待办或原话"></label>
+    <button class="btn">← 回到终端</button>
+  </div>
+  <div class="body">
+    <nav class="side" aria-label="空间"><div class="h">空间</div>
+      ${[['全部空间',30],['keepline',8],['模型上线 work',6],['codex-mall',6],['sys',5],['lib',5]].map(([n,c],i)=>`<a href="#" class="${i?'':'on'}"><span class="clip" style="flex:1">${n}</span><span>${c}</span></a>`).join('')}
+    </nav>
+    <main class="main">${inner}</main>
+  </div>
+  ${toast}
+</div>`;
+
+/* ---------- A 现状分段 ---------- */
+function A(){
+  const groups = [
+    ['等你回答',C.wait,waiting,true],['出错了',C.err,errors,true],['待核对',C.review,review,false],
+    ['在跑',C.run,running,false],['暂停',C.pause,paused,false],
+  ];
+  const counts = [['等你回答',5,C.wait],['出错了',5,C.err],['待核对',5,C.review],['在跑',3,C.run],['暂停',2,C.pause],['很久没动',10,C.stale]];
+  const cardA = (g,c) => `<div class="cardA"><strong class="clip">${c.title} · ${c.space}</strong><span class="meta clip">${meta(c.space)}</span><span style="color:${g[3]?g[1]:'#c9c9cf'}">${c.quote}</span><div class="act"><button class="btn ghost">继续 →</button></div></div>`;
+  return shell(`
+    <div class="title"><h1>鸟瞰全部</h1><span>30 个没收尾的会话</span></div>
+    <div class="a">
+      <div><div class="dist">${counts.map(([,n,c])=>`<div style="flex:${n};background:${c}"></div>`).join('')}</div>
+        <div class="pills">${counts.map(([k,n,c])=>`<button class="pill">${dot(c)}${k} <b>${n}</b></button>`).join('')}</div></div>
+      <section class="box"><div class="sec-h"><strong>□ 待办 · 还没开始</strong><span class="n">2</span><button class="btn" style="margin-left:auto">＋ 新待办</button></div>
+        <div class="grid3">${todos.map(t=>`<div class="cardA"><strong>${t.title}</strong><span class="meta">${t.space} · ${t.note}</span><button class="btn primary" style="height:30px;margin-top:6px">开始 →</button></div>`).join('')}</div></section>
+      ${groups.map(g=>`<section style="display:flex;flex-direction:column;gap:10px"><div class="sec-h">${dot(g[1])}<strong>${g[0]}</strong><span class="n">${g[2].length}</span></div><div class="grid3">${g[2].map(c=>cardA(g,c)).join('')}</div></section>`).join('')}
+    </div>`, false);
+}
+
+/* ---------- B 五列等宽 ---------- */
+const cardB = (c, o={}) => `
+  <article class="card ${c.kind==='wait'?'hot':''}" draggable="true">
+    ${c.kind?`<span class="tag">${dot(c.kind==='wait'?C.wait:C.err)}${c.kind==='wait'?'等你回答':'出错'}</span>`:''}
+    <strong class="clip">${c.title}</strong>
+    <span class="q two">${c.quote}</span>
+    <div class="f"><span class="chip">${c.space}</span><span class="age">${c.age||''}</span></div>
+    ${o.start?'<button class="btn primary">开始 →</button>':''}
+  </article>`;
+const lane = (name, color, items, body, add) => `
+  <section class="lane"><div class="lane-h">${dot(color)}<strong>${name}</strong><span class="n">${items}</span>${add?'<button class="add" aria-label="新待办">＋</button>':''}</div>
+  <div class="lane-b">${body}</div></section>`;
+const foldBox = hint => `<section class="lane fold"><div class="lane-h" style="padding:0 2px 4px"><strong>收起</strong><span class="n">16</span></div>
+  ${folded.map(([n,c,col])=>`<button>${dot(col)}<span>${n}</span><span>${c}</span></button>`).join('')}
+  <span class="hint">${hint}</span></section>`;
+const toast = `<div class="toast" role="status">${dot(C.run)}<span>「核对反馈子命令的验收」已验收，移到今天已完成</span><button class="btn">撤销</button></div>`;
+
+function B(){
+  const need = [...waiting, ...errors];
+  return shell(`
+    <div class="title"><h1>鸟瞰全部</h1><span>30 个没收尾</span></div>
+    <div class="lanes"><div class="lanes-in" style="grid-template-columns:repeat(4,minmax(220px,1fr)) 200px">
+      ${lane('待办','var(--pause)',2, todos.map(t=>cardB({...t,quote:t.note+' · 命令只预填，按回车才启动'},{start:true})).join(''), true)}
+      ${lane('在跑',C.run,3, running.map(c=>cardB(c)).join(''))}
+      ${lane('要你处理',C.wait,10, need.map(c=>cardB(c)).join(''))}
+      ${lane('待核对',C.review,5, review.map(c=>cardB(c)).join(''))}
+      ${foldBox('把「待核对」的卡拖到这里＝验收通过')}
+    </div></div>`, true, toast);
+}
+
+/* ---------- C 主次列 ---------- */
+function C_(){
+  const need = [...waiting, ...errors];
+  const row = (c,col) => `<div class="row">${dot(col)}<span class="clip">${c.title}</span><span class="chip">${c.space}</span>${c.age?`<span class="age">${c.age}</span>`:''}</div>`;
+  const narrow = (name,color,items,rows) => `<section class="lane"><div class="lane-h">${dot(color)}<strong>${name}</strong><span class="n">${items}</span></div><div class="lane-b" style="gap:4px">${rows}</div></section>`;
+  return shell(`
+    <div class="title"><h1>鸟瞰全部</h1><span>10 个要你处理 · 其余 20 个照常在走</span></div>
+    <div class="lanes"><div class="lanes-in" style="grid-template-columns:minmax(560px,2.2fr) minmax(240px,1fr) 56px">
+      <section class="lane" style="border-color:#2c2c33"><div class="lane-h">${dot(C.wait)}<strong>要你处理</strong><span class="n">10</span><span style="margin-left:auto;color:var(--faint);font-size:12px">等得最久的在前</span></div>
+        <div class="lane-b need">${need.map(c=>cardB(c)).join('')}</div></section>
+      <div style="display:flex;flex-direction:column;gap:12px;min-height:0">
+        ${narrow('在跑',C.run,3, running.map(c=>row(c,C.run)).join(''))}
+        ${narrow('待核对',C.review,5, review.map(c=>row(c,C.review)).join(''))}
+        ${narrow('待办','var(--pause)',2, todos.map(t=>`<div class="row">${dot('var(--pause)')}<span class="clip">${t.title}</span><button class="btn primary" style="height:24px;padding:0 10px">开始</button></div>`).join(''))}
+      </div>
+      <div class="strip" aria-label="收起">
+        ${folded.map(([n,c,col])=>`<button>${dot(col)}<span class="v">${n}</span><b>${c}</b></button>`).join('')}
+      </div>
+    </div></div>`, true);
+}
+
+const NOTES = {
+  A:'现在的鸟瞰：竖着一段段铺卡片。分布条和胶囊重复了分组数字，看到「在跑」要往下滚。',
+  B:'五列等宽：列头带数字，分布条和胶囊去掉。拖拽只开放 待办→在跑（开始）和 待核对→收起（验收）。底部演示撤销提示。',
+  C:'只有「要你处理」用卡片占宽列，其余压成一行一条；收起是最右的竖条。打开就是待处理清单。',
+};
+const VIEWS = { A, B, C:C_ };
+function show(v){
+  document.getElementById('stage').innerHTML = VIEWS[v]();
+  document.getElementById('note').textContent = NOTES[v];
+  document.querySelectorAll('.switch button').forEach(b=>b.setAttribute('aria-pressed', b.dataset.v===v));
+  try{ localStorage.setItem('kl-overview-dir', v) }catch(e){}
+}
+document.querySelectorAll('.switch button').forEach(b=>b.onclick=()=>show(b.dataset.v));
+let first='B'; try{ first = localStorage.getItem('kl-overview-dir') || 'B' }catch(e){}
+show(first);
+</script>
+</body>
+</html>
