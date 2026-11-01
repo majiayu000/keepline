@@ -4,6 +4,8 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Keepline 鸟瞰看板</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
 <style>
 :root{
   --bg:#0c0c0e; --side:#0f0f12; --card:#16161a; --card-h:#1b1b20; --line:#232328; --line-h:#2e2e35;
@@ -14,7 +16,7 @@
 }
 *{box-sizing:border-box}
 html,body{height:100%}
-body{margin:0;background:var(--bg);color:var(--text);font:13px/1.4 -apple-system,"PingFang SC","Helvetica Neue",sans-serif;-webkit-font-smoothing:antialiased;overflow:hidden;user-select:none}
+body{margin:0;background:var(--bg);color:var(--text);font:13px/1.4 Inter,-apple-system,"PingFang SC",sans-serif;font-feature-settings:"cv11","ss01";-webkit-font-smoothing:antialiased;overflow:hidden;user-select:none}
 button{font:inherit;color:inherit;background:none;border:0;cursor:pointer;padding:0}
 svg{display:block}
 .mono{font-family:var(--mono);font-size:11.5px;letter-spacing:.02em}
@@ -74,7 +76,7 @@ svg{display:block}
 .card .r1 .orb{margin-left:auto;width:18px;height:18px}
 .card .more{position:absolute;right:38px;top:9px;opacity:0;color:var(--muted)}
 .card:hover .more{opacity:1}
-.card .t{font-size:13.5px;line-height:1.38;color:var(--text);display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
+.card .t{font-size:13.5px;font-weight:400;line-height:1.4;color:#f0f0f3;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
 .card .q{color:var(--muted);font-size:12px;line-height:1.45;display:-webkit-box;-webkit-line-clamp:1;-webkit-box-orient:vertical;overflow:hidden}
 .card .r3{display:flex;align-items:center;gap:6px}
 .card .r3 .right{margin-left:auto;display:flex;align-items:center;gap:10px;color:var(--faint)}
@@ -87,8 +89,13 @@ svg{display:block}
 .ai{width:18px;height:18px;border-radius:5px;display:grid;place-items:center;flex:none}
 .ai svg{width:12px;height:12px}
 .ai.cc,.ai.cx{background:#222227}.ai svg{fill:#c9c9d0}
-.av{margin-left:auto;width:20px;height:20px;border-radius:50%;display:grid;place-items:center;flex:none;box-shadow:inset 0 0 0 1px rgba(255,255,255,.12)}
-.av svg{width:11px;height:11px;fill:#fff;filter:drop-shadow(0 .5px .5px rgba(0,0,0,.35))}
+.av{margin-left:auto;width:22px;height:22px;border-radius:50%;flex:none;box-shadow:inset 0 0 0 1px rgba(255,255,255,.10)}
+.idg{display:inline-flex;align-items:center;gap:6px;color:var(--faint)}
+.idg svg{width:12px;height:12px;fill:#8e8e97}
+.pill.t-wait{border-color:rgba(240,136,62,.38);color:#f3c9a6}
+.pill.t-err{border-color:rgba(242,85,90,.40);color:#f6b4b6}
+.pill.t-run{border-color:rgba(63,185,80,.38);color:#b7e4bf}
+.pill .bn{max-width:96px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .ai.sm{width:14px;height:14px;border-radius:4px}.ai.sm svg{width:10px;height:10px}
 .fchip{height:26px;padding:0 9px 0 5px;border-radius:7px;border:1px solid #2a2a31;display:flex;align-items:center;gap:7px;color:var(--sub);transition:border-color .15s,background .15s,opacity .15s}
 .fchip:hover{border-color:#3a3a42}
@@ -200,7 +207,17 @@ const SPACES = {
   'sys':           ['#f0abfc','#818cf8'],
   'lib':           ['#a3e635','#14b8a6'],
 };
-const grad = s => `linear-gradient(135deg,${SPACES[s][0]},${SPACES[s][1]})`;
+const MESH = {
+  'keepline':     ['#ff7ad9','#7cf2c9','#7a8cff','#b58cff'],
+  '模型上线 work': ['#6ee7ff','#a78bfa','#f9a8d4','#38bdf8'],
+  'codex-mall':   ['#bef264','#2dd4bf','#60a5fa','#34d399'],
+  'sys':          ['#f0abfc','#fde68a','#818cf8','#c084fc'],
+  'lib':          ['#fcd34d','#f472b6','#a3e635','#fb923c'],
+};
+const grad = s => { const [a,b,c,d]=MESH[s]; return `radial-gradient(circle at 28% 25%,${a} 0,transparent 55%),radial-gradient(circle at 78% 30%,${b} 0,transparent 55%),radial-gradient(circle at 60% 85%,${c} 0,transparent 60%),${d}`; };
+// 分支前缀当标签色，像视频里的 Feature/Bug/Performance
+const TYPE = { feat:'#9d8cff', fix:'#f472b6', perf:'#facc15', copy:'#2dd4bf', ops:'#60a5fa', db:'#a3e635', main:'#6f6f78' };
+const brPill = br => { const t=(br||'main').split('/')[0]; const c=TYPE[t]||'#6f6f78'; const tail=(br||'main').split('/').pop(); return `<span class="pill" style="border-color:${c}55"><i style="background:${c}"></i><span class="bn">${tail}</span></span>`; };
 const COLS = [
   { id:'todo',   name:'待办',     color:'var(--todo)' },
   { id:'run',    name:'在跑',     color:'var(--run)' },
@@ -254,7 +271,7 @@ const IC = {
 };
 const AG = { cc:{ name:'Claude Code', short:'Claude', d:'M20.998 10.949H24v3.102h-3v3.028h-1.487V20H18v-2.921h-1.487V20H15v-2.921H9V20H7.488v-2.921H6V20H4.487v-2.921H3V14.05H0V10.95h3V5h17.998v5.949zM6 10.949h1.488V8.102H6v2.847zm10.51 0H18V8.102h-1.49v2.847z' }, cx:{ name:'Codex', short:'Codex', d:'M9.064 3.344a4.578 4.578 0 012.285-.312c1 .115 1.891.54 2.673 1.275.01.01.024.017.037.021a.09.09 0 00.043 0 4.55 4.55 0 013.046.275l.047.022.116.057a4.581 4.581 0 012.188 2.399c.209.51.313 1.041.315 1.595a4.24 4.24 0 01-.134 1.223.123.123 0 00.03.115c.594.607.988 1.33 1.183 2.17.289 1.425-.007 2.71-.887 3.854l-.136.166a4.548 4.548 0 01-2.201 1.388.123.123 0 00-.081.076c-.191.551-.383 1.023-.74 1.494-.9 1.187-2.222 1.846-3.711 1.838-1.187-.006-2.239-.44-3.157-1.302a.107.107 0 00-.105-.024c-.388.125-.78.143-1.204.138a4.441 4.441 0 01-1.945-.466 4.544 4.544 0 01-1.61-1.335c-.152-.202-.303-.392-.414-.617a5.81 5.81 0 01-.37-.961 4.582 4.582 0 01-.014-2.298.124.124 0 00.006-.056.085.085 0 00-.027-.048 4.467 4.467 0 01-1.034-1.651 3.896 3.896 0 01-.251-1.192 5.189 5.189 0 01.141-1.6c.337-1.112.982-1.985 1.933-2.618.212-.141.413-.251.601-.33.215-.089.43-.164.646-.227a.098.098 0 00.065-.066 4.51 4.51 0 01.829-1.615 4.535 4.535 0 011.837-1.388zm3.482 10.565a.637.637 0 000 1.272h3.636a.637.637 0 100-1.272h-3.636zM8.462 9.23a.637.637 0 00-1.106.631l1.272 2.224-1.266 2.136a.636.636 0 101.095.649l1.454-2.455a.636.636 0 00.005-.64L8.462 9.23z' } };
 const agentIcon = (ag, sm) => `<span class="ai ${ag} ${sm?'sm':''}" title="${AG[ag].name}"><svg viewBox="0 0 24 24" aria-hidden="true"><path fill-rule="evenodd" clip-rule="evenodd" d="${AG[ag].d}"/></svg></span>`;
-const avatar = s => `<span class="av" style="background:${grad(s.sp)}" title="${AG[s.ag].name} · ${s.sp}"><svg viewBox="0 0 24 24" aria-hidden="true"><path fill-rule="evenodd" clip-rule="evenodd" d="${AG[s.ag].d}"/></svg></span>`;
+const avatar = s => `<span class="av" style="background:${grad(s.sp)}" title="${s.sp}"></span>`;
 let only = null;
 function colIcon(id){
   const W = 'width="14" height="14" viewBox="0 0 16 16"';
@@ -275,10 +292,10 @@ function waitBars(s){
   return `<span class="sig" title="等了 ${ago(s.at)}"><svg width="12" height="10" viewBox="0 0 12 10">${[0,1,2,3].map(i=>`<rect x="${i*3}" y="${7-i*2.2}" width="2" height="${3+i*2.2}" rx=".6" fill="${i<n?col:'#34343b'}"/>`).join('')}</svg></span>`;
 }
 const pill = s => {
-  if (s.col==='need') return `<span class="pill"><i style="background:${s.kind==='err'?'var(--err)':'var(--wait)'}"></i>${s.kind==='err'?'出错':'等你回答'}</span>`;
-  if (s.col==='run') return `<span class="pill"><i style="background:var(--run)"></i>本轮 <span class="tick" data-at="${s.at}">${clock(s.at)}</span></span>${s.sub?`<span class="plus">子 Agent ${s.sub}</span>`:''}`;
+  if (s.col==='need') return `<span class="pill t-${s.kind}"><i style="background:${s.kind==='err'?'var(--err)':'var(--wait)'}"></i>${s.kind==='err'?'出错':'等你回答'}</span>`;
+  if (s.col==='run') return `<span class="pill t-run"><i style="background:var(--run)"></i><span class="tick" data-at="${s.at}">${clock(s.at)}</span></span>${brPill(s.br)}`;
   if (s.col==='todo') return `<span class="pill" style="padding-left:3px">${agentIcon(s.ag,1)}${AG[s.ag].short}</span>`;
-  return `<span class="pill"><i style="background:#6f6f78"></i>${s.br}</span>`;
+  return brPill(s.br);
 };
 function cardHTML(s){
   const when = s.col==='todo' ? `${IC.cal}未开始` : s.col==='run' ? `${IC.clock}<span class="tick" data-at="${s.at}" data-mode="ago">${ago(s.at)}</span>` : `${IC.clock}${ago(s.at)}`;
@@ -288,10 +305,10 @@ function cardHTML(s){
     s.turns ? `<span class="ring">${IC.turn}${s.turns}</span>` : '',
   ].join('');
   return `<article class="card ${sel===s.id?'sel':''}" data-id="${s.id}">
-    <div class="r1"><span class="mono">${s.id}</span><span class="when">${when}</span>${avatar(s)}</div>
+    <div class="r1"><span class="idg" title="${AG[s.ag].name}"><svg viewBox="0 0 24 24" aria-hidden="true"><path fill-rule="evenodd" clip-rule="evenodd" d="${AG[s.ag].d}"/></svg>${s.id.slice(3).toUpperCase()}</span><span class="when">${when}</span>${avatar(s)}</div>
     <button class="more" aria-label="更多">${IC.more}</button>
     <div class="t">${s.t}</div>
-    ${s.col==='need'||s.col==='run' ? `<div class="q">${s.q}</div>` : ''}
+    ${s.col==='need' ? `<div class="q">${s.q}</div>` : ''}
     <div class="r3">${left}${pill(s)}<span class="right">${right}</span></div>
     ${s.col==='run' ? '<span class="live"></span>' : ''}
   </article>`;
