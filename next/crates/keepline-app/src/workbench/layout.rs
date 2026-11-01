@@ -1393,9 +1393,8 @@ impl Workbench {
         };
         let content = self.workspace.content.get(&s.id);
         let started = content
-            .filter(|c| c.turn == keepline_core::content::Turn::Running && c.turn_started > 0)
             .filter(|_| live_terminal(&self.workspace, s).is_some())
-            .map(|c| c.turn_started);
+            .and_then(keepline_core::content::Content::running_since);
         let when = match started {
             Some(at) => {
                 self.tick_turn(cx);

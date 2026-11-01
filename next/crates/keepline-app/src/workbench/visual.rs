@@ -738,8 +738,9 @@ impl Workbench {
             // The overview's foot: the folded groups below the cards.
             "OverviewEnd" => self.overview.scroll.scroll_to_bottom(),
             "Overview" | "Menubar" => (),
-            // `Dense-{status|directory|wasm}-{standard|terminal}-{light|dark}[-open|-menu]`:
-            // the denser presets over sessions shaped like sidebar-density.html's.
+            // `Dense-{status|directory|wasm}-{standard|terminal}-{light|dark}[-open|-menu|-bg]`:
+            // the denser presets over sessions shaped like sidebar-density.html's; `-bg`
+            // stops the second running turn while a sub-agent of it still runs.
             dense if dense.starts_with("Dense-") => {
                 use crate::ui::{appearance::Appearance, style::Style};
                 let parts: Vec<&str> = dense.split('-').collect();
@@ -769,6 +770,20 @@ impl Workbench {
                     },
                     cx,
                 );
+                if parts.get(4) == Some(&"bg")
+                    && let Some(c) = self
+                        .workspace
+                        .content
+                        .values_mut()
+                        .find(|c| c.title == "标签命名依旧有问题")
+                {
+                    c.turn = keepline_core::content::Turn::Completed;
+                    c.completed_claim = false;
+                    c.background = Some(keepline_core::content::Background {
+                        agents: 1,
+                        ..Default::default()
+                    });
+                }
                 self.nav.focused = Some("dense-t2".into());
                 self.layout.space_menu = (parts.get(4) == Some(&"menu"))
                     .then(|| ("s0".into(), gpui::point(px(T::S20), px(T::TOP * 2.))));

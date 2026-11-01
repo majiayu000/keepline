@@ -391,6 +391,16 @@ impl Content {
     /// `hidden_reason` for this session: one Keepline started in its own terminal was
     /// started by the user, so a temporary working directory alone does not hide it.
     /// Sub-agents, SDK and print-mode runs stay hidden wherever they run.
+    /// When the unfinished turn began: one still running, or one that stopped while its
+    /// sub-agents, a monitor or a scheduled wakeup keep it open. `None` once it settled.
+    pub fn running_since(&self) -> Option<u64> {
+        let open = self.turn == Turn::Running
+            || self.turn == Turn::Completed
+                && self
+                    .background
+                    .is_some_and(|b| b.keeps_working() || b.wakes());
+        (open && self.turn_started > 0).then_some(self.turn_started)
+    }
     /// The turn ended and only a monitor or a scheduled wakeup will resume it.
     pub fn waking(&self) -> bool {
         self.turn == Turn::Completed
@@ -648,6 +658,24 @@ pub fn command_gist(command: &str) -> Option<String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn a_turn_its_sub_agents_keep_open_still_counts_from_its_start() {
+        let mut c = Content {
+            turn: Turn::Running,
+            turn_started: 100,
+            ..Default::default()
+        };
+        assert_eq!(c.running_since(), Some(100));
+        c.turn = Turn::Completed;
+        assert_eq!(c.running_since(), None);
+        c.background = Some(Background {
+            agents: 2,
+            ..Default::default()
+        });
+        assert_eq!(c.running_since(), Some(100));
+        c.turn_started = 0;
+        assert_eq!(c.running_since(), None);
+    }
     #[test]
     fn a_running_turn_reads_as_words_not_a_raw_command() {
         assert_eq!(

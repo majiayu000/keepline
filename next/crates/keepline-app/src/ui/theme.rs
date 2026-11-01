@@ -347,7 +347,7 @@ impl Theme {
     pub const S14: f32 = 14.;
     pub const S16: f32 = 16.;
     pub const S20: f32 = 20.;
-    pub const SIDEBAR: f32 = 240.;
+    pub const SIDEBAR: f32 = 270.;
     /// The folded left column (⌘B).
     pub const SIDEBAR_RAIL: f32 = 36.;
     /// The CLI's name column in the sidebar's quota rows.

@@ -359,13 +359,12 @@ impl Workbench {
         }
         true
     }
-    /// When the running turn began, for a session whose turn is running.
+    /// When the unfinished turn began, including one only its sub-agents keep going.
     pub(super) fn turn_started(&self, s: &AgentSession) -> Option<u64> {
         self.workspace
             .content
             .get(&s.id)
-            .filter(|c| c.turn == keepline_core::content::Turn::Running && c.turn_started > 0)
-            .map(|c| c.turn_started)
+            .and_then(keepline_core::content::Content::running_since)
     }
     fn wasm_end(&self, (s, _, _): Listed, trailing: &Trailing, cx: &Context<Self>) -> End {
         let ago = || match age(self.session_updated(s)) {
