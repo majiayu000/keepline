@@ -5,6 +5,11 @@ use super::*;
 #[cfg(feature = "visual-test")]
 pub type VisualSpaceState = (bool, Option<(String, bool)>, Vec<(String, String)>);
 impl Workbench {
+    /// ⌘B, as the sidebar button does.
+    #[cfg(feature = "visual-test")]
+    pub fn visual_toggle_sidebar(&mut self, cx: &mut Context<Self>) {
+        self.toggle_sidebar(cx);
+    }
     /// The host's socket, whether its connection strip shows, and 「重新连接」 itself.
     #[cfg(feature = "visual-test")]
     pub fn visual_socket(&self) -> PathBuf {

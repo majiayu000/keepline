@@ -194,6 +194,17 @@ impl Pane {
             bounds.top() + metrics.height * (row as f32 + 0.5),
         ))
     }
+    /// The selected columns (inclusive) on each viewport row, as drawn.
+    #[cfg(feature = "visual-test")]
+    pub fn visual_selection_cols(&self) -> Vec<Option<(u16, u16)>> {
+        self.screen.selection.clone()
+    }
+    /// ⌘= / ⌘- / ⌘0 on the terminal text, as the shortcuts do.
+    #[cfg(feature = "visual-test")]
+    pub fn visual_zoom(&mut self, step: Option<i8>, cx: &mut Context<Self>) {
+        screen::zoom(step).unwrap();
+        cx.refresh_windows();
+    }
     /// The viewport rows the selection is drawn on, and the text it would copy.
     #[cfg(feature = "visual-test")]
     pub fn visual_selection(&self) -> (Vec<u16>, Option<String>) {

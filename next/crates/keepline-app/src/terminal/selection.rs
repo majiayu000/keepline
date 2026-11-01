@@ -28,14 +28,31 @@ impl Grid {
             ((y / self.cell_h).floor().max(0.) as u16).min(self.rows.saturating_sub(1)),
         )
     }
+    /// Ghostty's whole-pixel cell size. A Retina cell is often fractional (7.8 logical
+    /// points = 15.6 pixels); rounding it alone made Ghostty place a point 0.4 px per
+    /// column further left than the grid draws it, so drag edges lost the last cell.
+    fn cell_px(&self) -> (f64, f64) {
+        (
+            f64::from((self.cell_w * self.scale).round().max(1.)),
+            f64::from((self.cell_h * self.scale).round().max(1.)),
+        )
+    }
+    /// A pane-relative point in Ghostty's pixel space, scaled per cell so each cell
+    /// spans exactly `cell_px` there, as it spans one drawn cell here.
+    fn position(&self, at: (f32, f32)) -> (f64, f64) {
+        let (w, h) = self.cell_px();
+        (
+            f64::from(at.0 / self.cell_w) * w,
+            f64::from(at.1 / self.cell_h) * h,
+        )
+    }
     fn geometry(&self) -> Geometry {
+        let (w, h) = self.cell_px();
         Geometry {
             columns: self.cols as u32,
-            cell_width: (self.cell_w * self.scale).round().max(1.) as u32,
+            cell_width: w as u32,
             padding_left: 0,
-            screen_height: (self.cell_h * self.scale * self.rows as f32)
-                .round()
-                .max(1.) as u32,
+            screen_height: (h as u32) * self.rows as u32,
         }
     }
 }
@@ -82,9 +99,9 @@ impl Selecting {
     pub fn press(&mut self, t: &Terminal, grid: Grid, at: (f32, f32)) -> GhosttyResult<()> {
         let selection = self
             .press
-            .set_repeat_distance((grid.cell_w * grid.scale) as f64)?
+            .set_repeat_distance(grid.cell_px().0)?
             .set_time(self.started.elapsed())?
-            .set_position((at.0 * grid.scale) as f64, (at.1 * grid.scale) as f64)?
+            .set_position(grid.position(at).0, grid.position(at).1)?
             .apply(&mut self.gesture, t, Self::cell(t, grid, at)?)?;
         t.set_selection(selection.as_ref())?;
         self.active = true;
@@ -97,7 +114,7 @@ impl Selecting {
         self.last = at;
         let selection = self
             .drag
-            .set_position((at.0 * grid.scale) as f64, (at.1 * grid.scale) as f64)?
+            .set_position(grid.position(at).0, grid.position(at).1)?
             .apply(
                 &mut self.gesture,
                 t,
@@ -182,6 +199,38 @@ mod tests {
         sel.release(vt.terminal(), GRID, at(7, 0));
         sel.press(vt.terminal(), GRID, at(7, 0)).unwrap();
         assert_eq!(selected(&vt).as_deref(), Some("alpha beta gamma"));
+    }
+
+    #[test]
+    fn fractional_retina_cells_keep_drag_edges_on_the_drawn_grid() {
+        // JetBrains Mono at 13 pt is 7.8 points wide: 15.6 pixels, which Ghostty's
+        // whole-pixel geometry rounds to 16. Far right, that put a point a cell left.
+        const FRACTIONAL: Grid = Grid {
+            cols: 80,
+            rows: 4,
+            cell_w: 7.8,
+            cell_h: 17.,
+            scale: 2.,
+        };
+        let line: String = (0..80).map(|i| char::from(b'a' + (i % 26) as u8)).collect();
+        let mut vt = Vt::new(80, 4).unwrap();
+        vt.feed(line.as_bytes());
+        let point = |col: f32| (col * FRACTIONAL.cell_w, FRACTIONAL.cell_h / 2.);
+        // Ghostty takes a cell once the pointer passes 60% of it: from column 2's left
+        // part to 30% into column `end` stops before it; to 80% takes it.
+        for end in 3..80u16 {
+            for (frac, last) in [(0.3, end - 1), (0.8, end)] {
+                let mut sel = Selecting::new().unwrap();
+                sel.press(vt.terminal(), FRACTIONAL, point(2.2)).unwrap();
+                sel.drag(vt.terminal(), FRACTIONAL, point(end as f32 + frac))
+                    .unwrap();
+                assert_eq!(
+                    selected(&vt).as_deref(),
+                    Some(&line[2..=last as usize]),
+                    "drag to {frac} into column {end}"
+                );
+            }
+        }
     }
 
     #[test]
