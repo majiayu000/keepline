@@ -62,10 +62,25 @@ pub(super) fn serve_client(
         if matches!(request, Request::Handoff) {
             return hand_over(stream, &host);
         }
-        if let Request::Attach { id, takeover } = request {
+        if let Request::Attach {
+            id,
+            takeover,
+            watch,
+        } = request
+        {
             let terminal = lock(&host)?.terminals.get(&id).cloned();
             match terminal {
-                Some(terminal) => return attach(stream, terminal, connection, takeover, host, id),
+                Some(terminal) => {
+                    return attach(
+                        stream,
+                        terminal,
+                        connection,
+                        takeover && !watch,
+                        watch,
+                        host,
+                        id,
+                    )
+                }
                 None => send(
                     &mut stream,
                     CONTROL,
@@ -480,6 +495,7 @@ pub(super) fn dispatch(shared: &Shared, request: Request) -> io::Result<Reply> {
                     pid,
                     owner: None,
                     subscribers: HashMap::new(),
+                    watchers: Default::default(),
                     exited: false,
                     drained: false,
                     status: None,
@@ -514,6 +530,10 @@ pub(super) fn dispatch(shared: &Shared, request: Request) -> io::Result<Reply> {
             allow,
         } => {
             answer_approval(shared, &id, &question, allow)?;
+            Ok(Reply::Ok)
+        }
+        Request::SendKeys { id, keys } => {
+            send_keys(shared, &id, &keys)?;
             Ok(Reply::Ok)
         }
         Request::TerminalCwd { id } => {
@@ -646,6 +666,75 @@ pub(super) fn send_text(shared: &Shared, id: &str, text: &str, submit: bool) -> 
     pty::write(&mut lock(&terminal)?.master, b"\r")?;
     record_submission(shared, id)
 }
+/// The bytes a key sends: arrows as the program asked for them (DECCKM), `ctrl-x` as
+/// its control code, any other single character as itself.
+pub(super) fn key_bytes(key: &str, application_cursor: bool) -> io::Result<Vec<u8>> {
+    let arrow = |c: char| {
+        let lead = if application_cursor { "\x1bO" } else { "\x1b[" };
+        format!("{lead}{c}").into_bytes()
+    };
+    Ok(match key {
+        "enter" => b"\r".to_vec(),
+        "esc" => b"\x1b".to_vec(),
+        "tab" => b"\t".to_vec(),
+        "shift-tab" => b"\x1b[Z".to_vec(),
+        "backspace" => b"\x7f".to_vec(),
+        "space" => b" ".to_vec(),
+        "up" => arrow('A'),
+        "down" => arrow('B'),
+        "right" => arrow('C'),
+        "left" => arrow('D'),
+        "home" => b"\x1b[H".to_vec(),
+        "end" => b"\x1b[F".to_vec(),
+        "page-up" => b"\x1b[5~".to_vec(),
+        "page-down" => b"\x1b[6~".to_vec(),
+        "delete" => b"\x1b[3~".to_vec(),
+        _ => match (key.strip_prefix("ctrl-"), key.chars().count()) {
+            (Some(c), _) if c.len() == 1 && c.as_bytes()[0].is_ascii_alphabetic() => {
+                vec![c.as_bytes()[0].to_ascii_lowercase() & 0x1f]
+            }
+            (None, 1) if !key.chars().next().is_some_and(char::is_control) => {
+                key.as_bytes().to_vec()
+            }
+            _ => return Err(io::Error::other(format!("不认识的按键 {key}"))),
+        },
+    })
+}
+pub(super) fn send_keys(shared: &Shared, id: &str, keys: &[String]) -> io::Result<()> {
+    if keys.is_empty() || keys.len() > 64 {
+        return Err(io::Error::other("一次发 1 到 64 个按键"));
+    }
+    let terminal = lock(shared)?
+        .terminals
+        .get(id)
+        .cloned()
+        .ok_or_else(|| io::Error::other("terminal not found"))?;
+    {
+        let mut live = lock(&terminal)?;
+        if live.exited {
+            return Err(io::Error::other("terminal has exited"));
+        }
+        let application_cursor = live
+            .vt
+            .terminal()
+            .mode(keepline_core::terminal::libghostty_vt::terminal::Mode::DECCKM)
+            .unwrap_or(false);
+        // All or nothing: a typo in the last key sends none of them.
+        let bytes = keys
+            .iter()
+            .map(|k| key_bytes(k, application_cursor))
+            .collect::<io::Result<Vec<_>>>()?
+            .concat();
+        pty::write(&mut live.master, &bytes)?;
+        live.input_at = Some(Instant::now());
+    }
+    // Same as typing in the app: the prompt on screen is no longer waiting on the user.
+    lock(shared)?.set_screen_wait(id, None)?;
+    if keys.iter().any(|k| k == "enter") {
+        record_submission(shared, id)?;
+    }
+    Ok(())
+}
 /// Enter for 允许一次, Esc for 拒绝, sent only while the screen still shows `question`
 /// as an approval, read again under the same lock the key is written under: an approval
 /// answered in the pane meanwhile gets nothing typed into what replaced it.
@@ -662,10 +751,14 @@ pub(super) fn answer_approval(
             .get(id)
             .cloned()
             .ok_or_else(|| io::Error::other("terminal not found"))?;
-        let rules = host.workspace.current_agent(id).map(|s| s.runtime).map_or_else(
-            crate::screen_rules::default_rules,
-            crate::screen_rules::rules,
-        );
+        let rules = host
+            .workspace
+            .current_agent(id)
+            .map(|s| s.runtime)
+            .map_or_else(
+                crate::screen_rules::default_rules,
+                crate::screen_rules::rules,
+            );
         (terminal, rules)
     };
     {

@@ -1,5 +1,6 @@
 mod control;
 mod hooks_cmd;
+mod remote;
 
 fn main() {
     let code = match run() {
@@ -16,7 +17,10 @@ fn main() {
 /// holds a PTY plus its stream sockets, so about fifty terminals exhausted it and the host
 /// exited with EMFILE, leaving every pane black. Raise the soft limit as far as allowed.
 fn raise_open_file_limit() {
-    let mut limit = libc::rlimit { rlim_cur: 0, rlim_max: 0 };
+    let mut limit = libc::rlimit {
+        rlim_cur: 0,
+        rlim_max: 0,
+    };
     // SAFETY: getrlimit/setrlimit only read and write the struct passed by pointer.
     unsafe {
         if libc::getrlimit(libc::RLIMIT_NOFILE, &mut limit) != 0 {
@@ -80,6 +84,7 @@ fn run() -> std::io::Result<()> {
             command @ ("list" | "read" | "send" | "prompt" | "wait" | "explain" | "events"
             | "split" | "close"),
         ) => control::run(command, args),
+        Some("remote") => remote::run(args),
         Some("hook") => hook(args),
         Some("hooks") => hooks_cmd::run(args),
         Some("--skill") => {

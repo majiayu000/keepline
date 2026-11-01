@@ -37,6 +37,8 @@ pub(super) struct Live {
     pub(super) pid: u32,
     pub(super) owner: Option<u64>,
     pub(super) subscribers: HashMap<u64, Subscriber>,
+    /// Subscribers that only look (`Attach { watch }`): never the writer.
+    pub(super) watchers: std::collections::HashSet<u64>,
     pub(super) exited: bool,
     pub(super) drained: bool,
     /// The last STATUS sent, replayed to a viewer that missed it while lagging.
@@ -65,11 +67,12 @@ impl Live {
             };
             n > 0 || (n < 0 && io::Error::last_os_error().kind() == io::ErrorKind::WouldBlock)
         });
+        self.watchers.retain(|id| self.subscribers.contains_key(id));
         if self
             .owner
             .is_none_or(|id| !self.subscribers.contains_key(&id))
         {
-            self.owner = self.subscribers.keys().min().copied();
+            self.owner = self.next_owner();
         }
         loop {
             let owner = self.owner;
@@ -81,11 +84,19 @@ impl Live {
                 .owner
                 .is_some_and(|id| !self.subscribers.contains_key(&id))
             {
-                self.owner = self.subscribers.keys().min().copied();
+                self.owner = self.next_owner();
             } else {
                 break;
             }
         }
+    }
+    /// The longest-attached viewer that may write; a watcher never does.
+    fn next_owner(&self) -> Option<u64> {
+        self.subscribers
+            .keys()
+            .filter(|id| !self.watchers.contains(id))
+            .min()
+            .copied()
     }
     pub(super) fn broadcast(&mut self, kind: u8, bytes: Vec<u8>) {
         let bytes = Arc::new(bytes);
@@ -382,6 +393,7 @@ pub(super) fn attach(
     terminal: LiveTerminal,
     connection: u64,
     takeover: bool,
+    watch: bool,
     host: Shared,
     terminal_id: String,
 ) -> io::Result<()> {
@@ -396,7 +408,9 @@ pub(super) fn attach(
         let mut live = lock(&terminal)?;
         let snapshot = live.vt.snapshot()?;
         live.reconcile_owner();
-        if takeover || live.owner.is_none() {
+        if watch {
+            live.watchers.insert(connection);
+        } else if takeover || live.owner.is_none() {
             live.owner = Some(connection);
         }
         let writable = live.owner == Some(connection) && !live.exited;

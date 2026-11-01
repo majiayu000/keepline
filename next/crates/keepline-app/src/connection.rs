@@ -78,7 +78,15 @@ impl Connection {
                     Reply::Hello { major: MAJOR, .. } => (),
                     r => return Err(io::Error::other(format!("handshake: {r:?}"))),
                 }
-                send(&mut stream, CONTROL, &Request::Attach { id, takeover })?;
+                send(
+                    &mut stream,
+                    CONTROL,
+                    &Request::Attach {
+                        id,
+                        takeover,
+                        watch: false,
+                    },
+                )?;
                 match receive::<Reply>(&mut stream)? {
                     Reply::Attached {
                         writable,

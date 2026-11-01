@@ -23,6 +23,8 @@ keeplined split <终端> [--down] [--before] [--size 0.5] [--cwd 目录] [--json
                                              在这个终端旁边开一块新分屏（默认右边），打印新终端编号；
                                              给了命令就在新分屏的 shell 里跑，跑完留在 shell
 keeplined close <终端>                       关掉这块分屏并结束里面的程序
+keeplined remote --stdio                     给另一台机器或手机 App 用：一行一个 JSON 请求和回复（看画面、打字、按键、
+                                             答审批、事件），经 ssh 连过来：ssh 主机 keeplined remote --stdio
 keeplined --skill                            给 Coding Agent 看的用法说明（Markdown）
 <终端> 可以是编号的前几位或标签名；全部命令都接受 --runtime <目录>。
 Agent 藏在包装器（沙盒、虚拟机、nono 等）后面认不出时，启动前设 KEEPLINE_AGENT=<claude|codex|…>。";
@@ -39,7 +41,7 @@ pub enum Phase {
     None,
 }
 impl Phase {
-    fn name(self) -> &'static str {
+    pub(crate) fn name(self) -> &'static str {
         match self {
             Self::Working => "working",
             Self::Waiting => "waiting",
@@ -63,10 +65,10 @@ pub fn phase(w: &Workspace, terminal: &str) -> Phase {
     }
 }
 /// The registry key in lower case, the way the CLI is usually typed.
-fn agent_label(agent: keepline_core::agent::Agent) -> String {
+pub(crate) fn agent_label(agent: keepline_core::agent::Agent) -> String {
     agent.key().to_lowercase()
 }
-fn tab_title(w: &Workspace, terminal: &str) -> String {
+pub(crate) fn tab_title(w: &Workspace, terminal: &str) -> String {
     w.terminal_tab(terminal)
         .map(|t| t.title.clone())
         .unwrap_or_default()
@@ -103,15 +105,15 @@ pub fn resolve(w: &Workspace, needle: &str) -> io::Result<String> {
     }
 }
 
-struct Args {
-    socket: PathBuf,
+pub(crate) struct Args {
+    pub(crate) socket: PathBuf,
     positional: Vec<String>,
     flags: Vec<(String, Option<String>)>,
     /// Everything after a bare `--`, untouched: a command and its own flags.
     rest: Vec<String>,
 }
 impl Args {
-    fn parse(args: impl Iterator<Item = String>, valued: &[&str]) -> io::Result<Self> {
+    pub(crate) fn parse(args: impl Iterator<Item = String>, valued: &[&str]) -> io::Result<Self> {
         let mut runtime = std::env::var_os("KEEPLINE_RUNTIME").map(PathBuf::from);
         let mut positional = vec![];
         let mut flags = vec![];
@@ -155,7 +157,7 @@ impl Args {
             rest,
         })
     }
-    fn has(&self, name: &str) -> bool {
+    pub(crate) fn has(&self, name: &str) -> bool {
         self.flags.iter().any(|(n, _)| n == name)
     }
     fn value(&self, name: &str) -> Option<&str> {
@@ -316,13 +318,22 @@ fn events(a: Args) -> io::Result<()> {
                 println!("{}", serde_json::to_string(&n).map_err(io::Error::other)?);
                 continue;
             }
-            let terminal: String = n.terminal.as_deref().unwrap_or("").chars().take(8).collect();
+            let terminal: String = n
+                .terminal
+                .as_deref()
+                .unwrap_or("")
+                .chars()
+                .take(8)
+                .collect();
             let what = [n.title.as_str(), n.detail.as_str()]
                 .into_iter()
                 .filter(|s| !s.is_empty())
                 .collect::<Vec<_>>()
                 .join(" · ");
-            let code = n.exit_code.map(|c| format!(" 退出码 {c}")).unwrap_or_default();
+            let code = n
+                .exit_code
+                .map(|c| format!(" 退出码 {c}"))
+                .unwrap_or_default();
             println!("{:<16} {terminal:<8} {what}{code}", n.event);
         }
     }

@@ -76,6 +76,10 @@ pub enum Request {
     Attach {
         id: String,
         takeover: bool,
+        /// Only looks: never becomes the writer and never sizes the terminal, however
+        /// many writers come and go (`keeplined remote`'s watch). Hosts before it ignore it.
+        #[serde(default)]
+        watch: bool,
     },
     Input {
         bytes: Vec<u8>,
@@ -124,6 +128,13 @@ pub enum Request {
         id: String,
         question: String,
         allow: bool,
+    },
+    /// Named keys (`enter`, `esc`, `up`, `ctrl-c`, a single character…) typed into a
+    /// terminal in order, beside whoever is typing there; arrows follow the program's
+    /// cursor-key mode. For clients with no keyboard of their own, such as a phone.
+    SendKeys {
+        id: String,
+        keys: Vec<String>,
     },
     /// Scripts, other Agents and other clients: the sessions' states now, then every
     /// change as it happens, until this socket closes (`keeplined events`).

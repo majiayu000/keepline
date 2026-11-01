@@ -18,6 +18,8 @@ keepline-core = { path = "../keepline-core" }
 rusqlite = { version = "0.38", features = ["bundled"] }
 uuid = { version = "1", features = ["v4"] }
 libc = "0.2"
+# `keeplined remote` carries terminal bytes inside JSON lines.
+base64 = "0.22"
 serde = { version = "1", features = ["derive"] }
 # Hook installs rewrite the CLI's own settings file; its keys keep their order.
 serde_json = { version = "1", features = ["preserve_order"] }

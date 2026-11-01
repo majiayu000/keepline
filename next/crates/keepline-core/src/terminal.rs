@@ -403,6 +403,31 @@ impl Vt {
             .map_err(io::Error::other)?;
         Ok(bytes)
     }
+    /// The screen as escape sequences any terminal emulator replays (xterm.js on a
+    /// phone, another Ghostty): modes, colors, cursor and the active screen's cells. Unlike
+    /// `snapshot`, which only a Ghostty of the same build can read back.
+    pub fn replay(&self) -> io::Result<Vec<u8>> {
+        use libghostty_vt::fmt::{Format, Formatter, FormatterOptions};
+        let options = FormatterOptions::new()
+            .with_format(Format::Vt)
+            .with_palette(true)
+            .with_modes(true)
+            .with_scrolling_region(true)
+            .with_tabstops(true)
+            .with_pwd(true)
+            .with_keyboard(true)
+            .with_cursor(true)
+            .with_style(true)
+            .with_hyperlink(true)
+            .with_protection(true)
+            .with_kitty_keyboard(true)
+            .with_charsets(true);
+        let mut formatter = Formatter::new(&self.0, options).map_err(io::Error::other)?;
+        Ok(formatter
+            .format_alloc(None)
+            .map_err(io::Error::other)?
+            .to_vec())
+    }
     pub fn restore(bytes: &[u8]) -> io::Result<Self> {
         Decoder::new_buf(bytes)
             .and_then(|d| d.decode())
@@ -478,6 +503,26 @@ mod tests {
         assert_eq!(local_path("", "x"), None);
     }
     use super::*;
+    /// A fresh emulator fed `replay` shows what the original does: text, cursor, the
+    /// modes a client must honour for keys and paste, and the alternate screen.
+    #[test]
+    fn replay_rebuilds_the_screen_in_a_fresh_terminal() {
+        use libghostty_vt::terminal::Mode;
+        let mut vt = Vt::new(40, 6).unwrap();
+        vt.feed(b"shell \x1b[1;31mred\x1b[0m line\r\n");
+        vt.feed(b"\x1b[?2004h\x1b[?1h\x1b[?1049h\x1b[2J\x1b[H");
+        vt.feed("❯ 1. Yes\r\n  2. 不\x1b[3;5H".as_bytes());
+        let mut copy = Vt::new(40, 6).unwrap();
+        copy.feed(&vt.replay().unwrap());
+        assert_eq!(copy.tail_text(6).unwrap(), vt.tail_text(6).unwrap());
+        assert!(copy.tail_text(6).unwrap().contains("2. 不"));
+        let (a, b) = (vt.terminal(), copy.terminal());
+        assert_eq!((b.cursor_x().unwrap(), b.cursor_y().unwrap()), (4, 2));
+        for mode in [Mode::BRACKETED_PASTE, Mode::DECCKM] {
+            assert_eq!(b.mode(mode).unwrap(), a.mode(mode).unwrap(), "{mode:?}");
+            assert!(b.mode(mode).unwrap());
+        }
+    }
     #[test]
     fn program_clipboard_writes_arrive_as_text() {
         use std::sync::{Arc, Mutex};
@@ -590,7 +635,11 @@ mod tests {
     fn viewport_counts_rows_from_the_top_of_history() {
         let mut vt = Vt::new(20, 3).unwrap();
         vt.feed(b"line-1\r\nline-2\r\nline-3\r\nline-4\r\nline-5");
-        assert_eq!(vt.viewport().unwrap(), (2, 5, 3), "two rows scrolled into history");
+        assert_eq!(
+            vt.viewport().unwrap(),
+            (2, 5, 3),
+            "two rows scrolled into history"
+        );
         vt.scroll(libghostty_vt::terminal::ScrollViewport::Top);
         assert_eq!(vt.viewport().unwrap().0, 0);
         assert_eq!(vt.search("line-1").unwrap()[0].row, 0);

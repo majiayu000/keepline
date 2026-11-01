@@ -168,6 +168,7 @@ impl Host {
             &Request::Attach {
                 id: id.into(),
                 takeover,
+                watch: false,
             },
         )
         .unwrap();
@@ -3797,11 +3798,17 @@ fn an_approval_drawn_before_the_conversation_is_bound_still_waits_on_the_user() 
     let until = Instant::now() + Duration::from_secs(10);
     loop {
         let w = h.workspace();
-        let turn = w.current_agent("late").and_then(|s| w.content.get(&s.id)).map(|c| c.turn);
+        let turn = w
+            .current_agent("late")
+            .and_then(|s| w.content.get(&s.id))
+            .map(|c| c.turn);
         if turn == Some(keepline_core::content::Turn::Waiting) {
             break;
         }
-        assert!(Instant::now() < until, "a dialog already on screen at binding is never seen: {turn:?}");
+        assert!(
+            Instant::now() < until,
+            "a dialog already on screen at binding is never seen: {turn:?}"
+        );
         std::thread::sleep(Duration::from_millis(100));
     }
 }
@@ -3866,7 +3873,10 @@ fn command_line_lists_reads_sends_and_refuses_to_type_into_an_approval() {
     assert!(ok && out.trim() == "waiting", "{out}{err}");
     let (ok, out, _) = cli(&["list"]);
     assert!(ok);
-    let line = out.lines().find(|l| l.starts_with("agent-cl")).unwrap_or_default();
+    let line = out
+        .lines()
+        .find(|l| l.starts_with("agent-cl"))
+        .unwrap_or_default();
     assert!(line.contains("claude") && line.contains("waiting"), "{out}");
     let (ok, _, err) = cli(&["prompt", "agent-cli", "yes", "please"]);
     assert!(!ok && err.contains("等你回答"), "{err}");
@@ -3922,7 +3932,11 @@ fn answering_an_approval_rereads_the_screen_and_never_types_into_what_replaced_i
     };
     let until = Instant::now() + Duration::from_secs(90);
     while approval(&h) != "Do you want to proceed?" {
-        assert!(Instant::now() < until, "approval never showed: {:?}", approval(&h));
+        assert!(
+            Instant::now() < until,
+            "approval never showed: {:?}",
+            approval(&h)
+        );
         std::thread::sleep(Duration::from_millis(100));
     }
     let answer = |question: &str, allow: bool| {
@@ -3947,10 +3961,17 @@ fn answering_an_approval_rereads_the_screen_and_never_types_into_what_replaced_i
     assert!(e.to_string().contains("已经没有这个审批"), "{e}");
     std::thread::sleep(Duration::from_millis(300));
     assert!(!screen(&h).contains("answer="), "{}", screen(&h));
-    assert!(matches!(answer("Do you want to proceed?", true), Ok(Reply::Ok)));
+    assert!(matches!(
+        answer("Do you want to proceed?", true),
+        Ok(Reply::Ok)
+    ));
     let until = Instant::now() + Duration::from_secs(10);
     while !screen(&h).contains("answer=[]") {
-        assert!(Instant::now() < until, "Enter never arrived: {}", screen(&h));
+        assert!(
+            Instant::now() < until,
+            "Enter never arrived: {}",
+            screen(&h)
+        );
         std::thread::sleep(Duration::from_millis(50));
     }
     // A second press on the answered approval finds the next screen and types nothing.
@@ -3965,7 +3986,10 @@ fn answering_an_approval_rereads_the_screen_and_never_types_into_what_replaced_i
         }
         std::thread::sleep(Duration::from_millis(100));
     }
-    assert!(matches!(answer("Do you want to remove?", false), Ok(Reply::Ok)));
+    assert!(matches!(
+        answer("Do you want to remove?", false),
+        Ok(Reply::Ok)
+    ));
 }
 
 /// 在编辑器里看滚动内容 reads up to 10 000 rows under the terminal's lock; how long that
@@ -3980,7 +4004,13 @@ fn reading_ten_thousand_rows_of_scrollback_is_quick() {
         "i=0; while [ $i -lt 12000 ]; do printf '%05d %s\\n' $i 'xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx'; i=$((i+1)); done; echo DONE; sleep 60",
     ))
     .unwrap();
-    let read = |rows| match h.call(Request::ReadScreen { id: "long".into(), rows }).unwrap() {
+    let read = |rows| match h
+        .call(Request::ReadScreen {
+            id: "long".into(),
+            rows,
+        })
+        .unwrap()
+    {
         Reply::Text(t) => t,
         x => panic!("{x:?}"),
     };
@@ -3994,7 +4024,11 @@ fn reading_ten_thousand_rows_of_scrollback_is_quick() {
         let t = Instant::now();
         let text = read(10_000);
         times.push(t.elapsed());
-        assert!(text.contains("DONE") && text.lines().count() > 4_000, "{}", text.lines().count());
+        assert!(
+            text.contains("DONE") && text.lines().count() > 4_000,
+            "{}",
+            text.lines().count()
+        );
     }
     eprintln!("read 10000 rows: {times:?}");
 }
@@ -4053,7 +4087,10 @@ fn keepline_agent_names_an_agent_hidden_behind_a_wrapper() {
     // An unknown name is ignored.
     h.call(h.launch(
         "unknown",
-        &format!("exec env KEEPLINE_AGENT=vim {} -c 'import time; time.sleep(60)'", shell_quote(&python.to_string_lossy())),
+        &format!(
+            "exec env KEEPLINE_AGENT=vim {} -c 'import time; time.sleep(60)'",
+            shell_quote(&python.to_string_lossy())
+        ),
     ))
     .unwrap();
     std::thread::sleep(Duration::from_secs(2));
@@ -4072,7 +4109,10 @@ fn events_stream_every_change_once_in_order_and_a_stalled_reader_blocks_nobody()
     let subscribe = |h: &Host| {
         let mut s = UnixStream::connect(h.socket()).unwrap();
         send(&mut s, CONTROL, &Request::Hello { major: MAJOR }).unwrap();
-        assert!(matches!(receive::<Reply>(&mut s).unwrap(), Reply::Hello { .. }));
+        assert!(matches!(
+            receive::<Reply>(&mut s).unwrap(),
+            Reply::Hello { .. }
+        ));
         send(&mut s, CONTROL, &Request::Subscribe).unwrap();
         s
     };
@@ -4102,13 +4142,18 @@ fn events_stream_every_change_once_in_order_and_a_stalled_reader_blocks_nobody()
         let until = Instant::now() + Duration::from_secs(90);
         loop {
             let left = until.saturating_duration_since(Instant::now());
-            let (at, n) = rx.recv_timeout(left).unwrap_or_else(|_| panic!("no {what}"));
+            let (at, n) = rx
+                .recv_timeout(left)
+                .unwrap_or_else(|_| panic!("no {what}"));
             if ok(&n) {
                 return (at, n);
             }
             // Anything else in between must be one of the expected kinds, not a repeat.
             assert!(
-                !matches!(n.event.as_str(), "done" | "approval_gone" | "terminal_exited" | "lagged"),
+                !matches!(
+                    n.event.as_str(),
+                    "done" | "approval_gone" | "terminal_exited" | "lagged"
+                ),
                 "unexpected before {what}: {n:?}"
             );
         }
@@ -4141,11 +4186,17 @@ fn events_stream_every_change_once_in_order_and_a_stalled_reader_blocks_nobody()
         ),
     ))
     .unwrap();
-    let mine = |n: &Notice| n.terminal.as_deref() == Some("ev") || n.session.contains(&id) || {
-        let w = h.workspace();
-        w.agent_sessions.iter().any(|s| s.id == n.session && s.cli_session_id == id)
+    let mine = |n: &Notice| {
+        n.terminal.as_deref() == Some("ev") || n.session.contains(&id) || {
+            let w = h.workspace();
+            w.agent_sessions
+                .iter()
+                .any(|s| s.id == n.session && s.cli_session_id == id)
+        }
     };
-    next("terminal_started", &|n| n.event == "terminal_started" && n.terminal.as_deref() == Some("ev"));
+    next("terminal_started", &|n| {
+        n.event == "terminal_started" && n.terminal.as_deref() == Some("ev")
+    });
     let (_, waiting) = next("waiting", &|n| n.event == "waiting" && mine(n));
     assert_eq!(waiting.terminal, None, "hook payloads keep their shape");
     let (_, approval) = next("approval", &|n| n.event == "approval" && mine(n));
@@ -4167,7 +4218,9 @@ fn events_stream_every_change_once_in_order_and_a_stalled_reader_blocks_nobody()
         "printf '\\033]133;C\\007'; sleep 0.2; printf '\\033]133;D;0\\007'; printf '\\033]133;C\\007'; printf '\\033]133;D;3\\007'; sleep 60",
     ))
     .unwrap();
-    let (_, ok) = next("command_done", &|n| n.event == "command_done" && n.terminal.as_deref() == Some("sh"));
+    let (_, ok) = next("command_done", &|n| {
+        n.event == "command_done" && n.terminal.as_deref() == Some("sh")
+    });
     assert!(ok.duration_ms.is_some_and(|d| d >= 150), "{ok:?}");
     let (_, failed) = next("command_failed", &|n| n.event == "command_failed");
     assert_eq!(failed.exit_code, Some(3));
@@ -4188,10 +4241,18 @@ fn events_stream_every_change_once_in_order_and_a_stalled_reader_blocks_nobody()
     }
     let rpc_at = Instant::now();
     h.workspace();
-    assert!(rpc_at.elapsed() < Duration::from_millis(500), "the host is held up");
-    eprintln!("3000 command events to the reading subscriber in {:?}", started.elapsed());
+    assert!(
+        rpc_at.elapsed() < Duration::from_millis(500),
+        "the host is held up"
+    );
+    eprintln!(
+        "3000 command events to the reading subscriber in {:?}",
+        started.elapsed()
+    );
     let mut lagged = false;
-    stalled.set_read_timeout(Some(Duration::from_secs(10))).unwrap();
+    stalled
+        .set_read_timeout(Some(Duration::from_secs(10)))
+        .unwrap();
     while let Ok(Reply::Events(batch)) = receive::<Reply>(&mut stalled) {
         if batch.iter().any(|n| n.event == "lagged") {
             lagged = true;
@@ -4201,14 +4262,35 @@ fn events_stream_every_change_once_in_order_and_a_stalled_reader_blocks_nobody()
     assert!(lagged, "the stalled subscriber was never told it lagged");
     let _ = cli.kill();
     let out = String::from_utf8(cli.wait_with_output().unwrap().stdout).unwrap();
-    let lines: Vec<serde_json::Value> = out.lines().map(|l| serde_json::from_str(l).unwrap()).collect();
-    let kinds: Vec<&str> = lines.iter().filter_map(|l| l["event"].as_str()).filter(|e| *e != "command_done").collect();
-    for want in ["terminal_started", "waiting", "approval", "approval_gone", "done", "command_failed"] {
-        assert!(kinds.contains(&want), "{want} missing from the command line: {kinds:?}");
+    let lines: Vec<serde_json::Value> = out
+        .lines()
+        .map(|l| serde_json::from_str(l).unwrap())
+        .collect();
+    let kinds: Vec<&str> = lines
+        .iter()
+        .filter_map(|l| l["event"].as_str())
+        .filter(|e| *e != "command_done")
+        .collect();
+    for want in [
+        "terminal_started",
+        "waiting",
+        "approval",
+        "approval_gone",
+        "done",
+        "command_failed",
+    ] {
+        assert!(
+            kinds.contains(&want),
+            "{want} missing from the command line: {kinds:?}"
+        );
     }
-    assert!(lines.iter().any(|l| l["event"] == "approval" && l["detail"] == "Do you want to proceed?"));
+    assert!(lines
+        .iter()
+        .any(|l| l["event"] == "approval" && l["detail"] == "Do you want to proceed?"));
     h.call(Request::Stop { id: "ev".into() }).unwrap();
-    next("terminal_exited", &|n| n.event == "terminal_exited" && n.terminal.as_deref() == Some("ev"));
+    next("terminal_exited", &|n| {
+        n.event == "terminal_exited" && n.terminal.as_deref() == Some("ev")
+    });
     eprintln!("approval answered -> approval_gone in {latency:?}");
     assert!(latency < Duration::from_millis(200), "{latency:?}");
 }
@@ -4227,7 +4309,10 @@ fn ten_event_subscribers_cost_the_host_almost_nothing() {
         .unwrap();
     }
     let cpu = |h: &Host| {
-        let out = Command::new("/bin/ps").args(["-o", "time=", "-p", &h.child.id().to_string()]).output().unwrap();
+        let out = Command::new("/bin/ps")
+            .args(["-o", "time=", "-p", &h.child.id().to_string()])
+            .output()
+            .unwrap();
         let t = String::from_utf8(out.stdout).unwrap();
         let (m, s) = t.trim().split_once(':').unwrap();
         m.parse::<f64>().unwrap() * 60. + s.parse::<f64>().unwrap()
@@ -4331,12 +4416,11 @@ fn command_line_splits_a_pane_beside_a_terminal_and_closes_it() {
     }
     // The shell stays after the command, so the pane keeps running.
     std::thread::sleep(Duration::from_millis(300));
-    assert!(
-        h.workspace()
-            .terminals
-            .iter()
-            .any(|t| t.id == id && t.state == ProcessState::Running)
-    );
+    assert!(h
+        .workspace()
+        .terminals
+        .iter()
+        .any(|t| t.id == id && t.state == ProcessState::Running));
 
     let (ok, _, err) = cli(&["split", "nothing-like-it"]);
     assert!(!ok && err.contains("没有正在运行的终端"), "{err}");
@@ -4380,4 +4464,315 @@ fn command_line_splits_a_pane_beside_a_terminal_and_closes_it() {
         assert!(Instant::now() < until, "a closed pane's shell must end");
         std::thread::sleep(Duration::from_millis(50));
     }
+}
+
+/// `keeplined remote --stdio` as a phone or another machine runs it over ssh: it watches
+/// a terminal the workbench owns without taking it or resizing it, types named keys and
+/// text into it, streams events, and closes streams and itself cleanly.
+#[test]
+fn remote_watches_and_drives_a_terminal_without_taking_or_resizing_it() {
+    use base64::Engine;
+    use serde_json::{json, Value};
+    use std::io::{BufRead, Write};
+    let b64 = base64::engine::general_purpose::STANDARD;
+    let h = Host::start();
+    h.setup();
+    // Shows every byte it gets; application cursor keys on, as full-screen programs do.
+    h.call(h.launch(
+        "rt",
+        r"stty raw -echo; printf '\033[?1hready\r\n'; exec cat -v",
+    ))
+    .unwrap();
+    let (mut app, mut app_vt, writable) = h.attach("rt", false);
+    assert!(writable);
+    read_until(&mut app, &mut app_vt, "ready");
+
+    let remote = || {
+        let mut child = Command::new(env!("CARGO_BIN_EXE_keeplined"))
+            .args(["remote", "--stdio", "--runtime", &h.root.to_string_lossy()])
+            .stdin(Stdio::piped())
+            .stdout(Stdio::piped())
+            .spawn()
+            .unwrap();
+        let stdout = child.stdout.take().unwrap();
+        let (tx, rx) = std::sync::mpsc::channel::<(Instant, Value)>();
+        std::thread::spawn(move || {
+            for line in io::BufReader::new(stdout).lines() {
+                let Ok(line) = line else { return };
+                if tx
+                    .send((Instant::now(), serde_json::from_str(&line).unwrap()))
+                    .is_err()
+                {
+                    return;
+                }
+            }
+        });
+        (child, rx)
+    };
+    let (mut child, rx) = remote();
+    let mut stdin = child.stdin.take().unwrap();
+    let mut say = move |v: Value| writeln!(stdin, "{v}").unwrap();
+    // The next message `pick` accepts; others are kept for later picks.
+    let mut kept: Vec<Value> = vec![];
+    let mut next = |pick: &dyn Fn(&Value) -> bool| -> (Instant, Value) {
+        if let Some(i) = kept.iter().position(pick) {
+            return (Instant::now(), kept.remove(i));
+        }
+        loop {
+            let (at, v) = rx
+                .recv_timeout(Duration::from_secs(10))
+                .expect("no message");
+            if pick(&v) {
+                return (at, v);
+            }
+            kept.push(v);
+        }
+    };
+    let reply = |id: u64| move |v: &Value| v["id"] == id;
+
+    say(json!({ "id": 1, "op": "list" }));
+    assert!(next(&reply(1)).1["error"]
+        .as_str()
+        .unwrap()
+        .contains("hello"));
+    say(json!({ "id": 2, "op": "hello", "version": 1 }));
+    let hello = next(&reply(2)).1;
+    assert_eq!(hello["ok"]["version"], 1);
+    let machine = hello["ok"]["machine"]["id"].as_str().unwrap().to_owned();
+    assert!(!machine.is_empty());
+
+    say(json!({ "id": 3, "op": "list" }));
+    let list = next(&reply(3)).1;
+    let rt = list["ok"]["terminals"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|t| t["id"] == "rt")
+        .cloned()
+        .expect("rt listed");
+    assert_eq!(rt["phase"], "shell");
+    assert_eq!(list["ok"]["machine"]["id"], machine.as_str());
+
+    say(json!({ "id": 4, "op": "watch", "terminal": "rt" }));
+    let opened = next(&reply(4)).1;
+    assert_eq!(
+        (opened["ok"]["cols"].as_u64(), opened["ok"]["rows"].as_u64()),
+        (Some(80), Some(24))
+    );
+    let screen = next(&|v: &Value| v["stream"] == 4 && v["type"] == "screen").1;
+    let mut phone = Vt::new(80, 24).unwrap();
+    phone.feed(&b64.decode(screen["vt"].as_str().unwrap()).unwrap());
+    assert!(
+        phone.tail_text(24).unwrap().contains("ready"),
+        "{}",
+        phone.tail_text(24).unwrap()
+    );
+    assert!(
+        phone
+            .terminal()
+            .mode(keepline_core::terminal::libghostty_vt::terminal::Mode::DECCKM)
+            .unwrap(),
+        "the replay carries the cursor-key mode"
+    );
+
+    // A bad key sends nothing; good ones arrive in order, arrows in application mode.
+    say(json!({ "id": 5, "op": "keys", "terminal": "rt", "keys": ["x", "nope"] }));
+    assert!(next(&reply(5)).1["error"]
+        .as_str()
+        .unwrap()
+        .contains("nope"));
+    let sent = Instant::now();
+    say(json!({ "id": 6, "op": "keys", "terminal": "rt", "keys": ["up", "esc", "ctrl-c", "y"] }));
+    say(json!({ "id": 7, "op": "send", "terminal": "rt", "text": "hi" }));
+    assert_eq!(next(&reply(6)).1["ok"], json!({}));
+    assert_eq!(next(&reply(7)).1["ok"], json!({}));
+    let mut first_output = None;
+    let until = Instant::now() + Duration::from_secs(10);
+    while !phone.tail_text(24).unwrap().contains("^[OA^[^Cyhi") {
+        assert!(Instant::now() < until, "{}", phone.tail_text(24).unwrap());
+        let (at, out) = next(&|v: &Value| v["stream"] == 4 && v["type"] == "output");
+        first_output.get_or_insert(at);
+        phone.feed(&b64.decode(out["vt"].as_str().unwrap()).unwrap());
+    }
+    assert!(
+        !phone.tail_text(24).unwrap().contains('x'),
+        "the rejected batch sent nothing"
+    );
+    let latency = first_output.unwrap() - sent;
+    eprintln!("keys → watcher output {latency:?}");
+    assert!(latency < Duration::from_millis(500), "{latency:?}");
+
+    // The workbench still owns it; with the workbench gone the watcher does not take
+    // over, so the next workbench to attach writes again without a takeover.
+    send(
+        &mut app,
+        CONTROL,
+        &Request::Input {
+            bytes: b"z".to_vec(),
+            lossy: false,
+        },
+    )
+    .unwrap();
+    assert!(matches!(ack(&mut app), Reply::Ok));
+    drop(app);
+    std::thread::sleep(Duration::from_millis(100));
+    let (_app, _, writable) = h.attach("rt", false);
+    assert!(writable, "a watcher became the writer");
+
+    say(json!({ "id": 8, "op": "events" }));
+    assert_eq!(next(&reply(8)).1["ok"]["stream"], 8);
+    let started = next(&|v: &Value| v["stream"] == 8).1;
+    assert_eq!(started["event"]["event"], "terminal_started");
+    assert_eq!(started["event"]["terminal"], "rt");
+
+    say(json!({ "id": 9, "op": "close", "stream": 4 }));
+    assert_eq!(next(&reply(9)).1["ok"], json!({}));
+    let end = next(&|v: &Value| v["stream"] == 4 && v["type"] == "end").1;
+    assert_eq!(end["reason"], "closed");
+
+    say(json!({ "id": 10, "op": "watch", "terminal": "absent" }));
+    assert!(
+        next(&reply(10)).1["error"].is_string(),
+        "watching nothing fails the request"
+    );
+    say(json!({ "id": 11, "op": "frobnicate" }));
+    assert!(next(&reply(11)).1["error"].is_string());
+
+    // Closed right after asking, possibly before it opened: it ends either way.
+    say(json!({ "id": 12, "op": "watch", "terminal": "rt" }));
+    say(json!({ "id": 13, "op": "close", "stream": 12 }));
+    assert_eq!(next(&reply(13)).1["ok"], json!({}));
+    let opened = next(&reply(12)).1;
+    if opened["ok"].is_object() {
+        next(&|v: &Value| v["stream"] == 12 && v["type"] == "end");
+    } else {
+        assert_eq!(opened["error"], "closed");
+    }
+
+    h.call(Request::Stop { id: "rt".into() }).unwrap();
+    let exited = next(&|v: &Value| v["stream"] == 8 && v["event"]["event"] == "terminal_exited").1;
+    assert_eq!(exited["event"]["terminal"], "rt");
+
+    let rest: Vec<Value> = kept
+        .into_iter()
+        .chain(rx.try_iter().map(|(_, v)| v))
+        .collect();
+    assert!(
+        !rest.iter().any(|v| v["type"] == "resized"),
+        "the watcher resized it: {rest:?}"
+    );
+    // The client hanging up ends the gateway and its streams.
+    drop(say);
+    let until = Instant::now() + Duration::from_secs(5);
+    while child.try_wait().unwrap().is_none() {
+        assert!(
+            Instant::now() < until,
+            "remote kept running after its client left"
+        );
+        std::thread::sleep(Duration::from_millis(20));
+    }
+    // The same machine id next time.
+    let (mut again, rx) = remote();
+    writeln!(
+        again.stdin.as_mut().unwrap(),
+        "{}",
+        json!({ "id": 1, "op": "hello" })
+    )
+    .unwrap();
+    let (_, hello) = rx.recv_timeout(Duration::from_secs(10)).unwrap();
+    assert_eq!(hello["ok"]["machine"]["id"], machine.as_str());
+    drop(again.stdin.take());
+    again.wait().unwrap();
+}
+
+/// A remote client that stops reading (a phone gone to sleep mid-stream) slows neither
+/// the terminal nor the workbench beside it; once it reads again it gets the screen anew.
+#[test]
+fn a_stalled_remote_watcher_slows_nobody_and_gets_the_screen_again() {
+    use serde_json::{json, Value};
+    use std::io::{BufRead, Write};
+    let h = Host::start();
+    h.setup();
+    h.call(h.launch(
+        "flood",
+        "read go; seq 1 400000; echo alone-done; read go; seq 1 400000; echo flood-done; exec cat",
+    ))
+    .unwrap();
+    let (mut app, mut vt, _) = h.attach("flood", false);
+    // A viewer this busy falls behind too; the host then sends it the screen again.
+    let flood = |app: &mut UnixStream, vt: &mut Vt, done: &str| {
+        let started = Instant::now();
+        send(
+            app,
+            CONTROL,
+            &Request::Input {
+                bytes: b"\r".to_vec(),
+                lossy: false,
+            },
+        )
+        .unwrap();
+        let mut snapshot = Vec::new();
+        while !vt.tail_text(24).unwrap().contains(done) {
+            assert!(
+                started.elapsed() < Duration::from_secs(10),
+                "{done} never appeared"
+            );
+            match read_frame(app).unwrap() {
+                (OUTPUT, bytes) => vt.feed(&bytes),
+                (SNAPSHOT, bytes) => snapshot.extend(bytes),
+                (READY, _) => *vt = Vt::restore(&std::mem::take(&mut snapshot)).unwrap(),
+                _ => (),
+            }
+        }
+        started.elapsed()
+    };
+    let alone = flood(&mut app, &mut vt, "alone-done");
+    let mut child = Command::new(env!("CARGO_BIN_EXE_keeplined"))
+        .args(["remote", "--stdio", "--runtime", &h.root.to_string_lossy()])
+        .stdin(Stdio::piped())
+        .stdout(Stdio::piped())
+        .spawn()
+        .unwrap();
+    let mut stdin = child.stdin.take().unwrap();
+    let mut stdout = io::BufReader::new(child.stdout.take().unwrap());
+    writeln!(stdin, "{}", json!({ "id": 1, "op": "hello" })).unwrap();
+    writeln!(
+        stdin,
+        "{}",
+        json!({ "id": 2, "op": "watch", "terminal": "flood" })
+    )
+    .unwrap();
+    let mut line = String::new();
+    let mut read = |stdout: &mut io::BufReader<_>| -> Value {
+        line.clear();
+        stdout.read_line(&mut line).unwrap();
+        serde_json::from_str(&line).unwrap()
+    };
+    while read(&mut stdout)["type"] != "screen" {}
+    // From here the remote client reads nothing.
+    let stalled = flood(&mut app, &mut vt, "flood-done");
+    eprintln!(
+        "400k lines to the workbench: alone {alone:?}, beside a stalled remote watcher {stalled:?}"
+    );
+    assert!(
+        stalled < alone * 2 + Duration::from_millis(500),
+        "{alone:?} → {stalled:?}"
+    );
+    // Reading again: the backlog it missed is skipped for the screen as it is now.
+    let b64 = base64::engine::general_purpose::STANDARD;
+    use base64::Engine;
+    let until = Instant::now() + Duration::from_secs(20);
+    loop {
+        assert!(Instant::now() < until, "never caught up");
+        let v = read(&mut stdout);
+        if v["type"] == "screen" {
+            let mut phone = Vt::new(80, 24).unwrap();
+            phone.feed(&b64.decode(v["vt"].as_str().unwrap()).unwrap());
+            if phone.tail_text(24).unwrap().contains("flood-done") {
+                break;
+            }
+        }
+    }
+    drop(stdin);
+    child.wait().unwrap();
 }

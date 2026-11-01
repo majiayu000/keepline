@@ -102,6 +102,7 @@ impl Host {
             &Request::Attach {
                 id: id.into(),
                 takeover: false,
+                watch: false,
             },
         )
         .unwrap();

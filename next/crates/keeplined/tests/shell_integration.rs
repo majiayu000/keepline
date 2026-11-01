@@ -160,6 +160,7 @@ impl Session {
             &Request::Attach {
                 id: "sh".into(),
                 takeover: false,
+                watch: false,
             },
         )
         .unwrap();
