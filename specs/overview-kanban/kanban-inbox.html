@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>鸟瞰看板 · 等回答不占列</title>
+<title>鸟瞰看板（收件箱版）</title>
 <style>
 :root{
   --bg:#0c0c0e; --side:#0f0f12; --card:#16161a; --card-h:#1b1b20; --line:#232328; --line-h:#2e2e35;
@@ -139,11 +139,6 @@ svg{display:block}
 .scrim.on{opacity:1;pointer-events:auto}
 
 /* ===== 变体 B：等回答是卡片上的标记，不是一列 ===== */
-.app{height:calc(100vh - 40px)}
-.proto{height:40px;display:flex;align-items:center;gap:10px;padding:0 14px;background:#050506;border-bottom:1px solid #1c1c21;color:var(--faint);font-size:12px}
-.proto .seg button{height:24px}
-.proto .note{margin-left:6px;max-width:760px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-.proto .ghost{height:26px;font-size:12px;margin-left:auto}
 .card.flag{border-color:rgba(240,136,62,.55);background:linear-gradient(90deg,rgba(240,136,62,.07),transparent 55%),var(--card)}
 .card.flag.err{border-color:rgba(242,85,90,.55);background:linear-gradient(90deg,rgba(242,85,90,.08),transparent 55%),var(--card)}
 .card.flag::before{content:"";position:absolute;left:-1px;top:10px;bottom:10px;width:3px;border-radius:0 3px 3px 0;background:var(--wait)}
@@ -160,7 +155,7 @@ svg{display:block}
 .chip.solid i{width:6px;height:6px;border-radius:50%;background:var(--wait)}
 .nav a.inbox-on{background:#1d1d22;color:var(--text)}
 /* 收件箱面板 */
-.inbox{position:fixed;top:40px;bottom:0;left:270px;width:360px;z-index:41;background:#111114;border-right:1px solid #24242a;box-shadow:24px 0 60px rgba(0,0,0,.4);transform:translateX(-110%);opacity:0;pointer-events:none;visibility:hidden;transition:transform .42s var(--spring),opacity .2s,visibility 0s .42s;display:flex;flex-direction:column}
+.inbox{position:fixed;top:0;bottom:0;left:270px;width:360px;z-index:41;background:#111114;border-right:1px solid #24242a;box-shadow:24px 0 60px rgba(0,0,0,.4);transform:translateX(-110%);opacity:0;pointer-events:none;visibility:hidden;transition:transform .42s var(--spring),opacity .2s,visibility 0s .42s;display:flex;flex-direction:column}
 .inbox.on{transform:none;opacity:1;pointer-events:auto;visibility:visible;transition:transform .42s var(--spring),opacity .2s,visibility 0s}
 .inbox .ih{display:flex;align-items:center;gap:8px;height:48px;padding:0 14px;border-bottom:1px solid #1d1d22}
 .inbox .ih b{font-weight:600}
@@ -177,18 +172,11 @@ svg{display:block}
 .inbox .it .m{display:flex;gap:8px;color:var(--faint);font-size:11.5px}
 .inbox .empty{color:var(--faint);text-align:center;padding:48px 0}
 .inbox .foot{padding:10px 14px;border-top:1px solid #1d1d22;color:var(--faint);font-size:11.5px}
-.drawer,.scrim{top:40px}
 
 @media (prefers-reduced-motion:reduce){*{animation:none!important;transition:none!important}}
 </style>
 </head>
 <body>
-<div class="proto">
-  <span>方向稿</span>
-  <div class="seg" id="modeSeg"><button data-m="A">A 现在：要你处理占一列</button><button data-m="B">B 变体：等回答是卡片标记</button></div>
-  <span class="note" id="modeNote"></span>
-  <button class="ghost" id="simAsk">模拟：Agent 来一个新提问</button>
-</div>
 <div class="app">
   <aside class="side">
     <div class="brand"><i></i>Keepline</div>
@@ -209,6 +197,7 @@ svg{display:block}
       <div class="seg" role="tablist"><button class="on">看板</button><button>列表</button></div>
       <div class="spacer"></div>
       <button class="ghost"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 5h18M6 12h12M10 19h4"/></svg>筛选</button>
+      <button class="ghost" id="simAsk" title="原型演示用">模拟新提问</button>
       <button class="ghost">← 回到终端</button>
     </div>
     <div class="sub">
@@ -248,7 +237,7 @@ const COLS = [
   { id:'done',   name:'今天完成', color:'var(--done)' },
 ];
 // A：等回答的会话挪进「要你处理」列；B：留在原阶段，只在卡片上标出来
-let MODE = /B/.test(location.hash) ? 'B' : (/A/.test(location.hash) ? 'A' : 'B');
+const MODE = 'B';
 const cols = () => MODE==='A' ? COLS : COLS.filter(c=>c.id!=='need');
 const eff = s => MODE==='A' && s.flag ? 'need' : s.col;
 const NOTES = {
@@ -551,15 +540,7 @@ document.getElementById('simAsk').onclick=()=>{
   const before=rects(); render(); flipById(before);
   toast(MODE==='A' ? `「${s.t}」跳到「要你处理」` : `「${s.t}」在原列标橙、顶到最上面`);
 };
-function setMode(m){
-  MODE=m; history.replaceState(null,'','#'+m);
-  document.querySelectorAll('#modeSeg button').forEach(b=>b.classList.toggle('on',b.dataset.m===m));
-  document.getElementById('modeNote').textContent=NOTES[m];
-  board.classList.remove('focus'); document.getElementById('focusChip').classList.remove('on');
-  const before=rects(); render(); flipById(before);
-}
-document.querySelectorAll('#modeSeg button').forEach(b=>b.onclick=()=>setMode(b.dataset.m));
-setMode(MODE);
+render();
 
 document.addEventListener('keydown', e=>{
   if(e.key==='Escape' && inboxOpen && !sel){ setInbox(false); return; }
