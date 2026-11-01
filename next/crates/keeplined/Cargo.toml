@@ -21,8 +21,16 @@ libc = "0.2"
 # `keeplined remote` carries terminal bytes inside JSON lines.
 base64 = "0.22"
 serde = { version = "1", features = ["derive"] }
+# `keeplined remote --relay`: this machine on a relay, for phones anywhere.
+keepline-relay = { path = "../keepline-relay", default-features = false }
+tokio = { version = "1", features = ["rt", "net", "time", "sync", "macros"] }
+tokio-tungstenite = { version = "0.29", features = ["rustls-tls-webpki-roots"] }
+rustls = { version = "0.23", default-features = false, features = ["ring", "std", "tls12"] }
+futures-util = { version = "0.3", default-features = false, features = ["sink"] }
+qrcode = { version = "0.14", default-features = false }
 # Hook installs rewrite the CLI's own settings file; its keys keep their order.
 serde_json = { version = "1", features = ["preserve_order"] }
 
 [dev-dependencies]
 serde_json = "1"
+keepline-relay = { path = "../keepline-relay" }

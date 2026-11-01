@@ -26,6 +26,11 @@ keeplined split <终端> [--down] [--size 0.5] [--tab|--here] [--cwd 目录] [--
 keeplined close <终端>                       关掉这块分屏并结束里面的程序
 keeplined remote --stdio                     给另一台机器或手机 App 用：一行一个 JSON 请求和回复（看画面、打字、按键、
                                              答审批、事件），经 ssh 连过来：ssh 主机 keeplined remote --stdio
+keeplined remote --relay <中继地址> [--relay-key <密钥>]
+                                             连上中继并一直挂着，配对过的手机在哪都能连过来；内容端到端加密，
+                                             中继看不到。中继要密钥时也可以设 KEEPLINE_RELAY_KEY
+keeplined remote --pair --relay <中继地址> [--new-code]
+                                             打印配对二维码和链接；--new-code 换一个配对码，已配对的手机全部失效
 keeplined --skill                            给 Coding Agent 看的用法说明（Markdown）
 <终端> 可以是编号的前几位或标签名；全部命令都接受 --runtime <目录>。
 Agent 藏在包装器（沙盒、虚拟机、nono 等）后面认不出时，启动前设 KEEPLINE_AGENT=<claude|codex|…>。";
@@ -161,7 +166,7 @@ impl Args {
     pub(crate) fn has(&self, name: &str) -> bool {
         self.flags.iter().any(|(n, _)| n == name)
     }
-    fn value(&self, name: &str) -> Option<&str> {
+    pub(crate) fn value(&self, name: &str) -> Option<&str> {
         self.flags
             .iter()
             .find(|(n, _)| n == name)

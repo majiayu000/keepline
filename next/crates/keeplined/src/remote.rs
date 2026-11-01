@@ -36,10 +36,13 @@ struct Registry {
 }
 
 pub fn run(args: impl Iterator<Item = String>) -> io::Result<()> {
-    let a = Args::parse(args, &[])?;
+    let a = Args::parse(args, &["relay", "relay-key"])?;
+    if a.value("relay").is_some() {
+        return crate::relay::run(&a);
+    }
     if !a.has("stdio") {
         return Err(io::Error::other(
-            "usage: keeplined remote --stdio [--runtime <目录>]",
+            "usage: keeplined remote --stdio | --relay <中继地址> [--relay-key <密钥>] | --pair --relay <中继地址> [--new-code]",
         ));
     }
     serve(io::stdin().lock(), io::stdout(), &a.socket)
@@ -161,7 +164,7 @@ pub fn serve(
 
 /// This machine's id stays the same across restarts, so a client that knows several
 /// machines can tell their terminals apart.
-fn machine(socket: &Path) -> Value {
+pub(crate) fn machine(socket: &Path) -> Value {
     let file = socket.with_file_name("machine-id");
     let id = std::fs::read_to_string(&file)
         .ok()

@@ -1,5 +1,6 @@
 mod control;
 mod hooks_cmd;
+mod relay;
 mod remote;
 
 fn main() {

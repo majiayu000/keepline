@@ -1,0 +1,33 @@
+[package]
+name = "keepline-relay"
+version = "0.1.0"
+edition = "2021"
+publish = false
+description = "Relay that lets a phone reach a Keepline machine from anywhere"
+license = "MIT"
+
+[[bin]]
+name = "keepline-relay"
+path = "src/main.rs"
+required-features = ["server"]
+
+[features]
+default = ["server"]
+# The relay itself; a machine or a phone only needs `wire` and `secure`.
+server = ["dep:tokio", "dep:axum", "dep:futures-util"]
+
+[dependencies]
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+sha2 = "0.10"
+base64 = "0.22"
+snow = "0.10"
+getrandom = "0.3"
+tokio = { version = "1", optional = true, features = ["rt-multi-thread", "net", "macros", "sync", "time", "signal"] }
+axum = { version = "0.8", optional = true, default-features = false, features = ["http1", "tokio", "ws", "json", "original-uri"] }
+futures-util = { version = "0.3", optional = true, default-features = false, features = ["sink"] }
+
+[dev-dependencies]
+tokio = { version = "1", features = ["rt-multi-thread", "net", "macros", "sync", "time", "io-std", "io-util"] }
+tokio-tungstenite = "0.29"
+futures-util = { version = "0.3", default-features = false, features = ["sink"] }

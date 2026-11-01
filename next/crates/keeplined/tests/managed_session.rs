@@ -4910,3 +4910,381 @@ fn a_stalled_remote_watcher_slows_nobody_and_gets_the_screen_again() {
     drop(stdin);
     child.wait().unwrap();
 }
+
+/// A phone on the other side of a relay: the Noise channel, acknowledgements, and the
+/// remote protocol's lines. `ack: false` plays a phone that stopped reading.
+struct Phone {
+    rt: tokio::runtime::Runtime,
+    ws: tokio_tungstenite::WebSocketStream<
+        tokio_tungstenite::MaybeTlsStream<tokio::net::TcpStream>,
+    >,
+    channel: keepline_relay::secure::Channel,
+    lines: Vec<u8>,
+    ack: bool,
+    /// DATA bytes received, acknowledged or not.
+    received: u64,
+}
+impl Phone {
+    fn rt() -> tokio::runtime::Runtime {
+        tokio::runtime::Builder::new_current_thread()
+            .enable_all()
+            .build()
+            .unwrap()
+    }
+    /// Retries while the machine is not on the relay yet.
+    fn connect(base: &str, code: &keepline_relay::secure::Code) -> Self {
+        use futures_util::{SinkExt, StreamExt};
+        use tokio_tungstenite::tungstenite::Message;
+        let rt = Self::rt();
+        let url = format!("{base}/c/{}/keepline", code.token());
+        let until = Instant::now() + Duration::from_secs(20);
+        let mut ws = loop {
+            match rt.block_on(tokio_tungstenite::connect_async(&url)) {
+                Ok((ws, _)) => break ws,
+                Err(e) => {
+                    assert!(
+                        Instant::now() < until,
+                        "phone never reached the machine: {e}"
+                    );
+                    std::thread::sleep(Duration::from_millis(50));
+                }
+            }
+        };
+        let (hs, first) = keepline_relay::secure::initiate(code).unwrap();
+        let channel = rt.block_on(async {
+            ws.send(Message::binary(first)).await.unwrap();
+            loop {
+                match tokio::time::timeout(Duration::from_secs(5), ws.next()).await {
+                    Ok(Some(Ok(Message::Binary(b)))) => return hs.finish(&b).unwrap(),
+                    Ok(Some(Ok(Message::Ping(_) | Message::Pong(_)))) => continue,
+                    other => panic!("no handshake answer: {other:?}"),
+                }
+            }
+        });
+        Self {
+            rt,
+            ws,
+            channel,
+            lines: vec![],
+            ack: true,
+            received: 0,
+        }
+    }
+    fn say(&mut self, v: serde_json::Value) {
+        use futures_util::SinkExt;
+        let line = format!("{v}\n");
+        for chunk in line.as_bytes().chunks(keepline_relay::secure::CHUNK) {
+            let sealed = self.channel.data(chunk).unwrap();
+            self.rt
+                .block_on(
+                    self.ws
+                        .send(tokio_tungstenite::tungstenite::Message::binary(sealed)),
+                )
+                .unwrap();
+        }
+    }
+    /// The next line, or `None` after `wait` without one.
+    fn line(&mut self, wait: Duration) -> Option<serde_json::Value> {
+        use futures_util::{SinkExt, StreamExt};
+        use keepline_relay::secure::Message as Secure;
+        use tokio_tungstenite::tungstenite::Message;
+        let until = Instant::now() + wait;
+        loop {
+            if let Some(end) = self.lines.iter().position(|&b| b == b'\n') {
+                let line: Vec<u8> = self.lines.drain(..=end).collect();
+                return Some(serde_json::from_slice(&line).unwrap());
+            }
+            let left = until.checked_duration_since(Instant::now())?;
+            let ws = &mut self.ws;
+            let m = self
+                .rt
+                .block_on(async move { tokio::time::timeout(left, ws.next()).await })
+                .ok()?;
+            match m {
+                Some(Ok(Message::Binary(b))) => match self.channel.open(&b).unwrap() {
+                    Secure::Data(d) => {
+                        self.received += d.len() as u64;
+                        if self.ack {
+                            let ack = self.channel.ack(d.len() as u32).unwrap();
+                            self.rt
+                                .block_on(self.ws.send(Message::binary(ack)))
+                                .unwrap();
+                        }
+                        self.lines.extend(d);
+                    }
+                    Secure::Ack(_) => (),
+                },
+                Some(Ok(Message::Close(f))) => panic!("closed: {f:?}"),
+                Some(Ok(_)) => (),
+                other => panic!("socket ended: {other:?}"),
+            }
+        }
+    }
+    fn next(&mut self, pick: impl Fn(&serde_json::Value) -> bool) -> serde_json::Value {
+        let until = Instant::now() + Duration::from_secs(10);
+        loop {
+            let left = until.saturating_duration_since(Instant::now());
+            let v = self.line(left).expect("no message");
+            if pick(&v) {
+                return v;
+            }
+        }
+    }
+    /// Takes every acknowledgement it held back, as a phone that reads again would.
+    fn resume(&mut self) {
+        use futures_util::SinkExt;
+        self.ack = true;
+        let ack = self
+            .channel
+            .ack(self.received.min(u32::MAX as u64) as u32)
+            .unwrap();
+        self.rt
+            .block_on(
+                self.ws
+                    .send(tokio_tungstenite::tungstenite::Message::binary(ack)),
+            )
+            .unwrap();
+    }
+}
+
+/// A relay on a free local port, until the returned sender is dropped.
+fn local_relay(
+    addr: &str,
+) -> (
+    String,
+    std::sync::mpsc::Sender<()>,
+    std::thread::JoinHandle<()>,
+) {
+    let (ready, bound) = std::sync::mpsc::channel();
+    let (stop, stopped) = std::sync::mpsc::channel::<()>();
+    let addr = addr.to_owned();
+    let thread = std::thread::spawn(move || {
+        let rt = tokio::runtime::Builder::new_current_thread()
+            .enable_all()
+            .build()
+            .unwrap();
+        rt.block_on(async move {
+            let listener = tokio::net::TcpListener::bind(&addr).await.unwrap();
+            ready.send(listener.local_addr().unwrap()).unwrap();
+            let serve = keepline_relay::server::serve(listener, Default::default());
+            let stop = tokio::task::spawn_blocking(move || {
+                let _ = stopped.recv();
+            });
+            tokio::select! {
+                _ = serve => (),
+                _ = stop => (),
+            }
+        });
+    });
+    let addr = bound.recv().unwrap();
+    (format!("ws://{addr}"), stop, thread)
+}
+
+#[test]
+fn a_phone_on_a_relay_drives_a_terminal_through_a_channel_the_relay_cannot_read() {
+    use base64::Engine;
+    use serde_json::json;
+    let b64 = base64::engine::general_purpose::STANDARD;
+    let h = Host::start();
+    h.setup();
+    h.call(h.launch(
+        "rt",
+        r"stty raw -echo; printf '\033[?1hready\r\n'; exec cat -v",
+    ))
+    .unwrap();
+    let (_app, mut app_vt, _) = h.attach("rt", false);
+    let (mut app, _, _) = h.attach("rt", false);
+    read_until(&mut app, &mut app_vt, "ready");
+
+    let (base, stop, relay) = local_relay("127.0.0.1:0");
+    let root = h.root.to_string_lossy().into_owned();
+    let pair = Command::new(env!("CARGO_BIN_EXE_keeplined"))
+        .args(["remote", "--pair", "--relay", &base, "--runtime", &root])
+        .output()
+        .unwrap();
+    assert!(pair.status.success());
+    let printed = String::from_utf8(pair.stdout).unwrap();
+    assert!(printed.contains('█') || printed.contains('▀'), "no QR code");
+    let code = printed
+        .split("&code=")
+        .nth(1)
+        .and_then(|rest| rest.split('&').next())
+        .and_then(keepline_relay::secure::Code::parse)
+        .expect("pairing link carries the code");
+    let machine = || {
+        Command::new(env!("CARGO_BIN_EXE_keeplined"))
+            .args(["remote", "--relay", &base, "--runtime", &root])
+            .stderr(Stdio::piped())
+            .spawn()
+            .unwrap()
+    };
+    let mut on_relay = machine();
+    let log = {
+        let stderr = on_relay.stderr.take().unwrap();
+        let (tx, rx) = std::sync::mpsc::channel::<String>();
+        std::thread::spawn(move || {
+            use std::io::BufRead;
+            for line in io::BufReader::new(stderr).lines().map_while(Result::ok) {
+                let _ = tx.send(line);
+            }
+        });
+        rx
+    };
+
+    // A phone with another code gets nowhere: the machine closes it unanswered.
+    {
+        use futures_util::{SinkExt, StreamExt};
+        let stranger = keepline_relay::secure::Code::generate().unwrap();
+        let rt = Phone::rt();
+        let url = format!("{base}/c/{}/keepline", code.token());
+        let until = Instant::now() + Duration::from_secs(20);
+        let mut ws = loop {
+            if let Ok((ws, _)) = rt.block_on(tokio_tungstenite::connect_async(&url)) {
+                break ws;
+            }
+            assert!(Instant::now() < until);
+            std::thread::sleep(Duration::from_millis(50));
+        };
+        let (_, first) = keepline_relay::secure::initiate(&stranger).unwrap();
+        let close = rt.block_on(async {
+            ws.send(tokio_tungstenite::tungstenite::Message::binary(first))
+                .await
+                .unwrap();
+            loop {
+                match ws.next().await {
+                    Some(Ok(tokio_tungstenite::tungstenite::Message::Close(f))) => {
+                        return f.map(|f| u16::from(f.code))
+                    }
+                    Some(Ok(tokio_tungstenite::tungstenite::Message::Binary(_))) => {
+                        panic!("answered a stranger")
+                    }
+                    Some(Ok(_)) => continue,
+                    other => panic!("{other:?}"),
+                }
+            }
+        });
+        assert_eq!(close, Some(4401));
+    }
+
+    let mut phone = Phone::connect(&base, &code);
+    phone.say(json!({ "id": 1, "op": "hello", "version": 1 }));
+    let hello = phone.next(|v| v["id"] == 1);
+    assert_eq!(hello["ok"]["version"], 1);
+    phone.say(json!({ "id": 2, "op": "list" }));
+    let list = phone.next(|v| v["id"] == 2);
+    assert!(list["ok"]["terminals"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .any(|t| t["id"] == "rt"));
+    phone.say(json!({ "id": 3, "op": "watch", "terminal": "rt" }));
+    phone.next(|v| v["id"] == 3);
+    let screen = phone.next(|v| v["stream"] == 3 && v["type"] == "screen");
+    let mut vt = Vt::new(80, 24).unwrap();
+    vt.feed(&b64.decode(screen["vt"].as_str().unwrap()).unwrap());
+    assert!(vt.tail_text(24).unwrap().contains("ready"));
+
+    // Keystroke to echoed screen, round trip through the relay, twenty times.
+    let mut trips = vec![];
+    for (i, key) in "abcdefghijklmnopqrst".char_indices() {
+        let sent = Instant::now();
+        phone.say(
+            json!({ "id": 100 + i, "op": "keys", "terminal": "rt", "keys": [key.to_string()] }),
+        );
+        let want: String = "abcdefghijklmnopqrst"[..=i].into();
+        while !vt.tail_text(24).unwrap().contains(&want) {
+            let out = phone.next(|v| v["stream"] == 3 && v["type"] == "output");
+            vt.feed(&b64.decode(out["vt"].as_str().unwrap()).unwrap());
+        }
+        trips.push(sent.elapsed());
+    }
+    trips.sort();
+    let p95 = trips[18];
+    eprintln!(
+        "phone keystroke → echo through the relay: p50 {:?} p95 {p95:?}",
+        trips[10]
+    );
+    assert!(p95 < Duration::from_millis(200), "{trips:?}");
+
+    // A second phone stops reading in the middle of a flood: it gets at most a window,
+    // the first phone keeps typing at full speed, and the reader gets the screen again.
+    h.call(h.launch(
+        "fl",
+        "i=0; while [ $i -lt 400 ]; do yes 0123456789abcdefghij | head -n 2000; i=$((i+1)); done; echo flood-done; exec cat",
+    ))
+    .unwrap();
+    let mut stalled = Phone::connect(&base, &code);
+    stalled.say(json!({ "id": 1, "op": "hello" }));
+    stalled.next(|v| v["id"] == 1);
+    stalled.ack = false;
+    stalled.say(json!({ "id": 2, "op": "watch", "terminal": "fl" }));
+    while stalled.line(Duration::from_millis(500)).is_some() {}
+    let held = stalled.received;
+    assert!(
+        held <= keepline_relay::secure::WINDOW + keepline_relay::secure::CHUNK as u64 * 2,
+        "a phone that stopped acknowledging got {held} bytes"
+    );
+    let mut beside = vec![];
+    for (i, key) in "uvwxy".char_indices() {
+        let sent = Instant::now();
+        phone.say(
+            json!({ "id": 200 + i, "op": "keys", "terminal": "rt", "keys": [key.to_string()] }),
+        );
+        while !vt
+            .tail_text(24)
+            .unwrap()
+            .contains(&format!("t{}", &"uvwxy"[..=i]))
+        {
+            let out = phone.next(|v| v["stream"] == 3 && v["type"] == "output");
+            vt.feed(&b64.decode(out["vt"].as_str().unwrap()).unwrap());
+        }
+        beside.push(sent.elapsed());
+    }
+    let worst = *beside.iter().max().unwrap();
+    eprintln!("beside a stalled phone ({held} bytes held): worst keystroke {worst:?}");
+    assert!(worst < Duration::from_millis(200), "{beside:?}");
+    stalled.resume();
+    let until = Instant::now() + Duration::from_secs(20);
+    let mut fl = Vt::new(80, 24).unwrap();
+    loop {
+        assert!(Instant::now() < until, "the stalled phone never caught up");
+        let v = stalled.next(|v| v["stream"] == 2);
+        if let Some(vt) = v["vt"].as_str() {
+            if v["type"] == "screen" {
+                fl = Vt::new(80, 24).unwrap();
+            }
+            fl.feed(&b64.decode(vt).unwrap());
+        }
+        if fl.tail_text(24).unwrap().contains("flood-done") {
+            break;
+        }
+    }
+
+    // The relay restarts: the machine dials again and a phone gets back in.
+    let addr = base.trim_start_matches("ws://").to_owned();
+    drop(stop);
+    relay.join().unwrap();
+    drop((phone, stalled));
+    let (_base, _stop, _relay) = local_relay(&addr);
+    let mut phone = Phone::connect(&base, &code);
+    phone.say(json!({ "id": 1, "op": "hello" }));
+    assert_eq!(phone.next(|v| v["id"] == 1)["ok"]["version"], 1);
+
+    // A second machine with the same code takes over; the first one exits.
+    let mut twin = machine();
+    let until = Instant::now() + Duration::from_secs(10);
+    let status = loop {
+        if let Some(s) = on_relay.try_wait().unwrap() {
+            break s;
+        }
+        assert!(Instant::now() < until, "the replaced machine kept running");
+        std::thread::sleep(Duration::from_millis(50));
+    };
+    assert!(!status.success());
+    let said: Vec<String> = log.try_iter().collect();
+    assert!(said.iter().any(|l| l.contains("已连上中继")), "{said:?}");
+    assert!(said.iter().any(|l| l.contains("配对码不对")), "{said:?}");
+    let _ = twin.kill();
+    let _ = twin.wait();
+    drop(app);
+}
