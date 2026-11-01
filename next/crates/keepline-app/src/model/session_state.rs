@@ -164,6 +164,7 @@ pub fn state_reasons(w: &Workspace, terminal: &str, hint: Option<&str>, now: u64
         "Hook" => "Agent 通过 hook 报来的事件",
         "画面" => "画面底部认出了提问框；对话记录里没有这一条",
         "官方状态" => "Agent 自己报告的运行状态",
+        "标题" => "终端标题里的转圈，Agent 正在跑这一轮",
         _ => "对话记录",
     };
     let at = if c.signal_at > 0 {

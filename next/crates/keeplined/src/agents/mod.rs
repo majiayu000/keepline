@@ -139,6 +139,11 @@ pub trait Adapter: Sync {
     fn title_status(&self, _title: &str) -> Option<Hint> {
         None
     }
+    /// Whether the terminal title this CLI sets says a turn is running (`Some(true)`), says
+    /// it is not (`Some(false)`), or says nothing either way.
+    fn title_busy(&self, _title: &str) -> Option<bool> {
+        None
+    }
     /// Whether a conversation can run outside the PTY (a shared daemon), leaving no process
     /// or open-file evidence: then a log binds to a terminal only by what its screen shows,
     /// and logs the daemon keeps open are followed while one of its terminals is unbound.

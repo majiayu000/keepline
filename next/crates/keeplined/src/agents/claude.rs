@@ -9,6 +9,20 @@ use std::path::{Path, PathBuf};
 
 pub struct Claude;
 impl Adapter for Claude {
+    /// A Braille (up to 2.1.227) or half-circle (2.1.228 on) spinner opens the title while
+    /// a turn runs; "✳" stands there between turns.
+    fn title_busy(&self, title: &str) -> Option<bool> {
+        let mut chars = title.trim_start().chars();
+        let glyph = chars.next()?;
+        if !chars.next().is_some_and(char::is_whitespace) {
+            return None;
+        }
+        match glyph {
+            '\u{2800}'..='\u{28ff}' | '◐' | '◓' | '◑' | '◒' => Some(true),
+            '✳' => Some(false),
+            _ => None,
+        }
+    }
     fn screen_rules(&self) -> &'static str {
         include_str!("screen/claude.json")
     }
@@ -313,5 +327,20 @@ fn inherited(v: &Value, source: &Source) -> bool {
     match (own, v["sessionId"].as_str()) {
         (Some(own), Some(id)) => own != id,
         _ => false,
+    }
+}
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn the_title_glyph_says_whether_a_turn_runs() {
+        assert_eq!(Claude.title_busy("◐ 修复滚动卡顿"), Some(true));
+        assert_eq!(Claude.title_busy("⠂ 修复滚动卡顿"), Some(true));
+        assert_eq!(Claude.title_busy("✳ 修复滚动卡顿"), Some(false));
+        // A title the user or a shell set says nothing about the turn.
+        assert_eq!(Claude.title_busy("◐修复"), None);
+        assert_eq!(Claude.title_busy("vim main.rs"), None);
+        assert_eq!(Claude.title_busy(""), None);
     }
 }

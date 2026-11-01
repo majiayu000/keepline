@@ -570,10 +570,16 @@ impl Parser {
                 self.card.turn = Turn::Running;
                 self.card.waiting.clear();
             }
+            // The prompt is in: the turn runs, whether or not its log record is read yet.
+            "UserPromptSubmit" if !matches!(self.card.turn, Turn::Running | Turn::Waiting) => {
+                self.phase(Turn::Running, "", at, source);
+            }
             // Turns woken by background work send no prompt; a tool after a stop is the only
             // sign of one. Without running work it is a straggler from the finished turn.
+            // A tool in a turn whose start was never read is that turn still running.
             "PreToolUse" | "PostToolUse" | "PostToolUseFailure"
-                if self.card.turn == Turn::Completed && keeps_working =>
+                if self.card.turn == Turn::Completed && keeps_working
+                    || self.card.turn == Turn::Unknown =>
             {
                 self.phase(Turn::Running, "", at, source);
             }
@@ -1207,6 +1213,23 @@ mod tests {
         }
         assert_eq!(p.card.turn, Turn::Completed);
         assert_eq!(p.card.asks.last().map(|q| q.text.as_str()), Some("修一下"));
+    }
+    #[test]
+    fn live_hooks_open_a_turn_the_log_has_not_shown() {
+        let none = HookFacts::default();
+        let s = Source::default();
+        // Only the tail of a long turn was read: no start, no end.
+        let mut p = Parser::default();
+        p.hook("PreToolUse", &none, 1, s.clone());
+        assert_eq!(p.card.turn, Turn::Running);
+        // A finished turn is not reopened by a straggling tool event.
+        let mut p = Parser::default();
+        p.hook("Stop", &none, 1, s.clone());
+        p.hook("PostToolUse", &none, 2, s.clone());
+        assert_eq!(p.card.turn, Turn::Completed);
+        // The next prompt opens the next turn before its log record arrives.
+        p.hook("UserPromptSubmit", &none, 3, s.clone());
+        assert_eq!((p.card.turn, p.card.turn_started), (Turn::Running, 3));
     }
     #[test]
     fn changed_files_are_listed_once_each_and_failed_edits_are_not() {

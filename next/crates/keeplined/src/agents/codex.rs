@@ -310,6 +310,13 @@ impl Adapter for Codex {
             },
         })
     }
+    fn title_busy(&self, title: &str) -> Option<bool> {
+        match codex_state(title)? {
+            "工作中" => Some(true),
+            "空闲" => Some(false),
+            _ => None,
+        }
+    }
     fn outside_pty(&self) -> bool {
         true
     }
@@ -536,6 +543,13 @@ pub(crate) fn codex_args(args: &[String]) -> (Option<String>, bool) {
 mod tests {
     use super::*;
 
+    #[test]
+    fn a_spinner_in_the_title_is_a_running_turn() {
+        assert_eq!(Codex.title_busy("⠋ fixing"), Some(true));
+        assert_eq!(Codex.title_busy("keepline"), Some(false));
+        assert_eq!(Codex.title_busy("Action Required"), None);
+        assert_eq!(Codex.title_busy(""), None);
+    }
     #[test]
     fn an_unbound_codex_says_its_state_plainly() {
         let note = |title: &str| Codex.title_status(title).unwrap().note.note;
