@@ -237,7 +237,9 @@ impl Workbench {
                 d.bg(T::color(T::raised()))
             })
             .hover(|s| s.bg(T::color(T::raised())))
-            .when(self.peek_home(&session.id), |d| d.relative().child(super::peek::peek_home_outline()))
+            .when(self.peek_home(&session.id), |d| {
+                d.relative().child(super::peek::peek_home_outline())
+            })
             .child(
                 div()
                     .h(px(T::ROW))
@@ -368,7 +370,9 @@ impl Workbench {
             .cursor_pointer()
             .when(selected, |d| d.bg(T::color(T::raised())))
             .hover(|s| s.bg(T::color(T::raised())))
-            .when(self.peek_home(&session.id), |d| d.relative().child(super::peek::peek_home_outline()))
+            .when(self.peek_home(&session.id), |d| {
+                d.relative().child(super::peek::peek_home_outline())
+            })
             .child(
                 div()
                     .flex()
