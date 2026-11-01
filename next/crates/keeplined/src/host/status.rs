@@ -169,6 +169,8 @@ pub(super) fn refresh_registered(shared: &Shared) -> io::Result<()> {
     refresh_agents(shared, &transcripts)
 }
 pub(super) const SCREEN_QUIET: Duration = Duration::from_secs(1);
+/// How often a screen with output flowing is read for a working line.
+pub(super) const SCREEN_BUSY_EVERY: Duration = Duration::from_secs(1);
 /// A fresh hook-reported dialog is not vetoed by the screen yet: it may still be drawing.
 pub(super) const RECONCILE_HOLD: Duration = Duration::from_secs(5);
 /// At most one `claude agents --json` per session in this window.
@@ -208,6 +210,8 @@ pub(super) fn check_screen_wait(
         return Ok(Some(settle));
     }
     let mut host = lock(shared)?;
+    // The last frame of a finished turn has no working line; it is read here, once still.
+    host.screen_busy(id, &tail)?;
     let seen = host.workspace.current_agent(id).is_some().then_some(seen);
     let veto = !seen.as_ref().is_some_and(|e| e.waiting());
     host.set_screen_wait(id, seen)?;

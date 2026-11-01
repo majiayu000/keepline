@@ -62,10 +62,27 @@ struct Host {
     /// it, or why none did. Live fallback only: never stored, cleared by the user's input;
     /// only a question appearing or going away is a new revision.
     screen_waits: HashMap<String, crate::screen_rules::Explained>,
+    /// Terminal -> the conversation whose title spins there and since when (seconds since
+    /// the epoch). Live evidence only, like `screen_waits`: never stored.
+    title_busy: HashMap<String, (String, u64)>,
+    /// The same read off the screen's ticking working line, for CLIs whose title is off.
+    screen_busy: HashMap<String, (String, u64)>,
     /// Session -> last `claude agents --json` run for it, the per-session rate limit.
     reconciled: HashMap<String, Instant>,
     /// What the plugins' hooks last heard, so each state change reaches them once.
     hooks: crate::plugin_hooks::Hooks,
+}
+/// Records which conversation a live cue says is running on `terminal`, since when;
+/// whether that changed. Only a turn starting or stopping is news.
+fn cue(cues: &mut HashMap<String, (String, u64)>, terminal: &str, busy: Option<String>) -> bool {
+    if cues.get(terminal).map(|(id, _)| id) == busy.as_ref() {
+        return false;
+    }
+    match busy {
+        Some(id) => cues.insert(terminal.into(), (id, keepline_core::content::now())),
+        None => cues.remove(terminal),
+    };
+    true
 }
 fn lock<T>(m: &Mutex<T>) -> io::Result<MutexGuard<'_, T>> {
     m.lock()
@@ -84,6 +101,41 @@ impl Host {
             .retain(|s| s.terminal.is_some() || self.index.recent(s.updated));
         w.content
             .retain(|id, _| w.agent_sessions.iter().any(|s| &s.id == id));
+        // A spinning title is a turn running even where the log shows none, as when only
+        // the tail of a long turn was read. Never the other way: a still title proves
+        // nothing the log has not said.
+        for s in w.agent_sessions.iter().filter(|s| s.current) {
+            let busy = |cues: &HashMap<String, (String, u64)>| {
+                s.terminal
+                    .as_ref()
+                    .and_then(|t| cues.get(t))
+                    .filter(|(id, _)| *id == s.id)
+                    .map(|(_, since)| *since)
+            };
+            let (since, cue, detail) = match (busy(&self.title_busy), busy(&self.screen_busy)) {
+                (Some(since), _) => (since, "标题", "终端标题在转圈，日志里还没看到这一轮"),
+                (None, Some(since)) => (
+                    since,
+                    "画面在跑",
+                    "画面上有在跑的计时行，日志里还没看到这一轮",
+                ),
+                (None, None) => continue,
+            };
+            let Some(c) = w.content.get_mut(&s.id) else {
+                continue;
+            };
+            let working = matches!(
+                c.turn,
+                keepline_core::content::Turn::Running | keepline_core::content::Turn::Waiting
+            ) || c.background.is_some_and(|b| b.keeps_working());
+            if !working {
+                c.turn = keepline_core::content::Turn::Running;
+                c.turn_started = since;
+                c.signal = cue.into();
+                c.signal_at = since;
+                c.signal_detail = detail.into();
+            }
+        }
         // A prompt visible on a live agent's screen outranks a log that has not caught up.
         // The source stays marked so it is never mistaken for a transcript record.
         for s in w.agent_sessions.iter().filter(|s| s.current) {
@@ -396,6 +448,32 @@ impl Host {
         if changed {
             self.publish_status()?;
         }
+        // Checked on every title change, but only a turn starting or stopping is news.
+        let busy = self.workspace.current_agent(terminal).and_then(|s| {
+            crate::agents::adapter(s.runtime)
+                .title_busy(title)
+                .filter(|busy| *busy)
+                .map(|_| s.id.clone())
+        });
+        if cue(&mut self.title_busy, terminal, busy) {
+            // Nothing to store; a new revision makes clients fetch the overlaid snapshot.
+            let next = self.workspace.clone();
+            self.commit(next)?;
+        }
+        Ok(())
+    }
+    /// What the bottom of a bound terminal's screen says about its turn; see `title_changed`.
+    fn screen_busy(&mut self, terminal: &str, tail: &str) -> io::Result<()> {
+        let busy = self.workspace.current_agent(terminal).and_then(|s| {
+            crate::agents::adapter(s.runtime)
+                .screen_busy(tail)
+                .filter(|busy| *busy)
+                .map(|_| s.id.clone())
+        });
+        if cue(&mut self.screen_busy, terminal, busy) {
+            let next = self.workspace.clone();
+            self.commit(next)?;
+        }
         Ok(())
     }
     /// Sets a terminal's hint and note together; whether either changed.
@@ -688,6 +766,8 @@ fn serve_runtime(
         deadlines: None,
         myself: std::sync::Weak::new(),
         screen_waits: HashMap::new(),
+        title_busy: HashMap::new(),
+        screen_busy: HashMap::new(),
         hooks: Default::default(),
         reconciled: HashMap::new(),
         workspace,
@@ -831,6 +911,8 @@ mod recognition_tests {
             deadlines: None,
             myself: std::sync::Weak::new(),
             screen_waits: HashMap::new(),
+            title_busy: HashMap::new(),
+            screen_busy: HashMap::new(),
             hooks: Default::default(),
             reconciled: HashMap::new(),
         }));

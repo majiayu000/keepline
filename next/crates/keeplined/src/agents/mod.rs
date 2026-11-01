@@ -139,6 +139,16 @@ pub trait Adapter: Sync {
     fn title_status(&self, _title: &str) -> Option<Hint> {
         None
     }
+    /// Whether the terminal title this CLI sets says a turn is running (`Some(true)`), says
+    /// it is not (`Some(false)`), or says nothing either way.
+    fn title_busy(&self, _title: &str) -> Option<bool> {
+        None
+    }
+    /// The same from the bottom of the screen, `tail` as `Vt::tail_text` gives it: the
+    /// line a CLI ticks while a turn runs ("Working (12s • esc to interrupt)").
+    fn screen_busy(&self, _tail: &str) -> Option<bool> {
+        None
+    }
     /// Whether a conversation can run outside the PTY (a shared daemon), leaving no process
     /// or open-file evidence: then a log binds to a terminal only by what its screen shows,
     /// and logs the daemon keeps open are followed while one of its terminals is unbound.
@@ -232,6 +242,14 @@ pub fn identity(agent: Agent, path: &Path, line: &[u8]) -> Option<(String, Strin
 }
 
 /// The environment variable a CLI's home can be moved with, or `home/default`.
+/// The last `n` non-empty lines of a screen, trimmed, bottom first.
+fn bottom_lines(tail: &str, n: usize) -> impl Iterator<Item = &str> {
+    tail.lines()
+        .rev()
+        .map(str::trim)
+        .filter(|l| !l.is_empty())
+        .take(n)
+}
 fn home_dir(home: &Path, var: &str, default: &str) -> PathBuf {
     std::env::var_os(var)
         .map(PathBuf::from)

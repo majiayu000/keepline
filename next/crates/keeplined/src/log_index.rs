@@ -453,6 +453,57 @@ impl Index {
         crate::content::save(&tx, path, &parser)?;
         tx.commit().map_err(err)
     }
+    /// A first read of a recent log takes its last 128 KiB. When that tail is the middle
+    /// of a turn (replies or tool results, but no start or end), the turn began earlier:
+    /// look back, up to 8 MiB before the tail, for the last record that settled the turn.
+    /// Otherwise a turn that wrote more than the tail reads as unknown, and a running Agent
+    /// shows as finished. A tail with no turn activity costs nothing more.
+    fn find_turn_start(
+        &mut self,
+        runtime: Agent,
+        file: &mut File,
+        tail: u64,
+        parser: &mut crate::content::Parser,
+    ) -> io::Result<()> {
+        let mid_turn = parser
+            .records
+            .iter()
+            .any(|r| matches!(r.kind.as_str(), "assistant" | "tool_result"));
+        if parser.card.turn != keepline_core::content::Turn::Unknown || !mid_turn {
+            return Ok(());
+        }
+        for window in [1024 * 1024u64, 8 * 1024 * 1024] {
+            let start = tail.saturating_sub(window);
+            file.seek(SeekFrom::Start(start))?;
+            let mut body = Vec::new();
+            (&mut *file).take(tail - start).read_to_end(&mut body)?;
+            self.counts.bytes += body.len() as u64;
+            // A window that starts mid-line drops that line; the tail's own first line,
+            // cut where the tail began, was never read.
+            let lines = if start == 0 {
+                &body[..]
+            } else {
+                body.iter()
+                    .position(|b| *b == b'\n')
+                    .map_or(&body[..0], |i| &body[i + 1..])
+            };
+            let mut probe = crate::content::Parser::default();
+            for line in lines.split(|b| *b == b'\n').filter(|l| !l.is_empty()) {
+                probe.add(runtime, line, keepline_core::content::Source::default());
+            }
+            // The tail settled nothing, so the turn stands where this stretch left it.
+            if probe.card.turn != keepline_core::content::Turn::Unknown {
+                parser.card.turn = probe.card.turn;
+                parser.card.turn_started = probe.card.turn_started;
+                parser.card.turn_key = probe.card.turn_key;
+                return Ok(());
+            }
+            if start == 0 {
+                return Ok(());
+            }
+        }
+        Ok(())
+    }
     /// Read [offset, captured size) only; a bounded partial line survives restart.
     /// First import reads a 16 KiB identity header and at most 128 KiB of recent content.
     pub fn update(
@@ -578,6 +629,8 @@ impl Index {
             adapter.observe_file(&mut parser, path);
         }
         let seed = (fresh && historical) || (!seeded && !fresh);
+        // Where a first read of a recent log's body began, when it skipped earlier records.
+        let mut tail_from = None;
         if seed {
             // Identity requires only the header, even when old bodies are deliberately skipped.
             file.seek(SeekFrom::Start(0))?;
@@ -629,6 +682,7 @@ impl Index {
             } else {
                 meta.len()
             };
+            tail_from = (recent && c.offset > 0).then_some(c.offset);
             // The prefix is original intent, never proof of the current turn.
             parser.card.turn = keepline_core::content::Turn::Unknown;
             c.pending.clear();
@@ -687,6 +741,9 @@ impl Index {
                     }
                 }
             }
+        }
+        if let Some(from) = tail_from {
+            self.find_turn_start(runtime, &mut file, from, &mut parser)?;
         }
         c.dev = meta.dev();
         c.inode = meta.ino();
@@ -946,6 +1003,28 @@ mod tests {
             .0,
             "parent:sidechain:child"
         );
+    }
+    #[test]
+    fn a_turn_longer_than_the_tail_still_reads_as_running() {
+        use std::io::Write;
+        let f = Fixture::new();
+        let path = f.0.join("logs/long-turn.jsonl");
+        let mut file = File::create(&path).unwrap();
+        file.write_all(line("long").as_bytes()).unwrap();
+        file.write_all(b"{\"type\":\"event_msg\",\"payload\":{\"type\":\"user_message\",\"message\":\"\xe6\x8e\x92\xe6\x9f\xa5\"}}\n").unwrap();
+        file.write_all(b"{\"type\":\"event_msg\",\"payload\":{\"type\":\"task_started\"}}\n")
+            .unwrap();
+        // Ten minutes of tool output: well past the 128 KiB tail, no turn boundary in it.
+        let output = b"{\"type\":\"response_item\",\"payload\":{\"type\":\"function_call_output\",\"call_id\":\"c\",\"output\":\"ok\"}}\n";
+        for _ in 0..(400 * 1024 / output.len()) {
+            file.write_all(output).unwrap();
+        }
+        drop(file);
+        let mut index = f.index();
+        index.update(Agent::Codex, &path, true).unwrap();
+        let card = index.card(path.to_str().unwrap()).unwrap().unwrap();
+        assert_eq!(card.turn, keepline_core::content::Turn::Running);
+        assert!(index.counts.bytes < 4 * 1024 * 1024);
     }
     #[test]
     fn bounded_tail_and_atomic_cursor_content_survive_restart() {
