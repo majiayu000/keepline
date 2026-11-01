@@ -821,6 +821,8 @@ impl Workbench {
                         )
                         .h(px(T::ICON_HEIGHT))
                         .px(px(T::S6))
+                        // Its text, not its padding, ends where the sessions' times do.
+                        .mr(-px(T::S6))
                         .text_size(px(T::META))
                         .text_color(T::color(T::link()))
                         .on_click(cx.listener(move |this, _, _, cx| {
@@ -828,6 +830,7 @@ impl Workbench {
                             this.ask_agent(start.clone(), false, cx);
                         })),
                     )
+                    .child(super::sidebar_list::pin_slot())
                     .on_click(cx.listener(move |this, _, _, cx| {
                         this.nav.task_detail = Some(tid.clone());
                         cx.notify();

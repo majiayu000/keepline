@@ -101,6 +101,11 @@ impl SidebarPrefs {
     }
 }
 
+/// The room a row's pin takes at its right end, empty.
+pub(super) fn pin_slot() -> gpui::Div {
+    div().flex_shrink_0().w(px(T::S12))
+}
+
 /// The last path segment, as a folder is named.
 fn folder_name(cwd: &str) -> String {
     Path::new(cwd)
@@ -252,7 +257,11 @@ impl Workbench {
                     .child(if attention { dot(g) } else { seen_dot(g) })
                     .child(title)
                     .child(trailing)
-                    .children(pin),
+                    // A row with nothing to pin keeps the pin's room, so every row's time
+                    // and the todos' 开始 end on one line.
+                    .child(
+                        pin.map_or_else(|| pin_slot().into_any_element(), |p| p.into_any_element()),
+                    ),
             )
             .when_some(detail, |d, text| {
                 d.child(
