@@ -1,0 +1,273 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>额度条改版方向</title>
+<style>
+/* 取自 next/crates/keepline-app/src/ui/theme.rs 暗色方案 */
+:root{
+  --bg:#1c1c1e; --sunken:#18181a; --hover:#242426;
+  --text:#ecebe9; --secondary:#a3a2a0; --muted:#8a8988;
+  --border:#2e2e2f; --border-strong:#3a3a3b;
+  --wait:#e8823a; --error:#e5534b; --running:#4cc38a; --stale:#8b8a88;
+  --tick-empty:#2c2c2e;
+  --page:#121213;
+  --mono:"SF Mono",ui-monospace,Menlo,monospace;
+}
+*{box-sizing:border-box}
+body{margin:0;background:var(--page);color:var(--text);font:13px/1.5 -apple-system,BlinkMacSystemFont,"PingFang SC",sans-serif;font-variant-numeric:tabular-nums}
+.wrap{max-width:1240px;margin:0 auto;padding:40px 24px 80px}
+h1{font-size:22px;margin:0 0 6px}
+.lead{color:var(--secondary);margin:0 0 20px;max-width:820px}
+.decide{display:grid;grid-template-columns:repeat(3,1fr);gap:12px;margin-bottom:36px}
+.decide div{border:1px solid var(--border);border-radius:8px;padding:12px 14px;background:var(--bg)}
+.decide b{display:block;font-size:11px;color:var(--muted);font-weight:500;margin-bottom:4px}
+section{margin-top:48px}
+section>h2{font-size:17px;margin:0 0 4px}
+section>.sub{color:var(--secondary);margin:0 0 16px;max-width:880px}
+.pair{display:grid;grid-template-columns:auto 1fr;gap:24px;align-items:start}
+.cap{font-size:11px;color:var(--muted);margin-bottom:8px;letter-spacing:.02em}
+.ref img{display:block;border:1px solid var(--border);border-radius:6px}
+.stage{background:var(--bg);border:1px solid var(--border);border-radius:8px;padding:0;overflow:hidden}
+.notes{margin-top:14px;display:grid;grid-template-columns:repeat(3,1fr);gap:12px}
+.notes div{border-left:2px solid var(--border-strong);padding:2px 0 2px 12px;color:var(--secondary)}
+.notes b{color:var(--text);font-weight:500;display:block}
+@media (max-width:900px){.pair,.decide,.notes{grid-template-columns:1fr}}
+
+/* ---- 侧栏底部（复刻 sidebar.rs quota_view：宽 270，px10 py6，字号 11） ---- */
+.sidebar{width:270px;background:var(--bg);border-right:1px solid var(--border);position:relative}
+.sb-fake{padding:10px;color:var(--muted);font-size:12px}
+.sb-fake .row{height:26px;border-radius:5px;background:var(--hover);opacity:.35;margin-bottom:6px}
+.quota{border-top:1px solid var(--border);padding:6px 10px;display:flex;flex-direction:column;gap:6px;font-size:11px}
+.qrow{display:flex;align-items:center;gap:8px;border-radius:4px}
+.qrow.hot{background:var(--hover);margin:0 -6px;padding:0 6px}
+.qname{width:46px;flex-shrink:0;color:var(--secondary)}
+.meter{flex:1;min-width:0;display:flex;flex-direction:column;gap:2px}
+.mhead{display:flex;justify-content:space-between}
+.mhead .l{color:var(--muted)} .mhead .n{color:var(--text)}
+/* 现版：3px 圆角实心条 */
+.bar{height:3px;border-radius:99px;background:#303032;overflow:hidden}
+.bar i{display:block;height:100%;border-radius:99px}
+/* 方向：竖条纹 */
+.ticks{position:relative;height:var(--h,8px);background:repeating-linear-gradient(90deg,var(--tick-empty) 0 var(--tw,2px),transparent var(--tw,2px) var(--tp,3px))}
+.ticks i{position:absolute;inset:0 auto 0 0;background:repeating-linear-gradient(90deg,var(--c) 0 var(--tw,2px),transparent var(--tw,2px) var(--tp,3px))}
+
+.states{display:flex;gap:20px;flex-wrap:wrap;padding:14px 16px;border-top:1px solid var(--border)}
+.states .one{width:150px;font-size:11px}
+
+/* ---- B：悬停弹层里的折线 ---- */
+.b-stage{display:flex;min-height:340px}
+.b-main{flex:1;position:relative;background:var(--sunken)}
+.pop{position:absolute;left:12px;bottom:14px;width:470px;background:#232325;border:1px solid var(--border-strong);border-radius:8px;box-shadow:0 12px 40px rgba(0,0,0,.45);padding:12px 14px 10px;font-size:11px}
+.pop .t{display:flex;justify-content:space-between;align-items:baseline;margin-bottom:6px}
+.pop .t b{font-size:12px;font-weight:600}
+.seg{display:flex;border:1px solid var(--border-strong);border-radius:5px;overflow:hidden}
+.seg span{padding:1px 8px;color:var(--muted)} .seg span.on{background:var(--hover);color:var(--text)}
+.legend{display:flex;gap:14px;color:var(--secondary);margin-bottom:2px}
+.legend i{display:inline-block;width:12px;height:0;border-top:1.5px solid;vertical-align:middle;margin-right:5px}
+.pop .foot{color:var(--muted);margin-top:4px}
+svg text{font:10px -apple-system,BlinkMacSystemFont,sans-serif;fill:var(--muted);font-variant-numeric:tabular-nums}
+
+/* ---- C：诊断页面板 ---- */
+.c-stage{padding:22px 24px 26px;background:var(--bg)}
+.c-head{display:flex;justify-content:space-between;align-items:baseline;margin-bottom:12px}
+.c-head h3{margin:0;font-size:12px;font-weight:600;letter-spacing:.12em;color:var(--secondary)}
+.c-head span{font-size:11px;color:var(--muted)}
+.cells{display:grid;grid-template-columns:repeat(3,1fr);position:relative;border:1px solid var(--border)}
+.cell{padding:16px 18px 18px;border-right:1px solid var(--border)} .cell:last-child{border-right:0}
+.corner{position:absolute;width:7px;height:7px;border-color:var(--muted);border-style:solid}
+.corner.tl{left:-1px;top:-1px;border-width:1px 0 0 1px}.corner.tr{right:-1px;top:-1px;border-width:1px 1px 0 0}
+.corner.bl{left:-1px;bottom:-1px;border-width:0 0 1px 1px}.corner.br{right:-1px;bottom:-1px;border-width:0 1px 1px 0}
+.cell .k{font-size:11px;letter-spacing:.12em;color:var(--secondary);display:flex;justify-content:space-between}
+.cell .k em{font-style:normal;letter-spacing:0;font-size:11px;padding:0 5px;border-radius:3px}
+.kv{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin:14px 0 14px}
+.kv small{display:block;font-size:11px;color:var(--muted)}
+.kv b{font-weight:500;font-size:14px}
+.cell .why{font-size:11px;color:var(--muted);margin-top:8px}
+.ghost{margin-top:22px;opacity:.35}
+.ghost .h{font-size:13px;font-weight:600;margin-bottom:8px}
+.ghost .r{height:14px;background:var(--hover);border-radius:3px;margin-bottom:6px}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>额度条改版：参考 @kxshor 的暗色资源面板</h1>
+  <p class="lead">参考图是一个服务详情后台，不整页搬。只挑三样：竖条纹用量条、用量历史折线、带角标的细框面板。下面每个方向左边放参考图里对应的那一块（按原图 2x 缩到 1x，和右边同比例），右边是 next/ 里的样子，配色和尺寸取自 <code>theme.rs</code> 暗色方案和 <code>sidebar.rs</code> 的 <code>quota_view</code>。</p>
+  <div class="decide">
+    <div><b>要定的事</b>选 A / B / C 哪个落到 next/（可多选，B 包含 A）。</div>
+    <div><b>放弃条件</b>并排看下来都不比现版好看、或者让侧栏底部更挤，就不改。</div>
+    <div><b>规矩不变</b>彩色只给状态：正常绿、快满橙（≥80%）、超了红（≥95%）、已重置灰。参考图里按资源分蓝/绿/橙的做法不搬。</div>
+  </div>
+
+  <section>
+    <h2>参考原图</h2>
+    <p class="sub">kxshor，2026-10-31，“been playing around with this visual direction.”</p>
+    <img src="reference.png" alt="参考图：runner-gateway 服务详情页" style="width:100%;border-radius:8px;border:1px solid var(--border)">
+  </section>
+
+  <!-- A -->
+  <section>
+    <h2>A · 只换额度条：侧栏底部改竖条纹</h2>
+    <p class="sub">位置、行数、悬停提示都不变，只把 3px 圆角实心条换成 8px 高的竖条纹。没用到的那一截也画成暗条纹，一眼看出还剩多少。</p>
+    <div class="pair">
+      <div class="ref"><div class="cap">参考 · 用量条</div><img src="ref-meter.png" width="460" alt=""></div>
+      <div style="display:flex;gap:24px;flex-wrap:wrap">
+        <div><div class="cap">现版</div>
+          <div class="stage"><div class="sidebar" id="cur"></div></div></div>
+        <div><div class="cap">A</div>
+          <div class="stage"><div class="sidebar" id="a"></div></div></div>
+      </div>
+    </div>
+    <div class="cap" style="margin-top:18px">A 的四种状态</div>
+    <div class="stage"><div class="states" id="a-states"></div></div>
+    <div class="notes">
+      <div><b>数据</b>现成，<code>quota::Window.used</code> 就够。</div>
+      <div><b>改动</b>只改 <code>quota_meter</code> 和 <code>QUOTA_BAR</code>，条纹用一排细矩形或一次 <code>canvas</code> 画。</div>
+      <div><b>风险</b>8px 高比现在多占 5px × 行数；两家都用时侧栏底部高 10px。</div>
+    </div>
+  </section>
+
+  <!-- B -->
+  <section>
+    <h2>B · A + 额度历史：悬停额度行弹出今天的折线</h2>
+    <p class="sub">侧栏底部和 A 一样；悬停某一行，在上方弹出这个窗口今天的走势。重置处画竖虚线，80% / 95% 两条线用状态色标出来，点表示真有一条读数（读数只在 CLI 写记录时才有，中间是连线不是实测）。</p>
+    <div class="pair">
+      <div class="ref"><div class="cap">参考 · 用量历史</div><img src="ref-chart.png" width="760" alt="" style="max-width:100%"></div>
+      <div></div>
+    </div>
+    <div class="cap" style="margin-top:18px">B</div>
+    <div class="stage b-stage">
+      <div class="sidebar" style="display:flex;flex-direction:column;justify-content:flex-end" id="b"></div>
+      <div class="b-main">
+        <div class="pop">
+          <div class="t"><b>5h 窗口 · 今天</b><div class="seg"><span class="on">今天</span><span>7 天</span></div></div>
+          <div class="legend"><span><i style="border-color:var(--text)"></i>claude</span><span><i style="border-color:var(--secondary);border-top-style:dashed"></i>codex</span><span style="margin-left:auto;color:var(--muted)">竖虚线 = 重置</span></div>
+          <svg id="chart" width="440" height="190"></svg>
+          <div class="foot">来自它自己的会话记录，Keepline 不联网查询 · claude 16:40 重置</div>
+        </div>
+      </div>
+    </div>
+    <div class="notes">
+      <div><b>数据（缺）</b>现在每个会话只留最新一条额度读数，凑不出一天的线。要让 keeplined 每读到一次就追加一行（时间、Agent、窗口、百分比），留 7 天。</div>
+      <div><b>改动</b>core 加历史存储；app 加一个 <code>canvas</code> 折线弹层。比 A 多一到两天。</div>
+      <div><b>为什么只放弹层</b>同一组数字一屏只出现一次：常驻看条纹，想知道“怎么涨上去的”才悬停。</div>
+    </div>
+  </section>
+
+  <!-- C -->
+  <section>
+    <h2>C · 面板风格放到「本机诊断」顶部</h2>
+    <p class="sub">诊断页本来就是 CPU / 内存 / GPU，和参考图最对口。顶部换成三格带角标的细框面板，小标题拉开字距，每格三个读数加一根竖条纹条；下面的排行、散点图不动。侧栏不受影响，可以和 A 一起上。</p>
+    <div class="ref"><div class="cap">参考 · 资源面板</div><img src="ref-panels.png" width="1180" alt="" style="max-width:100%"></div>
+    <div class="cap" style="margin-top:18px">C</div>
+    <div class="stage c-stage">
+      <div class="c-head"><h3>本机 · 采样平均</h3><span>已采 8.2 秒 · 区间 2 / 2</span></div>
+      <div class="cells" id="cells">
+        <span class="corner tl"></span><span class="corner tr"></span><span class="corner bl"></span><span class="corner br"></span>
+      </div>
+      <div class="ghost"><div class="h">全部核心都在忙什么</div><div class="r" style="width:100%"></div><div class="h" style="margin-top:16px">CPU 占用排行</div><div class="r" style="width:72%"></div><div class="r" style="width:54%"></div><div class="r" style="width:31%"></div></div>
+    </div>
+    <div class="notes">
+      <div><b>数据</b>现成：整机 CPU、核心数、GPU 设备最新读数都在诊断报告里；内存总量要补一个系统调用。</div>
+      <div><b>措辞</b>GPU 只写“设备占用 · 最新读数”，不写利用率；活动份额那节保留“不是设备利用率”的说明。</div>
+      <div><b>风险</b>最像通用后台的一个方向。只用在诊断页，别铺到会话卡片和设置页。</div>
+    </div>
+  </section>
+</div>
+
+<script>
+const color = (u, reset) => reset ? 'var(--stale)' : u >= 95 ? 'var(--error)' : u >= 80 ? 'var(--wait)' : 'var(--running)';
+const numColor = (u, reset) => reset ? 'var(--muted)' : u < 80 ? 'var(--text)' : color(u);
+const PITCH = 3;
+function ticks(u, reset, h = 8) {
+  const pct = reset ? 0 : Math.min(u, 100);
+  // 填充宽度对齐到整根条纹，避免最后一根被切半
+  return `<div class="ticks" style="--h:${h}px" data-pct="${pct}"><i style="--c:${color(u, reset)}"></i></div>`;
+}
+function bar(u, reset) {
+  const pct = reset ? 0 : Math.min(u, 100);
+  return `<div class="bar"><i style="width:${pct}%;background:${color(u, reset)}"></i></div>`;
+}
+const data = [
+  {name: 'claude', w: [{l: '5h', u: 63}, {l: '周', u: 41}]},
+  {name: 'codex', w: [{l: '5h', u: 88}, {l: '周', u: 97}]},
+];
+function meter(w, kind) {
+  const n = w.reset ? '已重置' : w.u + '%';
+  return `<div class="meter"><div class="mhead"><span class="l">${w.l}</span><span class="n" style="color:${numColor(w.u, w.reset)}">${n}</span></div>${kind === 'bar' ? bar(w.u, w.reset) : ticks(w.u, w.reset)}</div>`;
+}
+function sidebar(el, kind, hot) {
+  const fake = `<div class="sb-fake">${'<div class="row"></div>'.repeat(5)}</div>`;
+  const rows = data.map((a, i) => `<div class="qrow${hot === i ? ' hot' : ''}"><div class="qname">${a.name}</div>${a.w.map(w => meter(w, kind)).join('')}</div>`).join('');
+  el.innerHTML = fake + `<div class="quota">${rows}</div>`;
+}
+sidebar(document.getElementById('cur'), 'bar');
+sidebar(document.getElementById('a'), 'ticks');
+sidebar(document.getElementById('b'), 'ticks', 0);
+document.getElementById('a-states').innerHTML = [
+  ['正常', {l: '5h', u: 42}], ['快满 ≥80%', {l: '5h', u: 86}], ['超了 ≥95%', {l: '周', u: 100}], ['已重置', {l: '5h', u: 70, reset: true}],
+].map(([t, w]) => `<div class="one"><div class="cap">${t}</div>${meter(w, 'ticks')}</div>`).join('');
+
+// 诊断面板
+const cells = [
+  {k: 'CPU', pct: 39, kv: [['核心', '16'], ['在忙', '约 6.2 核'], ['整机', '39%']], why: '整机 CPU · 采样平均'},
+  {k: '内存', pct: 59, kv: [['总量', '36 GB'], ['已用', '21.4 GB'], ['占比', '59%']], why: '含压缩与缓存，见下方 RSS 说明'},
+  {k: 'GPU', pct: 84, kv: [['设备', 'M3 Max'], ['占用', '84%'], ['读数', '刚刚']], why: 'GPU 设备 · 最新读数，不是活动份额'},
+];
+const cellsEl = document.getElementById('cells');
+cells.forEach(c => {
+  const d = document.createElement('div');
+  d.className = 'cell';
+  const hi = c.pct >= 80;
+  const badge = hi ? `<em style="color:var(--wait);background:rgba(232,130,58,.14)">${c.pct}%</em>` : `<em style="color:var(--muted)">${c.pct}%</em>`;
+  d.innerHTML = `<div class="k"><span>${c.k}</span>${badge}</div>
+    <div class="kv">${c.kv.map(([a, b]) => `<div><small>${a}</small><b>${b}</b></div>`).join('')}</div>
+    <div class="ticks" style="--h:16px" data-pct="${c.pct}"><i style="--c:${hi ? 'var(--wait)' : 'var(--secondary)'}"></i></div>
+    <div class="why">${c.why}</div>`;
+  cellsEl.appendChild(d);
+});
+
+// 条纹宽度对齐
+function snap() {
+  document.querySelectorAll('.ticks').forEach(t => {
+    const w = t.clientWidth, n = Math.round(w * t.dataset.pct / 100 / PITCH);
+    t.firstElementChild.style.width = n * PITCH + 'px';
+  });
+}
+snap(); addEventListener('resize', snap);
+
+// B 折线
+(function () {
+  const svg = document.getElementById('chart');
+  const W = 440, H = 190, L = 32, R = 8, T = 8, B = 22;
+  const x0 = 8, x1 = 18; // 08:00 → 18:00
+  const X = h => L + (h - x0) / (x1 - x0) * (W - L - R);
+  const Y = p => T + (1 - p / 100) * (H - T - B);
+  let s = '';
+  for (const p of [0, 50, 100]) s += `<line x1="${L}" x2="${W - R}" y1="${Y(p)}" y2="${Y(p)}" stroke="var(--border)"/><text x="${L - 6}" y="${Y(p) + 3}" text-anchor="end">${p}%</text>`;
+  s += `<line x1="${L}" x2="${W - R}" y1="${Y(80)}" y2="${Y(80)}" stroke="var(--wait)" stroke-opacity=".5" stroke-dasharray="2 3"/><text x="${W - R}" y="${Y(80) - 3}" text-anchor="end" style="fill:var(--wait)">80</text>`;
+  s += `<line x1="${L}" x2="${W - R}" y1="${Y(95)}" y2="${Y(95)}" stroke="var(--error)" stroke-opacity=".5" stroke-dasharray="2 3"/><text x="${W - R - 18}" y="${Y(95) - 3}" text-anchor="end" style="fill:var(--error)">95</text>`;
+  for (const h of [8, 10, 12, 14, 16, 18]) s += `<text x="${X(h)}" y="${H - 6}" text-anchor="middle">${h === 18 ? '现在' : String(h).padStart(2, '0') + ':00'}</text>`;
+  // 重置：claude 11:40
+  s += `<line x1="${X(11.67)}" x2="${X(11.67)}" y1="${T}" y2="${H - B}" stroke="var(--muted)" stroke-dasharray="3 3"/>`;
+  const claude = [[8.3, 4], [9.1, 18], [9.8, 31], [10.5, 47], [11.2, 66], [11.6, 71], null, [12.4, 6], [13.3, 19], [14.2, 30], [15.0, 38], [15.6, 47], [16.4, 55], [17.5, 63]];
+  const codex = [[10.1, 12], [11.0, 26], [12.3, 41], [13.5, 58], [14.6, 70], [15.8, 79], [16.9, 85], [17.7, 88]];
+  const path = (pts, st, dash) => {
+    let d = '', out = '', pen = false;
+    for (const p of pts) { if (!p) { pen = false; continue; } d += (pen ? 'L' : 'M') + X(p[0]).toFixed(1) + ' ' + Y(p[1]).toFixed(1); pen = true; out += `<circle cx="${X(p[0])}" cy="${Y(p[1])}" r="1.8" fill="${st}"/>`; }
+    return `<path d="${d}" fill="none" stroke="${st}" stroke-width="1.5" ${dash ? 'stroke-dasharray="4 3"' : ''}/>` + out;
+  };
+  s += path(codex, 'var(--secondary)', true) + path(claude, 'var(--text)');
+  // 游标
+  const cx = X(15.6);
+  s += `<line x1="${cx}" x2="${cx}" y1="${T}" y2="${H - B}" stroke="var(--muted)" stroke-dasharray="1 2"/>`;
+  s += `<g transform="translate(${cx - 126},${Y(100) + 4})"><rect width="118" height="50" rx="4" fill="#1c1c1e" stroke="var(--border-strong)"/>
+    <text x="8" y="15">15:36 的读数</text>
+    <text x="8" y="30" style="fill:var(--text)">claude</text><text x="110" y="30" text-anchor="end" style="fill:var(--text)">47%</text>
+    <text x="8" y="43" style="fill:var(--secondary)">codex</text><text x="110" y="43" text-anchor="end" style="fill:var(--secondary)">79%</text></g>`;
+  svg.innerHTML = s;
+})();
+</script>
+</body>
+</html>
