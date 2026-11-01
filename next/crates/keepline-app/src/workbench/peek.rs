@@ -72,7 +72,11 @@ impl Workbench {
     /// A tab that now shows the peeked terminal takes it over: two attachments to one
     /// terminal would leave the tab's read-only.
     pub(super) fn drop_shown_peek(&mut self, shown: &[String]) {
-        if self.peek.as_ref().is_some_and(|p| shown.contains(&p.terminal)) {
+        if self
+            .peek
+            .as_ref()
+            .is_some_and(|p| shown.contains(&p.terminal))
+        {
             self.peek = None;
         }
     }
@@ -186,14 +190,14 @@ impl Workbench {
                         .on_click(cx.listener(|this, _, _, cx| this.answer_peek(false, cx))),
                 )
             })
-            .child(
-                button("peek-open", "↗ 打开").on_click(cx.listener(move |this, _, window, cx| {
+            .child(button("peek-open", "↗ 打开").on_click(cx.listener(
+                move |this, _, window, cx| {
                     this.close_peek(cx);
                     if let Some(s) = &open {
                         this.open_session(s, window, cx);
                     }
-                })),
-            )
+                },
+            )))
             .child(
                 button("peek-close", "✕")
                     .aria_label("关闭偷看")
@@ -231,7 +235,13 @@ impl Workbench {
                         .text_color(Group::Error.colors().1),
                 )
             })
-            .child(div().flex_1().min_h_0().pl(px(T::S4)).child(peek.pane.clone()))
+            .child(
+                div()
+                    .flex_1()
+                    .min_h_0()
+                    .pl(px(T::S4))
+                    .child(peek.pane.clone()),
+            )
             .into_any_element()
     }
 }
@@ -239,7 +249,12 @@ impl Workbench {
 #[cfg(feature = "visual-test")]
 impl Workbench {
     pub fn visual_peek_show_tab(&mut self, title: &str, cx: &mut Context<Self>) {
-        let tab = self.workspace.tabs.iter().find(|t| t.title == title).expect("tab");
+        let tab = self
+            .workspace
+            .tabs
+            .iter()
+            .find(|t| t.title == title)
+            .expect("tab");
         self.nav.space = tab.space.clone();
         self.nav.tab = Some(tab.id.clone());
         self.nav.overview = false;
@@ -248,7 +263,12 @@ impl Workbench {
         cx.notify();
     }
     /// The sidebar row's click for the session in `terminal`; whether a peek opened.
-    pub fn visual_peek_row(&mut self, terminal: &str, window: &mut Window, cx: &mut Context<Self>) -> bool {
+    pub fn visual_peek_row(
+        &mut self,
+        terminal: &str,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) -> bool {
         let Some(s) = self
             .workspace
             .agent_sessions

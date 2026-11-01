@@ -880,8 +880,7 @@ pub fn paint_cached(
                         .map(|r| (r, &r.text[usize::from(x - r.col)..][..1]))
                 });
                 let glyphs = under.and_then(|(run, _)| {
-                    let style =
-                        usize::from(run.attrs.bold) | (usize::from(run.attrs.italic) << 1);
+                    let style = usize::from(run.attrs.bold) | (usize::from(run.attrs.italic) << 1);
                     cache.ascii[style].as_ref().and_then(Option::as_ref)
                 });
                 match (under, glyphs) {

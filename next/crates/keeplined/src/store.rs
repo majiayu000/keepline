@@ -18,7 +18,9 @@ fn enum_value<T: serde::de::DeserializeOwned>(name: String) -> io::Result<T> {
 /// A criterion's evidence column: a JSON list of attached session records. Older rows hold
 /// NULL or a bare source reference no build ever wrote from the app; both read as none.
 fn criterion_evidence(column: Option<String>) -> Vec<CriterionEvidence> {
-    column.and_then(|text| serde_json::from_str(&text).ok()).unwrap_or_default()
+    column
+        .and_then(|text| serde_json::from_str(&text).ok())
+        .unwrap_or_default()
 }
 
 impl Store {
@@ -157,7 +159,9 @@ impl Store {
             use rusqlite::OptionalExtension;
             w.settings.sound = self
                 .0
-                .query_row("SELECT sound FROM app_sound WHERE id=1", [], |r| r.get::<_, bool>(0))
+                .query_row("SELECT sound FROM app_sound WHERE id=1", [], |r| {
+                    r.get::<_, bool>(0)
+                })
                 .optional()
                 .map_err(db_error)?
                 .unwrap_or(false);
@@ -392,7 +396,10 @@ impl Store {
                         c.id,
                         i64::try_from(position).map_err(db_error)?,
                         c.description,
-                        (!c.evidence.is_empty()).then(|| serde_json::to_string(&c.evidence)).transpose().map_err(db_error)?
+                        (!c.evidence.is_empty())
+                            .then(|| serde_json::to_string(&c.evidence))
+                            .transpose()
+                            .map_err(db_error)?
                     ],
                 )
                 .map_err(db_error)?;
@@ -790,35 +797,74 @@ mod milestone_tests {
         let (mut store, mut w) = Store::open(&dir).unwrap();
         let before = w.clone();
         for id in ["keep", "gone"] {
-            w.spaces.push(Space { id: id.into(), name: id.into(), cwd: "/tmp".into() });
+            w.spaces.push(Space {
+                id: id.into(),
+                name: id.into(),
+                cwd: "/tmp".into(),
+            });
         }
         for (i, space) in ["keep", "keep", "keep", "gone"].iter().enumerate() {
             w.terminals.push(Terminal {
-                id: format!("p{i}"), space: (*space).into(), argv: vec!["/bin/sh".into()], cwd: "/tmp".into(),
-                pid: None, state: ProcessState::Running, exit_code: None, error: None,
+                id: format!("p{i}"),
+                space: (*space).into(),
+                argv: vec!["/bin/sh".into()],
+                cwd: "/tmp".into(),
+                pid: None,
+                state: ProcessState::Running,
+                exit_code: None,
+                error: None,
             });
             w.tabs.push(Tab {
-                id: format!("t{i}"), space: (*space).into(), default_task: None, title: String::new(),
+                id: format!("t{i}"),
+                space: (*space).into(),
+                default_task: None,
+                title: String::new(),
                 layout: Some(Layout::Leaf(format!("p{i}"))),
             });
         }
         w.tasks.push(Task {
-            id: "task".into(), space: "gone".into(), title: "unfinished".into(),
-            description: String::new(), agent: Agent::Codex, acceptance: vec![],
+            id: "task".into(),
+            space: "gone".into(),
+            title: "unfinished".into(),
+            description: String::new(),
+            agent: Agent::Codex,
+            acceptance: vec![],
         });
         store.save(&before, &w).unwrap();
         let before = w.clone();
-        w.edit(Edit::MoveTab { id: "t2".into(), before: Some("t0".into()) }).unwrap();
-        let err = w.clone().edit(Edit::RemoveSpace { id: "gone".into() }).unwrap_err();
+        w.edit(Edit::MoveTab {
+            id: "t2".into(),
+            before: Some("t0".into()),
+        })
+        .unwrap();
+        let err = w
+            .clone()
+            .edit(Edit::RemoveSpace { id: "gone".into() })
+            .unwrap_err();
         assert!(err.contains("1 个没收尾的待办"), "{err}");
-        w.edit(Edit::SetTaskOutcome { id: "task".into(), outcome: Outcome::Abandoned }).unwrap();
+        w.edit(Edit::SetTaskOutcome {
+            id: "task".into(),
+            outcome: Outcome::Abandoned,
+        })
+        .unwrap();
         w.edit(Edit::RemoveSpace { id: "gone".into() }).unwrap();
-        assert!(w.clone().edit(Edit::RemoveSpace { id: "keep".into() }).is_err(), "last space stays");
+        assert!(
+            w.clone()
+                .edit(Edit::RemoveSpace { id: "keep".into() })
+                .is_err(),
+            "last space stays"
+        );
         store.save(&before, &w).unwrap();
         drop(store);
         let (_, w) = Store::open(&dir).unwrap();
-        assert_eq!(w.tabs.iter().map(|t| t.id.as_str()).collect::<Vec<_>>(), ["t2", "t0", "t1"]);
-        assert_eq!(w.spaces.iter().map(|s| s.id.as_str()).collect::<Vec<_>>(), ["keep"]);
+        assert_eq!(
+            w.tabs.iter().map(|t| t.id.as_str()).collect::<Vec<_>>(),
+            ["t2", "t0", "t1"]
+        );
+        assert_eq!(
+            w.spaces.iter().map(|s| s.id.as_str()).collect::<Vec<_>>(),
+            ["keep"]
+        );
         std::fs::remove_dir_all(dir).unwrap();
     }
     #[test]
@@ -862,7 +908,11 @@ mod milestone_tests {
                         summary: "cargo test：test result: ok. 4 passed; 0 failed".into(),
                         exit_code: Some(0),
                         at: 42,
-                        source: keepline_core::content::Source { path: "/log".into(), inode: 7, offset: 42 },
+                        source: keepline_core::content::Source {
+                            path: "/log".into(),
+                            inode: 7,
+                            offset: 42,
+                        },
                     },
                 }],
             }],
@@ -928,7 +978,10 @@ mod milestone_tests {
         let (store, read) = Store::open(&root).unwrap();
         assert_eq!(read.agent_sessions[0].name, "");
         assert_eq!(read.tasks, w.tasks);
-        assert!(criterion_evidence(Some("source:42".into())).is_empty(), "an old bare reference reads as none");
+        assert!(
+            criterion_evidence(Some("source:42".into())).is_empty(),
+            "an old bare reference reads as none"
+        );
         assert_eq!(read.task_outcomes, w.task_outcomes);
         assert_eq!(read.outcome_history, w.outcome_history);
         assert_eq!(read.pending_tasks, w.pending_tasks);

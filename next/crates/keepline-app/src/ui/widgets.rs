@@ -65,7 +65,12 @@ pub fn icon_button(
         .rounded(px(T::CONTROL_RADIUS))
         .cursor_pointer()
         .hover(|s| s.bg(T::color(T::button_hover())))
-        .child(gpui::svg().path(icon).size(px(T::ICON_GLYPH)).text_color(T::color(T::secondary())))
+        .child(
+            gpui::svg()
+                .path(icon)
+                .size(px(T::ICON_GLYPH))
+                .text_color(T::color(T::secondary())),
+        )
 }
 pub fn label(text: impl Into<gpui::SharedString>) -> gpui::Div {
     div()

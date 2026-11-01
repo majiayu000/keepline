@@ -906,7 +906,7 @@ impl Pane {
                     match crate::terminal::terminal_input::alternate_scroll(v, lines > 0) {
                         Ok(Some(bytes)) if !event.modifiers.shift => Ok(Some(bytes)),
                         Ok(_) => {
-                            v.scroll(ScrollViewport::Delta(if lines>0 {-1}else{1}));
+                            v.scroll(ScrollViewport::Delta(if lines > 0 { -1 } else { 1 }));
                             Ok(None)
                         }
                         Err(e) => Err(e),
@@ -1292,9 +1292,7 @@ impl Pane {
             state.vt.as_mut().is_some_and(|vt| {
                 let away = !vt.terminal().viewport_active().unwrap_or(true);
                 if away {
-                    vt.scroll(
-                        ScrollViewport::Bottom,
-                    );
+                    vt.scroll(ScrollViewport::Bottom);
                 }
                 away
             })
@@ -1320,25 +1318,27 @@ impl Pane {
             return;
         }
         let epoch = self.blink_epoch;
-        cx.spawn(async move |this, cx| loop {
-            cx.background_executor()
-                .timer(std::time::Duration::from_millis(600))
-                .await;
-            let running = this.update(cx, |pane, cx| {
-                if pane.blink_epoch != epoch {
-                    return false;
+        cx.spawn(async move |this, cx| {
+            loop {
+                cx.background_executor()
+                    .timer(std::time::Duration::from_millis(600))
+                    .await;
+                let running = this.update(cx, |pane, cx| {
+                    if pane.blink_epoch != epoch {
+                        return false;
+                    }
+                    let blinks = crate::ui::terminal_text::current().cursor_blink
+                        && pane.screen.cursor_blinking;
+                    let next = !blinks || !pane.blink_on;
+                    if next != pane.blink_on {
+                        pane.blink_on = next;
+                        cx.notify();
+                    }
+                    true
+                });
+                if !matches!(running, Ok(true)) {
+                    break;
                 }
-                let blinks = crate::ui::terminal_text::current().cursor_blink
-                    && pane.screen.cursor_blinking;
-                let next = !blinks || !pane.blink_on;
-                if next != pane.blink_on {
-                    pane.blink_on = next;
-                    cx.notify();
-                }
-                true
-            });
-            if !matches!(running, Ok(true)) {
-                break;
             }
         })
         .detach();
@@ -1580,7 +1580,11 @@ impl Pane {
                 Action::ScrollBottom => self.scroll_to(ScrollViewport::Bottom, cx),
                 Action::PageUp | Action::PageDown => {
                     let rows = self.screen.rows.len().max(1) as isize;
-                    let rows = if action == Action::PageUp { -rows } else { rows };
+                    let rows = if action == Action::PageUp {
+                        -rows
+                    } else {
+                        rows
+                    };
                     self.scroll_to(ScrollViewport::Delta(rows), cx);
                 }
                 Action::Clear => {

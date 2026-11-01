@@ -170,18 +170,36 @@ mod tests {
         let ok = std::process::Command::new("git")
             .arg("-C")
             .arg(dir)
-            .args(["-c", "user.name=t", "-c", "user.email=t@t", "-c", "commit.gpgsign=false"])
+            .args([
+                "-c",
+                "user.name=t",
+                "-c",
+                "user.email=t@t",
+                "-c",
+                "commit.gpgsign=false",
+            ])
             .args(args)
             .output()
             .unwrap();
-        assert!(ok.status.success(), "{args:?}: {}", String::from_utf8_lossy(&ok.stderr));
+        assert!(
+            ok.status.success(),
+            "{args:?}: {}",
+            String::from_utf8_lossy(&ok.stderr)
+        );
     }
 
     #[test]
     fn upstream_comes_from_the_branch_section_only() {
         let config = "[core]\n\tbare = false\n[branch \"main\"]\n\tremote = origin\n\tmerge = refs/heads/main\n[branch \"x\"]\n\tremote = .\n\tmerge = refs/heads/main\n";
-        assert_eq!(upstream_ref(config, "main").as_deref(), Some("refs/remotes/origin/main"));
-        assert_eq!(upstream_ref(config, "x"), None, "a local upstream is not a remote");
+        assert_eq!(
+            upstream_ref(config, "main").as_deref(),
+            Some("refs/remotes/origin/main")
+        );
+        assert_eq!(
+            upstream_ref(config, "x"),
+            None,
+            "a local upstream is not a remote"
+        );
         assert_eq!(upstream_ref(config, "other"), None);
     }
 
@@ -213,15 +231,29 @@ mod tests {
         let fetched = signature(&files);
         git(&clone, &["fetch", "-q"]);
         assert_ne!(signature(&files), fetched, "a fetch moves the upstream ref");
-        let index = std::fs::metadata(clone.join(".git/index")).ok().and_then(|m| m.modified().ok());
+        let index = std::fs::metadata(clone.join(".git/index"))
+            .ok()
+            .and_then(|m| m.modified().ok());
         assert_eq!(count(&clone), Some((2, 1)));
         assert_eq!(
-            std::fs::metadata(clone.join(".git/index")).ok().and_then(|m| m.modified().ok()),
+            std::fs::metadata(clone.join(".git/index"))
+                .ok()
+                .and_then(|m| m.modified().ok()),
             index,
             "counting wrote to .git"
         );
         // A linked worktree on a branch without upstream: nothing to watch, nothing run.
-        git(&clone, &["worktree", "add", "-q", "-b", "side", root.join("wt").to_str().unwrap()]);
+        git(
+            &clone,
+            &[
+                "worktree",
+                "add",
+                "-q",
+                "-b",
+                "side",
+                root.join("wt").to_str().unwrap(),
+            ],
+        );
         assert!(git_dirs(&root.join("wt")).is_some_and(|(g, c)| g != c));
         assert!(watched(&root.join("wt")).is_none());
         let _ = std::fs::remove_dir_all(&root);

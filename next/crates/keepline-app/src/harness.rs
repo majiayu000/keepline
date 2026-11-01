@@ -1600,7 +1600,10 @@ pub fn start(
             // The first space row sits under the preset switch and the 空间 heading.
             let row = gpui::point(
                 px(theme::Theme::S20 + 20.),
-                px(std::env::var("KL_SPACE_ROW_Y").ok().and_then(|v| v.parse().ok()).unwrap_or(132.)),
+                px(std::env::var("KL_SPACE_ROW_Y")
+                    .ok()
+                    .and_then(|v| v.parse().ok())
+                    .unwrap_or(132.)),
             );
             cx.update_window(handle.into(), |_, w, a| {
                 native_click(w, a, row, gpui::MouseButton::Right)
@@ -2119,8 +2122,7 @@ pub fn start(
             cx.update_window(handle.into(), |_, window, app| {
                 let at = gpui::point(
                     px(x),
-                    window.viewport_size().height
-                        - px(theme::Theme::S8 + theme::Theme::ROW / 2.),
+                    window.viewport_size().height - px(theme::Theme::S8 + theme::Theme::ROW / 2.),
                 );
                 native_click(window, app, at, gpui::MouseButton::Left);
             })
@@ -2134,13 +2136,21 @@ pub fn start(
                 "「提醒」 opens settings on 通知"
             );
             shot("1-reminders", cx);
-            assert!(!handle.update(cx, |v, _, _| v.visual_settings_values()).unwrap().sound);
+            assert!(
+                !handle
+                    .update(cx, |v, _, _| v.visual_settings_values())
+                    .unwrap()
+                    .sound
+            );
             handle
                 .update(cx, |v, _, cx| v.visual_settings_toggle_sound(cx))
                 .unwrap();
             wait(1000).await;
             assert!(
-                handle.update(cx, |v, _, _| v.visual_settings_values()).unwrap().sound,
+                handle
+                    .update(cx, |v, _, _| v.visual_settings_values())
+                    .unwrap()
+                    .sound,
                 "提示音 is saved by the host"
             );
             shot("2-sound-on", cx);

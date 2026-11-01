@@ -206,7 +206,9 @@ impl Workbench {
                     )
                 },
             )
-            .when_some(completing, |d, seq| d.child(self.completing_button(id, seq)))
+            .when_some(completing, |d, seq| {
+                d.child(self.completing_button(id, seq))
+            })
             .when_some(review.filter(|_| completing.is_none()), |d, s| {
                 let accept = s.id.clone();
                 let terminal = id.to_owned();
@@ -226,20 +228,23 @@ impl Workbench {
                 )
             })
             // One step per pane: 标记完成 when it is due, else 看进度.
-            .when_some(session.filter(|_| review.is_none() && completing.is_none()), |d, s| {
-                let show = s.id.clone();
-                d.child(
-                    button(
-                        gpui::SharedString::from(format!("here-pane-{id}")),
-                        "看进度",
+            .when_some(
+                session.filter(|_| review.is_none() && completing.is_none()),
+                |d, s| {
+                    let show = s.id.clone();
+                    d.child(
+                        button(
+                            gpui::SharedString::from(format!("here-pane-{id}")),
+                            "看进度",
+                        )
+                        .pane_action()
+                        .on_click(cx.listener(move |this, _, _, cx| {
+                            this.overview.here = Some(show.clone());
+                            cx.notify();
+                        })),
                     )
-                    .pane_action()
-                    .on_click(cx.listener(move |this, _, _, cx| {
-                        this.overview.here = Some(show.clone());
-                        cx.notify();
-                    })),
-                )
-            })
+                },
+            )
             .child(
                 button(gpui::SharedString::from(format!("close-pane-{id}")), "×")
                     .aria_label("关闭画面")
@@ -455,7 +460,9 @@ impl Workbench {
                     )
                 },
             )
-            .when_some(completing, |d, seq| d.child(self.completing_veil(id, seq, &title, cx)));
+            .when_some(completing, |d, seq| {
+                d.child(self.completing_veil(id, seq, &title, cx))
+            });
         match completing {
             // The last slice of the run fades the whole pane out before it closes.
             Some(seq) => gpui::AnimationExt::with_animation(

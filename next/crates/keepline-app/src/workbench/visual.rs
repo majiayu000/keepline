@@ -17,7 +17,11 @@ impl Workbench {
         let review = session.is_some_and(|s| {
             s.outcome == Outcome::Open && session_group(&self.workspace, s) == Group::Review
         });
-        (session.map(|s| s.id.clone()), review, self.layout.panes.contains_key(terminal))
+        (
+            session.map(|s| s.id.clone()),
+            review,
+            self.layout.panes.contains_key(terminal),
+        )
     }
     /// The 标记完成 button's click, and 「留着这个画面」 mid-run.
     #[cfg(feature = "visual-test")]

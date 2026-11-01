@@ -391,7 +391,10 @@ fn the_pane_menu_says_which_signal_set_the_state() {
     let lines = state_reasons(&w, "t0", None, 1000);
     assert_eq!(lines[0], "Codex 对话 cli");
     assert_eq!(lines[1], "现在：等你回答");
-    assert_eq!(lines[2], "依据：画面底部认出了提问框；对话记录里没有这一条（2 分钟前）");
+    assert_eq!(
+        lines[2],
+        "依据：画面底部认出了提问框；对话记录里没有这一条（2 分钟前）"
+    );
     assert!(lines[3].starts_with("在等：Do you want to proceed?"));
 
     // The rule and the lines it saw, as the daemon wrote them.

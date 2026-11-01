@@ -130,8 +130,12 @@ mod tests {
     }
     #[test]
     fn a_file_saved_before_the_split_options_keeps_its_typography() {
-        let value = TerminalText::parse(r#"{"family":"Menlo","size":15,"line_height":1.2}"#).unwrap();
-        assert_eq!((value.family.as_str(), value.size, value.line_height), ("Menlo", 15., 1.2));
+        let value =
+            TerminalText::parse(r#"{"family":"Menlo","size":15,"line_height":1.2}"#).unwrap();
+        assert_eq!(
+            (value.family.as_str(), value.size, value.line_height),
+            ("Menlo", 15., 1.2)
+        );
         assert_eq!(value.unfocused_dim, 0.);
         assert_eq!(value.unfocused_cursor, UnfocusedCursor::Hidden);
         assert!(value.cursor_blink);
