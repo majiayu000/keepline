@@ -1,5 +1,6 @@
 //! An independently updated, disposable view of a short host measurement.
 use super::*;
+use gpui::{Animation, AnimationExt};
 use futures::{
     StreamExt,
     channel::mpsc::{UnboundedSender, unbounded},
@@ -12,7 +13,13 @@ use std::{
         Arc, Mutex,
         atomic::{AtomicBool, Ordering},
     },
+    time::Instant,
 };
+
+/// The host reports its first interval this long after it is asked (its INTERVAL is 7.5 s,
+/// plus the first snapshot).
+const FIRST_REPORT: Duration = Duration::from_secs(8);
+const SPINNER: [&str; 8] = ["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧"];
 
 pub(super) enum DiagnosticAction {
     Close,
@@ -23,6 +30,9 @@ pub(super) enum DiagnosticAction {
 struct Sampling {
     socket: Arc<Mutex<Option<UnixStream>>>,
     cancelled: Arc<AtomicBool>,
+    /// The host answered the handshake and was asked to sample.
+    requested: Arc<AtomicBool>,
+    started: Instant,
 }
 impl Drop for Sampling {
     fn drop(&mut self) {
@@ -37,9 +47,12 @@ impl Sampling {
         let result = Self {
             socket: Arc::new(Mutex::new(None)),
             cancelled: Arc::new(AtomicBool::new(false)),
+            requested: Arc::new(AtomicBool::new(false)),
+            started: Instant::now(),
         };
         let socket = result.socket.clone();
         let cancelled = result.cancelled.clone();
+        let requested = result.requested.clone();
         std::thread::spawn(move || {
             let read = || -> io::Result<()> {
                 let mut stream = UnixStream::connect(path)?;
@@ -60,6 +73,7 @@ impl Sampling {
                     return Err(io::Error::other("诊断连接握手失败"));
                 }
                 send(&mut stream, CONTROL, &Request::Diagnose)?;
+                requested.store(true, Ordering::Release);
                 loop {
                     let report = match receive::<Reply>(&mut stream)? {
                         Reply::Diagnostics(report) => report,
@@ -524,6 +538,87 @@ impl DiagnosticView {
         })
         .detach();
         cx.notify();
+    }
+    /// What the host is doing before its first report, as terminal lines that appear as
+    /// each step is reached. Lines do not fade in: a frame drawn without its predecessor
+    /// would restart the fade and show nothing. The spinner's animation also redraws the view every frame,
+    /// so the lines and the countdowns follow the clock without a timer.
+    fn waiting(&self, sampling: &Sampling, waited: Duration, cx: &Context<Self>) -> gpui::Div {
+        let requested = sampling.requested.load(Ordering::Acquire);
+        let line = |id: &'static str, mark: gpui::AnyElement, text: gpui::AnyElement| {
+            div()
+                .flex()
+                .items_center()
+                .child(div().w(px(T::S20)).flex_shrink_0().child(mark))
+                .child(text)
+                .id(id)
+                .into_any_element()
+        };
+        let spinner = || {
+            div()
+                .text_color(T::color(T::primary()))
+                .with_animation(
+                    "diagnostic-spinner",
+                    Animation::new(Duration::from_millis(800)).repeat(),
+                    |d, t| {
+                        let i = ((t * SPINNER.len() as f32) as usize).min(SPINNER.len() - 1);
+                        d.child(SPINNER[i])
+                    },
+                )
+                .into_any_element()
+        };
+        let done = || div().child("✓").into_any_element();
+        let mut lines = div()
+            .p(px(T::S20))
+            .flex()
+            .flex_col()
+            .gap(px(T::S6))
+            .font_family(T::mono(cx).family)
+            .text_size(px(T::MONO_SIZE))
+            .text_color(T::color(T::secondary()));
+        if !requested {
+            return lines.child(line(
+                "diagnostic-connect",
+                spinner(),
+                div()
+                    .text_color(T::color(T::primary()))
+                    .child("连接 Keepline 后台…")
+                    .into_any_element(),
+            ));
+        }
+        let left = FIRST_REPORT.saturating_sub(waited).as_secs_f32().ceil();
+        lines = lines
+            .child(line(
+                "diagnostic-connected",
+                done(),
+                div().child("连上后台").into_any_element(),
+            ))
+            .child(line(
+                "diagnostic-first",
+                done(),
+                div()
+                    .child("后台记下第一次快照：进程、CPU 时间、GPU 计数")
+                    .into_any_element(),
+            ))
+            .child(line(
+                "diagnostic-second",
+                spinner(),
+                div()
+                    .flex()
+                    .gap(px(T::S6))
+                    .child(
+                        div()
+                            .text_color(T::color(T::primary()))
+                            .child("隔几秒再记一次，用两次的差算占用"),
+                    )
+                    .child(if left > 0. {
+                        format!("· 还剩 {left} 秒")
+                    } else {
+                        "· 马上就好".into()
+                    })
+                    .into_any_element(),
+            ));
+        lines
     }
     fn summary(&self) -> Option<String> {
         let report = self.report.as_ref()?;
@@ -1088,19 +1183,36 @@ impl Render for DiagnosticView {
             .report
             .as_ref()
             .map_or(0, |r| if r.complete { 2 } else { 1 });
+        // While the first interval runs, its step fills with the time the host needs.
+        let waited = self
+            .sampling
+            .as_ref()
+            .filter(|_| self.report.is_none())
+            .map(|s| s.started.elapsed());
         let mut steps = div().flex().gap(px(T::S2));
         for i in 0..2 {
-            steps = steps.child(
-                div()
-                    .w(px(T::STEP_WIDTH))
-                    .h(px(T::STEP_HEIGHT))
-                    .rounded(px(T::S2))
-                    .bg(T::color(if i < done {
-                        T::secondary()
-                    } else {
-                        T::chart_grid()
-                    })),
-            );
+            let mut step = div()
+                .w(px(T::STEP_WIDTH))
+                .h(px(T::STEP_HEIGHT))
+                .rounded(px(T::S2))
+                .overflow_hidden()
+                .bg(T::color(if i < done {
+                    T::secondary()
+                } else {
+                    T::chart_grid()
+                }));
+            if i == 0
+                && let Some(waited) = waited
+            {
+                let share = (waited.as_secs_f32() / FIRST_REPORT.as_secs_f32()).min(1.);
+                step = step.child(
+                    div()
+                        .h_full()
+                        .w(gpui::relative(share))
+                        .bg(T::color(T::secondary())),
+                );
+            }
+            steps = steps.child(step);
         }
         let state = if running {
             "采样中"
@@ -1137,9 +1249,8 @@ impl Render for DiagnosticView {
                     report.elapsed_secs
                 ))
                 .child(format!("· 开始于 {}", clock(report.started_at)));
-        } else if running {
-            status = status.child("约 8 秒后显示第一组结果…");
         }
+        // While waiting, the countdown lives on the body's last line, not here too.
         if let Some(report) = &self.report {
             let listed: f64 = report.ranked().map(|a| a.cpu_percent).sum::<f64>() / 100.;
             let busy = report
@@ -1239,11 +1350,10 @@ impl Render for DiagnosticView {
                     ),
             );
         } else {
-            body = body.child(div().p(px(T::S20)).child(if running {
-                "正在读取本机资源，约 8 秒后显示第一组结果…"
-            } else {
-                "采样已停止，尚无可比较的数据。"
-            }));
+            body = body.child(match (&self.sampling, waited) {
+                (Some(sampling), Some(waited)) => self.waiting(sampling, waited, cx),
+                _ => div().p(px(T::S20)).child("采样已停止，尚无可比较的数据。"),
+            });
         }
         if let Some(error) = &self.error {
             body = body.child(

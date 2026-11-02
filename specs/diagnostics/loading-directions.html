@@ -1,0 +1,119 @@
+<!doctype html>
+<html lang="zh">
+<head>
+<meta charset="utf-8">
+<title>本机诊断 · 等待动画方向</title>
+<style>
+  :root{--bg:#e9e9e7;--pop:#fbfbfa;--fg:#1d1d1b;--sec:#6b6b68;--mut:#a9a9a5;--grid:#e3e3e0;--bd:#e6e6e3;--ctl:#d6d6d2;}
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--bg);font:13px/1.5 -apple-system,"PingFang SC",sans-serif;color:var(--fg);padding:28px 16px}
+  h1{font-size:17px;margin:0 0 4px}
+  .lead{color:var(--sec);margin:0 0 20px;max-width:900px}
+  .dir{max-width:980px;margin:0 auto 34px}
+  .dir h2{font-size:15px;margin:0 0 2px}
+  .dir p{margin:0 0 10px;color:var(--sec)}
+  .panel{background:var(--pop);border:1px solid var(--ctl);border-radius:10px;height:360px;display:flex;flex-direction:column;overflow:hidden;box-shadow:0 8px 24px rgba(0,0,0,.08)}
+  .head{padding:14px 20px 12px;border-bottom:1px solid var(--bd)}
+  .title{font-weight:600;font-size:15px}.title small{font-weight:400;color:var(--sec);font-size:12px;margin-left:8px}
+  .status{display:flex;align-items:center;gap:10px;font-size:12px;color:var(--sec);margin-top:6px;font-variant-numeric:tabular-nums}
+  .state{display:flex;align-items:center;gap:6px;color:var(--fg)}
+  .dot{width:6px;height:6px;border-radius:50%;background:var(--fg)}
+  .steps{display:flex;gap:2px}.step{width:46px;height:3px;border-radius:2px;background:var(--grid);overflow:hidden}
+  .step i{display:block;height:100%;width:0;background:var(--sec)}
+  .body{flex:1;padding:16px 20px;position:relative;overflow:hidden}
+  .foot{padding:10px 20px;border-top:1px solid var(--bd);font-size:12px;color:var(--sec)}
+  .replay{float:right;font-size:12px;border:1px solid var(--ctl);background:#fff;border-radius:6px;padding:2px 10px;cursor:pointer}
+
+  /* 共用：第一段进度条按 8 秒走满，圆点呼吸 */
+  .run .step:first-child i{animation:fill 8s linear forwards}
+  .run .dot{animation:breathe 1.6s ease-in-out infinite}
+  @keyframes fill{to{width:100%}}
+  @keyframes breathe{50%{opacity:.25}}
+
+  /* A 骨架预演 */
+  .sk{display:grid;grid-template-columns:repeat(3,1fr);border:1px solid var(--bd)}
+  .sk>div{padding:14px;border-right:1px solid var(--bd)}.sk>div:last-child{border:0}
+  .bar{height:10px;border-radius:3px;background:var(--grid);margin:6px 0;position:relative;overflow:hidden}
+  .bar.big{height:28px;width:45%}
+  .rows{display:grid;grid-template-columns:1.4fr 1fr;gap:24px;margin-top:16px}
+  .run .bar::after{content:"";position:absolute;inset:0;background:linear-gradient(90deg,transparent,rgba(255,255,255,.75),transparent);transform:translateX(-100%);animation:sweep 1.6s ease-in-out infinite}
+  @keyframes sweep{to{transform:translateX(100%)}}
+
+  /* B 终端逐行 */
+  .term{font:12.5px/1.9 "SF Mono",Menlo,monospace;color:var(--sec)}
+  .term div{opacity:0}
+  .term b{color:var(--fg);font-weight:500}
+  .run .term div{animation:appear .2s forwards}
+  .term div:nth-child(1){animation-delay:.2s!important}
+  .term div:nth-child(2){animation-delay:.6s!important}
+  .term div:nth-child(3){animation-delay:1.0s!important}
+  .term div:nth-child(4){animation-delay:1.4s!important}
+  @keyframes appear{to{opacity:1}}
+  .spin::before{content:"⠋";display:inline-block;width:1.2em;color:var(--fg);animation:braille .8s steps(1) infinite}
+  @keyframes braille{0%{content:"⠋"}12%{content:"⠙"}25%{content:"⠹"}37%{content:"⠸"}50%{content:"⠼"}62%{content:"⠴"}75%{content:"⠦"}87%{content:"⠧"}}
+
+  /* C 核心格子 */
+  .cores{display:grid;grid-template-columns:repeat(16,1fr);gap:4px;max-width:520px}
+  .cores i{aspect-ratio:1;border-radius:3px;background:var(--grid)}
+  .run .cores i{animation:lit .25s forwards}
+  @keyframes lit{to{background:#cfcfcb}}
+  .cap{margin-top:14px;color:var(--sec);font-size:12px}
+  .big8{font:600 44px/1 -apple-system;color:var(--fg);font-variant-numeric:tabular-nums;margin-bottom:14px}
+</style>
+</head>
+<body>
+<div class="dir" style="margin-bottom:20px">
+  <h1>本机诊断：等第一组结果的 8 秒，三个动画方向</h1>
+  <p class="lead">现在这 8 秒只有一行字和一大片白。三个方向都只表达「时间在走、还剩多少」，不编假数据。共用的一点：标题下第一段进度条按 8 秒匀速走满，「采样中」圆点慢慢呼吸。点「重放」看效果。</p>
+</div>
+
+<section class="dir" id="a">
+  <h2>A · 骨架预演</h2>
+  <p>正文直接摆出结果出来后的版式（三块面板 + 两列排行）的灰色骨架，一道光从左扫到右。结果到了骨架原地换成真数据，版面不跳。最稳，也最像通用 App。</p>
+  <div class="panel"><div class="head"><div class="title">本机诊断<small>看谁在占 CPU / GPU，再把证据交给 Agent</small></div>
+    <div class="status"><span class="state"><span class="dot"></span>采样中</span><span class="steps"><span class="step"><i></i></span><span class="step"><i></i></span></span><span class="cd">约 8 秒后显示第一组结果…</span></div></div>
+    <div class="body">
+      <div class="sk"><div><div class="bar" style="width:60%"></div><div class="bar big"></div><div class="bar"></div><div class="bar" style="width:70%"></div></div><div><div class="bar" style="width:50%"></div><div class="bar big"></div><div class="bar"></div><div class="bar" style="width:80%"></div></div><div><div class="bar" style="width:55%"></div><div class="bar big"></div><div class="bar"></div><div class="bar" style="width:65%"></div></div></div>
+      <div class="rows"><div><div class="bar"></div><div class="bar" style="width:85%"></div><div class="bar" style="width:70%"></div><div class="bar" style="width:55%"></div></div><div><div class="bar"></div><div class="bar" style="width:60%"></div><div class="bar" style="width:40%"></div></div></div>
+    </div>
+    <div class="foot">只在本机读取，结束后停止采样<button class="replay">重放</button></div></div>
+</section>
+
+<section class="dir" id="b">
+  <h2>B · 终端逐行</h2>
+  <p>正文像一段命令输出，逐行打出真实在做的步骤，最后一行用盲文转圈加倒数秒。和窗格里 Claude/Codex 的终端气质一致，最有 Keepline 的样子；步骤要对应采样真实的阶段。</p>
+  <div class="panel"><div class="head"><div class="title">本机诊断<small>看谁在占 CPU / GPU，再把证据交给 Agent</small></div>
+    <div class="status"><span class="state"><span class="dot"></span>采样中</span><span class="steps"><span class="step"><i></i></span><span class="step"><i></i></span></span><span class="cd">约 8 秒后显示第一组结果…</span></div></div>
+    <div class="body"><div class="term">
+      <div>✓ 读取整机 CPU、内存、GPU 设备</div>
+      <div>✓ 列出进程 · 第一次快照</div>
+      <div>✓ 对上 29 个终端和会话</div>
+      <div><span class="spin"></span><b>等第二次快照，用两次的差算占用</b> · 还剩 <b class="sec">8</b> 秒</div>
+    </div></div>
+    <div class="foot">只在本机读取，结束后停止采样<button class="replay">重放</button></div></div>
+</section>
+
+<section class="dir" id="c">
+  <h2>C · 核心格子 + 大倒数</h2>
+  <p>正文左上一个大号倒数秒，下面按本机核心数摆一排小方格，随时间一格格亮起（只表示时间，不表示每核负载）。有点仪表感，但要小心别像在显示真实负载。</p>
+  <div class="panel"><div class="head"><div class="title">本机诊断<small>看谁在占 CPU / GPU，再把证据交给 Agent</small></div>
+    <div class="status"><span class="state"><span class="dot"></span>采样中</span><span class="steps"><span class="step"><i></i></span><span class="step"><i></i></span></span><span>第一组结果</span></div></div>
+    <div class="body"><div class="big8"><span class="sec">8</span><span style="font-size:16px;color:var(--sec);font-weight:400"> 秒</span></div><div class="cores"></div><div class="cap">正在读取本机资源 · 16 核</div></div>
+    <div class="foot">只在本机读取，结束后停止采样<button class="replay">重放</button></div></div>
+</section>
+
+<script>
+  document.querySelectorAll('.cores').forEach(c=>{for(let i=0;i<16;i++){const e=document.createElement('i');e.style.animationDelay=(i*0.5)+'s';c.appendChild(e)}});
+  function play(sec){
+    sec.classList.remove('run');void sec.offsetWidth;sec.classList.add('run');
+    const t0=performance.now();
+    clearInterval(sec._t);
+    sec._t=setInterval(()=>{const left=Math.max(0,Math.ceil(8-(performance.now()-t0)/1000));
+      sec.querySelectorAll('.sec').forEach(e=>e.textContent=left);
+      const cd=sec.querySelector('.cd'); if(cd) cd.textContent=left?`约 ${left} 秒后显示第一组结果…`:'第一组结果已到';
+      if(!left) clearInterval(sec._t)},200);
+  }
+  document.querySelectorAll('.dir[id]').forEach(s=>{play(s);s.querySelector('.replay').onclick=()=>play(s)});
+</script>
+</body>
+</html>

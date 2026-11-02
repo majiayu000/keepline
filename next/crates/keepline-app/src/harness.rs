@@ -799,7 +799,13 @@ pub fn start(
             assert!(handle.update(cx, |view, _, _| view.visual_diagnostic_closed()).unwrap());
             cx.background_executor().timer(Duration::from_millis(300)).await;
             handle.update(cx, |view, window, cx| view.visual_open_diagnostics(window, cx)).unwrap();
-            cx.background_executor().timer(Duration::from_secs(18)).await;
+            // Mid-wait: the terminal lines, the spinner and the countdown.
+            cx.background_executor().timer(Duration::from_secs(3)).await;
+            cx.update_window(handle.into(), |_, window, app| {
+                window.refresh(); window.draw(app).clear(app);
+                window.render_to_image().unwrap().save(directory.join("waiting.png")).unwrap();
+            }).unwrap();
+            cx.background_executor().timer(Duration::from_secs(15)).await;
             let report = handle.update(cx, |view, _, cx| {
                 let report = view.visual_diagnostic_report(cx).expect("missing native diagnostic report");
                 assert!(report.complete && report.process_count > 0, "{report:?}");
