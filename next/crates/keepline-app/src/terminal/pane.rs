@@ -110,10 +110,6 @@ pub struct Pane {
     /// program took the mouse.
     toast: Option<gpui::SharedString>,
     toast_seq: u64,
-    /// "已复制" right where the mouse let go of a selection, so the copy is seen
-    /// where the eye already is; it fades on its own.
-    copied: Option<(Point<Pixels>, gpui::SharedString)>,
-    copied_seq: u64,
     /// The Agent running in this terminal, as the workbench last saw it.
     pub agent: Option<keepline_core::model::Agent>,
     /// Shares the tab with other panes: unless it holds focus, it fades and draws no
@@ -458,8 +454,6 @@ impl Pane {
             flash: false,
             toast: None,
             toast_seq: 0,
-            copied: None,
-            copied_seq: 0,
             agent: None,
             split: false,
             peek: false,
@@ -768,7 +762,7 @@ impl Pane {
             }
             // Copy on select, as iTerm2 and Ghostty do; a plain click selects nothing.
             if self.selected_text().is_some() {
-                self.copy_at(Some(event.position), cx);
+                self.copy(cx);
             }
             cx.notify();
         }
@@ -1104,24 +1098,6 @@ impl Pane {
         })
         .detach();
     }
-    fn show_copied(&mut self, at: Point<Pixels>, text: String, cx: &mut Context<Self>) {
-        self.copied = Some((at, text.into()));
-        self.copied_seq += 1;
-        let seq = self.copied_seq;
-        cx.notify();
-        cx.spawn(async move |this, cx| {
-            cx.background_executor()
-                .timer(std::time::Duration::from_millis(1400))
-                .await;
-            let _ = this.update(cx, |pane, cx| {
-                if pane.copied_seq == seq {
-                    pane.copied = None;
-                    cx.notify();
-                }
-            });
-        })
-        .detach();
-    }
     fn confirm_paste(&mut self, cx: &mut Context<Self>) {
         if let Some(text) = self.paste_confirm.take() {
             self.input(plain_paste(&text), cx);
@@ -1152,12 +1128,9 @@ impl Pane {
             .filter(|t| !t.is_empty())
     }
     /// Copies the selection; with nothing selected, the visible screen.
+    /// Says what was copied in the corner, away from the text being read. Copying the
+    /// whole screen is called out, as nothing was selected.
     pub fn copy(&mut self, cx: &mut Context<Self>) {
-        self.copy_at(None, cx);
-    }
-    /// Says what was copied: beside `at` when the mouse made the selection, otherwise
-    /// in the corner. Copying the whole screen is called out, as nothing was selected.
-    fn copy_at(&mut self, at: Option<Point<Pixels>>, cx: &mut Context<Self>) {
         let selected = self.selected_text();
         let whole_screen = selected.is_none();
         let text = selected.unwrap_or_else(|| {
@@ -1174,10 +1147,7 @@ impl Pane {
         });
         let note = copied_note(&text, whole_screen);
         cx.write_to_clipboard(gpui::ClipboardItem::new_string(text));
-        match at {
-            Some(at) => self.show_copied(at, note, cx),
-            None => self.show_toast(note, cx),
-        }
+        self.show_toast(note, cx);
     }
     /// Checks a hovered path word on disk. A relative one also asks the host where the
     /// program is now, then checks again, so a `cd` since the last hover is followed.
@@ -2336,33 +2306,6 @@ impl Render for Pane {
                                     .text_size(px(T::META))
                                     .text_color(T::color(T::secondary()))
                                     .child(hint),
-                            ),
-                    )
-                    .priority(2),
-                )
-            })
-            .when_some(self.copied.clone(), |d, (at, note)| {
-                // On the release row, just right of the pointer: a drag usually ends at
-                // the selection's end, so this covers only text after it, not the copy.
-                d.child(
-                    gpui::deferred(
-                        gpui::anchored()
-                            .position(at + gpui::point(px(T::S8 + T::S4), px(-11.)))
-                            .snap_to_window_with_margin(px(T::S8))
-                            .child(
-                                div()
-                                    .flex()
-                                    .items_center()
-                                    .gap(px(T::S4))
-                                    .px(px(T::S8))
-                                    .py(px(T::S2))
-                                    .rounded(px(T::CONTROL_RADIUS))
-                                    .bg(T::color(T::raised()))
-                                    .border(px(T::BORDER_WIDTH))
-                                    .border_color(T::color(T::card_border()))
-                                    .text_size(px(T::META))
-                                    .child(div().text_color(T::color(T::accent())).child("✓"))
-                                    .child(div().text_color(T::color(T::secondary())).child(note)),
                             ),
                     )
                     .priority(2),
