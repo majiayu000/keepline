@@ -373,20 +373,22 @@ def fig_remote():
     B = [Box("off", 120, 110, 130, 56, "Off", "muted", sub="没开远程"),
          Box("connecting", 380, 110, 160, 56, "Connecting", "wait", sub="连中继 · 重连等待"),
          Box("connected", 690, 110, 160, 56, "Connected", "done", sub="在线 · 手机可连"),
-         Box("failed", 380, 300, 160, 56, "Failed", "err", "final", sub="不再重试 · detail 说原因")]
+         Box("failed", 380, 300, 160, 56, "Failed", "err", sub="不再重试 · 等你改配置")]
     E = [
         {"from": "off", "to": "connecting", "label": "remote --relay 启动", "ldy": -16},
         {"from": "connecting", "to": "connected", "bend": -30, "label": "注册成功（退避重置为 1 秒）", "ldy": -14},
         {"from": "connected", "to": "connecting", "bend": -30, "label": "和中继断开 → 1s 起翻倍，最多 30s", "ldy": 14},
         {"from": "connecting", "to": "failed", "cls": "err", "label": "中继拒绝这台机器\n进程退出前上报", "ldx": -70},
-        {"from": "connected", "to": "failed", "cls": "err"},
+        {"from": "connected", "to": "failed", "cls": "err", "label": "同一配对码的新连接顶替\n中继发关闭码 4000", "ldx": 80, "ldy": 10},
+        {"from": "failed", "to": "connecting", "bend": 40, "cls": "thin", "label": "改配置\n（仍开着）", "ldx": 52},
+        {"from": "failed", "to": "off", "cls": "thin", "label": "关掉远程", "ldx": -40, "ldy": 10},
     ]
-    note = label_at(700, 290, "每台手机：offline → connecting → online / refused\n角色变更 Role · Kick 断开重连 · Revoke 解除配对", "e-label")
-    return svg(860, 380, B, E, extra_before=init_dot(20, 110, B[0], ""), extra_after=note, title="远程连接状态机")
+    note = label_at(430, 405, "任何状态下改配置：开着 → Connecting，关掉 → Off（configure 换 generation、杀掉旧进程）\n连中继的进程被信号杀掉：回 Connecting，1s 起翻倍、最多 30s 后重启\n每台手机：offline → connecting → online / refused · Role 改角色 · Kick 断开 · Revoke 解除配对", "e-label")
+    return svg(860, 460, B, E, extra_before=init_dot(20, 110, B[0], ""), extra_after=note, title="远程连接状态机")
 
 
 def fig_handoff():
-    W, H = 900, 400
+    W, H = 900, 470
     xs = {"new": 200, "old": 520, "pty": 790}
     out = [f'<svg viewBox="0 0 {W} {H}" role="img" aria-label="宿主升级交接时序" xmlns="http://www.w3.org/2000/svg">',
            '<defs><marker id="ah2" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" class="ah"/></marker></defs>']
@@ -407,6 +409,8 @@ def fig_handoff():
     out.append(label_at(520, 345, "旧宿主退出", "e-label err"))
     out.append(label_at(790, 200, "全程不知情\n进程照跑", "e-label"))
     out.append(label_at(200, 345, "以 Reaper::Pid 盯住进程\n退出码此后未知", "e-label"))
+    out.append(f'<line class="life" x1="40" y1="318" x2="{W-40}" y2="318" stroke-dasharray="6 4"/>')
+    out.append(label_at(450, 395, "虚线以上（ACK 之前）失败：旧宿主回「handoff not confirmed」，继续服务\n虚线以下（ACK 之后）新宿主还要等 host.lock ≤10s、建 socket、开数据库、恢复终端；\n这时失败旧宿主已经退出，没有回退", "e-label err"))
     out.append("</svg>")
     return "\n".join(out)
 
@@ -442,21 +446,24 @@ def fig_task():
     B = [Box("not", 110, 110, 150, 56, "未开始", "muted", sub="NotStarted"),
          Box("working", 400, 110, 150, 56, "进行中", "run", sub="Working"),
          Box("proven", 690, 110, 160, 56, "都有证据了", "done", sub="Proven · 仍待你确认"),
-         Box("done", 990, 110, 150, 56, "做完了", "done", "final", sub="Completed"),
+         Box("done", 990, 110, 150, 56, "做完了", "done", sub="Completed"),
+         Box("derive", 200, 330, 190, 64, "按证据重新派生", "", "mod", sub="→ 未开始 / 进行中 / 都有证据了"),
          Box("deferred", 560, 330, 160, 56, "稍后再看", "wait", sub="Deferred{until}"),
-         Box("abandoned", 900, 330, 150, 56, "放弃", "muted", "final", sub="Abandoned")]
+         Box("abandoned", 900, 330, 150, 56, "放弃", "muted", sub="Abandoned")]
     E = [
         {"from": "not", "to": "working", "label": "有会话挂上这个待办", "ldy": -16},
         {"from": "working", "to": "proven", "bend": -20, "label": "每条验收标准都挂上\n成功的测试 / 提交 / 改文件", "ldy": -30},
-        {"from": "proven", "to": "working", "bend": -20, "label": "新增或改了标准", "ldy": 14},
+        {"from": "proven", "to": "working", "bend": -20, "label": "新增一条空标准 / 移除证据\n（只改文字会保留证据）", "ldy": 22},
         {"from": "proven", "to": "done", "label": "标记完成（主按钮）", "ldy": -16},
         {"from": "working", "to": "done", "via": [(400, 30), (990, 30)], "cls": "thin", "label": "也可直接标记完成（不强制证据）", "seg": 2, "ldy": -10},
         {"from": "working", "to": "deferred", "label": "稍后再看", "ldx": 40},
-        {"from": "deferred", "to": "working", "bend": -60, "cls": "thin", "label": "到期 / 撤销 → Open\n重新按证据派生", "ldx": -75},
         {"from": "proven", "to": "abandoned", "cls": "thin", "label": "放弃", "ldx": 30},
-        {"from": "done", "to": "proven", "bend": -30, "cls": "thin", "label": "撤销结局", "ldy": 16},
+        {"from": "deferred", "to": "derive", "cls": "thin", "label": "到期 / 撤销结局", "ldy": -16},
+        {"from": "abandoned", "to": "derive", "via": [(900, 420), (200, 420)], "cls": "thin", "label": "撤销结局", "seg": 2, "ldy": 14},
+        {"from": "done", "to": "derive", "via": [(1080, 110), (1080, 420), (200, 420)], "cls": "thin", "label": "撤销结局", "seg": 2, "ldx": -36},
     ]
-    return svg(1100, 400, B, E, extra_before=init_dot(20, 110, B[0], ""), title="待办状态")
+    note = label_at(560, 470, "状态不存储：task_status 每次从结局 + 证据 + 挂着的会话现算；结局回到 Open 后落在哪一格，看那一刻的证据", "e-label")
+    return svg(1110, 490, B, E, extra_before=init_dot(20, 110, B[0], ""), extra_after=note, title="待办状态")
 
 
 def fig_criterion():
@@ -466,9 +473,10 @@ def fig_criterion():
     E = [
         {"from": "none", "to": "tried", "label": "挂上一条失败的测试", "ldy": -16},
         {"from": "tried", "to": "proven", "label": "再挂上一条成功的记录", "ldy": -16},
-        {"from": "none", "to": "proven", "bend": 55, "label": "直接挂上成功的 test / commit / file（退出码 0）", "ldy": 4},
+        {"from": "none", "to": "proven", "bend": 55, "label": "直接挂上成功的 test / commit / file（退出码 0）", "ldx": -200, "ldy": 22},
+        {"from": "proven", "to": "tried", "via": [(810, 200), (480, 200)], "cls": "thin", "label": "移除成功的那条证据：还剩失败的 → 只有尝试；什么都不剩 → 没有证据", "seg": 2, "ldy": 14},
     ]
-    return svg(960, 175, B, E, title="验收标准证据")
+    return svg(960, 235, B, E, title="验收标准证据")
 
 
 def fig_notify():
@@ -479,7 +487,7 @@ def fig_notify():
               ("a4", "系统通知 + 声音\n只开声音时只响一下")]
     lane_b = [("b1", "Hooks::changes()\nstarted · waiting\nerror · done"),
               ("b2", "每回合 / 每个对话框\n只触发一次\n宿主刚启动只记录"),
-              ("b3", "每个 hook 一个线程\n超时 ≤ 30s\n同时最多 8 个"),
+              ("b3", "每个 hook 一个线程\n超时 ≤ 30s · 同时最多 8 个\n满了直接丢弃，只记日志"),
               ("b4", "command：stdin JSON\n+ KEEPLINE_* 变量\n或 webhook POST")]
     for i, (id_, t) in enumerate(lane_a):
         B.append(Box(id_, 350 + i * 215, 95, 190, 74, t, "wait" if i == 3 else "", "mod"))
@@ -538,17 +546,19 @@ def fig_hostlife():
          Box("stale", 780, 110, 170, 56, "宿主在跑 · 旧版本", "wait", sub="App 顶部提示有新后台"),
          Box("take", 780, 300, 170, 56, "接管中", "wait", sub="serve --takeover ≤ 20s"),
          Box("fresh", 440, 300, 170, 56, "停旧宿主 · 起新的", "err", sub="终端变 Interrupted")]
+    # 新宿主收到 fd 并回 ACK 后，旧宿主立即退出
     E = [
         {"from": "none", "to": "same", "label": "spawn_host：setsid 起 serve\n等 workbench.sock 应答 ≤ 5s", "ldy": -26},
         {"from": "same", "to": "stale", "label": "App 升级，digest 不同", "ldy": -16},
         {"from": "stale", "to": "take", "label": "你点重启\n旧宿主支持交接", "ldx": 62},
         {"from": "take", "to": "same", "label": "新 build 应答\n终端照跑", "ldx": -105, "ldy": -40},
-        {"from": "take", "to": "stale", "bend": -60, "cls": "err", "label": "新宿主没接住\n旧宿主照常运行", "ldx": -60},
+        {"from": "take", "to": "stale", "bend": -60, "cls": "err", "label": "ACK 前失败\n旧宿主照常运行", "ldx": -60},
+        {"from": "take", "to": "none", "via": [(780, 372), (120, 372)], "cls": "err", "label": "ACK 后新宿主起不来：旧宿主已退出，不能回退", "seg": 2, "ldy": 14},
         {"from": "stale", "to": "fresh", "cls": "thin", "label": "旧宿主不支持交接", "ldx": 25, "ldy": 45},
         {"from": "fresh", "to": "same", "label": "App 重开连上新宿主\n可用原参数恢复对话", "ldx": -80},
         {"from": "same", "to": "none", "bend": -40, "cls": "thin", "label": "宿主崩了 / 被杀", "ldy": 14},
     ]
-    return svg(920, 380, B, E, extra_before=init_dot(20, 110, B[0], ""), title="宿主生命周期")
+    return svg(920, 410, B, E, extra_before=init_dot(20, 110, B[0], ""), title="宿主生命周期")
 
 
 def ladder(rows):
@@ -632,12 +642,13 @@ CODE = [
     ("窗格 / 侧栏", "next/crates/keepline-app/src/model/session_state.rs:262", "sidebar_status · idle_status · track_unseen"),
     ("绑定", "next/crates/keeplined/src/recognition.rs:446", "reconcile；Binding 定义在 model.rs:206"),
     ("识别健康", "next/crates/keeplined/src/host/association.rs:271", "recover_logs；RecognitionPhase 在 protocol.rs:364"),
-    ("远程", "next/crates/keeplined/src/relay.rs:140", "Live::state；RemoteState 在 protocol.rs:218；手机端 next/mobile/src/remote/hub.ts"),
-    ("宿主交接", "next/crates/keeplined/src/host/mod.rs:650", "take_over；fd 传递在 handoff.rs"),
+    ("远程", "next/crates/keeplined/src/relay.rs:140", "Live::state；关闭码 4000 在 relay.rs:629；改配置 / 关闭在 host/remote.rs:99；RemoteState 在 protocol.rs:218；手机端 next/mobile/src/remote/hub.ts"),
+    ("宿主交接", "next/crates/keeplined/src/host/mod.rs:650", "take_over；ACK 在 :687，旧宿主收 ACK 即退出在 host/client.rs:139；fd 传递在 handoff.rs"),
     ("待办状态", "next/crates/keepline-app/src/workbench/task_detail.rs:29", "task_status；证据 attachable 在同文件；Evidence::proves 在 keepline-core/src/content.rs:31"),
     ("待办挂到会话", "next/crates/keepline-core/src/model.rs:705", "首次绑定时消耗 pending_tasks 或标签 default_task"),
     ("系统通知", "next/crates/keepline-app/src/desktop.rs:78", "fact / entered；回执 keeplined/src/store.rs:128"),
-    ("hooks.json", "next/crates/keeplined/src/plugin_hooks.rs:28", "event / changes"),
+    ("hooks.json", "next/crates/keeplined/src/plugin_hooks.rs:28", "event / changes；满 8 个丢弃在 :146"),
+    ("额度", "next/crates/keepline-core/src/quota.rs:1", "latest 取每家最新读数；SHOWN_FOR 7 天；Window::reset"),
     ("审批", "next/crates/keeplined/src/host/client.rs:819", "answer_approval；画面检查 host/status.rs:182；角色 keepline-remote/src/role.rs:33"),
     ("窗格连接", "next/crates/keepline-app/src/connection.rs:80", "Attach / 帧处理；owner 判定 keeplined/src/host/live.rs:401"),
     ("宿主生命周期", "next/crates/keepline-app/src/lifecycle.rs:150", "spawn_host / restart_host"),
@@ -745,7 +756,7 @@ def page():
 <div class="fig">{fig_process()}{LEGEND}</div>
 
 <h2 id="turn">5 · 回合 <code>Turn</code></h2>
-<p class="note">核心状态机。每次变化由 <code>settle()</code> 记下是哪路信号定的（日志 / Hook / 画面 / 官方状态 / 子 Agent），进入 Waiting 时 <code>waiting_episode += 1</code>，同一个对话框被多路信号报到只算一次通知。任何状态收到新的用户发话都回到 Running。</p>
+<p class="note">核心状态机。每次变化由 <code>settle()</code> 记下是哪路信号定的（日志 / Hook / 画面 / 官方状态 / 子 Agent），进入 Waiting 时 <code>waiting_episode += 1</code>，同一个对话框被多路信号报到，每条通知路只发一次（见第 13 节）。任何状态收到新的用户发话都回到 Running。</p>
 <div class="fig">{fig_turn()}{LEGEND}</div>
 
 <h2 id="outcome">6 · 结局 <code>Outcome</code>：做没做完由你定</h2>
@@ -771,7 +782,7 @@ def page():
 </div>
 
 <h2 id="handoff">11 · 宿主升级交接</h2>
-<p class="note">app 发现正在跑的宿主和自己带的不是同一份代码（digest 不同），就启动新宿主接管。终端里的 shell 和 Agent 不会察觉。</p>
+<p class="note">app 发现正在跑的宿主和自己带的不是同一份代码（digest 不同）只会提示；你点重启后，旧宿主支持交接才由新宿主接管（见第 16 节）。交接成功时终端里的 shell 和 Agent 不会察觉。分界在 ACK：ACK 前失败旧宿主继续服务，ACK 后旧宿主已退出，新宿主再失败就没有回退。</p>
 <div class="fig">{fig_handoff()}</div>
 
 <h2 id="task">12 · 待办与验收证据</h2>
@@ -782,7 +793,7 @@ def page():
 <p class="note">新会话挂上哪个待办：第一次绑定到终端时，先用 <code>pending_tasks[终端]</code>（用一次就删掉；显式设为空则表示「这次不挂」），没有就用标签的 <code>default_task</code>。之后换终端、resume 都不再改。</p>
 
 <h2 id="notify">13 · 通知链路</h2>
-<p class="note">两条独立的路，都从 Workspace 的变化出发、都只看 Keepline 终端里的会话。去重的单位是「一个回合的一个对话框」：同一个对话框被日志、Hook、画面先后报到，<code>waiting_episode</code> 不变，只通知一次。</p>
+<p class="note">两条独立的路，都从 Workspace 的变化出发、都只看 Keepline 终端里的会话，<b>各自去重、互不知情</b>：同一个对话框会弹一次系统通知，也会跑一次 hooks.json。每条路内部去重的单位是「一个回合的一个对话框」：日志、Hook、画面先后报到，<code>waiting_episode</code> 不变，这条路只发一次。hooks.json 同时在跑的满 8 个时，新触发直接丢弃，不排队、不补发。</p>
 <div class="fig">{fig_notify()}</div>
 
 <h2 id="approval">14 · 审批应答</h2>
@@ -790,7 +801,7 @@ def page():
 <div class="fig">{fig_approval()}</div>
 
 <h2 id="conn">15 · 窗格连接</h2>
-<p class="note">每个窗格一条到宿主的流：先收 VT 快照，再收增量。一个终端同一时刻只有一个连接能写（owner），其余只读。</p>
+<p class="note">每个窗格一条到宿主的流：先收 VT 快照，再收增量。一个终端同一时刻只有一个 Attach 流能写（owner），其余只读。<b>这把锁只管窗格的 Attach 流</b>：手机的发送文本、按键、回答审批走独立 RPC（<code>SendText</code> / <code>AnswerApproval</code>），不看 owner，只受手机角色限制，所以手机和正在写的窗格可以同时往一个终端输入。</p>
 <div class="fig">{fig_conn()}{LEGEND}</div>
 
 <h2 id="hostlife">16 · 宿主生命周期</h2>
@@ -804,6 +815,7 @@ def page():
 <h2 id="agents">18 · 各家 Agent 能给的信号</h2>
 <p class="note">宿主其余部分与 CLI 无关，差异都收在 <code>keeplined/src/agents/</code> 的 Adapter 里。信号越少的 CLI 越依赖画面规则和日志，「等你回答」也越可能晚一点。</p>
 {AGENTS}
+<p class="note"><b>额度怎么来、怎么过期</b>（<code>keepline-core/src/quota.rs</code>）：Keepline 从不向供应商请求额度，只读各 CLI 在本机留下的记录：Codex 写在对话日志里，Claude Code 经 Keepline 包装的 statusline 记下，Grok 在启动日志里。Cursor、Qoder 本地不记额度（Qoder 只记每次回复花的点数）。展示时按 Agent 类型取最新一条读数，超过 7 天（<code>SHOWN_FOR</code>）的不显示；读数里某个窗口的重置时间已过（<code>Window::reset</code>），旧百分比就不再算数，要等下次用这个 CLI 才会更新。所以额度永远只和最后一条记录一样新，每个读数都带着记录时间。</p>
 
 <h2 id="plugins">19 · 插件的七种挂点</h2>
 <p class="note">插件是一个目录，<code>plugin.json</code> 声明 <code>provides</code>，每种对应一个文件。只有左栏插件跑 wasm，其余都是声明式数据或外部命令。</p>
@@ -811,7 +823,7 @@ def page():
 
 <h2 id="code">20 · 代码索引</h2>
 <table><tr><th>状态</th><th>定义</th><th>转移在哪</th></tr>{code_rows}</table>
-<p class="note">本页由 <code>specs/architecture/gen.py</code> 生成，改图请改脚本里的数据后重跑。生成于 2026-11-02，对应 main 6dc82074。</p>
+<p class="note">本页由 <code>specs/architecture/gen.py</code> 生成，改图请改脚本里的数据后重跑。生成于 2026-11-02，对应 main 270f49fe。</p>
 </main></body></html>
 """
 
