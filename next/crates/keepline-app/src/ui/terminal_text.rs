@@ -15,6 +15,21 @@ pub enum UnfocusedCursor {
     Hollow,
 }
 
+/// Where ⌘-clicking `file.rs:42` in a terminal opens it, at that line.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub enum Editor {
+    /// The first of Zed, VS Code and Cursor that is installed, else the default app.
+    #[default]
+    Auto,
+    Zed,
+    VsCode,
+    Cursor,
+    /// `$EDITOR` in a new terminal tab.
+    Terminal,
+    /// The file's default app, which ignores the line.
+    System,
+}
+
 /// Fields added later fall back to their defaults in an older file.
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(default)]
@@ -29,6 +44,7 @@ pub struct TerminalText {
     pub unfocused_cursor: UnfocusedCursor,
     /// The focused cursor blinks unless the program asked for a steady one.
     pub cursor_blink: bool,
+    pub editor: Editor,
 }
 impl Default for TerminalText {
     fn default() -> Self {
@@ -40,6 +56,7 @@ impl Default for TerminalText {
             unfocused_dim: 0.,
             unfocused_cursor: UnfocusedCursor::Hidden,
             cursor_blink: true,
+            editor: Editor::Auto,
         }
     }
 }
@@ -116,6 +133,7 @@ mod tests {
             unfocused_dim: 0.3,
             unfocused_cursor: UnfocusedCursor::Hollow,
             cursor_blink: false,
+            editor: Editor::Cursor,
         };
         assert_eq!(
             TerminalText::parse(&serde_json::to_string(&value).unwrap()).unwrap(),
@@ -139,5 +157,6 @@ mod tests {
         assert_eq!(value.unfocused_dim, 0.);
         assert_eq!(value.unfocused_cursor, UnfocusedCursor::Hidden);
         assert!(value.cursor_blink);
+        assert_eq!(value.editor, Editor::Auto);
     }
 }

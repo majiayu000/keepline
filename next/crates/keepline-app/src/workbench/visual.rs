@@ -792,6 +792,7 @@ impl Workbench {
                     terminal: "p0".into(),
                     position: gpui::point(px(T::WINDOW_WIDTH / 2.), px(T::TOP * 3.)),
                     page: MenuPage::Main,
+                    path: None,
                 });
             }
             // Runs the first action a real pane offers, as a click in its menu would.

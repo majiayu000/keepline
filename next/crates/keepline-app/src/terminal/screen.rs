@@ -59,6 +59,10 @@ pub struct Screen {
     pub links: Vec<Link>,
     /// Text that reads like a file path; only one that exists on disk becomes clickable.
     pub paths: Vec<Link>,
+    /// Each row's cells (column, width, first char) and whether it soft-wraps into the
+    /// next, kept so a path broken over rows is found again when only one row changes.
+    pub cells: Vec<Vec<(u16, u16, char)>>,
+    pub wrapped: Vec<bool>,
     /// Per viewport row, the selected columns (inclusive) of the terminal's selection.
     pub selection: Vec<Option<(u16, u16)>>,
 }
@@ -69,6 +73,11 @@ pub struct Link {
     pub col: u16,
     pub cols: u16,
     pub uri: String,
+    /// A path broken over rows is one word in several pieces; each piece carries the
+    /// whole word in `uri`, where the first piece starts, and its own text in case the
+    /// joined word is not a real file (a path that just ended at the edge).
+    pub start: (u16, u16),
+    pub alone: Option<String>,
 }
 impl Screen {
     pub fn link_at(&self, row: u16, col: u16) -> Option<&Link> {
@@ -96,17 +105,101 @@ pub fn allowed_link(uri: &str) -> bool {
 /// program printed no OSC 8 link. `cells` holds each cell's column, width and first char.
 /// A URL ends at whitespace or any non-ASCII char, so `端口：http://a/b。` stops before `。`;
 /// trailing punctuation and unbalanced closing brackets belong to the prose around it.
-/// Words in one row that read like file paths: `~/x`, `/x`, `./x`, `a/b`, or `name.ext`,
-/// each with an optional `:line[:col]`. A word ends at whitespace, quotes, brackets and
+/// Words that read like file paths: `~/x`, `/x`, `./x`, `a/b`, or `name.ext`, each with
+/// an optional `:line[:col]`. A word ends at whitespace, quotes, brackets, box lines and
 /// CJK punctuation, so `链接到了 ~/.claude/skills。` yields `~/.claude/skills`. Whether it
 /// exists is the pane's question, asked only on hover.
-fn text_paths(row: u16, cells: &[(u16, u16, char)]) -> Vec<Link> {
+///
+/// A row's last word runs on into the next row's first word when the row soft-wraps, or
+/// when it reaches the right edge (`cols`) as an Agent's own line breaking leaves a long
+/// path, so a path broken by a narrow pane is still one word.
+fn find_paths(rows: &[Vec<(u16, u16, char)>], wrapped: &[bool], cols: u16) -> Vec<Link> {
+    let words: Vec<Vec<(usize, usize)>> = rows.iter().map(|cells| row_words(cells)).collect();
+    let text = |y: usize, (i, end): (usize, usize)| -> String {
+        rows[y][i..end].iter().map(|c| c.2).collect()
+    };
+    let mut paths = Vec::new();
+    // The rows whose first word was taken into the word above.
+    let mut taken = vec![false; rows.len()];
+    for y in 0..rows.len() {
+        for (k, &word) in words[y].iter().enumerate() {
+            if k == 0 && taken[y] {
+                continue;
+            }
+            let mut pieces = vec![(y, word)];
+            let (mut ly, mut lk) = (y, k);
+            loop {
+                let (_, end) = words[ly][lk];
+                let next = ly + 1;
+                let soft = wrapped.get(ly).copied().unwrap_or(false);
+                let edge = rows[ly][end - 1].0 + rows[ly][end - 1].1;
+                if lk + 1 != words[ly].len()
+                    || next >= rows.len()
+                    || words[next].is_empty()
+                    // Only spaces may follow the piece in its row.
+                    || !rows[ly][end..].iter().all(|c| c.2 == ' ')
+                    || !(soft || edge + 2 >= cols)
+                    // A soft wrap continues at column 0.
+                    || (soft && words[next][0].0 != 0)
+                {
+                    break;
+                }
+                // Prose that happens to reach the edge is not glued to the next line.
+                let so_far: String = pieces.iter().map(|&(py, w)| text(py, w)).collect();
+                if !looks_like_path(&(so_far + &text(next, words[next][0]))) {
+                    break;
+                }
+                pieces.push((next, words[next][0]));
+                (ly, lk) = (next, 0);
+            }
+            let whole: String = pieces.iter().map(|&(py, w)| text(py, w)).collect();
+            let whole = trim_word(&whole);
+            if !looks_like_path(&whole) {
+                continue;
+            }
+            let start = (y as u16, rows[y][word.0].0);
+            let joined = pieces.len() > 1;
+            for (n, &(py, (i, end))) in pieces.iter().enumerate() {
+                if n > 0 {
+                    taken[py] = true;
+                }
+                let mut end = end;
+                if n + 1 == pieces.len() {
+                    while end > i && matches!(rows[py][end - 1].2, '.' | ':' | '!' | '?') {
+                        end -= 1;
+                    }
+                }
+                if end == i {
+                    continue;
+                }
+                let own = trim_word(&text(py, (i, end)));
+                let last = rows[py][end - 1];
+                paths.push(Link {
+                    row: py as u16,
+                    col: rows[py][i].0,
+                    cols: last.0 + last.1 - rows[py][i].0,
+                    uri: whole.clone(),
+                    start,
+                    alone: (joined && looks_like_path(&own)).then_some(own),
+                });
+            }
+        }
+    }
+    paths
+}
+/// A word's trailing `.`, `:`, `!` and `?` belong to the sentence around it.
+fn trim_word(word: &str) -> String {
+    word.trim_end_matches(['.', ':', '!', '?']).to_owned()
+}
+/// Where each word of one row starts and ends, as indexes into `cells`.
+fn row_words(cells: &[(u16, u16, char)]) -> Vec<(usize, usize)> {
     let separator = |c: char| {
         c.is_whitespace()
             || "\"'`()[]{}<>|,;*".contains(c)
             || "。，、；：！？（）「」『』《》【】“”‘’…".contains(c)
+            || ('\u{2500}'..='\u{259f}').contains(&c)
     };
-    let mut paths = Vec::new();
+    let mut words = Vec::new();
     let mut i = 0;
     while i < cells.len() {
         if separator(cells[i].2) {
@@ -117,23 +210,10 @@ fn text_paths(row: u16, cells: &[(u16, u16, char)]) -> Vec<Link> {
         while end < cells.len() && !separator(cells[end].2) {
             end += 1;
         }
-        let next = end;
-        while end > i && matches!(cells[end - 1].2, '.' | ':' | '!' | '?') {
-            end -= 1;
-        }
-        let word: String = cells[i..end].iter().map(|c| c.2).collect();
-        if looks_like_path(&word) {
-            let last = cells[end - 1];
-            paths.push(Link {
-                row,
-                col: cells[i].0,
-                cols: last.0 + last.1 - cells[i].0,
-                uri: word,
-            });
-        }
-        i = next;
+        words.push((i, end));
+        i = end;
     }
-    paths
+    words
 }
 fn looks_like_path(word: &str) -> bool {
     let (file, _) = split_line(word);
@@ -154,17 +234,28 @@ fn looks_like_path(word: &str) -> bool {
 }
 /// `a.rs:42:7` is `a.rs` at line 42; anything else is all file.
 pub fn split_line(word: &str) -> (&str, Option<u32>) {
+    let (file, at) = split_position(word);
+    (file, at.map(|(line, _)| line))
+}
+/// `a.rs:42:7` is `a.rs` at line 42, column 7.
+pub fn split_position(word: &str) -> (&str, Option<(u32, Option<u32>)>) {
     let mut parts = word.rsplitn(3, ':');
     let last = parts.next().unwrap_or_default();
     let mid = parts.next();
     let digits = |s: &str| !s.is_empty() && s.bytes().all(|b| b.is_ascii_digit());
     match (mid, parts.next()) {
         (Some(line), Some(file)) if digits(line) && digits(last) && !file.is_empty() => {
-            (file, line.parse().ok())
+            match line.parse() {
+                Ok(n) => (file, Some((n, last.parse().ok()))),
+                Err(_) => (word, None),
+            }
         }
-        (Some(file), _) if digits(last) && !file.is_empty() => {
+        (Some(_), _) if digits(last) && word.len() > last.len() + 1 => {
             let file = &word[..word.len() - last.len() - 1];
-            (file, last.parse().ok())
+            match last.parse() {
+                Ok(n) => (file, Some((n, None))),
+                Err(_) => (word, None),
+            }
         }
         _ => (word, None),
     }
@@ -222,6 +313,8 @@ fn text_links(row: u16, cells: &[(u16, u16, char)]) -> Vec<Link> {
                 col: cells[i].0,
                 cols: last.0 + last.1 - cells[i].0,
                 uri,
+                start: (row, cells[i].0),
+                alone: None,
             });
         }
         i = end.max(i + 1);
@@ -354,7 +447,6 @@ impl Capture {
             }
             changed += 1;
             out.links.retain(|link| link.row != y as u16);
-            out.paths.retain(|path| path.row != y as u16);
             let mut b = RowBuilder::new(&mut out.rows[y]);
             let mut cells = self.cells.update(row)?;
             let mut x = 0u16;
@@ -427,6 +519,8 @@ impl Capture {
                             col: x,
                             cols: width,
                             uri: uri.into(),
+                            start: (y as u16, x),
+                            alone: None,
                         });
                     }
                 }
@@ -434,7 +528,12 @@ impl Capture {
                 b.push(x, width, &text, fg, bg, attrs);
                 x += 1;
             }
-            out.paths.extend(text_paths(y as u16, &line));
+            if out.cells.len() <= y {
+                out.cells.resize(y + 1, Vec::new());
+                out.wrapped.resize(y + 1, false);
+            }
+            out.cells[y].clone_from(&line);
+            out.wrapped[y] = row.raw_row()?.is_wrapped()?;
             for link in text_links(y as u16, &line) {
                 let taken = |l: &Link| {
                     l.row == link.row && l.col < link.col + link.cols && link.col < l.col + l.cols
@@ -448,7 +547,11 @@ impl Capture {
         out.rows.truncate(y);
         out.selection.truncate(y);
         out.links.retain(|link| (link.row as usize) < y);
-        out.paths.retain(|path| (path.row as usize) < y);
+        out.cells.truncate(y);
+        out.wrapped.truncate(y);
+        if changed > 0 || full {
+            out.paths = find_paths(&out.cells, &out.wrapped, dimensions.0);
+        }
         let cur = snap.cursor()?;
         out.cursor = cur.viewport.map(|v| (v.x, v.y));
         out.cursor_visible = cur.visible;
@@ -1204,6 +1307,34 @@ mod tests {
         assert!(osc.iter().all(|l| l.uri == "https://osc.example"));
     }
     #[test]
+    fn a_path_broken_over_rows_is_one_word() {
+        fn piece(s: &Screen, row: u16) -> Vec<(u16, u16, &str, Option<&str>)> {
+            s.paths
+                .iter()
+                .filter(|p| p.row == row)
+                .map(|p| (p.col, p.cols, p.uri.as_str(), p.alone.as_deref()))
+                .collect()
+        }
+        // The terminal wraps it: a soft wrap.
+        let mut vt = Vt::new(20, 4).unwrap();
+        vt.feed(b"see /tmp/aaaa/bbbbbbbbbbbb.rs:3 ok");
+        let s = capture(&vt).unwrap();
+        let whole = "/tmp/aaaa/bbbbbbbbbbbb.rs:3";
+        assert_eq!(piece(&s, 0), [(4, 16, whole, Some("/tmp/aaaa/bbbbbb"))]);
+        assert_eq!(piece(&s, 1), [(0, 11, whole, Some("bbbbbb.rs:3"))]);
+        assert!(s.paths.iter().all(|p| p.start == (0, 4)));
+        // An Agent breaks it at the edge itself and indents the rest.
+        let mut vt = Vt::new(24, 4).unwrap();
+        vt.feed("- 见 /Users/me/project/a\r\n  bc/def.rs 和其他\r\nshort a.rs\r\nrest".as_bytes());
+        let s = capture(&vt).unwrap();
+        let whole = "/Users/me/project/abc/def.rs";
+        assert_eq!(piece(&s, 0), [(5, 19, whole, Some("/Users/me/project/a"))]);
+        assert_eq!(piece(&s, 1), [(2, 9, whole, Some("bc/def.rs"))]);
+        // A row that stops short of the edge does not run on.
+        assert_eq!(piece(&s, 2), [(6, 4, "a.rs", None)]);
+        assert!(piece(&s, 3).is_empty());
+    }
+    #[test]
     fn path_words_are_found_without_prose_or_versions() {
         let mut vt = Vt::new(100, 4).unwrap();
         vt.feed(
@@ -1230,6 +1361,8 @@ mod tests {
         assert_eq!(split_line("a.rs:42:7"), ("a.rs", Some(42)));
         assert_eq!(split_line("a.rs:42"), ("a.rs", Some(42)));
         assert_eq!(split_line("C:x"), ("C:x", None));
+        assert_eq!(split_position("a.rs:42:7"), ("a.rs", Some((42, Some(7)))));
+        assert_eq!(split_position("a.rs:42"), ("a.rs", Some((42, None))));
         let cwd = std::path::Path::new("/work");
         assert_eq!(
             resolve_path("src/a.rs:3", Some(cwd)).unwrap(),

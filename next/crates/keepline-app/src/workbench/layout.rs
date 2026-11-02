@@ -323,10 +323,16 @@ impl Workbench {
             .on_mouse_down(
                 gpui::MouseButton::Right,
                 cx.listener(move |this, event: &gpui::MouseDownEvent, _, cx| {
+                    let path = this
+                        .layout
+                        .panes
+                        .get(&menu_id)
+                        .and_then(|p| p.read(cx).path_target());
                     this.layout.menu = Some(PaneMenu {
                         terminal: menu_id.clone(),
                         position: event.position,
                         page: MenuPage::Main,
+                        path,
                     });
                     cx.stop_propagation();
                     cx.notify();
@@ -810,6 +816,81 @@ impl Workbench {
         }
         cx.notify();
     }
+    /// The right-clicked path's entries: open it, show it, copy it whole or relative.
+    fn path_entries(
+        &self,
+        terminal: &str,
+        target: &crate::terminal::pane::Hovered,
+        cx: &Context<Self>,
+    ) -> Vec<gpui::AnyElement> {
+        use crate::terminal::{open_path, pane::Pane};
+        let relative = open_path::relative(&target.path, target.cwd.as_deref());
+        let name = target
+            .path
+            .file_name()
+            .map_or_else(|| target.path.to_string_lossy(), |n| n.to_string_lossy())
+            .into_owned();
+        let mut entries = vec![
+            label(name)
+                .h(px(T::ROW))
+                .px(px(T::S10))
+                .flex()
+                .items_center()
+                .truncate()
+                .into_any_element(),
+        ];
+        let items: [(&str, String, bool); 4] = [
+            ("open", Pane::open_title(target), true),
+            ("reveal", "在访达中显示".into(), true),
+            ("copy", "复制路径".into(), true),
+            ("copy-relative", "复制相对路径".into(), relative.is_some()),
+        ];
+        for (key, title, enabled) in items {
+            let terminal = terminal.to_owned();
+            let target = target.clone();
+            let relative = relative.clone();
+            entries.push(
+                button(gpui::SharedString::from(format!("menu-path-{key}")), title)
+                    .w_full()
+                    .justify_start()
+                    .border_0()
+                    .when(!enabled, |d| d.opacity(0.4))
+                    .on_click(cx.listener(move |this, _, _, cx| {
+                        if !enabled {
+                            return;
+                        }
+                        this.layout.menu = None;
+                        if let Some(pane) = this.layout.panes.get(&terminal) {
+                            pane.update(cx, |p, cx| match key {
+                                "open" => p.open_target(&target, false, cx),
+                                "reveal" => p.open_target(&target, true, cx),
+                                "copy" => p.copy_note(
+                                    target.path.to_string_lossy().into_owned(),
+                                    "已复制路径",
+                                    cx,
+                                ),
+                                _ => p.copy_note(
+                                    relative.clone().unwrap_or_default(),
+                                    "已复制相对路径",
+                                    cx,
+                                ),
+                            });
+                        }
+                        cx.notify();
+                    }))
+                    .into_any_element(),
+            );
+        }
+        entries.push(
+            div()
+                .h(px(T::S4))
+                .border_b(px(T::BORDER_WIDTH))
+                .border_color(T::color(T::border()))
+                .mb(px(T::S4))
+                .into_any_element(),
+        );
+        entries
+    }
     pub(super) fn menu_view(
         &self,
         menu: &PaneMenu,
@@ -824,6 +905,9 @@ impl Workbench {
         let mut entries = Vec::new();
         match menu.page {
             MenuPage::Main => {
+                if let Some(target) = &menu.path {
+                    entries.extend(self.path_entries(&menu.terminal, target, cx));
+                }
                 for title in [
                     "向右分屏",
                     "向下分屏",
@@ -1549,6 +1633,7 @@ impl Workbench {
                     let pane = cx.new(|cx| Pane::new(this.store.socket(), &takeover, true, cx));
                     window.focus(&pane.focus_handle(cx), cx);
                     cx.observe(&pane, |_, _, cx| cx.notify()).detach();
+                    Self::watch_pane(&pane, cx);
                     this.layout.panes.insert(takeover.clone(), pane);
                     cx.notify();
                 })),

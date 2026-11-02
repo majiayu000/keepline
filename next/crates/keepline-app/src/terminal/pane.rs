@@ -72,7 +72,11 @@ pub struct Pane {
     hover_link: Option<(u16, u16)>,
     /// The path word under the pointer, and where it points when that exists on disk.
     hover_word: Option<screen::Link>,
-    hover_path: Option<std::path::PathBuf>,
+    hover_path: Option<Hovered>,
+    /// The modifiers last seen, so links are underlined only while ⌘ is held, and where
+    /// the pointer is, for the note saying what a click would do.
+    modifiers: gpui::Modifiers,
+    pointer: Option<Point<Pixels>>,
     /// The program's working directory, asked from the host when a relative path is hovered.
     cwd: Option<std::path::PathBuf>,
     /// When the footer last asked the host for that directory; output re-asks at most
@@ -126,6 +130,24 @@ pub struct Pane {
     started_under: Option<keepline_core::terminal::Scheme>,
     tint_note_dismissed: bool,
 }
+/// A hovered path word that exists on disk.
+#[derive(Clone, Debug, PartialEq)]
+pub struct Hovered {
+    pub path: std::path::PathBuf,
+    /// The line and column the word named, as in `pane.rs:651:7`.
+    pub at: Option<(u32, Option<u32>)>,
+    /// The whole word named it, not one piece of a word broken over rows, so every
+    /// piece is underlined.
+    pub whole: bool,
+    /// The program's directory when hovered, for copying the path relative to it.
+    pub cwd: Option<std::path::PathBuf>,
+}
+/// What the pane asks of the workbench around it.
+pub enum PaneEvent {
+    /// Run `command` in a new terminal tab started in `cwd`.
+    Run { command: String, cwd: String },
+}
+impl gpui::EventEmitter<PaneEvent> for Pane {}
 impl Focusable for Pane {
     fn focus_handle(&self, _: &App) -> FocusHandle {
         self.focus.clone()
@@ -278,7 +300,8 @@ impl Pane {
         word: &str,
     ) -> Option<(gpui::Point<Pixels>, Option<std::path::PathBuf>)> {
         let (bounds, metrics) = (self.bounds?, self.metrics?);
-        let link = self.screen.paths.iter().find(|l| l.uri == word)?;
+        // The last piece, so a path broken over rows is hovered where it ends.
+        let link = self.screen.paths.iter().rfind(|l| l.uri == word)?;
         let hovered = (self.hover_word.as_ref() == Some(link))
             .then(|| self.shown_path().cloned())
             .flatten();
@@ -289,6 +312,11 @@ impl Pane {
             ),
             hovered,
         ))
+    }
+    /// The note shown beside the pointer for a click on what it is over.
+    #[cfg(feature = "visual-test")]
+    pub fn visual_hint(&self) -> Option<String> {
+        self.click_hint()
     }
     /// The program reads the mouse itself, so a plain drag goes to it, not to selection.
     pub fn takes_mouse(&self) -> bool {
@@ -409,6 +437,8 @@ impl Pane {
             hover_link: None,
             hover_word: None,
             hover_path: None,
+            modifiers: gpui::Modifiers::default(),
+            pointer: None,
             cwd: None,
             cwd_asked: None,
             cwd_due: false,
@@ -647,16 +677,12 @@ impl Pane {
             cx.stop_propagation();
             return;
         }
-        // A folder opens in Finder; a file is shown selected there.
+        // ⌘ opens it as iTerm2 and Ghostty do; ⌘⌥ shows it in Finder instead.
         if event.modifiers.platform
             && event.button == gpui::MouseButton::Left
-            && let Some(path) = self.shown_path()
+            && let Some(target) = self.path_target()
         {
-            if path.is_dir() {
-                cx.open_with_system(path);
-            } else {
-                cx.reveal_path(path);
-            }
+            self.open_target(&target, event.modifiers.alt, cx);
             cx.stop_propagation();
             return;
         }
@@ -753,6 +779,8 @@ impl Pane {
         window: &mut Window,
         cx: &mut Context<Self>,
     ) {
+        self.pointer = Some(event.position);
+        self.set_modifiers(event.modifiers, cx);
         let hover = self
             .cell_at(event.position)
             .filter(|(y, x)| self.screen.link_at(*y, *x).is_some());
@@ -1159,10 +1187,8 @@ impl Pane {
         }
         self.hover_word = word.clone();
         self.check_hover_path(cx);
+        // Asked for absolute paths too: the menu copies a path relative to it.
         let Some(word) = word else { return };
-        if word.uri.starts_with('/') || word.uri.starts_with("~/") {
-            return;
-        }
         let socket = self.socket.clone();
         let id = self.terminal.clone();
         cx.spawn(async move |this, cx| {
@@ -1181,23 +1207,136 @@ impl Pane {
         })
         .detach();
     }
+    /// The whole word when it names a file, else a piece of a broken one that does.
     fn check_hover_path(&mut self, cx: &mut Context<Self>) {
-        let path = self
-            .hover_word
-            .as_ref()
-            .and_then(|w| screen::resolve_path(&w.uri, self.cwd.as_deref()))
-            .filter(|p| p.exists());
-        if path != self.hover_path {
-            self.hover_path = path;
+        let cwd = self.cwd.as_deref();
+        let found = self.hover_word.as_ref().and_then(|w| {
+            [(Some(w.uri.as_str()), true), (w.alone.as_deref(), false)]
+                .into_iter()
+                .find_map(|(word, whole)| {
+                    let word = word?;
+                    let path = screen::resolve_path(word, cwd).filter(|p| p.exists())?;
+                    Some(Hovered {
+                        path,
+                        at: screen::split_position(word).1,
+                        whole,
+                        cwd: cwd.map(Path::to_owned),
+                    })
+                })
+        });
+        if found != self.hover_path {
+            self.hover_path = found;
             cx.notify();
         }
     }
     /// The hovered path that exists, while its word is still on screen where it was.
-    fn shown_path(&self) -> Option<&std::path::PathBuf> {
+    fn shown_target(&self) -> Option<&Hovered> {
         let word = self.hover_word.as_ref()?;
         (self.screen.path_at(word.row, word.col) == Some(word))
             .then_some(self.hover_path.as_ref())
             .flatten()
+    }
+    #[cfg(feature = "visual-test")]
+    fn shown_path(&self) -> Option<&std::path::PathBuf> {
+        self.shown_target().map(|t| &t.path)
+    }
+    /// The path under the pointer, for a click or the pane menu.
+    pub fn path_target(&self) -> Option<Hovered> {
+        self.shown_target().cloned()
+    }
+    /// While ⌘ is held over a link or path: what a click does, and how to only show it.
+    fn click_hint(&self) -> Option<String> {
+        if !self.modifiers.platform {
+            return None;
+        }
+        if self.hover_link.is_some() {
+            return Some("⌘ 点击在浏览器打开".into());
+        }
+        let target = self.shown_target()?;
+        Some(super::open_path::hint(&Self::open_plan(
+            target,
+            self.modifiers.alt,
+        )))
+    }
+    fn set_modifiers(&mut self, modifiers: gpui::Modifiers, cx: &mut Context<Self>) {
+        let shows = |m: &gpui::Modifiers| (m.platform, m.platform && m.alt);
+        if shows(&modifiers) != shows(&self.modifiers) {
+            cx.notify();
+        }
+        self.modifiers = modifiers;
+    }
+    fn open_plan(target: &Hovered, reveal: bool) -> super::open_path::Plan {
+        super::open_path::plan(
+            &target.path,
+            target.at,
+            crate::ui::terminal_text::current().editor,
+            reveal,
+            super::open_path::installed,
+        )
+    }
+    /// What clicking `target` would do, in the words of the menu entry.
+    pub fn open_title(target: &Hovered) -> String {
+        use super::open_path::Plan;
+        match Self::open_plan(target, false) {
+            Plan::Reveal { .. } => "在访达中显示（可执行文件不运行）".into(),
+            Plan::OpenFolder => "在访达中打开".into(),
+            Plan::OpenFile => "打开".into(),
+            Plan::Editor { name, line, .. } => format!("在 {name} 打开第 {line} 行"),
+            Plan::Terminal { line, .. } => format!("用 $EDITOR 打开第 {line} 行"),
+        }
+    }
+    /// Opens `target` by the rules in `open_path`; `reveal` only shows it in Finder.
+    pub fn open_target(&mut self, target: &Hovered, reveal: bool, cx: &mut Context<Self>) {
+        use super::open_path::Plan;
+        match Self::open_plan(target, reveal) {
+            Plan::Reveal { executable } => {
+                cx.reveal_path(&target.path);
+                if executable {
+                    self.show_toast("可执行文件只在访达中显示，不会运行", cx);
+                }
+            }
+            Plan::OpenFolder | Plan::OpenFile => cx.open_with_system(&target.path),
+            Plan::Editor {
+                name,
+                program,
+                args,
+                ..
+            } => {
+                let task = cx.background_spawn(async move {
+                    let mut child = std::process::Command::new(program)
+                        .args(args)
+                        .stdin(std::process::Stdio::null())
+                        .stdout(std::process::Stdio::null())
+                        .stderr(std::process::Stdio::null())
+                        .spawn()?;
+                    // The tool hands the file to the editor and exits; reap it.
+                    child.wait().map(|_| ())
+                });
+                cx.spawn(async move |this, cx| {
+                    if let Err(e) = task.await {
+                        this.update(cx, |pane, cx| {
+                            pane.show_toast(format!("没能用 {name} 打开：{e}"), cx)
+                        })
+                        .ok();
+                    }
+                })
+                .detach();
+            }
+            Plan::Terminal { command, .. } => {
+                let cwd = target
+                    .path
+                    .parent()
+                    .unwrap_or(Path::new("/"))
+                    .to_string_lossy()
+                    .into_owned();
+                cx.emit(PaneEvent::Run { command, cwd });
+            }
+        }
+    }
+    /// Copies `text` and says so in the corner.
+    pub fn copy_note(&mut self, text: String, note: &'static str, cx: &mut Context<Self>) {
+        cx.write_to_clipboard(gpui::ClipboardItem::new_string(text));
+        self.show_toast(note, cx);
     }
     fn cell_at(&self, point: Point<Pixels>) -> Option<(u16, u16)> {
         let bounds = self.bounds?;
@@ -1881,7 +2020,9 @@ impl Render for Pane {
                         window,
                         cx,
                     );
+                    // Underlined only while ⌘ is held, when a click would open it.
                     let hovered: Vec<&screen::Link> = match pane.hover_link {
+                        _ if !pane.modifiers.platform => Vec::new(),
                         Some((y, x)) => pane.screen.link_at(y, x).map_or(Vec::new(), |hover| {
                             pane.screen
                                 .links
@@ -1889,11 +2030,16 @@ impl Render for Pane {
                                 .filter(|l| l.uri == hover.uri)
                                 .collect()
                         }),
-                        None => pane
-                            .shown_path()
-                            .and(pane.hover_word.as_ref())
-                            .into_iter()
-                            .collect(),
+                        None => match (pane.shown_target(), pane.hover_word.as_ref()) {
+                            (Some(target), Some(word)) if target.whole => pane
+                                .screen
+                                .paths
+                                .iter()
+                                .filter(|l| l.start == word.start && l.uri == word.uri)
+                                .collect(),
+                            (Some(_), Some(word)) => vec![word],
+                            _ => Vec::new(),
+                        },
                     };
                     for l in hovered {
                         window.paint_quad(gpui::fill(
@@ -2031,6 +2177,9 @@ impl Render for Pane {
             .on_mouse_down(gpui::MouseButton::Left,cx.listener(Self::mouse_down))
             .on_mouse_down(gpui::MouseButton::Middle,cx.listener(Self::mouse_down))
             .on_mouse_move(cx.listener(Self::mouse_move))
+            .on_modifiers_changed(cx.listener(|this, e: &gpui::ModifiersChangedEvent, _, cx| {
+                this.set_modifiers(e.modifiers, cx)
+            }))
             .on_mouse_up(gpui::MouseButton::Left,cx.listener(Self::mouse_up))
             .on_mouse_up(gpui::MouseButton::Middle,cx.listener(Self::mouse_up))
             .on_mouse_up_out(gpui::MouseButton::Left,cx.listener(Self::mouse_up))
@@ -2168,6 +2317,30 @@ impl Render for Pane {
                         )
                     }),
             )
+            .when_some(self.click_hint().zip(self.pointer), |d, (hint, at)| {
+                // Below and right of the pointer, so the word itself stays readable.
+                d.child(
+                    gpui::deferred(
+                        gpui::anchored()
+                            .position(at + gpui::point(px(T::S12), px(T::S16)))
+                            .snap_to_window_with_margin(px(T::S8))
+                            .child(
+                                div()
+                                    .id("click-hint")
+                                    .px(px(T::S8))
+                                    .py(px(T::S2))
+                                    .rounded(px(T::CONTROL_RADIUS))
+                                    .bg(T::color(T::raised()))
+                                    .border(px(T::BORDER_WIDTH))
+                                    .border_color(T::color(T::card_border()))
+                                    .text_size(px(T::META))
+                                    .text_color(T::color(T::secondary()))
+                                    .child(hint),
+                            ),
+                    )
+                    .priority(2),
+                )
+            })
             .when_some(self.copied.clone(), |d, (at, note)| {
                 // On the release row, just right of the pointer: a drag usually ends at
                 // the selection's end, so this covers only text after it, not the copy.

@@ -50,6 +50,8 @@ struct PaneMenu {
     terminal: String,
     position: gpui::Point<gpui::Pixels>,
     page: MenuPage,
+    /// The path right-clicked on, which puts its own entries at the top.
+    path: Option<crate::terminal::pane::Hovered>,
 }
 /// The first of `candidates` that still exists, else the home directory: a directory
 /// removed since (a deleted worktree) must not stop a new terminal.
@@ -435,6 +437,7 @@ impl Workbench {
             if !self.layout.panes.contains_key(&id) {
                 let pane = cx.new(|cx| Pane::new(self.store.socket(), &id, false, cx));
                 cx.observe(&pane, |_, _, cx| cx.notify()).detach();
+                Self::watch_pane(&pane, cx);
                 self.layout.panes.insert(id, pane);
             }
         }
@@ -609,6 +612,16 @@ impl Workbench {
             },
             cx,
         );
+    }
+    /// A pane's asks: `$EDITOR` for a ⌘-clicked `file:line` runs in a new tab.
+    pub(super) fn watch_pane(pane: &Entity<Pane>, cx: &mut Context<Self>) {
+        cx.subscribe(pane, |this, _, event, cx| match event {
+            crate::terminal::pane::PaneEvent::Run { command, cwd } => {
+                this.layout.pending_command = Some((command.clone(), cwd.clone()));
+                this.launch(false, None, cx);
+            }
+        })
+        .detach();
     }
     pub(super) fn launch(&mut self, split: bool, task_id: Option<String>, cx: &mut Context<Self>) {
         if !split

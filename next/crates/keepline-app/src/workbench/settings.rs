@@ -7,7 +7,7 @@ use crate::keymap::{self, Action, Chord, Keymap, Section};
 use crate::ui::{
     app_icon::{AppIcon, Chosen},
     appearance::Appearance,
-    terminal_text::{self, TerminalText, UnfocusedCursor},
+    terminal_text::{self, Editor, TerminalText, UnfocusedCursor},
     theme::{Scheme, mix},
 };
 use std::path::PathBuf;
@@ -282,7 +282,7 @@ impl Page {
     }
 }
 /// Every searchable setting: its page, its title and the words that find it.
-const ENTRIES: [(Page, &str, &str); 23] = [
+const ENTRIES: [(Page, &str, &str); 24] = [
     (
         Page::Phones,
         "让手机连过来",
@@ -314,6 +314,11 @@ const ENTRIES: [(Page, &str, &str); 23] = [
     (Page::Terminal, "行距", "行高 line height 紧凑 舒适 宽松"),
     (Page::Terminal, "光标闪烁", "光标 闪烁 blink cursor"),
     (Page::Terminal, "非当前分屏变暗", "分屏 变暗 焦点 dim split"),
+    (
+        Page::Terminal,
+        "用哪个编辑器打开行号",
+        "编辑器 editor zed vscode cursor 行号 路径 点击 打开 ⌘",
+    ),
     (
         Page::Terminal,
         "非当前分屏的光标",
@@ -1236,11 +1241,44 @@ impl SettingsView {
                 .into_any_element(),
             );
         }
+        let mut paths = Vec::new();
+        if shows("用哪个编辑器打开行号") {
+            let editor = text.editor;
+            // Only the editors on this Mac, besides the automatic and fallback choices.
+            let options: Vec<(Editor, &'static str)> = [
+                Editor::Auto,
+                Editor::Zed,
+                Editor::VsCode,
+                Editor::Cursor,
+                Editor::Terminal,
+                Editor::System,
+            ]
+            .into_iter()
+            .filter(|&e| {
+                e == editor
+                    || !matches!(e, Editor::Zed | Editor::VsCode | Editor::Cursor)
+                    || crate::terminal::open_path::installed(e).is_some()
+            })
+            .map(|e| (e, crate::terminal::open_path::editor_name(e)))
+            .collect();
+            let choices =
+                self.text_choices("editor", &options, |e| e == editor, |t, e| t.editor = e, cx);
+            paths.push(
+                self.row(
+                    true,
+                    "用哪个编辑器打开行号",
+                    "⌘ 点击 pane.rs:651 这类路径跳到那一行；自动选 Zed、VS Code、Cursor 中第一个装了的",
+                    choices,
+                )
+                .into_any_element(),
+            );
+        }
         let typing = !size.is_empty() || !font.is_empty();
         page.child(self.cards(vec![
             ("文字大小", size),
             ("终端字体", font),
             ("光标与分屏", cursor),
+            ("点击路径", paths),
         ]))
         .when(typing, |d| {
             d.child(
