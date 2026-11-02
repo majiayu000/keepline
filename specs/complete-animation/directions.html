@@ -1,0 +1,325 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>标记完成动效</title>
+<style>
+:root{
+  --bg:#111112; --text:#e8e6e3; --muted:#a3a2a0; --faint:#6e6d6b; --line:#2e2e2f;
+  --win:#161617; --pane:#1c1c1e; --button:#2a2a2c; --raised:#232325;
+  --green:#4cc38a; --violet:#8f93ff; --orange:#e8823a; --red:#e5534b; --yellow:#e8c547;
+}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--text);font:14px/1.6 -apple-system,BlinkMacSystemFont,"PingFang SC",sans-serif}
+main{max-width:1320px;margin:0 auto;padding:32px 16px 64px}
+h1{font-size:22px;margin:0 0 6px}
+.lead{color:var(--muted);margin:0 0 20px;max-width:760px}
+.bar{display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:24px;color:var(--muted);font-size:13px}
+.bar button,.ctl button{background:var(--button);color:var(--text);border:1px solid var(--line);border-radius:6px;padding:4px 10px;font:inherit;cursor:pointer}
+.bar button.on{border-color:var(--green);color:var(--green)}
+.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,600px),1fr));gap:28px}
+.demo h2{font-size:16px;margin:0 0 2px}
+.demo h2 small{color:var(--faint);font-weight:400;margin-left:6px}
+.demo .desc{color:var(--muted);font-size:13px;margin:0 0 10px;min-height:42px}
+.fit{width:100%;aspect-ratio:600/360;position:relative}
+.win{position:absolute;left:0;top:0;width:600px;height:360px;transform-origin:0 0;background:var(--win);border:1px solid var(--line);border-radius:10px;overflow:hidden}
+.side{position:absolute;left:0;top:0;bottom:0;width:170px;padding:12px 8px;font-size:12px}
+.side .space{color:var(--faint);font-size:11px;padding:0 6px 8px;height:36px;display:flex;align-items:flex-end}
+.row{position:absolute;left:8px;right:8px;height:30px;display:flex;align-items:center;gap:8px;padding:0 6px 0 9px;border-radius:6px;white-space:nowrap}
+.row .d{width:7px;height:7px;border-radius:50%;flex:none}
+.row .n{flex:1;overflow:hidden;text-overflow:ellipsis}
+.row .st{color:var(--faint);font-size:11px}
+.row.target .st{color:var(--green)}
+.pane{position:absolute;left:178px;top:8px;width:414px;height:344px;background:var(--pane);border:1px solid var(--line);border-radius:8px;overflow:hidden}
+.ph{position:absolute;left:0;right:0;top:0;height:32px;display:flex;align-items:center;gap:8px;padding:0 8px 0 10px;border-bottom:1px solid var(--line);font-size:12px;overflow:hidden}
+.ph .wash{position:absolute;left:0;top:0;bottom:0;width:0;background:rgba(76,195,138,.14);pointer-events:none}
+.chip{display:flex;align-items:center;gap:5px;color:var(--green);font-size:11.5px;position:relative}
+.chip i{width:7px;height:7px;border-radius:50%;background:var(--green)}
+.ttl{color:var(--text);position:relative}
+.sp{flex:1}
+.act{position:relative;height:24px;padding:0 10px;border-radius:5px;background:var(--button);border:0;color:var(--text);font:600 12px -apple-system,"PingFang SC",sans-serif;overflow:visible;display:flex;align-items:center}
+.act .clip{position:absolute;inset:0;border-radius:5px;overflow:hidden}
+.act .fill{position:absolute;left:0;top:0;bottom:0;width:0;background:var(--green)}
+.act .lbl{position:relative;white-space:nowrap}
+.cd{position:absolute;left:0;bottom:-1px;height:2px;width:0;background:var(--green)}
+.body{position:absolute;left:0;right:0;top:32px;bottom:0;overflow:hidden}
+.term{margin:0;padding:10px 12px;font:12px/18px "SF Mono",Menlo,ui-monospace,monospace;white-space:pre}
+.veil{position:absolute;left:0;top:0;bottom:0;width:100%;background:var(--pane);opacity:0}
+.lid{position:absolute;left:0;right:0;height:0;background:var(--pane)}
+.lid.top{top:0}.lid.bot{bottom:0}
+.words{position:absolute;left:0;right:0;top:calc(50% + 42px);display:flex;flex-direction:column;align-items:center;gap:4px;opacity:0}
+.words b{font-size:13px;color:#9be3bd}
+.words span{font-size:11.5px;color:var(--muted)}
+.words button{margin-top:6px;height:24px;padding:0 10px;border-radius:5px;background:var(--button);border:1px solid var(--line);color:var(--text);font:12px -apple-system,"PingFang SC",sans-serif}
+canvas{position:absolute;left:0;top:0;width:600px;height:360px;pointer-events:none}
+.ctl{display:flex;gap:10px;align-items:center;margin-top:10px;font-size:12px;color:var(--muted)}
+.ctl input{flex:1;accent-color:var(--green)}
+.ctl output{font-variant-numeric:tabular-nums;width:44px;text-align:right}
+.how{margin:10px 0 0;padding-left:18px;color:var(--muted);font-size:12.5px}
+.how li{margin:2px 0}
+.how b{color:var(--text);font-weight:500}
+.foot{margin-top:36px;color:var(--muted);font-size:13px;border-top:1px solid var(--line);padding-top:16px}
+@media (prefers-reduced-motion: reduce){ .rm{display:inline} }
+</style>
+</head>
+<body>
+<main>
+  <h1>「标记完成」动效：三个方向</h1>
+  <p class="lead">现在的版本（第一格）是按钮填色 → 印章弹出 → 淡出，1.6 秒，画面只在窗格里打转，关掉后不知道会话去了哪。三个新方向都多做了一件事：<b>告诉你它去哪了</b>——最后都落到侧栏那一行。每个动画都只用了 GPUI 能做的东西（位置、尺寸、透明度、颜色、阴影、canvas 画点线），没有用旋转、模糊滤镜这类 GPUI 做不了的手法。拖滑块可以停在任意一帧。</p>
+  <div class="bar">速度
+    <button data-speed="1" class="on">1×</button>
+    <button data-speed="0.5">0.5×</button>
+    <button data-speed="0.25">0.25×</button>
+    <span style="margin-left:12px">全部</span><button id="all">重播</button>
+  </div>
+  <div class="grid" id="grid"></div>
+  <p class="foot">挑一个（或说哪几处要混搭），我按选定方向改 <code>next/crates/keepline-app/src/workbench/complete.rs</code>，保留「留着这个画面」和倒计时语义，跑原生截图场景对照这页。系统开了「减弱动态效果」时，落地版本会退回只淡出。</p>
+</main>
+<script>
+const W=600,H=360;
+const PANE={x:178,y:8,w:414,h:344}, HEAD=32;
+const BODY={x:PANE.x,y:PANE.y+HEAD,w:PANE.w,h:PANE.h-HEAD};
+const C={x:BODY.x+BODY.w/2,y:BODY.y+BODY.h/2-14};
+const ROW0=48,ROWH=30,TARGET_ROW=1;
+const T={x:8+9+3.5,y:ROW0+ROWH*TARGET_ROW+ROWH/2};
+const G=[76,195,138];
+const rgba=(c,a)=>`rgba(${c[0]},${c[1]},${c[2]},${a})`;
+const eo=x=>1-Math.pow(1-x,4);
+const eio=x=>x<.5?4*x*x*x:1-Math.pow(-2*x+2,3)/2;
+const sl=(t,a,b)=>Math.min(1,Math.max(0,(t-a)/(b-a)));
+const backOut=x=>{const c1=1.70158,c3=c1+1;return 1+c3*Math.pow(x-1,3)+c1*Math.pow(x-1,2)};
+const lerp=(a,b,k)=>a+(b-a)*k;
+const bez=(a,c,b,k)=>({x:(1-k)*(1-k)*a.x+2*(1-k)*k*c.x+k*k*b.x,y:(1-k)*(1-k)*a.y+2*(1-k)*k*c.y+k*k*b.y});
+function rng(seed){return()=>{seed=seed+0x6D2B79F5|0;let t=Math.imul(seed^seed>>>15,1|seed);t=t+Math.imul(t^t>>>7,61|t)^t;return((t^t>>>14)>>>0)/4294967296}}
+
+const LINES=[
+ ["⏺ 我先跑一遍失败的用例，确认问题","#e8e6e3"],
+ ["  $ cargo test auth::timeout","#a3a2a0"],
+ ["  test auth::timeout::retries ... FAILED","#e5534b"],
+ ["⏺ 刷新 token 时没有重置计时器，改 session.rs","#e8e6e3"],
+ ["  ⎿ Updated src/auth/session.rs (+6 -1)","#a3a2a0"],
+ ["⏺ 再跑一遍完整测试","#e8e6e3"],
+ ["  $ cargo test","#a3a2a0"],
+ ["  test result: ok. 214 passed; 0 failed","#4cc38a"],
+ ["⏺ 做完了：刷新后会重新计时，","#e8e6e3"],
+ ["  补了 retries_after_expiry 回归用例。","#e8e6e3"],
+ ["",""],
+ ["> ","#a3a2a0"],
+];
+const ROWS=[["#e8823a","接入 Grok 额度","等你回答"],["#4cc38a","修复登录超时","做完了"],["#e8c547","重写侧栏分组","在跑"],["#8a9bb0","整理发布脚本","停下了"]];
+
+function build(spec){
+  const sec=document.createElement('section');sec.className='demo';
+  sec.innerHTML=`<h2>${spec.name}<small>${spec.dur/1000}s</small></h2><p class="desc">${spec.desc}</p>
+  <div class="fit"><div class="win">
+    <aside class="side"><div class="space">KEEPLINE · ~/code/app</div>
+      ${ROWS.map((r,i)=>`<div class="row${i===TARGET_ROW?' target':''}" style="top:${ROW0+i*ROWH}px"><i class="d" style="background:${r[0]}"></i><span class="n">${r[1]}</span><span class="st">${r[2]}</span></div>`).join('')}
+    </aside>
+    <div class="pane">
+      <div class="ph"><div class="wash"></div><span class="chip"><i></i>做完了</span><span class="ttl">修复登录超时</span><span class="sp"></span>
+        <button class="act"><span class="clip"><span class="fill"></span></span><span class="lbl">标记完成</span></button><div class="cd"></div></div>
+      <div class="body"><pre class="term">${LINES.map(l=>`<span style="color:${l[1]}">${l[0].replace(/</g,'&lt;')}</span>`).join('\n')}</pre>
+        <div class="veil"></div><div class="lid top"></div><div class="lid bot"></div>
+        <div class="words"><b>已完成</b><span>修复登录超时</span><button>留着这个画面</button></div></div>
+    </div>
+    <canvas></canvas>
+  </div></div>
+  <div class="ctl"><button class="rp">重播</button><input type="range" min="0" max="1000" value="0"><output>0.00</output></div>
+  <ul class="how">${spec.how.map(h=>`<li>${h}</li>`).join('')}</ul>`;
+  document.getElementById('grid').appendChild(sec);
+  const q=s=>sec.querySelector(s);
+  const cv=q('canvas'),dpr=window.devicePixelRatio||1;cv.width=W*dpr;cv.height=H*dpr;
+  const ctx=cv.getContext('2d');ctx.scale(dpr,dpr);
+  const R={sec,win:q('.win'),fit:q('.fit'),pane:q('.pane'),fill:q('.fill'),lbl:q('.lbl'),act:q('.act'),cd:q('.cd'),wash:q('.wash'),
+    veil:q('.veil'),top:q('.lid.top'),bot:q('.lid.bot'),words:q('.words'),term:q('.term'),
+    row:q('.row.target'),rowSt:q('.row.target .st'),rowD:q('.row.target .d'),chip:q('.chip'),ctx};
+  const d={spec,R,start:performance.now(),scrub:null,range:q('input'),out:q('output')};
+  if(spec.init) spec.init(d);
+  q('.rp').onclick=()=>{d.scrub=null;d.start=performance.now()};
+  d.range.oninput=()=>{d.scrub=d.range.value/1000};
+  return d;
+}
+
+/* shared pieces */
+function reset(R){
+  R.pane.style.opacity=1;R.fill.style.width='0';R.lbl.textContent='标记完成';R.lbl.style.color='';R.lbl.style.opacity=1;
+  R.act.style.boxShadow='none';R.cd.style.width='0';R.wash.style.width='0';R.veil.style.opacity=0;R.veil.style.width='100%';
+  R.top.style.height='0';R.bot.style.height='0';R.words.style.opacity=0;R.words.style.transform='';R.term.style.opacity=1;R.term.style.visibility='';
+  R.row.style.background='';R.rowSt.textContent='做完了';R.rowD.style.boxShadow='';R.row.style.opacity=1;
+}
+function button(R,t,end=.14){
+  const f=eo(sl(t,0,end));R.fill.style.width=f*100+'%';
+  const turned=sl(t,end*.45,end);
+  R.lbl.textContent=turned>.5?'✓ 已完成':'标记完成';
+  R.lbl.style.color=turned>.5?'#1c1c1e':'';R.lbl.style.opacity=turned>.5?turned:1-turned;
+  const r=eo(sl(t,end*.6,end*3));R.act.style.boxShadow=r>0&&r<1?`0 0 0 ${10*r}px ${rgba(G,.55*(1-r))}`:'none';
+}
+function words(R,t,a,b,outA,outB){
+  const e=eo(sl(t,a,b)),o=outA?1-sl(t,outA,outB):1;
+  R.words.style.opacity=e*o;R.words.style.transform=`translateY(${8*(1-e)}px)`;
+}
+function landed(R,ctx,t,at){
+  if(t<at) return;
+  const k=sl(t,at,1);
+  R.rowSt.textContent='✓ 已完成';
+  R.row.style.background=rgba(G,.16*(1-k)+.04);
+  for(const [delay,max] of [[0,18],[.25,12]]){
+    const e=eo(sl(k,delay,1));if(e<=0||e>=1)continue;
+    ctx.strokeStyle=rgba(G,.7*(1-e));ctx.lineWidth=1.5;ctx.beginPath();ctx.arc(T.x,T.y,3.5+max*e,0,7);ctx.stroke();
+  }
+}
+function check(ctx,cx,cy,s,p,color,w){
+  if(p<=0)return;
+  const pts=[[-.24,.02],[-.07,.19],[.26,-.17]].map(([x,y])=>[cx+x*s,cy+y*s]);
+  const l1=Math.hypot(pts[1][0]-pts[0][0],pts[1][1]-pts[0][1]),l2=Math.hypot(pts[2][0]-pts[1][0],pts[2][1]-pts[1][1]);
+  let len=(l1+l2)*p;ctx.strokeStyle=color;ctx.lineWidth=w;ctx.lineCap='round';ctx.lineJoin='round';ctx.beginPath();ctx.moveTo(...pts[0]);
+  if(len<=l1){const k=len/l1;ctx.lineTo(lerp(pts[0][0],pts[1][0],k),lerp(pts[0][1],pts[1][1],k));}
+  else{ctx.lineTo(...pts[1]);const k=(len-l1)/l2;ctx.lineTo(lerp(pts[1][0],pts[2][0],k),lerp(pts[1][1],pts[2][1],k));}
+  ctx.stroke();
+}
+function disc(ctx,x,y,r,glow){
+  if(r<=0)return;
+  if(glow>0){ctx.shadowColor=rgba(G,.6*glow);ctx.shadowBlur=28*glow;}
+  ctx.fillStyle=rgba(G,1);ctx.beginPath();ctx.arc(x,y,r,0,7);ctx.fill();ctx.shadowBlur=0;
+}
+
+const SPECS=[
+{
+  name:'现在',dur:1600,
+  desc:'按钮填色、印章弹出、倒计时线、整个窗格淡出。窗格消失后没交代会话去了哪里。',
+  how:['对照用：照 <code>complete.rs</code> 现有时间轴复刻。'],
+  draw(d,t){const R=d.R,ctx=R.ctx;button(R,t,.25);
+    R.veil.style.opacity=.88*eo(sl(t,.1,.35));R.cd.style.width=t*100+'%';
+    const pop=Math.max(0,backOut(sl(t,.15,.42)));const a=sl(t,.15,.25);
+    ctx.globalAlpha=a;disc(ctx,C.x,C.y,28*pop,0);check(ctx,C.x,C.y,28*pop*1.6,pop>0?1:0,'#1c1c1e',3);ctx.globalAlpha=1;
+    words(R,t,.3,.5);
+    const f=1-sl(t,.85,1);R.pane.style.opacity=f;ctx.globalAlpha=1;
+    if(f<1){ctx.clearRect(0,0,W,H);ctx.globalAlpha=f;disc(ctx,C.x,C.y,28*pop,0);check(ctx,C.x,C.y,28*pop*1.6,1,'#1c1c1e',3);ctx.globalAlpha=1;}
+    if(t>=1)R.rowSt.textContent='✓ 已完成';
+  }
+},
+{
+  name:'A · 落印',dur:2400,
+  desc:'印章从上方压下来，落地时两圈冲击波加一簇碎点溅开，对勾一笔画出来。最后印章缩成小点，沿弧线飞进侧栏那一行，那一行亮一下、两圈涟漪。',
+  how:['<b>压下</b>：圆的尺寸 96→56 带回弹，落地瞬间阴影光晕最亮再收回（GPUI box-shadow）。',
+       '<b>冲击波 + 碎点</b>：canvas 每帧按 t 算位置，22 个点的初速和重力是固定种子，同一 t 永远同一帧。',
+       '<b>飞进侧栏</b>：窗格淡出时印章在窗口层继续画，二次贝塞尔飞到侧栏圆点；需要窗口级浮层（和右键菜单同一层）。'],
+  init(d){const r=rng(7);d.parts=Array.from({length:22},(_,i)=>{const a=i/22*Math.PI*2+(r()-.5)*.4;const s=110+r()*130;return{vx:Math.cos(a)*s,vy:Math.sin(a)*s-30,size:2.5+r()*2.5,c:r()<.3?[220,255,235]:G,sq:r()<.5}})},
+  draw(d,t){const R=d.R,ctx=R.ctx;button(R,t);
+    R.veil.style.opacity=.86*eo(sl(t,.06,.28));R.cd.style.width=Math.min(1,t/.76)*100+'%';
+    const drop=sl(t,.12,.30),settle=sl(t,.30,.40);
+    let r=lerp(48,28,eo(drop))*(1-.07*Math.sin(Math.PI*settle));
+    const imp=sl(t,.28,.55),glow=drop<1?drop*.5:1-eo(imp)*.7;
+    const fly=eio(sl(t,.74,.88));
+    const pos=bez(C,{x:(C.x+T.x)/2,y:C.y-150},T,fly);
+    r=lerp(r,3.5,eo(sl(t,.74,.86)));
+    const a=sl(t,.12,.20);
+    // rings
+    for(const [st,en,max,w] of [[.30,.62,120,2.5],[.35,.72,80,1.5]]){const e=eo(sl(t,st,en));if(e>0&&e<1){ctx.strokeStyle=rgba(G,.7*(1-e));ctx.lineWidth=w;ctx.beginPath();ctx.arc(C.x,C.y,28+max*e,0,7);ctx.stroke();}}
+    // particles
+    const pt=sl(t,.30,.64);if(pt>0&&pt<1){const tau=pt*.55;for(const p of d.parts){const x=C.x+p.vx*eo(pt)*.6,y=C.y+p.vy*eo(pt)*.6+160*tau*tau;const s=p.size*(1-pt*.7);ctx.fillStyle=rgba(p.c,1-pt);if(p.sq)ctx.fillRect(x-s/2,y-s/2,s,s);else{ctx.beginPath();ctx.arc(x,y,s/2,0,7);ctx.fill();}}}
+    // trail during flight
+    if(fly>0&&fly<1){for(let i=1;i<=6;i++){const k=Math.max(0,fly-i*.035);const p=bez(C,{x:(C.x+T.x)/2,y:C.y-150},T,k);ctx.fillStyle=rgba(G,.35*(1-i/7));ctx.beginPath();ctx.arc(p.x,p.y,Math.max(1,r*(1-i/8)),0,7);ctx.fill();}}
+    if(t<.88){ctx.globalAlpha=a;disc(ctx,pos.x,pos.y,r,glow);check(ctx,pos.x,pos.y,r*1.6,sl(t,.24,.38),'#1c1c1e',Math.max(1.2,r/9));ctx.globalAlpha=1;}
+    words(R,t,.36,.52,.70,.78);
+    R.pane.style.opacity=1-eo(sl(t,.74,.86));
+    landed(R,ctx,t,.88);
+  }
+},
+{
+  name:'B · 扫光合上',dur:2200,
+  desc:'一道绿光从左到右扫过整个终端，扫过的地方安静下来、标题栏跟着染绿；中间拉出一条线、画出对勾；然后上下两片像眼皮一样合到那条线，线收成一点，侧栏那一行亮起。',
+  how:['<b>扫光</b>：GPUI 支持 linear_gradient 背景，一个窄条 div 改 left 就行；身后的遮罩是左对齐、宽度跟着光走的 div。',
+       '<b>合上</b>：上下两个纯色 div 改高度，不改窗格尺寸，终端不会被反复 resize。',
+       '最安静的一个，适合一天要点很多次完成的人。'],
+  draw(d,t){const R=d.R,ctx=R.ctx;button(R,t,.12);
+    const sw=eio(sl(t,.05,.40)),bx=BODY.x-70+(BODY.w+140)*sw;
+    R.veil.style.opacity=.8;R.veil.style.width=Math.max(0,Math.min(BODY.w,bx-BODY.x))+'px';
+    R.wash.style.width=Math.max(0,Math.min(PANE.w,bx-PANE.x))+'px';
+    if(sw>0&&sw<1){ctx.save();ctx.beginPath();ctx.rect(BODY.x,PANE.y,BODY.w,PANE.h);ctx.clip();
+      const g=ctx.createLinearGradient(bx-70,0,bx+10,0);g.addColorStop(0,rgba(G,0));g.addColorStop(.8,rgba(G,.22));g.addColorStop(1,rgba(G,0));
+      ctx.fillStyle=g;ctx.fillRect(bx-70,PANE.y,80,PANE.h);ctx.fillStyle='rgba(220,255,235,.9)';ctx.fillRect(bx-1,PANE.y,1.5,PANE.h);ctx.restore();}
+    const lw=eo(sl(t,.40,.56))*180*(1-eio(sl(t,.84,.94)));
+    const ly=C.y+28,close=eio(sl(t,.66,.84));
+    R.cd.style.width=Math.min(1,t/.66)*100+'%';
+    R.top.style.height=(ly-BODY.y)*close+'px';R.bot.style.height=(BODY.y+BODY.h-ly)*close+'px';
+    if(lw>0.5){ctx.shadowColor=rgba(G,.8);ctx.shadowBlur=12+20*close;ctx.fillStyle=rgba(G,1);ctx.fillRect(C.x-lw/2,ly-.75-close*.5,lw,1.5+close);ctx.shadowBlur=0;}
+    if(t>.84&&t<.97){const k=sl(t,.88,.97);ctx.fillStyle=rgba(G,1-k);ctx.beginPath();ctx.arc(C.x,ly,2+10*eo(k),0,7);ctx.fill();}
+    const ca=1-sl(t,.62,.70);check(ctx,C.x,C.y-6,40,sl(t,.46,.60),rgba(G,ca),3);
+    R.words.style.top='calc(50% + 34px)';words(R,t,.52,.64,.62,.70);
+    R.pane.style.opacity=1-sl(t,.88,.98);
+    landed(R,ctx,t,.9);
+  }
+},
+{
+  name:'C · 化进侧栏',dur:2800,
+  desc:'圆环转满变成实心对勾；接着终端里的字一行行化成绿色光点，像被吸走一样拖着尾巴流进侧栏那一行，圆点越积越亮；最后印章也飞进去。最「惊艳」，也最花。',
+  how:['<b>字化成点</b>：canvas 里按终端网格逐格画字，再画成点；GPUI 的 canvas 能拿到终端格子坐标和字形，几百个点每帧画 quad 没压力。',
+       '<b>流向</b>：每个点一条二次贝塞尔，起始时间按行列错开，从上到下像在读。',
+       '要做的事最多：需要窗口级浮层，还要从终端视图取当前可见格子；减弱动态效果时退回只淡出。'],
+  init(d){
+    const m=document.createElement('canvas').getContext('2d');m.font='12px "SF Mono",Menlo,ui-monospace,monospace';
+    const r=rng(42),gl=[];
+    LINES.forEach(([s,c],row)=>{let x=BODY.x+12;[...s].forEach(ch=>{const w=m.measureText(ch).width;if(ch.trim()){
+      const p0={x:x+w/2,y:BODY.y+10+row*18+9};
+      const ord=row/(LINES.length-1)*.72+(x-BODY.x)/BODY.w*.28;
+      gl.push({ch,c,x,y:BODY.y+10+row*18+13,p0,s:.20+.30*ord+r()*.04,ctl:{x:lerp(p0.x,T.x,.35)+(r()-.5)*90,y:Math.min(p0.y,T.y)-30-r()*90},rad:.7+r()*.8});
+    }x+=w;});});
+    d.gl=gl;
+  },
+  draw(d,t){const R=d.R,ctx=R.ctx;button(R,t,.12);
+    R.term.style.visibility='hidden';
+    R.veil.style.opacity=.25*sl(t,.05,.2);
+    ctx.font='12px "SF Mono",Menlo,ui-monospace,monospace';
+    let arrived=0;
+    // glyphs and particles
+    for(const g of d.gl){
+      const tau=sl(t,g.s,g.s+.36);
+      if(tau<=0){ctx.fillStyle=g.c;ctx.globalAlpha=R.pane.style.opacity*1;ctx.fillText(g.ch,g.x,g.y);ctx.globalAlpha=1;continue;}
+      const k1=sl(tau,0,.2);
+      if(k1<1){ctx.globalAlpha=1-k1;ctx.fillStyle=g.c;ctx.fillText(g.ch,g.x,g.y);ctx.globalAlpha=1;}
+      if(tau>=1){arrived++;continue;}
+      const m=eio(sl(tau,.08,1)),p=bez(g.p0,g.ctl,T,m),q=bez(g.p0,g.ctl,T,Math.max(0,m-.022));
+      const a=k1*.9*(1-sl(tau,.9,1));
+      ctx.strokeStyle=rgba(G,a*.35);ctx.lineWidth=g.rad*1.1;ctx.lineCap='round';ctx.beginPath();ctx.moveTo(q.x,q.y);ctx.lineTo(p.x,p.y);ctx.stroke();
+      ctx.fillStyle=rgba([lerp(232,G[0],k1),lerp(230,G[1],k1),lerp(227,G[2],k1)],a);ctx.beginPath();ctx.arc(p.x,p.y,g.rad,0,7);ctx.fill();
+    }
+    // target glow while filling up
+    const f=arrived/d.gl.length;if(f>0){ctx.shadowColor=rgba(G,.9);ctx.shadowBlur=6+18*f;ctx.fillStyle=rgba(G,.25+.75*f);ctx.beginPath();ctx.arc(T.x,T.y,3.5+1.5*f,0,7);ctx.fill();ctx.shadowBlur=0;}
+    // seal: ring then filled check, then flies
+    const ring=eo(sl(t,.03,.20)),fill=backOut(sl(t,.20,.30)),fly=eio(sl(t,.72,.86));
+    const pos=bez(C,{x:(C.x+T.x)/2+40,y:C.y-170},T,fly),rr=lerp(24,3.5,eo(sl(t,.72,.84)));
+    if(t<.86){
+      if(fill<.02){ctx.strokeStyle=rgba(G,.18);ctx.lineWidth=2.5;ctx.beginPath();ctx.arc(C.x,C.y,24,0,7);ctx.stroke();
+        ctx.strokeStyle=rgba(G,1);ctx.beginPath();ctx.arc(C.x,C.y,24,-Math.PI/2,-Math.PI/2+Math.PI*2*ring);ctx.stroke();}
+      else{disc(ctx,pos.x,pos.y,Math.max(0,rr*Math.min(fill,1.15)),.6);check(ctx,pos.x,pos.y,rr*1.6,sl(t,.24,.36),'#1c1c1e',Math.max(1.2,rr/8));}
+    }
+    words(R,t,.30,.42,.66,.74);
+    R.cd.style.width=Math.min(1,t/.72)*100+'%';
+    R.pane.style.opacity=1-eo(sl(t,.76,.90));
+    landed(R,ctx,t,.88);
+  }
+}];
+
+let speed=1;const demos=SPECS.map(build);
+const pin=new URLSearchParams(location.search).get('t');if(pin!=null)demos.forEach(d=>d.scrub=+pin);
+const HOLD=1300,PRE=500;
+function fitAll(){for(const d of demos){const s=d.R.fit.clientWidth/W;d.R.win.style.transform=`scale(${s})`;}}
+addEventListener('resize',fitAll);fitAll();
+function frame(now){
+  for(const d of demos){
+    const D=d.spec.dur/speed;let t;
+    if(d.scrub!=null)t=d.scrub;else{const e=(now-d.start)%(PRE+D+HOLD);t=e<PRE?0:Math.min(1,(e-PRE)/D);d.range.value=t*1000;}
+    d.out.textContent=t.toFixed(2);
+    const R=d.R;reset(R);R.ctx.clearRect(0,0,W,H);
+    d.spec.draw(d,t);
+  }
+  requestAnimationFrame(frame);
+}
+requestAnimationFrame(frame);
+document.querySelectorAll('[data-speed]').forEach(b=>b.onclick=()=>{speed=+b.dataset.speed;document.querySelectorAll('[data-speed]').forEach(x=>x.classList.toggle('on',x===b));const n=performance.now();demos.forEach(d=>{d.scrub=null;d.start=n})});
+document.getElementById('all').onclick=()=>{const n=performance.now();demos.forEach(d=>{d.scrub=null;d.start=n})};
+</script>
+</body>
+</html>
