@@ -1156,7 +1156,7 @@ impl Workbench {
             .find(|s| s.id == id)
             .map(|s| s.name.clone())
     }
-    /// The top bar only shows where search lives; the palette opens on click or ⌘P.
+    /// The sidebar only shows where search lives; the palette opens on click or ⌘P.
     pub(super) fn search_button(&self, cx: &Context<Self>) -> gpui::Stateful<gpui::Div> {
         div()
             .id("global-search")
@@ -1165,19 +1165,21 @@ impl Workbench {
             .w(px(T::SEARCH_WIDTH))
             .min_w(px(T::SEARCH_MIN))
             .h(px(T::ROW))
-            .px(px(T::S12))
+            .px(px(T::S8))
             .flex()
             .items_center()
             .gap(px(T::S8))
             .cursor_pointer()
-            .bg(T::color(T::panel()))
-            .border(px(T::BORDER_WIDTH))
-            .border_color(T::color(T::control()))
             .rounded(px(T::CONTROL_RADIUS))
             .text_color(T::color(T::secondary()))
-            .hover(|d| d.border_color(T::color(T::focus())))
-            .child("⌕")
-            .child(div().flex_1().truncate().child("搜索会话、待办或原话"))
+            .hover(|d| d.bg(T::color(T::button_hover())))
+            .child(
+                gpui::svg()
+                    .path("icons/search.svg")
+                    .size(px(T::ICON_GLYPH))
+                    .text_color(T::color(T::secondary())),
+            )
+            .child(div().flex_1().truncate().child("搜索"))
             .child(kbd("⌘P"))
             .on_click(cx.listener(|this, _, window, cx| this.open_search(window, cx)))
     }

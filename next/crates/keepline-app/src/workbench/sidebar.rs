@@ -46,7 +46,7 @@ impl Workbench {
         space_name: &str,
         cx: &Context<Self>,
     ) -> Option<gpui::Stateful<gpui::Div>> {
-        // Collapsed means gone: the toggle lives in the top bar, so nothing is left here.
+        // Collapsed means gone: the toggle moves to the main title row.
         if self.sidebar.collapsed {
             return None;
         }
@@ -389,6 +389,45 @@ impl Workbench {
                 .bg(T::color(T::panel()))
                 .border_r(px(T::BORDER_WIDTH))
                 .border_color(T::color(T::border()))
+                // The window's top edge, as T3 Code has it: the traffic lights, the
+                // sidebar button and the name, then search and a new todo.
+                .child(
+                    div()
+                        .h(px(T::TOP))
+                        .flex_shrink_0()
+                        .pl(px(T::TRAFFIC_LIGHT_INSET))
+                        .pr(px(T::S8))
+                        .flex()
+                        .items_center()
+                        .gap(px(T::S6))
+                        .child(self.sidebar_toggle(cx))
+                        .child(
+                            div()
+                                .flex_shrink_0()
+                                .font_weight(gpui::FontWeight::SEMIBOLD)
+                                .child("Keepline"),
+                        )
+                        .child(self.title_drag_area(cx)),
+                )
+                .child(
+                    div()
+                        .flex_shrink_0()
+                        .px(px(T::S8))
+                        .pb(px(T::S4))
+                        .flex()
+                        .items_center()
+                        .gap(px(T::S4))
+                        .child(self.search_button(cx).flex_1().w_auto().min_w_0())
+                        .child(
+                            icon_button("add-task", "icons/compose.svg", "新待办")
+                                .tooltip(|_, cx| {
+                                    cx.new(|_| super::render::TextTip("新待办".into())).into()
+                                })
+                                .on_click(cx.listener(|this, _, window, cx| {
+                                    this.show_quick_task(window, cx)
+                                })),
+                        ),
+                )
                 .child(sidebar)
                 .when_some(self.quota_view(), |d, quota| d.child(quota))
                 .child(

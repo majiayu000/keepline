@@ -62,127 +62,122 @@ impl Render for Workbench {
             .find(|s| s.id == self.nav.space)
             .map(|s| s.name.as_str())
             .unwrap_or("工作空间");
-        root = root.child(
-            div()
-                .h(px(T::TOP))
-                .flex_shrink_0()
-                .pl(px(T::TRAFFIC_LIGHT_INSET))
-                .pr(px(T::S14))
-                .flex()
-                .items_center()
-                .gap(px(T::S16))
-                .bg(T::color(T::panel()))
-                .border_b(px(T::BORDER_WIDTH))
-                .border_color(T::color(T::border()))
-                // Beside the traffic lights, like a Mac app's sidebar button: collapsed,
-                // the sidebar is gone entirely and this is the way back.
-                .child(
-                    icon_button(
-                        "sidebar-toggle",
-                        "icons/sidebar.svg",
-                        if self.sidebar.collapsed {
-                            "展开左栏"
-                        } else {
-                            "收起左栏"
+        // The main column's own title row, as T3 Code has it: where you are on the left,
+        // what needs you and the overview on the right. The window's top edge belongs to
+        // the sidebar; collapsed, its toggle stays beside the traffic lights right here.
+        let collapsed = self.sidebar.collapsed;
+        let here = if self.nav.overview || !self.overview.cleanup.is_empty() {
+            Some("鸟瞰全部".to_owned())
+        } else if let Some(task) = self
+            .nav
+            .task_detail
+            .as_ref()
+            .and_then(|id| self.workspace.tasks.iter().find(|t| &t.id == id))
+        {
+            Some(task.title.clone())
+        } else {
+            self.workspace
+                .tabs
+                .iter()
+                .find(|t| Some(&t.id) == self.nav.tab.as_ref())
+                .map(|t| self.tab_name(t, cx))
+        };
+        let header = div()
+            .h(px(T::TOP))
+            .flex_shrink_0()
+            .pl(px(if collapsed {
+                T::TRAFFIC_LIGHT_INSET
+            } else {
+                T::S16
+            }))
+            .pr(px(T::S14))
+            .flex()
+            .items_center()
+            .gap(px(T::S10))
+            .border_b(px(T::BORDER_WIDTH))
+            .border_color(T::color(T::border()))
+            .when(collapsed, |d| d.child(self.sidebar_toggle(cx)))
+            .child(
+                div()
+                    .min_w_0()
+                    .flex()
+                    .items_center()
+                    .gap(px(T::S8))
+                    .child(
+                        div()
+                            .flex_shrink_0()
+                            .text_color(T::color(T::muted()))
+                            .child(space_name.to_owned()),
+                    )
+                    .when_some(here, |d, here| {
+                        d.child(
+                            div()
+                                .flex_shrink_0()
+                                .text_color(T::color(T::muted()))
+                                .child("/"),
+                        )
+                        .child(div().min_w_0().truncate().child(here))
+                    }),
+            )
+            .child(self.title_drag_area(cx))
+            .when(self.store.slow(), |d| d.child(label("正在更新…")))
+            .when(
+                matches!(
+                    self.store.recognition().phase,
+                    RecognitionPhase::Starting | RecognitionPhase::Recovering
+                ),
+                |d| d.child(label("正在识别会话…")),
+            )
+            // The host runs older code than this app. One that can hand over is updated
+            // in place; an older one must be restarted, which ends every terminal.
+            .when(crate::lifecycle::stale_host(), |d| {
+                d.child(
+                    button(
+                        "restart-host",
+                        match (
+                            self.restarting,
+                            crate::lifecycle::stale_build().is_some_and(|b| b.handoff),
+                        ) {
+                            (true, _) => "正在更新后台…",
+                            // Updated in place: every terminal keeps running.
+                            (false, true) => "后台有更新 · 更新",
+                            (false, false) => "后台有更新 · 重启",
                         },
                     )
-                    .on_click(cx.listener(|this, _, _, cx| this.toggle_sidebar(cx))),
+                    .text_color(T::color(T::secondary()))
+                    .on_click(cx.listener(|this, _, _, cx| {
+                        if !this.restarting {
+                            this.request_close(Closing::Host, cx);
+                        }
+                    })),
                 )
-                .child(
-                    div()
-                        .id("app-icon")
-                        .role(gpui::accesskit::Role::Button)
-                        .aria_label("换图标")
-                        .flex_shrink_0()
-                        .cursor_pointer()
-                        .child(
-                            gpui::img(cx.global::<Chosen>().icon.title_image()).size(px(T::LOGO)),
-                        )
-                        .on_mouse_down(
-                            gpui::MouseButton::Left,
-                            cx.listener(|this, event: &gpui::MouseDownEvent, _, cx| {
-                                // Drops below the title bar so the logo stays in view.
-                                this.layout.icon_menu =
-                                    Some(gpui::point(event.position.x, px(T::TOP)));
-                                cx.stop_propagation();
-                                cx.notify();
-                            }),
-                        ),
+            })
+            .when(!self.needs_you().is_empty(), |d| {
+                d.child(self.next_waiting_chip(cx))
+            })
+            // A toggle: the same spot goes into the overview and back out of it.
+            .child({
+                let on = self.nav.overview || !self.overview.cleanup.is_empty();
+                let toggle = icon_button(
+                    "overview",
+                    "icons/grid.svg",
+                    if on { "回到工作区" } else { "鸟瞰全部" },
                 )
-                .child(
-                    div()
-                        .font_weight(gpui::FontWeight::SEMIBOLD)
-                        .child("Keepline"),
-                )
-                .child(label(format!("/ {space_name}")))
-                // A toggle: the same spot goes into the overview and back out of it. Its
-                // label and everything before it keep their width, so nothing shifts.
-                .child({
-                    let on = self.nav.overview || !self.overview.cleanup.is_empty();
-                    let toggle = button("overview", "▦ 鸟瞰全部")
-                        .aria_label(if on {
-                            "回到工作区"
-                        } else {
-                            "鸟瞰全部"
-                        })
-                        .bg(T::color(if on { T::selection() } else { T::raised() }))
-                        .when(on, |d| {
-                            d.border_color(T::color(T::focus()))
-                                .text_color(T::color(T::primary()))
-                        })
-                        .on_click(cx.listener(move |this, _, _, cx| {
-                            if on {
-                                this.leave_overview(cx);
-                            } else {
-                                this.show_overview(cx);
-                            }
-                        }));
-                    self.record_toggle(toggle, cx)
+                .when(on, |d| d.bg(T::color(T::selection())))
+                .tooltip(move |_, cx| {
+                    cx.new(|_| TextTip(if on { "回到工作区" } else { "鸟瞰全部" }.into()))
+                        .into()
                 })
-                .child(self.search_button(cx))
-                .child(self.title_drag_area(cx))
-                .when(self.store.slow(), |d| d.child(label("正在更新…")))
-                .when(
-                    matches!(
-                        self.store.recognition().phase,
-                        RecognitionPhase::Starting | RecognitionPhase::Recovering
-                    ),
-                    |d| d.child(label("正在识别会话…")),
-                )
-                // The host runs older code than this app. One that can hand over is updated
-                // in place; an older one must be restarted, which ends every terminal.
-                .when(crate::lifecycle::stale_host(), |d| {
-                    d.child(
-                        button(
-                            "restart-host",
-                            match (
-                                self.restarting,
-                                crate::lifecycle::stale_build().is_some_and(|b| b.handoff),
-                            ) {
-                                (true, _) => "正在更新后台…",
-                                // Updated in place: every terminal keeps running.
-                                (false, true) => "后台有更新 · 更新",
-                                (false, false) => "后台有更新 · 重启",
-                            },
-                        )
-                        .text_color(T::color(T::secondary()))
-                        .on_click(cx.listener(|this, _, _, cx| {
-                            if !this.restarting {
-                                this.request_close(Closing::Host, cx);
-                            }
-                        })),
-                    )
-                })
-                .when(!self.needs_you().is_empty(), |d| {
-                    d.child(self.next_waiting_chip(cx))
-                })
-                .children(self.phones_button(cx))
-                .child(
-                    button("add-task", "＋ 新待办").on_click(
-                        cx.listener(|this, _, window, cx| this.show_quick_task(window, cx)),
-                    ),
-                ),
-        );
+                .on_click(cx.listener(move |this, _, _, cx| {
+                    if on {
+                        this.leave_overview(cx);
+                    } else {
+                        this.show_overview(cx);
+                    }
+                }));
+                self.record_toggle(toggle, cx)
+            })
+            .children(self.phones_button(cx));
         let sidebar = self.sidebar_view(space_name, cx);
         let current = self
             .workspace
@@ -449,6 +444,7 @@ impl Render for Workbench {
             .h_full()
             .flex()
             .flex_col()
+            .child(header)
             .children(top_tabs);
         // Indexing in progress is a top-bar note; only a lost link to the host is worth a
         // strip, in words the user can act on. A missing official status source is not:
@@ -1064,9 +1060,23 @@ impl Workbench {
             })
             .on_click(cx.listener(|this, _, window, cx| this.next_waiting(window, cx)))
     }
+    /// The sidebar button beside the traffic lights: on the sidebar's top row while it is
+    /// open, on the main title row once it is folded away, so it never moves.
+    pub(super) fn sidebar_toggle(&self, cx: &Context<Self>) -> gpui::Stateful<gpui::Div> {
+        icon_button(
+            "sidebar-toggle",
+            "icons/sidebar.svg",
+            if self.sidebar.collapsed {
+                "展开左栏"
+            } else {
+                "收起左栏"
+            },
+        )
+        .on_click(cx.listener(|this, _, _, cx| this.toggle_sidebar(cx)))
+    }
     /// Empty title-bar space moves the window and zooms it on a double press, as the
     /// system title bar did before the top bar replaced it.
-    fn title_drag_area(&self, cx: &Context<Self>) -> gpui::Stateful<gpui::Div> {
+    pub(super) fn title_drag_area(&self, cx: &Context<Self>) -> gpui::Stateful<gpui::Div> {
         div()
             .id("title-drag")
             .flex_1()
