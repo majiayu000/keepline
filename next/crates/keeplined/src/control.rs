@@ -39,11 +39,15 @@ keeplined remote --devices                   列出配对过的手机、权限�
 keeplined remote --device <设备> --role <view|answer|full>
                                              改一台手机的权限；它正连着的会话一秒内断开，重连后按新权限
 keeplined remote --revoke <设备编号或名字>   取消一台手机的配对，它正连着的会话一秒内断开
+keeplined plugins [--dir 目录] [--json]      检查插件能不能装上：哪个生效、哪个为什么没生效
 keeplined --skill                            给 Coding Agent 看的用法说明（Markdown）
+keeplined --skill plugins                    给 Coding Agent 看的写插件、改外观说明（Markdown）
 <终端> 可以是编号的前几位或标签名；全部命令都接受 --runtime <目录>。
 Agent 藏在包装器（沙盒、虚拟机、nono 等）后面认不出时，启动前设 KEEPLINE_AGENT=<claude|codex|…>。";
 /// `keeplined --skill`: how a coding Agent drives these commands, and when it must not.
 pub const SKILL: &str = include_str!("skill.md");
+/// `keeplined --skill plugins`: how a coding Agent changes Keepline with plugins.
+pub const PLUGINS_SKILL: &str = include_str!("plugins.md");
 
 /// What the Agent in a terminal is doing, read like the workbench's pane states.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]

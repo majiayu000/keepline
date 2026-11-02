@@ -2,6 +2,8 @@
 
 给 Coding Agent 看：怎样用 `keeplined` 读别的 Keepline 终端、给里面的 Agent 发话、等它做完，以及在自己旁边开一块分屏跑东西。
 
+用户要你改 Keepline 本身（加命令、换左栏、窗格上显示东西、通知、动画、颜色）时看另一份：`keeplined --skill plugins`。
+
 ## 先确认在 Keepline 里
 
 ```sh
