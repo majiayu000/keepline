@@ -104,7 +104,12 @@ pub struct Pane {
     flash: bool,
     /// A short note in the corner that clears itself, e.g. how to select when the
     /// program took the mouse.
-    toast: Option<&'static str>,
+    toast: Option<gpui::SharedString>,
+    toast_seq: u64,
+    /// "已复制" right where the mouse let go of a selection, so the copy is seen
+    /// where the eye already is; it fades on its own.
+    copied: Option<(Point<Pixels>, gpui::SharedString)>,
+    copied_seq: u64,
     /// The Agent running in this terminal, as the workbench last saw it.
     pub agent: Option<keepline_core::model::Agent>,
     /// Shares the tab with other panes: unless it holds focus, it fades and draws no
@@ -422,6 +427,9 @@ impl Pane {
             bell: false,
             flash: false,
             toast: None,
+            toast_seq: 0,
+            copied: None,
+            copied_seq: 0,
             agent: None,
             split: false,
             peek: false,
@@ -734,7 +742,7 @@ impl Pane {
             }
             // Copy on select, as iTerm2 and Ghostty do; a plain click selects nothing.
             if self.selected_text().is_some() {
-                self.copy(cx);
+                self.copy_at(Some(event.position), cx);
             }
             cx.notify();
         }
@@ -770,7 +778,7 @@ impl Pane {
             window.scale_factor(),
             cx,
         ) && button == Some(mouse::Button::Left)
-            && self.toast != Some(SELECT_HINT)
+            && self.toast.as_deref() != Some(SELECT_HINT)
         {
             self.show_toast(SELECT_HINT, cx);
         }
@@ -1049,16 +1057,37 @@ impl Pane {
             self.prefill(&text, cx);
         }
     }
-    fn show_toast(&mut self, text: &'static str, cx: &mut Context<Self>) {
-        self.toast = Some(text);
+    fn show_toast(&mut self, text: impl Into<gpui::SharedString>, cx: &mut Context<Self>) {
+        self.toast = Some(text.into());
+        self.toast_seq += 1;
+        let seq = self.toast_seq;
         cx.notify();
         cx.spawn(async move |this, cx| {
             cx.background_executor()
                 .timer(std::time::Duration::from_secs(3))
                 .await;
             let _ = this.update(cx, |pane, cx| {
-                if pane.toast == Some(text) {
+                // A newer note restarts the clock instead of being cut short.
+                if pane.toast_seq == seq {
                     pane.toast = None;
+                    cx.notify();
+                }
+            });
+        })
+        .detach();
+    }
+    fn show_copied(&mut self, at: Point<Pixels>, text: String, cx: &mut Context<Self>) {
+        self.copied = Some((at, text.into()));
+        self.copied_seq += 1;
+        let seq = self.copied_seq;
+        cx.notify();
+        cx.spawn(async move |this, cx| {
+            cx.background_executor()
+                .timer(std::time::Duration::from_millis(1400))
+                .await;
+            let _ = this.update(cx, |pane, cx| {
+                if pane.copied_seq == seq {
+                    pane.copied = None;
                     cx.notify();
                 }
             });
@@ -1095,8 +1124,15 @@ impl Pane {
             .filter(|t| !t.is_empty())
     }
     /// Copies the selection; with nothing selected, the visible screen.
-    pub fn copy(&self, cx: &mut Context<Self>) {
-        let text = self.selected_text().unwrap_or_else(|| {
+    pub fn copy(&mut self, cx: &mut Context<Self>) {
+        self.copy_at(None, cx);
+    }
+    /// Says what was copied: beside `at` when the mouse made the selection, otherwise
+    /// in the corner. Copying the whole screen is called out, as nothing was selected.
+    fn copy_at(&mut self, at: Option<Point<Pixels>>, cx: &mut Context<Self>) {
+        let selected = self.selected_text();
+        let whole_screen = selected.is_none();
+        let text = selected.unwrap_or_else(|| {
             let lines: Vec<String> = self
                 .screen
                 .rows
@@ -1108,7 +1144,12 @@ impl Pane {
                 .collect();
             lines.join("\n")
         });
+        let note = copied_note(&text, whole_screen);
         cx.write_to_clipboard(gpui::ClipboardItem::new_string(text));
+        match at {
+            Some(at) => self.show_copied(at, note, cx),
+            None => self.show_toast(note, cx),
+        }
     }
     /// Checks a hovered path word on disk. A relative one also asks the host where the
     /// program is now, then checks again, so a `cd` since the last hover is followed.
@@ -1764,7 +1805,11 @@ impl Render for Pane {
             .and_then(|mut c| c.take())
             && writable
         {
+            // The program copied on its own (e.g. an Agent's /copy); say so, or the
+            // user can't tell anything happened.
+            let note = format!("程序{}", copied_note(&text, false));
             cx.write_to_clipboard(gpui::ClipboardItem::new_string(text));
+            self.show_toast(note, cx);
         }
         let entity = cx.entity();
         let content = canvas(
@@ -2123,7 +2168,34 @@ impl Render for Pane {
                         )
                     }),
             )
-            .when_some(self.toast, |d, toast| {
+            .when_some(self.copied.clone(), |d, (at, note)| {
+                // On the release row, just right of the pointer: a drag usually ends at
+                // the selection's end, so this covers only text after it, not the copy.
+                d.child(
+                    gpui::deferred(
+                        gpui::anchored()
+                            .position(at + gpui::point(px(T::S8 + T::S4), px(-11.)))
+                            .snap_to_window_with_margin(px(T::S8))
+                            .child(
+                                div()
+                                    .flex()
+                                    .items_center()
+                                    .gap(px(T::S4))
+                                    .px(px(T::S8))
+                                    .py(px(T::S2))
+                                    .rounded(px(T::CONTROL_RADIUS))
+                                    .bg(T::color(T::raised()))
+                                    .border(px(T::BORDER_WIDTH))
+                                    .border_color(T::color(T::card_border()))
+                                    .text_size(px(T::META))
+                                    .child(div().text_color(T::color(T::accent())).child("✓"))
+                                    .child(div().text_color(T::color(T::secondary())).child(note)),
+                            ),
+                    )
+                    .priority(2),
+                )
+            })
+            .when_some(self.toast.clone(), |d, toast| {
                 d.relative().child(
                     div()
                         .absolute()
@@ -2320,7 +2392,19 @@ fn command_missing(tail: &str) -> bool {
 fn line_count(text: &str) -> usize {
     text.trim_end_matches(['\r', '\n']).lines().count()
 }
-const SELECT_HINT: &str = "这个程序接管了鼠标：按住 Shift 再拖动来选中文字";
+/// "已复制 3 行" / "已复制 12 字"; a screen copied for lack of a selection says so.
+fn copied_note(text: &str, whole_screen: bool) -> String {
+    let lines = text.lines().count();
+    if whole_screen {
+        return format!("没选中文字，已复制整屏 {lines} 行");
+    }
+    if lines > 1 {
+        format!("已复制 {lines} 行")
+    } else {
+        format!("已复制 {} 字", text.chars().count())
+    }
+}
+const SELECT_HINT: &str ="这个程序接管了鼠标：按住 Shift 再拖动来选中文字";
 
 #[derive(Debug, PartialEq)]
 enum PasteAction {
@@ -2353,13 +2437,19 @@ fn plain_paste(text: &str) -> Vec<u8> {
 }
 #[cfg(test)]
 mod paste_tests {
-    use super::PasteAction;
+    use super::{PasteAction, copied_note};
     use gpui::{ClipboardItem, Image, ImageFormat};
 
     #[test]
     fn an_image_goes_to_the_program_as_ctrl_v() {
         let image = ClipboardItem::new_image(&Image::from_bytes(ImageFormat::Png, vec![1]));
         assert_eq!(super::paste_action(Some(&image)), PasteAction::Image);
+    }
+    #[test]
+    fn copied_note_counts_lines_or_characters_and_flags_a_whole_screen_copy() {
+        assert_eq!(copied_note("中文ab", false), "已复制 4 字");
+        assert_eq!(copied_note("1\n2\n3", false), "已复制 3 行");
+        assert_eq!(copied_note("a\nb", true), "没选中文字，已复制整屏 2 行");
     }
     #[test]
     fn text_wins_over_an_image_and_an_empty_clipboard_does_nothing() {
