@@ -25,6 +25,8 @@ pub(super) enum Hit {
     Action(usize),
     /// A left-column view (经典, 状态, a plugin's), by preset id: picking it switches.
     View(String),
+    /// 本机诊断: opens the CPU / GPU panel, otherwise only reachable from the sidebar foot.
+    Diagnostics,
     /// 「再显示 N 个」: the rest of a folded group, `hidden` rows past what shows.
     More {
         section: &'static str,
@@ -296,12 +298,17 @@ impl Workbench {
             .filter(|p| contains(&format!("左栏 侧栏 视图 {}", p.name), query))
             .map(|p| Hit::View(p.id.clone()))
             .collect();
+        let tools: Vec<Hit> = contains("本机诊断 诊断 卡顿 占用 CPU GPU 内存 diagnostics", query)
+            .then_some(Hit::Diagnostics)
+            .into_iter()
+            .collect();
         for (title, hits) in [
             ("会话", sessions),
             ("原话", quotes),
             ("待办", tasks),
             ("动作", actions),
             ("左栏视图", views),
+            ("工具", tools),
         ] {
             if !hits.is_empty() {
                 let note = match title {
@@ -368,6 +375,7 @@ impl Workbench {
             }
             Hit::NextWaiting => self.next_waiting(window, cx),
             Hit::View(id) => self.choose_sidebar_preset(&id, cx),
+            Hit::Diagnostics => self.show_diagnostics(window, cx),
             Hit::Action(i) => {
                 if let (Some(action), Some(pane)) = (
                     keepline_core::action::all().get(i),
@@ -776,6 +784,13 @@ impl Workbench {
                         String::new(),
                     )
                 }
+                Hit::Diagnostics => (
+                    glyph("◔"),
+                    "本机诊断".into(),
+                    "看谁在占 CPU / GPU / 内存".into(),
+                    String::new(),
+                    String::new(),
+                ),
                 Hit::Action(i) => {
                     let action = keepline_core::action::all().get(*i);
                     (

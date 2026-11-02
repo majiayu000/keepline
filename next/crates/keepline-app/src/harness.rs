@@ -704,6 +704,14 @@ pub fn start(
             cx.update_window(handle.into(), |_, window, app| {
                 window.refresh(); window.draw(app).clear(app);
                 window.render_to_image().unwrap().save(directory.join("complete.png")).unwrap();
+                // The bottom of the body: the ranking and the right column should end together.
+                let center = gpui::point(window.viewport_size().width / 2., window.viewport_size().height / 2.);
+                window.dispatch_event(gpui::ScrollWheelEvent { position: center, delta: gpui::ScrollDelta::Lines(gpui::point(0., -200.)), modifiers: Default::default(), touch_phase: gpui::TouchPhase::Moved }.to_platform_input(), app);
+            }).unwrap();
+            cx.background_executor().timer(Duration::from_millis(300)).await;
+            cx.update_window(handle.into(), |_, window, app| {
+                window.refresh(); window.draw(app).clear(app);
+                window.render_to_image().unwrap().save(directory.join("complete-bottom.png")).unwrap();
             }).unwrap();
             handle.update(cx, |view, _, cx| view.visual_open_diagnostic_terminal(cx)).unwrap();
             assert!(handle.update(cx, |view, _, _| view.visual_diagnostic_closed()).unwrap());

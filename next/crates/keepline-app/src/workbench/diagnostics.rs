@@ -100,6 +100,14 @@ impl gpui::EventEmitter<DiagnosticAction> for DiagnosticView {}
 
 /// Rows the CPU ranking shows before「再显示」.
 const FIRST_ROWS: usize = 10;
+
+/// Rows the ranking shows before 「再显示」: as many as the right column (scatter plus
+/// GPU rows) is tall, so the left side does not end in a blank block; never fewer than 10.
+fn first_rows(gpu_rows: usize) -> usize {
+    // Scatter, its x labels, the GPU heading, axis and footnote, in ranking rows.
+    let fixed = ((T::SCATTER_HEIGHT + T::S20) / T::ROW) as usize + 3;
+    FIRST_ROWS.max(fixed + gpu_rows)
+}
 /// Apps that get their own chart color; the rest share one.
 const COLORED: usize = 5;
 
@@ -692,10 +700,11 @@ impl DiagnosticView {
             .py(px(T::S16))
             .child(heading("CPU 占用排行", "平均 · 虚线 = 1 个核心"))
             .child(axis(max, step, Some(100.), T::BAR_LABEL));
+        let first = first_rows(report.gpu_ranked().len());
         let shown = if self.all_rows {
             ranked.len()
         } else {
-            ranked.len().min(FIRST_ROWS)
+            ranked.len().min(first)
         };
         for (i, app) in ranked.iter().take(shown).enumerate() {
             let named: Vec<(String, String)> = app
@@ -801,14 +810,14 @@ impl DiagnosticView {
                 );
             }
         }
-        if ranked.len() > FIRST_ROWS {
+        if ranked.len() > first {
             column = column.child(
                 button(
                     "diagnostic-more",
                     if self.all_rows {
                         "收起".to_owned()
                     } else {
-                        format!("再显示 {} 项", ranked.len() - FIRST_ROWS)
+                        format!("再显示 {} 项", ranked.len() - first)
                     },
                 )
                 .mt(px(T::S6))
@@ -1481,5 +1490,20 @@ impl Workbench {
         )
         .with_priority(2)
         .into_any_element()
+    }
+}
+
+#[cfg(test)]
+mod row_tests {
+    use super::*;
+
+    #[test]
+    fn ranking_grows_to_match_the_right_column() {
+        // No GPU data: the right column is just the scatter, so the old 10 stands.
+        assert_eq!(first_rows(0), FIRST_ROWS.max(first_rows(0)));
+        assert!(first_rows(0) >= FIRST_ROWS);
+        // Seven GPU rows (the reported case) make room for all 15 ranked apps.
+        assert!(first_rows(7) >= 15);
+        assert_eq!(first_rows(8), first_rows(7) + 1);
     }
 }
