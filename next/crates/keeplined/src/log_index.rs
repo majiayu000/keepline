@@ -782,6 +782,17 @@ impl Index {
         if let Some(from) = tail_from {
             self.find_turn_start(runtime, &mut file, from, &mut parser)?;
         }
+        if self.recent(updated) {
+            if let Some(q) = c
+                .identity
+                .as_ref()
+                .and_then(|(id, _)| adapter.account(path, id))
+            {
+                if parser.card.quota.as_ref().is_none_or(|old| q.at >= old.at) {
+                    parser.card.quota = Some(q);
+                }
+            }
+        }
         c.dev = meta.dev();
         c.inode = meta.ino();
         c.updated = updated;

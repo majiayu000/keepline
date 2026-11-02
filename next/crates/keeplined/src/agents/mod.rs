@@ -96,6 +96,12 @@ pub trait Adapter: Sync {
     fn registry(&self, _root: &Path) -> Option<PathBuf> {
         None
     }
+    /// The account's usage limits as this CLI last recorded them beside its transcripts
+    /// (a status-line snapshot, its own log), asked each time conversation `id`'s
+    /// transcript grows. None: it records none outside the transcript.
+    fn account(&self, _transcript: &Path, _id: &str) -> Option<keepline_core::quota::Quota> {
+        None
+    }
     /// Whether a file under the root is a transcript.
     fn is_transcript(&self, path: &Path) -> bool {
         path.extension().is_some_and(|e| e == "jsonl")

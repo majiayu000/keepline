@@ -31,10 +31,12 @@ describe('Claude status-line context capture', () => {
     const original = { type: 'command', command: `python3 -c 'import sys; sys.stdout.buffer.write(sys.stdin.buffer.read()); sys.exit(7)'`, padding: 3, refreshInterval: 12 };
     const settings: ClaudeSettings = { statusLine: { ...original }, unrelated: true };
     expect(installClaudeStatusline(settings)).toBe(true);
-    const raw = JSON.stringify({ ...payload('capture-exact-123'), note: '你好 $HOME `echo secret`' }) + '\n';
+    const rateLimits = { five_hour: { used_percentage: 23.5, resets_at: 1798000000 }, seven_day: { used_percentage: 41, resets_at: 1798400000 } };
+    const raw = JSON.stringify({ ...payload('capture-exact-123'), rate_limits: rateLimits, note: '你好 $HOME `echo secret`' }) + '\n';
     expect(await invoke(settings, raw)).toEqual({ code: 7, stdout: raw, stderr: '' });
     expect(readClaudeContextUsage('capture-exact-123')).toMatchObject({ usedTokens: 749600, windowTokens: 1000000 });
     expect(statSync(join(getKeeplineHome(), 'context/claude-code/capture-exact-123.json')).mode & 0o777).toBe(0o600);
+    expect(JSON.parse(readFileSync(join(getKeeplineHome(), 'context/claude-code/capture-exact-123.json'), 'utf8')).rateLimits).toEqual(rateLimits);
     expect(installClaudeStatusline(settings)).toBe(false);
     expect(uninstallClaudeStatusline(settings)).toBe(true);
     expect(settings).toEqual({ statusLine: original, unrelated: true });

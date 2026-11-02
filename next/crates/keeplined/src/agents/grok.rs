@@ -6,7 +6,9 @@
 use super::{home_dir, temporary, Adapter};
 use crate::content::{text, Parser};
 use keepline_core::content::{short, Source, Turn};
+use keepline_core::quota::{Quota, Window};
 use serde_json::{Map, Value};
+use std::io::{Read, Seek, SeekFrom};
 use std::path::{Path, PathBuf};
 
 pub struct Grok;
@@ -169,6 +171,41 @@ impl Adapter for Grok {
     fn registry(&self, root: &Path) -> Option<PathBuf> {
         Some(root.parent()?.join("active_sessions.json"))
     }
+    /// Grok logs the account's credits each time it starts (`billing: fetched credits
+    /// config` in `<grok home>/logs/unified.jsonl`): the share of the period used, the
+    /// period, the plan. Hours of other lines can follow it, so the log is read on from
+    /// where the last read stopped, the first time from at most `LOG_FIRST_READ` back.
+    fn account(&self, transcript: &Path, _id: &str) -> Option<Quota> {
+        let home = transcript
+            .ancestors()
+            .find(|a| a.file_name().is_some_and(|n| n == "sessions"))?
+            .parent()?;
+        let path = home.join("logs/unified.jsonl");
+        let mut cache = LOG_READS.lock().unwrap_or_else(|e| e.into_inner());
+        let (read_to, found) = cache.entry(path.clone()).or_default();
+        let mut log = std::fs::File::open(&path).ok()?;
+        let len = log.metadata().ok()?.len();
+        if *read_to > len {
+            // Rotated or truncated: a new log.
+            (*read_to, *found) = (0, None);
+        }
+        let from = (*read_to).max(len.saturating_sub(LOG_FIRST_READ));
+        log.seek(SeekFrom::Start(from)).ok()?;
+        let mut new = Vec::new();
+        log.take(len - from).read_to_end(&mut new).ok()?;
+        // Only whole lines; a line being written is read next time.
+        let whole = new.iter().rposition(|b| *b == b'\n').map_or(0, |i| i + 1);
+        *read_to = from + whole as u64;
+        if let Some(q) = new[..whole]
+            .split(|b| *b == b'\n')
+            .rev()
+            .filter(|l| l.windows(BILLING.len()).any(|w| w == BILLING.as_bytes()))
+            .find_map(|l| credits_quota(&serde_json::from_slice(l).ok()?))
+        {
+            *found = Some(q);
+        }
+        found.clone()
+    }
     fn is_transcript(&self, path: &Path) -> bool {
         path.file_name().is_some_and(|n| n == "updates.jsonl")
             && path
@@ -287,9 +324,122 @@ impl Adapter for Grok {
     }
 }
 
+const BILLING: &str = "billing: fetched credits config";
+/// Grok's log grows about 1.5 MiB a day; this goes back over a week of it.
+const LOG_FIRST_READ: u64 = 16 * 1024 * 1024;
+/// Per log: how far it has been read, and the last credits line seen in it.
+static LOG_READS: std::sync::LazyLock<
+    std::sync::Mutex<std::collections::HashMap<PathBuf, LogRead>>,
+> = std::sync::LazyLock::new(Default::default);
+type LogRead = (u64, Option<Quota>);
+
+fn credits_quota(v: &Value) -> Option<Quota> {
+    if v["msg"] != BILLING {
+        return None;
+    }
+    let time = |t: &Value| {
+        chrono::DateTime::parse_from_rfc3339(t.as_str()?)
+            .ok()
+            .and_then(|t| u64::try_from(t.timestamp()).ok())
+    };
+    let config = &v["ctx"]["config"];
+    let start = time(&config["currentPeriod"]["start"])?;
+    let end = time(&config["currentPeriod"]["end"])?;
+    Some(Quota {
+        at: time(&v["ts"])?,
+        plan: v["ctx"]["subscriptionTier"].as_str().unwrap_or("").into(),
+        windows: vec![Window {
+            minutes: u32::try_from((end.checked_sub(start)? + 30) / 60).ok()?,
+            used: config["creditUsagePercent"]
+                .as_f64()?
+                .round()
+                .clamp(0., 999.) as u16,
+            resets_at: end,
+        }],
+    })
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn the_logged_credits_are_the_account_reading() {
+        let dir =
+            std::env::temp_dir().join(format!("keepline-grok-credits-{}", std::process::id()));
+        let session = dir.join("sessions/%2Frepo/01a1");
+        std::fs::create_dir_all(&session).unwrap();
+        std::fs::create_dir_all(dir.join("logs")).unwrap();
+        let billing = |ts: &str, used: f64| {
+            serde_json::json!({
+                "ts": ts, "lvl": "info", "msg": BILLING,
+                "ctx": {
+                    "config": {
+                        "creditUsagePercent": used,
+                        "currentPeriod": {
+                            "type": "USAGE_PERIOD_TYPE_WEEKLY",
+                            "start": "2026-10-27T18:00:19.258+00:00",
+                            "end": "2026-11-03T18:00:19.258+00:00"
+                        }
+                    },
+                    "subscriptionTier": "SuperGrok Lite"
+                }
+            })
+            .to_string()
+        };
+        let path = session.join("updates.jsonl");
+        assert_eq!(Grok.account(&path, "01a1"), None);
+        std::fs::write(
+            dir.join("logs/unified.jsonl"),
+            [
+                billing("2026-11-01T03:23:10.113Z", 40.),
+                billing("2026-11-02T03:23:10.113Z", 52.),
+                r#"{"ts":"2026-11-02T03:24:00Z","msg":"billing: upstream request failed"}"#.into(),
+                r#"{"ts":"2026-11-02T03:25:00Z","msg":"slash.advertise"}"#.into(),
+            ]
+            .join("\n"),
+        )
+        .unwrap();
+        let q = Grok.account(&path, "01a1").unwrap();
+        assert_eq!(q.plan, "SuperGrok Lite");
+        assert_eq!(q.at, 1_793_589_790);
+        assert_eq!(
+            q.windows,
+            [Window {
+                minutes: 10_080,
+                used: 52,
+                resets_at: 1_793_728_819
+            }]
+        );
+        assert_eq!(q.windows[0].label(), "周");
+        // Lines after it are read on from where the last read stopped; the reading stays.
+        let mut log = std::fs::OpenOptions::new()
+            .append(true)
+            .open(dir.join("logs/unified.jsonl"))
+            .unwrap();
+        use std::io::Write;
+        writeln!(log).unwrap();
+        writeln!(
+            log,
+            r#"{{"ts":"2026-11-02T04:00:00Z","msg":"slash.advertise"}}"#
+        )
+        .unwrap();
+        assert_eq!(Grok.account(&path, "01a1").unwrap().windows[0].used, 52);
+        writeln!(log, "{}", billing("2026-11-02T05:00:00Z", 60.)).unwrap();
+        assert_eq!(Grok.account(&path, "01a1").unwrap().windows[0].used, 60);
+        // A new, shorter log starts over.
+        std::fs::write(
+            dir.join("logs/unified.jsonl"),
+            billing("2026-11-02T06:00:00Z", 3.) + "\n",
+        )
+        .unwrap();
+        assert_eq!(Grok.account(&path, "01a1").unwrap().windows[0].used, 3);
+        // A workflow's transcript sits deeper under the same home.
+        assert!(Grok
+            .account(&session.join("workflows/wf/updates.jsonl"), "wf")
+            .is_some());
+        std::fs::remove_dir_all(&dir).unwrap();
+    }
     use keepline_core::model::Agent;
     use serde_json::json;
 

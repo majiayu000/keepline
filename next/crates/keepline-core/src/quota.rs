@@ -1,6 +1,8 @@
-//! Account usage limits, as each CLI writes them into its own conversation logs.
-//! Keepline never asks a provider for them: a reading is only as fresh as the last record
-//! some conversation of that CLI wrote, so every use keeps its time.
+//! Account usage limits, as each CLI records them on this machine: Codex in its
+//! conversation logs, Claude Code through its status line (kept by Keepline's wrapper),
+//! Grok in its own log when it starts. Keepline never asks a provider for them: a reading
+//! is only as fresh as the last record, so every use keeps its time. Cursor and Qoder
+//! record no limit locally (Qoder only the credits each reply cost).
 use crate::model::{Agent, Workspace};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;

@@ -24,7 +24,7 @@ try:
     session=payload["session_id"]
     if not isinstance(session,str) or not re.fullmatch(r"[a-zA-Z0-9_-]{8,64}",session):
         raise ValueError("Invalid session ID")
-    snapshot={"sessionId":session,"at":datetime.datetime.now(datetime.timezone.utc).isoformat(),"contextWindow":payload.get("context_window")}
+    snapshot={"sessionId":session,"at":datetime.datetime.now(datetime.timezone.utc).isoformat(),"contextWindow":payload.get("context_window"),"rateLimits":payload.get("rate_limits")}
     root=os.path.join(home,"context","claude-code")
     os.makedirs(root,mode=0o700,exist_ok=True)
     with tempfile.NamedTemporaryFile(mode="w",dir=root,prefix=session+"-",suffix=".tmp",delete=False,encoding="utf-8") as target:

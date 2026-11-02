@@ -485,7 +485,7 @@ impl Workbench {
             if quota.windows.len() == 1 {
                 row = row.child(div().flex_1());
             }
-            lines.push("来自它自己的会话记录，Keepline 不联网查询".into());
+            lines.push("来自它在本机留下的记录（会话、状态栏或日志），Keepline 不联网查询".into());
             block = block.child(row.tooltip(super::diagnostics::tip(lines)));
         }
         Some(block)

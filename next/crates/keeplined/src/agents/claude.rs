@@ -4,6 +4,7 @@ use crate::content::{claims_done, text, user_text, Parser};
 use keepline_core::content::{short, Source, Turn};
 use keepline_core::model::AgentSession;
 use keepline_core::protocol::{TerminalNote, CLAUDE_TRANSCRIPT_OFF};
+use keepline_core::quota::{Quota, Window};
 use serde_json::Value;
 use std::path::{Path, PathBuf};
 
@@ -107,6 +108,23 @@ impl Adapter for Claude {
                 "SessionEnd",
             ],
         })
+    }
+    /// Claude Code hands its status line the account's windows (`rate_limits`), and
+    /// Keepline's status-line wrapper keeps the last payload of each conversation in
+    /// `$KEEPLINE_HOME/context/claude-code/<id>.json` (`~/.keepline` by default).
+    fn account(&self, _transcript: &Path, id: &str) -> Option<Quota> {
+        if id.is_empty()
+            || !id
+                .chars()
+                .all(|c| c.is_ascii_alphanumeric() || c == '-' || c == '_')
+        {
+            return None;
+        }
+        let home = std::env::var_os("KEEPLINE_HOME")
+            .map(PathBuf::from)
+            .or_else(|| std::env::var_os("HOME").map(|h| PathBuf::from(h).join(".keepline")))?;
+        let snapshot = std::fs::read(home.join("context/claude-code").join(format!("{id}.json")));
+        statusline_quota(&serde_json::from_slice(&snapshot.ok()?).ok()?)
     }
     fn identity(&self, _path: &Path, value: &Value) -> Option<(String, String)> {
         if value["isSidechain"] == true {
@@ -342,9 +360,73 @@ fn inherited(v: &Value, source: &Source) -> bool {
         _ => false,
     }
 }
+/// The status line's `rate_limits` as the wrapper saved them: `five_hour` and `seven_day`,
+/// each `used_percentage` and `resets_at` (Unix seconds). API-key and Bedrock sign-ins get
+/// null there and leave no reading.
+fn statusline_quota(v: &Value) -> Option<Quota> {
+    let at = chrono::DateTime::parse_from_rfc3339(v["at"].as_str()?).ok()?;
+    let windows: Vec<Window> = [("five_hour", 300), ("seven_day", 10_080)]
+        .into_iter()
+        .filter_map(|(key, minutes)| {
+            let w = &v["rateLimits"][key];
+            Some(Window {
+                minutes,
+                used: w["used_percentage"].as_f64()?.round().clamp(0., 999.) as u16,
+                resets_at: w["resets_at"].as_f64().map_or(0, |t| t.max(0.) as u64),
+            })
+        })
+        .collect();
+    (!windows.is_empty()).then(|| Quota {
+        at: u64::try_from(at.timestamp()).unwrap_or(0),
+        plan: String::new(),
+        windows,
+    })
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn status_line_rate_limits_become_the_account_reading() {
+        let v = serde_json::json!({
+            "sessionId": "abc",
+            "at": "2026-11-02T07:47:28.543272+00:00",
+            "contextWindow": null,
+            "rateLimits": {
+                "five_hour": {"used_percentage": 23.6, "resets_at": 1_798_000_000},
+                "seven_day": {"used_percentage": 41, "resets_at": 1_798_400_000},
+                "seven_day_opus": null
+            }
+        });
+        let q = statusline_quota(&v).unwrap();
+        assert_eq!(q.at, 1_793_605_648);
+        assert_eq!(
+            q.windows,
+            [
+                Window {
+                    minutes: 300,
+                    used: 24,
+                    resets_at: 1_798_000_000
+                },
+                Window {
+                    minutes: 10_080,
+                    used: 41,
+                    resets_at: 1_798_400_000
+                },
+            ]
+        );
+        // Snapshots from before the wrapper kept them, and API-key sign-ins.
+        for rate_limits in [Value::Null, serde_json::json!({"five_hour": null})] {
+            let mut old = v.clone();
+            old["rateLimits"] = rate_limits;
+            assert_eq!(statusline_quota(&old), None);
+        }
+        assert_eq!(
+            Claude.account(Path::new("/x.jsonl"), "../../etc/passwd"),
+            None
+        );
+    }
 
     #[test]
     fn the_title_glyph_says_whether_a_turn_runs() {
