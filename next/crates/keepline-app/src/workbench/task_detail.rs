@@ -441,7 +441,7 @@ impl Workbench {
                 .unwrap_or_default();
             let done = sessions
                 .iter()
-                .filter(|s| session_group(&self.workspace, s) == Group::Review)
+                .filter(|s| status_of(&self.workspace, s) == Status::Review)
                 .count();
             [
                 format!(
@@ -819,7 +819,7 @@ impl Workbench {
                             .flex_shrink_0()
                             .text_size(px(T::CHIP_SIZE))
                             .text_color(if failed {
-                                Group::Error.colors().1
+                                Tone::Danger.ink()
                             } else {
                                 T::color(T::secondary())
                             })
@@ -957,7 +957,7 @@ impl Workbench {
                             result_name(&e.record)
                         })
                         .flex_shrink_0()
-                        .when(failed, |d| d.text_color(Group::Error.colors().1)),
+                        .when(failed, |d| d.text_color(Tone::Danger.ink())),
                     )
                     .child(
                         muted(format!(
@@ -1018,7 +1018,7 @@ impl Workbench {
         let at = now();
         let count = sessions.len();
         for (n, session) in sessions.iter().enumerate() {
-            let group = session_group(&self.workspace, session);
+            let group = status_of(&self.workspace, session);
             let updated = self
                 .workspace
                 .content

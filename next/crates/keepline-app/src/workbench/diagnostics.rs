@@ -1,10 +1,10 @@
 //! An independently updated, disposable view of a short host measurement.
 use super::*;
-use gpui::{Animation, AnimationExt};
 use futures::{
     StreamExt,
     channel::mpsc::{UnboundedSender, unbounded},
 };
+use gpui::{Animation, AnimationExt};
 use keepline_core::diagnostics::{AppUsage, Diagnostics, gib, mib};
 use std::{
     io,
@@ -255,9 +255,9 @@ fn panel(
     use keepline_core::quota::{NEAR, OVER};
     let group = percent.and_then(|p| {
         if p >= f64::from(OVER) {
-            Some(Group::Error)
+            Some(Tone::Danger)
         } else if p >= f64::from(NEAR) {
-            Some(Group::Waiting)
+            Some(Tone::Warn)
         } else {
             None
         }
@@ -1408,7 +1408,7 @@ impl Render for DiagnosticView {
                 div()
                     .px(px(T::S20))
                     .pb(px(T::S16))
-                    .text_color(Group::Error.colors().1)
+                    .text_color(Tone::Danger.ink())
                     .child(error.clone()),
             );
         }

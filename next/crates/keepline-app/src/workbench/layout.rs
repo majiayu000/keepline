@@ -145,13 +145,7 @@ impl Workbench {
             s.outcome == Outcome::Open
                 && matches!(
                     status,
-                    Some(
-                        Group::Review
-                            | Group::Done
-                            | Group::Ready
-                            | Group::Background
-                            | Group::Paused
-                    )
+                    Some(Status::Review | Status::Background | Status::Paused)
                 )
         });
         let completing = self.completing(id);
@@ -236,9 +230,9 @@ impl Workbench {
                 use keepline_core::decoration::Tone;
                 let color = match tone {
                     Tone::Muted => T::color(T::muted()),
-                    Tone::Ok => Group::Ready.colors().1,
-                    Tone::Warn => Group::Waiting.colors().1,
-                    Tone::Error => Group::Error.colors().1,
+                    Tone::Ok => crate::ui::tone::Tone::Ok.ink(),
+                    Tone::Warn => crate::ui::tone::Tone::Warn.ink(),
+                    Tone::Error => crate::ui::tone::Tone::Danger.ink(),
                 };
                 div()
                     .flex_shrink_0()
@@ -253,9 +247,9 @@ impl Workbench {
                         .flex_shrink_0()
                         .px(px(T::S6))
                         .rounded(px(T::CHIP_RADIUS))
-                        .bg(Group::Error.colors().2)
+                        .bg(Tone::Danger.wash())
                         .text_size(px(T::META))
-                        .text_color(Group::Error.colors().1)
+                        .text_color(Tone::Danger.ink())
                         .child(alert),
                 )
             })
@@ -1417,7 +1411,7 @@ impl Workbench {
                                     },
                                 )
                                 .when(working || host || agent, |b| {
-                                    b.text_color(Group::Error.colors().1)
+                                    b.text_color(Tone::Danger.ink())
                                 })
                                 .on_click(cx.listener(
                                     move |this, _, _, cx| {
@@ -1492,7 +1486,7 @@ impl PaneAction for gpui::Stateful<gpui::Div> {
 /// The pane header's status: the group's wash, its ink and its dot.
 /// The state word, and after it why the session needs you when a reasons rule knows:
 /// 「等你回答 · 批准 WebSearch」. The phrase is already cut to the rules' width.
-fn state_chip(group: Group, reason: Option<String>) -> gpui::Div {
+fn state_chip(group: Status, reason: Option<String>) -> gpui::Div {
     let (dot, ink, wash) = group.colors();
     div()
         .flex_shrink_0()
@@ -1514,20 +1508,18 @@ fn state_chip(group: Group, reason: Option<String>) -> gpui::Div {
         })
 }
 /// Lower is more urgent: what a tab's dot shows when its panes disagree.
-pub(super) fn urgency(group: Group) -> u8 {
+pub(super) fn urgency(group: Status) -> u8 {
     match group {
-        Group::Waiting => 0,
-        Group::Error => 1,
-        Group::Done => 2,
-        Group::Review => 3,
-        Group::Working => 4,
-        Group::Running => 5,
-        Group::Background => 6,
-        Group::Paused => 7,
-        Group::Ready => 8,
-        Group::Stale => 9,
-        Group::Fresh => 10,
-        Group::Closed => 11,
+        Status::Waiting => 0,
+        Status::Error => 1,
+        Status::Review => 2,
+        Status::Running => 3,
+        Status::Background => 4,
+        Status::Paused => 5,
+        Status::Deferred => 6,
+        Status::Stale => 7,
+        Status::Fresh => 8,
+        Status::Closed => 9,
     }
 }
 /// `3:12`, or `1:03:12` past an hour.
@@ -1584,12 +1576,12 @@ impl Workbench {
     }
     /// A pane's status as the sidebar shows it, and whether it asks for attention; a
     /// conversation already closed out and no longer live shows none.
-    pub(super) fn pane_status(&self, id: &str) -> Option<(Group, bool)> {
+    pub(super) fn pane_status(&self, id: &str) -> Option<(Status, bool)> {
         let s = self.pane_session(id)?;
         if live_terminal(&self.workspace, s).is_none() && !s.outcome.needs_review(now()) {
             return None;
         }
-        Some(sidebar_status(&self.workspace, &self.attention.unseen, s))
+        Some(session_status(&self.workspace, &self.attention.unseen, s))
     }
     /// `claude · 5 分钟`, or `claude · 本轮 3:12` while a turn runs in a live terminal.
     fn pane_meta(&self, session: Option<&AgentSession>, cx: &Context<Self>) -> gpui::Div {
@@ -1686,7 +1678,7 @@ impl Workbench {
     }
     /// The title's hover card lines about the conversation: what it was asked, and where
     /// it stopped in full (the question, the error, else the latest reply's first line).
-    fn pane_story(&self, s: &AgentSession, g: Group) -> Vec<String> {
+    fn pane_story(&self, s: &AgentSession, g: Status) -> Vec<String> {
         let ask = self
             .workspace
             .content

@@ -102,7 +102,7 @@ fn phone_glyph(color: gpui::Hsla, live: bool) -> gpui::Div {
 }
 
 fn live_color() -> gpui::Hsla {
-    Group::Running.colors().0
+    Tone::Ok.dot()
 }
 
 /// The connection in a few words, with the color of its dot.
@@ -113,10 +113,7 @@ pub(super) fn state_line(r: &RemoteStatus) -> (gpui::Hsla, String) {
             (T::color(T::secondary()), "正在连中继…".into())
         }
         RemoteState::Connecting => (T::color(T::secondary()), r.live.detail.clone()),
-        RemoteState::Failed => (
-            Group::Error.colors().0,
-            format!("没连上：{}", r.live.detail),
-        ),
+        RemoteState::Failed => (Tone::Danger.dot(), format!("没连上：{}", r.live.detail)),
         RemoteState::Off => (T::color(T::muted()), "已关闭".into()),
     }
 }
@@ -131,7 +128,7 @@ impl Workbench {
         let online = r.live.online.len();
         let color = match r.live.state {
             RemoteState::Connected if online > 0 => live_color(),
-            RemoteState::Failed => Group::Error.colors().0,
+            RemoteState::Failed => Tone::Danger.dot(),
             _ => T::color(T::secondary()),
         };
         let open = self.phones.open;
@@ -394,7 +391,7 @@ impl Workbench {
                             .h(px(T::PILL_HEIGHT))
                             .px(px(T::S8))
                             .text_size(px(T::META))
-                            .text_color(Group::Error.colors().1)
+                            .text_color(Tone::Danger.ink())
                             .on_click(cx.listener(move |this, _, _, cx| {
                                 this.change_device(id.clone(), RemoteChange::Revoke, cx)
                             })),
@@ -571,7 +568,7 @@ impl Workbench {
             }
         }
         if let Some(note) = &self.phones.note {
-            body = body.child(label(note.clone()).text_color(Group::Error.colors().1));
+            body = body.child(label(note.clone()).text_color(Tone::Danger.ink()));
         }
         let viewport = window.viewport_size();
         gpui::deferred(

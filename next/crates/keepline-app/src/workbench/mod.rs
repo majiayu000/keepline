@@ -5,7 +5,8 @@ use crate::{
     terminal::pane::Pane,
     ui::{
         field::Field,
-        theme::{Group, Theme as T},
+        theme::{Status, StatusStyle, Theme as T},
+        tone::Tone,
         widgets::*,
     },
 };

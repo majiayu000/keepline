@@ -1080,7 +1080,8 @@ mod tests {
     }
     #[test]
     fn outcomes_expire_once_preserve_history_and_leave_processes_alone() {
-        use crate::content::{Content, Inbox, Turn};
+        use crate::content::{Content, Turn};
+        use crate::status::{Status, of};
         let mut w = workspace();
         w.observe_agent(observation("one")).unwrap();
         let now = 4 * 86400;
@@ -1092,7 +1093,8 @@ mod tests {
             ..Default::default()
         };
         w.content.insert("one".into(), c.clone());
-        assert_eq!(c.group(&w.agent_sessions[0], &w, now), Inbox::Stale);
+        // Its terminal still runs: an agent open in front of you is never 很久没动.
+        assert_eq!(of(&w, &w.agent_sessions[0], now), Status::Review);
         w.change_outcome(
             "one",
             Outcome::Deferred {
@@ -1108,7 +1110,7 @@ mod tests {
         assert!(w.expire_outcomes(now + 2));
         assert!(!w.expire_outcomes(now + 3));
         assert_eq!(w.agent_sessions[0].outcome, Outcome::Open);
-        assert_eq!(c.group(&w.agent_sessions[0], &w, now + 2), Inbox::Review);
+        assert_eq!(of(&w, &w.agent_sessions[0], now + 2), Status::Review);
         assert_eq!(w.outcome_history.len(), 2);
         w.change_outcome("one", Outcome::Abandoned, now + 3, "用户操作")
             .unwrap();

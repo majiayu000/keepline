@@ -1,6 +1,6 @@
 //! The board's moving parts: a card's detail drawer, dragging a card where dropping it is
 //! an action, and the note at the bottom that says what happened, with 撤销.
-use super::board::{Column, agent_mark, board_group, column_icon, mesh};
+use super::board::{Column, agent_mark, column_icon, mesh};
 use super::*;
 use gpui::{Animation, AnimationExt, relative};
 use std::time::Duration;
@@ -367,9 +367,9 @@ impl Workbench {
     pub(super) fn toast_view(&self, cx: &Context<Self>) -> Option<gpui::AnyElement> {
         let toast = self.overview.toast.clone()?;
         let hue = if toast.refused {
-            Group::Waiting.colors().0
+            Tone::Warn.dot()
         } else {
-            Group::Done.colors().0
+            Tone::Ok.dot()
         };
         let note = div()
             .id(gpui::SharedString::from(format!(
@@ -459,9 +459,9 @@ impl Workbench {
         let list = self.column_sessions(column, at);
         let index = list.iter().position(|x| x.id == s.id).unwrap_or(0);
         let content = self.workspace.content.get(&s.id);
-        let group = board_group(&self.workspace, s);
+        let group = status_of(&self.workspace, s);
         let status = if column == Column::Done {
-            Group::Closed.label()
+            Status::Closed.label()
         } else {
             group.label()
         };

@@ -61,13 +61,13 @@ impl Workbench {
             .p(px(T::S6))
             .bg(T::color(T::todo()))
             .child(label(message).text_color(if stuck {
-                Group::Waiting.colors().1
+                Tone::Warn.ink()
             } else {
                 T::color(T::secondary())
             }))
             .when(task.acceptance.is_empty(), |d| {
                 let task = task.clone();
-                d.child(label("还没写验收标准").text_color(Group::Waiting.colors().1))
+                d.child(label("还没写验收标准").text_color(Tone::Warn.ink()))
                     .child(button("handoff-criteria", "补写").on_click(cx.listener(
                         move |this, _, window, cx| this.edit_task_form(&task, window, cx),
                     )))

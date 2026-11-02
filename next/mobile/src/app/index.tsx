@@ -47,7 +47,7 @@ function Row({ m, c, t }: { m: Machine; c: Card; t: Theme }) {
         <Text
           style={[
             s.badge,
-            { color: waiting ? t.waiting : c.phase === 'working' ? t.working : t.dim },
+            { color: waiting ? t.waiting : c.phase === 'working' ? t.running : t.dim },
           ]}
         >
           {status(c)}
@@ -74,7 +74,7 @@ function MachineSection({ m, t }: { m: Machine; t: Theme }) {
         <View
           style={[
             s.dot,
-            { backgroundColor: m.status === 'online' ? t.working : m.status === 'refused' ? t.danger : t.dim },
+            { backgroundColor: m.status === 'online' ? t.ok : m.status === 'refused' ? t.danger : t.dim },
           ]}
         />
         <Text style={[s.machine, { color: t.text }]}>{m.name || '电脑'}</Text>

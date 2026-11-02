@@ -1,6 +1,6 @@
 //! Design tokens from specs/terminal-workbench/design/README.md.
 //! UI dimensions live here; terminal cell colors remain owned by the VT.
-pub use crate::model::session_state::Group;
+pub use crate::model::session_state::Status;
 use gpui::{App, Font, Hsla, Rgba, font};
 pub use keepline_core::terminal::Scheme;
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -46,65 +46,51 @@ pub const BUNDLED_MONO: [&[u8]; 4] = [
     include_bytes!("../../assets/JetBrainsMono-Italic.ttf"),
     include_bytes!("../../assets/JetBrainsMono-BoldItalic.ttf"),
 ];
-impl Group {
-    pub const ALL: [Self; 6] = [
-        Self::Waiting,
-        Self::Error,
-        Self::Review,
-        Self::Paused,
-        Self::Running,
-        Self::Stale,
-    ];
-    pub fn label(self) -> &'static str {
-        match self {
-            Self::Waiting => "等你回答",
-            Self::Error => "出错了",
-            // One word per state everywhere. Only you say the work is done (2026-11-02):
-            // a finished turn is 等你验收 whatever it claimed, 做完了 is what you marked
-            // complete, and an interrupted turn is 停下了.
-            Self::Review => "等你验收",
-            Self::Paused => "停下了",
-            Self::Running => "在跑",
-            Self::Stale => "很久没动",
-            Self::Working => "在跑",
-            Self::Done => "等你验收",
-            Self::Ready => "等你验收",
-            Self::Fresh => "新开的",
-            Self::Background => "等后台",
-            Self::Closed => "做完了",
-        }
-    }
-    /// The group's base hue, from `colors.json` or the default; its ink and wash derive
-    /// from it and the terminal.
-    pub fn hue(self) -> u32 {
+/// A status's colors: one hue per state from `colors.json` or the default, its ink and
+/// wash derived from it and the terminal. Status colors are for sessions only; anything
+/// else that is fine, a warning or a failure takes a [`Tone`](super::tone::Tone).
+pub trait StatusStyle: Copy {
+    fn hue(self) -> u32;
+    /// Dot, ink and wash.
+    fn colors(self) -> (Hsla, Hsla, Hsla);
+}
+impl StatusStyle for Status {
+    fn hue(self) -> u32 {
         super::status_colors::StatusColors::get().hue(self)
     }
-    pub fn colors(self) -> (Hsla, Hsla, Hsla) {
-        let (dot, ink, bg) = self.colors_in(Theme::palette());
+    fn colors(self) -> (Hsla, Hsla, Hsla) {
+        let (dot, ink, bg) = status_colors_in(self, Theme::palette());
         (hsla(dot), hsla(ink), hsla(bg))
     }
-    /// Dot, ink and wash on one palette.
-    fn colors_in(self, p: &Palette) -> (u32, u32, u32) {
-        let (dot, ink, bg) = match self {
-            Self::Stale => (legible(self.hue(), p), p.secondary, p.raised),
-            // Ink moves the hue toward the text color, so it reads on either background.
-            group => (
-                legible(group.hue(), p),
-                mix(group.hue(), p.vivid, p.ink_share),
-                mix(p.terminal_bg, group.hue(), p.wash_share),
-            ),
-        };
-        (dot, ink, bg)
+}
+/// Dot, ink and wash on one palette.
+fn status_colors_in(status: Status, p: &Palette) -> (u32, u32, u32) {
+    let hue = status.hue();
+    match status {
+        Status::Stale => (legible(hue, p), p.secondary, p.raised),
+        _ => tone_of(hue, p),
     }
+}
+/// Ink moves the hue toward the text color, so it reads on either background.
+pub(super) fn tone_of(hue: u32, p: &Palette) -> (u32, u32, u32) {
+    (
+        legible(hue, p),
+        mix(hue, p.vivid, p.ink_share),
+        mix(p.terminal_bg, hue, p.wash_share),
+    )
 }
 /// The hue pushed toward the text color until it reaches 3:1 on the terminal background,
 /// so a yellow or green dot still reads on white; a hue that already passes is untouched.
 fn legible(hue: u32, p: &Palette) -> u32 {
+    readable(hue, p.terminal_bg, p.vivid, 3.)
+}
+/// The hue pushed toward `vivid` until it reaches `ratio` on `bg`.
+fn readable(hue: u32, bg: u32, vivid: u32, ratio: f32) -> u32 {
     (0..=1000)
         .step_by(50)
-        .map(|share| mix(hue, p.vivid, share))
-        .find(|&c| contrast(c, p.terminal_bg) >= 3.)
-        .unwrap_or(p.vivid)
+        .map(|share| mix(hue, vivid, share))
+        .find(|&c| contrast(c, bg) >= ratio)
+        .unwrap_or(vivid)
 }
 /// WCAG contrast ratio between two colors.
 pub fn contrast(a: u32, b: u32) -> f32 {
@@ -437,7 +423,7 @@ impl Theme {
     pub const MENU_BUTTON: f32 = 34.;
     /// The menu bar panel is a separate macOS popover that follows the system's light or
     /// dark mode, apart from the window: README「跨界面主题」, menubar-panel.html.
-    pub const MENU_LIGHT: MenuPalette = MenuPalette {
+    const MENU_LIGHT: MenuPalette = MenuPalette {
         background: 0xffffff,
         sunken: 0xf7f8fa,
         hover: 0xf4f5f8,
@@ -457,7 +443,7 @@ impl Theme {
         running: 0x1f8a5b,
         stale: 0x8b909c,
     };
-    pub const MENU_DARK: MenuPalette = MenuPalette {
+    const MENU_DARK: MenuPalette = MenuPalette {
         background: 0x1c1c1e,
         sunken: 0x18181a,
         hover: 0x242426,
@@ -477,6 +463,31 @@ impl Theme {
         running: 0x4cc38a,
         stale: 0x8b8a88,
     };
+    /// The menu bar panel's colors: its own surfaces, with status hues from the same
+    /// [`StatusColors`](super::status_colors::StatusColors) as the window, made readable
+    /// on the panel. Nothing here picks a status color of its own.
+    pub fn menu_light() -> MenuPalette {
+        Self::menu(Self::MENU_LIGHT, Self::BLACK)
+    }
+    pub fn menu_dark() -> MenuPalette {
+        Self::menu(Self::MENU_DARK, Self::WHITE)
+    }
+    fn menu(base: MenuPalette, vivid: u32) -> MenuPalette {
+        let bg = base.background;
+        let dot = |s: Status| readable(s.hue(), bg, vivid, 3.);
+        let ink = |s: Status| readable(s.hue(), bg, vivid, 4.5);
+        MenuPalette {
+            wait: dot(Status::Waiting),
+            wait_ink: ink(Status::Waiting),
+            error: dot(Status::Error),
+            error_ink: ink(Status::Error),
+            error_wash: mix(bg, Status::Error.hue(), 120),
+            review: dot(Status::Review),
+            running: dot(Status::Running),
+            stale: dot(Status::Stale),
+            ..base
+        }
+    }
     pub const FORM_WIDTH: f32 = 520.;
     pub const DETAIL_WIDTH: f32 = 640.;
     /// The todo form with its 「保存并开始之后」 column, and that column.
@@ -708,7 +719,7 @@ mod tests {
     /// dots 3:1 even for the pale yellow and green hues; its surfaces step visibly.
     #[test]
     fn light_scheme_meets_contrast_floors() {
-        use super::{Group, LIGHT, Theme, contrast};
+        use super::{LIGHT, Status, Theme, contrast, status_colors_in};
         let p = LIGHT;
         for (name, text) in [
             ("body", p.body),
@@ -726,8 +737,8 @@ mod tests {
         assert!(contrast(p.app, p.pane) >= 1.15);
         assert!(contrast(p.card_border, p.pane) >= 1.6);
         assert_ne!(p.popover, Theme::WHITE);
-        for group in Group::ALL {
-            let (dot, ink, _) = group.colors_in(&p);
+        for group in Status::ALL {
+            let (dot, ink, _) = status_colors_in(group, &p);
             assert!(contrast(dot, p.pane) >= 3., "{} dot", group.label());
             assert!(contrast(ink, p.pane) >= 4.5, "{} ink", group.label());
         }

@@ -15,7 +15,7 @@ impl Step {
     fn fill(self) -> gpui::Hsla {
         match self {
             Self::Completed => T::color(T::secondary()),
-            Self::Deferred => Group::Paused.colors().0,
+            Self::Deferred => Status::Deferred.colors().0,
             Self::Abandoned => T::color(T::muted()).opacity(0.5),
             Self::Current => T::color(T::primary()),
             Self::Pending => T::color(T::chip()),

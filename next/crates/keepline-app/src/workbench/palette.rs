@@ -49,7 +49,7 @@ pub(super) struct Search {
     index: usize,
     scroll: gpui::ScrollHandle,
     /// The status count picked above an empty query: only that group is listed.
-    group: Option<Group>,
+    group: Option<Status>,
     /// Rows a group shows past its first few, by group title, after 「再显示」.
     shown: HashMap<&'static str, usize>,
 }
@@ -104,7 +104,7 @@ impl Search {
     #[cfg(feature = "visual-test")]
     /// As a click on a status count: a picked group lists no actions, so its first
     /// session is the first row.
-    pub(super) fn pick_group(&mut self, group: Option<Group>) {
+    pub(super) fn pick_group(&mut self, group: Option<Status>) {
         self.group = group;
         self.index = 0;
     }
@@ -114,22 +114,12 @@ const COLLAPSED: usize = 6;
 const MORE_STEP: usize = 20;
 const EXCERPT: usize = 90;
 /// The status counts above an empty query, as the top bar and 鸟瞰 name them.
-const COUNTED: [(Group, &str); 4] = [
-    (Group::Waiting, "等你"),
-    (Group::Error, "出错"),
-    (Group::Running, "在跑"),
-    (Group::Review, "待验收"),
+const COUNTED: [(Status, &str); 4] = [
+    (Status::Waiting, "等你"),
+    (Status::Error, "出错"),
+    (Status::Running, "在跑"),
+    (Status::Review, "等你验收"),
 ];
-/// A live phase and its inbox group count as one: 在跑 is 在跑 either way.
-fn counted(group: Group) -> Group {
-    match group {
-        Group::Working => Group::Running,
-        Group::Done | Group::Ready => Group::Review,
-        Group::Background => Group::Running,
-        g => g,
-    }
-}
-
 impl Workbench {
     /// Every session search can show, newest first.
     fn searchable(&self) -> Vec<&AgentSession> {
@@ -144,13 +134,13 @@ impl Workbench {
     }
     /// The status its row shows, when that is one of the four the palette counts. Only
     /// sessions still open count, as on 鸟瞰.
-    fn counted_group(&self, s: &AgentSession) -> Option<Group> {
-        let (group, _) = sidebar_status(&self.workspace, &self.attention.unseen, s);
-        let group = counted(group);
+    fn counted_group(&self, s: &AgentSession) -> Option<Status> {
+        let (group, _) = session_status(&self.workspace, &self.attention.unseen, s);
+        let group = section(group);
         (s.outcome.needs_review(now()) && COUNTED.iter().any(|(g, _)| *g == group)).then_some(group)
     }
-    fn status_counts(&self) -> Vec<(Group, &'static str, usize)> {
-        let groups: Vec<Group> = self
+    fn status_counts(&self) -> Vec<(Status, &'static str, usize)> {
+        let groups: Vec<Status> = self
             .searchable()
             .into_iter()
             .filter_map(|s| self.counted_group(s))
@@ -586,7 +576,7 @@ impl Workbench {
         .with_priority(1)
         .into_any_element()
     }
-    /// 等你 / 出错 / 在跑 / 待验收 with their counts; one narrows the list to that group.
+    /// 等你 / 出错 / 在跑 / 等你验收 with their counts; one narrows the list to that group.
     fn status_filters(&self, cx: &Context<Self>) -> gpui::Div {
         let mut row = div()
             .flex_none()
@@ -740,7 +730,7 @@ impl Workbench {
         cx: &Context<Self>,
     ) -> gpui::AnyElement {
         // Lead icon, title, second line, status at the right, and the time column.
-        let mut status: Option<Group> = None;
+        let mut status: Option<Status> = None;
         let (lead, title, sub, right, when): (gpui::AnyElement, String, String, String, String) =
             match hit {
                 Hit::NewSession => {
@@ -827,7 +817,7 @@ impl Workbench {
                     let Some(s) = self.workspace.agent_sessions.iter().find(|s| &s.id == id) else {
                         return div().into_any_element();
                     };
-                    let (group, _) = sidebar_status(&self.workspace, &self.attention.unseen, s);
+                    let (group, _) = session_status(&self.workspace, &self.attention.unseen, s);
                     status = Some(group);
                     let when = ago(s.updated, now());
                     match hit {
@@ -1009,7 +999,7 @@ impl Workbench {
     ) -> Option<gpui::Stateful<gpui::Div>> {
         use keepline_core::content::short;
         let s = self.workspace.agent_sessions.iter().find(|s| s.id == id)?;
-        let (group, _) = sidebar_status(&self.workspace, &self.attention.unseen, s);
+        let (group, _) = session_status(&self.workspace, &self.attention.unseen, s);
         let content = self.workspace.content.get(&s.id);
         let place = session_space(&self.workspace, s)
             .and_then(|space| self.space_name(space))

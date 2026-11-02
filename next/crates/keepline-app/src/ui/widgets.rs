@@ -1,8 +1,8 @@
 //! Small shared view pieces: buttons, labels, status dots and chips.
-use super::theme::{Group, Theme as T};
+use super::theme::{Status, StatusStyle, Theme as T};
 use gpui::{div, prelude::*, px};
 
-pub fn badge(group: Group, count: usize) -> gpui::Div {
+pub fn badge(group: Status, count: usize) -> gpui::Div {
     let (_, ink, bg) = group.colors();
     div()
         .px(px(T::S4))
@@ -79,25 +79,14 @@ pub fn label(text: impl Into<gpui::SharedString>) -> gpui::Div {
         .child(text.into())
 }
 /// The terminal style's status: one symbol in the state's ink, as a multiplexer would.
-pub fn glyph(group: Group) -> gpui::Div {
-    let symbol = match group {
-        Group::Waiting => "◆",
-        Group::Error => "✕",
-        Group::Working | Group::Running => "◐",
-        Group::Background => "◔",
-        // ✓ is yours to give; a turn waiting for it is an open diamond beside 等你回答's ◆.
-        Group::Done | Group::Review => "◇",
-        Group::Closed => "✓",
-        Group::Paused => "‖",
-        Group::Ready | Group::Fresh => "○",
-        Group::Stale => "·",
-    };
+pub fn glyph(group: Status) -> gpui::Div {
+    let symbol = group.glyph();
     div()
         .flex_shrink_0()
         .text_color(group.colors().1)
         .child(symbol)
 }
-pub fn dot(group: Group) -> gpui::Div {
+pub fn dot(group: Status) -> gpui::Div {
     div()
         .size(px(T::DOT))
         .flex_shrink_0()
@@ -106,9 +95,9 @@ pub fn dot(group: Group) -> gpui::Div {
 }
 /// Running work keeps its filled status color even after it has been viewed.
 /// Other seen rows follow `colors.json`'s `seen.dot` style.
-pub fn seen_dot(group: Group) -> gpui::Div {
+pub fn seen_dot(group: Status) -> gpui::Div {
     use super::status_colors::{SeenDot, StatusColors};
-    if matches!(group, Group::Working | Group::Running) {
+    if group.working() {
         return dot(group);
     }
     let hue = group.colors().0;
@@ -123,7 +112,7 @@ pub fn seen_dot(group: Group) -> gpui::Div {
             .border_color(hue),
     }
 }
-pub fn chip(group: Group) -> gpui::Div {
+pub fn chip(group: Status) -> gpui::Div {
     div()
         .px(px(T::S6))
         .py(px(T::BORDER_WIDTH))

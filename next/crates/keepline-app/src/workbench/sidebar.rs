@@ -2,26 +2,26 @@
 use super::*;
 
 /// What needs you, in this order: waiting on you, failed, a finished turn not seen yet.
-const NEEDS_YOU: [Group; 3] = [Group::Waiting, Group::Error, Group::Done];
+const NEEDS_YOU: [Status; 3] = [Status::Waiting, Status::Error, Status::Review];
 /// Row tiers by the shown state: what needs you, then live work, then the rest, then
 /// sessions opened but not yet spoken to, then what has gone quiet. Inside a tier the
 /// newest comes first (see `sidebar_time`).
-pub(super) fn sidebar_rank(g: Group, attention: bool) -> (u8, usize) {
+pub(super) fn sidebar_rank(g: Status, attention: bool) -> (u8, usize) {
     if attention {
         let at = NEEDS_YOU.iter().position(|o| *o == g);
         return (0, at.unwrap_or(NEEDS_YOU.len()));
     }
     match g {
-        Group::Working | Group::Running | Group::Background => (1, 0),
-        Group::Fresh => (3, 0),
-        Group::Stale => (4, 0),
+        Status::Running | Status::Background => (1, 0),
+        Status::Fresh => (3, 0),
+        Status::Stale => (4, 0),
         _ => (2, 0),
     }
 }
 /// A closed session the sidebar still counts: no outcome yet and not gone quiet past
 /// the stale days; older ones wait in the overview's 很久没动.
 pub(super) fn closed_recently(w: &Workspace, s: &AgentSession) -> bool {
-    s.outcome.needs_review(now()) && session_group(w, s) != Group::Stale
+    s.outcome.needs_review(now()) && status_of(w, s) != Status::Stale
 }
 
 /// A space's row figures: its open sessions, those waiting on you and those failed, and
@@ -30,7 +30,7 @@ struct SpaceCounts {
     count: usize,
     waiting: usize,
     errors: usize,
-    group: Group,
+    group: Status,
 }
 
 impl Workbench {
@@ -173,8 +173,8 @@ impl Workbench {
                     .border_0()
                     .when(active, |s| s.bg(T::color(T::raised())))
                     .child(div().flex_1())
-                    .when(waiting > 0, |d| d.child(badge(Group::Waiting, waiting)))
-                    .when(errors > 0, |d| d.child(badge(Group::Error, errors)))
+                    .when(waiting > 0, |d| d.child(badge(Status::Waiting, waiting)))
+                    .when(errors > 0, |d| d.child(badge(Status::Error, errors)))
                     .child(
                         label(count.to_string())
                             .flex_shrink_0()
@@ -236,7 +236,7 @@ impl Workbench {
             .iter()
             .filter(|(_, s)| self.session_closed(s))
             .map(|(_, s)| {
-                let (g, attention) = sidebar_status(&self.workspace, &self.attention.unseen, s);
+                let (g, attention) = session_status(&self.workspace, &self.attention.unseen, s);
                 (*s, g, attention)
             })
             .collect();
@@ -252,7 +252,7 @@ impl Workbench {
             .into_iter()
             .filter(|(_, s)| self.session_open(s))
             .map(|(i, s)| {
-                let (g, attention) = sidebar_status(&self.workspace, &self.attention.unseen, s);
+                let (g, attention) = session_status(&self.workspace, &self.attention.unseen, s);
                 (s, g, attention, i)
             })
             .collect();
@@ -261,7 +261,7 @@ impl Workbench {
         // trade places under the pointer.
         sessions.sort_by_key(|(s, g, attention, i)| {
             let at = match g {
-                Group::Working | Group::Running => self.turn_started(s),
+                Status::Running => self.turn_started(s),
                 _ => None,
             }
             .unwrap_or_else(|| self.session_updated(s));
@@ -304,7 +304,7 @@ impl Workbench {
                     .terminal_reports
                     .get(terminal)
                     .map(crate::model::session_state::report_view);
-                let group = report.as_ref().map_or(Group::Stale, |(g, _)| *g);
+                let group = report.as_ref().map_or(Status::Stale, |(g, _)| *g);
                 let n = recognition
                     .terminal_notes
                     .get(terminal)
@@ -468,28 +468,28 @@ impl Workbench {
                     && session_space(&self.workspace, s) == Some(id)
             })
             .collect();
-        let needs = |g: Group| {
+        let needs = |g: Status| {
             sessions
                 .iter()
                 .filter(|s| {
                     s.managed()
                         && s.outcome.needs_review(now())
-                        && session_group(&self.workspace, s) == g
+                        && status_of(&self.workspace, s) == g
                 })
                 .count()
         };
-        let (waiting, errors) = (needs(Group::Waiting), needs(Group::Error));
+        let (waiting, errors) = (needs(Status::Waiting), needs(Status::Error));
         let group = if errors > 0 {
-            Group::Error
+            Status::Error
         } else if waiting > 0 {
-            Group::Waiting
+            Status::Waiting
         } else {
             sessions
                 .iter()
                 .filter(|s| s.outcome.needs_review(now()))
-                .map(|s| session_group(&self.workspace, s))
-                .find(|g| !matches!(g, Group::Waiting | Group::Error))
-                .unwrap_or(Group::Stale)
+                .map(|s| status_of(&self.workspace, s))
+                .find(|g| !matches!(g, Status::Waiting | Status::Error))
+                .unwrap_or(Status::Stale)
         };
         SpaceCounts {
             count: sessions.len(),
@@ -597,7 +597,7 @@ impl Workbench {
         )
         .when(elsewhere > 0, |d| {
             d.child(
-                badge(Group::Error, elsewhere)
+                badge(Status::Error, elsewhere)
                     .flex_shrink_0()
                     .font_family(T::mono(cx).family),
             )
@@ -977,8 +977,8 @@ impl Workbench {
                         )
                     })
                     .child(div().flex_1())
-                    .when(waiting > 0, |d| d.child(badge(Group::Waiting, waiting)))
-                    .when(errors > 0, |d| d.child(badge(Group::Error, errors)))
+                    .when(waiting > 0, |d| d.child(badge(Status::Waiting, waiting)))
+                    .when(errors > 0, |d| d.child(badge(Status::Error, errors)))
                     .child(
                         label(count.to_string())
                             .flex_shrink_0()
@@ -1051,7 +1051,7 @@ impl Workbench {
             .w_full()
             .justify_start()
             .border_0()
-            .text_color(Group::Error.colors().1)
+            .text_color(Tone::Danger.ink())
             .when(last, |d| d.opacity(0.4))
             .on_click(cx.listener(move |this, _, _, cx| {
                 if !last {

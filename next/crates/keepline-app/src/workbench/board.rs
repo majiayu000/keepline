@@ -51,10 +51,10 @@ impl Column {
     fn label(self) -> &'static str {
         match self {
             Self::Todo => "待办",
-            Self::Running => Group::Running.label(),
-            Self::Review => Group::Review.label(),
-            Self::Done => Group::Closed.label(),
-            Self::Stale => Group::Stale.label(),
+            Self::Running => Status::Running.label(),
+            Self::Review => Status::Review.label(),
+            Self::Done => Status::Closed.label(),
+            Self::Stale => Status::Stale.label(),
         }
     }
     pub(super) fn id(self) -> &'static str {
@@ -74,32 +74,22 @@ pub(super) fn column_of(w: &Workspace, s: &AgentSession, now: u64) -> Option<Col
         return (s.outcome == Outcome::Completed && completed_within(w, &s.id, now, DAY))
             .then_some(Column::Done);
     }
-    if live_phase(w, s) == Some(Phase::Idle) && fresh(w, s) {
+    let status = status_of(w, s);
+    Some(match status {
         // Just opened, no turn yet: nothing to put on a card.
-        return None;
-    }
-    Some(match board_group(w, s) {
-        // Waiting on you or failed: still at the running stage, marked. A turn you stopped
-        // ended, so it waits for your next step with the finished ones.
-        Group::Running | Group::Working | Group::Waiting | Group::Error => Column::Running,
-        Group::Stale => Column::Stale,
-        _ => Column::Review,
+        Status::Fresh => return None,
+        // Waiting on you or failed: still at the running stage, marked. 等后台 counts
+        // with 在跑. A turn you stopped ended, so it waits for your next step with the
+        // finished ones.
+        Status::Running | Status::Background | Status::Waiting | Status::Error => Column::Running,
+        Status::Stale => Column::Stale,
+        Status::Review | Status::Paused | Status::Deferred | Status::Closed => Column::Review,
     })
 }
-/// A live Agent in a Keepline terminal reads as the sidebar shows it: working, waiting on
-/// you or idle. Every other session keeps its inbox group.
-pub(super) fn board_group(w: &Workspace, s: &AgentSession) -> Group {
-    match live_phase(w, s) {
-        Some(Phase::Working) => Group::Running,
-        Some(Phase::Waiting) => Group::Waiting,
-        Some(Phase::Idle) => Group::Review,
-        None => session_group(w, s),
-    }
-}
 /// The mark on a card whose Agent waits on you or failed: that group, or `None`.
-pub(super) fn asks_you(w: &Workspace, s: &AgentSession) -> Option<Group> {
-    let g = board_group(w, s);
-    matches!(g, Group::Waiting | Group::Error).then_some(g)
+pub(super) fn asks_you(w: &Workspace, s: &AgentSession) -> Option<Status> {
+    let g = status_of(w, s);
+    g.needs_you().then_some(g)
 }
 const DAY: u64 = 86_400;
 fn completed_within(w: &Workspace, id: &str, now: u64, window: u64) -> bool {
@@ -275,28 +265,23 @@ fn animated_column_icon(column: Column, animate: bool) -> gpui::AnyElement {
         |path: &'static str, color: Hsla| svg().path(path).size(px(HEAD_ICON)).text_color(color);
     let frame = || div().relative().size(px(HEAD_ICON)).flex_shrink_0();
     let overlay = |e: gpui::AnyElement| div().absolute().top_0().left_0().child(e);
-    if !animate {
-        match column {
-            Column::Running => {
-                return frame()
-                    .child(icon(
-                        "icons/ring.svg",
-                        Group::Running.colors().0.opacity(0.25),
-                    ))
-                    .child(overlay(
-                        icon("icons/arc.svg", Group::Running.colors().0).into_any_element(),
-                    ))
-                    .into_any_element();
-            }
-            _ => (),
-        }
+    if !animate && column == Column::Running {
+        return frame()
+            .child(icon(
+                "icons/ring.svg",
+                Status::Running.colors().0.opacity(0.25),
+            ))
+            .child(overlay(
+                icon("icons/arc.svg", Status::Running.colors().0).into_any_element(),
+            ))
+            .into_any_element();
     }
     match column {
         Column::Todo => icon("icons/dashed.svg", T::color(T::muted())).into_any_element(),
-        Column::Stale => icon("icons/dashed.svg", Group::Stale.colors().0).into_any_element(),
-        Column::Review => icon("icons/half.svg", Group::Review.colors().0).into_any_element(),
+        Column::Stale => icon("icons/dashed.svg", Status::Stale.colors().0).into_any_element(),
+        Column::Review => icon("icons/half.svg", Status::Review.colors().0).into_any_element(),
         Column::Running => {
-            let hue = Group::Running.colors().0;
+            let hue = Status::Running.colors().0;
             frame()
                 .child(icon("icons/ring.svg", hue.opacity(0.25)))
                 .child(overlay(
@@ -314,7 +299,7 @@ fn animated_column_icon(column: Column, animate: bool) -> gpui::AnyElement {
         }
         Column::Done => frame()
             .rounded_full()
-            .bg(Group::Done.colors().0)
+            .bg(Status::Closed.colors().0)
             .flex()
             .items_center()
             .justify_center()
@@ -451,7 +436,7 @@ impl Workbench {
                     div()
                         .px(px(T::OVERVIEW_X))
                         .pb(px(T::S8))
-                        .text_color(Group::Error.colors().1)
+                        .text_color(Tone::Danger.ink())
                         .child(error),
                 )
             })
@@ -711,7 +696,7 @@ impl Workbench {
                             .child(count.to_string()),
                     )
                     .when(asking > 0, |d| {
-                        let hue = Group::Waiting.colors().0;
+                        let hue = Status::Waiting.colors().0;
                         d.child(
                             div()
                                 .flex()
@@ -942,7 +927,7 @@ impl Workbench {
         let asks = content.map_or(0, |c| c.asks.len());
         let hover_group = gpui::SharedString::from(format!("board-card-{}", session.id));
 
-        let status_pill = |g: Group| {
+        let status_pill = |g: Status| {
             let (dot, ink, _) = g.colors();
             pill(g.label(), dot.opacity(0.42), Some(dot), ink)
         };
@@ -966,13 +951,13 @@ impl Workbench {
                 left.push(status_pill(group).into_any_element());
             }
             (Column::Running, None) => {
-                let (dot, ink, _) = Group::Running.colors();
+                let (dot, ink, _) = status_of(&self.workspace, session).colors();
                 left.push(pill(when.clone(), dot.opacity(0.42), Some(dot), ink).into_any_element());
                 left.extend(branch_pill.map(|p| p.into_any_element()));
             }
-            (Column::Stale, None) => left.push(status_pill(Group::Stale).into_any_element()),
-            (Column::Review, None) if board_group(&self.workspace, session) == Group::Paused => {
-                left.push(status_pill(Group::Paused).into_any_element());
+            (Column::Stale, None) => left.push(status_pill(Status::Stale).into_any_element()),
+            (Column::Review, None) if status_of(&self.workspace, session) == Status::Paused => {
+                left.push(status_pill(Status::Paused).into_any_element());
                 left.extend(branch_pill.map(|p| p.into_any_element()));
             }
             _ => left.extend(branch_pill.map(|p| p.into_any_element())),
@@ -1083,7 +1068,7 @@ impl Workbench {
                         d.child(
                             div()
                                 .text_size(px(T::META))
-                                .text_color(Group::Done.colors().1)
+                                .text_color(Status::Closed.colors().1)
                                 .child("✓ 已完成"),
                         )
                     })
@@ -1105,9 +1090,10 @@ impl Workbench {
                         )
                     }),
             )
-            .when(column == Column::Running && animate && asks_you.is_none(), |d| {
-                d.child(sweep())
-            })
+            .when(
+                column == Column::Running && animate && asks_you.is_none(),
+                |d| d.child(sweep()),
+            )
             .when(self.overview.card_menu.as_ref() == Some(&session.id), |d| {
                 d.child(
                     gpui::deferred(
@@ -1154,7 +1140,7 @@ fn card_title(text: impl Into<gpui::SharedString>) -> gpui::Div {
 }
 /// A comet of the running hue that runs along a working card's bottom edge.
 fn sweep() -> gpui::Div {
-    let hue = Group::Running.colors().0;
+    let hue = Status::Running.colors().0;
     div()
         .absolute()
         .bottom_0()

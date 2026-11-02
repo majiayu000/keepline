@@ -43,6 +43,8 @@ const MONO_FACES: [&str; 15] = [
 ];
 
 /// An outlined button: plain enough for a row, still plainly a button.
+/// The font preview's sample path, as a terminal's ANSI blue would draw it.
+const PREVIEW_BLUE: u32 = 0x8f93ff;
 fn secondary(
     id: impl Into<gpui::ElementId>,
     text: impl Into<gpui::SharedString>,
@@ -214,7 +216,7 @@ fn window_sketch(scheme: Scheme) -> gpui::Div {
                         .h(px(T::S6))
                         .w(px(T::S20))
                         .rounded_full()
-                        .bg(Group::Running.colors().0),
+                        .bg(Tone::Ok.dot()),
                 ),
         )
 }
@@ -1137,9 +1139,10 @@ impl SettingsView {
                     .gap(px(T::S6))
                     .border_b(px(T::BORDER_WIDTH))
                     .border_color(T::color(T::border()))
-                    .child(dot(Group::Error.hue()))
-                    .child(dot(Group::Paused.hue()))
-                    .child(dot(Group::Running.hue()))
+                    // Window buttons, not states.
+                    .child(dot(Tone::Danger.hue()))
+                    .child(dot(Tone::Warn.hue()))
+                    .child(dot(Tone::Ok.hue()))
                     .child(div().flex_1())
                     .child(label(format!(
                         "{} · {} pt · {}×",
@@ -1163,8 +1166,9 @@ impl SettingsView {
                                 return;
                             };
                             let fg = T::terminal_fg();
-                            let green = Group::Running.hue();
-                            let blue = Group::Review.hue();
+                            // The sample prompt's ANSI green and blue, not states.
+                            let green = Tone::Ok.hue();
+                            let blue = PREVIEW_BLUE;
                             let quiet = mix(T::terminal_bg(), fg, 550);
                             let line = |parts: &[(&str, u32)]| {
                                 let mut col = 0;
@@ -1502,7 +1506,7 @@ impl SettingsView {
                 div()
                     .pb(px(T::S10))
                     .flex()
-                    .child(note(why.into(), Group::Error.colors().1)),
+                    .child(note(why.into(), Tone::Danger.ink())),
             );
         }
         if let Some((_, chord, holder)) = taken {
@@ -1514,7 +1518,7 @@ impl SettingsView {
                     .gap(px(T::S8))
                     .child(note(
                         format!("{} 已被「{}」使用", chord.display(), holder.label()),
-                        Group::Waiting.colors().1,
+                        Tone::Warn.ink(),
                     ))
                     .child(
                         button("take-chord", "仍然使用")
@@ -1625,7 +1629,7 @@ impl SettingsView {
             );
         }
         let alerting = on || self.values.sound;
-        let when = |group: Group, title: &'static str, note: &'static str, first: bool| {
+        let when = |group: Status, title: &'static str, note: &'static str, first: bool| {
             div()
                 .px(px(T::S16))
                 .py(px(T::S12))
@@ -1661,13 +1665,13 @@ impl SettingsView {
                 "什么时候提醒",
                 vec![
                     when(
-                        Group::Waiting,
+                        Status::Waiting,
                         "等你回复",
                         "Agent 提问或请求批准；同一次等待只提醒一次",
                         true,
                     ),
                     when(
-                        Group::Error,
+                        Status::Error,
                         "出错停下",
                         "Agent 报错中断；同一条错误只提醒一次",
                         false,
@@ -1701,7 +1705,7 @@ impl SettingsView {
                 .text_color(if ok {
                     T::color(T::secondary())
                 } else {
-                    Group::Error.colors().1
+                    Tone::Danger.ink()
                 })
                 .child(text)
         };
@@ -1951,7 +1955,7 @@ impl SettingsView {
                             .child(shown),
                     )
                     .when_some(note, |d, (note, alarm)| {
-                        d.child(label(note).when(alarm, |l| l.text_color(Group::Error.colors().1)))
+                        d.child(label(note).when(alarm, |l| l.text_color(Tone::Danger.ink())))
                     }),
             )
             .child(control)
@@ -2258,7 +2262,7 @@ impl SettingsView {
     fn status(&self) -> gpui::Div {
         let error = self.save_error.as_ref().or(self.text_error.as_ref());
         let (mark, text, color) = match error {
-            Some(error) => ("!", error.clone(), Group::Error.colors().1),
+            Some(error) => ("!", error.clone(), Tone::Danger.ink()),
             None if self.busy => ("…", "正在保存".into(), T::color(T::secondary())),
             None => ("✓", "更改自动保存".into(), T::color(T::secondary())),
         };

@@ -1,7 +1,7 @@
 use crate::{
     connection::Connection,
     terminal::screen::{self, Screen},
-    ui::theme::{Group, Theme as T},
+    ui::{theme::Theme as T, tone::Tone},
 };
 use futures::{StreamExt, channel::mpsc::unbounded};
 use gpui::{
@@ -2657,7 +2657,7 @@ impl Render for Pane {
                     .px(px(T::S12))
                     .py(px(T::S4))
                     .text_size(px(T::META))
-                    .text_color(Group::Error.colors().1)
+                    .text_color(Tone::Danger.ink())
                     .child(error),
             );
         }

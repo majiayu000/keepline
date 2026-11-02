@@ -6,9 +6,10 @@ use futures::{
 };
 use gpui::{App, AppContext, Global};
 use keepline_core::{
-    content::{Inbox, now, short},
+    content::{now, short},
     model::*,
     protocol::*,
+    status::{self, Status as State},
 };
 use serde_json::json;
 use std::{
@@ -80,16 +81,16 @@ fn fact(w: &Workspace, s: &AgentSession) -> Option<(String, String)> {
     if c.hidden_for(s).is_some() {
         return None;
     }
-    let group = c.group(s, w, now());
+    let group = status::of(w, s, now());
     let body = match group {
-        Inbox::Waiting => c.waiting.clone(),
-        Inbox::Error => c.error.clone(),
+        State::Waiting => c.waiting.clone(),
+        State::Error => c.error.clone(),
         _ => return None,
     };
     // One dialog is one event however many signals report it or refine its text; an error
     // is keyed by its text.
     let event = match group {
-        Inbox::Waiting => format!("episode {}", c.waiting_episode),
+        State::Waiting => format!("episode {}", c.waiting_episode),
         _ => body.clone(),
     };
     Some((
@@ -188,25 +189,25 @@ fn panel(w: &Workspace, link: &Link) -> String {
         if c.hidden_for(s).is_some() {
             continue;
         }
-        let group = c.group(s, w, at);
-        if !s.managed() && matches!(group, Inbox::Waiting | Inbox::Error) {
+        let group = status::of(w, s, at);
+        if !s.managed() && group.needs_you() {
             continue;
         }
         match group {
-            Inbox::Review => review += 1,
-            Inbox::Running => running += 1,
-            Inbox::Stale => stale += 1,
-            Inbox::Waiting => waiting += 1,
-            Inbox::Error => errors += 1,
+            State::Review => review += 1,
+            g if g.working() => running += 1,
+            State::Stale => stale += 1,
+            State::Waiting => waiting += 1,
+            State::Error => errors += 1,
             _ => (),
         };
-        if matches!(group, Inbox::Waiting | Inbox::Error) {
+        if group.needs_you() {
             let minutes = at.saturating_sub(c.updated) / 60;
             let meta = match space_name(w, s) {
                 Some(space) => format!("{space} · {}", s.runtime.name()),
                 None => s.runtime.name().to_owned(),
             };
-            let waits = group == Inbox::Waiting;
+            let waits = group == State::Waiting;
             rows.push((
                 (!waits, std::cmp::Reverse(c.updated)),
                 json!({
@@ -285,7 +286,7 @@ fn panel(w: &Workspace, link: &Link) -> String {
             "font": T::BODY_SIZE, "title": T::MENU_TITLE, "count": T::MENU_COUNT,
             "small": T::SMALL, "meta": T::META, "chip": T::CHIP_SIZE,
             "button": T::MENU_BUTTON, "radius": T::S8,
-            "light": T::MENU_LIGHT, "dark": T::MENU_DARK,
+            "light": T::menu_light(), "dark": T::menu_dark(),
         },
     })
     .to_string()
@@ -628,7 +629,7 @@ mod tests {
         assert_eq!(v["connection"]["phase"], "healthy");
         assert!(v["connection"]["error"].is_null());
         assert_eq!(v["foot_count"], 0);
-        assert_eq!(v["tokens"]["dark"]["accent"], T::MENU_DARK.accent);
+        assert_eq!(v["tokens"]["dark"]["accent"], T::menu_dark().accent);
     }
     #[test]
     fn panel_lists_five_and_counts_the_rest() {

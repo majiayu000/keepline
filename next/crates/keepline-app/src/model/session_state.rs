@@ -3,27 +3,7 @@ use super::time::now;
 use keepline_core::model::*;
 use std::collections::{HashMap, HashSet};
 
-#[derive(Clone, Copy, PartialEq, Eq)]
-pub enum Group {
-    Waiting,
-    Error,
-    Review,
-    Paused,
-    Running,
-    Stale,
-    /// Live states of an agent in a Keepline terminal, read from what its screen shows.
-    /// Not inbox groups: they never appear in `ALL`.
-    Working,
-    Done,
-    Ready,
-    /// A live agent that has not started a turn yet: just opened, or `/clear`ed.
-    Fresh,
-    /// A live agent whose turn ended without claiming the work done while something it
-    /// started still runs (a shell, a monitor, a scheduled wakeup) and may bring it back.
-    Background,
-    /// You marked it complete: the only 做完了.
-    Closed,
-}
+pub use keepline_core::status::{Status, live_terminal};
 /// What a live agent in a Keepline terminal is doing right now.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Phase {
@@ -35,14 +15,9 @@ pub enum Phase {
 /// the dot and the line its pane and sidebar row show.
 pub fn report_view(
     r: &keepline_core::protocol::ProgramReport,
-) -> (Group, keepline_core::protocol::TerminalNote) {
-    let (group, word) = match r.state.as_str() {
-        "working" => (Group::Working, "在跑"),
-        "blocked" => (Group::Waiting, "等你回答"),
-        "error" => (Group::Error, "出错了"),
-        "done" => (Group::Done, "等你验收"),
-        _ => (Group::Ready, "停着"),
-    };
+) -> (Status, keepline_core::protocol::TerminalNote) {
+    let group = keepline_core::status::of_program(&r.state);
+    let word = group.label();
     let who = [&r.app, &r.title]
         .into_iter()
         .find(|s| !s.is_empty())
@@ -78,16 +53,6 @@ pub fn session_space<'a>(w: &'a Workspace, s: &AgentSession) -> Option<&'a str> 
                 .map(|p| p.id.as_str())
         })
 }
-pub fn live_terminal<'a>(w: &'a Workspace, s: &AgentSession) -> Option<&'a Terminal> {
-    if !s.current {
-        return None;
-    }
-    s.terminal.as_ref().and_then(|id| {
-        w.terminals
-            .iter()
-            .find(|t| &t.id == id && t.state == ProcessState::Running)
-    })
-}
 /// A resume that has not taken yet, or failed and left its shell, still owns a running
 /// terminal in a tab; clicking the session returns there instead of stacking tabs.
 pub fn resume_terminal<'a>(
@@ -101,18 +66,14 @@ pub fn resume_terminal<'a>(
         .find(|t| &t.id == id && t.state == ProcessState::Running)
         .filter(|t| w.terminal_tab(&t.id).is_some())
 }
-/// `None` unless the session is the current conversation of a running Keepline terminal;
-/// those keep the inbox grouping. A turn whose subagents still run is still working.
+/// What a live agent in a Keepline terminal is doing, for tracking turns that end out
+/// of view and warning before closing one that works; `None` outside a running Keepline
+/// terminal. A projection of [`status_of`], never a second judgment.
 pub fn live_phase(w: &Workspace, s: &AgentSession) -> Option<Phase> {
-    use keepline_core::content::Turn;
     live_terminal(w, s)?;
-    let Some(c) = w.content.get(&s.id) else {
-        return Some(Phase::Idle);
-    };
-    Some(match c.turn {
-        Turn::Waiting => Phase::Waiting,
-        Turn::Running => Phase::Working,
-        Turn::Completed if c.background.is_some_and(|b| b.keeps_working()) => Phase::Working,
+    Some(match status_of(w, s) {
+        Status::Waiting => Phase::Waiting,
+        Status::Running => Phase::Working,
         _ => Phase::Idle,
     })
 }
@@ -187,18 +148,15 @@ pub fn state_reasons(w: &Workspace, terminal: &str, hint: Option<&str>, now: u64
         lines.push("还没读到这段对话的记录：还没开始第一轮，按「新开的」显示。".into());
         return lines;
     };
-    let live = live_phase(w, s);
-    let phase = match live {
-        Some(Phase::Working) => "在跑",
-        Some(Phase::Waiting) => "等你回答",
-        _ if fresh(w, s) => "新开的 / 还没开始第一轮",
-        _ => match idle_status(w, s, false).0 {
-            Group::Done | Group::Ready => "等你验收 / 这一轮停了，做没做完由你定",
-            Group::Background => "等后台 / 这一轮停了，后台还有任务在跑",
-            Group::Closed => "做完了 / 你标记过完成",
-            Group::Error => "出错了",
-            _ => "停下了",
-        },
+    let status = status_of(w, s);
+    let phase = match status {
+        Status::Fresh => "新开的 / 还没开始第一轮",
+        Status::Review => "等你验收 / 这一轮停了，做没做完由你定",
+        Status::Background => "等后台 / 这一轮停了，后台还有任务在跑",
+        Status::Closed => "做完了 / 你标记过完成",
+        Status::Paused => "停下了 / 这一轮被打断，或 Agent 没做完就退出了",
+        Status::Deferred => "稍后再看 / 你推迟到了以后",
+        other => other.label(),
     };
     lines.push(format!("现在：{phase}"));
     let why = match c.signal.as_str() {
@@ -220,7 +178,7 @@ pub fn state_reasons(w: &Workspace, terminal: &str, hint: Option<&str>, now: u64
     // The record, hook event or screen rule behind it, as the daemon wrote it down.
     lines.extend(c.signal_detail.lines().map(str::to_owned));
     // Nothing on screen is waiting on you: say the rules looked and found no prompt.
-    if !matches!(live, Some(Phase::Working | Phase::Waiting)) && !c.screen_check.is_empty() {
+    if !matches!(status, Status::Running | Status::Waiting) && !c.screen_check.is_empty() {
         lines.push(format!("画面：{}，所以按「{phase}」显示。", c.screen_check));
     }
     if !c.waiting.is_empty() {
@@ -266,68 +224,41 @@ fn shared_files(w: &Workspace, s: &AgentSession, now: u64) -> Vec<String> {
     }
     lines
 }
-pub fn session_group(w: &Workspace, s: &AgentSession) -> Group {
-    use keepline_core::content::{Content, Inbox};
-    match w
-        .content
-        .get(&s.id)
-        .cloned()
-        .unwrap_or_else(|| Content {
-            updated: s.updated,
-            ..Default::default()
-        })
-        .group(s, w, now())
-    {
-        Inbox::Waiting => Group::Waiting,
-        Inbox::Error => Group::Error,
-        Inbox::Review => Group::Review,
-        Inbox::Running => Group::Running,
-        Inbox::Stale => Group::Stale,
-        _ => Group::Paused,
-    }
+/// The session's state now: [`keepline_core::status::of`], the only judgment.
+pub fn status_of(w: &Workspace, s: &AgentSession) -> Status {
+    keepline_core::status::of(w, s, now())
 }
-/// The sidebar's dot and label: a live agent in a Keepline terminal shows what it is
-/// doing now; every other session keeps its inbox group. The flag marks attention.
-pub fn sidebar_status(w: &Workspace, unseen: &HashSet<String>, s: &AgentSession) -> (Group, bool) {
-    match live_phase(w, s) {
-        Some(Phase::Working) => (Group::Working, false),
-        Some(Phase::Waiting) => (Group::Waiting, true),
-        Some(Phase::Idle) if !unseen.contains(&s.id) && fresh(w, s) => (Group::Fresh, false),
-        Some(Phase::Idle) => idle_status(w, s, unseen.contains(&s.id)),
-        None => (session_group(w, s), needs_attention(w, s)),
-    }
-}
-/// A live agent between turns. Only you say it is done (标记完成, 2026-11-02): a turn
-/// that ended waits for that as 等你验收 whatever its reply claimed, or as 等后台 while
-/// a shell, monitor or wakeup it started still runs. `unseen` is a turn that ended out
-/// of view, which asks for a look.
-fn idle_status(w: &Workspace, s: &AgentSession, unseen: bool) -> (Group, bool) {
-    use keepline_core::content::Turn;
-    let c = w.content.get(&s.id);
-    let background = c.and_then(|c| c.background).unwrap_or_default();
-    if s.outcome == Outcome::Completed {
-        (Group::Closed, false)
-    } else if c.is_some_and(|c| c.turn == Turn::Error) {
-        (Group::Error, true)
-    } else if background.wakes() || background.shells > 0 {
-        (Group::Background, false)
+/// The overview's and the palette's sections, in their order: one per state, except
+/// that 等后台 sits in 在跑's section.
+pub const SECTIONS: [Status; 9] = [
+    Status::Waiting,
+    Status::Error,
+    Status::Review,
+    Status::Paused,
+    Status::Running,
+    Status::Fresh,
+    Status::Stale,
+    Status::Deferred,
+    Status::Closed,
+];
+pub fn section(status: Status) -> Status {
+    if status.working() {
+        Status::Running
     } else {
-        (if unseen { Group::Done } else { Group::Ready }, unseen)
+        status
     }
 }
-/// No turn has started in this conversation: no record yet, or one with no ask and no
-/// turn state. An empty Claude reads as this, not as 等你验收.
-pub fn fresh(w: &Workspace, s: &AgentSession) -> bool {
-    use keepline_core::content::Turn;
-    w.content
-        .get(&s.id)
-        .is_none_or(|c| c.asks.is_empty() && c.turn == Turn::Unknown)
+/// The state with whether it asks for you: waiting or failed in a Keepline terminal and
+/// not yet handled, or a turn that ended out of view (`unseen`) and was not looked at.
+pub fn session_status(w: &Workspace, unseen: &HashSet<String>, s: &AgentSession) -> (Status, bool) {
+    let status = status_of(w, s);
+    let attention = (status.needs_you() && s.managed() && s.outcome.needs_review(now()))
+        || (unseen.contains(&s.id) && matches!(status, Status::Review | Status::Paused));
+    (status, attention)
 }
 /// Waiting or failed in a Keepline terminal and not yet looked at.
 pub fn needs_attention(w: &Workspace, s: &AgentSession) -> bool {
-    s.managed()
-        && s.outcome.needs_review(now())
-        && matches!(session_group(w, s), Group::Waiting | Group::Error)
+    s.managed() && s.outcome.needs_review(now()) && status_of(w, s).needs_you()
 }
 
 #[cfg(test)]
@@ -347,13 +278,13 @@ mod report_view_tests {
             since: 0,
         };
         let (g, n) = report_view(&report("working", "deploy", "", Some(30)));
-        assert!(g == Group::Working);
+        assert!(g == Status::Running);
         assert_eq!(n.note, "deploy · 在跑 30%");
         let (g, n) = report_view(&report("blocked", "", "要部署吗？", None));
-        assert!(g == Group::Waiting);
+        assert!(g == Status::Waiting);
         assert_eq!(n.note, "程序 · 等你回答：要部署吗？");
-        assert!(report_view(&report("done", "x", "", None)).0 == Group::Done);
-        assert!(report_view(&report("error", "x", "", None)).0 == Group::Error);
-        assert!(report_view(&report("idle", "x", "", None)).0 == Group::Ready);
+        assert!(report_view(&report("done", "x", "", None)).0 == Status::Review);
+        assert!(report_view(&report("error", "x", "", None)).0 == Status::Error);
+        assert!(report_view(&report("idle", "x", "", None)).0 == Status::Paused);
     }
 }

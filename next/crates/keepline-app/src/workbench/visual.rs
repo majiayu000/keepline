@@ -20,7 +20,7 @@ impl Workbench {
     pub fn visual_completable(&self, terminal: &str) -> (Option<String>, bool, bool) {
         let session = self.pane_session(terminal);
         let review = session.is_some_and(|s| {
-            s.outcome == Outcome::Open && session_group(&self.workspace, s) == Group::Review
+            s.outcome == Outcome::Open && status_of(&self.workspace, s) == Status::Review
         });
         (
             session.map(|s| s.id.clone()),
@@ -830,7 +830,7 @@ impl Workbench {
                     .workspace
                     .agent_sessions
                     .iter()
-                    .filter(|s| session_group(&self.workspace, s) == Group::Stale)
+                    .filter(|s| status_of(&self.workspace, s) == Status::Stale)
                     .map(|s| s.id.clone())
                     .collect();
                 self.overview.cleanup_index = 0;
@@ -933,7 +933,7 @@ impl Workbench {
                 self.nav.focused = Some("p0".into());
                 self.open_search(window, cx);
                 if name == "SearchGroup" {
-                    self.search.pick_group(Some(Group::Error));
+                    self.search.pick_group(Some(Status::Error));
                 }
                 if name == "Search" || name == "SearchNone" {
                     let query = match name {

@@ -12,6 +12,7 @@ pub mod quota;
 pub mod reason;
 pub mod rule;
 pub mod sidebar;
+pub mod status;
 pub mod terminal;
 
 pub mod content;

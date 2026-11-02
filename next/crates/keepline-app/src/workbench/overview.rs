@@ -190,7 +190,7 @@ impl Workbench {
         if let Some(error) = self.error.clone() {
             before.push(
                 div()
-                    .text_color(Group::Error.colors().1)
+                    .text_color(Tone::Danger.ink())
                     .child(error)
                     .into_any_element(),
             );
@@ -209,14 +209,14 @@ impl Workbench {
             );
         }
         let at_now = now();
-        let grouped: Vec<(Group, Vec<&AgentSession>)> = Group::ALL
+        let grouped: Vec<(Status, Vec<&AgentSession>)> = SECTIONS
             .into_iter()
             .map(|g| {
                 (
                     g,
                     open.iter()
                         .copied()
-                        .filter(|s| session_group(&self.workspace, s) == g)
+                        .filter(|s| section(status_of(&self.workspace, s)) == g)
                         .collect(),
                 )
             })
@@ -224,7 +224,7 @@ impl Workbench {
         // Empty groups get no section: their pill above already reads 0.
         let shown: Vec<_> = grouped.iter().filter(|(_, s)| !s.is_empty()).collect();
         let first_group = before.len() + 1 + middle.len();
-        let place: Vec<(Group, usize)> = shown
+        let place: Vec<(Status, usize)> = shown
             .iter()
             .enumerate()
             .map(|(i, (g, _))| (*g, first_group + i))
@@ -427,7 +427,7 @@ pub(super) fn quiet(b: gpui::Stateful<gpui::Div>) -> gpui::Stateful<gpui::Div> {
 }
 /// A section's title line: status dot, name, count, a note and actions at the right.
 fn section_head(
-    group: Option<Group>,
+    group: Option<Status>,
     title: &str,
     count: usize,
     note: Option<&str>,
@@ -474,33 +474,33 @@ fn folded_row(content: Vec<gpui::AnyElement>, right: Vec<gpui::AnyElement>) -> g
 
 impl Workbench {
     /// A group was asked for from the distribution: unfold it and bring it to the top.
-    fn reveal_group(&mut self, group: Group, at: usize, cx: &mut Context<Self>) {
+    fn reveal_group(&mut self, group: Status, at: usize, cx: &mut Context<Self>) {
         match group {
-            Group::Running => self.overview.show_running = true,
-            Group::Stale => self.overview.show_stale = true,
-            Group::Review => self.overview.show_review = true,
+            Status::Running => self.overview.show_running = true,
+            Status::Stale => self.overview.show_stale = true,
+            Status::Review => self.overview.show_review = true,
             _ => (),
         }
         self.overview.scroll.scroll_to_top_of_item(at);
         cx.notify();
     }
-    fn group_folded(&self, group: Group) -> bool {
+    fn group_folded(&self, group: Status) -> bool {
         !self.overview.closed_only
             && match group {
-                Group::Running => !self.overview.show_running,
-                Group::Stale => !self.overview.show_stale,
-                Group::Review => !self.overview.show_review,
+                Status::Running => !self.overview.show_running,
+                Status::Stale => !self.overview.show_stale,
+                Status::Review => !self.overview.show_review,
                 _ => false,
             }
     }
     /// One segment per group with sessions, weighted by count, then a pill per group.
     pub(super) fn distribution(
         &self,
-        grouped: &[(Group, Vec<&AgentSession>)],
-        place: &[(Group, usize)],
+        grouped: &[(Status, Vec<&AgentSession>)],
+        place: &[(Status, usize)],
         cx: &Context<Self>,
     ) -> gpui::Div {
-        let at = |g: Group| place.iter().find(|(p, _)| *p == g).map(|(_, i)| *i);
+        let at = |g: Status| place.iter().find(|(p, _)| *p == g).map(|(_, i)| *i);
         let total: usize = grouped.iter().map(|(_, s)| s.len()).sum();
         let filled: Vec<_> = grouped.iter().filter(|(_, s)| !s.is_empty()).collect();
         let mut bar = div()
@@ -526,7 +526,7 @@ impl Workbench {
                     group.label().to_owned(),
                     format!("{n} 个 · {:.0}%", n as f32 / total.max(1) as f32 * 100.),
                 ]));
-            segment = if group == Group::Stale {
+            segment = if group == Status::Stale {
                 segment
                     .bg(gpui::pattern_slash(hue, T::S2, T::S6))
                     .border(px(T::BORDER_WIDTH))
@@ -696,7 +696,7 @@ impl Workbench {
     /// A group's head, its folded summary when it is folded, and its cards otherwise.
     fn group_section(
         &self,
-        group: Group,
+        group: Status,
         sessions: &[&AgentSession],
         width: f32,
         now: u64,
@@ -704,11 +704,11 @@ impl Workbench {
     ) -> gpui::Div {
         let folded = self.group_folded(group);
         let foldable = !self.overview.closed_only
-            && matches!(group, Group::Running | Group::Stale | Group::Review);
+            && matches!(group, Status::Running | Status::Stale | Status::Review);
         let note = match group {
-            Group::Error => Some("先看这些：Agent 停在了报错上"),
-            Group::Review => Some("等你核对后标记完成"),
-            Group::Stale if !self.overview.closed_only => Some("左栏不再计数"),
+            Status::Error => Some("先看这些：Agent 停在了报错上"),
+            Status::Review => Some("等你核对后标记完成"),
+            Status::Stale if !self.overview.closed_only => Some("左栏不再计数"),
             _ => None,
         };
         let mut section = div().flex().flex_col().gap(px(T::S10)).child(section_head(
@@ -720,11 +720,11 @@ impl Workbench {
         ));
         if foldable {
             let toggle_id = match group {
-                Group::Running => "toggle-running",
-                Group::Stale => "toggle-stale",
+                Status::Running => "toggle-running",
+                Status::Stale => "toggle-stale",
                 _ => "toggle-review",
             };
-            let open_label = if group == Group::Stale {
+            let open_label = if group == Status::Stale {
                 "展开核对"
             } else {
                 "展开"
@@ -732,8 +732,8 @@ impl Workbench {
             let toggle = quiet(button(toggle_id, if folded { open_label } else { "收起" }))
                 .on_click(cx.listener(move |this, _, _, cx| {
                     let flag = match group {
-                        Group::Running => &mut this.overview.show_running,
-                        Group::Stale => &mut this.overview.show_stale,
+                        Status::Running => &mut this.overview.show_running,
+                        Status::Stale => &mut this.overview.show_stale,
                         _ => &mut this.overview.show_review,
                     };
                     *flag = !*flag;
@@ -741,7 +741,7 @@ impl Workbench {
                 }));
             let mut right = vec![toggle.into_any_element()];
             let content: Vec<gpui::AnyElement> = match group {
-                Group::Review => {
+                Status::Review => {
                     let mut counts = [("最近 24 小时", 0), ("最近 7 天", 0), ("更早", 0)];
                     for s in sessions {
                         let bucket = recency(self.session_updated(s), now);
@@ -762,7 +762,7 @@ impl Workbench {
                         .into_any_element(),
                     ]
                 }
-                Group::Running => vec![
+                Status::Running => vec![
                     label("不用管，跑完会挪到「等你验收」")
                         .text_size(px(T::SMALL))
                         .text_color(T::color(T::muted()))
@@ -778,7 +778,7 @@ impl Workbench {
                                     .iter()
                                     .filter(|s| {
                                         this.session_hidden(s).is_none()
-                                            && session_group(&this.workspace, s) == Group::Stale
+                                            && status_of(&this.workspace, s) == Status::Stale
                                     })
                                     .map(|s| s.id.clone())
                                     .collect();
@@ -823,7 +823,7 @@ impl Workbench {
             .gap(px(T::S2))
             .h(px(T::AGE_CHART_HEIGHT))
             .aria_label("按最后活动时间分布：从 1 天内到 3 个月以上");
-        let hue = Group::Stale.colors().0;
+        let hue = Status::Stale.colors().0;
         for (i, (n, (_, when))) in counts.iter().zip(AGE_BUCKETS).enumerate() {
             chart = chart.child(
                 div()
@@ -858,7 +858,7 @@ impl Workbench {
     }
     fn session_card(
         &self,
-        group: Group,
+        group: Status,
         session: &AgentSession,
         width: f32,
         now: u64,
@@ -914,7 +914,7 @@ impl Workbench {
             gpui::StyledText::new(self.session_line(&session))
         };
         let primary_continue =
-            closed_only || matches!(group, Group::Waiting | Group::Error | Group::Paused);
+            closed_only || matches!(group, Status::Waiting | Status::Error | Status::Paused);
         div()
             .id(gpui::SharedString::from(format!("card-{}", session.id)))
             .role(gpui::accesskit::Role::Button)

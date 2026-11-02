@@ -22,14 +22,14 @@ impl Workbench {
         let detail = self.store.recognition().detail.clone();
         let host = item("status-host", false)
             .child(div().size(px(T::DOT)).rounded_full().bg(if cut {
-                Group::Error.colors().0
+                Tone::Danger.dot()
             } else {
-                Group::Running.colors().0
+                Tone::Ok.dot()
             }))
             .child(
                 div()
                     .text_color(if cut {
-                        Group::Error.colors().1
+                        Tone::Danger.ink()
                     } else {
                         T::color(T::secondary())
                     })
@@ -61,7 +61,7 @@ impl Workbench {
         if working > 0 {
             sessions = sessions.child(
                 div()
-                    .text_color(Group::Running.colors().1)
+                    .text_color(Status::Running.colors().1)
                     .child(format!("{working} 工作中")),
             );
         }
@@ -71,7 +71,7 @@ impl Workbench {
         if needs > 0 {
             sessions = sessions.child(
                 div()
-                    .text_color(Group::Waiting.colors().1)
+                    .text_color(Status::Waiting.colors().1)
                     .font_weight(gpui::FontWeight::SEMIBOLD)
                     .child(format!("{needs} 等你")),
             );
@@ -129,10 +129,7 @@ impl Workbench {
                 s.current
                     && self.session_hidden(s).is_none()
                     && !self.session_closed(s)
-                    && matches!(
-                        session_group(&self.workspace, s),
-                        Group::Working | Group::Running
-                    )
+                    && status_of(&self.workspace, s).working()
                     && !needs.iter().any(|n| n.id == s.id)
             })
             .collect();
@@ -417,10 +414,10 @@ impl Workbench {
         }
         let now = now();
         for (title, group, list) in [
-            (format!("等你 {}", needs.len()), Group::Waiting, &needs),
+            (format!("等你 {}", needs.len()), Status::Waiting, &needs),
             (
                 format!("工作中 {}", working.len()),
-                Group::Running,
+                Status::Running,
                 &working,
             ),
         ] {
@@ -435,7 +432,7 @@ impl Workbench {
                     .child(title),
             );
             for s in list.iter() {
-                let g = session_group(&self.workspace, s);
+                let g = status_of(&self.workspace, s);
                 let session = (*s).clone();
                 panel = panel.child(
                     div()
@@ -573,9 +570,9 @@ fn share(w: &QuotaWindow) -> f64 {
 fn colors(w: &QuotaWindow, stale: bool) -> (gpui::Hsla, gpui::Hsla) {
     match w.used {
         _ if stale => (T::color(T::muted()), T::color(T::muted())),
-        u if u >= OVER => (Group::Error.colors().0, Group::Error.colors().1),
-        u if u >= NEAR => (Group::Waiting.colors().0, Group::Waiting.colors().1),
-        _ => (Group::Running.colors().0, T::color(T::body())),
+        u if u >= OVER => (Tone::Danger.dot(), Tone::Danger.ink()),
+        u if u >= NEAR => (Tone::Warn.dot(), Tone::Warn.ink()),
+        _ => (Tone::Ok.dot(), T::color(T::body())),
     }
 }
 

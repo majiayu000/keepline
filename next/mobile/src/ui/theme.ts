@@ -13,7 +13,11 @@ const light = {
   userBubble: '#2f6fed',
   waiting: '#c2410c',
   waitingBg: '#fff4ec',
-  working: '#15803d',
+  // Session states, the same hues as the desktop's status colors (specs/status-model):
+  // 在跑 is yellow, made dark enough to read on white.
+  running: '#a16207',
+  // Meaning tones, never a session state: a machine online, a refusal.
+  ok: '#15803d',
   danger: '#b91c1c',
 };
 
@@ -29,7 +33,8 @@ const dark: typeof light = {
   userBubble: '#3b6fd9',
   waiting: '#fb923c',
   waitingBg: '#2a1d14',
-  working: '#4ade80',
+  running: '#e8c547',
+  ok: '#4ade80',
   danger: '#f87171',
 };
 

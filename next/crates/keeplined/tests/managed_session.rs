@@ -3202,8 +3202,8 @@ fn codex_subagent_logs_keep_the_parent_working_and_carry_its_dialog() {
         |w| {
             card(w).is_some_and(|(s, c)| {
                 c.turn == keepline_core::content::Turn::Completed
-                    && c.group(&s, w, keepline_core::content::now())
-                        == keepline_core::content::Inbox::Running
+                    && keepline_core::status::of(w, &s, keepline_core::content::now())
+                        == keepline_core::status::Status::Running
             })
         },
     );
@@ -3242,8 +3242,8 @@ fn codex_subagent_logs_keep_the_parent_working_and_carry_its_dialog() {
     wait_for(&h, "the finished subagent releases the parent", |w| {
         card(w).is_some_and(|(s, c)| {
             c.turn == keepline_core::content::Turn::Completed
-                && c.group(&s, w, keepline_core::content::now())
-                    != keepline_core::content::Inbox::Running
+                && keepline_core::status::of(w, &s, keepline_core::content::now())
+                    != keepline_core::status::Status::Running
         })
     });
     drop(child);

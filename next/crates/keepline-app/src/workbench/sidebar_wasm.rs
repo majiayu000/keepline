@@ -145,16 +145,15 @@ fn load(preset: &Preset) -> Result<host::Plugin, String> {
 }
 
 /// The state string a session's group goes by, the same coarse words as the spec.
-fn group_name(g: Group) -> &'static str {
-    match g {
-        Group::Waiting => "waiting",
-        Group::Error => "error",
-        Group::Working | Group::Running | Group::Background => "running",
-        Group::Done | Group::Review | Group::Ready => "review",
-        Group::Fresh => "fresh",
-        // Marked complete but still live: a plugin sorts it with what has stopped.
-        Group::Paused | Group::Closed => "paused",
-        Group::Stale => "stale",
+fn group_name(g: Status) -> &'static str {
+    // The plugin protocol keeps its coarse words: the same buckets as the native list.
+    match super::sidebar_list::bucket(g) {
+        Bucket::Attention => g.key(),
+        Bucket::Running => "running",
+        Bucket::Done => "review",
+        Bucket::Stopped => "paused",
+        Bucket::Fresh => "fresh",
+        Bucket::Stale => "stale",
     }
 }
 
@@ -274,7 +273,7 @@ impl Workbench {
                     .px(px(T::S8))
                     .mt(px(T::S12))
                     .text_size(px(T::CHIP_SIZE))
-                    .text_color(Group::Error.colors().1)
+                    .text_color(Tone::Danger.ink())
                     .into_any_element(),
                 );
                 for l in sessions {
@@ -641,7 +640,7 @@ mod tests {
     #[test]
     #[ignore]
     fn sidebar_cost_on_a_real_workspace() {
-        use crate::model::session_state::{live_terminal, session_space, sidebar_status};
+        use crate::model::session_state::{live_terminal, session_space, session_status};
         use std::collections::HashSet;
         use std::time::Instant;
         let path = std::env::var("KEEPLINE_WS_JSON").expect("KEEPLINE_WS_JSON");
@@ -684,7 +683,7 @@ mod tests {
             let mut ended: Vec<_> = in_space
                 .iter()
                 .filter(|s| s.terminal.is_some() && !open_of(s))
-                .map(|s| (*s, sidebar_status(&w, &unseen, s).0))
+                .map(|s| (*s, session_status(&w, &unseen, s).0))
                 .collect();
             ended.sort_by_key(|(s, _)| {
                 std::cmp::Reverse(w.content.get(&s.id).map_or(s.updated, |c| c.updated))
@@ -695,7 +694,7 @@ mod tests {
             let open: Vec<_> = in_space
                 .iter()
                 .filter(|s| open_of(s))
-                .map(|s| (*s, sidebar_status(&w, &unseen, s).0))
+                .map(|s| (*s, session_status(&w, &unseen, s).0))
                 .collect();
             let c = lap(&mut t);
             let state = State {
@@ -753,18 +752,18 @@ mod tests {
     #[test]
     fn modules_see_only_the_documented_group_words() {
         let all = [
-            Group::Waiting,
-            Group::Error,
-            Group::Review,
-            Group::Paused,
-            Group::Running,
-            Group::Stale,
-            Group::Working,
-            Group::Done,
-            Group::Ready,
-            Group::Fresh,
-            Group::Background,
-            Group::Closed,
+            Status::Waiting,
+            Status::Error,
+            Status::Review,
+            Status::Paused,
+            Status::Running,
+            Status::Stale,
+            Status::Running,
+            Status::Review,
+            Status::Review,
+            Status::Fresh,
+            Status::Background,
+            Status::Closed,
         ];
         let documented = [
             "waiting", "error", "running", "review", "paused", "fresh", "stale",

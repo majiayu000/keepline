@@ -134,7 +134,7 @@ impl Workbench {
             .agent_sessions
             .iter()
             .find(|s| s.id == peek.session);
-        let group = session.map(|s| session_group(&self.workspace, s));
+        let group = session.map(|s| status_of(&self.workspace, s));
         let title = session
             .map(|s| self.session_title(s))
             .unwrap_or_else(|| "终端".into());
@@ -232,7 +232,7 @@ impl Workbench {
                         .px(px(T::S12))
                         .py(px(T::S4))
                         .text_size(px(T::META))
-                        .text_color(Group::Error.colors().1),
+                        .text_color(Tone::Danger.ink()),
                 )
             })
             .child(

@@ -245,12 +245,12 @@ impl Render for Workbench {
                         && s.terminal.as_ref().is_some_and(|id| ids.contains(id))
                         && s.outcome.needs_review(now())
                         && matches!(
-                            session_group(&self.workspace, s),
-                            Group::Waiting | Group::Error
+                            status_of(&self.workspace, s),
+                            Status::Waiting | Status::Error
                         )
                 })
                 .collect();
-            let group = needs.first().map(|s| session_group(&self.workspace, s));
+            let group = needs.first().map(|s| status_of(&self.workspace, s));
             wants.push(group);
             // The tab's dot: the most urgent status among its panes; a tab of plain
             // shells keeps a faint neutral dot so the names stay aligned.
@@ -548,7 +548,7 @@ impl Render for Workbench {
                 label(error.clone())
                     .px(px(T::S14))
                     .py(px(T::S6))
-                    .text_color(Group::Error.colors().1),
+                    .text_color(Tone::Danger.ink()),
             );
         }
         if let Some(form) = &self.tasks.form {
@@ -762,7 +762,7 @@ impl Workbench {
     /// frame is drawn whenever the new layout moved tabs across an edge.
     fn tab_overflow(
         &self,
-        wants: &[Option<Group>],
+        wants: &[Option<Status>],
         cx: &mut Context<Self>,
     ) -> (Option<TabEdge>, Option<TabEdge>) {
         let (left, right) = hidden_tabs(&self.layout.tab_scroll, wants.len());
@@ -1063,14 +1063,14 @@ impl Workbench {
     fn status_glyphs(&self, cx: &Context<Self>) -> gpui::Div {
         // The same sessions the top bar's 需要你 counts: those in Keepline's terminals.
         let mut counts = [self.needs_you().len(), 0, 0];
-        const SHOWN: [Group; 3] = [Group::Error, Group::Working, Group::Done];
+        const SHOWN: [Status; 3] = [Status::Error, Status::Running, Status::Review];
         for s in &self.workspace.agent_sessions {
             if !s.managed() || !s.outcome.needs_review(now()) || self.session_hidden(s).is_some() {
                 continue;
             }
-            match session_group(&self.workspace, s) {
-                Group::Working | Group::Running => counts[1] += 1,
-                Group::Done | Group::Review => counts[2] += 1,
+            match status_of(&self.workspace, s) {
+                g if g.working() => counts[1] += 1,
+                Status::Review => counts[2] += 1,
                 _ => {}
             }
         }
@@ -1093,7 +1093,7 @@ impl Workbench {
                     .child(glyph(group))
                     .child(count.to_string())
                     .on_click(cx.listener(move |this, _, _, cx| {
-                        if group == Group::Working {
+                        if group == Status::Running {
                             this.overview.show_running = true;
                         }
                         this.show_overview(cx);
@@ -1109,12 +1109,12 @@ impl Workbench {
         let count = needs.len();
         let waiting = needs
             .iter()
-            .any(|s| session_group(&self.workspace, s) == Group::Waiting);
+            .any(|s| status_of(&self.workspace, s) == Status::Waiting);
         // One count for everything that needs you; the color says which kind leads.
         let group = if waiting {
-            Group::Waiting
+            Status::Waiting
         } else {
-            Group::Error
+            Status::Error
         };
         let text = "需要你";
         let (dot_color, ink, wash) = group.colors();
@@ -1237,7 +1237,7 @@ impl Render for TextTip {
 #[derive(Clone)]
 struct TabTip {
     title: String,
-    status: Option<Group>,
+    status: Option<Status>,
     /// Why the tab asks for you: the error or the question, so the dot is never a riddle.
     reason: Option<String>,
     cwd: Option<String>,
@@ -1255,7 +1255,7 @@ impl Workbench {
             .map(|s| {
                 (
                     s,
-                    sidebar_status(&self.workspace, &self.attention.unseen, s),
+                    session_status(&self.workspace, &self.attention.unseen, s),
                 )
             })
             .max_by_key(|(_, (_, attention))| *attention)
@@ -1285,22 +1285,22 @@ impl Workbench {
     /// WebSearch`, `要重新登录`, a question's title). `None` when no rule knows the text or
     /// the rule has nothing to add: the state word alone says it, the full text is in
     /// [`Self::attention_text`].
-    pub(super) fn attention_reason(&self, s: &AgentSession, g: Group) -> Option<String> {
+    pub(super) fn attention_reason(&self, s: &AgentSession, g: Status) -> Option<String> {
         use keepline_core::reason::{Kind, phrase};
         let kind = match g {
-            Group::Waiting => Kind::Waiting,
-            Group::Error => Kind::Error,
+            Status::Waiting => Kind::Waiting,
+            Status::Error => Kind::Error,
             _ => return None,
         };
         let text = self.attention_text(s, g)?;
         Some(phrase(kind, &text).text).filter(|p| !p.is_empty())
     }
     /// The whole text behind 等你回答 / 出错了: the question or approval, the error.
-    pub(super) fn attention_text(&self, s: &AgentSession, g: Group) -> Option<String> {
+    pub(super) fn attention_text(&self, s: &AgentSession, g: Status) -> Option<String> {
         let content = self.workspace.content.get(&s.id);
         let text = match g {
-            Group::Waiting => content.map(|c| c.waiting.clone()).unwrap_or_default(),
-            Group::Error => content
+            Status::Waiting => content.map(|c| c.waiting.clone()).unwrap_or_default(),
+            Status::Error => content
                 .map(|c| c.error.clone())
                 .filter(|e| !e.is_empty())
                 .or_else(|| {
@@ -1362,7 +1362,7 @@ impl Workbench {
         reconnect: bool,
         cx: &mut Context<Self>,
     ) -> impl IntoElement {
-        let (_, ink, bg) = Group::Waiting.colors();
+        let (_, ink, bg) = Tone::Warn.colors();
         let details: Vec<String> = details.into_iter().filter(|d| !d.is_empty()).collect();
         let message = div()
             .id("connection-notice")
@@ -1370,7 +1370,13 @@ impl Workbench {
             .flex()
             .items_center()
             .gap(px(T::S8))
-            .child(dot(Group::Waiting))
+            .child(
+                div()
+                    .size(px(T::DOT))
+                    .flex_shrink_0()
+                    .rounded_full()
+                    .bg(Tone::Warn.dot()),
+            )
             .child(div().truncate().child(text.to_string()))
             .when(!details.is_empty(), |d| {
                 d.tooltip(diagnostics::tip(details))
@@ -1539,7 +1545,7 @@ pub(super) struct TabEdge {
     count: usize,
     /// The tab a click brings into view: the nearest one waiting on you, else the nearest.
     reveal: usize,
-    group: Option<Group>,
+    group: Option<Status>,
 }
 
 /// Indexes of the tabs wholly or partly past the left and right edges of the strip,

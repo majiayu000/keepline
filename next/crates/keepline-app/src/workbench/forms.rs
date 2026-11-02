@@ -435,7 +435,7 @@ impl Workbench {
         window: &Window,
         cx: &Context<Self>,
     ) -> gpui::Div {
-        let error = Group::Error.colors().1;
+        let error = Tone::Danger.ink();
         let title_bad = form.tried && checks.title_missing;
         let card = div()
             .flex_1()
@@ -588,7 +588,7 @@ impl Workbench {
     }
     /// The space choice; a space whose directory is gone says so and offers to repoint it.
     fn form_spaces(&self, form: &Form, checks: &FormChecks, cx: &Context<Self>) -> gpui::Div {
-        let error = Group::Error.colors().1;
+        let error = Tone::Danger.ink();
         let cwd = self
             .workspace
             .spaces
@@ -676,7 +676,7 @@ impl Workbench {
     }
     /// The criteria checklist: drag a line by its grip, Enter opens the next line, × drops it.
     fn form_criteria(&self, form: &Form, window: &Window, cx: &Context<Self>) -> gpui::Div {
-        let warn = Group::Paused.colors().1;
+        let warn = Tone::Warn.ink();
         let texts: Vec<String> = form
             .criteria
             .iter()

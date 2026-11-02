@@ -223,7 +223,7 @@ impl Workbench {
             .unwrap_or_default();
         let h = card.here();
         let save = session.clone();
-        let (group, _) = sidebar_status(&self.workspace, &self.attention.unseen, session);
+        let (group, _) = session_status(&self.workspace, &self.attention.unseen, session);
         let mut meta = vec![session.runtime.executable().to_owned()];
         if card.turn_started > 0 && card.updated > card.turn_started {
             meta.push(format!(
@@ -366,7 +366,7 @@ impl Workbench {
         let (ok, files, failed) = evidence_tally(&card.evidence);
         if ok + files + failed > 0 {
             let total = (ok + files + failed) as f32;
-            let failure = Group::Error.colors().0;
+            let failure = Tone::Danger.dot();
             let mut bar = div()
                 .flex()
                 .gap(px(T::S2))
@@ -625,7 +625,7 @@ impl Workbench {
                         },
                         name,
                     )
-                    .when(abandon, |d| d.text_color(Group::Error.colors().1))
+                    .when(abandon, |d| d.text_color(Tone::Danger.ink()))
                     .on_click(cx.listener(move |this, _, _, cx| {
                         fold(this);
                         this.edit(
@@ -698,9 +698,9 @@ impl Workbench {
         self.overview.changed_only = false;
         self.overview.closed_only = false;
         self.overview.show_stale =
-            session_group(&self.workspace, s) == Group::Stale || self.overview.show_stale;
+            status_of(&self.workspace, s) == Status::Stale || self.overview.show_stale;
         self.overview.show_running =
-            session_group(&self.workspace, s) == Group::Running || self.overview.show_running;
+            status_of(&self.workspace, s).working() || self.overview.show_running;
         if live_terminal(&self.workspace, s).is_some() {
             self.open_session(s, window, cx);
         } else {

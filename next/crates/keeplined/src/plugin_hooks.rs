@@ -3,9 +3,10 @@
 //! commit and `command` when a terminal's shell marks a command finished; with no hook
 //! installed both return at once. Each hook runs on its own thread under its timeout, so a slow or broken
 //! hook costs the host nothing; outcomes go to the host log.
-use keepline_core::content::{now, short, Inbox, Turn};
+use keepline_core::content::{now, short, Turn};
 use keepline_core::hook::{self, Event, Hook, Payload};
 use keepline_core::model::Workspace;
+use keepline_core::status::{self, Status};
 use std::collections::HashMap;
 use std::io::Write;
 use std::process::{Command, Stdio};
@@ -25,13 +26,13 @@ pub struct Hooks {
 }
 
 /// `done` is any turn that ended, claimed finished or not: paused is still yours to look at.
-fn event(group: Inbox, turn: Turn) -> Option<Event> {
-    match group {
-        Inbox::Running => Some(Event::Started),
-        Inbox::Waiting => Some(Event::Waiting),
-        Inbox::Error => Some(Event::Error),
-        Inbox::Review => Some(Event::Done),
-        Inbox::Paused if matches!(turn, Turn::Completed | Turn::Interrupted) => Some(Event::Done),
+fn event(status: Status, turn: Turn) -> Option<Event> {
+    match status {
+        Status::Running | Status::Background => Some(Event::Started),
+        Status::Waiting => Some(Event::Waiting),
+        Status::Error => Some(Event::Error),
+        Status::Review => Some(Event::Done),
+        Status::Paused if matches!(turn, Turn::Completed | Turn::Interrupted) => Some(Event::Done),
         _ => None,
     }
 }
@@ -71,7 +72,7 @@ impl Hooks {
             if c.hidden_for(s).is_some() {
                 continue;
             }
-            let Some(e) = event(c.group(s, w, at), c.turn) else {
+            let Some(e) = event(status::of(w, s, at), c.turn) else {
                 continue;
             };
             // One turn is one start and one finish; one dialog is one wait however often

@@ -1,11 +1,11 @@
 //! The sessions part of the left column, arranged by the chosen preset: 经典, 状态, 目录
-//! or a plugin's (`keepline_core::sidebar`). Every preset reads the same `sidebar_status`,
+//! or a plugin's (`keepline_core::sidebar`). Every preset reads the same `session_status`,
 //! so what needs you is the same row in all of them.
 use super::*;
 use keepline_core::sidebar::{self as presets, Bucket, Detail, Grouping, Preset};
 
 /// A session the column lists: its shown state and whether it still asks for a look.
-pub(super) type Listed<'a> = (&'a AgentSession, Group, bool);
+pub(super) type Listed<'a> = (&'a AgentSession, Status, bool);
 /// What a session row ends with: its state (or age, once seen), a text, or nothing.
 pub(super) enum End {
     State,
@@ -13,27 +13,27 @@ pub(super) enum End {
     Nothing,
 }
 
-pub(super) fn bucket(g: Group) -> Bucket {
+pub(super) fn bucket(g: Status) -> Bucket {
     match g {
-        Group::Waiting | Group::Error => Bucket::Attention,
-        Group::Working | Group::Running | Group::Background => Bucket::Running,
-        // Ready is a finished turn you have already seen: still yours to check.
-        Group::Done | Group::Review | Group::Ready => Bucket::Done,
-        // Marked complete but still live: no longer yours to check.
-        Group::Paused | Group::Closed => Bucket::Stopped,
-        Group::Fresh => Bucket::Fresh,
-        Group::Stale => Bucket::Stale,
+        Status::Waiting | Status::Error => Bucket::Attention,
+        Status::Running | Status::Background => Bucket::Running,
+        // A finished turn, seen or not: still yours to check.
+        Status::Review => Bucket::Done,
+        // Marked complete, put off or interrupted: no longer moving on its own.
+        Status::Paused | Status::Closed | Status::Deferred => Bucket::Stopped,
+        Status::Fresh => Bucket::Fresh,
+        Status::Stale => Bucket::Stale,
     }
 }
 /// The state a bucket's summary shows its dot in.
-fn bucket_group(b: Bucket) -> Group {
+fn bucket_group(b: Bucket) -> Status {
     match b {
-        Bucket::Attention => Group::Waiting,
-        Bucket::Running => Group::Working,
-        Bucket::Done => Group::Done,
-        Bucket::Stopped => Group::Paused,
-        Bucket::Fresh => Group::Fresh,
-        Bucket::Stale => Group::Stale,
+        Bucket::Attention => Status::Waiting,
+        Bucket::Running => Status::Running,
+        Bucket::Done => Status::Review,
+        Bucket::Stopped => Status::Paused,
+        Bucket::Fresh => Status::Fresh,
+        Bucket::Stale => Status::Stale,
     }
 }
 
@@ -169,7 +169,7 @@ impl Workbench {
     /// the error), what it is doing in words (`正在改 tabs.rs`, never the raw command), or
     /// how its last turn ended. One line, cut to fit. The pane header's 停在 line reads
     /// the same.
-    pub(super) fn row_detail(&self, s: &AgentSession, g: Group) -> Option<String> {
+    pub(super) fn row_detail(&self, s: &AgentSession, g: Status) -> Option<String> {
         let first = |t: &str| {
             let line = keepline_core::content::plain_line(t);
             (!line.is_empty()).then(|| line.chars().take(T::TAB_TIP_REASON_CHARS).collect())
@@ -217,7 +217,7 @@ impl Workbench {
         let trailing = label(match end {
             End::Text(text) => text,
             End::Nothing => String::new(),
-            End::State if g == Group::Ready && !attention => {
+            End::State if g == Status::Review && !attention => {
                 match age(self.session_updated(session)) {
                     a if a == "刚刚" => a,
                     a => format!("{a}前"),
@@ -410,9 +410,13 @@ impl Workbench {
                     .items_center()
                     .gap(px(T::S8))
                     .child(
-                        // A finished turn you have seen keeps 等你验收's ◇, in its quieter ink.
-                        glyph(if g == Group::Ready { Group::Done } else { g })
-                            .when(g == Group::Ready, |d| d.text_color(g.colors().1))
+                        // A finished turn you have seen keeps 等你验收's ◇, in the seen ink.
+                        glyph(g)
+                            .when(g == Status::Review && !attention, |d| {
+                                d.text_color(T::color(
+                                    crate::ui::status_colors::StatusColors::get().seen_status(),
+                                ))
+                            })
                             .w(px(T::S12))
                             .flex()
                             .justify_center()
@@ -841,7 +845,7 @@ impl Workbench {
                         .flex_shrink_0()
                         .text_size(px(T::CHIP_SIZE))
                         .font_weight(gpui::FontWeight::SEMIBOLD)
-                        .text_color(Group::Error.colors().1)
+                        .text_color(Tone::Danger.ink())
                         .child(format!("{needs} 需要你")),
                 )
             })

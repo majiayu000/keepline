@@ -316,7 +316,7 @@ impl Workbench {
     /// The header button mid-run: a fill sweeps in, the words turn to a check, a ring
     /// spreads out and fades.
     pub(super) fn completing_button(&self, id: &str, style: Style, t: f32) -> gpui::AnyElement {
-        let (dot, _, _) = Group::Done.colors();
+        let (dot, _, _) = Status::Closed.colors();
         let end = timing(style).button;
         let fill = eo(sl(t, 0., end));
         let turned = sl(t, end * 0.45, end);
@@ -390,7 +390,7 @@ impl Workbench {
         title: &str,
         cx: &Context<Self>,
     ) -> impl IntoElement {
-        let (dot, ink, _) = Group::Done.colors();
+        let (dot, ink, _) = Status::Closed.colors();
         let pane = T::color(T::pane());
         let tm = timing(style);
         let keep = id.to_owned();
@@ -547,7 +547,7 @@ impl Workbench {
             })
             .collect();
         let spots = self.layout.spots.clone();
-        let (green, _, _) = Group::Done.colors();
+        let (green, _, _) = Status::Closed.colors();
         let on_accent = T::color(T::on_accent());
         let pane_color = T::color(T::pane());
         Some(

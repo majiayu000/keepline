@@ -1,5 +1,7 @@
 //! Small, sourced projections. The transcript and mechanical receipts remain distinct.
-use crate::model::{AgentSession, Outcome, ProcessState, Workspace};
+use crate::model::AgentSession;
+#[cfg(test)]
+use crate::model::Workspace;
 use serde::{Deserialize, Serialize};
 
 #[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
@@ -159,31 +161,6 @@ impl Background {
         .map(|(n, kind)| format!("{kind} {n} 个"))
         .collect();
         (!parts.is_empty()).then(|| format!("后台仍有{}", parts.join("、")))
-    }
-}
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
-pub enum Inbox {
-    Waiting,
-    Error,
-    Review,
-    Paused,
-    Running,
-    Stale,
-    Deferred,
-    Closed,
-}
-impl Inbox {
-    pub fn label(self) -> &'static str {
-        match self {
-            Self::Waiting => "等你回答",
-            Self::Error => "出错了",
-            Self::Review => "等你验收",
-            Self::Paused => "停下了",
-            Self::Running => "在跑",
-            Self::Stale => "很久没动",
-            Self::Deferred => "稍后再看",
-            Self::Closed => "做完了",
-        }
     }
 }
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -421,60 +398,6 @@ impl Content {
             Some("缺少交互入口证据")
         } else {
             None
-        }
-    }
-    pub fn group(&self, session: &AgentSession, workspace: &Workspace, now: u64) -> Inbox {
-        match session.outcome {
-            Outcome::Completed | Outcome::Abandoned => return Inbox::Closed,
-            Outcome::Deferred { until, .. } if until > now => return Inbox::Deferred,
-            _ => (),
-        }
-        // External logs prove activity, not the existence of a live OS process indefinitely.
-        let running = self.turn == Turn::Running
-            && (session.current || now.saturating_sub(self.updated) < 900);
-        let last_turn = if self.turn_started > 0 {
-            self.turn_started
-        } else {
-            self.updated
-        };
-        let since = match session.outcome {
-            Outcome::Deferred { until, .. } => last_turn.max(until),
-            _ => last_turn.max(workspace.review_since(&session.id)),
-        };
-        if !running && now.saturating_sub(since) > u64::from(workspace.settings.stale_days) * 86400
-        {
-            return Inbox::Stale;
-        }
-        if self.turn == Turn::Waiting {
-            return Inbox::Waiting;
-        }
-        let failed = workspace
-            .terminals
-            .iter()
-            .find(|t| session.terminal.as_ref() == Some(&t.id))
-            .is_some_and(|t| {
-                matches!(t.state, ProcessState::Failed | ProcessState::Interrupted)
-                    || t.exit_code.is_some_and(|c| c != 0)
-            });
-        // A stopped turn whose subagents still run, or that a monitor or wakeup will resume,
-        // is not done yet.
-        let background = self.turn == Turn::Completed
-            && session.current
-            && self
-                .background
-                .is_some_and(|b| b.keeps_working() || b.wakes());
-        if self.turn == Turn::Error || failed {
-            Inbox::Error
-        } else if background {
-            Inbox::Running
-        } else if self.turn == Turn::Completed {
-            // Whether the work is done is yours to say (2026-11-02): a finished turn waits
-            // for 标记完成 whatever its last reply claimed.
-            Inbox::Review
-        } else if running {
-            Inbox::Running
-        } else {
-            Inbox::Paused
         }
     }
     pub fn here(&self) -> Here {
@@ -844,6 +767,12 @@ pub fn now() -> u64 {
 mod grouping_tests {
     use super::*;
     use crate::model::{Agent, Outcome};
+    use crate::status::{Status, of};
+    fn status(c: &Content, s: &AgentSession, now: u64) -> Status {
+        let mut w = Workspace::default();
+        w.content.insert(s.id.clone(), c.clone());
+        of(&w, s, now)
+    }
     #[test]
     fn grouping_priority_and_deferred_expiry() {
         let now = 10 * 86400;
@@ -861,42 +790,41 @@ mod grouping_tests {
             binding: None,
             name: String::new(),
         };
-        let w = Workspace::default();
         let mut c = Content {
             updated: now,
             turn: Turn::Waiting,
             ..Default::default()
         };
-        assert_eq!(c.group(&s, &w, now), Inbox::Waiting);
+        assert_eq!(status(&c, &s, now), Status::Waiting);
         c.turn = Turn::Error;
-        assert_eq!(c.group(&s, &w, now), Inbox::Error);
+        assert_eq!(status(&c, &s, now), Status::Error);
         c.turn = Turn::Completed;
         c.completed_claim = true;
-        assert_eq!(c.group(&s, &w, now), Inbox::Review);
+        assert_eq!(status(&c, &s, now), Status::Review);
         // A finished turn waits for you either way: done is yours to say.
         c.completed_claim = false;
-        assert_eq!(c.group(&s, &w, now), Inbox::Review);
+        assert_eq!(status(&c, &s, now), Status::Review);
         c.turn = Turn::Unknown;
-        assert_eq!(c.group(&s, &w, now), Inbox::Paused);
+        assert_eq!(status(&c, &s, now), Status::Paused);
         c.turn = Turn::Running;
-        assert_eq!(c.group(&s, &w, now), Inbox::Running);
+        assert_eq!(status(&c, &s, now), Status::Running);
         c.updated = 1;
-        assert_eq!(c.group(&s, &w, now), Inbox::Stale);
+        assert_eq!(status(&c, &s, now), Status::Stale);
         s.outcome = Outcome::Deferred {
             until: now + 1,
             reason: "later".into(),
         };
-        assert_eq!(c.group(&s, &w, now), Inbox::Deferred);
+        assert_eq!(status(&c, &s, now), Status::Deferred);
         s.outcome = Outcome::Deferred {
             until: now - 1,
             reason: "later".into(),
         };
-        assert_eq!(c.group(&s, &w, now), Inbox::Paused);
+        assert_eq!(status(&c, &s, now), Status::Paused);
         s.outcome = Outcome::Completed;
-        assert_eq!(c.group(&s, &w, now), Inbox::Closed);
+        assert_eq!(status(&c, &s, now), Status::Closed);
     }
     #[test]
-    fn running_subagents_keep_a_stopped_turn_working_but_shells_do_not() {
+    fn running_subagents_keep_a_stopped_turn_working_and_the_rest_wait_on_background() {
         let now = 10 * 86400;
         let s = AgentSession {
             id: "s".into(),
@@ -912,7 +840,6 @@ mod grouping_tests {
             binding: None,
             name: String::new(),
         };
-        let w = Workspace::default();
         let mut c = Content {
             updated: now,
             turn: Turn::Completed,
@@ -923,14 +850,14 @@ mod grouping_tests {
             }),
             ..Default::default()
         };
-        assert_eq!(c.group(&s, &w, now), Inbox::Running);
+        assert_eq!(status(&c, &s, now), Status::Running);
         c.background = Some(Background {
             monitors: 1,
             ..Default::default()
         });
         assert_eq!(
-            c.group(&s, &w, now),
-            Inbox::Running,
+            status(&c, &s, now),
+            Status::Background,
             "a monitor will wake it"
         );
         assert!(c.waking());
@@ -944,8 +871,8 @@ mod grouping_tests {
             ..Default::default()
         });
         assert_eq!(
-            c.group(&s, &w, now),
-            Inbox::Running,
+            status(&c, &s, now),
+            Status::Background,
             "so will a scheduled wakeup"
         );
         c.background = Some(Background {
@@ -954,14 +881,14 @@ mod grouping_tests {
         });
         assert!(!c.waking());
         assert_eq!(
-            c.group(&s, &w, now),
-            Inbox::Review,
-            "shells alone are a mark"
+            status(&c, &s, now),
+            Status::Background,
+            "a shell it started still runs"
         );
         c.background = None;
         assert_eq!(
-            c.group(&s, &w, now),
-            Inbox::Review,
+            status(&c, &s, now),
+            Status::Review,
             "unknown is not working"
         );
         let mut gone = s.clone();
@@ -971,8 +898,8 @@ mod grouping_tests {
             ..Default::default()
         });
         assert_eq!(
-            c.group(&gone, &w, now),
-            Inbox::Review,
+            status(&c, &gone, now),
+            Status::Review,
             "no live process, nothing runs"
         );
     }

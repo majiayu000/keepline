@@ -148,12 +148,12 @@ fn an_empty_agent_reads_as_fresh_not_done() {
     s.outcome = Outcome::Open;
     let unseen = HashSet::new();
     // Just opened: no record yet, then a record with no ask and no turn.
-    assert!(sidebar_status(&w, &unseen, &s) == (Group::Fresh, false));
+    assert!(session_status(&w, &unseen, &s) == (Status::Fresh, false));
     w.content.insert("live".into(), Content::default());
-    assert!(sidebar_status(&w, &unseen, &s) == (Group::Fresh, false));
-    assert_eq!(Group::Fresh.label(), "新开的");
+    assert!(session_status(&w, &unseen, &s) == (Status::Fresh, false));
+    assert_eq!(Status::Fresh.label(), "新开的");
     // Its own bucket in 状态 / 目录 and to plugins, not counted under 做完了.
-    assert!(super::sidebar_list::bucket(Group::Fresh) == keepline_core::sidebar::Bucket::Fresh);
+    assert!(super::sidebar_list::bucket(Status::Fresh) == keepline_core::sidebar::Bucket::Fresh);
     // Nor a card on the board until it has done something.
     assert!(super::board::column_of(&w, &s, now()).is_none());
     // Once it has an ask or a finished turn it is no longer new: it waits for you to
@@ -165,7 +165,7 @@ fn an_empty_agent_reads_as_fresh_not_done() {
             ..Default::default()
         },
     );
-    assert!(sidebar_status(&w, &unseen, &s) == (Group::Ready, false));
+    assert!(session_status(&w, &unseen, &s) == (Status::Review, false));
     w.content.insert(
         "live".into(),
         Content {
@@ -173,7 +173,7 @@ fn an_empty_agent_reads_as_fresh_not_done() {
             ..Default::default()
         },
     );
-    assert!(sidebar_status(&w, &unseen, &s) == (Group::Ready, false));
+    assert!(session_status(&w, &unseen, &s) == (Status::Review, false));
     assert!(super::board::column_of(&w, &s, now()).is_some());
 }
 
@@ -210,23 +210,23 @@ fn a_live_turn_is_done_only_when_you_say_so() {
     // Said done or not, a finished turn waits for you, and so does the inbox.
     for claim in [false, true] {
         w.content.insert("live".into(), ended(claim, None));
-        assert!(sidebar_status(&w, &unseen, &s) == (Group::Ready, false));
-        assert!(session_group(&w, &s) == Group::Review);
+        assert!(session_status(&w, &unseen, &s) == (Status::Review, false));
+        assert!(status_of(&w, &s) == Status::Review);
     }
-    assert_eq!(Group::Ready.label(), "等你验收");
-    assert_eq!(Group::Review.label(), "等你验收");
+    assert_eq!(Status::Review.label(), "等你验收");
+    assert_eq!(Status::Review.label(), "等你验收");
     unseen.insert("live".to_owned());
-    assert!(sidebar_status(&w, &unseen, &s) == (Group::Done, true));
+    assert!(session_status(&w, &unseen, &s) == (Status::Review, true));
     unseen.clear();
 
     // A download in a background shell, or a wakeup that will bring it back: 等后台.
     for background in [shell, wakeup] {
         w.content.insert("live".into(), ended(true, background));
-        assert!(sidebar_status(&w, &unseen, &s) == (Group::Background, false));
+        assert!(session_status(&w, &unseen, &s) == (Status::Background, false));
     }
-    assert_eq!(Group::Background.label(), "等后台");
+    assert_eq!(Status::Background.label(), "等后台");
     assert!(
-        super::sidebar_list::bucket(Group::Background) == keepline_core::sidebar::Bucket::Running
+        super::sidebar_list::bucket(Status::Background) == keepline_core::sidebar::Bucket::Running
     );
 
     // A failed turn says so.
@@ -237,13 +237,13 @@ fn a_live_turn_is_done_only_when_you_say_so() {
             ..Default::default()
         },
     );
-    assert!(sidebar_status(&w, &unseen, &s).0 == Group::Error);
+    assert!(session_status(&w, &unseen, &s).0 == Status::Error);
 
     // 做完了 is what you marked complete, and nothing else.
     s.outcome = Outcome::Completed;
     w.content.insert("live".into(), ended(false, shell));
-    assert!(sidebar_status(&w, &unseen, &s) == (Group::Closed, false));
-    assert_eq!(Group::Closed.label(), "做完了");
+    assert!(session_status(&w, &unseen, &s) == (Status::Closed, false));
+    assert_eq!(Status::Closed.label(), "做完了");
 }
 
 #[test]
@@ -334,16 +334,16 @@ fn finished_turn_stays_unseen_until_its_pane_is_shown() {
 fn sidebar_rows_rank_by_the_shown_state() {
     let rank = sidebar::sidebar_rank;
     // A finished turn you have not seen is colored, so it sits with the others that need you.
-    assert!(rank(Group::Done, true) < rank(Group::Working, false));
-    assert!(rank(Group::Waiting, true) < rank(Group::Done, true));
+    assert!(rank(Status::Review, true) < rank(Status::Running, false));
+    assert!(rank(Status::Waiting, true) < rank(Status::Review, true));
     // Live work comes before sessions resting at their prompt.
-    assert!(rank(Group::Working, false) < rank(Group::Ready, false));
+    assert!(rank(Status::Running, false) < rank(Status::Review, false));
     // Opened but not yet spoken to: after the resting rows, before what has gone quiet.
-    assert!(rank(Group::Ready, false) < rank(Group::Fresh, false));
-    assert!(rank(Group::Fresh, false) < rank(Group::Stale, false));
+    assert!(rank(Status::Review, false) < rank(Status::Fresh, false));
+    assert!(rank(Status::Fresh, false) < rank(Status::Stale, false));
     // Resting rows share a tier, so the newest of them comes first whatever its state.
-    assert_eq!(rank(Group::Review, false), rank(Group::Ready, false));
-    assert_eq!(rank(Group::Paused, false), rank(Group::Ready, false));
+    assert_eq!(rank(Status::Review, false), rank(Status::Review, false));
+    assert_eq!(rank(Status::Paused, false), rank(Status::Review, false));
 }
 
 #[test]
@@ -618,4 +618,17 @@ fn a_picked_agent_starts_without_a_todo() {
         exe(start_command(None, Some(&task), None)).map(|s| s.0),
         Some("codex".into())
     );
+}
+
+/// Every coarse view of a state (the sidebar's buckets, the plugin words, the palette's
+/// counts) derives from the one `Status` and agrees on what is in flight and what needs
+/// you (specs/status-model).
+#[test]
+fn every_projection_of_a_status_agrees() {
+    use keepline_core::sidebar::Bucket;
+    for s in Status::ALL {
+        let b = super::sidebar_list::bucket(s);
+        assert_eq!(b == Bucket::Running, s.working(), "{s:?}");
+        assert_eq!(b == Bucket::Attention, s.needs_you(), "{s:?}");
+    }
 }
