@@ -81,7 +81,7 @@ fn detail(s: &Session) -> Option<String> {
         s.stopped.clone().or_else(|| s.line.clone())
     } else {
         match s.group.as_str() {
-            "review" | "done" => s.done.clone().or_else(|| s.line.clone()),
+            "review" => s.done.clone().or_else(|| s.line.clone()),
             "paused" => s.stopped.clone().or_else(|| s.line.clone()),
             _ => s.line.clone(),
         }

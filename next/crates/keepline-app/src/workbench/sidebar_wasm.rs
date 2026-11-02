@@ -632,4 +632,32 @@ mod tests {
         assert!(err.contains("不是可用的 wasm"), "{err}");
         let _ = std::fs::remove_dir_all(&d);
     }
+
+    /// The words a module can see are the table in specs/plugins/plugin-system.md; a new
+    /// one belongs there too.
+    #[test]
+    fn modules_see_only_the_documented_group_words() {
+        let all = [
+            Group::Waiting,
+            Group::Error,
+            Group::Review,
+            Group::Paused,
+            Group::Running,
+            Group::Stale,
+            Group::Working,
+            Group::Done,
+            Group::Ready,
+            Group::Fresh,
+        ];
+        let documented = [
+            "waiting", "error", "running", "review", "paused", "fresh", "stale",
+        ];
+        for g in all {
+            assert!(documented.contains(&group_name(g)), "{}", group_name(g));
+            assert_eq!(
+                bucket(g) == Bucket::Attention,
+                matches!(group_name(g), "waiting" | "error")
+            );
+        }
+    }
 }
