@@ -122,5 +122,7 @@ jobs:
       - name: Cargo clippy
         run: cargo clippy --workspace --all-targets -- -D warnings
 
+      # managed_session runs real terminals against wall-clock limits; its failed cases get
+      # one retry each, every other failure fails the step (see ci-test.sh).
       - name: Cargo test
-        run: cargo test --workspace
+        run: sh ci-test.sh
