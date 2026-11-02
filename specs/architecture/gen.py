@@ -861,11 +861,149 @@ def issues_page():
 <body><main>
 <button class="toggle" onclick="var r=document.documentElement;r.dataset.theme=(r.dataset.theme==='dark'||(!r.dataset.theme&&matchMedia('(prefers-color-scheme: dark)').matches))?'light':'dark'">明 / 暗</button>
 <h1>架构问题清单</h1>
-<p class="lead">2026-11-02 按六层（数据一致性、宿主并发、故障恢复、信任边界、App 内部状态、手机端）只读审计 <code>next/</code> 得到。共 {len(ISSUES)} 条，按根因归成 {len(FAMILIES)} 族；同一族用同一种修法，比逐条修划算。状态机和结构图见 <a href="next.html">架构页</a>。</p>
+<p class="lead">2026-11-02 按六层（数据一致性、宿主并发、故障恢复、信任边界、App 内部状态、手机端）只读审计 <code>next/</code> 得到。共 {len(ISSUES)} 条，按根因归成 {len(FAMILIES)} 族；同一族用同一种修法，比逐条修划算。状态机和结构图见 <a href="next.html">架构页</a>；每族该怎么设计见 <a href="design.html">设计稿</a>。</p>
 <p class="note">严重度：高 {cnt['高']} · 中 {cnt['中']} · 中低 / 低中 {cnt['中低'] + cnt['低中']} · 低 {cnt['低']}。核对程度：<span class="chip done">我核对</span> 我亲自回代码看过分支 {ver['我核对'] + ver['我核对一半']} 条；<span class="chip run">子代理追踪</span> 子代理读代码追过调用链、我没逐条复核 {ver['子代理追踪']} 条；<span class="chip muted">推断</span> 依赖运行时条件、需要复现 {ver['推断']} 条。全部没有实际运行复现。行号是 2026-11-02 的工作区，别的会话在改，可能已偏移。</p>
 <p class="note"><b>建议先做的三族：</b>A（每天都会碰到：Agent 在输出时存待办、标完成会失败或丢东西）、B（安全：审批可能批到另一条命令）、D（状态卡住不自愈，看板和推送会说谎）。E、G、H 次之；C、I、J 可以随相关改动顺手做。</p>
 <nav>{nav}</nav>
 {''.join(rows)}
+</main></body></html>
+"""
+
+
+# ───────── 设计稿：先定设计，再改 ─────────
+
+PRINCIPLES = [
+    ("P1", "每个请求都有自己的状态机", "挂起 → 已确认 / 被拒（原因）/ 结果未知（超时）。界面以回执为准：成功提示等确认，失败时把输入还给你，结果未知时明说「不确定有没有生效」。", "A H B"),
+    ("P2", "写入只带它在意的前提", "不拿全局版本号当锁。新建不需要前提；改结局带「我看到的是 Open」；改对象带这个对象自己的版本。宿主上一次无关的提交不该挡住你。", "A C"),
+    ("P3", "派生状态只有一个来源，且要算上「观测源还活着吗」", "「等你回答」「在跑」这类需要你注意的状态，必须有活着的进程或终端支撑；观测源没了就降级。所有界面调同一个函数，只做展示映射。", "D I"),
+    ("P4", "锁内只改内存；会失败的步骤放在「承诺」之前", "fsync、fork、跑外部命令、网络 I/O 不进全局锁；交接时先把能失败的都做完，再发 ACK。", "E F"),
+    ("P5", "宿主不能随便退出", "宿主持有所有 PTY，宿主退出等于挂断全部终端。所以出错时的默认策略是「降级 + 显示出来 + 重试」，不是「崩溃让人重启」。这条约束决定了 D、E 的很多选择。", "D E F"),
+    ("P6", "信任要显式授予", "新插件、新配对链接、新设备，第一次都要你确认；每台手机的凭据彼此独立，撤销一台不影响别的。", "G H"),
+]
+
+DESIGNS = [
+    {"id": "A", "name": "编辑的前提与请求回执", "issues": "I1–I7",
+     "now": "9 种编辑查全局 revision：AddSpace、UpdateSpace、AddTask、UpdateTask、SetTaskOutcome、SetPendingTask、SetOutcome、AssignTask、SaveSessionTask。宿主每次提交（包括会话内容约每秒一次）都加 revision。客户端只有一个「忙」位，忙时非布局编辑直接丢；表单发出前就取走，失败不放回。",
+     "inv": ["一个编辑只会因为它要改的那个对象被别人改过而被拒", "你的每次操作要么生效，要么明确失败且输入还在；不存在静默消失", "成功提示只在宿主确认后出现"],
+     "opts": [("A1 对象版本", "Task、Space、AgentSession 各带 rev；Update 类编辑带期望 rev", "模型和存储加字段；每处写入都要记得加 rev"),
+              ("A2 前提条件（推荐）", "每种编辑自带它在意的前提：Add 类不带；SetOutcome 带「我看到的结局」；UpdateTask 拆成字段级修改（改标题、改标准、挂证据）", "要逐个编辑设计前提；UpdateTask 要拆；但和 C 族用同一套机制"),
+              ("A3 过渡：拆计数器", "会话内容另起一个计数，不再加 Workspace revision", "改动最小，立刻消掉 I1 的大部分；但两个用户操作之间仍是粗锁")],
+     "client": "客户端改成请求队列：每个请求一个 id 和状态（挂起 / 确认 / 被拒 / 未知），不再有丢弃；表单在确认后才关；乐观提示要么等确认，要么失败时撤回。宿主记住最近处理过的请求 id，重发同一个 id 直接返回上次结果（同时解决 I7 和手机的 I32）。",
+     "ask": ["成功提示等确认（本机 socket 通常几十毫秒，但碰上 fsync 会慢）还是乐观显示、失败撤回？", "结果未知（超时）时界面怎么说、给不给「重试」按钮？", "A3 先做过渡，还是直接上 A2？"],
+     "check": "用例：Agent 持续输出时连续标记完成 100 次，0 次「工作台已变化」；忙时的每次点击都生效或明确报错；保存失败后表单内容还在。"},
+    {"id": "B", "name": "审批与按键的实例身份", "issues": "I8–I9",
+     "now": "审批的身份只是画面上那一行问句（如 \"Do you want to proceed?\"），回答时宿主只核对这一行还在。手机的「选 1/2/3」「Esc」直接写进终端，不核对画面。",
+     "inv": ["你批准的必须是你看到的那一个审批", "任何代替你按键的远程操作，都要指明它针对的是哪个画面"],
+     "opts": [("B1 证据指纹（推荐）", "审批 id = 问句 + 证据行（命令、文件名）的指纹；卡片带上证据行给手机展示；回答带 id，宿主重读画面重算，不符就拒", "画面规则要能稳定截出证据行；重绘、折行可能让指纹抖动，需要规范化"),
+              ("B2 用 waiting_episode", "每次进入 Waiting 加 1，回答带 episode", "前提是连续两个审批之间一定经过 Running；这一点没核实，可能不成立"),
+              ("B3 按键也带画面身份", "没认出提问时手机不给数字按钮，只给「打开画面」；有提问时按键带它的 id", "手机少了一点「盲按」的灵活性")],
+     "client": "", "ask": ["手机还要不要保留不带校验的原始按键（选 1/2/3、Esc）？", "手机上审批必须展示命令全文吗（可能很长）？"],
+     "check": "构造两个问句相同、命令不同的审批先后出现，用旧卡片点允许 → 被拒；画面已经变了时按「选 1」→ 被拒。先核实 B2 的前提。"},
+    {"id": "C", "name": "布局编辑改成操作", "issues": "I10–I11",
+     "now": "PutTab 用客户端快照整块覆盖标签，并且豁免版本检查。改名、拖分隔线、移动窗格都走它，所以会冲掉并发的分屏。关标签时，确认框按本地快照列终端，宿主按当前状态停。",
+     "inv": ["一个布局操作只改它指名的那部分，并发的其他布局操作不丢", "你确认要停的终端，就是宿主实际停的终端"],
+     "opts": [("C1 操作型编辑（推荐）", "RenameTab、ResizeSplit、MovePane、AddPane……宿主在当前布局上应用", "编辑种类变多；客户端的布局代码要从「改完整树再发」改成「发操作」"),
+              ("C2 每个标签一个版本", "PutTab 带期望版本，冲突时客户端基于新布局重做", "改动小；拖分隔线这种高频操作冲突后要重做"),
+              ("C3 宿主合并", "PutTab 时宿主把客户端不知道的窗格补回去", "规则难说清，容易出新的边界情况")],
+     "client": "关标签：确认请求带上「我确认停这些终端」的列表，宿主发现多出来的就拒绝，让你重新确认。",
+     "ask": ["拖分隔线这种每秒几十次的操作，走 C1 还是 C2？"], "check": "Agent 执行 keeplined split 的同时改标签名，两个改动都保留。"},
+    {"id": "D", "name": "不自愈的状态：观测源与宿主健康", "issues": "I12–I17",
+     "now": "「等你回答」不要求会话还活着；后台写库失败只打日志；补扫失败直接跳过、检查点照常前进；定时线程出错一次就永久退出。",
+     "inv": ["任何「需要你」的状态都必须有活着的观测源支撑，观测源没了就降级成「停了」或「中断」", "宿主内存和外显状态的偏差一定会被看见，并且会被重试修正", "检查点只在事件被成功处理之后前进"],
+     "opts": [("派生规则", "Waiting 要求 session.current 或终端在跑；否则落到「停了」。放进 I 族的唯一分组函数里", "要定「Agent 被杀时的审批」显示成什么"),
+              ("宿主健康状态机", "Healthy → Degraded（原因、重试中）→ Healthy。后台写失败进 Degraded，失败的写入（如 record_exit）进重试队列；App 显示一条提示", "要新增一个推给 App 的状态和一条提示"),
+              ("长期线程监督", "定时、订阅这类线程出错后由监督者重启，并进 Degraded；不让宿主退出（见 P5）", "要给每个长期线程定重启策略")],
+     "client": "", "ask": ["Agent 在等审批时被杀，卡片显示「停了」还是「中断」？", "Degraded 的提示放在哪里（状态栏？顶部条？）"],
+     "check": "故障注入：让 record_exit 第一次写库返回 SQLITE_BUSY，终端状态最终仍变成 Exited；Ctrl-C 掉等审批的 Agent，卡片 1 分钟内离开「等你回答」。"},
+    {"id": "E", "name": "锁与 I/O 分离、终端回收", "issues": "I18–I23",
+     "now": "一把全局 Host 锁下做 fsync（synchronous=FULL）、fork、/bin/ps、读对话记录、等日志库锁、交接时写 socket。PTY pump 的副作用也要拿这把锁。结束的终端从不移出内存。",
+     "inv": ["锁内只改内存、发通知，不做可能阻塞超过毫秒级的 I/O", "读 PTY 不依赖全局锁", "终端结束后，它的 fd 和缓冲会被释放"],
+     "opts": [("E2 先降 fsync 级别", "WAL 下改成 synchronous=NORMAL：库不会坏，崩溃时最多丢最后一次提交", "一行改动；要接受崩溃丢最后一次编辑"),
+              ("E3 pump 不直接拿 Host 锁", "标题、命令完成这类副作用改成发消息给一个处理线程", "多一个队列；顺序要保证"),
+              ("E1 单写线程", "锁内生成新状态和差异，交给写线程落库", "失去「落库成功才换内存」，落库失败要走 D 的 Degraded；改动最大")],
+     "client": "", "ask": ["能否接受宿主崩溃时丢最后一次编辑（E2）？", "要先压测确认 I19 真的会卡（目前是推断）再动 E1/E3 吗？"],
+     "check": "压测：20 个终端持续输出 + 日志批量写入 + 频繁 Hook，测 PTY 读的最大停顿；改前改后对比。开关 200 个终端后，fd 数回到基线。"},
+    {"id": "F", "name": "交接两阶段提交", "issues": "I24",
+     "now": "新宿主收到 fd 就发 ACK，旧宿主收到即退出；之后的拿锁、开库、恢复 VT 任何一步失败，全部终端被挂断。",
+     "inv": ["旧宿主退出之前，新宿主已经完成所有会失败的步骤"],
+     "opts": [("两阶段（推荐）", "PREPARE：新宿主收 fd、开库、恢复 VT，都成功才发 READY；COMMIT：旧宿主释放 host.lock 并退出，新宿主拿锁开始服务", "要处理「两个进程同时开着库」（WAL 允许，但写入要只有一方）；拿锁仍在 COMMIT 后，要保证旧宿主退出够快")],
+     "client": "", "ask": ["COMMIT 后新宿主仍然失败（极少见）时，接受挂断，还是让旧宿主先不退出、多等一个确认？"],
+     "check": "在 PREPARE 的每一步注入失败，旧宿主都继续服务、终端不断。"},
+    {"id": "G", "name": "本机信任模型", "issues": "I25–I31",
+     "now": "同一用户的任何进程（包括终端里的 Agent）都有全部权限，能生成完全控制的配对链接；插件默认启用、直接执行命令；所有手机共用一个机器码；配对链接打开就保存。",
+     "inv": ["新插件、新配对链接、新设备第一次都要你确认", "撤销一台手机只影响这一台，别人顶替也只影响那一台"],
+     "opts": [("每台手机独立路由 token", "撤销即失效；中继上的顶替只影响一台", "配对和中继注册流程要改"),
+              ("插件首次启用确认", "记下插件内容的指纹，变了重新确认", "装插件多一步"),
+              ("零散加固", "配对链接先确认再保存；握手前的会话 10s 超时；动作模板不在双引号里展开；不可信目录里的 git 关掉 fsmonitor", "各自都小")],
+     "client": "", "ask": ["根本问题：终端里运行的 Agent 算不算可信？如果不算，生成配对链接、改中继这类请求要不要你在 App 里确认？"],
+     "check": "撤销手机 A 后，A 的凭据无法让本机掉线；往插件目录放一个新插件，不确认就不执行。"},
+    {"id": "H", "name": "手机请求与订阅", "issues": "I32–I37",
+     "now": "请求没有超时、没有幂等 id；会话视图按终端取会话，换会话后不跟；4401 同时表示撤销、改角色、踢出；events 流结束后不重订；重连有竞态。",
+     "inv": ["手机的每个请求都会在有限时间内得到结果（成功 / 失败 / 未知）", "重发不会让同一件事做两次", "视图跟着会话走，不跟着终端走"],
+     "opts": [("复用 A 的请求状态机", "超时 + 幂等 id，宿主按（设备，请求 id）去重", "宿主要存最近的请求结果"),
+              ("关闭码拆开", "4401 撤销（要重新配对）、改角色（重连即可）、踢出（冷却一段时间）各用一个码", "手机和宿主一起改"),
+              ("心跳 + 重订", "心跳检测半开连接；events 结束自动重订；会话切换推一条事件", "多一点流量")],
+     "client": "", "ask": ["踢出之后要不要冷却时间，比如 5 分钟内拒绝重连？"],
+     "check": "发送时断网再恢复，消息只出现一次；终端里 /new 之后，手机 5 秒内切到新会话。"},
+    {"id": "I", "name": "唯一的状态派生", "issues": "I38–I40",
+     "now": "侧栏 sidebar_status、看板 board_group、core Content::group 各算各的；菜单栏另存一份 Workspace。",
+     "inv": ["同一个会话，在任何界面上只有一个分组结果"],
+     "opts": [("core 里一个 status 函数（推荐）", "输入：结局、回合、终端状态、活跃程度、后台 shell、是否看过；输出一个 Status。侧栏、看板、菜单栏、通知只做展示映射", "要先把分歧处的口径定下来；三处调用都要改")],
+     "client": "菜单栏和工作台在同一进程里，共用一份 Workspace。",
+     "ask": ["会话活着但回合出错：显示「出错」还是「等你验收」？", "Agent 停了、只剩后台 shell：显示「等后台」还是「等你验收」？", "已完成的会话在待办详情里显示什么？"],
+     "check": "对一组固定的会话快照，侧栏、看板、菜单栏的分组结果完全一致（可做成单测）。"},
+]
+
+ORDER = [
+    ("第 0 步 · 先定产品口径", "I 族的分组口径、G 族的信任模型、D 族「被杀时的审批」显示成什么。这三个是产品决定，后面的设计都依赖它们。"),
+    ("第 1 步 · 先验证推断", "I19（锁下 fsync 会不会真卡）压测；B2 的前提（两个审批之间是否一定经过 Running）。推断不成立的问题就降级或删掉。"),
+    ("第 2 步 · A + C 一起设计", "同一套「编辑带前提」机制和客户端请求状态机；H 族直接复用。"),
+    ("第 3 步 · B 和 F 可以并行", "都比较独立。"),
+    ("第 4 步 · D 再 E", "E1 依赖 D 的 Degraded 状态；E2 可以随时先做。"),
+]
+
+
+def design_page():
+    pr = "".join(f'<tr><td><b>{a}</b></td><td><b>{esc(b)}</b><div class="sc">{esc(c)}</div></td><td>{esc(d)}</td></tr>' for a, b, c, d in PRINCIPLES)
+    cards = []
+    for d in DESIGNS:
+        opts = "".join(f'<tr><td><b>{esc(a)}</b></td><td>{esc(b)}</td><td>{esc(c)}</td></tr>' for a, b, c in d["opts"])
+        inv = "".join(f"<li>{esc(x)}</li>" for x in d["inv"])
+        ask = "".join(f"<li>{esc(x)}</li>" for x in d["ask"])
+        client = f'<p><b>配套：</b>{esc(d["client"])}</p>' if d["client"] else ""
+        cards.append(f'''<h2 id="d{d["id"]}">{d["id"]} · {esc(d["name"])} <span class="cnt">问题 {d["issues"]}</span></h2>
+<div class="card"><p><b>现状：</b>{esc(d["now"])}</p>
+<p><b>要守住的规则：</b></p><ul>{inv}</ul>
+<div class="tbl"><table><tr><th>方案</th><th>做法</th><th>代价</th></tr>{opts}</table></div>
+{client}<p><b>需要你定：</b></p><ul class="ask">{ask}</ul>
+<p><b>怎么验证设计对了：</b>{esc(d["check"])}</p>
+<p class="dec">决定：待定</p></div>''')
+    order = "".join(f"<li><b>{esc(a)}</b>：{esc(b)}</li>" for a, b in ORDER)
+    nav = "".join(f'<a href="#d{d["id"]}">{d["id"]} {esc(d["name"])}</a>' for d in DESIGNS)
+    asks = sum(len(d["ask"]) for d in DESIGNS)
+    return f"""<!doctype html>
+<html lang="zh-CN"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Keepline next 设计稿</title><style>{CSS}
+.cnt{{font-size:13px;color:var(--muted);font-weight:400}}.sc{{color:var(--muted);font-size:13px;margin:2px 0}}
+.card{{background:var(--card);border:1px solid var(--line);border-radius:16px;padding:6px 20px 12px}}
+.card .tbl{{border:none;padding:0;background:none}}ul{{margin:4px 0 10px;padding-left:22px}}ul.ask li{{color:var(--user)}}
+.dec{{color:var(--muted);border-top:1px dashed var(--line);padding-top:8px}}</style></head>
+<body><main>
+<button class="toggle" onclick="var r=document.documentElement;r.dataset.theme=(r.dataset.theme==='dark'||(!r.dataset.theme&&matchMedia('(prefers-color-scheme: dark)').matches))?'light':'dark'">明 / 暗</button>
+<h1>设计稿：先定设计，再改代码</h1>
+<p class="lead">这一页回答「<a href="issues.html">问题清单</a>里的问题，系统应该怎么设计才不会再出」。<b>本页还没有任何代码改动。</b>它要支撑的决定是：每一族选定一个目标设计（采用 / 否定 / 待验证），全部定下来之后才开始改。放弃条件：某一族的设计成本远高于修补，而它的问题都只是「推断」级，就先复现，复现不了就不做。</p>
+<p class="note">共 6 条设计原则、9 族设计、{asks} 个需要你定的问题（紫色）。状态机现状见 <a href="next.html">架构页</a>。</p>
+
+<h2>跨族的设计原则</h2>
+<p class="note">41 个问题背后其实只有几条原则没守住。先定原则，各族的设计就是它们的展开。</p>
+<div class="tbl"><table><tr><th></th><th>原则</th><th>管哪几族</th></tr>{pr}</table></div>
+
+<h2>建议的推进顺序</h2>
+<ol class="flows">{order}</ol>
+<nav>{nav}</nav>
+{''.join(cards)}
+<h2>J · 文档</h2>
+<div class="card"><p><code>specs/restart-reconciliation.md</code> 写的是旧 TS 版，给它标上「已过时，next 见 architecture/next.html 第 22 节」。不需要设计。</p></div>
 </main></body></html>
 """
 
@@ -934,7 +1072,7 @@ def page():
 <button class="toggle" onclick="var r=document.documentElement;r.dataset.theme=(r.dataset.theme==='dark'||(!r.dataset.theme&&matchMedia('(prefers-color-scheme: dark)').matches))?'light':'dark'">明 / 暗</button>
 <h1>Keepline next 架构与状态机</h1>
 <p class="lead">next/ 是一个 Rust workspace：<b>keeplined</b> 宿主持有全部终端和识别逻辑，<b>keepline-app</b> 是 GPUI 桌面工作台，两者只通过 <code>workbench.sock</code> 说话；手机经 <b>keepline-relay</b> 远程连同一个宿主。所有状态都存在宿主的 <code>Workspace</code> 里，界面上的分组是从它派生出来的，不另存。</p>
-<nav><a href="#sys">系统总图</a><a href="#pipe">信号 → 状态</a><a href="#layers">状态分层</a><a href="#proc">终端进程</a><a href="#turn">回合</a><a href="#outcome">结局</a><a href="#inbox">分组</a><a href="#bind">绑定</a><a href="#recog">识别健康</a><a href="#remote">远程</a><a href="#handoff">宿主交接</a><a href="#task">待办</a><a href="#notify">通知</a><a href="#approval">审批</a><a href="#conn">窗格连接</a><a href="#hostlife">宿主生命周期</a><a href="#layout">布局</a><a href="#agents">各家信号</a><a href="#plugins">插件</a><a href="#edit">编辑生命周期</a><a href="#locks">线程与锁</a><a href="#failures">故障恢复</a><a href="#trust">信任边界</a><a href="#appstate">App 内部状态</a><a href="#phone">手机端</a><a href="#code">代码索引</a><a href="issues.html"><b>问题清单</b></a></nav>
+<nav><a href="#sys">系统总图</a><a href="#pipe">信号 → 状态</a><a href="#layers">状态分层</a><a href="#proc">终端进程</a><a href="#turn">回合</a><a href="#outcome">结局</a><a href="#inbox">分组</a><a href="#bind">绑定</a><a href="#recog">识别健康</a><a href="#remote">远程</a><a href="#handoff">宿主交接</a><a href="#task">待办</a><a href="#notify">通知</a><a href="#approval">审批</a><a href="#conn">窗格连接</a><a href="#hostlife">宿主生命周期</a><a href="#layout">布局</a><a href="#agents">各家信号</a><a href="#plugins">插件</a><a href="#edit">编辑生命周期</a><a href="#locks">线程与锁</a><a href="#failures">故障恢复</a><a href="#trust">信任边界</a><a href="#appstate">App 内部状态</a><a href="#phone">手机端</a><a href="#code">代码索引</a><a href="issues.html"><b>问题清单</b></a><a href="design.html"><b>设计稿</b></a></nav>
 
 <h2 id="sys">1 · 系统总图</h2>
 <p class="note">三个进程：Agent CLI 跑在宿主开的 PTY 里；宿主从四路读信号；工作台和手机都只是宿主的观看者和遥控器。</p>
@@ -1071,4 +1209,5 @@ def page():
 if __name__ == "__main__":
     OUT.write_text(page(), encoding="utf-8")
     OUT.with_name("issues.html").write_text(issues_page(), encoding="utf-8")
+    OUT.with_name("design.html").write_text(design_page(), encoding="utf-8")
     print(OUT)

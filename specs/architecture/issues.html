@@ -55,7 +55,7 @@ table{border-collapse:collapse;width:100%;font-size:14px}td,th{border-bottom:1px
 <body><main>
 <button class="toggle" onclick="var r=document.documentElement;r.dataset.theme=(r.dataset.theme==='dark'||(!r.dataset.theme&&matchMedia('(prefers-color-scheme: dark)').matches))?'light':'dark'">明 / 暗</button>
 <h1>架构问题清单</h1>
-<p class="lead">2026-11-02 按六层（数据一致性、宿主并发、故障恢复、信任边界、App 内部状态、手机端）只读审计 <code>next/</code> 得到。共 41 条，按根因归成 10 族；同一族用同一种修法，比逐条修划算。状态机和结构图见 <a href="next.html">架构页</a>。</p>
+<p class="lead">2026-11-02 按六层（数据一致性、宿主并发、故障恢复、信任边界、App 内部状态、手机端）只读审计 <code>next/</code> 得到。共 41 条，按根因归成 10 族；同一族用同一种修法，比逐条修划算。状态机和结构图见 <a href="next.html">架构页</a>；每族该怎么设计见 <a href="design.html">设计稿</a>。</p>
 <p class="note">严重度：高 7 · 中 22 · 中低 / 低中 7 · 低 5。核对程度：<span class="chip done">我核对</span> 我亲自回代码看过分支 14 条；<span class="chip run">子代理追踪</span> 子代理读代码追过调用链、我没逐条复核 20 条；<span class="chip muted">推断</span> 依赖运行时条件、需要复现 7 条。全部没有实际运行复现。行号是 2026-11-02 的工作区，别的会话在改，可能已偏移。</p>
 <p class="note"><b>建议先做的三族：</b>A（每天都会碰到：Agent 在输出时存待办、标完成会失败或丢东西）、B（安全：审批可能批到另一条命令）、D（状态卡住不自愈，看板和推送会说谎）。E、G、H 次之；C、I、J 可以随相关改动顺手做。</p>
 <nav><a href="#fA">A 编辑被拒或丢掉，界面却不知道</a><a href="#fB">B 审批和按键可能落到别的问题上</a><a href="#fC">C 布局整块替换</a><a href="#fD">D 状态卡住不自愈</a><a href="#fE">E 宿主并发与资源</a><a href="#fF">F 宿主交接</a><a href="#fG">G 信任边界</a><a href="#fH">H 手机连接</a><a href="#fI">I 同一状态各处各算</a><a href="#fJ">J 文档</a></nav>

@@ -1,0 +1,127 @@
+<!doctype html>
+<html lang="zh-CN"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Keepline next 设计稿</title><style>
+:root{--bg:#f6f5f2;--card:#ffffff;--fg:#1d1f23;--muted:#6b7079;--line:#c9ccd2;--grp:#eceae5;--sub:#f9f8f5;
+--run:#2f6fdb;--run-bg:#e8f0fe;--wait:#b7791f;--wait-bg:#fdf3e1;--done:#1f8a5b;--done-bg:#e3f5ec;
+--err:#cc3d3d;--err-bg:#fbe9e9;--mut:#7a808a;--mut-bg:#eef0f2;--user:#7651c8;--user-bg:#f0eafc;--edge:#5d636d}
+@media (prefers-color-scheme: dark){:root:not([data-theme="light"]){--bg:#15171a;--card:#1e2125;--fg:#e7e8ea;--muted:#9aa0a8;--line:#3a3f46;--grp:#1b1d21;--sub:#202328;
+--run:#7aa7ff;--run-bg:#1c2a44;--wait:#e3b05a;--wait-bg:#3a2e17;--done:#5fcf98;--done-bg:#173327;--err:#ff8080;--err-bg:#3d1d1d;--mut:#a3a9b2;--mut-bg:#262a30;--user:#b49cff;--user-bg:#2c2440;--edge:#a6acb5}}
+:root[data-theme="dark"]{--bg:#15171a;--card:#1e2125;--fg:#e7e8ea;--muted:#9aa0a8;--line:#3a3f46;--grp:#1b1d21;--sub:#202328;
+--run:#7aa7ff;--run-bg:#1c2a44;--wait:#e3b05a;--wait-bg:#3a2e17;--done:#5fcf98;--done-bg:#173327;--err:#ff8080;--err-bg:#3d1d1d;--mut:#a3a9b2;--mut-bg:#262a30;--user:#b49cff;--user-bg:#2c2440;--edge:#a6acb5}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--fg);font:15px/1.6 -apple-system,BlinkMacSystemFont,"PingFang SC","Helvetica Neue",sans-serif}
+main{max-width:1240px;margin:0 auto;padding:40px 16px 80px}
+h1{font-size:28px;margin:0 0 6px}h2{font-size:20px;margin:48px 0 6px}h3{font-size:16px;margin:24px 0 6px}
+p.lead{color:var(--muted);margin:0 0 20px;max-width:820px}p.note{color:var(--muted);max-width:900px;margin:6px 0 12px}
+nav{display:flex;flex-wrap:wrap;gap:8px;margin:18px 0 8px}nav a{color:var(--fg);text-decoration:none;border:1px solid var(--line);border-radius:999px;padding:3px 12px;font-size:13px;background:var(--card)}
+.fig{background:var(--card);border:1px solid var(--line);border-radius:16px;padding:16px;margin:12px 0;overflow:hidden}
+.fig svg{width:100%;height:auto;display:block}
+.two{display:grid;grid-template-columns:1fr 1fr;gap:16px}@media (max-width:900px){.two{grid-template-columns:1fr}}
+.legend{display:flex;flex-wrap:wrap;gap:14px;font-size:13px;color:var(--muted);margin:8px 0 0}
+.legend span::before{content:"";display:inline-block;width:12px;height:12px;border-radius:3px;margin-right:6px;vertical-align:-1px;border:1.5px solid currentColor}
+.legend .run{color:var(--run)}.legend .wait{color:var(--wait)}.legend .done{color:var(--done)}.legend .err{color:var(--err)}.legend .muted{color:var(--mut)}.legend .user{color:var(--user)}
+ol.flows{margin:8px 0 0;padding-left:22px;font-size:14px}ol.flows li{margin:2px 0}
+code{font:12.5px ui-monospace,SFMono-Regular,Menlo,monospace;background:var(--mut-bg);padding:1px 5px;border-radius:5px}
+ol.ladder{list-style:none;counter-reset:n;margin:0;padding:0}
+ol.ladder li{counter-increment:n;display:grid;grid-template-columns:28px 1fr 24px auto;align-items:center;gap:8px;padding:7px 0;border-bottom:1px dashed var(--line);font-size:14px}
+ol.ladder li::before{content:counter(n);width:22px;height:22px;border-radius:50%;background:var(--mut-bg);color:var(--muted);font-size:12px;display:grid;place-items:center}
+.arrow{color:var(--muted);text-align:center}
+.chip{border-radius:999px;padding:2px 10px;font-size:13px;white-space:nowrap;border:1.5px solid}
+.chip.run{color:var(--run);background:var(--run-bg)}.chip.wait{color:var(--wait);background:var(--wait-bg)}.chip.done{color:var(--done);background:var(--done-bg)}
+.chip.err{color:var(--err);background:var(--err-bg)}.chip.muted{color:var(--mut);background:var(--mut-bg)}.chip.user{color:var(--user);background:var(--user-bg)}
+table{border-collapse:collapse;width:100%;font-size:14px}td,th{border-bottom:1px solid var(--line);padding:8px 6px;text-align:left;vertical-align:top}th{color:var(--muted);font-weight:500}
+.toggle{float:right;border:1px solid var(--line);background:var(--card);color:var(--fg);border-radius:8px;padding:4px 10px;cursor:pointer;font-size:13px}
+/* svg */
+.grp rect{fill:var(--grp);stroke:var(--line);stroke-width:1}.grp.sub rect{fill:var(--sub);stroke-dasharray:4 3}
+.grp.host rect{stroke:var(--run);stroke-width:1.4}.grp.app rect{stroke:var(--user);stroke-width:1.4}.grp.core rect{fill:var(--mut-bg)}
+.g-title{fill:var(--muted);font-size:13px;font-weight:600}
+.st rect{fill:var(--card);stroke:var(--edge);stroke-width:1.6}.st .inner{fill:none;stroke-width:1}
+.st.mod rect{stroke:var(--line);stroke-width:1.2}
+.st.run rect{fill:var(--run-bg);stroke:var(--run)}.st.wait rect{fill:var(--wait-bg);stroke:var(--wait)}.st.done rect{fill:var(--done-bg);stroke:var(--done)}
+.st.err rect{fill:var(--err-bg);stroke:var(--err)}.st.muted rect{fill:var(--mut-bg);stroke:var(--mut)}.st.user rect{fill:var(--user-bg);stroke:var(--user)}
+.st.run .inner{stroke:var(--run)}.st.done .inner{stroke:var(--done)}.st.err .inner{stroke:var(--err)}
+.t-main{fill:var(--fg);font-size:14px;font-weight:600}.t-sub{fill:var(--muted);font-size:11px}.t-mod{fill:var(--fg);font-size:12px}
+.edge{fill:none;stroke:var(--edge);stroke-width:1.5}.edge.thin{stroke-width:1.1;opacity:.75}.edge.err{stroke:var(--err)}.edge.dash{stroke-dasharray:5 4;opacity:.8}
+.ah{fill:var(--edge)}.init{fill:var(--fg)}
+.e-label{fill:var(--fg);font-size:11.5px;paint-order:stroke;stroke:var(--card);stroke-width:5px;stroke-linejoin:round}
+.e-label.err{fill:var(--err)}.e-label.user{fill:var(--user)}
+.num circle{fill:var(--fg)}.num-t{fill:var(--card);font-size:11px;font-weight:700}
+.life{stroke:var(--line);stroke-dasharray:4 4}
+.tbl{overflow-x:auto;background:var(--card);border:1px solid var(--line);border-radius:16px;padding:6px 14px;margin:12px 0}
+.tbl table td:first-child{white-space:nowrap}.yes{color:var(--done)}.no{color:var(--muted)}
+
+.cnt{font-size:13px;color:var(--muted);font-weight:400}.sc{color:var(--muted);font-size:13px;margin:2px 0}
+.card{background:var(--card);border:1px solid var(--line);border-radius:16px;padding:6px 20px 12px}
+.card .tbl{border:none;padding:0;background:none}ul{margin:4px 0 10px;padding-left:22px}ul.ask li{color:var(--user)}
+.dec{color:var(--muted);border-top:1px dashed var(--line);padding-top:8px}</style></head>
+<body><main>
+<button class="toggle" onclick="var r=document.documentElement;r.dataset.theme=(r.dataset.theme==='dark'||(!r.dataset.theme&&matchMedia('(prefers-color-scheme: dark)').matches))?'light':'dark'">明 / 暗</button>
+<h1>设计稿：先定设计，再改代码</h1>
+<p class="lead">这一页回答「<a href="issues.html">问题清单</a>里的问题，系统应该怎么设计才不会再出」。<b>本页还没有任何代码改动。</b>它要支撑的决定是：每一族选定一个目标设计（采用 / 否定 / 待验证），全部定下来之后才开始改。放弃条件：某一族的设计成本远高于修补，而它的问题都只是「推断」级，就先复现，复现不了就不做。</p>
+<p class="note">共 6 条设计原则、9 族设计、16 个需要你定的问题（紫色）。状态机现状见 <a href="next.html">架构页</a>。</p>
+
+<h2>跨族的设计原则</h2>
+<p class="note">41 个问题背后其实只有几条原则没守住。先定原则，各族的设计就是它们的展开。</p>
+<div class="tbl"><table><tr><th></th><th>原则</th><th>管哪几族</th></tr><tr><td><b>P1</b></td><td><b>每个请求都有自己的状态机</b><div class="sc">挂起 → 已确认 / 被拒（原因）/ 结果未知（超时）。界面以回执为准：成功提示等确认，失败时把输入还给你，结果未知时明说「不确定有没有生效」。</div></td><td>A H B</td></tr><tr><td><b>P2</b></td><td><b>写入只带它在意的前提</b><div class="sc">不拿全局版本号当锁。新建不需要前提；改结局带「我看到的是 Open」；改对象带这个对象自己的版本。宿主上一次无关的提交不该挡住你。</div></td><td>A C</td></tr><tr><td><b>P3</b></td><td><b>派生状态只有一个来源，且要算上「观测源还活着吗」</b><div class="sc">「等你回答」「在跑」这类需要你注意的状态，必须有活着的进程或终端支撑；观测源没了就降级。所有界面调同一个函数，只做展示映射。</div></td><td>D I</td></tr><tr><td><b>P4</b></td><td><b>锁内只改内存；会失败的步骤放在「承诺」之前</b><div class="sc">fsync、fork、跑外部命令、网络 I/O 不进全局锁；交接时先把能失败的都做完，再发 ACK。</div></td><td>E F</td></tr><tr><td><b>P5</b></td><td><b>宿主不能随便退出</b><div class="sc">宿主持有所有 PTY，宿主退出等于挂断全部终端。所以出错时的默认策略是「降级 + 显示出来 + 重试」，不是「崩溃让人重启」。这条约束决定了 D、E 的很多选择。</div></td><td>D E F</td></tr><tr><td><b>P6</b></td><td><b>信任要显式授予</b><div class="sc">新插件、新配对链接、新设备，第一次都要你确认；每台手机的凭据彼此独立，撤销一台不影响别的。</div></td><td>G H</td></tr></table></div>
+
+<h2>建议的推进顺序</h2>
+<ol class="flows"><li><b>第 0 步 · 先定产品口径</b>：I 族的分组口径、G 族的信任模型、D 族「被杀时的审批」显示成什么。这三个是产品决定，后面的设计都依赖它们。</li><li><b>第 1 步 · 先验证推断</b>：I19（锁下 fsync 会不会真卡）压测；B2 的前提（两个审批之间是否一定经过 Running）。推断不成立的问题就降级或删掉。</li><li><b>第 2 步 · A + C 一起设计</b>：同一套「编辑带前提」机制和客户端请求状态机；H 族直接复用。</li><li><b>第 3 步 · B 和 F 可以并行</b>：都比较独立。</li><li><b>第 4 步 · D 再 E</b>：E1 依赖 D 的 Degraded 状态；E2 可以随时先做。</li></ol>
+<nav><a href="#dA">A 编辑的前提与请求回执</a><a href="#dB">B 审批与按键的实例身份</a><a href="#dC">C 布局编辑改成操作</a><a href="#dD">D 不自愈的状态：观测源与宿主健康</a><a href="#dE">E 锁与 I/O 分离、终端回收</a><a href="#dF">F 交接两阶段提交</a><a href="#dG">G 本机信任模型</a><a href="#dH">H 手机请求与订阅</a><a href="#dI">I 唯一的状态派生</a></nav>
+<h2 id="dA">A · 编辑的前提与请求回执 <span class="cnt">问题 I1–I7</span></h2>
+<div class="card"><p><b>现状：</b>9 种编辑查全局 revision：AddSpace、UpdateSpace、AddTask、UpdateTask、SetTaskOutcome、SetPendingTask、SetOutcome、AssignTask、SaveSessionTask。宿主每次提交（包括会话内容约每秒一次）都加 revision。客户端只有一个「忙」位，忙时非布局编辑直接丢；表单发出前就取走，失败不放回。</p>
+<p><b>要守住的规则：</b></p><ul><li>一个编辑只会因为它要改的那个对象被别人改过而被拒</li><li>你的每次操作要么生效，要么明确失败且输入还在；不存在静默消失</li><li>成功提示只在宿主确认后出现</li></ul>
+<div class="tbl"><table><tr><th>方案</th><th>做法</th><th>代价</th></tr><tr><td><b>A1 对象版本</b></td><td>Task、Space、AgentSession 各带 rev；Update 类编辑带期望 rev</td><td>模型和存储加字段；每处写入都要记得加 rev</td></tr><tr><td><b>A2 前提条件（推荐）</b></td><td>每种编辑自带它在意的前提：Add 类不带；SetOutcome 带「我看到的结局」；UpdateTask 拆成字段级修改（改标题、改标准、挂证据）</td><td>要逐个编辑设计前提；UpdateTask 要拆；但和 C 族用同一套机制</td></tr><tr><td><b>A3 过渡：拆计数器</b></td><td>会话内容另起一个计数，不再加 Workspace revision</td><td>改动最小，立刻消掉 I1 的大部分；但两个用户操作之间仍是粗锁</td></tr></table></div>
+<p><b>配套：</b>客户端改成请求队列：每个请求一个 id 和状态（挂起 / 确认 / 被拒 / 未知），不再有丢弃；表单在确认后才关；乐观提示要么等确认，要么失败时撤回。宿主记住最近处理过的请求 id，重发同一个 id 直接返回上次结果（同时解决 I7 和手机的 I32）。</p><p><b>需要你定：</b></p><ul class="ask"><li>成功提示等确认（本机 socket 通常几十毫秒，但碰上 fsync 会慢）还是乐观显示、失败撤回？</li><li>结果未知（超时）时界面怎么说、给不给「重试」按钮？</li><li>A3 先做过渡，还是直接上 A2？</li></ul>
+<p><b>怎么验证设计对了：</b>用例：Agent 持续输出时连续标记完成 100 次，0 次「工作台已变化」；忙时的每次点击都生效或明确报错；保存失败后表单内容还在。</p>
+<p class="dec">决定：待定</p></div><h2 id="dB">B · 审批与按键的实例身份 <span class="cnt">问题 I8–I9</span></h2>
+<div class="card"><p><b>现状：</b>审批的身份只是画面上那一行问句（如 &quot;Do you want to proceed?&quot;），回答时宿主只核对这一行还在。手机的「选 1/2/3」「Esc」直接写进终端，不核对画面。</p>
+<p><b>要守住的规则：</b></p><ul><li>你批准的必须是你看到的那一个审批</li><li>任何代替你按键的远程操作，都要指明它针对的是哪个画面</li></ul>
+<div class="tbl"><table><tr><th>方案</th><th>做法</th><th>代价</th></tr><tr><td><b>B1 证据指纹（推荐）</b></td><td>审批 id = 问句 + 证据行（命令、文件名）的指纹；卡片带上证据行给手机展示；回答带 id，宿主重读画面重算，不符就拒</td><td>画面规则要能稳定截出证据行；重绘、折行可能让指纹抖动，需要规范化</td></tr><tr><td><b>B2 用 waiting_episode</b></td><td>每次进入 Waiting 加 1，回答带 episode</td><td>前提是连续两个审批之间一定经过 Running；这一点没核实，可能不成立</td></tr><tr><td><b>B3 按键也带画面身份</b></td><td>没认出提问时手机不给数字按钮，只给「打开画面」；有提问时按键带它的 id</td><td>手机少了一点「盲按」的灵活性</td></tr></table></div>
+<p><b>需要你定：</b></p><ul class="ask"><li>手机还要不要保留不带校验的原始按键（选 1/2/3、Esc）？</li><li>手机上审批必须展示命令全文吗（可能很长）？</li></ul>
+<p><b>怎么验证设计对了：</b>构造两个问句相同、命令不同的审批先后出现，用旧卡片点允许 → 被拒；画面已经变了时按「选 1」→ 被拒。先核实 B2 的前提。</p>
+<p class="dec">决定：待定</p></div><h2 id="dC">C · 布局编辑改成操作 <span class="cnt">问题 I10–I11</span></h2>
+<div class="card"><p><b>现状：</b>PutTab 用客户端快照整块覆盖标签，并且豁免版本检查。改名、拖分隔线、移动窗格都走它，所以会冲掉并发的分屏。关标签时，确认框按本地快照列终端，宿主按当前状态停。</p>
+<p><b>要守住的规则：</b></p><ul><li>一个布局操作只改它指名的那部分，并发的其他布局操作不丢</li><li>你确认要停的终端，就是宿主实际停的终端</li></ul>
+<div class="tbl"><table><tr><th>方案</th><th>做法</th><th>代价</th></tr><tr><td><b>C1 操作型编辑（推荐）</b></td><td>RenameTab、ResizeSplit、MovePane、AddPane……宿主在当前布局上应用</td><td>编辑种类变多；客户端的布局代码要从「改完整树再发」改成「发操作」</td></tr><tr><td><b>C2 每个标签一个版本</b></td><td>PutTab 带期望版本，冲突时客户端基于新布局重做</td><td>改动小；拖分隔线这种高频操作冲突后要重做</td></tr><tr><td><b>C3 宿主合并</b></td><td>PutTab 时宿主把客户端不知道的窗格补回去</td><td>规则难说清，容易出新的边界情况</td></tr></table></div>
+<p><b>配套：</b>关标签：确认请求带上「我确认停这些终端」的列表，宿主发现多出来的就拒绝，让你重新确认。</p><p><b>需要你定：</b></p><ul class="ask"><li>拖分隔线这种每秒几十次的操作，走 C1 还是 C2？</li></ul>
+<p><b>怎么验证设计对了：</b>Agent 执行 keeplined split 的同时改标签名，两个改动都保留。</p>
+<p class="dec">决定：待定</p></div><h2 id="dD">D · 不自愈的状态：观测源与宿主健康 <span class="cnt">问题 I12–I17</span></h2>
+<div class="card"><p><b>现状：</b>「等你回答」不要求会话还活着；后台写库失败只打日志；补扫失败直接跳过、检查点照常前进；定时线程出错一次就永久退出。</p>
+<p><b>要守住的规则：</b></p><ul><li>任何「需要你」的状态都必须有活着的观测源支撑，观测源没了就降级成「停了」或「中断」</li><li>宿主内存和外显状态的偏差一定会被看见，并且会被重试修正</li><li>检查点只在事件被成功处理之后前进</li></ul>
+<div class="tbl"><table><tr><th>方案</th><th>做法</th><th>代价</th></tr><tr><td><b>派生规则</b></td><td>Waiting 要求 session.current 或终端在跑；否则落到「停了」。放进 I 族的唯一分组函数里</td><td>要定「Agent 被杀时的审批」显示成什么</td></tr><tr><td><b>宿主健康状态机</b></td><td>Healthy → Degraded（原因、重试中）→ Healthy。后台写失败进 Degraded，失败的写入（如 record_exit）进重试队列；App 显示一条提示</td><td>要新增一个推给 App 的状态和一条提示</td></tr><tr><td><b>长期线程监督</b></td><td>定时、订阅这类线程出错后由监督者重启，并进 Degraded；不让宿主退出（见 P5）</td><td>要给每个长期线程定重启策略</td></tr></table></div>
+<p><b>需要你定：</b></p><ul class="ask"><li>Agent 在等审批时被杀，卡片显示「停了」还是「中断」？</li><li>Degraded 的提示放在哪里（状态栏？顶部条？）</li></ul>
+<p><b>怎么验证设计对了：</b>故障注入：让 record_exit 第一次写库返回 SQLITE_BUSY，终端状态最终仍变成 Exited；Ctrl-C 掉等审批的 Agent，卡片 1 分钟内离开「等你回答」。</p>
+<p class="dec">决定：待定</p></div><h2 id="dE">E · 锁与 I/O 分离、终端回收 <span class="cnt">问题 I18–I23</span></h2>
+<div class="card"><p><b>现状：</b>一把全局 Host 锁下做 fsync（synchronous=FULL）、fork、/bin/ps、读对话记录、等日志库锁、交接时写 socket。PTY pump 的副作用也要拿这把锁。结束的终端从不移出内存。</p>
+<p><b>要守住的规则：</b></p><ul><li>锁内只改内存、发通知，不做可能阻塞超过毫秒级的 I/O</li><li>读 PTY 不依赖全局锁</li><li>终端结束后，它的 fd 和缓冲会被释放</li></ul>
+<div class="tbl"><table><tr><th>方案</th><th>做法</th><th>代价</th></tr><tr><td><b>E2 先降 fsync 级别</b></td><td>WAL 下改成 synchronous=NORMAL：库不会坏，崩溃时最多丢最后一次提交</td><td>一行改动；要接受崩溃丢最后一次编辑</td></tr><tr><td><b>E3 pump 不直接拿 Host 锁</b></td><td>标题、命令完成这类副作用改成发消息给一个处理线程</td><td>多一个队列；顺序要保证</td></tr><tr><td><b>E1 单写线程</b></td><td>锁内生成新状态和差异，交给写线程落库</td><td>失去「落库成功才换内存」，落库失败要走 D 的 Degraded；改动最大</td></tr></table></div>
+<p><b>需要你定：</b></p><ul class="ask"><li>能否接受宿主崩溃时丢最后一次编辑（E2）？</li><li>要先压测确认 I19 真的会卡（目前是推断）再动 E1/E3 吗？</li></ul>
+<p><b>怎么验证设计对了：</b>压测：20 个终端持续输出 + 日志批量写入 + 频繁 Hook，测 PTY 读的最大停顿；改前改后对比。开关 200 个终端后，fd 数回到基线。</p>
+<p class="dec">决定：待定</p></div><h2 id="dF">F · 交接两阶段提交 <span class="cnt">问题 I24</span></h2>
+<div class="card"><p><b>现状：</b>新宿主收到 fd 就发 ACK，旧宿主收到即退出；之后的拿锁、开库、恢复 VT 任何一步失败，全部终端被挂断。</p>
+<p><b>要守住的规则：</b></p><ul><li>旧宿主退出之前，新宿主已经完成所有会失败的步骤</li></ul>
+<div class="tbl"><table><tr><th>方案</th><th>做法</th><th>代价</th></tr><tr><td><b>两阶段（推荐）</b></td><td>PREPARE：新宿主收 fd、开库、恢复 VT，都成功才发 READY；COMMIT：旧宿主释放 host.lock 并退出，新宿主拿锁开始服务</td><td>要处理「两个进程同时开着库」（WAL 允许，但写入要只有一方）；拿锁仍在 COMMIT 后，要保证旧宿主退出够快</td></tr></table></div>
+<p><b>需要你定：</b></p><ul class="ask"><li>COMMIT 后新宿主仍然失败（极少见）时，接受挂断，还是让旧宿主先不退出、多等一个确认？</li></ul>
+<p><b>怎么验证设计对了：</b>在 PREPARE 的每一步注入失败，旧宿主都继续服务、终端不断。</p>
+<p class="dec">决定：待定</p></div><h2 id="dG">G · 本机信任模型 <span class="cnt">问题 I25–I31</span></h2>
+<div class="card"><p><b>现状：</b>同一用户的任何进程（包括终端里的 Agent）都有全部权限，能生成完全控制的配对链接；插件默认启用、直接执行命令；所有手机共用一个机器码；配对链接打开就保存。</p>
+<p><b>要守住的规则：</b></p><ul><li>新插件、新配对链接、新设备第一次都要你确认</li><li>撤销一台手机只影响这一台，别人顶替也只影响那一台</li></ul>
+<div class="tbl"><table><tr><th>方案</th><th>做法</th><th>代价</th></tr><tr><td><b>每台手机独立路由 token</b></td><td>撤销即失效；中继上的顶替只影响一台</td><td>配对和中继注册流程要改</td></tr><tr><td><b>插件首次启用确认</b></td><td>记下插件内容的指纹，变了重新确认</td><td>装插件多一步</td></tr><tr><td><b>零散加固</b></td><td>配对链接先确认再保存；握手前的会话 10s 超时；动作模板不在双引号里展开；不可信目录里的 git 关掉 fsmonitor</td><td>各自都小</td></tr></table></div>
+<p><b>需要你定：</b></p><ul class="ask"><li>根本问题：终端里运行的 Agent 算不算可信？如果不算，生成配对链接、改中继这类请求要不要你在 App 里确认？</li></ul>
+<p><b>怎么验证设计对了：</b>撤销手机 A 后，A 的凭据无法让本机掉线；往插件目录放一个新插件，不确认就不执行。</p>
+<p class="dec">决定：待定</p></div><h2 id="dH">H · 手机请求与订阅 <span class="cnt">问题 I32–I37</span></h2>
+<div class="card"><p><b>现状：</b>请求没有超时、没有幂等 id；会话视图按终端取会话，换会话后不跟；4401 同时表示撤销、改角色、踢出；events 流结束后不重订；重连有竞态。</p>
+<p><b>要守住的规则：</b></p><ul><li>手机的每个请求都会在有限时间内得到结果（成功 / 失败 / 未知）</li><li>重发不会让同一件事做两次</li><li>视图跟着会话走，不跟着终端走</li></ul>
+<div class="tbl"><table><tr><th>方案</th><th>做法</th><th>代价</th></tr><tr><td><b>复用 A 的请求状态机</b></td><td>超时 + 幂等 id，宿主按（设备，请求 id）去重</td><td>宿主要存最近的请求结果</td></tr><tr><td><b>关闭码拆开</b></td><td>4401 撤销（要重新配对）、改角色（重连即可）、踢出（冷却一段时间）各用一个码</td><td>手机和宿主一起改</td></tr><tr><td><b>心跳 + 重订</b></td><td>心跳检测半开连接；events 结束自动重订；会话切换推一条事件</td><td>多一点流量</td></tr></table></div>
+<p><b>需要你定：</b></p><ul class="ask"><li>踢出之后要不要冷却时间，比如 5 分钟内拒绝重连？</li></ul>
+<p><b>怎么验证设计对了：</b>发送时断网再恢复，消息只出现一次；终端里 /new 之后，手机 5 秒内切到新会话。</p>
+<p class="dec">决定：待定</p></div><h2 id="dI">I · 唯一的状态派生 <span class="cnt">问题 I38–I40</span></h2>
+<div class="card"><p><b>现状：</b>侧栏 sidebar_status、看板 board_group、core Content::group 各算各的；菜单栏另存一份 Workspace。</p>
+<p><b>要守住的规则：</b></p><ul><li>同一个会话，在任何界面上只有一个分组结果</li></ul>
+<div class="tbl"><table><tr><th>方案</th><th>做法</th><th>代价</th></tr><tr><td><b>core 里一个 status 函数（推荐）</b></td><td>输入：结局、回合、终端状态、活跃程度、后台 shell、是否看过；输出一个 Status。侧栏、看板、菜单栏、通知只做展示映射</td><td>要先把分歧处的口径定下来；三处调用都要改</td></tr></table></div>
+<p><b>配套：</b>菜单栏和工作台在同一进程里，共用一份 Workspace。</p><p><b>需要你定：</b></p><ul class="ask"><li>会话活着但回合出错：显示「出错」还是「等你验收」？</li><li>Agent 停了、只剩后台 shell：显示「等后台」还是「等你验收」？</li><li>已完成的会话在待办详情里显示什么？</li></ul>
+<p><b>怎么验证设计对了：</b>对一组固定的会话快照，侧栏、看板、菜单栏的分组结果完全一致（可做成单测）。</p>
+<p class="dec">决定：待定</p></div>
+<h2>J · 文档</h2>
+<div class="card"><p><code>specs/restart-reconciliation.md</code> 写的是旧 TS 版，给它标上「已过时，next 见 architecture/next.html 第 22 节」。不需要设计。</p></div>
+</main></body></html>
