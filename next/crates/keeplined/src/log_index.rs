@@ -343,6 +343,43 @@ impl Index {
             .map_err(err)?
             .join("\n\n追加要求："))
     }
+    /// A conversation's user and Agent messages, oldest first, and whether older ones
+    /// exist. See `Request::Chat`.
+    pub fn chat(
+        &self,
+        path: &str,
+        after: Option<i64>,
+        before: Option<i64>,
+        limit: usize,
+    ) -> io::Result<(Vec<keepline_core::protocol::ChatMessage>, bool)> {
+        let limit = limit.clamp(1, 500) as i64;
+        let kinds = "kind IN ('user','assistant')";
+        let (sql, cursor) = match (after, before) {
+            (Some(a), _) => (format!("SELECT rowid,at,kind,text FROM session_records WHERE path=?1 AND {kinds} AND rowid>?2 ORDER BY rowid LIMIT ?3"), a),
+            (None, Some(b)) => (format!("SELECT rowid,at,kind,text FROM session_records WHERE path=?1 AND {kinds} AND rowid<?2 ORDER BY rowid DESC LIMIT ?3"), b),
+            (None, None) => (format!("SELECT rowid,at,kind,text FROM session_records WHERE path=?1 AND {kinds} AND rowid<?2 ORDER BY rowid DESC LIMIT ?3"), i64::MAX),
+        };
+        let mut q = self.db.prepare_cached(&sql).map_err(err)?;
+        let mut messages = q
+            .query_map(rusqlite::params![path, cursor, limit + 1], |r| {
+                Ok(keepline_core::protocol::ChatMessage {
+                    seq: r.get(0)?,
+                    at: u64::try_from(r.get::<_, i64>(1)?).unwrap_or(0),
+                    user: r.get::<_, String>(2)? == "user",
+                    text: r.get(3)?,
+                })
+            })
+            .map_err(err)?
+            .collect::<Result<Vec<_>, _>>()
+            .map_err(err)?;
+        let more = messages.len() as i64 > limit;
+        messages.truncate(limit as usize);
+        if after.is_none() {
+            messages.reverse();
+        }
+        // Newer ones beyond the limit are fetched again with `after`; `more` speaks of older.
+        Ok((messages, more && after.is_none()))
+    }
     /// The newest user message only; screen association compares it, never stores it.
     /// The newest prompt and when it was logged, seconds since the epoch.
     pub fn latest_user(&self, path: &str) -> io::Result<Option<(String, u64)>> {

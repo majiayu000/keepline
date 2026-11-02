@@ -50,7 +50,7 @@ mod tests {
 
     #[test]
     fn roles_allow_only_what_they_name() {
-        for op in ["hello", "list", "read", "watch", "events", "close"] {
+        for op in ["hello", "list", "read", "chat", "watch", "events", "close"] {
             assert!(Role::View.allows(op));
         }
         assert!(!Role::View.allows("answer") && !Role::View.allows("send"));
