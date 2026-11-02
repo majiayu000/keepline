@@ -119,6 +119,22 @@ section>.sub{color:var(--secondary);margin:0 0 14px;max-width:900px}
 .sbar .ag+.ag{border-left:1px solid var(--border)}
 .sbar .ag .n{color:var(--secondary)} .sbar .ag .l{color:var(--muted)} .sbar .ag .eta{color:var(--muted)}
 .sbar .ag .sep{color:var(--border-strong)}
+.qbtn{display:flex;align-items:center;gap:6px;padding:0 8px 0 10px;height:22px;border-radius:5px;border:1px solid var(--border);background:var(--bg)}
+.qbtn.open{border-color:var(--border-strong);background:var(--hover)}
+.qbtn .n{color:var(--secondary)} .qbtn .l{color:var(--muted)}
+.qbtn .plus{color:var(--muted);font-size:10px;padding:0 4px;border-radius:99px;background:var(--sunken);border:1px solid var(--border)}
+.qbtn .car{color:var(--muted);font-size:9px}
+.narrow .sbar+.sbar{border-top:1px solid var(--border)}
+.dpop{position:absolute;right:6px;bottom:32px;width:420px;background:var(--bg);border:1px solid var(--border-strong);border-radius:10px;box-shadow:0 12px 34px rgba(20,22,30,.16);padding:12px 14px;font-size:12px;z-index:3}
+.dpop h4{margin:0 0 8px;font-size:12px;font-weight:600;display:flex}
+.dpop h4 span{margin-left:auto;font-weight:400;color:var(--muted);font-size:11px}
+.dpop .rows{max-height:240px;overflow:auto}
+.dpop .r{display:grid;grid-template-columns:58px 34px 20px 56px 38px 44px 1fr;gap:6px;align-items:center;white-space:nowrap;font-size:11px;height:28px;padding:0 6px;margin:0 -6px;border-radius:5px}
+.dpop .r.cur{background:var(--hover)}
+.dpop .r b{font-weight:600} .dpop .r .plan,.dpop .r .l,.dpop .r .eta,.dpop .r .more{color:var(--muted)}
+.dpop .r .num{text-align:right} .dpop .r .more{text-align:right}
+.dpop .none{color:var(--muted);font-size:11px;padding:6px 0;border-top:1px solid var(--border);margin-top:4px}
+.dpop .note{color:var(--muted);font-size:11px;border-top:1px solid var(--border);padding-top:6px}
 .narrow{width:640px;margin-top:12px;border:1px solid var(--border-strong);border-radius:8px;overflow:hidden;background:var(--bg)}
 .narrow .cap{font-size:11px;color:var(--muted);padding:6px 10px;background:var(--bg)}
 
@@ -276,10 +292,10 @@ section>.sub{color:var(--secondary);margin:0 0 14px;max-width:900px}
 </section>
 
 <!-- ======================= D ======================= -->
-<section>
-<h2>D · 放到窗口最底部的状态栏</h2>
-<p class="sub">整个窗口最下面一条 28px 的状态栏，横跨侧栏和终端。左边放原来侧栏底部的「本机诊断 · 提醒 · 设置」，右边放额度。横向地方够，<b>每家所有窗口连同倒计时都直接写出来</b>，不用点。点某一家打开和 B 一样的明细弹层。侧栏底部那块 40px 的按钮区和额度区一起去掉。</p>
-<div class="ref">参考：Zed、VS Code 都把常驻的小状态放在窗口底部的状态栏；Keepline 用的 GPUI 就来自 Zed。</div>
+<section id="d">
+<h2>D · 窗口最底部的状态栏，一个额度按钮点开看全部</h2>
+<p class="sub">整个窗口最下面一条 28px 的状态栏，横跨侧栏和终端。左边放原来侧栏底部的「本机诊断 · 提醒 · 设置」，右边<b>只有一个额度按钮</b>，宽度固定，Agent 再多也不变长。按钮上只写<b>最紧的那一家</b>和它最紧的窗口，后面跟「+N」表示还有几家；点开向上弹出全部 Agent 的列表。</p>
+<div class="ref">参考：Zed、VS Code 把常驻的小状态放在窗口底部的状态栏，点开再看明细；Keepline 用的 GPUI 就来自 Zed。</div>
 <div class="scroll"><div class="win d">
   <div class="top"><div class="lights"><i></i><i></i><i></i></div><span class="brand">Keepline</span><span class="crumb">/ keepline</span><span class="chip">鸟瞰全部</span><span class="search">⌕ 搜索会话、待办或原话<kbd>⌘P</kbd></span><span class="spacer"></span><span class="new">＋ 新待办</span></div>
   <div class="body">
@@ -302,26 +318,34 @@ section>.sub{color:var(--secondary);margin:0 0 14px;max-width:900px}
       <div class="term"><div class="dim">$ claude</div><div>✻ 正在写 specs/quota-meter/placement.html …</div></div>
     </div>
   </div>
+  <div class="dpop">
+    <h4>额度<span>按用得最多排序 · 只读本机记录</span></h4>
+    <div class="rows">
+      <div class="r"><b>Codex</b><span class="plan">pro</span><span class="l">周</span><span class="g over" style="--w:56px;--h:6px"><i style="width:100%"></i></span><span class="num over">100%</span><span class="eta">2d4h</span><span class="more">5h 0%</span></div>
+      <div class="r"><b>Grok *</b><span class="plan">Lite</span><span class="l">周</span><span class="g stale" style="--w:56px;--h:6px"><i style="width:52%"></i></span><span class="num stale">52%</span><span class="eta">1d10h</span><span class="more">读数 5 小时前</span></div>
+      <div class="r cur"><b>Claude</b><span class="plan">max</span><span class="l">周</span><span class="g" style="--w:56px;--h:6px"><i style="width:22%"></i></span><span class="num">22%</span><span class="eta">3d18h</span><span class="more">5h 3% · 4h20m</span></div>
+    </div>
+    <div class="none">本机没有额度记录：Cursor · Qoder</div>
+    <div class="note">每家一行，只画最紧的窗口，其他窗口写在最右；点一行展开看具体重置时间和读数来源。超过 8 家时列表内滚动。* 表示读数超过 1 小时。</div>
+  </div>
   <div class="sbar">
     <span class="btn">◔ 本机诊断</span><span class="btn">提醒</span><span class="btn">设置</span>
     <span class="sp"></span>
-    <span class="ag"><span class="n">Codex</span><span class="l">5h</span><span class="g " style="--w:30px;--h:6px"><i style="width:0%"></i></span><span>0%</span><span class="sep">·</span><span class="l">周</span><span class="g over" style="--w:30px;--h:6px"><i style="width:100%"></i></span><span class="num over">100%</span><span class="eta">2d4h</span></span>
-    <span class="ag hot"><span class="n">Claude</span><span class="l">5h</span><span class="g " style="--w:30px;--h:6px"><i style="width:3%"></i></span><span>3%</span><span class="eta">4h20m</span><span class="sep">·</span><span class="l">周</span><span class="g " style="--w:30px;--h:6px"><i style="width:22%"></i></span><span>22%</span><span class="eta">3d18h</span></span>
-    <span class="ag"><span class="n">Grok *</span><span class="l">周</span><span class="g stale" style="--w:30px;--h:6px"><i style="width:52%"></i></span><span class="num stale">52%</span><span class="eta">1d10h</span></span>
+    <span class="qbtn open"><span class="n">Codex</span><span class="l">周</span><span class="g over" style="--w:30px;--h:6px"><i style="width:100%"></i></span><span class="num over">100%</span><span class="plus">+2</span><span class="car">▴</span></span>
   </div>
 </div></div>
 <div class="narrow">
-  <div class="cap">窗口变窄时：先去掉短条，再每家只留用得最多的那个窗口；某家超过 80% 时那一家始终保留</div>
-  <div class="sbar">
-    <span class="btn">◔ 诊断</span><span class="btn">提醒</span><span class="btn">设置</span><span class="sp"></span>
-    <span class="ag"><span class="n">Codex</span><span class="l">周</span><span class="num over">100%</span><span class="eta">2d4h</span></span>
-    <span class="ag"><span class="n">Claude</span><span class="l">周</span><span>22%</span></span>
-    <span class="ag"><span class="n">Grok *</span><span class="l">周</span><span class="num stale">52%</span></span>
-  </div>
+  <div class="cap">按钮平时的样子：都正常时只写最高的那家；快到头时变橙、到头变红；一家都没读数时写「额度」</div>
+  <div class="sbar"><span class="btn">◔ 本机诊断</span><span class="btn">提醒</span><span class="btn">设置</span><span class="sp"></span>
+    <span class="qbtn"><span class="n">Claude</span><span class="l">周</span><span class="g" style="--w:30px;--h:6px"><i style="width:22%"></i></span><span class="num">22%</span><span class="plus">+2</span><span class="car">▴</span></span></div>
+  <div class="sbar"><span class="btn">◔ 本机诊断</span><span class="btn">提醒</span><span class="btn">设置</span><span class="sp"></span>
+    <span class="qbtn"><span class="n">Claude</span><span class="l">5h</span><span class="g near" style="--w:30px;--h:6px"><i style="width:86%"></i></span><span class="num near">86%</span><span class="plus">+2</span><span class="car">▴</span></span></div>
+  <div class="sbar"><span class="btn">◔ 本机诊断</span><span class="btn">提醒</span><span class="btn">设置</span><span class="sp"></span>
+    <span class="qbtn"><span class="n" style="color:var(--muted)">额度</span><span class="car">▴</span></span></div>
 </div>
 <div class="pros">
-  <div class="good"><b>好</b>横向地方最宽，所有窗口和倒计时不点就能看到（A 的优点）；侧栏收起也还在（B 的优点）；侧栏底部 40px 的按钮区一并收进来，会话列表反而多出一行；顶栏不用变挤。</div>
-  <div class="bad"><b>不好</b>终端少 28px，大约一行字；离视线最远，快用完时容易看漏，所以仍然要靠 C 那样的窗格提醒；「本机诊断」等按钮换了位置，要重新习惯。</div>
+  <div class="good"><b>好</b>Agent 再多按钮也不变长，状态栏不会被挤满；最要紧的那家不点就能看到；侧栏收起也还在；侧栏底部 40px 的按钮区收进来，会话列表多出一行；顶栏不用变。</div>
+  <div class="bad"><b>不好</b>第二紧的那家和倒计时要点开才看到；终端少 28px，大约一行字；离视线最远，所以仍然要靠 C 那样的窗格提醒；「本机诊断」等按钮换了位置，要重新习惯。</div>
 </div>
 </section>
 
@@ -341,9 +365,9 @@ section>.sub{color:var(--secondary);margin:0 0 14px;max-width:900px}
 <div class="rec">
 <h2>我的建议：D 做主位置，借 C 的窗格提醒</h2>
 <ul>
-<li><b>主位置改选 D</b>：它同时拿到 A 和 B 的好处。横向地方够，所有窗口和倒计时都直接显示；侧栏收起也还在；顶栏不挤；侧栏底部的按钮区收进状态栏，会话列表还多出一行。</li>
+<li><b>主位置改选 D</b>：底部状态栏右边只放一个额度按钮，按钮上写最紧的那一家，点开列出全部 Agent。Agent 再多也不会排不下；侧栏收起也还在；顶栏不挤；侧栏底部的按钮区收进状态栏，会话列表还多出一行。</li>
 <li><b>借 C 的一处</b>：底部离视线远，所以某家超过 95% 时，用到它的窗格标题栏亮一条提醒，带重置倒计时。平时会话行里不放额度。</li>
-<li><b>弹层</b>：点状态栏里某一家，向上弹出明细（全部窗口、具体重置时间、来源、读数时间，以及哪几家本机没有记录）。以后做「主动刷新」，开关也放在这里。</li>
+<li><b>弹层</b>：点额度按钮向上弹出，每家一行按用量排序，点一行展开看全部窗口、具体重置时间、来源和读数时间；最下面列出本机没有记录的几家。以后做「主动刷新」，开关也放在这里。</li>
 <li><b>B 退为备选</b>：如果你不想让终端少一行，或者希望额度离视线更近，就用 B。</li>
 </ul>
 </div>
