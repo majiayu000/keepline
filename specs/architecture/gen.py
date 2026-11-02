@@ -411,6 +411,146 @@ def fig_handoff():
     return "\n".join(out)
 
 
+def seq(W, H, parts, steps, title):
+    """时序图。parts: [(key, x, 名字)]；steps: ("msg", a, b, 文本, y, cls) 或 ("self", a, 文本, y, cls)。"""
+    xs = {k: x for k, x, _ in parts}
+    out = [f'<svg viewBox="0 0 {W} {H}" role="img" aria-label="{esc(title)}" xmlns="http://www.w3.org/2000/svg">',
+           '<defs><marker id="ah3" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" class="ah"/></marker></defs>']
+    for k, x, t in parts:
+        out.append(f'<g class="st mod"><rect x="{x-95}" y="16" width="190" height="42" rx="8"/></g>')
+        out.append(text_block(x, 37, t, "t-main", 13))
+        out.append(f'<line class="life" x1="{x}" y1="58" x2="{x}" y2="{H-12}"/>')
+    for s in steps:
+        if s[0] == "msg":
+            _, a, b, t, y, cls = s
+            x1, x2 = xs[a], xs[b]
+            d = 1 if x2 > x1 else -1
+            out.append(f'<path class="edge {cls}" d="M{x1},{y} L{x2 - d*4},{y}" marker-end="url(#ah3)"/>')
+            out.append(label_at((x1 + x2) / 2, y - 12, t, "e-label " + cls))
+        else:
+            _, a, t, y, cls = s
+            n = len(lines_of(t))
+            h = 14 + n * 16
+            w = 300
+            out.append(f'<g class="st {cls} mod"><rect x="{xs[a]-w/2}" y="{y}" width="{w}" height="{h}" rx="7"/></g>')
+            out.append(text_block(xs[a], y + h / 2, t, "t-mod", 12, 16))
+    out.append("</svg>")
+    return "\n".join(out)
+
+
+def fig_task():
+    B = [Box("not", 110, 110, 150, 56, "未开始", "muted", sub="NotStarted"),
+         Box("working", 400, 110, 150, 56, "进行中", "run", sub="Working"),
+         Box("proven", 690, 110, 160, 56, "都有证据了", "done", sub="Proven · 仍待你确认"),
+         Box("done", 990, 110, 150, 56, "做完了", "done", "final", sub="Completed"),
+         Box("deferred", 560, 330, 160, 56, "稍后再看", "wait", sub="Deferred{until}"),
+         Box("abandoned", 900, 330, 150, 56, "放弃", "muted", "final", sub="Abandoned")]
+    E = [
+        {"from": "not", "to": "working", "label": "有会话挂上这个待办", "ldy": -16},
+        {"from": "working", "to": "proven", "bend": -20, "label": "每条验收标准都挂上\n成功的测试 / 提交 / 改文件", "ldy": -30},
+        {"from": "proven", "to": "working", "bend": -20, "label": "新增或改了标准", "ldy": 14},
+        {"from": "proven", "to": "done", "label": "标记完成（主按钮）", "ldy": -16},
+        {"from": "working", "to": "done", "via": [(400, 30), (990, 30)], "cls": "thin", "label": "也可直接标记完成（不强制证据）", "seg": 2, "ldy": -10},
+        {"from": "working", "to": "deferred", "label": "稍后再看", "ldx": 40},
+        {"from": "deferred", "to": "working", "bend": -60, "cls": "thin", "label": "到期 / 撤销 → Open\n重新按证据派生", "ldx": -75},
+        {"from": "proven", "to": "abandoned", "cls": "thin", "label": "放弃", "ldx": 30},
+        {"from": "done", "to": "proven", "bend": -30, "cls": "thin", "label": "撤销结局", "ldy": 16},
+    ]
+    return svg(1100, 400, B, E, extra_before=init_dot(20, 110, B[0], ""), title="待办状态")
+
+
+def fig_criterion():
+    B = [Box("none", 150, 70, 170, 56, "没有证据", "muted"),
+         Box("tried", 480, 70, 170, 56, "只有尝试", "wait", sub="失败的测试留作记录"),
+         Box("proven", 810, 70, 170, 56, "已证明", "done", sub="proves() = true")]
+    E = [
+        {"from": "none", "to": "tried", "label": "挂上一条失败的测试", "ldy": -16},
+        {"from": "tried", "to": "proven", "label": "再挂上一条成功的记录", "ldy": -16},
+        {"from": "none", "to": "proven", "bend": 55, "label": "直接挂上成功的 test / commit / file（退出码 0）", "ldy": 4},
+    ]
+    return svg(960, 175, B, E, title="验收标准证据")
+
+
+def fig_notify():
+    B = [Box("ws", 110, 190, 170, 70, "Workspace\n新 revision", "", "mod")]
+    lane_a = [("a1", "entered()\n只看 等你回答 / 出错了\n跳过你正看着的终端"),
+              ("a2", "去重 key\n分组:回合:开始时间:\n对话框序号 或 错误原文"),
+              ("a3", "ClaimNotification\nSQLite 每会话一条回执\nkey 变了才算新"),
+              ("a4", "系统通知 + 声音\n只开声音时只响一下")]
+    lane_b = [("b1", "Hooks::changes()\nstarted · waiting\nerror · done"),
+              ("b2", "每回合 / 每个对话框\n只触发一次\n宿主刚启动只记录"),
+              ("b3", "每个 hook 一个线程\n超时 ≤ 30s\n同时最多 8 个"),
+              ("b4", "command：stdin JSON\n+ KEEPLINE_* 变量\n或 webhook POST")]
+    for i, (id_, t) in enumerate(lane_a):
+        B.append(Box(id_, 350 + i * 215, 95, 190, 74, t, "wait" if i == 3 else "", "mod"))
+    for i, (id_, t) in enumerate(lane_b):
+        B.append(Box(id_, 350 + i * 215, 285, 190, 74, t, "", "mod"))
+    E = [{"from": "ws", "to": "a1"}, {"from": "ws", "to": "b1"}]
+    for p in ("a", "b"):
+        for i in range(1, 4):
+            E.append({"from": f"{p}{i}", "to": f"{p}{i+1}"})
+    g = (draw_group(245, 22, 880, 130, "App（desktop.rs）· 系统通知", "grp app")
+         + draw_group(245, 212, 880, 130, "宿主（plugin_hooks）· hooks.json 插件，App 没开也会发", "grp host"))
+    cmd = label_at(670, 375, "另：Shell 用 OSC 133 标出命令结束 → command_done / command_failed 也走 hooks.json", "e-label")
+    return svg(1140, 390, B, E, extra_before=g, extra_after=cmd, title="通知链路")
+
+
+def fig_approval():
+    parts = [("agent", 150, "Agent 画面（PTY）"), ("host", 520, "keeplined 宿主"), ("ui", 890, "工作台 / 手机")]
+    steps = [
+        ("msg", "agent", "host", "输出停了 1 秒（SCREEN_QUIET）", 90, ""),
+        ("self", "host", "screen_rules 在底部认出审批框\n回合 → Waiting，信号记为「画面」\ncontent.approval = 问题原文", 108, "wait"),
+        ("self", "agent", "你 3 秒内刚按过键：先不算\n（多半是你自己打开的菜单）", 108, ""),
+        ("msg", "host", "ui", "新 revision：卡片带上 approval", 200, ""),
+        ("msg", "ui", "host", "AnswerApproval{终端, 问题, 允许?}", 245, ""),
+        ("self", "ui", "手机要有 answer 或 full 角色\nview 只能看", 262, "user"),
+        ("self", "host", "重读画面：还是同一个问题吗？\n允许时：光标在第一项吗？", 262, ""),
+        ("msg", "host", "agent", "允许 → 回车 · 拒绝 → Esc", 345, ""),
+        ("msg", "host", "ui", "对不上：「画面上已经没有这个审批了」", 385, "err"),
+        ("self", "host", "清掉这块屏的 screen wait\n之后的工具结果把回合拉回 Running", 405, ""),
+    ]
+    return seq(1040, 470, parts, steps, "审批应答时序")
+
+
+def fig_conn():
+    B = [Box("attach", 130, 150, 160, 60, "Attaching", "wait", sub="发 Attach · 收快照"),
+         Box("owner", 430, 70, 160, 56, "可写", "run", sub="这条连接是 owner"),
+         Box("viewer", 430, 240, 160, 56, "只读", "muted", sub="别处在写 / 观看模式"),
+         Box("ended", 760, 70, 160, 56, "Ended", "done", "final", sub="终端不再 Running"),
+         Box("dropped", 760, 240, 160, 56, "Dropped", "err", sub="流断了，画面还在")]
+    E = [
+        {"from": "attach", "to": "owner", "label": "READY · takeover\n或还没人写", "ldy": -26},
+        {"from": "attach", "to": "viewer", "label": "READY · 已有 owner", "ldy": 22},
+        {"from": "owner", "to": "viewer", "bend": 25, "label": "别的窗口抢走写权", "ldx": 70},
+        {"from": "viewer", "to": "owner", "bend": 25, "label": "WRITABLE 帧\n轮到你写", "ldx": -60},
+        {"from": "owner", "to": "ended", "label": "STATUS 帧：进程退出", "ldy": -16},
+        {"from": "viewer", "to": "ended", "cls": "thin"},
+        {"from": "owner", "to": "dropped", "cls": "err", "label": "看得太慢被丢 · 写入失败\n（输入结果未知，绝不自动重发）", "ldx": 50, "ldy": -20},
+        {"from": "viewer", "to": "dropped", "cls": "err"},
+        {"from": "dropped", "to": "attach", "via": [(760, 330), (130, 330)], "cls": "thin", "label": "重新 attach，失败间隔翻倍；快照恢复画面", "seg": 2, "ldy": 14},
+    ]
+    return svg(900, 370, B, E, extra_before=init_dot(20, 150, B[0], ""), title="窗格连接")
+
+
+def fig_hostlife():
+    B = [Box("none", 120, 110, 150, 56, "没有宿主", "muted"),
+         Box("same", 440, 110, 170, 56, "宿主在跑 · 同版本", "run"),
+         Box("stale", 780, 110, 170, 56, "宿主在跑 · 旧版本", "wait", sub="App 顶部提示有新后台"),
+         Box("take", 780, 300, 170, 56, "接管中", "wait", sub="serve --takeover ≤ 20s"),
+         Box("fresh", 440, 300, 170, 56, "停旧宿主 · 起新的", "err", sub="终端变 Interrupted")]
+    E = [
+        {"from": "none", "to": "same", "label": "spawn_host：setsid 起 serve\n等 workbench.sock 应答 ≤ 5s", "ldy": -26},
+        {"from": "same", "to": "stale", "label": "App 升级，digest 不同", "ldy": -16},
+        {"from": "stale", "to": "take", "label": "你点重启\n旧宿主支持交接", "ldx": 62},
+        {"from": "take", "to": "same", "label": "新 build 应答\n终端照跑", "ldx": -105, "ldy": -40},
+        {"from": "take", "to": "stale", "bend": -60, "cls": "err", "label": "新宿主没接住\n旧宿主照常运行", "ldx": -60},
+        {"from": "stale", "to": "fresh", "cls": "thin", "label": "旧宿主不支持交接", "ldx": 25, "ldy": 45},
+        {"from": "fresh", "to": "same", "label": "App 重开连上新宿主\n可用原参数恢复对话", "ldx": -80},
+        {"from": "same", "to": "none", "bend": -40, "cls": "thin", "label": "宿主崩了 / 被杀", "ldy": 14},
+    ]
+    return svg(920, 380, B, E, extra_before=init_dot(20, 110, B[0], ""), title="宿主生命周期")
+
+
 def ladder(rows):
     out = ['<ol class="ladder">']
     for cond, chip, tone in rows:
@@ -442,6 +582,48 @@ PANE = ladder([
     ("Idle，其余", "Ready · 等你验收", "user"),
 ])
 
+def table(head, rows):
+    h = "".join(f"<th>{c}</th>" for c in head)
+    b = "".join("<tr>" + "".join(f"<td>{c}</td>" for c in r) + "</tr>" for r in rows)
+    return f'<div class="tbl"><table><tr>{h}</tr>{b}</table></div>'
+
+
+Y, N = '<span class="yes">●</span>', '<span class="no">—</span>'
+AGENTS = table(
+    ["", "日志位置", "进程报出会话", "Hook", "官方状态", "子 Agent", "画面规则", "额度"],
+    [
+        ["<b>Claude Code</b>", "<code>~/.claude/projects</code>", f"{Y} <code>--session-id</code> / resume · <code>claude agents --json</code> 按 pid", f"{Y} 自动装进 settings.json", f"{Y} <code>claude agents --json</code>", "Stop Hook 带后台任务数", f"{Y} claude.json", f"{Y} statusline"],
+        ["<b>Codex</b>", "<code>~/.codex/sessions</code>", f"{Y} resume UUID；<code>--no-daemon</code> 时可用 lsof", N, f"{Y} app-server <code>thread/read</code>", f"{Y} 读子线程日志", f"{Y} codex.json", f"{Y} 日志"],
+        ["<b>Grok</b>", "<code>~/.grok/sessions</code>", f"{Y} <code>active_sessions.json</code>", N, N, N, "借用 Claude 的", f"{Y} 启动日志"],
+        ["<b>Cursor</b>", "<code>~/.cursor/projects</code>", f"{Y} <code>--resume</code>", N, N, N, "借用 Claude 的", N],
+        ["<b>Qoder</b>", "<code>~/.qoder/projects</code>", f"{Y} 同 Claude 参数", N, N, N, "借用 Claude 的", N],
+        ["<b>声明式（插件）</b>", "agent.json 指定；SQLite 的经 mirror 转 JSONL", "按声明", N, N, N, "借用 Claude 的", N],
+    ])
+
+PLUGINS = table(
+    ["种类", "文件", "挂在哪", "运行在", "仓库里的例子"],
+    [
+        ["Agent", "<code>agent.json</code>", "识别：教宿主认一个新 CLI 和它的日志", "宿主", "opencode"],
+        ["动作", "<code>actions.json</code>", "窗格右键菜单、⌘P", "App", "common-actions"],
+        ["验证规则", "<code>rules.json</code>", "哪些命令算「跑过测试」→ 证据", "宿主", "project-checks"],
+        ["左栏", "<code>sidebar.json</code>（可带 wasm）", "左栏怎么分组排序", "App · wasmtime 沙箱，无文件无网络", "session-first · focus-sidebar · sidebar-status"],
+        ["Hooks", "<code>hooks.json</code>", "会话进入 started / waiting / error / done，命令结束", "宿主 · 独立线程", "notify-macos"],
+        ["窗格装饰", "<code>decorations.json</code>", "窗格标题栏的短信息", "App", "pane-facts"],
+        ["动效", "effects", "标记完成时的动画", "App", "complete-stamp · complete-sweep · complete-dissolve"],
+    ])
+
+LAYOUT = table(
+    ["操作（Edit）", "对布局", "对终端进程"],
+    [
+        ["<code>PutTab</code>", "新建或改一个标签及其分割树", "—"],
+        ["<code>SplitPane</code>", "把还没摆出来的终端放到目标旁边（<code>keeplined split</code> 也走这个），基于宿主当时的布局，不覆盖期间的改动", "—"],
+        ["<code>ClosePane</code>", "从标签里拿掉，最后一个窗格连标签一起关", "宿主 SIGHUP 停掉这个终端"],
+        ["<code>CloseTab</code>", "删掉标签", "停掉它里面所有终端"],
+        ["<code>RemoveSpace</code>", "关掉空间里所有标签；只剩一个空间或还有没收尾的待办时拒绝", "停掉这些终端"],
+        ["<code>MoveTab</code>", "调整标签顺序", "—"],
+    ])
+
+
 CODE = [
     ("终端进程", "next/crates/keepline-core/src/model.rs:256", "ProcessState；转移在 host/client.rs:459、host/live.rs:178、store.rs:100"),
     ("回合", "next/crates/keepline-core/src/content.rs:37", "Turn；转移在 keeplined/src/content/mod.rs（message / phase / tool / hook_event / official / children / settle）"),
@@ -452,6 +634,15 @@ CODE = [
     ("识别健康", "next/crates/keeplined/src/host/association.rs:271", "recover_logs；RecognitionPhase 在 protocol.rs:364"),
     ("远程", "next/crates/keeplined/src/relay.rs:140", "Live::state；RemoteState 在 protocol.rs:218；手机端 next/mobile/src/remote/hub.ts"),
     ("宿主交接", "next/crates/keeplined/src/host/mod.rs:650", "take_over；fd 传递在 handoff.rs"),
+    ("待办状态", "next/crates/keepline-app/src/workbench/task_detail.rs:29", "task_status；证据 attachable 在同文件；Evidence::proves 在 keepline-core/src/content.rs:31"),
+    ("待办挂到会话", "next/crates/keepline-core/src/model.rs:705", "首次绑定时消耗 pending_tasks 或标签 default_task"),
+    ("系统通知", "next/crates/keepline-app/src/desktop.rs:78", "fact / entered；回执 keeplined/src/store.rs:128"),
+    ("hooks.json", "next/crates/keeplined/src/plugin_hooks.rs:28", "event / changes"),
+    ("审批", "next/crates/keeplined/src/host/client.rs:819", "answer_approval；画面检查 host/status.rs:182；角色 keepline-remote/src/role.rs:33"),
+    ("窗格连接", "next/crates/keepline-app/src/connection.rs:80", "Attach / 帧处理；owner 判定 keeplined/src/host/live.rs:401"),
+    ("宿主生命周期", "next/crates/keepline-app/src/lifecycle.rs:150", "spawn_host / restart_host"),
+    ("各家 Adapter", "next/crates/keeplined/src/agents/mod.rs:85", "Adapter trait；画面规则 agents/screen/*.json"),
+    ("插件种类", "next/crates/keepline-core/src/plugin.rs:17", "Kind"),
 ]
 
 CSS = """
@@ -501,6 +692,8 @@ table{border-collapse:collapse;width:100%;font-size:14px}td,th{border-bottom:1px
 .e-label.err{fill:var(--err)}.e-label.user{fill:var(--user)}
 .num circle{fill:var(--fg)}.num-t{fill:var(--card);font-size:11px;font-weight:700}
 .life{stroke:var(--line);stroke-dasharray:4 4}
+.tbl{overflow-x:auto;background:var(--card);border:1px solid var(--line);border-radius:16px;padding:6px 14px;margin:12px 0}
+.tbl table td:first-child{white-space:nowrap}.yes{color:var(--done)}.no{color:var(--muted)}
 """
 
 LEGEND = ('<div class="legend"><span class="run">在跑</span><span class="wait">等待 / 过渡</span><span class="done">正常结束</span>'
@@ -517,7 +710,7 @@ def page():
 <button class="toggle" onclick="var r=document.documentElement;r.dataset.theme=(r.dataset.theme==='dark'||(!r.dataset.theme&&matchMedia('(prefers-color-scheme: dark)').matches))?'light':'dark'">明 / 暗</button>
 <h1>Keepline next 架构与状态机</h1>
 <p class="lead">next/ 是一个 Rust workspace：<b>keeplined</b> 宿主持有全部终端和识别逻辑，<b>keepline-app</b> 是 GPUI 桌面工作台，两者只通过 <code>workbench.sock</code> 说话；手机经 <b>keepline-relay</b> 远程连同一个宿主。所有状态都存在宿主的 <code>Workspace</code> 里，界面上的分组是从它派生出来的，不另存。</p>
-<nav><a href="#sys">系统总图</a><a href="#pipe">信号 → 状态</a><a href="#layers">状态分层</a><a href="#proc">终端进程</a><a href="#turn">回合</a><a href="#outcome">结局</a><a href="#inbox">分组</a><a href="#bind">绑定</a><a href="#recog">识别健康</a><a href="#remote">远程</a><a href="#handoff">宿主交接</a><a href="#code">代码索引</a></nav>
+<nav><a href="#sys">系统总图</a><a href="#pipe">信号 → 状态</a><a href="#layers">状态分层</a><a href="#proc">终端进程</a><a href="#turn">回合</a><a href="#outcome">结局</a><a href="#inbox">分组</a><a href="#bind">绑定</a><a href="#recog">识别健康</a><a href="#remote">远程</a><a href="#handoff">宿主交接</a><a href="#task">待办</a><a href="#notify">通知</a><a href="#approval">审批</a><a href="#conn">窗格连接</a><a href="#hostlife">宿主生命周期</a><a href="#layout">布局</a><a href="#agents">各家信号</a><a href="#plugins">插件</a><a href="#code">代码索引</a></nav>
 
 <h2 id="sys">1 · 系统总图</h2>
 <p class="note">三个进程：Agent CLI 跑在宿主开的 PTY 里；宿主从四路读信号；工作台和手机都只是宿主的观看者和遥控器。</p>
@@ -581,7 +774,42 @@ def page():
 <p class="note">app 发现正在跑的宿主和自己带的不是同一份代码（digest 不同），就启动新宿主接管。终端里的 shell 和 Agent 不会察觉。</p>
 <div class="fig">{fig_handoff()}</div>
 
-<h2 id="code">12 · 代码索引</h2>
+<h2 id="task">12 · 待办与验收证据</h2>
+<p class="note">待办状态先看你定的结局（<code>task_outcomes</code>），没定结局时按证据派生。证据只来自会话卡片里能挂的记录（测试、提交、改文件），Agent 说的话永远不算；挂上去的是一份拷贝，会话往后滚也不会丢。</p>
+<div class="fig">{fig_task()}{LEGEND}</div>
+<h3>每条验收标准</h3>
+<div class="fig">{fig_criterion()}</div>
+<p class="note">新会话挂上哪个待办：第一次绑定到终端时，先用 <code>pending_tasks[终端]</code>（用一次就删掉；显式设为空则表示「这次不挂」），没有就用标签的 <code>default_task</code>。之后换终端、resume 都不再改。</p>
+
+<h2 id="notify">13 · 通知链路</h2>
+<p class="note">两条独立的路，都从 Workspace 的变化出发、都只看 Keepline 终端里的会话。去重的单位是「一个回合的一个对话框」：同一个对话框被日志、Hook、画面先后报到，<code>waiting_episode</code> 不变，只通知一次。</p>
+<div class="fig">{fig_notify()}</div>
+
+<h2 id="approval">14 · 审批应答</h2>
+<p class="note">只有画面规则认出来的审批框能远程回答，回答前宿主一定重读画面，防止答到别的问题上。</p>
+<div class="fig">{fig_approval()}</div>
+
+<h2 id="conn">15 · 窗格连接</h2>
+<p class="note">每个窗格一条到宿主的流：先收 VT 快照，再收增量。一个终端同一时刻只有一个连接能写（owner），其余只读。</p>
+<div class="fig">{fig_conn()}{LEGEND}</div>
+
+<h2 id="hostlife">16 · 宿主生命周期</h2>
+<p class="note">App 启动时连 <code>workbench.sock</code>；对比宿主报的 build digest 和自己带的 keeplined，不同就提示，由你决定何时重启。交接细节见第 11 节。</p>
+<div class="fig">{fig_hostlife()}{LEGEND}</div>
+
+<h2 id="layout">17 · 布局与终端</h2>
+<p class="note">摆放只归 <code>Tab.layout</code> 管，终端身份不随窗格消失；但关窗格、关标签、删空间都会让宿主停掉对应终端。布局类改动按 id 寻址，不要求基于宿主最新 revision。</p>
+{LAYOUT}
+
+<h2 id="agents">18 · 各家 Agent 能给的信号</h2>
+<p class="note">宿主其余部分与 CLI 无关，差异都收在 <code>keeplined/src/agents/</code> 的 Adapter 里。信号越少的 CLI 越依赖画面规则和日志，「等你回答」也越可能晚一点。</p>
+{AGENTS}
+
+<h2 id="plugins">19 · 插件的七种挂点</h2>
+<p class="note">插件是一个目录，<code>plugin.json</code> 声明 <code>provides</code>，每种对应一个文件。只有左栏插件跑 wasm，其余都是声明式数据或外部命令。</p>
+{PLUGINS}
+
+<h2 id="code">20 · 代码索引</h2>
 <table><tr><th>状态</th><th>定义</th><th>转移在哪</th></tr>{code_rows}</table>
 <p class="note">本页由 <code>specs/architecture/gen.py</code> 生成，改图请改脚本里的数据后重跑。生成于 2026-11-02，对应 main 6dc82074。</p>
 </main></body></html>
