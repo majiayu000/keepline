@@ -560,6 +560,20 @@ pub(super) fn dispatch(shared: &Shared, request: Request) -> io::Result<Reply> {
             send_text(shared, &id, &text, submit)?;
             Ok(Reply::Ok)
         }
+        Request::ReportTo { child, parent } => {
+            let mut host = lock(shared)?;
+            for id in [&child, &parent] {
+                if !host.terminals.contains_key(id) {
+                    return Err(io::Error::other(format!("终端 {id} 不存在")));
+                }
+            }
+            if child == parent {
+                return Err(io::Error::other("不能让终端向自己汇报"));
+            }
+            let w = host.snapshot();
+            host.report_back.link(&w, &child, &parent);
+            Ok(Reply::Ok)
+        }
         Request::AnswerApproval {
             id,
             question,

@@ -3,6 +3,7 @@ use crate::{
     terminal::screen::{self, Screen},
     ui::{theme::Theme as T, tone::Tone},
 };
+use keepline_core::terminal::{agent_input_ready, command_missing};
 use futures::{StreamExt, channel::mpsc::unbounded};
 use gpui::{
     App, Bounds, Context, ElementInputHandler, EntityInputHandler, FocusHandle, Focusable,
@@ -2779,45 +2780,6 @@ pub enum HandoffState {
     Placed,
     NotReady,
     Missing,
-}
-/// Both supported CLIs mark their input with an arrow. Bracketed paste alone
-/// is not readiness: Claude also enables it on theme and security notice pages.
-/// Use the last marker so an old menu above a new input does not block placement.
-fn agent_input_ready(tail: &str) -> bool {
-    let mut menu_footer = false;
-    let selected = tail.lines().rev().find_map(|l| {
-        let lower = l.to_ascii_lowercase();
-        menu_footer |= lower.contains("enter to confirm")
-            || lower.contains("enter to select")
-            || lower.contains("enter to continue");
-        let l = l.trim_start_matches(['│', ' ']);
-        ["❯", "›", ">"].iter().find_map(|m| {
-            l.strip_prefix(m)
-                .filter(|s| s.is_empty() || s.starts_with(char::is_whitespace))
-                .map(str::trim_start)
-        })
-    });
-    // Claude 2.1.302 also uses unnumbered trust choices. Inspect only below
-    // the current marker so a previous menu cannot poison a later input box.
-    if menu_footer {
-        return false;
-    }
-    let Some(selected) = selected else {
-        return false;
-    };
-    if selected.is_empty() {
-        return true;
-    }
-    let digits = selected.bytes().take_while(u8::is_ascii_digit).count();
-    !(tail.contains("Choose the text style") || digits > 0 && selected[digits..].starts_with('.'))
-}
-/// zsh, bash and fish wording for a command that is not on PATH, near the prompt.
-fn command_missing(tail: &str) -> bool {
-    tail.lines()
-        .rev()
-        .filter(|l| !l.trim().is_empty())
-        .take(4)
-        .any(|l| l.contains("command not found") || l.contains("Unknown command"))
 }
 fn line_count(text: &str) -> usize {
     text.trim_end_matches(['\r', '\n']).lines().count()

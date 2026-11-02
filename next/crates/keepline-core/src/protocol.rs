@@ -133,6 +133,13 @@ pub enum Request {
         text: String,
         submit: bool,
     },
+    /// `keepline run`: each time the Agent in `child` ends a turn (done, a question, an
+    /// error), its last reply goes into `parent`'s Agent input, wrapped as
+    /// `<keepline from=…>`, once that Agent is idle. Ends when either terminal exits.
+    ReportTo {
+        child: String,
+        parent: String,
+    },
     /// The workbench's 允许一次 / 拒绝 on an approval the screen shows. The host reads
     /// the screen again and answers only while that same approval is still there.
     AnswerApproval {

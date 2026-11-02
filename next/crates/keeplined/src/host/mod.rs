@@ -24,6 +24,7 @@ mod client;
 mod events;
 mod live;
 pub(crate) mod remote;
+mod report_back;
 mod status;
 use association::*;
 use client::*;
@@ -74,6 +75,8 @@ struct Host {
     reconciled: HashMap<String, Instant>,
     /// What the plugins' hooks last heard, so each state change reaches them once.
     hooks: crate::plugin_hooks::Hooks,
+    /// `keepline run`'s children and the reports waiting for their parents.
+    report_back: report_back::ReportBack,
 }
 /// Records which conversation a live cue says is running on `terminal`, since when;
 /// whether that changed. Only a turn starting or stopping is news.
@@ -606,6 +609,20 @@ impl Host {
         self.recognition.terminal_notes.remove(terminal);
         self.recognition.terminal_agents.remove(terminal);
     }
+    /// Types the reports `keepline run`'s children left for starters that are idle now.
+    /// Off this thread: typing takes the host lock, which a commit holds.
+    fn deliver_reports(&mut self, w: &Workspace) {
+        for (parent, text) in self.report_back.plan(w) {
+            let Some(shared) = self.myself.upgrade() else {
+                return;
+            };
+            thread::spawn(move || {
+                if let Err(e) = client::send_text(&shared, &parent, &text, true) {
+                    eprintln!("report to {parent}: {e}");
+                }
+            });
+        }
+    }
     fn commit(&mut self, mut next: Workspace) -> io::Result<()> {
         next.revision = self.workspace.revision + 1;
         self.store.save(&self.workspace, &next)?;
@@ -630,7 +647,8 @@ impl Host {
             self.hooks.changes(&before);
         }
         self.workspace = next;
-        if hooked || !self.event_subscribers.is_empty() {
+        let reporting = !self.report_back.is_empty();
+        if hooked || !self.event_subscribers.is_empty() || reporting {
             let after = self.snapshot();
             if hooked {
                 self.hooks.observe(&after);
@@ -638,6 +656,9 @@ impl Host {
             if !self.event_subscribers.is_empty() {
                 let notices = self.events.changes(&after);
                 self.send_events(notices);
+            }
+            if reporting {
+                self.deliver_reports(&after);
             }
         }
         for id in bound {
@@ -880,6 +901,7 @@ fn serve_runtime(
         title_busy: HashMap::new(),
         screen_busy: HashMap::new(),
         hooks: Default::default(),
+        report_back: Default::default(),
         reconciled: HashMap::new(),
         workspace,
         terminals: HashMap::new(),
@@ -1040,6 +1062,7 @@ mod recognition_tests {
             title_busy: HashMap::new(),
             screen_busy: HashMap::new(),
             hooks: Default::default(),
+            report_back: Default::default(),
             reconciled: HashMap::new(),
         }));
         let (tx, rx) = sync_channel(16);
@@ -1137,6 +1160,7 @@ mod snapshot_tests {
             title_busy: HashMap::new(),
             screen_busy: HashMap::new(),
             hooks: Default::default(),
+            report_back: Default::default(),
             reconciled: HashMap::new(),
             remote: None,
         };
