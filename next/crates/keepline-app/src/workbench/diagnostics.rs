@@ -702,7 +702,11 @@ impl DiagnosticView {
             .child(axis(max, step, Some(100.), T::BAR_LABEL));
         let first = first_rows(report.gpu_ranked().len());
         // A 「再显示 1 项」 row costs as much space as the row it hides.
-        let first = if ranked.len() <= first + 2 { ranked.len() } else { first };
+        let first = if ranked.len() <= first + 2 {
+            ranked.len()
+        } else {
+            first
+        };
         let shown = if self.all_rows {
             ranked.len()
         } else {
