@@ -15,6 +15,8 @@ pub(super) struct LayoutState {
     pub(super) split_bounds: HashMap<Vec<bool>, gpui::Bounds<gpui::Pixels>>,
     /// The tab strip's sideways scroll, read to tell which tabs are out of sight.
     pub(super) tab_scroll: gpui::ScrollHandle,
+    /// The tab the strip last scrolled into view.
+    pub(super) revealed_tab: Option<String>,
     /// A tab being renamed in place after a double-click.
     pub(super) renaming_tab: Option<(String, Entity<Field>, [gpui::Subscription; 2])>,
     /// A sidebar conversation being renamed in place after a double-click.
@@ -428,44 +430,37 @@ impl Workbench {
                         .children(footer),
                 );
         } else {
+            // No card: panes sit flush on the main column's white, split by the
+            // gutter's hairline, and the header is the pane's own surface.
             pane_box = pane_box
-                .rounded(px(T::PANE_RADIUS))
-                .border(px(if borders { T::BORDER_WIDTH } else { 0. }))
-                .border_color(line)
                 .bg(T::color(T::pane()))
                 .child(
                     div()
                         .h(px(T::PANE_HEADER))
                         .flex_shrink_0()
-                        .px(px(T::S10))
+                        .pl(px(T::S14))
+                        .pr(px(T::S10))
                         .flex()
                         .items_center()
                         .gap(px(T::S8))
-                        // GPUI 只按矩形裁剪子元素，标题栏不跟着圆角会从外框圆角外露出方角
-                        .rounded_t(px(T::PANE_RADIUS - T::BORDER_WIDTH))
-                        .bg(T::color(if focused {
-                            T::header_focused()
-                        } else {
-                            T::header()
-                        }))
-                        .border_b(px(T::BORDER_WIDTH))
-                        .border_color(T::color(T::border()))
+                        .bg(T::color(T::header()))
                         .child(left.flex_1())
                         .child(right),
                 )
                 .children(story)
                 .child(body)
                 .children(footer)
-                // Over the border rather than widening it: a wider border on focus would
-                // shrink the grid and resize the program each time focus moves.
+                // Among several panes the focused one carries a line along its top edge,
+                // drawn over the pane so focus moving never resizes a program.
                 .when(borders && focused, |d| {
                     d.child(
                         div()
                             .absolute()
-                            .inset_0()
-                            .rounded(px(T::PANE_RADIUS))
-                            .border(px(T::FOCUS_RING))
-                            .border_color(T::color(T::focus())),
+                            .top_0()
+                            .left_0()
+                            .right_0()
+                            .h(px(T::FOCUS_RING))
+                            .bg(T::color(T::focus())),
                     )
                 });
         }
@@ -518,6 +513,8 @@ impl Workbench {
                 second,
             } => {
                 let down = *axis == Axis::Down;
+                let terminal_style =
+                    crate::ui::style::current(cx) == crate::ui::style::Style::Terminal;
                 let mut left = path.clone();
                 left.push(false);
                 let mut right = path.clone();
@@ -555,15 +552,36 @@ impl Workbench {
                             .child(self.layout_view(first, left, true, window, cx)),
                     )
                     .child(
-                        // Both panes draw their own border, so the gutter stays empty and
-                        // only shows a thin handle on hover or while dragging.
+                        // The gutter is a hairline between flush panes (terminal style
+                        // keeps its framed panes and an empty gutter), with a thicker
+                        // handle on hover or while dragging.
                         div()
                             .id(gpui::SharedString::from(format!("divider-{path:?}")))
                             .group("divider")
+                            .relative()
                             .flex_shrink_0()
                             .flex()
                             .items_center()
                             .justify_center()
+                            .when(!terminal_style, |d| {
+                                d.child(
+                                    div()
+                                        .absolute()
+                                        .bg(T::color(T::border()))
+                                        .when(down, |d| {
+                                            d.left_0()
+                                                .right_0()
+                                                .top(px((T::S6 - T::BORDER_WIDTH) / 2.))
+                                                .h(px(T::BORDER_WIDTH))
+                                        })
+                                        .when(!down, |d| {
+                                            d.top_0()
+                                                .bottom_0()
+                                                .left(px((T::S6 - T::BORDER_WIDTH) / 2.))
+                                                .w(px(T::BORDER_WIDTH))
+                                        }),
+                                )
+                            })
                             .when(down, |d| {
                                 d.h(px(T::S6))
                                     .w_full()

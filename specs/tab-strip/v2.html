@@ -1,0 +1,206 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>工作台去灰减框</title>
+<style>
+:root{
+  --bg:#ffffff; --side:#f6f7f9; --hover:#eff1f4; --sel:#e9ebef; --text:#17181c; --secondary:#5d6270; --muted:#8a8f9a;
+  --line:#eceef2; --strong:#dfe2e7; --accent:#4b4fd6; --wait:#c2570c; --review:#5e62d8; --running:#1f8a5b;
+  --page:#e7e9ee;
+}
+*{box-sizing:border-box}
+body{margin:0;background:var(--page);color:var(--text);font:14px/1.55 -apple-system,BlinkMacSystemFont,"PingFang SC","Helvetica Neue",sans-serif;padding:28px 16px 64px}
+main{max-width:1240px;margin:0 auto}
+h1{font-size:22px;margin:0 0 6px}
+.lead{color:var(--secondary);margin:0 0 22px;max-width:860px}
+.lead b{color:var(--text)}
+.pair{display:grid;grid-template-columns:minmax(0,1fr);gap:22px}
+.cap{font-size:13px;color:var(--secondary);margin:0 0 6px;font-weight:600}
+.shot{width:100%;aspect-ratio:2000/1175;border-radius:10px;overflow:hidden;box-shadow:0 1px 2px rgba(0,0,0,.05),0 10px 28px rgba(0,0,0,.08);background:#fff}
+.shot img{width:100%;height:100%;display:block}
+.scale{width:1516px;height:891px;transform-origin:0 0}
+
+/* ---------- mock ---------- */
+.app{width:1516px;height:891px;display:flex;font-size:13px;background:var(--bg)}
+.side{width:270px;flex:none;background:var(--side);border-right:1px solid var(--line);display:flex;flex-direction:column;font-size:12.5px}
+.tl{height:46px;display:flex;align-items:center;gap:8px;padding:0 12px}
+.lights{display:flex;gap:6px}.lights i{width:11px;height:11px;border-radius:50%;display:block}
+.toggle{width:18px;height:15px;border:1.3px solid var(--secondary);border-radius:4px;position:relative;margin-left:6px;opacity:.8}
+.toggle::before{content:"";position:absolute;left:4px;top:2px;bottom:2px;width:1.3px;background:var(--secondary)}
+.brand{font-weight:600;font-size:13px}
+.search{margin:2px 10px 10px;height:28px;border-radius:7px;display:flex;align-items:center;gap:7px;padding:0 8px;color:var(--muted)}
+.search kbd{margin-left:auto;font:11px -apple-system;color:var(--muted);border:1px solid var(--strong);border-radius:4px;padding:0 4px}
+.grp{padding:8px 14px 3px;color:var(--muted);font-size:11.5px;display:flex;justify-content:space-between}
+.it{margin:0 6px;height:27px;border-radius:6px;display:flex;align-items:center;gap:8px;padding:0 8px;color:var(--text);white-space:nowrap}
+.it span{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis}
+.it em{font-style:normal;color:var(--muted);font-size:11.5px}
+.it.on{background:var(--sel)}
+.d{width:6px;height:6px;border-radius:50%;flex:none;background:#c4c7cf}
+.d.r{background:var(--review)}.d.w{background:var(--wait)}.d.g{background:var(--running)}
+.d.sp{background:#7b7fe0}.d.sp2{background:#4aa3a2}
+.side .foot{margin-top:auto;border-top:1px solid var(--line);padding:8px 12px 10px;font-size:11.5px;color:var(--secondary)}
+.q{display:flex;align-items:center;gap:6px;margin:3px 0}
+.q b{font-weight:500;color:var(--text);width:40px}
+.bar{flex:1;height:4px;border-radius:2px;background:#e3e5ea;overflow:hidden}.bar i{display:block;height:100%;border-radius:2px}
+.q em{font-style:normal;width:30px;text-align:right;font-variant-numeric:tabular-nums}
+
+.col{flex:1;min-width:0;display:flex;flex-direction:column}
+.top{height:46px;flex:none;display:flex;align-items:center;gap:4px;padding:0 10px 0 12px;border-bottom:1px solid var(--line)}
+.space{display:flex;align-items:center;gap:6px;height:28px;padding:0 8px;border-radius:6px;color:var(--secondary);white-space:nowrap}
+.vs{width:1px;height:16px;background:var(--strong);margin:0 4px;flex:none}
+.strip{display:flex;align-items:center;gap:2px;flex:1;min-width:0;overflow:hidden;
+  -webkit-mask-image:linear-gradient(90deg,#000 calc(100% - 36px),transparent);mask-image:linear-gradient(90deg,#000 calc(100% - 36px),transparent)}
+.tab{flex:none;max-width:190px;height:28px;padding:0 10px;border-radius:6px;display:flex;align-items:center;gap:6px;color:var(--muted);white-space:nowrap}
+.tab span{min-width:0;overflow:hidden;text-overflow:ellipsis}
+.tab.on{background:var(--sel);color:var(--text);font-weight:500}
+.ghost{height:28px;min-width:28px;padding:0 7px;border-radius:6px;display:grid;place-items:center;color:var(--secondary);white-space:nowrap;font-size:12.5px}
+.ghost svg{width:15px;height:15px}
+
+.grid{flex:1;min-height:0;display:flex}
+.pane{display:flex;flex-direction:column;min-width:0;min-height:0}
+.ph{height:34px;flex:none;display:flex;align-items:center;gap:8px;padding:0 10px 0 14px;font-size:12.5px;white-space:nowrap}
+.ph .t{font-weight:600;min-width:0;overflow:hidden;text-overflow:ellipsis}
+.ph .st{color:var(--review);display:flex;align-items:center;gap:5px}
+.ph .meta{margin-left:auto;color:var(--muted)}
+.ph .btn{height:22px;padding:0 8px;border-radius:5px;border:1px solid var(--strong);color:var(--text);font-size:12px;display:grid;place-items:center}
+.ph .x{color:var(--muted);width:16px;text-align:center}
+.pane.focus .ph{box-shadow:inset 0 2px 0 var(--review)}
+.body{flex:1;min-height:0;overflow:hidden;padding:4px 18px 0;font:14.5px/1.55 ui-monospace,"SF Mono",Menlo,"PingFang SC",monospace;color:#2b2e36}
+.body h4{margin:6px 0 1px;font-size:14.5px}
+.body .k{color:#2a64c9}
+.body .dim{color:var(--muted)}
+.vline{width:1px;background:var(--line);flex:none}
+.hline{height:1px;background:var(--line);flex:none}
+.prompt{border-top:1px solid var(--line);margin:8px 0 0;padding:6px 0;color:var(--muted)}
+
+.changes{margin:26px 0 0;display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:12px}
+.card{background:#fff;border-radius:10px;padding:14px 16px;font-size:13px;color:var(--secondary)}
+.card h3{margin:0 0 4px;font-size:14px;color:var(--text)}
+.end{margin-top:22px;font-size:13px;color:var(--secondary);max-width:860px}
+.end b{color:var(--text)}
+</style>
+</head>
+<body>
+<main>
+<h1>为什么还丑：不是标签的形状，是灰色叠灰色、框套框</h1>
+<p class="lead">上一版 3 个方向只换了标签画法，所以看着还是差不多。对照 T3 Code 截图，真正的差别在底色和框：<b>T3 的正文是一整块白，顶栏不另起灰带，内容之间靠留白而不是边框分开。</b>我们现在正文是灰底，上面再放白色圆角卡片，卡片里又有灰色状态条、彩色底的标签，一屏大约 20 条分割线。下面上图是你的真截图，下图是同比例的改法（终端字号也按截图对齐；终端内容我删短了，空白多一些不代表改法本身更空）。</p>
+
+<div class="pair">
+  <div>
+    <p class="cap">现在（你的截图）</p>
+    <div class="shot"><img src="now.png" alt="现在的工作台截图"></div>
+  </div>
+  <div>
+    <p class="cap">改后：正文全白、标签并进顶栏、窗格不再是卡片</p>
+    <div class="shot" id="mockwrap"><div class="scale" id="mock">
+<div class="app">
+  <aside class="side">
+    <div class="tl"><div class="lights"><i style="background:#ff5f57"></i><i style="background:#febc2e"></i><i style="background:#28c840"></i></div><span class="toggle"></span><span class="brand">Keepline</span></div>
+    <div class="search"><svg width="13" height="13" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="7" cy="7" r="4.6"/><path d="M10.5 10.5L14 14"/></svg>搜索<kbd>⌘P</kbd></div>
+    <div class="grp"><span>空间</span><span>2</span></div>
+    <div class="it on"><i class="d sp"></i><span>工作空间</span><em>18</em></div>
+    <div class="it"><i class="d sp2"></i><span>code</span><em>6</em></div>
+    <div class="grp" style="margin-top:8px"><span>会话</span><span>18</span></div>
+    <div class="it"><i class="d g"></i><span>库中 UI 组件现状</span><em>在跑</em></div>
+    <div class="it"><i class="d r"></i><span>T3code 界面左上角按钮</span><em>31 分</em></div>
+    <div class="it"><i class="d r"></i><span>任务完成判断机制</span><em>37 分</em></div>
+    <div class="it"><i class="d r"></i><span>同类终端工具.dev 网站可借鉴</span><em>50 分</em></div>
+    <div class="it"><i class="d"></i><span>T3code 左上角按钮 UI</span><em>51 分</em></div>
+    <div class="it"><i class="d"></i><span>Next 选择复制遮挡问题</span><em>3 时</em></div>
+    <div class="it"><i class="d"></i><span>Write Me Down 方向</span><em>3 时</em></div>
+    <div class="it"><i class="d"></i><span>Longcat 2.5 用户测评</span><em>3 时</em></div>
+    <div class="it"><i class="d"></i><span>库的过时情况与未完成事项</span><em>3 时</em></div>
+    <div class="it"><i class="d"></i><span>复制到 Next 的提示设计</span><em>3 时</em></div>
+    <div class="it"><i class="d"></i><span>库的未完成事项</span><em>3 时</em></div>
+    <div class="it" style="color:var(--muted)"><span>另有 6 个 · 鸟瞰全部</span></div>
+    <div class="foot">
+      <div class="q"><b>Codex</b><span class="bar"><i style="width:100%;background:#d4554b"></i></span><em>周满</em></div>
+      <div class="q"><b>Claude</b><span class="bar"><i style="width:24%;background:var(--running)"></i></span><em>24%</em></div>
+      <div style="display:flex;gap:14px;margin-top:8px"><span>本机诊断</span><span style="margin-left:auto">提醒</span><span>设置</span></div>
+    </div>
+  </aside>
+
+  <section class="col">
+    <div class="top">
+      <span class="space">工作空间<svg width="9" height="9" viewBox="0 0 10 10"><path d="M2.5 4l2.5 2.5L7.5 4" fill="none" stroke="currentColor" stroke-width="1.3"/></svg></span>
+      <span class="vs"></span>
+      <div class="strip">
+        <div class="tab"><span>库中 UI 组件现状</span></div>
+        <div class="tab"><i class="d r"></i><span>同类终端工具.dev 网站可借鉴</span></div>
+        <div class="tab on"><i class="d r"></i><span>T3code 左上角按钮参考</span></div>
+        <div class="tab"><span>任务完成判断机制</span></div>
+        <div class="tab"><span>Write Me Down 方向</span></div>
+        <div class="tab"><span>pane.rs ⌘ 点击路径优化</span></div>
+        <div class="tab"><span>我的 youarehere 的 skill</span></div>
+        <div class="tab"><span>复制到 Next 的提示设计</span></div>
+      </div>
+      <span class="ghost">+3</span>
+      <span class="ghost"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4"><path d="M8 3v10M3 8h10"/></svg></span>
+      <span class="vs"></span>
+      <span class="ghost" style="display:flex;gap:5px;color:#9a3f06;background:#fbefe6"><i class="d w"></i>需要你 2</span>
+      <span class="ghost" style="display:flex;gap:5px;outline:2px solid #e5484d;outline-offset:1px"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.3"><rect x="2" y="2" width="5" height="5" rx="1"/><rect x="9" y="2" width="5" height="5" rx="1"/><rect x="2" y="9" width="5" height="5" rx="1"/><rect x="9" y="9" width="5" height="5" rx="1"/></svg>鸟瞰</span>
+      <span class="ghost"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.3"><rect x="4.5" y="1.5" width="7" height="13" rx="1.5"/><path d="M7 12.5h2"/></svg></span>
+    </div>
+    <div class="grid">
+      <div class="pane" style="flex:1">
+        <div class="ph"><span class="st"><i class="d r"></i>等你验收</span><span class="t">同类终端工具.dev 网站可借鉴之处</span><span class="meta">claude · 50 分钟</span><span class="btn">标记完成</span><span class="x">×</span></div>
+        <div class="body">
+          <h4>2. 派出去的子 Agent 做完自动回话</h4>
+          <span class="k">hc run --bg codex "review my diff. Done: hc send t1"</span>：后台起一个 Codex，做完后报告会以 <span class="k">&lt;hc from="..."&gt;</span> 的形式塞回发起它的那个 Agent 的输入框里。中途还能用 <span class="k">hc send t3 "..."</span> 改指令。
+          <h4>3. 让 Agent 改 App 本身</h4>
+          这是它首屏的主打口号 "Made for your agents. Remade by them."。做法很简单：配置目录 <span class="k">~/.config/同类终端工具-app</span> 里放一份 <span class="k">AGENTS.md</span>，写明哪些能改（主题、快捷键、布局、mods）……
+          <h4>4. 官网写法</h4>
+          - 七个编号区块，每块是一句短标题加一条可复制的命令<br>
+          - FAQ 直接写「Agent 不出现在列表里」的三条排查<br>
+          <div class="dim" style="margin-top:6px">✻ Crunched for 1m 12s · done 4:51 PM</div>
+        </div>
+      </div>
+      <div class="vline"></div>
+      <div style="flex:1;display:flex;flex-direction:column;min-width:0">
+        <div class="pane focus" style="flex:1.15">
+          <div class="ph"><span class="st"><i class="d r"></i>等你验收</span><span class="t">T3code 界面左上角按钮参考</span><span class="meta">claude · 31 分钟</span><span class="btn">标记完成</span><span class="x">×</span></div>
+          <div class="body">
+            <b>已验：</b><br>
+            - 换完我截了屏幕，左上角红绿灯后面显示的是新图标<br>
+            - 隔离环境的截图里，展开和收起两种状态都和 T3 的图标放大对比过<br>
+            - 换包前后三个 Claude 进程都还在。<br>
+            <b>没验：</b>你实际 App 里收起左栏后的「›」，以及深色主题下的图标。<br>
+            改动已经提交到 main (cf197403)，没有 push。
+            <div class="dim" style="margin-top:6px">✻ Cogitated for 3m 36s · done 5:11 PM</div>
+          </div>
+        </div>
+        <div class="hline"></div>
+        <div class="pane" style="flex:1">
+          <div class="ph"><span class="t" style="font-weight:500">keepline</span><span class="meta">Shell</span><span class="x">×</span></div>
+          <div class="body">
+            <span class="dim">暂无数据，运行 mirror score 生成首次评分</span><br>
+            <span style="color:#7a3fb8">lifcc</span> <span class="dim">…/keepline</span> <span style="color:#2a64c9">main</span> <span class="dim">v1.3.14</span> 帮我看看这个ui
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+</div>
+    </div></div>
+  </div>
+</div>
+
+<div class="changes">
+  <div class="card"><h3>1 · 正文改白底</h3>正文区现在是灰底 + 白卡片。改成整块白，窗格之间只留 1 条细线；侧栏保持浅灰，左右一深一浅就是层次，不用再画框。</div>
+  <div class="card"><h3>2 · 两条顶栏并成一条</h3>面包屑那一行去掉，标签放进顶栏；空间名放最左边，点开能切。当前标签用浅灰块，不用卡片边框。</div>
+  <div class="card"><h3>3 · 窗格不当卡片</h3>去掉圆角、外边距和窗格头下面的横线。焦点窗格只在顶部画一条 2px 的状态色，代替现在的整圈描边。</div>
+  <div class="card"><h3>4 · 状态少一种颜色块</h3>「等你验收」从紫底标签改成圆点加文字；「停在……」那条灰色摘要去掉，状态和标题已经说清楚了，摘要放到悬停卡片里。</div>
+  <div class="card"><h3>5 · 侧栏减字</h3>额度条从每格 30 段的刻度条改成一根细条加一个数；会话行的时间缩短（31 分），名字能多显示几个字。</div>
+  <div class="card"><h3>6 · 溢出不盖字</h3>标签放不下时右边渐隐，后面跟一个「+3」，不再用白块盖住半个字。当前标签总是滚进视野。</div>
+</div>
+<p class="end"><b>要不要这样改：</b>6 条可以分开要。我建议 1、2、3 一起做，样子变化主要来自这三条；4、5 会删掉现有信息（摘要那一行、刻度条），等你点头再做。</p>
+</main>
+<script>
+// Scale the 1516×891 mock to the frame width.
+function fit(){var w=document.getElementById('mockwrap').clientWidth;document.getElementById('mock').style.transform='scale('+(w/1516)+')'}
+addEventListener('resize',fit);fit();
+</script>
+</body>
+</html>

@@ -400,6 +400,7 @@ impl Workbench {
                 confirm_close: None,
                 renaming_tab: None,
                 tab_scroll: gpui::ScrollHandle::new(),
+                revealed_tab: None,
                 renaming_session: None,
                 reopened: HashSet::new(),
                 completing: HashMap::new(),

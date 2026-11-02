@@ -3,6 +3,20 @@ use super::*;
 
 impl Render for Workbench {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+        // Whenever the current tab changes (a click, the sidebar, a shortcut, a new tab),
+        // scroll the strip so that tab is in view: the strip always shows where you are.
+        if self.layout.revealed_tab != self.nav.tab {
+            if let Some(ix) = self.nav.tab.as_ref().and_then(|id| {
+                self.workspace
+                    .tabs
+                    .iter()
+                    .filter(|t| t.space == self.nav.space)
+                    .position(|t| &t.id == id)
+            }) {
+                self.layout.tab_scroll.scroll_to_item(ix);
+            }
+            self.layout.revealed_tab = self.nav.tab.clone();
+        }
         self.open_pending_route(window, cx);
         // The overview and 逐个清理 take the main area beside the sidebar; the top bar,
         // sidebar and tab strip stay, so leaving is a click in the same place or Esc.
@@ -66,6 +80,8 @@ impl Render for Workbench {
         // what needs you and the overview on the right. The window's top edge belongs to
         // the sidebar; collapsed, its toggle stays beside the traffic lights right here.
         let collapsed = self.sidebar.collapsed;
+        // Standard style puts the tabs in this row, so the current tab is not named a
+        // second time; only the overview and a task's page, which no tab stands for.
         let here = if self.nav.overview || !self.overview.cleanup.is_empty() {
             Some("鸟瞰全部".to_owned())
         } else if let Some(task) = self
@@ -75,109 +91,108 @@ impl Render for Workbench {
             .and_then(|id| self.workspace.tasks.iter().find(|t| &t.id == id))
         {
             Some(task.title.clone())
-        } else {
+        } else if terminal_style {
             self.workspace
                 .tabs
                 .iter()
                 .find(|t| Some(&t.id) == self.nav.tab.as_ref())
                 .map(|t| self.tab_name(t, cx))
+        } else {
+            None
         };
-        let header = div()
-            .h(px(T::TOP))
+        let crumb = div()
+            .min_w_0()
             .flex_shrink_0()
-            .pl(px(if collapsed {
-                T::TRAFFIC_LIGHT_INSET
-            } else {
-                T::S16
-            }))
-            .pr(px(T::S14))
+            .max_w(px(T::TAB_MAX_WIDTH * 2.))
             .flex()
             .items_center()
-            .gap(px(T::S10))
-            .border_b(px(T::BORDER_WIDTH))
-            .border_color(T::color(T::border()))
-            .when(collapsed, |d| d.child(self.sidebar_toggle(cx)))
+            .gap(px(T::S8))
             .child(
                 div()
-                    .min_w_0()
-                    .flex()
-                    .items_center()
-                    .gap(px(T::S8))
-                    .child(
-                        div()
-                            .flex_shrink_0()
-                            .text_color(T::color(T::muted()))
-                            .child(space_name.to_owned()),
-                    )
-                    .when_some(here, |d, here| {
-                        d.child(
-                            div()
-                                .flex_shrink_0()
-                                .text_color(T::color(T::muted()))
-                                .child("/"),
-                        )
-                        .child(div().min_w_0().truncate().child(here))
-                    }),
+                    .flex_shrink_0()
+                    .text_color(T::color(T::muted()))
+                    .child(space_name.to_owned()),
             )
-            .child(self.title_drag_area(cx))
-            .when(self.store.slow(), |d| d.child(label("正在更新…")))
-            .when(
-                matches!(
-                    self.store.recognition().phase,
-                    RecognitionPhase::Starting | RecognitionPhase::Recovering
-                ),
-                |d| d.child(label("正在识别会话…")),
-            )
-            // The host runs older code than this app. One that can hand over is updated
-            // in place; an older one must be restarted, which ends every terminal.
-            .when(crate::lifecycle::stale_host(), |d| {
+            .when_some(here, |d, here| {
                 d.child(
-                    button(
-                        "restart-host",
-                        match (
-                            self.restarting,
-                            crate::lifecycle::stale_build().is_some_and(|b| b.handoff),
-                        ) {
-                            (true, _) => "正在更新后台…",
-                            // Updated in place: every terminal keeps running.
-                            (false, true) => "后台有更新 · 更新",
-                            (false, false) => "后台有更新 · 重启",
-                        },
-                    )
-                    .text_color(T::color(T::secondary()))
-                    .on_click(cx.listener(|this, _, _, cx| {
-                        if !this.restarting {
-                            this.request_close(Closing::Host, cx);
-                        }
-                    })),
+                    div()
+                        .flex_shrink_0()
+                        .text_color(T::color(T::muted()))
+                        .child("/"),
                 )
-            })
-            .when(!self.needs_you().is_empty(), |d| {
-                d.child(self.next_waiting_chip(cx))
-            })
-            // A toggle: the same spot goes into the overview and back out of it.
-            .child({
-                let on = self.nav.overview || !self.overview.cleanup.is_empty();
-                let toggle = icon_button(
-                    "overview",
-                    "icons/grid.svg",
-                    if on { "回到工作区" } else { "鸟瞰全部" },
+                .child(div().min_w_0().truncate().child(here))
+            });
+        // The right end of the title row: notes, what needs you, the overview, phones.
+        let mut tail: Vec<gpui::AnyElement> = Vec::new();
+        if self.store.slow() {
+            tail.push(label("正在更新…").into_any_element());
+        }
+        if matches!(
+            self.store.recognition().phase,
+            RecognitionPhase::Starting | RecognitionPhase::Recovering
+        ) {
+            tail.push(label("正在识别会话…").into_any_element());
+        }
+        // The host runs older code than this app. One that can hand over is updated
+        // in place; an older one must be restarted, which ends every terminal.
+        if crate::lifecycle::stale_host() {
+            tail.push(
+                button(
+                    "restart-host",
+                    match (
+                        self.restarting,
+                        crate::lifecycle::stale_build().is_some_and(|b| b.handoff),
+                    ) {
+                        (true, _) => "正在更新后台…",
+                        // Updated in place: every terminal keeps running.
+                        (false, true) => "后台有更新 · 更新",
+                        (false, false) => "后台有更新 · 重启",
+                    },
                 )
-                .when(on, |d| d.bg(T::color(T::selection())))
-                .tooltip(move |_, cx| {
-                    cx.new(|_| TextTip(if on { "回到工作区" } else { "鸟瞰全部" }.into()))
-                        .into()
-                })
-                .on_click(cx.listener(move |this, _, _, cx| {
-                    if on {
-                        this.leave_overview(cx);
-                    } else {
-                        this.show_overview(cx);
+                .text_color(T::color(T::secondary()))
+                .on_click(cx.listener(|this, _, _, cx| {
+                    if !this.restarting {
+                        this.request_close(Closing::Host, cx);
                     }
-                }));
-                self.record_toggle(toggle, cx)
+                }))
+                .into_any_element(),
+            );
+        }
+        if !self.needs_you().is_empty() {
+            tail.push(self.next_waiting_chip(cx).into_any_element());
+        }
+        // A toggle: the same spot goes into the overview and back out of it. Standard
+        // style names it, so the way to every space's work is not a bare glyph.
+        tail.push({
+            let on = self.nav.overview || !self.overview.cleanup.is_empty();
+            let toggle = icon_button(
+                "overview",
+                "icons/grid.svg",
+                if on { "回到工作区" } else { "鸟瞰全部" },
+            )
+            .when(!terminal_style, |d| {
+                d.w_auto()
+                    .px(px(T::S8))
+                    .gap(px(T::S6))
+                    .text_size(px(T::SMALL))
+                    .text_color(T::color(T::secondary()))
+                    .child("鸟瞰")
             })
-            .children(self.phones_button(cx));
+            .when(on, |d| d.bg(T::color(T::selection())))
+            .tooltip(move |_, cx| {
+                cx.new(|_| TextTip(if on { "回到工作区" } else { "鸟瞰全部" }.into()))
+                    .into()
+            })
+            .on_click(cx.listener(move |this, _, _, cx| {
+                if on {
+                    this.leave_overview(cx);
+                } else {
+                    this.show_overview(cx);
+                }
+            }));
+            self.record_toggle(toggle, cx).into_any_element()
+        });
+        tail.extend(self.phones_button(cx).map(|b| b.into_any_element()));
         let sidebar = self.sidebar_view(space_name, cx);
         let current = self
             .workspace
@@ -192,6 +207,7 @@ impl Render for Workbench {
             .h_full()
             .flex()
             .items_center()
+            .when(!terminal_style, |d| d.gap(px(T::S2)))
             .overflow_x_scroll()
             .track_scroll(&self.layout.tab_scroll);
         // What each tab needs from you, in strip order, so a hidden one can be called out.
@@ -291,12 +307,12 @@ impl Render for Workbench {
                     .aria_label(title.clone())
                     .relative()
                     .flex_shrink_0()
-                    .min_w(px(if terminal_style { 0. } else { T::TAB_MIN_WIDTH }))
                     .max_w(px(T::TAB_MAX_WIDTH))
-                    .h(px(if terminal_style { T::FOOTER } else { T::TABS }))
+                    .h(px(if terminal_style { T::FOOTER } else { T::ROW }))
                     .gap(px(T::S6))
                     .border_0()
-                    .rounded_none()
+                    .when(terminal_style, |d| d.rounded_none())
+                    .when(!terminal_style, |d| d.pl(px(T::S10)).pr(px(T::S4)))
                     .text_size(px(T::MONO_SIZE))
                     .text_color(T::color(if active { T::primary() } else { T::secondary() }))
                     .when(tab.default_task.is_some(), |d| d.child(task_icon()))
@@ -321,16 +337,10 @@ impl Render for Workbench {
                         d.child(badge(g, needs.len()).font_features(T::tabular()))
                     })
                     .child(close)
-                    // The current tab takes the pane's surface and opens into it: side
-                    // hairlines, and it covers the strip's bottom edge.
+                    // The current tab is a quiet filled block, like the sidebar's row.
                     .when(active && !terminal_style, |d| {
-                        d.bg(T::color(T::pane()))
-                            .border_l(px(T::BORDER_WIDTH))
-                            .border_r(px(T::BORDER_WIDTH))
-                            .border_color(T::color(T::border()))
-                            .self_end()
-                            .mb(px(-T::BORDER_WIDTH))
-                            .h(px(T::TABS))
+                        d.bg(T::color(T::selection()))
+                            .font_weight(gpui::FontWeight::MEDIUM)
                     })
                     // The hover card would cover the right-click menu; dropping the
                     // builder while a menu is open also dismisses a visible card.
@@ -385,16 +395,39 @@ impl Render for Workbench {
         let (left, right) = self.tab_overflow(&wants, cx);
         // The left marker floats over the strip so its coming and going never shifts
         // the tabs a click on either marker has just brought into view.
+        let fade = right.is_some() && !terminal_style;
         let strip = div()
             .relative()
             .min_w_0()
             .h_full()
             .flex()
+            .items_center()
             .child(strip.flex_1())
+            // Tabs past the right edge fade out instead of being cut mid-character.
+            .when(fade, |d| {
+                d.child(
+                    div()
+                        .absolute()
+                        .right_0()
+                        .top_0()
+                        .h_full()
+                        .w(px(T::S20 * 2.))
+                        .bg(gpui::linear_gradient(
+                            90.,
+                            gpui::linear_color_stop(T::color(T::pane()).opacity(0.), 0.),
+                            gpui::linear_color_stop(T::color(T::pane()), 1.),
+                        )),
+                )
+            })
             .when_some(left, |d, hint| {
-                d.child(self.tab_edge(hint, false, cx).absolute().left_0().top_0())
+                d.child(
+                    self.tab_edge(hint, false, terminal_style, cx)
+                        .absolute()
+                        .left_0()
+                        .top_0(),
+                )
             });
-        let right = right.map(|hint| self.tab_edge(hint, true, cx));
+        let right = right.map(|hint| self.tab_edge(hint, true, terminal_style, cx));
         let new_tab = button("new", "＋")
             .aria_label("新建终端标签")
             .flex_shrink_0()
@@ -421,31 +454,62 @@ impl Render for Workbench {
                 .child(new_tab)
                 .child(self.status_glyphs(cx))
         } else {
+            // Standard: the tabs share the title row, T3 Code style. The strip keeps its
+            // own width so the space after 「＋」 still moves the window.
             div()
-                .h(px(T::TABS))
-                .flex_shrink_0()
+                .h_full()
+                .min_w_0()
                 .flex()
                 .items_center()
-                .px(px(T::S6))
-                .border_b(px(T::BORDER_WIDTH))
-                .border_color(T::color(T::border()))
+                .gap(px(T::S2))
                 .child(strip)
                 .children(right)
                 .child(new_tab)
         };
-        let (top_tabs, bottom_tabs) = if terminal_style {
+        let (row_tabs, bottom_tabs) = if terminal_style {
             (None, Some(tabs))
         } else {
             (Some(tabs), None)
         };
+        let header = div()
+            .h(px(T::TOP))
+            .flex_shrink_0()
+            .pl(px(if collapsed {
+                T::TRAFFIC_LIGHT_INSET
+            } else {
+                T::S16
+            }))
+            .pr(px(T::S14))
+            .flex()
+            .items_center()
+            .gap(px(T::S10))
+            .border_b(px(T::BORDER_WIDTH))
+            .border_color(T::color(T::border()))
+            .when(collapsed, |d| d.child(self.sidebar_toggle(cx)))
+            .child(crumb)
+            .when_some(row_tabs, |d, tabs| {
+                d.child(
+                    div()
+                        .flex_shrink_0()
+                        .w(px(T::BORDER_WIDTH))
+                        .h(px(T::S16))
+                        .bg(T::color(T::border())),
+                )
+                .child(tabs)
+                .child(self.title_drag_area(cx).min_w(px(T::S20 * 2.)))
+            })
+            .when(terminal_style, |d| d.child(self.title_drag_area(cx)))
+            .children(tail);
         let mut main = div()
             .flex_1()
             .min_w_0()
             .h_full()
             .flex()
             .flex_col()
-            .child(header)
-            .children(top_tabs);
+            // One white surface under the title row and the panes; the sidebar's gray
+            // beside it is the only other layer.
+            .when(!terminal_style, |d| d.bg(T::color(T::pane())))
+            .child(header);
         // Indexing in progress is a top-bar note; only a lost link to the host is worth a
         // strip, in words the user can act on. A missing official status source is not:
         // logs and screens still tell the state. The menubar's failed refresh is the same
@@ -720,12 +784,14 @@ impl Workbench {
         &self,
         edge: TabEdge,
         right: bool,
+        terminal_style: bool,
         cx: &Context<Self>,
     ) -> gpui::Stateful<gpui::Div> {
-        let text = if right {
-            format!("还有 {} 个 ›", edge.count)
-        } else {
-            format!("‹ {} 个", edge.count)
+        let text = match (right, terminal_style) {
+            (true, true) => format!("还有 {} 个 ›", edge.count),
+            (false, true) => format!("‹ {} 个", edge.count),
+            (true, false) => format!("+{}", edge.count),
+            (false, false) => format!("‹ {}", edge.count),
         };
         let reveal = edge.reveal;
         button(
@@ -745,13 +811,19 @@ impl Workbench {
         .h_full()
         .px(px(T::S8))
         .gap(px(T::S4))
-        .rounded_none()
-        .when(right, |d| d.border_l(px(T::BORDER_WIDTH)))
-        .when(!right, |d| d.border_r(px(T::BORDER_WIDTH)))
-        .border_color(T::color(T::border()))
+        // Terminal style: a full-height block at the strip's edge. Standard: a small
+        // count beside the faded edge, never covering a tab's name.
+        .when(terminal_style, |d| {
+            d.rounded_none()
+                .when(right, |d| d.border_l(px(T::BORDER_WIDTH)))
+                .when(!right, |d| d.border_r(px(T::BORDER_WIDTH)))
+                .border_color(T::color(T::border()))
+        })
+        .when(!terminal_style, |d| d.font_features(T::tabular()))
         .bg(match edge.group {
             Some(g) => g.colors().2,
-            None => T::color(T::raised()),
+            None if terminal_style => T::color(T::raised()),
+            None => T::color(T::pane()),
         })
         .text_size(px(T::MONO_SIZE))
         .text_color(match edge.group {
