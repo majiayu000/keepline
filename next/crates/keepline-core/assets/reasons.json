@@ -1,0 +1,49 @@
+{
+  "api": 1,
+  "version": "2026-11-02",
+  "max_width": 24,
+  "rules": [
+    { "id": "subagent", "kind": "waiting", "match": "^子 Agent ?(?P<name>[^：]*)：(?P<rest>[\\s\\S]*)$", "say": "子 Agent {rest:phrase}", "note": "Codex 子 Agent 在等：说清是子 Agent，原因照常换成短语" },
+    { "id": "question-header", "kind": "waiting", "match": "^【(?P<topic>[^】]+)】", "say": "{topic}", "note": "AskUserQuestion / request_user_input 的短标题（Claude 限 12 字）" },
+
+    { "id": "claude-use-tool", "kind": "waiting", "match": "requested permissions to use (?P<tool>[\\w.:-]+)", "say": "批准 {tool}" },
+    { "id": "claude-read-path", "kind": "waiting", "match": "requested permissions to read from (?P<path>[^,\\s]+)", "say": "批准 读 {path:base}" },
+    { "id": "claude-write-path", "kind": "waiting", "match": "requested permissions to (?:write to|edit) (?P<path>[^,\\s]+)", "say": "批准 改 {path:base}" },
+    { "id": "bash-part", "kind": "waiting", "match": "requires approval: ?(?P<cmd>\\S[\\s\\S]*)", "say": "批准 {cmd:word}" },
+    { "id": "command-approval", "kind": "waiting", "match": "(?i)this command requires approval|waiting for approval", "say": "批准命令" },
+
+    { "id": "screen-edit", "kind": "waiting", "match": "(?i)do you want to (?:make this edit to|edit) (?P<path>[^?\\s]+)", "say": "批准 改 {path:base}" },
+    { "id": "screen-create", "kind": "waiting", "match": "(?i)do you want to (?:create|write) (?P<path>[^?\\s]+)", "say": "批准 新建 {path:base}" },
+    { "id": "screen-proceed", "kind": "waiting", "match": "(?i)do you want to proceed|would you like to proceed|allow command", "say": "批准命令" },
+
+    { "id": "hook-permission", "kind": "waiting", "match": "^(?:CLI 请求工具审批|等待权限审批|等待审批)", "say": "批准工具" },
+    { "id": "hook-mcp-form", "kind": "waiting", "match": "^MCP 表单等待填写", "say": "填 MCP 表单" },
+    { "id": "hook-mcp-browser", "kind": "waiting", "match": "^MCP 请求在浏览器中完成", "say": "去浏览器完成" },
+    { "id": "official-sandbox", "kind": "waiting", "match": "^等待沙箱授权", "say": "沙箱授权" },
+    { "id": "official-worker", "kind": "waiting", "match": "^后台任务在等你回应", "say": "后台任务在问" },
+    { "id": "official-dialog", "kind": "waiting", "match": "^有对话框打开", "say": "有对话框" },
+    { "id": "generic-input", "kind": "waiting", "match": "^(?:Agent 等待你的输入|等待你的输入|等待你处理)", "say": "", "note": "只说在等，状态词已经说了，不加原因" },
+
+    { "id": "session-limit", "kind": "error", "match": "(?i)hit your session limit · resets (?P<at>\\d{1,2}(?::\\d{2})?\\s?[ap]m)", "say": "额度用完 · {at} 恢复" },
+    { "id": "weekly-limit", "kind": "error", "match": "(?i)weekly limit|1-week quota|7-day usage limit|已用满 7 天", "say": "周额度用完" },
+    { "id": "usage-limit", "kind": "error", "match": "(?i)usage limit|session limit|quota (?:has been|is) exhausted|quota will|credits are required|credit usage limit|usage-credits|your \\S+ \\d+ limit|使用上限|用量上限|额度已用尽|共享额度", "say": "额度用完" },
+    { "id": "rate-limited", "kind": "error", "match": "(?i)\\(429\\)|throttling|rate limit", "say": "被限流" },
+    { "id": "login-expired", "kind": "error", "match": "(?i)oauth (?:session expired|token revoked)|login expired|not logged in|please run /login|missing api key|invalid api key|invalid bearer|未登录|api error: 401\\b", "say": "要重新登录" },
+    { "id": "account-hold", "kind": "error", "match": "(?i)account is on hold|claude\\.ai/restricted", "say": "账号受限" },
+    { "id": "no-access", "kind": "error", "match": "(?i)does not have access|not authorized|分组已删除|api error: 403\\b", "say": "没有权限" },
+    { "id": "overloaded", "kind": "error", "match": "(?i)\\b529\\b|overloaded|访问量过大|过载", "say": "服务繁忙" },
+    { "id": "insufficient-funds", "kind": "error", "match": "(?i)\\b402\\b|insufficient (?:account )?funds|more credits", "say": "余额不足" },
+    { "id": "server-error", "kind": "error", "match": "(?i)server-side issue|api error: 5\\d\\d", "say": "服务出错" },
+    { "id": "model-unavailable", "kind": "error", "match": "(?i)issue with the selected model|model .* (?:does not exist|not found)|model is unavailable|modelcode：不存在", "say": "模型不可用" },
+    { "id": "mid-response", "kind": "error", "match": "(?i)mid-response|mid-stream|stopped arriving|stream idle timeout|connection (?:closed|dropped)|econnreset", "say": "回复中断" },
+    { "id": "cannot-connect", "kind": "error", "match": "(?i)unable to connect|can't reach|enotfound|econnrefused|connectionrefused|connection refused|api error: the operation timed out|certificate (?:verification|hostname)", "say": "连不上 API" },
+    { "id": "content-blocked", "kind": "error", "match": "(?i)不安全或敏感内容|content (?:policy|filter)", "say": "内容被拦截" },
+    { "id": "too-long", "kind": "error", "match": "(?i)prompt is too long|request too large|context (?:length|window)|token limit", "say": "对话太长" },
+    { "id": "aborted", "kind": "error", "match": "(?i)operation was aborted|request aborted", "say": "请求被中止" },
+    { "id": "image-format", "kind": "error", "match": "(?i)cannot decode visions|image format", "say": "图片格式不支持" },
+    { "id": "hook-api-error", "kind": "error", "match": "^API 错误中止了回合", "say": "API 出错" },
+    { "id": "api-status", "kind": "error", "match": "(?i)api error: (?P<code>\\d{3})", "say": "API {code}" },
+    { "id": "test-failed", "kind": "error", "match": "^测试失败", "say": "测试失败" },
+    { "id": "exit-code", "kind": "error", "match": "^终端退出码 (?P<code>-?\\d+)", "say": "退出码 {code}" }
+  ]
+}

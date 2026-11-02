@@ -113,15 +113,25 @@ impl Workbench {
         let card_id = session.map(|s| s.id.clone());
         let terminal_style = crate::ui::style::current(cx) == crate::ui::style::Style::Terminal;
         let decorated = self.pane_decorations(id, cx);
+        // Why it needs you, short, rides on the state chip; the whole text and what it was
+        // asked are in the title's hover card, so the pane carries no second line.
+        let reason = session
+            .zip(status)
+            .and_then(|(s, g)| self.attention_reason(s, g));
         // Where the program runs left the footer for the title's hover card.
         let tip: Vec<String> = session
             .map(|s| self.session_line(s))
             .into_iter()
+            .chain(
+                session
+                    .zip(status)
+                    .map(|(s, g)| self.pane_story(s, g))
+                    .unwrap_or_default(),
+            )
             .chain(self.pane_place(id, session, cx))
             .chain(decorated.tip)
             .filter(|l| !l.is_empty())
             .collect();
-        let story = session.zip(status).and_then(|(s, g)| self.pane_story(s, g));
         // 标记完成 whenever the Agent is not mid-turn or asking: done is yours to say.
         let review = session.filter(|s| {
             s.outcome == Outcome::Open
@@ -148,14 +158,16 @@ impl Workbench {
             .when_some(status, |d, g| {
                 d.child(if terminal_style {
                     div()
+                        .flex_shrink_0()
                         .flex()
                         .gap(px(T::S4))
                         .text_size(px(T::MONO_SIZE))
                         .text_color(g.colors().1)
                         .child(glyph(g))
                         .child(g.label())
+                        .when_some(reason.clone(), |d, r| d.child("·").child(r))
                 } else {
-                    state_chip(g)
+                    state_chip(g, reason.clone())
                 })
             })
             .when(rang, |d| d.child(label("🔔")))
@@ -289,20 +301,6 @@ impl Workbench {
                     .text_color(T::color(T::muted()))
                     .on_click(cx.listener(move |this, _, _, cx| this.close_pane(&close_id, cx))),
             );
-        let story = story.map(|story| {
-            div()
-                .flex_shrink_0()
-                .px(px(T::S10))
-                .py(px(T::S2))
-                .truncate()
-                .text_size(px(T::META))
-                .text_color(T::color(T::secondary()))
-                .when(!terminal_style, |d| {
-                    d.border_b(px(T::BORDER_WIDTH))
-                        .border_color(T::color(T::border()))
-                })
-                .child(story)
-        });
         let body = div()
             .flex_1()
             .min_h_0()
@@ -438,7 +436,6 @@ impl Workbench {
                                 .border_b(px(T::BORDER_WIDTH))
                                 .border_color(line)
                         })
-                        .children(story)
                         .child(body)
                         .children(footer),
                 );
@@ -460,7 +457,6 @@ impl Workbench {
                         .child(left.flex_1())
                         .child(right),
                 )
-                .children(story)
                 .child(body)
                 .children(footer)
                 // Among several panes the focused one carries a line along its top edge,
@@ -1466,7 +1462,9 @@ impl PaneAction for gpui::Stateful<gpui::Div> {
     }
 }
 /// The pane header's status: the group's wash, its ink and its dot.
-fn state_chip(group: Group) -> gpui::Div {
+/// The state word, and after it why the session needs you when a reasons rule knows:
+/// 「等你回答 · 批准 WebSearch」. The phrase is already cut to the rules' width.
+fn state_chip(group: Group, reason: Option<String>) -> gpui::Div {
     let (dot, ink, wash) = group.colors();
     div()
         .flex_shrink_0()
@@ -1482,6 +1480,10 @@ fn state_chip(group: Group) -> gpui::Div {
         .font_weight(gpui::FontWeight::SEMIBOLD)
         .child(div().size(px(T::DOT)).rounded_full().bg(dot))
         .child(group.label())
+        .when_some(reason, |d, r| {
+            d.child(div().opacity(0.6).child("·"))
+                .child(div().font_weight(gpui::FontWeight::NORMAL).child(r))
+        })
 }
 /// Lower is more urgent: what a tab's dot shows when its panes disagree.
 pub(super) fn urgency(group: Group) -> u8 {
@@ -1654,29 +1656,32 @@ impl Workbench {
             None => home_relative(&cwd),
         })
     }
-    /// `停在 测试超时 · 你要它 修好登录`: what the conversation is at and what it was asked.
-    fn pane_story(&self, s: &AgentSession, g: Group) -> Option<String> {
-        let at = self.row_detail(s, g).map(|d| {
-            if d.starts_with("停在") || d.starts_with("正在") {
-                d
-            } else {
-                format!("停在 {d}")
-            }
-        });
+    /// The title's hover card lines about the conversation: what it was asked, and where
+    /// it stopped in full (the question, the error, else the latest reply's first line).
+    fn pane_story(&self, s: &AgentSession, g: Group) -> Vec<String> {
         let ask = self
             .workspace
             .content
             .get(&s.id)
             .and_then(|c| c.asks.first())
-            // A title taken from the first ask already says it.
-            .filter(|q| {
-                let title = self.session_title(s);
-                let title = title.trim_end_matches('…').trim();
-                title.is_empty() || !q.text.trim().starts_with(title)
-            })
-            .map(|q| format!("你要它 {}", keepline_core::content::short(&q.text, 80)));
-        let parts: Vec<String> = at.into_iter().chain(ask).collect();
-        (!parts.is_empty()).then(|| parts.join(" · "))
+            .map(|q| {
+                format!(
+                    "你要它 {}",
+                    keepline_core::content::short(q.text.trim(), 240)
+                )
+            });
+        let at = self
+            .attention_text(s, g)
+            .map(|t| keepline_core::content::short(&keepline_core::content::plain_line(&t), 240))
+            .or_else(|| self.row_detail(s, g))
+            .map(|d| {
+                if d.starts_with("停在") || d.starts_with("正在") {
+                    d
+                } else {
+                    format!("停在 {d}")
+                }
+            });
+        ask.into_iter().chain(at).collect()
     }
     /// Shown only while another window types into this pane: the way to take it back.
     fn pane_footer(&self, id: &str, takeover: String, cx: &Context<Self>) -> gpui::Div {

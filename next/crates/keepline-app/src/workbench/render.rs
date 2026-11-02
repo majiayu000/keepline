@@ -1259,7 +1259,13 @@ impl Workbench {
                 )
             })
             .max_by_key(|(_, (_, attention))| *attention)
-            .map(|(s, (g, _))| (Some(g), self.attention_reason(s, g)))
+            .map(|(s, (g, _))| {
+                let line = self.attention_text(s, g).and_then(|t| {
+                    let l = t.lines().map(str::trim).find(|l| !l.is_empty())?;
+                    Some(l.chars().take(T::TAB_TIP_REASON_CHARS).collect::<String>())
+                });
+                (Some(g), line)
+            })
             .unwrap_or_default();
         let first = ids
             .iter()
@@ -1275,7 +1281,22 @@ impl Workbench {
             cwd,
         }
     }
+    /// Why the session needs you, as a short phrase from the reasons rules (`批准
+    /// WebSearch`, `要重新登录`, a question's title). `None` when no rule knows the text or
+    /// the rule has nothing to add: the state word alone says it, the full text is in
+    /// [`Self::attention_text`].
     pub(super) fn attention_reason(&self, s: &AgentSession, g: Group) -> Option<String> {
+        use keepline_core::reason::{Kind, phrase};
+        let kind = match g {
+            Group::Waiting => Kind::Waiting,
+            Group::Error => Kind::Error,
+            _ => return None,
+        };
+        let text = self.attention_text(s, g)?;
+        Some(phrase(kind, &text).text).filter(|p| !p.is_empty())
+    }
+    /// The whole text behind 等你回答 / 出错了: the question or approval, the error.
+    pub(super) fn attention_text(&self, s: &AgentSession, g: Group) -> Option<String> {
         let content = self.workspace.content.get(&s.id);
         let text = match g {
             Group::Waiting => content.map(|c| c.waiting.clone()).unwrap_or_default(),
@@ -1295,8 +1316,7 @@ impl Workbench {
                 .unwrap_or_default(),
             _ => return None,
         };
-        let line = text.lines().map(str::trim).find(|l| !l.is_empty())?;
-        Some(line.chars().take(T::TAB_TIP_REASON_CHARS).collect())
+        Some(text).filter(|t| !t.trim().is_empty())
     }
 }
 impl Render for TabTip {

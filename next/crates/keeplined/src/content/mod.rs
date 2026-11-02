@@ -58,10 +58,18 @@ pub(crate) fn question_summary(v: &Value) -> String {
                                 .join(" / ")
                         })
                         .unwrap_or_default();
+                    // The question's short title leads, 【范围】, for the status chip's phrase
+                    // (keepline-core reasons rule `question-header`).
+                    let title = q["header"]
+                        .as_str()
+                        .map(str::trim)
+                        .filter(|h| !h.is_empty() && !h.contains(['【', '】', '\n']))
+                        .map(|h| format!("【{h}】"))
+                        .unwrap_or_default();
                     Some(if options.is_empty() {
-                        prompt.to_owned()
+                        format!("{title}{prompt}")
                     } else {
-                        format!("{prompt}（{options}）")
+                        format!("{title}{prompt}（{options}）")
                     })
                 })
                 .collect::<Vec<_>>()
@@ -812,6 +820,19 @@ mod tests {
             question_summary(&json!({"questions":[{"title":"选一个","options":["A","B"]}]})),
             "选一个（A / B）"
         );
+        // The short title leads in 【】, which the status chip shows on its own.
+        assert_eq!(
+            question_summary(
+                &json!({"questions":[{"header":"合并授权","question":"合并到 main？","options":["是","否"]}]})
+            ),
+            "【合并授权】合并到 main？（是 / 否）"
+        );
+        let waiting =
+            question_summary(&json!({"questions":[{"header":"合并授权","question":"合并？"}]}));
+        let p = keepline_core::reason::Rules::parse(keepline_core::reason::BUNDLED)
+            .unwrap()
+            .phrase(keepline_core::reason::Kind::Waiting, &waiting);
+        assert_eq!(p.text, "合并授权");
     }
     #[test]
     fn tail_only_user_is_an_addition_not_a_fabricated_first_request() {

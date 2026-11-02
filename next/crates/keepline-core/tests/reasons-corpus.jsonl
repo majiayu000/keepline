@@ -1,0 +1,115 @@
+{"kind": "error", "text": "Failed to authenticate: OAuth session expired and could not be refreshed", "count": 111}
+{"kind": "error", "text": "Usage credits are required for this model.", "count": 98}
+{"kind": "error", "text": "Failed to authenticate. API Error: 403 You've reached your usage limit for this billing cycle. Your quota will be refreshed in the next cycle. To continue now, purchase extra usage or upgrade your pla", "count": 94}
+{"kind": "error", "text": "API Error: Request rejected (429) · event:error data:{\"request_id\":\"…\",\"code\":\"Throttling\",\"message\":\"Your token-plan 1-week quota has been exhausted. The quota will reset at MM-DD hh:mm:ss UTC.\"}", "count": 75}
+{"kind": "error", "text": "Failed to authenticate. API Error: 403 API Key 所属分组已删除", "count": 75}
+{"kind": "error", "text": "You've hit your session limit · resets 12:20am (Asia/Shanghai)", "count": 67}
+{"kind": "error", "text": "Please run /login · API Error: 403 You've reached your usage limit for this billing cycle. Your quota will be refreshed in the next cycle. To continue now, purchase extra usage or upgrade your plan: h", "count": 46}
+{"kind": "error", "text": "You've reached your Fable 5 limit. Run /usage-credits to continue or switch models with /model.", "count": 46}
+{"kind": "error", "text": "API Error: Connection closed mid-response. The response above may be incomplete.", "count": 35}
+{"kind": "error", "text": "API Error: Request rejected (429) · [1302][您的账户已达到速率限制，请您控制请求频率][…]", "count": 25}
+{"kind": "error", "text": "API Error: 400 event:error data:{\"request_id\":\"…\",\"code\":\"InvalidParameter\",\"message\":\"Model not exist.\"}", "count": 24}
+{"kind": "waiting", "text": "【下一步】", "count": 20}
+{"kind": "error", "text": "API Error: Unable to connect to API (UNKNOWN_CERTIFICATE_VERIFICATION_ERROR)", "count": 19}
+{"kind": "error", "text": "Login expired · Please run /login", "count": 19}
+{"kind": "waiting", "text": "【范围】", "count": 16}
+{"kind": "error", "text": "API Error: Request rejected (429) · Your token-plan 5-hour quota has been exhausted. The quota will reset at MM-DD hh:mm:ss UTC.", "count": 13}
+{"kind": "error", "text": "Failed to authenticate. API Error: 403 Your current subscription does not have access to Kimi Code right now. Upgrade your plan to keep coding with Kimi Code: <url>", "count": 12}
+{"kind": "error", "text": "Failed to authenticate. API Error: 401 Missing API key.", "count": 12}
+{"kind": "error", "text": "You've hit your session limit · resets 8:40pm (Asia/Shanghai)", "count": 10}
+{"kind": "waiting", "text": "This Bash command contains multiple operations. The following part requires approval: grep …", "count": 10}
+{"kind": "error", "text": "API Error: Request rejected (429) · Your token-plan 1-week quota has been exhausted. The quota will reset at MM-DD hh:mm:ss UTC.", "count": 9}
+{"kind": "waiting", "text": "【合并授权】", "count": 8}
+{"kind": "error", "text": "API Error: Unable to connect to API (ConnectionRefused)", "count": 8}
+{"kind": "error", "text": "Your account is on hold and can't use Claude Code. View details or appeal: <url>", "count": 7}
+{"kind": "error", "text": "You've hit your session limit · resets 7:10pm (Asia/Shanghai)", "count": 7}
+{"kind": "error", "text": "API Error: 400 Provider returned error", "count": 7}
+{"kind": "error", "text": "API Error: 529 [1305][该模型当前访问量过大，请您稍后再试][…]. This is a server-side issue, usually temporary — try again in a moment. If it persists, check your inference gateway (open.bigmodel.cn).", "count": 6}
+{"kind": "error", "text": "API Error: Request rejected (429) · 已用满 7 天用量上限，约 6 天 23 小时后自动恢复。如需继续，可在设置里切回自己的模型订阅，或联系管理员提额。 / Your 7-day usage limit is used up; it resets in about 6d 23h. To keep working, switch back to your own ", "count": 6}
+{"kind": "waiting", "text": "【技术栈】", "count": 6}
+{"kind": "waiting", "text": "【提交方式】", "count": 6}
+{"kind": "error", "text": "You've hit your session limit · resets 3:10pm (Asia/Shanghai)", "count": 6}
+{"kind": "error", "text": "You've hit your weekly limit · resets Oct 13 at 12am (Asia/Shanghai)", "count": 6}
+{"kind": "error", "text": "API Error: Request rejected (429) · event:error data:{\"request_id\":\"…\",\"code\":\"Throttling\",\"message\":\"Your token-plan 5-hour quota has been exhausted. The quota will reset at MM-DD hh:mm:ss UTC.\"}", "count": 6}
+{"kind": "error", "text": "API Error: 400 [1210][API 调用参数有误，请检查文档。][…]", "count": 6}
+{"kind": "waiting", "text": "【修复范围】", "count": 5}
+{"kind": "error", "text": "API Error: Stream idle timeout - no chunks received", "count": 5}
+{"kind": "error", "text": "API Error: Response stalled mid-stream. The response above may be incomplete.", "count": 5}
+{"kind": "error", "text": "Failed to authenticate. API Error: 403 This request was not authorized.", "count": 5}
+{"kind": "waiting", "text": "This command requires approval", "count": 5}
+{"kind": "error", "text": "You've hit your session limit · resets 9:40pm (Asia/Shanghai)", "count": 5}
+{"kind": "waiting", "text": "【目标】", "count": 4}
+{"kind": "waiting", "text": "【发布确认】", "count": 4}
+{"kind": "waiting", "text": "【形态】", "count": 4}
+{"kind": "waiting", "text": "【未提交改动】", "count": 4}
+{"kind": "waiting", "text": "【档位】", "count": 4}
+{"kind": "error", "text": "API Error: 503 云端资源当前过载，暂时无法为这个账号提供服务。本次请求未被服务，不计费、也不影响你的账号额度。恢复时间会在 Discord 同步：<url> / Our cloud capacity is overloaded and cannot serve this account right now. Nothing was cha", "count": 4}
+{"kind": "waiting", "text": "This Bash command contains multiple operations. The following part requires approval: ls …", "count": 4}
+{"kind": "waiting", "text": "【可见性】", "count": 3}
+{"kind": "error", "text": "API Error: Can't reach the API server — check your internet or DNS (ENOTFOUND)", "count": 3}
+{"kind": "error", "text": "Not logged in · Please run /login", "count": 3}
+{"kind": "waiting", "text": "【仓库】", "count": 3}
+{"kind": "waiting", "text": "【语言】", "count": 3}
+{"kind": "error", "text": "There's an issue with the selected model (k3[1m]). It may not exist or you may not have access to it. Run /model to pick a different model.", "count": 3}
+{"kind": "waiting", "text": "【改动范围】", "count": 3}
+{"kind": "error", "text": "API Error: Connection dropped (ECONNRESET)", "count": 3}
+{"kind": "error", "text": "API Error: Your computer went to sleep mid-response. The response above may be incomplete.", "count": 3}
+{"kind": "waiting", "text": "【优先级】", "count": 3}
+{"kind": "error", "text": "API Error: 400 [1214][modelCode：不存在][…]", "count": 3}
+{"kind": "error", "text": "API Error: Unable to connect to API: SSL certificate hostname mismatch", "count": 3}
+{"kind": "error", "text": "API Error: 400 Cannot decode visions. Supported formats are: [image/jpg image/jpeg image/png image/webp image/gif application/octet-stream]", "count": 3}
+{"kind": "error", "text": "API Error: [1301][系统检测到输入或生成内容可能包含不安全或敏感内容，请您避免输入易产生敏感内容的提示语，感谢您的配合。][…]", "count": 3}
+{"kind": "waiting", "text": "This Bash command contains multiple operations. The following part requires approval: echo …", "count": 3}
+{"kind": "waiting", "text": "【交付方式】", "count": 2}
+{"kind": "waiting", "text": "Claude requested permissions to use WebSearch, but you haven't granted it yet.", "count": 2}
+{"kind": "waiting", "text": "【视觉风格】", "count": 2}
+{"kind": "waiting", "text": "【验证方式】", "count": 2}
+{"kind": "error", "text": "Failed to authenticate: OAuth token revoked. Please log in again or contact your administrator.", "count": 2}
+{"kind": "error", "text": "You've hit your session limit · resets 12:30am (Asia/Shanghai)", "count": 2}
+{"kind": "waiting", "text": "【版本】", "count": 2}
+{"kind": "error", "text": "You've hit your session limit · resets 11:20am (Asia/Shanghai)", "count": 2}
+{"kind": "error", "text": "API Error: Unable to connect to API: SSL certificate verification failed. Check your proxy or corporate SSL certificates", "count": 2}
+{"kind": "error", "text": "You've hit your session limit · resets 5:20am (America/Denver)", "count": 2}
+{"kind": "error", "text": "API Error: Request rejected (429) · [1308][已达到 5 小时的使用上限。您的限额将在 2026-08-26 20:52:49 重置。][…]", "count": 2}
+{"kind": "error", "text": "You've hit your session limit · resets 3:30pm (Asia/Shanghai)", "count": 2}
+{"kind": "error", "text": "API Error: The operation timed out.", "count": 2}
+{"kind": "waiting", "text": "This Bash command contains multiple operations. The following part requires approval: python3 …", "count": 2}
+{"kind": "error", "text": "API Error: The response stopped arriving. The response above may be incomplete.", "count": 1}
+{"kind": "waiting", "text": "Claude requested permissions to use WebFetch, but you haven't granted it yet.", "count": 1}
+{"kind": "error", "text": "API Error: 400 Upstream request failed: Model is unavailable.", "count": 1}
+{"kind": "error", "text": "API Error: 402 Upstream request failed: Insufficient account funds", "count": 1}
+{"kind": "error", "text": "API Error: Request rejected (429) · 中转的共享额度已用尽,暂时无法为这个账号提供服务。可在设置里接入你自己的 Claude / Codex 账号继续工作 —— 用自己的账号不消耗这里的额度。 / The relay’s shared quota is used up and cannot serve this account right now. Connect", "count": 1}
+{"kind": "error", "text": "You've hit your session limit · resets 12am (Asia/Shanghai)", "count": 1}
+{"kind": "error", "text": "There's an issue with the selected model (qwen3.8-max-preview). It may not exist or you may not have access to it. Run /model to pick a different model.", "count": 1}
+{"kind": "error", "text": "You've hit your session limit · resets 8:30pm (Asia/Shanghai)", "count": 1}
+{"kind": "error", "text": "Please run /login · API Error: 403 Request not allowed", "count": 1}
+{"kind": "error", "text": "API Error: 502 Upstream access forbidden, please contact administrator. This is a server-side issue, usually temporary — try again in a moment. If it persists, check your inference gateway (max.ai-zjl", "count": 1}
+{"kind": "error", "text": "API Error: 402 This request requires more credits, or fewer max_tokens. You requested up to 64000 tokens, but can only afford 62329. To increase, visit <url>", "count": 1}
+{"kind": "error", "text": "There's an issue with the selected model (k3[1m]). It may not exist or you may not have access to it. Run --model to pick a different model.", "count": 1}
+{"kind": "error", "text": "There's an issue with the selected model (claude-opus-4-8[1m]). It may not exist or you may not have access to it. Run /model to pick a different model.", "count": 1}
+{"kind": "error", "text": "Request too large (max 32MB). Accumulated images and attachments in the conversation pushed the request over the limit. Run /compact, or double press esc to go back and remove attachments.", "count": 1}
+{"kind": "error", "text": "API Error: Unable to connect to API (ENOTFOUND)", "count": 1}
+{"kind": "error", "text": "Please run /login · API Error: 401 Model Ox Alpha Free is not supported", "count": 1}
+{"kind": "error", "text": "Please run /login · API Error: 401 Invalid authentication credentials", "count": 1}
+{"kind": "error", "text": "API Error: 400 Invalid request: Your request exceeded model token limit: 262144 (requested: 310531)", "count": 1}
+{"kind": "error", "text": "API Error: 529 Overloaded. This is a server-side issue, usually temporary — try again in a moment. If it persists, check <url>", "count": 1}
+{"kind": "waiting", "text": "This Bash command contains multiple operations. The following part requires approval: find …", "count": 1}
+{"kind": "waiting", "text": "Claude requested permissions to read from ~/…/claude-rules, but you haven't granted it yet.", "count": 1}
+{"kind": "waiting", "text": "Claude requested permissions to read from ~/…/knowledge-scout-contract.md, but you haven't granted it yet.", "count": 1}
+{"kind": "waiting", "text": "This Bash command contains multiple operations. The following part requires approval: head; …", "count": 1}
+{"kind": "waiting", "text": "Claude requested permissions to write to ~/…/chk.py, but you haven't granted it yet.", "count": 1}
+{"kind": "waiting", "text": "Claude requested permissions to read from ~/…/personal-contract.md, but you haven't granted it yet.", "count": 1}
+{"kind": "error", "text": "API Error: Connection lost mid-response. The response above may be incomplete.", "count": 1}
+{"kind": "error", "text": "API Error: Unable to connect to API (EPROTO)", "count": 1}
+{"kind": "error", "text": "There's an issue with the selected model (deepseek-v4.1-flash). It may not exist or you may not have access to it. Run /model to pick a different model.", "count": 1}
+{"kind": "error", "text": "Please run /login · API Error: 401 Missing API key.", "count": 1}
+{"kind": "error", "text": "API Error: Connection refused — a firewall or proxy may be blocking it (ConnectionRefused)", "count": 1}
+{"kind": "error", "text": "Failed to authenticate. API Error: 403 当前是「云端」档，但云端凭据不可用（未登录或已失效），本轮已停止，没有动用你自己账号的额度。请登录后重试，或切换到「智能」「本地」使用你自己的账号继续。 (mirasim: Cloud mode is on but there is no usable cloud credential (not signed in, o", "count": 1}
+{"kind": "error", "text": "Failed to authenticate. API Error: 401 Invalid bearer token", "count": 1}
+{"kind": "error", "text": "Prompt is too long", "count": 1}
+{"kind": "error", "text": "There's an issue with the selected model (deepseek-v4-flash). It may not exist or you may not have access to it.", "count": 1}
+{"kind": "error", "text": "API Error: 402 We're unable to verify your membership benefits at this time. Please ensure your membership is active.", "count": 1}
+{"kind": "error", "text": "Please run /login · API Error: 403 Access to model denied. Please make sure you are eligible for using the model.", "count": 1}
+{"kind": "waiting", "text": "This Bash command contains multiple operations. The following part requires approval: env …", "count": 1}
+{"kind": "error", "text": "API Error: The operation was aborted.", "count": 1}
+{"kind": "error", "text": "API Error: Request rejected (429) · Rate limit reached, please try again later.", "count": 1}

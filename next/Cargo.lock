@@ -2965,6 +2965,7 @@ name = "keepline-core"
 version = "0.1.0"
 dependencies = [
  "libghostty-vt",
+ "regex",
  "serde",
  "serde_json",
  "uuid",

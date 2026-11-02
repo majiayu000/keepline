@@ -1,0 +1,170 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>画面标题下那一行</title>
+<style>
+  :root { --bg:#f4f4f3; --pane:#fff; --header:#fafaf9; --border:#e6e5e3; --primary:#1d1d1b; --secondary:#5f5e5a; --muted:#9a9893; --ready:#2f7d4f; --ready-bg:#e7f3ec; --warn:#a8630a; --warn-bg:#fbf0de; --mono: "SF Mono", Menlo, monospace; }
+  * { box-sizing: border-box; }
+  body { margin:0; background:var(--bg); color:var(--primary); font: 13px/1.5 -apple-system, "PingFang SC", sans-serif; }
+  main { max-width: 980px; margin: 0 auto; padding: 28px 16px 60px; }
+  h1 { font-size: 18px; margin: 0 0 4px; }
+  .lead { color: var(--secondary); margin: 0 0 24px; }
+  section { margin-bottom: 30px; }
+  h2 { font-size: 14px; margin: 0 0 4px; }
+  h2 .tag { font-weight: 400; color: var(--muted); margin-left: 6px; }
+  .why { color: var(--secondary); margin: 0 0 10px; font-size: 12.5px; }
+  .pane { background: var(--pane); border: 1px solid var(--border); overflow: hidden; }
+  .hdr { height: 32px; display: flex; align-items: center; gap: 8px; padding: 0 10px 0 14px; background: var(--header); }
+  .chip { font-size: 11px; padding: 1px 6px; border-radius: 4px; flex-shrink: 0; }
+  .chip.ready { color: var(--ready); background: var(--ready-bg); }
+  .chip.warn { color: var(--warn); background: var(--warn-bg); }
+  .title { flex: 1; min-width: 0; font: 12.5px var(--mono); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .meta { color: var(--muted); font-size: 11.5px; flex-shrink: 0; }
+  .btn { font-size: 11.5px; padding: 2px 8px; border-radius: 4px; background: #efeeec; flex-shrink: 0; }
+  .story { font-size: 11.5px; color: var(--secondary); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .story.now { padding: 2px 10px; }
+  .story.b { padding: 4px 14px 6px; display: flex; gap: 14px; }
+  .story.b span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .story.b span:first-child { flex-shrink: 1; min-width: 0; }
+  .k { color: var(--muted); margin-right: 6px; }
+  .stop { color: var(--warn); }
+  .term { font: 12px/1.6 var(--mono); padding: 6px 14px 10px; color: #333; white-space: pre; overflow: hidden; }
+  .term .d { color: #b33; } .term .a { color: #2f7d4f; } .term .g { color: #999; }
+  .tipdemo { position: relative; display: inline-block; }
+  .tip { position: absolute; left: 0; top: 26px; z-index: 2; width: 360px; background: #fff; border: 1px solid var(--border); box-shadow: 0 4px 14px rgba(0,0,0,.08); padding: 8px 10px; font: 12px/1.6 -apple-system, "PingFang SC", sans-serif; color: var(--secondary); white-space: normal; }
+  .tip b { color: var(--primary); font-weight: 500; margin-right: 6px; }
+  .note { font-size: 12px; color: var(--muted); margin-top: 6px; }
+  .rec { color: var(--ready); font-weight: 600; }
+  @media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) { --bg:#1b1b1a; --pane:#232322; --header:#2a2a28; --border:#3a3936; --primary:#ecebe8; --secondary:#b4b2ad; --muted:#85837e; --ready-bg:#1f3428; --warn-bg:#3a2c16; } .btn{background:#33322f} .tip{background:#2a2a28} .term{color:#ddd} }
+  :root[data-theme="dark"] { --bg:#1b1b1a; --pane:#232322; --header:#2a2a28; --border:#3a3936; --primary:#ecebe8; --secondary:#b4b2ad; --muted:#85837e; }
+</style>
+</head>
+<body>
+<main>
+  <p class="why" style="border:1px solid var(--border);padding:10px 12px;background:var(--pane)"><b>决定（2026-11-02，采用 D）</b>：去掉画面标题下的第二行；要你时状态标签后面接一个短原因（「等你回答 · 批准 WebSearch」「出错了 · 要重新登录」「等你回答 · 合并授权」），认不出的只写状态词。原因来自规则表 <code>next/crates/keepline-core/assets/reasons.json</code>，可在 <code>~/.config/keepline/reasons.json</code> 覆盖；没命中的原文记到 <code>reasons-misses.jsonl</code>，用 <code>next/scripts/mine-reasons.py</code> 汇总后补规则。「你要它」和完整原因移到标题悬停卡。下面是当时比较过的方向。</p>
+  <h1>画面标题下那一行：三个方向</h1>
+  <p class="lead">现在这行把「最新回复的第一句」硬加上「停在」，再用 · 接上「你要它」，挤成一行截断；左边距 10 和标题、正文的 14 不齐，下面紧贴终端。而且最新回复本来就在下面的终端里，同一句话一屏出现两次。</p>
+
+  <section>
+    <h2>现在 <span class="tag">截图里的样子</span></h2>
+    <div class="pane">
+      <div class="hdr"><span class="chip ready">等你验收</span><span class="title">整合为 next 做的 UI</span><span class="meta">Claude · 3 分钟前</span><span class="btn">标记完成</span></div>
+      <div class="story now">停在 我把 specs/terminal-workbench/design/index.html 重写了，现在它是 next 全部设计稿的唯一入口，已在浏览器打开，已提交（5e68a1ef）。 · 你要它 我在这个库为 next 做了很多 ui 你能帮我整合一下吗 有一些已经过时了</div>
+      <div class="term"><span class="g">   123      &lt;div class="list"&gt;</span>
+<span class="d">    78 -      &lt;div class="item"&gt;&lt;b&gt;Main · Overview · Cleanup&lt;/b&gt;…</span>
+<span class="a">   124 +      &lt;div class="item"&gt;&lt;b&gt;架构图与状态机&lt;/b&gt;…</span></div>
+    </div>
+  </section>
+
+  <section>
+    <h2>A · 去掉这一行 <span class="tag">最安静</span></h2>
+    <p class="why">标题栏只留标题；「你要它」「停在」移进标题的悬停卡（和地点、分支放在一起）。终端直接接在标题栏下面。</p>
+    <div class="pane">
+      <div class="hdr"><span class="chip ready">等你验收</span><span class="title"><span class="tipdemo">整合为 next 做的 UI<span class="tip"><b>你要它</b>我在这个库为 next 做了很多 ui 你能帮我整合一下吗 有一些已经过时了<br><b>位置</b>~/Desktop/code/AI/tools/keepline · main</span></span></span><span class="meta">Claude · 3 分钟前</span><span class="btn">标记完成</span></div>
+      <div class="term" style="padding-top:64px"><span class="g">   123      &lt;div class="list"&gt;</span>
+<span class="d">    78 -      &lt;div class="item"&gt;&lt;b&gt;Main · Overview · Cleanup&lt;/b&gt;…</span></div>
+    </div>
+    <p class="note">代价：不悬停就看不到「你要它」；终端滚走以后，要靠悬停才知道这个会话是干嘛的。</p>
+  </section>
+
+  <section>
+    <h2>B · 只写终端里没有的 <span class="tag">上一轮推荐</span></h2>
+    <p class="why">「你要它」常驻，截短到一行。「停在」只在真正停住（等你回答、报错、权限）时出现，写的是短原因、用状态色，放在右边不被截掉；平常的最新回复不再重复。左边距对齐 14，和终端之间留一点空。</p>
+    <div class="pane">
+      <div class="hdr"><span class="chip ready">等你验收</span><span class="title">整合为 next 做的 UI</span><span class="meta">Claude · 3 分钟前</span><span class="btn">标记完成</span></div>
+      <div class="story b"><span><span class="k">你要它</span>我在这个库为 next 做了很多 ui 你能帮我整合一下吗 有一些已经过时了</span></div>
+      <div class="term"><span class="g">   123      &lt;div class="list"&gt;</span>
+<span class="d">    78 -      &lt;div class="item"&gt;&lt;b&gt;Main · Overview · Cleanup&lt;/b&gt;…</span></div>
+    </div>
+    <div style="height:10px"></div>
+    <div class="pane">
+      <div class="hdr"><span class="chip warn">等你</span><span class="title">修好登录</span><span class="meta">Codex · 刚刚</span></div>
+      <div class="story b"><span><span class="k">你要它</span>登录页提交后一直转圈，查一下是哪一步卡住并修好，顺便补一个测试</span><span class="stop" style="flex-shrink:0">停在 要你批准运行 rm -rf dist</span></div>
+      <div class="term"><span class="g">  Allow command? rm -rf dist  [y/N]</span></div>
+    </div>
+  </section>
+
+  <section>
+    <h2>C · 任务当标题 <span class="tag">最省一行</span></h2>
+    <p class="why">标题栏的标题位置直接写「你要它」那句（会话名进悬停卡）；「停在」原因只在停住时接在状态标签后面。没有第二行。</p>
+    <div class="pane">
+      <div class="hdr"><span class="chip ready">等你验收</span><span class="title" style="font-family:inherit">我在这个库为 next 做了很多 ui 你能帮我整合一下吗 有一些已经过时了</span><span class="meta">Claude · 3 分钟前</span><span class="btn">标记完成</span></div>
+      <div class="term"><span class="g">   123      &lt;div class="list"&gt;</span>
+<span class="d">    78 -      &lt;div class="item"&gt;&lt;b&gt;Main · Overview · Cleanup&lt;/b&gt;…</span></div>
+    </div>
+    <p class="note">代价：画面标题和标签、侧栏的会话名不再一致，分屏多了以后不好对应。</p>
+  </section>
+
+  <h1 style="margin-top:40px">别家怎么做（2026-11-02 查）</h1>
+  <div class="why" style="white-space:normal;line-height:1.8">
+    <b>cmux</b>（libghostty 原生终端）：画面本身没有标题栏说明；Agent 要你时，画面外围亮一圈蓝环、侧栏那一格亮起；「最新一条通知文字」只写在侧栏每个工作区下面；Cmd+Shift+U 跳到最近未读。<br>
+    <b>Warp</b>：状态是画面图标右下角的小徽标，只有五种：进行中、完成、出错、取消、卡住（等批准）；未读活动是行尾一个强调色圆点，聚焦后消失；完整信息放在悬停卡里，不截断。有人提过「卡住时给一个醒目的侧边提示」（#10242），没有回应就关了。<br>
+    <b>Superset / Conductor</b>：状态放侧栏（进行中指示、完成提示音、Dock 角标），画面里是终端或对话本身，没有额外说明行。<br>
+    <b>Codex App</b>：用户抱怨「等批准」很容易漏看，要求在线程列表里常驻一个等待状态，再加角标。<br>
+    <b>Claude Code agent view</b>：每行 = 状态图标 + 会话名 + 一句话 + 时长。那一句由小模型生成：在干活时写在做什么，要你时写它问的问题（例「double jump or wall climb?」）。要你的排最上；终端标签标题写「2 awaiting input」。<br>
+    <b>Cursor Agents 窗口</b>：侧栏按状态分组时有「Needs Attention」区（要批准、要回答、待看的计划、做完没看的）；通知措辞分开：「Done • 名字」「Input needed • …」「Approve terminal command」；悬停行出详情卡（路径、仓库、分支）。<br>
+    <b>Zed</b>：等批准时，回合标签从「Generating」换成「Waiting for confirmation」；子 Agent 在等批准时，对话视图里冒出一条活动栏列出它们，点一下跳过去（理由：等的那个在屏幕外，看起来像卡住了）。线程侧栏按项目分组。<br>
+    <b>VS Code Agents 窗口</b>：会话列表每行写状态和改动统计（+/− 行数），每个会话有自己的标题。<br>
+    <b>Crystal</b>：屏幕边的竖条，每个会话一个颜色状态：工作中、等批准、完成。<br>
+    <b>Vibe Kanban</b>：看板列 待办 / 进行中 / 待审 / 完成，「待审」= Agent 做完等人看，审在 diff 视图里。<br>
+    <b>tmux / Zellij 插件</b>（workmux、claude-tmux-hop、tmux-claude-notifier、tmux-titles）：只在窗口名或标签标题前加一个图标（🤖 工作 / 💬 等你 / ✅ 完成），完成图标聚焦后自动清掉。<br>
+    <b>菜单栏小工具</b>（claude-status-bar 等）：等权限是黄点；多个会话时优先显示等你的那个，不被「在想」的盖掉。<br>
+    <b>云端 Agent</b>（Devin、Jules、Linear）：状态是固定枚举：等你输入、等批准、等计划确认、出错、完成。Linear 的状态由 Agent 最后一条活动自动推出来，开发者不手设。<br>
+    <b>共同点</b>：查了 17 个，没有一家在画面标题下面常驻一行「任务 / 停在哪」。画面上只放<b>状态</b>（徽标、外圈、标签措辞）；<b>一句话原因</b>放在列表那一行；<b>全文</b>放悬停卡。唯一在画面内加条的是 Zed，而且只在有东西等你时才出现。<br>
+    <b>另一个发现</b>：Claude 的那一句是<b>生成的短句</b>（它问的问题），不是回复原文第一行。我们现在的问题一半出在文字：拿回复原文第一行截断，读起来就乱。
+  </div>
+  <p class="why">对 Keepline 的意思：侧栏每行已经写了「停在 原因」，画面上再写一遍就是同一信息一屏两次。所以画面只需要让你知道「这个要你」（状态色 + 外圈），原因留在侧栏和悬停卡。见下面的 D′。</p>
+
+  <section>
+    <h2>D′ · 画面只给状态，原因在侧栏 <span class="tag rec">别家调研后推荐</span></h2>
+    <p class="why">不常驻第二行，状态标签也不加文字。要你时（等你回答、报错）画面外围一圈状态色细线，像 cmux 的蓝环；原因看侧栏那一行，或者悬停标题看全文（你要它、停在、位置）。</p>
+    <div class="pane" style="border:2px solid var(--warn)">
+      <div class="hdr"><span class="chip warn">等你</span><span class="title">修好登录</span><span class="meta">Codex · 刚刚</span></div>
+      <div class="term"><span class="g">  Allow command? rm -rf dist  [y/N]</span></div>
+    </div>
+    <p class="note">代价：侧栏收起时只看得到「等你」，看不到原因，得悬停或者看终端本身（终端里本来就写着要批准什么）。</p>
+  </section>
+
+  <h1 style="margin-top:40px">再想一步：这行到底该回答什么</h1>
+  <p class="lead">终端里已经有 Agent 自己的界面。Keepline 在上面只该补两件终端里看不到的事：<b>这是哪个会话</b>（标题已经回答）、<b>它为什么要你</b>（只在停住时才有）。「你要它」多数时候和标题说的是同一件事，常驻一行是重复。所以下面两个方向都不再常驻第二行。</p>
+
+  <section>
+    <h2>D · 原因长在状态标签上 <span class="tag rec">现在推荐</span></h2>
+    <p class="why">没有第二行。平时标题栏和现在一样；停住时，状态标签往右长出短原因（「等你 · 要批准 rm -rf dist」），一眼就知道该干什么。「你要它」「位置」放进标题悬停卡。原因只出现在需要你的时候，彩色也只给状态，和侧栏「需要你的在上」是同一套话。</p>
+    <div class="pane">
+      <div class="hdr"><span class="chip ready">等你验收</span><span class="title">整合为 next 做的 UI</span><span class="meta">Claude · 3 分钟前</span><span class="btn">标记完成</span></div>
+      <div class="term"><span class="g">   123      &lt;div class="list"&gt;</span>
+<span class="d">    78 -      &lt;div class="item"&gt;&lt;b&gt;Main · Overview · Cleanup&lt;/b&gt;…</span></div>
+    </div>
+    <div style="height:10px"></div>
+    <div class="pane">
+      <div class="hdr"><span class="chip warn">等你 · 要批准 rm -rf dist</span><span class="title">修好登录</span><span class="meta">Codex · 刚刚</span></div>
+      <div class="term"><span class="g">  Allow command? rm -rf dist  [y/N]</span></div>
+    </div>
+    <div style="height:10px"></div>
+    <div class="pane">
+      <div class="hdr"><span class="chip warn" style="color:#b33;background:#fbe6e4">报错 · 测试超时 3 次</span><span class="title">修好登录</span><span class="meta">Codex · 5 分钟前</span></div>
+      <div class="term"><span class="d">  FAIL tests/login.spec.ts (timeout 30000ms)</span></div>
+    </div>
+    <p class="note">原因截到 20 字左右；窗格窄时原因先缩、标题后缩。代价：要看「你要它」原话得悬停。</p>
+  </section>
+
+  <section>
+    <h2>E · 收起的说明，点开才是全文</h2>
+    <p class="why">标题后面一个小「▸」。平时收起，和 D 一样只有一行；点开后在终端上方展开一个说明块，「你要它 / 做成了 / 停在」分三行写全，不截断，每个窗格记住开没开。适合回头看一个早忘了的会话。</p>
+    <div class="pane">
+      <div class="hdr"><span class="chip ready">等你验收</span><span class="title">整合为 next 做的 UI <span style="color:var(--muted)">▾</span></span><span class="meta">Claude · 3 分钟前</span><span class="btn">标记完成</span></div>
+      <div style="padding:8px 14px 10px;font-size:12px;line-height:1.7;color:var(--secondary);border-bottom:1px solid var(--border);white-space:normal">
+        <div><span class="k">你要它</span>我在这个库为 next 做了很多 ui 你能帮我整合一下吗 有一些已经过时了</div>
+        <div><span class="k">做成了</span>重写设计索引 index.html，按 14 个界面区排，每区只列一份以此为准的稿；已提交 5e68a1ef</div>
+        <div><span class="k">停在</span>问你要不要顺手把视觉规范 README 对齐 theme.rs</div>
+      </div>
+      <div class="term"><span class="g">   123      &lt;div class="list"&gt;</span></div>
+    </div>
+    <p class="note">D 和 E 可以叠加：默认按 D，想看全文时点开 E 的说明块。代价：多一个要维护的展开状态。</p>
+  </section>
+</main>
+</body>
+</html>

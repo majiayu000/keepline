@@ -1545,3 +1545,87 @@ impl Workbench {
         }
     }
 }
+
+#[cfg(feature = "visual-test")]
+impl Workbench {
+    /// Binds a session to each of the running terminals `rw`, `re`, `rq`, `rr`: one waiting
+    /// on an approval, one stopped on an error, one asking a question with a short title,
+    /// one waiting on a text no reasons rule knows. Kept in memory only.
+    pub fn visual_reason_fixture(&mut self, cx: &mut Context<Self>) {
+        use keepline_core::content::{Content, Quote, Source, Turn};
+        use keepline_core::model::{Agent, AgentSession, Outcome};
+        let now = now();
+        let rows = [
+            (
+                "rw",
+                "查一下 grok 的会话目录",
+                Turn::Waiting,
+                "Claude requested permissions to use WebSearch, but you haven't granted it yet.",
+            ),
+            (
+                "re",
+                "修好登录页",
+                Turn::Error,
+                "Failed to authenticate: OAuth session expired and could not be refreshed",
+            ),
+            (
+                "rq",
+                "整合为 next 做的 UI",
+                Turn::Waiting,
+                "【合并授权】要不要直接合进 main？（合并 / 先开 PR）",
+            ),
+            (
+                "rr",
+                "这个目录的 grok 的聊天记录",
+                Turn::Waiting,
+                "找不到 grok 的会话目录，要我去 ~/.grok 下面再找一遍吗？",
+            ),
+        ];
+        for (tid, title, turn, says) in rows {
+            let sid = format!("reason-{tid}");
+            self.workspace.agent_sessions.push(AgentSession {
+                id: sid.clone(),
+                runtime: Agent::Claude,
+                cli_session_id: sid.clone(),
+                terminal: Some(tid.into()),
+                current: true,
+                task: None,
+                outcome: Outcome::Open,
+                updated: now - 60,
+                cwd: "/tmp".into(),
+                transcript: String::new(),
+                name: title.into(),
+                binding: None,
+            });
+            self.workspace.content.insert(
+                sid,
+                Content {
+                    interactive: true,
+                    first_ask_known: true,
+                    title: title.into(),
+                    asks: vec![Quote {
+                        text: format!("{title}，顺便把测试补上"),
+                        at: now - 600,
+                        source: Source::default(),
+                    }],
+                    turn,
+                    turn_started: now - 600,
+                    updated: now - 60,
+                    waiting: if turn == Turn::Waiting {
+                        says.into()
+                    } else {
+                        String::new()
+                    },
+                    error: if turn == Turn::Error {
+                        says.into()
+                    } else {
+                        String::new()
+                    },
+                    ..Default::default()
+                },
+            );
+        }
+        self.workspace.revision = u64::MAX / 2;
+        cx.notify();
+    }
+}
