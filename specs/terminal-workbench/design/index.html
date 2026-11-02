@@ -29,28 +29,38 @@ a.open { font-size: 13px; white-space: nowrap; }
 <main>
   <div>
     <h1>Keepline 界面改版</h1>
-    <div class="sub">2026-10-31 · 设计稿都是本地 HTML，点开就能看；「已进 App」的已合进 main</div>
+    <div class="sub">2026-11-02 · 设计稿都是本地 HTML，点开就能看；「已进 App」的已合进 main</div>
   </div>
 
   <section>
     <h2><span class="dot" style="background:var(--done)"></span>已改完并进 App</h2>
     <div class="list">
-      <div class="item"><b>本机诊断</b><span class="what">全部核心去向、带刻度的排行、CPU × 内存散点</span><a class="open" href="diagnostics.html">设计稿 →</a></div>
+      <div class="item"><b>本机诊断</b><span class="what">全部核心去向、带刻度的排行、CPU × 内存散点；顶部后改为 CPU / 内存 / GPU 三格角标面板（见额度条方向稿 C），排行最多 20 项、与右栏等高；左栏底部或 ⌘P 搜「诊断」打开</span><a class="open" href="diagnostics.html">设计稿 →</a></div>
       <div class="item"><b>主界面</b><span class="what">顶栏状态计数、标签状态点、窗格标题栏与底栏、本轮计时</span><a class="open" href="main-refresh.html">设计稿 →</a></div>
       <div class="item"><b>鸟瞰 · 左栏 · 逐个清理</b><span class="what">状态分布条、卡片降噪、空间分布条、分段清理进度和快捷键</span><a class="open" href="workbench-refresh.html">设计稿 →</a></div>
       <div class="item"><b>菜单栏额度与费用</b><span class="what">Tauri 菜单栏：时间刻度、到期预测、token 构成</span><a class="open" href="menubar-usage.html">设计稿 →</a></div>
       <div class="item"><b>主界面 A / C 两种样式</b><span class="what">标准（C）和终端原生（A）在设置里切换；A 的窗格标题压在边框线上；两种都带「停在」和可收起的左栏（⌘B）</span><a class="open" href="main-a-plus.html">设计稿 →</a></div>
       <div class="item"><b>左栏三种排法 · 减密</b><span class="what">经典 / 状态 / 目录 顶部切换（插件，可用 WASM 自己写）；只给需要你的和选中的加第二行，做完了合成一行摘要，目录可折叠</span><a class="open" href="sidebar-density.html">设计稿 →</a></div>
       <div class="item"><b>设置页</b><span class="what">分组卡片，新增图标、终端、关于、插件几类设置</span><a class="open" href="settings-refresh.html">设计稿 →</a></div>
+      <div class="item"><b>⌘P 命令面板 · 你在这里</b><span class="what">状态计数可筛选、最近会话按时间分组带预览、原话折进会话行、没结果时给拆词和新建；「你在这里」加头部状态、证据计数和浮层菜单（927441d9）</span><a class="open" href="palette-here.html">设计稿 →</a></div>
+      <div class="item"><b>新建待办 · 待办详情</b><span class="what">逐条验收清单和保存前预览，详情按条挂会话证据（cecdf74d）</span><a class="open" href="todo-refresh.html">设计稿 →</a></div>
+      <div class="item"><b>App 菜单栏弹窗</b><span class="what">按改版稿重做，连不上后台时说明数据停在几点，深色模式下面板也变深（80b5b205）</span><a class="open" href="menubar-panel.html">设计稿 →</a></div>
+      <div class="item"><b>鸟瞰看板</b><span class="what">待办 / 在跑 / 要你处理 / 做完了 / 已收尾五列，空间渐变头像、详情抽屉、拖拽开始 / 验收 / 退回（ce995b9c、bba030ca）</span><a class="open" href="../../overview-kanban/kanban.html">设计稿 →</a></div>
+      <div class="item"><b>左栏 · 会话优先</b><span class="what">侧栏方向稿 A：空间收成一行、行能区分、悬停偷看；B 任务线经数据否定（见 task-line-trial.md）</span><a class="open" href="../../sidebar-directions/directions.html">方向稿 →</a></div>
+      <div class="item"><b>额度放左栏底部</b><span class="what">各 Agent 额度，Codex 读自己会话记录里的 rate_limits，不联网（1962522c）</span><a class="open" href="../../extensions/design/quota-footer.html">方向稿 →</a></div>
+      <div class="item"><b>偷看与置顶</b><span class="what">偷看浮层（设置里开关，默认关）、被看会话实心选中、置顶圆点</span><a class="open" href="../../extensions/design/peek-approve.html">方向稿 →</a></div>
+      <div class="item"><b>Agent 开分屏</b><span class="what">keeplined split 只往右 / 下开，满 4 块开到旁屏标签</span><a class="open" href="../../extensions/design/pane-split-demo.html">演示 →</a></div>
+      <div class="item"><b>手机配对与远程</b><span class="what">标题栏手机按钮和面板（方向 B），设置里「手机与远程」；后台中继和按设备分权限已做</span><a class="open" href="../../extensions/design/phone-pairing.html">设计稿 →</a></div>
     </div>
   </section>
 
   <section>
-    <h2><span class="dot" style="background:var(--todo)"></span>正在做（2026-10-31 开工）</h2>
+    <h2><span class="dot" style="background:var(--todo)"></span>还没做 · 等拍板（2026-11-02）</h2>
     <div class="list">
-      <div class="item"><b>⌘P 命令面板 · 你在这里</b><span class="what">状态计数行、类型图标与相对时间、命中高亮、同一会话不重复列；卡片加证据计数。本轮工具时间线一帧标了「需要后台数据」</span><a class="open" href="palette-here.html">设计稿 →</a></div>
-      <div class="item"><b>新建待办 · 待办详情</b><span class="what">验收标准逐条编辑、5 种校验状态；详情按条挂证据、进度格、关联会话。按条挂证据是新功能，要改数据模型</span><a class="open" href="todo-refresh.html">设计稿 →</a></div>
-      <div class="item"><b>App 菜单栏弹窗</b><span class="what">「3 项需要你」+ 四格计数、空状态、连不上后台；连接状态要新加字段</span><a class="open" href="menubar-panel.html">设计稿 →</a></div>
+      <div class="item"><b>看板收件箱版</b><span class="what">「等你回答」不占列，改成卡片标记 + 侧栏收件箱；现版仍是单独的「要你处理」列</span><a class="open" href="../../overview-kanban/kanban-inbox.html">设计稿 →</a></div>
+      <div class="item"><b>在侧栏 / 浮层里答审批</b><span class="what">侧栏方向稿 C 与偷看稿的审批部分是同一功能：是非题点按钮、开放题打字</span><a class="open" href="../../extensions/design/peek-approve.html">方向稿 →</a></div>
+      <div class="item"><b>侧栏额度条竖条纹 · 历史折线</b><span class="what">额度条方向稿 A / B；C（诊断页角标面板）已做</span><a class="open" href="../../quota-meter/directions.html">方向稿 →</a></div>
+      <div class="item"><b>手机端界面</b><span class="what">只推送 / 通知上答审批 / 手机网页三方向；11-02 定手机只做聊天（RN/Expo）</span><a class="open" href="../../extensions/design/phone.html">方向稿 →</a></div>
     </div>
   </section>
 
