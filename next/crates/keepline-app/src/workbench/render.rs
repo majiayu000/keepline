@@ -3,6 +3,7 @@ use super::*;
 
 impl Render for Workbench {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+        self.open_pending_route(window, cx);
         // The overview and 逐个清理 take the main area beside the sidebar; the top bar,
         // sidebar and tab strip stay, so leaving is a click in the same place or Esc.
         let page = if self.tasks.form.is_some() {

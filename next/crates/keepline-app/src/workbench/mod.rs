@@ -25,6 +25,9 @@ pub struct Workbench {
     /// A press on the top bar's empty space that has not moved the window yet.
     title_drag: bool,
     error: Option<String>,
+    /// A session a notification asked for before it was loaded, and the page the user was
+    /// on then: opened once it loads, unless the user has moved on.
+    pending_route: Option<(String, nav::Page)>,
     /// The older host is being stopped; the app quits and reopens once it is gone.
     restarting: bool,
     /// 「重新连接」 is checking for the host and starting one if it is gone.
@@ -302,6 +305,7 @@ impl Workbench {
             workspace,
             title_drag: false,
             error: None,
+            pending_route: None,
             restarting: false,
             reconnecting: false,
             nav: Nav {
