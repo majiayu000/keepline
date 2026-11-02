@@ -1,0 +1,283 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>底部状态栏</title>
+<style>
+body{margin:0;background:#eceef2;font-family:-apple-system,BlinkMacSystemFont,"PingFang SC",sans-serif;color:#17181c}
+.wrap{width:1280px;margin:0 auto;padding:40px 16px 80px}
+h1{font-size:22px;margin:0 0 4px}
+.meta{color:#6b707c;font-size:12px;margin-bottom:20px}
+.meta a{color:#4b4fd6}
+.board{box-shadow:0 10px 36px rgba(20,22,30,.12);border-radius:12px;margin-bottom:40px;overflow:hidden;border:1px solid #d5d8de}
+.cap{font-size:13px;color:#5d6270;margin:0 0 10px}
+
+
+a{color:#4b4fd6}a:hover{color:#3a3db0}
+.sb{all:unset;box-sizing:border-box;display:inline-flex;align-items:center;gap:6px;height:22px;padding:0 8px;border-radius:5px;color:#5d6270;cursor:pointer;white-space:nowrap}
+.sb:hover{background:#eceef2}
+.sb.on{background:#e4e6ec;color:#17181c}
+.sb:focus-visible{outline:2px solid #4b4fd6;outline-offset:1px}
+.g{position:relative;display:inline-block;height:6px;background:repeating-linear-gradient(90deg,#dcdfe5 0 2px,transparent 2px 3px)}
+.g>i{position:absolute;left:0;top:0;bottom:0;background:repeating-linear-gradient(90deg,#1f8a5b 0 2px,transparent 2px 3px)}
+.g.near>i{background:repeating-linear-gradient(90deg,#c2570c 0 2px,transparent 2px 3px)}
+.g.over>i{background:repeating-linear-gradient(90deg,#c0392b 0 2px,transparent 2px 3px)}
+.g.stale>i{background:repeating-linear-gradient(90deg,#7d828d 0 2px,transparent 2px 3px)}
+.pop{position:absolute;bottom:34px;background:#fff;border:1px solid #d5d8de;border-radius:10px;box-shadow:0 12px 34px rgba(20,22,30,.16);padding:12px 14px;font-size:12px;z-index:5;box-sizing:border-box}
+.pbtn{all:unset;box-sizing:border-box;cursor:pointer;font-size:11px;padding:3px 9px;border:1px solid #d5d8de;border-radius:5px;color:#17181c;background:#fff}
+.pbtn:hover{background:#f4f5f8}
+
+
+.states .bar{height:28px;display:flex;align-items:center;gap:2px;padding:0 6px;border:1px solid #e3e5ea;border-radius:6px;background:#f7f8fa;font-size:11px;color:#5d6270;white-space:nowrap;box-sizing:border-box;overflow:hidden}
+.states .it{display:inline-flex;align-items:center;gap:6px;height:22px;padding:0 8px;border-radius:5px}
+.states .q{border:1px solid #dcdfe5;background:#fff}
+.states .sep{width:1px;height:14px;background:#dcdfe5;margin:0 4px}
+.states .dot{width:7px;height:7px;border-radius:4px;display:inline-block}
+.states .g{position:relative;display:inline-block;width:30px;height:6px;background:repeating-linear-gradient(90deg,#dcdfe5 0 2px,transparent 2px 3px)}
+.states .g>i{position:absolute;left:0;top:0;bottom:0;background:repeating-linear-gradient(90deg,#1f8a5b 0 2px,transparent 2px 3px)}
+.states .g.near>i{background:repeating-linear-gradient(90deg,#c2570c 0 2px,transparent 2px 3px)}
+.states .g.over>i{background:repeating-linear-gradient(90deg,#c0392b 0 2px,transparent 2px 3px)}
+.states .plus{font-size:10px;padding:0 5px;border-radius:99px;background:#f1f2f5;color:#5d6270}
+.states .badge{font-size:10px;min-width:14px;height:14px;border-radius:7px;background:#c2570c;color:#fff;display:inline-flex;align-items:center;justify-content:center}
+.states .row{display:grid;grid-template-columns:140px 1fr;gap:20px;align-items:center}
+.states .lab b{display:block;font-size:13px;color:#17181c;font-weight:600}
+.states .lab span{font-size:11px;color:#6b707c}
+
+</style>
+</head>
+<body>
+<div class="wrap">
+<h1>底部状态栏</h1>
+<div class="meta">2026-11-02 · 方向 D 的展开稿：底部栏除了额度还放什么 · 相关：<a href="placement.html">摆放方向稿</a> · <a href="other-apps.html">别的 App 怎么做</a></div>
+<p class="cap">可点原型：点状态栏里的每一项打开弹层，再点一次或按 Esc 关掉。</p>
+<div class="board">
+
+<div style="width: 1280px; height: 800px; box-sizing: border-box; position: relative; display: flex; flex-direction: column; background: #ffffff; color: #17181c; font-family: -apple-system, BlinkMacSystemFont, 'PingFang SC', sans-serif; font-size: 13px; overflow: hidden; border-radius: 12px">
+
+  <div style="flex: 1; display: flex; min-height: 0">
+    <!-- 侧栏 -->
+    <div style="width: 260px; flex-shrink: 0; background: #f7f8fa; border-right: 1px solid #e3e5ea; display: flex; flex-direction: column">
+      <div style="height: 44px; display: flex; align-items: center; gap: 10px; padding: 0 12px">
+        <span style="display: flex; gap: 7px" aria-hidden="true"><span style="width: 12px; height: 12px; border-radius: 6px; background: #ec6a5e"></span><span style="width: 12px; height: 12px; border-radius: 6px; background: #f4bf4f"></span><span style="width: 12px; height: 12px; border-radius: 6px; background: #61c554"></span></span>
+        <span style="margin-left: 14px; display: inline-flex; align-items: center; gap: 4px; height: 22px; padding: 0 6px; border: 1px solid #d5d8de; border-left: 2px solid #9aa0ab; border-radius: 4px; font-size: 11px; color: #5d6270">‹</span>
+        <span style="font-weight: 600">Keepline</span>
+      </div>
+      <div style="display: flex; gap: 8px; padding: 0 12px 10px">
+        <span style="flex: 1; height: 28px; display: flex; align-items: center; gap: 6px; padding: 0 8px; background: #ffffff; border: 1px solid #e3e5ea; border-radius: 6px; color: #6b707c; font-size: 12px">⌕ 搜索<span style="margin-left: auto; font-size: 10px; border: 1px solid #e3e5ea; border-radius: 3px; padding: 0 4px">⌘P</span></span>
+        <span style="width: 28px; height: 28px; display: flex; align-items: center; justify-content: center; border: 1px solid #e3e5ea; border-radius: 6px; background: #fff; color: #5d6270">＋</span>
+      </div>
+      <div style="display: flex; justify-content: space-between; padding: 6px 16px; font-size: 11px; color: #6b707c"><span>会话</span><span>8</span></div>
+      <div style="display: flex; flex-direction: column; padding: 0 8px; gap: 2px">
+        <div style="display: flex; align-items: center; gap: 8px; height: 30px; padding: 0 8px; border-radius: 6px; background: #e9ebf0"><span style="width: 7px; height: 7px; border-radius: 4px; background: #1f8a5b"></span><span style="flex: 1">额度摆放方向</span><span style="font-size: 11px; color: #1f8a5b">工作中</span></div>
+        <div style="display: flex; align-items: center; gap: 8px; height: 30px; padding: 0 8px"><span style="width: 7px; height: 7px; border-radius: 4px; background: #c2570c"></span><span style="flex: 1">看板虚拟滚动</span><span style="font-size: 11px; color: #c2570c">等你确认</span></div>
+        <div style="display: flex; align-items: center; gap: 8px; height: 30px; padding: 0 8px"><span style="width: 7px; height: 7px; border-radius: 4px; background: #1f8a5b"></span><span style="flex: 1">grok 写首页</span><span style="font-size: 11px; color: #1f8a5b">工作中</span></div>
+        <div style="display: flex; align-items: center; gap: 8px; height: 30px; padding: 0 8px"><span style="width: 7px; height: 7px; border-radius: 4px; background: #1f8a5b"></span><span style="flex: 1">ci 重跑脚本</span><span style="font-size: 11px; color: #1f8a5b">工作中</span></div>
+        <div style="display: flex; align-items: center; gap: 8px; height: 30px; padding: 0 8px"><span style="width: 7px; height: 7px; border-radius: 4px; background: #c7cad1"></span><span style="flex: 1">诊断散点标签</span><span style="font-size: 11px; color: #6b707c">2 小时前</span></div>
+        <div style="display: flex; align-items: center; gap: 8px; height: 30px; padding: 0 8px"><span style="width: 7px; height: 7px; border-radius: 4px; background: #c7cad1"></span><span style="flex: 1">额度来源调研</span><span style="font-size: 11px; color: #6b707c">昨天</span></div>
+        <div style="display: flex; align-items: center; gap: 8px; height: 30px; padding: 0 8px; color: #6b707c"><span style="width: 7px; height: 7px; border-radius: 4px; border: 1px dashed #9aa0ab; box-sizing: border-box"></span><span style="flex: 1">手机配对</span><span style="font-size: 11px">中断 · 可恢复</span></div>
+        <div style="display: flex; align-items: center; gap: 8px; height: 30px; padding: 0 8px; color: #6b707c"><span style="width: 7px; height: 7px; border-radius: 4px; border: 1px dashed #9aa0ab; box-sizing: border-box"></span><span style="flex: 1">重构 log_index</span><span style="font-size: 11px">中断 · 可恢复</span></div>
+      </div>
+    </div>
+
+    <!-- 正文 -->
+    <div style="flex: 1; min-width: 0; display: flex; flex-direction: column">
+      <div style="height: 44px; display: flex; align-items: center; gap: 10px; padding: 0 14px; border-bottom: 1px solid #e3e5ea; font-size: 12px">
+        <span style="color: #5d6270">keepline</span><span style="color: #9aa0ab">/</span><span style="font-weight: 600">额度摆放方向</span>
+        <span style="flex: 1"></span>
+        <span style="display: inline-flex; align-items: center; gap: 6px; padding: 3px 9px; border-radius: 99px; background: #fbeee4; color: #a14a0b">需要你 1</span>
+        <span style="width: 26px; height: 26px; display: flex; align-items: center; justify-content: center; color: #5d6270" aria-hidden="true"><svg width="15" height="15" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4"><rect x="2" y="2" width="5" height="5" rx="1"></rect><rect x="9" y="2" width="5" height="5" rx="1"></rect><rect x="2" y="9" width="5" height="5" rx="1"></rect><rect x="9" y="9" width="5" height="5" rx="1"></rect></svg></span>
+        <span style="width: 26px; height: 26px; display: flex; align-items: center; justify-content: center; color: #5d6270" aria-hidden="true"><svg width="15" height="15" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4"><rect x="4.5" y="1.5" width="7" height="13" rx="1.5"></rect><path d="M7 12h2"></path></svg></span>
+      </div>
+      <div style="height: 34px; display: flex; align-items: flex-end; padding: 0 10px; border-bottom: 1px solid #e3e5ea; font-size: 12px">
+        <span style="height: 33px; display: flex; align-items: center; gap: 8px; padding: 0 14px; border: 1px solid #e3e5ea; border-bottom-color: #fff; border-radius: 6px 6px 0 0; margin-bottom: -1px; background: #fff">keepline <span style="color: #9aa0ab">×</span></span>
+        <span style="height: 33px; display: flex; align-items: center; padding: 0 12px; color: #6b707c">＋</span>
+      </div>
+      <div style="flex: 1; min-height: 0; display: flex">
+        <div style="flex: 1; display: flex; flex-direction: column; border-right: 1px solid #e3e5ea; min-width: 0">
+          <div style="height: 30px; display: flex; align-items: center; padding: 0 12px; font-size: 12px; border-bottom: 1px solid #e3e5ea; background: #f7f8fa"><span style="font-weight: 600">额度摆放方向</span><span style="margin-left: auto; color: #6b707c">Claude · 工作中</span></div>
+          <div style="flex: 1; padding: 14px; font-family: 'SF Mono', Menlo, monospace; font-size: 12px; line-height: 1.7"><div style="color: #6b707c">$ claude</div><div>✻ 正在写 specs/quota-meter/placement.html …</div><div style="color: #6b707c">  ⎿ 已改 2 处，等待渲染检查</div></div>
+        </div>
+        <div style="flex: 1; display: flex; flex-direction: column; min-width: 0">
+          <div style="height: 30px; display: flex; align-items: center; gap: 10px; padding: 0 12px; font-size: 12px; border-bottom: 1px solid #e3e5ea; background: #f7f8fa"><span style="font-weight: 600">看板虚拟滚动</span><span style="margin-left: auto; color: #a14a0b">Codex · 等你确认</span></div>
+          <div style="display: flex; align-items: center; gap: 8px; padding: 6px 12px; font-size: 12px; background: #fdf0ee; color: #a3301f; border-bottom: 1px solid #f4d6d1">
+            <svg width="13" height="13" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" aria-hidden="true"><circle cx="8" cy="8" r="6.5"></circle><path d="M8 4.5V8.5M8 11v.5"></path></svg>
+            Codex 周额度已用 100%，2 天 4 小时后重置<span style="margin-left: auto; color: #8a3a2e">换 Claude 接着做 →</span>
+          </div>
+          <div style="flex: 1; padding: 14px; font-family: 'SF Mono', Menlo, monospace; font-size: 12px; line-height: 1.7"><div style="color: #6b707c">$ codex</div><div>■ You've hit your usage limit. Try again in 2 days 4 hours.</div></div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- 状态栏 -->
+  <div style="height: 28px; flex-shrink: 0; display: flex; align-items: center; gap: 2px; padding: 0 6px; border-top: 1px solid #e3e5ea; background: #f7f8fa; font-size: 11px">
+    <button class="sb" data-k="daemon" aria-label="后台状态"><span style="width: 7px; height: 7px; border-radius: 4px; background: #1f8a5b"></span>后台</button>
+    <button class="sb" data-k="sessions"><span style="color: #1f8a5b">3 工作中</span><span style="color: #c7cad1">·</span><span style="color: #a14a0b; font-weight: 600">1 等你</span></button>
+    <button class="sb" data-k="recover"><svg width="12" height="12" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true"><path d="M3 8a5 5 0 1 0 1.5-3.5M3 2.5v2.5h2.5"></path></svg>2 可恢复</button>
+    <span style="width: 1px; height: 14px; background: #dcdfe5; margin: 0 4px"></span>
+    <button class="sb" data-k="git"><svg width="12" height="12" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true"><circle cx="4.5" cy="3.5" r="1.5"></circle><circle cx="4.5" cy="12.5" r="1.5"></circle><circle cx="11.5" cy="5.5" r="1.5"></circle><path d="M4.5 5v6M11.5 7c0 3-7 2-7 4"></path></svg>main<span style="color: #a14a0b">↑3 未推送</span></button>
+    <span style="flex: 1"></span>
+    <button class="sb" data-k="spend">今天 <span style="color: #17181c">1.2M</span> tok</button>
+    <button class="sb" data-k="quota" style="border: 1px solid #dcdfe5; background: #ffffff"><span>Codex</span><span style="color: #6b707c">周</span><span class="g over" style="width: 30px"><i style="width: 100%"></i></span><span style="color: #c0392b; font-weight: 600">100%</span><span style="font-size: 10px; padding: 0 5px; border-radius: 99px; background: #f1f2f5; color: #5d6270">+2</span><span style="font-size: 8px; color: #6b707c">▲</span></button>
+    <button class="sb" data-k="cpu"><svg width="22" height="10" viewBox="0 0 22 10" aria-hidden="true"><path d="M0 8 L3 7 L6 8 L9 5 L12 6 L15 3 L18 4 L22 2" fill="none" stroke="#4b4fd6" stroke-width="1.3"></path></svg>CPU 34%</button>
+    <span style="width: 1px; height: 14px; background: #dcdfe5; margin: 0 4px"></span>
+    <button class="sb" data-k="bell" aria-label="提醒，2 条未读"><svg width="13" height="13" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4" aria-hidden="true"><path d="M4 11V7a4 4 0 0 1 8 0v4l1 1.5H3z"></path><path d="M6.5 14h3"></path></svg><span style="font-size: 10px; min-width: 14px; height: 14px; border-radius: 7px; background: #c2570c; color: #fff; display: inline-flex; align-items: center; justify-content: center">2</span></button>
+    <button class="sb" aria-label="设置"><svg width="13" height="13" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4" aria-hidden="true"><circle cx="8" cy="8" r="2.2"></circle><path d="M8 1.5v2M8 12.5v2M1.5 8h2M12.5 8h2M3.4 3.4l1.4 1.4M11.2 11.2l1.4 1.4M3.4 12.6l1.4-1.4M11.2 4.8l1.4-1.4"></path></svg></button>
+  </div>
+
+  <!-- 弹层：后台 -->
+  <div data-pop="daemon" hidden>
+    <div class="pop" style="left: 6px; width: 320px">
+      <div style="display: flex; align-items: baseline; margin-bottom: 8px"><b>后台 keeplined</b><span style="margin-left: auto; color: #6b707c; font-size: 11px">已运行 3 小时 · 没有定时轮询</span></div>
+      <div style="display: grid; grid-template-columns: 1fr auto; row-gap: 6px; font-size: 12px">
+        <span>识别</span><span style="color: #5d6270">8 个会话 / 51 个 Agent 进程</span>
+        <span>Claude hook</span><span style="color: #1f8a5b">已装</span>
+        <span>Codex app-server</span><span style="color: #1f8a5b">已连</span>
+        <span>Grok 日志</span><span style="color: #1f8a5b">在读</span>
+        <span>手机中继</span><span style="color: #6b707c">未配对</span>
+      </div>
+      <div style="margin-top: 10px; padding-top: 8px; border-top: 1px solid #e3e5ea; color: #6b707c; font-size: 11px">点「后台」变红时：后台断开，侧栏和看板停在断开那一刻的状态。</div>
+    </div>
+  </div>
+
+  <!-- 弹层：会话 -->
+  <div data-pop="sessions" hidden>
+    <div class="pop" style="left: 64px; width: 340px">
+      <div style="color: #a14a0b; font-weight: 600; margin-bottom: 4px">等你 1</div>
+      <div style="display: flex; align-items: center; gap: 8px; height: 30px; padding: 0 6px; margin: 0 -6px; border-radius: 5px; background: #fbf3ec"><span style="width: 7px; height: 7px; border-radius: 4px; background: #c2570c"></span><span style="flex: 1">看板虚拟滚动</span><span style="color: #6b707c">Codex · 4 分钟</span></div>
+      <div style="color: #1f8a5b; font-weight: 600; margin: 10px 0 4px">工作中 3</div>
+      <div style="display: flex; align-items: center; gap: 8px; height: 28px"><span style="width: 7px; height: 7px; border-radius: 4px; background: #1f8a5b"></span><span style="flex: 1">额度摆放方向</span><span style="color: #6b707c">Claude · 12 分钟</span></div>
+      <div style="display: flex; align-items: center; gap: 8px; height: 28px"><span style="width: 7px; height: 7px; border-radius: 4px; background: #1f8a5b"></span><span style="flex: 1">grok 写首页</span><span style="color: #6b707c">Grok · 3 分钟</span></div>
+      <div style="display: flex; align-items: center; gap: 8px; height: 28px"><span style="width: 7px; height: 7px; border-radius: 4px; background: #1f8a5b"></span><span style="flex: 1">ci 重跑脚本</span><span style="color: #6b707c">Codex · 40 秒</span></div>
+      <div style="margin-top: 8px; padding-top: 8px; border-top: 1px solid #e3e5ea; color: #6b707c; font-size: 11px">点一行跳过去。不打开也能用快捷键跳到下一个等你的会话。</div>
+    </div>
+  </div>
+
+  <!-- 弹层：可恢复 -->
+  <div data-pop="recover" hidden>
+    <div class="pop" style="left: 150px; width: 340px">
+      <div style="display: flex; align-items: baseline; margin-bottom: 8px"><b>终端关掉或崩了的会话</b><span style="margin-left: auto; color: #6b707c; font-size: 11px">对话都还在</span></div>
+      <div style="display: flex; align-items: center; gap: 8px; height: 32px"><span style="flex: 1">手机配对<span style="color: #6b707c"> · Claude · 昨天 23:10</span></span><button class="pbtn">恢复</button></div>
+      <div style="display: flex; align-items: center; gap: 8px; height: 32px"><span style="flex: 1">重构 log_index<span style="color: #6b707c"> · Codex · 今天 09:42</span></span><button class="pbtn">恢复</button></div>
+      <div style="margin-top: 6px; padding-top: 8px; border-top: 1px solid #e3e5ea; color: #6b707c; font-size: 11px">恢复会在新窗格里接着原来的对话；不需要时点「忽略」，这一项就消失。</div>
+    </div>
+  </div>
+
+  <!-- 弹层：git -->
+  <div data-pop="git" hidden>
+    <div class="pop" style="left: 240px; width: 400px">
+      <div style="display: flex; align-items: baseline; margin-bottom: 8px"><b>当前窗格的仓库</b><span style="margin-left: auto; color: #6b707c; font-size: 11px">~/code/keepline · main</span></div>
+      <div style="color: #a14a0b; margin-bottom: 6px">比 origin/main 多 3 个提交，还没推送</div>
+      <div style="font-family: 'SF Mono', Menlo, monospace; font-size: 11px; line-height: 1.8; color: #5d6270">
+        <div><span style="color: #4b4fd6">6bdb18b1</span> docs(quota): 方向 D 改成一个额度按钮</div>
+        <div><span style="color: #4b4fd6">ee30748b</span> docs(quota): 加方向 D</div>
+        <div><span style="color: #4b4fd6">422f5696</span> docs(quota): 调研记录和方向稿</div>
+      </div>
+      <div style="margin-top: 8px; padding-top: 8px; border-top: 1px solid #e3e5ea; display: flex; gap: 12px; color: #6b707c; font-size: 11px"><span>另有 2 个 worktree：keepline-board、keepline-perf</span><span style="margin-left: auto">切到别的窗格，这里跟着换</span></div>
+    </div>
+  </div>
+
+  <!-- 弹层：今天用量 -->
+  <div data-pop="spend" hidden>
+    <div class="pop" style="right: 330px; width: 330px">
+      <div style="display: flex; align-items: baseline; margin-bottom: 8px"><b>今天的 token</b><span style="margin-left: auto; color: #6b707c; font-size: 11px">按本机对话日志统计</span></div>
+      <div style="display: grid; grid-template-columns: 60px 1fr 52px 48px; gap: 6px 8px; align-items: center; font-size: 12px">
+        <b style="font-weight: 600">Claude</b><span style="height: 6px; background: #4b4fd6; width: 68%; border-radius: 1px"></span><span style="text-align: right">820k</span><span style="text-align: right; color: #6b707c">4 会话</span>
+        <b style="font-weight: 600">Codex</b><span style="height: 6px; background: #4b4fd6; width: 34%; border-radius: 1px"></span><span style="text-align: right">410k</span><span style="text-align: right; color: #6b707c">3 会话</span>
+        <b style="font-weight: 600">Grok</b><span style="height: 6px; background: #c7cad1; width: 6%; border-radius: 1px"></span><span style="text-align: right; color: #6b707c">—</span><span style="text-align: right; color: #6b707c">1 会话</span>
+      </div>
+      <div style="margin-top: 10px; padding-top: 8px; border-top: 1px solid #e3e5ea; color: #6b707c; font-size: 11px">最费的会话：额度摆放方向 410k。Grok 本机日志不记 token。</div>
+    </div>
+  </div>
+
+  <!-- 弹层：额度 -->
+  <div data-pop="quota" hidden>
+    <div class="pop" style="right: 120px; width: 420px">
+      <div style="display: flex; align-items: baseline; margin-bottom: 6px"><b>额度</b><span style="margin-left: auto; color: #6b707c; font-size: 11px">按用得最多排序 · 只读本机记录</span></div>
+      <div style="display: grid; grid-template-columns: 56px 36px 18px 56px 38px 44px 1fr; gap: 6px; align-items: center; white-space: nowrap; font-size: 11px; height: 28px"><b style="font-weight: 600">Codex</b><span style="color: #6b707c">pro</span><span style="color: #6b707c">周</span><span class="g over" style="width: 56px"><i style="width: 100%"></i></span><span style="text-align: right; color: #c0392b">100%</span><span style="color: #6b707c">2d4h</span><span style="text-align: right; color: #6b707c">5h 0%</span></div>
+      <div style="display: grid; grid-template-columns: 56px 36px 18px 56px 38px 44px 1fr; gap: 6px; align-items: center; white-space: nowrap; font-size: 11px; height: 28px"><b style="font-weight: 600">Grok *</b><span style="color: #6b707c">Lite</span><span style="color: #6b707c">周</span><span class="g stale" style="width: 56px"><i style="width: 52%"></i></span><span style="text-align: right; color: #6b707c">52%</span><span style="color: #6b707c">1d10h</span><span style="text-align: right; color: #6b707c">读数 5 小时前</span></div>
+      <div style="display: grid; grid-template-columns: 56px 36px 18px 56px 38px 44px 1fr; gap: 6px; align-items: center; white-space: nowrap; font-size: 11px; height: 28px"><b style="font-weight: 600">Claude</b><span style="color: #6b707c">max</span><span style="color: #6b707c">周</span><span class="g" style="width: 56px"><i style="width: 22%"></i></span><span style="text-align: right">22%</span><span style="color: #6b707c">3d18h</span><span style="text-align: right; color: #6b707c">5h 3% · 4h20m</span></div>
+      <div style="margin-top: 4px; padding: 6px 0; border-top: 1px solid #e3e5ea; color: #6b707c; font-size: 11px">本机没有额度记录：Cursor · Qoder</div>
+      <div style="padding-top: 6px; border-top: 1px solid #e3e5ea; color: #6b707c; font-size: 11px">点一行看具体重置时间和读数来源。超过 8 家时列表内滚动。</div>
+    </div>
+  </div>
+
+  <!-- 弹层：本机 -->
+  <div data-pop="cpu" hidden>
+    <div class="pop" style="right: 60px; width: 320px">
+      <div style="display: flex; align-items: baseline; margin-bottom: 8px"><b>本机</b><span style="margin-left: auto; color: #6b707c; font-size: 11px">CPU 34% · 内存 9.2 / 32 GB</span></div>
+      <div style="display: grid; grid-template-columns: 1fr 48px; row-gap: 6px; font-size: 12px">
+        <span>codex <span style="color: #6b707c">· 看板虚拟滚动</span></span><span style="text-align: right">18%</span>
+        <span>claude <span style="color: #6b707c">· 额度摆放方向</span></span><span style="text-align: right">9%</span>
+        <span>node <span style="color: #6b707c">· ci 重跑脚本</span></span><span style="text-align: right">4%</span>
+        <span>keeplined</span><span style="text-align: right">1%</span>
+      </div>
+      <div style="margin-top: 10px; padding-top: 8px; border-top: 1px solid #e3e5ea; display: flex; font-size: 11px"><span style="color: #6b707c">进程按会话归好了</span><a href="#" style="margin-left: auto">打开本机诊断 →</a></div>
+    </div>
+  </div>
+
+  <!-- 弹层：提醒 -->
+  <div data-pop="bell" hidden>
+    <div class="pop" style="right: 6px; width: 320px">
+      <div style="display: flex; align-items: baseline; margin-bottom: 8px"><b>提醒</b><span style="margin-left: auto; color: #6b707c; font-size: 11px">2 条未读</span></div>
+      <div style="padding: 6px 0; border-bottom: 1px solid #f0f1f4"><div>看板虚拟滚动 等你确认</div><div style="color: #6b707c; font-size: 11px">Codex 要运行 cargo test · 4 分钟前</div></div>
+      <div style="padding: 6px 0"><div>Codex 周额度用完</div><div style="color: #6b707c; font-size: 11px">11-04 20:00 重置 · 25 分钟前</div></div>
+      <div style="margin-top: 4px; padding-top: 8px; border-top: 1px solid #e3e5ea; display: flex; font-size: 11px; color: #6b707c"><span>勿扰到 18:00</span><span style="margin-left: auto">全部标为已读</span></div>
+    </div>
+  </div>
+</div>
+</div>
+<p class="cap">各种状态，以及窗口变窄时怎么收。</p>
+<div class="board states">
+
+<div style="width: 1280px; box-sizing: border-box; padding: 48px 56px; background: #ffffff; color: #17181c; font-family: -apple-system, BlinkMacSystemFont, 'PingFang SC', sans-serif; display: flex; flex-direction: column; gap: 22px">
+  <div style="font-size: 22px; font-weight: 600">状态栏会变成什么样</div>
+
+  <div class="row"><div class="lab"><b>平常</b><span>没人等你，额度都宽裕</span></div>
+    <div class="bar"><span class="it"><span class="dot" style="background:#1f8a5b"></span>后台</span><span class="it"><span style="color:#1f8a5b">3 工作中</span></span><span class="sep"></span><span class="it">main</span><span style="flex:1"></span><span class="it">今天 <span style="color:#17181c">640k</span> tok</span><span class="it q">Claude<span style="color:#6b707c">周</span><span class="g"><i style="width:22%"></i></span><span style="color:#17181c">22%</span><span class="plus">+2</span></span><span class="it">CPU 12%</span><span class="sep"></span><span class="it">提醒</span><span class="it">设置</span></div></div>
+
+  <div class="row"><div class="lab"><b>有会话等你</b><span>数字加粗变橙，提醒带角标</span></div>
+    <div class="bar"><span class="it"><span class="dot" style="background:#1f8a5b"></span>后台</span><span class="it"><span style="color:#1f8a5b">2 工作中</span><span style="color:#c7cad1">·</span><span style="color:#a14a0b;font-weight:600">2 等你</span></span><span class="sep"></span><span class="it">main</span><span style="flex:1"></span><span class="it">今天 <span style="color:#17181c">640k</span> tok</span><span class="it q">Claude<span style="color:#6b707c">周</span><span class="g"><i style="width:22%"></i></span><span style="color:#17181c">22%</span><span class="plus">+2</span></span><span class="it">CPU 12%</span><span class="sep"></span><span class="it">提醒<span class="badge">2</span></span><span class="it">设置</span></div></div>
+
+  <div class="row"><div class="lab"><b>额度快到头 ≥80%</b><span>按钮换成最紧的那家，变橙</span></div>
+    <div class="bar"><span class="it"><span class="dot" style="background:#1f8a5b"></span>后台</span><span class="it"><span style="color:#1f8a5b">3 工作中</span></span><span class="sep"></span><span class="it">main</span><span style="flex:1"></span><span class="it">今天 <span style="color:#17181c">1.8M</span> tok</span><span class="it q" style="border-color:#efc9a8">Claude<span style="color:#6b707c">5h</span><span class="g near"><i style="width:86%"></i></span><span style="color:#a14a0b;font-weight:600">86%</span><span style="color:#6b707c">1h12m</span><span class="plus">+2</span></span><span class="it">CPU 12%</span><span class="sep"></span><span class="it">提醒</span><span class="it">设置</span></div></div>
+
+  <div class="row"><div class="lab"><b>额度用完 ≥95%</b><span>按钮变红；用它的窗格亮提醒</span></div>
+    <div style="display: flex; flex-direction: column; gap: 6px">
+      <div style="display: flex; align-items: center; gap: 8px; padding: 6px 12px; font-size: 12px; background: #fdf0ee; color: #a3301f; border: 1px solid #f4d6d1; border-radius: 6px">看板虚拟滚动 · Codex 周额度已用 100%，2 天 4 小时后重置<span style="margin-left: auto; color: #8a3a2e">换 Claude 接着做 →</span></div>
+      <div class="bar"><span class="it"><span class="dot" style="background:#1f8a5b"></span>后台</span><span class="it"><span style="color:#1f8a5b">3 工作中</span><span style="color:#c7cad1">·</span><span style="color:#a14a0b;font-weight:600">1 等你</span></span><span class="sep"></span><span class="it">main<span style="color:#a14a0b">↑3 未推送</span></span><span style="flex:1"></span><span class="it">今天 <span style="color:#17181c">1.2M</span> tok</span><span class="it q" style="border-color:#efb8b0">Codex<span style="color:#6b707c">周</span><span class="g over"><i style="width:100%"></i></span><span style="color:#c0392b;font-weight:600">100%</span><span style="color:#6b707c">2d4h</span><span class="plus">+2</span></span><span class="it">CPU 34%</span><span class="sep"></span><span class="it">提醒<span class="badge">2</span></span><span class="it">设置</span></div>
+    </div></div>
+
+  <div class="row"><div class="lab"><b>后台断开</b><span>其余各项变灰，写停在几点</span></div>
+    <div class="bar" style="background:#fbf4f3"><span class="it" style="color:#a3301f"><span class="dot" style="background:#c0392b"></span>后台断开 · 重连中</span><span class="it" style="color:#9aa0ab">停在 16:42 的状态</span><span style="flex:1"></span><span class="it q" style="color:#9aa0ab">额度 *</span><span class="sep"></span><span class="it">提醒</span><span class="it">设置</span></div></div>
+
+  <div class="row"><div class="lab"><b>一家都没有读数</b><span>按钮只写「额度」</span></div>
+    <div class="bar"><span class="it"><span class="dot" style="background:#1f8a5b"></span>后台</span><span class="it" style="color:#6b707c">没有会话</span><span style="flex:1"></span><span class="it q" style="color:#6b707c">额度<span style="font-size:8px">▲</span></span><span class="it">CPU 3%</span><span class="sep"></span><span class="it">提醒</span><span class="it">设置</span></div></div>
+
+  <div style="height: 1px; background: #e3e5ea; margin: 4px 0"></div>
+  <div style="font-size: 16px; font-weight: 600">窗口变窄：从右往左让位，额度和「等你」最后才收</div>
+
+  <div class="row"><div class="lab"><b>1000 px</b><span>去掉 tok、CPU 折线</span></div>
+    <div class="bar" style="width: 1000px"><span class="it"><span class="dot" style="background:#1f8a5b"></span>后台</span><span class="it"><span style="color:#1f8a5b">3 工作中</span><span style="color:#c7cad1">·</span><span style="color:#a14a0b;font-weight:600">1 等你</span></span><span class="it">2 可恢复</span><span class="sep"></span><span class="it">main<span style="color:#a14a0b">↑3</span></span><span style="flex:1"></span><span class="it">今天 1.2M</span><span class="it q">Codex<span style="color:#6b707c">周</span><span class="g over"><i style="width:100%"></i></span><span style="color:#c0392b;font-weight:600">100%</span><span class="plus">+2</span></span><span class="it">34%</span><span class="sep"></span><span class="it">提醒<span class="badge">2</span></span><span class="it">设置</span></div></div>
+
+  <div class="row"><div class="lab"><b>820 px</b><span>今天用量、CPU、可恢复收进弹层</span></div>
+    <div class="bar" style="width: 820px"><span class="it"><span class="dot" style="background:#1f8a5b"></span></span><span class="it"><span style="color:#1f8a5b">3</span><span style="color:#c7cad1">·</span><span style="color:#a14a0b;font-weight:600">1 等你</span></span><span class="sep"></span><span class="it">main<span style="color:#a14a0b">↑3</span></span><span style="flex:1"></span><span class="it q">Codex<span style="color:#c0392b;font-weight:600">100%</span><span class="plus">+2</span></span><span class="sep"></span><span class="it">提醒<span class="badge">2</span></span><span class="it">设置</span></div></div>
+
+  <div class="row"><div class="lab"><b>640 px</b><span>只剩后台点、等你、额度、提醒</span></div>
+    <div class="bar" style="width: 640px"><span class="it"><span class="dot" style="background:#1f8a5b"></span></span><span class="it"><span style="color:#a14a0b;font-weight:600">1 等你</span></span><span style="flex:1"></span><span class="it q">Codex<span style="color:#c0392b;font-weight:600">100%</span><span class="plus">+2</span></span><span class="it">提醒<span class="badge">2</span></span></div></div>
+</div>
+</div>
+</div>
+<script>
+let open='quota';
+function render(){
+  document.querySelectorAll('[data-pop]').forEach(p=>p.hidden=p.dataset.pop!==open);
+  document.querySelectorAll('.sb[data-k]').forEach(b=>b.classList.toggle('on',b.dataset.k===open));
+}
+document.querySelectorAll('.sb[data-k]').forEach(b=>b.addEventListener('click',()=>{open=open===b.dataset.k?null:b.dataset.k;render();}));
+document.addEventListener('keydown',e=>{if(e.key==='Escape'){open=null;render();}});
+render();
+</script>
+</body>
+</html>
