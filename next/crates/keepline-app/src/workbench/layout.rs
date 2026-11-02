@@ -1674,39 +1674,6 @@ pub(super) fn choose_icon(icon: AppIcon, cx: &mut gpui::App) {
     }
     cx.set_global(Chosen { icon, file });
 }
-#[cfg(test)]
-mod tests {
-    #[test]
-    fn turn_clock_reads_minutes_and_hours() {
-        assert_eq!(super::turn_clock(0), "0:00");
-        assert_eq!(super::turn_clock(192), "3:12");
-        assert_eq!(super::turn_clock(3792), "1:03:12");
-    }
-    #[test]
-    fn branch_comes_from_head_in_a_repo_or_a_linked_worktree() {
-        let root = std::env::temp_dir().join(format!("kl-branch-{}", std::process::id()));
-        let repo = root.join("repo");
-        let nested = repo.join("a/b");
-        std::fs::create_dir_all(repo.join(".git")).unwrap();
-        std::fs::create_dir_all(&nested).unwrap();
-        std::fs::write(repo.join(".git/HEAD"), "ref: refs/heads/feat/ui-main\n").unwrap();
-        assert_eq!(super::read_branch(&nested).as_deref(), Some("feat/ui-main"));
-        let linked = root.join("linked");
-        let gitdir = repo.join(".git/worktrees/linked");
-        std::fs::create_dir_all(&linked).unwrap();
-        std::fs::create_dir_all(&gitdir).unwrap();
-        std::fs::write(gitdir.join("HEAD"), "0123456789abcdef\n").unwrap();
-        std::fs::write(
-            linked.join(".git"),
-            format!("gitdir: {}\n", gitdir.display()),
-        )
-        .unwrap();
-        assert_eq!(super::read_branch(&linked).as_deref(), Some("0123456"));
-        assert_eq!(super::read_branch(&root), None);
-        std::fs::remove_dir_all(&root).unwrap();
-    }
-}
-
 /// The pane menu's items in four groups (None draws a rule between them): layout,
 /// text, the session and its todo, then what stops or closes something.
 pub(super) fn menu_rows(zoomed: bool) -> Vec<Option<&'static str>> {
@@ -1762,4 +1729,37 @@ fn menu_shortcut(title: &str, keys: &crate::keymap::Keymap) -> Option<String> {
         _ => return None,
     };
     keys.chords(action).first().map(|c| c.display())
+}
+
+#[cfg(test)]
+mod tests {
+    #[test]
+    fn turn_clock_reads_minutes_and_hours() {
+        assert_eq!(super::turn_clock(0), "0:00");
+        assert_eq!(super::turn_clock(192), "3:12");
+        assert_eq!(super::turn_clock(3792), "1:03:12");
+    }
+    #[test]
+    fn branch_comes_from_head_in_a_repo_or_a_linked_worktree() {
+        let root = std::env::temp_dir().join(format!("kl-branch-{}", std::process::id()));
+        let repo = root.join("repo");
+        let nested = repo.join("a/b");
+        std::fs::create_dir_all(repo.join(".git")).unwrap();
+        std::fs::create_dir_all(&nested).unwrap();
+        std::fs::write(repo.join(".git/HEAD"), "ref: refs/heads/feat/ui-main\n").unwrap();
+        assert_eq!(super::read_branch(&nested).as_deref(), Some("feat/ui-main"));
+        let linked = root.join("linked");
+        let gitdir = repo.join(".git/worktrees/linked");
+        std::fs::create_dir_all(&linked).unwrap();
+        std::fs::create_dir_all(&gitdir).unwrap();
+        std::fs::write(gitdir.join("HEAD"), "0123456789abcdef\n").unwrap();
+        std::fs::write(
+            linked.join(".git"),
+            format!("gitdir: {}\n", gitdir.display()),
+        )
+        .unwrap();
+        assert_eq!(super::read_branch(&linked).as_deref(), Some("0123456"));
+        assert_eq!(super::read_branch(&root), None);
+        std::fs::remove_dir_all(&root).unwrap();
+    }
 }
