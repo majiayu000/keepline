@@ -1,8 +1,10 @@
-import { registerRootComponent } from 'expo';
+// Hermes has no crypto.getRandomValues; the Noise handshake's ephemeral keys need it.
+// Set it up before anything imports @noble, then hand over to Expo Router.
+import * as Crypto from 'expo-crypto';
 
-import App from './App';
+const g = globalThis as { crypto?: { getRandomValues?: unknown } };
+if (typeof g.crypto?.getRandomValues !== 'function') {
+  g.crypto = { ...(g.crypto ?? {}), getRandomValues: Crypto.getRandomValues };
+}
 
-// registerRootComponent calls AppRegistry.registerComponent('main', () => App);
-// It also ensures that whether you load the app in Expo Go or in a native build,
-// the environment is set up appropriately
-registerRootComponent(App);
+require('expo-router/entry');
