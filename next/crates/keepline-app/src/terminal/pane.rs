@@ -3,12 +3,12 @@ use crate::{
     terminal::screen::{self, Screen},
     ui::{theme::Theme as T, tone::Tone},
 };
-use keepline_core::terminal::{agent_input_ready, command_missing};
 use futures::{StreamExt, channel::mpsc::unbounded};
 use gpui::{
     App, Bounds, Context, ElementInputHandler, EntityInputHandler, FocusHandle, Focusable,
     KeyDownEvent, Pixels, Point, UTF16Selection, Window, canvas, div, prelude::*, px,
 };
+use keepline_core::terminal::{agent_input_ready, command_missing};
 use keepline_core::{
     protocol::{Reply, Request, rpc},
     terminal::{
@@ -592,7 +592,7 @@ impl Pane {
                 let fg = runs
                     .iter()
                     .find(|r| col >= r.col && col < r.col + r.cols)
-                    .map_or(self.screen.background ^ 0xffffff, |r| r.fg);
+                    .map_or(self.screen.background ^ T::INVERT_RGB, |r| r.fg);
                 let x = bounds.left() + m.width * (col as f32 + width.max(1) as f32 / 2.);
                 let y = bounds.top() + m.height * (row as f32 + 0.5);
                 cells.push((gpui::point(x, y), fg, width.max(1)));

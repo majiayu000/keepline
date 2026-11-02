@@ -361,6 +361,14 @@ impl Theme {
     pub const BORDER_WIDTH: f32 = 1.;
     /// The focused split's ring, drawn over its 1px border so the grid keeps its size.
     pub const FOCUS_RING: f32 = 2.;
+    /// 已完成 over a finished pane: how wide its title may run before it is cut.
+    pub const COMPLETE_TITLE_MAX: f32 = 336.;
+    /// The countdown line under the header while 标记完成 can still be undone.
+    pub const COMPLETE_COUNTDOWN: f32 = 2.;
+    /// XOR-ing a 0xRRGGBB color with this gives its opposite, readable on it.
+    pub const INVERT_RGB: u32 = 0xffffff;
+    /// The font preview's sample path, as a terminal's ANSI blue would draw it.
+    pub const PREVIEW_ANSI_BLUE: u32 = 0x8f93ff;
     pub const CARET_WIDTH: f32 = 1.5;
     pub const PANE_RADIUS: f32 = 8.;
     pub const CONTROL_RADIUS: f32 = 6.;

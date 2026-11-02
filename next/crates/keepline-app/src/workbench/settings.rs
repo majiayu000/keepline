@@ -45,8 +45,6 @@ const MONO_FACES: [&str; 15] = [
 ];
 
 /// An outlined button: plain enough for a row, still plainly a button.
-/// The font preview's sample path, as a terminal's ANSI blue would draw it.
-const PREVIEW_BLUE: u32 = 0x8f93ff;
 fn secondary(
     id: impl Into<gpui::ElementId>,
     text: impl Into<gpui::SharedString>,
@@ -1187,7 +1185,7 @@ impl SettingsView {
                             let fg = T::terminal_fg();
                             // The sample prompt's ANSI green and blue, not states.
                             let green = Tone::Ok.hue();
-                            let blue = PREVIEW_BLUE;
+                            let blue = T::PREVIEW_ANSI_BLUE;
                             let quiet = mix(T::terminal_bg(), fg, 550);
                             let line = |parts: &[(&str, u32)]| {
                                 let mut col = 0;

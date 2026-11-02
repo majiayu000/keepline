@@ -15,6 +15,20 @@ use std::time::Instant;
 /// The most specks the dissolve sends; a fuller screen sends one from every n-th cell,
 /// though every cell's text is still wiped away.
 const MAX_SPECKS: usize = 900;
+/// The seal and its rings sit this far above the middle of the pane's body.
+const SEAL_LIFT: f32 = 14.;
+/// The sweep's glow trails this far behind its line, and runs this far ahead of it.
+const SWEEP_TAIL: f32 = 64.;
+const SWEEP_HEAD: f32 = 16.;
+/// The sweep's bright line, this wide.
+const SWEEP_LINE: f32 = 1.5;
+/// The check rises this far above the closed pane's last line.
+const CHECK_RISE: f32 = 34.;
+/// With no sidebar row to land in, the specks fly to this far above the pane.
+const DISSOLVE_UP: f32 = 40.;
+/// A speck's path bows up at least this much, plus up to this much more at random.
+const ARC_LIFT: f32 = 30.;
+const ARC_SPREAD: f32 = 90.;
 
 /// One pane's run.
 pub(super) struct Run {
@@ -437,7 +451,7 @@ impl Workbench {
             )
             .child(
                 div()
-                    .max_w(px(336.))
+                    .max_w(px(T::COMPLETE_TITLE_MAX))
                     .truncate()
                     .text_size(px(T::META))
                     .text_color(T::color(T::secondary()))
@@ -511,8 +525,8 @@ impl Workbench {
                     div()
                         .absolute()
                         .left_0()
-                        .top(px(T::PANE_HEADER - 2.))
-                        .h(px(2.))
+                        .top(px(T::PANE_HEADER - T::COMPLETE_COUNTDOWN))
+                        .h(px(T::COMPLETE_COUNTDOWN))
                         .w(gpui::relative(countdown))
                         .bg(dot),
                 )
@@ -612,7 +626,7 @@ impl Painter<'_> {
         }
         let b = Bounds::new(
             point(at.x - px(r), at.y - px(r)),
-            size(px(2. * r), px(2. * r)),
+            size(px(r) * 2., px(r) * 2.),
         );
         self.quads += 1;
         self.window.paint_quad(gpui::quad(
@@ -639,7 +653,7 @@ impl Painter<'_> {
         }
         let b = Bounds::new(
             point(at.x - px(r), at.y - px(r)),
-            size(px(2. * r), px(2. * r)),
+            size(px(r) * 2., px(r) * 2.),
         );
         self.quads += 1;
         self.window.paint_quad(gpui::quad(
@@ -719,7 +733,7 @@ impl Painter<'_> {
             point(pane.left(), pane.top() + px(T::PANE_HEADER)),
             size(pane.size.width, pane.size.height - px(T::PANE_HEADER)),
         );
-        let center = point(body.center().x, body.center().y - px(14.));
+        let center = point(body.center().x, body.center().y - px(SEAL_LIFT));
         let fade = Workbench::completing_opacity(style, t);
         let g = self.green;
         match style {
@@ -803,7 +817,7 @@ impl Painter<'_> {
                 let sweep = eio(sl(t, 0.05, 0.4));
                 if sweep > 0. && sweep < 1. {
                     let clip = |l: Pixels, r: Pixels| (l.max(body.left()), r.min(body.right()));
-                    let (l, r) = clip(x - px(64.), x);
+                    let (l, r) = clip(x - px(SWEEP_TAIL), x);
                     if r > l {
                         let b = Bounds::new(point(l, pane.top()), size(r - l, pane.size.height));
                         self.rect(
@@ -815,7 +829,7 @@ impl Painter<'_> {
                             ),
                         );
                     }
-                    let (l, r) = clip(x, x + px(16.));
+                    let (l, r) = clip(x, x + px(SWEEP_HEAD));
                     if r > l {
                         let b = Bounds::new(point(l, pane.top()), size(r - l, pane.size.height));
                         self.rect(
@@ -830,8 +844,8 @@ impl Painter<'_> {
                     if x > body.left() && x < body.right() {
                         self.rect(
                             Bounds::new(
-                                point(x - px(0.75), pane.top()),
-                                size(px(1.5), pane.size.height),
+                                point(x - px(SWEEP_LINE / 2.), pane.top()),
+                                size(px(SWEEP_LINE), pane.size.height),
                             ),
                             gpui::hsla(0.41, 0.6, 0.93, 0.9),
                         );
@@ -850,7 +864,7 @@ impl Painter<'_> {
                     for (grow, ga) in [(6., 0.08), (3., 0.15)] {
                         let gb = Bounds::new(
                             point(b.left() - px(grow), b.top() - px(grow)),
-                            size(b.size.width + px(2. * grow), b.size.height + px(2. * grow)),
+                            size(b.size.width + px(grow) * 2., b.size.height + px(grow) * 2.),
                         );
                         self.quads += 1;
                         self.window.paint_quad(gpui::quad(
@@ -865,7 +879,7 @@ impl Painter<'_> {
                     self.rect(b, g.opacity(a));
                 }
                 self.check(
-                    point(center.x, ly - px(34.)),
+                    point(center.x, ly - px(CHECK_RISE)),
                     40.,
                     sl(t, 0.46, 0.6),
                     g.opacity(1. - sl(t, 0.62, 0.7)),
@@ -883,7 +897,7 @@ impl Painter<'_> {
                 }
             }
             Style::Dissolve => {
-                let target_or_up = target.unwrap_or(point(center.x, pane.top() - px(40.)));
+                let target_or_up = target.unwrap_or(point(center.x, pane.top() - px(DISSOLVE_UP)));
                 let mut rand = rng(42);
                 let mut arrived = 0usize;
                 let width = f32::from(body.size.width).max(1.);
@@ -936,8 +950,8 @@ impl Painter<'_> {
                     }
                     let ctl = point(
                         px(lerp(f32::from(at.x), f32::from(target_or_up.x), 0.35)
-                            + (cx_ - 0.5) * 90.),
-                        at.y.min(target_or_up.y) - px(30. + cy_ * 90.),
+                            + (cx_ - 0.5) * ARC_SPREAD),
+                        at.y.min(target_or_up.y) - px(ARC_LIFT + cy_ * ARC_SPREAD),
                     );
                     let k1 = sl(tau, 0., 0.2);
                     let m = eio(sl(tau, 0.08, 1.));
