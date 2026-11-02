@@ -105,3 +105,27 @@
   - 不带 `terminal` / `session` 时报错。
 - 相邻的远程测试和中继测试照常通过：`remote_watches…`、`a_stalled_remote_watcher…`、两个中继端到端测试。
 - 已知限制：日志被重新索引（换文件、截断）时 `seq` 会变。客户端发现 `after` 取回的 `seq` 比手上的小，或者取不到，就重新取最新一页。
+
+### 第 1 步：加密和帧（2026-11-02）：采用
+
+- App 放在 `next/mobile`，用 Expo SDK 58、React Native 0.88、TypeScript。加密层在 `src/remote/`：`noise.ts`（握手、DATA/ACK）、`link.ts`（配对链接、令牌、中继地址）、`client.ts`（WebSocket、按 id 对应请求、流、ACK）。只用纯 JS 的 @noble 库，没有原生模块。
+- `bun test`：`vectors/v1.json` 里的码、令牌、令牌哈希、PSK、两条握手消息、三条加密消息、中继帧、配对链接，全部逐字节一致；改错密钥、篡改、重放都会被拒。这是 Noise 部分第一次有第二种实现交叉验证。
+- 端到端测试 `the_js_phone_client_chats_through_a_real_relay`（`cargo test -p keeplined --test managed_session -- --ignored the_js_phone`，需要 bun）：起真的 `keeplined` 和 `keepline-relay`，配对一台 full 权限的设备，JS 客户端经中继完成握手（本机 25 ms），收到 hello、list、events，读到对话。手机发的话原样进了终端，Agent 的回复 377 ms 后经 `chat after` 读回。
+- 还要处理：React Native 的 Hermes 没有 `crypto.getRandomValues`，第 2 步接 App 时用 expo-crypto 补上。
+
+### 第 2–4 步：配对、会话列表、聊天页（2026-11-02）：网页版采用，手机原生待验证
+
+- 路由用 Expo Router（`src/app/`）：`index` 会话列表，`pair` 配对，`chat` 聊天页。连接管理在 `src/remote/hub.ts`：每台电脑一条连接，`events` 来了就重新 `list`；断线后按 1、2、4…30 秒重连；被拒（4401）就不再重连，提示重新配对；回到前台时马上重连。
+- App 注册了 `keepline://` 链接：用系统相机扫电脑上的二维码，会直接打开配对页。配对链接存在 Keychain / Keystore 里，每台电脑一条（网页版用 localStorage，只用来在浏览器里试界面）。
+- 审批条除了问题，还用 `read` 显示终端最后 14 行，这样能看到要批准的是哪条命令。只有这一处用到终端内容。
+- 消息去重按「时间 + 角色 + 文字」，日志重新索引、`seq` 变了也不会出现重复。
+- 演示环境：`cargo test -p keeplined --test managed_session -- --ignored --exact phone_demo_machine --nocapture` 会起后台、127.0.0.1:8790 上的中继、一个会回话的 Agent、一个停在审批上的 Agent，并打印配对链接。`cd next/mobile && bunx expo start --web` 后在浏览器里粘贴链接就能试。
+- 已验（网页版，WebKit 无头浏览器 390×844，浅色和深色各一遍，连的是真的后台和中继）：
+  - 粘贴链接后配对成功，列表里等审批的会话置顶，显示空间名；
+  - 聊天页能显示对话。发「先做轮询，做完跑一遍测试」后，先出现半透明的「发送中」，约 4 秒内出现假 Agent 的回复（假 Agent 本身会等 1 秒，App 每 2 秒取一次）；
+  - 审批条显示 `git push origin main` 和「允许一次 / 拒绝 / Esc」。点「允许一次」后，终端打印出 `pushed`。
+- `bunx expo export --platform ios --platform android` 能打出两个平台的 Hermes 字节码包（各 2.8 MB）；`expo-doctor` 20 项全过；`tsc` 没有错误。
+- 没验：
+  - 没有在真手机或模拟器上运行过（本机没装 iOS 模拟器运行时和 CocoaPods）。Hermes 上的 `crypto.getRandomValues` 补丁、相机扫码、SecureStore 都还没实际跑过。
+  - 演示用的假 Agent 回复后，列表里仍然显示「干活中」，因为它不发 Stop 钩子；真 Claude 回复后应该变成空闲，这一点没验。
+  - Agent 回复不是 Markdown 渲染，现在显示的是纯文本。
