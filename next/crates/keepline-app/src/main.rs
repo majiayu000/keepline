@@ -290,6 +290,16 @@ fn run() -> io::Result<()> {
     keepline_core::decoration::install();
     keepline_core::effect::install();
     let args: Vec<String> = std::env::args().collect();
+    // Without the feature the flag would be ignored and the app would just run, so a
+    // scripted run waits out its timeout with no picture. Say so and stop instead: the
+    // shared target/debug binary is often a plain build made by another checkout.
+    #[cfg(not(feature = "visual-test"))]
+    if args.iter().any(|a| a == "--visual-evidence") {
+        return Err(io::Error::other(
+            "这个版本没编进截图场景（visual-test），--visual-evidence 不起作用；\
+             用 cargo build -p keepline-app --features keepline-app/visual-test 重编",
+        ));
+    }
     let root = if let Some(i) = args.iter().position(|a| a == "--runtime") {
         PathBuf::from(
             args.get(i + 1)
