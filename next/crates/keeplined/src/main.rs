@@ -1,5 +1,6 @@
 mod control;
 mod hooks_cmd;
+mod plugins_cmd;
 mod relay;
 mod remote;
 
@@ -73,6 +74,7 @@ fn run() -> std::io::Result<()> {
             } else {
                 keeplined::serve_with_options
             };
+            plugins_cmd::write_agents_md();
             keeplined::start_mirrors();
             serve(
                 std::path::Path::new(&runtime),
@@ -88,8 +90,17 @@ fn run() -> std::io::Result<()> {
         Some("remote") => remote::run(args),
         Some("hook") => hook(args),
         Some("hooks") => hooks_cmd::run(args),
+        Some("plugins") => plugins_cmd::run(args),
         Some("--skill") => {
-            print!("{}", control::SKILL);
+            match args.next().as_deref() {
+                None => print!("{}", control::SKILL),
+                Some("plugins") => print!("{}", control::PLUGINS_SKILL),
+                Some(other) => {
+                    return Err(std::io::Error::other(format!(
+                        "没有叫 {other} 的说明；有：keeplined --skill、keeplined --skill plugins"
+                    )))
+                }
+            }
             Ok(())
         }
         Some("--version") => {
