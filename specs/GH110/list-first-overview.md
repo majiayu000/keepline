@@ -38,7 +38,7 @@ Runtime transitions and evidence:
   user action. `completed` is durable and process scans cannot downgrade it.
 - `Stop` never means `completed`.
 
-Runtime adapters may improve the input fact, but 同类终端工具 and Remem are optional.
+Runtime adapters may improve the input fact, but third-party terminal hosts and Remem are optional.
 After a restart, Keepline reloads persisted sessions, reconciles live processes,
 and derives the board lanes again. No UI lane becomes a second source of truth.
 

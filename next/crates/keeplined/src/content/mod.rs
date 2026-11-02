@@ -794,7 +794,7 @@ mod tests {
             "Codex Desktop",
             "codex-tui",
             "codex_work_desktop",
-            "同类终端工具-client",
+            "tmux-client",
         ] {
             let mut p = Parser::default();
             p.metadata(Agent::Codex, &json!({"type":"session_meta","payload":{"source":"vscode","thread_source":"user","originator":origin,"cwd":"/repo"}}));

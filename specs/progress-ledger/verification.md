@@ -119,7 +119,7 @@ Issue: https://github.com/majiayu000/keepline/issues/138
 
 - 3377 原本运行 `/tmp/keepline-ui-live.ts`，仅挂载 UI 路由，没有监控或 hook 接收器；会话数据库最后活动停在前一天。已切回本仓库 `service`，完成首次同步并恢复周期扫描。
 - 为 Claude Code / Codex 安装 Keepline hook，保留原有处理器；原配置及数据库备份在 `/tmp/keepline-needs-input-backup-20261007-224250`。真实 Claude hook 已收到；Codex hook 信任与实际事件交付仍需区分。
-- 参考 同类终端工具 的 `tab_attention_priority`：阻塞与未查看的回复都应进入待处理。普通已回复会话不再因没有确认清单而直接进入历史；打开查看记录当前轮次已读，下一轮回复重新进入队列。查看不生成验收，也不清除审批等待。沿用 12 小时过期规则。
+- 参考同类终端工具的 `tab_attention_priority`：阻塞与未查看的回复都应进入待处理。普通已回复会话不再因没有确认清单而直接进入历史；打开查看记录当前轮次已读，下一轮回复重新进入队列。查看不生成验收，也不清除审批等待。沿用 12 小时过期规则。
 - 未回答的结构化 `AskUserQuestion` / `request_user_input` 从日志识别，不依赖安装 hook；收到工具结果后清除。前后端统一待处理判定，全部证据齐全的待验收会话也计入“需要你”。
 - 最终 153 项相关回归通过，涵盖 hook 问答、缓存已读、审批优先级及架构依赖。两个浏览器用例验证普通新回复入口及已有验收流程，类型检查和完整构建通过。日志：`/tmp/keepline-needs-input-final-tests.log`、`/tmp/keepline-needs-input-build.log`。
 - 重启后的真实接口返回 57 个父会话，37 条未读回复进入“需要你”；页面可见 37 个“查看回复”入口。证据：`/tmp/keepline-needs-input-live-result.json`、`/tmp/keepline-needs-input-fixed.png`。

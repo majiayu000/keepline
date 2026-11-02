@@ -357,7 +357,7 @@ pub enum Edit {
 
 impl Edit {
     /// Whether the edit must be based on the host's current revision. Tabs and layouts
-    /// are addressed by id and only ever changed by the user, so like 同类终端工具's tab
+    /// are addressed by id and only ever changed by the user, so like tmux window
     /// commands they apply to whatever is there now and fail only when a referenced
     /// object is gone. Session output bumps the revision every second; requiring it
     /// here made 「收起标签」 fail almost every time.

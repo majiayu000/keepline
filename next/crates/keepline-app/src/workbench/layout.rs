@@ -716,7 +716,7 @@ impl Workbench {
         self.edit(Edit::PutTab { tab }, cx);
     }
     /// The terminal's text, scrollback included, saved under the host's private runtime
-    /// directory and opened with `$EDITOR` in a new tab, as 同类终端工具 does. The host reads it,
+    /// directory and opened with `$EDITOR` in a new tab. The host reads it,
     /// so a pane's own screen is never locked for it; one file per terminal, replaced.
     fn scrollback_in_editor(&mut self, id: &str, cx: &mut Context<Self>) {
         let socket = self.store.socket().to_owned();

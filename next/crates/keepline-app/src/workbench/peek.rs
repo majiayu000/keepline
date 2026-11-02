@@ -1,4 +1,4 @@
-//! Peek: a session's live screen floated over the current tab, after 同类终端工具 App's peek.
+//! Peek: a session's live screen floated over the current tab.
 //! An approval on it is answered from its title bar; 「↗ 打开」 switches to it for real.
 use super::*;
 

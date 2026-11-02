@@ -8,7 +8,7 @@ use std::{
 /// What a split without focus shows where its cursor is.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
 pub enum UnfocusedCursor {
-    /// Only the focused pane has a cursor, as in tmux or 同类终端工具.
+    /// Only the focused pane has a cursor, as in tmux.
     #[default]
     Hidden,
     /// An outline, as Ghostty draws it.

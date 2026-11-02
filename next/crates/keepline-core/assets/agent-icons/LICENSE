@@ -1,6 +1,5 @@
 claude.svg and codex.svg are the Claude Code and Codex marks from LobeHub's lobe-icons
-(https://github.com/lobehub/lobe-icons), MIT License, as redistributed by 同类终端工具
-(website/assets/agent-icons, Apache-2.0). Reduced here to one fill so the app can tint them.
+(https://github.com/lobehub/lobe-icons), MIT License. Reduced here to one fill so the app can tint them.
 The marks themselves belong to Anthropic and OpenAI; Keepline shows them only to say which
 CLI a conversation runs in.
 

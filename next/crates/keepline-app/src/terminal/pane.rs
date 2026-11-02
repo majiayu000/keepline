@@ -121,7 +121,7 @@ pub struct Pane {
     /// Shown in the peek overlay and only looked at: it does not resize the terminal
     /// (that would reflow the Agent's screen for its own tab) and keeps the bottom rows
     /// in view when taller. The first key, paste or click in it clears this, so the
-    /// overlay takes the size, as 同类终端工具 sizes to the client last used.
+    /// overlay takes the size: the client used last decides the size.
     pub peek: bool,
     /// The scheme this pane first painted its live program with. Agents such as Codex
     /// tint their own bands from the background they saw at start, which a later switch
@@ -2171,7 +2171,7 @@ impl Render for Pane {
             .bg(T::color(T::pane()))
             .track_focus(&self.focus)
             // Right-click is never reported to the program: it opens Keepline's pane
-            // menu even when a full-screen Agent has taken the mouse, as in 同类终端工具.
+            // menu even when a full-screen Agent has taken the mouse.
             .on_mouse_down(gpui::MouseButton::Left,cx.listener(Self::mouse_down))
             .on_mouse_down(gpui::MouseButton::Middle,cx.listener(Self::mouse_down))
             .on_mouse_move(cx.listener(Self::mouse_move))

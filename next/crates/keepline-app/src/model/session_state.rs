@@ -11,7 +11,7 @@ pub enum Group {
     Paused,
     Running,
     Stale,
-    /// Live states of an agent in a Keepline terminal, read like 同类终端工具's pane states.
+    /// Live states of an agent in a Keepline terminal, read from what its screen shows.
     /// Not inbox groups: they never appear in `ALL`.
     Working,
     Done,
@@ -24,7 +24,7 @@ pub enum Group {
     /// You marked it complete: the only 做完了.
     Closed,
 }
-/// What a live agent in a Keepline terminal is doing right now, as 同类终端工具 shows panes.
+/// What a live agent in a Keepline terminal is doing right now.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Phase {
     Working,
@@ -88,7 +88,7 @@ pub fn live_phase(w: &Workspace, s: &AgentSession) -> Option<Phase> {
         _ => Phase::Idle,
     })
 }
-/// 同类终端工具's "done" versus "idle": a turn that ends out of view stays unseen until its
+/// "Done" versus "idle": a turn that ends out of view stays unseen until its
 /// pane is shown; one that ends in view, or any other phase, is seen.
 pub fn track_unseen(
     phases: &mut HashMap<String, Phase>,

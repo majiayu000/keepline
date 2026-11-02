@@ -2,7 +2,7 @@
 
 ## Goal
 
-Keepline must remain useful when 同类终端工具, the dashboard, or Keepline itself exits.
+Keepline must remain useful when a third-party terminal host, the dashboard, or Keepline itself exits.
 After Keepline starts again it must rebuild live agent state from local native
 session files and the current process table without presenting persisted live
 state as current.
@@ -13,7 +13,7 @@ state as current.
   session projections, and recovery actions.
 - Claude Code and Codex native session files are Keepline's standalone source
   for conversation identity and recovery.
-- 同类终端工具 is an optional terminal host and is not a data dependency.
+- Third-party terminal hosts are optional and are not a data dependency.
 - Remem may later enrich session metadata through an adapter, but Keepline's
   startup, scanning, persistence, status display, and recovery must work when
   Remem is absent or unavailable.

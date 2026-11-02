@@ -1,5 +1,4 @@
-//! Driving Keepline terminals from scripts and other Agents, after 同类终端工具's `pane` and
-//! `agent` commands: list them, read a screen, send text, prompt an Agent and wait.
+//! Driving Keepline terminals from scripts and other Agents: list them, read a screen, send text, prompt an Agent and wait.
 use keepline_core::{content::Turn, model::*, protocol::*};
 use std::io::{self, Read};
 use std::path::{Path, PathBuf};
@@ -233,7 +232,7 @@ pub fn run(command: &str, args: impl Iterator<Item = String>) -> io::Result<()> 
         _ => Err(io::Error::other(USAGE)),
     }
 }
-/// 同类终端工具's `agent explain`: replays a saved screen, or a live terminal's, through the
+/// `explain`: replays a saved screen, or a live terminal's, through the
 /// screen rules and says what they decided and from what.
 fn explain(a: Args) -> io::Result<()> {
     use keeplined::screen_rules;
@@ -311,7 +310,7 @@ fn explain(a: Args) -> io::Result<()> {
     }
     Ok(())
 }
-/// 同类终端工具's event subscription: the state now, then one line per change until the host
+/// Event subscription: the state now, then one line per change until the host
 /// goes away or the reader stops reading.
 fn events(a: Args) -> io::Result<()> {
     let mut stream = std::os::unix::net::UnixStream::connect(&a.socket)?;
@@ -446,7 +445,7 @@ fn prompt(a: Args) -> io::Result<()> {
                 "这个终端里没有可识别的 Agent 对话；发给 shell 请用 send",
             ))
         }
-        // Typing into an approval or a choice would answer it: 同类终端工具 refuses too.
+        // Typing into an approval or a choice would answer it, so refuse.
         Phase::Waiting if !a.has("force") => {
             return Err(io::Error::other(
                 "Agent 正在等你回答（审批或选择题），没有发送；确认要发请加 --force",
@@ -632,7 +631,7 @@ fn side_placement(
     unreachable!("there is always a next side tab")
 }
 
-/// 同类终端工具's `pane split` and Rex's `new_split`: a new shell beside a terminal, in its
+/// `split`: a new shell beside a terminal, in its
 /// tab, in the directory that shell is in now. New panes only go right or down, so the
 /// pane the user started in keeps the top-left corner. A tab that already has four panes,
 /// or a split that would leave a half too small, sends the pane to a side tab named after

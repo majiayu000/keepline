@@ -43,8 +43,8 @@ ul{margin:6px 0;padding-left:20px}
 <div class="box key">
 <b>结论</b>
 <ul>
-<li>同类终端工具 本身没有额度条，全靠社区插件（列表里二十多个）。做法分两派：<b>被动读本机记录</b>，或者<b>拿各家 CLI 的登录凭据调官方接口</b>。</li>
-<li>Keepline 现在（431a112a）属于被动派，做法和 同类终端工具-status-ui-bar 几乎一样：Claude 截 statusline，Codex 读会话日志；Grok 读它自己的日志，这一点比那个插件还更不需要联网。</li>
+<li>同类终端工具本身没有额度条，全靠社区插件（列表里二十多个）。做法分两派：<b>被动读本机记录</b>，或者<b>拿各家 CLI 的登录凭据调官方接口</b>。</li>
+<li>Keepline 现在（431a112a）属于被动派，做法和 status-ui-bar 几乎一样：Claude 截 statusline，Codex 读会话日志；Grok 读它自己的日志，这一点比那个插件还更不需要联网。</li>
 <li>Codex 0.166 的 app-server 有 <code>account/rateLimits/read</code>，额度一变还会推送 <code>account/rateLimits/updated</code>。Keepline 已经连着这个服务，所以是最划算的升级：随时最新，Keepline 自己也不联网。</li>
 <li>值得抄的界面细节：倒计时直接写在百分比旁边（<code>5h 35% 24m</code>）；读数旧了打 <code>*</code>；点开弹层看全部窗口和缓存时间；额度挨着正在跑那个 Agent 的窗格显示。</li>
 </ul>
@@ -56,9 +56,9 @@ ul{margin:6px 0;padding-left:20px}
 <tr><th>工具</th><th>形态</th><th>Claude</th><th>Codex</th><th>Cursor</th><th>Grok</th><th>刷新 / 失败时</th></tr>
 <tr><td><b>Keepline</b><br>431a112a</td><td>工作台侧栏底部</td><td>statusline 截获 <code>rate_limits</code></td><td>会话日志 <code>token_count.rate_limits</code></td><td class="no">无</td><td>自己的日志 <code>billing: fetched credits config</code></td><td>对话日志变长时顺带读；不联网</td></tr>
 <tr><td><b>QuotaBar</b><br>本机 0.6.0</td><td>菜单栏</td><td>钥匙串里的 OAuth 登录凭据 → <code>api.anthropic.com/api/oauth/usage</code></td><td><code>~/.codex/auth.json</code> → <code>chatgpt.com/backend-api/wham/usage</code></td><td>网站 Cookie → <code>cursor.com/api/usage-summary</code></td><td><code>~/.grok/auth.json</code> → <code>cli-chat-proxy.grok.com/v1/billing?format=credits</code></td><td>定时拉；登录过期提示重新登录；429 记下重试时间</td></tr>
-<tr><td><b>同类终端工具-status-ui-bar</b></td><td>同类终端工具 标签栏一行</td><td>包装 statusline 截获，不联网</td><td>读 <code>~/.codex/sessions</code></td><td class="no">无</td><td>调 Grok CLI 的计费接口（token 走 stdin，不出现在 <code>ps</code>）</td><td>5 分钟；失败用缓存；超过 24 小时打 <code>*</code></td></tr>
-<tr><td><b>同类终端工具-quotabar</b></td><td>标签栏一行 + 侧栏 + 弹层</td><td>钥匙串 <code>Claude Code-credentials</code> → OAuth 用量接口</td><td>可插拔</td><td>可插拔</td><td>可插拔</td><td>共用缓存，最多 5 分钟真查一次；429 保留上次的值；侧栏数据 25 分钟后自动消失</td></tr>
-<tr><td><b>quota-cli</b> + 同类终端工具 插件</td><td>侧栏，挨着跑那个 Agent 的窗格</td><td colspan="4">读各家 CLI 自己存的登录凭据，只读，不刷新、不改写 token；Claude、Codex、Cursor、Kiro 等</td><td>凭据过期时继续显示「上次安全的数据」</td></tr>
+<tr><td><b>status-ui-bar</b></td><td>同类终端工具标签栏一行</td><td>包装 statusline 截获，不联网</td><td>读 <code>~/.codex/sessions</code></td><td class="no">无</td><td>调 Grok CLI 的计费接口（token 走 stdin，不出现在 <code>ps</code>）</td><td>5 分钟；失败用缓存；超过 24 小时打 <code>*</code></td></tr>
+<tr><td><b>quotabar</b></td><td>标签栏一行 + 侧栏 + 弹层</td><td>钥匙串 <code>Claude Code-credentials</code> → OAuth 用量接口</td><td>可插拔</td><td>可插拔</td><td>可插拔</td><td>共用缓存，最多 5 分钟真查一次；429 保留上次的值；侧栏数据 25 分钟后自动消失</td></tr>
+<tr><td><b>quota-cli</b> + 同类终端工具插件</td><td>侧栏，挨着跑那个 Agent 的窗格</td><td colspan="4">读各家 CLI 自己存的登录凭据，只读，不刷新、不改写 token；Claude、Codex、Cursor、Kiro 等</td><td>凭据过期时继续显示「上次安全的数据」</td></tr>
 <tr><td><b>CodexBar</b></td><td>菜单栏</td><td>在本地终端跑 <code>/usage</code>、<code>/status</code> 解析</td><td>优先 <code>codex app-server</code> RPC，失败才解析 <code>/status</code></td><td>浏览器 Cookie 或 Cursor App 的 token</td><td>—</td><td>15 家以上；Safari Cookie 需要完全磁盘访问</td></tr>
 </table>
 </div>
@@ -80,7 +80,7 @@ ul{margin:6px 0;padding-left:20px}
 <li>Grok 1.0.70：<code>~/.grok/logs/unified.jsonl</code> 里每次启动记一条 <code>creditUsagePercent</code>、按周的 <code>currentPeriod</code>、<code>subscriptionTier</code>。之后几小时日志能多出几百 KB。</li>
 <li>Cursor：<code>~/.cursor</code> 下没有任何额度记录。Qoder：只有每条回复的 <code>usage.credits</code>，没有总额。</li>
 <li>Codex 0.166：app-server 提供 <code>account/rateLimits/read</code>、<code>account/usage/read</code>，并推送 <code>account/rateLimits/updated</code>。</li>
-<li>同类终端工具 0.9.3 本体：程序里没有任何额度相关的代码。</li>
+<li>同类终端工具本体：程序里没有任何额度相关的代码。</li>
 </ul>
 
 <h2>待决定</h2>
@@ -92,8 +92,7 @@ ul{margin:6px 0;padding-left:20px}
 
 <h2>来源</h2>
 <ul>
-<li><a href="https://awesome.ecosyste.ms/lists/yigitkonur%2Fawesome-同类终端工具">awesome-同类终端工具 插件列表</a></li>
-<li><a href="https://github.com/speardragon/同类终端工具-status-ui-bar">同类终端工具-status-ui-bar</a> · <a href="https://github.com/ArnaudRinquin/同类终端工具-quotabar">同类终端工具-quotabar</a> · <a href="https://github.com/pinkpixel-dev/quota">quota / quota-cli</a></li>
+<li>status-ui-bar · quotabar · <a href="https://github.com/pinkpixel-dev/quota">quota / quota-cli</a></li>
 <li><a href="https://tangled.org/alice.mosphere.at/CodexBar">CodexBar 说明（镜像）</a> · <a href="https://github.com/steipete/CodexBar/releases/tag/v0.40.0">CodexBar v0.40.0</a></li>
 <li>QuotaBar：读的是 <code>/Applications/QuotaBar.app</code> 程序里的字符串，没有看源码。</li>
 </ul>

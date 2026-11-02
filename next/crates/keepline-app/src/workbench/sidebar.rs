@@ -115,7 +115,7 @@ impl Workbench {
                     .gap(px(T::S8))
                     .child(dot(group))
                     .child(div().min_w_0().truncate().child(space.name.clone()))
-                    // The branch the space's directory is on, as 同类终端工具's sidebar shows it.
+                    // The branch the space's directory is on.
                     .when_some(self.git_branch(&space.cwd, cx), |d, branch| {
                         d.child(
                             label(branch)

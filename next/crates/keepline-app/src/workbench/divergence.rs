@@ -1,4 +1,4 @@
-//! How far a space's branch is ahead of and behind its upstream, as 同类终端工具's sidebar shows
+//! How far a space's branch is ahead of and behind its upstream, as the sidebar shows
 //! it. Counting needs git, so it runs only when one of the refs it depends on changed on
 //! disk (a commit, a fetch, a push, a checkout), and never writes to `.git`.
 use super::*;

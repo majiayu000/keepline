@@ -127,7 +127,7 @@ pub enum Request {
         rows: usize,
     },
     /// Scripts and other Agents: text placed in a terminal as a paste, then Enter when
-    /// `submit`. Goes in beside whoever is typing there, as 同类终端工具's `pane run` does.
+    /// `submit`. Goes in beside whoever is typing there.
     SendText {
         id: String,
         text: String,
@@ -386,7 +386,7 @@ pub const HOOK_ENV: &str = "KEEPLINE_HOOK";
 /// `1` in every managed terminal: what `keeplined --skill` tells an Agent to check first.
 pub const MARKER_ENV: &str = "KEEPLINE_ENV";
 /// Set by the user before a wrapper (a sandbox, a VM, `nono`) that hides the Agent's own
-/// process: names the Agent it runs, as 同类终端工具's `同类终端工具_AGENT`.
+/// process: names the Agent it runs.
 pub const AGENT_ENV: &str = "KEEPLINE_AGENT";
 /// The terminal hint for an Agent the host sees running but cannot tie to a conversation yet.
 pub const AGENT_UNBOUND_PREFIX: &str = "未对上对话：";

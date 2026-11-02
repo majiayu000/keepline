@@ -23,12 +23,12 @@ Keepline 的 `src/services/session.service.ts` 已经检查关联 PID 是否还�
 
 ### 同类终端工具
 
-- 本地参考仓库 `/Users/lifcc/Desktop/code/AI/tools/同类终端工具`，HEAD `9eb5214`，v0.8.2；相关源码只读查看，未修改。
+- 本地参考仓库，HEAD `9eb5214`，v0.8.2；相关源码只读查看，未修改。
 - 管理 PTY 终端；macOS 从终端 shell 的前台进程组获取 Agent 进程。
 - Codex 退出、前台回到 shell 时，先发布进程退出的 idle 转换，再清除当前 Agent 身份。整个窗格子进程退出由 `child.wait()` 观察。
 - Codex 工作状态主要来自终端画面和 OSC 标题；SessionStart hook 通过本地 socket 关联原生会话 ID。
-- 源码：`src/platform/macos.rs:foreground_job`、`src/pane.rs:foreground_shell_agent_action`、`src/pane/agent_detection.rs:detection_update_for_publish_with_osc`、`src/integration/assets/codex/同类终端工具-agent-state.sh`。
-- 官方说明：<https://同类终端工具.dev/docs/agents/>、<https://同类终端工具.dev/docs/integrations/#codex>。
+- 源码：`src/platform/macos.rs:foreground_job`、`src/pane.rs:foreground_shell_agent_action`、`src/pane/agent_detection.rs:detection_update_for_publish_with_osc`、`src/integration/assets/codex/agent-state.sh`。
+- 官方说明：。
 
 ### ccmux
 

@@ -7,20 +7,20 @@
 
 ## 共识
 
-0.157 起 hook、MCP、工具命令都在共享 app-server 里跑，继承的是**最先启动它的那个终端**的环境变量。所有靠 `TMUX_PANE` / `同类终端工具_PANE_ID` 这类环境变量分辨终端的工具都坏了：同类终端工具、tmux 系、Orca、OpenRig、cc-deck、Maestri 等。OpenAI 维护者在 openai/codex#48500 回应：hook 跑在 app-server 里，和哪个客户端无关，这不是设计承诺。上游正式方案 openai/codex#44902（hook 范围的客户端环境白名单）仍为 OPEN。
+0.157 起 hook、MCP、工具命令都在共享 app-server 里跑，继承的是**最先启动它的那个终端**的环境变量。所有靠 `TMUX_PANE` / `XX_PANE_ID` 这类环境变量分辨终端的工具都坏了：同类终端工具、tmux 系、Orca、OpenRig、cc-deck、Maestri 等。OpenAI 维护者在 openai/codex#48500 回应：hook 跑在 app-server 里，和哪个客户端无关，这不是设计承诺。上游正式方案 openai/codex#44902（hook 范围的客户端环境白名单）仍为 OPEN。
 
-同类终端工具 本身的会话关联（agent_session）同样失效（上游仓库#4649 OPEN、#4859 重复）。官方给用户的临时办法也是 `codex --no-daemon`。同类终端工具 状态显示正常，是因为状态只看画面和 OSC 标题，见 `~/.local/state/同类终端工具/agent-detection/remote/codex.toml`。
+同类终端工具本身的会话关联（agent_session）同样失效（上游 issue）。官方给用户的临时办法也是 `codex --no-daemon`。同类终端工具状态显示正常，是因为状态只看画面和 OSC 标题，见 本机记录。
 
 ## 各家做法
 
 | 方案 | 代表 | 是否精确 | 对 Keepline 的适用性 |
 |---|---|---|---|
-| 退回 `--no-daemon` | Orca、OpenRig、svall、同类终端工具 官方建议 | 精确 | 已采用 |
+| 退回 `--no-daemon` | Orca、OpenRig、svall、同类终端工具官方建议 | 精确 | 已采用 |
 | 由工具自己建 thread，再 `codex resume <thread> --remote` 接入 | Wirasm/helm#624（已合并，0.160 实测） | 精确，生成时就知道 thread | 只覆盖 Keepline 预填的命令；R3 对 `--remote` 的回调和恢复尚未证明 |
 | hook payload 首个 `session_id` + 自建 thread→终端记录 | eneskirca/nodeterm#1232 | 精确，但前提是 thread 已登记 | 需要装 hook（改用户 Codex 配置），而且仍需先有登记 |
-| `codex resume <id>` 进程参数 | muxa、同类终端工具 用户 wrapper | 精确 | **Keepline 目前只解析 Claude 的参数**（`recognition.rs:224`），Codex 未用 |
+| `codex resume <id>` 进程参数 | muxa、同类终端工具用户 wrapper | 精确 | **Keepline 目前只解析 Claude 的参数**（`recognition.rs:224`），Codex 未用 |
 | 终端屏幕上的最近一条提示 ↔ rollout 最近一条用户原话，唯一时才绑定 | Open330/muxa#197（已合并，实测同 cwd、同毫秒双开都绑对） | 有条件精确；完全相同的提示、短于 12 字时拒绝绑定 | Keepline 自己就是终端，屏幕缓冲现成，不用改配置 |
-| OSC 标题 `<thread_name> \| <folder>` ↔ `~/.codex/session_index.jsonl` | 同类终端工具#4649 评论（用户 wrapper） | 唯一时可用；首轮自动起名后才出现 | 本机 1314 条里有 21 个重名，必须加唯一性和 cwd 约束 |
+| OSC 标题 `<thread_name> \| <folder>` ↔ `~/.codex/session_index.jsonl` | 上游 issue 评论（用户 wrapper） | 唯一时可用；首轮自动起名后才出现 | 本机 1314 条里有 21 个重名，必须加唯一性和 cwd 约束 |
 | 只看画面判断状态，不关联 | 同类终端工具、agent-deck 不装 hook 时 | 不关联会话 | 可作为兜底：显示状态但没有内容 |
 
 ## 决定

@@ -347,7 +347,7 @@ impl Adapter for Codex {
     }
 }
 
-/// Codex's own title rules (the ones 同类终端工具 reads): "Action Required" while blocked,
+/// Codex's own title rules: "Action Required" while blocked,
 /// a braille spinner while working, anything else once idle. Status only, never identity.
 /// `token_count`'s `rate_limits`: the account's windows as Codex last heard them from the
 /// server. Null windows (and API-key sign-ins, which have none) leave no reading.
