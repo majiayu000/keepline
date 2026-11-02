@@ -2288,15 +2288,25 @@ impl Render for Pane {
                     .min_h_0()
                     .relative()
                     .child(content)
-                    .when(self.scrolled_back, |d| {
+                    .when(self.scrolled_back || self.toast.is_some(), |d| {
                         // Floats over the grid so it never resizes the terminal; clear of
-                        // the scrollbar along the right edge.
-                        d.child(
+                        // the scrollbar along the right edge. A toast stacks above the
+                        // "回到底部" button instead of covering it.
+                        let toast = self.toast.clone().map(|toast| {
+                            div()
+                                .px(px(T::S8))
+                                .py(px(T::S4))
+                                .rounded(px(T::CONTROL_RADIUS))
+                                .bg(T::color(T::raised()))
+                                .border(px(T::BORDER_WIDTH))
+                                .border_color(T::color(T::card_border()))
+                                .text_size(px(T::META))
+                                .text_color(T::color(T::secondary()))
+                                .child(toast)
+                        });
+                        let bottom = self.scrolled_back.then(|| {
                             div()
                                 .id("scroll-to-bottom")
-                                .absolute()
-                                .right(px(T::S20))
-                                .bottom(px(T::S8))
                                 .px(px(T::S8))
                                 .py(px(T::S4))
                                 .rounded(px(T::CHIP_RADIUS))
@@ -2311,7 +2321,19 @@ impl Render for Pane {
                                 .on_click(cx.listener(|this, _, window, cx| {
                                     this.scroll_to(ScrollViewport::Bottom, cx);
                                     window.focus(&this.focus, cx);
-                                })),
+                                }))
+                        });
+                        d.child(
+                            div()
+                                .absolute()
+                                .right(px(T::S20))
+                                .bottom(px(T::S8))
+                                .flex()
+                                .flex_col()
+                                .items_end()
+                                .gap(px(T::S4))
+                                .children(toast)
+                                .children(bottom),
                         )
                     }),
             )
@@ -2337,23 +2359,6 @@ impl Render for Pane {
                             ),
                     )
                     .priority(2),
-                )
-            })
-            .when_some(self.toast.clone(), |d, toast| {
-                d.relative().child(
-                    div()
-                        .absolute()
-                        .bottom(px(T::S8))
-                        .right(px(T::S8))
-                        .px(px(T::S8))
-                        .py(px(T::S4))
-                        .rounded(px(T::CONTROL_RADIUS))
-                        .bg(T::color(T::raised()))
-                        .border(px(T::BORDER_WIDTH))
-                        .border_color(T::color(T::card_border()))
-                        .text_size(px(T::META))
-                        .text_color(T::color(T::secondary()))
-                        .child(toast),
                 )
             })
             .when(self.flash, |d| {
