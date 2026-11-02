@@ -2404,7 +2404,7 @@ fn copied_note(text: &str, whole_screen: bool) -> String {
         format!("已复制 {} 字", text.chars().count())
     }
 }
-const SELECT_HINT: &str ="这个程序接管了鼠标：按住 Shift 再拖动来选中文字";
+const SELECT_HINT: &str = "这个程序接管了鼠标：按住 Shift 再拖动来选中文字";
 
 #[derive(Debug, PartialEq)]
 enum PasteAction {
