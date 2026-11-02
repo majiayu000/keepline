@@ -105,7 +105,12 @@ fn build(state: &State) -> Sidebar {
         .filter(|s| !s.needs_you && s.group == "running")
         .collect();
     let count = |g: &str| open.iter().filter(|s| !s.needs_you && s.group == g).count();
-    let (done, paused, stale) = (count("review"), count("paused"), count("stale"));
+    let (done, paused, fresh, stale) = (
+        count("review"),
+        count("paused"),
+        count("fresh"),
+        count("stale"),
+    );
     let mut sections = vec![
         Section {
             id: "need",
@@ -136,7 +141,11 @@ fn build(state: &State) -> Sidebar {
     ];
     // The rest, folded into one summary row and grouped by folder when opened.
     let mut rows = vec![Row::Note {
-        text: format!("做完了 {done} · 停下了 {paused} · 很久没动 {stale}"),
+        text: if fresh > 0 {
+            format!("做完了 {done} · 停下了 {paused} · 新开的 {fresh} · 很久没动 {stale}")
+        } else {
+            format!("做完了 {done} · 停下了 {paused} · 很久没动 {stale}")
+        },
         action: Some("toggle"),
     }];
     let mut folders: Vec<(&str, Vec<&Session>)> = vec![];

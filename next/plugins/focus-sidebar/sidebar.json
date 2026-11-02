@@ -5,7 +5,7 @@
       "id": "focus",
       "name": "专注",
       "group": "status",
-      "fold": ["running", "done", "stopped", "stale"],
+      "fold": ["running", "done", "stopped", "fresh", "stale"],
       "detail": "always",
       "limit": 8
     }

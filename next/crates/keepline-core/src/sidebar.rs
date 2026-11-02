@@ -19,7 +19,7 @@ pub const API: u32 = 1;
 pub enum Grouping {
     /// One list, what needs you first.
     Flat,
-    /// A section per bucket: 需要你, 在跑, 做完了, 停下了, 很久没动.
+    /// A section per bucket: 需要你, 在跑, 做完了, 停下了, 新开的, 很久没动.
     Status,
     /// 需要你 pinned on top, then one folder per working directory.
     Directory,
@@ -38,15 +38,18 @@ pub enum Bucket {
     Done,
     /// Stopped short or idle at the prompt.
     Stopped,
+    /// Just opened or `/clear`ed: no turn has started yet.
+    Fresh,
     /// Untouched past the stale days.
     Stale,
 }
 impl Bucket {
-    pub const ALL: [Self; 5] = [
+    pub const ALL: [Self; 6] = [
         Self::Attention,
         Self::Running,
         Self::Done,
         Self::Stopped,
+        Self::Fresh,
         Self::Stale,
     ];
     pub fn label(self) -> &'static str {
@@ -55,6 +58,7 @@ impl Bucket {
             Self::Running => "在跑",
             Self::Done => "做完了",
             Self::Stopped => "停下了",
+            Self::Fresh => "新开的",
             Self::Stale => "很久没动",
         }
     }
@@ -131,14 +135,14 @@ pub fn builtin() -> Vec<Preset> {
             "status",
             "状态",
             Grouping::Status,
-            &[Bucket::Done, Bucket::Stopped, Bucket::Stale],
+            &[Bucket::Done, Bucket::Stopped, Bucket::Fresh, Bucket::Stale],
             Detail::Attention,
         ),
         p(
             "directory",
             "目录",
             Grouping::Directory,
-            &[Bucket::Done, Bucket::Stopped, Bucket::Stale],
+            &[Bucket::Done, Bucket::Stopped, Bucket::Fresh, Bucket::Stale],
             Detail::Attention,
         ),
     ]

@@ -145,12 +145,17 @@ fn an_empty_agent_reads_as_fresh_not_done() {
     s.id = "live".into();
     s.terminal = Some("t0".into());
     s.current = true;
+    s.outcome = Outcome::Open;
     let unseen = HashSet::new();
     // Just opened: no record yet, then a record with no ask and no turn.
     assert!(sidebar_status(&w, &unseen, &s) == (Group::Fresh, false));
     w.content.insert("live".into(), Content::default());
     assert!(sidebar_status(&w, &unseen, &s) == (Group::Fresh, false));
     assert_eq!(Group::Fresh.label(), "新开的");
+    // Its own bucket in 状态 / 目录 and to plugins, not counted under 做完了.
+    assert!(super::sidebar_list::bucket(Group::Fresh) == keepline_core::sidebar::Bucket::Fresh);
+    // Nor a card on the board until it has done something.
+    assert!(super::board::column_of(&w, &s, now()).is_none());
     // Once it has an ask or a finished turn, it is 做完了 again.
     w.content.insert(
         "live".into(),
@@ -168,6 +173,7 @@ fn an_empty_agent_reads_as_fresh_not_done() {
         },
     );
     assert!(sidebar_status(&w, &unseen, &s) == (Group::Ready, false));
+    assert!(super::board::column_of(&w, &s, now()).is_some());
 }
 
 #[test]

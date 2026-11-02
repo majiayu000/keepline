@@ -49,6 +49,10 @@ pub(super) fn column_of(w: &Workspace, s: &AgentSession, now: u64) -> Option<Col
         return (s.outcome == Outcome::Completed && completed_within(w, &s.id, now, DAY))
             .then_some(Column::Done);
     }
+    if live_phase(w, s) == Some(Phase::Idle) && fresh(w, s) {
+        // Just opened, no turn yet: nothing to put on a card.
+        return None;
+    }
     Some(match board_group(w, s) {
         Group::Running | Group::Working => Column::Running,
         Group::Waiting | Group::Error | Group::Paused => Column::Needs,
