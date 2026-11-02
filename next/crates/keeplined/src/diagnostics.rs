@@ -499,7 +499,11 @@ mod tests {
         let (a, b) = UnixStream::pair().unwrap();
         let root =
             std::env::temp_dir().join(format!("kl-diagnostic-cancel-{}", uuid::Uuid::new_v4()));
-        let script = format!("echo $$ > '{}'; exec /bin/sleep 20", root.display());
+        // Written aside and renamed: `>` creates the file empty before the pid lands in it.
+        let script = format!(
+            "echo $$ > '{0}.tmp'; mv '{0}.tmp' '{0}'; exec /bin/sleep 20",
+            root.display()
+        );
         let path = root.clone();
         let task =
             std::thread::spawn(move || capture(Command::new("/bin/sh").args(["-c", &script]), &a));
