@@ -27,6 +27,8 @@ pub enum Kind {
     Hooks,
     /// `decorations.json`: short command output shown on each pane (see `decoration`).
     Decorations,
+    /// `effects.json`: which animation 标记完成 plays (see `effect`).
+    Effects,
 }
 impl Kind {
     pub fn label(self) -> &'static str {
@@ -37,6 +39,7 @@ impl Kind {
             Self::Sidebar => "左栏",
             Self::Hooks => "Hooks",
             Self::Decorations => "窗格装饰",
+            Self::Effects => "动效",
         }
     }
     /// The files of this kind inside a plugin directory, in load order.
@@ -71,6 +74,10 @@ impl Kind {
                 .filter(|p| p.is_file())
                 .collect(),
             Self::Decorations => [dir.join("decorations.json")]
+                .into_iter()
+                .filter(|p| p.is_file())
+                .collect(),
+            Self::Effects => [dir.join("effects.json")]
                 .into_iter()
                 .filter(|p| p.is_file())
                 .collect(),
@@ -230,7 +237,10 @@ fn read(dir: &Path) -> Result<Plugin, String> {
         return Err("name 不能为空".into());
     }
     if m.provides.is_empty() {
-        return Err("provides 至少写一种：agent、actions、rules、sidebar、hooks".into());
+        return Err(
+            "provides 至少写一种：agent、actions、rules、sidebar、hooks、decorations、effects"
+                .into(),
+        );
     }
     let plugin = Plugin {
         id: m.id,
@@ -344,12 +354,14 @@ mod tests {
             let (_, sidebar) = crate::sidebar::load(p.files(Kind::Sidebar));
             let (_, hooks) = crate::hook::load(p.files(Kind::Hooks));
             let (_, decorations) = crate::decoration::load(p.files(Kind::Decorations));
+            let (_, effects) = crate::effect::load(p.files(Kind::Effects));
             for loaded in actions
                 .iter()
                 .chain(&rules)
                 .chain(&sidebar)
                 .chain(&hooks)
                 .chain(&decorations)
+                .chain(&effects)
             {
                 assert!(loaded.result.is_ok(), "{loaded:?}");
             }

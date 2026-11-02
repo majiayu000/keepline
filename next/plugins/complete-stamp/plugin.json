@@ -1,0 +1,8 @@
+{
+  "api": 1,
+  "id": "complete-stamp",
+  "name": "完成动画：落印",
+  "version": "0.1.0",
+  "description": "标记完成时印章压下来，冲击波和碎点溅开，再缩成小点飞进侧栏那一行",
+  "provides": ["effects"]
+}

@@ -88,7 +88,35 @@ pub fn start(
                 }
                 assert!(ready, "{tid}: the finished session never offered 标记完成");
                 wait(300).await;
-                if tid == "done" {
+                let style = std::env::var("KEEPLINE_COMPLETE_STYLE").ok();
+                if tid == "done" && let Some(style) = &style {
+                    // A plugin's animation, held at points of the run for comparison with
+                    // specs/complete-animation/directions.html, then played for real.
+                    let style: keepline_core::effect::Style = serde_json::from_value(serde_json::json!(style)).expect("style");
+                    let effect = keepline_core::effect::Complete::of(style);
+                    shot("0-review.png", cx);
+                    for t in [0.1f32, 0.32, 0.45, 0.6, 0.8, 0.9, 0.95] {
+                        handle.update(cx, |v, _, a| {
+                            if v.visual_completable(tid).2 && t == 0.1 {
+                                v.visual_complete_with(tid, effect, Some(t), a);
+                            } else {
+                                v.visual_pin_completing(tid, Some(t), a);
+                            }
+                        }).unwrap();
+                        wait(150).await;
+                        shot(&format!("{style:?}-t{:03}.png", (t * 100.) as u32), cx);
+                    }
+                    handle.update(cx, |v, _, a| v.visual_keep_completed(tid, a)).unwrap();
+                    handle.update(cx, |v, _, a| v.visual_complete_with(tid, effect, None, a)).unwrap();
+                    let mut closed = false;
+                    for _ in 0..60 {
+                        wait(100).await;
+                        if !handle.update(cx, |v, _, _| v.visual_completable(tid)).unwrap().2 { closed = true; break; }
+                    }
+                    assert!(closed, "the completed pane never closed after {style:?}");
+                    wait(300).await;
+                    shot(&format!("{style:?}-closed.png"), cx);
+                } else if tid == "done" {
                     shot("0-review.png", cx);
                     handle.update(cx, |v, _, a| v.visual_complete(tid, a)).unwrap();
                     // Timed from the click: a shot itself takes a while in a debug build.

@@ -1,0 +1,8 @@
+{
+  "api": 1,
+  "id": "complete-dissolve",
+  "name": "完成动画：化进侧栏",
+  "version": "0.1.0",
+  "description": "标记完成时终端里的字化成光点流进侧栏那一行，印章最后飞进去",
+  "provides": ["effects"]
+}

@@ -34,6 +34,29 @@ impl Workbench {
         let session = self.pane_session(terminal).expect("no session").id.clone();
         self.complete_pane(terminal.to_owned(), session, cx);
     }
+    /// 标记完成 with a given animation, held at `pin` of the way through when given.
+    #[cfg(feature = "visual-test")]
+    pub fn visual_complete_with(
+        &mut self,
+        terminal: &str,
+        effect: keepline_core::effect::Complete,
+        pin: Option<f32>,
+        cx: &mut Context<Self>,
+    ) {
+        let session = self.pane_session(terminal).expect("no session").id.clone();
+        self.complete_pane_with(terminal.to_owned(), session, effect, cx);
+        self.pin_completing(terminal, pin);
+    }
+    #[cfg(feature = "visual-test")]
+    pub fn visual_pin_completing(
+        &mut self,
+        terminal: &str,
+        t: Option<f32>,
+        cx: &mut Context<Self>,
+    ) {
+        self.pin_completing(terminal, t);
+        cx.notify();
+    }
     #[cfg(feature = "visual-test")]
     pub fn visual_keep_completed(&mut self, terminal: &str, cx: &mut Context<Self>) {
         self.layout.completing.remove(terminal);

@@ -39,8 +39,10 @@ pub(super) struct LayoutState {
     pub(super) reopened: HashSet<String>,
     /// Panes playing their 标记完成 run, each with the run's number so a late timer
     /// from an earlier, kept run does not close the pane.
-    pub(super) completing: HashMap<String, u64>,
+    pub(super) completing: HashMap<String, super::complete::Run>,
     pub(super) completing_seq: u64,
+    /// Where panes and sidebar rows were drawn, for the run's overlay to fly between.
+    pub(super) spots: super::complete::SharedSpots,
 }
 impl Workbench {
     pub(super) fn pane_view(
@@ -226,8 +228,8 @@ impl Workbench {
                     )
                 },
             )
-            .when_some(completing, |d, seq| {
-                d.child(self.completing_button(id, seq))
+            .when_some(completing, |d, (style, t)| {
+                d.child(self.completing_button(id, style, t))
             })
             .when_some(review.filter(|_| completing.is_none()), |d, s| {
                 let accept = s.id.clone();
@@ -486,20 +488,18 @@ impl Workbench {
                     )
                 },
             )
-            .when_some(completing, |d, seq| {
-                d.child(self.completing_veil(id, seq, &title, cx))
+            .when_some(completing, |d, (style, t)| {
+                d.child(super::complete::spot(
+                    &self.layout.spots,
+                    id.to_owned(),
+                    (0., 0.),
+                    |s| &mut s.panes,
+                ))
+                .child(self.completing_veil(id, style, t, &title, cx))
+                // The last slice of the run fades the whole pane out before it closes.
+                .opacity(Self::completing_opacity(style, t))
             });
-        match completing {
-            // The last slice of the run fades the whole pane out before it closes.
-            Some(seq) => gpui::AnimationExt::with_animation(
-                pane_box,
-                gpui::SharedString::from(format!("complete-pane-{id}-{seq}")),
-                gpui::Animation::new(complete::COMPLETE_HOLD),
-                |d, t| d.opacity(1. - ((t - 0.85) / 0.15).clamp(0., 1.)),
-            )
-            .into_any_element(),
-            None => pane_box.into_any_element(),
-        }
+        pane_box.into_any_element()
     }
     pub(super) fn layout_view(
         &self,

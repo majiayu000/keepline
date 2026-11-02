@@ -1,0 +1,8 @@
+{
+  "api": 1,
+  "id": "complete-sweep",
+  "name": "完成动画：扫光合上",
+  "version": "0.1.0",
+  "description": "标记完成时一道绿光扫过终端，窗格像眼皮一样合到一条线上，侧栏那一行亮起",
+  "provides": ["effects"]
+}

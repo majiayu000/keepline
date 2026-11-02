@@ -1737,6 +1737,12 @@ impl SettingsView {
                 })
                 .collect(),
         );
+        let effects = files(
+            keepline_core::effect::report()
+                .iter()
+                .map(|r| (r.file.display().to_string(), r.result.clone()))
+                .collect(),
+        );
         let declared = files(
             agent::report()
                 .iter()
@@ -1753,6 +1759,7 @@ impl SettingsView {
             ("Hooks 文件", hooks),
             ("左栏文件", sidebars),
             ("窗格装饰文件", decorations),
+            ("动效文件", effects),
             ("Agent 声明文件", declared),
         ])
         .child(div().pt(px(T::S12)).px(px(T::S4)).child(label(format!(

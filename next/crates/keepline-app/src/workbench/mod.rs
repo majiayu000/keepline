@@ -404,6 +404,7 @@ impl Workbench {
                 reopened: HashSet::new(),
                 completing: HashMap::new(),
                 completing_seq: 0,
+                spots: Default::default(),
             },
             attention: Attention {
                 phases: HashMap::new(),

@@ -29,6 +29,7 @@ Keepline 的左栏、Agent 支持和窗格装饰，是否改成由插件提供�
 | sidebar | `sidebar.json`：左栏预设（经典 / 状态 / 目录为内置） | 已完成（声明式） |
 | hooks | `hooks.json`：会话状态变化、终端里命令结束交给命令或 webhook | 已完成 |
 | decorations | `decorations.json`：命令输出的一行显示在窗格标题栏（可选状态色）或标题悬停卡片里 | 已完成 |
+| effects | `effects.json`：标记完成播放哪种动画（`seal` 印章 / `stamp` 落印 / `sweep` 扫光合上 / `dissolve` 化进侧栏 / `fade` 只淡出）、时长 600–4000 ms、是否落到侧栏那一行。插件只选，App 来画；多个插件都设时第一个生效；系统开了「减弱动态效果」一律只淡出。示例 `plugins/complete-*`，对比稿 `specs/complete-animation/directions.html` | 已完成（2026-11-02） |
 
 **写法**（用什么写）：
 

@@ -251,6 +251,14 @@ impl Workbench {
             .when(self.peek_home(&session.id), |d| {
                 d.relative().child(super::peek::peek_home_outline())
             })
+            .when(self.marking(&session.id), |d| {
+                d.relative().child(super::complete::spot(
+                    &self.layout.spots,
+                    session.id.clone(),
+                    (T::S8, 0.),
+                    |s| &mut s.rows,
+                ))
+            })
             .child(
                 div()
                     .h(px(T::ROW))
@@ -387,6 +395,14 @@ impl Workbench {
             .hover(|s| s.bg(T::color(T::raised())))
             .when(self.peek_home(&session.id), |d| {
                 d.relative().child(super::peek::peek_home_outline())
+            })
+            .when(self.marking(&session.id), |d| {
+                d.relative().child(super::complete::spot(
+                    &self.layout.spots,
+                    session.id.clone(),
+                    (T::S8, T::S4),
+                    |s| &mut s.rows,
+                ))
             })
             .child(
                 div()

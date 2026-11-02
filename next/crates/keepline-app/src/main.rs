@@ -288,6 +288,7 @@ fn run() -> io::Result<()> {
     keepline_core::sidebar::install();
     keepline_core::hook::install();
     keepline_core::decoration::install();
+    keepline_core::effect::install();
     let args: Vec<String> = std::env::args().collect();
     let root = if let Some(i) = args.iter().position(|a| a == "--runtime") {
         PathBuf::from(
