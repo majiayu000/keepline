@@ -471,6 +471,45 @@ impl Vt {
     }
 }
 
+/// Both supported CLIs mark their input with an arrow. Bracketed paste alone
+/// is not readiness: Claude also enables it on theme and security notice pages.
+/// Use the last marker so an old menu above a new input does not block placement.
+pub fn agent_input_ready(tail: &str) -> bool {
+    let mut menu_footer = false;
+    let selected = tail.lines().rev().find_map(|l| {
+        let lower = l.to_ascii_lowercase();
+        menu_footer |= lower.contains("enter to confirm")
+            || lower.contains("enter to select")
+            || lower.contains("enter to continue");
+        let l = l.trim_start_matches(['│', ' ']);
+        ["❯", "›", ">"].iter().find_map(|m| {
+            l.strip_prefix(m)
+                .filter(|s| s.is_empty() || s.starts_with(char::is_whitespace))
+                .map(str::trim_start)
+        })
+    });
+    // Claude 2.1.302 also uses unnumbered trust choices. Inspect only below
+    // the current marker so a previous menu cannot poison a later input box.
+    if menu_footer {
+        return false;
+    }
+    let Some(selected) = selected else {
+        return false;
+    };
+    if selected.is_empty() {
+        return true;
+    }
+    let digits = selected.bytes().take_while(u8::is_ascii_digit).count();
+    !(tail.contains("Choose the text style") || digits > 0 && selected[digits..].starts_with('.'))
+}
+/// zsh, bash and fish wording for a command that is not on PATH, near the prompt.
+pub fn command_missing(tail: &str) -> bool {
+    tail.lines()
+        .rev()
+        .filter(|l| !l.trim().is_empty())
+        .take(4)
+        .any(|l| l.contains("command not found") || l.contains("Unknown command"))
+}
 /// A program's window title as a name: Claude Code and Codex lead theirs with a spinner
 /// or activity glyph that changes many times a second ("✳ fix login" -> "fix login").
 pub fn shown_title(raw: &str) -> Option<String> {

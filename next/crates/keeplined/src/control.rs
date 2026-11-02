@@ -22,6 +22,9 @@ keepline split <终端> [--down] [--size 0.5] [--tab|--here] [--cwd 目录] [--j
                                              在这个终端右边（--down 下面）开一块新分屏，打印新终端编号；
                                              标签已有 4 块或切开太窄时开到「旁屏」标签（--here 改为拒绝，
                                              --tab 直接开到旁屏）；给了命令就在新 shell 里跑，跑完留在 shell
+keepline run <agent> <任务|-> [--split] [--cwd 目录] [--no-report] [--from <终端>] [--timeout 秒] [--json]
+                                             派一个 Agent 去做事：开在旁屏标签（--split 开在旁边），等它出现输入框
+                                             再交任务；它每结束一轮，结果自动发回你的输入框（<keepline from=…>）
 keepline close <终端>                       关掉这块分屏并结束里面的程序
 keepline remote --stdio                     给另一台机器或手机 App 用：一行一个 JSON 请求和回复（看画面、打字、按键、
                                              答审批、事件），经 ssh 连过来：ssh 主机 keepline remote --stdio
@@ -232,6 +235,7 @@ pub fn run(command: &str, args: impl Iterator<Item = String>) -> io::Result<()> 
         "explain" => explain(Args::parse(args, &["file", "agent"])?),
         "events" => events(Args::parse(args, &[])?),
         "split" => split(Args::parse(args, &["size", "cwd"])?),
+        "run" => run_agent(Args::parse(args, &["cwd", "from", "timeout"])?),
         "close" => close(Args::parse(args, &[])?),
         _ => Err(io::Error::other(USAGE)),
     }
@@ -642,17 +646,169 @@ fn side_placement(
 /// that terminal instead (`--here` refuses then; `--tab` always goes there). The
 /// workbench shows it as soon as it next reads the host and never moves the keyboard or
 /// the shown tab for it.
+/// `keepline run <agent> <任务|->`: starts an Agent for the terminal calling, hands it the
+/// task once its input is ready, and has the host report each turn it ends back into the
+/// caller's input. The new terminal goes to the caller's side tab unless `--split`.
+fn run_agent(a: Args) -> io::Result<()> {
+    use keepline_core::agent::Agent;
+    let key = a.arg(0, "Agent")?.to_lowercase();
+    let agent = Agent::all()
+        .into_iter()
+        .find(|g| agent_label(*g) == key || g.executable() == key)
+        .ok_or_else(|| {
+            let known: Vec<String> = Agent::all().into_iter().map(agent_label).collect();
+            io::Error::other(format!("不认识的 Agent：{key}；可选：{}", known.join("、")))
+        })?;
+    let task = a.text(1)?;
+    if task.trim().is_empty() {
+        return Err(io::Error::other("任务是空的"));
+    }
+    let from = match a.value("from") {
+        Some(from) => from.to_owned(),
+        None => std::env::var("KEEPLINE_TERMINAL").map_err(|_| {
+            io::Error::other("不在 Keepline 终端里：用 --from <终端> 说要开在谁旁边、汇报给谁")
+        })?,
+    };
+    let parent = resolve(&workspace(&a.socket)?, &from)?;
+    let opened = open(&a, &parent, &[agent.command()], !a.has("split"))?;
+    let report = !a.has("no-report");
+    if report {
+        expect_ok(rpc(
+            &a.socket,
+            &Request::ReportTo {
+                child: opened.id.clone(),
+                parent: parent.clone(),
+            },
+        )?)?;
+    }
+    let timeout = Duration::from_secs(a.number("timeout", 90)?);
+    if let Err(e) = hand_over(&a.socket, &opened.id, &task, timeout) {
+        return Err(io::Error::other(format!(
+            "{e}（终端 {} 留着，keepline read {} 看画面）",
+            opened.id, opened.id
+        )));
+    }
+    if a.has("json") {
+        println!(
+            "{}",
+            serde_json::json!({
+                "id": opened.id,
+                "agent": agent_label(agent),
+                "tab": opened.tab,
+                "tab_title": opened.tab_title,
+                "beside": opened.beside,
+                "report_to": report.then_some(&parent),
+            })
+        );
+    } else {
+        println!("{}", opened.id);
+        let place = if opened.beside.is_some() {
+            "开在旁边".to_owned()
+        } else {
+            format!("开在「{}」标签（不切换用户的画面）", opened.tab_title)
+        };
+        let back = if report {
+            "；它每结束一轮，结果会以 <keepline from=…> 自动发回你的输入框，不用轮询"
+        } else {
+            ""
+        };
+        eprintln!("{} 已经收到任务，{place}{back}", agent.name());
+    }
+    Ok(())
+}
+/// Types `text` into the Agent starting in `id` once its input box shows and the screen
+/// has held still, as the workbench does with a todo's text.
+fn hand_over(socket: &Path, id: &str, text: &str, timeout: Duration) -> io::Result<()> {
+    use keepline_core::terminal::{agent_input_ready, command_missing};
+    let started = Instant::now();
+    let mut last = String::new();
+    let mut still = 0;
+    loop {
+        std::thread::sleep(Duration::from_millis(500));
+        let tail = match rpc(
+            socket,
+            &Request::ReadScreen {
+                id: id.into(),
+                rows: 40,
+            },
+        )? {
+            Reply::Text(text) => text.trim_end().to_owned(),
+            other => return Err(io::Error::other(format!("unexpected reply: {other:?}"))),
+        };
+        if command_missing(&tail) {
+            return Err(io::Error::other("找不到这个 Agent 的命令，没有交任务"));
+        }
+        if tail == last {
+            still += 1;
+        } else {
+            last = tail;
+            still = 0;
+        }
+        if still >= 2 && agent_input_ready(&last) {
+            return expect_ok(rpc(
+                socket,
+                &Request::SendText {
+                    id: id.into(),
+                    text: text.into(),
+                    submit: true,
+                },
+            )?);
+        }
+        if started.elapsed() >= timeout {
+            return Err(io::Error::new(
+                io::ErrorKind::TimedOut,
+                "Agent 一直没有出现输入框（可能停在登录、信任目录或更新提示上），没有交任务",
+            ));
+        }
+    }
+}
+/// A pane opened beside a terminal, or in its side tab.
+struct Opened {
+    id: String,
+    tab: Option<String>,
+    tab_title: String,
+    beside: Option<String>,
+    /// Why it went to a side tab instead of beside, when it did.
+    overflow: Option<String>,
+}
 fn split(a: Args) -> io::Result<()> {
+    let opened = open(&a, a.arg(0, "终端")?, &a.rest, a.has("tab"))?;
+    if a.has("json") {
+        println!(
+            "{}",
+            serde_json::json!({
+                "id": opened.id,
+                "tab": opened.tab,
+                "tab_title": opened.tab_title,
+                "beside": opened.beside,
+                "overflow": opened.overflow,
+            })
+        );
+    } else {
+        println!("{}", opened.id);
+        if let Some(why) = &opened.overflow {
+            // On stderr, so `id=$(keepline split …)` still captures only the id.
+            eprintln!(
+                "{why}，开在了「{}」标签（不切换用户的画面）",
+                opened.tab_title
+            );
+        }
+    }
+    Ok(())
+}
+/// Opens a shell beside `needle`'s terminal (or in its side tab when `to_tab`, when that
+/// tab is full, or when a split would leave a half too small) running `command`.
+fn open(a: &Args, needle: &str, command: &[String], to_tab: bool) -> io::Result<Opened> {
     if a.has("before") {
         return Err(io::Error::other(
             "--before 已去掉：新分屏只往右或往下开，原来那块保持在左上角",
         ));
     }
-    if a.has("here") && a.has("tab") {
+    if a.has("here") && to_tab {
         return Err(io::Error::other("--here 和 --tab 只能选一个"));
     }
     let w = workspace(&a.socket)?;
-    let target = resolve(&w, a.arg(0, "终端")?)?;
+    let target = resolve(&w, needle)?;
     let source = w
         .terminals
         .iter()
@@ -681,7 +837,7 @@ fn split(a: Args) -> io::Result<()> {
     // Asked before anything starts, so a refused split leaves nothing behind; a pane
     // beside another starts at the size it will show at.
     let panes = w.tab_terminals(&tab.id).len();
-    let (placement, why) = if a.has("tab") {
+    let (placement, why) = if to_tab {
         (None, "按 --tab".to_owned())
     } else if panes >= MAX_PANES {
         let why = format!("这个标签已经有 {panes} 块");
@@ -727,7 +883,7 @@ fn split(a: Args) -> io::Result<()> {
         .ok()
         .filter(|s| !s.is_empty())
         .unwrap_or_else(|| "/bin/zsh".into());
-    let argv = split_argv(&shell, &a.rest);
+    let argv = split_argv(&shell, command);
     let id = format!(
         "split-{}-{}",
         std::process::id(),
@@ -791,26 +947,13 @@ fn split(a: Args) -> io::Result<()> {
     }
     let after = workspace(&a.socket)?;
     let placed = after.terminal_tab(&id);
-    let title = placed.map(|t| t.title.clone()).unwrap_or_default();
-    if a.has("json") {
-        println!(
-            "{}",
-            serde_json::json!({
-                "id": id,
-                "tab": placed.map(|t| &t.id),
-                "tab_title": title,
-                "beside": beside,
-                "overflow": overflow.then_some(&why),
-            })
-        );
-    } else {
-        println!("{id}");
-        if overflow {
-            // On stderr, so `id=$(keepline split …)` still captures only the id.
-            eprintln!("{why}，开在了「{title}」标签（不切换用户的画面）");
-        }
-    }
-    Ok(())
+    Ok(Opened {
+        tab: placed.map(|t| t.id.clone()),
+        tab_title: placed.map(|t| t.title.clone()).unwrap_or_default(),
+        id,
+        beside,
+        overflow: overflow.then_some(why),
+    })
 }
 /// A login shell, or one that runs `command` first and stays open after it, the way a
 /// resumed conversation starts, so its output stays readable and the pane stays usable.
@@ -919,10 +1062,7 @@ mod tests {
         for command in [
             "list", "read", "send", "prompt", "wait", "explain", "split", "close",
         ] {
-            assert!(
-                SKILL.contains(&format!("keepline {command} ")),
-                "{command}"
-            );
+            assert!(SKILL.contains(&format!("keepline {command} ")), "{command}");
         }
         for flag in [
             "--force", "--wait", "--until", "--enter", "--lines", "--tab", "--here",

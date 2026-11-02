@@ -85,7 +85,7 @@ fn run() -> std::io::Result<()> {
         Some("scan") => scan(args),
         Some(
             command @ ("list" | "read" | "send" | "prompt" | "wait" | "explain" | "events"
-            | "split" | "close"),
+            | "split" | "close" | "run"),
         ) => control::run(command, args),
         Some("remote") => remote::run(args),
         Some("hook") => hook(args),

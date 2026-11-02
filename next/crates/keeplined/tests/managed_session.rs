@@ -1343,6 +1343,103 @@ fn a_program_reports_its_status_until_it_ends() {
     });
 }
 
+/// `keepline run`'s report back: a child Agent's finished turn goes into its starter's
+/// input, wrapped, once the starter is idle.
+#[test]
+fn a_child_agents_finished_turn_is_typed_into_its_starter() {
+    let h = Host::start();
+    h.setup();
+    let logs = h.root.join("logs/claude");
+    fs::create_dir_all(&logs).unwrap();
+    let claude = h.root.join("claude");
+    std::os::unix::fs::symlink("/bin/sh", &claude).unwrap();
+    let line = |v: serde_json::Value| format!("{v}\n");
+    let user = |id: &str, text: &str| {
+        line(
+            serde_json::json!({"type":"user","sessionId":id,"uuid":format!("u-{id}"),"cwd":"/project","entrypoint":"cli","userType":"external","timestamp":keepline_core::content::now(),"message":{"content":text}}),
+        )
+    };
+    let reply = |id: &str, text: &str| {
+        line(
+            serde_json::json!({"type":"assistant","sessionId":id,"uuid":format!("a-{id}"),"timestamp":keepline_core::content::now(),"message":{"model":"claude","stop_reason":"end_turn","content":[{"type":"text","text":text}]}}),
+        )
+    };
+    let [parent_id, child_id] = ids::<2>();
+    let file = |name: &str, text: String| {
+        let p = h.root.join(name);
+        fs::write(&p, text).unwrap();
+        shell_quote(&p.to_string_lossy())
+    };
+    let log = |id: &str| shell_quote(&logs.join(format!("{id}.jsonl")).to_string_lossy());
+    // The starter: one finished turn, then it records whatever is typed into it.
+    let got = h.root.join("got");
+    let parent_seed = file(
+        "parent-seed",
+        user(&parent_id, "派 codex 审代码") + &reply(&parent_id, "已经派出去了"),
+    );
+    let parent_script = format!(
+        "cat {parent_seed} > {}; printf '\\033[?2004h> '; while read -r l; do printf '%s\\n' \"$l\" >> {}; done",
+        log(&parent_id),
+        shell_quote(&got.to_string_lossy()),
+    );
+    // The child: a turn running until it is handed its task, then its reply.
+    let child_seed = file("child-seed", user(&child_id, "开始"));
+    let child_done = file("child-done", reply(&child_id, "审完了，没发现问题"));
+    let child_script = format!(
+        "cat {child_seed} > {}; read -r task; cat {child_done} >> {}; read -r end",
+        log(&child_id),
+        log(&child_id),
+    );
+    for (terminal, script, id) in [
+        ("parent", &parent_script, &parent_id),
+        ("child", &child_script, &child_id),
+    ] {
+        h.call(h.launch(
+            terminal,
+            &format!(
+                "exec {} -c {} fixture --session-id {}",
+                shell_quote(&claude.to_string_lossy()),
+                shell_quote(script),
+                id
+            ),
+        ))
+        .unwrap();
+    }
+    wait_for(&h, "both bound", |w| {
+        current_is(w, "parent", &parent_id) && current_is(w, "child", &child_id)
+    });
+    h.call(Request::ReportTo {
+        child: "child".into(),
+        parent: "parent".into(),
+    })
+    .unwrap();
+    assert!(h
+        .call(Request::ReportTo {
+            child: "child".into(),
+            parent: "child".into(),
+        })
+        .is_err());
+    h.call(Request::SendText {
+        id: "child".into(),
+        text: "审一下改动".into(),
+        submit: true,
+    })
+    .unwrap();
+    let until = Instant::now() + Duration::from_secs(20);
+    loop {
+        let typed = fs::read_to_string(&got).unwrap_or_default();
+        if typed.contains("不是用户说的话") {
+            assert!(typed.contains("<keepline from=\"child\" agent=\"Claude Code\" event=\"done\">\n审完了，没发现问题\n</keepline>"), "{typed}");
+            break;
+        }
+        assert!(
+            Instant::now() < until,
+            "no report reached the starter: {typed:?}"
+        );
+        std::thread::sleep(Duration::from_millis(100));
+    }
+}
+
 fn recognition(h: &Host) -> RecognitionStatus {
     match h.call(Request::RecognitionStatus).unwrap() {
         Reply::Recognition(s) => s,
