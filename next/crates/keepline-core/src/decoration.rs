@@ -11,7 +11,6 @@ use serde::Deserialize;
 use std::io::Read;
 use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
-use std::sync::OnceLock;
 use std::time::{Duration, Instant};
 
 /// The `decorations.json` format's major version.
@@ -270,11 +269,16 @@ pub fn load(files: Vec<PathBuf>) -> (Vec<Decoration>, Vec<Loaded>) {
     (all, report)
 }
 
-static DECORATIONS: OnceLock<(Vec<Decoration>, Vec<Loaded>)> = OnceLock::new();
+static DECORATIONS: crate::plugin::Slot<(Vec<Decoration>, Vec<Loaded>)> =
+    crate::plugin::Slot::new();
 
 /// Loads the installed plugins' decorations once (after `plugin::install`).
 pub fn install() {
     DECORATIONS.get_or_init(|| load(crate::plugin::files(crate::plugin::Kind::Decorations)));
+}
+/// Loads them again after plugins changed (`plugin::reload`).
+pub(crate) fn reload() {
+    DECORATIONS.set(load(crate::plugin::files(crate::plugin::Kind::Decorations)));
 }
 pub fn all() -> &'static [Decoration] {
     DECORATIONS.get().map_or(&[], |(d, _)| d.as_slice())

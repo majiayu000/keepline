@@ -758,8 +758,17 @@ mod tests {
         .iter()
         .map(|name| src.join(name))
         .collect();
-        for entry in std::fs::read_dir(src.join("workbench")).unwrap() {
-            files.push(entry.unwrap().path());
+        // Every file under workbench/, its submodule folders included.
+        let mut dirs = vec![src.join("workbench")];
+        while let Some(dir) = dirs.pop() {
+            for entry in std::fs::read_dir(dir).unwrap() {
+                let path = entry.unwrap().path();
+                if path.is_dir() {
+                    dirs.push(path);
+                } else {
+                    files.push(path);
+                }
+            }
         }
         let mut offenders = Vec::new();
         for path in files {

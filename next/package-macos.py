@@ -42,6 +42,17 @@ for binary in ('keepline-app', 'keepline'):
 (mac / 'keeplined').symlink_to('keepline')
 shutil.copy2(root / 'crates/keepline-app/assets/NERD-FONTS-LICENSE', resources / 'NERD-FONTS-LICENSE')
 shutil.copy2(args.icon, resources / 'Keepline.icns')
+# The plugin catalog 设置 › 插件 installs from: index.json and exactly the files it lists.
+catalog = root / 'plugins'
+for plugin in json.loads((catalog / 'index.json').read_text())['plugins']:
+    for f in plugin['files']:
+        src = catalog / plugin['id'] / f['path']
+        if hashlib.sha256(src.read_bytes()).hexdigest() != f['sha256']:
+            raise SystemExit(f'{src} 和 plugins/index.json 不一致：运行 keepline plugins index plugins')
+        dst = resources / 'plugins' / plugin['id'] / f['path']
+        dst.parent.mkdir(parents=True, exist_ok=True)
+        shutil.copy2(src, dst)
+shutil.copy2(catalog / 'index.json', resources / 'plugins/index.json')
 (stage / 'Contents/Info.plist').write_bytes(plistlib.dumps({
     'CFBundleName': 'Keepline', 'CFBundleDisplayName': 'Keepline',
     'CFBundleIdentifier': 'local.keepline.workbench', 'CFBundleExecutable': 'keepline-app',

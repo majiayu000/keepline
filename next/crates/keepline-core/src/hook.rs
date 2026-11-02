@@ -4,7 +4,6 @@
 use crate::agent::Loaded;
 use serde::{Deserialize, Serialize};
 use std::path::{Path, PathBuf};
-use std::sync::OnceLock;
 
 /// The `hooks.json` format's major version.
 pub const API: u32 = 1;
@@ -266,11 +265,15 @@ pub fn load(files: Vec<PathBuf>) -> (Vec<Hook>, Vec<Loaded>) {
     (hooks, report)
 }
 
-static HOOKS: OnceLock<(Vec<Hook>, Vec<Loaded>)> = OnceLock::new();
+static HOOKS: crate::plugin::Slot<(Vec<Hook>, Vec<Loaded>)> = crate::plugin::Slot::new();
 
 /// Loads the installed plugins' hooks once (after `plugin::install`).
 pub fn install() {
     HOOKS.get_or_init(|| load(crate::plugin::files(crate::plugin::Kind::Hooks)));
+}
+/// Loads them again after plugins changed (`plugin::reload`).
+pub(crate) fn reload() {
+    HOOKS.set(load(crate::plugin::files(crate::plugin::Kind::Hooks)));
 }
 pub fn all() -> &'static [Hook] {
     HOOKS.get().map_or(&[], |(h, _)| h.as_slice())

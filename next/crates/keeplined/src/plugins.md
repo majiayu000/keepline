@@ -15,7 +15,8 @@
 - **一个想法一个插件**，新建目录，别把新东西塞进已有插件。
 - 别改用户已有的插件，也别改 `plugins/disabled.json`（那是设置页的开关），用户明确要求时才动。
 - 改完一定跑 `keepline plugins`，全是 ✓ 才算写好；有 ✗ 就按它说的改，再跑。
-- 插件在 Keepline **下次启动时**生效。跟用户说清楚：重启 Keepline 后在哪能看到；设置 › 插件能看到每个插件生效了没有，也能关掉。
+- 写好后让用户在 Keepline 的 设置 › 插件 点「重新读取」，马上生效；Agent 类要等 Keepline 后台下次启动。设置 › 插件能看到每个插件生效了没有，也能停用、卸载。
+- 现成的插件不用自己写：`keepline plugins available` 列出 App 附带的（加 `--remote` 再查远程目录），`keepline plugins install <id>` 装上。
 - 插件只能用下面列的这几类。做不到的（自己画界面、改会话状态、读对话原文）就直说做不到，别改 Keepline 的安装文件。
 
 ## 步骤
@@ -129,7 +130,7 @@ keepline plugins            # 检查；有问题以 1 退出
 
 - `style`：`seal`（印章，默认）、`stamp`（落印）、`sweep`（扫光合上）、`dissolve`（化进侧栏）、`fade`（只淡出）。
 - `duration_ms` 在 600–4000 之间；`land`：`sidebar`（落到侧栏那一行）或 `none`。
-- 多个插件都设时第一个生效；用户在设置里选的优先于所有插件；系统开了「减弱动态效果」时一律只淡出。
+- 每个插件的设定是 设置 › 外观 › 标记完成动画 里多出来的一个选项（用插件的 name 当名字），装上不会自动换掉用户选的；和内置某种一模一样的（同 style、默认时长和落点）不另列。系统开了「减弱动态效果」时一律只淡出。
 
 ## agent：让 Keepline 认识一个新 CLI（`agent.json` 或 `agents/*.json`）
 
@@ -144,7 +145,7 @@ keepline plugins            # 检查；有问题以 1 退出
 }
 ```
 
-`status` 的键：`waiting` `error` `review` `paused` `running` `stale` `working` `done` `ready`；`seen` 是看过的会话行，`dot` 取 `ring` `fill` `fade`。缺的、读不了的保持默认。同样下次启动生效。
+`status` 的键：`waiting` `error` `review` `paused` `running` `stale` `working` `done` `ready`；`seen` 是看过的会话行，`dot` 取 `ring` `fill` `fade`。缺的、读不了的保持默认。改了要重开 Keepline 才生效。
 
 ## 例子
 

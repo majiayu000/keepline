@@ -235,11 +235,15 @@ pub fn load(files: Vec<PathBuf>) -> (Vec<Preset>, Vec<Loaded>) {
     (presets, report)
 }
 
-static PRESETS: OnceLock<(Vec<Preset>, Vec<Loaded>)> = OnceLock::new();
+static PRESETS: crate::plugin::Slot<(Vec<Preset>, Vec<Loaded>)> = crate::plugin::Slot::new();
 
 /// Loads the installed plugins' presets once (after `plugin::install`).
 pub fn install() {
     PRESETS.get_or_init(|| load(crate::plugin::files(crate::plugin::Kind::Sidebar)));
+}
+/// Loads them again after plugins changed (`plugin::reload`).
+pub(crate) fn reload() {
+    PRESETS.set(load(crate::plugin::files(crate::plugin::Kind::Sidebar)));
 }
 /// Every preset: the built-in three, then the plugins'.
 pub fn all() -> &'static [Preset] {

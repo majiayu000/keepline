@@ -1,0 +1,246 @@
+{
+  "api": 1,
+  "plugins": [
+    {
+      "id": "common-actions",
+      "name": "常用命令",
+      "version": "0.1.0",
+      "description": "右键菜单与 ⌘P 里的几条常用命令，也是 actions.json 的写法示例",
+      "provides": [
+        "actions"
+      ],
+      "files": [
+        {
+          "path": "actions.json",
+          "sha256": "58499b36b2759cd07d6a55ebafabc2cc93971abbc1dbf9e8f90be3dca3395998",
+          "size": 674
+        },
+        {
+          "path": "plugin.json",
+          "sha256": "f44e32e86fead118af834227d5df6b373e4e3ef972b29f6bb9057aaeb5f2f215",
+          "size": 220
+        }
+      ]
+    },
+    {
+      "id": "complete-dissolve",
+      "name": "完成动画：化进侧栏",
+      "version": "0.1.0",
+      "description": "标记完成时终端里的字化成光点流进侧栏那一行，印章最后飞进去",
+      "provides": [
+        "effects"
+      ],
+      "files": [
+        {
+          "path": "effects.json",
+          "sha256": "afa9136eda0b1719f8b6d81897bbc1ab35293fc9464091720d57d4c6e3a8308f",
+          "size": 94
+        },
+        {
+          "path": "plugin.json",
+          "sha256": "64f1e472c89736dceaa71a67a552dacd05f01ac0f50d7090a0692ba488996547",
+          "size": 242
+        }
+      ]
+    },
+    {
+      "id": "complete-stamp",
+      "name": "完成动画：落印",
+      "version": "0.1.0",
+      "description": "标记完成时印章压下来，冲击波和碎点溅开，再缩成小点飞进侧栏那一行",
+      "provides": [
+        "effects"
+      ],
+      "files": [
+        {
+          "path": "effects.json",
+          "sha256": "3be56a8c8a17f7dedfe2a231fc6f8ee1ea697e728b1cec7b8ad5e4316d0fd353",
+          "size": 91
+        },
+        {
+          "path": "plugin.json",
+          "sha256": "944c25fb77d16b38f917df6e786b6664afd70283dd5f9d1e899cadc099f6fa6b",
+          "size": 242
+        }
+      ]
+    },
+    {
+      "id": "complete-sweep",
+      "name": "完成动画：扫光合上",
+      "version": "0.1.0",
+      "description": "标记完成时一道绿光扫过终端，窗格像眼皮一样合到一条线上，侧栏那一行亮起",
+      "provides": [
+        "effects"
+      ],
+      "files": [
+        {
+          "path": "effects.json",
+          "sha256": "ad484f48cff87b4eef5317ae4ad17745ea4e89515463750f7d136e33d599dbde",
+          "size": 91
+        },
+        {
+          "path": "plugin.json",
+          "sha256": "8c81153db6083cb14bfa2acf729ce8e0df3c7871da70d25b29d839496d998490",
+          "size": 257
+        }
+      ]
+    },
+    {
+      "id": "focus-sidebar",
+      "name": "专注左栏",
+      "version": "0.1.0",
+      "description": "左栏只摊开需要你的会话，其余都收成一行，每行带第二行说明",
+      "provides": [
+        "sidebar"
+      ],
+      "files": [
+        {
+          "path": "plugin.json",
+          "sha256": "2ab0e44df09024ec481a757d27d183e37f84ba50b5b14801248ebdebde30a4e6",
+          "size": 220
+        },
+        {
+          "path": "sidebar.json",
+          "sha256": "c341a818e697b5ec724628b1e53fa560741261fa8527da19871ad17bd84da213",
+          "size": 224
+        }
+      ]
+    },
+    {
+      "id": "notify-macos",
+      "name": "系统通知",
+      "version": "0.1.0",
+      "description": "会话等你回答、出错或做完时弹一条 macOS 通知；App 没开也会发",
+      "provides": [
+        "hooks"
+      ],
+      "files": [
+        {
+          "path": "hooks.json",
+          "sha256": "8299f6b290470c7714beb2e97281488094307a33778c54821268ce9472760e92",
+          "size": 350
+        },
+        {
+          "path": "plugin.json",
+          "sha256": "a68f6a3fc2cd04128fbb7193a9f20648e1483a3a2722a1f0c990cedabe1aafb5",
+          "size": 216
+        }
+      ]
+    },
+    {
+      "id": "opencode",
+      "name": "OpenCode",
+      "version": "0.1.0",
+      "description": "从 OpenCode 的 SQLite 库读会话：回合状态、命令与测试证据、改过的文件",
+      "provides": [
+        "agent"
+      ],
+      "files": [
+        {
+          "path": "agent.json",
+          "sha256": "7f3e517c3e55f08a924fd31a72229dcfa7af8519329fbd19afaf4585ab010246",
+          "size": 2753
+        },
+        {
+          "path": "plugin.json",
+          "sha256": "a66a1a88807f1bfe8084b7cdbeea16c27fe0806f17dba00309f6a0fe74ea2e56",
+          "size": 218
+        }
+      ]
+    },
+    {
+      "id": "pane-facts",
+      "name": "窗格信息",
+      "version": "0.1.0",
+      "description": "窗格标题栏显示上一条命令失败的退出码和 git 未提交的改动数，悬停标题看上一条命令用时和最近一次提交",
+      "provides": [
+        "decorations"
+      ],
+      "files": [
+        {
+          "path": "decorations.json",
+          "sha256": "f2a4f8896cd33af8456356bf1f83730e3f8c2933af1fc138aacd664ea2f1d0ba",
+          "size": 948
+        },
+        {
+          "path": "plugin.json",
+          "sha256": "d82871f4dd6a316fb280c19c9aa07a81c4056f763a1035238cffcf68a6f3b230",
+          "size": 288
+        }
+      ]
+    },
+    {
+      "id": "project-checks",
+      "name": "项目自带的检查脚本",
+      "version": "0.1.0",
+      "description": "把 just test、scripts/ci.sh 这类项目自己的检查命令也算作跑过验证",
+      "provides": [
+        "rules"
+      ],
+      "files": [
+        {
+          "path": "plugin.json",
+          "sha256": "40cb550505dc5dd31f9faf0978c9651164850e6e8475e47601db0583b41faeee",
+          "size": 234
+        },
+        {
+          "path": "rules.json",
+          "sha256": "f9612d546daf823a5b17c4418d4de66f8de00992383bf24606d1badcd6e8ebd9",
+          "size": 125
+        }
+      ]
+    },
+    {
+      "id": "session-first",
+      "name": "会话优先左栏",
+      "version": "0.1.0",
+      "description": "需要你的在上，其余按最新在上排成一列；每行第二行写短编号和它停在哪、做成了什么，行尾只放时间",
+      "provides": [
+        "sidebar"
+      ],
+      "files": [
+        {
+          "path": "plugin.json",
+          "sha256": "d6795e842a208b79dcf617d3a59976605b390f9deda3993de7bceea5592ddeed",
+          "size": 280
+        },
+        {
+          "path": "session_first.wasm",
+          "sha256": "ca2391876aa6ed842116f2b5860535c3e7df2e9afd9d1086747120ae2705f336",
+          "size": 92136
+        },
+        {
+          "path": "sidebar.json",
+          "sha256": "ee36e05d6510d8eba07f09b5a79bdcb4b1fb614677a59ab46a1bfdfae24602dc",
+          "size": 158
+        }
+      ]
+    },
+    {
+      "id": "sidebar-status",
+      "name": "状态左栏（WASM 示例）",
+      "version": "0.1.0",
+      "description": "用 WebAssembly 写的左栏排法：需要你的置顶，在跑的列出，其余合成一行；跑在沙盒里，读不到文件和网络",
+      "provides": [
+        "sidebar"
+      ],
+      "files": [
+        {
+          "path": "plugin.json",
+          "sha256": "202095649bd8b719fc34432045e5af72947e3e2c664c88bfbdab7e49547bc1ce",
+          "size": 293
+        },
+        {
+          "path": "sidebar.json",
+          "sha256": "2e750514f45f4103a85dcbc72b5ee3921701710220ebf16670346de2cace187d",
+          "size": 155
+        },
+        {
+          "path": "sidebar_status.wasm",
+          "sha256": "5c193e71bd86329ed5b34fbfc76569392e7d20ddc5f068d5b870bd522e4ecd44",
+          "size": 86514
+        }
+      ]
+    }
+  ]
+}

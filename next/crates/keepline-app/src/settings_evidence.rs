@@ -71,6 +71,57 @@ pub(super) fn start(
             cx.update(|a| a.quit());
             return;
         }
+        // 插件: install from the catalog with real clicks, confirm one that runs commands,
+        // switch one of its actions off, uninstall, then pick a plugin's animation preset.
+        // KEEPLINE_PLUGIN_CLICKS="x,y;…" in panel points, in this order: 安装 落印,
+        // 安装 常用命令, 确认安装, its first action's switch, 卸载 落印, then (on 外观 with
+        // the search 标记完成) the plugin preset 慢扫. Missing points stop after the shots.
+        if phase == "plugins" {
+            use keepline_core::{action, effect, plugin};
+            let clicks: Vec<(f32, f32)> = std::env::var("KEEPLINE_PLUGIN_CLICKS").unwrap_or_default()
+                .split(';').filter_map(|p| p.split_once(',')).map(|(x, y)| (x.parse().unwrap(), y.parse().unwrap())).collect();
+            let at = |i: usize| clicks.get(i).copied();
+            handle.update(cx, |v, _, a| v.visual_settings_show("插件", a)).unwrap();
+            wait(400).await;
+            shot("plugins-start", cx);
+            assert!(plugin::installed("slow-sweep").is_some(), "the scratch plugin loads");
+            let Some(stamp) = at(0) else { eprintln!("settings plugins SHOTS"); cx.update(|a| a.quit()); return; };
+            click(stamp.0, stamp.1, cx); wait(1500).await;
+            assert!(plugin::installed("complete-stamp").is_some(), "安装 installs and reloads");
+            shot("plugins-installed", cx);
+            let Some(actions) = at(1) else { eprintln!("settings plugins SHOTS"); cx.update(|a| a.quit()); return; };
+            click(actions.0, actions.1, cx); wait(400).await;
+            assert!(plugin::installed("common-actions").is_none(), "commands wait for 确认安装");
+            shot("plugins-confirm", cx);
+            let Some(confirm) = at(2) else { eprintln!("settings plugins SHOTS"); cx.update(|a| a.quit()); return; };
+            click(confirm.0, confirm.1, cx); wait(1500).await;
+            assert!(plugin::installed("common-actions").is_some());
+            assert!(!action::all().is_empty(), "its actions load without a restart");
+            shot("plugins-actions", cx);
+            let Some(switch) = at(3) else { eprintln!("settings plugins SHOTS"); cx.update(|a| a.quit()); return; };
+            click(switch.0, switch.1, cx); wait(400).await;
+            assert!(!action::all()[0].enabled(), "the switch turns its action off");
+            shot("plugins-action-off", cx);
+            let Some(remove) = at(4) else { eprintln!("settings plugins SHOTS"); cx.update(|a| a.quit()); return; };
+            click(remove.0, remove.1, cx); wait(600).await;
+            assert!(plugin::installed("complete-stamp").is_none(), "卸载 removes it");
+            shot("plugins-removed", cx);
+            handle.update(cx, |v, _, a| {
+                v.visual_settings_show("外观", a);
+                let field = v.visual_settings_query(a);
+                field.update(a, |f, cx| { f.text = "标记完成".into(); cx.notify(); });
+            }).unwrap();
+            wait(400).await;
+            shot("plugins-look", cx);
+            let Some(slow) = at(5) else { eprintln!("settings plugins SHOTS"); cx.update(|a| a.quit()); return; };
+            click(slow.0, slow.1, cx); wait(400).await;
+            assert_eq!(effect::picked(), Some(effect::Pick::Plugin("slow-sweep".into())));
+            assert_eq!(effect::complete().duration, Duration::from_millis(3_400));
+            shot("plugins-look-picked", cx);
+            eprintln!("settings plugins PASS");
+            cx.update(|a| a.quit());
+            return;
+        }
         // 标记完成动画: pick one with a real click, then 试播 on the shown pane, which must
         // stay open with nothing marked. KEEPLINE_COMPLETE_CLICKS="x,y;x,y" are the
         // panel points of 落印 and 试播 once the search leaves only that row.
@@ -85,7 +136,7 @@ pub(super) fn start(
                 .split(';').filter_map(|p| p.split_once(',')).map(|(x, y)| (x.parse().unwrap(), y.parse().unwrap())).collect();
             if let [stamp, preview] = clicks[..] {
                 click(stamp.0, stamp.1, cx); wait(300).await;
-                assert_eq!(keepline_core::effect::picked(), Some(keepline_core::effect::Style::Stamp));
+                assert_eq!(keepline_core::effect::picked(), Some(keepline_core::effect::Pick::Builtin(keepline_core::effect::Style::Stamp)));
                 let saved = std::fs::read_to_string(crate::ui::status_colors::config_dir().unwrap().join("complete")).unwrap();
                 assert_eq!(saved, "stamp");
                 shot("complete-picked", cx);
