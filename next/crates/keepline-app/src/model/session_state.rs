@@ -31,6 +31,34 @@ pub enum Phase {
     Waiting,
     Idle,
 }
+/// A terminal with no live conversation whose program reports its own status (OSC 7501):
+/// the dot and the line its pane and sidebar row show.
+pub fn report_view(
+    r: &keepline_core::protocol::ProgramReport,
+) -> (Group, keepline_core::protocol::TerminalNote) {
+    let (group, word) = match r.state.as_str() {
+        "working" => (Group::Working, "在跑"),
+        "blocked" => (Group::Waiting, "等你回答"),
+        "error" => (Group::Error, "出错了"),
+        "done" => (Group::Done, "等你验收"),
+        _ => (Group::Ready, "停着"),
+    };
+    let who = [&r.app, &r.title]
+        .into_iter()
+        .find(|s| !s.is_empty())
+        .map_or("程序", String::as_str);
+    let progress = r.progress.map(|p| format!(" {p}%")).unwrap_or_default();
+    let note = if r.msg.is_empty() {
+        format!("{who} · {word}{progress}")
+    } else {
+        format!("{who} · {word}{progress}：{}", r.msg)
+    };
+    let mut why = "终端里的程序自己通过 OSC 7501 报告的状态".to_owned();
+    if !r.title.is_empty() && r.title != who {
+        why = format!("{}\n{why}", r.title);
+    }
+    (group, keepline_core::protocol::TerminalNote { note, why })
+}
 pub fn session_space<'a>(w: &'a Workspace, s: &AgentSession) -> Option<&'a str> {
     s.task
         .as_ref()
@@ -180,6 +208,7 @@ pub fn state_reasons(w: &Workspace, terminal: &str, hint: Option<&str>, now: u64
         "官方状态" => "Agent 自己报告的运行状态",
         "标题" => "终端标题里的转圈，Agent 正在跑这一轮",
         "画面在跑" => "画面上 Agent 每秒在走的计时行，正在跑这一轮",
+        "程序上报" => "终端里的程序自己通过 OSC 7501 报告的状态",
         _ => "对话记录",
     };
     let at = if c.signal_at > 0 {
@@ -299,4 +328,32 @@ pub fn needs_attention(w: &Workspace, s: &AgentSession) -> bool {
     s.managed()
         && s.outcome.needs_review(now())
         && matches!(session_group(w, s), Group::Waiting | Group::Error)
+}
+
+#[cfg(test)]
+mod report_view_tests {
+    use super::*;
+    use keepline_core::protocol::ProgramReport;
+
+    #[test]
+    fn a_report_reads_as_its_dot_and_one_line() {
+        let report = |state: &str, app: &str, msg: &str, progress| ProgramReport {
+            state: state.into(),
+            kind: None,
+            progress,
+            app: app.into(),
+            title: String::new(),
+            msg: msg.into(),
+            since: 0,
+        };
+        let (g, n) = report_view(&report("working", "deploy", "", Some(30)));
+        assert!(g == Group::Working);
+        assert_eq!(n.note, "deploy · 在跑 30%");
+        let (g, n) = report_view(&report("blocked", "", "要部署吗？", None));
+        assert!(g == Group::Waiting);
+        assert_eq!(n.note, "程序 · 等你回答：要部署吗？");
+        assert!(report_view(&report("done", "x", "", None)).0 == Group::Done);
+        assert!(report_view(&report("error", "x", "", None)).0 == Group::Error);
+        assert!(report_view(&report("idle", "x", "", None)).0 == Group::Ready);
+    }
 }

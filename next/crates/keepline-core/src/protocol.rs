@@ -399,6 +399,29 @@ pub struct TerminalNote {
     pub note: String,
     pub why: String,
 }
+/// What the program in a terminal says about itself through OSC 7501, the Program Status
+/// Protocol: its own words, kept as reported. A program that says nothing has none.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ProgramReport {
+    /// idle, working, done, blocked or error.
+    pub state: String,
+    /// permission, question or auth, when a blocked program said which.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub kind: Option<String>,
+    /// 0..=100, when the program said.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub progress: Option<u8>,
+    /// Who reported, e.g. `claude-code` or a script's name.
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub app: String,
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub title: String,
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub msg: String,
+    /// When the state word last changed, seconds since the epoch.
+    #[serde(default)]
+    pub since: u64,
+}
 /// A command the shell marked finished (OSC 133 `C` then `D`).
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub struct LastCommand {
@@ -427,6 +450,10 @@ pub struct RecognitionStatus {
     /// Terminal -> the last command its shell marked finished. Live state, not stored.
     #[serde(default)]
     pub terminal_commands: std::collections::HashMap<String, LastCommand>,
+    /// Terminal -> what its program last reported through OSC 7501, until the program
+    /// ends or clears it. Live state, not stored.
+    #[serde(default)]
+    pub terminal_reports: std::collections::HashMap<String, ProgramReport>,
     pub workspace_revision: u64,
     /// CLI -> why its official status query failed last; absent once one succeeds. The
     /// status rules then fall back to logs, hooks and the screen.
@@ -448,6 +475,7 @@ impl Default for RecognitionStatus {
             terminal_agents: Default::default(),
             terminal_titles: Default::default(),
             terminal_commands: Default::default(),
+            terminal_reports: Default::default(),
             workspace_revision: 0,
             official: Default::default(),
             remote: Default::default(),

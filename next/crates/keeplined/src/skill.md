@@ -45,6 +45,23 @@
 - 已经分成好几块的终端也能接着分。开到旁屏时把 stderr 那句转告用户，让他知道去哪个标签看；起开发服务器这类不用一直盯的，直接 `--tab`。
 - 跑测试、起开发服务器、盯日志这类要一直看的输出，用 `split` 在自己旁边开一块，用户能同时看到；用 `read` 看结果，`close` 收掉。新分屏不会抢走用户的键盘焦点。
 
+## 报告自己的状态
+
+脚本或程序可以用一行 `printf` 告诉 Keepline 它在干什么（OSC 7501，Program Status Protocol），侧栏和窗格按它说的显示，比看画面猜得准：
+
+```sh
+printf '\033]7501;state=working:app=deploy\033\\'           # 在跑
+printf '\033]7501;state=blocked:kind=question:msg=%s\033\\' "$(printf '要部署到生产吗？' | base64)"
+printf '\033]7501;state=done\033\\'                          # 做完了，等用户验收
+printf '\033]7501;state=clear\033\\'                         # 不再报告
+```
+
+- `state`：`working` `blocked`（等用户）`error` `done` `idle` `clear`；没有这个字段或词不认识的整条忽略。
+- 可选：`kind`（`permission` `question` `auth`）、`progress`（0–100）、`app`（名字）、`title` 和 `msg`（base64，一行显示，最多 200 字）。字段用 `:` 分隔，以 `ESC \` 或 BEL 结尾。
+- 带 `id` 的子记录目前不显示。
+- 报告一直有效，直到程序说 `clear`、shell 标记这条命令结束（OSC 133），或终端退出。所以要在程序运行期间报告：在 shell 提示符下单独敲一条 `printf`，命令一结束就清掉了。
+- 终端里有 Keepline 认得的 Agent 对话时，程序的报告优先于日志和画面判断。
+
 ## 例子
 
 ```sh

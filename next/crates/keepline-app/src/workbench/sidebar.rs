@@ -283,19 +283,36 @@ impl Workbench {
         };
         // Agents running in a tab here that no evidence has tied to a conversation yet:
         // listed rather than missing, so a CLI Keepline cannot read is never silent.
-        let mut unread: Vec<_> = self
-            .store
-            .recognition()
+        // A program that reports its own status (OSC 7501) is listed the same way, its dot
+        // saying what it reported.
+        let recognition = self.store.recognition();
+        let mut unread: Vec<_> = recognition
             .terminal_notes
-            .iter()
-            .filter(|(terminal, _)| {
+            .keys()
+            .chain(recognition.terminal_reports.keys())
+            .collect::<std::collections::BTreeSet<_>>()
+            .into_iter()
+            .filter(|terminal| {
                 self.workspace.current_agent(terminal).is_none()
                     && self
                         .workspace
                         .terminal_tab(terminal)
                         .is_some_and(|tab| tab.space == self.nav.space)
             })
-            .map(|(terminal, n)| (terminal.clone(), (n.note.clone(), n.why.clone())))
+            .map(|terminal| {
+                let report = recognition
+                    .terminal_reports
+                    .get(terminal)
+                    .map(crate::model::session_state::report_view);
+                let group = report.as_ref().map_or(Group::Stale, |(g, _)| *g);
+                let n = recognition
+                    .terminal_notes
+                    .get(terminal)
+                    .cloned()
+                    .or_else(|| report.map(|(_, n)| n))
+                    .expect("listed from notes or reports");
+                (terminal.clone(), (n.note, n.why, group))
+            })
             .collect();
         unread.sort_by(|a, b| a.0.cmp(&b.0));
         sidebar = sidebar.child(self.todos_view(space_name, dense, cx));
@@ -310,7 +327,7 @@ impl Workbench {
         let listed = sessions.into_iter().map(|(s, g, a, _)| (s, g, a)).collect();
         let (rows, more, owns_closed) = self.session_list(listed, &ended, current.as_deref(), cx);
         sidebar = sidebar.children(rows);
-        for (terminal, (note, why)) in unread {
+        for (terminal, (note, why, group)) in unread {
             let focused = self.nav.focused.as_deref() == Some(terminal.as_str());
             sidebar = sidebar.child(
                 div()
@@ -324,7 +341,7 @@ impl Workbench {
                     .cursor_pointer()
                     .when(focused, |d| d.bg(T::color(T::raised())))
                     .hover(|s| s.bg(T::color(T::raised())))
-                    .child(seen_dot(Group::Stale))
+                    .child(seen_dot(group))
                     .child(
                         div()
                             .flex_1()
