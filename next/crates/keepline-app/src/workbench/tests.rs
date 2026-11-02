@@ -156,7 +156,8 @@ fn an_empty_agent_reads_as_fresh_not_done() {
     assert!(super::sidebar_list::bucket(Group::Fresh) == keepline_core::sidebar::Bucket::Fresh);
     // Nor a card on the board until it has done something.
     assert!(super::board::column_of(&w, &s, now()).is_none());
-    // Once it has an ask or a finished turn, it is 做完了 again.
+    // Once it has an ask or a finished turn it is no longer new: 停下了 until the Agent
+    // says the work is done.
     w.content.insert(
         "live".into(),
         Content {
@@ -164,7 +165,7 @@ fn an_empty_agent_reads_as_fresh_not_done() {
             ..Default::default()
         },
     );
-    assert!(sidebar_status(&w, &unseen, &s) == (Group::Ready, false));
+    assert!(sidebar_status(&w, &unseen, &s) == (Group::Paused, false));
     w.content.insert(
         "live".into(),
         Content {
@@ -172,8 +173,84 @@ fn an_empty_agent_reads_as_fresh_not_done() {
             ..Default::default()
         },
     );
-    assert!(sidebar_status(&w, &unseen, &s) == (Group::Ready, false));
+    assert!(sidebar_status(&w, &unseen, &s) == (Group::Paused, false));
     assert!(super::board::column_of(&w, &s, now()).is_some());
+}
+
+/// 做完了 on a live pane means what 标记完成 means: the Agent said the work is done. A
+/// turn that only stopped is 停下了; one that left work running behind it is 等后台.
+#[test]
+fn a_live_turn_is_done_only_when_the_agent_says_so() {
+    use keepline_core::content::{Background, Content, Turn};
+    let mut w = fixture();
+    let mut s = w.agent_sessions[0].clone();
+    s.id = "live".into();
+    s.terminal = Some("t0".into());
+    s.current = true;
+    s.outcome = Outcome::Open;
+    w.agent_sessions.push(s.clone());
+    let mut unseen = HashSet::new();
+    let ended = |claim: bool, background: Option<Background>| Content {
+        turn: Turn::Completed,
+        completed_claim: claim,
+        background,
+        updated: now(),
+        turn_started: now(),
+        ..Default::default()
+    };
+    let shell = Some(Background {
+        shells: 1,
+        ..Default::default()
+    });
+    let wakeup = Some(Background {
+        crons: 1,
+        ..Default::default()
+    });
+
+    // Stopped talking, nothing behind it: 停下了, and no 标记完成.
+    w.content.insert("live".into(), ended(false, None));
+    assert!(sidebar_status(&w, &unseen, &s) == (Group::Paused, false));
+    assert!(session_group(&w, &s) != Group::Review);
+    assert_eq!(Group::Paused.label(), "停下了");
+
+    // Said it is done: 做完了, the group that offers 标记完成.
+    w.content.insert("live".into(), ended(true, None));
+    assert!(sidebar_status(&w, &unseen, &s) == (Group::Ready, false));
+    assert!(session_group(&w, &s) == Group::Review);
+    unseen.insert("live".to_owned());
+    assert!(sidebar_status(&w, &unseen, &s) == (Group::Done, true));
+    unseen.clear();
+
+    // A download still running in a background shell: 等后台, still live work.
+    w.content.insert("live".into(), ended(false, shell));
+    assert!(sidebar_status(&w, &unseen, &s) == (Group::Background, false));
+    assert_eq!(Group::Background.label(), "等后台");
+    assert!(
+        super::sidebar_list::bucket(Group::Background) == keepline_core::sidebar::Bucket::Running
+    );
+    // A shell left running after a claimed finish (a dev server) does not hold back 做完了.
+    w.content.insert("live".into(), ended(true, shell));
+    assert!(sidebar_status(&w, &unseen, &s) == (Group::Ready, false));
+    assert!(session_group(&w, &s) == Group::Review);
+    // A wakeup will bring it back even after a claim, and 标记完成 waits for it too.
+    w.content.insert("live".into(), ended(true, wakeup));
+    assert!(sidebar_status(&w, &unseen, &s) == (Group::Background, false));
+    assert!(session_group(&w, &s) != Group::Review);
+
+    // A failed turn says so instead of reading as finished.
+    w.content.insert(
+        "live".into(),
+        Content {
+            turn: Turn::Error,
+            ..Default::default()
+        },
+    );
+    assert!(sidebar_status(&w, &unseen, &s).0 == Group::Error);
+
+    // Marked complete already: 做完了 whatever the last reply said.
+    s.outcome = Outcome::Completed;
+    w.content.insert("live".into(), ended(false, None));
+    assert!(sidebar_status(&w, &unseen, &s) == (Group::Ready, false));
 }
 
 #[test]
@@ -455,6 +532,7 @@ fn the_pane_menu_says_which_signal_set_the_state() {
         signal: "日志".into(),
         signal_at: 1000 - 30,
         signal_detail: "记录：assistant「测试都过了，已经提交。」".into(),
+        completed_claim: true,
         screen_check: "没认出提问框（底部没有审批或选择题的提示；规则 codex 内置 2026.10.31.1）"
             .into(),
         ..Default::default()
@@ -467,6 +545,12 @@ fn the_pane_menu_says_which_signal_set_the_state() {
         lines[4],
         "画面：没认出提问框（底部没有审批或选择题的提示；规则 codex 内置 2026.10.31.1），所以按「做完了 / 等你下一步」显示。"
     );
+    // The same quiet screen after a reply that never said it was done, on a session
+    // not marked complete yet.
+    w.agent_sessions[0].outcome = Outcome::Open;
+    w.content.get_mut("history").unwrap().completed_claim = false;
+    let lines = state_reasons(&w, "t0", None, 1000);
+    assert_eq!(lines[1], "现在：停下了 / Agent 没说做完");
     for line in &lines {
         println!("{line}");
     }

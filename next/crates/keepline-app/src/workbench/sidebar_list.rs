@@ -16,7 +16,7 @@ pub(super) enum End {
 pub(super) fn bucket(g: Group) -> Bucket {
     match g {
         Group::Waiting | Group::Error => Bucket::Attention,
-        Group::Working | Group::Running => Bucket::Running,
+        Group::Working | Group::Running | Group::Background => Bucket::Running,
         // Ready is a finished turn you have already seen: still yours to check.
         Group::Done | Group::Review | Group::Ready => Bucket::Done,
         Group::Paused => Bucket::Stopped,

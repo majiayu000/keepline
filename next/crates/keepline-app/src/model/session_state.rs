@@ -18,6 +18,9 @@ pub enum Group {
     Ready,
     /// A live agent that has not started a turn yet: just opened, or `/clear`ed.
     Fresh,
+    /// A live agent whose turn ended without claiming the work done while something it
+    /// started still runs (a shell, a monitor, a scheduled wakeup) and may bring it back.
+    Background,
 }
 /// What a live agent in a Keepline terminal is doing right now, as 同类终端工具 shows panes.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -159,7 +162,12 @@ pub fn state_reasons(w: &Workspace, terminal: &str, hint: Option<&str>, now: u64
         Some(Phase::Working) => "在跑",
         Some(Phase::Waiting) => "等你回答",
         _ if fresh(w, s) => "新开的 / 还没开始第一轮",
-        _ => "做完了 / 等你下一步",
+        _ => match idle_status(w, s, false).0 {
+            Group::Done | Group::Ready => "做完了 / 等你下一步",
+            Group::Background => "等后台 / 后台还有任务在跑，Agent 没说做完",
+            Group::Error => "出错了",
+            _ => "停下了 / Agent 没说做完",
+        },
     };
     lines.push(format!("现在：{phase}"));
     let why = match c.signal.as_str() {
@@ -252,10 +260,28 @@ pub fn sidebar_status(w: &Workspace, unseen: &HashSet<String>, s: &AgentSession)
     match live_phase(w, s) {
         Some(Phase::Working) => (Group::Working, false),
         Some(Phase::Waiting) => (Group::Waiting, true),
-        Some(Phase::Idle) if unseen.contains(&s.id) => (Group::Done, true),
-        Some(Phase::Idle) if fresh(w, s) => (Group::Fresh, false),
-        Some(Phase::Idle) => (Group::Ready, false),
+        Some(Phase::Idle) if !unseen.contains(&s.id) && fresh(w, s) => (Group::Fresh, false),
+        Some(Phase::Idle) => idle_status(w, s, unseen.contains(&s.id)),
         None => (session_group(w, s), needs_attention(w, s)),
+    }
+}
+/// A live agent between turns. 做完了 only when the Agent said the work is done (or it
+/// was marked complete), the same rule that puts 标记完成 on its pane; a turn that just
+/// stopped talking is 停下了, and one that left a shell, monitor or wakeup running is
+/// 等后台. `unseen` is a turn that ended out of view, which asks for a look.
+fn idle_status(w: &Workspace, s: &AgentSession, unseen: bool) -> (Group, bool) {
+    use keepline_core::content::Turn;
+    let c = w.content.get(&s.id);
+    let background = c.and_then(|c| c.background).unwrap_or_default();
+    let claimed = c.is_some_and(|c| c.turn == Turn::Completed && c.completed_claim);
+    if c.is_some_and(|c| c.turn == Turn::Error) {
+        (Group::Error, true)
+    } else if s.outcome == Outcome::Completed || (claimed && !background.wakes()) {
+        (if unseen { Group::Done } else { Group::Ready }, unseen)
+    } else if background.wakes() || background.shells > 0 {
+        (Group::Background, false)
+    } else {
+        (Group::Paused, unseen)
     }
 }
 /// No turn has started in this conversation: no record yet, or one with no ask and no

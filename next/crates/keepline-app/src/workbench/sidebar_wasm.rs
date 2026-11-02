@@ -149,7 +149,7 @@ fn group_name(g: Group) -> &'static str {
     match g {
         Group::Waiting => "waiting",
         Group::Error => "error",
-        Group::Working | Group::Running => "running",
+        Group::Working | Group::Running | Group::Background => "running",
         Group::Done | Group::Review | Group::Ready => "review",
         Group::Fresh => "fresh",
         Group::Paused => "paused",
@@ -762,6 +762,7 @@ mod tests {
             Group::Done,
             Group::Ready,
             Group::Fresh,
+            Group::Background,
         ];
         let documented = [
             "waiting", "error", "running", "review", "paused", "fresh", "stale",

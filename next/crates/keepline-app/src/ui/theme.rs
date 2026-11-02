@@ -59,8 +59,9 @@ impl Group {
         match self {
             Self::Waiting => "等你回答",
             Self::Error => "出错了",
-            // One word per state everywhere (2026-10-27): a turn that ended, whether it
-            // claims success or just stopped talking, is 做完了; an interrupted one 停下了.
+            // One word per state everywhere. 做完了 is a turn whose Agent said the work is
+            // done, the one 标记完成 is offered for (2026-11-02); a turn that just stopped
+            // talking is 停下了, as is an interrupted one.
             Self::Review => "做完了",
             Self::Paused => "停下了",
             Self::Running => "在跑",
@@ -69,6 +70,7 @@ impl Group {
             Self::Done => "做完了",
             Self::Ready => "做完了",
             Self::Fresh => "新开的",
+            Self::Background => "等后台",
         }
     }
     /// The group's base hue, from `colors.json` or the default; its ink and wash derive

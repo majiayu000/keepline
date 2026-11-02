@@ -12,7 +12,7 @@ pub(super) fn sidebar_rank(g: Group, attention: bool) -> (u8, usize) {
         return (0, at.unwrap_or(NEEDS_YOU.len()));
     }
     match g {
-        Group::Working | Group::Running => (1, 0),
+        Group::Working | Group::Running | Group::Background => (1, 0),
         Group::Fresh => (3, 0),
         Group::Stale => (4, 0),
         _ => (2, 0),

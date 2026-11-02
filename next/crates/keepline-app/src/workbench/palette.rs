@@ -125,6 +125,7 @@ fn counted(group: Group) -> Group {
     match group {
         Group::Working => Group::Running,
         Group::Done | Group::Ready => Group::Review,
+        Group::Background => Group::Running,
         g => g,
     }
 }

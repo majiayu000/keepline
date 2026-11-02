@@ -25,13 +25,23 @@ pub enum SeenDot {
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct StatusColors {
     /// `None` takes the theme's tone, so it follows a switch between light and dark.
-    hues: [Option<u32>; 10],
+    hues: [Option<u32>; 11],
     seen_title: Option<u32>,
     seen_status: Option<u32>,
     pub seen_dot: SeenDot,
 }
-const NAMES: [&str; 10] = [
-    "waiting", "error", "review", "paused", "running", "stale", "working", "done", "ready", "fresh",
+const NAMES: [&str; 11] = [
+    "waiting",
+    "error",
+    "review",
+    "paused",
+    "running",
+    "stale",
+    "working",
+    "done",
+    "ready",
+    "fresh",
+    "background",
 ];
 fn index(group: Group) -> usize {
     match group {
@@ -45,6 +55,7 @@ fn index(group: Group) -> usize {
         Group::Done => 7,
         Group::Ready => 8,
         Group::Fresh => 9,
+        Group::Background => 10,
     }
 }
 impl Default for StatusColors {
@@ -61,6 +72,7 @@ impl Default for StatusColors {
                 Some(0x4cc38a), // done
                 Some(0x8a9bb0), // ready
                 Some(0x8a9bb0), // fresh: as quiet as ready
+                Some(0x4cc38a), // background: running's green, its glyph tells them apart
             ],
             seen_title: None,
             seen_status: None,
