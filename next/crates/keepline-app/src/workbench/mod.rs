@@ -78,6 +78,21 @@ pub(super) fn launch_argv(shell: String, resume: Option<&str>) -> Vec<String> {
         None => vec![shell, "-l".into()],
     }
 }
+/// What a new shell types once it is ready: a todo's Agent with its text for the Agent's
+/// input, else a plugin action's command, else the Agent picked for a plain new terminal
+/// (the empty tab's 「运行 X」, the right-click 新会话 list).
+pub(super) fn start_command(
+    agent: Option<Agent>,
+    task: Option<&Task>,
+    pending: Option<&str>,
+) -> Option<(String, Option<String>)> {
+    if let Some(task) = task {
+        return Some((agent.unwrap_or(task.agent).command(), Some(task.prompt())));
+    }
+    pending
+        .map(|c| (c.to_owned(), None))
+        .or_else(|| agent.map(|a| (a.command(), None)))
+}
 /// What a close removes: a whole tab, one pane by its terminal, or the whole host.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub(super) enum Closing {
@@ -924,17 +939,13 @@ impl Workbench {
         let resuming = resume.as_ref().map(|r| r.2.clone());
         // A resume is in the launch itself; other commands are typed into the new shell, and
         // task text only ever reaches the Agent's input.
-        let start: Option<(String, Option<String>)> = if resume.is_some() {
+        let start = if resume.is_some() {
             None
         } else {
-            task_id
+            let task = task_id
                 .as_ref()
-                .and_then(|id| self.workspace.tasks.iter().find(|t| &t.id == id))
-                .map(|task| {
-                    let agent = agent.unwrap_or(task.agent);
-                    (agent.command(), Some(task.prompt()))
-                })
-                .or_else(|| pending.as_ref().map(|(c, _)| (c.clone(), None)))
+                .and_then(|id| self.workspace.tasks.iter().find(|t| &t.id == id));
+            start_command(agent, task, pending.as_ref().map(|(c, _)| c.as_str()))
         };
         let argv = launch_argv(
             std::env::var("SHELL").unwrap_or_else(|_| "/bin/zsh".into()),

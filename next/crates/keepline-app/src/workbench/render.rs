@@ -1180,6 +1180,11 @@ impl Workbench {
 }
 
 impl Workbench {
+    /// A new terminal in the shown space with `agent` started in it.
+    pub(super) fn run_agent_here(&mut self, agent: Agent, cx: &mut Context<Self>) {
+        self.tasks.chosen_agent = Some(agent);
+        self.launch(false, None, cx);
+    }
     /// A tab with no terminal yet: what can go here, as buttons in the middle where the
     /// eye lands, not a lone line at the top that reads as a heading.
     fn empty_tab(&self, cx: &Context<Self>) -> gpui::Div {
@@ -1188,10 +1193,7 @@ impl Workbench {
                 gpui::SharedString::from(format!("empty-tab-{}", agent.executable())),
                 format!("运行 {}", agent.name()),
             ))
-            .on_click(cx.listener(move |this, _, _, cx| {
-                this.tasks.chosen_agent = Some(agent);
-                this.launch(false, None, cx);
-            }))
+            .on_click(cx.listener(move |this, _, _, cx| this.run_agent_here(agent, cx)))
         });
         let split = crate::keymap::current(cx)
             .chords(crate::keymap::Action::SplitRight)

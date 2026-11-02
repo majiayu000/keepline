@@ -507,3 +507,40 @@ fn here_card_counts_receipts_and_merges_changed_files() {
         ]
     );
 }
+
+/// The empty tab's 「运行 Claude Code」 and the right-click 新会话 list pick an Agent with no
+/// todo: the new shell must start it, not stay a bare shell.
+#[test]
+fn a_picked_agent_starts_without_a_todo() {
+    // Each start mints its own session id, so compare the executable that runs.
+    let exe = |s: Option<(String, Option<String>)>| {
+        s.map(|(c, text)| (c.split_whitespace().next().unwrap_or("").to_owned(), text))
+    };
+    assert_eq!(
+        exe(start_command(Some(Agent::Claude), None, None)),
+        Some(("claude".into(), None))
+    );
+    assert_eq!(start_command(None, None, None), None);
+    // A plugin action's command still wins over a stale pick.
+    assert_eq!(
+        start_command(Some(Agent::Claude), None, Some("vim a.rs")),
+        Some(("vim a.rs".into(), None))
+    );
+    let task = Task {
+        id: "t".into(),
+        space: "space".into(),
+        title: "Fix it".into(),
+        description: String::new(),
+        acceptance: vec![],
+        agent: Agent::Codex,
+    };
+    // A todo keeps its text; a pick overrides only its Agent.
+    assert_eq!(
+        exe(start_command(Some(Agent::Claude), Some(&task), None)),
+        Some(("claude".into(), Some(task.prompt())))
+    );
+    assert_eq!(
+        exe(start_command(None, Some(&task), None)).map(|s| s.0),
+        Some("codex".into())
+    );
+}

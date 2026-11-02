@@ -1335,6 +1335,30 @@ impl Workbench {
             );
         }
     }
+    /// Shows space `id` as a click on it in the sidebar does.
+    #[cfg(feature = "visual-test")]
+    pub fn visual_pick_space(&mut self, id: &str, cx: &mut Context<Self>) {
+        self.pick_space(id, cx);
+    }
+    /// The empty tab's 「运行 X」 button, pressed.
+    #[cfg(feature = "visual-test")]
+    pub fn visual_run_agent(&mut self, executable: &str, cx: &mut Context<Self>) {
+        let agent = Agent::from_executable(executable).expect("a known Agent");
+        self.run_agent_here(agent, cx);
+    }
+    /// The shown space and tab, and the shown tab's first pane's screen text.
+    #[cfg(feature = "visual-test")]
+    pub fn visual_shown(&self, cx: &gpui::App) -> (String, Option<String>, String) {
+        let text = self
+            .nav
+            .tab
+            .as_ref()
+            .and_then(|t| self.workspace.tab_terminals(t).first().cloned())
+            .and_then(|id| self.layout.panes.get(&id))
+            .map(|p| p.read(cx).visual_text())
+            .unwrap_or_default();
+        (self.nav.space.clone(), self.nav.tab.clone(), text)
+    }
     /// Adds a space with a fixed id beside the current one.
     #[cfg(feature = "visual-test")]
     pub fn visual_add_space(&mut self, id: &str, cwd: &str, cx: &mut Context<Self>) {
