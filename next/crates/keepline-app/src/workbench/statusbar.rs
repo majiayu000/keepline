@@ -3,7 +3,7 @@
 //! however many CLIs there are; its popover lists them all.
 use super::*;
 use crate::ui::widgets::gauge;
-use keepline_core::quota::{NEAR, OVER, Quota, SHOWN_FOR, Window as QuotaWindow};
+use keepline_core::quota::{NEAR, OVER, Quota, Window as QuotaWindow};
 
 /// A reading older than this is marked `*`: the CLI has not been used since.
 const STALE_AFTER: u64 = 3600;
@@ -154,7 +154,8 @@ impl Workbench {
         (working.len(), needs.len())
     }
 
-    /// The tightest CLI and its tightest window, then `+N` for the others.
+    /// The pinned CLI, or else the tightest, with its tightest window, then `+N` for the
+    /// others.
     fn quota_button(&self, cx: &Context<Self>) -> gpui::Stateful<gpui::Div> {
         let now = now();
         let readings = tightest_first(&self.workspace, now);
@@ -164,7 +165,7 @@ impl Workbench {
             .border_color(T::color(T::control()))
             .when(!on, |d| d.bg(T::color(T::pane())))
             .on_click(cx.listener(|this, _, _, cx| this.toggle_status(StatusPop::Quota, cx)));
-        let Some((agent, quota, window)) = readings.first().copied() else {
+        let Some((agent, quota, window)) = shown(&readings, self.quota_pin) else {
             return b
                 .aria_label("额度：还没有读数")
                 .child(div().text_color(T::color(T::muted())).child("额度"))
@@ -240,7 +241,7 @@ impl Workbench {
             .font_features(T::tabular())
             .on_mouse_down(gpui::MouseButton::Left, |_, _, cx| cx.stop_propagation());
         let panel = match pop {
-            StatusPop::Quota => self.quota_popover(panel.right(px(T::S6)).w(px(T::STATUS_POP))),
+            StatusPop::Quota => self.quota_popover(panel.right(px(T::S6)).w(px(T::STATUS_POP)), cx),
             StatusPop::Sessions => {
                 self.sessions_popover(panel.left(px(T::S6)).w(px(T::STATUS_POP)), cx)
             }
@@ -265,10 +266,21 @@ impl Workbench {
         )
     }
 
-    fn quota_popover(&self, mut panel: gpui::Stateful<gpui::Div>) -> gpui::Stateful<gpui::Div> {
+    fn quota_popover(
+        &self,
+        mut panel: gpui::Stateful<gpui::Div>,
+        cx: &Context<Self>,
+    ) -> gpui::Stateful<gpui::Div> {
         let now = now();
         let readings = tightest_first(&self.workspace, now);
-        panel = panel.child(heading("额度", "按用得最多排序 · 只读本机记录"));
+        panel = panel.child(heading(
+            "额度",
+            match self.quota_pin {
+                Some(_) => "按用得最多排序 · 状态栏固定显示一家",
+                None => "按用得最多排序 · 状态栏显示用得最多的",
+            },
+        ));
+        let on_bar = shown(&readings, self.quota_pin).map(|(a, ..)| a);
         if readings.is_empty() {
             panel = panel.child(label("这一周用过的 Agent 都还没留下额度记录"));
         }
@@ -286,7 +298,8 @@ impl Workbench {
             }
             head = head
                 .child(div().flex_1())
-                .child(label(format!("读数 {}", ago(quota.at, now))));
+                .child(label(format!("读数 {}", ago(quota.at, now))))
+                .child(self.pin_chip(*agent, on_bar == Some(*agent), cx));
             let mut block = div()
                 .flex()
                 .flex_col()
@@ -345,18 +358,62 @@ impl Workbench {
                     .border_color(T::color(T::border())),
             );
         }
-        let missing = unread_agents(&self.workspace, &readings, now);
-        if !missing.is_empty() {
-            panel = panel.child(
-                label(format!("本机没有额度记录：{}", missing.join(" · ")))
-                    .pt(px(T::S4))
-                    .border_t(px(T::BORDER_WIDTH))
-                    .border_color(T::color(T::border())),
-            );
-        }
-        panel.child(label(
-            "只读各家在本机留下的记录，不联网。* 表示读数超过 1 小时",
-        ))
+        panel.child(
+            label("只读各家在本机留下的记录，不联网。* 表示读数超过 1 小时")
+                .pt(px(T::S4))
+                .border_t(px(T::BORDER_WIDTH))
+                .border_color(T::color(T::border())),
+        )
+    }
+
+    /// 「状态栏显示」 on the CLI the bar shows; 「固定到状态栏」 on the others, shown on
+    /// hover. Clicking the pinned one's chip goes back to showing the tightest.
+    fn pin_chip(
+        &self,
+        agent: keepline_core::agent::Agent,
+        on_bar: bool,
+        cx: &Context<Self>,
+    ) -> gpui::Stateful<gpui::Div> {
+        let pinned = self.quota_pin == Some(agent);
+        let text = match (on_bar, pinned) {
+            (true, true) => "✓ 固定显示",
+            (true, false) => "状态栏显示中",
+            _ => "固定到状态栏",
+        };
+        div()
+            .id(gpui::SharedString::from(format!(
+                "quota-pin-{}",
+                agent.key()
+            )))
+            .role(gpui::accesskit::Role::Button)
+            .aria_label(if pinned {
+                format!("取消固定 {}，改回显示用得最多的", agent.name())
+            } else {
+                format!("状态栏固定显示 {}", agent.name())
+            })
+            .px(px(T::S6))
+            .rounded(px(T::CHIP_RADIUS))
+            .text_size(px(T::CHIP_SIZE))
+            .cursor_pointer()
+            .when(on_bar, |d| {
+                d.bg(T::color(T::chip()))
+                    .text_color(T::color(T::secondary()))
+            })
+            .when(!on_bar, |d| d.text_color(T::color(T::muted())))
+            .hover(|s| {
+                s.bg(T::color(T::button_hover()))
+                    .text_color(T::color(T::primary()))
+            })
+            .child(text)
+            .on_click(cx.listener(move |this, _, _, cx| {
+                this.quota_pin = if this.quota_pin == Some(agent) {
+                    None
+                } else {
+                    Some(agent)
+                };
+                save_quota_pin(this.quota_pin);
+                cx.notify();
+            }))
     }
 
     fn sessions_popover(
@@ -462,10 +519,7 @@ impl Workbench {
 }
 
 /// Every CLI with a reading, the one closest to its limit first, with that window.
-fn tightest_first(
-    w: &Workspace,
-    now: u64,
-) -> Vec<(keepline_core::agent::Agent, &Quota, Option<&QuotaWindow>)> {
+fn tightest_first(w: &Workspace, now: u64) -> Vec<Reading<'_>> {
     let mut out: Vec<_> = keepline_core::quota::latest(w, now)
         .into_iter()
         .map(|(a, q)| (a, q, tightest(q, now)))
@@ -481,22 +535,44 @@ fn tightest(q: &Quota, now: u64) -> Option<&QuotaWindow> {
         .max_by_key(|w| w.used)
 }
 
-/// CLIs used this week that never left a reading here (Cursor, Qoder).
-fn unread_agents(
-    w: &Workspace,
-    readings: &[(keepline_core::agent::Agent, &Quota, Option<&QuotaWindow>)],
-    now: u64,
-) -> Vec<&'static str> {
-    let mut out: Vec<keepline_core::agent::Agent> = Vec::new();
-    for s in &w.agent_sessions {
-        if now.saturating_sub(s.updated) <= SHOWN_FOR
-            && !readings.iter().any(|(a, ..)| *a == s.runtime)
-            && !out.contains(&s.runtime)
-        {
-            out.push(s.runtime);
+type Reading<'a> = (
+    keepline_core::agent::Agent,
+    &'a Quota,
+    Option<&'a QuotaWindow>,
+);
+
+/// What the bar shows: the pinned CLI while it has a reading, else the tightest.
+fn shown<'a>(
+    readings: &[Reading<'a>],
+    pin: Option<keepline_core::agent::Agent>,
+) -> Option<Reading<'a>> {
+    pin.and_then(|p| readings.iter().find(|(a, ..)| *a == p))
+        .or(readings.first())
+        .copied()
+}
+
+fn quota_pin_path() -> Option<std::path::PathBuf> {
+    crate::ui::status_colors::config_dir().map(|d| d.join("quota-pin"))
+}
+
+pub(super) fn load_quota_pin() -> Option<keepline_core::agent::Agent> {
+    let text = std::fs::read_to_string(quota_pin_path()?).ok()?;
+    let key = text.trim();
+    (!key.is_empty()).then(|| keepline_core::agent::Agent::from_key(key))
+}
+
+/// Best effort: a choice that cannot be written still holds until quit.
+fn save_quota_pin(pin: Option<keepline_core::agent::Agent>) {
+    let Some(path) = quota_pin_path() else { return };
+    match pin {
+        Some(a) => {
+            let _ = path.parent().map(std::fs::create_dir_all);
+            let _ = std::fs::write(path, format!("{}\n", a.key()));
+        }
+        None => {
+            let _ = std::fs::remove_file(path);
         }
     }
-    out.into_iter().map(|a| a.name()).collect()
 }
 
 fn share(w: &QuotaWindow) -> f64 {
@@ -572,7 +648,25 @@ fn heading(title: &'static str, note: &'static str) -> gpui::Div {
 
 #[cfg(test)]
 mod tests {
-    use super::left;
+    use super::{left, shown};
+    use keepline_core::agent::Agent;
+    use keepline_core::quota::Quota;
+
+    #[test]
+    fn the_bar_shows_the_pinned_cli_or_else_the_tightest() {
+        let q = Quota {
+            at: 0,
+            plan: String::new(),
+            windows: Vec::new(),
+        };
+        let readings = [(Agent::Codex, &q, None), (Agent::Claude, &q, None)];
+        let key = |pin| shown(&readings, pin).map(|(a, ..)| a.key());
+        assert_eq!(key(None), Some("Codex"));
+        assert_eq!(key(Some(Agent::Claude)), Some("Claude"));
+        // Pinned but no reading this week: fall back to the tightest.
+        assert_eq!(key(Some(Agent::Grok)), Some("Codex"));
+        assert_eq!(shown(&[], Some(Agent::Claude)).map(|(a, ..)| a.key()), None);
+    }
 
     #[test]
     fn time_left_fits_the_bar() {

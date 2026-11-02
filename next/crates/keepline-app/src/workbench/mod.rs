@@ -46,6 +46,9 @@ pub struct Workbench {
     phones: phones::Phones,
     /// The bottom bar's open popover.
     statusbar: Option<statusbar::StatusPop>,
+    /// The CLI the quota button always shows, picked in its popover; `None` shows the
+    /// tightest. Kept in `<config>/quota-pin`.
+    quota_pin: Option<keepline_core::agent::Agent>,
     /// Which copy button just copied, shown as 「✓ 已复制」 for a moment so the click is
     /// seen to have done something; the number tells a newer copy from an older timer.
     copied: Option<(&'static str, u64)>,
@@ -327,6 +330,7 @@ impl Workbench {
             peek: None,
             phones: Default::default(),
             statusbar: None,
+            quota_pin: statusbar::load_quota_pin(),
             copied: None,
             copied_seq: 0,
             search,
