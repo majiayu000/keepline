@@ -1,6 +1,7 @@
 mod agents;
 mod codex_status;
 mod command_marks;
+pub mod devices;
 mod diagnostics;
 mod file_events;
 mod handoff;
@@ -14,6 +15,7 @@ pub mod recognition;
 pub mod screen_rules;
 mod store;
 pub use agents::hooks;
+pub use host::remote::{load as remote_config, Config as RemoteConfig};
 pub use host::{serve, serve_taking_over, serve_with_options, serve_with_roots};
 pub const PROTOCOL_MAJOR: u32 = keepline_core::protocol::MAJOR;
 pub const PROTOCOL_MINOR: u32 = 1;

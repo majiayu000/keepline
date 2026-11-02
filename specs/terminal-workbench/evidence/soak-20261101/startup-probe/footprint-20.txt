@@ -1,0 +1,51 @@
+======================================================================
+keepline-app [8731]: 64-bit    Footprint: 526 MB (16384 bytes per page)
+======================================================================
+
+  Dirty      Clean  Reclaimable    Regions    Category
+    ---        ---          ---        ---    ---
+ 408 MB        0 B          0 B         61    Owned physical footprint (unmapped) (graphics)
+  59 MB        0 B          0 B          6    IOSurface
+  25 MB        0 B       512 KB         20    MALLOC_SMALL
+  11 MB        0 B          0 B         35    IOAccelerator (graphics)
+8256 KB        0 B          0 B          3    CG image
+5120 KB        0 B          0 B         40    Owned physical footprint (unmapped)
+1832 KB        0 B          0 B        869    __DATA_DIRTY
+1440 KB        0 B          0 B         12    MALLOC metadata
+1008 KB        0 B          0 B         74    untagged (VM_ALLOCATE)
+ 940 KB        0 B          0 B        962    __DATA
+ 896 KB        0 B          0 B       1019    __DATA_CONST
+ 880 KB        0 B          0 B         48    stack
+ 721 KB        0 B          0 B          1    page table
+ 400 KB        0 B          0 B          3    CoreUI image data
+ 400 KB        0 B          0 B         29    CoreAnimation
+ 335 KB        0 B          0 B        627    __AUTH
+ 304 KB        0 B          0 B          1    MALLOC_TINY
+ 301 KB        0 B          0 B       2517    unused dyld shared cache area
+ 224 KB        0 B          0 B          2    Foundation
+ 128 KB        0 B       384 KB         32    app-specific tag 1
+ 128 KB        0 B          0 B          1    Accelerate image backing stores
+ 112 KB        0 B          0 B       1012    __AUTH_CONST
+ 112 KB        0 B          0 B          2    __TPRO_CONST
+  64 KB        0 B          0 B          2    IOAccelerator
+  64 KB        0 B          0 B          2    MALLOC_NANO
+  64 KB        0 B          0 B          5    IOKit
+  48 KB        0 B          0 B          1    Activity Tracing
+  48 KB        0 B          0 B          3    CoreGraphics
+  16 KB        0 B          0 B          1    tag 22
+  16 KB        0 B          0 B          1    os_alloc_once
+  16 KB        0 B          0 B          1    ColorSync
+    0 B        0 B      2048 KB          1    MALLOC_LARGE
+    0 B        0 B      1024 KB          2    ImageIO
+    0 B      18 MB          0 B         33    mapped file
+    0 B      10 MB          0 B       1041    __TEXT
+    0 B      96 KB          0 B          5    __LINKEDIT
+    0 B        0 B          0 B          1    __FONT_DATA
+    0 B        0 B          0 B          1    __CTF
+    ---        ---          ---        ---    ---
+ 526 MB      29 MB      3968 KB       8478    TOTAL
+
+Auxiliary data:
+    phys_footprint: 526 MB
+    phys_footprint_peak: 526 MB
+

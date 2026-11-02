@@ -23,6 +23,7 @@ mod association;
 mod client;
 mod events;
 mod live;
+pub(crate) mod remote;
 mod status;
 use association::*;
 use client::*;
@@ -34,6 +35,8 @@ type LiveTerminal = Arc<Mutex<Live>>;
 static BUILD: std::sync::LazyLock<keepline_core::protocol::Build> =
     std::sync::LazyLock::new(keepline_core::protocol::Build::current);
 struct Host {
+    /// Keeps phones on a relay; None until the host has started it.
+    remote: Option<Arc<remote::Supervisor>>,
     store: Store,
     workspace: Workspace,
     terminals: HashMap<String, LiveTerminal>,
@@ -216,6 +219,18 @@ impl Host {
             }
         });
         later
+    }
+    /// Phones on a relay changed: show the app.
+    fn remote_changed(&mut self) -> io::Result<()> {
+        let Some(remote) = self.remote.clone() else {
+            return Ok(());
+        };
+        let status = remote.status();
+        if status != self.recognition.remote {
+            self.recognition.remote = status;
+            self.publish_status()?;
+        }
+        Ok(())
     }
     fn publish_status(&mut self) -> io::Result<()> {
         self.recognition.workspace_revision = self.workspace.revision;
@@ -750,6 +765,7 @@ fn serve_runtime(
         }
     }
     let host = Arc::new(Mutex::new(Host {
+        remote: None,
         store,
         index: index.fork(root)?,
         recognition: RecognitionStatus::default(),
@@ -826,6 +842,19 @@ fn serve_runtime(
     }
     start_deadlines(&host)?;
     start_subscription(Arc::clone(&host), index);
+    {
+        let weak = Arc::downgrade(&host);
+        let supervisor = remote::Supervisor::start(root, move || {
+            if let Some(host) = weak.upgrade() {
+                if let Err(e) = lock(&host).and_then(|mut h| h.remote_changed()) {
+                    eprintln!("publish remote status: {e}");
+                }
+            }
+        });
+        let mut h = lock(&host)?;
+        h.remote = Some(supervisor);
+        h.remote_changed()?;
+    }
     // bind(2) creates the pathname before listen(2) makes it connectable. Under
     // scheduler pressure a client seeing that pathname can get ECONNREFUSED.
     // Publish only an initialized, listening socket, while holding host.lock.
@@ -892,6 +921,7 @@ mod recognition_tests {
         index.initialize().unwrap();
         index.bootstrap().unwrap();
         let shared = Arc::new(Mutex::new(Host {
+            remote: None,
             store,
             workspace,
             terminals: HashMap::new(),

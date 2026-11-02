@@ -1,5 +1,4 @@
 mod control;
-mod devices;
 mod hooks_cmd;
 mod relay;
 mod remote;

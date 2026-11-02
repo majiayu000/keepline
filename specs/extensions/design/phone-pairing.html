@@ -1,0 +1,230 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>手机配对与远程</title>
+<style>
+  :root {
+    --app: #141415; --panel: #1c1c1e; --raised: #262628; --border: #2e2d2c; --chip: #2a2a2b;
+    --body: #e4e2df; --secondary: #a9a7a3; --muted: #7c7a77; --term: #111112;
+    --ok: #4cc38a; --warn: #e8823a; --bad: #e5534b; --accent: #2f81f7; --popover: #2a2a2c;
+  }
+  :root[data-theme="light"] {
+    --app: #ececea; --panel: #fafaf9; --raised: #f0efed; --border: #e2e0dd; --chip: #efeeec;
+    --body: #1f1e1c; --secondary: #5d5a56; --muted: #8a8681; --term: #ffffff;
+    --ok: #1a7f37; --warn: #b85c12; --bad: #cf222e; --accent: #0969da; --popover: #ffffff;
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--app); color: var(--body);
+    font: 13px/1.45 -apple-system, BlinkMacSystemFont, "PingFang SC", sans-serif; }
+  main { max-width: 1240px; margin: 0 auto; padding: 28px 16px 64px; }
+  h1 { font-size: 20px; margin: 0 0 6px; }
+  h2 { font-size: 15px; margin: 0 0 4px; }
+  p { margin: 0 0 8px; color: var(--secondary); }
+  .top { display: flex; justify-content: space-between; gap: 16px; align-items: start; margin-bottom: 22px; }
+  .seg { display: flex; border: 1px solid var(--border); border-radius: 7px; overflow: hidden; flex-shrink: 0; }
+  .seg button { background: var(--panel); color: var(--secondary); border: 0; padding: 5px 12px; font: inherit; cursor: pointer; }
+  .seg button.on { background: var(--raised); color: var(--body); }
+  .dir { margin-bottom: 38px; display: flex; flex-direction: column; gap: 10px; }
+  .tag { display: inline-block; font-size: 11px; padding: 1px 7px; border-radius: 9px; background: var(--chip); color: var(--secondary); margin-left: 6px; vertical-align: 1px; }
+  .tag.rec { background: color-mix(in srgb, var(--accent) 22%, transparent); color: var(--body); }
+  ul.notes { margin: 0; padding-left: 18px; color: var(--secondary); }
+  ul.notes li { margin: 2px 0; }
+
+  .win { border: 1px solid var(--border); border-radius: 9px; overflow: hidden; background: var(--term); position: relative; height: 470px; display: flex; flex-direction: column; }
+  .titlebar { height: 34px; background: var(--panel); border-bottom: 1px solid var(--border); display: flex; align-items: center; padding: 0 10px; gap: 8px; font-size: 12px; color: var(--secondary); flex-shrink: 0; }
+  .lights { display: flex; gap: 6px; margin-right: 8px; }
+  .lights i { width: 11px; height: 11px; border-radius: 50%; background: var(--chip); display: block; }
+  .titlebar .grow { flex: 1; }
+  .tb-btn { display: flex; align-items: center; gap: 5px; padding: 3px 8px; border-radius: 6px; color: var(--body); }
+  .tb-btn.on { background: var(--raised); }
+  .body { flex: 1; display: flex; min-height: 0; }
+  .sidebar { width: 210px; background: var(--panel); border-right: 1px solid var(--border); padding: 8px; display: flex; flex-direction: column; gap: 2px; flex-shrink: 0; }
+  .row { display: flex; align-items: center; gap: 7px; padding: 5px 6px; border-radius: 6px; }
+  .row.sel { background: var(--raised); }
+  .dot { width: 7px; height: 7px; border-radius: 50%; flex-shrink: 0; background: var(--muted); }
+  .row .t { flex: 1; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+  .row .k { font-size: 11px; color: var(--muted); }
+  .pane { flex: 1; padding: 10px 14px; font: 12px/1.5 ui-monospace, Menlo, monospace; color: var(--secondary); overflow: hidden; }
+  .footer { height: 26px; border-top: 1px solid var(--border); background: var(--panel); display: flex; align-items: center; gap: 12px; padding: 0 10px; font-size: 11.5px; color: var(--muted); flex-shrink: 0; }
+  .footer .chip { display: flex; align-items: center; gap: 5px; padding: 1px 8px; border-radius: 9px; background: color-mix(in srgb, var(--ok) 16%, var(--chip)); color: var(--body); }
+
+  /* settings window */
+  .set { display: flex; flex: 1; min-height: 0; background: var(--panel); }
+  .set-nav { width: 170px; border-right: 1px solid var(--border); padding: 10px 8px; display: flex; flex-direction: column; gap: 1px; }
+  .set-nav div { padding: 5px 8px; border-radius: 6px; color: var(--secondary); }
+  .set-nav div.on { background: var(--raised); color: var(--body); }
+  .set-main { flex: 1; padding: 14px 20px; overflow: hidden; display: flex; flex-direction: column; gap: 12px; }
+  .grp { border: 1px solid var(--border); border-radius: 8px; background: var(--term); }
+  .grp .r { display: flex; align-items: center; gap: 10px; padding: 8px 12px; border-top: 1px solid var(--border); }
+  .grp .r:first-child { border-top: 0; }
+  .grp .r .l { flex: 1; }
+  .grp .r .l small { display: block; color: var(--muted); font-size: 11.5px; }
+  .field { border: 1px solid var(--border); background: var(--panel); border-radius: 5px; padding: 3px 8px; min-width: 220px; color: var(--body); font: 12px ui-monospace, Menlo, monospace; }
+  .sw { width: 30px; height: 17px; border-radius: 9px; background: var(--ok); position: relative; flex-shrink: 0; }
+  .sw::after { content: ""; position: absolute; right: 2px; top: 2px; width: 13px; height: 13px; border-radius: 50%; background: #fff; }
+  .sel-box { border: 1px solid var(--border); background: var(--panel); border-radius: 5px; padding: 2px 8px; font-size: 12px; }
+  .b { border: 1px solid var(--border); background: var(--panel); color: var(--body); border-radius: 5px; padding: 3px 10px; font: 12px inherit; cursor: pointer; white-space: nowrap; }
+  .b.pri { background: var(--accent); border-color: var(--accent); color: #fff; }
+  .b.ghost { border-color: transparent; background: none; color: var(--secondary); }
+  .b.bad { color: var(--bad); }
+  .muted { color: var(--muted); }
+  .status { display: flex; align-items: center; gap: 6px; font-size: 12px; }
+  .status .dot { background: var(--ok); }
+
+  .qr { width: 132px; height: 132px; border-radius: 6px; background:
+      repeating-conic-gradient(var(--body) 0 25%, var(--term) 0 50%) 0 0 / 12px 12px; flex-shrink: 0; position: relative; border: 6px solid var(--body); }
+  .qr::before, .qr::after { content: ""; position: absolute; width: 30px; height: 30px; border: 6px solid var(--body); background: var(--term); box-shadow: inset 0 0 0 5px var(--term), inset 0 0 0 30px var(--body); }
+  .qr::before { left: 2px; top: 2px; } .qr::after { right: 2px; top: 2px; }
+  .pairing { display: flex; gap: 14px; padding: 12px; align-items: flex-start; }
+  .pairing ol { margin: 0; padding-left: 18px; color: var(--secondary); font-size: 12px; }
+  .pairing code { font: 11px ui-monospace, Menlo, monospace; color: var(--muted); display: block; margin-top: 8px; word-break: break-all; }
+
+  .pop { position: absolute; right: 12px; top: 38px; width: 360px; background: var(--popover); border: 1px solid var(--border); border-radius: 10px; box-shadow: 0 14px 40px rgba(0,0,0,.45); padding: 10px; display: flex; flex-direction: column; gap: 8px; z-index: 2; }
+  .pop .h { display: flex; justify-content: space-between; align-items: center; font-size: 12px; }
+  .dev { display: flex; gap: 9px; align-items: center; padding: 7px 8px; border-radius: 7px; background: var(--raised); }
+  .dev .l { flex: 1; min-width: 0; }
+  .dev .l small { display: block; color: var(--muted); font-size: 11px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .ph { width: 18px; height: 26px; border: 1.5px solid var(--secondary); border-radius: 4px; position: relative; flex-shrink: 0; }
+  .ph.live { border-color: var(--ok); }
+  .ph.live::after { content: ""; position: absolute; right: -4px; top: -4px; width: 7px; height: 7px; border-radius: 50%; background: var(--ok); }
+
+  .drawer { position: absolute; right: 0; top: 34px; bottom: 26px; width: 380px; background: var(--panel); border-left: 1px solid var(--border); box-shadow: -12px 0 30px rgba(0,0,0,.3); padding: 12px; display: flex; flex-direction: column; gap: 10px; }
+  .log { display: flex; flex-direction: column; gap: 0; font-size: 12px; }
+  .log div { display: flex; gap: 8px; padding: 4px 2px; border-top: 1px solid var(--border); }
+  .log div:first-child { border-top: 0; }
+  .log .at { color: var(--muted); width: 44px; flex-shrink: 0; font-variant-numeric: tabular-nums; }
+  .log .who { width: 56px; flex-shrink: 0; color: var(--secondary); }
+  .log .what { flex: 1; }
+  .log .what code { font: 11px ui-monospace, Menlo, monospace; }
+  .log .refused { color: var(--bad); }
+
+  .rules { background: var(--panel); border: 1px solid var(--border); border-radius: 10px; padding: 14px 18px; }
+  .rules table { border-collapse: collapse; width: 100%; font-size: 12.5px; }
+  .rules td, .rules th { text-align: left; padding: 6px 8px; border-top: 1px solid var(--border); vertical-align: top; }
+  .rules th { color: var(--muted); font-weight: 500; border-top: 0; }
+  @media (max-width: 760px) {
+    .win { height: auto; } .body, .set { flex-direction: column; } .sidebar, .set-nav { width: 100%; }
+    .pop, .drawer { position: static; width: auto; margin: 8px; } .field { min-width: 0; width: 100%; }
+    .grp .r { flex-wrap: wrap; } .pairing { flex-direction: column; }
+  }
+</style>
+</head>
+<body>
+<main>
+<div class="top">
+  <div>
+    <h1>手机配对与远程：三个方向</h1>
+    <p>后台已经能做的事：常驻连着中继、给一台新手机出二维码、按设备分「只看 / 能答审批 / 完全控制」、改权限、取消配对、把每次操作记日志。三个方向的区别在于：你平时能不能一眼看到「现在有手机连着、它在干嘛」。</p>
+  </div>
+  <div class="seg"><button class="on" data-t="dark">深色</button><button data-t="light">浅色</button></div>
+</div>
+
+<!-- A -->
+<section class="dir">
+  <h2>A · 设置里一页全包<span class="tag">最简单</span></h2>
+  <div class="win">
+    <div class="titlebar"><div class="lights"><i></i><i></i><i></i></div>设置</div>
+    <div class="set">
+      <div class="set-nav"><div>通用</div><div>外观</div><div>终端</div><div>快捷键</div><div>通知</div><div class="on">手机与远程</div><div>插件</div><div>关于</div></div>
+      <div class="set-main">
+        <div class="grp">
+          <div class="r"><div class="l">让手机连过来<small>这台 Mac 一直挂在中继上；关掉后已配对的手机暂时连不上，配对还在</small></div><div class="sw"></div></div>
+          <div class="r"><div class="l">中继地址<small>自己的 keepline-relay，或部署好的 alma-relay</small></div><div class="field">https://relay.example.com</div></div>
+          <div class="r"><div class="l">状态</div><div class="status"><span class="dot"></span>已连上 · 1 台手机在线</div></div>
+        </div>
+        <div style="display:flex;justify-content:space-between;align-items:center"><b>配对的手机</b><button class="b pri">配对新手机…</button></div>
+        <div class="grp">
+          <div class="r"><div class="ph live"></div><div class="l">iPhone<small>在线 · 在看「keepline-relay」 · 配对于 3 天前</small></div><span class="sel-box">完全控制 ▾</span><button class="b ghost bad">取消配对</button></div>
+          <div class="r"><div class="ph"></div><div class="l">iPad<small>2 小时前连过 · 配对于 1 周前</small></div><span class="sel-box">只看 ▾</span><button class="b ghost bad">取消配对</button></div>
+        </div>
+        <div class="muted" style="font-size:12px">操作记录：<a style="color:var(--accent)">在访达里显示 remote-log.jsonl</a></div>
+      </div>
+    </div>
+  </div>
+  <ul class="notes">
+    <li>所有东西都在设置里：开关、中继地址、设备列表、改权限、取消配对。点「配对新手机…」弹出一张卡片：先填名字、选权限，再显示二维码。</li>
+    <li>好处是做得最快，主界面一点都不变。坏处是有手机连着、甚至在敲键的时候，主界面上什么也看不出来，只能打开设置才知道。</li>
+  </ul>
+</section>
+
+<!-- B -->
+<section class="dir">
+  <h2>B · 标题栏的手机按钮 + 弹出面板<span class="tag rec">推荐</span></h2>
+  <div class="win">
+    <div class="titlebar"><div class="lights"><i></i><i></i><i></i></div>keepline · main<div class="grow"></div><div class="tb-btn on"><div class="ph live" style="width:9px;height:13px;border-radius:2px"></div>1</div></div>
+    <div class="body">
+      <div class="sidebar">
+        <div class="row sel"><span class="dot" style="background:var(--ok)"></span><span class="t">keepline-relay</span><span class="k">在跑</span></div>
+        <div class="row"><span class="dot" style="background:var(--warn)"></span><span class="t">sidebar 重排</span><span class="k">等你</span></div>
+        <div class="row"><span class="dot"></span><span class="t">docs</span><span class="k">2 分钟前</span></div>
+      </div>
+      <div class="pane">$ cargo test -p keepline-relay<br>running 4 tests<br>test a_phone_reaches_its_machine … ok</div>
+    </div>
+    <div class="pop">
+      <div class="h"><b>手机</b><span class="status"><span class="dot"></span>中继已连上</span></div>
+      <div class="dev"><div class="ph live"></div><div class="l">iPhone · 完全控制<small>在看「keepline-relay」 · 10 秒前按了 ↑ Enter</small></div><button class="b">断开</button></div>
+      <div class="dev"><div class="ph"></div><div class="l">iPad · 只看<small>2 小时前</small></div><button class="b ghost">…</button></div>
+      <div style="display:flex;gap:6px;justify-content:space-between"><button class="b pri">配对新手机…</button><button class="b ghost">设置与记录</button></div>
+    </div>
+    <div class="footer">main · 3 个终端</div>
+  </div>
+  <ul class="notes">
+    <li>标题栏右上常驻一个手机图标。没配对过就不显示；有手机在线时变绿并标出台数。手机按键时，图标闪一下。</li>
+    <li>点开是一个小面板：每台手机在看哪个终端、最后做了什么，可以「断开」，「…」里能改权限或取消配对。配对新手机时，二维码直接显示在面板里。</li>
+    <li>中继地址和开关仍然放在设置里（A 的上半页）。完整的操作记录放在「设置与记录」里。</li>
+    <li>推荐的理由：手机能替你敲键盘，有人连着时你应该随时看得见，而且一下就能断开。代价是标题栏多一个按钮。</li>
+  </ul>
+</section>
+
+<!-- C -->
+<section class="dir">
+  <h2>C · 底栏提示 + 活动抽屉<span class="tag">偏重记录</span></h2>
+  <div class="win">
+    <div class="titlebar"><div class="lights"><i></i><i></i><i></i></div>keepline · main</div>
+    <div class="body">
+      <div class="sidebar">
+        <div class="row sel"><span class="dot" style="background:var(--ok)"></span><span class="t">keepline-relay</span><span class="k">在跑</span></div>
+        <div class="row"><span class="dot" style="background:var(--warn)"></span><span class="t">sidebar 重排</span><span class="k">等你</span></div>
+      </div>
+      <div class="pane">$ cargo test -p keepline-relay<br>running 4 tests</div>
+    </div>
+    <div class="drawer">
+      <div style="display:flex;justify-content:space-between;align-items:center"><b>手机活动</b><button class="b ghost">配对新手机…</button></div>
+      <div class="dev"><div class="ph live"></div><div class="l">iPhone · 完全控制<small>在看「keepline-relay」</small></div><button class="b">断开</button></div>
+      <div class="log">
+        <div><span class="at">14:02</span><span class="who">iPhone</span><span class="what">按键 <code>↑ Enter</code> → keepline-relay</span></div>
+        <div><span class="at">14:01</span><span class="who">iPhone</span><span class="what">答审批「允许」→ sidebar 重排</span></div>
+        <div><span class="at">13:58</span><span class="who">iPhone</span><span class="what">连上</span></div>
+        <div><span class="at">11:20</span><span class="who">未知</span><span class="what refused">密钥不对，已拒绝</span></div>
+        <div><span class="at">11:05</span><span class="who">iPad</span><span class="what">离开</span></div>
+      </div>
+    </div>
+    <div class="footer">main · 3 个终端<span class="chip"><span class="dot" style="background:var(--ok)"></span>iPhone 在看 keepline-relay</span></div>
+  </div>
+  <ul class="notes">
+    <li>底栏出现一个提示「iPhone 在看 …」。点开右侧抽屉，上面是在线的手机，下面是按时间排的操作记录：按了什么键、答了哪个审批、谁被拒了。</li>
+    <li>适合想回头查「手机刚才做了什么」的场景。抽屉占的地方大；底栏现在已经放了额度等信息，会更挤。</li>
+  </ul>
+</section>
+
+<div class="rules">
+  <h2>三个方向共用的部分</h2>
+  <table>
+    <tr><th>项目</th><th>做法</th></tr>
+    <tr><td>后台常驻</td><td>打开开关后，后台自己挂在中继上，重启电脑、重开 App 都会自动连回去。不用再在终端里跑 <code>keeplined remote --relay</code>。</td></tr>
+    <tr><td>配对</td><td>先填名字、选权限（默认「完全控制」），再出二维码，下面附一行链接可以复制。二维码只显示到关掉为止，不存图。</td></tr>
+    <tr><td>改权限 / 取消配对</td><td>一秒内生效，这台手机正连着的会话会断开。这部分已经测过。</td></tr>
+    <tr><td>不做</td><td>不在界面里显示手机屏幕的内容，也不记录手机打的文字，日志里只有「按键 / 粘贴 N 个字」。</td></tr>
+  </table>
+</div>
+</main>
+<script>
+  document.querySelectorAll('.seg button').forEach(b => b.onclick = () => {
+    document.querySelectorAll('.seg button').forEach(x => x.classList.toggle('on', x === b));
+    document.documentElement.dataset.theme = b.dataset.t;
+  });
+</script>
+</body>
+</html>

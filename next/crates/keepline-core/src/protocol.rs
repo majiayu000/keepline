@@ -146,6 +146,102 @@ pub enum Request {
         axis: crate::layout::Axis,
         share: u16,
     },
+    /// Turns phones on a relay on or off, or moves them to another relay. The host keeps
+    /// `keeplined remote --relay` running while it is on.
+    RemoteConfigure {
+        enabled: bool,
+        relay: String,
+        /// The relay's registration key: None keeps the one saved, empty clears it.
+        key: Option<String>,
+    },
+    /// Pairs one more phone; replies `Text`, its pairing link.
+    RemotePair {
+        name: String,
+        /// view, answer or full.
+        role: String,
+    },
+    RemoteDevice {
+        device: String,
+        change: RemoteChange,
+    },
+    /// From `keeplined remote --relay`: who is on now; the host passes it to the app.
+    RemoteReport(RemoteLive),
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub enum RemoteChange {
+    /// view, answer or full; its open sessions end and it reconnects with the new one.
+    Role(String),
+    /// Ends its open sessions now; it stays paired and may connect again.
+    Kick,
+    Revoke,
+    /// Changed outside the host (`keeplined remote --revoke`): show the app again.
+    Refresh,
+}
+
+/// Phones on a relay, as the app shows them.
+#[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub struct RemoteStatus {
+    pub enabled: bool,
+    pub relay: String,
+    /// A registration key is saved; the key itself stays with the host.
+    #[serde(default)]
+    pub keyed: bool,
+    #[serde(default)]
+    pub devices: Vec<RemoteDevice>,
+    #[serde(flatten)]
+    pub live: RemoteLive,
+}
+
+#[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub struct RemoteLive {
+    pub state: RemoteState,
+    /// Why it is not connected, in the user's words; empty when it is.
+    #[serde(default)]
+    pub detail: String,
+    #[serde(default)]
+    pub online: Vec<RemotePhone>,
+}
+
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub enum RemoteState {
+    #[default]
+    Off,
+    Connecting,
+    Connected,
+    /// Stopped and not retrying, e.g. the relay refused this machine; `detail` says why.
+    Failed,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct RemoteDevice {
+    pub id: String,
+    pub name: String,
+    pub role: String,
+    /// Unix seconds.
+    pub paired: u64,
+    pub last_seen: Option<u64>,
+}
+
+/// One phone connected now.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct RemotePhone {
+    pub device: String,
+    /// Unix milliseconds.
+    pub since: u64,
+    /// Terminals it watches.
+    #[serde(default)]
+    pub watching: Vec<String>,
+    pub last: Option<RemoteAct>,
+}
+
+/// The last thing a phone did: send, keys or answer.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct RemoteAct {
+    pub op: String,
+    pub terminal: Option<String>,
+    /// Unix milliseconds.
+    pub at: u64,
 }
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -307,6 +403,9 @@ pub struct RecognitionStatus {
     /// status rules then fall back to logs, hooks and the screen.
     #[serde(default)]
     pub official: std::collections::BTreeMap<String, String>,
+    /// Phones on a relay. Live state, not stored.
+    #[serde(default)]
+    pub remote: RemoteStatus,
 }
 impl Default for RecognitionStatus {
     fn default() -> Self {
@@ -322,6 +421,7 @@ impl Default for RecognitionStatus {
             terminal_commands: Default::default(),
             workspace_revision: 0,
             official: Default::default(),
+            remote: Default::default(),
         }
     }
 }

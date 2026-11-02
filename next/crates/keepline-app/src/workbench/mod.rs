@@ -43,6 +43,7 @@ pub struct Workbench {
     sidebar: sidebar_list::SidebarPrefs,
     /// A session's live screen floated over the current tab from the sidebar.
     peek: Option<peek::Peek>,
+    phones: phones::Phones,
 }
 #[derive(Clone)]
 struct PaneMenu {
@@ -184,6 +185,7 @@ use overview::OverviewState;
 mod palette;
 use palette::Search;
 mod peek;
+mod phones;
 mod render;
 mod sessions;
 mod settings;
@@ -226,6 +228,15 @@ impl Workbench {
                     .update(cx, |this, cx| {
                         let revision = status.workspace_revision;
                         let interrupted = status.phase == RecognitionPhase::Interrupted;
+                        if let Some(view) = &this.settings {
+                            let remote = status.remote.clone();
+                            view.update(cx, |v, cx| {
+                                if v.remote != remote {
+                                    v.remote = remote;
+                                    cx.notify();
+                                }
+                            });
+                        }
                         this.store.set_recognition(status);
                         if interrupted {
                             // Repaint once the outage is long enough to show its strip.
@@ -288,6 +299,7 @@ impl Workbench {
             settings: None,
             sidebar: sidebar_list::SidebarPrefs::load(),
             peek: None,
+            phones: Default::default(),
             search,
             store,
             workspace,

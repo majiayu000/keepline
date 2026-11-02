@@ -32,6 +32,10 @@ keeplined remote --relay <中继地址> [--relay-key <密钥>]
 keeplined remote --pair --relay <中继地址> [--name 名字] [--role view|answer|full]
                                              配对一台新手机，打印它的二维码和链接；权限分只看 / 能答审批 / 完全控制（默认）。
                                              加 --new-code 换掉机器码，已配对的手机全部失效
+keeplined remote --enable --relay <中继地址> [--relay-key <密钥>] | --disable
+                                             让后台一直挂在中继上（重启后也会自动连回去），或者断开；配对保留
+keeplined remote --status                    中继连接状态、配对的手机、现在谁在线、在看哪个终端
+keeplined remote --kick <设备>               立刻断开这台手机正连着的会话，配对保留
 keeplined remote --devices                   列出配对过的手机、权限和最近连接时间；操作记在运行目录的 remote-log.jsonl
 keeplined remote --device <设备> --role <view|answer|full>
                                              改一台手机的权限；它正连着的会话一秒内断开，重连后按新权限

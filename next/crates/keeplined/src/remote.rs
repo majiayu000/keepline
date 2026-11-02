@@ -5,10 +5,10 @@
 //! order; `events` and `watch` are streams that run beside them until closed.
 //! The message shapes are in `specs/extensions/remote-protocol.md`.
 use crate::control::{self, Args, Phase};
-use crate::devices::{self, Role};
 use base64::Engine;
 use keepline_core::{model::*, protocol::*, terminal::Vt};
 use keepline_remote::protocol as rp;
+use keeplined::devices::{self, Role};
 use serde_json::{json, Value};
 use std::collections::HashMap;
 use std::io::{self, BufRead, Read, Write};
@@ -42,6 +42,17 @@ pub(crate) struct Access {
     pub(crate) device: Option<(String, String)>,
     /// Where acting ops are logged.
     pub(crate) log: Option<PathBuf>,
+    /// Told what the client watches and does, for the app to show who is on.
+    pub(crate) observer: Option<Observer>,
+}
+pub(crate) type Observer = Arc<dyn Fn(Activity) + Send + Sync>;
+pub(crate) enum Activity {
+    Watching(String),
+    Unwatched(String),
+    Acted {
+        op: String,
+        terminal: Option<String>,
+    },
 }
 impl Access {
     fn trusted() -> Self {
@@ -49,6 +60,12 @@ impl Access {
             role: Role::Full,
             device: None,
             log: None,
+            observer: None,
+        }
+    }
+    fn tell(&self, activity: Activity) {
+        if let Some(o) = &self.observer {
+            o(activity);
         }
     }
     fn record(&self, op: &str, request: &Value, result: &io::Result<Value>) {
@@ -72,12 +89,24 @@ impl Access {
 pub fn run(args: impl Iterator<Item = String>) -> io::Result<()> {
     let a = Args::parse(
         args,
-        &["relay", "relay-key", "name", "role", "revoke", "device"],
+        &[
+            "relay",
+            "relay-key",
+            "name",
+            "role",
+            "revoke",
+            "device",
+            "kick",
+        ],
     )?;
     if a.value("relay").is_some()
         || a.has("devices")
         || a.value("revoke").is_some()
         || a.value("device").is_some()
+        || a.value("kick").is_some()
+        || a.has("enable")
+        || a.has("disable")
+        || a.has("status")
     {
         return crate::relay::run(&a);
     }
@@ -122,6 +151,12 @@ pub fn serve(
                 let op = request["op"].as_str().unwrap_or_default();
                 if devices::acts(op) {
                     access.record(op, &request, &result);
+                    if result.is_ok() {
+                        access.tell(Activity::Acted {
+                            op: op.to_owned(),
+                            terminal: request["terminal"].as_str().map(str::to_owned),
+                        });
+                    }
                 }
                 let reply = match result {
                     Ok(ok) => json!({ "id": id, "ok": ok }),
@@ -179,7 +214,8 @@ pub fn serve(
             )),
             "events" | "watch" => {
                 let (out, socket, streams) = (out.clone(), socket.to_owned(), streams.clone());
-                thread::spawn(move || stream(id, &request, &socket, &out, &streams));
+                let access = access.clone();
+                thread::spawn(move || stream(id, &request, &socket, &out, &streams, &access));
             }
             "close" => match request["stream"].as_u64() {
                 Some(s) => {
@@ -218,30 +254,7 @@ pub fn serve(
     Ok(())
 }
 
-/// This machine's id stays the same across restarts, so a client that knows several
-/// machines can tell their terminals apart.
-pub(crate) fn machine(socket: &Path) -> rp::Machine {
-    let file = socket.with_file_name("machine-id");
-    let id = std::fs::read_to_string(&file)
-        .ok()
-        .map(|s| s.trim().to_owned())
-        .filter(|s| !s.is_empty())
-        .unwrap_or_else(|| {
-            let id = uuid::Uuid::new_v4().to_string();
-            let _ = std::fs::write(&file, &id);
-            id
-        });
-    let mut name = [0u8; 256];
-    // SAFETY: gethostname writes at most `len` bytes into the buffer it is given.
-    let ok = unsafe { libc::gethostname(name.as_mut_ptr().cast(), name.len()) } == 0;
-    let name = if ok {
-        let end = name.iter().position(|&b| b == 0).unwrap_or(name.len());
-        String::from_utf8_lossy(&name[..end]).into_owned()
-    } else {
-        String::new()
-    };
-    rp::Machine { id, name }
-}
+pub(crate) use keeplined::devices::machine;
 fn hello(socket: &Path, role: Role) -> Value {
     json!(rp::Hello {
         version: rp::VERSION,
@@ -413,7 +426,7 @@ impl Stream<'_> {
     }
 }
 /// Runs one stream to its end and says why it ended; the client closing it is "closed".
-fn stream(id: u64, request: &Value, socket: &Path, out: &Out, streams: &Streams) {
+fn stream(id: u64, request: &Value, socket: &Path, out: &Out, streams: &Streams, access: &Access) {
     let mut s = Stream {
         id,
         out,
@@ -422,9 +435,12 @@ fn stream(id: u64, request: &Value, socket: &Path, out: &Out, streams: &Streams)
     };
     let result = match request["op"].as_str() {
         Some("events") => connect(socket, &Request::Subscribe).and_then(|c| events(&mut s, c)),
-        _ => text(request, "terminal")
-            .map(str::to_owned)
-            .and_then(|t| watch(&mut s, &t, socket)),
+        _ => text(request, "terminal").map(str::to_owned).and_then(|t| {
+            access.tell(Activity::Watching(t.clone()));
+            let watched = watch(&mut s, &t, socket);
+            access.tell(Activity::Unwatched(t));
+            watched
+        }),
     };
     // Still registered means the client did not close it.
     let open = streams

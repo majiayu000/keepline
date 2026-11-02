@@ -15,6 +15,8 @@ futures = "0.3"
 serde_json.workspace = true
 serde.workspace = true
 libc.workspace = true
+# The pairing QR code a phone scans.
+qrcode = { version = "0.14", default-features = false }
 
 [features]
 visual-test = ["gpui/test-support", "gpui_platform/test-support"]
