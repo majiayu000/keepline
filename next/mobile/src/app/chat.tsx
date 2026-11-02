@@ -16,6 +16,7 @@ import {
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { refresh, remote, useHub } from '@/remote/hub';
 import { cardTitle } from '@/ui/format';
+import { Markdown } from '@/ui/markdown';
 import { type Theme, ago, useTheme } from '@/ui/theme';
 
 type Message = { seq: number; at: number; role: 'user' | 'agent'; text: string };
@@ -44,9 +45,13 @@ function Bubble({ m, t }: { m: Message | (Pending & { role: 'user'; pending: tru
             : { backgroundColor: t.agentBubble, borderColor: t.line, borderWidth: StyleSheet.hairlineWidth },
         ]}
       >
-        <Text selectable style={{ color: user ? t.onAccent : t.text, fontSize: 15, lineHeight: 21 }}>
-          {m.text}
-        </Text>
+        {user ? (
+          <Text selectable style={{ color: t.onAccent, fontSize: 15, lineHeight: 21 }}>
+            {m.text}
+          </Text>
+        ) : (
+          <Markdown text={m.text} t={t} color={t.text} />
+        )}
         <Text style={{ color: user ? t.onAccent : t.dim, opacity: 0.7, fontSize: 11, marginTop: 4 }}>
           {'pending' in m ? '发送中…' : ago(m.at)}
         </Text>
