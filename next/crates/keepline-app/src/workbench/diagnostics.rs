@@ -101,6 +101,43 @@ impl gpui::EventEmitter<DiagnosticAction> for DiagnosticView {}
 /// Rows the CPU ranking shows before「再显示」.
 const FIRST_ROWS: usize = 10;
 
+/// Where each scatter label's text starts, in pixels from the plot's top. A label sits
+/// centred on its point; one that would overlap a label above it on the same side of the
+/// plot moves down a line, and none runs past the bottom edge onto the x-axis labels.
+fn label_tops(points: &[(&str, f32, f32)]) -> HashMap<String, f32> {
+    let line = T::TICK_ROW;
+    let mut order: Vec<_> = points.to_vec();
+    order.sort_by(|a, b| a.2.total_cmp(&b.2));
+    let mut placed: Vec<(f32, f32)> = Vec::new();
+    let mut names = Vec::new();
+    let mut tops = HashMap::new();
+    for (name, x, y) in order {
+        let mut top = y * T::SCATTER_HEIGHT - line / 2.;
+        for (px_, ptop) in &placed {
+            if (x - px_).abs() < 0.45 && top < ptop + line {
+                top = ptop + line;
+            }
+        }
+        placed.push((x, top));
+        names.push(name);
+    }
+    // Clamped to the bottom edge, labels may stack there: push those back up.
+    let mut floor_of: Vec<(f32, f32)> = Vec::new();
+    for i in (0..placed.len()).rev() {
+        let (x, mut top) = placed[i];
+        top = top.min(T::SCATTER_HEIGHT - line);
+        for (fx, ftop) in &floor_of {
+            if (x - fx).abs() < 0.45 && top > ftop - line {
+                top = ftop - line;
+            }
+        }
+        top = top.max(0.);
+        floor_of.push((x, top));
+        tops.insert(names[i].to_owned(), top);
+    }
+    tops
+}
+
 /// Rows the ranking shows before 「再显示」: as many as the right column (scatter plus
 /// GPU rows) is tall, so the left side does not end in a blank block; never fewer than 10.
 fn first_rows(gpu_rows: usize) -> usize {
@@ -881,6 +918,19 @@ impl DiagnosticView {
             .chain(by_rss.iter().take(2))
             .map(|a| a.name.as_str())
             .collect();
+        let label_tops = label_tops(
+            &ranked
+                .iter()
+                .filter(|a| labelled.contains(&a.name.as_str()))
+                .map(|a| {
+                    (
+                        a.name.as_str(),
+                        x(a.cpu_percent),
+                        y(a.rss_bytes as f64 / MB),
+                    )
+                })
+                .collect::<Vec<_>>(),
+        );
         let mut area = div().flex_1().relative().h(px(T::SCATTER_HEIGHT));
         let mut gutter = div()
             .w(px(T::AXIS_GUTTER))
@@ -950,11 +1000,10 @@ impl DiagnosticView {
                         format!("{} 个进程", app.processes),
                     ])),
             );
-            if named {
+            if let Some(top) = label_tops.get(app.name.as_str()) {
                 let text = div()
                     .absolute()
-                    .top(gpui::relative(py_))
-                    .mt(px(-T::S8))
+                    .top(px(*top))
                     .whitespace_nowrap()
                     .text_size(px(T::CHIP_SIZE))
                     .text_color(T::color(T::body()))
@@ -1511,5 +1560,32 @@ mod row_tests {
         // Seven GPU rows (the reported case) make room for all 15 ranked apps.
         assert!(first_rows(7) >= 15);
         assert_eq!(first_rows(8), first_rows(7) + 1);
+    }
+
+    #[test]
+    fn scatter_labels_do_not_overlap_or_leave_the_plot() {
+        let line = T::TICK_ROW;
+        // The reported case: three apps near the top-left, two on the bottom-right edge.
+        let tops = label_tops(&[
+            ("Google Chrome", 0.05, 0.08),
+            ("VirtualMachine", 0.15, 0.10),
+            ("claude", 0.38, 0.11),
+            ("grep", 0.5, 0.97),
+            ("mirror", 0.6, 1.0),
+        ]);
+        let left = ["Google Chrome", "VirtualMachine", "claude"].map(|n| tops[n]);
+        for (i, a) in left.iter().enumerate() {
+            for b in &left[i + 1..] {
+                assert!((a - b).abs() >= line - 0.01, "{left:?}");
+            }
+        }
+        assert!((tops["grep"] - tops["mirror"]).abs() >= line - 0.01);
+        assert!(
+            tops.values()
+                .all(|t| *t >= 0. && *t <= T::SCATTER_HEIGHT - line)
+        );
+        // Far apart across the plot, labels keep their own height.
+        let apart = label_tops(&[("a", 0.0, 0.5), ("b", 0.9, 0.5)]);
+        assert_eq!(apart["a"], apart["b"]);
     }
 }
