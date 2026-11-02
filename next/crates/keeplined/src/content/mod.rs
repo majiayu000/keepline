@@ -687,8 +687,15 @@ fn log_detail(v: &Value, records: &[Record]) -> String {
         None => format!("记录：{kind}"),
     }
 }
+/// Claude Code lists the watch it keeps on a published Artifact (new versions and
+/// comments) as a running "monitor" for as long as the session lives. It starts no turn
+/// on its own, so it is not background work: Claude Code 2.1.316 describes it as
+/// "live updates for artifact <slug> (...)". A Monitor the agent armed itself (a shell is
+/// listed as "shell", a WebSocket as "monitor") carries the agent's own description.
+const ARTIFACT_WATCH: &str = "live updates for artifact ";
 /// Reads the status facts from a hook payload. Stop and SubagentStop list the parent
-/// session's in-flight tasks; an entry counts unless its status says it has ended.
+/// session's in-flight tasks; an entry counts unless its status says it has ended or it
+/// is the watch on a published Artifact.
 pub fn hook_facts(v: &Value) -> HookFacts {
     const ENDED: [&str; 9] = [
         "completed",
@@ -715,6 +722,10 @@ pub fn hook_facts(v: &Value) -> HookFacts {
             }
             match task["type"].as_str().unwrap_or("") {
                 "shell" => b.shells += 1,
+                "monitor"
+                    if task["description"]
+                        .as_str()
+                        .is_some_and(|d| d.starts_with(ARTIFACT_WATCH)) => {}
                 "monitor" => b.monitors += 1,
                 _ => b.agents += 1,
             }
@@ -1298,7 +1309,9 @@ mod tests {
                 {"id": "2", "type": "shell", "status": "running", "command": "cargo test"},
                 {"id": "3", "type": "monitor"},
                 {"id": "4", "type": "subagent", "status": "completed"},
-                {"id": "5", "type": "workflow", "status": "pending"}
+                {"id": "5", "type": "workflow", "status": "pending"},
+                {"id": "6", "type": "monitor", "status": "running",
+                 "description": "live updates for artifact 3NA2bQ87qGL9ARV2D1XkK5 (comments)"}
             ],
             "session_crons": [{"id": "c", "schedule": "*/5 * * * *"}],
             "last_assistant_message": "never forwarded"
@@ -1313,6 +1326,17 @@ mod tests {
             })
         );
         assert!(!facts.subagent);
+        let watched = hook_facts(&json!({
+            "hook_event_name": "Stop",
+            "background_tasks": [{"id": "w", "type": "monitor", "status": "running",
+                "description": "live updates for artifact abc (comments)"}],
+            "session_crons": []
+        }));
+        assert_eq!(
+            watched.background,
+            Some(keepline_core::content::Background::default()),
+            "watching a published Artifact is not background work: 等你验收, not 等后台"
+        );
         let empty = hook_facts(&json!({"hook_event_name": "Stop"}));
         assert_eq!(
             empty.background, None,
