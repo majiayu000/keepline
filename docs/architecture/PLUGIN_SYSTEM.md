@@ -112,6 +112,7 @@
 - 没有写 `transcripts` 的 Agent 能被识别，画面上会提示「已识别 X，它不写对话记录，所以不能关联待办」，但不会绑定会话。这和 Claude 子会话走的是同一条 `Unrecorded` 路径。
 - 写了 `transcripts` 的 Agent，在 `root` 下按扩展名找文件。每条记录用 JSON 指针读出会话 ID 和工作目录，用户和助手的消息写进卡片，所以绑定、停止、挂到待办都能用。回合状态声明式描述不了，只靠画面。
 - 做不到的事要明说：官方状态、共享 daemon 下的画面关联、子 Agent 这些还是要写 Rust 适配器。
+- 可选 `"prompt": {"markers": ["❯"], "pins_own": false}`：这个 CLI 在终端里怎么画用户发出的提问。`markers` 是提问那一行开头的符号（Claude Code 是 `❯`，Codex 是 `›`），不写就认「一行以提问原文开头」；`pins_own` 为 true 表示 CLI 自己会把这一轮的提问钉在屏幕上（如 Codex），Keepline 就不再画。Keepline 拿 `transcripts` 读出的提问在终端历史里找这一行，回答滚过它时按「设置 › 外观 › 钉住这一轮的提问」显示顶部条、翻看时的浮签或标题栏「↑ 你问」。匹配逻辑在 `keepline-core/src/prompt_pin.rs`，与具体 Agent 无关。
 
 ### 5. 边界
 

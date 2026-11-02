@@ -166,8 +166,24 @@ pub struct AgentSpec {
     pub transcripts: Option<Transcripts>,
     /// api 2: where the conversation lives when the CLI keeps no transcript files.
     pub source: Option<RecordSource>,
+    /// How the CLI shows a sent ask in its terminal, for pinning the turn's ask.
+    pub prompt: PromptLine,
     /// The declaration it came from; `None` for a built-in.
     pub file: Option<PathBuf>,
+}
+
+/// How a CLI draws an ask the user sent, in the terminal's history: the mark the row
+/// starts with (Claude Code `❯`, Codex `›`), and whether the CLI already keeps the turn's
+/// ask pinned on its own screen, in which case Keepline draws no pin of its own.
+#[derive(Clone, Debug, Default, PartialEq, Eq, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct PromptLine {
+    /// Marks a sent ask's row starts with, after any indent. Empty: the row starts with
+    /// the ask's text itself.
+    #[serde(default)]
+    pub markers: Vec<String>,
+    #[serde(default)]
+    pub pins_own: bool,
 }
 
 /// Where a declared CLI writes JSON-lines transcripts and how a record names things.
@@ -322,6 +338,8 @@ struct Declaration {
     transcripts: Option<Transcripts>,
     #[serde(default)]
     source: Option<RecordSource>,
+    #[serde(default)]
+    prompt: PromptLine,
 }
 
 /// One declaration file's outcome, for settings and diagnostics.
@@ -361,17 +379,34 @@ fn builtin() -> Vec<AgentSpec> {
         resume: resume.into(),
         transcripts: None,
         source: None,
+        prompt: PromptLine::default(),
         file: None,
+    };
+    let marked = |spec: AgentSpec, markers: &[&str], pins_own| AgentSpec {
+        prompt: PromptLine {
+            markers: markers.iter().map(|m| (*m).to_owned()).collect(),
+            pins_own,
+        },
+        ..spec
     };
     vec![
         // Temporary until daemon-backed Codex can prove a TUI-to-session association.
-        spec("Codex", "Codex", "codex", "codex", "codex resume {id}"),
-        spec(
-            "Claude",
-            "Claude Code",
-            "claude",
-            "claude --session-id {uuid}",
-            "claude --resume {id}",
+        // Codex keeps the turn's ask on its first row while the answer runs on.
+        marked(
+            spec("Codex", "Codex", "codex", "codex", "codex resume {id}"),
+            &["›"],
+            true,
+        ),
+        marked(
+            spec(
+                "Claude",
+                "Claude Code",
+                "claude",
+                "claude --session-id {uuid}",
+                "claude --resume {id}",
+            ),
+            &["❯", ">"],
+            false,
         ),
         // The TUI cannot be given an id; the daemon reads it from Grok's own registry.
         spec("Grok", "Grok Build", "grok", "grok", "grok --resume {id}"),
@@ -643,6 +678,7 @@ fn declare(file: &Path, home: &Path, known: &[AgentSpec]) -> Result<AgentSpec, S
         resume: d.resume,
         transcripts,
         source,
+        prompt: d.prompt,
         file: Some(file.to_owned()),
     })
 }

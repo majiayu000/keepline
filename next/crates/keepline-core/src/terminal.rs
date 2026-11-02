@@ -201,6 +201,31 @@ impl Vt {
         let s = self.0.scrollbar().map_err(io::Error::other)?;
         Ok((s.offset as usize, s.total as usize, s.len as usize))
     }
+    /// Each ask's history row, looked for from the bottom up over the left of each row
+    /// (see `prompt_pin::locate`). Reads at most `PREFIX_COLS` cells of `MAX_ROWS` rows.
+    pub fn find_prompts(
+        &self,
+        keys: &[Option<String>],
+        prompt: &crate::agent::PromptLine,
+    ) -> io::Result<Vec<Option<usize>>> {
+        use crate::prompt_pin::{MAX_ROWS, PREFIX_COLS};
+        let total = self.0.total_rows().map_err(io::Error::other)?;
+        let mut error = None;
+        let rows = (total.saturating_sub(MAX_ROWS)..total)
+            .rev()
+            .map_while(|y| match self.row_cells_upto(y, PREFIX_COLS) {
+                Ok(cells) => Some((y, cells.into_iter().map(|(_, s)| s).collect::<String>())),
+                Err(e) => {
+                    error = Some(e);
+                    None
+                }
+            });
+        let found = crate::prompt_pin::locate(keys, prompt, rows);
+        match error {
+            Some(e) => Err(e),
+            None => Ok(found),
+        }
+    }
     /// The last `rows` rows of history plus screen, one line per row.
     pub fn tail_text(&self, rows: usize) -> io::Result<String> {
         let total = self.0.total_rows().map_err(io::Error::other)?;
@@ -216,11 +241,15 @@ impl Vt {
     }
     /// Each cell's column and text; a wide character's spacer cell is left out.
     fn row_cells(&self, y: usize) -> io::Result<Vec<(u16, String)>> {
+        self.row_cells_upto(y, u16::MAX)
+    }
+    /// The same for the first `limit` columns only.
+    fn row_cells_upto(&self, y: usize, limit: u16) -> io::Result<Vec<(u16, String)>> {
         use libghostty_vt::{
             screen::CellWide,
             terminal::{Point, PointCoordinate},
         };
-        let cols = self.0.cols().map_err(io::Error::other)?;
+        let cols = self.0.cols().map_err(io::Error::other)?.min(limit);
         let mut line = Vec::with_capacity(cols as usize);
         for x in 0..cols {
             let cell = self

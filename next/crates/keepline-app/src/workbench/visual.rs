@@ -198,14 +198,9 @@ impl Workbench {
     #[cfg(feature = "visual-test")]
     pub fn visual_card_center(&self, column: &str) -> Option<gpui::Point<gpui::Pixels>> {
         use super::board::Column;
-        let c = [
-            Column::Todo,
-            Column::Running,
-            Column::Review,
-            Column::Done,
-        ]
-        .into_iter()
-        .find(|c| c.id() == column)?;
+        let c = [Column::Todo, Column::Running, Column::Review, Column::Done]
+            .into_iter()
+            .find(|c| c.id() == column)?;
         let bounds = self
             .overview
             .columns
@@ -1561,6 +1556,66 @@ impl Workbench {
     /// Binds a session to each of the running terminals `rw`, `re`, `rq`, `rr`: one waiting
     /// on an approval, one stopped on an error, one asking a question with a short title,
     /// one waiting on a text no reasons rule knows. Kept in memory only.
+    /// Two panes holding the same two-turn conversation: `pc` as Claude Code draws it
+    /// (`❯`), `px` as Codex (`›`, and Codex pins its own ask).
+    pub fn visual_pinned_ask_fixture(&mut self, asks: &[&str], cx: &mut Context<Self>) {
+        use keepline_core::content::{Content, Quote, Source, Turn};
+        use keepline_core::model::{Agent, AgentSession, Outcome};
+        let now = now();
+        for (tid, runtime) in [("pc", Agent::Claude), ("px", Agent::Codex)] {
+            let sid = format!("pinned-{tid}");
+            self.workspace.agent_sessions.push(AgentSession {
+                id: sid.clone(),
+                runtime,
+                cli_session_id: sid.clone(),
+                terminal: Some(tid.into()),
+                current: true,
+                task: None,
+                outcome: Outcome::Open,
+                updated: now - 60,
+                cwd: "/tmp".into(),
+                transcript: String::new(),
+                name: "补齐遗漏并提交变更".into(),
+                binding: None,
+            });
+            self.workspace.content.insert(
+                sid,
+                Content {
+                    interactive: true,
+                    first_ask_known: true,
+                    title: "补齐遗漏并提交变更".into(),
+                    asks: asks
+                        .iter()
+                        .map(|a| Quote {
+                            text: (*a).into(),
+                            at: now - 600,
+                            source: Source::default(),
+                        })
+                        .collect(),
+                    turn: Turn::Running,
+                    turn_started: now - 120,
+                    updated: now - 5,
+                    ..Default::default()
+                },
+            );
+        }
+        self.workspace.revision = u64::MAX / 2;
+        self.mark_pane_agents(cx);
+        cx.notify();
+    }
+    pub fn visual_pinned_ask(
+        &self,
+        id: &str,
+        cx: &gpui::App,
+    ) -> (Vec<Option<usize>>, Option<(String, bool)>, Option<String>) {
+        self.layout.panes[id].read(cx).visual_pinned_ask()
+    }
+    pub fn visual_scroll_row(&self, id: &str, row: usize, cx: &mut Context<Self>) {
+        self.layout.panes[id].update(cx, |p, cx| p.visual_scroll_row(row, cx));
+    }
+    pub fn visual_back_to_ask(&self, id: &str, cx: &mut Context<Self>) {
+        self.layout.panes[id].update(cx, |p, cx| p.back_to_latest_ask(cx));
+    }
     pub fn visual_reason_fixture(&mut self, cx: &mut Context<Self>) {
         use keepline_core::content::{Content, Quote, Source, Turn};
         use keepline_core::model::{Agent, AgentSession, Outcome};

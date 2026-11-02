@@ -51,6 +51,26 @@ pub(super) fn start(
             cx.update(|a| a.quit());
             return;
         }
+        // 钉住这一轮的提问: the row alone under its search, default (bar only) then all on.
+        if phase == "pinned-ask" {
+            for (name, choice) in [
+                ("pinned-ask-default", crate::ui::pinned_ask::PinnedAsk::default()),
+                ("pinned-ask-all", crate::ui::pinned_ask::PinnedAsk { bar: true, float: true, button: true }),
+            ] {
+                cx.update(|a| crate::ui::pinned_ask::choose(choice, a).unwrap());
+                handle.update(cx, |v, _, a| {
+                    let field = v.visual_settings_query(a);
+                    field.update(a, |f, cx| { f.text = "钉住".into(); cx.notify(); });
+                }).unwrap();
+                wait(300).await;
+                shot(name, cx);
+            }
+            let saved = std::fs::read_to_string(crate::ui::status_colors::config_dir().unwrap().join("pinned-ask")).unwrap();
+            assert_eq!(saved, "bar,float,button");
+            eprintln!("settings pinned-ask PASS");
+            cx.update(|a| a.quit());
+            return;
+        }
         // 标记完成动画: pick one with a real click, then 试播 on the shown pane, which must
         // stay open with nothing marked. KEEPLINE_COMPLETE_CLICKS="x,y;x,y" are the
         // panel points of 落印 and 试播 once the search leaves only that row.

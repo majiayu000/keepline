@@ -29,6 +29,12 @@ const SCROLLBAR_WIDTH: f32 = 6.;
 const WHEEL_REPORTS: usize = 10;
 /// How often output may re-ask the host for the program's directory.
 const CWD_REFRESH_SECS: u64 = 5;
+/// The floating ask stays up this long after the last scroll through history.
+const ASK_FLOAT_MS: u64 = 1500;
+/// Output re-reads where the asks are at most this often; any other repaint, every
+/// few seconds (history may have dropped its oldest rows, moving the rest up).
+const ASK_LOCATE_MS: u64 = 500;
+const ASK_RELOCATE_MS: u64 = 3000;
 /// A shown cell with text: where its middle is in the window, its color and its width.
 pub type Glyph = (gpui::Point<Pixels>, u32, u16);
 
@@ -128,6 +134,16 @@ pub struct Pane {
     /// cannot repaint, so the pane says so until dismissed.
     started_under: Option<keepline_core::terminal::Scheme>,
     tint_note_dismissed: bool,
+    /// What this terminal's conversation was asked, oldest first, as the workbench last
+    /// saw it, and where each sits in history once found.
+    asks: Vec<String>,
+    ask_rows: Vec<Option<usize>>,
+    /// When the asks were last looked for, and the history's length then.
+    asks_located: Option<(Instant, usize)>,
+    locating_asks: bool,
+    pinned: keepline_core::prompt_pin::Pinned,
+    /// When the viewport last moved through history, for the floating ask.
+    scrolled_at: Option<Instant>,
 }
 /// A hovered path word that exists on disk.
 #[derive(Clone, Debug, PartialEq)]
@@ -145,6 +161,8 @@ pub struct Hovered {
 pub enum PaneEvent {
     /// Run `command` in a new terminal tab started in `cwd`.
     Run { command: String, cwd: String },
+    /// The turn's ask scrolled out of sight or back, for the header's 「↑ 你问」.
+    PinnedAsk,
 }
 impl gpui::EventEmitter<PaneEvent> for Pane {}
 impl Focusable for Pane {
@@ -188,6 +206,25 @@ impl Pane {
     #[cfg(feature = "visual-test")]
     pub fn visual_viewport(&self) -> (usize, usize, usize) {
         self.viewport
+    }
+    /// Where each ask was found, and what is pinned: the newest ask's text and whether
+    /// it scrolls back, and the text of the ask whose answer is being read.
+    #[cfg(feature = "visual-test")]
+    pub fn visual_pinned_ask(
+        &self,
+    ) -> (Vec<Option<usize>>, Option<(String, bool)>, Option<String>) {
+        (
+            self.ask_rows.clone(),
+            self.pinned_latest(),
+            self.pinned
+                .viewed
+                .and_then(|(i, _)| self.asks.get(i).cloned()),
+        )
+    }
+    /// Scrolls history so `row` is the top row, as the scrollbar would.
+    #[cfg(feature = "visual-test")]
+    pub fn visual_scroll_row(&mut self, row: usize, cx: &mut Context<Self>) {
+        self.scroll_to(ScrollViewport::Row(row), cx);
     }
     /// Opens search with `query` and runs it, as typing it and pressing Enter does.
     #[cfg(feature = "visual-test")]
@@ -462,6 +499,12 @@ impl Pane {
             peek: false,
             started_under: None,
             tint_note_dismissed: false,
+            asks: Vec::new(),
+            ask_rows: Vec::new(),
+            asks_located: None,
+            locating_asks: false,
+            pinned: Default::default(),
+            scrolled_at: None,
         }
     }
     /// Attaches again after the host dropped this pane's stream; the snapshot restores
@@ -1029,6 +1072,230 @@ impl Pane {
             vt.scroll(to);
         }
         cx.notify();
+    }
+    /// What the conversation in this terminal was asked, oldest first. New asks are
+    /// looked for on the next repaint.
+    pub fn set_asks(&mut self, asks: Vec<String>, cx: &mut Context<Self>) {
+        if self.asks != asks {
+            self.asks = asks;
+            self.ask_rows.clear();
+            self.asks_located = None;
+            cx.notify();
+        }
+    }
+    /// How this terminal's CLI draws a sent ask, unless it pins the turn's ask itself.
+    fn prompt_line(&self) -> Option<&'static keepline_core::agent::PromptLine> {
+        let prompt = &self.agent?.spec()?.prompt;
+        (!prompt.pins_own).then_some(prompt)
+    }
+    /// The newest ask while its row is above the viewport, and whether it can be
+    /// scrolled back to.
+    pub fn pinned_latest(&self) -> Option<(String, bool)> {
+        let (i, row) = self.pinned.latest?;
+        Some((self.asks.get(i)?.clone(), row.is_some()))
+    }
+    /// Shows the newest ask's row at the top.
+    pub fn back_to_latest_ask(&mut self, cx: &mut Context<Self>) {
+        if let Some((_, Some(row))) = self.pinned.latest {
+            self.back_to_ask(row, cx);
+        }
+    }
+    fn back_to_ask(&mut self, row: usize, cx: &mut Context<Self>) {
+        self.scroll_to(ScrollViewport::Row(row), cx);
+    }
+    /// Works out what to pin from where the asks were last found, and looks for them
+    /// again once output may have moved them. Runs on each repaint.
+    fn refresh_pinned(&mut self, cx: &mut Context<Self>) {
+        let choice = crate::ui::pinned_ask::current(cx);
+        let was = self.pinned.latest.is_some();
+        let prompt = self.prompt_line().filter(|_| choice.any());
+        match prompt {
+            Some(prompt) if !self.asks.is_empty() => {
+                self.pinned = if self.ask_rows.len() == self.asks.len() {
+                    keepline_core::prompt_pin::pinned(&self.ask_rows, self.viewport)
+                } else {
+                    Default::default()
+                };
+                let due = match self.asks_located {
+                    None => true,
+                    Some((at, total)) => {
+                        let ms = at.elapsed().as_millis() as u64;
+                        (total != self.viewport.1 && ms >= ASK_LOCATE_MS) || ms >= ASK_RELOCATE_MS
+                    }
+                };
+                if due && !self.locating_asks {
+                    self.locate_asks(prompt, cx);
+                }
+            }
+            _ => self.pinned = Default::default(),
+        }
+        if was != self.pinned.latest.is_some() {
+            cx.emit(PaneEvent::PinnedAsk);
+        }
+    }
+    fn locate_asks(
+        &mut self,
+        prompt: &'static keepline_core::agent::PromptLine,
+        cx: &mut Context<Self>,
+    ) {
+        self.locating_asks = true;
+        let asks = self.asks.clone();
+        let keys: Vec<_> = asks
+            .iter()
+            .map(|a| keepline_core::prompt_pin::key(a))
+            .collect();
+        let state = self.connection.state.clone();
+        let job = cx.background_spawn(async move {
+            let state = state.lock().ok()?;
+            let vt = state.vt.as_ref()?;
+            let total = vt.viewport().ok()?.1;
+            Some((vt.find_prompts(&keys, prompt).ok()?, total))
+        });
+        cx.spawn(async move |this, cx| {
+            let found = job.await;
+            let _ = this.update(cx, |this, cx| {
+                this.locating_asks = false;
+                // The asks changed while looking: the next repaint looks again.
+                if this.asks != asks {
+                    return;
+                }
+                let Some((rows, total)) = found else { return };
+                this.asks_located = Some((Instant::now(), total));
+                if this.ask_rows != rows {
+                    this.ask_rows = rows;
+                    cx.notify();
+                }
+            });
+        })
+        .detach();
+    }
+    /// The pinned ask along the terminal's top, and the chip naming the ask whose answer
+    /// is being read in history; each as the settings choose.
+    fn ask_overlays(&self, cx: &mut Context<Self>) -> Vec<gpui::AnyElement> {
+        let choice = crate::ui::pinned_ask::current(cx);
+        let first_line = |i: usize| {
+            self.asks
+                .get(i)
+                .and_then(|a| a.lines().map(str::trim).find(|l| !l.is_empty()))
+                .map(|l| keepline_core::content::short(l, 200))
+        };
+        let mut out = Vec::new();
+        let bar = self
+            .pinned
+            .latest
+            .filter(|_| choice.bar)
+            .and_then(|(i, row)| Some((first_line(i)?, row)));
+        let bar_shown = bar.is_some();
+        // Exactly the terminal's first row, marked as the CLI marks a sent ask.
+        let row_height = self
+            .metrics
+            .map_or(px(T::MONO_SIZE * T::LINE_HEIGHT), |m| m.height);
+        if let Some((text, row)) = bar {
+            let mark = self
+                .prompt_line()
+                .and_then(|p| p.markers.first())
+                .map_or("›".to_owned(), Clone::clone);
+            out.push(
+                div()
+                    .id("pinned-ask")
+                    .absolute()
+                    .top_0()
+                    .left_0()
+                    .right(px(SCROLLBAR_HIT))
+                    .h(row_height)
+                    .pr(px(T::S8))
+                    .flex()
+                    .items_center()
+                    .gap(px(T::S8))
+                    .bg(T::color(T::button()))
+                    .font(T::mono(cx))
+                    .text_size(px(T::MONO_SIZE))
+                    .child(
+                        div()
+                            .flex_shrink_0()
+                            .text_color(T::color(T::muted()))
+                            .child(mark),
+                    )
+                    .child(
+                        div()
+                            .flex_1()
+                            .min_w_0()
+                            .truncate()
+                            .text_color(T::color(T::primary()))
+                            .child(text),
+                    )
+                    .when_some(row, |d, row| {
+                        d.cursor_pointer()
+                            .child(
+                                div()
+                                    .flex_shrink_0()
+                                    .text_size(px(T::META))
+                                    .text_color(T::color(T::muted()))
+                                    .child("回到这句 ↑"),
+                            )
+                            .on_mouse_down(gpui::MouseButton::Left, |_, _, cx| {
+                                cx.stop_propagation()
+                            })
+                            .on_click(cx.listener(move |this, _, window, cx| {
+                                this.back_to_ask(row, cx);
+                                window.focus(&this.focus, cx);
+                            }))
+                    })
+                    .into_any_element(),
+            );
+        }
+        let reading = self.scrolled_back
+            && self
+                .scrolled_at
+                .is_some_and(|at| at.elapsed().as_millis() < u128::from(ASK_FLOAT_MS));
+        let float = self
+            .pinned
+            .viewed
+            .or(self
+                .pinned
+                .latest
+                .filter(|_| !bar_shown)
+                .and_then(|(i, row)| Some((i, row?))))
+            .filter(|_| choice.float && reading)
+            .and_then(|(i, row)| Some((first_line(i)?, row)));
+        if let Some((text, row)) = float {
+            out.push(
+                div()
+                    .absolute()
+                    .top(if bar_shown {
+                        row_height + px(T::S6)
+                    } else {
+                        px(T::S8)
+                    })
+                    .left_0()
+                    .right(px(SCROLLBAR_HIT))
+                    .flex()
+                    .justify_center()
+                    .child(
+                        div()
+                            .id("viewed-ask")
+                            .max_w(gpui::relative(0.7))
+                            .px(px(T::S12))
+                            .py(px(T::S2))
+                            .rounded(px(T::S12))
+                            .bg(T::color(T::raised()))
+                            .border(px(T::BORDER_WIDTH))
+                            .border_color(T::color(T::card_border()))
+                            .shadow_sm()
+                            .text_size(px(T::META))
+                            .text_color(T::color(T::secondary()))
+                            .truncate()
+                            .cursor_pointer()
+                            .child(format!("在看 › {text}"))
+                            .on_mouse_down(gpui::MouseButton::Left, |_, _, cx| {
+                                cx.stop_propagation()
+                            })
+                            .on_click(cx.listener(move |this, _, _, cx| this.back_to_ask(row, cx))),
+                    )
+                    .into_any_element(),
+            );
+        }
+        out
     }
     /// The program's working directory as the host last reported it.
     pub fn cwd(&self) -> Option<&std::path::Path> {
@@ -1890,7 +2157,8 @@ impl Render for Pane {
         self.refresh_cwd(cx);
         self.connection.dirty.store(false, Ordering::Release);
         self.sync_scheme();
-        let state = self.connection.state.lock().unwrap();
+        let shared = self.connection.state.clone();
+        let state = shared.lock().unwrap();
         if let Some(vt) = &state.vt {
             let result = (|| {
                 if self.capture.is_none() {
@@ -1899,7 +2167,19 @@ impl Render for Pane {
                 self.capture.as_mut().unwrap().update(vt, &mut self.screen)
             })();
             self.scrolled_back = !vt.terminal().viewport_active().unwrap_or(true);
+            let top = self.viewport.0;
             self.viewport = vt.viewport().unwrap_or(self.viewport);
+            if self.scrolled_back && self.viewport.0 != top {
+                self.scrolled_at = Some(Instant::now());
+                cx.spawn(async move |this, cx| {
+                    cx.background_executor()
+                        .timer(std::time::Duration::from_millis(ASK_FLOAT_MS + 50))
+                        .await;
+                    let _ = this.update(cx, |_, cx| cx.notify());
+                })
+                .detach();
+            }
+            self.refresh_pinned(cx);
             match result {
                 Ok(_) => {
                     self.cursor_anchor.observe(self.screen.cursor);
@@ -2288,6 +2568,7 @@ impl Render for Pane {
                     .min_h_0()
                     .relative()
                     .child(content)
+                    .children(self.ask_overlays(cx))
                     .when(self.scrolled_back || self.toast.is_some(), |d| {
                         // Floats over the grid so it never resizes the terminal; clear of
                         // the scrollbar along the right edge. A toast stacks above the

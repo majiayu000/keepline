@@ -513,7 +513,16 @@ impl Workbench {
                 .current_agent(id)
                 .map(|s| s.runtime)
                 .or_else(|| self.store.recognition().terminal_agents.get(id).copied());
-            pane.update(cx, |p, _| p.agent = agent);
+            // What its conversation was asked, for pinning the turn's ask.
+            let asks: Vec<String> = self
+                .pane_session(id)
+                .and_then(|s| self.workspace.content.get(&s.id))
+                .map(|c| c.asks.iter().map(|q| q.text.clone()).collect())
+                .unwrap_or_default();
+            pane.update(cx, |p, cx| {
+                p.agent = agent;
+                p.set_asks(asks, cx);
+            });
         }
     }
     /// Marks a user action in flight; the label appears only if it outlasts 300ms.
@@ -659,6 +668,7 @@ impl Workbench {
                 this.layout.pending_command = Some((command.clone(), cwd.clone()));
                 this.launch(false, None, cx);
             }
+            crate::terminal::pane::PaneEvent::PinnedAsk => cx.notify(),
         })
         .detach();
     }

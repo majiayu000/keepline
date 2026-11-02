@@ -6,6 +6,7 @@ pub mod hook;
 pub mod layout;
 pub mod model;
 pub mod plugin;
+pub mod prompt_pin;
 pub mod protocol;
 pub mod quota;
 pub mod reason;

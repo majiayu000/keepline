@@ -192,6 +192,26 @@ impl Workbench {
             .flex()
             .items_center()
             .gap(px(T::S8))
+            // The turn's ask is out of sight above: hover reads it, a click goes back.
+            .when_some(
+                pane.read(cx).pinned_latest().filter(|(_, back)| {
+                    *back && crate::ui::pinned_ask::current(cx).header_button()
+                }),
+                |d, (text, _)| {
+                    let target = pane.clone();
+                    let tip = gpui::SharedString::from(text);
+                    d.child(
+                        button(gpui::SharedString::from(format!("ask-back-{id}")), "↑ 你问")
+                            .pane_action()
+                            .tooltip(move |_, cx| {
+                                cx.new(|_| super::render::TextTip(tip.clone())).into()
+                            })
+                            .on_click(cx.listener(move |_, _, _, cx| {
+                                target.update(cx, |p, cx| p.back_to_latest_ask(cx));
+                            })),
+                    )
+                },
+            )
             .when_some(unread.clone().map(|n| (n.note, n.why)), |d, (note, why)| {
                 d.child(
                     div()

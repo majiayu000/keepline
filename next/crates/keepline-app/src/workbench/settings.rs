@@ -282,7 +282,7 @@ impl Page {
     }
 }
 /// Every searchable setting: its page, its title and the words that find it.
-const ENTRIES: [(Page, &str, &str); 25] = [
+const ENTRIES: [(Page, &str, &str); 26] = [
     (
         Page::Phones,
         "让手机连过来",
@@ -313,6 +313,11 @@ const ENTRIES: [(Page, &str, &str); 25] = [
         Page::Look,
         "标记完成动画",
         "动效 动画 完成 印章 落印 扫光 化进侧栏 淡出 试播 effects",
+    ),
+    (
+        Page::Look,
+        "钉住这一轮的提问",
+        "提问 置顶 钉住 顶部条 浮出 你问 回答太长 pin prompt sticky",
     ),
     (Page::Terminal, "终端字体", "字体 family font mono 等宽"),
     (Page::Terminal, "字号", "文字大小 font size 缩放 pt"),
@@ -969,11 +974,51 @@ impl SettingsView {
                 .into_any_element(),
             );
         }
+        let mut asks = Vec::new();
+        if self.shows(Page::Look, "钉住这一轮的提问", cx) {
+            use crate::ui::pinned_ask::{self, PinnedAsk};
+            let chosen = pinned_ask::current(cx);
+            type Way = fn(&mut PinnedAsk) -> &mut bool;
+            let ways: [(&str, &str, Way); 3] = [
+                ("pinned-ask-bar", "终端顶部钉一条", |c| &mut c.bar),
+                ("pinned-ask-float", "往回翻时浮出", |c| &mut c.float),
+                ("pinned-ask-button", "标题栏「↑ 你问」", |c| {
+                    &mut c.button
+                }),
+            ];
+            let mut choices = segments();
+            for (id, name, field) in ways {
+                let mut on = chosen;
+                let selected = *field(&mut on);
+                choices = choices.child(segment(id, name, selected).on_click(cx.listener(
+                    move |this, _, _, cx| {
+                        let mut next = pinned_ask::current(cx);
+                        let f = field(&mut next);
+                        *f = !*f;
+                        this.text_error = pinned_ask::choose(next, cx).err();
+                        cx.refresh_windows();
+                        cx.notify();
+                    },
+                )));
+            }
+            let note = if !chosen.any() {
+                "都没选：回答再长也不钉提问"
+            } else if chosen.bar && chosen.button {
+                "可多选；顶部条和标题栏按钮同时开时只显示顶部条。自己会钉提问的 Agent（Codex）不画"
+            } else {
+                "可多选；提问还在屏幕上时不画，自己会钉提问的 Agent（Codex）也不画"
+            };
+            asks.push(
+                self.row(true, "钉住这一轮的提问", note, choices)
+                    .into_any_element(),
+            );
+        }
         self.cards(vec![
             ("主题", theme),
             ("界面样式", style),
             ("应用图标", icon),
             ("动效", motion),
+            ("对话", asks),
         ])
     }
     fn set_text(&mut self, text: TerminalText, cx: &mut Context<Self>) {

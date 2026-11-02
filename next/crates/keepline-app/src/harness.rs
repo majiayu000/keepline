@@ -270,6 +270,219 @@ pub fn start(
         })
         .detach();
     }
+    // The turn's ask pinned while its answer runs past the top: a Claude-drawn pane
+    // gets the bar and a Codex one (which pins its own) none; a click goes back to the
+    // ask; reading the older turn floats its ask; the header button when chosen instead.
+    if let (Some(handle), Some(directory)) = (&handle, evidence.clone())
+        && std::env::var_os("KEEPLINE_PINNED_ASK_EVIDENCE").is_some()
+    {
+        let handle = *handle;
+        cx.spawn(async move |cx| {
+            use crate::ui::pinned_ask::PinnedAsk;
+            let executor = cx.background_executor().clone();
+            let wait = move |ms| executor.timer(Duration::from_millis(ms));
+            wait(1500).await;
+            std::fs::create_dir_all(&directory).unwrap();
+            let socket = handle.update(cx, |v, _, _| v.visual_socket()).unwrap();
+            let call = |r: Request| rpc(&socket, &r).unwrap();
+            let w = match call(Request::Workspace) {
+                Reply::Workspace(w) => w,
+                x => panic!("{x:?}"),
+            };
+            let space = match w.spaces.first() {
+                Some(s) => s.id.clone(),
+                None => {
+                    call(Request::Edit {
+                        revision: w.revision,
+                        edit: Edit::AddSpace(Space {
+                            id: "s".into(),
+                            name: "Tests".into(),
+                            cwd: "/tmp".into(),
+                        }),
+                    });
+                    "s".into()
+                }
+            };
+            let asks = ["先看看架构页还漏了什么", "你帮我看看代码再说啊"];
+            for (id, mark) in [("pc", "❯"), ("px", "›")] {
+                let mut text = String::new();
+                for (turn, ask) in asks.iter().enumerate() {
+                    text.push_str(&format!("{mark} {ask}\n\n"));
+                    for n in 1..=40 {
+                        text.push_str(&format!(
+                            "  {}.{n} 第 {} 轮的回答，这一行说明一处遗漏和它对应的代码位置\n",
+                            turn + 1,
+                            turn + 1
+                        ));
+                    }
+                    text.push('\n');
+                }
+                let file = directory.join(format!("{id}.txt"));
+                std::fs::write(&file, text).unwrap();
+                call(Request::Launch {
+                    id: id.into(),
+                    space: space.clone(),
+                    argv: vec![
+                        "/bin/sh".into(),
+                        "-c".into(),
+                        format!("cat '{}'; exec /bin/sh -i", file.display()),
+                    ],
+                    cwd: "/tmp".into(),
+                    cols: 90,
+                    rows: 24,
+                    scheme: Default::default(),
+                });
+            }
+            let layout = Layout::Split {
+                axis: keepline_core::layout::Axis::Right,
+                ratio: 5000,
+                first: Box::new(Layout::Leaf("pc".into())),
+                second: Box::new(Layout::Leaf("px".into())),
+            };
+            call(Request::Edit {
+                revision: 0,
+                edit: Edit::PutTab {
+                    tab: Tab {
+                        id: "tab-pinned".into(),
+                        space,
+                        default_task: None,
+                        title: "pinned".into(),
+                        layout: Some(layout),
+                    },
+                },
+            });
+            wait(800).await;
+            handle
+                .update(cx, |v, _, a| v.visual_peek_show_tab("pinned", a))
+                .unwrap();
+            wait(800).await;
+            handle
+                .update(cx, |v, _, a| v.visual_pinned_ask_fixture(&asks, a))
+                .unwrap();
+            let shot = |name: &str, cx: &mut gpui::AsyncApp| {
+                cx.update_window(handle.into(), |_, w, a| {
+                    w.refresh();
+                    w.draw(a).clear(a);
+                    w.render_to_image()
+                        .unwrap()
+                        .save(directory.join(name))
+                        .unwrap();
+                })
+                .unwrap();
+            };
+            let state = |id: &'static str, cx: &mut gpui::AsyncApp| {
+                handle
+                    .update(cx, |v, _, a| v.visual_pinned_ask(id, a))
+                    .unwrap()
+            };
+            let choose = |c: PinnedAsk, cx: &mut gpui::AsyncApp| {
+                cx.update(|a| {
+                    a.set_global(c);
+                    a.refresh_windows();
+                });
+            };
+            let settle = |cx: &mut gpui::AsyncApp| {
+                cx.update_window(handle.into(), |_, w, a| {
+                    w.refresh();
+                    w.draw(a).clear(a);
+                })
+                .unwrap();
+            };
+            // A: the bar on the Claude pane, none on the Codex one.
+            choose(
+                PinnedAsk {
+                    bar: true,
+                    float: false,
+                    button: false,
+                },
+                cx,
+            );
+            let mut claude = state("pc", cx);
+            for _ in 0..30 {
+                settle(cx);
+                wait(200).await;
+                claude = state("pc", cx);
+                if claude.1.is_some() {
+                    break;
+                }
+            }
+            eprintln!("claude pane: {claude:?}");
+            assert_eq!(claude.0.len(), 2, "both asks looked for");
+            assert!(
+                claude.0.iter().all(Option::is_some),
+                "both asks found: {claude:?}"
+            );
+            assert_eq!(
+                claude.1,
+                Some((asks[1].to_owned(), true)),
+                "the newest ask pinned with a way back"
+            );
+            let codex = state("px", cx);
+            assert_eq!(codex.1, None, "Codex pins its own ask: {codex:?}");
+            shot("a-bar.png", cx);
+            // The bar's way back puts the ask on screen, so the bar goes.
+            handle
+                .update(cx, |v, _, a| v.visual_back_to_ask("pc", a))
+                .unwrap();
+            wait(300).await;
+            settle(cx);
+            wait(300).await;
+            settle(cx);
+            let back = state("pc", cx);
+            assert_eq!(back.1, None, "the ask on screen is not pinned: {back:?}");
+            shot("a-back.png", cx);
+            // B: reading the older turn floats its ask.
+            choose(
+                PinnedAsk {
+                    bar: false,
+                    float: true,
+                    button: false,
+                },
+                cx,
+            );
+            let older = claude.0[0].unwrap();
+            handle
+                .update(cx, |v, _, a| v.visual_scroll_row("pc", older + 12, a))
+                .unwrap();
+            wait(100).await;
+            settle(cx);
+            wait(100).await;
+            settle(cx);
+            let reading = state("pc", cx);
+            assert_eq!(
+                reading.2.as_deref(),
+                Some(asks[0]),
+                "the older turn's ask floats: {reading:?}"
+            );
+            shot("b-float.png", cx);
+            // C: the header button instead, back at the live bottom.
+            choose(
+                PinnedAsk {
+                    bar: false,
+                    float: false,
+                    button: true,
+                },
+                cx,
+            );
+            handle
+                .update(cx, |v, _, a| v.visual_scroll_row("pc", usize::MAX / 2, a))
+                .unwrap();
+            wait(300).await;
+            settle(cx);
+            wait(300).await;
+            settle(cx);
+            assert!(
+                state("pc", cx).1.is_some(),
+                "the newest ask is out of sight again"
+            );
+            shot("c-button.png", cx);
+            eprintln!(
+                "pinned ask evidence PASS: bar on Claude, none on Codex, back, float, button"
+            );
+            cx.update(|a| a.quit());
+        })
+        .detach();
+    }
     if let (Some(handle), Some(directory)) = (&handle, evidence.clone())
         && std::env::var_os("KEEPLINE_SPLIT_CLI_EVIDENCE").is_some()
     {
@@ -2858,6 +3071,7 @@ pub fn start(
     if let (Some(handle), Some(directory)) = (&handle, evidence.clone())
         && std::env::var_os("KEEPLINE_SPLIT_EVIDENCE").is_none()
         && std::env::var_os("KEEPLINE_REASON_EVIDENCE").is_none()
+        && std::env::var_os("KEEPLINE_PINNED_ASK_EVIDENCE").is_none()
         && std::env::var_os("KEEPLINE_TAB_EVIDENCE").is_none()
         && std::env::var_os("KEEPLINE_PAGE_EVIDENCE").is_none()
         && std::env::var_os("KEEPLINE_OVERVIEW_EVIDENCE").is_none()

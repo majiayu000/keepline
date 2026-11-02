@@ -1,0 +1,132 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>钉住这一轮的提问</title>
+<style>
+  :root { --bg:#f4f4f3; --pane:#fff; --header:#fafaf9; --border:#e6e5e3; --primary:#1d1d1b; --secondary:#5f5e5a; --muted:#9a9893; --ready:#2f7d4f; --ready-bg:#e7f3ec; --warn:#a8630a; --warn-bg:#fbf0de; --pin:#f1f0ee; --mono: "SF Mono", Menlo, monospace; }
+  * { box-sizing: border-box; }
+  body { margin:0; background:var(--bg); color:var(--primary); font: 13px/1.5 -apple-system, "PingFang SC", sans-serif; }
+  main { max-width: 980px; margin: 0 auto; padding: 28px 16px 60px; }
+  h1 { font-size: 18px; margin: 0 0 4px; }
+  .lead { color: var(--secondary); margin: 0 0 24px; }
+  section { margin-bottom: 30px; }
+  h2 { font-size: 14px; margin: 0 0 4px; }
+  h2 .tag { font-weight: 400; color: var(--muted); margin-left: 6px; }
+  .why { color: var(--secondary); margin: 0 0 10px; font-size: 12.5px; }
+  .pane { background: var(--pane); border: 1px solid var(--border); overflow: hidden; position: relative; }
+  .hdr { height: 32px; display: flex; align-items: center; gap: 8px; padding: 0 10px 0 14px; background: var(--header); }
+  .chip { font-size: 11px; padding: 1px 6px; border-radius: 4px; flex-shrink: 0; }
+  .chip.ready { color: var(--ready); background: var(--ready-bg); }
+  .chip.run { color: var(--secondary); background: #efeeec; }
+  .title { flex: 1; min-width: 0; font: 12.5px var(--mono); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .meta { color: var(--muted); font-size: 11.5px; flex-shrink: 0; }
+  .btn { font-size: 11.5px; padding: 2px 8px; border-radius: 4px; background: #efeeec; flex-shrink: 0; }
+  .term { font: 12px/1.6 var(--mono); padding: 6px 14px 10px; color: #333; white-space: pre; overflow: hidden; }
+  .term .g { color: #999; } .term .a { color: #2f7d4f; } .term .u { background: var(--pin); display: block; margin: 0 -14px; padding: 0 14px; }
+  .pin { font: 12px/1.6 var(--mono); background: var(--pin); padding: 2px 14px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; color: var(--primary); border-bottom: 1px solid var(--border); cursor: pointer; }
+  .pin .m { color: var(--muted); margin-right: 8px; }
+  .pin .r { float: right; color: var(--muted); font-family: -apple-system, "PingFang SC", sans-serif; font-size: 11px; margin-left: 10px; }
+  .float { position: absolute; left: 50%; transform: translateX(-50%); top: 40px; max-width: 70%; font-size: 11.5px; background: rgba(255,255,255,.94); border: 1px solid var(--border); border-radius: 12px; padding: 2px 12px; box-shadow: 0 2px 10px rgba(0,0,0,.08); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; color: var(--secondary); }
+  .float b { font-weight: 500; color: var(--primary); }
+  .jump { font-size: 11.5px; padding: 2px 8px; border-radius: 4px; border: 1px solid var(--border); color: var(--secondary); flex-shrink: 0; position: relative; }
+  .tip { position: absolute; right: 0; top: 24px; z-index: 2; width: 340px; background: #fff; border: 1px solid var(--border); box-shadow: 0 4px 14px rgba(0,0,0,.08); padding: 8px 10px; font-size: 12px; line-height: 1.6; color: var(--secondary); white-space: normal; }
+  .tip b { color: var(--primary); font-weight: 500; margin-right: 6px; }
+  .note { font-size: 12px; color: var(--muted); margin-top: 6px; }
+  .rec { color: var(--ready); font-weight: 600; }
+  table { border-collapse: collapse; width: 100%; font-size: 12.5px; background: var(--pane); }
+  th, td { border: 1px solid var(--border); padding: 6px 8px; text-align: left; vertical-align: top; }
+  th { background: var(--header); font-weight: 500; }
+  code { font: 12px var(--mono); }
+  .layers { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; }
+  .layer { background: var(--pane); border: 1px solid var(--border); padding: 10px 12px; font-size: 12.5px; color: var(--secondary); }
+  .layer b { color: var(--primary); display: block; margin-bottom: 4px; }
+  @media (max-width: 720px) { .layers { grid-template-columns: 1fr; } }
+  @media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) { --bg:#1b1b1a; --pane:#232322; --header:#2a2a28; --border:#3a3936; --primary:#ecebe8; --secondary:#b4b2ad; --muted:#85837e; --ready-bg:#1f3428; --pin:#2e2d2b; } .btn,.chip.run{background:#33322f} .tip{background:#2a2a28} .float{background:rgba(42,42,40,.94)} .term{color:#ddd} }
+  :root[data-theme="dark"] { --bg:#1b1b1a; --pane:#232322; --header:#2a2a28; --border:#3a3936; --primary:#ecebe8; --secondary:#b4b2ad; --muted:#85837e; --pin:#2e2d2b; }
+</style>
+</head>
+<body>
+<main>
+  <p class="why" style="border:1px solid var(--border);padding:10px 12px;background:var(--pane)"><b>决定（2026-11-02，A、B、C 都做，做成设置）</b>：「设置 › 外观 › 对话 › 钉住这一轮的提问」三项可多选，默认只开 A（终端顶部钉一条）；A 和 C 同时开时只显示 A。Agent 声明里的 <code>prompt.pins_own</code> 为 true 的（Codex）不画。截图用例 <code>KEEPLINE_PINNED_ASK_EVIDENCE</code>。待验证：真实 Claude Code 长回答里能否稳定找到提问行（多行粘贴显示成 <code>[Pasted text …]</code> 时找不到，退成「在底部时一直显示」）。</p>
+  <h1>钉住这一轮的提问：三个方向</h1>
+  <p class="lead">Codex 自己会把这一轮的提问钉在可视区第一行，回答再长也知道它在答哪句。Claude Code、Grok 等没有。Keepline 能在终端外替它们补上：提问文字来自各家日志（已有的 <code>asks</code>），屏幕上那句在不在由 Keepline 自己的终端判断。三个方向都遵守 11-02 定的「同一信息一屏只出现一次」：提问还在屏幕上时什么都不画；Codex 自己钉了，也不画。</p>
+
+  <section>
+    <h2>现在 <span class="tag">Claude Code 回答很长，提问已经滚出去了</span></h2>
+    <div class="pane">
+      <div class="hdr"><span class="chip run">在做</span><span class="title">补齐遗漏并提交变更</span><span class="meta">Claude · 刚刚</span></div>
+      <div class="term">  6. <b>远程图漏了恢复和关闭。</b>修改配置可以让 Failed → Connecting，关闭远程会进入 Off。
+     对应分支 (next/crates/keeplined/src/relay.rs:629)
+
+  7. <b>额度矩阵只列来源，漏了数据如何过期。</b>代码不主动请求供应商；按 Agent
+     类型取最新本地读数，超过 7 天不展示。
+
+<span class="g">  ✻ Thinking… (esc to interrupt)</span></div>
+    </div>
+    <p class="note">看不到它在答哪句；要往上翻好几屏才找得到。</p>
+  </section>
+
+  <section>
+    <h2>A · 终端顶部钉一条，和 Codex 一个样子 <span class="tag rec">推荐</span></h2>
+    <p class="why">提问滚出可视区时，终端最上面浮出一条和 Agent 自己的提问同样灰底、同样字体的条：「› 提问第一行」，右边写这是第几轮。点一下跳回终端里那句提问。提问回到屏幕上，或者开始了下一轮、新提问还在屏幕上，这条就收起。盖在终端第一行上，不挤小终端。</p>
+    <div class="pane">
+      <div class="hdr"><span class="chip run">在做</span><span class="title">补齐遗漏并提交变更</span><span class="meta">Claude · 刚刚</span></div>
+      <div class="pin"><span class="m">›</span>你帮我看看代码再说啊<span class="r">第 3 轮 · 点一下回到这句</span></div>
+      <div class="term">  6. <b>远程图漏了恢复和关闭。</b>修改配置可以让 Failed → Connecting，关闭远程会进入 Off。
+     对应分支 (next/crates/keeplined/src/relay.rs:629)
+
+  7. <b>额度矩阵只列来源，漏了数据如何过期。</b>代码不主动请求供应商；按 Agent
+     类型取最新本地读数，超过 7 天不展示。</div>
+    </div>
+    <p class="note">好处：在 Codex 和 Claude 之间切换时看起来一致，用过 Codex 的人不用学。代价：会盖住终端第一行。往上翻到最顶时，被盖的那行要能看到，所以滚到顶这条也收起。</p>
+  </section>
+
+  <section>
+    <h2>B · 往回翻时浮出「在看第几轮」</h2>
+    <p class="why">平时不出现。只在你往上翻看历史时，终端上方中间浮出一个半透明小胶囊，写的是你<b>正在看的那一段</b>属于哪句提问（不一定是最新一轮），像相册滚动时浮出的日期。停止滚动 1.5 秒后淡出。</p>
+    <div class="pane">
+      <div class="hdr"><span class="chip ready">等你验收</span><span class="title">补齐遗漏并提交变更</span><span class="meta">Claude · 2 小时前</span><span class="btn">标记完成</span></div>
+      <div class="float">第 2 轮 · <b>你再看看架构页还漏了什么</b></div>
+      <div class="term" style="padding-top:34px">  3. 状态机缺了 lost → running 的回连路径，页面只画了单向。
+  4. 插件宿主一节还写着「可读文件」，实际 ABI 不给任何导入。
+
+<span class="g">  ⏺ Read(specs/architecture/index.html)</span>
+<span class="g">    ⎿  Read 412 lines</span></div>
+    </div>
+    <p class="note">好处：翻历史时最有用，平时完全不占地方。代价：Agent 正在长篇回答、你没有滚动时不会出现，解决不了截图里「停在底部也不知道在答哪句」这种情况。可以和 A 叠加。</p>
+  </section>
+
+  <section>
+    <h2>C · 标题栏右边一个「↑ 你问」按钮 <span class="tag">最省</span></h2>
+    <p class="why">终端里什么都不加。提问滚出可视区时，标题栏右边多一个小按钮「↑ 你问」，悬停看到这一轮提问的全文，点一下跳回那句。</p>
+    <div class="pane">
+      <div class="hdr"><span class="chip run">在做</span><span class="title">补齐遗漏并提交变更</span><span class="meta">Claude · 刚刚</span><span class="jump">↑ 你问<span class="tip"><b>第 3 轮</b>你帮我看看代码再说啊</span></span></div>
+      <div class="term" style="padding-top:44px">  6. <b>远程图漏了恢复和关闭。</b>修改配置可以让 Failed → Connecting，关闭远程会进入 Off。
+     对应分支 (next/crates/keeplined/src/relay.rs:629)</div>
+    </div>
+    <p class="note">好处：完全不碰终端区域。代价：不悬停看不到文字，和标题悬停卡里已有的「你要它」（第一轮）容易混。</p>
+  </section>
+
+  <h1 style="margin-top:40px">能不能解耦、给所有 Agent 用</h1>
+  <p class="lead">能。拆成三层，只有第一层跟具体哪家 Agent 有关，而这一层 Keepline 已经有了。</p>
+  <div class="layers">
+    <div class="layer"><b>① 提问从哪来</b>各家日志解析器统一产出 <code>Content.asks</code>（文字 + 时间 + 来源位置）。Claude、Codex 已有；Grok 走 Claude 的 hook。接新 Agent 只需写它的日志解析，钉条一行不用改。没有日志的 Agent 退一步：记下用户在这个窗格里回车提交的那一行。</div>
+    <div class="layer"><b>② 提问在屏幕哪</b>纯终端层，不认识 Agent：拿提问文字在回滚区里找它所在的行（复用现有的终端搜索），算出它在不在可视区、跳过去滚多少。每家只给两项可选配置：提问行的前缀（<code>&gt;</code>、<code>›</code>）、自己会不会钉（Codex 会 → 不画）。</div>
+    <div class="layer"><b>③ 怎么画</b>一个通用的窗格组件，输入只有「提问文字、第几轮、在不在屏幕上、跳转位置」。A、B、C 只是这层的不同画法，可以在设置里切换。</div>
+  </div>
+  <table style="margin-top:12px">
+    <tr><th>Agent</th><th>① 提问来源</th><th>② 自己会钉吗</th><th>钉条</th></tr>
+    <tr><td>Codex</td><td>日志，已有</td><td>会（本机 0.166.0 实见）</td><td>不画</td></tr>
+    <tr><td>Claude Code</td><td>日志 + hook，已有</td><td>不会</td><td>画</td></tr>
+    <tr><td>Grok</td><td>走 Claude 的 hook，已有</td><td>没查</td><td>先画，确认后可关</td></tr>
+    <tr><td>其他 / 新 Agent</td><td>写日志解析；没有就记回车输入</td><td>配置一项</td><td>默认画</td></tr>
+  </table>
+  <p class="why" style="margin-top:12px">再往外一步：做成插件。现在的插件只能描述侧栏、没有任何导入，碰不到终端内容，要先给插件开一个「窗格浮层」接口。可以以后做，第一版先内置。做成脱离 Keepline、在 iTerm 等任何终端里都能用的独立工具，则要在 Agent 外面再包一层伪终端（类似 tmux），不推荐。</p>
+
+  <h1 style="margin-top:40px">要你定的</h1>
+  <p class="why">选 A / B / C（或 A+B）。定了就开独立 worktree 实现：先做 ①②③ 的通用层，再按选的方向画；截图用例覆盖 Claude 长回答、Codex 不画、提问还在屏幕上不画三种情况。放弃条件：如果 Claude 的提问行在终端里经常匹配不上（多行粘贴、图片占位），第一版退到「这一轮还在进行就一直显示」。</p>
+</main>
+</body>
+</html>
