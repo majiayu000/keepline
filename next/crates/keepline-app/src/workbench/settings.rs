@@ -282,7 +282,7 @@ impl Page {
     }
 }
 /// Every searchable setting: its page, its title and the words that find it.
-const ENTRIES: [(Page, &str, &str); 24] = [
+const ENTRIES: [(Page, &str, &str); 25] = [
     (
         Page::Phones,
         "让手机连过来",
@@ -309,6 +309,11 @@ const ENTRIES: [(Page, &str, &str); 24] = [
     (Page::Look, "主题", "跟随系统 亮色 暗色 明暗 dark light"),
     (Page::Look, "界面样式", "样式 标准 终端原生 tmux 等宽 style"),
     (Page::Look, "应用图标", "dock 图标 水墨 吉祥物 icon"),
+    (
+        Page::Look,
+        "标记完成动画",
+        "动效 动画 完成 印章 落印 扫光 化进侧栏 淡出 试播 effects",
+    ),
     (Page::Terminal, "终端字体", "字体 family font mono 等宽"),
     (Page::Terminal, "字号", "文字大小 font size 缩放 pt"),
     (Page::Terminal, "行距", "行高 line height 紧凑 舒适 宽松"),
@@ -354,6 +359,8 @@ const ENTRIES: [(Page, &str, &str); 24] = [
 ];
 pub(super) enum SettingsAction {
     Close,
+    /// 试播: play the completion animation on the focused pane without marking anything.
+    PreviewComplete,
     Change(Settings),
     /// Phones on a relay: on or off, the relay, and its key (None keeps the saved one).
     Remote {
@@ -901,10 +908,72 @@ impl SettingsView {
                     .into_any_element(),
             );
         }
+        let mut motion = Vec::new();
+        if self.shows(Page::Look, "标记完成动画", cx) {
+            use keepline_core::effect::{self, Style};
+            let picked = effect::picked();
+            let plugin = effect::from_plugin();
+            let on = effect::chosen(picked, plugin).style;
+            let mut choices = segments();
+            if plugin.is_some() {
+                choices = choices.child(
+                    segment("complete-plugin", "跟随插件", picked.is_none()).on_click(cx.listener(
+                        move |this, _, _, cx| {
+                            this.text_error = effect::pick(None).err();
+                            cx.notify();
+                        },
+                    )),
+                );
+            }
+            for look in Style::ALL {
+                choices = choices.child(
+                    segment(
+                        format!("complete-{}", look.name()),
+                        look.label(),
+                        look == on && (picked.is_some() || plugin.is_none()),
+                    )
+                    .on_click(cx.listener(move |this, _, _, cx| {
+                        this.text_error = effect::pick(Some(look)).err();
+                        cx.notify();
+                    })),
+                );
+            }
+            let note = match (picked, plugin) {
+                _ if effect::reduce_motion() => {
+                    "系统开了「减弱动态效果」，现在不管选哪种都只淡出".to_owned()
+                }
+                (Some(s), Some(p)) if p.style != s => format!(
+                    "这里选的优先，插件设的「{}」不生效；试播在当前窗格播一次，不会标记完成",
+                    p.style.label()
+                ),
+                (None, Some(p)) => format!(
+                    "插件设的是「{}」；试播在当前窗格播一次，不会标记完成",
+                    p.style.label()
+                ),
+                _ => "选了马上生效；试播在当前窗格播一次，不会标记完成".to_owned(),
+            };
+            motion.push(
+                self.row(
+                    true,
+                    "标记完成动画",
+                    &note,
+                    div()
+                        .flex()
+                        .items_center()
+                        .gap(px(T::S8))
+                        .child(choices)
+                        .child(secondary("complete-preview", "试播").on_click(
+                            cx.listener(|_, _, _, cx| cx.emit(SettingsAction::PreviewComplete)),
+                        )),
+                )
+                .into_any_element(),
+            );
+        }
         self.cards(vec![
             ("主题", theme),
             ("界面样式", style),
             ("应用图标", icon),
+            ("动效", motion),
         ])
     }
     fn set_text(&mut self, text: TerminalText, cx: &mut Context<Self>) {
@@ -2323,10 +2392,21 @@ impl Workbench {
         let runtime = self.store.socket().parent().map(Path::to_path_buf);
         let remote = self.store.recognition().remote.clone();
         let view = cx.new(|cx| SettingsView::new(values, busy, runtime, remote, cx));
-        cx.subscribe(&view, |this, _, action, cx| match action {
+        cx.subscribe(&view, |this, view, action, cx| match action {
             SettingsAction::Close => {
                 this.settings = None;
                 this.nav.pending_focus = true;
+                cx.notify();
+            }
+            SettingsAction::PreviewComplete => {
+                if this.preview_complete(cx) {
+                    this.settings = None;
+                    this.nav.pending_focus = true;
+                } else {
+                    view.update(cx, |v, _| {
+                        v.text_error = Some("先打开一个终端窗格，再回来试播".into());
+                    });
+                }
                 cx.notify();
             }
             SettingsAction::Change(values) => {

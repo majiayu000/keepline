@@ -51,6 +51,38 @@ pub(super) fn start(
             cx.update(|a| a.quit());
             return;
         }
+        // 标记完成动画: pick one with a real click, then 试播 on the shown pane, which must
+        // stay open with nothing marked. KEEPLINE_COMPLETE_CLICKS="x,y;x,y" are the
+        // panel points of 落印 and 试播 once the search leaves only that row.
+        if phase == "complete" {
+            click(106., 76., cx);
+            cx.update_window(handle.into(), |_, w, a| {
+                for key in ["e", "f", "f", "e", "c", "t", "s"] { w.dispatch_keystroke(gpui::Keystroke::parse(key).unwrap(), a); }
+            }).unwrap();
+            wait(300).await;
+            shot("complete-row", cx);
+            let clicks: Vec<(f32, f32)> = std::env::var("KEEPLINE_COMPLETE_CLICKS").unwrap_or_default()
+                .split(';').filter_map(|p| p.split_once(',')).map(|(x, y)| (x.parse().unwrap(), y.parse().unwrap())).collect();
+            if let [stamp, preview] = clicks[..] {
+                click(stamp.0, stamp.1, cx); wait(300).await;
+                assert_eq!(keepline_core::effect::picked(), Some(keepline_core::effect::Style::Stamp));
+                let saved = std::fs::read_to_string(crate::ui::status_colors::config_dir().unwrap().join("complete")).unwrap();
+                assert_eq!(saved, "stamp");
+                shot("complete-picked", cx);
+                let pane = handle.update(cx, |v, _, _| v.visual_shown_pane()).unwrap();
+                pane.update(cx, |p, a| p.visual_type("printf 'preview of the completion animation\\n'\r", a));
+                wait(400).await;
+                click(preview.0, preview.1, cx); wait(700).await;
+                assert!(handle.update(cx, |v, w, a| v.visual_settings(w, a)).unwrap().is_none(), "试播 closes 设置");
+                shot("complete-preview-mid", cx);
+                wait(2600).await;
+                shot("complete-preview-after", cx);
+                assert!(handle.update(cx, |v, _, _| v.visual_shown_pane_alive()).unwrap(), "试播 keeps the pane");
+            }
+            eprintln!("settings complete PASS");
+            cx.update(|a| a.quit());
+            return;
+        }
         if phase == "2" {
             let saved = values(cx);
             assert_eq!(saved.default_agent, keepline_core::model::Agent::Claude);

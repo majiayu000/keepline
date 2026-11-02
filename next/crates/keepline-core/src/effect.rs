@@ -1,7 +1,8 @@
 //! How the app plays 标记完成 (`effects.json`). A plugin picks one of the animations the
 //! app draws and tunes it; it never draws anything itself, so every style follows the
 //! theme and the status colors. The first plugin that sets the completion animation wins;
-//! a later one is reported as not taking effect.
+//! a later one is reported as not taking effect. What settings picks
+//! (`~/.config/keepline/complete`, one style name) beats every plugin and applies at once.
 //!
 //! ```json
 //! {"api": 1, "complete": {"style": "stamp", "duration_ms": 2400, "land": "sidebar"}}
@@ -9,8 +10,8 @@
 use crate::agent::Loaded;
 use serde::Deserialize;
 use std::path::{Path, PathBuf};
-use std::sync::OnceLock;
 use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::{Mutex, OnceLock};
 use std::time::Duration;
 
 /// The `effects.json` format's major version.
@@ -36,6 +37,26 @@ pub enum Style {
     Fade,
 }
 impl Style {
+    pub const ALL: [Self; 5] = [
+        Self::Seal,
+        Self::Stamp,
+        Self::Sweep,
+        Self::Dissolve,
+        Self::Fade,
+    ];
+    /// The name `effects.json` and the settings file write.
+    pub fn name(self) -> &'static str {
+        match self {
+            Self::Seal => "seal",
+            Self::Stamp => "stamp",
+            Self::Sweep => "sweep",
+            Self::Dissolve => "dissolve",
+            Self::Fade => "fade",
+        }
+    }
+    pub fn parse(text: &str) -> Option<Self> {
+        Self::ALL.into_iter().find(|s| s.name() == text.trim())
+    }
     pub fn label(self) -> &'static str {
         match self {
             Self::Seal => "印章",
@@ -181,11 +202,21 @@ pub fn load(files: Vec<PathBuf>) -> (Option<Complete>, Vec<Loaded>) {
 
 static EFFECTS: OnceLock<(Option<Complete>, Vec<Loaded>)> = OnceLock::new();
 static REDUCE_MOTION: AtomicBool = AtomicBool::new(false);
+/// The style picked in settings; None follows the plugins.
+static PICKED: Mutex<Option<Style>> = Mutex::new(None);
 
-/// Loads the installed plugins' effects once (after `plugin::install`), and reads the
-/// system's reduce-motion setting off the main thread.
+fn picked_path() -> Option<PathBuf> {
+    crate::agent::config_dir().map(|d| d.join("complete"))
+}
+
+/// Loads the installed plugins' effects once (after `plugin::install`) and the style
+/// picked in settings, and reads the system's reduce-motion setting off the main thread.
 pub fn install() {
     EFFECTS.get_or_init(|| load(crate::plugin::files(crate::plugin::Kind::Effects)));
+    let saved = picked_path()
+        .and_then(|p| std::fs::read_to_string(p).ok())
+        .and_then(|t| Style::parse(&t));
+    *PICKED.lock().unwrap_or_else(|e| e.into_inner()) = saved;
     #[cfg(target_os = "macos")]
     std::thread::spawn(|| {
         let on = std::process::Command::new("defaults")
@@ -196,10 +227,48 @@ pub fn install() {
         REDUCE_MOTION.store(on, Ordering::Relaxed);
     });
 }
-/// The completion animation to play now: the plugin's, or the built-in seal.
+/// What a plugin set, if any.
+pub fn from_plugin() -> Option<Complete> {
+    EFFECTS.get().and_then(|(c, _)| *c)
+}
+/// The style picked in settings, if one is.
+pub fn picked() -> Option<Style> {
+    *PICKED.lock().unwrap_or_else(|e| e.into_inner())
+}
+/// Picks the style from now on and keeps it for the next start; None follows the plugins.
+pub fn pick(style: Option<Style>) -> Result<(), String> {
+    let path = picked_path().ok_or("找不到配置目录")?;
+    match style {
+        Some(s) => path
+            .parent()
+            .map_or(Ok(()), std::fs::create_dir_all)
+            .and_then(|()| std::fs::write(&path, s.name())),
+        None => match std::fs::remove_file(&path) {
+            Err(e) if e.kind() != std::io::ErrorKind::NotFound => Err(e),
+            _ => Ok(()),
+        },
+    }
+    .map_err(|e| format!("无法保存 {}：{e}", path.display()))?;
+    *PICKED.lock().unwrap_or_else(|e| e.into_inner()) = style;
+    Ok(())
+}
+/// Whether macOS asks for reduced motion, which turns every style into the fade.
+pub fn reduce_motion() -> bool {
+    REDUCE_MOTION.load(Ordering::Relaxed)
+}
+/// The animation chosen, before reduced motion: settings' pick (with a plugin's tuning
+/// when it set the same style), else a plugin's, else the built-in seal.
+pub fn chosen(picked: Option<Style>, plugin: Option<Complete>) -> Complete {
+    match (picked, plugin) {
+        (Some(s), Some(p)) if p.style == s => p,
+        (Some(s), _) => Complete::of(s),
+        (None, Some(p)) => p,
+        (None, None) => Complete::default(),
+    }
+}
+/// The completion animation to play now.
 pub fn complete() -> Complete {
-    let chosen = EFFECTS.get().and_then(|(c, _)| *c).unwrap_or_default();
-    chosen.played(REDUCE_MOTION.load(Ordering::Relaxed))
+    chosen(picked(), from_plugin()).played(reduce_motion())
 }
 pub fn report() -> &'static [Loaded] {
     EFFECTS.get().map_or(&[], |(_, r)| r.as_slice())
@@ -257,5 +326,27 @@ mod tests {
         assert_eq!(c.played(false), c);
         assert_eq!(c.played(true).style, Style::Fade);
         assert!(!c.played(true).land);
+    }
+
+    #[test]
+    fn the_settings_pick_beats_plugins_and_keeps_their_tuning_for_the_same_style() {
+        let tuned = Complete {
+            style: Style::Sweep,
+            duration: Duration::from_millis(3_000),
+            land: false,
+        };
+        assert_eq!(chosen(None, None).style, Style::Seal);
+        assert_eq!(chosen(None, Some(tuned)), tuned);
+        assert_eq!(chosen(Some(Style::Sweep), Some(tuned)), tuned);
+        assert_eq!(
+            chosen(Some(Style::Stamp), Some(tuned)),
+            Complete::of(Style::Stamp)
+        );
+        for s in Style::ALL {
+            assert_eq!(Style::parse(&format!("{}\n", s.name())), Some(s));
+            let json: Style = serde_json::from_value(serde_json::json!(s.name())).unwrap();
+            assert_eq!(json, s);
+        }
+        assert_eq!(Style::parse("fancy"), None);
     }
 }

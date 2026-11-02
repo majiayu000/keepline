@@ -192,6 +192,37 @@ impl Workbench {
         effect: Complete,
         cx: &mut Context<Self>,
     ) {
+        self.play_complete(terminal, session, effect, false, cx);
+    }
+    /// Plays the animation that 标记完成 would on the focused pane without marking or
+    /// closing anything; false when no pane is showing.
+    pub(super) fn preview_complete(&mut self, cx: &mut Context<Self>) -> bool {
+        let Some(terminal) = self
+            .nav
+            .focused
+            .clone()
+            .filter(|id| self.layout.panes.contains_key(id))
+        else {
+            return false;
+        };
+        let session = self
+            .pane_session(&terminal)
+            .map(|s| s.id.clone())
+            .unwrap_or_default();
+        let mut effect = keepline_core::effect::complete();
+        // Without a session there is no sidebar row to land in.
+        effect.land &= !session.is_empty();
+        self.play_complete(terminal, session, effect, true, cx);
+        true
+    }
+    fn play_complete(
+        &mut self,
+        terminal: String,
+        session: String,
+        effect: Complete,
+        preview: bool,
+        cx: &mut Context<Self>,
+    ) {
         self.layout.completing_seq += 1;
         let seq = self.layout.completing_seq;
         let (glyphs, cell) = match (effect.style, self.layout.panes.get(&terminal)) {
@@ -221,13 +252,15 @@ impl Workbench {
                 pinned: None,
             },
         );
-        self.edit(
-            Edit::SetOutcome {
-                id: session.clone(),
-                outcome: Outcome::Completed,
-            },
-            cx,
-        );
+        if !preview {
+            self.edit(
+                Edit::SetOutcome {
+                    id: session.clone(),
+                    outcome: Outcome::Completed,
+                },
+                cx,
+            );
+        }
         cx.notify();
         cx.spawn(async move |this, cx| {
             cx.background_executor().timer(effect.duration).await;
@@ -237,11 +270,12 @@ impl Workbench {
                     _ => return,
                 }
                 this.layout.completing.remove(&terminal);
-                let done = this
-                    .workspace
-                    .agent_sessions
-                    .iter()
-                    .any(|s| s.id == session && s.outcome == Outcome::Completed);
+                let done = !preview
+                    && this
+                        .workspace
+                        .agent_sessions
+                        .iter()
+                        .any(|s| s.id == session && s.outcome == Outcome::Completed);
                 if done {
                     this.close_pane(&terminal, cx);
                 }

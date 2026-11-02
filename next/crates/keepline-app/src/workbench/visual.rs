@@ -598,6 +598,15 @@ impl Workbench {
             .expect("a pane");
         self.layout.panes[&id].clone()
     }
+    /// Whether the shown tab still has its pane and no completion run is left on it.
+    #[cfg(feature = "visual-test")]
+    pub fn visual_shown_pane_alive(&self) -> bool {
+        self.nav.tab.as_ref().is_some_and(|tab| {
+            self.workspace.tab_terminals(tab).first().is_some_and(|id| {
+                self.layout.panes.contains_key(id) && self.completing(id).is_none()
+            })
+        })
+    }
     #[cfg(feature = "visual-test")]
     pub fn visual_pane_menu_open(&self) -> bool {
         self.layout.menu.is_some()
