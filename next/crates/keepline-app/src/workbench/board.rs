@@ -57,7 +57,7 @@ impl Column {
             Self::Stale => Group::Stale.label(),
         }
     }
-    fn id(self) -> &'static str {
+    pub(super) fn id(self) -> &'static str {
         match self {
             Self::Todo => "todo",
             Self::Running => "running",
@@ -449,16 +449,14 @@ impl Workbench {
                 self.tick_turn(cx);
             }
             let ids = list.iter().map(|s| s.id.clone()).collect();
-            columns.push(
-                self.column(
-                    c,
-                    list.len(),
-                    self.card_list(c, ids, cx),
-                    window.is_window_active(),
-                    cx,
-                )
-                .into_any_element(),
+            let column = self.column(
+                c,
+                list.len(),
+                self.card_list(c, ids, cx),
+                window.is_window_active(),
+                cx,
             );
+            columns.push(self.shaking(c, column));
         }
         div()
             .id("overview-scroll")
@@ -477,9 +475,20 @@ impl Workbench {
                         .child(error),
                 )
             })
+            .child({
+                let spot = self.overview.spots.board.clone();
+                gpui::canvas(move |bounds, _, _| spot.set(bounds), |_, _, _, _| ())
+                    .absolute()
+                    .size_full()
+            })
             .child(
                 div()
                     .id("board")
+                    .on_drop(
+                        cx.listener(|this, _: &super::board_drawer::DraggedCard, _, cx| {
+                            this.drop_off_board(cx)
+                        }),
+                    )
                     .flex_1()
                     .min_h_0()
                     .flex()
@@ -489,6 +498,7 @@ impl Workbench {
                     .overflow_x_scroll()
                     .children(columns),
             )
+            .children(self.lift_view(cx))
             .children(self.drawer_view(cx))
             .children(self.toast_view(cx))
     }
@@ -629,9 +639,19 @@ impl Workbench {
                 .drop_over
                 .is_some_and(|(over, from)| over == column && legal(from, column)))
         .then(|| {
+            let spot = self.overview.spots.slot.clone();
             div()
+                .relative()
                 .flex_shrink_0()
                 .mb(px(CARD_GAP))
+                .child(
+                    gpui::canvas(
+                        move |bounds, _, _| spot.set(Some((column, bounds))),
+                        |_, _, _, _| (),
+                    )
+                    .absolute()
+                    .size_full(),
+                )
                 .rounded(px(T::CARD_RADIUS))
                 .border(px(T::BORDER_WIDTH))
                 .border_dashed()
@@ -646,17 +666,21 @@ impl Workbench {
         div()
             .id(gpui::SharedString::from(format!("drop-{}", column.id())))
             .rounded(px(T::CARD_RADIUS))
-            .drag_over::<DraggedCard>(move |s, card, _, _| {
-                if card.from == column {
-                    s
-                } else if legal(card.from, column) {
-                    s.bg(T::color(T::raised()))
+            // From the moment a card is lifted every column says whether it takes it:
+            // the ones that do are outlined, the rest fade back.
+            .border(px(T::BORDER_WIDTH))
+            .border_color(gpui::transparent_black())
+            .when_some(self.dragging_from(cx), |d, from| {
+                if from == column || legal(from, column) {
+                    d.bg(T::color(T::raised()))
+                        .border_color(T::color(T::card_border()))
                 } else {
-                    s.opacity(T::DISABLED_OPACITY)
+                    d.opacity(T::BOARD_REFUSED_OPACITY)
                 }
             })
             .on_drag_move::<DraggedCard>(cx.listener(
                 move |this, e: &gpui::DragMoveEvent<DraggedCard>, _, cx| {
+                    this.follow_lift(e.event.position, column, e.bounds.size.width, cx);
                     let inside = e.bounds.contains(&e.event.position);
                     let from = e.drag(cx).from;
                     let now_over = this.overview.drop_over.map(|(c, _)| c);
@@ -669,11 +693,11 @@ impl Workbench {
                     }
                 },
             ))
-            .on_drop(
-                cx.listener(move |this, card: &DraggedCard, _, cx| {
-                    this.drop_card(card, column, cx)
-                }),
-            )
+            .on_drop(cx.listener(move |this, card: &DraggedCard, _, cx| {
+                // The board's own drop (let go between columns) must not also run.
+                cx.stop_propagation();
+                this.drop_card(card, column, cx)
+            }))
             .flex_1()
             .min_w(px(COLUMN_MIN))
             .min_h_0()
@@ -781,16 +805,37 @@ impl Workbench {
                     )
                     .into_any_element()
                 };
+                let gap = if index + 1 < count { CARD_GAP } else { 0. };
+                // The lifted card leaves its place empty, outlined, until it lands.
+                let hole = ids
+                    .get(index)
+                    .is_some_and(|id| this.lifted(cx).is_some_and(|l| &l.id == id));
                 div()
-                    .pb(px(if index + 1 < count { CARD_GAP } else { 0. }))
+                    .relative()
+                    .pb(px(gap))
                     .child(card)
+                    .when(hole, |d| {
+                        d.child(
+                            div()
+                                .absolute()
+                                .top_0()
+                                .left_0()
+                                .right_0()
+                                .bottom(px(gap))
+                                .rounded(px(T::CARD_RADIUS))
+                                .bg(T::color(board_surface(app_style(cx))()))
+                                .border(px(T::BORDER_WIDTH))
+                                .border_dashed()
+                                .border_color(T::color(T::control())),
+                        )
+                    })
                     .into_any_element()
             })
         })
         .size_full()
         .pb(px(T::S20 * 2.))
     }
-    fn todo_card(&self, task: &Task, cx: &Context<Self>) -> gpui::Stateful<gpui::Div> {
+    pub(super) fn todo_card(&self, task: &Task, cx: &Context<Self>) -> gpui::Stateful<gpui::Div> {
         let id = task.id.clone();
         let space = self
             .workspace
@@ -805,7 +850,7 @@ impl Workbench {
                     title: task.title.clone(),
                     from: Column::Todo,
                 },
-                |card, _, _, cx| cx.new(|_| card.clone()),
+                super::board_drawer::lift_card(cx.entity().downgrade()),
             )
             .child(
                 div()
@@ -855,7 +900,7 @@ impl Workbench {
             )
             .children(self.agent_picker(&task.id, cx))
     }
-    fn board_card(
+    pub(super) fn board_card(
         &self,
         session: &AgentSession,
         column: Column,
@@ -949,7 +994,7 @@ impl Workbench {
                     title: title.clone(),
                     from: column,
                 },
-                |card, _, _, cx| cx.new(|_| card.clone()),
+                super::board_drawer::lift_card(cx.entity().downgrade()),
             )
             .child(
                 div()
@@ -1188,4 +1233,12 @@ mod virtual_column_tests {
         assert_eq!(list.state.item_count(), 2);
         assert_eq!(list.ids, ["c"]);
     }
+}
+
+/// The terminal style draws the board on the window's gray, the standard one on white.
+fn app_style(cx: &gpui::App) -> bool {
+    crate::ui::style::current(cx) == crate::ui::style::Style::Terminal
+}
+fn board_surface(terminal: bool) -> fn() -> u32 {
+    if terminal { T::app } else { T::pane }
 }

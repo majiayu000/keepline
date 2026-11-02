@@ -609,6 +609,8 @@ impl Theme {
     pub const BOARD_PILL: f32 = 20.;
     /// The slot a column opens for a card about to land.
     pub const BOARD_SLOT: f32 = 64.;
+    /// A column that will not take the card being dragged fades this far back.
+    pub const BOARD_REFUSED_OPACITY: f32 = 0.38;
     /// How much the drawer dims the board behind it.
     pub const BOARD_SCRIM: f32 = 0.18;
     pub const BOARD_PILL_GAP: f32 = 5.;

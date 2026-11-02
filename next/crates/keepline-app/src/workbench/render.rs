@@ -168,7 +168,11 @@ impl Render for Workbench {
             let toggle = icon_button(
                 "overview",
                 "icons/grid.svg",
-                if on { "回到工作区" } else { "鸟瞰全部" },
+                if on {
+                    "回到工作区"
+                } else {
+                    "鸟瞰全部"
+                },
             )
             .when(!terminal_style, |d| {
                 d.w_auto()
@@ -180,8 +184,17 @@ impl Render for Workbench {
             })
             .when(on, |d| d.bg(T::color(T::selection())))
             .tooltip(move |_, cx| {
-                cx.new(|_| TextTip(if on { "回到工作区" } else { "鸟瞰全部" }.into()))
-                    .into()
+                cx.new(|_| {
+                    TextTip(
+                        if on {
+                            "回到工作区"
+                        } else {
+                            "鸟瞰全部"
+                        }
+                        .into(),
+                    )
+                })
+                .into()
             })
             .on_click(cx.listener(move |this, _, _, cx| {
                 if on {

@@ -2676,6 +2676,104 @@ pub fn start(
                     assert!(!open, "a click outside folds its 你在这里 card");
                     eprintln!("HereClickOut: card folded after an outside click");
                 }
+                // A real drag on the board: pick a card up, carry it over to 做完了,
+                // and let go, with shots while carried, in flight and after landing.
+                if name == "BoardDrag" || name == "BoardRefuseDrag" {
+                    use gpui::InputEvent;
+                    cx.background_executor()
+                        .timer(Duration::from_millis(1500))
+                        .await;
+                    cx.update_window(handle.into(), |_, w, a| {
+                        w.refresh();
+                        w.draw(a).clear(a);
+                    })
+                    .unwrap();
+                    let (from, steps) = if name == "BoardDrag" {
+                        ("review", 1.)
+                    } else {
+                        ("needs", 2.)
+                    };
+                    let (start, step) = handle
+                        .update(cx, |v, _, _| {
+                            (v.visual_card_center(from), v.visual_column_step())
+                        })
+                        .unwrap();
+                    let start = start.expect("a card to drag on the board");
+                    let target = gpui::point(start.x + step * steps, start.y + px(60.));
+                    let shot = |label: &str, cx: &mut gpui::AsyncApp| {
+                        let path = directory.join(format!("{}-{label}.png", name.to_lowercase()));
+                        cx.update_window(handle.into(), |_, w, a| {
+                            w.refresh();
+                            w.draw(a).clear(a);
+                            w.render_to_image().unwrap().save(path).unwrap();
+                        })
+                        .unwrap();
+                    };
+                    cx.update_window(handle.into(), |_, w, a| {
+                        w.dispatch_event(
+                            gpui::MouseDownEvent {
+                                button: gpui::MouseButton::Left,
+                                position: start,
+                                modifiers: Default::default(),
+                                click_count: 1,
+                                first_mouse: false,
+                            }
+                            .to_platform_input(),
+                            a,
+                        );
+                    })
+                    .unwrap();
+                    for n in 1..=12 {
+                        let t = n as f32 / 12.;
+                        let at = gpui::point(
+                            start.x + (target.x - start.x) * t,
+                            start.y + (target.y - start.y) * t,
+                        );
+                        cx.update_window(handle.into(), |_, w, a| {
+                            w.dispatch_event(
+                                gpui::MouseMoveEvent {
+                                    position: at,
+                                    pressed_button: Some(gpui::MouseButton::Left),
+                                    modifiers: Default::default(),
+                                }
+                                .to_platform_input(),
+                                a,
+                            );
+                            w.refresh();
+                            w.draw(a).clear(a);
+                        })
+                        .unwrap();
+                        cx.background_executor()
+                            .timer(Duration::from_millis(30))
+                            .await;
+                    }
+                    cx.background_executor()
+                        .timer(Duration::from_millis(400))
+                        .await;
+                    shot("1-carried", cx);
+                    cx.update_window(handle.into(), |_, w, a| {
+                        w.dispatch_event(
+                            gpui::MouseUpEvent {
+                                button: gpui::MouseButton::Left,
+                                position: target,
+                                modifiers: Default::default(),
+                                click_count: 1,
+                            }
+                            .to_platform_input(),
+                            a,
+                        );
+                    })
+                    .unwrap();
+                    cx.background_executor()
+                        .timer(Duration::from_millis(120))
+                        .await;
+                    shot("2-flying", cx);
+                    cx.background_executor()
+                        .timer(Duration::from_millis(800))
+                        .await;
+                    shot("3-landed", cx);
+                    eprintln!("{name}: dragged from {from} to done");
+                }
                 // Starting an Agent and placing the task text takes a few quiet checks.
                 let settle = match name {
                     "TodoStart" => 4,

@@ -14,20 +14,73 @@ pub(super) struct DraggedCard {
 }
 impl gpui::Render for DraggedCard {
     fn render(&mut self, _: &mut Window, _: &mut Context<Self>) -> impl IntoElement {
-        // Lifted off the board: a raised fill and a deep shadow.
+        // GPUI's own drag image stays empty: the board draws the lifted card itself
+        // (Workbench::lift_view), whole and at the card's width, so it can also fly it
+        // into its slot or back home.
         div()
-            .w(px(T::BOARD_COLUMN_MIN))
-            .px(px(T::S12))
-            .py(px(T::S10))
-            .rounded(px(T::CARD_RADIUS))
-            .bg(T::color(T::raised()))
-            .border(px(T::BORDER_WIDTH))
-            .border_color(T::color(T::control()))
-            .shadow_lg()
-            .text_size(px(T::CARD_TITLE))
-            .text_color(T::color(T::primary()))
-            .line_clamp(2)
-            .child(self.title.clone())
+    }
+}
+
+/// A card picked up off the board, in window coordinates: where the cursor holds it,
+/// where it came from, and, once let go, where it is flying.
+#[derive(Clone)]
+pub(super) struct Lift {
+    pub(super) id: String,
+    pub(super) from: Column,
+    /// The cursor's offset inside the card.
+    pub(super) offset: gpui::Point<gpui::Pixels>,
+    /// The card's top-left when it was picked up; a refused drop flies back here.
+    pub(super) origin: gpui::Point<gpui::Pixels>,
+    pub(super) width: gpui::Pixels,
+    pub(super) cursor: gpui::Point<gpui::Pixels>,
+    pub(super) landing: Option<Landing>,
+}
+/// The flight after the drop: from where it was let go to its slot or back home.
+#[derive(Clone)]
+pub(super) struct Landing {
+    pub(super) seq: u64,
+    pub(super) from: gpui::Point<gpui::Pixels>,
+    pub(super) to: gpui::Point<gpui::Pixels>,
+}
+/// The column whose slot is open, and where that slot was drawn.
+type SlotSpot = (Column, gpui::Bounds<gpui::Pixels>);
+/// Where the board and the open slot were drawn, written while painting.
+#[derive(Clone, Default)]
+pub(super) struct BoardSpots {
+    pub(super) board: std::rc::Rc<std::cell::Cell<gpui::Bounds<gpui::Pixels>>>,
+    pub(super) slot: std::rc::Rc<std::cell::Cell<Option<SlotSpot>>>,
+}
+const LIFT_IN: Duration = Duration::from_millis(180);
+const LANDING: Duration = Duration::from_millis(380);
+const SHAKE: Duration = Duration::from_millis(380);
+
+/// Starts a lift when GPUI starts dragging a card: the board notes which card, and
+/// where the cursor holds it, so it can leave a hole and draw the card under the cursor.
+pub(super) fn lift_card(
+    entity: gpui::WeakEntity<Workbench>,
+) -> impl Fn(&DraggedCard, gpui::Point<gpui::Pixels>, &mut Window, &mut gpui::App) -> Entity<DraggedCard>
++ 'static {
+    move |card, offset, window, cx| {
+        let cursor = window.mouse_position();
+        let (id, from) = (card.id.clone(), card.from);
+        entity
+            .update(cx, |this, cx| {
+                this.overview.lift = Some(Lift {
+                    id,
+                    from,
+                    offset,
+                    origin: cursor - offset,
+                    width: this
+                        .overview
+                        .column_width
+                        .unwrap_or(px(T::BOARD_COLUMN_MIN)),
+                    cursor,
+                    landing: None,
+                });
+                cx.notify();
+            })
+            .ok();
+        cx.new(|_| card.clone())
     }
 }
 
@@ -99,11 +152,23 @@ impl Workbench {
     }
     pub(super) fn drop_card(&mut self, card: &DraggedCard, to: Column, cx: &mut Context<Self>) {
         self.overview.drop_over = None;
+        // Where the card lands: its slot at the top of the column it was accepted into,
+        // else back where it was picked up.
+        let slot = self
+            .overview
+            .spots
+            .slot
+            .get()
+            .filter(|(c, _)| *c == to)
+            .map(|(_, b)| b.origin);
+        let accepted = legal(card.from, to) && to != Column::Running;
+        self.land(if accepted { slot } else { None }, cx);
         if card.from == to {
             cx.notify();
             return;
         }
         if !legal(card.from, to) {
+            self.shake(to, cx);
             self.show_toast(refusal(card.from).into(), None, true, cx);
             return;
         }
@@ -137,6 +202,159 @@ impl Workbench {
             cx,
         );
         self.show_toast(text, Some((card.id.clone(), before)), false, cx);
+    }
+    /// Let go somewhere that is not a column: the card flies back home.
+    pub(super) fn drop_off_board(&mut self, cx: &mut Context<Self>) {
+        self.overview.drop_over = None;
+        self.land(None, cx);
+    }
+    /// Flies the lifted card from under the cursor to `to`, or home, then lets it go.
+    fn land(&mut self, to: Option<gpui::Point<gpui::Pixels>>, cx: &mut Context<Self>) {
+        let Some(lift) = self.overview.lift.as_mut() else {
+            return;
+        };
+        self.overview.lift_seq += 1;
+        let seq = self.overview.lift_seq;
+        lift.landing = Some(Landing {
+            seq,
+            from: lift.cursor - lift.offset,
+            to: to.unwrap_or(lift.origin),
+        });
+        cx.notify();
+        cx.spawn(async move |this, cx| {
+            cx.background_executor().timer(LANDING).await;
+            let _ = this.update(cx, |this, cx| {
+                if this
+                    .overview
+                    .lift
+                    .as_ref()
+                    .and_then(|l| l.landing.as_ref())
+                    .is_some_and(|l| l.seq == seq)
+                {
+                    this.overview.lift = None;
+                    cx.notify();
+                }
+            });
+        })
+        .detach();
+    }
+    /// The column that refused a card shakes its head.
+    fn shake(&mut self, column: Column, cx: &mut Context<Self>) {
+        self.overview.lift_seq += 1;
+        let seq = self.overview.lift_seq;
+        self.overview.shake = Some((column, seq));
+        cx.spawn(async move |this, cx| {
+            cx.background_executor().timer(SHAKE).await;
+            let _ = this.update(cx, |this, cx| {
+                if this.overview.shake.is_some_and(|(_, s)| s == seq) {
+                    this.overview.shake = None;
+                    cx.notify();
+                }
+            });
+        })
+        .detach();
+    }
+    /// The card being dragged or flying after its drop: its hole stays open meanwhile.
+    pub(super) fn lifted(&self, cx: &gpui::App) -> Option<&Lift> {
+        self.overview
+            .lift
+            .as_ref()
+            .filter(|l| l.landing.is_some() || cx.has_active_drag())
+    }
+    /// The column a card is being dragged out of, while the drag lasts.
+    pub(super) fn dragging_from(&self, cx: &gpui::App) -> Option<Column> {
+        self.lifted(cx)
+            .filter(|l| l.landing.is_none())
+            .map(|l| l.from)
+    }
+    /// Notes the cursor, and the width a lifted card is drawn at, on every drag move.
+    pub(super) fn follow_lift(
+        &mut self,
+        cursor: gpui::Point<gpui::Pixels>,
+        column: Column,
+        width: gpui::Pixels,
+        cx: &mut Context<Self>,
+    ) {
+        self.overview.column_width = Some(width);
+        if let Some(lift) = self.overview.lift.as_mut().filter(|l| l.landing.is_none()) {
+            if lift.from == column {
+                lift.width = width;
+            }
+            if lift.cursor != cursor {
+                lift.cursor = cursor;
+                cx.notify();
+            }
+        }
+    }
+    /// The whole card, drawn above the board under the cursor or in flight.
+    pub(super) fn lift_view(&self, cx: &Context<Self>) -> Option<gpui::AnyElement> {
+        let lift = self.lifted(cx)?;
+        let card = if lift.from == Column::Todo {
+            let task = self.workspace.tasks.iter().find(|t| t.id == lift.id)?;
+            self.todo_card(task, cx)
+        } else {
+            let session = self
+                .workspace
+                .agent_sessions
+                .iter()
+                .find(|s| s.id == lift.id)?;
+            self.board_card(session, lift.from, now(), false, cx)
+        };
+        let board = self.overview.spots.board.get().origin;
+        let card = card
+            .w(lift.width)
+            .bg(T::color(T::raised()))
+            .border_color(T::color(T::control()))
+            .shadow_lg();
+        let ghost = div().id("board-lift").absolute().w(lift.width).child(card);
+        Some(match lift.landing.clone() {
+            None => {
+                let at = lift.cursor - lift.offset - board;
+                ghost
+                    .left(at.x)
+                    .top(at.y)
+                    .with_animation(
+                        gpui::SharedString::from(format!("board-lift-{}", lift.id)),
+                        Animation::new(LIFT_IN).with_easing(spring),
+                        |d, t| d.opacity(0.6 + 0.4 * t.clamp(0., 1.)),
+                    )
+                    .into_any_element()
+            }
+            Some(l) => {
+                let (from, to) = (l.from - board, l.to - board);
+                ghost
+                    .with_animation(
+                        gpui::SharedString::from(format!("board-land-{}", l.seq)),
+                        Animation::new(LANDING).with_easing(spring),
+                        move |d, t| {
+                            d.left(from.x + (to.x - from.x) * t)
+                                .top(from.y + (to.y - from.y) * t)
+                        },
+                    )
+                    .into_any_element()
+            }
+        })
+    }
+    /// Wraps a column so it shakes after refusing a card.
+    pub(super) fn shaking(
+        &self,
+        column: Column,
+        element: gpui::Stateful<gpui::Div>,
+    ) -> gpui::AnyElement {
+        match self.overview.shake.filter(|(c, _)| *c == column) {
+            Some((_, seq)) => element
+                .relative()
+                .with_animation(
+                    gpui::SharedString::from(format!("board-shake-{seq}")),
+                    Animation::new(SHAKE),
+                    |d, t| {
+                        let swing = (t * std::f32::consts::PI * 6.).sin() * (1. - t);
+                        d.left(px(T::S6 * swing))
+                    },
+                )
+                .into_any_element(),
+            None => element.into_any_element(),
+        }
     }
     pub(super) fn toast_view(&self, cx: &Context<Self>) -> Option<gpui::AnyElement> {
         let toast = self.overview.toast.clone()?;

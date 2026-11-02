@@ -29,6 +29,14 @@ pub(super) struct OverviewState {
     pub(super) drawer: Option<String>,
     /// The column a dragged card hangs over, and the column it came from.
     pub(super) drop_over: Option<(super::board::Column, super::board::Column)>,
+    /// The card picked up off the board, or flying after its drop.
+    pub(super) lift: Option<super::board_drawer::Lift>,
+    pub(super) lift_seq: u64,
+    /// A column shaking after it refused a card.
+    pub(super) shake: Option<(super::board::Column, u64)>,
+    /// The last width a column was drawn at, for a lifted card's first frame.
+    pub(super) column_width: Option<gpui::Pixels>,
+    pub(super) spots: super::board_drawer::BoardSpots,
     pub(super) toast: Option<super::board_drawer::Toast>,
     pub(super) toast_seq: u64,
     pub(super) card_menu: Option<String>,

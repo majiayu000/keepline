@@ -194,6 +194,36 @@ impl Workbench {
         cx.notify();
         window.refresh();
     }
+    /// The middle of the first card in a board column, by the column's id.
+    #[cfg(feature = "visual-test")]
+    pub fn visual_card_center(&self, column: &str) -> Option<gpui::Point<gpui::Pixels>> {
+        use super::board::Column;
+        let c = [
+            Column::Todo,
+            Column::Running,
+            Column::Needs,
+            Column::Review,
+            Column::Done,
+        ]
+        .into_iter()
+        .find(|c| c.id() == column)?;
+        let bounds = self
+            .overview
+            .columns
+            .borrow()
+            .get(&c)?
+            .state
+            .bounds_for_item(0)?;
+        Some(bounds.center())
+    }
+    /// How far apart neighbouring board columns are drawn.
+    #[cfg(feature = "visual-test")]
+    pub fn visual_column_step(&self) -> gpui::Pixels {
+        self.overview
+            .column_width
+            .unwrap_or(px(T::BOARD_COLUMN_MIN))
+            + px(T::S14)
+    }
     #[cfg(feature = "visual-test")]
     pub fn visual_bounds(&self) -> gpui::Bounds<gpui::Pixels> {
         *self
@@ -594,7 +624,14 @@ impl Workbench {
         self.search.hide();
         self.nav.overview = matches!(
             name,
-            "Overview" | "OverviewEnd" | "Closed" | "BoardDrawer" | "BoardAccept" | "BoardRefuse"
+            "Overview"
+                | "OverviewEnd"
+                | "Closed"
+                | "BoardDrawer"
+                | "BoardAccept"
+                | "BoardRefuse"
+                | "BoardDrag"
+                | "BoardRefuseDrag"
         );
         self.overview.drawer = None;
         self.overview.toast = None;
@@ -914,7 +951,7 @@ impl Workbench {
             }
             // The overview's foot: the folded groups below the cards.
             "OverviewEnd" => self.overview.scroll.scroll_to_bottom(),
-            "Overview" | "Menubar" => (),
+            "Overview" | "Menubar" | "BoardDrag" | "BoardRefuseDrag" => (),
             // `Dense-{status|directory|wasm|first}-{standard|terminal}-{light|dark}[-open|-menu|-bg|-peek]`:
             // the denser presets over sessions shaped like sidebar-density.html's; `-bg`
             // stops the second running turn while a sub-agent of it still runs.
