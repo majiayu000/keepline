@@ -197,12 +197,14 @@ mod tests {
         }
     }
     fn workspace() -> Workspace {
-        let mut w = Workspace::default();
-        w.terminals = vec![terminal("parent"), terminal("child")];
-        w.agent_sessions = vec![
-            session("p", "parent", Agent::Claude),
-            session("c", "child", Agent::Codex),
-        ];
+        let mut w = Workspace {
+            terminals: vec![terminal("parent"), terminal("child")],
+            agent_sessions: vec![
+                session("p", "parent", Agent::Claude),
+                session("c", "child", Agent::Codex),
+            ],
+            ..Default::default()
+        };
         w.content.insert("p".into(), content(Turn::Running, "", 1));
         w.content.insert("c".into(), content(Turn::Running, "", 1));
         w
