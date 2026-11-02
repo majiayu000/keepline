@@ -316,7 +316,7 @@ pub enum Edit {
         terminal: String,
     },
     /// Places a terminal no tab shows yet beside `target`, in `target`'s tab. Scripts and
-    /// other Agents open panes with it (`keeplined split`); applied to the host's state
+    /// other Agents open panes with it (`keepline split`); applied to the host's state
     /// as it is then, so it never undoes a layout change made meanwhile.
     SplitPane {
         target: String,

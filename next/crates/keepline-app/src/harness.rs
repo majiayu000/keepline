@@ -162,7 +162,7 @@ pub fn start(
         }).detach();
         return;
     }
-    // `keeplined split` / `close` from outside the app, as another Agent runs them: the
+    // `keepline split` / `close` from outside the app, as another Agent runs them: the
     // shown tab gains the pane without the keyboard leaving the user's pane, the command
     // runs in it, and closing it takes the pane away again.
     // The status chip with why the session needs you (reasons rules), in four real panes:
@@ -518,7 +518,7 @@ pub fn start(
                 }).unwrap();
             };
             shot("0-before.png", cx);
-            let cli = std::env::current_exe().unwrap().with_file_name("keeplined");
+            let cli = std::env::current_exe().unwrap().with_file_name("keepline");
             let background = cx.background_executor().clone();
             let run = |args: Vec<String>| {
                 let cli = cli.clone();
@@ -706,7 +706,7 @@ pub fn start(
             let socket = handle.update(cx, |view, _, _| view.visual_socket()).unwrap();
             let runtime = socket.parent().unwrap().display().to_string();
             let killed = std::process::Command::new("/usr/bin/pkill")
-                .args(["-9", "-f", &format!("keeplined serve --runtime {runtime}")])
+                .args(["-9", "-f", &format!("keepline serve --runtime {runtime}")])
                 .status().unwrap();
             assert!(killed.success(), "no host to kill");
             cx.background_executor().timer(Duration::from_secs(1)).await;

@@ -1,14 +1,14 @@
 #!/usr/bin/env python3
 """Collect the texts behind 「等你回答」/「出错了」 for the reasons rules (keepline-core/assets/reasons.json).
 
-Reads, the way keeplined does:
+Reads, the way keepline does:
   - Claude Code transcripts (~/.claude/projects): AskUserQuestion questions, permission
     denials ("requires approval", "haven't granted"), API error messages;
   - Codex rollouts (~/.codex/sessions): request_user_input questions, approval outputs;
   - <config_dir>/reasons-misses.jsonl: texts the app saw and no rule took.
 
 Writes one JSON line per distinct text: {"kind", "text", "count", "from"}, sanitized for the
-repo: a question keeps only its short title (as keeplined writes it, 【title】), paths under
+repo: a question keeps only its short title (as keepline writes it, 【title】), paths under
 $HOME become ~, ids and request ids are dropped, and text is cut to 200 characters.
 
   scripts/mine-reasons.py > /tmp/reasons.jsonl              # everything
@@ -111,7 +111,7 @@ def codex(path):
                 out = p.get("output")
                 out = out if isinstance(out, str) else json.dumps(out, ensure_ascii=False)
                 # A long output that only mentions approval (a grep hit, a log) is not a
-                # dialog; keeplined also needs a failing exit code, which outputs rarely carry.
+                # dialog; keepline also needs a failing exit code, which outputs rarely carry.
                 if len(out) < 500 and any(a in out for a in APPROVAL):
                     add("waiting", out, "codex")
 

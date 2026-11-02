@@ -142,7 +142,7 @@ fn spawn(h: &Hook, p: Payload) {
     if IN_FLIGHT.fetch_add(1, Ordering::SeqCst) >= MAX_IN_FLIGHT {
         IN_FLIGHT.fetch_sub(1, Ordering::SeqCst);
         eprintln!(
-            "keeplined: hook {} skipped: {MAX_IN_FLIGHT} hooks still running",
+            "keepline: hook {} skipped: {MAX_IN_FLIGHT} hooks still running",
             h.id
         );
         return;
@@ -152,7 +152,7 @@ fn spawn(h: &Hook, p: Payload) {
         let result = run(&h, &p);
         IN_FLIGHT.fetch_sub(1, Ordering::SeqCst);
         if let Err(e) = result {
-            eprintln!("keeplined: hook {} ({}) failed: {e}", h.id, p.event.name());
+            eprintln!("keepline: hook {} ({}) failed: {e}", h.id, p.event.name());
         }
     });
 }

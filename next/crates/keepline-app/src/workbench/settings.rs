@@ -458,7 +458,7 @@ impl SettingsView {
         }
     }
     /// Installs `agent`'s hooks first when given (only ever from a click), then reads every
-    /// CLI's again. Both run in the background: they spawn `keeplined` and read small files.
+    /// CLI's again. Both run in the background: they spawn `keepline` and read small files.
     fn check_hooks(agent: Option<String>, cx: &mut Context<Self>) {
         cx.spawn(async move |this, cx| {
             let result = cx
@@ -1961,7 +1961,7 @@ impl SettingsView {
             .child(control)
             .into_any_element()
     }
-    /// One row per CLI whose hooks Keepline installs: their state as `keeplined hooks
+    /// One row per CLI whose hooks Keepline installs: their state as `keepline hooks
     /// status` read it when the panel opened, and a button that installs them anew.
     fn hook_rows(&self, first: bool, cx: &Context<Self>) -> Vec<gpui::AnyElement> {
         use crate::agent_hooks::State;

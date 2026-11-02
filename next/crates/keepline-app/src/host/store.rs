@@ -1,4 +1,4 @@
-//! The client's link to keeplined: the socket, the in-flight user action, background
+//! The client's link to keepline: the socket, the in-flight user action, background
 //! syncs and the recognition status the host pushes. Views never call `rpc` themselves.
 use crate::connection::RecognitionConnection;
 use futures::channel::mpsc::UnboundedSender;

@@ -45,7 +45,7 @@ struct Host {
     recognition: RecognitionStatus,
     log_events: Option<crate::file_events::Notifier>,
     recognition_subscribers: HashMap<u64, Subscriber>,
-    /// `keeplined events` connections, and what they were last told.
+    /// `keepline events` connections, and what they were last told.
     event_subscribers: HashMap<u64, Subscriber>,
     events: events::Tracker,
     exits: Option<crate::process_exit::ExitWatch>,
@@ -272,7 +272,7 @@ impl Host {
         let shared = shared.clone();
         std::thread::spawn(move || {
             if let Err(e) = apply_official(&shared, &index, &due) {
-                eprintln!("keeplined: official status unavailable: {e}");
+                eprintln!("keepline: official status unavailable: {e}");
             }
         });
         later
@@ -970,7 +970,7 @@ fn serve_runtime(
     let listener = UnixListener::bind(&pending_socket)?;
     fs::set_permissions(&pending_socket, fs::Permissions::from_mode(0o600))?;
     fs::rename(&pending_socket, &socket)?;
-    eprintln!("keeplined listening on {}", socket.display());
+    eprintln!("keepline listening on {}", socket.display());
     for (index, stream) in listener.incoming().enumerate() {
         let stream = stream?;
         let host = Arc::clone(&host);

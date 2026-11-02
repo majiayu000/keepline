@@ -41,9 +41,9 @@ impl Workbench {
             )
             .tooltip(super::diagnostics::tip(vec![
                 if cut {
-                    "和后台 keeplined 的连接断了，侧栏和看板停在断开那一刻".into()
+                    "和后台 keepline 的连接断了，侧栏和看板停在断开那一刻".into()
                 } else {
-                    "后台 keeplined 在运行，按事件更新，不定时轮询".into()
+                    "后台 keepline 在运行，按事件更新，不定时轮询".into()
                 },
                 detail,
             ]));

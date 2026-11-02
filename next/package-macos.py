@@ -34,9 +34,12 @@ mac = stage / 'Contents/MacOS'
 resources = stage / 'Contents/Resources'
 mac.mkdir(parents=True, exist_ok=True)
 resources.mkdir(parents=True, exist_ok=True)
-for binary in ('keepline-app', 'keeplined'):
+for binary in ('keepline-app', 'keepline'):
     shutil.copy2(args.release_dir / binary, mac / binary)
     subprocess.run([*sign, str(mac / binary)], check=True)
+# The CLI's old name, for Agents that learned `keeplined` and for terminals started before
+# the rename: their KEEPLINE_HOOK still points at .../MacOS/keeplined.
+(mac / 'keeplined').symlink_to('keepline')
 shutil.copy2(root / 'crates/keepline-app/assets/NERD-FONTS-LICENSE', resources / 'NERD-FONTS-LICENSE')
 shutil.copy2(args.icon, resources / 'Keepline.icns')
 (stage / 'Contents/Info.plist').write_bytes(plistlib.dumps({

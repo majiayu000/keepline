@@ -46,7 +46,7 @@ fn run(source: &RecordSource, dir: &Path) {
                 db = None;
                 let e = e.to_string();
                 if e != last_error {
-                    eprintln!("keeplined: {} 读不了：{e}", source.sqlite.display());
+                    eprintln!("keepline: {} 读不了：{e}", source.sqlite.display());
                     last_error = e;
                 }
             }

@@ -8,7 +8,7 @@ fn main() {
     let code = match run() {
         Ok(()) => 0,
         Err(err) => {
-            eprintln!("keeplined: {err}");
+            eprintln!("keepline: {err}");
             1
         }
     };
@@ -26,7 +26,7 @@ fn raise_open_file_limit() {
     // SAFETY: getrlimit/setrlimit only read and write the struct passed by pointer.
     unsafe {
         if libc::getrlimit(libc::RLIMIT_NOFILE, &mut limit) != 0 {
-            eprintln!("keeplined: getrlimit: {}", std::io::Error::last_os_error());
+            eprintln!("keepline: getrlimit: {}", std::io::Error::last_os_error());
             return;
         }
         // macOS rejects RLIM_INFINITY for the soft limit; use a finite cap below kern.maxfilesperproc.
@@ -36,9 +36,9 @@ fn raise_open_file_limit() {
         }
         limit.rlim_cur = wanted;
         if libc::setrlimit(libc::RLIMIT_NOFILE, &limit) != 0 {
-            eprintln!("keeplined: setrlimit: {}", std::io::Error::last_os_error());
+            eprintln!("keepline: setrlimit: {}", std::io::Error::last_os_error());
         } else {
-            eprintln!("keeplined: open file limit raised to {wanted}");
+            eprintln!("keepline: open file limit raised to {wanted}");
         }
     }
 }
@@ -97,7 +97,7 @@ fn run() -> std::io::Result<()> {
                 Some("plugins") => print!("{}", control::PLUGINS_SKILL),
                 Some(other) => {
                     return Err(std::io::Error::other(format!(
-                        "没有叫 {other} 的说明；有：keeplined --skill、keeplined --skill plugins"
+                        "没有叫 {other} 的说明；有：keepline --skill、keepline --skill plugins"
                     )))
                 }
             }
@@ -105,7 +105,7 @@ fn run() -> std::io::Result<()> {
         }
         Some("--version") => {
             println!(
-                "keeplined protocol {}.{} experimental",
+                "keepline protocol {}.{} experimental",
                 keeplined::PROTOCOL_MAJOR,
                 keeplined::PROTOCOL_MINOR
             );
@@ -116,7 +116,7 @@ fn run() -> std::io::Result<()> {
             format!(
                 "experimental managed PTY daemon (protocol major {}). \
                  the keepline command does not start it. \
-                 usage: keeplined serve --runtime <dir>\n{}",
+                 usage: keepline serve --runtime <dir>\n{}",
                 keeplined::PROTOCOL_MAJOR,
                 control::USAGE
             ),

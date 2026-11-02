@@ -77,7 +77,7 @@ pub enum Request {
         id: String,
         takeover: bool,
         /// Only looks: never becomes the writer and never sizes the terminal, however
-        /// many writers come and go (`keeplined remote`'s watch). Hosts before it ignore it.
+        /// many writers come and go (`keepline remote`'s watch). Hosts before it ignore it.
         #[serde(default)]
         watch: bool,
     },
@@ -148,9 +148,9 @@ pub enum Request {
         keys: Vec<String>,
     },
     /// Scripts, other Agents and other clients: the sessions' states now, then every
-    /// change as it happens, until this socket closes (`keeplined events`).
+    /// change as it happens, until this socket closes (`keepline events`).
     Subscribe,
-    /// `keeplined split` asks before it starts anything: `Size`, the new pane's cells,
+    /// `keepline split` asks before it starts anything: `Size`, the new pane's cells,
     /// when the pane, at the size it is shown now, has room for both halves of that split.
     SplitRoom {
         target: String,
@@ -158,7 +158,7 @@ pub enum Request {
         share: u16,
     },
     /// Turns phones on a relay on or off, or moves them to another relay. The host keeps
-    /// `keeplined remote --relay` running while it is on.
+    /// `keepline remote --relay` running while it is on.
     RemoteConfigure {
         enabled: bool,
         relay: String,
@@ -175,7 +175,7 @@ pub enum Request {
         device: String,
         change: RemoteChange,
     },
-    /// From `keeplined remote --relay`: who is on now; the host passes it to the app.
+    /// From `keepline remote --relay`: who is on now; the host passes it to the app.
     RemoteReport(RemoteLive),
 }
 
@@ -186,7 +186,7 @@ pub enum RemoteChange {
     /// Ends its open sessions now; it stays paired and may connect again.
     Kick,
     Revoke,
-    /// Changed outside the host (`keeplined remote --revoke`): show the app again.
+    /// Changed outside the host (`keepline remote --revoke`): show the app again.
     Refresh,
 }
 
@@ -383,7 +383,7 @@ pub const TERMINAL_ENV: &str = "KEEPLINE_TERMINAL";
 pub const RUNTIME_ENV: &str = "KEEPLINE_RUNTIME";
 /// The host executable: hooks run `"$KEEPLINE_HOOK" hook --agent <cli>`.
 pub const HOOK_ENV: &str = "KEEPLINE_HOOK";
-/// `1` in every managed terminal: what `keeplined --skill` tells an Agent to check first.
+/// `1` in every managed terminal: what `keepline --skill` tells an Agent to check first.
 pub const MARKER_ENV: &str = "KEEPLINE_ENV";
 /// Set by the user before a wrapper (a sandbox, a VM, `nono`) that hides the Agent's own
 /// process: names the Agent it runs.
@@ -559,7 +559,7 @@ mod tests {
     fn a_host_is_stale_only_when_the_code_differs() {
         let dir = std::env::temp_dir().join(format!("kl-build-{}", uuid::Uuid::new_v4()));
         std::fs::create_dir_all(&dir).unwrap();
-        let binary = dir.join("keeplined");
+        let binary = dir.join("keepline");
         std::fs::write(&binary, "v1").unwrap();
         let started = Build {
             binary: binary.to_string_lossy().into_owned(),

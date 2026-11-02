@@ -14,7 +14,7 @@
 
 - **一个想法一个插件**，新建目录，别把新东西塞进已有插件。
 - 别改用户已有的插件，也别改 `plugins/disabled.json`（那是设置页的开关），用户明确要求时才动。
-- 改完一定跑 `keeplined plugins`，全是 ✓ 才算写好；有 ✗ 就按它说的改，再跑。
+- 改完一定跑 `keepline plugins`，全是 ✓ 才算写好；有 ✗ 就按它说的改，再跑。
 - 插件在 Keepline **下次启动时**生效。跟用户说清楚：重启 Keepline 后在哪能看到；设置 › 插件能看到每个插件生效了没有，也能关掉。
 - 插件只能用下面列的这几类。做不到的（自己画界面、改会话状态、读对话原文）就直说做不到，别改 Keepline 的安装文件。
 
@@ -24,7 +24,7 @@
 d="${XDG_CONFIG_HOME:-$HOME/.config}/keepline/plugins/git-tools"
 mkdir -p "$d"
 # 写 $d/plugin.json 和它提供的文件（见下）
-keeplined plugins            # 检查；有问题以 1 退出
+keepline plugins            # 检查；有问题以 1 退出
 ```
 
 ## plugin.json
@@ -133,7 +133,7 @@ keeplined plugins            # 检查；有问题以 1 退出
 
 ## agent：让 Keepline 认识一个新 CLI（`agent.json` 或 `agents/*.json`）
 
-这类最复杂：声明 CLI 的可执行文件、启动和恢复命令，以及怎么从它的会话记录（JSONL 或 SQLite）里读出回合状态。用户要接一个新 CLI 时才写。先找一个现成的例子照着改（Keepline 源码里的 `next/plugins/opencode/agent.json`），写完同样用 `keeplined plugins` 检查。
+这类最复杂：声明 CLI 的可执行文件、启动和恢复命令，以及怎么从它的会话记录（JSONL 或 SQLite）里读出回合状态。用户要接一个新 CLI 时才写。先找一个现成的例子照着改（Keepline 源码里的 `next/plugins/opencode/agent.json`），写完同样用 `keepline plugins` 检查。
 
 ## 状态颜色（`<配置>/colors.json`）
 
@@ -159,7 +159,7 @@ JSON
 cat > "$d/actions.json" <<'JSON'
 {"api": 1, "actions": [{"id": "code", "title": "用 VS Code 打开这个目录", "command": "code {cwd}", "run": "paste"}]}
 JSON
-keeplined plugins
+keepline plugins
 ```
 
 全是 ✓ 后告诉用户：重启 Keepline，在窗格上右键或 ⌘P 搜「VS Code」就能看到。

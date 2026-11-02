@@ -70,7 +70,7 @@ pub fn unbound_hint(agent: Agent) -> Hint {
         note: TerminalNote {
             note: format!("{cli} · 发出第一句后对上对话"),
             why: format!(
-                "Keepline 看到这个 {cli} 在跑，但它的命令行没写是哪段对话。发出第一句话后，按画面上的提示词对上；想启动就认出，运行一次 keeplined hooks install 装上 Hook。"
+                "Keepline 看到这个 {cli} 在跑，但它的命令行没写是哪段对话。发出第一句话后，按画面上的提示词对上；想启动就认出，运行一次 keepline hooks install 装上 Hook。"
             ),
         },
     }

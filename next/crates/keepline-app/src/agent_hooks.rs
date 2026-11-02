@@ -1,5 +1,5 @@
-//! The Agent CLIs' hook entries, as `keeplined hooks status` reads them. The app never
-//! edits those settings itself: installing runs `keeplined hooks install`, the command
+//! The Agent CLIs' hook entries, as `keepline hooks status` reads them. The app never
+//! edits those settings itself: installing runs `keepline hooks install`, the command
 //! line's own path, and only when the user clicks for it. Both block, so callers run them
 //! off the UI thread.
 use std::{io, process::Command};
@@ -23,8 +23,8 @@ pub struct Hook {
 }
 
 /// The daemon beside this app, as `lifecycle` starts it.
-fn keeplined(args: &[&str]) -> io::Result<Vec<u8>> {
-    let out = Command::new(std::env::current_exe()?.with_file_name("keeplined"))
+fn keepline(args: &[&str]) -> io::Result<Vec<u8>> {
+    let out = Command::new(std::env::current_exe()?.with_file_name("keepline"))
         .args(args)
         .stdin(std::process::Stdio::null())
         .output()?;
@@ -35,10 +35,10 @@ fn keeplined(args: &[&str]) -> io::Result<Vec<u8>> {
     Ok(out.stdout)
 }
 pub fn check() -> io::Result<Vec<Hook>> {
-    parse(&keeplined(&["hooks", "status", "--json"])?)
+    parse(&keepline(&["hooks", "status", "--json"])?)
 }
 pub fn install(agent: &str) -> io::Result<()> {
-    keeplined(&["hooks", "install", "--agent", agent]).map(drop)
+    keepline(&["hooks", "install", "--agent", agent]).map(drop)
 }
 fn parse(bytes: &[u8]) -> io::Result<Vec<Hook>> {
     let rows: Vec<serde_json::Value> = serde_json::from_slice(bytes).map_err(io::Error::other)?;

@@ -199,7 +199,7 @@ fn active(agent: Agent, config: Option<&Path>) -> Rules {
     match config.and_then(|dir| load_override(agent, dir)) {
         Some(Ok(rules)) => rules,
         Some(Err(e)) => {
-            eprintln!("keeplined: 画面规则覆盖文件不可用，改用内置规则：{e}");
+            eprintln!("keepline: 画面规则覆盖文件不可用，改用内置规则：{e}");
             compile(crate::agents::adapter(agent).screen_rules())
         }
         None => compile(crate::agents::adapter(agent).screen_rules()),

@@ -158,7 +158,7 @@ pub enum StreamBody {
     },
 }
 
-/// One change, as `keeplined events --json` prints it.
+/// One change, as `keepline events --json` prints it.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct Event {
     /// started, waiting, error, done, approval, approval_gone, terminal_started,

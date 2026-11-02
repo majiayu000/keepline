@@ -1,5 +1,5 @@
 //! Keepline's remote protocol, shared by everything that speaks it: the machine
-//! (`keeplined remote`), the relay (`keepline-relay`), the desktop workbench, and as a
+//! (`keepline remote`), the relay (`keepline-relay`), the desktop workbench, and as a
 //! reference for phone apps in other languages.
 //!
 //! - [`protocol`]: the JSON lines a client and a machine exchange.

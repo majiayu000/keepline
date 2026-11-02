@@ -1,4 +1,4 @@
-//! `keeplined remote --relay <url>`: this machine on a relay, so a paired phone reaches
+//! `keepline remote --relay <url>`: this machine on a relay, so a paired phone reaches
 //! it from anywhere. The machine dials out and keeps one socket to the relay; each phone
 //! that opens `/c/<token>/keepline` is one remote-protocol session, the same as
 //! `remote --stdio`, run inside a Noise channel the relay cannot read.
@@ -8,7 +8,7 @@
 //! - one key per phone, in `remote-devices.json`: its handshake proves it holds it, and
 //!   the key decides what it may do. Unpairing a phone drops its open sessions too.
 //!
-//! `keeplined remote --pair --relay <url>` pairs one more phone and prints its link and QR
+//! `keepline remote --pair --relay <url>` pairs one more phone and prints its link and QR
 //! code; `--devices` lists them, `--revoke` unpairs one, and `--new-code` replaces the
 //! machine's code and unpairs every phone. Shapes are in `specs/extensions/relay.md`.
 use crate::control::Args;
@@ -301,7 +301,7 @@ fn pair(socket: &Path, relay: &str, name: &str, role: Role) -> io::Result<()> {
     writeln!(out, "{link}")?;
     writeln!(
         out,
-        "这一行只给这一台手机用，别发给别人。取消它：keeplined remote --revoke {}",
+        "这一行只给这一台手机用，别发给别人。取消它：keepline remote --revoke {}",
         device.id
     )
 }
@@ -309,7 +309,7 @@ fn pair(socket: &Path, relay: &str, name: &str, role: Role) -> io::Result<()> {
 fn list_devices(socket: &Path) -> io::Result<()> {
     let list = devices::load(socket);
     if list.is_empty() {
-        println!("还没有配对的设备：keeplined remote --pair --relay <中继地址> --name <名字>");
+        println!("还没有配对的设备：keepline remote --pair --relay <中继地址> --name <名字>");
         return Ok(());
     }
     let seen = devices::last_seen(socket);
@@ -357,7 +357,7 @@ async fn stay_connected(
                     wait = Duration::from_secs(1);
                 }
                 eprintln!(
-                    "keeplined remote: 和中继断开（{why}），{} 秒后重连",
+                    "keepline remote: 和中继断开（{why}），{} 秒后重连",
                     wait.as_secs()
                 );
                 live.state(
@@ -429,7 +429,7 @@ async fn connect(
             Err(_) => return (Ended::Lost("中继没有回应注册".into()), false),
         }
     };
-    eprintln!("keeplined remote: 已连上中继 {base}");
+    eprintln!("keepline remote: 已连上中继 {base}");
     live.state(RemoteState::Connected, String::new());
 
     let (out, mut outbox) = mpsc::channel::<Message>(64);
@@ -474,7 +474,7 @@ async fn connect(
                     close(&out, &id, 4401, "unpaired").await;
                     if let Some(Session::Open { device, .. }) = sessions.remove(&id) {
                         live.left(&id);
-                        eprintln!("keeplined remote: 设备 {device} 被断开、取消配对或改了权限");
+                        eprintln!("keepline remote: 设备 {device} 被断开、取消配对或改了权限");
                         devices::log(&log, json!({ "event": "dropped", "device": device }));
                     }
                 }
@@ -520,7 +520,7 @@ async fn connect(
                                 break Ended::Lost("写不进中继".into());
                             }
                             eprintln!(
-                                "keeplined remote: 「{}」已连上（{}）",
+                                "keepline remote: 「{}」已连上（{}）",
                                 d.name,
                                 d.role.label()
                             );
@@ -550,7 +550,7 @@ async fn connect(
                             })
                         }
                         None => {
-                            eprintln!("keeplined remote: 设备 {device} 没有配对或密钥不对，已拒绝");
+                            eprintln!("keepline remote: 设备 {device} 没有配对或密钥不对，已拒绝");
                             devices::log(&log, json!({ "event": "refused", "device": device }));
                             close(&out, &id, 4401, "not paired").await;
                             None
@@ -570,7 +570,7 @@ async fn connect(
                         since,
                     }),
                     Err(e) => {
-                        eprintln!("keeplined remote: 手机 {id} 断开：{e}");
+                        eprintln!("keepline remote: 手机 {id} 断开：{e}");
                         live.left(&id);
                         close(&out, &id, 4400, "bad message").await;
                         None
@@ -606,7 +606,7 @@ async fn connect(
                 Ok(Frame::Wclose { id, .. }) => {
                     if let Some(Session::Open { device, .. }) = sessions.remove(&id) {
                         live.left(&id);
-                        eprintln!("keeplined remote: 设备 {device} 已离开");
+                        eprintln!("keepline remote: 设备 {device} 已离开");
                         devices::log(&log, json!({ "event": "left", "device": device }));
                     }
                 }
@@ -630,7 +630,7 @@ async fn connect(
                 let code = f.as_ref().map_or(1005, |f| u16::from(f.code));
                 break match code {
                     4000 => Ended::Refused(
-                        "另一个 keeplined 用同一个配对码连上了中继，这一个退出".into(),
+                        "另一个 keepline 用同一个配对码连上了中继，这一个退出".into(),
                     ),
                     _ => Ended::Lost(format!("中继关闭了连接（{code}）")),
                 };

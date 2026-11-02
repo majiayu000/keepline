@@ -159,7 +159,7 @@ pub fn spawn_host(root: &Path, takeover: bool) -> io::Result<()> {
         .create(true)
         .append(true)
         .open(root.join("host.log"))?;
-    let daemon = std::env::current_exe()?.with_file_name("keeplined");
+    let daemon = std::env::current_exe()?.with_file_name("keepline");
     let digest = keepline_core::protocol::Build::digest(&daemon);
     let mut command = std::process::Command::new(daemon);
     command
@@ -271,7 +271,7 @@ pub fn connected_host(socket: &Path) -> io::Result<bool> {
         } => {
             // An already running host keeps serving the code it started with, however
             // often its binary is rebuilt; fixes then look like they never landed.
-            let sibling = std::env::current_exe()?.with_file_name("keeplined");
+            let sibling = std::env::current_exe()?.with_file_name("keepline");
             set_stale_host(build.stale(&sibling).then_some(build));
             Ok(true)
         }

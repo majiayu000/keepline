@@ -26,7 +26,7 @@ const SYSTEM_PATH: &str = "/usr/bin:/bin:/usr/sbin:/sbin";
 /// What a terminal's programs learn about the host: that they run in Keepline, in which
 /// terminal, the runtime to reach, and the executable whose `hook` subcommand reports to it.
 /// That executable's directory also goes on `PATH`, after the system default, so an
-/// Agent in the terminal can run `keeplined list` / `split` by name, as its usage says.
+/// Agent in the terminal can run `keepline list` / `split` by name, as its usage says.
 /// The login profile keeps it: macOS's path_helper keeps entries it does not know, and
 /// profiles add to `PATH` rather than replace it.
 fn host_env(terminal: &str, host: Option<&(PathBuf, PathBuf)>) -> Vec<(OsString, OsString)> {

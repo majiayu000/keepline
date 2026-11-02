@@ -32,6 +32,14 @@ bun run typecheck    # Type check client code
 
 ## CLI Commands
 
+The current app is the Rust workbench in `next/`. Its bundle ships two binaries:
+`keepline-app` (the window) and `keepline` (the background host and the CLI Agents use
+inside Keepline terminals: `keepline list | read | send | prompt | wait | split | close`,
+`keepline --skill` for usage). `keeplined` is kept as an alias of `keepline`; the crate
+and directory are still named `keeplined`.
+
+Previous generation (Bun CLI in `src/`, not installed by the app):
+
 ```bash
 keepline                        # Start web dashboard (default)
 keepline list                   # List sessions with options

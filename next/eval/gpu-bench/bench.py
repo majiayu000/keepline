@@ -90,7 +90,7 @@ class Fixture:
         self.host.terminate(); self.host.wait(5)
         # The app takes the terminals over into its own detached host, which outlives both
         # the app and the fixture and keeps every workload loop running.
-        pattern = f'keeplined serve --runtime {self.root}( |$)'
+        pattern = f'keepline serve --runtime {self.root}( |$)'
         for sig, wait in ((15, 50), (9, 20)):
             pids = [int(p) for p in subprocess.run(['pgrep', '-f', pattern], capture_output=True, text=True).stdout.split()]
             if not pids: return

@@ -5,48 +5,48 @@ use std::path::{Path, PathBuf};
 use std::time::{Duration, Instant};
 
 pub const USAGE: &str = "\
-keeplined list [--json]                      终端列表：编号、Agent 状态、标签、目录
-keeplined read <终端> [--lines N]            画面最后 N 行（默认 50）
-keeplined send <终端> <文字|-> [--enter]     把文字作为粘贴放进终端；- 从标准输入读
-keeplined prompt <终端> <文字|-> [--wait] [--timeout 秒] [--force]
+keepline list [--json]                      终端列表：编号、Agent 状态、标签、目录
+keepline read <终端> [--lines N]            画面最后 N 行（默认 50）
+keepline send <终端> <文字|-> [--enter]     把文字作为粘贴放进终端；- 从标准输入读
+keepline prompt <终端> <文字|-> [--wait] [--timeout 秒] [--force]
                                              给 Agent 发一条并回车；它正等你回答时拒绝，除非 --force
-keeplined wait <终端> [--until idle|waiting|working] [--timeout 秒]
+keepline wait <终端> [--until idle|waiting|working] [--timeout 秒]
                                              等 Agent 进入某个状态（默认 idle：这一轮做完）
-keeplined explain --file <画面.txt> --agent <claude|codex> [--json]
-keeplined explain <终端> [--json]            画面规则怎么读这块屏：状态、命中的规则、规则版本和来源、看到的行
-keeplined events [--json]                    先列出现在的状态，再每有变化输出一行，直到 Ctrl-C：
+keepline explain --file <画面.txt> --agent <claude|codex> [--json]
+keepline explain <终端> [--json]            画面规则怎么读这块屏：状态、命中的规则、规则版本和来源、看到的行
+keepline events [--json]                    先列出现在的状态，再每有变化输出一行，直到 Ctrl-C：
                                              started / waiting / error / done、approval / approval_gone、
                                              terminal_started / terminal_exited、command_done / command_failed；
                                              lagged 表示跟不上丢了事件，应重新开一次取现状
-keeplined split <终端> [--down] [--size 0.5] [--tab|--here] [--cwd 目录] [--json] [-- 命令…]
+keepline split <终端> [--down] [--size 0.5] [--tab|--here] [--cwd 目录] [--json] [-- 命令…]
                                              在这个终端右边（--down 下面）开一块新分屏，打印新终端编号；
                                              标签已有 4 块或切开太窄时开到「旁屏」标签（--here 改为拒绝，
                                              --tab 直接开到旁屏）；给了命令就在新 shell 里跑，跑完留在 shell
-keeplined close <终端>                       关掉这块分屏并结束里面的程序
-keeplined remote --stdio                     给另一台机器或手机 App 用：一行一个 JSON 请求和回复（看画面、打字、按键、
-                                             答审批、事件），经 ssh 连过来：ssh 主机 keeplined remote --stdio
-keeplined remote --relay <中继地址> [--relay-key <密钥>]
+keepline close <终端>                       关掉这块分屏并结束里面的程序
+keepline remote --stdio                     给另一台机器或手机 App 用：一行一个 JSON 请求和回复（看画面、打字、按键、
+                                             答审批、事件），经 ssh 连过来：ssh 主机 keepline remote --stdio
+keepline remote --relay <中继地址> [--relay-key <密钥>]
                                              连上中继并一直挂着，配对过的手机在哪都能连过来；内容端到端加密，
                                              中继看不到。中继要密钥时也可以设 KEEPLINE_RELAY_KEY
-keeplined remote --pair --relay <中继地址> [--name 名字] [--role view|answer|full]
+keepline remote --pair --relay <中继地址> [--name 名字] [--role view|answer|full]
                                              配对一台新手机，打印它的二维码和链接；权限分只看 / 能答审批 / 完全控制（默认）。
                                              加 --new-code 换掉机器码，已配对的手机全部失效
-keeplined remote --enable --relay <中继地址> [--relay-key <密钥>] | --disable
+keepline remote --enable --relay <中继地址> [--relay-key <密钥>] | --disable
                                              让后台一直挂在中继上（重启后也会自动连回去），或者断开；配对保留
-keeplined remote --status                    中继连接状态、配对的手机、现在谁在线、在看哪个终端
-keeplined remote --kick <设备>               立刻断开这台手机正连着的会话，配对保留
-keeplined remote --devices                   列出配对过的手机、权限和最近连接时间；操作记在运行目录的 remote-log.jsonl
-keeplined remote --device <设备> --role <view|answer|full>
+keepline remote --status                    中继连接状态、配对的手机、现在谁在线、在看哪个终端
+keepline remote --kick <设备>               立刻断开这台手机正连着的会话，配对保留
+keepline remote --devices                   列出配对过的手机、权限和最近连接时间；操作记在运行目录的 remote-log.jsonl
+keepline remote --device <设备> --role <view|answer|full>
                                              改一台手机的权限；它正连着的会话一秒内断开，重连后按新权限
-keeplined remote --revoke <设备编号或名字>   取消一台手机的配对，它正连着的会话一秒内断开
-keeplined plugins [--dir 目录] [--json]      检查插件能不能装上：哪个生效、哪个为什么没生效
-keeplined --skill                            给 Coding Agent 看的用法说明（Markdown）
-keeplined --skill plugins                    给 Coding Agent 看的写插件、改外观说明（Markdown）
+keepline remote --revoke <设备编号或名字>   取消一台手机的配对，它正连着的会话一秒内断开
+keepline plugins [--dir 目录] [--json]      检查插件能不能装上：哪个生效、哪个为什么没生效
+keepline --skill                            给 Coding Agent 看的用法说明（Markdown）
+keepline --skill plugins                    给 Coding Agent 看的写插件、改外观说明（Markdown）
 <终端> 可以是编号的前几位或标签名；全部命令都接受 --runtime <目录>。
 Agent 藏在包装器（沙盒、虚拟机、nono 等）后面认不出时，启动前设 KEEPLINE_AGENT=<claude|codex|…>。";
-/// `keeplined --skill`: how a coding Agent drives these commands, and when it must not.
+/// `keepline --skill`: how a coding Agent drives these commands, and when it must not.
 pub const SKILL: &str = include_str!("skill.md");
-/// `keeplined --skill plugins`: how a coding Agent changes Keepline with plugins.
+/// `keepline --skill plugins`: how a coding Agent changes Keepline with plugins.
 pub const PLUGINS_SKILL: &str = include_str!("plugins.md");
 
 /// What the Agent in a terminal is doing, read like the workbench's pane states.
@@ -806,7 +806,7 @@ fn split(a: Args) -> io::Result<()> {
     } else {
         println!("{id}");
         if overflow {
-            // On stderr, so `id=$(keeplined split …)` still captures only the id.
+            // On stderr, so `id=$(keepline split …)` still captures only the id.
             eprintln!("{why}，开在了「{title}」标签（不切换用户的画面）");
         }
     }
@@ -920,7 +920,7 @@ mod tests {
             "list", "read", "send", "prompt", "wait", "explain", "split", "close",
         ] {
             assert!(
-                SKILL.contains(&format!("keeplined {command} ")),
+                SKILL.contains(&format!("keepline {command} ")),
                 "{command}"
             );
         }

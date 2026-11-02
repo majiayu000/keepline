@@ -4,7 +4,7 @@
 //!
 //! A rule is a list of words matched against the start of a command, each word compared
 //! by its last path segment (`./node_modules/.bin/vitest` is `vitest`); `*` matches any one
-//! word. Plugins add to the built-in list in `keeplined`; they never take one away.
+//! word. Plugins add to the built-in list in `keepline`; they never take one away.
 use crate::agent::Loaded;
 use serde::Deserialize;
 use std::path::{Path, PathBuf};

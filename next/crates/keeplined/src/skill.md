@@ -1,8 +1,8 @@
 # 驱动 Keepline 终端
 
-给 Coding Agent 看：怎样用 `keeplined` 读别的 Keepline 终端、给里面的 Agent 发话、等它做完，以及在自己旁边开一块分屏跑东西。
+给 Coding Agent 看：怎样用 `keepline` 读别的 Keepline 终端、给里面的 Agent 发话、等它做完，以及在自己旁边开一块分屏跑东西。
 
-用户要你改 Keepline 本身（加命令、换左栏、窗格上显示东西、通知、动画、颜色）时看另一份：`keeplined --skill plugins`。
+用户要你改 Keepline 本身（加命令、换左栏、窗格上显示东西、通知、动画、颜色）时看另一份：`keepline --skill plugins`。
 
 ## 先确认在 Keepline 里
 
@@ -10,7 +10,7 @@
 [ "$KEEPLINE_ENV" = 1 ] || echo "不在 Keepline 终端里"
 ```
 
-`KEEPLINE_ENV` 不是 `1` 就停下，告诉用户这些命令只在 Keepline 打开的终端里能用，不要猜运行目录、不要自己启动 `keeplined serve`。`KEEPLINE_TERMINAL` 是你自己所在终端的编号，别把话发给自己。
+`KEEPLINE_ENV` 不是 `1` 就停下，告诉用户这些命令只在 Keepline 打开的终端里能用，不要猜运行目录、不要自己启动 `keepline serve`。`KEEPLINE_TERMINAL` 是你自己所在终端的编号，别把话发给自己。
 
 ## 只动用户点名的终端
 
@@ -25,15 +25,15 @@
 
 | 命令 | 做什么 |
 |---|---|
-| `keeplined list [--json]` | 正在运行的终端：编号、Agent、状态、标签、目录。`--json` 每项有 `id` `cwd` `tab` `agent` `phase` `session` |
-| `keeplined read <终端> [--lines N]` | 画面最后 N 行，默认 50；画面下方的空行不算 |
-| `keeplined send <终端> <文字\|-> [--enter]` | 把文字作为粘贴放进终端；`--enter` 再按回车。`-` 从标准输入读（最多 64 KiB），长文字不用转义 |
-| `keeplined prompt <终端> <文字\|-> [--wait] [--timeout 秒] [--force]` | 给终端里的 Agent 发一条并回车 |
-| `keeplined wait <终端> [--until idle\|waiting\|working] [--timeout 秒]` | 等 Agent 进入某个状态，默认 `idle`；超时默认 1800 秒 |
-| `keeplined events [--json]` | 先列现在的状态，再每有变化输出一行（started / waiting / error / done、approval、terminal_*、command_*）；要盯多个终端时用它，不要反复轮询 `list` |
-| `keeplined explain <终端> [--json]` | 画面规则怎么读这块屏：状态、命中的规则、看到的行 |
-| `keeplined split <终端> [--down] [--size 0.5] [--tab\|--here] [--cwd 目录] [--json] [-- 命令…]` | 在这个终端右边开一块新分屏，对半分；`--down` 开在下面，`--size` 是新分屏占的比例。只往右或往下开，用户原来那块一直在左上角。这个标签已经有 4 块、或切开后一边少于 20 列 / 5 行时，自动开到「<Agent> 的旁屏」标签（每个终端一个，满了再开「旁屏 2」），stderr 说明原因和标签名；`--here` 改为直接拒绝，`--tab` 不在当前标签切、直接开到旁屏。都不切换用户的画面和键盘焦点。目录默认跟那个 shell 现在所在的目录。stdout 只打印新终端编号（`--json` 还有 `tab` `tab_title` `beside` `overflow`）。给了命令就在新分屏的 shell 里跑，跑完留在 shell；一个参数当整行命令（可带 `&&`、管道），多个参数逐个转义；`--` 后面全算命令，选项都写在它前面 |
-| `keeplined close <终端>` | 关掉这块分屏并结束里面的程序，标签里只剩它时连标签一起关；`events` 会报 `terminal_exited` |
+| `keepline list [--json]` | 正在运行的终端：编号、Agent、状态、标签、目录。`--json` 每项有 `id` `cwd` `tab` `agent` `phase` `session` |
+| `keepline read <终端> [--lines N]` | 画面最后 N 行，默认 50；画面下方的空行不算 |
+| `keepline send <终端> <文字\|-> [--enter]` | 把文字作为粘贴放进终端；`--enter` 再按回车。`-` 从标准输入读（最多 64 KiB），长文字不用转义 |
+| `keepline prompt <终端> <文字\|-> [--wait] [--timeout 秒] [--force]` | 给终端里的 Agent 发一条并回车 |
+| `keepline wait <终端> [--until idle\|waiting\|working] [--timeout 秒]` | 等 Agent 进入某个状态，默认 `idle`；超时默认 1800 秒 |
+| `keepline events [--json]` | 先列现在的状态，再每有变化输出一行（started / waiting / error / done、approval、terminal_*、command_*）；要盯多个终端时用它，不要反复轮询 `list` |
+| `keepline explain <终端> [--json]` | 画面规则怎么读这块屏：状态、命中的规则、看到的行 |
+| `keepline split <终端> [--down] [--size 0.5] [--tab\|--here] [--cwd 目录] [--json] [-- 命令…]` | 在这个终端右边开一块新分屏，对半分；`--down` 开在下面，`--size` 是新分屏占的比例。只往右或往下开，用户原来那块一直在左上角。这个标签已经有 4 块、或切开后一边少于 20 列 / 5 行时，自动开到「<Agent> 的旁屏」标签（每个终端一个，满了再开「旁屏 2」），stderr 说明原因和标签名；`--here` 改为直接拒绝，`--tab` 不在当前标签切、直接开到旁屏。都不切换用户的画面和键盘焦点。目录默认跟那个 shell 现在所在的目录。stdout 只打印新终端编号（`--json` 还有 `tab` `tab_title` `beside` `overflow`）。给了命令就在新分屏的 shell 里跑，跑完留在 shell；一个参数当整行命令（可带 `&&`、管道），多个参数逐个转义；`--` 后面全算命令，选项都写在它前面 |
+| `keepline close <终端>` | 关掉这块分屏并结束里面的程序，标签里只剩它时连标签一起关；`events` 会报 `terminal_exited` |
 
 状态（`phase`）：`working` 在干活，`waiting` 在等用户回答（审批或选择题），`idle` 这一轮做完了，`-` 不是可识别的 Agent 对话（shell 或别的程序）。
 
@@ -67,12 +67,12 @@ printf '\033]7501;state=clear\033\\'                         # 不再报告
 ## 例子
 
 ```sh
-keeplined list
-keeplined read review --lines 80
-keeplined prompt review "跑一遍测试，把失败的列出来" --wait --timeout 600
-keeplined read review --lines 120
-printf '%s\n' "很长的说明……" | keeplined prompt 3f2a - --wait
-tests=$(keeplined split "$KEEPLINE_TERMINAL" --down --size 0.35 -- "cargo test 2>&1 | tail -40")
-keeplined read "$tests" --lines 40
-keeplined close "$tests"
+keepline list
+keepline read review --lines 80
+keepline prompt review "跑一遍测试，把失败的列出来" --wait --timeout 600
+keepline read review --lines 120
+printf '%s\n' "很长的说明……" | keepline prompt 3f2a - --wait
+tests=$(keepline split "$KEEPLINE_TERMINAL" --down --size 0.35 -- "cargo test 2>&1 | tail -40")
+keepline read "$tests" --lines 40
+keepline close "$tests"
 ```

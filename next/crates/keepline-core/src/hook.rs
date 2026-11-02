@@ -89,7 +89,7 @@ pub struct Payload {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub duration_ms: Option<u64>,
 }
-/// One line of `keeplined events`: a hook's payload under the hook's event name, or one
+/// One line of `keepline events`: a hook's payload under the hook's event name, or one
 /// only subscribers see: `approval` / `approval_gone` (the question in `detail`),
 /// `terminal_started` / `terminal_exited`, and `lagged` (events were dropped; read the
 /// snapshot again). Card fields only, never the conversation's words.

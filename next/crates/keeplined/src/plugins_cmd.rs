@@ -1,15 +1,15 @@
-//! `keeplined plugins`: checks the plugins under the config directory with the same code
+//! `keepline plugins`: checks the plugins under the config directory with the same code
 //! the app loads them with, so an Agent that wrote one knows before a restart whether it
 //! will take effect, and why not. It reads only; it never changes a plugin.
 use keepline_core::plugin::{self, Kind};
 use std::io;
 use std::path::{Path, PathBuf};
 
-pub const USAGE: &str = "用法：keeplined plugins [--dir 插件目录] [--json]
+pub const USAGE: &str = "用法：keepline plugins [--dir 插件目录] [--json]
 
 检查插件能不能装上：逐个读 plugin.json 和它提供的文件，说哪个生效、哪个为什么没生效。
 默认目录是 ${XDG_CONFIG_HOME:-$HOME/.config}/keepline/plugins。有问题时以 1 退出。
-改动在 Keepline 下次启动时生效。写插件的说明：keeplined --skill plugins";
+改动在 Keepline 下次启动时生效。写插件的说明：keepline --skill plugins";
 
 /// The first line of the `AGENTS.md` Keepline writes; a file without it is the user's.
 const MARK: &str =
@@ -18,12 +18,12 @@ const AGENTS_MD: &str = "# Keepline 配置目录
 
 这里是 Keepline 的配置。用户让你改 Keepline 时（加右键菜单或 ⌘P 里的命令、换左栏排法、在窗格上显示点什么、会话等你或做完时发通知、换完成动画、改状态颜色）：
 
-1. 先运行 `keeplined --skill plugins`，读完整说明：插件格式、规矩和例子。
-2. 插件写在 `plugins/<id>/`，一个想法一个插件。写完运行 `keeplined plugins` 检查，全是 ✓ 才算写好。
+1. 先运行 `keepline --skill plugins`，读完整说明：插件格式、规矩和例子。
+2. 插件写在 `plugins/<id>/`，一个想法一个插件。写完运行 `keepline plugins` 检查，全是 ✓ 才算写好。
 3. 改动在 Keepline 下次启动时生效，告诉用户重启后去哪里看。
 
 别改用户已有的插件和 `plugins/disabled.json`；快捷键、终端字体、完成动画在 App 的「设置」里改。
-在 Keepline 打开的终端里 `keeplined` 直接能用；驱动别的终端的说明是 `keeplined --skill`。
+在 Keepline 打开的终端里 `keepline` 直接能用；驱动别的终端的说明是 `keepline --skill`。
 ";
 
 /// Writes `<config>/AGENTS.md`, the note an Agent finds when it opens the config
@@ -293,7 +293,7 @@ mod tests {
         write_note(&dir).unwrap();
         let path = dir.join("AGENTS.md");
         let ours = std::fs::read_to_string(&path).unwrap();
-        assert!(ours.starts_with(MARK) && ours.contains("keeplined --skill plugins"));
+        assert!(ours.starts_with(MARK) && ours.contains("keepline --skill plugins"));
         std::fs::write(&path, format!("{MARK}\n旧版本")).unwrap();
         write_note(&dir).unwrap();
         assert_eq!(

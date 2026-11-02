@@ -1,4 +1,4 @@
-//! `keeplined events`: the sessions' states, then each change, to whoever subscribed.
+//! `keepline events`: the sessions' states, then each change, to whoever subscribed.
 //! The state changes are the plugin hooks' own (`plugin_hooks::Hooks`), tracked apart so a
 //! subscriber coming or going never moves what the hooks have seen. With nobody
 //! subscribed nothing here runs.

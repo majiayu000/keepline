@@ -1,6 +1,6 @@
-//! `keeplined remote --stdio`: this machine's terminals for a client elsewhere, a phone
+//! `keepline remote --stdio`: this machine's terminals for a client elsewhere, a phone
 //! app or another machine's workbench, one JSON object per line each way. Over ssh today
-//! (`ssh host keeplined remote --stdio`); a later transport carries the same lines.
+//! (`ssh host keepline remote --stdio`); a later transport carries the same lines.
 //! Requests run one after another in the order sent, so text then Enter arrive in that
 //! order; `events` and `watch` are streams that run beside them until closed.
 //! The message shapes are in `specs/extensions/remote-protocol.md`.
@@ -112,7 +112,7 @@ pub fn run(args: impl Iterator<Item = String>) -> io::Result<()> {
     }
     if !a.has("stdio") {
         return Err(io::Error::other(
-            "usage: keeplined remote --stdio | --relay <中继地址> [--relay-key <密钥>] | --pair --relay <中继地址> [--name <名字>] [--role view|answer|full] [--new-code] | --devices | --device <设备> --role <权限> | --revoke <设备>",
+            "usage: keepline remote --stdio | --relay <中继地址> [--relay-key <密钥>] | --pair --relay <中继地址> [--name <名字>] [--role view|answer|full] [--new-code] | --devices | --device <设备> --role <权限> | --revoke <设备>",
         ));
     }
     serve(

@@ -1,4 +1,4 @@
-//! Keeps `keeplined remote --relay` running while phones are turned on, as a child of the
+//! Keeps `keepline remote --relay` running while phones are turned on, as a child of the
 //! host: the network side stays in its own process, so a fault there ends only it. Its
 //! reports of who is on are passed to the app with the rest of the host's status.
 //!
@@ -193,13 +193,13 @@ impl Supervisor {
                 }
                 (inner.config.clone(), inner.generation)
             };
-            // Tests run the host inside their own binary and name keeplined here.
+            // Tests run the host inside their own binary and name keepline here.
             let exe = match std::env::var_os("KEEPLINE_REMOTE_EXE")
                 .map(PathBuf::from)
                 .map_or_else(std::env::current_exe, Ok)
             {
                 Ok(exe) => exe,
-                Err(e) => return eprintln!("keeplined: remote unavailable: {e}"),
+                Err(e) => return eprintln!("keepline: remote unavailable: {e}"),
             };
             let mut command = Command::new(exe);
             command
@@ -262,7 +262,7 @@ impl Supervisor {
                     pause = (pause * 2).min(Duration::from_secs(30));
                 }
                 _ => {
-                    let why = said.strip_prefix("keeplined: ").unwrap_or(&said).to_owned();
+                    let why = said.strip_prefix("keepline: ").unwrap_or(&said).to_owned();
                     self.failed(generation, why);
                 }
             }

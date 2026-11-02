@@ -121,7 +121,7 @@ fn daemon_fixture() {
     let root = PathBuf::from(
         std::env::var_os("KEEPLINE_FIXTURE_RUNTIME").expect("fixture subprocess only"),
     );
-    // As keeplined's main does, so the home's plugins are loaded.
+    // As keepline's main does, so the home's plugins are loaded.
     keepline_core::agent::install();
     keepline_core::hook::install();
     let roots = Agent::all()

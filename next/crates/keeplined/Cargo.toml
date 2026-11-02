@@ -7,7 +7,7 @@ description = "Keepline workbench host"
 license = "MIT"
 
 [[bin]]
-name = "keeplined"
+name = "keepline"
 path = "src/main.rs"
 
 [dependencies]

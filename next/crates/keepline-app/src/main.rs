@@ -225,7 +225,7 @@ fn stop_evidence_host() {
         .args([
             "-TERM",
             "-f",
-            &format!("keeplined serve --runtime {escaped}( |$)"),
+            &format!("keepline serve --runtime {escaped}( |$)"),
         ])
         .status();
 }

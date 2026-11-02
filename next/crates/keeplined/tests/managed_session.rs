@@ -917,7 +917,7 @@ fn two_cli_conversations_in_one_real_pty_keep_separate_ownership_after_restart()
     let first_script = format!(
         "echo $$ > {root}/pid1; while [ ! -f {root}/go ]; do sleep 0.05; done; {helper} hook --runtime {root} --agent codex < {root}/hook.json; echo $? > {root}/hook-status; sleep 30",
         root = h.root.display(),
-        helper = env!("CARGO_BIN_EXE_keeplined")
+        helper = env!("CARGO_BIN_EXE_keepline")
     );
     let command = format!(
         "{} -c {}; {} -c {}",
@@ -1100,8 +1100,8 @@ fn fixture_command(root: &std::path::Path) -> Command {
         .env("KEEPLINE_CODEX_CONTROL", root.join("codex-control.sock"))
         // Grok's registry of live sessions is read from its home, not the fixture roots.
         .env("GROK_HOME", root.join("grok-home"))
-        // The host starts `keeplined remote --relay`; here it runs inside the test binary.
-        .env("KEEPLINE_REMOTE_EXE", env!("CARGO_BIN_EXE_keeplined"));
+        // The host starts `keepline remote --relay`; here it runs inside the test binary.
+        .env("KEEPLINE_REMOTE_EXE", env!("CARGO_BIN_EXE_keepline"));
     command
 }
 #[test]
@@ -3742,7 +3742,7 @@ fn the_installed_hook_binds_a_new_claude_before_its_transcript_exists() {
     let status = h.root.join("hook-status");
     let detached = format!(
         "( sleep 0.3; KEEPLINE_HOOK={} /bin/sh -c {} < {}; echo $? > {} ) & exit 0",
-        shell_quote(env!("CARGO_BIN_EXE_keeplined")),
+        shell_quote(env!("CARGO_BIN_EXE_keepline")),
         shell_quote(&command),
         shell_quote(&payload.to_string_lossy()),
         shell_quote(&status.to_string_lossy()),
@@ -3867,7 +3867,7 @@ fn real_claude_hooks_bind_at_startup_before_any_prompt() {
     // `KEEPLINE_HOOK` is the test binary.
     let command = format!(
         "KEEPLINE_HOOK={}; {}",
-        shell_quote(env!("CARGO_BIN_EXE_keeplined")),
+        shell_quote(env!("CARGO_BIN_EXE_keepline")),
         keeplined::hooks::command(Agent::Claude)
     );
     let entry =
@@ -3992,7 +3992,7 @@ fn command_line_lists_reads_sends_and_refuses_to_type_into_an_approval() {
     let h = Host::start();
     h.setup();
     let cli = |args: &[&str]| {
-        let out = Command::new(env!("CARGO_BIN_EXE_keeplined"))
+        let out = Command::new(env!("CARGO_BIN_EXE_keepline"))
             .args(args)
             .args(["--runtime", &h.root.to_string_lossy()])
             .output()
@@ -4269,7 +4269,7 @@ fn keepline_agent_names_an_agent_hidden_behind_a_wrapper() {
     assert!(h.workspace().current_agent("unknown").is_none());
 }
 
-/// `keeplined events`: the state now, then every change in order, none twice: a terminal
+/// `keepline events`: the state now, then every change in order, none twice: a terminal
 /// starting, its Claude waiting at an approval, the approval answered and gone, the turn
 /// done, shell commands passing and failing, the terminal exiting. A subscriber that never
 /// reads costs the others nothing and is told `lagged` when it reads again.
@@ -4289,7 +4289,7 @@ fn events_stream_every_change_once_in_order_and_a_stalled_reader_blocks_nobody()
         s
     };
     // The command line, as a script would run it.
-    let mut cli = Command::new(env!("CARGO_BIN_EXE_keeplined"))
+    let mut cli = Command::new(env!("CARGO_BIN_EXE_keepline"))
         .args(["events", "--json", "--runtime", &h.root.to_string_lossy()])
         .stdout(Stdio::piped())
         .spawn()
@@ -4510,7 +4510,7 @@ fn ten_event_subscribers_cost_the_host_almost_nothing() {
     assert!(ten - none < 1., "{none:.2}% -> {ten:.2}%");
 }
 
-/// `keeplined split` and `close`, run as another Agent would: a pane opens beside a
+/// `keepline split` and `close`, run as another Agent would: a pane opens beside a
 /// terminal in its tab, runs its command in a shell that stays, and closes again.
 #[test]
 fn command_line_splits_a_pane_beside_a_terminal_and_closes_it() {
@@ -4518,7 +4518,7 @@ fn command_line_splits_a_pane_beside_a_terminal_and_closes_it() {
     h.setup();
     let cli = |args: &[&str]| {
         // The runtime goes first: after `--` it would be part of the pane's command.
-        let mut command = Command::new(env!("CARGO_BIN_EXE_keeplined"));
+        let mut command = Command::new(env!("CARGO_BIN_EXE_keepline"));
         command.args(&args[..1]);
         command.args(["--runtime", &h.root.to_string_lossy()]);
         let out = command
@@ -4693,7 +4693,7 @@ fn command_line_splits_a_pane_beside_a_terminal_and_closes_it() {
     }
 }
 
-/// `keeplined remote --stdio` as a phone or another machine runs it over ssh: it watches
+/// `keepline remote --stdio` as a phone or another machine runs it over ssh: it watches
 /// a terminal the workbench owns without taking it or resizing it, types named keys and
 /// text into it, streams events, and closes streams and itself cleanly.
 #[test]
@@ -4715,7 +4715,7 @@ fn remote_watches_and_drives_a_terminal_without_taking_or_resizing_it() {
     read_until(&mut app, &mut app_vt, "ready");
 
     let remote = || {
-        let mut child = Command::new(env!("CARGO_BIN_EXE_keeplined"))
+        let mut child = Command::new(env!("CARGO_BIN_EXE_keepline"))
             .args(["remote", "--stdio", "--runtime", &h.root.to_string_lossy()])
             .stdin(Stdio::piped())
             .stdout(Stdio::piped())
@@ -4954,7 +4954,7 @@ fn a_stalled_remote_watcher_slows_nobody_and_gets_the_screen_again() {
         started.elapsed()
     };
     let alone = flood(&mut app, &mut vt, "alone-done");
-    let mut child = Command::new(env!("CARGO_BIN_EXE_keeplined"))
+    let mut child = Command::new(env!("CARGO_BIN_EXE_keepline"))
         .args(["remote", "--stdio", "--runtime", &h.root.to_string_lossy()])
         .stdin(Stdio::piped())
         .stdout(Stdio::piped())
@@ -5169,9 +5169,9 @@ impl Phone {
     }
 }
 
-/// Pairs one phone and reads back the link `keeplined remote --pair` printed.
+/// Pairs one phone and reads back the link `keepline remote --pair` printed.
 fn pair(root: &str, base: &str, name: &str, role: &str) -> keepline_remote::link::Link {
-    let out = Command::new(env!("CARGO_BIN_EXE_keeplined"))
+    let out = Command::new(env!("CARGO_BIN_EXE_keepline"))
         .args([
             "remote", "--pair", "--relay", base, "--name", name, "--role", role,
         ])
@@ -5252,7 +5252,7 @@ fn a_phone_on_a_relay_drives_a_terminal_through_a_channel_the_relay_cannot_read(
     );
     assert_ne!(full.key, viewer.key);
     let machine = || {
-        Command::new(env!("CARGO_BIN_EXE_keeplined"))
+        Command::new(env!("CARGO_BIN_EXE_keepline"))
             .args(["remote", "--relay", &base, "--runtime", &root])
             .stderr(Stdio::piped())
             .spawn()
@@ -5349,7 +5349,7 @@ fn a_phone_on_a_relay_drives_a_terminal_through_a_channel_the_relay_cannot_read(
 
     // A new role drops the open session; back in, the device has the new role.
     let changed = Instant::now();
-    let out = Command::new(env!("CARGO_BIN_EXE_keeplined"))
+    let out = Command::new(env!("CARGO_BIN_EXE_keepline"))
         .args([
             "remote",
             "--device",
@@ -5379,7 +5379,7 @@ fn a_phone_on_a_relay_drives_a_terminal_through_a_channel_the_relay_cannot_read(
 
     // Unpairing the viewer drops its open session within the recheck, and it cannot return.
     let revoked = Instant::now();
-    let out = Command::new(env!("CARGO_BIN_EXE_keeplined"))
+    let out = Command::new(env!("CARGO_BIN_EXE_keepline"))
         .args(["remote", "--revoke", "只看的平板", "--runtime", &root])
         .output()
         .unwrap();
@@ -5389,7 +5389,7 @@ fn a_phone_on_a_relay_drives_a_terminal_through_a_channel_the_relay_cannot_read(
     eprintln!("unpaired → session dropped in {took:?}");
     assert!(took < Duration::from_secs(3), "{took:?}");
     assert_eq!(Phone::try_connect(&viewer).err(), Some(Some(4401)));
-    let listed = Command::new(env!("CARGO_BIN_EXE_keeplined"))
+    let listed = Command::new(env!("CARGO_BIN_EXE_keepline"))
         .args(["remote", "--devices", "--runtime", &root])
         .output()
         .unwrap();
@@ -5515,7 +5515,7 @@ fn the_host_keeps_phones_on_a_relay_and_shows_the_app_who_is_on() {
         .unwrap();
     let root = h.root.to_string_lossy().into_owned();
     let cli = |args: &[&str]| {
-        let out = Command::new(env!("CARGO_BIN_EXE_keeplined"))
+        let out = Command::new(env!("CARGO_BIN_EXE_keepline"))
             .arg("remote")
             .args(args)
             .args(["--runtime", &root])
@@ -5657,7 +5657,7 @@ fn the_host_keeps_phones_on_a_relay_and_shows_the_app_who_is_on() {
     assert!(phone.closed(Duration::from_secs(5)).is_some());
 }
 
-/// A phone's chat view: `chat` over `keeplined remote --stdio` gives a conversation's user
+/// A phone's chat view: `chat` over `keepline remote --stdio` gives a conversation's user
 /// and Agent messages, the newest first page, then only newer ones with `after` and older
 /// ones with `before`, named by the terminal running it or by its session.
 #[test]
@@ -5712,7 +5712,7 @@ fn remote_chat_pages_a_conversation_by_terminal_and_session() {
         std::thread::sleep(Duration::from_millis(50));
     }
 
-    let mut child = Command::new(env!("CARGO_BIN_EXE_keeplined"))
+    let mut child = Command::new(env!("CARGO_BIN_EXE_keepline"))
         .args(["remote", "--stdio", "--runtime", &h.root.to_string_lossy()])
         .stdin(Stdio::piped())
         .stdout(Stdio::piped())
@@ -5850,7 +5850,7 @@ fn the_js_phone_client_chats_through_a_real_relay() {
     let (base, _stop, _relay) = local_relay("127.0.0.1:0", Default::default());
     let root = h.root.to_string_lossy().into_owned();
     let link = pair(&root, &base, "JS 手机", "full");
-    let mut machine = Command::new(env!("CARGO_BIN_EXE_keeplined"))
+    let mut machine = Command::new(env!("CARGO_BIN_EXE_keepline"))
         .args(["remote", "--relay", &base, "--runtime", &root])
         .stderr(Stdio::null())
         .spawn()
@@ -5963,7 +5963,7 @@ fn phone_demo_machine() {
     let (base, _stop, _relay) = local_relay("127.0.0.1:8790", Default::default());
     let root = h.root.to_string_lossy().into_owned();
     let link = pair(&root, &base, "演示手机", "full");
-    let mut machine = Command::new(env!("CARGO_BIN_EXE_keeplined"))
+    let mut machine = Command::new(env!("CARGO_BIN_EXE_keepline"))
         .args(["remote", "--relay", &base, "--runtime", &root])
         .stderr(Stdio::inherit())
         .spawn()
