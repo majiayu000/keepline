@@ -105,3 +105,10 @@
   - 不带 `terminal` / `session` 时报错。
 - 相邻的远程测试和中继测试照常通过：`remote_watches…`、`a_stalled_remote_watcher…`、两个中继端到端测试。
 - 已知限制：日志被重新索引（换文件、截断）时 `seq` 会变。客户端发现 `after` 取回的 `seq` 比手上的小，或者取不到，就重新取最新一页。
+
+### 第 1 步：加密和帧（2026-11-02）：采用
+
+- App 放在 `next/mobile`，用 Expo SDK 58、React Native 0.88、TypeScript。加密层在 `src/remote/`：`noise.ts`（握手、DATA/ACK）、`link.ts`（配对链接、令牌、中继地址）、`client.ts`（WebSocket、按 id 对应请求、流、ACK）。只用纯 JS 的 @noble 库，没有原生模块。
+- `bun test`：`vectors/v1.json` 里的码、令牌、令牌哈希、PSK、两条握手消息、三条加密消息、中继帧、配对链接，全部逐字节一致；改错密钥、篡改、重放都会被拒。这是 Noise 部分第一次有第二种实现交叉验证。
+- 端到端测试 `the_js_phone_client_chats_through_a_real_relay`（`cargo test -p keeplined --test managed_session -- --ignored the_js_phone`，需要 bun）：起真的 `keeplined` 和 `keepline-relay`，配对一台 full 权限的设备，JS 客户端经中继完成握手（本机 25 ms），收到 hello、list、events，读到对话。手机发的话原样进了终端，Agent 的回复 377 ms 后经 `chat after` 读回。
+- 还要处理：React Native 的 Hermes 没有 `crypto.getRandomValues`，第 2 步接 App 时用 expo-crypto 补上。

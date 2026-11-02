@@ -5713,3 +5713,90 @@ fn remote_chat_pages_a_conversation_by_terminal_and_session() {
     child.kill().ok();
     child.wait().ok();
 }
+
+/// The phone app's own client (`next/mobile/src/remote`, TypeScript) against this machine
+/// through a real relay: Noise handshake, hello, events, list, chat, a message sent into
+/// the conversation and the Agent's reply read back. Needs bun and `bun install` in
+/// `next/mobile`, so it runs only when asked: `cargo test … -- --ignored the_js_phone`.
+#[test]
+#[ignore = "needs bun and next/mobile's node_modules"]
+fn the_js_phone_client_chats_through_a_real_relay() {
+    use serde_json::{json, Value};
+    let h = Host::start();
+    h.setup();
+    let logs = h.root.join("logs/claude");
+    fs::create_dir_all(&logs).unwrap();
+    let cli = h.root.join("claude");
+    std::os::unix::fs::symlink("/bin/sh", &cli).unwrap();
+    let id = uuid::Uuid::new_v4().to_string();
+    let path = logs.join(format!("{id}.jsonl"));
+    let at = keepline_core::content::now();
+    let user = json!({"type":"user","sessionId":id,"uuid":"u0","cwd":"/project","entrypoint":"cli","userType":"external","timestamp":at,"message":{"content":"帮我看看测试"}});
+    let agent = |uuid: &str, text: &str| json!({"type":"assistant","sessionId":id,"uuid":uuid,"timestamp":at,"message":{"content":[{"type":"text","text":text}]}});
+    let seed = h.root.join("seed");
+    fs::write(&seed, format!("{user}\n{}\n", agent("a0", "测试都过了"))).unwrap();
+    let reply = h.root.join("reply");
+    fs::write(&reply, format!("{}\n", agent("a1", "收到手机的消息"))).unwrap();
+    let got = h.root.join("got");
+    let script = format!(
+        "cat {seed} > {log}; read -r line; printf '%s' \"$line\" > {got}; cat {reply} >> {log}; read -r end",
+        seed = shell_quote(&seed.to_string_lossy()),
+        log = shell_quote(&path.to_string_lossy()),
+        got = shell_quote(&got.to_string_lossy()),
+        reply = shell_quote(&reply.to_string_lossy()),
+    );
+    h.call(h.launch(
+        "phone-chat",
+        &format!(
+            "exec {} -c {} fixture --session-id {}",
+            shell_quote(&cli.to_string_lossy()),
+            shell_quote(&script),
+            id
+        ),
+    ))
+    .unwrap();
+
+    let (base, _stop, _relay) = local_relay("127.0.0.1:0", Default::default());
+    let root = h.root.to_string_lossy().into_owned();
+    let link = pair(&root, &base, "JS 手机", "full");
+    let mut machine = Command::new(env!("CARGO_BIN_EXE_keeplined"))
+        .args(["remote", "--relay", &base, "--runtime", &root])
+        .stderr(Stdio::null())
+        .spawn()
+        .unwrap();
+    // The machine registers with the relay before a phone can reach it.
+    let until = Instant::now() + Duration::from_secs(10);
+    while Phone::try_connect(&link).is_err() {
+        assert!(Instant::now() < until, "machine never reached the relay");
+        std::thread::sleep(Duration::from_millis(50));
+    }
+
+    let mobile = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../mobile");
+    let out = Command::new(std::env::var("KEEPLINE_BUN").unwrap_or_else(|_| "bun".into()))
+        .current_dir(&mobile)
+        .args(["test/phone-e2e.ts", &link.text(), "phone-chat"])
+        .output()
+        .expect("bun");
+    machine.kill().ok();
+    machine.wait().ok();
+    assert!(
+        out.status.success(),
+        "{}",
+        String::from_utf8_lossy(&out.stderr)
+    );
+    let seen: Value = serde_json::from_slice(&out.stdout).unwrap();
+    eprintln!("js phone: {seen}");
+    assert_eq!(seen["role"], "full");
+    assert!(seen["ops"].as_array().unwrap().contains(&json!("chat")));
+    assert_eq!(seen["card"]["id"], "phone-chat");
+    assert_eq!(
+        seen["before"],
+        json!(["user:帮我看看测试", "agent:测试都过了"])
+    );
+    assert_eq!(seen["after"], json!(["agent:收到手机的消息"]));
+    assert!(seen["bad"]
+        .as_str()
+        .unwrap()
+        .contains("terminal 或 session"));
+    assert_eq!(fs::read_to_string(&got).unwrap(), "手机发来的话");
+}
