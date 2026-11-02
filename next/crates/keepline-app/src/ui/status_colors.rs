@@ -3,7 +3,7 @@
 //!
 //! ```json
 //! {
-//!   "status": { "running": "#e8c547", "closed": "#4cc38a" },
+//!   "status": { "running": "#e8c547", "review": "#4cc38a" },
 //!   "tone": { "ok": "#4cc38a", "danger": "#e5534b" },
 //!   "seen": { "title": "#b9b7b4", "status": "#7d7c7a", "dot": "ring" }
 //! }
@@ -55,7 +55,8 @@ const SLATE: u32 = 0x8a9bb0;
 const ORANGE: u32 = 0xe8823a;
 const RED: u32 = 0xe5534b;
 /// The default hue of each status (2026-11-02): yellow is only ever work in flight,
-/// green only ever what you marked complete.
+/// green only ever a finished turn waiting for you; what you marked complete is done
+/// with and drops back to the muted tone.
 const fn default_hue(status: Status) -> Option<u32> {
     match status {
         Status::Waiting => Some(ORANGE),
@@ -63,12 +64,11 @@ const fn default_hue(status: Status) -> Option<u32> {
         // 等后台 counts with 在跑; its ◔ tells them apart.
         Status::Running | Status::Background => Some(YELLOW),
         // Unseen fills the dot, seen draws it as a ring.
-        Status::Review => Some(0x8f93ff),
-        Status::Closed => Some(GREEN),
+        Status::Review => Some(GREEN),
         // Quiet states share one slate and differ by glyph: ‖ ○ ◷.
         Status::Paused | Status::Fresh | Status::Deferred => Some(SLATE),
-        // The muted text tone.
-        Status::Stale => None,
+        // The muted text tone: 很久没动, and 做完了 once you marked it (its ✓ says so).
+        Status::Stale | Status::Closed => None,
     }
 }
 impl Default for StatusColors {
@@ -216,7 +216,7 @@ mod tests {
     }
 
     /// Two states that share a hue must differ by glyph, and the loud hues belong to one
-    /// state family each: yellow is in flight, green is closed.
+    /// state family each: yellow is in flight, green is a finished turn for you to check.
     #[test]
     fn shared_hues_are_told_apart_by_glyph() {
         let d = StatusColors::default();
@@ -229,7 +229,7 @@ mod tests {
         }
         for s in Status::ALL {
             assert_eq!(d.hue(s) == YELLOW, s.working(), "{s:?}");
-            assert_eq!(d.hue(s) == GREEN, s == Status::Closed, "{s:?}");
+            assert_eq!(d.hue(s) == GREEN, s == Status::Review, "{s:?}");
         }
     }
 }

@@ -99,11 +99,9 @@ mod tests {
     /// from that session, not from a named status.
     #[test]
     fn named_status_colors_stay_where_sessions_are_drawn() {
-        const DRAWS_SESSIONS: [&str; 8] = [
+        const DRAWS_SESSIONS: [&str; 7] = [
             // Column icons, the 在跑 sweep and 做完了 marks on the board.
             "workbench/board.rs",
-            // The 做完了 stamp when you mark one complete.
-            "workbench/complete.rs",
             // The 很久没动 age chart.
             "workbench/overview.rs",
             // A deferred step in the cleanup walk.
