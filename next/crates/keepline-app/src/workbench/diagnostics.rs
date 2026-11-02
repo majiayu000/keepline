@@ -209,6 +209,20 @@ fn cores(percent: f64) -> String {
 fn axis_max(largest: f64, step: f64, floor: f64) -> f64 {
     ((largest / step).ceil() * step).max(floor)
 }
+/// The CPU axis end and tick step: the smallest of 50 %, 100 %, 200 %, 500 %, 1000 % …
+/// that needs at most six intervals, so labels of a 16-core machine never pile up.
+fn cpu_scale(largest: f64) -> (f64, f64) {
+    let steps = [1., 2., 5.]
+        .into_iter()
+        .cycle()
+        .zip((0..).flat_map(|n| [10f64.powi(n); 3]))
+        .map(|(k, decade)| k * decade * 100.);
+    let step = std::iter::once(50.)
+        .chain(steps)
+        .find(|&step| (largest / step).ceil() <= 6.)
+        .unwrap();
+    (axis_max(largest, step, 100.), step)
+}
 fn heading(text: &'static str, aside: &'static str) -> gpui::Div {
     div()
         .flex()
@@ -377,7 +391,14 @@ fn axis(max: f64, step: f64, reference: Option<f64>, label_width: f32) -> gpui::
         } else {
             format!("{v:.0}%")
         };
-        let mut tick = tick(text, (v / max) as f32);
+        // The value column to the right leaves room, so the end label centres on its
+        // tick like the others instead of leaning into its neighbour.
+        let at = (v / max) as f32;
+        let mut tick = if at >= 0.99 {
+            tick(text, 0.5).left(gpui::relative(1.))
+        } else {
+            tick(text, at)
+        };
         if Some(v) == reference {
             tick = tick
                 .text_color(T::color(T::secondary()))
@@ -413,6 +434,18 @@ fn plot(value: f64, max: f64, step: f64, reference: Option<f64>, color: u32) -> 
             line.w(px(T::BORDER_WIDTH)).bg(T::color(T::chart_grid()))
         });
         v += step;
+    }
+    if let Some(reference) = reference.filter(|r| r % step != 0.) {
+        plot = plot.child(
+            div()
+                .absolute()
+                .top_0()
+                .bottom_0()
+                .left(gpui::relative((reference / max) as f32))
+                .border_l(px(T::BORDER_WIDTH))
+                .border_dashed()
+                .border_color(T::color(T::chart_ref())),
+        );
     }
     plot.child(
         div()
@@ -803,8 +836,7 @@ impl DiagnosticView {
     }
     fn cpu_ranking(&self, report: &Diagnostics, cx: &Context<Self>) -> gpui::Div {
         let ranked: Vec<&AppUsage> = report.ranked().collect();
-        let max = axis_max(ranked.first().map_or(0., |a| a.cpu_percent), 50., 100.);
-        let step = if max <= 200. { 50. } else { 100. };
+        let (max, step) = cpu_scale(ranked.first().map_or(0., |a| a.cpu_percent));
         let mut column = div()
             .flex_1()
             .min_w_0()
@@ -901,7 +933,12 @@ impl DiagnosticView {
                     &app.name,
                     extra,
                     bars,
-                    format!("{:.1}%", app.cpu_percent),
+                    // Four digits drop the decimal so the value column keeps one line.
+                    if app.cpu_percent >= 1000. {
+                        format!("{:.0}%", app.cpu_percent)
+                    } else {
+                        format!("{:.1}%", app.cpu_percent)
+                    },
                     T::BAR_LABEL,
                 )
                 .tooltip(tip(lines)),
@@ -968,8 +1005,7 @@ impl DiagnosticView {
     fn scatter(&self, report: &Diagnostics) -> gpui::Div {
         const MB: f64 = 1_048_576.;
         let ranked: Vec<&AppUsage> = report.ranked().collect();
-        let x_max = axis_max(ranked.first().map_or(0., |a| a.cpu_percent), 50., 100.);
-        let x_step = if x_max <= 200. { 50. } else { 100. };
+        let (x_max, x_step) = cpu_scale(ranked.first().map_or(0., |a| a.cpu_percent));
         let biggest = ranked
             .iter()
             .map(|a| a.rss_bytes as f64 / MB)
@@ -1052,6 +1088,18 @@ impl DiagnosticView {
                 line.w(px(T::BORDER_WIDTH)).bg(T::color(T::chart_grid()))
             });
             v += x_step;
+        }
+        if 100. % x_step != 0. {
+            area = area.child(
+                div()
+                    .absolute()
+                    .top_0()
+                    .bottom_0()
+                    .left(gpui::relative((100. / x_max) as f32))
+                    .border_l(px(T::BORDER_WIDTH))
+                    .border_dashed()
+                    .border_color(T::color(T::chart_ref())),
+            );
         }
         for app in &ranked {
             let (px_, py_) = (x(app.cpu_percent), y(app.rss_bytes as f64 / MB));
@@ -1642,6 +1690,16 @@ impl Workbench {
 mod row_tests {
     use super::*;
 
+    #[test]
+    fn cpu_axis_keeps_at_most_six_intervals() {
+        assert_eq!(cpu_scale(30.), (100., 50.));
+        assert_eq!(cpu_scale(180.), (200., 50.));
+        assert_eq!(cpu_scale(450.), (500., 100.));
+        assert_eq!(cpu_scale(1108.9), (1200., 200.));
+        assert_eq!(cpu_scale(1500.), (1500., 500.));
+        assert_eq!(cpu_scale(3100.), (4000., 1000.));
+        assert_eq!(cpu_scale(6400.), (8000., 2000.));
+    }
     #[test]
     fn ranking_grows_to_match_the_right_column() {
         // No GPU data: the right column is just the scatter, so the old 10 stands.
