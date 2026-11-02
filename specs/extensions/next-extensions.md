@@ -178,4 +178,4 @@
 
 **放弃条件**：M4 没完成前不开工；只要推送就够用，就不做回复（回复牵涉远程输入终端，安全成本高）。
 
-**11-01 更新**：用户要手机能完全控制，并自己写跨平台 App；要求多本机、多远程，不用 Tailscale。改按 [远程协议](remote-protocol.md) 做：第一步（`keeplined remote --stdio`，走 SSH 管道）已完成；手机连接推荐 iroh，待用户定。推送方案见 [方向稿](design/phone.html)，作为补充仍可做。
+**11-01 更新**：用户要手机能完全控制，并自己写跨平台 App；要求多本机、多远程，不用 Tailscale。改按 [远程协议](remote-protocol.md) 做：第一步（`keeplined remote --stdio`，走 SSH 管道）已完成；手机连接 11-01 定为自建 Rust 中继（不用 iroh），11-02 后台托管和 App 面板已完成，见 [relay.md](relay.md)。手机 App 和桌面多机的开工说明见 [phone-app.md](phone-app.md)、[multi-machine.md](multi-machine.md)。推送方案见 [方向稿](design/phone.html)，作为补充仍可做。

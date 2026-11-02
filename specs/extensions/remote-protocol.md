@@ -38,20 +38,13 @@
 | WebRTC | 先通过信令服务器交换地址，再点对点直连 | 要信令服务器和 TURN 服务器 | 端到端加密 | 都有，但接起来最重 | 不推荐：iroh 已经把打洞和中继做好了 |
 | Headscale / ZeroTier / NetBird | 自建或第三方虚拟局域网 | 视方案而定 | WireGuard 加密 | 要装客户端 | 和 Tailscale 同一类，按用户意思不选 |
 
-跨平台 App 的建议：用 **Tauri 2 的移动端**（iOS + Android + 桌面）。
-- Rust 那一层直接用 iroh 和这里的协议，界面用 Web 技术写。
-- 终端画面用 xterm.js：协议给的 `vt` 就是它能直接回放的字节。
-- 用户也可以选 Flutter 或 React Native，只要能连上 iroh：通过 FFI，或者用它的 Swift、Kotlin 绑定。协议本身只是 JSON 行，和用什么框架无关。
-
-**没验**：
-- iroh 移动端绑定的成熟度、iOS 后台能不能保持连接、公共中继的限额，都还没亲手试。这是第二步开工前要先验的。
-- 打洞成功率「约九成」来自 iroh 官方文档，没有在你的网络里测过。
+跨平台 App 的做法改看 [phone-app.md](phone-app.md)（11-02）。原先建议的 Tauri 2 和 iroh 都要在 App 里嵌 Rust，和 11-01「App 里不嵌 Rust」的决定冲突，已撤回。
 
 ## 协议 v1（第一步已实现）
 
 传输层只负责一件事：两边各送一串 UTF-8 的 JSON，一行一个对象，每行不超过 1 MiB。
 - SSH 下就是 `ssh 主机 keeplined remote --stdio` 的标准输入和输出。
-- 以后换成 iroh 的流，或者 WebSocket 的文本帧，每条消息的内容不变。
+- 经中继时，同样的字节放进 Noise 加密通道里传（见 [relay.md](relay.md)），每条消息的内容不变。
 
 ### 请求（客户端 → 机器）
 
@@ -113,13 +106,14 @@
 
 ## 放弃条件
 
-- 第二步（iroh）试下来，iOS 或 Android 上连不稳，或者公共中继不能用，就退回自建中继。协议不动。
-- 你两周内没开始写手机 App，第二步先停，SSH 管道给桌面多机用。
+- ~~第二步（iroh）试下来连不稳就退回自建中继~~：11-01 直接改成自建中继，这一条不再适用。
+- 手机 App 和桌面多机各自的放弃条件见 [phone-app.md](phone-app.md)、[multi-machine.md](multi-machine.md)。
 
-## 下一步（要你定）
+## 下一步（11-02 更新）
 
 1. **手机怎么连**：已定，并完成了第一版（11-01）。
    - 用自己写的 Rust 中继，加两端 Noise 加密，协议沿用 alma-relay，详见 [relay.md](relay.md)。
    - iroh 不做了：它要求手机 App 里嵌 Rust，用户不接受。
-2. **配对和权限**：扫码配对，每台设备分「只看 / 能答审批 / 完全控制」三档，可以撤销，每次操作都记日志。这一步和第 1 项一起做，SSH 管道下不需要，SSH 本身就是认证。
-3. **桌面工作台连远程机器**（SSH 多机）：侧栏按机器分组，复用这套协议。
+2. **配对和权限**：已完成（11-01），见 [relay.md](relay.md)。SSH 管道下不需要，SSH 本身就是认证。
+3. **手机 App**：用户自己写，开工说明见 [phone-app.md](phone-app.md)。
+4. **桌面工作台连远程机器**：开工说明见 [multi-machine.md](multi-machine.md)。
