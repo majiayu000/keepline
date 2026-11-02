@@ -102,8 +102,9 @@ impl Host {
         let mut w = self.workspace.clone();
         w.agent_sessions
             .retain(|s| s.terminal.is_some() || self.index.recent(s.updated));
-        w.content
-            .retain(|id, _| w.agent_sessions.iter().any(|s| &s.id == id));
+        let retained: std::collections::HashSet<_> =
+            w.agent_sessions.iter().map(|s| s.id.as_str()).collect();
+        w.content.retain(|id, _| retained.contains(id.as_str()));
         // A spinning title is a turn running even where the log shows none, as when only
         // the tail of a long turn was read. Never the other way: a still title proves
         // nothing the log has not said.
@@ -1006,6 +1007,114 @@ mod recognition_tests {
         assert_eq!(index.cached().unwrap().len(), 2);
         drop(shared);
         drop(index);
+        fs::remove_dir_all(root).unwrap();
+    }
+}
+
+#[cfg(test)]
+mod snapshot_tests {
+    use super::*;
+    fn fixture() -> (Host, std::path::PathBuf) {
+        let root = std::env::temp_dir().join(format!("kl-snapshot-{}", uuid::Uuid::new_v4()));
+        fs::create_dir_all(&root).unwrap();
+        let (store, _) = Store::open(&root).unwrap();
+        let index = crate::log_index::Index::open(&root, vec![]).unwrap();
+        let host = Host {
+            store,
+            workspace: Workspace::default(),
+            terminals: HashMap::new(),
+            instance: "test".into(),
+            index,
+            recognition: RecognitionStatus::default(),
+            log_events: None,
+            recognition_subscribers: HashMap::new(),
+            event_subscribers: HashMap::new(),
+            events: Default::default(),
+            exits: None,
+            agent_pids: HashMap::new(),
+            unbound_pids: HashMap::new(),
+            unrecorded_pids: HashMap::new(),
+            submits: HashMap::new(),
+            input_probes: Default::default(),
+            deadlines: None,
+            myself: std::sync::Weak::new(),
+            screen_waits: HashMap::new(),
+            title_busy: HashMap::new(),
+            screen_busy: HashMap::new(),
+            hooks: Default::default(),
+            reconciled: HashMap::new(),
+            remote: None,
+        };
+        (host, root)
+    }
+    fn session(id: &str, updated: u64, terminal: Option<&str>, current: bool) -> AgentSession {
+        AgentSession {
+            id: id.into(),
+            runtime: Agent::Codex,
+            cli_session_id: id.into(),
+            terminal: terminal.map(str::to_owned),
+            current,
+            task: None,
+            outcome: Outcome::Open,
+            updated,
+            cwd: "/tmp".into(),
+            transcript: String::new(),
+            name: String::new(),
+            binding: None,
+        }
+    }
+    #[test]
+    fn snapshot_keeps_only_retained_content_and_applies_screen_wait_without_mutating_source() {
+        use keepline_core::content::{Content, Turn};
+        let (mut host, root) = fixture();
+        host.workspace.agent_sessions = vec![
+            session(
+                "recent-no-content",
+                keepline_core::content::now(),
+                None,
+                false,
+            ),
+            session("expired", 0, None, false),
+            session("live", 0, Some("t"), true),
+            session("historical", 0, Some("history"), false),
+        ];
+        for id in ["expired", "live", "historical", "orphan"] {
+            host.workspace.content.insert(id.into(), Content::default());
+        }
+        let seen = crate::screen_rules::explain(
+            crate::screen_rules::bundled(Agent::Claude),
+            "Do you want to continue?\n❯ 1. Yes\n  2. No",
+        );
+        host.title_busy.insert("t".into(), ("live".into(), 1));
+        assert!(seen.waiting());
+        host.screen_waits.insert("t".into(), seen);
+        let snapshot = host.snapshot();
+        assert_eq!(
+            snapshot
+                .agent_sessions
+                .iter()
+                .map(|s| s.id.as_str())
+                .collect::<Vec<_>>(),
+            ["recent-no-content", "live", "historical"]
+        );
+        let mut ids = snapshot
+            .content
+            .keys()
+            .map(String::as_str)
+            .collect::<Vec<_>>();
+        ids.sort();
+        assert_eq!(ids, ["historical", "live"]);
+        let live = &snapshot.content["live"];
+        assert_eq!(live.turn, Turn::Waiting);
+        assert_eq!(live.waiting_episode, 1);
+        assert_eq!(live.approval, "Do you want to continue?");
+        assert_eq!(live.signal, "画面");
+        assert_eq!(snapshot.content["historical"], Content::default());
+        assert_eq!(host.workspace.agent_sessions.len(), 4);
+        assert_eq!(host.workspace.content["live"], Content::default());
+        host.workspace.agent_sessions.clear();
+        assert!(host.snapshot().content.is_empty());
+        drop(host);
         fs::remove_dir_all(root).unwrap();
     }
 }
