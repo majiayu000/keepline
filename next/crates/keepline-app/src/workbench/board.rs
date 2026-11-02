@@ -10,7 +10,7 @@ use gpui::{
 use keepline_core::model::Agent;
 use std::time::Duration;
 
-#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+#[derive(Clone, Copy, PartialEq, Eq, Hash, Debug)]
 pub(super) enum Column {
     Todo,
     Running,
@@ -20,6 +20,32 @@ pub(super) enum Column {
     Stale,
 }
 
+/// Each column keeps GPUI's measured item heights and its own scroll anchor.
+pub(super) struct ColumnList {
+    pub(super) state: gpui::ListState,
+    ids: Vec<String>,
+    revision: u64,
+}
+impl ColumnList {
+    fn sync(&mut self, ids: &[String], revision: u64) {
+        let prefix = self.ids.iter().zip(ids).take_while(|(a, b)| a == b).count();
+        let suffix = self.ids[prefix..]
+            .iter()
+            .rev()
+            .zip(ids[prefix..].iter().rev())
+            .take_while(|(a, b)| a == b)
+            .count();
+        if prefix + suffix != self.ids.len() || self.ids.len() != ids.len() {
+            self.state
+                .splice(prefix..self.ids.len() - suffix, ids.len() - prefix - suffix);
+            self.ids = ids.to_vec();
+        }
+        if self.revision != revision {
+            self.state.remeasure_items(0..self.state.item_count());
+            self.revision = revision;
+        }
+    }
+}
 impl Column {
     fn label(self) -> &'static str {
         match self {
@@ -237,10 +263,32 @@ fn wait_bars(waited: u64, hue: Hsla) -> gpui::Div {
 }
 
 pub(super) fn column_icon(column: Column) -> gpui::AnyElement {
+    animated_column_icon(column, false)
+}
+fn animated_column_icon(column: Column, animate: bool) -> gpui::AnyElement {
     let icon =
         |path: &'static str, color: Hsla| svg().path(path).size(px(HEAD_ICON)).text_color(color);
     let frame = || div().relative().size(px(HEAD_ICON)).flex_shrink_0();
     let overlay = |e: gpui::AnyElement| div().absolute().top_0().left_0().child(e);
+    if !animate {
+        match column {
+            Column::Running => {
+                return frame()
+                    .child(icon(
+                        "icons/ring.svg",
+                        Group::Running.colors().0.opacity(0.25),
+                    ))
+                    .child(overlay(
+                        icon("icons/arc.svg", Group::Running.colors().0).into_any_element(),
+                    ))
+                    .into_any_element();
+            }
+            Column::Needs => {
+                return icon("icons/target.svg", Group::Waiting.colors().0).into_any_element();
+            }
+            _ => (),
+        }
+    }
     match column {
         Column::Todo => icon("icons/dashed.svg", T::color(T::muted())).into_any_element(),
         Column::Stale => icon("icons/dashed.svg", Group::Stale.colors().0).into_any_element(),
@@ -347,6 +395,10 @@ impl Workbench {
             .filter(|(col, _)| *col == c)
             .map(|(_, s)| s)
             .collect();
+        self.sort_column(c, &mut list);
+        list
+    }
+    fn sort_column(&self, c: Column, list: &mut [&AgentSession]) {
         // An Agent holding a live terminal for you comes first, then what has waited
         // longest; elsewhere the latest comes first.
         if c == Column::Needs {
@@ -359,30 +411,53 @@ impl Workbench {
         } else {
             list.sort_by_key(|s| std::cmp::Reverse(self.session_updated(s)));
         }
-        list
     }
-    pub(super) fn board_view(&self, cx: &Context<Self>) -> gpui::Stateful<gpui::Div> {
+    pub(super) fn board_view(
+        &self,
+        window: &Window,
+        cx: &Context<Self>,
+    ) -> gpui::Stateful<gpui::Div> {
         let at = now();
         let sessions = self.board_sessions(at);
         let todos = self.board_todos();
-        let in_column = |c: Column| self.column_sessions(c, at);
         let open = sessions.iter().filter(|(c, _)| *c != Column::Done).count();
         let stale = sessions.iter().filter(|(c, _)| *c == Column::Stale).count();
-        let mut columns = vec![self.todo_column(&todos, cx).into_any_element()];
+        let mut grouped: HashMap<Column, Vec<&AgentSession>> = HashMap::new();
+        for (column, session) in sessions {
+            grouped.entry(column).or_default().push(session);
+        }
+        let todo_ids: Vec<_> = todos.iter().map(|t| t.id.clone()).collect();
+        let mut columns = vec![
+            self.column(
+                Column::Todo,
+                todo_ids.len(),
+                self.card_list(Column::Todo, todo_ids, cx),
+                window.is_window_active(),
+                cx,
+            )
+            .into_any_element(),
+        ];
         let mut shown = vec![Column::Running, Column::Needs, Column::Review, Column::Done];
         if self.overview.show_stale {
             shown.push(Column::Stale);
         }
         for c in shown {
-            let list = in_column(c);
+            let mut list = grouped.remove(&c).unwrap_or_default();
+            self.sort_column(c, &mut list);
             if c == Column::Running && !list.is_empty() {
                 self.tick_turn(cx);
             }
-            let cards: Vec<_> = list
-                .iter()
-                .map(|s| self.board_card(s, c, at, cx).into_any_element())
-                .collect();
-            columns.push(self.column(c, list.len(), cards, cx).into_any_element());
+            let ids = list.iter().map(|s| s.id.clone()).collect();
+            columns.push(
+                self.column(
+                    c,
+                    list.len(),
+                    self.card_list(c, ids, cx),
+                    window.is_window_active(),
+                    cx,
+                )
+                .into_any_element(),
+            );
         }
         div()
             .id("overview-scroll")
@@ -528,34 +603,33 @@ impl Workbench {
         &self,
         column: Column,
         count: usize,
-        mut cards: Vec<gpui::AnyElement>,
+        cards: impl IntoElement,
+        active: bool,
         cx: &Context<Self>,
     ) -> gpui::Stateful<gpui::Div> {
         use super::board_drawer::{DraggedCard, legal};
-        // While a card hangs over a column it may land in, a slot opens at the top.
-        if cx.has_active_drag()
-            && let Some((over, from)) = self.overview.drop_over
-            && over == column
-            && legal(from, column)
-        {
-            cards.insert(
-                0,
-                div()
-                    .flex_shrink_0()
-                    .rounded(px(T::CARD_RADIUS))
-                    .border(px(T::BORDER_WIDTH))
-                    .border_dashed()
-                    .border_color(T::color(T::control()))
-                    .bg(T::color(T::raised()))
-                    .with_animation(
-                        gpui::SharedString::from(format!("slot-{}", column.id())),
-                        Animation::new(Duration::from_millis(260))
-                            .with_easing(gpui::ease_out_quint()),
-                        |d, t| d.h(px(T::BOARD_SLOT * t)),
-                    )
-                    .into_any_element(),
-            );
-        }
+        // The slot stays above the virtual viewport, so it remains visible even
+        // when the receiving column is scrolled away from its first item.
+        let slot = (cx.has_active_drag()
+            && self
+                .overview
+                .drop_over
+                .is_some_and(|(over, from)| over == column && legal(from, column)))
+        .then(|| {
+            div()
+                .flex_shrink_0()
+                .mb(px(CARD_GAP))
+                .rounded(px(T::CARD_RADIUS))
+                .border(px(T::BORDER_WIDTH))
+                .border_dashed()
+                .border_color(T::color(T::control()))
+                .bg(T::color(T::raised()))
+                .with_animation(
+                    gpui::SharedString::from(format!("slot-{}", column.id())),
+                    Animation::new(Duration::from_millis(260)).with_easing(gpui::ease_out_quint()),
+                    |d, t| d.h(px(T::BOARD_SLOT * t)),
+                )
+        });
         div()
             .id(gpui::SharedString::from(format!("drop-{}", column.id())))
             .rounded(px(T::CARD_RADIUS))
@@ -599,7 +673,7 @@ impl Workbench {
                     .flex()
                     .items_center()
                     .gap(px(T::S8))
-                    .child(column_icon(column))
+                    .child(animated_column_icon(column, active && count > 0))
                     .child(
                         div()
                             .font_weight(gpui::FontWeight::MEDIUM)
@@ -631,106 +705,149 @@ impl Workbench {
                         )
                     }),
             )
+            .children(slot)
             .child(
                 div()
                     .id(gpui::SharedString::from(format!("column-{}", column.id())))
                     .flex_1()
                     .min_h_0()
-                    .overflow_y_scroll()
-                    .flex()
-                    .flex_col()
-                    .gap(px(CARD_GAP))
-                    .pb(px(T::S20 * 2.))
-                    .children(cards),
+                    .child(cards),
             )
     }
-    fn todo_column(&self, todos: &[&Task], cx: &Context<Self>) -> gpui::Stateful<gpui::Div> {
-        let cards: Vec<gpui::AnyElement> = todos
-            .iter()
-            .map(|task| {
-                let id = task.id.clone();
-                let space = self
-                    .workspace
-                    .spaces
-                    .iter()
-                    .find(|s| s.id == task.space)
-                    .map_or("外部", |s| s.name.as_str());
-                card_frame(gpui::SharedString::from(format!("board-todo-{id}")))
-                    .on_drag(
-                        super::board_drawer::DraggedCard {
-                            id: id.clone(),
-                            title: task.title.clone(),
-                            from: Column::Todo,
-                        },
-                        |card, _, _, cx| cx.new(|_| card.clone()),
-                    )
-                    .child(
-                        div()
-                            .flex()
-                            .items_center()
-                            .gap(px(T::S6))
-                            .text_size(px(T::META))
-                            .text_color(T::color(T::muted()))
-                            .child(agent_mark(task.agent, T::color(T::muted())))
-                            .child("还没开始")
-                            .child(div().flex_1())
-                            .child(
-                                mesh(self.space_mesh(&task.space), AVATAR)
-                                    .id(gpui::SharedString::from(format!("todo-space-{id}")))
-                                    .tooltip(super::diagnostics::tip(vec![space.to_owned()])),
-                            ),
-                    )
-                    .child(card_title(task.title.clone()))
-                    .child(
-                        div()
-                            .flex()
-                            .items_center()
-                            .gap(px(T::S6))
-                            .child(pill(
-                                task.agent.name(),
-                                T::color(T::card_border()),
-                                None,
-                                T::color(T::body()),
-                            ))
-                            .child(
-                                div()
-                                    .text_size(px(T::META))
-                                    .text_color(T::color(T::muted()))
-                                    .child(format!("{} 条验收", task.acceptance.len())),
+    fn card_list(&self, column: Column, ids: Vec<String>, cx: &Context<Self>) -> impl IntoElement {
+        let state = {
+            let mut columns = self.overview.columns.borrow_mut();
+            let cached = columns.entry(column).or_insert_with(|| ColumnList {
+                state: gpui::ListState::new(
+                    ids.len() + usize::from(column == Column::Todo),
+                    gpui::ListAlignment::Top,
+                    px(T::CARD_ESTIMATE),
+                ),
+                ids: ids.clone(),
+                revision: self.workspace.revision,
+            });
+            cached.sync(&ids, self.workspace.revision);
+            cached.state.clone()
+        };
+        let count = ids.len() + usize::from(column == Column::Todo);
+        let entity = cx.entity();
+        gpui::list(state, move |index, window, app| {
+            let animate = window.is_window_active();
+            entity.update(app, |this, cx| {
+                let card = if column == Column::Todo {
+                    if let Some(id) = ids.get(index) {
+                        this.todo_card(
+                            this.workspace
+                                .tasks
+                                .iter()
+                                .find(|t| &t.id == id)
+                                .expect("board row belongs to the current workspace"),
+                            cx,
+                        )
+                        .into_any_element()
+                    } else {
+                        button("overview-new-task", "＋ 新待办")
+                            .justify_start()
+                            .text_color(T::color(T::secondary()))
+                            .on_click(
+                                cx.listener(|this, _, window, cx| this.show_quick_task(window, cx)),
                             )
-                            .child(div().flex_1())
-                            .child(
-                                button(gpui::SharedString::from(format!("start-{id}")), "开始 →")
-                                    .h(px(PILL + 4.))
-                                    .px(px(T::S10))
-                                    .bg(T::color(T::button()))
-                                    .text_color(T::color(T::primary()))
-                                    .on_click(cx.listener(move |this, _, _, cx| {
-                                        this.ask_agent(id.clone(), false, cx)
-                                    })),
-                            ),
+                            .into_any_element()
+                    }
+                } else {
+                    this.board_card(
+                        this.workspace
+                            .agent_sessions
+                            .iter()
+                            .find(|s| s.id == ids[index])
+                            .expect("board row belongs to the current workspace"),
+                        column,
+                        now(),
+                        animate,
+                        cx,
                     )
-                    .children(self.agent_picker(&task.id, cx))
+                    .into_any_element()
+                };
+                div()
+                    .pb(px(if index + 1 < count { CARD_GAP } else { 0. }))
+                    .child(card)
                     .into_any_element()
             })
-            .collect();
-        let count = cards.len();
-        let mut cards = cards;
-        // Adding a todo sits right under the last one, as Linear's 「Add issue」 does.
-        cards.push(
-            button("overview-new-task", "＋ 新待办")
-                .justify_start()
-                .text_color(T::color(T::secondary()))
-                .on_click(cx.listener(|this, _, window, cx| this.show_quick_task(window, cx)))
-                .into_any_element(),
-        );
-        self.column(Column::Todo, count, cards, cx)
+        })
+        .size_full()
+        .pb(px(T::S20 * 2.))
+    }
+    fn todo_card(&self, task: &Task, cx: &Context<Self>) -> gpui::Stateful<gpui::Div> {
+        let id = task.id.clone();
+        let space = self
+            .workspace
+            .spaces
+            .iter()
+            .find(|s| s.id == task.space)
+            .map_or("外部", |s| s.name.as_str());
+        card_frame(gpui::SharedString::from(format!("board-todo-{id}")))
+            .on_drag(
+                super::board_drawer::DraggedCard {
+                    id: id.clone(),
+                    title: task.title.clone(),
+                    from: Column::Todo,
+                },
+                |card, _, _, cx| cx.new(|_| card.clone()),
+            )
+            .child(
+                div()
+                    .flex()
+                    .items_center()
+                    .gap(px(T::S6))
+                    .text_size(px(T::META))
+                    .text_color(T::color(T::muted()))
+                    .child(agent_mark(task.agent, T::color(T::muted())))
+                    .child("还没开始")
+                    .child(div().flex_1())
+                    .child(
+                        mesh(self.space_mesh(&task.space), AVATAR)
+                            .id(gpui::SharedString::from(format!("todo-space-{id}")))
+                            .tooltip(super::diagnostics::tip(vec![space.to_owned()])),
+                    ),
+            )
+            .child(card_title(task.title.clone()))
+            .child(
+                div()
+                    .flex()
+                    .items_center()
+                    .gap(px(T::S6))
+                    .child(pill(
+                        task.agent.name(),
+                        T::color(T::card_border()),
+                        None,
+                        T::color(T::body()),
+                    ))
+                    .child(
+                        div()
+                            .text_size(px(T::META))
+                            .text_color(T::color(T::muted()))
+                            .child(format!("{} 条验收", task.acceptance.len())),
+                    )
+                    .child(div().flex_1())
+                    .child(
+                        button(gpui::SharedString::from(format!("start-{id}")), "开始 →")
+                            .h(px(PILL + 4.))
+                            .px(px(T::S10))
+                            .bg(T::color(T::button()))
+                            .text_color(T::color(T::primary()))
+                            .on_click(cx.listener(move |this, _, _, cx| {
+                                this.ask_agent(id.clone(), false, cx)
+                            })),
+                    ),
+            )
+            .children(self.agent_picker(&task.id, cx))
     }
     fn board_card(
         &self,
         session: &AgentSession,
         column: Column,
         now: u64,
+        animate: bool,
         cx: &Context<Self>,
     ) -> gpui::Stateful<gpui::Div> {
         let enter = session.clone();
@@ -909,7 +1026,7 @@ impl Workbench {
                         )
                     }),
             )
-            .when(column == Column::Running, |d| d.child(sweep()))
+            .when(column == Column::Running && animate, |d| d.child(sweep()))
             .when(self.overview.card_menu.as_ref() == Some(&session.id), |d| {
                 d.child(
                     gpui::deferred(
@@ -1003,5 +1120,59 @@ mod tests {
             .map(|s| mesh_index(s))
             .collect();
         assert!(distinct.len() > 2, "spaces spread over the palettes");
+    }
+}
+
+#[cfg(test)]
+mod virtual_column_tests {
+    use super::*;
+    fn column(ids: &[&str], extra: usize) -> ColumnList {
+        ColumnList {
+            state: gpui::ListState::new(
+                ids.len() + extra,
+                gpui::ListAlignment::Top,
+                px(T::CARD_ESTIMATE),
+            ),
+            ids: ids.iter().map(|s| s.to_string()).collect(),
+            revision: 1,
+        }
+    }
+    #[test]
+    fn session_arrival_and_removal_preserve_the_visible_session() {
+        let mut list = column(&["a", "b", "c", "d"], 0);
+        list.state.scroll_to(gpui::ListOffset {
+            item_ix: 2,
+            offset_in_item: px(T::S12),
+        });
+        list.sync(&["new", "a", "b", "c", "d"].map(String::from), 2);
+        let top = list.state.logical_scroll_top();
+        assert_eq!(list.ids[top.item_ix], "c");
+        assert_eq!(top.offset_in_item, px(T::S12));
+        list.sync(&["b", "c", "d"].map(String::from), 3);
+        let top = list.state.logical_scroll_top();
+        assert_eq!(list.ids[top.item_ix], "c");
+        assert_eq!(top.offset_in_item, px(T::S12));
+    }
+    #[test]
+    fn content_updates_keep_the_scroll_anchor() {
+        let mut list = column(&["a", "b", "c"], 0);
+        list.state.scroll_to(gpui::ListOffset {
+            item_ix: 1,
+            offset_in_item: px(T::S8),
+        });
+        list.sync(&["a", "b", "c"].map(String::from), 2);
+        let top = list.state.logical_scroll_top();
+        assert_eq!(top.item_ix, 1);
+        assert_eq!(top.offset_in_item, px(T::S8));
+        assert_eq!(list.state.item_count(), 3);
+    }
+    #[test]
+    fn todo_add_row_survives_filtering_to_empty_and_back() {
+        let mut list = column(&["a", "b"], 1);
+        list.sync(&[], 2);
+        assert_eq!(list.state.item_count(), 1);
+        list.sync(&["c".to_string()], 3);
+        assert_eq!(list.state.item_count(), 2);
+        assert_eq!(list.ids, ["c"]);
     }
 }

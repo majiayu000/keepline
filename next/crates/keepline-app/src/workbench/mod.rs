@@ -339,6 +339,7 @@ impl Workbench {
                 cleanup_index: 0,
                 cleanup_results: HashMap::new(),
                 scroll: gpui::ScrollHandle::new(),
+                columns: Default::default(),
                 welcome: overview,
                 focus: cx.focus_handle(),
                 #[cfg(feature = "visual-test")]

@@ -421,6 +421,8 @@ impl Theme {
     pub const BAR_VALUE: f32 = 54.;
     pub const AXIS_GUTTER: f32 = 48.;
     pub const SCATTER_HEIGHT: f32 = 220.;
+    /// A board card's height before GPUI measures it; the virtual columns correct it.
+    pub const CARD_ESTIMATE: f32 = 100.;
     pub const TIP_WIDTH: f32 = 240.;
     /// Room for a centered axis label such as `150%`.
     pub const TICK_LABEL: f32 = 48.;
