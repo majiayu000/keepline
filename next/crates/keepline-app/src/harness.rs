@@ -57,7 +57,9 @@ pub fn start(
                 let end = serde_json::json!({"type":"system","subtype":"turn_duration","sessionId":id,"uuid":"s0","parentUuid":"a0","cwd":"/tmp","timestamp":at});
                 let seed = root.join(format!("seed-{tid}"));
                 std::fs::write(&seed, format!("{user}\n{reply}\n{end}\n")).unwrap();
-                let script = format!("cat '{}' > '{}'; printf '%s\\n' '⏺ 已完成，测试全过。'; sleep 600", seed.display(), logs.join(format!("{id}.jsonl")).display());
+                // A full screen of text when measuring, so the dissolve sends its most specks.
+                let fill = if std::env::var_os("KEEPLINE_COMPLETE_FRAMES").is_some() { "i=0; while [ $i -lt 40 ]; do printf '%s\\n' \"  test auth::timeout::retries_after_expiry ... ok   刷新 token 后重新计时 $i 行 0123456789 abcdefghij\"; i=$((i+1)); done; " } else { "" };
+                let script = format!("cat '{}' > '{}'; {fill}printf '%s\\n' '⏺ 已完成，测试全过。'; sleep 600", seed.display(), logs.join(format!("{id}.jsonl")).display());
                 let argv = vec!["/bin/sh".into(), "-c".into(), format!("exec '{}' -c \"$0\" fixture --session-id {id}", claude.display()), script];
                 call(Request::Launch { id: tid.into(), space: space.clone(), argv, cwd: "/tmp".into(), cols: 100, rows: 30, scheme: Default::default() });
                 let w = workspace();
@@ -107,6 +109,7 @@ pub fn start(
                         shot(&format!("{style:?}-t{:03}.png", (t * 100.) as u32), cx);
                     }
                     handle.update(cx, |v, _, a| v.visual_keep_completed(tid, a)).unwrap();
+                    let _ = handle.update(cx, |v, _, _| v.visual_take_paints());
                     handle.update(cx, |v, _, a| v.visual_complete_with(tid, effect, None, a)).unwrap();
                     let mut closed = false;
                     for _ in 0..60 {
@@ -114,6 +117,14 @@ pub fn start(
                         if !handle.update(cx, |v, _, _| v.visual_completable(tid)).unwrap().2 { closed = true; break; }
                     }
                     assert!(closed, "the completed pane never closed after {style:?}");
+                    let (gaps, paints) = handle.update(cx, |v, _, _| v.visual_take_paints()).unwrap();
+                    let stat = |mut v: Vec<f32>| {
+                        v.sort_by(f32::total_cmp);
+                        let at = |q: f32| v.get(((v.len() as f32 - 1.) * q).round() as usize).copied().unwrap_or(0.);
+                        format!("n={} p50={:.2} p95={:.2} max={:.2}", v.len(), at(0.5), at(0.95), at(1.))
+                    };
+                    let specks = handle.update(cx, |v, _, _| v.visual_specks()).unwrap();
+                    eprintln!("FRAMES {style:?}: specks={specks} gap_ms {} | overlay_paint_ms {}", stat(gaps), stat(paints));
                     wait(300).await;
                     shot(&format!("{style:?}-closed.png"), cx);
                 } else if tid == "done" {

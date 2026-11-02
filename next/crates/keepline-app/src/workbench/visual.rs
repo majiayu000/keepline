@@ -48,6 +48,26 @@ impl Workbench {
         self.pin_completing(terminal, pin);
     }
     #[cfg(feature = "visual-test")]
+    pub fn visual_specks(&self) -> usize {
+        super::complete::SPECKS.load(std::sync::atomic::Ordering::Relaxed)
+    }
+    /// The overlay's paints since the last call: frame gaps and paint times, in ms.
+    #[cfg(feature = "visual-test")]
+    pub fn visual_take_paints(&self) -> (Vec<f32>, Vec<f32>) {
+        let most = std::mem::take(&mut *super::complete::PRIMITIVES.lock().unwrap());
+        eprintln!(
+            "PRIMITIVES busiest frame: paths={} quads={}",
+            most.0, most.1
+        );
+        let log = std::mem::take(&mut *super::complete::PAINTS.lock().unwrap());
+        let gaps = log
+            .windows(2)
+            .map(|w| (w[1].0 - w[0].0).as_secs_f32() * 1e3)
+            .collect();
+        let paints = log.iter().map(|(_, d)| d.as_secs_f32() * 1e3).collect();
+        (gaps, paints)
+    }
+    #[cfg(feature = "visual-test")]
     pub fn visual_pin_completing(
         &mut self,
         terminal: &str,

@@ -12,7 +12,8 @@ use std::cell::RefCell;
 use std::rc::Rc;
 use std::time::Instant;
 
-/// The most specks the dissolve sends; a fuller screen sends every n-th cell.
+/// The most specks the dissolve sends; a fuller screen sends one from every n-th cell,
+/// though every cell's text is still wiped away.
 const MAX_SPECKS: usize = 900;
 
 /// One pane's run.
@@ -23,7 +24,8 @@ pub(super) struct Run {
     effect: Complete,
     session: String,
     /// Window points of the cells with text when it started, and their colors.
-    glyphs: Vec<(Point<Pixels>, Hsla, u16)>,
+    /// Shared with each frame's overlay rather than copied every frame.
+    glyphs: Rc<[Glyph]>,
     cell: gpui::Size<Pixels>,
     /// Held at one point of the run for screenshots.
     pinned: Option<f32>,
@@ -35,6 +37,20 @@ impl Run {
         })
     }
 }
+
+/// Each overlay paint: when it started and how long it took, for the frame-time check.
+#[cfg(feature = "visual-test")]
+pub(super) static SPECKS: std::sync::atomic::AtomicUsize = std::sync::atomic::AtomicUsize::new(0);
+/// Paths and quads the overlay drew in its busiest frame since the last reset.
+#[cfg(feature = "visual-test")]
+pub(super) static PRIMITIVES: std::sync::Mutex<(usize, usize)> = std::sync::Mutex::new((0, 0));
+#[cfg(feature = "visual-test")]
+pub(super) static PAINTS: std::sync::Mutex<Vec<(Instant, std::time::Duration)>> =
+    std::sync::Mutex::new(Vec::new());
+
+/// A cell of text when the run started: its middle in the window, its color, its width in
+/// cells, and whether it sends a speck.
+type Glyph = (Point<Pixels>, Hsla, u16, bool);
 
 /// Where the panes and sidebar rows were last drawn, recorded while painting so the
 /// overlay, painted after them in the same frame, knows where to go.
@@ -179,13 +195,20 @@ impl Workbench {
         self.layout.completing_seq += 1;
         let seq = self.layout.completing_seq;
         let (glyphs, cell) = match (effect.style, self.layout.panes.get(&terminal)) {
-            (Style::Dissolve, Some(pane)) => pane.read(cx).glyph_cells(MAX_SPECKS),
+            (Style::Dissolve, Some(pane)) => pane.read(cx).glyph_cells(),
             _ => (vec![], size(px(0.), px(0.))),
         };
-        let glyphs = glyphs
+        let step = glyphs.len().div_ceil(MAX_SPECKS).max(1);
+        let glyphs: Vec<_> = glyphs
             .into_iter()
-            .map(|(p, c, w)| (p, T::color(c), w))
+            .enumerate()
+            .map(|(i, (p, c, w))| (p, T::color(c), w, i % step == 0))
             .collect();
+        #[cfg(feature = "visual-test")]
+        SPECKS.store(
+            glyphs.iter().filter(|g| g.3).count(),
+            std::sync::atomic::Ordering::Relaxed,
+        );
         self.layout.completing.insert(
             terminal.clone(),
             Run {
@@ -193,7 +216,7 @@ impl Workbench {
                 start: Instant::now(),
                 effect,
                 session: session.clone(),
-                glyphs,
+                glyphs: glyphs.into(),
                 cell,
                 pinned: None,
             },
@@ -473,7 +496,7 @@ impl Workbench {
             session: String,
             effect: Complete,
             t: f32,
-            glyphs: Vec<(Point<Pixels>, Hsla, u16)>,
+            glyphs: Rc<[Glyph]>,
             cell: gpui::Size<Pixels>,
         }
         let frames: Vec<Frame> = self
@@ -497,6 +520,8 @@ impl Workbench {
             gpui::canvas(
                 |_, _, _| (),
                 move |_, _, window, _| {
+                    #[cfg(feature = "visual-test")]
+                    let started = Instant::now();
                     let spots = spots.borrow();
                     for f in &frames {
                         let Some(pane) = spots.panes.get(&f.terminal).copied() else {
@@ -511,6 +536,8 @@ impl Workbench {
                         });
                         let mut p = Painter {
                             window,
+                            paths: 0,
+                            quads: 0,
                             green,
                             on_accent,
                             pane_color,
@@ -519,6 +546,14 @@ impl Workbench {
                         if let (Some(r), Some(at)) = (row.filter(|_| f.effect.land), target) {
                             p.landed(f.t, timing(f.effect.style).land, r, at);
                         }
+                        #[cfg(feature = "visual-test")]
+                        if let Ok(mut most) = PRIMITIVES.lock() {
+                            *most = (most.0.max(p.paths), most.1.max(p.quads));
+                        }
+                    }
+                    #[cfg(feature = "visual-test")]
+                    if let Ok(mut log) = PAINTS.lock() {
+                        log.push((started, started.elapsed()));
                     }
                 },
             )
@@ -530,6 +565,8 @@ impl Workbench {
 
 struct Painter<'a> {
     window: &'a mut Window,
+    paths: usize,
+    quads: usize,
     green: Hsla,
     on_accent: Hsla,
     pane_color: Hsla,
@@ -543,6 +580,7 @@ impl Painter<'_> {
             point(at.x - px(r), at.y - px(r)),
             size(px(2. * r), px(2. * r)),
         );
+        self.quads += 1;
         self.window.paint_quad(gpui::quad(
             b,
             px(r),
@@ -569,6 +607,7 @@ impl Painter<'_> {
             point(at.x - px(r), at.y - px(r)),
             size(px(2. * r), px(2. * r)),
         );
+        self.quads += 1;
         self.window.paint_quad(gpui::quad(
             b,
             px(r),
@@ -579,6 +618,7 @@ impl Painter<'_> {
         ));
     }
     fn rect(&mut self, b: Bounds<Pixels>, color: impl Into<gpui::Background>) {
+        self.quads += 1;
         self.window.paint_quad(gpui::fill(b, color));
     }
     fn stroke(&mut self, points: &[Point<Pixels>], width: f32, color: Hsla) {
@@ -591,6 +631,7 @@ impl Painter<'_> {
             path.line_to(p);
         }
         if let Ok(path) = path.build() {
+            self.paths += 1;
             self.window.paint_path(path, color);
         }
     }
@@ -637,7 +678,7 @@ impl Painter<'_> {
         t: f32,
         pane: Bounds<Pixels>,
         target: Option<Point<Pixels>>,
-        glyphs: &[(Point<Pixels>, Hsla, u16)],
+        glyphs: &[Glyph],
         cell: gpui::Size<Pixels>,
     ) {
         let body = Bounds::new(
@@ -777,6 +818,7 @@ impl Painter<'_> {
                             point(b.left() - px(grow), b.top() - px(grow)),
                             size(b.size.width + px(2. * grow), b.size.height + px(2. * grow)),
                         );
+                        self.quads += 1;
                         self.window.paint_quad(gpui::quad(
                             gb,
                             px(grow),
@@ -812,22 +854,48 @@ impl Painter<'_> {
                 let mut arrived = 0usize;
                 let width = f32::from(body.size.width).max(1.);
                 let height = f32::from(body.size.height).max(1.);
-                for (at, color, cols) in glyphs {
+                // When each cell sets off, the same on every pass and every frame.
+                let starts = |rand: &mut dyn FnMut() -> f32, at: Point<Pixels>| {
                     let ord = f32::from(at.y - body.top()) / height * 0.72
                         + f32::from(at.x - body.left()) / width * 0.28;
                     let (j, cx_, cy_, rad) = (rand(), rand(), rand(), 0.7 + rand() * 0.8);
-                    let start = 0.2 + 0.3 * ord.clamp(0., 1.) + j * 0.04;
+                    (0.2 + 0.3 * ord.clamp(0., 1.) + j * 0.04, cx_, cy_, rad)
+                };
+                // First each row's text is wiped from its start up to the last cell that
+                // has set off: one quad per row, whatever share of cells send a speck.
+                let mut wipe: Option<(Pixels, Pixels)> = None;
+                let mut wipes = Vec::new();
+                for (at, _, cols, _) in glyphs.iter() {
+                    let (start, ..) = starts(&mut rand, *at);
+                    if wipe.is_some_and(|(y, _)| y != at.y) {
+                        wipes.extend(wipe.take());
+                    }
+                    if t > start {
+                        let right = at.x + cell.width * *cols as f32 / 2.;
+                        wipe = Some((at.y, wipe.map_or(right, |(_, r)| r.max(right))));
+                    }
+                }
+                wipes.extend(wipe);
+                for (y, right) in wipes {
+                    let b = Bounds::new(
+                        point(body.left(), y - cell.height / 2.),
+                        size(right - body.left(), cell.height),
+                    );
+                    self.rect(b, self.pane_color);
+                }
+                // Then the specks, over every row.
+                let mut rand = rng(42);
+                let mut specks = 0usize;
+                for (at, color, _, speck) in glyphs.iter() {
+                    let (start, cx_, cy_, rad) = starts(&mut rand, *at);
+                    if !speck {
+                        continue;
+                    }
+                    specks += 1;
                     let tau = sl(t, start, start + 0.36);
                     if tau <= 0. {
                         continue;
                     }
-                    // The cell's text is covered as its speck leaves.
-                    let w = cell.width * *cols as f32;
-                    let cover = Bounds::new(
-                        point(at.x - w / 2., at.y - cell.height / 2.),
-                        size(w, cell.height),
-                    );
-                    self.rect(cover, self.pane_color.opacity(sl(tau, 0., 0.2)));
                     if tau >= 1. {
                         arrived += 1;
                         continue;
@@ -840,9 +908,14 @@ impl Painter<'_> {
                     let k1 = sl(tau, 0., 0.2);
                     let m = eio(sl(tau, 0.08, 1.));
                     let p = bez(*at, ctl, target_or_up, m);
-                    let q = bez(*at, ctl, target_or_up, (m - 0.022).max(0.));
                     let a = k1 * 0.9 * (1. - sl(tau, 0.9, 1.));
-                    self.stroke(&[q, p], rad * 1.1, g.opacity(a * 0.35));
+                    // The tail is two fainter, smaller dots behind it: a stroke per speck
+                    // is a path for the GPU to rasterize, and hundreds of them halve the
+                    // frame rate.
+                    for (back, shrink, fade) in [(0.011, 0.8, 0.3), (0.022, 0.6, 0.15)] {
+                        let q = bez(*at, ctl, target_or_up, (m - back).max(0.));
+                        self.disc(q, rad * shrink, g.opacity(a * fade));
+                    }
                     let tint = Hsla {
                         h: lerp(color.h, g.h, k1),
                         s: lerp(color.s, g.s, k1),
@@ -852,7 +925,7 @@ impl Painter<'_> {
                     self.disc(p, rad, tint);
                 }
                 if let Some(at) = target {
-                    let f = arrived as f32 / glyphs.len().max(1) as f32;
+                    let f = arrived as f32 / specks.max(1) as f32;
                     if f > 0. {
                         self.glow(at, 3.5, f);
                         self.disc(at, 3.5 + 1.5 * f, g.opacity(0.25 + 0.75 * f));
@@ -921,6 +994,7 @@ impl Painter<'_> {
         }
         let k = sl(t, at, 1.);
         let wash = self.green.opacity(0.16 * (1. - k) + 0.04);
+        self.quads += 1;
         self.window.paint_quad(gpui::quad(
             row,
             px(T::CONTROL_RADIUS),
