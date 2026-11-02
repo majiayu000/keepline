@@ -5864,7 +5864,7 @@ fn phone_demo_machine() {
         "把 main 推到远端",
         "本地检查都过了，准备推送。",
         &|_, _| {
-            "sleep 2; printf '%s\\n' 'Bash command' '  git push origin main' 'Do you want to proceed?' '> 1. Yes' '  2. No'; read -r answer; printf 'pushed\\n'; read -r end".into()
+            "sleep 2; printf '%s\\n' 'Bash command' '  git push origin main' 'Do you want to proceed?' '> 1. Yes' '  2. No'; read -r answer; printf '\\033[2J\\033[Hpushed\\n'; read -r end".into()
         },
     );
     h.call(h.launch("shell", "exec cat")).unwrap();

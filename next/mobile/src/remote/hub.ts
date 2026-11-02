@@ -4,7 +4,7 @@
 import { useSyncExternalStore } from 'react';
 import { AppState } from 'react-native';
 import { forgetMachine, loadMachines, machineId, saveMachine } from '../store/machines';
-import { Remote } from './client';
+import { closeText, Remote } from './client';
 import type { Link } from './link';
 
 export type Phase = 'working' | 'waiting' | 'idle' | 'shell';
@@ -94,7 +94,7 @@ async function connect(id: string) {
     if (!get(id)) return;
     set(id, {
       status: e.refused ? 'refused' : 'offline',
-      error: e.refused ? '这台手机被取消配对，或者权限改了；重新扫码配对' : `连接断开（${e.code}）`,
+      error: e.refused ? '这台手机被取消配对，或者权限改了；重新扫码配对' : closeText(e.code),
     });
     if (!e.refused) later(id);
   });

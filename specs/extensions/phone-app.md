@@ -89,7 +89,7 @@
 
 ## 没验
 
-- JS 的 Noise 实现、iOS 后台的 WebSocket 存活时间、公网延迟，都没有亲手测过。
+- iOS 后台的 WebSocket 存活时间、公网延迟，都没有亲手测过（JS 的 Noise 实现已经对上测试向量，也在 iOS 模拟器上跑通了）。
 - 没和真 alma-relay 联调过（见 relay.md）。
 - `chat` 只在测试里用 Claude 格式的日志验过；Codex 的消息走的是同一张表（`session_records`），但没单独测。
 
@@ -113,7 +113,7 @@
 - 端到端测试 `the_js_phone_client_chats_through_a_real_relay`（`cargo test -p keeplined --test managed_session -- --ignored the_js_phone`，需要 bun）：起真的 `keeplined` 和 `keepline-relay`，配对一台 full 权限的设备，JS 客户端经中继完成握手（本机 25 ms），收到 hello、list、events，读到对话。手机发的话原样进了终端，Agent 的回复 377 ms 后经 `chat after` 读回。
 - 还要处理：React Native 的 Hermes 没有 `crypto.getRandomValues`，第 2 步接 App 时用 expo-crypto 补上。
 
-### 第 2–4 步：配对、会话列表、聊天页（2026-11-02）：网页版采用，手机原生待验证
+### 第 2–4 步：配对、会话列表、聊天页（2026-11-02）：采用（网页版和 iOS 模拟器）
 
 - 路由用 Expo Router（`src/app/`）：`index` 会话列表，`pair` 配对，`chat` 聊天页。连接管理在 `src/remote/hub.ts`：每台电脑一条连接，`events` 来了就重新 `list`；断线后按 1、2、4…30 秒重连；被拒（4401）就不再重连，提示重新配对；回到前台时马上重连。
 - App 注册了 `keepline://` 链接：用系统相机扫电脑上的二维码，会直接打开配对页。配对链接存在 Keychain / Keystore 里，每台电脑一条（网页版用 localStorage，只用来在浏览器里试界面）。
@@ -126,6 +126,21 @@
   - 审批条显示 `git push origin main` 和「允许一次 / 拒绝 / Esc」。点「允许一次」后，终端打印出 `pushed`。
 - `bunx expo export --platform ios --platform android` 能打出两个平台的 Hermes 字节码包（各 2.8 MB）；`expo-doctor` 20 项全过；`tsc` 没有错误。
 - 没验：
-  - 没有在真手机或模拟器上运行过（本机没装 iOS 模拟器运行时和 CocoaPods）。Hermes 上的 `crypto.getRandomValues` 补丁、相机扫码、SecureStore 都还没实际跑过。
+  - 相机扫码（模拟器没有相机）、真手机、公网中继、iOS 后台断线后的表现。
   - 演示用的假 Agent 回复后，列表里仍然显示「干活中」，因为它不发 Stop 钩子；真 Claude 回复后应该变成空闲，这一点没验。
-  - Agent 回复不是 Markdown 渲染，现在显示的是纯文本。
+  - Android 没跑过。
+
+### iOS 模拟器原生运行（2026-11-02）：采用
+
+- 环境：Xcode 26，iOS 26.5 模拟器（iPhone 17），`expo prebuild -p ios` + CocoaPods 1.17，Debug 包连 Metro。原生工程 `next/mobile/ios` 不进仓库，要用时重新 prebuild。点按和输入用 AXe（`brew install cameroncooke/axe/axe`），截图用 `xcrun simctl io booted screenshot`。
+- 复现：起 `phone_demo_machine`；`cd next/mobile && bunx expo start`；`cd ios && xcodebuild -workspace Keepline.xcworkspace -scheme Keepline -sdk iphonesimulator -derivedDataPath build/dd build`；`xcrun simctl install booted build/dd/Build/Products/Debug-iphonesimulator/Keepline.app`；`xcrun simctl openurl booted '<配对链接>'`。
+- 已验（浅色、深色各一遍，看了截图）：
+  - `keepline://` 深链打开 App 并完成配对。Hermes 上 `crypto.getRandomValues` 的补丁有效，Noise 握手成功，列表里等审批的会话置顶；
+  - 聊天页显示对话，Agent 回复里的编号列表按 Markdown 排版；在输入框打字、点发送后，约 2 秒内出现假 Agent 的回复；
+  - 审批条显示 `git push origin main`。点「允许一次」后终端打印 `pushed`，横幅随即消失，列表里这个会话变回「干活中」；
+  - 配对记录存在 Keychain 里：杀掉 App 重开后仍在，并自动重连。注意 iOS 卸载 App 不会清掉 Keychain，重装后旧配对还在。
+- 这次顺带修了：
+  - 首页加了「移除」：电脑不在线时可以把它从手机上删掉，删之前会弹窗确认。删除后重开 App 不会再出现。之前 `forget` 函数已经写了，但界面上没有入口，关掉的电脑会一直留在列表里。
+  - 断线提示不再只显示错误码：1012 显示「电脑上的 Keepline 不在线」，1013 显示「网络太慢」，其他情况显示「连不上：电脑或中继不在线，或者网络不通（错误码）」。
+  - 演示脚本答完审批后会清屏。原来终端画面上残留着审批问题，后台按画面判断，就以为还在等审批，App 里的横幅也一直不消失。真 Claude 答完会擦掉提示框，所以这只是演示数据的问题。
+- 小坑：模拟器默认是中文拼音键盘，用 AXe 自动输入英文时，会被按拼音音节切开（例如 “si mu la to r”）。这是键盘的问题，不是 App 的问题。

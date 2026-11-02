@@ -16,6 +16,20 @@ export type Ended = {
 
 export class RemoteError extends Error {}
 
+/** What a close code means to the person holding the phone; the number stays for support. */
+export function closeText(code: number): string {
+  switch (code) {
+    case 4401:
+      return '这台手机没有配对，或者已经被取消';
+    case 1012:
+      return '电脑上的 Keepline 不在线';
+    case 1013:
+      return '网络太慢，中继断开了连接';
+    default:
+      return `连不上：电脑或中继不在线，或者网络不通（${code}）`;
+  }
+}
+
 /** WebSocket.send's types want bytes over a plain ArrayBuffer, which these always are. */
 const own = (b: Uint8Array) => b as Uint8Array<ArrayBuffer>;
 
@@ -61,11 +75,7 @@ export class Remote {
       };
       ws.onclose = (ev) => {
         clearTimeout(timer);
-        reject(
-          new RemoteError(
-            ev.code === 4401 ? '这台手机没有配对，或者已经被取消' : `连接断开（${ev.code}）`,
-          ),
-        );
+        reject(new RemoteError(closeText(ev.code)));
       };
       ws.onerror = () => undefined;
     });
@@ -151,7 +161,7 @@ export class Remote {
   private end(e: Ended) {
     if (this.ended) return;
     this.ended = e;
-    for (const p of this.pending.values()) p.reject(new RemoteError(`连接断开（${e.code}）`));
+    for (const p of this.pending.values()) p.reject(new RemoteError(closeText(e.code)));
     this.pending.clear();
     for (const h of this.streams.values()) h({ type: 'end', reason: e.reason || String(e.code) });
     this.streams.clear();

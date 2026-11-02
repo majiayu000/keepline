@@ -1,9 +1,23 @@
 // Every paired machine and its conversations, the ones waiting on you first.
 import { Link, Stack, router } from 'expo-router';
-import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
-import { type Card, type Machine, reconnect, useHub } from '@/remote/hub';
+import { Alert, Platform, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { type Card, type Machine, forget, reconnect, useHub } from '@/remote/hub';
 import { cardTitle } from '@/ui/format';
 import { type Theme, useTheme } from '@/ui/theme';
+
+/** Removes a machine from this phone after asking; the computer keeps its own pairing list. */
+function askForget(m: Machine) {
+  const title = `从手机上移除「${m.name || '电脑'}」？`;
+  const detail = '要再连这台电脑得重新扫码配对。电脑那边的配对记录不受影响。';
+  if (Platform.OS === 'web') {
+    if (globalThis.confirm?.(`${title}\n${detail}`)) forget(m.id);
+    return;
+  }
+  Alert.alert(title, detail, [
+    { text: '取消', style: 'cancel' },
+    { text: '移除', style: 'destructive', onPress: () => forget(m.id) },
+  ]);
+}
 
 const rank = (c: Card) => (c.approval || c.phase === 'waiting' ? 0 : c.phase === 'working' ? 1 : 2);
 
@@ -69,11 +83,18 @@ function MachineSection({ m, t }: { m: Machine; t: Theme }) {
         )}
       </View>
       {m.status !== 'online' && (
-        <Pressable onPress={() => reconnect(m.id)}>
-          <Text style={[s.meta, { color: m.status === 'refused' ? t.danger : t.dim }]}>
-            {m.status === 'connecting' ? '正在连接…' : `${m.error ?? '没连上'}（点这里重试）`}
-          </Text>
-        </Pressable>
+        <View style={s.offline}>
+          <Pressable style={{ flex: 1 }} onPress={() => reconnect(m.id)}>
+            <Text style={[s.meta, { color: m.status === 'refused' ? t.danger : t.dim }]}>
+              {m.status === 'connecting' ? '正在连接…' : `${m.error ?? '没连上'}（点这里重试）`}
+            </Text>
+          </Pressable>
+          {m.status !== 'connecting' && (
+            <Pressable hitSlop={8} onPress={() => askForget(m)}>
+              <Text style={[s.meta, { color: t.accent }]}>移除</Text>
+            </Pressable>
+          )}
+        </View>
       )}
       {cards.map((c) => (
         <Row key={c.id} m={m} c={c} t={t} />
@@ -134,6 +155,7 @@ const s = StyleSheet.create({
   title: { flex: 1, fontSize: 16, fontWeight: '500' },
   badge: { fontSize: 13 },
   meta: { fontSize: 13 },
+  offline: { flexDirection: 'row', alignItems: 'flex-start', gap: 12 },
   ask: { fontSize: 14, marginTop: 4 },
   empty: { alignItems: 'center', gap: 12, paddingTop: 80, paddingHorizontal: 24 },
   emptyTitle: { fontSize: 18, fontWeight: '600' },
