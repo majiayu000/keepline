@@ -289,7 +289,7 @@ fn panel(
                 .child(badge),
         )
         .child(values)
-        .child(gauge(percent.unwrap_or(0.) / 100., fill))
+        .child(gauge(percent.unwrap_or(0.) / 100., fill, T::GAUGE_HEIGHT))
         .child(
             div()
                 .text_size(px(T::SMALL))
@@ -303,26 +303,6 @@ fn panel(
         cell.border_r(px(T::BORDER_WIDTH))
             .border_color(T::color(T::border()))
     }
-}
-/// A row of thin ticks; the used share is filled, whole ticks only, the rest stays grid.
-fn gauge(share: f64, fill: gpui::Hsla) -> gpui::Canvas<()> {
-    gpui::canvas(
-        |_, _, _| (),
-        move |bounds, (), window, _| {
-            let ticks = (f32::from(bounds.size.width) / T::GAUGE_PITCH).floor() as usize;
-            let filled = (ticks as f64 * share.clamp(0., 1.)).round() as usize;
-            let empty = T::color(T::chart_grid());
-            for i in 0..ticks {
-                let at = bounds.origin + gpui::point(px(i as f32 * T::GAUGE_PITCH), px(0.));
-                window.paint_quad(gpui::fill(
-                    gpui::Bounds::new(at, gpui::size(px(T::GAUGE_TICK), bounds.size.height)),
-                    if i < filled { fill } else { empty },
-                ));
-            }
-        },
-    )
-    .w_full()
-    .h(px(T::GAUGE_HEIGHT))
 }
 /// The small square brackets on the panels' outer corners, drawn over their border.
 fn corners() -> gpui::Canvas<()> {

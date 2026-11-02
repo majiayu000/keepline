@@ -1147,17 +1147,5 @@ fn quota_meter(window: &keepline_core::quota::Window, now: u64) -> gpui::Div {
                         .child(number),
                 ),
         )
-        .child(
-            div()
-                .h(px(T::QUOTA_BAR))
-                .rounded_full()
-                .bg(T::color(T::chip()))
-                .child(
-                    div()
-                        .h_full()
-                        .w(gpui::relative(share))
-                        .rounded_full()
-                        .bg(fill),
-                ),
-        )
+        .child(gauge(f64::from(share), fill, T::QUOTA_BAR))
 }

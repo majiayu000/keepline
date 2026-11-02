@@ -130,3 +130,26 @@ pub fn chip(group: Group) -> gpui::Div {
         .bg(group.colors().2)
         .child(group.label())
 }
+
+/// A row of thin ticks, as on the diagnostics panels and the sidebar's quota rows: the used
+/// share is filled in whole ticks, the rest stays drawn in the grid color so what is left
+/// reads at a glance.
+pub fn gauge(share: f64, fill: gpui::Hsla, height: f32) -> gpui::Canvas<()> {
+    gpui::canvas(
+        |_, _, _| (),
+        move |bounds, (), window, _| {
+            let ticks = (f32::from(bounds.size.width) / T::GAUGE_PITCH).floor() as usize;
+            let filled = (ticks as f64 * share.clamp(0., 1.)).round() as usize;
+            let empty = T::color(T::chart_grid());
+            for i in 0..ticks {
+                let at = bounds.origin + gpui::point(px(i as f32 * T::GAUGE_PITCH), px(0.));
+                window.paint_quad(gpui::fill(
+                    gpui::Bounds::new(at, gpui::size(px(T::GAUGE_TICK), bounds.size.height)),
+                    if i < filled { fill } else { empty },
+                ));
+            }
+        },
+    )
+    .w_full()
+    .h(px(height))
+}
