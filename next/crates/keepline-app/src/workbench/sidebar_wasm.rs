@@ -633,6 +633,120 @@ mod tests {
         let _ = std::fs::remove_dir_all(&d);
     }
 
+    /// What one left-column draw spends on a real workspace, step by step, for the
+    /// "is incremental input worth it" question in specs/plugins/plugin-system.md.
+    /// `KEEPLINE_WS_JSON=<Workspace JSON> cargo test --release -p keepline-app
+    /// sidebar_cost_on_a_real_workspace -- --ignored --nocapture`
+    #[test]
+    #[ignore]
+    fn sidebar_cost_on_a_real_workspace() {
+        use crate::model::session_state::{live_terminal, session_space, sidebar_status};
+        use std::collections::HashSet;
+        use std::time::Instant;
+        let path = std::env::var("KEEPLINE_WS_JSON").expect("KEEPLINE_WS_JSON");
+        let w: Workspace = serde_json::from_slice(&std::fs::read(path).unwrap()).unwrap();
+        let space = w.spaces[0].id.clone();
+        let unseen = HashSet::new();
+        let wasm = Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("../../plugins/session-first/session_first.wasm");
+        let engine = engine().unwrap();
+        let mut plugin = host::Plugin::new(
+            engine,
+            &host::module(engine, &std::fs::read(wasm).unwrap()).unwrap(),
+        )
+        .unwrap();
+        let open_of = |s: &AgentSession| {
+            live_terminal(&w, s).is_some_and(|t| w.terminal_tab(&t.id).is_some())
+        };
+        // (in_space, closed pass, open pass, state json, plugin call) per draw, in µs.
+        let mut runs: Vec<[f64; 5]> = Vec::new();
+        let mut sizes = (0, 0, 0, 0);
+        for _ in 0..200 {
+            let mut t = Instant::now();
+            let lap = |t: &mut Instant| {
+                let us = t.elapsed().as_secs_f64() * 1e6;
+                *t = Instant::now();
+                us
+            };
+            let in_space: Vec<&AgentSession> = w
+                .agent_sessions
+                .iter()
+                .filter(|s| {
+                    let hidden = match w.content.get(&s.id) {
+                        Some(c) => c.hidden_for(s).is_some(),
+                        None => !(s.current && s.binding.is_some()),
+                    };
+                    !hidden && session_space(&w, s) == Some(space.as_str())
+                })
+                .collect();
+            let a = lap(&mut t);
+            let mut ended: Vec<_> = in_space
+                .iter()
+                .filter(|s| s.terminal.is_some() && !open_of(s))
+                .map(|s| (*s, sidebar_status(&w, &unseen, s).0))
+                .collect();
+            ended.sort_by_key(|(s, _)| {
+                std::cmp::Reverse(w.content.get(&s.id).map_or(s.updated, |c| c.updated))
+            });
+            let total = ended.len();
+            ended.truncate(CLOSED_SHOWN);
+            let b = lap(&mut t);
+            let open: Vec<_> = in_space
+                .iter()
+                .filter(|s| open_of(s))
+                .map(|s| (*s, sidebar_status(&w, &unseen, s).0))
+                .collect();
+            let c = lap(&mut t);
+            let state = State {
+                sessions: open
+                    .iter()
+                    .map(|l| (l, false))
+                    .chain(ended.iter().map(|l| (l, true)))
+                    .map(|((s, g), closed)| {
+                        let content = w.content.get(&s.id);
+                        let mut row = session(&s.id, group_name(*g));
+                        row.title = content.map(|c| c.title.clone()).unwrap_or_default();
+                        row.short = short_id(&s.cli_session_id);
+                        row.cwd = &s.cwd;
+                        row.line =
+                            content.map(|c| keepline_core::content::short(&c.headline(), 100));
+                        row.done = content.map(|c| c.last_reply.chars().take(80).collect());
+                        row.closed = closed;
+                        row
+                    })
+                    .collect(),
+                closed_total: total,
+                now: 0,
+            };
+            let bytes = serde_json::to_vec(&state).unwrap();
+            let d = lap(&mut t);
+            let reply = plugin.render(&bytes).unwrap();
+            let _: Reply = serde_json::from_slice(&reply).unwrap();
+            let e = lap(&mut t);
+            sizes = (in_space.len(), total, open.len(), bytes.len());
+            runs.push([a, b, c, d, e]);
+        }
+        let names = [
+            "筛本空间",
+            "已关闭全量算状态+排序",
+            "打开的算状态",
+            "生成输入 JSON",
+            "调插件+解析回复",
+        ];
+        eprintln!(
+            "本空间 {} 个会话，已关闭 {} 个，打开 {} 个，输入 {} 字节",
+            sizes.0, sizes.1, sizes.2, sizes.3
+        );
+        let mut totals: Vec<f64> = runs.iter().map(|r| r.iter().sum()).collect();
+        for (i, name) in names.iter().enumerate() {
+            let mut v: Vec<f64> = runs.iter().map(|r| r[i]).collect();
+            v.sort_by(f64::total_cmp);
+            eprintln!("{name}: p50 {:.0} µs, p95 {:.0} µs", v[100], v[190]);
+        }
+        totals.sort_by(f64::total_cmp);
+        eprintln!("合计: p50 {:.0} µs, p95 {:.0} µs", totals[100], totals[190]);
+    }
+
     /// The words a module can see are the table in specs/plugins/plugin-system.md; a new
     /// one belongs there too.
     #[test]

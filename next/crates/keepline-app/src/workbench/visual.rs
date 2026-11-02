@@ -840,7 +840,7 @@ impl Workbench {
             // The overview's foot: the folded groups below the cards.
             "OverviewEnd" => self.overview.scroll.scroll_to_bottom(),
             "Overview" | "Menubar" => (),
-            // `Dense-{status|directory|wasm}-{standard|terminal}-{light|dark}[-open|-menu|-bg|-peek]`:
+            // `Dense-{status|directory|wasm|first}-{standard|terminal}-{light|dark}[-open|-menu|-bg|-peek]`:
             // the denser presets over sessions shaped like sidebar-density.html's; `-bg`
             // stops the second running turn while a sub-agent of it still runs.
             dense if dense.starts_with("Dense-") => {
@@ -849,6 +849,8 @@ impl Workbench {
                 self.visual_dense_fixture();
                 self.sidebar.preset = match parts[1] {
                     "wasm" => "wasm-status",
+                    // `plugins/session-first`, also installed into the scratch config.
+                    "first" => "session-first",
                     other => other,
                 }
                 .into();
