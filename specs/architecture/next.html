@@ -1,0 +1,331 @@
+<!doctype html>
+<html lang="zh-CN"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Keepline next 架构</title><style>
+:root{--bg:#f6f5f2;--card:#ffffff;--fg:#1d1f23;--muted:#6b7079;--line:#c9ccd2;--grp:#eceae5;--sub:#f9f8f5;
+--run:#2f6fdb;--run-bg:#e8f0fe;--wait:#b7791f;--wait-bg:#fdf3e1;--done:#1f8a5b;--done-bg:#e3f5ec;
+--err:#cc3d3d;--err-bg:#fbe9e9;--mut:#7a808a;--mut-bg:#eef0f2;--user:#7651c8;--user-bg:#f0eafc;--edge:#5d636d}
+@media (prefers-color-scheme: dark){:root:not([data-theme="light"]){--bg:#15171a;--card:#1e2125;--fg:#e7e8ea;--muted:#9aa0a8;--line:#3a3f46;--grp:#1b1d21;--sub:#202328;
+--run:#7aa7ff;--run-bg:#1c2a44;--wait:#e3b05a;--wait-bg:#3a2e17;--done:#5fcf98;--done-bg:#173327;--err:#ff8080;--err-bg:#3d1d1d;--mut:#a3a9b2;--mut-bg:#262a30;--user:#b49cff;--user-bg:#2c2440;--edge:#a6acb5}}
+:root[data-theme="dark"]{--bg:#15171a;--card:#1e2125;--fg:#e7e8ea;--muted:#9aa0a8;--line:#3a3f46;--grp:#1b1d21;--sub:#202328;
+--run:#7aa7ff;--run-bg:#1c2a44;--wait:#e3b05a;--wait-bg:#3a2e17;--done:#5fcf98;--done-bg:#173327;--err:#ff8080;--err-bg:#3d1d1d;--mut:#a3a9b2;--mut-bg:#262a30;--user:#b49cff;--user-bg:#2c2440;--edge:#a6acb5}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--fg);font:15px/1.6 -apple-system,BlinkMacSystemFont,"PingFang SC","Helvetica Neue",sans-serif}
+main{max-width:1240px;margin:0 auto;padding:40px 16px 80px}
+h1{font-size:28px;margin:0 0 6px}h2{font-size:20px;margin:48px 0 6px}h3{font-size:16px;margin:24px 0 6px}
+p.lead{color:var(--muted);margin:0 0 20px;max-width:820px}p.note{color:var(--muted);max-width:900px;margin:6px 0 12px}
+nav{display:flex;flex-wrap:wrap;gap:8px;margin:18px 0 8px}nav a{color:var(--fg);text-decoration:none;border:1px solid var(--line);border-radius:999px;padding:3px 12px;font-size:13px;background:var(--card)}
+.fig{background:var(--card);border:1px solid var(--line);border-radius:16px;padding:16px;margin:12px 0;overflow:hidden}
+.fig svg{width:100%;height:auto;display:block}
+.two{display:grid;grid-template-columns:1fr 1fr;gap:16px}@media (max-width:900px){.two{grid-template-columns:1fr}}
+.legend{display:flex;flex-wrap:wrap;gap:14px;font-size:13px;color:var(--muted);margin:8px 0 0}
+.legend span::before{content:"";display:inline-block;width:12px;height:12px;border-radius:3px;margin-right:6px;vertical-align:-1px;border:1.5px solid currentColor}
+.legend .run{color:var(--run)}.legend .wait{color:var(--wait)}.legend .done{color:var(--done)}.legend .err{color:var(--err)}.legend .muted{color:var(--mut)}.legend .user{color:var(--user)}
+ol.flows{margin:8px 0 0;padding-left:22px;font-size:14px}ol.flows li{margin:2px 0}
+code{font:12.5px ui-monospace,SFMono-Regular,Menlo,monospace;background:var(--mut-bg);padding:1px 5px;border-radius:5px}
+ol.ladder{list-style:none;counter-reset:n;margin:0;padding:0}
+ol.ladder li{counter-increment:n;display:grid;grid-template-columns:28px 1fr 24px auto;align-items:center;gap:8px;padding:7px 0;border-bottom:1px dashed var(--line);font-size:14px}
+ol.ladder li::before{content:counter(n);width:22px;height:22px;border-radius:50%;background:var(--mut-bg);color:var(--muted);font-size:12px;display:grid;place-items:center}
+.arrow{color:var(--muted);text-align:center}
+.chip{border-radius:999px;padding:2px 10px;font-size:13px;white-space:nowrap;border:1.5px solid}
+.chip.run{color:var(--run);background:var(--run-bg)}.chip.wait{color:var(--wait);background:var(--wait-bg)}.chip.done{color:var(--done);background:var(--done-bg)}
+.chip.err{color:var(--err);background:var(--err-bg)}.chip.muted{color:var(--mut);background:var(--mut-bg)}.chip.user{color:var(--user);background:var(--user-bg)}
+table{border-collapse:collapse;width:100%;font-size:14px}td,th{border-bottom:1px solid var(--line);padding:8px 6px;text-align:left;vertical-align:top}th{color:var(--muted);font-weight:500}
+.toggle{float:right;border:1px solid var(--line);background:var(--card);color:var(--fg);border-radius:8px;padding:4px 10px;cursor:pointer;font-size:13px}
+/* svg */
+.grp rect{fill:var(--grp);stroke:var(--line);stroke-width:1}.grp.sub rect{fill:var(--sub);stroke-dasharray:4 3}
+.grp.host rect{stroke:var(--run);stroke-width:1.4}.grp.app rect{stroke:var(--user);stroke-width:1.4}.grp.core rect{fill:var(--mut-bg)}
+.g-title{fill:var(--muted);font-size:13px;font-weight:600}
+.st rect{fill:var(--card);stroke:var(--edge);stroke-width:1.6}.st .inner{fill:none;stroke-width:1}
+.st.mod rect{stroke:var(--line);stroke-width:1.2}
+.st.run rect{fill:var(--run-bg);stroke:var(--run)}.st.wait rect{fill:var(--wait-bg);stroke:var(--wait)}.st.done rect{fill:var(--done-bg);stroke:var(--done)}
+.st.err rect{fill:var(--err-bg);stroke:var(--err)}.st.muted rect{fill:var(--mut-bg);stroke:var(--mut)}.st.user rect{fill:var(--user-bg);stroke:var(--user)}
+.st.run .inner{stroke:var(--run)}.st.done .inner{stroke:var(--done)}.st.err .inner{stroke:var(--err)}
+.t-main{fill:var(--fg);font-size:14px;font-weight:600}.t-sub{fill:var(--muted);font-size:11px}.t-mod{fill:var(--fg);font-size:12px}
+.edge{fill:none;stroke:var(--edge);stroke-width:1.5}.edge.thin{stroke-width:1.1;opacity:.75}.edge.err{stroke:var(--err)}.edge.dash{stroke-dasharray:5 4;opacity:.8}
+.ah{fill:var(--edge)}.init{fill:var(--fg)}
+.e-label{fill:var(--fg);font-size:11.5px;paint-order:stroke;stroke:var(--card);stroke-width:5px;stroke-linejoin:round}
+.e-label.err{fill:var(--err)}.e-label.user{fill:var(--user)}
+.num circle{fill:var(--fg)}.num-t{fill:var(--card);font-size:11px;font-weight:700}
+.life{stroke:var(--line);stroke-dasharray:4 4}
+</style></head>
+<body><main>
+<button class="toggle" onclick="var r=document.documentElement;r.dataset.theme=(r.dataset.theme==='dark'||(!r.dataset.theme&&matchMedia('(prefers-color-scheme: dark)').matches))?'light':'dark'">明 / 暗</button>
+<h1>Keepline next 架构与状态机</h1>
+<p class="lead">next/ 是一个 Rust workspace：<b>keeplined</b> 宿主持有全部终端和识别逻辑，<b>keepline-app</b> 是 GPUI 桌面工作台，两者只通过 <code>workbench.sock</code> 说话；手机经 <b>keepline-relay</b> 远程连同一个宿主。所有状态都存在宿主的 <code>Workspace</code> 里，界面上的分组是从它派生出来的，不另存。</p>
+<nav><a href="#sys">系统总图</a><a href="#pipe">信号 → 状态</a><a href="#layers">状态分层</a><a href="#proc">终端进程</a><a href="#turn">回合</a><a href="#outcome">结局</a><a href="#inbox">分组</a><a href="#bind">绑定</a><a href="#recog">识别健康</a><a href="#remote">远程</a><a href="#handoff">宿主交接</a><a href="#code">代码索引</a></nav>
+
+<h2 id="sys">1 · 系统总图</h2>
+<p class="note">三个进程：Agent CLI 跑在宿主开的 PTY 里；宿主从四路读信号；工作台和手机都只是宿主的观看者和遥控器。</p>
+<div class="fig"><svg viewBox="0 0 1180 730" role="img" aria-label="系统总图" xmlns="http://www.w3.org/2000/svg">
+<defs><marker id="ah" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" class="ah"/></marker></defs>
+<g class="grp"><rect x="20" y="60" width="240" height="600" rx="14"/><text class="g-title" x="34" y="82">Agent CLI · 终端里的进程</text></g><g class="grp host"><rect x="300" y="60" width="520" height="600" rx="14"/><text class="g-title" x="314" y="82">keeplined serve · 宿主（每用户一个，持有全部 PTY）</text></g><g class="grp sub"><rect x="315" y="95" width="240" height="250" rx="14"/><text class="g-title" x="329" y="117">终端</text></g><g class="grp sub"><rect x="315" y="360" width="240" height="290" rx="14"/><text class="g-title" x="329" y="382">识别 · 读信号</text></g><g class="grp sub"><rect x="600" y="95" width="205" height="250" rx="14"/><text class="g-title" x="614" y="117">对外</text></g><g class="grp sub"><rect x="600" y="360" width="205" height="290" rx="14"/><text class="g-title" x="614" y="382">状态</text></g><g class="grp app"><rect x="860" y="60" width="300" height="390" rx="14"/><text class="g-title" x="874" y="82">keepline-app · 桌面工作台（GPUI）</text></g><g class="grp"><rect x="860" y="470" width="300" height="190" rx="14"/><text class="g-title" x="874" y="492">远程</text></g>
+<path class="edge " d="M245.0,180.0 L330.0,151.0" marker-end="url(#ah)" marker-start="url(#ah)"/><g class="num"><circle cx="287.5" cy="165.5" r="10"/><text class="num-t" x="287.5" y="165.5" text-anchor="middle" dominant-baseline="central"><tspan x="287.5" dy="0.0">1</tspan></text></g>
+<path class="edge " d="M245.0,409.0 L330.0,411.5" marker-end="url(#ah)"/><g class="num"><circle cx="287.5" cy="410.2" r="10"/><text class="num-t" x="287.5" y="410.2" text-anchor="middle" dominant-baseline="central"><tspan x="287.5" dy="0.0">2</tspan></text></g>
+<path class="edge " d="M245.0,473.6 L330.0,469.9" marker-end="url(#ah)"/><g class="num"><circle cx="287.5" cy="471.8" r="10"/><text class="num-t" x="287.5" y="471.8" text-anchor="middle" dominant-baseline="central"><tspan x="287.5" dy="0.0">3</tspan></text></g>
+<path class="edge " d="M245.0,538.1 L330.0,528.4" marker-end="url(#ah)"/><g class="num"><circle cx="287.5" cy="533.2" r="10"/><text class="num-t" x="287.5" y="533.2" text-anchor="middle" dominant-baseline="central"><tspan x="287.5" dy="0.0">4</tspan></text></g>
+<path class="edge " d="M555.0,470.0 L612.0,418.0" marker-end="url(#ah)"/><g class="num"><circle cx="583.5" cy="444.0" r="10"/><text class="num-t" x="583.5" y="444.0" text-anchor="middle" dominant-baseline="central"><tspan x="583.5" dy="0.0">5</tspan></text></g>
+<path class="edge thin" d="M702.0,444.0 L702.0,460.0" marker-end="url(#ah)"/>
+<path class="edge thin" d="M792.0,486.0 L805.0,486.0 L812.0,486.0 L812.0,154.0 L805.0,154.0 L792.0,154.0" marker-end="url(#ah)"/>
+<path class="edge " d="M540.0,203.0 L612.0,168.0" marker-end="url(#ah)"/><g class="num"><circle cx="576.0" cy="185.5" r="10"/><text class="num-t" x="576.0" y="185.5" text-anchor="middle" dominant-baseline="central"><tspan x="576.0" dy="0.0">6</tspan></text></g>
+<path class="edge " d="M792.0,145.8 L875.0,138.3" marker-end="url(#ah)" marker-start="url(#ah)"/><g class="num"><circle cx="833.5" cy="142.0" r="10"/><text class="num-t" x="833.5" y="142.0" text-anchor="middle" dominant-baseline="central"><tspan x="833.5" dy="0.0">7</tspan></text></g>
+<path class="edge " d="M792.0,222.0 L838.0,222.0 L838.0,538.0 L875.0,538.0" marker-end="url(#ah)" marker-start="url(#ah)"/>
+<path class="edge " d="M1003.0,538.0 L1017.0,538.0" marker-end="url(#ah)" marker-start="url(#ah)"/>
+<path class="edge dash" d="M635.7,316.0 L600.0,330.0 L270.0,330.0 L245.0,290.0" marker-end="url(#ah)"/>
+<g class="st  mod" data-id="claude"><rect x="35.0" y="100.0" width="210.0" height="48.0" rx="7"/><text class="t-mod" x="140.0" y="124.0" text-anchor="middle" dominant-baseline="central"><tspan x="140.0" dy="0.0">Claude Code</tspan></text></g>
+<g class="st  mod" data-id="codex"><rect x="35.0" y="158.0" width="210.0" height="48.0" rx="7"/><text class="t-mod" x="140.0" y="182.0" text-anchor="middle" dominant-baseline="central"><tspan x="140.0" dy="0.0">Codex</tspan></text></g>
+<g class="st  mod" data-id="others"><rect x="35.0" y="216.0" width="210.0" height="48.0" rx="7"/><text class="t-mod" x="140.0" y="240.0" text-anchor="middle" dominant-baseline="central"><tspan x="140.0" dy="0.0">Grok · Cursor · Qoder</tspan></text></g>
+<g class="st  mod" data-id="declared"><rect x="35.0" y="274.0" width="210.0" height="48.0" rx="7"/><text class="t-mod" x="140.0" y="290.2" text-anchor="middle" dominant-baseline="central"><tspan x="140.0" dy="0.0">插件声明的 Agent</tspan><tspan x="140.0" dy="15.6">(opencode …)</tspan></text></g>
+<g class="st  mod" data-id="logs"><rect x="35.0" y="380.0" width="210.0" height="52.0" rx="7"/><text class="t-mod" x="140.0" y="398.2" text-anchor="middle" dominant-baseline="central"><tspan x="140.0" dy="0.0">对话日志 JSONL</tspan><tspan x="140.0" dy="15.6">~/.claude · ~/.codex …</tspan></text></g>
+<g class="st  mod" data-id="hookcli"><rect x="35.0" y="452.0" width="210.0" height="52.0" rx="7"/><text class="t-mod" x="140.0" y="470.2" text-anchor="middle" dominant-baseline="central"><tspan x="140.0" dy="0.0">CLI 自带 Hook</tspan><tspan x="140.0" dy="15.6">(已装进 settings.json)</tspan></text></g>
+<g class="st  mod" data-id="officialcli"><rect x="35.0" y="524.0" width="210.0" height="52.0" rx="7"/><text class="t-mod" x="140.0" y="542.2" text-anchor="middle" dominant-baseline="central"><tspan x="140.0" dy="0.0">claude agents --json</tspan><tspan x="140.0" dy="15.6">官方会话状态</tspan></text></g>
+<g class="st  mod" data-id="t0"><rect x="330.0" y="128.0" width="210.0" height="46.0" rx="7"/><text class="t-mod" x="435.0" y="143.2" text-anchor="middle" dominant-baseline="central"><tspan x="435.0" dy="0.0">pty.rs</tspan><tspan x="435.0" dy="15.6">生成 PTY · SIGHUP 结束</tspan></text></g>
+<g class="st  mod" data-id="t1"><rect x="330.0" y="180.0" width="210.0" height="46.0" rx="7"/><text class="t-mod" x="435.0" y="195.2" text-anchor="middle" dominant-baseline="central"><tspan x="435.0" dy="0.0">host/live.rs</tspan><tspan x="435.0" dy="15.6">VT 快照 · 广播给观看者</tspan></text></g>
+<g class="st  mod" data-id="t2"><rect x="330.0" y="232.0" width="210.0" height="46.0" rx="7"/><text class="t-mod" x="435.0" y="247.2" text-anchor="middle" dominant-baseline="central"><tspan x="435.0" dy="0.0">command_marks</tspan><tspan x="435.0" dy="15.6">OSC 133 命令起止</tspan></text></g>
+<g class="st  mod" data-id="t3"><rect x="330.0" y="284.0" width="210.0" height="46.0" rx="7"/><text class="t-mod" x="435.0" y="299.2" text-anchor="middle" dominant-baseline="central"><tspan x="435.0" dy="0.0">handoff.rs</tspan><tspan x="435.0" dy="15.6">升级时交出 PTY fd</tspan></text></g>
+<g class="st  mod" data-id="r0"><rect x="330.0" y="392.0" width="210.0" height="45.0" rx="7"/><text class="t-mod" x="435.0" y="406.7" text-anchor="middle" dominant-baseline="central"><tspan x="435.0" dy="0.0">file_events + log_index</tspan><tspan x="435.0" dy="15.6">FSEvents → 日志增量索引</tspan></text></g>
+<g class="st  mod" data-id="r1"><rect x="330.0" y="443.0" width="210.0" height="45.0" rx="7"/><text class="t-mod" x="435.0" y="457.7" text-anchor="middle" dominant-baseline="central"><tspan x="435.0" dy="0.0">keeplined hook</tspan><tspan x="435.0" dy="15.6">接收 Agent Hook</tspan></text></g>
+<g class="st  mod" data-id="r2"><rect x="330.0" y="494.0" width="210.0" height="45.0" rx="7"/><text class="t-mod" x="435.0" y="508.7" text-anchor="middle" dominant-baseline="central"><tspan x="435.0" dy="0.0">official.rs</tspan><tspan x="435.0" dy="15.6">读官方状态（按需）</tspan></text></g>
+<g class="st  mod" data-id="r3"><rect x="330.0" y="545.0" width="210.0" height="45.0" rx="7"/><text class="t-mod" x="435.0" y="559.7" text-anchor="middle" dominant-baseline="central"><tspan x="435.0" dy="0.0">recognition</tspan><tspan x="435.0" dy="15.6">ps / lsof 绑定对话</tspan></text></g>
+<g class="st  mod" data-id="r4"><rect x="330.0" y="596.0" width="210.0" height="45.0" rx="7"/><text class="t-mod" x="435.0" y="610.7" text-anchor="middle" dominant-baseline="central"><tspan x="435.0" dy="0.0">screen_rules</tspan><tspan x="435.0" dy="15.6">安静画面里认提问框</tspan></text></g>
+<g class="st  mod" data-id="control"><rect x="612.0" y="128.0" width="180.0" height="52.0" rx="7"/><text class="t-mod" x="702.0" y="146.2" text-anchor="middle" dominant-baseline="central"><tspan x="702.0" dy="0.0">control.rs</tspan><tspan x="702.0" dy="15.6">workbench.sock</tspan></text></g>
+<g class="st  mod" data-id="remote"><rect x="612.0" y="196.0" width="180.0" height="52.0" rx="7"/><text class="t-mod" x="702.0" y="214.2" text-anchor="middle" dominant-baseline="central"><tspan x="702.0" dy="0.0">remote.rs · relay.rs</tspan><tspan x="702.0" dy="15.6">远程会话（Noise）</tspan></text></g>
+<g class="st  mod" data-id="cliapi"><rect x="612.0" y="264.0" width="180.0" height="52.0" rx="7"/><text class="t-mod" x="702.0" y="282.2" text-anchor="middle" dominant-baseline="central"><tspan x="702.0" dy="0.0">keeplined list · split</tspan><tspan x="702.0" dy="15.6">给终端里的 Agent 用</tspan></text></g>
+<g class="st run mod" data-id="content"><rect x="612.0" y="392.0" width="180.0" height="52.0" rx="7"/><text class="t-mod" x="702.0" y="410.2" text-anchor="middle" dominant-baseline="central"><tspan x="702.0" dy="0.0">content/</tspan><tspan x="702.0" dy="15.6">回合解析 → Turn</tspan></text></g>
+<g class="st  mod" data-id="store"><rect x="612.0" y="460.0" width="180.0" height="52.0" rx="7"/><text class="t-mod" x="702.0" y="478.2" text-anchor="middle" dominant-baseline="central"><tspan x="702.0" dy="0.0">store.rs</tspan><tspan x="702.0" dy="15.6">Workspace · SQLite</tspan></text></g>
+<g class="st  mod" data-id="phooks"><rect x="612.0" y="528.0" width="180.0" height="52.0" rx="7"/><text class="t-mod" x="702.0" y="546.2" text-anchor="middle" dominant-baseline="central"><tspan x="702.0" dy="0.0">plugin_hooks</tspan><tspan x="702.0" dy="15.6">hooks.json 通知</tspan></text></g>
+<g class="st  mod" data-id="diag"><rect x="612.0" y="596.0" width="180.0" height="44.0" rx="7"/><text class="t-mod" x="702.0" y="618.0" text-anchor="middle" dominant-baseline="central"><tspan x="702.0" dy="0.0">diagnostics · quota</tspan></text></g>
+<g class="st  mod" data-id="a0"><rect x="875.0" y="98.0" width="270.0" height="56.0" rx="7"/><text class="t-mod" x="1010.0" y="118.2" text-anchor="middle" dominant-baseline="central"><tspan x="1010.0" dy="0.0">workbench/</tspan><tspan x="1010.0" dy="15.6">侧栏 · 看板 · 标签 · 命令面板</tspan></text></g>
+<g class="st  mod" data-id="a1"><rect x="875.0" y="166.0" width="270.0" height="56.0" rx="7"/><text class="t-mod" x="1010.0" y="186.2" text-anchor="middle" dominant-baseline="central"><tspan x="1010.0" dy="0.0">terminal/</tspan><tspan x="1010.0" dy="15.6">终端窗格 · libghostty-vt</tspan></text></g>
+<g class="st  mod" data-id="a2"><rect x="875.0" y="234.0" width="270.0" height="56.0" rx="7"/><text class="t-mod" x="1010.0" y="254.2" text-anchor="middle" dominant-baseline="central"><tspan x="1010.0" dy="0.0">model/session_state</tspan><tspan x="1010.0" dy="15.6">派生 Group · Phase</tspan></text></g>
+<g class="st  mod" data-id="a3"><rect x="875.0" y="302.0" width="270.0" height="56.0" rx="7"/><text class="t-mod" x="1010.0" y="322.2" text-anchor="middle" dominant-baseline="central"><tspan x="1010.0" dy="0.0">keepline-plugin-host</tspan><tspan x="1010.0" dy="15.6">wasmtime 侧栏插件沙箱</tspan></text></g>
+<g class="st  mod" data-id="a4"><rect x="875.0" y="370.0" width="270.0" height="56.0" rx="7"/><text class="t-mod" x="1010.0" y="390.2" text-anchor="middle" dominant-baseline="central"><tspan x="1010.0" dy="0.0">plugins/</tspan><tspan x="1010.0" dy="15.6">actions · decorations · rules</tspan></text></g>
+<g class="st  mod" data-id="relay"><rect x="875.0" y="508.0" width="128.0" height="60.0" rx="7"/><text class="t-mod" x="939.0" y="530.2" text-anchor="middle" dominant-baseline="central"><tspan x="939.0" dy="0.0">keepline-relay</tspan><tspan x="939.0" dy="15.6">axum WebSocket</tspan></text></g>
+<g class="st  mod" data-id="mobile"><rect x="1017.0" y="508.0" width="128.0" height="60.0" rx="7"/><text class="t-mod" x="1081.0" y="530.2" text-anchor="middle" dominant-baseline="central"><tspan x="1081.0" dy="0.0">mobile/</tspan><tspan x="1081.0" dy="15.6">Expo · React Native</tspan></text></g>
+<text class="e-label" x="1010.0" y="592.2" text-anchor="middle" dominant-baseline="central"><tspan x="1010.0" dy="0.0">中继只转发密文；手机按角色</tspan><tspan x="1010.0" dy="15.5">只看 / 能答审批 / 完全控制</tspan></text><g class="grp core"><rect x="20" y="680" width="1140" height="40" rx="10"/><text class="t-mod" x="590" y="700" text-anchor="middle" dominant-baseline="central">keepline-core（共享类型）：Workspace 模型 · Request/Reply 协议 · Content / Turn / Inbox · Agent 定义 · 布局 · 插件清单　｜　keepline-remote：远程协议 · 配对链接 · Noise 通道 · 中继帧</text></g><g class="num"><circle cx="838" cy="380" r="10"/><text class="num-t" x="838.0" y="380.0" text-anchor="middle" dominant-baseline="central"><tspan x="838.0" dy="0.0">8</tspan></text></g>
+</svg></div>
+<ol class="flows">
+<li>Agent 跑在宿主的 PTY 里，键盘输入和屏幕字节都经过 <code>pty.rs</code>。PATH 带着 keeplined，终端里的 Agent 也能调 <code>keeplined list / split</code>（虚线）。</li>
+<li>CLI 写对话日志，FSEvents 通知宿主增量读；中途丢事件就从检查点补扫。</li>
+<li>CLI 自带的 Hook 运行 <code>"$KEEPLINE_HOOK" hook --agent …</code>，靠 <code>KEEPLINE_TERMINAL</code> 指明是哪个终端。</li>
+<li>只在需要确认「还在等吗」时调一次 <code>claude agents --json</code>，从不定时轮询。</li>
+<li>识别层产出的信号都汇到 <code>content/</code>，改的是一张 Content 卡片上的 <code>turn</code>，再写回 Workspace。</li>
+<li>终端画面（VT 快照 + 增量帧）直接从 live 推给观看者，不经 SQLite。</li>
+<li>工作台订阅 Workspace 的每次 revision；它的所有改动都以 <code>Edit</code> 请求发回宿主。</li>
+<li>远程会话跑在 Noise 通道里，中继看不到内容。</li>
+</ol>
+
+<h2 id="pipe">2 · 一个信号怎么变成你看到的状态</h2>
+<p class="note">六路信号，只有一张卡片。回合状态由信号改，结局只由你改；界面上的分组、圆点和通知都是 Workspace 的派生结果。</p>
+<div class="fig"><svg viewBox="0 0 1180 460" role="img" aria-label="信号到状态的管线" xmlns="http://www.w3.org/2000/svg">
+<defs><marker id="ah" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" class="ah"/></marker></defs>
+
+<path class="edge thin" d="M195.0,50.0 L245.0,50.0" marker-end="url(#ah)"/>
+<path class="edge thin" d="M195.0,106.0 L245.0,106.0" marker-end="url(#ah)"/>
+<path class="edge thin" d="M195.0,162.0 L245.0,162.0" marker-end="url(#ah)"/>
+<path class="edge thin" d="M195.0,218.0 L245.0,218.0" marker-end="url(#ah)"/>
+<path class="edge thin" d="M195.0,274.0 L245.0,274.0" marker-end="url(#ah)"/>
+<path class="edge thin" d="M195.0,330.0 L245.0,330.0" marker-end="url(#ah)"/>
+<path class="edge thin" d="M385.1,71.0 L475.0,100.0" marker-end="url(#ah)"/>
+<path class="edge thin" d="M395.0,117.6 L475.0,130.0" marker-end="url(#ah)"/>
+<path class="edge thin" d="M395.0,161.0 L475.0,160.0" marker-end="url(#ah)"/>
+<path class="edge thin" d="M395.0,204.5 L475.0,190.0" marker-end="url(#ah)"/>
+<path class="edge thin" d="M380.3,253.0 L475.0,220.0" marker-end="url(#ah)"/>
+<path class="edge thin" d="M395.0,330.0 L475.0,330.0" marker-end="url(#ah)"/>
+<path class="edge " d="M665.0,160.0 L715.0,182.2" marker-end="url(#ah)"/>
+<path class="edge " d="M622.3,305.0 L715.0,260.7" marker-end="url(#ah)"/>
+<path class="edge " d="M597.6,374.0 L740.9,265.0" marker-end="url(#ah)"/>
+<path class="edge " d="M885.0,182.6 L981.8,140.0" marker-end="url(#ah)"/>
+<path class="edge " d="M885.0,213.2 L940.0,208.8" marker-end="url(#ah)"/>
+<path class="edge " d="M885.0,243.8 L942.9,260.0" marker-end="url(#ah)"/>
+<path class="edge " d="M872.6,265.0 L1009.7,350.0" marker-end="url(#ah)"/>
+<g class="st  mod" data-id="s0"><rect x="25.0" y="29.0" width="170.0" height="42.0" rx="7"/><text class="t-mod" x="110.0" y="50.0" text-anchor="middle" dominant-baseline="central"><tspan x="110.0" dy="0.0">对话日志 JSONL</tspan></text></g>
+<g class="st  mod" data-id="i0"><rect x="245.0" y="29.0" width="150.0" height="42.0" rx="7"/><text class="t-mod" x="320.0" y="50.0" text-anchor="middle" dominant-baseline="central"><tspan x="320.0" dy="0.0">log_index 增量读</tspan></text></g>
+<g class="st  mod" data-id="s1"><rect x="25.0" y="85.0" width="170.0" height="42.0" rx="7"/><text class="t-mod" x="110.0" y="106.0" text-anchor="middle" dominant-baseline="central"><tspan x="110.0" dy="0.0">CLI Hook 事件</tspan></text></g>
+<g class="st  mod" data-id="i1"><rect x="245.0" y="85.0" width="150.0" height="42.0" rx="7"/><text class="t-mod" x="320.0" y="106.0" text-anchor="middle" dominant-baseline="central"><tspan x="320.0" dy="0.0">keeplined hook</tspan></text></g>
+<g class="st  mod" data-id="s2"><rect x="25.0" y="141.0" width="170.0" height="42.0" rx="7"/><text class="t-mod" x="110.0" y="162.0" text-anchor="middle" dominant-baseline="central"><tspan x="110.0" dy="0.0">安静画面的底部</tspan></text></g>
+<g class="st  mod" data-id="i2"><rect x="245.0" y="141.0" width="150.0" height="42.0" rx="7"/><text class="t-mod" x="320.0" y="162.0" text-anchor="middle" dominant-baseline="central"><tspan x="320.0" dy="0.0">screen_rules</tspan></text></g>
+<g class="st  mod" data-id="s3"><rect x="25.0" y="197.0" width="170.0" height="42.0" rx="7"/><text class="t-mod" x="110.0" y="218.0" text-anchor="middle" dominant-baseline="central"><tspan x="110.0" dy="0.0">claude agents --json</tspan></text></g>
+<g class="st  mod" data-id="i3"><rect x="245.0" y="197.0" width="150.0" height="42.0" rx="7"/><text class="t-mod" x="320.0" y="218.0" text-anchor="middle" dominant-baseline="central"><tspan x="320.0" dy="0.0">official.rs</tspan></text></g>
+<g class="st  mod" data-id="s4"><rect x="25.0" y="253.0" width="170.0" height="42.0" rx="7"/><text class="t-mod" x="110.0" y="274.0" text-anchor="middle" dominant-baseline="central"><tspan x="110.0" dy="0.0">子 Agent 日志</tspan></text></g>
+<g class="st  mod" data-id="i4"><rect x="245.0" y="253.0" width="150.0" height="42.0" rx="7"/><text class="t-mod" x="320.0" y="274.0" text-anchor="middle" dominant-baseline="central"><tspan x="320.0" dy="0.0">children()</tspan></text></g>
+<g class="st  mod" data-id="s5"><rect x="25.0" y="309.0" width="170.0" height="42.0" rx="7"/><text class="t-mod" x="110.0" y="330.0" text-anchor="middle" dominant-baseline="central"><tspan x="110.0" dy="0.0">进程表 ps / lsof</tspan></text></g>
+<g class="st  mod" data-id="i5"><rect x="245.0" y="309.0" width="150.0" height="42.0" rx="7"/><text class="t-mod" x="320.0" y="330.0" text-anchor="middle" dominant-baseline="central"><tspan x="320.0" dy="0.0">recognition</tspan></text></g>
+<g class="st run mod" data-id="card"><rect x="475.0" y="35.0" width="190.0" height="250.0" rx="7"/><text class="t-mod" x="570.0" y="113.2" text-anchor="middle" dominant-baseline="central"><tspan x="570.0" dy="0.0">Content 卡片</tspan><tspan x="570.0" dy="15.6"></tspan><tspan x="570.0" dy="15.6">turn  回合状态</tspan><tspan x="570.0" dy="15.6">waiting  在等什么</tspan><tspan x="570.0" dy="15.6">background  后台任务</tspan><tspan x="570.0" dy="15.6">evidence  测试/提交/改文件</tspan><tspan x="570.0" dy="15.6">signal  哪个信号定的</tspan></text></g>
+<g class="st  mod" data-id="bind"><rect x="475.0" y="305.0" width="190.0" height="50.0" rx="7"/><text class="t-mod" x="570.0" y="322.2" text-anchor="middle" dominant-baseline="central"><tspan x="570.0" dy="0.0">AgentSession</tspan><tspan x="570.0" dy="15.6">binding · current</tspan></text></g>
+<g class="st user mod" data-id="user"><rect x="475.0" y="374.0" width="190.0" height="42.0" rx="7"/><text class="t-mod" x="570.0" y="395.0" text-anchor="middle" dominant-baseline="central"><tspan x="570.0" dy="0.0">你的操作 → Edit</tspan></text></g>
+<g class="st  mod" data-id="ws"><rect x="715.0" y="175.0" width="170.0" height="90.0" rx="7"/><text class="t-mod" x="800.0" y="204.4" text-anchor="middle" dominant-baseline="central"><tspan x="800.0" dy="0.0">Workspace</tspan><tspan x="800.0" dy="15.6">revision += 1</tspan><tspan x="800.0" dy="15.6">存 SQLite · 推送</tspan></text></g>
+<g class="st wait mod" data-id="inbox"><rect x="940.0" y="80.0" width="220.0" height="60.0" rx="7"/><text class="t-mod" x="1050.0" y="102.2" text-anchor="middle" dominant-baseline="central"><tspan x="1050.0" dy="0.0">Content::group → Inbox</tspan><tspan x="1050.0" dy="15.6">收件箱 / 看板列</tspan></text></g>
+<g class="st wait mod" data-id="phase"><rect x="940.0" y="170.0" width="220.0" height="60.0" rx="7"/><text class="t-mod" x="1050.0" y="192.2" text-anchor="middle" dominant-baseline="central"><tspan x="1050.0" dy="0.0">session_state → Group·Phase</tspan><tspan x="1050.0" dy="15.6">侧栏圆点 / 窗格</tspan></text></g>
+<g class="st  mod" data-id="notify"><rect x="940.0" y="260.0" width="220.0" height="60.0" rx="7"/><text class="t-mod" x="1050.0" y="282.2" text-anchor="middle" dominant-baseline="central"><tspan x="1050.0" dy="0.0">hook Event → hooks.json</tspan><tspan x="1050.0" dy="15.6">started/waiting/done/error</tspan></text></g>
+<g class="st  mod" data-id="phone"><rect x="940.0" y="350.0" width="220.0" height="50.0" rx="7"/><text class="t-mod" x="1050.0" y="375.0" text-anchor="middle" dominant-baseline="central"><tspan x="1050.0" dy="0.0">远程 cards → 手机</tspan></text></g>
+<text class="e-label user" x="570.0" y="438.0" text-anchor="middle" dominant-baseline="central"><tspan x="570.0" dy="0.0">Outcome 只由你改（标记完成 / 稍后再看 / 放弃）</tspan></text>
+</svg></div>
+
+<h2 id="layers">3 · 状态分层</h2>
+<table><tr><th>层</th><th>存在哪</th><th>谁改</th><th>状态</th></tr>
+<tr><td>终端进程</td><td><code>Terminal.state</code></td><td>宿主（spawn、退出、重启）</td><td>Starting · Running · Draining · Exited · Interrupted · Failed</td></tr>
+<tr><td>对话绑定</td><td><code>AgentSession.terminal / current / binding</code></td><td>recognition</td><td>只在日志里 · 未对上 · 当前 · 历史</td></tr>
+<tr><td>回合</td><td><code>Content.turn</code></td><td>日志 / Hook / 画面 / 官方状态 / 子 Agent</td><td>Unknown · Running · Waiting · Completed · Interrupted · Error</td></tr>
+<tr><td>结局</td><td><code>AgentSession.outcome</code></td><td><b>你</b>（新回合会自动重开）</td><td>Open · Completed · Deferred · Abandoned</td></tr>
+<tr><td>分组（派生）</td><td>不存，现算</td><td><code>Content::group</code> · <code>sidebar_status</code></td><td>收件箱 8 组；窗格 Working / Waiting / Fresh / Background / Done / Ready …</td></tr>
+<tr><td>系统健康</td><td>宿主内存，推给 app</td><td>识别订阅 · 远程连接</td><td>RecognitionPhase · RemoteState</td></tr>
+</table>
+
+<h2 id="proc">4 · 终端进程 <code>ProcessState</code></h2>
+<p class="note">一个 Terminal 是一个 PTY，它的 shell 可以先后跑很多段对话。关掉窗格不等于结束：PTY 身份和摆放位置是分开的。</p>
+<div class="fig"><svg viewBox="0 0 1080 420" role="img" aria-label="终端进程状态机" xmlns="http://www.w3.org/2000/svg">
+<defs><marker id="ah" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" class="ah"/></marker></defs>
+<circle class="init" cx="30" cy="150" r="7"/><path class="edge" d="M37,150 L75.0,150.0" marker-end="url(#ah)"/>
+<path class="edge " d="M225.0,150.0 L345.0,150.0" marker-end="url(#ah)"/><text class="e-label " x="285.0" y="116.2" text-anchor="middle" dominant-baseline="central"><tspan x="285.0" dy="0.0">pty::spawn 成功</tspan><tspan x="285.0" dy="15.5">写入 pid</tspan></text>
+<path class="edge " d="M150.0,178.0 L150.0,312.0" marker-end="url(#ah)"/><text class="e-label " x="104.0" y="237.2" text-anchor="middle" dominant-baseline="central"><tspan x="104.0" dy="0.0">spawn 报错</tspan><tspan x="104.0" dy="15.5">记 error</tspan></text>
+<path class="edge " d="M495.0,150.0 L615.0,150.0" marker-end="url(#ah)"/><text class="e-label " x="555.0" y="166.2" text-anchor="middle" dominant-baseline="central"><tspan x="555.0" dy="0.0">子进程退出</tspan><tspan x="555.0" dy="15.5">输出未读完</tspan></text>
+<path class="edge " d="M765.0,150.0 L885.0,150.0" marker-end="url(#ah)"/><text class="e-label " x="825.0" y="134.0" text-anchor="middle" dominant-baseline="central"><tspan x="825.0" dy="0.0">输出读完</tspan></text>
+<path class="edge " d="M495.0,123.6 Q690.0,55.0 885.0,123.6" marker-end="url(#ah)"/><text class="e-label " x="690.0" y="89.3" text-anchor="middle" dominant-baseline="central"><tspan x="690.0" dy="0.0">退出时输出已读完</tspan></text>
+<path class="edge " d="M398.0,122.0 C380.0,74.0 460.0,74.0 442.0,122.0" marker-end="url(#ah)"/><text class="e-label " x="420.0" y="68.0" text-anchor="middle" dominant-baseline="central"><tspan x="420.0" dy="0.0">新宿主接管：fd 经 SCM_RIGHTS 传过去，状态不变</tspan></text>
+<path class="edge err" d="M193.5,178.0 Q339.8,272.2 470.0,313.2" marker-end="url(#ah)"/>
+<path class="edge err" d="M439.9,178.0 L535.1,312.0" marker-end="url(#ah)"/>
+<path class="edge err" d="M670.1,178.0 L574.9,312.0" marker-end="url(#ah)"/><text class="e-label err" x="742.5" y="237.2" text-anchor="middle" dominant-baseline="central"><tspan x="742.5" dy="0.0">宿主重启时还活着的终端</tspan><tspan x="742.5" dy="15.5">写 lost_agents，可用原 CLI 恢复</tspan></text>
+<g class="st" data-id="starting"><rect x="75.0" y="122.0" width="150.0" height="56.0" rx="12"/><text class="t-main" x="150.0" y="142.0" text-anchor="middle" dominant-baseline="central"><tspan x="150.0" dy="0.0">Starting</tspan></text><text class="t-sub" x="150.0" y="161.0" text-anchor="middle" dominant-baseline="central"><tspan x="150.0" dy="0.0">启动中</tspan></text></g>
+<g class="st run" data-id="running"><rect x="345.0" y="122.0" width="150.0" height="56.0" rx="12"/><text class="t-main" x="420.0" y="142.0" text-anchor="middle" dominant-baseline="central"><tspan x="420.0" dy="0.0">Running</tspan></text><text class="t-sub" x="420.0" y="161.0" text-anchor="middle" dominant-baseline="central"><tspan x="420.0" dy="0.0">在跑</tspan></text></g>
+<g class="st wait" data-id="draining"><rect x="615.0" y="122.0" width="150.0" height="56.0" rx="12"/><text class="t-main" x="690.0" y="142.0" text-anchor="middle" dominant-baseline="central"><tspan x="690.0" dy="0.0">Draining</tspan></text><text class="t-sub" x="690.0" y="161.0" text-anchor="middle" dominant-baseline="central"><tspan x="690.0" dy="0.0">已退出 · 读余下输出</tspan></text></g>
+<g class="st done final" data-id="exited"><rect x="885.0" y="122.0" width="150.0" height="56.0" rx="12"/><rect class="inner" x="889.0" y="126.0" width="142.0" height="48.0" rx="9"/><text class="t-main" x="960.0" y="142.0" text-anchor="middle" dominant-baseline="central"><tspan x="960.0" dy="0.0">Exited</tspan></text><text class="t-sub" x="960.0" y="161.0" text-anchor="middle" dominant-baseline="central"><tspan x="960.0" dy="0.0">结束（含退出码）</tspan></text></g>
+<g class="st err final" data-id="failed"><rect x="75.0" y="312.0" width="150.0" height="56.0" rx="12"/><rect class="inner" x="79.0" y="316.0" width="142.0" height="48.0" rx="9"/><text class="t-main" x="150.0" y="332.0" text-anchor="middle" dominant-baseline="central"><tspan x="150.0" dy="0.0">Failed</tspan></text><text class="t-sub" x="150.0" y="351.0" text-anchor="middle" dominant-baseline="central"><tspan x="150.0" dy="0.0">没起来</tspan></text></g>
+<g class="st err final" data-id="interrupted"><rect x="470.0" y="312.0" width="170.0" height="56.0" rx="12"/><rect class="inner" x="474.0" y="316.0" width="162.0" height="48.0" rx="9"/><text class="t-main" x="555.0" y="332.0" text-anchor="middle" dominant-baseline="central"><tspan x="555.0" dy="0.0">Interrupted</tspan></text><text class="t-sub" x="555.0" y="351.0" text-anchor="middle" dominant-baseline="central"><tspan x="555.0" dy="0.0">宿主重启 · 原 PTY 丢了</tspan></text></g>
+
+</svg><div class="legend"><span class="run">在跑</span><span class="wait">等待 / 过渡</span><span class="done">正常结束</span><span class="err">出错 / 中断</span><span class="muted">中性</span><span class="user">由你决定</span><span style="color:var(--muted)">双边框 = 终态</span></div></div>
+
+<h2 id="turn">5 · 回合 <code>Turn</code></h2>
+<p class="note">核心状态机。每次变化由 <code>settle()</code> 记下是哪路信号定的（日志 / Hook / 画面 / 官方状态 / 子 Agent），进入 Waiting 时 <code>waiting_episode += 1</code>，同一个对话框被多路信号报到只算一次通知。任何状态收到新的用户发话都回到 Running。</p>
+<div class="fig"><svg viewBox="0 0 1110 560" role="img" aria-label="回合状态机" xmlns="http://www.w3.org/2000/svg">
+<defs><marker id="ah" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" class="ah"/></marker></defs>
+<circle class="init" cx="20" cy="160" r="7"/><path class="edge" d="M27,160 L65.0,202.0" marker-end="url(#ah)"/>
+<path class="edge " d="M160.0,230.0 L285.0,230.0" marker-end="url(#ah)"/><text class="e-label " x="222.5" y="192.2" text-anchor="middle" dominant-baseline="central"><tspan x="222.5" dy="0.0">用户发话 · UserPromptSubmit</tspan><tspan x="222.5" dy="15.5">Pre/PostToolUse</tspan></text>
+<path class="edge " d="M390.5,202.0 Q496.0,105.0 605.0,96.1" marker-end="url(#ah)"/><text class="e-label " x="266.8" y="63.8" text-anchor="middle" dominant-baseline="central"><tspan x="266.8" dy="0.0">AskUserQuestion / request_user_input</tspan><tspan x="266.8" dy="15.5">工具结果「需要审批」</tspan><tspan x="266.8" dy="15.5">PermissionRequest · Notification Hook</tspan><tspan x="266.8" dy="15.5">画面规则 · 官方 Waiting · 子 Agent 在等</tspan></text>
+<path class="edge " d="M649.5,118.0 Q544.0,215.0 435.0,223.9" marker-end="url(#ah)"/><text class="e-label " x="603.2" y="167.4" text-anchor="middle" dominant-baseline="central"><tspan x="603.2" dy="0.0">工具结果回来（已回答）</tspan><tspan x="603.2" dy="15.5">Hook 等待后的 PostToolUse</tspan><tspan x="603.2" dy="15.5">官方 Busy · 子 Agent 不等了</tspan></text>
+<path class="edge " d="M755.0,90.0 L935.0,90.0" marker-end="url(#ah)"/><text class="e-label " x="845.0" y="106.2" text-anchor="middle" dominant-baseline="central"><tspan x="845.0" dy="0.0">官方 Idle</tspan><tspan x="845.0" dy="15.5">等待中没收到 Stop</tspan></text>
+<path class="edge " d="M680.0,118.0 L680.0,362.0" marker-end="url(#ah)"/><text class="e-label " x="750.0" y="272.2" text-anchor="middle" dominant-baseline="central"><tspan x="750.0" dy="0.0">官方 Idle</tspan><tspan x="750.0" dy="15.5">等待中已收到 Stop</tspan></text>
+<path class="edge " d="M394.4,258.0 Q502.1,345.8 605.0,371.4" marker-end="url(#ah)"/><text class="e-label " x="545.9" y="337.5" text-anchor="middle" dominant-baseline="central"><tspan x="545.9" dy="0.0">Stop Hook</tspan><tspan x="545.9" dy="15.5">日志回合结束</tspan></text>
+<path class="edge " d="M645.6,362.0 Q537.9,274.2 435.0,248.6" marker-end="url(#ah)"/><text class="e-label " x="609.1" y="276.0" text-anchor="middle" dominant-baseline="central"><tspan x="609.1" dy="0.0">新的用户发话</tspan><tspan x="609.1" dy="15.5">后台在跑时又来工具调用（被唤醒）</tspan></text>
+<path class="edge " d="M360.0,202.0 L360.0,24.0 L1060.0,24.0 L1031.2,62.0" marker-end="url(#ah)" marker-start="url(#ah)"/><text class="e-label " x="830.0" y="22.0" text-anchor="middle" dominant-baseline="central"><tspan x="830.0" dy="0.0">→ 日志：turn_aborted / aborted　　← 新的用户发话</tspan></text>
+<path class="edge " d="M360.0,258.0 L360.0,442.0" marker-end="url(#ah)"/><text class="e-label " x="290.0" y="342.2" text-anchor="middle" dominant-baseline="central"><tspan x="290.0" dy="0.0">StopFailure Hook</tspan><tspan x="290.0" dy="15.5">日志 API 错误</tspan></text>
+<path class="edge thin" d="M374.0,442.0 Q420.0,350.0 374.0,258.0" marker-end="url(#ah)"/><text class="e-label thin" x="422.0" y="420.0" text-anchor="middle" dominant-baseline="central"><tspan x="422.0" dy="0.0">新的用户发话</tspan></text>
+<g class="st muted" data-id="unknown"><rect x="30.0" y="202.0" width="130.0" height="56.0" rx="12"/><text class="t-main" x="95.0" y="222.0" text-anchor="middle" dominant-baseline="central"><tspan x="95.0" dy="0.0">Unknown</tspan></text><text class="t-sub" x="95.0" y="241.0" text-anchor="middle" dominant-baseline="central"><tspan x="95.0" dy="0.0">没读到开头</tspan></text></g>
+<g class="st run" data-id="running"><rect x="285.0" y="202.0" width="150.0" height="56.0" rx="12"/><text class="t-main" x="360.0" y="222.0" text-anchor="middle" dominant-baseline="central"><tspan x="360.0" dy="0.0">Running</tspan></text><text class="t-sub" x="360.0" y="241.0" text-anchor="middle" dominant-baseline="central"><tspan x="360.0" dy="0.0">在跑</tspan></text></g>
+<g class="st wait" data-id="waiting"><rect x="605.0" y="62.0" width="150.0" height="56.0" rx="12"/><text class="t-main" x="680.0" y="82.0" text-anchor="middle" dominant-baseline="central"><tspan x="680.0" dy="0.0">Waiting</tspan></text><text class="t-sub" x="680.0" y="101.0" text-anchor="middle" dominant-baseline="central"><tspan x="680.0" dy="0.0">等你回答</tspan></text></g>
+<g class="st muted" data-id="interrupted"><rect x="935.0" y="62.0" width="150.0" height="56.0" rx="12"/><text class="t-main" x="1010.0" y="82.0" text-anchor="middle" dominant-baseline="central"><tspan x="1010.0" dy="0.0">Interrupted</tspan></text><text class="t-sub" x="1010.0" y="101.0" text-anchor="middle" dominant-baseline="central"><tspan x="1010.0" dy="0.0">中断了</tspan></text></g>
+<g class="st done" data-id="completed"><rect x="605.0" y="362.0" width="150.0" height="56.0" rx="12"/><text class="t-main" x="680.0" y="382.0" text-anchor="middle" dominant-baseline="central"><tspan x="680.0" dy="0.0">Completed</tspan></text><text class="t-sub" x="680.0" y="401.0" text-anchor="middle" dominant-baseline="central"><tspan x="680.0" dy="0.0">这一轮停了</tspan></text></g>
+<g class="st err" data-id="error"><rect x="285.0" y="442.0" width="150.0" height="56.0" rx="12"/><text class="t-main" x="360.0" y="462.0" text-anchor="middle" dominant-baseline="central"><tspan x="360.0" dy="0.0">Error</tspan></text><text class="t-sub" x="360.0" y="481.0" text-anchor="middle" dominant-baseline="central"><tspan x="360.0" dy="0.0">出错了</tspan></text></g>
+<text class="e-label" x="910.0" y="232.2" text-anchor="middle" dominant-baseline="central"><tspan x="910.0" dy="0.0">等待中收到 Stop：仍留在 Waiting</tspan><tspan x="910.0" dy="15.5">记下 completed_while_waiting</tspan></text>
+</svg><div class="legend"><span class="run">在跑</span><span class="wait">等待 / 过渡</span><span class="done">正常结束</span><span class="err">出错 / 中断</span><span class="muted">中性</span><span class="user">由你决定</span><span style="color:var(--muted)">双边框 = 终态</span></div></div>
+
+<h2 id="outcome">6 · 结局 <code>Outcome</code>：做没做完由你定</h2>
+<p class="note">Agent 说「完成了」只记成 <code>completed_claim</code>，不改结局。一轮停了就是「等你验收」，只有你点「标记完成」才进 Completed。</p>
+<div class="fig"><svg viewBox="0 0 960 450" role="img" aria-label="会话结局状态机" xmlns="http://www.w3.org/2000/svg">
+<defs><marker id="ah" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" class="ah"/></marker></defs>
+<circle class="init" cx="60" cy="190" r="7"/><path class="edge" d="M67,190 L180.0,190.0" marker-end="url(#ah)"/><text class="e-label" x="120.0" y="176.0" text-anchor="middle" dominant-baseline="central"><tspan x="120.0" dy="0.0">新会话</tspan></text>
+<path class="edge " d="M340.0,174.9 Q475.5,149.2 602.6,100.0" marker-end="url(#ah)"/><text class="e-label " x="473.4" y="127.3" text-anchor="middle" dominant-baseline="central"><tspan x="473.4" dy="0.0">标记完成</tspan></text>
+<path class="edge " d="M340.0,179.3 Q470.0,162.0 595.0,178.7" marker-end="url(#ah)"/><text class="e-label " x="468.8" y="158.5" text-anchor="middle" dominant-baseline="central"><tspan x="468.8" dy="0.0">稍后再看（定时间）</tspan></text>
+<path class="edge " d="M340.0,205.1 Q475.5,230.8 602.6,280.0" marker-end="url(#ah)"/><text class="e-label " x="473.4" y="250.7" text-anchor="middle" dominant-baseline="central"><tspan x="473.4" dy="0.0">放弃</tspan></text>
+<path class="edge " d="M595.0,201.3 Q470.0,218.0 340.0,200.7" marker-end="url(#ah)"/><text class="e-label " x="468.8" y="221.5" text-anchor="middle" dominant-baseline="central"><tspan x="468.8" dy="0.0">到期 expire_outcomes</tspan></text>
+<path class="edge thin" d="M765.0,70.0 L900.0,70.0 L900.0,420.0 L260.0,420.0 L260.0,220.0" marker-end="url(#ah)"/><text class="e-label thin" x="260.0" y="334.0" text-anchor="middle" dominant-baseline="central"><tspan x="260.0" dy="0.0">Agent 开了新回合（turn_key 变了）→ 自动回到 Open，记进 outcome_history</tspan></text>
+<path class="edge thin nohead" d="M765.0,310.0 L900.0,310.0" />
+<path class="edge thin nohead" d="M765.0,190.0 L900.0,190.0" />
+<g class="st user" data-id="open"><rect x="180.0" y="160.0" width="160.0" height="60.0" rx="12"/><text class="t-main" x="260.0" y="182.0" text-anchor="middle" dominant-baseline="central"><tspan x="260.0" dy="0.0">Open</tspan></text><text class="t-sub" x="260.0" y="201.0" text-anchor="middle" dominant-baseline="central"><tspan x="260.0" dy="0.0">没定结局</tspan></text></g>
+<g class="st done" data-id="completed"><rect x="595.0" y="40.0" width="170.0" height="60.0" rx="12"/><text class="t-main" x="680.0" y="62.0" text-anchor="middle" dominant-baseline="central"><tspan x="680.0" dy="0.0">Completed</tspan></text><text class="t-sub" x="680.0" y="81.0" text-anchor="middle" dominant-baseline="central"><tspan x="680.0" dy="0.0">做完了 ✓（你标的）</tspan></text></g>
+<g class="st wait" data-id="deferred"><rect x="595.0" y="160.0" width="170.0" height="60.0" rx="12"/><text class="t-main" x="680.0" y="182.0" text-anchor="middle" dominant-baseline="central"><tspan x="680.0" dy="0.0">Deferred{until}</tspan></text><text class="t-sub" x="680.0" y="201.0" text-anchor="middle" dominant-baseline="central"><tspan x="680.0" dy="0.0">稍后再看</tspan></text></g>
+<g class="st muted" data-id="abandoned"><rect x="595.0" y="280.0" width="170.0" height="60.0" rx="12"/><text class="t-main" x="680.0" y="302.0" text-anchor="middle" dominant-baseline="central"><tspan x="680.0" dy="0.0">Abandoned</tspan></text><text class="t-sub" x="680.0" y="321.0" text-anchor="middle" dominant-baseline="central"><tspan x="680.0" dy="0.0">不做了</tspan></text></g>
+
+</svg><div class="legend"><span class="run">在跑</span><span class="wait">等待 / 过渡</span><span class="done">正常结束</span><span class="err">出错 / 中断</span><span class="muted">中性</span><span class="user">由你决定</span><span style="color:var(--muted)">双边框 = 终态</span></div></div>
+
+<h2 id="inbox">7 · 分组：从状态派生，先命中先算</h2>
+<p class="note">分组不存储，每次渲染从 Outcome + Turn + 终端状态现算。左边用于收件箱和看板列，右边用于 Keepline 终端里正活着的 Agent（侧栏圆点、窗格）。</p>
+<div class="two"><div class="fig"><h3>收件箱 · <code>Content::group</code></h3><ol class="ladder"><li><span class="cond">结局是 <code>Completed</code> 或 <code>Abandoned</code></span><span class="arrow">→</span><span class="chip done">做完了</span></li><li><span class="cond">结局是 <code>Deferred</code> 且没到期</span><span class="arrow">→</span><span class="chip wait">稍后再看</span></li><li><span class="cond">没在跑，且距上一轮（或上次验收/到期）超过 <code>stale_days</code> 天</span><span class="arrow">→</span><span class="chip muted">很久没动</span></li><li><span class="cond"><code>turn = Waiting</code></span><span class="arrow">→</span><span class="chip wait">等你回答</span></li><li><span class="cond"><code>turn = Error</code>，或所在终端 Failed / Interrupted / 退出码 ≠ 0</span><span class="arrow">→</span><span class="chip err">出错了</span></li><li><span class="cond"><code>turn = Completed</code>，是当前对话，后台还有子 Agent / 监视 / 定时唤醒</span><span class="arrow">→</span><span class="chip run">在跑</span></li><li><span class="cond"><code>turn = Completed</code>（不管 Agent 说没说完成）</span><span class="arrow">→</span><span class="chip user">等你验收</span></li><li><span class="cond"><code>turn = Running</code>，且是当前对话或 15 分钟内有更新</span><span class="arrow">→</span><span class="chip run">在跑</span></li><li><span class="cond">其余（Interrupted、Unknown、日志里的 Running 已过期）</span><span class="arrow">→</span><span class="chip muted">停下了</span></li></ol></div>
+<div class="fig"><h3>活着的窗格 · <code>sidebar_status</code></h3><ol class="ladder"><li><span class="cond"><code>turn = Running</code>，或 Completed 但子 Agent 还在跑</span><span class="arrow">→</span><span class="chip run">Working · 在跑</span></li><li><span class="cond"><code>turn = Waiting</code></span><span class="arrow">→</span><span class="chip wait">Waiting · 等你回答（要你注意）</span></li><li><span class="cond">Idle 且还没开始第一轮（没提问、turn = Unknown）</span><span class="arrow">→</span><span class="chip muted">Fresh · 新开的</span></li><li><span class="cond">Idle 且结局 Completed</span><span class="arrow">→</span><span class="chip done">Closed · 做完了</span></li><li><span class="cond">Idle 且 turn = Error</span><span class="arrow">→</span><span class="chip err">Error · 出错了（要你注意）</span></li><li><span class="cond">Idle 且后台有 shell / 监视 / 定时唤醒</span><span class="arrow">→</span><span class="chip muted">Background · 等后台</span></li><li><span class="cond">Idle，这一轮在你没看着时停的</span><span class="arrow">→</span><span class="chip user">Done · 等你验收（要你看一眼）</span></li><li><span class="cond">Idle，其余</span><span class="arrow">→</span><span class="chip user">Ready · 等你验收</span></li></ol>
+<p class="note">「没看着时停的」由 <code>track_unseen</code> 记：Phase 从非 Idle 变 Idle 且窗格没显示，就标为未看；显示出来或再动起来就清掉。</p></div></div>
+
+<h2 id="bind">8 · 对话绑定</h2>
+<p class="note">对话身份是 (runtime, cli_session_id)，和 PTY、摆放位置都无关。宿主尝试 CLI 提供的每种证据，有歧义宁可不绑。</p>
+<div class="fig"><svg viewBox="0 0 1080 440" role="img" aria-label="对话绑定" xmlns="http://www.w3.org/2000/svg">
+<defs><marker id="ah" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" class="ah"/></marker></defs>
+<circle class="init" cx="30" cy="120" r="7"/><path class="edge" d="M37,120 L70.0,120.0" marker-end="url(#ah)"/><circle class="init" cx="30" cy="320" r="7"/><path class="edge" d="M37,320 L70.0,320.0" marker-end="url(#ah)"/>
+<path class="edge " d="M270.0,145.6 L455.0,193.1" marker-end="url(#ah)"/><text class="e-label " x="362.5" y="153.4" text-anchor="middle" dominant-baseline="central"><tspan x="362.5" dy="0.0">唯一的证据指向某个终端</tspan></text>
+<path class="edge " d="M270.0,294.4 L455.0,246.9" marker-end="url(#ah)"/><text class="e-label " x="362.5" y="280.9" text-anchor="middle" dominant-baseline="central"><tspan x="362.5" dy="0.0">证据唯一时绑定</tspan><tspan x="362.5" dy="15.5">有歧义就拒绝、继续等</tspan></text>
+<path class="edge " d="M665.0,220.0 L845.0,220.0" marker-end="url(#ah)"/><text class="e-label " x="755.0" y="186.2" text-anchor="middle" dominant-baseline="central"><tspan x="755.0" dy="0.0">终端退出 · 宿主重启</tspan><tspan x="755.0" dy="15.5">同一终端换了对话</tspan></text>
+<path class="edge " d="M853.1,252.0 Q750.0,290.0 655.0,255.0" marker-end="url(#ah)"/><text class="e-label " x="752.0" y="294.0" text-anchor="middle" dominant-baseline="central"><tspan x="752.0" dy="0.0">恢复：用 agent_launch 里的原参数</tspan><tspan x="752.0" dy="15.5">在终端里 resume 这段对话</tspan></text>
+<g class="st muted" data-id="seen"><rect x="70.0" y="88.0" width="200.0" height="64.0" rx="12"/><text class="t-main" x="170.0" y="112.0" text-anchor="middle" dominant-baseline="central"><tspan x="170.0" dy="0.0">只在日志里看到</tspan></text><text class="t-sub" x="170.0" y="131.0" text-anchor="middle" dominant-baseline="central"><tspan x="170.0" dy="0.0">terminal = None · 不打扰你</tspan></text></g>
+<g class="st wait" data-id="unbound"><rect x="70.0" y="288.0" width="200.0" height="64.0" rx="12"/><text class="t-main" x="170.0" y="312.0" text-anchor="middle" dominant-baseline="central"><tspan x="170.0" dy="0.0">终端里在跑，未对上</tspan></text><text class="t-sub" x="170.0" y="331.0" text-anchor="middle" dominant-baseline="central"><tspan x="170.0" dy="0.0">窗格提示「未对上对话：」</tspan></text></g>
+<g class="st run" data-id="bound"><rect x="455.0" y="185.0" width="210.0" height="70.0" rx="12"/><text class="t-main" x="560.0" y="212.0" text-anchor="middle" dominant-baseline="central"><tspan x="560.0" dy="0.0">绑定 · 当前对话</tspan></text><text class="t-sub" x="560.0" y="231.0" text-anchor="middle" dominant-baseline="central"><tspan x="560.0" dy="0.0">current = true · binding = …</tspan></text></g>
+<g class="st muted" data-id="hist"><rect x="845.0" y="188.0" width="190.0" height="64.0" rx="12"/><text class="t-main" x="940.0" y="212.0" text-anchor="middle" dominant-baseline="central"><tspan x="940.0" dy="0.0">历史对话</tspan></text><text class="t-sub" x="940.0" y="231.0" text-anchor="middle" dominant-baseline="central"><tspan x="940.0" dy="0.0">current = false · 保留 terminal</tspan></text></g>
+<text class="e-label" x="560.0" y="402.2" text-anchor="middle" dominant-baseline="central"><tspan x="560.0" dy="0.0">证据强弱：Process（进程报出会话 ID）&gt; Hook（CLI Hook 上报）&gt; OpenFile（进程开着对话文件）&gt; Screen（最新提示词只在一块屏上）</tspan><tspan x="560.0" dy="15.5">同一 cwd 从来不算证据；每个终端最多一个当前对话</tspan></text>
+</svg><div class="legend"><span class="run">在跑</span><span class="wait">等待 / 过渡</span><span class="done">正常结束</span><span class="err">出错 / 中断</span><span class="muted">中性</span><span class="user">由你决定</span><span style="color:var(--muted)">双边框 = 终态</span></div></div>
+
+<div><div><h2 id="recog">9 · 识别健康 <code>RecognitionPhase</code></h2>
+<p class="note">没有轮询兜底：日志全靠 FSEvents。丢事件时按目录子树补扫，补扫范围先持久化。</p>
+<div class="fig"><svg viewBox="0 0 900 400" role="img" aria-label="识别健康状态机" xmlns="http://www.w3.org/2000/svg">
+<defs><marker id="ah" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" class="ah"/></marker></defs>
+<circle class="init" cx="30" cy="110" r="7"/><path class="edge" d="M37,110 L75.0,110.0" marker-end="url(#ah)"/>
+<path class="edge " d="M225.0,110.0 L345.0,110.0" marker-end="url(#ah)"/><text class="e-label " x="285.0" y="94.0" text-anchor="middle" dominant-baseline="central"><tspan x="285.0" dy="0.0">FSEvents 订阅就绪</tspan></text>
+<path class="edge err" d="M408.2,138.0 Q380.0,205.0 408.2,272.0" marker-end="url(#ah)"/><text class="e-label err" x="299.1" y="197.2" text-anchor="middle" dominant-baseline="central"><tspan x="299.1" dy="0.0">事件不完整 · ID 回绕</tspan><tspan x="299.1" dy="15.5">订阅出错（从检查点重订）</tspan></text>
+<path class="edge " d="M505.0,285.0 Q590.0,270.0 675.0,285.0" marker-end="url(#ah)"/><text class="e-label " x="590.0" y="243.7" text-anchor="middle" dominant-baseline="central"><tspan x="590.0" dy="0.0">补扫范围先写盘</tspan><tspan x="590.0" dy="15.5">重启也能续上</tspan></text>
+<path class="edge " d="M724.1,272.0 Q604.6,178.8 495.0,138.0" marker-end="url(#ah)"/><text class="e-label " x="637.1" y="177.9" text-anchor="middle" dominant-baseline="central"><tspan x="637.1" dy="0.0">补扫完成</tspan></text>
+<path class="edge err" d="M675.0,315.0 Q590.0,330.0 505.0,315.0" marker-end="url(#ah)"/><text class="e-label err" x="590.0" y="340.7" text-anchor="middle" dominant-baseline="central"><tspan x="590.0" dy="0.0">日志目录暂不可用</tspan><tspan x="590.0" dy="15.5">等目录重建的事件</tspan></text>
+<g class="st muted" data-id="starting"><rect x="75.0" y="82.0" width="150.0" height="56.0" rx="12"/><text class="t-main" x="150.0" y="102.0" text-anchor="middle" dominant-baseline="central"><tspan x="150.0" dy="0.0">Starting</tspan></text><text class="t-sub" x="150.0" y="121.0" text-anchor="middle" dominant-baseline="central"><tspan x="150.0" dy="0.0">启动</tspan></text></g>
+<g class="st done" data-id="healthy"><rect x="345.0" y="82.0" width="150.0" height="56.0" rx="12"/><text class="t-main" x="420.0" y="102.0" text-anchor="middle" dominant-baseline="central"><tspan x="420.0" dy="0.0">Healthy</tspan></text><text class="t-sub" x="420.0" y="121.0" text-anchor="middle" dominant-baseline="central"><tspan x="420.0" dy="0.0">识别正常</tspan></text></g>
+<g class="st err" data-id="interrupted"><rect x="335.0" y="272.0" width="170.0" height="56.0" rx="12"/><text class="t-main" x="420.0" y="292.0" text-anchor="middle" dominant-baseline="central"><tspan x="420.0" dy="0.0">Interrupted</tspan></text><text class="t-sub" x="420.0" y="311.0" text-anchor="middle" dominant-baseline="central"><tspan x="420.0" dy="0.0">识别中断</tspan></text></g>
+<g class="st wait" data-id="recovering"><rect x="675.0" y="272.0" width="170.0" height="56.0" rx="12"/><text class="t-main" x="760.0" y="292.0" text-anchor="middle" dominant-baseline="central"><tspan x="760.0" dy="0.0">Recovering</tspan></text><text class="t-sub" x="760.0" y="311.0" text-anchor="middle" dominant-baseline="central"><tspan x="760.0" dy="0.0">补扫中</tspan></text></g>
+
+</svg></div></div>
+<div><h2 id="remote">10 · 远程 <code>RemoteState</code></h2>
+<p class="note"><code>keeplined remote --relay</code> 主动连出去，状态经 <code>RemoteReport</code> 报给宿主再给 app。</p>
+<div class="fig"><svg viewBox="0 0 860 380" role="img" aria-label="远程连接状态机" xmlns="http://www.w3.org/2000/svg">
+<defs><marker id="ah" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" class="ah"/></marker></defs>
+<circle class="init" cx="20" cy="110" r="7"/><path class="edge" d="M27,110 L55.0,110.0" marker-end="url(#ah)"/>
+<path class="edge " d="M185.0,110.0 L300.0,110.0" marker-end="url(#ah)"/><text class="e-label " x="242.5" y="94.0" text-anchor="middle" dominant-baseline="central"><tspan x="242.5" dy="0.0">remote --relay 启动</tspan></text>
+<path class="edge " d="M460.0,94.5 Q535.0,80.0 610.0,94.5" marker-end="url(#ah)"/><text class="e-label " x="535.0" y="73.3" text-anchor="middle" dominant-baseline="central"><tspan x="535.0" dy="0.0">注册成功（退避重置为 1 秒）</tspan></text>
+<path class="edge " d="M610.0,125.5 Q535.0,140.0 460.0,125.5" marker-end="url(#ah)"/><text class="e-label " x="535.0" y="146.7" text-anchor="middle" dominant-baseline="central"><tspan x="535.0" dy="0.0">和中继断开 → 1s 起翻倍，最多 30s</tspan></text>
+<path class="edge err" d="M380.0,138.0 L380.0,272.0" marker-end="url(#ah)"/><text class="e-label err" x="310.0" y="197.2" text-anchor="middle" dominant-baseline="central"><tspan x="310.0" dy="0.0">中继拒绝这台机器</tspan><tspan x="310.0" dy="15.5">进程退出前上报</tspan></text>
+<path class="edge err" d="M644.3,138.0 L425.7,272.0" marker-end="url(#ah)"/>
+<g class="st muted" data-id="off"><rect x="55.0" y="82.0" width="130.0" height="56.0" rx="12"/><text class="t-main" x="120.0" y="102.0" text-anchor="middle" dominant-baseline="central"><tspan x="120.0" dy="0.0">Off</tspan></text><text class="t-sub" x="120.0" y="121.0" text-anchor="middle" dominant-baseline="central"><tspan x="120.0" dy="0.0">没开远程</tspan></text></g>
+<g class="st wait" data-id="connecting"><rect x="300.0" y="82.0" width="160.0" height="56.0" rx="12"/><text class="t-main" x="380.0" y="102.0" text-anchor="middle" dominant-baseline="central"><tspan x="380.0" dy="0.0">Connecting</tspan></text><text class="t-sub" x="380.0" y="121.0" text-anchor="middle" dominant-baseline="central"><tspan x="380.0" dy="0.0">连中继 · 重连等待</tspan></text></g>
+<g class="st done" data-id="connected"><rect x="610.0" y="82.0" width="160.0" height="56.0" rx="12"/><text class="t-main" x="690.0" y="102.0" text-anchor="middle" dominant-baseline="central"><tspan x="690.0" dy="0.0">Connected</tspan></text><text class="t-sub" x="690.0" y="121.0" text-anchor="middle" dominant-baseline="central"><tspan x="690.0" dy="0.0">在线 · 手机可连</tspan></text></g>
+<g class="st err final" data-id="failed"><rect x="300.0" y="272.0" width="160.0" height="56.0" rx="12"/><rect class="inner" x="304.0" y="276.0" width="152.0" height="48.0" rx="9"/><text class="t-main" x="380.0" y="292.0" text-anchor="middle" dominant-baseline="central"><tspan x="380.0" dy="0.0">Failed</tspan></text><text class="t-sub" x="380.0" y="311.0" text-anchor="middle" dominant-baseline="central"><tspan x="380.0" dy="0.0">不再重试 · detail 说原因</tspan></text></g>
+<text class="e-label" x="700.0" y="282.2" text-anchor="middle" dominant-baseline="central"><tspan x="700.0" dy="0.0">每台手机：offline → connecting → online / refused</tspan><tspan x="700.0" dy="15.5">角色变更 Role · Kick 断开重连 · Revoke 解除配对</tspan></text>
+</svg></div></div>
+</div>
+
+<h2 id="handoff">11 · 宿主升级交接</h2>
+<p class="note">app 发现正在跑的宿主和自己带的不是同一份代码（digest 不同），就启动新宿主接管。终端里的 shell 和 Agent 不会察觉。</p>
+<div class="fig"><svg viewBox="0 0 900 400" role="img" aria-label="宿主升级交接时序" xmlns="http://www.w3.org/2000/svg">
+<defs><marker id="ah2" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" class="ah"/></marker></defs>
+<g class="st mod"><rect x="110" y="20" width="180" height="40" rx="8"/></g>
+<text class="t-main" x="200.0" y="40.0" text-anchor="middle" dominant-baseline="central"><tspan x="200.0" dy="0.0">新 keeplined serve</tspan></text>
+<line class="life" x1="200" y1="60" x2="200" y2="380"/>
+<g class="st mod"><rect x="430" y="20" width="180" height="40" rx="8"/></g>
+<text class="t-main" x="520.0" y="40.0" text-anchor="middle" dominant-baseline="central"><tspan x="520.0" dy="0.0">旧 keeplined serve</tspan></text>
+<line class="life" x1="520" y1="60" x2="520" y2="380"/>
+<g class="st mod"><rect x="700" y="20" width="180" height="40" rx="8"/></g>
+<text class="t-main" x="790.0" y="40.0" text-anchor="middle" dominant-baseline="central"><tspan x="790.0" dy="0.0">shell / Agent</tspan></text>
+<line class="life" x1="790" y1="60" x2="790" y2="380"/>
+<path class="edge" d="M200,95 L516,95" marker-end="url(#ah2)"/>
+<text class="e-label" x="360.0" y="84.0" text-anchor="middle" dominant-baseline="central"><tspan x="360.0" dy="0.0">Hello{major}</tspan></text>
+<path class="edge" d="M520,130 L204,130" marker-end="url(#ah2)"/>
+<text class="e-label" x="360.0" y="119.0" text-anchor="middle" dominant-baseline="central"><tspan x="360.0" dy="0.0">Hello（大版本一致）</tspan></text>
+<path class="edge" d="M200,165 L516,165" marker-end="url(#ah2)"/>
+<text class="e-label" x="360.0" y="154.0" text-anchor="middle" dominant-baseline="central"><tspan x="360.0" dy="0.0">Handoff</tspan></text>
+<path class="edge" d="M520,200 L204,200" marker-end="url(#ah2)"/>
+<text class="e-label" x="360.0" y="189.0" text-anchor="middle" dominant-baseline="central"><tspan x="360.0" dy="0.0">Handoff{terminals}</tspan></text>
+<path class="edge" d="M520,235 L204,235" marker-end="url(#ah2)"/>
+<text class="e-label" x="360.0" y="224.0" text-anchor="middle" dominant-baseline="central"><tspan x="360.0" dy="0.0">每个终端：SNAPSHOT 帧 … READY</tspan></text>
+<path class="edge" d="M520,270 L204,270" marker-end="url(#ah2)"/>
+<text class="e-label" x="360.0" y="259.0" text-anchor="middle" dominant-baseline="central"><tspan x="360.0" dy="0.0">PTY 主端 fd（SCM_RIGHTS）</tspan></text>
+<path class="edge" d="M200,305 L516,305" marker-end="url(#ah2)"/>
+<text class="e-label" x="360.0" y="294.0" text-anchor="middle" dominant-baseline="central"><tspan x="360.0" dy="0.0">ACK HANDOFF_TAKEN</tspan></text>
+<text class="e-label err" x="520.0" y="345.0" text-anchor="middle" dominant-baseline="central"><tspan x="520.0" dy="0.0">旧宿主退出</tspan></text>
+<text class="e-label" x="790.0" y="192.2" text-anchor="middle" dominant-baseline="central"><tspan x="790.0" dy="0.0">全程不知情</tspan><tspan x="790.0" dy="15.5">进程照跑</tspan></text>
+<text class="e-label" x="200.0" y="337.2" text-anchor="middle" dominant-baseline="central"><tspan x="200.0" dy="0.0">以 Reaper::Pid 盯住进程</tspan><tspan x="200.0" dy="15.5">退出码此后未知</tspan></text>
+</svg></div>
+
+<h2 id="code">12 · 代码索引</h2>
+<table><tr><th>状态</th><th>定义</th><th>转移在哪</th></tr><tr><td>终端进程</td><td><code>next/crates/keepline-core/src/model.rs:256</code></td><td>ProcessState；转移在 host/client.rs:459、host/live.rs:178、store.rs:100</td></tr><tr><td>回合</td><td><code>next/crates/keepline-core/src/content.rs:37</code></td><td>Turn；转移在 keeplined/src/content/mod.rs（message / phase / tool / hook_event / official / children / settle）</td></tr><tr><td>结局</td><td><code>next/crates/keepline-core/src/model.rs:266</code></td><td>Outcome；到期 model.rs:422；新回合重开 host/association.rs:72</td></tr><tr><td>收件箱分组</td><td><code>next/crates/keepline-core/src/content.rs:426</code></td><td>Content::group，先命中先算</td></tr><tr><td>窗格 / 侧栏</td><td><code>next/crates/keepline-app/src/model/session_state.rs:262</code></td><td>sidebar_status · idle_status · track_unseen</td></tr><tr><td>绑定</td><td><code>next/crates/keeplined/src/recognition.rs:446</code></td><td>reconcile；Binding 定义在 model.rs:206</td></tr><tr><td>识别健康</td><td><code>next/crates/keeplined/src/host/association.rs:271</code></td><td>recover_logs；RecognitionPhase 在 protocol.rs:364</td></tr><tr><td>远程</td><td><code>next/crates/keeplined/src/relay.rs:140</code></td><td>Live::state；RemoteState 在 protocol.rs:218；手机端 next/mobile/src/remote/hub.ts</td></tr><tr><td>宿主交接</td><td><code>next/crates/keeplined/src/host/mod.rs:650</code></td><td>take_over；fd 传递在 handoff.rs</td></tr></table>
+<p class="note">本页由 <code>specs/architecture/gen.py</code> 生成，改图请改脚本里的数据后重跑。生成于 2026-11-02，对应 main 6dc82074。</p>
+</main></body></html>
