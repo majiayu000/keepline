@@ -844,50 +844,59 @@ impl Workbench {
     /// it never reads as belonging to a single group.
     pub(super) fn sessions_header(&self, count: usize, cx: &Context<Self>) -> gpui::Div {
         let open = self.sidebar.view_menu.is_some();
-        div()
-            .group("sessions-header")
+        // Inside the heading's own padding, so its right edge stays in line with the
+        // rows' 在跑 / 几分钟前 and no extra column opens on the right.
+        let icon = div()
+            .id("sidebar-view")
+            .role(gpui::accesskit::Role::Button)
+            .aria_label("选择视图")
+            .my(px(-T::S4))
+            .size(px(T::ICON_HEIGHT))
+            .flex_shrink_0()
             .flex()
             .items_center()
-            .child(self.heading("会话".into(), count, cx).flex_1())
+            .justify_center()
+            .rounded(px(T::CONTROL_RADIUS))
+            .cursor_pointer()
+            .opacity(if open { 1. } else { T::VIEW_IDLE_OPACITY })
+            .group_hover("sessions-header", |s| s.opacity(1.))
+            .when(open, |d| d.bg(T::color(T::button_hover())))
+            .hover(|s| s.bg(T::color(T::button_hover())))
             .child(
-                div()
-                    .id("sidebar-view")
-                    .role(gpui::accesskit::Role::Button)
-                    .aria_label("选择视图")
-                    .mt(px(T::S14))
-                    .ml(px(T::S2))
-                    .size(px(T::ICON_HEIGHT))
-                    .flex_shrink_0()
-                    .flex()
-                    .items_center()
-                    .justify_center()
-                    .rounded(px(T::CONTROL_RADIUS))
-                    .cursor_pointer()
-                    .opacity(if open { 1. } else { T::VIEW_IDLE_OPACITY })
-                    .group_hover("sessions-header", |s| s.opacity(1.))
-                    .when(open, |d| d.bg(T::color(T::button_hover())))
-                    .hover(|s| s.bg(T::color(T::button_hover())))
-                    .child(
-                        gpui::svg()
-                            .path("icons/sliders.svg")
-                            .size(px(T::VIEW_GLYPH))
-                            .text_color(T::color(T::secondary())),
-                    )
-                    .on_mouse_down(
-                        gpui::MouseButton::Left,
-                        cx.listener(|this, event: &gpui::MouseDownEvent, _, cx| {
-                            this.sidebar.view_menu = match this.sidebar.view_menu {
-                                Some(_) => None,
-                                None => Some(gpui::point(
-                                    event.position.x,
-                                    event.position.y + px(T::S12),
-                                )),
-                            };
-                            cx.stop_propagation();
-                            cx.notify();
-                        }),
-                    ),
+                gpui::svg()
+                    .path("icons/sliders.svg")
+                    .size(px(T::VIEW_GLYPH))
+                    .text_color(T::color(T::secondary())),
             )
+            .on_mouse_down(
+                gpui::MouseButton::Left,
+                cx.listener(|this, event: &gpui::MouseDownEvent, _, cx| {
+                    this.sidebar.view_menu = match this.sidebar.view_menu {
+                        Some(_) => None,
+                        None => Some(gpui::point(event.position.x, event.position.y + px(T::S12))),
+                    };
+                    cx.stop_propagation();
+                    cx.notify();
+                }),
+            );
+        let head = if self.sidebar.dense() {
+            // 会话 3 on the left as the dense presets write it; the ≑ at the right end.
+            Self::group_title("会话".into(), Some(count), cx)
+                .child(div().flex_1())
+                .child(icon)
+        } else {
+            // 会话 … ≑ 8: the count keeps its column, the ≑ sits just before it.
+            div()
+                .flex()
+                .items_center()
+                .px(px(T::S8))
+                .mt(px(T::S12))
+                .mb(px(T::S2))
+                .child(label("会话").flex_1().text_size(px(T::CHIP_SIZE)))
+                .child(icon.mr(px(T::S4)))
+                .child(label(count.to_string()).text_size(px(T::CHIP_SIZE)))
+        };
+        head.group("sessions-header")
     }
     /// The views to pick from, the current one ticked; picking one closes the menu.
     pub(super) fn view_menu_view(
