@@ -2483,12 +2483,6 @@ impl Workbench {
     pub(crate) fn visual_settings_page_name(&self, cx: &gpui::App) -> &'static str {
         self.settings.as_ref().unwrap().read(cx).page.label()
     }
-    pub(crate) fn visual_settings_toggle_sound(&mut self, cx: &mut Context<Self>) {
-        let view = self.settings.clone().expect("settings open");
-        view.update(cx, |v, cx| {
-            v.change(cx, |values| values.sound = !values.sound)
-        });
-    }
     pub(crate) fn visual_settings_values(&self) -> Settings {
         self.workspace.settings.clone()
     }

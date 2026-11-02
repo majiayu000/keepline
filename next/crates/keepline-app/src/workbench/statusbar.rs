@@ -101,16 +101,6 @@ impl Workbench {
                     .child("本机诊断")
                     .on_click(cx.listener(|this, _, window, cx| this.show_diagnostics(window, cx))),
             )
-            // Notifications, sound and the overview's time limits live in settings;
-            // this opens them on the 通知 page.
-            .child(
-                item("open-reminders", false)
-                    .aria_label("提醒")
-                    .child("提醒")
-                    .on_click(cx.listener(|this, _, window, cx| {
-                        this.show_settings_page(super::settings::Page::Notifications, window, cx)
-                    })),
-            )
             .child(
                 item("open-settings", false)
                     .aria_label("设置")
