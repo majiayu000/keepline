@@ -5,79 +5,124 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Keepline 界面改版</title>
 <style>
-:root { --bg: #fafaf9; --card: #fff; --border: #e3e2df; --primary: #141312; --body: #2a2927; --muted: #6b6965; --done: #2b8f60; --todo: #9a7316; --none: #8a8986; }
-@media (prefers-color-scheme: dark) { :root { --bg: #1c1c1e; --card: #232325; --border: #333335; --primary: #ecebe9; --body: #d6d4d0; --muted: #989692; --done: #4cc38a; --todo: #d9a441; --none: #8b8a88; } }
+:root { --bg: #fafaf9; --card: #fff; --border: #e3e2df; --primary: #141312; --body: #2a2927; --muted: #6b6965; --done: #2b8f60; --todo: #9a7316; --none: #8a8986; --part: #4b4fd6; }
+@media (prefers-color-scheme: dark) { :root { --bg: #1c1c1e; --card: #232325; --border: #333335; --primary: #ecebe9; --body: #d6d4d0; --muted: #989692; --done: #4cc38a; --todo: #d9a441; --none: #8b8a88; --part: #8f93ff; } }
 * { box-sizing: border-box; }
 body { margin: 0; background: var(--bg); color: var(--body); font: 14px/1.5 -apple-system, BlinkMacSystemFont, "PingFang SC", sans-serif; padding: 32px 16px 48px; }
-main { max-width: 920px; margin: 0 auto; display: flex; flex-direction: column; gap: 28px; }
+main { max-width: 960px; margin: 0 auto; display: flex; flex-direction: column; gap: 28px; }
 h1 { margin: 0; font-size: 24px; color: var(--primary); }
 .sub { color: var(--muted); margin-top: 4px; }
-h2 { margin: 0 0 10px; font-size: 15px; color: var(--primary); display: flex; align-items: center; gap: 8px; }
+h2 { margin: 0 0 4px; font-size: 15px; color: var(--primary); display: flex; align-items: center; gap: 8px; }
+.hint { color: var(--muted); font-size: 12.5px; margin: 0 0 10px; }
 .dot { width: 8px; height: 8px; border-radius: 50%; display: inline-block; }
 .list { display: flex; flex-direction: column; border: 1px solid var(--border); border-radius: 10px; background: var(--card); overflow: hidden; }
-.item { display: grid; grid-template-columns: 180px 1fr auto; gap: 14px; align-items: baseline; padding: 12px 16px; }
+.item { display: grid; grid-template-columns: 150px 1fr auto; gap: 14px; align-items: baseline; padding: 12px 16px; }
 .item + .item { border-top: 1px solid var(--border); }
 .item b { color: var(--primary); font-weight: 600; }
 .item .what { color: var(--body); }
-.item .where { color: var(--muted); font-size: 12px; white-space: nowrap; }
+.item .old { display: block; color: var(--muted); font-size: 12.5px; margin-top: 3px; }
+.item .old a { color: var(--muted); }
+.tag { font-size: 11.5px; padding: 1px 6px; border-radius: 4px; border: 1px solid currentColor; margin-left: 6px; white-space: nowrap; }
+.tag.done { color: var(--done); } .tag.part { color: var(--part); } .tag.todo { color: var(--todo); } .tag.none { color: var(--none); }
 a { color: inherit; text-decoration: underline; text-underline-offset: 3px; }
+.links { display: flex; flex-direction: column; align-items: flex-end; gap: 2px; }
 a.open { font-size: 13px; white-space: nowrap; }
-@media (max-width: 640px) { .item { grid-template-columns: 1fr; gap: 4px; } }
+@media (max-width: 640px) { .item { grid-template-columns: 1fr; gap: 4px; } .links { align-items: flex-start; } }
 </style>
 </head>
 <body>
 <main>
   <div>
     <h1>Keepline 界面改版</h1>
-    <div class="sub">2026-11-02 · 设计稿都是本地 HTML，点开就能看；「已进 App」的已合进 main</div>
+    <div class="sub">2026-11-02 整理 · 只管 <code>next/</code>（GPUI 原生 App）。按界面区分，每区只列一份「以此为准」的稿；被取代的稿留档不删，写在每行下面。</div>
   </div>
 
   <section>
-    <h2><span class="dot" style="background:var(--done)"></span>已改完并进 App</h2>
+    <h2><span class="dot" style="background:var(--done)"></span>以此为准 · 按界面区</h2>
+    <p class="hint"><span class="tag done">已进 App</span> 已合进 main ·<span class="tag part">部分</span> 主体已做，稿里还有没做的或已被改掉的部分</p>
     <div class="list">
-      <div class="item"><b>本机诊断</b><span class="what">全部核心去向、带刻度的排行、CPU × 内存散点；顶部后改为 CPU / 内存 / GPU 三格角标面板（见额度条方向稿 C），排行最多 20 项、与右栏等高；左栏底部或 ⌘P 搜「诊断」打开</span><a class="open" href="diagnostics.html">设计稿 →</a></div>
-      <div class="item"><b>主界面</b><span class="what">顶栏状态计数、标签状态点、窗格标题栏与底栏、本轮计时</span><a class="open" href="main-refresh.html">设计稿 →</a></div>
-      <div class="item"><b>鸟瞰 · 左栏 · 逐个清理</b><span class="what">状态分布条、卡片降噪、空间分布条、分段清理进度和快捷键</span><a class="open" href="workbench-refresh.html">设计稿 →</a></div>
-      <div class="item"><b>菜单栏额度与费用</b><span class="what">Tauri 菜单栏：时间刻度、到期预测、token 构成</span><a class="open" href="menubar-usage.html">设计稿 →</a></div>
-      <div class="item"><b>主界面 A / C 两种样式</b><span class="what">标准（C）和终端原生（A）在设置里切换；A 的窗格标题压在边框线上；两种都带「停在」和可收起的左栏（⌘B）</span><a class="open" href="main-a-plus.html">设计稿 →</a></div>
-      <div class="item"><b>左栏三种排法 · 减密</b><span class="what">经典 / 状态 / 目录 顶部切换（插件，可用 WASM 自己写）；只给需要你的和选中的加第二行，做完了合成一行摘要，目录可折叠</span><a class="open" href="sidebar-density.html">设计稿 →</a></div>
-      <div class="item"><b>设置页</b><span class="what">分组卡片，新增图标、终端、关于、插件几类设置</span><a class="open" href="settings-refresh.html">设计稿 →</a></div>
-      <div class="item"><b>⌘P 命令面板 · 你在这里</b><span class="what">状态计数可筛选、最近会话按时间分组带预览、原话折进会话行、没结果时给拆词和新建；「你在这里」加头部状态、证据计数和浮层菜单（927441d9）</span><a class="open" href="palette-here.html">设计稿 →</a></div>
-      <div class="item"><b>新建待办 · 待办详情</b><span class="what">逐条验收清单和保存前预览，详情按条挂会话证据（cecdf74d）</span><a class="open" href="todo-refresh.html">设计稿 →</a></div>
-      <div class="item"><b>App 菜单栏弹窗</b><span class="what">按改版稿重做，连不上后台时说明数据停在几点，深色模式下面板也变深（80b5b205）</span><a class="open" href="menubar-panel.html">设计稿 →</a></div>
-      <div class="item"><b>鸟瞰看板</b><span class="what">待办 / 在跑 / 要你处理 / 做完了 / 已收尾五列，空间渐变头像、详情抽屉、拖拽开始 / 验收 / 退回（ce995b9c、bba030ca）</span><a class="open" href="../../overview-kanban/kanban.html">设计稿 →</a></div>
-      <div class="item"><b>左栏 · 会话优先</b><span class="what">侧栏方向稿 A：空间收成一行、行能区分、悬停偷看；B 任务线经数据否定（见 task-line-trial.md）</span><a class="open" href="../../sidebar-directions/directions.html">方向稿 →</a></div>
-      <div class="item"><b>额度放左栏底部</b><span class="what">各 Agent 额度，Codex 读自己会话记录里的 rate_limits，不联网（1962522c）</span><a class="open" href="../../extensions/design/quota-footer.html">方向稿 →</a></div>
-      <div class="item"><b>偷看与置顶</b><span class="what">偷看浮层（设置里开关，默认关）、被看会话实心选中、置顶圆点</span><a class="open" href="../../extensions/design/peek-approve.html">方向稿 →</a></div>
-      <div class="item"><b>Agent 开分屏</b><span class="what">keeplined split 只往右 / 下开，满 4 块开到旁屏标签</span><a class="open" href="../../extensions/design/pane-split-demo.html">演示 →</a></div>
-      <div class="item"><b>手机配对与远程</b><span class="what">标题栏手机按钮和面板（方向 B），设置里「手机与远程」；后台中继和按设备分权限已做</span><a class="open" href="../../extensions/design/phone-pairing.html">设计稿 →</a></div>
+      <div class="item"><b>窗口顶部 · 标签</b><span class="what">左栏一整列到顶，红绿灯后是收起左栏和 Keepline；标签并进顶栏、放在空间名后，放不下右侧渐隐加「+N」；正文一整块白，窗格不再是圆角卡片<span class="tag done">已进 App</span>
+        <span class="old">496d982b、cf197403、79cb070d。取代：<a href="../../tab-strip/directions.html">标签方向稿</a>（v2 的前一版）、<a href="main-refresh.html">主界面改版稿</a>里的贯穿顶栏和面包屑；<a href="README.md">README</a> 里「圆角 8 的画面卡片、顶栏高 46」已过时</span></span>
+        <span class="links"><a class="open" href="../../tab-strip/v2.html">标签 v2 →</a><a class="open" href="../../t3-titlebar/directions.html">顶部方向稿 →</a></span></div>
+
+      <div class="item"><b>底部状态栏 · 额度</b><span class="what">左边后台状态和「N 工作中 · M 等你」，右边固定宽度额度按钮（最紧的那家 + N，点开列全部 Agent 各窗口）、诊断、提醒、设置；用到 95% 的那家窗格标题栏亮红<span class="tag part">部分</span>
+        <span class="old">604842bd。没做：深色主题、窄窗口收缩规则。取代：<a href="../../extensions/design/quota-footer.html">额度放左栏底部</a>（侧栏额度区已去掉）；<a href="../../quota-meter/placement.html">额度放哪 A–D</a> 定为 D + C 的窗格提醒，留作决策记录；别家做法见<a href="../../quota-meter/other-apps.html">调研</a></span></span>
+        <span class="links"><a class="open" href="../../quota-meter/statusbar.html">设计稿 →</a></span></div>
+
+      <div class="item"><b>主界面样式 · 窗格</b><span class="what">标准（C）和终端原生（A）在设置里切换；A 的窗格标题压在边框线上；都带「停在」和可收起的左栏（⌘B）；标签状态点、窗格标题栏、本轮计时<span class="tag part">部分</span>
+        <span class="old">顶栏和计数已被上面两行取代。取代：<a href="main-directions.html">主界面三方向</a>（定 A 和 C）</span></span>
+        <span class="links"><a class="open" href="main-a-plus.html">A / C 稿 →</a><a class="open" href="main-refresh.html">窗格细节 →</a></span></div>
+
+      <div class="item"><b>左栏</b><span class="what">会话优先：空间收成一行、行能区分、悬停偷看；状态 / 目录排法减密，只给需要你的和选中的加第二行；视图切换收进「会话」标题行悬停的 ≑<span class="tag done">已进 App</span>
+        <span class="old">40ff5bdb、2371d4dc。减密稿顶部的「经典 / 状态 / 目录」切换条已改掉；任务线方向 B 经数据否定（<a href="../../sidebar-directions/task-line-trial.md">task-line-trial.md</a>）</span></span>
+        <span class="links"><a class="open" href="../../sidebar-directions/directions.html">方向稿 →</a><a class="open" href="sidebar-density.html">减密稿 →</a></span></div>
+
+      <div class="item"><b>鸟瞰看板</b><span class="what">待办 / 在跑 / 要你处理 / 等你验收 / 做完了五列，空间渐变头像、详情抽屉、拖拽开始 / 验收 / 退回，拖起留空位、松手飞入<span class="tag done">已进 App</span>
+        <span class="old">ce995b9c、bba030ca、38a94d51；列名 11-02 改为「等你验收 / 做完了」（547898b7），稿里还是旧名。取代：<a href="../../overview-kanban/directions.html">看板三方向</a>、<a href="workbench-refresh.html">改版稿</a>的鸟瞰卡片部分、<a href="Overview.dc.html">Overview 原始稿</a></span></span>
+        <span class="links"><a class="open" href="../../overview-kanban/kanban.html">设计稿 →</a></span></div>
+
+      <div class="item"><b>标记完成动效</b><span class="what">印章（默认）、落印、扫光合上、化进侧栏、只淡出，effects 插件可选<span class="tag done">已进 App</span>
+        <span class="old">2ad0e3e2、8aeb4f4f</span></span>
+        <span class="links"><a class="open" href="../../complete-animation/directions.html">方向稿 →</a></span></div>
+
+      <div class="item"><b>逐个清理</b><span class="what">分段清理进度和快捷键；左栏空间分布条<span class="tag done">已进 App</span>
+        <span class="old">本稿鸟瞰部分已被看板取代，只看清理和左栏部分。取代：<a href="Cleanup.dc.html">Cleanup 原始稿</a></span></span>
+        <span class="links"><a class="open" href="workbench-refresh.html">设计稿 →</a></span></div>
+
+      <div class="item"><b>⌘P 命令面板 · 你在这里</b><span class="what">状态计数可筛选、最近会话按时间分组带预览；「你在这里」加头部状态、证据计数和浮层菜单<span class="tag done">已进 App</span>
+        <span class="old">927441d9</span></span>
+        <span class="links"><a class="open" href="palette-here.html">设计稿 →</a></span></div>
+
+      <div class="item"><b>待办</b><span class="what">新建待办逐条验收清单和保存前预览，详情按条挂会话证据<span class="tag done">已进 App</span>
+        <span class="old">cecdf74d。取代：<a href="TodoNew.dc.html">TodoNew</a> · <a href="TodoDetail.dc.html">TodoDetail</a> · <a href="TodoStart.dc.html">TodoStart</a> 原始稿</span></span>
+        <span class="links"><a class="open" href="todo-refresh.html">设计稿 →</a></span></div>
+
+      <div class="item"><b>设置</b><span class="what">分组卡片，图标、终端、关于、插件几类；换图标在「外观」<span class="tag done">已进 App</span></span>
+        <span class="links"><a class="open" href="settings-refresh.html">设计稿 →</a></span></div>
+
+      <div class="item"><b>本机诊断</b><span class="what">核心去向、带刻度排行（最多 20 项）、CPU × 内存散点；顶部 CPU / 内存 / GPU 三格角标面板<span class="tag done">已进 App</span>
+        <span class="old">角标面板来自<a href="../../quota-meter/directions.html">额度条方向稿</a> C；同稿 A 竖条纹已做（cf299728），竖条纹组件现与诊断页共用</span></span>
+        <span class="links"><a class="open" href="diagnostics.html">设计稿 →</a></span></div>
+
+      <div class="item"><b>偷看 · 置顶 · 分屏</b><span class="what">偷看浮层（设置里开关，默认关），标题栏直接允许一次 / 拒绝；被看会话实心选中；Agent 用 keeplined split 往右 / 下开，满 4 块开到旁屏标签<span class="tag done">已进 App</span></span>
+        <span class="links"><a class="open" href="../../extensions/design/peek-approve.html">偷看稿 →</a><a class="open" href="../../extensions/design/pane-split-demo.html">分屏演示 →</a></span></div>
+
+      <div class="item"><b>App 菜单栏弹窗</b><span class="what">连不上后台时说明数据停在几点，深色模式下面板变深<span class="tag done">已进 App</span>
+        <span class="old">80b5b205。取代：<a href="Menubar.dc.html">Menubar 原始稿</a></span></span>
+        <span class="links"><a class="open" href="menubar-panel.html">设计稿 →</a></span></div>
+
+      <div class="item"><b>手机</b><span class="what">电脑端：标题栏手机按钮和面板、设置里「手机与远程」；手机端只做聊天（RN / Expo，<code>next/mobile</code>），配对、会话列表、聊天、审批条已跑通<span class="tag done">已进 App</span>
+        <span class="old">取代：<a href="../../extensions/design/phone.html">手机端三方向</a>（只推送 / 通知答审批 / 手机网页），11-02 定只做聊天，没有单独的手机界面稿</span></span>
+        <span class="links"><a class="open" href="../../extensions/design/phone-pairing.html">配对稿 →</a></span></div>
     </div>
   </section>
 
   <section>
-    <h2><span class="dot" style="background:var(--todo)"></span>还没做 · 等拍板（2026-11-02）</h2>
+    <h2><span class="dot" style="background:var(--todo)"></span>还没做 · 等拍板</h2>
     <div class="list">
-      <div class="item"><b>在侧栏 / 浮层里答审批</b><span class="what">侧栏方向稿 C 与偷看稿的审批部分是同一功能：是非题点按钮、开放题打字</span><a class="open" href="../../extensions/design/peek-approve.html">方向稿 →</a></div>
-      <div class="item"><b>额度放哪</b><span class="what">A 侧栏底部加强 / B 顶栏一行 + 弹层 / C 跟着会话走 / D 窗口最底部状态栏；建议 D 加 C 的窗格提醒。别家做法见<a href="../../quota-meter/other-apps.html">调研记录</a></span><a class="open" href="../../quota-meter/placement.html">方向稿 →</a></div>
-      <div class="item"><b>侧栏额度条竖条纹 · 历史折线</b><span class="what">额度条方向稿 A / B；C（诊断页角标面板）已做</span><a class="open" href="../../quota-meter/directions.html">方向稿 →</a></div>
-      <div class="item"><b>手机端界面</b><span class="what">只推送 / 通知上答审批 / 手机网页三方向；11-02 定手机只做聊天（RN/Expo）</span><a class="open" href="../../extensions/design/phone.html">方向稿 →</a></div>
+      <div class="item"><b>状态栏深色 · 窄窗收缩</b><span class="what">状态栏稿里写了状态与收缩规则，实现只做了浅色宽窗</span><span class="links"><a class="open" href="../../quota-meter/statusbar.html">设计稿 →</a></span></div>
+      <div class="item"><b>在侧栏里答审批</b><span class="what">偷看浮层里允许 / 拒绝已做；侧栏方向稿 C 的「不打开会话直接答」、开放题打字还没做</span><span class="links"><a class="open" href="../../sidebar-directions/directions.html">方向稿 C →</a></span></div>
+      <div class="item"><b>额度历史折线</b><span class="what">额度条方向稿 B：点开看额度随时间的折线；现在可挂进状态栏额度弹层</span><span class="links"><a class="open" href="../../quota-meter/directions.html">方向稿 B →</a></span></div>
     </div>
   </section>
 
   <section>
-    <h2><span class="dot" style="background:var(--none)"></span>不做</h2>
+    <h2><span class="dot" style="background:var(--none)"></span>不做 · 上一代界面</h2>
+    <p class="hint">Web 仪表盘和 Tauri 菜单栏是上一代，不再改</p>
     <div class="list">
-      <div class="item"><b>看板收件箱版</b><span class="what">11-02 定：保持现在五列，「要你处理」继续单独一列，收件箱版不做</span><a class="open" href="../../overview-kanban/kanban-inbox.html">设计稿 →</a></div>
-      <div class="item"><b>Web 仪表盘</b><span class="what">会话页与总览、14 天费用细柱图、浅深两套颜色变量表（替换 377 处写死颜色）</span><a class="open" href="web-dashboard.html">设计稿 →</a></div>
+      <div class="item"><b>看板收件箱版</b><span class="what">11-02 定保持五列，「要你处理」继续单独一列</span><span class="links"><a class="open" href="../../overview-kanban/kanban-inbox.html">设计稿 →</a></span></div>
+      <div class="item"><b>Web 仪表盘</b><span class="what">会话页与总览、14 天费用细柱图、浅深两套颜色变量</span><span class="links"><a class="open" href="web-dashboard.html">设计稿 →</a></span></div>
+      <div class="item"><b>Tauri 菜单栏额度</b><span class="what">时间刻度、到期预测、token 构成</span><span class="links"><a class="open" href="menubar-usage.html">设计稿 →</a></span></div>
+      <div class="item"><b>Web 像素验收</b><span class="what">10-11 Web 版的像素对照</span><span class="links"><a class="open" href="../../ui-v2/pixel-acceptance/index.html">页面 →</a></span></div>
+      <div class="item"><b>第一版画布稿</b><span class="what">Main 原始稿，结构和比例的出处；各页已被上面的改版稿取代</span><span class="links"><a class="open" href="Main.dc.html">Main →</a></span></div>
     </div>
   </section>
 
   <section>
-    <h2><span class="dot" style="background:var(--none)"></span>旧稿（改版前的原始设计）</h2>
+    <h2><span class="dot" style="background:var(--part)"></span>参考</h2>
     <div class="list">
-      <div class="item"><b>Main · Overview · Cleanup</b><span class="what">第一版工作台画布稿</span><a class="open" href="Main.dc.html">Main →</a></div>
-      <div class="item"><b>TodoNew · TodoDetail · TodoStart</b><span class="what">待办相关的原始稿</span><a class="open" href="TodoNew.dc.html">TodoNew →</a></div>
-      <div class="item"><b>规范</b><span class="what">颜色、字体、尺寸 token 和组件规则</span><a class="open" href="README.md">README →</a></div>
+      <div class="item"><b>架构图与状态机</b><span class="what">next/ 的终端进程、回合、结局、分组、绑定、远程等状态机，由 gen.py 生成</span><span class="links"><a class="open" href="../../architecture/next.html">页面 →</a></span></div>
+      <div class="item"><b>视觉规范</b><span class="what">颜色、字体、尺寸 token 和组件规则；以 <code>theme.rs</code> 为准，顶栏、画面卡片、深色唯一等段落已过时</span><span class="links"><a class="open" href="README.md">README →</a></span></div>
     </div>
   </section>
 </main>
