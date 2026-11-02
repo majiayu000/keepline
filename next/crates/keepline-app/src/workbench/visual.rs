@@ -650,8 +650,11 @@ impl Workbench {
             .into(),
         );
         self.overview.show_running = false;
+        self.statusbar = None;
         self.sync_panes(cx);
         match name {
+            // The status bar's 工作中 popover beside the sidebar: one session, one color.
+            "StatusSessions" => self.statusbar = Some(super::statusbar::StatusPop::Sessions),
             "Main" | "HereClickOut" => {
                 self.overview.here = self.workspace.current_agent("p0").map(|s| s.id.clone())
             }
@@ -957,9 +960,10 @@ impl Workbench {
             // The overview's foot: the folded groups below the cards.
             "OverviewEnd" => self.overview.scroll.scroll_to_bottom(),
             "Overview" | "Menubar" | "BoardDrag" | "BoardRefuseDrag" => (),
-            // `Dense-{status|directory|wasm|first}-{standard|terminal}-{light|dark}[-open|-menu|-bg|-peek]`:
+            // `Dense-{status|directory|wasm|first}-{standard|terminal}-{light|dark}[-open|-menu|-bg|-peek|-pop]`:
             // the denser presets over sessions shaped like sidebar-density.html's; `-bg`
-            // stops the second running turn while a sub-agent of it still runs.
+            // stops the second running turn while a sub-agent of it still runs; `-pop` opens
+            // the status bar's 工作中 popover beside the column.
             dense if dense.starts_with("Dense-") => {
                 use crate::ui::{appearance::Appearance, style::Style};
                 let parts: Vec<&str> = dense.split('-').collect();
@@ -1024,6 +1028,9 @@ impl Workbench {
                 self.layout.space_menu = (parts.get(4) == Some(&"menu"))
                     .then(|| ("s0".into(), gpui::point(px(T::S20), px(T::TOP * 2.))));
                 self.layout.space_switch = true;
+                if parts.get(4) == Some(&"pop") {
+                    self.statusbar = Some(super::statusbar::StatusPop::Sessions);
+                }
             }
             _ => panic!("unknown visual page"),
         }

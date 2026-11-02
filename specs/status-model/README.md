@@ -84,3 +84,23 @@ status::of(workspace, session, now) -> Status
 3. 加守卫测试，更新设计文档。
 
 每步单独编译、测试、提交。
+
+## 结论（2026-11-02）：采用
+
+- 判定入口 4 → 1（`keepline_core::status::of`）。合并映射 5 → 2：`sidebar_list::bucket`（插件分档和插件状态词都从它推出）和 `session_state::section`（命令面板计数和鸟瞰分组）。会话状态色的语义借用约 60 → 0（守卫测试 `named_status_colors_stay_where_sessions_are_drawn`）。状态色来源 3 → 1：菜单栏从 `StatusColors` 推出；手机端还是一份手写的色表，色相已对齐，但没有测试锁住。
+- 变基时把同天合进 main 的 OSC 7501 程序状态也收进来了（`status::of_program`），它原来自带的「停着」改用「停下了」。
+- 放弃条件没有触发。看板列的变化只有一处：Keepline 终端里的「等后台」从「等你验收」列移到「在跑」列，这本来就是规则说的「算在跑那一档」。
+
+截图（`evidence/`，隔离的 HOME 和后台，样例数据，没有调用模型）：
+
+- `dense-status-standard-{light,dark}-pop-native.png`：侧栏「在跑」◐ 和状态栏「工作中」弹窗的点、标题，同一个黄
+- `overview-native.png`：看板「在跑」列图标、卡片计时和侧栏同一个黄；「等你验收」紫，「做完了」绿
+- `menubar-native.png`：菜单栏写「等你验收」，「在跑」的点是黄色
+
+没验：
+
+- 手机端没有真机截图，只跑了 tsc。
+- 插件 wasm 侧栏只验了状态词映射的单测，没截图。
+- `colors.json` 写旧键（`working` / `done`）只有单测覆盖。
+
+遗留：`components_take_colors_and_sizes_from_tokens` 在 main 上就失败（`complete.rs` 里的尺寸字面量，来自 2ad0e3e2），不属于这次的改动。
