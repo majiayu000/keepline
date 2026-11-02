@@ -19,7 +19,7 @@ pub const API: u32 = 1;
 pub enum Grouping {
     /// One list, what needs you first.
     Flat,
-    /// A section per bucket: 需要你, 在跑, 做完了, 停下了, 新开的, 很久没动.
+    /// A section per bucket: 需要你, 在跑, 等你验收, 停下了, 新开的, 很久没动.
     Status,
     /// 需要你 pinned on top, then one folder per working directory.
     Directory,
@@ -56,7 +56,7 @@ impl Bucket {
         match self {
             Self::Attention => "需要你",
             Self::Running => "在跑",
-            Self::Done => "做完了",
+            Self::Done => "等你验收",
             Self::Stopped => "停下了",
             Self::Fresh => "新开的",
             Self::Stale => "很久没动",

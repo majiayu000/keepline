@@ -46,9 +46,9 @@ pub(super) fn refusal(from: Column) -> &'static str {
     match from {
         Column::Needs => "要你处理的会话得先在终端里回答它",
         Column::Running => "在跑的状态由 Agent 自己决定",
-        Column::Review => "做完了只能拖到「已收尾」，表示验收通过",
+        Column::Review => "等你验收只能拖到「做完了」，表示验收通过",
         Column::Todo => "待办只能拖到「在跑」来开始",
-        Column::Done => "已收尾只能拖回「做完了」",
+        Column::Done => "做完了只能拖回「等你验收」",
         Column::Stale => "很久没动的会话用「逐个清理」处理",
     }
 }
@@ -121,12 +121,12 @@ impl Workbench {
             Column::Done => (
                 Outcome::Completed,
                 Outcome::Open,
-                format!("「{}」已验收，移到已收尾", card.title),
+                format!("「{}」已验收，移到做完了", card.title),
             ),
             _ => (
                 Outcome::Open,
                 Outcome::Completed,
-                format!("「{}」退回做完了", card.title),
+                format!("「{}」退回等你验收", card.title),
             ),
         };
         self.edit(
@@ -235,7 +235,7 @@ impl Workbench {
         let content = self.workspace.content.get(&s.id);
         let group = board_group(&self.workspace, s);
         let status = if column == Column::Done {
-            "已收尾"
+            Group::Closed.label()
         } else {
             group.label()
         };
@@ -312,7 +312,7 @@ impl Workbench {
         );
         let move_to = match column {
             Column::Review => Some((Column::Done, "验收通过")),
-            Column::Done => Some((Column::Review, "退回做完了")),
+            Column::Done => Some((Column::Review, "退回等你验收")),
             _ => None,
         };
         if let Some((to, text)) = move_to {

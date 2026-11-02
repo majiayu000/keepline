@@ -19,7 +19,8 @@ pub(super) fn bucket(g: Group) -> Bucket {
         Group::Working | Group::Running | Group::Background => Bucket::Running,
         // Ready is a finished turn you have already seen: still yours to check.
         Group::Done | Group::Review | Group::Ready => Bucket::Done,
-        Group::Paused => Bucket::Stopped,
+        // Marked complete but still live: no longer yours to check.
+        Group::Paused | Group::Closed => Bucket::Stopped,
         Group::Fresh => Bucket::Fresh,
         Group::Stale => Bucket::Stale,
     }
@@ -393,7 +394,7 @@ impl Workbench {
                     .items_center()
                     .gap(px(T::S8))
                     .child(
-                        // A finished turn you have seen keeps 做完了's ✓, in its quieter ink.
+                        // A finished turn you have seen keeps 等你验收's ◇, in its quieter ink.
                         glyph(if g == Group::Ready { Group::Done } else { g })
                             .when(g == Group::Ready, |d| d.text_color(g.colors().1))
                             .w(px(T::S12))
@@ -486,8 +487,8 @@ impl Workbench {
         }
     }
     /// One row standing for folded buckets; a click opens them. Under a heading it reads
-    /// `✓ 做完了 4  ‖ 停下了 3  很久没动 165`, each with its state's symbol; inside a folder
-    /// it is the quieter `另有 做完了 2 · 停下了 1`.
+    /// `◇ 等你验收 4  ‖ 停下了 3  很久没动 165`, each with its state's symbol; inside a folder
+    /// it is the quieter `另有 等你验收 2 · 停下了 1`.
     fn fold_row(
         &self,
         id: String,

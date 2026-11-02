@@ -755,7 +755,7 @@ impl Workbench {
                     ]
                 }
                 Group::Running => vec![
-                    label("不用管，跑完会挪到「做完了」")
+                    label("不用管，跑完会挪到「等你验收」")
                         .text_size(px(T::SMALL))
                         .text_color(T::color(T::muted()))
                         .into_any_element(),

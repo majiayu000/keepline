@@ -118,7 +118,7 @@ const COUNTED: [(Group, &str); 4] = [
     (Group::Waiting, "等你"),
     (Group::Error, "出错"),
     (Group::Running, "在跑"),
-    (Group::Review, "做完"),
+    (Group::Review, "待验收"),
 ];
 /// A live phase and its inbox group count as one: 在跑 is 在跑 either way.
 fn counted(group: Group) -> Group {
@@ -586,7 +586,7 @@ impl Workbench {
         .with_priority(1)
         .into_any_element()
     }
-    /// 等你 / 出错 / 在跑 / 做完 with their counts; one narrows the list to that group.
+    /// 等你 / 出错 / 在跑 / 待验收 with their counts; one narrows the list to that group.
     fn status_filters(&self, cx: &Context<Self>) -> gpui::Div {
         let mut row = div()
             .flex_none()

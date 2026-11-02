@@ -448,7 +448,7 @@ impl Workbench {
                     "最后一条证据 {}{}",
                     hm(last),
                     if !sessions.is_empty() && done == sessions.len() {
-                        format!(" · {done} 个会话都做完了")
+                        format!(" · {done} 个会话都在等你验收")
                     } else {
                         String::new()
                     }

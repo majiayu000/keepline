@@ -116,8 +116,19 @@ impl Workbench {
             .filter(|l| !l.is_empty())
             .collect();
         let story = session.zip(status).and_then(|(s, g)| self.pane_story(s, g));
+        // 标记完成 whenever the Agent is not mid-turn or asking: done is yours to say.
         let review = session.filter(|s| {
-            s.outcome == Outcome::Open && session_group(&self.workspace, s) == Group::Review
+            s.outcome == Outcome::Open
+                && matches!(
+                    status,
+                    Some(
+                        Group::Review
+                            | Group::Done
+                            | Group::Ready
+                            | Group::Background
+                            | Group::Paused
+                    )
+                )
         });
         let completing = self.completing(id);
         let line = T::color(if focused { T::focus() } else { T::border() });
@@ -1453,6 +1464,7 @@ pub(super) fn urgency(group: Group) -> u8 {
         Group::Ready => 8,
         Group::Stale => 9,
         Group::Fresh => 10,
+        Group::Closed => 11,
     }
 }
 /// `3:12`, or `1:03:12` past an hour.

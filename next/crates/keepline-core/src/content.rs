@@ -177,12 +177,12 @@ impl Inbox {
         match self {
             Self::Waiting => "等你回答",
             Self::Error => "出错了",
-            Self::Review => "做完了",
+            Self::Review => "等你验收",
             Self::Paused => "停下了",
             Self::Running => "在跑",
             Self::Stale => "很久没动",
             Self::Deferred => "稍后再看",
-            Self::Closed => "已收尾",
+            Self::Closed => "做完了",
         }
     }
 }
@@ -467,7 +467,9 @@ impl Content {
             Inbox::Error
         } else if background {
             Inbox::Running
-        } else if self.turn == Turn::Completed && self.completed_claim {
+        } else if self.turn == Turn::Completed {
+            // Whether the work is done is yours to say (2026-11-02): a finished turn waits
+            // for 标记完成 whatever its last reply claimed.
             Inbox::Review
         } else if running {
             Inbox::Running
@@ -871,7 +873,10 @@ mod grouping_tests {
         c.turn = Turn::Completed;
         c.completed_claim = true;
         assert_eq!(c.group(&s, &w, now), Inbox::Review);
+        // A finished turn waits for you either way: done is yours to say.
         c.completed_claim = false;
+        assert_eq!(c.group(&s, &w, now), Inbox::Review);
+        c.turn = Turn::Unknown;
         assert_eq!(c.group(&s, &w, now), Inbox::Paused);
         c.turn = Turn::Running;
         assert_eq!(c.group(&s, &w, now), Inbox::Running);

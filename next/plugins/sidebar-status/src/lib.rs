@@ -142,9 +142,9 @@ fn build(state: &State) -> Sidebar {
     // The rest, folded into one summary row and grouped by folder when opened.
     let mut rows = vec![Row::Note {
         text: if fresh > 0 {
-            format!("做完了 {done} · 停下了 {paused} · 新开的 {fresh} · 很久没动 {stale}")
+            format!("等你验收 {done} · 停下了 {paused} · 新开的 {fresh} · 很久没动 {stale}")
         } else {
-            format!("做完了 {done} · 停下了 {paused} · 很久没动 {stale}")
+            format!("等你验收 {done} · 停下了 {paused} · 很久没动 {stale}")
         },
         action: Some("toggle"),
     }];

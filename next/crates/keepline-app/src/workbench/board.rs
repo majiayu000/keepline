@@ -53,7 +53,7 @@ impl Column {
             Self::Running => Group::Running.label(),
             Self::Needs => "要你处理",
             Self::Review => Group::Review.label(),
-            Self::Done => "已收尾",
+            Self::Done => Group::Closed.label(),
             Self::Stale => Group::Stale.label(),
         }
     }

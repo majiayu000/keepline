@@ -21,6 +21,8 @@ pub enum Group {
     /// A live agent whose turn ended without claiming the work done while something it
     /// started still runs (a shell, a monitor, a scheduled wakeup) and may bring it back.
     Background,
+    /// You marked it complete: the only 做完了.
+    Closed,
 }
 /// What a live agent in a Keepline terminal is doing right now, as 同类终端工具 shows panes.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -163,10 +165,11 @@ pub fn state_reasons(w: &Workspace, terminal: &str, hint: Option<&str>, now: u64
         Some(Phase::Waiting) => "等你回答",
         _ if fresh(w, s) => "新开的 / 还没开始第一轮",
         _ => match idle_status(w, s, false).0 {
-            Group::Done | Group::Ready => "做完了 / 等你下一步",
-            Group::Background => "等后台 / 后台还有任务在跑，Agent 没说做完",
+            Group::Done | Group::Ready => "等你验收 / 这一轮停了，做没做完由你定",
+            Group::Background => "等后台 / 这一轮停了，后台还有任务在跑",
+            Group::Closed => "做完了 / 你标记过完成",
             Group::Error => "出错了",
-            _ => "停下了 / Agent 没说做完",
+            _ => "停下了",
         },
     };
     lines.push(format!("现在：{phase}"));
@@ -265,27 +268,26 @@ pub fn sidebar_status(w: &Workspace, unseen: &HashSet<String>, s: &AgentSession)
         None => (session_group(w, s), needs_attention(w, s)),
     }
 }
-/// A live agent between turns. 做完了 only when the Agent said the work is done (or it
-/// was marked complete), the same rule that puts 标记完成 on its pane; a turn that just
-/// stopped talking is 停下了, and one that left a shell, monitor or wakeup running is
-/// 等后台. `unseen` is a turn that ended out of view, which asks for a look.
+/// A live agent between turns. Only you say it is done (标记完成, 2026-11-02): a turn
+/// that ended waits for that as 等你验收 whatever its reply claimed, or as 等后台 while
+/// a shell, monitor or wakeup it started still runs. `unseen` is a turn that ended out
+/// of view, which asks for a look.
 fn idle_status(w: &Workspace, s: &AgentSession, unseen: bool) -> (Group, bool) {
     use keepline_core::content::Turn;
     let c = w.content.get(&s.id);
     let background = c.and_then(|c| c.background).unwrap_or_default();
-    let claimed = c.is_some_and(|c| c.turn == Turn::Completed && c.completed_claim);
-    if c.is_some_and(|c| c.turn == Turn::Error) {
+    if s.outcome == Outcome::Completed {
+        (Group::Closed, false)
+    } else if c.is_some_and(|c| c.turn == Turn::Error) {
         (Group::Error, true)
-    } else if s.outcome == Outcome::Completed || (claimed && !background.wakes()) {
-        (if unseen { Group::Done } else { Group::Ready }, unseen)
     } else if background.wakes() || background.shells > 0 {
         (Group::Background, false)
     } else {
-        (Group::Paused, unseen)
+        (if unseen { Group::Done } else { Group::Ready }, unseen)
     }
 }
 /// No turn has started in this conversation: no record yet, or one with no ask and no
-/// turn state. An empty Claude reads as this, not as 做完了.
+/// turn state. An empty Claude reads as this, not as 等你验收.
 pub fn fresh(w: &Workspace, s: &AgentSession) -> bool {
     use keepline_core::content::Turn;
     w.content

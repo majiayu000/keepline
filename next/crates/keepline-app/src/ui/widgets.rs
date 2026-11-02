@@ -85,7 +85,9 @@ pub fn glyph(group: Group) -> gpui::Div {
         Group::Error => "✕",
         Group::Working | Group::Running => "◐",
         Group::Background => "◔",
-        Group::Done | Group::Review => "✓",
+        // ✓ is yours to give; a turn waiting for it is an open diamond beside 等你回答's ◆.
+        Group::Done | Group::Review => "◇",
+        Group::Closed => "✓",
         Group::Paused => "‖",
         Group::Ready | Group::Fresh => "○",
         Group::Stale => "·",

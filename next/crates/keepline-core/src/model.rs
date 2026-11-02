@@ -1108,7 +1108,7 @@ mod tests {
         assert!(w.expire_outcomes(now + 2));
         assert!(!w.expire_outcomes(now + 3));
         assert_eq!(w.agent_sessions[0].outcome, Outcome::Open);
-        assert_eq!(c.group(&w.agent_sessions[0], &w, now + 2), Inbox::Paused);
+        assert_eq!(c.group(&w.agent_sessions[0], &w, now + 2), Inbox::Review);
         assert_eq!(w.outcome_history.len(), 2);
         w.change_outcome("one", Outcome::Abandoned, now + 3, "用户操作")
             .unwrap();

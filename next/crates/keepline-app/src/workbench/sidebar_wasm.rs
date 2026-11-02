@@ -152,7 +152,8 @@ fn group_name(g: Group) -> &'static str {
         Group::Working | Group::Running | Group::Background => "running",
         Group::Done | Group::Review | Group::Ready => "review",
         Group::Fresh => "fresh",
-        Group::Paused => "paused",
+        // Marked complete but still live: a plugin sorts it with what has stopped.
+        Group::Paused | Group::Closed => "paused",
         Group::Stale => "stale",
     }
 }
@@ -763,6 +764,7 @@ mod tests {
             Group::Ready,
             Group::Fresh,
             Group::Background,
+            Group::Closed,
         ];
         let documented = [
             "waiting", "error", "running", "review", "paused", "fresh", "stale",
