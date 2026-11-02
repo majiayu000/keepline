@@ -10,6 +10,7 @@ pub mod log_index;
 mod official;
 mod plugin_hooks;
 mod process_exit;
+mod program_status;
 mod pty;
 pub mod recognition;
 pub mod screen_rules;

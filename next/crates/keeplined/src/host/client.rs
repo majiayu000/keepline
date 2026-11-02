@@ -523,6 +523,7 @@ pub(super) fn dispatch(shared: &Shared, request: Request) -> io::Result<Reply> {
                     cell,
                     input_at: None,
                     marks: Default::default(),
+                    reports: Default::default(),
                 },
                 reader,
                 replies,

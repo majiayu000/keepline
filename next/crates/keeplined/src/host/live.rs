@@ -50,6 +50,8 @@ pub(super) struct Live {
     pub(super) input_at: Option<std::time::Instant>,
     /// The shell's command marks.
     pub(super) marks: crate::command_marks::Marks,
+    /// What the program says about itself (OSC 7501).
+    pub(super) reports: crate::program_status::Scanner,
 }
 impl Live {
     // Event-driven handoff. No heartbeat or global process scan is needed.
@@ -191,6 +193,9 @@ pub(super) fn record_exit(host: &Shared, terminal: &LiveTerminal, id: &str) -> i
         }
     }
     host.commit(next)?;
+    if live.exited && host.recognition.terminal_reports.remove(id).is_some() {
+        host.publish_status()?;
+    }
     if live.exited {
         if let Some(events) = &host.log_events {
             for agent in host
@@ -342,6 +347,15 @@ pub(super) fn pump(
         }
         live.broadcast(OUTPUT, bytes[..n].to_vec());
         let finished = live.marks.scan(&bytes[..n], Instant::now());
+        let said = live.reports.scan(&bytes[..n]);
+        if let Some(said) = said {
+            // Host before Live is the lock order; release this terminal first.
+            drop(live);
+            if let Err(e) = lock(shared).and_then(|mut host| host.program_said(id, said)) {
+                eprintln!("terminal {id}: program status: {e}");
+            }
+            live = lock(terminal)?;
+        }
         if !finished.is_empty() {
             let pwd = live.vt.pwd(&super::hostname());
             // Host before Live is the lock order; release this terminal first.

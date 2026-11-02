@@ -87,6 +87,47 @@ fn cue(cues: &mut HashMap<String, (String, u64)>, terminal: &str, busy: Option<S
     };
     true
 }
+/// A conversation's turn as its program reported it (OSC 7501).
+fn program_report_turn(
+    c: &mut keepline_core::content::Content,
+    r: &keepline_core::protocol::ProgramReport,
+) {
+    use keepline_core::content::Turn;
+    let said = if r.msg.is_empty() { &r.title } else { &r.msg };
+    let turn = match r.state.as_str() {
+        "working" => Turn::Running,
+        "blocked" => Turn::Waiting,
+        "error" => Turn::Error,
+        _ => Turn::Completed,
+    };
+    if c.turn != turn {
+        if turn == Turn::Running {
+            c.turn_started = r.since;
+        }
+        if turn == Turn::Waiting {
+            c.waiting = if said.is_empty() {
+                "程序说在等你".into()
+            } else {
+                format!("{said}（程序上报）")
+            };
+            c.waiting_episode += 1;
+        }
+        if turn == Turn::Error && c.error.is_empty() {
+            c.error = if said.is_empty() {
+                "程序上报出错".into()
+            } else {
+                said.clone()
+            };
+        }
+        c.turn = turn;
+    }
+    if turn != Turn::Running {
+        c.background = None;
+    }
+    c.signal = "程序上报".into();
+    c.signal_at = r.since;
+    c.signal_detail = format!("终端里的程序通过 OSC 7501 报告 {}", r.state);
+}
 fn lock<T>(m: &Mutex<T>) -> io::Result<MutexGuard<'_, T>> {
     m.lock()
         .map_err(|_| io::Error::other("state lock poisoned"))
@@ -162,6 +203,21 @@ impl Host {
                 Some(_) => (),
                 None => c.screen_check = seen.fallback(),
             }
+        }
+        // What the program itself reports outranks every guess above and the log: it is
+        // the program's own word, not a reading of its output.
+        for s in w.agent_sessions.iter().filter(|s| s.current) {
+            let Some(r) = s
+                .terminal
+                .as_ref()
+                .and_then(|t| self.recognition.terminal_reports.get(t))
+            else {
+                continue;
+            };
+            let Some(c) = w.content.get_mut(&s.id) else {
+                continue;
+            };
+            program_report_turn(c, r);
         }
         w
     }
@@ -438,6 +494,44 @@ impl Host {
             crate::plugin_hooks::command(payload);
         }
         self.send_events(notices);
+    }
+    /// The program in `terminal` reported its status, or its report ended. Viewers get
+    /// it with the recognition status; a terminal with a live conversation also gets a
+    /// new revision, since the report outranks the log in the snapshot.
+    fn program_said(
+        &mut self,
+        terminal: &str,
+        said: Option<crate::program_status::Said>,
+    ) -> io::Result<()> {
+        let before = self.recognition.terminal_reports.get(terminal);
+        let next = said.map(|s| keepline_core::protocol::ProgramReport {
+            since: before
+                .filter(|b| b.state == s.state)
+                .map_or_else(keepline_core::content::now, |b| b.since),
+            state: s.state,
+            kind: s.kind,
+            progress: s.progress,
+            app: s.app,
+            title: s.title,
+            msg: s.msg,
+        });
+        if before == next.as_ref() {
+            return Ok(());
+        }
+        let turn_changed = before.map(|b| &b.state) != next.as_ref().map(|n| &n.state);
+        match next {
+            Some(next) => self
+                .recognition
+                .terminal_reports
+                .insert(terminal.into(), next),
+            None => self.recognition.terminal_reports.remove(terminal),
+        };
+        self.publish_status()?;
+        if turn_changed && self.workspace.current_agent(terminal).is_some() {
+            let next = self.workspace.clone();
+            self.commit(next)?;
+        }
+        Ok(())
     }
     fn title_changed(&mut self, terminal: &str, title: &str) -> io::Result<()> {
         let shown = keepline_core::terminal::shown_title(title);
@@ -835,6 +929,7 @@ fn serve_runtime(
                 cell,
                 input_at: None,
                 marks: Default::default(),
+                reports: Default::default(),
             },
             reader,
             replies,
@@ -1114,6 +1209,51 @@ mod snapshot_tests {
         assert_eq!(host.workspace.content["live"], Content::default());
         host.workspace.agent_sessions.clear();
         assert!(host.snapshot().content.is_empty());
+        drop(host);
+        fs::remove_dir_all(root).unwrap();
+    }
+    #[test]
+    fn a_program_report_outranks_screen_guesses_and_ends_with_its_program() {
+        use crate::program_status::Said;
+        use keepline_core::content::{Content, Turn};
+        let (mut host, root) = fixture();
+        host.workspace.agent_sessions = vec![session("live", 0, Some("t"), true)];
+        host.workspace
+            .content
+            .insert("live".into(), Content::default());
+        // The title spins, but the program says it is waiting on the user.
+        host.title_busy.insert("t".into(), ("live".into(), 1));
+        let said = |state: &str, msg: &str| Said {
+            state: state.into(),
+            kind: None,
+            progress: None,
+            app: "my-script".into(),
+            title: String::new(),
+            msg: msg.into(),
+        };
+        host.program_said("t", Some(said("blocked", "要部署到生产吗？")))
+            .unwrap();
+        let live = &host.snapshot().content["live"];
+        assert_eq!(live.turn, Turn::Waiting);
+        assert_eq!(live.waiting, "要部署到生产吗？（程序上报）");
+        assert_eq!(live.signal, "程序上报");
+        // The same word again keeps its time; a new word restarts it.
+        let since = host.recognition.terminal_reports["t"].since;
+        host.recognition
+            .terminal_reports
+            .get_mut("t")
+            .unwrap()
+            .since = 7;
+        host.program_said("t", Some(said("blocked", "还在等")))
+            .unwrap();
+        assert_eq!(host.recognition.terminal_reports["t"].since, 7);
+        host.program_said("t", Some(said("done", ""))).unwrap();
+        assert!(host.recognition.terminal_reports["t"].since >= since);
+        assert_eq!(host.snapshot().content["live"].turn, Turn::Completed);
+        // Its command ended: back to what the title and the log say.
+        host.program_said("t", None).unwrap();
+        assert!(host.recognition.terminal_reports.is_empty());
+        assert_eq!(host.snapshot().content["live"].signal, "标题");
         drop(host);
         fs::remove_dir_all(root).unwrap();
     }

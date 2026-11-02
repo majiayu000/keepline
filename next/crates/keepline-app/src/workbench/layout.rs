@@ -103,7 +103,15 @@ impl Workbench {
             .unwrap_or_else(|| "空终端".into());
         let rang = pane.read(cx).bell;
         // What the Agent's adapter says about one it sees here but cannot read.
-        let unread = self.store.recognition().terminal_notes.get(id).cloned();
+        let recognition = self.store.recognition();
+        let unread = recognition.terminal_notes.get(id).cloned().or_else(|| {
+            // A program that reports its own status, with no conversation read here.
+            session
+                .is_none()
+                .then(|| recognition.terminal_reports.get(id))
+                .flatten()
+                .map(|r| crate::model::session_state::report_view(r).1)
+        });
         let takeover = id.to_owned();
         let focus = pane.focus_handle(cx);
         let focus_id = id.to_owned();

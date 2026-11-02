@@ -1290,6 +1290,59 @@ fn unattached_terminal_publishes_its_program_title_without_spinner() {
     }
 }
 
+/// A program reports its own status with one printf (OSC 7501); it lasts until the
+/// program clears it, its shell command ends, or the terminal exits.
+#[test]
+fn a_program_reports_its_status_until_it_ends() {
+    let h = Host::start();
+    h.setup();
+    let until = |what: &str, ok: &dyn Fn(&RecognitionStatus) -> bool| {
+        let deadline = Instant::now() + Duration::from_secs(5);
+        while !ok(&recognition(&h)) {
+            assert!(Instant::now() < deadline, "{what}");
+            std::thread::sleep(Duration::from_millis(25));
+        }
+    };
+    // "部署中" in base64.
+    h.call(h.launch(
+        "script",
+        "printf '\\033]7501;state=working:app=deploy:progress=30:msg=6YOo572y5Lit\\033\\\\'; sleep 0.3; printf '\\033]7501;state=blocked:kind=question:app=deploy\\007'; read -r line",
+    ))
+    .unwrap();
+    until("working reported", &|r| {
+        r.terminal_reports
+            .get("script")
+            .is_some_and(|p| p.state != "working" || (p.msg == "部署中" && p.progress == Some(30)))
+    });
+    until("blocked reported", &|r| {
+        r.terminal_reports.get("script").is_some_and(|p| {
+            p.state == "blocked" && p.kind.as_deref() == Some("question") && p.app == "deploy"
+        })
+    });
+    h.call(Request::Stop {
+        id: "script".into(),
+    })
+    .unwrap();
+    until("gone with its terminal", &|r| {
+        !r.terminal_reports.contains_key("script")
+    });
+    // A command that reports done and ends: nothing is left once its shell is back.
+    h.call(h.launch(
+        "command",
+        "printf '\\033]133;C\\007\\033]7501;state=done\\007'; sleep 0.2; printf '\\033]133;D;0\\007\\033]0;back\\007'; read -r line",
+    ))
+    .unwrap();
+    until("done reported", &|r| {
+        r.terminal_reports
+            .get("command")
+            .is_some_and(|p| p.state == "done")
+    });
+    until("cleared when the command ended", &|r| {
+        r.terminal_titles.get("command").map(String::as_str) == Some("back")
+            && !r.terminal_reports.contains_key("command")
+    });
+}
+
 fn recognition(h: &Host) -> RecognitionStatus {
     match h.call(Request::RecognitionStatus).unwrap() {
         Reply::Recognition(s) => s,
