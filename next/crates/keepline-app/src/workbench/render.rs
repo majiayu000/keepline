@@ -591,10 +591,7 @@ impl Render for Workbench {
             } else if let Some(tree) = current.and_then(|t| t.layout.as_ref()) {
                 grid = grid.child(self.layout_view(tree, vec![], count > 1, window, cx));
             } else {
-                grid = grid.child(
-                    button("empty-tab-new", "开一个空终端")
-                        .on_click(cx.listener(|this, _, _, cx| this.launch(false, None, cx))),
-                );
+                grid = grid.child(self.empty_tab(cx));
             }
             main = main.child(grid);
         }
@@ -1179,5 +1176,55 @@ impl Workbench {
             });
         })
         .detach();
+    }
+}
+
+impl Workbench {
+    /// A tab with no terminal yet: what can go here, as buttons in the middle where the
+    /// eye lands, not a lone line at the top that reads as a heading.
+    fn empty_tab(&self, cx: &Context<Self>) -> gpui::Div {
+        let agents = Agent::all().into_iter().map(|agent| {
+            super::overview::quiet(button(
+                gpui::SharedString::from(format!("empty-tab-{}", agent.executable())),
+                format!("运行 {}", agent.name()),
+            ))
+            .on_click(cx.listener(move |this, _, _, cx| {
+                this.tasks.chosen_agent = Some(agent);
+                this.launch(false, None, cx);
+            }))
+        });
+        let split = crate::keymap::current(cx)
+            .chords(crate::keymap::Action::SplitRight)
+            .first()
+            .map(|c| c.display());
+        div()
+            .size_full()
+            .flex()
+            .flex_col()
+            .items_center()
+            .justify_center()
+            .gap(px(T::S12))
+            .child(
+                div()
+                    .text_size(px(T::CARD_TITLE))
+                    .text_color(T::color(T::primary()))
+                    .child("这个标签还没有终端"),
+            )
+            .child(
+                div()
+                    .max_w(px(T::HERE_WIDTH * 1.5))
+                    .flex()
+                    .flex_wrap()
+                    .justify_center()
+                    .gap(px(T::S8))
+                    .child(
+                        super::overview::solid(button("empty-tab-new", "开一个空终端"))
+                            .on_click(cx.listener(|this, _, _, cx| this.launch(false, None, cx))),
+                    )
+                    .children(agents),
+            )
+            .when_some(split, |d, keys| {
+                d.child(label(format!("打开后可以右键分屏，或按 {keys} 向右分屏")))
+            })
     }
 }

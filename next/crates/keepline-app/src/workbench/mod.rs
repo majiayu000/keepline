@@ -44,6 +44,10 @@ pub struct Workbench {
     /// A session's live screen floated over the current tab from the sidebar.
     peek: Option<peek::Peek>,
     phones: phones::Phones,
+    /// Which copy button just copied, shown as 「✓ 已复制」 for a moment so the click is
+    /// seen to have done something; the number tells a newer copy from an older timer.
+    copied: Option<(&'static str, u64)>,
+    copied_seq: u64,
 }
 #[derive(Clone)]
 struct PaneMenu {
@@ -79,6 +83,8 @@ pub(super) enum Closing {
     Pane(String),
     /// Restarting an older host: every terminal ends with it.
     Host,
+    /// Stopping the Agent in this terminal; the terminal and its shell stay.
+    Agent(String),
 }
 #[derive(Clone, Copy)]
 enum MenuPage {
@@ -300,6 +306,8 @@ impl Workbench {
             sidebar: sidebar_list::SidebarPrefs::load(),
             peek: None,
             phones: Default::default(),
+            copied: None,
+            copied_seq: 0,
             search,
             store,
             workspace,
@@ -638,6 +646,34 @@ impl Workbench {
         self.nav.task_detail = None;
         self.launch_in_slot(split, task_id, None, cx);
     }
+    /// Puts `text` on the clipboard and marks the button `key` as having copied it.
+    pub(super) fn copy_text(&mut self, key: &'static str, text: String, cx: &mut Context<Self>) {
+        cx.write_to_clipboard(gpui::ClipboardItem::new_string(text));
+        self.copied_seq += 1;
+        let seq = self.copied_seq;
+        self.copied = Some((key, seq));
+        cx.notify();
+        cx.spawn(async move |this, cx| {
+            cx.background_executor()
+                .timer(std::time::Duration::from_millis(1500))
+                .await;
+            let _ = this.update(cx, |this, cx| {
+                if this.copied.is_some_and(|(_, s)| s == seq) {
+                    this.copied = None;
+                    cx.notify();
+                }
+            });
+        })
+        .detach();
+    }
+    /// A copy button's text: its own label, or 「✓ 已复制」 right after it copied.
+    pub(super) fn copy_label(&self, key: &'static str, label: &'static str) -> &'static str {
+        if self.copied.is_some_and(|(k, _)| k == key) {
+            "✓ 已复制"
+        } else {
+            label
+        }
+    }
     /// Closing a pane stops its terminal; its tab closes with the last pane.
     pub(super) fn close_pane(&mut self, id: &str, cx: &mut Context<Self>) {
         self.request_close(Closing::Pane(id.to_owned()), cx);
@@ -666,7 +702,7 @@ impl Workbench {
     pub(super) fn running_agents(&self, closing: &Closing) -> Vec<(String, Option<Phase>)> {
         let ids = match closing {
             Closing::Tab(id) => self.workspace.tab_terminals(id),
-            Closing::Pane(id) => vec![id.clone()],
+            Closing::Pane(id) | Closing::Agent(id) => vec![id.clone()],
             Closing::Host => self.running_terminals(),
         };
         ids.into_iter()
@@ -750,9 +786,14 @@ impl Workbench {
     }
     pub(super) fn close_now(&mut self, closing: Closing, cx: &mut Context<Self>) {
         self.layout.confirm_close = None;
+        // Only the Agent ends; its pane stays where it is, zoomed or not.
+        if let Closing::Agent(id) = closing {
+            return self.request(Request::StopAgent { id }, cx);
+        }
         self.nav.zoomed = None;
         let (tab, edit) = match closing {
             Closing::Host => return self.restart_host(cx),
+            Closing::Agent(_) => return,
             Closing::Tab(id) => (Some(id.clone()), Edit::CloseTab { id }),
             Closing::Pane(terminal) => (
                 self.workspace

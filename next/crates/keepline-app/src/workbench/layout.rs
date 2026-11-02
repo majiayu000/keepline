@@ -783,7 +783,7 @@ impl Workbench {
                     pane.update(cx, |p, cx| p.interrupt(cx));
                 }
             }
-            "停止 Agent" => self.request(Request::StopAgent { id: id.into() }, cx),
+            "停止 Agent" => self.request_close(Closing::Agent(id.into()), cx),
             "取消关联" => {
                 if let Some(session) = self.workspace.current_agent(id) {
                     self.edit(
@@ -824,43 +824,59 @@ impl Workbench {
         let mut entries = Vec::new();
         match menu.page {
             MenuPage::Main => {
-                for title in [
-                    "向右分屏",
-                    "向下分屏",
-                    if self.nav.zoomed.as_deref() == Some(&menu.terminal) {
-                        "还原"
-                    } else {
-                        "放大"
-                    },
-                    "为这个待办开一个会话",
-                    "复制",
-                    "粘贴",
-                    "搜索滚动内容",
-                    "在编辑器里看滚动内容",
-                    "移到标签…",
-                    "为什么是这个状态",
-                    "挂到待办…",
-                    "取消关联",
-                    "中断（Ctrl-C）",
-                    "停止 Agent",
-                    "关闭画面",
-                ] {
-                    let enabled = match title {
-                        "为这个待办开一个会话" => task.is_some(),
-                        "挂到待办…" | "停止 Agent" => session.is_some(),
-                        "取消关联" => session.is_some_and(|s| s.task.is_some()),
-                        _ => true,
+                let keys = crate::keymap::current(cx);
+                let zoomed = self.nav.zoomed.as_deref() == Some(&menu.terminal);
+                for (i, row) in menu_rows(zoomed).into_iter().enumerate() {
+                    let Some(title) = row else {
+                        entries.push(menu_rule(i));
+                        continue;
                     };
+                    // A greyed item says why on hover, so it doesn't read as broken.
+                    let blocked = match title {
+                        "为这个待办开一个会话" => {
+                            task.is_none().then_some("这个标签没有设默认待办")
+                        }
+                        "挂到待办…" | "停止 Agent" => {
+                            session.is_none().then_some("这个终端里没有识别到 Agent")
+                        }
+                        "取消关联" => match session {
+                            None => Some("这个终端里没有识别到 Agent"),
+                            Some(s) if s.task.is_none() => Some("这个会话没有挂到待办"),
+                            Some(_) => None,
+                        },
+                        _ => None,
+                    };
+                    let shortcut = menu_shortcut(title, &keys);
                     let terminal = menu.terminal.clone();
                     let action = title.to_owned();
                     entries.push(
-                        button(gpui::SharedString::from(format!("menu-{title}")), title)
+                        button(gpui::SharedString::from(format!("menu-{title}")), "")
+                            .aria_label(title)
                             .w_full()
-                            .justify_start()
+                            .justify_between()
+                            .gap(px(T::S16))
                             .border_0()
-                            .when(!enabled, |d| d.opacity(0.4))
+                            .child(
+                                div()
+                                    .flex_1()
+                                    .when(blocked.is_some(), |d| d.opacity(0.4))
+                                    .child(title),
+                            )
+                            .when_some(shortcut, |d, keys| {
+                                d.child(
+                                    div()
+                                        .text_size(px(T::META))
+                                        .text_color(T::color(T::muted()))
+                                        .child(keys),
+                                )
+                            })
+                            .when_some(blocked, |d, why| {
+                                d.cursor_default().tooltip(move |_, cx| {
+                                    cx.new(|_| super::render::TextTip(why.into())).into()
+                                })
+                            })
                             .on_click(cx.listener(move |this, _, window, cx| {
-                                if enabled {
+                                if blocked.is_none() {
                                     this.menu_action(&terminal, &action, window, cx);
                                 }
                             }))
@@ -1137,10 +1153,19 @@ impl Workbench {
         let agents = self.running_agents(closing);
         let working = agents.iter().any(|(_, p)| *p == Some(Phase::Working));
         let host = matches!(closing, Closing::Host);
+        let agent = matches!(closing, Closing::Agent(_));
         let what = match closing {
             Closing::Tab(_) => "关闭这个标签",
             Closing::Pane(_) => "关闭这个画面",
             Closing::Host => "重启后台",
+            Closing::Agent(_) => "停止这个 Agent",
+        };
+        let verb = if host {
+            "重启"
+        } else if agent {
+            "停止"
+        } else {
+            "关闭"
         };
         let shells = if host {
             self.running_terminals().len().saturating_sub(agents.len())
@@ -1151,16 +1176,9 @@ impl Workbench {
         let lines = agents
             .iter()
             .map(|(title, phase)| match phase {
-                Some(Phase::Working) if host => format!("「{title}」还在工作，重启会打断这一轮。"),
-                Some(Phase::Working) => format!("「{title}」还在工作，关闭会打断这一轮。"),
-                Some(Phase::Waiting) => format!(
-                    "「{title}」在等你回答，{}后它会退出。",
-                    if host { "重启" } else { "关闭" }
-                ),
-                _ => format!(
-                    "「{title}」这一轮已经结束，{}后它会退出。",
-                    if host { "重启" } else { "关闭" }
-                ),
+                Some(Phase::Working) => format!("「{title}」还在工作，{verb}会打断这一轮。"),
+                Some(Phase::Waiting) => format!("「{title}」在等你回答，{verb}后它会退出。"),
+                _ => format!("「{title}」这一轮已经结束，{verb}后它会退出。"),
             })
             .chain((shells > 0).then(|| format!("另有 {shells} 个普通终端会停止。")));
         let lines = (splits > 0)
@@ -1203,6 +1221,8 @@ impl Workbench {
                             .text_size(px(T::CARD_TITLE))
                             .child(if host {
                                 "重启后台，换上新版本？".to_owned()
+                            } else if agent {
+                                format!("{what}？")
                             } else {
                                 format!("{}{what}？", if working { "停止并" } else { "" })
                             }),
@@ -1215,6 +1235,8 @@ impl Workbench {
                     .child(label(lines))
                     .child(label(if host {
                         "对话记录会保留，重启后可以原地重开终端，或从左栏「已关闭」里接着聊。"
+                    } else if agent {
+                        "终端会留着，回到命令行。对话记录会保留，可以从左栏底部「已关闭」里接着聊。"
                     } else {
                         "对话记录会保留，可以从左栏底部「已关闭」里接着聊。"
                     }))
@@ -1234,13 +1256,17 @@ impl Workbench {
                                     "confirm-close-stop",
                                     if host {
                                         "重启后台"
+                                    } else if agent {
+                                        "停止"
                                     } else if working {
                                         "停止并关闭"
                                     } else {
                                         "关闭"
                                     },
                                 )
-                                .when(working || host, |b| b.text_color(Group::Error.colors().1))
+                                .when(working || host || agent, |b| {
+                                    b.text_color(Group::Error.colors().1)
+                                })
                                 .on_click(cx.listener(
                                     move |this, _, _, cx| {
                                         this.close_now(confirmed.clone(), cx);
@@ -1594,4 +1620,61 @@ mod tests {
         assert_eq!(super::read_branch(&root), None);
         std::fs::remove_dir_all(&root).unwrap();
     }
+}
+
+/// The pane menu's items in four groups (None draws a rule between them): layout,
+/// text, the session and its todo, then what stops or closes something.
+pub(super) fn menu_rows(zoomed: bool) -> Vec<Option<&'static str>> {
+    vec![
+        Some("向右分屏"),
+        Some("向下分屏"),
+        Some(if zoomed { "还原" } else { "放大" }),
+        Some("移到标签…"),
+        None,
+        Some("复制"),
+        Some("粘贴"),
+        Some("搜索滚动内容"),
+        Some("在编辑器里看滚动内容"),
+        None,
+        Some("为什么是这个状态"),
+        Some("为这个待办开一个会话"),
+        Some("挂到待办…"),
+        Some("取消关联"),
+        None,
+        Some("中断（Ctrl-C）"),
+        Some("停止 Agent"),
+        Some("关闭画面"),
+    ]
+}
+/// The rule between two groups of the pane menu.
+pub(super) const MENU_RULE: f32 = T::S8 + T::BORDER_WIDTH;
+fn menu_rule(i: usize) -> gpui::AnyElement {
+    div()
+        .id(gpui::SharedString::from(format!("menu-rule-{i}")))
+        .w_full()
+        .h(px(MENU_RULE))
+        .flex()
+        .items_center()
+        .child(
+            div()
+                .w_full()
+                .h(px(T::BORDER_WIDTH))
+                .bg(T::color(T::border())),
+        )
+        .into_any_element()
+}
+/// The chord that runs a menu item without the menu, as the user has it bound; copy
+/// and paste are the terminal's own fixed ⌘C and ⌘V.
+fn menu_shortcut(title: &str, keys: &crate::keymap::Keymap) -> Option<String> {
+    use crate::keymap::Action;
+    let action = match title {
+        "复制" => return Some("⌘C".into()),
+        "粘贴" => return Some("⌘V".into()),
+        "向右分屏" => Action::SplitRight,
+        "向下分屏" => Action::SplitDown,
+        "搜索滚动内容" => Action::Find,
+        "关闭画面" => Action::Close,
+        _ => return None,
+    };
+    keys.chords(action).first().map(|c| c.display())
 }

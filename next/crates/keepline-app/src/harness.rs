@@ -816,7 +816,7 @@ pub fn start(
                 if let Some(bounds)=root {
                     // Native event dispatch tests; simulated mouse, not human/CUA acceptance.
                     for expected in [1,4] {
-                        let at=handle.update(cx,|v,_,_|v.visual_menu_point(2)).unwrap();
+                        let at=handle.update(cx,|v,_,_|v.visual_menu_point(if expected==1 {"放大"} else {"还原"})).unwrap();
                         cx.update_window(handle.into(),|_,window,app|native_click(window,app,at,gpui::MouseButton::Left)).unwrap();
                         handle.update(cx,|v,_,_|v.visual_check_panes(expected)).unwrap();
                         if expected==1 {cx.update_window(handle.into(),|_,window,app|native_click(window,app,bounds.origin+gpui::point(px(40.),px(80.)),gpui::MouseButton::Right)).unwrap();}
@@ -838,7 +838,7 @@ pub fn start(
             if std::env::var_os("KL_NATIVE_ONLY").is_some() {
                 let bounds=handle.update(cx,|v,_,_|v.visual_bounds()).unwrap();
                 cx.update_window(handle.into(),|_,w,a|native_click(w,a,bounds.origin+gpui::point(px(40.),px(80.)),gpui::MouseButton::Right)).unwrap();
-                let at=handle.update(cx,|v,_,_|v.visual_menu_point(0)).unwrap();
+                let at=handle.update(cx,|v,_,_|v.visual_menu_point("向右分屏")).unwrap();
                 cx.update_window(handle.into(),|_,w,a|native_click(w,a,at,gpui::MouseButton::Left)).unwrap();
                 cx.background_executor().timer(Duration::from_secs(1)).await;
                 handle.update(cx,|v,w,a|{v.visual_assert_new_shell(9,w,a);v.visual_split_down(w,a);}).unwrap();
@@ -2225,7 +2225,7 @@ pub fn start(
                 cx.update_window(handle.into(), |_, w, a| { w.refresh(); w.draw(a).clear(a); native_click(w, a, at, gpui::MouseButton::Right) }).unwrap();
                 wait(300).await;
                 shot("7-menu.png", cx);
-                let item = handle.update(cx, |v, _, _| v.visual_menu_point(7)).unwrap();
+                let item = handle.update(cx, |v, _, _| v.visual_menu_point("在编辑器里看滚动内容")).unwrap();
                 cx.update_window(handle.into(), |_, w, a| native_click(w, a, item, gpui::MouseButton::Left)).unwrap();
                 let mut text = String::new();
                 for _ in 0..100 {
@@ -2271,7 +2271,9 @@ pub fn start(
                 .timer(Duration::from_millis(300))
                 .await;
             // 为什么是这个状态, after 在编辑器里看滚动内容.
-            let item = handle.update(cx, |v, _, _| v.visual_menu_point(9)).unwrap();
+            let item = handle
+                .update(cx, |v, _, _| v.visual_menu_point("为什么是这个状态"))
+                .unwrap();
             cx.update_window(handle.into(), |_, window, app| {
                 window.refresh();
                 window.draw(app).clear(app);

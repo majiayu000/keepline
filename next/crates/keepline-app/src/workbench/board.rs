@@ -422,6 +422,7 @@ impl Workbench {
         let todos = self.board_todos();
         let open = sessions.iter().filter(|(c, _)| *c != Column::Done).count();
         let stale = sessions.iter().filter(|(c, _)| *c == Column::Stale).count();
+        let empty = sessions.is_empty() && todos.is_empty();
         let mut grouped: HashMap<Column, Vec<&AgentSession>> = HashMap::new();
         for (column, session) in sessions {
             grouped.entry(column).or_default().push(session);
@@ -466,7 +467,7 @@ impl Workbench {
             .flex()
             .flex_col()
             .font_features(super::diagnostics::tabular())
-            .child(self.board_header(open, stale, cx))
+            .child(self.board_header(open, stale, empty, cx))
             .when_some(self.error.clone(), |d, error| {
                 d.child(
                     div()
@@ -491,7 +492,13 @@ impl Workbench {
             .children(self.drawer_view(cx))
             .children(self.toast_view(cx))
     }
-    fn board_header(&self, open: usize, stale: usize, cx: &Context<Self>) -> gpui::Div {
+    fn board_header(
+        &self,
+        open: usize,
+        stale: usize,
+        empty: bool,
+        cx: &Context<Self>,
+    ) -> gpui::Div {
         let mut agents: Vec<(Agent, usize)> = vec![];
         for s in self
             .workspace
@@ -568,7 +575,13 @@ impl Workbench {
                     }),
             )
             .child(
-                label(format!("{open} 个没收尾 · Esc 回到工作区")).text_color(T::color(T::muted())),
+                // An empty board says what lands in these columns, not just 「0 个」.
+                label(if empty {
+                    "还没有会话：在终端里运行 claude 或 codex，它们会按进度出现在下面几列 · Esc 回到工作区".to_owned()
+                } else {
+                    format!("{open} 个没收尾 · Esc 回到工作区")
+                })
+                .text_color(T::color(T::muted())),
             )
             .child(div().w(px(T::S8)))
             .children(chips)
