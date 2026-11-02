@@ -261,6 +261,11 @@ impl Render for Workbench {
                     (*attention, std::cmp::Reverse(super::layout::urgency(*g)))
                 })
                 .map(|(g, _)| g);
+            // Whose tab it is: the CLI of its first pane with a conversation.
+            let agent = ids
+                .iter()
+                .find_map(|id| self.pane_session(id))
+                .map(|s| s.runtime);
             if let Some((_, field, _)) =
                 self.layout.renaming_tab.as_ref().filter(|(t, ..)| t == &id)
             {
@@ -329,6 +334,12 @@ impl Render for Workbench {
                     .text_size(px(T::MONO_SIZE))
                     .text_color(T::color(if active { T::primary() } else { T::secondary() }))
                     .when(tab.default_task.is_some(), |d| d.child(task_icon()))
+                    .when_some(agent.filter(|_| !terminal_style), |d, a| {
+                        d.child(super::board::agent_mark(
+                            a,
+                            T::color(if active { T::secondary() } else { T::muted() }),
+                        ))
+                    })
                     // Terminal style: `2:标题*` with the state as a symbol, like tmux.
                     .when(terminal_style, |d| {
                         d.when_some(status, |d, g| d.child(glyph(g)))

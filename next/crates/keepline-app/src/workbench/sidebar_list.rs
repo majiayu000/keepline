@@ -265,8 +265,12 @@ impl Workbench {
                     .flex()
                     .items_center()
                     .gap(px(T::S8))
-                    .child(if attention { dot(g) } else { seen_dot(g) })
+                    .child(super::board::agent_mark(
+                        session.runtime,
+                        T::color(T::muted()),
+                    ))
                     .child(title)
+                    .child(if attention { dot(g) } else { seen_dot(g) })
                     .child(trailing)
                     // A row with nothing to pin keeps the pin's room, so every row's time
                     // and the todos' 开始 end on one line.
@@ -279,7 +283,7 @@ impl Workbench {
                     div()
                         .mt(-px(T::S4))
                         .mb(px(T::S4))
-                        .pl(px(T::DOT + T::S8))
+                        .pl(px(T::BOARD_MARK + T::S8))
                         .truncate()
                         .text_size(px(T::CHIP_SIZE))
                         .text_color(T::color(T::muted()))
@@ -334,9 +338,9 @@ impl Workbench {
         )
     }
     /// A row in the 状态 / 目录 presets (and plugin presets beside them), after
-    /// sidebar-density.html: one state symbol, the title in the system font, and on the
-    /// right the running turn's clock or a short age (`4m`, `2h`); symbol and time are
-    /// monospace. The second line comes only for what needs you and the selected row.
+    /// sidebar-density.html: the CLI's mark, the title in the system font, then the
+    /// running turn's clock or a short age (`4m`, `2h`) and the state symbol, both
+    /// monospace. The second line comes for what needs you, what runs, and the selected row.
     fn dense_row(
         &self,
         (session, g, attention): Listed,
@@ -409,6 +413,20 @@ impl Workbench {
                     .flex()
                     .items_center()
                     .gap(px(T::S8))
+                    .child(super::board::agent_mark(
+                        session.runtime,
+                        T::color(T::muted()),
+                    ))
+                    .child(title)
+                    .child(
+                        div()
+                            .flex_shrink_0()
+                            .font_family(mono.clone())
+                            .font_features(T::tabular())
+                            .text_size(px(T::CHIP_SIZE))
+                            .text_color(T::color(T::muted()))
+                            .child(time),
+                    )
                     .child(
                         // A finished turn you have seen keeps 等你验收's ◇, in the seen ink.
                         glyph(g)
@@ -420,26 +438,16 @@ impl Workbench {
                             .w(px(T::S12))
                             .flex()
                             .justify_center()
-                            .font_family(mono.clone())
+                            .font_family(mono)
                             .font_weight(gpui::FontWeight::BOLD)
                             .text_size(px(T::SMALL)),
-                    )
-                    .child(title)
-                    .child(
-                        div()
-                            .flex_shrink_0()
-                            .font_family(mono)
-                            .font_features(T::tabular())
-                            .text_size(px(T::CHIP_SIZE))
-                            .text_color(T::color(T::muted()))
-                            .child(time),
                     )
                     .children(pin),
             )
             .when_some(detail, |d, text| {
                 d.child(
                     div()
-                        .pl(px(T::S12 + T::S8))
+                        .pl(px(T::BOARD_MARK + T::S8))
                         .truncate()
                         .font_family(T::UI_FONT)
                         .text_size(px(T::CHIP_SIZE))
@@ -594,7 +602,7 @@ impl Workbench {
         let detail = |l: &Listed| match preset.detail {
             Detail::Never => None,
             Detail::Always => self.row_detail(l.0, l.1),
-            Detail::Attention => (bucket(l.1) == Bucket::Attention
+            Detail::Attention => (matches!(bucket(l.1), Bucket::Attention | Bucket::Running)
                 || current == Some(l.0.id.as_str()))
             .then(|| self.row_detail(l.0, l.1))
             .flatten(),

@@ -71,7 +71,7 @@ pub enum Detail {
     /// Never; the hover card still has it.
     #[default]
     Never,
-    /// For rows that need you and the selected one.
+    /// For rows that need you, rows still running, and the selected one.
     Attention,
     Always,
 }

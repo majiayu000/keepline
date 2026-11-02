@@ -94,6 +94,11 @@ impl Workbench {
         let focused = pane.focus_handle(cx).is_focused(window);
         let session = self.pane_session(id);
         let status = self.pane_status(id).map(|(g, _)| g);
+        // A question or an error you have not looked at yet: the pane rings for it.
+        let asking = self
+            .pane_status(id)
+            .filter(|(g, unseen)| *unseen && matches!(g, Status::Waiting | Status::Error))
+            .map(|(g, _)| g);
         // The conversation's title names the pane, like its tab; its latest reply is
         // already on screen below, so that line only shows on hover. Without an Agent,
         // the title the program set.
@@ -492,6 +497,17 @@ impl Workbench {
                             .right_0()
                             .h(px(T::FOCUS_RING))
                             .bg(T::color(T::focus())),
+                    )
+                })
+                // Among several panes one that asks you something rings in its state's
+                // color, so a glance across the split finds it; drawn over the pane too.
+                .when_some(asking.filter(|_| borders), |d, g| {
+                    d.child(
+                        div()
+                            .absolute()
+                            .inset_0()
+                            .border(px(T::FOCUS_RING))
+                            .border_color(g.colors().0),
                     )
                 });
         }
@@ -1607,7 +1623,8 @@ impl Workbench {
             }
             None => age(content.map_or(s.updated, |c| c.updated)),
         };
-        meta.child(s.runtime.executable().to_string())
+        meta.child(super::board::agent_mark(s.runtime, T::color(T::muted())))
+            .child(s.runtime.executable().to_string())
             .child(div().opacity(T::ZERO_OPACITY).child("·"))
             .child(when)
     }

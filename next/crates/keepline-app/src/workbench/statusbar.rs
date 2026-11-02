@@ -165,11 +165,12 @@ impl Workbench {
             window.map_or(String::new(), |w| w.label()),
             window.map_or(0, |w| w.used)
         ));
-        b = b.child(div().text_color(T::color(T::secondary())).child(format!(
-            "{}{}",
-            agent.key(),
-            if stale { " *" } else { "" }
-        )));
+        // The CLI by its mark, as its rows, tabs and panes show it.
+        b = b
+            .child(super::board::agent_mark(agent, T::color(T::secondary())))
+            .when(stale, |d| {
+                d.child(div().text_color(T::color(T::muted())).child("*"))
+            });
         if let Some(w) = window {
             let (fill, ink) = colors(w, stale);
             b = b
