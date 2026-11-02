@@ -1063,9 +1063,14 @@ impl Workbench {
     /// The sidebar button beside the traffic lights: on the sidebar's top row while it is
     /// open, on the main title row once it is folded away, so it never moves.
     pub(super) fn sidebar_toggle(&self, cx: &Context<Self>) -> gpui::Stateful<gpui::Div> {
+        // T3 Code's mark: the panel with a chevron saying which way a click moves it.
         icon_button(
             "sidebar-toggle",
-            "icons/sidebar.svg",
+            if self.sidebar.collapsed {
+                "icons/sidebar-open.svg"
+            } else {
+                "icons/sidebar.svg"
+            },
             if self.sidebar.collapsed {
                 "展开左栏"
             } else {
