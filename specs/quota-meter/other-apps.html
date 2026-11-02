@@ -1,0 +1,102 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>额度：别的 App 怎么做</title>
+<style>
+:root{
+  --bg:#ffffff; --sunken:#f7f8fa; --text:#17181c; --secondary:#5d6270; --muted:#767b87;
+  --border:#e3e5ea; --border-strong:#d5d8de; --running:#1f8a5b; --wait:#c2570c; --error:#c0392b; --accent:#4b4fd6;
+  --page:#f3f4f7; --mono:"SF Mono",ui-monospace,Menlo,monospace;
+}
+@media (prefers-color-scheme: dark){:root{
+  --bg:#1c1c1e; --sunken:#18181a; --text:#ecebe9; --secondary:#a3a2a0; --muted:#8a8988;
+  --border:#2e2e2f; --border-strong:#3a3a3b; --running:#4cc38a; --wait:#e8823a; --error:#e5534b; --accent:#8f93ff; --page:#121213;
+}}
+*{box-sizing:border-box}
+body{margin:0;background:var(--page);color:var(--text);font:14px/1.6 -apple-system,BlinkMacSystemFont,"PingFang SC",sans-serif}
+.wrap{max-width:1040px;margin:0 auto;padding:40px 16px 80px}
+h1{font-size:22px;margin:0 0 4px}
+.meta{color:var(--muted);font-size:12px;margin-bottom:20px}
+.meta a{color:var(--accent)}
+h2{font-size:16px;margin:36px 0 10px}
+p{margin:6px 0}
+.box{background:var(--bg);border:1px solid var(--border);border-radius:8px;padding:14px 16px;margin:10px 0}
+.box.key{border-left:3px solid var(--accent)}
+table{width:100%;border-collapse:collapse;background:var(--bg);border:1px solid var(--border);border-radius:8px;overflow:hidden;font-size:13px}
+th,td{text-align:left;vertical-align:top;padding:8px 10px;border-bottom:1px solid var(--border)}
+th{background:var(--sunken);color:var(--secondary);font-weight:500;font-size:12px}
+tr:last-child td{border-bottom:0}
+code{font-family:var(--mono);font-size:12px;background:var(--sunken);padding:1px 4px;border-radius:3px}
+.tag{display:inline-block;font-size:11px;padding:0 6px;border-radius:99px;border:1px solid var(--border-strong);color:var(--secondary);margin-right:4px}
+.ok{color:var(--running)} .no{color:var(--error)} .mid{color:var(--wait)}
+ul{margin:6px 0;padding-left:20px}
+.table-scroll{overflow-x:auto}
+</style>
+</head>
+<body>
+<div class="wrap">
+<h1>额度：别的 App 怎么做</h1>
+<div class="meta">2026-11-02 调研 · 用于决定 Keepline 额度条的数据来源和摆放位置 · 相关：<a href="directions.html">额度条方向稿</a> · <a href="placement.html">摆放方向稿</a></div>
+
+<div class="box key">
+<b>结论</b>
+<ul>
+<li>同类终端工具 本身没有额度条，全靠社区插件（列表里二十多个）。做法分两派：<b>被动读本机记录</b>，或者<b>拿各家 CLI 的登录凭据调官方接口</b>。</li>
+<li>Keepline 现在（431a112a）属于被动派，做法和 同类终端工具-status-ui-bar 几乎一样：Claude 截 statusline，Codex 读会话日志；Grok 读它自己的日志，这一点比那个插件还更不需要联网。</li>
+<li>Codex 0.166 的 app-server 有 <code>account/rateLimits/read</code>，额度一变还会推送 <code>account/rateLimits/updated</code>。Keepline 已经连着这个服务，所以是最划算的升级：随时最新，Keepline 自己也不联网。</li>
+<li>值得抄的界面细节：倒计时直接写在百分比旁边（<code>5h 35% 24m</code>）；读数旧了打 <code>*</code>；点开弹层看全部窗口和缓存时间；额度挨着正在跑那个 Agent 的窗格显示。</li>
+</ul>
+</div>
+
+<h2>各家怎么取</h2>
+<div class="table-scroll">
+<table>
+<tr><th>工具</th><th>形态</th><th>Claude</th><th>Codex</th><th>Cursor</th><th>Grok</th><th>刷新 / 失败时</th></tr>
+<tr><td><b>Keepline</b><br>431a112a</td><td>工作台侧栏底部</td><td>statusline 截获 <code>rate_limits</code></td><td>会话日志 <code>token_count.rate_limits</code></td><td class="no">无</td><td>自己的日志 <code>billing: fetched credits config</code></td><td>对话日志变长时顺带读；不联网</td></tr>
+<tr><td><b>QuotaBar</b><br>本机 0.6.0</td><td>菜单栏</td><td>钥匙串里的 OAuth 登录凭据 → <code>api.anthropic.com/api/oauth/usage</code></td><td><code>~/.codex/auth.json</code> → <code>chatgpt.com/backend-api/wham/usage</code></td><td>网站 Cookie → <code>cursor.com/api/usage-summary</code></td><td><code>~/.grok/auth.json</code> → <code>cli-chat-proxy.grok.com/v1/billing?format=credits</code></td><td>定时拉；登录过期提示重新登录；429 记下重试时间</td></tr>
+<tr><td><b>同类终端工具-status-ui-bar</b></td><td>同类终端工具 标签栏一行</td><td>包装 statusline 截获，不联网</td><td>读 <code>~/.codex/sessions</code></td><td class="no">无</td><td>调 Grok CLI 的计费接口（token 走 stdin，不出现在 <code>ps</code>）</td><td>5 分钟；失败用缓存；超过 24 小时打 <code>*</code></td></tr>
+<tr><td><b>同类终端工具-quotabar</b></td><td>标签栏一行 + 侧栏 + 弹层</td><td>钥匙串 <code>Claude Code-credentials</code> → OAuth 用量接口</td><td>可插拔</td><td>可插拔</td><td>可插拔</td><td>共用缓存，最多 5 分钟真查一次；429 保留上次的值；侧栏数据 25 分钟后自动消失</td></tr>
+<tr><td><b>quota-cli</b> + 同类终端工具 插件</td><td>侧栏，挨着跑那个 Agent 的窗格</td><td colspan="4">读各家 CLI 自己存的登录凭据，只读，不刷新、不改写 token；Claude、Codex、Cursor、Kiro 等</td><td>凭据过期时继续显示「上次安全的数据」</td></tr>
+<tr><td><b>CodexBar</b></td><td>菜单栏</td><td>在本地终端跑 <code>/usage</code>、<code>/status</code> 解析</td><td>优先 <code>codex app-server</code> RPC，失败才解析 <code>/status</code></td><td>浏览器 Cookie 或 Cursor App 的 token</td><td>—</td><td>15 家以上；Safari Cookie 需要完全磁盘访问</td></tr>
+</table>
+</div>
+
+<h2>两派对比</h2>
+<div class="table-scroll">
+<table>
+<tr><th></th><th>被动读本机（现在）</th><th>拿凭据调接口</th></tr>
+<tr><td>新鲜度</td><td class="mid">用的时候才更新；Grok 只在启动时记一次</td><td class="ok">任何时候都是最新</td></tr>
+<tr><td>覆盖</td><td class="mid">Codex、Claude、Grok；Cursor、Qoder 没有</td><td class="ok">能补上 Cursor</td></tr>
+<tr><td>风险</td><td class="ok">不联网，不碰钥匙串和 token</td><td class="no">读钥匙串和登录文件；接口官方没公开，会限流（429），随时可能改</td></tr>
+<tr><td>和产品原则</td><td class="ok">符合「Keepline 不联网」</td><td class="no">打破这条，要用户同意，并且应该默认关闭</td></tr>
+</table>
+</div>
+
+<h2>本机核对过的事实</h2>
+<ul>
+<li>Claude Code 2.1.316：statusline 的输入里有 <code>rate_limits.five_hour / seven_day {used_percentage, resets_at}</code>；用 API key 或 Bedrock 登录时这里是 null。</li>
+<li>Grok 1.0.70：<code>~/.grok/logs/unified.jsonl</code> 里每次启动记一条 <code>creditUsagePercent</code>、按周的 <code>currentPeriod</code>、<code>subscriptionTier</code>。之后几小时日志能多出几百 KB。</li>
+<li>Cursor：<code>~/.cursor</code> 下没有任何额度记录。Qoder：只有每条回复的 <code>usage.credits</code>，没有总额。</li>
+<li>Codex 0.166：app-server 提供 <code>account/rateLimits/read</code>、<code>account/usage/read</code>，并推送 <code>account/rateLimits/updated</code>。</li>
+<li>同类终端工具 0.9.3 本体：程序里没有任何额度相关的代码。</li>
+</ul>
+
+<h2>待决定</h2>
+<ul>
+<li><span class="tag">先做</span>摆放位置的 UI 设计（见 <a href="placement.html">摆放方向稿</a>）。</li>
+<li><span class="tag">建议做</span>Codex 改走 app-server 的 <code>account/rateLimits/read</code>，读日志留作后备。</li>
+<li><span class="tag">要拍板</span>是否加默认关闭的「主动刷新」：用各家 CLI 的登录凭据调接口，最多 5 分钟一次，429 时保留旧值。QuotaBar 里有现成实现可以搬。</li>
+</ul>
+
+<h2>来源</h2>
+<ul>
+<li><a href="https://awesome.ecosyste.ms/lists/yigitkonur%2Fawesome-同类终端工具">awesome-同类终端工具 插件列表</a></li>
+<li><a href="https://github.com/speardragon/同类终端工具-status-ui-bar">同类终端工具-status-ui-bar</a> · <a href="https://github.com/ArnaudRinquin/同类终端工具-quotabar">同类终端工具-quotabar</a> · <a href="https://github.com/pinkpixel-dev/quota">quota / quota-cli</a></li>
+<li><a href="https://tangled.org/alice.mosphere.at/CodexBar">CodexBar 说明（镜像）</a> · <a href="https://github.com/steipete/CodexBar/releases/tag/v0.40.0">CodexBar v0.40.0</a></li>
+<li>QuotaBar：读的是 <code>/Applications/QuotaBar.app</code> 程序里的字符串，没有看源码。</li>
+</ul>
+</div>
+</body>
+</html>

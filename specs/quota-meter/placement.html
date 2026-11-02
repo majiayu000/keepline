@@ -1,0 +1,287 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>额度摆放方向</title>
+<style>
+/* 取自 next/crates/keepline-app/src/ui/theme.rs 浅色方案；尺寸：侧栏 270、行高 30、小字 11、竖条纹 2/3 */
+:root{
+  --bg:#ffffff; --sunken:#f7f8fa; --hover:#f4f5f8; --raised:#eef0f4;
+  --text:#17181c; --secondary:#5d6270; --muted:#767b87;
+  --border:#e3e5ea; --border-strong:#d5d8de; --accent:#4b4fd6;
+  --wait:#c2570c; --error:#c0392b; --running:#1f8a5b; --stale:#8b909c;
+  --tick-empty:#e6e8ec; --term:#fafafa; --page:#eceef2;
+  --mono:"SF Mono",ui-monospace,Menlo,monospace;
+}
+*{box-sizing:border-box}
+body{margin:0;background:var(--page);color:var(--text);font:13px/1.5 -apple-system,BlinkMacSystemFont,"PingFang SC",sans-serif;font-variant-numeric:tabular-nums}
+.wrap{max-width:1180px;margin:0 auto;padding:40px 16px 80px}
+h1{font-size:22px;margin:0 0 4px}
+.meta{color:var(--muted);font-size:12px;margin-bottom:18px}
+.meta a{color:var(--accent)}
+.lead{max-width:860px;color:var(--secondary);margin:0 0 18px}
+.decide{display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin-bottom:8px}
+.decide div{background:var(--bg);border:1px solid var(--border);border-radius:8px;padding:10px 12px}
+.decide b{display:block;font-size:11px;color:var(--muted);font-weight:500}
+section{margin-top:52px}
+section>h2{font-size:17px;margin:0 0 2px}
+section>.sub{color:var(--secondary);margin:0 0 14px;max-width:900px}
+.ref{font-size:12px;color:var(--muted);margin:-8px 0 14px}
+.pros{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-top:14px}
+.pros div{border-left:2px solid var(--border-strong);padding:2px 0 2px 12px;color:var(--secondary)}
+.pros b{color:var(--text);font-weight:500;display:block}
+.pros .good{border-color:var(--running)} .pros .bad{border-color:var(--wait)}
+@media (max-width:900px){.decide,.pros{grid-template-columns:1fr}}
+
+/* ---------- 窗口骨架 ---------- */
+.scroll{overflow-x:auto;padding-bottom:4px}
+.win{width:1080px;height:470px;background:var(--bg);border:1px solid var(--border-strong);border-radius:10px;overflow:hidden;display:flex;flex-direction:column;box-shadow:0 8px 30px rgba(20,22,30,.08);position:relative}
+.top{height:44px;flex-shrink:0;white-space:nowrap;border-bottom:1px solid var(--border);display:flex;align-items:center;gap:12px;padding:0 14px 0 80px;font-size:12px;position:relative}
+.top .lights{position:absolute;left:14px;top:16px;display:flex;gap:7px}
+.top .lights i{width:11px;height:11px;border-radius:50%;background:#d9dbe0}
+.top .brand{font-weight:600;font-size:13px}
+.top .crumb{color:var(--muted)}
+.top .chip{background:var(--hover);border-radius:6px;padding:3px 9px;color:var(--secondary)}
+.top .search{width:300px;flex-shrink:1;min-width:150px;height:26px;border:1px solid var(--border-strong);border-radius:6px;display:flex;align-items:center;padding:0 8px;color:var(--muted);gap:6px}
+.top .search kbd{margin-left:auto;font:10px var(--mono);border:1px solid var(--border-strong);border-radius:4px;padding:0 4px}
+.top .spacer{flex:1}
+.top .new{color:var(--text)}
+.body{flex:1;display:flex;min-height:0}
+.side{width:270px;flex-shrink:0;border-right:1px solid var(--border);display:flex;flex-direction:column;background:var(--bg)}
+.side .list{flex:1;padding:8px 8px 0;overflow:hidden}
+.sec{display:flex;justify-content:space-between;color:var(--muted);font-size:11px;padding:6px 8px 4px}
+.srow{height:30px;display:flex;align-items:center;gap:8px;padding:0 8px;border-radius:6px;font-size:12px}
+.srow.cur{background:var(--raised)}
+.srow .dot{width:7px;height:7px;border-radius:50%;flex-shrink:0}
+.srow .t{flex:1;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;font-family:var(--mono);font-size:12px}
+.srow .s{font-size:11px;color:var(--muted);flex-shrink:0}
+.srow .s.run{color:var(--running)} .srow .s.wait{color:var(--wait)}
+.foot{height:40px;border-top:1px solid var(--border);display:flex;align-items:center;padding:0 14px;gap:22px;font-size:12px}
+.foot .r{margin-left:auto;display:flex;gap:22px}
+.main{flex:1;display:flex;flex-direction:column;min-width:0;background:var(--term)}
+.tabs{height:34px;border-bottom:1px solid var(--border);display:flex;align-items:flex-end;padding-left:8px;background:var(--sunken)}
+.tab{height:34px;padding:0 16px;display:flex;align-items:center;gap:10px;font-size:12px;border-right:1px solid var(--border);background:var(--term)}
+.tab.off{background:transparent;color:var(--muted)}
+.phead{height:30px;display:flex;align-items:center;padding:0 12px;gap:10px;font-size:12px;border-bottom:1px solid var(--border);background:#f1f2f4}
+.phead .agent{color:var(--muted);margin-left:auto}
+.term{flex:1;padding:12px 14px;font:12px/1.7 var(--mono);color:#3b3f4a;overflow:hidden}
+.term .dim{color:#a0a4ad}
+
+/* ---------- 竖条纹（ui::widgets::gauge） ---------- */
+.g{position:relative;height:var(--h,8px);width:var(--w,100%);background:repeating-linear-gradient(90deg,var(--tick-empty) 0 2px,transparent 2px 3px)}
+.g i{position:absolute;inset:0 auto 0 0;background:repeating-linear-gradient(90deg,var(--c,var(--running)) 0 2px,transparent 2px 3px)}
+.near{--c:var(--wait)} .over{--c:var(--error)} .stale{--c:var(--stale)}
+.num.near{color:var(--wait)} .num.over{color:var(--error)} .num.stale{color:var(--stale)}
+
+/* ---------- A：侧栏底部加强 ---------- */
+.qa{border-top:1px solid var(--border);padding:7px 10px;display:flex;flex-direction:column;gap:7px;font-size:11px}
+.qa .row{display:flex;align-items:center;gap:8px}
+.qa .name{width:46px;flex-shrink:0;color:var(--secondary)}
+.qa .m{flex:1;min-width:0;display:flex;flex-direction:column;gap:2px}
+.qa .h{display:flex;gap:4px;align-items:baseline}
+.qa .h .l{color:var(--muted)} .qa .h .num{margin-left:auto;color:var(--text)} .qa .h .eta{color:var(--muted);width:42px;text-align:right}
+.qa .row.old .name::after{content:" *";color:var(--stale)}
+
+/* ---------- B：顶栏一行 ---------- */
+.qb{display:flex;align-items:center;gap:2px;height:28px;border-radius:6px;padding:0 4px;cursor:pointer;font-size:11px}
+.qb.open{background:var(--hover)}
+.qb .one{display:flex;align-items:center;gap:6px;padding:0 6px}
+.qb .one+.one{border-left:1px solid var(--border)}
+.qb .n{color:var(--secondary)} .qb .l{color:var(--muted)}
+.pop{position:absolute;right:96px;top:46px;width:372px;background:var(--bg);border:1px solid var(--border-strong);border-radius:10px;box-shadow:0 12px 34px rgba(20,22,30,.16);padding:12px 14px;font-size:12px;z-index:3}
+.pop h4{margin:0 0 10px;font-size:12px;font-weight:600;display:flex}
+.pop h4 span{margin-left:auto;font-weight:400;color:var(--muted);font-size:11px}
+.pop .ag{padding:8px 0;border-top:1px solid var(--border)}
+.pop .ag:first-of-type{border-top:0;padding-top:0}
+.pop .agh{display:flex;gap:6px;align-items:baseline;margin-bottom:6px}
+.pop .agh b{font-weight:600} .pop .agh span{color:var(--muted);font-size:11px}
+.pop .agh .src{margin-left:auto}
+.pop .w{display:grid;grid-template-columns:28px 1fr 38px 84px;white-space:nowrap;gap:8px;align-items:center;font-size:11px;margin:4px 0}
+.pop .w .l{color:var(--muted)} .pop .w .num{text-align:right} .pop .w .eta{color:var(--muted);text-align:right}
+.pop .note{color:var(--muted);font-size:11px;margin-top:6px;border-top:1px solid var(--border);padding-top:8px}
+
+/* ---------- C：跟着会话走 ---------- */
+.srow .mq{display:flex;align-items:center;gap:4px;font-size:10px;color:var(--muted);flex-shrink:0}
+.phead .warn{display:flex;align-items:center;gap:6px;font-size:11px;color:var(--error);background:#fbeae8;border-radius:5px;padding:1px 8px}
+.qc-empty{border-top:1px solid var(--border);padding:6px 10px;font-size:11px;color:var(--muted);display:flex;gap:10px}
+.qc-empty b{font-weight:500;color:var(--secondary)}
+
+/* ---------- 状态一览 ---------- */
+.states{display:grid;grid-template-columns:repeat(5,1fr);gap:10px;margin-top:10px}
+.states>div{background:var(--bg);border:1px solid var(--border);border-radius:8px;padding:10px 12px;font-size:11px}
+.states .cap{color:var(--muted);margin-bottom:6px}
+.states .h{display:flex;margin-bottom:3px} .states .h .num{margin-left:auto}
+@media (max-width:900px){.states{grid-template-columns:1fr 1fr}}
+.rec{background:var(--bg);border:1px solid var(--border);border-left:3px solid var(--accent);border-radius:8px;padding:14px 16px;margin-top:52px}
+.rec h2{font-size:17px;margin:0 0 6px}
+.rec ul{margin:6px 0;padding-left:20px;color:var(--secondary)}
+.rec b{color:var(--text)}
+</style>
+</head>
+<body>
+<div class="wrap">
+<h1>额度摆放方向</h1>
+<div class="meta">2026-11-02 · 用于决定额度在工作台里放哪 · 先看了别家：<a href="other-apps.html">调研记录</a> · 条的样式已定为竖条纹：<a href="directions.html">额度条方向稿</a></div>
+<p class="lead">三家现在的真实读数：Codex 5h 0%、周 100%；Claude 5h 3%、周 22%；Grok 周 52%。问题不是「怎么画条」，而是<b>放在哪</b>：额度常驻在侧栏底部要占 90px 左右，侧栏收起就看不到，而且看不出「这个会话还能跑多久」。</p>
+<div class="decide">
+  <div><b>要支撑的决定</b>额度的主位置选 A / B / C 哪一个</div>
+  <div><b>判断标准</b>不点就能看到最紧的那个窗口；接近上限时一眼注意到；不挤占会话列表</div>
+  <div><b>放弃条件</b>三个都比现在差，就保留侧栏底部，只补倒计时和旧读数标记</div>
+</div>
+
+<!-- ======================= A ======================= -->
+<section>
+<h2>A · 留在侧栏底部，补上倒计时和旧读数标记</h2>
+<p class="sub">位置不动。每家一行、两个窗口并排，百分比后面直接写还有多久重置；读数旧了名字后面打 <code>*</code>，条变灰。悬停或点击打开和 B 一样的明细弹层。</p>
+<div class="ref">参考：同类终端工具-status-ui-bar 的 <code>*</code> 旧读数标记；同类终端工具-quotabar 的「35% 24m」倒计时写法。</div>
+<div class="scroll"><div class="win">
+  <div class="top"><div class="lights"><i></i><i></i><i></i></div><span class="brand">Keepline</span><span class="crumb">/ keepline</span><span class="chip">鸟瞰全部</span><span class="search">⌕ 搜索会话、待办或原话<kbd>⌘P</kbd></span><span class="spacer"></span><span class="new">＋ 新待办</span></div>
+  <div class="body">
+    <div class="side">
+      <div class="list">
+        <div class="sec"><span>会话</span><span>4</span></div>
+        <div class="srow cur"><span class="dot" style="background:var(--running)"></span><span class="t">额度摆放方向</span><span class="s run">工作中</span></div>
+        <div class="srow"><span class="dot" style="background:var(--wait)"></span><span class="t">看板虚拟滚动</span><span class="s wait">等你确认</span></div>
+        <div class="srow"><span class="dot" style="background:#c7cad1"></span><span class="t">grok 写首页</span><span class="s">12 分前</span></div>
+        <div class="srow"><span class="dot" style="background:#c7cad1"></span><span class="t">ci 重跑脚本</span><span class="s">1 小时前</span></div>
+      </div>
+      <div class="qa">
+        <div class="row"><span class="name">Codex</span>
+          <div class="m"><div class="h"><span class="l">5h</span><span class="num">0%</span><span class="eta">—</span></div><div class="g"><i style="width:0"></i></div></div>
+          <div class="m"><div class="h"><span class="l">周</span><span class="num over">100%</span><span class="eta">2d4h</span></div><div class="g over"><i style="width:100%"></i></div></div>
+        </div>
+        <div class="row"><span class="name">Claude</span>
+          <div class="m"><div class="h"><span class="l">5h</span><span class="num">3%</span><span class="eta">4h20m</span></div><div class="g"><i style="width:3%"></i></div></div>
+          <div class="m"><div class="h"><span class="l">周</span><span class="num">22%</span><span class="eta">3d18h</span></div><div class="g"><i style="width:22%"></i></div></div>
+        </div>
+        <div class="row old"><span class="name">Grok</span>
+          <div class="m"><div class="h"><span class="l">周</span><span class="num stale">52%</span><span class="eta">1d10h</span></div><div class="g stale"><i style="width:52%"></i></div></div>
+          <div class="m"></div>
+        </div>
+      </div>
+      <div class="foot"><span>本机诊断</span><span class="r"><span>提醒</span><span>设置</span></span></div>
+    </div>
+    <div class="main">
+      <div class="tabs"><div class="tab">keepline <span class="dim">×</span></div><div class="tab off">＋</div></div>
+      <div class="phead">额度摆放方向<span class="agent">Claude · 工作中</span></div>
+      <div class="term"><div class="dim">$ claude</div><div>✻ 正在写 specs/quota-meter/placement.html …</div></div>
+    </div>
+  </div>
+</div></div>
+<div class="pros">
+  <div class="good"><b>好</b>改动最小，大家已经习惯在这里看；三家全部常驻，不用点。</div>
+  <div class="bad"><b>不好</b>常驻占 90px 左右，会话多时挤列表；侧栏收起就看不到；和「哪个会话快被卡住」没有关系。</div>
+</div>
+</section>
+
+<!-- ======================= B ======================= -->
+<section>
+<h2>B · 顶栏右侧一行，点开看全部</h2>
+<p class="sub">每家只显示<b>最紧的那个窗口</b>：名字、一截短条、百分比。点开弹层看全部窗口、重置时间、读数来源和读数时间。侧栏底部空出来全部给会话。</p>
+<div class="ref">参考：同类终端工具-quotabar、同类终端工具-status-ui-bar 都放在 同类终端工具 的标签栏里一行显示，弹层看明细；QuotaBar、CodexBar 放在菜单栏。</div>
+<div class="scroll"><div class="win">
+  <div class="top"><div class="lights"><i></i><i></i><i></i></div><span class="brand">Keepline</span><span class="crumb">/ keepline</span><span class="chip">鸟瞰全部</span><span class="search" style="width:220px">⌕ 搜索会话、待办或原话<kbd>⌘P</kbd></span><span class="spacer"></span>
+    <span class="qb open">
+      <span class="one"><span class="n">Codex</span><span class="l">周</span><span class="g over" style="--w:34px;--h:6px"><i style="width:100%"></i></span><span class="num over">100%</span></span>
+      <span class="one"><span class="n">Claude</span><span class="l">周</span><span class="g" style="--w:34px;--h:6px"><i style="width:22%"></i></span><span>22%</span></span>
+      <span class="one"><span class="n">Grok*</span><span class="l">周</span><span class="g stale" style="--w:34px;--h:6px"><i style="width:52%"></i></span><span class="num stale">52%</span></span>
+    </span>
+    <span class="new">＋ 新待办</span></div>
+  <div class="pop">
+    <h4>额度<span>只读本机记录，不联网</span></h4>
+    <div class="ag"><div class="agh"><b>Codex</b><span>pro</span><span class="src">会话日志 · 3 分钟前</span></div>
+      <div class="w"><span class="l">5h</span><span class="g"><i style="width:0"></i></span><span class="num">0%</span><span class="eta">—</span></div>
+      <div class="w"><span class="l">周</span><span class="g over"><i style="width:100%"></i></span><span class="num over">100%</span><span class="eta">11-04 20:00</span></div></div>
+    <div class="ag"><div class="agh"><b>Claude</b><span>max</span><span class="src">状态栏 · 刚刚</span></div>
+      <div class="w"><span class="l">5h</span><span class="g"><i style="width:3%"></i></span><span class="num">3%</span><span class="eta">今天 20:30</span></div>
+      <div class="w"><span class="l">周</span><span class="g"><i style="width:22%"></i></span><span class="num">22%</span><span class="eta">11-06 18:00</span></div></div>
+    <div class="ag"><div class="agh"><b>Grok</b><span>SuperGrok Lite</span><span class="src">日志 · 5 小时前 *</span></div>
+      <div class="w"><span class="l">周</span><span class="g stale"><i style="width:52%"></i></span><span class="num stale">52%</span><span class="eta">11-04 02:00</span></div></div>
+    <div class="note">* 读数超过 1 小时：Grok 只在启动时记一次额度。Cursor、Qoder 本机没有额度记录。</div>
+  </div>
+  <div class="body">
+    <div class="side">
+      <div class="list">
+        <div class="sec"><span>会话</span><span>6</span></div>
+        <div class="srow cur"><span class="dot" style="background:var(--running)"></span><span class="t">额度摆放方向</span><span class="s run">工作中</span></div>
+        <div class="srow"><span class="dot" style="background:var(--wait)"></span><span class="t">看板虚拟滚动</span><span class="s wait">等你确认</span></div>
+        <div class="srow"><span class="dot" style="background:#c7cad1"></span><span class="t">grok 写首页</span><span class="s">12 分前</span></div>
+        <div class="srow"><span class="dot" style="background:#c7cad1"></span><span class="t">ci 重跑脚本</span><span class="s">1 小时前</span></div>
+        <div class="srow"><span class="dot" style="background:#c7cad1"></span><span class="t">诊断散点标签</span><span class="s">2 小时前</span></div>
+        <div class="srow"><span class="dot" style="background:#c7cad1"></span><span class="t">手机配对</span><span class="s">昨天</span></div>
+      </div>
+      <div class="foot"><span>本机诊断</span><span class="r"><span>提醒</span><span>设置</span></span></div>
+    </div>
+    <div class="main">
+      <div class="tabs"><div class="tab">keepline <span class="dim">×</span></div><div class="tab off">＋</div></div>
+      <div class="phead">额度摆放方向<span class="agent">Claude · 工作中</span></div>
+      <div class="term"><div class="dim">$ claude</div><div>✻ 正在写 specs/quota-meter/placement.html …</div></div>
+    </div>
+  </div>
+</div></div>
+<div class="pros">
+  <div class="good"><b>好</b>侧栏收起也看得到；不占会话列表；顶栏右边本来就空。每家只看最紧的窗口，扫一眼就知道谁快到头。</div>
+  <div class="bad"><b>不好</b>窗口窄时顶栏会挤，要定收缩规则（先收短条，再只留超过 80% 的家）；第二个窗口要点开才看得到。</div>
+</div>
+</section>
+
+<!-- ======================= C ======================= -->
+<section>
+<h2>C · 跟着会话走</h2>
+<p class="sub">额度不单独成区，挂在用到它的地方：会话行右侧用一截小条显示这个会话所用 Agent 最紧的窗口；超过 95% 时，那个窗格的标题栏亮一条提醒。侧栏底部只留一行很淡的汇总。</p>
+<div class="ref">参考：quota-cli 的 同类终端工具 插件，把额度放在「跑这个 Agent 的窗格」旁边；同类终端工具-autocontinue 在窗格上显示到重置的倒计时。</div>
+<div class="scroll"><div class="win">
+  <div class="top"><div class="lights"><i></i><i></i><i></i></div><span class="brand">Keepline</span><span class="crumb">/ keepline</span><span class="chip">鸟瞰全部</span><span class="search">⌕ 搜索会话、待办或原话<kbd>⌘P</kbd></span><span class="spacer"></span><span class="new">＋ 新待办</span></div>
+  <div class="body">
+    <div class="side">
+      <div class="list">
+        <div class="sec"><span>会话</span><span>6</span></div>
+        <div class="srow"><span class="dot" style="background:var(--running)"></span><span class="t">额度摆放方向</span><span class="mq"><span class="g" style="--w:22px;--h:6px"><i style="width:22%"></i></span>22%</span></div>
+        <div class="srow cur"><span class="dot" style="background:var(--wait)"></span><span class="t">看板虚拟滚动</span><span class="mq"><span class="g over" style="--w:22px;--h:6px"><i style="width:100%"></i></span><span class="num over">100%</span></span></div>
+        <div class="srow"><span class="dot" style="background:#c7cad1"></span><span class="t">grok 写首页</span><span class="mq"><span class="g stale" style="--w:22px;--h:6px"><i style="width:52%"></i></span>52%</span></div>
+        <div class="srow"><span class="dot" style="background:#c7cad1"></span><span class="t">ci 重跑脚本</span><span class="mq"><span class="g over" style="--w:22px;--h:6px"><i style="width:100%"></i></span><span class="num over">100%</span></span></div>
+        <div class="srow"><span class="dot" style="background:#c7cad1"></span><span class="t">诊断散点标签</span><span class="mq"><span class="g" style="--w:22px;--h:6px"><i style="width:22%"></i></span>22%</span></div>
+        <div class="srow"><span class="dot" style="background:#c7cad1"></span><span class="t">手机配对</span><span class="mq"><span class="g" style="--w:22px;--h:6px"><i style="width:22%"></i></span>22%</span></div>
+      </div>
+      <div class="qc-empty"><span><b>Codex</b> 周 <span class="num over">100%</span></span><span><b>Claude</b> 22%</span><span><b>Grok</b> 52%*</span></div>
+      <div class="foot"><span>本机诊断</span><span class="r"><span>提醒</span><span>设置</span></span></div>
+    </div>
+    <div class="main">
+      <div class="tabs"><div class="tab">keepline <span class="dim">×</span></div><div class="tab off">＋</div></div>
+      <div class="phead">看板虚拟滚动<span class="warn">Codex 周额度已用 100% · 2 天 4 小时后重置</span><span class="agent" style="margin-left:12px">Codex · 等你确认</span></div>
+      <div class="term"><div class="dim">$ codex</div><div>■ You've hit your usage limit. Try again in 2 days 4 hours.</div></div>
+    </div>
+  </div>
+</div></div>
+<div class="pros">
+  <div class="good"><b>好</b>直接回答「这个会话还能不能接着跑」；快卡住时的提醒出现在正在看的窗格里。</div>
+  <div class="bad"><b>不好</b>同一家的数在很多行重复，列表变吵；会话行右侧本来放状态字（工作中、等你确认），要让位或挤在一起；没有会话时看不到额度。</div>
+</div>
+</section>
+
+<!-- ======================= 状态 ======================= -->
+<section>
+<h2>每个方向都要有的五种状态</h2>
+<p class="sub">颜色沿用现有规则：80% 起橙，95% 起红（<code>quota::NEAR / OVER</code>）；读数超过 1 小时变灰并打 <code>*</code>；窗口过了重置时间就不再显示旧百分比。</p>
+<div class="states">
+  <div><div class="cap">平常</div><div class="h"><span>周</span><span class="num">22%</span></div><div class="g"><i style="width:22%"></i></div></div>
+  <div><div class="cap">快到头 ≥80%</div><div class="h"><span>5h</span><span class="num near">86%</span></div><div class="g near"><i style="width:86%"></i></div></div>
+  <div><div class="cap">到头 ≥95%</div><div class="h"><span>周</span><span class="num over">100%</span></div><div class="g over"><i style="width:100%"></i></div></div>
+  <div><div class="cap">读数旧了</div><div class="h"><span>周 *</span><span class="num stale">52%</span></div><div class="g stale"><i style="width:52%"></i></div></div>
+  <div><div class="cap">已重置，等下次读数</div><div class="h"><span>5h</span><span class="num stale">已重置</span></div><div class="g"><i style="width:0"></i></div></div>
+</div>
+</section>
+
+<div class="rec">
+<h2>我的建议：B 做主位置，借 C 的窗格提醒</h2>
+<ul>
+<li><b>主位置用 B</b>：顶栏右边本来就空，侧栏收起也看得到，侧栏底部还给会话。每家只显示最紧的窗口，正好符合「扫一眼知道谁快到头」。</li>
+<li><b>借 C 的一处</b>：只有某家超过 95% 时，用到它的窗格标题栏亮一条提醒（带重置倒计时）。平时会话行不显示额度，避免重复。</li>
+<li><b>弹层</b>：放全部窗口、具体重置时间、来源和读数时间，以及哪几家本机没有记录。以后如果做「主动刷新」，开关也放在这里。</li>
+<li><b>不选 A 的原因</b>：常驻占地方，而且侧栏收起就没了。如果你更看重「不点就能看到全部窗口」，A 仍然是最稳的选择。</li>
+</ul>
+</div>
+</div>
+</body>
+</html>
