@@ -58,14 +58,14 @@ table{border-collapse:collapse;width:100%;font-size:14px}td,th{border-bottom:1px
 <button class="toggle" onclick="var r=document.documentElement;r.dataset.theme=(r.dataset.theme==='dark'||(!r.dataset.theme&&matchMedia('(prefers-color-scheme: dark)').matches))?'light':'dark'">明 / 暗</button>
 <h1>设计稿：先定设计，再改代码</h1>
 <p class="lead">这一页回答「<a href="issues.html">问题清单</a>里的问题，系统应该怎么设计才不会再出」。<b>本页还没有任何代码改动。</b>它要支撑的决定是：每一族选定一个目标设计（采用 / 否定 / 待验证），全部定下来之后才开始改。放弃条件：某一族的设计成本远高于修补，而它的问题都只是「推断」级，就先复现，复现不了就不做。</p>
-<p class="note">共 6 条设计原则、9 族设计、16 个需要你定的问题（紫色）。状态机现状见 <a href="next.html">架构页</a>。</p>
+<p class="note">共 6 条设计原则、9 族设计、11 个需要你定的问题（紫色）。状态机现状见 <a href="next.html">架构页</a>。</p>
 
 <h2>跨族的设计原则</h2>
 <p class="note">41 个问题背后其实只有几条原则没守住。先定原则，各族的设计就是它们的展开。</p>
-<div class="tbl"><table><tr><th></th><th>原则</th><th>管哪几族</th></tr><tr><td><b>P1</b></td><td><b>每个请求都有自己的状态机</b><div class="sc">挂起 → 已确认 / 被拒（原因）/ 结果未知（超时）。界面以回执为准：成功提示等确认，失败时把输入还给你，结果未知时明说「不确定有没有生效」。</div></td><td>A H B</td></tr><tr><td><b>P2</b></td><td><b>写入只带它在意的前提</b><div class="sc">不拿全局版本号当锁。新建不需要前提；改结局带「我看到的是 Open」；改对象带这个对象自己的版本。宿主上一次无关的提交不该挡住你。</div></td><td>A C</td></tr><tr><td><b>P3</b></td><td><b>派生状态只有一个来源，且要算上「观测源还活着吗」</b><div class="sc">「等你回答」「在跑」这类需要你注意的状态，必须有活着的进程或终端支撑；观测源没了就降级。所有界面调同一个函数，只做展示映射。</div></td><td>D I</td></tr><tr><td><b>P4</b></td><td><b>锁内只改内存；会失败的步骤放在「承诺」之前</b><div class="sc">fsync、fork、跑外部命令、网络 I/O 不进全局锁；交接时先把能失败的都做完，再发 ACK。</div></td><td>E F</td></tr><tr><td><b>P5</b></td><td><b>宿主不能随便退出</b><div class="sc">宿主持有所有 PTY，宿主退出等于挂断全部终端。所以出错时的默认策略是「降级 + 显示出来 + 重试」，不是「崩溃让人重启」。这条约束决定了 D、E 的很多选择。</div></td><td>D E F</td></tr><tr><td><b>P6</b></td><td><b>信任要显式授予</b><div class="sc">新插件、新配对链接、新设备，第一次都要你确认；每台手机的凭据彼此独立，撤销一台不影响别的。</div></td><td>G H</td></tr></table></div>
+<div class="tbl"><table><tr><th></th><th>原则</th><th>管哪几族</th></tr><tr><td><b>P1</b></td><td><b>每个请求都有自己的状态机</b><div class="sc">挂起 → 已确认 / 被拒（原因）/ 结果未知（超时）。界面以回执为准：成功提示等确认，失败时把输入还给你，结果未知时明说「不确定有没有生效」。</div></td><td>A H B</td></tr><tr><td><b>P2</b></td><td><b>写入只带它在意的前提</b><div class="sc">不拿全局版本号当锁。新建不需要前提；改结局带「我看到的是 Open」；改对象带这个对象自己的版本。宿主上一次无关的提交不该挡住你。</div></td><td>A C</td></tr><tr><td><b>P3</b></td><td><b>派生状态只有一个来源，且要算上「观测源还活着吗」</b><div class="sc">「等你回答」「在跑」这类需要你注意的状态，必须有活着的进程或终端支撑；观测源没了就降级。所有界面调同一个函数，只做展示映射。</div></td><td>D I</td></tr><tr><td><b>P4</b></td><td><b>锁内只改内存；会失败的步骤放在「承诺」之前</b><div class="sc">fsync、fork、跑外部命令、网络 I/O 不进全局锁；交接时先把能失败的都做完，再发 ACK。</div></td><td>E F</td></tr><tr><td><b>P5</b></td><td><b>宿主不能随便退出</b><div class="sc">宿主持有所有 PTY，宿主退出等于挂断全部终端。所以出错时的默认策略是「降级 + 显示出来 + 重试」，不是「崩溃让人重启」。这条约束决定了 D、E 的很多选择。</div></td><td>D E F</td></tr><tr><td><b>P6</b></td><td><b>外来的信任要显式授予</b><div class="sc">本机同一用户的进程（含 Agent）可信；外来的配对链接、新设备第一次都要你确认；每台手机的凭据彼此独立，撤销一台不影响别的。</div></td><td>G H</td></tr></table></div>
 
 <h2>建议的推进顺序</h2>
-<ol class="flows"><li><b>第 0 步 · 先定产品口径</b>：I 族的分组口径、G 族的信任模型、D 族「被杀时的审批」显示成什么。这三个是产品决定，后面的设计都依赖它们。</li><li><b>第 1 步 · 先验证推断</b>：I19（锁下 fsync 会不会真卡）压测；B2 的前提（两个审批之间是否一定经过 Running）。推断不成立的问题就降级或删掉。</li><li><b>第 2 步 · A + C 一起设计</b>：同一套「编辑带前提」机制和客户端请求状态机；H 族直接复用。</li><li><b>第 3 步 · B 和 F 可以并行</b>：都比较独立。</li><li><b>第 4 步 · D 再 E</b>：E1 依赖 D 的 Degraded 状态；E2 可以随时先做。</li></ol>
+<ol class="flows"><li><b>第 0 步 · 先定产品口径（11-02 已定）</b>：分组已统一（c6da3508）；Agent 可信；被杀时的审批显示「中断」。</li><li><b>第 1 步 · 先验证推断</b>：I19（锁下 fsync 会不会真卡）压测；B2 的前提（两个审批之间是否一定经过 Running）。推断不成立的问题就降级或删掉。</li><li><b>第 2 步 · A + C 一起设计</b>：同一套「编辑带前提」机制和客户端请求状态机；H 族直接复用。</li><li><b>第 3 步 · B 和 F 可以并行</b>：都比较独立。</li><li><b>第 4 步 · D 再 E</b>：E1 依赖 D 的 Degraded 状态；E2 可以随时先做。</li></ol>
 <nav><a href="#dA">A 编辑的前提与请求回执</a><a href="#dB">B 审批与按键的实例身份</a><a href="#dC">C 布局编辑改成操作</a><a href="#dD">D 不自愈的状态：观测源与宿主健康</a><a href="#dE">E 锁与 I/O 分离、终端回收</a><a href="#dF">F 交接两阶段提交</a><a href="#dG">G 本机信任模型</a><a href="#dH">H 手机请求与订阅</a><a href="#dI">I 唯一的状态派生</a></nav>
 <h2 id="dA">A · 编辑的前提与请求回执 <span class="cnt">问题 I1–I7</span></h2>
 <div class="card"><p><b>现状：</b>9 种编辑查全局 revision：AddSpace、UpdateSpace、AddTask、UpdateTask、SetTaskOutcome、SetPendingTask、SetOutcome、AssignTask、SaveSessionTask。宿主每次提交（包括会话内容约每秒一次）都加 revision。客户端只有一个「忙」位，忙时非布局编辑直接丢；表单发出前就取走，失败不放回。</p>
@@ -88,10 +88,10 @@ table{border-collapse:collapse;width:100%;font-size:14px}td,th{border-bottom:1px
 <p class="dec">决定：待定</p></div><h2 id="dD">D · 不自愈的状态：观测源与宿主健康 <span class="cnt">问题 I12–I17</span></h2>
 <div class="card"><p><b>现状：</b>「等你回答」不要求会话还活着；后台写库失败只打日志；补扫失败直接跳过、检查点照常前进；定时线程出错一次就永久退出。</p>
 <p><b>要守住的规则：</b></p><ul><li>任何「需要你」的状态都必须有活着的观测源支撑，观测源没了就降级成「停了」或「中断」</li><li>宿主内存和外显状态的偏差一定会被看见，并且会被重试修正</li><li>检查点只在事件被成功处理之后前进</li></ul>
-<div class="tbl"><table><tr><th>方案</th><th>做法</th><th>代价</th></tr><tr><td><b>派生规则</b></td><td>Waiting 要求 session.current 或终端在跑；否则落到「停了」。放进 I 族的唯一分组函数里</td><td>要定「Agent 被杀时的审批」显示成什么</td></tr><tr><td><b>宿主健康状态机</b></td><td>Healthy → Degraded（原因、重试中）→ Healthy。后台写失败进 Degraded，失败的写入（如 record_exit）进重试队列；App 显示一条提示</td><td>要新增一个推给 App 的状态和一条提示</td></tr><tr><td><b>长期线程监督</b></td><td>定时、订阅这类线程出错后由监督者重启，并进 Degraded；不让宿主退出（见 P5）</td><td>要给每个长期线程定重启策略</td></tr></table></div>
-<p><b>需要你定：</b></p><ul class="ask"><li>Agent 在等审批时被杀，卡片显示「停了」还是「中断」？</li><li>Degraded 的提示放在哪里（状态栏？顶部条？）</li></ul>
+<div class="tbl"><table><tr><th>方案</th><th>做法</th><th>代价</th></tr><tr><td><b>派生规则</b></td><td>Waiting 要求 Agent 还活着（session.current 且终端在跑）；否则落到「中断」。改在 core status::of 里（live() 和 recorded() 两条路径都要改）</td><td>已定：显示「中断」</td></tr><tr><td><b>宿主健康状态机</b></td><td>Healthy → Degraded（原因、重试中）→ Healthy。后台写失败进 Degraded，失败的写入（如 record_exit）进重试队列；App 显示一条提示</td><td>要新增一个推给 App 的状态和一条提示</td></tr><tr><td><b>长期线程监督</b></td><td>定时、订阅这类线程出错后由监督者重启，并进 Degraded；不让宿主退出（见 P5）</td><td>要给每个长期线程定重启策略</td></tr></table></div>
+<p><b>需要你定：</b></p><ul class="ask"><li>Degraded 的提示放在哪里（状态栏？顶部条？）</li></ul>
 <p><b>怎么验证设计对了：</b>故障注入：让 record_exit 第一次写库返回 SQLITE_BUSY，终端状态最终仍变成 Exited；Ctrl-C 掉等审批的 Agent，卡片 1 分钟内离开「等你回答」。</p>
-<p class="dec">决定：待定</p></div><h2 id="dE">E · 锁与 I/O 分离、终端回收 <span class="cnt">问题 I18–I23</span></h2>
+<p class="dec">决定：已定（11-02）：Agent 在等审批时被杀，显示「中断」。</p></div><h2 id="dE">E · 锁与 I/O 分离、终端回收 <span class="cnt">问题 I18–I23</span></h2>
 <div class="card"><p><b>现状：</b>一把全局 Host 锁下做 fsync（synchronous=FULL）、fork、/bin/ps、读对话记录、等日志库锁、交接时写 socket。PTY pump 的副作用也要拿这把锁。结束的终端从不移出内存。</p>
 <p><b>要守住的规则：</b></p><ul><li>锁内只改内存、发通知，不做可能阻塞超过毫秒级的 I/O</li><li>读 PTY 不依赖全局锁</li><li>终端结束后，它的 fd 和缓冲会被释放</li></ul>
 <div class="tbl"><table><tr><th>方案</th><th>做法</th><th>代价</th></tr><tr><td><b>E2 先降 fsync 级别</b></td><td>WAL 下改成 synchronous=NORMAL：库不会坏，崩溃时最多丢最后一次提交</td><td>一行改动；要接受崩溃丢最后一次编辑</td></tr><tr><td><b>E3 pump 不直接拿 Host 锁</b></td><td>标题、命令完成这类副作用改成发消息给一个处理线程</td><td>多一个队列；顺序要保证</td></tr><tr><td><b>E1 单写线程</b></td><td>锁内生成新状态和差异，交给写线程落库</td><td>失去「落库成功才换内存」，落库失败要走 D 的 Degraded；改动最大</td></tr></table></div>
@@ -105,23 +105,23 @@ table{border-collapse:collapse;width:100%;font-size:14px}td,th{border-bottom:1px
 <p><b>怎么验证设计对了：</b>在 PREPARE 的每一步注入失败，旧宿主都继续服务、终端不断。</p>
 <p class="dec">决定：待定</p></div><h2 id="dG">G · 本机信任模型 <span class="cnt">问题 I25–I31</span></h2>
 <div class="card"><p><b>现状：</b>同一用户的任何进程（包括终端里的 Agent）都有全部权限，能生成完全控制的配对链接；插件默认启用、直接执行命令；所有手机共用一个机器码；配对链接打开就保存。</p>
-<p><b>要守住的规则：</b></p><ul><li>新插件、新配对链接、新设备第一次都要你确认</li><li>撤销一台手机只影响这一台，别人顶替也只影响那一台</li></ul>
-<div class="tbl"><table><tr><th>方案</th><th>做法</th><th>代价</th></tr><tr><td><b>每台手机独立路由 token</b></td><td>撤销即失效；中继上的顶替只影响一台</td><td>配对和中继注册流程要改</td></tr><tr><td><b>插件首次启用确认</b></td><td>记下插件内容的指纹，变了重新确认</td><td>装插件多一步</td></tr><tr><td><b>零散加固</b></td><td>配对链接先确认再保存；握手前的会话 10s 超时；动作模板不在双引号里展开；不可信目录里的 git 关掉 fsmonitor</td><td>各自都小</td></tr></table></div>
-<p><b>需要你定：</b></p><ul class="ask"><li>根本问题：终端里运行的 Agent 算不算可信？如果不算，生成配对链接、改中继这类请求要不要你在 App 里确认？</li></ul>
-<p><b>怎么验证设计对了：</b>撤销手机 A 后，A 的凭据无法让本机掉线；往插件目录放一个新插件，不确认就不执行。</p>
-<p class="dec">决定：待定</p></div><h2 id="dH">H · 手机请求与订阅 <span class="cnt">问题 I32–I37</span></h2>
+<p><b>要守住的规则：</b></p><ul><li>外来的配对链接、新设备第一次都要你确认</li><li>撤销一台手机只影响这一台，别人顶替也只影响那一台</li></ul>
+<div class="tbl"><table><tr><th>方案</th><th>做法</th><th>代价</th></tr><tr><td><b>每台手机独立路由 token</b></td><td>撤销即失效；中继上的顶替只影响一台</td><td>配对和中继注册流程要改</td></tr><tr><td><b>零散加固</b></td><td>配对链接先确认再保存；握手前的会话 10s 超时；动作模板不在双引号里展开；不可信目录里的 git 关掉 fsmonitor</td><td>各自都小</td></tr></table></div>
+
+<p><b>怎么验证设计对了：</b>撤销手机 A 后，A 的凭据无法让本机掉线；从网页打开配对链接，不确认就不保存。</p>
+<p class="dec">决定：已定（11-02）：本机同一用户的进程（包括终端里的 Agent）可信，I27、I31 不修。不可信的只有外来输入：网页打开的配对链接（I26）、中继和手机（I25、I30）、仓库内容（I29）、拼进命令的任务文字（I28）。这一族只做这些的加固，插件首次确认去掉。</p></div><h2 id="dH">H · 手机请求与订阅 <span class="cnt">问题 I32–I37</span></h2>
 <div class="card"><p><b>现状：</b>请求没有超时、没有幂等 id；会话视图按终端取会话，换会话后不跟；4401 同时表示撤销、改角色、踢出；events 流结束后不重订；重连有竞态。</p>
 <p><b>要守住的规则：</b></p><ul><li>手机的每个请求都会在有限时间内得到结果（成功 / 失败 / 未知）</li><li>重发不会让同一件事做两次</li><li>视图跟着会话走，不跟着终端走</li></ul>
 <div class="tbl"><table><tr><th>方案</th><th>做法</th><th>代价</th></tr><tr><td><b>复用 A 的请求状态机</b></td><td>超时 + 幂等 id，宿主按（设备，请求 id）去重</td><td>宿主要存最近的请求结果</td></tr><tr><td><b>关闭码拆开</b></td><td>4401 撤销（要重新配对）、改角色（重连即可）、踢出（冷却一段时间）各用一个码</td><td>手机和宿主一起改</td></tr><tr><td><b>心跳 + 重订</b></td><td>心跳检测半开连接；events 结束自动重订；会话切换推一条事件</td><td>多一点流量</td></tr></table></div>
 <p><b>需要你定：</b></p><ul class="ask"><li>踢出之后要不要冷却时间，比如 5 分钟内拒绝重连？</li></ul>
 <p><b>怎么验证设计对了：</b>发送时断网再恢复，消息只出现一次；终端里 /new 之后，手机 5 秒内切到新会话。</p>
 <p class="dec">决定：待定</p></div><h2 id="dI">I · 唯一的状态派生 <span class="cnt">问题 I38–I40</span></h2>
-<div class="card"><p><b>现状：</b>侧栏 sidebar_status、看板 board_group、core Content::group 各算各的；菜单栏另存一份 Workspace。</p>
+<div class="card"><p><b>现状：</b>已统一（c6da3508，11-02 21:48）：状态只在 core status::of 判定一次，侧栏、看板、菜单栏、手机都调它。问题清单的 I38 是读了统一前的代码。剩下的只有菜单栏另存一份 Workspace（I39，差一拍）和窗格重连（I40，与分组无关）。</p>
 <p><b>要守住的规则：</b></p><ul><li>同一个会话，在任何界面上只有一个分组结果</li></ul>
 <div class="tbl"><table><tr><th>方案</th><th>做法</th><th>代价</th></tr><tr><td><b>core 里一个 status 函数（推荐）</b></td><td>输入：结局、回合、终端状态、活跃程度、后台 shell、是否看过；输出一个 Status。侧栏、看板、菜单栏、通知只做展示映射</td><td>要先把分歧处的口径定下来；三处调用都要改</td></tr></table></div>
-<p><b>配套：</b>菜单栏和工作台在同一进程里，共用一份 Workspace。</p><p><b>需要你定：</b></p><ul class="ask"><li>会话活着但回合出错：显示「出错」还是「等你验收」？</li><li>Agent 停了、只剩后台 shell：显示「等后台」还是「等你验收」？</li><li>已完成的会话在待办详情里显示什么？</li></ul>
+<p><b>配套：</b>菜单栏和工作台在同一进程里，共用一份 Workspace。</p>
 <p><b>怎么验证设计对了：</b>对一组固定的会话快照，侧栏、看板、菜单栏的分组结果完全一致（可做成单测）。</p>
-<p class="dec">决定：待定</p></div>
+<p class="dec">决定：已解决：分组已统一，原来三个口径问题由 status::of 回答（活着出错 → 出错了；只剩后台 shell → 等后台）。只剩 D 族「被杀 → 中断」要改进这同一个函数。</p></div>
 <h2>J · 文档</h2>
 <div class="card"><p><code>specs/restart-reconciliation.md</code> 写的是旧 TS 版，给它标上「已过时，next 见 architecture/next.html 第 22 节」。不需要设计。</p></div>
 </main></body></html>
