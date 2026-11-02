@@ -57,7 +57,7 @@ fn secondary(
         .text_color(T::color(T::primary()))
 }
 /// A path under the home folder written from `~`.
-fn tilde(path: &str) -> String {
+pub(super) fn tilde(path: &str) -> String {
     let home = std::env::var("HOME").unwrap_or_default();
     match path.strip_prefix(&home) {
         Some(rest) if !home.is_empty() => format!("~{rest}"),

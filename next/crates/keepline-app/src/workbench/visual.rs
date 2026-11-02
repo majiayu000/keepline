@@ -1340,6 +1340,11 @@ impl Workbench {
     pub fn visual_pick_space(&mut self, id: &str, cx: &mut Context<Self>) {
         self.pick_space(id, cx);
     }
+    /// The executable of the Agent an empty tab offers first.
+    #[cfg(feature = "visual-test")]
+    pub fn visual_first_agent(&self) -> String {
+        self.first_agent().executable().to_owned()
+    }
     /// The empty tab's 「运行 X」 button, pressed.
     #[cfg(feature = "visual-test")]
     pub fn visual_run_agent(&mut self, executable: &str, cx: &mut Context<Self>) {

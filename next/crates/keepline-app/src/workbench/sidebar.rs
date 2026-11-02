@@ -302,7 +302,7 @@ impl Workbench {
         sidebar = sidebar.child(self.sessions_header(sessions.len() + unread.len(), cx));
         if sessions.is_empty() && unread.is_empty() {
             sidebar = sidebar.child(
-                label("没有打开的会话。在终端里运行 codex 或 claude 就会出现在这里")
+                label("没有打开的会话。从右边启动一个 Agent，或在终端里运行 claude、codex，它们会出现在这里")
                     .mt(px(T::S14))
                     .px(px(T::S8)),
             );
@@ -894,7 +894,8 @@ impl Workbench {
         cx.notify();
     }
     /// Asks macOS for a folder: for `target` it becomes that space's directory; with no
-    /// target it starts a new space named after the folder, its name ready to edit.
+    /// target it starts a new space named after the folder and shows it, its empty tab
+    /// offering an Agent first. 重命名 in its menu changes the name later.
     pub(super) fn choose_space_dir(
         &mut self,
         target: Option<String>,
@@ -915,7 +916,7 @@ impl Workbench {
             let Some(dir) = paths.into_iter().next() else {
                 return;
             };
-            let _ = this.update_in(cx, |this, window, cx| {
+            let _ = this.update_in(cx, |this, _, cx| {
                 let cwd = dir.to_string_lossy().into_owned();
                 if let Some(target) = target {
                     if let Some(space) = this.workspace.spaces.iter().find(|s| s.id == target) {
@@ -940,7 +941,6 @@ impl Workbench {
                 this.nav.space = space.id.clone();
                 this.nav.tab = None;
                 this.sync_panes(cx);
-                this.start_space_rename(space, window, cx);
             });
         })
         .detach();

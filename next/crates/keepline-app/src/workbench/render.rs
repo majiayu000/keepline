@@ -1182,19 +1182,47 @@ impl Workbench {
 impl Workbench {
     /// A new terminal in the shown space with `agent` started in it.
     pub(super) fn run_agent_here(&mut self, agent: Agent, cx: &mut Context<Self>) {
+        self.tasks.last_agent = Some(agent);
         self.tasks.chosen_agent = Some(agent);
         self.launch(false, None, cx);
     }
-    /// A tab with no terminal yet: what can go here, as buttons in the middle where the
-    /// eye lands, not a lone line at the top that reads as a heading.
+    /// The Agent an empty tab offers first: the last one picked, else the default.
+    pub(super) fn first_agent(&self) -> Agent {
+        self.tasks
+            .last_agent
+            .unwrap_or(self.workspace.settings.default_agent)
+    }
+    /// A tab with no terminal yet, a new space's first view: where work starts, one solid
+    /// button for the Agent used last, the other Agents and a bare shell as quiet links.
     fn empty_tab(&self, cx: &Context<Self>) -> gpui::Div {
-        let agents = Agent::all().into_iter().map(|agent| {
-            super::overview::quiet(button(
-                gpui::SharedString::from(format!("empty-tab-{}", agent.executable())),
-                format!("运行 {}", agent.name()),
-            ))
-            .on_click(cx.listener(move |this, _, _, cx| this.run_agent_here(agent, cx)))
-        });
+        let space = self
+            .workspace
+            .spaces
+            .iter()
+            .find(|s| s.id == self.nav.space);
+        let first = self.first_agent();
+        let link = |id: String, text: String| {
+            button(gpui::SharedString::from(id), text)
+                .border_0()
+                .px(px(T::S4))
+                .text_color(T::color(T::link()))
+        };
+        let mut others = vec![];
+        for agent in Agent::all().into_iter().filter(|a| *a != first) {
+            others.push(
+                link(
+                    format!("empty-tab-{}", agent.executable()),
+                    agent.name().to_owned(),
+                )
+                .on_click(cx.listener(move |this, _, _, cx| this.run_agent_here(agent, cx)))
+                .into_any_element(),
+            );
+        }
+        others.push(
+            link("empty-tab-new".into(), "空终端".into())
+                .on_click(cx.listener(|this, _, _, cx| this.launch(false, None, cx)))
+                .into_any_element(),
+        );
         let split = crate::keymap::current(cx)
             .chords(crate::keymap::Action::SplitRight)
             .first()
@@ -1208,9 +1236,28 @@ impl Workbench {
             .gap(px(T::S12))
             .child(
                 div()
-                    .text_size(px(T::CARD_TITLE))
-                    .text_color(T::color(T::primary()))
-                    .child("这个标签还没有终端"),
+                    .flex()
+                    .flex_col()
+                    .items_center()
+                    .gap(px(T::S4))
+                    .child(
+                        div()
+                            .text_size(px(T::CARD_TITLE))
+                            .text_color(T::color(T::primary()))
+                            .child(match space {
+                                Some(s) => format!("在 {} 里开始", s.name),
+                                None => "在这里开始".to_owned(),
+                            }),
+                    )
+                    .when_some(space, |d, s| d.child(label(super::settings::tilde(&s.cwd)))),
+            )
+            .child(
+                super::overview::solid(button(
+                    gpui::SharedString::from(format!("empty-tab-{}", first.executable())),
+                    format!("运行 {}", first.name()),
+                ))
+                .px(px(T::S16))
+                .on_click(cx.listener(move |this, _, _, cx| this.run_agent_here(first, cx))),
             )
             .child(
                 div()
@@ -1218,12 +1265,15 @@ impl Workbench {
                     .flex()
                     .flex_wrap()
                     .justify_center()
-                    .gap(px(T::S8))
-                    .child(
-                        super::overview::solid(button("empty-tab-new", "开一个空终端"))
-                            .on_click(cx.listener(|this, _, _, cx| this.launch(false, None, cx))),
-                    )
-                    .children(agents),
+                    .items_center()
+                    .gap(px(T::S4))
+                    .text_size(px(T::SMALL))
+                    .children(others.into_iter().enumerate().flat_map(|(i, b)| {
+                        (i > 0)
+                            .then(|| label("·").into_any_element())
+                            .into_iter()
+                            .chain(std::iter::once(b))
+                    })),
             )
             .when_some(split, |d, keys| {
                 d.child(label(format!("打开后可以右键分屏，或按 {keys} 向右分屏")))

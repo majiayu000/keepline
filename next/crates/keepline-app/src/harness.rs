@@ -1853,7 +1853,19 @@ pub fn start(
                 text.contains("FAKE-CLAUDE --session-id"),
                 "运行 Claude Code started claude in the new terminal"
             );
-            eprintln!("new space evidence PASS: 运行 Claude Code starts claude in a new space");
+            // The next new space offers the Agent just used as its one solid button.
+            handle
+                .update(cx, |v, _, cx| v.visual_add_space("second", "/tmp", cx))
+                .unwrap();
+            wait(800).await;
+            handle
+                .update(cx, |v, _, cx| v.visual_pick_space("second", cx))
+                .unwrap();
+            wait(500).await;
+            let first = handle.update(cx, |v, _, _| v.visual_first_agent()).unwrap();
+            assert_eq!(first, "claude", "the Agent used last comes first");
+            shot("2-second-space", cx);
+            eprintln!("new space evidence PASS: 运行 Claude Code starts claude in a new space, and leads the next one");
             cx.update(|cx| cx.quit());
         })
         .detach();
