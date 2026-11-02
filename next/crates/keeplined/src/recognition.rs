@@ -3,7 +3,7 @@ use keepline_core::model::{Agent, AgentSession, Binding, Outcome, ProcessState, 
 use std::{
     collections::{HashMap, HashSet},
     io,
-    path::PathBuf,
+    path::{Path, PathBuf},
     process::Command,
 };
 
@@ -42,6 +42,20 @@ pub fn roots() -> io::Result<Vec<(Agent, PathBuf)>> {
         std::env::var_os("HOME").ok_or_else(|| io::Error::other("HOME unavailable"))?,
     );
     Ok(crate::agents::roots(&home))
+}
+/// The CLI whose transcript root holds `path` (the deepest root, should one nest in
+/// another), or None when it lies under none. Other CLIs read Claude's settings and run
+/// its hooks (Grok does), so a hook's `--agent` alone does not say whose transcript it names.
+pub fn transcript_owner(path: &Path, roots: &[(Agent, PathBuf)]) -> Option<Agent> {
+    roots
+        .iter()
+        .filter_map(|(agent, root)| {
+            let root = crate::file_events::normalized(root).unwrap_or_else(|_| root.clone());
+            (path.starts_with(&root) && crate::agents::adapter(*agent).is_transcript(path))
+                .then_some((root.components().count(), *agent))
+        })
+        .max_by_key(|(depth, _)| *depth)
+        .map(|(_, agent)| agent)
 }
 /// Read argv boundaries from the kernel, never parse a prompt out of `ps command`.
 /// KERN_PROCARGS2 also returns an environment tail; stop after argc and never retain it.
@@ -666,6 +680,20 @@ pub fn open_transcripts(
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn a_hook_transcript_belongs_to_the_cli_whose_root_holds_it() {
+        use super::{transcript_owner, Agent, Path};
+        let roots = crate::agents::roots(Path::new("/nohome"));
+        let grok = Path::new("/nohome/.grok/sessions/%2Fx/01a1/updates.jsonl");
+        let claude = Path::new("/nohome/.claude/projects/-x/abc.jsonl");
+        // Grok runs the hook from Claude's settings with `--agent claude`.
+        assert_eq!(transcript_owner(grok, &roots), Some(Agent::Grok));
+        assert_eq!(transcript_owner(claude, &roots), Some(Agent::Claude));
+        assert_eq!(
+            transcript_owner(Path::new("/elsewhere/a.jsonl"), &roots),
+            None
+        );
+    }
     fn procargs_of(argv: &[&str], env: &[&str]) -> Vec<u8> {
         let mut b = (argv.len() as i32).to_ne_bytes().to_vec();
         b.extend(b"/usr/bin/nono\0\0\0");

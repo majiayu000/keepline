@@ -236,6 +236,17 @@ pub(super) fn dispatch(shared: &Shared, request: Request) -> io::Result<Reply> {
             } else {
                 crate::file_events::normalized(Path::new(&transcript))?
             };
+            // Grok reads Claude's settings and runs its hooks as `--agent claude`; such a
+            // hook would bind a Grok conversation as Claude and stamp Claude's events on it.
+            if let Some(owner) = crate::recognition::transcript_owner(&path, &index.roots)
+                .filter(|owner| *owner != runtime)
+            {
+                return Err(io::Error::other(format!(
+                    "Hook for {} names a {} transcript",
+                    runtime.name(),
+                    owner.name()
+                )));
+            }
             // A new Claude announces itself before its first prompt creates the transcript:
             // the hook's own identity binds it now, and the index fills it in once written.
             let written = path.exists();

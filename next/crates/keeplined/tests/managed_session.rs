@@ -3742,6 +3742,44 @@ fn the_installed_hook_binds_a_new_claude_before_its_transcript_exists() {
     assert_eq!(stored.as_deref(), Some("Hook"));
 }
 
+/// Grok reads Claude's settings and runs Keepline's hook there as `--agent claude`. A hook
+/// naming a transcript under Grok's root must not bind it as a Claude conversation.
+#[test]
+fn a_claude_hook_naming_a_grok_transcript_is_refused() {
+    let h = Host::start();
+    h.setup();
+    let dir = h.root.join("grok-home/sessions/%2Ftmp/01a1");
+    fs::create_dir_all(&dir).unwrap();
+    let path = dir.join("updates.jsonl");
+    fs::write(&path, "").unwrap();
+    h.call(h.launch("grokked", "read -r end")).unwrap();
+    let pid = h
+        .workspace()
+        .terminals
+        .iter()
+        .find(|t| t.id == "grokked")
+        .and_then(|t| t.pid)
+        .unwrap();
+    let reply = h.call(Request::Hook {
+        runtime: Agent::Claude,
+        pid,
+        cli_session_id: "01a1".into(),
+        transcript: path.to_string_lossy().into_owned(),
+        ended: false,
+        event: Some("Notification".into()),
+        facts: Default::default(),
+        terminal: Some("grokked".into()),
+        cwd: "/tmp".into(),
+    });
+    let err = reply.expect_err("a Grok transcript was accepted as Claude's");
+    assert!(err.to_string().contains("Grok"), "{err}");
+    assert!(h
+        .workspace()
+        .agent_sessions
+        .iter()
+        .all(|s| s.runtime != Agent::Claude));
+}
+
 fn rusqlite_binding(root: &std::path::Path, session: &str) -> Option<String> {
     let out = Command::new("/usr/bin/sqlite3")
         .arg("-readonly")
