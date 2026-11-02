@@ -19,6 +19,13 @@ static SHOWN: LazyLock<Mutex<HashMap<(usize, DecoratedPane), Shown>>> =
 const FORGET: Duration = Duration::from_secs(600);
 const KEEP: usize = 256;
 
+/// Drops every cached line: the decorations were reloaded and their indexes moved.
+pub(super) fn forget() {
+    if let Ok(mut shown) = SHOWN.lock() {
+        shown.clear();
+    }
+}
+
 /// A pane's decoration lines, by where they go.
 #[derive(Default)]
 pub(super) struct Lines {

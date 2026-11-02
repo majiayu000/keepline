@@ -12,6 +12,8 @@ use crate::ui::{
 };
 use std::path::PathBuf;
 
+mod plugins;
+
 /// The chord button keeps one width, recording or not.
 const KEY_WIDTH: f32 = T::HERE_LABEL + T::S20;
 /// Room kept for 恢复 on every row.
@@ -277,7 +279,7 @@ impl Page {
                 "配对过的手机经中继连过来：看画面、答审批、打字。内容端到端加密，中继看不到。"
             }
             Self::Plugins => {
-                "哪些插件和声明文件生效了，哪些没有、为什么。改动后重开 Keepline 生效。"
+                "装上、更新、卸载和开关插件，马上生效；也能看到每个声明文件生效了没有、为什么。"
             }
             Self::About => "版本信息，以及 Keepline 把数据和偏好存在哪里。",
         }
@@ -349,7 +351,7 @@ const ENTRIES: [(Page, &str, &str); 26] = [
     (
         Page::Plugins,
         "插件",
-        "plugin 扩展 声明 agent json 动作 验证规则 左栏 sidebar",
+        "plugin 扩展 市场 安装 卸载 更新 声明 agent json 动作 验证规则 左栏 sidebar 动画",
     ),
     (Page::About, "版本", "关于 keepline version"),
     (Page::About, "运行数据", "数据目录 数据库 runtime 后台 访达"),
@@ -369,6 +371,9 @@ pub(super) enum SettingsAction {
     /// 试播: play the completion animation on the focused pane without marking anything.
     PreviewComplete,
     Change(Settings),
+    /// Plugins were installed, removed or switched and read again here: the workbench
+    /// redraws what they feed and tells the host.
+    PluginsChanged,
     /// Phones on a relay: on or off, the relay, and its key (None keeps the saved one).
     Remote {
         enabled: bool,
@@ -402,6 +407,8 @@ pub(super) struct SettingsView {
     relay_key: Entity<Field>,
     /// Why the phones setting was not sent.
     remote_error: Option<&'static str>,
+    /// 插件: the catalog and what the last install did.
+    market: plugins::Market,
 }
 impl gpui::EventEmitter<SettingsAction> for SettingsView {}
 impl SettingsView {
@@ -455,6 +462,7 @@ impl SettingsView {
             relay,
             relay_key,
             remote_error: None,
+            market: plugins::Market::read(),
         }
     }
     /// Installs `agent`'s hooks first when given (only ever from a click), then reads every
@@ -917,47 +925,58 @@ impl SettingsView {
         }
         let mut motion = Vec::new();
         if self.shows(Page::Look, "标记完成动画", cx) {
-            use keepline_core::effect::{self, Style};
+            use keepline_core::effect::{self, Pick, Style};
             let picked = effect::picked();
-            let plugin = effect::from_plugin();
-            let on = effect::chosen(picked, plugin).style;
+            let presets = effect::presets();
+            let on = |p: &Pick| match &picked {
+                Some(c) => c == p,
+                None => *p == Pick::Builtin(Style::Seal),
+            };
             let mut choices = segments();
-            if plugin.is_some() {
-                choices = choices.child(
-                    segment("complete-plugin", "跟随插件", picked.is_none()).on_click(cx.listener(
-                        move |this, _, _, cx| {
-                            this.text_error = effect::pick(None).err();
-                            cx.notify();
-                        },
-                    )),
-                );
-            }
-            for look in Style::ALL {
-                choices = choices.child(
-                    segment(
-                        format!("complete-{}", look.name()),
-                        look.label(),
-                        look == on && (picked.is_some() || plugin.is_none()),
+            let mut options: Vec<(String, String, Pick)> = Style::ALL
+                .into_iter()
+                .map(|s| {
+                    (
+                        format!("complete-{}", s.name()),
+                        s.label().to_owned(),
+                        Pick::Builtin(s),
                     )
-                    .on_click(cx.listener(move |this, _, _, cx| {
-                        this.text_error = effect::pick(Some(look)).err();
+                })
+                .collect();
+            // A plugin's tuning is one more choice; one that plays exactly a built-in
+            // style is that style's choice already.
+            options.extend(presets.iter().filter(|p| !p.same_as_builtin()).map(|p| {
+                (
+                    format!("complete-plugin-{}", p.id),
+                    p.name.clone(),
+                    Pick::Plugin(p.id.clone()),
+                )
+            }));
+            for (id, text, choice) in options {
+                let selected = on(&choice);
+                choices = choices.child(segment(id, text, selected).on_click(cx.listener(
+                    move |this, _, _, cx| {
+                        this.text_error = effect::pick(Some(choice.clone())).err();
                         cx.notify();
-                    })),
-                );
+                    },
+                )));
             }
-            let note = match (picked, plugin) {
+            let note = match &picked {
                 _ if effect::reduce_motion() => {
                     "系统开了「减弱动态效果」，现在不管选哪种都只淡出".to_owned()
                 }
-                (Some(s), Some(p)) if p.style != s => format!(
-                    "这里选的优先，插件设的「{}」不生效；试播在当前窗格播一次，不会标记完成",
-                    p.style.label()
+                Some(Pick::Plugin(id)) if !presets.iter().any(|p| &p.id == id) => format!(
+                    "选的插件 {id} 已经卸载或停用，现在播印章；试播在当前窗格播一次，不会标记完成"
                 ),
-                (None, Some(p)) => format!(
-                    "插件设的是「{}」；试播在当前窗格播一次，不会标记完成",
-                    p.style.label()
+                _ if presets.iter().any(|p| !p.same_as_builtin()) => format!(
+                    "{} 来自插件；选了马上生效，试播在当前窗格播一次，不会标记完成",
+                    presets
+                        .iter()
+                        .filter(|p| !p.same_as_builtin())
+                        .map(|p| format!("「{}」", p.name))
+                        .collect::<String>()
                 ),
-                _ => "选了马上生效；试播在当前窗格播一次，不会标记完成".to_owned(),
+                _ => "选了马上生效；试播在当前窗格播一次，不会标记完成。插件 页能装更多".to_owned(),
             };
             motion.push(
                 self.row(
@@ -1692,198 +1711,6 @@ impl SettingsView {
                 )),
         )
     }
-    /// Every plugin directory and declaration file the app read at start, with its outcome.
-    fn plugins_page(&self, cx: &Context<Self>) -> gpui::Div {
-        use keepline_core::{agent, plugin};
-        if !self.shows(Page::Plugins, "插件", cx) {
-            return div();
-        }
-        let status = |ok: bool, text: &'static str| {
-            div()
-                .flex_shrink_0()
-                .text_size(px(T::SMALL))
-                .text_color(if ok {
-                    T::color(T::secondary())
-                } else {
-                    Tone::Danger.ink()
-                })
-                .child(text)
-        };
-        let where_ = agent::config_dir().map_or_else(
-            || "~/.config/keepline".to_owned(),
-            |d| d.display().to_string(),
-        );
-        let mut loaded = Vec::new();
-        let found = plugin::report();
-        if found.is_empty() {
-            loaded.push(
-                self.row(
-                    true,
-                    "还没有插件",
-                    "按下面的位置放一个插件目录，重开 Keepline 后会显示在这里。",
-                    div(),
-                )
-                .into_any_element(),
-            );
-        }
-        for f in found {
-            let name = f
-                .dir
-                .file_name()
-                .map_or_else(String::new, |n| n.to_string_lossy().into_owned());
-            let first = loaded.is_empty();
-            loaded.push(
-                match &f.result {
-                    Ok(p) => self.row(
-                        first,
-                        &format!("{} · {}", p.name, p.id),
-                        &format!(
-                            "提供 {}{}{}",
-                            p.provides
-                                .iter()
-                                .map(|k| k.label())
-                                .collect::<Vec<_>>()
-                                .join("、"),
-                            p.version
-                                .as_deref()
-                                .map_or_else(String::new, |v| format!(" · v{v}")),
-                            p.description
-                                .as_deref()
-                                .map_or_else(String::new, |d| format!(" · {d}")),
-                        ),
-                        {
-                            // The switch takes effect at the next start; until then the row
-                            // says so rather than pretending it already changed.
-                            let next = plugin::enabled_next_start(&p.id);
-                            let id = p.id.clone();
-                            div()
-                                .flex()
-                                .items_center()
-                                .gap(px(T::S8))
-                                .child(match (p.enabled, next) {
-                                    (true, true) => status(true, "已加载"),
-                                    (false, false) => status(true, "已停用"),
-                                    _ => status(true, "重开后生效"),
-                                })
-                                .child(
-                                    secondary(
-                                        gpui::SharedString::from(format!("plugin-switch-{}", p.id)),
-                                        if next { "停用" } else { "启用" },
-                                    )
-                                    .on_click(cx.listener(
-                                        move |this, _, _, cx| {
-                                            this.text_error = plugin::set_enabled(&id, !next)
-                                                .err()
-                                                .map(|e| format!("没能保存插件开关：{e}"));
-                                            cx.notify();
-                                        },
-                                    )),
-                                )
-                        },
-                    ),
-                    Err(e) => self.row(first, &name, e, status(false, "没有加载")),
-                }
-                .into_any_element(),
-            );
-        }
-        // Each declaration file the plugins and the config folder brought: what it did.
-        let files = |rows: Vec<(String, Result<String, String>)>| {
-            rows.into_iter()
-                .enumerate()
-                .map(|(i, (file, result))| {
-                    match result {
-                        Ok(did) => self.row(i == 0, &file, &did, status(true, "生效")),
-                        Err(e) => self.row(i == 0, &file, &e, status(false, "没有生效")),
-                    }
-                    .into_any_element()
-                })
-                .collect::<Vec<_>>()
-        };
-        let actions = files(
-            keepline_core::action::report()
-                .iter()
-                .map(|a| {
-                    let did = a
-                        .result
-                        .clone()
-                        .map(|titles| format!("加进右键菜单和 ⌘P：{titles}"));
-                    (a.file.display().to_string(), did)
-                })
-                .collect(),
-        );
-        let rules = files(
-            keepline_core::rule::report()
-                .iter()
-                .map(|r| {
-                    let did = r
-                        .result
-                        .clone()
-                        .map(|list| format!("这些命令算跑过验证：{list}"));
-                    (r.file.display().to_string(), did)
-                })
-                .collect(),
-        );
-        let hooks = files(
-            keepline_core::hook::report()
-                .iter()
-                .map(|r| {
-                    let did = r.result.clone().map(|list| {
-                        format!("会话状态变化时由后台调用：{list}；结果写在后台日志里")
-                    });
-                    (r.file.display().to_string(), did)
-                })
-                .collect(),
-        );
-        let sidebars = files(
-            keepline_core::sidebar::report()
-                .iter()
-                .map(|r| {
-                    let did = r.result.clone().map(|list| format!("左栏顶部多了：{list}"));
-                    (r.file.display().to_string(), did)
-                })
-                .collect(),
-        );
-        let decorations = files(
-            keepline_core::decoration::report()
-                .iter()
-                .map(|r| {
-                    let did = r
-                        .result
-                        .clone()
-                        .map(|list| format!("窗格标题栏或悬停卡片里显示：{list}"));
-                    (r.file.display().to_string(), did)
-                })
-                .collect(),
-        );
-        let effects = files(
-            keepline_core::effect::report()
-                .iter()
-                .map(|r| (r.file.display().to_string(), r.result.clone()))
-                .collect(),
-        );
-        let declared = files(
-            agent::report()
-                .iter()
-                .map(|d| {
-                    let did = d.result.clone().map(|key| format!("注册为 {key}"));
-                    (d.file.display().to_string(), did)
-                })
-                .collect(),
-        );
-        self.cards(vec![
-            ("插件", loaded),
-            ("动作文件", actions),
-            ("验证规则文件", rules),
-            ("Hooks 文件", hooks),
-            ("左栏文件", sidebars),
-            ("窗格装饰文件", decorations),
-            ("动效文件", effects),
-            ("Agent 声明文件", declared),
-        ])
-        .child(div().pt(px(T::S12)).px(px(T::S4)).child(label(format!(
-            "放在 {where_}/plugins/<id>/plugin.json；Agent 声明也可以直接放在 {where_}/agents/*.json。"
-        ))))
-    }
     fn path_row(
         &self,
         first: bool,
@@ -2445,6 +2272,14 @@ impl Workbench {
             SettingsAction::Close => {
                 this.settings = None;
                 this.nav.pending_focus = true;
+                cx.notify();
+            }
+            SettingsAction::PluginsChanged => {
+                // Decorations and WASM sidebars cache by position and file: start afresh.
+                decorations::forget();
+                this.sidebar.wasm = Default::default();
+                this.request(Request::ReloadPlugins, cx);
+                cx.refresh_windows();
                 cx.notify();
             }
             SettingsAction::PreviewComplete => {

@@ -8,7 +8,6 @@ use crate::agent::Loaded;
 use crate::model::shell_quote;
 use serde::Deserialize;
 use std::path::{Path, PathBuf};
-use std::sync::OnceLock;
 
 /// The `actions.json` format's major version.
 pub const API: u32 = 1;
@@ -197,11 +196,53 @@ pub fn load(files: Vec<PathBuf>) -> (Vec<Action>, Vec<Loaded>) {
     (actions, report)
 }
 
-static ACTIONS: OnceLock<(Vec<Action>, Vec<Loaded>)> = OnceLock::new();
+static ACTIONS: crate::plugin::Slot<(Vec<Action>, Vec<Loaded>)> = crate::plugin::Slot::new();
 
 /// Loads the installed plugins' actions once (after `plugin::install`).
 pub fn install() {
     ACTIONS.get_or_init(|| load(crate::plugin::files(crate::plugin::Kind::Actions)));
+}
+/// Loads them again after plugins changed (`plugin::reload`).
+pub(crate) fn reload() {
+    ACTIONS.set(load(crate::plugin::files(crate::plugin::Kind::Actions)));
+}
+/// Actions turned off one by one in settings (`<config>/actions-off.json`, a JSON list of
+/// ids): still loaded and listed there, never offered in the menu or ⌘P.
+static OFF: std::sync::Mutex<Option<Vec<String>>> = std::sync::Mutex::new(None);
+
+fn off_path() -> Option<PathBuf> {
+    crate::agent::config_dir().map(|d| d.join("actions-off.json"))
+}
+fn with_off<R>(f: impl FnOnce(&mut Vec<String>) -> R) -> R {
+    let mut off = OFF.lock().unwrap_or_else(|e| e.into_inner());
+    let list = off.get_or_insert_with(|| {
+        off_path()
+            .and_then(|p| std::fs::read(p).ok())
+            .and_then(|b| serde_json::from_slice(&b).ok())
+            .unwrap_or_default()
+    });
+    f(list)
+}
+impl Action {
+    /// Whether settings leaves it on.
+    pub fn enabled(&self) -> bool {
+        with_off(|off| !off.contains(&self.id))
+    }
+}
+/// Turns one action on or off from now on, and keeps it for the next start.
+pub fn set_enabled(id: &str, on: bool) -> Result<(), String> {
+    let path = off_path().ok_or("找不到配置目录")?;
+    let list = with_off(|off| {
+        off.retain(|d| d != id);
+        if !on {
+            off.push(id.to_owned());
+        }
+        off.clone()
+    });
+    path.parent()
+        .map_or(Ok(()), std::fs::create_dir_all)
+        .and_then(|()| std::fs::write(&path, serde_json::to_vec_pretty(&list).unwrap_or_default()))
+        .map_err(|e| format!("无法保存 {}：{e}", path.display()))
 }
 /// Every loaded action, plugin by plugin.
 pub fn all() -> &'static [Action] {

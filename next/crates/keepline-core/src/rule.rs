@@ -8,7 +8,6 @@
 use crate::agent::Loaded;
 use serde::Deserialize;
 use std::path::{Path, PathBuf};
-use std::sync::OnceLock;
 
 /// The `rules.json` format's major version.
 pub const API: u32 = 1;
@@ -75,11 +74,15 @@ pub fn load(files: Vec<PathBuf>) -> (Vec<Vec<String>>, Vec<Loaded>) {
     (rules, report)
 }
 
-static RULES: OnceLock<(Vec<Vec<String>>, Vec<Loaded>)> = OnceLock::new();
+static RULES: crate::plugin::Slot<(Vec<Vec<String>>, Vec<Loaded>)> = crate::plugin::Slot::new();
 
 /// Loads the installed plugins' rules once (after `plugin::install`).
 pub fn install() {
     RULES.get_or_init(|| load(crate::plugin::files(crate::plugin::Kind::Rules)));
+}
+/// Loads them again after plugins changed (`plugin::reload`).
+pub(crate) fn reload() {
+    RULES.set(load(crate::plugin::files(crate::plugin::Kind::Rules)));
 }
 /// The rules plugins added, beside the built-in ones.
 pub fn verify() -> &'static [Vec<String>] {

@@ -1,8 +1,9 @@
-//! How the app plays 标记完成 (`effects.json`). A plugin picks one of the animations the
+//! How the app plays 标记完成 (`effects.json`). A plugin names one of the animations the
 //! app draws and tunes it; it never draws anything itself, so every style follows the
-//! theme and the status colors. The first plugin that sets the completion animation wins;
-//! a later one is reported as not taking effect. What settings picks
-//! (`~/.config/keepline/complete`, one style name) beats every plugin and applies at once.
+//! theme and the status colors. Each plugin's tuning becomes one more choice beside the
+//! built-in ones in settings; none of them takes over by being installed. What settings
+//! picks (`~/.config/keepline/complete`: a style name, or `plugin:<id>`) applies at once;
+//! nothing picked plays the built-in seal.
 //!
 //! ```json
 //! {"api": 1, "complete": {"style": "stamp", "duration_ms": 2400, "land": "sidebar"}}
@@ -10,8 +11,8 @@
 use crate::agent::Loaded;
 use serde::Deserialize;
 use std::path::{Path, PathBuf};
+use std::sync::Mutex;
 use std::sync::atomic::{AtomicBool, Ordering};
-use std::sync::{Mutex, OnceLock};
 use std::time::Duration;
 
 /// The `effects.json` format's major version.
@@ -176,46 +177,121 @@ fn describe(c: &Complete) -> String {
     )
 }
 
-/// The first file that sets the completion animation wins; later ones are reported.
-pub fn load(files: Vec<PathBuf>) -> (Option<Complete>, Vec<Loaded>) {
-    let mut chosen: Option<(Complete, PathBuf)> = None;
+/// One plugin's tuning, offered in settings beside the built-in styles.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct Preset {
+    /// The plugin's id, which settings saves as `plugin:<id>`.
+    pub id: String,
+    /// The plugin's name, shown on the choice.
+    pub name: String,
+    pub complete: Complete,
+}
+impl Preset {
+    /// Plays exactly what choosing the built-in style of the same name plays.
+    pub fn same_as_builtin(&self) -> bool {
+        self.complete == Complete::of(self.complete.style)
+    }
+}
+
+/// The plugin a file belongs to: the loaded plugin whose directory holds it, else the
+/// directory's name.
+fn owner(file: &Path) -> (String, String) {
+    let dir = file.parent().unwrap_or(file);
+    if let Some(p) = crate::plugin::report()
+        .iter()
+        .filter_map(|f| f.result.as_ref().ok())
+        .find(|p| p.dir == dir)
+    {
+        return (p.id.clone(), p.name.clone());
+    }
+    let name = dir
+        .file_name()
+        .map_or_else(String::new, |n| n.to_string_lossy().into_owned());
+    (name.clone(), name)
+}
+
+/// Every file that sets the completion animation becomes a preset; a plugin's second file
+/// or a preset id already taken is reported, not offered twice.
+pub fn load(files: Vec<PathBuf>) -> (Vec<Preset>, Vec<Loaded>) {
+    let mut presets: Vec<Preset> = Vec::new();
     let mut report = Vec::new();
     for file in files {
         let result = match read(&file) {
-            Ok(Some(c)) => match &chosen {
-                Some((_, by)) => Err(format!(
-                    "{} 已经定了完成动画，这个没有生效；在设置里关掉那个插件就会用这个",
-                    by.parent().unwrap_or(by).display()
-                )),
-                None => {
-                    chosen = Some((c, file.clone()));
-                    Ok(describe(&c))
+            Ok(Some(c)) => {
+                let (id, name) = owner(&file);
+                if presets.iter().any(|p| p.id == id) {
+                    Err(format!("{id} 已经有一个完成动画，这个没有加进选项"))
+                } else {
+                    let preset = Preset {
+                        id,
+                        name,
+                        complete: c,
+                    };
+                    let did = if preset.same_as_builtin() {
+                        format!(
+                            "{}；和内置的「{}」一样，在外观 › 标记完成动画里选它就是",
+                            describe(&c),
+                            c.style.label()
+                        )
+                    } else {
+                        format!(
+                            "{}；在外观 › 标记完成动画里多了「{}」",
+                            describe(&c),
+                            preset.name
+                        )
+                    };
+                    presets.push(preset);
+                    Ok(did)
                 }
-            },
+            }
             Ok(None) => Ok("没有设置任何动效".into()),
             Err(e) => Err(e),
         };
         report.push(Loaded { file, result });
     }
-    (chosen.map(|(c, _)| c), report)
+    (presets, report)
 }
 
-static EFFECTS: OnceLock<(Option<Complete>, Vec<Loaded>)> = OnceLock::new();
+/// What settings picked: a built-in style or a plugin's preset.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum Pick {
+    Builtin(Style),
+    Plugin(String),
+}
+impl Pick {
+    /// The text the settings file holds.
+    pub fn name(&self) -> String {
+        match self {
+            Self::Builtin(s) => s.name().to_owned(),
+            Self::Plugin(id) => format!("plugin:{id}"),
+        }
+    }
+    pub fn parse(text: &str) -> Option<Self> {
+        let text = text.trim();
+        match text.strip_prefix("plugin:") {
+            Some(id) if crate::plugin::valid_id(id) => Some(Self::Plugin(id.to_owned())),
+            Some(_) => None,
+            None => Style::parse(text).map(Self::Builtin),
+        }
+    }
+}
+
+static EFFECTS: crate::plugin::Slot<(Vec<Preset>, Vec<Loaded>)> = crate::plugin::Slot::new();
 static REDUCE_MOTION: AtomicBool = AtomicBool::new(false);
-/// The style picked in settings; None follows the plugins.
-static PICKED: Mutex<Option<Style>> = Mutex::new(None);
+/// What settings picked; None plays the built-in seal.
+static PICKED: Mutex<Option<Pick>> = Mutex::new(None);
 
 fn picked_path() -> Option<PathBuf> {
     crate::agent::config_dir().map(|d| d.join("complete"))
 }
 
-/// Loads the installed plugins' effects once (after `plugin::install`) and the style
-/// picked in settings, and reads the system's reduce-motion setting off the main thread.
+/// Loads the installed plugins' effects once (after `plugin::install`) and what settings
+/// picked, and reads the system's reduce-motion setting off the main thread.
 pub fn install() {
     EFFECTS.get_or_init(|| load(crate::plugin::files(crate::plugin::Kind::Effects)));
     let saved = picked_path()
         .and_then(|p| std::fs::read_to_string(p).ok())
-        .and_then(|t| Style::parse(&t));
+        .and_then(|t| Pick::parse(&t));
     *PICKED.lock().unwrap_or_else(|e| e.into_inner()) = saved;
     #[cfg(target_os = "macos")]
     std::thread::spawn(|| {
@@ -227,48 +303,54 @@ pub fn install() {
         REDUCE_MOTION.store(on, Ordering::Relaxed);
     });
 }
-/// What a plugin set, if any.
-pub fn from_plugin() -> Option<Complete> {
-    EFFECTS.get().and_then(|(c, _)| *c)
+/// Loads them again after plugins changed (`plugin::reload`).
+pub(crate) fn reload() {
+    EFFECTS.set(load(crate::plugin::files(crate::plugin::Kind::Effects)));
 }
-/// The style picked in settings, if one is.
-pub fn picked() -> Option<Style> {
-    *PICKED.lock().unwrap_or_else(|e| e.into_inner())
+/// Every installed plugin's preset, in plugin order.
+pub fn presets() -> &'static [Preset] {
+    EFFECTS.get().map_or(&[], |(p, _)| p.as_slice())
 }
-/// Picks the style from now on and keeps it for the next start; None follows the plugins.
-pub fn pick(style: Option<Style>) -> Result<(), String> {
+/// What settings picked, if anything.
+pub fn picked() -> Option<Pick> {
+    PICKED.lock().unwrap_or_else(|e| e.into_inner()).clone()
+}
+/// Picks the animation from now on and keeps it for the next start; None is the seal.
+pub fn pick(choice: Option<Pick>) -> Result<(), String> {
     let path = picked_path().ok_or("找不到配置目录")?;
-    match style {
-        Some(s) => path
+    match &choice {
+        Some(c) => path
             .parent()
             .map_or(Ok(()), std::fs::create_dir_all)
-            .and_then(|()| std::fs::write(&path, s.name())),
+            .and_then(|()| std::fs::write(&path, c.name())),
         None => match std::fs::remove_file(&path) {
             Err(e) if e.kind() != std::io::ErrorKind::NotFound => Err(e),
             _ => Ok(()),
         },
     }
     .map_err(|e| format!("无法保存 {}：{e}", path.display()))?;
-    *PICKED.lock().unwrap_or_else(|e| e.into_inner()) = style;
+    *PICKED.lock().unwrap_or_else(|e| e.into_inner()) = choice;
     Ok(())
 }
 /// Whether macOS asks for reduced motion, which turns every style into the fade.
 pub fn reduce_motion() -> bool {
     REDUCE_MOTION.load(Ordering::Relaxed)
 }
-/// The animation chosen, before reduced motion: settings' pick (with a plugin's tuning
-/// when it set the same style), else a plugin's, else the built-in seal.
-pub fn chosen(picked: Option<Style>, plugin: Option<Complete>) -> Complete {
-    match (picked, plugin) {
-        (Some(s), Some(p)) if p.style == s => p,
-        (Some(s), _) => Complete::of(s),
-        (None, Some(p)) => p,
-        (None, None) => Complete::default(),
+/// The animation chosen, before reduced motion: a built-in style as the app tunes it, a
+/// plugin's preset while that plugin is installed, else the built-in seal.
+pub fn chosen(picked: Option<&Pick>, presets: &[Preset]) -> Complete {
+    match picked {
+        Some(Pick::Builtin(s)) => Complete::of(*s),
+        Some(Pick::Plugin(id)) => presets
+            .iter()
+            .find(|p| &p.id == id)
+            .map_or_else(Complete::default, |p| p.complete),
+        None => Complete::default(),
     }
 }
 /// The completion animation to play now.
 pub fn complete() -> Complete {
-    chosen(picked(), from_plugin()).played(reduce_motion())
+    chosen(picked().as_ref(), presets()).played(reduce_motion())
 }
 pub fn report() -> &'static [Loaded] {
     EFFECTS.get().map_or(&[], |(_, r)| r.as_slice())
@@ -300,23 +382,40 @@ mod tests {
         let odd = write("d.json", r#"{"api":1,"complete":{"style":"confetti"}}"#);
         let empty = write("e.json", r#"{"api":1}"#);
 
-        let (chosen, report) = load(vec![stamp.clone(), sweep.clone(), long, odd, empty]);
-        let c = chosen.unwrap();
+        // All in one directory: one plugin, so only its first preset is offered.
+        let (presets, report) = load(vec![stamp.clone(), sweep.clone(), long, odd, empty]);
+        assert_eq!(presets.len(), 1);
+        let c = presets[0].complete;
         assert_eq!(c.style, Style::Stamp);
         assert_eq!(c.duration, Duration::from_millis(2_400));
         assert!(c.land, "stamp lands in the sidebar unless told not to");
-        assert!(report[0].result.as_ref().unwrap().contains("落印"));
-        assert!(report[1].result.as_ref().unwrap_err().contains("已经定了"));
+        assert!(presets[0].same_as_builtin());
+        assert!(
+            report[0]
+                .result
+                .as_ref()
+                .unwrap()
+                .contains("内置的「落印」一样")
+        );
+        assert!(
+            report[1]
+                .result
+                .as_ref()
+                .unwrap_err()
+                .contains("已经有一个")
+        );
         assert!(report[2].result.as_ref().unwrap_err().contains("600–4000"));
         assert!(report[3].result.as_ref().unwrap_err().contains("格式不对"));
         assert!(report[4].result.is_ok());
 
-        let (chosen, _) = load(vec![sweep]);
-        let c = chosen.unwrap();
+        let (presets, report) = load(vec![sweep]);
+        let c = presets[0].complete;
         assert_eq!(
             (c.style, c.duration, c.land),
             (Style::Sweep, Duration::from_millis(1_800), false)
         );
+        assert!(!presets[0].same_as_builtin());
+        assert!(report[0].result.as_ref().unwrap().contains("多了"));
         let _ = std::fs::remove_dir_all(&d);
     }
 
@@ -329,24 +428,42 @@ mod tests {
     }
 
     #[test]
-    fn the_settings_pick_beats_plugins_and_keeps_their_tuning_for_the_same_style() {
-        let tuned = Complete {
-            style: Style::Sweep,
-            duration: Duration::from_millis(3_000),
-            land: false,
+    fn only_what_settings_picked_plays_and_a_removed_preset_falls_back() {
+        let tuned = Preset {
+            id: "slow-sweep".into(),
+            name: "慢扫".into(),
+            complete: Complete {
+                style: Style::Sweep,
+                duration: Duration::from_millis(3_000),
+                land: false,
+            },
         };
-        assert_eq!(chosen(None, None).style, Style::Seal);
-        assert_eq!(chosen(None, Some(tuned)), tuned);
-        assert_eq!(chosen(Some(Style::Sweep), Some(tuned)), tuned);
+        let presets = [tuned.clone()];
+        // Installing a plugin never changes what plays.
+        assert_eq!(chosen(None, &presets), Complete::default());
         assert_eq!(
-            chosen(Some(Style::Stamp), Some(tuned)),
-            Complete::of(Style::Stamp)
+            chosen(Some(&Pick::Plugin("slow-sweep".into())), &presets),
+            tuned.complete
+        );
+        assert_eq!(
+            chosen(Some(&Pick::Builtin(Style::Sweep)), &presets),
+            Complete::of(Style::Sweep)
+        );
+        assert_eq!(
+            chosen(Some(&Pick::Plugin("gone".into())), &presets),
+            Complete::default()
         );
         for s in Style::ALL {
-            assert_eq!(Style::parse(&format!("{}\n", s.name())), Some(s));
+            assert_eq!(
+                Pick::parse(&format!("{}\n", s.name())),
+                Some(Pick::Builtin(s))
+            );
             let json: Style = serde_json::from_value(serde_json::json!(s.name())).unwrap();
             assert_eq!(json, s);
         }
-        assert_eq!(Style::parse("fancy"), None);
+        let p = Pick::Plugin("slow-sweep".into());
+        assert_eq!(Pick::parse(&p.name()), Some(p));
+        assert_eq!(Pick::parse("fancy"), None);
+        assert_eq!(Pick::parse("plugin:../x"), None);
     }
 }

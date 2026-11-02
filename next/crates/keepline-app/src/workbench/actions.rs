@@ -43,11 +43,14 @@ impl Workbench {
             agent: session.map(|s| s.runtime.name().to_owned()),
         }
     }
-    /// The loaded actions a pane offers, in plugin order. Offering depends on its session
+    /// The loaded actions a pane offers, in plugin order, less those turned off in settings. Offering depends on its session
     /// and task only, never on where its shell has wandered.
     pub(super) fn actions_for(&self, terminal: &str) -> Vec<&'static Action> {
         let ctx = self.action_context(terminal, None);
-        action::all().iter().filter(|a| a.offered(&ctx)).collect()
+        action::all()
+            .iter()
+            .filter(|a| a.enabled() && a.offered(&ctx))
+            .collect()
     }
     /// Runs one action for a pane; a value the pane lacks is reported, never run blank.
     pub(super) fn run_action(&mut self, terminal: &str, action: &Action, cx: &mut Context<Self>) {

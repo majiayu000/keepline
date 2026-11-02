@@ -38,6 +38,9 @@ pub enum Request {
         key: String,
     },
     RefreshAgents,
+    /// Plugins were installed, removed or switched: read them again. The host swaps its
+    /// rules and hooks; agents stay as registered at its start.
+    ReloadPlugins,
     RecognitionStatus,
     WatchRecognition,
     /// A fifteen-second measurement stream, cancelled by disconnecting this socket.

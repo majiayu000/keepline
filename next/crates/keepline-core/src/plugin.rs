@@ -12,7 +12,7 @@ pub const API: u32 = 1;
 
 /// What a plugin can extend. The file each kind reads is fixed, so a manifest only says
 /// which kinds it means to provide and a missing file is reported rather than ignored.
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, Deserialize)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, Deserialize, serde::Serialize)]
 #[serde(rename_all = "lowercase")]
 pub enum Kind {
     /// `agent.json`, and any `agents/*.json`: CLIs the registry learns (see `agent`).
@@ -132,13 +132,108 @@ pub struct Found {
     pub result: Result<Plugin, String>,
 }
 
-static INSTALLED: std::sync::OnceLock<Vec<Found>> = std::sync::OnceLock::new();
+/// A value loaded once and replaced whole when plugins change. Readers get a `'static`
+/// reference, so a replaced value is leaked rather than freed: replacing happens only on
+/// an install, an uninstall or a switch, a few kilobytes each time.
+pub struct Slot<T: 'static>(std::sync::RwLock<Option<&'static T>>);
+impl<T: 'static> Slot<T> {
+    pub const fn new() -> Self {
+        Self(std::sync::RwLock::new(None))
+    }
+    pub fn get(&self) -> Option<&'static T> {
+        *self.0.read().unwrap_or_else(|e| e.into_inner())
+    }
+    /// The value, loading it with `load` the first time.
+    pub fn get_or_init(&self, load: impl FnOnce() -> T) -> &'static T {
+        if let Some(v) = self.get() {
+            return v;
+        }
+        let mut slot = self.0.write().unwrap_or_else(|e| e.into_inner());
+        slot.get_or_insert_with(|| Box::leak(Box::new(load())))
+    }
+    /// Replaces the value from now on; references already handed out keep the old one.
+    pub fn set(&self, value: T) -> &'static T {
+        let value: &'static T = Box::leak(Box::new(value));
+        *self.0.write().unwrap_or_else(|e| e.into_inner()) = Some(value);
+        value
+    }
+}
+impl<T: 'static> Default for Slot<T> {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+static INSTALLED: Slot<Vec<Found>> = Slot::new();
 static CONFIG: std::sync::OnceLock<PathBuf> = std::sync::OnceLock::new();
 
-/// Discovers the plugins under `<config>/plugins` once; later calls return the same list.
+/// Discovers the plugins under `<config>/plugins` once; later calls return the same list
+/// until `reload`.
 pub fn install(config: &Path) -> &'static [Found] {
     let _ = CONFIG.set(config.to_owned());
     INSTALLED.get_or_init(|| discover(&dir(config)))
+}
+
+/// The config directory `install` was given.
+pub fn config() -> Option<&'static Path> {
+    CONFIG.get().map(PathBuf::as_path)
+}
+
+/// Discovers the plugins again and reloads every kind a running process can swap:
+/// actions, sidebar presets, decorations, effects, rules and hooks. Agents stay as they
+/// were registered at start (`needs_restart`). Does nothing before `install`.
+pub fn reload() {
+    let Some(config) = CONFIG.get() else {
+        return;
+    };
+    INSTALLED.set(discover(&dir(config)));
+    crate::action::reload();
+    crate::sidebar::reload();
+    crate::decoration::reload();
+    crate::effect::reload();
+    crate::rule::reload();
+    crate::hook::reload();
+}
+
+/// Kinds a running app cannot swap in: the agent registry is fixed at start.
+pub fn needs_restart(kind: Kind) -> bool {
+    kind == Kind::Agent
+}
+
+/// The installed plugin with this id, if one loaded.
+pub fn installed(id: &str) -> Option<&'static Plugin> {
+    report()
+        .iter()
+        .filter_map(|f| f.result.as_ref().ok())
+        .find(|p| p.id == id)
+}
+
+/// Removes an installed plugin's directory and its switch. Only a directory directly
+/// under the plugins folder whose `plugin.json` names this id is removed.
+pub fn uninstall(id: &str) -> Result<(), String> {
+    if !valid_id(id) {
+        return Err(format!("id \"{id}\" 不合法"));
+    }
+    let plugins = dir(CONFIG.get().ok_or("找不到配置目录")?);
+    let found = discover(&plugins)
+        .into_iter()
+        .find(|f| f.result.as_ref().is_ok_and(|p| p.id == id))
+        .ok_or_else(|| format!("没有装叫 {id} 的插件"))?;
+    if found.dir.parent() != Some(plugins.as_path()) {
+        return Err(format!("{} 不在插件目录里，没有删", found.dir.display()));
+    }
+    std::fs::remove_dir_all(&found.dir)
+        .map_err(|e| format!("删不掉 {}：{e}", found.dir.display()))?;
+    let mut off = disabled(&plugins);
+    if off.iter().any(|d| d == id) {
+        off.retain(|d| d != id);
+        std::fs::write(
+            switches(&plugins),
+            serde_json::to_vec_pretty(&off).unwrap_or_default(),
+        )
+        .map_err(|e| format!("没能更新插件开关：{e}"))?;
+    }
+    Ok(())
 }
 
 /// `plugins/disabled.json`: the ids turned off in settings, as a JSON list.
@@ -157,7 +252,7 @@ pub fn enabled_next_start(id: &str) -> bool {
         .get()
         .is_none_or(|c| !disabled(&dir(c)).iter().any(|d| d == id))
 }
-/// Turns a plugin on or off from the next start; the running app keeps what it loaded.
+/// Turns a plugin on or off; `reload` applies it to the running process.
 pub fn set_enabled(id: &str, on: bool) -> std::io::Result<()> {
     let plugins = dir(CONFIG
         .get()
@@ -196,6 +291,11 @@ pub fn discover(plugins: &Path) -> Vec<Found> {
         Ok(entries) => entries
             .filter_map(|e| e.ok().map(|e| e.path()))
             .filter(|p| p.is_dir())
+            // Staging and replaced copies of an install in progress.
+            .filter(|p| {
+                !p.file_name()
+                    .is_some_and(|n| n.to_string_lossy().starts_with('.'))
+            })
             .collect(),
         Err(_) => return vec![],
     };
@@ -217,6 +317,11 @@ pub fn discover(plugins: &Path) -> Vec<Found> {
         found.push(Found { dir, result });
     }
     found
+}
+
+/// Reads one plugin directory as `discover` would, without registering it.
+pub fn check(dir: &Path) -> Result<Plugin, String> {
+    read(dir)
 }
 
 fn read(dir: &Path) -> Result<Plugin, String> {

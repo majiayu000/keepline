@@ -1,15 +1,21 @@
 //! `keepline plugins`: checks the plugins under the config directory with the same code
 //! the app loads them with, so an Agent that wrote one knows before a restart whether it
 //! will take effect, and why not. It reads only; it never changes a plugin.
+use keepline_core::market;
 use keepline_core::plugin::{self, Kind};
 use std::io;
 use std::path::{Path, PathBuf};
 
 pub const USAGE: &str = "用法：keepline plugins [--dir 插件目录] [--json]
+      keepline plugins available [--remote]   列出可安装的插件（App 附带的，加 --remote 再查远程目录）
+      keepline plugins install <id> [--remote] 安装或更新一个插件
+      keepline plugins uninstall <id>          卸载一个插件
+      keepline plugins index <目录> [--check]  为插件目录生成 index.json（--check 只检查是否最新）
 
 检查插件能不能装上：逐个读 plugin.json 和它提供的文件，说哪个生效、哪个为什么没生效。
 默认目录是 ${XDG_CONFIG_HOME:-$HOME/.config}/keepline/plugins。有问题时以 1 退出。
-改动在 Keepline 下次启动时生效。写插件的说明：keepline --skill plugins";
+改完在 Keepline 的 设置 › 插件 点「重新读取」就生效（Agent 类要等 Keepline 后台下次启动）。
+写插件的说明：keepline --skill plugins";
 
 /// The first line of the `AGENTS.md` Keepline writes; a file without it is the user's.
 const MARK: &str =
@@ -20,7 +26,7 @@ const AGENTS_MD: &str = "# Keepline 配置目录
 
 1. 先运行 `keepline --skill plugins`，读完整说明：插件格式、规矩和例子。
 2. 插件写在 `plugins/<id>/`，一个想法一个插件。写完运行 `keepline plugins` 检查，全是 ✓ 才算写好。
-3. 改动在 Keepline 下次启动时生效，告诉用户重启后去哪里看。
+3. 告诉用户在 Keepline 的 设置 › 插件 点「重新读取」就生效（Agent 类要等 Keepline 后台下次启动），以及去哪里看。
 
 别改用户已有的插件和 `plugins/disabled.json`；快捷键、终端字体、完成动画在 App 的「设置」里改。
 在 Keepline 打开的终端里 `keepline` 直接能用；驱动别的终端的说明是 `keepline --skill`。
@@ -81,7 +87,120 @@ struct File {
     error: Option<String>,
 }
 
+fn plugins_dir() -> io::Result<PathBuf> {
+    Ok(plugin::dir(
+        &keepline_core::agent::config_dir()
+            .ok_or_else(|| io::Error::other("找不到配置目录：HOME 没有设置"))?,
+    ))
+}
+
+fn offers(remote: bool) -> io::Result<Vec<market::Offer>> {
+    let bundled = market::bundled().map_err(io::Error::other)?;
+    if !remote {
+        return Ok(bundled);
+    }
+    let fetched = market::fetch_remote(&market::remote_url()).map_err(io::Error::other)?;
+    Ok(market::merge(bundled, fetched))
+}
+
+fn market_cmd(command: &str, mut args: impl Iterator<Item = String>) -> io::Result<()> {
+    let mut rest: Vec<String> = Vec::new();
+    let mut remote = false;
+    let mut check_only = false;
+    for a in args.by_ref() {
+        match a.as_str() {
+            "--remote" => remote = true,
+            "--check" => check_only = true,
+            _ => rest.push(a),
+        }
+    }
+    match (command, rest.as_slice()) {
+        ("index", [dir]) => {
+            let dir = Path::new(dir);
+            let text = market::render(&market::index_of(dir).map_err(io::Error::other)?);
+            let path = dir.join("index.json");
+            let same = std::fs::read_to_string(&path).is_ok_and(|t| t == text);
+            if check_only {
+                if !same {
+                    eprintln!("{} 过期了", path.display());
+                    std::process::exit(1);
+                }
+                println!("{} 是最新的", path.display());
+            } else if !same {
+                std::fs::write(&path, text)?;
+                println!("写好了 {}", path.display());
+            } else {
+                println!("{} 是最新的", path.display());
+            }
+            Ok(())
+        }
+        ("available", []) => {
+            let installed = plugin::discover(&plugins_dir()?);
+            for o in offers(remote)? {
+                let e = &o.entry;
+                let have = installed
+                    .iter()
+                    .filter_map(|f| f.result.as_ref().ok())
+                    .find(|p| p.id == e.id);
+                let state = match have {
+                    None => String::new(),
+                    Some(p)
+                        if p.version
+                            .as_deref()
+                            .is_some_and(|v| market::newer(&e.version, v)) =>
+                    {
+                        format!("（已装 v{}，可更新）", p.version.as_deref().unwrap_or("?"))
+                    }
+                    Some(_) => "（已安装）".into(),
+                };
+                println!(
+                    "{} v{}「{}」{state} · {}\n    {}",
+                    e.id,
+                    e.version,
+                    e.name,
+                    o.origin(),
+                    e.description.as_deref().unwrap_or("")
+                );
+            }
+            Ok(())
+        }
+        ("install", [id]) => {
+            let offer = offers(remote)?
+                .into_iter()
+                .find(|o| &o.entry.id == id)
+                .ok_or_else(|| io::Error::other(format!("目录里没有叫 {id} 的插件")))?;
+            let at = offer
+                .install_into(&plugins_dir()?)
+                .map_err(io::Error::other)?;
+            println!("装好了 {id} v{} → {}", offer.entry.version, at.display());
+            for p in market::permissions(&offer.entry.provides) {
+                println!("  · {p}");
+            }
+            println!("在 Keepline 的 设置 › 插件 点「重新读取」就生效");
+            Ok(())
+        }
+        ("uninstall", [id]) => {
+            let dir = plugins_dir()?;
+            let config = dir.parent().unwrap_or(&dir).to_owned();
+            plugin::install(&config);
+            plugin::uninstall(id).map_err(io::Error::other)?;
+            println!("卸载了 {id}");
+            Ok(())
+        }
+        _ => Err(io::Error::other(USAGE)),
+    }
+}
+
 pub fn run(mut args: impl Iterator<Item = String>) -> io::Result<()> {
+    let mut args = args.by_ref().peekable();
+    if let Some(command) = args
+        .peek()
+        .filter(|a| matches!(a.as_str(), "index" | "available" | "install" | "uninstall"))
+        .cloned()
+    {
+        args.next();
+        return market_cmd(&command, args);
+    }
     let mut dir = None;
     let mut json = false;
     while let Some(arg) = args.next() {
@@ -237,7 +356,9 @@ fn render(dir: &Path, checked: &[Checked]) -> String {
             (None, None) => {}
         }
     }
-    out.push_str("改动在 Keepline 下次启动时生效。\n");
+    out.push_str(
+        "改完在 Keepline 的 设置 › 插件 点「重新读取」就生效（Agent 类要等 Keepline 后台下次启动）。\n",
+    );
     out
 }
 

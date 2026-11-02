@@ -1,6 +1,6 @@
 # Keepline 插件系统规格
 
-状态：进行中（2026-10-30）。只针对 `next/` 原生 App。本文是总规格；agent 这一类插件的详细设计见 `docs/architecture/PLUGIN_SYSTEM.md`。
+状态：进行中（2026-10-30；2026-11-02 加插件市场，第 10 步）。只针对 `next/` 原生 App。本文是总规格；agent 这一类插件的详细设计见 `docs/architecture/PLUGIN_SYSTEM.md`。
 
 ## 要支撑的决定
 
@@ -29,7 +29,7 @@ Keepline 的左栏、Agent 支持和窗格装饰，是否改成由插件提供�
 | sidebar | `sidebar.json`：左栏预设（经典 / 状态 / 目录为内置） | 已完成（声明式） |
 | hooks | `hooks.json`：会话状态变化、终端里命令结束交给命令或 webhook | 已完成 |
 | decorations | `decorations.json`：命令输出的一行显示在窗格标题栏（可选状态色）或标题悬停卡片里 | 已完成 |
-| effects | `effects.json`：标记完成播放哪种动画（`seal` 印章 / `stamp` 落印 / `sweep` 扫光合上 / `dissolve` 化进侧栏 / `fade` 只淡出）、时长 600–4000 ms、是否落到侧栏那一行。插件只选，App 来画；多个插件都设时第一个生效；系统开了「减弱动态效果」一律只淡出。示例 `plugins/complete-*`，对比稿 `specs/complete-animation/directions.html` | 已完成（2026-11-02） |
+| effects | `effects.json`：标记完成播放哪种动画（`seal` 印章 / `stamp` 落印 / `sweep` 扫光合上 / `dissolve` 化进侧栏 / `fade` 只淡出）、时长 600–4000 ms、是否落到侧栏那一行。插件只选，App 来画；每个插件的设定是外观里多出来的一个选项，不会因为装上就生效（2026-11-02 改，原来是多个插件都设时第一个生效）；系统开了「减弱动态效果」一律只淡出。示例 `plugins/complete-*`，对比稿 `specs/complete-animation/directions.html` | 已完成（2026-11-02） |
 
 **写法**（用什么写）：
 
@@ -62,7 +62,7 @@ api 1 的声明能认出进程、启动和恢复、按 JSONL 绑定会话、卡�
 - 实现：`keepline-core/src/plugin.rs`（发现、校验、报告），`agent::install()` 启动时调用。
 - 规则：`api` 不符、`plugin.json` 缺失或格式不对、id 不合法或重名、声明了类型却没有文件，都只拒绝这一个插件并写明原因，其余照常加载。
 - 旧位置 `~/.config/keepline/agents/*.json` 继续有效，和插件里的 Agent 声明进同一个注册表。
-- 设置页「插件」一页列出每个插件和每个声明文件：已加载 / 没有加载、生效 / 没有生效及原因。
+- 设置页「插件」一页：已安装（开关、更新、卸载，动作逐条开关）、可安装（App 附带的目录 + 远程目录）、声明文件明细。见第 10 步。
 
 ## 分层：哪些能插，哪些不能
 
@@ -161,6 +161,7 @@ Row = {"kind":"Session", id, trailing?: "state" | "age" | "elapsed" | "none" | {
 | 7 | 终端事件钩子：shell 里敲的命令结束时交给 hooks | 完成（2026-10-31）。新增事件 `command_done`（退出码 0）和 `command_failed`（非 0），可选 `min_ms` 只听耗时够长的命令（只对这两个事件有效，写在别的事件上报错）。zsh 用 precmd / preexec、bash 用 `PROMPT_COMMAND` 最前一项和 `PS0`（4.4 起）发 OSC 133 的 C 和 `D;<退出码>`；fish 自己就发。bash 的入口函数把 `$?` 原样交还，用户提示符里显示的退出码不再被上报目录冲成 0。daemon 在读终端输出时配对 C…D（单独的 D 是没敲命令的提示符，不算），标记跨两次读取也能拼上；没有插件听命令事件时不扫。负载里 `session`、`agent`、`title` 留空，给 `terminal`、`space`、`cwd`（OSC 7 上报的目录）、`exit_code`、`duration_ms`，环境变量多 `KEEPLINE_TERMINAL / EXIT_CODE / DURATION_MS`。**不给命令行**：可能带密钥；fish 会把正在跑的命令设成终端标题，所以标题也不给。端到端：`shell_integration.rs` 里 zsh / bash 5.3 / fish 4.9 各跑成功、空行、失败、1.2 秒四种，插件依次收到 0、3、0（≥1000 ms）三条，`min_ms: 1000` 的只收到最后一条；bash 3.2 没有 PS0，一条不收。反向验证：去掉 zsh 的 preexec、去掉 bash 的 PS0、去掉 `min_ms` 判断、bash 不交还 `$?`，各自的用例都失败。缺口：bash 4.4 以前收不到命令事件；恢复对话窗格最后 `exec` 的 shell 不经过集成 |
 | 8 | 窗格装饰：插件往窗格上放一小段信息，像 tmux 状态栏片段 | 完成（2026-10-31）。要支撑的决定：插件能不能不改 App 代码就给每个窗格加信息（git 改动数、kube context、node 版本……）。放弃条件：画面要等命令才能画，或现有位置放不下实际用例。结果：采用。`{"api":1,"decorations":[{"id","command","place":"title"|"tip","when":"always"|"agent"|"shell","refresh_s":2–3600（默认 10）,"timeout_ms":100–5000（默认 1000）}]}`。命令在窗格当前目录（OSC 7 上报的实时目录）用 `sh -c` 跑，带 `KEEPLINE_CWD / AGENT / SESSION`；取第一行非空输出，去掉颜色、标题等控制序列，标题栏最多 40 字、悬停卡片最多 120 字；退出码非 0 或没输出就不显示，脚本靠这个自己决定哪里不适用。按「装饰 × 目录 × 会话」缓存，画界面只读缓存，到点在后台重跑、结果变了才重画；超时强停，输出最多读 64 KB。位置只有两个：标题栏右侧（在 Agent 和时间前面）和标题悬停卡片里的一行，不另开底栏（主界面改版已把底栏收进悬停卡片）。示例插件 `plugins/pane-facts`：标题栏显示 git 未提交的改动数，悬停看最近一次提交。验证：core 单测 3 个（取第一行、去控制序列、截断、非 0 不显示、慢命令和刷屏命令按时停、声明校验）；真实 App 取证 `specs/plugins/evidence/decorations-e2e.py`（隔离 HOME，装示例插件）：仓库里显示「改动 1」和「最近提交 …：初始提交」，`cd /tmp` 后两行都消失，回仓库加一个文件后到点变成「改动 2」，截图在 `decorations-20261031/`，连跑 3 次都通过。反向验证：缓存永不过期时「改动 2」那一步失败。缺口：悬停卡片里那一行只核对了数据，没截到悬停状态；终端样式（标题压在边框线上）共用同一组右侧元素，没单独截图；命令在 App 的环境里跑，App 用干净环境启动时 PATH 只有系统目录，`node -v` 这类要写全路径或自己设 PATH |
 | 9 | 窗格装饰拿到上一条命令的结果 | 完成（2026-11-01）。要支撑的决定：第 7 项的命令结束事件能不能不改 App 界面代码就显示在窗格上（如「上一条命令失败 ✗ 3」）。放弃条件：要在 App 里另写一套 OSC 133 解析，或每条命令都让界面卡顿。结果：采用。daemon 读输出时总是扫命令标记（不再只在有钩子或事件订阅时扫），每个终端最后一条结束的命令（退出码、用时）放进识别状态 `terminal_commands` 推给 App，变了才推；装饰命令多两个环境变量 `KEEPLINE_LAST_EXIT`、`KEEPLINE_LAST_DURATION_MS`（还没有命令时为空），这两个值也是缓存键的一部分，所以新命令一结束就重跑，不用等刷新间隔。App 不解析 OSC 133。示例插件 `pane-facts` 加两项：标题栏「✗ 退出 N」（只在 Shell 里，失败才显示），悬停卡片「上一条命令用时 N 秒，退出码 N」。验证：core 单测覆盖两个变量和「还没有命令时为空」；真实 App 取证同一个脚本 `decorations-e2e.py`，截图在 `last-command-20261101/`：`cd` 成功不显示失败，`sh -c 'exit 3'` 后 5 秒内标题栏出现「✗ 退出 3  改动 2  Shell」（这一项刷新间隔是 300 秒，靠缓存键重跑），再跑 `true` 后消失。反向验证：daemon 不推 `terminal_commands` 时取证第一步就失败。顺带修了窗格目录跟不上 `cd` 的旧 bug：App 在窗格重画时才问 daemon 当前目录，5 秒内只问一次；被节流跳过后如果窗格不再重画（没焦点、光标不闪），目录就一直停在旧值。现在被节流跳过时会在窗口结束后补问一次。取证这边另有一个问题：窗口在后台、空闲时不画帧，等待期间窗格根本不重画，第 8 项和这一项的偶发失败多半是这个原因；现在取证每次轮询都画一帧（只画被标脏的部分，和可见窗口收到输出时一样）。按这个取证：去掉补问时 3 次失败 1 次（`cd /tmp` 后目录停在仓库），带补问时连跑 10 次都通过。2026-11-01 续：装饰加 `tone` 字段（`muted` 默认 / `ok` / `warn` / `error`），标题栏那行用 App 现成的状态色（做完了 / 等你回答 / 出错），跟着用户的 `colors.json` 走，深浅两种配色都可读；悬停卡片里的行不着色。示例插件的「✗ 退出 N」用 `error`，截图 `last-command-20261101/tone/failed.png` 里是红色。取证脚本可用 `KL_SHELL` 指定 shell，bash 5.3 和 fish 4.9 在真实 App 里各跑通一次（截图在 `bash/`、`fish/`）。缺口：bash 3.2 没有命令标记，这两个变量一直为空；关掉的终端在 daemon 的 `terminal_commands` 里留到 daemon 重启（和 `terminal_titles` 一样）；`tone` 只截了浅色配色 |
+| 10 | 插件市场：装、换、卸都在 App 里，马上生效 | 完成（2026-11-02）。要支撑的决定：插件能不能从「要手拷目录、重启才生效的摆设」变成点一下就能用。放弃条件：装上后仍要手动拷文件或重启才看得到。结果：采用。**目录**：`next/plugins/index.json`（`keepline plugins index next/plugins` 生成，列每个插件真正要带的文件和 sha256；core 测试 `the_shipped_index_is_current` 守着它不过期），打包时连同所列文件拷进 `Contents/Resources/plugins`；开发构建直接读仓库里的。**远程**：同格式的 `index.json`，默认 GitHub 上本仓库的 `next/plugins/index.json`，`~/.config/keepline/market` 或 `KEEPLINE_PLUGIN_MARKET` 可换；只在点「检查远程目录」时联网，用系统 curl，只认 https 和 file；远程版本更新的才盖过附带的。**安装**：只拷登记的文件，逐个比大小和 sha256，先写进暂存目录、按插件规则检查、id 对得上，再整个换进 `plugins/<id>`（替换已装的同 id 插件，哪怕目录名不同）；任何一步失败旧的原样不动。能跑命令的类型（actions、hooks、decorations、agent）装前在行内说明它会做什么，点「确认安装」才装。**热重载**：七类里除 agent 外都改成可替换（`plugin::Slot`，替换时旧值泄漏、只在装卸开关时发生）；装、卸、开关、「重新读取」后 App 立即重读并清掉装饰缓存和 WASM 左栏实例，再发 `ReloadPlugins` 让后台重读 rules 和 hooks；agent 仍等后台下次启动，页面上写明。**选择**：动效插件变成 外观 › 标记完成动画 里的一个选项（存 `plugin:<id>`，插件卸掉后退回印章），和内置一模一样的不另列；动作可逐条关（`actions-off.json`）。CLI：`keepline plugins available [--remote]`、`install <id>`、`uninstall <id>`。验证：core 单测（只拷登记文件、篡改的文件拒装且旧的不动、不安全路径和 id 拒绝、远程只在更新时覆盖、file:// 远程安装、选项回退）；真实 App 截图用例 `KEEPLINE_SETTINGS_EVIDENCE=plugins`（隔离配置，真点击：装落印 → 装常用命令先出确认 → 确认 → 关「查看 git 状态」→ 卸落印 → 外观里选插件的「慢扫」，每步断言文件和已加载状态）。缺口：远程目录要等 index.json 推到 GitHub 才拿得到；右键菜单里关掉的动作只断言了 `enabled()`，没截菜单；后台重读 hooks 没做端到端；附带的三个完成动画插件和内置的参数一模一样，装上后外观里不会多出选项 |
 
 每一步的验收：已有测试全过，真实数据副本截图对照原来的界面和性能不退步。
 

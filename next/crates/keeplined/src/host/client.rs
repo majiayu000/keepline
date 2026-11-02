@@ -341,6 +341,10 @@ pub(super) fn dispatch(shared: &Shared, request: Request) -> io::Result<Reply> {
                 host.store.claim_notification(&session, &key)?,
             ))
         }
+        Request::ReloadPlugins => {
+            keepline_core::plugin::reload();
+            Ok(Reply::Ok)
+        }
         Request::ClientLeft { at } => {
             let mut host = lock(shared)?;
             let mut next = host.workspace.clone();

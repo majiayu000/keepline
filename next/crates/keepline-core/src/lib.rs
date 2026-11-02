@@ -4,6 +4,7 @@ pub mod decoration;
 pub mod effect;
 pub mod hook;
 pub mod layout;
+pub mod market;
 pub mod model;
 pub mod plugin;
 pub mod prompt_pin;
