@@ -399,6 +399,7 @@ impl Workbench {
                 icon_menu: None,
                 confirm_close: None,
                 renaming_tab: None,
+                tab_scroll: gpui::ScrollHandle::new(),
                 renaming_session: None,
                 reopened: HashSet::new(),
                 completing: HashMap::new(),

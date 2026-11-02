@@ -197,7 +197,10 @@ impl Render for Workbench {
             .h_full()
             .flex()
             .items_center()
-            .overflow_x_scroll();
+            .overflow_x_scroll()
+            .track_scroll(&self.layout.tab_scroll);
+        // What each tab needs from you, in strip order, so a hidden one can be called out.
+        let mut wants = Vec::new();
         for (n, tab) in self
             .workspace
             .tabs
@@ -224,6 +227,7 @@ impl Render for Workbench {
                 })
                 .collect();
             let group = needs.first().map(|s| session_group(&self.workspace, s));
+            wants.push(group);
             // The tab's dot: the most urgent status among its panes; a tab of plain
             // shells keeps a faint neutral dot so the names stay aligned.
             let status = ids
@@ -383,6 +387,19 @@ impl Render for Workbench {
                     ),
             );
         }
+        let (left, right) = self.tab_overflow(&wants, cx);
+        // The left marker floats over the strip so its coming and going never shifts
+        // the tabs a click on either marker has just brought into view.
+        let strip = div()
+            .relative()
+            .min_w_0()
+            .h_full()
+            .flex()
+            .child(strip.flex_1())
+            .when_some(left, |d, hint| {
+                d.child(self.tab_edge(hint, false, cx).absolute().left_0().top_0())
+            });
+        let right = right.map(|hint| self.tab_edge(hint, true, cx));
         let new_tab = button("new", "＋")
             .aria_label("新建终端标签")
             .flex_shrink_0()
@@ -405,6 +422,7 @@ impl Render for Workbench {
                 .text_size(px(T::MONO_SIZE))
                 .child(label(space_name.to_owned()).flex_shrink_0())
                 .child(strip.flex_1())
+                .children(right)
                 .child(new_tab)
                 .child(self.status_glyphs(cx))
         } else {
@@ -417,6 +435,7 @@ impl Render for Workbench {
                 .border_b(px(T::BORDER_WIDTH))
                 .border_color(T::color(T::border()))
                 .child(strip)
+                .children(right)
                 .child(new_tab)
         };
         let (top_tabs, bottom_tabs) = if terminal_style {
@@ -657,6 +676,111 @@ impl Render for Workbench {
 }
 
 impl Workbench {
+    /// Tabs hidden past each edge of the strip. Read from the last layout, so one more
+    /// frame is drawn whenever the new layout moved tabs across an edge.
+    fn tab_overflow(
+        &self,
+        wants: &[Option<Group>],
+        cx: &mut Context<Self>,
+    ) -> (Option<TabEdge>, Option<TabEdge>) {
+        let (left, right) = hidden_tabs(&self.layout.tab_scroll, wants.len());
+        let shown = (left.len(), right.len());
+        let scroll = self.layout.tab_scroll.clone();
+        let count = wants.len();
+        // The display link sleeps while idle, so a next-frame callback may never come;
+        // a short timer checks the fresh layout instead.
+        cx.spawn(async move |view, cx| {
+            cx.background_executor()
+                .timer(std::time::Duration::from_millis(16))
+                .await;
+            let (left, right) = hidden_tabs(&scroll, count);
+            if (left.len(), right.len()) != shown {
+                view.update(cx, |_, cx| cx.notify()).ok();
+            }
+        })
+        .detach();
+        let edge = |mut hidden: Vec<usize>, nearest_last: bool| {
+            if nearest_last {
+                hidden.reverse();
+            }
+            let nearest = *hidden.first()?;
+            let urgent = hidden.iter().copied().find(|&ix| wants[ix].is_some());
+            Some(TabEdge {
+                count: hidden.len(),
+                reveal: urgent.unwrap_or(nearest),
+                group: urgent.and_then(|ix| wants[ix]),
+            })
+        };
+        (edge(left, true), edge(right, false))
+    }
+    /// The marker at one edge of the strip: how many tabs are out of sight that way,
+    /// tinted when one of them is waiting on you. A click brings that tab into view.
+    fn tab_edge(
+        &self,
+        edge: TabEdge,
+        right: bool,
+        cx: &Context<Self>,
+    ) -> gpui::Stateful<gpui::Div> {
+        let text = if right {
+            format!("还有 {} 个 ›", edge.count)
+        } else {
+            format!("‹ {} 个", edge.count)
+        };
+        let reveal = edge.reveal;
+        button(
+            if right {
+                "tabs-more-right"
+            } else {
+                "tabs-more-left"
+            },
+            "",
+        )
+        .aria_label(if right {
+            format!("右侧还有 {} 个标签", edge.count)
+        } else {
+            format!("左侧还有 {} 个标签", edge.count)
+        })
+        .flex_shrink_0()
+        .h_full()
+        .px(px(T::S8))
+        .gap(px(T::S4))
+        .rounded_none()
+        .when(right, |d| d.border_l(px(T::BORDER_WIDTH)))
+        .when(!right, |d| d.border_r(px(T::BORDER_WIDTH)))
+        .border_color(T::color(T::border()))
+        .bg(match edge.group {
+            Some(g) => g.colors().2,
+            None => T::color(T::raised()),
+        })
+        .text_size(px(T::MONO_SIZE))
+        .text_color(match edge.group {
+            Some(g) => g.colors().1,
+            None => T::color(T::primary()),
+        })
+        .when_some(edge.group, |d, g| d.child(dot(g)))
+        .child(text)
+        .on_click(cx.listener(move |this, _, _, cx| {
+            this.reveal_tab(reveal, right);
+            cx.notify();
+        }))
+    }
+    /// Scrolls the strip just far enough to show one tab whole at the given edge.
+    pub(super) fn reveal_tab(&self, ix: usize, right: bool) {
+        let scroll = &self.layout.tab_scroll;
+        let (view, max) = (scroll.bounds(), scroll.max_offset().x);
+        let Some(tab) = scroll.bounds_for_item(ix) else {
+            return;
+        };
+        // Set directly rather than through scroll_to_item, so the next redraw already
+        // counts the tabs from the new position.
+        let x = if right {
+            view.right() - tab.right()
+        } else {
+            view.left() - tab.left()
+        };
+        let y = scroll.offset().y;
+        scroll.set_offset(gpui::point(x.clamp(-max, px(0.)), y));
+    }
     /// Shows a tab of the current space and puts input in its focused pane.
     pub(super) fn show_tab(&mut self, id: &str, window: &mut Window, cx: &mut Context<Self>) {
         self.nav.tab = Some(id.to_owned());
@@ -1279,4 +1403,32 @@ impl Workbench {
                 d.child(label(format!("打开后可以右键分屏，或按 {keys} 向右分屏")))
             })
     }
+}
+
+/// Tabs scrolled out of sight past one edge of the strip.
+pub(super) struct TabEdge {
+    count: usize,
+    /// The tab a click brings into view: the nearest one waiting on you, else the nearest.
+    reveal: usize,
+    group: Option<Group>,
+}
+
+/// Indexes of the tabs wholly or partly past the left and right edges of the strip,
+/// from its last layout. A tab cut off at the edge counts as hidden.
+pub(super) fn hidden_tabs(scroll: &gpui::ScrollHandle, count: usize) -> (Vec<usize>, Vec<usize>) {
+    let view = scroll.bounds();
+    let shift = scroll.offset().x;
+    let slack = px(T::BORDER_WIDTH);
+    let (mut left, mut right) = (Vec::new(), Vec::new());
+    for ix in 0..count {
+        let Some(tab) = scroll.bounds_for_item(ix) else {
+            break;
+        };
+        if tab.left() + shift < view.left() - slack {
+            left.push(ix);
+        } else if tab.right() + shift > view.right() + slack {
+            right.push(ix);
+        }
+    }
+    (left, right)
 }

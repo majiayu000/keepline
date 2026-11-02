@@ -338,6 +338,25 @@ impl Workbench {
         );
         (order, focused)
     }
+    /// Tabs out of sight left and right of the strip, and a point on the right marker.
+    #[cfg(feature = "visual-test")]
+    pub fn visual_tab_overflow(&self) -> (usize, usize, gpui::Point<gpui::Pixels>) {
+        let count = self.visual_tab_row().0.len();
+        let (left, right) = super::render::hidden_tabs(&self.layout.tab_scroll, count);
+        let view = self.layout.tab_scroll.bounds();
+        (
+            left.len(),
+            right.len(),
+            gpui::point(view.right() + px(T::S20), view.center().y),
+        )
+    }
+    /// Scrolls the tab strip back to its start.
+    #[cfg(feature = "visual-test")]
+    pub fn visual_tab_scroll_home(&mut self, cx: &mut Context<Self>) {
+        let y = self.layout.tab_scroll.offset().y;
+        self.layout.tab_scroll.set_offset(gpui::point(px(0.), y));
+        cx.notify();
+    }
     /// The current space's tabs in strip order, the shown one, and its pane count.
     #[cfg(feature = "visual-test")]
     pub fn visual_tab_row(&self) -> (Vec<String>, Option<String>, usize) {

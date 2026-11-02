@@ -13,6 +13,8 @@ pub(super) struct LayoutState {
     pub(super) pending_command: Option<(String, String)>,
     pub(super) drag: Option<Vec<bool>>,
     pub(super) split_bounds: HashMap<Vec<bool>, gpui::Bounds<gpui::Pixels>>,
+    /// The tab strip's sideways scroll, read to tell which tabs are out of sight.
+    pub(super) tab_scroll: gpui::ScrollHandle,
     /// A tab being renamed in place after a double-click.
     pub(super) renaming_tab: Option<(String, Entity<Field>, [gpui::Subscription; 2])>,
     /// A sidebar conversation being renamed in place after a double-click.
