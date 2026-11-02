@@ -5565,3 +5565,151 @@ fn the_host_keeps_phones_on_a_relay_and_shows_the_app_who_is_on() {
     }
     assert!(phone.closed(Duration::from_secs(5)).is_some());
 }
+
+/// A phone's chat view: `chat` over `keeplined remote --stdio` gives a conversation's user
+/// and Agent messages, the newest first page, then only newer ones with `after` and older
+/// ones with `before`, named by the terminal running it or by its session.
+#[test]
+fn remote_chat_pages_a_conversation_by_terminal_and_session() {
+    use serde_json::{json, Value};
+    use std::io::{BufRead, Write};
+    let h = Host::start();
+    h.setup();
+    let logs = h.root.join("logs/claude");
+    fs::create_dir_all(&logs).unwrap();
+    let cli = h.root.join("claude");
+    std::os::unix::fs::symlink("/bin/sh", &cli).unwrap();
+    let id = uuid::Uuid::new_v4().to_string();
+    let path = logs.join(format!("{id}.jsonl"));
+    let row = |i: usize, user: bool, text: &str| {
+        let at = keepline_core::content::now();
+        if user {
+            json!({"type":"user","sessionId":id,"uuid":format!("u{i}"),"cwd":"/project","entrypoint":"cli","userType":"external","timestamp":at,"message":{"content":text}})
+        } else {
+            json!({"type":"assistant","sessionId":id,"uuid":format!("a{i}"),"timestamp":at,"message":{"content":[{"type":"text","text":text}]}})
+        }
+    };
+    let seed = h.root.join("seed");
+    let mut lines = String::new();
+    for i in 0..3 {
+        lines += &format!("{}\n", row(i, true, &format!("问题 {i}")));
+        lines += &format!("{}\n", row(i, false, &format!("回答 {i}")));
+    }
+    fs::write(&seed, lines).unwrap();
+    let more = h.root.join("more");
+    fs::write(&more, format!("{}\n", row(9, false, "后来的回答"))).unwrap();
+    let script = format!(
+        "cat {} > {}; read -r go; cat {} >> {}; read -r end",
+        shell_quote(&seed.to_string_lossy()),
+        shell_quote(&path.to_string_lossy()),
+        shell_quote(&more.to_string_lossy()),
+        shell_quote(&path.to_string_lossy()),
+    );
+    h.call(h.launch(
+        "chat",
+        &format!(
+            "exec {} -c {} fixture --session-id {}",
+            shell_quote(&cli.to_string_lossy()),
+            shell_quote(&script),
+            id
+        ),
+    ))
+    .unwrap();
+    let until = Instant::now() + Duration::from_secs(30);
+    while h.workspace().current_agent("chat").is_none() {
+        assert!(Instant::now() < until, "explicit ID must bind");
+        std::thread::sleep(Duration::from_millis(50));
+    }
+
+    let mut child = Command::new(env!("CARGO_BIN_EXE_keeplined"))
+        .args(["remote", "--stdio", "--runtime", &h.root.to_string_lossy()])
+        .stdin(Stdio::piped())
+        .stdout(Stdio::piped())
+        .spawn()
+        .unwrap();
+    let mut stdin = child.stdin.take().unwrap();
+    let mut out = io::BufReader::new(child.stdout.take().unwrap()).lines();
+    let mut n = 0;
+    let mut ask = |v: Value| -> Value {
+        n += 1;
+        let mut v = v;
+        v["id"] = n.into();
+        writeln!(stdin, "{v}").unwrap();
+        loop {
+            let line: Value = serde_json::from_str(&out.next().unwrap().unwrap()).unwrap();
+            if line["id"] == n {
+                return line;
+            }
+        }
+    };
+    let texts = |v: &Value| -> Vec<String> {
+        v["ok"]["messages"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|m| {
+                format!(
+                    "{}:{}",
+                    m["role"].as_str().unwrap(),
+                    m["text"].as_str().unwrap()
+                )
+            })
+            .collect()
+    };
+    let hello = ask(json!({ "op": "hello" }));
+    assert!(hello["ok"]["ops"]
+        .as_array()
+        .unwrap()
+        .contains(&json!("chat")));
+    // The index may still be catching up with the log just written.
+    let until = Instant::now() + Duration::from_secs(30);
+    let page = loop {
+        let page = ask(json!({ "op": "chat", "terminal": "chat", "limit": 4 }));
+        if texts(&page).len() == 4 {
+            break page;
+        }
+        assert!(Instant::now() < until, "chat never filled: {page}");
+        std::thread::sleep(Duration::from_millis(100));
+    };
+    assert_eq!(
+        texts(&page),
+        ["user:问题 1", "agent:回答 1", "user:问题 2", "agent:回答 2"]
+    );
+    assert_eq!(page["ok"]["more"], true);
+    let session = page["ok"]["session"].as_str().unwrap().to_owned();
+    let first = page["ok"]["messages"][0]["seq"].as_i64().unwrap();
+    let last = page["ok"]["messages"][3]["seq"].as_i64().unwrap();
+    let older = ask(json!({ "op": "chat", "session": session, "before": first }));
+    assert_eq!(texts(&older), ["user:问题 0", "agent:回答 0"]);
+    assert_eq!(older["ok"]["more"], false);
+    assert!(texts(&ask(
+        json!({ "op": "chat", "session": session, "after": last })
+    ))
+    .is_empty());
+
+    // The Agent replies again: `after` gives only that.
+    h.call(Request::SendText {
+        id: "chat".into(),
+        text: String::new(),
+        submit: true,
+    })
+    .unwrap();
+    let until = Instant::now() + Duration::from_secs(30);
+    loop {
+        let newer = ask(json!({ "op": "chat", "session": session, "after": last }));
+        if !texts(&newer).is_empty() {
+            assert_eq!(texts(&newer), ["agent:后来的回答"]);
+            break;
+        }
+        assert!(Instant::now() < until, "the new reply never came");
+        std::thread::sleep(Duration::from_millis(100));
+    }
+    let bad = ask(json!({ "op": "chat" }));
+    assert!(bad["error"]
+        .as_str()
+        .unwrap()
+        .contains("terminal 或 session"));
+    drop(ask);
+    child.kill().ok();
+    child.wait().ok();
+}

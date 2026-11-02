@@ -337,7 +337,53 @@ fn unary(socket: &Path, request: &Value) -> io::Result<Value> {
                     .ok_or_else(|| io::Error::other("answer 需要 allow: true 或 false"))?,
             },
         )?),
+        "chat" => chat(socket, request),
         op => Err(io::Error::other(format!("不认识的 op {op:?}"))),
+    }
+}
+
+/// A conversation as chat, named by its terminal or its session id.
+fn chat(socket: &Path, request: &Value) -> io::Result<Value> {
+    let session = match (request["session"].as_str(), request["terminal"].as_str()) {
+        (Some(s), _) => s.to_owned(),
+        (None, Some(t)) => match rpc(socket, &Request::Workspace)? {
+            Reply::Workspace(w) => w
+                .current_agent(t)
+                .map(|s| s.id.clone())
+                .ok_or_else(|| io::Error::other("这个终端里没有 Agent 对话"))?,
+            other => return Err(io::Error::other(format!("unexpected reply: {other:?}"))),
+        },
+        (None, None) => return Err(io::Error::other("chat 需要 terminal 或 session")),
+    };
+    let reply = rpc(
+        socket,
+        &Request::Chat {
+            session: session.clone(),
+            after: request["after"].as_i64(),
+            before: request["before"].as_i64(),
+            limit: request["limit"].as_u64().unwrap_or(50).clamp(1, 500) as usize,
+        },
+    )?;
+    match reply {
+        Reply::Chat { messages, more } => Ok(json!(rp::Chat {
+            session,
+            messages: messages
+                .into_iter()
+                .map(|m| rp::Message {
+                    seq: m.seq,
+                    at: m.at,
+                    role: if m.user {
+                        rp::Speaker::User
+                    } else {
+                        rp::Speaker::Agent
+                    },
+                    text: m.text,
+                })
+                .collect(),
+            more,
+        })),
+        Reply::Error(e) => Err(io::Error::other(e)),
+        other => Err(io::Error::other(format!("unexpected reply: {other:?}"))),
     }
 }
 

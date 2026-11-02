@@ -51,6 +51,21 @@ pub enum Op {
         question: String,
         allow: bool,
     },
+    /// A conversation as chat: [`Chat`]. Names the `terminal` running it (its current
+    /// conversation) or the `session`. Without `after` or `before`, the newest `limit`
+    /// (default 50, at most 500); `after` gives those newer than a `seq`, `before` older.
+    Chat {
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        terminal: Option<String>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        session: Option<String>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        after: Option<i64>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        before: Option<i64>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        limit: Option<u64>,
+    },
     /// Opens a stream of [`StreamBody::Event`]s, the current state first.
     Events,
     /// Opens a stream of one terminal's screen: [`StreamBody::Screen`], then output.
@@ -71,6 +86,7 @@ impl Op {
             Self::Send { .. } => "send",
             Self::Keys { .. } => "keys",
             Self::Answer { .. } => "answer",
+            Self::Chat { .. } => "chat",
             Self::Events => "events",
             Self::Watch { .. } => "watch",
             Self::Close { .. } => "close",
@@ -80,7 +96,7 @@ impl Op {
 
 /// Every op, in the order `hello` lists them.
 pub const OPS: &[&str] = &[
-    "hello", "list", "read", "send", "keys", "answer", "events", "watch", "close",
+    "hello", "list", "read", "send", "keys", "answer", "chat", "events", "watch", "close",
 ];
 
 /// A line from the machine.
@@ -215,6 +231,33 @@ pub enum Phase {
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct Text {
     pub text: String,
+}
+
+/// The reply to `chat`.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct Chat {
+    pub session: String,
+    /// Oldest first.
+    pub messages: Vec<Message>,
+    /// Older messages exist before the first: ask again with `before`.
+    pub more: bool,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct Message {
+    /// Grows with each message; the cursor for `after` and `before`.
+    pub seq: i64,
+    /// Seconds since the epoch.
+    pub at: u64,
+    pub role: Speaker,
+    pub text: String,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum Speaker {
+    User,
+    Agent,
 }
 
 /// The reply to `events` and `watch`: the stream is open.

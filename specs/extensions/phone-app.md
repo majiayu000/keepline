@@ -1,81 +1,107 @@
 # 手机 App：开工说明
 
-状态：未开工（2026-11-02 写）。App 由用户自己写，要跨平台（iOS 和 Android）。电脑端已经做好的部分：[远程协议](remote-protocol.md)、[自建中继](relay.md)、按设备分权限、后台托管，以及 App 里的配对面板。
+状态：电脑端的聊天接口已完成（`chat`，2026-11-02），App 未开工。App 要跨平台（iOS 和 Android）。电脑端已经做好的部分：[远程协议](remote-protocol.md)、[自建中继](relay.md)、按设备分权限、后台托管，以及 App 里的配对面板。
+
+## 11-02 用户定的方向
+
+- **手机上不做终端，只做聊天。** 看 Agent 说了什么，回一句话，答审批。看画面、按方向键这类操作留在电脑上。
+- 框架、做法按建议来：React Native（Expo）。不嵌 Rust，也不用 Tauri。不用 Tailscale。
 
 ## 要支撑的决定
 
-用户自己写的跨平台 App 只靠三样东西：WebSocket、Noise 加密、一行一个 JSON。这样能不能在真手机上经过公网中继完全控制电脑上的终端？完全控制指看画面、打字、按键、答审批、收状态变化。
+离开电脑时，只靠手机聊天能不能让 Agent 不白等：
+- 看到哪个会话在等你、它问了什么；
+- 读到它最近说的话；
+- 回一句、答一个审批，它接着干活。
 
-- 能：手机端走这条路，电脑端协议冻结在 v1，之后只加字段、不改旧字段。
-- 不能：看卡在哪里。卡在加密库就换框架；卡在中继延迟，见放弃条件。
+能的话，手机端就停在聊天，不往终端画面上投入。
 
 ## 已定的约束
 
-- **App 里不嵌 Rust**（11-01）。所以不用 iroh，也不用 Tauri 的 Rust 层。之前 `remote-protocol.md` 里推荐的 Tauri 2 已经撤回。
+- App 里不嵌 Rust：不用 iroh，也不用 Tauri 的 Rust 层。
 - 不用 Tailscale 一类的虚拟局域网。
 - 中继和手机都不可信，权限只在电脑端检查。手机按 `hello` 回复里的 `ops` 决定显示哪些按钮，这只是为了界面好看，不算安全措施。
 
-## 框架（要你定）
+## 手机端用到的协议
 
-| 选项 | 终端画面 | 加密 | 说明 |
-|---|---|---|---|
-| **React Native / Expo，终端放在 WebView 里**（建议） | xterm.js：协议的 `vt` 直接喂进去 | 纯 JS 的 @noble/curves、@noble/ciphers、@noble/hashes 已经有 X25519、ChaChaPoly、BLAKE2s；Noise 的状态机自己写，约 200 行 | xterm.js 成熟，Web 技术写界面；推送用 expo-notifications |
-| Flutter | xterm.dart | Dart 的 `cryptography` 包 | 终端组件不如 xterm.js 成熟 |
-| 先做 PWA（手机网页） | xterm.js | 同第一行 | 不用上架，最快能用上；iOS 后台和推送受限，可以当第 0 版 |
+| 做什么 | 用哪个操作 |
+|---|---|
+| 会话列表 | `list`：每张卡片有 `phase`（working / waiting / idle / shell）、`agent`、`title`、`waiting`（它在问什么）、`approval`（屏幕上的审批问题） |
+| 状态变化 | `events` 流：started、waiting、done、approval、approval_gone 等；收到 `lagged` 就重新 `list` |
+| 聊天记录 | `chat`：先取最新 50 条；往上翻页用 `before`；有新消息用 `after` |
+| 发一句话 | `send`，带 `text` 和 `enter: true`。Agent 正在忙时，Claude Code 会把它排进队列 |
+| 审批 | `answer`，带 `question`（取卡片上的 `approval`）和 `allow` |
+| 选项题（例如 AskUserQuestion） | `keys`，发 `["1"]` 一类的按键；问题文字在卡片的 `waiting` 里 |
 
-**没验**：上面几个库能不能对上 `vectors/v1.json`，还没试过。只有 Rust 的 snow 一种实现跑过 Noise 那部分。
+`watch` 和 `read` 手机用不到。
+
+**新消息怎么来**：`events` 只在状态变化时推送，Agent 一轮里中途说的话不会触发。所以聊天页打开时每 2 秒发一次 `chat after=<最后一条 seq>`。这是一次 SQLite 查询，开销很小。以后如果要省电，可以在电脑端加一个推送新消息的流。
+
+**`chat` 不包含的内容**：工具调用和工具输出（改了哪些文件、跑了什么命令）。手机上先只显示对话。要看这些，以后可以加 `tools: true`。
 
 ## 分步
 
 每一步都可以单独验收，做完在本文件末尾写：采用 / 否定 / 待验证。
 
 1. **加密和帧**
-   - 实现 `Noise_NNpsk0_25519_ChaChaPoly_BLAKE2s`（prologue 为 `keepline remote 1`，手机先发），以及 DATA/ACK 帧和流量控制。DATA 单条最多 32 KiB；每收下一段就回 ACK，否则电脑端在 1 MiB 后停止发送。
-   - 逐字节对照 `next/crates/keepline-remote/vectors/v1.json`，覆盖令牌、令牌哈希、预共享密钥、握手消息、加密消息、中继帧、配对链接。
+   - 用纯 JS 实现 `Noise_NNpsk0_25519_ChaChaPoly_BLAKE2s`（prologue 为 `keepline remote 1`，手机先发），以及 DATA/ACK 帧和流量控制。库用 @noble/curves、@noble/ciphers、@noble/hashes。
+   - DATA 单条最多 32 KiB；每收下一段就回 ACK，否则电脑端在 1 MiB 后停止发送。
+   - 逐字节对照 `next/crates/keepline-remote/vectors/v1.json`。
    - 验收：向量全部一致；在本机起 `keepline-relay`，和真 `keeplined` 握手成功，`hello` 能拿到回复。参考实现是 `next/crates/keepline-relay/examples/phone.rs`（68 行）。
 2. **配对**
    - 扫码，解析 `keepline://pair?v=2&relay=…&code=…&device=…&key=…&machine=…&name=…`。
-   - 设备密钥存进 Keychain / Keystore，不放普通存储。一部手机可以配对多台机器，按 `machine` 区分。
+   - 设备密钥存进 Keychain / Keystore（expo-secure-store）。一部手机可以配对多台机器，按 `machine` 区分。
    - 验收：电脑上 `keeplined remote --devices` 看得到这台手机；`--revoke` 之后手机收到 4401，并提示「已取消配对」，不要无限重连。
-3. **列表**
-   - `hello` → `list` → `events`。按机器、空间分组，显示 `phase` 和 `waiting`。
-   - 收到 `lagged` 就重新 `list`。
-   - 验收：电脑上开、关终端，Agent 进入等你，手机 1 秒内跟着变。
-4. **终端页**
-   - `watch` 收到的 `screen` 和 `output` 喂进 xterm.js；`resized` 时调整模拟器尺寸；`exited` 时显示退出码。
-   - 输入走 `send`（文字，可以带回车）和 `keys`。屏幕上加一条快捷键：esc、ctrl-c、↑ ↓、tab、shift-tab、y、1、2。
-   - 验收：Claude Code 和 Codex 的画面能完整还原（颜色、光标、备用屏幕）；按键顺序不乱。
-5. **审批**
-   - 卡片上有 `approval` 时显示允许 / 拒绝，走 `answer`。电脑端会重读画面，审批已经不在了就报错，手机要把这条错误显示出来。
-   - 只看的设备不显示操作按钮。
-6. **断线和回前台**
-   - 指数退避重连（1 秒起，最多 30 秒）。回到前台时重新 `hello`、`list`，并对正在看的终端重新 `watch`。
+3. **会话列表**
+   - 等你的置顶；按机器分组，其余按最近活动排序。每行显示标题、Agent、状态和一行原因。
+   - 验收：电脑上 Agent 进入等你，手机 1 秒内置顶。
+4. **聊天页**
+   - 用气泡显示 `chat` 的内容，Agent 的回复按 Markdown 渲染；往上滑加载更早的。底部是输入框，走 `send`。
+   - 顶部条：有 `approval` 时显示「允许 / 拒绝」；有 `waiting` 时显示问题，有选项就给出按钮。
+   - 只看的设备不显示输入框和按钮；能答审批的设备只显示审批按钮。
+   - 验收：在手机上发一句话，电脑上的 Claude Code / Codex 收到并开始干活，回复 3 秒内出现在手机上。
+5. **断线和回前台**
+   - 指数退避重连（1 秒起，最多 30 秒）。回到前台时重新 `hello`、`list`，聊天页用 `after` 补上中间的消息。
    - 中继关闭码：4401 是被拒、被撤销或改了权限（先提示，不要立刻重连）；1012 是机器断开（重连）；1013 是太慢被断开（重连）。
-7. **推送**（单独立项，依赖电脑端）
-   - 中继代发 APNs / FCM，要你自己的开发者密钥。iOS 锁屏后连接会断，全靠推送补上。
+6. **推送**（单独立项，依赖电脑端）
+   - 中继代发 APNs / FCM，要你自己的开发者密钥。iOS 锁屏后连接会断，「有会话在等你」要靠推送送到。
 
 ## 验收门槛
 
 | 指标 | 门槛 |
 |---|---|
-| 真手机经过公网中继，按键到回显 | p95 ≤ 300 ms |
-| 同时看 4 个正在输出的终端 | 不卡顿，电脑端工作台不受影响（电脑端已经测过：一个手机不读不会拖慢别人） |
-| 锁屏或切到后台再回来 | ≤ 2 s 恢复到最新画面 |
+| 手机发一句话，到电脑终端收到 | p95 ≤ 300 ms（真手机经公网中继） |
+| Agent 回复，到手机显示 | ≤ 3 s（2 秒轮询加网络） |
+| 锁屏或切到后台再回来 | ≤ 2 s 补齐消息 |
 | 撤销、改权限 | 手机 ≤ 3 s 断开，并显示原因 |
 
 ## 电脑端要配合的事
 
 - 一个公网中继：自己部署 `keepline-relay` 加 HTTPS 反向代理，或者用 relay.alma.now。两种都要你授权。
-- **手机屏幕窄**：`watch` 只看，不改尺寸，120 列的终端在手机上会很小。可以先用 xterm.js 缩放加横向滚动应付。要真正适配，得做 [多客户端第三步](multi-client-events.md)（按最后操作的客户端调尺寸），会改到工作台里的画面，要单独定。
-- 如果协议要加新操作（例如新开终端），在 `remote-protocol.md` 里升版本，并且在 `hello` 的 `ops` 里声明，老 App 不受影响。
+- 推送（第 6 步）。
+- 不需要再做手机上的终端画面，所以「按最后操作的客户端调尺寸」对手机不再是前提。
 
 ## 放弃条件
 
-- 选定的框架里，加密库一周内对不上向量 → 换框架（第一步就能暴露）。
+- JS 的 Noise 实现一周内对不上向量 → 改用各平台原生的加密库，通过 Expo 模块接进来。
 - 真手机经公网中继，按键回显 p95 超过 300 ms，而且瓶颈在中继本身 → 重新考虑直连。直连仍然不能要求 App 里嵌 Rust。
-- 只要推送和答审批就够用、平时不打字 → 停在第 5 步，不往完全控制上投入。
+- 2 秒轮询明显耗电，或者回复延迟让人觉得慢 → 在电脑端加推送新消息的流，不再轮询。
 
 ## 没验
 
-- 各框架的 Noise 实现、iOS 后台的 WebSocket 存活时间、公网延迟，都没有亲手测过。
+- JS 的 Noise 实现、iOS 后台的 WebSocket 存活时间、公网延迟，都没有亲手测过。
 - 没和真 alma-relay 联调过（见 relay.md）。
+- `chat` 只在测试里用 Claude 格式的日志验过；Codex 的消息走的是同一张表（`session_records`），但没单独测。
+
+## 结果
+
+### `chat` 接口（2026-11-02）：采用
+
+- 后台新增 `Request::Chat`，从索引的 `session_records` 表读用户和 Agent 的消息，`seq` 用的是行号。远程协议加了 `chat` 操作，可以按终端或会话取，三档权限都能用。
+- 测试 `remote_chat_pages_a_conversation_by_terminal_and_session`，经过 `keeplined remote --stdio` 验证了：
+  - 最新一页的顺序和角色正确，`more` 为真；
+  - `before` 能取到更早的，取完后 `more` 为假；
+  - 日志追加一条回复后，`after` 只返回这一条；
+  - 不带 `terminal` / `session` 时报错。
+- 相邻的远程测试和中继测试照常通过：`remote_watches…`、`a_stalled_remote_watcher…`、两个中继端到端测试。
+- 已知限制：日志被重新索引（换文件、截断）时 `seq` 会变。客户端发现 `after` 取回的 `seq` 比手上的小，或者取不到，就重新取最新一页。

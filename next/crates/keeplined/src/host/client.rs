@@ -519,6 +519,22 @@ pub(super) fn dispatch(shared: &Shared, request: Request) -> io::Result<Reply> {
             );
             Ok(Reply::Workspace(host.snapshot()))
         }
+        Request::Chat {
+            session,
+            after,
+            before,
+            limit,
+        } => {
+            let host = lock(shared)?;
+            let s = host
+                .workspace
+                .agent_sessions
+                .iter()
+                .find(|s| s.id == session)
+                .ok_or_else(|| io::Error::other("会话不存在"))?;
+            let (messages, more) = host.index.chat(&s.transcript, after, before, limit)?;
+            Ok(Reply::Chat { messages, more })
+        }
         Request::ReadScreen { id, rows } => {
             let host = lock(shared)?;
             let terminal = host

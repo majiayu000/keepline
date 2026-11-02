@@ -110,6 +110,17 @@ pub enum Request {
     Stop {
         id: String,
     },
+    /// A phone's chat view: one conversation's user and Agent messages from the index,
+    /// oldest first. `after` gives those newer than a `seq`; otherwise the newest `limit`,
+    /// or those older than `before`.
+    Chat {
+        session: String,
+        #[serde(default)]
+        after: Option<i64>,
+        #[serde(default)]
+        before: Option<i64>,
+        limit: usize,
+    },
     /// Scripts and other Agents: the last `rows` rows of a terminal as plain text.
     ReadScreen {
         id: String,
@@ -270,6 +281,11 @@ pub enum Reply {
     },
     Ok,
     Text(String),
+    /// `Chat`: the messages, oldest first, and whether older ones exist before them.
+    Chat {
+        messages: Vec<ChatMessage>,
+        more: bool,
+    },
     /// A terminal size in cells: what a split's new pane starts at (`SplitRoom`).
     Size {
         cols: u16,
@@ -278,6 +294,19 @@ pub enum Reply {
     /// A `Subscribe` stream's frames: first the state now, then each batch of changes.
     Events(Vec<crate::hook::Notice>),
     Error(String),
+}
+
+/// One message of a conversation as the index recorded it.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ChatMessage {
+    /// Grows with each message recorded; a cursor for `after` and `before`. A reindexed
+    /// log gets new ones, so a client that sees a gap reloads the newest.
+    pub seq: i64,
+    /// Seconds since the epoch.
+    pub at: u64,
+    /// The user's words; otherwise the Agent's.
+    pub user: bool,
+    pub text: String,
 }
 
 /// A running terminal passed from one host to the next.

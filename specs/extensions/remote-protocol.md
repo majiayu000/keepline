@@ -58,6 +58,7 @@
 | `send` | `terminal`, `text`, `enter` | `{}`：文字按粘贴放进去；`enter` 为真就再按回车 |
 | `keys` | `terminal`, `keys: [...]` | `{}`：按键名见下；一批里有一个不认识，就一个都不发 |
 | `answer` | `terminal`, `question`, `allow` | `{}`：答审批。先重读画面，审批不在了、或光标不在第一个选项上，就报错，不敲键 |
+| `chat` | `terminal` 或 `session`，`after` / `before`（可选），`limit`（默认 50，最多 500） | `{session, messages: [{seq, at, role: user\|agent, text}], more}`：一段对话里用户和 Agent 说的话，从旧到新。不带 `after` / `before` 时给最新的 `limit` 条；`after` 给比这个 `seq` 新的，`before` 给更旧的；`more` 表示更前面还有。工具调用和输出不在里面（11-02 加，手机聊天用） |
 | `events` | — | `{stream}`，之后持续推事件 |
 | `watch` | `terminal` | `{stream, cols, rows}`，之后持续推画面 |
 | `close` | `stream` | `{}`：结束那个流 |
