@@ -83,9 +83,11 @@ impl Workbench {
                 )))
             })
             .child(
-                button("handoff-copy", "复制内容").on_click(cx.listener(move |_, _, _, cx| {
-                    cx.write_to_clipboard(gpui::ClipboardItem::new_string(text.clone()))
-                })),
+                button("handoff-copy", self.copy_label("handoff-copy", "复制内容")).on_click(
+                    cx.listener(move |this, _, _, cx| {
+                        this.copy_text("handoff-copy", text.clone(), cx)
+                    }),
+                ),
             )
             .child(button("handoff-dismiss", "收起").on_click({
                 let terminal = terminal.clone();

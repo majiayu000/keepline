@@ -160,13 +160,25 @@ impl Workbench {
             .expect("root splitter bounds")
     }
     #[cfg(feature = "visual-test")]
-    pub fn visual_menu_point(&self, index: usize) -> gpui::Point<gpui::Pixels> {
+    /// The middle of the pane menu's item `title`, past the rules between groups.
+    pub fn visual_menu_point(&self, title: &str) -> gpui::Point<gpui::Pixels> {
         let menu = self
             .layout
             .menu
             .as_ref()
             .expect("right mouse opened pane menu");
-        menu.position + gpui::point(px(T::S20), px(T::S6 + T::ROW * (index as f32 + 0.5)))
+        let zoomed = self.nav.zoomed.as_deref() == Some(&menu.terminal);
+        let mut y = T::S6;
+        for row in super::layout::menu_rows(zoomed) {
+            match row {
+                Some(t) if t == title => {
+                    return menu.position + gpui::point(px(T::S20), px(y + T::ROW / 2.));
+                }
+                Some(_) => y += T::ROW,
+                None => y += super::layout::MENU_RULE,
+            }
+        }
+        panic!("no {title} in the pane menu");
     }
     #[cfg(feature = "visual-test")]
     pub fn visual_tab_menu_point(&self, index: usize) -> gpui::Point<gpui::Pixels> {

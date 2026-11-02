@@ -1134,13 +1134,17 @@ impl Workbench {
                                     cx.notify();
                                 })),
                         )
-                        .child(quiet(button("search-copy", "复制恢复命令")).on_click(
-                            move |_, _, cx| {
-                                cx.write_to_clipboard(gpui::ClipboardItem::new_string(
-                                    command.clone(),
-                                ))
-                            },
-                        )),
+                        .child(
+                            quiet(button(
+                                "search-copy",
+                                self.copy_label("search-copy", "复制恢复命令"),
+                            ))
+                            .on_click(cx.listener(
+                                move |this, _, _, cx| {
+                                    this.copy_text("search-copy", command.clone(), cx)
+                                },
+                            )),
+                        ),
                 ),
         )
     }

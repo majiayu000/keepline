@@ -524,7 +524,8 @@ impl Workbench {
             })
             .child(div().flex_1())
             .child(
-                button("here-more", "更多 ⋯")
+                // The menu folds on 「复制恢复命令」, so the button it hangs from says so.
+                button("here-more", self.copy_label("here-copy", "更多 ⋯"))
                     .text_color(T::color(T::link()))
                     .when(more, |d| d.bg(T::color(T::button_hover())))
                     .on_click(cx.listener(move |this, _, _, cx| {
@@ -576,9 +577,8 @@ impl Workbench {
                                 }),
                         )
                         .on_click(cx.listener(move |this, _, _, cx| {
-                            cx.write_to_clipboard(gpui::ClipboardItem::new_string(command.clone()));
                             fold(this);
-                            cx.notify();
+                            this.copy_text("here-copy", command.clone(), cx);
                         })),
                 )
                 .child(item("save-here-task", "存为待办").on_click(cx.listener(

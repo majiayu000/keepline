@@ -457,14 +457,12 @@ impl Workbench {
                         .flex()
                         .justify_between()
                         .child(
-                            button("copy-link", "复制链接")
+                            button("copy-link", self.copy_label("copy-link", "复制链接"))
                                 .border(px(T::BORDER_WIDTH))
                                 .border_color(T::color(T::control()))
-                                .on_click(move |_, _, cx| {
-                                    cx.write_to_clipboard(gpui::ClipboardItem::new_string(
-                                        link.clone(),
-                                    ))
-                                }),
+                                .on_click(cx.listener(move |this, _, _, cx| {
+                                    this.copy_text("copy-link", link.clone(), cx)
+                                })),
                         )
                         .child(button("pair-done", "完成").on_click(cx.listener(
                             |this, _, _, cx| {
