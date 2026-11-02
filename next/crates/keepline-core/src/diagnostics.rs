@@ -53,7 +53,7 @@ pub fn gib(bytes: u64) -> String {
 }
 
 /// How many apps the ranking shows; the summary, the view and the core stack share it.
-pub const RANKED: usize = 15;
+pub const RANKED: usize = 20;
 
 impl Diagnostics {
     /// Apps with measured CPU, highest first, as ranked everywhere.
