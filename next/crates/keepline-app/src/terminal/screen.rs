@@ -546,6 +546,20 @@ impl Capture {
         }
         out.rows.truncate(y);
         out.selection.truncate(y);
+        // Ghostty may start a selection on a wide character's right half or end it on
+        // its left half; it copies the whole character, so draw the whole character.
+        for (sel, cells) in out.selection.iter_mut().zip(&out.cells) {
+            if let Some((start, end)) = sel {
+                for &(x, w, _) in cells.iter().filter(|c| c.1 > 1) {
+                    if (x..x + w).contains(start) {
+                        *start = x;
+                    }
+                    if (x..x + w).contains(end) {
+                        *end = x + w - 1;
+                    }
+                }
+            }
+        }
         out.links.retain(|link| (link.row as usize) < y);
         out.cells.truncate(y);
         out.wrapped.truncate(y);

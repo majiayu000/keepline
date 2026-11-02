@@ -302,4 +302,28 @@ mod tests {
         );
         assert!(!vt.terminal().viewport_active().unwrap());
     }
+
+    #[test]
+    fn selection_ending_inside_a_wide_character_is_drawn_over_the_whole_character() {
+        // a b 中中 文文 字字 c d: Ghostty takes a character from either half and copies
+        // it whole; the highlight must cover both of its cells, not stop in the middle.
+        let mut vt = Vt::new(20, 4).unwrap();
+        vt.feed("ab中文字cd".as_bytes());
+        let mut screen = crate::terminal::screen::Screen::default();
+        let mut capture = crate::terminal::screen::Capture::new().unwrap();
+        for (from, to, text, cols) in [
+            (at(3, 0), at(5, 0), "中文", (2, 5)),
+            (past(3, 0), past(4, 0), "文", (4, 5)),
+            (at(0, 0), past(3, 0), "ab中", (0, 3)),
+            (at(5, 0), at(3, 0), "中文", (2, 5)),
+        ] {
+            let mut sel = Selecting::new().unwrap();
+            sel.press(vt.terminal(), GRID, from).unwrap();
+            sel.drag(vt.terminal(), GRID, to).unwrap();
+            sel.release(vt.terminal(), GRID, to);
+            capture.update(&vt, &mut screen).unwrap();
+            assert_eq!(selected(&vt).as_deref(), Some(text));
+            assert_eq!(screen.selection[0], Some(cols), "{text}");
+        }
+    }
 }
