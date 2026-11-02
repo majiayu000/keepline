@@ -691,14 +691,17 @@ impl Render for Workbench {
         if let Some(peek) = &self.peek {
             main = main.relative().child(self.peek_view(peek, cx));
         }
-        root = root.relative().child(
-            div()
-                .flex_1()
-                .min_h_0()
-                .flex()
-                .children(sidebar)
-                .child(main),
-        );
+        root = root
+            .relative()
+            .child(
+                div()
+                    .flex_1()
+                    .min_h_0()
+                    .flex()
+                    .children(sidebar)
+                    .child(main),
+            )
+            .child(self.statusbar_view(cx));
         // 标记完成 runs leave their panes for the sidebar, so they draw over everything
         // but the menus.
         if let Some(overlay) = self.completing_overlay(window) {
@@ -713,6 +716,7 @@ impl Render for Workbench {
         if self.phones.open {
             root = root.child(self.phones_panel(window, cx));
         }
+        root = root.children(self.statusbar_popover(cx));
         if let Some(position) = self.layout.icon_menu {
             root = root.child(self.icon_menu_view(position, window, cx));
         }

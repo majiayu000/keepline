@@ -44,6 +44,8 @@ pub struct Workbench {
     /// A session's live screen floated over the current tab from the sidebar.
     peek: Option<peek::Peek>,
     phones: phones::Phones,
+    /// The bottom bar's open popover.
+    statusbar: Option<statusbar::StatusPop>,
     /// Which copy button just copied, shown as 「✓ 已复制」 for a moment so the click is
     /// seen to have done something; the number tells a newer copy from an older timer.
     copied: Option<(&'static str, u64)>,
@@ -217,6 +219,7 @@ mod sidebar;
 use sidebar::closed_recently;
 mod sidebar_list;
 mod sidebar_wasm;
+mod statusbar;
 mod tabs;
 mod task_detail;
 mod tasks;
@@ -323,6 +326,7 @@ impl Workbench {
             sidebar: sidebar_list::SidebarPrefs::load(),
             peek: None,
             phones: Default::default(),
+            statusbar: None,
             copied: None,
             copied_seq: 0,
             search,

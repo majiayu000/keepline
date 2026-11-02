@@ -206,6 +206,19 @@ impl Workbench {
                     .text_color(color)
                     .child(line)
             }))
+            // A window used up shows where that CLI is working, with when it comes back.
+            .when_some(session.and_then(|s| self.quota_alert(s)), |d, alert| {
+                d.child(
+                    div()
+                        .flex_shrink_0()
+                        .px(px(T::S6))
+                        .rounded(px(T::CHIP_RADIUS))
+                        .bg(Group::Error.colors().2)
+                        .text_size(px(T::META))
+                        .text_color(Group::Error.colors().1)
+                        .child(alert),
+                )
+            })
             .when(unread.is_none(), |d| d.child(self.pane_meta(session, cx)))
             .when_some(
                 session

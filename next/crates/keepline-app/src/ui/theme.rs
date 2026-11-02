@@ -349,9 +349,6 @@ impl Theme {
     pub const S16: f32 = 16.;
     pub const S20: f32 = 20.;
     pub const SIDEBAR: f32 = 270.;
-    /// The CLI's name column in the sidebar's quota rows.
-    pub const QUOTA_NAME: f32 = 46.;
-    pub const QUOTA_BAR: f32 = 8.;
     pub const TOP: f32 = 46.;
     /// macOS draws the traffic lights inside the top bar; its content starts after them.
     pub const TRAFFIC_LIGHT_X: f32 = 16.;
@@ -369,6 +366,11 @@ impl Theme {
     pub const TODO_HEIGHT: f32 = 36.;
     pub const PANE_HEADER: f32 = 32.;
     pub const FOOTER: f32 = 26.;
+    /// The window's bottom bar, its popovers and the bar's quota gauges.
+    pub const STATUSBAR: f32 = 28.;
+    pub const STATUS_POP: f32 = 400.;
+    pub const STATUS_GAUGE: f32 = 30.;
+    pub const STATUS_POP_GAUGE: f32 = 56.;
     pub const ROW: f32 = 30.;
     pub const BORDER_WIDTH: f32 = 1.;
     /// The focused split's ring, drawn over its 1px border so the grid keeps its size.
