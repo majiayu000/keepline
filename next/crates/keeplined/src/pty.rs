@@ -20,8 +20,15 @@ pub fn announce_host(root: &Path) -> io::Result<()> {
     Ok(())
 }
 
+/// The system default `PATH` a shell starts from, before its login profile adds to it.
+const SYSTEM_PATH: &str = "/usr/bin:/bin:/usr/sbin:/sbin";
+
 /// What a terminal's programs learn about the host: that they run in Keepline, in which
 /// terminal, the runtime to reach, and the executable whose `hook` subcommand reports to it.
+/// That executable's directory also goes on `PATH`, after the system default, so an
+/// Agent in the terminal can run `keeplined list` / `split` by name, as its usage says.
+/// The login profile keeps it: macOS's path_helper keeps entries it does not know, and
+/// profiles add to `PATH` rather than replace it.
 fn host_env(terminal: &str, host: Option<&(PathBuf, PathBuf)>) -> Vec<(OsString, OsString)> {
     use keepline_core::protocol::{HOOK_ENV, MARKER_ENV, RUNTIME_ENV, TERMINAL_ENV};
     let mut env = vec![
@@ -31,6 +38,12 @@ fn host_env(terminal: &str, host: Option<&(PathBuf, PathBuf)>) -> Vec<(OsString,
     if let Some((root, exe)) = host {
         env.push((RUNTIME_ENV.into(), root.as_os_str().to_owned()));
         env.push((HOOK_ENV.into(), exe.as_os_str().to_owned()));
+        if let Some(dir) = exe.parent().filter(|d| !d.as_os_str().is_empty()) {
+            let mut path = OsString::from(SYSTEM_PATH);
+            path.push(":");
+            path.push(dir);
+            env.push(("PATH".into(), path));
+        }
     }
     env
 }
@@ -345,7 +358,7 @@ fn baseline_env(vars: impl Iterator<Item = (OsString, OsString)>) -> Vec<(OsStri
                 .is_some_and(|k| PASS.contains(&k) || k.starts_with("LC_"))
         })
         .collect();
-    env.push(("PATH".into(), "/usr/bin:/bin:/usr/sbin:/sbin".into()));
+    env.push(("PATH".into(), SYSTEM_PATH.into()));
     env
 }
 
@@ -557,7 +570,8 @@ mod host_env_tests {
                 "KEEPLINE_ENV=1",
                 "KEEPLINE_TERMINAL=t2",
                 "KEEPLINE_RUNTIME=/run/k",
-                "KEEPLINE_HOOK=/app/keeplined"
+                "KEEPLINE_HOOK=/app/keeplined",
+                "PATH=/usr/bin:/bin:/usr/sbin:/sbin:/app"
             ]
         );
     }
