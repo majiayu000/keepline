@@ -1,5 +1,8 @@
 # CLAUDE.md
 
+> **已迁移（2026-11-03）**：原生工作台（原 `next/`）已改名 Mooring，搬到 `/Users/lifcc/Desktop/code/AI/tools/mooring`（github.com/majiayu000/mooring）。**不要再在这个仓库里改代码或提交**：新功能和修复都去 mooring 做；这里的 `next/` 不再同步。上一代（`src/`、`menubar-tauri/`）只留档。
+
+
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
 ## Project Overview
