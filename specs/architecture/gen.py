@@ -656,6 +656,219 @@ CODE = [
     ("插件种类", "next/crates/keepline-core/src/plugin.rs:17", "Kind"),
 ]
 
+
+# ───────── 第二轮：数据一致性、并发、故障、信任边界、App、手机 ─────────
+
+def fig_edit():
+    B = [Box("local", 110, 90, 170, 60, "本地构造 Edit", "", sub="带上本地 revision"),
+         Box("sent", 360, 90, 170, 60, "发出 RPC", "run", sub="读超时 10s · 不重放"),
+         Box("check", 620, 90, 190, 60, "宿主拿全局锁", "run", sub="查 revision（布局类豁免）"),
+         Box("applied", 880, 90, 170, 60, "副本上应用 + 落库", "run", sub="一个事务 · fsync"),
+         Box("live", 1110, 90, 170, 60, "换内存 · 广播", "done", "final", sub="回 Workspace 快照"),
+         Box("dropped", 110, 270, 170, 60, "静默丢弃", "err", "final", sub="忙时 · 非布局类"),
+         Box("queued", 360, 270, 170, 60, "排队", "wait", sub="忙时 · 只有布局类"),
+         Box("conflict", 620, 270, 190, 60, "「工作台已变化」", "err", sub="全局 revision 不符"),
+         Box("invalid", 880, 270, 170, 60, "校验 / 落库失败", "err", sub="内存不动"),
+         Box("result", 1110, 270, 170, 60, "客户端只写 error", "err", "final", sub="表单不放回 · 提示不撤回")]
+    E = [
+        {"from": "local", "to": "sent", "label": "不忙", "ldy": -14},
+        {"from": "local", "to": "dropped", "cls": "err", "label": "忙 · 其余\n编辑", "ldx": -36},
+        {"from": "local", "to": "queued", "cls": "thin", "label": "忙 · 布局类", "ldx": 30, "ldy": -20},
+        {"from": "queued", "to": "sent", "cls": "thin", "label": "前一个回包后", "ldx": 50},
+        {"from": "sent", "to": "check"},
+        {"from": "check", "to": "applied", "label": "通过", "ldy": -14},
+        {"from": "applied", "to": "live", "label": "成功", "ldy": -14},
+        {"from": "check", "to": "conflict", "cls": "err", "label": "期间有别的提交\n（会话内容约每秒一次）", "ldx": 78},
+        {"from": "applied", "to": "invalid", "cls": "err", "label": "出错", "ldx": 22},
+        {"from": "invalid", "to": "result", "cls": "err"},
+        {"from": "conflict", "to": "result", "via": [(620, 345), (1110, 345)], "cls": "err", "seg": 2, "label": "不重试", "ldy": 12},
+    ]
+    return svg(1220, 370, B, E, extra_before=init_dot(20, 90, B[0], ""), title="一次编辑的生命周期")
+
+
+def fig_appreq():
+    B = [Box("idle", 140, 100, 160, 56, "空闲", "muted"),
+         Box("busy", 450, 100, 170, 56, "忙", "run", sub="300ms 后显示「正在更新…」"),
+         Box("reply", 780, 100, 170, 56, "回包", "done", sub="Workspace / 错误"),
+         Box("swallow", 450, 280, 330, 56, "忙时又点了一下", "err", sub="布局类排队 · 其余丢弃 · 新建 / 重开直接 return")]
+    E = [
+        {"from": "idle", "to": "busy", "label": "发出请求", "ldy": -14},
+        {"from": "busy", "to": "reply", "label": "宿主回复", "ldy": -14},
+        {"from": "reply", "to": "idle", "via": [(780, 30), (140, 30)], "seg": 2, "label": "end_busy · 取下一个排队请求 · 若有 start_after_save 就启动", "ldy": -10},
+        {"from": "busy", "to": "swallow", "cls": "err"},
+    ]
+    return svg(940, 370, B, E, extra_before=init_dot(20, 100, B[0], ""), title="App 请求状态")
+
+
+def fig_phone():
+    B = [Box("unpaired", 110, 110, 150, 56, "未配对", "muted"),
+         Box("connecting", 400, 110, 170, 56, "connecting", "wait", sub="Noise 握手 → hello"),
+         Box("online", 740, 110, 160, 56, "online", "done", sub="角色定在连接时"),
+         Box("offline", 400, 310, 170, 56, "offline", "err", sub="1s 起翻倍 ≤ 30s"),
+         Box("refused", 960, 310, 160, 56, "refused", "err", sub="只能手动点重连")]
+    E = [
+        {"from": "unpaired", "to": "connecting", "label": "扫码 / 深链\n（先保存，不确认）", "ldy": -22},
+        {"from": "connecting", "to": "online", "label": "hello 返回 role/ops", "ldy": -14},
+        {"from": "connecting", "to": "offline", "bend": 40, "cls": "err", "label": "连不上\n握手失败", "ldx": -62},
+        {"from": "offline", "to": "connecting", "bend": 40, "cls": "thin", "label": "退避到期\n回到前台", "ldx": 48},
+        {"from": "online", "to": "offline", "cls": "err", "label": "断开（非 4401）", "ldx": 62, "ldy": 14},
+        {"from": "online", "to": "refused", "cls": "err", "label": "4401：撤销 / 改角色 / 踢", "ldx": 92},
+    ]
+    note = label_at(540, 400, "宿主每 1 秒复查设备、角色和踢出时间，不符就用 4401 断开；改角色、踢出后其实点重连就能立刻连回\n所有请求都没有超时，半开连接会一直停在 online", "e-label")
+    return svg(1100, 430, B, E, extra_before=init_dot(20, 110, B[0], ""), extra_after=note, title="手机连接状态")
+
+
+LOCKS = table(
+    ["锁", "保护什么", "谁拿", "持锁时做的阻塞操作"],
+    [
+        ["<code>Shared = Mutex&lt;Host&gt;</code>", "Workspace、Store、索引、pid 表、订阅者", "几乎所有线程：客户端、PTY pump 的副作用、回收、定时、订阅", "<b>fsync</b>（每次 commit，<code>synchronous=FULL</code>）· <code>pty::spawn</code> · <code>/bin/ps</code> · 读对话记录 · 等日志库 gate · 交接时写 socket"],
+        ["<code>Mutex&lt;Live&gt;</code>（每终端一把）", "VT、PTY master、订阅者、owner、是否退出", "pump、attach、回收、<code>send_*</code>、关联", "<code>pty::write</code>（每次 poll 最多 5s）"],
+        ["<code>replies</code>", "VT 的查询应答", "pump（在 Live 锁内）", "—（叶子锁）"],
+        ["日志库 <code>gate</code>", "日志游标、SQLite 写入", "日志订阅线程、Hook 请求", "整批 <code>BEGIN IMMEDIATE</code> + 解析文件"],
+        ["<code>Supervisor.inner</code> + Condvar", "远程配置、子进程 pid、generation", "Supervisor 线程、configure", "—"],
+    ])
+
+FAILURES = table(
+    ["故障", "用户看到什么", "能否恢复"],
+    [
+        ["宿主被杀，终端在跑", "shell 和 Agent 收到 SIGHUP；窗格每 ≤5s 重连；显示「连接中断」", "要你点「重新连接后台」；重启后在跑的终端改成 Interrupted，记进 <code>lost_agents</code>，可用原 CLI 恢复"],
+        ["App 崩溃 / 退出", "终端不受影响", "重新 attach 用快照恢复画面，识别状态自动重订"],
+        ["FSEvents 丢事件", "先持久化补扫范围再补扫；失败显示「补扫未完成」", "能续扫；但补扫失败时同一批的其他事件被丢（问题 I15）"],
+        ["SQLite 忙 / 磁盘满", "前台请求报错；<b>后台写失败只打日志</b>", "不自愈（I14）；库损坏时宿主起不来，只提示看 host.log"],
+        ["日志被截断 / 轮转 / 删除", "读取位置重置；删除只删游标，卡片保留", "能自愈"],
+        ["回合 Waiting 时 Agent 退出", "卡片一直「等你回答」", "<b>不自愈</b>，3 天后才转「过时」（I13）"],
+        ["中继宕机 / 手机审批中途掉线", "中继子进程 1→30s 重连", "审批重试会得到「已经答过」；同问句的下一个审批会被答到（I8）"],
+        ["交接 ACK 后新宿主失败", "全部终端挂断", "没有回退（I26）"],
+        ["时钟跳变", "到期、过时都在渲染时现算", "基本无害"],
+    ])
+
+TRUST = table(
+    ["输入源", "能造成什么", "门控"],
+    [
+        ["本地 socket 客户端", "所有 Request，包括生成配对链接、改中继", "只看是不是同一个用户；runtime 目录 0700、socket 0600"],
+        ["Agent hook", "绑定会话、改回合、触发插件 hook", "调用进程是受管终端的后代，<b>或</b>请求里写了在跑的终端 id（只防误报）"],
+        ["磁盘上的 Agent 日志", "标题、等待、出错、回复，流进插件的环境变量和 webhook", "无；不拼进命令"],
+        ["PTY 画面", "判断审批 / 等待；OSC 7 给出工作目录", "只有画面规则匹配"],
+        ["插件目录", "<code>sh -c</code> 执行命令、发 webhook、菜单动作", "只校验格式，<b>默认全部启用</b>"],
+        ["wasm 左栏", "只能返回渲染 JSON", "无 import、内存上限、epoch 超时"],
+        ["手机经中继", "list / read / send / keys / answer / chat / events", "Noise psk 握手 → hello → <code>role.allows</code> → 操作白名单"],
+        ["中继服务器", "看路由 token 和流量大小；能断开、重放握手、顶替注册", "看不到明文；机器注册只靠 token_hash，中继 key 可选"],
+    ])
+
+DERIVE = table(
+    ["同一个会话", "侧栏 <code>sidebar_status</code>", "看板 <code>board_group</code>", "core <code>Content::group</code>（菜单栏、通知、状态栏）"],
+    [
+        ["活着、回合出错", "出错", "等你验收（无标记）", "出错"],
+        ["Agent 停了、只剩后台 shell", "等后台", "—", "等你验收"],
+        ["已完成的会话（待办详情里的列表）", "—", "—", "<code>session_group</code> 映射成「停下了」"],
+        ["刚新开的会话", "新开的", "—", "peek 里显示「停下了」"],
+    ])
+
+
+# 问题清单：(编号, 族, 严重度, 核对程度, 层, 标题, 场景, 证据)
+FAMILIES = [
+    ("A", "编辑被拒或丢掉，界面却不知道",
+     "全局一个 revision 当所有编辑的乐观锁；客户端没有「这次请求成功了吗」的状态，忙时直接丢。",
+     "按对象版本或字段合并代替全局 revision；客户端给每个请求一个挂起态和回执，忙时排队不丢，失败把输入还给你。"),
+    ("B", "审批和按键可能落到别的问题上",
+     "审批的身份只是画面上那一行问句，不含命令，也没有实例编号；按键完全不核对画面。",
+     "给每个审批一个实例身份（问句 + 证据行 + waiting_episode），回答和手机按键都带上它；手机展示命令本身。"),
+    ("C", "布局整块替换",
+     "PutTab 用客户端快照整块覆盖标签，又豁免了版本检查。",
+     "布局编辑改成操作型（加窗格、改名、调比例），或者给每个标签单独的版本号。"),
+    ("D", "状态卡住不自愈",
+     "后台路径的写失败只打日志；Waiting 不要求会话还活着；补扫失败直接跳过。",
+     "后台写失败进入可见的降级态并重试；派生 Waiting 时要求进程还在；补扫失败不推进检查点。"),
+    ("E", "宿主并发与资源",
+     "所有 I/O 都在一把全局锁下做；终端结束后不回收。",
+     "锁内只改内存，fsync / spawn / ps 挪出锁；终端结束后移出表并释放 fd。"),
+    ("F", "宿主交接", "ACK 之后没有回退。", "新宿主先完成能失败的步骤（拿锁、开库、恢复 VT）再发 ACK。"),
+    ("G", "信任边界", "同用户即全权；插件默认启用；所有手机共用一个机器码。", "每台手机独立 token；新插件首次启用要你确认；配对链接打开后先确认再保存。"),
+    ("H", "手机连接", "请求没有超时，也没有幂等编号；视图跟着终端而不是会话。", "请求超时 + 幂等 id；会话切换时重新订阅；4401 区分「撤销」和「改角色」。"),
+    ("I", "同一状态各处各算", "侧栏、看板、core 各有一套分组函数。", "只留一个分组函数，侧栏、看板、菜单栏、通知都调它。"),
+    ("J", "文档", "旧实现的文档还在 specs 里。", "标注过时或删掉。"),
+]
+
+ISSUES = [
+    ("I1", "A", "高", "我核对", "数据", "待办、结局类编辑被无关的后台提交挡掉", "Agent 在输出时新建待办或标结局，宿主内容约每秒加一次 revision，请求报「工作台已变化」。代码注释自己写了布局类当初就是因此豁免", "core/model.rs:364 checks_revision；keeplined/host/client.rs:362"),
+    ("I2", "A", "中", "我核对", "App", "忙时点的非布局编辑被静默丢掉", "前一个请求还没回来时点标记完成，什么都没发生，也没提示", "app/host/store.rs:101 hold"),
+    ("I3", "A", "中", "我核对", "App", "保存失败，表单内容全丢", "存待办撞上 I1，表单已被取走，出错只写一条 error", "app/workbench/forms.rs:333；workbench/mod.rs:629"),
+    ("I4", "A", "高", "子代理追踪", "App", "忙时「保存并启动」开出指向不存在待办的终端", "AddTask 被丢，但 start_after_save 还在，下一个回包时拿着不存在的 task id 启动", "forms.rs save_form；workbench/mod.rs:623"),
+    ("I5", "A", "中", "子代理追踪", "App", "拖卡片、标记完成的成功提示不和结果对账", "编辑被丢或冲突，「已验收」提示和盖章动画照放，窗格也不关", "board_drawer.rs:205；complete.rs:255"),
+    ("I6", "A", "中", "子代理追踪", "App", "忙时 ⌘T、通知恢复、运行 X 被吞", "launch_in_slot 忙时直接 return", "workbench/mod.rs:900"),
+    ("I7", "A", "低", "推断", "数据", "超时后重点会建两份待办", "10s 超时但宿主已提交，用户再点生成第二个 id", "sessions.rs SaveSessionTask"),
+    ("I8", "B", "高", "我核对", "安全", "审批只核对问句，相同问句的另一条命令会被批", "手机看到审批 A，网络延迟期间 Agent 换成同样是「Do you want to proceed?」的审批 B，点允许就批了 B", "keeplined/screen_rules.rs:312；agents/screen/claude.json anchor；host/client.rs:861"),
+    ("I9", "B", "高", "我核对", "手机", "手机「选 1/2/3」「Esc」不校验画面", "电脑上已答完，手机还显示旧提问，点「选 1」把 1 打进 Agent 输入框", "mobile chat.tsx:242；keeplined/remote.rs:314"),
+    ("I10", "C", "中", "我核对", "数据", "PutTab 整块替换冲掉并发分屏，进程成孤儿", "Agent 用 keeplined split 刚分屏，你同时改标签名，新窗格从布局消失但进程还在跑", "core/model.rs:862 *old = tab"),
+    ("I11", "C", "中低", "子代理追踪", "数据", "关标签会停掉确认时没看到的终端", "确认框按本地快照列 Agent，宿主按当前状态停", "host/client.rs:399"),
+    ("I12", "D", "高", "我核对", "故障", "Agent 退出后卡片一直「等你回答」", "Ctrl-C 掉正在问审批的 claude，看板「N 等你」和手机推送挂 3 天", "core/content.rs:448（Waiting 不看 current，:433 Running 看）"),
+    ("I13", "D", "高", "我核对", "故障", "终端退出时写库失败，永远显示在跑", "日志批量写占锁超过 5s 撞上 SQLITE_BUSY，record_exit 失败只打日志，之后没人重算", "keeplined/host/live.rs:244,254"),
+    ("I14", "D", "中", "子代理追踪", "故障", "补扫失败把整批事件丢掉，检查点越过", "丢的是回合最后一次写入时，卡片停在旧状态直到文件再被写", "host/association.rs:493"),
+    ("I15", "D", "中", "子代理追踪", "故障", "一个读不了的日志让识别订阅无限重试", "sudo claude 留下 root 0600 文件，所有 CLI 的识别停在「识别中断」", "log_index.rs:653；association.rs:545"),
+    ("I16", "D", "低中", "子代理追踪", "故障", "定时线程一次 commit 失败就永久退出", "之后到期、过时只靠渲染现算，hooks 和通知晚到", "host/mod.rs 定时线程 run()?"),
+    ("I17", "D", "低", "推断", "故障", "Draining 没有超时，App 也不展示", "shell 退出但 disown 的后台进程占着 tty", "core/model.rs:259"),
+    ("I18", "E", "中", "我核对", "并发", "已结束的终端从不移出内存", "宿主跑得越久，PTY fd 和滚动缓冲越多", "keeplined 全局无 terminals.remove / retain"),
+    ("I19", "E", "中", "我核对一半", "并发", "全局锁下 fsync / fork / ps / 等日志库，拖停所有 PTY 读", "日志批量写占 gate 时来一个 Hook 请求，所有 pump 排队，Agent 输出卡住（卡顿后果待压测）", "store.rs:64 synchronous=FULL；host/client.rs:291 commit"),
+    ("I20", "E", "中", "子代理追踪", "并发", "交接时持全部锁做网络 I/O，冻结 ≥ 20s", "新宿主读得慢时整个守护进程停住", "host/client.rs:102-145"),
+    ("I21", "E", "中", "推断", "并发", "锁中毒后变成不退出的僵尸宿主", "任何线程持 Host 锁 panic 一次，之后所有请求失败但进程还在", "host/mod.rs:90 lock()"),
+    ("I22", "E", "中低", "子代理追踪", "并发", "粘贴和回车之间 150ms 不持锁", "这期间窗格里的按键夹进来，回车把合在一起的内容提交", "host/client.rs:755"),
+    ("I23", "E", "低", "子代理追踪", "并发", "交接接手的终端泄漏线程和 kqueue", "每接手一个终端泄漏一个", "host/live.rs:265"),
+    ("I24", "F", "高", "我核对", "故障", "ACK 后新宿主失败挂断所有终端", "拿锁超时、开库失败、某个 VT 恢复失败都会挂断全部；App 提示仍说旧后台照常", "host/mod.rs:687 之后；lifecycle.rs:202"),
+    ("I25", "G", "中", "我核对", "安全", "所有手机共用机器码，被顶替后永久下线", "拿过码的人在中继无 key 时注册同一 token，本机收 4000 进 Failed，不改设置不恢复", "keepline-relay/server.rs:257；relay.rs:632"),
+    ("I26", "G", "中", "我核对", "安全", "配对链接打开就保存，不先确认", "任意网页打开 keepline://pair 链接即写入", "mobile app/pair.tsx:43"),
+    ("I27", "G", "中", "子代理追踪", "安全", "插件不确认就加载执行", "能写插件目录的进程（包括 Agent）放一个目录就能每 10s 执行命令", "core/plugin.rs:194；plugin_hooks.rs:160"),
+    ("I28", "G", "中低", "我核对", "安全", "动作模板的引号在双引号里失效，测试把它固定了", "\"看看 {task}\" 里 task 带 $(…) 会被执行", "core/action.rs:231 测试"),
+    ("I29", "G", "中低", "推断", "安全", "pane-facts 在 OSC 7 给的目录里自动跑 git status", "进入恶意仓库时 core.fsmonitor 被执行", "actions.rs:12；terminal.rs:347"),
+    ("I30", "G", "中低", "子代理追踪", "安全", "配对握手前的会话没有超时，占满 64 个槽", "拿着 token 的人开 64 个不握手的连接挤掉正常手机", "relay.rs:38,595"),
+    ("I31", "G", "低", "子代理追踪", "安全", "同用户即全权：PTY 里的 Agent 能生成完全控制的配对链接", "受沙箱限制但能连 socket 的 Agent 借此提权", "host/client.rs:592"),
+    ("I32", "H", "中", "子代理追踪", "手机", "断线后重发没有幂等 id，消息发两次", "宿主已执行，回复前断线，手机说没发出去，用户再发", "mobile client.ts:164；chat.tsx:147"),
+    ("I33", "H", "中", "子代理追踪", "手机", "终端里换了会话，手机还看旧会话", "/new 之后新对话永远不出现", "chat.tsx:101"),
+    ("I34", "H", "中", "子代理追踪", "手机", "重连竞态删掉活着的连接", "回前台和手动重连同时触发，旧连接的 onEnded 把新连接标 offline", "hub.ts:78,93"),
+    ("I35", "H", "中", "子代理追踪", "手机", "改角色或踢出用 4401，手机提示重新扫码", "其实点重连就能连回，提示误导，踢也挡不住", "relay.rs:465；hub.ts:97"),
+    ("I36", "H", "中", "推断", "手机", "请求没有超时，半开连接卡在 online", "换网络后所有请求挂住", "client.ts:85"),
+    ("I37", "H", "中", "推断", "手机", "events 流结束后不重订", "状态还是 online，但卡片和审批不再更新", "hub.ts:111"),
+    ("I38", "I", "中", "子代理追踪", "App", "侧栏、看板、core 对同一会话给出不同分组", "见第 24 节对照表", "board.rs:91；session_state.rs:286,312；content.rs:461"),
+    ("I39", "I", "低中", "子代理追踪", "App", "菜单栏另存一份 Workspace，每次推送都全量拉", "两份副本可能不一致", "desktop.rs:325"),
+    ("I40", "I", "中", "推断", "App", "窗格首次连接失败不重试；抢过写权的窗格重连后掉回只读", "", "terminal/pane.rs:529,542"),
+    ("I41", "J", "低", "子代理追踪", "文档", "specs/restart-reconciliation.md 写的是旧 TS 版", "拿它当 Rust 版的契约会误导", "specs/restart-reconciliation.md"),
+]
+
+SEV = {"高": "err", "中": "wait", "中低": "wait", "低中": "muted", "低": "muted"}
+VER = {"我核对": "done", "我核对一半": "done", "子代理追踪": "run", "推断": "muted"}
+
+
+def issues_page():
+    rows = []
+    for fid, name, cause, fix in FAMILIES:
+        items = [i for i in ISSUES if i[1] == fid]
+        rows.append(f'<h2 id="f{fid}">{fid} · {esc(name)} <span class="cnt">{len(items)} 条</span></h2>'
+                    f'<p class="note"><b>根因：</b>{esc(cause)}<br><b>修法方向：</b>{esc(fix)}</p>')
+        body = "".join(
+            f'<tr><td><b>{i[0]}</b></td><td><span class="chip {SEV[i[2]]}">{i[2]}</span></td>'
+            f'<td><span class="chip {VER[i[3]]}">{i[3]}</span></td><td>{esc(i[4])}</td>'
+            f'<td><b>{esc(i[5])}</b><div class="sc">{esc(i[6])}</div><code>{esc(i[7])}</code></td><td class="dec">待定</td></tr>'
+            for i in items)
+        rows.append('<div class="tbl"><table><tr><th>编号</th><th>严重</th><th>核对</th><th>层</th><th>问题 · 场景 · 证据</th><th>决定</th></tr>'
+                    + body + "</table></div>")
+    cnt = {s: sum(1 for i in ISSUES if i[2] == s) for s in ["高", "中", "中低", "低中", "低"]}
+    ver = {v: sum(1 for i in ISSUES if i[3] == v) for v in VER}
+    nav = "".join(f'<a href="#f{f[0]}">{f[0]} {esc(f[1])}</a>' for f in FAMILIES)
+    return f"""<!doctype html>
+<html lang="zh-CN"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Keepline next 架构问题清单</title><style>{CSS}
+.cnt{{font-size:13px;color:var(--muted);font-weight:400}}.sc{{color:var(--muted);font-size:13px;margin:2px 0 4px}}.dec{{color:var(--muted);white-space:nowrap}}
+.tbl td:nth-child(5){{min-width:420px}}</style></head>
+<body><main>
+<button class="toggle" onclick="var r=document.documentElement;r.dataset.theme=(r.dataset.theme==='dark'||(!r.dataset.theme&&matchMedia('(prefers-color-scheme: dark)').matches))?'light':'dark'">明 / 暗</button>
+<h1>架构问题清单</h1>
+<p class="lead">2026-11-02 按六层（数据一致性、宿主并发、故障恢复、信任边界、App 内部状态、手机端）只读审计 <code>next/</code> 得到。共 {len(ISSUES)} 条，按根因归成 {len(FAMILIES)} 族；同一族用同一种修法，比逐条修划算。状态机和结构图见 <a href="next.html">架构页</a>。</p>
+<p class="note">严重度：高 {cnt['高']} · 中 {cnt['中']} · 中低 / 低中 {cnt['中低'] + cnt['低中']} · 低 {cnt['低']}。核对程度：<span class="chip done">我核对</span> 我亲自回代码看过分支 {ver['我核对'] + ver['我核对一半']} 条；<span class="chip run">子代理追踪</span> 子代理读代码追过调用链、我没逐条复核 {ver['子代理追踪']} 条；<span class="chip muted">推断</span> 依赖运行时条件、需要复现 {ver['推断']} 条。全部没有实际运行复现。行号是 2026-11-02 的工作区，别的会话在改，可能已偏移。</p>
+<p class="note"><b>建议先做的三族：</b>A（每天都会碰到：Agent 在输出时存待办、标完成会失败或丢东西）、B（安全：审批可能批到另一条命令）、D（状态卡住不自愈，看板和推送会说谎）。E、G、H 次之；C、I、J 可以随相关改动顺手做。</p>
+<nav>{nav}</nav>
+{''.join(rows)}
+</main></body></html>
+"""
+
 CSS = """
 :root{--bg:#f6f5f2;--card:#ffffff;--fg:#1d1f23;--muted:#6b7079;--line:#c9ccd2;--grp:#eceae5;--sub:#f9f8f5;
 --run:#2f6fdb;--run-bg:#e8f0fe;--wait:#b7791f;--wait-bg:#fdf3e1;--done:#1f8a5b;--done-bg:#e3f5ec;
@@ -721,7 +934,7 @@ def page():
 <button class="toggle" onclick="var r=document.documentElement;r.dataset.theme=(r.dataset.theme==='dark'||(!r.dataset.theme&&matchMedia('(prefers-color-scheme: dark)').matches))?'light':'dark'">明 / 暗</button>
 <h1>Keepline next 架构与状态机</h1>
 <p class="lead">next/ 是一个 Rust workspace：<b>keeplined</b> 宿主持有全部终端和识别逻辑，<b>keepline-app</b> 是 GPUI 桌面工作台，两者只通过 <code>workbench.sock</code> 说话；手机经 <b>keepline-relay</b> 远程连同一个宿主。所有状态都存在宿主的 <code>Workspace</code> 里，界面上的分组是从它派生出来的，不另存。</p>
-<nav><a href="#sys">系统总图</a><a href="#pipe">信号 → 状态</a><a href="#layers">状态分层</a><a href="#proc">终端进程</a><a href="#turn">回合</a><a href="#outcome">结局</a><a href="#inbox">分组</a><a href="#bind">绑定</a><a href="#recog">识别健康</a><a href="#remote">远程</a><a href="#handoff">宿主交接</a><a href="#task">待办</a><a href="#notify">通知</a><a href="#approval">审批</a><a href="#conn">窗格连接</a><a href="#hostlife">宿主生命周期</a><a href="#layout">布局</a><a href="#agents">各家信号</a><a href="#plugins">插件</a><a href="#code">代码索引</a></nav>
+<nav><a href="#sys">系统总图</a><a href="#pipe">信号 → 状态</a><a href="#layers">状态分层</a><a href="#proc">终端进程</a><a href="#turn">回合</a><a href="#outcome">结局</a><a href="#inbox">分组</a><a href="#bind">绑定</a><a href="#recog">识别健康</a><a href="#remote">远程</a><a href="#handoff">宿主交接</a><a href="#task">待办</a><a href="#notify">通知</a><a href="#approval">审批</a><a href="#conn">窗格连接</a><a href="#hostlife">宿主生命周期</a><a href="#layout">布局</a><a href="#agents">各家信号</a><a href="#plugins">插件</a><a href="#edit">编辑生命周期</a><a href="#locks">线程与锁</a><a href="#failures">故障恢复</a><a href="#trust">信任边界</a><a href="#appstate">App 内部状态</a><a href="#phone">手机端</a><a href="#code">代码索引</a><a href="issues.html"><b>问题清单</b></a></nav>
 
 <h2 id="sys">1 · 系统总图</h2>
 <p class="note">三个进程：Agent CLI 跑在宿主开的 PTY 里；宿主从四路读信号；工作台和手机都只是宿主的观看者和遥控器。</p>
@@ -797,7 +1010,7 @@ def page():
 <div class="fig">{fig_notify()}</div>
 
 <h2 id="approval">14 · 审批应答</h2>
-<p class="note">只有画面规则认出来的审批框能远程回答，回答前宿主一定重读画面，防止答到别的问题上。</p>
+<p class="note">只有画面规则认出来的审批框能远程回答，回答前宿主重读画面核对问句。<b>但核对的「问句」只是那一行</b>（如 "Do you want to proceed?"），不含命令，前后两个问句相同的审批分不出来（问题 I8）。</p>
 <div class="fig">{fig_approval()}</div>
 
 <h2 id="conn">15 · 窗格连接</h2>
@@ -821,7 +1034,34 @@ def page():
 <p class="note">插件是一个目录，<code>plugin.json</code> 声明 <code>provides</code>，每种对应一个文件。只有左栏插件跑 wasm，其余都是声明式数据或外部命令。</p>
 {PLUGINS}
 
-<h2 id="code">20 · 代码索引</h2>
+<h2 id="edit">20 · 一次编辑的生命周期</h2>
+<p class="note">宿主这一侧是原子的：先在副本上应用、落库成功才换内存，宿主自己不会内存和库分叉。问题都在两头：前面客户端忙时直接丢，中间用一个全局 revision 挡住所有「查版本号」的编辑，后面客户端失败时不还原输入、不撤回乐观提示。豁免版本检查的：PutTab、CloseTab、ClosePane、SplitPane、RenameSession、MoveTab、Settings、RemoveSpace。见问题族 <a href="issues.html#fA">A</a>、<a href="issues.html#fC">C</a>。</p>
+<div class="fig">{fig_edit()}{LEGEND}</div>
+
+<h2 id="locks">21 · 宿主线程与锁</h2>
+<p class="note">长期线程：接收连接、每客户端一个、attach / 状态 / 事件各自的写线程、每终端的 PTY pump 和回收、定时、日志订阅、注册表监视、Vnodes、远程 Supervisor、mirror。两把锁同时持有的地方顺序一致：<b>Host → Live → replies</b>、Host → Supervisor.inner、Host → gate；没找到反方向，所以没有锁序死锁。推给订阅者都走 <code>try_send</code>，慢客户端不会拖住别人。问题在于持锁时做阻塞 I/O（问题族 <a href="issues.html#fE">E</a>）。</p>
+{LOCKS}
+
+<h2 id="failures">22 · 故障与恢复</h2>
+<p class="note">宿主整体是「故障即停」：SQLite 写在事务里，前台请求失败会报给你。漏洞在后台路径：后台写失败只打日志，状态从此错下去（问题族 <a href="issues.html#fD">D</a>）。<code>specs/restart-reconciliation.md</code> 描述的是旧 TS 版，不适用于 next。</p>
+{FAILURES}
+
+<h2 id="trust">23 · 信任边界</h2>
+<p class="note">手机这条路是严的：只能触发固定 7 种操作，每个请求都过角色检查。松的是本机这一侧：同一用户的任何进程都有全部权限，插件默认启用（问题族 <a href="issues.html#fG">G</a>）。</p>
+{TRUST}
+<h3>手机连接（手机侧 <code>hub.ts</code>，宿主侧 <code>relay.rs</code>）</h3>
+<div class="fig">{fig_phone()}{LEGEND}</div>
+
+<h2 id="appstate">24 · App 内部状态</h2>
+<p class="note">App 只持有一份 <code>Workbench.workspace</code>，新 revision 来了整份替换，视图渲染时现算状态。导航（鸟瞰 / 标签 / 待办详情）、表单、拖拽、未看标记都只在内存里；偏好存在 <code>~/.config/keepline/*</code>。<code>apply_workspace</code> 不检查导航和表单指向的东西还在不在。所有请求共用一个「忙」位：</p>
+<div class="fig">{fig_appreq()}</div>
+<h3>同一状态各处各算（问题 I38）</h3>
+{DERIVE}
+
+<h2 id="phone">25 · 手机端</h2>
+<p class="note">发消息：发出后显示「发送中」，失败撤回并把文字放回输入框；成功<b>没有确认态</b>，要等日志里出现同样文字或 30 秒超时才去掉。答审批：成功后 300ms 刷新一次列表。会话视图按终端取会话，之后每 2s 轮询。协议三层版本：配对链接 <code>v=2</code> 必须相等；JSON 协议 <code>VERSION=1</code> 不协商，靠未知字段忽略兼容；中继帧 proto≥2 走二进制。问题见族 <a href="issues.html#fH">H</a>、<a href="issues.html#fB">B</a>。</p>
+
+<h2 id="code">26 · 代码索引</h2>
 <table><tr><th>状态</th><th>定义</th><th>转移在哪</th></tr>{code_rows}</table>
 <p class="note">本页由 <code>specs/architecture/gen.py</code> 生成，改图请改脚本里的数据后重跑。生成于 2026-11-02，对应 main 270f49fe。</p>
 </main></body></html>
@@ -830,4 +1070,5 @@ def page():
 
 if __name__ == "__main__":
     OUT.write_text(page(), encoding="utf-8")
+    OUT.with_name("issues.html").write_text(issues_page(), encoding="utf-8")
     print(OUT)
