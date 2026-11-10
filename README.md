@@ -1,3 +1,6 @@
+> [!IMPORTANT]
+> **Keepline is now [Fibo](https://github.com/majiayu000/fibo)** — a native macOS workbench (`GPUI` + `libghostty`) for coding agents. Install with `brew install --cask majiayu000/tap/fibo`; existing `~/.config/keepline` settings and sessions migrate automatically on first launch.
+
 <div align="center">
 
 <img src="docs/assets/logo.svg" alt="Keepline Logo" width="120" />
